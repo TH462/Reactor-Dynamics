@@ -274,6 +274,17 @@ function runSuite(K, rec, quiet) {
   ckT('the decay tail is the difference, not an extra term',
       Math.abs((rs.Q_total_frac - rs.power * (1 - K.f0())) - rs.decay_frac) < 1e-9,
       'Q_total = P*(1-f0) + sum(H) exactly');
+  /* THE SOURCE FLOOR (2026-08-21, the hot_zero_power IC): a shut-down population settles ON
+   * the subcritical-multiplication floor, never below it — without the floor a held plant
+   * decays to EXACT numerical zero and 0 * e^(t/T) = 0 can never go critical again. Started
+   * just above the floor so the prompt drop crosses it within the ride. */
+  var kfl = K.createKinetics({ P: 2 * K.SOURCE.floor_frac, rho_excess: -0.05 });
+  var sysf = plant(), rf = null;
+  for (var vf = 0; vf < 200; vf++) rf = K.stepKinetics(kfl, sysf, 0.02, REF);
+  ckT('a deep-shutdown population settles ON the source floor, never below',
+      rf.power === K.SOURCE.floor_frac,
+      'power ' + rf.power.toExponential(3) + ' vs floor ' + K.SOURCE.floor_frac.toExponential(0) +
+      ' at -5000 pcm — the floor IS the source model');
 
   /* ---- 5. FEEDBACK ------------------------------------------------------------------- */
   if (!quiet) console.log('\nFEEDBACK  [moderator reads REAL L0 density; boron appears TWICE]');
@@ -557,6 +568,8 @@ var MUTATIONS = [
   ['a sourced rod worth moved', 'worth_control:  0.04068,', 'worth_control:  0.05000,'],
   ['xenon equilibrium loses its burnout term',
    '(XENON.lambda_X + OPEN.sigma_phi.value * P);', '(XENON.lambda_X);'],
+  ['the source floor is removed (a held shutdown plant underflows to a permanently dead core)',
+   'if (kin.P < SOURCE.floor_frac) kin.P = SOURCE.floor_frac;', ''],
   /* CONSTRUCTION */
   ['caller power ignored at construction', 'var P0 = opts.P === undefined ? 1.0 : opts.P;', 'var P0 = 1.0;'],
   ['caller rho_excess ignored at construction',

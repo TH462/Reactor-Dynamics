@@ -59,33 +59,71 @@
   var ROD_SLEW_SPS = 1.0;        /* steps/s, manual motion — [derived], see header */
   var SCRAM_S = 2.0;             /* full insertion on a trip, [derived] class figure */
 
+  /* ---- INITIAL CONDITIONS (#479 "more starting conditions", 2026-08-21) --------------------
+   * opts.initial_state: 'hot_full_power' (default — the design point this engine has always
+   * started at) or 'hot_zero_power' — Mode 3, Hot Standby:
+   *   · primary at operating pressure, uniform at the SECONDARY's saturation temperature for
+   *     the sourced no-load steam pressure (G.SG.P_noload, Ginna 1005 psig). With the turbine
+   *     off the only heat crossing the SG is pump work (~1.4 MW), so the settled primary sits
+   *     a fraction of a degree above T_sat(P_noload); starting AT it is the same
+   *     initialise-on-the-steady-solve rule pwr2_reactor applies to the fuel.
+   *   · reactor SHUT DOWN: bank fully inserted, fission at the kinetics source floor (the
+   *     subcritical-multiplication equilibrium the hold settles at anyway — starting above it
+   *     just prepends a decay transient), xenon/iodine/decay inventories at their own
+   *     equilibria for that power, i.e. effectively zero — a startup-ready plant, not a
+   *     post-trip one.
+   *   · boron trimmed so the shut-down plant sits 1000 pcm subcritical WITH the bank in — the
+   *     old engine's own hot_zero_power margin (_trimToCritical, margin 0.01 dk/k), kept
+   *     identical so the two engines' Mode 3 states stay comparable in the parallel phase.
+   *     Criticality is therefore reachable on rods alone, partway up the bank — the startup
+   *     this IC exists to teach. [derived]
+   *   · turbine tripped, steam dumps in STEAM PRESSURE mode at their sourced no-load default
+   *     (the standard hot-standby lineup; Tavg mode needs C-7, which needs a load to lose),
+   *     C-7's load reference at 0 so t=0 does not read as a 100 % load rejection.
+   *   · feed: one main feed pump on the three-element controller (pump B secured — declared
+   *     simplification: no reg-bypass valve is modelled, so the low-flow lineup a real plant
+   *     feeds through at no load has no lever here), regulating valve starting shut.
+   *   · low-flux trip UNBLOCKED (the #460 note inverts: a plant at zero power has no business
+   *     blocking its startup protection), pressurizer level at the no-load program point.
+   */
   function createEngine(opts) {
     opts = opts || {};
-    var pz = PZ.createPressurizer({});
-    var sys = S.createPlant({ h: W.h_l(TREF, P0), P: P0, extraMass: PZ.extraMassFn(pz) });
-    var rx = R.createReactor({ P: 1.0, coolTemp_c: TREF });
-    var boron0 = RD.kinetics.criticalBoron(rx.kin, TREF, P0, null,
-      rx.kin.X / rx.kin.X_eq_full, rx.fuel.T_fuel_c);
-    var sg = G.createSG({});
-    var tb = TB.createTurbine({ load_target_mwe: MWE_RATED });
+    var hzp = opts.initial_state === 'hot_zero_power';
+    var T_ic = hzp ? W.T_sat(G.SG.P_noload) : TREF;
+    var pz = PZ.createPressurizer(hzp ? { level_frac: PZ.GEOM.level_program_noload } : {});
+    var sys = S.createPlant({ h: W.h_l(T_ic, P0), P: P0, extraMass: PZ.extraMassFn(pz) });
+    var rx = R.createReactor({ P: hzp ? RD.kinetics.SOURCE.floor_frac : 1.0, coolTemp_c: T_ic });
+    var rodBank = [{ steps: hzp ? 0 : 200, max_steps: 200, worth: 0.08 }];
+    var boron0 = RD.kinetics.criticalBoron(rx.kin, T_ic, P0, hzp ? rodBank : null,
+      rx.kin.X / rx.kin.X_eq_full, rx.fuel.T_fuel_c)
+      + (hzp ? 0.01 / RD.kinetics.BORON.worth_per_ppm : 0);
+    var sg = G.createSG(hzp ? { P: G.SG.P_noload } : {});
+    var tb = TB.createTurbine(hzp ? { load_target_mwe: 0, tripped: true }
+                                  : { load_target_mwe: MWE_RATED });
     var eng = {
       sys: sys, pz: pz, rx: rx, sg: sg, tb: tb,
       rl: RL.createRelief({}),
       cd: CD.createCondenser({}),
-      dc: DC.createDumpCtl({}),
+      dc: DC.createDumpCtl(hzp ? { mode: 'pressure', load_frac: 0 } : {}),
       cv: CV.createCVCS({ boron_ppm: boron0 }),
       ec: EC.createECCS({}),
       aw: AW.createAFW({}),
-      fw: FWM.createFeedwater({}),
+      fw: FWM.createFeedwater(hzp ? { at_power: false, pumpB: false } : {}),
       dm: DG.createDamage({}),
-      pt: PT.createProtection({ blockLowFlux: true }),   /* a plant AT POWER blocks it — #460 */
+      pt: PT.createProtection({ blockLowFlux: !hzp }),   /* a plant AT POWER blocks it — #460 */
       brk: null,
       ctm: CT.createContainment({}),
-      rated_steam: TB.steamDemand(tb, sg.P, G.SG.h_feed),
+      /* rated_steam is a NORMALIZATION (steam_flow_frac, the feed controller's element 2), so
+       * it is the RATED point's demand regardless of the IC — a tripped turbine's own demand
+       * is 0 and would put a zero in three denominators. At hot_full_power the reference
+       * evaluates to exactly what the direct expression always produced. */
+      rated_steam: TB.steamDemand(TB.createTurbine({ load_target_mwe: MWE_RATED }),
+                                  G.createSG({}).P, G.SG.h_feed),
       M_nominal: sys.M_total,
       simTime: 0,
+      initial_state: hzp ? 'hot_zero_power' : 'hot_full_power',
       /* command state */
-      rodTarget: 200, rodSteps: 200, rodBank: [{ steps: 200, max_steps: 200, worth: 0.08 }],
+      rodTarget: hzp ? 0 : 200, rodSteps: hzp ? 0 : 200, rodBank: rodBank,
       cwPumps: true,
       pzDrivers: {},              /* setpoint/manual/stick/block/aux — forwarded each step */
       dcDrivers: {},              /* mode / pressure setpoint */

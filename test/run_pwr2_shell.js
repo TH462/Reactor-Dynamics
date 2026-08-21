@@ -67,6 +67,22 @@ function runSuite(SH, rec, quiet) {
   ck('the indicated tavg TRACKS the plant through the reused layer',
      Math.abs(rd.tavg - ts.tavg_c) < 2.0,
      'ind ' + rd.tavg.toFixed(2) + ' vs true ' + ts.tavg_c.toFixed(2) + ' degC');
+  /* THE IC PASSTHROUGH (2026-08-21, #479 more starting conditions): the service constructs
+   * with {initial_state}, and reset() must return to the SAME condition — a reset that
+   * silently changed the IC would be a different plant wearing the reset's name. */
+  var engHzp = new SH.PWR2Engine({ initial_state: 'hot_zero_power' });
+  var tsHzp = engHzp.step(DT);
+  engHzp.reset();
+  var tsHzp2 = engHzp.step(DT);
+  ck('initial_state reaches the facade AND survives reset() (Mode 3 both sides)',
+     tsHzp.plant_mode === 3 && tsHzp.power_pct < 1e-4 && tsHzp.rod_steps === 0 &&
+     tsHzp2.plant_mode === 3 && tsHzp2.rod_steps === 0,
+     'mode ' + tsHzp.plant_mode + ' -> reset -> mode ' + tsHzp2.plant_mode);
+  var csHzp = engHzp.getControlState();
+  ck('the shutdown-rod DISPLAY reads IN on the bank-in Mode 3 plant (the #468 class, on the ' +
+     'display: scrammed ? 0 : 200 showed the shut-down IC as banks-out)',
+     csHzp.rod_groups[1].steps === 0 && csHzp.rod_groups[1].position_pct === 0,
+     'shutdown group reads ' + csHzp.rod_groups[1].steps + '/200');
   /* _copyStatus reads ONLY the extras dict — with {} passed (the shipped B2 defect) all 35
    * status readings were undefined and every board status word defaulted: the RCP handswitch
    * lit OFF over a running pump, AUX FEED read SECURED, the polisher STANDBY (measured on the
@@ -277,6 +293,9 @@ var pass = rec.filter(function (r) { return r.ok; }).length, fail = rec.length -
 
 var SHSRC = fs.readFileSync(path.join(SRC, 'pwr2_shell.js'), 'utf8').replace(/\r\n/g, '\n');
 var MUTATIONS = [
+  ['reset() drops the construction opts (a Mode 3 session resets into a Mode 1 plant)',
+   '    this.eng = EN.createEngine(this._opts || {});',
+   '    this.eng = EN.createEngine({});'],
   ['a REFUSED command is silently swallowed (reads exactly like a plant that survived it)',
    "    if (REFUSED[a] !== undefined) {\n      throw new Error('pwr2_shell: \"' + a + '\" REFUSED — ' + REFUSED[a]);\n    }",
    '    if (REFUSED[a] !== undefined) { return { ok: true, action: a }; }'],

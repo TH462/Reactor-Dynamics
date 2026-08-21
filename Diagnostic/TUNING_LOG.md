@@ -29,6 +29,35 @@ and the user-visible summary in `CHANGELOG.md`. This file points at those and tr
 
 ---
 
+## Session log — 2026-08-21-backshop-d (#479 — Mode 3, Hot Standby: the second starting condition, and the source floor)
+
+**The work order** *(owner, 2026-08-21: "Work on more starting conditions, Mode 3 Hot Standby
+first.")*. Full record: `Blueprint/PWR2_VALIDATION.md` §65. The facts:
+
+- **`hot_zero_power` built** (`pwr2_engine createEngine({initial_state})`, shell passthrough +
+  reset preservation, menu card second row): 2235 psia (15.41 MPa), Tavg at T_sat of the
+  sourced 1005 psig no-load steam pressure, bank in, boron trimmed 1000 pcm subcritical (the
+  old engine's own hot_zero_power margin; measured −1137 pcm residual, 373 ppm), turbine
+  tripped, dumps in pressure mode, pressurizer at the WTSM 10.3 25 % no-load program, one
+  feed pump on the three-element controller, low-flux trip unblocked.
+- **Measured**: 2-h hold second-hour bands Tavg 546.7–547.6 °F, P 2210–2236 psia, levels on
+  program, no trip/SI · critical at 53.7/200 steps · 1 % power 4.5 min after the pull, self-
+  limiting ~10 % on moderator feedback · the old plant’s hot_zero_power reads 547.2 °F /
+  2234 psia — the two engines agree on Mode 3.
+- **THE SOURCE FLOOR** (`pwr2_kinetics SOURCE.floor_frac = 1e-9`, [derived]): without it a
+  held shutdown plant decays ~21 decades/hr and underflows to EXACT zero — a permanently dead
+  core no rod pull revives (0·e^(t/T) = 0). The floor is the installed/intrinsic source model.
+- **The display defect the IC exposed**: the shell’s shutdown-rod group read `scrammed ? 0 :
+  200` — the bank-in Mode 3 plant showed SHUTDOWN RODS WITHDRAWN (the #468 class, on the
+  display). Now out iff any of the bank is out.
+- **Filed as #500, not fixed**: `pzr_level_low` (shared annunciator) is set AT 25.0 % — exactly the
+  sourced no-load program point — so Mode 3 carries a standing warning on a healthy plant.
+- Gates: `run_pwr2_kinetics` 71→72/41 · `run_pwr2_engine` 41→55/31 (one mutation measured
+  BLIND — clips bound the rated_steam revert — replaced by a direct plant-constant check) ·
+  `run_pwr2_shell` 29→31/15 · headless zero console errors · full sweep at baseline.
+
+---
+
 ## Session log — 2026-08-21-backshop-c (the backshop merge — the PWR2 arc joins the trunk, and CI outgrows its budget)
 
 **The order** *(OWNER DIRECTIVE, 2026-08-21: "Full merge and push. Don't publish to main

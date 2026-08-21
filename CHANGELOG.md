@@ -31,6 +31,21 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
 ## [Unreleased]
 
 ### Changed
+- **PWR2 gains its second starting condition — Mode 3, Hot Standby** (#479, 2026-08-21,
+  `Blueprint/PWR2_VALIDATION.md` §65). `hot_zero_power` on the "PWR — New Physics" card:
+  2235 psi (15.41 MPa), Tavg 547 °F (286 °C) at the sourced 1005 psig no-load steam pressure,
+  bank in, 1000 pcm shutdown margin (boron 373 ppm), turbine tripped, dumps in steam-pressure
+  mode, one feed pump on the three-element controller. Measured: a 2-h hold rides
+  546.7–547.6 °F with levels on program; a rod pull reaches criticality at 53.7/200 steps and
+  1 % power 4.5 min later, self-limiting near 10 % on moderator feedback.
+  - **The kinetics gains a neutron source floor** (`SOURCE.floor_frac = 1e-9` of rated,
+    [derived]): without a source term a held shutdown core decays ~21 decades/hr and
+    underflows to exact zero — a dead core no rod pull revives. The floor is the
+    installed/intrinsic source model, and the startup climbs from it on a real period.
+  - **The shell's shutdown-rod display fixed**: it read `scrammed ? 0 : 200`, presenting the
+    bank-in Mode 3 plant as SHUTDOWN RODS WITHDRAWN — the #468 class defect on the display.
+  - Save schema unchanged (`initial_state` rides in the scalars); reset() returns to the IC
+    the session was built with.
 - **The Indications tab's checkboxes are a MONITOR LIST, not a plot selector** *(OWNER,
   2026-08-12: "the check boxes select what you see in the [strip chart] which is redundant
   because now the strip chart has its own menu… they are going to be used for indications

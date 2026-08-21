@@ -214,6 +214,7 @@
 
   function PWR2Engine(opts) {
     opts = opts || {};
+    this._opts = opts;           /* kept for reset(): the IC is a construction fact (#479) */
     this.eng = EN.createEngine(opts);
     this.schema = 'pwr2-1.0';
     this._ts = EN.step(this.eng, 0.02);        /* prime: one step so every consumer has a state */
@@ -357,9 +358,14 @@
           direction: e.rodTarget > e.rodSteps ? 1 : (e.rodTarget < e.rodSteps ? -1 : 0),
           speed: 'normal', scrammed: !!ts.scrammed,
           insertion_limit_steps: null, at_insertion_limit: false },
+        /* the shutdown group presents as OUT iff any of the one real bank is withdrawn —
+         * real startups pull the shutdown banks first, and the two states where the whole
+         * bank sits at 0 (a scram, the hot_zero_power IC) are exactly the states where a
+         * real plant's shutdown banks are in. The old `scrammed ? 0 : 200` read the Mode 3
+         * IC as banks-out — the #468 class defect, on the display (2026-08-21). */
         { id: 'shutdown_rods', name: 'Shutdown Rods', function: 'shutdown',
-          steps: ts.scrammed ? 0 : 200, max_steps: 200,
-          position_pct: ts.scrammed ? 0 : 100,
+          steps: e.rodSteps > 0 ? 200 : 0, max_steps: 200,
+          position_pct: e.rodSteps > 0 ? 100 : 0,
           moving: false, direction: 0, speed: 'normal', scrammed: !!ts.scrammed,
           insertion_limit_steps: null, at_insertion_limit: false },
       ],
@@ -420,8 +426,9 @@
   };
 
   PWR2Engine.prototype.reset = function () {
-    var opts = {};
-    this.eng = EN.createEngine(opts);
+    /* back to the SAME starting condition this instance was built with — a reset that
+     * silently changed the IC would be a different plant wearing the reset's name */
+    this.eng = EN.createEngine(this._opts || {});
     this._ts = EN.step(this.eng, 0.02);
     this.instruments = new root.RD.PWRInstruments(root.RD.PWR_CONFIG, undefined);
     this.instruments.reset(this._ts, this._instrExtras());
@@ -463,7 +470,8 @@
         _pwrRate: e._pwrRate, _prevPower: e._prevPower,
         _tavgPrev: e._tavgPrev, _tavgRate: e._tavgRate, advDemand: e.advDemand,
         advBlock: e.advBlock, cwPumps: e.cwPumps,
-        pzDrivers: e.pzDrivers, dcDrivers: e.dcDrivers
+        pzDrivers: e.pzDrivers, dcDrivers: e.dcDrivers,
+        initial_state: e.initial_state          /* construction fact, rides for the label (#479) */
       }
     };
     var out = JSON.parse(JSON.stringify(body));      /* deep copy, and PROVES serializability */

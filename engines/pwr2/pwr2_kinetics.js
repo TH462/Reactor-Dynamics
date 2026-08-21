@@ -117,6 +117,19 @@
   };
   function f0() { return DECAY.H0[0] + DECAY.H0[1] + DECAY.H0[2] + DECAY.H0[3]; }
 
+  /* THE NEUTRON SOURCE FLOOR — [derived]. A shut-down core's fission power does not decay to
+   * zero: installed startup sources and intrinsic (spontaneous-fission, alpha-n) neutrons hold
+   * a subcritical-multiplication equilibrium, which is the population the source range lives
+   * on and the reason a real startup is monitorable at all. This model carries no explicit
+   * source term in the point-kinetics matrix, so without a floor P decays exponentially
+   * forever — MEASURED (2026-08-21, the hot_zero_power IC at -1140 pcm): 3.6e-7 of rated at
+   * t=0 to 7e-18 within 30 min, ~21 decades/hr, underflowing to EXACT zero on an overnight
+   * hold — and a zero population can never go critical (0 * e^(t/T) = 0), a permanently dead
+   * core no rod pull revives. The floor IS the source model: the magnitude (1e-9 of rated
+   * ~ 0.3 W) is a class figure, not sourced, and every decade it moves changes a startup's
+   * climb-to-1 % by ~2.5 min at the ~65 s stable period the delayed groups set. */
+  var SOURCE = { floor_frac: 1e-9 };
+
   /* IODINE / XENON — the decay constants are physical and [sourced]; the yields are standard
    * fission-product data. lambda_I = ln2/6.57 h, lambda_X = ln2/9.21 h. */
   var XENON = {
@@ -631,6 +644,8 @@
     var adv = advance(kin.P, kin.C, rhoMid, dt);
     kin.P = adv.P;
     kin.C = adv.C;
+    /* the source floor — see the SOURCE block above; one line so its removal is one mutation */
+    if (kin.P < SOURCE.floor_frac) kin.P = SOURCE.floor_frac;
     kin.rho_last = rhoNow;   /* the RAW value, so the next step's ramp estimate is honest */
 
     /* XENON — explicit is fine: the fastest constant here is ~2.9e-5 /s against dt = 0.02. */
@@ -672,6 +687,7 @@
   root.RD.pwr2 = root.RD.pwr2 || {};
   root.RD.pwr2.kinetics = {
     DELAYED: DELAYED, DECAY: DECAY, XENON: XENON, MOD: MOD, RODS: RODS, OPEN: OPEN,
+    SOURCE: SOURCE,
     BORON: BORON, HZP: HZP,
     solveRhoExcess: solveRhoExcess, criticalBoron: criticalBoron,
     createKinetics: createKinetics, stepKinetics: stepKinetics,

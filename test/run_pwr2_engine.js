@@ -580,6 +580,89 @@ function runSuite(RD, rec, quiet, only) {
       'max true-minus-indicated ' + maxGap.toFixed(1) + ' points in the first 10 s — A9\'s ' +
       'effect reproduced on PWR2\'s own channel');
   }
+
+  if (grp('G')) {
+  /* ---- 6. THE HOT STANDBY IC (2026-08-21, #479 more starting conditions) -------------------
+   * Mode 3: hot, pressurized, shut down, turbine off, dumps in pressure mode on the sourced
+   * no-load setpoint. Three claims: the state LANDS on its anchors, it HOLDS (stability
+   * bands, not endpoints — the #447 lesson), and criticality is reachable on rods alone —
+   * the startup the IC exists to teach. Numbers from the 2026-08-21 probe rides
+   * (PWR2_VALIDATION.md §65): Tavg 546.7-547.6 degF over a 2-h hold, critical at 53.7/200
+   * steps, 1 % power 4.5 min after the pull begins. */
+  var engG = EN.createEngine({ initial_state: 'hot_zero_power' });
+  var tsG = EN.step(engG, DT);
+  ck('hot standby lands at the no-load saturation temperature', tsG.tavg_c,
+     W.T_sat(G.SG.P_noload), 0.6, 'degC (547 degF)');
+  ck('primary at operating pressure', tsG.pressure_mpa, 15.41, 0.1, 'MPa (2235 psia)');
+  ck('SG at the sourced no-load pressure', tsG.steam_pressure_mpa, G.SG.P_noload, 0.06,
+     'MPa (1005 psig)');
+  ck('pressurizer level on the no-load program', tsG.pzr_level_pct, 25, 1.5, '%');
+  ck('SG level on the program', tsG.sg_level_pct, 65, 2.5, '%');
+  ck('fission power sits on the source floor', tsG.power_pct,
+     RD.kinetics.SOURCE.floor_frac * 100, 1e-12, '%');
+  /* rated_steam is the steam_flow_frac / feed-controller NORMALIZATION — a constant of the
+   * plant, not of the IC's turbine (whose own demand at hot standby is 0). The revert is
+   * nearly silent in behavior (clips bound the damage), so the claim is pinned directly. */
+  ck('rated_steam is the RATED point\'s demand — a plant constant, IC-independent',
+     engG.rated_steam, EN.createEngine({}).rated_steam, 1e-9, 'kg/s');
+  ckT('Mode 3, bank in, turbine off, low-flux trip armed',
+      tsG.plant_mode === 3 && tsG.rod_steps === 0 && tsG.turbine_tripped === true &&
+      tsG.scrammed === false && engG.pt.blockLowFlux === false,
+      'mode ' + tsG.plant_mode + ', rods ' + tsG.rod_steps + ', blockLowFlux ' +
+      engG.pt.blockLowFlux);
+  ckT('the trimmed shutdown margin: ~1000 pcm below critical with the bank in',
+      tsG.reactivity_pcm > -1400 && tsG.reactivity_pcm < -800,
+      tsG.reactivity_pcm.toFixed(0) + ' pcm (trim residual: the zero-power solve omits the ' +
+      'void half — measured -1137)');
+  /* the HOLD — bands over the whole ride, because a limit cycle passes any endpoint check */
+  var bandG = { tLo: 1e9, tHi: -1e9, pLo: 1e9, pHi: -1e9, zLo: 1e9, zHi: -1e9, sLo: 1e9, sHi: -1e9 };
+  var holdN = Math.round((quiet ? 120 : 300) / DT);
+  for (var gh = 0; gh < holdN; gh++) {
+    tsG = EN.step(engG, DT);
+    if (tsG.tavg_c < bandG.tLo) bandG.tLo = tsG.tavg_c;
+    if (tsG.tavg_c > bandG.tHi) bandG.tHi = tsG.tavg_c;
+    if (tsG.pressure_mpa < bandG.pLo) bandG.pLo = tsG.pressure_mpa;
+    if (tsG.pressure_mpa > bandG.pHi) bandG.pHi = tsG.pressure_mpa;
+    if (tsG.pzr_level_pct < bandG.zLo) bandG.zLo = tsG.pzr_level_pct;
+    if (tsG.pzr_level_pct > bandG.zHi) bandG.zHi = tsG.pzr_level_pct;
+    if (tsG.sg_level_pct < bandG.sLo) bandG.sLo = tsG.sg_level_pct;
+    if (tsG.sg_level_pct > bandG.sHi) bandG.sHi = tsG.sg_level_pct;
+  }
+  ckT('the hold is LIVE and quiet: no trip, no SI, not a held beyond-model state',
+      engG._dead !== true && engG.pt.reactor_trip === false && engG.pt.si === false, '');
+  ckT('hold bands: Tavg within 545-550 degF, pressure 2190-2255 psia',
+      bandG.tLo > 285.0 && bandG.tHi < 287.8 && bandG.pLo > 15.10 && bandG.pHi < 15.55,
+      'Tavg ' + (bandG.tLo * 1.8 + 32).toFixed(1) + '-' + (bandG.tHi * 1.8 + 32).toFixed(1) +
+      ' degF, P ' + (bandG.pLo * 145.038).toFixed(0) + '-' + (bandG.pHi * 145.038).toFixed(0) +
+      ' psia');
+  ckT('hold bands: pressurizer level 22-29 %, SG level 61-70 % — the controllers hold, not drift',
+      bandG.zLo > 22 && bandG.zHi < 29 && bandG.sLo > 61 && bandG.sHi < 70,
+      'pzr ' + bandG.zLo.toFixed(1) + '-' + bandG.zHi.toFixed(1) + ' %, SG ' +
+      bandG.sLo.toFixed(1) + '-' + bandG.sHi.toFixed(1) + ' %');
+  /* the STARTUP — criticality on rods alone, partway up the bank */
+  EN.command(engG, 'rod_target', 200);
+  var critSteps = null;
+  var pullN = Math.round(200 / DT);
+  for (var gp = 0; gp < pullN; gp++) {
+    tsG = EN.step(engG, DT);
+    if (critSteps === null && tsG.reactivity_pcm >= 0) {
+      critSteps = engG.rodSteps;
+      EN.command(engG, 'rod_target', Math.min(200, engG.rodSteps + 5));
+      break;
+    }
+  }
+  ckT('criticality is reachable on rods alone, mid-bank',
+      critSteps !== null && critSteps > 20 && critSteps < 120,
+      critSteps === null ? 'never critical in 200 s of pull'
+                         : 'critical at ' + critSteps.toFixed(1) + '/200 steps');
+  var climbN = Math.round((quiet ? 240 : 420) / DT);
+  for (var gc = 0; gc < climbN; gc++) tsG = EN.step(engG, DT);
+  ckT('...and power CLIMBS from the source floor on a delayed-critical period',
+      tsG.power_pct > 1e-3 && engG.pt.reactor_trip === false && engG._dead !== true,
+      'power ' + tsG.power_pct.toExponential(2) + ' % ' + (quiet ? 240 : 420) +
+      ' s after the pull (measured: 1 % at 4.5 min, self-limiting near 10 % on moderator ' +
+      'feedback)');
+  }
 }
 
 console.log('\nPWR2 -- THE ENGINE FACADE: one door, the gates\' wiring written once');
@@ -680,7 +763,23 @@ var MUTATIONS = [
    { grp: 'E' }],
   ['the shrink/swell shift is dropped from the internal channel',
    "    IN.stepInstruments(eng.ins, dt, ts, { shift: { sg_level: 0.8 * (eng._pwrRate || 0) } });",
-   '    IN.stepInstruments(eng.ins, dt, ts);', { grp: 'F' }]
+   '    IN.stepInstruments(eng.ins, dt, ts);', { grp: 'F' }],
+  /* THE HOT STANDBY IC (2026-08-21) */
+  ['the bank is left withdrawn in a shut-down plant (the #468 class defect)',
+   'rodTarget: hzp ? 0 : 200, rodSteps: hzp ? 0 : 200, rodBank: rodBank,',
+   'rodTarget: 200, rodSteps: 200, rodBank: rodBank,', { grp: 'G' }],
+  ['the shutdown-margin trim is dropped (boron lands at rods-in critical, not 1000 pcm below)',
+   '      + (hzp ? 0.01 / RD.kinetics.BORON.worth_per_ppm : 0);',
+   '      + 0;', { grp: 'G' }],
+  ['the turbine comes up untripped at hot standby (100 MWe drawn from a shut-down plant)',
+   "    var tb = TB.createTurbine(hzp ? { load_target_mwe: 0, tripped: true }\n                                  : { load_target_mwe: MWE_RATED });",
+   '    var tb = TB.createTurbine({ load_target_mwe: MWE_RATED });', { grp: 'G' }],
+  ['rated_steam reverts to the IC turbine\'s own demand (zero in three denominators)',
+   "      rated_steam: TB.steamDemand(TB.createTurbine({ load_target_mwe: MWE_RATED }),\n                                  G.createSG({}).P, G.SG.h_feed),",
+   '      rated_steam: TB.steamDemand(tb, sg.P, G.SG.h_feed),', { grp: 'G' }],
+  ['hot standby comes up on the at-power feed lineup (full feed into a no-load SG)',
+   '      fw: FWM.createFeedwater(hzp ? { at_power: false, pumpB: false } : {}),',
+   '      fw: FWM.createFeedwater({}),', { grp: 'G' }]
 ];
 var CORESRC = fs.readFileSync(path.join(SRC, 'pwr2_core.js'), 'utf8').replace(/\r\n/g, '\n');
 

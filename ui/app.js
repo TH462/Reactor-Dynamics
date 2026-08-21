@@ -328,13 +328,15 @@
     // plant:'pwr' ON PURPOSE — the whole UI (profiles, PD tables, the seven ui.plant==='pwr'
     // branches) treats this as the PWR board it is; only the ENGINE differs, carried by
     // `engine:` and resolved at every selectPlant/reset call via engId().
-    // initStates OVERRIDES the profile's list: this engine has ONE initial condition (hot
-    // full power) and offering presets the constructor ignores would be a menu that lies.
+    // initStates OVERRIDES the profile's list: only the ICs the pwr2 constructor actually
+    // builds are offered — a preset the constructor ignores would be a menu that lies.
+    // hot_zero_power landed 2026-08-21 (#479 more starting conditions, Mode 3 first).
     // freePlayOnly: the campaign/scenario/walkthrough content is authored and validated
     // against the current engine; running it silently on different physics would grade the
     // player against the wrong plant. Lifts when the scenario-compat pass runs.
     pwr2:      { plant: 'pwr', engine: 'pwr2', dv: null, init: 'hot_full_power',
-                 initStates: [['hot_full_power', 'Hot Full Power (Mode 1)']],
+                 initStates: [['hot_full_power', 'Hot Full Power (Mode 1)'],
+                              ['hot_zero_power', 'Hot Standby (Mode 3)']],
                  freePlayOnly: true,
                  label: 'PWR — New Physics', sub: 'The same plant on the rebuilt engine',
                  desc: 'The SLS-100 control room over the new from-scratch physics engine: ' +

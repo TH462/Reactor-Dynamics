@@ -3394,3 +3394,78 @@ true gpm; the normal point sits below the annunciator; a kg/s revert mutation re
 `run_pwr2_shell` 27 → **29** / 14 mutations (the annunciator input clear; the 20-gpm
 round trip; both currency-revert mutations red) · `pwr2_cvcs.js` untouched · full sweep at
 baseline.
+
+## 65. MODE 3, HOT STANDBY — THE SECOND STARTING CONDITION, AND THE SOURCE FLOOR — 2026-08-21
+
+*(OWNER RULING, 2026-08-21: "Work on more starting conditions, Mode 3 Hot Standby first" — the
+finish list's "more starting conditions (only Hot Full Power exists)".)*
+
+**The IC** (`createEngine({ initial_state: 'hot_zero_power' })` — the old engine's own key, so
+the menu vocabulary carries over): primary at operating pressure (2235 psia / 15.41 MPa),
+uniform at the SECONDARY's saturation temperature for the sourced no-load steam pressure
+(`G.SG.P_noload`, Ginna 1005 psig) — with the turbine off the only heat crossing the SG is
+pump work (~1.4 MW), so the settled primary sits a fraction of a degree above T_sat and
+starting AT it is the same initialise-on-the-steady-solve rule the fuel already follows. Bank
+fully inserted, turbine tripped, steam dumps in STEAM PRESSURE mode on their sourced no-load
+default (Tavg mode needs C-7, which needs a load to lose), C-7's load reference at 0,
+pressurizer level on the WTSM 10.3 no-load program (25 % — *"the assumption that the level in
+the pressurizer is 25% when the heatup begins"*, ML11223A290), one feed pump on the
+three-element controller (pump B secured; no reg-bypass valve is modelled — declared), and
+the low-flux trip UNBLOCKED (#460's note inverts at zero power). Boron is trimmed so the
+shut-down plant sits **1000 pcm below critical with the bank in** — the old engine's own
+`_trimToCritical` hot_zero_power margin (0.01 dk/k), kept identical so the two engines' Mode 3
+states stay comparable. Measured residual: **−1137 pcm** (the zero-power trim omits the void
+half); boron lands at **373 ppm**.
+
+**THE SOURCE FLOOR** (`pwr2_kinetics SOURCE.floor_frac = 1e-9`, [derived]). The kinetics
+matrix has no source term, so a shut-down population decays exponentially forever — measured
+on this IC: 3.6e-7 of rated at t=0 to 7e-18 within 30 min (~21 decades/hr), underflowing to
+EXACT zero on an overnight hold, and 0 · e^(t/T) = 0 can never go critical again: a
+permanently dead core no rod pull revives. Real plants hold a subcritical-multiplication
+equilibrium on installed startup sources and intrinsic neutrons — the floor IS that source
+model. Magnitude (1e-9 of rated ≈ 0.3 W) is a class figure, not sourced; every decade it
+moves changes a startup's climb by ~2.5 min at the ~65 s stable period the delayed groups
+set. The IC starts ON the floor (starting above it just prepends a decay transient).
+
+**Measured, all quoted from rides** (US customary first):
+- **The 2-h hold, second-hour bands** (stability, not endpoints — the #447 lesson): Tavg
+  **546.7–547.6 °F** (285.9–286.4 °C), pressure **2210–2236 psia** (the heater/spray
+  deadband), SG **1016–1024 psia** against the 1019.6 psia setpoint, pressurizer level
+  **24.0–26.2 %**, SG level **65.0–66.3 %**, feed 0–4.3 % of rated, fission pinned at
+  1.0e-7 %, no trip, no SI, Mode 3 throughout.
+- **The two engines agree on Mode 3**: the old plant's hot_zero_power settles at 547.2 °F /
+  2234 psia / Mode 3 against this plant's 547.0–547.4 °F / 2228–2235 psia — independent
+  models, same anchors, same answer.
+- **The startup the IC exists to teach**: pull the bank and the plant goes **critical at
+  53.7/200 steps** (~54 s at the 1 step/s slew); stopped +5 steps past critical, power climbs
+  from the floor to **1 % at 4.5 min** and self-limits near **10 %** on moderator feedback
+  (Tavg 547 → 552.8 °F, ρ settling to ~0 pcm) — the point of adding heat, emergent. After the
+  2-h hold the numbers are identical (the floor holds the starting population).
+- **The board over it** (headless, zero console errors): 0.0 % power, Tavg 548 °F, subcooling
+  106 °F, 2235 psi, pressurizer 25 %, SG 65 %, source range 1.1e0 cps, dumps AUTO at the
+  1020 psi setpoint, AUX FEED STANDBY, accumulators ARMED.
+
+**The display defect the IC exposed and the fix**: the shell's shutdown-rod group presented
+as `scrammed ? 0 : 200` — so the bank-in Mode 3 plant read SHUTDOWN RODS 200/200 WITHDRAWN,
+the #468 class defect on the display. Now `bank > 0 ? out : in`: the two states where the
+whole bank sits at 0 (a scram, this IC) are exactly the states where a real plant's shutdown
+banks are in.
+
+**Found, filed as #500, not fixed here**: `pzr_level_low` (the shared control-layer annunciator,
+`pwr_control.js:522`) is set AT 25.0 % — exactly this plant's sourced no-load program point —
+so the Mode 3 board carries a standing/chattering warning on a healthy plant (the old plant's
+hot_zero_power sits at 28 % and clears it). A real plant's level alarm sits off-program
+(deviation-based); re-setting the shared annunciator moves the old plant and its missions,
+so it is an issue, not a drive-by. Pre-existing and unchanged: the board's SG TEMP tile is a
+display-side sat-curve approximation (`180·P^0.245`, ~7 °F high at 1020 psia), and the SG
+FEED AUTO/MAN tile reads an M4 automation channel this engine does not host (the declared
+parallel-phase presentation gap).
+
+**Gates**: `run_pwr2_kinetics` 71 → **72** / 41 mutations (a deep-shutdown population settles
+ON the floor; the floor-removal mutation reds) · `run_pwr2_engine` 41 → **55** / 31 mutations
+(section G: the anchors, the hold bands, the shutdown margin, criticality mid-bank, the climb;
+mutations: bank-left-withdrawn, margin-dropped, turbine-untripped, at-power feed lineup,
+rated_steam-revert — the last pinned by a direct plant-constant check after the mutation
+measured blind: clips bound the damage) · `run_pwr2_shell` 29 → **31** / 15 mutations (the IC
+passthrough survives reset(); the shutdown-rod display reads IN; the reset-drops-opts
+mutation) · `ui/app.js` menu card: two starting conditions, Free Play only unchanged.
