@@ -323,16 +323,23 @@
     pwr:       { plant: 'pwr',  dv: null,              init: '50_percent',
                  label: 'PWR', sub: 'Pressurized Water Reactor',
                  desc: 'The stable, self-regulating starting point. Separate primary and steam loops. Home of the Three Mile Island story.' },
-    // HIDDEN from the picker entirely (not even a greyed card): the PWR2 physics rebuild's
-    // parallel phase (#479 Option B). Reachable via ?engine=pwr2 only — the same dev-override
-    // channel the soon cards already use. The board runs the SAME pwr profile over the new
-    // engine, which is the point of the parallel phase.
+    // A FIRST-CLASS CARD since 2026-08-21 (owner: "I want to be able to go into the plant
+    // and scenario selection menu and be able to choose either PWR plant").
     // plant:'pwr' ON PURPOSE — the whole UI (profiles, PD tables, the seven ui.plant==='pwr'
     // branches) treats this as the PWR board it is; only the ENGINE differs, carried by
     // `engine:` and resolved at every selectPlant/reset call via engId().
-    pwr2:      { plant: 'pwr', engine: 'pwr2', dv: null, init: '50_percent', hidden: true,
-                 label: 'PWR2', sub: 'SLS-100 physics rebuild (dev)',
-                 desc: 'The from-scratch physics engine, parallel phase. Dev access only.' },
+    // initStates OVERRIDES the profile's list: this engine has ONE initial condition (hot
+    // full power) and offering presets the constructor ignores would be a menu that lies.
+    // freePlayOnly: the campaign/scenario/walkthrough content is authored and validated
+    // against the current engine; running it silently on different physics would grade the
+    // player against the wrong plant. Lifts when the scenario-compat pass runs.
+    pwr2:      { plant: 'pwr', engine: 'pwr2', dv: null, init: 'hot_full_power',
+                 initStates: [['hot_full_power', 'Hot Full Power (Mode 1)']],
+                 freePlayOnly: true,
+                 label: 'PWR — New Physics', sub: 'The same plant on the rebuilt engine',
+                 desc: 'The SLS-100 control room over the new from-scratch physics engine: ' +
+                       'real break locations, emergent natural circulation, the TMI level ' +
+                       'deception as physics rather than script. Free Play only for now.' },
     rbmk_pre:  { plant: 'rbmk', dv: 'pre_chernobyl',   init: 'full_power', soon: true,
                  label: 'RBMK pre-1986', sub: 'Chernobyl-type · original design',
                  desc: 'Graphite-moderated, positive void coefficient, graphite-tipped rods — the design that failed at Chernobyl.' },
@@ -3774,7 +3781,7 @@
   function renderMissionSelect() {
     // Step 1 — the plant column
     $('mpPlants').innerHTML = Object.keys(ENGINES).filter(function (k) {
-      return !ENGINES[k].hidden;               /* pwr2: no public card at all (dev URL only) */
+      return !ENGINES[k].hidden;               /* general gate; nothing hidden today */
     }).map(function (k) {
       var e = ENGINES[k];
       return '<div class="mplant-card' + (k === msel.engine ? ' on' : '') + (e.soon ? ' soon' : '') + '"' +
@@ -3808,7 +3815,7 @@
   function mpFree() {
     if (!flagOn('free_play')) return soonPanel('free_play');
     var e = ENGINES[msel.engine];
-    var states = PROFILES[e.plant].initStates;
+    var states = e.initStates || PROFILES[e.plant].initStates;   /* per-ENGINE override (PWR2: one IC) */
     if (!states.some(function (s) { return s[0] === msel.init; })) msel.init = e.init;
     var h = '<div class="m-note">Free Play — the plant is yours: no script, no grading, every control live. Pick the starting condition.</div>' +
       '<div class="g-section-title" style="margin-top:12px">Starting condition</div>';
@@ -3819,12 +3826,20 @@
     h += '<button class="btn mp-start" data-mfree="1">▶ Start Free Play — ' + mesc(e.label) + '</button>';
     return h;
   }
+  function freeOnlyPanel() {
+    return '<div class="m-note">The guided content — campaign, scenarios and walkthroughs — ' +
+      'is authored and validated against the current PWR engine. On the new physics engine ' +
+      'it is <b>Free Play only</b> for now: every control live, every failure injectable, ' +
+      'no script grading you against the wrong plant.</div>';
+  }
   function mpCampaign() {
+    if (ENGINES[msel.engine].freePlayOnly) return freeOnlyPanel();
     if (!flagOn('campaign')) return soonPanel('campaign');
     return '<div class="m-note" data-scanner-hint="Campaign — the guided path from first scram to a full qualification, in the recommended order. Completed missions stay replayable.">The guided path — zero to operator, in order. Every mission stays replayable.</div>' +
       campaignHtml(msel.engine);
   }
   function mpScenarios() {
+    if (ENGINES[msel.engine].freePlayOnly) return freeOnlyPanel();
     if (!flagOn('scenarios')) return soonPanel('scenarios');
     var p = progress();
     var doneS = p.completed_scenarios || [];
@@ -3845,6 +3860,7 @@
     }).join('') : '<div class="m-note">No scenarios for this plant yet.</div>');
   }
   function mpWalkthroughs() {
+    if (ENGINES[msel.engine].freePlayOnly) return freeOnlyPanel();
     if (!flagOn('walkthroughs')) return soonPanel('walkthroughs');
     var p = progress();
     var all = procsFor(msel.engine);

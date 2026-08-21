@@ -29,6 +29,42 @@ and the user-visible summary in `CHANGELOG.md`. This file points at those and tr
 
 ---
 
+## Session log — 2026-08-20-backshop-h (#479 — the menu card, and the 35 readings that were undefined)
+
+**The work order** *(OWNER, 2026-08-20: "I want to be able to use the new engine in the diagram
+like I can with the old one… choose either PWR plant. Let's finish the PWR2 build with
+indications and hook it up to the diagram.")*. Record: `Blueprint/PWR2_VALIDATION.md` §61.
+
+- **The card**: `ENGINES.pwr2` is a first-class Plant & Mission card ("PWR — New Physics"),
+  one initial condition, Free Play only — the guided-content tabs show a declared
+  free-play-only panel instead of content authored against the other plant's physics.
+- **The big defect a screenshot found and no gate did**: the shell passed `{}` as the
+  instruments `extras`, and `_copyStatus` reads ONLY extras — **all 35 status readings
+  undefined** (RCP handswitch OFF over a running pump, AUX FEED "SECURED", polisher
+  "STANDBY", the PORV light unable to say OPEN). Fixed by `pwr2_shell._instrExtras()`:
+  21 names pass through from the completed contract, 14 computed or honest constants;
+  `porv_commanded_open` is the COMMAND, keeping the TMI indicator lie (HR1). Gate now
+  asserts all 35 populated + a mutation replaying the exact defect.
+- **`pzr_level_dev` measured the wrong plant's program**: +6.4 % standing on a settled
+  on-program PWR2. `pwr_instruments._levelDev` accepts `extras.level_program_fn` (host
+  plant's own line, still at INDICATED Tavg — HR1; old engine passes nothing, unchanged).
+  Measured settle: −9.5 % @30 s → 0.15 % @900 s; the gate asserts CONSISTENCY, not
+  near-zero, because the fixture sits inside the known boot transient.
+- **Rod groups in the consumer's shape**: two groups (`control_rods` native 0..200 with
+  `max_steps`, `shutdown_rods` = banks-out-unless-scrammed). The board now renders the
+  step unit from `max_steps` instead of the authored "/912" (old engine unchanged: 912).
+- **Two SHARED-code defects live on the current engine**: the SG saturation-temp tile
+  printed raw °C under its authored "F" unit since 2026-08-05 (now `dT()` + `VALUE_UNIT`,
+  old board reads 541 °F); the DUMP SETPOINT box read 0 psi on PWR2 (now falls back to the
+  dump controller's live 7.03 MPa / 1019 psi Ginna anchor).
+- **Verified headless on BOTH engines** (driver-level tile reads + screenshots, zero console
+  errors); the Indications tab runs over PWR2 with both columns live. AUX FEED "SECURED" on
+  PWR2 is correct TODAY — `pwr2_afw` deliberately has no auto-start; AFAS is finish-list.
+- Gates: `run_pwr2_shell` 23 checks / 10 mutations (was 21/8), `verify_board_check` 222,
+  full sweep at baseline.
+
+---
+
 ## Session log — 2026-08-20-backshop-g (#479 — the A/B pass: the pre-registered prediction holds)
 
 `test/run_pwr2_ab.js` built per PWR2_ARCHITECTURE ("a MEASUREMENT, not a gate"): 7 matched

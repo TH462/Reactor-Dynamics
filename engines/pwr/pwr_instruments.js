@@ -237,9 +237,17 @@
     // lines on purpose, and this gauge reports the CONTROL deviation — level against what the
     // CVCS is holding it to. Reading the physics line here would peg PZR LVL DEV LO at ~−39 %
     // for the whole of a load rejection while the controller sat exactly on its setpoint.
+    // A host plant may hand in ITS OWN program line (extras.level_program_fn, %-returning):
+    // the PWR2 shell reuses this layer over a plant whose program is a different sourced
+    // line, and measuring its level against THIS plant's program read a standing +6.4 %
+    // deviation on a plant sitting exactly on its own program. HR1 is kept either way — the
+    // program is still evaluated at the INDICATED Tavg, so a stuck transmitter corrupts it
+    // here exactly as before. The current engine passes nothing and is unchanged.
+    var exFn = (extras || {}).level_program_fn;
     var lb = RD.pwrPressurizer && RD.pwrPressurizer.levelProgram;
-    if (!lb) return 0;
-    var prog = lb({ tavg_c: this.reading.tavg, _tavg_fp: (extras || {}).tavg_fp }, this.cfg);
+    if (!exFn && !lb) return 0;
+    var prog = exFn ? exFn(this.reading.tavg)
+                    : lb({ tavg_c: this.reading.tavg, _tavg_fp: (extras || {}).tavg_fp }, this.cfg);
     var spec = this.specs.pzr_level_dev, dev = this.reading.pzr_level - prog;
     return spec ? clip(dev, spec.range[0], spec.range[1]) : dev;
   };

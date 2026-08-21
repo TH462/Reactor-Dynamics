@@ -66,11 +66,44 @@ function runSuite(SH, rec, quiet) {
   ck('the indicated tavg TRACKS the plant through the reused layer',
      Math.abs(rd.tavg - ts.tavg_c) < 2.0,
      'ind ' + rd.tavg.toFixed(2) + ' vs true ' + ts.tavg_c.toFixed(2) + ' degC');
+  /* _copyStatus reads ONLY the extras dict — with {} passed (the shipped B2 defect) all 35
+   * status readings were undefined and every board status word defaulted: the RCP handswitch
+   * lit OFF over a running pump, AUX FEED read SECURED, the polisher STANDBY (measured on the
+   * 2026-08-21 screenshot). boron_sample is null BY DESIGN (no lab result yet) — null is a
+   * populated value; undefined is the defect. */
+  var STAT = eng.instruments.specs.status;
+  var statMiss = STAT.filter(function (k) { return rd[k] === undefined; });
+  ck('all ' + STAT.length + ' STATUS passthroughs are populated at power (the extras dict)',
+     statMiss.length === 0 && rd.rcp_running === true && rd.condensate_pump_running === true &&
+     rd.rps_scrammed === false && rd.msiv_open === true && rd.above_p9 === true,
+     statMiss.length ? 'undefined: ' + statMiss.slice(0, 6).join(', ')
+                     : STAT.length + ' populated, rcp_running/above_p9 true at power');
+  /* the deviation gauge measures against PWR2's OWN program line (extras.level_program_fn) —
+   * against the old engine's program it read a standing +6.4 % on a settled on-program plant.
+   * Asserted as CONSISTENCY (dev == level − PWR2's program at the INDICATED tavg) because it
+   * must hold at any fixture time: a near-zero assertion here would sit inside the boot
+   * transient (measured: dev −9.5 % at 30 s, −5.9 % at 60 s, then 0.15 % once settled at
+   * 900 s — the plant converges to its own program; the early dip is the known settle). */
+  var expDev = rd.pzr_level - 100 * globalThis.RD.pwr2.pressurizer.levelProgram(rd.tavg);
+  ck('pzr_level_dev measures against PWR2\'s OWN program line, at the INDICATED tavg (HR1)',
+     typeof rd.pzr_level_dev === 'number' && Math.abs(rd.pzr_level_dev - expDev) < 0.2,
+     'dev ' + rd.pzr_level_dev.toFixed(2) + ' % vs own-program ' + expDev.toFixed(2) + ' %');
   var cs = eng.getControlState();
-  ck('getControlState carries the board\'s shape: rod group, pressurizer, dumps, pumps',
-     cs.rod_groups.length === 1 && typeof cs.rod_groups[0].position_pct === 'number' &&
+  ck('getControlState carries EVERY key the diagram reads (16 measured across ui/diagram)',
+     cs.rod_groups.length === 2 &&
+     cs.rod_groups[0].id === 'control_rods' && cs.rod_groups[1].id === 'shutdown_rods' &&
+     typeof cs.rod_groups[0].steps === 'number' && cs.rod_groups[0].max_steps === 200 &&
+     typeof cs.rod_groups[0].position_pct === 'number' &&
      typeof cs.pressure_setpoint === 'number' && typeof cs.steam_dump_pct === 'number' &&
-     cs.pumps.length === 1, Object.keys(cs).length + ' keys');
+     cs.steam_dump_setpoint > 6 && cs.steam_dump_setpoint < 8 &&
+     cs.pumps.length === 1 && typeof cs.feed_pump_speed_pct === 'number' &&
+     typeof cs.cvcs_auto === 'boolean' && typeof cs.heater_auto === 'boolean' &&
+     typeof cs.porv_block_open === 'boolean' && typeof cs.spray_valve_pct === 'number' &&
+     typeof cs.charging_flow_normalized === 'number' && cs.load_mode !== undefined &&
+     typeof cs.accumulator_valve_open === 'boolean' &&
+     typeof cs.condensate_pump_running === 'boolean',
+     Object.keys(cs).length + ' keys; feed speed tracks the coupled train at ' +
+     cs.feed_pump_speed_pct.toFixed(0) + ' %');
   /* TURNED AROUND (stage B3): B2 built this as the courier — hand back
    * RD.PWR_CONFIG.protection itself, D4's reading — and B3 SUPERSEDED it with the measured
    * reason: the pwr config's automation channels issue commands PWR2 REFUSES, each refusal
@@ -199,8 +232,14 @@ var MUTATIONS = [
    '    e.sys.extraMass = PZ.extraMassFn(e.pz);',
    ''],
   ['the shell instruments are never updated after construction (every gauge frozen at t=0)',
-   '    this.instruments.update(this._ts, dt, {});',
+   '    this.instruments.update(this._ts, dt, this._instrExtras());',
    ''],
+  ['the extras dict is dropped again (the shipped B2 defect: all 35 status readings undefined)',
+   '    this.instruments.update(this._ts, dt, this._instrExtras());',
+   '    this.instruments.update(this._ts, dt, {});'],
+  ['the rod groups revert to the one-entry id:\'control\' shape (both board readouts at 0)',
+   "        { id: 'control_rods', name: 'Control Rods', function: 'control',",
+   "        { id: 'control', name: 'Control Rods', function: 'control',"],
   ['the REFUSED registry is emptied (39 refusals become unknown-action errors with no reasons)',
    'var REFUSED = {',
    'var REFUSED = {}; var REFUSED_gone = {'],

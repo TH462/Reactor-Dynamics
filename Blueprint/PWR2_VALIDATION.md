@@ -3119,3 +3119,63 @@ shell, that catch is the difference between a held plant and a crashed app.
 a designed capability; the one row siding with A (R6) is a declared simplification now
 carrying its measured cost. The pre-registered exam is passed. `run_pwr2_ab` is baselined as
 structure only (7 rides × 32 fields) — its numbers are findings, never a pass/fail.
+
+## 61. THE MENU CARD AND THE INDICATIONS HOOKUP — EVERY TILE READS, AND WHAT WAS BLANK — 2026-08-20
+
+*(OWNER WORK ORDER, 2026-08-20: "I want to be able to use the new engine in the diagram like
+I can with the old one. I want to be able to go into the plant and scenario selection menu and
+be able to choose either PWR plant. Let's finish the PWR2 build with indications and hook it
+up to the diagram.")*
+
+**The card.** `ENGINES.pwr2` is a first-class Plant & Mission card — "PWR — New Physics",
+one starting condition (Hot Full Power, the engine's only initial state), Free Play only.
+The campaign/scenario/walkthrough tabs show a declared free-play-only panel rather than
+content authored against the other plant's physics.
+
+**The blank-status defect, and its size.** The shell passed `{}` as the instruments layer's
+`extras` — and `_copyStatus` reads ONLY that dict, so **all 35 status readings were
+undefined**, not one or two: the RCP handswitch lit OFF over a running pump, AUX FEED read
+SECURED, the CONDENSATE POLISHER read STANDBY while condensate flowed, the boron lab was
+dead, `porv_indicator` could never say OPEN. 21 of the 35 names are contract fields the
+stage-B1 shim already emits and now pass through verbatim; the other 14 are computed in
+`_instrExtras()` from the same sources the class's other surfaces use (`rps_scrammed` from
+`ts.scrammed`, `rcp_running` from the breaker — NOT `ts.pump_running`, which is flow-based
+and stays true on natural circulation — `above_p9` from the engine's own protection report)
+or are honest constants for hardware PWR2 does not model (`mfw_isolated: false` — feed ≡
+steam has no isolation; `afw_block_open: true`; the boron lab null/false/0).
+`porv_commanded_open` is `pz.porvOpen`, the COMMAND — the stuck disc stays out of it, which
+is the TMI-2 indicator lie kept exactly (HR1).
+
+**The deviation gauge measures against the wrong plant's program.** `pzr_level_dev` computed
+the OLD engine's level program; on a settled PWR2 sitting exactly on its own sourced
+25..61.5 % line it read a standing **+6.4 %**. `pwr_instruments._levelDev` now accepts
+`extras.level_program_fn` (the host plant's own program line, still evaluated at the
+INDICATED Tavg — HR1 kept; the current engine passes nothing and is byte-identical in
+behaviour). Measured through the shell: dev −9.5 % at 30 s and −5.9 % at 60 s (the known
+330–700 s boot settle — the plant IS off program there), then **0.15 % at 900 s**. The gate
+asserts CONSISTENCY (dev = level − own-program(indicated Tavg)), which holds at any fixture
+time; a near-zero assertion would have pinned the transient.
+
+**Rod groups in the consumer's shape.** The board looks groups up BY ID and prints `.steps`;
+the one-entry `id: 'control'` shape left both position readouts at 0. The shell now
+publishes `control_rods` (the real bank, native 0..200 steps, `max_steps` declaring the
+scale) and `shutdown_rods` (the same trip presented banks-out-unless-scrammed — model truth
+for a one-bank plant). The board renders the step unit from the group's own `max_steps`
+instead of the authored "/912" — on the current engine `max_steps` IS 912, so its rendering
+is unchanged (measured both engines headless: old reads "711 /912", PWR2 reads "200 /200").
+
+**Two defects the hookup found in SHARED code, both present on the current engine:**
+- The **SG saturation-temperature tile** (`imsgt98wjjc`, authored 2026-08-05) printed raw °C
+  under its authored "F" unit — "274 f" beside a sibling tile computing the same number
+  correctly as 525 °F. Fixed with the ordinary `dT()` conversion + a `VALUE_UNIT` entry;
+  the old board now reads 541 °F there.
+- The **DUMP SETPOINT box read 0 psi** on PWR2 because the shell surfaced only the operator
+  override (`dcDrivers`), which is unset until touched. It now falls back to the dump
+  controller's own live setpoint — 7.03 MPa (1019 psi), the Ginna no-load anchor.
+
+**Verified headless over BOTH engines** (Playwright, driver-level reads + screenshots, zero
+console errors): every previously-wrong tile reads correctly on PWR2, every old-engine tile
+unchanged except the two shared fixes; the Indications tab renders the full channel list
+over PWR2 with plant and physics columns live and honest dashes where PWR2 has no model.
+AUX FEED reading SECURED on PWR2 is **correct today** — `pwr2_afw` deliberately models no
+auto-start (its header says so); the AFAS actuation is on the finish list, not a display bug.

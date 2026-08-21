@@ -62,6 +62,13 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
     list itself.
 
 ### Fixed
+- **The SG saturation-temperature tile printed °C under its "F" unit** (2026-08-20, found on
+  the PWR2 diagram hookup, present since the tile's 2026-08-05 authoring). `imsgt98wjjc`
+  formatted `satTempC()` raw where its sibling steam-temp tile converts — "274 f" beside a
+  correct 525 °F. Now `dT()` + a `VALUE_UNIT` 'temp' entry; the board reads 541 °F there at
+  full power. Same change: the two rod-step readouts render their unit from the rod group's
+  own `max_steps` instead of the authored "/912" (unchanged on this engine, where the max IS
+  912; honest on any engine with a different native scale).
 - **The ops dashboard's 7-day traffic window returned rounded counts for four hours a day**
   (#485). Every figure on the analytics page read `±10` in the **Exact** column — By day, Top
   pages, Referrers, Countries and Devices together, because all five share one window start.

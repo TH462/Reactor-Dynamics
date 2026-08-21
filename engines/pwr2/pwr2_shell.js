@@ -203,8 +203,8 @@
       this.instruments = new root.RD.PWRInstruments(root.RD.PWR_CONFIG, opts.seed);
       /* reset() PRIMES the lag buffers from truth — update() alone leaves the linear-lag
        * branch integrating from undefined (measured: every reading NaN) */
-      this.instruments.reset(this._ts, {});
-      this.instruments.update(this._ts, 0.02, {});
+      this.instruments.reset(this._ts, this._instrExtras());
+      this.instruments.update(this._ts, 0.02, this._instrExtras());
     } else {
       throw new Error('pwr2_shell: RD.PWRInstruments/RD.PWR_CONFIG not loaded — the shell ' +
         'class REUSES the published instrument layer (D4) and cannot honestly run without it');
@@ -212,9 +212,59 @@
   }
 
   PWR2Engine.prototype.step = function (dt) {
+    var prevPwr = this._ts ? this._ts.power_pct : undefined;
     this._ts = EN.step(this.eng, dt);
-    this.instruments.update(this._ts, dt, {});
+    /* smoothed %/s power rate for the SG-level shrink-and-swell term — the OLD engine's own
+     * form (pwr_engine.js:582, tau 2 s), because the consumer is the old instrument model */
+    if (prevPwr !== undefined && dt > 0) {
+      var raw = (this._ts.power_pct - prevPwr) / dt, a = dt / (2.0 + dt);
+      this._pwrRate = (this._pwrRate || 0) + a * (raw - (this._pwrRate || 0));
+    }
+    this.instruments.update(this._ts, dt, this._instrExtras());
     return this._ts;
+  };
+
+  /* The extras dict pwr_instruments derives its STATUS passthroughs and derived channels
+   * from. _copyStatus reads ONLY this dict — for months of the parallel phase the shell
+   * passed {}, so all 35 status readings (rcp_running, afw_pump_running, msiv_open,
+   * condensate_pump_running…) were undefined and the board's every status word defaulted:
+   * the RCP handswitch lit OFF over a running pump, AUX FEED read SECURED, the polisher
+   * STANDBY. 21 of the 35 names are contract fields the B1 shim already emits — those pass
+   * through verbatim. The rest are computed here from the same sources the class's other
+   * surfaces use, or are honest constants for hardware PWR2 does not model. */
+  PWR2Engine.prototype._instrExtras = function () {
+    var e = this.eng, ts = this._ts, ex = {};
+    var st = this.instruments.specs.status;
+    for (var i = 0; i < st.length; i++) if (ts[st[i]] !== undefined) ex[st[i]] = ts[st[i]];
+    ex.rps_scrammed = ts.scrammed === true;
+    /* the PUMP, not the flow: ts.pump_running is mdot > 1 kg/s, which stays true on natural
+     * circulation (~5 % flow ≈ 200 kg/s) — the handswitch reads the breaker */
+    ex.rcp_running = !e.sys.pumpTripped;
+    /* set_rcp false REHOMES to the pump-trip failure (no separate secured lineup is
+     * modeled), so a stopped pump reads as LOST, never SECURED — declared, not hidden */
+    ex.rcp_secured = false;
+    ex.steam_demand_low = ts.turbine_tripped === true || (ts.steam_flow_normalized || 0) < 0.05;
+    ex.rod_at_limit = false;                        /* no insertion-limit model */
+    ex.rods_fully_in = e.rodSteps <= 0.5;
+    ex.above_p9 = !!(e.rpsReport && e.rpsReport.p9_met);
+    ex.afw_block_open = true;                       /* no AFW block valve is modeled */
+    ex.accum_valve_open = true;                     /* matches control_state.accumulator_valve_open */
+    ex.safety_relief_active = !!e.pz.safetyOpen;
+    ex.mfw_isolated = false;                        /* feed ≡ steam: no MFW isolation exists */
+    ex.boron_sample = null; ex.boron_sample_pending = false; ex.boron_sample_seq = 0;
+    /* COMMANDED, not the disc: pz.porvOpen is the controller/operator command and porvStuck
+     * stays out of it — this is the TMI-2 indicator lie, kept exactly (HR1) */
+    ex.porv_commanded_open = !!e.pz.porvOpen;
+    /* PWR2's own level-program anchor, not the old engine's computed _tavg_fp */
+    ex.tavg_fp = root.RD.pwr2.pressurizer.LEVEL.tavg_full_c;
+    /* …and the program LINE itself, so the deviation gauge measures against the plant's own
+     * sourced 25..61.5 % program rather than the old engine's — still evaluated at the
+     * INDICATED Tavg inside _levelDev (HR1). Measured: +6.4 % standing dev without this. */
+    ex.level_program_fn = function (tavg_c) {
+      return 100 * root.RD.pwr2.pressurizer.levelProgram(tavg_c);
+    };
+    ex.power_rate = this._pwrRate || 0;
+    return ex;
   };
 
   PWR2Engine.prototype.getTrueState = function () { return this._ts; };
@@ -261,10 +311,28 @@
   PWR2Engine.prototype.getControlState = function () {
     var e = this.eng, ts = this._ts;
     return {
-      /* one lumped bank presented as the control group; the shutdown group is the same bank
-       * under scram (honest for a one-bank plant, and the consumer's shape is kept) */
-      rod_groups: [{ id: 'control', position_pct: 100 * e.rodSteps / 200,
-                     scrammed: !!ts.scrammed, at_insertion_limit: e.rodSteps >= 200 }],
+      /* TWO groups in the old engine's field shape — the board looks them up BY ID
+       * ('control_rods'/'shutdown_rods') and prints .steps, so the earlier one-entry
+       * id:'control' left both position readouts at 0. PWR2 is a one-bank plant: the
+       * control group is the real bank on its NATIVE 0..200 step scale (max_steps says so;
+       * the board renders the unit from it), and the shutdown group is the same trip
+       * presented as banks-out-unless-scrammed — model truth, since a PWR2 trip drops
+       * everything. moving/direction feed the IN-OUT lamps (#306); scram is excluded there
+       * by the board itself. */
+      rod_groups: [
+        { id: 'control_rods', name: 'Control Rods', function: 'control',
+          steps: Math.round(e.rodSteps), max_steps: 200,
+          position_pct: 100 * e.rodSteps / 200,
+          moving: !ts.scrammed && e.rodSteps !== e.rodTarget,
+          direction: e.rodTarget > e.rodSteps ? 1 : (e.rodTarget < e.rodSteps ? -1 : 0),
+          speed: 'normal', scrammed: !!ts.scrammed,
+          insertion_limit_steps: null, at_insertion_limit: false },
+        { id: 'shutdown_rods', name: 'Shutdown Rods', function: 'shutdown',
+          steps: ts.scrammed ? 0 : 200, max_steps: 200,
+          position_pct: ts.scrammed ? 0 : 100,
+          moving: false, direction: 0, speed: 'normal', scrammed: !!ts.scrammed,
+          insertion_limit_steps: null, at_insertion_limit: false },
+      ],
       porv_demand: e.pz.porvOpen ? 'open' : 'shut',
       porv_block_open: e.pz.blockOpen !== false,
       heater_power_pct: ts.pzr_heater_kw !== undefined ? 100 * ts.pzr_heater_kw / 157.8 : 0,
@@ -275,6 +343,12 @@
       charging_flow_normalized: e.cv.chargingDemand === null ? 0 : e.cv.chargingDemand,
       letdown_flow_normalized: e.cv.letdownOpen,
       charging_pump_running: true,
+      cvcs_auto: this.eng._plcsAuto !== false,
+      /* no feed pump exists (feed = steam by construction); the honest gauge presentation is
+       * the coupled-feed one — "speed" tracking what the train actually delivers. The board
+       * reads this key in five places (measured), so absence would blank real tiles. */
+      feed_pump_speed_pct: ts.steam_flow_normalized !== undefined
+        ? Math.min(110, ts.steam_flow_normalized * 100) : 0,
       condensate_pump_running: ts.condensate_pump_running === true,
       steam_demand_mwe: e.tb.load_target_mwe,
       load_mode: 'manual',
@@ -284,7 +358,12 @@
       adv_pct: ts.adv_valve_pct !== undefined ? ts.adv_valve_pct : 0,
       adv_auto: e.advDemand === 0,
       adv_setpoint: 1040 / 145.03774,
-      steam_dump_setpoint: e.dcDrivers.pressure_setpoint_mpa,
+      /* the CONTROLLER's live setpoint, not the driver override: dcDrivers only carries a
+       * value after the operator sets one, so the box read 0 psi until first touched —
+       * dc.pressure_setpoint_mpa holds the 7.03 MPa (1019 psi) Ginna no-load anchor */
+      steam_dump_setpoint: e.dcDrivers.pressure_setpoint_mpa !== undefined
+        ? e.dcDrivers.pressure_setpoint_mpa
+        : (e.dc && e.dc.pressure_setpoint_mpa !== undefined ? e.dc.pressure_setpoint_mpa : 7.03),
       governor_valve_pct: ts.governor_valve_pct !== undefined ? ts.governor_valve_pct : 0,
       hpi_active: ts.hpi_active === true,
       eccs_mode: ts.eccs_mode,
@@ -312,8 +391,8 @@
     this.eng = EN.createEngine(opts);
     this._ts = EN.step(this.eng, 0.02);
     this.instruments = new root.RD.PWRInstruments(root.RD.PWR_CONFIG, undefined);
-    this.instruments.reset(this._ts, {});
-    this.instruments.update(this._ts, 0.02, {});
+    this.instruments.reset(this._ts, this._instrExtras());
+    this.instruments.update(this._ts, 0.02, this._instrExtras());
   };
 
   /* ---- save/load: schema pwr2-1.0 (see header — pwr-1.0 is deliberately NOT loadable) ---- */
