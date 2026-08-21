@@ -2358,7 +2358,7 @@
     // Re-measured after both: **8.8 MB** for 51 series — LESS than the 10.2 MB the old
     // 16-series buffer cost, with three times the quantities. The resolution cost is nil
     // in practice: the widest window is 1800 s across ~400 px of plot, so 2 Hz is still
-    // ~9x oversampled, and the preseed writes at 5 s intervals either way.
+    // ~9x oversampled.
     // SAMPLE TIMES ARE QUANTISED TO THE GRID, not taken as whatever sim_time happened to
     // cross the gate (2026-08-05). The old form stamped the row with the raw `sim_time` of
     // the first broadcast past the interval, so spacing was irregular — at 1x the broadcast
@@ -2373,23 +2373,15 @@
     if (lastT != null && gridT - lastT < CHART_SAMPLE_SEC - 1e-9) { drawChart(); return; }
     var one = chartSample(rawIns, s.true_state, s.control_state);
     var sv = one.v, stv = one.tv;
-    // #237 (owner): presets start with 30 minutes of history so the graphs are populated —
-    // the plant has been RUNNING, it didn't just appear. A fresh buffer (boot, reset, plant
-    // switch, mission start — anything that cleared chartBuf) seeds the full record window,
-    // and the cutoff trim below retires that tail as real history accrues.
-    //
-    // The seed is FLAT here and then replaced with a REAL 30-minute run, computed off the
-    // main thread and swapped in when ready *(OWNER, 2026-08-01: "when you make preset starts,
-    // run them for 30 minutes to fill up the graph with real data before saving")*. Flat-first
-    // is deliberate: the real run costs ~2 s of wall clock, and paying that synchronously
-    // would freeze boot, every reset, every plant switch and every mission start. See
-    // ensurePreseed. (sv/stv are frozen after this call, so sharing one object per row is safe.)
-    if (!chartBuf.length) {
-      for (var pt = gridT - CHART_RECORD_SEC; pt < gridT; pt += 5) {
-        chartBuf.push({ t: pt, v: sv, tv: stv });
-      }
-      ensurePreseed(s.metadata.sim_time);
-    }
+    // NO SEEDED HISTORY. A fresh buffer starts EMPTY and fills from the right — the #237
+    // flat seed and the 30-minute background pre-seed run that replaced it were both removed
+    // *(OWNER RULING, 2026-08-21: selected "All flat seeds everywhere" [be removed] from
+    // options I wrote — reversing #237 and the 2026-08-01 preseed ruling)*. The pre-seed's
+    // hidden 10× SimulationService froze the UI for ~1-2 min per plant select on PWR2
+    // (#501: 0.9 fps, continuous 1.9 s long tasks — its slice size was calibrated to the
+    // old engine's tick cost). drawChart renders < 2 rows as the deliberate "waiting" lane
+    // stack, and the axis spans ui.window regardless of buffer, so empty is a first-class
+    // state, not a blank screen.
     // FINE SUB-SAMPLES FIRST, then the broadcast instant. The service samples the plant on a
     // fixed SIM-time interval inside its step loop (see setFineSampler there), so the chart's
     // resolution stops depending on time acceleration: at 60× a broadcast carries 6 s of sim
@@ -2434,8 +2426,8 @@
   }
 
   // ---- ONE chart sample -------------------------------------------------------------
-  // Extracted so the live recorder and the 30-minute preseed below cannot disagree about
-  // what a row contains. Records ONE VALUE PER SERIES — instrument in `v`, true state in
+  // The single place a chart row is composed (the 30-minute preseed that shared it is
+  // gone, #501). Records ONE VALUE PER SERIES — instrument in `v`, true state in
   // `tv` — rather than a copy of the whole instrument + true_state dicts: the chart only
   // ever reads the ~15 plotted quantities and the buffer holds 30 min at frame rate, so
   // keeping the full dicts cost ~100 MB (and carrying truth alongside would have doubled
@@ -2474,89 +2466,6 @@
     // old report and a new one disagree by 100× on the same quantity. Ten doubles beside two
     // 96-wide arrays; the cost in this function is the call, not the packing.
     return { v: v, tv: tv, dv: RD.DiagRecorder.pack(ui.plant, trueState) };
-  }
-
-  // ---- REAL 30-minute trend preseed (owner, 2026-08-01) -------------------------------
-  // "when you make preset starts, run them for 30 minutes to fill up the graph with real
-  // data before saving". The graphs used to open on 360 IDENTICAL flat samples, so a fresh
-  // plant showed a ruler-straight line where a running plant shows instrument texture.
-  //
-  // WHAT THIS CHANGES, honestly: the initial conditions are constructed as TRUE steady
-  // states (`_buildState` derives the secondary temps so each preset is genuinely settled),
-  // so 30 real minutes is a NOISY FLAT LINE, not a different shape — measured at
-  // hot_full_power: power 99.78–100.2 %, Tavg 304.0–304.2 °C, pzr level 54.6–55.3 %. The
-  // gain is that it reads as a plant that has been running, plus the genuine slow drifts
-  // (xenon, boron) a synthetic seed cannot have.
-  //
-  // WHY IT IS ASYNC AND CACHED. A 30-plant-minute full-stack run measured 1874 ms, and a
-  // fresh chart buffer happens on boot, reset, plant switch AND every mission start —
-  // paying that synchronously would freeze all four. So: seed flat immediately (above),
-  // compute the real trace in setTimeout slices, swap it in, and cache it per
-  // plant+design-version+initial-state for the session, because the answer is identical
-  // every time that triple repeats.
-  // `pendingT0` is tracked separately from the run because the SAME preset can be re-seeded
-  // while its trace is still computing (reset to the same IC, a mission restart). The trace
-  // is still valid — the preset has not changed — but it must land against the NEW seed
-  // time, so ensurePreseed updates this and the completion reads it rather than closing over
-  // the t0 it started with.
-  var preseed = { cache: {}, runningKey: null, pendingT0: 0 };
-  function preseedKey() {
-    var e = ENGINES[ui.engineKey] || {};
-    return ui.plant + '|' + (e.dv || '') + '|' + ui.initState;
-  }
-  // Splice a computed trace into the synthetic tail. `t0` is the sim time the buffer was
-  // seeded at, so rows land on [t0 − CHART_RECORD_SEC, t0) and anything the live recorder
-  // has added since (t ≥ t0) is preserved untouched.
-  function applyPreseed(rows, t0, key) {
-    // The world may have moved while we were computing: a reset, a plant switch, a rewind
-    // or another seed. Any of those makes this trace the wrong answer — drop it silently.
-    if (key !== preseedKey() || !chartBuf.length) return;
-    var live = chartBuf.filter(function (r) { return r.t >= t0 - 1e-9; });
-    if (!live.length) return;                      // buffer was cleared out from under us
-    var seeded = [];
-    for (var i = 0; i < rows.length; i++) {
-      var t = t0 - CHART_RECORD_SEC + i * 5;
-      if (t >= t0) break;
-      seeded.push({ t: t, v: rows[i].v, tv: rows[i].tv });
-    }
-    chartBuf = seeded.concat(live);
-    drawChart();
-  }
-  function ensurePreseed(t0) {
-    if (!RD.SimulationService) return;
-    var key = preseedKey();
-    if (preseed.cache[key]) { applyPreseed(preseed.cache[key], t0, key); return; }
-    preseed.pendingT0 = t0;
-    if (preseed.runningKey === key) return;        // already computing — the new t0 is enough
-    preseed.runningKey = key;
-    var e = ENGINES[ui.engineKey] || {};
-    var probe;
-    try {
-      // A SEPARATE service — never the live one. Default lineup (no `noDefaults`), so the
-      // trace is the plant a player actually gets, including the channels that are
-      // `defaultOn` (rod control since #289).
-      probe = new RD.SimulationService({ seed: 0x51EED });
-      probe.selectPlant(engId(), ui.initState, e.dv || undefined, undefined);
-      probe.running = true;
-      probe.timeAcceleration = 10;                 // 1.0 sim-s per broadcast → 5 s every 5 ticks
-      probe.attentionStops = false;                // nobody is watching a background run
-    } catch (err) { preseed.runningKey = null; return; }
-    var rows = [], ticks = 0;
-    // 40 ticks per slice, not 120. Measured, a tick costs ~1.04 ms, so 40 is ~42 ms of work
-    // — under the ~50 ms a user perceives as a stutter — where 120 would be ~125 ms of
-    // visible jank, fifteen times over, while the plant is live behind it.
-    var TICKS = CHART_RECORD_SEC, SLICE = 40;
-    (function step() {
-      if (preseed.runningKey !== key) return;      // superseded — abandon this run
-      for (var n = 0; n < SLICE && ticks < TICKS; n++, ticks++) {
-        var snap = probe.tick();
-        if (ticks % 5 === 0 && snap) rows.push(chartSample(snap.instruments, snap.true_state, snap.control_state));
-      }
-      if (ticks < TICKS) { setTimeout(step, 0); return; }
-      preseed.cache[key] = rows;
-      preseed.runningKey = null;
-      applyPreseed(rows, preseed.pendingT0, key);
-    })();
   }
 
   // Held between frames, per gauge: the LATCHED band, so a reading parked on a setpoint
@@ -2617,9 +2526,9 @@
       // sample count, so the mini chart spans the same minute at any time-accel.
       var h = gaugeHist[g.id], now = s.metadata.sim_time;
       while (h.length && h[h.length - 1].t > now + 1e-9) h.pop();   // drop samples ahead of us (rewind)
-      // fresh gauge → seed its 60 s sparkline flat at the current value (#237,
-      // same steady-state preseed as the strip chart; also settles the trend arrow)
-      if (!h.length) for (var ps = now - 60; ps < now; ps += 5) h.push({ t: ps, v: raw });
+      // No flat seed on a fresh gauge — the sparkline fills live from the right, like the
+      // strip chart (#501: the #237 seeds were all removed, owner ruling 2026-08-21). The
+      // trend arrow's h.length > 4 gate simply waits the few seconds it takes to earn one.
       h.push({ t: now, v: raw });
       while (h.length > 1 && h[0].t < now - 60) h.shift();          // 60 s window
       // #237: deadband + hysteresis on the trend arrow. The old rule (0.2 % of
@@ -4546,7 +4455,7 @@
   }
   // The EXTREMES this sample covers, on whichever side is being plotted. Fine rows carry
   // the min/max the service folded over their sub-interval (see setFineSampler there);
-  // broadcast rows and the preseed carry none, and collapse to the point value — which is
+  // broadcast rows carry none, and collapse to the point value — which is
   // correct, they represent one instant rather than a span.
   function seriesExt(ser, sample, val, side) {
     var i = serCol[ser.id]; if (i == null) return [val, val];
@@ -5055,12 +4964,10 @@
     /* WHERE THE RUN BEGAN — sim time zero *(OWNER, 2026-08-11: "The strip chart should have
      * a line to show the start of the sim at time=0.")*.
      *
-     * IT IS A REAL BOUNDARY, NOT THE LEFT EDGE. The chart opens already holding 30 minutes
-     * of trend, because a preset start is preseeded with a genuinely-run trace laid at
-     * NEGATIVE sim time (applyPreseed: rows land on [t0 − CHART_RECORD_SEC, t0)). Measured
-     * at T+10 s on a fresh load with the default 5-minute window: 290 s of the plot is that
-     * synthetic history and 10 s is the run you are driving, with nothing marking the join.
-     * This line is the join.
+     * Since the pre-seed removal (#501) the chart opens EMPTY and fills from the right, so
+     * for the first `window` seconds this line marks where the record begins on an
+     * otherwise-bare axis rather than a join with synthetic history. It stays: it is still
+     * the only mark that says "the run started here".
      *
      * Distinct from every other full-height mark by construction: checkpoints are blue
      * `3,3`, tier-1 events amber (plant) or cyan `2,2` (operator), the cursor solid white.

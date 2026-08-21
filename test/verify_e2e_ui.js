@@ -462,58 +462,9 @@ async function testEsfArmButtons(page) {
   return log.join('\n') + '\n';
 }
 
-/* The trend graphs open on a REAL 30 minutes, not a flat line *(OWNER, 2026-08-01: "when you
- * make preset starts, run them for 30 minutes to fill up the graph with real data before
- * saving")*.
- *
- * A preset start seeds the chart's 30-minute record window instantly with flat samples and
- * then swaps in a genuinely-run trace, computed in setTimeout slices off the main thread and
- * cached per plant+design-version+initial-state (ui/app.js `ensurePreseed`). Flat-first is
- * deliberate — the real run costs ~1.9 s, and paying that synchronously would freeze boot,
- * every reset, every plant switch and every mission start.
- *
- * THE CHECK IS THE SPREAD, and it discriminates hard. Measured by A/B on the real page,
- * neutering only the `ensurePreseed` call: with the swap the busiest plotted series has
- * **28 distinct y-values** across its 61 points; without it, **exactly 1** — a perfectly
- * horizontal line, which is the defect this was raised about. Anything > 1 means the swap
- * landed, so the band is wide but the negative control is unambiguous.
- *
- * Note what this canNOT be: an assertion about interesting SHAPE. The initial conditions are
- * constructed as true steady states, so 30 real minutes is a noisy flat line — the gain is
- * instrument texture and the genuine slow drifts (xenon, boron), not a different curve. */
-async function testTrendPreseed(page) {
-  var log = [];
-  await page.goto('http://127.0.0.1:' + PORT + '/ui/shell.html?engine=pwr',
-    { waitUntil: 'networkidle', timeout: 90000 });
-  await dismissMission(page);
-  // The run is sliced; give it room on a loaded CI box. It is ~1.9 s of work.
-  await page.waitForTimeout(12000);
-  var st = await page.evaluate(function () {
-    var svg = document.getElementById('chartCanvas');
-    if (!svg) return { found: false };
-    var best = 0, pts = 0;
-    Array.prototype.forEach.call(svg.querySelectorAll('polyline'), function (el) {
-      var raw = (el.getAttribute('points') || '').trim();
-      if (!raw) return;
-      var ys = raw.split(/\s+/).map(function (p) { return parseFloat(p.split(',')[1]); })
-                  .filter(function (y) { return isFinite(y); });
-      var seen = {}, n = 0;
-      ys.forEach(function (y) { var k = y.toFixed(3); if (!seen[k]) { seen[k] = 1; n++; } });
-      if (n > best) { best = n; pts = ys.length; }
-    });
-    return { found: true, distinct: best, points: pts,
-             series: svg.querySelectorAll('polyline').length };
-  });
-  if (!st.found) throw new Error('trend chart (#chartCanvas) did not render');
-  if (!st.series) throw new Error('trend chart rendered no series');
-  if (st.distinct <= 1) {
-    throw new Error('the trend graph opened FLAT — ' + st.distinct + ' distinct y-value(s) across ' +
-      st.points + ' points. The 30-minute preseed did not swap in real data (ui/app.js ensurePreseed).');
-  }
-  log.push('trend preseed: ' + st.series + ' series, busiest has ' + st.distinct +
-           ' distinct y over ' + st.points + ' points (flat seed scores 1)');
-  return log.join('\n') + '\n';
-}
+/* (testTrendPreseed deleted 2026-08-21 with the pre-seed itself, #501 — the chart now
+ * deliberately opens empty and fills live, so a check demanding 30 minutes of opening
+ * history would be asserting the removed behaviour.) */
 
 /* THE CHART SETTINGS WINDOW (#454) — large, pausing, every channel with its live value, and
  * a per-row indication / physics / both choice.
@@ -954,9 +905,9 @@ async function testMissionCloseResumes(page) {
 /* THE RUN-START MARK — sim time zero *(OWNER, 2026-08-11: "The strip chart should have a
  * line to show the start of the sim at time=0.")*.
  *
- * IT MARKS A REAL JOIN, which is why it is worth gating rather than eyeballing. A preset
- * start preseeds 30 minutes of genuinely-run trend at NEGATIVE sim time, so at T+10 s on the
- * default 5-minute window 290 s of the plot is history and 10 s is the run you are driving.
+ * Since the pre-seed removal (#501) the chart opens empty, so the line marks where the
+ * record begins on an otherwise-bare axis rather than a join with synthetic history — the
+ * geometry being gated (position from chartExtent's t0/window mapping) is unchanged.
  *
  * THE OVERLAP CHECK IS THE ONE THAT EARNED ITS PLACE. The tag first rendered at the TOP of
  * the plot and landed inside the first lane's range label — "40% T+0 %" on screen. Every
@@ -1247,8 +1198,6 @@ async function main() {
     fs.writeFileSync(path.join(SCRATCH, 'rewind-picker.log'), rpLog);
     var ebLog = await testEsfArmButtons(page);
     fs.writeFileSync(path.join(SCRATCH, 'esf-arm-buttons.log'), ebLog);
-    var tpLog = await testTrendPreseed(page);
-    fs.writeFileSync(path.join(SCRATCH, 'trend-preseed.log'), tpLog);
     var dbLog = await testDiagBundle(page);
     fs.writeFileSync(path.join(SCRATCH, 'diag-bundle.log'), dbLog);
     fs.writeFileSync(path.join(SCRATCH, 'ui-screenshot-summary.log'), summary.join('\n') + '\n');
