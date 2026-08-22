@@ -30,6 +30,25 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
 
 ## [Unreleased]
 
+### Added (#507 parity waves 1–3, 2026-08-22)
+- **PWR2 boron control is real**: the board's boron panel re-enabled itself — the kernel's
+  batch-dose channel rides through, driving a blender-shaped rate actuator on the CVCS mass
+  balance (the tank clamp IS the ceiling — no ppm/s constant; dilution stays slow-at-high),
+  plus a real lab sample (1800 s, no mixing lag — declared). The shipped `set_boron_adjust`
+  mapper read the wrong payload key — every kernel dose was a silent no-shift; fixed.
+  `PWR2_VALIDATION.md` §67.
+- **PWR2 RHR aligns** — a real suction valve under the sourced 425/585 psig pair, the #458
+  ruled refusals (SI lineup message verbatim; the pressure permissive refuses out loud), and
+  the module's heat map finally MERGED into the plant (it fed only true_state — an aligned
+  system removed zero heat; measured: 16 °C cooler at t = 80 s through a LOCA, 213 MJ).
+  `rhr_valve_open` now publishes the valve, not the permissive; `eccs_mode` gains 'rhr'; the
+  Emergency-injection tile no longer reads amber on a healthy 'standby' plant.
+- **PWR2 casualty menu 4 → 12 rows**, each with a measured observable effect: sg_overfeed,
+  loss_of_offsite_power (honest-degraded: RCP coastdown, no AC model), loss_of_condenser_vacuum,
+  degraded_hpi, large_loca, rcp_seal_leak (0.08 cm² — 1.21 kg/s, holdable by the 1.85 kg/s
+  max charging), and the two stuck-level instrument rows — which now land on BOTH instrument
+  layers (they were invisible on the board) with stuck-at-value plumbing.
+
 ### Added
 - **PWR2 has a real shutdown bank** (#506 finding 3; *OWNER DIRECTIVE, 2026-08-22: "we should
   work to make this engine has the same features as the old engine"*): two banks at the

@@ -3519,3 +3519,70 @@ fields, and three mutations (alarm-override revert, shutdown-snap revert, flow_p
 owed), RHR align (#458 class), grid FOLLOW / ADV setpoint / manual dump OPEN / AFW block valve
 (refused by design, now visibly), 20 non-injectable casualties, the 5-vs-1 IC count, the rod
 insertion limit.
+
+## 67. PARITY WAVES 1–3 — THE BORON SURFACE, THE RHR ALIGN, AND THE HONEST CASUALTY ROWS (#507) — 2026-08-22
+
+**The owner's scope ruling**: waves 1–3 of the #507 parity umbrella built this pass; electrical,
+SGTR (sized: cheap both-sided on this engine) and the IC count stay roadmapped.
+
+### Wave 1 — boron. The mass balance was always real; the LEVER was missing.
+`boron_rate_cmd` (ppm/s, signed) is realized as the **sourced blender** (Ginna UFSAR ch.15: the
+blend system matches makeup concentration to the coolant; "the composition is determined by the
+preset flow rates"): each step inverts the balance — which reduces exactly to
+`dC/dt = inFlow·(C_in − C)/M`, the letdown terms cancel — for the blend concentration, clamped
+to [0, boric_acid_ppm]. **The clamp IS the ceiling**: no ppm/s constant (the old engine's flat
+0.14 is the contrast case); the achievable rate is bounded by tank concentration and the
+charging lineup, so dilution stays slow-at-high (the suite's sourced shape) and a firehose
+demand meters what the lineup can carry. Measured: rate 0 **bit-identical** to a
+never-commanded lineup; +0.02 ppm/s metered exactly at a fixed lineup; at the hot-full-power
+PLCS lineup a +0.05 dose achieves ~0.042 (the level servo trims charging low — the clamp binds
+honestly; the kernel's totalizer re-anchors and the dose completes) and −0.05 achieves ~−0.013
+(dilution at 626 ppm through near-seal-only inflow — the real remedy is raising charging).
+The lab sample lives in the CVCS (1800 s, standing seq-1 result at boot, **no mixing lag —
+declared**: this plant's boron is lumped by ruling where the old engine samples its 30 s
+`boron_reactive`). The kernel's `boron_conc` batch-dose channel rides through **by reference**
+(the config-emptying rationale no longer bars it: both its commands are real and
+`boron_analyzer` was live all along); end-to-end through the service: engage → +5 ppm →
+dose done at ~100 s → auto-sample pending → rate stands down. The shipped `set_boron_adjust`
+mapper read `c.mode` (always undefined) — every kernel dose landed as a no-shift 'match',
+the silent-wrong payload class, fixed. Gates: `run_pwr2_cvcs` 27→35 / 20→23 mutations
+(inversion-deleted, clamp-deleted, sample-never-posts — all caught).
+
+### Wave 2 — the RHR align, and the heat finally leaves the loop.
+`rh.valve_open` and `hx_fraction` are real state. Align honored only under the sourced
+**425 psig** suction permissive (WTSM 5.1); **585 psig autoclose** enforced in the engine loop
+(valve hardware, not a command); `running` follows the valve. **The wiring defect**: `stepRHR`
+ran *after* `stepPlant` and its `heats` map fed only true_state — an aligned system removed
+**exactly zero heat** (the Q4 orphan the #458 ruling names). Moved above `stepPlant`, heats
+merged into the plant drivers, decay heat passed report-only. Measured through a 20 cm² LOCA
+(below 425 psig at ~74 s): **aligned tavg 133.9 °C at t = 80 s vs 150.3 °C secured — 213 MJ
+removed**; the merge-dropped mutant still climbs its `removed_kJ` ledger while the plant reads
+150.3, which is why the gate pins the PLANT. At power the permissive holds the valve shut and
+the reorder is a no-op (settled-IC ride unmoved, 98.19 % min). The shell inherits the **#458
+ruled shape** *(OWNER RULING, 2026-08-12: "A'")*: ALIGN under SI throws the ruled lineup
+message verbatim (a refusal, NOT an interlock; ISOLATE never refused), and the pressure
+permissive refuses **out loud** where the old engine refuses silently. `rhr_valve_open` now
+publishes the VALVE — the old contract published the *permissive*, a lamp that read open on
+any depressurized secured plant. `eccs_mode` gains `'rhr'`; the Emergency-injection tile no
+longer lights amber on `'standby'` (a pre-existing healthy-plant caution, fixed). Gates:
+`run_pwr2_rhr` 39→41 / 21→23 mutations; `run_pwr2_engine` +2 checks +2 mutations.
+
+### Wave 3 — the casualty menu, 4 → 12 rows, all honest.
+Added: `sg_overfeed` (existing mapper) · `loss_of_offsite_power` (**HONEST-DEGRADED,
+declared**: the RCP coastdown only — no AC/diesel model; clearing does not restart the pump,
+no restart is modeled) · `loss_of_condenser_vacuum` (the CW-pump door; gradual air in-leakage
+stays a declared omission) · `degraded_hpi` (the ECCS `avail` fraction) · `large_loca`
+(severity 1.0 through the break machinery) · `rcp_seal_leak` (**measured area**: 0.08 cm² at
+the `rcp` node leaks 1.21 kg/s against the sourced-scaled 1.85 kg/s max charging — holdable,
+the row's teaching point; 0.2 cm² measured 3.0, more than charging can carry) ·
+`pzr_level_sensor_stuck` / `pzr_level_sensor_low` (data-driven off the pwr defs).
+**The two-layer fix is the load-bearing part**: PWR2 runs two instrument layers over one truth
+(internal RPS channels + the reused pwr1 layer the board reads), and an injected instrument
+failure landed only on the internal one — invisible on the board. The shell now MIRRORS
+instrument failures to both layers (low/high rail to the internal channel's own range bound so
+both show the same rail), `pwr2_instruments.fail` gained a stuck-at-VALUE argument (the CA-4
+class needs 20 %, not wherever the needle was), and the payload bug (`c.instrument` vs the
+panel's `instrument_id`) is fixed. Measured: `pzr_level_sensor_low` → board 20.0 / internal
+20.0 / truth 60.8; clear heals both. Deferred with reasons in #507: `tavg_sensor_failure`
+(needs a drift mode), `porv_indicator_stuck_closed` (needs the channel), and the
+new-physics rows.

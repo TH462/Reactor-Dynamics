@@ -29,6 +29,34 @@ and the user-visible summary in `CHANGELOG.md`. This file points at those and tr
 
 ---
 
+## Session log — 2026-08-22-develop-b (#507 waves 1–3 — boron, the RHR align, and twelve honest casualty rows)
+
+**Owner scope ruling: waves 1–3 now, the rest roadmapped.** Full record with every measured
+number: `Blueprint/PWR2_VALIDATION.md` §67. The headline mechanics:
+
+- **Boron (wave 1)**: the CVCS mass balance was always real — the LEVER was missing. A
+  blender-shaped rate actuator (the balance reduces to `dC/dt = inFlow·(C_in−C)/M`; the
+  letdown terms cancel exactly, so the inversion is one line) with the tank clamp AS the
+  ceiling. Rate 0 bit-identical to untouched; the kernel dose panel end-to-end through the
+  service; the shipped mapper read `c.mode` where every caller sends `rate` — silent-wrong,
+  found by recon, fixed. `run_pwr2_cvcs` 27→35 / 23 mutations.
+- **RHR (wave 2)**: `stepRHR` ran AFTER `stepPlant` with its heats consumed only by
+  true_state — an aligned system removed exactly zero heat (the #458 Q4 orphan). Rewired
+  and measured through a 20 cm² LOCA: aligned tavg 133.9 °C at t=80 vs 150.3 secured. The
+  ruled #458 refusal shape inherited at the shell; `rhr_valve_open` was publishing the
+  PERMISSIVE (open on any depressurized secured plant) — now the valve. Trap kept: **my
+  first two heat-wiring probes were invalid** — forcing `sys.P` mid-ride tripped the
+  beyond-model latch and froze the state bit-exact, which read as "wiring broken" twice;
+  only a REAL depressurization measured the wiring.
+- **Casualties (wave 3)**: menu 4→12. The load-bearing fix is the TWO-LAYER mirror: PWR2
+  runs two instrument layers over one truth, and injected failures landed only on the
+  internal (RPS) one — invisible on the board. Plus stuck-at-VALUE plumbing (CA-4's 20 %)
+  and the `instrument` vs `instrument_id` payload bug. rcp_seal_leak area measured to the
+  holdable class (0.08 cm² → 1.21 kg/s vs 1.85 max charging; 0.2 cm² was 3.0 — unholdable).
+- Board disables 8 → 3 (boron + RHR re-enabled themselves; zero board edits for boron).
+
+---
+
 ## Session log — 2026-08-22-develop-a (#506 — the board learns to speak PWR2, the shutdown bank becomes real, and the parity gap gets its inventory)
 
 **The owner's second playtest (#506, filed before the -b fixes landed): seven findings.** All
