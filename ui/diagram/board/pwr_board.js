@@ -993,6 +993,10 @@
         var warn = d.numberWarn ? d.numberWarn(rec.item, s) : null;
         var col = warn || (auto ? BD_NUM_AUTO_COLOR : (rec.item.color || '#4fe3ff'));
         if (rec._appliedCol !== col) { rec.input.style.color = col; rec._appliedCol = col; }
+        // Disabled outranks everything: the running engine has no machinery behind this box
+        // (#506 — the mirror of buttonDisabled below; same honest-absent rule).
+        var ndis = d.numberDisabled ? !!d.numberDisabled(rec.item, s) : false;
+        if (rec.input.disabled !== ndis) rec.input.disabled = ndis;
         // Display unit, resolution and range hint (#238). Driven every frame like the value
         // itself, because a units change is not an event the board is told about — it just
         // renders again. All three are no-ops in US, where the driver hands back exactly what

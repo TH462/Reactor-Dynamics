@@ -304,6 +304,13 @@
     _damp.snap = s; _damp.out = out;
     return out;
   }
+  // Is FEED in automatic? Kernel channel when the plant has one; otherwise the engine's
+  // own coupled-feed flag (PWR2's internal three-element controller, #506).
+  function feedAutoOn(s) {
+    var c = chan(s, 'feed_sg');
+    if (!c && CS(s).feed_coupled !== undefined) return CS(s).feed_coupled === true;
+    return !!(c && c.engaged);
+  }
   // Automation channel by id (boron concentration seeking lives in the control layer).
   function chan(s, id) {
     var ch = s.automation && s.automation.channels;
@@ -487,6 +494,14 @@
   // Each entry: press(s) issues command(s); active(s) -> selected highlight.
   // ESF AUTO re-arm buttons by esf system id — consumed by buttonDisabled below (#503).
   var ESF_ARM_BUTTONS = { imrle1mc0lk: 'hpi', imrmssr9ihq: 'afw' };
+  // Buttons that press an AUTOMATION CHANNEL by id — disabled when the running engine's
+  // kernel carries no such channel (#506: the boron panel and rod AUTO on PWR2, whose
+  // channels list is empty). Keyed off the snapshot, like every disable here.
+  var CHANNEL_BUTTONS = { imrqp6com2b: 'boron_conc', imrqp6avzkw: 'boron_conc',
+                          bdBoronSample: 'boron_conc', ims5glucngg: 'rods_tavg' };
+  // Controls whose machinery is declared by a control_state field's PRESENCE: absent field =
+  // the running engine has no such system (pwr always publishes these; #506).
+  var RHR_BUTTONS = { ims3wg27iif: 1, ims3xfeye1q: 1 };
 
   var BUTTONS = {
     // --- HPI / ECCS ---
@@ -603,9 +618,16 @@
     // automation and the free-play default. (The board used to read feed_auto_coupled, a
     // legacy load-coupling flag that is OFF at the preset start, so AUTO looked like MAN even
     // though feed_sg was running.) A manual pump command drops feed_sg to MAN via its override.
-    imrsgjmrjfg: { press: function () { cmd({ action: 'set_auto_channel', channel_id: 'feed_sg', engaged: true }); }, active: function (s) { var c = chan(s, 'feed_sg'); return !!(c && c.engaged); } },
-    imrsgjuh7l0: { press: function (s) { cmd({ action: 'set_feed_pump_speed', pct: CS(s).feed_pump_speed_pct || 100 }); }, active: function (s) { var c = chan(s, 'feed_sg'); return !(c && c.engaged) && (CS(s).feed_pump_speed_pct || 0) > 0; } },
-    imrsgjwq1q0: { press: function () { cmd({ action: 'set_feed_pump_speed', pct: 0 }); }, active: function (s) { var c = chan(s, 'feed_sg'); return !(c && c.engaged) && (CS(s).feed_pump_speed_pct || 0) === 0; } },
+    // With no feed_sg KERNEL channel but a published feed_coupled, the engine carries its
+    // own three-element controller (PWR2's WTSM 11.1 build) — AUTO engages THAT, and the
+    // lamp reads it. Without this fallback, PWR2's board had no route back to auto feed
+    // (#506: set_auto_channel against an empty channels list is a refused no-op).
+    imrsgjmrjfg: { press: function (s) {
+        if (!chan(s, 'feed_sg') && CS(s).feed_coupled !== undefined) cmd({ action: 'set_feed_coupled', active: true });
+        else cmd({ action: 'set_auto_channel', channel_id: 'feed_sg', engaged: true });
+      }, active: feedAutoOn },
+    imrsgjuh7l0: { press: function (s) { cmd({ action: 'set_feed_pump_speed', pct: CS(s).feed_pump_speed_pct || 100 }); }, active: function (s) { return !feedAutoOn(s) && (CS(s).feed_pump_speed_pct || 0) > 0; } },
+    imrsgjwq1q0: { press: function () { cmd({ action: 'set_feed_pump_speed', pct: 0 }); }, active: function (s) { return !feedAutoOn(s) && (CS(s).feed_pump_speed_pct || 0) === 0; } },
     // MFW RESTORE (#341 / #319 item 2). Lights while main feed IS isolated — i.e. while it
     // is the control that has something to do — and is dark the rest of the time, which is
     // the whole board's idiom for "this is the live one".
@@ -1460,12 +1482,24 @@
   // Returns null when the snapshot carries no RPS section (load order, or a plant with no
   // control layer attached), so a caller can fall back to the authored band rather than
   // reading "nothing is blocked" out of an absent section.
+  //
+  // A BLOCKABLE trip must also EXIST in the live kernel (#506.7). The bands come from the
+  // STATIC pwr trip table but the arming came only from live `trip_blocks` — and a kernel
+  // with an EMPTY trip list (PWR2 runs its protection inside the engine) has nothing
+  // blockable, so the 25 % low-setpoint startup trip read as armed forever and pinned the
+  // power tile red at full power (measured: max 27.5, "TRIP 25%", value 99.8).
+  // `trip_block_status` is the presence signal: the kernel builds it from its own config's
+  // blockable trips, so an id absent there is a trip the live plant does not carry — skip
+  // it. A snapshot with NO trip_block_status at all (old recordings, minimal fixtures)
+  // falls back to the old blocked-only rule, bit-identical.
   function limitingArmedTrip(instrument, direction, s) {
     if (!s || !s.rps_state) return null;
     var t = _PROT.trips || [], blocks = s.rps_state.trip_blocks || {}, out = null, i;
+    var tbs = s.rps_state.trip_block_status;
     for (i = 0; i < t.length; i++) {
       if (t[i].instrument !== instrument || t[i].direction !== direction || t[i].setpoint == null) continue;
       if (t[i].id && blocks[t[i].id]) continue;
+      if (t[i].blockable && t[i].id && tbs && !(t[i].id in tbs)) continue;
       if (out == null) { out = t[i]; continue; }
       var better = (direction === 'low') ? (t[i].setpoint > out.setpoint) : (t[i].setpoint < out.setpoint);
       if (better) out = t[i];
@@ -1693,8 +1727,14 @@
     out.winHi = out.normHi + 0.15 * (out.normHi - b.min);
     // `ok`, not `trip`: bypassed-for-the-mode is a status indication, and a red note here would
     // say the opposite of what the reclassified alarms say.
-    out.note = 'LO TRIP BLKD';
-    out.noteKind = 'ok';
+    //
+    // "BLKD" only when the trip EXISTS in the live kernel and is blocked (#506.7): on an
+    // engine whose kernel carries no trips (PWR2 — its low-pressure trip lives in the
+    // engine's own RPS) the word would claim a bypass nobody set. The absent case gets the
+    // widened window with NO note.
+    var tbsP = s.rps_state.trip_block_status;
+    var lowExists = !tbsP || ('lo_press' in tbsP) || ('si_trip' in tbsP);
+    if (lowExists) { out.note = 'LO TRIP BLKD'; out.noteKind = 'ok'; }
     return out;
   }
   function bandsFor(id, s) {
@@ -2941,9 +2981,31 @@
     // that declares the arm gets the button back for free.
     buttonDisabled: function (item, s) {
       var sys = ESF_ARM_BUTTONS[item.id];
-      if (!sys) return false;
-      var e = s.automation && s.automation.esf;
-      return !(e && (sys in e));
+      if (sys) {
+        var e = s.automation && s.automation.esf;
+        return !(e && (sys in e));
+      }
+      // A channel button with no kernel channel behind it (#506: the boron panel / rod AUTO
+      // on an engine whose channels list is empty — the press was a silent no-op).
+      var chId = CHANNEL_BUTTONS[item.id];
+      if (chId) return !chan(s, chId);
+      // RHR align/isolate: the engine declares the system by publishing rhr_hx_fraction
+      // (pwr always does); absent = the align command does not exist yet (#458 class).
+      if (RHR_BUTTONS[item.id]) return CS(s).rhr_hx_fraction === undefined;
+      // Grid FOLLOW when the engine publishes its dispatch-mode capability list without it.
+      if (item.id === 'imro8ktzs3u') {
+        var lm = CS(s).load_modes;
+        return !!(lm && lm.indexOf('follow') === -1);
+      }
+      return false;
+    },
+    // The number-box mirror of buttonDisabled (#506): a setpoint box whose machinery the
+    // running engine does not carry reads dark and refuses typing.
+    numberDisabled: function (item, s) {
+      if (item.id === 'imrpq29jo7t') return !chan(s, 'boron_conc');          /* boron ppm */
+      if (item.id === 'ims3xu86zm5') return CS(s).rhr_hx_fraction === undefined; /* RHR HX % */
+      if (item.id === 'bdAdvSp') return CS(s).adv_setpoint_fixed === true;   /* sourced constant */
+      return false;
     },
     // Control tiles to append to the board that aren't in the generated board_data.js.
     // No driver-injected items and no doc patching since V2 — see EXTRA_ITEMS above for
@@ -3230,13 +3292,22 @@
       // on engine+M4 from `5_percent`: with pr_low_setpoint armed, 26 % scrams and 24 % does
       // not — so the gauge was showing a limit ~5x above the one the plant enforces for the
       // whole of a startup. These pin the three states rather than the one that was wrong.
-      function powerTile(blocks) {
+      function powerTile(blocks, tbs) {
         var t = { instruments: { power_range: 5 }, control_state: {}, true_state: { plant_mode: 3 },
                   metadata: { sim_time: 100 } };
         if (blocks) t.rps_state = { trip_blocks: blocks, scrammed: false };
+        if (blocks && tbs !== undefined) t.rps_state.trip_block_status = tbs;
         return COMPPROPS.imrzl4b7g9m(t);
       }
-      var pArmed = powerTile({}), pBlocked = powerTile({ pr_low_setpoint: true }), pBare = powerTile(null);
+      // trip_block_status carries PRESENCE (#506.7): the pwr kernel always publishes its
+      // blockable trips there, so the honest fixtures carry it; the tbs-less call below
+      // pins the LEGACY branch (old recordings), and the empty-tbs call pins the pwr2 shape.
+      var pArmed = powerTile({}, { ir_high: { blocked: false }, pr_low_setpoint: { blocked: false } }),
+          pBlocked = powerTile({ pr_low_setpoint: true },
+                               { ir_high: { blocked: false }, pr_low_setpoint: { blocked: true } }),
+          pBare = powerTile(null),
+          pLegacy = powerTile({}),
+          pPwr2 = powerTile({}, {});
       // Armed (every startup IC): green to P-10, amber P-10 -> 25 %, red above, and the
       // window closes down so the low-power ascent is legible on a linear meter.
       ck('driver: power tile trips at 25 % while pr_low_setpoint is armed',
@@ -3253,6 +3324,17 @@
       // against a 27 % scale.
       ck('driver: power tile falls back to authored bands with no rps_state',
         pBare.tripHi === 120 && pBare.note === '', pBare.tripHi + '/' + JSON.stringify(pBare.note));
+      // A snapshot with trip_blocks but NO trip_block_status is the legacy shape — the
+      // blocked-only rule must hold bit-identical (old recordings replay unchanged).
+      ck('driver: power tile keeps the legacy armed reading without trip_block_status',
+        pLegacy.tripHi === 25 && pLegacy.note === 'TRIP 25%', pLegacy.tripHi + '/' + JSON.stringify(pLegacy.note));
+      // The pwr2 shape: rps_state present, trip_block_status EMPTY — the live kernel carries
+      // no blockable trips (protection lives inside the engine), so the static table's 25 %
+      // startup trip must NOT read as armed. Pre-fix this pegged a 99.8 % plant on a 27.5
+      // scale under "TRIP 25%" (#506.7, measured).
+      ck('driver: power tile shows authored bands when the live kernel has no blockable trips (pwr2)',
+        pPwr2.tripHi === 120 && pPwr2.note === '' && pPwr2.max > 100,
+        pPwr2.tripHi + '/' + JSON.stringify(pPwr2.note) + '/max ' + pPwr2.max);
       // tripBackstop must not depend on table order — the defect this fixes was order-dependent.
       ck('driver: power backstop is order-independent',
         tripBackstop('power_range', 'high', null) === 120, tripBackstop('power_range', 'high', null));
