@@ -97,7 +97,12 @@ function runSuite(SH, rec, quiet) {
      typeof cs.rod_groups[0].position_pct === 'number' &&
      typeof cs.pressure_setpoint === 'number' && typeof cs.steam_dump_pct === 'number' &&
      cs.steam_dump_setpoint > 6 && cs.steam_dump_setpoint < 8 &&
-     cs.pumps.length === 1 && typeof cs.feed_pump_speed_pct === 'number' &&
+     cs.pumps.length === 1 && typeof cs.pumps[0].flow_pct === 'number' &&
+     isFinite(cs.pumps[0].flow_pct) &&                       /* the board SPINS on this — a
+                                                              * missing field was NaN and froze
+                                                              * the RCP impeller (#506.5) */
+     typeof cs.letdown_orifice_a === 'boolean' && typeof cs.letdown_orifice_b === 'boolean' &&
+     typeof cs.feed_pump_speed_pct === 'number' &&
      typeof cs.cvcs_auto === 'boolean' && typeof cs.heater_auto === 'boolean' &&
      typeof cs.porv_block_open === 'boolean' && typeof cs.spray_valve_pct === 'number' &&
      typeof cs.charging_flow_normalized === 'number' && cs.load_mode !== undefined &&
@@ -112,16 +117,26 @@ function runSuite(SH, rec, quiet) {
    * parts empty (trips/actuations/channels/interlocks/ESF/runbacks are the engine's own),
    * the annunciator shape adopted, the failures menu exactly the injectable levers. */
   var pc = eng.getProtectionConfig();
-  ck('getProtectionConfig is PWR2 OWN config: acting parts EMPTY, annunciators adopted',
+  /* the alarms row is a COPY with exactly ONE override since #500 (2026-08-22): every row
+   * rides through by reference except pzr_level_low, rebuilt at 17 % — 25.0 was this
+   * plant's own sourced no-load program point, a standing annunciator on a healthy Mode 3 */
+  var baseAlarms = globalThis.RD.PWR_CONFIG.protection.alarms;
+  var alarmsOk = Array.isArray(pc.alarms) && pc.alarms.length === baseAlarms.length &&
+    pc.alarms.every(function (a, i) {
+      return a.id === 'pzr_level_low'
+        ? (a.setpoint === 17.0 && baseAlarms[i].id === 'pzr_level_low' && baseAlarms[i].setpoint === 25.0)
+        : a === baseAlarms[i];
+    });
+  ck('getProtectionConfig is PWR2 OWN config: acting parts EMPTY, annunciators adopted with ONE override',
      pc !== globalThis.RD.PWR_CONFIG.protection &&
      pc.trips.length === 0 && pc.actuations.length === 0 && pc.channels.length === 0 &&
      pc.interlocks.length === 0 && pc.runbacks.length === 0 &&
-     pc.alarms === globalThis.RD.PWR_CONFIG.protection.alarms &&
+     alarmsOk &&
      Object.keys(pc.failures).length === 4 &&
      !!pc.failures.stuck_porv_open && !!pc.failures.rcp_trip && !!pc.failures.turbine_trip &&
      !!pc.failures.loss_of_feedwater,
-     'M4 gets a shape it can hold with nothing that would command a plant it does not know; ' +
-     'loss_of_feedwater joined the menu with the feed train (2026-08-21)');
+     'M4 gets a shape it can hold; pzr_level_low 25 -> 17 (the sourced heater-cutoff level), ' +
+     'every other alarm row shared by reference');
   /* THE ONE ESF ENTRY (2026-08-20, the AFAS build). The board's AUX FEED word needs
    * automation.esf.afw === 'auto' to say STANDBY, and the kernel only emits that for a
    * listed system — before this entry the tile read SECURED over an armed AFAS. commands
@@ -147,6 +162,39 @@ function runSuite(SH, rec, quiet) {
   ck('getStartupLineup/getActiveFailures exist and answer',
      Array.isArray(eng.getStartupLineup()) && Array.isArray(eng.getActiveFailures()) &&
      eng.getActiveFailures().length === 0, '');
+
+  /* ---- 1b. TWO REAL BANKS (#506.3) ----------------------------------------------------------
+   * The shutdown group used to be a fabrication: `scrammed ? 0 : 200`, a one-frame snap
+   * beside the control bank's ramp — the owner's "shutdown rods moved too fast on scram",
+   * verbatim. Both banks are the engine's now, each with its own ramp (control 2.5 s,
+   * shutdown 2.0 s) and its own group-routed drive. Sampled MID-RAMP, where the snap and
+   * the ramp disagree most. */
+  (function () {
+    var e2 = new SH.PWR2Engine({});
+    for (var i = 0; i < 100; i++) e2.step(0.02);            /* 2 s of settle */
+    e2.applyCommand({ action: 'scram' });
+    for (i = 0; i < 50; i++) e2.step(0.02);                 /* 1.0 s into the ramps */
+    var g = e2.getControlState().rod_groups;
+    ck('mid-scram, BOTH banks are ramping — shutdown ahead of control, neither snapped',
+       g[0].steps > 80 && g[0].steps < 140 &&               /* 2.5 s ramp: ~120 at t+1.0 */
+       g[1].steps > 60 && g[1].steps < 120 &&               /* 2.0 s ramp: ~100 at t+1.0 */
+       g[1].steps < g[0].steps,
+       'control ' + g[0].steps + ', shutdown ' + g[1].steps + ' at t+1.0 s (snap read 0)');
+    for (i = 0; i < 150; i++) e2.step(0.02);
+    var g2 = e2.getControlState().rod_groups;
+    ck('...and both reach 0', g2[0].steps === 0 && g2[1].steps === 0,
+       g2[0].steps + '/' + g2[1].steps);
+    /* the shutdown drive is GROUP-ROUTED: before #506 group_id was dropped and this command
+     * drove the CONTROL bank (the board's shutdown Withdraw silently moved the wrong bank) */
+    var e3 = new SH.PWR2Engine({});
+    for (i = 0; i < 50; i++) e3.step(0.02);
+    e3.applyCommand({ action: 'rod_nudge', group_id: 'shutdown_rods', steps: -5 });
+    for (i = 0; i < 500; i++) e3.step(0.02);
+    var g3 = e3.getControlState().rod_groups;
+    ck('a shutdown-group nudge moves the SHUTDOWN bank and leaves the control bank alone',
+       g3[1].steps < 200 && g3[0].steps === 200,
+       'control ' + g3[0].steps + ', shutdown ' + g3[1].steps);
+  })();
 
   /* ---- 2. THE COMMAND PARTITION -------------------------------------------------------------- */
   head('THE PARTITION  [every old-engine action in exactly one registry, refusals reasoned]');
@@ -318,7 +366,16 @@ var MUTATIONS = [
    "        esf_systems: [{ id: 'afw', label: 'Auxiliary feedwater', commands: ['set_afw'] }],"],
   ['the instrument-failure command maps every mode to STUCK',
    "      var mode = c.mode === 'fail_low' ? 'low' : c.mode === 'fail_high' ? 'high'\n               : c.mode === 'noisy' ? 'noisy' : 'stuck';",
-   "      var mode = 'stuck';"]
+   "      var mode = 'stuck';"],
+  ['the #500 alarm override is dropped (pzr_level_low back to the plant\'s own program point)',
+   "        alarms: (base.alarms || []).map(function (a) {\n          return a.id === 'pzr_level_low'\n            ? Object.assign({}, a, { setpoint: 17.0 })\n            : a;\n        }),",
+   '        alarms: base.alarms,'],
+  ['the shutdown group reverts to the pre-#506 snap (200 -> 0 in one frame on scram)',
+   "          steps: Math.round(e.sdSteps), max_steps: 200,\n          position_pct: 100 * e.sdSteps / 200,",
+   '          steps: ts.scrammed ? 0 : 200, max_steps: 200,\n          position_pct: ts.scrammed ? 0 : 100,'],
+  ['the rcp pump record loses flow_pct again (the board animation computes NaN and freezes)',
+   "      pumps: [{ id: 'rcp', running: !e.sys.pumpTripped,\n                flow_pct: ts.pump_flow_pct !== undefined ? ts.pump_flow_pct\n                          : (e.sys.pumpTripped ? 0 : 100) }]",
+   "      pumps: [{ id: 'rcp', running: !e.sys.pumpTripped }]"]
 ];
 
 console.log('\ninjection self-test (' + MUTATIONS.length + ' mutations):');

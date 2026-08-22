@@ -156,8 +156,10 @@ function runSuite(RD, rec, quiet, only) {
       t80.mwe_output.toFixed(1) + ', power ' + t80.power_pct.toFixed(1) + ' %');
   EN.command(eng, 'rod_target', 190);
   var tRod = run(eng, 5);
-  ckT('rod_target SLEWS — five seconds moves about five steps, not the whole demand',
-      Math.abs(tRod.rod_steps - 195) < 1.5,
+  ckT('rod_target SLEWS — five seconds at normal speed moves ~3.5 steps, not the whole demand',
+      /* 0.702 steps/s = the sourced WTSM 8.1 normal class rate mapped onto the 200-step
+       * bank (#506.4); the pre-#506 single rate (1.0 = always FAST) read ~5 here */
+      Math.abs(tRod.rod_steps - (200 - 0.702 * 5)) < 1.0,
       tRod.rod_steps.toFixed(1) + ' steps from 200 toward 190 — instant rods are a lever no ' +
       'real plant has');
   EN.command(eng, 'rod_target', 200); run(eng, quiet ? 20 : 40);
@@ -441,10 +443,17 @@ function runSuite(RD, rec, quiet, only) {
   ckT('the ROD STOP: inward moves, outward is refused while the signal stands',
       rodsIn < 199.5 && eng7.rodSteps <= rodsIn + 1e-9,
       'in to ' + rodsIn.toFixed(1) + ', then held at ' + eng7.rodSteps.toFixed(1));
-  /* the operator's half [sourced: "appropriate adjustments"]: rods IN. The runback's first
-   * 1.5 s pulse has already nibbled ~5 MWe by now; margin recovery then clears the signal. */
+  /* the operator's half [sourced: "appropriate adjustments"]: rods IN, at FAST, 18 steps.
+   * Re-scripted with the two-bank build (#506.3): the control bank now carries its real
+   * 4068 pcm worth — HALF the old lumped 8000 — so the pre-#506 "12 steps at the old
+   * always-fast rate" buys half the reactivity and (measured, dt 0.02 only) the standing
+   * OTdT condition matured its delay before the margin recovered. Same physical action,
+   * real units: FAST (the sourced 72 steps/min class — what an operator staring at an
+   * approach alarm selects) and ~2x the steps for the same pcm. Measured: clears at
+   * +6.3 s (dt 0.02) / +2.8 s (0.05), no trip, both dt values. */
   var load0 = eng7.tb.load_target_mwe;
-  EN.command(eng7, 'rod_target', 188);
+  EN.command(eng7, 'rod_speed', 'fast');
+  EN.command(eng7, 'rod_target', 182);
   var clear7 = false, trip7 = false, minLoad7 = 1e9;
   for (k7 = 0; k7 < (quiet ? 120 : 240) / DT; k7++) {
     ts7 = EN.step(eng7, DT);

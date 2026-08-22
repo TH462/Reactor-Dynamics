@@ -56,8 +56,16 @@
   var DT0_C = 31.1;              /* full-power loop delta-T, [derived] — the settled design
                                   * point's own split (606 - 550 degF = 56 degF = 31.1 degC),
                                   * the delta-T pair's normalization */
-  var ROD_SLEW_SPS = 1.0;        /* steps/s, manual motion — [derived], see header */
-  var SCRAM_S = 2.0;             /* full insertion on a trip, [derived] class figure */
+  /* Manual rod motion by the operator's S/M/F selection (#506.4). The SPEEDS are the sourced
+   * quantity (WTSM 8.1: 8-72 steps/min, normal 48 — the same class range pwr1's slow/normal/
+   * fast descend from); these values are [derived] — pwr1's three rates mapped by fraction-of-
+   * travel-per-second onto this plant's 200-step bank (0.0585 / 0.351 / 0.526 %/s). The old
+   * single ROD_SLEW_SPS = 1.0 was ~pwr1's FAST, always. */
+  var ROD_SPEEDS = { slow: 0.117, normal: 0.702, fast: 1.053 };   /* steps/s */
+  var SCRAM_S = 2.5;             /* control bank full insertion on a trip — [tune], adopted
+                                  * with SD_SCRAM_S from pwr1's 2.5/2.0 pair (#506.3): the
+                                  * shutdown bank inserts slightly FASTER, both are ramps */
+  var SD_SCRAM_S = 2.0;          /* shutdown bank insertion on a trip, [tune] */
 
   /* THE DESIGN-POINT ENTHALPY MAP (#502). A scalar h booted every node isothermal at TREF —
    * zero loop delta-T at 100 % power — and the plant spent its first minute developing its
@@ -96,7 +104,21 @@
       if (hmap[n.id] === undefined) throw new Error('pwr2_engine: designHmap has no entry for node "' + n.id + '"');
     });
     var rx = R.createReactor({ P: 1.0, coolTemp_c: TREF });
-    var boron0 = RD.kinetics.criticalBoron(rx.kin, TREF, P0, null,
+    /* TWO BANKS (#506.3, 2026-08-22): control + shutdown, worths from the kinetics module's
+     * own gated pair (WTSM 2.2 Table 2.2-1: 4068 / 3676 pcm — the citation, ML11216A051, is
+     * NOT in the corpus; the figures are cited-but-uncorroborated, recorded in
+     * PWR2_VALIDATION). The old single-bank literal (worth 0.08 = 8000 pcm) was unsourced
+     * and bypassed that pair. Both banks FULLY WITHDRAWN at the hot-full-power IC —
+     * sourced practice (WTSM 8.1.1: shutdown banks withdrawn prior to criticality; Ginna
+     * B 3.1.1: SDM held by the withdrawn bank, in corpus). The 200-step count is [derived],
+     * unverified — no corpus document publishes a step total (Ginna TS defers to the COLR).
+     * Withdrawn banks contribute exactly 0 pcm, so passing them to criticalBoron below is
+     * numerically identical to the old `null` — measured, not assumed (#502's lesson). */
+    var rodBank = [
+      { steps: 200, max_steps: 200, worth: RD.kinetics.RODS.worth_control },
+      { steps: 200, max_steps: 200, worth: RD.kinetics.RODS.worth_shutdown }
+    ];
+    var boron0 = RD.kinetics.criticalBoron(rx.kin, TREF, P0, rodBank,
       rx.kin.X / rx.kin.X_eq_full, rx.fuel.T_fuel_c);
     var sg = G.createSG({});
     var tb = TB.createTurbine({ load_target_mwe: MWE_RATED });
@@ -117,7 +139,8 @@
       M_nominal: sys.M_total,
       simTime: 0,
       /* command state */
-      rodTarget: 200, rodSteps: 200, rodBank: [{ steps: 200, max_steps: 200, worth: 0.08 }],
+      rodTarget: 200, rodSteps: 200, sdTarget: 200, sdSteps: 200, rodBank: rodBank,
+      rodSpeedSel: 'normal',
       cwPumps: true,
       pzDrivers: {},              /* setpoint/manual/stick/block/aux — forwarded each step */
       dcDrivers: {},              /* mode / pressure setpoint */
@@ -138,6 +161,8 @@
       case 'load_mwe':       eng.tb.load_target_mwe = Math.max(0, Math.min(MWE_RATED, +value)); break;
       case 'turbine_trip':   eng.tb.tripped = !!value; break;
       case 'rod_target':     eng.rodTarget = Math.max(0, Math.min(200, +value)); break;
+      case 'sd_target':      eng.sdTarget = Math.max(0, Math.min(200, +value)); break;
+      case 'rod_speed':      eng.rodSpeedSel = (value in ROD_SPEEDS) ? value : 'normal'; break;
       case 'scram':
         /* The pushbutton is an RPS INPUT, not a rod command — the trip latches in
          * pwr2_protection ('manual') and the trip edge below inserts the rods, so a manual
@@ -261,23 +286,34 @@
   function stepInner(eng, dt) {
     var sys = eng.sys;
 
-    /* rods: slew toward target; a scram overrides the slew */
+    /* rods: slew toward target; a scram overrides the slew. TWO BANKS since #506.3 —
+     * both insert on a trip, shutdown slightly faster (the pwr1 2.5/2.0 pair). */
     if (eng._scramT !== null) {
       eng._scramT += dt;
       /* MONOTONE-DOWN: min() with the current position, so a second trip edge restarting
        * the ramp can never move the rods OUT (200*(1-t/2) evaluated fresh from t=0 would
        * teleport a partially-withdrawn bank back toward 200). */
       eng.rodSteps = Math.max(0, Math.min(eng.rodSteps, 200 * (1 - eng._scramT / SCRAM_S)));
+      eng.sdSteps = Math.max(0, Math.min(eng.sdSteps, 200 * (1 - eng._scramT / SD_SCRAM_S)));
       if (eng.rodSteps === 0 && eng.rodTarget === 0) eng._scramT = null;
     } else if (eng.rodSteps !== eng.rodTarget) {
-      var dS = ROD_SLEW_SPS * dt;
+      var dS = ROD_SPEEDS[eng.rodSpeedSel] * dt;
       var move = Math.max(-dS, Math.min(dS, eng.rodTarget - eng.rodSteps));
       /* THE ROD STOP [sourced, ch7 §7.2.3.2.1]: within 3 % of a delta-T trip setpoint,
        * outward motion is refused — inward is always allowed (it HELPS). One step old. */
       if (eng._rodStopSig && move > 0) move = 0;
       eng.rodSteps += move;
     }
+    /* the shutdown bank's manual drive — a real evolution (post-scram re-withdrawal is
+     * operator work, nothing auto-re-withdraws; the #468 lesson). The rod stop guards the
+     * CONTROL bank's approach to the delta-T trip; the shutdown bank's outward motion is a
+     * deliberate shutdown-margin evolution and is not guarded here. */
+    if (eng._scramT === null && eng.sdSteps !== eng.sdTarget) {
+      var dSd = ROD_SPEEDS[eng.rodSpeedSel] * dt;
+      eng.sdSteps += Math.max(-dSd, Math.min(dSd, eng.sdTarget - eng.sdSteps));
+    }
     eng.rodBank[0].steps = eng.rodSteps;
+    eng.rodBank[1].steps = eng.sdSteps;
 
     var tavg = G.primaryTavg(sys);
     /* tavg_rate_c_per_hr (stage B1): filtered derivative, tau 60 s [open] — a heatup/cooldown
@@ -428,6 +464,9 @@
     eng._rodStopSig = ptr.rod_stop; eng._runbackSig = ptr.runback;
     /* THE CALLER'S HALF of HR5: the RPS reports, the plant acts. */
     if (ptr.reactor_trip && !eng._lastTrip) { eng.rodTarget = 0; eng._scramT = 0; }
+    /* the shutdown bank drops on the same edge (kept as its OWN line — the line above is a
+     * run_pwr2_engine mutation anchor and must stay byte-identical) */
+    if (ptr.reactor_trip && !eng._lastTrip) eng.sdTarget = 0;
     eng._lastTrip = ptr.reactor_trip;
     /* The turbine trips WITH the reactor [sourced] — Ginna UFSAR ch15 (ML20339A101): "The
      * turbine automatically trips following a reactor trip. Zero delay is assumed". Level,

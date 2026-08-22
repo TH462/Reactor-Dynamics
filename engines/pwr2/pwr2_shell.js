@@ -49,12 +49,28 @@
   var MAPPED = {
     scram:            function (e, c) { EN.command(e, 'scram', true); },
     reset_rps:        function (e, c) { EN.command(e, 'reset_protection', true); },
+    /* GROUP-ROUTED since #506.3-4 (two real banks): before this, group_id was DROPPED, so
+     * the board's shutdown drive silently moved the CONTROL bank. The S/M/F selection rides
+     * on the command (the board's convention) and lands in the engine's rod_speed door. */
     rod_nudge:        function (e, c) {
-      EN.command(e, 'rod_target', e.rodTarget + (c.steps !== undefined ? c.steps : (c.direction > 0 ? 1 : -1)));
+      if (c.speed) EN.command(e, 'rod_speed', c.speed);
+      var sd = c.group_id === 'shutdown_rods';
+      var d = c.steps !== undefined ? c.steps : (c.direction > 0 ? 1 : -1);
+      EN.command(e, sd ? 'sd_target' : 'rod_target', (sd ? e.sdTarget : e.rodTarget) + d);
     },
-    rod_start:        function (e, c) { EN.command(e, 'rod_target', c.direction > 0 ? 200 : 0); },
-    rod_stop:         function (e, c) { EN.command(e, 'rod_target', e.rodSteps); },
-    rod_stop_all:     function (e, c) { EN.command(e, 'rod_target', e.rodSteps); },
+    rod_start:        function (e, c) {
+      if (c.speed) EN.command(e, 'rod_speed', c.speed);
+      EN.command(e, c.group_id === 'shutdown_rods' ? 'sd_target' : 'rod_target',
+        c.direction > 0 ? 200 : 0);
+    },
+    rod_stop:         function (e, c) {
+      if (c.group_id === 'shutdown_rods') EN.command(e, 'sd_target', e.sdSteps);
+      else EN.command(e, 'rod_target', e.rodSteps);
+    },
+    rod_stop_all:     function (e, c) {
+      EN.command(e, 'rod_target', e.rodSteps);
+      EN.command(e, 'sd_target', e.sdSteps);
+    },
     set_load_target:  function (e, c) { EN.command(e, 'load_mwe', c.mwe !== undefined ? c.mwe : c.value); },
     trip_turbine:     function (e, c) { EN.command(e, 'turbine_trip', true); },
     turbine_trip:     function (e, c) { EN.command(e, 'turbine_trip', true); },
@@ -99,6 +115,10 @@
     },
     set_letdown_orifices: function (e, c) {
       var n = (c.a ? 1 : 0) + (c.b ? 1 : 0);                /* two-orifice lineup -> fraction */
+      e._letdownAB = { a: !!c.a, b: !!c.b };                /* the PAIR, latched for the lamps —
+                                                             * the engine keeps only the fraction,
+                                                             * so A-only and B-only are the same
+                                                             * plant but different lineups (#506) */
       EN.command(e, 'letdown', n / 2);
     },
     set_boron_adjust:  function (e, c) { EN.command(e, 'makeup', c.mode || 'match'); },
@@ -351,6 +371,18 @@
          * AFW arm control sends auto:true (a re-arm pushbutton). A disarmable arm here would
          * claim an authority the engine does not grant it — the duplicate-authority veto. */
         esf_systems: [{ id: 'afw', label: 'Auxiliary feedwater', commands: [] }],
+        /* THE ONE ALARM OVERRIDE (#500, 2026-08-22): every row rides through by reference
+         * EXCEPT pzr_level_low, rebuilt at 17 % — the pwr table's 25.0 % IS this plant's
+         * sourced no-load level program point (WTSM 10.3: "low level setpoint of 25%",
+         * pwr2_pressurizer LEVEL/GEOM), so at Mode 3 the annunciator stood on a healthy
+         * plant sitting exactly on program. 17 % is the sourced heater-cutoff level
+         * (LEVEL.low_cut_pct, same WTSM section) — the point at which something real is
+         * about to happen. pzr_level_lolo (12) stays below it; the pwr1 table is untouched. */
+        alarms: (base.alarms || []).map(function (a) {
+          return a.id === 'pzr_level_low'
+            ? Object.assign({}, a, { setpoint: 17.0 })
+            : a;
+        }),
         failures: (function () {
           /* the pwr failures table is an OBJECT keyed by id (measured — an array filter
            * threw at boot); keep only the levers the class can actually inject */
@@ -382,24 +414,25 @@
     return {
       /* TWO groups in the old engine's field shape — the board looks them up BY ID
        * ('control_rods'/'shutdown_rods') and prints .steps, so the earlier one-entry
-       * id:'control' left both position readouts at 0. PWR2 is a one-bank plant: the
-       * control group is the real bank on its NATIVE 0..200 step scale (max_steps says so;
-       * the board renders the unit from it), and the shutdown group is the same trip
-       * presented as banks-out-unless-scrammed — model truth, since a PWR2 trip drops
-       * everything. moving/direction feed the IN-OUT lamps (#306); scram is excluded there
-       * by the board itself. */
+       * id:'control' left both position readouts at 0. BOTH GROUPS ARE REAL since #506.3:
+       * two banks on the native 0..200 step scale (max_steps says so; the board renders the
+       * unit from it), each with its own scram ramp (control 2.5 s, shutdown 2.0 s) and its
+       * own manual drive. moving/direction feed the IN-OUT lamps (#306); scram is excluded
+       * there by the board itself. */
       rod_groups: [
         { id: 'control_rods', name: 'Control Rods', function: 'control',
           steps: Math.round(e.rodSteps), max_steps: 200,
           position_pct: 100 * e.rodSteps / 200,
           moving: !ts.scrammed && e.rodSteps !== e.rodTarget,
           direction: e.rodTarget > e.rodSteps ? 1 : (e.rodTarget < e.rodSteps ? -1 : 0),
-          speed: 'normal', scrammed: !!ts.scrammed,
+          speed: e.rodSpeedSel || 'normal', scrammed: !!ts.scrammed,
           insertion_limit_steps: null, at_insertion_limit: false },
         { id: 'shutdown_rods', name: 'Shutdown Rods', function: 'shutdown',
-          steps: ts.scrammed ? 0 : 200, max_steps: 200,
-          position_pct: ts.scrammed ? 0 : 100,
-          moving: false, direction: 0, speed: 'normal', scrammed: !!ts.scrammed,
+          steps: Math.round(e.sdSteps), max_steps: 200,
+          position_pct: 100 * e.sdSteps / 200,
+          moving: !ts.scrammed && e.sdSteps !== e.sdTarget,
+          direction: e.sdTarget > e.sdSteps ? 1 : (e.sdTarget < e.sdSteps ? -1 : 0),
+          speed: e.rodSpeedSel || 'normal', scrammed: !!ts.scrammed,
           insertion_limit_steps: null, at_insertion_limit: false },
       ],
       porv_demand: e.pz.porvOpen ? 'open' : 'shut',
@@ -415,7 +448,12 @@
                                 RD.cvcs.CVCS.charging_max_gpm() / 450000,
       letdown_flow_normalized: e.cv.letdownOpen *
                                (RD.cvcs.CVCS.charging_normal_gpm() + RD.cvcs.sealInjectionGpm()) / 450000,
-      charging_pump_running: true,
+      /* the orifice PAIR from the shell latch; before the first command, derived from the
+       * boot letdownOpen (1.0 = both). The lamps read these — they were simply absent, so
+       * CLOSED was permanently lit (#506.2). */
+      letdown_orifice_a: e._letdownAB ? e._letdownAB.a : e.cv.letdownOpen >= 0.5,
+      letdown_orifice_b: e._letdownAB ? e._letdownAB.b : e.cv.letdownOpen >= 1.0,
+      charging_pump_running: e._chargingPumpOn !== false,
       cvcs_auto: this.eng._plcsAuto !== false,
       /* REAL since the feed train (2026-08-21): the delivered main-feed fraction — the
        * "speed" gauge presentation the board's five reader tiles expect (measured) */
@@ -424,12 +462,26 @@
       condensate_pump_running: ts.condensate_pump_running === true,
       steam_demand_mwe: e.tb.load_target_mwe,
       load_mode: 'manual',
+      /* the CAPABILITY list — one dispatch mode exists; the board disables FOLLOW off this
+       * (absent list = the old engine, everything enabled) */
+      load_modes: ['manual'],
       load_target_mwe: e.tb.load_target_mwe,
+      /* the DEMANDED load, distinct from the ramping reference — the board's MW box reads
+       * this first so a press computes cur+1 from a number that is not itself moving */
+      load_cmd_mwe: e.tb.load_target_mwe,
       steam_dump_pct: ts.steam_dump_valve_pct !== undefined ? ts.steam_dump_valve_pct : 0,
-      steam_dump_auto: true,
+      /* real since #506: the dump-mode door is commanded from the board — the DRIVER is the
+       * commanded selection (dcDrivers.mode, forwarded each step); the controller default
+       * is tavg = auto */
+      steam_dump_auto: (e.dcDrivers.mode !== undefined ? e.dcDrivers.mode
+                        : (e.dc ? e.dc.mode : 'tavg')) !== 'off',
       adv_pct: ts.adv_valve_pct !== undefined ? ts.adv_valve_pct : 0,
-      adv_auto: e.advDemand === 0,
+      /* from the latched selection (AUTO vs SHUT command both zero demand); a manual %
+       * demand clears the latch */
+      adv_auto: e._advMode !== undefined && e._advMode !== null ? e._advMode === 'auto'
+                : e.advDemand === 0,
       adv_setpoint: 1040 / 145.03774,
+      adv_setpoint_fixed: true,        /* a sourced constant (§48) — the board darkens its box */
       /* the CONTROLLER's live setpoint, not the driver override: dcDrivers only carries a
        * value after the operator sets one, so the box read 0 psi until first touched —
        * dc.pressure_setpoint_mpa holds the 7.03 MPa (1019 psi) Ginna no-load anchor */
@@ -443,7 +495,12 @@
       afw_throttle_pct: (e.aw.mdafwRunning || e.aw.tdafwRunning) ? 100 : 0,
       sr_energized: ts.sr_energized === true,
       msiv_open: true,
-      pumps: [{ id: 'rcp', running: !e.sys.pumpTripped }]
+      /* flow_pct is what the board's pump animation SPINS on (pumpProps speed) — without it
+       * the driver computed NaN and the RCP impeller froze with its pipe ports dark
+       * (#506.5, measured). pump_flow_pct is the true-state's own loop-flow fraction. */
+      pumps: [{ id: 'rcp', running: !e.sys.pumpTripped,
+                flow_pct: ts.pump_flow_pct !== undefined ? ts.pump_flow_pct
+                          : (e.sys.pumpTripped ? 0 : 100) }]
     };
   };
 
@@ -495,6 +552,11 @@
       shellIns: this.instruments.save(),              /* pwr_instruments' own documented API */
       scalars: {
         rodTarget: e.rodTarget, rodSteps: e.rodSteps, simTime: e.simTime,
+        /* the second bank + the S/M/F selection + the shell display latches (#506) — an old
+         * save without them lands on the constructor's withdrawn/normal defaults, which is
+         * the pre-#506 state exactly */
+        sdTarget: e.sdTarget, sdSteps: e.sdSteps, rodSpeedSel: e.rodSpeedSel,
+        _advMode: e._advMode, _chargingPumpOn: e._chargingPumpOn, _letdownAB: e._letdownAB,
         _scramT: e._scramT, _manualTrip: e._manualTrip, _lastTrip: e._lastTrip,
         _rodStopSig: e._rodStopSig, _runbackSig: e._runbackSig, _rbT: e._rbT,
         _rbActive: e._rbActive, _pzRelief: e._pzRelief, _pzReliefH: e._pzReliefH,
