@@ -228,9 +228,10 @@
         break;
       case 'break_close':    if (eng.brk) eng.brk.open = false; break;
       case 'instrument_fail':
-        /* value: {id, mode} — mode: stuck | low | high | noisy. Throws on a misspelling,
-         * because a failure that silently does nothing reads like a plant surviving it. */
-        IN.fail(eng.ins, value.id, value.mode); break;
+        /* value: {id, mode, value?} — mode: stuck | low | high | noisy; value freezes a
+         * STUCK channel at it (#507 wave 3). Throws on a misspelling, because a failure
+         * that silently does nothing reads like a plant surviving it. */
+        IN.fail(eng.ins, value.id, value.mode, value.value); break;
       case 'instrument_restore':
         /* value: a channel id, or null/true for ALL */
         IN.restore(eng.ins, typeof value === 'string' ? value : null); break;

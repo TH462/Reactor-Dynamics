@@ -200,12 +200,20 @@
     },
     set_instrument_failure: function (e, c) {
       /* the pwr1 instrument ids and pwr2 channel ids largely coincide (deliberately);
-       * unknown ids throw inside the module, which is the behavior we want */
+       * unknown ids throw inside the module, which is the behavior we want. The board's
+       * advanced panel sends `instrument_id` (measured — reading only `instrument` made
+       * every panel injection land on undefined and throw, #507 wave 3); the SHELL layer's
+       * mirror lives in applyCommand, where `this` can reach it. */
+      var id = c.instrument_id !== undefined ? c.instrument_id : c.instrument;
       var mode = c.mode === 'fail_low' ? 'low' : c.mode === 'fail_high' ? 'high'
                : c.mode === 'noisy' ? 'noisy' : 'stuck';
-      EN.command(e, 'instrument_fail', { id: c.instrument, mode: mode });
+      EN.command(e, 'instrument_fail', { id: id, mode: mode, value: c.stuck_value });
     },
-    clear_instrument_failure: function (e, c) { EN.command(e, 'instrument_restore', c.instrument || true); },
+    clear_instrument_failure: function (e, c) {
+      EN.command(e, 'instrument_restore',
+        typeof (c.instrument_id !== undefined ? c.instrument_id : c.instrument) === 'string'
+          ? (c.instrument_id !== undefined ? c.instrument_id : c.instrument) : true);
+    },
     clear_all_failures: function (e, c) {
       EN.command(e, 'instrument_restore', true);
       EN.command(e, 'porv_stick', false);
@@ -245,20 +253,61 @@
       if (!on) { e._plcsAuto = false; e.cv.chargingDemand = 0; }
     },
     inject_failure:   function (e, c) {
-      if (c.failure_id === 'stuck_porv_open') EN.command(e, 'porv_stick', true);
+      /* the INSTRUMENT rows are data-driven off the pwr defs (type/instrument_id/mode/
+       * stuck_value ride through the keep-list by reference); the shell-layer mirror is
+       * applied in applyCommand (#507 wave 3) */
+      var def = root.RD.PWR_CONFIG && root.RD.PWR_CONFIG.protection &&
+                root.RD.PWR_CONFIG.protection.failures &&
+                root.RD.PWR_CONFIG.protection.failures[c.failure_id];
+      if (def && def.type === 'instrument') {
+        MAPPED.set_instrument_failure(e, { instrument_id: def.instrument_id,
+          mode: def.mode === 'stuck' ? 'stuck' : def.mode, stuck_value: def.stuck_value });
+      }
+      else if (c.failure_id === 'stuck_porv_open') EN.command(e, 'porv_stick', true);
       else if (c.failure_id === 'primary_leak') REHOMED.primary_leak(e, c);
       else if (c.failure_id === 'rcp_trip') EN.command(e, 'pump_trip', true);
       else if (c.failure_id === 'turbine_trip') EN.command(e, 'turbine_trip', true);
       else if (c.failure_id === 'loss_of_feedwater') MAPPED.loss_of_feedwater(e, c);
+      /* #507 wave 3 — the rows PWR2's existing machinery honestly injects */
+      else if (c.failure_id === 'sg_overfeed') MAPPED.sg_overfeed(e, c);
+      else if (c.failure_id === 'loss_of_offsite_power') {
+        /* HONEST-DEGRADED, declared: no AC/diesel model yet (#507) — the effect carried is
+         * the RCP coastdown, which is the dominant primary-side consequence */
+        EN.command(e, 'pump_trip', true);
+      }
+      else if (c.failure_id === 'loss_of_condenser_vacuum') EN.command(e, 'cw_pumps', false);
+      else if (c.failure_id === 'degraded_hpi') {
+        e.ec.avail = Math.max(0, 1 - (c.severity !== undefined ? c.severity : 0.5));
+      }
+      else if (c.failure_id === 'large_loca') {
+        REHOMED.primary_leak(e, { severity: c.severity !== undefined ? c.severity : 1.0 });
+      }
+      else if (c.failure_id === 'rcp_seal_leak') {
+        /* [derived] area, MEASURED: 0.08 cm2 leaks ~1.2 kg/s at operating pressure against
+         * the sourced-scaled 1.85 kg/s max charging — holdable with margin, which is the
+         * row's teaching point (2e-5 measured 3.0 kg/s, more than charging can carry) */
+        EN.command(e, 'break_open', { area_m2: 8e-6, node: 'rcp' });
+      }
       else throw new Error('pwr2_shell: failure "' + c.failure_id + '" REFUSED — not in ' +
         'PWR2\'s failure set yet (PORV stick, primary leak, instrument failures exist)');
     },
     clear_failure:    function (e, c) {
-      if (c.failure_id === 'stuck_porv_open') EN.command(e, 'porv_stick', false);
-      else if (c.failure_id === 'primary_leak') EN.command(e, 'break_close', true);
+      var def = root.RD.PWR_CONFIG && root.RD.PWR_CONFIG.protection &&
+                root.RD.PWR_CONFIG.protection.failures &&
+                root.RD.PWR_CONFIG.protection.failures[c.failure_id];
+      if (def && def.type === 'instrument') EN.command(e, 'instrument_restore', def.instrument_id);
+      else if (c.failure_id === 'stuck_porv_open') EN.command(e, 'porv_stick', false);
+      else if (c.failure_id === 'primary_leak' || c.failure_id === 'large_loca' ||
+               c.failure_id === 'rcp_seal_leak') EN.command(e, 'break_close', true);
       else if (c.failure_id === 'loss_of_feedwater') {
         EN.command(e, 'feed_pump_a', true); EN.command(e, 'feed_pump_b', true);
       }
+      else if (c.failure_id === 'sg_overfeed') EN.command(e, 'feed_auto', true);
+      else if (c.failure_id === 'loss_of_condenser_vacuum') EN.command(e, 'cw_pumps', true);
+      else if (c.failure_id === 'degraded_hpi') e.ec.avail = 1;
+      /* loss_of_offsite_power: clearing does NOT restart the RCP — no restart is modeled
+       * (the pump trips one way, the declared set_rcp shape); the row's clear is the
+       * grid coming back, which this plant cannot yet express. DECLARED. */
       /* clearing an unknown failure is a no-op: there is nothing to clear */
     }
   };
@@ -428,8 +477,15 @@
           /* the pwr failures table is an OBJECT keyed by id (measured — an array filter
            * threw at boot); keep only the levers the class can actually inject */
           /* the menu = the defs the class can honestly HOST from the pwr table (there is
-           * no 'primary_leak' def — the leak arrives as a command, not a menu row) */
-          var keep = ['stuck_porv_open', 'rcp_trip', 'turbine_trip', 'loss_of_feedwater'], out = {};
+           * no 'primary_leak' def — the leak arrives as a command, not a menu row).
+           * #507 wave 3 grew it by the rows EXISTING machinery injects: the break family
+           * (large_loca, rcp_seal_leak), the feed/condenser/ECCS doors, the RCP coastdown
+           * (loss_of_offsite_power, HONEST-DEGRADED — no AC model), and the two stuck-level
+           * instrument rows (both instrument layers, see the applyCommand mirror). */
+          var keep = ['stuck_porv_open', 'rcp_trip', 'turbine_trip', 'loss_of_feedwater',
+                      'sg_overfeed', 'loss_of_offsite_power', 'loss_of_condenser_vacuum',
+                      'degraded_hpi', 'large_loca', 'rcp_seal_leak',
+                      'pzr_level_sensor_stuck', 'pzr_level_sensor_low'], out = {};
           keep.forEach(function (id) {
             if (base.failures && base.failures[id]) out[id] = base.failures[id];
           });
@@ -443,8 +499,13 @@
   PWR2Engine.prototype.getActiveFailures = function () {
     var out = [];
     if (this.eng.pz.porvStuck) out.push('stuck_porv_open');
-    if (this.eng.brk && this.eng.brk.open) out.push('primary_leak');
+    /* the break family reports by NODE — a seal leak is the rcp node's break (#507 wave 3) */
+    if (this.eng.brk && this.eng.brk.open) {
+      out.push(this.eng.brk.node === 'rcp' ? 'rcp_seal_leak' : 'primary_leak');
+    }
     if (!this.eng.fw.pumpA && !this.eng.fw.pumpB) out.push('loss_of_feedwater');
+    if (!this.eng.cwPumps) out.push('loss_of_condenser_vacuum');
+    if (this.eng.ec.avail < 1) out.push('degraded_hpi');
     var f = this.eng.ins.failure;
     Object.keys(f).forEach(function (id) { if (f[id]) out.push('instrument:' + id); });
     return out;
@@ -553,11 +614,49 @@
     };
   };
 
+  /* THE TWO-LAYER MIRROR (#507 wave 3). PWR2 runs two instrument layers over one truth —
+   * the engine's internal channels (the RPS's) and the reused pwr1 layer (the BOARD's,
+   * `this.instruments`) — the declared parallel-phase shape. The mappers can only reach the
+   * engine, so an injected instrument failure corrupted the internal channels and was
+   * INVISIBLE on the board (measured, #507 recon). This mirror applies the same failure to
+   * the shell layer; low/high rail to the INTERNAL channel's own range bound so both layers
+   * show the same rail. */
+  PWR2Engine.prototype._mirrorInstr = function (cmd) {
+    var a = cmd.action, sIns = this.instruments, eIns = this.eng.ins;
+    function idOf(c) { return c.instrument_id !== undefined ? c.instrument_id : c.instrument; }
+    if (a === 'set_instrument_failure') {
+      var id = idOf(cmd), mode = cmd.mode;
+      if (mode === 'noisy') sIns.setFailure(id, 'noisy');
+      else if (mode === 'fail_low' || mode === 'fail_high') {
+        var ch = eIns.channels && eIns.channels[id];
+        var rail = ch && ch.range ? (mode === 'fail_low' ? ch.range[0] : ch.range[1]) : undefined;
+        sIns.setFailure(id, 'stuck', rail);
+      } else sIns.setFailure(id, 'stuck', cmd.stuck_value);
+    } else if (a === 'clear_instrument_failure') {
+      var cid = idOf(cmd);
+      if (typeof cid === 'string') sIns.clearFailure(cid);
+      else Object.keys(sIns.failed || {}).forEach(function (k) { sIns.clearFailure(k); });
+    } else if (a === 'clear_all_failures') {
+      Object.keys(sIns.failed || {}).forEach(function (k) { sIns.clearFailure(k); });
+    } else if (a === 'inject_failure' || a === 'clear_failure') {
+      var def = root.RD.PWR_CONFIG && root.RD.PWR_CONFIG.protection &&
+                root.RD.PWR_CONFIG.protection.failures &&
+                root.RD.PWR_CONFIG.protection.failures[cmd.failure_id];
+      if (def && def.type === 'instrument') {
+        if (a === 'inject_failure') sIns.setFailure(def.instrument_id, def.mode, def.stuck_value);
+        else sIns.clearFailure(def.instrument_id);
+      }
+    }
+  };
+
+  var MIRRORED = { set_instrument_failure: 1, clear_instrument_failure: 1,
+                   clear_all_failures: 1, inject_failure: 1, clear_failure: 1 };
+
   PWR2Engine.prototype.applyCommand = function (cmd) {
     if (!cmd || !cmd.action) throw new Error('pwr2_shell: a command needs an action');
     var a = cmd.action;
-    if (MAPPED[a])  { MAPPED[a](this.eng, cmd);  return { ok: true, action: a }; }
-    if (REHOMED[a]) { REHOMED[a](this.eng, cmd); return { ok: true, action: a, rehomed: true }; }
+    if (MAPPED[a])  { MAPPED[a](this.eng, cmd);  if (MIRRORED[a]) this._mirrorInstr(cmd); return { ok: true, action: a }; }
+    if (REHOMED[a]) { REHOMED[a](this.eng, cmd); if (MIRRORED[a]) this._mirrorInstr(cmd); return { ok: true, action: a, rehomed: true }; }
     if (REFUSED[a] !== undefined) {
       throw new Error('pwr2_shell: "' + a + '" REFUSED — ' + REFUSED[a]);
     }

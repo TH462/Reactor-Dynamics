@@ -154,9 +154,14 @@ function runSuite(SH, rec, quiet) {
      pc.channels[0] === globalThis.RD.PWR_CONFIG.protection.channels.filter(function (ch) { return ch.id === 'boron_conc'; })[0] &&
      pc.interlocks.length === 0 && pc.runbacks.length === 0 &&
      alarmsOk &&
-     Object.keys(pc.failures).length === 4 &&
+     Object.keys(pc.failures).length === 12 &&
      !!pc.failures.stuck_porv_open && !!pc.failures.rcp_trip && !!pc.failures.turbine_trip &&
-     !!pc.failures.loss_of_feedwater,
+     !!pc.failures.loss_of_feedwater &&
+     /* #507 wave 3 — the rows existing machinery honestly injects */
+     !!pc.failures.sg_overfeed && !!pc.failures.loss_of_offsite_power &&
+     !!pc.failures.loss_of_condenser_vacuum && !!pc.failures.degraded_hpi &&
+     !!pc.failures.large_loca && !!pc.failures.rcp_seal_leak &&
+     !!pc.failures.pzr_level_sensor_stuck && !!pc.failures.pzr_level_sensor_low,
      'M4 gets a shape it can hold; pzr_level_low 25 -> 17 (the sourced heater-cutoff level), ' +
      'every other alarm row shared by reference; boron_conc by reference from the pwr table');
   /* THE ONE ESF ENTRY (2026-08-20, the AFAS build). The board's AUX FEED word needs
@@ -242,6 +247,42 @@ function runSuite(SH, rec, quiet) {
        msgSI !== null && /ECCS injection lineup/.test(msgSI) && !/interlock/i.test(msgSI) &&
        isoOk,
        'power: "' + (msgP || '').slice(0, 40) + '…"; SI: "' + (msgSI || '').slice(0, 40) + '…"');
+  })();
+
+  /* ---- 1d. THE CASUALTY ROWS (#507 wave 3) --------------------------------------------------
+   * Every new menu row injected against the live shell, each with its OBSERVABLE effect —
+   * a menu entry for a lever that does nothing would be a lie wearing a casualty's name.
+   * The instrument rows are the two-layer claim: the failure must land on the BOARD's
+   * reused layer (this.instruments) as well as the internal RPS channels — measured before
+   * the mirror, an injected failure was invisible on the board. */
+  (function () {
+    var e5 = new SH.PWR2Engine({});
+    for (var i = 0; i < 100; i++) e5.step(0.02);
+    e5.applyCommand({ action: 'inject_failure', failure_id: 'pzr_level_sensor_low' });
+    e5.step(0.02); e5.step(0.02);
+    var boardStuck = e5.instruments.reading.pzr_level === 20 &&
+                     Math.abs(e5.eng.ins.reading.pzr_level - 20) < 0.5 &&
+                     e5.getTrueState().pzr_level_pct > 40;
+    e5.applyCommand({ action: 'clear_failure', failure_id: 'pzr_level_sensor_low' });
+    for (i = 0; i < 5; i++) e5.step(0.02);
+    var healed = Math.abs(e5.instruments.reading.pzr_level - e5.getTrueState().pzr_level_pct) < 5;
+    ck('pzr_level_sensor_low sticks BOTH instrument layers at 20 % over healthy truth, and clears',
+       boardStuck && healed,
+       'board ' + e5.instruments.reading.pzr_level.toFixed(1) + ' after clear; the pre-mirror defect ' +
+       'was a board that never saw the failure');
+    e5.applyCommand({ action: 'inject_failure', failure_id: 'degraded_hpi', severity: 0.5 });
+    e5.applyCommand({ action: 'inject_failure', failure_id: 'loss_of_condenser_vacuum' });
+    e5.applyCommand({ action: 'inject_failure', failure_id: 'rcp_seal_leak' });
+    var d0 = e5.eng.brk.discharged_kg;
+    for (i = 0; i < 500; i++) e5.step(0.02);
+    var leakRate = (e5.eng.brk.discharged_kg - d0) / 10;
+    var act = e5.getActiveFailures();
+    ck('degraded_hpi halves ECCS avail, vacuum row secures CW, the seal leak is HOLDABLE — all reported',
+       e5.eng.ec.avail === 0.5 && e5.eng.cwPumps === false &&
+       leakRate > 0.5 && leakRate < 1.85 &&
+       act.indexOf('degraded_hpi') !== -1 && act.indexOf('loss_of_condenser_vacuum') !== -1 &&
+       act.indexOf('rcp_seal_leak') !== -1,
+       'leak ' + leakRate.toFixed(2) + ' kg/s vs 1.85 max charging; active [' + act.join(',') + ']');
   })();
 
   /* ---- 2. THE COMMAND PARTITION -------------------------------------------------------------- */
