@@ -142,6 +142,14 @@
       rodTarget: 200, rodSteps: 200, sdTarget: 200, sdSteps: 200, rodBank: rodBank,
       rodSpeedSel: 'normal',
       cwPumps: true,
+      /* THE ELECTRICAL STATE (#507 wave 4). Two booleans, not a bus model: `offsite` is the
+       * grid, `blackout` is "the diesels did not answer" (10 CFR 50.2's SBO, the old engine's
+       * reading). Derived each step: acAvail (vital buses, = !blackout — the diesels carry
+       * them through a plain LOOP) and offsiteOk (nonvital buses, = offsite && !blackout).
+       * No diesel start delay or failure probability is modeled — transfer is instantaneous,
+       * DECLARED. Which load hangs on which bus is each module's own wire, sourced at the
+       * wire (WTSM 3.2/5.7, NUREG-0737 II.E.3.1). */
+      elec: { offsite: true, blackout: false },
       pzDrivers: {},              /* setpoint/manual/stick/block/aux — forwarded each step */
       dcDrivers: {},              /* mode / pressure setpoint */
       advDemand: 0, advBlock: true,
@@ -188,7 +196,12 @@
       case 'rhr_hx':         eng.rh.hx_fraction = Math.max(0, Math.min(1, +value)); break;
       case 'letdown':        eng.cv.letdownOpen = Math.max(0, Math.min(1, +value)); break;
       case 'pzr_setpoint_mpa':   eng.pzDrivers.setpoint_mpa = +value; break;
-      case 'pzr_heaters_manual': eng.pzDrivers.heaters_manual = value === null ? undefined : +value; break;
+      case 'pzr_heaters_manual':
+        eng.pzDrivers.heaters_manual = value === null ? undefined : +value;
+        /* touching the heater control IS the operator's post-shed re-load (NUREG-0737's
+         * manual re-loading, the old engine's set_heater convention — #507 wave 4) */
+        eng.pz.shedLatch = false;
+        break;
       case 'pzr_spray_manual':   eng.pzDrivers.spray_manual = value === null ? undefined : +value; break;
       case 'aux_spray':      eng.pzDrivers.aux_spray = +value; break;
       case 'porv_stick':     eng.pzDrivers.porv_stick = !!value; break;
@@ -221,6 +234,25 @@
         break;
       case 'cw_pumps':       eng.cwPumps = !!value; break;
       case 'pump_trip':      eng.sys.pumpTripped = true; break;
+      /* THE GRID (#507 wave 4). Losing offsite power kills the NONVITAL buses; the RCPs are
+       * on them [sourced, WTSM 3.2 ML11223A213: the RCP motors "cannot be supplied from the
+       * emergency diesel generators"] so the trip is immediate and — like pump_trip, the
+       * declared set_rcp shape — one-way: restoring the grid re-energizes the buses, never
+       * restarts a pump, and never touches a selector (the #200 demand-heals-itself guard). */
+      case 'offsite_power':
+        eng.elec.offsite = !!value;
+        if (!value) eng.sys.pumpTripped = true;
+        break;
+      /* STATION BLACKOUT [sourced, WTSM 5.7.5 ML11223A229: "A station blackout fails all ac
+       * power except the vital Class IE ac busses from the dc invertors. All decay heat
+       * removal systems, except the turbine-driven AFW pump, also fail."]. A blackout IS a
+       * LOOP the diesels did not answer, so true forces offsite false; clearing it restores
+       * both (the old engine's recovery shape) — selectors and latched demands stay put. */
+      case 'station_blackout':
+        eng.elec.blackout = !!value;
+        if (value) { eng.elec.offsite = false; eng.sys.pumpTripped = true; }
+        else eng.elec.offsite = true;
+        break;
       case 'break_open':
         /* value: {area_m2, node} — one break at a time, the gates' own shape */
         eng.brk = BK.createBreak({ area_m2: value.area_m2, cd: 1.0,
@@ -301,6 +333,13 @@
   function stepInner(eng, dt) {
     var sys = eng.sys;
 
+    /* THE TWO BUSES (#507 wave 4), derived before any consumer — each motor load below asks
+     * its own bus by name, the old engine's ac_available idiom. The board and instruments
+     * ride the battery inverters and are never gated (WTSM 5.7.5), and the TDAFW pump is
+     * steam-driven — the sourced SBO survivor, DO NOT gate it. */
+    var acAvail = !eng.elec.blackout;                       /* vital (diesel-backed) buses */
+    var offsiteOk = eng.elec.offsite && !eng.elec.blackout; /* nonvital buses */
+
     /* rods: slew toward target; a scram overrides the slew. TWO BANKS since #506.3 —
      * both insert on a trip, shutdown slightly faster (the pwr1 2.5/2.0 pair). */
     if (eng._scramT !== null) {
@@ -356,7 +395,9 @@
 
     var cr = CD.stepCondenser(eng.cd, dt, {
       duty_kW: steam * (W.h_g(eng.sg.P) - G.SG.h_feed) * (1 - TB.etaCycle()),
-      cw_pumps_running: eng.cwPumps
+      /* CW pumps are NONVITAL loads (#507 wave 4) — the selector stays where the operator
+       * put it; the bus takes the power (the #200 split, delivered vs demanded) */
+      cw_pumps_running: eng.cwPumps && offsiteOk
     });
     eng._cdAvail = cr.available;
     var dcr = DC.stepDumpCtl(eng.dc, dt, Object.assign({
@@ -387,7 +428,10 @@
       sg_level_pct: rdF.sg_level,
       steam_flow_frac: rdF.steam_flow !== undefined ? rdF.steam_flow : out / eng.rated_steam,
       fw_flow_frac: rdF.fw_flow !== undefined ? rdF.fw_flow : eng.fw.feed_frac,
-      si_active: eng.pt.si
+      si_active: eng.pt.si,
+      /* main feed pumps are NONVITAL loads (#507 wave 4) — capacity dies with the grid,
+       * the pump selectors stay where the operator left them */
+      power_ok: offsiteOk
     });
     /* [sourced ch10]: "If both main feedwater pumps fail, the turbine will be tripped" —
      * level, not edge, same as the reactor-trip→turbine wiring; P-9 then decides whether
@@ -397,14 +441,19 @@
      * second, COLD feed stream (stepAFW reads only its own state, so the hoist is free).
      * AFW is additive on top of main feed — the "merge, do not displace" rule the module's
      * own header requires of its caller. */
-    var awr = AW.stepAFW(eng.aw, dt);
+    /* the MDAFW pump is a VITAL load — it lives through a plain LOOP (diesels) and dies in
+     * a blackout; the TDAFW pump is steam-driven and NEVER gated (WTSM 5.7.5) */
+    var awr = AW.stepAFW(eng.aw, dt, { mdafw_power_ok: acAvail });
     var sr = G.stepSG(eng.sg, tavg, dt, { feed: fwr.feed_frac * eng.rated_steam, steam: out,
                                           afw_kgs: awr.total_kgs, afw_h: awr.h_kJkg });
     var tr = TB.stepTurbine(eng.tb, dt, { steam_kgs: steam, P_mpa: sr.P_sec,
                                           h_feed: G.SG.h_feed });
 
-    var cvr = CV.stepCVCS(eng.cv, sys, dt);
-    var ecr = EC.stepECCS(eng.ec, sys, dt);
+    /* charging and the SI pumps are VITAL loads — diesel-carried through a LOOP, dead in a
+     * blackout (WTSM 5.7.5's "all decay heat removal systems ... also fail"); the avail
+     * fractions inside each module stay FAILURE seats, a different question than power */
+    var cvr = CV.stepCVCS(eng.cv, sys, dt, { ac_available: acAvail });
+    var ecr = EC.stepECCS(eng.ec, sys, dt, { ac_available: acAvail });
 
     var br = eng.brk ? BK.stepBreak(eng.brk, sys, dt, {}) : null;
 
@@ -446,7 +495,13 @@
       tavg_c: eng.ins.reading.tavg !== undefined ? eng.ins.reading.tavg : tavg,
       indicated_pressure_mpa: eng.ins.reading.primary_pressure,
       indicated_level_pct: eng.ins.reading.pzr_level,
-      si_active: eng.pt.si
+      si_active: eng.pt.si,
+      /* the heater banks are VITAL loads with their own NUREG-0737 shed — the module has
+       * consumed ac_available since it was built; the facade finally supplies it (#507
+       * wave 4: it was documented, read, and never passed — a wire that was dark).
+       * offsite_ok arms the module's shed LATCH on a plain LOOP. */
+      ac_available: acAvail,
+      offsite_ok: offsiteOk
     }, eng.pzDrivers));
     eng._pzRelief = pzr.relief_kgs;
     eng._pzReliefH = pzr.relief_h;
@@ -484,6 +539,9 @@
       /* [sourced ch10] the loss-of-both-feed-pumps MDAFW start's input — a STATE signal
        * (breaker positions), the turbine_tripped convention, not an analog channel */
       main_feed_lost: fwr.main_feed_lost,
+      /* [sourced ch10] the loss-of-offsite-power AFW start's input — the same state-signal
+       * class (#507 wave 4; the deferred start pwr2_protection.js recorded is now built) */
+      loss_of_offsite: !offsiteOk,
       /* the delta-T pair's inputs: loop delta-T normalized to full-power delta-T, and Tavg.
        * DT0_C is [derived]: the plant's own measured full-power split at the design point
        * (606/550 degF, PWR2_VALIDATION.md sec 43) — 31.1 degC. Protection converts to the
@@ -539,7 +597,10 @@
       turbine_tripped: eng.tb.tripped,
       condenser_available: eng._cdAvail === true,
       pump_running: !eng.sys.pumpTripped,
-      tavg_rate_c_per_hr: eng._tavgRate
+      tavg_rate_c_per_hr: eng._tavgRate,
+      /* the electrical truth — LIVE fields since #507 wave 4 (the registered static retired) */
+      ac_available: acAvail,
+      station_blackout: eng.elec.blackout
     });
     /* facade extras a page needs and the contract does not carry */
     ts.sim_time_s = eng.simTime;

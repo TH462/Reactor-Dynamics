@@ -38,7 +38,7 @@ function loadAll(engSource, coreSource) {
 /* runSuite(RD, rec, quiet, only) — `only` scopes a MUTATION REPLAY to the section group that
  * can see that mutation: 'A' equivalence/door/pushbutton (one engine chain), 'B' the
  * P-9/lying-channel family (eng4-6), 'C' the runback (eng7), 'D' the break + drain (eng2-3),
- * 'E' the AFW starts, 'F' the feed train.
+ * 'E' the AFW starts, 'F' the feed train, 'G' the electrical pair (#507 wave 4).
  * The CLEAN pass runs everything. Measured before this existed: 17 mutations x the whole
  * suite = 1074 s of contention in the aggregate gate — the replay cost scales with every
  * fixture ever added, and a mutation only needs the checks built to see it. */
@@ -711,6 +711,96 @@ function runSuite(RD, rec, quiet, only) {
       'max true-minus-indicated ' + maxGap.toFixed(1) + ' points in the first 10 s — A9\'s ' +
       'effect reproduced on PWR2\'s own channel');
   }
+
+  if (grp('G')) {
+  /* ---- 6. THE ELECTRICAL PAIR (#507 wave 4) — every wire its own probe (the 2026-08-21
+   * lesson: fix the defect, and give each orphaned wire a probe of its own). Measured
+   * fixture values 2026-08-22: LOOP at 120 s reads afw_flow_normalized 1.000 (both pumps),
+   * SBO reads 0.667 — exactly the TDAFW-only fraction, which makes the ratio itself the
+   * MDAFW power wire's gauge. ---- */
+  head('THE ELECTRICAL PAIR  [LOOP: nonvital dead, vital alive; SBO: the TDAFW carries it]');
+  var engL = EN.createEngine({});
+  run(engL, quiet ? 20 : 30);
+  EN.command(engL, 'offsite_power', false);
+  var tsL = run(engL, 120);
+  ckT('a LOOP kills every NONVITAL load with its selectors standing: RCPs tripped, feed 0 ' +
+      'with both pumps selected, condenser lost — and ac_available stays TRUE (diesels)',
+      engL.sys.pumpTripped === true && engL.fw.feed_frac < 0.01 &&
+      engL.fw.pumpA === true && engL.fw.pumpB === true &&
+      engL._cdAvail === false && tsL.ac_available === true && tsL.station_blackout === false,
+      'feed ' + engL.fw.feed_frac.toFixed(4) + ', cd ' + engL._cdAvail);
+  ckT('...starts BOTH AFW pumps on the sourced ch10 condition, delivering rated flow — and ' +
+      'the MDAFW cause is loss_of_main_feed (the same-step race: the dead feed train reports ' +
+      'first, which is ALSO the feed grid wire\'s own gauge)',
+      engL.pt.afas_tdafw === true && engL.pt.afas_tdafw_cause === 'loss_of_offsite_power' &&
+      engL.pt.afas_mdafw_cause === 'loss_of_main_feed' &&
+      engL.aw.mdafwRunning === true && tsL.afw_flow_normalized > 0.99,
+      'td cause ' + engL.pt.afas_tdafw_cause + ', md cause ' + engL.pt.afas_mdafw_cause +
+      ', afw ' + tsL.afw_flow_normalized.toFixed(3));
+  ckT('...and SHEDS the heaters on the NUREG-0737 latch, vital bus notwithstanding',
+      engL.pz.shedLatch === true && (engL._pzr.heater_kW || 0) === 0, '');
+  /* the operator re-loads the heaters DURING the LOOP: the vital bus carries them — this
+   * pair (with the SBO twin below) is the ac_available wire's own gauge */
+  EN.command(engL, 'pzr_heaters_manual', 1.0);
+  var tsLh = run(engL, 5);
+  ckT('the heater re-load during a LOOP delivers real watts — the vital bus is ALIVE',
+      engL.pz.shedLatch === false && engL._pzr.heater_kW > 100,
+      engL._pzr.heater_kW.toFixed(0) + ' kW on manual full');
+  /* the charging pump through the facade wire, demand forced non-zero (the PLCS wants 0
+   * here — level sits above the post-trip program, measured 40 % vs 25 — so the demand is
+   * taken manual to make the probe non-vacuous) */
+  engL._plcsAuto = false; engL.cv.chargingDemand = 1.0;
+  var tsLc = run(engL, 2);
+  ckT('...and full manual charging DELIVERS during the LOOP (vital bus, ~1.8 kg/s)',
+      engL.cv.chargingDemand === 1.0 && tsLc.charging_flow_actual > 3e-5,
+      'charging ' + tsLc.charging_flow_actual.toExponential(2) + ' frac/s');
+
+  var engS = EN.createEngine({});
+  run(engS, quiet ? 20 : 30);
+  EN.command(engS, 'station_blackout', true);
+  var tsS = run(engS, 120);
+  ckT('an SBO reads on the contract (ac_available false, station_blackout true) and the ' +
+      'demanded MDAFW delivers NOTHING while the steam-driven TDAFW carries the plant',
+      tsS.ac_available === false && tsS.station_blackout === true &&
+      engS.aw.mdafwRunning === true && engS.aw.tdafwRunning === true &&
+      Math.abs(tsS.afw_flow_normalized - 2 / 3) < 0.01,
+      'afw ' + tsS.afw_flow_normalized.toFixed(3) + ' = the TDAFW-only fraction');
+  EN.command(engS, 'pzr_heaters_manual', 1.0);
+  engS._plcsAuto = false; engS.cv.chargingDemand = 1.0;
+  var tsSh = run(engS, 5);
+  ckT('the SAME re-load and charging lineup under SBO delivers zero — the vital bus is DEAD',
+      engS.pz.shedLatch === false && (engS._pzr.heater_kW || 0) === 0 &&
+      engS.cv.chargingDemand === 1.0 && tsSh.charging_flow_actual === 0,
+      'heaters 0 kW, charging 0 at full manual demand');
+  EN.command(engS, 'station_blackout', false);
+  var tsSr = run(engS, 5);
+  ckT('clearing the SBO restores both buses: heaters live (latch was re-loaded), charging ' +
+      'delivers at the standing demand, RCPs stay tripped',
+      tsSr.ac_available === true && engS._pzr.heater_kW > 100 &&
+      tsSr.charging_flow_actual > 3e-5 && engS.sys.pumpTripped === true, '');
+
+  /* SI under blackout, on a plant whose pressure would otherwise take injection: the ECCS
+   * wire's own probe — the module gate proves the module, THIS proves the facade passes it */
+  var engB = EN.createEngine({});
+  run(engB, quiet ? 20 : 30);
+  EN.command(engB, 'break_open', { area_m2: 0.002, node: 'cold_leg' });
+  var tsB = null, tSI = null;
+  for (var kb = 0; kb < 240 / DT; kb++) {
+    tsB = EN.step(engB, DT);
+    if (tSI === null && tsB.hpi_flow_normalized > 0.05) { tSI = (kb + 1) * DT; break; }
+  }
+  ckT('fixture: the 20 cm2 break brings SI flow on its own', tSI !== null,
+      tSI !== null ? ('flowing at t=' + tSI.toFixed(1) + ' s') : 'no SI flow in 240 s');
+  EN.command(engB, 'station_blackout', true);
+  var tsB2 = run(engB, 2);
+  ckT('a station blackout STOPS the safety injection mid-LOCA (the facade\'s ECCS wire)',
+      tsB2.hpi_flow_normalized === 0 && engB.ec.hhsiRunning === true,
+      'flow 0 with the run flag standing');
+  EN.command(engB, 'station_blackout', false);
+  var tsB3 = run(engB, 2);
+  ckT('...and restoring the buses resumes it at the standing lineup',
+      tsB3.hpi_flow_normalized > 0.05, 'flow ' + tsB3.hpi_flow_normalized.toFixed(2));
+  }
 }
 
 console.log('\nPWR2 -- THE ENGINE FACADE: one door, the gates\' wiring written once');
@@ -811,13 +901,36 @@ var MUTATIONS = [
   ['the fwi latch is never consumed (hi-hi reports into a void)',
    '    if (ptr.fwi) { eng.fw.isolated = true; eng.tb.tripped = true; }',
    '', { grp: 'F' }],
+  /* anchor re-pointed #507 wave 4: the drivers object grew power_ok after si_active */
   ['the SI wire to the feed module is cut (no isolation ever arrives)',
-   '      si_active: eng.pt.si\n    });\n    /* [sourced ch10]: "If both main feedwater pumps fail, the turbine will be tripped" —',
-   '      si_active: false\n    });\n    /* [sourced ch10]: "If both main feedwater pumps fail, the turbine will be tripped" —',
+   '      si_active: eng.pt.si,\n      /* main feed pumps are NONVITAL loads',
+   '      si_active: false,\n      /* main feed pumps are NONVITAL loads',
    { grp: 'E' }],
   ['the shrink/swell shift is dropped from the internal channel',
    "    IN.stepInstruments(eng.ins, dt, ts, { shift: { sg_level: 0.8 * (eng._pwrRate || 0) } });",
-   '    IN.stepInstruments(eng.ins, dt, ts);', { grp: 'F' }]
+   '    IN.stepInstruments(eng.ins, dt, ts);', { grp: 'F' }],
+  /* THE ELECTRICAL PAIR (#507 wave 4) — one mutation per wire */
+  ['the AFAS LOOP-start driver is cut (the sourced ch10 start never fires)',
+   '      loss_of_offsite: !offsiteOk,',
+   '      loss_of_offsite: false,', { grp: 'G' }],
+  ['the feed train\'s grid wire is cut (blacked-out feed pumps keep feeding)',
+   '      power_ok: offsiteOk\n    });',
+   '      power_ok: true\n    });', { grp: 'G' }],
+  ['the condenser\'s grid wire is cut (CW pumps spin with no electricity)',
+   '      cw_pumps_running: eng.cwPumps && offsiteOk',
+   '      cw_pumps_running: eng.cwPumps', { grp: 'G' }],
+  ['the CVCS and ECCS vital-bus wires are cut (charging and SI survive the blackout)',
+   "    var cvr = CV.stepCVCS(eng.cv, sys, dt, { ac_available: acAvail });\n    var ecr = EC.stepECCS(eng.ec, sys, dt, { ac_available: acAvail });",
+   '    var cvr = CV.stepCVCS(eng.cv, sys, dt);\n    var ecr = EC.stepECCS(eng.ec, sys, dt);', { grp: 'G' }],
+  ['the pressurizer\'s electrical drivers are cut (the wire that was dark before wave 4)',
+   '      ac_available: acAvail,\n      offsite_ok: offsiteOk\n    }, eng.pzDrivers));',
+   '    }, eng.pzDrivers));', { grp: 'G' }],
+  ['the MDAFW power wire is cut (a blacked-out motor pump keeps pumping)',
+   "    var awr = AW.stepAFW(eng.aw, dt, { mdafw_power_ok: acAvail });",
+   '    var awr = AW.stepAFW(eng.aw, dt, {});', { grp: 'G' }],
+  /* NO blackout-forgets-offsite mutation: `offsiteOk = offsite && !blackout` already makes
+   * that write redundant, so the mutation could never red — the hollow-mutation trap the
+   * house rule forbids. The write stays in the command as documented intent. */
 ];
 var CORESRC = fs.readFileSync(path.join(SRC, 'pwr2_core.js'), 'utf8').replace(/\r\n/g, '\n');
 

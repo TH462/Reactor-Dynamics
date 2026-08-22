@@ -244,6 +244,11 @@
       else throw new Error('pwr2_shell: set_rcp restart REFUSED — no RCP restart is modeled ' +
         '(the pump trips one way; see pwr2_sources)');
     },
+    /* the old effect name for a station blackout — REHOMED onto the real electrical state
+     * (#507 wave 4); false is the old engine's recovery case */
+    full_blackout:    function (e, c) {
+      EN.command(e, 'station_blackout', c === false || c === 0 ? false : true);
+    },
     /* the old command toggled a discrete pump; PWR2's actuator is charging DEMAND — OFF is
      * demand 0 in manual, ON restores nothing by itself (dial a flow or re-select AUTO).
      * The shell latches the selection so the AUTO/MAN/OFF lamps can read it (#506.1). */
@@ -271,9 +276,16 @@
       /* #507 wave 3 — the rows PWR2's existing machinery honestly injects */
       else if (c.failure_id === 'sg_overfeed') MAPPED.sg_overfeed(e, c);
       else if (c.failure_id === 'loss_of_offsite_power') {
-        /* HONEST-DEGRADED, declared: no AC/diesel model yet (#507) — the effect carried is
-         * the RCP coastdown, which is the dominant primary-side consequence */
-        EN.command(e, 'pump_trip', true);
+        /* the REAL sourced LOOP since #507 wave 4 *(OWNER RULING, 2026-08-22: "Full LOOP +
+         * clear" — selected from options I wrote)*: nonvital buses die (RCPs, main feed,
+         * condensate/CW), the diesels carry the vital loads, the AFW pumps auto-start
+         * (ch10), and the row is clearable — the grid coming back. RCPs stay tripped. */
+        EN.command(e, 'offsite_power', false);
+      }
+      else if (c.failure_id === 'station_blackout') {
+        /* the LOOP the diesels did not answer (WTSM 5.7.5) — everything above plus the
+         * vital loads; the steam-driven TDAFW pump is the sourced survivor */
+        EN.command(e, 'station_blackout', true);
       }
       else if (c.failure_id === 'loss_of_condenser_vacuum') EN.command(e, 'cw_pumps', false);
       else if (c.failure_id === 'degraded_hpi') {
@@ -305,9 +317,11 @@
       else if (c.failure_id === 'sg_overfeed') EN.command(e, 'feed_auto', true);
       else if (c.failure_id === 'loss_of_condenser_vacuum') EN.command(e, 'cw_pumps', true);
       else if (c.failure_id === 'degraded_hpi') e.ec.avail = 1;
-      /* loss_of_offsite_power: clearing does NOT restart the RCP — no restart is modeled
-       * (the pump trips one way, the declared set_rcp shape); the row's clear is the
-       * grid coming back, which this plant cannot yet express. DECLARED. */
+      /* the grid comes back (#507 wave 4). The buses re-energize; the RCPs stay tripped
+       * (no restart is modeled, the declared set_rcp shape) and every selector sits where
+       * the operator left it — recovery gives the plant back, it does not re-line it up. */
+      else if (c.failure_id === 'loss_of_offsite_power') EN.command(e, 'offsite_power', true);
+      else if (c.failure_id === 'station_blackout') EN.command(e, 'station_blackout', false);
       /* clearing an unknown failure is a no-op: there is nothing to clear */
     }
   };
@@ -335,7 +349,6 @@
     close_accumulator_valve: 'accumulators are a declared omission',
     set_afw_block:    'no AFW block lever (registered static afw_blocked:false)',
     block_afw:        'no AFW block lever (registered static afw_blocked:false)',
-    full_blackout:    'no electrical model (registered static ac_available:true)',
     degrade_hpi:      'no HPI degradation lever yet',
     failed_pzr_heaters: 'no heater failure lever yet (the shed logic is real; a failure is not)',
     failure_to_scram: 'no ATWS lever yet — the RPS cannot be failed',
@@ -479,11 +492,13 @@
           /* the menu = the defs the class can honestly HOST from the pwr table (there is
            * no 'primary_leak' def — the leak arrives as a command, not a menu row).
            * #507 wave 3 grew it by the rows EXISTING machinery injects: the break family
-           * (large_loca, rcp_seal_leak), the feed/condenser/ECCS doors, the RCP coastdown
-           * (loss_of_offsite_power, HONEST-DEGRADED — no AC model), and the two stuck-level
-           * instrument rows (both instrument layers, see the applyCommand mirror). */
+           * (large_loca, rcp_seal_leak), the feed/condenser/ECCS doors, and the two
+           * stuck-level instrument rows (both instrument layers, see the applyCommand
+           * mirror). Wave 4 made loss_of_offsite_power the REAL sourced LOOP and added
+           * station_blackout — the two-bus electrical model. */
           var keep = ['stuck_porv_open', 'rcp_trip', 'turbine_trip', 'loss_of_feedwater',
-                      'sg_overfeed', 'loss_of_offsite_power', 'loss_of_condenser_vacuum',
+                      'sg_overfeed', 'loss_of_offsite_power', 'station_blackout',
+                      'loss_of_condenser_vacuum',
                       'degraded_hpi', 'large_loca', 'rcp_seal_leak',
                       'pzr_level_sensor_stuck', 'pzr_level_sensor_low'], out = {};
           keep.forEach(function (id) {
@@ -506,6 +521,10 @@
     if (!this.eng.fw.pumpA && !this.eng.fw.pumpB) out.push('loss_of_feedwater');
     if (!this.eng.cwPumps) out.push('loss_of_condenser_vacuum');
     if (this.eng.ec.avail < 1) out.push('degraded_hpi');
+    /* the electrical pair (#507 wave 4) — a blackout REPLACES the LOOP row rather than
+     * stacking with it (it IS a LOOP plus dead diesels; one row, the worse one) */
+    if (this.eng.elec.blackout) out.push('station_blackout');
+    else if (!this.eng.elec.offsite) out.push('loss_of_offsite_power');
     var f = this.eng.ins.failure;
     Object.keys(f).forEach(function (id) { if (f[id]) out.push('instrument:' + id); });
     return out;
@@ -712,6 +731,9 @@
         _pwrRate: e._pwrRate, _prevPower: e._prevPower,
         _tavgPrev: e._tavgPrev, _tavgRate: e._tavgRate, advDemand: e.advDemand,
         advBlock: e.advBlock, cwPumps: e.cwPumps,
+        /* the electrical state (#507 wave 4) — an old save without it lands on the
+         * constructor's healthy grid, which is the pre-wave-4 plant exactly */
+        elec: e.elec,
         pzDrivers: e.pzDrivers, dcDrivers: e.dcDrivers
       }
     };

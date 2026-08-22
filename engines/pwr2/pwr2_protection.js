@@ -157,9 +157,13 @@
    * positions — the turbine_tripped convention); the same source sentence's "the turbine
    * will be tripped" is the CALLER's half, wired in the facade.
    *
-   * NOT BUILT, its sourced condition recorded for the work order that owns it:
-   *   - "All three preferred auxiliary feedwater pumps will start on loss of offsite power"
-   *     (ch10) — no electrical model; the same gap that keeps station_blackout declared-missing.
+   * THE LOSS-OF-OFFSITE-POWER START — BUILT with the electrical model (#507 wave 4): "All
+   * three preferred auxiliary feedwater pumps will start on loss of offsite power" (ch10).
+   * Input is drivers.loss_of_offsite, a STATE signal (bus deadness — the main_feed_lost
+   * convention); this plant's one-of-each lineup collapses "all three" to both pumps. The
+   * start latches whether or not the MDAFW pump's bus can then turn it — in a blackout the
+   * latched demand meets mdafw_power_ok false in pwr2_afw and delivers nothing, which is
+   * the #200 running-with-no-flow split doing its job, not a contradiction.
    */
   var SGLL = {
     kind: '[sourced]',
@@ -538,6 +542,16 @@
      * A state signal, no delay row — the source gives none and breakers are not analog. */
     if (drivers.main_feed_lost && !pr.afas_mdafw) {
       pr.afas_mdafw = true; pr.afas_mdafw_cause = 'loss_of_main_feed';
+    }
+    /* [sourced ch10, the SGLL block]: "All three preferred auxiliary feedwater pumps will
+     * start on loss of offsite power" — BOTH pumps on this plant's one-of-each lineup
+     * (#507 wave 4). Same state-signal law; evaluated after the level/SI starts so a
+     * simultaneous arrival records the credited cause first. */
+    if (drivers.loss_of_offsite && !pr.afas_mdafw) {
+      pr.afas_mdafw = true; pr.afas_mdafw_cause = 'loss_of_offsite_power';
+    }
+    if (drivers.loss_of_offsite && !pr.afas_tdafw) {
+      pr.afas_tdafw = true; pr.afas_tdafw_cause = 'loss_of_offsite_power';
     }
 
     /* FEEDWATER ISOLATION on high-high level [sourced -- the SGLL block]. Same latch law.

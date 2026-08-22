@@ -274,6 +274,16 @@ function runSuite(P, rec, quiet) {
       rMF.afas_mdafw === true && rMF.afas_mdafw_cause === 'loss_of_main_feed' &&
       rMF.afas_tdafw === false,
       'a state signal — no analog channel, no hold time');
+  /* LOSS OF OFFSITE POWER [sourced ch10: "All three preferred auxiliary feedwater pumps will
+   * start on loss of offsite power"] — BOTH pumps on this plant's one-of-each lineup (#507
+   * wave 4). Isolated from the main-feed path so a cross-wire cannot pass on its neighbour. */
+  var prLO = atPower();
+  var sLO = healthy(); sLO.loss_of_offsite = true;
+  var rLO = P.stepProtection(prLO, DT, sLO);
+  ckT('loss of offsite power starts BOTH AFW pumps (cause \'loss_of_offsite_power\')',
+      rLO.afas_mdafw === true && rLO.afas_mdafw_cause === 'loss_of_offsite_power' &&
+      rLO.afas_tdafw === true && rLO.afas_tdafw_cause === 'loss_of_offsite_power',
+      'md cause=' + rLO.afas_mdafw_cause + ' td cause=' + rLO.afas_tdafw_cause);
 
   /* ---- HIGH-HIGH LEVEL -> FEEDWATER ISOLATION (kind \'fwi\' — its own latch) ------------- */
   head('THE HIGH-HIGH  [P-14 class: not a reactor trip, not SI — the fwi latch]');
@@ -736,6 +746,12 @@ var MUTATIONS = [
    ''],
   ['reset leaves the AFW-start latches standing',
    '    pr.afas_mdafw = false; pr.afas_tdafw = false;', ''],
+  ['the loss-of-offsite-power start is dropped (the sourced LOOP start, #507 wave 4)',
+   '    if (drivers.loss_of_offsite && !pr.afas_mdafw) {\n      pr.afas_mdafw = true; pr.afas_mdafw_cause = \'loss_of_offsite_power\';\n    }',
+   ''],
+  ['the LOOP start reaches only ONE pump (the source says all preferred pumps)',
+   '    if (drivers.loss_of_offsite && !pr.afas_tdafw) {\n      pr.afas_tdafw = true; pr.afas_tdafw_cause = \'loss_of_offsite_power\';\n    }',
+   ''],
   /* THE FEED-TRAIN FUNCTIONS (2026-08-21) */
   ['the hi-hi setpoint moved off the adopted 90 %',
    '    hi_hi_frac: 0.90,', '    hi_hi_frac: 0.99,'],

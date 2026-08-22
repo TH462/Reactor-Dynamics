@@ -215,6 +215,15 @@ function runSuite(C, rec, quiet) {
   ckT('negative availability is floored rather than trusted',
       C.stepECCS(C.createECCS({ hhsiRunning: true, hhsiAvail: -2 }), plant(1.0), 0.02).hhsi_kgs === 0,
       'a negative availability would otherwise SUCK inventory out of the vessel');
+
+  /* ---- THE VITAL BUS (#507 wave 4): the SI pumps die in a station blackout ---- */
+  var rSbo = C.stepECCS(C.createECCS({ hhsiRunning: true, lhsiRunning: true }), plant(1.0), 0.02,
+                        { ac_available: false });
+  ckT('a dead vital bus stops BOTH SI trains at a pressure they would otherwise pump into',
+      rSbo.hhsi_kgs === 0 && rSbo.lhsi_kgs === 0,
+      'run flags stand (the #200 split); the avail fractions stay separate FAILURE seats');
+  ckT('absent drivers mean POWERED -- every fixture above holds (acAvailable convention)',
+      C.stepECCS(C.createECCS({ hhsiRunning: true }), plant(1.0), 0.02).hhsi_kgs > 0, '');
 }
 
 console.log('\nPWR2 Layer 5 -- ECCS: sourced injection curves');
@@ -223,6 +232,9 @@ runSuite(C, rec, false);
 var pass = rec.filter(function (r) { return r.ok; }).length, fail = rec.length - pass;
 
 var MUTATIONS = [
+  ['the SI power gate is severed (a blacked-out pump keeps injecting) -- #507 wave 4',
+   'var powered = !drivers || drivers.ac_available !== false;',
+   'var powered = true;'],
   /* THE SHUTOFF IS THE FALLTHROUGH, and it must be mutable on ONE line so an autocrlf checkout
    * cannot silently stop the anchor matching -- the trap CLAUDE.md records against multi-line
    * anchors, and one this file tripped while being written. */

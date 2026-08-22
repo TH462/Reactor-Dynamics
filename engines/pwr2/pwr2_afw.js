@@ -86,15 +86,23 @@
     };
   }
 
-  /* stepAFW(af, dt) -> {mdafw_kgs, tdafw_kgs, total_kgs, mdafw_running, tdafw_running,
+  /* stepAFW(af, dt, drivers) -> {mdafw_kgs, tdafw_kgs, total_kgs, mdafw_running, tdafw_running,
    *                     h_kJkg, delivered_kg, afw_flow_normalized}
    *
    * Returns a plain kg/s and enthalpy rather than a Layer 3 `sources` entry -- AFW feeds the
    * SECONDARY, and pwr2_sg.js's `drivers.feed` already takes exactly this shape (kg/s). A caller
    * adds this to whatever main feedwater is still running rather than replacing it, the same
-   * "merge, do not displace" rule pwr2_sources.js's `heats` map follows for RHR. */
-  function stepAFW(af, dt) {
-    var md = af.mdafwRunning ? mdafwRatedKgs() * Math.max(0, af.mdafwAvail) : 0;
+   * "merge, do not displace" rule pwr2_sources.js's `heats` map follows for RHR.
+   *
+   * drivers.mdafw_power_ok (#507 wave 4): the MOTOR-driven pump is a vital load -- it rides
+   * the diesels through a LOOP and dies in a station blackout. Absent means powered. The
+   * TURBINE-driven pump is steam-driven and takes NO power driver -- WTSM 5.7.5's "all decay
+   * heat removal systems, except the turbine-driven AFW pump, also fail" is the sourced
+   * DO-NOT-GATE note this signature enforces by not having a td_power_ok at all. An unpowered
+   * demanded pump is RUNNING with no flow (#200 split), never SECURED. */
+  function stepAFW(af, dt, drivers) {
+    var mdPowered = !drivers || drivers.mdafw_power_ok !== false;
+    var md = (af.mdafwRunning && mdPowered) ? mdafwRatedKgs() * Math.max(0, af.mdafwAvail) : 0;
     var td = af.tdafwRunning ? tdafwRatedKgs() * Math.max(0, af.tdafwAvail) : 0;
     var total = md + td;
     af.delivered_kg += total * dt;

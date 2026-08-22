@@ -612,9 +612,12 @@ var MUTATIONS = [
    * nothing while looking like coverage, which is the thing this file's own header warns
    * about. Its intent is carried by the two scram mutations above, which fabricate at the
    * real assignment site instead. */
+  /* RETARGETED #507 wave 4: this mutation pinned the 'electrical' declareStatic, which
+   * retired when ac_available/station_blackout went live — the same thin-reason class now
+   * rides the surviving MSIV static. */
   ['a STATIC loses its reason (the registry stops saying why a constant is honest)',
-   "  declareStatic('electrical', 'no electrical model — AC is genuinely always available here',",
-   "  declareStatic('electrical', 'x',"],
+   "  declareStatic('steam lines', 'no MSIV model — the line is genuinely always open',",
+   "  declareStatic('steam lines', 'x',"],
   /* RETARGETED 2026-08-18: this mutation used to blank the "#472 owns it" lane attribution,
    * whose anchor text left with the old declared-missing block when pwr2_pressurizer.js landed.
    * The same failure class now lives in the SUPPLIED side: a level published as a constant

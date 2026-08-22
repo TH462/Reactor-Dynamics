@@ -154,14 +154,16 @@ function runSuite(SH, rec, quiet) {
      pc.channels[0] === globalThis.RD.PWR_CONFIG.protection.channels.filter(function (ch) { return ch.id === 'boron_conc'; })[0] &&
      pc.interlocks.length === 0 && pc.runbacks.length === 0 &&
      alarmsOk &&
-     Object.keys(pc.failures).length === 12 &&
+     Object.keys(pc.failures).length === 13 &&
      !!pc.failures.stuck_porv_open && !!pc.failures.rcp_trip && !!pc.failures.turbine_trip &&
      !!pc.failures.loss_of_feedwater &&
      /* #507 wave 3 — the rows existing machinery honestly injects */
      !!pc.failures.sg_overfeed && !!pc.failures.loss_of_offsite_power &&
      !!pc.failures.loss_of_condenser_vacuum && !!pc.failures.degraded_hpi &&
      !!pc.failures.large_loca && !!pc.failures.rcp_seal_leak &&
-     !!pc.failures.pzr_level_sensor_stuck && !!pc.failures.pzr_level_sensor_low,
+     !!pc.failures.pzr_level_sensor_stuck && !!pc.failures.pzr_level_sensor_low &&
+     /* #507 wave 4 — the electrical pair */
+     !!pc.failures.station_blackout,
      'M4 gets a shape it can hold; pzr_level_low 25 -> 17 (the sourced heater-cutoff level), ' +
      'every other alarm row shared by reference; boron_conc by reference from the pwr table');
   /* THE ONE ESF ENTRY (2026-08-20, the AFAS build). The board's AUX FEED word needs
@@ -283,6 +285,60 @@ function runSuite(SH, rec, quiet) {
        act.indexOf('degraded_hpi') !== -1 && act.indexOf('loss_of_condenser_vacuum') !== -1 &&
        act.indexOf('rcp_seal_leak') !== -1,
        'leak ' + leakRate.toFixed(2) + ' kg/s vs 1.85 max charging; active [' + act.join(',') + ']');
+  })();
+
+  /* ---- 1e. THE ELECTRICAL PAIR (#507 wave 4) ------------------------------------------------ */
+  head('THE ELECTRICAL PAIR  [LOOP kills the nonvital bus and clears; SBO kills the vital one too]');
+  (function () {
+    var e6 = new SH.PWR2Engine({});
+    for (var i = 0; i < 100; i++) e6.step(0.02);
+    e6.applyCommand({ action: 'inject_failure', failure_id: 'loss_of_offsite_power' });
+    /* 30 s: the feed module's 8 s pump lag must decay (measured 0.535 of rated at 5 s) */
+    for (i = 0; i < 1500; i++) e6.step(0.02);
+    var ts6 = e6.getTrueState(), act6 = e6.getActiveFailures();
+    var loopOk = ts6.ac_available === true && ts6.station_blackout === false &&
+                 e6.eng.sys.pumpTripped === true &&
+                 e6.eng.fw.pumpA === true && e6.eng.fw.feed_frac < 0.05 &&
+                 e6.eng._cdAvail === false &&
+                 e6.eng.pt.afas_tdafw === true &&
+                 act6.indexOf('loss_of_offsite_power') !== -1;
+    ck('a LOOP: RCP tripped, feed dead with its selectors ON, condenser lost, AFW started, ' +
+       'vital bus still up — and the row reports active',
+       loopOk, 'ac ' + ts6.ac_available + ', feed ' + e6.eng.fw.feed_frac.toFixed(3) +
+       ' (pumpA ' + e6.eng.fw.pumpA + '), afas_td cause ' + e6.eng.pt.afas_tdafw_cause);
+    ck('...and the heaters SHED on the LOOP (NUREG-0737 latch), with the vital bus alive',
+       e6.eng.pz.heatersShed === true && e6.eng.pz.shedLatch === true, '');
+    e6.applyCommand({ action: 'clear_failure', failure_id: 'loss_of_offsite_power' });
+    for (i = 0; i < 100; i++) e6.step(0.02);
+    var cleared = e6.getActiveFailures().indexOf('loss_of_offsite_power') === -1 &&
+                  e6.eng._cdAvail === true && e6.eng.sys.pumpTripped === true &&
+                  e6.eng.pz.heatersShed === true;
+    ck('the clear is the GRID: condenser back, RCPs stay tripped, the shed stays latched ' +
+       'until the operator touches the heater control',
+       cleared, '');
+    e6.applyCommand({ action: 'set_heater', auto: true });
+    e6.step(0.02);
+    ck('...and the heater command IS the re-load (the old set_heater convention)',
+       e6.eng.pz.shedLatch === false, '');
+
+    var e7 = new SH.PWR2Engine({});
+    for (i = 0; i < 100; i++) e7.step(0.02);
+    e7.applyCommand({ action: 'inject_failure', failure_id: 'station_blackout' });
+    for (i = 0; i < 1500; i++) e7.step(0.02);
+    var ts7 = e7.getTrueState(), act7 = e7.getActiveFailures();
+    var awr7 = globalThis.RD.pwr2.afw.stepAFW(e7.eng.aw, 0, { mdafw_power_ok: false });
+    ck('an SBO: ac_available false on the contract, heaters DEAD, the demanded MDAFW delivers ' +
+       'nothing while the steam-driven TDAFW carries the plant (WTSM 5.7.5)',
+       ts7.ac_available === false && ts7.station_blackout === true &&
+       (e7.eng._pzr.heater_kW || 0) === 0 &&
+       e7.eng.aw.mdafwRunning === true && awr7.mdafw_kgs === 0 && awr7.tdafw_kgs > 3 &&
+       act7.indexOf('station_blackout') !== -1,
+       'td ' + awr7.tdafw_kgs.toFixed(2) + ' kg/s; active [' + act7.join(',') + ']');
+    e7.applyCommand({ action: 'clear_failure', failure_id: 'station_blackout' });
+    e7.step(0.02); var ts7b = e7.getTrueState();
+    ck('clearing the SBO restores both buses on the contract (pumps stay where physics left them)',
+       ts7b.ac_available === true && ts7b.station_blackout === false &&
+       e7.eng.sys.pumpTripped === true, '');
   })();
 
   /* ---- 2. THE COMMAND PARTITION -------------------------------------------------------------- */
@@ -464,7 +520,10 @@ var MUTATIONS = [
    '          steps: ts.scrammed ? 0 : 200, max_steps: 200,\n          position_pct: ts.scrammed ? 0 : 100,'],
   ['the rcp pump record loses flow_pct again (the board animation computes NaN and freezes)',
    "      pumps: [{ id: 'rcp', running: !e.sys.pumpTripped,\n                flow_pct: ts.pump_flow_pct !== undefined ? ts.pump_flow_pct\n                          : (e.sys.pumpTripped ? 0 : 100) }]",
-   "      pumps: [{ id: 'rcp', running: !e.sys.pumpTripped }]"]
+   "      pumps: [{ id: 'rcp', running: !e.sys.pumpTripped }]"],
+  ['the LOOP row regresses to the wave-3 pump-trip-only shape (#507 wave 4)',
+   "        EN.command(e, 'offsite_power', false);",
+   "        EN.command(e, 'pump_trip', true);"]
 ];
 
 console.log('\ninjection self-test (' + MUTATIONS.length + ' mutations):');

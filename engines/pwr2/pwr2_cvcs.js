@@ -219,17 +219,24 @@
    * to stepPlant rather than unpacking it. Charging enters the COLD LEG and letdown leaves from it
    * -- both are cold-leg connections on a real plant, and putting them on the same node keeps this
    * layer from having an opinion about loop topology that Layer 3 already owns. */
-  function stepCVCS(cv, sys, dt) {
+  function stepCVCS(cv, sys, dt, drivers) {
     var node = null;
     for (var i = 0; i < sys.nodes.length; i++) if (sys.nodes[i].id === 'cold_leg') node = sys.nodes[i];
     var rho = node ? W.rho_from_h(node.h, sys.P) : 700;
 
+    /* THE VITAL BUS (#507 wave 4): the charging pump is a vital load — diesel-carried
+     * through a LOOP, dead in a station blackout (WTSM 5.7.5). Absent means powered (the
+     * acAvailable convention); the demand and lineup stay where the operator put them
+     * (#200), so restored power gives the pump back at its standing demand. Seal injection
+     * runs off the same pump suction and dies with it. Letdown is an orifice against system
+     * pressure, not a motor load — it keeps flowing while its valve is open, DECLARED. */
+    var powered = !drivers || drivers.ac_available !== false;
     var demand = cv.chargingDemand === null
       ? CVCS.charging_normal_gpm() / CVCS.charging_max_gpm()
       : Math.max(0, Math.min(1, cv.chargingDemand));
-    var charging = cv.isolated ? 0 : gpmToKgs(demand * CVCS.charging_max_gpm(), 1000);
+    var charging = (cv.isolated || !powered) ? 0 : gpmToKgs(demand * CVCS.charging_max_gpm(), 1000);
     /* SEAL INJECTION runs with the charging pumps and is not commanded. Only isolation stops it. */
-    var seal = cv.isolated ? 0 : gpmToKgs(sealInjectionGpm(), 1000);
+    var seal = (cv.isolated || !powered) ? 0 : gpmToKgs(sealInjectionGpm(), 1000);
 
     /* THE ORIFICE. Negative dP means the sink is above the plant -- letdown cannot run backwards
      * through it, so it stops rather than reversing sign under a square root. */

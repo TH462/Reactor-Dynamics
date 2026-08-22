@@ -463,9 +463,12 @@ var MUTATIONS = [
    'var rf = W.rho_from_h(1000, P), rg = W.rho_from_h(2800, P);\n    var Vl = (rf - rg) > 1e-9 ? (m - rg * V) / (rf - rg) : V;'],
   ['spray ignores the RCP (a stopped loop sprays anyway)',
    'if (SPRAY.needs_rcp && !(sys.mdot_loop > 100)) sprayFrac = 0;', ''],
+  /* re-anchored #507 wave 4: the shed became a LATCH (armed by SI/LOOP/dead-bus, cleared by
+   * the operator's heater command), so the SI term now lives in the ARMING signal — deleting
+   * it there means an SI plant never sheds, which must red the shed check */
   ['the SI heater shed is deleted (the #447 requirement, undone)',
-   'pz.heatersShed = !!drivers.si_active || drivers.ac_available === false || pz.emptied ||\n                     pz.lowLevelCut;',
-   'pz.heatersShed = drivers.ac_available === false || pz.emptied ||\n                     pz.lowLevelCut;'],
+   'var shedSig = !!drivers.si_active || drivers.ac_available === false ||\n                  drivers.offsite_ok === false;',
+   'var shedSig = drivers.ac_available === false ||\n                  drivers.offsite_ok === false;'],
   ['backup heaters clear at their own on-point (the sourced -17 hysteresis flattened)',
    'else if (err_psi >= CONTROL.backup_off_psi && !backupOnLevel) pz.backupOn = false;',
    'else if (err_psi >= CONTROL.backup_on_psi && !backupOnLevel) pz.backupOn = false;'],

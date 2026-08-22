@@ -115,10 +115,16 @@
    *   steam_flow_frac    steam flow / rated           (element 2)
    *   fw_flow_frac       feed flow / rated            (element 3)
    *   si_active          the LATCHED SI signal — drives isolation after the sourced delay
+   *   power_ok           the NONVITAL bus (#507 wave 4) — the main feed pumps are non-vital
+   *                      loads (they die with the grid, diesels or not); absent means
+   *                      powered, the acAvailable(s) convention. The selectors stay where
+   *                      the operator put them (#200), so capacity <= 0 reads as
+   *                      main_feed_lost and the sourced turbine-trip/MDAFW chain fires.
    */
   function stepFeedwater(fw, dt, drivers) {
     drivers = drivers || {};
-    var capacity = FW.pump_frac_each * ((fw.pumpA ? Math.max(0, fw.pumpAAvail) : 0) +
+    var capacity = drivers.power_ok === false ? 0 :
+                   FW.pump_frac_each * ((fw.pumpA ? Math.max(0, fw.pumpAAvail) : 0) +
                                         (fw.pumpB ? Math.max(0, fw.pumpBAvail) : 0));
 
     /* SI -> feedwater isolation, the sourced 32 s behind the LATCHED signal. Held-time, not

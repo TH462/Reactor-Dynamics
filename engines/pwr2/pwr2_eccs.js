@@ -155,12 +155,17 @@
     };
   }
 
-  /* stepECCS(ec, sys, dt) -> {hhsi_kgs, lhsi_kgs, total_kgs, sources, ...}
-   * `sources` is Layer 3's boundary-mass shape, so the caller hands it straight to stepPlant. */
-  function stepECCS(ec, sys, dt) {
+  /* stepECCS(ec, sys, dt, drivers) -> {hhsi_kgs, lhsi_kgs, total_kgs, sources, ...}
+   * `sources` is Layer 3's boundary-mass shape, so the caller hands it straight to stepPlant.
+   * drivers.ac_available (#507 wave 4): the SI pumps are VITAL loads — diesel-carried through
+   * a LOOP, dead in a station blackout (WTSM 5.7.5's "all decay heat removal systems ... also
+   * fail"). Absent means powered. The run flags and the avail FAILURE fractions stay separate
+   * seats: a failed train and an unpowered one are different facts with different recoveries. */
+  function stepECCS(ec, sys, dt, drivers) {
     var P = sys.P;
-    var hh = ec.hhsiRunning ? hhsiFlow(P) * Math.max(0, ec.hhsiAvail) : 0;
-    var lh = ec.lhsiRunning ? lhsiFlow(P) * Math.max(0, ec.lhsiAvail) : 0;
+    var powered = !drivers || drivers.ac_available !== false;
+    var hh = (ec.hhsiRunning && powered) ? hhsiFlow(P) * Math.max(0, ec.hhsiAvail) : 0;
+    var lh = (ec.lhsiRunning && powered) ? lhsiFlow(P) * Math.max(0, ec.lhsiAvail) : 0;
     var total = hh + lh;
     ec.injected_kg += total * dt;
 

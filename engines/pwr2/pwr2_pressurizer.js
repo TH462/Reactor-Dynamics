@@ -274,6 +274,11 @@
    *
    *   drivers.si_active        heater shed (sourced; #447's NUREG-0737 requirement)
    *   drivers.ac_available     false sheds heaters too (TS Bases: ESF buses)
+   *   drivers.offsite_ok       false = a LOOP (#507 wave 4) — arms the shed LATCH below even
+   *                            though the diesels keep the buses up: NUREG-0737 II.E.3.1's
+   *                            shed is a bus-loading action on SI-or-LOOP, and re-loading
+   *                            the heaters is the OPERATOR's (the old engine's set_heater
+   *                            convention — here, any pzr_heaters_manual command)
    *   drivers.heaters_manual   0..1 override — the operator's, not the controller's
    *   drivers.spray_manual     0..1 override
    *   drivers.setpoint_mpa     operator setpoint (clamped to the sourced span)
@@ -349,8 +354,21 @@
     else if (err_psi >= CONTROL.backup_off_psi && !backupOnLevel) pz.backupOn = false;
 
     /* Heater shed: SI / no AC (sourced), uncovered heaters (D2 §25.3's emptied regime), or
-     * the 17 % low-level cut (WTSM 10.3 — a heater in a steam environment is a damaged one). */
-    pz.heatersShed = !!drivers.si_active || drivers.ac_available === false || pz.emptied ||
+     * the 17 % low-level cut (WTSM 10.3 — a heater in a steam environment is a damaged one).
+     * THE LATCH (#507 wave 4, NUREG-0737 II.E.3.1 (7) + Ginna TS Bases B 3.4.9 — the old
+     * engine's rising-edge shape): an SI signal or a LOOP sheds the banks off the emergency
+     * buses, and the GRID coming back does not re-load them — an operator does, by touching
+     * the heater control (the caller clears pz.shedLatch on its heater command). Old saves
+     * carry no latch fields and land healthy-false, the pre-wave-4 plant exactly. */
+    var shedSig = !!drivers.si_active || drivers.ac_available === false ||
+                  drivers.offsite_ok === false;
+    if (shedSig && !pz._shedSigPrev) pz.shedLatch = true;
+    pz._shedSigPrev = shedSig;
+    /* the LATCH is the shed (the old engine's reading of the clarification: the source
+     * "explicitly contemplates loading the heaters while the SI signal still stands", so a
+     * standing signal does not re-shed past the operator's re-load). ac_available stays a
+     * DIRECT term — a dead bus is physics, not a loading choice. */
+    pz.heatersShed = !!pz.shedLatch || drivers.ac_available === false || pz.emptied ||
                      pz.lowLevelCut;
     var heatFrac = drivers.heaters_manual !== undefined ? clip(drivers.heaters_manual, 0, 1)
                                                         : prop;

@@ -76,6 +76,15 @@ function runSuite(F, rec, quiet) {
   ck('both pumps lost: capacity 0 and main_feed_lost REPORTS (the caller trips the turbine, ' +
      'the protection starts the MDAFW — HR5, reported here, acted on there)',
      rC.capacity_frac === 0 && rC.main_feed_lost === true, '');
+  /* THE NONVITAL BUS (#507 wave 4): the main feed pumps die with the grid, diesels or not */
+  var fwP = F.createFeedwater({});
+  var rP = F.stepFeedwater(fwP, DT, Object.assign(steady(), { power_ok: false }));
+  ck('a dead grid takes capacity to 0 and reports main_feed_lost — with BOTH selectors ' +
+     'still on (the #200 split: recovery re-energizes, never re-selects)',
+     rP.capacity_frac === 0 && rP.main_feed_lost === true &&
+     fwP.pumpA === true && fwP.pumpB === true, '');
+  ck('absent power_ok means POWERED — the acAvailable convention, every fixture above holds',
+     F.stepFeedwater(F.createFeedwater({}), DT, steady()).capacity_frac > 0, '');
 
   head('THE CONTROLLER  [three elements: flow error acts now, the lagged level trims later]');
   var fwS = F.createFeedwater({});
@@ -180,6 +189,9 @@ runSuite(F, rec, false);
 var pass = rec.filter(function (r) { return r.ok; }).length, fail = rec.length - pass;
 
 var MUTATIONS = [
+  ['the grid gate is severed (blacked-out feed pumps keep pumping) -- #507 wave 4',
+   'var capacity = drivers.power_ok === false ? 0 :',
+   'var capacity = false ? 0 :'],
   ['the per-pump 60 % moved off its sourced value',
    '    pump_frac_each: 0.60,', '    pump_frac_each: 0.30,'],
   ['the program moved off the ruled 65 %',

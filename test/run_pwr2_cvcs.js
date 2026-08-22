@@ -347,6 +347,17 @@ function runSuite(C, rec, quiet) {
       C.stepCVCS(C.createCVCS({ chargingDemand: 1, isolated: true }), plant(), 0.02)
         .charging_kgs === 0,
       'isolated with full demand delivers 0 kg/s -- the flag is not cosmetic');
+  /* THE VITAL BUS (#507 wave 4): the charging pump is a motor load and asks ac_available;
+   * letdown is an orifice against system pressure and keeps flowing -- DECLARED. */
+  var rSbo = C.stepCVCS(C.createCVCS({ chargingDemand: 1, letdownOpen: 1 }), plant(), 0.02,
+                        { ac_available: false });
+  ckT('a dead vital bus stops charging AND seal injection at full demand',
+      rSbo.charging_kgs === 0 && rSbo.seal_kgs === 0,
+      'demand stands (the #200 split) -- restored power gives the pump back');
+  ckT('...while LETDOWN keeps flowing (an orifice, not a motor load -- declared)',
+      rSbo.letdown_kgs > 0, rSbo.letdown_kgs.toFixed(3) + ' kg/s out with the bus dead');
+  ckT('absent drivers mean POWERED -- every fixture above holds (acAvailable convention)',
+      C.stepCVCS(C.createCVCS({ chargingDemand: 1 }), plant(), 0.02).charging_kgs > 0, '');
   ckT('omitting chargingDemand gives the SOURCED normal flow, not zero and not maximum',
       Math.abs(GPM(C.stepCVCS(C.createCVCS({}), plant(), 0.02).charging_kgs) -
                C.CVCS.charging_normal_gpm()) < 1e-6,
@@ -381,7 +392,11 @@ var MUTATIONS = [
    * pumps -- so the mutations are that it vanishes, that it gets scaled after all, and that
    * letdown stops carrying it. */
   ['seal injection dropped entirely (letdown then over-drains the plant)',
-   'var seal = cv.isolated ? 0 : gpmToKgs(sealInjectionGpm(), 1000);', 'var seal = 0;'],
+   'var seal = (cv.isolated || !powered) ? 0 : gpmToKgs(sealInjectionGpm(), 1000);',
+   'var seal = 0;'],
+  ['the charging power gate is severed (a blacked-out pump keeps charging) -- #507 wave 4',
+   'var powered = !drivers || drivers.ac_available !== false;',
+   'var powered = true;'],
   ['seal injection SCALED after all (a seal shrinks because the plant is smaller)',
    'return CVCS.seal_injection_gpm_per_pump * CVCS.rcp_count;',
    'return CVCS.seal_injection_gpm_per_pump * CVCS.rcp_count * volumeScale();'],

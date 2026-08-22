@@ -82,8 +82,8 @@
       ctmt_recomb_demand: false, ctmt_recomb_active: false });
   declareStatic('steam lines', 'no MSIV model — the line is genuinely always open',
     { msiv_open: true });
-  declareStatic('electrical', 'no electrical model — AC is genuinely always available here',
-    { station_blackout: false, ac_available: true });
+  /* the 'electrical' static RETIRED #507 wave 4 — station_blackout / ac_available are LIVE
+   * fields now, supplied from the facade's two-bus state (see the B1 block below) */
   declareStatic('secondary', 'a single-SG plant cannot have an SG imbalance',
     { sg_imbalance_active: false });
   declareStatic('turbine', 'the turbine is dispatched by an operator load target — the only ' +
@@ -385,6 +385,12 @@
       put('condensate_flow_normalized', ctx.feedwater.feed_frac);
     }
     put('condensate_pump_running',   ctx.condenser_available === true);
+
+    /* --- electrical (LIVE since #507 wave 4 — the registered static retired): the facade's
+     * two-bus state. Absent ctx means a healthy grid (module fixtures build without an
+     * engine), the acAvailable absent-means-powered convention. --- */
+    put('ac_available',     ctx.ac_available !== false);
+    put('station_blackout', ctx.station_blackout === true);
 
     /* --- NIS display channels [adopted]: cps = k_sr*P, amps = k_ir*P with the current
      * engine's k_sr 5.0e8 / k_ir 8.333e-3 (pwr_config.js nis block) — gauge scales, not
