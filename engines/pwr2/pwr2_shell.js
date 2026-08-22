@@ -59,12 +59,19 @@
     trip_turbine:     function (e, c) { EN.command(e, 'turbine_trip', true); },
     turbine_trip:     function (e, c) { EN.command(e, 'turbine_trip', true); },
     set_pressure_setpoint: function (e, c) { EN.command(e, 'pzr_setpoint_mpa', c.mpa !== undefined ? c.mpa : c.value); },
+    /* PAYLOAD KEYS ARE THE BOARD'S, FIRST (#506.1, 2026-08-22): the board's heater panel
+     * sends `power_pct` (pwr_board_wiring MANUAL/OFF/% box) — the shipped mapper read only
+     * `pct`/`value`, so MANUAL, OFF and the % box all fell through to null and re-selected
+     * AUTO. Same class as the #408 currency below: the command lands, does the wrong thing,
+     * and no error says so. */
     set_heater:       function (e, c) {
-      var v = c.pct !== undefined ? c.pct / 100 : (c.auto ? null : c.value);
+      var p = c.power_pct !== undefined ? c.power_pct : c.pct;
+      var v = p !== undefined ? p / 100 : (c.auto ? null : c.value);
       EN.command(e, 'pzr_heaters_manual', v === undefined ? null : v);
     },
     set_spray:        function (e, c) {
-      var v = c.pct !== undefined ? c.pct / 100 : (c.auto ? null : c.value);
+      var p = c.power_pct !== undefined ? c.power_pct : c.pct;
+      var v = p !== undefined ? p / 100 : (c.auto ? null : c.value);
       EN.command(e, 'pzr_spray_manual', v === undefined ? null : v);
     },
     open_block_valve:  function (e, c) { EN.command(e, 'block_valve', true); },
@@ -80,7 +87,11 @@
       var gpm = (c.normalized !== undefined ? c.normalized : c.value) * 450000;
       e.cv.chargingDemand = Math.max(0, Math.min(1, gpm / RD.cvcs.CVCS.charging_max_gpm()));
     },
-    set_cvcs_auto:     function (e, c) { e._plcsAuto = c.enabled === false ? false : true; },
+    /* the board sends `active` (charging AUTO/MAN panel); `enabled` kept for the old callers */
+    set_cvcs_auto:     function (e, c) {
+      var on = c.active !== undefined ? c.active : c.enabled;
+      e._plcsAuto = on === false ? false : true;
+    },
     set_letdown_flow:  function (e, c) {
       var gpmL = (c.normalized !== undefined ? c.normalized : c.value) * 450000;
       var ratedL = RD.cvcs.CVCS.charging_normal_gpm() + RD.cvcs.sealInjectionGpm();
@@ -92,9 +103,11 @@
     },
     set_boron_adjust:  function (e, c) { EN.command(e, 'makeup', c.mode || 'match'); },
     take_boron_sample: function (e, c) { /* a sample request; the reading arrives via CVCS */ },
-    set_hpi:           function (e, c) { EN.command(e, 'hhsi', c.running !== false); },
-    set_lpi:           function (e, c) { EN.command(e, 'lhsi', c.running !== false); },
-    set_afw:           function (e, c) { EN.command(e, 'afw', c.running !== false); },
+    /* the board sends `active` (HPI/AFW START/STOP) — reading only `running` made STOP
+     * evaluate `undefined !== false` = true, so STOP STARTED the pump (#506.1, measured) */
+    set_hpi:           function (e, c) { EN.command(e, 'hhsi', (c.active !== undefined ? c.active : c.running) !== false); },
+    set_lpi:           function (e, c) { EN.command(e, 'lhsi', (c.active !== undefined ? c.active : c.running) !== false); },
+    set_afw:           function (e, c) { EN.command(e, 'afw', (c.active !== undefined ? c.active : c.running) !== false); },
     set_afw_flow:      function (e, c) { EN.command(e, 'afw', (c.normalized !== undefined ? c.normalized : 1) > 0); },
     /* THE FEED TRAIN (2026-08-21, pwr2_feedwater) — the old refusals retired. Payload shapes
      * are the current engine's: pct 0-120, delta_pct, {active}. */
@@ -114,7 +127,25 @@
     set_steam_dump_setpoint: function (e, c) {
       EN.command(e, 'dump_pressure_setpoint_mpa', c.mpa !== undefined ? c.mpa : c.value);
     },
-    set_adv:           function (e, c) { EN.command(e, 'adv_demand', (c.pct !== undefined ? c.pct : 0) / 100); },
+    /* the board's ADV buttons send `mode` ('auto'/'closed'); both command zero demand (the
+     * auto setpoint logic lives in the engine) — the shell latches WHICH was chosen so the
+     * AUTO and SHUT lamps can disagree (they read the same demand otherwise) */
+    set_adv:           function (e, c) {
+      if (c.mode !== undefined) { e._advMode = c.mode; EN.command(e, 'adv_demand', 0); return; }
+      e._advMode = null;                                     /* an explicit % is manual demand */
+      EN.command(e, 'adv_demand', (c.pct !== undefined ? c.pct : 0) / 100);
+    },
+    /* the dump-mode door existed in the engine all along (dump_mode: tavg/pressure/off) —
+     * the refusal predated it (#506.1). 'open' stays refused: the dump is controller-driven
+     * and no manual full-open lever is modeled. */
+    set_steam_dump:    function (e, c) {
+      if (c.mode === 'auto') EN.command(e, 'dump_mode', 'tavg');
+      else if (c.mode === 'closed') EN.command(e, 'dump_mode', 'off');
+      else if (c.mode === 'open') {
+        throw new Error('pwr2_shell: set_steam_dump "open" REFUSED — the dump is controller-driven ' +
+          '(tavg/pressure modes); no manual full-open lever is modeled. AUTO or CLOSED.');
+      }
+    },
     set_instrument_failure: function (e, c) {
       /* the pwr1 instrument ids and pwr2 channel ids largely coincide (deliberately);
        * unknown ids throw inside the module, which is the behavior we want */
@@ -153,6 +184,14 @@
       else throw new Error('pwr2_shell: set_rcp restart REFUSED — no RCP restart is modeled ' +
         '(the pump trips one way; see pwr2_sources)');
     },
+    /* the old command toggled a discrete pump; PWR2's actuator is charging DEMAND — OFF is
+     * demand 0 in manual, ON restores nothing by itself (dial a flow or re-select AUTO).
+     * The shell latches the selection so the AUTO/MAN/OFF lamps can read it (#506.1). */
+    set_charging_pump: function (e, c) {
+      var on = (c.running !== undefined ? c.running : c.active) !== false;
+      e._chargingPumpOn = on;
+      if (!on) { e._plcsAuto = false; e.cv.chargingDemand = 0; }
+    },
     inject_failure:   function (e, c) {
       if (c.failure_id === 'stuck_porv_open') EN.command(e, 'porv_stick', true);
       else if (c.failure_id === 'primary_leak') REHOMED.primary_leak(e, c);
@@ -181,11 +220,9 @@
     close_pzr_safety: 'code safeties are spring-loaded metal with no lever — deliberate (§55)',
     set_load_mode:    'one dispatch mode exists (operator load target); Follow/Disconnected are the old engine\'s',
     connect_grid:     'reconnection is: reset protection, un-trip the turbine, set a load target — three real commands',
-    set_steam_dump:   'the dump is controller-driven (tavg/pressure modes, C-7/C-8/C-9); no manual valve lever yet',
     set_adv_setpoint: 'the ADV auto setpoint is a sourced constant (1040 psig, §48); only demand is an operator lever',
     set_sr_detector:  'the SR channel auto-energizes below the P-6 class point; no operator lever',
-    set_charging_pump: 'CVCS has no discrete pump model — charging demand is the actuator',
-    set_condensate_pump: 'no condensate train model (fw = steam by construction)',
+    set_condensate_pump: 'no discrete condensate pump lever — the feed train (pwr2_feedwater) models the pumps as the feed module\'s own A/B pair',
     set_condenser_cw_temp: 'the condenser model has CW pumps on/off only',
     set_containment_spray: 'containment sprays are unmodeled (matches the shim\'s registered statics)',
     set_ctmt_fans:    'containment fan coolers are unmodeled (registered static)',
