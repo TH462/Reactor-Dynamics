@@ -5389,19 +5389,31 @@
     // A chat interaction click (e.g. the maintenance tag) is the player acting —
     // release the transcript's reading dwell so the exchange answers promptly.
     if (c && c.action === 'instructor_interact') chatState.nextAt = 0;
-    var r = service.handleCommand(c);
+    // A THROW is a refusal, not a crash (#505/#506). The pwr2 shell deliberately throws
+    // on a REFUSED command — right for a harness, but nothing on the click path caught it,
+    // so the handler unwound silently: no record, no message, and the SECOND command of a
+    // two-command press (charging AUTO, generator MAN) was never sent. Caught here it
+    // becomes the service's own error shape and flows through every consumer below.
+    var r;
+    try { r = service.handleCommand(c); }
+    catch (e) { r = { type: 'error', code: 'COMMAND_ERROR', message: String(e && e.message || e) }; }
     var cmdT = latest && latest.metadata ? latest.metadata.sim_time : 0;
     diag.command(cmdT, c, !!(r && r.type === 'blocked'), !!(r && r.type === 'error'));
     // The operator half of the SOE stream (#437). Actor is KNOWN here, not inferred:
     // this is the player acting. Blocked commands are dropped inside command().
     if (RD.Events) RD.Events.command(cmdT, c, !!(r && r.type === 'blocked') || !!(r && r.type === 'error'));
     TEL.command(c, !!(r && r.type === 'blocked'));
-    // The command was blocked, not executed — show why. Instructor gates focus
+    // The command was blocked or refused, not executed — show why. Instructor gates focus
     // the Instructor card (its commentary carries the message); plant interlocks
-    // (M4, e.g. the rod-withdrawal block) flash theirs in the scanner bar.
+    // (M4, e.g. the rod-withdrawal block) flash theirs in the scanner bar; an ERROR —
+    // a refused/unknown command — flashes the same way (#505: an errored press reading
+    // as a dead button is exactly what the 2026-08-21 telemetry session was).
     if (r && r.type === 'blocked') {
       if (r.code === 'INTERLOCK' && r.message) inspectFlash('⛔ Blocked', r.message);
       else { msgHold.bypass = true; setFocus('instructor'); }   // gate feedback jumps the dwell queue
+      latest = service.assembleSnapshot(); render(latest);
+    } else if (r && r.type === 'error' && r.message) {
+      inspectFlash('⚠ Command error', r.message);
       latest = service.assembleSnapshot(); render(latest);
     }
     if (!service.running) { latest = service.assembleSnapshot(); render(latest); }
