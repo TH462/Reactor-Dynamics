@@ -8001,9 +8001,13 @@
     var em = /[?&]engine=(pwr2|pwr|rbmk_pre|rbmk_post|bwr)/.exec(location.search || '');   /* pwr2 BEFORE pwr — alternation takes the first match */
     var startKey = em ? em[1] : 'pwr', startEng = ENGINES[startKey];
     ui.engineKey = startKey; ui.plant = startEng.plant; ui.initState = startEng.init;
-    // optional ?init=<state> override (dev convenience) — one of the plant's presets
+    // optional ?init=<state> override (dev convenience) — one of the ENGINE's presets. The
+    // engine's own initStates override (pwr2 offers exactly one) wins over the plant
+    // profile's list, matching the Free Play picker — validating against prof() alone let
+    // ?engine=pwr2&init=cold_shutdown pass and then be silently ignored (#502).
     var initm = /[?&]init=([a-z0-9_]+)/.exec(location.search || '');
-    if (initm && (prof().initStates || []).some(function (s) { return s[0] === initm[1]; })) ui.initState = initm[1];
+    var initList = startEng.initStates || prof().initStates || [];
+    if (initm && initList.some(function (s) { return s[0] === initm[1]; })) ui.initState = initm[1];
     ui.series = Object.assign({}, prof().defaultSeries);
     ui.seriesSide = {};                    // sides follow the selections they refine (#454)
     buildSeriesIndex();   // must precede the first chartSample — see rebuildPlantUI

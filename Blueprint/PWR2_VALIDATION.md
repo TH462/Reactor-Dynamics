@@ -3394,3 +3394,46 @@ true gpm; the normal point sits below the annunciator; a kg/s revert mutation re
 `run_pwr2_shell` 27 → **29** / 14 mutations (the annunciator input clear; the 20-gpm
 round trip; both currency-revert mutations red) · `pwr2_cvcs.js` untouched · full sweep at
 baseline.
+
+## 65. THE HOT-FULL-POWER IC — THE ISOTHERMAL BOOT RETIRED (#502) — 2026-08-21
+
+**The defect, measured from the owner's first live telemetry (2026-08-21 bundles, #502):**
+`createEngine` seeded every loop node with one scalar enthalpy — zero hot/cold-leg split at
+100 % power — so every free-play start opened with the plant developing its own 56 °F
+(31.1 °C) split live: power 100 → **76.6 %** at t = 2.9 s, Thot 580 → **622 °F** (327 °C),
+pressure 2235 → **2149 psia** (14.82 MPa), pressurizer level 61.5 → 51 %, recovery ~60 s.
+The board rang low-pressure and level-deviation annunciators seconds into a "steady at full
+power" start.
+
+**The fix: a design-point enthalpy map (`designHmap`), constants-derived.** Legs at
+TREF ± DT0_C/2 (Hard Rule 9 — the config constants stay the authority; the settle drifts
+~1.3 °C below them and the new ride check bounds it). **Donor-cell placement, measured at a
+600 s settle:** a node's enthalpy is its OUTLET state, so `core` seeds HOT (318.98 °C
+settled) and `sg_primary` COLD (287.4 °C) — not midpoints; off-loop nodes are stagnant and
+keep their boot value (TREF). Completeness is structural: a node the map misses throws at
+construction (Layer 3's silent 1250 kJ/kg fallback is exactly the mis-seed this section
+exists to record).
+
+**Two refutations worth keeping:**
+- **Re-pointing the kinetics references detonates.** Moving `createReactor`'s `coolTemp_c`
+  and the `criticalBoron` trim to the hot-leg temperature — the "wire the point" reading —
+  measured power **928 % in one step** and a beyond-model latch. TREF is the self-consistent
+  reference the reactivity chain is normalized against; it stays.
+- **The runback fixture was riding the defect's margin.** `run_pwr2_engine`'s dilution
+  script (−2 ppm per 2.5 s detection block) overshot the OTΔT approach band *within* the
+  block, entering it with ~0.000 margin; on the settled plant that standing condition
+  matured the trip delay during the fixture's own 5 s rod-stop test (dt = 0.02 s only —
+  dt = 0.05 passed, a script artifact, not plant physics). Re-scripted quasi-static
+  (−1 ppm/block, its header's own claim): enters the band at margin 0.029–0.030, clears at
+  +2.8 s/+6.2 s, no trip, at both dt values.
+
+**Measured after (60 s, no commands):** power min **98.2 %** (t ≈ 7 s), pressure min
+**2214 psia**, legs opening 608/552 °F and drifting ≤ 2 °F onto the settled 606.1/549.6 °F.
+New acceptance check in `run_pwr2_engine` ("SETTLED IC"): a fresh engine ridden 60 s
+untouched holds power ≥ 97 %, pressure > 2200 psia, legs within 4.5 °F of settled — red at
+76.6 % on the pre-fix engine by construction.
+
+**Also closed with it:** the shell's `reset()` rebuilt with `{}` (dropping seed and any
+future opts — now rebuilds with the construction opts), and the `?init=` dev override
+validated against the four-state pwr list for the pwr2 card (now validates against the
+engine's own `initStates`).

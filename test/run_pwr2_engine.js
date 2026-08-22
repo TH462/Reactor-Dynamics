@@ -74,9 +74,12 @@ function runSuite(RD, rec, quiet, only) {
   head('EQUIVALENCE  [the facade must BE the hand wiring, proven against it]');
   var eng = EN.createEngine({});
   var tsE = run(eng, SETTLE);
-  /* the hand-wired plant, retyped from run_pwr2_loadfollow's ride() — the independent copy */
+  /* the hand-wired plant, retyped from run_pwr2_loadfollow's ride() — the independent copy.
+   * The IC comes from the facade's own designHmap (#502): the equivalence claim is about the
+   * WIRING, so both sides must boot the same plant — a hand-typed scalar here would re-create
+   * the isothermal-boot defect on one side only and turn the check into an IC comparison. */
   var pz = PZ.createPressurizer({});
-  var sys = S.createPlant({ h: W.h_l(304.5, 15.41), P: 15.41, extraMass: PZ.extraMassFn(pz) });
+  var sys = S.createPlant({ h: EN.designHmap(), P: 15.41, extraMass: PZ.extraMassFn(pz) });
   var rx = R.createReactor({ P: 1.0, coolTemp_c: 304.5 });
   var B = K.criticalBoron(rx.kin, 304.5, 15.41, null, rx.kin.X / rx.kin.X_eq_full,
                           rx.fuel.T_fuel_c);
@@ -122,6 +125,27 @@ function runSuite(RD, rec, quiet, only) {
       typeof tsE.mwe_output === 'number' && tsE.scrammed === false &&
       tsE.porv_stuck === false && typeof tsE.core_void_fraction === 'number',
       '');
+
+  /* ---- 1b. THE IC IS SETTLED (#502) --------------------------------------------------------- */
+  /* A FRESH engine, NO commands, 60 s. Before the design-point enthalpy map this red at
+   * power min 76.6 % (t = 2.9 s) with Thot 580 -> 622 degF and a 64 psi sag — the isothermal
+   * boot developing its own loop split on every free-play start. The bounds are the ring's
+   * absence, not the design point itself (the settle drifts ~1.3 degC below the constants —
+   * declared in designHmap's header). */
+  head('SETTLED IC  [a no-command ride from construction does not ring]');
+  var engIC = EN.createEngine({});
+  var icMin = 1e9, icPMin = 1e9, icTs = null;
+  for (var ici = 0; ici < 60 / DT; ici++) {
+    icTs = EN.step(engIC, DT);
+    if (icTs.power_pct < icMin) icMin = icTs.power_pct;
+    if (icTs.pressure_mpa < icPMin) icPMin = icTs.pressure_mpa;
+  }
+  ckT('60 s untouched: power holds, legs near settled, pressure inside the park',
+      icMin >= 97.0 && icPMin > 15.17 &&
+      Math.abs(icTs.thot_c - 319.0) < 2.5 && Math.abs(icTs.tcold_c - 287.6) < 2.5,
+      'power min ' + icMin.toFixed(1) + ' %, P min ' + (icPMin * 145.04).toFixed(0) +
+      ' psia, legs ' + (icTs.thot_c * 1.8 + 32).toFixed(1) + '/' +
+      (icTs.tcold_c * 1.8 + 32).toFixed(1) + ' degF');
 
   /* ---- 2. EVERY COMMAND REACHES ITS SYSTEM -------------------------------------------------- */
   head('THE ONE DOOR  [each command lands with an observable effect]');
@@ -175,6 +199,54 @@ function runSuite(RD, rec, quiet, only) {
       Math.abs((tsS.tavg_c * 1.8 + 32) - 557) < 6,
       'Tavg ' + (tsS.tavg_c * 1.8 + 32).toFixed(1) + ' degF vs no-load 557, power ' +
       tsS.power_pct.toFixed(2) + ' %, P ' + (tsS.pressure_mpa * 145.04).toFixed(0) + ' psia');
+
+  /* ---- 1c. THE QUIET WIRES (#502 follow-through) --------------------------------------------
+   * Three group-A mutations went BLIND the day the IC settled: the relief sink, the
+   * level-controller charging hook and the dump-to-relief wire were only ever exercised by
+   * the STARTUP RING — the defect's own transient was doing the gate's sensing. A settled
+   * plant never lifts a relief, never corrects level, never opens a dump in these rides, so
+   * each wire gets a deliberate probe. Bands from a measured healthy/mutated A/B
+   * (2026-08-21): dM -136 vs -11 kg · |dDemand| 0.074 vs 0.000 · dump 75.7 vs 0.0 %.
+   * (This block's first landing was inside the FIRST grp('D') section — the group order in
+   * this file is A, D, B, C, D — where the three grp('A')-scoped replays never ran it and
+   * they stayed blind; the group tag on the mutation and the block hosting its probe have
+   * to agree, and the blind count is what says so.) */
+  head('THE QUIET WIRES  [relief sink, level-to-charging, dump-to-relief — probed, not ridden]');
+  var engQ1 = EN.createEngine({});
+  run(engQ1, 30);
+  var mQ0 = engQ1.sys.M_total;
+  EN.command(engQ1, 'porv_stick', true);
+  run(engQ1, 30);
+  ckT('a stuck PORV takes REAL mass out of the loop (the relief sink is connected)',
+      engQ1.sys.M_total - mQ0 < -80,
+      'M_total ' + (engQ1.sys.M_total - mQ0).toFixed(1) + ' kg over 30 s (sink dropped: -11)');
+  var engQ2 = EN.createEngine({});
+  run(engQ2, 30);
+  var cdQ0 = engQ2.cv.chargingDemand;
+  EN.command(engQ2, 'letdown', 1.0);
+  run(engQ2, 60);
+  /* the note is NULL-SAFE on purpose: under the wire-cut mutation chargingDemand stays at
+   * its construction value null, and a .toFixed on it THROWS — which aborts the replay with
+   * every already-recorded check green, and the harness reads that as BLIND ("a crash counts
+   * as caught" is only true when the crash lands before the first check records) */
+  var cdFmt = function (v) { return v === null || v === undefined ? String(v) : v.toFixed(3); };
+  ckT('the level controller MOVES charging when letdown drains the vessel (the hook exists)',
+      engQ2.cv.chargingDemand !== null && cdQ0 !== null &&
+      Math.abs(engQ2.cv.chargingDemand - cdQ0) > 0.03,
+      'demand ' + cdFmt(cdQ0) + ' -> ' + cdFmt(engQ2.cv.chargingDemand) +
+      ' — the claim is the WIRE, not the control law (that is run_pwr2_pressurizer\'s)');
+  var engQ3 = EN.createEngine({});
+  run(engQ3, 30);
+  EN.command(engQ3, 'turbine_trip', true);
+  var dumpQ = 0, steamQ = 0, tsQ = null;
+  for (var q3 = 0; q3 < 30 / DT; q3++) {
+    tsQ = EN.step(engQ3, DT);
+    if (tsQ.steam_dump_valve_pct > dumpQ) dumpQ = tsQ.steam_dump_valve_pct;
+    if (tsQ.steam_pressure_mpa > steamQ) steamQ = tsQ.steam_pressure_mpa;
+  }
+  ckT('a turbine trip OPENS the dumps — demand reaches the relief valves, steam stays bounded',
+      dumpQ > 30 && steamQ < 7.75,
+      'dump max ' + dumpQ.toFixed(1) + ' %, steam max ' + (steamQ * 145.04).toFixed(0) + ' psia');
 
   }
 
@@ -242,9 +314,10 @@ function runSuite(RD, rec, quiet, only) {
    * availability actually reach the RPS from the facade. */
   head('P-9 THROUGH THE DOOR  [a commanded turbine trip at power IS a reactor trip]');
   var eng4 = EN.createEngine({});
-  run(eng4, quiet ? 60 : 120);   /* the margin check needs the SETTLED split: at t = 5 s the
-                                  * startup transient has delta-T 27 % over design and the
-                                  * margin reads 0.013 — measured, not a wiring defect */
+  run(eng4, quiet ? 60 : 120);   /* the boron/xenon regime settle. (An older note here said
+                                  * the margin check needed this to ride OUT the startup ring
+                                  * — margin 0.013 at t = 5 s; since #502 the IC opens on its
+                                  * split and the margin reads ~0.31 from the first seconds) */
   /* the delta-T pair's WIRING half (their setpoint logic is run_pwr2_protection's): the
    * facade computes delta_t_frac and tavg_c, so the rows must be AVAILABLE with a sane
    * at-power margin — measured 0.305 at the settled design point, ~0.29 this early. */
@@ -270,11 +343,12 @@ function runSuite(RD, rec, quiet, only) {
    * PLANT is healthy while the channel lies */
   var eng5 = EN.createEngine({});
   run(eng5, quiet ? 20 : 60);
-  /* THE LADDER'S WIRE, probed with a HIGH lie: the startup dip keeps true P ~72 psi below
-   * the setpoint for ~330 s (PWR2_VALIDATION.md §43), so a LOW lie cannot discriminate — the
-   * truth-fed ladder has the heaters legitimately full there too, which kept the wire-cut
-   * mutation blind through two fixture attempts. Spray and the PORV answer only a HIGH
-   * error: on the lie they open; on truth (below setpoint) they cannot. */
+  /* THE LADDER'S WIRE, probed with a HIGH lie. A LOW lie cannot discriminate whenever true
+   * pressure sits at or below the setpoint — the truth-fed ladder has the heaters
+   * legitimately full there too, which kept the wire-cut mutation blind through two fixture
+   * attempts (originally via the startup dip's ~330 s at −72 psi; the settled IC (#502)
+   * still parks a few psi under the setpoint, so the asymmetry stands). Spray and the PORV
+   * answer only a HIGH error: on the lie they open; on truth they cannot. */
   EN.command(eng5, 'instrument_fail', { id: 'primary_pressure', mode: 'high' });
   var tsH = run(eng5, 1);
   ckT('...and SPRAY + PORV open on a HIGH lie, pre-trip (the ladder reads the instrument)',
@@ -334,25 +408,36 @@ function runSuite(RD, rec, quiet, only) {
   var eng7 = EN.createEngine({});
   run(eng7, quiet ? 30 : 60);
   var onset7 = false, ts7 = null;
-  for (var d7 = 0; d7 < 60 && !onset7; d7++) {
-    eng7.cv.boron_ppm -= 2;         /* quasi-static: -2 ppm per 2.5 s (a bigger step
-                                     * prompt-jumps power toward the hi-flux trip) */
+  for (var d7 = 0; d7 < 120 && !onset7; d7++) {
+    eng7.cv.boron_ppm -= 1;         /* quasi-static: -1 ppm per 2.5 s. The old -2 ppm block
+                                     * overshot the 3 % band WITHIN the detection block, so
+                                     * the signal asserted with the OTdT margin already at
+                                     * ~0 — on the settled IC (#502) that standing condition
+                                     * matured its trip delay during the rod-stop test below,
+                                     * which is a statement about the SCRIPT's dilution rate,
+                                     * not the plant (a bigger step prompt-jumps power toward
+                                     * the hi-flux trip; a finer one enters the band with the
+                                     * margin the band is FOR) */
     for (var k7 = 0; k7 < 2.5 / DT; k7++) {
       ts7 = EN.step(eng7, DT);
       if (ts7.runback_signal) { onset7 = true; break; }
     }
   }
   ckT('the approach signal asserts on a slow dilution, before any trip',
-      onset7 && ts7.scrammed === false, 'after ' + (2 * d7) + ' ppm of dilution');
-  /* TIMING [measured]: with no operator action this rods-MANUAL plant trips ~51 s after
-   * onset (the runback's load cut RAISES Tavg ~1.1 degF/MWe — the load-follow character —
-   * and erodes the setpoint via K3 faster than the delta-T term recovers; the runback buys
-   * TIME here, not an equilibrium). So: rod-stop test in the first ~5 s, rods-in at ~+8 s. */
+      onset7 && ts7.scrammed === false, 'after ' + d7 + ' ppm of dilution');
+  /* TIMING [measured]: with no operator action this rods-MANUAL plant trips within about a
+   * minute of onset (the runback's load cut RAISES Tavg ~1.1 degF/MWe — the load-follow
+   * character — and erodes the setpoint via K3 faster than the delta-T term recovers; the
+   * runback buys TIME here, not an equilibrium). So: rod-stop test in the first ~3 s,
+   * rods-in right after. */
   EN.command(eng7, 'rod_target', 199.0);
   run(eng7, 2);                                  /* inward: always allowed */
   var rodsIn = eng7.rodSteps;
   EN.command(eng7, 'rod_target', 200);
-  run(eng7, 3);                                  /* outward: refused while the signal stands */
+  run(eng7, 1);                                  /* outward: refused while the signal stands
+                                                  * (refusal is immediate — one second shows
+                                                  * zero motion; three bought nothing but
+                                                  * trip-delay maturity) */
   ckT('the ROD STOP: inward moves, outward is refused while the signal stands',
       rodsIn < 199.5 && eng7.rodSteps <= rodsIn + 1e-9,
       'in to ' + rodsIn.toFixed(1) + ', then held at ' + eng7.rodSteps.toFixed(1));
@@ -693,11 +778,16 @@ MUTATIONS.forEach(function (m) {
   var base = isCore ? CORESRC : ENSRC;
   var mutated = base.replace(m[1], m[2]);
   if (mutated === base) { console.log('  ANCHOR MISS ' + m[0]); blind++; return; }
-  var rec2 = [];
+  var rec2 = [], crashed = false;
   try {
     runSuite(isCore ? loadAll(undefined, mutated) : loadAll(mutated), rec2, !process.env.MUTDBG, grpTag);
-  } catch (e) { /* a crash counts as caught */ }
-  var f2 = rec2.length ? rec2.filter(function (r) { return !r.ok; }).length : 1;
+  } catch (e) { crashed = true; }
+  /* A crash counts as caught NO MATTER how many checks recorded first. The old form
+   * (`rec2.length ? fails : 1`) was only right for a crash BEFORE the first check: a
+   * mutation that crashed mid-group left every already-recorded check green and read as
+   * BLIND — measured 2026-08-21, a null-crash in a probe's own note string wore the
+   * blind-spot verdict through two full reruns. */
+  var f2 = crashed ? 1 : (rec2.length ? rec2.filter(function (r) { return !r.ok; }).length : 1);
   if (f2 === 0) { console.log('  BLIND TO  ' + m[0] + '   <-- THIS GATE CANNOT SEE IT'); blind++; }
   else console.log('  caught    ' + m[0].padEnd(64) + f2 + ' checks red');
 });

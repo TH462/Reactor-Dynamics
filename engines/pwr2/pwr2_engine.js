@@ -59,10 +59,42 @@
   var ROD_SLEW_SPS = 1.0;        /* steps/s, manual motion — [derived], see header */
   var SCRAM_S = 2.0;             /* full insertion on a trip, [derived] class figure */
 
+  /* THE DESIGN-POINT ENTHALPY MAP (#502). A scalar h booted every node isothermal at TREF —
+   * zero loop delta-T at 100 % power — and the plant spent its first minute developing its
+   * own split: measured, power rang 100 -> 76.6 % at t = 2.9 s with a 64 psi pressure sag
+   * and a 7-point level dip on every free-play start. Seeding the split kills the ring:
+   * same 120 s ride, power min 98.2 %, pressure min 2214 psia.
+   *
+   * DONOR-CELL: a node's h is its OUTLET state (measured at a 600 s settle), so `core` is a
+   * HOT node and `sg_primary` a COLD one — not midpoints. Off-loop nodes are stagnant and
+   * keep whatever they boot with; TREF is what the settled plant carries there.
+   *
+   * Derived from the config constants (TREF, DT0_C, P0), not from the measured settle
+   * (287.45/318.98 degC) — the constants stay the authority (Hard Rule 9) and the ~1.3 degC
+   * residual drift is bounded by the run_pwr2_engine no-command ride check.
+   *
+   * The kinetics REFERENCES stay at TREF: re-pointing createReactor's coolTemp_c and the
+   * criticalBoron trim at the hot-leg temperature was measured (2026-08-21) to detonate —
+   * power 928 % in one step, beyond-model latch — because TREF is the self-consistent
+   * reference the reactivity chain is normalized against, not a wiring afterthought. */
+  function designHmap() {
+    var hH = W.h_l(TREF + DT0_C / 2, P0), hC = W.h_l(TREF - DT0_C / 2, P0),
+        hA = W.h_l(TREF, P0);
+    return { downcomer: hC, lower_plenum: hC, core: hH, upper_plenum: hH, hot_leg: hH,
+             sg_primary: hC, crossover: hC, rcp: hC, cold_leg: hC,
+             vessel_heads: hA, pressurizer: hA };
+  }
+
   function createEngine(opts) {
     opts = opts || {};
     var pz = PZ.createPressurizer({});
-    var sys = S.createPlant({ h: W.h_l(TREF, P0), P: P0, extraMass: PZ.extraMassFn(pz) });
+    var hmap = designHmap();
+    var sys = S.createPlant({ h: hmap, P: P0, extraMass: PZ.extraMassFn(pz) });
+    /* completeness is structural: a node the map misses falls back to Layer 3's 1250 kJ/kg
+     * silently — refuse to build a plant with a mis-seeded node instead */
+    sys.nodes.forEach(function (n) {
+      if (hmap[n.id] === undefined) throw new Error('pwr2_engine: designHmap has no entry for node "' + n.id + '"');
+    });
     var rx = R.createReactor({ P: 1.0, coolTemp_c: TREF });
     var boron0 = RD.kinetics.criticalBoron(rx.kin, TREF, P0, null,
       rx.kin.X / rx.kin.X_eq_full, rx.fuel.T_fuel_c);
@@ -474,6 +506,7 @@
     createEngine: createEngine,
     command: command,
     step: step,
+    designHmap: designHmap,   /* exported so the equivalence fixture boots the SAME plant */
     MWE_RATED: MWE_RATED
   };
 })(typeof globalThis !== 'undefined' ? globalThis : this);

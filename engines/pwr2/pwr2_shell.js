@@ -214,6 +214,8 @@
 
   function PWR2Engine(opts) {
     opts = opts || {};
+    this._opts = opts;                         /* reset() rebuilds with THESE (#502 — it used
+                                                * to pass {}, silently dropping the seed) */
     this.eng = EN.createEngine(opts);
     this.schema = 'pwr2-1.0';
     this._ts = EN.step(this.eng, 0.02);        /* prime: one step so every consumer has a state */
@@ -420,10 +422,10 @@
   };
 
   PWR2Engine.prototype.reset = function () {
-    var opts = {};
+    var opts = this._opts || {};
     this.eng = EN.createEngine(opts);
     this._ts = EN.step(this.eng, 0.02);
-    this.instruments = new root.RD.PWRInstruments(root.RD.PWR_CONFIG, undefined);
+    this.instruments = new root.RD.PWRInstruments(root.RD.PWR_CONFIG, opts.seed);
     this.instruments.reset(this._ts, this._instrExtras());
     this.instruments.update(this._ts, 0.02, this._instrExtras());
   };
