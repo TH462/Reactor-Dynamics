@@ -121,8 +121,40 @@
                                                              * plant but different lineups (#506) */
       EN.command(e, 'letdown', n / 2);
     },
-    set_boron_adjust:  function (e, c) { EN.command(e, 'makeup', c.mode || 'match'); },
-    take_boron_sample: function (e, c) { /* a sample request; the reading arrives via CVCS */ },
+    /* the kernel and every real caller send {rate} in ppm/s — the shipped mapper read
+     * c.mode (always undefined) and landed every dose as a no-shift 'match' lineup, the
+     * silent-wrong payload class (#507 wave 1). A mode payload still reaches the makeup
+     * door for direct lineup selection. */
+    set_boron_adjust:  function (e, c) {
+      if (c.mode !== undefined) EN.command(e, 'makeup', c.mode);
+      else EN.command(e, 'boron_rate', c.rate || 0);
+    },
+    take_boron_sample: function (e, c) { EN.command(e, 'boron_sample', true); },
+    /* THE RHR ALIGN (#507 wave 2). Two REASONED refusals on the way in, both surfaced by
+     * the #505 path; ISOLATE is never refused (the ruled asymmetry):
+     * — the #458 shape verbatim *(OWNER RULING, 2026-08-12: "A'" — a refusal, NOT a plant
+     *   interlock; the pumps are the low-head injection pumps and the message says
+     *   "lineup", never "interlock"; declared Manuals/12 §12.20)*;
+     * — the sourced 425 psig suction-valve permissive (WTSM 5.1), which pwr1 refuses
+     *   silently and this plant refuses out loud. */
+    set_rhr:           function (e, c) {
+      if (c.active === false) { EN.command(e, 'rhr_align', false); return; }
+      if (e.ec.hhsiRunning || e.ec.lhsiRunning) {
+        throw new Error('RHR ALIGN BLOCKED: RHR pumps in ECCS injection lineup (SI actuated). ' +
+          'Hot-leg suction unavailable until injection is secured.');
+      }
+      var psig = e.sys.P * 145.038 - 14.7;
+      if (psig >= RD.rhr.RHR.permissive_open_psig) {
+        throw new Error('RHR ALIGN BLOCKED: RCS pressure ' + psig.toFixed(0) + ' psig is above the ' +
+          RD.rhr.RHR.permissive_open_psig + ' psig suction-valve permissive (WTSM 5.1). ' +
+          'Depressurize below it, then align.');
+      }
+      EN.command(e, 'rhr_align', true);
+    },
+    set_dhr:           function (e, c) { MAPPED.set_rhr(e, c); },
+    set_rhr_hx:        function (e, c) {
+      EN.command(e, 'rhr_hx', c.fraction !== undefined ? c.fraction : (c.pct !== undefined ? c.pct / 100 : 1));
+    },
     /* the board sends `active` (HPI/AFW START/STOP) — reading only `running` made STOP
      * evaluate `undefined !== false` = true, so STOP STARTED the pump (#506.1, measured) */
     set_hpi:           function (e, c) { EN.command(e, 'hhsi', (c.active !== undefined ? c.active : c.running) !== false); },
@@ -247,9 +279,6 @@
     set_containment_spray: 'containment sprays are unmodeled (matches the shim\'s registered statics)',
     set_ctmt_fans:    'containment fan coolers are unmodeled (registered static)',
     set_ctmt_recombiners: 'recombiners are unmodeled (registered static)',
-    set_rhr:          'the RHR align command is owed (the #458-class SI refusal belongs with it); the module exists and reports',
-    set_dhr:          'an alias of set_rhr — the RHR align command is owed, module exists',
-    set_rhr_hx:       'the RHR heat-exchanger split waits on the same owed align command',
     set_steam_demand: 'the turbine is dispatched by load target only',
     open_msiv:        'no MSIV model — the line is always open (registered static)',
     close_msiv:       'no MSIV model — the steam line has no isolation valve to shut',
@@ -330,7 +359,11 @@
     ex.accum_valve_open = true;                     /* matches control_state.accumulator_valve_open */
     ex.safety_relief_active = !!e.pz.safetyOpen;
     ex.mfw_isolated = this.eng.fw.isolated === true;   /* REAL since the feed train (2026-08-21) */
-    ex.boron_sample = null; ex.boron_sample_pending = false; ex.boron_sample_seq = 0;
+    /* LIVE since #507 wave 1 — the CVCS lab sample (they were pinned null/false/0 while no
+     * sample machinery existed) */
+    ex.boron_sample = this.eng.cv.sample_ppm;
+    ex.boron_sample_pending = this.eng.cv._sample_timer > 0;
+    ex.boron_sample_seq = this.eng.cv.sample_seq || 0;
     /* COMMANDED, not the disc: pz.porvOpen is the controller/operator command and porvStuck
      * stays out of it — this is the TMI-2 indicator lie, kept exactly (HR1) */
     ex.porv_commanded_open = !!e.pz.porvOpen;
@@ -361,7 +394,15 @@
     if (!this._protCfg) {
       var base = root.RD.PWR_CONFIG.protection;
       this._protCfg = Object.assign({}, base, {
-        trips: [], actuations: [], channels: [], interlocks: [], runbacks: [],
+        trips: [], actuations: [], interlocks: [], runbacks: [],
+        /* EXACTLY ONE automation channel rides through (#507 wave 1): the boron batch-dose
+         * panel. The emptying rationale above ("channels issue commands PWR2 REFUSES") no
+         * longer bars this one — its whole vocabulary is set_boron_adjust {rate} and
+         * take_boron_sample, both real commands now, and its analyzer input
+         * (instruments.boron_analyzer) has been live all along. Every other pwr channel
+         * stays out: their actuators are PWR2's own internal controllers. By reference,
+         * like the alarms — the def is the pwr table's own. */
+        channels: (base.channels || []).filter(function (ch) { return ch.id === 'boron_conc'; }),
         /* ONE esf entry, DISPLAY-TRUE by construction (2026-08-20, the AFAS build): the board's
          * AUX FEED word is RUNNING / STANDBY / SECURED and STANDBY requires
          * automation.esf.afw === 'auto', which the kernel only emits for a listed system. The
@@ -448,6 +489,11 @@
                                 RD.cvcs.CVCS.charging_max_gpm() / 450000,
       letdown_flow_normalized: e.cv.letdownOpen *
                                (RD.cvcs.CVCS.charging_normal_gpm() + RD.cvcs.sealInjectionGpm()) / 450000,
+      /* the RHR lineup — real since #507 wave 2 (the valve, not the permissive; the split
+       * re-enables the board's ALIGN/ISOLATE/HX controls, which key on hx_fraction) */
+      rhr_active: e.rh.running === true,
+      rhr_valve_open: e.rh.valve_open === true,
+      rhr_hx_fraction: e.rh.hx_fraction,
       /* the orifice PAIR from the shell latch; before the first command, derived from the
        * boot letdownOpen (1.0 = both). The lamps read these — they were simply absent, so
        * CLOSED was permanently lit (#506.2). */
@@ -455,6 +501,9 @@
       letdown_orifice_b: e._letdownAB ? e._letdownAB.b : e.cv.letdownOpen >= 1.0,
       charging_pump_running: e._chargingPumpOn !== false,
       cvcs_auto: this.eng._plcsAuto !== false,
+      /* the commanded boron rate — the board's BORATING/DILUTING/HOLD word and the
+       * boron_trim channel's read-back both key on this one field (#507 wave 1) */
+      boron_adjust: e.cv.boron_rate_cmd || 0,
       /* REAL since the feed train (2026-08-21): the delivered main-feed fraction — the
        * "speed" gauge presentation the board's five reader tiles expect (measured) */
       feed_pump_speed_pct: Math.min(120, e.fw.feed_frac * 100),

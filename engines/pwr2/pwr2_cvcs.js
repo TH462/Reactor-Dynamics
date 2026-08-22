@@ -10,10 +10,10 @@
  * actually holds level, and boron is how reactivity is trimmed over a cycle. Both are Tier A
  * material and neither existed.
  *
- * Note what is NOT here: **boron does not yet DO anything.** Concentration is tracked as a mass
- * balance and published; the reactivity coupling (~8 pcm/ppm, sourced below) belongs to the
- * kinetics layer, which is not built. Publishing ppm without reactivity is honest — publishing a
- * reactivity effect computed here would put kinetics in the wrong layer.
+ * Boron DOES something now: the kinetics layer consumes `boron_ppm` every step
+ * (pwr2_kinetics rho_bor, 10 pcm/ppm sourced there) — an earlier note here said the coupling
+ * was not built, which went stale the day pwr2_kinetics landed. This layer owns the CHEMISTRY:
+ * the mass balance, the blender-shaped rate actuator (#507 wave 1), and the lab sample.
  *
  * ---------------------------------------------------------------------------------------
  * SOURCES, AND THE SCALING BASIS IS DECLARED RATHER THAN ASSUMED.
@@ -124,7 +124,11 @@
      * normal makeup rather than a quarter of it. That is a declared departure, not an accident:
      * it follows from a one-pump plant keeping a real pump's seal. */
     seal_injection_gpm_per_pump: 5,   // [sourced] WTSM §4.1, verbatim
-    rcp_count: 1                      // [ruled] SLS-100 is a single-loop plant
+    rcp_count: 1,                     // [ruled] SLS-100 is a single-loop plant
+    /* Lab turnaround for an RCS boron grab sample. [derived]: adopted from the old engine's
+     * real-time figure (#419 wave 1 made it real time there); no corpus document states a
+     * turnaround, so the number is a class figure, declared. */
+    boron_sample_lab_s: 1800
   };
 
   /* Seal injection returns to the RCS through the pump's hydraulic chambers. It is NOT operator
@@ -178,9 +182,35 @@
       /* what the charging pumps are lined up to: 'borate' | 'dilute' | 'match' */
       makeupSource: opts.makeupSource === undefined ? 'match' : opts.makeupSource,
       boron_ppm: opts.boron_ppm === undefined ? 700 : opts.boron_ppm,
+      /* THE RATE ACTUATOR (#507 wave 1): commanded ppm/s, signed; 0 = the makeupSource lineup.
+       * Realized as a BLENDER (the sourced shape — Ginna UFSAR ch.15: "A boric acid blend
+       * system allows the operator to match the concentration of reactor coolant makeup water
+       * to that existing in the coolant … the composition is determined by the preset flow
+       * rates"): the step inverts the mass balance for the blend concentration that meters the
+       * commanded rate, clamped to [0, boric_acid_ppm]. THE CLAMP IS THE PHYSICAL CEILING —
+       * no separate ppm/s constant: the achievable rate is inFlow*(C_in − C)/M, bounded by the
+       * tank concentration and the charging lineup, so boration saturates near the tank and a
+       * dilution stays slow at high boron (the module's own sourced shape). The gate reports
+       * the achieved ceilings at both lineups; the old engine's flat 0.14 ppm/s clamp is the
+       * contrast case. */
+      boron_rate_cmd: opts.boron_rate_cmd === undefined ? 0 : opts.boron_rate_cmd,
+      /* THE LAB SAMPLE. A plant handed over mid-shift has a standing lab number, so the
+       * constructor seeds one (seq 1) — the old engine's preset-boot convention. NO MIXING
+       * LAG: this plant's boron is lumped by ruling (pwr2_kinetics), so the sample reports
+       * cv.boron_ppm directly where the old engine reports its 30 s boron_reactive lag — a
+       * declared behavioural difference. */
+      _sample_timer: 0,
+      sample_ppm: opts.boron_ppm === undefined ? 700 : Math.round(opts.boron_ppm),
+      sample_seq: 1,
       K: opts.K === undefined ? orificeK(P_nop) : opts.K,
       isolated: !!opts.isolated
     };
+  }
+
+  /* Draw an RCS grab sample; the result posts after the lab turnaround. A sample already in
+   * the lab is not re-drawn (the old engine's rule, kept). */
+  function requestBoronSample(cv) {
+    if (!(cv._sample_timer > 0)) cv._sample_timer = CVCS.boron_sample_lab_s;
   }
 
   /* stepCVCS(cv, sys, dt) -> {charging_kgs, letdown_kgs, net_kgs, boron_ppm, sources}
@@ -211,9 +241,6 @@
      * is drawn from the RCS; charging carries whatever the pumps are lined up to. A dilution is
      * therefore SLOW at high boron and fast at low, which is the real shape and falls out of the
      * balance rather than being imposed. */
-    var C_in = cv.makeupSource === 'borate' ? CVCS.boric_acid_ppm
-             : cv.makeupSource === 'dilute' ? CVCS.primary_water_ppm
-             : cv.boron_ppm;                              /* 'match' -- inventory only, no shift */
     /* Seal injection is drawn from the SAME charging pump suction, so it carries the same
      * concentration as charging -- it is not a separate chemistry path. */
     var inFlow = charging + seal;
@@ -221,12 +248,36 @@
     for (var k = 0; k < sys.nodes.length; k++) {
       M += sys.nodes[k].V * W.rho_from_h(sys.nodes[k].h, sys.P);
     }
+    var C_in;
+    if (cv.boron_rate_cmd !== 0 && inFlow > 0 && M > 0) {
+      /* THE BLENDER INVERSION. The balance below reduces to dC/dt = inFlow*(C_in - C)/M
+       * (the letdown terms cancel exactly -- letdown removes at RCS concentration), so the
+       * blend that meters the commanded rate is C + rate*M/inFlow, clamped to what the tanks
+       * can supply. With zero inflow (isolated lineup) the blender has no stream to blend and
+       * the command idles -- physically right, not a special case. */
+      C_in = Math.max(0, Math.min(CVCS.boric_acid_ppm,
+        cv.boron_ppm + cv.boron_rate_cmd * M / inFlow));
+    } else {
+      C_in = cv.makeupSource === 'borate' ? CVCS.boric_acid_ppm
+           : cv.makeupSource === 'dilute' ? CVCS.primary_water_ppm
+           : cv.boron_ppm;                            /* 'match' -- inventory only, no shift */
+    }
     if (M > 0) {
       var dC = (inFlow * C_in - letdown * cv.boron_ppm) / M;
       /* the inventory change itself re-concentrates what is left */
       var dM = inFlow - letdown;
       cv.boron_ppm = cv.boron_ppm + dt * (dC - cv.boron_ppm * dM / M);
       if (cv.boron_ppm < 0) cv.boron_ppm = 0;
+    }
+
+    /* the lab clock runs on plant time */
+    if (cv._sample_timer > 0) {
+      cv._sample_timer -= dt;
+      if (cv._sample_timer <= 0) {
+        cv._sample_timer = 0;
+        cv.sample_ppm = Math.round(cv.boron_ppm);
+        cv.sample_seq = (cv.sample_seq || 0) + 1;
+      }
     }
 
     var h_charge = W.h_l(Math.min(60, W.T_from_h(node ? node.h : 1250, sys.P)), sys.P);
@@ -260,6 +311,7 @@
   root.RD.pwr2 = root.RD.pwr2 || {};
   root.RD.pwr2.cvcs = {
     CVCS: CVCS, createCVCS: createCVCS, stepCVCS: stepCVCS,
+    requestBoronSample: requestBoronSample,
     sealInjectionGpm: sealInjectionGpm,
     volumeScale: volumeScale, rcsVolume: rcsVolume, orificeK: orificeK,
     normalLetdownKgs: normalLetdownKgs, gpmToKgs: gpmToKgs,

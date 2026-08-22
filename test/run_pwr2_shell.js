@@ -70,8 +70,25 @@ function runSuite(SH, rec, quiet) {
   /* _copyStatus reads ONLY the extras dict — with {} passed (the shipped B2 defect) all 35
    * status readings were undefined and every board status word defaulted: the RCP handswitch
    * lit OFF over a running pump, AUX FEED read SECURED, the polisher STANDBY (measured on the
-   * 2026-08-21 screenshot). boron_sample is null BY DESIGN (no lab result yet) — null is a
-   * populated value; undefined is the defect. */
+   * 2026-08-21 screenshot). boron_sample is LIVE since #507 wave 1 (a standing lab number at
+   * boot, the mid-shift-handover convention) — undefined is the defect either way. */
+  /* the boron lab, through the shell (#507 wave 1): a standing number at boot, PENDING on a
+   * request, a fresh result (seq bumps) when the lab clock expires. The timer is shortened
+   * white-box — riding the real 1800 s at shell dt would be a 90 s gate for a counter. */
+  ck('the boron lab sample is LIVE: standing number, pending on request, posts with a new seq',
+     (function () {
+       var rd0 = eng.instruments.reading;
+       if (typeof rd0.boron_sample !== 'number' || rd0.boron_sample_seq !== 1) return false;
+       eng.applyCommand({ action: 'take_boron_sample' });
+       eng.step(0.02);
+       if (eng.instruments.reading.boron_sample_pending !== true) return false;
+       eng.eng.cv._sample_timer = 0.01;
+       eng.step(0.02);
+       var r2 = eng.instruments.reading;
+       return r2.boron_sample_pending === false && r2.boron_sample_seq === 2 &&
+              typeof r2.boron_sample === 'number';
+     })(),
+     'request -> SAMPLING… -> a rounded ppm with seq 2');
   var STAT = eng.instruments.specs.status;
   var statMiss = STAT.filter(function (k) { return rd[k] === undefined; });
   ck('all ' + STAT.length + ' STATUS passthroughs are populated at power (the extras dict)',
@@ -127,16 +144,21 @@ function runSuite(SH, rec, quiet) {
         ? (a.setpoint === 17.0 && baseAlarms[i].id === 'pzr_level_low' && baseAlarms[i].setpoint === 25.0)
         : a === baseAlarms[i];
     });
-  ck('getProtectionConfig is PWR2 OWN config: acting parts EMPTY, annunciators adopted with ONE override',
+  /* channels carries EXACTLY the boron batch-dose panel since #507 wave 1 — its whole
+   * vocabulary (set_boron_adjust {rate}, take_boron_sample, boron_analyzer) is real on this
+   * plant now; every other pwr channel stays out (their actuators are internal) */
+  ck('getProtectionConfig is PWR2 OWN config: acting parts empty EXCEPT the boron channel',
      pc !== globalThis.RD.PWR_CONFIG.protection &&
-     pc.trips.length === 0 && pc.actuations.length === 0 && pc.channels.length === 0 &&
+     pc.trips.length === 0 && pc.actuations.length === 0 &&
+     pc.channels.length === 1 && pc.channels[0].id === 'boron_conc' &&
+     pc.channels[0] === globalThis.RD.PWR_CONFIG.protection.channels.filter(function (ch) { return ch.id === 'boron_conc'; })[0] &&
      pc.interlocks.length === 0 && pc.runbacks.length === 0 &&
      alarmsOk &&
      Object.keys(pc.failures).length === 4 &&
      !!pc.failures.stuck_porv_open && !!pc.failures.rcp_trip && !!pc.failures.turbine_trip &&
      !!pc.failures.loss_of_feedwater,
      'M4 gets a shape it can hold; pzr_level_low 25 -> 17 (the sourced heater-cutoff level), ' +
-     'every other alarm row shared by reference');
+     'every other alarm row shared by reference; boron_conc by reference from the pwr table');
   /* THE ONE ESF ENTRY (2026-08-20, the AFAS build). The board's AUX FEED word needs
    * automation.esf.afw === 'auto' to say STANDBY, and the kernel only emits that for a
    * listed system — before this entry the tile read SECURED over an armed AFAS. commands
@@ -152,11 +174,15 @@ function runSuite(SH, rec, quiet) {
    * config (esf_systems, no channels) reaches, so no PWR1 gate could ever see it and the
    * AUX FEED word read SECURED over an armed AFAS. Pinned here at the exact stack seam the
    * shell ships through: the kernel over THIS engine's config. */
-  ck('the kernel emits automation.esf.afw = \'auto\' over PWR2\'s channel-less config',
+  /* With the boron channel present (#507 wave 1) the kernel takes its FULL path, not the
+   * channel-less fast path this check was written against — the esf dict must survive the
+   * route change (the 2026-08-20 defect was esf missing on ONE of the two paths). */
+  ck('the kernel emits automation.esf.afw = \'auto\' over PWR2\'s config (full path, 1 channel)',
      (function () {
        var lay = new globalThis.RD.ControlLayer(eng, eng.getProtectionConfig());
        var a = lay.getAutomationState();
-       return a && a.esf && a.esf.afw === 'auto' && a.channels.length === 0;
+       return a && a.esf && a.esf.afw === 'auto' && a.channels.length === 1 &&
+              a.channels[0].id === 'boron_conc';
      })(),
      'the board\'s STANDBY word reads this dict, nothing else');
   ck('getStartupLineup/getActiveFailures exist and answer',
@@ -194,6 +220,28 @@ function runSuite(SH, rec, quiet) {
     ck('a shutdown-group nudge moves the SHUTDOWN bank and leaves the control bank alone',
        g3[1].steps < 200 && g3[0].steps === 200,
        'control ' + g3[0].steps + ', shutdown ' + g3[1].steps);
+  })();
+
+  /* ---- 1c. THE RHR ALIGN REFUSALS (#507 wave 2, the #458 ruled shape) -----------------------
+   * A refusal, NOT an interlock *(OWNER RULING, 2026-08-12: "A'")*: the message says
+   * "lineup", ISOLATE is never refused, and the SI case carries the ruled industry text.
+   * Both surfaced to the player by the #505 click path. */
+  (function () {
+    var e4 = new SH.PWR2Engine({});
+    for (var i = 0; i < 100; i++) e4.step(0.02);
+    var msgP = null, msgSI = null, isoOk = false;
+    try { e4.applyCommand({ action: 'set_rhr', active: true }); }
+    catch (ep) { msgP = String(ep.message); }
+    e4.eng.ec.hhsiRunning = true;
+    try { e4.applyCommand({ action: 'set_rhr', active: true }); }
+    catch (es) { msgSI = String(es.message); }
+    e4.eng.ec.hhsiRunning = false;
+    try { e4.applyCommand({ action: 'set_rhr', active: false }); isoOk = true; } catch (ei) {}
+    ck('ALIGN refuses at power (permissive) and under SI (the ruled lineup message); ISOLATE never',
+       msgP !== null && /425 psig/.test(msgP) &&
+       msgSI !== null && /ECCS injection lineup/.test(msgSI) && !/interlock/i.test(msgSI) &&
+       isoOk,
+       'power: "' + (msgP || '').slice(0, 40) + '…"; SI: "' + (msgSI || '').slice(0, 40) + '…"');
   })();
 
   /* ---- 2. THE COMMAND PARTITION -------------------------------------------------------------- */
@@ -350,8 +398,8 @@ var MUTATIONS = [
    'var REFUSED = {',
    'var REFUSED = {}; var REFUSED_gone = {'],
   ['the pwr automation channels LEAK into the config (M4 would command a plant it does not know)',
-   "        trips: [], actuations: [], channels: [], interlocks: [], runbacks: [],",
-   '        trips: [], actuations: [], interlocks: [], runbacks: [],'],
+   "        channels: (base.channels || []).filter(function (ch) { return ch.id === 'boron_conc'; }),",
+   '        channels: base.channels,'],
   ['the charging setter reads the currency as a demand fraction again (any setpoint ~= zero flow)',
    '      var gpm = (c.normalized !== undefined ? c.normalized : c.value) * 450000;\n      e.cv.chargingDemand = Math.max(0, Math.min(1, gpm / RD.cvcs.CVCS.charging_max_gpm()));',
    '      e.cv.chargingDemand = Math.max(0, Math.min(1, c.normalized !== undefined ? c.normalized : c.value));'],

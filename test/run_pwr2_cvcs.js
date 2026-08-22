@@ -191,6 +191,67 @@ function runSuite(C, rec, quiet) {
       })(), 'bottoms at 4.385 ppm from 5 over 20 min at max charge -- proportional decay, so ' +
       'zero is approached and never crossed');
 
+  /* ---- 3b. THE RATE ACTUATOR (#507 wave 1) --------------------------------------------
+   * A commanded ppm/s realized as a BLENDER: the step inverts the balance for the blend
+   * concentration, clamped to [0, tank]. THE CLAMP IS THE CEILING — no ppm/s constant —
+   * so the achievable rate is inFlow*(C_tank − C)/M and the sourced slow-at-high dilution
+   * shape survives the actuator. */
+  if (!quiet) console.log('\nRATE ACTUATOR  [a commanded ppm/s, blender-shaped, tank-clamped]');
+  ckT('rate 0 is bit-identical to a never-commanded lineup',
+      (function () {
+        var s1 = plant(), s2 = plant();
+        var c1 = C.createCVCS({}), c2 = C.createCVCS({});
+        c2.boron_rate_cmd = 0;
+        for (var q = 0; q < N(3000); q++) { C.stepCVCS(c1, s1, 0.02); C.stepCVCS(c2, s2, 0.02); }
+        return c1.boron_ppm === c2.boron_ppm;
+      })(), 'the actuator idles out of the balance entirely at rate 0');
+  var cvR = C.createCVCS({ boron_ppm: 700, chargingDemand: 0.5, letdownOpen: 1 });
+  cvR.boron_rate_cmd = 0.02;
+  var sysR = plant();
+  for (var r2 = 0; r2 < N(6000); r2++) C.stepCVCS(cvR, sysR, 0.02);
+  ck('an unclamped mid-range command is METERED exactly (ppm/s achieved)',
+     (cvR.boron_ppm - 700) / (N(6000) * 0.02), 0.02, 0.001, 'ppm/s');
+  /* the ceiling: a firehose demand achieves exactly what tank concentration and the current
+   * lineup can carry — measured against the closed form, not a remembered number */
+  var cvF = C.createCVCS({ boron_ppm: 700, chargingDemand: 0.5, letdownOpen: 1 });
+  cvF.boron_rate_cmd = 99;
+  var sysF = plant();
+  var res0 = C.stepCVCS(cvF, sysF, 0.02);
+  var Mf = 0;
+  for (var kf = 0; kf < sysF.nodes.length; kf++) Mf += sysF.nodes[kf].V * W.rho_from_h(sysF.nodes[kf].h, sysF.P);
+  var ceil = (res0.charging_kgs + res0.seal_kgs) * (C.CVCS.boric_acid_ppm - 700) / Mf;
+  var cF0 = cvF.boron_ppm;
+  for (r2 = 0; r2 < N(3000); r2++) C.stepCVCS(cvF, sysF, 0.02);
+  ck('a firehose demand is CLAMPED to the tank-and-lineup ceiling',
+     (cvF.boron_ppm - cF0) / (N(3000) * 0.02), ceil, ceil * 0.05, 'ppm/s');
+  ckT('a firehose DILUTION keeps the sourced slow-at-high shape through the actuator',
+      (function () {
+        function rate(ppm) {
+          var cv = C.createCVCS({ boron_ppm: ppm, chargingDemand: 0.5, letdownOpen: 1 });
+          cv.boron_rate_cmd = -99;
+          var sy = plant(), p0 = cv.boron_ppm;
+          for (var q = 0; q < N(3000); q++) C.stepCVCS(cv, sy, 0.02);
+          return (p0 - cv.boron_ppm) / (N(3000) * 0.02);
+        }
+        var hi = rate(1400), lo = rate(350);
+        return hi / lo > 3.4 && hi / lo < 4.6;      /* ~4x, the balance's own proportionality */
+      })(), 'C_in clamps at 0, so dilution rate stays proportional to concentration');
+  /* the lab sample: request -> pending -> posts with a new seq; a pending sample is not
+   * re-drawn (the timer is shortened white-box — 1800 s is a counter, not physics) */
+  ckT('the lab sample posts on expiry and a pending sample is not re-drawn',
+      (function () {
+        var cv = C.createCVCS({ boron_ppm: 712 }), sy = plant();
+        if (cv.sample_seq !== 1 || typeof cv.sample_ppm !== 'number') return false;
+        C.requestBoronSample(cv);
+        if (!(cv._sample_timer > 0)) return false;
+        cv._sample_timer = 100;
+        C.requestBoronSample(cv);                    /* must NOT reset to 1800 */
+        if (cv._sample_timer !== 100) return false;
+        cv._sample_timer = 0.01;
+        C.stepCVCS(cv, sy, 0.02);
+        return cv._sample_timer === 0 && cv.sample_seq === 2 && cv.sample_ppm === Math.round(cv.boron_ppm);
+      })(), 'seeded seq 1 at boot; request; expiry posts the rounded RCS ppm as seq 2');
+
   /* ---- 4. IT DRIVES THE REAL LOOP ----------------------------------------------------- */
   if (!quiet) console.log('\nINVENTORY  [the sources go straight into Layer 3, unmodified]');
   /* MEASURE THE LEDGER, NOT THE RECONSTRUCTION -- and this cost a blind spot to learn.
@@ -359,7 +420,17 @@ var MUTATIONS = [
    'var demand = cv.chargingDemand === null\n      ? CVCS.charging_normal_gpm() / CVCS.charging_max_gpm()\n      : Math.max(0, Math.min(1, cv.chargingDemand));',
    'var demand = cv.chargingDemand === null ? 1 : Math.max(0, Math.min(1, cv.chargingDemand));'],
   ['demand no longer clamped (a caller can exceed the pumps)',
-   'Math.max(0, Math.min(1, cv.chargingDemand))', 'cv.chargingDemand']
+   'Math.max(0, Math.min(1, cv.chargingDemand))', 'cv.chargingDemand'],
+  /* THE RATE ACTUATOR (#507 wave 1) */
+  ['the blender inversion is deleted (a commanded rate falls through to the match lineup)',
+   "    if (cv.boron_rate_cmd !== 0 && inFlow > 0 && M > 0) {",
+   '    if (false) {'],
+  ['the tank clamp is deleted (a firehose demand borates at any rate the caller likes)',
+   '      C_in = Math.max(0, Math.min(CVCS.boric_acid_ppm,\n        cv.boron_ppm + cv.boron_rate_cmd * M / inFlow));',
+   '      C_in = cv.boron_ppm + cv.boron_rate_cmd * M / inFlow;'],
+  ['the lab result never posts (the sample clock counts to nothing)',
+   '        cv.sample_ppm = Math.round(cv.boron_ppm);\n        cv.sample_seq = (cv.sample_seq || 0) + 1;',
+   '']
 ];
 
 /* ---- THE CLEAN-RUN GUARD --------------------------------------------------------------

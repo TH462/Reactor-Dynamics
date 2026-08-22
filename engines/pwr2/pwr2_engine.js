@@ -172,6 +172,20 @@
          * discontinuity at 1724 psia (#499 thread). */
         eng._manualTrip = true; break;
       case 'makeup':         eng.cv.makeupSource = value; break;   /* 'borate'|'dilute'|'match' */
+      case 'boron_rate':     eng.cv.boron_rate_cmd = +value || 0; break;  /* ppm/s, signed — the
+                                                                           * blender clamp is the
+                                                                           * physical ceiling */
+      case 'boron_sample':   CV.requestBoronSample(eng.cv); break;
+      /* THE RHR SUCTION VALVE (#507 wave 2). Open honored only under the sourced 425 psig
+       * permissive (the shell refuses ABOVE it with a reason — this guard is the harness's
+       * defense in depth, pwr1's own silent-refusal convention); close always honored. The
+       * 585 psig autoclose lives in stepInner — it is the valve hardware acting, not a
+       * command. */
+      case 'rhr_align':
+        if (!value) eng.rh.valve_open = false;
+        else if (eng.sys.P * 145.038 - 14.7 < RD.rhr.RHR.permissive_open_psig) eng.rh.valve_open = true;
+        break;
+      case 'rhr_hx':         eng.rh.hx_fraction = Math.max(0, Math.min(1, +value)); break;
       case 'letdown':        eng.cv.letdownOpen = Math.max(0, Math.min(1, +value)); break;
       case 'pzr_setpoint_mpa':   eng.pzDrivers.setpoint_mpa = +value; break;
       case 'pzr_heaters_manual': eng.pzDrivers.heaters_manual = value === null ? undefined : +value; break;
@@ -398,13 +412,30 @@
     var dr = DG.stepDamage(eng.dm, dt, { cladTemp_c: rrx.T_clad_c, fuelTemp_c: rrx.T_fuel_c });
     eng._Qox = dr.Q_ox_kW;
 
+    /* THE RHR, BEFORE THE PLANT STEP AND WIRED IN (#507 wave 2). It used to run after
+     * stepPlant with its `heats` map consumed only by true_state — an aligned system would
+     * have removed exactly zero heat, the Q4 orphan the #458 ruling names. The 585 psig
+     * autoclose is enforced here (valve hardware, not a command); duty is 0 at power by the
+     * permissive holding the valve shut, so this reorder is a no-op on an at-power plant —
+     * asserted by gate, not assumed. Decay heat is passed REPORT-ONLY (the module's own
+     * double-count guard). */
+    if (eng.rh.valve_open &&
+        sys.P * 145.038 - 14.7 >= RD.rhr.RHR.permissive_close_psig) eng.rh.valve_open = false;
+    var rhrR = RH.stepRHR(eng.rh, sys, dt,
+      { decayHeat_kW: rrx.decay_pct !== undefined ? rrx.decay_pct / 100 * RATED_KW : undefined });
+
     var srcs = (cvr.sources || []).slice();
     if (ecr.sources) srcs = srcs.concat(ecr.sources);
     if (br) srcs.push(br.source);
     if (eng._pzRelief > 0) {
       srcs.push({ node: 'hot_leg', mdot: -eng._pzRelief, h: eng._pzReliefH });
     }
-    var pr = S.stepPlant(sys, dt, { heats: rrx.heats, sgDuty: sr.duty_kW, sources: srcs });
+    var heats = rrx.heats;
+    if (rhrR.duty_kW > 0) {
+      heats = Object.assign({}, rrx.heats);
+      Object.keys(rhrR.heats).forEach(function (n) { heats[n] = (heats[n] || 0) + rhrR.heats[n]; });
+    }
+    var pr = S.stepPlant(sys, dt, { heats: heats, sgDuty: sr.duty_kW, sources: srcs });
 
     var pzr = PZ.stepPressurizer(eng.pz, sys, dt, Object.assign({
       /* HR1 (2026-08-20): the heater/spray/PORV ladder, the level PI and the 17 % low-level
@@ -494,10 +525,7 @@
     eng.simTime += dt;
     eng._pzr = pzr; eng._dcr = dcr;
 
-    /* the RHR exists and is REAL (run_pwr2_rhr, 39 checks) — at power its permissive holds
-     * it shut and its duty is 0; an align command is future work (the #458-class refusal
-     * belongs with it) */
-    var rhrR = RH.stepRHR(eng.rh, sys, dt, {});
+    /* rhrR computed BEFORE stepPlant (#507 wave 2) so its heat actually leaves the loop */
     var ts = TS.buildTrueState({
       sys: sys, reactor: rrx, sg: sr, turbine: tr, relief: rr, cvcs: cvr,
       rhr: rhrR, break_: br || {}, containment: ctr, condenser: cr,
