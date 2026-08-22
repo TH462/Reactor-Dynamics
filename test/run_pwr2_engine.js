@@ -38,7 +38,8 @@ function loadAll(engSource, coreSource) {
 /* runSuite(RD, rec, quiet, only) — `only` scopes a MUTATION REPLAY to the section group that
  * can see that mutation: 'A' equivalence/door/pushbutton (one engine chain), 'B' the
  * P-9/lying-channel family (eng4-6), 'C' the runback (eng7), 'D' the break + drain (eng2-3),
- * 'E' the AFW starts, 'F' the feed train, 'G' the electrical pair (#507 wave 4).
+ * 'E' the AFW starts, 'F' the feed train, 'G' the electrical pair (#507 wave 4), 'H' the
+ * SGTR (#507 wave 5).
  * The CLEAN pass runs everything. Measured before this existed: 17 mutations x the whole
  * suite = 1074 s of contention in the aggregate gate — the replay cost scales with every
  * fixture ever added, and a mutation only needs the checks built to see it. */
@@ -801,6 +802,49 @@ function runSuite(RD, rec, quiet, only) {
   ckT('...and restoring the buses resumes it at the standing lineup',
       tsB3.hpi_flow_normalized > 0.05, 'flow ' + tsB3.hpi_flow_normalized.toFixed(2));
   }
+
+  if (grp('H')) {
+  /* ---- 7. THE SGTR (#507 wave 5) — a break whose destination is the SG. Area [UNVERIFIED]
+   * (no tube geometry in any lane's corpus): typical Westinghouse 0.75 in OD x 0.048 in wall,
+   * double-ended 4.33e-4 m2. Measured 2026-08-22 at sev 0.4: initial 20.9 kg/s, 6.3 at
+   * 300 s tracking the sqrt(dP) drive; OTdT trip 55.2 s, SI (lo pzr press) 69.7 s;
+   * containment NEVER moves — the bypass signature. ---- */
+  head('THE SGTR  [primary mass lands in the SG; containment sees nothing; the dP is the EOP]');
+  var engT = EN.createEngine({});
+  run(engT, quiet ? 20 : 30);
+  var ctP0 = EN.step(engT, DT).containment_pressure_mpa;
+  var dP0 = engT.sys.P - engT.sg.P;
+  EN.command(engT, 'break_open', { area_m2: 0.4 * 4.33e-4, node: 'sg_primary' });
+  run(engT, 1);
+  var leak0 = engT._sgtrKgs;
+  ckT('a 40 % double-ended tube rupture leaks primary water at the sourced-shape rate',
+      leak0 > 15 && leak0 < 30, leak0.toFixed(1) + ' kg/s initial (full DER measures ~52 vs ' +
+      'the 1982 Ginna event\'s ~48, with the break model\'s declared ~2x overstatement)');
+  var tsT = run(engT, 300);
+  var leak300 = engT._sgtrKgs, dP300 = engT.sys.P - engT.sg.P;
+  ckT('the SG OVERFILLS on the leak — the sourced hazard (§15.6.3), mass frac > 1.1 at 300 s',
+      tsT.sg_mass_frac > 1.1, 'mass frac ' + tsT.sg_mass_frac.toFixed(2));
+  ckT('the plant answers unscripted: reactor trip and safety injection both latched',
+      tsT.scrammed === true && engT.pt.si === true,
+      'trip ' + engT.pt.trip_cause + ', SI ' + engT.pt.si_cause);
+  ckT('CONTAINMENT NEVER MOVES — the bypass signature that diagnoses an SGTR',
+      Math.abs(tsT.containment_pressure_mpa - ctP0) < 1e-6,
+      'ctmt ' + (ctP0 * 145.038).toFixed(2) + ' psia before and after ' +
+      engT.brk.discharged_kg.toFixed(0) + ' kg discharged');
+  ckT('the leak TAPERS on the sqrt(dP) drive — depressurizing toward the ruptured SG is ' +
+      'the sourced EOP, and the physics rewards it',
+      Math.abs(leak300 / leak0 - Math.sqrt(dP300 / dP0)) < 0.1,
+      'leak ratio ' + (leak300 / leak0).toFixed(3) + ' vs sqrt(dP ratio) ' +
+      Math.sqrt(dP300 / dP0).toFixed(3));
+  /* the one-break slot: a LOCA REPLACES the SGTR (declared — one break at a time) */
+  EN.command(engT, 'break_open', { area_m2: 2e-4, node: 'cold_leg' });
+  var tsT2 = run(engT, 5);
+  ckT('a new break REPLACES the tube rupture (one-break slot, declared): the SGTR stream ' +
+      'stops and containment starts receiving',
+      engT.brk.node === 'cold_leg' && engT._sgtrKgs === 0 &&
+      tsT2.containment_pressure_mpa > ctP0 + 1e-5,
+      'ctmt now ' + (tsT2.containment_pressure_mpa * 145.038).toFixed(2) + ' psia');
+  }
 }
 
 console.log('\nPWR2 -- THE ENGINE FACADE: one door, the gates\' wiring written once');
@@ -880,8 +924,9 @@ var MUTATIONS = [
    '    if (ptr.afas_tdafw) eng.aw.tdafwRunning = true;',
    '', { grp: 'E' }],
   ['the AFW stream never reaches the SG — reported, hydraulically inert (the pre-build wiring)',
-   'afw_kgs: awr.total_kgs, afw_h: awr.h_kJkg });',
-   'afw_kgs: 0, afw_h: 0 });', { grp: 'E' }],
+   /* anchor re-pointed #507 wave 5: the SG drivers grew the tube-leak pair after afw_h */
+   'afw_kgs: awr.total_kgs, afw_h: awr.h_kJkg,',
+   'afw_kgs: 0, afw_h: 0,', { grp: 'E' }],
   ['the protection never sees the SG level channel',
    '      sg_level_frac: rd.sg_level !== undefined ? rd.sg_level / 100 : undefined,',
    '      sg_level_frac: undefined,', { grp: 'E' }],
@@ -931,6 +976,20 @@ var MUTATIONS = [
   /* NO blackout-forgets-offsite mutation: `offsiteOk = offsite && !blackout` already makes
    * that write redundant, so the mutation could never red — the hollow-mutation trap the
    * house rule forbids. The write stays in the command as documented intent. */
+  /* THE SGTR (#507 wave 5) — one mutation per seam */
+  ['the SGTR backpressure driver is cut (the tube discharges against containment pressure)',
+   'toSG ? { backpressure_mpa: sr.P_sec } : {}) : null;',
+   '{}) : null;', { grp: 'H' }],
+  ['the SGTR stash is severed (primary water leaves and never reaches the SG)',
+   '    eng._sgtrKgs = toSG && br ? br.mdot_kgs : 0;',
+   '    eng._sgtrKgs = 0;', { grp: 'H' }],
+  ['the SG never consumes the stream (the old engine\'s own defect: mass landed nowhere)',
+   '                                          tube_leak_kgs: eng._sgtrKgs || 0,',
+   '                                          tube_leak_kgs: 0,', { grp: 'H' }],
+  ['the containment exclusion is dropped (a tube rupture pressurizes containment)',
+   '    var ctIn = (br && !toSG ? br.mdot_kgs : 0) + (eng._pzRelief > 0 ? eng._pzRelief : 0);',
+   '    var ctIn = (br ? br.mdot_kgs : 0) + (eng._pzRelief > 0 ? eng._pzRelief : 0);',
+   { grp: 'H' }]
 ];
 var CORESRC = fs.readFileSync(path.join(SRC, 'pwr2_core.js'), 'utf8').replace(/\r\n/g, '\n');
 

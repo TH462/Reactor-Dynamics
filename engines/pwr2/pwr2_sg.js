@@ -134,6 +134,11 @@
    *                   main-feed enthalpy, and folding it into `feed` would erase exactly the
    *                   cold-injection steam-pressure suppression the stream exists to model.
    *   drivers.afw_h   kJ/kg of that stream (pwr2_afw.js's stepAFW returns it as h_kJkg)
+   *   drivers.tube_leak_kgs / tube_leak_h  a THIRD stream, HOT (#507 wave 5): a ruptured
+   *                   tube's primary-side discharge, arriving at the donor node's enthalpy.
+   *                   The mass addition is the SGTR accident's whole hazard -- "overfilling
+   *                   of the ruptured steam generator" (Ginna UFSAR ch15 sec 15.6.3) -- and
+   *                   the old engine never landed it anywhere.
    *
    * Returns the duty so Layer 4 can stop being handed one. */
   function stepSG(sg, primaryT, dt, drivers) {
@@ -143,12 +148,14 @@
 
     var feed = drivers.feed || 0, steam = drivers.steam || 0;
     var afw = drivers.afw_kgs || 0, h_afw = drivers.afw_h || 0;
+    var leak = drivers.tube_leak_kgs || 0, h_leak = drivers.tube_leak_h || 0;
     var h_g = W.h_g(sg.P);
 
     /* Energy and mass on the secondary. Steam leaves at h_g; feed arrives at the sourced
-     * feedwater enthalpy; AFW at its own cold enthalpy. All DONOR-CELL, the Layer 2 rule. */
-    var dH = Q + feed * SG.h_feed + afw * h_afw - steam * h_g;   // kW
-    var dM = feed + afw - steam;                                 // kg/s
+     * feedwater enthalpy; AFW at its own cold enthalpy; a tube leak at the primary donor
+     * node's own enthalpy. All DONOR-CELL, the Layer 2 rule. */
+    var dH = Q + feed * SG.h_feed + afw * h_afw + leak * h_leak - steam * h_g;   // kW
+    var dM = feed + afw + leak - steam;                                          // kg/s
 
     var m_new = sg.mass + dt * dM;
     if (m_new < 1) m_new = 1;                           // dry: the vessel cannot go negative

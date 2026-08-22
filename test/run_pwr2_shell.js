@@ -154,7 +154,7 @@ function runSuite(SH, rec, quiet) {
      pc.channels[0] === globalThis.RD.PWR_CONFIG.protection.channels.filter(function (ch) { return ch.id === 'boron_conc'; })[0] &&
      pc.interlocks.length === 0 && pc.runbacks.length === 0 &&
      alarmsOk &&
-     Object.keys(pc.failures).length === 13 &&
+     Object.keys(pc.failures).length === 14 &&
      !!pc.failures.stuck_porv_open && !!pc.failures.rcp_trip && !!pc.failures.turbine_trip &&
      !!pc.failures.loss_of_feedwater &&
      /* #507 wave 3 — the rows existing machinery honestly injects */
@@ -162,8 +162,8 @@ function runSuite(SH, rec, quiet) {
      !!pc.failures.loss_of_condenser_vacuum && !!pc.failures.degraded_hpi &&
      !!pc.failures.large_loca && !!pc.failures.rcp_seal_leak &&
      !!pc.failures.pzr_level_sensor_stuck && !!pc.failures.pzr_level_sensor_low &&
-     /* #507 wave 4 — the electrical pair */
-     !!pc.failures.station_blackout,
+     /* #507 wave 4 — the electrical pair; wave 5 — the tube rupture */
+     !!pc.failures.station_blackout && !!pc.failures.sgtr,
      'M4 gets a shape it can hold; pzr_level_low 25 -> 17 (the sourced heater-cutoff level), ' +
      'every other alarm row shared by reference; boron_conc by reference from the pwr table');
   /* THE ONE ESF ENTRY (2026-08-20, the AFAS build). The board's AUX FEED word needs
@@ -339,6 +339,26 @@ function runSuite(SH, rec, quiet) {
     ck('clearing the SBO restores both buses on the contract (pumps stay where physics left them)',
        ts7b.ac_available === true && ts7b.station_blackout === false &&
        e7.eng.sys.pumpTripped === true, '');
+  })();
+
+  /* ---- 1f. THE SGTR ROW (#507 wave 5) -------------------------------------------------------- */
+  head('THE SGTR ROW  [a break at the tube node, routed into the SG, reported by name]');
+  (function () {
+    var e8 = new SH.PWR2Engine({});
+    for (var i = 0; i < 100; i++) e8.step(0.02);
+    e8.applyCommand({ action: 'inject_failure', failure_id: 'sgtr' });
+    for (i = 0; i < 250; i++) e8.step(0.02);
+    var actT = e8.getActiveFailures();
+    ck('the sgtr row opens the tube-node break at the default 40 % severity and reports ' +
+       'as ITSELF (not primary_leak), with the SG receiving the stream',
+       e8.eng.brk && e8.eng.brk.node === 'sg_primary' &&
+       Math.abs(e8.eng.brk.area_m2 - 0.4 * 4.33e-4) < 1e-9 &&
+       e8.eng._sgtrKgs > 10 && actT.indexOf('sgtr') !== -1 &&
+       actT.indexOf('primary_leak') === -1,
+       'leak ' + e8.eng._sgtrKgs.toFixed(1) + ' kg/s; active [' + actT.join(',') + ']');
+    e8.applyCommand({ action: 'clear_failure', failure_id: 'sgtr' });
+    e8.step(0.02); e8.step(0.02);
+    ck('...and the clear shuts the tube', e8.eng.brk.open === false && e8.eng._sgtrKgs === 0, '');
   })();
 
   /* ---- 2. THE COMMAND PARTITION -------------------------------------------------------------- */
@@ -523,7 +543,10 @@ var MUTATIONS = [
    "      pumps: [{ id: 'rcp', running: !e.sys.pumpTripped }]"],
   ['the LOOP row regresses to the wave-3 pump-trip-only shape (#507 wave 4)',
    "        EN.command(e, 'offsite_power', false);",
-   "        EN.command(e, 'pump_trip', true);"]
+   "        EN.command(e, 'pump_trip', true);"],
+  ['the sgtr row is routed to the cold leg (a tube rupture wearing a LOCA\'s plumbing)',
+   "        EN.command(e, 'break_open', { area_m2: Math.max(1e-6, sevT * 4.33e-4),\n                                      node: 'sg_primary' });",
+   "        EN.command(e, 'break_open', { area_m2: Math.max(1e-6, sevT * 4.33e-4),\n                                      node: 'cold_leg' });"]
 ];
 
 console.log('\ninjection self-test (' + MUTATIONS.length + ' mutations):');

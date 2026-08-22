@@ -300,6 +300,22 @@
          * row's teaching point (2e-5 measured 3.0 kg/s, more than charging can carry) */
         EN.command(e, 'break_open', { area_m2: 8e-6, node: 'rcp' });
       }
+      else if (c.failure_id === 'sgtr') {
+        /* A break AT the sg_primary node — the facade routes it into the SECONDARY with the
+         * SG's own backpressure (#507 wave 5). Severity is the sourced slider's fraction of
+         * a FULL double-ended rupture. THE AREA IS [UNVERIFIED]: no SG tube geometry document
+         * is in any lane's corpus (find_source.js verdict, 2026-08-22), so a typical
+         * Westinghouse tube is declared *(OWNER RULING, 2026-08-22: "Declare UNVERIFIED" —
+         * a selection from options I wrote)* — 0.75 in OD x 0.048 in wall, ID 0.654 in,
+         * double-ended = 2 x pi/4 x ID^2 = 4.33e-4 m2. The break location is SOURCED:
+         * "located at the top of the tube sheet on the outlet (cold leg) side" (§15.6.3) —
+         * sg_primary is that side of the loop. MEASURED at full severity: ~47 kg/s initial,
+         * against the 1982 Ginna event's ~48 kg/s — with the break model's declared ~2x
+         * subcooled overstatement (pwr2_break.js) as the honest error bar. */
+        var sevT = c.severity !== undefined ? c.severity : 0.4;
+        EN.command(e, 'break_open', { area_m2: Math.max(1e-6, sevT * 4.33e-4),
+                                      node: 'sg_primary' });
+      }
       else throw new Error('pwr2_shell: failure "' + c.failure_id + '" REFUSED — not in ' +
         'PWR2\'s failure set yet (PORV stick, primary leak, instrument failures exist)');
     },
@@ -310,7 +326,9 @@
       if (def && def.type === 'instrument') EN.command(e, 'instrument_restore', def.instrument_id);
       else if (c.failure_id === 'stuck_porv_open') EN.command(e, 'porv_stick', false);
       else if (c.failure_id === 'primary_leak' || c.failure_id === 'large_loca' ||
-               c.failure_id === 'rcp_seal_leak') EN.command(e, 'break_close', true);
+               c.failure_id === 'rcp_seal_leak' || c.failure_id === 'sgtr') {
+        EN.command(e, 'break_close', true);
+      }
       else if (c.failure_id === 'loss_of_feedwater') {
         EN.command(e, 'feed_pump_a', true); EN.command(e, 'feed_pump_b', true);
       }
@@ -499,7 +517,7 @@
           var keep = ['stuck_porv_open', 'rcp_trip', 'turbine_trip', 'loss_of_feedwater',
                       'sg_overfeed', 'loss_of_offsite_power', 'station_blackout',
                       'loss_of_condenser_vacuum',
-                      'degraded_hpi', 'large_loca', 'rcp_seal_leak',
+                      'degraded_hpi', 'large_loca', 'rcp_seal_leak', 'sgtr',
                       'pzr_level_sensor_stuck', 'pzr_level_sensor_low'], out = {};
           keep.forEach(function (id) {
             if (base.failures && base.failures[id]) out[id] = base.failures[id];
@@ -514,9 +532,11 @@
   PWR2Engine.prototype.getActiveFailures = function () {
     var out = [];
     if (this.eng.pz.porvStuck) out.push('stuck_porv_open');
-    /* the break family reports by NODE — a seal leak is the rcp node's break (#507 wave 3) */
+    /* the break family reports by NODE — a seal leak is the rcp node's break (#507 wave 3),
+     * a tube rupture the sg_primary node's (#507 wave 5) */
     if (this.eng.brk && this.eng.brk.open) {
-      out.push(this.eng.brk.node === 'rcp' ? 'rcp_seal_leak' : 'primary_leak');
+      out.push(this.eng.brk.node === 'rcp' ? 'rcp_seal_leak'
+             : this.eng.brk.node === 'sg_primary' ? 'sgtr' : 'primary_leak');
     }
     if (!this.eng.fw.pumpA && !this.eng.fw.pumpB) out.push('loss_of_feedwater');
     if (!this.eng.cwPumps) out.push('loss_of_condenser_vacuum');
@@ -727,6 +747,8 @@
         _scramT: e._scramT, _manualTrip: e._manualTrip, _lastTrip: e._lastTrip,
         _rodStopSig: e._rodStopSig, _runbackSig: e._runbackSig, _rbT: e._rbT,
         _rbActive: e._rbActive, _pzRelief: e._pzRelief, _pzReliefH: e._pzReliefH,
+        /* the SGTR stream's one-step carriers (#507 wave 5) — old saves land on 0, healthy */
+        _sgtrKgs: e._sgtrKgs, _sgtrH: e._sgtrH,
         _Qox: e._Qox, _cdAvail: e._cdAvail, _plcsAuto: e._plcsAuto,
         _pwrRate: e._pwrRate, _prevPower: e._prevPower,
         _tavgPrev: e._tavgPrev, _tavgRate: e._tavgRate, advDemand: e.advDemand,

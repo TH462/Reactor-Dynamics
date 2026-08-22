@@ -154,7 +154,8 @@
       dcDrivers: {},              /* mode / pressure setpoint */
       advDemand: 0, advBlock: true,
       /* one-step-lag carriers */
-      _Qox: 0, _pzRelief: 0, _pzReliefH: 0, _pzr: null, _dcr: null, _lastTrip: false,
+      _Qox: 0, _pzRelief: 0, _pzReliefH: 0, _sgtrKgs: 0, _sgtrH: 0,
+      _pzr: null, _dcr: null, _lastTrip: false,
       _scramT: null, _manualTrip: false, _rodStopSig: false, _runbackSig: false,
       _rbT: 0, _rbActive: false,
       ins: IN.createInstruments(opts.instruments),
@@ -445,7 +446,14 @@
      * a blackout; the TDAFW pump is steam-driven and NEVER gated (WTSM 5.7.5) */
     var awr = AW.stepAFW(eng.aw, dt, { mdafw_power_ok: acAvail });
     var sr = G.stepSG(eng.sg, tavg, dt, { feed: fwr.feed_frac * eng.rated_steam, steam: out,
-                                          afw_kgs: awr.total_kgs, afw_h: awr.h_kJkg });
+                                          afw_kgs: awr.total_kgs, afw_h: awr.h_kJkg,
+                                          /* the SGTR stream, one step old (#507 wave 5):
+                                           * stepBreak runs AFTER stepSG, so the discharge
+                                           * lands next cycle — a 0.02 s transport lag, the
+                                           * house instrument-lag convention, ~1 kg standing
+                                           * inventory at full-rupture flow. DECLARED. */
+                                          tube_leak_kgs: eng._sgtrKgs || 0,
+                                          tube_leak_h: eng._sgtrH || 0 });
     var tr = TB.stepTurbine(eng.tb, dt, { steam_kgs: steam, P_mpa: sr.P_sec,
                                           h_feed: G.SG.h_feed });
 
@@ -455,7 +463,19 @@
     var cvr = CV.stepCVCS(eng.cv, sys, dt, { ac_available: acAvail });
     var ecr = EC.stepECCS(eng.ec, sys, dt, { ac_available: acAvail });
 
-    var br = eng.brk ? BK.stepBreak(eng.brk, sys, dt, {}) : null;
+    /* THE SGTR IS A BREAK WHOSE DESTINATION IS THE SG (#507 wave 5) — inferred from the
+     * node: a break AT sg_primary is a ruptured tube, and a tube discharges into the
+     * SECONDARY, not containment (Ginna UFSAR ch15 §15.6.3 — the containment-bypass fact
+     * is the accident's diagnosis lesson). Its backpressure is the SG's own steam pressure
+     * (same step — stepSG ran above), so the sourced EOP falls out of the ΔP: "reduce
+     * reactor coolant system pressure to equilibrate with the ruptured steam generator
+     * secondary side pressure to minimize the coolant discharge" (§15.6.3). Every other
+     * break keeps the containment backpressure default. */
+    var toSG = !!(eng.brk && eng.brk.node === 'sg_primary');
+    var br = eng.brk ? BK.stepBreak(eng.brk, sys, dt,
+                                    toSG ? { backpressure_mpa: sr.P_sec } : {}) : null;
+    eng._sgtrKgs = toSG && br ? br.mdot_kgs : 0;
+    eng._sgtrH = toSG && br && br.mdot_kgs > 0 ? br.source.h : 0;
 
     var rrx = R.stepReactor(eng.rx, sys, dt,
       { boron_ppm: cvr.boron_ppm, rodGroups: eng.rodBank, Q_ox_kW: eng._Qox });
@@ -575,9 +595,11 @@
     if (ptr.fwi) { eng.fw.isolated = true; eng.tb.tripped = true; }
 
     /* containment receives the break AND the pressurizer relief (PORV/safety discharge ends
-     * up there via the relief tank; the tank itself is unmodelled, declared) */
-    var ctIn = (br ? br.mdot_kgs : 0) + (eng._pzRelief > 0 ? eng._pzRelief : 0);
-    var ctH = br && br.mdot_kgs > 0 ? br.source.h : eng._pzReliefH;
+     * up there via the relief tank; the tank itself is unmodelled, declared). An SGTR is
+     * EXCLUDED — the tube discharges into the SG, a closed receiver, and containment seeing
+     * nothing is the accident's containment-bypass signature (#507 wave 5). */
+    var ctIn = (br && !toSG ? br.mdot_kgs : 0) + (eng._pzRelief > 0 ? eng._pzRelief : 0);
+    var ctH = br && !toSG && br.mdot_kgs > 0 ? br.source.h : eng._pzReliefH;
     var ctr = CT.stepContainment(eng.ctm, dt,
       ctIn > 0 ? { mdot_kgs: ctIn, h_kJkg: ctH } : { mdot_kgs: 0 });
 

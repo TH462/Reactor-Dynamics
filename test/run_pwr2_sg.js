@@ -168,6 +168,24 @@ function runSuite(G, rec, quiet) {
   var sgM = G.createSG(), M0 = sgM.mass;
   for (var k = 0; k < 500; k++) G.stepSG(sgM, 304.5, 0.02, { feed: 100, steam: 60 });
   ck('mass balance is exact on feed minus steam', sgM.mass - M0, 40 * 500 * 0.02, 1e-6, 'kg');
+  /* THE THIRD STREAM (#507 wave 5): a ruptured tube's primary discharge — the overfill
+   * hazard is the MASS landing (Ginna UFSAR §15.6.3), and it lands HOT. */
+  var sgT = G.createSG(), MT0 = sgT.mass;
+  for (var kt = 0; kt < 500; kt++) {
+    G.stepSG(sgT, 304.5, 0.02, { feed: 60, steam: 100, tube_leak_kgs: 40, tube_leak_h: 1270 });
+  }
+  ck('the tube-leak stream lands in the mass ledger — feed 60 + leak 40 − steam 100 holds level',
+     sgT.mass - MT0, 0, 1e-6, 'kg');
+  var sgHot = G.createSG(), sgCold = G.createSG();
+  for (var kh = 0; kh < 500; kh++) {
+    G.stepSG(sgHot, 304.5, 0.02, { tube_leak_kgs: 40, tube_leak_h: 1270 });
+    G.stepSG(sgCold, 304.5, 0.02, { afw_kgs: 40, afw_h: 90 });
+  }
+  ckT('...and it lands HOT: 40 kg/s at primary enthalpy pressurizes the secondary where the ' +
+      'same flow of cold AFW water suppresses it',
+      sgHot.P > sgCold.P + 0.05,
+      sgHot.P.toFixed(3) + ' vs ' + sgCold.P.toFixed(3) + ' MPa after 10 s — the stream is ' +
+      'energy, not just mass');
   var sgD = G.createSG();
   for (var kd = 0; kd < 5000; kd++) G.stepSG(sgD, 304.5, 0.02, { steam: 200 });
   ckT('a generator with no feed goes DRY and stays bounded', sgD.dry !== false && sgD.mass >= 1,
@@ -239,6 +257,10 @@ var MUTATIONS = [
   ['sourced inventory replaced', 'mass_nominal: 12785,', 'mass_nominal: 40000,'],
   ['feedwater arrives at steam enthalpy instead of the sourced 435 degF',
    'feed * SG.h_feed', 'feed * W.h_g(sg.P)'],
+  ['the tube-leak stream is dropped from the MASS ledger (an SGTR that never overfills)',
+   'var dM = feed + afw + leak - steam;', 'var dM = feed + afw - steam;'],
+  ['the tube-leak stream carries no ENERGY (hot primary water arrives cold)',
+   'afw * h_afw + leak * h_leak - steam * h_g;', 'afw * h_afw - steam * h_g;'],
   ['steam leaves as liquid instead of vapour', '- steam * h_g;', '- steam * W.h_f(sg.P);'],
   ['secondary mass not integrated (inventory frozen)',
    'var m_new = sg.mass + dt * dM;', 'var m_new = sg.mass;'],
