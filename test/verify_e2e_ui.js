@@ -436,7 +436,12 @@ async function testSteamFeedPair(page) {
  * disable everything, and cannot silently disable nothing. */
 async function testEsfArmButtons(page) {
   var log = [];
-  var expect = { pwr: 0, pwr2: 1 };
+  /* pwr disables NOTHING; pwr2 disables the DELIBERATE set (#503 + the #506 honest-absent
+   * sweep): the HPI AUTO re-arm, grid FOLLOW, the boron panel (ON/OFF/SAMPLE — owner ruling,
+   * dark until the actuator exists), RHR ALIGN/ISOLATE, and ROD AUTO. Count pins both
+   * directions (cannot silently disable everything or nothing); membership pins identity. */
+  var expect = { pwr: 0, pwr2: 8 };
+  var mustInclude = ['AUTO', 'FOLLOW', 'SAMPLE', 'ALIGN', 'ROD AUTO'];
   for (var i = 0; i < 2; i++) {
     var eng = ['pwr', 'pwr2'][i];
     await page.goto('http://127.0.0.1:' + PORT + '/ui/shell.html?engine=' + eng,
@@ -453,8 +458,12 @@ async function testEsfArmButtons(page) {
       throw new Error(eng + ': expected ' + expect[eng] + ' disabled board button(s), found ' +
         st.disabled.length + ' [' + st.disabled.join(',') + ']');
     }
-    if (eng === 'pwr2' && st.disabled[0] !== 'AUTO') {
-      throw new Error('pwr2: the disabled button is "' + st.disabled[0] + '", not the ESF AUTO re-arm');
+    if (eng === 'pwr2') {
+      var missing = mustInclude.filter(function (m) { return st.disabled.indexOf(m) === -1; });
+      if (missing.length) {
+        throw new Error('pwr2: deliberate disables missing [' + missing.join(',') +
+          '] from [' + st.disabled.join(',') + ']');
+      }
     }
     log.push(eng + ': ' + st.disabled.length + '/' + st.total + ' buttons disabled' +
       (st.disabled.length ? ' (' + st.disabled.join(',') + ')' : ''));
