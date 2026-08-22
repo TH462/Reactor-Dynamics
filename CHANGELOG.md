@@ -30,6 +30,49 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
 
 ## [Unreleased]
 
+### Added
+- **PWR2 has a real shutdown bank** (#506 finding 3; *OWNER DIRECTIVE, 2026-08-22: "we should
+  work to make this engine has the same features as the old engine"*): two banks at the
+  kinetics module's gated worths (4068/3676 pcm, WTSM 2.2 — citation not in corpus, caveat
+  recorded), scram inserts both on the pwr1 2.5 s/2.0 s pair (the shutdown readout used to
+  SNAP 200→0 in one frame — a shell fabrication), and the board's shutdown drive is a real
+  group-routed evolution (it used to silently move the CONTROL bank — `group_id` was dropped).
+  Boot boron measured bit-identical (withdrawn banks = 0 pcm). Rod S/M/F speeds are real
+  ([derived] from the sourced WTSM 8.1 classes; the selection was discarded — always ~FAST).
+  `Blueprint/PWR2_VALIDATION.md` §66.
+- **`test/run_pwr2_board.js`** — the pwr board driver over a live PWR2 service, headless:
+  pump props finite, tile bands authored, payload round-trips, and the NO-ORPHAN SWEEP
+  (every button handled+acknowledged, momentary, UI-local, or disabled — DESIGN_CRITERIA Q4
+  as a check). 11 checks / 2 mutations.
+- **#507 — the PWR2 parity umbrella**: the full pwr1-vs-pwr2 gap inventory (commands,
+  control-state fields, 20 non-injectable casualties, absent systems, channels, ICs), each
+  row tracked or newly-tracked.
+
+### Fixed (the #506 playtest bundle, 2026-08-22)
+- **A refused or errored command is VISIBLE now** (#505 visible half): the click path catches
+  the shell's refusal throw and flashes the reason in the scanner bar; two-command presses no
+  longer lose their second command. Telemetry half stays with #448.
+- **Five payload-key mismatches in the PWR2 shell** — HPI and AFW **STOP was starting the
+  pump**; heater MANUAL/OFF/% re-selected AUTO; cvcs-auto and ADV read the wrong keys.
+- **Steam dump AUTO/CLOSED work** (mapped onto the engine's existing `dump_mode` door — the
+  refusal predated the door); **charging AUTO/MAN/OFF work** (rehomed to charging demand).
+- **The RCP spins** (#506.5): `pumps[0].flow_pct` was absent and the board's spin speed
+  computed NaN — impeller frozen, pipe ports dark. Condensate did not reproduce (measured
+  0.97 normalized — presumed seen during the pre-#501 freeze).
+- **The power tile is no longer pinned red at full power** (#506.7): the band override now
+  requires a blockable trip to EXIST in the live kernel (`trip_block_status` presence) before
+  reading it as armed — PWR2's kernel carries no trips, so the 25 % startup trip capped the
+  tile at 27.5 with "TRIP 25%" forever. Legacy snapshots keep the old rule bit-identical.
+- **Letdown orifice lamps latch, load MW box reads the demand, FOLLOW/RHR/boron/ADV-setpoint
+  controls read honestly disabled** on an engine without their machinery (#503 pattern; boron
+  panel dark per owner ruling until the actuator is built). Feed AUTO drives PWR2's own
+  three-element controller (`set_feed_coupled`) when no kernel channel exists.
+- **`pzr_level_low` is 17 % on PWR2** (#500): the pwr table's 25.0 % is this plant's own
+  sourced no-load program point — a standing annunciator on a healthy Mode 3; 17 % is the
+  sourced heater-cutoff level. The pwr1 table is untouched.
+- **Rod step counts answered** (#506.6): speeds are sourced; counts are not, anywhere — 200
+  stays, annotated unverified (Ginna TS defers the number to the COLR).
+
 ### Removed
 - **The chart pre-seed and every flat seed** *(OWNER RULING, 2026-08-21: selected "All flat
   seeds everywhere" [be removed] — reversing #237, the 2026-08-01 real-trace pre-seed and the

@@ -3437,3 +3437,85 @@ untouched holds power ≥ 97 %, pressure > 2200 psia, legs within 4.5 °F of set
 future opts — now rebuilds with the construction opts), and the `?init=` dev override
 validated against the four-state pwr list for the pwr2 card (now validates against the
 engine's own `initStates`).
+
+## 66. THE BOARD SPEAKS PWR2 — SEVEN PLAYTEST FINDINGS, TWO REAL BANKS, AND THE GATE THAT NOW STANDS ON THE SEAM (#506) — 2026-08-22
+
+**The owner's second live session filed #506**: ten systems of dead buttons, valves that never
+move, shutdown rods snapping 200 → 0 in one frame, dead rod-speed selection, frozen pumps, a
+step-count question, and the power tile pinned red. Root causes, each measured:
+
+**Findings 1–2 (dead buttons/valves) were four stacked mechanisms, none of them one bug:**
+(a) a REFUSED command THROWS in `applyCommand` — right for a harness, but nothing on the UI
+click path caught it, so eleven controls unwound the handler silently and two-command presses
+lost their second command; **fixed in `ui/app.js cmd()`** (try/catch → the service's own error
+shape → the scanner-bar flash, the #505 visible half). (b) kernel-owned commands silently
+erroring against the emptied config (boron/rod-AUTO channels, trip blocks) — those controls now
+read **disabled** off the snapshot (channel-absence keyed, the #503 pattern), and the boron
+panel goes dark per the owner's ruling until the real actuator is built (#507). (c) **five
+payload-key mismatches** — the mapper read `c.running` where the board sends `active` (so HPI
+and AFW **STOP started the pump**), `c.pct` where the board sends `power_pct` (heater
+MANUAL/OFF/% all re-selected AUTO), `enabled` vs `active`, `pct` vs `mode`. (d) control-state
+gaps and pinned constants — `letdown_orifice_a/b` absent (CLOSED lit forever),
+`pumps[0].flow_pct` absent, `steam_dump_auto`/`charging_pump_running` literals. `set_steam_dump`
+also left REFUSED for the engine's own `dump_mode` door (the refusal predated the door), and
+`set_charging_pump` rehomed to charging demand.
+
+**Finding 3 — THE SHUTDOWN BANK IS REAL** *(OWNER DIRECTIVE, 2026-08-22, in planning: "we
+should work to make this engine has the same features as the old engine. Let's investigate the
+gaps between the engines.")*. The engine had ONE lumped 200-step bank at an **unsourced
+`worth: 0.08` literal** that bypassed the kinetics module's own gated pair; the shell fabricated
+the second readout as `scrammed ? 0 : 200` — the one-frame snap the owner saw beside the control
+bank's ramp. Worse, rod commands dropped `group_id`, so the board's shutdown drive **silently
+moved the control bank**. Now: two banks at `RODS.worth_control`/`worth_shutdown` (4068 /
+3676 pcm, WTSM 2.2 Table 2.2-1 — **provenance caveat: the citation ML11216A051 is NOT in the
+corpus**, `find_source` 0 hits; cited-but-uncorroborated, recorded here), both fully withdrawn
+at the IC (WTSM 8.1.1 practice; Ginna B 3.1.1 SDM-by-withdrawn-bank, in corpus), scram inserts
+both on the pwr1 2.5 s/2.0 s [tune] pair — measured trace: shutdown 200 → 0 by t+2.1 s, control
+by t+2.7 s at dt 0.02 — and the shutdown drive is a real, group-routed evolution (nothing
+re-withdraws post-scram; the #468 lesson). `criticalBoron` now takes the withdrawn banks
+instead of `null`: **measured bit-identical, 625.7841 ppm both ways** (withdrawn = exactly
+0 pcm — the safe wiring, unlike #502's reference re-point). The settled-IC ride is unmoved
+(power min 98.19 %).
+
+**Finding 4 — rod speeds.** The S/M/F selection was discarded (fixed 1.0 step/s ≈ always FAST).
+`ROD_SPEEDS {slow 0.117, normal 0.702, fast 1.053}` steps/s, [derived] from pwr1's sourced WTSM
+8.1 speed classes by fraction-of-travel; measured through the full stack: slow moves 1.17
+steps/10 s, fast 10.55.
+
+**Finding 5 — the RCP froze on a NaN.** `pumps[0]` had no `flow_pct`; the board's
+`pumpProps` computed `undefined/100 = NaN`, `NaN` failed every branch — the impeller never
+spun AND its pipe ports went dark. Published now from `pump_flow_pct`. **The condensate half
+does not reproduce** (measured 0.97 normalized, spinning) — presumed observed during the
+pre-#501 freeze.
+
+**Finding 6 — the step count, answered not changed.** Rod SPEEDS are sourced (WTSM 8.1,
+8–72 steps/min). Step COUNTS are sourced NOWHERE: 228 is unattributed class recall, pwr1's 912
+is a declared [tune] (4×228), pwr2's 200 a literal now annotated [derived]/unverified; Ginna TS
+defines "fully withdrawn" in the COLR — the licensee document deliberately declines the number.
+
+**Finding 7 — the power tile.** The band override walked the STATIC pwr trip table and excluded
+trips only via live `trip_blocks`; a kernel with `trips: []` has nothing blockable, so the 25 %
+startup trip read as armed forever — tile max 27.5, "TRIP 25%", power 99.8 pinned red.
+`limitingArmedTrip` now requires a blockable trip's id to EXIST in the live
+`rps_state.trip_block_status` (the kernel builds that from its own config); a snapshot without
+`trip_block_status` keeps the legacy rule bit-identical (old recordings). Measured after:
+tripHi 120, max 132, no note.
+
+**#500 rode along**: `pzr_level_low` 25 → **17 %** on PWR2 only (the sourced heater-cutoff
+level, `LEVEL.low_cut_pct`, WTSM 10.3) — 25.0 was this plant's own sourced no-load program
+point, a standing annunciator on a healthy Mode 3. One copied row; every other alarm row shared
+by reference with the pwr table; gated with a revert mutation.
+
+**The gate that now stands on the seam: `test/run_pwr2_board.js`** — the pwr board driver over
+a real pwr2 SimulationService, headless (the run_inspect pattern). Pump props finite · tile
+bands authored · the payload round trips · **the no-orphan sweep**: all 49 button items
+handled-and-acknowledged, momentary, UI-local, or disabled (8 disabled, 2 momentary, 5
+UI-local) — DESIGN_CRITERIA question 4 as an executable check. 11 checks, 2 mutations (tile
+condition, payload revert), both caught. `run_pwr2_shell` grew the two-bank ramp checks (sampled
+mid-ramp, where the snap and the ramp disagree most), the group-routing check, the orifice/pump
+fields, and three mutations (alarm-override revert, shutdown-snap revert, flow_pct drop).
+
+**Not cured, tracked in #507 (the parity umbrella)**: boron play (panel disabled, actuator
+owed), RHR align (#458 class), grid FOLLOW / ADV setpoint / manual dump OPEN / AFW block valve
+(refused by design, now visibly), 20 non-injectable casualties, the 5-vs-1 IC count, the rod
+insertion limit.

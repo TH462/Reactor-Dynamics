@@ -29,6 +29,49 @@ and the user-visible summary in `CHANGELOG.md`. This file points at those and tr
 
 ---
 
+## Session log — 2026-08-22-develop-a (#506 — the board learns to speak PWR2, the shutdown bank becomes real, and the parity gap gets its inventory)
+
+**The owner's second playtest (#506, filed before the -b fixes landed): seven findings.** All
+seven root-caused with measured evidence and fixed or answered; the full record is
+`Blueprint/PWR2_VALIDATION.md` §66. Owner rulings this session: the shutdown bank must be REAL
+("make this engine has the same features as the old engine. Let's investigate the gaps") and
+the boron panel disables until its actuator exists.
+
+- **Dead buttons were FOUR stacked mechanisms**: refusal throws unwinding the click path
+  uncaught (11 controls, second commands lost — `cmd()` now catches and flashes, #505's
+  visible half) · kernel-terminal silent errors (those controls now read disabled,
+  snapshot-keyed) · **five payload-key mismatches** (HPI/AFW **STOP started the pump** —
+  `c.running` vs the board's `active`; heater MANUAL/OFF/% re-selected AUTO) · absent/pinned
+  control-state fields. `set_steam_dump` un-refused onto the engine's own `dump_mode` door;
+  `set_charging_pump` rehomed to demand.
+- **The shutdown bank**: the lumped `worth: 0.08` literal retired for the kinetics module's
+  gated pair (4068/3676 pcm; **the WTSM 2.2 citation is NOT in the corpus** — recorded, not
+  relabelled); scram inserts both banks on the pwr1 2.5/2.0 s pair (measured trace: sd 0 at
+  t+2.1 s, ctl at t+2.7 s); the drive is group-routed (it silently moved the CONTROL bank
+  before — `group_id` was dropped); boot boron **bit-identical 625.7841 ppm** with withdrawn
+  banks vs null (the #502-safe wiring, measured). Rod S/M/F speeds real: 1.17/10.55 steps per
+  10 s measured through the stack.
+- **The RCP froze on a NaN** (`pumps[0].flow_pct` absent → spin speed NaN → animation '' AND
+  pipe ports dark). Condensate does NOT reproduce (0.97 normalized) — presumed the pre-#501
+  freeze.
+- **The power tile mixed authorities**: STATIC pwr trip table for bands, LIVE `trip_blocks`
+  for arming — an engine with `trips: []` made the 25 % startup trip armed forever (max 27.5,
+  "TRIP 25%", power 99.8 pinned red). `limitingArmedTrip` now requires presence in the live
+  `trip_block_status`; the tbs-less snapshot shape keeps the legacy rule bit-identical.
+- **#500**: `pzr_level_low` 25 → 17 % on PWR2 only (25.0 IS this plant's sourced no-load
+  program point; 17 is the sourced heater cutoff). One copied alarm row, revert mutation.
+- **New gate `run_pwr2_board`** (11 checks / 2 mutations): the driver over a live pwr2
+  service, headless — including the NO-ORPHAN SWEEP (49 buttons: every one
+  handled+acknowledged, momentary, UI-local, or disabled). Trap worth keeping: **a
+  flow-keyed field cannot witness a deadheaded pump** — `hpi_active` and `eccs_mode` both
+  read standby with the HHSI pump RUNNING at 2235 psia, so the STOP-fix check asserts the
+  pump switch white-box.
+- **#507 filed** — the full pwr1-vs-pwr2 parity inventory (commands, fields, 20
+  non-injectable casualties, absent systems, channels, ICs), each row tracked/new. #491
+  verified fixed (ancestor `9412d3d`) and closed.
+
+---
+
 ## Session log — 2026-08-21-develop-b (#501–#504 fixed — the pre-seed removed everywhere, the PWR2 IC settled, and what the settling sent blind)
 
 **The bundle from -a's triage, all four fixed on `develop`.** Owner rulings this session:
