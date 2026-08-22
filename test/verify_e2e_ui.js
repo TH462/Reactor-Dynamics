@@ -436,12 +436,12 @@ async function testSteamFeedPair(page) {
  * disable everything, and cannot silently disable nothing. */
 async function testEsfArmButtons(page) {
   var log = [];
-  /* pwr disables NOTHING; pwr2 disables the DELIBERATE set (#503 + the #506 honest-absent
-   * sweep): the HPI AUTO re-arm, grid FOLLOW, the boron panel (ON/OFF/SAMPLE — owner ruling,
-   * dark until the actuator exists), RHR ALIGN/ISOLATE, and ROD AUTO. Count pins both
+  /* pwr disables NOTHING; pwr2 disables the DELIBERATE set: the HPI AUTO re-arm (#503),
+   * grid FOLLOW and ROD AUTO (#506 honest-absent). The boron panel and RHR came back with
+   * #507 waves 1-2 (a real kernel channel and a real align command). Count pins both
    * directions (cannot silently disable everything or nothing); membership pins identity. */
-  var expect = { pwr: 0, pwr2: 8 };
-  var mustInclude = ['AUTO', 'FOLLOW', 'SAMPLE', 'ALIGN', 'ROD AUTO'];
+  var expect = { pwr: 0, pwr2: 3 };
+  var mustInclude = ['AUTO', 'FOLLOW', 'ROD AUTO'];
   for (var i = 0; i < 2; i++) {
     var eng = ['pwr', 'pwr2'][i];
     await page.goto('http://127.0.0.1:' + PORT + '/ui/shell.html?engine=' + eng,

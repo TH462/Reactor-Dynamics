@@ -307,6 +307,43 @@ function runSuite(RD, rec, quiet, only) {
   ckT('...and the oxidation heat the damage layer reported REACHED the reactor on the way down',
       qoxSeen, 'eng._Qox > 0 observed during the ride — the wiring, seen directly');
 
+  /* ---- 3c. THE RHR ALIGN, THROUGH THE PLANT (#507 wave 2) -----------------------------------
+   * A 20 cm2 cold-leg break depressurizes below the sourced 425 psig suction permissive at
+   * ~74 s; the align door opens the valve and the module's heats map now MERGES into
+   * stepPlant (it used to feed only true_state — an aligned system removed exactly zero
+   * heat, the Q4 orphan the #458 ruling names). Measured A/B at t = 80.0 s: aligned
+   * tavg 133.9 degC vs secured 150.3 — the 16 degC gap is the wiring, and the pinned band
+   * below is what the merge-dropped mutation reds against (its removed_kJ ledger still
+   * climbs; only the PLANT tells the truth). */
+  head('THE RHR ALIGN  [below the 425 psig permissive, the heat actually leaves the loop]');
+  var engR = EN.createEngine({});
+  run(engR, 10);
+  EN.command(engR, 'break_open', { area_m2: 0.002, node: 'cold_leg' });
+  var tsR = null, tR = 0, alignedR = false;
+  while (tR < 80.001) {
+    tsR = EN.step(engR, DT); tR += DT;
+    if (!alignedR && (engR.sys.P * 145.038 - 14.7) < 420) {
+      EN.command(engR, 'rhr_align', true); alignedR = true;
+    }
+    if (engR.sys.beyond_model) break;
+  }
+  ckT('aligned below the permissive: valve open, mode rhr, real energy removed, plant COOLER',
+      alignedR && engR.rh.valve_open === true && tsR.eccs_mode === 'rhr' &&
+      engR.rh.removed_kJ > 50000 && tsR.tavg_c < 142,
+      'tavg ' + tsR.tavg_c.toFixed(1) + ' degC at t=80 (secured measures 150.3), removed ' +
+      (engR.rh.removed_kJ / 1000).toFixed(0) + ' MJ, mode ' + tsR.eccs_mode);
+  /* the door refuses an at-power align (the 425 psig permissive), and the autoclose is the
+   * valve hardware: a valve forced open above 585 psig shuts on the next step */
+  var engR2 = EN.createEngine({});
+  run(engR2, 2);
+  EN.command(engR2, 'rhr_align', true);
+  var refusedAtPower = engR2.rh.valve_open === false;
+  engR2.rh.valve_open = true;
+  EN.step(engR2, DT);
+  ckT('the door refuses an at-power align, and the 585 psig autoclose shuts a forced valve',
+      refusedAtPower && engR2.rh.valve_open === false,
+      'align at ~2220 psig refused (permissive 425); forced-open valve autoclosed in one step');
+
   }
 
   if (grp('B')) {
@@ -698,6 +735,12 @@ var MUTATIONS = [
   ['the oxidation heat is never fed back',
    'eng._Qox = dr.Q_ox_kW;',
    'eng._Qox = 0;', { grp: 'D' }],
+  ['the RHR heats merge is dropped (an aligned system removes zero heat — the #458 orphan)',
+   "    var heats = rrx.heats;\n    if (rhrR.duty_kW > 0) {\n      heats = Object.assign({}, rrx.heats);\n      Object.keys(rhrR.heats).forEach(function (n) { heats[n] = (heats[n] || 0) + rhrR.heats[n]; });\n    }",
+   '    var heats = rrx.heats;', { grp: 'D' }],
+  ['the align door ignores the 425 psig permissive (a valve that opens at power)',
+   'else if (eng.sys.P * 145.038 - 14.7 < RD.rhr.RHR.permissive_open_psig) eng.rh.valve_open = true;',
+   'else eng.rh.valve_open = true;', { grp: 'D' }],
   ['the rod slew is deleted (commands teleport the bank)',
    '      eng.rodSteps += move;',
    '      eng.rodSteps = eng.rodTarget;', { grp: 'A' }],

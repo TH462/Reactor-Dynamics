@@ -116,7 +116,7 @@ function runSuite(R, rec, quiet) {
   var MAX_H = quiet ? 4.0 : DOC.hours * 1.4;
   function cooldown(avail) {
     var sys = S.createPlant({ h: W.h_l(R.C(DOC.entry_f), P_cd), P: P_cd, extraMass: pzrSurrogate });
-    var rh = R.createRHR({ running: true, avail: avail }), o = null, hrs = null;
+    var rh = R.createRHR({ valve_open: true, avail: avail }), o = null, hrs = null;
     var Qd = R.RHR.design_decay_fraction_20h * 300000;
     for (var n = 0; n < MAX_H * 3600 / DT; n++) {
       o = R.stepRHR(rh, sys, DT, {});
@@ -165,13 +165,13 @@ function runSuite(R, rec, quiet) {
 
   /* ---- 3. THE INTERLOCK IS REPORTED, NOT ENFORCED ------------------------------------- */
   if (!quiet) console.log('\nINTERLOCK  [REPORTED, never enforced -- protection is the control layer (HR5)]');
-  var below = R.stepRHR(R.createRHR({ running: true }), plantAt(300, (400 + 14.7) / PSI), 1, {});
-  var above = R.stepRHR(R.createRHR({ running: true }), plantAt(300, (600 + 14.7) / PSI), 1, {});
+  var below = R.stepRHR(R.createRHR({ valve_open: true }), plantAt(300, (400 + 14.7) / PSI), 1, {});
+  var above = R.stepRHR(R.createRHR({ valve_open: true }), plantAt(300, (600 + 14.7) / PSI), 1, {});
   ckT('below 425 psig the permissive says it MAY open', below.permissive_may_open === true &&
       below.permissive_must_shut === false, '400 psig');
   ckT('above 585 psig it says it MUST shut', above.permissive_must_shut === true &&
       above.permissive_may_open === false, '600 psig');
-  var mid = R.stepRHR(R.createRHR({ running: true }), plantAt(300, (500 + 14.7) / PSI), 1, {});
+  var mid = R.stepRHR(R.createRHR({ valve_open: true }), plantAt(300, (500 + 14.7) / PSI), 1, {});
   ckT('BETWEEN the two setpoints it may not open and need not shut  [the hysteresis band]',
       mid.permissive_may_open === false && mid.permissive_must_shut === false,
       '500 psig -- an already-open train stays open, a shut one stays shut');
@@ -183,13 +183,13 @@ function runSuite(R, rec, quiet) {
   /* ---- 4. IT IS A HEAT SINK, WITH THE RIGHT SUCTION ----------------------------------- */
   if (!quiet) console.log('\nDUTY  [a SINK, drawn from the HOT LEG -- sourced, and not a detail]');
   var hotP = plantAt(340, P_cd), coldP = plantAt(160, P_cd);
-  var dHot = R.stepRHR(R.createRHR({ running: true }), hotP, 1, {});
-  var dCold = R.stepRHR(R.createRHR({ running: true }), coldP, 1, {});
+  var dHot = R.stepRHR(R.createRHR({ valve_open: true }), hotP, 1, {});
+  var dCold = R.stepRHR(R.createRHR({ valve_open: true }), coldP, 1, {});
   ckT('duty FALLS as the plant cools  [why the last 40 degF take longest]',
       dCold.duty_kW < dHot.duty_kW * 0.6 && dCold.duty_kW > 0,
       dHot.duty_kW.toFixed(0) + ' kW at 340 degF against ' + dCold.duty_kW.toFixed(0) +
       ' kW at 160 degF');
-  var colder = R.stepRHR(R.createRHR({ running: true }), plantAt(80, P_cd), 1, {});
+  var colder = R.stepRHR(R.createRHR({ valve_open: true }), plantAt(80, P_cd), 1, {});
   ckT('below the cooling-water temperature it stops, and does not WARM the plant',
       colder.duty_kW === 0, 'sink at ' + R.F(R.RHR.ccw_temp_c).toFixed(0) +
       ' degF; a signed duty here would heat the plant through its own heat exchanger');
@@ -210,8 +210,8 @@ function runSuite(R, rec, quiet) {
    * Below the cooling-water temperature (Thot - Tccw) is NEGATIVE, so a negative availability
    * multiplies to a POSITIVE duty: the plant is heated through its own heat exchanger and the
    * clamp never fires. That is the case the floor exists for, and the only one that can fail. */
-  var negWarm = R.stepRHR(R.createRHR({ running: true, avail: -2 }), hotP, 1, {});
-  var negCold = R.stepRHR(R.createRHR({ running: true, avail: -2 }), plantAt(80, P_cd), 1, {});
+  var negWarm = R.stepRHR(R.createRHR({ valve_open: true, avail: -2 }), hotP, 1, {});
+  var negCold = R.stepRHR(R.createRHR({ valve_open: true, avail: -2 }), plantAt(80, P_cd), 1, {});
   ckT('negative availability is FLOORED even below the sink, where the clamp cannot help',
       negCold.duty_kW === 0 && negWarm.duty_kW === 0 && dHot.duty_kW > 0,
       'avail -2 at ' + R.F(R.RHR.ccw_temp_c).toFixed(0) + ' degF sink: warm plant ' +
@@ -219,7 +219,7 @@ function runSuite(R, rec, quiet) {
       negCold.duty_kW.toFixed(0) + ' kW (only the floor can)');
   /* AND THE RUNNING TOTAL. Its check was lost when section 2 was rewritten, and nothing else
    * reads removed_kJ -- so the accumulator could stop entirely and every other check would pass. */
-  var acc = R.createRHR({ running: true }), accSum = 0, accOut = null;
+  var acc = R.createRHR({ valve_open: true }), accSum = 0, accOut = null;
   for (var a = 0; a < 50; a++) {
     accOut = R.stepRHR(acc, hotP, 2, {});
     accSum += accOut.duty_kW * 2;
@@ -240,7 +240,7 @@ function runSuite(R, rec, quiet) {
     if (n.id === 'hot_leg') hotH = W.T_from_h(n.h, sysDT.P);
     if (n.id === 'cold_leg') coldH = W.T_from_h(n.h, sysDT.P);
   });
-  var dDT = R.stepRHR(R.createRHR({ running: true }), sysDT, 1, {});
+  var dDT = R.stepRHR(R.createRHR({ valve_open: true }), sysDT, 1, {});
   ckT('the legs have actually come apart, so the next check can fail',
       Math.abs(hotH - coldH) > 2,
       'hot ' + R.F(hotH).toFixed(1) + ' degF vs cold ' + R.F(coldH).toFixed(1) +
@@ -251,27 +251,35 @@ function runSuite(R, rec, quiet) {
 
   /* ---- 5. CONSTRUCTION  [written first -- D1 §31] ------------------------------------- */
   if (!quiet) console.log('\nCONSTRUCTION  [§31: written first, not acquired after an attack]');
-  var opt = R.createRHR({ running: true, avail: 0.5, ccw_temp_c: 40, UA: 123, removed_kJ: 7 });
-  ckT('caller running reaches the plant', opt.running === true, '');
+  var opt = R.createRHR({ valve_open: true, hx_fraction: 0.7, avail: 0.5, ccw_temp_c: 40, UA: 123, removed_kJ: 7 });
+  ckT('caller valve_open reaches the plant (running follows it on the first step)',
+      opt.valve_open === true, '');
+  ck('caller hx_fraction reaches the plant', opt.hx_fraction, 0.7, 1e-12, '');
   ck('caller avail reaches the plant', opt.avail, 0.5, 1e-12, '');
+  ckT('the HX split SCALES duty (the cooldown-rate lever, #458: not an alignment)',
+      (function () {
+        var full = R.stepRHR(R.createRHR({ valve_open: true }), plantAt(340, P_cd), 1, {});
+        var half = R.stepRHR(R.createRHR({ valve_open: true, hx_fraction: 0.5 }), plantAt(340, P_cd), 1, {});
+        return full.duty_kW > 0 && Math.abs(half.duty_kW - 0.5 * full.duty_kW) < 1e-6;
+      })(), 'hx 0.5 removes exactly half of hx 1.0');
   ck('caller ccw temperature reaches the plant', opt.ccw_temp_c, 40, 1e-12, 'degC');
   ck('caller UA reaches the plant', opt.UA, 123, 1e-12, 'kW/K');
   ck('caller removed_kJ reaches the plant', opt.removed_kJ, 7, 1e-12, 'kJ');
   ckT('a caller UA is USED rather than re-derived on the first step', (function () {
-        var r = R.createRHR({ running: true, UA: 1.0 });
+        var r = R.createRHR({ valve_open: true, UA: 1.0 });
         var o = R.stepRHR(r, plantAt(340, P_cd), 1, {});
         return Math.abs(o.UA_kW_per_K - 1.0) < 1e-12;
       })(), 'UA = 1 kW/K survives the first step');
   ckT('omitting UA derives one, and it is plant-sized rather than a placeholder', (function () {
-        var o = R.stepRHR(R.createRHR({ running: true }), plantAt(340, P_cd), 1, {});
+        var o = R.stepRHR(R.createRHR({ valve_open: true }), plantAt(340, P_cd), 1, {});
         return o.UA_kW_per_K > 1 && o.UA_kW_per_K < 1000;
       })(), 'derived from the sourced 16-hour cooldown');
   ckT('the default lineup is SECURED, not running',
       R.stepRHR(R.createRHR({}), plantAt(340, P_cd), 1, {}).duty_kW === 0,
       'a default of "running" would make every probe that omits it cool a plant nobody aligned');
   ckT('a caller cooling-water temperature actually changes the duty', (function () {
-        var warm = R.stepRHR(R.createRHR({ running: true, ccw_temp_c: 90 }), plantAt(340, P_cd), 1, {});
-        var cold = R.stepRHR(R.createRHR({ running: true, ccw_temp_c: 10 }), plantAt(340, P_cd), 1, {});
+        var warm = R.stepRHR(R.createRHR({ valve_open: true, ccw_temp_c: 90 }), plantAt(340, P_cd), 1, {});
+        var cold = R.stepRHR(R.createRHR({ valve_open: true, ccw_temp_c: 10 }), plantAt(340, P_cd), 1, {});
         return cold.duty_kW > warm.duty_kW * 1.2;
       })(), 'a colder ultimate heat sink removes more -- the argument is not cosmetic');
   /* ---- THE COOLDOWN MARGIN. drivers.decayHeat_kW was documented and INERT for the whole build:
@@ -281,31 +289,31 @@ function runSuite(R, rec, quiet) {
    * heats map, so adding it here would double-count. It is reported instead, answering the
    * question an operator actually asks during a cooldown: is RHR keeping up? */
   ckT('the margin is NULL when no decay heat is supplied, not a fabricated zero', (function () {
-        var o = R.stepRHR(R.createRHR({ running: true }), plantAt(340, P_cd), 1, {});
+        var o = R.stepRHR(R.createRHR({ valve_open: true }), plantAt(340, P_cd), 1, {});
         return o.margin_kW === null && o.keeping_up === null && o.decay_heat_kW === null;
       })(), 'a margin against an ASSUMED decay heat would be a made-up operator-facing number');
   ckT('a supplied decay heat is reported back unchanged', (function () {
-        var o = R.stepRHR(R.createRHR({ running: true }), plantAt(340, P_cd), 1,
+        var o = R.stepRHR(R.createRHR({ valve_open: true }), plantAt(340, P_cd), 1,
                           { decayHeat_kW: 4200 });
         return o.decay_heat_kW === 4200;
       })(), '');
   ckT('the margin is duty MINUS decay heat, and says whether RHR is keeping up', (function () {
-        var win = R.stepRHR(R.createRHR({ running: true }), plantAt(340, P_cd), 1,
+        var win = R.stepRHR(R.createRHR({ valve_open: true }), plantAt(340, P_cd), 1,
                             { decayHeat_kW: 100 });
-        var lose = R.stepRHR(R.createRHR({ running: true }), plantAt(340, P_cd), 1,
+        var lose = R.stepRHR(R.createRHR({ valve_open: true }), plantAt(340, P_cd), 1,
                              { decayHeat_kW: 1e9 });
         return Math.abs(win.margin_kW - (win.duty_kW - 100)) < 1e-9 && win.keeping_up === true &&
                lose.keeping_up === false && lose.margin_kW < 0;
       })(), 'positive margin = cooling, negative = losing ground');
   ckT('the decay heat does NOT enter the duty (it would double-count the reactor heats map)',
       (function () {
-        var a = R.stepRHR(R.createRHR({ running: true }), plantAt(340, P_cd), 1, {});
-        var b = R.stepRHR(R.createRHR({ running: true }), plantAt(340, P_cd), 1,
+        var a = R.stepRHR(R.createRHR({ valve_open: true }), plantAt(340, P_cd), 1, {});
+        var b = R.stepRHR(R.createRHR({ valve_open: true }), plantAt(340, P_cd), 1,
                           { decayHeat_kW: 50000 });
         return Math.abs(a.duty_kW - b.duty_kW) < 1e-9;
       })(), '50 MW of decay heat must not move the duty by a single kW');
   ckT('negative availability is floored rather than trusted',
-      R.stepRHR(R.createRHR({ running: true, avail: -2 }), plantAt(340, P_cd), 1, {}).duty_kW === 0,
+      R.stepRHR(R.createRHR({ valve_open: true, avail: -2 }), plantAt(340, P_cd), 1, {}).duty_kW === 0,
       'a negative availability would otherwise HEAT the plant');
 }
 
@@ -331,7 +339,8 @@ var MUTATIONS = [
   ['the sink becomes a source below the cooling-water temperature',
    'if (duty < 0) duty = 0;   /* a heat SINK: it never warms the plant */', ''],
   ['availability no longer floored (negative avail heats the plant)',
-   'Math.max(0, rh.avail) * rh.UA * (Thot - rh.ccw_temp_c)', 'rh.avail * rh.UA * (Thot - rh.ccw_temp_c)'],
+   'Math.max(0, rh.avail) * rh.hx_fraction * rh.UA * (Thot - rh.ccw_temp_c)',
+   'rh.avail * rh.hx_fraction * rh.UA * (Thot - rh.ccw_temp_c)'],
   ['the interlock gains no hysteresis (one setpoint, chattering)',
    'var mustShut = P_psig >= RHR.permissive_close_psig;',
    'var mustShut = P_psig >= RHR.permissive_open_psig;'],
@@ -350,8 +359,16 @@ var MUTATIONS = [
   ['duty stops following the suction temperature',
    'rh.UA * (Thot - rh.ccw_temp_c)', 'rh.UA * (200 - rh.ccw_temp_c)'],
   /* CONSTRUCTION */
-  ['caller running ignored at construction',
-   'running: opts.running === undefined ? false : !!opts.running,', 'running: false,'],
+  /* #507 wave 2: `running` is DERIVED from the valve every step, so the construction pair
+   * moved to the field that now owns the lineup */
+  ['caller valve_open ignored at construction',
+   'valve_open: opts.valve_open === undefined ? false : !!opts.valve_open,', 'valve_open: false,'],
+  ['caller hx_fraction ignored at construction',
+   'hx_fraction: opts.hx_fraction === undefined ? 1 : Math.max(0, Math.min(1, opts.hx_fraction)),',
+   'hx_fraction: 1,'],
+  ['the HX split stops scaling duty (the cooldown-rate lever goes dead)',
+   'duty = Math.max(0, rh.avail) * rh.hx_fraction * rh.UA * (Thot - rh.ccw_temp_c);',
+   'duty = Math.max(0, rh.avail) * rh.UA * (Thot - rh.ccw_temp_c);'],
   ['caller avail ignored at construction',
    'avail: opts.avail === undefined ? 1 : opts.avail,', 'avail: 1,'],
   ['caller cooling-water temperature ignored at construction',
@@ -359,9 +376,9 @@ var MUTATIONS = [
    'ccw_temp_c: RHR.ccw_temp_c,'],
   ['caller UA ignored at construction (always re-derived)',
    'UA: opts.UA === undefined ? null : opts.UA,', 'UA: null,'],
-  ['the default lineup becomes RUNNING instead of secured',
-   'running: opts.running === undefined ? false : !!opts.running,',
-   'running: opts.running === undefined ? true : !!opts.running,']
+  ['the default lineup becomes ALIGNED instead of secured',
+   'valve_open: opts.valve_open === undefined ? false : !!opts.valve_open,',
+   'valve_open: opts.valve_open === undefined ? true : !!opts.valve_open,']
 ];
 
 /* ---- THE CLEAN-RUN GUARD --------------------------------------------------------------

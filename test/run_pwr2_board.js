@@ -201,8 +201,10 @@ function runSuite(quietRec) {
     orphans.length === 0, orphans.slice(0, 5).join(', ') || 'no silent presses');
   q('every refused/errored press carries a MESSAGE the scanner bar can show',
     unreasoned.length === 0, unreasoned.slice(0, 5).join(', ') || 'all reasoned');
+  /* #507 waves 1-2 re-enabled the boron panel (a real channel now) and RHR ALIGN/ISOLATE
+   * (a real align command) — the deliberate set is now HPI AUTO, FOLLOW, ROD AUTO */
   q('the disables are the deliberate set, not everything and not nothing',
-    disabled >= 6 && disabled <= 14, disabled + ' disabled buttons');
+    disabled >= 2 && disabled <= 6, disabled + ' disabled buttons');
   return rec;
 }
 

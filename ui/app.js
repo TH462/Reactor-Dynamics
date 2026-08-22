@@ -1091,7 +1091,9 @@
               return m + ' · ' + conv(g, 'flow').toFixed(0) + ' ' + unit('flow');
             },
             cls: function (t) {
-              if (t.eccs_mode && t.eccs_mode !== 'off') return 'q-caution';
+              // 'standby' is PWR2's armed-and-quiet word — off-equivalent, not a caution
+              // (it lit this tile amber on every healthy PWR2 plant, #507 wave 2)
+              if (t.eccs_mode && t.eccs_mode !== 'off' && t.eccs_mode !== 'standby') return 'q-caution';
               return t.rhr_active ? 'q-caution' : 'q-ok';
             } },
           { k: 'Condenser heat sink', ser: 'vacuum',

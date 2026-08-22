@@ -293,7 +293,9 @@
 
     /* --- RHR --- */
     put('rhr_active',     rh.duty_kW !== undefined ? rh.duty_kW > 0 : undefined);
-    put('rhr_valve_open', rh.permissive_may_open);
+    /* THE VALVE, not the permissive (#507 wave 2) — the old form read open on any
+     * depressurized plant with the system secured, a lamp lying about the lineup */
+    put('rhr_valve_open', rh.valve_open !== undefined ? rh.valve_open : rh.permissive_may_open);
 
     /* --- break / leak --- */
     put('leak_flow', br.mdot_kgs !== undefined ? br.mdot_kgs : 0);   /* no break = zero leak, stated */
@@ -320,6 +322,9 @@
       if (ec.hhsi_kgs > 0 && ec.lhsi_kgs > 0) mode = 'both';
       else if (ec.hhsi_kgs > 0) mode = 'hhsi';
       else if (ec.lhsi_kgs > 0) mode = 'lhsi';
+      /* an ALIGNED RHR wins the word (#507 wave 2): shutdown cooling and low-head injection
+       * are the same pumps in two alignments (#458), and the lineup word says which */
+      if (rh.valve_open === true) mode = 'rhr';
       put('eccs_mode', mode);
     }
 

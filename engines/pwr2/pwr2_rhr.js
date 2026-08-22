@@ -194,6 +194,15 @@
        * exchangers, 0.5 = one of each, 0 = secured. The source is explicit that half the plant
        * still cools, only slower. */
       running: opts.running === undefined ? false : !!opts.running,
+      /* THE SUCTION VALVE (#507 wave 2) — real state, commanded by the engine's align door
+       * under the sourced 425/585 psig pair. `running` follows it (the pumps take suction
+       * through it). This retires the old contract where true_state published the
+       * PERMISSIVE as `rhr_valve_open` — a valve that read open on any depressurized plant
+       * with the system secured. */
+      valve_open: opts.valve_open === undefined ? false : !!opts.valve_open,
+      /* the HX flow split, 0..1 — the cooldown-rate lever (#458: adjusting it is NOT an
+       * alignment command and never was) */
+      hx_fraction: opts.hx_fraction === undefined ? 1 : Math.max(0, Math.min(1, opts.hx_fraction)),
       avail: opts.avail === undefined ? 1 : opts.avail,
       ccw_temp_c: opts.ccw_temp_c === undefined ? RHR.ccw_temp_c : opts.ccw_temp_c,
       UA: opts.UA === undefined ? null : opts.UA,     // null = derive on first step
@@ -256,17 +265,24 @@
     }
     if (Thot === null) Thot = 0;
 
+    /* the pumps take suction through the valve — no valve, no flow, no duty. `avail` stays
+     * a separate lineup fraction (the negative-availability floor below owns its abuse). */
+    rh.running = rh.valve_open;
     var duty = 0;
     if (rh.running) {
-      duty = Math.max(0, rh.avail) * rh.UA * (Thot - rh.ccw_temp_c);
+      duty = Math.max(0, rh.avail) * rh.hx_fraction * rh.UA * (Thot - rh.ccw_temp_c);
       if (duty < 0) duty = 0;   /* a heat SINK: it never warms the plant */
     }
     rh.removed_kJ += duty * dt;
 
     return {
       duty_kW: duty,
-      /* WHERE THE HEAT LEAVES, as a Layer 3 `heats` map -- and it is DISTRIBUTED BY MASS, which
-       * is a DECLARED SIMPLIFICATION rather than the obvious choice.
+      valve_open: rh.valve_open,
+      hx_fraction: rh.hx_fraction,
+      /* WHERE THE HEAT LEAVES, as a Layer 3 `heats` map -- and it is DISTRIBUTED BY VOLUME
+       * FRACTION (the return-site comment said "BY MASS" long after the mass version was
+       * reverted for gate cost -- see shareOut's own note), a DECLARED SIMPLIFICATION rather
+       * than the obvious choice.
        *
        * The obvious choice is the cold leg, because that is where RHR returns its cooled water.
        * Measured, it does not work at this fidelity: 13.6 MW into a 930 kg node is 14.6 kW/kg, so
