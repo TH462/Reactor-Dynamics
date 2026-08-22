@@ -1214,7 +1214,12 @@
           usFeed + ' -> ' + valOf('imrsgkz4lq0'));
         // A unit-NEUTRAL indication must not move. Half the board is %/ppm/MW/rpm, and a
         // layer that converted those would be worse than no layer.
-        ck('units: a unit-neutral readout does not move', valOf('ims2immon9z') === usPzrLvl, usPzrLvl);
+        // TREND GLYPHS ARE STRIPPED before comparing: the flip clears the tile's trace
+        // (unit-mixed history would splice °F onto °C), and since the #501 seed removal the
+        // trend arrow honestly resets with it — the claim here is the VALUE does not
+        // convert, and the arrow is observer state entangled in the same text node.
+        var stripTrend = function (s) { return String(s).replace(/[▲▼▶–—]/g, ''); };
+        ck('units: a unit-neutral readout does not move', stripTrend(valOf('ims2immon9z')) === stripTrend(usPzrLvl), usPzrLvl + ' -> ' + valOf('ims2immon9z'));
 
         // --- setpoint boxes: value, unit span, decimals, ▲▼ step, bounds and the range hint
         (function () {
