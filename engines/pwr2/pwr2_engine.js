@@ -141,6 +141,9 @@
       /* command state */
       rodTarget: 200, rodSteps: 200, sdTarget: 200, sdSteps: 200, rodBank: rodBank,
       rodSpeedSel: 'normal',
+      /* failure levers (#507 wave 6) */
+      scramBlocked: false,        /* ATWS — the RPS latches, the rods do not drop */
+      runaway: null,              /* {rate steps/s} — continuous outward rod drive */
       cwPumps: true,
       /* THE ELECTRICAL STATE (#507 wave 4). Two booleans, not a bus model: `offsite` is the
        * grid, `blackout` is "the diesels did not answer" (10 CFR 50.2's SBO, the old engine's
@@ -169,7 +172,14 @@
     switch (name) {
       case 'load_mwe':       eng.tb.load_target_mwe = Math.max(0, Math.min(MWE_RATED, +value)); break;
       case 'turbine_trip':   eng.tb.tripped = !!value; break;
-      case 'rod_target':     eng.rodTarget = Math.max(0, Math.min(200, +value)); break;
+      case 'rod_target':
+        /* a drive failure owns the bank; a silent acceptance would read like a plant that
+         * obeyed (#505's surfaced-refusal rule) */
+        if (eng.runaway) {
+          throw new Error('pwr2_engine: rod command REFUSED — continuous withdrawal failure ' +
+            'active; clear the failure first');
+        }
+        eng.rodTarget = Math.max(0, Math.min(200, +value)); break;
       case 'sd_target':      eng.sdTarget = Math.max(0, Math.min(200, +value)); break;
       case 'rod_speed':      eng.rodSpeedSel = (value in ROD_SPEEDS) ? value : 'normal'; break;
       case 'scram':
@@ -268,6 +278,24 @@
       case 'instrument_restore':
         /* value: a channel id, or null/true for ALL */
         IN.restore(eng.ins, typeof value === 'string' ? value : null); break;
+      /* ---- the wave-6 failure levers (#507): each a persistent physical state, never a
+       * rewritten demand (#200) ---- */
+      case 'afw_block':
+        /* the TMI-2 tagged-shut discharge valves — dead-heads BOTH AFW trains */
+        eng.aw.blocked = !!value; break;
+      case 'scram_block':
+        /* ATWS: the trip LATCHES (annunciators, turbine trip, the record) — only the rod
+         * drop is failed, which is what a failure-to-scram IS */
+        eng.scramBlocked = !!value; break;
+      case 'pzr_heaters_failed':
+        eng.pzDrivers.heaters_failed = value ? true : undefined; break;
+      case 'spray_stick':
+        eng.pzDrivers.spray_stick = !!value; break;
+      case 'rod_runaway':
+        /* value: steps/s outward, 0/false clears. Scale note: the old engine's 24 fine
+         * steps/s ceiling is a fraction-of-travel rate (24/912); this bank's 200 steps make
+         * the same fraction 5.26 steps/s [adopted]. The caller (shell) does that scaling. */
+        eng.runaway = value && +value > 0 ? { rate: +value } : null; break;
       case 'reset_protection':
         /* the operator's reset — clears the latches so a recovered plant can run again */
         eng.pt.reactor_trip = false; eng.pt.trip_cause = null;
@@ -280,6 +308,11 @@
         /* the AFW pumps KEEP RUNNING through the reset — clearing a latch is not securing a
          * pump; the operator stops each one with its own switch afterward */
         eng._manualTrip = false;   /* releasing the pushbutton is part of the reset */
+        /* RE-ARM THE TRIP EDGE (#507 wave 6, found by the ATWS probe): _lastTrip lags one
+         * step, so a reset followed IMMEDIATELY by a new trip (or the pushbutton) landed
+         * with the stale true and the edge never fired — latch on, annunciators on, rods
+         * standing. Clearing the latch is re-arming its edge detector. */
+        eng._lastTrip = false;
         break;
       default:
         throw new Error('pwr2_engine: unknown command "' + name + '" — one door, spelled right');
@@ -351,6 +384,16 @@
       eng.rodSteps = Math.max(0, Math.min(eng.rodSteps, 200 * (1 - eng._scramT / SCRAM_S)));
       eng.sdSteps = Math.max(0, Math.min(eng.sdSteps, 200 * (1 - eng._scramT / SD_SCRAM_S)));
       if (eng.rodSteps === 0 && eng.rodTarget === 0) eng._scramT = null;
+    } else if (eng.runaway) {
+      /* CONTINUOUS ROD WITHDRAWAL (#507 wave 6): the drive faults OUTWARD at the failure's
+       * rate — target ignored, and the rod stop too (the stop inhibits the demand path; a
+       * drive fault is downstream of it, DECLARED). A working scram still wins: the branch
+       * above runs first, and gravity beats a drive. NOTE the shipped hot-full-power IC
+       * parks the bank at 200/200 (boron-trimmed), so at that IC the failure has no travel
+       * to take — it bites on any plant whose rods are inserted (load-follow, recovery). */
+      eng.rodSteps = Math.min(200, eng.rodSteps + eng.runaway.rate * dt);
+      eng.rodTarget = eng.rodSteps;   /* the latched demand follows the fault, so clearing
+                                       * the failure HOLDS position rather than snapping back */
     } else if (eng.rodSteps !== eng.rodTarget) {
       var dS = ROD_SPEEDS[eng.rodSpeedSel] * dt;
       var move = Math.max(-dS, Math.min(dS, eng.rodTarget - eng.rodSteps));
@@ -572,11 +615,16 @@
     });
     eng.rpsReport = ptr;      /* the full function report, for consumers (the page, the gate) */
     eng._rodStopSig = ptr.rod_stop; eng._runbackSig = ptr.runback;
-    /* THE CALLER'S HALF of HR5: the RPS reports, the plant acts. */
-    if (ptr.reactor_trip && !eng._lastTrip) { eng.rodTarget = 0; eng._scramT = 0; }
+    /* THE CALLER'S HALF of HR5: the RPS reports, the plant acts. scramBlocked (#507 wave 6)
+     * is the ATWS: the latch above STANDS — annunciators, the turbine trip and the record
+     * all fire — and only the rod drop is failed, because that is what a failure-to-scram
+     * IS. A runaway is also released here: gravity beats a drive. */
+    if (ptr.reactor_trip && !eng._lastTrip && !eng.scramBlocked) {
+      eng.rodTarget = 0; eng._scramT = 0; eng.runaway = null;
+    }
     /* the shutdown bank drops on the same edge (kept as its OWN line — the line above is a
-     * run_pwr2_engine mutation anchor and must stay byte-identical) */
-    if (ptr.reactor_trip && !eng._lastTrip) eng.sdTarget = 0;
+     * run_pwr2_engine mutation anchor; its text moved WITH the wave-6 gate in one commit) */
+    if (ptr.reactor_trip && !eng._lastTrip && !eng.scramBlocked) eng.sdTarget = 0;
     eng._lastTrip = ptr.reactor_trip;
     /* The turbine trips WITH the reactor [sourced] — Ginna UFSAR ch15 (ML20339A101): "The
      * turbine automatically trips following a reactor trip. Zero delay is assumed". Level,

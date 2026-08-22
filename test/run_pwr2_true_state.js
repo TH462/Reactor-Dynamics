@@ -248,18 +248,24 @@ function runSuite(TS, rec, quiet) {
      ' % drained -- a fabricated healthy constant reads 61.5 in both and reds');
   /* TURNED AROUND A SECOND TIME (stage 2b): three of the four then-missing fields are real now
    * — the PORV can stick (the TMI-2 failure lever), the block valve isolates it, the tailpipe
-   * has a temperature. Only spray_stuck remains declared, and its reason must say WHY it alone
-   * survives (no spray failure lever exists). */
+   * has a temperature. AND A THIRD TIME (#507 wave 6): spray_stick is a real lever, so the
+   * last survivor's static retired too — the check turned around AGAIN to guard the repair. */
   ck('the TMI relief-path fields are SUPPLIED with earned-healthy values',
      ts.porv_stuck === false && ts.block_valve_open === true &&
      typeof ts.porv_tailpipe_temp_c === 'number' && ts.porv_tailpipe_temp_c < 100,
      'stuck ' + ts.porv_stuck + ', block ' + ts.block_valve_open + ', tailpipe ' +
      (typeof ts.porv_tailpipe_temp_c === 'number' ? ts.porv_tailpipe_temp_c.toFixed(0) : '?') +
      ' degC cold on a healthy plant — a PORV that has never passed has a cold pipe');
-  ck('...and spray_stuck, the one survivor, is a REGISTERED STATIC that says why',
-     ts.spray_stuck === false && !!TS.STATIC.spray_stuck &&
-     /no failure lever/.test(TS.STATIC.spray_stuck.reason),
-     'a reason that names the machinery outlives a reason that names a lane');
+  ck('...and spray_stuck is LIVE (#507 wave 6): false from the vessel, TRUE through a stuck ' +
+     'valve, and no longer in the statics registry',
+     ts.spray_stuck === false && TS.STATIC.spray_stuck === undefined &&
+     (function () {
+       var rStk = RD.pressurizer.stepPressurizer(RD.pressurizer.createPressurizer({}), B.sys,
+                                                 0.02, { spray_stick: true });
+       var tStk = TS.buildTrueState(Object.assign({}, B.ctx, { pressurizer: rStk }));
+       return tStk.spray_stuck === true;
+     })(),
+     'the field follows the lever, not a registered constant');
 
   /* ---- SUPPLIED VALUES COME FROM THE LAYERS, NOT FROM CONSTANTS ------------------------ */
   head('SUPPLIED VALUES TRACE TO THEIR LAYER');
@@ -394,12 +400,18 @@ function runSuite(TS, rec, quiet) {
               Math.abs(t3.steam_out_total - B.ts.steam_out_total) < 1e-9;
      })(),
      'feed half, steam whole — two different numbers at last');
-  ck('afw_blocked is a REGISTERED STATIC; afw_discharge is SUPPLIED at the SG it feeds',
-     ts.afw_blocked === false && !!TS.STATIC.afw_blocked &&
+  ck('afw_blocked is LIVE (#507 wave 6: the TMI-2 tagged-shut valves are real state); ' +
+     'afw_discharge is SUPPLIED at the SG it feeds',
+     ts.afw_blocked === false && TS.STATIC.afw_blocked === undefined &&
+     (function () {
+       var blk = RD.afw.stepAFW(RD.afw.createAFW({ mdafwRunning: true, blocked: true }), 0.02);
+       var tB = TS.buildTrueState(Object.assign({}, B.ctx, { afw: blk }));
+       return tB.afw_blocked === true && tB.afw_active === false && tB.afw_pump_running === true;
+     })() &&
      ts.afw_discharge_pressure_mpa !== undefined &&
      Math.abs(ts.afw_discharge_pressure_mpa - Math.min(8.3, ts.steam_pressure_mpa)) < 1e-9,
-     ts.afw_discharge_pressure_mpa.toFixed(2) + ' MPa -- the delivering pump sits at the SG ' +
-     'pressure it injects against, capped at its [open] 8.3 MPa dead-head');
+     ts.afw_discharge_pressure_mpa.toFixed(2) + ' MPa -- and a blocked system reads RUNNING, ' +
+     'not delivering, blocked: the three facts separated');
 
   /* ---- CORE DAMAGE: five supplied, one still declared, and the reason CHANGED -------------
    * This block is the one this file's header warns about most directly. Five of these six were

@@ -82,6 +82,10 @@
       tdafwRunning: opts.tdafwRunning === undefined ? false : !!opts.tdafwRunning,
       mdafwAvail: opts.mdafwAvail === undefined ? 1 : opts.mdafwAvail,
       tdafwAvail: opts.tdafwAvail === undefined ? 1 : opts.tdafwAvail,
+      /* THE DISCHARGE BLOCK (#507 wave 6) — the TMI-2 tagged-shut valves: downstream of
+       * BOTH pumps, so blocking dead-heads the whole system while every run flag stands.
+       * The old engine's afw_failure shape; afw_blocked reports it on the contract. */
+      blocked: opts.blocked === undefined ? false : !!opts.blocked,
       delivered_kg: opts.delivered_kg === undefined ? 0 : opts.delivered_kg
     };
   }
@@ -102,8 +106,10 @@
    * demanded pump is RUNNING with no flow (#200 split), never SECURED. */
   function stepAFW(af, dt, drivers) {
     var mdPowered = !drivers || drivers.mdafw_power_ok !== false;
-    var md = (af.mdafwRunning && mdPowered) ? mdafwRatedKgs() * Math.max(0, af.mdafwAvail) : 0;
-    var td = af.tdafwRunning ? tdafwRatedKgs() * Math.max(0, af.tdafwAvail) : 0;
+    /* the tagged-shut discharge valves dead-head BOTH trains — delivery only, never demand */
+    var open = !af.blocked;
+    var md = (open && af.mdafwRunning && mdPowered) ? mdafwRatedKgs() * Math.max(0, af.mdafwAvail) : 0;
+    var td = (open && af.tdafwRunning) ? tdafwRatedKgs() * Math.max(0, af.tdafwAvail) : 0;
     var total = md + td;
     af.delivered_kg += total * dt;
     var rated = mdafwRatedKgs() + tdafwRatedKgs();
@@ -113,6 +119,7 @@
       /* DEMAND, reported separately from delivery — the house split (#200/#329/#332): a
        * demanded pump with avail 0 is RUNNING with no flow, not SECURED. */
       mdafw_running: !!af.mdafwRunning, tdafw_running: !!af.tdafwRunning,
+      blocked: !!af.blocked,
       h_kJkg: W.h_l(f2c(AFW.afw_temp_f), 0.1),      /* near-atmospheric CST, cold */
       delivered_kg: af.delivered_kg,
       afw_flow_normalized: rated > 0 ? total / rated : 0

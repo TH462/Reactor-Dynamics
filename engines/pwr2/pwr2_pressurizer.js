@@ -280,7 +280,11 @@
    *                            the heaters is the OPERATOR's (the old engine's set_heater
    *                            convention — here, any pzr_heaters_manual command)
    *   drivers.heaters_manual   0..1 override — the operator's, not the controller's
+   *   drivers.heaters_failed   true = the bank elements are DEAD (#507 wave 6) — a failure
+   *                            seat, distinct from the manual override and the shed latch
    *   drivers.spray_manual     0..1 override
+   *   drivers.spray_stick      true = the spray valve is latched OPEN (#507 wave 6) — the
+   *                            porv_stick twin; the demand keeps moving and stays ineffective
    *   drivers.setpoint_mpa     operator setpoint (clamped to the sourced span)
    */
   function stepPressurizer(pz, sys, dt, drivers) {
@@ -372,7 +376,11 @@
                      pz.lowLevelCut;
     var heatFrac = drivers.heaters_manual !== undefined ? clip(drivers.heaters_manual, 0, 1)
                                                         : prop;
-    var Q_heat_kW = pz.heatersShed ? 0
+    /* drivers.heaters_failed (#507 wave 6): the FAILURE seat — bank elements dead, output 0
+     * whatever the demand or the shed state. A third seat, deliberately distinct from the
+     * operator's manual override and the shed latch: a failure is not a lineup, and clearing
+     * it must not touch either (the #200 split). */
+    var Q_heat_kW = (pz.heatersShed || drivers.heaters_failed) ? 0
                   : heatFrac * HEATERS.prop_kW +
                     ((pz.backupOn && drivers.heaters_manual === undefined) ||
                      drivers.heaters_manual === 1 ? HEATERS.backup_kW : 0);
@@ -381,6 +389,12 @@
                          (CONTROL.spray_full_psi - CONTROL.spray_start_psi), 0, 1);
     var sprayFrac = drivers.spray_manual !== undefined ? clip(drivers.spray_manual, 0, 1)
                                                        : sprayAuto;
+    /* drivers.spray_stick (#507 wave 6): the porv_stick twin — a PHYSICAL valve latched
+     * open regardless of the controller or the operator's demand, which keeps moving and
+     * stays ineffective (writing the override into the demand is the #200 trap the old
+     * engine's spray_stuck comment names). Still needs RCP head and steam to condense. */
+    pz.sprayStuck = !!drivers.spray_stick;
+    if (pz.sprayStuck) sprayFrac = 1;
     if (SPRAY.needs_rcp && !(sys.mdot_loop > 100)) sprayFrac = 0;   /* no RCP head, no spray */
     if (pz.waterSolid) sprayFrac = 0;                               /* no steam to condense */
     /* Auxiliary spray: operator-commanded, RCP-independent (see the SPRAY block). */
@@ -464,6 +478,7 @@
       backup_on: pz.backupOn,
       heaters_shed: pz.heatersShed,
       spray_frac: sprayFrac,
+      spray_stuck: pz.sprayStuck === true,
       spray_kgs: m_spray,
       spray_duty_kW: Q_spray_kW,
       aux_spray_frac: auxFrac,

@@ -72,9 +72,8 @@
       STATIC[f] = { system: system, reason: reason, value: fieldValues[f] };
     });
   }
-  declareStatic('failure injection', 'the spray valves have no failure lever yet — the value ' +
-    'states that the failure is not injectable, not that a lever reads healthy',
-    { spray_stuck: false });
+  /* the 'failure injection' spray_stuck static RETIRED #507 wave 6 — drivers.spray_stick is
+   * a real lever now (the porv_stick twin) and the field is LIVE from the pressurizer result */
   declareStatic('containment ESF', 'sprays, fans and recombiners are unmodeled (pwr2_containment ' +
     'header) — false/0 states their absence; a large-LOCA A/B diverges here by design',
     { ctmt_h2_burned: 0, ctmt_spray_demand: false, ctmt_spray_active: false,
@@ -88,7 +87,8 @@
     { sg_imbalance_active: false });
   declareStatic('turbine', 'the turbine is dispatched by an operator load target — the only ' +
     'mode this model has', { load_mode: 'manual' });
-  declareStatic('AFW', 'no AFW block lever exists', { afw_blocked: false });
+  /* the 'AFW' afw_blocked static RETIRED #507 wave 6 — the discharge block is real state
+   * (pwr2_afw af.blocked, the TMI-2 tagged-shut valves) and the field is LIVE below */
   declareStatic('ECCS accumulators', 'DECLARED OMISSION (pwr2_eccs.js header): an accumulator ' +
     'is an inventory with expanding cover gas, deferred to the compressible-volume work. ' +
     'Nominals are honest at steady state and WRONG in a large LOCA — the predicted-divergence ' +
@@ -212,6 +212,7 @@
       put('pzr_mass_frac', pz.m_pzr / sys.M_total);
     }
     put('pzr_heaters_shed',  pz.heaters_shed);
+    put('spray_stuck',       pz.spray_stuck === true);   /* LIVE since #507 wave 6 */
     put('porv_open',         pz.porv_open);
     put('porv_stuck',        pz.porv_stuck);
     put('block_valve_open',  pz.block_valve_open);
@@ -335,6 +336,7 @@
        * which made a demanded pump with avail 0 read SECURED — the self-healing shape. */
       put('afw_pump_running', !!(aw.mdafw_running || aw.tdafw_running));
       put('afw_active',       aw.total_kgs > 0);
+      put('afw_blocked',      aw.blocked === true);      /* LIVE since #507 wave 6 */
       put('afw_flow_normalized', aw.afw_flow_normalized);
     }
 

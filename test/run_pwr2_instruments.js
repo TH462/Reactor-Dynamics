@@ -177,6 +177,24 @@ function runSuite(IN, rec, quiet) {
   ckT('NOISY inflates sigma by ~NOISY_MULT (a failing transmitter, still roughly right)',
       sy > 0.15 * IN.NOISY_MULT * 0.6 && sy < 0.15 * IN.NOISY_MULT * 1.5,
       'sigma ' + sy.toFixed(3) + ' vs healthy 0.15');
+  /* DRIFT and DEAD (#507 wave 6) — the current engine's other two modes, now honest here */
+  var insD = quietIns(), tsD = baseTs();
+  run(insD, tsD, 10);
+  IN.fail(insD, 'tavg', 'drift');            /* default rate: the adopted 0.5 units/s */
+  run(insD, tsD, 20);
+  ckT('DRIFT walks the reading off truth at the adopted default 0.5/s (sim time, HR6)',
+      Math.abs(insD.reading.tavg - (300 + 0.5 * 20)) < 0.5,
+      'reads ' + insD.reading.tavg.toFixed(2) + ' after 20 s over a 300.00 truth');
+  IN.restore(insD, 'tavg');
+  IN.fail(insD, 'tavg', 'drift', -1.5);      /* explicit rate, signed */
+  run(insD, tsD, 10);
+  ckT('...and an explicit SIGNED rate is honored',
+      Math.abs(insD.reading.tavg - (300 - 1.5 * 10)) < 0.5,
+      'reads ' + insD.reading.tavg.toFixed(2) + ' at -1.5/s for 10 s');
+  IN.fail(insD, 'primary_pressure', 'dead');
+  IN.stepInstruments(insD, DT, tsD);
+  ckT('DEAD bottoms out at range[0] — the current engine\'s semantic',
+      insD.reading.primary_pressure === 0, '');
   var threw = false;
   try { IN.fail(insF, 'tavg', 'wobbly'); } catch (e) { threw = true; }
   var threw2 = false;
@@ -229,6 +247,12 @@ var MUTATIONS = [
   ['STUCK is ignored (the failed channel keeps reporting)',
    "        if (f.mode === 'stuck') value = f.held;",
    ''],
+  ['DRIFT never accumulates (a drifting channel reads healthy for ever) -- #507 wave 6',
+   "        else if (f.mode === 'drift') { f.offset += f.rate * dt; value = sensed + f.offset; }",
+   "        else if (f.mode === 'drift') { value = sensed; }"],
+  ['DEAD rails HIGH instead of bottoming out -- #507 wave 6',
+   "        else if (f.mode === 'dead') value = c.range[0];",
+   "        else if (f.mode === 'dead') value = c.range[1];"],
   ['restore heals to the STALE buffer (the lag state froze with the failure)',
    '      if (ch.lag1 === null) { ch.lag1 = truth; ch.lag2 = truth; }\n      var a1',
    "      if (ch.lag1 === null) { ch.lag1 = truth; ch.lag2 = truth; }\n      if (ins.failure[c.id] && ins.failure[c.id].mode === 'stuck') { ins.reading[c.id] = ins.failure[c.id].held; return; }\n      var a1"]

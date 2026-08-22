@@ -119,6 +119,19 @@ function runSuite(A, rec, quiet) {
   ck('absent drivers mean POWERED -- the acAvailable convention, so every fixture above holds',
      A.stepAFW(A.createAFW({ mdafwRunning: true }), 0.02).mdafw_kgs, A.mdafwRatedKgs(),
      1e-9, 'kg/s');
+
+  /* ---- THE DISCHARGE BLOCK (#507 wave 6) -- the TMI-2 tagged-shut valves ------------------ */
+  head('THE BLOCK  [downstream of BOTH pumps; demand persists; delivery is what dies]');
+  var afK = A.createAFW({ mdafwRunning: true, tdafwRunning: true, blocked: true });
+  var rK = A.stepAFW(afK, 0.02);
+  ckT('tagged-shut discharge valves dead-head BOTH trains while every run flag stands',
+      rK.total_kgs === 0 && rK.mdafw_running === true && rK.tdafw_running === true &&
+      rK.blocked === true,
+      'the TMI-2 shape: pumps RUNNING, water going nowhere');
+  afK.blocked = false;
+  var rK2 = A.stepAFW(afK, 0.02);
+  ck('opening the valves restores delivery at the STANDING demand -- no re-start needed (#200)',
+     rK2.total_kgs, A.mdafwRatedKgs() + A.tdafwRatedKgs(), 1e-9, 'kg/s');
 }
 
 console.log('\nPWR2 Layer 5 -- AUXILIARY FEEDWATER');
@@ -140,14 +153,17 @@ var MUTATIONS = [
   ['TDAFW ratio to MDAFW silently changed (breaks the sourced 200%/100% relationship)',
    'tdafw_ginna_gpm: 340,', 'tdafw_ginna_gpm: 300,'],
   ['negative availability produces negative flow instead of clamping',
-   '(af.mdafwRunning && mdPowered) ? mdafwRatedKgs() * Math.max(0, af.mdafwAvail) : 0;',
-   '(af.mdafwRunning && mdPowered) ? mdafwRatedKgs() * af.mdafwAvail : 0;'],
+   '(open && af.mdafwRunning && mdPowered) ? mdafwRatedKgs() * Math.max(0, af.mdafwAvail) : 0;',
+   '(open && af.mdafwRunning && mdPowered) ? mdafwRatedKgs() * af.mdafwAvail : 0;'],
   ['the MDAFW power gate is severed (a blacked-out motor pump keeps pumping)',
    'var mdPowered = !drivers || drivers.mdafw_power_ok !== false;',
    'var mdPowered = true;'],
+  ['the discharge block is severed (tagged-shut valves pass water) -- #507 wave 6',
+   'var open = !af.blocked;',
+   'var open = true;'],
   ['the power gate lands on the TURBINE pump (the do-not-gate note violated)',
-   'var td = af.tdafwRunning ? tdafwRatedKgs() * Math.max(0, af.tdafwAvail) : 0;',
-   'var td = (af.tdafwRunning && mdPowered) ? tdafwRatedKgs() * Math.max(0, af.tdafwAvail) : 0;'],
+   'var td = (open && af.tdafwRunning) ? tdafwRatedKgs() * Math.max(0, af.tdafwAvail) : 0;',
+   'var td = (open && af.tdafwRunning && mdPowered) ? tdafwRatedKgs() * Math.max(0, af.tdafwAvail) : 0;'],
   ['afw_flow_normalized divides by only the running trains instead of both rated',
    'var rated = mdafwRatedKgs() + tdafwRatedKgs();',
    'var rated = md + td;']

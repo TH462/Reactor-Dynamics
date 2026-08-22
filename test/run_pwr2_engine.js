@@ -39,7 +39,7 @@ function loadAll(engSource, coreSource) {
  * can see that mutation: 'A' equivalence/door/pushbutton (one engine chain), 'B' the
  * P-9/lying-channel family (eng4-6), 'C' the runback (eng7), 'D' the break + drain (eng2-3),
  * 'E' the AFW starts, 'F' the feed train, 'G' the electrical pair (#507 wave 4), 'H' the
- * SGTR (#507 wave 5).
+ * SGTR (#507 wave 5), 'I' the failure levers (#507 wave 6).
  * The CLEAN pass runs everything. Measured before this existed: 17 mutations x the whole
  * suite = 1074 s of contention in the aggregate gate — the replay cost scales with every
  * fixture ever added, and a mutation only needs the checks built to see it. */
@@ -845,6 +845,53 @@ function runSuite(RD, rec, quiet, only) {
       tsT2.containment_pressure_mpa > ctP0 + 1e-5,
       'ctmt now ' + (tsT2.containment_pressure_mpa * 145.038).toFixed(2) + ' psia');
   }
+
+  if (grp('I')) {
+  /* ---- 8. THE FAILURE LEVERS (#507 wave 6): the two that live in THIS file's caller's-half
+   * and rod-drive logic — ATWS and the withdrawal runaway. The rows themselves ride the
+   * shell gate; here the MECHANISM is pinned. ---- */
+  head('THE FAILURE LEVERS  [ATWS: the latch stands, the rods do not; gravity beats a drive]');
+  var engI = EN.createEngine({});
+  run(engI, quiet ? 20 : 30);
+  EN.command(engI, 'scram_block', true);
+  EN.command(engI, 'scram');
+  var tsI = run(engI, 5);
+  ckT('a blocked scram LATCHES the trip — annunciated, turbine tripped — with the rods at 200',
+      engI.pt.reactor_trip === true && engI.pt.trip_cause === 'manual' &&
+      engI.tb.tripped === true && engI.rodSteps === 200 && tsI.scrammed === true,
+      'the failure is the DROP, not the logic — which is what an ATWS is');
+  EN.command(engI, 'scram_block', false);
+  EN.command(engI, 'reset_protection', true);
+  EN.command(engI, 'scram');
+  run(engI, 5);
+  ckT('...and after the block clears, reset + scram drops the rods (a fresh edge — the ' +
+      'spent one is not retroactive, declared)',
+      engI.rodSteps < 100 && engI.pt.reactor_trip === true, '');
+
+  /* the fixture is the SHELL gate's measured one — 60 MWe, a shallow 25-step insert. The
+   * first draft inserted 50 steps at FULL load and the RPS terminated the excursion mid-ride
+   * (150 -> 0.0 measured): the plant answering an uncontrolled withdrawal is UFSAR 15.4's
+   * own credited story, but it is a different claim than "the drive moves", and this check
+   * asserts the drive. */
+  var engJ = EN.createEngine({});
+  run(engJ, quiet ? 20 : 30);
+  EN.command(engJ, 'load_mwe', 60);
+  run(engJ, 120);
+  EN.command(engJ, 'rod_target', 175);
+  run(engJ, 60);
+  var sJ0 = engJ.rodSteps;
+  EN.command(engJ, 'rod_runaway', 2.63);
+  run(engJ, 10);
+  var thrJ = false;
+  try { EN.command(engJ, 'rod_target', 100); } catch (eJ) { thrJ = /REFUSED/.test(eJ.message); }
+  ckT('a rod runaway drives OUTWARD at its own rate, target ignored, rod commands REFUSED',
+      engJ.rodSteps > sJ0 + 20 && thrJ === true,
+      sJ0.toFixed(0) + ' -> ' + engJ.rodSteps.toFixed(1) + ' steps in 10 s at 2.63/s');
+  EN.command(engJ, 'scram');
+  run(engJ, 5);
+  ckT('...and a WORKING scram beats the drive: rods drop, the runaway clears',
+      engJ.rodSteps < 50 && engJ.runaway === null, 'gravity wins');
+  }
 }
 
 console.log('\nPWR2 -- THE ENGINE FACADE: one door, the gates\' wiring written once');
@@ -860,8 +907,9 @@ var MUTATIONS = [
   ['the level controller is unhooked from charging',
    'eng.cv.chargingDemand = pzr.charging_demand;',
    '', { grp: 'A' }],
+  /* anchor moved with the wave-6 ATWS gate (#507): the caller's half grew !scramBlocked */
   ['the scram-on-trip is deleted (the RPS reports into a void)',
-   "if (ptr.reactor_trip && !eng._lastTrip) { eng.rodTarget = 0; eng._scramT = 0; }",
+   "if (ptr.reactor_trip && !eng._lastTrip && !eng.scramBlocked) {\n      eng.rodTarget = 0; eng._scramT = 0; eng.runaway = null;\n    }",
    '', { grp: 'A' }],
   ['SI never starts the ECCS',
    'if (ptr.si) { eng.ec.hhsiRunning = true; eng.ec.lhsiRunning = true; }',
@@ -989,7 +1037,18 @@ var MUTATIONS = [
   ['the containment exclusion is dropped (a tube rupture pressurizes containment)',
    '    var ctIn = (br && !toSG ? br.mdot_kgs : 0) + (eng._pzRelief > 0 ? eng._pzRelief : 0);',
    '    var ctIn = (br ? br.mdot_kgs : 0) + (eng._pzRelief > 0 ? eng._pzRelief : 0);',
-   { grp: 'H' }]
+   { grp: 'H' }],
+  /* THE FAILURE LEVERS (#507 wave 6) */
+  ['the ATWS gate is severed (a blocked scram drops the rods anyway)',
+   'if (ptr.reactor_trip && !eng._lastTrip && !eng.scramBlocked) {\n      eng.rodTarget = 0; eng._scramT = 0; eng.runaway = null;\n    }',
+   'if (ptr.reactor_trip && !eng._lastTrip) {\n      eng.rodTarget = 0; eng._scramT = 0; eng.runaway = null;\n    }',
+   { grp: 'I' }],
+  ['the runaway never drives (an injected withdrawal fault does nothing)',
+   '      eng.rodSteps = Math.min(200, eng.rodSteps + eng.runaway.rate * dt);',
+   '', { grp: 'I' }],
+  ['the rod-command refusal is severed (a faulted drive quietly obeys the lever)',
+   "        if (eng.runaway) {\n          throw new Error('pwr2_engine: rod command REFUSED — continuous withdrawal failure ' +\n            'active; clear the failure first');\n        }",
+   '', { grp: 'I' }]
 ];
 var CORESRC = fs.readFileSync(path.join(SRC, 'pwr2_core.js'), 'utf8').replace(/\r\n/g, '\n');
 

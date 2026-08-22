@@ -203,16 +203,27 @@
        * unknown ids throw inside the module, which is the behavior we want. The board's
        * advanced panel sends `instrument_id` (measured — reading only `instrument` made
        * every panel injection land on undefined and throw, #507 wave 3); the SHELL layer's
-       * mirror lives in applyCommand, where `this` can reach it. */
+       * mirror lives in applyCommand, where `this` can reach it.
+       * Wave 6: drift and dead pass THROUGH (they used to collapse to 'stuck' silently),
+       * and the value rides under EITHER key — the advanced panel sends `value`, the
+       * failure defs send `stuck_value`; reading only the latter dropped every typed
+       * freeze-at value from the panel. */
       var id = c.instrument_id !== undefined ? c.instrument_id : c.instrument;
       var mode = c.mode === 'fail_low' ? 'low' : c.mode === 'fail_high' ? 'high'
-               : c.mode === 'noisy' ? 'noisy' : 'stuck';
-      EN.command(e, 'instrument_fail', { id: id, mode: mode, value: c.stuck_value });
+               : c.mode === 'noisy' ? 'noisy' : c.mode === 'drift' ? 'drift'
+               : c.mode === 'dead' ? 'dead' : 'stuck';
+      var val = c.stuck_value !== undefined ? c.stuck_value : c.value;
+      /* MIRROR-ONLY channels (#507 wave 6): porv_indicator is a STRING lamp the reused
+       * board layer special-cases and the internal numeric table cannot host — skip the
+       * engine command (which would throw before the applyCommand mirror ran) and let the
+       * mirror land it on the board layer alone. Any other unknown id still throws. */
+      if (!e.ins.channels[id] && id === 'porv_indicator') return;
+      EN.command(e, 'instrument_fail', { id: id, mode: mode, value: val });
     },
     clear_instrument_failure: function (e, c) {
-      EN.command(e, 'instrument_restore',
-        typeof (c.instrument_id !== undefined ? c.instrument_id : c.instrument) === 'string'
-          ? (c.instrument_id !== undefined ? c.instrument_id : c.instrument) : true);
+      var cid = c.instrument_id !== undefined ? c.instrument_id : c.instrument;
+      if (cid === 'porv_indicator') return;          /* mirror-only — the mirror clears it */
+      EN.command(e, 'instrument_restore', typeof cid === 'string' ? cid : true);
     },
     clear_all_failures: function (e, c) {
       EN.command(e, 'instrument_restore', true);
@@ -248,6 +259,21 @@
      * (#507 wave 4); false is the old engine's recovery case */
     full_blackout:    function (e, c) {
       EN.command(e, 'station_blackout', c === false || c === 0 ? false : true);
+    },
+    /* the wave-6 effect names, REHOMED onto their levers (#507) */
+    set_afw_block:    function (e, c) {
+      EN.command(e, 'afw_block', (c && c.blocked !== undefined ? c.blocked : c) !== false);
+    },
+    block_afw:        function (e, c) { EN.command(e, 'afw_block', c !== false); },
+    degrade_hpi:      function (e, c) {
+      e.ec.hhsiAvail = Math.max(0, 1 - (c && c.severity !== undefined ? c.severity : 0.5));
+    },
+    failed_pzr_heaters: function (e, c) { EN.command(e, 'pzr_heaters_failed', c !== false); },
+    failure_to_scram: function (e, c) { EN.command(e, 'scram_block', c !== false); },
+    stuck_open_spray: function (e, c) { EN.command(e, 'spray_stick', c !== false); },
+    rod_withdrawal_runaway: function (e, c) {
+      EN.command(e, 'rod_runaway',
+                 (c && c.severity !== undefined ? c.severity : 0.5) * (24 / 912) * 200);
     },
     /* the old command toggled a discrete pump; PWR2's actuator is charging DEMAND — OFF is
      * demand 0 in manual, ON restores nothing by itself (dial a flow or re-select AUTO).
@@ -289,16 +315,35 @@
       }
       else if (c.failure_id === 'loss_of_condenser_vacuum') EN.command(e, 'cw_pumps', false);
       else if (c.failure_id === 'degraded_hpi') {
-        e.ec.avail = Math.max(0, 1 - (c.severity !== undefined ? c.severity : 0.5));
+        /* LATENT DEFECT FIXED (#507 wave 6): wave 3 wrote e.ec.avail, which NOTHING in the
+         * physics reads — stepECCS consumes hhsiAvail (pwr2_eccs.js) — so the row was inert
+         * on flow through two green gate runs. The regression probe now measures the flow. */
+        e.ec.hhsiAvail = Math.max(0, 1 - (c.severity !== undefined ? c.severity : 0.5));
       }
       else if (c.failure_id === 'large_loca') {
         REHOMED.primary_leak(e, { severity: c.severity !== undefined ? c.severity : 1.0 });
       }
       else if (c.failure_id === 'rcp_seal_leak') {
-        /* [derived] area, MEASURED: 0.08 cm2 leaks ~1.2 kg/s at operating pressure against
-         * the sourced-scaled 1.85 kg/s max charging — holdable with margin, which is the
-         * row's teaching point (2e-5 measured 3.0 kg/s, more than charging can carry) */
-        EN.command(e, 'break_open', { area_m2: 8e-6, node: 'rcp' });
+        /* [derived] scale, MEASURED: 8e-6 m2 leaks ~1.2 kg/s at operating pressure against
+         * the sourced-scaled 1.85 kg/s max charging — holdable with margin, the row's
+         * teaching point. Wave 6: the SLIDER IS HONORED (wave 3 discarded it — a rendered
+         * control that did nothing); linear in area, sev 2/3 reproduces the wave-3 area
+         * exactly, and sev 1.0 (1.2e-5 m2) sits at the edge of what charging can carry. */
+        var sevS = c.severity !== undefined ? c.severity : 2 / 3;
+        EN.command(e, 'break_open', { area_m2: Math.max(1e-6, sevS * 1.2e-5), node: 'rcp' });
+      }
+      /* ---- the wave-6 rows (#507): each an engine lever, each with its own probe ---- */
+      else if (c.failure_id === 'afw_failure') EN.command(e, 'afw_block', true);
+      else if (c.failure_id === 'failure_to_scram') EN.command(e, 'scram_block', true);
+      else if (c.failure_id === 'failed_pzr_heaters') EN.command(e, 'pzr_heaters_failed', true);
+      else if (c.failure_id === 'stuck_open_spray') EN.command(e, 'spray_stick', true);
+      else if (c.failure_id === 'continuous_rod_withdrawal') {
+        /* sev × the old ceiling as a FRACTION OF TRAVEL: 24/912 of the old fine bank =
+         * 5.26 steps/s on this 200-step bank [adopted]. NOTE: the shipped hot-full-power IC
+         * parks the bank at 200/200, so the failure only has travel on a plant whose rods
+         * are inserted — declared, not hidden. */
+        EN.command(e, 'rod_runaway',
+                   (c.severity !== undefined ? c.severity : 0.5) * (24 / 912) * 200);
       }
       else if (c.failure_id === 'sgtr') {
         /* A break AT the sg_primary node — the facade routes it into the SECONDARY with the
@@ -323,7 +368,13 @@
       var def = root.RD.PWR_CONFIG && root.RD.PWR_CONFIG.protection &&
                 root.RD.PWR_CONFIG.protection.failures &&
                 root.RD.PWR_CONFIG.protection.failures[c.failure_id];
-      if (def && def.type === 'instrument') EN.command(e, 'instrument_restore', def.instrument_id);
+      if (def && def.type === 'instrument') {
+        /* mirror-only channels (#507 wave 6): the internal table cannot host porv_indicator,
+         * so its restore — like its injection — is the applyCommand mirror's alone */
+        if (e.ins.channels[def.instrument_id]) {
+          EN.command(e, 'instrument_restore', def.instrument_id);
+        }
+      }
       else if (c.failure_id === 'stuck_porv_open') EN.command(e, 'porv_stick', false);
       else if (c.failure_id === 'primary_leak' || c.failure_id === 'large_loca' ||
                c.failure_id === 'rcp_seal_leak' || c.failure_id === 'sgtr') {
@@ -334,7 +385,12 @@
       }
       else if (c.failure_id === 'sg_overfeed') EN.command(e, 'feed_auto', true);
       else if (c.failure_id === 'loss_of_condenser_vacuum') EN.command(e, 'cw_pumps', true);
-      else if (c.failure_id === 'degraded_hpi') e.ec.avail = 1;
+      else if (c.failure_id === 'degraded_hpi') e.ec.hhsiAvail = 1;
+      else if (c.failure_id === 'afw_failure') EN.command(e, 'afw_block', false);
+      else if (c.failure_id === 'failure_to_scram') EN.command(e, 'scram_block', false);
+      else if (c.failure_id === 'failed_pzr_heaters') EN.command(e, 'pzr_heaters_failed', false);
+      else if (c.failure_id === 'stuck_open_spray') EN.command(e, 'spray_stick', false);
+      else if (c.failure_id === 'continuous_rod_withdrawal') EN.command(e, 'rod_runaway', 0);
       /* the grid comes back (#507 wave 4). The buses re-energize; the RCPs stay tripped
        * (no restart is modeled, the declared set_rcp shape) and every selector sits where
        * the operator left it — recovery gives the plant back, it does not re-line it up. */
@@ -365,14 +421,7 @@
     close_msiv:       'no MSIV model — the steam line has no isolation valve to shut',
     open_accumulator_valve:  'accumulators are a declared omission (pwr2_eccs.js header)',
     close_accumulator_valve: 'accumulators are a declared omission',
-    set_afw_block:    'no AFW block lever (registered static afw_blocked:false)',
-    block_afw:        'no AFW block lever (registered static afw_blocked:false)',
-    degrade_hpi:      'no HPI degradation lever yet',
-    failed_pzr_heaters: 'no heater failure lever yet (the shed logic is real; a failure is not)',
-    failure_to_scram: 'no ATWS lever yet — the RPS cannot be failed',
     stuck_control_rod: 'one lumped bank; a single stuck rod has no representation',
-    stuck_open_spray:  'no spray failure lever (registered static spray_stuck:false)',
-    rod_withdrawal_runaway: 'no rod failure lever yet',
     secondary_depressurize: 'no steam-line break model yet',
     secondary_depressurize_upstream: 'no steam-line break model yet',
     vacuum_decay:     'no condenser vacuum failure lever yet'
@@ -518,6 +567,11 @@
                       'sg_overfeed', 'loss_of_offsite_power', 'station_blackout',
                       'loss_of_condenser_vacuum',
                       'degraded_hpi', 'large_loca', 'rcp_seal_leak', 'sgtr',
+                      /* wave 6 (#507): the failure levers + the two instrument rows the
+                       * drift mode and the mirror-only porv channel unlocked */
+                      'afw_failure', 'failure_to_scram', 'failed_pzr_heaters',
+                      'stuck_open_spray', 'continuous_rod_withdrawal',
+                      'tavg_sensor_failure', 'porv_indicator_stuck_closed',
                       'pzr_level_sensor_stuck', 'pzr_level_sensor_low'], out = {};
           keep.forEach(function (id) {
             if (base.failures && base.failures[id]) out[id] = base.failures[id];
@@ -540,13 +594,25 @@
     }
     if (!this.eng.fw.pumpA && !this.eng.fw.pumpB) out.push('loss_of_feedwater');
     if (!this.eng.cwPumps) out.push('loss_of_condenser_vacuum');
-    if (this.eng.ec.avail < 1) out.push('degraded_hpi');
+    if (this.eng.ec.hhsiAvail < 1) out.push('degraded_hpi');
     /* the electrical pair (#507 wave 4) — a blackout REPLACES the LOOP row rather than
      * stacking with it (it IS a LOOP plus dead diesels; one row, the worse one) */
     if (this.eng.elec.blackout) out.push('station_blackout');
     else if (!this.eng.elec.offsite) out.push('loss_of_offsite_power');
+    /* the wave-6 levers (#507) */
+    if (this.eng.aw.blocked) out.push('afw_failure');
+    if (this.eng.scramBlocked) out.push('failure_to_scram');
+    if (this.eng.pzDrivers.heaters_failed) out.push('failed_pzr_heaters');
+    if (this.eng.pzDrivers.spray_stick) out.push('stuck_open_spray');
+    if (this.eng.runaway) out.push('continuous_rod_withdrawal');
     var f = this.eng.ins.failure;
     Object.keys(f).forEach(function (id) { if (f[id]) out.push('instrument:' + id); });
+    /* the SHELL layer can carry a failure the internal table cannot host (the mirror-only
+     * porv_indicator, #507 wave 6) — report those too, without doubling the shared ids */
+    var sf = this.instruments && this.instruments.failed;
+    if (sf) Object.keys(sf).forEach(function (id) {
+      if (sf[id] && !f[id]) out.push('instrument:' + id);
+    });
     return out;
   };
 
@@ -665,12 +731,16 @@
     function idOf(c) { return c.instrument_id !== undefined ? c.instrument_id : c.instrument; }
     if (a === 'set_instrument_failure') {
       var id = idOf(cmd), mode = cmd.mode;
+      var mval = cmd.stuck_value !== undefined ? cmd.stuck_value : cmd.value;
       if (mode === 'noisy') sIns.setFailure(id, 'noisy');
+      else if (mode === 'drift') sIns.setFailure(id, 'drift', mval);   /* value = rate; both
+                                       * layers default the adopted 0.5/s so they walk together */
+      else if (mode === 'dead') sIns.setFailure(id, 'dead');
       else if (mode === 'fail_low' || mode === 'fail_high') {
         var ch = eIns.channels && eIns.channels[id];
         var rail = ch && ch.range ? (mode === 'fail_low' ? ch.range[0] : ch.range[1]) : undefined;
         sIns.setFailure(id, 'stuck', rail);
-      } else sIns.setFailure(id, 'stuck', cmd.stuck_value);
+      } else sIns.setFailure(id, 'stuck', mval);
     } else if (a === 'clear_instrument_failure') {
       var cid = idOf(cmd);
       if (typeof cid === 'string') sIns.clearFailure(cid);
@@ -749,6 +819,9 @@
         _rbActive: e._rbActive, _pzRelief: e._pzRelief, _pzReliefH: e._pzReliefH,
         /* the SGTR stream's one-step carriers (#507 wave 5) — old saves land on 0, healthy */
         _sgtrKgs: e._sgtrKgs, _sgtrH: e._sgtrH,
+        /* the wave-6 failure levers (#507) — old saves land on the healthy defaults;
+         * aw.blocked and the pzDrivers seats ride their own saved objects */
+        scramBlocked: e.scramBlocked, runaway: e.runaway,
         _Qox: e._Qox, _cdAvail: e._cdAvail, _plcsAuto: e._plcsAuto,
         _pwrRate: e._pwrRate, _prevPower: e._prevPower,
         _tavgPrev: e._tavgPrev, _tavgRate: e._tavgRate, advDemand: e.advDemand,

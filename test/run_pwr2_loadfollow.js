@@ -557,11 +557,12 @@ var MUTATIONS = [
    'var Q = sg.U * sg.area * (primaryT - T_sec);', 'var Q = 300000;'],
   ['the secondary temperature stops tracking its pressure (no back-pressure on the duty)',
    'var T_sec = W.T_sat(sg.P);', 'var T_sec = 272.11;'],
+  /* anchors re-pointed #507 wave 5: the SG ledger grew the tube-leak stream */
   ['steam draw no longer removes energy (demand cannot be felt)',
-   'var dH = Q + feed * SG.h_feed + afw * h_afw - steam * h_g;   // kW',
-   'var dH = Q + feed * SG.h_feed + afw * h_afw - steam * SG.h_feed;'],
+   'var dH = Q + feed * SG.h_feed + afw * h_afw + leak * h_leak - steam * h_g;   // kW',
+   'var dH = Q + feed * SG.h_feed + afw * h_afw + leak * h_leak - steam * SG.h_feed;'],
   ['steam draw no longer removes mass',
-   'var dM = feed + afw - steam;', 'var dM = 0;'],
+   'var dM = feed + afw + leak - steam;', 'var dM = 0;'],
   ['the secondary pressure never updates', '    updatePressure(sg);', ''],
   ['the duty is allowed to run backwards into the primary',
    'var Q = sg.U * sg.area * (primaryT - T_sec);',
@@ -573,8 +574,8 @@ var MUTATIONS = [
    'return 300000 / (SG.area_m2 * (T_prim - T_sec)); // kW/m2-K',
    'return 150000 / (SG.area_m2 * (T_prim - T_sec)); // kW/m2-K'],
   ['feedwater arrives at steam enthalpy (the secondary cannot be cooled by feed)',
-   'var dH = Q + feed * SG.h_feed + afw * h_afw - steam * h_g;   // kW',
-   'var dH = Q + feed * h_g + afw * h_g - steam * h_g;']
+   'var dH = Q + feed * SG.h_feed + afw * h_afw + leak * h_leak - steam * h_g;   // kW',
+   'var dH = Q + feed * h_g + afw * h_g + leak * h_leak - steam * h_g;']
 ];
 
 if (fail > 0) {

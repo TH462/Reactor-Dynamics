@@ -184,6 +184,22 @@ function runSuite(RD, rec, quiet) {
       once(-40, { si_active: true }).heater_kW === 0 &&
       once(-40, { si_active: true }).heaters_shed === true,
       'a -40 psi error would otherwise demand every bank');
+  /* THE TWO WAVE-6 FAILURE SEATS (#507): a dead bank and a stuck spray valve — each distinct
+   * from the operator's override and from the shed (three seats, three different recoveries) */
+  var rHF = once(-40, { heaters_failed: true });
+  ckT('FAILED heaters deliver 0 kW while the demand STANDS and nothing is shed',
+      rHF.heater_kW === 0 && rHF.heater_frac > 0.9 && rHF.heaters_shed === false,
+      'demand ' + rHF.heater_frac.toFixed(2) + ' with dead elements — clearing the failure ' +
+      'restores output with no re-lineup (#200)');
+  var rSS = PZ.stepPressurizer(PZ.createPressurizer({}), stub(15.41), DT,
+                               { spray_stick: true, spray_manual: 0 });
+  ckT('a STUCK-OPEN spray valve sprays FULL against a manual-zero demand (the porv_stick twin)',
+      rSS.spray_frac === 1 && rSS.spray_stuck === true && rSS.spray_kgs > 0,
+      rSS.spray_kgs.toFixed(2) + ' kg/s with the operator demanding 0 — the demand moves, ' +
+      'the valve does not');
+  ckT('...and the stick still obeys physics: no RCP head, no spray',
+      PZ.stepPressurizer(PZ.createPressurizer({}), stub(15.41, 0), DT,
+                         { spray_stick: true }).spray_frac === 0, '');
   ckT('safeties open at 2500 psia and reseat 5 % lower, not at the lift point',
       (function () {
         var p = PZ.createPressurizer({});
@@ -463,6 +479,12 @@ var MUTATIONS = [
    'var rf = W.rho_from_h(1000, P), rg = W.rho_from_h(2800, P);\n    var Vl = (rf - rg) > 1e-9 ? (m - rg * V) / (rf - rg) : V;'],
   ['spray ignores the RCP (a stopped loop sprays anyway)',
    'if (SPRAY.needs_rcp && !(sys.mdot_loop > 100)) sprayFrac = 0;', ''],
+  ['the heater FAILURE seat is severed (a failed bank keeps heating) -- #507 wave 6',
+   'var Q_heat_kW = (pz.heatersShed || drivers.heaters_failed) ? 0',
+   'var Q_heat_kW = pz.heatersShed ? 0'],
+  ['the spray stick is severed (a stuck-open valve obeys the demand) -- #507 wave 6',
+   '    if (pz.sprayStuck) sprayFrac = 1;',
+   ''],
   /* re-anchored #507 wave 4: the shed became a LATCH (armed by SI/LOOP/dead-bus, cleared by
    * the operator's heater command), so the SI term now lives in the ARMING signal — deleting
    * it there means an SI plant never sheds, which must red the shed check */

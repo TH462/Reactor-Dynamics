@@ -154,7 +154,7 @@ function runSuite(SH, rec, quiet) {
      pc.channels[0] === globalThis.RD.PWR_CONFIG.protection.channels.filter(function (ch) { return ch.id === 'boron_conc'; })[0] &&
      pc.interlocks.length === 0 && pc.runbacks.length === 0 &&
      alarmsOk &&
-     Object.keys(pc.failures).length === 14 &&
+     Object.keys(pc.failures).length === 21 &&
      !!pc.failures.stuck_porv_open && !!pc.failures.rcp_trip && !!pc.failures.turbine_trip &&
      !!pc.failures.loss_of_feedwater &&
      /* #507 wave 3 — the rows existing machinery honestly injects */
@@ -163,7 +163,12 @@ function runSuite(SH, rec, quiet) {
      !!pc.failures.large_loca && !!pc.failures.rcp_seal_leak &&
      !!pc.failures.pzr_level_sensor_stuck && !!pc.failures.pzr_level_sensor_low &&
      /* #507 wave 4 — the electrical pair; wave 5 — the tube rupture */
-     !!pc.failures.station_blackout && !!pc.failures.sgtr,
+     !!pc.failures.station_blackout && !!pc.failures.sgtr &&
+     /* #507 wave 6 — the failure levers + the two unlocked instrument rows */
+     !!pc.failures.afw_failure && !!pc.failures.failure_to_scram &&
+     !!pc.failures.failed_pzr_heaters && !!pc.failures.stuck_open_spray &&
+     !!pc.failures.continuous_rod_withdrawal &&
+     !!pc.failures.tavg_sensor_failure && !!pc.failures.porv_indicator_stuck_closed,
      'M4 gets a shape it can hold; pzr_level_low 25 -> 17 (the sourced heater-cutoff level), ' +
      'every other alarm row shared by reference; boron_conc by reference from the pwr table');
   /* THE ONE ESF ENTRY (2026-08-20, the AFAS build). The board's AUX FEED word needs
@@ -279,8 +284,23 @@ function runSuite(SH, rec, quiet) {
     for (i = 0; i < 500; i++) e5.step(0.02);
     var leakRate = (e5.eng.brk.discharged_kg - d0) / 10;
     var act = e5.getActiveFailures();
-    ck('degraded_hpi halves ECCS avail, vacuum row secures CW, the seal leak is HOLDABLE — all reported',
-       e5.eng.ec.avail === 0.5 && e5.eng.cwPumps === false &&
+    /* wave 6 (#507): degraded_hpi writes hhsiAvail — the seat the PHYSICS reads. Wave 3
+     * wrote ec.avail, which stepECCS never consults, so the row was INERT on flow through
+     * two green gate runs; the flow itself is now the assertion (at a pressure below the
+     * shutoff head, half availability must deliver half the flow). */
+    ck('degraded_hpi halves the SI FLOW the physics delivers, vacuum row secures CW, the ' +
+       'seal leak is HOLDABLE — all reported',
+       e5.eng.ec.hhsiAvail === 0.5 && e5.eng.cwPumps === false &&
+       (function () {
+         var full = globalThis.RD.pwr2.eccs.stepECCS(
+           { hhsiRunning: true, lhsiRunning: false, hhsiAvail: 1, lhsiAvail: 1, injected_kg: 0 },
+           { P: 5.0, nodes: e5.eng.sys.nodes }, 0).hhsi_kgs;
+         var half = globalThis.RD.pwr2.eccs.stepECCS(
+           { hhsiRunning: true, lhsiRunning: false, hhsiAvail: e5.eng.ec.hhsiAvail,
+             lhsiAvail: 1, injected_kg: 0 },
+           { P: 5.0, nodes: e5.eng.sys.nodes }, 0).hhsi_kgs;
+         return full > 0 && Math.abs(half / full - 0.5) < 1e-9;
+       })() &&
        leakRate > 0.5 && leakRate < 1.85 &&
        act.indexOf('degraded_hpi') !== -1 && act.indexOf('loss_of_condenser_vacuum') !== -1 &&
        act.indexOf('rcp_seal_leak') !== -1,
@@ -359,6 +379,145 @@ function runSuite(SH, rec, quiet) {
     e8.applyCommand({ action: 'clear_failure', failure_id: 'sgtr' });
     e8.step(0.02); e8.step(0.02);
     ck('...and the clear shuts the tube', e8.eng.brk.open === false && e8.eng._sgtrKgs === 0, '');
+  })();
+
+  /* ---- 1g. THE WAVE-6 ROWS (#507) — each lever with its measured, observable effect ---------- */
+  head('THE WAVE-6 ROWS  [failure levers: block, ATWS, dead bank, stuck spray, runaway, drift]');
+  (function () {
+    /* afw_failure — the TMI-2 tagged-shut valves */
+    var eA = new SH.PWR2Engine({});
+    for (var i = 0; i < 100; i++) eA.step(0.02);
+    eA.applyCommand({ action: 'set_afw', running: true });
+    for (i = 0; i < 100; i++) eA.step(0.02);
+    eA.applyCommand({ action: 'inject_failure', failure_id: 'afw_failure' });
+    for (i = 0; i < 100; i++) eA.step(0.02);
+    var tsA = eA.getTrueState();
+    ck('afw_failure: the pumps stay RUNNING, delivery dies, afw_blocked reads true — the ' +
+       'TMI-2 shape on the contract',
+       tsA.afw_pump_running === true && tsA.afw_active === false && tsA.afw_blocked === true &&
+       eA.getActiveFailures().indexOf('afw_failure') !== -1, '');
+    eA.applyCommand({ action: 'clear_failure', failure_id: 'afw_failure' });
+    for (i = 0; i < 100; i++) eA.step(0.02);
+    ck('...and clearing the tags restores delivery at the standing demand',
+       eA.getTrueState().afw_active === true, '');
+
+    /* failure_to_scram — the latch stands, the rods do not move, the plant self-limits */
+    var eS = new SH.PWR2Engine({});
+    for (i = 0; i < 100; i++) eS.step(0.02);
+    eS.applyCommand({ action: 'inject_failure', failure_id: 'failure_to_scram' });
+    eS.applyCommand({ action: 'scram' });
+    for (i = 0; i < 500; i++) eS.step(0.02);
+    var tsS = eS.getTrueState();
+    ck('failure_to_scram: the trip LATCHES (turbine trips with it) while the rods stand at ' +
+       '200 and the core keeps running — measured 76 % at 10 s, feedback-limited, unscripted',
+       eS.eng.pt.reactor_trip === true && eS.eng.rodSteps === 200 &&
+       eS.eng.tb.tripped === true && tsS.power_pct > 50 &&
+       eS.getActiveFailures().indexOf('failure_to_scram') !== -1,
+       'power ' + tsS.power_pct.toFixed(1) + ' % with the trip annunciated — the ATWS');
+
+    /* failed_pzr_heaters — dead elements under a standing demand */
+    var eH = new SH.PWR2Engine({});
+    for (i = 0; i < 100; i++) eH.step(0.02);
+    var kw0 = eH.eng._pzr.heater_kW;
+    eH.applyCommand({ action: 'inject_failure', failure_id: 'failed_pzr_heaters' });
+    for (i = 0; i < 10; i++) eH.step(0.02);
+    ck('failed_pzr_heaters: the bank goes from real watts to 0 with nothing shed and the ' +
+       'demand standing (measured −31.5 psi over 300 s unattended)',
+       kw0 > 10 && eH.eng._pzr.heater_kW === 0 && eH.eng.pz.heatersShed === false &&
+       eH.getActiveFailures().indexOf('failed_pzr_heaters') !== -1,
+       kw0.toFixed(0) + ' kW -> 0');
+
+    /* stuck_open_spray — the porv_stick twin; the plant depressurizes against its heaters */
+    var eP = new SH.PWR2Engine({});
+    for (i = 0; i < 100; i++) eP.step(0.02);
+    var pP0 = eP.getTrueState().pressure_mpa;
+    eP.applyCommand({ action: 'inject_failure', failure_id: 'stuck_open_spray' });
+    for (i = 0; i < 6000; i++) eP.step(0.02);
+    var tsP = eP.getTrueState();
+    ck('stuck_open_spray: full spray against the demand, spray_stuck on the contract, and ' +
+       'the plant loses >100 psi in 120 s with the heaters fighting (measured 247 psi)',
+       eP.eng._pzr.spray_frac === 1 && tsP.spray_stuck === true &&
+       (pP0 - tsP.pressure_mpa) * 145.038 > 100 &&
+       eP.getActiveFailures().indexOf('stuck_open_spray') !== -1,
+       ((pP0 - tsP.pressure_mpa) * 145.038).toFixed(0) + ' psi down');
+    eP.applyCommand({ action: 'clear_failure', failure_id: 'stuck_open_spray' });
+    for (i = 0; i < 50; i++) eP.step(0.02);
+    ck('...and the cleared valve obeys its controller again', eP.eng._pzr.spray_frac < 1, '');
+
+    /* continuous_rod_withdrawal — needs inserted rods (the shipped IC parks the bank at
+     * 200/200, declared); the drive faults outward and the rod levers are REFUSED */
+    var eR = new SH.PWR2Engine({});
+    for (i = 0; i < 100; i++) eR.step(0.02);
+    eR.applyCommand({ action: 'set_load_target', mwe: 60 });
+    for (i = 0; i < 6000; i++) eR.step(0.02);
+    eR.applyCommand({ action: 'rod_nudge', steps: -25 });
+    for (i = 0; i < 3000; i++) eR.step(0.02);
+    var st0 = eR.eng.rodSteps, pw0 = eR.getTrueState().power_pct;
+    eR.applyCommand({ action: 'inject_failure', failure_id: 'continuous_rod_withdrawal' });
+    for (i = 0; i < 500; i++) eR.step(0.02);
+    var thrR = false;
+    try { eR.applyCommand({ action: 'rod_nudge', steps: -10 }); } catch (e2) { thrR = /REFUSED/.test(e2.message); }
+    ck('continuous_rod_withdrawal: the bank drives OUT at the adopted fraction-of-travel ' +
+       'rate, power rises, and the rod levers are REFUSED out loud (measured 175->200, ' +
+       '78.1->83.7 %)',
+       eR.eng.rodSteps > st0 + 10 && eR.getTrueState().power_pct > pw0 + 1 && thrR === true &&
+       eR.getActiveFailures().indexOf('continuous_rod_withdrawal') !== -1,
+       st0.toFixed(0) + ' -> ' + eR.eng.rodSteps.toFixed(1) + ' steps');
+    eR.applyCommand({ action: 'clear_failure', failure_id: 'continuous_rod_withdrawal' });
+    var stC = eR.eng.rodSteps;
+    for (i = 0; i < 100; i++) eR.step(0.02);
+    ck('...and the clear HOLDS position (the latched demand followed the fault — no snap-back)',
+       Math.abs(eR.eng.rodSteps - stC) < 0.5 && eR.eng.runaway === null, '');
+
+    /* tavg_sensor_failure — the drift lands on BOTH layers and mis-programs the dumps */
+    var eD = new SH.PWR2Engine({});
+    for (i = 0; i < 100; i++) eD.step(0.02);
+    eD.applyCommand({ action: 'inject_failure', failure_id: 'tavg_sensor_failure' });
+    for (i = 0; i < 1500; i++) eD.step(0.02);
+    var tsD = eD.getTrueState();
+    var offI = eD.eng.ins.reading.tavg - tsD.tavg_c, offS = eD.instruments.reading.tavg - tsD.tavg_c;
+    ck('tavg_sensor_failure: BOTH layers drift off truth together at the adopted 0.5/s — ' +
+       'and the lying channel drags the TRUE plant down through the dump controller ' +
+       '(measured −25 degC of real overcooling in 60 s)',
+       offI > 10 && offS > 10 && Math.abs(offI - offS) < 3 && tsD.tavg_c < 300,
+       'internal +' + offI.toFixed(1) + ', board +' + offS.toFixed(1) + ' over a true ' +
+       tsD.tavg_c.toFixed(1) + ' degC');
+
+    /* porv_indicator_stuck_closed — the mirror-only channel: board-layer only, no throw */
+    var eL = new SH.PWR2Engine({});
+    for (i = 0; i < 100; i++) eL.step(0.02);
+    eL.applyCommand({ action: 'inject_failure', failure_id: 'porv_indicator_stuck_closed' });
+    for (i = 0; i < 10; i++) eL.step(0.02);
+    var lampOk = eL.instruments.reading.porv_indicator === 'closed' &&
+                 !!eL.instruments.failed.porv_indicator &&
+                 eL.getActiveFailures().indexOf('instrument:porv_indicator') !== -1;
+    eL.applyCommand({ action: 'clear_failure', failure_id: 'porv_indicator_stuck_closed' });
+    eL.step(0.02);
+    ck('porv_indicator_stuck_closed rides the BOARD layer alone (the internal numeric table ' +
+       'cannot host a string lamp — mirror-only, declared), reports active, and clears ' +
+       'without a throw',
+       lampOk && !eL.instruments.failed.porv_indicator &&
+       eL.getActiveFailures().indexOf('instrument:porv_indicator') === -1,
+       'the TMI-2 lamp: stuck at "closed" whatever the valve does');
+
+    /* the advanced panel's `value` key (latent fix 3) and the seal-leak slider (fix 2) */
+    var eV = new SH.PWR2Engine({});
+    for (i = 0; i < 100; i++) eV.step(0.02);
+    eV.applyCommand({ action: 'set_instrument_failure', instrument_id: 'tavg', mode: 'stuck',
+                      value: 250 });
+    eV.step(0.02);
+    ck('a typed freeze-at value arrives under the advanced panel\'s `value` key on BOTH ' +
+       'layers (it was silently dropped — every panel freeze landed at the current reading)',
+       eV.eng.ins.reading.tavg === 250 && eV.instruments.reading.tavg === 250, '');
+    var eW = new SH.PWR2Engine({});
+    eW.applyCommand({ action: 'inject_failure', failure_id: 'rcp_seal_leak', severity: 0.25 });
+    var a25 = eW.eng.brk.area_m2;
+    eW.applyCommand({ action: 'inject_failure', failure_id: 'rcp_seal_leak', severity: 1.0 });
+    ck('the seal-leak slider is HONORED — linear in area, sev 1.0 at the edge of charging ' +
+       '(measured 0.45 / 1.21 / 1.81 kg/s at sev 0.25 / 0.67 / 1.0 vs 1.85 max charging)',
+       Math.abs(a25 - 0.25 * 1.2e-5) < 1e-12 &&
+       Math.abs(eW.eng.brk.area_m2 - 1.2e-5) < 1e-12,
+       'wave 3 rendered the slider and discarded it');
   })();
 
   /* ---- 2. THE COMMAND PARTITION -------------------------------------------------------------- */
@@ -529,8 +688,9 @@ var MUTATIONS = [
   ['the afw arm grows a command list (the kernel\'s manual scan could flip a lie into the word)',
    "        esf_systems: [{ id: 'afw', label: 'Auxiliary feedwater', commands: [] }],",
    "        esf_systems: [{ id: 'afw', label: 'Auxiliary feedwater', commands: ['set_afw'] }],"],
+  /* anchor grew with the wave-6 modes; the claim is the same collapse */
   ['the instrument-failure command maps every mode to STUCK',
-   "      var mode = c.mode === 'fail_low' ? 'low' : c.mode === 'fail_high' ? 'high'\n               : c.mode === 'noisy' ? 'noisy' : 'stuck';",
+   "      var mode = c.mode === 'fail_low' ? 'low' : c.mode === 'fail_high' ? 'high'\n               : c.mode === 'noisy' ? 'noisy' : c.mode === 'drift' ? 'drift'\n               : c.mode === 'dead' ? 'dead' : 'stuck';",
    "      var mode = 'stuck';"],
   ['the #500 alarm override is dropped (pzr_level_low back to the plant\'s own program point)',
    "        alarms: (base.alarms || []).map(function (a) {\n          return a.id === 'pzr_level_low'\n            ? Object.assign({}, a, { setpoint: 17.0 })\n            : a;\n        }),",
@@ -546,7 +706,16 @@ var MUTATIONS = [
    "        EN.command(e, 'pump_trip', true);"],
   ['the sgtr row is routed to the cold leg (a tube rupture wearing a LOCA\'s plumbing)',
    "        EN.command(e, 'break_open', { area_m2: Math.max(1e-6, sevT * 4.33e-4),\n                                      node: 'sg_primary' });",
-   "        EN.command(e, 'break_open', { area_m2: Math.max(1e-6, sevT * 4.33e-4),\n                                      node: 'cold_leg' });"]
+   "        EN.command(e, 'break_open', { area_m2: Math.max(1e-6, sevT * 4.33e-4),\n                                      node: 'cold_leg' });"],
+  ['the advanced panel\'s value key is dropped again (#507 wave 6 latent fix 3 reverted)',
+   '      var val = c.stuck_value !== undefined ? c.stuck_value : c.value;',
+   '      var val = c.stuck_value;'],
+  ['degraded_hpi reverts to the INERT seat (writes a field the physics never reads)',
+   "        e.ec.hhsiAvail = Math.max(0, 1 - (c.severity !== undefined ? c.severity : 0.5));",
+   "        e.ec.avail = Math.max(0, 1 - (c.severity !== undefined ? c.severity : 0.5));"],
+  ['the seal-leak slider is discarded again (#507 wave 6 latent fix 2 reverted)',
+   "        EN.command(e, 'break_open', { area_m2: Math.max(1e-6, sevS * 1.2e-5), node: 'rcp' });",
+   "        EN.command(e, 'break_open', { area_m2: 8e-6, node: 'rcp' });"]
 ];
 
 console.log('\ninjection self-test (' + MUTATIONS.length + ' mutations):');
