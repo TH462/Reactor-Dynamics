@@ -29,6 +29,46 @@ and the user-visible summary in `CHANGELOG.md`. This file points at those and tr
 
 ---
 
+## Session log — 2026-08-22-develop-c (#507 waves 4–6 — the grid, the SGTR, and the menu at 21)
+
+**Owner rulings this batch (2026-08-22, selections from options I wrote)**: scope =
+waves 4+5+6 (initial conditions + rod insertion limit deferred); the LOOP row upgrades to
+"Full LOOP + clear"; the SGTR area is a declared-UNVERIFIED typical Westinghouse tube;
+wave 6's row set as recommended (stuck_rod_on_scram and steam_line_break deferred with
+reasons). Full measured record: `Blueprint/PWR2_VALIDATION.md` **§68–70**. Commits: wave 4
+`f4350da` · wave 5 `d14c533` · wave 6 + docs this push.
+
+- **Wave 4, the two-bus electrical model** (§68): LOOP kills the nonvital loads with their
+  selectors standing (RCPs sourced non-diesel-connectable, WTSM 3.2), diesels carry the
+  vital ones; SBO kills those too and the steam-driven TDAFW pump carries the plant (WTSM
+  5.7.5 — its step signature has no power driver to gate, which IS the do-not-gate note).
+  The §62-deferred AFW loss-of-offsite start closed (both pumps, ch10). The heater shed
+  became the NUREG-0737 rising-edge LATCH; the facade finally passes the `ac_available`
+  driver the pressurizer had consumed since birth and never received (a dark wire).
+  Measured discriminator worth keeping: `afw_flow_normalized` reads 1.000 in a LOOP and
+  0.667 in an SBO — exactly the TDAFW-only fraction, the MDAFW power wire's own gauge.
+- **Wave 5, the SGTR** (§69): a break at `sg_primary` discharges into the SECONDARY against
+  the SG's own pressure — the depressurize-to-stop EOP falls out of the ΔP (taper ratio
+  0.301 vs √dP 0.335), the SG overfills (frac 1.59 at 1200 s), containment never moves
+  through 3,037 kg (the bypass signature). Full severity 52.2 kg/s vs the 1982 Ginna
+  event's ~48. Area [UNVERIFIED] — no tube geometry in any lane's corpus, find_source
+  verdict.
+- **Wave 6, the menu at 21 + the latent trio** (§70): afw_failure / ATWS / failed heaters /
+  stuck spray / rod runaway / tavg drift (BOTH layers, and it drags the TRUE plant down
+  25 °C through the dumps) / the TMI-2 porv lamp (mirror-only, declared). The three wave-3
+  latents: degraded_hpi INERT on flow (wrote a field nothing reads), the seal-leak slider
+  rendered-and-discarded, the panel's `value` key dropped. Plus a real defect the ATWS
+  probe found: `reset_protection` never re-armed the trip edge — reset-then-scram left the
+  rods standing.
+- **Anchor economics, measured**: one grown SG-ledger line broke anchors in THREE gates
+  (`run_pwr2_engine` group E, `run_pwr2_loadfollow` ×3) across two rounds — when a shared
+  physics line grows, grep every gate for its text before running anything.
+- Gate tallies (all at new baselines, mutations all caught): afw 25 (10) · cvcs 38 (24) ·
+  eccs 30 · feedwater 26 (13) · protection 96 (51) · pressurizer 66 (26) · instruments 20
+  (11) · true_state 63 (17) · sg 27 · shell 56 (22) · engine 68 (41) · loadfollow 36 ·
+  hardrules 363 · doc budget OK (one standing-list eviction to TRAPS.md, the #468 theme
+  bullet rescued).
+
 ## Session log — 2026-08-22-develop-b (#507 waves 1–3 — boron, the RHR align, and twelve honest casualty rows)
 
 **Owner scope ruling: waves 1–3 now, the rest roadmapped.** Full record with every measured

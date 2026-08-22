@@ -331,7 +331,7 @@ to read everything.
 > change. The dense, append-only version lives in `Blueprint/BUILD_DECISIONS.md`
 > (Status line + Open Flags table) — update both.
 
-_Last updated: **2026-08-21**._
+_Last updated: **2026-08-22**._
 
 **Where the PWR is.** `run_all` is **86 runners, all at baseline** — read `BASELINES`, never a
 number written here. The PWR is the only active plant and is feature-complete through Mode 5 ↔
@@ -397,7 +397,7 @@ re-querying. Run the query.
   only, true values declared, gated by `run_pwr2_engine` (14 checks / 8 mutations; it caught the
   scram-bypasses-RPS defect and filed #499 on arrival — `PWR2_VALIDATION.md` §49). P-9 (turbine trip
   = reactor trip above it, both sourced values), the #499 beyond-model guards and the
-  DELAYED-data sourcing are all LANDED (§50–52). Built since, each with its record in `PWR2_VALIDATION.md`: OTΔT/OPΔT (§53) · the instrument layer, control switchover and runback/rod stop (§54–56) · OPTION B COMPLETE — the control room runs PWR2 as a first-class menu card ("PWR — New Physics", Free Play only), 109/109 contract, bit-exact pwr2-1.0 saves (§57–59, §61) · the A/B pass adjudicated, the pre-registered topology prediction HOLDS (§60) · the AFW starts + the lo-lo trip — one sourced 17 % bistable, both consumers; the shared `control_kernel` esf fix (§62) · THE FEED TRAIN — feed ≡ steam RETIRED (§63: the WTSM 11.1 three-element controller at the ruled 65 % program, SI isolation, hi-hi closure, the loss-of-both chain; a one-pump boil-down reaches the lo-lo trip ON PHYSICS at 97.6 s; R6 re-adjudicated — the old 41-point verdict was the A/B harness's automation-less fixture, the #209 caveat) · the CVCS "120 gpm" finding (§64: the balance was right all along — sourced-scaled 12.5 gpm; the standing Charging Flow High annunciator was a #408-currency mistranslation in the shell, fixed translation-only). Remaining before replacement: R8's ambient source check, mission compatibility, and the owner's replacement ruling (the free-play IC quirk closed with #502, 2026-08-21). Still owed: delta-T lead/lag + K5 (COLR), channel redundancy, electrical/blackout (owns the deferred loss-of-offsite-power AFW start), the ESF arm display.
+  DELAYED-data sourcing are all LANDED (§50–52). Built since, each with its record in `PWR2_VALIDATION.md`: OTΔT/OPΔT (§53) · the instrument layer, control switchover and runback/rod stop (§54–56) · OPTION B COMPLETE — the control room runs PWR2 as a first-class menu card ("PWR — New Physics", Free Play only), 109/109 contract, bit-exact pwr2-1.0 saves (§57–59, §61) · the A/B pass adjudicated, the pre-registered topology prediction HOLDS (§60) · the AFW starts + the lo-lo trip — one sourced 17 % bistable, both consumers; the shared `control_kernel` esf fix (§62) · THE FEED TRAIN — feed ≡ steam RETIRED (§63: the WTSM 11.1 three-element controller at the ruled 65 % program, SI isolation, hi-hi closure, the loss-of-both chain; a one-pump boil-down reaches the lo-lo trip ON PHYSICS at 97.6 s; R6 re-adjudicated — the old 41-point verdict was the A/B harness's automation-less fixture, the #209 caveat) · the CVCS "120 gpm" finding (§64: the balance was right all along — sourced-scaled 12.5 gpm; the standing Charging Flow High annunciator was a #408-currency mistranslation in the shell, fixed translation-only). The #507 parity umbrella is through SIX waves (2026-08-22, `PWR2_VALIDATION.md` §67–70): boron + lab sample · the RHR align · the casualty menu 4 → **21 honest rows** · **the two-bus electrical model** (the sourced LOOP + station blackout, the AFW loss-of-offsite start closed, the NUREG-0737 heater-shed latch) · **the SGTR** (tube discharges into the SECONDARY, overfill real, containment-bypass signature, [UNVERIFIED] declared area) · the drift/dead instrument modes + three latent wave-3 fixes (inert degraded_hpi, discarded seal-leak slider, dropped panel value key). Remaining before replacement: R8's ambient source check, mission compatibility, and the owner's replacement ruling (the free-play IC quirk closed with #502, 2026-08-21). Still owed: delta-T lead/lag + K5 (COLR), channel redundancy, the ESF arm display, initial conditions beyond hot full power, the rod insertion limit, stuck_rod_on_scram, steam_line_break (+MSIV).
 - **RBMK and BWR** — on hold, and the source of most remaining backlog. Do not touch.
 
 **The manual set's revision number does not advance until a RELEASE** *(OWNER DIRECTIVE,
@@ -415,6 +415,15 @@ FIRST** — ask what in it would still burn someone in a month, move that to the
 ONE line, drop the rest. **A bullet is ~80 words.** (Measured 2026-08-06: the list was running
 7 bullets averaging 500 words, two of them duplicating traps already rescued below.)
 
+- **Three shipped wave-3 rows were quietly hollow, and only writing wave-6's probes found
+  them** (2026-08-22, #507 waves 4–6): `degraded_hpi` wrote a field the physics never reads
+  (inert on flow through two green gate runs), the seal-leak severity slider was rendered
+  and discarded, and the advanced panel's typed freeze-at value was dropped by a payload-key
+  mismatch. Same batch: the pressurizer's `ac_available` driver had been documented, read,
+  and **never passed** since the module was built (a dark wire), and the ATWS probe caught
+  `reset_protection` never re-arming the trip edge — reset-then-scram left the latch on,
+  annunciators on, and the rods standing. A row's gate must assert the EFFECT (flow, area,
+  the landed value), never the write.
 - **A gate's sensing can live in the DEFECT's own transient** (2026-08-21, #501–#504, the
   owner's first live PWR2 telemetry). Settling the hot-full-power IC (#502 — the isothermal
   boot rang 100 → 76.6 %) sent **three previously-caught mutations blind**: the startup ring
@@ -464,20 +473,6 @@ ONE line, drop the rest. **A bullet is ~80 words.** (Measured 2026-08-06: the li
   actuates SI, so the shed would zero its subject and it passes testing nothing); and **a bare
   threshold chases the plant** — `pwr_qualify`'s cue, re-keyed a fourth time, now on a
   two-parameter signature validated on three plants including a negative control.
-- **The Mode 5 PRESET and the Mode 5 the plant PRODUCES were different plants, and nothing
-  compared them** (2026-08-12, #468). The shutdown bank was parked withdrawn by the engine
-  CONSTRUCTOR, so it was never a statement about Mode 5 at all: measured, a scram leaves it
-  at 0/912 and nothing re-withdraws it, so *driving* to cold shutdown gave trip rods in and
-  *loading* it gave them out — green on both for years. Real practice makes withdrawal an
-  evolution, never an IC (WTSM 8.1.1). Inserting it is TWO changes, because `_trimToCritical`
-  takes rod reactivity as an INPUT: trim after the bank and the solver pays for its 3676 pcm
-  in BORON — 671 ppm, below the HOT standby figure on a COLD plant. Placed after the trim,
-  ρ = −4676 pcm on unchanged 857 ppm, and the margin buys a measurable 79 min against an
-  unattended dilution. Found by a sourced pass over all 15 NOPs whose best source
-  (**WTSM §19.0 Plant Operations, ML11223A342**) was already in the corpus, uncited — the
-  same pass found §5.0 calling the 100 °F/hr rate limit UNSOURCED **four months after it was
-  ruled and shipped to the board**. Nothing gates manual prose against the rulings the engine
-  already implements.
 **Standing procedure — not part of the rotation above; these do not expire.** One trap per entry.
 **MAX 25 BULLETS** *(OWNER RULING, 2026-08-10: selected "Cap at 25, evict to TRAPS.md" from
 options I wrote — a selection, not verbatim words)*, gated by `test/run_doc_budget.js`. Adding
@@ -598,10 +593,10 @@ thing left in the file and it grew about a bullet a session.
   Indications-tab bullet on eviction, 2026-08-17): a "pressurizer mass-only level" row promised
   a TMI divergence that measures 0.0 everywhere, because `pzr_level_pct` is `clip(that,0,100)`
   of the very same number. HR12 does not stop at engine prose.
-- **A SENSING bug is invisible while the instrument is healthy** — to test an HR1 fix you have to
-  FAIL the channel (#220). A trip's `condition:` key is a status word the ENGINE computes, so the
-  `run_hardrules` scan cannot see it; hence HR1(b), every permissive key declared. **A comment
-  carrying the real plant's premise rots when this plant departs from it.**
+- **Nothing gates manual prose against the rulings the engine implements** (rescued from the
+  #468 bullet on eviction, 2026-08-22): `Manuals/` §5.0 called the 100 °F/hr rate limit
+  UNSOURCED four months after it was ruled and shipped to the board. When a ruling lands, grep
+  the manual for its subject — no runner will do it for you.
 - **A subscriber that reads inside the rAF paint is ONE FRAME LATE, and only a browser
   can see it** (rescued from the #432 themes bullet on eviction, 2026-08-11): the
   recorder's drain sat in the paint and logged **1475 rows in, 35 recorded** — call sites

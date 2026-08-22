@@ -30,6 +30,45 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
 
 ## [Unreleased]
 
+### Added (#507 parity waves 4–6, 2026-08-22)
+- **PWR2 has a grid**: a two-bus electrical model (offsite/nonvital + diesel-backed vital),
+  every motor load asking its own bus by name. `loss_of_offsite_power` is the full sourced
+  LOOP now — RCPs (non-diesel-connectable, WTSM 3.2), main feed and condensate die with the
+  grid, selectors standing; the diesels carry charging, SI, heaters and the MDAFW pump; both
+  AFW pumps auto-start (ch10 — the §62-deferred start closed); the row clears (grid back,
+  RCPs stay tripped). `station_blackout` joins the menu: the vital loads die too and the
+  steam-driven TDAFW pump carries the plant (WTSM 5.7.5). The pressurizer heater shed became
+  the NUREG-0737 rising-edge LATCH — armed by SI or LOOP, cleared only by the operator's
+  heater command — and the facade finally passes the `ac_available` driver the module had
+  consumed since birth and never received. `PWR2_VALIDATION.md` §68.
+- **PWR2 SGTR**: a break at the tube node discharges into the SECONDARY against the SG's own
+  pressure — the sourced depressurize-to-stop-the-leak EOP falls out of the ΔP unscripted
+  (leak ratio tracks √dP within 11 %), the SG overfills (the §15.6.3 hazard the old engine
+  never landed), and containment never moves — the bypass signature. Area [UNVERIFIED]
+  typical-tube double-ended 4.33e-4 m² (owner-ruled declaration; full severity measures
+  52.2 kg/s vs the 1982 Ginna event's ~48). One break at a time — SGTR and LOCA are mutually
+  exclusive, declared. `PWR2_VALIDATION.md` §69.
+- **PWR2 casualty menu 14 → 21**: `afw_failure` (TMI-2 tagged-shut valves — pumps running,
+  water going nowhere), `failure_to_scram` (the ATWS: trip latched, rods standing, power
+  feedback-limits to 76 %), `failed_pzr_heaters`, `stuck_open_spray` (−247 psi/120 s against
+  fighting heaters), `continuous_rod_withdrawal` (rod levers refused out loud; gravity beats
+  the drive on a working scram), `tavg_sensor_failure` (drift lands on BOTH instrument layers
+  and mis-programs the dumps — the true plant overcools 25 °C in 60 s), and the TMI-2
+  `porv_indicator_stuck_closed` lamp. Instrument layers gain drift + dead modes.
+  `PWR2_VALIDATION.md` §70.
+
+### Fixed (#507 wave 6, 2026-08-22)
+- **`degraded_hpi` was inert on flow** — wave 3 wrote a field the physics never reads; two
+  green gate runs certified a row that did nothing. Now the delivered SI flow actually halves
+  at half capacity, gated.
+- **`rcp_seal_leak`'s severity slider was rendered and discarded** — now linear
+  (0.45/1.21/1.81 kg/s across the slider vs 1.85 max charging; every position holdable).
+- **The advanced panel's typed freeze-at value was silently dropped** on PWR2 (payload-key
+  mismatch); a typed stuck-at-250 now lands on both layers.
+- **`reset_protection` never re-armed the trip edge** — a reset followed immediately by a
+  scram (or a re-tripping condition) left the latch on and the rods standing. Found by the
+  ATWS probe, fixed in the reset.
+
 ### Added (#507 parity waves 1–3, 2026-08-22)
 - **PWR2 boron control is real**: the board's boron panel re-enabled itself — the kernel's
   batch-dose channel rides through, driving a blender-shaped rate actuator on the CVCS mass

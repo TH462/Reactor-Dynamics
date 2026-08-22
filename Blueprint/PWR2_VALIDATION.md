@@ -3586,3 +3586,197 @@ panel's `instrument_id`) is fixed. Measured: `pzr_level_sensor_low` → board 20
 20.0 / truth 60.8; clear heals both. Deferred with reasons in #507: `tavg_sensor_failure`
 (needs a drift mode), `porv_indicator_stuck_closed` (needs the channel), and the
 new-physics rows.
+
+## 68. PARITY WAVE 4 — THE PLANT GETS A GRID (#507) — 2026-08-22
+
+**Scope rulings this batch** *(OWNER, 2026-08-22 — each a selection from options I wrote, not
+verbatim words)*: waves 4+5+6 (electrical · SGTR · casualty batch 2); the initial-condition
+count and the rod insertion limit stay roadmapped. The `loss_of_offsite_power` row upgrades to
+the full sourced LOOP and gains a clear ("Full LOOP + clear").
+
+### The model
+Two booleans, not a bus network: `elec.offsite` (the grid) and `elec.blackout` (the diesels
+did not answer — 10 CFR 50.2's station blackout). Derived each step before any consumer:
+`acAvail = !blackout` (the vital, diesel-backed buses) and `offsiteOk = offsite && !blackout`
+(nonvital). No diesel start delay or failure probability — transfer is instantaneous,
+DECLARED. Which load hangs on which bus is each module's own named wire, the old engine's
+`ac_available` idiom: RCPs **nonvital** [sourced WTSM 3.2 ML11223A213: the RCP motors "cannot
+be supplied from the emergency diesel generators"] and one-way (the declared no-restart
+shape); main feed and condensate/CW nonvital; charging + seal injection, HHSI/LHSI, the
+pressurizer heaters and the MDAFW pump **vital** — alive through a LOOP, dead in a blackout
+(WTSM 5.7.5 ML11223A229: "All decay heat removal systems, **except the turbine-driven AFW
+pump**, also fail"); the TDAFW pump's step signature has **no power driver at all**, which is
+how the do-not-gate note is enforced. Letdown keeps flowing (an orifice, not a motor —
+declared); the board and instruments ride the batteries, never gated. The `electrical` STATIC
+retired — `ac_available`/`station_blackout` are live contract fields.
+
+### The AFAS start that was owed
+§62 deferred the loss-of-offsite-power AFW start for want of an electrical model. Built:
+`drivers.loss_of_offsite` (a state signal, the `main_feed_lost` convention) latches **both**
+pumps with cause `loss_of_offsite_power` — ch10's "all three preferred auxiliary feedwater
+pumps will start on loss of offsite power," collapsed to both on this one-of-each lineup.
+In a blackout the latched MDAFW demand meets a dead bus and delivers nothing — the #200
+running-with-no-flow split doing its job.
+
+### The heater shed became the sourced LATCH
+`pwr2_pressurizer` had consumed `drivers.ac_available` since it was built — **the facade never
+passed it** (a documented, read, dark wire). Passing it exposed the second gap: the shed was
+combinational, so a LOOP never shed and grid recovery un-shed silently. Now the NUREG-0737
+II.E.3.1 (7) / Ginna TS B 3.4.9 rising-edge latch (the old engine's shape): armed by SI **or a
+LOOP** (vital bus notwithstanding), cleared only by the operator touching the heater control
+(any `pzr_heaters_manual` command — the old `set_heater` convention, which the source's
+"loading the heaters while the SI signal still stands" reading requires); a dead bus stays a
+DIRECT term (physics, not a loading choice).
+
+### Measured (dt 0.02 s, hot full power)
+- **LOOP**: feed capacity dies instantly with both pump selectors standing → `main_feed_lost`
+  → turbine trip → P-9 reactor trip, all in the first step (a state-signal chain). At 120 s:
+  feed 0.000, condenser unavailable, `afw_flow_normalized` **1.000** (both pumps at rated),
+  TDAFW cause `loss_of_offsite_power` (the MDAFW races `loss_of_main_feed` in the same step
+  and the feed train reports first — kept, and it is also the feed wire's own gauge),
+  `ac_available` TRUE, heaters shed on the latch. 300 s: 2119.9 psia.
+- **The probe trap that reddened the first shell check**: 5 s after the LOOP the feed still
+  reads 0.535 of rated — the module's 8 s pump tau decaying (e^−0.625 = 0.535). The probe was
+  wrong, the plant was right; ride 30 s before asserting the feed dead.
+- **SBO**: `afw_flow_normalized` **0.667** — exactly the TDAFW-only fraction (3.63 kg/s), so
+  the ratio is itself the MDAFW power wire's gauge. Heater re-load under SBO: 0 kW at manual
+  full; the same re-load during a LOOP: >100 kW — the vital bus's own gauge pair. Manual full
+  charging: 6.5e-5 frac/s (≈1.83 kg/s, full delivery) in the LOOP, **0** in the SBO. 300 s:
+  1985.6 psia (vs 2119.9 — the dead heaters). A blackout **mid-LOCA** stops SI with the run
+  flags standing; restoring the buses resumes it at the standing lineup.
+- **The PLCS confound, named**: charging demand reads 0 in both LOOP and SBO because the
+  pressurizer level (40.4 % measured) sits above the post-trip 25 % program — the level
+  controller, not the bus; the probes force manual demand to stay non-vacuous.
+- **Recovery**: buses re-energize; RCPs stay tripped; the shed stays latched until the heater
+  command; feed returns at the controller's own demand (≈0 on an overfull SG) — recovery gives
+  the plant back, never the lineup (#200).
+
+### Rows and gates
+`loss_of_offsite_power` upgrades from wave 3's honest-degraded RCP-trip to the full LOOP with
+a working clear; `station_blackout` joins the menu (12 → 13; it REPLACES the LOOP row in the
+active-failures ledger — it IS a LOOP plus dead diesels, one row, the worse one);
+`full_blackout` moves REFUSED → REHOMED. Gates: afw 19→23 (9 mutations — including
+power-gate-lands-on-the-TURBINE-pump, the do-not-gate note's own probe) · cvcs 35→38 (24) ·
+eccs 28→30 · feedwater 24→26 (13) · protection 95→96 (51) · pressurizer 63 (shed mutation
+re-anchored onto the ARMING signal) · true_state 63 (the electrical-static mutation retargeted
+to the surviving MSIV static) · shell 42 · engine 58 — one proposed mutation REJECTED as
+unkillable (`offsiteOk` already ANDs `!blackout`; a mutation that can never red is the hollow
+class). `run_hardrules` holds 363.
+
+## 69. PARITY WAVE 5 — THE SGTR (#507) — 2026-08-22
+
+### The model: a break whose destination is the SG
+A break at the `sg_primary` node IS a ruptured tube — destination inferred from the node, no
+new state. Three seams, each already shaped for this: the break's backpressure driver takes
+the SG's own `P_sec` (same step — `stepSG` runs first), so the sourced EOP — *"reduce reactor
+coolant system pressure to equilibrate with the ruptured steam generator secondary side
+pressure to minimize the coolant discharge"* (Ginna UFSAR ch15 §15.6.3) — falls out of the ΔP
+with no scripting; the discharge lands in the secondary as `stepSG`'s **third inlet stream**
+(hot, at the donor node's enthalpy, one step old — a 0.02 s / ~1 kg transport inventory,
+declared), so the **overfill** the source names as the hazard actually happens — the old
+engine's SGTR removed primary mass and landed it **nowhere**; and the discharge is EXCLUDED
+from the containment sum — the containment-bypass signature that diagnoses the accident.
+
+### The area is [UNVERIFIED], the location is sourced
+No SG tube geometry document is in any lane's corpus (`find_source.js` verdict). Declared
+*(OWNER RULING, 2026-08-22: "Declare UNVERIFIED" — a selection)*: typical Westinghouse
+0.75 in OD × 0.048 in wall → ID 0.654 in → double-ended 2·π/4·ID² = **4.33e-4 m²**. The
+location is the source's own: *"a double-ended break of one steam generator tube located at
+the top of the tube sheet on the outlet (cold leg) side"* — `sg_primary` is that side of this
+loop. Severity = fraction of the full rupture (slider default 40 %).
+
+### Measured (sev 0.4 = 1.73e-4 m², hot full power)
+- Initial leak **20.9 kg/s**, tapering to **6.3 kg/s** at 300 s: ratio 0.301 vs
+  √(dP ratio) 0.335 — the √(2ρΔP) drive within 11 %, which is the EOP's physics.
+- Full severity: **52.2 kg/s** initial vs the 1982 Ginna event's ~48 kg/s — with the break
+  model's declared ~2× subcooled overstatement as the honest error bar (the agreement is
+  partly that overstatement).
+- The plant answers unscripted: **OTΔT trip at 55.2 s**, **SI (lo pzr press) at 69.7 s**, the
+  pressurizer drains (0 % at 300 s), and the SG overfills — mass frac **1.23** at 300 s,
+  **1.59** at 1200 s.
+- At 1200 s the primary hovers **60.1 psi** above the ruptured SG with HPI 0.11 feeding a
+  4.27 kg/s leak — the classic SGTR standoff the EOP exists to break.
+- Containment **identical** through 3,037 kg discharged — the exclusion proof.
+
+### Declared limits
+One break at a time: SGTR and LOCA are mutually exclusive — a new break REPLACES the tube
+(measured: the SGTR stream stops and containment starts receiving). No radiological path (no
+air-ejector / N-16 monitor model) — `inbox/ISSUE_radiation_monitoring.md` already tracks the
+gap. Overfill protection needed no code: rising mass → level → the §62 hi-hi FWI, all
+existing. Gates: sg 25→27 (leak dropped from the mass ledger / from the energy ledger — the
+old engine's own defect, re-armed as mutations) · shell 44 (the row reports by NAME, never
+`primary_leak`; +routed-to-the-cold-leg mutation) · engine 64 (backpressure cut, stash
+severed, SG-never-consumes, exclusion dropped — all caught; the group-E AFW-stream anchor
+re-pointed, and `run_pwr2_loadfollow`'s three SG-ledger anchors re-pointed a round later —
+the multi-gate cost of one grown line, worth the sentence so the next ledger change greps
+for its anchors first).
+
+## 70. PARITY WAVE 6 — CASUALTY BATCH 2, THE INSTRUMENT MODES, AND THREE LATENT FIXES (#507) — 2026-08-22
+
+### Drift and dead land on the internal layer
+`pwr2_instruments` gains **drift** (`offset += rate·dt` in sim time — HR6; rate = the payload
+value or the adopted 0.5/s) and **dead** (rails `range[0]`, the current engine's semantic).
+The shell mapper stops collapsing drift/dead to 'stuck', and reads the freeze-at value under
+EITHER key — **latent fix 3**: the defs send `stuck_value`, the advanced panel sends `value`,
+and reading only the former silently dropped every typed panel value (measured: a
+stuck-at-250 tavg landed at the current reading). The mirror forwards drift (with its rate)
+and dead, so both layers walk together. `porv_indicator` is **MIRROR-ONLY, declared**: a
+string lamp the internal numeric table cannot host — inject and restore skip the engine
+command (which would throw before the mirror ran) and ride the applyCommand mirror to the
+board layer alone; `getActiveFailures` scans the shell layer's own failed dict for exactly
+this class.
+
+### The menu reaches 21 rows, each measured
+- **afw_failure** — the TMI-2 tagged-shut discharge valves are REAL STATE (`aw.blocked`,
+  downstream of both pumps): run flags stand, delivery dies, `afw_blocked` goes LIVE on the
+  contract (its static retired); re-opening restores delivery at the standing demand.
+- **failure_to_scram** — the ATWS: `scramBlocked` gates ONLY the caller's-half rod drop; the
+  latch, annunciators and the turbine trip all stand, because a failure to scram is the DROP
+  failing, not the logic. Measured: manual scram blocked at power — rods at 200, power
+  self-limits to **76 % at 10 s / 67.7 % at 20 s** through moderator feedback, unscripted.
+  Clearing is not retroactive (the edge is spent): reset + scram drops the rods — declared.
+- **THE DEFECT THE ATWS PROBE FOUND**: `reset_protection` never re-armed the trip-edge
+  detector (`_lastTrip` lagged one step true), so a reset followed IMMEDIATELY by a new trip
+  or the pushbutton missed the edge — **latch on, annunciators on, rods standing**. Fixed in
+  the reset: clearing the latch re-arms its edge detector.
+- **failed_pzr_heaters** — a THIRD heater seat (failure ≠ operator manual ≠ shed): 36.4 kW →
+  0 with the demand standing; **−31.5 psi over 300 s** unattended.
+- **stuck_open_spray** — the `porv_stick` twin: a physical valve latched open, the demand
+  keeps moving and stays ineffective (#200), still needs RCP head and a steam space.
+  `spray_stuck` LIVE (static retired). Measured: **−247 psi in 120 s** with the heaters
+  fighting at 158 kW.
+- **continuous_rod_withdrawal** — drives OUT at sev × 5.26 steps/s (the old 24-fine-steps/s
+  ceiling as a fraction of travel, 24/912 on this 200-step bank — [adopted]); rod levers
+  REFUSED out loud; a WORKING scram beats the drive and clears it; the clear holds position
+  (the latched demand follows the fault — no snap-back). Measured: 175 → 200 in 9.5 s at
+  default severity, power 78.1 → 83.7 %. **DECLARED**: the shipped hot-full-power IC parks
+  the bank at 200/200, so the row only has travel on a plant whose rods are inserted. The
+  first engine fixture inserted 50 steps at full load and the RPS terminated the excursion
+  mid-probe (150 → 0.0) — UFSAR 15.4's own credited story, and a different claim than "the
+  drive moves"; the fixture note stays so the distinction is not relearned.
+- **tavg_sensor_failure** — the drift row, and it teaches by itself: both layers walk
+  +30 °C/60 s off truth together while the lying channel MIS-PROGRAMS THE DUMPS and drags
+  the TRUE plant down **25 °C in 60 s** — the instrument-driven overcooling casualty. The
+  absolute reading only shows +6 because truth fell under it; reading − truth is the gauge.
+- **porv_indicator_stuck_closed** — the TMI-2 lamp, stuck at 'closed' whatever the valve
+  does; board-layer only (above), reports active, clears clean.
+
+### The other two latent fixes
+1. **degraded_hpi was INERT on flow**: wave 3 wrote `ec.avail`, which `stepECCS` never reads
+   (it consumes `hhsiAvail`) — two green gate runs certified a row that did nothing to the
+   physics. Now writes `hhsiAvail`; the gate asserts the DELIVERED flow halves at sev 0.5,
+   and a revert-to-the-inert-seat mutation is caught.
+2. **rcp_seal_leak's slider was rendered and discarded** (hard 8e-6 m²). Now linear:
+   sev × 1.2e-5 m², sev 2/3 reproducing the wave-3 area exactly. Measured endpoints:
+   **0.45 / 1.21 / 1.81 kg/s at sev 0.25 / 0.67 / 1.0** against 1.85 kg/s max charging —
+   every slider position holdable, full severity at the edge, which is the row's teaching
+   point extended to the whole slider.
+
+### Gates
+instruments 17→20 (11 mutations) · pressurizer 63→66 (26 — the two failure seats) · afw
+23→25 (10 — the discharge block) · true_state 63 (spray_stuck and afw_blocked statics
+retired, both checks turned around to guard the repair) · shell 44→56 (22 mutations) ·
+engine 64→68 (41) · loadfollow 36 (three SG-ledger anchors re-pointed). Deferred with
+reasons in #507: `stuck_rod_on_scram` (a worth-model change deserving its own measured
+pass) and `steam_line_break(_upstream)` (needs a steam-outflow term AND an MSIV model to
+teach its own isolation procedure).

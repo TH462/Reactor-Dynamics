@@ -22,6 +22,18 @@ the evidence to put it back** — say so in the session log rather than quietly 
 
 ---
 
+## Evicted 2026-08-22 (#507 waves 4–6 — one out for the #468 bullet's rescued trap)
+
+Gate-covered in the direction that matters: HR1(b) — every permissive key declared — is what
+`run_hardrules` enforces, which is exactly this bullet's own "hence" clause. The comment-rot
+tail is real but unactionable as a standing warning; the sensing-bug core announces itself the
+moment the scan runs.
+
+- **A SENSING bug is invisible while the instrument is healthy** — to test an HR1 fix you have to
+  FAIL the channel (#220). A trip's `condition:` key is a status word the ENGINE computes, so the
+  `run_hardrules` scan cannot see it; hence HR1(b), every permissive key declared. **A comment
+  carrying the real plant's premise rots when this plant departs from it.**
+
 ## Evicted 2026-08-17 (#472 — one out for the pressure-rail bullet's trap)
 
 Board-specific and loud in the direction that matters: a unit read on the wrong side of the
