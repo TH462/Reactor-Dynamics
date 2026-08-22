@@ -331,7 +331,7 @@ to read everything.
 > change. The dense, append-only version lives in `Blueprint/BUILD_DECISIONS.md`
 > (Status line + Open Flags table) — update both.
 
-_Last updated: **2026-08-10**._
+_Last updated: **2026-08-21**._
 
 **Where the PWR is.** `run_all` is **86 runners, all at baseline** — read `BASELINES`, never a
 number written here. The PWR is the only active plant and is feature-complete through Mode 5 ↔
@@ -380,8 +380,13 @@ re-querying. Run the query.
   merged — Vercel is out of the release path and `vercel.json`/`.vercelignore` are deleted;
   two owner actions remain (delete the Vercel project, revoke a token).
 - **#479 PWR2** — Layers 0–5 + core damage + protection + **the pressurizer through stage 2c**
-  (ruled 2026-08-18 "Option 1") built on `backshop` (local, under the standing no-merge hold
-  above). The #488 audit adjudicated and closed; #486/#487 resolved; **the plant settles at its
+  (ruled 2026-08-18 "Option 1") — **MERGED INTO `develop` 2026-08-21** *(OWNER DIRECTIVE,
+  2026-08-21: "Full merge and push. Don't publish to main yet.")* — merge `b4122a7`, 86 runners
+  at baseline; the standing no-merge hold above is SPENT (its bar was the merge, which the owner
+  ordered; `main` still waits). The owner's first live PWR2 session (telemetry, 2026-08-21) filed
+  and fixed #501–#504; the free-play IC quirk is CLOSED (#502, §65: the isothermal boot retired —
+  a settled start no longer rings 100→76.6 %). The #488 audit adjudicated and closed; #486/#487
+  resolved; **the plant settles at its
   design point** (2226–2238 psia, 45 °F core subcooling) and **the TMI level deception is
   emergent physics** (`PWR2_VALIDATION.md` §41–46: level control, stuck PORV + block valve +
   tailpipe, 87 % high-level trip via P-7, aux spray). The two-h stratification is DEFERRED
@@ -392,7 +397,7 @@ re-querying. Run the query.
   only, true values declared, gated by `run_pwr2_engine` (14 checks / 8 mutations; it caught the
   scram-bypasses-RPS defect and filed #499 on arrival — `PWR2_VALIDATION.md` §49). P-9 (turbine trip
   = reactor trip above it, both sourced values), the #499 beyond-model guards and the
-  DELAYED-data sourcing are all LANDED (§50–52). Built since, each with its record in `PWR2_VALIDATION.md`: OTΔT/OPΔT (§53) · the instrument layer, control switchover and runback/rod stop (§54–56) · OPTION B COMPLETE — the control room runs PWR2 as a first-class menu card ("PWR — New Physics", Free Play only), 109/109 contract, bit-exact pwr2-1.0 saves (§57–59, §61) · the A/B pass adjudicated, the pre-registered topology prediction HOLDS (§60) · the AFW starts + the lo-lo trip — one sourced 17 % bistable, both consumers; the shared `control_kernel` esf fix (§62) · THE FEED TRAIN — feed ≡ steam RETIRED (§63: the WTSM 11.1 three-element controller at the ruled 65 % program, SI isolation, hi-hi closure, the loss-of-both chain; a one-pump boil-down reaches the lo-lo trip ON PHYSICS at 97.6 s; R6 re-adjudicated — the old 41-point verdict was the A/B harness's automation-less fixture, the #209 caveat) · the CVCS "120 gpm" finding (§64: the balance was right all along — sourced-scaled 12.5 gpm; the standing Charging Flow High annunciator was a #408-currency mistranslation in the shell, fixed translation-only). Remaining before replacement: R8's ambient source check, the free-play IC quirks, mission compatibility, and the owner's replacement ruling. Still owed: delta-T lead/lag + K5 (COLR), channel redundancy, electrical/blackout (owns the deferred loss-of-offsite-power AFW start), the ESF arm display.
+  DELAYED-data sourcing are all LANDED (§50–52). Built since, each with its record in `PWR2_VALIDATION.md`: OTΔT/OPΔT (§53) · the instrument layer, control switchover and runback/rod stop (§54–56) · OPTION B COMPLETE — the control room runs PWR2 as a first-class menu card ("PWR — New Physics", Free Play only), 109/109 contract, bit-exact pwr2-1.0 saves (§57–59, §61) · the A/B pass adjudicated, the pre-registered topology prediction HOLDS (§60) · the AFW starts + the lo-lo trip — one sourced 17 % bistable, both consumers; the shared `control_kernel` esf fix (§62) · THE FEED TRAIN — feed ≡ steam RETIRED (§63: the WTSM 11.1 three-element controller at the ruled 65 % program, SI isolation, hi-hi closure, the loss-of-both chain; a one-pump boil-down reaches the lo-lo trip ON PHYSICS at 97.6 s; R6 re-adjudicated — the old 41-point verdict was the A/B harness's automation-less fixture, the #209 caveat) · the CVCS "120 gpm" finding (§64: the balance was right all along — sourced-scaled 12.5 gpm; the standing Charging Flow High annunciator was a #408-currency mistranslation in the shell, fixed translation-only). Remaining before replacement: R8's ambient source check, mission compatibility, and the owner's replacement ruling (the free-play IC quirk closed with #502, 2026-08-21). Still owed: delta-T lead/lag + K5 (COLR), channel redundancy, electrical/blackout (owns the deferred loss-of-offsite-power AFW start), the ESF arm display.
 - **RBMK and BWR** — on hold, and the source of most remaining backlog. Do not touch.
 
 **The manual set's revision number does not advance until a RELEASE** *(OWNER DIRECTIVE,
@@ -410,19 +415,16 @@ FIRST** — ask what in it would still burn someone in a month, move that to the
 ONE line, drop the rest. **A bullet is ~80 words.** (Measured 2026-08-06: the list was running
 7 bullets averaging 500 words, two of them duplicating traps already rescued below.)
 
-- **The pressure rail was a SOLVER, and a state departure is not a rate** (2026-08-17, #472
-  phase 3b). v2 published **188,432 psia (1,299 MPa)** with liquid water at **1,000 °C** on a
-  heatup and every check was green through it. `settle`'s Picard iteration has gain
-  `V_liq/V_stm`, so its own comment ("converges in three passes") is true at a normal bubble
-  and false at a small one — a 95 %-level node ran 196.082 → 186.492 over 12 passes still
-  moving, leaving the state off its saturation line; the next step read that as **0.653 °C
-  (1.18 °F)** of superheat and flashed **9.00 kg into a 0.2099 m³ bubble in ONE step**.
-  `E = C·(T_liq − Tsat(P))` has no `dt` in it, which is why the rail was identical at
-  `dt = 1e-12 s` and why three sessions of sub-step reasoning went past it. Bracket-and-bisect
-  fixed it (191,970 → 206.8 psia); the failing state HAD roots and Picard was walking away from
-  one sitting at exactly the pressure the state carried. Three of my own published diagnoses
-  were each one layer too shallow, and what found it was **removing variables, not reading
-  code**. Two probe comments asserting mechanisms turned out false when run.
+- **A gate's sensing can live in the DEFECT's own transient** (2026-08-21, #501–#504, the
+  owner's first live PWR2 telemetry). Settling the hot-full-power IC (#502 — the isothermal
+  boot rang 100 → 76.6 %) sent **three previously-caught mutations blind**: the startup ring
+  had been lifting the relief, correcting level and opening the dumps, so those wires were
+  never probed deliberately. Fix the defect, re-run the INJECTIONS, give each orphaned
+  mutation its own probe. Same session: the chart pre-seed removal (#501, owner ruling — all
+  flat seeds gone, three prior rulings reversed) exposed a test that had passed ten days on
+  an accident (`testDiagBundle` pressing play on a plant that auto-starts), and a board check
+  entangled with a trend glyph. The recorder noise (#504) and the dead ECCS AUTO button
+  (#503) were both invisible to every gate and found only by a player.
 - **The rods ship in MANUAL, and every probe that broke was INHERITING the lineup instead of
   stating it** (2026-08-11, #460). `rods_tavg` loses `defaultOn`, reversing #289 — whose
   premise, *"everything else starts in auto"*, had expired when the Mode 1 lineup put generator

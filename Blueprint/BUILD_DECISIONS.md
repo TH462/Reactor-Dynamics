@@ -45,7 +45,31 @@ where the two differ or where judgment was exercised.
 
 ---
 
-## 2026-08-12-develop-c — #458: shutdown cooling and low-head injection are the same pumps, so the align is refused during injection
+## 2026-08-21-develop-b — #501: the chart pre-seed and every flat seed REMOVED — charts start empty and fill live
+
+*(OWNER RULING, 2026-08-21: selected "All flat seeds everywhere" [be removed] from options I
+wrote — a selection, not verbatim words. This REVERSES three standing rulings: #237 "presets
+start with 30 minutes of history", the 2026-08-01 "run them for 30 minutes to fill up the
+graph with real data" real-trace pre-seed — the 2026-08-01c entry below records that build —
+and the 2026-07-28 vital-tile "flat preload, not a random walk".)*
+
+**Why now:** the pre-seed's hidden 10× background SimulationService froze the PWR2 card for
+~1–2 minutes per plant select (#501 — its 40-tick slice was calibrated to the old engine's
+~1 ms tick; a PWR2 tick at 10× costs ~50×). Measured headless before/after: **0.9 fps with
+continuous 1.9 s long tasks → 56.7 fps, zero long tasks.** The freeze is also what made the
+in-sim bug-report form untypeable, so it suppressed the owner's own defect reports.
+
+**What went:** `ensurePreseed`/`applyPreseed`/`preseedKey` and the flat 360-row chart seed
+(ui/app.js), the gauge-sparkline 60 s flat seed, and the vital-tile window preload
+(comp_indicator_panel.js — its `seeded` latch survives with its one other job, dropping
+build()'s untimed placeholder). `drawChart`'s <2-row "waiting" lane render is the deliberate
+opening state; the T+0 run-start line stays and now marks where the record begins.
+`testTrendPreseed` deleted (it gated the removed behaviour). Two checks were entangled with
+the seeds and re-adjudicated, not widened: board_check's unit-neutral readout now compares
+the value with trend glyphs stripped (the arrow honestly resets when a unit flip clears the
+trace), and `testDiagBundle` presses play only if the plant is paused (stale since the
+2026-08-11 auto-start ruling — it had been passing on fine rows captured in the ~100 ms of
+600× between its own two clicks).
 
 *(OWNER RULING, 2026-08-12: "A'" — selecting the refusal over gating `Q_rhr` or a documentation-only
 close, from three options I costed. The recommendation was A'.)*

@@ -29,6 +29,62 @@ and the user-visible summary in `CHANGELOG.md`. This file points at those and tr
 
 ---
 
+## Session log — 2026-08-21-develop-b (#501–#504 fixed — the pre-seed removed everywhere, the PWR2 IC settled, and what the settling sent blind)
+
+**The bundle from -a's triage, all four fixed on `develop`.** Owner rulings this session:
+"All flat seeds everywhere" [be removed] (selected from options I wrote — reverses #237, the
+2026-08-01 pre-seed and the 2026-07-28 tile preload) and the four-issue bundle confirmed.
+
+- **#501 — the chart pre-seed and every flat seed removed** (`ensurePreseed`/`applyPreseed`
+  + the 360-row flat seed, the gauge-sparkline 60 s seed, the vital-tile preload). Measured
+  before/after on the PWR2 card: **0.9 fps, continuous 1.9 s long tasks → 56.7 fps, zero**.
+  Charts open on the "waiting" lane render and fill from the right; the T+0 line stays.
+  Record: `BUILD_DECISIONS` 2026-08-21-develop-b.
+- **#502 — the isothermal boot retired** (`PWR2_VALIDATION.md` §65). `designHmap`: constants-
+  derived legs at TREF ± DT0_C/2, donor-cell placement (node = OUTLET state — core HOT,
+  sg_primary COLD, measured at a 600 s settle). 60 s untouched: power min **98.2 %** (was
+  76.6), pressure min **2214 psia** (was 2149). Two refutations recorded in §65: re-pointing
+  the kinetics references detonates (928 % in one step); the runback fixture's −2 ppm
+  dilution block overshot the approach band and tripped on its own script (dt 0.02 only) —
+  re-scripted quasi-static. Shell `reset()` now keeps its construction opts; `?init=`
+  validates against the engine's own presets.
+- **#503 — ESF AUTO buttons disable when the engine declares no arm** (`buttonDisabled` off
+  `automation.esf`; measured pwr 0/49 disabled, pwr2 1/49). Dead synoptic ECCS family
+  deleted. Follow-up filed: **#505** (COMMAND_ERROR is invisible to the player).
+- **#504 — recorder first-pass noise gone** (clear→clear rows suppressed; TR-9 added, red
+  9-events on the old code by injection).
+
+**The traps this session adds to the record:**
+- **A gate's sensing can live in the defect's own transient.** Settling the IC sent three
+  run_pwr2_engine mutations blind (relief sink, level-to-charging, dump-to-relief) — the
+  startup ring had been exercising those wires. Each got a deliberate probe with a measured
+  healthy/mutated A/B (ΔM −136 vs −11 kg · Δdemand 0.074 vs 0.000 · dump 75.7 vs 0.0 %).
+- **`testDiagBundle` had passed for ten days on an accident**: stale since the 2026-08-11
+  auto-start ruling, its unconditional play-press PAUSED the running plant, and it survived
+  on fine rows captured in the ~100 ms of 600× between its own two clicks. The pre-seed's
+  boot-time slices were what kept that window wide enough.
+- **board_check's unit-neutral check was entangled with the trend glyph** — the arrow
+  honestly resets when a unit flip clears the trace; the check now compares the value with
+  glyphs stripped and prints before → after.
+- **A mutation replay can wear the BLIND verdict for two unrelated reasons, and both bit in
+  one evening.** (1) The probe block first landed inside the wrong group guard — the file's
+  group order is A, D, B, C, D, and the three grp('A')-scoped replays never ran it (23/26).
+  (2) Fixed placement still left one blind: under the wire-cut the demand stays `null`, the
+  probe's own note string called `.toFixed` on it and THREW — and the harness's "a crash
+  counts as caught" was only true for a crash before the first check records; mid-group it
+  left every recorded check green and read as blind (25/26). Note null-safed AND the harness
+  now counts any crash as caught. What found both was the MUTDBG verbose replay, not the
+  tally.
+
+**Gates**: run_diag_bundle 31→35 · run_events unmoved 40 · verify_board_check 222 ·
+verify_e2e_ui 16 screenshots (testTrendPreseed deleted, testEsfArmButtons added) ·
+run_pwr2_shell 29/29 with **all 14 mutations still caught** (the 700 s save-fixture
+discrimination survived the IC change unmodified) · run_pwr2_engine 41→45 checks ·
+pwr2 family (forwarding 11, true_state 63, protection 95, instruments 17, loadfollow 36)
+all green · full `run_all` at baseline at the Group A gate.
+
+---
+
 ## Session log — 2026-08-21-develop-a (PWR2 telemetry triage — the owner's first live session, four defects filed)
 
 **The owner played the PWR2 card and sent telemetry** ("it had some issues… I couldn't type

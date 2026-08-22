@@ -30,6 +30,33 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
 
 ## [Unreleased]
 
+### Removed
+- **The chart pre-seed and every flat seed** *(OWNER RULING, 2026-08-21: selected "All flat
+  seeds everywhere" [be removed] — reversing #237, the 2026-08-01 real-trace pre-seed and the
+  2026-07-28 tile preload)*, #501. The strip chart, gauge sparklines and board vital tiles
+  all start empty and fill live from the right; the T+0 line marks where the record begins.
+  The pre-seed's hidden 10× background run froze the PWR2 card ~1–2 min per plant select
+  (measured 0.9 fps, continuous 1.9 s long tasks → 56.7 fps, zero) and made the bug-report
+  form untypeable. `testTrendPreseed` deleted with it; the diag-bundle e2e test now presses
+  play only if the plant is paused (stale since the 2026-08-11 auto-start ruling).
+
+### Fixed
+- **PWR2 free-play starts settled** (#502): `createEngine` seeded every loop node isothermal
+  (zero leg split at 100 % power), so each start rang — power 100 → 76.6 % at t = 2.9 s,
+  Thot 580 → 622 °F, 2235 → 2149 psia. A constants-derived design-point enthalpy map
+  (donor-cell: node = its outlet state) opens the plant on its own split: 60 s untouched now
+  holds power ≥ 98.2 %, pressure ≥ 2214 psia. The shell's `reset()` also rebuilds with its
+  construction options (it dropped the seed), and `?init=` validates against the engine's own
+  preset list. `Blueprint/PWR2_VALIDATION.md` §65.
+- **The ESF AUTO re-arm buttons disable when the engine has no such arm** (#503): on the PWR2
+  card the HPI AUTO press was answered by an invisible COMMAND_ERROR (PWR2 declares only the
+  aux-feed arm). `buttonDisabled` keys off `automation.esf`, so any engine that declares the
+  arm gets the button back. Dead synoptic handlers (`eccs-on/off/auto`, `afw-auto`,
+  `rhr-auto`, `CG_ECCS`) deleted. Follow-up on surfacing command errors at all: #505.
+- **Bug-report recorder noise** (#504): the first alarm scan emitted every alarm as a
+  clear→clear non-transition — 47 of 48 events in both 2026-08-21 bundles. It now captures
+  only the non-clear starting state; transitions after.
+
 ### Changed
 - **The Indications tab's checkboxes are a MONITOR LIST, not a plot selector** *(OWNER,
   2026-08-12: "the check boxes select what you see in the [strip chart] which is redundant
