@@ -40,7 +40,7 @@ function loadAll(engSource, coreSource) {
  * P-9/lying-channel family (eng4-6), 'C' the runback (eng7), 'D' the break + drain (eng2-3),
  * 'E' the AFW starts, 'F' the feed train, 'G' the electrical pair (#507 wave 4), 'H' the
  * SGTR (#507 wave 5), 'I' the failure levers (#507 wave 6), 'K' the initial conditions
- * (#507 §F, wave 7).
+ * (#507 §F, wave 7), 'L' the rod insertion limit (#507 §B, wave 8).
  * The CLEAN pass runs everything. Measured before this existed: 17 mutations x the whole
  * suite = 1074 s of contention in the aggregate gate — the replay cost scales with every
  * fixture ever added, and a mutation only needs the checks built to see it. */
@@ -997,6 +997,62 @@ function runSuite(RD, rec, quiet, only) {
       'declared in the registry, not silently hot-full-power)',
       threwIC === true, '');
   }
+
+  if (grp('L')) {
+  /* ---- 10. THE ROD INSERTION LIMIT (#507 §B, wave 8) — display/annunciator only on this
+   * plant. THE CURVE RECEDES WITH POWER by design (deep insertion is legal at low power),
+   * so a plain insertion never closes the margin — measured: the honest approach is rods
+   * IN while power is RESTORED (dilution), which is exactly the operational story the RIL
+   * exists for. ---- */
+  head('THE ROD INSERTION LIMIT  [null below 5 %; 70 % floor at rated; the margin closes on dilution]');
+  ckT('the curve is the adopted pwr1 shape: null at and below 5 %, 140 steps at rated, ' +
+      'monotone between',
+      EN.insertionLimitSteps(0) === null && EN.insertionLimitSteps(5) === null &&
+      EN.insertionLimitSteps(100) === 140 &&
+      EN.insertionLimitSteps(50) > EN.insertionLimitSteps(20) &&
+      Math.abs(EN.insertionLimitSteps(50) - 72) <= 1,
+      '50 % -> ' + EN.insertionLimitSteps(50) + ' steps');
+  var engL = EN.createEngine({});
+  var tsL = run(engL, 20);
+  ckT('at hot full power the limit is LIVE and generous: RIL ~139, margin ~60, not at limit',
+      engL._rilSteps >= 137 && engL._rilSteps <= 141 &&
+      engL._rodLimitMargin > 55 && engL._rodAtLimit === false,
+      'RIL ' + engL._rilSteps + ', margin ' + engL._rodLimitMargin);
+  var engZ = EN.createEngine({ initial_state: 'hot_zero_power' });
+  EN.step(engZ, DT);
+  ckT('at Hot Standby the limit does NOT APPLY — a bank parked at 0 stands NO limit alarm ' +
+      '(the 5 % floor is what keeps every startup from opening annunciated)',
+      engZ._rilSteps === null && engZ._rodAtLimit === false && engZ._rodLimitMargin === 200,
+      '');
+  /* the honest approach (measured 2026-08-23): insert to 145 (power sags to 85.8, the
+   * limit recedes to 121 — margin OPENS to 24), then dilute: power recovers, the limit
+   * climbs back, and the margin closes to <10 at +35 s; a 5-step insert at power reaches
+   * the limit itself */
+  EN.command(engL, 'rod_speed', 'fast');
+  EN.command(engL, 'rod_target', 145);
+  run(engL, 60);
+  var openedTo = engL._rodLimitMargin;
+  EN.command(engL, 'boron_rate', -0.10);
+  var tL = 0;
+  while (tL < 120 && engL._rodLimitMargin >= 10 && !tsL.scrammed) { tsL = run(engL, 5); tL += 5; }
+  ckT('rods in + dilution restoring power CLOSES the margin below the sourced RIL+10 — ' +
+      'the limit chased the power back up',
+      openedTo > 15 && engL._rodLimitMargin < 10 && tsL.scrammed === false,
+      'margin opened to ' + openedTo + ' on the insert, closed to ' + engL._rodLimitMargin +
+      ' at t=+' + tL + ' s, power ' + tsL.power_pct.toFixed(1) + ' %');
+  /* the dilution KEEPS RUNNING through the final insert — securing it first lets power sag
+   * and the limit recede under the bank (measured 96.3 %/RIL 135 under 139 steps; the
+   * first gate draft did exactly that and reddened on its own fixture, not the plant).
+   * The limit then CLIMBS to meet the bank as power recovers — at-limit at +55 s measured. */
+  EN.command(engL, 'rod_target', 139);
+  var tL2 = 0;
+  while (tL2 < 200 && !engL._rodAtLimit && !tsL.scrammed) { tsL = run(engL, 5); tL2 += 5; }
+  ckT('...and five more steps with the dilution running reaches the LIMIT itself as power ' +
+      'recovers (ROD LIMIT LO-LO\'s fact; measured at +55 s)',
+      engL._rodAtLimit === true && tsL.power_pct > 90 && tsL.scrammed === false,
+      'steps ' + engL.rodSteps.toFixed(0) + ' <= RIL ' + engL._rilSteps + ' at ' +
+      tsL.power_pct.toFixed(1) + ' % (t=+' + tL2 + ' s)');
+  }
 }
 
 console.log('\nPWR2 -- THE ENGINE FACADE: one door, the gates\' wiring written once');
@@ -1169,7 +1225,20 @@ var MUTATIONS = [
    '    var tavg0 = DC.tref(ic.load_mwe / MWE_RATED);', { grp: 'K' }],
   ['the HZP dump lineup is dropped (nothing holds the no-load plant)',
    "      dcDrivers: ic.pf > 0 ? {} : { mode: 'pressure', pressure_setpoint_mpa: G.SG.P_noload },",
-   '      dcDrivers: {},', { grp: 'K' }]
+   '      dcDrivers: {},', { grp: 'K' }],
+  /* THE ROD INSERTION LIMIT (#507 §B, wave 8) */
+  ['the RIL curve is deleted (no limit at any power)',
+   '    if (!(P_pct > RIL.min_power_pct)) return null;',
+   '    return null;\n    if (!(P_pct > RIL.min_power_pct)) return null;', { grp: 'L' }],
+  ['the applicability floor is deleted (a Hot Standby bank at 0 stands LO-LO forever)',
+   '    if (!(P_pct > RIL.min_power_pct)) return null;',
+   '    if (false) return null;', { grp: 'L' }],
+  ['at-limit is never computed (the LO-LO fact pinned false)',
+   '    eng._rodAtLimit = ril !== null && eng.rodSteps <= ril;',
+   '    eng._rodAtLimit = false;', { grp: 'L' }],
+  ['the margin is pinned wide (the LO approach can never annunciate)',
+   "    eng._rodLimitMargin = ril === null ? 200 : Math.max(0, Math.round(eng.rodSteps - ril));",
+   '    eng._rodLimitMargin = 200;', { grp: 'L' }]
 ];
 var CORESRC = fs.readFileSync(path.join(SRC, 'pwr2_core.js'), 'utf8').replace(/\r\n/g, '\n');
 

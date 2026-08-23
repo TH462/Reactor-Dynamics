@@ -138,10 +138,15 @@ function runSuite(SH, rec, quiet) {
    * rides through by reference except pzr_level_low, rebuilt at 17 % — 25.0 was this
    * plant's own sourced no-load program point, a standing annunciator on a healthy Mode 3 */
   var baseAlarms = globalThis.RD.PWR_CONFIG.protection.alarms;
+  /* TWO overrides since #507 wave 8 (was one, #500): pzr_level_low 25 -> 17 and
+   * rod_limit_approach 40 -> 10 (the sourced RIL+10 in this bank's own step currency);
+   * every other row must stay shared BY REFERENCE — a third silent divergence reds here. */
   var alarmsOk = Array.isArray(pc.alarms) && pc.alarms.length === baseAlarms.length &&
     pc.alarms.every(function (a, i) {
       return a.id === 'pzr_level_low'
         ? (a.setpoint === 17.0 && baseAlarms[i].id === 'pzr_level_low' && baseAlarms[i].setpoint === 25.0)
+        : a.id === 'rod_limit_approach'
+        ? (a.setpoint === 10 && baseAlarms[i].id === 'rod_limit_approach' && baseAlarms[i].setpoint === 40)
         : a === baseAlarms[i];
     });
   /* channels carries EXACTLY the boron batch-dose panel since #507 wave 1 — its whole
@@ -560,6 +565,31 @@ function runSuite(SH, rec, quiet) {
        rIr && rIr.type === 'error' && /low-flux/.test(rIr.message), '');
   })();
 
+  /* ---- 1i. THE ROD INSERTION LIMIT SURFACES (#507 §B, wave 8) ------------------------------- */
+  head('THE ROD LIMIT SURFACES  [live control-state fields, the margin channel, the 10-step row]');
+  (function () {
+    var eR = new SH.PWR2Engine({});
+    for (var i = 0; i < 200; i++) eR.step(0.02);
+    var gs = eR.getControlState().rod_groups;
+    ck('the control group carries the LIVE limit (~139 steps, not at limit) and the ' +
+       'shutdown group stays exempt (its evolutions are deliberate)',
+       gs[0].insertion_limit_steps >= 137 && gs[0].insertion_limit_steps <= 141 &&
+       gs[0].at_insertion_limit === false &&
+       gs[1].insertion_limit_steps === null && gs[1].at_insertion_limit === false,
+       'RIL ' + gs[0].insertion_limit_steps);
+    ck('the board layer\'s rod_limit_margin channel tracks the engine (was pinned at its ' +
+       '912 default)',
+       Math.abs(eR.instruments.reading.rod_limit_margin - eR.eng._rodLimitMargin) < 1e-9 &&
+       eR.instruments.reading.rod_limit_margin < 100,
+       'margin ' + eR.instruments.reading.rod_limit_margin);
+    var rowLO = (eR.getProtectionConfig().alarms || []).filter(function (a) {
+      return a.id === 'rod_limit_approach';
+    })[0];
+    ck('ROD LIMIT LO alarms at the sourced RIL+10 in THIS bank\'s own steps — the shared ' +
+       'row\'s 40 is the same physical number in pwr1\'s fine-step currency (4 fine/step)',
+       rowLO && rowLO.setpoint === 10, 'setpoint ' + (rowLO && rowLO.setpoint));
+  })();
+
   /* ---- 2. THE COMMAND PARTITION -------------------------------------------------------------- */
   head('THE PARTITION  [every old-engine action in exactly one registry, refusals reasoned]');
   var oldSrc = fs.readFileSync(path.join(__dirname, '..', 'engines', 'pwr', 'pwr_engine.js'), 'utf8');
@@ -732,9 +762,10 @@ var MUTATIONS = [
   ['the instrument-failure command maps every mode to STUCK',
    "      var mode = c.mode === 'fail_low' ? 'low' : c.mode === 'fail_high' ? 'high'\n               : c.mode === 'noisy' ? 'noisy' : c.mode === 'drift' ? 'drift'\n               : c.mode === 'dead' ? 'dead' : 'stuck';",
    "      var mode = 'stuck';"],
+  /* anchor grew with the wave-8 rod-limit override; the claim is the same */
   ['the #500 alarm override is dropped (pzr_level_low back to the plant\'s own program point)',
-   "        alarms: (base.alarms || []).map(function (a) {\n          return a.id === 'pzr_level_low'\n            ? Object.assign({}, a, { setpoint: 17.0 })\n            : a;\n        }),",
-   '        alarms: base.alarms,'],
+   "          return a.id === 'pzr_level_low'\n            ? Object.assign({}, a, { setpoint: 17.0 })\n            : a.id === 'rod_limit_approach'",
+   "          return a.id === 'nope_pzr_level_low'\n            ? Object.assign({}, a, { setpoint: 17.0 })\n            : a.id === 'rod_limit_approach'"],
   ['the shutdown group reverts to the pre-#506 snap (200 -> 0 in one frame on scram)',
    "          steps: Math.round(e.sdSteps), max_steps: 200,\n          position_pct: 100 * e.sdSteps / 200,",
    '          steps: ts.scrammed ? 0 : 200, max_steps: 200,\n          position_pct: ts.scrammed ? 0 : 100,'],
@@ -761,7 +792,17 @@ var MUTATIONS = [
    ''],
   ['the engine-owned block surface loses its setpoint (the power tile paints the static 25 %)',
    '          setpoint: sp',
-   '          setpoint: undefined']
+   '          setpoint: undefined'],
+  /* THE ROD INSERTION LIMIT (#507 §B, wave 8) */
+  ['the control-state limit fields revert to the pinned nulls',
+   '          insertion_limit_steps: e._rilSteps === undefined ? null : e._rilSteps,\n          at_insertion_limit: e._rodAtLimit === true },',
+   '          insertion_limit_steps: null, at_insertion_limit: false },'],
+  ['the margin channel is severed (the board reads the healthy default for ever)',
+   '    ex.rod_limit_margin = e._rodLimitMargin === undefined ? 200 : e._rodLimitMargin;',
+   '    ex.rod_limit_margin = 200;'],
+  ['the ROD LIMIT LO override is dropped (the row fires at 40 of this bank\'s steps — 4x early)',
+   "            : a.id === 'rod_limit_approach'\n            ? Object.assign({}, a, { setpoint: 10 })\n            : a;",
+   '            : a;']
 ];
 
 console.log('\ninjection self-test (' + MUTATIONS.length + ' mutations):');

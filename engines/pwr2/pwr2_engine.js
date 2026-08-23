@@ -62,6 +62,21 @@
    * travel-per-second onto this plant's 200-step bank (0.0585 / 0.351 / 0.526 %/s). The old
    * single ROD_SLEW_SPS = 1.0 was ~pwr1's FAST, always. */
   var ROD_SPEEDS = { slow: 0.117, normal: 0.702, fast: 1.053 };   /* steps/s */
+  /* THE ROD INSERTION LIMIT (#507 §B, wave 8) — [adopted tune] pwr1's power-dependent curve
+   * on this bank: NO limit below 5 % power (a startup drives the bank deep; boron and the
+   * shutdown bank hold the margin), then the %-withdrawn floor ramps linearly 5 → 70 % at
+   * 100 %. Control bank ONLY (the shutdown bank's evolutions are deliberate). On this plant
+   * it is DISPLAY AND ANNUNCIATOR only — no automatic rod channel exists to stop — and the
+   * consumers are the shared ROD LIMIT LO / LO-LO rows [sourced WTSM 8.4 ML11223A256:
+   * "Rod Limit Low setpoint = RIL + 10 steps", "Rod Limit Low-Low setpoint = RIL"; the
+   * shell overrides the shared row's 40-fine-step setpoint to 10 of THIS bank's steps —
+   * the same physical number in this bank's own currency]. */
+  var RIL = { min_power_pct: 5.0, lo_pct: 5.0, hi_pct: 70.0 };
+  function insertionLimitSteps(P_pct) {
+    if (!(P_pct > RIL.min_power_pct)) return null;
+    var f = Math.min((P_pct - RIL.min_power_pct) / (100 - RIL.min_power_pct), 1);
+    return Math.round((RIL.lo_pct + (RIL.hi_pct - RIL.lo_pct) * f) / 100 * 200);
+  }
   var SCRAM_S = 2.5;             /* control bank full insertion on a trip — [tune], adopted
                                   * with SD_SCRAM_S from pwr1's 2.5/2.0 pair (#506.3): the
                                   * shutdown bank inserts slightly FASTER, both are ramps */
@@ -754,6 +769,13 @@
       ac_available: acAvail,
       station_blackout: eng.elec.blackout
     });
+    /* the rod insertion limit, recomputed every step off the plant's own power (#507 §B) —
+     * null below its 5 % applicability floor, consumed by the shell's control-state and
+     * instrument surfaces (the ROD LIMIT LO/LO-LO annunciators), never by an actuator */
+    var ril = insertionLimitSteps(ts.power_pct);
+    eng._rilSteps = ril;
+    eng._rodAtLimit = ril !== null && eng.rodSteps <= ril;
+    eng._rodLimitMargin = ril === null ? 200 : Math.max(0, Math.round(eng.rodSteps - ril));
     /* facade extras a page needs and the contract does not carry */
     ts.sim_time_s = eng.simTime;
     ts.rod_steps = eng.rodSteps;
@@ -789,6 +811,7 @@
     step: step,
     designHmap: designHmap,   /* exported so the equivalence fixture boots the SAME plant */
     ICS: ICS,                 /* the initial-condition registry — the shell/UI menu reads it */
+    RIL: RIL, insertionLimitSteps: insertionLimitSteps,
     MWE_RATED: MWE_RATED
   };
 })(typeof globalThis !== 'undefined' ? globalThis : this);

@@ -82,7 +82,12 @@ env:
 jobs:
   aggregate-gate:
     runs-on: ubuntu-latest
-    timeout-minutes: 55
+    # 55 -> 80 (#507 wave 8, 2026-08-23): the aggregate step's 45-minute budget TIMED OUT on
+    # the wave-7 push — not a red runner, the suite genuinely grew (the pwr2 mutation
+    # harnesses; the previous GREEN run took 43m31s, a 90-second margin nobody noticed
+    # shrinking). The step budget moves to 70 and the job wraps it at 80. The #496 class;
+    # the real long-term fix is cheaper mutation replays, not a bigger cap.
+    timeout-minutes: 80
 
     steps:
       # ACTION MAJORS ARE ON THE NODE 24 RUNTIME (#389, 2026-08-06). All four were on `@v4`,
@@ -148,7 +153,9 @@ jobs:
       # suite measures ~19 min locally at 10-way parallel, so the same 2x slow-end logic gives
       # ~38 — 45 keeps the step failing on its OWN name before the job's 55 does.
       - name: Aggregate gate (all runners)
-        timeout-minutes: 45
+        # 45 -> 70 (#507 wave 8): timed out at 45 on the wave-7 push with every runner green
+        # locally — see the job-level note
+        timeout-minutes: 70
         run: node test/run_all.js
 
       - name: Upload diagnostic reports

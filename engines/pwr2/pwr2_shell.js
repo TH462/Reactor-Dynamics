@@ -492,7 +492,11 @@
      * modeled), so a stopped pump reads as LOST, never SECURED — declared, not hidden */
     ex.rcp_secured = false;
     ex.steam_demand_low = ts.turbine_tripped === true || (ts.steam_flow_normalized || 0) < 0.05;
-    ex.rod_at_limit = false;                        /* no insertion-limit model */
+    /* LIVE since #507 wave 8 — the RIL consumers: rod_at_limit feeds ROD LIMIT LO-LO,
+     * rod_limit_margin feeds ROD LIMIT LO (in THIS bank's steps; the alarm row's setpoint
+     * is overridden to the sourced RIL+10 in this currency — see getProtectionConfig) */
+    ex.rod_at_limit = e._rodAtLimit === true;
+    ex.rod_limit_margin = e._rodLimitMargin === undefined ? 200 : e._rodLimitMargin;
     ex.rods_fully_in = e.rodSteps <= 0.5;
     ex.above_p9 = !!(e.rpsReport && e.rpsReport.p9_met);
     ex.afw_block_open = true;                       /* no AFW block valve is modeled */
@@ -560,8 +564,15 @@
          * (LEVEL.low_cut_pct, same WTSM section) — the point at which something real is
          * about to happen. pzr_level_lolo (12) stays below it; the pwr1 table is untouched. */
         alarms: (base.alarms || []).map(function (a) {
+          /* two PWR2 setpoint overrides, every other row shared by reference:
+           * pzr_level_low 25 -> 17 (#500, the sourced heater-cutoff level);
+           * rod_limit_approach 40 -> 10 (#507 wave 8): the shared 40 is the sourced
+           * "RIL + 10 steps" in pwr1's FINE-step currency (4 fine per step) — this bank's
+           * steps ARE the currency, so the same physical number is 10. */
           return a.id === 'pzr_level_low'
             ? Object.assign({}, a, { setpoint: 17.0 })
+            : a.id === 'rod_limit_approach'
+            ? Object.assign({}, a, { setpoint: 10 })
             : a;
         }),
         failures: (function () {
@@ -673,7 +684,10 @@
           moving: !ts.scrammed && e.rodSteps !== e.rodTarget,
           direction: e.rodTarget > e.rodSteps ? 1 : (e.rodTarget < e.rodSteps ? -1 : 0),
           speed: e.rodSpeedSel || 'normal', scrammed: !!ts.scrammed,
-          insertion_limit_steps: null, at_insertion_limit: false },
+          /* LIVE since #507 wave 8: the facade's power-dependent RIL — null below its 5 %
+           * applicability floor, the pwr1 shape */
+          insertion_limit_steps: e._rilSteps === undefined ? null : e._rilSteps,
+          at_insertion_limit: e._rodAtLimit === true },
         { id: 'shutdown_rods', name: 'Shutdown Rods', function: 'shutdown',
           steps: Math.round(e.sdSteps), max_steps: 200,
           position_pct: 100 * e.sdSteps / 200,
