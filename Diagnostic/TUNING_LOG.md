@@ -71,6 +71,17 @@ rods-in + dilution (−0.10 ppm/s closes margin <10 at +35 s, parks at margin 5 
 untripped; +5 steps at power reaches the limit). Gates: engine 77→82 (50 mut) · shell
 61→64 (27) — tallies from the record run.
 
+**Same session, wave 9 (2026-08-23) — the RCP restart** (`PWR2_VALIDATION.md` **§73**): the
+one-way trip retired. The motor spins the coastdown's own rotor back (same sourced inertia;
+accelerating torque [open] 1.5× rated hydraulic — no motor curve in corpus): measured rated
+speed +13 s / flow >90 % +10 s from rest, coastdown 16.4 % speed at 60 s, natcirc 113 kg/s
+at 300 s. Start gated on the NONVITAL bus (WTSM 3.2 — refused under blackout, lands after
+grid return); nothing auto-restarts. The handswitch SECURED/LOST split is honest (the
+declared LOST-only note retired with its cause). Also fixed en route: the wave-7 CI timeout
+(gates.yml step budget 45→70 — the previous green run had a 90-second margin). Gates:
+sources 31→34 (19 mut) · engine 82→84 (51) · shell 64→67 (28) — tallies from the record
+run. Cold shutdown is UNBLOCKED — its own settled cold construction is the remaining work.
+
 ## Session log — 2026-08-22-develop-c (#507 waves 4–6 — the grid, the SGTR, and the menu at 21)
 
 **Owner rulings this batch (2026-08-22, selections from options I wrote)**: scope =

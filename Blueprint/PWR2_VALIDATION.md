@@ -3877,3 +3877,36 @@ Standby bank would stand LO-LO forever, at-limit pinned false, margin pinned wid
 shell +3 checks / +3 mutations (control-state fields reverted to the pinned nulls, the
 margin channel severed, the 10-step override dropped — which would fire at 40 of this
 bank's steps, 4× early).
+
+## 73. PARITY WAVE 9 — THE RCP RESTART (#507) — 2026-08-23
+
+### The one-way trip is retired
+The motor accelerates the SAME rotor the coastdown decelerates, against the same hydraulic
+load, with the same sourced inertia (Ginna 80,000 lbm·ft², power-scaled): accelerating
+torque = 1.5 × the rated hydraulic torque ([open] — the induction-motor accelerating-torque
+class; no motor curve is in the corpus), and the motor holds rated speed (slip regulation
+unmodeled, declared). Start permissives a real plant carries — seal injection, oil lift,
+anti-reverse-rotation — are declared unmodeled. **The start is gated on the NONVITAL bus**
+[sourced, WTSM 3.2: the RCP motors "cannot be supplied from the emergency diesel
+generators"] and REFUSED out loud without it; nothing auto-restarts — a cleared LOOP hands
+back a stopped pump and the operator's `rcp_start` (the board's ON button, whose press had
+thrown the declared refusal since #505 made refusals visible) is the restart.
+
+### Measured (dt 0.02 s)
+- Coastdown from rated: 16.4 % speed at 60 s; natural circulation carries 113 kg/s at
+  300 s (the plant trips itself on the flow loss en route — unscripted).
+- **Restart from rest: rated speed at +13 s, flow above 90 % of rated at +10 s** — the
+  real RCP start class, derived from the same inertia as the coastdown rather than fitted.
+  A ~4 % momentum overshoot in loop flow settles on friction.
+- A start under station blackout is REFUSED (the sourced reason in the message); the same
+  command lands the step after the grid returns.
+- The handswitch's words are honest now: OFF latches **SECURED** (the operator stopped
+  it), a casualty or LOOP trip reads **LOST**, and the pre-wave-9 declared note ("a
+  stopped pump reads as LOST, never SECURED") is retired with the machinery that forced it.
+
+### Gates
+sources 31→34 (19 mutations — start branch deleted, rated-speed cap deleted) · engine
+group M (+2 checks, the electrical-gate-severed mutation) · shell +3 (the handswitch
+round trip, the LOST/SECURED split; the secured-latch-dropped mutation). Unblocked:
+`cold_shutdown` — the last initial condition, now waiting only on its own settled cold
+construction (next wave).

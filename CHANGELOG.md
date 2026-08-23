@@ -30,6 +30,15 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
 
 ## [Unreleased]
 
+### Added (#507 wave 9 — the RCP restart, 2026-08-23)
+- **PWR2's reactor coolant pump restarts**: the board's ON button is real — the motor spins
+  the coasted rotor back on the same sourced inertia the coastdown uses (rated speed in
+  ~13 s, flow above 90 % in ~10 s from rest). The start needs offsite power on the nonvital
+  bus (the RCP motors cannot be diesel-fed — a start under blackout is refused with that
+  reason) and nothing restarts by itself: a cleared loss-of-offsite-power hands back a
+  stopped pump for the operator to start. The handswitch now tells the truth — OFF reads
+  SECURED, a trip that arrived any other way reads LOST. `PWR2_VALIDATION.md` §73.
+
 ### Added (#507 §B wave 8 — the rod insertion limit, 2026-08-23)
 - **PWR2 carries the rod insertion limit**: power-dependent (no limit at or below 5 % —
   a startup's deep bank stands no alarm; 70 % withdrawn floor at rated), live on the rod
