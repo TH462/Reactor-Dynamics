@@ -3910,3 +3910,56 @@ group M (+2 checks, the electrical-gate-severed mutation) · shell +3 (the hands
 round trip, the LOST/SECURED split; the secured-latch-dropped mutation). Unblocked:
 `cold_shutdown` — the last initial condition, now waiting only on its own settled cold
 construction (next wave).
+
+## 74. PARITY WAVE 10 — THE SHUTDOWN IC, P-11, AND WHY IT IS MODE 4 (#507) — 2026-08-23
+
+### Mode 5 is unrepresentable, measured — the IC is Mode 4
+Layer 0's property floor is 0.1 MPa, whose saturation temperature is **99.6 °C = 211 °F**.
+A secondary at or below Mode 5's 200 °F boundary therefore cannot exist in-model: the SG's
+pressure solve pegs at the floor, its saturation temperature reads 211 °F whatever its
+enthalpy does, and the U·A between that pegged secondary and a colder primary would pour
+**~61 MW of false heat** into the plant for ever (U·A ≈ 9,260 kW/K × the 6.6 °C reverse
+gradient at a 93 °C primary). So the shutdown preset is **`hot_shutdown` — Mode 4 at
+250 °F / 350 psig**, honestly named; the Mode 5 rung exists in the mode ladder for the day
+Layer 0 extends below its floor (a review call, recorded in #507).
+
+### The construction
+RHR aligned with the HX **throttled shut** — a HOLD, not a cooldown (measured with hx 0.5:
+the HX pulled the heat-free plant down 26 °C in 300 s, the −560 °F/hr class, and drained
+the pressurizer — opening the HX is the operator's cooldown lever, closing it is the hold).
+RCPs SECURED (omega 0, the wave-9 SECURED word), heaters MANUAL-0 (the setpoint span floors
+at the sourced 1700 psig, so a 350 psig plant cannot dial the ladder down; with no
+insulation losses the bubble holds — declared), dumps OFF, both banks IN, pressurizer at
+30 % ([adopted] pwr1's cold level), boron **999 ppm**. **The #468 order is structural**:
+the trim runs with the shutdown bank OUT and the bank inserts AFTER, so its 3,676 pcm is
+margin in RODS — the cold plant carries MORE boron than hot standby (999 vs 719 ppm), and
+the inverted order (a gate mutation now) pays the bank in boron and reads LESS.
+
+### P-11, and the third latent protection gap
+The cooldown's blocks are real: `pr.blockLoPress` and `pr.blockSI` are operator REQUESTS
+permitted only below **P-11** ([adopted] pwr1's ~1970 psig / 13.6 MPa pair), auto-REVOKED
+above it (the P-10 revoke-not-gate law transfers verbatim), engage-refused above it (the
+#295 defeatable-trip lesson), and the SI block gates the whole esfas kind. Measured: a
+blocked 350 psig plant latches nothing for 30 s; the same plant unblocked CASCADES (trip +
+SI + pumps) — which is why "block SI" is a procedure step. **Found en route: `lo_flow` had
+no P-7 gate** — a shutdown plant with deliberately secured RCPs read as a loss-of-flow
+accident; latent until the first RCPs-off IC existed, fixed with its sourced gate (Ginna TS
+Bases: the loss-of-flow functions are required above P-7).
+
+### Measured (dt 0.02 s)
+- Boot: Mode 4 / 121.1 °C / 364 psia / level 30.0 % / SG 29.9 psia / boron 999 ppm, nothing
+  latched. Hold: −1.07 °C over 300 s (the charging/letdown exchange — declared), no trips.
+- **The heatup is real**: `rcp_start` alone warms the held plant at **87.9 °F/hr** — the
+  pump-heat class, just under the 100 °F/hr limit — flow 1,996 kg/s (cold dense water on
+  the affinity law), untripped, no SI. Pressure sags on the heatup insurge because the
+  boot heaters are OFF: cold insurge quenches the bubble — restoring the heaters is the
+  heatup procedure's own first act, the TMI-adjacent lesson falling out of the physics.
+- The mode ladder reads by Tavg below power: 4 at 248 °F, 5 at 176 °F (the rung waits on
+  Layer 0), 3 above 350 °F.
+
+### Gates
+protection 96→100 (55 mutations — the P-11 revoke deleted, either block severed, the
+lo_flow gate dropped) · true_state 63→64 (the cold rungs; +1 ladder mutation) · engine
+group N (+6 checks / +4 mutations — the #468 inversion mutation among them) · shell +2
+(the Mode 4 preset through the class; the P-11 pair round-trips the kernel forward; +1
+mapping-severed mutation).

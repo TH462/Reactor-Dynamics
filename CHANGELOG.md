@@ -30,6 +30,25 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
 
 ## [Unreleased]
 
+### Added (#507 wave 10 — the shutdown preset and P-11, 2026-08-23)
+- **PWR2 gets a shutdown preset — Hot Shutdown (Mode 4)**: 250 °F / 350 psig, RHR-held
+  (suction open, heat exchanger throttled — opening it is the cooldown lever), RCPs
+  secured, both rod banks in, heaters off, boron at 999 ppm with the shutdown bank's worth
+  as rod margin (the #468 order is structural — a gate mutation now guards the inversion).
+  Starting an RCP heats the plant at a measured 87.9 °F/hr — the real pump-heat class —
+  and the pressure sag on the heatup insurge teaches the heaters-first procedure by itself.
+  It is deliberately Mode 4, not Mode 5: the water-property floor (0.1 MPa, Tsat 211 °F)
+  makes a below-200 °F secondary unrepresentable — recorded, with the Mode 5 rung ready in
+  the mode display for when the property table extends.
+- **P-11 and the cooldown blocks are real**: below ~1970 psig the operator may block the
+  low-pressure reactor trip and the safety-injection actuation (the shutdown preset boots
+  with both taken — the cooldown's own lineup); climbing above P-11 auto-reinstates both,
+  engaging either at power is refused, and clearing them at 350 psig cascades — trip, SI,
+  pumps — which is why blocking them is a procedure step. Also fixed: the loss-of-flow trip
+  gained its sourced P-7 gate (a plant with deliberately secured pumps is not a
+  loss-of-flow accident). The plant-mode readout now walks the full ladder (1/3/4/5).
+  `PWR2_VALIDATION.md` §74.
+
 ### Added (#507 wave 9 — the RCP restart, 2026-08-23)
 - **PWR2's reactor coolant pump restarts**: the board's ON button is real — the motor spins
   the coasted rotor back on the same sourced inertia the coastdown uses (rated speed in

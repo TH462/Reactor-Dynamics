@@ -82,6 +82,28 @@ declared LOST-only note retired with its cause). Also fixed en route: the wave-7
 sources 31→34 (19 mut) · engine 82→84 (51) · shell 64→67 (28) — tallies from the record
 run. Cold shutdown is UNBLOCKED — its own settled cold construction is the remaining work.
 
+**Same session, wave 10 (2026-08-23) — the shutdown preset + P-11** (`PWR2_VALIDATION.md`
+**§74**): `hot_shutdown` — MODE 4, deliberately: Layer 0's 0.1 MPa floor (Tsat 211 °F)
+makes a ≤200 °F secondary unrepresentable (a floored SG would pour ~61 MW of false heat
+into a colder primary — the review call recorded). The construction: RHR aligned + HX
+THROTTLED (hx 0.5 measured −26 °C/300 s — a cooldown, not a hold), heaters manual-0 (the
+setpoint span floors at the sourced 1700 psig), the #468 trim order STRUCTURAL (cold
+999 ppm > HZP 719 — the inversion is a gate mutation now). P-11 real ([adopted] 13.6 MPa):
+both cooldown blocks request/revoke/refuse per the P-10 law; unblocking at 350 psig
+CASCADES (trip+SI+pumps). THIRD latent protection gap found: `lo_flow` had no P-7 gate —
+secured RCPs read as a loss-of-flow accident; fixed sourced. Heatup measured 87.9 °F/hr on
+pump heat; the pressure sag on cold insurge (heaters off) is the heaters-first lesson
+emergent. Gates: protection 96→100 (55) · true_state 63→64 (18) · engine 84→90 (55) ·
+shell 67→69 (29) — tallies from the record run. **The #468-inversion mutation shipped
+BLIND on its first pass**: the check's "+100 ppm vs hot standby" threshold assumed the
+bank's boron-equivalent at the 10 pcm/ppm direct worth (~368 ppm), but the density
+coupling makes a cold ppm worth more — the inverted order moves boron only **84 ppm**
+(999→915) and slid under. Re-armed against the model's OWN arithmetic (bCold >
+criticalBoron(as-built lineup)+margin+40), not a remembered threshold — the
+tolerance-band-is-a-claim trap, again. Two group-K anchors also went stale under the
+wave-10 cold branches (tavg0, dcDrivers) — the third time this batch a grown shared line
+broke sibling anchors; grep the gates for an edited line's text BEFORE running.
+
 ## Session log — 2026-08-22-develop-c (#507 waves 4–6 — the grid, the SGTR, and the menu at 21)
 
 **Owner rulings this batch (2026-08-22, selections from options I wrote)**: scope =
