@@ -116,6 +116,11 @@
   /* P-7, the at-power permissive gating the high-level trip. UNLIKE P-10 there is no operator
    * request anywhere in it -- below 10 % power the function is simply not active, above it is
    * -- so it is a plain automatic gate, not a revoked request. WTSM 10.3.4.3 verbatim. */
+  /* [adopted] the P-11 pressurizer-pressure permissive — pwr1's ~1970 psig / 13.6 MPa pair
+   * (its lo_press/si_trip block permissive); Ginna's own installed figure is not in corpus.
+   * Below it the operator MAY block the low-pressure trip and the SI actuation (the
+   * cooldown's lineup); above it both requests are REVOKED — see the stepProtection note. */
+  var P11 = { kind: '[adopted]', mpa: 13.6 };
   var P7 = {
     kind: '[sourced]',
     frac: 0.10,
@@ -329,8 +334,13 @@
         blockable: true },
       { id: 'hi_flux_hi', name: 'Power-range high flux (high setting)', kind: 'rps', dir: +1,
         sp: RPS.hi_flux_hi_frac, unit: 'frac', read: 'power_frac', delay: DELAY.hi_flux_hi },
+      /* atPower (P-7) since #507 wave 10 [sourced — Ginna TS Bases B 3.3.1: the loss-of-flow
+       * Functions are required above P-7 and blocked below it]: a shutdown plant with its
+       * RCPs deliberately secured is not a loss-of-flow accident. Latent until the first
+       * RCPs-off IC existed — every earlier state carried flow. */
       { id: 'lo_flow', name: 'Low reactor coolant loop flow', kind: 'rps', dir: -1,
-        sp: RPS.lo_flow_frac, unit: 'frac', read: 'flow_frac', delay: DELAY.lo_flow },
+        sp: RPS.lo_flow_frac, unit: 'frac', read: 'flow_frac', delay: DELAY.lo_flow,
+        atPower: true },
       { id: 'hi_pzr_level', name: 'High pressurizer level', kind: 'rps', dir: +1,
         sp: RPS.hi_pzr_level_frac, unit: 'frac', read: 'pzr_level_frac',
         delay: DELAY.hi_pzr_level, atPower: true },
@@ -388,6 +398,9 @@
     return {
       held_s: held,                         /* how long each function has been asserted */
       blockLowFlux: !!opts.blockLowFlux,
+      /* the P-11 pair (#507 wave 10) — a shutdown IC boots with the cooldown's blocks taken */
+      blockLoPress: !!opts.blockLoPress,
+      blockSI: !!opts.blockSI,
       reactor_trip: false,                  /* LATCHED */
       dtApproach: false,                    /* the rod-stop/runback bistable, with hysteresis */
       si: false,                            /* LATCHED */
@@ -460,6 +473,20 @@
      * defeatable-trip shape the sources do not have. */
     var p10Met = drivers.power_frac >= P10.frac;
     if (!p10Met && pr.blockLowFlux) pr.blockLowFlux = false;
+    /* ---- P-11, THE SHUTDOWN PERMISSIVE (#507 wave 10) — the mirror of P-10's law in the
+     * other direction: the low-pressure trip block and the SI block are OPERATOR REQUESTS
+     * permitted only BELOW P-11, and climbing back above it REVOKES both requests
+     * themselves (the auto-reinstate the pwr1 comment records; the revoke-not-gate lesson
+     * transfers verbatim — a stale request that silently re-arms on the next cooldown is
+     * the #295 defeatable-trip shape). Value [adopted]: pwr1's ~1970 psig / 13.6 MPa pair,
+     * the same source lineage as its lo_press/si_trip block permissive. "Block SI is THREE
+     * actions on a cooldown" (the house trap): the pressure setpoint comes down first, then
+     * lo_press, then si_trip — these are the last two, each its own request. */
+    var p11Below = drivers.pressure_mpa !== undefined && drivers.pressure_mpa < P11.mpa;
+    if (!p11Below) {
+      if (pr.blockLoPress) pr.blockLoPress = false;
+      if (pr.blockSI) pr.blockSI = false;
+    }
     /* ⚠ NO `&& p10Met` HERE, AND THE GATE IS WHAT PROVED IT REDUNDANT. The revoke above
      * has already cleared the request whenever the permissive is not met, so an extra
      * gate could never change the answer — the injection self-test could not make a
@@ -489,6 +516,11 @@
         if (f.leadlag) value = leadLag(pr, raw, dt);
         asserted = f.dir > 0 ? (value >= sp) : (value <= sp);
         if (f.blockable && blockEffective) asserted = false;
+        /* P-11's two blocks (#507 wave 10): the low-pressure REACTOR trip and the whole
+         * esfas kind (the SI actuation — all three initiating rows are the one disarm the
+         * sources describe). Assertion-gated like P-7, so no hold time accumulates. */
+        if (f.id === 'lo_pzr_press' && pr.blockLoPress) asserted = false;
+        if (f.kind === 'esfas' && pr.blockSI) asserted = false;
         /* P-7: an at-power trip is NOT ACTIVE below 10 % power. A plain gate, deliberately --
          * there is no operator request in P-7 to revoke, so the revoke-not-gate lesson from
          * P-10 does not transfer; gating the ASSERTION also zeroes the hold timer below, so
@@ -610,6 +642,9 @@
       fwi: pr.fwi,
       fwi_cause: pr.fwi_cause,
       p10_met: p10Met,
+      p11_permit: p11Below,
+      lo_press_blocked: pr.blockLoPress,
+      si_blocked: pr.blockSI,
       p7_met: drivers.power_frac >= P7.frac,
       p9_met: drivers.power_frac >= (drivers.steam_dumps_available === false
                                      ? P9.frac_no_dumps : P9.frac_dumps),
@@ -628,6 +663,7 @@
   root.RD.pwr2 = root.RD.pwr2 || {};
   root.RD.pwr2.protection = {
     RPS: RPS, ESFAS: ESFAS, SGLL: SGLL, DELAY: DELAY, LEADLAG: LEADLAG, P10: P10, P7: P7,
+    P11: P11,
     PSIA_PER_MPA: PSIA_PER_MPA,
     functions: functions, leadLag: leadLag,
     createProtection: createProtection, stepProtection: stepProtection, reset: reset

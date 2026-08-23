@@ -100,14 +100,16 @@
    * criticalBoron trim at the hot-leg temperature was measured (2026-08-21) to detonate —
    * power 928 % in one step, beyond-model latch — because TREF is the self-consistent
    * reference the reactivity chain is normalized against, not a wiring afterthought. */
-  function designHmap(tavg_c, dt_c) {
+  function designHmap(tavg_c, dt_c, P_mpa) {
     /* Generalized for the ICs (#507 §F, wave 7): the same donor-cell map about ANY settled
      * operating point — Tavg from the Tref program, the loop split scaling with power.
-     * No-arg call = the hot-full-power design point, byte-identical to the #502 original. */
+     * Wave 10 adds the pressure (the shutdown IC is depressurized). No-arg call = the
+     * hot-full-power design point, byte-identical to the #502 original. */
     var Tm = tavg_c === undefined ? TREF : tavg_c;
     var dT = dt_c === undefined ? DT0_C : dt_c;
-    var hH = W.h_l(Tm + dT / 2, P0), hC = W.h_l(Tm - dT / 2, P0),
-        hA = W.h_l(Tm, P0);
+    var Pm = P_mpa === undefined ? P0 : P_mpa;
+    var hH = W.h_l(Tm + dT / 2, Pm), hC = W.h_l(Tm - dT / 2, Pm),
+        hA = W.h_l(Tm, Pm);
     return { downcomer: hC, lower_plenum: hC, core: hH, upper_plenum: hH, hot_leg: hH,
              sg_primary: hC, crossover: hC, rcp: hC, cold_leg: hC,
              vessel_heads: hA, pressurizer: hA };
@@ -140,7 +142,18 @@
   var ICS = {
     hot_full_power: { pf: 1.0, load_mwe: 100 },
     '50_percent':   { pf: 0.5, load_mwe: 50 },
-    hot_zero_power: { pf: 0,   load_mwe: 0, subcritical: true }
+    hot_zero_power: { pf: 0,   load_mwe: 0, subcritical: true },
+    /* THE SHUTDOWN IC (#507 wave 10) is MODE 4, HOT SHUTDOWN — 250 degF / 350 psig,
+     * RHR-held, RCPs secured, both banks in, the P-11 blocks taken (the cooldown's own
+     * lineup). It is deliberately NOT Mode 5: Layer 0's property floor is 0.1 MPa, whose
+     * saturation temperature is 211 degF, so a secondary at or below Mode 5's 200 degF
+     * boundary is UNREPRESENTABLE — an SG pinned at the floor would pour false heat into
+     * a colder primary for ever (measured reasoning in PWR2_VALIDATION §74). Mode 5 waits
+     * on a Layer-0 extension below the floor — a review call, recorded in #507.
+     * The #468 order is STRUCTURAL here: boron trims with the shutdown bank OUT, the bank
+     * inserts AFTER, so its 3676 pcm is margin in RODS, not boron. */
+    hot_shutdown:   { pf: 0, load_mwe: 0, subcritical: true, cold: true,
+                      tavg_c: 121.1, P_mpa: 2.51, pzr_level: 0.30 }
   };
 
   function createEngine(opts) {
@@ -153,12 +166,20 @@
                       Object.keys(ICS).join(' / '));
     }
     /* the IC's operating point: Tavg from the Tref program at power, from the sourced
-     * no-load steam pressure at zero (see the ICS header) */
-    var tavg0 = ic.pf > 0 ? DC.tref(ic.load_mwe / MWE_RATED) : W.T_sat(G.SG.P_noload);
+     * no-load steam pressure at hot zero, from its own declared point when cold (the ICS
+     * header); pressure is the design point except for the depressurized shutdown state */
+    var tavg0 = ic.cold ? ic.tavg_c
+              : ic.pf > 0 ? DC.tref(ic.load_mwe / MWE_RATED) : W.T_sat(G.SG.P_noload);
+    var icP = ic.cold ? ic.P_mpa : P0;
     var dT0 = DT0_C * ic.pf;
-    var pz = PZ.createPressurizer({ level_frac: PZ.levelProgram(tavg0) });
-    var hmap = designHmap(tavg0, dT0);
-    var sys = S.createPlant({ h: hmap, P: P0, extraMass: PZ.extraMassFn(pz) });
+    var pz = PZ.createPressurizer({ P: icP,
+      level_frac: ic.cold ? ic.pzr_level : PZ.levelProgram(tavg0) });
+    var hmap = designHmap(tavg0, dT0, icP);
+    /* the shutdown IC boots with its RCPs SECURED and the loop still (natural circulation
+     * on an isothermal loop is zero; the heatup's first act is the wave-9 rcp_start) */
+    var sys = S.createPlant(ic.cold
+      ? { h: hmap, P: icP, extraMass: PZ.extraMassFn(pz), omega: 0, pumpTripped: true, mdot: 0 }
+      : { h: hmap, P: icP, extraMass: PZ.extraMassFn(pz) });
     /* completeness is structural: a node the map misses falls back to Layer 3's 1250 kJ/kg
      * silently — refuse to build a plant with a mis-seeded node instead */
     sys.nodes.forEach(function (n) {
@@ -188,9 +209,14 @@
     /* boron trimmed AT the IC's own moderator temperature and rod lineup; the subcritical
      * margin is the adopted 1000 pcm (+100 ppm at the module's 10 pcm/ppm) ON TOP of
      * critical-with-rods-in, so criticality arrives partway up the bank — a real startup */
-    var boron0 = RD.kinetics.criticalBoron(rx.kin, tavg0, P0, rodBank,
+    var boron0 = RD.kinetics.criticalBoron(rx.kin, tavg0, icP, rodBank,
       rx.kin.X / rx.kin.X_eq_full, rx.fuel.T_fuel_c);
     if (ic.subcritical) boron0 += 0.01 / RD.kinetics.BORON.worth_per_ppm;
+    /* THE #468 ORDER, structural: the trim above ran with the shutdown bank OUT, so its
+     * worth lands as MARGIN IN RODS on top of the boron — inserting it BEFORE the trim
+     * would make the solver pay the bank's 3676 pcm in boron and hand back a cold plant
+     * with LESS boron than a hot one (#468's measured 671-vs-857 ppm inversion). */
+    if (ic.cold) rodBank[1].steps = 0;
     /* the secondary lands where the primary's duty puts it: Tsec = Tavg − pf·(the design
      * split), P = Psat(Tsec). The full-power path keeps the module's own default literal
      * (byte-identical construction, the save-replay bar). */
@@ -211,15 +237,20 @@
       dm: DG.createDamage({}),
       /* a plant AT POWER has the low-flux block requested (#460); below P-10 the request
        * would be revoked anyway, and HZP boots without it — blocking is the operator's
-       * startup action (low_flux_block / the board's block button) */
-      pt: PT.createProtection({ blockLowFlux: ic.pf >= 0.1 }),
+       * startup action (low_flux_block / the board's block button). The shutdown IC boots
+       * with the P-11 pair TAKEN — the cooldown's own lineup ("Block SI is three actions",
+       * and the third was the pressure setpoint coming down, already done). */
+      pt: PT.createProtection({ blockLowFlux: ic.pf >= 0.1,
+                                blockLoPress: !!ic.cold, blockSI: !!ic.cold }),
       brk: null,
       ctm: CT.createContainment({}),
       rated_steam: TB.steamDemand(tb, sg.P, G.SG.h_feed),
       M_nominal: sys.M_total,
       simTime: 0,
       /* command state */
-      rodTarget: ctrlSteps, rodSteps: ctrlSteps, sdTarget: 200, sdSteps: 200, rodBank: rodBank,
+      rodTarget: ctrlSteps, rodSteps: ctrlSteps,
+      sdTarget: ic.cold ? 0 : 200, sdSteps: ic.cold ? 0 : 200, rodBank: rodBank,
+      _rcpSecured: !!ic.cold,     /* the cooldown SECURED the pumps — the handswitch's word */
       rodSpeedSel: 'normal',
       /* failure levers (#507 wave 6) */
       scramBlocked: false,        /* ATWS — the RPS latches, the rods do not drop */
@@ -233,12 +264,20 @@
        * DECLARED. Which load hangs on which bus is each module's own wire, sourced at the
        * wire (WTSM 3.2/5.7, NUREG-0737 II.E.3.1). */
       elec: { offsite: true, blackout: false },
-      pzDrivers: {},              /* setpoint/manual/stick/block/aux — forwarded each step */
+      /* SHUTDOWN: heaters MANUAL-0 — the operator's cooldown lineup. The setpoint span
+       * floors at the sourced 1700 psig (WTSM 10.2), so a 350 psig plant cannot simply
+       * dial the ladder down; with no insulation losses modeled the bubble holds at its
+       * saturation without them, DECLARED. Restoring the heaters is the heatup's own act. */
+      pzDrivers: ic.cold ? { heaters_manual: 0 } : {},
       /* HZP: the dumps boot in STEAM PRESSURE mode at the sourced 1005 psig no-load — the
        * prototypical no-load lineup, and what physically holds the plant there (in tavg
        * mode the pump-heated plant would ride the 1085 psig MSSVs instead — the ICS
-       * header's measured note). At power: the operator's default (tavg, C-7 armed). */
-      dcDrivers: ic.pf > 0 ? {} : { mode: 'pressure', pressure_setpoint_mpa: G.SG.P_noload },
+       * header's measured note). At power: the operator's default (tavg, C-7 armed).
+       * SHUTDOWN: the dumps are OFF — RHR is the heat sink at 350 psig, and the condenser
+       * set is not the shutdown lineup. */
+      dcDrivers: ic.pf > 0 ? {}
+               : ic.cold ? { mode: 'off' }
+               : { mode: 'pressure', pressure_setpoint_mpa: G.SG.P_noload },
       advDemand: 0, advBlock: true,
       /* one-step-lag carriers */
       _Qox: 0, _pzRelief: 0, _pzReliefH: 0, _sgtrKgs: 0, _sgtrH: 0,
@@ -250,6 +289,19 @@
     };
     /* the turbine takes the IC's own dispatch AFTER rated_steam froze the rated scale */
     eng.tb.load_target_mwe = ic.load_mwe;
+    /* SHUTDOWN extras: rated_steam recomputed at the DESIGN steam pressure (a 30 psia cold
+     * SG would otherwise become every normalization's denominator), and RHR ALIGNED — the
+     * Mode 4 heat sink, openable because 350 psig sits under the 425 psig permissive */
+    if (ic.cold) {
+      eng.rated_steam = TB.steamDemand(tb, G.createSG({}).P, G.SG.h_feed);
+      /* RHR ALIGNED (suction open — 350 psig sits under the 425 psig permissive) with the
+       * HX THROTTLED SHUT: a HOLD, not a cooldown. Measured with hx 0.5: the HX pulled the
+       * heat-free plant down 26 degC in 300 s (−560 degF/hr class) and drained the
+       * pressurizer — a settled hold throttles the HX to match the (zero) decay heat, and
+       * opening it IS the operator's cooldown lever. */
+      eng.rh.valve_open = true;
+      eng.rh.hx_fraction = 0;
+    }
     /* the feed train at the IC's own operating point (the module's constructor knows only
      * at-power/no-load; a mid-load IC sets the delivered point so the boot does not spend
      * its first pump-tau finding it — the same settled-construction rule as the hmap) */
@@ -275,6 +327,31 @@
         eng.rodTarget = Math.max(0, Math.min(200, +value)); break;
       case 'sd_target':      eng.sdTarget = Math.max(0, Math.min(200, +value)); break;
       case 'rod_speed':      eng.rodSpeedSel = (value in ROD_SPEEDS) ? value : 'normal'; break;
+      /* THE P-11 PAIR (#507 wave 10) — the cooldown's "block SI" actions. ENGAGING is
+       * refused above P-11 (the #295 F1 lesson: a block acceptable at power is a defeatable
+       * trip); the permissive reads the INDICATED pressure like the RPS does. Disengaging
+       * is always allowed, and climbing above P-11 revokes both requests automatically
+       * (pwr2_protection owns that law). */
+      case 'lo_press_trip_block':
+        if (value) {
+          var pInd1 = eng.ins.reading.primary_pressure !== undefined
+                      ? eng.ins.reading.primary_pressure : eng.sys.P;
+          if (pInd1 >= PT.P11.mpa) {
+            throw new Error('pwr2_engine: low-pressure trip block REFUSED — above P-11 ' +
+              '(the block is a shutdown lineup, not an at-power bypass)');
+          }
+        }
+        eng.pt.blockLoPress = !!value; break;
+      case 'si_block':
+        if (value) {
+          var pInd2 = eng.ins.reading.primary_pressure !== undefined
+                      ? eng.ins.reading.primary_pressure : eng.sys.P;
+          if (pInd2 >= PT.P11.mpa) {
+            throw new Error('pwr2_engine: SI block REFUSED — above P-11 (the block is a ' +
+              'shutdown lineup, not an at-power bypass)');
+          }
+        }
+        eng.pt.blockSI = !!value; break;
       case 'low_flux_block':
         /* THE OPERATOR'S REQUEST to block the 35 % low-flux trip (#507 wave 7 — the HZP
          * startup's own action). A REQUEST, not a state: P-10 gates whether it takes

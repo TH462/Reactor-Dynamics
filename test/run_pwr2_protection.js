@@ -285,6 +285,39 @@ function runSuite(P, rec, quiet) {
       rLO.afas_tdafw === true && rLO.afas_tdafw_cause === 'loss_of_offsite_power',
       'md cause=' + rLO.afas_mdafw_cause + ' td cause=' + rLO.afas_tdafw_cause);
 
+  /* ---- P-11: THE SHUTDOWN PERMISSIVE (#507 wave 10) -------------------------------------- */
+  head('P-11  [the cooldown\'s blocks: taken below it they gate; climbing above REVOKES them]');
+  function shutdown() {
+    return { pressure_mpa: 2.51, power_frac: 1e-8, flow_frac: 0,
+             steam_pressure_mpa: 0.205, steam_flow_frac: 0, pzr_level_frac: 0.30,
+             sg_level_frac: 0.65 };
+  }
+  var prSD = P.createProtection({ blockLoPress: true, blockSI: true });
+  var rSD = ride(prSD, shutdown(), 30);
+  ckT('a BLOCKED shutdown plant (350 psig, RCPs secured) latches NOTHING — no low-pressure ' +
+      'trip, no SI from either pressure, no loss-of-flow trip (its sourced P-7 gate)',
+      rSD.reactor_trip === false && rSD.si === false &&
+      fn(rSD, 'lo_pzr_press').asserted === false &&
+      fn(rSD, 'si_lo_pzr_press').asserted === false &&
+      fn(rSD, 'lo_flow').asserted === false,
+      'the cooldown\'s own lineup, held');
+  var prSD2 = P.createProtection({});
+  var rSD2 = ride(prSD2, shutdown(), 30);
+  ckT('the SAME plant with the blocks NOT taken cascades — the low-pressure trip and the SI ' +
+      'actuation both latch (which is why "block SI" is a cooldown procedure step)',
+      rSD2.reactor_trip === true && rSD2.si === true,
+      'trip ' + rSD2.trip_cause + ', si ' + rSD2.si_cause);
+  var prSD3 = P.createProtection({ blockLoPress: true, blockSI: true });
+  var rSD3 = ride(prSD3, Object.assign(shutdown(), { pressure_mpa: 14.0 }), 1);
+  ckT('climbing above P-11 REVOKES both requests themselves (auto-reinstate — the stale ' +
+      'request that re-arms on the next cooldown is the #295 defeatable-trip shape)',
+      prSD3.blockLoPress === false && prSD3.blockSI === false &&
+      rSD3.p11_permit === false, '');
+  var prLF = atPower();
+  var rLF = ride(prLF, withReading('flow_frac', 0.5), 10);
+  ckT('...and lo_flow still trips AT POWER (the P-7 gate blocks it only below 10 %)',
+      fn(rLF, 'lo_flow').asserted === true && rLF.reactor_trip === true, '');
+
   /* ---- HIGH-HIGH LEVEL -> FEEDWATER ISOLATION (kind \'fwi\' — its own latch) ------------- */
   head('THE HIGH-HIGH  [P-14 class: not a reactor trip, not SI — the fwi latch]');
   var prHH = atPower();
@@ -752,6 +785,19 @@ var MUTATIONS = [
   ['the LOOP start reaches only ONE pump (the source says all preferred pumps)',
    '    if (drivers.loss_of_offsite && !pr.afas_tdafw) {\n      pr.afas_tdafw = true; pr.afas_tdafw_cause = \'loss_of_offsite_power\';\n    }',
    ''],
+  /* P-11 (#507 wave 10) */
+  ['the P-11 revoke is deleted (a stale block re-arms itself on the next cooldown)',
+   '    if (!p11Below) {\n      if (pr.blockLoPress) pr.blockLoPress = false;\n      if (pr.blockSI) pr.blockSI = false;\n    }',
+   ''],
+  ['the SI block gates nothing (a "blocked" shutdown plant injects anyway)',
+   "        if (f.kind === 'esfas' && pr.blockSI) asserted = false;",
+   ''],
+  ['the low-pressure trip block gates nothing',
+   "        if (f.id === 'lo_pzr_press' && pr.blockLoPress) asserted = false;",
+   ''],
+  ['lo_flow loses its P-7 gate (a shutdown plant with secured RCPs reads as a loss-of-flow accident)',
+   "        sp: RPS.lo_flow_frac, unit: 'frac', read: 'flow_frac', delay: DELAY.lo_flow,\n        atPower: true },",
+   "        sp: RPS.lo_flow_frac, unit: 'frac', read: 'flow_frac', delay: DELAY.lo_flow },"],
   /* THE FEED-TRAIN FUNCTIONS (2026-08-21) */
   ['the hi-hi setpoint moved off the adopted 90 %',
    '    hi_hi_frac: 0.90,', '    hi_hi_frac: 0.99,'],

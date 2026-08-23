@@ -371,10 +371,21 @@
      * from the current engine are marked [adopted] with their source constant — they are
      * gauge calibrations, not physics. */
 
-    /* --- plant mode: this engine models At Power and post-trip Hot Standby only --- */
+    /* --- plant mode, the commercial ladder (#507 wave 10): Mode 1 at power, then by Tavg —
+     * Mode 5 Cold Shutdown below 200 degF (93.3 degC, unreachable while Layer 0 floors at
+     * 0.1 MPa — the branch exists for the day it extends), Mode 4 Hot Shutdown to 350 degF
+     * (176.7 degC), Mode 3 Hot Standby above. Mode 2 (Startup, criticality to 5 %) is
+     * folded into 3 — DECLARED, the band is minutes wide on this plant. --- */
     var atPower = (ts.power_pct !== undefined ? ts.power_pct : 0) > 2 && ts.scrammed !== true;
-    put('plant_mode', atPower ? 1 : 3);
-    put('plant_mode_name', atPower ? 'At Power' : 'Hot Standby');
+    var tvM = ts.tavg_c;
+    var mode = atPower ? 1
+             : (typeof tvM === 'number' && tvM < 93.3) ? 5
+             : (typeof tvM === 'number' && tvM < 176.7) ? 4
+             : 3;
+    put('plant_mode', mode);
+    put('plant_mode_name', mode === 1 ? 'At Power'
+                         : mode === 5 ? 'Cold Shutdown'
+                         : mode === 4 ? 'Hot Shutdown' : 'Hot Standby');
 
     /* --- feed train (REAL since 2026-08-21 — pwr2_feedwater retired feed ≡ steam): the
      * delivered main-feed fraction from the module, plus AFW on the same rated-steam scale

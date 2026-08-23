@@ -615,6 +615,33 @@ function runSuite(SH, rec, quiet) {
        eD.eng.sys.pumpTripped === true && eD.instruments.reading.rcp_secured === false, '');
   })();
 
+  /* ---- 1k. THE SHUTDOWN PRESET THROUGH THE CLASS (#507 wave 10) ----------------------------- */
+  head('MODE 4 THROUGH THE CLASS  [held, blocked, secured; the P-11 pair on the kernel snapshot]');
+  (function () {
+    var eE = new SH.PWR2Engine({ initial_state: 'hot_shutdown' });
+    var kE = new (globalThis.RD.ControlLayer)(eE, eE.getProtectionConfig());
+    for (var i = 0; i < 250; i++) eE.step(0.02);
+    var tsE = eE.getTrueState();
+    var rpsE = kE.getRpsState();
+    ck('the Mode 4 preset opens held through the class — no trip, no SI, the pumps read ' +
+       'SECURED (the cooldown stopped them), and the kernel snapshot carries BOTH cooldown ' +
+       'blocks with can_clear',
+       tsE.plant_mode === 4 && /Hot Shutdown/.test(tsE.plant_mode_name) &&
+       tsE.scrammed === false && eE.eng.pt.si === false &&
+       eE.instruments.reading.rcp_secured === true &&
+       rpsE.trip_blocks.lo_press === true && rpsE.trip_blocks.si_trip === true &&
+       rpsE.trip_block_status.si_trip.can_clear === true,
+       'mode ' + tsE.plant_mode + ', blocks ' + JSON.stringify(rpsE.trip_blocks));
+    var rSiB = kE.handleCommand({ action: 'set_trip_block', trip_id: 'si_trip', blocked: false });
+    eE.step(0.02);
+    var cleared = eE.eng.pt.blockSI === false;
+    kE.handleCommand({ action: 'set_trip_block', trip_id: 'si_trip', blocked: true });
+    eE.step(0.02);
+    ck('the P-11 pair round-trips through the kernel forward: un-block clears the engine ' +
+       'request, re-block below P-11 lands',
+       (rSiB === null || rSiB === undefined) && cleared && eE.eng.pt.blockSI === true, '');
+  })();
+
   /* ---- 2. THE COMMAND PARTITION -------------------------------------------------------------- */
   head('THE PARTITION  [every old-engine action in exactly one registry, refusals reasoned]');
   var oldSrc = fs.readFileSync(path.join(__dirname, '..', 'engines', 'pwr', 'pwr_engine.js'), 'utf8');
@@ -830,7 +857,10 @@ var MUTATIONS = [
    '            : a;'],
   ['the SECURED latch is dropped (an operator-stopped pump reads LOST) -- #507 wave 9',
    "        e._rcpSecured = true;               /* the OPERATOR stopped it — the handswitch\n                                             * reads SECURED, not LOST (#200's split) */",
-   '']
+   ''],
+  ['the P-11 pair mapping is severed (the cooldown blocks are board-unreachable) -- #507 wave 10',
+   "      } else if (c.trip_id === 'lo_press') {\n        /* the P-11 pair (#507 wave 10) — the pwr1 board's own ids for the cooldown blocks */\n        EN.command(e, 'lo_press_trip_block', c.blocked !== false);\n      } else if (c.trip_id === 'si_trip') {\n        EN.command(e, 'si_block', c.blocked !== false);\n      }",
+   '      }']
 ];
 
 console.log('\ninjection self-test (' + MUTATIONS.length + ' mutations):');

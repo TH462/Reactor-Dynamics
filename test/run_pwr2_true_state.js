@@ -532,7 +532,19 @@ function runSuite(TS, rec, quiet) {
      ' % narrow at half mass');
   ck('plant mode reads At Power on the healthy fixture and Hot Standby past a trip',
      ts.plant_mode === 1 && /At Power/.test(ts.plant_mode_name) && tsTrip.plant_mode === 3,
-     'mode ' + ts.plant_mode + ' / ' + tsTrip.plant_mode + ' -- the two modes this engine has');
+     'mode ' + ts.plant_mode + ' / ' + tsTrip.plant_mode);
+  /* the LADDER's cold rungs (#507 wave 10): Mode 4 to 350 degF, Mode 5 below 200 degF —
+   * the Mode 5 rung exists for the day Layer 0 extends below its 0.1 MPa floor */
+  var W2m = globalThis.RD.pwr2.water;
+  var tsM4 = TS.buildTrueState({ sys: globalThis.RD.pwr2.sources.createPlant(
+    { h: W2m.h_l(120, 2.5), P: 2.5 }) });
+  var tsM5 = TS.buildTrueState({ sys: globalThis.RD.pwr2.sources.createPlant(
+    { h: W2m.h_l(80, 1.0), P: 1.0 }) });
+  ck('...and the cold rungs read by Tavg: 248 degF is Mode 4 Hot Shutdown, 176 degF is ' +
+     'Mode 5 Cold Shutdown',
+     tsM4.plant_mode === 4 && /Hot Shutdown/.test(tsM4.plant_mode_name) &&
+     tsM5.plant_mode === 5 && /Cold Shutdown/.test(tsM5.plant_mode_name),
+     tsM4.plant_mode + '/' + tsM5.plant_mode);
   ck('the SR channel is DE-ENERGIZED at power and the IR reads its adopted scale',
      ts.sr_energized === false && ts.sr_counts_cps === 0 &&
      Math.abs(ts.ir_amps - 8.333e-3 * ts.power_pct / 100) < 1e-9,
@@ -637,6 +649,9 @@ var MUTATIONS = [
   ['pzr_level_pct is fabricated as a healthy constant instead of read from the vessel',
    "    put('pzr_level_pct',     pz.level_pct);",
    "    put('pzr_level_pct',     61.5);"],
+  ['the Mode 4 rung is deleted (a 250 degF shutdown plant reads Hot Standby) -- #507 wave 10',
+   "             : (typeof tvM === 'number' && tvM < 176.7) ? 4\n             : 3;",
+   '             : 3;'],
   ['coverage() counts DECLARED gaps as supplied, inflating the fraction',
    '      if (ts[f] !== undefined) {',
    '      if (ts[f] !== undefined || MISSING[f]) {'],

@@ -236,9 +236,15 @@
     set_trip_block: function (e, c) {
       if (c.trip_id === 'pr_low_setpoint' || c.trip_id === 'hi_flux_lo') {
         EN.command(e, 'low_flux_block', c.blocked !== false);
+      } else if (c.trip_id === 'lo_press') {
+        /* the P-11 pair (#507 wave 10) — the pwr1 board's own ids for the cooldown blocks */
+        EN.command(e, 'lo_press_trip_block', c.blocked !== false);
+      } else if (c.trip_id === 'si_trip') {
+        EN.command(e, 'si_block', c.blocked !== false);
       } else {
-        throw new Error('pwr2_shell: trip block "' + c.trip_id + '" REFUSED — the 35 % ' +
-          'low-flux setting is the one blockable function on this RPS (P-10 gated)');
+        throw new Error('pwr2_shell: trip block "' + c.trip_id + '" REFUSED — this RPS ' +
+          'blocks the 35 % low-flux setting (P-10), the low-pressure trip and the SI ' +
+          'actuation (both P-11); nothing else');
       }
     }
   };
@@ -629,15 +635,28 @@
         if (typeof f.setpoint === 'number') sp = f.setpoint * 100;   /* frac -> % */
       }
     });
+    /* the P-11 pair (#507 wave 10): same surface, the pwr1 board ids, the engine's own
+     * setpoints attached so the pressure tile arms at THIS plant's numbers */
+    var loB = !!e.pt.blockLoPress, siB = !!e.pt.blockSI;
+    var p11 = rp.p11_permit === true;
+    var spLo = 12.24, spSi = 11.83;
+    (rp.functions || []).forEach(function (f) {
+      if (f.id === 'lo_pzr_press' && typeof f.setpoint === 'number') spLo = f.setpoint;
+      if (f.id === 'si_lo_pzr_press' && typeof f.setpoint === 'number') spSi = f.setpoint;
+    });
     return {
-      trip_blocks: { pr_low_setpoint: blocked },
+      trip_blocks: { pr_low_setpoint: blocked, lo_press: loB, si_trip: siB },
       trip_block_status: {
         pr_low_setpoint: {
           blocked: blocked, asserted: asserted,
           can_block: !blocked && rp.p10_met === true,
           can_clear: blocked,
           setpoint: sp
-        }
+        },
+        lo_press: { blocked: loB, asserted: false,
+                    can_block: !loB && p11, can_clear: loB, setpoint: spLo },
+        si_trip:  { blocked: siB, asserted: false,
+                    can_block: !siB && p11, can_clear: siB, setpoint: spSi }
       }
     };
   };

@@ -338,7 +338,8 @@
     pwr2:      { plant: 'pwr', engine: 'pwr2', dv: null, init: 'hot_full_power',
                  initStates: [['hot_full_power', 'Hot Full Power (Mode 1)'],
                               ['50_percent', '50 % Power (Mode 1)'],
-                              ['hot_zero_power', 'Hot Standby (Mode 3)']],
+                              ['hot_zero_power', 'Hot Standby (Mode 3)'],
+                              ['hot_shutdown', 'Hot Shutdown (Mode 4)']],
                  freePlayOnly: true,
                  label: 'PWR — New Physics', sub: 'The same plant on the rebuilt engine',
                  desc: 'The SLS-100 control room over the new from-scratch physics engine: ' +

@@ -41,7 +41,7 @@ function loadAll(engSource, coreSource) {
  * 'E' the AFW starts, 'F' the feed train, 'G' the electrical pair (#507 wave 4), 'H' the
  * SGTR (#507 wave 5), 'I' the failure levers (#507 wave 6), 'K' the initial conditions
  * (#507 §F, wave 7), 'L' the rod insertion limit (#507 §B, wave 8), 'M' the RCP restart
- * (#507 wave 9).
+ * (#507 wave 9), 'N' the shutdown IC (#507 wave 10).
  * The CLEAN pass runs everything. Measured before this existed: 17 mutations x the whole
  * suite = 1074 s of contention in the aggregate gate — the replay cost scales with every
  * fixture ever added, and a mutation only needs the checks built to see it. */
@@ -1084,6 +1084,75 @@ function runSuite(RD, rec, quiet, only) {
       'starts it',
       thrM === true && engN.sys.pumpTripped === false, '');
   }
+
+  if (grp('N')) {
+  /* ---- 12. THE SHUTDOWN IC (#507 wave 10) — Mode 4, Hot Shutdown: 250 degF / 350 psig,
+   * RHR-held, RCPs secured, both banks in, the P-11 blocks taken. Mode 5 is deliberately
+   * unbuilt (Layer 0's 0.1 MPa floor — Tsat 211 degF — see the ICS header). ---- */
+  head('THE SHUTDOWN IC  [Mode 4 opens held; the #468 boron inversion cannot return; the heatup is real]');
+  var engC = EN.createEngine({ initial_state: 'hot_shutdown' });
+  var tsC = EN.step(engC, DT);
+  ckT('opens ON its point: Mode 4 at 250 degF / 350 psig class, level 30 %, RCPs SECURED, ' +
+      'RHR aligned with the HX throttled (a HOLD), the P-11 blocks taken, nothing latched',
+      tsC.plant_mode === 4 && /Hot Shutdown/.test(tsC.plant_mode_name) &&
+      Math.abs(tsC.tavg_c - 121.1) < 0.2 &&
+      tsC.pressure_mpa * 145.038 > 358 && tsC.pressure_mpa * 145.038 < 370 &&
+      Math.abs(tsC.pzr_level_pct - 30) < 1.5 &&
+      engC.sys.pumpTripped === true && engC.sys.omega === 0 &&
+      engC.rh.valve_open === true && engC.rh.hx_fraction === 0 &&
+      engC.pt.blockLoPress === true && engC.pt.blockSI === true &&
+      tsC.scrammed === false && engC.pt.si === false,
+      tsC.tavg_c.toFixed(1) + ' degC / ' + (tsC.pressure_mpa * 145.038).toFixed(0) + ' psia');
+  var bCold = tsC.boron_ppm;
+  var engZ3 = EN.createEngine({ initial_state: 'hot_zero_power' });
+  var bHzp = EN.step(engZ3, DT).boron_ppm;
+  /* the DIRECT discriminator: what the INVERTED order would have produced is criticalBoron
+   * at the AS-BUILT lineup (shutdown bank IN) + the margin — the bank's boron-equivalent at
+   * cold is only ~84 ppm through the density coupling, which slid under this check's first
+   * (+100 vs hot standby) form and made the inversion mutation BLIND; measured 999 correct
+   * vs 915 inverted, so the gap is asserted against the model's own arithmetic, not a
+   * remembered threshold */
+  var K10 = globalThis.RD.pwr2.kinetics;
+  var bInverted = K10.criticalBoron(engC.rx.kin, 121.1, 2.51, engC.rodBank,
+                    engC.rx.kin.X / engC.rx.kin.X_eq_full, engC.rx.fuel.T_fuel_c) +
+                  0.01 / K10.BORON.worth_per_ppm;
+  ckT('THE #468 ORDER HOLDS: the cold boron is the trim-with-bank-OUT figure — measurably ' +
+      'ABOVE what trimming with the bank IN would give (999 vs 915 measured), and above ' +
+      'hot standby\'s (719): the bank\'s worth is margin in RODS, not paid in boron',
+      bCold > bInverted + 40 && bCold > bHzp + 100,
+      bCold.toFixed(0) + ' vs inverted-order ' + bInverted.toFixed(0) + ' vs HZP ' +
+      bHzp.toFixed(0) + ' ppm');
+  var tsC2 = run(engC, quiet ? 120 : 300);
+  ckT('...and HOLDS: drift measured −1.07 degC/300 s (the charging/letdown exchange — ' +
+      'declared), no trips, no SI, Mode 4 throughout',
+      Math.abs(tsC2.tavg_c - 121.1) < 2.5 && tsC2.scrammed === false &&
+      engC.pt.si === false && tsC2.plant_mode === 4,
+      'tavg ' + tsC2.tavg_c.toFixed(2));
+  EN.command(engC, 'rcp_start', true);
+  var tHeat0 = tsC2.tavg_c;
+  var tsC3 = run(engC, quiet ? 300 : 600);
+  var ratePerHr = (tsC3.tavg_c - tHeat0) * 9 / 5 * (3600 / (quiet ? 300 : 600));
+  ckT('the HEATUP is real: pump heat alone warms the held plant in the sourced class ' +
+      '(measured 87.9 degF/hr — under the 100 degF/hr limit), untripped, no SI',
+      ratePerHr > 40 && ratePerHr < 110 && tsC3.scrammed === false &&
+      engC.pt.si === false && engC.sys.beyond_model !== true,
+      ratePerHr.toFixed(1) + ' degF/hr, flow ' + engC.sys.mdot_loop.toFixed(0) + ' kg/s');
+  /* the unblock cascade: clearing the SI block at shutdown pressure INJECTS — the mirror
+   * of the board's unblock-at-power scram, and the reason the blocks are procedure */
+  var engU = EN.createEngine({ initial_state: 'hot_shutdown' });
+  EN.step(engU, DT);
+  EN.command(engU, 'si_block', false);
+  EN.command(engU, 'lo_press_trip_block', false);
+  var tsU = run(engU, 10);
+  ckT('clearing the P-11 blocks at 350 psig CASCADES: the low-pressure trip and SI both ' +
+      'latch and the pumps start — protection working, and why the blocks are a procedure',
+      tsU.scrammed === true && engU.pt.si === true && engU.ec.hhsiRunning === true, '');
+  var thrP11 = false;
+  try { EN.command(EN.createEngine({}), 'si_block', true); }
+  catch (eP) { thrP11 = /P-11/.test(eP.message); }
+  ckT('engaging either block ABOVE P-11 is REFUSED (the #295 defeatable-trip lesson)',
+      thrP11 === true, '');
+  }
 }
 
 console.log('\nPWR2 -- THE ENGINE FACADE: one door, the gates\' wiring written once');
@@ -1251,12 +1320,14 @@ var MUTATIONS = [
   ['the subcritical margin is dropped (an HZP that detonates on the first pull)',
    '    if (ic.subcritical) boron0 += 0.01 / RD.kinetics.BORON.worth_per_ppm;',
    '', { grp: 'K' }],
+  /* anchor grew the cold branch in wave 10 */
   ['the no-load anchor reverts to the program\'s 557 degF (saturates above the MSSV pop)',
-   "    var tavg0 = ic.pf > 0 ? DC.tref(ic.load_mwe / MWE_RATED) : W.T_sat(G.SG.P_noload);",
-   '    var tavg0 = DC.tref(ic.load_mwe / MWE_RATED);', { grp: 'K' }],
+   "    var tavg0 = ic.cold ? ic.tavg_c\n              : ic.pf > 0 ? DC.tref(ic.load_mwe / MWE_RATED) : W.T_sat(G.SG.P_noload);",
+   '    var tavg0 = ic.cold ? ic.tavg_c : DC.tref(ic.load_mwe / MWE_RATED);', { grp: 'K' }],
+  /* anchor grew the cold branch in wave 10 */
   ['the HZP dump lineup is dropped (nothing holds the no-load plant)',
-   "      dcDrivers: ic.pf > 0 ? {} : { mode: 'pressure', pressure_setpoint_mpa: G.SG.P_noload },",
-   '      dcDrivers: {},', { grp: 'K' }],
+   "      dcDrivers: ic.pf > 0 ? {}\n               : ic.cold ? { mode: 'off' }\n               : { mode: 'pressure', pressure_setpoint_mpa: G.SG.P_noload },",
+   "      dcDrivers: ic.cold ? { mode: 'off' } : {},", { grp: 'K' }],
   /* THE ROD INSERTION LIMIT (#507 §B, wave 8) */
   ['the RIL curve is deleted (no limit at any power)',
    '    if (!(P_pct > RIL.min_power_pct)) return null;',
@@ -1273,7 +1344,21 @@ var MUTATIONS = [
   /* THE RCP RESTART (#507 wave 9) */
   ['the start\'s electrical gate is severed (a blacked-out bus starts a 6,000 hp motor)',
    '        if (!(eng.elec.offsite && !eng.elec.blackout)) {',
-   '        if (false) {', { grp: 'M' }]
+   '        if (false) {', { grp: 'M' }],
+  /* THE SHUTDOWN IC (#507 wave 10) */
+  ['the #468 order is INVERTED (the bank inserts before the trim; the margin is paid in boron)',
+   '    var boron0 = RD.kinetics.criticalBoron(rx.kin, tavg0, icP, rodBank,',
+   '    if (ic.cold) rodBank[1].steps = 0;\n    var boron0 = RD.kinetics.criticalBoron(rx.kin, tavg0, icP, rodBank,',
+   { grp: 'N' }],
+  ['the cold boot forgets the P-11 blocks (the shutdown plant injects at construction)',
+   '      pt: PT.createProtection({ blockLowFlux: ic.pf >= 0.1,\n                                blockLoPress: !!ic.cold, blockSI: !!ic.cold }),',
+   '      pt: PT.createProtection({ blockLowFlux: ic.pf >= 0.1 }),', { grp: 'N' }],
+  ['the RHR hold throttle is dropped (the "held" plant cools at 560 degF/hr and drains)',
+   '      eng.rh.hx_fraction = 0;',
+   '      eng.rh.hx_fraction = 0.5;', { grp: 'N' }],
+  ['the P-11 engage refusal is severed on the SI block (an at-power bypass)',
+   "          if (pInd2 >= PT.P11.mpa) {",
+   '          if (false) {', { grp: 'N' }]
 ];
 var CORESRC = fs.readFileSync(path.join(SRC, 'pwr2_core.js'), 'utf8').replace(/\r\n/g, '\n');
 
