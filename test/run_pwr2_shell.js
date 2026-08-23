@@ -406,15 +406,19 @@ function runSuite(SH, rec, quiet) {
     ck('...and clearing the tags restores delivery at the standing demand',
        eA.getTrueState().afw_active === true, '');
 
-    /* failure_to_scram — the latch stands, the rods do not move, the plant self-limits */
+    /* failure_to_scram — the latch stands, the rods do not move, the plant self-limits.
+     * ⚠ A 10 s WINDOW pins the MECHANISM only (#510 M-7 class): the divergence this
+     * casualty can reach starts at ~110 s (the dry-SG wedge, #510 H-1) and lives in
+     * run_pwr2_endurance's 300 s ride — do not read this check as "the ATWS is survivable". */
     var eS = new SH.PWR2Engine({});
     for (i = 0; i < 100; i++) eS.step(0.02);
     eS.applyCommand({ action: 'inject_failure', failure_id: 'failure_to_scram' });
     eS.applyCommand({ action: 'scram' });
     for (i = 0; i < 500; i++) eS.step(0.02);
     var tsS = eS.getTrueState();
-    ck('failure_to_scram: the trip LATCHES (turbine trips with it) while the rods stand at ' +
-       '200 and the core keeps running — measured 76 % at 10 s, feedback-limited, unscripted',
+    ck('failure_to_scram MECHANISM (10 s window — the long ride is run_pwr2_endurance\'s): ' +
+       'the trip LATCHES (turbine trips with it) while the rods stand at 200 and the core ' +
+       'keeps running — measured 76 % at 10 s, feedback-limited, unscripted',
        eS.eng.pt.reactor_trip === true && eS.eng.rodSteps === 200 &&
        eS.eng.tb.tripped === true && tsS.power_pct > 50 &&
        eS.getActiveFailures().indexOf('failure_to_scram') !== -1,

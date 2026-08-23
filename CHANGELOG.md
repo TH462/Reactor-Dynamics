@@ -30,6 +30,16 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
 
 ## [Unreleased]
 
+### Added (#510 — the acceptance windows, 2026-08-23)
+- **`test/run_pwr2_endurance.js`** — long-window rides for every PWR2 preset and every #510
+  failure trajectory, ridden past the failure horizons the old gates stopped short of.
+  Settledness is asserted as equilibrium (rates at the measured wander floor over the last
+  15 minutes, plus position against the boot point), never a value band sampled where a
+  monotone transient starts. The nine known #510 defects ride as strict expected-fails:
+  green today, and a fix cannot land without acknowledging its flip. §74's "hold" figure is
+  corrected in place (it sampled the first 6 % of the Mode 4 fill); the old short-window
+  ATWS and shutdown checks are renamed to the mechanism/boot claims they actually make.
+
 ### Added (#507 wave 10 — the shutdown preset and P-11, 2026-08-23)
 - **PWR2 gets a shutdown preset — Hot Shutdown (Mode 4)**: 250 °F / 350 psig, RHR-held
   (suction open, heat exchanger throttled — opening it is the cooldown lever), RCPs

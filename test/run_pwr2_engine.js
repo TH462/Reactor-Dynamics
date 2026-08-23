@@ -1123,8 +1123,13 @@ function runSuite(RD, rec, quiet, only) {
       bCold.toFixed(0) + ' vs inverted-order ' + bInverted.toFixed(0) + ' vs HZP ' +
       bHzp.toFixed(0) + ' ppm');
   var tsC2 = run(engC, quiet ? 120 : 300);
-  ckT('...and HOLDS: drift measured −1.07 degC/300 s (the charging/letdown exchange — ' +
-      'declared), no trips, no SI, Mode 4 throughout',
+  /* ⚠ THIS IS A BOOT CHECK, NOT A SETTLEDNESS CLAIM (#510 M-7): its first form was named
+   * "HOLDS" off a 300 s Tavg band — the first 6 % of a monotone 75-minute transient the
+   * band could never see. Settledness is run_pwr2_endurance's (equilibrium DERIVATIVES
+   * over the ride's last window, ridden past the failure horizon); this window only pins
+   * that the construction opens quiet. */
+  ckT('...and the BOOT is quiet for 300 s: no trips, no SI, Mode 4 (settledness is ' +
+      'run_pwr2_endurance\'s claim, not this window\'s)',
       Math.abs(tsC2.tavg_c - 121.1) < 2.5 && tsC2.scrammed === false &&
       engC.pt.si === false && tsC2.plant_mode === 4,
       'tavg ' + tsC2.tavg_c.toFixed(2));

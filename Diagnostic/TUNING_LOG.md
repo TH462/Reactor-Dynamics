@@ -125,6 +125,25 @@ WORKING — the auditor mistook a protection endpoint for a runaway. Verdict: so
 mechanisms hold; the defects live at edges no source covered, and the gates' windows
 stopped before the interesting part.
 
+**Same session — the acceptance windows fixed first** *(OWNER DIRECTIVE, 2026-08-23:
+"Let's fix your acceptance windows first.")*: **`test/run_pwr2_endurance.js`** — every
+preset ridden 30–90 sim-min (Mode 4 past its 75-min failure horizon), every #510 wedge
+ridden past where its old gate stopped, at ~19 sim-s/wall-s (~14 min, parallel-safe).
+The settledness LAW replaces value bands: rates at the measured wander floor over the last
+15 min (provenance: a 2-h HFP probe — rates oscillate in sign, dLvl wander ±4 %/hr, net ~0)
+PLUS position vs the boot point, so a sustained drift smaller than the wander still reds on
+position while H-2's 54 %/hr fill reds on rate in any phase. Nine #510 defects ride as
+STRICT xfails (H-2 ×2, H-1 ×2, H-4/H-5/H-6/H-7, M-6) — born failing, promotion-forced on
+fix. The runner's first run caught two of its OWN checks: the RHR-blackout check read
+`rhr_flow_normalized` (unpublished → `undefined || 0` → vacuous pass over 26.6 MMBtu/hr),
+and the shed-order fixture's 5e-4 break left the 17 % low-level cut standing in for the
+latch under test — both rebuilt with asserted PRECONDITIONS. Baseline `9passed 9xfail
+0failed`. §74's "hold" corrected in place; the group-N and shell ATWS checks renamed to
+the boot/mechanism claims their windows honestly make. The evicted #447 themes bullet's
+rescue-worthy trap ("nothing asserted STABILITY, only endpoints") is subsumed by the new
+themes bullet — same lesson, now with a runner enforcing it; the full #447 record stays at
+2026-08-11 below.
+
 ## Session log — 2026-08-22-develop-c (#507 waves 4–6 — the grid, the SGTR, and the menu at 21)
 
 **Owner rulings this batch (2026-08-22, selections from options I wrote)**: scope =

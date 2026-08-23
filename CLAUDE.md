@@ -459,20 +459,16 @@ ONE line, drop the rest. **A bullet is ~80 words.** (Measured 2026-08-06: the li
   height as `plot ÷ lanes` — 56 px reported, 38 px true, which is how a floor gets certified
   while being violated. Corollary that paid twice: **a refactor's claim is "nothing
   changed", so pin the OLD implementation and replay it** (`run_chart_math`, 235 frames).
-- **A ~40 s limit cycle after EVERY LOCA, and the loop gain was a heater bank that should
-  have been off the bus** (2026-08-11, #447). Below 17 % level the heaters cut and pressure
-  floors at containment; ECCS refills past the 20 % restore point; the heaters return at FULL
-  demand and 0.29 MPa/s net takes pressure 15 → 163 psia in 3 s, spiking leak ~20× and
-  back-pressuring HPI 0.90 → 0.34. 134 cycles at sev 0.05 (839 psia excursion) up to 936 at
-  1.00; MDS-2/3 ride 2500 s of it and pass, because nothing asserted STABILITY, only endpoints.
-  Fixed by the shed NUREG-0737 II.E.3.1 (7) requires on an SI signal — the document was in
-  our own corpus, uncited. **#334 did not finish**: its cutoff converted a stable wrong
-  equilibrium into an oscillation. Traps: **an equilibrium a 347× term participates in is not
-  evidence about geometry** (CA-15 re-authored around this artifact TWICE, #408 reasoning
-  explicitly from the defect); **a red can be VACUOUS rather than red** (CA-10 leg B's break
-  actuates SI, so the shed would zero its subject and it passes testing nothing); and **a bare
-  threshold chases the plant** — `pwr_qualify`'s cue, re-keyed a fourth time, now on a
-  two-parameter signature validated on three plants including a negative control.
+- **Every #510 high shipped under a green gate whose window ended before the failure began**
+  (2026-08-23, the waves 1–10 swarm review → `run_pwr2_endurance`). The Mode 4 "HOLDS" check
+  sampled the first 6 % of a 75-minute monotone fill; the ATWS check rode 10 s of a
+  divergence starting at ~110 s. The fix is a LAW, not longer bands: settledness =
+  equilibrium DERIVATIVES at the measured wander floor over a long ride's final window PLUS
+  position against the boot point — and every known defect rides as a STRICT expected-fail
+  (born failing; a fix landing without promoting its xfail reds the runner). The runner's
+  own first run caught two of its own checks — a field read the contract doesn't publish
+  (`undefined || 0` passing over 26.6 MMBtu/hr), and a fixture the 17 % low-level cut
+  satisfied in place of the latch under test. Assert preconditions, not just claims.
 **Standing procedure — not part of the rotation above; these do not expire.** One trap per entry.
 **MAX 25 BULLETS** *(OWNER RULING, 2026-08-10: selected "Cap at 25, evict to TRAPS.md" from
 options I wrote — a selection, not verbatim words)*, gated by `test/run_doc_budget.js`. Adding

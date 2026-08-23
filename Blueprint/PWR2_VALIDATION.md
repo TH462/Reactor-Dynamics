@@ -3949,6 +3949,13 @@ Bases: the loss-of-flow functions are required above P-7).
 ### Measured (dt 0.02 s)
 - Boot: Mode 4 / 121.1 °C / 364 psia / level 30.0 % / SG 29.9 psia / boron 999 ppm, nothing
   latched. Hold: −1.07 °C over 300 s (the charging/letdown exchange — declared), no trips.
+  **CORRECTED 2026-08-23 (#510 H-2/M-7): that 300 s figure sampled the first 6 % of a
+  monotone transient and was NOT a hold** — untouched, the preset fills water-solid at
+  ~75 min (level 30 → 100 %, 364 → 29 psia; seal injection has no return path and letdown
+  dies below its 300 psia backpressure). The claim class is retired: settledness is now
+  asserted as equilibrium DERIVATIVES over a long ride's final window in
+  `run_pwr2_endurance` (owner directive, 2026-08-23: "Let's fix your acceptance windows
+  first."), where this defect rides as a strict expected-fail until its fix lands.
 - **The heatup is real**: `rcp_start` alone warms the held plant at **87.9 °F/hr** — the
   pump-heat class, just under the 100 °F/hr limit — flow 1,996 kg/s (cold dense water on
   the affinity law), untripped, no SI. Pressure sags on the heatup insurge because the
