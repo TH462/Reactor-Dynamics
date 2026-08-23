@@ -205,6 +205,33 @@ function runSuite(quietRec) {
    * (a real align command) — the deliberate set is now HPI AUTO, FOLLOW, ROD AUTO */
   q('the disables are the deliberate set, not everything and not nothing',
     disabled >= 2 && disabled <= 6, disabled + ' disabled buttons');
+
+  /* ---- 5. the ENGINE-OWNED block surface, merged through the kernel (#507 wave 7) --------
+   * PWR2's RPS lives in the engine; the kernel's snapshot must carry its block state WITH
+   * the trip's own 35 % setpoint (the power tile's armed band reads it), and the board's
+   * set_trip_block must round-trip service -> kernel-forward -> shell -> engine. The
+   * unblock-at-power leg is LAST on purpose: clearing a block that is holding a trip off
+   * scrams on the spot (the kernel's own documented rule), which ends this world. */
+  /* a FRESH world: the button sweep above scrammed this one (its RCP-stop press earns a
+   * lo_flow trip), and an already-scrammed plant would satisfy the unblock leg vacuously */
+  var w2 = mkWorld();
+  var rpsS = w2.snap().rps_state;
+  q('the kernel snapshot merges the engine-owned block (standing at power, setpoint 35)',
+    rpsS && rpsS.trip_blocks && rpsS.trip_blocks.pr_low_setpoint === true &&
+    rpsS.trip_block_status && rpsS.trip_block_status.pr_low_setpoint &&
+    rpsS.trip_block_status.pr_low_setpoint.setpoint === 35,
+    rpsS ? JSON.stringify(rpsS.trip_block_status && rpsS.trip_block_status.pr_low_setpoint)
+         : 'no rps_state');
+  var preUB = w2.snap().true_state.scrammed;
+  var rUB = w2.cmd({ action: 'set_trip_block', trip_id: 'pr_low_setpoint', blocked: false });
+  w2.tick(2);
+  q('UNBLOCKING the low-flux trip at 100 % power scrams the plant on the spot (cause ' +
+    'hi_flux_lo) — the whole button path is live (service -> kernel forward -> shell -> ' +
+    'engine RPS)',
+    preUB === false && (!rUB || rUB.type !== 'error') &&
+    w2.snap().true_state.scrammed === true &&
+    w2.svc.engine.eng.pt.trip_cause === 'hi_flux_lo',
+    'pre ' + preUB + ', cause ' + (w2.svc.engine.eng.pt.trip_cause || '?'));
   return rec;
 }
 
@@ -216,9 +243,19 @@ console.log('\ninjection self-test (2 mutations):');
 var WSRC = fs.readFileSync(WIRING_PATH, 'utf8').replace(/\r\n/g, '\n');
 var SHPATH = path.join(SRC, 'pwr2_shell.js');
 var SHSRC = fs.readFileSync(SHPATH, 'utf8').replace(/\r\n/g, '\n');
+var KPATH = path.join(__dirname, '..', 'layers', 'control', 'control_kernel.js');
+var KSRC = fs.readFileSync(KPATH, 'utf8').replace(/\r\n/g, '\n');
 var MUTS = [
-  ['the tile presence condition is deleted (the 25 % trip reads armed again)', WIRING_PATH, WSRC,
-   "      if (t[i].blockable && t[i].id && tbs && !(t[i].id in tbs)) continue;", ''],
+  /* RETIRED (#507 wave 7): the tile-presence mutation went blind the day the kernel began
+   * MERGING the engine-owned block status — the live pwr2 snapshot always carries
+   * pr_low_setpoint now (with its own 35 % setpoint overriding the static row), so deleting
+   * the presence skip changes nothing this ride can see. The defect class it guarded — the
+   * static table's 25 % painted over the engine's RPS — is carried by verify_board_check's
+   * TRIP-35 fixture check, the shell gate's setpoint-dropped mutation, and the merge
+   * mutation below. */
+  ['the kernel merge is severed (the board reads an RPS with no block surface)', KPATH, KSRC,
+   '      if (engTB && engTB.trip_block_status) Object.assign(status, engTB.trip_block_status);',
+   ''],
   ['set_hpi reads only c.running again (STOP starts the pump)', SHPATH, SHSRC,
    "    set_hpi:           function (e, c) { EN.command(e, 'hhsi', (c.active !== undefined ? c.active : c.running) !== false); },",
    "    set_hpi:           function (e, c) { EN.command(e, 'hhsi', c.running !== false); },"]

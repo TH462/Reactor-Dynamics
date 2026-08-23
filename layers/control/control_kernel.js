@@ -233,7 +233,19 @@
       case 'set_auto_channel':         return this.setAutoChannel(command.channel_id, command.engaged);
       case 'set_auto_setpoint':        return this.setAutoSetpoint(command.channel_id, command.value);
       case 'set_esf_auto':             return this.setEsfAuto(command.system, command.auto);
-      case 'set_trip_block':           return this.setTripBlock(command.trip_id, command.blocked);
+      case 'set_trip_block':
+        /* PWR2 (#507 wave 7): its RPS lives in the ENGINE and this config's trips list is
+         * EMPTY — forward the request to the engine's own door (the inject_failure
+         * precedent). Configs that carry kernel trips (pwr1/rbmk/bwr) never reach the
+         * forward, so their paths are byte-identical. A refusal surfaces as the error. */
+        if (!(this.config.trips || []).length && this.engine && this.engine.applyCommand) {
+          try { this.engine.applyCommand(command); return null; }
+          catch (eTB) {
+            return { type: 'error', code: 'COMMAND_ERROR',
+                     message: String(eTB && eTB.message), received: command.trip_id };
+          }
+        }
+        return this.setTripBlock(command.trip_id, command.blocked);
       // Scenario-settable lockout of an OPERATOR ACTION (#125). Authored content sets it
       // in setup_commands; it is not an operator control and has no board button.
       //
@@ -1186,8 +1198,18 @@
     // the refusal it would get are one fact rather than two that can drift apart. null
     // when not scrammed — there is nothing to reset.
     var resetBlock = this.rpsResetBlock(ins);
+    /* ENGINE-OWNED RPS (#507 wave 7): a config with an EMPTY trips list (PWR2 — protection
+     * lives inside the engine) can still publish its block surface through the engine's own
+     * getTripBlocks; merge it so the board's button and the power tile read ONE fact. Every
+     * config that carries kernel trips never reaches this. */
+    var engTB = null;
+    if (!(this.config.trips || []).length && this.engine && this.engine.getTripBlocks) {
+      try { engTB = this.engine.getTripBlocks(); } catch (eTB) { engTB = null; }
+      if (engTB && engTB.trip_block_status) Object.assign(status, engTB.trip_block_status);
+    }
     return { scrammed: this.rps.scrammed, last_trip_reason: this.rps.last_trip_reason,
-             trip_blocks: Object.assign({}, this.tripBlocks),
+             trip_blocks: Object.assign({}, this.tripBlocks,
+                                        engTB ? engTB.trip_blocks : null),
              manual_trip_blocks: Object.assign({}, this.manualTripBlocks),
              trip_block_status: status,
              reset_permitted: !!this.rps.scrammed && !resetBlock,

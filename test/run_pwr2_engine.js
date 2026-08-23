@@ -39,7 +39,8 @@ function loadAll(engSource, coreSource) {
  * can see that mutation: 'A' equivalence/door/pushbutton (one engine chain), 'B' the
  * P-9/lying-channel family (eng4-6), 'C' the runback (eng7), 'D' the break + drain (eng2-3),
  * 'E' the AFW starts, 'F' the feed train, 'G' the electrical pair (#507 wave 4), 'H' the
- * SGTR (#507 wave 5), 'I' the failure levers (#507 wave 6).
+ * SGTR (#507 wave 5), 'I' the failure levers (#507 wave 6), 'K' the initial conditions
+ * (#507 §F, wave 7).
  * The CLEAN pass runs everything. Measured before this existed: 17 mutations x the whole
  * suite = 1074 s of contention in the aggregate gate — the replay cost scales with every
  * fixture ever added, and a mutation only needs the checks built to see it. */
@@ -892,6 +893,110 @@ function runSuite(RD, rec, quiet, only) {
   ckT('...and a WORKING scram beats the drive: rods drop, the runaway clears',
       engJ.rodSteps < 50 && engJ.runaway === null, 'gravity wins');
   }
+
+  if (grp('K')) {
+  /* ---- 9. THE INITIAL CONDITIONS (#507 §F, wave 7) — each a SETTLED construction, each
+   * ride measured 2026-08-22 before these checks were written. ---- */
+  head('THE INITIAL CONDITIONS  [50 % and Hot Standby open settled; the startup is real]');
+  var engK = EN.createEngine({ initial_state: '50_percent' });
+  var tsK = EN.step(engK, DT);
+  ckT('50 % opens ON its point: power 50, Tavg at the program\'s own 298.08 degC, 50 MWe, ' +
+      'the secondary landed where the duty puts it',
+      Math.abs(tsK.power_pct - 50) < 0.5 && Math.abs(tsK.tavg_c - 298.08) < 0.15 &&
+      Math.abs(tsK.mwe_output - 50) < 1 &&
+      engK.sg.P * 145.038 > 945 && engK.sg.P * 145.038 < 975 &&
+      Math.abs(tsK.pzr_level_pct - 43.2) < 1.5,
+      tsK.power_pct.toFixed(1) + ' %, ' + tsK.tavg_c.toFixed(2) + ' degC, SG ' +
+      (engK.sg.P * 145.038).toFixed(0) + ' psia, level ' + tsK.pzr_level_pct.toFixed(1) + ' %');
+  var minK = 101;
+  for (var kk = 0; kk < (quiet ? 60 : 120) / DT; kk++) {
+    tsK = EN.step(engK, DT);
+    if (tsK.power_pct < minK) minK = tsK.power_pct;
+  }
+  ckT('...and rides untouched without a ring (measured 120 s: min 48.79 %, Tavg -0.9 degC)',
+      minK > 48 && Math.abs(tsK.tavg_c - 298.08) < 1.8 && tsK.scrammed === false,
+      'min ' + minK.toFixed(2) + ' %, Tavg ' + tsK.tavg_c.toFixed(2));
+
+  var engH = EN.createEngine({ initial_state: 'hot_zero_power' });
+  var tsH = EN.step(engH, DT);
+  ckT('Hot Standby opens at the plant\'s OWN no-load point — Tsat of the sourced 1005 psig ' +
+      '(547.9 degF, the Ginna pair; the 557 degF program anchor saturates ABOVE the 1085 ' +
+      'psig MSSV pop, measured — the ICS header), level at the 25 % no-load program',
+      tsH.power_pct < 1e-3 && Math.abs(tsH.tavg_c - 286.11) < 0.15 &&
+      engH.sg.P * 145.038 > 1012 && engH.sg.P * 145.038 < 1028 &&
+      Math.abs(tsH.pzr_level_pct - 25) < 1.0,
+      tsH.tavg_c.toFixed(2) + ' degC, SG ' + (engH.sg.P * 145.038).toFixed(0) + ' psia, ' +
+      'level ' + tsH.pzr_level_pct.toFixed(1) + ' %');
+  ckT('...with the sourced no-load LINEUP: control bank IN, shutdown bank OUT (WTSM 8.1.1), ' +
+      'dumps in STEAM PRESSURE mode at 1005 psig, feed at no-load, subcritical boron',
+      engH.rodSteps === 0 && engH.sdSteps === 200 &&
+      engH.dcDrivers.mode === 'pressure' &&
+      Math.abs(engH.dcDrivers.pressure_setpoint_mpa - 7.03) < 1e-9 &&
+      engH.fw.feed_frac === 0 && tsH.boron_ppm > 700 && tsH.boron_ppm < 740,
+      'boron ' + tsH.boron_ppm.toFixed(0) + ' ppm (the 1000 pcm margin = +100 ppm)');
+  var driftH = 0, tsH2 = tsH;
+  for (kk = 0; kk < (quiet ? 60 : 120) / DT; kk++) {
+    tsH2 = EN.step(engH, DT);
+    if ((tsH2.sg_safety_kgs || 0) > driftH) driftH = tsH2.sg_safety_kgs;
+  }
+  ckT('...and HOLDS: power stays at source level, Tavg drift measured +0.05 degC/120 s ' +
+      '(pump heat, the dumps carry it), the MSSVs never lift',
+      tsH2.power_pct < 1e-2 && Math.abs(tsH2.tavg_c - 286.11) < 0.4 &&
+      driftH === 0 && tsH2.scrammed === false,
+      'Tavg ' + tsH2.tavg_c.toFixed(2) + ', safeties ' + driftH);
+
+  /* the startup ACCIDENT: a continuous fast pull is uncontrolled withdrawal from
+   * subcritical, and the 35 % low-flux trip terminates it (UFSAR 15.4.1's credited trip;
+   * measured: 1 % -> 100.8 % inside the trip's own analysis delay — real and kept) */
+  var engA2 = EN.createEngine({ initial_state: 'hot_zero_power' });
+  EN.command(engA2, 'rod_speed', 'fast');
+  EN.command(engA2, 'rod_target', 200);
+  var tsA2 = null;
+  for (kk = 0; kk < 200 / DT && !(tsA2 && tsA2.scrammed); kk++) tsA2 = EN.step(engA2, DT);
+  ckT('a continuous fast pull from subcritical IS the startup accident, and the low-flux ' +
+      'trip answers it',
+      tsA2.scrammed === true && engA2.pt.trip_cause === 'hi_flux_lo',
+      'cause ' + engA2.pt.trip_cause + ' at ' + tsA2.power_pct.toFixed(1) + ' % (the ' +
+      'overshoot is the sourced 0.5 s delay at a fast period)');
+
+  /* the CONTROLLED startup, the measured operator profile: critical ~84 steps (1.35 %),
+   * block taken at 18 % (above P-10), stepped to 96 -> 42.6 % THROUGH the 35 % setpoint */
+  var engS2 = EN.createEngine({ initial_state: 'hot_zero_power' });
+  EN.command(engS2, 'rod_speed', 'normal');
+  EN.command(engS2, 'rod_target', 84);
+  var tsS2 = run(engS2, 180);
+  var p84 = tsS2.power_pct;
+  EN.command(engS2, 'rod_target', 86);
+  tsS2 = run(engS2, 30);
+  EN.command(engS2, 'low_flux_block', true);      /* above P-10 here — measured 18.2 % */
+  var pBlk = tsS2.power_pct;
+  tsS2 = run(engS2, 90);
+  EN.command(engS2, 'rod_target', 96);
+  tsS2 = run(engS2, 180);
+  ckT('a CONTROLLED startup works end to end: critical partway up the bank, the block ' +
+      'taken above P-10, and the ascension passes the 35 % setpoint UNTRIPPED',
+      p84 > 0.2 && p84 < 8 && pBlk > 8 &&
+      tsS2.power_pct > 36 && tsS2.scrammed === false &&
+      engS2.rpsReport.low_flux_blocked === true,
+      'critical leg ' + p84.toFixed(2) + ' %, blocked at ' + pBlk.toFixed(1) +
+      ' %, now ' + tsS2.power_pct.toFixed(1) + ' % unscrammed');
+
+  /* P-10 owns the request: a block taken at source level is revoked on the next step */
+  var engR2 = EN.createEngine({ initial_state: 'hot_zero_power' });
+  EN.step(engR2, DT);
+  EN.command(engR2, 'low_flux_block', true);
+  var reqAt = engR2.pt.blockLowFlux;
+  EN.step(engR2, DT);
+  ckT('below P-10 the block request is AUTO-REVOKED (the sourced asymmetric gate)',
+      reqAt === true && engR2.pt.blockLowFlux === false, '');
+
+  var threwIC = null;
+  try { EN.createEngine({ initial_state: 'cold_shutdown' }); }
+  catch (eIC) { threwIC = /unknown initial_state/.test(eIC.message); }
+  ckT('an IC this engine does not carry THROWS (cold shutdown waits on an RCP restart — ' +
+      'declared in the registry, not silently hot-full-power)',
+      threwIC === true, '');
+  }
 }
 
 console.log('\nPWR2 -- THE ENGINE FACADE: one door, the gates\' wiring written once');
@@ -1048,7 +1153,23 @@ var MUTATIONS = [
    '', { grp: 'I' }],
   ['the rod-command refusal is severed (a faulted drive quietly obeys the lever)',
    "        if (eng.runaway) {\n          throw new Error('pwr2_engine: rod command REFUSED — continuous withdrawal failure ' +\n            'active; clear the failure first');\n        }",
-   '', { grp: 'I' }]
+   '', { grp: 'I' }],
+  /* THE INITIAL CONDITIONS (#507 §F, wave 7) */
+  ['the 50 % secondary lands at the full-power literal (an IC whose SG fights its plant)',
+   "    var sg = ic.pf === 1 ? G.createSG({})\n           : G.createSG({ P: W.P_sat(tavg0 - ic.pf * (TREF - W.T_sat(G.createSG({}).P))) });",
+   '    var sg = G.createSG({});', { grp: 'K' }],
+  ['the kinetics seed at full power regardless of the IC (the SS-6 class, re-armed)',
+   '    var powf = ic.pf > 0 ? ic.pf : 1e-6;',
+   '    var powf = 1.0;', { grp: 'K' }],
+  ['the subcritical margin is dropped (an HZP that detonates on the first pull)',
+   '    if (ic.subcritical) boron0 += 0.01 / RD.kinetics.BORON.worth_per_ppm;',
+   '', { grp: 'K' }],
+  ['the no-load anchor reverts to the program\'s 557 degF (saturates above the MSSV pop)',
+   "    var tavg0 = ic.pf > 0 ? DC.tref(ic.load_mwe / MWE_RATED) : W.T_sat(G.SG.P_noload);",
+   '    var tavg0 = DC.tref(ic.load_mwe / MWE_RATED);', { grp: 'K' }],
+  ['the HZP dump lineup is dropped (nothing holds the no-load plant)',
+   "      dcDrivers: ic.pf > 0 ? {} : { mode: 'pressure', pressure_setpoint_mpa: G.SG.P_noload },",
+   '      dcDrivers: {},', { grp: 'K' }]
 ];
 var CORESRC = fs.readFileSync(path.join(SRC, 'pwr2_core.js'), 'utf8').replace(/\r\n/g, '\n');
 

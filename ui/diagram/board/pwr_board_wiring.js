@@ -1500,9 +1500,17 @@
       if (t[i].instrument !== instrument || t[i].direction !== direction || t[i].setpoint == null) continue;
       if (t[i].id && blocks[t[i].id]) continue;
       if (t[i].blockable && t[i].id && tbs && !(t[i].id in tbs)) continue;
-      if (out == null) { out = t[i]; continue; }
-      var better = (direction === 'low') ? (t[i].setpoint > out.setpoint) : (t[i].setpoint < out.setpoint);
-      if (better) out = t[i];
+      /* THE ENGINE'S OWN SETPOINT WINS (#507 wave 7): an engine-owned RPS (PWR2) publishes
+       * its block status THROUGH the kernel with the trip's own setpoint attached — its
+       * low-flux setting is 35 %, not the static pwr1 table's 25 %. A status entry without
+       * a setpoint (every kernel-owned trip, every old recording) changes nothing. */
+      var row = t[i];
+      if (row.id && tbs && tbs[row.id] && typeof tbs[row.id].setpoint === 'number') {
+        row = Object.assign({}, row, { setpoint: tbs[row.id].setpoint });
+      }
+      if (out == null) { out = row; continue; }
+      var better = (direction === 'low') ? (row.setpoint > out.setpoint) : (row.setpoint < out.setpoint);
+      if (better) out = row;
     }
     return out;
   }
@@ -3335,6 +3343,13 @@
       ck('driver: power tile shows authored bands when the live kernel has no blockable trips (pwr2)',
         pPwr2.tripHi === 120 && pPwr2.note === '' && pPwr2.max > 100,
         pPwr2.tripHi + '/' + JSON.stringify(pPwr2.note) + '/max ' + pPwr2.max);
+      // The ENGINE-owned RPS (#507 wave 7): PWR2's kernel snapshot now MERGES the engine's
+      // block surface, and its status carries the trip's OWN setpoint — the tile must arm at
+      // the engine's 35 %, never the static pwr1 table's 25 (the #506.7 shape, completed).
+      var pPwr2Armed = powerTile({}, { pr_low_setpoint: { blocked: false, setpoint: 35 } });
+      ck('driver: power tile arms at the ENGINE-carried setpoint (pwr2 startup: TRIP 35%)',
+        pPwr2Armed.tripHi === 35 && pPwr2Armed.note === 'TRIP 35%',
+        pPwr2Armed.tripHi + '/' + JSON.stringify(pPwr2Armed.note));
       // tripBackstop must not depend on table order — the defect this fixes was order-dependent.
       ck('driver: power backstop is order-independent',
         tripBackstop('power_range', 'high', null) === 120, tripBackstop('power_range', 'high', null));

@@ -229,6 +229,17 @@
       EN.command(e, 'instrument_restore', true);
       EN.command(e, 'porv_stick', false);
       EN.command(e, 'break_close', true);
+    },
+    /* THE LOW-FLUX BLOCK (#507 wave 7 — the HZP startup's own action). The kernel forwards
+     * set_trip_block here when ITS trips list is empty (PWR2's RPS lives in the engine);
+     * the board's button uses the pwr1 id for the class. One blockable function. */
+    set_trip_block: function (e, c) {
+      if (c.trip_id === 'pr_low_setpoint' || c.trip_id === 'hi_flux_lo') {
+        EN.command(e, 'low_flux_block', c.blocked !== false);
+      } else {
+        throw new Error('pwr2_shell: trip block "' + c.trip_id + '" REFUSED — the 35 % ' +
+          'low-flux setting is the one blockable function on this RPS (P-10 gated)');
+      }
     }
   };
 
@@ -583,6 +594,35 @@
     return this._protCfg;
   };
   PWR2Engine.prototype.getStartupLineup = function () { return []; };
+  /* THE ENGINE-OWNED BLOCK SURFACE (#507 wave 7). PWR2's RPS lives in the engine, so the
+   * kernel's getRpsState merges THIS into its (empty-trip) snapshot: the board's block
+   * button then reads and toggles one fact, and the power tile's armed band carries the
+   * ENGINE's own 35 % setpoint rather than the static pwr1 table's 25 % (#506.7's shape,
+   * completed rather than reversed). `blocked` is the REQUEST — P-10 gates the effect and
+   * auto-revokes the request itself below 8 % (pwr2_protection), so the toggle stays
+   * symmetric. */
+  PWR2Engine.prototype.getTripBlocks = function () {
+    var e = this.eng, rp = e.rpsReport || {};
+    var blocked = !!e.pt.blockLowFlux;
+    var asserted = false, sp = 35;
+    (rp.functions || []).forEach(function (f) {
+      if (f.id === 'hi_flux_lo') {
+        asserted = f.asserted === true;
+        if (typeof f.setpoint === 'number') sp = f.setpoint * 100;   /* frac -> % */
+      }
+    });
+    return {
+      trip_blocks: { pr_low_setpoint: blocked },
+      trip_block_status: {
+        pr_low_setpoint: {
+          blocked: blocked, asserted: asserted,
+          can_block: !blocked && rp.p10_met === true,
+          can_clear: blocked,
+          setpoint: sp
+        }
+      }
+    };
+  };
   PWR2Engine.prototype.getActiveFailures = function () {
     var out = [];
     if (this.eng.pz.porvStuck) out.push('stuck_porv_open');

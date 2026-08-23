@@ -85,25 +85,74 @@
    * criticalBoron trim at the hot-leg temperature was measured (2026-08-21) to detonate —
    * power 928 % in one step, beyond-model latch — because TREF is the self-consistent
    * reference the reactivity chain is normalized against, not a wiring afterthought. */
-  function designHmap() {
-    var hH = W.h_l(TREF + DT0_C / 2, P0), hC = W.h_l(TREF - DT0_C / 2, P0),
-        hA = W.h_l(TREF, P0);
+  function designHmap(tavg_c, dt_c) {
+    /* Generalized for the ICs (#507 §F, wave 7): the same donor-cell map about ANY settled
+     * operating point — Tavg from the Tref program, the loop split scaling with power.
+     * No-arg call = the hot-full-power design point, byte-identical to the #502 original. */
+    var Tm = tavg_c === undefined ? TREF : tavg_c;
+    var dT = dt_c === undefined ? DT0_C : dt_c;
+    var hH = W.h_l(Tm + dT / 2, P0), hC = W.h_l(Tm - dT / 2, P0),
+        hA = W.h_l(Tm, P0);
     return { downcomer: hC, lower_plenum: hC, core: hH, upper_plenum: hH, hot_leg: hH,
              sg_primary: hC, crossover: hC, rcp: hC, cold_leg: hC,
              vessel_heads: hA, pressurizer: hA };
   }
 
+  /* THE INITIAL CONDITIONS (#507 §F, wave 7). Each is a SETTLED construction — the #502
+   * lesson generalized: every state variable placed at ITS OWN equilibrium for the point,
+   * so free play opens without a ring.
+   *   - Tavg comes from the plant's own Tref program at the IC's dispatch (at power), or
+   *     from the SG side at no load — Tsat of the sourced 1005 psig no-load pressure
+   *     (Ginna's own 547 degF / 1005 psig pair; the plant's tavg_noload_c program anchor,
+   *     557 degF, is the WTSM 4-loop figure and its saturation pressure, 1106 psia, sits
+   *     ABOVE this plant's 1085 psig MSSV pop — MEASURED, which is why the no-load plant
+   *     is anchored to its own steam side, and why the HZP dumps boot in PRESSURE mode at
+   *     1005 psig: the sourced no-load lineup, and the thing that holds the plant there).
+   *   - Kinetics/xenon/decay-heat seed at the IC's own power equilibrium (createKinetics'
+   *     convention); boron is trimmed AT the IC's own moderator temperature.
+   *   - hot_zero_power is SUBCRITICAL by the adopted 1000 pcm margin (+100 ppm at the
+   *     10 pcm/ppm worth), control bank IN, shutdown bank OUT (WTSM 8.1.1: withdrawn
+   *     prior to criticality) — pulling the control bank toward criticality IS the
+   *     startup. Fission power seeds at 1e-6 (the old engine's source-level convention;
+   *     point kinetics has no source term and an exact zero could never start). Decay
+   *     heat ~0: a CLEAN core, declared — this is the before-first-startup state, not
+   *     post-trip (the post-trip plant is reached by tripping, #468's produced-vs-preset
+   *     lesson).
+   * cold_shutdown is NOT here: with no RCP restart modeled (the declared one-way trip), a
+   * Mode 5 plant could never perform the heatup that is its whole point — deferred until
+   * an RCP start exists, recorded in #507. */
+  var ICS = {
+    hot_full_power: { pf: 1.0, load_mwe: 100 },
+    '50_percent':   { pf: 0.5, load_mwe: 50 },
+    hot_zero_power: { pf: 0,   load_mwe: 0, subcritical: true }
+  };
+
   function createEngine(opts) {
     opts = opts || {};
-    var pz = PZ.createPressurizer({});
-    var hmap = designHmap();
+    var icName = opts.initial_state === undefined || opts.initial_state === null
+                 ? 'hot_full_power' : opts.initial_state;
+    var ic = ICS[icName];
+    if (!ic) {
+      throw new Error('pwr2_engine: unknown initial_state "' + icName + '" — this engine has ' +
+                      Object.keys(ICS).join(' / '));
+    }
+    /* the IC's operating point: Tavg from the Tref program at power, from the sourced
+     * no-load steam pressure at zero (see the ICS header) */
+    var tavg0 = ic.pf > 0 ? DC.tref(ic.load_mwe / MWE_RATED) : W.T_sat(G.SG.P_noload);
+    var dT0 = DT0_C * ic.pf;
+    var pz = PZ.createPressurizer({ level_frac: PZ.levelProgram(tavg0) });
+    var hmap = designHmap(tavg0, dT0);
     var sys = S.createPlant({ h: hmap, P: P0, extraMass: PZ.extraMassFn(pz) });
     /* completeness is structural: a node the map misses falls back to Layer 3's 1250 kJ/kg
      * silently — refuse to build a plant with a mis-seeded node instead */
     sys.nodes.forEach(function (n) {
       if (hmap[n.id] === undefined) throw new Error('pwr2_engine: designHmap has no entry for node "' + n.id + '"');
     });
-    var rx = R.createReactor({ P: 1.0, coolTemp_c: TREF });
+    /* fission seeds at the IC's power (kinetics/xenon/decay at that power's own equilibrium
+     * — the createKinetics convention); 1e-6 is the subcritical source level (ICS header).
+     * The kinetics REFERENCES stay at their defaults — see the detonation note above. */
+    var powf = ic.pf > 0 ? ic.pf : 1e-6;
+    var rx = R.createReactor({ P: powf, coolTemp_c: tavg0 });
     /* TWO BANKS (#506.3, 2026-08-22): control + shutdown, worths from the kinetics module's
      * own gated pair (WTSM 2.2 Table 2.2-1: 4068 / 3676 pcm — the citation, ML11216A051, is
      * NOT in the corpus; the figures are cited-but-uncorroborated, recorded in
@@ -114,13 +163,25 @@
      * unverified — no corpus document publishes a step total (Ginna TS defers to the COLR).
      * Withdrawn banks contribute exactly 0 pcm, so passing them to criticalBoron below is
      * numerically identical to the old `null` — measured, not assumed (#502's lesson). */
+    var ctrlSteps = ic.subcritical ? 0 : 200;    /* HZP: control bank IN, the startup is
+                                                  * pulling it; shutdown bank OUT (WTSM 8.1.1) */
     var rodBank = [
-      { steps: 200, max_steps: 200, worth: RD.kinetics.RODS.worth_control },
+      { steps: ctrlSteps, max_steps: 200, worth: RD.kinetics.RODS.worth_control },
       { steps: 200, max_steps: 200, worth: RD.kinetics.RODS.worth_shutdown }
     ];
-    var boron0 = RD.kinetics.criticalBoron(rx.kin, TREF, P0, rodBank,
+    /* boron trimmed AT the IC's own moderator temperature and rod lineup; the subcritical
+     * margin is the adopted 1000 pcm (+100 ppm at the module's 10 pcm/ppm) ON TOP of
+     * critical-with-rods-in, so criticality arrives partway up the bank — a real startup */
+    var boron0 = RD.kinetics.criticalBoron(rx.kin, tavg0, P0, rodBank,
       rx.kin.X / rx.kin.X_eq_full, rx.fuel.T_fuel_c);
-    var sg = G.createSG({});
+    if (ic.subcritical) boron0 += 0.01 / RD.kinetics.BORON.worth_per_ppm;
+    /* the secondary lands where the primary's duty puts it: Tsec = Tavg − pf·(the design
+     * split), P = Psat(Tsec). The full-power path keeps the module's own default literal
+     * (byte-identical construction, the save-replay bar). */
+    var sg = ic.pf === 1 ? G.createSG({})
+           : G.createSG({ P: W.P_sat(tavg0 - ic.pf * (TREF - W.T_sat(G.createSG({}).P))) });
+    /* rated_steam is the RATED scale (every normalization's denominator) — computed at the
+     * rated dispatch whatever the IC's own load is, then the turbine takes the IC's */
     var tb = TB.createTurbine({ load_target_mwe: MWE_RATED });
     var eng = {
       sys: sys, pz: pz, rx: rx, sg: sg, tb: tb,
@@ -130,16 +191,19 @@
       cv: CV.createCVCS({ boron_ppm: boron0 }),
       ec: EC.createECCS({}),
       aw: AW.createAFW({}),
-      fw: FWM.createFeedwater({}),
+      fw: FWM.createFeedwater(ic.pf > 0 ? {} : { at_power: false }),
       dm: DG.createDamage({}),
-      pt: PT.createProtection({ blockLowFlux: true }),   /* a plant AT POWER blocks it — #460 */
+      /* a plant AT POWER has the low-flux block requested (#460); below P-10 the request
+       * would be revoked anyway, and HZP boots without it — blocking is the operator's
+       * startup action (low_flux_block / the board's block button) */
+      pt: PT.createProtection({ blockLowFlux: ic.pf >= 0.1 }),
       brk: null,
       ctm: CT.createContainment({}),
       rated_steam: TB.steamDemand(tb, sg.P, G.SG.h_feed),
       M_nominal: sys.M_total,
       simTime: 0,
       /* command state */
-      rodTarget: 200, rodSteps: 200, sdTarget: 200, sdSteps: 200, rodBank: rodBank,
+      rodTarget: ctrlSteps, rodSteps: ctrlSteps, sdTarget: 200, sdSteps: 200, rodBank: rodBank,
       rodSpeedSel: 'normal',
       /* failure levers (#507 wave 6) */
       scramBlocked: false,        /* ATWS — the RPS latches, the rods do not drop */
@@ -154,7 +218,11 @@
        * wire (WTSM 3.2/5.7, NUREG-0737 II.E.3.1). */
       elec: { offsite: true, blackout: false },
       pzDrivers: {},              /* setpoint/manual/stick/block/aux — forwarded each step */
-      dcDrivers: {},              /* mode / pressure setpoint */
+      /* HZP: the dumps boot in STEAM PRESSURE mode at the sourced 1005 psig no-load — the
+       * prototypical no-load lineup, and what physically holds the plant there (in tavg
+       * mode the pump-heated plant would ride the 1085 psig MSSVs instead — the ICS
+       * header's measured note). At power: the operator's default (tavg, C-7 armed). */
+      dcDrivers: ic.pf > 0 ? {} : { mode: 'pressure', pressure_setpoint_mpa: G.SG.P_noload },
       advDemand: 0, advBlock: true,
       /* one-step-lag carriers */
       _Qox: 0, _pzRelief: 0, _pzReliefH: 0, _sgtrKgs: 0, _sgtrH: 0,
@@ -164,6 +232,15 @@
       ins: IN.createInstruments(opts.instruments),
       rh: RD.rhr.createRHR({})
     };
+    /* the turbine takes the IC's own dispatch AFTER rated_steam froze the rated scale */
+    eng.tb.load_target_mwe = ic.load_mwe;
+    /* the feed train at the IC's own operating point (the module's constructor knows only
+     * at-power/no-load; a mid-load IC sets the delivered point so the boot does not spend
+     * its first pump-tau finding it — the same settled-construction rule as the hmap) */
+    if (ic.pf > 0 && ic.pf !== 1) {
+      eng.fw.feed_frac = ic.pf;
+      eng.fw.valve = ic.pf / (2 * FWM.FW.pump_frac_each);
+    }
     return eng;
   }
 
@@ -182,6 +259,11 @@
         eng.rodTarget = Math.max(0, Math.min(200, +value)); break;
       case 'sd_target':      eng.sdTarget = Math.max(0, Math.min(200, +value)); break;
       case 'rod_speed':      eng.rodSpeedSel = (value in ROD_SPEEDS) ? value : 'normal'; break;
+      case 'low_flux_block':
+        /* THE OPERATOR'S REQUEST to block the 35 % low-flux trip (#507 wave 7 — the HZP
+         * startup's own action). A REQUEST, not a state: P-10 gates whether it takes
+         * effect and auto-revokes it below 8 % (pwr2_protection owns that law). */
+        eng.pt.blockLowFlux = !!value; break;
       case 'scram':
         /* The pushbutton is an RPS INPUT, not a rod command — the trip latches in
          * pwr2_protection ('manual') and the trip edge below inserts the rods, so a manual
@@ -706,6 +788,7 @@
     command: command,
     step: step,
     designHmap: designHmap,   /* exported so the equivalence fixture boots the SAME plant */
+    ICS: ICS,                 /* the initial-condition registry — the shell/UI menu reads it */
     MWE_RATED: MWE_RATED
   };
 })(typeof globalThis !== 'undefined' ? globalThis : this);

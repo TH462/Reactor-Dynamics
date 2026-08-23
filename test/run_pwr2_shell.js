@@ -520,6 +520,46 @@ function runSuite(SH, rec, quiet) {
        'wave 3 rendered the slider and discarded it');
   })();
 
+  /* ---- 1h. THE INITIAL CONDITIONS THROUGH THE CLASS (#507 §F, wave 7) ----------------------- */
+  head('THE ICs THROUGH THE CLASS  [the menu\'s presets are real; the block button reaches the RPS]');
+  (function () {
+    var e9 = new SH.PWR2Engine({ initial_state: '50_percent' });
+    var ts9 = null;
+    for (var i = 0; i < 1500; i++) ts9 = e9.step(0.02);
+    ck('initial_state rides the service\'s own constructor path: the 50 % preset opens and ' +
+       'holds through the class (measured 49.2 % / 50.0 MWe at 30 s)',
+       ts9.power_pct > 48 && ts9.power_pct < 51 && Math.abs(ts9.mwe_output - 50) < 1.5,
+       ts9.power_pct.toFixed(1) + ' % / ' + ts9.mwe_output.toFixed(1) + ' MWe');
+    var thrIC = false;
+    try { new SH.PWR2Engine({ initial_state: 'cold_shutdown' }); }
+    catch (e2) { thrIC = /unknown initial_state/.test(e2.message); }
+    ck('a preset the engine does not carry throws through the class too — the #502 rule ' +
+       '(an accepted-then-ignored preset is a menu that lies)', thrIC === true, '');
+
+    /* the block button's whole path: board -> kernel (empty trips -> FORWARD) -> shell ->
+     * engine request; the kernel snapshot carries the ENGINE's own 35 % setpoint */
+    var eB = new SH.PWR2Engine({ initial_state: 'hot_zero_power' });
+    var kl = new (globalThis.RD.ControlLayer)(eB, eB.getProtectionConfig());
+    for (i = 0; i < 100; i++) eB.step(0.02);
+    var rps0 = kl.getRpsState();
+    ck('the kernel\'s rps snapshot MERGES the engine-owned block surface: pr_low_setpoint ' +
+       'present, unblocked, with the engine\'s own 35 % setpoint (not the static table\'s 25)',
+       rps0.trip_blocks.pr_low_setpoint === false &&
+       rps0.trip_block_status.pr_low_setpoint &&
+       rps0.trip_block_status.pr_low_setpoint.setpoint === 35 &&
+       rps0.trip_block_status.pr_low_setpoint.can_block === false,
+       'can_block false at source level — P-10 gates it');
+    var rF = kl.handleCommand({ action: 'set_trip_block', trip_id: 'pr_low_setpoint', blocked: true });
+    var reqNow = eB.eng.pt.blockLowFlux;
+    eB.step(0.02);
+    ck('the kernel FORWARDS set_trip_block to the engine (empty trips list — the request ' +
+       'lands) and P-10 revokes it below 8 % on the next step (the sourced asymmetric gate)',
+       rF === null && reqNow === true && eB.eng.pt.blockLowFlux === false, '');
+    var rIr = kl.handleCommand({ action: 'set_trip_block', trip_id: 'ir_high', blocked: true });
+    ck('...and a trip this RPS does not carry comes back as a REASONED error, not a silence',
+       rIr && rIr.type === 'error' && /low-flux/.test(rIr.message), '');
+  })();
+
   /* ---- 2. THE COMMAND PARTITION -------------------------------------------------------------- */
   head('THE PARTITION  [every old-engine action in exactly one registry, refusals reasoned]');
   var oldSrc = fs.readFileSync(path.join(__dirname, '..', 'engines', 'pwr', 'pwr_engine.js'), 'utf8');
@@ -715,7 +755,13 @@ var MUTATIONS = [
    "        e.ec.avail = Math.max(0, 1 - (c.severity !== undefined ? c.severity : 0.5));"],
   ['the seal-leak slider is discarded again (#507 wave 6 latent fix 2 reverted)',
    "        EN.command(e, 'break_open', { area_m2: Math.max(1e-6, sevS * 1.2e-5), node: 'rcp' });",
-   "        EN.command(e, 'break_open', { area_m2: 8e-6, node: 'rcp' });"]
+   "        EN.command(e, 'break_open', { area_m2: 8e-6, node: 'rcp' });"],
+  ['the block mapping is severed (the board button reaches a wire that goes nowhere) -- #507 wave 7',
+   "        EN.command(e, 'low_flux_block', c.blocked !== false);",
+   ''],
+  ['the engine-owned block surface loses its setpoint (the power tile paints the static 25 %)',
+   '          setpoint: sp',
+   '          setpoint: undefined']
 ];
 
 console.log('\ninjection self-test (' + MUTATIONS.length + ' mutations):');

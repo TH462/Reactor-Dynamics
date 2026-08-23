@@ -328,13 +328,17 @@
     // plant:'pwr' ON PURPOSE — the whole UI (profiles, PD tables, the seven ui.plant==='pwr'
     // branches) treats this as the PWR board it is; only the ENGINE differs, carried by
     // `engine:` and resolved at every selectPlant/reset call via engId().
-    // initStates OVERRIDES the profile's list: this engine has ONE initial condition (hot
-    // full power) and offering presets the constructor ignores would be a menu that lies.
+    // initStates OVERRIDES the profile's list: this engine carries its OWN preset registry
+    // (pwr2_engine ICS — hot full power, 50 %, hot standby since #507 wave 7; cold shutdown
+    // stays deferred until an RCP restart exists) and offering the pwr profile's presets
+    // the constructor refuses would be a menu that lies.
     // freePlayOnly: the campaign/scenario/walkthrough content is authored and validated
     // against the current engine; running it silently on different physics would grade the
     // player against the wrong plant. Lifts when the scenario-compat pass runs.
     pwr2:      { plant: 'pwr', engine: 'pwr2', dv: null, init: 'hot_full_power',
-                 initStates: [['hot_full_power', 'Hot Full Power (Mode 1)']],
+                 initStates: [['hot_full_power', 'Hot Full Power (Mode 1)'],
+                              ['50_percent', '50 % Power (Mode 1)'],
+                              ['hot_zero_power', 'Hot Standby (Mode 3)']],
                  freePlayOnly: true,
                  label: 'PWR — New Physics', sub: 'The same plant on the rebuilt engine',
                  desc: 'The SLS-100 control room over the new from-scratch physics engine: ' +
@@ -8016,9 +8020,10 @@
     var startKey = em ? em[1] : 'pwr', startEng = ENGINES[startKey];
     ui.engineKey = startKey; ui.plant = startEng.plant; ui.initState = startEng.init;
     // optional ?init=<state> override (dev convenience) — one of the ENGINE's presets. The
-    // engine's own initStates override (pwr2 offers exactly one) wins over the plant
-    // profile's list, matching the Free Play picker — validating against prof() alone let
-    // ?engine=pwr2&init=cold_shutdown pass and then be silently ignored (#502).
+    // engine's own initStates override (pwr2: its ICS registry, three presets since #507
+    // wave 7) wins over the plant profile's list, matching the Free Play picker —
+    // validating against prof() alone let ?engine=pwr2&init=cold_shutdown pass and then
+    // be silently ignored (#502).
     var initm = /[?&]init=([a-z0-9_]+)/.exec(location.search || '');
     var initList = startEng.initStates || prof().initStates || [];
     if (initm && initList.some(function (s) { return s[0] === initm[1]; })) ui.initState = initm[1];
