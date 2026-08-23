@@ -104,6 +104,27 @@ tolerance-band-is-a-claim trap, again. Two group-K anchors also went stale under
 wave-10 cold branches (tavg0, dcDrivers) — the third time this batch a grown shared line
 broke sibling anchors; grep the gates for an edited line's text BEFORE running.
 
+## Session log — 2026-08-23-develop-a (the #507 waves 1–10 Opus swarm review — #510)
+
+**Owner-ordered independent review** of the whole parity umbrella: 9 Opus finder dimensions,
+an adversarial Opus verifier per high/medium claim (instructed to REFUTE by measurement), a
+synthesis pass — 34 agents, ~4.7M tokens. **Full report:
+`Diagnostic/PWR2_REVIEW_507_WAVES_1_10.md`; tracker #510** (7 high + 15 medium CONFIRMED,
+17 low/uncertain, 1 filed high REFUTED). Headlines: a dry SG integrates energy below its
+mass floor (1.88 GW/step; two menu-reachable wedges, one invisible at 243 % power with a
+46 °F cold leg) · the shipped Mode 4 preset goes water-solid in 75 min (seal injection has
+no return path and letdown dies below its 300 psia backpressure) · RHR's UA is derived
+lazily from the BOOT state (96 vs 209 kW/K — the 100 °F/hr limit sits inside the spread) ·
+four un-carried electrical wires (aux spray, RHR pumps, the shed latch's OR-edge, the
+blackout clear's unconditional offsite restore) · the RCP motor stalls at 93 % in cold
+water, flipping the wave-10 heatup compliance number (87.9 → 111.3 °F/hr) · SI adds no
+boron (~6,000 pcm undelivered, a PWR1 parity regression) · wave 1's headline shell fix
+proven blind by injection (defect reverted, 69/0 baseline). The one refuted high is the
+instructive mirror: the "letdown drains forever" claim was the sourced 17 % isolation
+WORKING — the auditor mistook a protection endpoint for a runaway. Verdict: sourced
+mechanisms hold; the defects live at edges no source covered, and the gates' windows
+stopped before the interesting part.
+
 ## Session log — 2026-08-22-develop-c (#507 waves 4–6 — the grid, the SGTR, and the menu at 21)
 
 **Owner rulings this batch (2026-08-22, selections from options I wrote)**: scope =
