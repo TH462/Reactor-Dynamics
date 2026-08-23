@@ -260,11 +260,18 @@
     close_porv:       function (e, c) { EN.command(e, 'porv_stick', false); },
     /* grid disconnect is a load rejection: the actuator is the load target */
     disconnect_grid:  function (e, c) { EN.command(e, 'load_mwe', 0); },
-    /* set_rcp false = trip the pump (the actuator PWR2 has); true is REFUSED below */
+    /* set_rcp: OFF secures the pump (the trip actuator + the SECURED display latch), ON is
+     * a real motor start since #507 wave 9 (offsite-bus gated in the engine — the refusal
+     * surfaces through #505's path when the grid is down) */
     set_rcp:          function (e, c) {
-      if (c.running === false) EN.command(e, 'pump_trip', true);
-      else throw new Error('pwr2_shell: set_rcp restart REFUSED — no RCP restart is modeled ' +
-        '(the pump trips one way; see pwr2_sources)');
+      if (c.running === false) {
+        EN.command(e, 'pump_trip', true);
+        e._rcpSecured = true;               /* the OPERATOR stopped it — the handswitch
+                                             * reads SECURED, not LOST (#200's split) */
+      } else {
+        EN.command(e, 'rcp_start', true);
+        e._rcpSecured = false;
+      }
     },
     /* the old effect name for a station blackout — REHOMED onto the real electrical state
      * (#507 wave 4); false is the old engine's recovery case */
@@ -403,8 +410,8 @@
       else if (c.failure_id === 'stuck_open_spray') EN.command(e, 'spray_stick', false);
       else if (c.failure_id === 'continuous_rod_withdrawal') EN.command(e, 'rod_runaway', 0);
       /* the grid comes back (#507 wave 4). The buses re-energize; the RCPs stay tripped
-       * (no restart is modeled, the declared set_rcp shape) and every selector sits where
-       * the operator left it — recovery gives the plant back, it does not re-line it up. */
+       * until the OPERATOR restarts them (rcp_start — real since wave 9) and every selector
+       * sits where it was left — recovery gives the plant back, it does not re-line it up. */
       else if (c.failure_id === 'loss_of_offsite_power') EN.command(e, 'offsite_power', true);
       else if (c.failure_id === 'station_blackout') EN.command(e, 'station_blackout', false);
       /* clearing an unknown failure is a no-op: there is nothing to clear */
@@ -488,9 +495,9 @@
     /* the PUMP, not the flow: ts.pump_running is mdot > 1 kg/s, which stays true on natural
      * circulation (~5 % flow ≈ 200 kg/s) — the handswitch reads the breaker */
     ex.rcp_running = !e.sys.pumpTripped;
-    /* set_rcp false REHOMES to the pump-trip failure (no separate secured lineup is
-     * modeled), so a stopped pump reads as LOST, never SECURED — declared, not hidden */
-    ex.rcp_secured = false;
+    /* SECURED vs LOST is a real distinction since #507 wave 9: the operator's set_rcp OFF
+     * latches secured; a trip that arrived any other way (casualty, LOOP) reads LOST */
+    ex.rcp_secured = e._rcpSecured === true && e.sys.pumpTripped === true;
     ex.steam_demand_low = ts.turbine_tripped === true || (ts.steam_flow_normalized || 0) < 0.05;
     /* LIVE since #507 wave 8 — the RIL consumers: rod_at_limit feeds ROD LIMIT LO-LO,
      * rod_limit_margin feeds ROD LIMIT LO (in THIS bank's steps; the alarm row's setpoint
@@ -868,6 +875,7 @@
          * the pre-#506 state exactly */
         sdTarget: e.sdTarget, sdSteps: e.sdSteps, rodSpeedSel: e.rodSpeedSel,
         _advMode: e._advMode, _chargingPumpOn: e._chargingPumpOn, _letdownAB: e._letdownAB,
+        _rcpSecured: e._rcpSecured,   /* the handswitch's SECURED/LOST split (#507 wave 9) */
         _scramT: e._scramT, _manualTrip: e._manualTrip, _lastTrip: e._lastTrip,
         _rodStopSig: e._rodStopSig, _runbackSig: e._runbackSig, _rbT: e._rbT,
         _rbActive: e._rbActive, _pzRelief: e._pzRelief, _pzReliefH: e._pzReliefH,

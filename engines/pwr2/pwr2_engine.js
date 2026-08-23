@@ -133,9 +133,10 @@
    *     heat ~0: a CLEAN core, declared — this is the before-first-startup state, not
    *     post-trip (the post-trip plant is reached by tripping, #468's produced-vs-preset
    *     lesson).
-   * cold_shutdown is NOT here: with no RCP restart modeled (the declared one-way trip), a
-   * Mode 5 plant could never perform the heatup that is its whole point — deferred until
-   * an RCP start exists, recorded in #507. */
+   * cold_shutdown is NOT here YET: the RCP restart it was blocked on exists since wave 9
+   * (rcp_start below) — what remains is the cold state's OWN settled construction (a
+   * depressurized RHR-held plant, the #468 bank/trim order on a real shutdown bank), the
+   * next wave's work, recorded in #507. */
   var ICS = {
     hot_full_power: { pf: 1.0, load_mwe: 100 },
     '50_percent':   { pf: 0.5, load_mwe: 50 },
@@ -342,11 +343,26 @@
         break;
       case 'cw_pumps':       eng.cwPumps = !!value; break;
       case 'pump_trip':      eng.sys.pumpTripped = true; break;
+      /* THE RCP START (#507 wave 9) — the one-way trip is RETIRED: the rotor the coastdown
+       * decelerates can be motored back up (pwr2_sources' start branch). Gated on the
+       * NONVITAL bus [sourced, WTSM 3.2 ML11223A213: the RCP motors "cannot be supplied
+       * from the emergency diesel generators"] and REFUSED out loud without it. Nothing
+       * auto-restarts — a cleared LOOP hands back a stopped pump and THIS is the operator's
+       * restart. Real start permissives (seal injection, oil lift, anti-reverse) are
+       * declared unmodeled in pwr2_sources. */
+      case 'rcp_start':
+        if (!(eng.elec.offsite && !eng.elec.blackout)) {
+          throw new Error('pwr2_engine: RCP start REFUSED — no offsite power on the ' +
+            'nonvital bus (WTSM 3.2: the RCP motors cannot be supplied from the ' +
+            'emergency diesel generators)');
+        }
+        eng.sys.pumpTripped = false;
+        break;
       /* THE GRID (#507 wave 4). Losing offsite power kills the NONVITAL buses; the RCPs are
        * on them [sourced, WTSM 3.2 ML11223A213: the RCP motors "cannot be supplied from the
-       * emergency diesel generators"] so the trip is immediate and — like pump_trip, the
-       * declared set_rcp shape — one-way: restoring the grid re-energizes the buses, never
-       * restarts a pump, and never touches a selector (the #200 demand-heals-itself guard). */
+       * emergency diesel generators"] so the trip is immediate. Restoring the grid
+       * re-energizes the buses and NEVER restarts a pump or touches a selector (the #200
+       * demand-heals-itself guard) — since wave 9 the operator restarts with rcp_start. */
       case 'offsite_power':
         eng.elec.offsite = !!value;
         if (!value) eng.sys.pumpTripped = true;

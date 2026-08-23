@@ -73,6 +73,11 @@
     mdot_rated: 1630,                             // kg/s, [derived] from the energy balance
     dP_rated: 0.58                                // MPa, [derived] loop dP at rated (D3 §1a-ii: 275 ft)
   };
+  /* [open] the induction motor's accelerating torque as a multiple of the rated hydraulic
+   * torque (#507 wave 9) — the 1.5-2.5x class; no motor curve is in the corpus. With the
+   * sourced inertia this gives a measured spin-up in the real RCP start class (seconds,
+   * reported by the gate rather than asserted here). */
+  var MOTOR_START_TORQUE = 1.5;
 
   /* Loop inertia SUM(L/A), from Layer 1's sourced flow lengths only. */
   function loopInertia() {
@@ -216,6 +221,21 @@
     if (sys.pumpTripped && sys.omega > 0) {
       var hyd = pumpHead(sys) * 1e6 * (sys.mdot_loop / 700) / Math.max(sys.omega, 1e-6);  // N*m
       sys.omega = Math.max(0, sys.omega - dt * hyd / PUMP.inertia);
+    }
+    /* ---- rotor: START (#507 wave 9) — the motor accelerates the SAME rotor the coastdown
+     * decelerates, against the same hydraulic load, with the same sourced inertia. The
+     * accelerating torque is MOTOR_START_TORQUE x the rated hydraulic torque — [open] 1.5,
+     * the induction-motor accelerating-torque class; no sourced motor curve exists in the
+     * corpus. The motor HOLDS rated speed thereafter (slip regulation unmodeled, declared);
+     * WHO may start it, and on which bus, is the caller's law (HR5) — this layer only spins
+     * what it is told is untripped. Start permissives a real plant carries (seal injection,
+     * oil lift, anti-reverse-rotation) are declared unmodeled. */
+    else if (!sys.pumpTripped && sys.omega < PUMP.w_rated) {
+      var Trated = PUMP.dP_rated * 1e6 * (PUMP.mdot_rated / 700) / PUMP.w_rated;      // N*m
+      var ThydS = sys.omega > 1e-6
+                  ? pumpHead(sys) * 1e6 * (sys.mdot_loop / 700) / sys.omega : 0;
+      sys.omega = Math.min(PUMP.w_rated,
+                           sys.omega + dt * (MOTOR_START_TORQUE * Trated - ThydS) / PUMP.inertia);
     }
 
     /* ---- loop momentum ---- */

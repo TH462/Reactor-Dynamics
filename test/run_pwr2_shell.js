@@ -590,6 +590,31 @@ function runSuite(SH, rec, quiet) {
        rowLO && rowLO.setpoint === 10, 'setpoint ' + (rowLO && rowLO.setpoint));
   })();
 
+  /* ---- 1j. THE RCP HANDSWITCH (#507 wave 9) -------------------------------------------------- */
+  head('THE RCP HANDSWITCH  [OFF secures, ON restarts, a casualty trip reads LOST not SECURED]');
+  (function () {
+    var eC = new SH.PWR2Engine({});
+    for (var i = 0; i < 100; i++) eC.step(0.02);
+    eC.applyCommand({ action: 'set_rcp', running: false });
+    for (i = 0; i < 10; i++) eC.step(0.02);
+    ck('OFF trips the pump AND latches the SECURED word — the operator stopped it',
+       eC.eng.sys.pumpTripped === true && eC.instruments.reading.rcp_secured === true, '');
+    eC.applyCommand({ action: 'set_rcp', running: true });
+    for (i = 0; i < 750; i++) eC.step(0.02);
+    ck('ON is a REAL restart: the motor brings flow back (measured >90 % in ~10 s from ' +
+       'rest) and the secured word clears',
+       eC.eng.sys.pumpTripped === false && eC.getTrueState().pump_flow_pct > 80 &&
+       eC.instruments.reading.rcp_secured === false,
+       'flow ' + eC.getTrueState().pump_flow_pct.toFixed(0) + ' %');
+    var eD = new SH.PWR2Engine({});
+    for (i = 0; i < 100; i++) eD.step(0.02);
+    eD.applyCommand({ action: 'inject_failure', failure_id: 'rcp_trip' });
+    for (i = 0; i < 10; i++) eD.step(0.02);
+    ck('a CASUALTY trip reads LOST, never SECURED — the handswitch tells the truth about ' +
+       'who stopped the pump',
+       eD.eng.sys.pumpTripped === true && eD.instruments.reading.rcp_secured === false, '');
+  })();
+
   /* ---- 2. THE COMMAND PARTITION -------------------------------------------------------------- */
   head('THE PARTITION  [every old-engine action in exactly one registry, refusals reasoned]');
   var oldSrc = fs.readFileSync(path.join(__dirname, '..', 'engines', 'pwr', 'pwr_engine.js'), 'utf8');
@@ -802,7 +827,10 @@ var MUTATIONS = [
    '    ex.rod_limit_margin = 200;'],
   ['the ROD LIMIT LO override is dropped (the row fires at 40 of this bank\'s steps — 4x early)',
    "            : a.id === 'rod_limit_approach'\n            ? Object.assign({}, a, { setpoint: 10 })\n            : a;",
-   '            : a;']
+   '            : a;'],
+  ['the SECURED latch is dropped (an operator-stopped pump reads LOST) -- #507 wave 9',
+   "        e._rcpSecured = true;               /* the OPERATOR stopped it — the handswitch\n                                             * reads SECURED, not LOST (#200's split) */",
+   '']
 ];
 
 console.log('\ninjection self-test (' + MUTATIONS.length + ' mutations):');

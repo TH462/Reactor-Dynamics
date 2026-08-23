@@ -40,7 +40,8 @@ function loadAll(engSource, coreSource) {
  * P-9/lying-channel family (eng4-6), 'C' the runback (eng7), 'D' the break + drain (eng2-3),
  * 'E' the AFW starts, 'F' the feed train, 'G' the electrical pair (#507 wave 4), 'H' the
  * SGTR (#507 wave 5), 'I' the failure levers (#507 wave 6), 'K' the initial conditions
- * (#507 §F, wave 7), 'L' the rod insertion limit (#507 §B, wave 8).
+ * (#507 §F, wave 7), 'L' the rod insertion limit (#507 §B, wave 8), 'M' the RCP restart
+ * (#507 wave 9).
  * The CLEAN pass runs everything. Measured before this existed: 17 mutations x the whole
  * suite = 1074 s of contention in the aggregate gate — the replay cost scales with every
  * fixture ever added, and a mutation only needs the checks built to see it. */
@@ -1053,6 +1054,36 @@ function runSuite(RD, rec, quiet, only) {
       'steps ' + engL.rodSteps.toFixed(0) + ' <= RIL ' + engL._rilSteps + ' at ' +
       tsL.power_pct.toFixed(1) + ' % (t=+' + tL2 + ' s)');
   }
+
+  if (grp('M')) {
+  /* ---- 11. THE RCP RESTART (#507 wave 9) — the one-way trip retired. Measured: from rest,
+   * rated speed at +13 s, flow >90 % at +10 s — the real RCP start class. ---- */
+  head('THE RCP RESTART  [the motor spins the coasted rotor back; the grid gates the start]');
+  var engM = EN.createEngine({});
+  run(engM, quiet ? 20 : 30);
+  EN.command(engM, 'pump_trip', true);
+  run(engM, 60);
+  var flowLow = engM.sys.mdot_loop;
+  EN.command(engM, 'rcp_start', true);
+  var tM = 0;
+  while (tM < 60 && engM.sys.mdot_loop < 0.9 * 1630) { run(engM, 1); tM += 1; }
+  ckT('a coasted pump RESTARTS on the operator command: flow back above 90 % of rated ' +
+      'inside the start class',
+      flowLow < 0.5 * 1630 && engM.sys.mdot_loop > 0.9 * 1630 && tM <= 30,
+      'coasted to ' + flowLow.toFixed(0) + ' kg/s, recovered at +' + tM + ' s');
+  var engN = EN.createEngine({});
+  run(engN, 2);
+  EN.command(engN, 'station_blackout', true);
+  EN.step(engN, DT);
+  var thrM = false;
+  try { EN.command(engN, 'rcp_start', true); } catch (eM) { thrM = /REFUSED/.test(eM.message); }
+  EN.command(engN, 'station_blackout', false);
+  EN.command(engN, 'rcp_start', true);
+  ckT('the start is REFUSED out loud on a dead nonvital bus (WTSM 3.2 — no diesel feed) ' +
+      'and LANDS once the grid is back: recovery hands back a stopped pump, the operator ' +
+      'starts it',
+      thrM === true && engN.sys.pumpTripped === false, '');
+  }
 }
 
 console.log('\nPWR2 -- THE ENGINE FACADE: one door, the gates\' wiring written once');
@@ -1238,7 +1269,11 @@ var MUTATIONS = [
    '    eng._rodAtLimit = false;', { grp: 'L' }],
   ['the margin is pinned wide (the LO approach can never annunciate)',
    "    eng._rodLimitMargin = ril === null ? 200 : Math.max(0, Math.round(eng.rodSteps - ril));",
-   '    eng._rodLimitMargin = 200;', { grp: 'L' }]
+   '    eng._rodLimitMargin = 200;', { grp: 'L' }],
+  /* THE RCP RESTART (#507 wave 9) */
+  ['the start\'s electrical gate is severed (a blacked-out bus starts a 6,000 hp motor)',
+   '        if (!(eng.elec.offsite && !eng.elec.blackout)) {',
+   '        if (false) {', { grp: 'M' }]
 ];
 var CORESRC = fs.readFileSync(path.join(SRC, 'pwr2_core.js'), 'utf8').replace(/\r\n/g, '\n');
 

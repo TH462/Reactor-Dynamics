@@ -221,6 +221,26 @@ function runSuite(S, rec, quiet) {
       'tripped ' + hTrip.toFixed(4) + ' MPa vs running ' + hRun.toFixed(4) +
       ' -- so the flag reaches the hydraulics and is not cosmetic');
 
+  /* ---- THE START (#507 wave 9): the motor spins the same rotor back up ------------------- */
+  if (!quiet) console.log('\nTHE START  [same rotor, same inertia, the motor against the hydraulic load]');
+  var st = S.createPlant({ h: 1250, P: 15.41, mdot: 100, omega: 0, pumpTripped: false });
+  var tR = null, over = false, r9 = null;
+  for (var q9 = 0; q9 < 60 / 0.02; q9++) {
+    r9 = S.stepPlant(st, 0.02, { corePower: 0, sgDuty: 0 });
+    if (st.omega > S.PUMP.w_rated + 1e-9) over = true;
+    if (tR === null && st.omega >= S.PUMP.w_rated * 0.999) tR = (q9 + 1) * 0.02;
+  }
+  ckT('an untripped rotor at rest MOTORS UP to rated in the real RCP start class (measured ' +
+      '~13 s), and the motor HOLDS rated -- never past it',
+      tR !== null && tR > 4 && tR < 30 && over === false,
+      'rated at ' + (tR === null ? '>60' : tR.toFixed(1)) + ' s');
+  ckT('...and the flow follows the head up toward rated',
+      st.mdot_loop > 0.9 * S.PUMP.mdot_rated, st.mdot_loop.toFixed(0) + ' kg/s');
+  var st2 = S.createPlant({ h: 1250, P: 15.41, mdot: 30, omega: 0, pumpTripped: true });
+  S.stepPlant(st2, 0.02, { corePower: 0, sgDuty: 0 });
+  ckT('a TRIPPED rotor at rest stays at rest -- the trip flag gates the motor, not a wish',
+      st2.omega === 0, '');
+
   /* (b) CALLER OPTIONS MUST REACH LAYER 3. `LOOP.createLoop(opts)` degrading to `createLoop({})`
    * is a one-word edit that silently discards h, P, mdot and includeOffLoop -- every probe and
    * the A/B harness would quietly get defaults while appearing to specify a condition. It is
@@ -330,6 +350,13 @@ runSuite(S, rec, false);
 var pass = rec.filter(function (r) { return r.ok; }).length, fail = rec.length - pass;
 
 var MUTATIONS = [
+  /* THE START (#507 wave 9) */
+  ['the start branch is deleted (an untripped rotor at rest never spins)',
+   "    else if (!sys.pumpTripped && sys.omega < PUMP.w_rated) {",
+   '    else if (false) {'],
+  ['the rated-speed cap is deleted (the motor drives the rotor past its own rating)',
+   '      sys.omega = Math.min(PUMP.w_rated,\n                           sys.omega + dt * (MOTOR_START_TORQUE * Trated - ThydS) / PUMP.inertia);',
+   '      sys.omega = sys.omega + dt * (MOTOR_START_TORQUE * Trated - ThydS) / PUMP.inertia;'],
   /* THE PUMP DENSITY COUPLING (2026-08-17). The first is the defect exactly as it shipped. */
   ['the pump develops rated dP whatever it is pumping (rated mass flow through STEAM)',
    'return PUMP.dP_rated * r * r * densityRatio(sys);', 'return PUMP.dP_rated * r * r;'],
