@@ -30,6 +30,21 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
 
 ## [Unreleased]
 
+### Added (#507 §F wave 7 — initial conditions, 2026-08-22)
+- **PWR2 gets its initial conditions**: the card now offers **50 % Power (Mode 1)** and
+  **Hot Standby (Mode 3)** beside Hot Full Power — each a settled construction (opens on its
+  own point, no ring; 50 % rides untouched at min 48.79 %). Hot Standby anchors to the
+  plant's own no-load pair (547.9 °F / the sourced 1005 psig, dumps in steam-pressure mode —
+  the 557 °F program anchor saturates above the plant's own MSSV pop, measured and filed as
+  #508). Cold Shutdown stays deferred until an RCP restart exists — an unknown preset throws
+  rather than silently loading full power (#502's rule). `PWR2_VALIDATION.md` §71.
+- **A real startup**: from Hot Standby the control bank pulls to criticality (~84 steps),
+  the P-10-gated low-flux block is the operator's own action (the board's block button now
+  reaches PWR2's engine RPS through a kernel forward), and the ascension passes the 35 %
+  setpoint blocked — while a continuous fast pull is the startup accident, terminated by
+  `hi_flux_lo` unscripted. Unblocking at 100 % power scrams on the spot, as it should. The
+  board's power tile arms at the engine's own 35 % setpoint during the ascent.
+
 ### Added (#507 parity waves 4–6, 2026-08-22)
 - **PWR2 has a grid**: a two-bus electrical model (offsite/nonvital + diesel-backed vital),
   every motor load asking its own bus by name. `loss_of_offsite_power` is the full sourced

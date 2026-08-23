@@ -29,6 +29,38 @@ and the user-visible summary in `CHANGELOG.md`. This file points at those and tr
 
 ---
 
+## Session log — 2026-08-22-develop-d (#507 §F wave 7 — the initial conditions, and a real startup)
+
+**Owner: "Work next"** — the recommended ICs. Full measured record: `Blueprint/PWR2_VALIDATION.md`
+**§71**. Built: `createEngine(initial_state)` with a real registry — `50_percent` and
+`hot_zero_power` beside `hot_full_power` (whose construction path stays byte-identical);
+`cold_shutdown` deliberately absent (no RCP restart exists — the heatup it exists for is
+unreachable; an unknown preset THROWS, the #502 rule). Each IC is the #502 settled
+construction generalized: the donor-cell map about the IC's own Tavg/split, kinetics+xenon at
+that power's own equilibrium, boron trimmed at the IC's own temperature and rod lineup, the
+secondary landed where the duty puts it.
+
+- **The finding (filed #508)**: the no-load Tavg program anchor (557 °F, the WTSM 4-loop
+  figure) saturates at 1106 psia — ABOVE this plant's own 1085 psig MSSV pop. Measured: the
+  post-trip plant parks at 553.3 °F / 1064 psia with a 1090 psia peak — ~10 psi under its
+  safeties. The HZP IC anchors to the plant's own steam side instead (Tsat of the sourced
+  1005 psig = 547.9 °F — Ginna's own pair), dumps booted in PRESSURE mode at 1005 psig.
+- **The startup, measured end to end**: critical ~84 steps; the low-flux block taken at
+  18.2 % (above P-10); 42.6 % through the 35 % setpoint untripped; a continuous fast pull is
+  the startup ACCIDENT (1 % → 100.8 % inside the trip's own 0.5 s delay, `hi_flux_lo`
+  answers — UFSAR 15.4.1's credited trip, unscripted); P-10 auto-revokes a source-level
+  block; unblocking at 100 % power scrams on the spot.
+- **New plumbing**: the kernel FORWARDS `set_trip_block` to the engine when its own trips
+  list is empty (pwr1/rbmk/bwr byte-identical), `getRpsState` MERGES the engine-owned block
+  surface with the trip's OWN 35 % setpoint, and the board's power tile prefers a
+  status-carried setpoint over the static pwr1 row (the #506.7 shape completed). The board
+  gate's tile-presence mutation RETIRED as superseded (the merge made it invisible on a live
+  ride) and replaced by the merge-severed one; its unblock check got a FRESH world after the
+  first version passed vacuously on a sweep-scrammed plant.
+- Gates: engine 68→77 (46 mut) · shell 56→61 (24) · board 11→13 (2) · verify_board_check
+  224→225 · m4/autoctl/e2e_controls/ab/forwarding unmoved (the kernel edits are
+  empty-trips-gated).
+
 ## Session log — 2026-08-22-develop-c (#507 waves 4–6 — the grid, the SGTR, and the menu at 21)
 
 **Owner rulings this batch (2026-08-22, selections from options I wrote)**: scope =

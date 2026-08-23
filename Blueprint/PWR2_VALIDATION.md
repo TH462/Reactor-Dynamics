@@ -3780,3 +3780,65 @@ engine 64→68 (41) · loadfollow 36 (three SG-ledger anchors re-pointed). Defer
 reasons in #507: `stuck_rod_on_scram` (a worth-model change deserving its own measured
 pass) and `steam_line_break(_upstream)` (needs a steam-outflow term AND an MSIV model to
 teach its own isolation procedure).
+
+## 71. PARITY WAVE 7 — THE INITIAL CONDITIONS, AND A REAL STARTUP (#507 §F) — 2026-08-22
+
+### The registry
+`createEngine(opts.initial_state)` consumes a real IC registry (`ICS`): **hot_full_power**
+(unchanged — the full-power construction path is byte-identical, pinned by the group-A
+equivalence fixtures), **50_percent** and **hot_zero_power**. `cold_shutdown` is deliberately
+NOT in it: with no RCP restart modeled (the declared one-way trip), a Mode 5 plant could
+never perform the heatup that is its whole point — deferred until an RCP start exists, and
+an unknown preset THROWS (the #502 rule: an accepted-then-ignored preset is a menu that
+lies). The control-room card offers the three.
+
+### The construction, generalized from #502
+Each IC is a SETTLED construction: the donor-cell enthalpy map about the IC's own operating
+point (Tavg from the Tref program at power; the loop split scaling with power fraction);
+kinetics, precursors, decay heat and xenon at that power's own equilibrium (the
+`createKinetics` convention — the old engine's SS-6 lesson is structural here); boron
+trimmed at the IC's own moderator temperature and rod lineup; the secondary landed where the
+primary's duty puts it (Tsec = Tavg − pf·ΔT_ps, P = Psat); feed and turbine at the IC's own
+dispatch with `rated_steam` still frozen at the RATED scale (every normalization's
+denominator).
+
+### The no-load anchor finding (measured)
+The plant's `tavg_noload_c` program anchor (291.67 °C = 557 °F, the WTSM 4-loop figure)
+**saturates at 7.625 MPa = 1106 psia — 6 psi ABOVE this plant's own sourced 1085 psig MSSV
+pop**. A hot-standby plant at the program's no-load temperature would sit on its code
+safeties. The consistent pair is Ginna's own: **547.9 °F = Tsat of the sourced 1005 psig
+no-load pressure** (`SG.P_noload`, already in config). So the HZP IC anchors to the plant's
+STEAM side, with the dumps booted in **steam-pressure mode at 1005 psig** — the prototypical
+no-load lineup, and the thing that physically holds the plant there (in tavg mode a
+pump-heated no-load plant would ride the MSSVs: the dumps' own threshold, 291.67, is above
+the safeties' 291.2 saturation point). Post-trip today the plant escapes the collision
+because the tavg controller's deadband parks it at 289.6 °C / 1064 psia (measured, 1800 s
+turbine-trip ride: SG peak 1090 psia at t = 62 s, MSSV flow 0 kg) — a ~10 psi peak margin
+worth an issue: **#508**, filed with #478's reseat finding in mind.
+
+### Measured (dt 0.02 s)
+- **50 %** opens at 50.0 % / 298.08 °C / 2234 psia / SG 958 psia / level 43.2 % / 50.0 MWe
+  and rides 120 s untouched to min 48.79 % with Tavg −0.9 °C — the same settled class as
+  the hot-full-power IC's 98.2 % minimum.
+- **Hot Standby** opens at 286.11 °C / SG 1020 psia / level 25.0 % / boron 719 ppm
+  (critical-with-rods-in + the adopted 1000 pcm = +100 ppm margin) and holds 120 s at
+  +0.05 °C (pump heat, the pressure-mode dumps carrying it), MSSVs never lift.
+- **The startup accident**: a continuous fast pull is uncontrolled withdrawal from
+  subcritical — power 1 % → 100.8 % inside the low-flux trip's own 0.5 s analysis delay,
+  terminated cause `hi_flux_lo` (UFSAR 15.4.1's credited trip, unscripted).
+- **The controlled startup, end to end**: critical at ~84 steps (1.35 % after the pull),
+  the low-flux block taken at 18.2 % (above P-10), stepped to 96 steps → **42.6 % through
+  the 35 % setpoint, untripped**, `low_flux_blocked` effective. Feedback stabilizes the
+  ascent beautifully: 86/88/90 steps settle at 21.8/27.1/30.3 %.
+- **P-10 owns the request**: a block taken at source level is auto-revoked on the next step
+  (the sourced asymmetric gate).
+
+### The block button's whole path (new plumbing)
+PWR2's RPS lives in the engine, so the kernel's `set_trip_block` FORWARDS to the engine's
+door when its own trips list is empty (the `inject_failure` precedent; every config that
+carries kernel trips is byte-identical), the shell maps it onto the one blockable function
+(the 35 % low-flux setting; anything else is a reasoned refusal), and `getRpsState` MERGES
+the engine-owned block surface — with the trip's OWN setpoint attached, so the board's
+power tile arms at the engine's 35 % rather than the static pwr1 table's 25 % (the #506.7
+shape completed rather than reversed; the tile's armed-band override ignores every status
+entry without a setpoint, keeping old recordings bit-identical).
