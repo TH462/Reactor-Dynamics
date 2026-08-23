@@ -61,6 +61,16 @@ secondary landed where the duty puts it.
   224→225 · m4/autoctl/e2e_controls/ab/forwarding unmoved (the kernel edits are
   empty-trips-gated).
 
+**Same session, wave 8 (2026-08-23) — the rod insertion limit** (`PWR2_VALIDATION.md`
+**§72**): the adopted pwr1 curve (null ≤5 %, 70 % floor at rated, control bank only),
+display/annunciator only on this plant. The currency finding: the shared ROD LIMIT LO
+row's 40 is the sourced RIL+10 in pwr1's FINE steps (4/step) — PWR2 overrides to 10 of its
+own. Measured: the curve RECEDES with power, so a plain insertion never closes the margin
+(insert to 145 → power 85.8, limit 121, margin OPENS to 24); the honest approach is
+rods-in + dilution (−0.10 ppm/s closes margin <10 at +35 s, parks at margin 5 / 100.3 %
+untripped; +5 steps at power reaches the limit). Gates: engine 77→82 (50 mut) · shell
+61→64 (27) — tallies from the record run.
+
 ## Session log — 2026-08-22-develop-c (#507 waves 4–6 — the grid, the SGTR, and the menu at 21)
 
 **Owner rulings this batch (2026-08-22, selections from options I wrote)**: scope =

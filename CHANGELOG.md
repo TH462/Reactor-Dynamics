@@ -30,6 +30,15 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
 
 ## [Unreleased]
 
+### Added (#507 §B wave 8 — the rod insertion limit, 2026-08-23)
+- **PWR2 carries the rod insertion limit**: power-dependent (no limit at or below 5 % —
+  a startup's deep bank stands no alarm; 70 % withdrawn floor at rated), live on the rod
+  group readout and the ROD LIMIT LO / LO-LO annunciators. The LO row alarms at the sourced
+  RIL + 10 steps in this bank's own currency (the shared row's 40 is the same number in
+  fine steps). Measured: rods-in plus a dilution restoring power closes the margin below
+  10 in 35 s — the operational story the limit exists for. Display and annunciator only:
+  no automatic rod channel exists on this plant to stop. `PWR2_VALIDATION.md` §72.
+
 ### Added (#507 §F wave 7 — initial conditions, 2026-08-22)
 - **PWR2 gets its initial conditions**: the card now offers **50 % Power (Mode 1)** and
   **Hot Standby (Mode 3)** beside Hot Full Power — each a settled construction (opens on its

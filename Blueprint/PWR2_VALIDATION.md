@@ -3842,3 +3842,38 @@ the engine-owned block surface — with the trip's OWN setpoint attached, so the
 power tile arms at the engine's 35 % rather than the static pwr1 table's 25 % (the #506.7
 shape completed rather than reversed; the tile's armed-band override ignores every status
 entry without a setpoint, keeping old recordings bit-identical).
+
+## 72. PARITY WAVE 8 — THE ROD INSERTION LIMIT (#507 §B) — 2026-08-23
+
+### The model
+The adopted pwr1 curve on this bank ([adopted tune] 5 % / 5 % / 70 %): **no limit at or
+below 5 % power** (a startup drives the bank deep; boron and the shutdown bank hold the
+margin — without the floor, a Hot Standby bank parked at 0 would stand ROD LIMIT LO-LO
+forever), then the %-withdrawn floor ramps linearly to 70 % at rated (140 of 200 steps).
+Control bank ONLY; recomputed every step off the plant's own power. On this plant it is
+**display and annunciator only** — no automatic rod channel exists to stop — so the
+consumers are: `insertion_limit_steps`/`at_insertion_limit` live on the control-state rod
+group, the board layer's `rod_limit_margin` passthrough channel (was pinned at its 912
+default), and the two shared annunciator rows. **The currency finding**: the shared ROD
+LIMIT LO row's setpoint of 40 is the sourced "RIL + 10 steps" (WTSM 8.4 ML11223A256) in
+pwr1's FINE-step currency — 4 fine per step — so PWR2 overrides it to **10** of this
+bank's own steps, the same physical number (the #500 override pattern; without it the row
+would fire 4× early).
+
+### Measured (2026-08-23)
+- Hot full power: RIL 138–140, margin ~60–62, no alarms. Hot Standby: **null** — no limit,
+  no alarm on a fully inserted bank.
+- **The curve recedes with power by design**, so a plain insertion never closes the margin
+  (measured: inserting to 145 sags power to 85.8 % and the limit recedes to 121 — the
+  margin OPENS to 24). The honest approach is the operational story the RIL exists for:
+  **rods in + power restored by dilution** — diluting at −0.10 ppm/s from 145 steps closes
+  the margin below 10 at **+35 s** (power 97.2 %, RIL 136), and the plant parks at margin
+  5 / 100.3 % with no trip; five more steps at power reach the limit itself
+  (ROD LIMIT LO-LO's fact).
+
+### Gates
+engine +5 checks / +4 mutations (curve deleted, applicability floor deleted — a Hot
+Standby bank would stand LO-LO forever, at-limit pinned false, margin pinned wide) ·
+shell +3 checks / +3 mutations (control-state fields reverted to the pinned nulls, the
+margin channel severed, the 10-step override dropped — which would fire at 40 of this
+bank's steps, 4× early).
