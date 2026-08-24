@@ -4261,9 +4261,16 @@ healthy-plant-true); **the ROD LIMIT annunciators no longer fire on every scram*
 now nulls the limit through its decay band — the limit governs withdrawn operation; gated
 mid-decay) and the shared `rod_limit_margin` channel's range is overridden to this bank's
 0..200 currency (the shared top is pwr1's 912 fine steps — the #500 override pattern,
-copied, the shared table untouched). **One LOW stays open on #510**: the group-B mutation
-whose "caught" verdict rides a TypeError (the self-test's catch counts a throw as a red —
-rebuilding it to distinguish thrown-only catches is its own small harness change).
+copied, the shared table untouched). **The last LOW, closed in the close-out commit**: the
+TypeError-verdict mutation was the delta-T wire cut — the mutated plant honestly reports
+both delta-T rows `available: false`, and the crash was in the CHECK'S OWN NOTE STRING
+(`.toFixed(3)` on the unavailable row's undefined margin — the 2026-08-21 note-crash class,
+back for a second visit). The note now tolerates the unavailable row, the check asserts
+`typeof margin === 'number'`, and the mutation is caught by the check going red (verified:
+"1 checks red", no crash). The mutation runner also labels any future crash-only catch AS
+ITSELF ("CRASH only — no check red, coverage untested") so the class cannot wear a physics
+check's face again. **Every finding of the #510 review — 7 HIGH, 15 MEDIUM, the LOW sweep —
+is now adjudicated and closed.**
 
 ### Gates
 shell 71 → **76** (M-8 · M-3 · M-12 through the class · M-5 board rail · M-2 refusal-on-a-lie;

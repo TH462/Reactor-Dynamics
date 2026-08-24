@@ -371,9 +371,17 @@ function runSuite(RD, rec, quiet, only) {
    * at-power margin — measured 0.305 at the settled design point, ~0.29 this early. */
   var fRep = null;
   eng4.rpsReport.functions.forEach(function (f) { if (f.id === 'ot_delta_t') fRep = f; });
+  /* the NOTE tolerates an unavailable row (#510 LOW): with the delta-T wire cut the row
+   * reads available:false and margin undefined — the old note's .toFixed(3) THREW while
+   * formatting, so the wire-cut mutation was "caught" by a TypeError with zero checks
+   * recorded instead of by THIS check going red (the 2026-08-21 note-string crash class,
+   * back for a second visit) */
   ckT('overtemperature delta-T is LIVE through the facade wiring, margin at power ~0.3',
-      fRep !== null && fRep.available === true && fRep.margin > 0.15 && fRep.margin < 0.45,
-      fRep === null ? 'row missing' : ('margin ' + fRep.margin.toFixed(3)));
+      fRep !== null && fRep.available === true &&
+      typeof fRep.margin === 'number' && fRep.margin > 0.15 && fRep.margin < 0.45,
+      fRep === null ? 'row missing'
+        : fRep.margin === undefined ? ('available ' + fRep.available + ', margin undefined')
+        : ('margin ' + fRep.margin.toFixed(3)));
 
   EN.command(eng4, 'turbine_trip', true);
   var ts4 = run(eng4, 5);
@@ -1422,8 +1430,15 @@ MUTATIONS.forEach(function (m) {
    * mutation that crashed mid-group left every already-recorded check green and read as
    * BLIND — measured 2026-08-21, a null-crash in a probe's own note string wore the
    * blind-spot verdict through two full reruns. */
-  var f2 = crashed ? 1 : (rec2.length ? rec2.filter(function (r) { return !r.ok; }).length : 1);
+  var realReds = rec2.filter(function (r) { return !r.ok; }).length;
+  var f2 = crashed ? 1 : (rec2.length ? realReds : 1);
   if (f2 === 0) { console.log('  BLIND TO  ' + m[0] + '   <-- THIS GATE CANNOT SEE IT'); blind++; }
+  /* a crash-only catch is REPORTED AS ITSELF (#510 LOW): by this suite's own principle a
+   * mutation that throws is worthless as coverage — the verdict stays "caught" (the crash
+   * rationale above holds), but the label no longer lets it wear a physics check's face */
+  else if (crashed && realReds === 0) {
+    console.log('  caught    ' + m[0].padEnd(64) + 'CRASH only — no check red (coverage untested)');
+  }
   else console.log('  caught    ' + m[0].padEnd(64) + f2 + ' checks red');
 });
 loadAll();

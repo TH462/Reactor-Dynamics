@@ -52,7 +52,11 @@ LOW sweep. Full record: `PWR2_VALIDATION.md` **§78**. Gates: shell 71 → 76 ·
   insertion limit** (both ROD LIMIT annunciators fired through every trip's decay band —
   engine 90 → 91 with the mid-decay gate) · the `rod_limit_margin` channel range overridden
   to this bank's 0-200 currency (shared top is pwr1's 912 fine steps; copied, shared table
-  untouched). **ONE LOW stays open on #510**: the TypeError-verdict group-B mutation.
+  untouched). The TypeError-verdict mutation closed in the close-out: the delta-T wire cut
+  honestly yields `available: false` rows — the crash was the CHECK's note string calling
+  `.toFixed(3)` on the unavailable row's undefined margin; the note now tolerates it, the
+  check reds on the physics, and the runner labels crash-only catches as themselves.
+  **Every #510 finding is adjudicated and closed.**
 
 ---
 
