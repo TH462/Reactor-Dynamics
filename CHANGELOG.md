@@ -30,6 +30,29 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
 
 ## [Unreleased]
 
+### Fixed (#510 batch 4 — the honesty batch, 2026-08-24)
+- **Casualty controls tell the truth now.** `clear_all_failures` clears every standing row
+  through the same detector the Failures tab draws (it used to leave nine levers set behind a
+  green "all clear"); `sg_overfeed` is a real failed-open-valve seat — the operator's manual
+  lineup survives inject and clear instead of being rewritten and force-flipped to AUTO;
+  `fail_low`/`fail_high` instrument casualties rail the BOARD gauge too (the board used to
+  freeze at its healthy reading while the protection channel railed); `set_boron_adjust`
+  finally has a gate.
+- **The RHR permissive is an instrument function** (HR1): the align door, the 585 psig
+  autoclosure, and the player-facing refusal all read the indicated pressure channel — and the
+  refusal quotes "indicates N psig". `rhr_active` on the contract is the suction VALVE again
+  (the §6.3 definition; the old duty-derived form painted "RHR Active: no" over an open valve
+  on the shipped Mode 4 hold), and RHR duty lands on-loop only (22.5 % used to land on
+  stagnant water with no flow path, 15 % of it inside the pressurizer).
+- **The record un-lied**: the dilution prose un-inverted in six places (rate is proportional
+  to concentration — fast at high boron; the code and its own 4× check were right all along);
+  the recalled "1982 Ginna ~48 kg/s" SGTR anchor marked UNVERIFIED everywhere it is repeated
+  and the understated "~47" measurement corrected to 51.8 kg/s; the cold preset's "1,000 pcm"
+  margin declaration corrected to the delivered ~4,348 pcm at local cold worth; the 547.9 °F
+  no-load transcription slip corrected to the measured 547.0; the At-Power mode threshold
+  moved to the commercial 5 % (2-5 % printed "At Power"). Five LOW harness items stay open on
+  #510. Gates: `run_pwr2_shell` 71 → 76, `run_pwr2_feedwater` 26 → 29, `run_pwr2_rhr` 43 → 44.
+
 ### Fixed (#510 batch 3 — the boot-state artifacts and the SI boron, 2026-08-24)
 - **A cold reactor-coolant-pump start reaches rated speed** (H-7): the motor's torque rises
   toward the induction breakdown class near synchronous speed, so cold dense water no longer
@@ -176,7 +199,8 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
   (leak ratio tracks √dP within 11 %), the SG overfills (the §15.6.3 hazard the old engine
   never landed), and containment never moves — the bypass signature. Area [UNVERIFIED]
   typical-tube double-ended 4.33e-4 m² (owner-ruled declaration; full severity measures
-  52.2 kg/s vs the 1982 Ginna event's ~48). One break at a time — SGTR and LOCA are mutually
+  52.2 kg/s vs the 1982 Ginna event's ~48 — *the Ginna figure is recalled and in no corpus:
+  UNVERIFIED, #510 M-15*). One break at a time — SGTR and LOCA are mutually
   exclusive, declared. `PWR2_VALIDATION.md` §69.
 - **PWR2 casualty menu 14 → 21**: `afw_failure` (TMI-2 tagged-shut valves — pumps running,
   water going nowhere), `failure_to_scram` (the ATWS: trip latched, rods standing, power
@@ -202,7 +226,8 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
 ### Added (#507 parity waves 1–3, 2026-08-22)
 - **PWR2 boron control is real**: the board's boron panel re-enabled itself — the kernel's
   batch-dose channel rides through, driving a blender-shaped rate actuator on the CVCS mass
-  balance (the tank clamp IS the ceiling — no ppm/s constant; dilution stays slow-at-high),
+  balance (the tank clamp IS the ceiling — no ppm/s constant; dilution stays proportional to
+  concentration — *corrected #510 M-9: originally written "slow-at-high", inverted*),
   plus a real lab sample (1800 s, no mixing lag — declared). The shipped `set_boron_adjust`
   mapper read the wrong payload key — every kernel dose was a silent no-shift; fixed.
   `PWR2_VALIDATION.md` §67.

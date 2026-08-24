@@ -280,6 +280,17 @@ function runSuite(R, rec, quiet) {
   /* THE PUMPS ARE MOTOR LOADS (#510 H-5): dead bus, no flow, no duty — WTSM 5.7.5's blackout
    * takes every decay-heat-removal system except the turbine-driven AFW pump. Absent means
    * powered, the house convention, so every fixture above is untouched. */
+  ckT('the duty share lands ON-LOOP only (#510 M-11) — the stagnant vessel heads and the ' +
+      'pressurizer get NONE, and the shares still sum to exactly the duty',
+      (function () {
+        var r = R.createRHR({ valve_open: true });
+        var out = R.stepRHR(r, plantAt(340, P_cd), 1, {});
+        var h = out.heats, sum = 0;
+        if (!h || h.pressurizer !== undefined || h.vessel_heads !== undefined) return false;
+        Object.keys(h).forEach(function (k) { sum += h[k]; });
+        return out.duty_kW > 0 && Math.abs(sum + out.duty_kW) < 1e-6;
+      })(), '22.5 % of shutdown-cooling duty used to land on water with no flow path to ' +
+            'RHR — 15 % of it INSIDE the pressurizer');
   ckT('the exchanger UA is HARDWARE — identical whatever plant it boots against (#510 H-3)',
       (function () {
         var a = R.createRHR({ valve_open: true });

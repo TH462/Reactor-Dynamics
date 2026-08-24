@@ -327,8 +327,12 @@ function runSuite(RD, rec, quiet, only) {
   var tsR = null, tR = 0, alignedR = false;
   while (tR < 200.001) {
     tsR = EN.step(engR, DT); tR += DT;
+    /* RETRY until the valve lands (#510 M-2): the door reads the INDICATED channel now,
+     * which lags ~0.5 s behind a fast blowdown — a one-shot command exactly at the true
+     * 420 psig crossing met an indicated ~425 and was silently refused for ever. An
+     * operator holds the switch; so does the probe. */
     if (!alignedR && (engR.sys.P * 145.038 - 14.7) < 420) {
-      EN.command(engR, 'rhr_align', true); alignedR = true;
+      EN.command(engR, 'rhr_align', true); alignedR = engR.rh.valve_open === true;
     }
     if (engR.sys.beyond_model) break;
   }
@@ -822,8 +826,9 @@ function runSuite(RD, rec, quiet, only) {
   run(engT, 1);
   var leak0 = engT._sgtrKgs;
   ckT('a 40 % double-ended tube rupture leaks primary water at the sourced-shape rate',
-      leak0 > 15 && leak0 < 30, leak0.toFixed(1) + ' kg/s initial (full DER measures ~52 vs ' +
-      'the 1982 Ginna event\'s ~48, with the break model\'s declared ~2x overstatement)');
+      leak0 > 15 && leak0 < 30, leak0.toFixed(1) + ' kg/s initial (full DER measures ~52; ' +
+      'the "1982 Ginna ~48" comparison is RECALLED and in no corpus — UNVERIFIED, #510 M-15 ' +
+      '— the declared ~2x break-model overstatement is the honest error bar)');
   var tsT = run(engT, 300);
   var leak300 = engT._sgtrKgs, dP300 = engT.sys.P - engT.sg.P;
   ckT('the SG OVERFILLS on the leak — the sourced hazard (§15.6.3), mass frac > 1.1 at 300 s',
@@ -1027,6 +1032,25 @@ function runSuite(RD, rec, quiet, only) {
       '(the 5 % floor is what keeps every startup from opening annunciated)',
       engZ._rilSteps === null && engZ._rodAtLimit === false && engZ._rodLimitMargin === 200,
       '');
+  /* #510 LOW: a SCRAM exempts too — during every trip's decay seconds the rods drive to 0
+   * while power is still above the 5 % floor, and both ROD LIMIT annunciators fired on
+   * every scram as if a tripped reactor were violating its insertion limit */
+  ckT('a SCRAM exempts the limit — mid-decay (rods driving in, power still above 5 %) the ' +
+      'limit reads null and no ROD LIMIT alarm stands on a tripped reactor',
+      (function () {
+        var engS = EN.createEngine({});
+        run(engS, 5);
+        EN.command(engS, 'scram', true);
+        var okAll = true, sawBand = false;
+        for (var q = 0; q < Math.round(8 / DT); q++) {
+          var tsS = EN.step(engS, DT);
+          if (tsS.scrammed === true && tsS.power_pct > 5) {
+            sawBand = true;
+            if (engS._rilSteps !== null || engS._rodAtLimit !== false) okAll = false;
+          }
+        }
+        return sawBand && okAll;
+      })(), 'the pre-fix ladder read atLimit TRUE through the decay band of every trip');
   /* the honest approach (measured 2026-08-23): insert to 145 (power sags to 85.8, the
    * limit recedes to 121 — margin OPENS to 24), then dilute: power recovers, the limit
    * climbs back, and the margin closes to <10 at +35 s; a 5-step insert at power reaches
@@ -1197,9 +1221,10 @@ var MUTATIONS = [
   ['the RHR heats merge is dropped (an aligned system removes zero heat — the #458 orphan)',
    "    var heats = rrx.heats;\n    if (rhrR.duty_kW > 0) {\n      heats = Object.assign({}, rrx.heats);\n      Object.keys(rhrR.heats).forEach(function (n) { heats[n] = (heats[n] || 0) + rhrR.heats[n]; });\n    }",
    '    var heats = rrx.heats;', { grp: 'D' }],
+  /* anchor re-pointed #510 M-2: the door reads the INSTRUMENT with the truth fallback */
   ['the align door ignores the 425 psig permissive (a valve that opens at power)',
-   'else if (eng.sys.P * 145.038 - 14.7 < RD.rhr.RHR.permissive_open_psig) eng.rh.valve_open = true;',
-   'else eng.rh.valve_open = true;', { grp: 'D' }],
+   "        else if ((eng.ins.reading.primary_pressure !== undefined\n                  ? eng.ins.reading.primary_pressure : eng.sys.P) * 145.038 - 14.7\n                 < RD.rhr.RHR.permissive_open_psig) eng.rh.valve_open = true;",
+   '        else eng.rh.valve_open = true;', { grp: 'D' }],
   ['the rod slew is deleted (commands teleport the bank)',
    '      eng.rodSteps += move;',
    '      eng.rodSteps = eng.rodTarget;', { grp: 'A' }],

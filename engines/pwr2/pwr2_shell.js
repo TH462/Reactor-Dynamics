@@ -140,14 +140,22 @@
     set_rhr:           function (e, c) {
       if (c.active === false) { EN.command(e, 'rhr_align', false); return; }
       if (e.ec.hhsiRunning || e.ec.lhsiRunning) {
-        throw new Error('RHR ALIGN BLOCKED: RHR pumps in ECCS injection lineup (SI actuated). ' +
-          'Hot-leg suction unavailable until injection is secured.');
+        /* #510 LOW: the old message claimed "(SI actuated)" — the pumps can be running on a
+         * manual start with no ESFAS signal — and named "RHR pumps" for a condition that
+         * also covers the high-head set. Say what is TRUE: injection pumps are running. */
+        throw new Error('RHR ALIGN BLOCKED: injection pumps are running (the low-head pumps ' +
+          'ARE the shutdown-cooling pumps — the #458 lineup rule). Hot-leg suction ' +
+          'unavailable until injection is secured.');
       }
-      var psig = e.sys.P * 145.038 - 14.7;
+      /* INDICATED pressure, quoted to the player as such (#510 M-2 — HR1: the refusal used
+       * to read AND quote true pressure while the P-11 guards forty lines away correctly
+       * read the channel; absent means truth, the house fallback) */
+      var psig = (e.ins.reading.primary_pressure !== undefined
+                  ? e.ins.reading.primary_pressure : e.sys.P) * 145.038 - 14.7;
       if (psig >= RD.rhr.RHR.permissive_open_psig) {
-        throw new Error('RHR ALIGN BLOCKED: RCS pressure ' + psig.toFixed(0) + ' psig is above the ' +
-          RD.rhr.RHR.permissive_open_psig + ' psig suction-valve permissive (WTSM 5.1). ' +
-          'Depressurize below it, then align.');
+        throw new Error('RHR ALIGN BLOCKED: RCS pressure indicates ' + psig.toFixed(0) +
+          ' psig, above the ' + RD.rhr.RHR.permissive_open_psig +
+          ' psig suction-valve permissive (WTSM 5.1). Depressurize below it, then align.');
       }
       EN.command(e, 'rhr_align', true);
     },
@@ -173,7 +181,10 @@
     loss_of_feedwater:   function (e, c) {
       EN.command(e, 'feed_pump_a', false); EN.command(e, 'feed_pump_b', false);
     },
-    sg_overfeed:         function (e, c) { EN.command(e, 'feed_manual_frac', 1.2); },
+    /* #510 M-12: the row is the SEAT now, not a rewrite of the operator's demand — the
+     * selector and manual_frac stay put, and the clear releases the valve instead of
+     * force-selecting AUTO */
+    sg_overfeed:         function (e, c) { EN.command(e, 'feed_overfeed', true); },
     coast_down_pumps:  function (e, c) { EN.command(e, 'pump_trip', true); },
     stop_pump:         function (e, c) { EN.command(e, 'pump_trip', true); },
     set_steam_dump_setpoint: function (e, c) {
@@ -227,8 +238,19 @@
     },
     clear_all_failures: function (e, c) {
       EN.command(e, 'instrument_restore', true);
-      EN.command(e, 'porv_stick', false);
-      EN.command(e, 'break_close', true);
+      /* EVERY ACTIVE row through its own per-id clear (#510 M-3: the old three-command
+       * version left nine wave-3/4/6 levers set — a green "all clear" over a still-broken
+       * plant). The list is engineActiveFailures — the SAME detection the Failures tab
+       * draws — so a new casualty joins this sweep by teaching the detector and the per-id
+       * clear, never by being remembered here (the hand-maintained-map trap). A blackout
+       * row hides the LOOP row underneath it (the detector's replace rule), so clear the
+       * blackout first and re-scan — the layered clear, #510 M-13. */
+      engineActiveFailures(e).forEach(function (id) {
+        if (id.indexOf('instrument:') !== 0) REHOMED.clear_failure(e, { failure_id: id });
+      });
+      engineActiveFailures(e).forEach(function (id) {
+        if (id.indexOf('instrument:') !== 0) REHOMED.clear_failure(e, { failure_id: id });
+      });
     },
     /* THE LOW-FLUX BLOCK (#507 wave 7 — the HZP startup's own action). The kernel forwards
      * set_trip_block here when ITS trips list is empty (PWR2's RPS lives in the engine);
@@ -378,9 +400,12 @@
          * a selection from options I wrote)* — 0.75 in OD x 0.048 in wall, ID 0.654 in,
          * double-ended = 2 x pi/4 x ID^2 = 4.33e-4 m2. The break location is SOURCED:
          * "located at the top of the tube sheet on the outlet (cold leg) side" (§15.6.3) —
-         * sg_primary is that side of the loop. MEASURED at full severity: ~47 kg/s initial,
-         * against the 1982 Ginna event's ~48 kg/s — with the break model's declared ~2x
-         * subcooled overstatement (pwr2_break.js) as the honest error bar. */
+         * sg_primary is that side of the loop. MEASURED at full severity: 51.8 kg/s initial
+         * (#510 M-15: this line shipped saying "~47", understating its own measurement in a
+         * way that flattered the anchor). The "1982 Ginna event ~48 kg/s" comparison is
+         * ⚠ [recalled] UNVERIFIED — no document in any lane's corpus carries the event's
+         * flow figure (find_source.js verdict, 2026-08-24); the break model's declared ~2x
+         * subcooled overstatement (pwr2_break.js) is the honest error bar either way. */
         var sevT = c.severity !== undefined ? c.severity : 0.4;
         EN.command(e, 'break_open', { area_m2: Math.max(1e-6, sevT * 4.33e-4),
                                       node: 'sg_primary' });
@@ -407,7 +432,7 @@
       else if (c.failure_id === 'loss_of_feedwater') {
         EN.command(e, 'feed_pump_a', true); EN.command(e, 'feed_pump_b', true);
       }
-      else if (c.failure_id === 'sg_overfeed') EN.command(e, 'feed_auto', true);
+      else if (c.failure_id === 'sg_overfeed') EN.command(e, 'feed_overfeed', false);
       else if (c.failure_id === 'loss_of_condenser_vacuum') EN.command(e, 'cw_pumps', true);
       else if (c.failure_id === 'degraded_hpi') e.ec.hhsiAvail = 1;
       else if (c.failure_id === 'afw_failure') EN.command(e, 'afw_block', false);
@@ -462,6 +487,14 @@
      * parallel-phase shell loads both engines; a standalone harness must too, or say why not. */
     if (root.RD.PWRInstruments && root.RD.PWR_CONFIG) {
       this.instruments = new root.RD.PWRInstruments(root.RD.PWR_CONFIG, opts.seed);
+      /* THE CHANNEL CURRENCY OVERRIDE (#510 LOW): rod_limit_margin's shared range top is
+       * pwr1's 912 FINE steps (4 per step); this bank's own 0..200 steps ARE the currency
+       * here, so the no-limit reading and the rail ceiling are 200 — the same physical
+       * number, the #500 override pattern, copied so the shared table is untouched. */
+      this.instruments.specs = Object.assign({}, this.instruments.specs, {
+        rod_limit_margin: Object.assign({}, this.instruments.specs.rod_limit_margin,
+                                        { range: [0, 200] })
+      });
       /* reset() PRIMES the lag buffers from truth — update() alone leaves the linear-lag
        * branch integrating from undefined (measured: every reading NaN) */
       this.instruments.reset(this._ts, this._instrExtras());
@@ -660,32 +693,42 @@
       }
     };
   };
-  PWR2Engine.prototype.getActiveFailures = function () {
+  /* THE ENGINE-DERIVED CASUALTY DETECTOR — one function, two consumers (#510 M-3): the
+   * Failures tab (getActiveFailures below) and MAPPED.clear_all_failures both read it, so
+   * "what is broken" and "what a clear-all clears" cannot drift apart. */
+  function engineActiveFailures(eng) {
     var out = [];
-    if (this.eng.pz.porvStuck) out.push('stuck_porv_open');
+    if (eng.pz.porvStuck) out.push('stuck_porv_open');
     /* the break family reports by NODE — a seal leak is the rcp node's break (#507 wave 3),
      * a tube rupture the sg_primary node's (#507 wave 5) */
-    if (this.eng.brk && this.eng.brk.open) {
-      out.push(this.eng.brk.node === 'rcp' ? 'rcp_seal_leak'
-             : this.eng.brk.node === 'sg_primary' ? 'sgtr' : 'primary_leak');
+    if (eng.brk && eng.brk.open) {
+      out.push(eng.brk.node === 'rcp' ? 'rcp_seal_leak'
+             : eng.brk.node === 'sg_primary' ? 'sgtr' : 'primary_leak');
     }
-    if (!this.eng.fw.pumpA && !this.eng.fw.pumpB) out.push('loss_of_feedwater');
-    if (!this.eng.cwPumps) out.push('loss_of_condenser_vacuum');
-    if (this.eng.ec.hhsiAvail < 1) out.push('degraded_hpi');
+    if (!eng.fw.pumpA && !eng.fw.pumpB) out.push('loss_of_feedwater');
+    if (eng.fw.overfeed) out.push('sg_overfeed');   /* the seat reports (#510 M-12) */
+    if (!eng.cwPumps) out.push('loss_of_condenser_vacuum');
+    if (eng.ec.hhsiAvail < 1) out.push('degraded_hpi');
     /* the electrical pair (#507 wave 4) — a blackout REPLACES the LOOP row rather than
      * stacking with it (it IS a LOOP plus dead diesels; one row, the worse one) */
-    if (this.eng.elec.blackout) out.push('station_blackout');
-    else if (!this.eng.elec.offsite) out.push('loss_of_offsite_power');
+    if (eng.elec.blackout) out.push('station_blackout');
+    else if (!eng.elec.offsite) out.push('loss_of_offsite_power');
     /* the wave-6 levers (#507) */
-    if (this.eng.aw.blocked) out.push('afw_failure');
-    if (this.eng.scramBlocked) out.push('failure_to_scram');
-    if (this.eng.pzDrivers.heaters_failed) out.push('failed_pzr_heaters');
-    if (this.eng.pzDrivers.spray_stick) out.push('stuck_open_spray');
-    if (this.eng.runaway) out.push('continuous_rod_withdrawal');
-    var f = this.eng.ins.failure;
+    if (eng.aw.blocked) out.push('afw_failure');
+    if (eng.scramBlocked) out.push('failure_to_scram');
+    if (eng.pzDrivers.heaters_failed) out.push('failed_pzr_heaters');
+    if (eng.pzDrivers.spray_stick) out.push('stuck_open_spray');
+    if (eng.runaway) out.push('continuous_rod_withdrawal');
+    var f = eng.ins.failure;
     Object.keys(f).forEach(function (id) { if (f[id]) out.push('instrument:' + id); });
+    return out;
+  }
+
+  PWR2Engine.prototype.getActiveFailures = function () {
+    var out = engineActiveFailures(this.eng);
     /* the SHELL layer can carry a failure the internal table cannot host (the mirror-only
      * porv_indicator, #507 wave 6) — report those too, without doubling the shared ids */
+    var f = this.eng.ins.failure;
     var sf = this.instruments && this.instruments.failed;
     if (sf) Object.keys(sf).forEach(function (id) {
       if (sf[id] && !f[id]) out.push('instrument:' + id);
@@ -817,8 +860,12 @@
                                        * layers default the adopted 0.5/s so they walk together */
       else if (mode === 'dead') sIns.setFailure(id, 'dead');
       else if (mode === 'fail_low' || mode === 'fail_high') {
+        /* the range lives on ch.SPEC (#510 M-5): the old `ch.range` was undefined on every
+         * internal channel, so the BOARD layer froze at its healthy reading while the
+         * internal channel railed — §67's both-layers-rail claim was false for all 14 */
         var ch = eIns.channels && eIns.channels[id];
-        var rail = ch && ch.range ? (mode === 'fail_low' ? ch.range[0] : ch.range[1]) : undefined;
+        var chRange = ch && (ch.spec && ch.spec.range ? ch.spec.range : ch.range);
+        var rail = chRange ? (mode === 'fail_low' ? chRange[0] : chRange[1]) : undefined;
         sIns.setFailure(id, 'stuck', rail);
       } else sIns.setFailure(id, 'stuck', mval);
     } else if (a === 'clear_instrument_failure') {

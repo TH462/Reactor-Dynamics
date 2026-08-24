@@ -11,7 +11,8 @@
  *   1. LETDOWN IS AN ORIFICE. Flow must FALL as the plant depressurises. A constant-flow letdown
  *      teaches the opposite of the real coupling, and the check is a comparison across two
  *      pressures rather than a band at one.
- *   2. BORON IS A MASS BALANCE. Dilution must be slow at high concentration and fast at low,
+ *   2. BORON IS A MASS BALANCE. Dilution must be FAST at high concentration and slow at low
+ *      (rate ∝ C — #510 M-9: this header used to state the inverse of its own 4x check),
  *      because letdown carries the RCS concentration away. That SHAPE is the evidence the balance
  *      is real; a fitted ppm/min ramp would match a magnitude and get the shape wrong.
  *   3. THE SCALING BASIS IS DECLARED AND BOTH ALTERNATIVES ARE REPORTED. The engine picks volume;
@@ -249,17 +250,22 @@ function runSuite(C, rec, quiet) {
   /* ---- 3b. THE RATE ACTUATOR (#507 wave 1) --------------------------------------------
    * A commanded ppm/s realized as a BLENDER: the step inverts the balance for the blend
    * concentration, clamped to [0, tank]. THE CLAMP IS THE CEILING — no ppm/s constant —
-   * so the achievable rate is inFlow*(C_tank − C)/M and the sourced slow-at-high dilution
+   * so the achievable rate is inFlow*(C_tank − C)/M and the proportional-to-C dilution
    * shape survives the actuator. */
   if (!quiet) console.log('\nRATE ACTUATOR  [a commanded ppm/s, blender-shaped, tank-clamped]');
-  ckT('rate 0 is bit-identical to a never-commanded lineup',
+  ckT('a rate command RETURNED to 0 is bit-identical to a never-commanded lineup from the ' +
+      'same state (#510 LOW rebuild: the old form set 0 on a fresh object whose DEFAULT is ' +
+      'already 0 — two constructor defaults compared, a check that could never fail)',
       (function () {
         var s1 = plant(), s2 = plant();
         var c1 = C.createCVCS({}), c2 = C.createCVCS({});
-        c2.boron_rate_cmd = 0;
-        for (var q = 0; q < N(3000); q++) { C.stepCVCS(c1, s1, 0.02); C.stepCVCS(c2, s2, 0.02); }
+        c2.boron_rate_cmd = 0.05;                     /* USE the actuator... */
+        for (var q = 0; q < N(1500); q++) C.stepCVCS(c2, s2, 0.02);
+        c2.boron_rate_cmd = 0;                        /* ...then idle it */
+        c1.boron_ppm = c2.boron_ppm;                  /* equalize the states */
+        for (q = 0; q < N(1500); q++) { C.stepCVCS(c1, s1, 0.02); C.stepCVCS(c2, s2, 0.02); }
         return c1.boron_ppm === c2.boron_ppm;
-      })(), 'the actuator idles out of the balance entirely at rate 0');
+      })(), 'residual actuator state after use would red this; the old vacuous form could not');
   var cvR = C.createCVCS({ boron_ppm: 700, chargingDemand: 0.5, letdownOpen: 1 });
   cvR.boron_rate_cmd = 0.02;
   var sysR = plant();
@@ -279,7 +285,8 @@ function runSuite(C, rec, quiet) {
   for (r2 = 0; r2 < N(3000); r2++) C.stepCVCS(cvF, sysF, 0.02);
   ck('a firehose demand is CLAMPED to the tank-and-lineup ceiling',
      (cvF.boron_ppm - cF0) / (N(3000) * 0.02), ceil, ceil * 0.05, 'ppm/s');
-  ckT('a firehose DILUTION keeps the sourced slow-at-high shape through the actuator',
+  ckT('a firehose DILUTION stays PROPORTIONAL to concentration through the actuator — fast ' +
+      'at high boron, slow at low (#510 M-9: the old name said the inverse of the assertion)',
       (function () {
         function rate(ppm) {
           var cv = C.createCVCS({ boron_ppm: ppm, chargingDemand: 0.5, letdownOpen: 1 });

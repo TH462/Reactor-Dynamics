@@ -329,9 +329,10 @@
     // branches) treats this as the PWR board it is; only the ENGINE differs, carried by
     // `engine:` and resolved at every selectPlant/reset call via engId().
     // initStates OVERRIDES the profile's list: this engine carries its OWN preset registry
-    // (pwr2_engine ICS — hot full power, 50 %, hot standby since #507 wave 7; cold shutdown
-    // stays deferred until an RCP restart exists) and offering the pwr profile's presets
-    // the constructor refuses would be a menu that lies.
+    // (pwr2_engine ICS — the FOUR below since #507 wave 10 added Hot Shutdown; this comment
+    // said "three" while the list held four, #510 LOW. Mode 5 proper stays deferred on the
+    // Layer-0 floor) and offering the pwr profile's presets the constructor refuses would
+    // be a menu that lies.
     // freePlayOnly: the campaign/scenario/walkthrough content is authored and validated
     // against the current engine; running it silently on different physics would grade the
     // player against the wrong plant. Lifts when the scenario-compat pass runs.

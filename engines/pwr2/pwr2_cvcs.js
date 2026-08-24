@@ -203,7 +203,9 @@
        * commanded rate, clamped to [0, boric_acid_ppm]. THE CLAMP IS THE PHYSICAL CEILING —
        * no separate ppm/s constant: the achievable rate is inFlow*(C_in − C)/M, bounded by the
        * tank concentration and the charging lineup, so boration saturates near the tank and a
-       * dilution stays slow at high boron (the module's own sourced shape). The gate reports
+       * dilution runs FAST at high boron and slow at low — rate ∝ C, the balance's own
+       * proportionality (#510 M-9: this line used to say the opposite of the code below it
+       * and of the gate that proves it). The gate reports
        * the achieved ceilings at both lineups; the old engine's flat 0.14 ppm/s clamp is the
        * contrast case. */
       boron_rate_cmd: opts.boron_rate_cmd === undefined ? 0 : opts.boron_rate_cmd,
@@ -278,8 +280,10 @@
     /* ---- BORON, AS A MASS BALANCE ON THE WHOLE RCS -----------------------------------
      * d(M*C)/dt = charging*C_in - letdown*C_rcs. Letdown carries the RCS concentration because it
      * is drawn from the RCS; charging carries whatever the pumps are lined up to. A dilution is
-     * therefore SLOW at high boron and fast at low, which is the real shape and falls out of the
-     * balance rather than being imposed. */
+     * therefore FAST at high boron and slow at low — dC/dt = inFlow·(C_in − C)/M, magnitude
+     * proportional to C as C_in → 0 — which is the real shape and falls out of the balance
+     * rather than being imposed (#510 M-9: this sentence shipped INVERTED in six places
+     * while the code and its 4x-proportionality gate were right all along). */
     /* Seal injection is drawn from the SAME charging pump suction, so it carries the same
      * concentration as charging -- it is not a separate chemistry path. */
     var inFlow = charging + seal;

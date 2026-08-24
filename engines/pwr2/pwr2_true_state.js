@@ -293,7 +293,11 @@
     put('letdown_flow_actual',  cv.letdown_kgs * FRAC_PER_KGS);
 
     /* --- RHR --- */
-    put('rhr_active',     rh.duty_kW !== undefined ? rh.duty_kW > 0 : undefined);
+    /* THE VALVE, like the contract and the old engine (#510 M-10): §6.3 defines the field
+     * as "aligned = hot-leg suction valve open" and pwr1 mirrors rhr_valve_open. The old
+     * duty>0 form painted "RHR Active: no" over "RHR Suction Valve: OPEN" on the shipped
+     * Mode 4 preset (aligned, HX throttled to a hold — duty 0 by intent). */
+    put('rhr_active',     rh.valve_open !== undefined ? rh.valve_open === true : undefined);
     /* THE VALVE, not the permissive (#507 wave 2) — the old form read open on any
      * depressurized plant with the system secured, a lamp lying about the lineup */
     put('rhr_valve_open', rh.valve_open !== undefined ? rh.valve_open : rh.permissive_may_open);
@@ -375,8 +379,10 @@
      * Mode 5 Cold Shutdown below 200 degF (93.3 degC, unreachable while Layer 0 floors at
      * 0.1 MPa — the branch exists for the day it extends), Mode 4 Hot Shutdown to 350 degF
      * (176.7 degC), Mode 3 Hot Standby above. Mode 2 (Startup, criticality to 5 %) is
-     * folded into 3 — DECLARED, the band is minutes wide on this plant. --- */
-    var atPower = (ts.power_pct !== undefined ? ts.power_pct : 0) > 2 && ts.scrammed !== true;
+     * folded into 3 — DECLARED, the band is minutes wide on this plant. The At-Power
+     * threshold is the commercial ladder's own 5 % (#510 LOW: it shipped at 2 %, so the
+     * 2-5 % band printed "At Power" while this comment claimed it folded into 3). --- */
+    var atPower = (ts.power_pct !== undefined ? ts.power_pct : 0) > 5 && ts.scrammed !== true;
     var tvM = ts.tavg_c;
     var mode = atPower ? 1
              : (typeof tvM === 'number' && tvM < 93.3) ? 5

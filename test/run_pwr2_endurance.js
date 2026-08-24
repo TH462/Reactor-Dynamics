@@ -226,15 +226,21 @@ head('THE WEDGES  [each ride extends past where the old gate stopped]');
      (eng._pzr.aux_spray_kgs || 0) === 0,
      'aux_spray ' + (eng._pzr.aux_spray_kgs || 0).toFixed(2) + ' kg/s with ac_available ' +
      ts.ac_available);
-  /* rhr_active IS duty > 0 (pwr2_true_state:296) — the first form of this check read a
+  var kJ0 = eng.rh.removed_kJ;
+  ride(eng, 10);
+  /* THE EFFECT, not a state flag (#510 M-10 re-target: rhr_active is the VALVE now, the
+   * contract's own semantics, so it stays true through a blackout with the suction open —
+   * the ledger is the honest observable). The first form of this check read a
    * field the contract does not publish (`rhr_flow_normalized`), so `undefined || 0`
    * passed it VACUOUSLY over 26.6 MMBtu/hr of unpowered cooling: the hollow-check class
    * this runner exists to kill, caught by its own strict convention on the first run. */
   ck('blackout-kills-rhr',
      'a full blackout kills the RHR pumps (WTSM 5.7.5: all DHR systems except the TDAFW) — ' +
-     'an aligned, HX-open system removes ZERO heat unpowered (rhr_active is duty > 0)',
-     ts.rhr_active !== true,
-     'rhr_active ' + ts.rhr_active + ' under blackout (duty > 0 through dead pumps)');
+     'an aligned, HX-open system removes ZERO heat unpowered (the removed-energy ledger ' +
+     'stands still; the suction valve honestly stays open)',
+     eng.rh.valve_open === true && eng.rh.removed_kJ === kJ0,
+     'removed ' + (eng.rh.removed_kJ - kJ0).toFixed(1) + ' kJ over 10 s of blackout, valve ' +
+     (eng.rh.valve_open ? 'OPEN' : 'shut'));
 })();
 
 (function () {  /* H-6: the shed-order hole — SI, recover, re-load, then LOOP.

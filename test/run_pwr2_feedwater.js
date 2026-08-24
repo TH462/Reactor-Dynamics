@@ -86,6 +86,29 @@ function runSuite(F, rec, quiet) {
   ck('absent power_ok means POWERED — the acAvailable convention, every fixture above holds',
      F.stepFeedwater(F.createFeedwater({}), DT, steady()).capacity_frac > 0, '');
 
+  /* THE OVERFEED SEAT (#510 M-12): the regulating valve failed OPEN — its own seat, never a
+   * rewrite of the operator's demand. The selector and manual_frac must stand untouched
+   * through inject AND clear, and the clear releases the valve back to the standing lineup. */
+  var fwO = F.createFeedwater({ auto: false, manual_frac: 0.5 });
+  ride(fwO, steady(), 60);
+  fwO.overfeed = true;
+  var rO = ride(fwO, steady(), 60);
+  ck('the overfeed SEAT drives the two-pump 1.2 ceiling past a MANUAL 0.5 lineup, with the ' +
+     'selector and demand UNTOUCHED (#510 M-12)',
+     rO.feed_frac > 1.15 && fwO.auto === false && fwO.manual_frac === 0.5,
+     'delivered ' + rO.feed_frac.toFixed(2) + ' against manual 0.5');
+  fwO.overfeed = false;
+  var rO2 = ride(fwO, steady(), 60);
+  ck('...and clearing the seat hands back the STANDING lineup — manual 0.5 delivers 0.5',
+     Math.abs(rO2.feed_frac - 0.5) < 0.05 && fwO.auto === false,
+     'delivered ' + rO2.feed_frac.toFixed(2) + ' after the clear');
+  ck('...and isolation still beats a failed-open valve (the FWI trips the pumps too, declared)',
+     (function () {
+       var fwI = F.createFeedwater({});
+       fwI.overfeed = true; fwI.isolated = true;
+       return ride(fwI, steady(), 30).feed_frac < 0.05;
+     })(), '');
+
   head('THE CONTROLLER  [three elements: flow error acts now, the lagged level trims later]');
   var fwS = F.createFeedwater({});
   var r0 = ride(fwS, steady(), 60);
@@ -208,9 +231,11 @@ var MUTATIONS = [
   ['anti-windup half 1 removed (a railed valve keeps banking demand — the smoke-ride defect)',
    '        if (fw.valve > 0.02 && fw.valve < 0.98) {',
    '        if (true) {'],
+  /* anchors re-pointed #510 M-12: the isolation comment grew the overfeed clause and the
+   * demand ternary grew the failed-open branch */
   ['isolation no longer drives the valve shut (the SGWLCS override lost)',
-   '      /* WTSM 11.1 §11.1.4: isolation closes the regulating valve and OVERRIDES the SGWLCS */\n      fw.valve = 0;',
-   ''],
+   '      fw.valve = 0;\n    } else if (fw.overfeed) {',
+   '    } else if (fw.overfeed) {'],
   ['the SI delay is zeroed (isolation on the first SI step)',
    '    si_fwi_delay_s: 32.0,', '    si_fwi_delay_s: 0.0,'],
   ['the SI hold never cancels (an edge timer wearing a held-time\'s name)',
@@ -221,8 +246,11 @@ var MUTATIONS = [
    '    if (dt > 0) fw.feed_frac += (demand - fw.feed_frac) * (dt / FW.pump_tau_s);',
    '    fw.feed_frac = demand;'],
   ['manual demand ignores capacity',
-   '               : clip((fw.auto ? fw.valve : clip(fw.manual_frac / (2 * FW.pump_frac_each), 0, 1))\n                      * 2 * FW.pump_frac_each, 0, capacity);',
-   '               : clip((fw.auto ? fw.valve : clip(fw.manual_frac / (2 * FW.pump_frac_each), 0, 1))\n                      * 2 * FW.pump_frac_each, 0, 1.2);']
+   '                      * 2 * FW.pump_frac_each, 0, capacity);',
+   '                      * 2 * FW.pump_frac_each, 0, 1.2);'],
+  ['the overfeed seat is severed (#510 M-12 re-armed: the row is inert)',
+   'var demand = fw.isolated ? 0\n               : clip((fw.overfeed ? 1\n                       : fw.auto ? fw.valve',
+   'var demand = fw.isolated ? 0\n               : clip((false ? 1\n                       : fw.auto ? fw.valve']
 ];
 
 if (fail > 0) {

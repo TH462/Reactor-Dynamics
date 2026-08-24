@@ -220,8 +220,13 @@
       { steps: 200, max_steps: 200, worth: RD.kinetics.RODS.worth_shutdown }
     ];
     /* boron trimmed AT the IC's own moderator temperature and rod lineup; the subcritical
-     * margin is the adopted 1000 pcm (+100 ppm at the module's 10 pcm/ppm) ON TOP of
-     * critical-with-rods-in, so criticality arrives partway up the bank — a real startup */
+     * margin is +100 ppm ON TOP of critical-with-rods-in, so criticality arrives partway up
+     * the bank — a real startup. THE DECLARATION, CORRECTED (#510 M-14): the +100 ppm was
+     * converted from "1,000 pcm" at the module's NOMINAL 10 pcm/ppm, but the LOCAL cold
+     * worth at the shutdown point is 43.48 pcm/ppm (the moderator-density coupling adds to
+     * the direct term), so the margin actually delivered is ~4,348 pcm — conservative, and
+     * the ppm figure is what the construction holds; the old 1,000 pcm claim was the
+     * nominal-worth arithmetic, not a measurement. */
     var boron0 = RD.kinetics.criticalBoron(rx.kin, tavg0, icP, rodBank,
       rx.kin.X / rx.kin.X_eq_full, rx.fuel.T_fuel_c);
     if (ic.subcritical) boron0 += 0.01 / RD.kinetics.BORON.worth_per_ppm;
@@ -395,7 +400,12 @@
        * command. */
       case 'rhr_align':
         if (!value) eng.rh.valve_open = false;
-        else if (eng.sys.P * 145.038 - 14.7 < RD.rhr.RHR.permissive_open_psig) eng.rh.valve_open = true;
+        /* the permissive reads the INSTRUMENT (#510 M-2, the P-11 idiom — HR1): the
+         * interlock is a pressure-channel function in the real plant, so a lying channel
+         * misdrives it; absent means truth, the house fallback */
+        else if ((eng.ins.reading.primary_pressure !== undefined
+                  ? eng.ins.reading.primary_pressure : eng.sys.P) * 145.038 - 14.7
+                 < RD.rhr.RHR.permissive_open_psig) eng.rh.valve_open = true;
         break;
       case 'rhr_hx':         eng.rh.hx_fraction = Math.max(0, Math.min(1, +value)); break;
       case 'letdown':        eng.cv.letdownOpen = Math.max(0, Math.min(1, +value)); break;
@@ -423,6 +433,8 @@
       case 'afw_tdafw':      eng.aw.tdafwRunning = !!value; break;
       /* THE FEED TRAIN (2026-08-21) */
       case 'feed_auto':      eng.fw.auto = !!value; break;
+      /* the overfeed SEAT (#510 M-12) — the regulating valve failed open; see pwr2_feedwater */
+      case 'feed_overfeed':  eng.fw.overfeed = !!value; break;
       case 'feed_manual_frac':
         /* taking manual control IS leaving auto — the old engine's set_feed_pump_speed
          * convention (it clears feed_auto_coupled); 0..1.2 of rated, the two-pump ceiling */
@@ -774,8 +786,12 @@
      * permissive holding the valve shut, so this reorder is a no-op on an at-power plant —
      * asserted by gate, not assumed. Decay heat is passed REPORT-ONLY (the module's own
      * double-count guard). */
+    /* the autoclosure interlock reads the INSTRUMENT too (#510 M-2 — it is a pressure-channel
+     * function, same as the open permissive; absent means truth) */
     if (eng.rh.valve_open &&
-        sys.P * 145.038 - 14.7 >= RD.rhr.RHR.permissive_close_psig) eng.rh.valve_open = false;
+        (eng.ins.reading.primary_pressure !== undefined
+         ? eng.ins.reading.primary_pressure : sys.P) * 145.038 - 14.7
+        >= RD.rhr.RHR.permissive_close_psig) eng.rh.valve_open = false;
     var rhrR = RH.stepRHR(eng.rh, sys, dt,
       { decayHeat_kW: rrx.decay_pct !== undefined ? rrx.decay_pct / 100 * RATED_KW : undefined,
         /* the RHR pumps are VITAL loads (#510 H-5) — diesel-carried through a LOOP, dead in
@@ -936,8 +952,12 @@
     });
     /* the rod insertion limit, recomputed every step off the plant's own power (#507 §B) —
      * null below its 5 % applicability floor, consumed by the shell's control-state and
-     * instrument surfaces (the ROD LIMIT LO/LO-LO annunciators), never by an actuator */
-    var ril = insertionLimitSteps(ts.power_pct);
+     * instrument surfaces (the ROD LIMIT LO/LO-LO annunciators), never by an actuator.
+     * NULL ON A SCRAM TOO (#510 LOW): the limit governs WITHDRAWN operation — during every
+     * trip's decay seconds the rods drive to 0 while power is still above the 5 % floor,
+     * and both annunciators fired on every scram as if a tripped reactor were violating
+     * its insertion limit. */
+    var ril = ts.scrammed === true ? null : insertionLimitSteps(ts.power_pct);
     eng._rilSteps = ril;
     eng._rodAtLimit = ril !== null && eng.rodSteps <= ril;
     eng._rodLimitMargin = ril === null ? 200 : Math.max(0, Math.round(eng.rodSteps - ril));

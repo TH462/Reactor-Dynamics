@@ -89,6 +89,21 @@ function runSuite(SH, rec, quiet) {
               typeof r2.boron_sample === 'number';
      })(),
      'request -> SAMPLING… -> a rounded ppm with seq 2');
+  /* set_boron_adjust LANDS (#510 M-8): the wave-1 repair shipped with NO gate ever issuing
+   * the action through the shell — the reviewer reverted the handler and the suite scored
+   * its full baseline. Both payload shapes: a rate reaches the engine's rate actuator, a
+   * mode reaches the makeup door, and rate 0 idles it again. */
+  ck('set_boron_adjust lands: rate -> boron_rate_cmd, mode -> makeupSource, 0 idles',
+     (function () {
+       eng.applyCommand({ action: 'set_boron_adjust', rate: -0.5 });
+       if (eng.eng.cv.boron_rate_cmd !== -0.5) return false;
+       eng.applyCommand({ action: 'set_boron_adjust', rate: 0 });
+       if (eng.eng.cv.boron_rate_cmd !== 0) return false;
+       eng.applyCommand({ action: 'set_boron_adjust', mode: 'borate' });
+       return eng.eng.cv.makeupSource === 'borate';
+     })(),
+     'the #507 wave-1 fix finally has a gate that would red on its revert');
+  eng.applyCommand({ action: 'set_boron_adjust', mode: 'match' });   /* restore the lineup */
   var STAT = eng.instruments.specs.status;
   var statMiss = STAT.filter(function (k) { return rd[k] === undefined; });
   ck('all ' + STAT.length + ' STATUS passthroughs are populated at power (the extras dict)',
@@ -254,11 +269,14 @@ function runSuite(SH, rec, quiet) {
     catch (es) { msgSI = String(es.message); }
     e4.eng.ec.hhsiRunning = false;
     try { e4.applyCommand({ action: 'set_rhr', active: false }); isoOk = true; } catch (ei) {}
-    ck('ALIGN refuses at power (permissive) and under SI (the ruled lineup message); ISOLATE never',
+    ck('ALIGN refuses at power (permissive) and with injection pumps running (the ruled ' +
+       'lineup message — #510 LOW: it no longer asserts "(SI actuated)" over a manual pump ' +
+       'start); ISOLATE never',
        msgP !== null && /425 psig/.test(msgP) &&
-       msgSI !== null && /ECCS injection lineup/.test(msgSI) && !/interlock/i.test(msgSI) &&
+       msgSI !== null && /injection pumps are running/.test(msgSI) &&
+       !/interlock/i.test(msgSI) && !/SI actuated/.test(msgSI) &&
        isoOk,
-       'power: "' + (msgP || '').slice(0, 40) + '…"; SI: "' + (msgSI || '').slice(0, 40) + '…"');
+       'power: "' + (msgP || '').slice(0, 40) + '…"; pumps: "' + (msgSI || '').slice(0, 40) + '…"');
   })();
 
   /* ---- 1d. THE CASUALTY ROWS (#507 wave 3) --------------------------------------------------
@@ -310,6 +328,84 @@ function runSuite(SH, rec, quiet) {
        act.indexOf('degraded_hpi') !== -1 && act.indexOf('loss_of_condenser_vacuum') !== -1 &&
        act.indexOf('rcp_seal_leak') !== -1,
        'leak ' + leakRate.toFixed(2) + ' kg/s vs 1.85 max charging; active [' + act.join(',') + ']');
+
+    /* THE ALL-CLEAR CLEARS EVERYTHING (#510 M-3): pile the wave-3/4/6 levers on top of the
+     * three rows already standing, clear all, and the ENGINE-DERIVED list — the same
+     * detector the sweep now iterates — must read empty, with the levers measurably reset
+     * (the old three-command clear left nine of these standing behind a green "all clear"). */
+    e5.applyCommand({ action: 'inject_failure', failure_id: 'failure_to_scram' });
+    e5.applyCommand({ action: 'inject_failure', failure_id: 'failed_pzr_heaters' });
+    e5.applyCommand({ action: 'inject_failure', failure_id: 'afw_failure' });
+    e5.applyCommand({ action: 'inject_failure', failure_id: 'sg_overfeed' });
+    e5.applyCommand({ action: 'inject_failure', failure_id: 'loss_of_offsite_power' });
+    e5.step(0.02);
+    e5.applyCommand({ action: 'clear_all_failures' });
+    for (i = 0; i < 5; i++) e5.step(0.02);
+    var actClr = e5.getActiveFailures();
+    ck('clear_all_failures clears EVERY standing row through its own per-id clear — the ' +
+       'derived list reads empty and the levers are genuinely reset (#510 M-3)',
+       actClr.length === 0 && e5.eng.scramBlocked !== true && !e5.eng.pzDrivers.heaters_failed &&
+       e5.eng.aw.blocked !== true && e5.eng.fw.overfeed !== true && e5.eng.ec.hhsiAvail === 1 &&
+       e5.eng.cwPumps === true && e5.eng.elec.offsite === true && (!e5.eng.brk || !e5.eng.brk.open),
+       'active after clear-all: [' + actClr.join(',') + ']');
+  })();
+
+  /* ---- 1d2. THE OVERFEED SEAT (#510 M-12) --------------------------------------------------- */
+  (function () {
+    var eO = new SH.PWR2Engine({});
+    for (var i = 0; i < 100; i++) eO.step(0.02);
+    eO.applyCommand({ action: 'set_feedwater_flow', pct: 50 });      /* MANUAL at 0.5 */
+    for (i = 0; i < 50; i++) eO.step(0.02);
+    var man0 = eO.eng.fw.manual_frac, auto0 = eO.eng.fw.auto;
+    eO.applyCommand({ action: 'inject_failure', failure_id: 'sg_overfeed' });
+    for (i = 0; i < 1500; i++) eO.step(0.02);
+    var duringOk = eO.eng.fw.feed_frac > 1.1 && eO.eng.fw.manual_frac === man0 &&
+                   eO.eng.fw.auto === auto0 &&
+                   eO.getActiveFailures().indexOf('sg_overfeed') !== -1;
+    eO.applyCommand({ action: 'clear_failure', failure_id: 'sg_overfeed' });
+    for (i = 0; i < 1500; i++) eO.step(0.02);
+    ck('sg_overfeed is its own SEAT (#510 M-12): a failed-open valve feeds 1.2x while the ' +
+       'operator\'s MANUAL 0.5 lineup stands untouched, reports as active, and the clear ' +
+       'releases the valve back to the standing lineup — never force-selecting AUTO',
+       duringOk && eO.eng.fw.auto === auto0 && eO.eng.fw.manual_frac === man0 &&
+       Math.abs(eO.eng.fw.feed_frac - man0) < 0.1 &&
+       eO.getActiveFailures().indexOf('sg_overfeed') === -1,
+       'feed ' + eO.eng.fw.feed_frac.toFixed(2) + ' after clear against manual ' + man0 +
+       ' (the old row rewrote the demand and the clear flipped the selector)');
+  })();
+
+  /* ---- 1d3. THE BOARD RAILS TOO (#510 M-5) --------------------------------------------------- */
+  (function () {
+    var eR = new SH.PWR2Engine({});
+    for (var i = 0; i < 100; i++) eR.step(0.02);
+    eR.applyCommand({ action: 'set_instrument_failure', instrument_id: 'primary_pressure',
+                      mode: 'fail_low' });
+    eR.step(0.02); eR.step(0.02);
+    var spec = eR.eng.ins.channels.primary_pressure.spec;
+    ck('fail_low rails the BOARD layer at the channel\'s own range floor (#510 M-5: the old ' +
+       '`ch.range` read undefined on every internal channel and the board froze at its ' +
+       'healthy reading while the RPS channel railed)',
+       eR.instruments.reading.primary_pressure === spec.range[0] &&
+       eR.eng.ins.reading.primary_pressure < 0.5,
+       'board ' + eR.instruments.reading.primary_pressure + ' vs range floor ' + spec.range[0]);
+  })();
+
+  /* ---- 1d4. HR1 ON THE RHR PERMISSIVE (#510 M-2) --------------------------------------------- */
+  (function () {
+    var eP = new SH.PWR2Engine({ initial_state: 'hot_shutdown' });
+    for (var i = 0; i < 100; i++) eP.step(0.02);
+    eP.applyCommand({ action: 'set_rhr', active: false });        /* start unaligned */
+    eP.applyCommand({ action: 'set_instrument_failure', instrument_id: 'primary_pressure',
+                      mode: 'fail_high' });
+    eP.step(0.02); eP.step(0.02);
+    var refused = false, msgP = '';
+    try { eP.applyCommand({ action: 'set_rhr', active: true }); }
+    catch (e2) { refused = true; msgP = e2.message || ''; }
+    ck('the RHR permissive reads the INSTRUMENT and the refusal quotes the INDICATED value ' +
+       '(#510 M-2 — HR1: a rail-high channel refuses the align on a genuinely depressurized ' +
+       'plant; the old form read AND quoted true pressure)',
+       refused && /indicates/.test(msgP) && eP.eng.sys.P * 145.038 - 14.7 < 425,
+       'true ' + (eP.eng.sys.P * 145.038 - 14.7).toFixed(0) + ' psig; ' + msgP.slice(0, 70));
   })();
 
   /* ---- 1e. THE ELECTRICAL PAIR (#507 wave 4) ------------------------------------------------ */
@@ -351,14 +447,20 @@ function runSuite(SH, rec, quiet) {
     e7.applyCommand({ action: 'inject_failure', failure_id: 'station_blackout' });
     for (i = 0; i < 1500; i++) e7.step(0.02);
     var ts7 = e7.getTrueState(), act7 = e7.getActiveFailures();
-    var awr7 = globalThis.RD.pwr2.afw.stepAFW(e7.eng.aw, 0, { mdafw_power_ok: false });
-    ck('an SBO: ac_available false on the contract, heaters DEAD, the demanded MDAFW delivers ' +
-       'nothing while the steam-driven TDAFW carries the plant (WTSM 5.7.5)',
+    /* THROUGH THE FACADE WIRE (#510 LOW rebuild): the old form called stepAFW itself with
+     * mdafw_power_ok hand-forced at dt = 0 — proving the MODULE, not the wiring. The
+     * contract's own afw_flow_normalized = 0.667 IS the claim: both pumps demanded, only
+     * the steam-driven one delivering, through the engine's own power wire. */
+    ck('an SBO: ac_available false on the contract, heaters DEAD, and the contract reads ' +
+       'afw 0.667 — the demanded MDAFW delivers nothing while the steam-driven TDAFW ' +
+       'carries the plant THROUGH THE FACADE WIRE (WTSM 5.7.5)',
        ts7.ac_available === false && ts7.station_blackout === true &&
        (e7.eng._pzr.heater_kW || 0) === 0 &&
-       e7.eng.aw.mdafwRunning === true && awr7.mdafw_kgs === 0 && awr7.tdafw_kgs > 3 &&
+       e7.eng.aw.mdafwRunning === true &&
+       Math.abs(ts7.afw_flow_normalized - 2 / 3) < 0.01 &&
        act7.indexOf('station_blackout') !== -1,
-       'td ' + awr7.tdafw_kgs.toFixed(2) + ' kg/s; active [' + act7.join(',') + ']');
+       'afw ' + ts7.afw_flow_normalized.toFixed(3) + ' (TDAFW-only fraction); active [' +
+       act7.join(',') + ']');
     e7.applyCommand({ action: 'clear_failure', failure_id: 'station_blackout' });
     e7.step(0.02); var ts7b = e7.getTrueState();
     ck('clearing the SBO restores both buses on the contract (pumps stay where physics left them)',
@@ -518,22 +620,29 @@ function runSuite(SH, rec, quiet) {
        'internal +' + offI.toFixed(1) + ', board +' + offS.toFixed(1) + ' over a true ' +
        tsD.tavg_c.toFixed(1) + ' degC');
 
-    /* porv_indicator_stuck_closed — the mirror-only channel: board-layer only, no throw */
+    /* porv_indicator_stuck_closed — the mirror-only channel: board-layer only, no throw.
+     * THE DECEPTION IS THE CLAIM (#510 LOW rebuild): "reads closed" on a healthy plant is
+     * healthy-plant-TRUE (the valve IS closed), so the old check's central clause could
+     * never fail — the lamp must read "closed" while the valve is GENUINELY OPEN. */
     var eL = new SH.PWR2Engine({});
     for (i = 0; i < 100; i++) eL.step(0.02);
     eL.applyCommand({ action: 'inject_failure', failure_id: 'porv_indicator_stuck_closed' });
-    for (i = 0; i < 10; i++) eL.step(0.02);
+    eL.applyCommand({ action: 'inject_failure', failure_id: 'stuck_porv_open' });
+    for (i = 0; i < 50; i++) eL.step(0.02);
+    var tsL = eL.getTrueState();
     var lampOk = eL.instruments.reading.porv_indicator === 'closed' &&
+                 tsL.porv_open === true &&
                  !!eL.instruments.failed.porv_indicator &&
                  eL.getActiveFailures().indexOf('instrument:porv_indicator') !== -1;
+    eL.applyCommand({ action: 'clear_failure', failure_id: 'stuck_porv_open' });
     eL.applyCommand({ action: 'clear_failure', failure_id: 'porv_indicator_stuck_closed' });
     eL.step(0.02);
-    ck('porv_indicator_stuck_closed rides the BOARD layer alone (the internal numeric table ' +
-       'cannot host a string lamp — mirror-only, declared), reports active, and clears ' +
-       'without a throw',
+    ck('porv_indicator_stuck_closed is the TMI-2 lamp: it reads "closed" over a valve that ' +
+       'is GENUINELY OPEN (board-layer only — the internal numeric table cannot host a ' +
+       'string lamp, mirror-only, declared), reports active, and clears without a throw',
        lampOk && !eL.instruments.failed.porv_indicator &&
        eL.getActiveFailures().indexOf('instrument:porv_indicator') === -1,
-       'the TMI-2 lamp: stuck at "closed" whatever the valve does');
+       'lamp "closed" over porv_open ' + tsL.porv_open + ' — the deception, not the healthy state');
 
     /* the advanced panel's `value` key (latent fix 3) and the seal-leak slider (fix 2) */
     var eV = new SH.PWR2Engine({});

@@ -29,6 +29,33 @@ and the user-visible summary in `CHANGELOG.md`. This file points at those and tr
 
 ---
 
+## Session log — 2026-08-24-develop-c (#510 batch 4 — the honesty batch)
+
+**Batch 4 of the #510 order** — M-2/M-3/M-5/M-8/M-9/M-10/M-11/M-12/M-14/M-15 + most of the
+LOW sweep. Full record: `PWR2_VALIDATION.md` **§78**. Gates: shell 71 → 76 · feedwater
+26 → 29 · rhr 43 → 44 · engine/true_state/cvcs/endurance at baseline.
+
+- The structural ones: `clear_all_failures` iterates the shared `engineActiveFailures`
+  detector (one function, two consumers — the tab and the sweep cannot drift); `sg_overfeed`
+  is a seat (`fw.overfeed`, the porv_stick shape); the RHR permissive/autoclose/refusal read
+  INDICATED pressure (the align gate fixture now RETRIES — a one-shot command at the exact
+  420 psig crossing met the channel's 0.5 s lag and was refused silently, a probe-trap worth
+  remembering); `rhr_active` = the valve (§6.3); the RHR duty share excludes OFF_LOOP.
+- The record fixes: dilution prose un-inverted (6 places), the Ginna SGTR anchor
+  [recalled]-marked (8 places) + the "~47" understatement corrected to 51.8, the 1,000-pcm
+  margin declaration corrected to ~4,348 at local worth, 547.9 → 547.0 °F, the At-Power
+  threshold to the commercial 5 %, the "52 runners" copies de-numbered.
+- The LOW harness items, rebuilt in the same batch: the SBO/AFW check reads the contract's
+  0.667 through the facade wire (was dt=0 hand-forced) · the rate-0 "bit-identical" check
+  uses-then-idles the actuator (was two constructor defaults) · the porv_indicator check
+  asserts the DECEPTION (lamp "closed" over a genuinely open valve) · **a SCRAM nulls the rod
+  insertion limit** (both ROD LIMIT annunciators fired through every trip's decay band —
+  engine 90 → 91 with the mid-decay gate) · the `rod_limit_margin` channel range overridden
+  to this bank's 0-200 currency (shared top is pwr1's 912 fine steps; copied, shared table
+  untouched). **ONE LOW stays open on #510**: the TypeError-verdict group-B mutation.
+
+---
+
 ## Session log — 2026-08-24-develop-b (#510 batch 3 — the boot-state artifacts and the SI boron)
 
 **Batch 3 of the #510 order** — H-7, H-3, M-1. Full record: `Blueprint/PWR2_VALIDATION.md`
@@ -126,7 +153,8 @@ secondary landed where the duty puts it.
   figure) saturates at 1106 psia — ABOVE this plant's own 1085 psig MSSV pop. Measured: the
   post-trip plant parks at 553.3 °F / 1064 psia with a 1090 psia peak — ~10 psi under its
   safeties. The HZP IC anchors to the plant's own steam side instead (Tsat of the sourced
-  1005 psig = 547.9 °F — Ginna's own pair), dumps booted in PRESSURE mode at 1005 psig.
+  1005 psig = 547.0 °F, the model's own Tsat; the "547.9" this line shipped with was a
+  transcription slip, #510 LOW — Ginna's own pair), dumps booted in PRESSURE mode at 1005 psig.
 - **The startup, measured end to end**: critical ~84 steps; the low-flux block taken at
   18.2 % (above P-10); 42.6 % through the 35 % setpoint untripped; a continuous fast pull is
   the startup ACCIDENT (1 % → 100.8 % inside the trip's own 0.5 s delay, `hi_flux_lo`
@@ -248,8 +276,8 @@ reasons). Full measured record: `Blueprint/PWR2_VALIDATION.md` **§68–70**. Co
   the SG's own pressure — the depressurize-to-stop EOP falls out of the ΔP (taper ratio
   0.301 vs √dP 0.335), the SG overfills (frac 1.59 at 1200 s), containment never moves
   through 3,037 kg (the bypass signature). Full severity 52.2 kg/s vs the 1982 Ginna
-  event's ~48. Area [UNVERIFIED] — no tube geometry in any lane's corpus, find_source
-  verdict.
+  event's ~48 *(the Ginna flow figure is itself [recalled] UNVERIFIED — #510 M-15)*. Area
+  [UNVERIFIED] — no tube geometry in any lane's corpus, find_source verdict.
 - **Wave 6, the menu at 21 + the latent trio** (§70): afw_failure / ATWS / failed heaters /
   stuck spray / rod runaway / tavg drift (BOTH layers, and it drags the TRUE plant down
   25 °C through the dumps) / the TMI-2 porv lamp (mirror-only, declared). The three wave-3

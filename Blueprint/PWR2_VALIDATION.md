@@ -3532,7 +3532,9 @@ preset flow rates"): each step inverts the balance — which reduces exactly to
 `dC/dt = inFlow·(C_in − C)/M`, the letdown terms cancel — for the blend concentration, clamped
 to [0, boric_acid_ppm]. **The clamp IS the ceiling**: no ppm/s constant (the old engine's flat
 0.14 is the contrast case); the achievable rate is bounded by tank concentration and the
-charging lineup, so dilution stays slow-at-high (the suite's sourced shape) and a firehose
+charging lineup, so dilution stays proportional to concentration — fast at high boron
+*(CORRECTED #510 M-9: this sentence shipped as "slow-at-high", the inverse of the suite's own
+4× check; measured 12× faster at 2,400 ppm)* — and a firehose
 demand meters what the lineup can carry. Measured: rate 0 **bit-identical** to a
 never-commanded lineup; +0.02 ppm/s metered exactly at a fixed lineup; at the hot-full-power
 PLCS lineup a +0.05 dose achieves ~0.042 (the level servo trims charging low — the clamp binds
@@ -3634,7 +3636,9 @@ DIRECT term (physics, not a loading choice).
   feed 0.000, condenser unavailable, `afw_flow_normalized` **1.000** (both pumps at rated),
   TDAFW cause `loss_of_offsite_power` (the MDAFW races `loss_of_main_feed` in the same step
   and the feed train reports first — kept, and it is also the feed wire's own gauge),
-  `ac_available` TRUE, heaters shed on the latch. 300 s: 2119.9 psia.
+  `ac_available` TRUE, heaters shed on the latch. 300 s: 2119.9 psia *(⚠ the #510 review
+  could not reproduce this 300-s figure and finds its cause misattributed — treat the number
+  as UNVERIFIED; the wire claims around it were verified separately — #510 LOW)*.
 - **The probe trap that reddened the first shell check**: 5 s after the LOOP the feed still
   reads 0.535 of rated — the module's 8 s pump tau decaying (e^−0.625 = 0.535). The probe was
   wrong, the plant was right; ride 30 s before asserting the feed dead.
@@ -3661,7 +3665,8 @@ eccs 28→30 · feedwater 24→26 (13) · protection 95→96 (51) · pressurizer
 re-anchored onto the ARMING signal) · true_state 63 (the electrical-static mutation retargeted
 to the surviving MSIV static) · shell 42 · engine 58 — one proposed mutation REJECTED as
 unkillable (`offsiteOk` already ANDs `!blackout`; a mutation that can never red is the hollow
-class). `run_hardrules` holds 363.
+class). `run_hardrules` held 363 when this section was written *(a running count — 365 as of
+2026-08-23; read the gate, not this line — #510 LOW)*.
 
 ## 69. PARITY WAVE 5 — THE SGTR (#507) — 2026-08-22
 
@@ -3688,9 +3693,10 @@ loop. Severity = fraction of the full rupture (slider default 40 %).
 ### Measured (sev 0.4 = 1.73e-4 m², hot full power)
 - Initial leak **20.9 kg/s**, tapering to **6.3 kg/s** at 300 s: ratio 0.301 vs
   √(dP ratio) 0.335 — the √(2ρΔP) drive within 11 %, which is the EOP's physics.
-- Full severity: **52.2 kg/s** initial vs the 1982 Ginna event's ~48 kg/s — with the break
-  model's declared ~2× subcooled overstatement as the honest error bar (the agreement is
-  partly that overstatement).
+- Full severity: **52.2 kg/s** initial vs the 1982 Ginna event's ~48 kg/s *(the Ginna flow
+  figure is ⚠ [recalled] UNVERIFIED — no corpus document carries it; find_source verdict,
+  #510 M-15)* — with the break model's declared ~2× subcooled overstatement as the honest
+  error bar (the agreement is partly that overstatement).
 - The plant answers unscripted: **OTΔT trip at 55.2 s**, **SI (lo pzr press) at 69.7 s**, the
   pressurizer drains (0 % at 300 s), and the SG overfills — mass frac **1.23** at 300 s,
   **1.59** at 1200 s.
@@ -3806,8 +3812,9 @@ denominator).
 The plant's `tavg_noload_c` program anchor (291.67 °C = 557 °F, the WTSM 4-loop figure)
 **saturates at 7.625 MPa = 1106 psia — 6 psi ABOVE this plant's own sourced 1085 psig MSSV
 pop**. A hot-standby plant at the program's no-load temperature would sit on its code
-safeties. The consistent pair is Ginna's own: **547.9 °F = Tsat of the sourced 1005 psig
-no-load pressure** (`SG.P_noload`, already in config). So the HZP IC anchors to the plant's
+safeties. The consistent pair is Ginna's own: **547.0 °F = the model's own Tsat of the
+sourced 1005 psig no-load pressure** (`SG.P_noload`, already in config; the source's printed
+figure is 546.8 — this line shipped as "547.9", a transcription slip, corrected #510 LOW). So the HZP IC anchors to the plant's
 STEAM side, with the dumps booted in **steam-pressure mode at 1005 psig** — the prototypical
 no-load lineup, and the thing that physically holds the plant there (in tavg mode a
 pump-heated no-load plant would ride the MSSVs: the dumps' own threshold, 291.67, is above
@@ -3855,7 +3862,10 @@ Control bank ONLY; recomputed every step off the plant's own power. On this plan
 consumers are: `insertion_limit_steps`/`at_insertion_limit` live on the control-state rod
 group, the board layer's `rod_limit_margin` passthrough channel (was pinned at its 912
 default), and the two shared annunciator rows. **The currency finding**: the shared ROD
-LIMIT LO row's setpoint of 40 is the sourced "RIL + 10 steps" (WTSM 8.4 ML11223A256) in
+LIMIT LO row's setpoint of 40 is "RIL + 10 steps" — the ALARM itself is corroborated
+(Ginna UFSAR ch.15: "a bank insertion limit alarm"), but the +10 figure's citation
+(WTSM 8.4 ML11223A256) is to a document in NO lane's corpus, so the setpoint is
+⚠ [recalled] UNVERIFIED (find_source verdict, #510 LOW) — in
 pwr1's FINE-step currency — 4 fine per step — so PWR2 overrides it to **10** of this
 bank's own steps, the same physical number (the #500 override pattern; without it the row
 would fire 4× early).
@@ -3897,7 +3907,8 @@ thrown the declared refusal since #505 made refusals visible) is the restart.
   300 s (the plant trips itself on the flow loss en route — unscripted).
 - **Restart from rest: rated speed at +13 s, flow above 90 % of rated at +10 s** — the
   real RCP start class, derived from the same inertia as the coastdown rather than fitted.
-  A ~4 % momentum overshoot in loop flow settles on friction.
+  A momentum overshoot in loop flow settles on friction *(the #510 review re-measured it at
+  **0.47 %**, not the "~4 %" this line shipped with — corrected, #510 LOW)*.
 - A start under station blackout is REFUSED (the sourced reason in the message); the same
   command lands the step after the grid returns.
 - The handswitch's words are honest now: OFF latches **SECURED** (the operator stopped
@@ -4180,3 +4191,84 @@ rise flattened replays the stall red) · rhr 42 → **43** (UA-is-hardware; anch
 to designUA) · cvcs 43 → **44** (SI-borates + neutral-at-own-ppm; mutations 26 → 27) ·
 engine 90 (the heatup band re-measured to the honest class) · shell 71 · eccs/loca at
 baseline.
+
+## 78. #510 BATCH 4 — THE HONESTY BATCH (M-2, M-3, M-5, M-8..M-15) — 2026-08-24
+
+The mediums that lie to the player, the gate, or the record — each verified before fixing,
+each fix carried by a new check where one was possible.
+
+- **M-2 — the RHR permissive reads the INSTRUMENT and says so** (HR1). All three sites — the
+  shell refusal (which now quotes "indicates N psig"), the engine align door, and the 585
+  psig autoclosure — read `ins.reading.primary_pressure` with the truth fallback, the same
+  P-11 idiom forty lines away. Gated with a rail-high channel on a genuinely depressurized
+  Mode 4 plant: the align is refused on the lie.
+- **M-3 — `clear_all_failures` clears everything.** The sweep now iterates
+  `engineActiveFailures` — the SAME detector the Failures tab draws — through each row's own
+  per-id clear (twice, because a blackout row hides the LOOP row under the detector's
+  replace rule). One function, two consumers: what is broken and what a clear-all clears
+  cannot drift apart again. Gated: five levers piled on three standing rows, one clear-all,
+  derived list empty and every lever measurably reset.
+- **M-5 — `fail_low`/`fail_high` rail the BOARD too.** The rail read `ch.range`, which is
+  undefined on every internal channel (the range lives at `ch.spec.range`), so the board
+  froze at its healthy reading while the RPS channel railed. Gated: the board reads the
+  spec's own range floor.
+- **M-8 — `set_boron_adjust` finally has a gate**: rate → the engine's rate actuator, mode →
+  the makeup door, rate 0 idles. The wave-1 repair shipped with no gate ever issuing the
+  action; its revert now reds.
+- **M-9 — the dilution prose un-inverted, six places**: rate ∝ C — FAST at high boron, slow
+  at low (dC/dt = inFlow·(C_in − C)/M), which is what the code always did and the suite's
+  own 4× proportionality check always asserted under an inverted name.
+- **M-10 — `rhr_active` is the VALVE**, the contract's §6.3 semantics and the old engine's
+  (`rhr_valve_open` mirrored). The duty>0 form painted "RHR Active: no" over "RHR Suction
+  Valve: OPEN" on the shipped Mode 4 hold. The promoted H-5 endurance check re-targeted to
+  the honest effect (the removed-energy ledger stands still through a blackout).
+- **M-11 — RHR duty lands ON-LOOP only**: the volume split now excludes `pwr2_loop`'s own
+  OFF_LOOP pair (vessel heads, pressurizer — carried as volume, never transported). 22.5 %
+  of shutdown-cooling duty used to land on stagnant water, 15 % of it INSIDE the
+  pressurizer. Shares still sum to exactly the duty — gated.
+- **M-12 — `sg_overfeed` is its own SEAT** (`fw.overfeed`, a failed-OPEN regulating valve —
+  the porv_stick shape): the operator's selector and manual fraction stand untouched, the
+  row reports in the Failures list, and the clear releases the valve back to the standing
+  lineup instead of force-selecting AUTO. Isolation still wins (the FWI trips the pumps too,
+  declared). Old saves land false — healthy.
+- **M-13** landed in batch 2 (§76). **M-14 — the margin declaration corrected**: the cold
+  IC's +100 ppm was converted from "1,000 pcm" at the NOMINAL 10 pcm/ppm; the local cold
+  worth is 43.48 pcm/ppm, so the delivered margin is ~4,348 pcm — conservative; the ppm is
+  what the construction holds and the comment now says exactly that. Behavior unchanged.
+- **M-15 — the "1982 Ginna ~48 kg/s" SGTR anchor marked ⚠ [recalled] UNVERIFIED** in every
+  place it is repeated (no corpus document carries the event's flow figure — find_source
+  verdict re-run 2026-08-24), and the shell comment's own measurement corrected from the
+  flattering "~47" to the measured 51.8 kg/s.
+
+### The LOW sweep (the review's unverified list, adjudicated)
+Corrected in place: the "547.9 °F" no-load Tsat transcription slip (the model measures
+547.0; the source prints 546.8) in four places · §73's "~4 %" momentum overshoot (review
+measures 0.47 %) · §68's stale hardrules count (a running gate, not a number to copy) ·
+§68's unreproducible LOOP 300-s figure marked UNVERIFIED · the ROD LIMIT LO "+10 steps"
+setpoint re-marked [recalled] (the ALARM's existence is corroborated by Ginna UFSAR ch.15;
+its cited WTSM 8.4 document is in no corpus) · CLAUDE.md's stale "52 runners" copies
+de-numbered · `ui/app.js`'s three-presets comment (four ship) · the #458 refusal no longer
+asserts "(SI actuated)" over a manual pump start (it says what is true: injection pumps are
+running; the ruled "lineup, never interlock" text kept, and the gate now forbids the old
+claim) · the At-Power mode threshold moved to the commercial ladder's own 5 % (it shipped at
+2 %, so the 2-5 % band printed "At Power" while the comment beside it claimed that band
+folded into Mode 3). The harness LOWs, rebuilt: the SBO/AFW check reads the CONTRACT's own
+0.667 through the facade wire (the old form hand-forced the driver at dt 0, proving the
+module); the "bit-identical" rate-0 check uses-then-idles the actuator (the old form
+compared two constructor defaults and could never fail); the porv_indicator check asserts
+the DECEPTION (lamp "closed" over a valve genuinely open — its old central clause was
+healthy-plant-true); **the ROD LIMIT annunciators no longer fire on every scram** (a trip
+now nulls the limit through its decay band — the limit governs withdrawn operation; gated
+mid-decay) and the shared `rod_limit_margin` channel's range is overridden to this bank's
+0..200 currency (the shared top is pwr1's 912 fine steps — the #500 override pattern,
+copied, the shared table untouched). **One LOW stays open on #510**: the group-B mutation
+whose "caught" verdict rides a TypeError (the self-test's catch counts a throw as a red —
+rebuilding it to distinguish thrown-only catches is its own small harness change).
+
+### Gates
+shell 71 → **76** (M-8 · M-3 · M-12 through the class · M-5 board rail · M-2 refusal-on-a-lie;
+mutations 29 with the clear-all sweep and refusal-text anchors moved) · feedwater 26 → **29**
+(the overfeed seat; mutations 13 → 14) · rhr 43 → **44** (the on-loop share) · engine 90/90
+(the M-2 indicated door; the align fixture now RETRIES — a one-shot command at the exact
+crossing met the channel's 0.5 s lag and was silently refused) · true_state 64 · cvcs 44 ·
+endurance 18p 0xf.

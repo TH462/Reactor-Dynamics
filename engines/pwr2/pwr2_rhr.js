@@ -203,10 +203,20 @@
   var SHARE = null;
   function shareOut(sys, duty) {
     if (!SHARE || SHARE.n !== sys.nodes.length) {
+      /* ON-LOOP NODES ONLY (#510 M-11): RHR circulates the RING — hot-leg suction, cold-leg
+       * return — and the two OFF_LOOP nodes (vessel heads, the pressurizer) have NO flow
+       * path to it: they are carried as volume, never transported (pwr2_loop's own split).
+       * The old all-nodes split landed 22.5 % of shutdown-cooling duty on stagnant water,
+       * 15 % of it INSIDE the pressurizer. */
+      var off = {};
+      ((RD.loop && RD.loop.OFF_LOOP) || []).forEach(function (id) { off[id] = true; });
       SHARE = { n: sys.nodes.length, ids: [], f: [] };
       var Vt = 0, i;
-      for (i = 0; i < sys.nodes.length; i++) Vt += sys.nodes[i].V;
       for (i = 0; i < sys.nodes.length; i++) {
+        if (!off[sys.nodes[i].id]) Vt += sys.nodes[i].V;
+      }
+      for (i = 0; i < sys.nodes.length; i++) {
+        if (off[sys.nodes[i].id]) continue;
         SHARE.ids.push(sys.nodes[i].id);
         SHARE.f.push(Vt > 0 ? sys.nodes[i].V / Vt : 0);
       }
