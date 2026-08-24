@@ -43,7 +43,17 @@
     mass_nominal: 12785,        // kg   [sourced] Ginna 85,359 lbm/SG, power-scaled
     area_m2: 18135 / 10.7639,   // m2   [derived] 18,135 ft2 from EPRI NP-1721 Model 51
     h_feed: 962.0,              // kJ/kg [sourced] 435.2 degF (224 degC) feedwater
-    P_noload: 7.03              // MPa  [sourced] Ginna 1005 psig no-load
+    P_noload: 7.03,             // MPa  [sourced] Ginna 1005 psig no-load
+    /* DRYOUT (#510 H-1). Heat transfer needs wetted tubes: below this mass fraction the
+     * bundle progressively uncovers and U collapses linearly toward zero — a dry SG is NOT
+     * a heat sink. [adopted]: the old engine's own shape (pwr_thermal.js `sg_dryout_wide_pct`
+     * 30 % wide-range), mapped through the shared Ginna level map (pwr2_true_state's
+     * SG_LEVEL_MAP puts 30 % wide at mass fraction 0.38845). DECLARED divergence from the
+     * old engine: no 5 % depleting steam-side residual — this lump goes linearly to zero,
+     * one fewer state variable. The SG lo-lo trip (17 % narrow = mass fraction 0.5484) sits
+     * ABOVE this threshold, so every protected transient trips before U moves at all. */
+    dryout_mass_frac: 0.38845,
+    mass_floor_kg: 1            // kg   the vessel cannot go negative; see stepSG's floor
   };
 
   /* OVERALL U — [derived], and the derivation is the whole point.
@@ -144,23 +154,40 @@
   function stepSG(sg, primaryT, dt, drivers) {
     drivers = drivers || {};
     var T_sec = W.T_sat(sg.P);
-    var Q = sg.U * sg.area * (primaryT - T_sec);        // kW, positive = into the secondary
+    /* Wetted-bundle degradation (#510 H-1): before the fix, a 1 kg secondary transferred
+     * rated UA forever — the pressure bisection pinned at the 0.1 MPa property floor and the
+     * "sink" ran 1.88 GW at 211 degF. See dryout_mass_frac above for the adopted shape. */
+    var mf = sg.mass / SG.mass_nominal;
+    var wet = mf >= SG.dryout_mass_frac ? 1 : Math.max(0, mf / SG.dryout_mass_frac);
+    var Q = sg.U * wet * sg.area * (primaryT - T_sec);  // kW, positive = into the secondary
 
     var feed = drivers.feed || 0, steam = drivers.steam || 0;
     var afw = drivers.afw_kgs || 0, h_afw = drivers.afw_h || 0;
     var leak = drivers.tube_leak_kgs || 0, h_leak = drivers.tube_leak_h || 0;
     var h_g = W.h_g(sg.P);
 
+    /* THE VESSEL CANNOT EXPORT STEAM IT DOES NOT HOLD (#510 H-1). Outflow is limited so the
+     * mass floor is never crossed — which also makes the mixing below mass-consistent (the
+     * old clamp kept subtracting steam*h_g from a numerator whose mass had stopped falling,
+     * and sg.h ran to −11,594 kJ/kg). Consumers get the delivered flow reported back. */
+    var inflow = feed + afw + leak;
+    var steam_eff = Math.min(steam, Math.max(0, (sg.mass - SG.mass_floor_kg) / dt + inflow));
+
     /* Energy and mass on the secondary. Steam leaves at h_g; feed arrives at the sourced
      * feedwater enthalpy; AFW at its own cold enthalpy; a tube leak at the primary donor
      * node's own enthalpy. All DONOR-CELL, the Layer 2 rule. */
-    var dH = Q + feed * SG.h_feed + afw * h_afw + leak * h_leak - steam * h_g;   // kW
-    var dM = feed + afw + leak - steam;                                          // kg/s
+    var dH = Q + feed * SG.h_feed + afw * h_afw + leak * h_leak - steam_eff * h_g;   // kW
+    var dM = inflow - steam_eff;                                                     // kg/s
 
-    var m_new = sg.mass + dt * dM;
-    if (m_new < 1) m_new = 1;                           // dry: the vessel cannot go negative
+    var m_new = sg.mass + dt * dM;                       // >= floor by construction
+    if (m_new < SG.mass_floor_kg) m_new = SG.mass_floor_kg;   // float roundoff only
     sg.h = (sg.mass * sg.h + dt * dH) / m_new;
     sg.mass = m_new;
+    /* BACKSTOP, expected never to bind (gated, not assumed): keep h inside the span the
+     * pressure bisection inverts over, so updatePressure stays well-posed at both walls. */
+    var h_lo = W.h_f(0.1), h_hi = W.h_f(17.0), clipped = false;
+    if (sg.h < h_lo) { sg.h = h_lo; clipped = true; }
+    else if (sg.h > h_hi) { sg.h = h_hi; clipped = true; }
     updatePressure(sg);
 
     return {
@@ -170,7 +197,11 @@
        * concern and inventing one here would be the "gauge-shaped quantity published inside
        * true_state" the review's F10 objected to. */
       mass_frac: sg.mass / SG.mass_nominal,
-      dry: sg.mass <= 1.01
+      wet_frac: wet,
+      steam_delivered_kgs: steam_eff,
+      steam_starved: steam_eff < steam - 1e-9,
+      h_clipped: clipped,
+      dry: sg.mass <= SG.mass_floor_kg * 1.01
     };
   }
 

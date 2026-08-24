@@ -30,6 +30,34 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
 
 ## [Unreleased]
 
+### Fixed (#510 batch 1 — the dry SG and the Mode 4 hold, 2026-08-23)
+- **A dry steam generator is no longer an infinite heat sink** (`pwr2_sg`, finding H-1 of the
+  #510 swarm review). Heat transfer collapses with the wetted tube fraction (the old engine's
+  own dryout shape at the shared Ginna level map's 30 %-wide point), the vessel cannot export
+  steam it does not hold (the turbine gets the delivered share), and the energy ledger is
+  mass-consistent at the floor. The two menu-reachable ATWS wedges are now honest physics:
+  loss-of-feed peaks at 99 % power with the safeties cycling (was 304 % into a silent
+  beyond-model freeze), blackout dies on moderator feedback at 0.2 % (was a false 243 %
+  equilibrium with a 46 °F cold leg).
+- **The shipped Mode 4 preset no longer goes water-solid untouched** (H-2). Four pieces, each
+  sourced or ruled: the RHR-to-CVCS low-pressure letdown path (WTSM HCV-128 — letdown works on
+  shutdown cooling, so seal injection finally has an exit), a regenerative-HX effectiveness on
+  the charging return, RHR forced circulation (the RCPs-off legs were stagnant and the CVCS
+  return chilled a single node into a false cooldown reading), and the heater ladder booting
+  lined up at the shutdown pressure in AUTO (the preset's level also moves to the 25 % program
+  value, owner-ruled). 90 minutes untouched now: 364 → 354.5 psia, level 25.3 %, Tavg −0.5 °F
+  — was water-solid at 29 psia by minute 75.
+- **Two energy-conservation defects found by audit while closing H-2** (neither filed by the
+  review): reverse SG heat transfer was applied as `−|Q|` (both vessels cooled, 2|Q| destroyed
+  — ~113 kW on the shutdown preset), and pressurizer outsurge enthalpy was destroyed across
+  the surge line (~454 kJ/kg; now delivered to the hot leg). The 60-minute energy audit closes
+  to 0.2 MJ.
+- Migration note: pwr2-1.0 saves gain one scalar (`_pzSurgeHeat`, a one-step carrier); old
+  saves load with 0, the healthy value. Gates: endurance 9 passed 9 xfail → 13 passed 5 xfail
+  (all four batch-1 expected-fails promoted), `run_pwr2_sg` 27 → 32, `run_pwr2_cvcs` 38 → 43;
+  the endurance rate estimator is now a least-squares slope (the endpoint pair read the Mode 4
+  heater limit cycle's phase as drift).
+
 ### Added (#510 — the acceptance windows, 2026-08-23)
 - **`test/run_pwr2_endurance.js`** — long-window rides for every PWR2 preset and every #510
   failure trajectory, ridden past the failure horizons the old gates stopped short of.

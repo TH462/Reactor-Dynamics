@@ -186,10 +186,45 @@ function runSuite(G, rec, quiet) {
       sgHot.P > sgCold.P + 0.05,
       sgHot.P.toFixed(3) + ' vs ' + sgCold.P.toFixed(3) + ' MPa after 10 s — the stream is ' +
       'energy, not just mass');
-  var sgD = G.createSG();
-  for (var kd = 0; kd < 5000; kd++) G.stepSG(sgD, 304.5, 0.02, { steam: 200 });
+  var sgD = G.createSG(), lastD = null, clippedD = false;
+  for (var kd = 0; kd < 5000; kd++) {
+    lastD = G.stepSG(sgD, 304.5, 0.02, { steam: 200 });
+    if (lastD.h_clipped) clippedD = true;
+  }
   ckT('a generator with no feed goes DRY and stays bounded', sgD.dry !== false && sgD.mass >= 1,
       sgD.mass.toFixed(1) + ' kg after 100 s of steaming with no feed');
+
+  /* ---- DRYOUT (#510 H-1). Before the fix a 1 kg secondary transferred rated UA against a
+   * pressure pinned at the 0.1 MPa property floor — 1.88 GW out of the primary in one step,
+   * the review's headline. Heat transfer now scales with the wetted fraction (the old
+   * engine's own shape at the shared Ginna level map's 30 % wide point), and the vessel
+   * cannot export steam it does not hold. ---- */
+  ckT('DRY, the vessel STARVES its export — delivered ~0 with the demand standing',
+      lastD.steam_starved === true && lastD.steam_delivered_kgs < 0.5,
+      'delivered ' + lastD.steam_delivered_kgs.toFixed(3) + ' kg/s against 200 demanded');
+  ckT('...and the dry secondary EQUILIBRATES toward the primary instead of pinning at the ' +
+      'property floor as a 211 degF infinite sink',
+      sgD.P > 1.0,
+      'P ' + sgD.P.toFixed(2) + ' MPa after the boil-dry (the pre-fix defect pinned 0.1)');
+  var sgDry = G.createSG({ mass: 1 });
+  var dDry = G.stepSG(sgDry, 304.5, 0.02, {});
+  ckT('a dry SG is a NEAR-ZERO heat sink — duty collapses with the wetted fraction',
+      Math.abs(dDry.duty_kW) < 5000 && dDry.wet_frac < 0.001,
+      'duty ' + dDry.duty_kW.toFixed(0) + ' kW at 1 kg (rated is 300,000); wet ' +
+      dDry.wet_frac.toExponential(1));
+  ckT('the wetted fraction is 1 above the threshold and proportional below it',
+      Math.abs(G.stepSG(G.createSG(), 304.5, 0.02, {}).wet_frac - 1) < 1e-9 &&
+      Math.abs(G.stepSG(G.createSG({ mass: 0.2 * 12785 }), 304.5, 0.02, {}).wet_frac -
+               0.2 / G.SG.dryout_mass_frac) < 1e-6,
+      'nominal reads 1; 20 % inventory reads 0.2/0.38845');
+  ckT('the h backstop is a BACKSTOP — it never binds on a fed transient',
+      (function () {
+        var s5 = G.createSG(), hit = false;
+        for (var k5 = 0; k5 < 500; k5++) {
+          if (G.stepSG(s5, 304.5, 0.02, { feed: 100, steam: 60 }).h_clipped) hit = true;
+        }
+        return !hit;
+      })(), 'clipping on a healthy vessel would mean the ledger left the saturation span');
 
   /* ---- 4. THE SECONDARY SITS ON ITS SATURATION LINE ---------------------------------- */
   if (!quiet) console.log('\nSATURATION  [a lumped boiling vessel is ON the line by construction]');
@@ -250,26 +285,31 @@ var pass = rec.filter(function (r) { return r.ok; }).length, fail = rec.length -
 
 var MUTATIONS = [
   ['heat transfer decoupled from the primary temperature',
-   'var Q = sg.U * sg.area * (primaryT - T_sec);', 'var Q = 300000;'],
+   'var Q = sg.U * wet * sg.area * (primaryT - T_sec);', 'var Q = 300000;'],
   ['duty sign flipped (the SG heats the primary)',
-   'var Q = sg.U * sg.area * (primaryT - T_sec);', 'var Q = -sg.U * sg.area * (primaryT - T_sec);'],
+   'var Q = sg.U * wet * sg.area * (primaryT - T_sec);',
+   'var Q = -sg.U * wet * sg.area * (primaryT - T_sec);'],
+  ['the dryout wet fraction deleted (a dry SG transfers rated UA — #510 H-1 re-armed)',
+   'var Q = sg.U * wet * sg.area * (primaryT - T_sec);',
+   'var Q = sg.U * sg.area * (primaryT - T_sec);'],
+  ['the outflow limiter deleted (the vessel exports steam it does not hold — #510 H-1 re-armed)',
+   'var steam_eff = Math.min(steam, Math.max(0, (sg.mass - SG.mass_floor_kg) / dt + inflow));',
+   'var steam_eff = steam;'],
   ['sourced area replaced by a round number', 'area_m2: 18135 / 10.7639,', 'area_m2: 1500,'],
   ['sourced inventory replaced', 'mass_nominal: 12785,', 'mass_nominal: 40000,'],
   ['feedwater arrives at steam enthalpy instead of the sourced 435 degF',
    'feed * SG.h_feed', 'feed * W.h_g(sg.P)'],
   ['the tube-leak stream is dropped from the MASS ledger (an SGTR that never overfills)',
-   'var dM = feed + afw + leak - steam;', 'var dM = feed + afw - steam;'],
+   'var inflow = feed + afw + leak;', 'var inflow = feed + afw;'],
   ['the tube-leak stream carries no ENERGY (hot primary water arrives cold)',
-   'afw * h_afw + leak * h_leak - steam * h_g;', 'afw * h_afw - steam * h_g;'],
-  ['steam leaves as liquid instead of vapour', '- steam * h_g;', '- steam * W.h_f(sg.P);'],
+   'afw * h_afw + leak * h_leak - steam_eff * h_g;', 'afw * h_afw - steam_eff * h_g;'],
+  ['steam leaves as liquid instead of vapour', '- steam_eff * h_g;', '- steam_eff * W.h_f(sg.P);'],
   ['secondary mass not integrated (inventory frozen)',
    'var m_new = sg.mass + dt * dM;', 'var m_new = sg.mass;'],
   ['secondary pressure frozen (no saturation tracking)',
    'sg.P = mid;\n    return sg.P;', 'return sg.P;'],
   ['U derived from the wrong power (breaks the sourced-band check)',
    'return 300000 / (SG.area_m2 * (T_prim - T_sec));', 'return 700000 / (SG.area_m2 * (T_prim - T_sec));'],
-  ['the dry floor removed (inventory goes negative)',
-   'if (m_new < 1) m_new = 1;', ''],
   /* The contract itself: a helper that hands back one node instead of the mean is exactly the
    * defect #482 filed, so it must not survive. */
   ['primaryTavg returns the cold leg instead of the mean (the #482 defect, re-armed)',

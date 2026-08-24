@@ -36,14 +36,9 @@ var DT = 0.02;
 
 /* ---- THE EXPECTED-FAIL SET — one entry per #510 finding this runner sees ----------------- */
 var XFAIL = {
-  'mode4-untouched-holds-inventory':
-    '#510 H-2: seal injection has no return path; the preset goes water-solid at ~75 min',
-  'mode4-settled-derivatives':
-    '#510 H-2: the same fill — d(level)/dt runs ~0.9 %/min the whole ride',
-  'atws-lofw-stays-representable':
-    '#510 H-1: the dry SG integrates energy below its mass floor; beyond-model latches at ~149 s',
-  'atws-sbo-no-false-equilibrium':
-    '#510 H-1: the SBO+ATWS wedge — 243 % power with a 46 degF cold leg, no latch',
+  /* H-1 + H-2 PROMOTED (#510 batch 1, 2026-08-23): the dry-SG wet-fraction collapse +
+   * outflow-limited ledger, the RHR low-pressure letdown path, the signed sgDuty and the
+   * surge-line energy conservation — the four checks now run as ordinary PASSes above. */
   'blackout-kills-aux-spray':
     '#510 H-4: auxFrac takes no power term; 29 gpm delivered through a blackout',
   'blackout-kills-rhr':
@@ -101,13 +96,29 @@ function ride(eng, secs, trace, every) {
  * clauses instead: a monotone walk cannot stay inside +/-10 level points, +/-60 psi and
  * +/-2.5 degC of the boot point for a 30-minute ride. H-2's 54 %/hr fill reds on the
  * rate band alone in any phase. */
+/* RATE = the LEAST-SQUARES slope over every sample in the window, not the endpoint pair
+ * (#510 batch 1). The endpoint estimator read a LIMIT CYCLE's phase as drift: the fixed
+ * Mode 4 preset holds a flat ~361 psia mean under ~10-min heater cycling of +/-5 psi, and
+ * two endpoints caught high-then-low read it as -39 psi/hr. A slope over all 30 samples
+ * measures the same law with the cycle averaged out — and every HEAD defect stays red on
+ * it: the 54 %/hr fill is monotone (slope = endpoint rate), and the pegged-at-the-wall
+ * endings that read rate ~0 were always caught by the POSITION clauses, unchanged here. */
+function lsSlopePerHr(w, get) {
+  var n = w.length, st = 0, sy = 0, stt = 0, sty = 0;
+  for (var i = 0; i < n; i++) {
+    var t = w[i].t / 3600, y = get(w[i]);
+    st += t; sy += y; stt += t * t; sty += t * y;
+  }
+  var d = n * stt - st * st;
+  return d === 0 ? 0 : (n * sty - st * sy) / d;
+}
 function ratesPerHr(trace, windowS) {
   var tEnd = trace[trace.length - 1].t, t0 = tEnd - windowS;
   var w = trace.filter(function (s) { return s.t >= t0; });
-  var a = w[0], b = w[w.length - 1], dtH = (b.t - a.t) / 3600;
-  return { dTavg: (b.tavg - a.tavg) / dtH,          /* degC/hr */
-           dP_psi: (b.P - a.P) * 145.038 / dtH,     /* psi/hr  */
-           dLvl: (b.lvl - a.lvl) / dtH };           /* %/hr    */
+  if (w.length < 2) w = trace.slice(-2);
+  return { dTavg: lsSlopePerHr(w, function (s) { return s.tavg; }),           /* degC/hr */
+           dP_psi: lsSlopePerHr(w, function (s) { return s.P; }) * 145.038,   /* psi/hr  */
+           dLvl: lsSlopePerHr(w, function (s) { return s.lvl; }) };           /* %/hr    */
 }
 function settled(trace, windowS) {
   var r = ratesPerHr(trace, windowS);
@@ -152,7 +163,13 @@ head('THE ICs, 30 sim-min each (Mode 4: 90 min — past its #510 failure horizon
   var eng = EN.createEngine({ initial_state: 'hot_shutdown' });
   var trace = [];
   var ts = ride(eng, 5400, trace, 30);
-  var s = settled(trace, 900);
+  /* WINDOW = HALF THE RIDE, the same fraction the hot ICs use (900 of 1800 s). The fixed
+   * Mode 4 hold is a heater LIMIT CYCLE — ~±5 psi at a ~10-min period about a flat mean —
+   * and a 15-min window reads one arc of it as a rate (measured −34 psi/hr on a plant whose
+   * 90-min position drift is −10 psi). 45 min averages the cycle; the bands are unchanged,
+   * and the HEAD defect never reaches this check (it reds on the inventory check above, and
+   * its pegged-at-the-wall ending was always the POSITION clauses' catch). */
+  var s = settled(trace, 2700);
   ck('mode4-untouched-holds-inventory',
      'hot_shutdown: 90 min untouched holds level < 60 % and pressure > 200 psia',
      ts.pzr_level_pct < 60 && ts.pressure_mpa * 145.038 > 200 && !eng.sys.beyond_model,

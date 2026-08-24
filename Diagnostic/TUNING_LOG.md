@@ -29,6 +29,45 @@ and the user-visible summary in `CHANGELOG.md`. This file points at those and tr
 
 ---
 
+## Session log — 2026-08-23-develop-b (#510 batch 1 — the dry SG and the Mode 4 hold)
+
+**The first fix batch of the #510 order** (owner-ruled via plan: full sweep, in order; the
+H-2 closure via the RHR letdown path; the preset level to the 25 % program). Full measured
+record: `Blueprint/PWR2_VALIDATION.md` **§75**. All four batch-1 strict expected-fails
+promoted in `run_pwr2_endurance` (9 passed 9 xfail → 13 passed 5 xfail).
+
+- **H-1** (`pwr2_sg`): wet-fraction dryout (the old engine's own 30 %-wide shape through the
+  shared level map → mass fraction 0.38845, no residual — declared) + outflow limited to held
+  inventory (turbine gets the delivered share) + an h backstop on the bisection span that
+  binds only at full dryout. ATWS+LOFW peaks 99 % (was 304 % → silent beyond-model at 149 s);
+  ATWS+SBO dies on moderator feedback at 0.2 % (was a false 243 % equilibrium).
+- **H-2** (`pwr2_cvcs`/`pwr2_engine`/`pwr2_rhr`): the RHR-to-CVCS letdown path (sourced —
+  WTSM ch.19 ML11223A342 "letdown, primarily from the residual heat removal system" /
+  HCV-128; §4.1.4.5 ML11223A214; NUREG-1431 Bases ML12100A228) · regen-HX effectiveness 0.9
+  [tune] on the return · RHR forced circulation 63.1 kg/s [derived from the WTSM 5.1 miniflow
+  band; gated on !SI per the #458 same-pumps ruling] · the cold lineup boots the heater
+  ladder AT the shutdown pressure, heaters AUTO (the command clamp keeps the sourced
+  1700–2500 psig span). Untouched 90 min: 364 → 354.5 psia / level 25.3 % / Tavg −0.5 °F.
+- **Two conservation defects found by energy audit, neither filed by the review**:
+  `pwr2_sources` applied `−Math.abs(sgDuty)` (reverse SG transfer became primary REMOVAL —
+  2|Q| destroyed, ~113 kW on the shutdown preset; now signed), and pressurizer outsurge
+  enthalpy was destroyed across the surge line (~454 kJ/kg; now delivered to the hot leg as
+  the `_pzSurgeHeat` one-step carrier — pwr2-1.0 saves gain the scalar, old saves land 0).
+  Post-fix the 60-min audit closes to 0.2 MJ against boundaries.
+- **The trap worth keeping**: the false Mode 4 cooldown was a LEG-STAGNATION artifact — with
+  the RCPs secured and zero decay heat there is no loop flow, so the CVCS return chilled the
+  small cold-leg node at ~9 °F/hr and Tavg (the leg AVERAGE) reported a cooldown of a plant
+  whose bulk sat still. A point source on a stagnant node is not a plant temperature. And the
+  endurance rate estimator's endpoint pair read the heater limit cycle's PHASE as −39 psi/hr
+  drift on a mean that moved −10 psi in 90 min — rates over oscillating plants are
+  least-squares slopes now, window = half the ride (the hot ICs' own fraction).
+- Gates: sg 27 → 32 (mutations 15 → 17, both H-1 re-arms) · cvcs 38 → 43 (24 → 26, the H-2
+  re-arm) · engine 90 (Mode 4 fixture to the ruled 25 %; RHR-align fixture restored by the
+  !SI gate; one anchor re-pointed) · shell 69 (save schema gains the carrier) · loadfollow
+  anchors re-pointed · endurance score updated in `BASELINES`.
+
+---
+
 ## Session log — 2026-08-22-develop-d (#507 §F wave 7 — the initial conditions, and a real startup)
 
 **Owner: "Work next"** — the recommended ICs. Full measured record: `Blueprint/PWR2_VALIDATION.md`

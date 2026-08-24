@@ -3970,3 +3970,107 @@ lo_flow gate dropped) · true_state 63→64 (the cold rungs; +1 ladder mutation)
 group N (+6 checks / +4 mutations — the #468 inversion mutation among them) · shell +2
 (the Mode 4 preset through the class; the P-11 pair round-trips the kernel forward; +1
 mapping-severed mutation).
+
+## 75. #510 BATCH 1 — THE DRY SG AND THE MODE 4 HOLD (H-1, H-2) — 2026-08-23
+
+The first fix batch of the #510 swarm review, in the issue's own order: the two player-facing
+defects. Both closed with their strict expected-fails promoted in `run_pwr2_endurance`
+(9 passed 9 xfail → 13 passed 5 xfail). En route the energy audit found **two conservation
+defects the review never filed**, both of which had to close before the Mode 4 preset could
+settle — recorded below because the fix is three-quarters theirs.
+
+### H-1 — the dry SG (pwr2_sg)
+
+Three coupled holes: the mass floor clamped at 1 kg while energy kept integrating (and the
+mixing used the unclamped old mass in the numerator), U never degraded with inventory, and
+steam demand never starved — so `sg.h` ran to −11,594 kJ/kg, the pressure bisection pinned at
+the 0.1 MPa property floor (Tsat 211 °F), and a 1 kg secondary drew **1.88 GW** from the
+primary for ever.
+
+The fix, in the module: **(1)** heat transfer scales with a wetted fraction —
+`wet = min(1, mass_frac / 0.38845)`, the old engine's own dryout shape (`pwr_thermal`'s 30 %
+wide-range threshold) carried through the shared Ginna level map; declared divergence: no 5 %
+depleting residual. The SG lo-lo trip (17 % narrow = mass fraction 0.5484) sits ABOVE the
+threshold, so every protected transient trips before U moves. **(2)** outflow is limited to
+what the vessel holds — `steam_eff = min(demand, (mass − floor)/dt + inflow)` — which makes
+the ledger mass-consistent by construction; the facade hands the turbine its prorated share
+of `steam_delivered_kgs`. **(3)** a backstop clip keeps `sg.h` inside the bisection span
+`[h_f(0.1), h_f(17.0)]`; it binds only at full dryout (the drain's last steam export), never
+on a fed transient — gated both ways.
+
+Measured (dt 0.02 s), the two menu-reachable wedges:
+- **ATWS + loss of feed, 300 s**: SG dries at ~160 s; max power **99.0 %** (was 304.5 % with
+  a beyond-model latch at 149 s); the plant stays representable — safeties cycle 2,400–2,610
+  psia, cold leg walks up to 674 °F on decay heat with the sink honestly gone. Max per-step
+  |ΔP| 0.015 MPa against the 2.0 MPa beyond-model jump limit.
+- **ATWS + station blackout, 400 s**: power **0.2 %** (moderator feedback kills fission in
+  hot water — was a false equilibrium at 243 % with a 46 °F cold leg), cold leg 638 °F, SG
+  boils to ~100 kg, no latch.
+
+### H-2 — the Mode 4 preset (pwr2_cvcs, pwr2_engine, pwr2_rhr, pwr2_pressurizer)
+
+The filed mechanism was the one-way seal injection; closing it took four pieces, each
+measured separately on the untouched 90-minute ride:
+
+1. **The RHR low-pressure letdown path** *(owner-ruled 2026-08-23 over the review's
+   seal-split suggestion, which the CVCS file's own WTSM verbatim contradicts — seal flow
+   "returned to the RCS", balanced by letdown)*. Sourced: WTSM ch.19 (ML11223A342) "Coolant
+   removal is accomplished by letdown, primarily from the residual heat removal system" /
+   "Letdown is via the RHR-to-CVCS cross-connect valve HCV-128"; WTSM §4.1.4.5 (ML11223A214);
+   NUREG-1431 Bases (ML12100A228) "low pressure letdown control". Modelled as the normal
+   letdown magnitude behind the operator's letdown fraction while the RHR suction is open
+   (driver absent = shut; at power the orifice and the path tie by calibration). Letdown then
+   runs 12.5 gpm at 145–364 psia and the level PI balances seal + charging — **level holds
+   25.3 % for 90 min** where it went water-solid at 75.
+2. **The regenerative HX** as an effectiveness (0.9 [tune]) on the returning stream — without
+   it the closed loop stands ~200 kW of parasitic cooling (charging at 60 °C against a 121 °C
+   plant). Lumped, declared: the seal stream rides the recovery though the physical line
+   bypasses the HX. The isolated-letdown lineup still arrives cold.
+3. **RHR forced circulation** — a 63.1 kg/s floor on loop flow while the suction is open and
+   SI is NOT actuated (shutdown cooling and low-head injection are the same pumps, the #458
+   ruling). Mechanism sourced (Ginna TS Bases: "the RCPs and the RHR pumps circulate the
+   coolant"); magnitude [derived] from WTSM 5.1's miniflow band (the valves close above
+   1,000 gpm, so a pump in service flows at least that). Without it the RCPs-off legs are
+   STAGNANT and the CVCS return chilled the small cold-leg node at ~9 °F/hr — Tavg is the leg
+   average, so the board read a cooldown that was a mixing artifact.
+4. **The heater hold**: the cold preset boots the heater ladder AT the shutdown pressure
+   (constructor state — the operator's standing lineup, the #460 rods-in-MANUAL argument;
+   the `pzr_setpoint_mpa` command still clamps to the sourced 1700–2500 psig board span) with
+   heaters in AUTO. They cycle 14–28 kW against the measured ~16 kW surge-line bleed and hold
+   the bubble in a ±5 psi limit cycle about a flat ~361 psia mean. The old lineup's "the
+   bubble holds at its saturation without them, DECLARED" was false and is retired.
+
+### The two conservation defects found by the energy audit (neither filed by #510)
+
+- **`pwr2_sources` applied `−Math.abs(sgDuty)`** — reverse SG heat transfer (secondary hotter
+  than the primary, the whole Mode 4 regime) was flipped into primary REMOVAL: both vessels
+  cooled and 2|Q| was destroyed, **~113 kW** on the untouched preset. Now signed. This was
+  most of the Tavg drift the inventory fix alone could not close.
+- **Outsurge enthalpy was destroyed** — the pressurizer debits its ledger at h_f (~962 kJ/kg
+  at Mode 4) while the loop gains the mass implicitly at its own node enthalpy (~508); the
+  ~454 kJ/kg difference is now delivered to the hot leg as `surge_heat_kW` (one-step carrier,
+  the house convention). The audit then closes: 60 min untouched, dE_total −21.4 MJ against
+  −21.6 MJ of boundary flows, every ring node within 0.4 °F of boot.
+
+### The estimator correction (run_pwr2_endurance)
+
+The settledness law's rate clause moved from an endpoint pair to a **least-squares slope**
+over the window's samples, and the Mode 4 window to half the ride (the hot ICs' own
+fraction): the endpoint pair read the heater limit cycle's phase as −39 psi/hr on a plant
+whose 90-minute position drift is −10 psi. Bands unchanged; every HEAD defect stays red on
+the new estimator (the 54 %/hr fill is monotone, and the pegged-at-the-wall endings were
+always the position clauses' catch).
+
+### Measured (dt 0.02 s), the untouched 90-minute ride
+364.0 → 354.5 psia · level 25.0 → 25.3 % · Tavg 250.0 → 249.5 °F · charging 2.7–9.6 gpm
+about the 7.5 gpm balance, seal 5.00, letdown 12.50 · heaters 14–28 kW · never beyond-model.
+
+### Gates
+endurance 9p 9xf → **13p 5xf** (H-1 ×2, H-2 ×2 promoted; estimator + window per above) ·
+sg 27 → **32** (dry SG near-zero sink, starved export, floor-equilibration, wet-fraction
+shape, backstop-never-binds-fed; mutations 15 → 17 — wet fraction deleted and outflow
+limiter deleted both re-arm H-1) · cvcs 38 → **43** (the LP path only-with-RHR /
+behind-the-fraction / tie-at-power; regen warm-vs-cold; mutations 24 → 26 — path severed
+re-arms H-2, recovery deleted re-arms the parasitic cooling) · engine 90 (level fixture
+re-measured to the ruled 25 %; the vital-bus mutation anchor re-pointed) · shell 69 ·
+loadfollow/sources/rhr/pressurizer/protection/feedwater/loca/ab at baseline.

@@ -152,8 +152,12 @@
      * on a Layer-0 extension below the floor — a review call, recorded in #507.
      * The #468 order is STRUCTURAL here: boron trims with the shutdown bank OUT, the bank
      * inserts AFTER, so its 3676 pcm is margin in RODS, not boron. */
+    /* pzr_level 0.25 (#510 H-2, owner-ruled 2026-08-23): the LEVEL PROGRAM's own value at
+     * 250 degF (levelProgram clamps to 25 % there) — settled construction, every state at
+     * its own equilibrium. The old 0.30 booted the controller 5 points above program, so
+     * the untouched ride opened with a standing drain demand. */
     hot_shutdown:   { pf: 0, load_mwe: 0, subcritical: true, cold: true,
-                      tavg_c: 121.1, P_mpa: 2.51, pzr_level: 0.30 }
+                      tavg_c: 121.1, P_mpa: 2.51, pzr_level: 0.25 }
   };
 
   function createEngine(opts) {
@@ -172,7 +176,16 @@
               : ic.pf > 0 ? DC.tref(ic.load_mwe / MWE_RATED) : W.T_sat(G.SG.P_noload);
     var icP = ic.cold ? ic.P_mpa : P0;
     var dT0 = DT0_C * ic.pf;
+    /* THE COLD LINEUP'S PRESSURE HOLD (#510 H-2). The heater ladder boots lined up AT the
+     * shutdown pressure — constructor state, the operator's standing lineup, NOT a dialed
+     * command (the pzr_setpoint_mpa command still clamps to the sourced 1700-2500 psig board
+     * span, WTSM 10.2 — that span is the at-power PCS dial, and this seed does not touch it).
+     * Below P-11 the real plant holds pressure by PROCEDURE — the operator jogging heaters —
+     * and a preset is that procedure already performed (the #460 rods-in-MANUAL argument).
+     * Without a hold the bubble bleeds down against the surge-line exchange (~16 kW measured)
+     * at ~68 psi/hr, untouched. [declared] */
     var pz = PZ.createPressurizer({ P: icP,
+      setpoint_mpa: ic.cold ? ic.P_mpa : undefined,
       level_frac: ic.cold ? ic.pzr_level : PZ.levelProgram(tavg0) });
     var hmap = designHmap(tavg0, dT0, icP);
     /* the shutdown IC boots with its RCPs SECURED and the loop still (natural circulation
@@ -264,11 +277,16 @@
        * DECLARED. Which load hangs on which bus is each module's own wire, sourced at the
        * wire (WTSM 3.2/5.7, NUREG-0737 II.E.3.1). */
       elec: { offsite: true, blackout: false },
-      /* SHUTDOWN: heaters MANUAL-0 — the operator's cooldown lineup. The setpoint span
-       * floors at the sourced 1700 psig (WTSM 10.2), so a 350 psig plant cannot simply
-       * dial the ladder down; with no insulation losses modeled the bubble holds at its
-       * saturation without them, DECLARED. Restoring the heaters is the heatup's own act. */
-      pzDrivers: ic.cold ? { heaters_manual: 0 } : {},
+      /* SHUTDOWN: heaters in AUTO about the boot setpoint (#510 H-2 — the constructor seeds
+       * the ladder at the shutdown pressure; see the createPressurizer note above). The old
+       * lineup was MANUAL-0 with "the bubble holds at its saturation, DECLARED" — measured
+       * false twice over: the seal-injection insurge with no letdown path below 300 psia
+       * condensed the bubble (364 → 29 psia in 75 min), and even with that loop closed the
+       * surge-line exchange bleeds ~16 kW, −68 psi/hr. The RHR low-pressure letdown path
+       * (pwr2_cvcs) closes the inventory balance; the AUTO ladder holds the bubble against
+       * the bleed. The heatup's own act is still the operator's pzr_heaters_manual, which
+       * overrides the ladder. */
+      pzDrivers: {},
       /* HZP: the dumps boot in STEAM PRESSURE mode at the sourced 1005 psig no-load — the
        * prototypical no-load lineup, and what physically holds the plant there (in tavg
        * mode the pump-heated plant would ride the 1085 psig MSSVs instead — the ICS
@@ -280,7 +298,7 @@
                : { mode: 'pressure', pressure_setpoint_mpa: G.SG.P_noload },
       advDemand: 0, advBlock: true,
       /* one-step-lag carriers */
-      _Qox: 0, _pzRelief: 0, _pzReliefH: 0, _sgtrKgs: 0, _sgtrH: 0,
+      _Qox: 0, _pzRelief: 0, _pzReliefH: 0, _pzSurgeHeat: 0, _sgtrKgs: 0, _sgtrH: 0,
       _pzr: null, _dcr: null, _lastTrip: false,
       _scramT: null, _manualTrip: false, _rodStopSig: false, _runbackSig: false,
       _rbT: 0, _rbActive: false,
@@ -687,13 +705,23 @@
                                            * inventory at full-rupture flow. DECLARED. */
                                           tube_leak_kgs: eng._sgtrKgs || 0,
                                           tube_leak_h: eng._sgtrH || 0 });
-    var tr = TB.stepTurbine(eng.tb, dt, { steam_kgs: steam, P_mpa: sr.P_sec,
+    /* A starving SG delivers less than the demand (#510 H-1): the turbine gets its prorated
+     * share of what the vessel actually exported. The relief/dump share is NOT re-prorated
+     * (their modules already stepped on demand this cycle) — a starving SG rides a tripped
+     * turbine within seconds, so the one-step overstatement is report-side only, DECLARED.
+     * The condenser duty at the stepCondenser call keeps the demand figure for the same
+     * reason. */
+    var steamShare = out > 0 ? sr.steam_delivered_kgs * (steam / out) : 0;
+    var tr = TB.stepTurbine(eng.tb, dt, { steam_kgs: steamShare, P_mpa: sr.P_sec,
                                           h_feed: G.SG.h_feed });
 
     /* charging and the SI pumps are VITAL loads — diesel-carried through a LOOP, dead in a
      * blackout (WTSM 5.7.5's "all decay heat removal systems ... also fail"); the avail
      * fractions inside each module stay FAILURE seats, a different question than power */
-    var cvr = CV.stepCVCS(eng.cv, sys, dt, { ac_available: acAvail });
+    /* rhr_letdown_ok (#510 H-2): the RHR-to-CVCS cross-connect — low-pressure letdown is
+     * available while the RHR suction is open, one step old (stepRHR's autoclose runs
+     * below), the house lag convention. */
+    var cvr = CV.stepCVCS(eng.cv, sys, dt, { ac_available: acAvail, rhr_letdown_ok: eng.rh.valve_open });
     var ecr = EC.stepECCS(eng.ec, sys, dt, { ac_available: acAvail });
 
     /* THE SGTR IS A BREAK WHOSE DESTINATION IS THE SG (#507 wave 5) — inferred from the
@@ -726,6 +754,15 @@
         sys.P * 145.038 - 14.7 >= RD.rhr.RHR.permissive_close_psig) eng.rh.valve_open = false;
     var rhrR = RH.stepRHR(eng.rh, sys, dt,
       { decayHeat_kW: rrx.decay_pct !== undefined ? rrx.decay_pct / 100 * RATED_KW : undefined });
+    /* RHR forced circulation (#510 H-2, see the constant's note): the pumps circulate the
+     * coolant whenever they take suction — a floor on loop flow, so a Mode 4 plant with the
+     * RCPs secured still mixes its legs instead of chilling a stagnant node on the CVCS
+     * return. Inactive whenever the RCPs (or natural circulation) already flow more, and
+     * NOT while SI runs — shutdown cooling and low-head injection are the SAME pumps (the
+     * #458 ruling), so with SI actuated they are injecting, not circulating the loop. */
+    if (eng.rh.valve_open && !eng.pt.si && sys.mdot_loop < RD.rhr.RHR.circulation_kgs) {
+      sys.mdot_loop = RD.rhr.RHR.circulation_kgs;
+    }
 
     var srcs = (cvr.sources || []).slice();
     if (ecr.sources) srcs = srcs.concat(ecr.sources);
@@ -737,6 +774,12 @@
     if (rhrR.duty_kW > 0) {
       heats = Object.assign({}, rrx.heats);
       Object.keys(rhrR.heats).forEach(function (n) { heats[n] = (heats[n] || 0) + rhrR.heats[n]; });
+    }
+    /* the pressurizer's outsurge enthalpy difference lands on the hot leg (one step old, the
+     * house lag convention) — energy conservation across the surge line (#510 batch 1) */
+    if (eng._pzSurgeHeat > 0) {
+      if (heats === rrx.heats) heats = Object.assign({}, rrx.heats);
+      heats.hot_leg = (heats.hot_leg || 0) + eng._pzSurgeHeat;
     }
     var pr = S.stepPlant(sys, dt, { heats: heats, sgDuty: sr.duty_kW, sources: srcs });
 
@@ -758,6 +801,7 @@
     }, eng.pzDrivers));
     eng._pzRelief = pzr.relief_kgs;
     eng._pzReliefH = pzr.relief_h;
+    eng._pzSurgeHeat = pzr.surge_heat_kW || 0;
     /* the level controller drives charging unless the operator took it */
     if (eng.cv.chargingDemand === null || eng._plcsAuto !== false) {
       eng.cv.chargingDemand = pzr.charging_demand;

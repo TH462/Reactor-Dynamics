@@ -96,7 +96,18 @@
      * that circularity needs a second, independent source for either this sink temperature or the
      * heat exchanger duty. Until one exists, the number stands MARKED. */
     ccw_temp_c: C(95),               // [recalled] UNSOURCED -- queued, see the note above
-    POWER_SCALE: 300 / 1520          // with ECCS; RHR's duty is decay heat, a power fraction
+    POWER_SCALE: 300 / 1520,         // with ECCS; RHR's duty is decay heat, a power fraction
+    /* RHR FORCED CIRCULATION (#510 H-2). The MECHANISM is sourced — Ginna TS Bases
+     * (ML20339A221): "The RCPs and the RHR pumps circulate the coolant through the reactor
+     * vessel and SGs at a sufficient rate to ensure proper heat transfer" — and without it a
+     * Mode 4 plant with the RCPs secured has STAGNANT legs: the CVCS return chilled the small
+     * cold-leg node at ~9 degF/hr while the bulk plant sat still (measured; Tavg is the leg
+     * average, so the board read a cooldown that was a mixing artifact). The MAGNITUDE is
+     * [derived]: no design flow is stated in WTSM 5.1 ("sized ... to meet the plant cooldown
+     * requirements"), but its miniflow valves CLOSE above 1,000 gpm — a pump in service flows
+     * above that band, so 1,000 gpm (63.1 kg/s) is a defensible FLOOR for one running pump,
+     * not a fitted number. */
+    circulation_kgs: 1000 / 264.172 / 60 * 1000
   };
 
   /* ---- UA IS DERIVED FROM THE **HOLD** CONSTRAINT, NOT FROM THE COOLDOWN TIME ----------

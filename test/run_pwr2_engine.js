@@ -311,19 +311,21 @@ function runSuite(RD, rec, quiet, only) {
       qoxSeen, 'eng._Qox > 0 observed during the ride — the wiring, seen directly');
 
   /* ---- 3c. THE RHR ALIGN, THROUGH THE PLANT (#507 wave 2) -----------------------------------
-   * A 20 cm2 cold-leg break depressurizes below the sourced 425 psig suction permissive at
-   * ~74 s; the align door opens the valve and the module's heats map now MERGES into
-   * stepPlant (it used to feed only true_state — an aligned system removed exactly zero
-   * heat, the Q4 orphan the #458 ruling names). Measured A/B at t = 80.0 s: aligned
-   * tavg 133.9 degC vs secured 150.3 — the 16 degC gap is the wiring, and the pinned band
-   * below is what the merge-dropped mutation reds against (its removed_kJ ledger still
-   * climbs; only the PLANT tells the truth). */
+   * A 20 cm2 cold-leg break depressurizes below the sourced 425 psig suction permissive; the
+   * align door opens the valve and the module's heats map MERGES into stepPlant (it used to
+   * feed only true_state — an aligned system removed exactly zero heat, the Q4 orphan the
+   * #458 ruling names). TRAJECTORY RE-MEASURED (#510 batch 1): with reverse SG transfer
+   * signed instead of |Q|-removed, the hot secondary now SLOWS the blowdown — real
+   * small-break physics — so the permissive crossing moved ~74 s → 187.5 s. Measured A/B at
+   * t = 200.0 s: aligned tavg 205.7 degC vs secured 257.0 — the 51 degC gap is the wiring,
+   * and the pinned band below is what the merge-dropped mutation reds against (its
+   * removed_kJ ledger still climbs; only the PLANT tells the truth). */
   head('THE RHR ALIGN  [below the 425 psig permissive, the heat actually leaves the loop]');
   var engR = EN.createEngine({});
   run(engR, 10);
   EN.command(engR, 'break_open', { area_m2: 0.002, node: 'cold_leg' });
   var tsR = null, tR = 0, alignedR = false;
-  while (tR < 80.001) {
+  while (tR < 200.001) {
     tsR = EN.step(engR, DT); tR += DT;
     if (!alignedR && (engR.sys.P * 145.038 - 14.7) < 420) {
       EN.command(engR, 'rhr_align', true); alignedR = true;
@@ -332,8 +334,8 @@ function runSuite(RD, rec, quiet, only) {
   }
   ckT('aligned below the permissive: valve open, mode rhr, real energy removed, plant COOLER',
       alignedR && engR.rh.valve_open === true && tsR.eccs_mode === 'rhr' &&
-      engR.rh.removed_kJ > 50000 && tsR.tavg_c < 142,
-      'tavg ' + tsR.tavg_c.toFixed(1) + ' degC at t=80 (secured measures 150.3), removed ' +
+      engR.rh.removed_kJ > 50000 && tsR.tavg_c < 230,
+      'tavg ' + tsR.tavg_c.toFixed(1) + ' degC at t=200 (secured measures 257.0), removed ' +
       (engR.rh.removed_kJ / 1000).toFixed(0) + ' MJ, mode ' + tsR.eccs_mode);
   /* the door refuses an at-power align (the 425 psig permissive), and the autoclose is the
    * valve hardware: a valve forced open above 585 psig shuts on the next step */
@@ -1092,12 +1094,14 @@ function runSuite(RD, rec, quiet, only) {
   head('THE SHUTDOWN IC  [Mode 4 opens held; the #468 boron inversion cannot return; the heatup is real]');
   var engC = EN.createEngine({ initial_state: 'hot_shutdown' });
   var tsC = EN.step(engC, DT);
-  ckT('opens ON its point: Mode 4 at 250 degF / 350 psig class, level 30 %, RCPs SECURED, ' +
+  ckT('opens ON its point: Mode 4 at 250 degF / 350 psig class, level 25 % (#510 batch 1, ' +
+      'owner-ruled: the level PROGRAM\'s own value at 250 degF — the old 30 booted the ' +
+      'controller 5 points above program), RCPs SECURED, ' +
       'RHR aligned with the HX throttled (a HOLD), the P-11 blocks taken, nothing latched',
       tsC.plant_mode === 4 && /Hot Shutdown/.test(tsC.plant_mode_name) &&
       Math.abs(tsC.tavg_c - 121.1) < 0.2 &&
       tsC.pressure_mpa * 145.038 > 358 && tsC.pressure_mpa * 145.038 < 370 &&
-      Math.abs(tsC.pzr_level_pct - 30) < 1.5 &&
+      Math.abs(tsC.pzr_level_pct - 25) < 1.5 &&
       engC.sys.pumpTripped === true && engC.sys.omega === 0 &&
       engC.rh.valve_open === true && engC.rh.hx_fraction === 0 &&
       engC.pt.blockLoPress === true && engC.pt.blockSI === true &&
@@ -1138,7 +1142,8 @@ function runSuite(RD, rec, quiet, only) {
   var tsC3 = run(engC, quiet ? 300 : 600);
   var ratePerHr = (tsC3.tavg_c - tHeat0) * 9 / 5 * (3600 / (quiet ? 300 : 600));
   ckT('the HEATUP is real: pump heat alone warms the held plant in the sourced class ' +
-      '(measured 87.9 degF/hr — under the 100 degF/hr limit), untripped, no SI',
+      '(measured 92.8 degF/hr under the #510 batch-1 lineup — heaters AUTO ride along; ' +
+      'was 87.9 with heaters manual-0 — under the 100 degF/hr limit), untripped, no SI',
       ratePerHr > 40 && ratePerHr < 110 && tsC3.scrammed === false &&
       engC.pt.si === false && engC.sys.beyond_model !== true,
       ratePerHr.toFixed(1) + ' degF/hr, flow ' + engC.sys.mdot_loop.toFixed(0) + ' kg/s');
@@ -1278,9 +1283,10 @@ var MUTATIONS = [
   ['the condenser\'s grid wire is cut (CW pumps spin with no electricity)',
    '      cw_pumps_running: eng.cwPumps && offsiteOk',
    '      cw_pumps_running: eng.cwPumps', { grp: 'G' }],
+  /* anchor re-pointed #510 batch 1: the CVCS call grew the rhr_letdown_ok driver */
   ['the CVCS and ECCS vital-bus wires are cut (charging and SI survive the blackout)',
-   "    var cvr = CV.stepCVCS(eng.cv, sys, dt, { ac_available: acAvail });\n    var ecr = EC.stepECCS(eng.ec, sys, dt, { ac_available: acAvail });",
-   '    var cvr = CV.stepCVCS(eng.cv, sys, dt);\n    var ecr = EC.stepECCS(eng.ec, sys, dt);', { grp: 'G' }],
+   "    var cvr = CV.stepCVCS(eng.cv, sys, dt, { ac_available: acAvail, rhr_letdown_ok: eng.rh.valve_open });\n    var ecr = EC.stepECCS(eng.ec, sys, dt, { ac_available: acAvail });",
+   '    var cvr = CV.stepCVCS(eng.cv, sys, dt, { rhr_letdown_ok: eng.rh.valve_open });\n    var ecr = EC.stepECCS(eng.ec, sys, dt);', { grp: 'G' }],
   ['the pressurizer\'s electrical drivers are cut (the wire that was dark before wave 4)',
    '      ac_available: acAvail,\n      offsite_ok: offsiteOk\n    }, eng.pzDrivers));',
    '    }, eng.pzDrivers));', { grp: 'G' }],

@@ -133,6 +133,43 @@ function runSuite(C, rec, quiet) {
       C.stepCVCS(C.createCVCS({ letdownOpen: 0 }), plant(), 0.02).letdown_kgs === 0,
       'letdownOpen = 0');
 
+  /* ---- 2b. THE RHR LOW-PRESSURE LETDOWN PATH (#510 H-2, owner-ruled 2026-08-23) --------
+   * Sourced at the code: on shutdown cooling, letdown comes FROM the RHR system through the
+   * HCV-128 cross-connect (WTSM ch.19 / §4.1.4.5; NUREG-1431 Bases' "low pressure letdown
+   * control"), bypassing the orifice's 300 psi backpressure — which is what stranded the
+   * Mode 4 preset's 5 gpm of seal injection and sent it water-solid at 75 min. */
+  var sysRl = plant(); sysRl.P = 1.0;                    /* below the orifice backpressure */
+  var rRl = C.stepCVCS(C.createCVCS({}), sysRl, 0.02, { rhr_letdown_ok: true });
+  ckT('below the orifice backpressure the RHR path letdowns at the NORMAL magnitude',
+      Math.abs(rRl.letdown_kgs - C.normalLetdownKgs()) < 1e-9,
+      GPM(rRl.letdown_kgs).toFixed(2) + ' gpm at 145 psia with the RHR suction open');
+  ckT('...only WHILE the RHR suction is open — the driver absent means the old orifice law',
+      C.stepCVCS(C.createCVCS({}), (function () { var s = plant(); s.P = 1.0; return s; })(),
+                 0.02).letdown_kgs === 0,
+      'same 145 psia plant, no rhr_letdown_ok: letdown 0 (the pre-#510 shape, kept at power)');
+  ckT('...and the operator\'s letdown fraction still owns the path',
+      C.stepCVCS(C.createCVCS({ letdownOpen: 0 }), sysRl, 0.02,
+                 { rhr_letdown_ok: true }).letdown_kgs === 0,
+      'letdownOpen 0 passes nothing through either path');
+  ckT('at power the two paths agree — the RHR driver moves NOTHING at 2235 psia',
+      Math.abs(C.stepCVCS(C.createCVCS({}), plant(), 0.02, { rhr_letdown_ok: true }).letdown_kgs -
+               C.stepCVCS(C.createCVCS({}), plant(), 0.02).letdown_kgs) < 1e-12,
+      'the orifice is calibrated to the normal flow at operating pressure, so max() is a tie');
+
+  /* ---- 2c. THE REGENERATIVE HX (#510 H-2): letdown pre-heats the return ---------------- */
+  var sysRg = plant();
+  function coldNode(sy) {
+    for (var q = 0; q < sy.nodes.length; q++) if (sy.nodes[q].id === 'cold_leg') return sy.nodes[q];
+  }
+  var rRg = C.stepCVCS(C.createCVCS({}), sysRg, 0.02);
+  var rIso = C.stepCVCS(C.createCVCS({ letdownOpen: 0 }), plant(), 0.02);
+  ckT('with letdown in service the return arrives NEAR the cold leg (regen recovery), and ' +
+      'with letdown isolated it arrives COLD',
+      rRg.sources[0].h > 0.8 * coldNode(sysRg).h && rIso.sources[0].h < 0.5 * coldNode(sysRg).h,
+      'in-service h ' + rRg.sources[0].h.toFixed(0) + ' vs isolated h ' +
+      rIso.sources[0].h.toFixed(0) + ' kJ/kg against a ' + coldNode(sysRg).h.toFixed(0) +
+      ' kJ/kg cold leg — the ~10 % residual cold-injection effect is the real one');
+
   /* ---- 3. BORON IS A MASS BALANCE, AND THE SHAPE PROVES IT ---------------------------- */
   if (!quiet) console.log('\nBORON  [a mass balance -- the SHAPE is the evidence, not the rate]');
   function dilute(from, minutes) {
@@ -378,6 +415,11 @@ var pass = rec.filter(function (r) { return r.ok; }).length, fail = rec.length -
 
 /* ---------------------------------------------------------------- INJECTION SELF-TEST */
 var MUTATIONS = [
+  ['the RHR letdown path severed (#510 H-2 re-armed: Mode 4 seal injection has no exit)',
+   '? cv.letdownOpen * normalLetdownKgs() : 0;', '? 0 : 0;'],
+  ['the regen recovery deleted (the return arrives cold; the closed loop stands ~200 kW of ' +
+   'parasitic cooling)',
+   'h_in = h_charge + CVCS.regen_effectiveness', 'h_in = h_charge + 0 * CVCS.regen_effectiveness'],
   ['letdown becomes a constant flow (the coupling is destroyed)',
    'cv.letdownOpen * cv.K * Math.sqrt(dP)', 'cv.letdownOpen * cv.K * Math.sqrt(13.34)'],
   ['the orifice runs backwards below its backpressure',
@@ -415,8 +457,8 @@ var MUTATIONS = [
    'var h_charge = W.h_l(Math.min(60, W.T_from_h(node ? node.h : 1250, sys.P)), sys.P);',
    'var h_charge = node ? node.h : 1250;'],
   ['letdown leaves as a POSITIVE source (inventory runs away)',
-   "{ node: 'cold_leg', mdot: -letdown,  h: node ? node.h : 1250 }",
-   "{ node: 'cold_leg', mdot: letdown,  h: node ? node.h : 1250 }"],
+   "{ node: 'cold_leg', mdot: -letdown,  h: h_node }",
+   "{ node: 'cold_leg', mdot: letdown,  h: h_node }"],
   ['the orifice coefficient stops being calibrated at NOP',
    'return normalLetdownKgs() / Math.sqrt(dP);', 'return 0.02;'],
   /* CONSTRUCTION -- the class §31 found in every other layer */

@@ -269,7 +269,13 @@
       Object.keys(drivers.heats).forEach(function (id) { heats[id] = drivers.heats[id]; });
     }
     if (drivers.corePower) heats.core = (heats.core || 0) + drivers.corePower;
-    if (drivers.sgDuty) heats.sg_primary = (heats.sg_primary || 0) - Math.abs(drivers.sgDuty);
+    /* SIGNED, not Math.abs (#510 batch 1, measured). sgDuty is positive-removes by contract,
+     * and a NEGATIVE duty is real physics — a secondary hotter than the primary transfers
+     * heat INTO the loop (Mode 4's whole regime, and any cold-primary state). The old
+     * Math.abs turned reverse transfer into primary REMOVAL, so both vessels cooled and
+     * 2|Q| was destroyed: the untouched shutdown preset lost ~113 kW to it, most of the
+     * −6.7 degF/hr Tavg drift that H-2's inventory fix alone could not close. */
+    if (drivers.sgDuty) heats.sg_primary = (heats.sg_primary || 0) - drivers.sgDuty;
     heats.rcp = (heats.rcp || 0) + pumpKW;
 
     var r = LOOP.stepLoop(sys, dt, { heats: heats, sources: drivers.sources, mdot: sys.mdot_loop });

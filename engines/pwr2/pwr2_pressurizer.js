@@ -306,11 +306,23 @@
     var hf = W.h_f(P), hg = W.h_g(P);
     var twoPhase = pz.h_bar > hf && pz.h_bar < hg;
     var H = pz.m_pzr * pz.h_bar;
+    var surge_heat_kW = 0;
     if (surge_kgs > 0) {
       var h_hot = nodeH(sys, 'hot_leg');
       H += surge_kgs * dt * (h_hot === undefined ? hf : h_hot);
     } else {
-      H += surge_kgs * dt * (twoPhase ? hf : pz.h_bar);
+      /* OUTSURGE CONSERVES ENERGY ACROSS THE SURGE LINE (#510 batch 1, measured). The vessel
+       * debits its ledger at the donor enthalpy (h_f while a bubble exists — bottom liquid),
+       * but the LOOP gains that mass implicitly through the pressure solve at its own node
+       * enthalpy — so the difference used to be DESTROYED: ~454 kJ/kg at the Mode 4 point,
+       * and the level PI's hunting outsurges alone cooled the untouched shutdown preset at
+       * ~9 degF/hr while draining the bubble. The difference is reported here and the facade
+       * delivers it to the hot leg as heat (one step, the house lag convention) — outsurge
+       * water arriving hotter than the leg it enters IS that heat. */
+      var h_out = twoPhase ? hf : pz.h_bar;
+      var h_hot2 = nodeH(sys, 'hot_leg');
+      H += surge_kgs * dt * h_out;
+      if (h_hot2 !== undefined) surge_heat_kW = (-surge_kgs) * (h_out - h_hot2);
     }
     pz.m_pzr = m_new;
 
@@ -473,6 +485,7 @@
       level_pct: 100 * pz.V_liq / V,
       m_pzr: pz.m_pzr,
       surge_kgs: surge_kgs,
+      surge_heat_kW: surge_heat_kW,
       heater_kW: Q_heat_kW,
       heater_frac: heatFrac,
       backup_on: pz.backupOn,

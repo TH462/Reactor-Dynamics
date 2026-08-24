@@ -125,6 +125,19 @@
      * it follows from a one-pump plant keeping a real pump's seal. */
     seal_injection_gpm_per_pump: 5,   // [sourced] WTSM §4.1, verbatim
     rcp_count: 1,                     // [ruled] SLS-100 is a single-loop plant
+    /* ---- THE REGENERATIVE HEAT EXCHANGER, AS AN EFFECTIVENESS --------------------------
+     * (#510 H-2). Letdown gives its heat to the incoming charging stream before leaving the
+     * CVCS boundary — a real, always-in-service device (WTSM §4.1's letdown path runs
+     * through it; the old engine's letdown-isolation interlock comment exists because of
+     * it). Without it, a closed charging/letdown loop stands a permanent parasitic cooling
+     * on the RCS: ~12.5 gpm arriving at 60 degC against a 121 degC Mode 4 plant is ~200 kW,
+     * 7.7 degC/hr — which is what made the shutdown preset's Tavg drift, not any modelled
+     * loss. Effectiveness on the RECOVERABLE stream, min(charging+seal, letdown): [tune] 0.9
+     * — real charging leaves the regen HX ~500 degF against a ~545 degF cold leg, i.e. the
+     * cold-injection effect is real but ~10 % of the raw enthalpy gap, and 0.9 reproduces
+     * that class figure. LUMPED, DECLARED: the seal stream rides the same recovery although
+     * the physical seal-injection line bypasses the regen HX. */
+    regen_effectiveness: 0.9,
     /* Lab turnaround for an RCS boron grab sample. [derived]: adopted from the old engine's
      * real-time figure (#419 wave 1 made it real time there); no corpus document states a
      * turnaround, so the number is a class figure, declared. */
@@ -241,7 +254,26 @@
     /* THE ORIFICE. Negative dP means the sink is above the plant -- letdown cannot run backwards
      * through it, so it stops rather than reversing sign under a square root. */
     var dP = sys.P - CVCS.letdown_backpressure_mpa;
-    var letdown = (cv.letdownOpen <= 0 || dP <= 0) ? 0 : cv.letdownOpen * cv.K * Math.sqrt(dP);
+    var orifice = (cv.letdownOpen <= 0 || dP <= 0) ? 0 : cv.letdownOpen * cv.K * Math.sqrt(dP);
+    /* THE RHR LOW-PRESSURE LETDOWN PATH (#510 H-2, owner-ruled 2026-08-23). With the plant on
+     * shutdown cooling the orifice's 300 psi backpressure strands every inflow — which is how
+     * the shipped Mode 4 preset went water-solid on its own 5 gpm of seal injection. The real
+     * plant letdowns FROM THE RHR SYSTEM in exactly this regime:
+     *   [sourced] WTSM ch.19 (ML11223A342): "Coolant removal is accomplished by letdown,
+     *   primarily from the residual heat removal system (RHR)" … "Letdown is via the
+     *   RHR-to-CVCS cross-connect valve HCV-128."
+     *   [sourced] WTSM §4.1.4.5 (ML11223A214): "A connection from the RHR system … allows
+     *   purification of the RCS while the plant is in cold shutdown."
+     *   [sourced] NUREG-1431 Rev 4 Bases (ML12100A228): "During LTOP MODES, the RHR System is
+     *   operated for decay heat removal and low pressure letdown control."
+     * Modelled as the NORMAL letdown magnitude behind the operator's own letdown fraction,
+     * available while the RHR suction is open (the driver; absent = shut, so every at-power
+     * fixture is untouched — the 585 psig autoclose keeps it false at power). The cross-connect
+     * pulls from RHR flow, not through the orifice, hence no sqrt(dP) — RHR pump head drives
+     * it. The orifice keeps whichever flow is larger; they are parallel paths to the same VCT. */
+    var rhrPath = (drivers && drivers.rhr_letdown_ok && cv.letdownOpen > 0)
+                  ? cv.letdownOpen * normalLetdownKgs() : 0;
+    var letdown = Math.max(orifice, rhrPath);
 
     /* ---- BORON, AS A MASS BALANCE ON THE WHOLE RCS -----------------------------------
      * d(M*C)/dt = charging*C_in - letdown*C_rcs. Letdown carries the RCS concentration because it
@@ -288,6 +320,15 @@
     }
 
     var h_charge = W.h_l(Math.min(60, W.T_from_h(node ? node.h : 1250, sys.P)), sys.P);
+    /* THE REGEN HX (#510 H-2, see the constant): the returning stream recovers heat from the
+     * letdown it crosses. Recovery scales with min(inflow, letdown) -- no letdown, no recovery,
+     * and charging then genuinely arrives cold (isolated-letdown lineups keep the old shape). */
+    var h_node = node ? node.h : 1250;
+    var h_in = h_charge;
+    if (inFlow > 0 && letdown > 0 && h_node > h_charge) {
+      h_in = h_charge + CVCS.regen_effectiveness
+                        * (Math.min(inFlow, letdown) / inFlow) * (h_node - h_charge);
+    }
 
     return {
       charging_kgs: charging,
@@ -297,11 +338,11 @@
       boron_ppm: cv.boron_ppm,
       rho_coldleg: rho,
       /* Layer 3's boundary-source shape. Letdown leaves at the node's OWN enthalpy (it is RCS
-       * water); charging arrives cold, which is a real and teachable effect -- charging into a
-       * hot leg is a local cooldown. */
+       * water); charging arrives at the regen-HX outlet -- still below the cold leg, so the
+       * cold-injection effect survives at its real ~10 % scale rather than the raw gap. */
       sources: [
-        { node: 'cold_leg', mdot: charging + seal,  h: h_charge },
-        { node: 'cold_leg', mdot: -letdown,  h: node ? node.h : 1250 }
+        { node: 'cold_leg', mdot: charging + seal,  h: h_in },
+        { node: 'cold_leg', mdot: -letdown,  h: h_node }
       ]
     };
   }
