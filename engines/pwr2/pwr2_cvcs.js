@@ -283,6 +283,14 @@
     /* Seal injection is drawn from the SAME charging pump suction, so it carries the same
      * concentration as charging -- it is not a separate chemistry path. */
     var inFlow = charging + seal;
+    /* SAFETY INJECTION CARRIES RWST BORON (#510 M-1). The RWST concentration was defined,
+     * sourced, and read by NOTHING — 5,363 lb injected moved the RCS boron by zero to seven
+     * figures, a parity regression against the old engine the curriculum teaches from. The
+     * caller hands the injected flow and its concentration here because this ledger is the
+     * plant's ONE boron balance (absent means no injection — every layer-local fixture
+     * unchanged). */
+    var si = drivers && drivers.si_kgs > 0 ? drivers.si_kgs : 0;
+    var C_si = drivers && drivers.si_ppm !== undefined ? drivers.si_ppm : 0;
     var M = 0;
     for (var k = 0; k < sys.nodes.length; k++) {
       M += sys.nodes[k].V * W.rho_from_h(sys.nodes[k].h, sys.P);
@@ -302,9 +310,9 @@
            : cv.boron_ppm;                            /* 'match' -- inventory only, no shift */
     }
     if (M > 0) {
-      var dC = (inFlow * C_in - letdown * cv.boron_ppm) / M;
+      var dC = (inFlow * C_in + si * C_si - letdown * cv.boron_ppm) / M;
       /* the inventory change itself re-concentrates what is left */
-      var dM = inFlow - letdown;
+      var dM = inFlow + si - letdown;
       cv.boron_ppm = cv.boron_ppm + dt * (dC - cv.boron_ppm * dM / M);
       if (cv.boron_ppm < 0) cv.boron_ppm = 0;
     }

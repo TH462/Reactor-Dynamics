@@ -240,6 +240,23 @@ function runSuite(S, rec, quiet) {
   S.stepPlant(st2, 0.02, { corePower: 0, sgDuty: 0 });
   ckT('a TRIPPED rotor at rest stays at rest -- the trip flag gates the motor, not a wish',
       st2.omega === 0, '');
+  /* THE COLD START (#510 H-7). Hydraulic torque runs as r^2 x densityRatio, and cold dense
+   * water (Mode 4 class, ~1.3x design density) met the flat 1.5x start torque at 93 % speed
+   * -- a stable sub-rated stall the hot fixture above could never bind. The torque now rises
+   * toward the breakdown class near synchronous speed (the induction curve's own shape), so
+   * the cold rotor pulls in. */
+  var stC = S.createPlant({ h: W.h_l(121.1, 2.51), P: 2.51, mdot: 10, omega: 0, pumpTripped: false });
+  var tRC = null, overC = false;
+  for (var qC = 0; qC < 60 / 0.02; qC++) {
+    S.stepPlant(stC, 0.02, { corePower: 0, sgDuty: 0 });
+    if (stC.omega > S.PUMP.w_rated + 1e-9) overC = true;
+    if (tRC === null && stC.omega >= S.PUMP.w_rated * 0.999) tRC = (qC + 1) * 0.02;
+  }
+  ckT('a COLD start in dense water reaches RATED -- the near-sync torque rise pulls it in, ' +
+      'and the cap still holds it there (#510 H-7)',
+      tRC !== null && tRC < 60 && overC === false,
+      'rated at ' + (tRC === null ? '>60' : tRC.toFixed(1)) + ' s in 121 degC water ' +
+      '(the flat 1.5x class stalled at 93.05 % for ever)');
 
   /* (b) CALLER OPTIONS MUST REACH LAYER 3. `LOOP.createLoop(opts)` degrading to `createLoop({})`
    * is a one-word edit that silently discards h, P, mdot and includeOffLoop -- every probe and
@@ -354,9 +371,13 @@ var MUTATIONS = [
   ['the start branch is deleted (an untripped rotor at rest never spins)',
    "    else if (!sys.pumpTripped && sys.omega < PUMP.w_rated) {",
    '    else if (false) {'],
+  /* anchor re-pointed #510 H-7: the torque class rises toward breakdown near sync */
   ['the rated-speed cap is deleted (the motor drives the rotor past its own rating)',
-   '      sys.omega = Math.min(PUMP.w_rated,\n                           sys.omega + dt * (MOTOR_START_TORQUE * Trated - ThydS) / PUMP.inertia);',
-   '      sys.omega = sys.omega + dt * (MOTOR_START_TORQUE * Trated - ThydS) / PUMP.inertia;'],
+   '      sys.omega = Math.min(PUMP.w_rated,\n                           sys.omega + dt * (Tmot * Trated - ThydS) / PUMP.inertia);',
+   '      sys.omega = sys.omega + dt * (Tmot * Trated - ThydS) / PUMP.inertia;'],
+  ['the breakdown-torque rise is flattened (#510 H-7 re-armed: a COLD start stalls at 93 %)',
+   'var Tmot = MOTOR_START_TORQUE + (rSpd > 0.9\n                   ? (rSpd - 0.9) / 0.1 * (MOTOR_BREAKDOWN_TORQUE - MOTOR_START_TORQUE) : 0);',
+   'var Tmot = MOTOR_START_TORQUE;'],
   /* THE PUMP DENSITY COUPLING (2026-08-17). The first is the defect exactly as it shipped. */
   ['the pump develops rated dP whatever it is pumping (rated mass flow through STEAM)',
    'return PUMP.dP_rated * r * r * densityRatio(sys);', 'return PUMP.dP_rated * r * r;'],

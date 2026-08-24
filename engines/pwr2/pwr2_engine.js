@@ -298,7 +298,7 @@
                : { mode: 'pressure', pressure_setpoint_mpa: G.SG.P_noload },
       advDemand: 0, advBlock: true,
       /* one-step-lag carriers */
-      _Qox: 0, _pzRelief: 0, _pzReliefH: 0, _pzSurgeHeat: 0, _sgtrKgs: 0, _sgtrH: 0,
+      _Qox: 0, _pzRelief: 0, _pzReliefH: 0, _pzSurgeHeat: 0, _eccsKgs: 0, _sgtrKgs: 0, _sgtrH: 0,
       _pzr: null, _dcr: null, _lastTrip: false,
       _scramT: null, _manualTrip: false, _rodStopSig: false, _runbackSig: false,
       _rbT: 0, _rbActive: false,
@@ -741,9 +741,12 @@
     /* rhr_letdown_ok (#510 H-2): the RHR-to-CVCS cross-connect — low-pressure letdown is
      * available while the RHR pumps take suction (valve open AND powered since #510 H-5 —
      * rh.running, one step old: stepRHR and its autoclose run below), the house lag
-     * convention. */
-    var cvr = CV.stepCVCS(eng.cv, sys, dt, { ac_available: acAvail, rhr_letdown_ok: eng.rh.running === true });
+     * convention. si_kgs/si_ppm (#510 M-1): safety injection is RWST water and the RWST is
+     * BORATED — the flow is last step's (the ECCS steps after the CVCS), the house lag
+     * convention again. */
+    var cvr = CV.stepCVCS(eng.cv, sys, dt, { ac_available: acAvail, rhr_letdown_ok: eng.rh.running === true, si_kgs: eng._eccsKgs, si_ppm: EC.ECCS.rwst_boron_ppm });
     var ecr = EC.stepECCS(eng.ec, sys, dt, { ac_available: acAvail });
+    eng._eccsKgs = ecr.total_kgs || 0;
 
     /* THE SGTR IS A BREAK WHOSE DESTINATION IS THE SG (#507 wave 5) — inferred from the
      * node: a break AT sg_primary is a ruptured tube, and a tube discharges into the

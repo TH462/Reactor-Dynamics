@@ -192,6 +192,24 @@ function runSuite(C, rec, quiet) {
       cvB.boron_ppm > 700 && cvB.boron_ppm < C.CVCS.boric_acid_ppm,
       cvB.boron_ppm.toFixed(1) + ' ppm after 10 min against a ' + C.CVCS.boric_acid_ppm +
       ' ppm source');
+  /* SAFETY INJECTION CARRIES RWST BORON (#510 M-1): the sourced 2,500 ppm concentration was
+   * defined and read by NOTHING — thousands of kg injected moved the RCS boron by zero. The
+   * caller hands the injected stream to this ledger; injection AT the RCS's own concentration
+   * is neutral (the discriminator that separates the term from a fitted ramp). */
+  ckT('SI RAISES boron toward the RWST concentration — and SI at the RCS\'s own ppm is ' +
+      'NEUTRAL (#510 M-1)',
+      (function () {
+        var s1 = plant(), c1 = C.createCVCS({ boron_ppm: 700 });
+        var s2 = plant(), c2 = C.createCVCS({ boron_ppm: 700 });
+        var s3 = plant(), c3 = C.createCVCS({ boron_ppm: 700 });
+        for (var q = 0; q < N(3000); q++) {
+          C.stepCVCS(c1, s1, 0.02, { si_kgs: 5, si_ppm: 2500 });
+          C.stepCVCS(c2, s2, 0.02);
+          C.stepCVCS(c3, s3, 0.02, { si_kgs: 5, si_ppm: 700 });
+        }
+        return c1.boron_ppm > c2.boron_ppm + 15 && c1.boron_ppm < 2500 &&
+               Math.abs(c3.boron_ppm - c2.boron_ppm) < 0.5;
+      })(), '60 s at 5 kg/s of 2,500 ppm RWST water against the untouched twin');
   /* A MATCHED LINEUP MUST HOLD BORON **WHILE INVENTORY IS CHANGING** -- and that is the only
    * place the re-concentration term is observable. Adding water at the RCS's own concentration
    * cannot shift concentration, so the transport term (+C*dM/M) and the re-concentration term
@@ -424,9 +442,12 @@ var MUTATIONS = [
    'cv.letdownOpen * cv.K * Math.sqrt(dP)', 'cv.letdownOpen * cv.K * Math.sqrt(13.34)'],
   ['the orifice runs backwards below its backpressure',
    '(cv.letdownOpen <= 0 || dP <= 0) ? 0 :', '(cv.letdownOpen <= 0) ? 0 :'],
+  ['the SI boron term is dropped (#510 M-1 re-armed: injection dilutes instead of borating)',
+   'var dC = (inFlow * C_in + si * C_si - letdown * cv.boron_ppm) / M;',
+   'var dC = (inFlow * C_in - letdown * cv.boron_ppm) / M;'],
   ['letdown stops carrying the RCS concentration away (boron shape breaks)',
-   'var dC = (inFlow * C_in - letdown * cv.boron_ppm) / M;',
-   'var dC = (inFlow * C_in - letdown * 0) / M;'],
+   'var dC = (inFlow * C_in + si * C_si - letdown * cv.boron_ppm) / M;',
+   'var dC = (inFlow * C_in + si * C_si - letdown * 0) / M;'],
   ['the re-concentration term dropped (inventory change stops affecting ppm)',
    'cv.boron_ppm = cv.boron_ppm + dt * (dC - cv.boron_ppm * dM / M);',
    'cv.boron_ppm = cv.boron_ppm + dt * dC;'],

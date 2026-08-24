@@ -29,6 +29,29 @@ and the user-visible summary in `CHANGELOG.md`. This file points at those and tr
 
 ---
 
+## Session log — 2026-08-24-develop-b (#510 batch 3 — the boot-state artifacts and the SI boron)
+
+**Batch 3 of the #510 order** — H-7, H-3, M-1. Full record: `Blueprint/PWR2_VALIDATION.md`
+**§77**. Endurance **18 passed 0 xfail** — every #510 endurance defect fixed; the strict
+XFAIL map stays armed for the next born-failing entry.
+
+- **H-7**: torque rises to the [open] 2.0× breakdown class over the last 10 % of speed —
+  cold start rated at 24.1 s (was a 93 % stall), hot restart 11.4 s (§73's class holds).
+  **The §74 heatup was the stall's artifact: honest rate 113.7 °F/hr at the rated rotor,
+  ABOVE the 100 °F/hr admin limit** — the operator's RHR trim has ~134 °F/hr of authority
+  per 0.2 hx, so compliance is procedure; §74 corrected in place, the engine gate's band
+  re-measured to the honest class. FLAGGED FOR OWNER REVIEW in the #510 batch comment.
+- **H-3**: UA = designUA() once at construction (decay at 20 h + design_rcp_heat_kW 1351
+  [derived]) = 204.08 kW/K on any boot; the live-plant lazy derivation retired (208.76 vs
+  96.00 boot spread). Dead M/cp arithmetic deleted.
+- **M-1**: `si_kgs`/`si_ppm` into the CVCS boron balance via the `_eccsKgs` one-step carrier
+  (saves gain the scalar, old saves land 0). LOCA borates 625.8 → 720.0 ppm/120 s; SI at own
+  ppm is NEUTRAL (gated discriminator).
+- Gates: sources 34 → 35 (+1 mutation) · rhr 42 → 43 · cvcs 43 → 44 (26 → 27) · engine 90 ·
+  shell 71 · eccs/loca at baseline.
+
+---
+
 ## Session log — 2026-08-24-develop-a (#510 batch 2 — the electrical completion sweep)
 
 **Batch 2 of the #510 order** — H-4, H-5, H-6, M-13, M-6, one pattern (un-carried electrical

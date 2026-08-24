@@ -78,6 +78,15 @@
    * sourced inertia this gives a measured spin-up in the real RCP start class (seconds,
    * reported by the gate rather than asserted here). */
   var MOTOR_START_TORQUE = 1.5;
+  /* [open] the induction motor's BREAKDOWN torque, same class family (#510 H-7) — the peak
+   * of the torque curve near synchronous speed, 2.0-2.5x rated for the machine class; taken
+   * at the bottom of the band. The start class alone stalled the rotor at 93 % in COLD
+   * water: hydraulic torque runs as r^2 x densityRatio (1.306 at the Mode 4 point), so the
+   * 1.5x flat curve found its equilibrium sub-rated and the "holds rated thereafter" the
+   * comment declared was never reachable. The torque RISES toward breakdown as the rotor
+   * approaches synchronous speed — the induction curve's own shape — so a cold start now
+   * pulls in and the clamp holds rated, at bounded (not infinite) torque. */
+  var MOTOR_BREAKDOWN_TORQUE = 2.0;
 
   /* Loop inertia SUM(L/A), from Layer 1's sourced flow lengths only. */
   function loopInertia() {
@@ -225,8 +234,11 @@
     /* ---- rotor: START (#507 wave 9) — the motor accelerates the SAME rotor the coastdown
      * decelerates, against the same hydraulic load, with the same sourced inertia. The
      * accelerating torque is MOTOR_START_TORQUE x the rated hydraulic torque — [open] 1.5,
-     * the induction-motor accelerating-torque class; no sourced motor curve exists in the
-     * corpus. The motor HOLDS rated speed thereafter (slip regulation unmodeled, declared);
+     * the induction-motor accelerating-torque class — RISING to the breakdown class near
+     * synchronous speed (#510 H-7: the flat 1.5x curve stalled a COLD start at 93 %, where
+     * r^2 x densityRatio met it; the rise is the induction curve's own shape and is what
+     * makes "the motor HOLDS rated thereafter" true — the clamp then holds it at bounded
+     * torque). No sourced motor curve exists in the corpus; both multiples are [open].
      * WHO may start it, and on which bus, is the caller's law (HR5) — this layer only spins
      * what it is told is untripped. Start permissives a real plant carries (seal injection,
      * oil lift, anti-reverse-rotation) are declared unmodeled. */
@@ -234,8 +246,11 @@
       var Trated = PUMP.dP_rated * 1e6 * (PUMP.mdot_rated / 700) / PUMP.w_rated;      // N*m
       var ThydS = sys.omega > 1e-6
                   ? pumpHead(sys) * 1e6 * (sys.mdot_loop / 700) / sys.omega : 0;
+      var rSpd = sys.omega / PUMP.w_rated;
+      var Tmot = MOTOR_START_TORQUE + (rSpd > 0.9
+                   ? (rSpd - 0.9) / 0.1 * (MOTOR_BREAKDOWN_TORQUE - MOTOR_START_TORQUE) : 0);
       sys.omega = Math.min(PUMP.w_rated,
-                           sys.omega + dt * (MOTOR_START_TORQUE * Trated - ThydS) / PUMP.inertia);
+                           sys.omega + dt * (Tmot * Trated - ThydS) / PUMP.inertia);
     }
 
     /* ---- loop momentum ---- */

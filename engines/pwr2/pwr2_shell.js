@@ -898,8 +898,9 @@
         _scramT: e._scramT, _manualTrip: e._manualTrip, _lastTrip: e._lastTrip,
         _rodStopSig: e._rodStopSig, _runbackSig: e._runbackSig, _rbT: e._rbT,
         _rbActive: e._rbActive, _pzRelief: e._pzRelief, _pzReliefH: e._pzReliefH,
-        /* the outsurge-heat one-step carrier (#510 batch 1) — old saves land on 0, healthy */
-        _pzSurgeHeat: e._pzSurgeHeat,
+        /* the outsurge-heat and SI-boron one-step carriers (#510 batches 1+3) — old saves
+         * land on 0, healthy */
+        _pzSurgeHeat: e._pzSurgeHeat, _eccsKgs: e._eccsKgs,
         /* the SGTR stream's one-step carriers (#507 wave 5) — old saves land on 0, healthy */
         _sgtrKgs: e._sgtrKgs, _sgtrH: e._sgtrH,
         /* the wave-6 failure levers (#507) — old saves land on the healthy defaults;

@@ -42,9 +42,11 @@ var XFAIL = {
    * H-4/H-5/H-6/M-6 PROMOTED (#510 batch 2, 2026-08-24): the electrical completion sweep —
    * aux spray and the RHR pumps carry the vital-bus wire, the shed latch edges on each
    * actuating signal independently, and a dead condenser trips the turbine (sourced,
-   * Ginna UFSAR ch.10 §10.1.3.1). */
-  'rcp-start-reaches-rated-cold':
-    '#510 H-7: constant motor torque stalls the rotor at ~93 % speed in cold water'
+   * Ginna UFSAR ch.10 §10.1.3.1).
+   * H-7 PROMOTED (#510 batch 3, 2026-08-24): the torque class rises toward the breakdown
+   * class near synchronous speed — a cold start pulls in at 24.1 s instead of stalling.
+   * EVERY #510 ENDURANCE DEFECT IS NOW FIXED — the map stays for the next born-failing
+   * entry; strictness is unchanged (an entry that PASSES still reds until promoted). */
 };
 
 var rec = [], nPass = 0, nXfail = 0, nFail = 0, nUnexpected = 0;

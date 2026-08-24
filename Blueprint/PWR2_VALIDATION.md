@@ -3958,7 +3958,10 @@ Bases: the loss-of-flow functions are required above P-7).
   first."), where this defect rides as a strict expected-fail until its fix lands.
 - **The heatup is real**: `rcp_start` alone warms the held plant at **87.9 °F/hr** — the
   pump-heat class, just under the 100 °F/hr limit — flow 1,996 kg/s (cold dense water on
-  the affinity law), untripped, no SI. Pressure sags on the heatup insurge because the
+  the affinity law), untripped, no SI. **CORRECTED 2026-08-24 (#510 H-7, §77): that figure
+  rode the STALLED 93 % rotor** — at the rated rotor the honest rate is **113.7 °F/hr**,
+  above the administrative limit; the compliance story moves to the operator (the RHR trim,
+  §77), and the "just under the limit" clause here is retired. Pressure sags on the heatup insurge because the
   boot heaters are OFF: cold insurge quenches the bubble — restoring the heaters is the
   heatup procedure's own first act, the TMI-adjacent lesson falling out of the physics.
 - The mode ladder reads by Tavg below power: 4 at 248 °F, 5 at 176 °F (the rung waits on
@@ -4124,3 +4127,56 @@ endurance 13p 5xf → **17p 1xf** (H-4/H-5/H-6/M-6 promoted) · pressurizer 66 �
 (mutations 26 → 29: aux vital-bus gate severed, the OR'd-edge revert, the SI-shed anchor
 re-pointed) · rhr 41 → **42** (23 → 24: the vital-bus gate severed) · shell 69 → **71**
 (the layered clear, both orders) · engine 90 · cvcs/condenser/afw at baseline.
+
+## 77. #510 BATCH 3 — THE BOOT-STATE ARTIFACTS AND THE SI BORON (H-7, H-3, M-1) — 2026-08-24
+
+The last endurance expected-fail promoted: **18 passed, 0 xfail, 0 failed — every #510
+endurance defect is fixed**. The XFAIL map stays for the next born-failing entry; strictness
+unchanged.
+
+### H-7 — the RCP motor pulls in (pwr2_sources)
+
+Hydraulic torque runs as r² × densityRatio, and cold Mode 4 water (ratio 1.306) met the flat
+1.5× accelerating-torque class at 93 % speed — a stable sub-rated stall, which is what made
+wave 10's 87.9 °F/hr heatup an artifact. The torque now RISES linearly from the start class
+to a breakdown class (2.0 [open], bottom of the induction-motor band) over the last 10 % of
+speed — the induction curve's own shape — so the cold rotor pulls in and the rated-speed
+clamp holds it at bounded torque. Measured: cold start reaches rated at **24.1 s** (was a
+93.05 % stall for ever); hot restart **11.4 s**, still §73's ~13 s class.
+
+**The §74 heatup claim is corrected in place**: at the rated rotor the pump-heat heatup is
+**113.7 °F/hr** (flow 2,127 kg/s) — ABOVE the 100 °F/hr administrative limit. The compliance
+story moves to the OPERATOR, and the lever has real authority: the RHR heat-exchanger
+fraction trims the rate ~134 °F/hr per 0.2 of throttle (measured: hx 0 → +113.7, hx 0.2 →
+−20.6, hx 0.3 → −80.6 °F/hr), so a heatup held under the limit is an ordinary trim, not a
+new system. The engine gate's heatup band re-measured to the honest class; the limit clause
+retired from the check's claim (an admin limit is procedure, not an accident).
+
+### H-3 — the RHR exchanger is hardware (pwr2_rhr)
+
+UA is derived ONCE at construction from the DESIGN load — decay at 20 h plus the measured
+cooldown-lineup RCP heat (design_rcp_heat_kW 1351 [derived], the pump-heat note's own
+figure): **204.08 kW/K, identical on any boot plant**. The lazy first-step derivation read
+the LIVE plant (pump heat 0 stopped, ~1.4 MW spinning) and sized the same exchanger
+208.76 kW/K on an at-power boot vs 96.00 on the shutdown boot — the same throttle cooled at
+125.9 vs 61.0 °F/hr and the sourced 100 °F/hr limit sat INSIDE the boot-state spread. The
+dead M/cp arithmetic (computed, never read) is deleted; old saves carry a concrete UA and
+are untouched; a legacy null lands on the design constant.
+
+### M-1 — safety injection carries RWST boron (pwr2_cvcs + the facade)
+
+`rwst_boron_ppm` (2,500, sourced ML11223A220) was defined and read by NOTHING — 5,363 lb
+injected moved RCS boron by zero to seven figures, a parity regression against the old
+engine. The CVCS ledger (the plant's one boron balance) now takes the injected stream:
+`si_kgs` (last step's ECCS total, the `_eccsKgs` one-step carrier — the ECCS steps after the
+CVCS; pwr2-1.0 saves gain the scalar, old saves land 0) at `si_ppm` = the RWST concentration.
+Measured: a 20 cm² LOCA borates 625.8 → 720.0 ppm on 279 kg injected in 120 s; SI at the
+RCS's own concentration is NEUTRAL (the discriminator that separates the term from a fitted
+ramp — gated).
+
+### Gates
+endurance 17p 1xf → **18p 0xf** · sources 34 → **35** (the cold start; +1 mutation — the
+rise flattened replays the stall red) · rhr 42 → **43** (UA-is-hardware; anchors re-pointed
+to designUA) · cvcs 43 → **44** (SI-borates + neutral-at-own-ppm; mutations 26 → 27) ·
+engine 90 (the heatup band re-measured to the honest class) · shell 71 · eccs/loca at
+baseline.

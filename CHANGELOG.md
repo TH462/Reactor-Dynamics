@@ -30,6 +30,25 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
 
 ## [Unreleased]
 
+### Fixed (#510 batch 3 — the boot-state artifacts and the SI boron, 2026-08-24)
+- **A cold reactor-coolant-pump start reaches rated speed** (H-7): the motor's torque rises
+  toward the induction breakdown class near synchronous speed, so cold dense water no longer
+  stalls the rotor at 93 % (rated at 24.1 s; a hot restart stays in the ~13 s class). The
+  honest Mode 4 pump-heat heatup is therefore **113.7 °F/hr — above the 100 °F/hr
+  administrative limit**; holding the limit is now the operator's trim (the RHR
+  heat-exchanger fraction moves the rate ~134 °F/hr per 0.2 of throttle), and the old
+  "87.9 °F/hr, just under the limit" record is corrected as the stalled rotor's artifact.
+- **The RHR heat exchanger is hardware** (H-3): its UA is one design constant (204.08 kW/K)
+  instead of a number read off whichever plant it booted against (208.76 at power, 96.00 on
+  the shutdown boot — a same-throttle cooldown spread of 61.0 vs 125.9 °F/hr with the
+  100 °F/hr limit inside it).
+- **Safety injection finally carries RWST boron** (M-1): a LOCA borates the RCS (measured
+  625.8 → 720.0 ppm on 279 kg injected in 120 s) instead of injecting thousands of kg of
+  2,500 ppm water that moved boron by zero — the parity regression the curriculum teaches
+  from. Migration note: pwr2-1.0 saves gain one scalar (`_eccsKgs`); old saves load with 0.
+- The endurance gate reaches **18 passed, 0 expected-fail: every defect the #510 review
+  confirmed against the long windows is fixed**.
+
 ### Fixed (#510 batch 2 — the electrical completion sweep, 2026-08-24)
 - **Auxiliary spray and the RHR pumps now die with their bus** (findings H-4 and H-5 of the
   #510 review). A station blackout no longer delivers 29 gpm of aux spray from a dead charging

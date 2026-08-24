@@ -280,6 +280,15 @@ function runSuite(R, rec, quiet) {
   /* THE PUMPS ARE MOTOR LOADS (#510 H-5): dead bus, no flow, no duty — WTSM 5.7.5's blackout
    * takes every decay-heat-removal system except the turbine-driven AFW pump. Absent means
    * powered, the house convention, so every fixture above is untouched. */
+  ckT('the exchanger UA is HARDWARE — identical whatever plant it boots against (#510 H-3)',
+      (function () {
+        var a = R.createRHR({ valve_open: true });
+        R.stepRHR(a, plantAt(340, P_cd), 1, {});
+        var b = R.createRHR({ valve_open: true });
+        R.stepRHR(b, plantAt(60, 0.3), 1, {});
+        return Math.abs(a.UA - b.UA) < 1e-12 && a.UA > 1;
+      })(), 'was 208.76 kW/K on an at-power boot vs 96.00 on the shutdown boot — the ' +
+            '100 degF/hr limit sat inside the boot-state spread');
   ckT('a dead bus stops the pumps — aligned, HX open, ZERO duty (#510 H-5)',
       (function () {
         var dead = R.stepRHR(R.createRHR({ valve_open: true }), plantAt(340, P_cd), 1,
@@ -340,10 +349,13 @@ var MUTATIONS = [
    'permissive_close_psig: 585,', 'permissive_close_psig: 425,'],
   ['the sourced cooldown window changed', 'design_cooldown_hours: 16,', 'design_cooldown_hours: 24,'],
   ['the cooldown target changed', 'target_temp_f: 140,', 'target_temp_f: 100,'],
+  /* anchors re-pointed #510 H-3: UA is the design constant, derived once at construction */
   ['UA no longer derived from the design basis (a placeholder)',
-   'rh.UA = derivedUA(M, cp, Qd + pumpHeat_kW(sys));', 'rh.UA = 50;'],
+   'return derivedUA(RHR.design_decay_fraction_20h * 300000 + RHR.design_rcp_heat_kW);',
+   'return 50;'],
   ['PUMP HEAT dropped from the derivation (the source names it, and it exceeds decay heat)',
-   'rh.UA = derivedUA(M, cp, Qd + pumpHeat_kW(sys));', 'rh.UA = derivedUA(M, cp, Qd);'],
+   'return derivedUA(RHR.design_decay_fraction_20h * 300000 + RHR.design_rcp_heat_kW);',
+   'return derivedUA(RHR.design_decay_fraction_20h * 300000);'],
   ['suction taken from the cold leg instead of the hot leg',
    "if (sys.nodes[k].id === 'hot_leg') Thot = W.T_from_h(sys.nodes[k].h, sys.P);",
    "if (sys.nodes[k].id === 'cold_leg') Thot = W.T_from_h(sys.nodes[k].h, sys.P);"],
@@ -388,7 +400,8 @@ var MUTATIONS = [
    'ccw_temp_c: opts.ccw_temp_c === undefined ? RHR.ccw_temp_c : opts.ccw_temp_c,',
    'ccw_temp_c: RHR.ccw_temp_c,'],
   ['caller UA ignored at construction (always re-derived)',
-   'UA: opts.UA === undefined ? null : opts.UA,', 'UA: null,'],
+   'UA: opts.UA === undefined ? designUA() : opts.UA,   // the design constant (#510 H-3)',
+   'UA: designUA(),'],
   ['the default lineup becomes ALIGNED instead of secured',
    'valve_open: opts.valve_open === undefined ? false : !!opts.valve_open,',
    'valve_open: opts.valve_open === undefined ? true : !!opts.valve_open,']

@@ -85,6 +85,10 @@
      * magnitude, not used as a constant — decay heat is supplied by the caller, because it is
      * kinetics and kinetics is not built. */
     design_decay_fraction_20h: 0.004,
+    /* [derived] the RCP heat at the cooldown lineup — the pump-heat note's own measured
+     * figure (1,351 kW against 1,200 kW of decay heat), frozen as the DESIGN load term so
+     * the exchanger UA is hardware rather than a function of the boot state (#510 H-3). */
+    design_rcp_heat_kW: 1351,
     /* ⚠ [recalled] UNSOURCED, AND QUEUED FOR AN EVIDENCE PASS.
      * (OWNER RULING, 2026-08-15: chose "leave it marked, queue it" over running an evidence pass
      * now or sourcing a document — no component-cooling document is in any lane's corpus, so the
@@ -139,10 +143,24 @@
    * This is a stronger derivation than the one it replaces: it comes from a stated requirement
    * rather than from inverting a bound, it is not degenerate, and it makes the half-lineup case
    * meaningful instead of impossible. */
-  function derivedUA(M_kg, cp_kJkgK, Q_total_kW) {
+  /* SIGNATURE TRIMMED (#510 H-3): the old (M_kg, cp_kJkgK, Q_total_kW) took a mass and a
+   * specific heat it never read — dead arithmetic at the call site that dressed a boot-state
+   * read as a derivation. The hold constraint needs only the design load. */
+  function derivedUA(Q_total_kW) {
     var Ttar = C(RHR.target_temp_f), Ts = RHR.ccw_temp_c;
     var perTrain = Q_total_kW / (Ttar - Ts);
     return 2 * perTrain;                    /* two trains, each able to hold the target alone */
+  }
+  /* THE DESIGN LOAD, AS A CONSTANT (#510 H-3). The UA is HARDWARE — tube area times a heat
+   * transfer coefficient — and hardware does not change size with the state of the plant it
+   * is bolted to. The old lazy first-step derivation read pump heat from the LIVE plant, so
+   * the same exchanger measured 208.76 kW/K on an at-power boot and 96.00 on the shutdown
+   * boot (pumps stopped, zero pump heat), and the same throttle cooled at 125.9 vs
+   * 61.0 degF/hr — the sourced 100 degF/hr limit sat INSIDE the boot-state spread. The load
+   * is still the source's own sentence (decay AND reactor coolant pump heat); the RCP term
+   * is the measured cooldown-lineup figure the pump-heat note below has always quoted. */
+  function designUA() {
+    return derivedUA(RHR.design_decay_fraction_20h * 300000 + RHR.design_rcp_heat_kW);
   }
 
   /* THE HEAT LOAD IS DECAY HEAT **PLUS PUMP HEAT**, and the source says so in a sentence I had
@@ -216,7 +234,7 @@
       hx_fraction: opts.hx_fraction === undefined ? 1 : Math.max(0, Math.min(1, opts.hx_fraction)),
       avail: opts.avail === undefined ? 1 : opts.avail,
       ccw_temp_c: opts.ccw_temp_c === undefined ? RHR.ccw_temp_c : opts.ccw_temp_c,
-      UA: opts.UA === undefined ? null : opts.UA,     // null = derive on first step
+      UA: opts.UA === undefined ? designUA() : opts.UA,   // the design constant (#510 H-3)
       removed_kJ: opts.removed_kJ === undefined ? 0 : opts.removed_kJ
     };
   }
@@ -254,18 +272,11 @@
     var mayOpen  = P_psig < RHR.permissive_open_psig;
     var mustShut = P_psig >= RHR.permissive_close_psig;
 
-    if (rh.UA === null) {
-      var M = 0, hot = null;
-      for (var i = 0; i < sys.nodes.length; i++) {
-        M += sys.nodes[i].V * W.rho_from_h(sys.nodes[i].h, sys.P);
-        if (sys.nodes[i].id === 'hot_leg') hot = sys.nodes[i];
-      }
-      /* cp at the middle of the cooldown window, by finite difference on the real correlation */
-      var Tm = 0.5 * (C(RHR.entry_temp_f) + C(RHR.target_temp_f));
-      var cp = W.h_l(Tm + 0.5, sys.P) - W.h_l(Tm - 0.5, sys.P);
-      var Qd = RHR.design_decay_fraction_20h * 300000;        /* kW, this plant's rated 300 MWt */
-      rh.UA = derivedUA(M, cp, Qd + pumpHeat_kW(sys));         /* sourced: decay heat AND pump heat */
-    }
+    /* the lazy first-step UA derivation is RETIRED (#510 H-3) — see designUA(): it read the
+     * live boot plant (pump heat 0 stopped, ~1.4 MW spinning) and sized the hardware from
+     * whichever state the constructor happened to run in. Old saves carry a concrete UA and
+     * are untouched; a legacy null (pre-#510 save shapes) lands on the design constant. */
+    if (rh.UA === null || rh.UA === undefined) rh.UA = designUA();
 
     /* SUCTION IS THE HOT LEG — sourced, and it is not a detail: RHR draws from the hot leg and
      * returns to the cold leg, so it sees the hottest water in the loop and its duty follows the

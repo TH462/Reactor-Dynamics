@@ -1141,10 +1141,16 @@ function runSuite(RD, rec, quiet, only) {
   var tHeat0 = tsC2.tavg_c;
   var tsC3 = run(engC, quiet ? 300 : 600);
   var ratePerHr = (tsC3.tavg_c - tHeat0) * 9 / 5 * (3600 / (quiet ? 300 : 600));
+  /* RE-BANDED, #510 H-7 (2026-08-24): the honest rate at the RATED rotor is 113.7 degF/hr —
+   * the old 87.9 "under the 100 degF/hr limit" was the STALLED 93 % rotor's artifact (the
+   * review's prediction, confirmed). The claim here is PHYSICS — pump heat warms the held
+   * plant in its class, untripped — and the 100 degF/hr ADMINISTRATIVE limit is the
+   * OPERATOR's to manage (RHR trim is on the same board); PWR2_VALIDATION §77 carries the
+   * story and the §74 compliance sentence is retired there. */
   ckT('the HEATUP is real: pump heat alone warms the held plant in the sourced class ' +
-      '(measured 92.8 degF/hr under the #510 batch-1 lineup — heaters AUTO ride along; ' +
-      'was 87.9 with heaters manual-0 — under the 100 degF/hr limit), untripped, no SI',
-      ratePerHr > 40 && ratePerHr < 110 && tsC3.scrammed === false &&
+      '(113.7 degF/hr at the rated rotor — ABOVE the 100 degF/hr admin limit, which is now ' +
+      'the operator\'s procedure, not the plant\'s accident), untripped, no SI',
+      ratePerHr > 40 && ratePerHr < 150 && tsC3.scrammed === false &&
       engC.pt.si === false && engC.sys.beyond_model !== true,
       ratePerHr.toFixed(1) + ' degF/hr, flow ' + engC.sys.mdot_loop.toFixed(0) + ' kg/s');
   /* the unblock cascade: clearing the SI block at shutdown pressure INJECTS — the mirror
@@ -1283,10 +1289,10 @@ var MUTATIONS = [
   ['the condenser\'s grid wire is cut (CW pumps spin with no electricity)',
    '      cw_pumps_running: eng.cwPumps && offsiteOk',
    '      cw_pumps_running: eng.cwPumps', { grp: 'G' }],
-  /* anchor re-pointed #510 batches 1+2: the CVCS call grew the rhr_letdown_ok driver */
+  /* anchor re-pointed #510 batches 1-3: the CVCS call grew rhr_letdown_ok + the SI boron pair */
   ['the CVCS and ECCS vital-bus wires are cut (charging and SI survive the blackout)',
-   "    var cvr = CV.stepCVCS(eng.cv, sys, dt, { ac_available: acAvail, rhr_letdown_ok: eng.rh.running === true });\n    var ecr = EC.stepECCS(eng.ec, sys, dt, { ac_available: acAvail });",
-   '    var cvr = CV.stepCVCS(eng.cv, sys, dt, { rhr_letdown_ok: eng.rh.running === true });\n    var ecr = EC.stepECCS(eng.ec, sys, dt);', { grp: 'G' }],
+   "    var cvr = CV.stepCVCS(eng.cv, sys, dt, { ac_available: acAvail, rhr_letdown_ok: eng.rh.running === true, si_kgs: eng._eccsKgs, si_ppm: EC.ECCS.rwst_boron_ppm });\n    var ecr = EC.stepECCS(eng.ec, sys, dt, { ac_available: acAvail });",
+   '    var cvr = CV.stepCVCS(eng.cv, sys, dt, { rhr_letdown_ok: eng.rh.running === true, si_kgs: eng._eccsKgs, si_ppm: EC.ECCS.rwst_boron_ppm });\n    var ecr = EC.stepECCS(eng.ec, sys, dt);', { grp: 'G' }],
   ['the pressurizer\'s electrical drivers are cut (the wire that was dark before wave 4)',
    '      ac_available: acAvail,\n      offsite_ok: offsiteOk\n    }, eng.pzDrivers));',
    '    }, eng.pzDrivers));', { grp: 'G' }],
