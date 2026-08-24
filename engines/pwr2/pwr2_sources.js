@@ -114,15 +114,28 @@
     return sys;
   }
 
+  /* THE DESIGN POINT, one copy (#509 item 3). tavg/P are the plant's design condition
+   * (580 degF / 2235 psia); dt_c is the full-power loop split (606 - 550 degF = 56 degF),
+   * [derived] — pwr2_engine's TREF/DT0_C/P0 consume THIS object, so the pair cannot drift
+   * into two copies (the PROTECTION_DT trap class). */
+  var DESIGN = { tavg_c: 304.5, dt_c: 31.1, P_mpa: 15.41 };
+
   /* Pump head, affinity-scaled from the rated point. H ~ w^2 at fixed flow coefficient. */
-  /* THE RATED LOOP DENSITY, resolved once from the design condition rather than typed. It is the
-   * denominator of the density ratio below, so it must be the density the pump curve and the
-   * friction coefficient were both calibrated at — 304.5 degC / 15.41 MPa (580 degF / 2235 psia),
-   * this plant's design point, which is where `dP_rated` and `Kf` are balanced against each
-   * other by construction. */
+  /* THE RATED PUMP-SUCTION DENSITY, resolved once from the design condition rather than
+   * typed. It is the denominator of the density ratio below, so it must be the density of
+   * the fluid the pump actually works on at the design point — and `loopDensity` reads the
+   * RCP NODE, which sits in the COLD leg. Pinning this at the loop-AVERAGE design state
+   * (304.5 degC) put a standing ~1.05 factor into the equilibrium (rho(Tcold)/rho(Tavg)),
+   * so rated speed at the design point delivered 105 % of mdot_rated BY CONSTRUCTION and
+   * the board read RCP FLOW 105 on a healthy plant (#509 item 3, measured 1714.2 kg/s /
+   * 105.16 %). The reference is the design COLD-LEG state, tavg - dt/2 = 288.95 degC
+   * (552 degF): at the design point the ratio is ~1 and the equilibrium is mdot_rated.
+   * Genuinely cold water still reads above 100 — denser suction moves more mass, honestly. */
   var _rhoRated = null;
   function rhoRated() {
-    if (_rhoRated === null) _rhoRated = RHO(W.h_l(304.5, 15.41), 15.41);
+    if (_rhoRated === null) {
+      _rhoRated = RHO(W.h_l(DESIGN.tavg_c - DESIGN.dt_c / 2, DESIGN.P_mpa), DESIGN.P_mpa);
+    }
     return _rhoRated;
   }
 
@@ -321,7 +334,7 @@
   root.RD = root.RD || {};
   root.RD.pwr2 = root.RD.pwr2 || {};
   root.RD.pwr2.sources = {
-    PUMP: PUMP, REF: REF,
+    PUMP: PUMP, REF: REF, DESIGN: DESIGN,
     createPlant: createPlant, stepPlant: stepPlant,
     loopInertia: loopInertia, pumpHead: pumpHead, buoyancy: buoyancy,
     densityRatio: densityRatio, rhoRated: rhoRated,

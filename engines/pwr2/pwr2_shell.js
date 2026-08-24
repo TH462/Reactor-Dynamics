@@ -164,11 +164,51 @@
       EN.command(e, 'rhr_hx', c.fraction !== undefined ? c.fraction : (c.pct !== undefined ? c.pct / 100 : 1));
     },
     /* the board sends `active` (HPI/AFW START/STOP) — reading only `running` made STOP
-     * evaluate `undefined !== false` = true, so STOP STARTED the pump (#506.1, measured) */
-    set_hpi:           function (e, c) { EN.command(e, 'hhsi', (c.active !== undefined ? c.active : c.running) !== false); },
-    set_lpi:           function (e, c) { EN.command(e, 'lhsi', (c.active !== undefined ? c.active : c.running) !== false); },
-    set_afw:           function (e, c) { EN.command(e, 'afw', (c.active !== undefined ? c.active : c.running) !== false); },
-    set_afw_flow:      function (e, c) { EN.command(e, 'afw', (c.normalized !== undefined ? c.normalized : 1) > 0); },
+     * evaluate `undefined !== false` = true, so STOP STARTED the pump (#506.1, measured)
+     *
+     * STOP-WHILE-LATCHED REFUSES OUT LOUD (#509 items 1/5). The engine's caller's-half law
+     * (pwr2_engine step) re-asserts an actuated pump every step while its latch stands, so
+     * a stop was ACCEPTED and silently overwritten one tick later — a dead-looking button.
+     * Sourced seal-in — WTSM 12.3.2.3 (ML11223A310): "The control room operator cannot
+     * interrupt any of the SI-initiated functions until the reset logic is satisfied."
+     * The level-held re-assert stays the ENFORCEMENT; this throw is the voice (the #505
+     * scanner-bar path). Starts always pass. */
+    set_hpi:           function (e, c) {
+      var on = (c.active !== undefined ? c.active : c.running) !== false;
+      if (!on && e.pt.si) {
+        throw new Error('ECCS STOP BLOCKED: safety injection is actuated (' +
+          (e.pt.si_cause || 'SI') + ') — reset safety injection (RPS RESET) first, ' +
+          'then secure the pumps (WTSM 12.3.2.3 seal-in).');
+      }
+      EN.command(e, 'hhsi', on);
+    },
+    set_lpi:           function (e, c) {
+      var on = (c.active !== undefined ? c.active : c.running) !== false;
+      if (!on && e.pt.si) {
+        throw new Error('ECCS STOP BLOCKED: safety injection is actuated (' +
+          (e.pt.si_cause || 'SI') + ') — reset safety injection (RPS RESET) first, ' +
+          'then secure the pumps (WTSM 12.3.2.3 seal-in).');
+      }
+      EN.command(e, 'lhsi', on);
+    },
+    set_afw:           function (e, c) {
+      var on = (c.active !== undefined ? c.active : c.running) !== false;
+      if (!on && (e.pt.afas_mdafw || e.pt.afas_tdafw)) {
+        throw new Error('AFW STOP BLOCKED: auxiliary feedwater is actuated (' +
+          (e.pt.afas_mdafw_cause || e.pt.afas_tdafw_cause || 'AFAS') +
+          ') — reset the actuation (RPS RESET) first, then secure each pump with its own switch.');
+      }
+      EN.command(e, 'afw', on);
+    },
+    set_afw_flow:      function (e, c) {
+      var on = (c.normalized !== undefined ? c.normalized : 1) > 0;
+      if (!on && (e.pt.afas_mdafw || e.pt.afas_tdafw)) {
+        throw new Error('AFW STOP BLOCKED: auxiliary feedwater is actuated (' +
+          (e.pt.afas_mdafw_cause || e.pt.afas_tdafw_cause || 'AFAS') +
+          ') — reset the actuation (RPS RESET) first, then secure each pump with its own switch.');
+      }
+      EN.command(e, 'afw', on);
+    },
     /* THE FEED TRAIN (2026-08-21, pwr2_feedwater) — the old refusals retired. Payload shapes
      * are the current engine's: pct 0-120, delta_pct, {active}. */
     set_feed_pump_speed: function (e, c) { EN.command(e, 'feed_manual_frac', (c.pct !== undefined ? c.pct : 100) / 100); },
@@ -177,7 +217,20 @@
       EN.command(e, 'feed_manual_frac', e.fw.feed_frac + (c.delta_pct || 0) / 100);
     },
     set_feed_coupled:    function (e, c) { EN.command(e, 'feed_auto', c.active !== false); },
-    isolate_feedwater:   function (e, c) { EN.command(e, 'isolate_feedwater', c.active !== false); },
+    isolate_feedwater:   function (e, c) {
+      /* the restore half refuses while an isolation signal stands (same seal-in law and
+       * #505 voice as the ECCS/AFW stops above; wording aligned with pwr1's FWI_SEAL_IN).
+       * TWO drivers, both re-isolate silently on the next step (#509 item 5): the pt.fwi
+       * latch (engine caller's-half law), and the feed module's own held-SI isolation
+       * (pwr2_feedwater: SI held 32 s -> isolated, MEASURED — pt.fwi never latches on
+       * that path, so keying on the latch alone missed the common case). */
+      if (c.active === false && (e.pt.fwi || (e.pt.si && e.fw.isolated))) {
+        throw new Error('MFW RESTORE BLOCKED — feedwater isolation signal present (' +
+          (e.pt.fwi_cause || (e.pt.si ? 'safety injection, ' + (e.pt.si_cause || 'SI') : 'FWI')) +
+          '). Reset the actuation (RPS RESET) first, then restore main feed.');
+      }
+      EN.command(e, 'isolate_feedwater', c.active !== false);
+    },
     loss_of_feedwater:   function (e, c) {
       EN.command(e, 'feed_pump_a', false); EN.command(e, 'feed_pump_b', false);
     },
@@ -308,7 +361,11 @@
     },
     /* the wave-6 effect names, REHOMED onto their levers (#507) */
     set_afw_block:    function (e, c) {
-      EN.command(e, 'afw_block', (c && c.blocked !== undefined ? c.blocked : c) !== false);
+      /* The board's VALVE_TOGGLE sends {open:<bool>} — read it the way pwr_engine does
+       * (blocked iff open === false). The old mapper read c.blocked, which no caller sends,
+       * and its fallback tested the payload OBJECT (always truthy) — so every click shut the
+       * valve and none reopened it (#509 item 6). */
+      EN.command(e, 'afw_block', (c && c.open !== undefined ? c.open : c) === false);
     },
     block_afw:        function (e, c) { EN.command(e, 'afw_block', c !== false); },
     degrade_hpi:      function (e, c) {
@@ -545,7 +602,9 @@
     ex.rod_limit_margin = e._rodLimitMargin === undefined ? 200 : e._rodLimitMargin;
     ex.rods_fully_in = e.rodSteps <= 0.5;
     ex.above_p9 = !!(e.rpsReport && e.rpsReport.p9_met);
-    ex.afw_block_open = true;                       /* no AFW block valve is modeled */
+    ex.afw_block_open = e.aw.blocked !== true;      /* LIVE since #507 wave 6 made aw.blocked
+                                                     * real state; the pinned `true` here kept
+                                                     * the valve icon OPEN forever (#509 item 6) */
     ex.accum_valve_open = true;                     /* matches control_state.accumulator_valve_open */
     ex.safety_relief_active = !!e.pz.safetyOpen;
     ex.mfw_isolated = this.eng.fw.isolated === true;   /* REAL since the feed train (2026-08-21) */
@@ -571,6 +630,11 @@
 
   PWR2Engine.prototype.getTrueState = function () { return this._ts; };
   PWR2Engine.prototype.getInstruments = function () { return this.instruments.reading; };
+  /* The kernel's engine-owned-RPS mirror (#509 items 1/5) asks the engine WHY it is
+   * scrammed so rps_state.last_trip_reason is the plant's own cause, not a placeholder. */
+  PWR2Engine.prototype.getTripCause = function () {
+    return this.eng.pt.reactor_trip ? (this.eng.pt.trip_cause || 'reactor trip') : null;
+  };
   PWR2Engine.prototype.getProtectionConfig = function () {
     /* SUPERSEDES THE COURIER READING OF D4 (stage B3): handing back the pwr protection object
      * verbatim would run M4's pwr trip/actuation/automation DATA over this plant — and M4's
@@ -830,9 +894,16 @@
       hpi_active: ts.hpi_active === true,
       eccs_mode: ts.eccs_mode,
       accumulator_valve_open: true,
+      /* the *_fixed capability flags (the adv_setpoint_fixed idiom): the diagram's MSIV and
+       * accumulator valve symbols are clickable, but this plant registers both as STATICS
+       * (see REFUSED) — the flag lets the board render them non-operable instead of eating
+       * the click with a refusal flash (#509 item 11). An engine that grows the model just
+       * stops publishing the flag and the valve comes back for free. */
+      accumulator_valve_fixed: true,
       afw_throttle_pct: (e.aw.mdafwRunning || e.aw.tdafwRunning) ? 100 : 0,
       sr_energized: ts.sr_energized === true,
       msiv_open: true,
+      msiv_fixed: true,
       /* flow_pct is what the board's pump animation SPINS on (pumpProps speed) — without it
        * the driver computed NaN and the RCP impeller froze with its pipe ports dark
        * (#506.5, measured). pump_flow_pct is the true-state's own loop-flow fraction. */
@@ -891,7 +962,17 @@
   PWR2Engine.prototype.applyCommand = function (cmd) {
     if (!cmd || !cmd.action) throw new Error('pwr2_shell: a command needs an action');
     var a = cmd.action;
-    if (MAPPED[a])  { MAPPED[a](this.eng, cmd);  if (MIRRORED[a]) this._mirrorInstr(cmd); return { ok: true, action: a }; }
+    if (MAPPED[a])  {
+      MAPPED[a](this.eng, cmd);
+      if (MIRRORED[a]) this._mirrorInstr(cmd);
+      /* reset_rps: the kernel reads back getTrueState() to judge the reset (control_kernel
+       * resetRps), and _ts is the PREVIOUS step's snapshot — judged against it, a reset
+       * that just succeeded was reported "rods not inserted" (#509 item 1, measured). Patch
+       * the one field the reset changed; ts.scrammed IS pt.reactor_trip (pwr2_true_state),
+       * so no re-step and nothing else can have moved. */
+      if (a === 'reset_rps' && this._ts) this._ts.scrammed = this.eng.pt.reactor_trip === true;
+      return { ok: true, action: a };
+    }
     if (REHOMED[a]) { REHOMED[a](this.eng, cmd); if (MIRRORED[a]) this._mirrorInstr(cmd); return { ok: true, action: a, rehomed: true }; }
     if (REFUSED[a] !== undefined) {
       throw new Error('pwr2_shell: "' + a + '" REFUSED — ' + REFUSED[a]);

@@ -29,6 +29,35 @@ and the user-visible summary in `CHANGELOG.md`. This file points at those and tr
 
 ---
 
+## Session log — 2026-08-24-develop-d (#509 — the owner's third playtest, all 11 items)
+
+**#509 worked end to end** — triaged (nothing had been booked against it; only item 7's
+mechanism was already cured, by #510 batch 1), fixed, gated. Full measured record:
+`Blueprint/PWR2_VALIDATION.md` **§79**. The headlines:
+
+- **The reset seam (items 1/5):** the kernel's rps latch never learned an ENGINE-owned
+  automatic trip, so `reset_rps` was a permanent no-op on PWR2 and every SI/AFAS/FWI
+  seal-in was unreleasable — stops/restores were accepted and silently overwritten (the
+  #506 dead-button class one layer deeper). Fixed with an empty-trips-gated instrument
+  mirror in `control_kernel.evaluate`, a reset-snapshot patch in the facade (the kernel
+  judged a good reset against the previous step and lied "rods not inserted"), and spoken
+  seal-in refusals in the shell (WTSM 12.3.2.3). Feed element 2 now reads TOTAL steam
+  (`sg_steam_flow`), the pwr1 fix ported; `feedStatus` speaks on PWR2.
+- **The AFW block valve (item 6)** was two bugs: a payload key no caller sends (every
+  click SHUT the valve) and a lamp pinned OPEN. **RCP FLOW 105 % (item 3)** was the pump's
+  rated-density reference at loop-average vs a cold-leg impeller — recalibrated to the
+  design cold leg *(owner selection)*: HFP 1714 → 1646 kg/s (101.0 %), pressure unchanged.
+  **Chart lanes fill the plot** *(owner selection — the #445 56 px target retired)* plus
+  redraw-on-resize. Tees keep fluid colour on secured legs; SG tube sheet spans the vessel,
+  tubes stop at the sheet; the #444 hover glow no longer restacks the board (#202 class).
+  MSIV/accumulator render disabled (registered statics). Item 10 not reproducible at HEAD
+  (measured 0.00 gpm; gate now asserts the flow).
+- Gates: `run_pwr2_board` 13 → **24** / 5 mutations caught · sweep green (m4, autoctl,
+  e2e_controls, pwr, m5, board_check, all pwr2 runners) · `run_pwr2_sources` fixture refit
+  declared (§79) · full `run_all` at baseline.
+
+---
+
 ## Session log — 2026-08-24-develop-c (#510 batch 4 — the honesty batch)
 
 **Batch 4 of the #510 order** — M-2/M-3/M-5/M-8/M-9/M-10/M-11/M-12/M-14/M-15 + most of the

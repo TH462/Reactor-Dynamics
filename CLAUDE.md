@@ -331,7 +331,7 @@ to read everything.
 > change. The dense, append-only version lives in `Blueprint/BUILD_DECISIONS.md`
 > (Status line + Open Flags table) — update both.
 
-_Last updated: **2026-08-23**._
+_Last updated: **2026-08-24**._
 
 **Where the PWR is.** `run_all` is **88 runners, all at baseline** — read `BASELINES`, never a
 number written here. The PWR is the only active plant and is feature-complete through Mode 5 ↔
@@ -397,7 +397,7 @@ re-querying. Run the query.
   only, true values declared, gated by `run_pwr2_engine` (14 checks / 8 mutations; it caught the
   scram-bypasses-RPS defect and filed #499 on arrival — `PWR2_VALIDATION.md` §49). P-9 (turbine trip
   = reactor trip above it, both sourced values), the #499 beyond-model guards and the
-  DELAYED-data sourcing are all LANDED (§50–52). Built since, each with its record in `PWR2_VALIDATION.md`: OTΔT/OPΔT (§53) · the instrument layer, control switchover and runback/rod stop (§54–56) · OPTION B COMPLETE — the control room runs PWR2 as a first-class menu card ("PWR — New Physics", Free Play only), 109/109 contract, bit-exact pwr2-1.0 saves (§57–59, §61) · the A/B pass adjudicated, the pre-registered topology prediction HOLDS (§60) · the AFW starts + the lo-lo trip — one sourced 17 % bistable, both consumers; the shared `control_kernel` esf fix (§62) · THE FEED TRAIN — feed ≡ steam RETIRED (§63: the WTSM 11.1 three-element controller at the ruled 65 % program, SI isolation, hi-hi closure, the loss-of-both chain; a one-pump boil-down reaches the lo-lo trip ON PHYSICS at 97.6 s; R6 re-adjudicated — the old 41-point verdict was the A/B harness's automation-less fixture, the #209 caveat) · the CVCS "120 gpm" finding (§64: the balance was right all along — sourced-scaled 12.5 gpm; the standing Charging Flow High annunciator was a #408-currency mistranslation in the shell, fixed translation-only). The #507 parity umbrella is through TEN waves (2026-08-22/23, `PWR2_VALIDATION.md` **§67–74** — read the sections, not this line, for the records): boron + lab sample · the RHR align · the casualty menu at **21 honest rows** · the two-bus electrical model (LOOP + station blackout, the heater-shed latch) · the SGTR (discharges into the SECONDARY, containment-bypass signature) · drift/dead instrument modes + three latent wave-3 fixes · the initial conditions (four presets, a REAL startup, the no-load/MSSV collision filed as #508) · the rod insertion limit · the RCP restart · **the shutdown preset + P-11** (§74: Hot Shutdown Mode 4 — Mode 5 is unrepresentable while Layer 0 floors at 0.1 MPa, declared; the #468 trim order structural; the honest pump-heat heatup is 113.7 °F/hr — the operator trims, §77). **Section F is closed** as 4 presets + the declared Mode-4-for-5 substitution. **#510 batches 1–4 LANDED** (§75–78): the dry-SG runaway, the Mode 4 water-solid preset, the electrical sweep, the boot-state artifacts and the honesty batch fixed — endurance **18 passed / 0 xfail**; five LOW harness items stay open on #510. Remaining before replacement: R8's ambient source check, mission compatibility, and the owner's replacement ruling. Still owed: delta-T lead/lag + K5 (COLR), channel redundancy, the ESF arm display, Mode 5 proper (a Layer-0 extension), stuck_rod_on_scram, steam_line_break (+MSIV).
+  DELAYED-data sourcing are all LANDED (§50–52). Built since, each with its record in `PWR2_VALIDATION.md` — **read the sections, not this line**: OTΔT/OPΔT (§53) · instruments, switchover, runback/rod stop (§54–56) · OPTION B COMPLETE — PWR2 is a first-class menu card ("PWR — New Physics", Free Play only), 109/109 contract, bit-exact pwr2-1.0 saves (§57–59, §61) · the A/B pass adjudicated (§60) · the AFW starts + lo-lo trip (§62) · THE FEED TRAIN — feed ≡ steam RETIRED (§63) · the CVCS "120 gpm" finding (§64). The #507 parity umbrella is through TEN waves (**§67–74**): boron + lab sample · RHR align · the casualty menu at **21 honest rows** · the two-bus electrical model · the SGTR (secondary discharge, containment-bypass signature) · drift/dead instrument modes · the initial conditions (the no-load/MSSV collision filed as #508) · the rod insertion limit · the RCP restart · the shutdown preset + P-11 (§74: Hot Shutdown Mode 4 — Mode 5 unrepresentable while Layer 0 floors at 0.1 MPa, declared). **Section F is closed** as 4 presets + the declared Mode-4-for-5 substitution. **#510 batches 1–4 LANDED** (§75–78): the dry-SG runaway, the Mode 4 water-solid preset, the electrical sweep, the boot-state artifacts and the honesty batch fixed — endurance **18 passed / 0 xfail**; five LOW harness items stay open on #510. **#509 (the owner's third playtest) is WORKED — all 11 items (§79)**: the reset seam (the kernel now learns engine-owned trips; seal-in stops refuse OUT LOUD, WTSM 12.3.2.3), the feed steam element reads total steam, the AFW block valve operates both ways, RCP flow recalibrated to the design cold leg (101 % at HFP, ruled), chart lanes fill the plot (ruled — the #445 56 px target retired), the SG/tee/hover art; `run_pwr2_board` 24 checks / 5 mutations. Remaining before replacement: R8's ambient source check, mission compatibility, and the owner's replacement ruling. Still owed: delta-T lead/lag + K5 (COLR), channel redundancy, the ESF arm display, Mode 5 proper (a Layer-0 extension), stuck_rod_on_scram, steam_line_break (+MSIV).
 - **RBMK and BWR** — on hold, and the source of most remaining backlog. Do not touch.
 
 **The manual set's revision number does not advance until a RELEASE** *(OWNER DIRECTIVE,
@@ -415,6 +415,13 @@ FIRST** — ask what in it would still burn someone in a month, move that to the
 ONE line, drop the rest. **A bullet is ~80 words.** (Measured 2026-08-06: the list was running
 7 bullets averaging 500 words, two of them duplicating traps already rescued below.)
 
+- **An engine-owned latch the kernel cannot see makes every reset a permanent no-op — and
+  the seal-ins it guards read as dead buttons** (2026-08-24, #509 §79). PWR2's automatic
+  trips never set the kernel's `rps.scrammed`, so `resetRps` returned null FOR EVER and
+  ECCS/AFW/feed stops were ACCEPTED then re-asserted next step, silently — the #506
+  dead-button class one layer deeper. An accepted-then-overwritten command must REFUSE at
+  the layer that re-asserts it. Same seam: the kernel judged a good reset against the
+  facade's previous-step snapshot and told the operator "rods not inserted".
 - **Three shipped wave-3 rows were quietly hollow, and only writing wave-6's probes found
   them** (2026-08-22, #507 waves 4–6): `degraded_hpi` wrote a field the physics never reads
   (inert on flow through two green gate runs), the seal-leak severity slider was rendered
@@ -434,16 +441,6 @@ ONE line, drop the rest. **A bullet is ~80 words.** (Measured 2026-08-06: the li
   an accident (`testDiagBundle` pressing play on a plant that auto-starts), and a board check
   entangled with a trend glyph. The recorder noise (#504) and the dead ECCS AUTO button
   (#503) were both invisible to every gate and found only by a player.
-- **The rods ship in MANUAL, and every probe that broke was INHERITING the lineup instead of
-  stating it** (2026-08-11, #460). `rods_tavg` loses `defaultOn`, reversing #289 — whose
-  premise, *"everything else starts in auto"*, had expired when the Mode 1 lineup put generator
-  load in MANUAL: **a ruling's premise ages independently of the ruling, and nothing re-checks
-  it.** Measured, the plant load-follows WITHOUT the rods (100 → 81.8 %, parked in 3 min 30 s,
-  monotone) where AUTO rings 62 → 88 % for ten minutes; 60 fine steps move Tavg −6.2 °F and
-  generator load **0.8 points** — rods set temperature, the turbine sets power, and AUTO was
-  performing that Tier A coupling on the player's behalf. All five reds had the rod controller
-  as their SUBJECT, not the preset; `rodsAuto()` mirrors the `rodsManual()` helper #289 was
-  forced to write in the other direction — **both directions of one defect, ten days apart.**
 - **The OBSERVER is where the defect is, and no source read finds it** (2026-08-10/11, the
   #436 rework — #437/#439/#440/#442/#443/#393). Six of the night's defects were in the thing
   doing the watching. A recorder's first pass emits a transition per alarm — right for a bug

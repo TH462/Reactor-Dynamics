@@ -18,10 +18,17 @@
  *      armed out of a kernel that carries no trips ("TRIP 25%" at 99.8 % power, measured).
  *   4. The payload fixes land THROUGH the stack: STOP secures HPI, heater MANUAL holds,
  *      letdown lamps latch, dump CLOSED reads, charging OFF reads.
+ *   5. THE TRIP RIDE (#509, the owner's third playtest): an ENGINE-owned automatic trip
+ *      must reach the kernel's rps latch (before the mirror, resetRps returned null for
+ *      ever and every SI/FWI seal-in was unreleasable); a stop pressed against a standing
+ *      seal-in refuses OUT LOUD; a reset with rods seated is accepted (the stale-snapshot
+ *      "rods not inserted" lie); the AFW block valve round-trips BOTH ways off the board's
+ *      own payload; charging OFF zeroes the FLOW, not just the lamp; and the two valves
+ *      this engine registers as statics (MSIV, accumulator) read disabled art.
  *
- * Injection self-test: the tile condition and one payload mapper are reverted from source
- * and the matching checks must go red — a check born beside its fix is not green until it
- * has been made to fail (house rule).
+ * Injection self-test: the kernel merge/mirror, the reset snapshot patch and two payload
+ * mappers are reverted from source and the matching checks must go red — a check born
+ * beside its fix is not green until it has been made to fail (house rule).
  *
  *   node test/run_pwr2_board.js
  */
@@ -232,6 +239,94 @@ function runSuite(quietRec) {
     w2.snap().true_state.scrammed === true &&
     w2.svc.engine.eng.pt.trip_cause === 'hi_flux_lo',
     'pre ' + preUB + ', cause ' + (w2.svc.engine.eng.pt.trip_cause || '?'));
+
+  /* ---- 6. the trip ride (#509 items 1/5/6/10/11) ------------------------------------------ */
+  if (!rec) head('TRIP RIDE  [#509: the kernel learns an ENGINE trip; seal-ins refuse OUT LOUD; reset works]');
+  var w3 = mkWorld();
+
+  /* item 10: charging OFF zeroes the delivered FLOW — the old check read only the lamp, so
+   * a physics path that kept pumping would have passed it */
+  w3.cmd({ action: 'set_charging_pump', running: false }); w3.tick(30);
+  var chgF = w3.snap().instruments.charging_flow;
+  q('charging OFF zeroes the delivered flow (< 0.5 gpm within 30 s, not just the lamp)',
+    chgF != null && isFinite(chgF) && chgF * 450000 < 0.5,
+    'charging_flow ' + (chgF != null ? (chgF * 450000).toFixed(2) : '?') + ' gpm');
+  w3.cmd({ action: 'set_cvcs_auto', active: true }); w3.tick(1);
+
+  /* item 6: the AFW block valve round-trips BOTH ways off the board's own {open} payload
+   * and the lamp is live (the mapper read a key nothing sends, its fallback tested the
+   * payload OBJECT so every click shut the valve, and the lamp was pinned OPEN) */
+  D.onControl({ id: 'imrpp2g2m8k' }, 'toggle', 0); w3.tick(1);
+  var blkShut = w3.svc.engine.eng.aw.blocked === true &&
+                w3.snap().instruments.afw_block_open === false;
+  D.onControl({ id: 'imrpp2g2m8k' }, 'toggle', 1); w3.tick(1);
+  q('AFW block valve: close click BLOCKS + the lamp follows, open click UNBLOCKS',
+    blkShut && w3.svc.engine.eng.aw.blocked === false &&
+    w3.snap().instruments.afw_block_open === true,
+    'shut leg ' + blkShut + ' -> reopened ' + (w3.svc.engine.eng.aw.blocked === false));
+
+  /* item 11: the two valves this engine registers as STATICS are non-operable art; the
+   * operable ones stay live */
+  var vMsiv = D.compProps({ id: 'imrpp99kx2y' }, w3.snap());
+  var vAcc  = D.compProps({ id: 'imrppxt2aqd' }, w3.snap());
+  var vAfw  = D.compProps({ id: 'imrpp2g2m8k' }, w3.snap());
+  q('MSIV + accumulator valves read disabled on PWR2; the AFW block valve stays operable',
+    vMsiv && vMsiv.disabled === true && vAcc && vAcc.disabled === true &&
+    vAfw && vAfw.disabled !== true,
+    'msiv ' + (vMsiv && vMsiv.disabled) + ', accum ' + (vAcc && vAcc.disabled) +
+    ', afw ' + (vAfw && vAfw.disabled));
+  q('HPI AUTO reads disabled (PWR2 registers no hpi esf — the press was a silent error, #503)',
+    D.buttonDisabled({ id: 'imrle1mc0lk' }, w3.snap()) === true,
+    '');
+
+  /* item 1 root: an ENGINE-owned AUTOMATIC trip must reach the kernel's rps latch */
+  w3.cmd({ action: 'inject_failure', failure_id: 'large_loca' }); w3.tick(30);
+  var e3 = w3.svc.engine.eng;
+  var rs3 = w3.snap().rps_state;
+  q('an engine-owned automatic trip reaches rps_state (scrammed true, reason = the cause)',
+    e3.pt.reactor_trip === true && rs3.scrammed === true && !!rs3.last_trip_reason,
+    'scrammed ' + (rs3 && rs3.scrammed) + ', reason ' + JSON.stringify(rs3 && rs3.last_trip_reason));
+
+  /* item 1: ECCS STOP against the standing SI seal-in refuses with the reason, and the
+   * pump keeps running (precondition asserted — the pump IS on the latch, #510 lesson) */
+  var pre3 = e3.ec.hhsiRunning === true && e3.pt.si === true;
+  var rStop = w3.cmd({ action: 'set_hpi', active: false }); w3.tick(1);
+  q('ECCS STOP while SI is latched REFUSES with the seal-in reason; the pump keeps running',
+    pre3 && rStop && rStop.type === 'error' &&
+    /reset safety injection/i.test(rStop.message || '') && e3.ec.hhsiRunning === true,
+    'pre ' + pre3 + ', msg ' + JSON.stringify(rStop && rStop.message).slice(0, 70));
+
+  /* item 5: the held SI isolates feedwater (the module's own 32 s hold — MEASURED: it
+   * lands ~65 s after the SI latch at this cadence, and pt.fwi never latches on this
+   * path), and MFW RESTORE refuses out loud */
+  w3.tick(80);
+  q('feedwater is isolated by the held SI signal (the restore refusal\'s precondition)',
+    e3.fw.isolated === true, 'isolated ' + e3.fw.isolated);
+  var rMfw = w3.cmd({ action: 'isolate_feedwater', active: false });
+  q('MFW RESTORE while the isolation signal stands REFUSES with the signal named',
+    rMfw && rMfw.type === 'error' && /MFW RESTORE BLOCKED/.test(rMfw.message || ''),
+    String(rMfw && rMfw.message).slice(0, 70));
+
+  /* reset under a STANDING signal is accepted and re-latches — not refused, not a wedge */
+  var rRe = w3.cmd({ action: 'reset_rps' }); w3.tick(3);
+  q('reset under a standing LOCA is accepted and the protection RE-LATCHES within 3 s',
+    (rRe == null || !rRe.type) && w3.snap().rps_state.scrammed === true && e3.pt.si === true,
+    'resp ' + JSON.stringify(rRe) + ', scrammed ' + w3.snap().rps_state.scrammed);
+
+  /* items 1/5 recovery: manual scram -> blocked during the drop -> accepted at the seat */
+  var w4 = mkWorld();
+  w4.cmd({ action: 'scram' }); w4.tick(1);
+  var rDrop = w4.cmd({ action: 'reset_rps' });
+  q('reset DURING the rod drop refuses RODS_NOT_INSERTED (the permissive, live via the mirror)',
+    rDrop && rDrop.type === 'blocked' && rDrop.reason === 'RODS_NOT_INSERTED',
+    JSON.stringify(rDrop));
+  w4.tick(15);
+  var rOk = w4.cmd({ action: 'reset_rps' }); w4.tick(2);
+  q('reset with rods seated is ACCEPTED and rps_state clears (the stale-snapshot lie retired)',
+    rOk == null && w4.snap().rps_state.scrammed === false &&
+    w4.svc.engine.eng.pt.reactor_trip === false,
+    'resp ' + JSON.stringify(rOk) + ', scrammed ' + w4.snap().rps_state.scrammed);
+
   return rec;
 }
 
@@ -239,7 +334,7 @@ console.log('\nPWR2 x THE BOARD DRIVER — the #506 seams, pinned headless');
 runSuite(null);
 
 /* ---- injection self-test ------------------------------------------------------------------ */
-console.log('\ninjection self-test (2 mutations):');
+console.log('\ninjection self-test (5 mutations):');
 var WSRC = fs.readFileSync(WIRING_PATH, 'utf8').replace(/\r\n/g, '\n');
 var SHPATH = path.join(SRC, 'pwr2_shell.js');
 var SHSRC = fs.readFileSync(SHPATH, 'utf8').replace(/\r\n/g, '\n');
@@ -257,8 +352,20 @@ var MUTS = [
    '      if (engTB && engTB.trip_block_status) Object.assign(status, engTB.trip_block_status);',
    ''],
   ['set_hpi reads only c.running again (STOP starts the pump)', SHPATH, SHSRC,
-   "    set_hpi:           function (e, c) { EN.command(e, 'hhsi', (c.active !== undefined ? c.active : c.running) !== false); },",
-   "    set_hpi:           function (e, c) { EN.command(e, 'hhsi', c.running !== false); },"]
+   "      EN.command(e, 'hhsi', on);",
+   "      EN.command(e, 'hhsi', c.running !== false);"],
+  /* #509 item 1/5 root: the kernel never learns an ENGINE-owned automatic trip */
+  ['the scram mirror is severed (an automatic trip never reaches rps_state)', KPATH, KSRC,
+   '      var engScram = this.lastInstruments.rps_scrammed === true;',
+   '      var engScram = false;'],
+  /* #509 item 1: the reset is judged against the PREVIOUS step\'s snapshot */
+  ['the reset snapshot patch is severed (a good reset reports "rods not inserted")', SHPATH, SHSRC,
+   "      if (a === 'reset_rps' && this._ts) this._ts.scrammed = this.eng.pt.reactor_trip === true;",
+   ''],
+  /* #509 item 6: the mapper reads a key nothing sends; its fallback is always-truthy */
+  ['set_afw_block reads c.blocked again (every click shuts the valve)', SHPATH, SHSRC,
+   "      EN.command(e, 'afw_block', (c && c.open !== undefined ? c.open : c) === false);",
+   "      EN.command(e, 'afw_block', (c && c.blocked !== undefined ? c.blocked : c) !== false);"]
 ];
 var blind = 0;
 MUTS.forEach(function (m) {

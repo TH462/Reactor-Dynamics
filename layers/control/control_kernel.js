@@ -432,6 +432,28 @@
     // Sim-time accumulator for `held_within_s` latches and `lead_lag` filters (#408, #433).
     this._simT = (this._simT || 0) + (dt || 0);
     this.lastInstruments = instruments || this.engine.getInstruments();
+    /* ENGINE-OWNED RPS (#507 wave 7 class, #509 items 1/5): a config with an EMPTY trips
+     * list (PWR2 — protection lives inside the engine) never sets this.rps.scrammed for an
+     * AUTOMATIC trip, so resetRps() returned null for ever and getRpsState published
+     * scrammed:false against a latched plant — the RESET button was a permanent no-op and
+     * every SI/FWI seal-in became unreleasable. Mirror the rps_scrammed STATUS INSTRUMENT
+     * (HR1 — the same reading the board's SCRAMMED lamp uses) into the kernel latch, both
+     * directions. Configs that carry kernel trips never reach this — byte-identical paths,
+     * the same guard as the set_trip_block forward above. */
+    if (!(this.config.trips || []).length) {
+      var engScram = this.lastInstruments.rps_scrammed === true;
+      if (engScram && !this.rps.scrammed) {
+        this.rps.scrammed = true;
+        var tc = null;
+        if (this.engine && this.engine.getTripCause) {
+          try { tc = this.engine.getTripCause(); } catch (eTC) { tc = null; }
+        }
+        this.rps.last_trip_reason = tc || 'reactor trip';
+      } else if (!engScram && this.rps.scrammed) {
+        this.rps.scrammed = false;
+        this.rps.last_trip_reason = null;
+      }
+    }
     this._evalTrips(this.lastInstruments);
     this._evalActuations(this.lastInstruments);
     this._evalInterlocks(this.lastInstruments);

@@ -38,9 +38,14 @@
  * z-index 5, which pulled a hovered panel out in front of the vessel and its
  * neighbours and obscured them (issue #202, item 2). Pin the authored layer here
  * — pwr_board.css loads after shell.css, so this wins. The halo is a box-shadow
- * and still reads where the tile is visible. */
+ * and still reads where the tile is visible. The #444 highlight-bus classes
+ * (.hl-glow/.hl-pin) carry the same z-index 5 lift and were never added to this
+ * list — an indications-panel hover popped its board tile over the diagram
+ * indication it was pointing at (#509 item 9). */
 .pwr-board-stage .bd-tile.ckl-glow,
-.pwr-board-stage .bd-tile.instr-glow { z-index: auto; }
+.pwr-board-stage .bd-tile.instr-glow,
+.pwr-board-stage .bd-tile.hl-glow,
+.pwr-board-stage .bd-tile.hl-pin { z-index: auto; }
 .bd-box-title {
   position: absolute; left: 10px; top: 7px; color: #6b8598;
   letter-spacing: 0.16em; white-space: nowrap;

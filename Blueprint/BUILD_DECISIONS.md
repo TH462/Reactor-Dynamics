@@ -45,6 +45,32 @@ where the two differ or where judgment was exercised.
 
 ---
 
+## 2026-08-24-develop-d — #509: two owner selections (chart lanes fill; RCP density reference to the cold leg) + the reset seam
+
+**Claim.** The owner's third playtest (#509, 11 items) is worked end to end; the full measured
+record is `PWR2_VALIDATION.md` §79 and the session entry is `TUNING_LOG` 2026-08-24-develop-d.
+Two decisions recorded here because they change standing rules:
+
+- **Chart lanes STRETCH TO FILL** *(OWNER SELECTION, 2026-08-24: "Lanes stretch to fill
+  (Recommended)" — chosen over "Keep cap, fix polish only" and "Cap becomes a floor")*. The
+  #445 spec §8 56 px lane target ("extra space adds rows, it does not inflate them") is
+  RETIRED; pinned lanes divide the full plot height. The 36 px floor and the 2026-08-10
+  demote-to-numeric-rows selection are unchanged. `ui/test_panel/lane_reference.html`
+  updated first, then `ui/app.js laneSplit` (the constant deleted, not zeroed).
+- **The RCP's rated-density reference is the design COLD-LEG state** *(OWNER SELECTION,
+  2026-08-24: "Recalibrate to cold leg (Recommended)" — chosen over "Keep physics, declare
+  it")*. `pwr2_sources.rhoRated()` was pinned at the loop-average design point while
+  `loopDensity` reads the RCP node (cold leg), so rated speed at the design point delivered
+  105.16 % of `mdot_rated` by construction. Now 288.95 °C (552 °F) = tavg − dt/2, resolved
+  from a single `DESIGN` object that `pwr2_engine`'s TREF/DT0_C/P0 also consume (kills the
+  duplicated 304.5/31.1/15.41 literals). Measured: hot-full-power flow 1714.2 → 1646.2 kg/s
+  (101.0 %), pressure 2233 psia unchanged, loop split 56.5 → 58.9 °F. One deliberate fixture
+  refit in `run_pwr2_sources` (declared in the check's own comment, HR10).
+
+The rest of #509 (the kernel scram mirror, the seal-in refusals, the feed steam element, the
+AFW block valve, the SG/tee/hover art, the disabled statics) is engineering, not decisions —
+§79 carries it. `run_pwr2_board` 13 → 24 checks / 5 mutations.
+
 ## 2026-08-21-develop-b — #501: the chart pre-seed and every flat seed REMOVED — charts start empty and fill live
 
 *(OWNER RULING, 2026-08-21: selected "All flat seeds everywhere" [be removed] from options I

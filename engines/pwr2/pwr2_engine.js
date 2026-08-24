@@ -46,14 +46,17 @@
       CT = RD.containment, TS = RD.trueState, IN = RD.instruments, RH = RD.rhr,
       FWM = RD.feedwater;
 
-  var TREF = 304.5, P0 = 15.41, RATED_KW = 300000, MWE_RATED = 100;
+  /* the design point is ONE object, owned by pwr2_sources (its DESIGN — #509 item 3): the
+   * pump's rated-density reference and these normalizations must be the same numbers, and
+   * a second typed copy is the PROTECTION_DT trap class */
+  var TREF = S.DESIGN.tavg_c, P0 = S.DESIGN.P_mpa, RATED_KW = 300000, MWE_RATED = 100;
   function tLeg(sys, id) {
     for (var i = 0; i < sys.nodes.length; i++) {
       if (sys.nodes[i].id === id) return W.T_from_h(sys.nodes[i].h, sys.P);
     }
     return NaN;
   }
-  var DT0_C = 31.1;              /* full-power loop delta-T, [derived] — the settled design
+  var DT0_C = S.DESIGN.dt_c;     /* full-power loop delta-T, [derived] — the settled design
                                   * point's own split (606 - 550 degF = 56 degF = 31.1 degC),
                                   * the delta-T pair's normalization */
   /* Manual rod motion by the operator's S/M/F selection (#506.4). The SPEEDS are the sourced
@@ -710,7 +713,14 @@
     var rdF = eng.ins.reading;
     var fwr = FWM.stepFeedwater(eng.fw, dt, {
       sg_level_pct: rdF.sg_level,
-      steam_flow_frac: rdF.steam_flow !== undefined ? rdF.steam_flow : out / eng.rated_steam,
+      /* element 2 reads TOTAL steam leaving the SG (sg_steam_flow ← steam_out_total:
+       * turbine + dumps + relief), NOT the turbine channel — post-trip the dumps carry
+       * the steam and `steam_flow` reads ~0, so the three-element controller saw zero
+       * demand and delivered nothing for ~3 min while level walked down (#509 item 5;
+       * the exact defect pwr1's feed channel fixed for itself — see the SOURCE comment
+       * in pwr_instruments.js and pwr_control's feed_sg input) */
+      steam_flow_frac: rdF.sg_steam_flow !== undefined ? rdF.sg_steam_flow
+                       : (rdF.steam_flow !== undefined ? rdF.steam_flow : out / eng.rated_steam),
       fw_flow_frac: rdF.fw_flow !== undefined ? rdF.fw_flow : eng.fw.feed_frac,
       si_active: eng.pt.si,
       /* main feed pumps are NONVITAL loads (#507 wave 4) — capacity dies with the grid,

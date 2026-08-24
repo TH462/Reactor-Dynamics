@@ -365,7 +365,23 @@
   }
   function feedStatus(s) {
     var c = chan(s, 'feed_sg');
-    if (!c) return { text: '—', color: BD_WARN };
+    if (!c) {
+      // No kernel channel: an ENGINE-OWNED feed controller (PWR2 — its three-element
+      // SGWLCS lives in pwr2_feedwater). The corner used to read a permanent '—' here,
+      // so a feedwater isolation and a working AUTO looked identical (#509 item 5).
+      // Same words as the kernel path, read off the engine's own published state.
+      var cs = CS(s);
+      if (cs.mfw_isolated === true) return { text: 'ISOLATED', color: BD_WARN };
+      if (cs.feed_coupled === true) {
+        return feedNoFlow(s) ? { text: 'NO FLOW', color: BD_WARN }
+                             : { text: 'HOLDING', color: BD_OK };
+      }
+      if (cs.feed_coupled === false) {
+        return (cs.feed_pump_speed_pct || 0) <= 0
+          ? { text: 'OFF', color: BD_WARN } : { text: 'MANUAL', color: BD_WARN };
+      }
+      return { text: '—', color: BD_WARN };   // an engine publishing neither: unknown
+    }
     if (!c.engaged) {
       if (c.stand_down === 'condition') return { text: 'ISOLATED', color: BD_WARN };
       if (c.stand_down === 'scram' || c.stand_down === 'dead') return { text: 'TRIPPED', color: BD_WARN };
@@ -1171,7 +1187,10 @@
   function pumpProps(running, speed, temp) { return { running: !!running, speed: speed, temp: temp }; }
   // flowing (default true): when false the valve shows OPEN + water-filled but NOT flowing —
   // e.g. an aligned accumulator isolation valve held shut by its 600 psi check valve.
-  function valveProps(openFrac, contents, temp, flowing) { return { openFrac: openFrac, contents: contents, temp: temp, flow: flowing !== false }; }
+  // `disabled` (optional): the running engine registers this valve as a STATIC (no
+  // actuator behind the symbol) — the component drops its pointer affordance so the click
+  // never happens, the #506 missing-machinery idiom instead of a refusal flash (#509 item 11).
+  function valveProps(openFrac, contents, temp, flowing, disabled) { return { openFrac: openFrac, contents: contents, temp: temp, flow: flowing !== false, disabled: disabled === true }; }
 
   var COMPPROPS = {
     reactorVessel: function (s) {
@@ -1298,7 +1317,7 @@
     imrpp2g2m8k: function (s) { return valveProps(IN(s).afw_block_open === false ? 0 : 1, 'water', 60, (IN(s).afw_flow || 0) > 1e-4); }, // afw block valve
     // Flow gates on total steam actually leaving the SG (turbine + dump) — an open MSIV on
     // a steamless plant (Mode 5: 0 flow, 15 psi) is open but NOT flowing (#236).
-    imrpp99kx2y: function (s) { return valveProps(IN(s).msiv_open ? 1 : 0, 'steam', satTempC(IN(s).steam_pressure), (IN(s).sg_steam_flow || 0) > 0.01); },  // main steam isolation
+    imrpp99kx2y: function (s) { return valveProps(IN(s).msiv_open ? 1 : 0, 'steam', satTempC(IN(s).steam_pressure), (IN(s).sg_steam_flow || 0) > 0.01, CS(s).msiv_fixed === true); },  // main steam isolation (non-operable on an engine with no MSIV model)
     // Flow gates on the PORV actually relieving — same true-state open×blockOpen the porv
     // comp uses for its plume. The block valve is normally open, but a dead-ended relief
     // line has no flow while the PORV is seated: without the gate the pressurizer→block
@@ -1312,7 +1331,7 @@
     // accumulator shutoff (isolation) valve — normally OPEN/aligned, but the accumulators
     // only inject once RCS pressure falls below the 600 psi check-valve setpoint, so the
     // discharge only "flows" while accumulators_discharging (no flow into the Rx at power).
-    imrppxt2aqd: function (s) { return valveProps(CS(s).accumulator_valve_open === false ? 0 : 1, 'water', 50, IN(s).accumulators_discharging); },
+    imrppxt2aqd: function (s) { return valveProps(CS(s).accumulator_valve_open === false ? 0 : 1, 'water', 50, IN(s).accumulators_discharging, CS(s).accumulator_valve_fixed === true); },
     imrprmm4u5q: function (s) { return valveProps((IN(s).steam_dump_valve || 0) / 100, (IN(s).steam_dump_valve || 0) > 2 ? 'steam' : 'empty', satTempC(IN(s).steam_pressure)); }, // steam dump valve
     // ---- the ADV branch, SG side of the MSIV (#371) ------------------------
     // The valve is the throttling element; the Atmospheric Dump beyond it is the
@@ -1361,7 +1380,9 @@
     // system: gating only the whole fitting made the ECCS branch animate whenever the RCP
     // was running, i.e. the board showed emergency injection into the cold leg with the
     // ECCS pump stopped and HPI off. A leg whose system is secured must read 'off', which
-    // renders it empty and still. Legs are named by their authored direction, so 'off'
+    // renders it full but STILL — secured is not drained; the old empty/black rendering
+    // read as a drained line against the full pipe it joins (#509 item 2). Legs are named
+    // by their authored direction, so 'off'
     // is the only value that ever changes here — the in/out sense stays as drawn.
     ims2k1rhzh3: function (s) {                       // cold-leg header; branch C = charging
       return coldLeg(s, { legC: CS(s).charging_pump_running && (IN(s).charging_flow || 0) > 1e-5 ? 'in' : 'off' });   // 1e-5 ≈ 4.5 gpm on the #408 real scale (was 1e-4, the old currency)

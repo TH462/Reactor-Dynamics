@@ -311,12 +311,19 @@ function runSuite(S, rec, quiet) {
    * was unreachable, and natural circulation could never be observed because forced flow never
    * stopped. */
   if (!quiet) console.log('\nPUMP DENSITY COUPLING  [it was pumping steam at rated mass flow]');
+  /* THE DESIGN CONDITION places the RCP NODE at the design COLD-LEG state (tavg - dt/2 =
+   * 288.95 degC), because that is the fluid the pump works on there — the #509 item 3
+   * recalibration: the reference used to be the loop-AVERAGE density, which made rated
+   * speed at the design point deliver 105 % of mdot_rated by construction (measured
+   * 1714.2 kg/s). The fixture is REFIT deliberately with that ruled change (HR10, said
+   * out loud): it pins the new cold-leg reference and could not pass on the old one. */
   var pRat = S.createPlant({ h: W.h_l(304.5, 15.41), P: 15.41 });
+  node(pRat, 'rcp').h = W.h_l(S.DESIGN.tavg_c - S.DESIGN.dt_c / 2, S.DESIGN.P_mpa);
   /* NEUTRAL AT RATED, and this is the check that lets the term be added to a calibrated
    * pump/friction balance at all. Both factors are exactly 1 at the design density, so
    * `dP_rated` and `Kf` keep the meaning they were derived with. */
-  ck('the density ratio is EXACTLY 1 at the design condition', S.densityRatio(pRat), 1.0,
-     2e-3, '');
+  ck('the density ratio is EXACTLY 1 at the design condition (rcp node at the design cold leg)',
+     S.densityRatio(pRat), 1.0, 2e-3, '');
   ck('...so the pump develops exactly its rated dP there', S.pumpHead(pRat), 0.58, 2e-3, 'MPa');
   /* AND IT MUST ACTUALLY BITE. A ratio only ever checked at rated is a ratio nobody has seen
    * work — the flag-asserted-only-false trap (run_pwr2_containment.js:110). */
@@ -388,8 +395,8 @@ var MUTATIONS = [
    '    var d = loopDensity(sys) / rhoRated();',
    '    var d = rhoRated() / loopDensity(sys);'],
   ['the rated density reference is typed as a round number instead of derived at the design point',
-   '    if (_rhoRated === null) _rhoRated = RHO(W.h_l(304.5, 15.41), 15.41);',
-   '    if (_rhoRated === null) _rhoRated = 1000;'],
+   '      _rhoRated = RHO(W.h_l(DESIGN.tavg_c - DESIGN.dt_c / 2, DESIGN.P_mpa), DESIGN.P_mpa);',
+   '      _rhoRated = 1000;'],
   ['buoyancy sign flipped (kills natural circulation silently)',
    'dP = (rh - rc) * g * (zh - zc);', 'dP = (rc - rh) * g * (zh - zc);'],
   ['buoyancy zeroed entirely', 'return dP / 1e6;                                // MPa', 'return 0;'],

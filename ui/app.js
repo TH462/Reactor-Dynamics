@@ -4571,7 +4571,6 @@
    * Read from the LIVE element, not from a constant: the splitters (#445) make the region's
    * height the operator's to choose, so the lane count has to follow it. */
   var NUM_ROW_PX = 18;                  // a demoted channel's numeric row, per the reference
-  var LANE_TARGET_PX = 56;              // the top of the spec's 44-56 band
   /* The split is JOINTLY constrained and has to be solved as one: every channel demoted to a
    * numeric row TAKES 18 px from the lanes above it, so "how many lanes fit" depends on how
    * many were demoted, which depends on how many fit. Computing the lane count first and
@@ -4587,13 +4586,14 @@
       var lanes = n - d;
       var avail = px - d * NUM_ROW_PX;
       if (avail / lanes >= LANE_FLOOR_PX) {
-        /* EXTRA SPACE ADDS ROWS, IT DOES NOT INFLATE THEM (#445, spec §8). Dragging the
-         * strip taller with three channels pinned must not give three enormous traces —
-         * "which is nobody's intent". Lanes stop growing at the target height and the
-         * surplus is simply not used by the stack; it becomes room for the next channel
-         * the operator pins, which is the point of having dragged. */
-        var used = Math.min(avail, lanes * LANE_TARGET_PX);
-        return { lanes: lanes, rows: d, px: used };
+        /* LANES STRETCH TO FILL *(OWNER SELECTION, 2026-08-24, #509 item 4: "Lanes stretch
+         * to fill" — chosen over keeping the cap)*. This retires the #445 spec §8 56 px
+         * target ("extra space adds rows, it does not inflate them"): with two or three
+         * channels pinned, the capped stack left the bottom two-thirds of the plot blank,
+         * which the owner's playtest read as the chart failing to scale. The 36 px FLOOR
+         * and the demote-to-numeric-rows rule (the 2026-08-10 owner selection) stand — only
+         * the ceiling is gone. */
+        return { lanes: lanes, rows: d, px: avail };
       }
     }
     return { lanes: 1, rows: n - 1, px: Math.max(LANE_FLOOR_PX, px - (n - 1) * NUM_ROW_PX) };
@@ -6137,6 +6137,19 @@
       if (e.target.closest('.plot-cell')) e.stopPropagation();
     }, true);
     $('graphWindow').addEventListener('click', function (e) { var b = e.target.closest('[data-win]'); if (!b) return; ui.window = +b.getAttribute('data-win'); chartRange = {}; drawChart(); });
+
+    /* Redraw on RESIZE — the lane split reads the live plot height, but drawChart only ran
+     * on the next snapshot tick (never, if paused), so a splitter drag or window resize
+     * left the lanes at the old geometry (#509 item 4). The board's splitter dispatches a
+     * window resize event after layout() for exactly this listener. Debounced one frame. */
+    (function () {
+      var pend = false;
+      window.addEventListener('resize', function () {
+        if (pend) return;
+        pend = true;
+        requestAnimationFrame(function () { pend = false; drawChart(); });
+      });
+    })();
 
     $('chartOptsBtn').addEventListener('click', function () { openChartSettings(); });
     $('chartOptsClose').addEventListener('click', closeChartSettings);

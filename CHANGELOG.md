@@ -30,6 +30,34 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
 
 ## [Unreleased]
 
+### Fixed (#509 — the owner's third playtest, 2026-08-24)
+- **PWR2: protection reset works after an automatic trip.** The kernel's RPS latch never
+  learned an engine-owned trip, so RESET was a permanent no-op and every SI/AFAS/FWI
+  seal-in was unreleasable — ECCS STOP, AFW STOP and MFW RESTORE were accepted and
+  silently overwritten each step. Now the latch mirrors the trip instrument, a reset is
+  judged against the post-reset state (not the previous step's snapshot), and a stop
+  pressed against a standing seal-in refuses out loud with the recovery path (sourced,
+  WTSM 12.3.2.3). The rods-in reset permissive works on PWR2 too.
+- **PWR2: SG feed recovers after a trip.** The three-element controller's steam element
+  read the turbine channel (~0 post-trip while the dumps carry the steam) — it reads total
+  steam leaving the SG now; the SG FEED corner word speaks on PWR2 (ISOLATED / HOLDING /
+  NO FLOW / MANUAL / OFF instead of a permanent '—').
+- **PWR2: the AFW block valve operates.** Every click shut it (a payload-key mismatch) and
+  the lamp was pinned OPEN; both fixed, gated both ways. A dry SG measurably refills on
+  AFW (~82 gpm, narrow range 0 → 67 % in 40 min).
+- **PWR2: RCP FLOW reads ~100 % at full power** (was 105) — the pump's rated-density
+  reference moved to the design cold-leg state the impeller actually sits in; readings
+  above 100 in genuinely cold water remain (denser suction, honest).
+- **Board:** secured tee/cross legs keep their fluid colour (a standby branch read as a
+  drained black stub); the SG tube sheet spans the vessel wall-to-wall, the U-tubes stop
+  at the sheet and water no longer paints past it; an indications-panel hover no longer
+  pops the highlighted tile over the diagram; the MSIV and accumulator valve symbols read
+  disabled on the new-physics plant (no actuator behind them) instead of flashing
+  refusals.
+- **Chart:** pinned lanes stretch to fill the strip's height (owner selection — the 56 px
+  lane cap retired; the 36 px floor and numeric-row demotion stand), and the chart redraws
+  on splitter drag / window resize instead of waiting for the next tick.
+
 ### Fixed (#510 batch 4 — the honesty batch, 2026-08-24)
 - **Casualty controls tell the truth now.** `clear_all_failures` clears every standing row
   through the same detector the Failures tab draws (it used to leave nine levers set behind a

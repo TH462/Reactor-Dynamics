@@ -22,6 +22,25 @@ the evidence to put it back** — say so in the session log rather than quietly 
 
 ---
 
+## Evicted 2026-08-24 (a THEMES-rotation eviction — the #460 bullet, out for #509's)
+
+Not a standing-list eviction: the themes list turned over and this bullet's rescued trap —
+**a ruling's premise ages independently of the ruling, and nothing re-checks it** — is
+already carried by the `question-owner-rulings` agent memory and Hard Rule 11's
+date-plus-quote discipline, so it lands here whole rather than costing a standing-list slot.
+If it bites again, that is the evidence to promote the one-liner into `CLAUDE.md`.
+
+- **The rods ship in MANUAL, and every probe that broke was INHERITING the lineup instead of
+  stating it** (2026-08-11, #460). `rods_tavg` loses `defaultOn`, reversing #289 — whose
+  premise, *"everything else starts in auto"*, had expired when the Mode 1 lineup put generator
+  load in MANUAL. Measured, the plant load-follows WITHOUT the rods (100 → 81.8 %, parked in
+  3 min 30 s, monotone) where AUTO rings 62 → 88 % for ten minutes; 60 fine steps move Tavg
+  −6.2 °F and generator load **0.8 points** — rods set temperature, the turbine sets power,
+  and AUTO was performing that Tier A coupling on the player's behalf. All five reds had the
+  rod controller as their SUBJECT, not the preset; `rodsAuto()` mirrors the `rodsManual()`
+  helper #289 was forced to write in the other direction — **both directions of one defect,
+  ten days apart.**
+
 ## Evicted 2026-08-22 (#507 waves 4–6 — one out for the #468 bullet's rescued trap)
 
 Gate-covered in the direction that matters: HR1(b) — every permissive key declared — is what

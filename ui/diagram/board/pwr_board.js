@@ -199,6 +199,9 @@
         app.style.setProperty('--bottomrow-h', manual.bottomH + 'px');
       }
       layout();
+      /* the strip chart's lane split reads the live plot height — tell it the geometry
+       * moved (app.js's debounced resize listener redraws; #509 item 4) */
+      window.dispatchEvent(new Event('resize'));
     }
     function up(ev) {
       el.classList.remove('bd-dragging');
@@ -241,6 +244,7 @@
     else { delete manual.bottomH; app.style.removeProperty('--bottomrow-h'); }
     saveManual();
     layout();
+    window.dispatchEvent(new Event('resize'));   /* chart lane split re-reads its height (#509 item 4) */
   }
 
   function layout() {

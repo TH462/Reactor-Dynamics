@@ -4279,3 +4279,121 @@ mutations 29 with the clear-all sweep and refusal-text anchors moved) · feedwat
 (the M-2 indicated door; the align fixture now RETRIES — a one-shot command at the exact
 crossing met the channel's 0.5 s lag and was silently refused) · true_state 64 · cvcs 44 ·
 endurance 18p 0xf.
+
+## 79. #509 — THE OWNER'S THIRD PLAYTEST: THE RESET SEAM, THE FEED ELEMENT, AND THE PUMP'S REFERENCE — 2026-08-24
+
+**The report** (filed 2026-08-22 21:19 EDT, 11 items) post-dates the #506 fixes and #507
+waves 1–7, so none of that work answered it; nothing had been booked against it. Triage:
+two pure wiring defects (items 6, 9), one dead seam under two symptoms (items 1 and 5),
+one controller input defect pwr1 had already fixed for itself (5b), one calibration
+artifact (3), art/layout (2, 8, 4, 11), one already-cured-needs-adjudication (7), one
+not-reproducible-at-HEAD (10).
+
+**Items 1 + 5 — the reset seam.** The kernel's `rps.scrammed` latch was set only by kernel
+trips (PWR2 has none — its RPS lives in the engine) or an operator `scram`, so after any
+AUTOMATIC trip `reset_rps` returned null at its first line FOR EVER, and every level-held
+seal-in (SI → HHSI/LHSI, AFAS → AFW, FWI → feed) was unreleasable: a stop/restore was
+ACCEPTED (`ok:true`) and silently overwritten one step later — a dead-looking button, the
+#506 defect class one layer deeper. Three fixes, one voice:
+- **The evaluate mirror** (control_kernel): a config with an EMPTY trips list mirrors the
+  `rps_scrammed` status instrument into the kernel latch, both directions (the wave-7
+  empty-trips guard — pwr1/rbmk/bwr byte-identical). Everything downstream is correct
+  unmodified: `reset_permitted`, the board caption, and pwr1's rods-in reset permissive
+  begin working on PWR2 for free (measured: a reset pressed during the rod drop now refuses
+  RODS_NOT_INSERTED; before the mirror the press returned null).
+- **The snapshot patch** (pwr2_shell.applyCommand): the kernel judges a reset against
+  `getTrueState()`, and the facade's `_ts` is the PREVIOUS step's snapshot — a reset that
+  succeeded was reported *"The trip breakers only reset with all rods inserted."* The one
+  field the reset changes is patched in place (`ts.scrammed` IS `pt.reactor_trip`).
+- **Spoken refusals** (pwr2_shell MAPPED): ECCS STOP / AFW STOP while the latch stands, and
+  MFW RESTORE while an isolation signal stands, THROW with the cause and the recovery path
+  ("reset safety injection (RPS RESET) first…") — the WTSM 12.3.2.3 seal-in, sourced. The
+  engine's level-held re-asserts stay the enforcement; the throw is the voice (#505 path).
+  **The MFW guard keys on `pt.fwi` OR (`pt.si` && `fw.isolated`)**: measured, the feed
+  module's own held-SI isolation (32 s) never latches `pt.fwi`, so a latch-only guard missed
+  the common case.
+- Measured recovery sequence: LOCA → SI latches, `rps_state.scrammed` true (reason
+  `ot_delta_t`); STOP refuses; reset under the standing signal is accepted and RE-LATCHES
+  within 3 s (not a wedge); manual scram → reset refused during the drop → accepted at the
+  seat → AFW stop and MFW restore then work.
+
+**Item 5b — the feed controller's steam element.** Element 2 of the three-element SGWLCS
+read the `steam_flow` instrument — the TURBINE channel, ~0 post-trip while the dumps carry
+the steam — the exact defect pwr1's feed channel documents and fixes for itself. It reads
+`sg_steam_flow` (← `steam_out_total`: turbine + dumps + relief) now. Measured plain turbine
+trip: valve pinned 0.000 from t+30 to t+180 while level walked 74.9 → 65.1 %; feed
+re-engages at the 65 % program crossing and level parks ~63 %. **5c**: `feedStatus` returned
+a permanent '—' with no kernel channel — the PWR2 branch now reads the engine's own state
+(ISOLATED / HOLDING / NO FLOW / MANUAL / OFF), so a feedwater isolation explains itself.
+
+**Item 6 — the AFW block valve, two bugs in one control.** The `set_afw_block` mapper read
+`c.blocked` — a key NO caller sends (the board sends `{open:<bool>}`) — and its fallback
+tested the payload OBJECT (always truthy), so **every click shut the valve and none
+reopened it**; both AFW trains dead-headed silently. And the lamp was pinned
+`afw_block_open = true` ("no AFW block valve is modeled" — stale since wave 6 made
+`aw.blocked` real state), so the icon could never draw shut. Mapper mirrors pwr_engine's
+reading (blocked iff `open === false`); lamp reads `e.aw.blocked` live. Round-trip gated
+both ways.
+
+**Item 7 — AFW refills a dry SG (adjudicated, was #510 batch 1's fix).** Measured: loss of
+feed + tagged-shut AFW dries the SG in 2,640 s (98 kg, wide 0.7 %, narrow 0 %); clearing
+the tag restores both pumps and the vessel REFILLS at ~5.2 kg/s (~82 gpm — the design
+two-pump capacity), narrow range recovering 0 → 67 % in 40 min while the plant cools. Two
+things stacked in the owner's session: the pre-batch-1 dry SG discarded everything fed to
+it, and item 6's valve latched shut on any click. Note the narrow gauge reads 0.0 % for the
+first ~15 min of a refill from dry — the wide range (the vessel art) is where it shows.
+
+**Item 3 — RCP FLOW 105 %: a calibration-reference mismatch, recalibrated** *(OWNER
+SELECTION, 2026-08-24: "Recalibrate to cold leg")*. `rhoRated()` pinned the pump's rated
+density at the loop-AVERAGE design state (304.5 degC) while `loopDensity` reads the RCP
+NODE — cold-leg water. The affinity equilibrium is mdot = mdot_rated · r · densityRatio,
+so rated speed at the design point delivered **1714.2 kg/s = 105.16 %** by construction.
+The reference is now the design COLD-LEG state (tavg − dt/2 = 288.95 degC / 552 degF),
+resolved from a single `DESIGN` object in pwr2_sources that pwr2_engine's TREF/DT0_C/P0
+now consume (one copy — the PROTECTION_DT trap class). Measured after: **1646.2 kg/s =
+101.0 %** (the residual 1 % is the settle's own ~2 degC Tcold drift below the design cold
+leg), pressure **2233 psia unchanged**, loop split 56.5 → 58.9 degF (the −4 % flow at the
+same power, as predicted). Every pwr2 runner at baseline after one deliberate fixture
+refit (run_pwr2_sources' design-condition fixture now places the rcp node at the design
+cold leg — declared, HR10). Cold water still reads above 100 (denser suction moves more
+mass — honest; the Mode 4 cold figure stays ~130 %).
+
+**Item 10 — charging OFF, not reproducible at HEAD.** Measured: OFF drives the indication
+30.0 → 0.00 gpm in ~20 s (the 30 IS the rail — §64's 29.4 gpm max at the level controller's
+railed demand). Likeliest history: the session pre-dated §66's `set_charging_pump` rehome,
+or the mode was MAN (which freezes the PLCS's last railed demand — noted, unfixed). The
+board gate now asserts the FLOW (< 0.5 gpm), not just the lamp.
+
+**Item 11 — the four clickable valves.** PORV block + PORV work; MSIV and the accumulator
+valve are registered statics whose clicks flashed honest refusals that read as dead
+controls. They now render DISABLED art on PWR2 (the ruled #506 missing-machinery idiom):
+`msiv_fixed` / `accumulator_valve_fixed` capability flags (the `adv_setpoint_fixed`
+pattern) → `valveProps.disabled` → the valve components drop the pointer affordance. An
+engine that grows an MSIV just stops publishing the flag.
+
+**Items 2, 8, 9, 4 — the board and the chart.**
+- **Tees/crosses (2):** an `'off'` leg rendered `{phase:'empty'}` — a black drained bore
+  against the water-solid pipe it joins. Secured is not drained: off legs keep the run's
+  fluid colour with the dashes stopped; `'empty'` is reserved for genuinely drained
+  contents.
+- **SG art (8):** the tube sheet spans wall to wall now (123..297; the 131..289 bar left an
+  ~8 px water-painted gap each side — the owner's "looks like water can pass by it" was
+  geometrically exact); the U-tubes end at the sheet's bottom (450, was 470 — 30 px inside
+  the channel heads); the water body ends AT the sheet (the +40 px slab below it is gone).
+  The wide-range fill itself is unchanged — narrow 0 % = wide 30 % = water at the tube
+  apex is the honest inventory reading, deliberately authored.
+- **Hover occlusion (9):** the #444 highlight classes (`.hl-glow`/`.hl-pin`) carry the same
+  z-index 5 lift the #202 fix pinned for `.ckl-glow`/`.instr-glow` — and were never added
+  to that selector list. Added; one line.
+- **Chart lanes (4)** *(OWNER SELECTION, 2026-08-24: "Lanes stretch to fill")*: the #445
+  spec §8 56 px lane target is retired — pinned lanes divide the full plot height (the
+  36 px floor and the ruled demote-to-numeric-rows rule stand). Plus the missing redraw:
+  `drawChart` only ran on the next snapshot tick, so a splitter drag or window resize left
+  stale geometry (never redrawn, if paused) — a debounced resize listener redraws, and the
+  splitter dispatches the event. `lane_reference.html` updated first, per its own rule.
+
+**The gate.** `test/run_pwr2_board.js` 13 → **24 checks**, mutations 2 → **5** (the scram
+mirror severed → 4 red; the reset snapshot patch severed → 2 red; the `set_afw_block`
+payload revert → 1 red; plus the two originals re-anchored), 5/5 caught. Regression sweep
+green: run_m4 46/46 · run_autoctl 30/30 · run_e2e_controls 59/59 · run_pwr 37/37 ·
+run_m5 23/23 · verify_board_check 225 · every pwr2 runner at baseline.

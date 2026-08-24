@@ -48,6 +48,9 @@
       contents: cfg.contents != null ? cfg.contents : (cfg.fluid != null ? null : 'water'),
       temp: cfg.temp != null ? cfg.temp : 290,
       flow: true,   // false = open + water-filled but NOT flowing (e.g. check valve holds it shut)
+      // true = the running engine has no actuator behind this symbol (a registered static) —
+      // the pointer affordance is dropped so the click never happens (#509 item 11)
+      disabled: false,
       fl: null, wet: false
     };
 
@@ -103,7 +106,7 @@
     var hit = h('circle', {
       className: clickable ? 'vlv-hit' : undefined, cx: cx, cy: cy, r: R + 4, fill: 'rgba(0,0,0,0)',
       style: { cursor: clickable ? 'pointer' : 'default', pointerEvents: clickable ? 'auto' : 'none' },
-      onClick: clickable ? function () { env.onControl('toggle', st.openFrac < 0.5 ? 1 : 0); } : undefined
+      onClick: clickable ? function () { if (st.disabled) return; env.onControl('toggle', st.openFrac < 0.5 ? 1 : 0); } : undefined
     });
     var hoverring = h('circle', { className: 'vlv-hoverring', cx: cx, cy: cy, r: Rc, fill: 'none', stroke: CYAN, strokeWidth: 5, opacity: 0, filter: 'url(#' + GLOW + ')', style: { pointerEvents: 'none' } });
 
@@ -141,8 +144,13 @@
     var applied = {};
     function applyState(force) {
       var openFrac = Math.max(0, Math.min(1, st.openFrac));
-      if (!force && applied.openFrac === openFrac && applied.contents === st.contents && applied.temp === st.temp && applied.flow === st.flow) return;
-      applied.openFrac = openFrac; applied.contents = st.contents; applied.temp = st.temp; applied.flow = st.flow;
+      if (!force && applied.openFrac === openFrac && applied.contents === st.contents && applied.temp === st.temp && applied.flow === st.flow && applied.disabled === st.disabled) return;
+      applied.openFrac = openFrac; applied.contents = st.contents; applied.temp = st.temp; applied.flow = st.flow; applied.disabled = st.disabled;
+
+      // disabled drops the pointer affordance (cursor + hover ring via pointer-events)
+      var canClick = clickable && !st.disabled;
+      hit.style.cursor = canClick ? 'pointer' : 'default';
+      hit.style.pointerEvents = canClick ? 'auto' : 'none';
 
       var fl = st.contents ? K.phaseTempColor(st.contents, st.temp) : (K.FLUIDS[fluidKey] || K.FLUIDS.coldWater);
       var isEmpty = !!fl.empty;
@@ -196,6 +204,7 @@
       if (props.contents != null) st.contents = props.contents;
       if (props.temp != null) st.temp = props.temp;
       if (props.flow != null) st.flow = !!props.flow;
+      if (props.disabled != null) st.disabled = !!props.disabled;
       applyState(false);
     }
 
