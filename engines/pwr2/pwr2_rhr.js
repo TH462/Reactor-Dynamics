@@ -277,8 +277,13 @@
     if (Thot === null) Thot = 0;
 
     /* the pumps take suction through the valve — no valve, no flow, no duty. `avail` stays
-     * a separate lineup fraction (the negative-availability floor below owns its abuse). */
-    rh.running = rh.valve_open;
+     * a separate lineup fraction (the negative-availability floor below owns its abuse).
+     * AND THE PUMPS ARE MOTOR LOADS (#510 H-5): dead bus, no flow — WTSM 5.7.5's blackout
+     * takes every decay-heat-removal system except the turbine-driven AFW pump, and this
+     * module removed 26.6 MMBtu/hr through one before the gate. `drivers.ac_available`
+     * absent means powered, the house convention (every layer-local fixture unchanged). */
+    var powered = drivers.ac_available !== false;
+    rh.running = rh.valve_open && powered;
     var duty = 0;
     if (rh.running) {
       duty = Math.max(0, rh.avail) * rh.hx_fraction * rh.UA * (Thot - rh.ccw_temp_c);

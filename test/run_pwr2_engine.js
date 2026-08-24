@@ -1283,10 +1283,10 @@ var MUTATIONS = [
   ['the condenser\'s grid wire is cut (CW pumps spin with no electricity)',
    '      cw_pumps_running: eng.cwPumps && offsiteOk',
    '      cw_pumps_running: eng.cwPumps', { grp: 'G' }],
-  /* anchor re-pointed #510 batch 1: the CVCS call grew the rhr_letdown_ok driver */
+  /* anchor re-pointed #510 batches 1+2: the CVCS call grew the rhr_letdown_ok driver */
   ['the CVCS and ECCS vital-bus wires are cut (charging and SI survive the blackout)',
-   "    var cvr = CV.stepCVCS(eng.cv, sys, dt, { ac_available: acAvail, rhr_letdown_ok: eng.rh.valve_open });\n    var ecr = EC.stepECCS(eng.ec, sys, dt, { ac_available: acAvail });",
-   '    var cvr = CV.stepCVCS(eng.cv, sys, dt, { rhr_letdown_ok: eng.rh.valve_open });\n    var ecr = EC.stepECCS(eng.ec, sys, dt);', { grp: 'G' }],
+   "    var cvr = CV.stepCVCS(eng.cv, sys, dt, { ac_available: acAvail, rhr_letdown_ok: eng.rh.running === true });\n    var ecr = EC.stepECCS(eng.ec, sys, dt, { ac_available: acAvail });",
+   '    var cvr = CV.stepCVCS(eng.cv, sys, dt, { rhr_letdown_ok: eng.rh.running === true });\n    var ecr = EC.stepECCS(eng.ec, sys, dt);', { grp: 'G' }],
   ['the pressurizer\'s electrical drivers are cut (the wire that was dark before wave 4)',
    '      ac_available: acAvail,\n      offsite_ok: offsiteOk\n    }, eng.pzDrivers));',
    '    }, eng.pzDrivers));', { grp: 'G' }],

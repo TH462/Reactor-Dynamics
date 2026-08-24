@@ -277,6 +277,17 @@ function runSuite(R, rec, quiet) {
   ckT('the default lineup is SECURED, not running',
       R.stepRHR(R.createRHR({}), plantAt(340, P_cd), 1, {}).duty_kW === 0,
       'a default of "running" would make every probe that omits it cool a plant nobody aligned');
+  /* THE PUMPS ARE MOTOR LOADS (#510 H-5): dead bus, no flow, no duty — WTSM 5.7.5's blackout
+   * takes every decay-heat-removal system except the turbine-driven AFW pump. Absent means
+   * powered, the house convention, so every fixture above is untouched. */
+  ckT('a dead bus stops the pumps — aligned, HX open, ZERO duty (#510 H-5)',
+      (function () {
+        var dead = R.stepRHR(R.createRHR({ valve_open: true }), plantAt(340, P_cd), 1,
+                             { ac_available: false });
+        var live = R.stepRHR(R.createRHR({ valve_open: true }), plantAt(340, P_cd), 1,
+                             { ac_available: true });
+        return dead.duty_kW === 0 && live.duty_kW > 0;
+      })(), 'was 26.6 MMBtu/hr removed through a blackout before the gate');
   ckT('a caller cooling-water temperature actually changes the duty', (function () {
         var warm = R.stepRHR(R.createRHR({ valve_open: true, ccw_temp_c: 90 }), plantAt(340, P_cd), 1, {});
         var cold = R.stepRHR(R.createRHR({ valve_open: true, ccw_temp_c: 10 }), plantAt(340, P_cd), 1, {});
@@ -347,6 +358,8 @@ var MUTATIONS = [
   ['the engine ENFORCES the interlock instead of reporting it (protection in the wrong layer)',
    'if (rh.running) {', 'if (rh.running && mayOpen) {'],
   ['the removed-energy total stops accumulating', 'rh.removed_kJ += duty * dt;', ''],
+  ['the vital-bus gate is severed (#510 H-5 re-armed: unpowered pumps keep cooling)',
+   'rh.running = rh.valve_open && powered;', 'rh.running = rh.valve_open;'],
   ['the cooldown margin fabricates a zero instead of reporting NULL',
    'margin_kW: drivers.decayHeat_kW === undefined ? null : duty - drivers.decayHeat_kW,',
    'margin_kW: duty - (drivers.decayHeat_kW || 0),'],

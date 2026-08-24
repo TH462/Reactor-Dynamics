@@ -30,6 +30,27 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
 
 ## [Unreleased]
 
+### Fixed (#510 batch 2 — the electrical completion sweep, 2026-08-24)
+- **Auxiliary spray and the RHR pumps now die with their bus** (findings H-4 and H-5 of the
+  #510 review). A station blackout no longer delivers 29 gpm of aux spray from a dead charging
+  pump (541 psi of free depressurization) or 26.6 MMBtu/hr of shutdown cooling through
+  unpowered RHR pumps. The RHR power state also gates the batch-1 forced circulation and
+  low-pressure letdown path — one wire, three consumers.
+- **The heater-shed latch arms on each actuating signal independently** (H-6): a loss of
+  offsite power arriving after a safety injection — heaters re-loaded between — sheds the
+  banks again (the old single OR'd edge never fired on the second signal, and 157.8 kW rode
+  the diesels through the design-basis LOCA+LOOP order).
+- **Clearing a station blackout restores only what the blackout took** (M-13): injected on top
+  of a standing loss of offsite power, the clear hands back the diesels with the grid still
+  down, and the Failures tab finally agrees with the plant.
+- **A dead condenser trips the turbine** (M-6, sourced — Ginna UFSAR ch.10 §10.1.3.1 lists
+  turbine trips on loss of both circulating water pumps and low condenser vacuum): the
+  `loss_of_condenser_vacuum` casualty no longer shows 100.0000 MWe at zero vacuum under a lit
+  COND VAC TRIP annunciator.
+- Gates: endurance 13 passed 5 xfail → 17 passed 1 xfail (only the cold RCP stall remains
+  tracked); `run_pwr2_pressurizer` 66 → 68, `run_pwr2_rhr` 41 → 42, `run_pwr2_shell` 69 → 71.
+  No save-shape change (the new electrical memory rides the already-saved objects).
+
 ### Fixed (#510 batch 1 — the dry SG and the Mode 4 hold, 2026-08-23)
 - **A dry steam generator is no longer an infinite heat sink** (`pwr2_sg`, finding H-1 of the
   #510 swarm review). Heat transfer collapses with the wetted tube fraction (the old engine's

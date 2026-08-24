@@ -364,6 +364,32 @@ function runSuite(SH, rec, quiet) {
     ck('clearing the SBO restores both buses on the contract (pumps stay where physics left them)',
        ts7b.ac_available === true && ts7b.station_blackout === false &&
        e7.eng.sys.pumpTripped === true, '');
+
+    /* THE LAYERED CLEAR (#510 M-13): a blackout injected ON TOP of a standing LOOP restores
+     * only what the blackout took — the diesels answer, the grid is STILL down, and the
+     * engine-derived failure list agrees with the ledger the player is looking at. The old
+     * unconditional offsite=true made the LOOP vanish from the engine while the Failures tab
+     * kept drawing it. */
+    var e7c = new SH.PWR2Engine({});
+    for (i = 0; i < 100; i++) e7c.step(0.02);
+    e7c.applyCommand({ action: 'inject_failure', failure_id: 'loss_of_offsite_power' });
+    for (i = 0; i < 50; i++) e7c.step(0.02);
+    e7c.applyCommand({ action: 'inject_failure', failure_id: 'station_blackout' });
+    for (i = 0; i < 50; i++) e7c.step(0.02);
+    e7c.applyCommand({ action: 'clear_failure', failure_id: 'station_blackout' });
+    e7c.step(0.02);
+    var ts7c = e7c.getTrueState(), act7c = e7c.getActiveFailures();
+    ck('clearing an SBO that arrived ON a standing LOOP restores the DIESELS ONLY: the grid ' +
+       'stays down, ac_available true (vital buses), and the LOOP row still reports',
+       ts7c.station_blackout === false && ts7c.ac_available === true &&
+       e7c.eng.elec.offsite === false &&
+       act7c.indexOf('loss_of_offsite_power') !== -1,
+       'active [' + act7c.join(',') + '], offsite ' + e7c.eng.elec.offsite);
+    e7c.applyCommand({ action: 'clear_failure', failure_id: 'loss_of_offsite_power' });
+    e7c.step(0.02);
+    ck('...and clearing the LOOP afterwards restores the grid (the layered recovery lands)',
+       e7c.eng.elec.offsite === true &&
+       e7c.getActiveFailures().indexOf('loss_of_offsite_power') === -1, '');
   })();
 
   /* ---- 1f. THE SGTR ROW (#507 wave 5) -------------------------------------------------------- */

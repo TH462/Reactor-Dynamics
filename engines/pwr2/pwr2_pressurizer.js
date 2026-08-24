@@ -376,10 +376,17 @@
      * buses, and the GRID coming back does not re-load them — an operator does, by touching
      * the heater control (the caller clears pz.shedLatch on its heater command). Old saves
      * carry no latch fields and land healthy-false, the pre-wave-4 plant exactly. */
-    var shedSig = !!drivers.si_active || drivers.ac_available === false ||
-                  drivers.offsite_ok === false;
-    if (shedSig && !pz._shedSigPrev) pz.shedLatch = true;
-    pz._shedSigPrev = shedSig;
+    /* TWO INDEPENDENT ACTUATING SIGNALS, each with its OWN edge (#510 H-6). The old single
+     * OR'd edge meant a LOOP arriving AFTER an SI (heaters re-loaded between) never shed —
+     * the second signal found the OR already high and no edge fired; 157.8 kW rode the
+     * diesels through the design-basis LOCA+LOOP order. NUREG-0737 II.E.3.1's shed is a
+     * bus-loading action on SI-or-LOOP: each arrival is its own action. Old saves carry no
+     * _siPrev/_loopPrev and land false — the next standing signal re-arms, conservative. */
+    var siSig = !!drivers.si_active;
+    var loopSig = drivers.ac_available === false || drivers.offsite_ok === false;
+    if ((siSig && !pz._siPrev) || (loopSig && !pz._loopPrev)) pz.shedLatch = true;
+    pz._siPrev = siSig;
+    pz._loopPrev = loopSig;
     /* the LATCH is the shed (the old engine's reading of the clarification: the source
      * "explicitly contemplates loading the heaters while the SI signal still stands", so a
      * standing signal does not re-shed past the operator's re-load). ac_available stays a
@@ -409,8 +416,14 @@
     if (pz.sprayStuck) sprayFrac = 1;
     if (SPRAY.needs_rcp && !(sys.mdot_loop > 100)) sprayFrac = 0;   /* no RCP head, no spray */
     if (pz.waterSolid) sprayFrac = 0;                               /* no steam to condense */
-    /* Auxiliary spray: operator-commanded, RCP-independent (see the SPRAY block). */
-    var auxFrac = drivers.aux_spray === undefined ? 0 : clip(drivers.aux_spray, 0, 1);
+    /* Auxiliary spray: operator-commanded, RCP-independent (see the SPRAY block) — but NOT
+     * power-independent (#510 H-4): the CHARGING PUMPS drive it, and they are vital loads
+     * dead in a blackout (pwr2_cvcs kills them on the same wire). Before this gate a plant
+     * with ac_available false delivered 29 gpm of aux spray from a pump reporting zero flow
+     * — 541 psi of depressurization through a blackout, measured. Absent means powered, the
+     * house convention. */
+    var auxFrac = (drivers.aux_spray === undefined || drivers.ac_available === false)
+                  ? 0 : clip(drivers.aux_spray, 0, 1);
     if (pz.waterSolid) auxFrac = 0;
 
     /* ---- 3. RELIEF: controller PORV at +100 psi, mechanical safeties at 2500 psia. Both act

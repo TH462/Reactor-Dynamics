@@ -38,17 +38,13 @@ var DT = 0.02;
 var XFAIL = {
   /* H-1 + H-2 PROMOTED (#510 batch 1, 2026-08-23): the dry-SG wet-fraction collapse +
    * outflow-limited ledger, the RHR low-pressure letdown path, the signed sgDuty and the
-   * surge-line energy conservation — the four checks now run as ordinary PASSes above. */
-  'blackout-kills-aux-spray':
-    '#510 H-4: auxFrac takes no power term; 29 gpm delivered through a blackout',
-  'blackout-kills-rhr':
-    '#510 H-5: rh.running is the valve alone; 26.6 MMBtu/hr removed through a blackout',
-  'shed-latches-on-loop-after-si':
-    '#510 H-6: the latch edges on the OR of two signals; the second signal never arms it',
+   * surge-line energy conservation — the four checks now run as ordinary PASSes above.
+   * H-4/H-5/H-6/M-6 PROMOTED (#510 batch 2, 2026-08-24): the electrical completion sweep —
+   * aux spray and the RHR pumps carry the vital-bus wire, the shed latch edges on each
+   * actuating signal independently, and a dead condenser trips the turbine (sourced,
+   * Ginna UFSAR ch.10 §10.1.3.1). */
   'rcp-start-reaches-rated-cold':
-    '#510 H-7: constant motor torque stalls the rotor at ~93 % speed in cold water',
-  'vacuum-loss-reaches-the-turbine':
-    '#510 M-6: no backpressure term and no low-vacuum trip; 100.0000 MWe at zero vacuum'
+    '#510 H-7: constant motor torque stalls the rotor at ~93 % speed in cold water'
 };
 
 var rec = [], nPass = 0, nXfail = 0, nFail = 0, nUnexpected = 0;

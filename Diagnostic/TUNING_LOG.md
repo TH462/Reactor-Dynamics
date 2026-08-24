@@ -29,6 +29,26 @@ and the user-visible summary in `CHANGELOG.md`. This file points at those and tr
 
 ---
 
+## Session log — 2026-08-24-develop-a (#510 batch 2 — the electrical completion sweep)
+
+**Batch 2 of the #510 order** — H-4, H-5, H-6, M-13, M-6, one pattern (un-carried electrical
+wires). Full measured record: `Blueprint/PWR2_VALIDATION.md` **§76**. Endurance 13 passed
+5 xfail → **17 passed 1 xfail** — only H-7 (the cold RCP stall) remains tracked, batch 3's
+first item.
+
+- H-4 aux spray + H-5 RHR pumps gated on `ac_available` (absent = powered, the house idiom);
+  the RHR power state also gates the batch-1 circulation floor and letdown path via
+  `rh.running`. H-6: `_siPrev`/`_loopPrev` edge independently — LOOP-after-SI sheds again.
+  M-13: `elec._offsiteWasLost` — an SBO clear on a standing LOOP hands back the diesels only,
+  both orders gated through the shell. M-6: a level turbine trip on condenser availability
+  [sourced, Ginna UFSAR ch.10 §10.1.3.1 — the evidence pass found the trip LIST, so no
+  setpoint had to be invented; availability IS the vacuum at this fidelity].
+- Gates: pressurizer 66 → 68 (mutations 26 → 29) · rhr 41 → 42 (23 → 24) · shell 69 → 71 ·
+  engine 90 (one mutation anchor re-pointed) · stale `pwr2_protection` "no electrical model
+  exists" note corrected.
+
+---
+
 ## Session log — 2026-08-23-develop-b (#510 batch 1 — the dry SG and the Mode 4 hold)
 
 **The first fix batch of the #510 order** (owner-ruled via plan: full sweep, in order; the

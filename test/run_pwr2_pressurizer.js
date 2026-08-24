@@ -184,6 +184,30 @@ function runSuite(RD, rec, quiet) {
       once(-40, { si_active: true }).heater_kW === 0 &&
       once(-40, { si_active: true }).heaters_shed === true,
       'a -40 psi error would otherwise demand every bank');
+  /* THE VITAL BUS KILLS AUX SPRAY (#510 H-4): the charging pumps drive it, and they die on
+   * the same wire pwr2_cvcs pulls — before the gate a blackout plant delivered 29 gpm from
+   * a pump reporting zero flow, 541 psi of depressurization. */
+  var rAuxB = PZ.stepPressurizer(PZ.createPressurizer({}), stub(15.41, 0), DT,
+                                 { aux_spray: 1.0, ac_available: false });
+  ckT('a BLACKOUT kills aux spray — the pump that drives it is a vital load (#510 H-4)',
+      rAuxB.aux_spray_frac === 0 && rAuxB.aux_spray_kgs === 0,
+      'commanded 1.0 on a dead bus: delivered ' + rAuxB.aux_spray_kgs.toFixed(2) + ' kg/s');
+  /* EACH ACTUATING SIGNAL HAS ITS OWN EDGE (#510 H-6): a LOOP arriving AFTER an SI (the
+   * operator re-loaded the heaters between) must shed AGAIN — the old OR'd single edge found
+   * the OR already high and never fired, and 157.8 kW rode the diesels through the
+   * design-basis LOCA+LOOP order. */
+  ckT('a LOOP arriving AFTER an SI (operator re-load between) SHEDS the banks AGAIN',
+      (function () {
+        var pzE = PZ.createPressurizer({});
+        var sysE = stub(15.41, 0);
+        PZ.stepPressurizer(pzE, sysE, DT, { si_active: true });          /* the SI edge arms */
+        if (pzE.shedLatch !== true) return false;
+        pzE.shedLatch = false;                          /* the operator re-load (caller's clear) */
+        var r1 = PZ.stepPressurizer(pzE, sysE, DT, { si_active: true });
+        if (r1.heaters_shed !== false) return false;    /* a STANDING SI does not re-shed */
+        var r2 = PZ.stepPressurizer(pzE, sysE, DT, { si_active: true, offsite_ok: false });
+        return r2.heaters_shed === true && pzE.shedLatch === true;
+      })(), 'the second signal is its own bus-loading action (NUREG-0737 II.E.3.1)');
   /* THE TWO WAVE-6 FAILURE SEATS (#507): a dead bank and a stuck spray valve — each distinct
    * from the operator's override and from the shed (three seats, three different recoveries) */
   var rHF = once(-40, { heaters_failed: true });
@@ -488,9 +512,13 @@ var MUTATIONS = [
   /* re-anchored #507 wave 4: the shed became a LATCH (armed by SI/LOOP/dead-bus, cleared by
    * the operator's heater command), so the SI term now lives in the ARMING signal — deleting
    * it there means an SI plant never sheds, which must red the shed check */
+  /* re-anchored #510 batch 2: the arming signal split into per-signal edges */
   ['the SI heater shed is deleted (the #447 requirement, undone)',
-   'var shedSig = !!drivers.si_active || drivers.ac_available === false ||\n                  drivers.offsite_ok === false;',
-   'var shedSig = drivers.ac_available === false ||\n                  drivers.offsite_ok === false;'],
+   'var siSig = !!drivers.si_active;',
+   'var siSig = false;'],
+  ['the LOOP edge rides the SI edge again (#510 H-6 re-armed: LOOP-after-SI never sheds)',
+   'if ((siSig && !pz._siPrev) || (loopSig && !pz._loopPrev)) pz.shedLatch = true;',
+   'if ((siSig || loopSig) && !(pz._siPrev || pz._loopPrev)) pz.shedLatch = true;'],
   ['backup heaters clear at their own on-point (the sourced -17 hysteresis flattened)',
    'else if (err_psi >= CONTROL.backup_off_psi && !backupOnLevel) pz.backupOn = false;',
    'else if (err_psi >= CONTROL.backup_on_psi && !backupOnLevel) pz.backupOn = false;'],
@@ -536,12 +564,16 @@ var MUTATIONS = [
   ['the tailpipe cools as fast as it heats (the deceptive half deleted)',
    'pz.T_tail_c += dt * (amb - pz.T_tail_c) / RELIEF.tail_tau_cool_s;',
    'pz.T_tail_c += dt * (amb - pz.T_tail_c) / RELIEF.tail_tau_heat_s;'],
+  /* re-anchored #510 batch 2: auxFrac grew the vital-bus gate */
   ['the aux-spray command is dead',
-   'var auxFrac = drivers.aux_spray === undefined ? 0 : clip(drivers.aux_spray, 0, 1);',
+   'var auxFrac = (drivers.aux_spray === undefined || drivers.ac_available === false)\n                  ? 0 : clip(drivers.aux_spray, 0, 1);',
    'var auxFrac = 0;'],
   ['aux spray gated on the RCPs (its reason to exist, inverted)',
-   'var auxFrac = drivers.aux_spray === undefined ? 0 : clip(drivers.aux_spray, 0, 1);',
-   'var auxFrac = !(sys.mdot_loop > 100) ? 0 : (drivers.aux_spray === undefined ? 0 : clip(drivers.aux_spray, 0, 1));']
+   'var auxFrac = (drivers.aux_spray === undefined || drivers.ac_available === false)\n                  ? 0 : clip(drivers.aux_spray, 0, 1);',
+   'var auxFrac = !(sys.mdot_loop > 100) ? 0 : ((drivers.aux_spray === undefined || drivers.ac_available === false) ? 0 : clip(drivers.aux_spray, 0, 1));'],
+  ['the aux-spray vital-bus gate is severed (#510 H-4 re-armed: 29 gpm through a blackout)',
+   'var auxFrac = (drivers.aux_spray === undefined || drivers.ac_available === false)\n                  ? 0 : clip(drivers.aux_spray, 0, 1);',
+   'var auxFrac = drivers.aux_spray === undefined ? 0 : clip(drivers.aux_spray, 0, 1);']
 ];
 
 console.log('\ninjection self-test (' + MUTATIONS.length + ' mutations):');

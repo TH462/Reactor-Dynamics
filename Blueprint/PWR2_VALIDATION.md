@@ -4074,3 +4074,53 @@ behind-the-fraction / tie-at-power; regen warm-vs-cold; mutations 24 → 26 — 
 re-arms H-2, recovery deleted re-arms the parasitic cooling) · engine 90 (level fixture
 re-measured to the ruled 25 %; the vital-bus mutation anchor re-pointed) · shell 69 ·
 loadfollow/sources/rhr/pressurizer/protection/feedwater/loca/ab at baseline.
+
+## 76. #510 BATCH 2 — THE ELECTRICAL COMPLETION SWEEP (H-4, H-5, H-6, M-13, M-6) — 2026-08-24
+
+One pattern, five sites: loads and signals the #507 wave-4 electrical model never carried.
+All four endurance expected-fails promoted (13 passed 5 xfail → **17 passed 1 xfail** — only
+H-7, the cold RCP stall, remains for batch 3).
+
+- **H-4 — aux spray carries the vital-bus wire** (`pwr2_pressurizer`). The charging pumps
+  drive it and they die on the same wire `pwr2_cvcs` pulls; before the gate a blackout plant
+  delivered 29 gpm from a pump reporting zero flow — 541 psi of depressurization. Measured:
+  commanded 1.0 on a dead bus delivers 0.00 kg/s; absent-means-powered keeps every layer
+  fixture untouched.
+- **H-5 — the RHR pumps are motor loads** (`pwr2_rhr` + the facade wire). Dead bus: aligned,
+  HX open, ZERO duty (was 26.6 MMBtu/hr removed through a blackout, against the same WTSM
+  5.7.5 sentence wave 4 quotes). `rh.running = valve_open && powered`; the #510 batch-1
+  circulation floor and the RHR letdown path both ride `rh.running`, so a blackout also
+  stops the forced circulation and the low-pressure letdown — one wire, three consumers.
+- **H-6 — the shed latch edges per actuating signal** (`pwr2_pressurizer`). The old single
+  OR'd edge meant a LOOP arriving AFTER an SI (heaters re-loaded between) never shed —
+  157.8 kW rode the diesels through the design-basis LOCA+LOOP order. Now `_siPrev` and
+  `_loopPrev` edge independently (NUREG-0737 II.E.3.1: each arrival is its own bus-loading
+  action). Measured end-to-end in the endurance fixture: shed true, heater_kW 0.0 after the
+  re-load-then-LOOP order; a STANDING signal still does not re-shed past the operator's
+  re-load. Old saves carry no `_prev` fields and land false — the next standing signal
+  re-arms, conservative.
+- **M-13 — the blackout clear restores only what the blackout took** (`pwr2_engine`). The
+  handler records whether offsite was already lost at injection (`elec._offsiteWasLost`,
+  riding the serialized elec object); clearing an SBO injected ON a standing LOOP now hands
+  back the diesels with the grid still down — `ac_available` true, `offsite` false, and the
+  kernel's failure ledger finally agrees with the engine-derived list (the old unconditional
+  restore made the LOOP vanish from the engine while the Failures tab kept drawing it).
+  Clearing the LOOP afterwards restores the grid. Both orders gated in `run_pwr2_shell`.
+- **M-6 — a dead condenser reaches the turbine** (`pwr2_engine`). [sourced, Ginna UFSAR
+  ch.10 §10.1.3.1: the turbine trips on "Loss of both circulating water pumps" and "Low
+  condenser vacuum"]. Wired at the facade as a level trip on `condenser.available` — the
+  same shape as the sourced main-feed trip; P-9 then decides the reactor (its own sourced
+  clause). Availability IS the vacuum at this fidelity — no invented setpoint. Measured:
+  `loss_of_condenser_vacuum` at power now reads 0.0000 MWe with the turbine tripped at
+  +300 s (was 100.0000 MWe at zero vacuum under a lit COND VAC TRIP annunciator). A
+  backpressure-vs-efficiency term stays unbuilt (no sourced curve in the corpus) — the trip
+  is the sourced behaviour.
+- Housekeeping: `pwr2_protection`'s "no electrical model exists" note corrected (the model
+  has existed since wave 4; it carries bus booleans, not voltage/frequency — which is why
+  the 57 Hz undervoltage/underfrequency trips still have nothing to read).
+
+### Gates
+endurance 13p 5xf → **17p 1xf** (H-4/H-5/H-6/M-6 promoted) · pressurizer 66 → **68**
+(mutations 26 → 29: aux vital-bus gate severed, the OR'd-edge revert, the SI-shed anchor
+re-pointed) · rhr 41 → **42** (23 → 24: the vital-bus gate severed) · shell 69 → **71**
+(the layered clear, both orders) · engine 90 · cvcs/condenser/afw at baseline.

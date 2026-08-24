@@ -465,12 +465,24 @@
       /* STATION BLACKOUT [sourced, WTSM 5.7.5 ML11223A229: "A station blackout fails all ac
        * power except the vital Class IE ac busses from the dc invertors. All decay heat
        * removal systems, except the turbine-driven AFW pump, also fail."]. A blackout IS a
-       * LOOP the diesels did not answer, so true forces offsite false; clearing it restores
-       * both (the old engine's recovery shape) — selectors and latched demands stay put. */
+       * LOOP the diesels did not answer, so true forces offsite false. CLEARING RESTORES
+       * ONLY WHAT THE BLACKOUT TOOK (#510 M-13): the old unconditional offsite=true made a
+       * LOOP injected BEFORE the blackout vanish from the engine while the kernel's failure
+       * ledger still carried it — the Failures tab drew an active LOOP on a restored grid,
+       * and the diesels-answer-grid-still-down state was unexpressible. Selectors and
+       * latched demands stay put either way. Old saves carry no _offsiteWasLost and land
+       * undefined — falsy, the restore-both shape those saves were made under. */
       case 'station_blackout':
-        eng.elec.blackout = !!value;
-        if (value) { eng.elec.offsite = false; eng.sys.pumpTripped = true; }
-        else eng.elec.offsite = true;
+        if (value) {
+          eng.elec._offsiteWasLost = !eng.elec.offsite;
+          eng.elec.blackout = true;
+          eng.elec.offsite = false;
+          eng.sys.pumpTripped = true;
+        } else {
+          eng.elec.blackout = false;
+          eng.elec.offsite = !eng.elec._offsiteWasLost;
+          eng.elec._offsiteWasLost = false;
+        }
         break;
       case 'break_open':
         /* value: {area_m2, node} — one break at a time, the gates' own shape */
@@ -652,6 +664,14 @@
       cw_pumps_running: eng.cwPumps && offsiteOk
     });
     eng._cdAvail = cr.available;
+    /* TURBINE TRIP ON CONDENSER LOSS (#510 M-6) [sourced, Ginna UFSAR ch.10 §10.1.3.1 —
+     * the turbine trips on "Loss of both circulating water pumps" and "Low condenser
+     * vacuum"]. Level, not edge, the same shape as the sourced main-feed trip below; P-9
+     * then decides whether the reactor follows (its own sourced clause). Availability IS
+     * the vacuum at this fidelity: pwr2_condenser computes it from the saturation state,
+     * and before this wire a plant at zero vacuum made 100.0000 MWe while the board lit
+     * COND VAC TRIP. */
+    if (!cr.available && !eng.tb.tripped) eng.tb.tripped = true;
     var dcr = DC.stepDumpCtl(eng.dc, dt, Object.assign({
       /* HR1 (2026-08-20): the dump controller's Tavg and steam pressure are INSTRUMENT
        * channels (one step old); the state signals stay direct. */
@@ -719,9 +739,10 @@
      * blackout (WTSM 5.7.5's "all decay heat removal systems ... also fail"); the avail
      * fractions inside each module stay FAILURE seats, a different question than power */
     /* rhr_letdown_ok (#510 H-2): the RHR-to-CVCS cross-connect — low-pressure letdown is
-     * available while the RHR suction is open, one step old (stepRHR's autoclose runs
-     * below), the house lag convention. */
-    var cvr = CV.stepCVCS(eng.cv, sys, dt, { ac_available: acAvail, rhr_letdown_ok: eng.rh.valve_open });
+     * available while the RHR pumps take suction (valve open AND powered since #510 H-5 —
+     * rh.running, one step old: stepRHR and its autoclose run below), the house lag
+     * convention. */
+    var cvr = CV.stepCVCS(eng.cv, sys, dt, { ac_available: acAvail, rhr_letdown_ok: eng.rh.running === true });
     var ecr = EC.stepECCS(eng.ec, sys, dt, { ac_available: acAvail });
 
     /* THE SGTR IS A BREAK WHOSE DESTINATION IS THE SG (#507 wave 5) — inferred from the
@@ -753,14 +774,18 @@
     if (eng.rh.valve_open &&
         sys.P * 145.038 - 14.7 >= RD.rhr.RHR.permissive_close_psig) eng.rh.valve_open = false;
     var rhrR = RH.stepRHR(eng.rh, sys, dt,
-      { decayHeat_kW: rrx.decay_pct !== undefined ? rrx.decay_pct / 100 * RATED_KW : undefined });
+      { decayHeat_kW: rrx.decay_pct !== undefined ? rrx.decay_pct / 100 * RATED_KW : undefined,
+        /* the RHR pumps are VITAL loads (#510 H-5) — diesel-carried through a LOOP, dead in
+         * a blackout, same wire as charging/SI */
+        ac_available: acAvail });
     /* RHR forced circulation (#510 H-2, see the constant's note): the pumps circulate the
      * coolant whenever they take suction — a floor on loop flow, so a Mode 4 plant with the
      * RCPs secured still mixes its legs instead of chilling a stagnant node on the CVCS
      * return. Inactive whenever the RCPs (or natural circulation) already flow more, and
      * NOT while SI runs — shutdown cooling and low-head injection are the SAME pumps (the
-     * #458 ruling), so with SI actuated they are injecting, not circulating the loop. */
-    if (eng.rh.valve_open && !eng.pt.si && sys.mdot_loop < RD.rhr.RHR.circulation_kgs) {
+     * #458 ruling), so with SI actuated they are injecting, not circulating the loop — and
+     * NOT unpowered (#510 H-5: rh.running carries the vital-bus gate). */
+    if (eng.rh.running && !eng.pt.si && sys.mdot_loop < RD.rhr.RHR.circulation_kgs) {
       sys.mdot_loop = RD.rhr.RHR.circulation_kgs;
     }
 

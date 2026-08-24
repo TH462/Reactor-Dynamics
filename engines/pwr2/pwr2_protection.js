@@ -78,8 +78,12 @@
  * trip) — BUILT with the feed train (2026-08-21), which gave the plant the regulating valve
  * the function closes; the kind-'fwi' row and its own `fwi` latch below.
  *
- * **RCP UNDERVOLTAGE AND UNDERFREQUENCY** (57 Hz sourced). No electrical model exists; the same
- * gap that keeps `station_blackout` and `ac_available` declared-missing.
+ * **RCP UNDERVOLTAGE AND UNDERFREQUENCY** (57 Hz sourced). NOT BUILT — and the reason has
+ * moved (#510 batch 2, was "no electrical model exists"): the two-bus electrical model has
+ * existed since #507 wave 4 (`pwr2_engine`'s elec pair; `station_blackout`/`ac_available`
+ * are LIVE contract fields), but it carries no voltage or frequency, only bus booleans, so
+ * a 57 Hz setpoint still has nothing to read. The LOOP/SBO rows trip the RCPs directly at
+ * the facade instead.
  *
  * **TURBINE TRIP / P-9 ANTICIPATORY TRIP — BUILT** (2026-08-19, PWR2_VALIDATION.md §51; this
  * line used to say "no trip state", stale since the turbine gained one).
