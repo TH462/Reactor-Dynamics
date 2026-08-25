@@ -403,6 +403,13 @@ re-querying. Run the query.
   `run_pwr2_perf` ratio gate (≤ 8× the old engine, measures 4.1×); the vtable builds on first
   use (was 0.5 s at every page load); **shell.html no longer loads RBMK/BWR** (~308 KB,
   owner-ruled — dev route `test_rbmk.html`/`test_bwr.html`, `verify_e2e_ui` PWR-only).
+  **#513 (2026-08-25): the aggregate gate at 7m19s** (was ~19 min; sequential 2,814 → ~2,100 s):
+  mutation-replay scoping ported to 5 more runners (`grp:` + a scoped-clean-pass preflight that
+  caught a latent hollow catch in cvcs), the vtable cache-keep across replays, NODE_COMPILE_CACHE
+  for all 91 children, `run_behavior` split in thirds + `run_campaign` by plant (owner-ruled),
+  `run_pwr2_ab` → `measure_pwr2_ab` (out of the gate, owner-ruled), `verify_e2e_ui` predicate
+  waits, every `secs:` hint re-recorded. The wall is now `run_campaign`'s pwr half (~440 s under
+  contention) — splitting it further is the next lever and needs a ruling.
 - **RBMK and BWR** — on hold, and the source of most remaining backlog. Do not touch.
 
 **The manual set's revision number does not advance until a RELEASE** *(OWNER DIRECTIVE,
@@ -644,9 +651,12 @@ with different numbers**. Run the gate; read the map. The per-change rationale l
 `Diagnostic/TUNING_LOG.md` and `Blueprint/BUILD_DECISIONS.md`, newest first.
 
 ```
-node test/run_all.js            # every discovered runner vs BASELINES (~8-15 min, 10-way parallel)
-node test/run_all.js --fast     # skip the 2 slow Playwright gates (~2.5 min)
-node test/run_all.js --jobs=1   # SEQUENTIAL (~13 min) — escape hatch if a runner is
+node test/run_all.js            # every discovered runner vs BASELINES (~7.5 min, 10-way parallel;
+                                #   measured 439 s on 2026-08-25 after #513/#514 — the wall IS
+                                #   run_campaign under contention, not the sum)
+node test/run_all.js --fast     # skip the 2 slow Playwright gates (similar wall — the floor is
+                                #   run_campaign, not the Playwright pair)
+node test/run_all.js --jobs=1   # SEQUENTIAL (~35 min) — escape hatch if a runner is
                                 #   ever suspected of not being isolated
 node test/run_all.js --only run_pwr,run_ops
 node test/run_all.js --record   # print observed results as a BASELINES block
@@ -665,7 +675,8 @@ Four things about it that are procedure, not history:
   where it takes 22 s alone). The `secs:` hints in `BASELINES` are a longest-first scheduling
   nudge and cannot affect a score or an exit code — do not maintain them like baselines.
 - **CI runs the same command on every push and PR to `main`/`develop`**
-  (`.github/workflows/gates.yml`, ~8 min). **Check it after you push** —
+  (`.github/workflows/gates.yml`; 3-way on 4 cores — 43m31s before #513's cuts, re-measure
+  on the next push; this line read "~8 min" while CI stood at 43). **Check it after you push** —
   `gh run list --workflow=gates.yml --limit 3`. It once ran red for **32 consecutive runs** across
   three days, including a release to `main`, because `--fast` still ran a Playwright gate that was
   not marked `slow`. Nobody noticed, which is the argument for a required status check (#191).
@@ -808,7 +819,8 @@ baselines in _Project status_). Runners print `PASS`/`FAIL` per test and a tally
 - **Any engine or scenario change** → the affected `run_<plant>.js` and `run_scenarios.js`.
 - **Control-layer change** → `run_autoctl.js` **and** `run_m4.js`; check `run_ops.js`
   for regressions (don't turn a `PASS` into a `FAIL`).
-- **Scenario / campaign / instructor change** → `run_campaign.js` (must stay
+- **Scenario / campaign / instructor change** → `run_campaign.js` + `run_campaign_b.js`
+  (split by plant #513 — A: structural + pwr, B: rbmk + bwr; together they must stay
   **51/51**), `run_m6.js`, `run_procedures.js`.
 - **UI change** → `run` the app and drive the affected flow (see `/run` and the
   headless Edge workflow); `verify_e2e_ui.js` must stay **PASS**.

@@ -29,6 +29,62 @@ and the user-visible summary in `CHANGELOG.md`. This file points at those and tr
 
 ---
 
+## Session log — 2026-08-25-develop-c (#513 — the aggregate gate at 7m19s, from ~19 min)
+
+**The ask** (owner, #513): "Find ways to reduce the time it takes to run through all the checks."
+**Delivered, all measured:** full gate **439 s wall at 10-way** (gates.yml's own note said ~19 min
+for the merged suite; CI's last green pair ran 43m31s). Sequential true-cost sum **2,814 s →
+~2,100 s** (measured `--jobs=1` before, per-runner solo after). 91 runners at baseline.
+
+**Where the time went, and what was done** (per-runner numbers are solo seconds, before → after):
+
+1. **Mutation-replay scoping** — the dominant cost, and the fix CI's own comment asked for
+   (gates.yml: "the real long-term fix is cheaper mutation replays"). `run_pwr2_engine`'s
+   `grp:`/`only` idiom ported to five more runners, each mutation tagged with the one section
+   group that can see it: **cvcs 382→132 · shell 246→43 · sg 77→14 · rhr 50→17 · sources 46→18.**
+   Every port verified: tally byte-identical, N/N mutations caught, 0 blind.
+   - **New guard, all six scoped runners: the scoped-clean-pass preflight.** Each named group must
+     be green ALONE on the clean build before the replays — in the replay loop a crash counts as
+     caught, so a group leaning on another section's setup would masquerade as coverage. The
+     crash-aware verdict loop (a mid-suite crash after green checks is "CRASH only", never BLIND)
+     ported alongside.
+   - **The preflight caught a real latent defect on its first run:** `run_pwr2_cvcs`'s SI-boron
+     check (`+15 ppm` margin) was calibrated to its live 60 s window and was silently RED inside
+     every 9 s quiet replay — a hollow catch laundered into every mutation's red count since the
+     check was written. The margin now rides with the window (`15 * N(3000)/3000`).
+2. **The vtable rebuild leak** — five loaders deleted `pwr2_water`/`pwr2_vtable` from
+   `require.cache` per replay, re-paying the ~0.5 s GRID build ~135 times (engine 164→139 from
+   this alone). Both stay cached AS A PAIR (the vtable closes over `RD.pwr2.water` at load);
+   `run_pwr2_vtable` still rebuilds via `new Function`, untouched.
+3. **NODE_COMPILE_CACHE** in `runOne`'s spawn env — one shared V8 code cache (os.tmpdir()) for
+   all 91 children; 33 runners re-parse the 1.22 MB pwr_control stack otherwise. Deliberately no
+   actions/cache on CI (reasoning in gates.yml's header).
+4. **The makespan floor split** *(OWNER RULING, 2026-08-25, plan question: "Split both
+   (Recommended)" — behavior "into 2-3 sibling runners", campaign "by plant (pwr / rbmk+bwr)")*:
+   `run_behavior` (398.8 s solo, THE wall floor) → thirds by probe id mod 3
+   (**126/146/125 s**, tallies 24p+1xf / 25p / 25p, sum = the old 74p+1xf); `run_campaign` →
+   part A structural+pwr (**257 s**) + part B rbmk+bwr (**8 s**). Per-part gap reports
+   (`BEHAVIOR_GAP_REPORT[_B|_C].md`); part A keeps every legacy filename.
+5. **`run_pwr2_ab` → `measure_pwr2_ab`** *(OWNER RULING, 2026-08-25, plan question: "Move it out
+   (Recommended)")* — "A MEASUREMENT, NOT A GATE", exits 0 always; ~49 s/run bought nothing that
+   could fail. Out of `discover()`, still runnable on demand for #507.
+6. **`verify_e2e_ui` predicate waits** — 7 of the 48 fixed sleeps (~15.4 s) converted to
+   `waitForFunction` on the state each sleep was approximating (a shared `waitBoardLive` on the
+   clock leaving T+00:00:00). Two kept DELIBERATELY: the 6 s recorder-row accumulation (wall-time
+   real) and the player-paused negative-assertion window (shortening it weakens the check).
+7. **Every `secs:` hint re-recorded** from measured solo costs — the old top was 13× stale
+   post-#514 (endurance hinted 900, costs 65; meltdown hinted 48, costs 136; behavior hinted 96,
+   cost 399), so longest-first was scheduling a phantom.
+
+**Not done, with reasons:** `run_pwr2_protection` (45 s, 64 mutations — tagging cost outweighs
+~28 s), `run_pwr2_pressurizer` (37 s post-vtable-fix, ~18 s left), `run_pwr2_loadfollow` (31 s —
+its sections are one deliberate before/after narrative; scoping fights the design),
+`verify_manual_follow` (115 s — 3 shell loads/procedure → 1 needs a state-isolation ruling).
+**The next lever is the new wall itself: `run_campaign` part A (~440 s under contention) —
+splitting its pwr missions further exceeds the by-plant ruling and needs the owner.**
+
+---
+
 ## Session log — 2026-08-25-develop-b (#514 — the PWR2 engine at 12.5x, and the load cut)
 
 **Owner issue: "Make PWR2 engine more efficient… remove the extra stuff that loads like the

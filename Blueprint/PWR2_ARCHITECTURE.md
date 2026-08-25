@@ -133,7 +133,9 @@ containment bypass. `PWR_LOOP_GEOMETRY.md` §7.
 ## The A/B harness
 
 Built once L4 exists (the first point at which both plants can be asked the same question),
-as `test/run_pwr2_ab.js`. Loads **both** engines, runs matched scenarios, reports a
+as `test/measure_pwr2_ab.js` (built as `run_pwr2_ab.js`; renamed out of the aggregate
+gate's discovery 2026-08-25, #513, owner-approved — a measurement that exits 0 always).
+Loads **both** engines, runs matched scenarios, reports a
 divergence table per variable.
 
 **It is a MEASUREMENT, not a gate — and this distinction is load-bearing.** The repo's

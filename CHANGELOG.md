@@ -30,6 +30,23 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
 
 ## [Unreleased]
 
+### Changed (#513 — the aggregate gate at 7m19s, 2026-08-25)
+- **`node test/run_all.js` runs in ~7.5 min at 10-way** (measured 439 s; the workflow's own note
+  said ~19 min, CI's last green pair 43m31s). Sequential true-cost sum 2,814 → ~2,100 s. No
+  assertion changed anywhere; 91 runners at baseline.
+- **Mutation-replay scoping ported to five more pwr2 runners** (cvcs 382→132 s, shell 246→43,
+  sg 77→14, rhr 50→17, sources 46→18) with a new scoped-clean-pass preflight and the crash-aware
+  verdict loop — the preflight caught a latent hollow catch in cvcs's SI-boron check on its first
+  run. The per-replay vtable rebuild (~135 × 0.5 s) stopped; `NODE_COMPILE_CACHE` shares one V8
+  code cache across all children.
+- **`run_behavior` split in thirds and `run_campaign` split by plant** (owner-ruled) — the single
+  398.8 s behavior battery was the gate's wall-time floor. Same probes, same strict-xfail
+  semantics, per-part gap reports.
+- **`run_pwr2_ab.js` renamed `measure_pwr2_ab.js`** (owner-ruled) — a measurement that exits 0
+  always, out of gate discovery, still runnable on demand.
+- `verify_e2e_ui` converts its largest fixed sleeps to predicate waits; every `secs:` scheduling
+  hint re-recorded from measured solo costs (the old top was 13× stale after #514).
+
 ### Changed (#514 — PWR2 engine efficiency + the shell load cut, 2026-08-25)
 - **PWR2 steps 12.5× faster** (1,090 → ~85 µs/step; the old engine is 21.5). The water-property
   table was wired into the four modules still on the direct correlations, temperature-from-

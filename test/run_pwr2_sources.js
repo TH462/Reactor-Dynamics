@@ -37,7 +37,13 @@ function loadFrom(src) {
   return new Function('RD_ROOT', body)(root);
 }
 
-function runSuite(S, rec, quiet) {
+/* runSuite(S, rec, quiet, only) — `only` scopes a MUTATION REPLAY to the section group that
+ * can see that mutation (#513, the run_pwr2_engine idiom): 'A' the sourced inertia, 'B' the
+ * coastdown, 'C' natural circulation, 'D' pump work, 'E' the rated balance, 'F' mergeSources,
+ * 'G' construction + the start, 'H' the pump density coupling. Each named group is
+ * preflighted ALONE on the clean build before the replays. */
+function runSuite(S, rec, quiet, only) {
+  function grp(g) { return only === undefined || only === g; }
   function ck(name, got, want, tol, unit) {
     var d = Math.abs(got - want), ok = d <= tol && isFinite(got);
     rec.push({ name: name, ok: ok });
@@ -53,6 +59,7 @@ function runSuite(S, rec, quiet) {
     return null;
   }
 
+  if (grp('A')) {
   /* ---- 1. THE INERTIA IS SOURCED, AND ITS GAP IS DECLARED ---------------------------- */
   if (!quiet) console.log('\nLOOP INERTIA  [sourced lengths only; the omission is a NUMBER]');
   var LA = S.loopInertia();
@@ -69,7 +76,9 @@ function runSuite(S, rec, quiet) {
   ckT('pump inertia traces to the sourced Ginna figure',
       Math.abs(S.REF.inertia_kgm2 - 3371) < 5, S.REF.inertia_kgm2.toFixed(0) +
       ' kg*m2 from 80,000 lbm*ft2');
+  }
 
+  if (grp('B')) {
   /* ---- 2. COASTDOWN: DERIVED, AND THE SHAPE PROVES IT -------------------------------- */
   if (!quiet) console.log('\nCOASTDOWN  [claim 1: derived from inertia, not a fitted exponential]');
   var s = S.createPlant({ h: 1250, P: 15.41 });
@@ -95,7 +104,9 @@ function runSuite(S, rec, quiet) {
       (at90 === null ? '' : '; at 90 s ' + (at90 / expAt90).toFixed(1) + 'x'));
   ckT('...and it is monotone all the way down', at30 > at60 && (at90 === null || at60 > at90),
       at30.toFixed(3) + ' > ' + at60.toFixed(3) + (at90 === null ? '' : ' > ' + at90.toFixed(3)));
+  }
 
+  if (grp('C')) {
   /* ---- 3. NATURAL CIRCULATION: A POWER LAW, NOT A MAGNITUDE -------------------------- */
   if (!quiet) console.log('\nNATURAL CIRCULATION  [claim 2: emergent -- tested as W ~ Q^(1/3)]');
   /* SETTLE LENGTH IS DELIBERATELY ASYMMETRIC, and the reason is worth stating because it looks
@@ -141,7 +152,9 @@ function runSuite(S, rec, quiet) {
       n9.mdot_loop.toFixed(1) + ' kg/s at 9 MW, core h ' + core9.h.toFixed(0) + ' vs h_f ' +
       W.h_f(n9.P).toFixed(0) + ' kJ/kg -- a loop that boils its core at 3 % RTP fails the ' +
       'sourced capability');
+  }
 
+  if (grp('D')) {
   /* ---- 4. PUMP WORK IS A LOCATED SOURCE ----------------------------------------------- */
   if (!quiet) console.log('\nPUMP WORK  [LOCATED at the RCP, not smeared as a fraction of core heat]');
   var sp = S.createPlant({ h: 1250, P: 15.41 });
@@ -155,7 +168,9 @@ function runSuite(S, rec, quiet) {
       ' (the node immediately upstream)');
   ckT('a tripped pump stops doing work', S.stepPlant(
       S.createPlant({ h: 1250, P: 15.41, omega: 0, pumpTripped: true }), 0.02, {}).pumpWork_kW < 1e-9);
+  }
 
+  if (grp('E')) {
   /* ---- 5. HEAD AND FRICTION BALANCE AT RATED ------------------------------------------ */
   if (!quiet) console.log('\nSTEADY STATE  [head, friction and flow must be mutually consistent]');
   var ss = S.createPlant({ h: 1250, P: 15.41 });
@@ -167,7 +182,9 @@ function runSuite(S, rec, quiet) {
   ckT('pump head and friction are the same order at rated',
       rr.pumpHead > 0.1 && Math.abs(rr.pumpHead - rr.frictionDrop) / rr.pumpHead < 0.5,
       'head ' + rr.pumpHead.toFixed(4) + ' MPa vs friction ' + rr.frictionDrop.toFixed(4));
+  }
 
+  if (grp('F')) {
   /* ---- 6. MERGE SOURCES  [the concatenation point break + ECCS + CVCS all need] -------------- */
   if (!quiet) console.log('\nMERGE SOURCES  [plumbing for the joint break/ECCS/CVCS scenario]');
   ckT('mergeSources concatenates multiple arrays, in order',
@@ -186,7 +203,9 @@ function runSuite(S, rec, quiet) {
   pDirect.nodes.forEach(function (n) { if (n.id === 'cold_leg') hDirect = n.h; });
   ckT('merged sources feed the plant IDENTICALLY to a hand-concatenated array',
       hMerge === hDirect, 'cold leg h: ' + hMerge.toFixed(4) + ' == ' + hDirect.toFixed(4));
+  }
 
+  if (grp('G')) {
   /* ---- CONSTRUCTION  [what an adversarial mutation pass found this gate could not see] -------
    * The nine curated mutations above all attack the STEP -- buoyancy, coastdown, pump work,
    * friction, momentum -- because that is what Layer 4 is interesting for. Six more were written
@@ -297,7 +316,9 @@ function runSuite(S, rec, quiet) {
         return bh < ah - 1;
       })() ? 'the heats map cools the cold leg while corePower still heats the core'
            : 'FAILED: one displaced the other');
+  }
 
+  if (grp('H')) {
   /* ---- THE PUMP KNOWS WHAT IT IS PUMPING (added 2026-08-17) --------------------------
    *
    * `pumpHead` returned `dP_rated * r*r` — pressure rise from shaft speed alone. A centrifugal
@@ -366,6 +387,7 @@ function runSuite(S, rec, quiet) {
    * the tolerance is 1e-3 and not a band. */
   ck('flow settles at rated x the density ratio — the pump-affinity identity',
      pHalf.mdot_loop / 1630, S.densityRatio(pHalf), 1e-3, 'frac');
+  }
 }
 
 console.log('\nPWR2 Layer 4 -- located sources and integrated loop momentum');
@@ -373,63 +395,69 @@ var S = loadFrom(SRC), rec = [];
 runSuite(S, rec, false);
 var pass = rec.filter(function (r) { return r.ok; }).length, fail = rec.length - pass;
 
+/* Each entry's trailing { grp } names the section group that can SEE it (#513) — the replay
+ * runs only that group, and the BLIND check still reds the runner if the tag is wrong. */
 var MUTATIONS = [
   /* THE START (#507 wave 9) */
   ['the start branch is deleted (an untripped rotor at rest never spins)',
    "    else if (!sys.pumpTripped && sys.omega < PUMP.w_rated) {",
-   '    else if (false) {'],
+   '    else if (false) {', { grp: 'G' }],
   /* anchor re-pointed #510 H-7: the torque class rises toward breakdown near sync */
   ['the rated-speed cap is deleted (the motor drives the rotor past its own rating)',
    '      sys.omega = Math.min(PUMP.w_rated,\n                           sys.omega + dt * (Tmot * Trated - ThydS) / PUMP.inertia);',
-   '      sys.omega = sys.omega + dt * (Tmot * Trated - ThydS) / PUMP.inertia;'],
+   '      sys.omega = sys.omega + dt * (Tmot * Trated - ThydS) / PUMP.inertia;', { grp: 'G' }],
   ['the breakdown-torque rise is flattened (#510 H-7 re-armed: a COLD start stalls at 93 %)',
    'var Tmot = MOTOR_START_TORQUE + (rSpd > 0.9\n                   ? (rSpd - 0.9) / 0.1 * (MOTOR_BREAKDOWN_TORQUE - MOTOR_START_TORQUE) : 0);',
-   'var Tmot = MOTOR_START_TORQUE;'],
+   'var Tmot = MOTOR_START_TORQUE;', { grp: 'G' }],
   /* THE PUMP DENSITY COUPLING (2026-08-17). The first is the defect exactly as it shipped. */
   ['the pump develops rated dP whatever it is pumping (rated mass flow through STEAM)',
-   'return PUMP.dP_rated * r * r * densityRatio(sys);', 'return PUMP.dP_rated * r * r;'],
+   'return PUMP.dP_rated * r * r * densityRatio(sys);', 'return PUMP.dP_rated * r * r;',
+   { grp: 'H' }],
   ['friction stops scaling with density (the other half of the same coupling)',
    'var dPf = sys.Kf * sys.mdot_loop * Math.abs(sys.mdot_loop) / densityRatio(sys);',
-   'var dPf = sys.Kf * sys.mdot_loop * Math.abs(sys.mdot_loop);'],
+   'var dPf = sys.Kf * sys.mdot_loop * Math.abs(sys.mdot_loop);', { grp: 'H' }],
   ['the density ratio is INVERTED — a voided pump develops MORE head, not less',
    '    var d = loopDensity(sys) / rhoRated();',
-   '    var d = rhoRated() / loopDensity(sys);'],
+   '    var d = rhoRated() / loopDensity(sys);', { grp: 'H' }],
   ['the rated density reference is typed as a round number instead of derived at the design point',
    '      _rhoRated = RHO(W.h_l(DESIGN.tavg_c - DESIGN.dt_c / 2, DESIGN.P_mpa), DESIGN.P_mpa);',
-   '      _rhoRated = 1000;'],
+   '      _rhoRated = 1000;', { grp: 'H' }],
   ['buoyancy sign flipped (kills natural circulation silently)',
-   'dP = (rh - rc) * g * (zh - zc);', 'dP = (rc - rh) * g * (zh - zc);'],
-  ['buoyancy zeroed entirely', 'return dP / 1e6;                                // MPa', 'return 0;'],
+   'dP = (rh - rc) * g * (zh - zc);', 'dP = (rc - rh) * g * (zh - zc);', { grp: 'C' }],
+  ['buoyancy zeroed entirely', 'return dP / 1e6;                                // MPa', 'return 0;',
+   { grp: 'C' }],
   ['pump inertia replaced by a round number (fitted, not sourced)',
-   'inertia_kgm2: 80000 * 0.0421401,', 'inertia_kgm2: 5000,'],
+   'inertia_kgm2: 80000 * 0.0421401,', 'inertia_kgm2: 5000,', { grp: 'A' }],
   ['coastdown made EXPONENTIAL (the thing momentum was kept to avoid)',
    'sys.omega = Math.max(0, sys.omega - dt * hyd / PUMP.inertia);',
-   'sys.omega = sys.omega * (1 - dt / 20);'],
+   'sys.omega = sys.omega * (1 - dt / 20);', { grp: 'B' }],
   ['pump work smeared away instead of located at the RCP',
-   "heats.rcp = (heats.rcp || 0) + pumpKW;", ''],
+   "heats.rcp = (heats.rcp || 0) + pumpKW;", '', { grp: 'D' }],
   ['pump keeps working after the trip',
-   'if (sys.omega <= 0) return 0;\n    var r = sys.omega / PUMP.w_rated;', 'var r = 1;'],
+   'if (sys.omega <= 0) return 0;\n    var r = sys.omega / PUMP.w_rated;', 'var r = 1;',
+   { grp: 'D' }],
   ['loop inertia halved (momentum too responsive)',
-   'if (V) sum += L / (V / L);        // L / A, with A = V/L', 'if (V) sum += 0.5 * L / (V / L);'],
+   'if (V) sum += L / (V / L);        // L / A, with A = V/L', 'if (V) sum += 0.5 * L / (V / L);',
+   { grp: 'A' }],
   ['friction dropped (flow runs away)',
-   'var net = dPp - dPf + dPb;', 'var net = dPp + dPb;'],
+   'var net = dPp - dPf + dPb;', 'var net = dPp + dPb;', { grp: 'E' }],
   ['momentum not integrated at all (flow frozen)',
-   'sys.mdot_loop = sys.mdot_loop + dt * net * 1e6 / sys.LA;', ''],
+   'sys.mdot_loop = sys.mdot_loop + dt * net * 1e6 / sys.LA;', '', { grp: 'B' }],
   /* The two the adversarial pass found. Kept so the checks that closed them cannot rot. */
   ['opts.pumpTripped ignored at construction (every loss-of-flow probe starts running)',
-   'sys.pumpTripped = !!opts.pumpTripped;', 'sys.pumpTripped = false;'],
+   'sys.pumpTripped = !!opts.pumpTripped;', 'sys.pumpTripped = false;', { grp: 'G' }],
   /* THE FOURTH DROPPED-OPTION DEFECT IN THIS ENGINE, and the third found by BUILDING a system
    * that needed the option rather than by auditing the layer that drops it. Layer 3 documents
    * `drivers.heats` as its interface; Layer 4 built its own map from corePower/sgDuty and never
    * forwarded the caller's -- so RHR, which spreads its removal across the loop, had its entire
    * duty discarded while the readout reported 13,600 kW being removed and the plant WARMED. */
   ['caller heats DROPPED instead of merged (a distributed duty vanishes silently)',
-   'if (drivers.heats) {', 'if (false) {'],
+   'if (drivers.heats) {', 'if (false) {', { grp: 'G' }],
   ['caller options DROPPED when building the loop (every initial condition is a lie)',
-   'var sys = LOOP.createLoop(opts);', 'var sys = LOOP.createLoop({});'],
+   'var sys = LOOP.createLoop(opts);', 'var sys = LOOP.createLoop({});', { grp: 'G' }],
   ['mergeSources drops every array after the first (break survives, ECCS silently vanishes)',
    'if (arguments[i]) out = out.concat(arguments[i]);',
-   'if (i === 0 && arguments[i]) out = out.concat(arguments[i]);']
+   'if (i === 0 && arguments[i]) out = out.concat(arguments[i]);', { grp: 'F' }]
 ];
 
 /* ---- THE CLEAN-RUN GUARD --------------------------------------------------------------
@@ -454,23 +482,51 @@ if (fail > 0) {
   process.exit(1);
 }
 
+/* ---- SCOPED-CLEAN-PASS PREFLIGHT (#513) ------------------------------------------------
+ * Every group a mutation names must be GREEN when run alone on the clean build. In the replay
+ * loop a crash counts as caught, so a group whose checks lean on another section's setup would
+ * crash there and silently stand in for coverage; here, on the clean module, it fails loudly. */
+var scopeBad = 0;
+MUTATIONS.map(function (m) { return m[3] && m[3].grp; })
+  .filter(function (g, i, a) { return g && a.indexOf(g) === i; })
+  .forEach(function (g) {
+    var rg = [], threw = false;
+    try { runSuite(S, rg, true, g); } catch (e) { threw = true; }
+    var fg = rg.filter(function (r) { return !r.ok; }).length;
+    if (threw || fg > 0) {
+      scopeBad++;
+      console.log('  SCOPE ' + g + (threw ? ' THREW' : ' RED (' + fg + ')') +
+        ' on the CLEAN build -- the group cannot stand alone; GATE FAILS' +
+        (fg ? ' -- ' + rg.filter(function (r) { return !r.ok; })
+                         .map(function (r) { return r.name; }).join('; ') : ''));
+    }
+  });
+
 console.log('\n' + '='.repeat(70));
 console.log('  INJECTION SELF-TEST -- every mutation MUST redden at least one check');
 console.log('='.repeat(70));
 var blind = 0;
 MUTATIONS.forEach(function (m) {
+  var grpTag = (m[3] && m[3].grp) || undefined;
   if (SRC.indexOf(m[1]) === -1) { console.log('  ERROR   anchor not found: ' + m[0]); blind++; return; }
-  var r2 = [];
-  try { runSuite(loadFrom(SRC.split(m[1]).join(m[2])), r2, true); }
-  catch (e) { r2.push({ name: 'threw', ok: false }); }
-  var f2 = r2.filter(function (r) { return !r.ok; }).length;
+  var r2 = [], crashed = false;
+  try { runSuite(loadFrom(SRC.split(m[1]).join(m[2])), r2, true, grpTag); }
+  catch (e) { crashed = true; }
+  /* A crash counts as caught no matter how many checks recorded first (the run_pwr2_engine
+   * form) -- but a crash-only catch is REPORTED AS ITSELF rather than wearing a check's face. */
+  var realReds = r2.filter(function (r) { return !r.ok; }).length;
+  var f2 = crashed ? 1 : (r2.length ? realReds : 1);
   if (f2 === 0) { blind++; console.log('  BLIND TO  ' + m[0] + '   <-- THIS GATE CANNOT SEE IT'); }
+  else if (crashed && realReds === 0) {
+    console.log('  caught    ' + m[0].padEnd(58) + 'CRASH only -- no check red (coverage untested)');
+  }
   else console.log('  caught    ' + m[0].padEnd(58) + f2 + ' red');
 });
 
 console.log('\n' + '='.repeat(70));
 console.log('  injection self-test: ' + (MUTATIONS.length - blind) + '/' + MUTATIONS.length +
-  ' mutations caught' + (blind ? '  ** ' + blind + ' BLIND SPOTS -- GATE FAILS **' : ', no blind spots'));
+  ' mutations caught' + (blind ? '  ** ' + blind + ' BLIND SPOTS -- GATE FAILS **' : ', no blind spots') +
+  (scopeBad ? '  ** ' + scopeBad + ' GROUP(S) NOT SELF-STANDING **' : ''));
 console.log('  run_pwr2_sources: ' + pass + ' passed, ' + fail + ' failed  (' + rec.length + ' checks)');
 console.log('='.repeat(70) + '\n');
-process.exit((fail > 0 || blind > 0) ? 1 : 0);
+process.exit((fail > 0 || blind > 0 || scopeBad > 0) ? 1 : 0);

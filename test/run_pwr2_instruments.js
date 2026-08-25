@@ -15,8 +15,11 @@ var fs = require('fs');
 var SRC = path.join(__dirname, '..', 'engines', 'pwr2');
 
 function loadIns(insSource) {
+  /* pwr2_water + pwr2_vtable stay CACHED across replays (#513): never this gate's
+   * mutation target, and a re-execute discards the vtable's lazily-built ~0.5 s GRID
+   * per replay — see run_pwr2_engine.js's loadAll for the full note. The plain
+   * require is a no-op once loaded, which is the point. */
   ['pwr2_water', 'pwr2_vtable'].forEach(function (f) {
-    delete require.cache[require.resolve(path.join(SRC, f + '.js'))];
     require(path.join(SRC, f + '.js'));
   });
   if (insSource === undefined) {

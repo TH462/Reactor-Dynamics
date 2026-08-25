@@ -55,8 +55,17 @@ var T = [];
 // Optional name filter: `node test/run_campaign.js <substring>` runs only matching
 // suites (dev convenience, #418 A1 — the aggregate gate passes no argv, unchanged).
 var _only = process.argv[2] || null;
+/* THE GATE IS SPLIT ACROSS TWO RUNNERS BY PLANT (#513, owner-approved): this file is
+ * part A (the structural suites + every pwr_* mission) and run_campaign_b.js is part B
+ * (rbmk_* + bwr_* — the on-hold plants). A 266 s single runner sat just under the
+ * gate's wall-time floor; the partition is a scheduling change, not a test change —
+ * every suite still runs, each part against its own BASELINES entry. The `_only`
+ * name filter ignores the partition, so the dev convenience reaches every suite. */
+var _part = globalThis.__CAMPAIGN_PART || 0;
+function partOf(name) { return (/^(rbmk_|bwr_)/.test(name)) ? 1 : 0; }
 function test(name, fn) {
   if (_only && name.indexOf(_only) === -1) return;
+  if (!_only && partOf(name) !== _part) return;
   var checks = [];
   var ck = function (desc, observed, pass, expected) {
     checks.push({ desc: desc, observed: observed, expected: expected, pass: !!pass });

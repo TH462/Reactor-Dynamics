@@ -45,6 +45,31 @@ where the two differ or where judgment was exercised.
 
 ---
 
+## 2026-08-25-develop-c — #513: the aggregate gate 439 s at 10-way (was ~19 min); two owner rulings
+
+**Decisions.** (1) *(OWNER RULING, 2026-08-25, plan question — "Move it out (Recommended)")*:
+`run_pwr2_ab.js` → `measure_pwr2_ab.js`, out of `run_all` discovery — a measurement that exits 0
+always cannot fail and cost ~49 s per gate run. (2) *(OWNER RULING, 2026-08-25, plan question —
+"Split both (Recommended)")*: `run_behavior` split into siblings ("2-3", built as thirds by probe
+id mod 3: 126/146/125 s) and `run_campaign` by plant (A structural+pwr 257 s, B rbmk+bwr 8 s) —
+the 398.8 s behavior battery was the gate's makespan floor. Scheduling changes only; every probe
+and suite still runs, per-part BASELINES entries, per-part gap reports with the legacy filenames
+kept on part A.
+
+**Engineering.** Mutation-replay scoping (the `run_pwr2_engine` `grp:` idiom) ported to cvcs /
+shell / sg / rhr / sources with a NEW scoped-clean-pass preflight (a group must be green ALONE on
+the clean build — the guard that keeps a crash-counts-as-caught replay loop honest; it caught a
+latent hollow catch in cvcs's SI-boron quiet band on its first run). The per-replay
+`pwr2_water`/`pwr2_vtable` cache deletion stopped (the ~0.5 s GRID build was re-paid ~135×/run;
+kept as a pair — the vtable closes over the water instance). `NODE_COMPILE_CACHE` in every gate
+child. `verify_e2e_ui`: 7 fixed sleeps → predicate waits; two kept deliberately (recorder-row
+accumulation is wall-real; the player-paused window is a negative assertion). All `secs:` hints
+re-recorded from measured solo costs. Full detail: `Diagnostic/TUNING_LOG.md`
+2026-08-25-develop-c. **The remaining wall is `run_campaign` part A under contention (~440 s);
+splitting its pwr missions exceeds the by-plant ruling and needs the owner.**
+
+---
+
 ## 2026-08-25-develop-b — #514: PWR2 step cost 1,090 → ~85 µs, and shell.html drops RBMK/BWR
 
 **Claim.** The shipped PWR2 engine stepped at 1,090 µs — 51× the old engine, 68× the design

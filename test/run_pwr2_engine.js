@@ -23,7 +23,14 @@ var ORDER = ['pwr2_water', 'pwr2_vtable', 'pwr2_geometry', 'pwr2_core', 'pwr2_lo
 function loadAll(engSource, coreSource) {
   ORDER.forEach(function (f) {
     if (f === 'pwr2_core' && coreSource !== undefined) { (0, eval)(coreSource); return; }
-    delete require.cache[require.resolve(path.join(SRC, f + '.js'))];
+    /* pwr2_water + pwr2_vtable stay CACHED across replays (#513): neither is ever this
+     * gate's mutation target, and re-executing pwr2_vtable throws away its lazily-built
+     * ~0.5 s GRID once per replay (56 passes here ≈ 28 s). Kept as a PAIR — the vtable
+     * closes over RD.pwr2.water at its own load (pwr2_vtable.js:57), so a fresh water
+     * must never meet a stale vtable. run_pwr2_vtable.js owns mutations of those two
+     * and replays via new Function, which this does not touch. */
+    if (f !== 'pwr2_water' && f !== 'pwr2_vtable')
+      delete require.cache[require.resolve(path.join(SRC, f + '.js'))];
     require(path.join(SRC, f + '.js'));
   });
   if (engSource === undefined) {

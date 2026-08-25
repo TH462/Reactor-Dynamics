@@ -47,7 +47,13 @@ function loadFrom(src) {
 var DOC = { open_psig: 425, close_psig: 585, design_psig: 600,
             entry_f: 350, target_f: 140, cold_shutdown_f: 200, hours: 16 };
 
-function runSuite(R, rec, quiet) {
+/* runSuite(R, rec, quiet, only) — `only` scopes a MUTATION REPLAY to the section group that
+ * can see that mutation (#513, the run_pwr2_engine idiom): 'A' the sourced figures, 'B' the
+ * cooldown run-and-timed (the expensive one — two multi-hour rides; only the two derivation
+ * mutations pay it), 'C' the interlock, 'D' the heat sink + suction, 'E' construction + the
+ * margin. Each named group is preflighted ALONE on the clean build before the replays. */
+function runSuite(R, rec, quiet, only) {
+  function grp(g) { return only === undefined || only === g; }
   function ck(name, got, want, tol, unit) {
     var d = Math.abs(got - want), ok = d <= tol && isFinite(got);
     rec.push({ name: name, ok: ok });
@@ -70,7 +76,10 @@ function runSuite(R, rec, quiet) {
     }
     return isFinite(sys.M_total) && sys.M_total > 1000;
   }
+  /* hoisted from section 2 (#513): sections 3-5 build their fixtures at this pressure too */
+  var P_cd = (DOC.open_psig + 14.7) / PSI;          /* at the permissive, where RHR comes in */
 
+  if (grp('A')) {
   /* ---- 1. THE SOURCED FIGURES ARE THE DOCUMENT'S -------------------------------------- */
   if (!quiet) console.log('\nSOURCED FIGURES  [WTSM §5.1 + Ginna TS Bases, vs a retyped copy]');
   ck('the open permissive is the sourced 425 psig', R.RHR.permissive_open_psig, DOC.open_psig, 0, 'psig');
@@ -87,10 +96,11 @@ function runSuite(R, rec, quiet) {
       R.RHR.design_psig > R.RHR.permissive_close_psig,
       R.RHR.design_psig + ' psig design vs a ' + R.RHR.permissive_close_psig +
       ' psig auto-close -- the interlock protects the piping with margin');
+  }
 
+  if (grp('B')) {
   /* ---- 2. THE COOLDOWN, RUN AND TIMED ------------------------------------------------- */
   if (!quiet) console.log('\nTHE DESIGN BASIS, EXERCISED  [run the cooldown on the real network and time it]');
-  var P_cd = (DOC.open_psig + 14.7) / PSI;          /* at the permissive, where RHR comes in */
   /* A COOLDOWN NEEDS THE PRESSURIZER SEAT OCCUPIED. Measured: a rigid loop drove pressure
    * 425 -> 2596 psig in twelve seconds and the solver gave up (D1 §32.3). The surrogate below is
    * MINE, not a model of #472's pressurizer -- it is a compressible volume stiff enough to hold
@@ -162,7 +172,9 @@ function runSuite(R, rec, quiet) {
   ckT('the full lineup is decisively better than one train  [a COMPARISON]',
       full.hours !== null && half.hours === null,
       'full reaches the target; one train approaches and does not cross');
+  }
 
+  if (grp('C')) {
   /* ---- 3. THE INTERLOCK IS REPORTED, NOT ENFORCED ------------------------------------- */
   if (!quiet) console.log('\nINTERLOCK  [REPORTED, never enforced -- protection is the control layer (HR5)]');
   var below = R.stepRHR(R.createRHR({ valve_open: true }), plantAt(300, (400 + 14.7) / PSI), 1, {});
@@ -179,7 +191,9 @@ function runSuite(R, rec, quiet) {
       above.duty_kW > 0,
       above.duty_kW.toFixed(0) + ' kW at 600 psig -- doing this is a mistake the CONTROL layer ' +
       'must prevent, and an engine that silently refused would be making that decision here');
+  }
 
+  if (grp('D')) {
   /* ---- 4. IT IS A HEAT SINK, WITH THE RIGHT SUCTION ----------------------------------- */
   if (!quiet) console.log('\nDUTY  [a SINK, drawn from the HOT LEG -- sourced, and not a detail]');
   var hotP = plantAt(340, P_cd), coldP = plantAt(160, P_cd);
@@ -248,7 +262,9 @@ function runSuite(R, rec, quiet) {
   ckT('suction temperature is the HOT LEG, not the cold leg and not an average',
       Math.abs(dDT.T_suction_c - hotH) < 1e-9 && Math.abs(dDT.T_suction_c - coldH) > 1,
       R.F(dDT.T_suction_c).toFixed(1) + ' degF -- RHR takes suction from the hot leg (WTSM §5.1)');
+  }
 
+  if (grp('E')) {
   /* ---- 5. CONSTRUCTION  [written first -- D1 §31] ------------------------------------- */
   if (!quiet) console.log('\nCONSTRUCTION  [§31: written first, not acquired after an attack]');
   var opt = R.createRHR({ valve_open: true, hx_fraction: 0.7, avail: 0.5, ccw_temp_c: 40, UA: 123, removed_kJ: 7 });
@@ -346,6 +362,7 @@ function runSuite(R, rec, quiet) {
   ckT('negative availability is floored rather than trusted',
       R.stepRHR(R.createRHR({ valve_open: true, avail: -2 }), plantAt(340, P_cd), 1, {}).duty_kW === 0,
       'a negative availability would otherwise HEAT the plant');
+  }
 }
 
 console.log('\nPWR2 Layer 5 -- RHR: the design basis, exercised');
@@ -353,70 +370,75 @@ var R = loadFrom(SRC), rec = [];
 runSuite(R, rec, false);
 var pass = rec.filter(function (r) { return r.ok; }).length, fail = rec.length - pass;
 
+/* Each entry's trailing { grp } names the section group that can SEE it (#513) — the replay
+ * runs only that group, and the BLIND check still reds the runner if the tag is wrong. */
 var MUTATIONS = [
   ['the open permissive moved off its sourced setpoint',
-   'permissive_open_psig:  425,', 'permissive_open_psig:  300,'],
+   'permissive_open_psig:  425,', 'permissive_open_psig:  300,', { grp: 'A' }],
   ['the auto-close interlock moved off its sourced setpoint',
-   'permissive_close_psig: 585,', 'permissive_close_psig: 425,'],
-  ['the sourced cooldown window changed', 'design_cooldown_hours: 16,', 'design_cooldown_hours: 24,'],
-  ['the cooldown target changed', 'target_temp_f: 140,', 'target_temp_f: 100,'],
+   'permissive_close_psig: 585,', 'permissive_close_psig: 425,', { grp: 'A' }],
+  ['the sourced cooldown window changed', 'design_cooldown_hours: 16,', 'design_cooldown_hours: 24,',
+   { grp: 'A' }],
+  ['the cooldown target changed', 'target_temp_f: 140,', 'target_temp_f: 100,', { grp: 'A' }],
   /* anchors re-pointed #510 H-3: UA is the design constant, derived once at construction */
   ['UA no longer derived from the design basis (a placeholder)',
    'return derivedUA(RHR.design_decay_fraction_20h * 300000 + RHR.design_rcp_heat_kW);',
-   'return 50;'],
+   'return 50;', { grp: 'B' }],
   ['PUMP HEAT dropped from the derivation (the source names it, and it exceeds decay heat)',
    'return derivedUA(RHR.design_decay_fraction_20h * 300000 + RHR.design_rcp_heat_kW);',
-   'return derivedUA(RHR.design_decay_fraction_20h * 300000);'],
+   'return derivedUA(RHR.design_decay_fraction_20h * 300000);', { grp: 'B' }],
   ['suction taken from the cold leg instead of the hot leg',
    /* anchor re-pointed #514: the hot-leg read goes through TFH (the vtable idiom) now */
    "if (sys.nodes[k].id === 'hot_leg') Thot = TFH(sys.nodes[k].h, sys.P);",
-   "if (sys.nodes[k].id === 'cold_leg') Thot = TFH(sys.nodes[k].h, sys.P);"],
+   "if (sys.nodes[k].id === 'cold_leg') Thot = TFH(sys.nodes[k].h, sys.P);", { grp: 'D' }],
   ['the sink becomes a source below the cooling-water temperature',
-   'if (duty < 0) duty = 0;   /* a heat SINK: it never warms the plant */', ''],
+   'if (duty < 0) duty = 0;   /* a heat SINK: it never warms the plant */', '', { grp: 'D' }],
   ['availability no longer floored (negative avail heats the plant)',
    'Math.max(0, rh.avail) * rh.hx_fraction * rh.UA * (Thot - rh.ccw_temp_c)',
-   'rh.avail * rh.hx_fraction * rh.UA * (Thot - rh.ccw_temp_c)'],
+   'rh.avail * rh.hx_fraction * rh.UA * (Thot - rh.ccw_temp_c)', { grp: 'D' }],
   ['the interlock gains no hysteresis (one setpoint, chattering)',
    'var mustShut = P_psig >= RHR.permissive_close_psig;',
-   'var mustShut = P_psig >= RHR.permissive_open_psig;'],
+   'var mustShut = P_psig >= RHR.permissive_open_psig;', { grp: 'C' }],
   ['the engine ENFORCES the interlock instead of reporting it (protection in the wrong layer)',
-   'if (rh.running) {', 'if (rh.running && mayOpen) {'],
-  ['the removed-energy total stops accumulating', 'rh.removed_kJ += duty * dt;', ''],
+   'if (rh.running) {', 'if (rh.running && mayOpen) {', { grp: 'C' }],
+  ['the removed-energy total stops accumulating', 'rh.removed_kJ += duty * dt;', '', { grp: 'D' }],
   ['the vital-bus gate is severed (#510 H-5 re-armed: unpowered pumps keep cooling)',
-   'rh.running = rh.valve_open && powered;', 'rh.running = rh.valve_open;'],
+   'rh.running = rh.valve_open && powered;', 'rh.running = rh.valve_open;', { grp: 'E' }],
   ['the cooldown margin fabricates a zero instead of reporting NULL',
    'margin_kW: drivers.decayHeat_kW === undefined ? null : duty - drivers.decayHeat_kW,',
-   'margin_kW: duty - (drivers.decayHeat_kW || 0),'],
+   'margin_kW: duty - (drivers.decayHeat_kW || 0),', { grp: 'E' }],
   ['the margin loses its sign convention (reads keeping-up when losing ground)',
    'keeping_up: drivers.decayHeat_kW === undefined ? null : duty >= drivers.decayHeat_kW,',
-   'keeping_up: drivers.decayHeat_kW === undefined ? null : duty <= drivers.decayHeat_kW,'],
+   'keeping_up: drivers.decayHeat_kW === undefined ? null : duty <= drivers.decayHeat_kW,',
+   { grp: 'E' }],
   ['decay heat leaks into the DUTY, double-counting the reactor heats map',
    'rh.removed_kJ += duty * dt;',
-   'duty += (drivers.decayHeat_kW || 0); rh.removed_kJ += duty * dt;'],
+   'duty += (drivers.decayHeat_kW || 0); rh.removed_kJ += duty * dt;', { grp: 'E' }],
   ['duty stops following the suction temperature',
-   'rh.UA * (Thot - rh.ccw_temp_c)', 'rh.UA * (200 - rh.ccw_temp_c)'],
+   'rh.UA * (Thot - rh.ccw_temp_c)', 'rh.UA * (200 - rh.ccw_temp_c)', { grp: 'D' }],
   /* CONSTRUCTION */
   /* #507 wave 2: `running` is DERIVED from the valve every step, so the construction pair
    * moved to the field that now owns the lineup */
   ['caller valve_open ignored at construction',
-   'valve_open: opts.valve_open === undefined ? false : !!opts.valve_open,', 'valve_open: false,'],
+   'valve_open: opts.valve_open === undefined ? false : !!opts.valve_open,', 'valve_open: false,',
+   { grp: 'E' }],
   ['caller hx_fraction ignored at construction',
    'hx_fraction: opts.hx_fraction === undefined ? 1 : Math.max(0, Math.min(1, opts.hx_fraction)),',
-   'hx_fraction: 1,'],
+   'hx_fraction: 1,', { grp: 'E' }],
   ['the HX split stops scaling duty (the cooldown-rate lever goes dead)',
    'duty = Math.max(0, rh.avail) * rh.hx_fraction * rh.UA * (Thot - rh.ccw_temp_c);',
-   'duty = Math.max(0, rh.avail) * rh.UA * (Thot - rh.ccw_temp_c);'],
+   'duty = Math.max(0, rh.avail) * rh.UA * (Thot - rh.ccw_temp_c);', { grp: 'E' }],
   ['caller avail ignored at construction',
-   'avail: opts.avail === undefined ? 1 : opts.avail,', 'avail: 1,'],
+   'avail: opts.avail === undefined ? 1 : opts.avail,', 'avail: 1,', { grp: 'E' }],
   ['caller cooling-water temperature ignored at construction',
    'ccw_temp_c: opts.ccw_temp_c === undefined ? RHR.ccw_temp_c : opts.ccw_temp_c,',
-   'ccw_temp_c: RHR.ccw_temp_c,'],
+   'ccw_temp_c: RHR.ccw_temp_c,', { grp: 'E' }],
   ['caller UA ignored at construction (always re-derived)',
    'UA: opts.UA === undefined ? designUA() : opts.UA,   // the design constant (#510 H-3)',
-   'UA: designUA(),'],
+   'UA: designUA(),', { grp: 'E' }],
   ['the default lineup becomes ALIGNED instead of secured',
    'valve_open: opts.valve_open === undefined ? false : !!opts.valve_open,',
-   'valve_open: opts.valve_open === undefined ? true : !!opts.valve_open,']
+   'valve_open: opts.valve_open === undefined ? true : !!opts.valve_open,', { grp: 'E' }]
 ];
 
 /* ---- THE CLEAN-RUN GUARD --------------------------------------------------------------
@@ -441,23 +463,51 @@ if (fail > 0) {
   process.exit(1);
 }
 
+/* ---- SCOPED-CLEAN-PASS PREFLIGHT (#513) ------------------------------------------------
+ * Every group a mutation names must be GREEN when run alone on the clean build. In the replay
+ * loop a crash counts as caught, so a group whose checks lean on another section's setup would
+ * crash there and silently stand in for coverage; here, on the clean module, it fails loudly. */
+var scopeBad = 0;
+MUTATIONS.map(function (m) { return m[3] && m[3].grp; })
+  .filter(function (g, i, a) { return g && a.indexOf(g) === i; })
+  .forEach(function (g) {
+    var rg = [], threw = false;
+    try { runSuite(R, rg, true, g); } catch (e) { threw = true; }
+    var fg = rg.filter(function (r) { return !r.ok; }).length;
+    if (threw || fg > 0) {
+      scopeBad++;
+      console.log('  SCOPE ' + g + (threw ? ' THREW' : ' RED (' + fg + ')') +
+        ' on the CLEAN build -- the group cannot stand alone; GATE FAILS' +
+        (fg ? ' -- ' + rg.filter(function (r) { return !r.ok; })
+                         .map(function (r) { return r.name; }).join('; ') : ''));
+    }
+  });
+
 console.log('\n' + '='.repeat(70));
 console.log('  INJECTION SELF-TEST -- every mutation MUST redden at least one check');
 console.log('='.repeat(70));
 var blind = 0;
 MUTATIONS.forEach(function (m) {
+  var grpTag = (m[3] && m[3].grp) || undefined;
   if (SRC.indexOf(m[1]) === -1) { console.log('  ERROR   anchor not found: ' + m[0]); blind++; return; }
-  var r2 = [];
-  try { runSuite(loadFrom(SRC.split(m[1]).join(m[2])), r2, true); }
-  catch (e) { r2.push({ name: 'threw', ok: false }); }
-  var f2 = r2.filter(function (r) { return !r.ok; }).length;
+  var r2 = [], crashed = false;
+  try { runSuite(loadFrom(SRC.split(m[1]).join(m[2])), r2, true, grpTag); }
+  catch (e) { crashed = true; }
+  /* A crash counts as caught no matter how many checks recorded first (the run_pwr2_engine
+   * form) -- but a crash-only catch is REPORTED AS ITSELF rather than wearing a check's face. */
+  var realReds = r2.filter(function (r) { return !r.ok; }).length;
+  var f2 = crashed ? 1 : (r2.length ? realReds : 1);
   if (f2 === 0) { blind++; console.log('  BLIND TO  ' + m[0] + '   <-- THIS GATE CANNOT SEE IT'); }
+  else if (crashed && realReds === 0) {
+    console.log('  caught    ' + m[0].padEnd(58) + 'CRASH only -- no check red (coverage untested)');
+  }
   else console.log('  caught    ' + m[0].padEnd(58) + f2 + ' red');
 });
 
 console.log('\n' + '='.repeat(70));
 console.log('  injection self-test: ' + (MUTATIONS.length - blind) + '/' + MUTATIONS.length +
-  ' mutations caught' + (blind ? '  ** ' + blind + ' BLIND SPOTS -- GATE FAILS **' : ', no blind spots'));
+  ' mutations caught' + (blind ? '  ** ' + blind + ' BLIND SPOTS -- GATE FAILS **' : ', no blind spots') +
+  (scopeBad ? '  ** ' + scopeBad + ' GROUP(S) NOT SELF-STANDING **' : ''));
 console.log('  run_pwr2_rhr: ' + pass + ' passed, ' + fail + ' failed  (' + rec.length + ' checks)');
 console.log('='.repeat(70) + '\n');
-process.exit((fail > 0 || blind > 0) ? 1 : 0);
+process.exit((fail > 0 || blind > 0 || scopeBad > 0) ? 1 : 0);

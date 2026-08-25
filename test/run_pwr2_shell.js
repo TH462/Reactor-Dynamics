@@ -25,7 +25,12 @@ function loadAll(shellSource) {
    'pwr2_condenser', 'pwr2_cvcs', 'pwr2_eccs', 'pwr2_afw', 'pwr2_damage', 'pwr2_protection',
    'pwr2_pressurizer', 'pwr2_dumpctl', 'pwr2_break', 'pwr2_containment', 'pwr2_rhr',
    'pwr2_true_state', 'pwr2_instruments', 'pwr2_feedwater', 'pwr2_engine'].forEach(function (f) {
-    delete require.cache[require.resolve(path.join(SRC, f + '.js'))];
+    /* pwr2_water + pwr2_vtable stay CACHED across replays (#513): never this gate's
+     * mutation target, and a re-execute discards the vtable's lazily-built ~0.5 s GRID
+     * per replay. Kept as a pair (the vtable closes over RD.pwr2.water at load) —
+     * see run_pwr2_engine.js's loadAll for the full note. */
+    if (f !== 'pwr2_water' && f !== 'pwr2_vtable')
+      delete require.cache[require.resolve(path.join(SRC, f + '.js'))];
     require(path.join(SRC, f + '.js'));
   });
   if (shellSource === undefined) {
@@ -39,7 +44,15 @@ function loadAll(shellSource) {
 
 var DT = 0.02;
 
-function runSuite(SH, rec, quiet) {
+/* runSuite(SH, rec, quiet, only) — `only` scopes a MUTATION REPLAY to the section group that
+ * can see that mutation (#513, the run_pwr2_engine idiom): 'A' the surface + the command
+ * partition + commands-land (three sections sharing one engine), 'B' the two banks, 'D' the
+ * casualty rows, 'D3' the board rails, 'E' the electrical pair, 'F' the SGTR row, 'G' the
+ * wave-6 levers, 'H' the ICs through the class, 'I' the rod limit, 'J' the RCP handswitch,
+ * 'K' the shutdown preset, 'S' the save contract. The CLEAN pass runs everything; each named
+ * group is preflighted ALONE on the clean build before the replays. */
+function runSuite(SH, rec, quiet, only) {
+  function grp(g) { return only === undefined || only === g; }
   function ck(name, cond, note) {
     rec.push({ name: name, ok: !!cond });
     if (!quiet) console.log((cond ? '  PASS  ' : '  FAIL  ') + name + (note ? '  -- ' + note : ''));
@@ -47,6 +60,7 @@ function runSuite(SH, rec, quiet) {
   function head(s) { if (!quiet) console.log('\n' + s); }
   function run(e, secs) { var t; for (var i = 0; i < secs / DT; i++) t = e.step(DT); return t; }
 
+  if (grp('A')) {
   /* ---- 1. THE SURFACE ----------------------------------------------------------------------- */
   head('THE SURFACE  [every method the M4/M5 stack calls on an engine]');
   var eng = new SH.PWR2Engine({});
@@ -220,7 +234,9 @@ function runSuite(SH, rec, quiet) {
   ck('getStartupLineup/getActiveFailures exist and answer',
      Array.isArray(eng.getStartupLineup()) && Array.isArray(eng.getActiveFailures()) &&
      eng.getActiveFailures().length === 0, '');
+  }
 
+  if (grp('B')) {
   /* ---- 1b. TWO REAL BANKS (#506.3) ----------------------------------------------------------
    * The shutdown group used to be a fabrication: `scrammed ? 0 : 200`, a one-frame snap
    * beside the control bank's ramp — the owner's "shutdown rods moved too fast on scram",
@@ -253,7 +269,9 @@ function runSuite(SH, rec, quiet) {
        g3[1].steps < 200 && g3[0].steps === 200,
        'control ' + g3[0].steps + ', shutdown ' + g3[1].steps);
   })();
+  }
 
+  if (grp('C')) {
   /* ---- 1c. THE RHR ALIGN REFUSALS (#507 wave 2, the #458 ruled shape) -----------------------
    * A refusal, NOT an interlock *(OWNER RULING, 2026-08-12: "A'")*: the message says
    * "lineup", ISOLATE is never refused, and the SI case carries the ruled industry text.
@@ -278,7 +296,9 @@ function runSuite(SH, rec, quiet) {
        isoOk,
        'power: "' + (msgP || '').slice(0, 40) + '…"; pumps: "' + (msgSI || '').slice(0, 40) + '…"');
   })();
+  }
 
+  if (grp('D')) {
   /* ---- 1d. THE CASUALTY ROWS (#507 wave 3) --------------------------------------------------
    * Every new menu row injected against the live shell, each with its OBSERVABLE effect —
    * a menu entry for a lever that does nothing would be a lie wearing a casualty's name.
@@ -349,7 +369,9 @@ function runSuite(SH, rec, quiet) {
        e5.eng.cwPumps === true && e5.eng.elec.offsite === true && (!e5.eng.brk || !e5.eng.brk.open),
        'active after clear-all: [' + actClr.join(',') + ']');
   })();
+  }
 
+  if (grp('D2')) {
   /* ---- 1d2. THE OVERFEED SEAT (#510 M-12) --------------------------------------------------- */
   (function () {
     var eO = new SH.PWR2Engine({});
@@ -373,7 +395,9 @@ function runSuite(SH, rec, quiet) {
        'feed ' + eO.eng.fw.feed_frac.toFixed(2) + ' after clear against manual ' + man0 +
        ' (the old row rewrote the demand and the clear flipped the selector)');
   })();
+  }
 
+  if (grp('D3')) {
   /* ---- 1d3. THE BOARD RAILS TOO (#510 M-5) --------------------------------------------------- */
   (function () {
     var eR = new SH.PWR2Engine({});
@@ -389,7 +413,9 @@ function runSuite(SH, rec, quiet) {
        eR.eng.ins.reading.primary_pressure < 0.5,
        'board ' + eR.instruments.reading.primary_pressure + ' vs range floor ' + spec.range[0]);
   })();
+  }
 
+  if (grp('D4')) {
   /* ---- 1d4. HR1 ON THE RHR PERMISSIVE (#510 M-2) --------------------------------------------- */
   (function () {
     var eP = new SH.PWR2Engine({ initial_state: 'hot_shutdown' });
@@ -407,7 +433,9 @@ function runSuite(SH, rec, quiet) {
        refused && /indicates/.test(msgP) && eP.eng.sys.P * 145.038 - 14.7 < 425,
        'true ' + (eP.eng.sys.P * 145.038 - 14.7).toFixed(0) + ' psig; ' + msgP.slice(0, 70));
   })();
+  }
 
+  if (grp('E')) {
   /* ---- 1e. THE ELECTRICAL PAIR (#507 wave 4) ------------------------------------------------ */
   head('THE ELECTRICAL PAIR  [LOOP kills the nonvital bus and clears; SBO kills the vital one too]');
   (function () {
@@ -493,7 +521,9 @@ function runSuite(SH, rec, quiet) {
        e7c.eng.elec.offsite === true &&
        e7c.getActiveFailures().indexOf('loss_of_offsite_power') === -1, '');
   })();
+  }
 
+  if (grp('F')) {
   /* ---- 1f. THE SGTR ROW (#507 wave 5) -------------------------------------------------------- */
   head('THE SGTR ROW  [a break at the tube node, routed into the SG, reported by name]');
   (function () {
@@ -513,7 +543,9 @@ function runSuite(SH, rec, quiet) {
     e8.step(0.02); e8.step(0.02);
     ck('...and the clear shuts the tube', e8.eng.brk.open === false && e8.eng._sgtrKgs === 0, '');
   })();
+  }
 
+  if (grp('G')) {
   /* ---- 1g. THE WAVE-6 ROWS (#507) — each lever with its measured, observable effect ---------- */
   head('THE WAVE-6 ROWS  [failure levers: block, ATWS, dead bank, stuck spray, runaway, drift]');
   (function () {
@@ -663,7 +695,9 @@ function runSuite(SH, rec, quiet) {
        Math.abs(eW.eng.brk.area_m2 - 1.2e-5) < 1e-12,
        'wave 3 rendered the slider and discarded it');
   })();
+  }
 
+  if (grp('H')) {
   /* ---- 1h. THE INITIAL CONDITIONS THROUGH THE CLASS (#507 §F, wave 7) ----------------------- */
   head('THE ICs THROUGH THE CLASS  [the menu\'s presets are real; the block button reaches the RPS]');
   (function () {
@@ -703,7 +737,9 @@ function runSuite(SH, rec, quiet) {
     ck('...and a trip this RPS does not carry comes back as a REASONED error, not a silence',
        rIr && rIr.type === 'error' && /low-flux/.test(rIr.message), '');
   })();
+  }
 
+  if (grp('I')) {
   /* ---- 1i. THE ROD INSERTION LIMIT SURFACES (#507 §B, wave 8) ------------------------------- */
   head('THE ROD LIMIT SURFACES  [live control-state fields, the margin channel, the 10-step row]');
   (function () {
@@ -728,7 +764,9 @@ function runSuite(SH, rec, quiet) {
        'row\'s 40 is the same physical number in pwr1\'s fine-step currency (4 fine/step)',
        rowLO && rowLO.setpoint === 10, 'setpoint ' + (rowLO && rowLO.setpoint));
   })();
+  }
 
+  if (grp('J')) {
   /* ---- 1j. THE RCP HANDSWITCH (#507 wave 9) -------------------------------------------------- */
   head('THE RCP HANDSWITCH  [OFF secures, ON restarts, a casualty trip reads LOST not SECURED]');
   (function () {
@@ -753,7 +791,9 @@ function runSuite(SH, rec, quiet) {
        'who stopped the pump',
        eD.eng.sys.pumpTripped === true && eD.instruments.reading.rcp_secured === false, '');
   })();
+  }
 
+  if (grp('K')) {
   /* ---- 1k. THE SHUTDOWN PRESET THROUGH THE CLASS (#507 wave 10) ----------------------------- */
   head('MODE 4 THROUGH THE CLASS  [held, blocked, secured; the P-11 pair on the kernel snapshot]');
   (function () {
@@ -780,7 +820,9 @@ function runSuite(SH, rec, quiet) {
        'request, re-block below P-11 lands',
        (rSiB === null || rSiB === undefined) && cleared && eE.eng.pt.blockSI === true, '');
   })();
+  }
 
+  if (grp('A')) {
   /* ---- 2. THE COMMAND PARTITION -------------------------------------------------------------- */
   head('THE PARTITION  [every old-engine action in exactly one registry, refusals reasoned]');
   var oldSrc = fs.readFileSync(path.join(__dirname, '..', 'engines', 'pwr', 'pwr_engine.js'), 'utf8');
@@ -864,7 +906,9 @@ function runSuite(SH, rec, quiet) {
   var tR = eng.getTrueState();
   ck('reset() is a fresh plant', tR.scrammed === false && tR.sim_time_s < 1,
      't = ' + tR.sim_time_s.toFixed(2) + ' s, scrammed ' + tR.scrammed);
+  }
 
+  if (grp('S')) {
   /* ---- 4. THE SAVE CONTRACT ------------------------------------------------------------------ */
   head('THE SAVE  [pwr2-1.0 only, and the round trip is BIT-EXACT]');
   var eng2 = new SH.PWR2Engine({});
@@ -901,6 +945,7 @@ function runSuite(SH, rec, quiet) {
      firstDiff === -1,
      firstDiff === -1 ? 'every sampled field identical over ' + N + ' steps'
                       : 'first divergence at step ' + firstDiff);
+  }
 }
 
 console.log('\nPWR2 -- THE SHELL CLASS (Option B stage B2): the surface the stack holds');
@@ -909,115 +954,151 @@ runSuite(loadAll(), rec, false);
 var pass = rec.filter(function (r) { return r.ok; }).length, fail = rec.length - pass;
 
 var SHSRC = fs.readFileSync(path.join(SRC, 'pwr2_shell.js'), 'utf8').replace(/\r\n/g, '\n');
+/* Each entry's trailing { grp } names the section group that can SEE it (#513) — the replay
+ * runs only that group, and the BLIND check still reds the runner if the tag is wrong. */
 var MUTATIONS = [
   ['a REFUSED command is silently swallowed (reads exactly like a plant that survived it)',
    "    if (REFUSED[a] !== undefined) {\n      throw new Error('pwr2_shell: \"' + a + '\" REFUSED — ' + REFUSED[a]);\n    }",
-   '    if (REFUSED[a] !== undefined) { return { ok: true, action: a }; }'],
+   '    if (REFUSED[a] !== undefined) { return { ok: true, action: a }; }', { grp: 'A' }],
   ['loadState accepts a pwr-1.0 save (node state invented from lumped values)',
    "    if (!saved || saved.schema !== 'pwr2-1.0') {",
-   "    if (false) {"],
+   "    if (false) {", { grp: 'S' }],
   ['the readings dict is not saved (one post-load step of truth-fed control)',
    '             reading: insReading },',
-   '             reading: {} },'],
+   '             reading: {} },', { grp: 'S' }],
   ['the pressurizer seat is never re-linked on load (the vessel falls off the plant)',
    '    e.sys.extraMass = PZ.extraMassFn(e.pz);',
-   ''],
+   '', { grp: 'S' }],
   ['the shell instruments are never updated after construction (every gauge frozen at t=0)',
    '    this.instruments.update(this._ts, dt, this._instrExtras());',
-   ''],
+   '', { grp: 'A' }],
   ['the extras dict is dropped again (the shipped B2 defect: all 35 status readings undefined)',
    '    this.instruments.update(this._ts, dt, this._instrExtras());',
-   '    this.instruments.update(this._ts, dt, {});'],
+   '    this.instruments.update(this._ts, dt, {});', { grp: 'A' }],
   ['the rod groups revert to the one-entry id:\'control\' shape (both board readouts at 0)',
    "        { id: 'control_rods', name: 'Control Rods', function: 'control',",
-   "        { id: 'control', name: 'Control Rods', function: 'control',"],
+   "        { id: 'control', name: 'Control Rods', function: 'control',", { grp: 'A' }],
   ['the REFUSED registry is emptied (39 refusals become unknown-action errors with no reasons)',
    'var REFUSED = {',
-   'var REFUSED = {}; var REFUSED_gone = {'],
+   'var REFUSED = {}; var REFUSED_gone = {', { grp: 'A' }],
   ['the pwr automation channels LEAK into the config (M4 would command a plant it does not know)',
    "        channels: (base.channels || []).filter(function (ch) { return ch.id === 'boron_conc'; }),",
-   '        channels: base.channels,'],
+   '        channels: base.channels,', { grp: 'A' }],
   ['the charging setter reads the currency as a demand fraction again (any setpoint ~= zero flow)',
    '      var gpm = (c.normalized !== undefined ? c.normalized : c.value) * 450000;\n      e.cv.chargingDemand = Math.max(0, Math.min(1, gpm / RD.cvcs.CVCS.charging_max_gpm()));',
-   '      e.cv.chargingDemand = Math.max(0, Math.min(1, c.normalized !== undefined ? c.normalized : c.value));'],
+   '      e.cv.chargingDemand = Math.max(0, Math.min(1, c.normalized !== undefined ? c.normalized : c.value));',
+   { grp: 'A' }],
   ['the control-state charging setpoint reverts to a raw demand fraction (reads ~180,000 gpm)',
    '      charging_flow_normalized: (e.cv.chargingDemand === null ? 0 : e.cv.chargingDemand) *\n                                RD.cvcs.CVCS.charging_max_gpm() / 450000,',
-   '      charging_flow_normalized: e.cv.chargingDemand === null ? 0 : e.cv.chargingDemand,'],
+   '      charging_flow_normalized: e.cv.chargingDemand === null ? 0 : e.cv.chargingDemand,',
+   { grp: 'A' }],
   ['the afw esf arm is dropped again (the AUX FEED tile reads SECURED over an armed AFAS)',
    "        esf_systems: [{ id: 'afw', label: 'Auxiliary feedwater', commands: [] }],",
-   '        esf_systems: [],'],
+   '        esf_systems: [],', { grp: 'A' }],
   ['the afw arm grows a command list (the kernel\'s manual scan could flip a lie into the word)',
    "        esf_systems: [{ id: 'afw', label: 'Auxiliary feedwater', commands: [] }],",
-   "        esf_systems: [{ id: 'afw', label: 'Auxiliary feedwater', commands: ['set_afw'] }],"],
+   "        esf_systems: [{ id: 'afw', label: 'Auxiliary feedwater', commands: ['set_afw'] }],",
+   { grp: 'A' }],
   /* anchor grew with the wave-6 modes; the claim is the same collapse */
   ['the instrument-failure command maps every mode to STUCK',
    "      var mode = c.mode === 'fail_low' ? 'low' : c.mode === 'fail_high' ? 'high'\n               : c.mode === 'noisy' ? 'noisy' : c.mode === 'drift' ? 'drift'\n               : c.mode === 'dead' ? 'dead' : 'stuck';",
-   "      var mode = 'stuck';"],
+   "      var mode = 'stuck';", { grp: 'D3' }],
   /* anchor grew with the wave-8 rod-limit override; the claim is the same */
   ['the #500 alarm override is dropped (pzr_level_low back to the plant\'s own program point)',
    "          return a.id === 'pzr_level_low'\n            ? Object.assign({}, a, { setpoint: 17.0 })\n            : a.id === 'rod_limit_approach'",
-   "          return a.id === 'nope_pzr_level_low'\n            ? Object.assign({}, a, { setpoint: 17.0 })\n            : a.id === 'rod_limit_approach'"],
+   "          return a.id === 'nope_pzr_level_low'\n            ? Object.assign({}, a, { setpoint: 17.0 })\n            : a.id === 'rod_limit_approach'", { grp: 'A' }],
   ['the shutdown group reverts to the pre-#506 snap (200 -> 0 in one frame on scram)',
    "          steps: Math.round(e.sdSteps), max_steps: 200,\n          position_pct: 100 * e.sdSteps / 200,",
-   '          steps: ts.scrammed ? 0 : 200, max_steps: 200,\n          position_pct: ts.scrammed ? 0 : 100,'],
+   '          steps: ts.scrammed ? 0 : 200, max_steps: 200,\n          position_pct: ts.scrammed ? 0 : 100,', { grp: 'B' }],
   ['the rcp pump record loses flow_pct again (the board animation computes NaN and freezes)',
    "      pumps: [{ id: 'rcp', running: !e.sys.pumpTripped,\n                flow_pct: ts.pump_flow_pct !== undefined ? ts.pump_flow_pct\n                          : (e.sys.pumpTripped ? 0 : 100) }]",
-   "      pumps: [{ id: 'rcp', running: !e.sys.pumpTripped }]"],
+   "      pumps: [{ id: 'rcp', running: !e.sys.pumpTripped }]", { grp: 'A' }],
   ['the LOOP row regresses to the wave-3 pump-trip-only shape (#507 wave 4)',
    "        EN.command(e, 'offsite_power', false);",
-   "        EN.command(e, 'pump_trip', true);"],
+   "        EN.command(e, 'pump_trip', true);", { grp: 'E' }],
   ['the sgtr row is routed to the cold leg (a tube rupture wearing a LOCA\'s plumbing)',
    "        EN.command(e, 'break_open', { area_m2: Math.max(1e-6, sevT * 4.33e-4),\n                                      node: 'sg_primary' });",
-   "        EN.command(e, 'break_open', { area_m2: Math.max(1e-6, sevT * 4.33e-4),\n                                      node: 'cold_leg' });"],
+   "        EN.command(e, 'break_open', { area_m2: Math.max(1e-6, sevT * 4.33e-4),\n                                      node: 'cold_leg' });", { grp: 'F' }],
   ['the advanced panel\'s value key is dropped again (#507 wave 6 latent fix 3 reverted)',
    '      var val = c.stuck_value !== undefined ? c.stuck_value : c.value;',
-   '      var val = c.stuck_value;'],
+   '      var val = c.stuck_value;', { grp: 'G' }],
   ['degraded_hpi reverts to the INERT seat (writes a field the physics never reads)',
    "        e.ec.hhsiAvail = Math.max(0, 1 - (c.severity !== undefined ? c.severity : 0.5));",
-   "        e.ec.avail = Math.max(0, 1 - (c.severity !== undefined ? c.severity : 0.5));"],
+   "        e.ec.avail = Math.max(0, 1 - (c.severity !== undefined ? c.severity : 0.5));",
+   { grp: 'D' }],
   ['the seal-leak slider is discarded again (#507 wave 6 latent fix 2 reverted)',
    "        EN.command(e, 'break_open', { area_m2: Math.max(1e-6, sevS * 1.2e-5), node: 'rcp' });",
-   "        EN.command(e, 'break_open', { area_m2: 8e-6, node: 'rcp' });"],
+   "        EN.command(e, 'break_open', { area_m2: 8e-6, node: 'rcp' });", { grp: 'G' }],
   ['the block mapping is severed (the board button reaches a wire that goes nowhere) -- #507 wave 7',
    "        EN.command(e, 'low_flux_block', c.blocked !== false);",
-   ''],
+   '', { grp: 'H' }],
   ['the engine-owned block surface loses its setpoint (the power tile paints the static 25 %)',
    '          setpoint: sp',
-   '          setpoint: undefined'],
+   '          setpoint: undefined', { grp: 'H' }],
   /* THE ROD INSERTION LIMIT (#507 §B, wave 8) */
   ['the control-state limit fields revert to the pinned nulls',
    '          insertion_limit_steps: e._rilSteps === undefined ? null : e._rilSteps,\n          at_insertion_limit: e._rodAtLimit === true },',
-   '          insertion_limit_steps: null, at_insertion_limit: false },'],
+   '          insertion_limit_steps: null, at_insertion_limit: false },', { grp: 'I' }],
   ['the margin channel is severed (the board reads the healthy default for ever)',
    '    ex.rod_limit_margin = e._rodLimitMargin === undefined ? 200 : e._rodLimitMargin;',
-   '    ex.rod_limit_margin = 200;'],
+   '    ex.rod_limit_margin = 200;', { grp: 'I' }],
   ['the ROD LIMIT LO override is dropped (the row fires at 40 of this bank\'s steps — 4x early)',
    "            : a.id === 'rod_limit_approach'\n            ? Object.assign({}, a, { setpoint: 10 })\n            : a;",
-   '            : a;'],
+   '            : a;', { grp: 'I' }],
   ['the SECURED latch is dropped (an operator-stopped pump reads LOST) -- #507 wave 9',
    "        e._rcpSecured = true;               /* the OPERATOR stopped it — the handswitch\n                                             * reads SECURED, not LOST (#200's split) */",
-   ''],
+   '', { grp: 'J' }],
   ['the P-11 pair mapping is severed (the cooldown blocks are board-unreachable) -- #507 wave 10',
    "      } else if (c.trip_id === 'lo_press') {\n        /* the P-11 pair (#507 wave 10) — the pwr1 board's own ids for the cooldown blocks */\n        EN.command(e, 'lo_press_trip_block', c.blocked !== false);\n      } else if (c.trip_id === 'si_trip') {\n        EN.command(e, 'si_block', c.blocked !== false);\n      }",
-   '      }']
+   '      }', { grp: 'K' }]
 ];
+
+/* ---- SCOPED-CLEAN-PASS PREFLIGHT (#513) ------------------------------------------------
+ * Every group a mutation names must be GREEN when run alone on the clean build. In the replay
+ * loop a crash counts as caught, so a group whose checks lean on another section's setup would
+ * crash there and silently stand in for coverage; here, on the clean module, it fails loudly. */
+var scopeBad = 0;
+var SH0 = loadAll();
+MUTATIONS.map(function (mt) { return mt[3] && mt[3].grp; })
+  .filter(function (g, i, a) { return g && a.indexOf(g) === i; })
+  .forEach(function (g) {
+    var rg = [], threw = false;
+    try { runSuite(SH0, rg, true, g); } catch (e) { threw = true; }
+    var fg = rg.filter(function (r) { return !r.ok; }).length;
+    if (threw || fg > 0) {
+      scopeBad++;
+      console.log('  SCOPE ' + g + (threw ? ' THREW' : ' RED (' + fg + ')') +
+        ' on the CLEAN build -- the group cannot stand alone; GATE FAILS' +
+        (fg ? ' -- ' + rg.filter(function (r) { return !r.ok; })
+                         .map(function (r) { return r.name; }).join('; ') : ''));
+    }
+  });
 
 console.log('\ninjection self-test (' + MUTATIONS.length + ' mutations):');
 var blind = 0;
 MUTATIONS.forEach(function (mt) {
+  var grpTag = (mt[3] && mt[3].grp) || undefined;
   var mutated = SHSRC.replace(mt[1], mt[2]);
   if (mutated === SHSRC) { console.log('  ANCHOR MISS ' + mt[0]); blind++; return; }
-  var rec2 = [];
-  try { runSuite(loadAll(mutated), rec2, true); } catch (e) { /* a crash counts as caught */ }
-  var f2 = rec2.length ? rec2.filter(function (r) { return !r.ok; }).length : 1;
+  var rec2 = [], crashed = false;
+  try { runSuite(loadAll(mutated), rec2, true, grpTag); }
+  catch (e) { crashed = true; }
+  /* A crash counts as caught no matter how many checks recorded first (the run_pwr2_engine
+   * form) -- but a crash-only catch is REPORTED AS ITSELF rather than wearing a check's face. */
+  var realReds = rec2.filter(function (r) { return !r.ok; }).length;
+  var f2 = crashed ? 1 : (rec2.length ? realReds : 1);
   if (f2 === 0) { console.log('  BLIND TO  ' + mt[0] + '   <-- THIS GATE CANNOT SEE IT'); blind++; }
+  else if (crashed && realReds === 0) {
+    console.log('  caught    ' + mt[0].padEnd(70) + 'CRASH only -- no check red (coverage untested)');
+  }
   else console.log('  caught    ' + mt[0].padEnd(70) + f2 + ' red');
 });
 loadAll();
 
 console.log('\n' + '='.repeat(70));
 console.log('  injection self-test: ' + (MUTATIONS.length - blind) + '/' + MUTATIONS.length +
-  ' mutations caught' + (blind ? '  ** ' + blind + ' BLIND SPOTS -- GATE FAILS **' : ', no blind spots'));
+  ' mutations caught' + (blind ? '  ** ' + blind + ' BLIND SPOTS -- GATE FAILS **' : ', no blind spots') +
+  (scopeBad ? '  ** ' + scopeBad + ' GROUP(S) NOT SELF-STANDING **' : ''));
 console.log('  run_pwr2_shell: ' + pass + ' passed, ' + fail + ' failed  (' + rec.length + ' checks)');
 console.log('='.repeat(70) + '\n');
-process.exit(fail > 0 || blind > 0 ? 1 : 0);
+process.exit(fail > 0 || blind > 0 || scopeBad > 0 ? 1 : 0);

@@ -24,7 +24,12 @@ function loadAll(pzSource) {
   ['pwr2_water', 'pwr2_vtable', 'pwr2_geometry', 'pwr2_core', 'pwr2_loop', 'pwr2_sources',
    'pwr2_cvcs'
   ].forEach(function (f) {
-    delete require.cache[require.resolve(path.join(SRC, f + '.js'))];
+    /* pwr2_water + pwr2_vtable stay CACHED across replays (#513): never this gate's
+     * mutation target, and a re-execute discards the vtable's lazily-built ~0.5 s GRID
+     * per replay. Kept as a pair (the vtable closes over RD.pwr2.water at load) —
+     * see run_pwr2_engine.js's loadAll for the full note. */
+    if (f !== 'pwr2_water' && f !== 'pwr2_vtable')
+      delete require.cache[require.resolve(path.join(SRC, f + '.js'))];
     require(path.join(SRC, f + '.js'));
   });
   if (pzSource === undefined) {

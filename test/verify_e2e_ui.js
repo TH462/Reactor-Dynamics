@@ -36,6 +36,19 @@ async function dismissMission(page) {
   } catch (e) { /* not mounted yet on some early navigations */ }
 }
 
+/* Wait until the board is PAINTED and the sim has ticked — the condition most of this
+ * file's fixed sleeps were approximating with wall time (#513: 44.45 s of waitForTimeout
+ * against a 54 s runner). The predicate is the header clock leaving T+00:00:00, i.e. at
+ * least one broadcast has landed and rendered (the overlay close auto-starts the plant —
+ * owner ruling 2026-08-11). Ceiling ~3x the sleeps it replaces; every assertion still runs
+ * AFTER the wait, so a conversion can only delay a red, never create a green. */
+async function waitBoardLive(page, timeoutMs) {
+  await page.waitForFunction(function () {
+    var c = document.getElementById('clock');
+    return !!c && /^T\+\d/.test(c.textContent || '') && c.textContent !== 'T+00:00:00';
+  }, { timeout: timeoutMs || 7500, polling: 100 });
+}
+
 /* Recently-added controls that must render on the shipped UI (data-act wiring).
  * PWR has NO entries here on purpose: data-act buttons are emitted only by
  * populateControlBar() into #pdCtlRow (ui/app.js:374,379,384), and the PWR returns
@@ -299,7 +312,7 @@ async function testSteamFeedPair(page) {
     await page.goto('http://127.0.0.1:' + PORT + '/ui/shell.html?engine=pwr&init=hot_full_power&run=1' + qs,
       { waitUntil: 'networkidle', timeout: 90000 });
     await dismissMission(page);
-    await page.waitForTimeout(1200);
+    await waitBoardLive(page);                       /* was waitForTimeout(1200) — #513 */
     return page.evaluate(function () {
       var t = function (id) {
         var e = document.querySelector('[data-item="' + id + '"]');
@@ -447,7 +460,7 @@ async function testEsfArmButtons(page) {
     await page.goto('http://127.0.0.1:' + PORT + '/ui/shell.html?engine=' + eng,
       { waitUntil: 'networkidle', timeout: 90000 });
     await dismissMission(page);
-    await page.waitForTimeout(2500);
+    await waitBoardLive(page);                       /* was waitForTimeout(2500) — #513 */
     var st = await page.evaluate(function () {
       var dis = Array.prototype.slice.call(document.querySelectorAll('.bd-btn:disabled'));
       return { total: document.querySelectorAll('.bd-btn').length,
@@ -500,7 +513,7 @@ async function testChartSettings(page) {
   await page.goto('http://127.0.0.1:' + PORT + '/ui/shell.html?engine=pwr',
     { waitUntil: 'networkidle', timeout: 90000 });
   await dismissMission(page);
-  await page.waitForTimeout(1500);
+  await waitBoardLive(page);                         /* was waitForTimeout(1500) — #513 */
 
   // ---- 1. it opens, and the list is actually on screen -------------------------------
   await page.click('#chartOptsBtn');
@@ -871,7 +884,9 @@ async function testMissionCloseResumes(page) {
   };
   await page.goto('http://127.0.0.1:' + PORT + '/ui/shell.html?engine=pwr',
     { waitUntil: 'networkidle', timeout: 90000 });
-  await page.waitForTimeout(1200);
+  /* was waitForTimeout(1200): the predicate is the assertion one line down (#513) */
+  await page.waitForSelector('#missionOverlay', { state: 'visible', timeout: 5000 })
+    .catch(function () { /* the throw below carries the real message */ });
 
   // The window opens on every load, so this is the very first thing a player does.
   if (!(await page.isVisible('#missionOverlay'))) throw new Error('Plant & Mission did not open on load');
@@ -885,7 +900,15 @@ async function testMissionCloseResumes(page) {
   await page.waitForTimeout(400);
   if (!(await page.isVisible('#missionOverlay'))) throw new Error('could not reopen Plant & Mission');
   await page.click('[data-mfree]');
-  await page.waitForTimeout(1200);
+  /* was waitForTimeout(1200): wait on the two states the assertions read — closed AND
+   * running (#513). On the defect it waits the ceiling and reds as before. NOTE the
+   * player-paused twin below keeps its fixed sleep DELIBERATELY: it asserts a negative
+   * (the plant must NOT resume after the rebuild), and a shortened window would weaken it. */
+  await page.waitForFunction(function () {
+    var ov = document.getElementById('missionOverlay');
+    var closed = !ov || ov.style.display === 'none' || ov.hidden || !ov.offsetParent;
+    return closed && !document.getElementById('playBtn').classList.contains('paused');
+  }, { timeout: 3600, polling: 100 }).catch(function () { /* assertions below carry the message */ });
   if (await page.isVisible('#missionOverlay')) throw new Error('Free Play did not close the window');
   if (!(await running())) {
     throw new Error('starting Free Play left the plant PAUSED — switchEngine took the ' +
@@ -927,7 +950,11 @@ async function testRunStartMark(page) {
   await page.goto('http://127.0.0.1:' + PORT + '/ui/shell.html?engine=pwr',
     { waitUntil: 'networkidle', timeout: 90000 });
   await dismissMission(page);
-  await page.waitForTimeout(2500);
+  /* was waitForTimeout(2500): the predicate is the thing the check reads (#513) */
+  await page.waitForFunction(function () {
+    return !!document.querySelector('#chartCanvas .run-start') &&
+           !!document.querySelector('.run-start-tag');
+  }, { timeout: 7500, polling: 100 });
 
   var st = await page.evaluate(function () {
     var line = document.querySelector('#chartCanvas .run-start');
@@ -970,7 +997,13 @@ async function testRunStartMark(page) {
    * 600x, then drop to 1x (whose ladder offers a 60 s rung) so the run is far older than the
    * window. */
   await page.click('#speed [data-speed="600"]');
-  await page.waitForTimeout(6000);
+  /* was waitForTimeout(6000): the point is SIM time, not wall time — the run start only
+   * needs to be far older than the 60 s window the negative control uses (#513). At 600x
+   * this crosses in well under a second of wall clock. */
+  await page.waitForFunction(function () {
+    var m = /^T\+(\d+):(\d+):(\d+)/.exec((document.getElementById('clock') || {}).textContent || '');
+    return !!m && (+m[1] * 3600 + +m[2] * 60 + +m[3]) > 300;
+  }, { timeout: 18000, polling: 100 });
   await page.click('#speed [data-speed="1"]');
   await page.waitForTimeout(600);
   await page.click('#graphWindow [data-win="60"]');
@@ -1113,7 +1146,7 @@ async function testDiagBundle(page) {
   await page.goto('http://127.0.0.1:' + PORT + '/ui/shell.html?engine=pwr',
     { waitUntil: 'networkidle', timeout: 90000 });
   await dismissMission(page);
-  await page.waitForTimeout(1500);
+  await waitBoardLive(page);                         /* was waitForTimeout(1500) — #513 */
   // THE PLANT IS ALREADY RUNNING — closing the boot mission overlay auto-starts it
   // *(OWNER DIRECTIVE, 2026-08-11: "Sim should start running not paused.")*, so an
   // unconditional #playBtn press PAUSES it. This test carried that press from before the
