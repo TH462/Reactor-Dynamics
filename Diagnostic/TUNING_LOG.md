@@ -83,6 +83,17 @@ its sections are one deliberate before/after narrative; scoping fights the desig
 **The next lever is the new wall itself: `run_campaign` part A (~440 s under contention) —
 splitting its pwr missions further exceeds the by-plant ruling and needs the owner.**
 
+**Follow-up, same session** *(OWNER RULING, 2026-08-25: "I approve the pwr campaign mission
+split.")*: `run_campaign_c.js` added. **The first cut was parity alternation (the behavior-split
+idiom) and it measurably failed — 25 s / 229 s** — because campaign suite costs span 0–51 s and
+the handful of heavy suites happened to sit at odd registration indexes; a partition that cannot
+see cost cannot balance it (the behavior battery's probes are individually cheap and many, which
+is why parity worked THERE). Part C is now a MEASURED-COST list of the three heavy suites
+(mode5_to_mode3 51 s, tmi2_p1 "Fog of War" 32, tmi2_p3 "no deviations" 33 → C ≈ 116 s, A ≈ 120 s
+with the structural suites); the full per-suite table lives in run_campaign.js's own comment. A
+new pwr mission lands in part A by default and moves A's suite-count baseline, so the partition
+cannot drift silently.
+
 ---
 
 ## Session log — 2026-08-25-develop-b (#514 — the PWR2 engine at 12.5x, and the load cut)

@@ -39,9 +39,10 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
   verdict loop — the preflight caught a latent hollow catch in cvcs's SI-boron check on its first
   run. The per-replay vtable rebuild (~135 × 0.5 s) stopped; `NODE_COMPILE_CACHE` shares one V8
   code cache across all children.
-- **`run_behavior` split in thirds and `run_campaign` split by plant** (owner-ruled) — the single
-  398.8 s behavior battery was the gate's wall-time floor. Same probes, same strict-xfail
-  semantics, per-part gap reports.
+- **`run_behavior` split in thirds and `run_campaign` split in three** (owner-ruled twice — by
+  plant, then the pwr missions alternated into a third part when the pwr half became the new
+  wall) — the single 398.8 s behavior battery was the gate's original wall-time floor. Same
+  probes and suites, same strict-xfail semantics, per-part gap reports.
 - **`run_pwr2_ab.js` renamed `measure_pwr2_ab.js`** (owner-ruled) — a measurement that exits 0
   always, out of gate discovery, still runnable on demand.
 - `verify_e2e_ui` converts its largest fixed sleeps to predicate waits; every `secs:` scheduling

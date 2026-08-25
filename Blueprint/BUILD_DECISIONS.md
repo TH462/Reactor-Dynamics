@@ -68,6 +68,13 @@ re-recorded from measured solo costs. Full detail: `Diagnostic/TUNING_LOG.md`
 2026-08-25-develop-c. **The remaining wall is `run_campaign` part A under contention (~440 s);
 splitting its pwr missions exceeds the by-plant ruling and needs the owner.**
 
+**Follow-up ruling, same day** *(OWNER RULING, 2026-08-25: "I approve the pwr campaign mission
+split.")*: `run_campaign_c.js` — part C is a MEASURED-COST list of the three heavy pwr suites
+(~116 s), not a count split: parity alternation was tried first and landed 25 s / 229 s, because
+campaign suite costs span 0–51 s. The per-suite table and the drift guard (a new mission lands
+in part A and moves its suite-count baseline) live in run_campaign.js's comment. Same
+scheduling-only class as the first two splits.
+
 ---
 
 ## 2026-08-25-develop-b — #514: PWR2 step cost 1,090 → ~85 µs, and shell.html drops RBMK/BWR

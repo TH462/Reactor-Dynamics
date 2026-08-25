@@ -408,8 +408,9 @@ re-querying. Run the query.
   caught a latent hollow catch in cvcs), the vtable cache-keep across replays, NODE_COMPILE_CACHE
   for all 91 children, `run_behavior` split in thirds + `run_campaign` by plant (owner-ruled),
   `run_pwr2_ab` → `measure_pwr2_ab` (out of the gate, owner-ruled), `verify_e2e_ui` predicate
-  waits, every `secs:` hint re-recorded. The wall is now `run_campaign`'s pwr half (~440 s under
-  contention) — splitting it further is the next lever and needs a ruling.
+  waits, every `secs:` hint re-recorded. The pwr campaign missions then split in two as well
+  *(OWNER RULING, 2026-08-25: "I approve the pwr campaign mission split.")* — the 257 s part A
+  had become the gate's wall.
 - **RBMK and BWR** — on hold, and the source of most remaining backlog. Do not touch.
 
 **The manual set's revision number does not advance until a RELEASE** *(OWNER DIRECTIVE,
@@ -819,8 +820,9 @@ baselines in _Project status_). Runners print `PASS`/`FAIL` per test and a tally
 - **Any engine or scenario change** → the affected `run_<plant>.js` and `run_scenarios.js`.
 - **Control-layer change** → `run_autoctl.js` **and** `run_m4.js`; check `run_ops.js`
   for regressions (don't turn a `PASS` into a `FAIL`).
-- **Scenario / campaign / instructor change** → `run_campaign.js` + `run_campaign_b.js`
-  (split by plant #513 — A: structural + pwr, B: rbmk + bwr; together they must stay
+- **Scenario / campaign / instructor change** → `run_campaign.js` + `run_campaign_b.js` +
+  `run_campaign_c.js` (split #513 — A: structural + most pwr missions, B: rbmk + bwr, C: the
+  three HEAVY pwr missions by measured cost, list in run_campaign.js; together they must stay
   **51/51**), `run_m6.js`, `run_procedures.js`.
 - **UI change** → `run` the app and drive the affected flow (see `/run` and the
   headless Edge workflow); `verify_e2e_ui.js` must stay **PASS**.
