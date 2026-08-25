@@ -50,9 +50,12 @@
    * pump's rated-density reference and these normalizations must be the same numbers, and
    * a second typed copy is the PROTECTION_DT trap class */
   var TREF = S.DESIGN.tavg_c, P0 = S.DESIGN.P_mpa, RATED_KW = 300000, MWE_RATED = 100;
+  /* #514: per-step temperature through the table (pwr2_core's idiom) */
+  var VT = RD.vtable;
+  var TFH = VT ? VT.T_from_h : W.T_from_h;
   function tLeg(sys, id) {
     for (var i = 0; i < sys.nodes.length; i++) {
-      if (sys.nodes[i].id === id) return W.T_from_h(sys.nodes[i].h, sys.P);
+      if (sys.nodes[i].id === id) return TFH(sys.nodes[i].h, sys.P);
     }
     return NaN;
   }
@@ -948,7 +951,8 @@
        * source's units itself. */
       delta_t_frac: rd.thot !== undefined ? (rd.thot - rd.tcold) / DT0_C
                     : (tLeg(sys, 'hot_leg') - tLeg(sys, 'cold_leg')) / DT0_C,
-      tavg_c: rd.tavg !== undefined ? rd.tavg : G.primaryTavg(sys)
+      tavg_c: rd.tavg !== undefined ? rd.tavg : tavg   /* stepInner's own — #514, was a
+                                                        * third primaryTavg leg-inverse pair */
     });
     eng.rpsReport = ptr;      /* the full function report, for consumers (the page, the gate) */
     eng._rodStopSig = ptr.rod_stop; eng._runbackSig = ptr.runback;
@@ -999,6 +1003,7 @@
       feedwater: fwr,
       boron_ppm: cvr.boron_ppm, rated_steam_kgs: eng.rated_steam,
       mdot_rated: 1630, natcirc_frac: 0.15, M_nominal: eng.M_nominal,
+      tavg: tavg,     /* #514: stepInner's own — buildTrueState no longer re-inverts the legs */
       /* stage B1 ctx: contract-completion inputs */
       load_target_mwe: eng.tb.load_target_mwe,
       turbine_tripped: eng.tb.tripped,

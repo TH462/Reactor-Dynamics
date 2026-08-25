@@ -64,6 +64,9 @@
 
   var RD = root.RD && root.RD.pwr2;
   var W = RD && RD.water;
+  /* #514: per-step temperature through the table (pwr2_core's idiom). */
+  var VT = RD && RD.vtable;
+  var TFH = VT ? VT.T_from_h : (W && W.T_from_h);
 
   var PSI_PER_MPA = 145.038;
   var F = function (c) { return c * 9 / 5 + 32; };
@@ -293,7 +296,7 @@
      * hot-leg temperature rather than an average. */
     var Thot = null;
     for (var k = 0; k < sys.nodes.length; k++) {
-      if (sys.nodes[k].id === 'hot_leg') Thot = W.T_from_h(sys.nodes[k].h, sys.P);
+      if (sys.nodes[k].id === 'hot_leg') Thot = TFH(sys.nodes[k].h, sys.P);
     }
     if (Thot === null) Thot = 0;
 

@@ -313,8 +313,9 @@ var MUTATIONS = [
   /* The contract itself: a helper that hands back one node instead of the mean is exactly the
    * defect #482 filed, so it must not survive. */
   ['primaryTavg returns the cold leg instead of the mean (the #482 defect, re-armed)',
-   'return 0.5 * (W2.T_from_h(hot.h, sys.P) + W2.T_from_h(cold.h, sys.P));',
-   'return W2.T_from_h(cold.h, sys.P);'],
+   /* anchor re-pointed #514: primaryTavg reads TFH (the vtable idiom) now */
+   'return 0.5 * (TFH(hot.h, sys.P) + TFH(cold.h, sys.P));',
+   'return TFH(cold.h, sys.P);'],
   /* The LUMP-vs-LEG confusion, re-armed. It costs only 0.14 degF today, which is exactly why it
    * needs a mutation: nothing else in this gate would notice, and the two come apart the moment
    * the core and the hot leg stop sharing an enthalpy. */

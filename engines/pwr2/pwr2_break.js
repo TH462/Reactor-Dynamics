@@ -51,6 +51,11 @@
 
   var RD = root.RD && root.RD.pwr2;
   var W  = RD && RD.water;
+  /* #514: per-step properties through the table (pwr2_core's idiom). */
+  var VT = RD && RD.vtable;
+  var RHO = VT ? VT.rho_from_h : (W && W.rho_from_h);
+  var TFH = VT ? VT.T_from_h : (W && W.T_from_h);
+  var PSAT = VT ? VT.P_sat_T : (W && W.P_sat);
 
   var BREAK = {
     /* [sourced] 10 CFR 50 App. K I.C.1.b — the coefficient range the analysis must span. */
@@ -115,7 +120,7 @@
     if (open) {
       /* HOMOGENEOUS density of whatever the node holds — subcooled liquid, saturated mixture or
        * steam all fall out of Layer 0 without a branch here. */
-      rho = W.rho_from_h(node.h, sys.P);
+      rho = RHO(node.h, sys.P);
       if (!(rho > 0)) rho = 0;
       /* ⚠ THE DRIVING HEAD IS LIMITED BY FLASHING, and without this the model is roughly TWICE
        * the real critical flux. Measured before the limit: 148,100 kg/m2s at hot full power,
@@ -154,6 +159,9 @@
     }
     br.discharged_kg += mdot * dt;
 
+    /* computed ONCE for the two reporter fields below (#514 — it was evaluated twice) */
+    var P_flash = PSAT(TFH(node.h, sys.P));
+
     return {
       mdot_kgs: mdot,
       /* THE SHAPE LAYER 3 WANTS. Negative mdot REMOVES mass, and the enthalpy carried out is the
@@ -163,8 +171,8 @@
       dP_mpa: dP,
       dP_effective_mpa: open ? dP : 0,
       /* what a flashing-limited model WOULD have used — reported so the abandoned approach stays visible */
-      dP_flash_limited_mpa: Math.max(0, sys.P - W.P_sat(W.T_from_h(node.h, sys.P))),
-      P_flash_mpa: W.P_sat(W.T_from_h(node.h, sys.P)),
+      dP_flash_limited_mpa: Math.max(0, sys.P - P_flash),
+      P_flash_mpa: P_flash,
       flux_kg_m2s: G,
       rho_mix: rho,
       quality: W.quality(node.h, sys.P),

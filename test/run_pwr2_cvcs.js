@@ -482,7 +482,8 @@ var MUTATIONS = [
   ['the boric acid tank leaves the sourced RWST band',
    'boric_acid_ppm: 2500,', 'boric_acid_ppm: 3500,'],
   ['charging arrives at loop temperature instead of cold',
-   'var h_charge = W.h_l(Math.min(60, W.T_from_h(node ? node.h : 1250, sys.P)), sys.P);',
+   /* anchor re-pointed #514: the regen-HX read goes through TFH (the vtable idiom) now */
+   'var h_charge = W.h_l(Math.min(60, TFH(node ? node.h : 1250, sys.P)), sys.P);',
    'var h_charge = node ? node.h : 1250;'],
   ['letdown leaves as a POSITIVE source (inventory runs away)',
    "{ node: 'cold_leg', mdot: -letdown,  h: h_node }",

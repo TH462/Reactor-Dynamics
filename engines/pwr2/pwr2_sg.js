@@ -38,6 +38,9 @@
 
   var RD = root.RD && root.RD.pwr2;
   var W = RD && RD.water, SRC = RD && RD.sources;
+  /* #514: leg temperatures through the table (pwr2_core's idiom). */
+  var VT = RD && RD.vtable;
+  var TFH = VT ? VT.T_from_h : (W && W.T_from_h);
 
   var SG = {
     mass_nominal: 12785,        // kg   [sourced] Ginna 85,359 lbm/SG, power-scaled
@@ -90,10 +93,25 @@
   /* Secondary pressure follows its own saturation state. A lumped boiling vessel sits ON the
    * saturation line by construction — the enthalpy above h_f is quality, not superheat. */
   function updatePressure(sg) {
-    var lo = 0.1, hi = 17.0, mid = sg.P;
-    for (var i = 0; i < 60; i++) {
+    /* WARM-STARTED (#514): sg.P moves ~nothing in 0.02 s, so start the bracket a small span
+     * around the previous solution and expand only if the root has left it — the same
+     * warm-start-tight reasoning as pwr2_core's solveP. The cold full-range [0.1, 17]
+     * bisection stays as the fallback and is byte-identical to the old behaviour when the
+     * warm bracket fails (first call, load of an old save, a violent transient). */
+    var lo = 0.1, hi = 17.0, i, mid;
+    if (sg.P > lo && sg.P < hi) {
+      var span = 0.01;
+      var wlo = Math.max(lo, sg.P - span), whi = Math.min(hi, sg.P + span);
+      for (i = 0; i < 8 && !(W.h_f(wlo) < sg.h && W.h_f(whi) >= sg.h); i++) {
+        span *= 4;
+        wlo = Math.max(lo, sg.P - span); whi = Math.min(hi, sg.P + span);
+      }
+      if (W.h_f(wlo) < sg.h && W.h_f(whi) >= sg.h) { lo = wlo; hi = whi; }
+    }
+    for (i = 0; i < 60; i++) {
       mid = 0.5 * (lo + hi);
       if (W.h_f(mid) < sg.h) lo = mid; else hi = mid;
+      if (hi - lo < 1e-9) { mid = 0.5 * (lo + hi); break; }
     }
     sg.P = mid;
     return sg.P;
@@ -126,13 +144,13 @@
      * material -- but it was the wrong pair, and `run_pwr2_sg`'s own tavg() helper had used the
      * legs all along. TWO HELPERS IN ONE LAYER DISAGREEING ABOUT WHAT Tavg MEANS is how a 0.14
      * degF nothing becomes a real divergence the first time the lumps and the legs come apart. */
-    var W2 = RD && RD.water, hot = null, cold = null;
+    var hot = null, cold = null;
     for (var i = 0; i < sys.nodes.length; i++) {
       if (sys.nodes[i].id === 'hot_leg') hot = sys.nodes[i];
       else if (sys.nodes[i].id === 'cold_leg') cold = sys.nodes[i];
     }
     if (!hot || !cold) return null;
-    return 0.5 * (W2.T_from_h(hot.h, sys.P) + W2.T_from_h(cold.h, sys.P));
+    return 0.5 * (TFH(hot.h, sys.P) + TFH(cold.h, sys.P));
   }
 
   /* stepSG(sg, primaryT, dt, drivers) -> heat REMOVED from the primary, kW

@@ -75,6 +75,7 @@
   /* Resolved ONCE at load, never per call — `pwr2_sources.js` records what two missed direct calls
    * cost: Layer 4 ran seven times the cost of Layer 3. */
   var RHO_W = VT ? VT.rho_from_h : (W && W.rho_from_h);
+  var TFH = VT ? VT.T_from_h : (W && W.T_from_h);   /* #514: same idiom for temperature */
 
   /* ================================================================ SOURCED CONSTANTS */
 
@@ -588,7 +589,7 @@
         if (sys.nodes[i].id === 'hot_leg') hot = sys.nodes[i];
         else if (sys.nodes[i].id === 'cold_leg') cold = sys.nodes[i];
       }
-      T_mod = 0.5 * (W.T_from_h(hot.h, P_mpa) + W.T_from_h(cold.h, P_mpa));
+      T_mod = 0.5 * (TFH(hot.h, P_mpa) + TFH(cold.h, P_mpa));
     }
     var B = drivers.boron_ppm === undefined ? 0 : drivers.boron_ppm;
 

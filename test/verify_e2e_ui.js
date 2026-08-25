@@ -10,7 +10,12 @@ var ROOT = path.join(__dirname, '..');
 var SCRATCH = process.env.GROK_GOAL_SCRATCH || path.join(require('os').tmpdir(), 'grok-goal-e2e-ui');
 var PORT = 9750 + Math.floor(Math.random() * 50);
 
-var ENGINES = ['pwr', 'rbmk_pre', 'rbmk_post', 'bwr'];
+/* PWR ONLY since #514 (owner-ruled): the shell no longer loads the RBMK/BWR scripts, and
+ * app.js falls back to the PWR when an override names an absent engine — so an rbmk/bwr row
+ * here would silently screenshot the PWR and certify nothing. The rows and their control
+ * maps were deleted WITH the script tags; restoring the plants to the shell means restoring
+ * both (git log this file). */
+var ENGINES = ['pwr'];
 var VIEWS = ['diagram', 'primary', 'secondary', 'all'];
 
 /* THE PLANT & MISSION WINDOW OPENS ON EVERY LOAD since 2026-08-11 *(OWNER DIRECTIVE: "It
@@ -37,10 +42,7 @@ async function dismissMission(page) {
  * before that path to mount the learning board instead (ui/app.js:3413, :3459-3460).
  * The PWR board is covered by REQUIRED_BOARD_LABELS below. */
 var REQUIRED_ACTS = {
-  'rbmk_pre-primary': ['rbmk-eccs-on'],
-  'rbmk_pre-secondary': ['rbmk-turbine-set', 'dump-open'],
-  'rbmk_post-primary': ['rbmk-eccs-on'],
-  'bwr-secondary': ['dump-open', 'ic-on', 'stop-lpcs', 'slc-stop'],
+  /* rbmk/bwr rows removed with their shell script tags (#514) — see ENGINES above */
 };
 
 /* Board-rendered plants (PWR) expose controls through the label vocabulary rather
@@ -63,9 +65,7 @@ var REQUIRED_BOARD_LABELS = {
 };
 
 var REQUIRED_LABELS = {
-  'rbmk_pre-secondary': ['Electrical Output', 'Turbine RPM', 'Cond. Vacuum'],
-  'rbmk_post-secondary': ['Electrical Output', 'Turbine RPM', 'Cond. Vacuum'],
-  'bwr-secondary': ['Electrical Output', 'Turbine RPM', 'Cond. Vacuum'],
+  /* rbmk/bwr rows removed with their shell script tags (#514) — see ENGINES above */
 };
 
 function mime(p) {

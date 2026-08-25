@@ -76,6 +76,12 @@
 
   var RD = root.RD && root.RD.pwr2;
   var W  = RD && RD.water;
+  /* #514: the extraMass seat sits INSIDE Layer 2's pressure solve — ~11 evaluations a step —
+   * so it goes through the table (pwr2_core's idiom). On the direct path it was cheap only
+   * while h̄ sat two-phase (the polynomial branch); the first single-phase transient would
+   * have made it ~300 us/step. */
+  var VT = RD && RD.vtable;
+  var RHO = VT ? VT.rho_from_h : (W && W.rho_from_h);
   if (!W) throw new Error('pwr2_pressurizer: load pwr2_water.js first');
 
   var PSI = 145.037738;                  /* psi per MPa */
@@ -265,7 +271,7 @@
   /* extraMassFn(pz) -> f(P) for Layer 2's seat. h̄ frozen within the solve; only P varies —
    * the loop nodes' own discipline, through the same audit-validated function. */
   function extraMassFn(pz) {
-    return function (P) { return pz.V * W.rho_from_h(pz.h_bar, P); };
+    return function (P) { return pz.V * RHO(pz.h_bar, P); };
   }
 
   /* stepPressurizer(pz, sys, dt, drivers) — call AFTER stepPlant, the same slot as the other
@@ -301,7 +307,9 @@
      * change IS the surge (insurge positive, into the vessel). Energy follows the donor:
      * an insurge arrives at the HOT LEG's h; an outsurge leaves from the BOTTOM — liquid, at
      * h_f while a bubble exists, at h̄ once the vessel is single-phase. ---- */
-    var m_new = V * W.rho_from_h(pz.h_bar, P);
+    /* THE SAME function the solve's extraMass seat used — table and reconciliation must read
+     * one curve or the surge picks up a phantom interpolation-error flow. */
+    var m_new = V * RHO(pz.h_bar, P);
     var surge_kgs = (m_new - pz.m_pzr) / dt;
     var hf = W.h_f(P), hg = W.h_g(P);
     var twoPhase = pz.h_bar > hf && pz.h_bar < hg;

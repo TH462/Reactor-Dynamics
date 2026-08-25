@@ -44,6 +44,11 @@
 
   var RD = root.RD && root.RD.pwr2;
   var CORE = RD && RD.core, GEO = RD && RD.geometry;
+  /* #514: the per-step Courant report goes through the table — pwr2_core's idiom, resolved
+   * once at load. On the direct correlations this DIAGNOSTIC was 20 % of the whole engine
+   * step (~220 us of 1090). */
+  var VT = RD && RD.vtable;
+  var RHO = VT ? VT.rho_from_h : (RD && RD.water && RD.water.rho_from_h);
 
   /* The transport ring, in flow order. Names are Layer 1's node ids. */
   var RING = ['downcomer', 'lower_plenum', 'core', 'upper_plenum', 'hot_leg',
@@ -116,10 +121,10 @@
    * what it is buying -- but it can no longer do so unknowingly. Same principle as the envelope
    * guard: the model says when it has left the regime it is valid in. */
   function courantLimit(sys) {
-    var mMin = Infinity, W2 = RD.water;
+    var mMin = Infinity;
     for (var i = 0; i < sys.nodes.length; i++) {
       if (RING.indexOf(sys.nodes[i].id) === -1) continue;
-      var m = sys.nodes[i].V * W2.rho_from_h(sys.nodes[i].h, sys.P);
+      var m = sys.nodes[i].V * RHO(sys.nodes[i].h, sys.P);
       if (m < mMin) mMin = m;
     }
     var flow = Math.abs(sys.mdot_loop);

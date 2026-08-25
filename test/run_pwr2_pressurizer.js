@@ -97,13 +97,19 @@ function runSuite(RD, rec, quiet) {
   /* ---- 2. CONSTRUCTION ROUND-TRIPS --------------------------------------------------------- */
   head('CONSTRUCTION  [the state, the projection and the level must be ONE consistent object]');
   var pz0 = PZ.createPressurizer({});
-  ck('the projection reproduces the constructed mass EXACTLY',
-     PZ.extraMassFn(pz0)(15.41), pz0.m_pzr, 1e-9, 'kg');
+  /* #514: the projection reads the vtable while construction uses the direct two-phase
+   * split, so "EXACTLY" became "to the table's declared dome accuracy" — 0.005 % of this
+   * 1693 kg vessel is 0.085 kg; measured 0.014. The claim (state, projection and level are
+   * ONE object, no hidden transformation) is unchanged; a real hidden transformation is
+   * kilograms-to-tonnes off, not hundredths. The engine itself is internally consistent:
+   * the solve's seat and stepPressurizer's reconciliation read the SAME table function. */
+  ck('the projection reproduces the constructed mass (table dome accuracy)',
+     PZ.extraMassFn(pz0)(15.41), pz0.m_pzr, 0.1, 'kg');
   ck('...and the derived level reproduces the requested program level',
      100 * pz0.V_liq / pz0.V, 61.5, 1e-9, '%');
   var pz40 = PZ.createPressurizer({ level_frac: 0.40 });
   ck('a 40 % vessel round-trips too -- no hidden dependence on the program point',
-     PZ.extraMassFn(pz40)(15.41), pz40.m_pzr, 1e-9, 'kg');
+     PZ.extraMassFn(pz40)(15.41), pz40.m_pzr, 0.1, 'kg');   /* tolerance: see the note above */
   ckT('h_bar sits inside the dome -- the constructed vessel is genuinely two-phase',
       pz0.h_bar > W.h_f(15.41) && pz0.h_bar < W.h_g(15.41),
       'h_bar ' + pz0.h_bar.toFixed(1) + ' kJ/kg between h_f ' + W.h_f(15.41).toFixed(1) +
@@ -496,7 +502,8 @@ var MUTATIONS = [
    '    var level_ctl = level_pct;'],
 
   ['the projection loses its P-dependence (a rigid vessel wearing a bubble\'s name)',
-   'return function (P) { return pz.V * W.rho_from_h(pz.h_bar, P); };',
+   /* anchor re-pointed #514: the seat goes through RHO (the vtable idiom) now */
+   'return function (P) { return pz.V * RHO(pz.h_bar, P); };',
    'return function (P) { return pz.m_pzr; };'],
   ['the split uses the spaces\' own densities again (formulation 1, the level collapse)',
    'var rf = W.rho_l_sat(W.T_sat(P)), rg = W.rho_v_sat(P);\n    var Vl = (rf - rg) > 1e-9 ? (m - rg * V) / (rf - rg) : V;',

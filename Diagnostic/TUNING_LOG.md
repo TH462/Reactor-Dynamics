@@ -29,6 +29,89 @@ and the user-visible summary in `CHANGELOG.md`. This file points at those and tr
 
 ---
 
+## Session log — 2026-08-25-develop-b (#514 — the PWR2 engine at 12.5x, and the load cut)
+
+**Owner issue: "Make PWR2 engine more efficient… remove the extra stuff that loads like the
+other engines."** Measured first: **1,090 µs/step against the old engine's 21.5 (51×)** and
+68× over the design spine's own 16 µs budget — `PWR2_DESIGN.md` §28.1's "118,600 steps/s,
+stop condition CLEARED" was **Layer 4 only** and the full engine was never re-measured. At
+the service's fixed 0.02 s step, fast-forward was compute-bound above **~18×** of the 3600×
+offered (60× = 335 ms per 100 ms broadcast). Landed at **~85 µs/step (12.5×)**, usable
+fast-forward to ~230×; gates at baseline.
+
+**The deficit was never the solver** — `solveP` measured 53 µs, 5 %. It was Layer 0 plumbing:
+the vtable built to clear §26 was wired into exactly ONE caller (`pwr2_core`), and 33 of 47
+hot property calls per step still hit the direct correlations. The trap in one line: **an
+optimisation resolved once-at-load has to be resolved in EVERY module, and each new Layer 5
+module quietly rebuilt the deficit the table had cleared.** The fixes, each with pointers:
+
+- **Wired the table into the four bypassing modules** (`pwr2_cvcs` — its 11-node boron-ledger
+  mass sum on direct `rho_from_h` was 28 % of the step; `pwr2_loop:courantLimit` — a pure
+  diagnostic for two test files at 20 %; `pwr2_pressurizer:extraMassFn` — INSIDE the solve,
+  cheap only while h̄ sat two-phase; `pwr2_break`). NOT substituted: `sys.M_total` for the
+  CVCS sum — the ledger total **includes the pressurizer via extraMass** and the boron ledger
+  is the nodes'; the table keeps the semantics and the speed.
+- **`vtable.T_from_h` added** (subcooled = the same two correction passes `rho_sub` uses over
+  the existing `T_OF_H` array; dome = `T_sat(P)`; superheat delegates) — 99 ns against the
+  direct 40-iteration Newton's 24,300. Worst error 0.009 °C in the operating band, 0.35 °C at
+  the 24 °C/17 MPa corner. **`vtable.P_sat_T`** — the subcooled grid is uniform in T, so the
+  80-iteration bisection became a direct index (12 ns).
+- **Warm-started the two cold bisections** (`pwr2_containment`'s flash solve — 62 residuals ×
+  a nested `P_sat` bisection, 16 % of the step; `pwr2_sg.updatePressure`) from their own
+  previous solutions, full-range fallback kept.
+- **Deduped `primaryTavg`** (computed 3× per step — `stepInner`, the protection inputs, and
+  `buildTrueState`; now once, passed via `ctx.tavg` with the helper fallback for hand-wired
+  harnesses) and the true_state node scans (one id→node map per call).
+- **The vtable builds on FIRST USE, not at load** — the build measured **500 ms** (its header
+  claimed "~0.2 s") and was paid by every shell.html open, plain-PWR players included.
+  Node-side require of the pwr2 set: 517 → 18 ms. The `built` guard is a predicted branch,
+  not the per-call dispatch `pwr2_core`'s note warns against.
+- **Load cut (owner-ruled this session, option "drop the RBMK/BWR tags"):** shell.html no
+  longer loads the 18 RBMK/BWR engine/control/scenario files (~308 KB that loaded for plants
+  no player can select); `app.js` falls back to PWR when `?engine=` names an absent
+  constructor; `verify_e2e_ui` pruned to PWR-only IN THE SAME CHANGE — its rbmk/bwr rows
+  would otherwise silently screenshot the PWR fallback and certify nothing.
+- **`run_pwr2_perf` is the new gate** — end-to-end step cost as a RATIO to the old engine
+  (≤ 8×; measures 4.1×) for `run_pwr2_vtable`'s contention reason, the lazy build pinned by a
+  deterministic probe (GRID.P[0]), and an injection self-test that a 51×-class slowdown blows
+  the bound. The only prior timing extrapolated property cost and could not see the step.
+- **Adjudicated red:** `run_pwr2_vtable`'s ratio check timed its first-ever table call, so the
+  lazy build landed the 0.5 s inside the timed loop (read 18× on a 267× table). The fixture
+  moved (build triggered before the window); the claim — steady-state call cost — unchanged.
+- Declined as no-longer-material (measured post-fix): the protection function-table rebuild
+  (4.2 µs whole module) and `pwr2_core`'s `residual: F(sol.P)` diagnostic (~1 µs through the
+  table) — churning a gate-visible closure assertion for ~1 % was not worth it.
+
+Remaining step budget, honest split: `sources.stepPlant` 24 µs (the solve — legitimate),
+reactor+kinetics ~15 each, `buildTrueState` 9. The physics is now the cost, which is the
+correct end state.
+
+**The aggregate drifted 11 runners; adjudicated one at a time (HR10), each one line:**
+five were the §28.2 anchor class working as designed (`sg`/`rhr`/`break`/`cvcs`/`pressurizer`
+mutation anchors patch source lines the vtable idiom rewrote — re-pointed, mutants intact);
+`run_pwr2_pressurizer`'s two construction round-trips asserted table-vs-direct identity at
+1e-9 kg — re-toleranced to the table's declared dome accuracy (0.1 kg; measured 0.014) with
+the engine internally consistent (solve seat and reconciliation read the SAME function);
+`run_pwr2_reactor`'s zero-SUR-at-critical fixture trimmed against the analytic thermometer
+while the engine now reads the table's (0.3 pcm → 0.09 dpm on step one) — the fixture now
+trims through the engine's own path, exact on BOTH paths; its ringing scram fixture's settle
+sample moved 60 → 120 s (third re-measure, mechanism unchanged — a third excursion through
+2.7 % power, settled 0.00 dpm by 100 s); `verify_manual_follow` and `verify_e2e_ui` walked
+RBMK/BWR shell pages the load cut removed — both PWR-only now, in the same change as the
+tags; `run_doc_budget` caught this session's own status-line append at 462 words on one
+physical line (split); `run_hardrules` +1 (the ruling citation is an HR11 site) and
+`run_portable` −24 (it scans the shell's own tag list — the self-maintaining fall).
+
+**Trap, paid for in full:** `git worktree remove --force` on a probe tree **followed the
+`node_modules` junction into the PRIMARY tree** and emptied it (the probe was made to
+re-measure `verify_manual_follow` on the pre-change commit — which was the right instinct;
+the cleanup was not). Recovered: `npm install playwright --no-save` + `npx playwright
+install chromium` (playwright is the repo's ONLY external module — measured by require-sweep,
+`grep -rhoE "require\('[a-z@]..."` over every source dir). **Remove the junction first
+(`rmdir`, which never recurses), then the worktree.**
+
+---
+
 ## Session log — 2026-08-25-develop-a (#512 — per-system latches; the TMI termination is reachable)
 
 **Owner design, built same-day:** each protection latch shows on its own panel (a new

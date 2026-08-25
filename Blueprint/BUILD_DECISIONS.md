@@ -45,6 +45,29 @@ where the two differ or where judgment was exercised.
 
 ---
 
+## 2026-08-25-develop-b — #514: PWR2 step cost 1,090 → ~85 µs, and shell.html drops RBMK/BWR
+
+**Claim.** The shipped PWR2 engine stepped at 1,090 µs — 51× the old engine, 68× the design
+spine's own budget — because the vtable optimisation (D1 §28.1) was wired into one caller and
+every later Layer 5 module went back to the direct correlations; §28.1's "stop condition
+CLEARED" was Layer 4 alone. Fixed by wiring the resolved-once table idiom into every module,
+adding `T_from_h` (the same two correction passes `rho_sub` uses; 0.009 °C worst in the
+operating band) and `P_sat_T` (direct index on the uniform-T grid) to the vtable,
+warm-starting the containment flash and SG pressure bisections, and computing Tavg once per
+step. **Deliberately NOT done:** substituting `sys.M_total` for the CVCS boron-ledger mass sum
+(the ledger total includes the pressurizer via `extraMass`; the sum's semantics are the
+nodes') and the two ~1 % allocation trims (measured immaterial post-fix). The vtable now
+builds on FIRST USE (was 500 ms at every page load, plain-PWR sessions included). Gate:
+`test/run_pwr2_perf.js` — ratio-asserted (≤ 8× the old engine, measures 4.1×), lazy-build
+pinned, injection self-tested. **Load cut** *(OWNER RULING, 2026-08-25, selected from options
+I wrote: "Drop RBMK/BWR tags")*: shell.html no longer loads the 18 RBMK/BWR files (~308 KB);
+`?engine=rbmk|bwr` falls back to PWR; `verify_e2e_ui` pruned to PWR-only in the same change
+because its rbmk/bwr rows would silently screenshot the PWR fallback. Full numbers:
+`Diagnostic/TUNING_LOG.md` 2026-08-25-develop-b; the stale-figure correction is
+`PWR2_DESIGN.md` §28.1a.
+
+---
+
 ## 2026-08-24-develop-e — #511: the accumulator's sizing basis (the ruled 0.435 identity over WTSM per-loop scaling)
 
 **Claim.** The accumulator's water volume is **0.435 × this plant's own RCS volume** (the

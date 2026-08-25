@@ -368,8 +368,9 @@ var MUTATIONS = [
    'return derivedUA(RHR.design_decay_fraction_20h * 300000 + RHR.design_rcp_heat_kW);',
    'return derivedUA(RHR.design_decay_fraction_20h * 300000);'],
   ['suction taken from the cold leg instead of the hot leg',
-   "if (sys.nodes[k].id === 'hot_leg') Thot = W.T_from_h(sys.nodes[k].h, sys.P);",
-   "if (sys.nodes[k].id === 'cold_leg') Thot = W.T_from_h(sys.nodes[k].h, sys.P);"],
+   /* anchor re-pointed #514: the hot-leg read goes through TFH (the vtable idiom) now */
+   "if (sys.nodes[k].id === 'hot_leg') Thot = TFH(sys.nodes[k].h, sys.P);",
+   "if (sys.nodes[k].id === 'cold_leg') Thot = TFH(sys.nodes[k].h, sys.P);"],
   ['the sink becomes a source below the cooling-water temperature',
    'if (duty < 0) duty = 0;   /* a heat SINK: it never warms the plant */', ''],
   ['availability no longer floored (negative avail heats the plant)',

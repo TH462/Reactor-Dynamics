@@ -45,6 +45,12 @@
 
   var RD = root.RD && root.RD.pwr2;
   var W  = RD && RD.water;
+  /* #514: node temperatures through the table (pwr2_core's idiom). The five temperature
+   * fields were each pwr2_water's 40-iteration Newton — ~14 % of the whole engine step,
+   * paid once per physics step (18,000 of these objects are built per broadcast at 3600x,
+   * because the instruments need a fresh truth every step). */
+  var VT = RD && RD.vtable;
+  var TFH = VT ? VT.T_from_h : (W && W.T_from_h);
 
   /* ---- WHAT IS NOT BUILT, AND WHO OWNS IT ---------------------------------------------------
    * Every entry is a documented §6.3 field this engine cannot honestly supply. The reason is not
@@ -145,21 +151,19 @@
   /* ---- THE TRANSLATION ---------------------------------------------------------------------
    * buildTrueState(ctx) — ctx carries the live plant and the most recent return of each Layer 5
    * system. Nothing here recomputes physics; if a value is not in ctx it is not in the output. */
-  function nodeT(sys, id) {
-    for (var i = 0; i < sys.nodes.length; i++) {
-      if (sys.nodes[i].id === id) return W.T_from_h(sys.nodes[i].h, sys.P);
-    }
-    return undefined;
+  /* Both take the ONE id->node map buildTrueState builds per call — the old per-field linear
+   * scans re-walked sys.nodes seven times a step (#514). */
+  function nodeT(nd, P, id) {
+    var n = nd[id];
+    return n ? TFH(n.h, P) : undefined;
   }
   /* nodeAlpha — the HOMOGENEOUS VOID FRACTION, not quality. The *_void_fraction fields shipped
    * publishing W.quality under a "same number by construction" claim; alpha and x differ 5-16x
    * over this plant's pressure range, so a consumer read 1.5 % on a core 15-20 % void by volume
    * (#490, audit #488 E16.1). Layer 0 owns the conversion. */
-  function nodeAlpha(sys, id) {
-    for (var i = 0; i < sys.nodes.length; i++) {
-      if (sys.nodes[i].id === id) return W.voidFraction(sys.nodes[i].h, sys.P);
-    }
-    return undefined;
+  function nodeAlpha(nd, P, id) {
+    var n = nd[id];
+    return n ? W.voidFraction(n.h, P) : undefined;
   }
 
   function clip(x, lo, hi) { return x < lo ? lo : (x > hi ? hi : x); }
@@ -179,25 +183,33 @@
     var ts = {};
     function put(k, v) { if (v !== undefined && v !== null) ts[k] = v; }
 
+    /* the ONE node scan (#514) — see nodeT above */
+    var nd = {};
+    for (var ni = 0; ni < sys.nodes.length; ni++) nd[sys.nodes[ni].id] = sys.nodes[ni];
+
     /* --- primary thermal-hydraulics, from Layers 2-4 --- */
     put('pressure_mpa',  sys.P);
     put('p_hotleg',      sys.P);          /* ONE PRESSURE — see the header */
     put('p_coldleg',     sys.P);
     put('p_pumpsuction', sys.P);
-    put('thot_c',        nodeT(sys, 'hot_leg'));
-    put('tcold_c',       nodeT(sys, 'cold_leg'));
+    var tHot = nodeT(nd, sys.P, 'hot_leg'), tXo = nodeT(nd, sys.P, 'crossover');
+    put('thot_c',        tHot);
+    put('tcold_c',       nodeT(nd, sys.P, 'cold_leg'));
     /* ⚠ the core node's BULK temperature under an EXIT name — the lumped model has no axial
      * profile, so a real exit reading would sit ~half the core dT higher (~15-20 degF at
      * rated). Declared here because the header's one-pressure caveat did not cover it
      * (audit #488 E16.3). */
-    put('t_core_exit_c', nodeT(sys, 'core'));
-    put('tavg_c',        RD.sg ? RD.sg.primaryTavg(sys) : undefined);
-    put('core_void_fraction',    nodeAlpha(sys, 'core'));
-    put('primary_void_fraction', nodeAlpha(sys, 'hot_leg'));
+    put('t_core_exit_c', nodeT(nd, sys.P, 'core'));
+    /* Tavg comes IN from the engine's own step when it has one (#514 — stepInner already
+     * computes it for the SG drive; recomputing here doubled primaryTavg's two leg inverses).
+     * A caller without one (hand-wired harnesses) still gets the identical helper. */
+    put('tavg_c',        ctx.tavg !== undefined ? ctx.tavg
+                                                : (RD.sg ? RD.sg.primaryTavg(sys) : undefined));
+    put('core_void_fraction',    nodeAlpha(nd, sys.P, 'core'));
+    put('primary_void_fraction', nodeAlpha(nd, sys.P, 'hot_leg'));
     /* Subcooling from TRUE P and T, exactly as the contract line says — Layer 0 owns the
      * saturation line, the loop owns the temperatures, nothing here is invented. The suction
      * margin reads the CROSSOVER node, the leg that feeds the RCP. */
-    var tHot = nodeT(sys, 'hot_leg'), tXo = nodeT(sys, 'crossover');
     if (tHot !== undefined) put('subcooling_c', W.subcooling(tHot, sys.P));
     if (tXo !== undefined)  put('suction_subcool_c', W.subcooling(tXo, sys.P));
 

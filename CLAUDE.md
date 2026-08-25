@@ -331,9 +331,9 @@ to read everything.
 > change. The dense, append-only version lives in `Blueprint/BUILD_DECISIONS.md`
 > (Status line + Open Flags table) — update both.
 
-_Last updated: **2026-08-24**._
+_Last updated: **2026-08-25**._
 
-**Where the PWR is.** `run_all` is **88 runners, all at baseline** — read `BASELINES`, never a
+**Where the PWR is.** `run_all` is **89 runners, all at baseline** — read `BASELINES`, never a
 number written here. The PWR is the only active plant and is feature-complete through Mode 5 ↔
 Mode 1 on integrated physics: engines, control, service, instructor and the board are built; the
 #297 audit's build wave and the #221 audit slices are landed. **What is open, in one line each:**
@@ -398,6 +398,11 @@ re-querying. Run the query.
   scram-bypasses-RPS defect and filed #499 on arrival — `PWR2_VALIDATION.md` §49). P-9 (turbine trip
   = reactor trip above it, both sourced values), the #499 beyond-model guards and the
   DELAYED-data sourcing are all LANDED (§50–52). Built since, each with its record in `PWR2_VALIDATION.md` — **read the sections, not this line**: OTΔT/OPΔT (§53) · instruments, switchover, runback/rod stop (§54–56) · OPTION B COMPLETE — PWR2 is a first-class menu card ("PWR — New Physics", Free Play only), 109/109 contract, bit-exact pwr2-1.0 saves (§57–59, §61) · the A/B pass adjudicated (§60) · the AFW starts + lo-lo trip (§62) · THE FEED TRAIN — feed ≡ steam RETIRED (§63) · the CVCS "120 gpm" finding (§64). The #507 parity umbrella is through TEN waves (**§67–74**): boron + lab sample · RHR align · the casualty menu at **21 honest rows** · the two-bus electrical model · the SGTR (secondary discharge, containment-bypass signature) · drift/dead instrument modes · the initial conditions (the no-load/MSSV collision filed as #508) · the rod insertion limit · the RCP restart · the shutdown preset + P-11 (§74: Hot Shutdown Mode 4 — Mode 5 unrepresentable while Layer 0 floors at 0.1 MPa, declared). **Section F is closed** as 4 presets + the declared Mode-4-for-5 substitution. **#510 batches 1–4 LANDED** (§75–78): all 7 highs + the honesty batch fixed — endurance **18 passed / 0 xfail**; five LOW harness items stay open. **#509 (the owner's third playtest) is WORKED — all 11 items (§79)**: the kernel learns engine-owned trips, the feed steam element reads total steam, the AFW block valve operates, RCP flow recalibrated to the design cold leg (101 % at HFP, ruled), chart lanes fill the plot (ruled — the #445 56 px target retired), the SG/tee/hover art. **#511 built the two valves item 11 had disabled (§80)**: the ACCUMULATOR (passive tank, 0.435×RCS identity — a severity-0.5 LOCA now survives) and the MSIV (closing trips the turbine; the ADV catches the bottled SG). **#512 (owner design) made the latches PER-SYSTEM (§81)**: amber `bd-actuated` lamps, the panel's own securing click is the reset behind the sourced 45–60 s relay + P-4, then one click resets-and-secures signal present or not — **the TMI termination is reachable** (measured: pzr indicates 100 % over a 51.5 %-voided core); RPS RESET is trip-only. Remaining before replacement: R8's ambient source check, mission compatibility, the owner's replacement ruling. Still owed: delta-T lead/lag + K5 (COLR), channel redundancy, the ESF arm display, Mode 5 proper, stuck_rod_on_scram, the steam-line-break rows + auto isolation signal (the MSIV itself is BUILT, §80).
+  **#514 (2026-08-25): the engine steps 12.5× faster** (1,090 → ~85 µs; the vtable wired into
+  every module, `T_from_h`/`P_sat_T` tabulated, two warm starts, Tavg once) — held by the new
+  `run_pwr2_perf` ratio gate (≤ 8× the old engine, measures 4.1×); the vtable builds on first
+  use (was 0.5 s at every page load); **shell.html no longer loads RBMK/BWR** (~308 KB,
+  owner-ruled — dev route `test_rbmk.html`/`test_bwr.html`, `verify_e2e_ui` PWR-only).
 - **RBMK and BWR** — on hold, and the source of most remaining backlog. Do not touch.
 
 **The manual set's revision number does not advance until a RELEASE** *(OWNER DIRECTIVE,

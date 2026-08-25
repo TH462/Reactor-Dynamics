@@ -8032,7 +8032,15 @@
     bindUI(); bindCommands(); bindAutomate();
     // optional ?engine= override (dev convenience / sharing)
     var em = /[?&]engine=(pwr2|pwr|rbmk_pre|rbmk_post|bwr)/.exec(location.search || '');   /* pwr2 BEFORE pwr — alternation takes the first match */
-    var startKey = em ? em[1] : 'pwr', startEng = ENGINES[startKey];
+    var startKey = em ? em[1] : 'pwr';
+    /* #514: the shell no longer loads the RBMK/BWR scripts (on hold, cards greyed). An
+       override naming an engine whose constructor is absent falls back to the PWR instead
+       of booting a plantless page — the dev route to those plants is test_rbmk.html /
+       test_bwr.html. */
+    var ctorPresent = { pwr: !!RD.PWREngine, pwr2: !!(RD.pwr2 && RD.pwr2.shell),
+                        rbmk_pre: !!RD.RBMKEngine, rbmk_post: !!RD.RBMKEngine, bwr: !!RD.BWREngine };
+    if (!ctorPresent[startKey]) startKey = 'pwr';
+    var startEng = ENGINES[startKey];
     ui.engineKey = startKey; ui.plant = startEng.plant; ui.initState = startEng.init;
     // optional ?init=<state> override (dev convenience) — one of the ENGINE's presets. The
     // engine's own initStates override (pwr2: its ICS registry, three presets since #507

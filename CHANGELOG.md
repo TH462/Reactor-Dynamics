@@ -30,6 +30,21 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
 
 ## [Unreleased]
 
+### Changed (#514 — PWR2 engine efficiency + the shell load cut, 2026-08-25)
+- **PWR2 steps 12.5× faster** (1,090 → ~85 µs/step; the old engine is 21.5). The water-property
+  table was wired into the four modules still on the direct correlations, temperature-from-
+  enthalpy and saturation-pressure lookups were tabulated, the containment and SG solves warm-
+  start from their previous solutions, and Tavg is computed once per step instead of three
+  times. Usable fast-forward on the new physics goes from ~18× to ~230× of real time.
+- **The PWR2 property table builds on first use** instead of at page load — every control-room
+  open (including plain-PWR sessions) was paying its ~0.5 s build.
+- **shell.html no longer loads the RBMK/BWR engines, controls, or scenarios** (~308 KB) — both
+  plants are on hold with greyed cards no player can select. Files stay in the repo; dev route
+  is `test_rbmk.html` / `test_bwr.html` and the Node suites. `?engine=rbmk|bwr` now falls back
+  to the PWR. `verify_e2e_ui` is PWR-only in the same change.
+- **New gate `test/run_pwr2_perf.js`**: end-to-end step cost as a ratio to the old engine
+  (≤ 8×, measures 4.1×), the lazy table build, and an injection self-test.
+
 ### Changed (#512 — per-system protection latches, 2026-08-25, owner design)
 - **PWR2: each protection latch lives on its own panel now.** While safety injection, the
   aux feed actuation, feedwater isolation, or the heater shed is holding a system, that

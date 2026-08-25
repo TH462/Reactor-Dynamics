@@ -69,6 +69,14 @@
 
   var RD = root.RD && root.RD.pwr2;
   var W = RD && RD.water, GEO = RD && RD.geometry;
+  /* #514: hot-path water properties through the table — pwr2_core's idiom. The boron
+   * ledger's 11-node mass sum on the DIRECT rho_from_h was 28 % of the whole engine step
+   * (~300 us of 1090). The sum itself stays: sys.M_total is nodes + the pressurizer
+   * (extraMass), and the ledger's mass is the NODES' — substituting the ledger total would
+   * quietly grow the boron dilution volume by the pressurizer. */
+  var VT = RD && RD.vtable;
+  var RHO = VT ? VT.rho_from_h : (W && W.rho_from_h);
+  var TFH = VT ? VT.T_from_h : (W && W.T_from_h);
 
   var GAL_PER_M3 = 264.172;
   var FT3_TO_M3 = 0.0283168466;
@@ -237,7 +245,7 @@
   function stepCVCS(cv, sys, dt, drivers) {
     var node = null;
     for (var i = 0; i < sys.nodes.length; i++) if (sys.nodes[i].id === 'cold_leg') node = sys.nodes[i];
-    var rho = node ? W.rho_from_h(node.h, sys.P) : 700;
+    var rho = node ? RHO(node.h, sys.P) : 700;
 
     /* THE VITAL BUS (#507 wave 4): the charging pump is a vital load — diesel-carried
      * through a LOOP, dead in a station blackout (WTSM 5.7.5). Absent means powered (the
@@ -297,7 +305,7 @@
     var C_si = drivers && drivers.si_ppm !== undefined ? drivers.si_ppm : 0;
     var M = 0;
     for (var k = 0; k < sys.nodes.length; k++) {
-      M += sys.nodes[k].V * W.rho_from_h(sys.nodes[k].h, sys.P);
+      M += sys.nodes[k].V * RHO(sys.nodes[k].h, sys.P);
     }
     var C_in;
     if (cv.boron_rate_cmd !== 0 && inFlow > 0 && M > 0) {
@@ -331,7 +339,7 @@
       }
     }
 
-    var h_charge = W.h_l(Math.min(60, W.T_from_h(node ? node.h : 1250, sys.P)), sys.P);
+    var h_charge = W.h_l(Math.min(60, TFH(node ? node.h : 1250, sys.P)), sys.P);
     /* THE REGEN HX (#510 H-2, see the constant): the returning stream recovers heat from the
      * letdown it crosses. Recovery scales with min(inflow, letdown) -- no letdown, no recovery,
      * and charging then genuinely arrives cold (isolated-letdown lineups keep the old shape). */
@@ -363,7 +371,7 @@
    * isolated moves inventory, as a fraction of RCS mass per minute. */
   function maxFillRateFracPerMin(sys) {
     var M = 0;
-    for (var k = 0; k < sys.nodes.length; k++) M += sys.nodes[k].V * W.rho_from_h(sys.nodes[k].h, sys.P);
+    for (var k = 0; k < sys.nodes.length; k++) M += sys.nodes[k].V * RHO(sys.nodes[k].h, sys.P);
     return gpmToKgs(CVCS.charging_max_gpm(), 1000) * 60 / M;
   }
 

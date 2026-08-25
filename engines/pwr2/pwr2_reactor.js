@@ -64,13 +64,16 @@
   var W  = RD && RD.water;
   var K  = RD && RD.kinetics;
   var F  = RD && RD.fuel;
+  /* #514: per-step temperature through the table (pwr2_core's idiom). */
+  var VT = RD && RD.vtable;
+  var TFH = VT ? VT.T_from_h : (W && W.T_from_h);
 
   var RATED_THERMAL_KW = 300000;   /* 300 MWt — this plant's rating */
   var MDOT_RATED = 1630;           /* kg/s — pwr2_sources' PUMP.mdot_rated, the flow reference */
 
   function coreTemp(sys) {
     for (var i = 0; i < sys.nodes.length; i++) {
-      if (sys.nodes[i].id === 'core') return W.T_from_h(sys.nodes[i].h, sys.P);
+      if (sys.nodes[i].id === 'core') return TFH(sys.nodes[i].h, sys.P);
     }
     return NaN;
   }
