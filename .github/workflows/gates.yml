@@ -89,12 +89,16 @@ env:
 jobs:
   aggregate-gate:
     runs-on: ubuntu-latest
+    # 80 -> 45 (#513, 2026-08-25): the cheaper mutation replays the note below asked for are
+    # built — the aggregate step measured 17m16s on the first green #513 run (43m31s before).
+    # 2x the known runner-class spread puts the honest slow end near ~35; the step budget is
+    # 40 and the job wraps it at 45.
     # 55 -> 80 (#507 wave 8, 2026-08-23): the aggregate step's 45-minute budget TIMED OUT on
     # the wave-7 push — not a red runner, the suite genuinely grew (the pwr2 mutation
     # harnesses; the previous GREEN run took 43m31s, a 90-second margin nobody noticed
     # shrinking). The step budget moves to 70 and the job wraps it at 80. The #496 class;
     # the real long-term fix is cheaper mutation replays, not a bigger cap.
-    timeout-minutes: 80
+    timeout-minutes: 45
 
     steps:
       # ACTION MAJORS ARE ON THE NODE 24 RUNTIME (#389, 2026-08-06). All four were on `@v4`,
@@ -160,9 +164,11 @@ jobs:
       # suite measures ~19 min locally at 10-way parallel, so the same 2x slow-end logic gives
       # ~38 — 45 keeps the step failing on its OWN name before the job's 55 does.
       - name: Aggregate gate (all runners)
+        # 70 -> 40 (#513, 2026-08-25): measured 17m16s on the first green run after the
+        # replay-scoping/split work; 2x the runner-class spread gives ~35 — see the job note
         # 45 -> 70 (#507 wave 8): timed out at 45 on the wave-7 push with every runner green
         # locally — see the job-level note
-        timeout-minutes: 70
+        timeout-minutes: 40
         run: node test/run_all.js
 
       - name: Upload diagnostic reports
