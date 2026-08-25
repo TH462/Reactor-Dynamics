@@ -4476,3 +4476,67 @@ two mutations re-targeted onto surviving statics · loca 14 → **17** · board 
 refusal) · engine 91/91 (the RHR fixture isolates first, declared) · shell 76 ·
 coredamage 20 · endurance 18p/0xf · protection 100 · feedwater 29 · afw 25 ·
 pressurizer 68 · sg 32 · forwarding 11.
+
+## 81. #512 — PER-SYSTEM LATCHES: THE PANEL IS THE RESET, AND THE TMI TERMINATION IS REACHABLE — 2026-08-25
+
+*(OWNER DESIGN, 2026-08-25: "What if each latches on with a color change to the auto button
+and the user has to click the off or manual button to unlatch?" — and, on the first cut's
+overreach: "I want the players to be able to cause a TMI style incident.")* This supersedes
+#509's one-button shape (RPS RESET cleared every latch) and the first #512 cut (refuse
+while the signal is live — which, measured, made the TMI error UNREACHABLE on a stuck-open
+PORV: the signal never clears, so injection could never be secured).
+
+**The sourced circuit is what shipped** — WTSM 12.3.2.3 (ML11223A310), read closely this
+time rather than summarized:
+- The reset circuit's **time-delay relay** "produces an output (energizes) some time after
+  it is started (**usually 45 - 60 sec**)"; the top of the band is adopted. SI reset also
+  requires **P-4** (the reactor-trip contact, same figure).
+- The reset "**does not turn off any ESF equipment** ... the only response is the removal
+  of the start signal"; the operator then "can change system alignments, start or stop
+  equipment as needed."
+- After a reset, "**all automatic SI actuation signals are blocked**" — the re-arm block.
+  (The manual-actuation pushbutton that re-arms the real circuit is declared unmodeled;
+  the block clears here when the live signal drops — a recovered plant re-arms.)
+
+**The build.** `pwr2_protection` grows, per function (SI / AFAS / FWI): a LIVE-signal flag
+(the actuating condition now, latch aside), a latch-age timer against `RESET.delay_s = 60`
+[sourced 45–60], and a re-arm block honoured by every latch line. `pwr2_engine` grows three
+per-system doors (`reset_si` / `reset_afas` / `reset_fwi` — each clears its latch and sets
+its re-arm block) and **`reset_protection` NARROWS to the reactor trip only** (rods and
+breakers, still behind the kernel's rods-in permissive). The shell maps the panels' own
+securing clicks onto them: ECCS STOP and AFW STOP and MFW RESTORE each refuse OUT LOUD
+inside the window ("the reset time-delay relay has N s to run"), and after it **one click
+resets the function and executes — signal present or not**. Dependency kept honest: a
+latched SI is itself a standing aux-feed start signal (the SGLL block's own line), so AFW
+refuses with "secure the ECCS first" while SI stands, and the feed module's held-SI
+isolation sends MFW RESTORE to the ECCS panel the same way.
+
+**The lamps.** A new `bd-actuated` button state (amber-orange, distinct from bd-warn's
+attention yellow and bd-active's selection green): ECCS AUTO while SI is latched, AUX FEED
+AUTO while the actuation is latched, MFW RESTORE while feedwater isolation stands (either
+driver), HEATER AUTO while the NUREG-0737 shed latch stands — the heater row being the
+idiom's in-house precedent (its latch has always cleared on the operator's heater click).
+Driven off published `control_state` flags (`si_actuated` / `afas_actuated` /
+`fwi_actuated` / `heaters_shed`); an engine that publishes none shows nothing new.
+Screenshot taken mid-accident: all four lamps amber over a scrammed, SI-fed plant.
+
+**THE TMI SEQUENCE, MEASURED END TO END** (stuck-open PORV, free play):
+- SI latches at t+90 s (`si_lo_pzr_press`); STOP refuses at latch+0 ("58 s to run") and
+  again mid-window ("26 s to run").
+- With the relay run down (latch age 62 s, P-4 standing): **STOP is ACCEPTED with the
+  signal still live** — SI resets, the pump secures, automatic re-actuation blocks.
+- Ten minutes on: pressure 1,069 psia, **pressurizer level indicating 100 % — looks
+  water-solid — while the core is actually 51.5 % voided.** The TMI deception, produced by
+  the player's own deliberate termination, exactly as required.
+
+**Gates.** `run_pwr2_board` 26 → **28 / 7 mutations** (the in-window refusal with the time
+remaining · relay-met one-click reset+secure with the re-arm block · the delay-0 and
+reset-click-severed mutations; the timer-accrual mutation is deliberately ABSENT and the
+absence documented — the engine captures the protection module at load, so a
+stepProtection mutation cannot reach the running plant; the relay-met check's fixture
+accrues the timer through real steps instead). `run_pwr2_protection` 100/100, **55/55**
+(seven latch-line anchors re-pointed under the re-arm gates). `run_pwr2_engine` 91/91 (two
+AFW-reset checks re-pointed from the narrowed `reset_protection` onto `reset_afas` — the
+claims unchanged: clearing a latch is not securing a pump; one switch per pump). shell 76 ·
+endurance 18p/0xf · afw 25 · feedwater 29 · eccs 38 · true_state 64 · full aggregate at
+baseline.

@@ -18,13 +18,15 @@
  *      armed out of a kernel that carries no trips ("TRIP 25%" at 99.8 % power, measured).
  *   4. The payload fixes land THROUGH the stack: STOP secures HPI, heater MANUAL holds,
  *      letdown lamps latch, dump CLOSED reads, charging OFF reads.
- *   5. THE TRIP RIDE (#509, the owner's third playtest): an ENGINE-owned automatic trip
- *      must reach the kernel's rps latch (before the mirror, resetRps returned null for
- *      ever and every SI/FWI seal-in was unreleasable); a stop pressed against a standing
- *      seal-in refuses OUT LOUD; a reset with rods seated is accepted (the stale-snapshot
- *      "rods not inserted" lie); the AFW block valve round-trips BOTH ways off the board's
- *      own payload; charging OFF zeroes the FLOW, not just the lamp; and the two valves
- *      this engine registers as statics (MSIV, accumulator) read disabled art.
+ *   5. THE TRIP RIDE (#509/#512): an ENGINE-owned automatic trip must reach the kernel's
+ *      rps latch (before the mirror, resetRps returned null for ever); a securing click
+ *      inside the sourced 45-60 s reset window refuses OUT LOUD with the time remaining,
+ *      and AFTER the relay ONE click resets the function and secures the pump — signal
+ *      present or not (the WTSM 12.3.2.3 circuit; what keeps a deliberate TMI-style
+ *      termination reachable). RPS RESET is trip-only. The AFW block valve round-trips;
+ *      charging OFF zeroes the FLOW; the #511 valves (MSIV, accumulator) are OPERABLE
+ *      machinery — the MSIV trips the turbine, the accumulator valve carries its
+ *      at-power administrative lock.
  *
  * Injection self-test: the kernel merge/mirror, the reset snapshot patch and two payload
  * mappers are reverted from source and the matching checks must go red — a check born
@@ -306,14 +308,23 @@ function runSuite(quietRec) {
     e3.pt.reactor_trip === true && rs3.scrammed === true && !!rs3.last_trip_reason,
     'scrammed ' + (rs3 && rs3.scrammed) + ', reason ' + JSON.stringify(rs3 && rs3.last_trip_reason));
 
-  /* item 1: ECCS STOP against the standing SI seal-in refuses with the reason, and the
-   * pump keeps running (precondition asserted — the pump IS on the latch, #510 lesson) */
-  var pre3 = e3.ec.hhsiRunning === true && e3.pt.si === true;
+  /* item 1 (reworked at #512 — the owner's per-system unlatch, on the SOURCED reset
+   * permissive): ECCS STOP inside the 45-60 s time-delay window refuses with the time
+   * remaining, and the pump keeps running (precondition asserted — the pump IS on the
+   * latch and the relay is still running, #510 lesson). The board lamp flags publish. */
+  var pre3 = e3.ec.hhsiRunning === true && e3.pt.si === true && e3.pt.si_t < 60;
   var rStop = w3.cmd({ action: 'set_hpi', active: false }); w3.tick(1);
-  q('ECCS STOP while SI is latched REFUSES with the seal-in reason; the pump keeps running',
+  q('ECCS STOP inside the reset time-delay window refuses with the time remaining',
     pre3 && rStop && rStop.type === 'error' &&
-    /reset safety injection/i.test(rStop.message || '') && e3.ec.hhsiRunning === true,
-    'pre ' + pre3 + ', msg ' + JSON.stringify(rStop && rStop.message).slice(0, 70));
+    /not yet satisfied/i.test(rStop.message || '') && e3.ec.hhsiRunning === true,
+    'pre ' + pre3 + ' (si_t ' + e3.pt.si_t.toFixed(1) + ' s), msg ' +
+    String(rStop && rStop.message).slice(0, 60));
+  var csAct = w3.snap().control_state;
+  q('the per-system ACTUATED lamps publish (#512: the panel buttons carry the latch color)',
+    csAct.si_actuated === true && csAct.afas_actuated === true &&
+    D.buttonActuated({ id: 'imrle1mc0lk' }, w3.snap()) === true &&
+    D.buttonActuated({ id: 'imrmssr9ihq' }, w3.snap()) === true,
+    'si ' + csAct.si_actuated + ', afas ' + csAct.afas_actuated);
 
   /* item 5: the held SI isolates feedwater (the module's own 32 s hold — MEASURED: it
    * lands ~65 s after the SI latch at this cadence, and pt.fwi never latches on this
@@ -346,6 +357,30 @@ function runSuite(quietRec) {
     w4.svc.engine.eng.pt.reactor_trip === false,
     'resp ' + JSON.stringify(rOk) + ', scrammed ' + w4.snap().rps_state.scrammed);
 
+  /* #512: with the reset permissive MET (the 45-60 s relay run down + P-4 standing), the
+   * panel's own securing click is the unlatch — ONE click resets the function and secures
+   * the pump, SIGNAL PRESENT OR NOT (the sourced circuit; this is what keeps a deliberate
+   * TMI-style termination reachable — owner requirement, 2026-08-25). Hand-latched with
+   * the reactor re-tripped for P-4; the timer accrues through REAL steps so the
+   * timer-severed mutation cannot hide. RPS RESET is trip-only and must NOT clear SI. */
+  var e4 = w4.svc.engine.eng;
+  w4.cmd({ action: 'scram' }); w4.tick(2);              /* P-4: the trip contact made */
+  e4.pt.si = true; e4.pt.si_cause = 'probe';
+  var g512 = 0;
+  while (e4.pt.si_t < 61 && g512++ < 400) w4.tick(2);   /* run the relay down in sim time */
+  /* (RPS RESET's trip-only narrowing is pinned in the standing-LOCA leg above, where
+   * e3.pt.si survives the accepted reset.) */
+  var preHeld = e4.ec.hhsiRunning === true && e4.pt.reactor_trip === true && e4.pt.si_t >= 60;
+  var rOne = w4.cmd({ action: 'set_hpi', active: false });
+  var rearmSet = e4.pt.si_rearm_block === true;   /* read before the step — a clear live
+                                                   * signal releases the block, correctly */
+  w4.tick(2);
+  q('relay met: ONE securing click resets SI and stops the pump; auto re-actuation blocks',
+    preHeld && rOne && rOne.ok === true && rearmSet &&
+    e4.pt.si === false && e4.ec.hhsiRunning === false,
+    'held ' + preHeld + ' (si_t ' + e4.pt.si_t.toFixed(0) + ') -> si ' + e4.pt.si +
+    ', running ' + e4.ec.hhsiRunning + ', re-arm blocked at reset ' + rearmSet);
+
   return rec;
 }
 
@@ -353,12 +388,14 @@ console.log('\nPWR2 x THE BOARD DRIVER — the #506 seams, pinned headless');
 runSuite(null);
 
 /* ---- injection self-test ------------------------------------------------------------------ */
-console.log('\ninjection self-test (5 mutations):');
+console.log('\ninjection self-test (7 mutations):');
 var WSRC = fs.readFileSync(WIRING_PATH, 'utf8').replace(/\r\n/g, '\n');
 var SHPATH = path.join(SRC, 'pwr2_shell.js');
 var SHSRC = fs.readFileSync(SHPATH, 'utf8').replace(/\r\n/g, '\n');
 var KPATH = path.join(__dirname, '..', 'layers', 'control', 'control_kernel.js');
 var KSRC = fs.readFileSync(KPATH, 'utf8').replace(/\r\n/g, '\n');
+var PTPATH = path.join(SRC, 'pwr2_protection.js');
+var PTSRC = fs.readFileSync(PTPATH, 'utf8').replace(/\r\n/g, '\n');
 var MUTS = [
   /* RETIRED (#507 wave 7): the tile-presence mutation went blind the day the kernel began
    * MERGING the engine-owned block status — the live pwr2 snapshot always carries
@@ -370,9 +407,11 @@ var MUTS = [
   ['the kernel merge is severed (the board reads an RPS with no block surface)', KPATH, KSRC,
    '      if (engTB && engTB.trip_block_status) Object.assign(status, engTB.trip_block_status);',
    ''],
-  ['set_hpi reads only c.running again (STOP starts the pump)', SHPATH, SHSRC,
-   "      EN.command(e, 'hhsi', on);",
-   "      EN.command(e, 'hhsi', c.running !== false);"],
+  /* RE-ANCHORED at #512 (the guard moved into eccsStop/afwUnlatch): the payload misread
+   * hits every stop's `on` line at once — same defect class, same red (the round trip) */
+  ['the stop payload is misread again (STOP starts the pump)', SHPATH, SHSRC,
+   "    var on = (c.active !== undefined ? c.active : c.running) !== false;",
+   "    var on = c.running !== false;"],
   /* #509 item 1/5 root: the kernel never learns an ENGINE-owned automatic trip */
   ['the scram mirror is severed (an automatic trip never reaches rps_state)', KPATH, KSRC,
    '      var engScram = this.lastInstruments.rps_scrammed === true;',
@@ -384,7 +423,23 @@ var MUTS = [
   /* #509 item 6: the mapper reads a key nothing sends; its fallback is always-truthy */
   ['set_afw_block reads c.blocked again (every click shuts the valve)', SHPATH, SHSRC,
    "      EN.command(e, 'afw_block', (c && c.open !== undefined ? c.open : c) === false);",
-   "      EN.command(e, 'afw_block', (c && c.blocked !== undefined ? c.blocked : c) !== false);"]
+   "      EN.command(e, 'afw_block', (c && c.blocked !== undefined ? c.blocked : c) !== false);"],
+  /* #512: the reset time-delay relay deleted — ECCS securable at t=0 of a valid SI (the
+   * un-resisted defeat); the in-window refusal check must red */
+  ['the reset time-delay relay is deleted (delay 0 — securable at actuation)', PTPATH, PTSRC,
+   '    delay_s: 60,',
+   '    delay_s: 0,'],
+  /* NO timer-accrual mutation, and the absence is deliberate: this harness re-evals a
+   * module into RD, but pwr2_engine CAPTURES the protection module at ITS load (PT = ...),
+   * so a stepProtection mutation never reaches the running plant — measured BLIND here.
+   * The timer wire is defended by the relay-met check itself, whose fixture only turns
+   * green after REAL si_t accrual (a zeroed timer reds the CLEAN run). The delay-0
+   * mutation above works because the SHELL reads RESET.delay_s through a live lookup. */
+  /* #512: the one-click unlatch severed — the securing click stops but never resets, so
+   * the level-held latch restarts the pump one tick later */
+  ['the securing click stops resetting (stop accepted, pump re-asserted next tick)', SHPATH, SHSRC,
+   "      EN.command(e, 'reset_si', true);   /* permissive met: reset + secure, one click */",
+   '']
 ];
 var blind = 0;
 MUTS.forEach(function (m) {

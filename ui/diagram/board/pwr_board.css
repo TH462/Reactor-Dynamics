@@ -78,6 +78,10 @@
 /* Warning state (yellow) — a caution independent of the authored active color. Reserved
    for genuine "needs attention" conditions on the green/yellow/red severity scale. */
 .bd-btn.bd-warn { background: #3a2408; border-color: #ffd166; color: #ffd166; }
+/* ACTUATED (#512, owner design): a protection latch is holding this system. Amber-orange,
+ * deliberately distinct from bd-warn's yellow (attention) and bd-active's selection color —
+ * this one means "the plant did this and is holding it; your securing click is the reset". */
+.bd-btn.bd-actuated { background: #3d1c06; border-color: #ff9e57; color: #ff9e57; box-shadow: 0 0 6px rgba(255, 158, 87, 0.35); }
 /* Informational/neutral state (grey) — a non-alarm condition the operator has deliberately
    set, e.g. reactor trips intentionally BLOCKED as part of a startup/shutdown lineup. Grey
    keeps it OFF the green(normal)/yellow(attention)/red(alarm) severity scale — it's a

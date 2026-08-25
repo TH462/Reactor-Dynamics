@@ -271,6 +271,17 @@
     src: 'Ginna TS Bases B 3.3.1 (ML20339A221), P-9 Permissive'
   };
 
+  /* THE RESET PERMISSIVE (#512) [sourced — WTSM 12.3.2.3, ML11223A310]: the reset circuit's
+   * time-delay relay "produces an output (energizes) some time after it is started (usually
+   * 45 - 60 sec)"; the top of the band is used. SI reset additionally requires P-4 (the
+   * reactor trip contact, same figure). AFAS/FWI adopt the same logic family [derived —
+   * the source details the SI circuit; the actuation circuits share the design]. */
+  var RESET = {
+    kind: '[sourced]',
+    delay_s: 60,
+    src: 'WTSM 12.3.2.3 (ML11223A310), the SI reset circuit'
+  };
+
   /* Analysis delays, same table, same rows. A function must hold CONTINUOUSLY for its delay. */
   var DELAY = {
     kind: '[sourced]',
@@ -416,6 +427,16 @@
       afas_mdafw_cause: null,
       afas_tdafw_cause: null,
       fwi_cause: null,
+      /* the LIVE signals (#512) — is the actuating condition present now, latch aside */
+      si_live: false, afas_mdafw_live: false, afas_tdafw_live: false, fwi_live: false,
+      /* THE RESET LOGIC (#512) [sourced — WTSM 12.3.2.3, ML11223A310]: the reset circuit's
+       * time-delay relay ("usually 45 - 60 sec") gates the operator's reset; *_t is each
+       * latch's age against it. After a reset "all automatic SI actuation signals are
+       * blocked" — *_rearm_block — re-armed here when the live signal clears (the manual
+       * re-actuation pushbutton that also re-arms the real circuit is declared unmodeled;
+       * the board's START starts pumps directly). */
+      si_t: 0, afas_t: 0, fwi_t: 0,
+      si_rearm_block: false, afas_rearm_block: false, fwi_rearm_block: false,
       ll_y: null, ll_u: null                /* lead/lag state for low steam pressure */
     };
   }
@@ -562,37 +583,67 @@
      * that a pushbutton and an automatic function arriving together record the operator's act. */
     if (drivers.manual_trip && !pr.reactor_trip) { pr.reactor_trip = true; pr.trip_cause = 'manual'; }
 
-    /* LATCH. A reactor trip and a safety injection both latch in a real plant until reset. */
+    /* LATCH. A reactor trip and a safety injection both latch in a real plant until reset.
+     * The SI latch honours the reset's re-arm block (#512) [sourced — after an SI reset
+     * "all automatic SI actuation signals are blocked"]; the block clears below when the
+     * live signal drops. */
     if (anyRps && !pr.reactor_trip) { pr.reactor_trip = true; pr.trip_cause = anyRps; }
-    if (anyEsfas && !pr.si) { pr.si = true; pr.si_cause = anyEsfas; }
+    if (anyEsfas && !pr.si && !pr.si_rearm_block) { pr.si = true; pr.si_cause = anyEsfas; }
 
     /* THE AFW STARTS [sourced — the SGLL block]. Same latch law as si; evaluated AFTER the SI
      * latch so a safety injection arriving this very step starts the MDAFW pumps this step.
      * Lo-lo level starts BOTH pumps (the declared single-loop collapse); SI starts the
      * motor-driven pumps ONLY. Reported here, acted on by the caller (HR5) — this module
      * still starts nothing. */
-    if (sgLolo && !pr.afas_mdafw) { pr.afas_mdafw = true; pr.afas_mdafw_cause = 'sg_lolo_level'; }
-    if (sgLolo && !pr.afas_tdafw) { pr.afas_tdafw = true; pr.afas_tdafw_cause = 'sg_lolo_level'; }
-    if (pr.si && !pr.afas_mdafw) { pr.afas_mdafw = true; pr.afas_mdafw_cause = 'si'; }
+    if (sgLolo && !pr.afas_mdafw && !pr.afas_rearm_block) { pr.afas_mdafw = true; pr.afas_mdafw_cause = 'sg_lolo_level'; }
+    if (sgLolo && !pr.afas_tdafw && !pr.afas_rearm_block) { pr.afas_tdafw = true; pr.afas_tdafw_cause = 'sg_lolo_level'; }
+    if (pr.si && !pr.afas_mdafw && !pr.afas_rearm_block) { pr.afas_mdafw = true; pr.afas_mdafw_cause = 'si'; }
     /* [sourced ch10, the SGLL block]: both main feed pumps failed -> the MDAFW pumps start.
      * A state signal, no delay row — the source gives none and breakers are not analog. */
-    if (drivers.main_feed_lost && !pr.afas_mdafw) {
+    if (drivers.main_feed_lost && !pr.afas_mdafw && !pr.afas_rearm_block) {
       pr.afas_mdafw = true; pr.afas_mdafw_cause = 'loss_of_main_feed';
     }
     /* [sourced ch10, the SGLL block]: "All three preferred auxiliary feedwater pumps will
      * start on loss of offsite power" — BOTH pumps on this plant's one-of-each lineup
      * (#507 wave 4). Same state-signal law; evaluated after the level/SI starts so a
      * simultaneous arrival records the credited cause first. */
-    if (drivers.loss_of_offsite && !pr.afas_mdafw) {
+    if (drivers.loss_of_offsite && !pr.afas_mdafw && !pr.afas_rearm_block) {
       pr.afas_mdafw = true; pr.afas_mdafw_cause = 'loss_of_offsite_power';
     }
-    if (drivers.loss_of_offsite && !pr.afas_tdafw) {
+    if (drivers.loss_of_offsite && !pr.afas_tdafw && !pr.afas_rearm_block) {
       pr.afas_tdafw = true; pr.afas_tdafw_cause = 'loss_of_offsite_power';
     }
-
     /* FEEDWATER ISOLATION on high-high level [sourced -- the SGLL block]. Same latch law.
      * (The SI-driven isolation lives in pwr2_feedwater with its own sourced 32 s delay.) */
-    if (anyFwi && !pr.fwi) { pr.fwi = true; pr.fwi_cause = anyFwi; }
+    if (anyFwi && !pr.fwi && !pr.fwi_rearm_block) { pr.fwi = true; pr.fwi_cause = anyFwi; }
+
+    /* LIVE SIGNALS (#512, the owner's per-system unlatch design): is each function's
+     * ACTUATING CONDITION present right now, latch aside. The panel's own securing click
+     * refuses while its signal is live and resets-then-executes once it clears — so these
+     * are the refusal's question, asked of the same bistables the latches fire on (they
+     * cannot drift apart). The AFAS lives include the SI LATCH deliberately: the SI latch
+     * is itself a standing start signal for the motor-driven pump (the line above), so AFW
+     * cannot be unlatched from under a standing SI — reset SI at its own panel first. */
+    pr.si_live = !!anyEsfas;
+    pr.afas_mdafw_live = !!(sgLolo || pr.si || drivers.main_feed_lost || drivers.loss_of_offsite);
+    pr.afas_tdafw_live = !!(sgLolo || drivers.loss_of_offsite);
+    pr.fwi_live = !!anyFwi;
+
+    /* THE RESET PERMISSIVE TIMERS (#512) [sourced — the reset circuit's time-delay relay,
+     * "usually 45 - 60 sec"]: each latch's age, zeroed when the latch is clear. The SHELL
+     * refuses a securing click until the age passes RESET.delay_s (and, for SI, P-4 —
+     * reactor trip — per the same figure); after that the click resets and secures EVEN
+     * WITH THE SIGNAL STILL PRESENT — the source is explicit that the reset removes only
+     * the start signal and the operator then stops equipment as required. That window is
+     * what keeps a deliberate TMI-style termination reachable. */
+    var dtT = dt > 0 ? dt : 0;
+    pr.si_t   = pr.si ? pr.si_t + dtT : 0;
+    pr.afas_t = (pr.afas_mdafw || pr.afas_tdafw) ? pr.afas_t + dtT : 0;
+    pr.fwi_t  = pr.fwi ? pr.fwi_t + dtT : 0;
+    /* the re-arm blocks clear when the live signal drops — a recovered plant re-arms */
+    if (!pr.si_live) pr.si_rearm_block = false;
+    if (!pr.afas_mdafw_live && !pr.afas_tdafw_live) pr.afas_rearm_block = false;
+    if (!pr.fwi_live) pr.fwi_rearm_block = false;
 
     /* TURBINE-TRIP REACTOR TRIP, gated by P-9 [sourced] — Ginna TS Bases B 3.3.1 Function 14
      * (ML20339A221): "A reactor trip is automatically initiated on a turbine trip when it is
@@ -667,7 +718,7 @@
   root.RD.pwr2 = root.RD.pwr2 || {};
   root.RD.pwr2.protection = {
     RPS: RPS, ESFAS: ESFAS, SGLL: SGLL, DELAY: DELAY, LEADLAG: LEADLAG, P10: P10, P7: P7,
-    P11: P11,
+    P11: P11, RESET: RESET,
     PSIA_PER_MPA: PSIA_PER_MPA,
     functions: functions, leadLag: leadLag,
     createProtection: createProtection, stepProtection: stepProtection, reset: reset

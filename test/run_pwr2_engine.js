@@ -615,9 +615,14 @@ function runSuite(RD, rec, quiet, only) {
       eng8.aw.mdafwRunning === true, 'the level-held SI pattern, same law');
   EN.command(eng8, 'instrument_restore', 'sg_level');
   run(eng8, quiet ? 5 : 10);
-  EN.command(eng8, 'reset_protection', true);
+  /* RE-POINTED at #512 (per-system resets): reset_protection is TRIP-ONLY now — the AFW
+   * start latches clear through their own door, reset_afas, which the shell's securing
+   * click drives behind the sourced 45-60 s permissive. Driven directly here (this is the
+   * engine gate; the permissive is the shell's) — the CLAIM is unchanged: clearing a
+   * latch is not securing a pump. */
+  EN.command(eng8, 'reset_afas', true);
   run(eng8, 1);
-  ckT('reset clears the start latches but does NOT secure the pumps',
+  ckT('reset_afas clears the start latches but does NOT secure the pumps',
       eng8.pt.afas_mdafw === false && eng8.pt.afas_tdafw === false &&
       eng8.aw.mdafwRunning === true && eng8.aw.tdafwRunning === true,
       'clearing a latch is not securing a pump');

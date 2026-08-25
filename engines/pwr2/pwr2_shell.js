@@ -63,6 +63,47 @@
     EN.command(e, 'accumulator_valve', open);
   }
 
+  /* THE #512 UNLATCH GUARDS (helpers, deliberately NOT MAPPED keys: a key would be a
+   * dispatchable action). Each securing click asks the sourced reset permissive — the
+   * 45-60 s time-delay relay (pt.*_t against RESET.delay_s) plus P-4 for SI — refuses
+   * with the reason inside the window, and resets-then-executes after it, signal present
+   * or not (the WTSM 12.3.2.3 circuit; the re-arm block stops automatic re-actuation). */
+  function resetDelayS() { return root.RD.pwr2.protection.RESET.delay_s; }
+  function eccsStop(e, pump, c) {
+    var on = (c.active !== undefined ? c.active : c.running) !== false;
+    if (!on && e.pt.si) {
+      var left = resetDelayS() - e.pt.si_t;
+      if (left > 0) {
+        throw new Error('ECCS STOP BLOCKED: the SI reset permissive is not yet satisfied — ' +
+          'the reset time-delay relay has ' + Math.ceil(left) + ' s to run (45-60 s class, ' +
+          'WTSM 12.3.2.3). Actuated on ' + (e.pt.si_cause || 'SI') + '.');
+      }
+      if (!e.pt.reactor_trip) {
+        throw new Error('ECCS STOP BLOCKED: the SI reset requires P-4 (a reactor trip) — ' +
+          'the trip contact is not made (WTSM 12.3.2.3).');
+      }
+      EN.command(e, 'reset_si', true);   /* permissive met: reset + secure, one click */
+    }
+    EN.command(e, pump, on);
+  }
+  /* NOTE the dependency: a standing SI LATCH is itself an AFW start signal (the SGLL
+   * block's si line), so AFW cannot be unlatched from under it — secure the ECCS first. */
+  function afwUnlatch(e) {
+    if (!(e.pt.afas_mdafw || e.pt.afas_tdafw)) return;
+    if (e.pt.si) {
+      throw new Error('AFW STOP BLOCKED: a latched safety injection is a standing aux feed ' +
+        'start signal — secure the ECCS first, then stop the aux feed pumps.');
+    }
+    var left = resetDelayS() - e.pt.afas_t;
+    if (left > 0) {
+      throw new Error('AFW STOP BLOCKED: the actuation reset permissive is not yet satisfied — ' +
+        'the reset time-delay relay has ' + Math.ceil(left) + ' s to run (45-60 s class, the ' +
+        'WTSM 12.3.2.3 logic family). Actuated on ' +
+        (e.pt.afas_mdafw_cause || e.pt.afas_tdafw_cause || 'AFAS') + '.');
+    }
+    EN.command(e, 'reset_afas', true);
+  }
+
   /* ---- the command registries (see header). value: a mapper fn or a reason string. ---- */
   var MAPPED = {
     /* THE #511 VALVES — real machinery behind the two diagram symbols #509 item 11 had to
@@ -190,47 +231,26 @@
     /* the board sends `active` (HPI/AFW START/STOP) — reading only `running` made STOP
      * evaluate `undefined !== false` = true, so STOP STARTED the pump (#506.1, measured)
      *
-     * STOP-WHILE-LATCHED REFUSES OUT LOUD (#509 items 1/5). The engine's caller's-half law
-     * (pwr2_engine step) re-asserts an actuated pump every step while its latch stands, so
-     * a stop was ACCEPTED and silently overwritten one tick later — a dead-looking button.
-     * Sourced seal-in — WTSM 12.3.2.3 (ML11223A310): "The control room operator cannot
-     * interrupt any of the SI-initiated functions until the reset logic is satisfied."
-     * The level-held re-assert stays the ENFORCEMENT; this throw is the voice (the #505
-     * scanner-bar path). Starts always pass. */
-    set_hpi:           function (e, c) {
-      var on = (c.active !== undefined ? c.active : c.running) !== false;
-      if (!on && e.pt.si) {
-        throw new Error('ECCS STOP BLOCKED: safety injection is actuated (' +
-          (e.pt.si_cause || 'SI') + ') — reset safety injection (RPS RESET) first, ' +
-          'then secure the pumps (WTSM 12.3.2.3 seal-in).');
-      }
-      EN.command(e, 'hhsi', on);
-    },
-    set_lpi:           function (e, c) {
-      var on = (c.active !== undefined ? c.active : c.running) !== false;
-      if (!on && e.pt.si) {
-        throw new Error('ECCS STOP BLOCKED: safety injection is actuated (' +
-          (e.pt.si_cause || 'SI') + ') — reset safety injection (RPS RESET) first, ' +
-          'then secure the pumps (WTSM 12.3.2.3 seal-in).');
-      }
-      EN.command(e, 'lhsi', on);
-    },
+     * THE PER-SYSTEM UNLATCH (#512, owner design — supersedes #509's reset-then-act):
+     * the panel's own securing click IS the reset, gated by the SOURCED reset permissive —
+     * WTSM 12.3.2.3 (ML11223A310): the reset circuit's time-delay relay ("usually 45 - 60
+     * sec") plus, for SI, the P-4 reactor-trip contact. Inside that window the click
+     * refuses out loud with the reason; after it, ONE click resets the function and
+     * secures the pump EVEN WITH THE SIGNAL STILL PRESENT — the source is explicit that
+     * the reset removes only the start signal, automatic re-actuation is then blocked,
+     * and the operator "can ... start or stop equipment as needed". That window is what
+     * makes a deliberate TMI-style termination REACHABLE (owner requirement, 2026-08-25)
+     * while the first minute of a valid actuation stays protected. Starts always pass. */
+    set_hpi:           function (e, c) { eccsStop(e, 'hhsi', c); },
+    set_lpi:           function (e, c) { eccsStop(e, 'lhsi', c); },
     set_afw:           function (e, c) {
       var on = (c.active !== undefined ? c.active : c.running) !== false;
-      if (!on && (e.pt.afas_mdafw || e.pt.afas_tdafw)) {
-        throw new Error('AFW STOP BLOCKED: auxiliary feedwater is actuated (' +
-          (e.pt.afas_mdafw_cause || e.pt.afas_tdafw_cause || 'AFAS') +
-          ') — reset the actuation (RPS RESET) first, then secure each pump with its own switch.');
-      }
+      if (!on) afwUnlatch(e);
       EN.command(e, 'afw', on);
     },
     set_afw_flow:      function (e, c) {
       var on = (c.normalized !== undefined ? c.normalized : 1) > 0;
-      if (!on && (e.pt.afas_mdafw || e.pt.afas_tdafw)) {
-        throw new Error('AFW STOP BLOCKED: auxiliary feedwater is actuated (' +
-          (e.pt.afas_mdafw_cause || e.pt.afas_tdafw_cause || 'AFAS') +
-          ') — reset the actuation (RPS RESET) first, then secure each pump with its own switch.');
-      }
+      if (!on) afwUnlatch(e);
       EN.command(e, 'afw', on);
     },
     /* THE FEED TRAIN (2026-08-21, pwr2_feedwater) — the old refusals retired. Payload shapes
@@ -242,16 +262,29 @@
     },
     set_feed_coupled:    function (e, c) { EN.command(e, 'feed_auto', c.active !== false); },
     isolate_feedwater:   function (e, c) {
-      /* the restore half refuses while an isolation signal stands (same seal-in law and
-       * #505 voice as the ECCS/AFW stops above; wording aligned with pwr1's FWI_SEAL_IN).
-       * TWO drivers, both re-isolate silently on the next step (#509 item 5): the pt.fwi
-       * latch (engine caller's-half law), and the feed module's own held-SI isolation
-       * (pwr2_feedwater: SI held 32 s -> isolated, MEASURED — pt.fwi never latches on
-       * that path, so keying on the latch alone missed the common case). */
-      if (c.active === false && (e.pt.fwi || (e.pt.si && e.fw.isolated))) {
-        throw new Error('MFW RESTORE BLOCKED — feedwater isolation signal present (' +
-          (e.pt.fwi_cause || (e.pt.si ? 'safety injection, ' + (e.pt.si_cause || 'SI') : 'FWI')) +
-          '). Reset the actuation (RPS RESET) first, then restore main feed.');
+      /* the RESTORE click is the FWI unlatch (#512, same per-system law as the stops
+       * above). TWO drivers, both would re-isolate silently on the next step (#509 item
+       * 5): the pt.fwi latch (hi-hi level), and the feed module's own held-SI isolation
+       * (SI held 32 s — pt.fwi never latches on that path, MEASURED). While either DRIVER
+       * still stands the click refuses with the cause; a standing SI latch must be
+       * secured at the ECCS panel first (it is the isolation's own driver). Once clear,
+       * one click resets the latch and restores. */
+      if (c.active === false) {
+        if (e.pt.si && e.fw.isolated) {
+          throw new Error('MFW RESTORE BLOCKED — feedwater is isolated by the latched ' +
+            'safety injection (' + (e.pt.si_cause || 'SI') + '). Secure the ECCS first, ' +
+            'then restore main feed.');
+        }
+        if (e.pt.fwi) {
+          var leftF = resetDelayS() - e.pt.fwi_t;
+          if (leftF > 0) {
+            throw new Error('MFW RESTORE BLOCKED — the isolation reset permissive is not yet ' +
+              'satisfied: the reset time-delay relay has ' + Math.ceil(leftF) + ' s to run ' +
+              '(45-60 s class, the WTSM 12.3.2.3 logic family). Isolated on ' +
+              (e.pt.fwi_cause || 'FWI') + '.');
+          }
+          EN.command(e, 'reset_fwi', true);   /* permissive met: reset + restore, one click */
+        }
       }
       EN.command(e, 'isolate_feedwater', c.active !== false);
     },
@@ -883,6 +916,14 @@
        * "speed" gauge presentation the board's five reader tiles expect (measured) */
       feed_pump_speed_pct: Math.min(120, e.fw.feed_frac * 100),
       feed_coupled: e.fw.auto === true,
+      /* THE PER-SYSTEM LATCH LAMPS (#512, owner design): the panel's button carries an
+       * ACTUATED color while its function is latched; the panel's own securing click is
+       * the unlatch (refused while the live signal stands). fwi_actuated covers BOTH
+       * isolation drivers (the hi-hi latch and the feed module's held-SI isolation). */
+      si_actuated: e.pt.si === true,
+      afas_actuated: e.pt.afas_mdafw === true || e.pt.afas_tdafw === true,
+      fwi_actuated: e.pt.fwi === true || (e.pt.si === true && e.fw.isolated === true),
+      heaters_shed: ts.pzr_heaters_shed === true,
       condensate_pump_running: ts.condensate_pump_running === true,
       steam_demand_mwe: e.tb.load_target_mwe,
       load_mode: 'manual',

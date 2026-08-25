@@ -553,16 +553,11 @@
          * the same fraction 5.26 steps/s [adopted]. The caller (shell) does that scaling. */
         eng.runaway = value && +value > 0 ? { rate: +value } : null; break;
       case 'reset_protection':
-        /* the operator's reset — clears the latches so a recovered plant can run again */
+        /* NARROWED at #512 (owner design — per-system latches unlatch at their own panels):
+         * the RPS RESET button clears the REACTOR TRIP only (breakers/rods, behind the
+         * kernel's rods-in permissive). SI / AFAS / FWI have their own doors below, driven
+         * by the panels' securing clicks through the shell. */
         eng.pt.reactor_trip = false; eng.pt.trip_cause = null;
-        eng.pt.si = false; eng.pt.si_cause = null;
-        eng.pt.afas_mdafw = false; eng.pt.afas_mdafw_cause = null;
-        eng.pt.afas_tdafw = false; eng.pt.afas_tdafw_cause = null;
-        eng.pt.fwi = false; eng.pt.fwi_cause = null;
-        /* the FWI valve state stays isolated through the reset — clearing a latch is not
-         * re-opening a valve; isolate_feedwater false is the operator's restore */
-        /* the AFW pumps KEEP RUNNING through the reset — clearing a latch is not securing a
-         * pump; the operator stops each one with its own switch afterward */
         eng._manualTrip = false;   /* releasing the pushbutton is part of the reset */
         /* RE-ARM THE TRIP EDGE (#507 wave 6, found by the ATWS probe): _lastTrip lags one
          * step, so a reset followed IMMEDIATELY by a new trip (or the pushbutton) landed
@@ -570,6 +565,21 @@
          * standing. Clearing the latch is re-arming its edge detector. */
         eng._lastTrip = false;
         break;
+      /* THE PER-SYSTEM RESETS (#512). Each clears one function's latch and sets its
+       * RE-ARM BLOCK [sourced — after an SI reset "all automatic SI actuation signals are
+       * blocked"; the block clears in pwr2_protection when the live signal drops]. WHEN a
+       * reset is permitted (the 45-60 s time-delay relay + P-4) is the SHELL's, read off
+       * pt.*_t (HR5 shape: the doors stay dumb). */
+      case 'reset_si':
+        eng.pt.si = false; eng.pt.si_cause = null; eng.pt.si_rearm_block = true; break;
+      case 'reset_afas':
+        eng.pt.afas_mdafw = false; eng.pt.afas_mdafw_cause = null;
+        eng.pt.afas_tdafw = false; eng.pt.afas_tdafw_cause = null;
+        eng.pt.afas_rearm_block = true; break;
+      case 'reset_fwi':
+        /* the FWI valve state stays isolated through the reset — clearing a latch is not
+         * re-opening a valve; isolate_feedwater false is the operator's restore */
+        eng.pt.fwi = false; eng.pt.fwi_cause = null; eng.pt.fwi_rearm_block = true; break;
       default:
         throw new Error('pwr2_engine: unknown command "' + name + '" — one door, spelled right');
     }

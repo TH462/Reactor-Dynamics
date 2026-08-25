@@ -510,6 +510,12 @@
   // Each entry: press(s) issues command(s); active(s) -> selected highlight.
   // ESF AUTO re-arm buttons by esf system id — consumed by buttonDisabled below (#503).
   var ESF_ARM_BUTTONS = { imrle1mc0lk: 'hpi', imrmssr9ihq: 'afw' };
+  // The per-system latch lamps (#512): button id -> the control_state flag that holds it.
+  // ECCS AUTO while safety injection is latched · AFW AUTO while the aux feed actuation is
+  // latched · MFW RESTORE while feedwater isolation stands (either driver) · HEATER AUTO
+  // while the NUREG-0737 shed latch stands.
+  var ACTUATED_BUTTONS = { imrle1mc0lk: 'si_actuated', imrmssr9ihq: 'afas_actuated',
+                           bdMfwRestore: 'fwi_actuated', imro969lnex: 'heaters_shed' };
   // Buttons that press an AUTOMATION CHANNEL by id — disabled when the running engine's
   // kernel carries no such channel (#506: the boron panel and rod AUTO on PWR2, whose
   // channels list is empty). Keyed off the snapshot, like every disable here.
@@ -3001,6 +3007,17 @@
     buttonWarn: function (item, s) {
       var b = BUTTONS[item.id];
       return b && b.warn ? !!b.warn(s) : false;
+    },
+    // ACTUATED (amber, #512 — owner design): a PROTECTION latch is holding this system.
+    // The lamp sits on the panel's mode/reset button; the panel's own securing click is
+    // the unlatch (the shell refuses it while the actuating signal is live, and resets
+    // then executes once it clears). Keyed off published control_state flags, so any
+    // engine that publishes them gets the lamps — the old engine publishes none today
+    // and simply shows nothing new. The heater row is the idiom's in-house precedent
+    // (the NUREG-0737 shed latch has always cleared on the operator's heater click).
+    buttonActuated: function (item, s) {
+      var f = ACTUATED_BUTTONS[item.id];
+      return f ? CS(s)[f] === true : false;
     },
     // Disabled: an ESF AUTO re-arm button whose system the RUNNING ENGINE does not declare.
     // The kernel writes automation.esf keys only for config-listed systems, so a missing key

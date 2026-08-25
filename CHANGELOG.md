@@ -30,6 +30,20 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
 
 ## [Unreleased]
 
+### Changed (#512 — per-system protection latches, 2026-08-25, owner design)
+- **PWR2: each protection latch lives on its own panel now.** While safety injection, the
+  aux feed actuation, feedwater isolation, or the heater shed is holding a system, that
+  panel's button turns amber — and the panel's own securing click (ECCS STOP, AFW STOP,
+  MFW RESTORE, the heater controls) is the reset. Inside the sourced 45–60 s reset window
+  the click refuses with the time remaining; after it, one click resets the function and
+  secures the equipment **even with the signal still present**, with automatic
+  re-actuation blocked until the signal clears — the real Westinghouse reset circuit,
+  which is exactly what makes a deliberate TMI-style termination possible: measured, a
+  stuck-open PORV ride ends with the pressurizer indicating 100 % while the core is half
+  voided, by the player's own hand.
+- **RPS RESET narrows to the reactor trip** (rods and breakers, with its rods-in
+  permissive) — it no longer clears the other latches wholesale.
+
 ### Added (#511 — the accumulator and the MSIV, 2026-08-24)
 - **PWR2: the cold-leg injection accumulator is real.** A passive tank — borated water
   under a 650 psig nitrogen cover (sourced), sized to the plant's ruled identity (0.435 of

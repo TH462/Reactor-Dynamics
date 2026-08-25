@@ -29,6 +29,25 @@ and the user-visible summary in `CHANGELOG.md`. This file points at those and tr
 
 ---
 
+## Session log — 2026-08-25-develop-a (#512 — per-system latches; the TMI termination is reachable)
+
+**Owner design, built same-day:** each protection latch shows on its own panel (a new
+amber `bd-actuated` button state — ECCS AUTO, AUX FEED AUTO, MFW RESTORE, HEATER AUTO) and
+the panel's own securing click IS the unlatch. The first cut refused while the signal was
+live — which, the owner caught, made a TMI-style termination UNREACHABLE (a stuck PORV
+keeps the signal live forever). Rebuilt on the sourced circuit (WTSM 12.3.2.3, read
+closely): the reset time-delay relay (45–60 s; 60 adopted) + P-4 gate the reset; after the
+relay **one click resets and secures with the signal still present**, and automatic
+re-actuation blocks until the signal clears. `reset_protection` NARROWED to trip-only;
+three per-system engine doors added. Full record: `Blueprint/PWR2_VALIDATION.md` **§81**,
+including the measured TMI ride: stuck PORV → refusals with the time remaining → accepted
+stop at latch+62 s → ten minutes later the pressurizer indicates **100 % with the core
+51.5 % voided**. Gates: board 26 → 28 (7 mutations), protection 55/55 (7 anchors
+re-pointed), engine 91/91 (two AFW-reset checks re-pointed onto `reset_afas`), aggregate
+at baseline.
+
+---
+
 ## Session log — 2026-08-24-develop-e (#511 — the accumulator and the MSIV are real)
 
 **Owner directive in the #509 review conversation: "We should model these valves."** Both

@@ -1038,6 +1038,11 @@
         // TRIP BLOCKS: grey (with a count badge) while trips are intentionally blocked.
         var info = d.buttonInfo ? !!d.buttonInfo(it, s) : false;
         btn.classList.toggle('bd-info', info);
+        // Actuated (amber) state (#512, owner design) — a PROTECTION latch is holding this
+        // system: distinct from bd-warn ("needs attention") and bd-active (a selection).
+        // The panel's own securing click is the unlatch, refused while the signal is live.
+        var act = d.buttonActuated ? !!d.buttonActuated(it, s) : false;
+        btn.classList.toggle('bd-actuated', act);
         var badge = d.buttonBadge ? d.buttonBadge(it, s) : null;
         setBadge(btn, badge);
         var dis = d.buttonDisabled ? !!d.buttonDisabled(it, s) : false;
