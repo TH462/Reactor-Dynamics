@@ -203,10 +203,15 @@ function runSuite(C, rec, quiet) {
   ck('caller hhsiAvail reaches the plant', opt.hhsiAvail, 0.5, 1e-12, '');
   ck('caller lhsiAvail reaches the plant', opt.lhsiAvail, 0.25, 1e-12, '');
   ck('caller injected_kg reaches the plant', opt.injected_kg, 42, 1e-12, 'kg');
-  ckT('a train NOT lined up delivers nothing however low the pressure',
-      C.stepECCS(C.createECCS({}), plant(0.5), 0.02).total_kgs === 0,
-      'default lineup is BOTH TRAINS OFF -- a default of "running" would make every probe that ' +
-      'omits it test an injection nobody started');
+  ckT('a PUMP train NOT lined up delivers nothing however low the pressure', (function () {
+        var r0 = C.stepECCS(C.createECCS({}), plant(0.5), 0.02);
+        /* REFIT with #511, declared: total_kgs now includes the PASSIVE accumulator, which
+         * discharges at 0.5 MPa with no lineup at all — that is its sourced nature ("no
+         * operator or control actions are required"), so the pump claim moves to the pump
+         * fields and the accumulator's unprompted discharge is asserted alongside. */
+        return r0.hhsi_kgs === 0 && r0.lhsi_kgs === 0 && r0.acc_kgs > 0;
+      })(),
+      'default lineup is BOTH PUMP TRAINS OFF; the accumulator needs no lineup and injects anyway');
   ckT('degraded availability scales the flow, and is not cosmetic', (function () {
         var full = C.stepECCS(C.createECCS({ hhsiRunning: true }), plant(1.0), 0.02).hhsi_kgs;
         var half = C.stepECCS(C.createECCS({ hhsiRunning: true, hhsiAvail: 0.5 }), plant(1.0), 0.02).hhsi_kgs;
@@ -224,6 +229,52 @@ function runSuite(C, rec, quiet) {
       'run flags stand (the #200 split); the avail fractions stay separate FAILURE seats');
   ckT('absent drivers mean POWERED -- every fixture above holds (acAvailable convention)',
       C.stepECCS(C.createECCS({ hhsiRunning: true }), plant(1.0), 0.02).hhsi_kgs > 0, '');
+
+  /* ---- 7. THE ACCUMULATOR (#511) ------------------------------------------------------- */
+  if (!quiet) console.log('\nTHE ACCUMULATOR  [#511: a tank under nitrogen, not a curve]');
+  ck('cover pressure is the sourced 650 psig (WTSM Table 5.2-2)',
+     C.ACC.p0_mpa * 145.038 - 14.7, 650, 0.5, 'psig');
+  ckT('the tank is two-thirds water (WTSM 5.2.4.1: gas space = half the water volume)', (function () {
+        var a = C.createAccumulator({});
+        return Math.abs(a.vg0_m3 - a.w0_m3 / 2) < 1e-9 && a.w0_m3 > 5;
+      })(), C.createAccumulator({}).w0_m3.toFixed(2) + ' m3 water (0.435 x RCS volume, the #408 identity)');
+  ckT('AT PRESSURE the check valves hold — zero flow into 2235 psia', (function () {
+        var r = C.stepECCS(C.createECCS({}), plant(15.41), 0.02);
+        return r.acc_kgs === 0 && r.acc_water_frac === 1;
+      })(), 'tank pressure 650 psig cannot beat the RCS');
+  ckT('BELOW the cover pressure it discharges with NO lineup and NO power — passive', (function () {
+        var r = C.stepECCS(C.createECCS({}), plant(1.0), 0.02, { ac_available: false });
+        return r.acc_kgs > 0 && r.hhsi_kgs === 0 && r.lhsi_kgs === 0;
+      })(), 'a station blackout does not touch it (sourced: "no operator or control actions are ' +
+            'required"); the SI pumps beside it are dead');
+  ckT('a SHUT isolation valve stops it completely', (function () {
+        var r = C.stepECCS(C.createECCS({ acc: { valve_open: false } }), plant(1.0), 0.02);
+        return r.acc_kgs === 0;
+      })(), 'the one lever the system has');
+  ckT('the driving head FALLS as the tank empties (expanding cover gas)', (function () {
+        var ec7 = C.createECCS({});
+        var sys7 = plant(0.5);
+        var f0 = C.stepECCS(ec7, sys7, 0.02).acc_kgs;
+        for (var i = 0; i < 500; i++) C.stepECCS(ec7, sys7, 0.02);   /* ~10 s of discharge */
+        var f1 = C.stepECCS(ec7, sys7, 0.02).acc_kgs;
+        var pNow = C.accPressure(ec7.acc);
+        return f1 < f0 && pNow < C.ACC.p0_mpa && ec7.acc.water_m3 < ec7.acc.w0_m3;
+      })(), 'flow and cover pressure both fall — a constant-head tank would be the curve this ' +
+            'component exists not to be');
+  ckT('it EMPTIES in the sourced discharge class and then stops', (function () {
+        var ec8 = C.createECCS({});
+        var sys8 = plant(0.2);
+        var t = 0;
+        while (ec8.acc.water_m3 > 0 && t < 300) { C.stepECCS(ec8, sys8, 0.05); t += 0.05; }
+        var after = C.stepECCS(ec8, sys8, 0.05);
+        if (!quiet) console.log('        measured empty time ' + t.toFixed(1) + ' s against the sourced ~36 s class');
+        return t > 15 && t < 90 && after.acc_kgs === 0 && after.acc_water_frac === 0;
+      })(), 'finite inventory: the flow coefficient is solved against Ginna\'s ~36 s dump, and an ' +
+            'empty tank injects nothing (N2 injection declared unmodeled)');
+  ckT('the published fields ride the return (the board card reads them)', (function () {
+        var r = C.stepECCS(C.createECCS({}), plant(15.41), 0.02);
+        return r.acc_pressure_mpa > 4 && r.acc_valve_open === true && r.acc_water_frac === 1;
+      })(), '');
 }
 
 console.log('\nPWR2 Layer 5 -- ECCS: sourced injection curves');
@@ -256,8 +307,8 @@ var MUTATIONS = [
   ['the running total stops accumulating',
    'ec.injected_kg += total * dt;', ''],
   ['a shut-off train still hands Layer 3 a zero-flow source',
-   'sources: total > 0 ? [{ node: \'cold_leg\', mdot: total, h: h_inj }] : []',
-   'sources: [{ node: \'cold_leg\', mdot: total, h: h_inj }]'],
+   "    if (hh + lh > 0) srcs.push({ node: 'cold_leg', mdot: hh + lh, h: h_inj });",
+   "    srcs.push({ node: 'cold_leg', mdot: hh + lh, h: h_inj });"],
   ['the shutoff FLAG stops tracking the sourced head',
    'hhsi_shutoff: P * PSI_PER_MPA >= ECCS.hhsi_shutoff_psia,', 'hhsi_shutoff: false,'],
   ['availability no longer floored (negative avail sucks the vessel dry)',
@@ -275,7 +326,23 @@ var MUTATIONS = [
    'injected_kg: opts.injected_kg === undefined ? 0 : opts.injected_kg', 'injected_kg: 0'],
   ['the default lineup becomes RUNNING instead of secured',
    'hhsiRunning: opts.hhsiRunning === undefined ? false : !!opts.hhsiRunning,',
-   'hhsiRunning: opts.hhsiRunning === undefined ? true : !!opts.hhsiRunning,']
+   'hhsiRunning: opts.hhsiRunning === undefined ? true : !!opts.hhsiRunning,'],
+  /* ---- THE ACCUMULATOR (#511) ---- */
+  ['the accumulator loses its passivity (a blackout stops it like a pump)',
+   '    if (ac && ac.valve_open && ac.water_m3 > 0) {',
+   '    if (ac && ac.valve_open && powered && ac.water_m3 > 0) {'],
+  ['the cover gas stops expanding (a constant-head tank — the curve, not the state)',
+   '      var Pg = accPressure(ac);',
+   '      var Pg = ACC.p0_mpa;'],
+  ['the check valves are removed (the tank "injects" into 2235 psia)',
+   '      if (Pg > P) {',
+   '      if (true) {'],
+  ['the inventory stops depleting (an infinite accumulator)',
+   '          ac.water_m3 = Math.max(0, ac.water_m3 - acFlow * dt / rho);',
+   ''],
+  ['the isolation valve stops isolating',
+   "      valve_open: opts.valve_open === undefined ? true : !!opts.valve_open,",
+   '      valve_open: true,']
 ];
 
 /* ---- THE CLEAN-RUN GUARD --------------------------------------------------------------

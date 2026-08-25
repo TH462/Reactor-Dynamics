@@ -45,8 +45,32 @@
   if (!RD || !RD.engine) throw new Error('pwr2_shell: load the pwr2 stack (incl. pwr2_engine) first');
   var EN = RD.engine, PZ = RD.pressurizer, IN = RD.instruments;
 
+  /* THE ACCUMULATOR VALVE'S ADMINISTRATIVE LOCK (#511) [sourced — Ginna TS Bases B 3.5.1:
+   * the motor operated isolation valves "are maintained open with AC power removed under
+   * administrative control when pressurizer pressure is > 1600 psig"; WTSM 5.2.4.1: "During
+   * a deliberate plant depressurization, power to the valve motor operators is temporarily
+   * restored so that the valves can be closed"]. Power removed means the motor cannot move
+   * the valve in EITHER direction — both commands refuse, out loud (#505), while INDICATED
+   * pressurizer pressure (HR1, the M-2 lesson; absent means truth) is above the lock. */
+  function accValve(e, open) {
+    var psig = (e.ins.reading.primary_pressure !== undefined
+                ? e.ins.reading.primary_pressure : e.sys.P) * 145.038 - 14.7;
+    if (psig > 1600) {
+      throw new Error('ACCUMULATOR VALVE BLOCKED: power is removed from the valve operator ' +
+        'above 1600 psig pressurizer pressure (administrative lock, TS Bases B 3.5.1) — ' +
+        'indicated ' + psig.toFixed(0) + ' psig. Depressurize below 1600 psig first.');
+    }
+    EN.command(e, 'accumulator_valve', open);
+  }
+
   /* ---- the command registries (see header). value: a mapper fn or a reason string. ---- */
   var MAPPED = {
+    /* THE #511 VALVES — real machinery behind the two diagram symbols #509 item 11 had to
+     * disable. The MSIV strokes ~5 s and closing it at load trips the turbine (engine). */
+    open_msiv:        function (e, c) { EN.command(e, 'msiv', true); },
+    close_msiv:       function (e, c) { EN.command(e, 'msiv', false); },
+    open_accumulator_valve:  function (e, c) { accValve(e, true); },
+    close_accumulator_valve: function (e, c) { accValve(e, false); },
     scram:            function (e, c) { EN.command(e, 'scram', true); },
     reset_rps:        function (e, c) { EN.command(e, 'reset_protection', true); },
     /* GROUP-ROUTED since #506.3-4 (two real banks): before this, group_id was DROPPED, so
@@ -523,10 +547,8 @@
     set_ctmt_fans:    'containment fan coolers are unmodeled (registered static)',
     set_ctmt_recombiners: 'recombiners are unmodeled (registered static)',
     set_steam_demand: 'the turbine is dispatched by load target only',
-    open_msiv:        'no MSIV model — the line is always open (registered static)',
-    close_msiv:       'no MSIV model — the steam line has no isolation valve to shut',
-    open_accumulator_valve:  'accumulators are a declared omission (pwr2_eccs.js header)',
-    close_accumulator_valve: 'accumulators are a declared omission',
+    /* open/close_msiv and open/close_accumulator_valve moved to MAPPED at #511 — the MSIV
+     * and the accumulator are real machinery now */
     stuck_control_rod: 'one lumped bank; a single stuck rod has no representation',
     secondary_depressurize: 'no steam-line break model yet',
     secondary_depressurize_upstream: 'no steam-line break model yet',
@@ -605,7 +627,7 @@
     ex.afw_block_open = e.aw.blocked !== true;      /* LIVE since #507 wave 6 made aw.blocked
                                                      * real state; the pinned `true` here kept
                                                      * the valve icon OPEN forever (#509 item 6) */
-    ex.accum_valve_open = true;                     /* matches control_state.accumulator_valve_open */
+    ex.accum_valve_open = ts.accumulator_valve_open === true;   /* LIVE since #511 */
     ex.safety_relief_active = !!e.pz.safetyOpen;
     ex.mfw_isolated = this.eng.fw.isolated === true;   /* REAL since the feed train (2026-08-21) */
     /* LIVE since #507 wave 1 — the CVCS lab sample (they were pinned null/false/0 while no
@@ -893,17 +915,13 @@
       governor_valve_pct: ts.governor_valve_pct !== undefined ? ts.governor_valve_pct : 0,
       hpi_active: ts.hpi_active === true,
       eccs_mode: ts.eccs_mode,
-      accumulator_valve_open: true,
-      /* the *_fixed capability flags (the adv_setpoint_fixed idiom): the diagram's MSIV and
-       * accumulator valve symbols are clickable, but this plant registers both as STATICS
-       * (see REFUSED) — the flag lets the board render them non-operable instead of eating
-       * the click with a refusal flash (#509 item 11). An engine that grows the model just
-       * stops publishing the flag and the valve comes back for free. */
-      accumulator_valve_fixed: true,
+      /* LIVE since #511 — the tank and the MSIV are real machinery; the #509 item 11
+       * *_fixed capability flags retired exactly as designed (an engine that grows the
+       * model stops publishing the flag and the valve symbol comes back operable). */
+      accumulator_valve_open: ts.accumulator_valve_open === true,
       afw_throttle_pct: (e.aw.mdafwRunning || e.aw.tdafwRunning) ? 100 : 0,
       sr_energized: ts.sr_energized === true,
-      msiv_open: true,
-      msiv_fixed: true,
+      msiv_open: ts.msiv_open === true,
       /* flow_pct is what the board's pump animation SPINS on (pumpProps speed) — without it
        * the driver computed NaN and the RCP impeller froze with its pipe ports dark
        * (#506.5, measured). pump_flow_pct is the true-state's own loop-flow fraction. */
@@ -1041,6 +1059,9 @@
         /* the electrical state (#507 wave 4) — an old save without it lands on the
          * constructor's healthy grid, which is the pre-wave-4 plant exactly */
         elec: e.elec,
+        /* the MSIV (#511) — an old save without it lands on the constructor's open valve,
+         * which is the pre-#511 plant exactly (the accumulator rides inside ec) */
+        msiv: e.msiv,
         pzDrivers: e.pzDrivers, dcDrivers: e.dcDrivers
       }
     };
@@ -1072,6 +1093,13 @@
     e.ins.failure = st.ins.failure;
     Object.keys(st.ins.reading || {}).forEach(function (id) { e.ins.reading[id] = st.ins.reading[id]; });
     Object.keys(st.scalars).forEach(function (k) { e[k] = st.scalars[k]; });
+    /* #511 MIGRATIONS (the CHANGELOG migration-note pattern): a pre-#511 save carries no
+     * MSIV and no accumulator — both land on the constructor's healthy at-power lineup
+     * (valve open, full tank), which is the pre-#511 plant plus the new machinery. */
+    if (!e.msiv) e.msiv = { open: true, pos: 1 };
+    if (e.ec && !e.ec.acc && root.RD.pwr2.eccs.createAccumulator) {
+      e.ec.acc = root.RD.pwr2.eccs.createAccumulator({});
+    }
     this._ts = st.ts;                          /* the same step's own snapshot — no re-derive */
     this.instruments.load(st.shellIns);
   };

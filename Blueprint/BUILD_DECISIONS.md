@@ -45,6 +45,20 @@ where the two differ or where judgment was exercised.
 
 ---
 
+## 2026-08-24-develop-e — #511: the accumulator's sizing basis (the ruled 0.435 identity over WTSM per-loop scaling)
+
+**Claim.** The accumulator's water volume is **0.435 × this plant's own RCS volume** (the
+#408 Ginna identity the old engine already carries: 2×1,115 ft³ against a 5,123 ft³ RCS,
+UFSAR T15.6-15), resolved from the Layer-1 node volumes at load — 10.29 m³ / ~2,719 gal.
+The alternative was per-loop power scaling of WTSM Table 5.2-2's 6,500 gal (the RCP-inertia
+convention), which gives 2,287 gal — same class, different basis. **Why the identity wins:**
+Hard Rule 9 — the plant's ruled identity already answers this question (pwr1's
+`accumulator_capacity` was sourced-scaled to the same 0.435 at #408), and two engines
+carrying two different accumulator sizes for one plant would be a parity defect of the kind
+#507 exists to close. The cover pressures (650/600 psig) and fill fraction (2/3 water) are
+WTSM's, intensive and unscaled. The discharge coefficient is SOLVED against the same Ginna
+table's ~36 s dump — the gate measures the empty time it produces. Record: `PWR2_VALIDATION.md` §80.
+
 ## 2026-08-24-develop-d — #509: two owner selections (chart lanes fill; RCP density reference to the cold leg) + the reset seam
 
 **Claim.** The owner's third playtest (#509, 11 items) is worked end to end; the full measured

@@ -29,6 +29,34 @@ and the user-visible summary in `CHANGELOG.md`. This file points at those and tr
 
 ---
 
+## Session log — 2026-08-24-develop-e (#511 — the accumulator and the MSIV are real)
+
+**Owner directive in the #509 review conversation: "We should model these valves."** Both
+built, sourced, gated the same day. Full measured record: `Blueprint/PWR2_VALIDATION.md`
+**§80**. The #509 item 11 `*_fixed` disabled-statics flags retire exactly as designed —
+the machinery exists, the flags stopped publishing, the diagram symbols came back operable
+with zero board changes.
+
+- **The accumulator** (pwr2_eccs): one passive tank — 650 psig nitrogen cover (WTSM
+  Table 5.2-2), two-thirds water, volume 0.435 × this plant's own RCS volume (the #408
+  Ginna identity ≈ 2,719 gal / 10,190 kg), isothermal cover-gas expansion, flow
+  coefficient solved against the sourced ~36 s dump. Survives a blackout by design. The
+  isolation valve carries the sourced >1600 psig power-removed refusal (B 3.5.1) and the
+  Mode 4 preset boots it CLOSED. **Measured: a severity-0.5 large LOCA that used to reach
+  the beyond-model latch at t+500 now SURVIVES the whole 1,800 s ride** — the sourced
+  "terminated solely by the accumulators" behavior. The engine gate's RHR-align fixture
+  reddened and the red WAS the sourced procedure (isolate the accumulators before a
+  depressurization); the fixture now does what the operator does.
+- **The MSIV** (pwr2_engine/pwr2_relief): downstream of the MSSVs/ADV/TDAFW supply,
+  upstream of the turbine and dumps (B 3.7.2); ~5 s stroke; closing at load trips the
+  turbine and the SG parks at 1,076 psia with the ADV catching it under the 1,085 psig
+  pop — the manual's own §8.3 sentence, now measured on PWR2.
+- Gates: eccs 30→38 (23/23 mutations) · relief 38→42 (24/24) · loca 14→17 (exact mass
+  closure with the passive stream) · board 24→26 · true_state 64 (six statics retired) ·
+  engine 91/91 (55/55) · everything else at baseline. pwr2-1.0 saves migrate.
+
+---
+
 ## Session log — 2026-08-24-develop-d (#509 — the owner's third playtest, all 11 items)
 
 **#509 worked end to end** — triaged (nothing had been booked against it; only item 7's

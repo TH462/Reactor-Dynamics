@@ -79,8 +79,8 @@
     { ctmt_h2_burned: 0, ctmt_spray_demand: false, ctmt_spray_active: false,
       ctmt_fan_safety: false, ctmt_fan_active: false,
       ctmt_recomb_demand: false, ctmt_recomb_active: false });
-  declareStatic('steam lines', 'no MSIV model — the line is genuinely always open',
-    { msiv_open: true });
+  /* the 'steam lines' msiv_open static RETIRED #511 — the MSIV is a real valve (see the
+   * secondary block below) */
   /* the 'electrical' static RETIRED #507 wave 4 — station_blackout / ac_available are LIVE
    * fields now, supplied from the facade's two-bus state (see the B1 block below) */
   declareStatic('secondary', 'a single-SG plant cannot have an SG imbalance',
@@ -89,13 +89,10 @@
     'mode this model has', { load_mode: 'manual' });
   /* the 'AFW' afw_blocked static RETIRED #507 wave 6 — the discharge block is real state
    * (pwr2_afw af.blocked, the TMI-2 tagged-shut valves) and the field is LIVE below */
-  declareStatic('ECCS accumulators', 'DECLARED OMISSION (pwr2_eccs.js header): an accumulator ' +
-    'is an inventory with expanding cover gas, deferred to the compressible-volume work. ' +
-    'Nominals are honest at steady state and WRONG in a large LOCA — the predicted-divergence ' +
-    'set (D4 sec 8) carries them.',
-    { accumulator_valve_open: true, accumulators_discharging: false,
-      accumulator_flow_normalized: 0, accumulator_volume_pct: 100,
-      accumulator_pressure_mpa: 4.14 });
+  /* the 'ECCS accumulators' statics RETIRED #511 (2026-08-24) — the tank is real state now
+   * (pwr2_eccs ec.acc: water under isothermally-expanding nitrogen) and all five fields are
+   * LIVE below. The 'steam lines' msiv_open static retires in the same change — the MSIV is
+   * a real valve (pwr2_engine eng.msiv). */
 
 
   /* ⚠ THE PRESSURIZER BLOCK SHRANK ON 2026-08-18 — pwr2_pressurizer.js exists (owner ruling
@@ -318,10 +315,13 @@
      * [derived] naming state pwr2_eccs.js already carries, not new physics: `mode` and the two
      * booleans/normalization below are read straight off its flow return, not computed here. */
     if (ec.total_kgs !== undefined) {
-      put('hpi_active', ec.total_kgs > 0);
+      /* PUMP injection only (#511): the accumulator is passive and has its own fields below —
+       * before the split an accumulator dump lit hpi_active and read as pump flow */
+      var pumpKgs = (ec.hhsi_kgs || 0) + (ec.lhsi_kgs || 0);
+      put('hpi_active', pumpKgs > 0);
       if (RD.eccs) {
         var hpiRated = RD.eccs.hhsiFlow(0) + RD.eccs.lhsiFlow(0);     /* nameplate, both trains */
-        if (hpiRated > 0) put('hpi_flow_normalized', ec.total_kgs / hpiRated);
+        if (hpiRated > 0) put('hpi_flow_normalized', pumpKgs / hpiRated);
       }
       var mode = 'standby';
       if (ec.hhsi_kgs > 0 && ec.lhsi_kgs > 0) mode = 'both';
@@ -331,6 +331,19 @@
        * are the same pumps in two alignments (#458), and the lineup word says which */
       if (rh.valve_open === true) mode = 'rhr';
       put('eccs_mode', mode);
+    }
+    /* --- the accumulator (#511 — LIVE; the five old statics retired) --- */
+    if (ec.acc_pressure_mpa !== undefined) {
+      put('accumulator_valve_open',     ec.acc_valve_open === true);
+      put('accumulators_discharging',   (ec.acc_kgs || 0) > 0);
+      put('accumulator_volume_pct',     100 * (ec.acc_water_frac !== undefined ? ec.acc_water_frac : 0));
+      put('accumulator_pressure_mpa',   ec.acc_pressure_mpa);
+      /* normalized to the sourced full-dump rate (M0 / 36 s), so 1.0 is the design-basis
+       * blowdown discharge — the same convention the flow coefficient is solved against */
+      if (RD.eccs && RD.eccs.ACC) {
+        var accRated = RD.eccs.accK() * Math.sqrt(RD.eccs.ACC.p0_mpa / 2);
+        if (accRated > 0) put('accumulator_flow_normalized', (ec.acc_kgs || 0) / accRated);
+      }
     }
 
     /* --- AFW --- */
@@ -454,6 +467,11 @@
       put('rcp_cavitation_frac', pumpOn ? cavF : 0);
       put('rcp_cavitating', pumpOn && cavF > 0.5);
     }
+
+    /* --- the MSIV (#511 — LIVE; the 'steam lines' static retired). Absent ctx means OPEN:
+     * a layer fixture with no MSIV machinery is a line with nothing shut in it, which is
+     * also what keeps the field accounted for on engine-direct fixtures. --- */
+    put('msiv_open', ctx.msiv_open !== false);
 
     /* --- turbine valves: the governor IS the steam demand; the stop valve is the trip --- */
     var tripped = ctx.turbine_tripped === true;

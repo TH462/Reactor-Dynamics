@@ -30,6 +30,25 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
 
 ## [Unreleased]
 
+### Added (#511 — the accumulator and the MSIV, 2026-08-24)
+- **PWR2: the cold-leg injection accumulator is real.** A passive tank — borated water
+  under a 650 psig nitrogen cover (sourced), sized to the plant's ruled identity (0.435 of
+  RCS volume ≈ 2,700 gal), discharging on its own physics whenever RCS pressure falls
+  below the expanding cover gas. It survives a station blackout by design, and it changes
+  outcomes: a mid-severity large LOCA that used to end in the held-plant latch now rides
+  out with the core quenched. The isolation valve operates from the diagram with the real
+  administrative lock (power removed above 1600 psig pressurizer pressure), and the Hot
+  Shutdown preset boots it closed, per procedure.
+- **PWR2: the main steam isolation valve is real.** Sourced placement — downstream of the
+  code safeties and the turbine-driven aux feed steam supply, upstream of the turbine and
+  the condenser dumps — so closing it trips the turbine and bottles the steam generator
+  against its atmospheric relief and safeties while aux feed keeps its steam. ~5 s stroke,
+  operable from the diagram both ways.
+- The #509 "disabled statics" treatment of these two valve symbols retired itself: the
+  engine publishes the machinery now and the board re-enables them with no UI change.
+- **Migration note:** pwr2-1.0 saves from before this change load onto the healthy
+  at-power lineup for the new machinery (MSIV open, accumulator full with its valve open).
+
 ### Fixed (#509 — the owner's third playtest, 2026-08-24)
 - **PWR2: protection reset works after an automatic trip.** The kernel's RPS latch never
   learned an engine-owned trip, so RESET was a permanent no-op and every SI/AFAS/FWI

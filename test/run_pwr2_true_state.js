@@ -589,9 +589,11 @@ var MUTATIONS = [
   ['the CVCS currency conversion is dropped (kg/s published as the #408 fraction again)',
    "    put('charging_flow_actual', cv.charging_kgs * FRAC_PER_KGS);",
    "    put('charging_flow_actual', cv.charging_kgs);"],
+  /* RETARGETED at #511: the drift target used to be msiv_open, which is a LIVE field now —
+   * the drift moves to a SURVIVING static (the single-SG imbalance constant). */
   ['a static drifts from its registered value (the registry lies about what is emitted)',
    "    Object.keys(STATIC).forEach(function (sf) { ts[sf] = STATIC[sf].value; });",
-   "    Object.keys(STATIC).forEach(function (sf) { ts[sf] = STATIC[sf].value; });\n    ts.msiv_open = false;"],
+   "    Object.keys(STATIC).forEach(function (sf) { ts[sf] = STATIC[sf].value; });\n    ts.sg_imbalance_active = true;"],
   ['the SG level map is DELETED (a drained SG reads the healthy nominal)',
    "      put('sg_level_wide_pct', clip(wide, 0, 100));",
    "      put('sg_level_wide_pct', 59.25);"],
@@ -639,9 +641,11 @@ var MUTATIONS = [
   /* RETARGETED #507 wave 4: this mutation pinned the 'electrical' declareStatic, which
    * retired when ac_available/station_blackout went live — the same thin-reason class now
    * rides the surviving MSIV static. */
+  /* RE-ANCHORED at #511: the 'steam lines' static retired with the MSIV build — the same
+   * mutation now blanks a surviving static's reason. */
   ['a STATIC loses its reason (the registry stops saying why a constant is honest)',
-   "  declareStatic('steam lines', 'no MSIV model — the line is genuinely always open',",
-   "  declareStatic('steam lines', 'x',"],
+   "  declareStatic('secondary', 'a single-SG plant cannot have an SG imbalance',",
+   "  declareStatic('secondary', 'x',"],
   /* RETARGETED 2026-08-18: this mutation used to blank the "#472 owns it" lane attribution,
    * whose anchor text left with the old declared-missing block when pwr2_pressurizer.js landed.
    * The same failure class now lives in the SUPPLIED side: a level published as a constant

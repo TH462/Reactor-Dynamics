@@ -4397,3 +4397,82 @@ mirror severed → 4 red; the reset snapshot patch severed → 2 red; the `set_a
 payload revert → 1 red; plus the two originals re-anchored), 5/5 caught. Regression sweep
 green: run_m4 46/46 · run_autoctl 30/30 · run_e2e_controls 59/59 · run_pwr 37/37 ·
 run_m5 23/23 · verify_board_check 225 · every pwr2 runner at baseline.
+
+## 80. #511 — THE ACCUMULATOR AND THE MSIV: THE TWO VALVES #509 DISABLED ARE REAL MACHINERY — 2026-08-24
+
+*(OWNER DIRECTIVE, 2026-08-24, in the #509 review conversation: "We should model these
+valves.")* The #509 item 11 `*_fixed` capability flags retire exactly as designed — the
+engine grew the machinery and stopped publishing them, and the two diagram symbols came
+back operable with no board change.
+
+**The accumulator (`pwr2_eccs`).** One tank (single-loop plant; the reference carries one
+per cold leg — WTSM 5.2). An honest state, not a curve: borated water under a nitrogen
+cover that expands ISOTHERMALLY as the tank empties, discharging through the check-valve
+comparison (tank pressure > RCS) whenever the isolation valve is open. Sourced: 650 psig
+normal cover / 600 minimum (WTSM Table 5.2-2), tank two-thirds water (§5.2.4.1), water
+volume **0.435 × this plant's own RCS volume** — the #408 Ginna identity the old engine
+already carries (2×1,115 ft³ against a 5,123 ft³ RCS, UFSAR T15.6-15) — resolved from the
+Layer-1 node volumes at load: **10.29 m³ / 2,719 gal / ~10,190 kg**. The flow coefficient
+is SOLVED against the same table's ~36 s full-dump class (187.1 kg/s·√MPa), and the gate
+measures the resulting empty time rather than asserting the anchor. Passive — deliberately
+not gated on `ac_available` (sourced: "no operator or control actions are required");
+boron rides the existing `si_ppm` path at the RWST concentration (sourced: "about the same
+as that of the RWST"). Nitrogen injection after empty is declared unmodeled.
+
+**The isolation valve** is the one lever, with the sourced administrative lock: power is
+removed from the motor operator above **1600 psig pressurizer pressure** (Ginna TS Bases
+B 3.5.1 / WTSM 5.2.4.1), so open AND close refuse out loud above it, reading the INDICATED
+channel (HR1). The **Mode 4 shutdown preset boots with the valve CLOSED** (sourced: closed
+in Mode 3 below 1600 psig and Modes 4/5/6) — measured before the boot fix, an open valve
+would dump the tank into the 364 psia boot at t=0. Opening it there discharges, honestly:
+that hazard is why the procedure exists.
+
+**Measured — the accumulator changes LOCA outcomes, which is the point:**
+- Severity-0.5 large LOCA, tank OPEN: discharge begins t+370 s, empties by t+580 s, and
+  **the plant SURVIVES the full 1,800 s ride** (fuel 152 °C / 306 °F, P 0.41 MPa). Tank
+  ISOLATED: the plant reaches the beyond-model latch at t+500 — the pre-#511 outcome. The
+  sourced sentence this reproduces (B 3.5.1): for the larger small breaks "the increase in
+  fuel clad temperature is terminated solely by the accumulators."
+- Severity-1: the run was already ending in the kinetics-envelope screen (the #487/#499
+  held-plant contract, ~t+320, power 572 %); the tank's cold slug advances it (~t+210,
+  power excursion before the screen — the void-collapse term outruns the mixed-ledger
+  boron, the known local-boron simplification). DECLARED: the severity-1 large break stays
+  the demonstration class it already was.
+- The joint gate (`run_pwr2_loca` 14 → **17**): pumps OFF, 0.004 m² break — the passive
+  tank empties itself (10,187 kg) with the mass closure EXACT (primary net = discharged −
+  injected, 1e-6) and containment blind to the injection.
+- The engine gate's RHR-align fixture reddened and the red was the SOURCED PROCEDURE
+  arriving: depressurizing without isolating the accumulator dumps the tank and
+  re-pressurizes the loop, breaking the alignment — B 3.5.1's own reason the valves are
+  closed for "RCS cooldown and depressurization." The fixture now does what the operator
+  does (isolates first), declared in place.
+
+**The MSIV (`pwr2_engine` + `pwr2_relief`).** One valve, sourced placement (Ginna TS Bases
+B 3.7.2): DOWNSTREAM of the MSSVs and the TDAFW steam supply, UPSTREAM of the turbine and
+the condenser dumps — so a shut MSIV zeroes turbine steam and dump flow while the code
+safeties, the ADV and the turbine-driven aux feed pump keep working (the contract's own
+"SG code safeties upstream of the MSIV" note, now true on PWR2). ~5 s stroke [derived,
+valve class]; closing at load TRIPS the turbine (sourced: closing "isolates the turbine,
+steam dump system, and other auxiliary steam supplies"). The automatic main-steam-isolation
+signal (hi steam flow + SI, hi containment pressure) stays future work with the
+steam-line-break casualty. Measured at power: close → turbine trips at pos < 0.9, steam
+flow 0.000, SG pressure rises to **1,076 psia** where the ADV (1,040 psig auto setpoint)
+catches it just under the 1,085 psig MSSV pop — the exact "ADV catches an MSIV closure
+five psi under the code-safety pop" sentence `Manuals/12` §8.3 has carried since Rev 14.
+Reopen restores the path. Through the stack, the P-9 chain fires and the #509 mirror
+reports the trip cause honestly ("turbine_trip").
+
+**Contract and saves.** SIX true_state statics retired to live fields (the five
+accumulator rows + `msiv_open` — all six were already §6.3-documented, pwr1's own fields,
+so no contract edit); `hpi_active`/`hpi_flow_normalized` now key on PUMP flow only (an
+accumulator dump no longer reads as HPI). pwr2-1.0 saves migrate: a pre-#511 save lands on
+the constructor's open-valve/full-tank/open-MSIV lineup (the migration-note pattern).
+
+**Gates.** run_pwr2_eccs 30 → **38** (+5 mutations: passivity severed, constant-head tank,
+check valves removed, infinite inventory, valve stops isolating — 23/23 caught) ·
+relief 38 → **42** (+1 mutation, 24/24) · true_state 64/64 with six statics retired and
+two mutations re-targeted onto surviving statics · loca 14 → **17** · board 24 → **26**
+(all four valves operable; MSIV round-trips from the diagram; the accumulator's at-power
+refusal) · engine 91/91 (the RHR fixture isolates first, declared) · shell 76 ·
+coredamage 20 · endurance 18p/0xf · protection 100 · feedwater 29 · afw 25 ·
+pressurizer 68 · sg 32 · forwarding 11.

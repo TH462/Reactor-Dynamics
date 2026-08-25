@@ -265,16 +265,35 @@ function runSuite(quietRec) {
     w3.snap().instruments.afw_block_open === true,
     'shut leg ' + blkShut + ' -> reopened ' + (w3.svc.engine.eng.aw.blocked === false));
 
-  /* item 11: the two valves this engine registers as STATICS are non-operable art; the
-   * operable ones stay live */
+  /* item 11 FLIPPED at #511: the MSIV and the accumulator are real machinery now, so all
+   * four clickable valves read OPERABLE (the *_fixed flags retired exactly as designed) */
   var vMsiv = D.compProps({ id: 'imrpp99kx2y' }, w3.snap());
   var vAcc  = D.compProps({ id: 'imrppxt2aqd' }, w3.snap());
   var vAfw  = D.compProps({ id: 'imrpp2g2m8k' }, w3.snap());
-  q('MSIV + accumulator valves read disabled on PWR2; the AFW block valve stays operable',
-    vMsiv && vMsiv.disabled === true && vAcc && vAcc.disabled === true &&
+  q('all four clickable valves read OPERABLE on PWR2 (#511 — the disabled statics retired)',
+    vMsiv && vMsiv.disabled !== true && vAcc && vAcc.disabled !== true &&
     vAfw && vAfw.disabled !== true,
     'msiv ' + (vMsiv && vMsiv.disabled) + ', accum ' + (vAcc && vAcc.disabled) +
     ', afw ' + (vAfw && vAfw.disabled));
+
+  /* #511: the MSIV round-trips from the diagram and closing it at power trips the turbine
+   * (B 3.7.2; the ADV/MSSVs upstream keep the SG relievable — the engine gate measures) */
+  D.onControl({ id: 'imrpp99kx2y' }, 'toggle', 0); w3.tick(8);
+  var msivShut = w3.snap().control_state.msiv_open === false &&
+                 w3.snap().true_state.turbine_tripped === true;
+  D.onControl({ id: 'imrpp99kx2y' }, 'toggle', 1); w3.tick(8);
+  q('MSIV: close click shuts it through the stack and trips the turbine; open click restores',
+    msivShut && w3.snap().control_state.msiv_open === true,
+    'shut leg ' + msivShut + ' -> reopened ' + (w3.snap().control_state.msiv_open === true));
+
+  /* #511: the accumulator valve refuses AT POWER with the sourced administrative lock */
+  var before511 = w3.log.length;
+  D.onControl({ id: 'imrppxt2aqd' }, 'toggle', 0);
+  var accBurst = w3.log.slice(before511);
+  q('accumulator valve close AT POWER refuses with the >1600 psig power-removed lock (B 3.5.1)',
+    accBurst.length === 1 && accBurst[0].result && accBurst[0].result.type === 'error' &&
+    /power is removed/i.test(accBurst[0].result.message || ''),
+    String(accBurst[0] && accBurst[0].result && accBurst[0].result.message).slice(0, 70));
   q('HPI AUTO reads disabled (PWR2 registers no hpi esf — the press was a silent error, #503)',
     D.buttonDisabled({ id: 'imrle1mc0lk' }, w3.snap()) === true,
     '');

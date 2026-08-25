@@ -323,6 +323,14 @@ function runSuite(RD, rec, quiet, only) {
   head('THE RHR ALIGN  [below the 425 psig permissive, the heat actually leaves the loop]');
   var engR = EN.createEngine({});
   run(engR, 10);
+  /* ISOLATE THE ACCUMULATOR FIRST (#511) — the sourced cooldown step (Ginna TS Bases
+   * B 3.5.1: the isolation valves are closed for "RCS cooldown and depressurization
+   * without discharging the accumulators"). Left open, the tank dumps into this fixture's
+   * blowdown at ~650 psig, re-pressurizes the loop and breaks the alignment — which is
+   * EXACTLY why the real procedure closes it, so the fixture does what the operator does.
+   * The engine door is used directly: at this point the fixture is still >1600 psig and
+   * the shell's administrative lock would (correctly) refuse the shell command. */
+  engR.ec.acc.valve_open = false;
   EN.command(engR, 'break_open', { area_m2: 0.002, node: 'cold_leg' });
   var tsR = null, tR = 0, alignedR = false;
   while (tR < 200.001) {

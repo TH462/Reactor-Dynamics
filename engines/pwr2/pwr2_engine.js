@@ -305,6 +305,12 @@
                : ic.cold ? { mode: 'off' }
                : { mode: 'pressure', pressure_setpoint_mpa: G.SG.P_noload },
       advDemand: 0, advBlock: true,
+      /* THE MSIV (#511) — a real valve, sourced placement (Ginna TS Bases B 3.7.2): the MSIV
+       * sits DOWNSTREAM of the MSSVs and the TDAFW steam supply, so closing it isolates the
+       * turbine and the condenser dumps while the code safeties, the ADV and the
+       * turbine-driven aux feed pump keep their steam. ~5 s stroke [derived, valve class];
+       * `open` is the demanded position (the board lamp), `pos` the travel the flow sees. */
+      msiv: { open: true, pos: 1 },
       /* one-step-lag carriers */
       _Qox: 0, _pzRelief: 0, _pzReliefH: 0, _pzSurgeHeat: 0, _eccsKgs: 0, _sgtrKgs: 0, _sgtrH: 0,
       _pzr: null, _dcr: null, _lastTrip: false,
@@ -327,6 +333,12 @@
        * opening it IS the operator's cooldown lever. */
       eng.rh.valve_open = true;
       eng.rh.hx_fraction = 0;
+      /* ACCUMULATOR ISOLATED (#511) [sourced — Ginna TS Bases B 3.5.1: "In MODE 3, with RCS
+       * pressure <= 1600 psig, and in MODES 4, 5, and 6, the accumulator motor operated
+       * isolation valves are closed ... This allows RCS cooldown and depressurization
+       * without discharging the accumulators"] — the 364 psia shutdown boot sits far below
+       * the 650 psig cover pressure, and an open valve would dump the tank at t=0. */
+      eng.ec.acc.valve_open = false;
     }
     /* the feed train at the IC's own operating point (the module's constructor knows only
      * at-power/no-load; a mid-load IC sets the delivered point so the boot does not spend
@@ -515,6 +527,15 @@
         IN.restore(eng.ins, typeof value === 'string' ? value : null); break;
       /* ---- the wave-6 failure levers (#507): each a persistent physical state, never a
        * rewritten demand (#200) ---- */
+      case 'msiv':
+        /* #511 — demanded position; the step strokes eng.msiv.pos toward it (~5 s class).
+         * WHO may close it and when is the caller's law (HR5) — this is the valve. */
+        eng.msiv.open = !!value; break;
+      case 'accumulator_valve':
+        /* #511 — the motor-operated isolation valve. The sourced >1600 psig administrative
+         * power-lock is the SHELL's refusal (it reads the INDICATED pressure); this door is
+         * the motor. */
+        eng.ec.acc.valve_open = !!value; break;
       case 'afw_block':
         /* the TMI-2 tagged-shut discharge valves — dead-heads BOTH AFW trains */
         eng.aw.blocked = !!value; break;
@@ -670,7 +691,23 @@
       } else eng._rbActive = false;
     } else { eng._rbT = 0; eng._rbActive = false; }
 
-    var steam = TB.steamDemand(eng.tb, eng.sg.P, G.SG.h_feed);
+    /* THE MSIV STROKE (#511): ~5 s travel [derived, valve class] toward the demanded
+     * position. Closing it at load TRIPS the turbine [sourced — Ginna TS Bases B 3.7.2:
+     * "Closing the MSIVs isolates each SG from the other, and isolates the turbine, steam
+     * dump system, and other auxiliary steam supplies"; §6.3's own close_msiv note: "trips
+     * a loaded turbine; SG bottles to its code safeties"]. Level while shut, the same law
+     * as the reactor-trip wire below — a shut steam line cannot carry a re-latched turbine. */
+    var msivTgt = eng.msiv.open ? 1 : 0;
+    if (eng.msiv.pos !== msivTgt) {
+      var dMsiv = dt / 5.0;
+      eng.msiv.pos += Math.max(-dMsiv, Math.min(dMsiv, msivTgt - eng.msiv.pos));
+    }
+    if (eng.msiv.pos < 0.9) eng.tb.tripped = true;
+
+    /* turbine steam is gated by the MSIV; the MSSVs and the ADV are UPSTREAM of it and keep
+     * flowing (stepRelief's msiv_frac gates only the dumps), as is the TDAFW steam supply
+     * (pwr2_afw's turbine pump is deliberately ungated — WTSM 5.7.5 + B 3.7.2) */
+    var steam = TB.steamDemand(eng.tb, eng.sg.P, G.SG.h_feed) * eng.msiv.pos;
 
     var cr = CD.stepCondenser(eng.cd, dt, {
       duty_kW: steam * (W.h_g(eng.sg.P) - G.SG.h_feed) * (1 - TB.etaCycle()),
@@ -702,7 +739,9 @@
       dump_demand: dcr.dump_demand,
       condenser_available: cr.available,
       adv_demand: eng.advDemand,
-      adv_block: eng.advBlock
+      adv_block: eng.advBlock,
+      /* the dumps are DOWNSTREAM of the MSIV (#511 — B 3.7.2); safeties/ADV are upstream */
+      msiv_frac: eng.msiv.pos
     });
     var out = steam + rr.total_kgs;
     /* THE FEED TRAIN (2026-08-21) — feed ≡ steam is RETIRED. Main feed is the module's
@@ -958,7 +997,10 @@
       tavg_rate_c_per_hr: eng._tavgRate,
       /* the electrical truth — LIVE fields since #507 wave 4 (the registered static retired) */
       ac_available: acAvail,
-      station_blackout: eng.elec.blackout
+      station_blackout: eng.elec.blackout,
+      /* the MSIV truth — LIVE since #511 (the 'steam lines' static retired); the DEMANDED
+       * position, which is what the board lamp shows (the flow rides eng.msiv.pos) */
+      msiv_open: eng.msiv.open === true
     });
     /* the rod insertion limit, recomputed every step off the plant's own power (#507 §B) —
      * null below its 5 % applicability floor, consumed by the shell's control-state and
