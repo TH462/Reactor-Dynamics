@@ -222,9 +222,10 @@ head('THE WEDGES  [each ride extends past where the old gate stopped]');
   var eng = EN.createEngine({});
   ride(eng, 30);
   EN.command(eng, 'break_open', { area_m2: 0.002, node: 'cold_leg' });
-  var ts = null, maxRho = -1e9, maxPwr = 0, scr = false, tLatch = null;
+  var ts = null, maxRho = -1e9, maxPwr = 0, scr = false, tLatch = null, maxSH = 0;
   for (var t = 0; t < 1800; t += DT) {
     ts = EN.step(eng, DT);
+    if (ts.core_superheat_c > maxSH) maxSH = ts.core_superheat_c;      /* #517 */
     if (eng._dead) break;
     if (tLatch === null && eng.sys.beyond_model) tLatch = t;
     if (ts.scrammed) scr = true;
@@ -237,6 +238,22 @@ head('THE WEDGES  [each ride extends past where the old gate stopped]');
    * kinetics death was riding. That is a HELD plant (the #487/#499 contract), pre-existing and
    * now visible; it is REPORTED here and filed, not asserted away — this ride's claim is the
    * reactivity chain's. */
+  /* #517 — THE NEGATIVE CONTROL FOR THE SUPERHEAT WING, and it belongs here because this is the
+   * only place the ride runs through the FACADE with injection answering. The wing was built on
+   * the ruling that a voided core should be able to express superheat; it is INERT on this ride,
+   * and that was measured BEFORE it was built (core quality 0.84-0.88 at the latch, never out of
+   * the dome). Engine-direct with no ECCS the identical 0.002 m2 break reaches 138 degC of
+   * superheat (run_pwr2_coredamage) — so injection is what holds this core two-phase, and the
+   * contrast is the finding. If someone later tunes the superheat factor until THIS ride moves,
+   * this check reds: that would be fitting a mechanism to a suite (Hard Rule 10). */
+  ck('loca-sev1-eccs-superheat-inert',
+     'the severity-1 LOCA with injection stays essentially IN THE DOME — the #517 superheat wing ' +
+     'is inert here by measurement, not by hope (engine-direct without ECCS the same break ' +
+     'reaches 138 degC)',
+     maxSH < 40,
+     'max core superheat ' + maxSH.toFixed(1) + ' degC; the freeze on this ride is NOT a ' +
+     'property-range event');
+
   ck('loca-sev1-eccs-30min',
      'a severity-1 LOCA with the ECCS answering, 30 min: no kinetics death — scrammed, the fuel ' +
      'finite, reactivity never positive after the scram (the void term flipped positive on ' +

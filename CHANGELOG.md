@@ -30,6 +30,36 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
 
 ## [Unreleased]
 
+### Added (#517 — the superheated-steam wing for the core node, 2026-08-26, owner ruling "Build the superheat wing anyway.")
+- **The core node can say HOW dry it is.** `core_void_fraction` clips at 1, so from the moment a
+  core goes fully void it was a constant: on an unmitigated 5 cm² break it pins at 1.0 at 580 s
+  and said nothing for the next 1,220 s while the core dried 0 → 131 °C (236 °F) of superheat and
+  the clad climbed 555 → 677 °F. New `core_superheat_c`, and `core_uncovered_frac` no longer
+  saturates (void carries 0–0.9 of the range, superheat the last 0.1). Still a declared
+  homogeneous proxy with no water level — #472 is what replaces it.
+- **Steam thermal conductivity and viscosity, [sourced].** Layer 0 gains `k_v`/`mu_v` from
+  WCAP-16009-NP-A (ML050910161) §10-2-1-2 / ASME Steam Tables 1968. The trap: the units are mixed
+  INSIDE one equation and the document does not say so (°C in two terms, Kelvin in the
+  density-squared denominator, g/cm³ not kg/m³) — read consistently in °C the correlation is
+  +31 % at 300 °C. Checked against values not taken from that document: +0.5 % and −0.8 %.
+- **The film coefficient is superheat-aware, and CAPPED so it can only degrade cooling.** The
+  Dittus-Boelter property group at the superheated state over saturation — exactly 1 at zero
+  superheat, so the landed `vapor_ratio` calibration is untouched. Measured 0.92–1.09 across the
+  regime this plant reaches. **Uncapped it reads ~1.5 at 698 °C of superheat and turned a
+  100 %-oxidation runaway into a 24 % survivable ride** — an observability term quietly making
+  core damage harder to reach. Capped on the corpus's only directional evidence for this regime
+  (WCAP-16009 B-2-9-2: *"superheating of vapor decreases heat transfer"*).
+- **A held plant now says it is held.** `sys.beyond_model` was set on `sys` and published
+  nowhere — the player got a plausible, completely static plant that went on accepting commands,
+  160 minutes of it on the TMI ride. New `model_held` / `model_held_why`, covering both the inner
+  thermodynamic latch and the facade screen (whose replayed snapshot is by construction a healthy
+  one, so it is stamped on the way out).
+- **Honest scope note:** the wing is INERT on the two rides #517 was filed about — their cores
+  stay at quality 0.84–0.88 and never leave the dome, and the freeze there is a numerical
+  transport instability (filed separately), not a property-range event. Latch times unchanged at
+  160.8 s and 79.8 s, and that is gated as a negative control. No step-cost change (79.1 µs/step,
+  ratio 3.9×). `Blueprint/PWR2_VALIDATION.md` §88.
+
 ### Fixed (#515 Build 3 — the void/boron reactivity, 2026-08-26, owner ruling "A. Then choked porv then void term.")
 - **A voided, boron-concentrated core is subcritical at any boron.** Two defects in one line of
   `pwr2_kinetics.js`: the moderator term's reference density was a two-phase mixture below

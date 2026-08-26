@@ -4981,3 +4981,179 @@ bracket sign — all red); the identity check is a declared REFIT — its expect
 artefact path; `run_pwr2_endurance` 18 → 19 (`loca-sev1-eccs-30min`); `run_pwr2_reactor` 41
 (the sample moved, the count did not); engine 94, coredamage 20, loca 17, shell 77, lossofload 9,
 cvcs 44, true_state 64, perf at baseline.
+
+## 88. #517 — THE SUPERHEATED-STEAM WING, AND THE CAP THAT KEEPS IT FROM COOLING THE CORE — 2026-08-26
+
+*(OWNER RULING, 2026-08-26: "Build the superheat wing anyway.")* — given after the measurement
+below was put to him with three alternatives, and it is a deliberate reaffirmation, not a default.
+
+### 88.1 The filed premise was refuted before a line was written
+
+#517 says the two LOCA rides freeze because *"the core node's enthalpy walks off Layer 0's
+tabulated range at low pressure (superheated steam + decay heat with no liquid)"*, and recommends
+a superheat wing as the fix. **Measured on both rides, and it is not what happens.**
+
+| severity-1 (0.002 m², cold leg, injection answering) | P | core node | per-junction Courant | envelope walls |
+|---|---|---|---|---|
+| 140 s | 744 psia (5.13 MPa) | quality 0.74 | 0.07 | none |
+| 160.20 s | 489 psia (3.37 MPa) | quality 0.84 | **1.22** — hot leg 16.2 kg carrying 990 kg/s | none |
+| 160.28 s | 205 psia (1.41 MPa) | quality 0.79 | **60** — hot leg 4.6 kg, 13,697 kg/s | none |
+| 160.30 s | **14.5 psia (0.1 MPa)**, the floor | — | 2,745 | 4 clamped, 387 MJ discarded |
+
+The latch is the **floor guard** (`pwr2_core.js:334`) — pinned at the property floor, unbracketed,
+2,381 kg it cannot shed. **The core is at quality 0.84–0.88, inside the dome, when the instability
+starts, and no node touches either enthalpy wall until the blow-up step.** The precursor is
+numerical: at ~7 % inventory the ring nodes hold single-digit kilograms, so the derived junction
+flows (`carry = carry − dm_dt`, `pwr2_loop.js:162`) amplify to 990 → 13,697 → 124,675 kg/s while
+`mdot_loop` stays 76–87, and donor-cell transport moves many node-contents per step — the exact
+oscillation `pwr2_loop.js:112-116` documents.
+
+**The canary for this is DEAD.** `courantLimit()` divides by `sys.mdot_loop`, not by the junction
+flows that do the transporting, so `courantOK` reported **0 violations on every step** of a ride
+whose true junction Courant number reached 2,745. Filed separately; **not fixed here.**
+
+So the wing is **inert on both rides #517 is about**, and that was known before it was built. It
+is accepted on the regime where superheat actually lives, and the negative control is gated.
+
+### 88.2 Measure the regime first — and it is large
+
+Re-measured on today's engine (§35/§36's 470 °C figure predates the pressurizer rebuild and the
+choked relief):
+
+| ride | superheat onset | duration | peak |
+|---|---|---|---|
+| 5 cm² unmitigated, facade | **575 s** | **1,225 s of an 1,800 s ride**, no latch | 303 kJ/kg, **131 °C (236 °F)** above saturation at 200–380 psia |
+| 20 cm² unmitigated, facade | 141 s | 203 s | 606 kJ/kg, 248 °C (446 °F); latch at 344 s |
+| 20 cm² unmitigated, engine-direct (`run_pwr2_coredamage`) | 362 s | 1,438 s | **698 °C (1,257 °F)** |
+| 5 cm² **with** injection | **never** | — | — |
+
+**Injection is what holds a core two-phase**: the identical 0.002 m² break superheats to 138 °C
+engine-direct and 18.6 °C through the facade with the emergency core cooling answering. The
+800 °C envelope ceiling is never reached on any of them, so every superheat reported is computed
+rather than clamped.
+
+### 88.3 The properties are sourced, and the transcription is the trap
+
+Layer 0 gains `k_v` and `mu_v` — steam thermal conductivity and viscosity — **[sourced]** to
+WCAP-16009-NP-A (ML050910161) §10-2-1-2, *"equations given in the ASME Steam Tables (1968)"*,
+Eqs 10-20/10-21 (conductivity) and 10-22/10-23 (viscosity). Same document Table 10-3 came from,
+so `vapor_ratio` and this are one method at two states.
+
+**⚠ THE UNITS ARE MIXED INSIDE ONE EQUATION AND THE DOCUMENT DOES NOT SAY SO.** In Eq 10-20, T is
+°C in two terms and **Kelvin** in the ρ² denominator, and ρ is g/cm³ throughout, not kg/m³. Read
+with °C everywhere the correlation returns **71.9 mW/m-K against a true 54.7 at 300 °C — +31 %**:
+plausible, monotone, wrong, and invisible to any check written from the same reading. The gate
+therefore compares against values **not taken from the source document**: k 54.99 vs 54.7
+(+0.5 %) and μ 19.84 vs 20.0 µPa·s (−0.8 %) at 300 °C; +4.1 % / −2.2 % at 200 °C.
+
+### 88.4 ⛔ THE CAP IS THE FINDING — uncapped, an observability term made core damage unreachable
+
+The factor is the Dittus-Boelter property group `k^0.6 cp^0.4 mu^-0.4` at the superheated state
+over its value at saturation, same pressure, same mass flux — exactly 1 at zero superheat, so
+`vapor_ratio` keeps its landed calibration untouched. Across the 5 cm² ride's own regime
+(54–380 psia, 0–250 °C of superheat) it measures **0.92 to 1.09**; the large penalty, 0.53, lives
+at 2235 psia where a core node never superheats.
+
+**But the raw group rises ABOVE 1 as steam superheats at low pressure** — correct arithmetic
+(conductivity climbs with temperature faster than viscosity costs at fixed mass flux) and the
+wrong answer here. **Measured on the 20 cm² damage ride, where the core reaches 698 °C of
+superheat and the uncapped group reads ~1.5:**
+
+| | peak clad | 2200 °F | 2500 °F | oxidation |
+|---|---|---|---|---|
+| uncapped | **2,416 °F** | 770 s | never | **24.0 %** |
+| capped at 1 (shipped) | **27,267 °F** | 644 s | 706 s | **100 %** |
+
+**A term added for OBSERVABILITY had quietly turned a 100 %-oxidation runaway into a survivable
+ride.** (That fixture is engine-direct with no protection layer, so the absolute peak is not a plant
+claim — the A/B delta is.) The cap is sourced, and it is the only directional evidence in the corpus on this exact
+regime — WCAP-16009-NP-A B-2-9-2, on the ORNL dryout tests, verbatim: *"Despite increased mixture
+velocity, low flowrates, increasing void fraction, and superheating of vapor decreases heat
+transfer."* Everything Dittus-Boelter omits at these conditions — droplet depletion, laminarizing
+flow, Reynolds numbers orders below the correlation's range — runs the other way and dominates.
+So the term claims only the half it can defend: **superheat may DEGRADE cooling, never improve
+it.** With the cap the damage ride is unchanged to 0.3 %.
+
+The general lesson, and it is not about steam: **a defensible mechanism evaluated outside the
+regime it was validated in can be worse than no mechanism.** The band table said ±10 % and was
+measured over the pressures the 5 cm² ride occupies; the damage ride goes to 698 °C, five times
+past where the band was taken. **Measure the regime the term will actually see, not the one that
+motivated it.**
+
+### 88.5 What the wing changes, and what it does not
+
+- `core_superheat_c` is published. `core_void_fraction` **clips at 1**, so from the moment the
+  core goes fully void it is a constant: on the 5 cm² ride it pins at 1.0 at 580 s and says
+  nothing for the next 1,220 s while the core dries 0 → 131 °C and the clad climbs 555 → 677 °F.
+- `core_uncovered_frac` no longer saturates. Void carries 0 → 0.9 of the range, superheat the
+  last 0.1 over a [derived] 150 °C span. It stays a **declared HEM proxy** — there is still no
+  water level and this does not invent one; #472's stratified vessel is what replaces it.
+- **It does NOT explain the cool clad on a dry core.** Under 10 % in-regime against the flow
+  term's orders of magnitude. That is the loop still circulating steam through an unstratified
+  core — §83 gap 1, #472 — and this is written down so nobody reaches for the wing as the cause.
+- **#517's rides are unchanged**, as predicted: latch 160.8 s (was 161.1) and 79.8 s (was 79.6),
+  max core superheat 18.6–21.9 °C. Gated as a negative control in `run_pwr2_endurance`: if
+  someone later tunes the factor until those rides move, it reds.
+- **No perf cost** — 79.1 µs/step, ratio 3.9×, against 80.1 before. The superheat path runs only
+  above h_g. The vtable superheat table the plan flagged as possibly required is measurably
+  unnecessary and was not built.
+
+### 88.6 The held plant now says it is held — and the snapshot it holds is the corrupted step
+
+`sys.beyond_model` lived on `sys` and **nothing published it**: no `true_state` key matched, and
+`grep beyond_model ui layers` returned zero hits. The player got a plausible, internally
+consistent, completely static plant that went on accepting commands — 160 minutes of it on the
+TMI ride. `model_held` and `model_held_why` now publish it, and **both guard families** are
+covered: the inner thermodynamic latch and the facade's own screen. That second half needed its
+own fix — `_lastTs` is by construction the last state that **passed** the screen, i.e. a healthy
+one, so replaying it verbatim republished `model_held: false` for ever; it is stamped on the way
+out.
+
+**⚠ NEW, NOT ADJUDICATED: the held state is the BLOWN-UP step, not the last good one.** The floor
+and both-walls guards latch *after* committing h and P, so the frozen snapshot on the severity-1
+ride reads 14.5 psia with core void 0 % and uncovery 0 % — the corrupted step, held for ever. The
+root-jump guard already does the right thing (*"hold THIS step, nothing adopted"*); the other two
+do not. Recorded on the transport issue; changing which step is committed moves every latch
+fixture and is not this ruling's scope.
+
+### 88.7 #517 item 2 — the clad on a covered core is NOT a fuel-node artefact
+
+The observation: after the 200-min injection restore, with the pumps off, **zero void and
+175–267 °F of subcooling, the clad reads 696–978 °F** (205–250 min). Measured directly — a covered
+core (void 0) at 1.1 % decay heat, fuel node stepped to equilibrium:
+
+| flow fraction | mdot | film coeff. | clad RISE | clad at 300 °F coolant |
+|---|---|---|---|---|
+| 0.100 | 163 kg/s | 4,755 W/m²K | 1.2 °C (2.2 °F) | 304 °F |
+| 0.020 | 33 kg/s | 1,312 | 4.1 °C (7.4 °F) | 309 °F |
+| 0.002 | 3 kg/s | 208 | 25.6 °C (46 °F) | 348 °F |
+
+**The fuel node cannot produce that clad temperature on a covered core — at most ~46 °F of rise
+even at 0.2 % of rated flow.** So the reading must be tracking `coolTemp_c`, i.e. the **core
+node's own temperature**, which would mean the "zero void and 175–267 °F subcooling" in §87 is
+read off a different node than the core. **That is what to measure — not the film coefficient.**
+Left open on #517.
+
+### 88.8 Gates
+
+`run_pwr2_water` 242 → **255** (mutations 27 → 35: the Kelvin-vs-°C transcription itself, ρ in
+kg/m³, the density terms deleted, the viscosity slope, the micropoise conversion, superheat from
+h_f not h_g, superheat pinned to 0, the viscosity exponent flipped); `run_pwr2_fuel` 64 → **73**
+(32 → 38: the wing deleted, a boundary that is not 1, a fabricated degradation, the factor on the
+liquid branch, the void-1 refusal removed, **the cap removed**); `run_pwr2_true_state` 64 → **71**
+(18 → 23: the proxy saturating again, superheat pinned to 0, superheat off the hot leg,
+`model_held` hard-wired false, `model_held_why` back to null); `run_pwr2_coredamage` 20 → **23**
+(the regime is reached, 1,438 s of it, inside the envelope); `run_pwr2_endurance` 19 → **20** (the
+negative control); `run_pwr2_reactor` 41, **mutations 23 → 25** — two anchors had to be re-cut
+because `coreRegime` gained the superheat pair, and an anchor that stops matching reports ANCHOR
+NOT FOUND and counts as a blind spot rather than silently passing, which is the only reason it was
+caught in the same change. `run_contract` 177 unchanged: **PWR2-only fields do not go in §6.3**,
+which audits the old engine's list — 14 such fields already existed and none are documented there.
+Aggregate **93 runners at baseline**.
+
+Two traps worth the line beyond the cap. **A new cross-layer dependency breaks the mutation
+LOADER first** — `pwr2_fuel.js` had no property dependency until now, its harness evals the file
+into a bare root, and `W` came back undefined; loudly, which is the good case. And **a negative
+control written in the wrong harness measures a different plant**: the severity-1 control was
+first written into `run_pwr2_coredamage`, which is engine-direct with no injection, where the same
+break superheats to 138 °C instead of 18.6 — it failed against a number that was never the claim.

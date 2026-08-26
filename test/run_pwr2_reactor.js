@@ -492,12 +492,23 @@ var MUTATIONS = [
   ['the coolant regime reports FULL FLOW whatever the loop is doing',
    '    var f = sys.mdot_loop === undefined ? 1 : sys.mdot_loop / MDOT_RATED;',
    '    var f = 1;'],
+  /* ⚠ ANCHORS RE-CUT (#517). coreRegime gained the superheat pair, which split the single
+   * `if (id === 'core') { v = ...; break; }` line these two used to match. A mutation whose
+   * anchor stops matching reports ANCHOR NOT FOUND and counts as a BLIND SPOT — it fails loudly
+   * rather than silently passing, which is the only reason this was caught in the same change. */
   ['the coolant regime reports NO VOID whatever the core is doing',
-   "      if (sys.nodes[i].id === 'core') { v = W.voidFraction(sys.nodes[i].h, sys.P); break; }",
-   "      if (sys.nodes[i].id === 'core') { v = 0; break; }"],
+   "        v  = W.voidFraction(sys.nodes[i].h, sys.P);",
+   "        v  = 0;"],
   ['the coolant regime hands QUALITY onward as void fraction (the shipped defect, #490)',
-   "      if (sys.nodes[i].id === 'core') { v = W.voidFraction(sys.nodes[i].h, sys.P); break; }",
-   "      if (sys.nodes[i].id === 'core') { v = W.quality(sys.nodes[i].h, sys.P); break; }"],
+   "        v  = W.voidFraction(sys.nodes[i].h, sys.P);",
+   "        v  = W.quality(sys.nodes[i].h, sys.P);"],
+  /* ---- #517, the superheat wing at this layer ---- */
+  ['coreRegime reports NO SUPERHEAT, so the fuel is blind above h_g again',
+   "        sh = W.superheat_c(sys.nodes[i].h, sys.P);",
+   "        sh = 0;"],
+  ['coreRegime reads the superheat off the HOT LEG instead of the core',
+   "        sh = W.superheat_c(sys.nodes[i].h, sys.P);",
+   "        sh = W.superheat_c(sys.nodes[0].h, sys.P);"],
   ['the flow reference drifts off the value pwr2_sources actually pumps to',
    '  var MDOT_RATED = 1630;', '  var MDOT_RATED = 2000;'],
   ['the heat path DOUBLE-COUNTS (corePower supplied alongside heats)',

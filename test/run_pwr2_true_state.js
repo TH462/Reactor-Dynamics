@@ -481,6 +481,60 @@ function runSuite(TS, rec, quiet) {
      tsVoid.core_uncovered_frac > 0 && tsVoid.core_uncovered_frac <= 1,
      (tsVoid.core_uncovered_frac * 100).toFixed(0) + ' % at near-saturated-steam core enthalpy');
 
+  /* ---- SUPERHEAT: THE PROXY NO LONGER SATURATES (#517) --------------------------------------
+   * The defect this pair pins is not that the proxy was wrong — it is that it STOPPED CARRYING
+   * INFORMATION. Measured on a 5 cm2 unmitigated break: `core_uncovered_frac` reached 100 % at
+   * 580 s and then reported the identical number for 1,220 s, while the core dried from 0 to
+   * 131 degC of superheat and the clad climbed 555 -> 677 degF. Two cores 200 kJ/kg apart in
+   * dryness are the same reading to every consumer, which is what the drying half fixes. */
+  head('SUPERHEAT  [void clips at 1; above h_g this is the only quantity that still moves]');
+  function coreAt(h, P) {
+    return TS.buildTrueState({ sys: { P: P, M_total: 1, expansion: [], simTime: 0,
+      nodes: B.sys.nodes.map(function (n) {
+        return { id: n.id, V: n.V, h: n.id === 'core' ? h : n.h };
+      }), mdot_loop: B.sys.mdot_loop } });
+  }
+  var P517 = 226 / 145.038;                       /* the measured plateau, 226 psia */
+  var tsWet = coreAt(RD.water.h_f(P517) + 10, P517);
+  var tsDry = coreAt(RD.water.h_g(P517) + 5, P517);
+  var tsDrier = coreAt(RD.water.h_g(P517) + 298, P517);   /* the ride's own plateau, h = 3090 */
+  ck('core_superheat_c is 0 on a two-phase core — 0 through every normal evolution',
+     tsWet.core_superheat_c === 0 && ts.core_superheat_c === 0,
+     'two-phase ' + tsWet.core_superheat_c + ', at-power ' + ts.core_superheat_c);
+  ck('...and reads the measured plateau on a dry one',
+     Math.abs(tsDrier.core_superheat_c - 128) < 3,
+     tsDrier.core_superheat_c.toFixed(1) + ' degC at h = 3090, 226 psia (measured 128)');
+  /* THE BLIND SPOT, ASSERTED DIRECTLY — void is identical at both dryness levels. Without this
+   * the check above could pass against a field nothing needed. */
+  ck('void_fraction is IDENTICAL at both, so superheat is the only discriminator',
+     tsDry.core_void_fraction === 1 && tsDrier.core_void_fraction === 1 &&
+     tsDrier.core_superheat_c - tsDry.core_superheat_c > 100,
+     'void 1.0 both; superheat ' + tsDry.core_superheat_c.toFixed(0) + ' -> ' +
+     tsDrier.core_superheat_c.toFixed(0) + ' degC');
+  ck('...and core_uncovered_frac SEPARATES them instead of pinning at 100 %',
+     tsDrier.core_uncovered_frac > tsDry.core_uncovered_frac &&
+     tsDrier.core_uncovered_frac <= 1 && tsDry.core_uncovered_frac >= 0.9,
+     (tsDry.core_uncovered_frac * 100).toFixed(1) + ' % -> ' +
+     (tsDrier.core_uncovered_frac * 100).toFixed(1) + ' % — both were 100.0 % before #517');
+
+  /* ---- THE HELD PLANT SAYS SO (#517) --------------------------------------------------------
+   * `sys.beyond_model` lived on `sys` and NOTHING published it: no true_state key matched, and
+   * `grep beyond_model ui layers` returned zero hits. The player got a plausible, internally
+   * consistent, completely static plant that went on accepting commands — 160 minutes of it on
+   * the TMI ride. A simulator that has stopped simulating must say so. */
+  head('THE HELD PLANT  [a frozen model that reports itself running is the worst case]');
+  ck('a running plant reports model_held false with reason "none"',
+     ts.model_held === false && ts.model_held_why === 'none',
+     'and "none" rather than null, because `put` drops null and the field would vanish');
+  var tsHeld = TS.buildTrueState({ sys: B.sys, beyond_model: true,
+                                   held_why: 'floor guard: pinned at 0.1 MPa' });
+  ck('...and a held plant reports model_held true, carrying the CAUSE',
+     tsHeld.model_held === true && /floor guard/.test(tsHeld.model_held_why),
+     tsHeld.model_held_why);
+  ck('...with the reason still present when the caller supplies none',
+     TS.buildTrueState({ sys: B.sys, beyond_model: true }).model_held_why === 'none',
+     'a held plant with no stated cause is still HELD — the flag never depends on the string');
+
   /* ---- THE DECLARED SIMPLIFICATION IS VISIBLE ------------------------------------------ */
   head('THE ONE-PRESSURE SIMPLIFICATION IS VISIBLE, NOT HIDDEN');
   ck('hot, cold and suction pressures are the SAME number',
@@ -598,8 +652,24 @@ var MUTATIONS = [
    "      put('sg_level_wide_pct', clip(wide, 0, 100));",
    "      put('sg_level_wide_pct', 59.25);"],
   ['the core-uncovery proxy is pinned to zero (an uncovered core reads covered)',
-   "    put('core_uncovered_frac', clip((aCore - 0.5) / 0.5, 0, 1));",
+   "    put('core_uncovered_frac',\n        clip(0.9 * (aCore - 0.5) / 0.5, 0, 0.9) + clip(0.1 * shCore / 150, 0, 0.1));",
    "    put('core_uncovered_frac', 0);"],
+  /* ---- #517, the superheat wing + the held plant ---- */
+  ['the uncovery proxy SATURATES again — the drying half deleted (the pre-#517 blind spot)',
+   "clip(0.9 * (aCore - 0.5) / 0.5, 0, 0.9) + clip(0.1 * shCore / 150, 0, 0.1));",
+   "clip((aCore - 0.5) / 0.5, 0, 1));"],
+  ['core_superheat_c always reports 0 (void 1 is all a consumer can ever see)',
+   "      return n ? W.superheat_c(n.h, sys.P) : undefined;",
+   "      return n ? 0 : undefined;"],
+  ['core_superheat_c reads the HOT LEG, not the core',
+   "      var n = nd.core;\n      return n ? W.superheat_c(n.h, sys.P) : undefined;",
+   "      var n = nd.hot_leg;\n      return n ? W.superheat_c(n.h, sys.P) : undefined;"],
+  ['model_held is hard-wired false — a frozen plant reports itself running',
+   "    put('model_held', ctx.beyond_model === true);",
+   "    put('model_held', false);"],
+  ['model_held_why goes back to null, which `put` DROPS (the field vanishes)',
+   "    put('model_held_why', ctx.held_why || 'none');",
+   "    put('model_held_why', ctx.held_why || null);"],
   ['the sump reads a constant instead of the tracked mass',
    "      put('containment_sump_pct', clip(100 * ct.m_sump_kg / ctx.M_nominal, 0, 100));",
    "      put('containment_sump_pct', 0);"],

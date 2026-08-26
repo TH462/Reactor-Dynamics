@@ -602,10 +602,23 @@
    * first line — this catch is the floor under them, added when the A/B pass found a
    * sequence-dependent escape the single-ride repros could not reproduce. Errors that do NOT
    * carry the beyond-model signature re-throw: a programming error must stay loud. */
+  /* #517: the held snapshot must SAY it is held. `_lastTs` is by construction the last state that
+   * PASSED the screen — i.e. a HEALTHY one — so replaying it verbatim republishes `model_held:
+   * false` for ever, and the two _dead guard families stay exactly as invisible as they were
+   * before the field existed. Stamped here rather than in buildTrueState because on this path
+   * buildTrueState is never called again. */
+  function stampHeld(eng) {
+    if (!eng._lastTs) return;
+    eng._lastTs.sim_time_s = eng.simTime;
+    eng._lastTs.model_held = true;
+    eng._lastTs.model_held_why = eng._deadWhy ||
+      'the plant left the range the property library is characterised over';
+  }
+
   function step(eng, dt) {
     if (eng._dead) {
       eng.simTime += dt;
-      if (eng._lastTs) { eng._lastTs.sim_time_s = eng.simTime; return eng._lastTs; }
+      if (eng._lastTs) { stampHeld(eng); return eng._lastTs; }
     }
     try {
       var out = stepInner(eng, dt);
@@ -623,7 +636,7 @@
         eng._deadWhy = 'screen: power ' + out.power_pct + ', fuel ' + out.fuel_temp_c +
                        ', P ' + out.pressure_mpa;
         if (eng.sys) eng.sys.beyond_model = true;
-        if (eng._lastTs) { eng._lastTs.sim_time_s = eng.simTime; return eng._lastTs; }
+        if (eng._lastTs) { stampHeld(eng); return eng._lastTs; }
       }
       return out;
     } catch (e) {
@@ -632,7 +645,7 @@
         eng._deadWhy = 'throw: ' + String(e.message).slice(0, 90);
         if (eng.sys) eng.sys.beyond_model = true;
         eng.simTime += dt;
-        if (eng._lastTs) { eng._lastTs.sim_time_s = eng.simTime; return eng._lastTs; }
+        if (eng._lastTs) { stampHeld(eng); return eng._lastTs; }
       }
       throw e;
     }
@@ -1021,7 +1034,13 @@
       station_blackout: eng.elec.blackout,
       /* the MSIV truth — LIVE since #511 (the 'steam lines' static retired); the DEMANDED
        * position, which is what the board lamp shows (the flow rides eng.msiv.pos) */
-      msiv_open: eng.msiv.open === true
+      msiv_open: eng.msiv.open === true,
+      /* #517 — the held-plant condition, published so the board can say the model has stopped.
+       * BOTH guard families: the inner thermodynamic latch (pwr2_core) and the facade's own
+       * screen, because from the player's seat they are the same event — the plant froze. */
+      beyond_model: sys.beyond_model === true || eng._dead === true,
+      held_why: eng._deadWhy || (sys.beyond_model === true
+        ? 'the plant left the range the property library is characterised over' : null)
     });
     /* the rod insertion limit, recomputed every step off the plant's own power (#507 §B) —
      * null below its 5 % applicability floor, consumed by the shell's control-state and

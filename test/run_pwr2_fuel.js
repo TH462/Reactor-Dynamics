@@ -33,11 +33,19 @@ var E = path.join(__dirname, '..', 'engines', 'pwr2');
 var LIB = path.join(E, 'pwr2_fuel.js');
 var SRC = fs.readFileSync(LIB, 'utf8').replace(/\r\n/g, '\n');
 
-/* pwr2_fuel.js depends on NOTHING else in the engine — it is pure geometry and properties — so
- * the harness needs no other module loaded. That independence is itself worth noting: it is the
- * only Layer 5 file that can be reasoned about without the conservation core underneath it. */
+/* ⚠ THE INDEPENDENCE CLAIM EXPIRED (#517), AND THE LOADER IS WHERE IT SHOWED. This said
+ * pwr2_fuel.js "depends on NOTHING else in the engine ... the harness needs no other module
+ * loaded", and that held until the superheat factor gave it exactly ONE dependency: Layer 0, for
+ * the sourced steam transport properties. The mutation harness evals the file into a bare root,
+ * so `W` came back undefined and every film-coefficient call threw. A new cross-layer dependency
+ * breaks the LOADER first, and loudly rather than silently, which is the good case. */
 function loadFrom(src) {
   var root = { RD: { pwr2: {} } };
+  /* Layer 0 into the SAME root, before the eval (#517). Pure functions, no state, so one
+   * copy is safe to share across every mutation. */
+  var wsrc = fs.readFileSync(path.join(E, 'pwr2_water.js'), 'utf8');
+  new Function('RD_ROOT',
+    wsrc.replace("(typeof globalThis !== 'undefined' ? globalThis : this)", '(RD_ROOT)'))(root);
   var body = src.replace("(typeof globalThis !== 'undefined' ? globalThis : this)", '(RD_ROOT)') +
              '\nreturn RD_ROOT.RD.pwr2.fuel;';
   return new Function('RD_ROOT', body)(root);
@@ -273,11 +281,17 @@ function runSuite(F, rec, quiet) {
 
   /* THE POINT OF ALL OF IT: the cladding must RUN AWAY when cooling stops. Same power, same
    * coolant, one difference. */
+  /* #517: at void 1 the layer REFUSES an unstated superheat. These fixtures are SATURATED-steam
+   * fixtures — that is the state they were written against and the state their numbers were
+   * measured in — so they say so explicitly. `superheat_c: 0` makes the new factor exactly 1 by
+   * construction, so every expectation below is the one it was before the wing existed; the
+   * superheat factor gets its OWN checks rather than perturbing these. */
   function settleClad(flowFrac, voidFrac, Q) {
     var fx = F.createFuel({ T_fuel_c: T_COOL, T_clad_c: T_COOL }), rx = null;
     for (var n = 0; n < 20000; n++) {
       rx = F.stepFuel(fx, 0.02,
-        { Q_core_kW: Q, coolTemp_c: T_COOL, flowFrac: flowFrac, voidFrac: voidFrac });
+        { Q_core_kW: Q, coolTemp_c: T_COOL, flowFrac: flowFrac, voidFrac: voidFrac,
+          superheat_c: 0, P_MPa: 15.41 });
     }
     return rx;
   }
@@ -298,9 +312,11 @@ function runSuite(F, rec, quiet) {
   var fNo = F.createFuel({ T_fuel_c: T_COOL, T_clad_c: T_COOL });
   for (i = 0; i < 5000; i++) {
     rOx = F.stepFuel(fOx, 0.02, { Q_core_kW: Q_RATED * 0.03, coolTemp_c: T_COOL,
-                                  flowFrac: 0.02, voidFrac: 1, Q_ox_kW: 5000 });
+                                  flowFrac: 0.02, voidFrac: 1, Q_ox_kW: 5000,
+                                  superheat_c: 0, P_MPa: 15.41 });
     rNo = F.stepFuel(fNo, 0.02, { Q_core_kW: Q_RATED * 0.03, coolTemp_c: T_COOL,
-                                  flowFrac: 0.02, voidFrac: 1 });
+                                  flowFrac: 0.02, voidFrac: 1,
+                                  superheat_c: 0, P_MPa: 15.41 });
   }
   /* ⚠ ASSERTED AS AN IDENTITY, AND THE FIRST VERSION ASSERTED A GUESS. It asked for "more than
    * 50 degC" of extra clad temperature from 5 MW of reaction heat and measured 12.7. The model
@@ -316,6 +332,87 @@ function runSuite(F, rec, quiet) {
   ck('...and ALL of it reaches the coolant at steady state -- none is destroyed',
      rOx.heats.core - rNo.heats.core, 5000, 5.0, 'kW');
   ckT('...and it is zero when not supplied, rather than assumed', rNo.Q_ox_kW === 0, '');
+
+  /* ---- THE SUPERHEAT FACTOR (#517) ---------------------------------------------------------- */
+  head('SUPERHEAT  [voidFrac clips at 1 — above h_g this factor is the only thing that moves]');
+  ckT('the factor is EXACTLY 1 at zero superheat, so vapor_ratio keeps its landed calibration',
+      F.superheatFactor(0, 1.5) === 1 && F.superheatFactor(-40, 1.5) === 1 &&
+      F.superheatFactor(undefined, 1.5) === 1,
+      'a second factor that is not 1 at the boundary would be a silent re-tune of the first');
+  ckT('...and the film coefficient at zero superheat is bit-identical to the pre-wing form',
+      F.filmCoefficient(0.01, 1, 0, 1.5) ===
+        30000 * Math.pow(0.01, 0.8) * ((1 - 1) + 1 * 0.5),
+      F.filmCoefficient(0.01, 1, 0, 1.5).toFixed(4) + ' W/m2K');
+  ckT('a LIQUID core is untouched by it — the phase term still zeroes the whole vapour branch',
+      F.filmCoefficient(1, 0, 0, 15.41) === 30000 &&
+      F.filmCoefficient(1, 0, 400, 15.41) === 30000,
+      'void 0 with 400 degC of nominal superheat is not a state, and must not move the answer');
+  /* ⚠ THE MAGNITUDE IS THE CLAIM, NOT THE DIRECTION. A check that only asserted "superheat
+   * changes the film coefficient" would pass a fabricated factor of 3. Measured across the
+   * pressures this plant actually superheats at, the honest sourced group moves it under 10 % —
+   * so the band is the assertion, and it is what a made-up degradation would red against. */
+  var shRows = [[54, 248], [133, 183], [226, 128], [377, 88]];   /* psia, degC — the measured ride */
+  var shOk = true, shNote = [];
+  shRows.forEach(function (r) {
+    var P = r[0] / 145.038, fac = F.superheatFactor(r[1], P);
+    if (!(fac > 0.90 && fac < 1.10)) shOk = false;
+    shNote.push(r[0] + 'psia/+' + r[1] + 'C:' + fac.toFixed(3));
+  });
+  ckT('across the MEASURED superheat regime the factor stays inside 0.90-1.10',
+      shOk, shNote.join(' '));
+  ckT('...so it does NOT explain a cool clad on a dry core — under 10 % against the flow term, ' +
+      'orders of magnitude',
+      Math.abs(F.filmCoefficient(0.0074, 1, 131, 226 / 145.038) /
+               F.filmCoefficient(0.0074, 1, 0, 226 / 145.038) - 1) < 0.10 &&
+      F.filmCoefficient(1, 1, 0, 15.41) / F.filmCoefficient(0.0074, 1, 0, 15.41) > 50,
+      'superheat ' +
+      ((F.filmCoefficient(0.0074, 1, 131, 226 / 145.038) /
+        F.filmCoefficient(0.0074, 1, 0, 226 / 145.038) - 1) * 100).toFixed(1) +
+      ' % against the flow term at ' +
+      (F.filmCoefficient(1, 1, 0, 15.41) / F.filmCoefficient(0.0074, 1, 0, 15.41)).toFixed(0) +
+      'x — the collapse is the loop stopping, not the steam drying (§83 gap 1, #472)');
+  /* The HIGH-pressure penalty is real and is why the term is not simply deleted as negligible:
+   * it is small only in the regime this plant reaches, which is a measurement, not a property
+   * of the mechanism. If a future change lets a core superheat at pressure, this is live. */
+  ckT('at 2235 psia the same superheat costs far more — small HERE is not small everywhere',
+      F.superheatFactor(130, 15.41) < 0.7,
+      F.superheatFactor(130, 15.41).toFixed(3) + ' at 2235 psia vs ' +
+      F.superheatFactor(130, 226 / 145.038).toFixed(3) + ' at 226 psia');
+  /* ---- THE CAP, WHICH IS THE SOURCED HALF -----------------------------------------------------
+   * The raw Dittus-Boelter group goes ABOVE 1 at high superheat and low pressure — correct
+   * arithmetic for fully-developed turbulent single-phase flow, and the wrong answer on a dry
+   * core. WCAP-16009-NP-A B-2-9-2, on the ORNL dryout tests: "Despite increased mixture velocity,
+   * low flowrates, increasing void fraction, and superheating of vapor decreases heat transfer."
+   * MEASURED consequence of leaving it uncapped, 20 cm2 damage ride at 698 degC of superheat:
+   * peak clad 27,337 -> 2,416 degF and oxidation 100 % -> 24 %. An observability term had made
+   * core damage harder to reach. This is the check that stops that coming back. */
+  ckT('the factor NEVER exceeds 1 — superheat may degrade cooling, never improve it (sourced)',
+      [[54, 698], [54, 400], [15, 500], [133, 250], [226, 131], [2235, 130]]
+        .every(function (r) { return F.superheatFactor(r[1], r[0] / 145.038) <= 1; }),
+      'raw group at 54 psia / +698 degC would read ' +
+      (globalThis.RD && globalThis.RD.pwr2 && globalThis.RD.pwr2.water
+        ? (globalThis.RD.pwr2.water.vaporFilmGroup(
+             globalThis.RD.pwr2.water.T_sat(54 / 145.038) + 698, 54 / 145.038) /
+           globalThis.RD.pwr2.water.vaporFilmGroup(
+             globalThis.RD.pwr2.water.T_sat(54 / 145.038), 54 / 145.038)).toFixed(2)
+        : '?') + ' — capped to 1.00');
+  ckT('...and the cap BINDS on the damage ride regime, so it is not a decorative guard',
+      F.superheatFactor(698, 54 / 145.038) === 1 && F.superheatFactor(130, 15.41) < 1,
+      'binds at 698 degC / 54 psia, does not bind at 130 degC / 2235 psia — both live');
+  /* THE REFUSAL. The layer will not invent "the steam is saturated" — same idiom as the two
+   * throws above it, applied exactly where superheat can exist and nowhere else. */
+  var threwDry = false, threwWet = false;
+  try {
+    F.stepFuel(F.createFuel({ T_fuel_c: T_COOL }), 0.02,
+      { Q_core_kW: Q_RATED * 0.03, coolTemp_c: T_COOL, flowFrac: 0.01, voidFrac: 1 });
+  } catch (e) { threwDry = /superheat_c/.test(e.message); }
+  try {
+    F.stepFuel(F.createFuel({ T_fuel_c: T_COOL }), 0.02,
+      { Q_core_kW: Q_RATED * 0.03, coolTemp_c: T_COOL, flowFrac: 0.01, voidFrac: 0.99 });
+  } catch (e) { threwWet = true; }
+  ckT('at void 1 an unstated superheat is REFUSED, and below it no fixture is burdened',
+      threwDry && !threwWet,
+      'void 1 throws, void 0.99 does not — superheat is 0 by definition below h_g');
 
   /* ---- CONSERVATION: the load-bearing check ------------------------------------------------ */
   head('CONSERVATION  [an error here creates energy inside a conservation core]');
@@ -480,6 +577,21 @@ var pass = rec.filter(function (r) { return r.ok; }).length, fail = rec.length -
  * the conservation transient is 1 000 steps and not 200 000 — the horizon was chosen against the
  * replay cost, not after it. */
 var MUTATIONS = [
+  /* ---- #517, the superheat wing ---- */
+  ['superheatFactor: always 1 — the wing deleted, the blind spot restored',
+   'if (!(superheat_c > 0)) return 1;', 'if (true) return 1;'],
+  ['superheatFactor: NOT 1 at the boundary (a silent re-tune of vapor_ratio)',
+   'var g0 = W.vaporFilmGroup(Ts, P_MPa);', 'var g0 = W.vaporFilmGroup(Ts, P_MPa) * 1.3;'],
+  ['superheatFactor: a FABRICATED degradation the measured band rejects',
+   'var f = W.vaporFilmGroup(Ts + superheat_c, P_MPa) / g0;',
+   'var f = 1 / (1 + superheat_c / 100);'],
+  ['superheatFactor: the sourced degrade-only CAP removed (superheat starts COOLING the core)',
+   'return f < 1 ? f : 1;', 'return f;'],
+  ['filmCoefficient: the superheat factor multiplied onto the LIQUID branch too',
+   'var phase  = (1 - v) + v * OPEN.vapor_ratio.value * superheatFactor(superheat_c, P_MPa);',
+   'var phase  = ((1 - v) + v * OPEN.vapor_ratio.value) * superheatFactor(superheat_c, P_MPa);'],
+  ['stepFuel: the void-1 superheat refusal removed (the layer invents saturated steam)',
+   'if (drivers.voidFrac >= 1 &&', 'if (false &&'],
   ['pellet resistance uses the CENTERLINE form 1/(4 pi k) instead of volume-average 1/(8 pi k)',
    'var r_pellet = 1 / (8 * Math.PI * k_f);', 'var r_pellet = 1 / (4 * Math.PI * k_f);'],
   ['guide thimbles counted as fuel rods (289 instead of 264)',

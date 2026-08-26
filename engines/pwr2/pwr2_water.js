@@ -327,6 +327,63 @@
     return rho_v_sat(P) * (Zs / Z) * (Ts + 273.15) / (T + 273.15);
   }
 
+  /* ---------------------------------------------------------------- TRANSPORT properties
+   * THERMAL CONDUCTIVITY AND VISCOSITY OF STEAM. Not thermodynamic — they buy exactly one
+   * thing, and it is the reason they are here rather than fitted inside a consumer: the
+   * Dittus-Boelter property group k^0.6 * cp^0.4 * mu^-0.4, which is how a film coefficient
+   * knows what the fluid it is cooling with is DOING. `pwr2_fuel.js` already carries a
+   * constant derived from that group at SATURATION (`vapor_ratio` 0.5, [derived] from this
+   * same document's Table 10-3); above h_g it had nothing, so a core at 131 degC of superheat
+   * read exactly like a core at saturation.
+   *
+   * [sourced] WCAP-16009-NP-A (ML050910161) §10-2-1-2 "Properties of Superheated Vapor",
+   * which gives them as "equations given in the ASME Steam Tables (1968)":
+   *
+   *   Eq 10-21  k1 = 17.6 + 5.87e-2 T + 1.04e-4 T^2 - 4.51e-8 T^3          [mW/m-K]
+   *   Eq 10-20  k  = k1 + (103.51 + 0.4198 T - 2.771e-5 T^2) rho + 2.1482e14 rho^2 / T_K^4.2
+   *   Eq 10-23  mu1 = 0.407 T + 80.4                                       [micropoise]
+   *   Eq 10-22  mu = mu1 - rho (1858 - 5.9 T)                    T < 340 degC
+   *                = mu1 + 353 rho + 676.5 rho^2 + 102.1 rho^3   T > 365 degC
+   *                  linearly interpolated between 340 and 365
+   *
+   * ⚠ THE UNITS ARE MIXED INSIDE ONE EQUATION and the document does not say so. T is degC in
+   * k1 and in the density coefficient, and KELVIN in the rho^2 denominator; rho is g/cm3
+   * throughout, not kg/m3. Transcribed with T in degC everywhere the whole correlation reads
+   * 31 % high at 300 degC — plausible, wrong, and invisible without an independent check.
+   * MEASURED against independent saturated-steam values: k 54.99 vs 54.7 mW/m-K (+0.5 %) and
+   * mu 19.84 vs 20.0 uPa-s (-0.8 %) at 300 degC; k +4.1 % and mu -2.2 % at 200 degC. That is
+   * the transcription check, and it is why those two lines are here rather than in a comment.
+   *
+   * RETURNED IN SI: k in W/m-K, mu in Pa-s. The correlations' own mW and micropoise are
+   * converted at the return, once, where the source form is still in view. */
+  function k_v(T_c, rho_kgm3) {
+    var T = clip(T_c, 0.0, TV_MAX), r = (rho_kgm3 > 0 ? rho_kgm3 : 0) / 1000;   // g/cm3
+    var TK = T + 273.15;
+    var k1 = 17.6 + 5.87e-2 * T + 1.04e-4 * T * T - 4.51e-8 * T * T * T;
+    var k = k1 + (103.51 + 0.4198 * T - 2.771e-5 * T * T) * r +
+            2.1482e14 * r * r / Math.pow(TK, 4.2);
+    return k / 1000;                                                            // mW/m-K -> W/m-K
+  }
+  function mu_v(T_c, rho_kgm3) {
+    var T = clip(T_c, 0.0, TV_MAX), r = (rho_kgm3 > 0 ? rho_kgm3 : 0) / 1000;   // g/cm3
+    var m1 = 0.407 * T + 80.4;
+    var lo = m1 - r * (1858 - 5.9 * T);
+    var hi = m1 + 353 * r + 676.5 * r * r + 102.1 * r * r * r;
+    var m = T <= 340 ? lo : (T >= 365 ? hi : lo + (hi - lo) * (T - 340) / 25);
+    return m * 1e-7;                                                            // micropoise -> Pa-s
+  }
+
+  /* THE DITTUS-BOELTER PROPERTY GROUP for vapour, k^0.6 * cp^0.4 * mu^-0.4 at fixed MASS FLUX.
+   * The exponents are the correlation's own: h ~ Re^0.8 Pr^0.4 k/D, and Re = G*D/mu at fixed G
+   * puts mu^-0.8 * mu^0.4 = mu^-0.4 — so this group IS the complete property dependence, the
+   * Reynolds effect of a thickening vapour included. Same group `vapor_ratio` was derived from
+   * (`pwr2_fuel.js`), so the two are one method evaluated at two states. */
+  function vaporFilmGroup(T_c, P_MPa) {
+    var rho = rho_v(T_c, P_MPa);
+    return Math.pow(k_v(T_c, rho), 0.6) * Math.pow(cp_v(T_c, P_MPa), 0.4) *
+           Math.pow(mu_v(T_c, rho), -0.4);
+  }
+
   /* ---------------------------------------------------------------- mixture / inverses */
   function quality(h_kJkg, P_MPa) {
     var hf = h_f(P_MPa), hg = h_g(P_MPa);
@@ -387,6 +444,23 @@
 
   function subcooling(T_c, P_MPa) { return T_sat(P_MPa) - T_c; }
 
+  /* SUPERHEAT — subcooling's mirror, and it takes ENTHALPY because that is what a node carries.
+   * Both return 0 at or below h_g rather than a negative number: "how superheated" is not the
+   * same question as "how subcooled", and a caller blending on it must not get a sign flip when
+   * the node condenses. `quality` and `voidFraction` both clip at 1 — correctly, dry steam IS
+   * quality 1 — so above h_g they are CONSTANT and these are the only functions that can tell a
+   * node at h_g from one 300 kJ/kg above it. Measured on a 5 cm2 unmitigated break: void reaches
+   * 1.0 at 580 s and says nothing for the next 1,220 s, over which superheat runs 0 -> 131 degC. */
+  function superheat_kJkg(h_kJkg, P_MPa) {
+    var d = h_kJkg - h_g(P_MPa);
+    return d > 0 ? d : 0;
+  }
+  function superheat_c(h_kJkg, P_MPa) {
+    if (h_kJkg <= h_g(P_MPa)) return 0;
+    var d = T_from_h(h_kJkg, P_MPa) - T_sat(P_MPa);
+    return d > 0 ? d : 0;
+  }
+
   root.RD = root.RD || {};
   root.RD.pwr2 = root.RD.pwr2 || {};
   root.RD.pwr2.water = {
@@ -395,8 +469,10 @@
     h_l: h_l, rho_l: rho_l, bulk_modulus: bulk_modulus, k_comp: k_comp,
     h_fg: h_fg, h_fg_T: h_fg_T, h_f: h_f, h_g: h_g,
     rho_v_sat: rho_v_sat, h_v: h_v, rho_v: rho_v, cp_v: cp_v,
+    k_v: k_v, mu_v: mu_v, vaporFilmGroup: vaporFilmGroup,
     quality: quality, voidFraction: voidFraction, T_from_h: T_from_h, rho_from_h: rho_from_h,
-    subcooling: subcooling, rangeOK: rangeOK,
+    subcooling: subcooling, superheat_kJkg: superheat_kJkg, superheat_c: superheat_c,
+    rangeOK: rangeOK,
     LIMITS: { P_MIN: P_MIN, P_MAX: P_MAX, T_MIN: T_MIN, T_MAX: T_MAX, TV_MAX: TV_MAX,
               P_CRIT: P_CRIT, T_CRIT: T_CRIT }
   };

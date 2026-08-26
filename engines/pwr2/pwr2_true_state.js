@@ -207,6 +207,15 @@
                                                 : (RD.sg ? RD.sg.primaryTavg(sys) : undefined));
     put('core_void_fraction',    nodeAlpha(nd, sys.P, 'core'));
     put('primary_void_fraction', nodeAlpha(nd, sys.P, 'hot_leg'));
+    /* #517 — HOW DRY. `core_void_fraction` clips at 1, so from the moment the core goes fully
+     * void it is a constant and the board can no longer distinguish a core that has just dried
+     * out from one 131 degC into superheat. Measured, 5 cm2 unmitigated break: void hits 1.0 at
+     * 580 s and this is the ONLY field that moves for the next 1,220 s. 0 whenever the core node
+     * is at or below h_g, so it reads 0 through every normal evolution. */
+    put('core_superheat_c', (function () {
+      var n = nd.core;
+      return n ? W.superheat_c(n.h, sys.P) : undefined;
+    })());
     /* Subcooling from TRUE P and T, exactly as the contract line says — Layer 0 owns the
      * saturation line, the loop owns the temperatures, nothing here is invented. The suction
      * margin reads the CROSSOVER node, the leg that feeds the RCP. */
@@ -388,6 +397,24 @@
      * visibility rather than something to paper over here. */
     put('scrammed', pt.reactor_trip);
 
+    /* ---- THE MODEL HAS STOPPED, AND UNTIL #517 NOBODY WAS TOLD ---------------------------------
+     * `pwr2_core` latches `sys.beyond_model` when the plant leaves the range Layer 0 is
+     * characterised over, and every later step HOLDS: state frozen, clock running (the #487/#499
+     * contract). That is the right physics answer — a fabricated continuation would be worse. But
+     * the flag lived on `sys` and NOTHING published it: `grep beyond_model ui layers` returned
+     * zero hits, no true_state key matched it, and the player got a plausible, internally
+     * consistent, completely static plant that went on accepting commands. Measured on the TMI
+     * ride: identical values for 160 minutes, `plant_mode` still 'Hot Standby', destruction cause
+     * 'none'. A simulator that has stopped simulating must SAY SO — that is Hard Rule 1's spirit
+     * (never soften the gap between the model and the truth) applied to the model itself.
+     * `held_why` is the facade's own reason string when it has one, so a report carries the cause
+     * rather than just the fact. */
+    put('model_held', ctx.beyond_model === true);
+    /* 'none' rather than null, because `put` DROPS null and a field that only exists on a held
+     * plant is a field `run_contract` can never see — the same convention `destruction_cause`
+     * already uses for exactly this reason. */
+    put('model_held_why', ctx.held_why || 'none');
+
     put('clad_temp_c',       rx.T_clad_c);
     put('fuel_damaged',      dg.fuel_damaged);
     put('melted',            dg.melted);
@@ -451,7 +478,21 @@
      * no water level; sustained high core void is the nearest honest stand-in. Expect A/B
      * divergence here — that is the point of the proxy class. --- */
     var aCore = ts.core_void_fraction !== undefined ? ts.core_void_fraction : 0;
-    put('core_uncovered_frac', clip((aCore - 0.5) / 0.5, 0, 1));
+    /* ⚠ THE PROXY SATURATED, AND THE SATURATION WAS THE WHOLE BLIND SPOT (#517). void 0.5 -> 1.0
+     * maps onto 0 -> 100 % and then STOPS: on the 5 cm2 unmitigated ride this pinned at 100 % at
+     * 580 s and reported the identical number for the remaining 1,220 s, while the core went on
+     * drying (0 -> 131 degC of superheat) and the clad climbed 555 -> 677 degF. "100 % uncovered"
+     * an hour before anything is actually damaged is a proxy that has stopped carrying
+     * information. Superheat is the only quantity that still moves there, so the top of the range
+     * is now the DRYING half: void does 0 -> 0.9 of the scale, superheat the last 0.1 over a
+     * [derived] 150 degC span (the 5 cm2 ride plateaus at 131, the 20 cm2 reaches 248 — so the
+     * span is inside the measured envelope and does not peg on the ordinary case).
+     * STILL A DECLARED HEM PROXY: there is no water level here and this does not invent one —
+     * it stops throwing away the one signal the homogeneous model does have. #472's stratified
+     * vessel is what replaces it. */
+    var shCore = ts.core_superheat_c !== undefined ? ts.core_superheat_c : 0;
+    put('core_uncovered_frac',
+        clip(0.9 * (aCore - 0.5) / 0.5, 0, 0.9) + clip(0.1 * shCore / 150, 0, 0.1));
 
     /* --- SG levels: PWR2's REAL secondary mass through the current engine's SOURCED level
      * geometry [adopted: sg_mass_map, pwr_config.js — same Ginna 85,359 lbm nominal both
