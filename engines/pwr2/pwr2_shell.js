@@ -572,7 +572,7 @@
    * a command that silently does nothing reads exactly like a plant that survived it
    * (the same rule pwr2_instruments applies to misspelled failures). */
   var REFUSED = {
-    open_porv:        'the PORV is its controller\'s; the operator path is stick/block (REHOMED pair)',
+    open_porv:        'the PORV is its controller\'s; the operator path is open_porv_manual / close_porv (porv_manual, one valve) and the block valve',
     open_pzr_safety:  'code safeties are spring-loaded metal with no lever — deliberate (§55)',
     close_pzr_safety: 'code safeties are spring-loaded metal with no lever — deliberate (§55)',
     set_load_mode:    'one dispatch mode exists (operator load target); Follow/Disconnected are the old engine\'s',
