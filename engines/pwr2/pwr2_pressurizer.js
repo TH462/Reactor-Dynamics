@@ -1,6 +1,6 @@
-/* pwr2_pressurizer.js — Layer 5: the pressurizer. Saturated-equilibrium two-phase vessel, the
- * plant's compressible volume, plugged into the ONE seat Layer 2 has carried for it since
- * 2026-08-15 (`extraMass`, D1 §25.3 — exercised by four gates before this file existed).
+/* pwr2_pressurizer.js — Layer 5: the pressurizer. A TWO-REGION (non-equilibrium) vessel — a
+ * steam region that is COMPRESSED by an insurge and a stratified liquid below it — plugged into
+ * the ONE seat Layer 2 has carried for it since 2026-08-15 (`extraMass`, D1 §25.3).
  *
  * BUILT UNDER AN OWNER RULING (2026-08-18: "Option 1", selecting "build PWR2's own pressurizer
  * now, staged — pressure control first, level machinery second — taking #472's measured findings
@@ -10,41 +10,57 @@
  * this file: the level constants are ONE object (its four-authority dP was the failure), spray
  * needs RCP flow, heaters shed on SI (#447, NUREG-0737 II.E.3.1 (7)).
  *
- * THE VESSEL IS ONE HEM VOLUME AT ONE SPECIFIC ENTHALPY h̄ — exactly the machinery every loop
- * node already uses. The projection into the pressure solve is V·rho_from_h(h̄, P) with h̄
- * FROZEN for the step, the same gather-then-integrate discipline (and the same audit-validated
- * function) as the loop nodes' own h inside F(P): its P-dependence at fixed h carries the
- * phase-fraction shift, which IS the bubble's compliance. A vessel h̄ inside the dome is the
- * saturated two-phase pressurizer; h̄ below h_f is D2 §25.3's WATER-SOLID regime (compliance
- * collapses to the liquid bulk modulus — the plant can still go solid, which the TMI
- * curriculum depends on); h̄ above h_g is the EMPTIED regime (heaters shed). Regime
- * transitions, not clips, and all three fall out of one function.
+ * THE TWO-REGION VESSEL (2026-08-25, #515 — the stage-2 "two-h stratified states" §46 sequenced
+ * last, reopened by OWNER RULING 2026-08-25: "A. Then choked porv then void term."). Three
+ * regions, each single-phase at every step boundary:
  *
- * The LEVEL is then D2 §25.2's one-division split, DERIVED from mass and pressure:
+ *     m_stm, h_stm   the STEAM region — compressed by an insurge along dh = v·dP (Layer 2's own
+ *                    convention), so it SUPERHEATS on a fast insurge and pressure rises steeply;
+ *     m_sat, h_sat   the TOP liquid layer — the interface pool, saturated (or slightly subcooled
+ *                    after a compression, re-saturating over tau_int);
+ *     m_sub, h_sub   the BOTTOM liquid layer — where insurge water STRATIFIES (real insurge water
+ *                    does not mix into the pool; §43.2's formulation 2 measured what happens when
+ *                    it is allowed to).
  *
- *     V_liq = (m_pzr − ρ_g·V) / (ρ_f − ρ_g)          [saturation densities — §25.2 verbatim]
+ * The projection into the pressure solve is m(P) at FROZEN intensive states: every region is
+ * compressed by the same dh = v·dP law the loop nodes use inside F(P), the regions' volumes at
+ * that P are summed, and the SLACK — the vessel volume the regions no longer fill — is liquid
+ * that enters at the hot leg's enthalpy (insurge) or the bottom layer's own (outsurge). Regime
+ * transitions fall out of the same function with no clips: no steam mass → WATER-SOLID, the
+ * compliance is the liquid layers' bulk modulus; no liquid mass → EMPTIED, a steam volume whose
+ * surge is steam out / liquid in.
  *
- * This is the saturated-equilibrium REDUCTION of §25.2's three-state formulation, declared as
- * such: the independent h_liq/h_steam states (subcooled pooling, superheated steam space —
- * "spray acts on the steam and heaters on the liquid") are STAGE 2.
+ * WHY (D5 §84, measured against Ginna UFSAR ch15 §15.2.2 / Table 15.2-1): a complete loss of
+ * load from full power without the anticipatory trip reaches the 2425 psia high-pressure trip in
+ * 5.4 s from 2190 psia (Case 2, no pressure control) — +235 psi in 5.4 s. The single-region
+ * saturated-equilibrium vessel this file was until 2026-08-25 answered the same +8-point insurge
+ * with +10 psi (P-only harness: +0.6 psi for +9.7 points), because a 600 degF insurge mixed into
+ * 653 degF saturated contents CONDENSED the steam it should have COMPRESSED. WTSM 3.2
+ * (ML11223A213:495): "This insurge compresses the steam ..."; (:480) the steam responds "in a
+ * manner similar to an ideal gas (pressure is proportional to density)".
  *
- * ⚠ THREE FORMULATIONS WERE BUILT AND MEASURED BEFORE THIS ONE SURVIVED ITS OWN PROBES, and
- * the failure modes generalise:
+ * ⚠ FOUR FORMULATIONS WERE BUILT AND MEASURED BEFORE THIS ONE, and the failure modes generalise:
  *   1. Two-space split derived from the SPACES' OWN ρ(h,P): under sustained spray the steam
  *      space's h fell into the dome, its density rose ~5x, and the derived V_liq collapsed —
  *      a DENSE steam space read as VANISHED liquid; level crashed 61.5 → 0 % during an insurge
  *      and the plant rode its own spray to the 18 MPa ceiling. A level must be monotone in
- *      mass, which §25.2's saturated-density split is and a self-density split is not.
+ *      mass. (Here: every region is single-phase when the level is computed — flash and
+ *      rain-out at the solved P, step 1a — so the level is V_liq from liquid densities only.)
  *   2. §25.2 split + independent fully-MIXED h_liq/h_steam: settled −0.5 psi, but a ±10 %
  *      duty step INVERTED the pressure response — a 35 degC-subcooled insurge mixed into
  *      2.7 m3 of liquid state densified it ~36 kg/m3 and pulled the plant to 1711 psia
  *      (−524 psi err). A fully-mixed liquid space hands the bubble's job to compressed-liquid
- *      density; real insurge water stratifies and the interface stays saturated.
+ *      density; real insurge water stratifies and the interface stays saturated. (Here: the
+ *      insurge goes to the BOTTOM layer and never touches the pool's state.)
  *   3. State (m, TOTAL H) projected at FROZEN H: the compliance came out INVERTED (∂m/∂P < 0
  *      — at fixed total energy, higher P supports less saturated liquid) and the solve ran
  *      to the floor in one step. Freezing an EXTENSIVE energy drops the compression work;
- *      the frozen variable must be INTENSIVE, which is what h̄ is — the same lesson as
- *      Layer 2's own "dh = v·dP" unit-trap comment, met from the other side.
+ *      the frozen variable must be INTENSIVE, which is what every region's h is here.
+ *   4. ONE HEM VOLUME AT ONE h̄ (2026-08-18 → 2026-08-25): monotone, regime-continuous, held the
+ *      design point — and could not spike. The insurge's enthalpy diluted h̄, the mixture's
+ *      quality fell, the vessel absorbed 200 kg at ~constant pressure. Retired for D5 §84's
+ *      measured reason, its compliance numbers kept as the reference (226 kg/MPa bubbled,
+ *      9.2 solid).
  *
  * ⚠ SETPOINTS ARE CARRIED AS DELTAS ABOUT THE OPERATOR SETPOINT, and that is what the source
  * actually says: WTSM Figure 10.2-3 (ML11223A287, read from the PAGE IMAGE — the text layer
@@ -63,19 +79,29 @@
  * rather than exactly on setpoint — inside the real plant's ±25 psi alarm band.
  *
  * DIRECTION OF ERROR, declared per file convention:
- *   - Spray is an ENERGY sink (condensing duty m_spray·(h_f − h_cold)); its MASS stays in the
- *     loop. Optimistic on level during spray (real level rises slightly); neutral on pressure.
- *   - Saturated equilibrium means no superheated steam space during a fast outsurge — pressure
- *     falls somewhat TOO FAST on outsurge (no superheat reservoir), pessimistic for
- *     low-pressure trips; and no subcooled pool during insurge — suppression is energy-only.
- *   - Relief discharge is REPORTED (`relief_kgs`, at h_g) and must be wired by the caller as a
- *     negative source, the same one-step-lag convention as the break.
+ *   - Spray CONDENSES STEAM into the pool (mass steam → liquid inside the vessel) and its own
+ *     water's mass stays in the loop. Optimistic on level during spray (real level rises
+ *     slightly more); neutral on pressure.
+ *   - The interface condensation / de-superheat rate is ONE time constant (tau_int, [open]),
+ *     calibrated to Ginna Table 15.2-1's trip time and declared as this vessel's one fitted
+ *     constant. Wall metal is not modelled (no heat capacity, no wall condensation).
+ *   - Relief discharge is REPORTED (`relief_kgs` at the steam region's own h — superheated when
+ *     it is; liquid from the pool when solid) and must be wired by the caller as a negative
+ *     source, the same one-step-lag convention as the break.
+ *   - The loop's own 3.545 m3 'pressurizer' node (pwr2_geometry) is a stagnant liquid volume the
+ *     mass ledger carries alongside this 4.176 m3 seat — a declared double-count with the surge
+ *     line, worth ~5 kg/MPa of the fast-insurge compliance (D5 §85).
  */
 (function (root) {
   'use strict';
 
   var RD = root.RD && root.RD.pwr2;
   var W  = RD && RD.water;
+  /* #514: the extraMass seat sits INSIDE Layer 2's pressure solve — ~11 evaluations a step —
+   * so it goes through the table (pwr2_core's idiom). The table covers the superheated wing
+   * (x > 1) the steam region compresses into; nothing here inverts h → T. */
+  var VT = RD && RD.vtable;
+  var RHO = VT ? VT.rho_from_h : (W && W.rho_from_h);
   if (!W) throw new Error('pwr2_pressurizer: load pwr2_water.js first');
 
   var PSI = 145.037738;                  /* psi per MPa */
@@ -201,8 +227,21 @@
      * nominal setpoint 2485 psig, "did not reseat until the pressure dropped 5% below the
      * opening setpoint" (the reseat fraction is SOURCED). Capacities per-MWt scaled
      * 1520 -> 300 MWt. */
-    porv_kgs:   2 * 179000 * LB_HR * (300 / 1520),    /* 8.90 kg/s, both valves */
-    safety_kgs: 2 * 288000 * LB_HR * (300 / 1520),    /* 14.33 kg/s, both valves */
+    porv_kgs:   2 * 179000 * LB_HR * (300 / 1520),    /* 8.90 kg/s, both valves — the RATING */
+    safety_kgs: 2 * 288000 * LB_HR * (300 / 1520),    /* 14.33 kg/s, both valves — the RATING */
+    /* THE RATINGS ARE AT THE LIFT POINT, and the flow is CHOKED (#515 Build 2, 2026-08-26 —
+     * OWNER RULING 2026-08-25: "A. Then choked porv then void term."). "179,000 lb/hr at 2335
+     * psig" is the mass a valve passes of saturated STEAM at 2335 psig; the constant flow this
+     * file carried until 2026-08-26 passed 4.45 kg/s per stuck valve at 2234 psia and at 400 psia
+     * alike, which drained the TMI ride to the accumulators at 53 min instead of holding TMI-2's
+     * ~1000 psi plateau (D5 §83). Each valve is ONE EFFECTIVE AREA, derived once from its rating
+     * through the SAME flux law that then runs live (criticalFlux below); the mass it passes is
+     * area x the homogeneous critical mass flux of whatever the vessel offers it — superheated
+     * steam, saturated steam, or (a solid vessel, TMI's regime for 95 % of the ride, measured)
+     * flashing liquid. [derived]: no new constant; the sourced rating and Layer 0 fix everything. */
+    porv_rated_mpa:   16.20,             /* 2335 psig + 14.7 = 2349.7 psia */
+    safety_rated_mpa: 17.24,             /* 2485 psig, the nominal setpoint (the ASME rating point
+                                          * carries +3 % accumulation — [declared] at nominal) */
     safety_open_mpa: 17.24,              /* 2485 psig = 2500 psia */
     safety_reseat_frac: 0.95,
     porv_reseat_psi: +85,                /* reclose below +85: a 15 psi deadband, [open] — the
@@ -214,29 +253,101 @@
     tail_tau_cool_s: 600
   };
 
-  /* ---- the level split (D2 §25.2 verbatim — saturation densities, from MASS) --------------- */
+  /* ---- THE TWO-REGION VESSEL'S OWN CONSTANTS (2026-08-25, #515) ----------------------------
+   * tau_int_s — the interface time constant: superheated steam de-superheats toward the pool,
+   *   and a subcooled pool re-saturates by condensing steam, each over this time. Its two limits
+   *   are the two vessels this file has been: tau → 0 is the fully-equilibrated HEM vessel
+   *   (formulation 4, +10 psi on the Ginna insurge), tau → ∞ is isentropic compression (the
+   *   ceiling — measured on the P-only harness, D5 §85). [open]: `find_source.js
+   *   "interfac|condens.*pressurizer"` finds no rate in any lane's corpus (2026-08-25); the value
+   *   is CALIBRATED to ONE sourced case — Ginna Table 15.2-1 Case 2's 5.4 s to the 2425 psia trip
+   *   — and D5 §85 publishes the sweep so the choice is a table, not a fit. MEASURED on the
+   *   shell's Case 2 fixture (2026-08-25, from 2215 psia, mid-cycle feedback): the 2425 psia
+   *   setpoint at 5.4 s (τ = ∞), 5.6 (100 s), 5.9 (30 s), 6.9 (10 s), 9.6 (3 s), 11.7 (1 s),
+   *   12.2 (0.3 s) — even the equilibrium limit trips, because the stiffness is the
+   *   STRATIFICATION (the insurge never mixes with the pool), not the condensation rate.
+   *   30 s is adopted: inside the corrected band (5.4 s from 2190 psia ≈ 5.6 s from 2215 with
+   *   this plant's feedback and channel lag) without sitting on the isentropic limit. It is
+   *   deliberately NOT a `[tune]` constant: the scenario suite does not arbitrate it.
+   * m_stm_floor_kg — below this much steam the vessel is WATER-SOLID (the remnant joins the
+   *   pool); 0.5 kg is ~0.1 % of the vessel at the design steam density. [declared]
+   * m_liq_floor_kg — below this much liquid the vessel is EMPTIED (heaters shed). [declared] */
+  var STRATIFY = {
+    kind: '[open — one calibrated constant, declared as such]',
+    tau_int_s: 30,
+    m_stm_floor_kg: 0.5,
+    m_liq_floor_kg: 1.0
+  };
+
+  /* ---- the saturated-density level split (D2 §25.2 verbatim) — kept for MIGRATION only ----- */
   function satSplit(P, m, V) {
     var rf = W.rho_l_sat(W.T_sat(P)), rg = W.rho_v_sat(P);
     var Vl = (rf - rg) > 1e-9 ? (m - rg * V) / (rf - rg) : V;
     return { Vl: Vl, rf: rf, rg: rg };
   }
 
+  /* ---- THE RELIEF FLUX LAW (#515 Build 2, 2026-08-26) ---------------------------------------
+   * criticalFlux(h0, P0) -> kg/m2s: the HOMOGENEOUS critical mass flux of fluid at (h0, P0)
+   * through a valve throat, from Layer 0 alone. Along a throttled (isenthalpic) path to a
+   * throat pressure P_t the flux is G(P_t) = rho(h0, P_t) * sqrt(2 * Int_{P_t}^{P0} dP / rho),
+   * and the CHOKED value is its maximum over P_t — the mixture density collapses as the fluid
+   * flashes, so the maximum exists for liquid as well as steam. [derived — a sourced FORM
+   * (homogeneous critical flow) on Layer 0's own densities; no correlation text is in any lane's
+   * corpus, and Appendix K's Moody is cited only, pwr2_break.js]. Cross-checks, 2026-08-26:
+   * saturated steam within 5-18 % of ideal-gas choked flow (23,922 vs 20,184 kg/m2s at 16.2 MPa;
+   * 9,438 vs 9,073 at 6.9); saturated LIQUID 1.8-4x the steam flux (43,158 at 16.2, 25,803 at
+   * 6.9 — the Moody class), where the orifice law sqrt(2 rho dP) reads 5.7-21x the steam flux and
+   * is the known overstatement for flashing water (the break model's own declared error). The
+   * throttled path stands in for the isentropic one (Layer 0 carries no entropy) — [declared],
+   * direction: slightly HIGH flux. The back pressure is taken as 0.1 MPa: the throat pressure at
+   * the maximum sits at 0.55-0.75 P0, far above containment for any P0 the relief sees. */
+  var CRIT_N = 60;
+  function criticalFlux(h0, P0) {
+    var Pmin = 0.1, best = 0, acc = 0, prevP = P0, prevV = 1 / RHO(h0, P0);
+    for (var i = 1; i <= CRIT_N; i++) {
+      var Pt = P0 - (P0 - Pmin) * i / CRIT_N;
+      var rho = RHO(h0, Pt), v = 1 / rho;
+      acc += 0.5 * (v + prevV) * (prevP - Pt) * 1e6;                 /* Int dP/rho, J/kg */
+      prevP = Pt; prevV = v;
+      var G = rho * Math.sqrt(2 * acc);
+      if (G > best) best = G; else if (i > 2) break;                  /* past the maximum */
+    }
+    return best;
+  }
+  /* the effective areas, derived ONCE from the ratings through the live law: the rated mass of
+   * saturated steam at the rated pressure divided by the flux the law gives it there. Lazy —
+   * the vtable builds on first use. */
+  var _areas = null;
+  function reliefAreas() {
+    if (_areas) return _areas;
+    _areas = {
+      porv_m2:   RELIEF.porv_kgs   / criticalFlux(W.h_g(RELIEF.porv_rated_mpa),   RELIEF.porv_rated_mpa),
+      safety_m2: RELIEF.safety_kgs / criticalFlux(W.h_g(RELIEF.safety_rated_mpa), RELIEF.safety_rated_mpa)
+    };
+    return _areas;    /* both valves of each pair; a stuck PORV is half porv_m2 */
+  }
+
   /* ---- construction ------------------------------------------------------------------------ */
+  /* A saturated, unstratified vessel at (P, level): steam at h_g above a pool at h_f, no bottom
+   * layer. Densities come from the SAME table the seat reads, so the seat reproduces the
+   * constructed mass EXACTLY at P (the regions fill the vessel with zero slack). */
   function createPressurizer(opts) {
     opts = opts || {};
     var P = opts.P === undefined ? CONTROL.setpoint_default_mpa : opts.P;
     var lvl = opts.level_frac === undefined ? GEOM.level_program_full : opts.level_frac;
     var V = GEOM.V_pzr_m3, Vl = lvl * V;
-    var rf = W.rho_l_sat(W.T_sat(P)), rg = W.rho_v_sat(P);
-    var m = rf * Vl + rg * (V - Vl);
-    return {
+    var hf = W.h_f(P), hg = W.h_g(P);
+    var pz = {
       V: V,
-      m_pzr: m,
-      /* the HEM state: the specific enthalpy whose two-phase mixture at (P) has this mass —
-       * volumes mix linearly in specific volume, so h̄ comes from the quality that mass ratio
-       * implies. Round-trips exactly: V*rho_from_h(h_bar, P) === m by construction. */
-      h_bar: (rf * Vl * W.h_f(P) + rg * (V - Vl) * W.h_g(P)) / m,
+      m_stm: RHO(hg, P) * (V - Vl), h_stm: hg,
+      m_sat: RHO(hf, P) * Vl,       h_sat: hf,
+      m_sub: 0,                     h_sub: hf,
+      m_pzr: 0,                          /* the ledger, Σ regions — set below */
       V_liq: Vl,
+      P_ref: P,                          /* the pressure the states were last reconciled at */
+      v_stm: 0, v_sub: 0, v_sat: 0,      /* dh/dP of each region at P_ref, kJ/kg per MPa */
+      h_fill: hf,                        /* what an insurge arrives at (last step's hot leg) */
+      rho_in: 0, rho_out_liq: 0, rho_out_stm: 0, m_liq: 0,   /* the seat's frozen fill terms */
       setpoint_mpa: opts.setpoint_mpa === undefined ? CONTROL.setpoint_default_mpa
                                                     : opts.setpoint_mpa,
       backupOn: false,
@@ -247,10 +358,45 @@
       heatersShed: false,
       levErrInt: 0,                      /* the level PI's integral state, %*s */
       lowLevelCut: false,                /* the 17 % letdown-isolate / heater-cut latch */
-      porvStuck: false,                  /* the TMI failure lever (drivers.porv_stick) */
+      porvStuck: false,                  /* the TMI failure LATCH: set by the first lift while
+                                          * drivers.porv_stick is armed, cleared only with it */
+      porvManual: false,                 /* the operator's open demand (drivers.porv_manual) */
       blockOpen: true,                   /* the PORV block valve — the operator's isolation */
       T_tail_c: opts.tail_c === undefined ? 50 : opts.tail_c
     };
+    freeze(pz, P);
+    return pz;
+  }
+
+  /* migrateState(pz, P) — a pre-two-region save (#515) carries m_pzr/h_bar/V_liq and no region
+   * states. Reconstruct the regions the HEM vessel implied at P: two-phase h̄ → the saturated
+   * split; h̄ ≤ h_f → water-solid (one liquid pool at h̄); h̄ ≥ h_g → emptied (steam at h̄).
+   * The old fields are deleted — two authorities for one vessel is the trap. Old saves land
+   * on a saturated, unstratified vessel: the pre-build plant exactly. */
+  function migrateState(pz, P) {
+    if (!pz || pz.m_stm !== undefined) return pz;
+    var V = pz.V === undefined ? GEOM.V_pzr_m3 : pz.V;
+    var hf = W.h_f(P), hg = W.h_g(P), m = pz.m_pzr, hb = pz.h_bar;
+    pz.V = V;
+    if (hb === undefined || !isFinite(hb) || !isFinite(m)) {
+      var fresh = createPressurizer({ P: P, level_frac: pz.V_liq !== undefined ? pz.V_liq / V
+                                                                                : GEOM.level_program_full });
+      pz.m_stm = fresh.m_stm; pz.h_stm = fresh.h_stm; pz.m_sat = fresh.m_sat; pz.h_sat = fresh.h_sat;
+    } else if (hb <= hf) {
+      pz.m_stm = 0; pz.h_stm = hg; pz.m_sat = m; pz.h_sat = hb;
+    } else if (hb >= hg) {
+      pz.m_stm = m; pz.h_stm = hb; pz.m_sat = 0; pz.h_sat = hf;
+    } else {
+      var s = satSplit(P, m, V), Vl = s.Vl < 0 ? 0 : (s.Vl > V ? V : s.Vl);
+      pz.m_stm = RHO(hg, P) * (V - Vl); pz.h_stm = hg;
+      pz.m_sat = m - pz.m_stm;          /* conserve the saved mass exactly */
+      if (pz.m_sat < 0) pz.m_sat = 0;
+      pz.h_sat = hf;
+    }
+    pz.m_sub = 0; pz.h_sub = hf;
+    delete pz.h_bar;
+    freeze(pz, P);
+    return pz;
   }
 
   /* levelProgram(Tavg_c) -> programmed level FRACTION (WTSM 10.3 Fig 10.3-2, the sourced
@@ -262,20 +408,83 @@
            f * (GEOM.level_program_full - GEOM.level_program_noload);
   }
 
-  /* extraMassFn(pz) -> f(P) for Layer 2's seat. h̄ frozen within the solve; only P varies —
-   * the loop nodes' own discipline, through the same audit-validated function. */
+  /* ---- THE SEAT: m(P) at frozen intensive states --------------------------------------------
+   * Each region is compressed by dh = v·dP from the pressure it was last reconciled at (the
+   * loop nodes' own discipline inside F(P)), its volume at P read off the table, and the
+   * SLACK — vessel volume the regions no longer fill — is liquid at the hot leg's enthalpy
+   * (insurge, slack > 0) or the bottom layer's own (outsurge, slack < 0). Monotone in P: every
+   * region's volume falls as P rises (compression), so the slack — and the mass — rises.
+   *   steam only  →  a steam volume whose surge is steam out / liquid in (EMPTIED);
+   *   liquid only →  the liquid layers' bulk-modulus response (WATER-SOLID).
+   * ONE function serves the solve AND the reconciliation, so the surge cannot pick up a phantom
+   * interpolation-error flow (the #514 rule). */
+  function seatMass(pz, P) {
+    var dP = P - pz.P_ref;
+    var V_stm = pz.m_stm > 0 ? pz.m_stm / RHO(pz.h_stm + pz.v_stm * dP, P) : 0;
+    var V_sub = pz.m_sub > 0 ? pz.m_sub / RHO(pz.h_sub + pz.v_sub * dP, P) : 0;
+    var V_sat = pz.m_sat > 0 ? pz.m_sat / RHO(pz.h_sat + pz.v_sat * dP, P) : 0;
+    var slack = pz.V - V_stm - V_sub - V_sat, sum = pz.m_stm + pz.m_sub + pz.m_sat;
+    /* THE FILL DENSITIES ARE FROZEN AT P_ref (stored by freeze()). Evaluating them at the
+     * candidate P made m(P) NON-MONOTONE on a blowdown (a negative slack times a two-phase
+     * density that rises with P), the bisection lost its bracket, and the core's ledger
+     * drifted 9,560 kg on the accumulator ride (measured 2026-08-25). With the densities
+     * constant inside the solve, m(P) is monotone because slack(P) is.
+     * AND THE OUTSURGE SATURATES: the surge line passes the vessel's LIQUID first — all of it,
+     * at its own density — and steam beyond that. Booking an outsurge at liquid density while
+     * the vessel held half a kilogram of liquid (the emptied regime on the same ride) made the
+     * seat and the placement disagree 60x per step and pumped the hot leg at +/-2,000 kg/s until
+     * the loop's root jumped. Continuous in slack, monotone in P, placed in the same order. */
+    if (slack >= 0) return sum + slack * pz.rho_in;
+    var Vout = -slack, Vliq = pz.rho_out_liq > 0 ? pz.m_liq / pz.rho_out_liq : 0;
+    if (Vout <= Vliq) return sum - Vout * pz.rho_out_liq;
+    return sum - pz.m_liq - (Vout - Vliq) * pz.rho_out_stm;
+  }
   function extraMassFn(pz) {
-    return function (P) { return pz.V * W.rho_from_h(pz.h_bar, P); };
+    return function (P) { return seatMass(pz, P); };
+  }
+
+  /* freeze(pz, P) — store the reconciliation pressure, each region's dh/dP, and the ledger. */
+  function freeze(pz, P) {
+    pz.P_ref = P;
+    pz.v_stm = pz.m_stm > 0 ? 1000 / RHO(pz.h_stm, P) : 0;
+    pz.v_sub = pz.m_sub > 0 ? 1000 / RHO(pz.h_sub, P) : 0;
+    pz.v_sat = pz.m_sat > 0 ? 1000 / RHO(pz.h_sat, P) : 0;
+    /* the seat's two fill densities, frozen with the states (see seatMass) */
+    pz.rho_in  = RHO(pz.h_fill, P);
+    pz.m_liq   = pz.m_sub + pz.m_sat;                            /* what an outsurge draws first */
+    pz.rho_out_liq = pz.m_sub > 0 ? RHO(pz.h_sub, P) : (pz.m_sat > 0 ? RHO(pz.h_sat, P) : 0);
+    pz.rho_out_stm = pz.m_stm > 0 ? RHO(pz.h_stm, P) : pz.rho_in;
+    pz.m_pzr = pz.m_stm + pz.m_sub + pz.m_sat;
+  }
+
+  /* region mixers — mass m at enthalpy h joins a region (energy-conserving) */
+  function addSteam(pz, m, h) {
+    if (m <= 0) return;
+    pz.h_stm = (pz.m_stm * pz.h_stm + m * h) / (pz.m_stm + m); pz.m_stm += m;
+  }
+  function addPool(pz, m, h) {
+    if (m <= 0) return;
+    pz.h_sat = (pz.m_sat * pz.h_sat + m * h) / (pz.m_sat + m); pz.m_sat += m;
   }
 
   /* stepPressurizer(pz, sys, dt, drivers) — call AFTER stepPlant, the same slot as the other
    * Layer 5 systems. Reads the solved pressure, reconciles mass (surge = the exact difference),
-   * runs the sourced control ladder, integrates energy, reports.
+   * moves the regions' phases, runs the sourced control ladder, integrates energy by region,
+   * reports.
    *
    *   drivers.si_active        heater shed (sourced; #447's NUREG-0737 requirement)
    *   drivers.ac_available     false sheds heaters too (TS Bases: ESF buses)
+   *   drivers.offsite_ok       false = a LOOP (#507 wave 4) — arms the shed LATCH below even
+   *                            though the diesels keep the buses up: NUREG-0737 II.E.3.1's
+   *                            shed is a bus-loading action on SI-or-LOOP, and re-loading
+   *                            the heaters is the OPERATOR's (the old engine's set_heater
+   *                            convention — here, any pzr_heaters_manual command)
    *   drivers.heaters_manual   0..1 override — the operator's, not the controller's
+   *   drivers.heaters_failed   true = the bank elements are DEAD (#507 wave 6) — a failure
+   *                            seat, distinct from the manual override and the shed latch
    *   drivers.spray_manual     0..1 override
+   *   drivers.spray_stick      true = the spray valve is latched OPEN (#507 wave 6) — the
+   *                            porv_stick twin; the demand keeps moving and stays ineffective
    *   drivers.setpoint_mpa     operator setpoint (clamped to the sourced span)
    */
   function stepPressurizer(pz, sys, dt, drivers) {
@@ -289,21 +498,96 @@
     }
 
     /* ---- 1. MASS RECONCILIATION. The solve conserved the projection; adopt it, and the
-     * change IS the surge (insurge positive, into the vessel). Energy follows the donor:
-     * an insurge arrives at the HOT LEG's h; an outsurge leaves from the BOTTOM — liquid, at
-     * h_f while a bubble exists, at h̄ once the vessel is single-phase. ---- */
-    var m_new = V * W.rho_from_h(pz.h_bar, P);
+     * change IS the surge (insurge positive, into the vessel). First the regions are
+     * compressed exactly as the seat assumed (dh = v·dP from P_ref — Layer 2's gather-then-
+     * integrate discipline), then the surge is PLACED: an insurge arrives in the BOTTOM layer
+     * at the hot leg's enthalpy the seat used; an outsurge leaves from the bottom — the
+     * stratified layer first, then the pool, then steam. ---- */
+    var m_new = seatMass(pz, P);
     var surge_kgs = (m_new - pz.m_pzr) / dt;
-    var hf = W.h_f(P), hg = W.h_g(P);
-    var twoPhase = pz.h_bar > hf && pz.h_bar < hg;
-    var H = pz.m_pzr * pz.h_bar;
-    if (surge_kgs > 0) {
-      var h_hot = nodeH(sys, 'hot_leg');
-      H += surge_kgs * dt * (h_hot === undefined ? hf : h_hot);
-    } else {
-      H += surge_kgs * dt * (twoPhase ? hf : pz.h_bar);
+    var hf = W.h_f(P), hg = W.h_g(P), hfg = hg - hf;
+    var dPr = P - pz.P_ref;
+    if (pz.m_stm > 0) pz.h_stm += pz.v_stm * dPr;
+    if (pz.m_sub > 0) pz.h_sub += pz.v_sub * dPr;
+    if (pz.m_sat > 0) pz.h_sat += pz.v_sat * dPr;
+    var h_hot = nodeH(sys, 'hot_leg');
+    var surge_heat_kW = 0, dm = surge_kgs * dt;
+    if (dm > 0) {
+      var h_in = pz.h_fill;
+      /* a TWO-PHASE arrival (a voided hot leg) splits at the surge line: its liquid stratifies
+       * in the bottom layer, its vapour joins the steam space — the same split step 1a makes,
+       * done at entry so the volume the seat booked (a mixture density) is the volume the
+       * regions hold. Booking it as liquid and flashing a step later over-filled the vessel and
+       * chattered the solve at +/-600 kg/s on the accumulator blowdown (measured 2026-08-25). */
+      if (h_in > hf) {
+        var xin = h_in >= hg ? 1 : (h_in - hf) / hfg;
+        addSteam(pz, xin * dm, hg);
+        dm *= (1 - xin); h_in = hf;
+      }
+      if (dm > 0) {
+        pz.h_sub = (pz.m_sub * pz.h_sub + dm * h_in) / (pz.m_sub + dm);
+        pz.m_sub += dm;
+      }
+    } else if (dm < 0) {
+      /* OUTSURGE CONSERVES ENERGY ACROSS THE SURGE LINE (#510 batch 1, measured). The vessel
+       * debits its ledger at the donor enthalpy, but the LOOP gains that mass implicitly
+       * through the pressure solve at its own node enthalpy — so the difference used to be
+       * DESTROYED (~454 kJ/kg at the Mode 4 point). It is reported here and the facade
+       * delivers it to the hot leg as heat (one step, the house lag convention). */
+      var out = -dm, take, h_out;
+      /* the surge line passes the LIQUID first — the stratified layer, then the pool, all of
+       * it — and steam beyond that: the same order the seat's saturating outsurge assumed */
+      take = Math.min(out, pz.m_sub);
+      if (take > 0) { pz.m_sub -= take; out -= take; h_out = pz.h_sub; }
+      if (out > 0) {
+        take = Math.min(out, pz.m_sat);
+        if (take > 0) { pz.m_sat -= take; out -= take; h_out = pz.h_sat; }
+      }
+      if (out > 0) {
+        take = Math.min(out, pz.m_stm);
+        if (take > 0) { pz.m_stm -= take; out -= take; h_out = pz.h_stm; }
+      }
+      if (h_hot !== undefined && h_out !== undefined) surge_heat_kW = (-surge_kgs) * (h_out - h_hot);
     }
-    pz.m_pzr = m_new;
+
+    /* ---- 1a. PHASE BOOKKEEPING AT THE SOLVED P (instant, [declared]). A liquid layer above
+     * h_f flashes its excess to steam at h_g — WTSM 3.2: "saturated water will flash to steam
+     * to help maintain system pressure"; steam below h_g (an expansion made it wet) rains
+     * out to the pool at h_f. Every region is single-phase when the level is computed, which
+     * is formulation 1's killer applied by construction. ---- */
+    var boil_kgs = 0, rain_kgs = 0, mv;
+    if (pz.m_sub > 0 && pz.h_sub > hf) {
+      mv = Math.min(1, (pz.h_sub - hf) / hfg) * pz.m_sub;
+      pz.m_sub -= mv; pz.h_sub = hf; addSteam(pz, mv, hg); boil_kgs += mv / dt;
+    }
+    if (pz.m_sat > 0 && pz.h_sat > hf) {
+      mv = Math.min(1, (pz.h_sat - hf) / hfg) * pz.m_sat;
+      pz.m_sat -= mv; pz.h_sat = hf; addSteam(pz, mv, hg); boil_kgs += mv / dt;
+    }
+    if (pz.m_stm > 0 && pz.h_stm < hg) {
+      var ml = (1 - Math.max(0, (pz.h_stm - hf) / hfg)) * pz.m_stm;
+      pz.m_stm -= ml; pz.h_stm = hg; addPool(pz, ml, hf); rain_kgs = ml / dt;
+    }
+
+    /* ---- 1c. THE INTERFACE — the one calibrated constant (STRATIFY.tau_int_s). Superheated
+     * steam de-superheats toward saturation, its energy into the pool (which then boils at the
+     * interface through 1a next step); a subcooled pool re-saturates by CONDENSING steam onto
+     * itself. Energy conserved exactly inside the vessel. ---- */
+    var cond_kgs = 0, tau = STRATIFY.tau_int_s;
+    if (isFinite(tau) && tau > 0) {
+      if (pz.m_stm > 0 && pz.h_stm > hg) {
+        var dHsh = pz.m_stm * (pz.h_stm - hg) * Math.min(1, dt / tau);
+        pz.h_stm -= dHsh / pz.m_stm;
+        if (pz.m_sat > 0) pz.h_sat += dHsh / pz.m_sat;
+        else if (pz.m_sub > 0) pz.h_sub += dHsh / pz.m_sub;
+        else pz.h_stm += dHsh / pz.m_stm;              /* nothing to receive it: no transfer */
+      }
+      if (pz.m_sat > 0 && pz.h_sat < hf && pz.m_stm > 0) {
+        var dmc = Math.min(pz.m_sat * (hf - pz.h_sat) / hfg * Math.min(1, dt / tau), pz.m_stm);
+        addPool(pz, dmc, pz.h_stm); pz.m_stm -= dmc;
+        cond_kgs = dmc / dt;
+      }
+    }
 
     /* ---- 1b. THE LEVEL CONTROL SYSTEM (WTSM 10.3 — see the LEVEL block). Reads LAST step's
      * split (gather-then-integrate); outputs a charging demand for the caller to wire into
@@ -349,12 +633,36 @@
     else if (err_psi >= CONTROL.backup_off_psi && !backupOnLevel) pz.backupOn = false;
 
     /* Heater shed: SI / no AC (sourced), uncovered heaters (D2 §25.3's emptied regime), or
-     * the 17 % low-level cut (WTSM 10.3 — a heater in a steam environment is a damaged one). */
-    pz.heatersShed = !!drivers.si_active || drivers.ac_available === false || pz.emptied ||
+     * the 17 % low-level cut (WTSM 10.3 — a heater in a steam environment is a damaged one).
+     * THE LATCH (#507 wave 4, NUREG-0737 II.E.3.1 (7) + Ginna TS Bases B 3.4.9 — the old
+     * engine's rising-edge shape): an SI signal or a LOOP sheds the banks off the emergency
+     * buses, and the GRID coming back does not re-load them — an operator does, by touching
+     * the heater control (the caller clears pz.shedLatch on its heater command). Old saves
+     * carry no latch fields and land healthy-false, the pre-wave-4 plant exactly. */
+    /* TWO INDEPENDENT ACTUATING SIGNALS, each with its OWN edge (#510 H-6). The old single
+     * OR'd edge meant a LOOP arriving AFTER an SI (heaters re-loaded between) never shed —
+     * the second signal found the OR already high and no edge fired; 157.8 kW rode the
+     * diesels through the design-basis LOCA+LOOP order. NUREG-0737 II.E.3.1's shed is a
+     * bus-loading action on SI-or-LOOP: each arrival is its own action. Old saves carry no
+     * _siPrev/_loopPrev and land false — the next standing signal re-arms, conservative. */
+    var siSig = !!drivers.si_active;
+    var loopSig = drivers.ac_available === false || drivers.offsite_ok === false;
+    if ((siSig && !pz._siPrev) || (loopSig && !pz._loopPrev)) pz.shedLatch = true;
+    pz._siPrev = siSig;
+    pz._loopPrev = loopSig;
+    /* the LATCH is the shed (the old engine's reading of the clarification: the source
+     * "explicitly contemplates loading the heaters while the SI signal still stands", so a
+     * standing signal does not re-shed past the operator's re-load). ac_available stays a
+     * DIRECT term — a dead bus is physics, not a loading choice. */
+    pz.heatersShed = !!pz.shedLatch || drivers.ac_available === false || pz.emptied ||
                      pz.lowLevelCut;
     var heatFrac = drivers.heaters_manual !== undefined ? clip(drivers.heaters_manual, 0, 1)
                                                         : prop;
-    var Q_heat_kW = pz.heatersShed ? 0
+    /* drivers.heaters_failed (#507 wave 6): the FAILURE seat — bank elements dead, output 0
+     * whatever the demand or the shed state. A third seat, deliberately distinct from the
+     * operator's manual override and the shed latch: a failure is not a lineup, and clearing
+     * it must not touch either (the #200 split). */
+    var Q_heat_kW = (pz.heatersShed || drivers.heaters_failed) ? 0
                   : heatFrac * HEATERS.prop_kW +
                     ((pz.backupOn && drivers.heaters_manual === undefined) ||
                      drivers.heaters_manual === 1 ? HEATERS.backup_kW : 0);
@@ -363,19 +671,46 @@
                          (CONTROL.spray_full_psi - CONTROL.spray_start_psi), 0, 1);
     var sprayFrac = drivers.spray_manual !== undefined ? clip(drivers.spray_manual, 0, 1)
                                                        : sprayAuto;
+    /* drivers.spray_stick (#507 wave 6): the porv_stick twin — a PHYSICAL valve latched
+     * open regardless of the controller or the operator's demand, which keeps moving and
+     * stays ineffective (writing the override into the demand is the #200 trap the old
+     * engine's spray_stuck comment names). Still needs RCP head and steam to condense. */
+    pz.sprayStuck = !!drivers.spray_stick;
+    if (pz.sprayStuck) sprayFrac = 1;
     if (SPRAY.needs_rcp && !(sys.mdot_loop > 100)) sprayFrac = 0;   /* no RCP head, no spray */
     if (pz.waterSolid) sprayFrac = 0;                               /* no steam to condense */
-    /* Auxiliary spray: operator-commanded, RCP-independent (see the SPRAY block). */
-    var auxFrac = drivers.aux_spray === undefined ? 0 : clip(drivers.aux_spray, 0, 1);
+    /* Auxiliary spray: operator-commanded, RCP-independent (see the SPRAY block) — but NOT
+     * power-independent (#510 H-4): the CHARGING PUMPS drive it, and they are vital loads
+     * dead in a blackout (pwr2_cvcs kills them on the same wire). Before this gate a plant
+     * with ac_available false delivered 29 gpm of aux spray from a pump reporting zero flow
+     * — 541 psi of depressurization through a blackout, measured. Absent means powered, the
+     * house convention. */
+    var auxFrac = (drivers.aux_spray === undefined || drivers.ac_available === false)
+                  ? 0 : clip(drivers.aux_spray, 0, 1);
     if (pz.waterSolid) auxFrac = 0;
 
     /* ---- 3. RELIEF: controller PORV at +100 psi, mechanical safeties at 2500 psia. Both act
      * on their own (HR5: plant hardware) and are REPORTED for the caller to wire as a sink.
      *
-     * THE TMI LEVERS (stage 2b, 2026-08-19):
-     *   drivers.porv_stick   ONE PORV latched open regardless of the controller — the TMI-2
-     *                        failure (a legitimate lift that never reseated). Half the
-     *                        two-valve capacity, because one valve stuck is one valve.
+     * THE TMI LEVERS (stage 2b, 2026-08-19; the stick became a LATCH 2026-08-25):
+     *   drivers.porv_stick   ARMS the failure. It does NOTHING to a shut valve: the first lift
+     *                        — the controller's own +100 psi lift or the operator's manual
+     *                        open — latches ONE PORV open (pz.porvStuck), and from then on
+     *                        neither the controller's reseat nor a manual close moves it. Only
+     *                        clearing the failure releases the latch. TMI-2's valve was a
+     *                        LEGITIMATE lift that never reseated, and that is the shape
+     *                        *(OWNER DESIGN, 2026-08-25: "The PORV stuck failure injection should
+     *                        work like a latch. it shouldnt just open the PORV, it shouldnt
+     *                        activate until the PORV is opened. Once the PORV is opened, then the
+     *                        failure injection can keep it opened.")*. Before this the injection
+     *                        opened the valve itself, so the plant never had to lift it and the
+     *                        pressure transient that lifts it was never part of the casualty.
+     *                        Half the two-valve capacity, because one valve stuck is one valve.
+     *   drivers.porv_manual  the operator's open demand on ONE PORV (the feed-and-bleed lift;
+     *                        Ginna's control switches are per valve). Half capacity; closing it
+     *                        is ineffective while the latch holds. Was routed through the stick
+     *                        lever until 2026-08-25, which is why "open PORV" used to be a
+     *                        failure injection.
      *   drivers.block_valve  the motor-operated isolation upstream of the PORVs — the operator
      *                        action that ENDED the TMI-2 loss (closed at 142 min). One combined
      *                        valve for the pair, declared (Ginna has one per PORV). Default
@@ -389,12 +724,30 @@
     else if (pz.safetyOpen && P <= RELIEF.safety_open_mpa * RELIEF.safety_reseat_frac) {
       pz.safetyOpen = false;
     }
-    pz.porvStuck = !!drivers.porv_stick;
+    pz.porvManual = !!drivers.porv_manual;
+    var stickArmed = !!drivers.porv_stick;
+    if (!stickArmed) pz.porvStuck = false;                       /* the clear is the only release */
+    else if (pz.porvOpen || pz.porvManual) pz.porvStuck = true;  /* the first lift latches it */
     if (drivers.block_valve !== undefined) pz.blockOpen = !!drivers.block_valve;
-    var porv_kgs = !pz.blockOpen ? 0
-                 : (pz.porvOpen ? RELIEF.porv_kgs
-                 : (pz.porvStuck ? RELIEF.porv_kgs / 2 : 0));
-    var relief_kgs = porv_kgs + (pz.safetyOpen ? RELIEF.safety_kgs : 0);
+    var oneValve = pz.porvStuck || pz.porvManual;
+    /* WHAT THE VESSEL OFFERS THE VALVES: steam from the steam region at ITS enthalpy
+     * (superheated when it is); a SOLID vessel offers liquid from the pool — TMI's regime for
+     * 95 % of the ride (measured 2026-08-26), where the same valve passes flashing water at
+     * 2-4x the steam mass flux (criticalFlux). */
+    var relief_h;
+    if (pz.m_stm > STRATIFY.m_stm_floor_kg) relief_h = pz.h_stm;
+    else if (pz.m_sat > 0) relief_h = pz.h_sat;
+    else if (pz.m_sub > 0) relief_h = pz.h_sub;
+    else relief_h = hg;
+    /* THE FLOW IS AREA x CHOKED FLUX (#515 Build 2): each valve's effective area comes from its
+     * sourced rating through the same law (reliefAreas), so a stuck PORV passes its rated 4.45
+     * kg/s of steam AT the rating pressure and proportionally less below it — and 2-4x more
+     * when the vessel is solid and it passes water. */
+    var nPorv = !pz.blockOpen ? 0 : (pz.porvOpen ? 2 : (oneValve ? 1 : 0));
+    var G_relief = (nPorv > 0 || pz.safetyOpen) ? criticalFlux(relief_h, P) : 0;
+    var A = reliefAreas();
+    var porv_kgs = nPorv * (A.porv_m2 / 2) * G_relief;
+    var relief_kgs = porv_kgs + (pz.safetyOpen ? A.safety_m2 * G_relief : 0);
 
     /* ---- 3b. THE TAILPIPE — the TMI indication. A pipe-metal temperature: heats toward the
      * discharge steam's own T_sat while the PORV passes, cools toward ambient when it does not
@@ -408,32 +761,71 @@
       pz.T_tail_c += dt * (amb - pz.T_tail_c) / RELIEF.tail_tau_cool_s;
     }
 
-    /* ---- 4. ENERGY. Heaters in; spray's condensing duty out; relief leaves at h_g (steam
-     * relief — a SOLID vessel relieves liquid at h_f, the honest cheaper stream). ---- */
+    /* ---- 4. ENERGY BY REGION. Heaters into the BOTTOM of the liquid (WTSM 3.2: "located in
+     * the lower portion of the pressurizer vessel") — the stratified layer if there is one,
+     * else the pool; a bottom layer that reaches saturation MERGES into the pool and boils
+     * through 1a. Spray CONDENSES STEAM into the pool: m_spray·(h_f − h_cold) of steam
+     * enthalpy above h_f is absorbed by the spray water, and that much steam mass becomes pool
+     * liquid at h_f (efficiency 1, [declared]); the spray water's own mass stays in the loop.
+     * Relief leaves from the steam region at ITS enthalpy (superheated when it is); a solid
+     * vessel relieves liquid from the pool. ---- */
+    if (Q_heat_kW > 0) {
+      var dHh = Q_heat_kW * dt;
+      if (pz.m_sub > STRATIFY.m_liq_floor_kg) pz.h_sub += dHh / pz.m_sub;
+      else if (pz.m_sat > 0) pz.h_sat += dHh / pz.m_sat;
+      else if (pz.m_stm > 0) pz.h_stm += dHh / pz.m_stm;
+    }
+    if (pz.m_sub > 0 && pz.h_sub >= hf) {
+      addPool(pz, pz.m_sub, pz.h_sub); pz.m_sub = 0;
+    }
     var Q_spray_kW = 0, m_spray = sprayFrac * SPRAY.max_kgs;
     if (m_spray > 0) {
       var h_cold = nodeH(sys, 'cold_leg');
       if (h_cold !== undefined && h_cold < hf) {
-        Q_spray_kW = m_spray * (hf - h_cold);              /* condensing duty, energy only */
+        Q_spray_kW = m_spray * (hf - h_cold);              /* condensing duty */
       }
     }
     var m_aux = auxFrac * SPRAY.aux_max_kgs, Q_aux_kW = 0;
     if (m_aux > 0) {
-      Q_aux_kW = m_aux * (hf - W.h_l(SPRAY.aux_water_c, P));   /* VCT-cold water, energy only */
+      Q_aux_kW = m_aux * (hf - W.h_l(SPRAY.aux_water_c, P));   /* VCT-cold water */
       Q_spray_kW += Q_aux_kW;
     }
-    H += dt * (Q_heat_kW - Q_spray_kW);
-    if (relief_kgs > 0) {
-      pz.m_pzr -= relief_kgs * dt;
-      H -= relief_kgs * dt * (twoPhase || pz.h_bar >= hg ? hg : pz.h_bar);
+    var spray_cond_kgs = 0;
+    if (Q_spray_kW > 0 && pz.m_stm > 0) {
+      var dmS = Math.min(Q_spray_kW * dt / Math.max(pz.h_stm - hf, 1), pz.m_stm);
+      var Hgain = dmS * pz.h_stm - Q_spray_kW * dt;         /* = dmS·h_f unless steam ran out */
+      pz.m_stm -= dmS;
+      if (pz.m_sat + dmS > 0) {
+        pz.h_sat = (pz.m_sat * pz.h_sat + Hgain) / (pz.m_sat + dmS); pz.m_sat += dmS;
+      }
+      spray_cond_kgs = dmS / dt;
     }
-    pz.h_bar = pz.m_pzr > 1 ? H / pz.m_pzr : pz.h_bar;
+    if (relief_kgs > 0) {                                  /* relief_h was fixed in step 3 */
+      var dmR = relief_kgs * dt;
+      if (pz.m_stm > STRATIFY.m_stm_floor_kg) pz.m_stm = Math.max(0, pz.m_stm - dmR);
+      else if (pz.m_sat > 0) pz.m_sat = Math.max(0, pz.m_sat - dmR);
+      else if (pz.m_sub > 0) pz.m_sub = Math.max(0, pz.m_sub - dmR);
+    }
 
-    /* ---- 5. THE SPLIT AND THE REGIMES (D2 §25.2 / §25.3), for reporting and the flags. ---- */
-    var s = satSplit(P, pz.m_pzr, V);
-    pz.waterSolid = pz.h_bar <= hf;
-    pz.emptied = pz.h_bar >= hg;
-    pz.V_liq = pz.emptied ? 0 : (pz.waterSolid ? V : (s.Vl < 0 ? 0 : (s.Vl > V ? V : s.Vl)));
+    /* ---- 5. THE REGIMES, THE LEVEL, THE FREEZE (D2 §25.3: transitions, not clips). ---- */
+    if (pz.m_stm <= STRATIFY.m_stm_floor_kg) {
+      if (pz.m_stm > 0) { addPool(pz, pz.m_stm, pz.h_stm); pz.m_stm = 0; }
+      pz.waterSolid = true;
+    } else {
+      pz.waterSolid = false;
+    }
+    var m_liq = pz.m_sub + pz.m_sat;
+    pz.emptied = m_liq <= STRATIFY.m_liq_floor_kg;
+    var V_liq = (pz.m_sub > 0 ? pz.m_sub / RHO(pz.h_sub, P) : 0) +
+                (pz.m_sat > 0 ? pz.m_sat / RHO(pz.h_sat, P) : 0);
+    pz.V_liq = clip(V_liq, 0, V);
+    var hHi = W.h_v(W.LIMITS.TV_MAX, P);                   /* the envelope ceiling, once a step */
+    if (pz.m_stm > 0 && pz.h_stm > hHi) pz.h_stm = hHi;
+    if (pz.m_stm > 0 && pz.h_stm < hg) pz.h_stm = hg;      /* the interface cannot undercool steam */
+    /* what the NEXT insurge arrives at: the hot leg's enthalpy now (one-step lag, the house
+     * convention) — this is what makes the bottom layer stratified rather than saturated */
+    pz.h_fill = h_hot !== undefined ? h_hot : hf;
+    freeze(pz, P);
 
     return {
       P: P,
@@ -441,23 +833,27 @@
       level_pct: 100 * pz.V_liq / V,
       m_pzr: pz.m_pzr,
       surge_kgs: surge_kgs,
+      surge_heat_kW: surge_heat_kW,
       heater_kW: Q_heat_kW,
       heater_frac: heatFrac,
       backup_on: pz.backupOn,
       heaters_shed: pz.heatersShed,
       spray_frac: sprayFrac,
+      spray_stuck: pz.sprayStuck === true,
       spray_kgs: m_spray,
       spray_duty_kW: Q_spray_kW,
       aux_spray_frac: auxFrac,
       aux_spray_kgs: m_aux,
       aux_spray_duty_kW: Q_aux_kW,
-      porv_open: pz.porvOpen || (pz.porvStuck && pz.blockOpen),
-      porv_stuck: pz.porvStuck,
+      porv_open: pz.porvOpen || ((pz.porvStuck || pz.porvManual) && pz.blockOpen),
+      porv_stuck: pz.porvStuck,                /* LATCHED — armed and lifted, not merely armed */
+      porv_stick_armed: stickArmed,
+      porv_manual: pz.porvManual,
       block_valve_open: pz.blockOpen,
       tailpipe_temp_c: pz.T_tail_c,
       safety_open: pz.safetyOpen,
       relief_kgs: relief_kgs,
-      relief_h: pz.waterSolid ? hf : hg,
+      relief_h: relief_h,
       water_solid: pz.waterSolid,
       emptied: pz.emptied,
       hi_level_trip: pz.V_liq / V >= GEOM.hi_level_trip_frac,
@@ -467,7 +863,16 @@
       charging_demand: charging_demand,
       letdown_isolated: pz.lowLevelCut,
       low_level_cut: pz.lowLevelCut,
-      level_hi_alarm: level_pct >= LEVEL.hi_alarm_pct
+      level_hi_alarm: level_pct >= LEVEL.hi_alarm_pct,
+      /* the two regions (2026-08-25) */
+      m_stm_kg: pz.m_stm,
+      m_liq_kg: m_liq,
+      steam_superheat_kJkg: pz.m_stm > 0 ? Math.max(0, pz.h_stm - hg) : 0,
+      pool_subcool_kJkg: pz.m_sat > 0 ? Math.max(0, hf - pz.h_sat) : 0,
+      cond_kgs: cond_kgs,
+      boil_kgs: boil_kgs,
+      rain_kgs: rain_kgs,
+      spray_cond_kgs: spray_cond_kgs
     };
   }
 
@@ -481,8 +886,13 @@
 
   root.RD.pwr2.pressurizer = {
     GEOM: GEOM, HEATERS: HEATERS, SPRAY: SPRAY, CONTROL: CONTROL, RELIEF: RELIEF, LEVEL: LEVEL,
+    STRATIFY: STRATIFY,
     createPressurizer: createPressurizer,
+    migrateState: migrateState,
     extraMassFn: extraMassFn,
+    seatMass: seatMass,
+    criticalFlux: criticalFlux,
+    reliefAreas: reliefAreas,
     stepPressurizer: stepPressurizer,
     levelProgram: levelProgram,
     _satSplit: satSplit

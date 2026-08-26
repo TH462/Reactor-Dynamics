@@ -83,13 +83,20 @@ function runSuite(R, rec, quiet) {
     var pz = opts.rigid ? null : PZ.createPressurizer({});
     var sys = S.createPlant({ h: W.h_l(TREF, P0), P: P0,
                               extraMass: pz ? PZ.extraMassFn(pz) : undefined });
-    var rx  = R.createReactor({ P: opts.P === undefined ? 1.0 : opts.P, coolTemp_c: TREF });
+    /* #514: trim at the temperature the ENGINE reads. stepReactor's coreTemp goes through
+     * the vtable now, which differs from the analytic inverse by interpolation (~0.009 degC
+     * here) — trimming at the analytic TREF left the "critical" plant ~0.3 pcm off and step
+     * one read 0.09 dpm against a 0.000 claim. Reading the SAME thermometer makes the
+     * criticality claim exact on both paths: with no table loaded this is W.T_from_h and
+     * reproduces the old fixture verbatim (validated against the old behaviour, HR10). */
+    var T0 = (RD.vtable ? RD.vtable.T_from_h : W.T_from_h)(W.h_l(TREF, P0), P0);
+    var rx  = R.createReactor({ P: opts.P === undefined ? 1.0 : opts.P, coolTemp_c: T0 });
     /* ⚠ TRIM AT THE ACTUAL FUEL TEMPERATURE, NOT THE COOLANT'S. criticalBoron defaults the fuel
      * to the moderator temperature, which is the ZERO-POWER case; at rated the fuel is 277 degC
      * hotter and omitting it is a 693 pcm error. The first version of this fixture omitted it, and
      * nothing went red — the plant just started subcritical, dipped, and bought the reactivity
      * back by cooling, settling stable and self-consistent at a Tavg 29 degF below design. */
-    var B   = K.criticalBoron(rx.kin, TREF, P0, null, rx.kin.X / rx.kin.X_eq_full,
+    var B   = K.criticalBoron(rx.kin, T0, P0, null, rx.kin.X / rx.kin.X_eq_full,
                               rx.fuel.T_fuel_c);
     return { sys: sys, rx: rx, B: B, pz: pz };
   }
@@ -428,15 +435,28 @@ function runSuite(R, rec, quiet) {
   var f4 = fixture(); var rods4 = [{ steps: 228, max_steps: 228, worth: 0.04068 }];
   ride(f4, 200, null, rods4); rods4[0].steps = 0;                 /* settle, then scram */
   var sur1s  = ride(f4, 50, null, rods4);                          /* 1 s: still falling */
-  var sur20s = ride(f4, 950, null, rods4);                         /* +19 s = 20 s: climbing back */
-  var sur60s = ride(f4, 2000, null, rods4);                        /* +40 s = 60 s: re-settled */
+  /* ⚠ RE-MEASURED A FOURTH TIME (#515 Build 3, 2026-08-26), and this one is the FIX SPEAKING, not
+   * the fixture: the moderator term's two-phase REFERENCE (kinetics header, defect 1) put
+   * +6,400..+9,700 pcm of invented positive reactivity into every plant below 9.145 MPa — and
+   * this cooldown falls through 1,600 psia by 16 s. That insertion was the +12 dpm at 20 s and
+   * the 477 % ring. With a LIQUID reference the recovery is gentle: SUR turns positive at ~16 s,
+   * climbs at +3.2 dpm at 51 s (power 32 %), and settles at 100 % by ~100 s with NO overshoot
+   * (measured 0.00 dpm at 120 s). The three-phase MECHANISM is unchanged; the sample moves to
+   * 51 s and the climb bound to > 1 dpm — a physical startup rate, not the defect's. */
+  var sur20s = ride(f4, 2500, null, rods4);                        /* +50 s = 51 s: climbing back */
+  /* ⚠ RE-MEASURED A THIRD TIME (#514): the fixture's trim now reads the engine's own
+   * table thermometer (see fixture()) and the ring shifts phase — a third excursion dips to
+   * 2.7 % near 60 s and recovers through ~82 % at 70 s before settling at 100 % by ~90 s
+   * (measured 0.00 dpm at 100 s, ±0.02 through 160 s). Same rule as the two re-measures
+   * above: the sample time follows the fixture, the three-phase MECHANISM is the check. */
+  var sur120s = ride(f4, 3450, null, rods4);                       /* +69 s = 120 s: re-settled */
   ckT('SUR is clearly NEGATIVE while the scrammed core is still cooling down',
       sur1s.startup_rate_dpm < -1, sur1s.startup_rate_dpm.toFixed(2) + ' dpm at 1 s');
   ckT('...and clearly POSITIVE while it climbs back THROUGH criticality -- the sourced lesson',
-      sur20s.startup_rate_dpm > 5,
-      sur20s.startup_rate_dpm.toFixed(2) + ' dpm at 20 s, power ' + sur20s.power_pct.toFixed(1) + ' %');
+      sur20s.startup_rate_dpm > 1,
+      sur20s.startup_rate_dpm.toFixed(2) + ' dpm at 51 s, power ' + sur20s.power_pct.toFixed(1) + ' %');
   ckT('...and back near zero once it has RE-SETTLED -- proves prevPower tracks the LATEST step',
-      Math.abs(sur60s.startup_rate_dpm) < 2, sur60s.startup_rate_dpm.toFixed(3) + ' dpm at 60 s');
+      Math.abs(sur120s.startup_rate_dpm) < 2, sur120s.startup_rate_dpm.toFixed(3) + ' dpm at 120 s');
   /* THE CONVERSION CONSTANT, AS A PURE IDENTITY. SUR = C/T by definition, so SUR*T recovers C
    * exactly whenever T is finite -- true no matter what the reactor is doing, which is what makes
    * it a mutation-sensitive check on the CONSTANT specifically rather than on plant behaviour. */
@@ -472,12 +492,23 @@ var MUTATIONS = [
   ['the coolant regime reports FULL FLOW whatever the loop is doing',
    '    var f = sys.mdot_loop === undefined ? 1 : sys.mdot_loop / MDOT_RATED;',
    '    var f = 1;'],
+  /* ⚠ ANCHORS RE-CUT (#517). coreRegime gained the superheat pair, which split the single
+   * `if (id === 'core') { v = ...; break; }` line these two used to match. A mutation whose
+   * anchor stops matching reports ANCHOR NOT FOUND and counts as a BLIND SPOT — it fails loudly
+   * rather than silently passing, which is the only reason this was caught in the same change. */
   ['the coolant regime reports NO VOID whatever the core is doing',
-   "      if (sys.nodes[i].id === 'core') { v = W.voidFraction(sys.nodes[i].h, sys.P); break; }",
-   "      if (sys.nodes[i].id === 'core') { v = 0; break; }"],
+   "        v  = W.voidFraction(sys.nodes[i].h, sys.P);",
+   "        v  = 0;"],
   ['the coolant regime hands QUALITY onward as void fraction (the shipped defect, #490)',
-   "      if (sys.nodes[i].id === 'core') { v = W.voidFraction(sys.nodes[i].h, sys.P); break; }",
-   "      if (sys.nodes[i].id === 'core') { v = W.quality(sys.nodes[i].h, sys.P); break; }"],
+   "        v  = W.voidFraction(sys.nodes[i].h, sys.P);",
+   "        v  = W.quality(sys.nodes[i].h, sys.P);"],
+  /* ---- #517, the superheat wing at this layer ---- */
+  ['coreRegime reports NO SUPERHEAT, so the fuel is blind above h_g again',
+   "        sh = W.superheat_c(sys.nodes[i].h, sys.P);",
+   "        sh = 0;"],
+  ['coreRegime reads the superheat off the HOT LEG instead of the core',
+   "        sh = W.superheat_c(sys.nodes[i].h, sys.P);",
+   "        sh = W.superheat_c(sys.nodes[0].h, sys.P);"],
   ['the flow reference drifts off the value pwr2_sources actually pumps to',
    '  var MDOT_RATED = 1630;', '  var MDOT_RATED = 2000;'],
   ['the heat path DOUBLE-COUNTS (corePower supplied alongside heats)',
@@ -490,8 +521,9 @@ var MUTATIONS = [
   ['the coolant temperature handed to fuel is a constant (fuel cannot feel the plant)',
    '      coolTemp_c: cool', '      coolTemp_c: 304.5'],
   ['the reactor reads the wrong node for coolant temperature',
-   "      if (sys.nodes[i].id === 'core') return W.T_from_h(sys.nodes[i].h, sys.P);",
-   "      if (sys.nodes[i].id === 'hot_leg') return W.T_from_h(sys.nodes[i].h, sys.P);"],
+   /* anchor re-pointed #514: coreTemp goes through TFH (the vtable idiom) now */
+   "      if (sys.nodes[i].id === 'core') return TFH(sys.nodes[i].h, sys.P);",
+   "      if (sys.nodes[i].id === 'hot_leg') return TFH(sys.nodes[i].h, sys.P);"],
   ['fuel is NOT initialised on its steady solve (a 15 s lurch at t=0 that looks like physics)',
    '                               T_fuel_c: F.steadyFuelTemp(geom, rated * kin.P, cool),',
    '                               T_fuel_c: 693,'],

@@ -56,13 +56,15 @@
      * Deliberately NOT persisted, unlike the panel state: it would save the SIDES of channel
      * selections that are themselves forgotten on reload. Reset wherever `series` is. */
     seriesSide: {},
-    plant: 'pwr',           // active plant_id
-    engineKey: 'pwr',       // active engine selector key
-    // The SHIPPED starting point *(OWNER, 2026-08-08: "the plant should start with the 50%
-    // power preset")*. Kept in step with ENGINES.pwr.init below — this one seeds the very
-    // first render, that one is what a plant switch and Reset go back to, and a mismatch
-    // shows up as a board that changes under you one broadcast in.
-    initState: '50_percent',
+    plant: 'pwr',           // active BOARD (pwr2 wears the pwr board — see uiPlantOf)
+    engineKey: 'pwr2',      // active engine selector key — the shipped plant (2026-08-26)
+    // The SHIPPED starting point. Kept in step with ENGINES.pwr2.init below — this one seeds
+    // the very first render, that one is what a plant switch and Reset go back to, and a
+    // mismatch shows up as a board that changes under you one broadcast in. It was
+    // '50_percent' *(OWNER, 2026-08-08: "the plant should start with the 50% power preset")*
+    // against the retired engine; PWR2's own preset registry opens at Hot Full Power, and
+    // ENGINES.pwr2.init is the one that decides — this line only has to agree with it.
+    initState: 'hot_full_power',
     view: 'diagram',        // plant-display active view
     pdAck: {},              // operator-acknowledged auto-actuations (ECCS/AFW → green)
     pdOp: {},               // operator-initiated systems (start green directly)
@@ -316,32 +318,69 @@
   // `soon: true` = the physics engine is complete but the M8 board / M4 control
   // surface is not extended to it yet, so the card is shown greyed and is not
   // selectable. The ?engine= dev override still reaches them deliberately.
+  //
+  // WHICH CONSTRUCTORS ACTUALLY LOADED — measured, never declared (2026-08-26). A published
+  // build carries PWR2 only: site/build_site.js deletes the retired engine's <script> tags
+  // from ui/shell.html on the `public` channel, and tools/make_portable.js deletes them from
+  // the offline download unconditionally. So this file cannot hold a list of what is
+  // available; it has to LOOK. Every consumer — the boot override, the fallback and the plant
+  // column — reads this one probe, which is what keeps the menu from offering a card whose
+  // constructor is not in the page. Same shape as #514's greyed RBMK/BWR cards, except
+  // derived rather than written down, because for the PWR the answer differs per build.
+  // Deliberately a function, not a snapshot: it is called after all <script>s have run.
+  function ctorPresent(key) {
+    switch (key) {
+      case 'pwr':       return !!RD.PWREngine;
+      case 'pwr2':      return !!(RD.pwr2 && RD.pwr2.shell);
+      case 'rbmk_pre':
+      case 'rbmk_post': return !!RD.RBMKEngine;
+      case 'bwr':       return !!RD.BWREngine;
+      default:          return false;
+    }
+  }
   var ENGINES = {
     // 50 % power, not full *(OWNER, 2026-08-08: "the plant should start with the 50% power
     // preset")* — there is somewhere to go in both directions from it. `ui.initState` above
     // carries the same value for the first render.
+    // THE RETIRED ENGINE (2026-08-26). PWR2 replaced it *(OWNER RULING, 2026-08-26: "Flip
+    // now, track the gaps")*, and a published build does not contain it at all — so this
+    // card only ever appears on a dev or preview build, where ctorPresent('pwr') is true.
+    // It is kept reachable, not deleted, for two live reasons: it is the A/B reference
+    // test/measure_pwr2_ab.js diffs against, and it is the only engine the campaign, the
+    // scenarios and the walkthroughs are authored for, so it is where that content is
+    // vetted until the compatibility pass runs.
     pwr:       { plant: 'pwr',  dv: null,              init: '50_percent',
-                 label: 'PWR', sub: 'Pressurized Water Reactor',
-                 desc: 'The stable, self-regulating starting point. Separate primary and steam loops. Home of the Three Mile Island story.' },
-    // A FIRST-CLASS CARD since 2026-08-21 (owner: "I want to be able to go into the plant
-    // and scenario selection menu and be able to choose either PWR plant").
+                 label: 'PWR — retired engine', sub: 'The previous physics · dev and preview builds only',
+                 desc: 'The engine PWR2 replaced. Kept as the A/B reference and as the plant the campaign, scenarios and walkthroughs were written against. Not in any published build.' },
+    // THE PWR, since 2026-08-26 *(OWNER RULING, 2026-08-26: "Flip now, track the gaps")* —
+    // what every site link opens, what ?engine= defaults to, and the only engine a published
+    // build carries. Was a first-class card beside the old one from 2026-08-21 (owner: "I
+    // want to be able to go into the plant and scenario selection menu and be able to choose
+    // either PWR plant"); the retired card above now outranks nothing.
     // plant:'pwr' ON PURPOSE — the whole UI (profiles, PD tables, the seven ui.plant==='pwr'
     // branches) treats this as the PWR board it is; only the ENGINE differs, carried by
-    // `engine:` and resolved at every selectPlant/reset call via engId().
-    // initStates OVERRIDES the profile's list: only the ICs the pwr2 constructor actually
-    // builds are offered — a preset the constructor ignores would be a menu that lies.
-    // hot_zero_power landed 2026-08-21 (#479 more starting conditions, Mode 3 first).
+    // `engine:` and resolved at every selectPlant/reset call via engId(). The key stays
+    // 'pwr2' as well: it is the service plant_id, the save schema ('pwr2-1.0') and 37 gate
+    // runners' name for this plant, and renaming it would buy a label and cost all of that.
+    // initStates OVERRIDES the profile's list: this engine carries its OWN preset registry
+    // (pwr2_engine ICS — the FOUR below since #507 wave 10 added Hot Shutdown; this comment
+    // said "three" while the list held four, #510 LOW. Mode 5 proper stays deferred on the
+    // Layer-0 floor) and offering the pwr profile's presets the constructor refuses would
+    // be a menu that lies.
     // freePlayOnly: the campaign/scenario/walkthrough content is authored and validated
     // against the current engine; running it silently on different physics would grade the
     // player against the wrong plant. Lifts when the scenario-compat pass runs.
     pwr2:      { plant: 'pwr', engine: 'pwr2', dv: null, init: 'hot_full_power',
                  initStates: [['hot_full_power', 'Hot Full Power (Mode 1)'],
-                              ['hot_zero_power', 'Hot Standby (Mode 3)']],
+                              ['50_percent', '50 % Power (Mode 1)'],
+                              ['hot_zero_power', 'Hot Standby (Mode 3)'],
+                              ['hot_shutdown', 'Hot Shutdown (Mode 4)']],
                  freePlayOnly: true,
-                 label: 'PWR — New Physics', sub: 'The same plant on the rebuilt engine',
-                 desc: 'The SLS-100 control room over the new from-scratch physics engine: ' +
-                       'real break locations, emergent natural circulation, the TMI level ' +
-                       'deception as physics rather than script. Free Play only for now.' },
+                 label: 'PWR', sub: 'Pressurized Water Reactor',
+                 desc: 'The SLS-100: real break locations, emergent natural circulation, the ' +
+                       'TMI level deception as physics rather than script. Starts at Hot ' +
+                       'Shutdown (Mode 4) or above. Free Play — the guided content is being ' +
+                       're-validated on this engine.' },
     rbmk_pre:  { plant: 'rbmk', dv: 'pre_chernobyl',   init: 'full_power', soon: true,
                  label: 'RBMK pre-1986', sub: 'Chernobyl-type · original design',
                  desc: 'Graphite-moderated, positive void coefficient, graphite-tipped rods — the design that failed at Chernobyl.' },
@@ -519,6 +558,12 @@
         { id: 'clad_temp',grp: 'Core damage', label: 'Peak Clad Temp', c: '#d05a3e', tru: function (t) { return t.clad_temp_c; }, range: [200, 1400], dHi: 1200, fmt: function (v) { return conv(v, 'temp').toFixed(0) + unit('temp'); } },
         { id: 'core_void',grp: 'Core damage', label: 'Core Void', c: '#8fb0d0', tru: function (t) { return t.core_void_fraction * 100; }, range: [0, 100], fmt: function (v) { return v.toFixed(1) + '%'; } },
         { id: 'uncovered',grp: 'Core damage', label: 'Core Uncovered', c: '#c04a6a', tru: function (t) { return t.core_uncovered_frac * 100; }, range: [0, 100], dHi: 1, fmt: function (v) { return v.toFixed(0) + '%'; } },
+        /* #520 — HOW DRY, and it exists because `uncovered` above SATURATES. Core void clips
+         * at 1, so once the core is fully steam-filled every field in this group is a constant:
+         * measured on an unmitigated 5 cm2 break, uncovery pins at 100 % at 580 s and reports the
+         * same number for the next 1,220 s while the core dries 0 -> 131 degC. pwr2-only — on the
+         * old engine `tru` returns undefined and the row reads a dash, which seriesLive swallows. */
+        { id: 'core_sh', grp: 'Core damage', label: 'Core Superheat', c: '#e0a040', tru: function (t) { return t.core_superheat_c; }, range: [0, 200], dHi: 1, fmt: function (v) { return conv(v, 'tempdiff').toFixed(0) + ' ' + unit('tempdiff'); } },
         { id: 'zirc',     grp: 'Core damage', label: 'Zr Oxidation Heat', c: '#e07030', tru: function (t) { return t.zirc_heat_pct; }, range: [0, 5], dHi: 0.01, fmt: function (v) { return v.toFixed(2) + '%'; } },
 
         // ---------------------------------------------------------------- primary coolant
@@ -820,6 +865,19 @@
             hint: 'the hottest fuel cladding temperature in the core, at the top of the hot channel.',
             detail: 'While the core is covered the cladding sits at the fuel temperature and this tracks it. Once the water level falls below the top of the core the uncovered part is cooled by steam instead of water, the cladding separates from the fuel node and runs away upward. This is the number core damage is judged on, because damage is local before it is average.',     v: function (t) { return dispT(t.clad_temp_c); },
             cls: function (t) { return t.clad_temp_c >= fuelDamageC() ? 'q-alarm' : t.clad_temp_c > t.fuel_temp_c + 1 ? 'q-caution' : 'q-ok'; } },
+          /* #520 — bound to the `core_sh` series above by `ser:`. That binding is what makes it
+           * REACHABLE: run_inspect counts a true-state-only series as reachable only if a physics
+           * row names it, and buildPhysIndex feeds this row's own `v()` to the Indications true
+           * column. A row whose `ser` matches no series is read by nothing — #517 shipped two of
+           * those and only driving the board caught them. */
+          { k: 'Core superheat', ser: 'core_sh',
+            hint: 'how far the core coolant is ABOVE saturation — degrees of superheat, not a temperature.',
+            detail: 'Zero whenever there is any water left in the core, so it reads zero through every normal evolution and through most of a loss-of-coolant accident. Once the core is fully steam-filled, void fraction has nothing left to say — it is pinned at 100 % — and this is the only reading that still moves. It is how far past dry the core has gone, and it climbs for as long as the steam keeps heating. On the original engine it reads a dash: that model cannot express superheat at all.',
+            v: function (t) {
+              if (t.core_superheat_c == null) return '—';
+              return physTd(t.core_superheat_c) + ' above saturation';
+            },
+            cls: nzCls('core_superheat_c') },
           { k: 'Core uncovered', ser: 'uncovered',
             hint: 'the fraction of the core the model treats as steam-cooled rather than water-cooled.',
             detail: 'Zero while the Reactor Coolant System (RCS) inventory keeps the core covered. It ramps up as inventory falls past the top of the active fuel and reaches 100 % at significant uncovery. It is the first link in the damage chain: uncovery, then zirconium oxidation heat, then a cladding temperature excursion.',     v: function (t) { return pctOf(t.core_uncovered_frac, 1); }, cls: nzCls('core_uncovered_frac') },
@@ -1093,7 +1151,9 @@
               return m + ' · ' + conv(g, 'flow').toFixed(0) + ' ' + unit('flow');
             },
             cls: function (t) {
-              if (t.eccs_mode && t.eccs_mode !== 'off') return 'q-caution';
+              // 'standby' is PWR2's armed-and-quiet word — off-equivalent, not a caution
+              // (it lit this tile amber on every healthy PWR2 plant, #507 wave 2)
+              if (t.eccs_mode && t.eccs_mode !== 'off' && t.eccs_mode !== 'standby') return 'q-caution';
               return t.rhr_active ? 'q-caution' : 'q-ok';
             } },
           { k: 'Condenser heat sink', ser: 'vacuum',
@@ -1124,7 +1184,7 @@
       // A new failure therefore SHOWS UP misfiled instead of disappearing, and
       // `run_inspect` asserts every catalog entry is placed.
       failGroups: [
-        { title: 'Reactivity & rods',        ids: ['continuous_rod_withdrawal', 'stuck_rod_on_scram', 'failure_to_scram'] },
+        { title: 'Reactivity & rods',        ids: ['continuous_rod_withdrawal', 'stuck_rod_on_scram', 'failure_to_scram', 'anticipatory_trip_failure'] },
         { title: 'Reactor coolant system',   ids: ['large_loca', 'sgtr', 'rcp_seal_leak', 'stuck_porv_open', 'rcp_trip'] },
         { title: 'Pressurizer & pressure',   ids: ['stuck_open_spray', 'failed_pzr_heaters'] },
         { title: 'Steam & feedwater',        ids: ['loss_of_feedwater', 'sg_overfeed', 'steam_line_break', 'steam_line_break_upstream'] },
@@ -2291,6 +2351,8 @@
     RD.ChartFine = pendingTiles;
     pendingTiles = null;
 
+    checkPlantHeld(s);
+
     applyUiPolicy(s);
     renderGauges(s);
     renderAlarms(s); renderInstructor(s); renderFailures(s);
@@ -2360,7 +2422,7 @@
     // Re-measured after both: **8.8 MB** for 51 series — LESS than the 10.2 MB the old
     // 16-series buffer cost, with three times the quantities. The resolution cost is nil
     // in practice: the widest window is 1800 s across ~400 px of plot, so 2 Hz is still
-    // ~9x oversampled, and the preseed writes at 5 s intervals either way.
+    // ~9x oversampled.
     // SAMPLE TIMES ARE QUANTISED TO THE GRID, not taken as whatever sim_time happened to
     // cross the gate (2026-08-05). The old form stamped the row with the raw `sim_time` of
     // the first broadcast past the interval, so spacing was irregular — at 1x the broadcast
@@ -2375,23 +2437,15 @@
     if (lastT != null && gridT - lastT < CHART_SAMPLE_SEC - 1e-9) { drawChart(); return; }
     var one = chartSample(rawIns, s.true_state, s.control_state);
     var sv = one.v, stv = one.tv;
-    // #237 (owner): presets start with 30 minutes of history so the graphs are populated —
-    // the plant has been RUNNING, it didn't just appear. A fresh buffer (boot, reset, plant
-    // switch, mission start — anything that cleared chartBuf) seeds the full record window,
-    // and the cutoff trim below retires that tail as real history accrues.
-    //
-    // The seed is FLAT here and then replaced with a REAL 30-minute run, computed off the
-    // main thread and swapped in when ready *(OWNER, 2026-08-01: "when you make preset starts,
-    // run them for 30 minutes to fill up the graph with real data before saving")*. Flat-first
-    // is deliberate: the real run costs ~2 s of wall clock, and paying that synchronously
-    // would freeze boot, every reset, every plant switch and every mission start. See
-    // ensurePreseed. (sv/stv are frozen after this call, so sharing one object per row is safe.)
-    if (!chartBuf.length) {
-      for (var pt = gridT - CHART_RECORD_SEC; pt < gridT; pt += 5) {
-        chartBuf.push({ t: pt, v: sv, tv: stv });
-      }
-      ensurePreseed(s.metadata.sim_time);
-    }
+    // NO SEEDED HISTORY. A fresh buffer starts EMPTY and fills from the right — the #237
+    // flat seed and the 30-minute background pre-seed run that replaced it were both removed
+    // *(OWNER RULING, 2026-08-21: selected "All flat seeds everywhere" [be removed] from
+    // options I wrote — reversing #237 and the 2026-08-01 preseed ruling)*. The pre-seed's
+    // hidden 10× SimulationService froze the UI for ~1-2 min per plant select on PWR2
+    // (#501: 0.9 fps, continuous 1.9 s long tasks — its slice size was calibrated to the
+    // old engine's tick cost). drawChart renders < 2 rows as the deliberate "waiting" lane
+    // stack, and the axis spans ui.window regardless of buffer, so empty is a first-class
+    // state, not a blank screen.
     // FINE SUB-SAMPLES FIRST, then the broadcast instant. The service samples the plant on a
     // fixed SIM-time interval inside its step loop (see setFineSampler there), so the chart's
     // resolution stops depending on time acceleration: at 60× a broadcast carries 6 s of sim
@@ -2436,8 +2490,8 @@
   }
 
   // ---- ONE chart sample -------------------------------------------------------------
-  // Extracted so the live recorder and the 30-minute preseed below cannot disagree about
-  // what a row contains. Records ONE VALUE PER SERIES — instrument in `v`, true state in
+  // The single place a chart row is composed (the 30-minute preseed that shared it is
+  // gone, #501). Records ONE VALUE PER SERIES — instrument in `v`, true state in
   // `tv` — rather than a copy of the whole instrument + true_state dicts: the chart only
   // ever reads the ~15 plotted quantities and the buffer holds 30 min at frame rate, so
   // keeping the full dicts cost ~100 MB (and carrying truth alongside would have doubled
@@ -2476,89 +2530,6 @@
     // old report and a new one disagree by 100× on the same quantity. Ten doubles beside two
     // 96-wide arrays; the cost in this function is the call, not the packing.
     return { v: v, tv: tv, dv: RD.DiagRecorder.pack(ui.plant, trueState) };
-  }
-
-  // ---- REAL 30-minute trend preseed (owner, 2026-08-01) -------------------------------
-  // "when you make preset starts, run them for 30 minutes to fill up the graph with real
-  // data before saving". The graphs used to open on 360 IDENTICAL flat samples, so a fresh
-  // plant showed a ruler-straight line where a running plant shows instrument texture.
-  //
-  // WHAT THIS CHANGES, honestly: the initial conditions are constructed as TRUE steady
-  // states (`_buildState` derives the secondary temps so each preset is genuinely settled),
-  // so 30 real minutes is a NOISY FLAT LINE, not a different shape — measured at
-  // hot_full_power: power 99.78–100.2 %, Tavg 304.0–304.2 °C, pzr level 54.6–55.3 %. The
-  // gain is that it reads as a plant that has been running, plus the genuine slow drifts
-  // (xenon, boron) a synthetic seed cannot have.
-  //
-  // WHY IT IS ASYNC AND CACHED. A 30-plant-minute full-stack run measured 1874 ms, and a
-  // fresh chart buffer happens on boot, reset, plant switch AND every mission start —
-  // paying that synchronously would freeze all four. So: seed flat immediately (above),
-  // compute the real trace in setTimeout slices, swap it in, and cache it per
-  // plant+design-version+initial-state for the session, because the answer is identical
-  // every time that triple repeats.
-  // `pendingT0` is tracked separately from the run because the SAME preset can be re-seeded
-  // while its trace is still computing (reset to the same IC, a mission restart). The trace
-  // is still valid — the preset has not changed — but it must land against the NEW seed
-  // time, so ensurePreseed updates this and the completion reads it rather than closing over
-  // the t0 it started with.
-  var preseed = { cache: {}, runningKey: null, pendingT0: 0 };
-  function preseedKey() {
-    var e = ENGINES[ui.engineKey] || {};
-    return ui.plant + '|' + (e.dv || '') + '|' + ui.initState;
-  }
-  // Splice a computed trace into the synthetic tail. `t0` is the sim time the buffer was
-  // seeded at, so rows land on [t0 − CHART_RECORD_SEC, t0) and anything the live recorder
-  // has added since (t ≥ t0) is preserved untouched.
-  function applyPreseed(rows, t0, key) {
-    // The world may have moved while we were computing: a reset, a plant switch, a rewind
-    // or another seed. Any of those makes this trace the wrong answer — drop it silently.
-    if (key !== preseedKey() || !chartBuf.length) return;
-    var live = chartBuf.filter(function (r) { return r.t >= t0 - 1e-9; });
-    if (!live.length) return;                      // buffer was cleared out from under us
-    var seeded = [];
-    for (var i = 0; i < rows.length; i++) {
-      var t = t0 - CHART_RECORD_SEC + i * 5;
-      if (t >= t0) break;
-      seeded.push({ t: t, v: rows[i].v, tv: rows[i].tv });
-    }
-    chartBuf = seeded.concat(live);
-    drawChart();
-  }
-  function ensurePreseed(t0) {
-    if (!RD.SimulationService) return;
-    var key = preseedKey();
-    if (preseed.cache[key]) { applyPreseed(preseed.cache[key], t0, key); return; }
-    preseed.pendingT0 = t0;
-    if (preseed.runningKey === key) return;        // already computing — the new t0 is enough
-    preseed.runningKey = key;
-    var e = ENGINES[ui.engineKey] || {};
-    var probe;
-    try {
-      // A SEPARATE service — never the live one. Default lineup (no `noDefaults`), so the
-      // trace is the plant a player actually gets, including the channels that are
-      // `defaultOn` (rod control since #289).
-      probe = new RD.SimulationService({ seed: 0x51EED });
-      probe.selectPlant(engId(), ui.initState, e.dv || undefined, undefined);
-      probe.running = true;
-      probe.timeAcceleration = 10;                 // 1.0 sim-s per broadcast → 5 s every 5 ticks
-      probe.attentionStops = false;                // nobody is watching a background run
-    } catch (err) { preseed.runningKey = null; return; }
-    var rows = [], ticks = 0;
-    // 40 ticks per slice, not 120. Measured, a tick costs ~1.04 ms, so 40 is ~42 ms of work
-    // — under the ~50 ms a user perceives as a stutter — where 120 would be ~125 ms of
-    // visible jank, fifteen times over, while the plant is live behind it.
-    var TICKS = CHART_RECORD_SEC, SLICE = 40;
-    (function step() {
-      if (preseed.runningKey !== key) return;      // superseded — abandon this run
-      for (var n = 0; n < SLICE && ticks < TICKS; n++, ticks++) {
-        var snap = probe.tick();
-        if (ticks % 5 === 0 && snap) rows.push(chartSample(snap.instruments, snap.true_state, snap.control_state));
-      }
-      if (ticks < TICKS) { setTimeout(step, 0); return; }
-      preseed.cache[key] = rows;
-      preseed.runningKey = null;
-      applyPreseed(rows, preseed.pendingT0, key);
-    })();
   }
 
   // Held between frames, per gauge: the LATCHED band, so a reading parked on a setpoint
@@ -2619,9 +2590,9 @@
       // sample count, so the mini chart spans the same minute at any time-accel.
       var h = gaugeHist[g.id], now = s.metadata.sim_time;
       while (h.length && h[h.length - 1].t > now + 1e-9) h.pop();   // drop samples ahead of us (rewind)
-      // fresh gauge → seed its 60 s sparkline flat at the current value (#237,
-      // same steady-state preseed as the strip chart; also settles the trend arrow)
-      if (!h.length) for (var ps = now - 60; ps < now; ps += 5) h.push({ t: ps, v: raw });
+      // No flat seed on a fresh gauge — the sparkline fills live from the right, like the
+      // strip chart (#501: the #237 seeds were all removed, owner ruling 2026-08-21). The
+      // trend arrow's h.length > 4 gate simply waits the few seconds it takes to earn one.
       h.push({ t: now, v: raw });
       while (h.length > 1 && h[0].t < now - 60) h.shift();          // 60 s window
       // #237: deadband + hysteresis on the trend arrow. The old rule (0.2 % of
@@ -3718,7 +3689,7 @@
   // pick the plant (left column), then the mode (Free Play / Campaign /
   // Scenarios / Walkthroughs), then the specific start. Nothing changes in the
   // running sim until a start button is pressed.
-  var msel = { engine: 'pwr', mode: 'free', init: null };
+  var msel = { engine: 'pwr2', mode: 'free', init: null };   /* the shipped plant (2026-08-26) */
   var resetArmT = null;                  // the Reset arm's self-disarm timer (#443)
   /* The window PAUSES, and closing it resumes *(OWNER DIRECTIVE, 2026-08-11: "The menu
    * should freeze the plant but when you close the menu it should unfreeze the plant.")*.
@@ -3783,7 +3754,14 @@
   function renderMissionSelect() {
     // Step 1 — the plant column
     $('mpPlants').innerHTML = Object.keys(ENGINES).filter(function (k) {
-      return !ENGINES[k].hidden;               /* general gate; nothing hidden today */
+      if (ENGINES[k].hidden) return false;     /* general gate; nothing hidden today */
+      /* A card whose constructor is not in the page is not a card. On a published build that
+       * is the retired PWR engine, whose tags site/build_site.js deleted; RBMK/BWR keep their
+       * greyed `soon` cards deliberately (#514) and are exempt, because a plant on hold is a
+       * roadmap statement, not a missing file. Without this the menu would offer a plant the
+       * service cannot construct — engineCtor() returns undefined and selectPlant throws. */
+      if (!ENGINES[k].soon && !ctorPresent(k)) return false;
+      return true;
     }).map(function (k) {
       var e = ENGINES[k];
       return '<div class="mplant-card' + (k === msel.engine ? ' on' : '') + (e.soon ? ' soon' : '') + '"' +
@@ -3828,11 +3806,14 @@
     h += '<button class="btn mp-start" data-mfree="1">▶ Start Free Play — ' + mesc(e.label) + '</button>';
     return h;
   }
+  // NO BUTTONS IN HERE. verify_flags_ui counts things you can start inside #mpContent to
+  // prove the public site offers nothing ungated, and this panel now stands where the
+  // campaign used to on the plant the site actually runs.
   function freeOnlyPanel() {
     return '<div class="m-note">The guided content — campaign, scenarios and walkthroughs — ' +
-      'is authored and validated against the current PWR engine. On the new physics engine ' +
-      'it is <b>Free Play only</b> for now: every control live, every failure injectable, ' +
-      'no script grading you against the wrong plant.</div>';
+      'was written against the retired engine and is being re-validated on this one. Until ' +
+      'that pass runs it is <b>Free Play only</b>: every control live, every failure ' +
+      'injectable, no script grading you against a plant these physics do not describe.</div>';
   }
   function mpCampaign() {
     if (ENGINES[msel.engine].freePlayOnly) return freeOnlyPanel();
@@ -4548,7 +4529,7 @@
   }
   // The EXTREMES this sample covers, on whichever side is being plotted. Fine rows carry
   // the min/max the service folded over their sub-interval (see setFineSampler there);
-  // broadcast rows and the preseed carry none, and collapse to the point value — which is
+  // broadcast rows carry none, and collapse to the point value — which is
   // correct, they represent one instant rather than a span.
   function seriesExt(ser, sample, val, side) {
     var i = serCol[ser.id]; if (i == null) return [val, val];
@@ -4656,7 +4637,6 @@
    * Read from the LIVE element, not from a constant: the splitters (#445) make the region's
    * height the operator's to choose, so the lane count has to follow it. */
   var NUM_ROW_PX = 18;                  // a demoted channel's numeric row, per the reference
-  var LANE_TARGET_PX = 56;              // the top of the spec's 44-56 band
   /* The split is JOINTLY constrained and has to be solved as one: every channel demoted to a
    * numeric row TAKES 18 px from the lanes above it, so "how many lanes fit" depends on how
    * many were demoted, which depends on how many fit. Computing the lane count first and
@@ -4672,13 +4652,14 @@
       var lanes = n - d;
       var avail = px - d * NUM_ROW_PX;
       if (avail / lanes >= LANE_FLOOR_PX) {
-        /* EXTRA SPACE ADDS ROWS, IT DOES NOT INFLATE THEM (#445, spec §8). Dragging the
-         * strip taller with three channels pinned must not give three enormous traces —
-         * "which is nobody's intent". Lanes stop growing at the target height and the
-         * surplus is simply not used by the stack; it becomes room for the next channel
-         * the operator pins, which is the point of having dragged. */
-        var used = Math.min(avail, lanes * LANE_TARGET_PX);
-        return { lanes: lanes, rows: d, px: used };
+        /* LANES STRETCH TO FILL *(OWNER SELECTION, 2026-08-24, #509 item 4: "Lanes stretch
+         * to fill" — chosen over keeping the cap)*. This retires the #445 spec §8 56 px
+         * target ("extra space adds rows, it does not inflate them"): with two or three
+         * channels pinned, the capped stack left the bottom two-thirds of the plot blank,
+         * which the owner's playtest read as the chart failing to scale. The 36 px FLOOR
+         * and the demote-to-numeric-rows rule (the 2026-08-10 owner selection) stand — only
+         * the ceiling is gone. */
+        return { lanes: lanes, rows: d, px: avail };
       }
     }
     return { lanes: 1, rows: n - 1, px: Math.max(LANE_FLOOR_PX, px - (n - 1) * NUM_ROW_PX) };
@@ -5057,12 +5038,10 @@
     /* WHERE THE RUN BEGAN — sim time zero *(OWNER, 2026-08-11: "The strip chart should have
      * a line to show the start of the sim at time=0.")*.
      *
-     * IT IS A REAL BOUNDARY, NOT THE LEFT EDGE. The chart opens already holding 30 minutes
-     * of trend, because a preset start is preseeded with a genuinely-run trace laid at
-     * NEGATIVE sim time (applyPreseed: rows land on [t0 − CHART_RECORD_SEC, t0)). Measured
-     * at T+10 s on a fresh load with the default 5-minute window: 290 s of the plot is that
-     * synthetic history and 10 s is the run you are driving, with nothing marking the join.
-     * This line is the join.
+     * Since the pre-seed removal (#501) the chart opens EMPTY and fills from the right, so
+     * for the first `window` seconds this line marks where the record begins on an
+     * otherwise-bare axis rather than a join with synthetic history. It stays: it is still
+     * the only mark that says "the run started here".
      *
      * Distinct from every other full-height mark by construction: checkpoints are blue
      * `3,3`, tier-1 events amber (plant) or cyan `2,2` (operator), the cursor solid white.
@@ -5430,6 +5409,38 @@
    * they are mutually exclusive in practice, and since closing never resumes, a shared
    * key cannot leak a hold. Use these instead of touching `.hidden` directly, or the
    * next modal added will be the one that forgets. */
+  /* ---- THE SIMULATION-HALTED DIALOG (#520) ----------------------------------------------------
+   * The new-physics engine HOLDS when the plant leaves the range its property library is
+   * characterised over: state frozen, clock running, every command still accepted and doing
+   * nothing (`engines/pwr2/pwr2_engine.js` — the #487/#499 contract). That is the honest
+   * continuation, and #517 published `model_held` so it could be SEEN — but nothing displayed it,
+   * so a player still got a plausible, internally consistent, completely static plant. Measured on
+   * the Three Mile Island timeline: 160 minutes of it, every command "accepted".
+   *
+   * ⚠ EDGE-TRIGGERED, AND IT HAS TO BE. The latch NEVER clears — nothing in the repo sets
+   * `_dead = false` or `beyond_model = false`, by design — so a bare `if (ts.model_held) open()`
+   * re-opens the dialog on every frame and the player can never dismiss it or reach the board
+   * behind it. `heldShown` is the edge; `rebuildPlantUI` clears it so a LATER halt shows again.
+   *
+   * ⚠ AND DISMISSING IT MUST NOT LOSE THE FACT. The dialog is the only thing that says the model
+   * stopped, so "Leave it — let me look at the board" would re-create the exact defect this issue
+   * is about if it were the end of the story. The clock therefore carries a HELD marker for as
+   * long as the condition stands, which is a per-frame class rather than an edge. */
+  var heldShown = false;
+  function checkPlantHeld(s) {
+    var ts = s && s.true_state;
+    var held = !!(ts && ts.model_held);
+    var clk = $('clock');
+    if (clk) clk.classList.toggle('clk-held', held);
+    if (!held) { heldShown = false; return; }
+    if (heldShown) return;
+    heldShown = true;
+    var why = ts.model_held_why && ts.model_held_why !== 'none' ? ts.model_held_why : '';
+    var el = $('haltWhy');
+    if (el) el.textContent = why ? 'Reported cause — ' + why : '';
+    openModal('haltOverlay');
+  }
+
   function openModal(id) {
     var wasRunning = service.running;
     pauseSim('modal');
@@ -5484,19 +5495,31 @@
     // A chat interaction click (e.g. the maintenance tag) is the player acting —
     // release the transcript's reading dwell so the exchange answers promptly.
     if (c && c.action === 'instructor_interact') chatState.nextAt = 0;
-    var r = service.handleCommand(c);
+    // A THROW is a refusal, not a crash (#505/#506). The pwr2 shell deliberately throws
+    // on a REFUSED command — right for a harness, but nothing on the click path caught it,
+    // so the handler unwound silently: no record, no message, and the SECOND command of a
+    // two-command press (charging AUTO, generator MAN) was never sent. Caught here it
+    // becomes the service's own error shape and flows through every consumer below.
+    var r;
+    try { r = service.handleCommand(c); }
+    catch (e) { r = { type: 'error', code: 'COMMAND_ERROR', message: String(e && e.message || e) }; }
     var cmdT = latest && latest.metadata ? latest.metadata.sim_time : 0;
     diag.command(cmdT, c, !!(r && r.type === 'blocked'), !!(r && r.type === 'error'));
     // The operator half of the SOE stream (#437). Actor is KNOWN here, not inferred:
     // this is the player acting. Blocked commands are dropped inside command().
     if (RD.Events) RD.Events.command(cmdT, c, !!(r && r.type === 'blocked') || !!(r && r.type === 'error'));
     TEL.command(c, !!(r && r.type === 'blocked'));
-    // The command was blocked, not executed — show why. Instructor gates focus
+    // The command was blocked or refused, not executed — show why. Instructor gates focus
     // the Instructor card (its commentary carries the message); plant interlocks
-    // (M4, e.g. the rod-withdrawal block) flash theirs in the scanner bar.
+    // (M4, e.g. the rod-withdrawal block) flash theirs in the scanner bar; an ERROR —
+    // a refused/unknown command — flashes the same way (#505: an errored press reading
+    // as a dead button is exactly what the 2026-08-21 telemetry session was).
     if (r && r.type === 'blocked') {
       if (r.code === 'INTERLOCK' && r.message) inspectFlash('⛔ Blocked', r.message);
       else { msgHold.bypass = true; setFocus('instructor'); }   // gate feedback jumps the dwell queue
+      latest = service.assembleSnapshot(); render(latest);
+    } else if (r && r.type === 'error' && r.message) {
+      inspectFlash('⚠ Command error', r.message);
       latest = service.assembleSnapshot(); render(latest);
     }
     if (!service.running) { latest = service.assembleSnapshot(); render(latest); }
@@ -5886,9 +5909,10 @@
     'letdown-b-out': function () { cmd({ action: 'set_letdown_orifices', b: false }); },
     'cvcs-auto': function () { cmd({ action: 'set_cvcs_auto', active: true }); },
     'cvcs-manual': function () { cmd({ action: 'set_cvcs_auto', active: false }); },
-    'eccs-on': function () { ui.pdOp.eccs = true; cmd({ action: 'set_hpi', active: true }); }, 'eccs-off': function () { cmd({ action: 'set_hpi', active: false }); },
-    'eccs-auto': function () { cmd({ action: 'set_esf_auto', system: 'hpi', auto: true }); },
-    'afw-auto': function () { cmd({ action: 'set_esf_auto', system: 'afw', auto: true }); },
+    // (No eccs-on/off/auto or afw-auto handlers: the CG_ECCS card that emitted them was
+    // never wired into a diagram, and set_esf_auto now lives on the board's re-arm
+    // pushbuttons only — which disable themselves when the running engine declares no such
+    // arm, #503. rhr-auto went with #453's RHR arm removal.)
     'afw-flow-set': function () { cmd({ action: 'set_afw_flow', pct: inputVal('afwFlowSet') }); },
     // NIS: SR detector switch (P-6 interlocked) + startup-trip block toggles (P-10 gated)
     'sr-on': function () { cmd({ action: 'set_sr_detector', on: true }); },
@@ -5935,9 +5959,6 @@
     // (No dhr-on/dhr-off handlers: nothing emits them. The set_dhr COMMAND alias
     // still lives in the engine/kernel as a save-file contract — pinned by
     // run_e2e_controls — but the UI speaks RHR only. #145)
-    // synoptic emergency card: RHR — AUTO re-arms the ESF actuation (a manual
-    // On/Off flips it to MANUAL, like the HPI and AFW arms).
-    'rhr-auto': function () { cmd({ action: 'set_esf_auto', system: 'rhr', auto: true }); },
     'rhr-on': function () { cmd({ action: 'set_rhr', active: true }); }, 'rhr-off': function () { cmd({ action: 'set_rhr', active: false }); },
     'dump-set': function () { cmd({ action: 'set_steam_dump', pct: inputVal('dumpSet') }); },
     // No-load steam-dump pressure setpoint (MPa) — lowered on a cooldown; engine clamps to the SG-safety band.
@@ -6215,6 +6236,19 @@
     }, true);
     $('graphWindow').addEventListener('click', function (e) { var b = e.target.closest('[data-win]'); if (!b) return; ui.window = +b.getAttribute('data-win'); chartRange = {}; drawChart(); });
 
+    /* Redraw on RESIZE — the lane split reads the live plot height, but drawChart only ran
+     * on the next snapshot tick (never, if paused), so a splitter drag or window resize
+     * left the lanes at the old geometry (#509 item 4). The board's splitter dispatches a
+     * window resize event after layout() for exactly this listener. Debounced one frame. */
+    (function () {
+      var pend = false;
+      window.addEventListener('resize', function () {
+        if (pend) return;
+        pend = true;
+        requestAnimationFrame(function () { pend = false; drawChart(); });
+      });
+    })();
+
     $('chartOptsBtn').addEventListener('click', function () { openChartSettings(); });
     $('chartOptsClose').addEventListener('click', closeChartSettings);
     $('chartOverlay').addEventListener('click', function (e) {
@@ -6403,6 +6437,16 @@
     // carried a "Plant & Mission…" button is dissolved.
     $('simStatus').addEventListener('click', openMissionSelect);
     $('missionClose').addEventListener('click', closeMissionSelect);
+    /* #520 — the halt dialog. Two ways out, and they are different decisions: reset rebuilds
+     * the plant (the ONLY recovery — the latch cannot be cleared in place), while dismiss
+     * leaves the frozen board readable. `doReset(true)` is armed because THIS DIALOG IS the
+     * confirmation; raising the native confirm on top of it would be asking twice. */
+    $('haltReset').addEventListener('click', function () {
+      closeModal('haltOverlay');
+      doReset(true);
+    });
+    $('haltDismiss').addEventListener('click', function () { closeModal('haltOverlay'); });
+    $('haltInspect').addEventListener('click', function () { closeModal('haltOverlay'); });
     // Settings — a pausing modal off the header (#439, spec §1).
     $('settingsBtn').addEventListener('click', function () { openModal('settingsOverlay'); });
     $('settingsClose').addEventListener('click', function () { closeModal('settingsOverlay'); });
@@ -7295,7 +7339,14 @@
     return sp.v + (sp.u ? ' ' + sp.u : '');
   }
 
-  function mdManual() { return (RD.MANUAL_MD || {})[ui.engineKey]; }
+  /* ...FALLING BACK TO THE BOARD, exactly as manualDoc() above already did. RD.MANUAL_MD is
+   * keyed by the engine key and the packed set is written for 'pwr'; this looked at the engine
+   * key ALONE, so the moment PWR2 became the plant the site runs (2026-08-26) the operator's
+   * manual rendered EMPTY on it — and the manual is one of only two areas site/flags.js stages
+   * as 'public', so that is what a visitor would have got. Found by verify_e2e_ui the first
+   * time it opened the manual on ?engine=pwr2. The two call sites had disagreed since the
+   * pwr2 card landed; the one with the fallback was right. */
+  function mdManual() { return (RD.MANUAL_MD || {})[ui.engineKey] || (RD.MANUAL_MD || {})[ui.plant]; }
   function openManual() { if (!mdManual() && !manualProfile()) { showToast('Manual data not loaded.', 'error'); return; } $('manualOverlay').hidden = false; renderManual(); }
   function closeManual() { $('manualOverlay').hidden = true; }
 
@@ -7574,6 +7625,7 @@
   }
 
   function rebuildPlantUI() {
+    heldShown = false;        /* #520 — a rebuilt plant can halt again, and must say so again */
     // BEFORE chartBuf can take a row: the packed row width and the column of every series
     // come from the incoming plant's profile, and a sample taken against the old index
     // would be silently misfiled rather than empty.
@@ -7601,9 +7653,15 @@
   // After load: derive the plant from the restored snapshot, set the selector, rebuild.
   function afterPlantChange() {
     var snap = service.assembleSnapshot();
-    ui.plant = uiPlantOf(snap.metadata.plant_id);
+    var pid = snap.metadata.plant_id;
+    ui.plant = uiPlantOf(pid);
     var dv = snap.metadata.design_version;
-    ui.engineKey = ui.plant === 'rbmk' ? (dv === 'post_chernobyl' ? 'rbmk_post' : 'rbmk_pre') : ui.plant;
+    /* OFF THE RAW plant_id, NOT off ui.plant. uiPlantOf() folds 'pwr2' onto the 'pwr' BOARD
+     * by design, so deriving the engine key from it named the retired engine for every PWR2
+     * save — and on a published build that engine is not in the page at all, so the next
+     * Reset would ask engineCtor() for a constructor that does not exist. Latent while both
+     * engines loaded everywhere and the two keys differed only in the menu highlight. */
+    ui.engineKey = pid === 'rbmk' ? (dv === 'post_chernobyl' ? 'rbmk_post' : 'rbmk_pre') : pid;
     ui.series = Object.assign({}, prof().defaultSeries);
     ui.seriesSide = {};                    // sides follow the selections they refine (#454)
     rebuildPlantUI();
@@ -7722,7 +7780,8 @@
   function R(k, get, opts) { var r = { k: k, get: get }; if (opts) for (var o in opts) r[o] = opts[o]; return r; }
 
   // control-group literals reused across the plant-display views
-  function CG_ECCS() { return { l: 'ECCS', emergency: 1, hint: 'Emergency Core Cooling — high-pressure injection. AUTO actuates on low pressure.', seg: [{ l: 'Auto', act: 'eccs-auto', on: 1, run: 1 }, { l: 'On', act: 'eccs-on' }, { l: 'Off', act: 'eccs-off' }] }; }
+  // (CG_ECCS deleted with #503 — it was never placed in any diagram list, and its three
+  // act ids were the only emitters of the handlers removed above.)
   function CG_MSIV() { return { l: 'MSIV', hint: 'Main Steam Isolation Valve' + (ui.plant === 'bwr' ? ' — isolates main steam (closes the turbine path).' : ' — (steam-line isolation; modeled on the BWR; placeholder here).'), seg: [{ l: 'Open', act: 'msiv-open', on: 1 }, { l: 'Close', act: 'msiv-close', warn: 1 }] }; }
 
   // (legacy PWR partial-loop diagrams retired — the V2 board in
@@ -8095,11 +8154,28 @@
     bindUI(); bindCommands(); bindAutomate();
     // optional ?engine= override (dev convenience / sharing)
     var em = /[?&]engine=(pwr2|pwr|rbmk_pre|rbmk_post|bwr)/.exec(location.search || '');   /* pwr2 BEFORE pwr — alternation takes the first match */
-    var startKey = em ? em[1] : 'pwr', startEng = ENGINES[startKey];
+    /* PWR2 IS THE DEFAULT since 2026-08-26. Every site link still carries ?engine=pwr2
+       explicitly — a bare shell.html is a path no visitor takes, which is the trap
+       test/verify_e2e_ui.js:26 records — so this default is what a hand-typed url and the
+       offline single-file build get. */
+    var startKey = em ? em[1] : 'pwr2';
+    /* An override naming an engine whose constructor is absent falls back to the shipped
+       plant instead of booting a plantless page. Two ways that happens: #514 took the
+       RBMK/BWR scripts out of the shell (dev route: test_rbmk.html / test_bwr.html), and a
+       published build has no retired PWR engine at all (dev route: any non-public build, or
+       test_pwr.html). Falling back to 'pwr' — as this did — would now be a fallback to the
+       one engine that may not be there. */
+    if (!ctorPresent(startKey)) startKey = 'pwr2';
+    var startEng = ENGINES[startKey];
     ui.engineKey = startKey; ui.plant = startEng.plant; ui.initState = startEng.init;
-    // optional ?init=<state> override (dev convenience) — one of the plant's presets
+    // optional ?init=<state> override (dev convenience) — one of the ENGINE's presets. The
+    // engine's own initStates override (pwr2: its ICS registry, three presets since #507
+    // wave 7) wins over the plant profile's list, matching the Free Play picker —
+    // validating against prof() alone let ?engine=pwr2&init=cold_shutdown pass and then
+    // be silently ignored (#502).
     var initm = /[?&]init=([a-z0-9_]+)/.exec(location.search || '');
-    if (initm && (prof().initStates || []).some(function (s) { return s[0] === initm[1]; })) ui.initState = initm[1];
+    var initList = startEng.initStates || prof().initStates || [];
+    if (initm && initList.some(function (s) { return s[0] === initm[1]; })) ui.initState = initm[1];
     ui.series = Object.assign({}, prof().defaultSeries);
     ui.seriesSide = {};                    // sides follow the selections they refine (#454)
     buildSeriesIndex();   // must precede the first chartSample — see rebuildPlantUI

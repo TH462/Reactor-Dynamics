@@ -78,8 +78,12 @@
  * trip) — BUILT with the feed train (2026-08-21), which gave the plant the regulating valve
  * the function closes; the kind-'fwi' row and its own `fwi` latch below.
  *
- * **RCP UNDERVOLTAGE AND UNDERFREQUENCY** (57 Hz sourced). No electrical model exists; the same
- * gap that keeps `station_blackout` and `ac_available` declared-missing.
+ * **RCP UNDERVOLTAGE AND UNDERFREQUENCY** (57 Hz sourced). NOT BUILT — and the reason has
+ * moved (#510 batch 2, was "no electrical model exists"): the two-bus electrical model has
+ * existed since #507 wave 4 (`pwr2_engine`'s elec pair; `station_blackout`/`ac_available`
+ * are LIVE contract fields), but it carries no voltage or frequency, only bus booleans, so
+ * a 57 Hz setpoint still has nothing to read. The LOOP/SBO rows trip the RCPs directly at
+ * the facade instead.
  *
  * **TURBINE TRIP / P-9 ANTICIPATORY TRIP — BUILT** (2026-08-19, PWR2_VALIDATION.md §51; this
  * line used to say "no trip state", stale since the turbine gained one).
@@ -116,6 +120,11 @@
   /* P-7, the at-power permissive gating the high-level trip. UNLIKE P-10 there is no operator
    * request anywhere in it -- below 10 % power the function is simply not active, above it is
    * -- so it is a plain automatic gate, not a revoked request. WTSM 10.3.4.3 verbatim. */
+  /* [adopted] the P-11 pressurizer-pressure permissive — pwr1's ~1970 psig / 13.6 MPa pair
+   * (its lo_press/si_trip block permissive); Ginna's own installed figure is not in corpus.
+   * Below it the operator MAY block the low-pressure trip and the SI actuation (the
+   * cooldown's lineup); above it both requests are REVOKED — see the stepProtection note. */
+  var P11 = { kind: '[adopted]', mpa: 13.6 };
   var P7 = {
     kind: '[sourced]',
     frac: 0.10,
@@ -157,9 +166,13 @@
    * positions — the turbine_tripped convention); the same source sentence's "the turbine
    * will be tripped" is the CALLER's half, wired in the facade.
    *
-   * NOT BUILT, its sourced condition recorded for the work order that owns it:
-   *   - "All three preferred auxiliary feedwater pumps will start on loss of offsite power"
-   *     (ch10) — no electrical model; the same gap that keeps station_blackout declared-missing.
+   * THE LOSS-OF-OFFSITE-POWER START — BUILT with the electrical model (#507 wave 4): "All
+   * three preferred auxiliary feedwater pumps will start on loss of offsite power" (ch10).
+   * Input is drivers.loss_of_offsite, a STATE signal (bus deadness — the main_feed_lost
+   * convention); this plant's one-of-each lineup collapses "all three" to both pumps. The
+   * start latches whether or not the MDAFW pump's bus can then turn it — in a blackout the
+   * latched demand meets mdafw_power_ok false in pwr2_afw and delivers nothing, which is
+   * the #200 running-with-no-flow split doing its job, not a contradiction.
    */
   var SGLL = {
     kind: '[sourced]',
@@ -258,6 +271,17 @@
     src: 'Ginna TS Bases B 3.3.1 (ML20339A221), P-9 Permissive'
   };
 
+  /* THE RESET PERMISSIVE (#512) [sourced — WTSM 12.3.2.3, ML11223A310]: the reset circuit's
+   * time-delay relay "produces an output (energizes) some time after it is started (usually
+   * 45 - 60 sec)"; the top of the band is used. SI reset additionally requires P-4 (the
+   * reactor trip contact, same figure). AFAS/FWI adopt the same logic family [derived —
+   * the source details the SI circuit; the actuation circuits share the design]. */
+  var RESET = {
+    kind: '[sourced]',
+    delay_s: 60,
+    src: 'WTSM 12.3.2.3 (ML11223A310), the SI reset circuit'
+  };
+
   /* Analysis delays, same table, same rows. A function must hold CONTINUOUSLY for its delay. */
   var DELAY = {
     kind: '[sourced]',
@@ -325,8 +349,13 @@
         blockable: true },
       { id: 'hi_flux_hi', name: 'Power-range high flux (high setting)', kind: 'rps', dir: +1,
         sp: RPS.hi_flux_hi_frac, unit: 'frac', read: 'power_frac', delay: DELAY.hi_flux_hi },
+      /* atPower (P-7) since #507 wave 10 [sourced — Ginna TS Bases B 3.3.1: the loss-of-flow
+       * Functions are required above P-7 and blocked below it]: a shutdown plant with its
+       * RCPs deliberately secured is not a loss-of-flow accident. Latent until the first
+       * RCPs-off IC existed — every earlier state carried flow. */
       { id: 'lo_flow', name: 'Low reactor coolant loop flow', kind: 'rps', dir: -1,
-        sp: RPS.lo_flow_frac, unit: 'frac', read: 'flow_frac', delay: DELAY.lo_flow },
+        sp: RPS.lo_flow_frac, unit: 'frac', read: 'flow_frac', delay: DELAY.lo_flow,
+        atPower: true },
       { id: 'hi_pzr_level', name: 'High pressurizer level', kind: 'rps', dir: +1,
         sp: RPS.hi_pzr_level_frac, unit: 'frac', read: 'pzr_level_frac',
         delay: DELAY.hi_pzr_level, atPower: true },
@@ -384,6 +413,9 @@
     return {
       held_s: held,                         /* how long each function has been asserted */
       blockLowFlux: !!opts.blockLowFlux,
+      /* the P-11 pair (#507 wave 10) — a shutdown IC boots with the cooldown's blocks taken */
+      blockLoPress: !!opts.blockLoPress,
+      blockSI: !!opts.blockSI,
       reactor_trip: false,                  /* LATCHED */
       dtApproach: false,                    /* the rod-stop/runback bistable, with hysteresis */
       si: false,                            /* LATCHED */
@@ -395,6 +427,16 @@
       afas_mdafw_cause: null,
       afas_tdafw_cause: null,
       fwi_cause: null,
+      /* the LIVE signals (#512) — is the actuating condition present now, latch aside */
+      si_live: false, afas_mdafw_live: false, afas_tdafw_live: false, fwi_live: false,
+      /* THE RESET LOGIC (#512) [sourced — WTSM 12.3.2.3, ML11223A310]: the reset circuit's
+       * time-delay relay ("usually 45 - 60 sec") gates the operator's reset; *_t is each
+       * latch's age against it. After a reset "all automatic SI actuation signals are
+       * blocked" — *_rearm_block — re-armed here when the live signal clears (the manual
+       * re-actuation pushbutton that also re-arms the real circuit is declared unmodeled;
+       * the board's START starts pumps directly). */
+      si_t: 0, afas_t: 0, fwi_t: 0,
+      si_rearm_block: false, afas_rearm_block: false, fwi_rearm_block: false,
       ll_y: null, ll_u: null                /* lead/lag state for low steam pressure */
     };
   }
@@ -456,6 +498,20 @@
      * defeatable-trip shape the sources do not have. */
     var p10Met = drivers.power_frac >= P10.frac;
     if (!p10Met && pr.blockLowFlux) pr.blockLowFlux = false;
+    /* ---- P-11, THE SHUTDOWN PERMISSIVE (#507 wave 10) — the mirror of P-10's law in the
+     * other direction: the low-pressure trip block and the SI block are OPERATOR REQUESTS
+     * permitted only BELOW P-11, and climbing back above it REVOKES both requests
+     * themselves (the auto-reinstate the pwr1 comment records; the revoke-not-gate lesson
+     * transfers verbatim — a stale request that silently re-arms on the next cooldown is
+     * the #295 defeatable-trip shape). Value [adopted]: pwr1's ~1970 psig / 13.6 MPa pair,
+     * the same source lineage as its lo_press/si_trip block permissive. "Block SI is THREE
+     * actions on a cooldown" (the house trap): the pressure setpoint comes down first, then
+     * lo_press, then si_trip — these are the last two, each its own request. */
+    var p11Below = drivers.pressure_mpa !== undefined && drivers.pressure_mpa < P11.mpa;
+    if (!p11Below) {
+      if (pr.blockLoPress) pr.blockLoPress = false;
+      if (pr.blockSI) pr.blockSI = false;
+    }
     /* ⚠ NO `&& p10Met` HERE, AND THE GATE IS WHAT PROVED IT REDUNDANT. The revoke above
      * has already cleared the request whenever the permissive is not met, so an extra
      * gate could never change the answer — the injection self-test could not make a
@@ -485,6 +541,11 @@
         if (f.leadlag) value = leadLag(pr, raw, dt);
         asserted = f.dir > 0 ? (value >= sp) : (value <= sp);
         if (f.blockable && blockEffective) asserted = false;
+        /* P-11's two blocks (#507 wave 10): the low-pressure REACTOR trip and the whole
+         * esfas kind (the SI actuation — all three initiating rows are the one disarm the
+         * sources describe). Assertion-gated like P-7, so no hold time accumulates. */
+        if (f.id === 'lo_pzr_press' && pr.blockLoPress) asserted = false;
+        if (f.kind === 'esfas' && pr.blockSI) asserted = false;
         /* P-7: an at-power trip is NOT ACTIVE below 10 % power. A plain gate, deliberately --
          * there is no operator request in P-7 to revoke, so the revoke-not-gate lesson from
          * P-10 does not transfer; gating the ASSERTION also zeroes the hold timer below, so
@@ -522,27 +583,67 @@
      * that a pushbutton and an automatic function arriving together record the operator's act. */
     if (drivers.manual_trip && !pr.reactor_trip) { pr.reactor_trip = true; pr.trip_cause = 'manual'; }
 
-    /* LATCH. A reactor trip and a safety injection both latch in a real plant until reset. */
+    /* LATCH. A reactor trip and a safety injection both latch in a real plant until reset.
+     * The SI latch honours the reset's re-arm block (#512) [sourced — after an SI reset
+     * "all automatic SI actuation signals are blocked"]; the block clears below when the
+     * live signal drops. */
     if (anyRps && !pr.reactor_trip) { pr.reactor_trip = true; pr.trip_cause = anyRps; }
-    if (anyEsfas && !pr.si) { pr.si = true; pr.si_cause = anyEsfas; }
+    if (anyEsfas && !pr.si && !pr.si_rearm_block) { pr.si = true; pr.si_cause = anyEsfas; }
 
     /* THE AFW STARTS [sourced — the SGLL block]. Same latch law as si; evaluated AFTER the SI
      * latch so a safety injection arriving this very step starts the MDAFW pumps this step.
      * Lo-lo level starts BOTH pumps (the declared single-loop collapse); SI starts the
      * motor-driven pumps ONLY. Reported here, acted on by the caller (HR5) — this module
      * still starts nothing. */
-    if (sgLolo && !pr.afas_mdafw) { pr.afas_mdafw = true; pr.afas_mdafw_cause = 'sg_lolo_level'; }
-    if (sgLolo && !pr.afas_tdafw) { pr.afas_tdafw = true; pr.afas_tdafw_cause = 'sg_lolo_level'; }
-    if (pr.si && !pr.afas_mdafw) { pr.afas_mdafw = true; pr.afas_mdafw_cause = 'si'; }
+    if (sgLolo && !pr.afas_mdafw && !pr.afas_rearm_block) { pr.afas_mdafw = true; pr.afas_mdafw_cause = 'sg_lolo_level'; }
+    if (sgLolo && !pr.afas_tdafw && !pr.afas_rearm_block) { pr.afas_tdafw = true; pr.afas_tdafw_cause = 'sg_lolo_level'; }
+    if (pr.si && !pr.afas_mdafw && !pr.afas_rearm_block) { pr.afas_mdafw = true; pr.afas_mdafw_cause = 'si'; }
     /* [sourced ch10, the SGLL block]: both main feed pumps failed -> the MDAFW pumps start.
      * A state signal, no delay row — the source gives none and breakers are not analog. */
-    if (drivers.main_feed_lost && !pr.afas_mdafw) {
+    if (drivers.main_feed_lost && !pr.afas_mdafw && !pr.afas_rearm_block) {
       pr.afas_mdafw = true; pr.afas_mdafw_cause = 'loss_of_main_feed';
     }
-
+    /* [sourced ch10, the SGLL block]: "All three preferred auxiliary feedwater pumps will
+     * start on loss of offsite power" — BOTH pumps on this plant's one-of-each lineup
+     * (#507 wave 4). Same state-signal law; evaluated after the level/SI starts so a
+     * simultaneous arrival records the credited cause first. */
+    if (drivers.loss_of_offsite && !pr.afas_mdafw && !pr.afas_rearm_block) {
+      pr.afas_mdafw = true; pr.afas_mdafw_cause = 'loss_of_offsite_power';
+    }
+    if (drivers.loss_of_offsite && !pr.afas_tdafw && !pr.afas_rearm_block) {
+      pr.afas_tdafw = true; pr.afas_tdafw_cause = 'loss_of_offsite_power';
+    }
     /* FEEDWATER ISOLATION on high-high level [sourced -- the SGLL block]. Same latch law.
      * (The SI-driven isolation lives in pwr2_feedwater with its own sourced 32 s delay.) */
-    if (anyFwi && !pr.fwi) { pr.fwi = true; pr.fwi_cause = anyFwi; }
+    if (anyFwi && !pr.fwi && !pr.fwi_rearm_block) { pr.fwi = true; pr.fwi_cause = anyFwi; }
+
+    /* LIVE SIGNALS (#512, the owner's per-system unlatch design): is each function's
+     * ACTUATING CONDITION present right now, latch aside. The panel's own securing click
+     * refuses while its signal is live and resets-then-executes once it clears — so these
+     * are the refusal's question, asked of the same bistables the latches fire on (they
+     * cannot drift apart). The AFAS lives include the SI LATCH deliberately: the SI latch
+     * is itself a standing start signal for the motor-driven pump (the line above), so AFW
+     * cannot be unlatched from under a standing SI — reset SI at its own panel first. */
+    pr.si_live = !!anyEsfas;
+    pr.afas_mdafw_live = !!(sgLolo || pr.si || drivers.main_feed_lost || drivers.loss_of_offsite);
+    pr.afas_tdafw_live = !!(sgLolo || drivers.loss_of_offsite);
+    pr.fwi_live = !!anyFwi;
+
+    /* THE RESET PERMISSIVE TIMERS (#512) [sourced — the reset circuit's time-delay relay,
+     * "usually 45 - 60 sec"]: each latch's age, zeroed when the latch is clear. The SHELL
+     * refuses a securing click until the age passes RESET.delay_s (and, for SI, P-4 —
+     * reactor trip — per the same figure); after that the click resets and secures EVEN
+     * WITH THE SIGNAL STILL PRESENT — the source is explicit that the reset removes only
+     * the start signal and the operator then stops equipment as required. That window is
+     * what keeps a deliberate TMI-style termination reachable. */
+    var dtT = dt > 0 ? dt : 0;
+    pr.si_t   = pr.si ? pr.si_t + dtT : 0;
+    pr.afas_t = (pr.afas_mdafw || pr.afas_tdafw) ? pr.afas_t + dtT : 0;
+    pr.fwi_t  = pr.fwi ? pr.fwi_t + dtT : 0;
+    /* the re-arm blocks clear when the live signal drops — a recovered plant re-arms */
+    if (!pr.si_live) pr.si_rearm_block = false;
+    if (!pr.afas_mdafw_live && !pr.afas_tdafw_live) pr.afas_rearm_block = false;
+    if (!pr.fwi_live) pr.fwi_rearm_block = false;
 
     /* TURBINE-TRIP REACTOR TRIP, gated by P-9 [sourced] — Ginna TS Bases B 3.3.1 Function 14
      * (ML20339A221): "A reactor trip is automatically initiated on a turbine trip when it is
@@ -555,7 +656,17 @@
      * is the turbine's own tripped flag (drivers.turbine_tripped), declared, and P-9 selects
      * its value from drivers.steam_dumps_available (absent = available, the normal lineup). */
     var p9frac = drivers.steam_dumps_available === false ? P9.frac_no_dumps : P9.frac_dumps;
-    if (drivers.turbine_tripped && drivers.power_frac >= p9frac && !pr.reactor_trip) {
+    /* THE DEFEAT (#515) — drivers.p9_defeated is the `anticipatory_trip_failure` casualty:
+     * the turbine-trip channel has failed, so this ANTICIPATORY trip reports nothing while
+     * every credited function below still trips. It exists to recreate TMI-2 on a plant
+     * whose sourced design forbids the sequence *(OWNER DIRECTIVE, 2026-08-25: "lets get rid
+     * of that anticipatory trip so that we can recreate the TMI incident")* — built as a
+     * failure the operator injects rather than a deletion, because the permissive is
+     * sourced and every other turbine trip on this plant keeps it. MEASURED (validation
+     * §83): with the channel failed a loss of feed at 100 % runs 60 s to the SG lo-lo trip
+     * at 67 % power (feedback-limited), boils most of the SG doing it, and the PORV lifts
+     * on its own at 18.5 min against 52.4 min with the trip in place. */
+    if (drivers.turbine_tripped && !drivers.p9_defeated && drivers.power_frac >= p9frac && !pr.reactor_trip) {
       pr.reactor_trip = true; pr.trip_cause = 'turbine_trip';
     }
 
@@ -596,6 +707,9 @@
       fwi: pr.fwi,
       fwi_cause: pr.fwi_cause,
       p10_met: p10Met,
+      p11_permit: p11Below,
+      lo_press_blocked: pr.blockLoPress,
+      si_blocked: pr.blockSI,
       p7_met: drivers.power_frac >= P7.frac,
       p9_met: drivers.power_frac >= (drivers.steam_dumps_available === false
                                      ? P9.frac_no_dumps : P9.frac_dumps),
@@ -614,6 +728,7 @@
   root.RD.pwr2 = root.RD.pwr2 || {};
   root.RD.pwr2.protection = {
     RPS: RPS, ESFAS: ESFAS, SGLL: SGLL, DELAY: DELAY, LEADLAG: LEADLAG, P10: P10, P7: P7,
+    P11: P11, RESET: RESET,
     PSIA_PER_MPA: PSIA_PER_MPA,
     functions: functions, leadLag: leadLag,
     createProtection: createProtection, stepProtection: stepProtection, reset: reset

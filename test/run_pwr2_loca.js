@@ -142,7 +142,23 @@ function runSuite(rec, quiet) {
    * The performance constraint: no substep machinery was added to guarantee this. A break moves
    * mass fast, but courantLimit() binds on the MAIN LOOP flow through the smallest ring node, not
    * on break flow directly -- so the existing cadence should already be sufficient, and this is
-   * the check that would say otherwise if it were not. */
+  /* ---- THE ACCUMULATOR IN THE JOINT RIDE (#511) — pumps OFF, a bigger break, and the
+   * passive tank answers on its own once the blowdown crosses the ~650 psig cover pressure.
+   * The closure identities must hold with the passive stream in them, and containment must
+   * stay blind to it (injection adds to the PRIMARY only). ---- */
+  head('THE ACCUMULATOR  [#511: passive injection joins the closure; containment never sees it]');
+  var c = scenario({ steps: N * 2, area_m2: 0.004, eccsLinedUp: false });
+  ckT('with NO pumps lined up the accumulator still injected (passive, below its cover pressure)',
+      c.injected > 100 && c.lastEc.acc_water_frac < 1,
+      c.injected.toFixed(0) + ' kg injected, tank at ' +
+      (100 * c.lastEc.acc_water_frac).toFixed(1) + ' %');
+  ck('primary net change = discharged MINUS the accumulator\'s injection (closure holds)',
+     c.M0 - c.M1, c.brk.discharged_kg - c.injected,
+     1e-6 * Math.max(1, c.brk.discharged_kg), 'kg');
+  ck('containment STILL received exactly the break\'s discharge — the tank is invisible to it',
+     c.ctm.mass_in_kg, c.brk.discharged_kg, 1e-6 * c.brk.discharged_kg, 'kg');
+
+  /* the check that would say otherwise if it were not. */
   head('COURANT LIMIT  [proving dt = 0.02 s is enough, not adding a substep to guarantee it]');
   ckT('scenario A (ECCS off) never violated the Courant limit', a.courantBad === 0,
       a.courantBad + ' / ' + a.steps + ' steps over limit');

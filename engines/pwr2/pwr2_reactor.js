@@ -64,13 +64,16 @@
   var W  = RD && RD.water;
   var K  = RD && RD.kinetics;
   var F  = RD && RD.fuel;
+  /* #514: per-step temperature through the table (pwr2_core's idiom). */
+  var VT = RD && RD.vtable;
+  var TFH = VT ? VT.T_from_h : (W && W.T_from_h);
 
   var RATED_THERMAL_KW = 300000;   /* 300 MWt — this plant's rating */
   var MDOT_RATED = 1630;           /* kg/s — pwr2_sources' PUMP.mdot_rated, the flow reference */
 
   function coreTemp(sys) {
     for (var i = 0; i < sys.nodes.length; i++) {
-      if (sys.nodes[i].id === 'core') return W.T_from_h(sys.nodes[i].h, sys.P);
+      if (sys.nodes[i].id === 'core') return TFH(sys.nodes[i].h, sys.P);
     }
     return NaN;
   }
@@ -93,14 +96,25 @@
    *             small-break blowdown, `mdot_loop` falls 1630 -> 14 kg/s, and that is what ends
    *             forced convection, not the phase change on its own (D4 §36). */
   function coreRegime(sys) {
-    var v = 0;
+    var v = 0, sh = 0;
     for (var i = 0; i < sys.nodes.length; i++) {
-      if (sys.nodes[i].id === 'core') { v = W.voidFraction(sys.nodes[i].h, sys.P); break; }
+      if (sys.nodes[i].id === 'core') {
+        v  = W.voidFraction(sys.nodes[i].h, sys.P);
+        /* #517: HOW DRY, not just dry. `voidFraction` clips at 1, so above h_g it is a
+         * constant and the fuel's phase term was frozen from the moment the core went
+         * fully void — measured 1,220 s of a 5 cm2 unmitigated ride, over which the core
+         * ran 0 -> 131 degC of superheat with nothing downstream able to see it. Computed
+         * ONLY above h_g (`superheat_c` returns 0 at or below it), so every two-phase and
+         * subcooled step pays a single compare. */
+        sh = W.superheat_c(sys.nodes[i].h, sys.P);
+        break;
+      }
     }
     if (!isFinite(v) || v < 0) v = 0;
+    if (!isFinite(sh) || sh < 0) sh = 0;
     var f = sys.mdot_loop === undefined ? 1 : sys.mdot_loop / MDOT_RATED;
     if (!isFinite(f) || f < 0) f = 0;
-    return { voidFrac: v, flowFrac: f };
+    return { voidFrac: v, flowFrac: f, superheat_c: sh, P_MPa: sys.P };
   }
 
   /* createReactor(opts)
@@ -155,6 +169,8 @@
       coolTemp_c: cool,
       voidFrac:   reg.voidFrac,
       flowFrac:   reg.flowFrac,
+      superheat_c: reg.superheat_c,          /* #517 — the fuel REFUSES these at void 1 */
+      P_MPa:      reg.P_MPa,
       /* Oxidation heat, when a damage model is supplying it. Absent today: pwr2_damage.js is
        * not built, and passing 0 explicitly would be indistinguishable from a built model
        * reporting no reaction. */
@@ -188,6 +204,7 @@
       T_centerline_c: fr.T_centerline_c,
       T_mod_c:        kr.T_mod_c,
       coolTemp_c:     cool,
+      core_superheat_c: reg.superheat_c,     /* #517 — 0 unless the core node is above h_g */
       tau_fuel_s:     fr.tau_s,
       /* THE ONLY heat path. Do not add corePower alongside this — see the header. */
       heats:          fr.heats,

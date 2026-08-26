@@ -274,6 +274,49 @@ function runSuite(P, rec, quiet) {
       rMF.afas_mdafw === true && rMF.afas_mdafw_cause === 'loss_of_main_feed' &&
       rMF.afas_tdafw === false,
       'a state signal — no analog channel, no hold time');
+  /* LOSS OF OFFSITE POWER [sourced ch10: "All three preferred auxiliary feedwater pumps will
+   * start on loss of offsite power"] — BOTH pumps on this plant's one-of-each lineup (#507
+   * wave 4). Isolated from the main-feed path so a cross-wire cannot pass on its neighbour. */
+  var prLO = atPower();
+  var sLO = healthy(); sLO.loss_of_offsite = true;
+  var rLO = P.stepProtection(prLO, DT, sLO);
+  ckT('loss of offsite power starts BOTH AFW pumps (cause \'loss_of_offsite_power\')',
+      rLO.afas_mdafw === true && rLO.afas_mdafw_cause === 'loss_of_offsite_power' &&
+      rLO.afas_tdafw === true && rLO.afas_tdafw_cause === 'loss_of_offsite_power',
+      'md cause=' + rLO.afas_mdafw_cause + ' td cause=' + rLO.afas_tdafw_cause);
+
+  /* ---- P-11: THE SHUTDOWN PERMISSIVE (#507 wave 10) -------------------------------------- */
+  head('P-11  [the cooldown\'s blocks: taken below it they gate; climbing above REVOKES them]');
+  function shutdown() {
+    return { pressure_mpa: 2.51, power_frac: 1e-8, flow_frac: 0,
+             steam_pressure_mpa: 0.205, steam_flow_frac: 0, pzr_level_frac: 0.30,
+             sg_level_frac: 0.65 };
+  }
+  var prSD = P.createProtection({ blockLoPress: true, blockSI: true });
+  var rSD = ride(prSD, shutdown(), 30);
+  ckT('a BLOCKED shutdown plant (350 psig, RCPs secured) latches NOTHING — no low-pressure ' +
+      'trip, no SI from either pressure, no loss-of-flow trip (its sourced P-7 gate)',
+      rSD.reactor_trip === false && rSD.si === false &&
+      fn(rSD, 'lo_pzr_press').asserted === false &&
+      fn(rSD, 'si_lo_pzr_press').asserted === false &&
+      fn(rSD, 'lo_flow').asserted === false,
+      'the cooldown\'s own lineup, held');
+  var prSD2 = P.createProtection({});
+  var rSD2 = ride(prSD2, shutdown(), 30);
+  ckT('the SAME plant with the blocks NOT taken cascades — the low-pressure trip and the SI ' +
+      'actuation both latch (which is why "block SI" is a cooldown procedure step)',
+      rSD2.reactor_trip === true && rSD2.si === true,
+      'trip ' + rSD2.trip_cause + ', si ' + rSD2.si_cause);
+  var prSD3 = P.createProtection({ blockLoPress: true, blockSI: true });
+  var rSD3 = ride(prSD3, Object.assign(shutdown(), { pressure_mpa: 14.0 }), 1);
+  ckT('climbing above P-11 REVOKES both requests themselves (auto-reinstate — the stale ' +
+      'request that re-arms on the next cooldown is the #295 defeatable-trip shape)',
+      prSD3.blockLoPress === false && prSD3.blockSI === false &&
+      rSD3.p11_permit === false, '');
+  var prLF = atPower();
+  var rLF = ride(prLF, withReading('flow_frac', 0.5), 10);
+  ckT('...and lo_flow still trips AT POWER (the P-7 gate blocks it only below 10 %)',
+      fn(rLF, 'lo_flow').asserted === true && rLF.reactor_trip === true, '');
 
   /* ---- HIGH-HIGH LEVEL -> FEEDWATER ISOLATION (kind \'fwi\' — its own latch) ------------- */
   head('THE HIGH-HIGH  [P-14 class: not a reactor trip, not SI — the fwi latch]');
@@ -352,6 +395,19 @@ function runSuite(P, rec, quiet) {
       'cause ' + prT3.trip_cause);
   ckT('p9_met reports the selected value: false at 40 % available, true at 40 % unavailable',
       rT2.p9_met === false && rT3.p9_met === true, '');
+  /* THE DEFEAT (#515, owner directive 2026-08-25): the turbine-trip channel failed. The
+   * anticipatory trip reports nothing; the credited functions are untouched by it. */
+  var prT4 = atPower();
+  var d4 = withTT(1.0); d4.p9_defeated = true;
+  var rT4 = ride(prT4, d4, 30);
+  ckT('with the P-9 channel DEFEATED a turbine trip at 100 % does NOT trip the reactor (30 s)',
+      rT4.reactor_trip === false, 'trip ' + rT4.reactor_trip + ', cause ' + prT4.trip_cause);
+  var prT5 = atPower();
+  var d5 = withTT(1.0); d5.p9_defeated = true; d5.sg_level_frac = DOC.lolo_frac - 0.05;
+  var rT5 = ride(prT5, d5, 5);
+  ckT('...and the CREDITED SG lo-lo level trip still fires through the defeat',
+      rT5.reactor_trip === true && prT5.trip_cause === 'sg_lolo_level',
+      'cause ' + prT5.trip_cause);
 
   /* ---- OT/OP DELTA-T: A COMPUTED SETPOINT, EVERY COEFFICIENT Table 15.0-7's ---------------
    * OT: sp = K1 + K2*(P-P') - K3*(T-T'); OP: sp = K4 (K6 = 0.00 is the table's own value).
@@ -638,14 +694,17 @@ var MUTATIONS = [
    "          of.value >= of.setpoint - (pr.dtApproach ? 0.035 : 0.03)) dtNear = true;",
    "          of.value >= of.setpoint - (pr.dtApproach ? 0.305 : 0.30)) dtNear = true;"],
   ['the turbine-trip reactor trip is deleted (P-9 reports into a void)',
-   "    if (drivers.turbine_tripped && drivers.power_frac >= p9frac && !pr.reactor_trip) {\n      pr.reactor_trip = true; pr.trip_cause = 'turbine_trip';\n    }",
+   "    if (drivers.turbine_tripped && !drivers.p9_defeated && drivers.power_frac >= p9frac && !pr.reactor_trip) {\n      pr.reactor_trip = true; pr.trip_cause = 'turbine_trip';\n    }",
+   ''],
+  ['the P-9 defeat wire is cut (the failed channel still trips) -- #515',
+   '!drivers.p9_defeated && ',
    ''],
   ['P-9 ignores dump availability (the 8 % value is never selected)',
    "    var p9frac = drivers.steam_dumps_available === false ? P9.frac_no_dumps : P9.frac_dumps;",
    '    var p9frac = P9.frac_dumps;'],
   ['the P-9 gate is deleted (any turbine trip trips the reactor, dumps or no dumps)',
-   'drivers.turbine_tripped && drivers.power_frac >= p9frac',
-   'drivers.turbine_tripped'],
+   'drivers.turbine_tripped && !drivers.p9_defeated && drivers.power_frac >= p9frac',
+   'drivers.turbine_tripped && !drivers.p9_defeated'],
   ['the P-7 at-power gate is deleted (the high-level trip fires during heatup)',
    '        if (f.atPower && drivers.power_frac < P7.frac) asserted = false;',
    ''],
@@ -671,8 +730,8 @@ var MUTATIONS = [
    '    if (anyRps && !pr.reactor_trip) { pr.reactor_trip = true; pr.trip_cause = anyRps; }',
    '    pr.reactor_trip = !!anyRps;'],
   ['the SI latch keeps the LAST cause, not the first',
-   '    if (anyEsfas && !pr.si) { pr.si = true; pr.si_cause = anyEsfas; }',
-   '    if (anyEsfas) { pr.si = true; pr.si_cause = anyEsfas; }'],
+   '    if (anyEsfas && !pr.si && !pr.si_rearm_block) { pr.si = true; pr.si_cause = anyEsfas; }',
+   '    if (anyEsfas && !pr.si_rearm_block) { pr.si = true; pr.si_cause = anyEsfas; }'],
   ['the reactor-trip latch keeps the LAST cause, not the first',
    '    if (anyRps && !pr.reactor_trip) { pr.reactor_trip = true; pr.trip_cause = anyRps; }',
    '    if (anyRps) { pr.reactor_trip = true; pr.trip_cause = anyRps; }'],
@@ -729,13 +788,32 @@ var MUTATIONS = [
    "        if (f.id === 'sg_lolo_level') sgLolo = true;   /* the bistable's second consumer */",
    ''],
   ['SI cross-wired into the TDAFW start (the source starts the motor-driven pumps only)',
-   '    if (sgLolo && !pr.afas_tdafw) { pr.afas_tdafw = true; pr.afas_tdafw_cause = \'sg_lolo_level\'; }',
-   '    if ((sgLolo || pr.si) && !pr.afas_tdafw) { pr.afas_tdafw = true; pr.afas_tdafw_cause = \'sg_lolo_level\'; }'],
+   '    if (sgLolo && !pr.afas_tdafw && !pr.afas_rearm_block) { pr.afas_tdafw = true; pr.afas_tdafw_cause = \'sg_lolo_level\'; }',
+   '    if ((sgLolo || pr.si) && !pr.afas_tdafw && !pr.afas_rearm_block) { pr.afas_tdafw = true; pr.afas_tdafw_cause = \'sg_lolo_level\'; }'],
   ['the SI->MDAFW start is dropped',
-   "    if (pr.si && !pr.afas_mdafw) { pr.afas_mdafw = true; pr.afas_mdafw_cause = 'si'; }",
+   "    if (pr.si && !pr.afas_mdafw && !pr.afas_rearm_block) { pr.afas_mdafw = true; pr.afas_mdafw_cause = 'si'; }",
    ''],
   ['reset leaves the AFW-start latches standing',
    '    pr.afas_mdafw = false; pr.afas_tdafw = false;', ''],
+  ['the loss-of-offsite-power start is dropped (the sourced LOOP start, #507 wave 4)',
+   '    if (drivers.loss_of_offsite && !pr.afas_mdafw && !pr.afas_rearm_block) {\n      pr.afas_mdafw = true; pr.afas_mdafw_cause = \'loss_of_offsite_power\';\n    }',
+   ''],
+  ['the LOOP start reaches only ONE pump (the source says all preferred pumps)',
+   '    if (drivers.loss_of_offsite && !pr.afas_tdafw && !pr.afas_rearm_block) {\n      pr.afas_tdafw = true; pr.afas_tdafw_cause = \'loss_of_offsite_power\';\n    }',
+   ''],
+  /* P-11 (#507 wave 10) */
+  ['the P-11 revoke is deleted (a stale block re-arms itself on the next cooldown)',
+   '    if (!p11Below) {\n      if (pr.blockLoPress) pr.blockLoPress = false;\n      if (pr.blockSI) pr.blockSI = false;\n    }',
+   ''],
+  ['the SI block gates nothing (a "blocked" shutdown plant injects anyway)',
+   "        if (f.kind === 'esfas' && pr.blockSI) asserted = false;",
+   ''],
+  ['the low-pressure trip block gates nothing',
+   "        if (f.id === 'lo_pzr_press' && pr.blockLoPress) asserted = false;",
+   ''],
+  ['lo_flow loses its P-7 gate (a shutdown plant with secured RCPs reads as a loss-of-flow accident)',
+   "        sp: RPS.lo_flow_frac, unit: 'frac', read: 'flow_frac', delay: DELAY.lo_flow,\n        atPower: true },",
+   "        sp: RPS.lo_flow_frac, unit: 'frac', read: 'flow_frac', delay: DELAY.lo_flow },"],
   /* THE FEED-TRAIN FUNCTIONS (2026-08-21) */
   ['the hi-hi setpoint moved off the adopted 90 %',
    '    hi_hi_frac: 0.90,', '    hi_hi_frac: 0.99,'],
@@ -743,9 +821,9 @@ var MUTATIONS = [
    "      { id: 'hi_hi_sg_level', name: 'High-high steam generator water level', kind: 'fwi', dir: +1,\n        sp: SGLL.hi_hi_frac, unit: 'frac', read: 'sg_level_frac', delay: DELAY.hi_hi_sg_level },",
    ''],
   ['the fwi latch is disconnected from its row',
-   '    if (anyFwi && !pr.fwi) { pr.fwi = true; pr.fwi_cause = anyFwi; }', ''],
+   '    if (anyFwi && !pr.fwi && !pr.fwi_rearm_block) { pr.fwi = true; pr.fwi_cause = anyFwi; }', ''],
   ['the loss-of-main-feed start is dropped',
-   "    if (drivers.main_feed_lost && !pr.afas_mdafw) {\n      pr.afas_mdafw = true; pr.afas_mdafw_cause = 'loss_of_main_feed';\n    }",
+   "    if (drivers.main_feed_lost && !pr.afas_mdafw && !pr.afas_rearm_block) {\n      pr.afas_mdafw = true; pr.afas_mdafw_cause = 'loss_of_main_feed';\n    }",
    ''],
   ['reset leaves the fwi latch standing',
    '    pr.fwi = false;', '']

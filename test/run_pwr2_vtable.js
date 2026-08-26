@@ -60,6 +60,11 @@ function runSuite(T, rec, quiet) {
 
   /* ---- 1. FAST ENOUGH TO CLEAR THE STOP CONDITION ------------------------------------ */
   if (!quiet) console.log('\nSPEED  [D1 §26: the stack missed its budget by 103x, all of it here]');
+  /* #514 made the table build LAZY (first use, not load) — trigger it OUTSIDE the timed
+   * window, or the ~0.5 s build lands inside the 400k-call loop and reads as ~1230 ns/call
+   * of phantom property cost (measured: the ratio check reported 18x on a table that was
+   * still 267x). The claim under test is the steady-state call cost, unchanged. */
+  T.rho_from_h(1300, 15.41);
   var N = 400000, t0 = process.hrtime.bigint();
   for (var i = 0; i < N; i++) T.rho_from_h(1300 + i % 400, 15.41);
   var ns = Number(process.hrtime.bigint() - t0) / N;

@@ -199,6 +199,9 @@
         app.style.setProperty('--bottomrow-h', manual.bottomH + 'px');
       }
       layout();
+      /* the strip chart's lane split reads the live plot height — tell it the geometry
+       * moved (app.js's debounced resize listener redraws; #509 item 4) */
+      window.dispatchEvent(new Event('resize'));
     }
     function up(ev) {
       el.classList.remove('bd-dragging');
@@ -241,6 +244,7 @@
     else { delete manual.bottomH; app.style.removeProperty('--bottomrow-h'); }
     saveManual();
     layout();
+    window.dispatchEvent(new Event('resize'));   /* chart lane split re-reads its height (#509 item 4) */
   }
 
   function layout() {
@@ -993,6 +997,10 @@
         var warn = d.numberWarn ? d.numberWarn(rec.item, s) : null;
         var col = warn || (auto ? BD_NUM_AUTO_COLOR : (rec.item.color || '#4fe3ff'));
         if (rec._appliedCol !== col) { rec.input.style.color = col; rec._appliedCol = col; }
+        // Disabled outranks everything: the running engine has no machinery behind this box
+        // (#506 — the mirror of buttonDisabled below; same honest-absent rule).
+        var ndis = d.numberDisabled ? !!d.numberDisabled(rec.item, s) : false;
+        if (rec.input.disabled !== ndis) rec.input.disabled = ndis;
         // Display unit, resolution and range hint (#238). Driven every frame like the value
         // itself, because a units change is not an event the board is told about — it just
         // renders again. All three are no-ops in US, where the driver hands back exactly what
@@ -1030,6 +1038,11 @@
         // TRIP BLOCKS: grey (with a count badge) while trips are intentionally blocked.
         var info = d.buttonInfo ? !!d.buttonInfo(it, s) : false;
         btn.classList.toggle('bd-info', info);
+        // Actuated (amber) state (#512, owner design) — a PROTECTION latch is holding this
+        // system: distinct from bd-warn ("needs attention") and bd-active (a selection).
+        // The panel's own securing click is the unlatch, refused while the signal is live.
+        var act = d.buttonActuated ? !!d.buttonActuated(it, s) : false;
+        btn.classList.toggle('bd-actuated', act);
         var badge = d.buttonBadge ? d.buttonBadge(it, s) : null;
         setBadge(btn, badge);
         var dis = d.buttonDisabled ? !!d.buttonDisabled(it, s) : false;

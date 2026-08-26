@@ -94,13 +94,15 @@
       livePipes = [];
       function drawLeg(id) {
         var p = pt(id), fd = legDir(id);
+        // See comp_tee.js: an 'off' leg is secured, not drained — full colour, still dashes
+        // (#509 item 2).
         var g = K.pipe({
           x1: CX * sc, y1: CY * sc, x2: p[0], y2: p[1], d: sizeOf(id), phaseX: phaseX, phaseY: phaseY,
-          fluid: fd === 0 ? { phase: 'empty' } : stubFluid,
+          fluid: stubFluid,
           flow: moving && fd !== 0, dir: fd >= 0 ? 1 : -1, speed: speed
         });
         geom.push(g);
-        if (fd !== 0) livePipes.push(g);
+        livePipes.push(g);   // off legs repaint too — they carry live fluid colour now
       }
       // A run whose two ends are in→out is drawn as ONE pipe so its dashes form a single
       // continuous pattern instead of two legs meeting out of phase at the joint.

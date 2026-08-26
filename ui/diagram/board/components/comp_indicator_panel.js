@@ -8,22 +8,20 @@
  *
  * TWO DELIBERATE DEPARTURES FROM THE DESIGN SOURCE:
  *
- * 1. FLAT PRELOAD, NOT A RANDOM WALK. The design seeds the buffer with 44 jittered
- *    samples and ticks a random walk on a 500 ms setInterval so the card looks alive
- *    in the editor. That part stays out — a sparkline is an instrument trace, and
- *    inventing excursions the plant never had is fabricating instrument data (HR1).
- *    What IS seeded, per OWNER RULING 2026-07-28 ("I want the 6 vital gauges at the
- *    top to start with the full amount of data on the graph starting from a preload…
- *    It should be flat as if the plant was at steady state just like the graph at the
- *    bottom"), is a full WINDOW_S of FLAT samples at the first real reading — the same
- *    steady-state preload the strip chart underneath already takes (#237). Flat
- *    asserts only "this reading was steady", which is exactly what a plant handed over
- *    at a stable operating point looks like.
- *    This file previously refused to seed at all and let the trace fill in from
- *    nothing. That read as a defect rather than as honesty: with x on a fixed 3-minute
- *    time axis, a fresh trace is a stub against the right-hand edge, and the area fill
- *    rises vertically from the baseline at the trace's left end — so the tile showed a
- *    bare vertical riser stranded mid-card for the first three minutes of every run.
+ * 1. NO SEED AT ALL — neither the design's random walk nor a flat preload. The design
+ *    seeds the buffer with 44 jittered samples and ticks a random walk on a 500 ms
+ *    setInterval so the card looks alive in the editor. That stays out — a sparkline is
+ *    an instrument trace, and inventing excursions the plant never had is fabricating
+ *    instrument data (HR1). A FLAT preload (a window of identical samples at the first
+ *    real reading) was in from 2026-07-28 to 2026-08-21 *(OWNER RULING, 2026-07-28: "I
+ *    want the 6 vital gauges at the top to start with the full amount of data on the
+ *    graph starting from a preload… It should be flat")* and was then REMOVED with the
+ *    rest of the chart seeds *(OWNER RULING, 2026-08-21: selected "All flat seeds
+ *    everywhere" [be removed] from options an agent wrote — #501)*: the trace now fills
+ *    live from the right of its fixed time axis, like the strip chart underneath. Known
+ *    cosmetic consequence, accepted: for the first window the trace is a stub against
+ *    the right-hand edge and the (opacity 0.07) area fill's left edge rises vertically
+ *    at the trace's left end.
  *
  * 2. REGION BOUNDS COME FROM THE DRIVER. The design falls back to fractions of the
  *    scale (normal = 25–75 % of span), which is meaningless for a plant parameter —
@@ -104,7 +102,7 @@
     };
     var hist = [];
     var lastT = null;   // sim time of the last committed sample (see update())
-    var seeded = false; // has the flat preload been laid down? (see update())
+    var seeded = false; // has build()'s untimed placeholder sample been dropped? (see update())
     // Held vertical axis + its zoom-in dwell counter. Null means "re-fit on the next
     // paint" — which is also how a band change, a rewind and reset() invalidate it.
     var held = null, shrinkFor = 0;
@@ -519,8 +517,8 @@
       // A DISPLAY-UNIT FLIP invalidates the whole buffer. st.min/st.max arrive already
       // converted but `hist` holds readings in the previous unit, so keeping it would
       // splice °F onto °C — a step discontinuity in the middle of the trace, and a held
-      // axis fitted to the wrong numbers. Drop it and re-preload, the same thing a rewind
-      // does. Only the three convertible tiles ever see this; the rest never change key.
+      // axis fitted to the wrong numbers. Drop it and restart the trace, the same thing a
+      // rewind does. Only the three convertible tiles ever see this; the rest never change key.
       if (props.unitKey != null && props.unitKey !== unitKey) {
         if (unitKey !== null) { hist.length = 0; lastT = null; seeded = false; held = null; shrinkFor = 0; }
         unitKey = props.unitKey;
@@ -549,19 +547,14 @@
         hist.length = 0; lastT = null; seeded = false;
         held = null; shrinkFor = 0;   // the held axis described the abandoned future
       }
-      // PRELOAD (see departure 1 in the file header): on the first sample that carries
-      // sim time, lay down a full window of flat history at that reading so the tile
-      // opens looking like a plant that has been running. Gated on `seeded` rather than
-      // on an empty buffer because build() calls update() once with the authored config
-      // value and NO `t` — that untimed sample is a placeholder, not history, so it is
-      // dropped here rather than left to anchor the trace.
-      // Seeded at the BUCKET PITCH rather than 1 s: paint() folds the buffer onto NB
-      // buckets anyway, so a finer preload is rows nobody can see.
+      // NO PRELOAD (see departure 1 in the file header — the 2026-07-28 flat preload was
+      // removed 2026-08-21 with the rest of the #501 seeds; the trace fills live from the
+      // right). The `seeded` latch still has one job: build() calls update() once with the
+      // authored config value and NO `t` — that untimed sample is a placeholder, not
+      // history, so the first timed sample drops it rather than letting it anchor the trace.
       if (!seeded && t != null) {
         seeded = true;
         hist.length = 0;
-        var pitch = winS / NB;
-        for (var pt = t - winS; pt < t; pt += pitch) hist.push({ t: pt, v: st.value });
       }
       // SUB-BROADCAST SAMPLES FIRST, then the broadcast instant. Without them the trace has
       // one vertex per broadcast, and sim-seconds per broadcast is accel x 0.1 — so at 600x

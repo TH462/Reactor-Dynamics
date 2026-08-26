@@ -105,13 +105,18 @@
       livePipes = [];
       function drawLeg(id) {
         var L = legOf(id), p = pt(L), fd = legDir(id);
+        // An 'off' leg is a SECURED branch, not a drained one — a standby AFW or charging
+        // line is water-solid. Drawing it {phase:'empty'} painted a black bore against the
+        // full pipe it joins (#509 item 2); it now keeps the run's fluid colour and only
+        // its dashes stop (flow:false skips the animated polyline in K.pipe). Genuinely
+        // drained contents still rail everything empty via phaseTempColor above.
         var g = K.pipe({
           x1: CX * sc, y1: CY * sc, x2: p[0], y2: p[1], d: L.d, phaseX: phaseX, phaseY: phaseY,
-          fluid: fd === 0 ? { phase: 'empty' } : stubFluid,
+          fluid: stubFluid,
           flow: moving && fd !== 0, dir: fd >= 0 ? 1 : -1, speed: speed
         });
         geom.push(g);
-        if (fd !== 0) livePipes.push(g);
+        livePipes.push(g);   // off legs repaint too — they carry live fluid colour now
       }
       // branch first so the straight run paints over the joint
       drawLeg('c');

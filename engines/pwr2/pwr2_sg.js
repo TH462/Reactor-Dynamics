@@ -38,12 +38,25 @@
 
   var RD = root.RD && root.RD.pwr2;
   var W = RD && RD.water, SRC = RD && RD.sources;
+  /* #514: leg temperatures through the table (pwr2_core's idiom). */
+  var VT = RD && RD.vtable;
+  var TFH = VT ? VT.T_from_h : (W && W.T_from_h);
 
   var SG = {
     mass_nominal: 12785,        // kg   [sourced] Ginna 85,359 lbm/SG, power-scaled
     area_m2: 18135 / 10.7639,   // m2   [derived] 18,135 ft2 from EPRI NP-1721 Model 51
     h_feed: 962.0,              // kJ/kg [sourced] 435.2 degF (224 degC) feedwater
-    P_noload: 7.03              // MPa  [sourced] Ginna 1005 psig no-load
+    P_noload: 7.03,             // MPa  [sourced] Ginna 1005 psig no-load
+    /* DRYOUT (#510 H-1). Heat transfer needs wetted tubes: below this mass fraction the
+     * bundle progressively uncovers and U collapses linearly toward zero — a dry SG is NOT
+     * a heat sink. [adopted]: the old engine's own shape (pwr_thermal.js `sg_dryout_wide_pct`
+     * 30 % wide-range), mapped through the shared Ginna level map (pwr2_true_state's
+     * SG_LEVEL_MAP puts 30 % wide at mass fraction 0.38845). DECLARED divergence from the
+     * old engine: no 5 % depleting steam-side residual — this lump goes linearly to zero,
+     * one fewer state variable. The SG lo-lo trip (17 % narrow = mass fraction 0.5484) sits
+     * ABOVE this threshold, so every protected transient trips before U moves at all. */
+    dryout_mass_frac: 0.38845,
+    mass_floor_kg: 1            // kg   the vessel cannot go negative; see stepSG's floor
   };
 
   /* OVERALL U — [derived], and the derivation is the whole point.
@@ -80,10 +93,25 @@
   /* Secondary pressure follows its own saturation state. A lumped boiling vessel sits ON the
    * saturation line by construction — the enthalpy above h_f is quality, not superheat. */
   function updatePressure(sg) {
-    var lo = 0.1, hi = 17.0, mid = sg.P;
-    for (var i = 0; i < 60; i++) {
+    /* WARM-STARTED (#514): sg.P moves ~nothing in 0.02 s, so start the bracket a small span
+     * around the previous solution and expand only if the root has left it — the same
+     * warm-start-tight reasoning as pwr2_core's solveP. The cold full-range [0.1, 17]
+     * bisection stays as the fallback and is byte-identical to the old behaviour when the
+     * warm bracket fails (first call, load of an old save, a violent transient). */
+    var lo = 0.1, hi = 17.0, i, mid;
+    if (sg.P > lo && sg.P < hi) {
+      var span = 0.01;
+      var wlo = Math.max(lo, sg.P - span), whi = Math.min(hi, sg.P + span);
+      for (i = 0; i < 8 && !(W.h_f(wlo) < sg.h && W.h_f(whi) >= sg.h); i++) {
+        span *= 4;
+        wlo = Math.max(lo, sg.P - span); whi = Math.min(hi, sg.P + span);
+      }
+      if (W.h_f(wlo) < sg.h && W.h_f(whi) >= sg.h) { lo = wlo; hi = whi; }
+    }
+    for (i = 0; i < 60; i++) {
       mid = 0.5 * (lo + hi);
       if (W.h_f(mid) < sg.h) lo = mid; else hi = mid;
+      if (hi - lo < 1e-9) { mid = 0.5 * (lo + hi); break; }
     }
     sg.P = mid;
     return sg.P;
@@ -116,13 +144,13 @@
      * material -- but it was the wrong pair, and `run_pwr2_sg`'s own tavg() helper had used the
      * legs all along. TWO HELPERS IN ONE LAYER DISAGREEING ABOUT WHAT Tavg MEANS is how a 0.14
      * degF nothing becomes a real divergence the first time the lumps and the legs come apart. */
-    var W2 = RD && RD.water, hot = null, cold = null;
+    var hot = null, cold = null;
     for (var i = 0; i < sys.nodes.length; i++) {
       if (sys.nodes[i].id === 'hot_leg') hot = sys.nodes[i];
       else if (sys.nodes[i].id === 'cold_leg') cold = sys.nodes[i];
     }
     if (!hot || !cold) return null;
-    return 0.5 * (W2.T_from_h(hot.h, sys.P) + W2.T_from_h(cold.h, sys.P));
+    return 0.5 * (TFH(hot.h, sys.P) + TFH(cold.h, sys.P));
   }
 
   /* stepSG(sg, primaryT, dt, drivers) -> heat REMOVED from the primary, kW
@@ -134,26 +162,50 @@
    *                   main-feed enthalpy, and folding it into `feed` would erase exactly the
    *                   cold-injection steam-pressure suppression the stream exists to model.
    *   drivers.afw_h   kJ/kg of that stream (pwr2_afw.js's stepAFW returns it as h_kJkg)
+   *   drivers.tube_leak_kgs / tube_leak_h  a THIRD stream, HOT (#507 wave 5): a ruptured
+   *                   tube's primary-side discharge, arriving at the donor node's enthalpy.
+   *                   The mass addition is the SGTR accident's whole hazard -- "overfilling
+   *                   of the ruptured steam generator" (Ginna UFSAR ch15 sec 15.6.3) -- and
+   *                   the old engine never landed it anywhere.
    *
    * Returns the duty so Layer 4 can stop being handed one. */
   function stepSG(sg, primaryT, dt, drivers) {
     drivers = drivers || {};
     var T_sec = W.T_sat(sg.P);
-    var Q = sg.U * sg.area * (primaryT - T_sec);        // kW, positive = into the secondary
+    /* Wetted-bundle degradation (#510 H-1): before the fix, a 1 kg secondary transferred
+     * rated UA forever — the pressure bisection pinned at the 0.1 MPa property floor and the
+     * "sink" ran 1.88 GW at 211 degF. See dryout_mass_frac above for the adopted shape. */
+    var mf = sg.mass / SG.mass_nominal;
+    var wet = mf >= SG.dryout_mass_frac ? 1 : Math.max(0, mf / SG.dryout_mass_frac);
+    var Q = sg.U * wet * sg.area * (primaryT - T_sec);  // kW, positive = into the secondary
 
     var feed = drivers.feed || 0, steam = drivers.steam || 0;
     var afw = drivers.afw_kgs || 0, h_afw = drivers.afw_h || 0;
+    var leak = drivers.tube_leak_kgs || 0, h_leak = drivers.tube_leak_h || 0;
     var h_g = W.h_g(sg.P);
 
-    /* Energy and mass on the secondary. Steam leaves at h_g; feed arrives at the sourced
-     * feedwater enthalpy; AFW at its own cold enthalpy. All DONOR-CELL, the Layer 2 rule. */
-    var dH = Q + feed * SG.h_feed + afw * h_afw - steam * h_g;   // kW
-    var dM = feed + afw - steam;                                 // kg/s
+    /* THE VESSEL CANNOT EXPORT STEAM IT DOES NOT HOLD (#510 H-1). Outflow is limited so the
+     * mass floor is never crossed — which also makes the mixing below mass-consistent (the
+     * old clamp kept subtracting steam*h_g from a numerator whose mass had stopped falling,
+     * and sg.h ran to −11,594 kJ/kg). Consumers get the delivered flow reported back. */
+    var inflow = feed + afw + leak;
+    var steam_eff = Math.min(steam, Math.max(0, (sg.mass - SG.mass_floor_kg) / dt + inflow));
 
-    var m_new = sg.mass + dt * dM;
-    if (m_new < 1) m_new = 1;                           // dry: the vessel cannot go negative
+    /* Energy and mass on the secondary. Steam leaves at h_g; feed arrives at the sourced
+     * feedwater enthalpy; AFW at its own cold enthalpy; a tube leak at the primary donor
+     * node's own enthalpy. All DONOR-CELL, the Layer 2 rule. */
+    var dH = Q + feed * SG.h_feed + afw * h_afw + leak * h_leak - steam_eff * h_g;   // kW
+    var dM = inflow - steam_eff;                                                     // kg/s
+
+    var m_new = sg.mass + dt * dM;                       // >= floor by construction
+    if (m_new < SG.mass_floor_kg) m_new = SG.mass_floor_kg;   // float roundoff only
     sg.h = (sg.mass * sg.h + dt * dH) / m_new;
     sg.mass = m_new;
+    /* BACKSTOP, expected never to bind (gated, not assumed): keep h inside the span the
+     * pressure bisection inverts over, so updatePressure stays well-posed at both walls. */
+    var h_lo = W.h_f(0.1), h_hi = W.h_f(17.0), clipped = false;
+    if (sg.h < h_lo) { sg.h = h_lo; clipped = true; }
+    else if (sg.h > h_hi) { sg.h = h_hi; clipped = true; }
     updatePressure(sg);
 
     return {
@@ -163,7 +215,11 @@
        * concern and inventing one here would be the "gauge-shaped quantity published inside
        * true_state" the review's F10 objected to. */
       mass_frac: sg.mass / SG.mass_nominal,
-      dry: sg.mass <= 1.01
+      wet_frac: wet,
+      steam_delivered_kgs: steam_eff,
+      steam_starved: steam_eff < steam - 1e-9,
+      h_clipped: clipped,
+      dry: sg.mass <= SG.mass_floor_kg * 1.01
     };
   }
 

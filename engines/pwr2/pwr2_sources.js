@@ -73,6 +73,20 @@
     mdot_rated: 1630,                             // kg/s, [derived] from the energy balance
     dP_rated: 0.58                                // MPa, [derived] loop dP at rated (D3 §1a-ii: 275 ft)
   };
+  /* [open] the induction motor's accelerating torque as a multiple of the rated hydraulic
+   * torque (#507 wave 9) — the 1.5-2.5x class; no motor curve is in the corpus. With the
+   * sourced inertia this gives a measured spin-up in the real RCP start class (seconds,
+   * reported by the gate rather than asserted here). */
+  var MOTOR_START_TORQUE = 1.5;
+  /* [open] the induction motor's BREAKDOWN torque, same class family (#510 H-7) — the peak
+   * of the torque curve near synchronous speed, 2.0-2.5x rated for the machine class; taken
+   * at the bottom of the band. The start class alone stalled the rotor at 93 % in COLD
+   * water: hydraulic torque runs as r^2 x densityRatio (1.306 at the Mode 4 point), so the
+   * 1.5x flat curve found its equilibrium sub-rated and the "holds rated thereafter" the
+   * comment declared was never reachable. The torque RISES toward breakdown as the rotor
+   * approaches synchronous speed — the induction curve's own shape — so a cold start now
+   * pulls in and the clamp holds rated, at bounded (not infinite) torque. */
+  var MOTOR_BREAKDOWN_TORQUE = 2.0;
 
   /* Loop inertia SUM(L/A), from Layer 1's sourced flow lengths only. */
   function loopInertia() {
@@ -100,15 +114,28 @@
     return sys;
   }
 
+  /* THE DESIGN POINT, one copy (#509 item 3). tavg/P are the plant's design condition
+   * (580 degF / 2235 psia); dt_c is the full-power loop split (606 - 550 degF = 56 degF),
+   * [derived] — pwr2_engine's TREF/DT0_C/P0 consume THIS object, so the pair cannot drift
+   * into two copies (the PROTECTION_DT trap class). */
+  var DESIGN = { tavg_c: 304.5, dt_c: 31.1, P_mpa: 15.41 };
+
   /* Pump head, affinity-scaled from the rated point. H ~ w^2 at fixed flow coefficient. */
-  /* THE RATED LOOP DENSITY, resolved once from the design condition rather than typed. It is the
-   * denominator of the density ratio below, so it must be the density the pump curve and the
-   * friction coefficient were both calibrated at — 304.5 degC / 15.41 MPa (580 degF / 2235 psia),
-   * this plant's design point, which is where `dP_rated` and `Kf` are balanced against each
-   * other by construction. */
+  /* THE RATED PUMP-SUCTION DENSITY, resolved once from the design condition rather than
+   * typed. It is the denominator of the density ratio below, so it must be the density of
+   * the fluid the pump actually works on at the design point — and `loopDensity` reads the
+   * RCP NODE, which sits in the COLD leg. Pinning this at the loop-AVERAGE design state
+   * (304.5 degC) put a standing ~1.05 factor into the equilibrium (rho(Tcold)/rho(Tavg)),
+   * so rated speed at the design point delivered 105 % of mdot_rated BY CONSTRUCTION and
+   * the board read RCP FLOW 105 on a healthy plant (#509 item 3, measured 1714.2 kg/s /
+   * 105.16 %). The reference is the design COLD-LEG state, tavg - dt/2 = 288.95 degC
+   * (552 degF): at the design point the ratio is ~1 and the equilibrium is mdot_rated.
+   * Genuinely cold water still reads above 100 — denser suction moves more mass, honestly. */
   var _rhoRated = null;
   function rhoRated() {
-    if (_rhoRated === null) _rhoRated = RHO(W.h_l(304.5, 15.41), 15.41);
+    if (_rhoRated === null) {
+      _rhoRated = RHO(W.h_l(DESIGN.tavg_c - DESIGN.dt_c / 2, DESIGN.P_mpa), DESIGN.P_mpa);
+    }
     return _rhoRated;
   }
 
@@ -217,6 +244,27 @@
       var hyd = pumpHead(sys) * 1e6 * (sys.mdot_loop / 700) / Math.max(sys.omega, 1e-6);  // N*m
       sys.omega = Math.max(0, sys.omega - dt * hyd / PUMP.inertia);
     }
+    /* ---- rotor: START (#507 wave 9) — the motor accelerates the SAME rotor the coastdown
+     * decelerates, against the same hydraulic load, with the same sourced inertia. The
+     * accelerating torque is MOTOR_START_TORQUE x the rated hydraulic torque — [open] 1.5,
+     * the induction-motor accelerating-torque class — RISING to the breakdown class near
+     * synchronous speed (#510 H-7: the flat 1.5x curve stalled a COLD start at 93 %, where
+     * r^2 x densityRatio met it; the rise is the induction curve's own shape and is what
+     * makes "the motor HOLDS rated thereafter" true — the clamp then holds it at bounded
+     * torque). No sourced motor curve exists in the corpus; both multiples are [open].
+     * WHO may start it, and on which bus, is the caller's law (HR5) — this layer only spins
+     * what it is told is untripped. Start permissives a real plant carries (seal injection,
+     * oil lift, anti-reverse-rotation) are declared unmodeled. */
+    else if (!sys.pumpTripped && sys.omega < PUMP.w_rated) {
+      var Trated = PUMP.dP_rated * 1e6 * (PUMP.mdot_rated / 700) / PUMP.w_rated;      // N*m
+      var ThydS = sys.omega > 1e-6
+                  ? pumpHead(sys) * 1e6 * (sys.mdot_loop / 700) / sys.omega : 0;
+      var rSpd = sys.omega / PUMP.w_rated;
+      var Tmot = MOTOR_START_TORQUE + (rSpd > 0.9
+                   ? (rSpd - 0.9) / 0.1 * (MOTOR_BREAKDOWN_TORQUE - MOTOR_START_TORQUE) : 0);
+      sys.omega = Math.min(PUMP.w_rated,
+                           sys.omega + dt * (Tmot * Trated - ThydS) / PUMP.inertia);
+    }
 
     /* ---- loop momentum ---- */
     var dPp = pumpHead(sys);
@@ -249,7 +297,13 @@
       Object.keys(drivers.heats).forEach(function (id) { heats[id] = drivers.heats[id]; });
     }
     if (drivers.corePower) heats.core = (heats.core || 0) + drivers.corePower;
-    if (drivers.sgDuty) heats.sg_primary = (heats.sg_primary || 0) - Math.abs(drivers.sgDuty);
+    /* SIGNED, not Math.abs (#510 batch 1, measured). sgDuty is positive-removes by contract,
+     * and a NEGATIVE duty is real physics — a secondary hotter than the primary transfers
+     * heat INTO the loop (Mode 4's whole regime, and any cold-primary state). The old
+     * Math.abs turned reverse transfer into primary REMOVAL, so both vessels cooled and
+     * 2|Q| was destroyed: the untouched shutdown preset lost ~113 kW to it, most of the
+     * −6.7 degF/hr Tavg drift that H-2's inventory fix alone could not close. */
+    if (drivers.sgDuty) heats.sg_primary = (heats.sg_primary || 0) - drivers.sgDuty;
     heats.rcp = (heats.rcp || 0) + pumpKW;
 
     var r = LOOP.stepLoop(sys, dt, { heats: heats, sources: drivers.sources, mdot: sys.mdot_loop });
@@ -280,7 +334,7 @@
   root.RD = root.RD || {};
   root.RD.pwr2 = root.RD.pwr2 || {};
   root.RD.pwr2.sources = {
-    PUMP: PUMP, REF: REF,
+    PUMP: PUMP, REF: REF, DESIGN: DESIGN,
     createPlant: createPlant, stepPlant: stepPlant,
     loopInertia: loopInertia, pumpHead: pumpHead, buoyancy: buoyancy,
     densityRatio: densityRatio, rhoRated: rhoRated,

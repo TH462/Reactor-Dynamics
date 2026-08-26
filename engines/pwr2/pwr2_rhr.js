@@ -64,6 +64,9 @@
 
   var RD = root.RD && root.RD.pwr2;
   var W = RD && RD.water;
+  /* #514: per-step temperature through the table (pwr2_core's idiom). */
+  var VT = RD && RD.vtable;
+  var TFH = VT ? VT.T_from_h : (W && W.T_from_h);
 
   var PSI_PER_MPA = 145.038;
   var F = function (c) { return c * 9 / 5 + 32; };
@@ -85,6 +88,10 @@
      * magnitude, not used as a constant — decay heat is supplied by the caller, because it is
      * kinetics and kinetics is not built. */
     design_decay_fraction_20h: 0.004,
+    /* [derived] the RCP heat at the cooldown lineup — the pump-heat note's own measured
+     * figure (1,351 kW against 1,200 kW of decay heat), frozen as the DESIGN load term so
+     * the exchanger UA is hardware rather than a function of the boot state (#510 H-3). */
+    design_rcp_heat_kW: 1351,
     /* ⚠ [recalled] UNSOURCED, AND QUEUED FOR AN EVIDENCE PASS.
      * (OWNER RULING, 2026-08-15: chose "leave it marked, queue it" over running an evidence pass
      * now or sourcing a document — no component-cooling document is in any lane's corpus, so the
@@ -96,7 +103,18 @@
      * that circularity needs a second, independent source for either this sink temperature or the
      * heat exchanger duty. Until one exists, the number stands MARKED. */
     ccw_temp_c: C(95),               // [recalled] UNSOURCED -- queued, see the note above
-    POWER_SCALE: 300 / 1520          // with ECCS; RHR's duty is decay heat, a power fraction
+    POWER_SCALE: 300 / 1520,         // with ECCS; RHR's duty is decay heat, a power fraction
+    /* RHR FORCED CIRCULATION (#510 H-2). The MECHANISM is sourced — Ginna TS Bases
+     * (ML20339A221): "The RCPs and the RHR pumps circulate the coolant through the reactor
+     * vessel and SGs at a sufficient rate to ensure proper heat transfer" — and without it a
+     * Mode 4 plant with the RCPs secured has STAGNANT legs: the CVCS return chilled the small
+     * cold-leg node at ~9 degF/hr while the bulk plant sat still (measured; Tavg is the leg
+     * average, so the board read a cooldown that was a mixing artifact). The MAGNITUDE is
+     * [derived]: no design flow is stated in WTSM 5.1 ("sized ... to meet the plant cooldown
+     * requirements"), but its miniflow valves CLOSE above 1,000 gpm — a pump in service flows
+     * above that band, so 1,000 gpm (63.1 kg/s) is a defensible FLOOR for one running pump,
+     * not a fitted number. */
+    circulation_kgs: 1000 / 264.172 / 60 * 1000
   };
 
   /* ---- UA IS DERIVED FROM THE **HOLD** CONSTRAINT, NOT FROM THE COOLDOWN TIME ----------
@@ -128,10 +146,24 @@
    * This is a stronger derivation than the one it replaces: it comes from a stated requirement
    * rather than from inverting a bound, it is not degenerate, and it makes the half-lineup case
    * meaningful instead of impossible. */
-  function derivedUA(M_kg, cp_kJkgK, Q_total_kW) {
+  /* SIGNATURE TRIMMED (#510 H-3): the old (M_kg, cp_kJkgK, Q_total_kW) took a mass and a
+   * specific heat it never read — dead arithmetic at the call site that dressed a boot-state
+   * read as a derivation. The hold constraint needs only the design load. */
+  function derivedUA(Q_total_kW) {
     var Ttar = C(RHR.target_temp_f), Ts = RHR.ccw_temp_c;
     var perTrain = Q_total_kW / (Ttar - Ts);
     return 2 * perTrain;                    /* two trains, each able to hold the target alone */
+  }
+  /* THE DESIGN LOAD, AS A CONSTANT (#510 H-3). The UA is HARDWARE — tube area times a heat
+   * transfer coefficient — and hardware does not change size with the state of the plant it
+   * is bolted to. The old lazy first-step derivation read pump heat from the LIVE plant, so
+   * the same exchanger measured 208.76 kW/K on an at-power boot and 96.00 on the shutdown
+   * boot (pumps stopped, zero pump heat), and the same throttle cooled at 125.9 vs
+   * 61.0 degF/hr — the sourced 100 degF/hr limit sat INSIDE the boot-state spread. The load
+   * is still the source's own sentence (decay AND reactor coolant pump heat); the RCP term
+   * is the measured cooldown-lineup figure the pump-heat note below has always quoted. */
+  function designUA() {
+    return derivedUA(RHR.design_decay_fraction_20h * 300000 + RHR.design_rcp_heat_kW);
   }
 
   /* THE HEAT LOAD IS DECAY HEAT **PLUS PUMP HEAT**, and the source says so in a sentence I had
@@ -174,10 +206,20 @@
   var SHARE = null;
   function shareOut(sys, duty) {
     if (!SHARE || SHARE.n !== sys.nodes.length) {
+      /* ON-LOOP NODES ONLY (#510 M-11): RHR circulates the RING — hot-leg suction, cold-leg
+       * return — and the two OFF_LOOP nodes (vessel heads, the pressurizer) have NO flow
+       * path to it: they are carried as volume, never transported (pwr2_loop's own split).
+       * The old all-nodes split landed 22.5 % of shutdown-cooling duty on stagnant water,
+       * 15 % of it INSIDE the pressurizer. */
+      var off = {};
+      ((RD.loop && RD.loop.OFF_LOOP) || []).forEach(function (id) { off[id] = true; });
       SHARE = { n: sys.nodes.length, ids: [], f: [] };
       var Vt = 0, i;
-      for (i = 0; i < sys.nodes.length; i++) Vt += sys.nodes[i].V;
       for (i = 0; i < sys.nodes.length; i++) {
+        if (!off[sys.nodes[i].id]) Vt += sys.nodes[i].V;
+      }
+      for (i = 0; i < sys.nodes.length; i++) {
+        if (off[sys.nodes[i].id]) continue;
         SHARE.ids.push(sys.nodes[i].id);
         SHARE.f.push(Vt > 0 ? sys.nodes[i].V / Vt : 0);
       }
@@ -194,9 +236,18 @@
        * exchangers, 0.5 = one of each, 0 = secured. The source is explicit that half the plant
        * still cools, only slower. */
       running: opts.running === undefined ? false : !!opts.running,
+      /* THE SUCTION VALVE (#507 wave 2) — real state, commanded by the engine's align door
+       * under the sourced 425/585 psig pair. `running` follows it (the pumps take suction
+       * through it). This retires the old contract where true_state published the
+       * PERMISSIVE as `rhr_valve_open` — a valve that read open on any depressurized plant
+       * with the system secured. */
+      valve_open: opts.valve_open === undefined ? false : !!opts.valve_open,
+      /* the HX flow split, 0..1 — the cooldown-rate lever (#458: adjusting it is NOT an
+       * alignment command and never was) */
+      hx_fraction: opts.hx_fraction === undefined ? 1 : Math.max(0, Math.min(1, opts.hx_fraction)),
       avail: opts.avail === undefined ? 1 : opts.avail,
       ccw_temp_c: opts.ccw_temp_c === undefined ? RHR.ccw_temp_c : opts.ccw_temp_c,
-      UA: opts.UA === undefined ? null : opts.UA,     // null = derive on first step
+      UA: opts.UA === undefined ? designUA() : opts.UA,   // the design constant (#510 H-3)
       removed_kJ: opts.removed_kJ === undefined ? 0 : opts.removed_kJ
     };
   }
@@ -234,39 +285,44 @@
     var mayOpen  = P_psig < RHR.permissive_open_psig;
     var mustShut = P_psig >= RHR.permissive_close_psig;
 
-    if (rh.UA === null) {
-      var M = 0, hot = null;
-      for (var i = 0; i < sys.nodes.length; i++) {
-        M += sys.nodes[i].V * W.rho_from_h(sys.nodes[i].h, sys.P);
-        if (sys.nodes[i].id === 'hot_leg') hot = sys.nodes[i];
-      }
-      /* cp at the middle of the cooldown window, by finite difference on the real correlation */
-      var Tm = 0.5 * (C(RHR.entry_temp_f) + C(RHR.target_temp_f));
-      var cp = W.h_l(Tm + 0.5, sys.P) - W.h_l(Tm - 0.5, sys.P);
-      var Qd = RHR.design_decay_fraction_20h * 300000;        /* kW, this plant's rated 300 MWt */
-      rh.UA = derivedUA(M, cp, Qd + pumpHeat_kW(sys));         /* sourced: decay heat AND pump heat */
-    }
+    /* the lazy first-step UA derivation is RETIRED (#510 H-3) — see designUA(): it read the
+     * live boot plant (pump heat 0 stopped, ~1.4 MW spinning) and sized the hardware from
+     * whichever state the constructor happened to run in. Old saves carry a concrete UA and
+     * are untouched; a legacy null (pre-#510 save shapes) lands on the design constant. */
+    if (rh.UA === null || rh.UA === undefined) rh.UA = designUA();
 
     /* SUCTION IS THE HOT LEG — sourced, and it is not a detail: RHR draws from the hot leg and
      * returns to the cold leg, so it sees the hottest water in the loop and its duty follows the
      * hot-leg temperature rather than an average. */
     var Thot = null;
     for (var k = 0; k < sys.nodes.length; k++) {
-      if (sys.nodes[k].id === 'hot_leg') Thot = W.T_from_h(sys.nodes[k].h, sys.P);
+      if (sys.nodes[k].id === 'hot_leg') Thot = TFH(sys.nodes[k].h, sys.P);
     }
     if (Thot === null) Thot = 0;
 
+    /* the pumps take suction through the valve — no valve, no flow, no duty. `avail` stays
+     * a separate lineup fraction (the negative-availability floor below owns its abuse).
+     * AND THE PUMPS ARE MOTOR LOADS (#510 H-5): dead bus, no flow — WTSM 5.7.5's blackout
+     * takes every decay-heat-removal system except the turbine-driven AFW pump, and this
+     * module removed 26.6 MMBtu/hr through one before the gate. `drivers.ac_available`
+     * absent means powered, the house convention (every layer-local fixture unchanged). */
+    var powered = drivers.ac_available !== false;
+    rh.running = rh.valve_open && powered;
     var duty = 0;
     if (rh.running) {
-      duty = Math.max(0, rh.avail) * rh.UA * (Thot - rh.ccw_temp_c);
+      duty = Math.max(0, rh.avail) * rh.hx_fraction * rh.UA * (Thot - rh.ccw_temp_c);
       if (duty < 0) duty = 0;   /* a heat SINK: it never warms the plant */
     }
     rh.removed_kJ += duty * dt;
 
     return {
       duty_kW: duty,
-      /* WHERE THE HEAT LEAVES, as a Layer 3 `heats` map -- and it is DISTRIBUTED BY MASS, which
-       * is a DECLARED SIMPLIFICATION rather than the obvious choice.
+      valve_open: rh.valve_open,
+      hx_fraction: rh.hx_fraction,
+      /* WHERE THE HEAT LEAVES, as a Layer 3 `heats` map -- and it is DISTRIBUTED BY VOLUME
+       * FRACTION (the return-site comment said "BY MASS" long after the mass version was
+       * reverted for gate cost -- see shareOut's own note), a DECLARED SIMPLIFICATION rather
+       * than the obvious choice.
        *
        * The obvious choice is the cold leg, because that is where RHR returns its cooled water.
        * Measured, it does not work at this fidelity: 13.6 MW into a 930 kg node is 14.6 kW/kg, so

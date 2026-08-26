@@ -792,6 +792,11 @@
     // show the pumps running while the shut valves deliver zero flow (TMI-2).
     afw_failure:                 { type: 'physics_parameter', category: 'safety_system', effect: 'block_afw', display: 'Auxiliary Feedwater Failure' },
     failure_to_scram:            { type: 'command_override', category: 'safety_system', intercepts: ['scram'], effect: 'block', display: 'Failure to Scram (ATWS)' },
+    // #515 (owner directive, 2026-08-25): the P-9 turbine-trip reactor-trip channel failed —
+    // the anticipatory trip reports nothing, every credited function still trips. NEW
+    // PHYSICS ENGINE ONLY (`pwr2_only`): the old engine's getProtectionConfig hides it
+    // rather than shipping a row that does nothing there (the hollow-row class, #507 wave 6).
+    anticipatory_trip_failure:   { type: 'physics_parameter', category: 'safety_system', effect: 'p9_defeat', pwr2_only: true, display: 'Anticipatory Trip (P-9) Channel Failure' },
     stuck_open_spray:            { type: 'command_override', category: 'coolant', intercepts: ['set_spray'], override_value: true, display: 'Pressurizer Spray Stuck Open' },
     failed_pzr_heaters:          { type: 'command_override', category: 'coolant', intercepts: ['set_heater'], override_value: 0.0, display: 'Pressurizer Heaters Failed' },
     sg_overfeed:                 { type: 'command_override', category: 'power', intercepts: ['set_feedwater_flow', 'set_feed_pump_speed'], override_value: 120, display: 'SG Overfeed / Overcooling' },   // 120 % pump speed (was 1.2 — a pct-units slip)

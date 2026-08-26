@@ -1146,6 +1146,24 @@ wiring is faster now than it was with the broken wing, because the wing's 2-D in
 costing more than the analytic form that replaced it. *The correct physics was also the cheaper
 code*, which is not usually how that goes and is not a general lesson.
 
+> ### 28.1a ⚠ THE 118,600 WAS LAYER 4 ALONE, AND THE FULL ENGINE LOST IT AGAIN (#514, 2026-08-25)
+>
+> The table above timed `stepPlant` — the stack as it existed on 2026-08-15. Every Layer 5/6
+> module built after it went back to the DIRECT correlations (the resolved-once `RHO` idiom was
+> applied in `pwr2_core` and `pwr2_kinetics`/`pwr2_sources` only), and the shipped
+> `pwr2_engine.step` measured **1,090 µs/step — ~900 steps/s, 51× the old engine**, with the
+> deficit split across the CVCS mass sum, the courant diagnostic, the containment flash solve's
+> nested `P_sat` bisection, and five per-step `T_from_h` Newtons in the true_state translation.
+> The risk-register line ("budget must be measured early, not at the end") was satisfied once
+> and never re-satisfied at the top.
+>
+> **#514 wired the table into every module** (plus `T_from_h`/`P_sat_T` tables, two warm
+> starts, and a once-per-step Tavg): **1,090 → ~85 µs/step**, ratio to the old engine 4.1×.
+> The number is now HELD by `test/run_pwr2_perf.js` — end-to-end, ratio-asserted, injection
+> self-tested — so this section can no longer drift from the shipped step. The build also
+> moved off script-load (it measured 500 ms, not the "~0.2 s" the vtable header claimed, and
+> every shell.html open paid it); it runs on first use.
+
 ### 28.2 The trap this landed on the way through
 
 **Re-wiring silently invalidated an injection-self-test anchor.** Swapping `W.rho_from_h` for the

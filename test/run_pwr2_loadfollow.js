@@ -553,19 +553,21 @@ runSuite(G, rec, false);
 var pass = rec.filter(function (r) { return r.ok; }).length, fail = rec.length - pass;
 
 var MUTATIONS = [
+  /* anchors re-pointed #510 batch 1: the SG grew the dryout wet fraction + outflow limiter */
   ['the SG duty stops following primary temperature (the link from primary to secondary is cut)',
-   'var Q = sg.U * sg.area * (primaryT - T_sec);', 'var Q = 300000;'],
+   'var Q = sg.U * wet * sg.area * (primaryT - T_sec);', 'var Q = 300000;'],
   ['the secondary temperature stops tracking its pressure (no back-pressure on the duty)',
    'var T_sec = W.T_sat(sg.P);', 'var T_sec = 272.11;'],
+  /* anchors re-pointed #507 wave 5: the SG ledger grew the tube-leak stream */
   ['steam draw no longer removes energy (demand cannot be felt)',
-   'var dH = Q + feed * SG.h_feed + afw * h_afw - steam * h_g;   // kW',
-   'var dH = Q + feed * SG.h_feed + afw * h_afw - steam * SG.h_feed;'],
+   'var dH = Q + feed * SG.h_feed + afw * h_afw + leak * h_leak - steam_eff * h_g;   // kW',
+   'var dH = Q + feed * SG.h_feed + afw * h_afw + leak * h_leak - steam_eff * SG.h_feed;'],
   ['steam draw no longer removes mass',
-   'var dM = feed + afw - steam;', 'var dM = 0;'],
+   'var dM = inflow - steam_eff;', 'var dM = 0;'],
   ['the secondary pressure never updates', '    updatePressure(sg);', ''],
   ['the duty is allowed to run backwards into the primary',
-   'var Q = sg.U * sg.area * (primaryT - T_sec);',
-   'var Q = sg.U * sg.area * (T_sec - primaryT);'],
+   'var Q = sg.U * wet * sg.area * (primaryT - T_sec);',
+   'var Q = sg.U * wet * sg.area * (T_sec - primaryT);'],
   /* A GENUINE HALVING, not a thrown error. The first version of this mutation called an undefined
    * helper, so it was "caught" by crashing — which tests nothing about the physics. A mutation
    * that throws is always caught and is therefore worthless as coverage. */
@@ -573,8 +575,8 @@ var MUTATIONS = [
    'return 300000 / (SG.area_m2 * (T_prim - T_sec)); // kW/m2-K',
    'return 150000 / (SG.area_m2 * (T_prim - T_sec)); // kW/m2-K'],
   ['feedwater arrives at steam enthalpy (the secondary cannot be cooled by feed)',
-   'var dH = Q + feed * SG.h_feed + afw * h_afw - steam * h_g;   // kW',
-   'var dH = Q + feed * h_g + afw * h_g - steam * h_g;']
+   'var dH = Q + feed * SG.h_feed + afw * h_afw + leak * h_leak - steam_eff * h_g;   // kW',
+   'var dH = Q + feed * h_g + afw * h_g + leak * h_leak - steam_eff * h_g;']
 ];
 
 if (fail > 0) {

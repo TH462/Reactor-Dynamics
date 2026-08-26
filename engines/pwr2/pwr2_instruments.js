@@ -129,15 +129,27 @@
     return ins;
   }
 
-  /* fail(ins, id, mode) / restore(ins, id) — mode: 'stuck' | 'low' | 'high' | 'noisy'.
-   * Unknown channel or mode THROWS — a misspelled failure that silently does nothing would
-   * read exactly like a plant surviving it. */
-  function fail(ins, id, mode) {
+  /* fail(ins, id, mode, value) / restore(ins, id) — mode: 'stuck' | 'low' | 'high' |
+   * 'noisy' | 'drift' | 'dead'. Unknown channel or mode THROWS — a misspelled failure that
+   * silently does nothing would read exactly like a plant surviving it. `value` (#507
+   * wave 3): a STUCK channel freezes at it instead of the current reading — the CA-4 class
+   * (a level sensor failed at 20 %, not wherever it happened to be) needs the value to be
+   * the teaching point. For 'drift' (#507 wave 6), `value` is the RATE in the channel's own
+   * units/s (default [adopted] the current engine's DEFAULT_DRIFT_RATE 0.5); the offset
+   * accumulates in sim time (HR6) and rides the save as plain state. 'dead' rails the
+   * channel at range[0], the current engine's bottoms-out semantic. */
+  function fail(ins, id, mode, value) {
     if (!ins.channels[id]) throw new Error('pwr2_instruments: no channel "' + id + '"');
-    if (['stuck', 'low', 'high', 'noisy'].indexOf(mode) < 0) {
+    if (['stuck', 'low', 'high', 'noisy', 'drift', 'dead'].indexOf(mode) < 0) {
       throw new Error('pwr2_instruments: no failure mode "' + mode + '"');
     }
-    ins.failure[id] = { mode: mode, held: ins.reading[id] };
+    if (mode === 'drift') {
+      ins.failure[id] = { mode: 'drift', offset: 0,
+        rate: (value !== undefined && value !== null && isFinite(+value)) ? +value : 0.5 };
+      return;
+    }
+    ins.failure[id] = { mode: mode,
+      held: (mode === 'stuck' && value !== undefined && value !== null) ? value : ins.reading[id] };
   }
   function restore(ins, id) {
     if (id === undefined || id === null) {
@@ -205,6 +217,8 @@
         if (f.mode === 'stuck') value = f.held;
         else if (f.mode === 'low') value = c.range[0];
         else if (f.mode === 'high') value = c.range[1];
+        else if (f.mode === 'drift') { f.offset += f.rate * dt; value = sensed + f.offset; }
+        else if (f.mode === 'dead') value = c.range[0];
         /* 'noisy' already applied through sig */
       }
       ins.reading[c.id] = clip(value, c.range[0], c.range[1]);

@@ -167,9 +167,10 @@ var MUTATIONS = [
   ['pwr2_cvcs', 'SEAL INJECTION power-scaled',
    'return CVCS.seal_injection_gpm_per_pump * CVCS.rcp_count;',
    'return CVCS.seal_injection_gpm_per_pump * CVCS.rcp_count * (300 / 1520);'],
+  /* anchor re-pointed #507 wave 4: the seal gained the vital-bus gate beside isolation */
   ['pwr2_cvcs', 'seal injection survives CVCS isolation',
-   'var seal = cv.isolated ? 0 : gpmToKgs(sealInjectionGpm(), 1000);',
-   'var seal = gpmToKgs(sealInjectionGpm(), 1000);'],
+   'var seal = (cv.isolated || !powered) ? 0 : gpmToKgs(sealInjectionGpm(), 1000);',
+   'var seal = (!powered) ? 0 : gpmToKgs(sealInjectionGpm(), 1000);'],
   ['pwr2_cvcs', 'letdown stops carrying seal injection, so inventory drifts',
    'return gpmToKgs(CVCS.charging_normal_gpm() + sealInjectionGpm(), 1000);',
    'return gpmToKgs(CVCS.charging_normal_gpm(), 1000);'],

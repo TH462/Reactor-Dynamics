@@ -41,8 +41,9 @@
  * regimes, both saturation boundaries landing on x = 0 and x = 1 by construction.
  *
  * ---------------------------------------------------------------------------------------
- * BUILT AT LOAD, NOT STORED. The table is generated from Layer 0's correlations every time this
- * file loads (~0.2 s once). A stored table is a SECOND SOURCE OF TRUTH for the same curves and
+ * BUILT ON FIRST USE, NOT STORED (#514 moved the build off load — it is ~0.5 s measured, paid
+ * by every shell.html open, PWR2 selected or not). The table is generated from Layer 0's
+ * correlations on the first call that needs it. A stored table is a SECOND SOURCE OF TRUTH for the same curves and
  * would drift from them silently — the identical argument `P_sat` makes for being a Newton
  * inverse of `T_sat` rather than an independent fit. Generating it means the table and the
  * correlations cannot disagree, ever, and the accuracy claim below is a measurement of
@@ -115,6 +116,10 @@
    * So 400, not 2000: past the sign flip between 100 and 200, on the asymptote, and 19 kB instead
    * of 94 for a browser-loaded engine. THE NUMBER IS NOW MEASURED RATHER THAN GENEROUS. */
   var NH = 400;
+  /* The subcooled grid is UNIFORM IN T over [T_A, T_B] — which is what makes P_sat_T below a
+   * direct index rather than a search. T_B is what T_sat(P_MAX) demands (see pwr2_water's
+   * h_l_sat note). */
+  var T_A = 20, T_B = 358;
   var HL = new Float64Array(NH);      // saturated-liquid enthalpy grid (the index)
   var T_OF_H = new Float64Array(NH);  // T such that h_l_sat(T) = HL[i]
   var RHO_S = new Float64Array(NH);   // rho_l_sat(T)
@@ -149,7 +154,7 @@
   function build() {
     buildGrid();
     /* 1-D subcooled tables, indexed by saturated-liquid enthalpy over the declared liquid range */
-    var TA = 20, TB = 358;
+    var TA = T_A, TB = T_B;
     for (var q = 0; q < NH; q++) {
       var Tq = TA + (TB - TA) * q / (NH - 1);
       HL[q] = W.h_l_sat(Tq);
@@ -230,6 +235,7 @@
 
   /* SUBCOOLED density, analytic in pressure. */
   function rho_sub(h, P) {
+    if (!built) build();
     var ix = hIndex(h);
     /* TWO FIXED CORRECTION PASSES, not iteration to convergence. The saturated-liquid enthalpy
      * corresponding to (h,P) is h minus the compressed-liquid departure, and that departure needs
@@ -251,6 +257,7 @@
   }
 
   function v_from_x(x, P) {
+    if (!built) build();
     if (x >= 0 && x <= 1) {
       var vf = interp1(LNVF, P), vg = interp1(LNVG, P);
       return vf + x * (vg - vf);                       /* EXACT in x */
@@ -279,6 +286,7 @@
 
   /* h_f / h_g by linear read off the P grid — no polynomial, no Math.pow, no iteration. */
   function satPair(P) {
+    if (!built) build();
     var lp = Math.log(P < P_MIN ? P_MIN : (P > P_MAX ? P_MAX : P));
     var fi = (lp - lnPmin) / (lnPmax - lnPmin) * (NP1 - 1);
     var i = fi | 0; if (i < 0) i = 0; if (i > NP1 - 2) i = NP1 - 2;
@@ -287,23 +295,72 @@
   }
 
   function rho_from_h(h, P) {
+    if (!built) build();
     var s = satPair(P);
     if (h < s.hf) return rho_sub(h, P);          /* analytic in P -- see the note above */
     var hfg = s.hg - s.hf;
     return 1 / v_from_x((h - s.hf) / (hfg <= 0 ? 1e-9 : hfg), P);
   }
   function v_from_h(h, P) {
+    if (!built) build();
     var s = satPair(P), hfg = s.hg - s.hf;
     return v_from_x((h - s.hf) / (hfg <= 0 ? 1e-9 : hfg), P);
   }
 
-  build();
+  /* T_from_h — the table inverse of pwr2_water's three-regime T_from_h (#514).
+   * Subcooled was the cost: a 40-iteration Newton whose every residual pays the
+   * compressed-liquid departure — 24 us a call, and the shipped engine makes 14 of them a
+   * step. Here it is the SAME two fixed correction passes rho_sub uses (h minus the
+   * departure gives the saturated-liquid enthalpy, whose T is the 1-D table's own index),
+   * so the table and the direct inverse cannot disagree about the physics — only by the
+   * grid's interpolation error. Two-phase is T_sat(P), a polynomial, verbatim the direct
+   * rule ("two-phase: T IS T_sat"). Superheat stays on the direct bisection: no engine hot
+   * path reads a superheated node's temperature every step, and a second copy of that curve
+   * would be a second source of truth for nothing. */
+  function T_from_h(h, P) {
+    if (!built) build();
+    var s = satPair(P);
+    if (h >= s.hf) {
+      if (h <= s.hg) return W.T_sat(P);
+      return W.T_from_h(h, P);
+    }
+    var ix = hIndex(h);
+    var hs = h - lin(KCMP_H, ix) * (P - lin(PSAT_H, ix));
+    ix = hIndex(hs);
+    hs = h - lin(KCMP_H, ix) * (P - lin(PSAT_H, ix));
+    ix = hIndex(hs);
+    return lin(T_OF_H, ix);
+  }
+
+  /* P_sat_T — saturation pressure by DIRECT INDEX (#514). The subcooled grid is uniform in
+   * T, so this is two array reads where pwr2_water's P_sat is an 80-iteration bisection
+   * (3.3 us). Same non-drift argument as everything here: PSAT_H is generated FROM that
+   * bisection at build, so the curves cannot disagree beyond interpolation. Outside the
+   * grid's [T_A, T_B] the direct inverse answers. */
+  function P_sat_T(T) {
+    if (!built) build();
+    if (T < T_A || T > T_B) return W.P_sat(T);
+    var fi = (T - T_A) / (T_B - T_A) * (NH - 1);
+    var i = fi | 0; if (i > NH - 2) i = NH - 2;
+    var t = fi - i;
+    return PSAT_H[i] + (PSAT_H[i + 1] - PSAT_H[i]) * t;
+  }
+
+  /* BUILT ON FIRST USE, NOT AT LOAD (#514). The build is ~0.5 s measured (the "~0.2 s" this
+   * header used to claim was stale) — and ui/shell.html loads this file for EVERY player,
+   * including the ones who never select PWR2. Every public entry checks `built` (a predicted
+   * always-false branch after the first call — NOT the per-call table-vs-direct dispatch the
+   * pwr2_core note warns against); nothing else about the no-stored-table design changes. */
+  var built = false;
+  var buildTables = build;
+  build = function () { buildTables(); built = true; };
 
   root.RD = root.RD || {};
   root.RD.pwr2 = root.RD.pwr2 || {};
   /* The table's own memory footprint, in bytes — REPORTED so a gate can hold it to a measured
    * size rather than a generous one. NH was 2000 for no measured reason (see its note). */
   function footprintBytes() {
+    if (!built) build();
     return 8 * (NH * 6 + NP + Xg.length + NP1 * 6 + (LNV ? LNV.length : 0) +
                 (LNVF ? LNVF.length : 0) + (LNVG ? LNVG.length : 0));
   }
@@ -312,6 +369,7 @@
     footprintBytes: footprintBytes,
     rho_from_h: rho_from_h, v_from_h: v_from_h, v_from_x: v_from_x, v_exact: v_exact,
     satPair: satPair, rho_sub: rho_sub,
+    T_from_h: T_from_h, P_sat_T: P_sat_T,
     build: build,
     GRID: { P: Pg, X: Xg, NP: NP, get NX() { return NX; } },
     bytes: function () { return NP * NX * 8 + NP1 * 4 * 8; }

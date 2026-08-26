@@ -29,32 +29,755 @@ and the user-visible summary in `CHANGELOG.md`. This file points at those and tr
 
 ---
 
-## Session log — 2026-08-21-backshop-d (#479 — Mode 3, Hot Standby: the second starting condition, and the source floor)
+## Session log — 2026-08-26-develop-a (#523 — PWR2 is the plant the site runs)
 
-**The work order** *(owner, 2026-08-21: "Work on more starting conditions, Mode 3 Hot Standby
-first.")*. Full record: `Blueprint/PWR2_VALIDATION.md` §65. The facts:
+**The cutover.** Four owner rulings in planning, all 2026-08-26: **"Flip now, track the gaps"**,
+**"Strip it at build time"**, **"Keep freePlayOnly, file the compat pass"**, **"Reword to Hot
+Shutdown (Mode 4)"**. Full record: `Blueprint/PWR2_VALIDATION.md` §94. Issue #523.
 
-- **`hot_zero_power` built** (`pwr2_engine createEngine({initial_state})`, shell passthrough +
-  reset preservation, menu card second row): 2235 psia (15.41 MPa), Tavg at T_sat of the
-  sourced 1005 psig no-load steam pressure, bank in, boron trimmed 1000 pcm subcritical (the
-  old engine's own hot_zero_power margin; measured −1137 pcm residual, 373 ppm), turbine
-  tripped, dumps in pressure mode, pressurizer at the WTSM 10.3 25 % no-load program, one
-  feed pump on the three-element controller, low-flux trip unblocked.
-- **Measured**: 2-h hold second-hour bands Tavg 546.7–547.6 °F, P 2210–2236 psia, levels on
-  program, no trip/SI · critical at 53.7/200 steps · 1 % power 4.5 min after the pull, self-
-  limiting ~10 % on moderator feedback · the old plant’s hot_zero_power reads 547.2 °F /
-  2234 psia — the two engines agree on Mode 3.
-- **THE SOURCE FLOOR** (`pwr2_kinetics SOURCE.floor_frac = 1e-9`, [derived]): without it a
-  held shutdown plant decays ~21 decades/hr and underflows to EXACT zero — a permanently dead
-  core no rod pull revives (0·e^(t/T) = 0). The floor is the installed/intrinsic source model.
-- **The display defect the IC exposed**: the shell’s shutdown-rod group read `scrammed ? 0 :
-  200` — the bank-in Mode 3 plant showed SHUTDOWN RODS WITHDRAWN (the #468 class, on the
-  display). Now out iff any of the bank is out.
-- **Filed as #500, not fixed**: `pzr_level_low` (shared annunciator) is set AT 25.0 % — exactly the
-  sourced no-load program point — so Mode 3 carries a standing warning on a healthy plant.
-- Gates: `run_pwr2_kinetics` 71→72/41 · `run_pwr2_engine` 41→55/31 (one mutation measured
-  BLIND — clips bound the rated_steam revert — replaced by a direct plant-constant check) ·
-  `run_pwr2_shell` 29→31/15 · headless zero console errors · full sweep at baseline.
+**What ships.** `?engine=pwr2` on every site link and the `/sim` redirect; `ui/app.js` boots and
+falls back to it; the card is plain **PWR** and the old one is **"PWR — retired engine"**.
+`site/build_site.js` deletes the retired engine's six `<script>` tags **and prunes the six files
+(544,663 bytes)** when the channel is `public`; `tools/make_portable.js` does it unconditionally.
+`pwr_config.js` and `pwr_instruments.js` stay on every build — `pwr2_shell.js:622` throws without
+them.
+
+**The channel gate is the whole design.** The preview site keeps the retired engine, because the
+guided content is authored against it and that is where it is vetted. A flag can be overridden by
+hand on a live site; a deleted `<script>` tag cannot.
+
+**Two defects the flip exposed, both latent until PWR2 was the default.**
+- `mdManual()` had no `|| [ui.plant]` fallback, so the operator's manual rendered **empty** on
+  PWR2 — one of only two `public`-staged areas. Its neighbour `manualDoc()` had the fallback and
+  was right. Caught by `verify_e2e_ui` on its first click of `#manualBtn` at `?engine=pwr2`.
+- `afterPlantChange()` derived `ui.engineKey` from `ui.plant`, which `uiPlantOf()` deliberately
+  folds `'pwr2'` onto — so a PWR2 save installed the retired engine's key, and on a published
+  build the next Reset would ask for a constructor that is not in the page.
+
+**Gates.** `run_site_build` 31 → **41** (new `RETIRED` rule, builds twice through a new
+`RD_SITE_CHANNEL` hook, injection-verified in both directions) · `run_portable` 147 → **145**
+(sentinel → `RD.pwr2.shell`, plus a negative sentinel proved non-vacuous) · `verify_e2e_ui` now
+sweeps `pwr2` · `verify_flags_ui` 27/42 → **42/42** once pointed at `?engine=pwr`, where the
+content it gates actually lives. `run_all`: 93 runners, everything else at baseline.
+
+**One assertion re-derived against a measurement.** `testSteamFeedPair` demanded `dump > 1` after
+a turbine trip. At t+600 s from hot full power: retired engine gov 0 % / dump 2 % / ADV 0 % /
+steam 22 gpm; **PWR2 gov 0 % / dump 0 % / ADV 61 % / steam 31 gpm / feed 33 gpm**. PWR2's dump at
+0 is C-7 holding the condenser dumps shut on a dispatch trip (§47, sourced) — the ADV carries it.
+Now `dump > 1 || adv > 1`; claim and discriminant unchanged, still passes on both.
+
+**Trap worth carrying forward.** *A shared artifact keyed by ENGINE will silently go empty when
+the engine key changes, and the neighbouring lookup that got it right is no help — the two had
+disagreed for days.* Both of today's defects are that one shape. When a plant's key changes, grep
+every `[ui.engineKey]` in the tree, not the ones you remember.
+
+**Open** — filed rather than absorbed: #524 Mode 5 · #525 the compatibility pass · #526 the
+procedure pool · #527 the instructor's parameter map · #528 rod AUTO · #529 turbine FOLLOW ·
+#530 steam-line break / stuck rod / vacuum decay · #531 R8 · #532 the manuals · #533 the board
+harness.
+
+---
+
+## Session log — 2026-08-25-develop-d (#515 — TMI on PWR2: the latch, the P-9 defeat, the two-region pressurizer)
+
+**The owner's question** ("can we recreate TMI on PWR2?") became one issue, #515, and a three-build
+ruling ("A. Then choked porv then void term."). Landed this session, all on `develop`, none pushed:
+
+- **The stick is a LATCH** (owner design): `stuck_porv_open` arms and waits for a lift; PWR2 gains a
+  real operator PORV (`porv_manual`) — "open PORV" had been routed through the failure lever.
+- **`anticipatory_trip_failure`**: the P-9 turbine-trip channel failed (PWR2 only; the old engine's
+  catalog hides `pwr2_only` defs). Built as a row, not a deletion — the permissive is sourced.
+- **The two-region pressurizer (Build 1, D5 §85)**: steam compressed along dh = v·dP, a saturated
+  pool, a stratified insurge layer; `tau_int_s = 30 [open]` swept and published. Ginna §15.2.2
+  Case 2 trips on high pressure at 6.3 s (sourced 5.4); new runner `run_pwr2_lossofload`. **The TMI
+  steps now lift the PORV from the plant's own pressure at 5 s.**
+
+**Traps worth the line:**
+- *A green mutation self-test does not mean the gate sees the physics.* The relief agent's "insurge
+  into the pool" mutation was caught by the pressurizer gate and BLIND to the plant-level runner
+  (a 5 s spike does not feel the pool's densification) — a runner lists only the mutations it can
+  see, and says which ones it cannot.
+- *A seat evaluated at the candidate pressure can be non-monotone in STATE, not in P*: a negative
+  slack times a two-phase fill density that rises with P lost the bisection's bracket and drifted
+  the core's ledger 9,560 kg on the accumulator ride — invisible until `run_pwr2_loca`'s closure
+  identity failed. Freeze the fill terms with the states; make the outsurge saturate.
+- *Two of §83's headline numbers were harness artefacts*: the dry-core ±500,000 pcm came from a
+  `modCoeff` cache keyed on the FIRST caller's pressure (13.4×), and the "B&W once-through
+  artefact" reading came from ablating the model, not the plant — Ginna's own analysis spikes on a
+  U-tube generator. Both retracted in the record (§84, Build 3's brief).
+- *The `set_letdown_flow {pct}` payload*: a wrong-shaped payload lands NaN in the engine and the
+  beyond-model catch holds the plant for ever, silently (the kernel validates `normalized`, so the
+  board cannot send it; the engine door still should refuse a non-finite value).
+
+- **Choked relief (Build 2, D5 §86)**: area × homogeneous critical flux from Layer 0; a solid vessel
+  passes WATER (95 % of the TMI ride — measured before the law was chosen). The TMI timeline now
+  survives to 260 min with the block valve and HPI restore doing their historical jobs.
+- *A confirming aggregate run on a tree receiving the next build's edits confirms nothing*: the
+  Build 1 re-run drifted on the pressurizer gate because Build 2's module was already changing
+  under it. The clean record for `344a6d9` is the first run (92/93 + hardrules reconciled).
+
+- **The void/boron term (Build 3, `PWR2_VALIDATION.md` §87)**: two defects in one line — a two-phase
+  moderator REFERENCE below 1,326 psia (9.145 MPa) that invented +6,688 pcm on saturated legs at
+  725 psia, and a boron factor that flipped the void term positive above 986 ppm. Fixed as a liquid
+  reference + an envelope floor + a boron-worth cap; the theorem `void + boron ≤ −K·Δ` is gated at
+  45 states. Trap: `modCoeff` cached the FIRST caller's pressure for the process — §83's ±500,000 pcm
+  figures were a scratch harness's 0.5 MPa calibration, 13.4× the engine's. The scram-recovery
+  fixture's +12 dpm / 477 % ring was defect 1, not physics (a 4th declared re-measure).
+- The LOCA rides no longer die on kinetics; both still HOLD on the core's inner thermodynamic guard
+  (#517 — pre-existing, now visible; it carries a clad-heating observation from the TMI refill too).
+
+**Measured, for the next agent:** Case 2 τ sweep (∞ 5.7 s · 100 5.9 · 30 6.3 · 10 7.5 · 3 12.0 · 1 14.2
+· 0.3 14.5); P-only ceiling +197 psi / 3.6 pts at 3 s (old vessel +0.6 / 9.7 at 5.4 s); dry-SG lift
+53.6 min as built; perf 4.3×. Still owed on #515: Build 2 (choked PORV, the 1065 psia plateau) and
+Build 3 (the void/boron reactivity form — the plan is in the approved plan file and on #515).
+
+## Session log — 2026-08-25-develop-c (#513 — the aggregate gate at 7m19s, from ~19 min)
+
+**The ask** (owner, #513): "Find ways to reduce the time it takes to run through all the checks."
+**Delivered, all measured:** full gate **439 s wall at 10-way** (gates.yml's own note said ~19 min
+for the merged suite; CI's last green pair ran 43m31s). Sequential true-cost sum **2,814 s →
+~2,100 s** (measured `--jobs=1` before, per-runner solo after). 91 runners at baseline.
+
+**Where the time went, and what was done** (per-runner numbers are solo seconds, before → after):
+
+1. **Mutation-replay scoping** — the dominant cost, and the fix CI's own comment asked for
+   (gates.yml: "the real long-term fix is cheaper mutation replays"). `run_pwr2_engine`'s
+   `grp:`/`only` idiom ported to five more runners, each mutation tagged with the one section
+   group that can see it: **cvcs 382→132 · shell 246→43 · sg 77→14 · rhr 50→17 · sources 46→18.**
+   Every port verified: tally byte-identical, N/N mutations caught, 0 blind.
+   - **New guard, all six scoped runners: the scoped-clean-pass preflight.** Each named group must
+     be green ALONE on the clean build before the replays — in the replay loop a crash counts as
+     caught, so a group leaning on another section's setup would masquerade as coverage. The
+     crash-aware verdict loop (a mid-suite crash after green checks is "CRASH only", never BLIND)
+     ported alongside.
+   - **The preflight caught a real latent defect on its first run:** `run_pwr2_cvcs`'s SI-boron
+     check (`+15 ppm` margin) was calibrated to its live 60 s window and was silently RED inside
+     every 9 s quiet replay — a hollow catch laundered into every mutation's red count since the
+     check was written. The margin now rides with the window (`15 * N(3000)/3000`).
+2. **The vtable rebuild leak** — five loaders deleted `pwr2_water`/`pwr2_vtable` from
+   `require.cache` per replay, re-paying the ~0.5 s GRID build ~135 times (engine 164→139 from
+   this alone). Both stay cached AS A PAIR (the vtable closes over `RD.pwr2.water` at load);
+   `run_pwr2_vtable` still rebuilds via `new Function`, untouched.
+3. **NODE_COMPILE_CACHE** in `runOne`'s spawn env — one shared V8 code cache (os.tmpdir()) for
+   all 91 children; 33 runners re-parse the 1.22 MB pwr_control stack otherwise. Deliberately no
+   actions/cache on CI (reasoning in gates.yml's header).
+4. **The makespan floor split** *(OWNER RULING, 2026-08-25, plan question: "Split both
+   (Recommended)" — behavior "into 2-3 sibling runners", campaign "by plant (pwr / rbmk+bwr)")*:
+   `run_behavior` (398.8 s solo, THE wall floor) → thirds by probe id mod 3
+   (**126/146/125 s**, tallies 24p+1xf / 25p / 25p, sum = the old 74p+1xf); `run_campaign` →
+   part A structural+pwr (**257 s**) + part B rbmk+bwr (**8 s**). Per-part gap reports
+   (`BEHAVIOR_GAP_REPORT[_B|_C].md`); part A keeps every legacy filename.
+5. **`run_pwr2_ab` → `measure_pwr2_ab`** *(OWNER RULING, 2026-08-25, plan question: "Move it out
+   (Recommended)")* — "A MEASUREMENT, NOT A GATE", exits 0 always; ~49 s/run bought nothing that
+   could fail. Out of `discover()`, still runnable on demand for #507.
+6. **`verify_e2e_ui` predicate waits** — 7 of the 48 fixed sleeps (~15.4 s) converted to
+   `waitForFunction` on the state each sleep was approximating (a shared `waitBoardLive` on the
+   clock leaving T+00:00:00). Two kept DELIBERATELY: the 6 s recorder-row accumulation (wall-time
+   real) and the player-paused negative-assertion window (shortening it weakens the check).
+7. **Every `secs:` hint re-recorded** from measured solo costs — the old top was 13× stale
+   post-#514 (endurance hinted 900, costs 65; meltdown hinted 48, costs 136; behavior hinted 96,
+   cost 399), so longest-first was scheduling a phantom.
+
+**Not done, with reasons:** `run_pwr2_protection` (45 s, 64 mutations — tagging cost outweighs
+~28 s), `run_pwr2_pressurizer` (37 s post-vtable-fix, ~18 s left), `run_pwr2_loadfollow` (31 s —
+its sections are one deliberate before/after narrative; scoping fights the design),
+`verify_manual_follow` (115 s — 3 shell loads/procedure → 1 needs a state-isolation ruling).
+**The next lever is the new wall itself: `run_campaign` part A (~440 s under contention) —
+splitting its pwr missions further exceeds the by-plant ruling and needs the owner.**
+
+**Follow-up, same session** *(OWNER RULING, 2026-08-25: "I approve the pwr campaign mission
+split.")*: `run_campaign_c.js` added. **The first cut was parity alternation (the behavior-split
+idiom) and it measurably failed — 25 s / 229 s** — because campaign suite costs span 0–51 s and
+the handful of heavy suites happened to sit at odd registration indexes; a partition that cannot
+see cost cannot balance it (the behavior battery's probes are individually cheap and many, which
+is why parity worked THERE). Part C is now a MEASURED-COST list of the three heavy suites
+(mode5_to_mode3 51 s, tmi2_p1 "Fog of War" 32, tmi2_p3 "no deviations" 33 → C ≈ 116 s, A ≈ 120 s
+with the structural suites); the full per-suite table lives in run_campaign.js's own comment. A
+new pwr mission lands in part A by default and moves A's suite-count baseline, so the partition
+cannot drift silently.
+
+---
+
+## Session log — 2026-08-25-develop-b (#514 — the PWR2 engine at 12.5x, and the load cut)
+
+**Owner issue: "Make PWR2 engine more efficient… remove the extra stuff that loads like the
+other engines."** Measured first: **1,090 µs/step against the old engine's 21.5 (51×)** and
+68× over the design spine's own 16 µs budget — `PWR2_DESIGN.md` §28.1's "118,600 steps/s,
+stop condition CLEARED" was **Layer 4 only** and the full engine was never re-measured. At
+the service's fixed 0.02 s step, fast-forward was compute-bound above **~18×** of the 3600×
+offered (60× = 335 ms per 100 ms broadcast). Landed at **~85 µs/step (12.5×)**, usable
+fast-forward to ~230×; gates at baseline.
+
+**The deficit was never the solver** — `solveP` measured 53 µs, 5 %. It was Layer 0 plumbing:
+the vtable built to clear §26 was wired into exactly ONE caller (`pwr2_core`), and 33 of 47
+hot property calls per step still hit the direct correlations. The trap in one line: **an
+optimisation resolved once-at-load has to be resolved in EVERY module, and each new Layer 5
+module quietly rebuilt the deficit the table had cleared.** The fixes, each with pointers:
+
+- **Wired the table into the four bypassing modules** (`pwr2_cvcs` — its 11-node boron-ledger
+  mass sum on direct `rho_from_h` was 28 % of the step; `pwr2_loop:courantLimit` — a pure
+  diagnostic for two test files at 20 %; `pwr2_pressurizer:extraMassFn` — INSIDE the solve,
+  cheap only while h̄ sat two-phase; `pwr2_break`). NOT substituted: `sys.M_total` for the
+  CVCS sum — the ledger total **includes the pressurizer via extraMass** and the boron ledger
+  is the nodes'; the table keeps the semantics and the speed.
+- **`vtable.T_from_h` added** (subcooled = the same two correction passes `rho_sub` uses over
+  the existing `T_OF_H` array; dome = `T_sat(P)`; superheat delegates) — 99 ns against the
+  direct 40-iteration Newton's 24,300. Worst error 0.009 °C in the operating band, 0.35 °C at
+  the 24 °C/17 MPa corner. **`vtable.P_sat_T`** — the subcooled grid is uniform in T, so the
+  80-iteration bisection became a direct index (12 ns).
+- **Warm-started the two cold bisections** (`pwr2_containment`'s flash solve — 62 residuals ×
+  a nested `P_sat` bisection, 16 % of the step; `pwr2_sg.updatePressure`) from their own
+  previous solutions, full-range fallback kept.
+- **Deduped `primaryTavg`** (computed 3× per step — `stepInner`, the protection inputs, and
+  `buildTrueState`; now once, passed via `ctx.tavg` with the helper fallback for hand-wired
+  harnesses) and the true_state node scans (one id→node map per call).
+- **The vtable builds on FIRST USE, not at load** — the build measured **500 ms** (its header
+  claimed "~0.2 s") and was paid by every shell.html open, plain-PWR players included.
+  Node-side require of the pwr2 set: 517 → 18 ms. The `built` guard is a predicted branch,
+  not the per-call dispatch `pwr2_core`'s note warns against.
+- **Load cut (owner-ruled this session, option "drop the RBMK/BWR tags"):** shell.html no
+  longer loads the 18 RBMK/BWR engine/control/scenario files (~308 KB that loaded for plants
+  no player can select); `app.js` falls back to PWR when `?engine=` names an absent
+  constructor; `verify_e2e_ui` pruned to PWR-only IN THE SAME CHANGE — its rbmk/bwr rows
+  would otherwise silently screenshot the PWR fallback and certify nothing.
+- **`run_pwr2_perf` is the new gate** — end-to-end step cost as a RATIO to the old engine
+  (≤ 8×; measures 4.1×) for `run_pwr2_vtable`'s contention reason, the lazy build pinned by a
+  deterministic probe (GRID.P[0]), and an injection self-test that a 51×-class slowdown blows
+  the bound. The only prior timing extrapolated property cost and could not see the step.
+- **Adjudicated red:** `run_pwr2_vtable`'s ratio check timed its first-ever table call, so the
+  lazy build landed the 0.5 s inside the timed loop (read 18× on a 267× table). The fixture
+  moved (build triggered before the window); the claim — steady-state call cost — unchanged.
+- Declined as no-longer-material (measured post-fix): the protection function-table rebuild
+  (4.2 µs whole module) and `pwr2_core`'s `residual: F(sol.P)` diagnostic (~1 µs through the
+  table) — churning a gate-visible closure assertion for ~1 % was not worth it.
+
+Remaining step budget, honest split: `sources.stepPlant` 24 µs (the solve — legitimate),
+reactor+kinetics ~15 each, `buildTrueState` 9. The physics is now the cost, which is the
+correct end state.
+
+**The aggregate drifted 11 runners; adjudicated one at a time (HR10), each one line:**
+five were the §28.2 anchor class working as designed (`sg`/`rhr`/`break`/`cvcs`/`pressurizer`
+mutation anchors patch source lines the vtable idiom rewrote — re-pointed, mutants intact);
+`run_pwr2_pressurizer`'s two construction round-trips asserted table-vs-direct identity at
+1e-9 kg — re-toleranced to the table's declared dome accuracy (0.1 kg; measured 0.014) with
+the engine internally consistent (solve seat and reconciliation read the SAME function);
+`run_pwr2_reactor`'s zero-SUR-at-critical fixture trimmed against the analytic thermometer
+while the engine now reads the table's (0.3 pcm → 0.09 dpm on step one) — the fixture now
+trims through the engine's own path, exact on BOTH paths; its ringing scram fixture's settle
+sample moved 60 → 120 s (third re-measure, mechanism unchanged — a third excursion through
+2.7 % power, settled 0.00 dpm by 100 s); `verify_manual_follow` and `verify_e2e_ui` walked
+RBMK/BWR shell pages the load cut removed — both PWR-only now, in the same change as the
+tags; `run_doc_budget` caught this session's own status-line append at 462 words on one
+physical line (split); `run_hardrules` +1 (the ruling citation is an HR11 site) and
+`run_portable` −24 (it scans the shell's own tag list — the self-maintaining fall).
+
+**Trap, paid for in full:** `git worktree remove --force` on a probe tree **followed the
+`node_modules` junction into the PRIMARY tree** and emptied it (the probe was made to
+re-measure `verify_manual_follow` on the pre-change commit — which was the right instinct;
+the cleanup was not). Recovered: `npm install playwright --no-save` + `npx playwright
+install chromium` (playwright is the repo's ONLY external module — measured by require-sweep,
+`grep -rhoE "require\('[a-z@]..."` over every source dir). **Remove the junction first
+(`rmdir`, which never recurses), then the worktree.**
+
+---
+
+## Session log — 2026-08-25-develop-a (#512 — per-system latches; the TMI termination is reachable)
+
+**Owner design, built same-day:** each protection latch shows on its own panel (a new
+amber `bd-actuated` button state — ECCS AUTO, AUX FEED AUTO, MFW RESTORE, HEATER AUTO) and
+the panel's own securing click IS the unlatch. The first cut refused while the signal was
+live — which, the owner caught, made a TMI-style termination UNREACHABLE (a stuck PORV
+keeps the signal live forever). Rebuilt on the sourced circuit (WTSM 12.3.2.3, read
+closely): the reset time-delay relay (45–60 s; 60 adopted) + P-4 gate the reset; after the
+relay **one click resets and secures with the signal still present**, and automatic
+re-actuation blocks until the signal clears. `reset_protection` NARROWED to trip-only;
+three per-system engine doors added. Full record: `Blueprint/PWR2_VALIDATION.md` **§81**,
+including the measured TMI ride: stuck PORV → refusals with the time remaining → accepted
+stop at latch+62 s → ten minutes later the pressurizer indicates **100 % with the core
+51.5 % voided**. Gates: board 26 → 28 (7 mutations), protection 55/55 (7 anchors
+re-pointed), engine 91/91 (two AFW-reset checks re-pointed onto `reset_afas`), aggregate
+at baseline.
+
+---
+
+## Session log — 2026-08-24-develop-e (#511 — the accumulator and the MSIV are real)
+
+**Owner directive in the #509 review conversation: "We should model these valves."** Both
+built, sourced, gated the same day. Full measured record: `Blueprint/PWR2_VALIDATION.md`
+**§80**. The #509 item 11 `*_fixed` disabled-statics flags retire exactly as designed —
+the machinery exists, the flags stopped publishing, the diagram symbols came back operable
+with zero board changes.
+
+- **The accumulator** (pwr2_eccs): one passive tank — 650 psig nitrogen cover (WTSM
+  Table 5.2-2), two-thirds water, volume 0.435 × this plant's own RCS volume (the #408
+  Ginna identity ≈ 2,719 gal / 10,190 kg), isothermal cover-gas expansion, flow
+  coefficient solved against the sourced ~36 s dump. Survives a blackout by design. The
+  isolation valve carries the sourced >1600 psig power-removed refusal (B 3.5.1) and the
+  Mode 4 preset boots it CLOSED. **Measured: a severity-0.5 large LOCA that used to reach
+  the beyond-model latch at t+500 now SURVIVES the whole 1,800 s ride** — the sourced
+  "terminated solely by the accumulators" behavior. The engine gate's RHR-align fixture
+  reddened and the red WAS the sourced procedure (isolate the accumulators before a
+  depressurization); the fixture now does what the operator does.
+- **The MSIV** (pwr2_engine/pwr2_relief): downstream of the MSSVs/ADV/TDAFW supply,
+  upstream of the turbine and dumps (B 3.7.2); ~5 s stroke; closing at load trips the
+  turbine and the SG parks at 1,076 psia with the ADV catching it under the 1,085 psig
+  pop — the manual's own §8.3 sentence, now measured on PWR2.
+- Gates: eccs 30→38 (23/23 mutations) · relief 38→42 (24/24) · loca 14→17 (exact mass
+  closure with the passive stream) · board 24→26 · true_state 64 (six statics retired) ·
+  engine 91/91 (55/55) · everything else at baseline. pwr2-1.0 saves migrate.
+
+---
+
+## Session log — 2026-08-24-develop-d (#509 — the owner's third playtest, all 11 items)
+
+**#509 worked end to end** — triaged (nothing had been booked against it; only item 7's
+mechanism was already cured, by #510 batch 1), fixed, gated. Full measured record:
+`Blueprint/PWR2_VALIDATION.md` **§79**. The headlines:
+
+- **The reset seam (items 1/5):** the kernel's rps latch never learned an ENGINE-owned
+  automatic trip, so `reset_rps` was a permanent no-op on PWR2 and every SI/AFAS/FWI
+  seal-in was unreleasable — stops/restores were accepted and silently overwritten (the
+  #506 dead-button class one layer deeper). Fixed with an empty-trips-gated instrument
+  mirror in `control_kernel.evaluate`, a reset-snapshot patch in the facade (the kernel
+  judged a good reset against the previous step and lied "rods not inserted"), and spoken
+  seal-in refusals in the shell (WTSM 12.3.2.3). Feed element 2 now reads TOTAL steam
+  (`sg_steam_flow`), the pwr1 fix ported; `feedStatus` speaks on PWR2.
+- **The AFW block valve (item 6)** was two bugs: a payload key no caller sends (every
+  click SHUT the valve) and a lamp pinned OPEN. **RCP FLOW 105 % (item 3)** was the pump's
+  rated-density reference at loop-average vs a cold-leg impeller — recalibrated to the
+  design cold leg *(owner selection)*: HFP 1714 → 1646 kg/s (101.0 %), pressure unchanged.
+  **Chart lanes fill the plot** *(owner selection — the #445 56 px target retired)* plus
+  redraw-on-resize. Tees keep fluid colour on secured legs; SG tube sheet spans the vessel,
+  tubes stop at the sheet; the #444 hover glow no longer restacks the board (#202 class).
+  MSIV/accumulator render disabled (registered statics). Item 10 not reproducible at HEAD
+  (measured 0.00 gpm; gate now asserts the flow).
+- Gates: `run_pwr2_board` 13 → **24** / 5 mutations caught · sweep green (m4, autoctl,
+  e2e_controls, pwr, m5, board_check, all pwr2 runners) · `run_pwr2_sources` fixture refit
+  declared (§79) · full `run_all` at baseline.
+
+---
+
+## Session log — 2026-08-24-develop-c (#510 batch 4 — the honesty batch)
+
+**Batch 4 of the #510 order** — M-2/M-3/M-5/M-8/M-9/M-10/M-11/M-12/M-14/M-15 + most of the
+LOW sweep. Full record: `PWR2_VALIDATION.md` **§78**. Gates: shell 71 → 76 · feedwater
+26 → 29 · rhr 43 → 44 · engine/true_state/cvcs/endurance at baseline.
+
+- The structural ones: `clear_all_failures` iterates the shared `engineActiveFailures`
+  detector (one function, two consumers — the tab and the sweep cannot drift); `sg_overfeed`
+  is a seat (`fw.overfeed`, the porv_stick shape); the RHR permissive/autoclose/refusal read
+  INDICATED pressure (the align gate fixture now RETRIES — a one-shot command at the exact
+  420 psig crossing met the channel's 0.5 s lag and was refused silently, a probe-trap worth
+  remembering); `rhr_active` = the valve (§6.3); the RHR duty share excludes OFF_LOOP.
+- The record fixes: dilution prose un-inverted (6 places), the Ginna SGTR anchor
+  [recalled]-marked (8 places) + the "~47" understatement corrected to 51.8, the 1,000-pcm
+  margin declaration corrected to ~4,348 at local worth, 547.9 → 547.0 °F, the At-Power
+  threshold to the commercial 5 %, the "52 runners" copies de-numbered.
+- The LOW harness items, rebuilt in the same batch: the SBO/AFW check reads the contract's
+  0.667 through the facade wire (was dt=0 hand-forced) · the rate-0 "bit-identical" check
+  uses-then-idles the actuator (was two constructor defaults) · the porv_indicator check
+  asserts the DECEPTION (lamp "closed" over a genuinely open valve) · **a SCRAM nulls the rod
+  insertion limit** (both ROD LIMIT annunciators fired through every trip's decay band —
+  engine 90 → 91 with the mid-decay gate) · the `rod_limit_margin` channel range overridden
+  to this bank's 0-200 currency (shared top is pwr1's 912 fine steps; copied, shared table
+  untouched). The TypeError-verdict mutation closed in the close-out: the delta-T wire cut
+  honestly yields `available: false` rows — the crash was the CHECK's note string calling
+  `.toFixed(3)` on the unavailable row's undefined margin; the note now tolerates it, the
+  check reds on the physics, and the runner labels crash-only catches as themselves.
+  **Every #510 finding is adjudicated and closed.**
+
+---
+
+## Session log — 2026-08-24-develop-b (#510 batch 3 — the boot-state artifacts and the SI boron)
+
+**Batch 3 of the #510 order** — H-7, H-3, M-1. Full record: `Blueprint/PWR2_VALIDATION.md`
+**§77**. Endurance **18 passed 0 xfail** — every #510 endurance defect fixed; the strict
+XFAIL map stays armed for the next born-failing entry.
+
+- **H-7**: torque rises to the [open] 2.0× breakdown class over the last 10 % of speed —
+  cold start rated at 24.1 s (was a 93 % stall), hot restart 11.4 s (§73's class holds).
+  **The §74 heatup was the stall's artifact: honest rate 113.7 °F/hr at the rated rotor,
+  ABOVE the 100 °F/hr admin limit** — the operator's RHR trim has ~134 °F/hr of authority
+  per 0.2 hx, so compliance is procedure; §74 corrected in place, the engine gate's band
+  re-measured to the honest class. FLAGGED FOR OWNER REVIEW in the #510 batch comment.
+- **H-3**: UA = designUA() once at construction (decay at 20 h + design_rcp_heat_kW 1351
+  [derived]) = 204.08 kW/K on any boot; the live-plant lazy derivation retired (208.76 vs
+  96.00 boot spread). Dead M/cp arithmetic deleted.
+- **M-1**: `si_kgs`/`si_ppm` into the CVCS boron balance via the `_eccsKgs` one-step carrier
+  (saves gain the scalar, old saves land 0). LOCA borates 625.8 → 720.0 ppm/120 s; SI at own
+  ppm is NEUTRAL (gated discriminator).
+- Gates: sources 34 → 35 (+1 mutation) · rhr 42 → 43 · cvcs 43 → 44 (26 → 27) · engine 90 ·
+  shell 71 · eccs/loca at baseline.
+
+---
+
+## Session log — 2026-08-24-develop-a (#510 batch 2 — the electrical completion sweep)
+
+**Batch 2 of the #510 order** — H-4, H-5, H-6, M-13, M-6, one pattern (un-carried electrical
+wires). Full measured record: `Blueprint/PWR2_VALIDATION.md` **§76**. Endurance 13 passed
+5 xfail → **17 passed 1 xfail** — only H-7 (the cold RCP stall) remains tracked, batch 3's
+first item.
+
+- H-4 aux spray + H-5 RHR pumps gated on `ac_available` (absent = powered, the house idiom);
+  the RHR power state also gates the batch-1 circulation floor and letdown path via
+  `rh.running`. H-6: `_siPrev`/`_loopPrev` edge independently — LOOP-after-SI sheds again.
+  M-13: `elec._offsiteWasLost` — an SBO clear on a standing LOOP hands back the diesels only,
+  both orders gated through the shell. M-6: a level turbine trip on condenser availability
+  [sourced, Ginna UFSAR ch.10 §10.1.3.1 — the evidence pass found the trip LIST, so no
+  setpoint had to be invented; availability IS the vacuum at this fidelity].
+- Gates: pressurizer 66 → 68 (mutations 26 → 29) · rhr 41 → 42 (23 → 24) · shell 69 → 71 ·
+  engine 90 (one mutation anchor re-pointed) · stale `pwr2_protection` "no electrical model
+  exists" note corrected.
+
+---
+
+## Session log — 2026-08-23-develop-b (#510 batch 1 — the dry SG and the Mode 4 hold)
+
+**The first fix batch of the #510 order** (owner-ruled via plan: full sweep, in order; the
+H-2 closure via the RHR letdown path; the preset level to the 25 % program). Full measured
+record: `Blueprint/PWR2_VALIDATION.md` **§75**. All four batch-1 strict expected-fails
+promoted in `run_pwr2_endurance` (9 passed 9 xfail → 13 passed 5 xfail).
+
+- **H-1** (`pwr2_sg`): wet-fraction dryout (the old engine's own 30 %-wide shape through the
+  shared level map → mass fraction 0.38845, no residual — declared) + outflow limited to held
+  inventory (turbine gets the delivered share) + an h backstop on the bisection span that
+  binds only at full dryout. ATWS+LOFW peaks 99 % (was 304 % → silent beyond-model at 149 s);
+  ATWS+SBO dies on moderator feedback at 0.2 % (was a false 243 % equilibrium).
+- **H-2** (`pwr2_cvcs`/`pwr2_engine`/`pwr2_rhr`): the RHR-to-CVCS letdown path (sourced —
+  WTSM ch.19 ML11223A342 "letdown, primarily from the residual heat removal system" /
+  HCV-128; §4.1.4.5 ML11223A214; NUREG-1431 Bases ML12100A228) · regen-HX effectiveness 0.9
+  [tune] on the return · RHR forced circulation 63.1 kg/s [derived from the WTSM 5.1 miniflow
+  band; gated on !SI per the #458 same-pumps ruling] · the cold lineup boots the heater
+  ladder AT the shutdown pressure, heaters AUTO (the command clamp keeps the sourced
+  1700–2500 psig span). Untouched 90 min: 364 → 354.5 psia / level 25.3 % / Tavg −0.5 °F.
+- **Two conservation defects found by energy audit, neither filed by the review**:
+  `pwr2_sources` applied `−Math.abs(sgDuty)` (reverse SG transfer became primary REMOVAL —
+  2|Q| destroyed, ~113 kW on the shutdown preset; now signed), and pressurizer outsurge
+  enthalpy was destroyed across the surge line (~454 kJ/kg; now delivered to the hot leg as
+  the `_pzSurgeHeat` one-step carrier — pwr2-1.0 saves gain the scalar, old saves land 0).
+  Post-fix the 60-min audit closes to 0.2 MJ against boundaries.
+- **The trap worth keeping**: the false Mode 4 cooldown was a LEG-STAGNATION artifact — with
+  the RCPs secured and zero decay heat there is no loop flow, so the CVCS return chilled the
+  small cold-leg node at ~9 °F/hr and Tavg (the leg AVERAGE) reported a cooldown of a plant
+  whose bulk sat still. A point source on a stagnant node is not a plant temperature. And the
+  endurance rate estimator's endpoint pair read the heater limit cycle's PHASE as −39 psi/hr
+  drift on a mean that moved −10 psi in 90 min — rates over oscillating plants are
+  least-squares slopes now, window = half the ride (the hot ICs' own fraction).
+- Gates: sg 27 → 32 (mutations 15 → 17, both H-1 re-arms) · cvcs 38 → 43 (24 → 26, the H-2
+  re-arm) · engine 90 (Mode 4 fixture to the ruled 25 %; RHR-align fixture restored by the
+  !SI gate; one anchor re-pointed) · shell 69 (save schema gains the carrier) · loadfollow
+  anchors re-pointed · endurance score updated in `BASELINES`.
+
+---
+
+## Session log — 2026-08-22-develop-d (#507 §F wave 7 — the initial conditions, and a real startup)
+
+**Owner: "Work next"** — the recommended ICs. Full measured record: `Blueprint/PWR2_VALIDATION.md`
+**§71**. Built: `createEngine(initial_state)` with a real registry — `50_percent` and
+`hot_zero_power` beside `hot_full_power` (whose construction path stays byte-identical);
+`cold_shutdown` deliberately absent (no RCP restart exists — the heatup it exists for is
+unreachable; an unknown preset THROWS, the #502 rule). Each IC is the #502 settled
+construction generalized: the donor-cell map about the IC's own Tavg/split, kinetics+xenon at
+that power's own equilibrium, boron trimmed at the IC's own temperature and rod lineup, the
+secondary landed where the duty puts it.
+
+- **The finding (filed #508)**: the no-load Tavg program anchor (557 °F, the WTSM 4-loop
+  figure) saturates at 1106 psia — ABOVE this plant's own 1085 psig MSSV pop. Measured: the
+  post-trip plant parks at 553.3 °F / 1064 psia with a 1090 psia peak — ~10 psi under its
+  safeties. The HZP IC anchors to the plant's own steam side instead (Tsat of the sourced
+  1005 psig = 547.0 °F, the model's own Tsat; the "547.9" this line shipped with was a
+  transcription slip, #510 LOW — Ginna's own pair), dumps booted in PRESSURE mode at 1005 psig.
+- **The startup, measured end to end**: critical ~84 steps; the low-flux block taken at
+  18.2 % (above P-10); 42.6 % through the 35 % setpoint untripped; a continuous fast pull is
+  the startup ACCIDENT (1 % → 100.8 % inside the trip's own 0.5 s delay, `hi_flux_lo`
+  answers — UFSAR 15.4.1's credited trip, unscripted); P-10 auto-revokes a source-level
+  block; unblocking at 100 % power scrams on the spot.
+- **New plumbing**: the kernel FORWARDS `set_trip_block` to the engine when its own trips
+  list is empty (pwr1/rbmk/bwr byte-identical), `getRpsState` MERGES the engine-owned block
+  surface with the trip's OWN 35 % setpoint, and the board's power tile prefers a
+  status-carried setpoint over the static pwr1 row (the #506.7 shape completed). The board
+  gate's tile-presence mutation RETIRED as superseded (the merge made it invisible on a live
+  ride) and replaced by the merge-severed one; its unblock check got a FRESH world after the
+  first version passed vacuously on a sweep-scrammed plant.
+- Gates: engine 68→77 (46 mut) · shell 56→61 (24) · board 11→13 (2) · verify_board_check
+  224→225 · m4/autoctl/e2e_controls/ab/forwarding unmoved (the kernel edits are
+  empty-trips-gated).
+
+**Same session, wave 8 (2026-08-23) — the rod insertion limit** (`PWR2_VALIDATION.md`
+**§72**): the adopted pwr1 curve (null ≤5 %, 70 % floor at rated, control bank only),
+display/annunciator only on this plant. The currency finding: the shared ROD LIMIT LO
+row's 40 is the sourced RIL+10 in pwr1's FINE steps (4/step) — PWR2 overrides to 10 of its
+own. Measured: the curve RECEDES with power, so a plain insertion never closes the margin
+(insert to 145 → power 85.8, limit 121, margin OPENS to 24); the honest approach is
+rods-in + dilution (−0.10 ppm/s closes margin <10 at +35 s, parks at margin 5 / 100.3 %
+untripped; +5 steps at power reaches the limit). Gates: engine 77→82 (50 mut) · shell
+61→64 (27) — tallies from the record run.
+
+**Same session, wave 9 (2026-08-23) — the RCP restart** (`PWR2_VALIDATION.md` **§73**): the
+one-way trip retired. The motor spins the coastdown's own rotor back (same sourced inertia;
+accelerating torque [open] 1.5× rated hydraulic — no motor curve in corpus): measured rated
+speed +13 s / flow >90 % +10 s from rest, coastdown 16.4 % speed at 60 s, natcirc 113 kg/s
+at 300 s. Start gated on the NONVITAL bus (WTSM 3.2 — refused under blackout, lands after
+grid return); nothing auto-restarts. The handswitch SECURED/LOST split is honest (the
+declared LOST-only note retired with its cause). Also fixed en route: the wave-7 CI timeout
+(gates.yml step budget 45→70 — the previous green run had a 90-second margin). Gates:
+sources 31→34 (19 mut) · engine 82→84 (51) · shell 64→67 (28) — tallies from the record
+run. Cold shutdown is UNBLOCKED — its own settled cold construction is the remaining work.
+
+**Same session, wave 10 (2026-08-23) — the shutdown preset + P-11** (`PWR2_VALIDATION.md`
+**§74**): `hot_shutdown` — MODE 4, deliberately: Layer 0's 0.1 MPa floor (Tsat 211 °F)
+makes a ≤200 °F secondary unrepresentable (a floored SG would pour ~61 MW of false heat
+into a colder primary — the review call recorded). The construction: RHR aligned + HX
+THROTTLED (hx 0.5 measured −26 °C/300 s — a cooldown, not a hold), heaters manual-0 (the
+setpoint span floors at the sourced 1700 psig), the #468 trim order STRUCTURAL (cold
+999 ppm > HZP 719 — the inversion is a gate mutation now). P-11 real ([adopted] 13.6 MPa):
+both cooldown blocks request/revoke/refuse per the P-10 law; unblocking at 350 psig
+CASCADES (trip+SI+pumps). THIRD latent protection gap found: `lo_flow` had no P-7 gate —
+secured RCPs read as a loss-of-flow accident; fixed sourced. Heatup measured 87.9 °F/hr on
+pump heat; the pressure sag on cold insurge (heaters off) is the heaters-first lesson
+emergent. Gates: protection 96→100 (55) · true_state 63→64 (18) · engine 84→90 (55) ·
+shell 67→69 (29) — tallies from the record run. **The #468-inversion mutation shipped
+BLIND on its first pass**: the check's "+100 ppm vs hot standby" threshold assumed the
+bank's boron-equivalent at the 10 pcm/ppm direct worth (~368 ppm), but the density
+coupling makes a cold ppm worth more — the inverted order moves boron only **84 ppm**
+(999→915) and slid under. Re-armed against the model's OWN arithmetic (bCold >
+criticalBoron(as-built lineup)+margin+40), not a remembered threshold — the
+tolerance-band-is-a-claim trap, again. Two group-K anchors also went stale under the
+wave-10 cold branches (tavg0, dcDrivers) — the third time this batch a grown shared line
+broke sibling anchors; grep the gates for an edited line's text BEFORE running.
+
+## Session log — 2026-08-23-develop-a (the #507 waves 1–10 Opus swarm review — #510)
+
+**Owner-ordered independent review** of the whole parity umbrella: 9 Opus finder dimensions,
+an adversarial Opus verifier per high/medium claim (instructed to REFUTE by measurement), a
+synthesis pass — 34 agents, ~4.7M tokens. **Full report:
+`Diagnostic/PWR2_REVIEW_507_WAVES_1_10.md`; tracker #510** (7 high + 15 medium CONFIRMED,
+17 low/uncertain, 1 filed high REFUTED). Headlines: a dry SG integrates energy below its
+mass floor (1.88 GW/step; two menu-reachable wedges, one invisible at 243 % power with a
+46 °F cold leg) · the shipped Mode 4 preset goes water-solid in 75 min (seal injection has
+no return path and letdown dies below its 300 psia backpressure) · RHR's UA is derived
+lazily from the BOOT state (96 vs 209 kW/K — the 100 °F/hr limit sits inside the spread) ·
+four un-carried electrical wires (aux spray, RHR pumps, the shed latch's OR-edge, the
+blackout clear's unconditional offsite restore) · the RCP motor stalls at 93 % in cold
+water, flipping the wave-10 heatup compliance number (87.9 → 111.3 °F/hr) · SI adds no
+boron (~6,000 pcm undelivered, a PWR1 parity regression) · wave 1's headline shell fix
+proven blind by injection (defect reverted, 69/0 baseline). The one refuted high is the
+instructive mirror: the "letdown drains forever" claim was the sourced 17 % isolation
+WORKING — the auditor mistook a protection endpoint for a runaway. Verdict: sourced
+mechanisms hold; the defects live at edges no source covered, and the gates' windows
+stopped before the interesting part.
+
+**Same session — the acceptance windows fixed first** *(OWNER DIRECTIVE, 2026-08-23:
+"Let's fix your acceptance windows first.")*: **`test/run_pwr2_endurance.js`** — every
+preset ridden 30–90 sim-min (Mode 4 past its 75-min failure horizon), every #510 wedge
+ridden past where its old gate stopped, at ~19 sim-s/wall-s (~14 min, parallel-safe).
+The settledness LAW replaces value bands: rates at the measured wander floor over the last
+15 min (provenance: a 2-h HFP probe — rates oscillate in sign, dLvl wander ±4 %/hr, net ~0)
+PLUS position vs the boot point, so a sustained drift smaller than the wander still reds on
+position while H-2's 54 %/hr fill reds on rate in any phase. Nine #510 defects ride as
+STRICT xfails (H-2 ×2, H-1 ×2, H-4/H-5/H-6/H-7, M-6) — born failing, promotion-forced on
+fix. The runner's first run caught two of its OWN checks: the RHR-blackout check read
+`rhr_flow_normalized` (unpublished → `undefined || 0` → vacuous pass over 26.6 MMBtu/hr),
+and the shed-order fixture's 5e-4 break left the 17 % low-level cut standing in for the
+latch under test — both rebuilt with asserted PRECONDITIONS. Baseline `9passed 9xfail
+0failed`. §74's "hold" corrected in place; the group-N and shell ATWS checks renamed to
+the boot/mechanism claims their windows honestly make. The evicted #447 themes bullet's
+rescue-worthy trap ("nothing asserted STABILITY, only endpoints") is subsumed by the new
+themes bullet — same lesson, now with a runner enforcing it; the full #447 record stays at
+2026-08-11 below.
+
+## Session log — 2026-08-22-develop-c (#507 waves 4–6 — the grid, the SGTR, and the menu at 21)
+
+**Owner rulings this batch (2026-08-22, selections from options I wrote)**: scope =
+waves 4+5+6 (initial conditions + rod insertion limit deferred); the LOOP row upgrades to
+"Full LOOP + clear"; the SGTR area is a declared-UNVERIFIED typical Westinghouse tube;
+wave 6's row set as recommended (stuck_rod_on_scram and steam_line_break deferred with
+reasons). Full measured record: `Blueprint/PWR2_VALIDATION.md` **§68–70**. Commits: wave 4
+`f4350da` · wave 5 `d14c533` · wave 6 + docs this push.
+
+- **Wave 4, the two-bus electrical model** (§68): LOOP kills the nonvital loads with their
+  selectors standing (RCPs sourced non-diesel-connectable, WTSM 3.2), diesels carry the
+  vital ones; SBO kills those too and the steam-driven TDAFW pump carries the plant (WTSM
+  5.7.5 — its step signature has no power driver to gate, which IS the do-not-gate note).
+  The §62-deferred AFW loss-of-offsite start closed (both pumps, ch10). The heater shed
+  became the NUREG-0737 rising-edge LATCH; the facade finally passes the `ac_available`
+  driver the pressurizer had consumed since birth and never received (a dark wire).
+  Measured discriminator worth keeping: `afw_flow_normalized` reads 1.000 in a LOOP and
+  0.667 in an SBO — exactly the TDAFW-only fraction, the MDAFW power wire's own gauge.
+- **Wave 5, the SGTR** (§69): a break at `sg_primary` discharges into the SECONDARY against
+  the SG's own pressure — the depressurize-to-stop EOP falls out of the ΔP (taper ratio
+  0.301 vs √dP 0.335), the SG overfills (frac 1.59 at 1200 s), containment never moves
+  through 3,037 kg (the bypass signature). Full severity 52.2 kg/s vs the 1982 Ginna
+  event's ~48 *(the Ginna flow figure is itself [recalled] UNVERIFIED — #510 M-15)*. Area
+  [UNVERIFIED] — no tube geometry in any lane's corpus, find_source verdict.
+- **Wave 6, the menu at 21 + the latent trio** (§70): afw_failure / ATWS / failed heaters /
+  stuck spray / rod runaway / tavg drift (BOTH layers, and it drags the TRUE plant down
+  25 °C through the dumps) / the TMI-2 porv lamp (mirror-only, declared). The three wave-3
+  latents: degraded_hpi INERT on flow (wrote a field nothing reads), the seal-leak slider
+  rendered-and-discarded, the panel's `value` key dropped. Plus a real defect the ATWS
+  probe found: `reset_protection` never re-armed the trip edge — reset-then-scram left the
+  rods standing.
+- **Anchor economics, measured**: one grown SG-ledger line broke anchors in THREE gates
+  (`run_pwr2_engine` group E, `run_pwr2_loadfollow` ×3) across two rounds — when a shared
+  physics line grows, grep every gate for its text before running anything.
+- Gate tallies (all at new baselines, mutations all caught): afw 25 (10) · cvcs 38 (24) ·
+  eccs 30 · feedwater 26 (13) · protection 96 (51) · pressurizer 66 (26) · instruments 20
+  (11) · true_state 63 (17) · sg 27 · shell 56 (22) · engine 68 (41) · loadfollow 36 ·
+  hardrules 363 · doc budget OK (one standing-list eviction to TRAPS.md, the #468 theme
+  bullet rescued).
+
+## Session log — 2026-08-22-develop-b (#507 waves 1–3 — boron, the RHR align, and twelve honest casualty rows)
+
+**Owner scope ruling: waves 1–3 now, the rest roadmapped.** Full record with every measured
+number: `Blueprint/PWR2_VALIDATION.md` §67. The headline mechanics:
+
+- **Boron (wave 1)**: the CVCS mass balance was always real — the LEVER was missing. A
+  blender-shaped rate actuator (the balance reduces to `dC/dt = inFlow·(C_in−C)/M`; the
+  letdown terms cancel exactly, so the inversion is one line) with the tank clamp AS the
+  ceiling. Rate 0 bit-identical to untouched; the kernel dose panel end-to-end through the
+  service; the shipped mapper read `c.mode` where every caller sends `rate` — silent-wrong,
+  found by recon, fixed. `run_pwr2_cvcs` 27→35 / 23 mutations.
+- **RHR (wave 2)**: `stepRHR` ran AFTER `stepPlant` with its heats consumed only by
+  true_state — an aligned system removed exactly zero heat (the #458 Q4 orphan). Rewired
+  and measured through a 20 cm² LOCA: aligned tavg 133.9 °C at t=80 vs 150.3 secured. The
+  ruled #458 refusal shape inherited at the shell; `rhr_valve_open` was publishing the
+  PERMISSIVE (open on any depressurized secured plant) — now the valve. Trap kept: **my
+  first two heat-wiring probes were invalid** — forcing `sys.P` mid-ride tripped the
+  beyond-model latch and froze the state bit-exact, which read as "wiring broken" twice;
+  only a REAL depressurization measured the wiring.
+- **Casualties (wave 3)**: menu 4→12. The load-bearing fix is the TWO-LAYER mirror: PWR2
+  runs two instrument layers over one truth, and injected failures landed only on the
+  internal (RPS) one — invisible on the board. Plus stuck-at-VALUE plumbing (CA-4's 20 %)
+  and the `instrument` vs `instrument_id` payload bug. rcp_seal_leak area measured to the
+  holdable class (0.08 cm² → 1.21 kg/s vs 1.85 max charging; 0.2 cm² was 3.0 — unholdable).
+- Board disables 8 → 3 (boron + RHR re-enabled themselves; zero board edits for boron).
+
+---
+
+## Session log — 2026-08-22-develop-a (#506 — the board learns to speak PWR2, the shutdown bank becomes real, and the parity gap gets its inventory)
+
+**The owner's second playtest (#506, filed before the -b fixes landed): seven findings.** All
+seven root-caused with measured evidence and fixed or answered; the full record is
+`Blueprint/PWR2_VALIDATION.md` §66. Owner rulings this session: the shutdown bank must be REAL
+("make this engine has the same features as the old engine. Let's investigate the gaps") and
+the boron panel disables until its actuator exists.
+
+- **Dead buttons were FOUR stacked mechanisms**: refusal throws unwinding the click path
+  uncaught (11 controls, second commands lost — `cmd()` now catches and flashes, #505's
+  visible half) · kernel-terminal silent errors (those controls now read disabled,
+  snapshot-keyed) · **five payload-key mismatches** (HPI/AFW **STOP started the pump** —
+  `c.running` vs the board's `active`; heater MANUAL/OFF/% re-selected AUTO) · absent/pinned
+  control-state fields. `set_steam_dump` un-refused onto the engine's own `dump_mode` door;
+  `set_charging_pump` rehomed to demand.
+- **The shutdown bank**: the lumped `worth: 0.08` literal retired for the kinetics module's
+  gated pair (4068/3676 pcm; **the WTSM 2.2 citation is NOT in the corpus** — recorded, not
+  relabelled); scram inserts both banks on the pwr1 2.5/2.0 s pair (measured trace: sd 0 at
+  t+2.1 s, ctl at t+2.7 s); the drive is group-routed (it silently moved the CONTROL bank
+  before — `group_id` was dropped); boot boron **bit-identical 625.7841 ppm** with withdrawn
+  banks vs null (the #502-safe wiring, measured). Rod S/M/F speeds real: 1.17/10.55 steps per
+  10 s measured through the stack.
+- **The RCP froze on a NaN** (`pumps[0].flow_pct` absent → spin speed NaN → animation '' AND
+  pipe ports dark). Condensate does NOT reproduce (0.97 normalized) — presumed the pre-#501
+  freeze.
+- **The power tile mixed authorities**: STATIC pwr trip table for bands, LIVE `trip_blocks`
+  for arming — an engine with `trips: []` made the 25 % startup trip armed forever (max 27.5,
+  "TRIP 25%", power 99.8 pinned red). `limitingArmedTrip` now requires presence in the live
+  `trip_block_status`; the tbs-less snapshot shape keeps the legacy rule bit-identical.
+- **#500**: `pzr_level_low` 25 → 17 % on PWR2 only (25.0 IS this plant's sourced no-load
+  program point; 17 is the sourced heater cutoff). One copied alarm row, revert mutation.
+- **New gate `run_pwr2_board`** (11 checks / 2 mutations): the driver over a live pwr2
+  service, headless — including the NO-ORPHAN SWEEP (49 buttons: every one
+  handled+acknowledged, momentary, UI-local, or disabled). Trap worth keeping: **a
+  flow-keyed field cannot witness a deadheaded pump** — `hpi_active` and `eccs_mode` both
+  read standby with the HHSI pump RUNNING at 2235 psia, so the STOP-fix check asserts the
+  pump switch white-box.
+- **#507 filed** — the full pwr1-vs-pwr2 parity inventory (commands, fields, 20
+  non-injectable casualties, absent systems, channels, ICs), each row tracked/new. #491
+  verified fixed (ancestor `9412d3d`) and closed.
+
+---
+
+## Session log — 2026-08-21-develop-b (#501–#504 fixed — the pre-seed removed everywhere, the PWR2 IC settled, and what the settling sent blind)
+
+**The bundle from -a's triage, all four fixed on `develop`.** Owner rulings this session:
+"All flat seeds everywhere" [be removed] (selected from options I wrote — reverses #237, the
+2026-08-01 pre-seed and the 2026-07-28 tile preload) and the four-issue bundle confirmed.
+
+- **#501 — the chart pre-seed and every flat seed removed** (`ensurePreseed`/`applyPreseed`
+  + the 360-row flat seed, the gauge-sparkline 60 s seed, the vital-tile preload). Measured
+  before/after on the PWR2 card: **0.9 fps, continuous 1.9 s long tasks → 56.7 fps, zero**.
+  Charts open on the "waiting" lane render and fill from the right; the T+0 line stays.
+  Record: `BUILD_DECISIONS` 2026-08-21-develop-b.
+- **#502 — the isothermal boot retired** (`PWR2_VALIDATION.md` §65). `designHmap`: constants-
+  derived legs at TREF ± DT0_C/2, donor-cell placement (node = OUTLET state — core HOT,
+  sg_primary COLD, measured at a 600 s settle). 60 s untouched: power min **98.2 %** (was
+  76.6), pressure min **2214 psia** (was 2149). Two refutations recorded in §65: re-pointing
+  the kinetics references detonates (928 % in one step); the runback fixture's −2 ppm
+  dilution block overshot the approach band and tripped on its own script (dt 0.02 only) —
+  re-scripted quasi-static. Shell `reset()` now keeps its construction opts; `?init=`
+  validates against the engine's own presets.
+- **#503 — ESF AUTO buttons disable when the engine declares no arm** (`buttonDisabled` off
+  `automation.esf`; measured pwr 0/49 disabled, pwr2 1/49). Dead synoptic ECCS family
+  deleted. Follow-up filed: **#505** (COMMAND_ERROR is invisible to the player).
+- **#504 — recorder first-pass noise gone** (clear→clear rows suppressed; TR-9 added, red
+  9-events on the old code by injection).
+
+**The traps this session adds to the record:**
+- **A gate's sensing can live in the defect's own transient.** Settling the IC sent three
+  run_pwr2_engine mutations blind (relief sink, level-to-charging, dump-to-relief) — the
+  startup ring had been exercising those wires. Each got a deliberate probe with a measured
+  healthy/mutated A/B (ΔM −136 vs −11 kg · Δdemand 0.074 vs 0.000 · dump 75.7 vs 0.0 %).
+- **`testDiagBundle` had passed for ten days on an accident**: stale since the 2026-08-11
+  auto-start ruling, its unconditional play-press PAUSED the running plant, and it survived
+  on fine rows captured in the ~100 ms of 600× between its own two clicks. The pre-seed's
+  boot-time slices were what kept that window wide enough.
+- **board_check's unit-neutral check was entangled with the trend glyph** — the arrow
+  honestly resets when a unit flip clears the trace; the check now compares the value with
+  glyphs stripped and prints before → after.
+- **A mutation replay can wear the BLIND verdict for two unrelated reasons, and both bit in
+  one evening.** (1) The probe block first landed inside the wrong group guard — the file's
+  group order is A, D, B, C, D, and the three grp('A')-scoped replays never ran it (23/26).
+  (2) Fixed placement still left one blind: under the wire-cut the demand stays `null`, the
+  probe's own note string called `.toFixed` on it and THREW — and the harness's "a crash
+  counts as caught" was only true for a crash before the first check records; mid-group it
+  left every recorded check green and read as blind (25/26). Note null-safed AND the harness
+  now counts any crash as caught. What found both was the MUTDBG verbose replay, not the
+  tally.
+
+**Gates**: run_diag_bundle 31→35 · run_events unmoved 40 · verify_board_check 222 ·
+verify_e2e_ui 16 screenshots (testTrendPreseed deleted, testEsfArmButtons added) ·
+run_pwr2_shell 29/29 with **all 14 mutations still caught** (the 700 s save-fixture
+discrimination survived the IC change unmodified) · run_pwr2_engine 41→45 checks ·
+pwr2 family (forwarding 11, true_state 63, protection 95, instruments 17, loadfollow 36)
+all green · full `run_all` at baseline at the Group A gate.
+
+---
+
+## Session log — 2026-08-21-develop-a (PWR2 telemetry triage — the owner's first live session, four defects filed)
+
+**The owner played the PWR2 card and sent telemetry** ("it had some issues… I couldn't type
+into the error report"). The two bundles (`RD_Ops/bug-reports/2026-08-21_*`) are **one
+session exported twice** — same seed 4660, identical command prefix to machine precision —
+not two sessions. Triage only; no code changed. Findings, each reproduced before filing:
+
+- **#501 (high)** — the PWR2 card freezes the UI ~1–2 min after plant select. The chart
+  preseed (`ui/app.js:2525`) runs 1800 probe ticks at 10×; its 40-tick slice was calibrated
+  to the old engine ("~1.04 ms/tick") and a PWR2 tick at 10× is 50 × ~1.1 ms steps ≈ 2 s per
+  slice. Measured headless: 0.9 fps, continuous 1.9 s long tasks, engine stepped 1200/s;
+  ~70 % of CPU samples in `T_from_h`. **This is why the report form would not take typing** —
+  the outage suppressed the reporter's own words.
+- **#502 (high)** — `pwr2_engine.createEngine` ignores `initial_state`; the loop boots
+  isothermal (zero ΔT at 100 % power) and rings: power 100 → 76.6 % at t=2.9 s, Thot
+  580 → 622 °F, 2235 → 2149 psia, recovery by ~60 s. The #479 "free-play IC quirks" item,
+  now numbered and measured.
+- **#503** — ECCS AUTO on the pwr2 board sends `set_esf_auto hpi` into a config that
+  declares only `afw` (`pwr2_shell.js:314`) → COMMAND_ERROR, nothing visible. Orphan control.
+- **#504 (low)** — the recorder logs every alarm as `clear→clear` at t=0.1 s; 47 of 48
+  events in each bundle are non-transitions.
+
+Ops note: `tools/fetch_bug_reports.js` fails under the standing `CLOUDFLARE_API_TOKEN` env
+var (wrangler prefers it over OAuth and it cannot list accounts — same family as #494);
+`CLOUDFLARE_API_TOKEN= node tools/fetch_bug_reports.js` works.
 
 ---
 

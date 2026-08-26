@@ -431,6 +431,41 @@
         </div>
       </div>
 
+      <!-- THE SIMULATION-HALTED DIALOG (#520). The new-physics engine HOLDS when the plant
+           reaches a state its property library cannot compute: state frozen, clock running,
+           every control still accepted and doing nothing. That is the honest continuation —
+           the alternative is fabricating numbers — but until this existed nothing SAID so, and
+           a player got a plausible, internally consistent, completely static plant. Measured on
+           the Three Mile Island timeline: 160 minutes of it.
+           Reuses .mission-overlay / .mission-modal / .mission-head deliberately: this is the
+           same kind of thing as the Plant & Mission window (a full-stop that needs a decision),
+           and a second set of modal chrome would be a second thing to keep consistent. -->
+      <div class="mission-overlay" id="haltOverlay" hidden>
+        <div class="mission-modal halt-modal">
+          <div class="mission-head">
+            <div class="mission-title">⚠ Simulation halted</div>
+            <button class="btn" id="haltDismiss" aria-label="Close">✕ Close</button>
+          </div>
+          <div class="halt-body">
+            <p class="halt-lead">The simulator has stopped calculating and is holding the last
+              state it could compute. The clock is still running, but <strong>nothing on the
+              board is moving and controls will not take effect.</strong></p>
+            <p>This is not a crash, and it is not something you did wrong. The plant reached a
+              condition the physics model has no way to compute — in practice the far end of a
+              deep loss of coolant, where the water property tables run out below about
+              15&nbsp;pounds per square inch absolute. Rather than invent numbers for it, the
+              model stops and says so.</p>
+            <p class="halt-why mono" id="haltWhy"></p>
+            <p class="halt-note">Everything you can see is the last valid reading. To carry on,
+              reset the plant to its initial condition — the current run cannot be continued.</p>
+          </div>
+          <div class="halt-foot">
+            <button class="btn" id="haltInspect">Leave it — let me look at the board</button>
+            <button class="btn halt-go" id="haltReset">Reset plant</button>
+          </div>
+        </div>
+      </div>
+
       <div class="mission-overlay" id="missionOverlay" hidden>
         <div class="mission-modal">
           <div class="mission-head">
@@ -682,8 +717,11 @@
     </div>
   </div>
 
-  <!-- The simulation stack (all three engines + layers), then the UI app. The
-       engine selector (Sim tab) switches between them at runtime. -->
+  <!-- The simulation stack, then the UI app. PWR2 is THE PWR since 2026-08-26: it is
+       what the published site runs and what ?engine= defaults to. The retired engine is
+       still here on dev/preview builds only, inside the DEV-ONLY block below, and the
+       engine selector (Plant & Mission) switches between them at runtime. RBMK/BWR do
+       not load here since #514 — see the note at their old slot below. -->
   <script src="../site/version.js"></script>  <!-- deploy stamp; feedback reports carry it -->
   <script src="../site/release.js"></script>  <!-- player-facing Alpha X.Y.Z, shown by the logo -->
   <script src="../site/channel.js"></script>  <!-- release channel: public | preview | dev -->
@@ -706,24 +744,41 @@
     if (c !== 'public') document.title = '[TEST] ' + document.title;
   }(window.RD_CHANNEL || 'dev'));</script>
   <script src="../engines/load_mode.js"></script>
+  <!-- SHARED PWR INFRASTRUCTURE — these three are NOT the old engine and must never be
+       moved inside the DEV-ONLY block below. PWR2 reuses all of them and throws without
+       the first two: pwr2_shell.js:622 constructs `new RD.PWRInstruments(RD.PWR_CONFIG)`,
+       and pwr2_shell.js:711 builds its protection config from `RD.PWR_CONFIG.protection`,
+       which pwr_control.js:1781 writes. pwr_instruments.js moved UP here from below the
+       old engine so the strippable block is contiguous; it has no load-time dependency on
+       anything (its T_sat is duplicated locally for exactly that reason). -->
   <script src="../engines/pwr/pwr_config.js"></script>
   <script src="../layers/control/pwr_control.js"></script>
+  <script src="../engines/pwr/pwr_instruments.js"></script>
+  <!-- DEV-ONLY-START — the RETIRED PWR physics engine. site/build_site.js and
+       tools/make_portable.js both DELETE this block when the build channel is `public`,
+       so the released site and the offline download carry PWR2 only (532 KB lighter).
+       On dev and preview builds it stays, which is what keeps ?engine=pwr, the campaign,
+       the scenarios and the walkthroughs reachable for vetting and for A/B comparison.
+       The engine is NOT deleted from the repo: test_pwr.html, ~30 Node runners and
+       test/measure_pwr2_ab.js all still drive it. test/run_site_build.js proves BOTH
+       directions of the strip. pwr_pressurizer.js/pwr_pressurizer2.js must stay adjacent
+       and in this order — test/verify_pzr2_loadlists.js gates that pairing. -->
   <script src="../engines/pwr/pwr_thermal.js"></script>
   <script src="../engines/pwr/pwr_pressurizer.js"></script>
   <script src="../engines/pwr/pwr_pressurizer2.js"></script>
   <script src="../engines/pwr/pwr_primary.js"></script>
   <script src="../engines/pwr/pwr_steam_generator.js"></script>
-  <script src="../engines/pwr/pwr_instruments.js"></script>
   <script src="../engines/pwr/pwr_engine.js"></script>
-  <!-- RBMK (M2): protection before config so forVersion() stitches it in -->
-  <script src="../layers/control/rbmk_control.js"></script>
-  <script src="../engines/rbmk/rbmk_config.js"></script>
-  <script src="../engines/rbmk/rbmk_kinetics.js"></script>
-  <script src="../engines/rbmk/rbmk_thermal.js"></script>
-  <script src="../engines/rbmk/rbmk_rods.js"></script>
-  <script src="../engines/rbmk/rbmk_instruments.js"></script>
-  <!-- PWR2, the physics rebuild's parallel phase (#479 Option B) — gate order, same as
-       every test/run_pwr2_*.js. Selected via ?engine=pwr2 only. -->
+  <!-- DEV-ONLY-END -->
+  <!-- RBMK and BWR NO LONGER LOAD HERE (#514, owner-ruled): both plants are on hold, their
+       menu cards are greyed (soon: true) and unreachable by any player, and their ~308 KB
+       loaded on every session regardless of engine. The engines, controls and scenarios
+       stay in the repo (Node suites + test_rbmk.html / test_bwr.html are the dev route);
+       restoring them to the shell is restoring these tags — see git log for the block. -->
+  <!-- PWR2 — THE PWR (#479). Gate order, same as every test/run_pwr2_*.js: pwr2_engine
+       before pwr2_shell, and pwr2_water first. This is the default engine and the only
+       one a published build carries; ?engine=pwr reaches the retired one on a dev or
+       preview build, where the block above still loads. -->
   <script src="../engines/pwr2/pwr2_water.js"></script>
   <script src="../engines/pwr2/pwr2_vtable.js"></script>
   <script src="../engines/pwr2/pwr2_geometry.js"></script>
@@ -752,15 +807,6 @@
   <script src="../engines/pwr2/pwr2_feedwater.js"></script>
   <script src="../engines/pwr2/pwr2_engine.js"></script>
   <script src="../engines/pwr2/pwr2_shell.js"></script>
-  <script src="../engines/rbmk/rbmk_engine.js"></script>
-  <!-- BWR (M3) -->
-  <script src="../engines/bwr/bwr_config.js"></script>
-  <script src="../layers/control/bwr_control.js"></script>
-  <script src="../engines/bwr/bwr_vessel.js"></script>
-  <script src="../engines/bwr/bwr_recirculation.js"></script>
-  <script src="../engines/bwr/bwr_safety_systems.js"></script>
-  <script src="../engines/bwr/bwr_instruments.js"></script>
-  <script src="../engines/bwr/bwr_engine.js"></script>
   <script src="../layers/control/control_kernel.js"></script>
   <script src="../layers/instructor_layer.js"></script>
   <script src="../layers/simulation_service.js"></script>
@@ -792,16 +838,7 @@
   <script src="../scenarios/pwr_mode5_to_mode3.js"></script>
   <script src="../scenarios/pwr_mode3_to_mode5.js"></script>
   <script src="../scenarios/pwr_return_to_mode1.js"></script>
-  <script src="../scenarios/rbmk_tour.js"></script>
-  <script src="../scenarios/rbmk_void.js"></script>
-  <script src="../scenarios/rbmk_ar.js"></script>
-  <script src="../scenarios/rbmk_chernobyl.js"></script>
-  <script src="../scenarios/rbmk_az5_fixed.js"></script>
-  <script src="../scenarios/bwr_tour.js"></script>
-  <script src="../scenarios/bwr_recirc.js"></script>
-  <script src="../scenarios/bwr_isolation.js"></script>
-  <script src="../scenarios/bwr_fukushima.js"></script>
-  <script src="../scenarios/bwr_qualify.js"></script>
+  <!-- rbmk_*/bwr_* scenarios: removed with their engines (#514) — see the note above -->
   <script src="panels/one_over_m.js"></script>
   <script src="campaign_data.js"></script>
   <!-- Operator's manual data (generated reference + authored procedures) -->

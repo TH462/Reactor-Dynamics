@@ -1635,6 +1635,12 @@ Two equations, one unknown.**
 
 ### 25.2 The fix — three states, not four
 
+> **AS BUILT (2026-08-25, #515, D5 §85):** five intensive states plus a ledger, not three —
+> `h_stm, h_sat, h_sub` with their masses. The third region (a stratified bottom layer) is what
+> §43.2's formulation 2 measured missing: a single mixed liquid state hands the bubble's job to
+> compressed-liquid density. The closure below stands; the seat compresses each region along
+> `dh = v·dP` and fills the slack.
+
 ```
 STATES    h_liq, h_steam, m_pzr                          (three)
 DERIVED   V_liq = (m_pzr − ρ_v·V_pzr) / (ρ_l − ρ_v)      one division, no iteration

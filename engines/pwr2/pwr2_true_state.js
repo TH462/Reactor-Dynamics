@@ -45,6 +45,12 @@
 
   var RD = root.RD && root.RD.pwr2;
   var W  = RD && RD.water;
+  /* #514: node temperatures through the table (pwr2_core's idiom). The five temperature
+   * fields were each pwr2_water's 40-iteration Newton — ~14 % of the whole engine step,
+   * paid once per physics step (18,000 of these objects are built per broadcast at 3600x,
+   * because the instruments need a fresh truth every step). */
+  var VT = RD && RD.vtable;
+  var TFH = VT ? VT.T_from_h : (W && W.T_from_h);
 
   /* ---- WHAT IS NOT BUILT, AND WHO OWNS IT ---------------------------------------------------
    * Every entry is a documented §6.3 field this engine cannot honestly supply. The reason is not
@@ -72,30 +78,27 @@
       STATIC[f] = { system: system, reason: reason, value: fieldValues[f] };
     });
   }
-  declareStatic('failure injection', 'the spray valves have no failure lever yet — the value ' +
-    'states that the failure is not injectable, not that a lever reads healthy',
-    { spray_stuck: false });
+  /* the 'failure injection' spray_stuck static RETIRED #507 wave 6 — drivers.spray_stick is
+   * a real lever now (the porv_stick twin) and the field is LIVE from the pressurizer result */
   declareStatic('containment ESF', 'sprays, fans and recombiners are unmodeled (pwr2_containment ' +
     'header) — false/0 states their absence; a large-LOCA A/B diverges here by design',
     { ctmt_h2_burned: 0, ctmt_spray_demand: false, ctmt_spray_active: false,
       ctmt_fan_safety: false, ctmt_fan_active: false,
       ctmt_recomb_demand: false, ctmt_recomb_active: false });
-  declareStatic('steam lines', 'no MSIV model — the line is genuinely always open',
-    { msiv_open: true });
-  declareStatic('electrical', 'no electrical model — AC is genuinely always available here',
-    { station_blackout: false, ac_available: true });
+  /* the 'steam lines' msiv_open static RETIRED #511 — the MSIV is a real valve (see the
+   * secondary block below) */
+  /* the 'electrical' static RETIRED #507 wave 4 — station_blackout / ac_available are LIVE
+   * fields now, supplied from the facade's two-bus state (see the B1 block below) */
   declareStatic('secondary', 'a single-SG plant cannot have an SG imbalance',
     { sg_imbalance_active: false });
   declareStatic('turbine', 'the turbine is dispatched by an operator load target — the only ' +
     'mode this model has', { load_mode: 'manual' });
-  declareStatic('AFW', 'no AFW block lever exists', { afw_blocked: false });
-  declareStatic('ECCS accumulators', 'DECLARED OMISSION (pwr2_eccs.js header): an accumulator ' +
-    'is an inventory with expanding cover gas, deferred to the compressible-volume work. ' +
-    'Nominals are honest at steady state and WRONG in a large LOCA — the predicted-divergence ' +
-    'set (D4 sec 8) carries them.',
-    { accumulator_valve_open: true, accumulators_discharging: false,
-      accumulator_flow_normalized: 0, accumulator_volume_pct: 100,
-      accumulator_pressure_mpa: 4.14 });
+  /* the 'AFW' afw_blocked static RETIRED #507 wave 6 — the discharge block is real state
+   * (pwr2_afw af.blocked, the TMI-2 tagged-shut valves) and the field is LIVE below */
+  /* the 'ECCS accumulators' statics RETIRED #511 (2026-08-24) — the tank is real state now
+   * (pwr2_eccs ec.acc: water under isothermally-expanding nitrogen) and all five fields are
+   * LIVE below. The 'steam lines' msiv_open static retires in the same change — the MSIV is
+   * a real valve (pwr2_engine eng.msiv). */
 
 
   /* ⚠ THE PRESSURIZER BLOCK SHRANK ON 2026-08-18 — pwr2_pressurizer.js exists (owner ruling
@@ -148,21 +151,19 @@
   /* ---- THE TRANSLATION ---------------------------------------------------------------------
    * buildTrueState(ctx) — ctx carries the live plant and the most recent return of each Layer 5
    * system. Nothing here recomputes physics; if a value is not in ctx it is not in the output. */
-  function nodeT(sys, id) {
-    for (var i = 0; i < sys.nodes.length; i++) {
-      if (sys.nodes[i].id === id) return W.T_from_h(sys.nodes[i].h, sys.P);
-    }
-    return undefined;
+  /* Both take the ONE id->node map buildTrueState builds per call — the old per-field linear
+   * scans re-walked sys.nodes seven times a step (#514). */
+  function nodeT(nd, P, id) {
+    var n = nd[id];
+    return n ? TFH(n.h, P) : undefined;
   }
   /* nodeAlpha — the HOMOGENEOUS VOID FRACTION, not quality. The *_void_fraction fields shipped
    * publishing W.quality under a "same number by construction" claim; alpha and x differ 5-16x
    * over this plant's pressure range, so a consumer read 1.5 % on a core 15-20 % void by volume
    * (#490, audit #488 E16.1). Layer 0 owns the conversion. */
-  function nodeAlpha(sys, id) {
-    for (var i = 0; i < sys.nodes.length; i++) {
-      if (sys.nodes[i].id === id) return W.voidFraction(sys.nodes[i].h, sys.P);
-    }
-    return undefined;
+  function nodeAlpha(nd, P, id) {
+    var n = nd[id];
+    return n ? W.voidFraction(n.h, P) : undefined;
   }
 
   function clip(x, lo, hi) { return x < lo ? lo : (x > hi ? hi : x); }
@@ -182,25 +183,42 @@
     var ts = {};
     function put(k, v) { if (v !== undefined && v !== null) ts[k] = v; }
 
+    /* the ONE node scan (#514) — see nodeT above */
+    var nd = {};
+    for (var ni = 0; ni < sys.nodes.length; ni++) nd[sys.nodes[ni].id] = sys.nodes[ni];
+
     /* --- primary thermal-hydraulics, from Layers 2-4 --- */
     put('pressure_mpa',  sys.P);
     put('p_hotleg',      sys.P);          /* ONE PRESSURE — see the header */
     put('p_coldleg',     sys.P);
     put('p_pumpsuction', sys.P);
-    put('thot_c',        nodeT(sys, 'hot_leg'));
-    put('tcold_c',       nodeT(sys, 'cold_leg'));
+    var tHot = nodeT(nd, sys.P, 'hot_leg'), tXo = nodeT(nd, sys.P, 'crossover');
+    put('thot_c',        tHot);
+    put('tcold_c',       nodeT(nd, sys.P, 'cold_leg'));
     /* ⚠ the core node's BULK temperature under an EXIT name — the lumped model has no axial
      * profile, so a real exit reading would sit ~half the core dT higher (~15-20 degF at
      * rated). Declared here because the header's one-pressure caveat did not cover it
      * (audit #488 E16.3). */
-    put('t_core_exit_c', nodeT(sys, 'core'));
-    put('tavg_c',        RD.sg ? RD.sg.primaryTavg(sys) : undefined);
-    put('core_void_fraction',    nodeAlpha(sys, 'core'));
-    put('primary_void_fraction', nodeAlpha(sys, 'hot_leg'));
+    put('t_core_exit_c', nodeT(nd, sys.P, 'core'));
+    /* Tavg comes IN from the engine's own step when it has one (#514 — stepInner already
+     * computes it for the SG drive; recomputing here doubled primaryTavg's two leg inverses).
+     * A caller without one (hand-wired harnesses) still gets the identical helper. */
+    put('tavg_c',        ctx.tavg !== undefined ? ctx.tavg
+                                                : (RD.sg ? RD.sg.primaryTavg(sys) : undefined));
+    put('core_void_fraction',    nodeAlpha(nd, sys.P, 'core'));
+    put('primary_void_fraction', nodeAlpha(nd, sys.P, 'hot_leg'));
+    /* #517 — HOW DRY. `core_void_fraction` clips at 1, so from the moment the core goes fully
+     * void it is a constant and the board can no longer distinguish a core that has just dried
+     * out from one 131 degC into superheat. Measured, 5 cm2 unmitigated break: void hits 1.0 at
+     * 580 s and this is the ONLY field that moves for the next 1,220 s. 0 whenever the core node
+     * is at or below h_g, so it reads 0 through every normal evolution. */
+    put('core_superheat_c', (function () {
+      var n = nd.core;
+      return n ? W.superheat_c(n.h, sys.P) : undefined;
+    })());
     /* Subcooling from TRUE P and T, exactly as the contract line says — Layer 0 owns the
      * saturation line, the loop owns the temperatures, nothing here is invented. The suction
      * margin reads the CROSSOVER node, the leg that feeds the RCP. */
-    var tHot = nodeT(sys, 'hot_leg'), tXo = nodeT(sys, 'crossover');
     if (tHot !== undefined) put('subcooling_c', W.subcooling(tHot, sys.P));
     if (tXo !== undefined)  put('suction_subcool_c', W.subcooling(tXo, sys.P));
 
@@ -212,6 +230,7 @@
       put('pzr_mass_frac', pz.m_pzr / sys.M_total);
     }
     put('pzr_heaters_shed',  pz.heaters_shed);
+    put('spray_stuck',       pz.spray_stuck === true);   /* LIVE since #507 wave 6 */
     put('porv_open',         pz.porv_open);
     put('porv_stuck',        pz.porv_stuck);
     put('block_valve_open',  pz.block_valve_open);
@@ -292,8 +311,14 @@
     put('letdown_flow_actual',  cv.letdown_kgs * FRAC_PER_KGS);
 
     /* --- RHR --- */
-    put('rhr_active',     rh.duty_kW !== undefined ? rh.duty_kW > 0 : undefined);
-    put('rhr_valve_open', rh.permissive_may_open);
+    /* THE VALVE, like the contract and the old engine (#510 M-10): §6.3 defines the field
+     * as "aligned = hot-leg suction valve open" and pwr1 mirrors rhr_valve_open. The old
+     * duty>0 form painted "RHR Active: no" over "RHR Suction Valve: OPEN" on the shipped
+     * Mode 4 preset (aligned, HX throttled to a hold — duty 0 by intent). */
+    put('rhr_active',     rh.valve_open !== undefined ? rh.valve_open === true : undefined);
+    /* THE VALVE, not the permissive (#507 wave 2) — the old form read open on any
+     * depressurized plant with the system secured, a lamp lying about the lineup */
+    put('rhr_valve_open', rh.valve_open !== undefined ? rh.valve_open : rh.permissive_may_open);
 
     /* --- break / leak --- */
     put('leak_flow', br.mdot_kgs !== undefined ? br.mdot_kgs : 0);   /* no break = zero leak, stated */
@@ -311,16 +336,35 @@
      * [derived] naming state pwr2_eccs.js already carries, not new physics: `mode` and the two
      * booleans/normalization below are read straight off its flow return, not computed here. */
     if (ec.total_kgs !== undefined) {
-      put('hpi_active', ec.total_kgs > 0);
+      /* PUMP injection only (#511): the accumulator is passive and has its own fields below —
+       * before the split an accumulator dump lit hpi_active and read as pump flow */
+      var pumpKgs = (ec.hhsi_kgs || 0) + (ec.lhsi_kgs || 0);
+      put('hpi_active', pumpKgs > 0);
       if (RD.eccs) {
         var hpiRated = RD.eccs.hhsiFlow(0) + RD.eccs.lhsiFlow(0);     /* nameplate, both trains */
-        if (hpiRated > 0) put('hpi_flow_normalized', ec.total_kgs / hpiRated);
+        if (hpiRated > 0) put('hpi_flow_normalized', pumpKgs / hpiRated);
       }
       var mode = 'standby';
       if (ec.hhsi_kgs > 0 && ec.lhsi_kgs > 0) mode = 'both';
       else if (ec.hhsi_kgs > 0) mode = 'hhsi';
       else if (ec.lhsi_kgs > 0) mode = 'lhsi';
+      /* an ALIGNED RHR wins the word (#507 wave 2): shutdown cooling and low-head injection
+       * are the same pumps in two alignments (#458), and the lineup word says which */
+      if (rh.valve_open === true) mode = 'rhr';
       put('eccs_mode', mode);
+    }
+    /* --- the accumulator (#511 — LIVE; the five old statics retired) --- */
+    if (ec.acc_pressure_mpa !== undefined) {
+      put('accumulator_valve_open',     ec.acc_valve_open === true);
+      put('accumulators_discharging',   (ec.acc_kgs || 0) > 0);
+      put('accumulator_volume_pct',     100 * (ec.acc_water_frac !== undefined ? ec.acc_water_frac : 0));
+      put('accumulator_pressure_mpa',   ec.acc_pressure_mpa);
+      /* normalized to the sourced full-dump rate (M0 / 36 s), so 1.0 is the design-basis
+       * blowdown discharge — the same convention the flow coefficient is solved against */
+      if (RD.eccs && RD.eccs.ACC) {
+        var accRated = RD.eccs.accK() * Math.sqrt(RD.eccs.ACC.p0_mpa / 2);
+        if (accRated > 0) put('accumulator_flow_normalized', (ec.acc_kgs || 0) / accRated);
+      }
     }
 
     /* --- AFW --- */
@@ -330,6 +374,7 @@
        * which made a demanded pump with avail 0 read SECURED — the self-healing shape. */
       put('afw_pump_running', !!(aw.mdafw_running || aw.tdafw_running));
       put('afw_active',       aw.total_kgs > 0);
+      put('afw_blocked',      aw.blocked === true);      /* LIVE since #507 wave 6 */
       put('afw_flow_normalized', aw.afw_flow_normalized);
     }
 
@@ -352,6 +397,24 @@
      * visibility rather than something to paper over here. */
     put('scrammed', pt.reactor_trip);
 
+    /* ---- THE MODEL HAS STOPPED, AND UNTIL #517 NOBODY WAS TOLD ---------------------------------
+     * `pwr2_core` latches `sys.beyond_model` when the plant leaves the range Layer 0 is
+     * characterised over, and every later step HOLDS: state frozen, clock running (the #487/#499
+     * contract). That is the right physics answer — a fabricated continuation would be worse. But
+     * the flag lived on `sys` and NOTHING published it: `grep beyond_model ui layers` returned
+     * zero hits, no true_state key matched it, and the player got a plausible, internally
+     * consistent, completely static plant that went on accepting commands. Measured on the TMI
+     * ride: identical values for 160 minutes, `plant_mode` still 'Hot Standby', destruction cause
+     * 'none'. A simulator that has stopped simulating must SAY SO — that is Hard Rule 1's spirit
+     * (never soften the gap between the model and the truth) applied to the model itself.
+     * `held_why` is the facade's own reason string when it has one, so a report carries the cause
+     * rather than just the fact. */
+    put('model_held', ctx.beyond_model === true);
+    /* 'none' rather than null, because `put` DROPS null and a field that only exists on a held
+     * plant is a field `run_contract` can never see — the same convention `destruction_cause`
+     * already uses for exactly this reason. */
+    put('model_held_why', ctx.held_why || 'none');
+
     put('clad_temp_c',       rx.T_clad_c);
     put('fuel_damaged',      dg.fuel_damaged);
     put('melted',            dg.melted);
@@ -364,10 +427,23 @@
      * from the current engine are marked [adopted] with their source constant — they are
      * gauge calibrations, not physics. */
 
-    /* --- plant mode: this engine models At Power and post-trip Hot Standby only --- */
-    var atPower = (ts.power_pct !== undefined ? ts.power_pct : 0) > 2 && ts.scrammed !== true;
-    put('plant_mode', atPower ? 1 : 3);
-    put('plant_mode_name', atPower ? 'At Power' : 'Hot Standby');
+    /* --- plant mode, the commercial ladder (#507 wave 10): Mode 1 at power, then by Tavg —
+     * Mode 5 Cold Shutdown below 200 degF (93.3 degC, unreachable while Layer 0 floors at
+     * 0.1 MPa — the branch exists for the day it extends), Mode 4 Hot Shutdown to 350 degF
+     * (176.7 degC), Mode 3 Hot Standby above. Mode 2 (Startup, criticality to 5 %) is
+     * folded into 3 — DECLARED, the band is minutes wide on this plant. The At-Power
+     * threshold is the commercial ladder's own 5 % (#510 LOW: it shipped at 2 %, so the
+     * 2-5 % band printed "At Power" while this comment claimed it folded into 3). --- */
+    var atPower = (ts.power_pct !== undefined ? ts.power_pct : 0) > 5 && ts.scrammed !== true;
+    var tvM = ts.tavg_c;
+    var mode = atPower ? 1
+             : (typeof tvM === 'number' && tvM < 93.3) ? 5
+             : (typeof tvM === 'number' && tvM < 176.7) ? 4
+             : 3;
+    put('plant_mode', mode);
+    put('plant_mode_name', mode === 1 ? 'At Power'
+                         : mode === 5 ? 'Cold Shutdown'
+                         : mode === 4 ? 'Hot Shutdown' : 'Hot Standby');
 
     /* --- feed train (REAL since 2026-08-21 — pwr2_feedwater retired feed ≡ steam): the
      * delivered main-feed fraction from the module, plus AFW on the same rated-steam scale
@@ -380,6 +456,12 @@
       put('condensate_flow_normalized', ctx.feedwater.feed_frac);
     }
     put('condensate_pump_running',   ctx.condenser_available === true);
+
+    /* --- electrical (LIVE since #507 wave 4 — the registered static retired): the facade's
+     * two-bus state. Absent ctx means a healthy grid (module fixtures build without an
+     * engine), the acAvailable absent-means-powered convention. --- */
+    put('ac_available',     ctx.ac_available !== false);
+    put('station_blackout', ctx.station_blackout === true);
 
     /* --- NIS display channels [adopted]: cps = k_sr*P, amps = k_ir*P with the current
      * engine's k_sr 5.0e8 / k_ir 8.333e-3 (pwr_config.js nis block) — gauge scales, not
@@ -396,7 +478,21 @@
      * no water level; sustained high core void is the nearest honest stand-in. Expect A/B
      * divergence here — that is the point of the proxy class. --- */
     var aCore = ts.core_void_fraction !== undefined ? ts.core_void_fraction : 0;
-    put('core_uncovered_frac', clip((aCore - 0.5) / 0.5, 0, 1));
+    /* ⚠ THE PROXY SATURATED, AND THE SATURATION WAS THE WHOLE BLIND SPOT (#517). void 0.5 -> 1.0
+     * maps onto 0 -> 100 % and then STOPS: on the 5 cm2 unmitigated ride this pinned at 100 % at
+     * 580 s and reported the identical number for the remaining 1,220 s, while the core went on
+     * drying (0 -> 131 degC of superheat) and the clad climbed 555 -> 677 degF. "100 % uncovered"
+     * an hour before anything is actually damaged is a proxy that has stopped carrying
+     * information. Superheat is the only quantity that still moves there, so the top of the range
+     * is now the DRYING half: void does 0 -> 0.9 of the scale, superheat the last 0.1 over a
+     * [derived] 150 degC span (the 5 cm2 ride plateaus at 131, the 20 cm2 reaches 248 — so the
+     * span is inside the measured envelope and does not peg on the ordinary case).
+     * STILL A DECLARED HEM PROXY: there is no water level here and this does not invent one —
+     * it stops throwing away the one signal the homogeneous model does have. #472's stratified
+     * vessel is what replaces it. */
+    var shCore = ts.core_superheat_c !== undefined ? ts.core_superheat_c : 0;
+    put('core_uncovered_frac',
+        clip(0.9 * (aCore - 0.5) / 0.5, 0, 0.9) + clip(0.1 * shCore / 150, 0, 0.1));
 
     /* --- SG levels: PWR2's REAL secondary mass through the current engine's SOURCED level
      * geometry [adopted: sg_mass_map, pwr_config.js — same Ginna 85,359 lbm nominal both
@@ -424,6 +520,11 @@
       put('rcp_cavitation_frac', pumpOn ? cavF : 0);
       put('rcp_cavitating', pumpOn && cavF > 0.5);
     }
+
+    /* --- the MSIV (#511 — LIVE; the 'steam lines' static retired). Absent ctx means OPEN:
+     * a layer fixture with no MSIV machinery is a line with nothing shut in it, which is
+     * also what keeps the field accounted for on engine-direct fixtures. --- */
+    put('msiv_open', ctx.msiv_open !== false);
 
     /* --- turbine valves: the governor IS the steam demand; the stop valve is the trip --- */
     var tripped = ctx.turbine_tripped === true;

@@ -335,6 +335,139 @@ function runSuite(L, rec, quiet) {
       })(), 'a quarter of the flow buys about four times the step -- so it is the FLOW that binds, ' +
       'not a constant somebody wrote down');
 
+  /* ---- #518: THE CANARY MEASURES THE FLOW THAT ACTUALLY TRANSPORTS -----------------------------
+   * For nine days this divided by `sys.mdot_loop` -- the HEAD flow, one number for the whole ring
+   * -- while donor-cell moves `sys.junctionFlow[id]`, DERIVED per node. Identical on a healthy
+   * plant, nothing alike late in a blowdown: measured on the severity-1 LOCA, derived flows reach
+   * 990 -> 13,697 -> 124,675 kg/s against a head flow of 76-87, the true per-junction Courant
+   * number reaches 2,745, and `courantOK` reported ZERO violations on every step of that ride.
+   *
+   * ⚠ THE OLD CHECKS ABOVE COULD NOT HAVE CAUGHT IT, and that is the point of this pair. Every
+   * one of them runs on a plant whose junction flows equal the head flow, where the two forms are
+   * the SAME NUMBER -- the defect lived exactly where nothing stood. So this constructs the
+   * divergence directly: one node carrying far more than the head flow. */
+  ckT('the limit binds on the DERIVED junction flow, not on the head flow (#518)',
+      (function () {
+        var s = mk(), before = L.courantLimit(s);
+        /* one junction running 100x the head flow -- the late-blowdown signature, hand-built */
+        s.junctionFlow[L.RING[4]] = s.mdot_loop * 100;
+        var after = L.courantLimit(s);
+        return after < before / 50 && after > 0;
+      })(),
+      'a junction at 100x the head flow tightens the limit ~100x; on the head-flow form it moved ' +
+      'NOTHING, which is how a 2,745 Courant ride reported 0 violations');
+  ckT('...so courantOK can now actually FIRE on that state — the canary was dead, not quiet',
+      (function () {
+        var s = mk();
+        s.junctionFlow[L.RING[4]] = s.mdot_loop * 100;
+        /* a dt comfortably inside the HEAD-flow limit but far outside the real one */
+        return L.stepLoop(s, 0.02, {}).courantOK === false;
+      })(),
+      'dt = 0.02 s is 18x inside the head-flow limit and outside the junction one');
+
+  /* ---- #518: THE SUB-STEP ----------------------------------------------------------------------
+   * D2 §17.5 ADOPTED sub-stepping and it was never built. It is built in Layer 3, so Layer 2's
+   * own "exactly dt" contract stays exact on every call. THREE claims, and the third is the one
+   * that matters: the interval must still sum to exactly dt (D2 §24.2), because the service
+   * credits the clock unconditionally and a deficit is silent forever. */
+  ckT('N is 1 in the healthy regime — the sub-step costs nothing where nothing is wrong (#518)',
+      L.stepLoop(mk(), 0.02, {}).subSteps === 1 &&
+      L.stepLoop(mk(), lim * 0.5, {}).subSteps === 1,
+      'at the house dt and at half the limit; a term that engaged everywhere would be a tax');
+  ckT('...and it ENGAGES past the limit, scaling with how far past',
+      (function () {
+        var a = L.stepLoop(mk(), lim * 2, {}).subSteps;
+        var b = L.stepLoop(mk(), lim * 8, {}).subSteps;
+        return a >= 2 && b > a;
+      })(),
+      'N ' + L.stepLoop(mk(), lim * 2, {}).subSteps + ' at 2x the limit, ' +
+      L.stepLoop(mk(), lim * 8, {}).subSteps + ' at 8x');
+  ckT('...and however it subdivides, the clock advances EXACTLY dt (D2 §24.2)',
+      (function () {
+        var worst = 0;
+        [[0.02, 500], [1.0, 50], [5.0, 20]].forEach(function (c) {
+          var s = L.createLoop({ h: H0, P: 15.41, mdot: 1630 }), t0 = s.simTime;
+          for (var i = 0; i < c[1]; i++) L.stepLoop(s, c[0], {});
+          var e = Math.abs((s.simTime - t0) - c[1] * c[0]);
+          if (e > worst) worst = e;
+        });
+        return worst < 1e-9;
+      })(),
+      'worst drift over 500 steps at dt = 0.02, 50 at 1.0 and 20 at 5.0 s is floating-point ' +
+      'accumulation, not a systematic deficit — the failure D1 §8 calls silent');
+  /* THE SEMANTIC THE FIX MUST NOT BREAK. If courantOK went true because the layer sub-stepped,
+   * the canary would be asleep again — which is the whole defect #518 is about. It reports the
+   * OUTER dt the caller asked for, always. */
+  /* ⚠ THE INVARIANT THAT MAKES THE SUB-STEP MEAN ANYTHING, and the first version of this section
+   * did not have it: the frozen-flow mutation was BLIND to every check above. Sub-stepping a
+   * FROZEN flow set N times is not sub-stepping — it advances the same wrong transport N times in
+   * smaller pieces and arrives at the same wrong answer. The flows must be re-walked off each
+   * sub-step's own dm/dt, and the claim that says so is an EQUIVALENCE: one call that subdivides
+   * into N must land where N calls of dt/N land. Driven with a heat imbalance so the junction
+   * flows actually MOVE between sub-steps — on a flat plant they do not, and the check would be
+   * vacuous exactly the way the ones above turned out to be. */
+  ckT('one call sub-stepping N times lands where N calls of dt/N land (#518)',
+      (function () {
+        var D = { heats: { core: 250000, sg_primary: -250000 } };
+        var big = L.createLoop({ h: H0, P: 15.41, mdot: 1630 });
+        var rB = L.stepLoop(big, 1.0, D);
+        if (!(rB.subSteps > 1)) return false;              /* precondition: it MUST subdivide */
+        var many = L.createLoop({ h: H0, P: 15.41, mdot: 1630 });
+        for (var i = 0; i < rB.subSteps; i++) L.stepLoop(many, 1.0 / rB.subSteps, D);
+        var worst = 0;
+        L.RING.forEach(function (id) {
+          var a = big.junctionFlow[id], b = many.junctionFlow[id];
+          var d = Math.abs(a - b) / Math.max(1, Math.abs(b));
+          if (d > worst) worst = d;
+        });
+        var dP = Math.abs(big.P - many.P);
+        return worst < 1e-6 && dP < 1e-6;
+      })(),
+      'N = ' + L.stepLoop(L.createLoop({ h: H0, P: 15.41, mdot: 1630 }), 1.0,
+        { heats: { core: 250000, sg_primary: -250000 } }).subSteps +
+      '; junction flows and pressure agree to 1e-6 — a frozen flow set diverges here');
+
+  /* ---- #518: TIMESTEP CONVERGENCE — the claim that the freeze was NUMERICAL ------------------
+   * This is the assertion the whole fix rests on. If the house dt and a quarter of it disagree,
+   * the answer at the house dt is not a plant trajectory, it is a discretisation artefact — and
+   * that is exactly what the pre-#518 blowdown was: dt = 0.02 froze at 160.8 s while dt = 0.01,
+   * 0.005 and 0.0025 all ran on and agreed to 0.2 % (207.8 / 207.6 / 207.4 psia). Asserted here
+   * on the LOOP, at Layer 3, where the transport lives, rather than through the whole engine:
+   * driven hard enough that the house dt would violate the limit without the sub-step.
+   *
+   * ⚠ WHAT THIS DOES NOT CLAIM: accuracy. D2 §26.3 declares the low-pressure regime structurally
+   * coarse — "Sub-stepping and the bracketed closure keep it stable and conservative; they do not
+   * make it accurate" — and this check is agreement between two discretisations of the SAME
+   * model, which is stability, not truth. */
+  ckT('the house dt agrees with dt/4 where the limit binds — the answer is CONVERGED (#518)',
+      (function () {
+        var D = { heats: { core: 400000, sg_primary: -400000 } };
+        var coarse = L.createLoop({ h: H0, P: 15.41, mdot: 1630 });
+        var fine   = L.createLoop({ h: H0, P: 15.41, mdot: 1630 });
+        var engaged = false;
+        for (var i = 0; i < 40; i++) {
+          if (L.stepLoop(coarse, 0.5, D).subSteps > 1) engaged = true;
+          for (var j = 0; j < 4; j++) L.stepLoop(fine, 0.125, D);
+        }
+        if (!engaged) return false;                 /* precondition: the sub-step must have run */
+        var dP = Math.abs(coarse.P - fine.P) / Math.abs(fine.P);
+        var dh = 0;
+        coarse.nodes.forEach(function (n, k) {
+          var e = Math.abs(n.h - fine.nodes[k].h) / Math.max(1, Math.abs(fine.nodes[k].h));
+          if (e > dh) dh = e;
+        });
+        return dP < 5e-3 && dh < 5e-3;
+      })(),
+      'dt = 0.5 s sub-stepped against 4x dt = 0.125 s over 20 s of forced transient — pressure ' +
+      'and every node enthalpy agree to 0.5 %; without the sub-step the coarse run diverges');
+
+  ckT('courantOK still reports the OUTER dt — sub-stepping does not silence the canary (#518)',
+      (function () {
+        var r = L.stepLoop(mk(), lim * 4, {});
+        return r.subSteps >= 4 && r.courantOK === false;
+      })(),
+      'N >= 4 and courantOK STILL false — the caller is told what it asked for was too coarse');
+
   ckT('...and it actually SOFTENS the loop, so the hook is not cosmetic',
       (sysPz.P - 15.41) < 0.9 * (rigid.P - 15.41) && (rigid.P - 15.41) > 0,
       'dP ' + (sysPz.P - 15.41).toFixed(4) + ' MPa with the bubble against ' +
@@ -375,8 +508,25 @@ var MUTATIONS = [
    'RING.forEach(function (id) { sys.junctionFlow[id] = sys.mdot_loop; });',
    'RING.forEach(function (id) { sys.junctionFlow[id] = 0; });']
 ,
+  /* ⚠ ANCHOR RE-CUT (#518). This was verbatim `return flow > 1e-9 ? mMin / flow : Infinity;` —
+   * the exact line the fix rewrote — so it reported ANCHOR NOT FOUND and blinded the gate the
+   * moment the change landed. Loudly, which is the good case. */
   ['the Courant limit reported as a constant instead of from the plant',
-   'return flow > 1e-9 ? mMin / flow : Infinity;', 'return 999;'],
+   '      var t = q > 1e-9 ? m / q : Infinity;', '      var t = 999;'],
+  /* ---- #518, the per-junction canary and the sub-step ---- */
+  ['the canary goes back to the HEAD flow (the dead-canary defect, restored)',
+   'var q = Math.abs(sys.junctionFlow && sys.junctionFlow[id] !== undefined\n                       ? sys.junctionFlow[id] : sys.mdot_loop);',
+   'var q = Math.abs(sys.mdot_loop);'],
+  ['the sub-step is disabled — N pinned at 1 whatever the Courant number says',
+   '      nSub = Math.ceil(dt / lim0);', '      nSub = 1;'],
+  ['the sub-intervals do not sum to dt (the silent clock deficit D2 §24.2 names)',
+   'var h = (s === nSub - 1) ? (dt - spent) : hSub;', 'var h = hSub * 0.9;'],
+  ['courantOK reads the SUB-step, putting the canary back to sleep',
+   'r.courantOK = dt <= r.courantLimit_s;',
+   'r.courantOK = (dt / nSub) <= r.courantLimit_s;'],
+  ['the junction flows are NOT re-derived between sub-steps (sub-stepping a frozen flow set)',
+   '      carry = sys.mdot_loop;\n      for (var k = 0; k < RING.length; k++) {',
+   '      carry = sys.mdot_loop;\n      for (var k = 0; k < RING.length && s === 0; k++) {'],
   ['courantOK always true (the instability goes back to being silent)',
    'r.courantOK = dt <= r.courantLimit_s;', 'r.courantOK = true;'],
   ['extraMass NOT forwarded to Layer 2 (the pressurizer seat is unreachable)',

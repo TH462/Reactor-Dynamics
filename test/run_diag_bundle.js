@@ -254,6 +254,30 @@ head('TR-7  a rewind drops the recorded future');
     rec.build({}).events.some(function (e) { return e.type === 'time_rewind'; }));
 }());
 
+// ==================================================== TR-9: the first alarm scan is not noise
+head('TR-9  the first alarm scan captures the non-clear starting state ONLY (#504)');
+(function () {
+  var rec = RD.DiagRecorder.create({});
+  rec.reset('init', null, 0, 'pwr');
+  function snap(t, alarms) { return { metadata: { sim_time: t, time_acceleration: 1 }, true_state: { pressure_mpa: 15 }, alarms: alarms, rps_state: {} }; }
+  var panel = [{ id: 'porv_open', state: 'active' }];
+  for (var i = 0; i < 8; i++) panel.push({ id: 'quiet_' + i, state: 'clear' });
+  rec.tick(snap(0.1, panel), null);
+  var ev1 = rec.build({}).events.filter(function (e) { return e.type === 'alarm'; });
+  // Pre-#504 this read 9: every clear alarm shipped as a clear->clear non-transition
+  // (47 of 48 events in both 2026-08-21 bundles).
+  ck('first pass: 1 active + 8 clear -> exactly 1 alarm event', ev1.length === 1,
+    ev1.length + ' events: ' + ev1.map(function (e) { return e.detail.id + '=' + e.detail.state; }).join(','));
+  ck('…and it is the active one', ev1.length === 1 && ev1[0].detail.id === 'porv_open' && ev1[0].detail.state === 'active');
+  panel = panel.map(function (a) { return a.id === 'quiet_0' ? { id: a.id, state: 'active' } : a; });
+  rec.tick(snap(0.2, panel), null);
+  var ev2 = rec.build({}).events.filter(function (e) { return e.type === 'alarm'; });
+  ck('second pass: one transition -> exactly one more event', ev2.length === 2,
+    ev2.length + ' events');
+  ck('…recording the transition with its previous state', ev2.length === 2 &&
+    ev2[1].detail.id === 'quiet_0' && ev2[1].detail.state === 'active' && ev2[1].detail.was === 'clear');
+}());
+
 // ====================================================== TR-8: the wiring, which a Node gate
 // cannot execute. Everything above drives the recorder directly, so it would all stay green
 // if ui/app.js stopped calling it. These are source scans for exactly that gap.

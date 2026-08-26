@@ -45,7 +45,160 @@ where the two differ or where judgment was exercised.
 
 ---
 
-## 2026-08-12-develop-c — #458: shutdown cooling and low-head injection are the same pumps, so the align is refused during injection
+## 2026-08-26-develop-a — #523: PWR2 replaces the PWR on the site; the strip is CHANNEL-GATED
+
+**Four owner rulings, 2026-08-26, in planning** — *"Flip now, track the gaps"* · *"Strip it at
+build time"* · *"Keep freePlayOnly, file the compat pass"* · *"Reword to Hot Shutdown (Mode 4)"*.
+
+**The decision worth recording is the CONDITION, not the strip.** *"Strip it at build time"* was
+the ruling; whether it strips on **every** build or only on the **public** one was mine, and it
+goes the way it does for a reason that is not conservatism:
+
+- The public site must not carry the retired engine. That is the ruling, and it is met.
+- The **preview** site is where the campaign, the scenarios and the walkthroughs get vetted, and
+  every one of them is authored against the retired engine — which is why `ENGINES.pwr2` still
+  carries `freePlayOnly: true` under the third ruling above. A feature FLAG can be overridden by
+  hand on a live site (that is how a gated feature is inspected); a deleted `<script>` tag cannot.
+  An unconditional strip would have taken the preview site's guided content with it and left
+  nowhere to vet the thing the third ruling explicitly deferred.
+
+So the two rulings are only consistent with a channel condition. Making it unconditional later is
+deleting one branch, and `test/run_site_build.js` asserts **both** directions so neither can drift.
+
+**The portable build is unconditional, deliberately** — a distribution artifact should be the
+plant the site runs and nothing else, and a two-engine bundle would make `run_portable` certify a
+file nobody downloads.
+
+**Two files are NOT the old engine and must never be treated as it**: `pwr_config.js` and
+`pwr_instruments.js`. PWR2 reuses the published instrument layer and builds its protection config
+from `RD.PWR_CONFIG.protection`. The gate asserts them as a **precondition**, because pruning them
+yields a site with no plant while every other check passes.
+
+**Card visibility is DERIVED, not declared.** `ctorPresent()` gates the `?engine=` override, the
+boot fallback and the plant column. A published build cannot hold a static availability list —
+the answer differs per build — so the menu measures. Full record and the two defects it exposed:
+`Blueprint/PWR2_VALIDATION.md` §94.
+
+## 2026-08-25-develop-c — #513: the aggregate gate 439 s at 10-way (was ~19 min); two owner rulings
+
+**Decisions.** (1) *(OWNER RULING, 2026-08-25, plan question — "Move it out (Recommended)")*:
+`run_pwr2_ab.js` → `measure_pwr2_ab.js`, out of `run_all` discovery — a measurement that exits 0
+always cannot fail and cost ~49 s per gate run. (2) *(OWNER RULING, 2026-08-25, plan question —
+"Split both (Recommended)")*: `run_behavior` split into siblings ("2-3", built as thirds by probe
+id mod 3: 126/146/125 s) and `run_campaign` by plant (A structural+pwr 257 s, B rbmk+bwr 8 s) —
+the 398.8 s behavior battery was the gate's makespan floor. Scheduling changes only; every probe
+and suite still runs, per-part BASELINES entries, per-part gap reports with the legacy filenames
+kept on part A.
+
+**Engineering.** Mutation-replay scoping (the `run_pwr2_engine` `grp:` idiom) ported to cvcs /
+shell / sg / rhr / sources with a NEW scoped-clean-pass preflight (a group must be green ALONE on
+the clean build — the guard that keeps a crash-counts-as-caught replay loop honest; it caught a
+latent hollow catch in cvcs's SI-boron quiet band on its first run). The per-replay
+`pwr2_water`/`pwr2_vtable` cache deletion stopped (the ~0.5 s GRID build was re-paid ~135×/run;
+kept as a pair — the vtable closes over the water instance). `NODE_COMPILE_CACHE` in every gate
+child. `verify_e2e_ui`: 7 fixed sleeps → predicate waits; two kept deliberately (recorder-row
+accumulation is wall-real; the player-paused window is a negative assertion). All `secs:` hints
+re-recorded from measured solo costs. Full detail: `Diagnostic/TUNING_LOG.md`
+2026-08-25-develop-c. **The remaining wall is `run_campaign` part A under contention (~440 s);
+splitting its pwr missions exceeds the by-plant ruling and needs the owner.**
+
+**Follow-up ruling, same day** *(OWNER RULING, 2026-08-25: "I approve the pwr campaign mission
+split.")*: `run_campaign_c.js` — part C is a MEASURED-COST list of the three heavy pwr suites
+(~116 s), not a count split: parity alternation was tried first and landed 25 s / 229 s, because
+campaign suite costs span 0–51 s. The per-suite table and the drift guard (a new mission lands
+in part A and moves its suite-count baseline) live in run_campaign.js's comment. Same
+scheduling-only class as the first two splits.
+
+---
+
+## 2026-08-25-develop-b — #514: PWR2 step cost 1,090 → ~85 µs, and shell.html drops RBMK/BWR
+
+**Claim.** The shipped PWR2 engine stepped at 1,090 µs — 51× the old engine, 68× the design
+spine's own budget — because the vtable optimisation (D1 §28.1) was wired into one caller and
+every later Layer 5 module went back to the direct correlations; §28.1's "stop condition
+CLEARED" was Layer 4 alone. Fixed by wiring the resolved-once table idiom into every module,
+adding `T_from_h` (the same two correction passes `rho_sub` uses; 0.009 °C worst in the
+operating band) and `P_sat_T` (direct index on the uniform-T grid) to the vtable,
+warm-starting the containment flash and SG pressure bisections, and computing Tavg once per
+step. **Deliberately NOT done:** substituting `sys.M_total` for the CVCS boron-ledger mass sum
+(the ledger total includes the pressurizer via `extraMass`; the sum's semantics are the
+nodes') and the two ~1 % allocation trims (measured immaterial post-fix). The vtable now
+builds on FIRST USE (was 500 ms at every page load, plain-PWR sessions included). Gate:
+`test/run_pwr2_perf.js` — ratio-asserted (≤ 8× the old engine, measures 4.1×), lazy-build
+pinned, injection self-tested. **Load cut** *(OWNER RULING, 2026-08-25, selected from options
+I wrote: "Drop RBMK/BWR tags")*: shell.html no longer loads the 18 RBMK/BWR files (~308 KB);
+`?engine=rbmk|bwr` falls back to PWR; `verify_e2e_ui` pruned to PWR-only in the same change
+because its rbmk/bwr rows would silently screenshot the PWR fallback. Full numbers:
+`Diagnostic/TUNING_LOG.md` 2026-08-25-develop-b; the stale-figure correction is
+`PWR2_DESIGN.md` §28.1a.
+
+---
+
+## 2026-08-24-develop-e — #511: the accumulator's sizing basis (the ruled 0.435 identity over WTSM per-loop scaling)
+
+**Claim.** The accumulator's water volume is **0.435 × this plant's own RCS volume** (the
+#408 Ginna identity the old engine already carries: 2×1,115 ft³ against a 5,123 ft³ RCS,
+UFSAR T15.6-15), resolved from the Layer-1 node volumes at load — 10.29 m³ / ~2,719 gal.
+The alternative was per-loop power scaling of WTSM Table 5.2-2's 6,500 gal (the RCP-inertia
+convention), which gives 2,287 gal — same class, different basis. **Why the identity wins:**
+Hard Rule 9 — the plant's ruled identity already answers this question (pwr1's
+`accumulator_capacity` was sourced-scaled to the same 0.435 at #408), and two engines
+carrying two different accumulator sizes for one plant would be a parity defect of the kind
+#507 exists to close. The cover pressures (650/600 psig) and fill fraction (2/3 water) are
+WTSM's, intensive and unscaled. The discharge coefficient is SOLVED against the same Ginna
+table's ~36 s dump — the gate measures the empty time it produces. Record: `PWR2_VALIDATION.md` §80.
+
+## 2026-08-24-develop-d — #509: two owner selections (chart lanes fill; RCP density reference to the cold leg) + the reset seam
+
+**Claim.** The owner's third playtest (#509, 11 items) is worked end to end; the full measured
+record is `PWR2_VALIDATION.md` §79 and the session entry is `TUNING_LOG` 2026-08-24-develop-d.
+Two decisions recorded here because they change standing rules:
+
+- **Chart lanes STRETCH TO FILL** *(OWNER SELECTION, 2026-08-24: "Lanes stretch to fill
+  (Recommended)" — chosen over "Keep cap, fix polish only" and "Cap becomes a floor")*. The
+  #445 spec §8 56 px lane target ("extra space adds rows, it does not inflate them") is
+  RETIRED; pinned lanes divide the full plot height. The 36 px floor and the 2026-08-10
+  demote-to-numeric-rows selection are unchanged. `ui/test_panel/lane_reference.html`
+  updated first, then `ui/app.js laneSplit` (the constant deleted, not zeroed).
+- **The RCP's rated-density reference is the design COLD-LEG state** *(OWNER SELECTION,
+  2026-08-24: "Recalibrate to cold leg (Recommended)" — chosen over "Keep physics, declare
+  it")*. `pwr2_sources.rhoRated()` was pinned at the loop-average design point while
+  `loopDensity` reads the RCP node (cold leg), so rated speed at the design point delivered
+  105.16 % of `mdot_rated` by construction. Now 288.95 °C (552 °F) = tavg − dt/2, resolved
+  from a single `DESIGN` object that `pwr2_engine`'s TREF/DT0_C/P0 also consume (kills the
+  duplicated 304.5/31.1/15.41 literals). Measured: hot-full-power flow 1714.2 → 1646.2 kg/s
+  (101.0 %), pressure 2233 psia unchanged, loop split 56.5 → 58.9 °F. One deliberate fixture
+  refit in `run_pwr2_sources` (declared in the check's own comment, HR10).
+
+The rest of #509 (the kernel scram mirror, the seal-in refusals, the feed steam element, the
+AFW block valve, the SG/tee/hover art, the disabled statics) is engineering, not decisions —
+§79 carries it. `run_pwr2_board` 13 → 24 checks / 5 mutations.
+
+## 2026-08-21-develop-b — #501: the chart pre-seed and every flat seed REMOVED — charts start empty and fill live
+
+*(OWNER RULING, 2026-08-21: selected "All flat seeds everywhere" [be removed] from options I
+wrote — a selection, not verbatim words. This REVERSES three standing rulings: #237 "presets
+start with 30 minutes of history", the 2026-08-01 "run them for 30 minutes to fill up the
+graph with real data" real-trace pre-seed — the 2026-08-01c entry below records that build —
+and the 2026-07-28 vital-tile "flat preload, not a random walk".)*
+
+**Why now:** the pre-seed's hidden 10× background SimulationService froze the PWR2 card for
+~1–2 minutes per plant select (#501 — its 40-tick slice was calibrated to the old engine's
+~1 ms tick; a PWR2 tick at 10× costs ~50×). Measured headless before/after: **0.9 fps with
+continuous 1.9 s long tasks → 56.7 fps, zero long tasks.** The freeze is also what made the
+in-sim bug-report form untypeable, so it suppressed the owner's own defect reports.
+
+**What went:** `ensurePreseed`/`applyPreseed`/`preseedKey` and the flat 360-row chart seed
+(ui/app.js), the gauge-sparkline 60 s flat seed, and the vital-tile window preload
+(comp_indicator_panel.js — its `seeded` latch survives with its one other job, dropping
+build()'s untimed placeholder). `drawChart`'s <2-row "waiting" lane render is the deliberate
+opening state; the T+0 run-start line stays and now marks where the record begins.
+`testTrendPreseed` deleted (it gated the removed behaviour). Two checks were entangled with
+the seeds and re-adjudicated, not widened: board_check's unit-neutral readout now compares
+the value with trend glyphs stripped (the arrow honestly resets when a unit flip clears the
+trace), and `testDiagBundle` presses play only if the plant is paused (stale since the
+2026-08-11 auto-start ruling — it had been passing on fine rows captured in the ~100 ms of
+600× between its own two clicks).
 
 *(OWNER RULING, 2026-08-12: "A'" — selecting the refusal over gating `Q_rhr` or a documentation-only
 close, from three options I costed. The recommendation was A'.)*

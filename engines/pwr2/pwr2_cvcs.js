@@ -10,10 +10,10 @@
  * actually holds level, and boron is how reactivity is trimmed over a cycle. Both are Tier A
  * material and neither existed.
  *
- * Note what is NOT here: **boron does not yet DO anything.** Concentration is tracked as a mass
- * balance and published; the reactivity coupling (~8 pcm/ppm, sourced below) belongs to the
- * kinetics layer, which is not built. Publishing ppm without reactivity is honest — publishing a
- * reactivity effect computed here would put kinetics in the wrong layer.
+ * Boron DOES something now: the kinetics layer consumes `boron_ppm` every step
+ * (pwr2_kinetics rho_bor, 10 pcm/ppm sourced there) — an earlier note here said the coupling
+ * was not built, which went stale the day pwr2_kinetics landed. This layer owns the CHEMISTRY:
+ * the mass balance, the blender-shaped rate actuator (#507 wave 1), and the lab sample.
  *
  * ---------------------------------------------------------------------------------------
  * SOURCES, AND THE SCALING BASIS IS DECLARED RATHER THAN ASSUMED.
@@ -69,6 +69,14 @@
 
   var RD = root.RD && root.RD.pwr2;
   var W = RD && RD.water, GEO = RD && RD.geometry;
+  /* #514: hot-path water properties through the table — pwr2_core's idiom. The boron
+   * ledger's 11-node mass sum on the DIRECT rho_from_h was 28 % of the whole engine step
+   * (~300 us of 1090). The sum itself stays: sys.M_total is nodes + the pressurizer
+   * (extraMass), and the ledger's mass is the NODES' — substituting the ledger total would
+   * quietly grow the boron dilution volume by the pressurizer. */
+  var VT = RD && RD.vtable;
+  var RHO = VT ? VT.rho_from_h : (W && W.rho_from_h);
+  var TFH = VT ? VT.T_from_h : (W && W.T_from_h);
 
   var GAL_PER_M3 = 264.172;
   var FT3_TO_M3 = 0.0283168466;
@@ -124,7 +132,24 @@
      * normal makeup rather than a quarter of it. That is a declared departure, not an accident:
      * it follows from a one-pump plant keeping a real pump's seal. */
     seal_injection_gpm_per_pump: 5,   // [sourced] WTSM §4.1, verbatim
-    rcp_count: 1                      // [ruled] SLS-100 is a single-loop plant
+    rcp_count: 1,                     // [ruled] SLS-100 is a single-loop plant
+    /* ---- THE REGENERATIVE HEAT EXCHANGER, AS AN EFFECTIVENESS --------------------------
+     * (#510 H-2). Letdown gives its heat to the incoming charging stream before leaving the
+     * CVCS boundary — a real, always-in-service device (WTSM §4.1's letdown path runs
+     * through it; the old engine's letdown-isolation interlock comment exists because of
+     * it). Without it, a closed charging/letdown loop stands a permanent parasitic cooling
+     * on the RCS: ~12.5 gpm arriving at 60 degC against a 121 degC Mode 4 plant is ~200 kW,
+     * 7.7 degC/hr — which is what made the shutdown preset's Tavg drift, not any modelled
+     * loss. Effectiveness on the RECOVERABLE stream, min(charging+seal, letdown): [tune] 0.9
+     * — real charging leaves the regen HX ~500 degF against a ~545 degF cold leg, i.e. the
+     * cold-injection effect is real but ~10 % of the raw enthalpy gap, and 0.9 reproduces
+     * that class figure. LUMPED, DECLARED: the seal stream rides the same recovery although
+     * the physical seal-injection line bypasses the regen HX. */
+    regen_effectiveness: 0.9,
+    /* Lab turnaround for an RCS boron grab sample. [derived]: adopted from the old engine's
+     * real-time figure (#419 wave 1 made it real time there); no corpus document states a
+     * turnaround, so the number is a class figure, declared. */
+    boron_sample_lab_s: 1800
   };
 
   /* Seal injection returns to the RCS through the pump's hydraulic chambers. It is NOT operator
@@ -178,9 +203,37 @@
       /* what the charging pumps are lined up to: 'borate' | 'dilute' | 'match' */
       makeupSource: opts.makeupSource === undefined ? 'match' : opts.makeupSource,
       boron_ppm: opts.boron_ppm === undefined ? 700 : opts.boron_ppm,
+      /* THE RATE ACTUATOR (#507 wave 1): commanded ppm/s, signed; 0 = the makeupSource lineup.
+       * Realized as a BLENDER (the sourced shape — Ginna UFSAR ch.15: "A boric acid blend
+       * system allows the operator to match the concentration of reactor coolant makeup water
+       * to that existing in the coolant … the composition is determined by the preset flow
+       * rates"): the step inverts the mass balance for the blend concentration that meters the
+       * commanded rate, clamped to [0, boric_acid_ppm]. THE CLAMP IS THE PHYSICAL CEILING —
+       * no separate ppm/s constant: the achievable rate is inFlow*(C_in − C)/M, bounded by the
+       * tank concentration and the charging lineup, so boration saturates near the tank and a
+       * dilution runs FAST at high boron and slow at low — rate ∝ C, the balance's own
+       * proportionality (#510 M-9: this line used to say the opposite of the code below it
+       * and of the gate that proves it). The gate reports
+       * the achieved ceilings at both lineups; the old engine's flat 0.14 ppm/s clamp is the
+       * contrast case. */
+      boron_rate_cmd: opts.boron_rate_cmd === undefined ? 0 : opts.boron_rate_cmd,
+      /* THE LAB SAMPLE. A plant handed over mid-shift has a standing lab number, so the
+       * constructor seeds one (seq 1) — the old engine's preset-boot convention. NO MIXING
+       * LAG: this plant's boron is lumped by ruling (pwr2_kinetics), so the sample reports
+       * cv.boron_ppm directly where the old engine reports its 30 s boron_reactive lag — a
+       * declared behavioural difference. */
+      _sample_timer: 0,
+      sample_ppm: opts.boron_ppm === undefined ? 700 : Math.round(opts.boron_ppm),
+      sample_seq: 1,
       K: opts.K === undefined ? orificeK(P_nop) : opts.K,
       isolated: !!opts.isolated
     };
+  }
+
+  /* Draw an RCS grab sample; the result posts after the lab turnaround. A sample already in
+   * the lab is not re-drawn (the old engine's rule, kept). */
+  function requestBoronSample(cv) {
+    if (!(cv._sample_timer > 0)) cv._sample_timer = CVCS.boron_sample_lab_s;
   }
 
   /* stepCVCS(cv, sys, dt) -> {charging_kgs, letdown_kgs, net_kgs, boron_ppm, sources}
@@ -189,47 +242,113 @@
    * to stepPlant rather than unpacking it. Charging enters the COLD LEG and letdown leaves from it
    * -- both are cold-leg connections on a real plant, and putting them on the same node keeps this
    * layer from having an opinion about loop topology that Layer 3 already owns. */
-  function stepCVCS(cv, sys, dt) {
+  function stepCVCS(cv, sys, dt, drivers) {
     var node = null;
     for (var i = 0; i < sys.nodes.length; i++) if (sys.nodes[i].id === 'cold_leg') node = sys.nodes[i];
-    var rho = node ? W.rho_from_h(node.h, sys.P) : 700;
+    var rho = node ? RHO(node.h, sys.P) : 700;
 
+    /* THE VITAL BUS (#507 wave 4): the charging pump is a vital load — diesel-carried
+     * through a LOOP, dead in a station blackout (WTSM 5.7.5). Absent means powered (the
+     * acAvailable convention); the demand and lineup stay where the operator put them
+     * (#200), so restored power gives the pump back at its standing demand. Seal injection
+     * runs off the same pump suction and dies with it. Letdown is an orifice against system
+     * pressure, not a motor load — it keeps flowing while its valve is open, DECLARED. */
+    var powered = !drivers || drivers.ac_available !== false;
     var demand = cv.chargingDemand === null
       ? CVCS.charging_normal_gpm() / CVCS.charging_max_gpm()
       : Math.max(0, Math.min(1, cv.chargingDemand));
-    var charging = cv.isolated ? 0 : gpmToKgs(demand * CVCS.charging_max_gpm(), 1000);
+    var charging = (cv.isolated || !powered) ? 0 : gpmToKgs(demand * CVCS.charging_max_gpm(), 1000);
     /* SEAL INJECTION runs with the charging pumps and is not commanded. Only isolation stops it. */
-    var seal = cv.isolated ? 0 : gpmToKgs(sealInjectionGpm(), 1000);
+    var seal = (cv.isolated || !powered) ? 0 : gpmToKgs(sealInjectionGpm(), 1000);
 
     /* THE ORIFICE. Negative dP means the sink is above the plant -- letdown cannot run backwards
      * through it, so it stops rather than reversing sign under a square root. */
     var dP = sys.P - CVCS.letdown_backpressure_mpa;
-    var letdown = (cv.letdownOpen <= 0 || dP <= 0) ? 0 : cv.letdownOpen * cv.K * Math.sqrt(dP);
+    var orifice = (cv.letdownOpen <= 0 || dP <= 0) ? 0 : cv.letdownOpen * cv.K * Math.sqrt(dP);
+    /* THE RHR LOW-PRESSURE LETDOWN PATH (#510 H-2, owner-ruled 2026-08-23). With the plant on
+     * shutdown cooling the orifice's 300 psi backpressure strands every inflow — which is how
+     * the shipped Mode 4 preset went water-solid on its own 5 gpm of seal injection. The real
+     * plant letdowns FROM THE RHR SYSTEM in exactly this regime:
+     *   [sourced] WTSM ch.19 (ML11223A342): "Coolant removal is accomplished by letdown,
+     *   primarily from the residual heat removal system (RHR)" … "Letdown is via the
+     *   RHR-to-CVCS cross-connect valve HCV-128."
+     *   [sourced] WTSM §4.1.4.5 (ML11223A214): "A connection from the RHR system … allows
+     *   purification of the RCS while the plant is in cold shutdown."
+     *   [sourced] NUREG-1431 Rev 4 Bases (ML12100A228): "During LTOP MODES, the RHR System is
+     *   operated for decay heat removal and low pressure letdown control."
+     * Modelled as the NORMAL letdown magnitude behind the operator's own letdown fraction,
+     * available while the RHR suction is open (the driver; absent = shut, so every at-power
+     * fixture is untouched — the 585 psig autoclose keeps it false at power). The cross-connect
+     * pulls from RHR flow, not through the orifice, hence no sqrt(dP) — RHR pump head drives
+     * it. The orifice keeps whichever flow is larger; they are parallel paths to the same VCT. */
+    var rhrPath = (drivers && drivers.rhr_letdown_ok && cv.letdownOpen > 0)
+                  ? cv.letdownOpen * normalLetdownKgs() : 0;
+    var letdown = Math.max(orifice, rhrPath);
 
     /* ---- BORON, AS A MASS BALANCE ON THE WHOLE RCS -----------------------------------
      * d(M*C)/dt = charging*C_in - letdown*C_rcs. Letdown carries the RCS concentration because it
      * is drawn from the RCS; charging carries whatever the pumps are lined up to. A dilution is
-     * therefore SLOW at high boron and fast at low, which is the real shape and falls out of the
-     * balance rather than being imposed. */
-    var C_in = cv.makeupSource === 'borate' ? CVCS.boric_acid_ppm
-             : cv.makeupSource === 'dilute' ? CVCS.primary_water_ppm
-             : cv.boron_ppm;                              /* 'match' -- inventory only, no shift */
+     * therefore FAST at high boron and slow at low — dC/dt = inFlow·(C_in − C)/M, magnitude
+     * proportional to C as C_in → 0 — which is the real shape and falls out of the balance
+     * rather than being imposed (#510 M-9: this sentence shipped INVERTED in six places
+     * while the code and its 4x-proportionality gate were right all along). */
     /* Seal injection is drawn from the SAME charging pump suction, so it carries the same
      * concentration as charging -- it is not a separate chemistry path. */
     var inFlow = charging + seal;
+    /* SAFETY INJECTION CARRIES RWST BORON (#510 M-1). The RWST concentration was defined,
+     * sourced, and read by NOTHING — 5,363 lb injected moved the RCS boron by zero to seven
+     * figures, a parity regression against the old engine the curriculum teaches from. The
+     * caller hands the injected flow and its concentration here because this ledger is the
+     * plant's ONE boron balance (absent means no injection — every layer-local fixture
+     * unchanged). */
+    var si = drivers && drivers.si_kgs > 0 ? drivers.si_kgs : 0;
+    var C_si = drivers && drivers.si_ppm !== undefined ? drivers.si_ppm : 0;
     var M = 0;
     for (var k = 0; k < sys.nodes.length; k++) {
-      M += sys.nodes[k].V * W.rho_from_h(sys.nodes[k].h, sys.P);
+      M += sys.nodes[k].V * RHO(sys.nodes[k].h, sys.P);
+    }
+    var C_in;
+    if (cv.boron_rate_cmd !== 0 && inFlow > 0 && M > 0) {
+      /* THE BLENDER INVERSION. The balance below reduces to dC/dt = inFlow*(C_in - C)/M
+       * (the letdown terms cancel exactly -- letdown removes at RCS concentration), so the
+       * blend that meters the commanded rate is C + rate*M/inFlow, clamped to what the tanks
+       * can supply. With zero inflow (isolated lineup) the blender has no stream to blend and
+       * the command idles -- physically right, not a special case. */
+      C_in = Math.max(0, Math.min(CVCS.boric_acid_ppm,
+        cv.boron_ppm + cv.boron_rate_cmd * M / inFlow));
+    } else {
+      C_in = cv.makeupSource === 'borate' ? CVCS.boric_acid_ppm
+           : cv.makeupSource === 'dilute' ? CVCS.primary_water_ppm
+           : cv.boron_ppm;                            /* 'match' -- inventory only, no shift */
     }
     if (M > 0) {
-      var dC = (inFlow * C_in - letdown * cv.boron_ppm) / M;
+      var dC = (inFlow * C_in + si * C_si - letdown * cv.boron_ppm) / M;
       /* the inventory change itself re-concentrates what is left */
-      var dM = inFlow - letdown;
+      var dM = inFlow + si - letdown;
       cv.boron_ppm = cv.boron_ppm + dt * (dC - cv.boron_ppm * dM / M);
       if (cv.boron_ppm < 0) cv.boron_ppm = 0;
     }
 
-    var h_charge = W.h_l(Math.min(60, W.T_from_h(node ? node.h : 1250, sys.P)), sys.P);
+    /* the lab clock runs on plant time */
+    if (cv._sample_timer > 0) {
+      cv._sample_timer -= dt;
+      if (cv._sample_timer <= 0) {
+        cv._sample_timer = 0;
+        cv.sample_ppm = Math.round(cv.boron_ppm);
+        cv.sample_seq = (cv.sample_seq || 0) + 1;
+      }
+    }
+
+    var h_charge = W.h_l(Math.min(60, TFH(node ? node.h : 1250, sys.P)), sys.P);
+    /* THE REGEN HX (#510 H-2, see the constant): the returning stream recovers heat from the
+     * letdown it crosses. Recovery scales with min(inflow, letdown) -- no letdown, no recovery,
+     * and charging then genuinely arrives cold (isolated-letdown lineups keep the old shape). */
+    var h_node = node ? node.h : 1250;
+    var h_in = h_charge;
+    if (inFlow > 0 && letdown > 0 && h_node > h_charge) {
+      h_in = h_charge + CVCS.regen_effectiveness
+                        * (Math.min(inFlow, letdown) / inFlow) * (h_node - h_charge);
+    }
 
     return {
       charging_kgs: charging,
@@ -239,11 +358,11 @@
       boron_ppm: cv.boron_ppm,
       rho_coldleg: rho,
       /* Layer 3's boundary-source shape. Letdown leaves at the node's OWN enthalpy (it is RCS
-       * water); charging arrives cold, which is a real and teachable effect -- charging into a
-       * hot leg is a local cooldown. */
+       * water); charging arrives at the regen-HX outlet -- still below the cold leg, so the
+       * cold-injection effect survives at its real ~10 % scale rather than the raw gap. */
       sources: [
-        { node: 'cold_leg', mdot: charging + seal,  h: h_charge },
-        { node: 'cold_leg', mdot: -letdown,  h: node ? node.h : 1250 }
+        { node: 'cold_leg', mdot: charging + seal,  h: h_in },
+        { node: 'cold_leg', mdot: -letdown,  h: h_node }
       ]
     };
   }
@@ -252,7 +371,7 @@
    * isolated moves inventory, as a fraction of RCS mass per minute. */
   function maxFillRateFracPerMin(sys) {
     var M = 0;
-    for (var k = 0; k < sys.nodes.length; k++) M += sys.nodes[k].V * W.rho_from_h(sys.nodes[k].h, sys.P);
+    for (var k = 0; k < sys.nodes.length; k++) M += sys.nodes[k].V * RHO(sys.nodes[k].h, sys.P);
     return gpmToKgs(CVCS.charging_max_gpm(), 1000) * 60 / M;
   }
 
@@ -260,6 +379,7 @@
   root.RD.pwr2 = root.RD.pwr2 || {};
   root.RD.pwr2.cvcs = {
     CVCS: CVCS, createCVCS: createCVCS, stepCVCS: stepCVCS,
+    requestBoronSample: requestBoronSample,
     sealInjectionGpm: sealInjectionGpm,
     volumeScale: volumeScale, rcsVolume: rcsVolume, orificeK: orificeK,
     normalLetdownKgs: normalLetdownKgs, gpmToKgs: gpmToKgs,

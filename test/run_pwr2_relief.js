@@ -153,6 +153,28 @@ function runSuite(R, rec, quiet) {
         return o.safety_kgs > 0;
       })(), 'they discharge to atmosphere — losing the condenser must not disable the last resort');
 
+  /* ---- THE MSIV (#511) — sourced placement, Ginna TS Bases B 3.7.2: the valve sits
+   * DOWNSTREAM of the safeties (and the ADV/TDAFW supply), UPSTREAM of the turbine and the
+   * dumps. So a shut MSIV zeroes the DUMP and touches nothing else in this layer. ---- */
+  head('THE MSIV  [gates the dump, never the safeties or the ADV — B 3.7.2]');
+  ckT('a shut MSIV stops a fully commanded dump', (function () {
+        var o = step(R.createRelief({}), 6.0, { dump_demand: 1.0, msiv_frac: 0 });
+        return o.dump_kgs === 0;
+      })(), 'the dumps are downstream of the isolation valve');
+  ckT('a mid-stroke MSIV passes a proportional dump', (function () {
+        var o = step(R.createRelief({}), 6.0, { dump_demand: 1.0, msiv_frac: 0.5 });
+        return Math.abs(o.dump_kgs - 0.5 * DOC.dump_frac * RATED) < 1e-9;
+      })(), '');
+  ckT('a shut MSIV does NOT touch the safeties or the ADV', (function () {
+        var o = step(R.createRelief({}), pop + 0.5, { msiv_frac: 0, adv_demand: 1.0 });
+        return o.safety_kgs > 0 && o.adv_kgs > 0;
+      })(), 'both are upstream of the valve — the SG can still relieve with the line isolated, ' +
+            'which is what keeps the MSSVs able to "prevent overpressure" per the source');
+  ckT('absent msiv_frac means OPEN (the pre-#511 caller)', (function () {
+        var o = step(R.createRelief({}), 6.0, { dump_demand: 1.0 });
+        return Math.abs(o.dump_kgs - DOC.dump_frac * RATED) < 1e-9;
+      })(), '');
+
   /* ---- TOTALS ------------------------------------------------------------------------------ */
   /* ---- THE ADV (the middle rung, 2026-08-19) — Ginna TS Bases B 3.7.4 ------------------- */
   head('THE ADV  [below the safeties, above the dump — and it does NOT need the condenser]');
@@ -259,8 +281,12 @@ var MUTATIONS = [
    '      safety = lift * RELIEF.safety_flow_frac * rated;',
    '      safety = avail ? lift * RELIEF.safety_flow_frac * rated : 0;'],
   ['the dump ignores condenser availability',
-   '    var dump = avail ? demand * RELIEF.dump_capacity_frac * rated : 0;',
-   '    var dump = demand * RELIEF.dump_capacity_frac * rated;'],
+   '    var dump = avail ? demand * RELIEF.dump_capacity_frac * rated * msivFrac : 0;',
+   '    var dump = demand * RELIEF.dump_capacity_frac * rated * msivFrac;'],
+  /* #511 — the MSIV gates the dump (downstream), never the safeties/ADV (upstream) */
+  ['the MSIV stops gating the dump (a shut steam line keeps feeding the condenser)',
+   '    var msivFrac = drivers.msiv_frac === undefined ? 1 : Math.max(0, Math.min(1, drivers.msiv_frac));',
+   '    var msivFrac = 1;'],
   ['the commanded position stops being reported when the condenser is lost',
    '      dump_demand: demand,', '      dump_demand: avail ? demand : 0,'],
   ['relieved mass stops accumulating', '    rl.relieved_kg += total * dt;', ''],

@@ -54,11 +54,41 @@
  * requirement (owner ruling, 2026-08-14).
  *
  * ---------------------------------------------------------------------------------------
- * DECLARED OMISSIONS.
- *   NO ACCUMULATORS YET. They are passive, nitrogen-driven, and arm at a sourced 600 psi
- *   (4.14 MPa) — but an accumulator is an INVENTORY with a level and a cover gas that expands as
- *   it empties, so its discharge is a state, not a curve. It belongs with the pressurizer's
- *   compressible-volume work (#472) rather than being invented here in a second incompatible way.
+ * ---------------------------------------------------------------------------------------
+ * THE COLD-LEG INJECTION ACCUMULATOR (#511 — was a declared omission until 2026-08-24).
+ *
+ * ONE accumulator (single-loop plant; the reference plant carries one per cold leg — WTSM 5.2,
+ * ML11223A220: "One accumulator is attached to each of the cold legs"). An honest tank, not a
+ * curve: borated water under a nitrogen cover, and *"Should the RCS pressure fall below the
+ * accumulator pressure, the check valves unseat, and borated water is immediately forced into
+ * the RCS by the expansion of the nitrogen volume"* [sourced, same doc §5.2.4.1]. The cover gas
+ * expands ISOTHERMALLY as the tank empties (the discharge takes tens of seconds against a large
+ * metal tank — the isothermal end of the polytropic band, [derived]), so the driving pressure
+ * FALLS as it discharges and the tank stops itself if the RCS holds an intermediate pressure —
+ * the state-not-a-curve behaviour the old omission note said this component needed.
+ *
+ * SOURCED NUMBERS:
+ *   cover pressure   650 psig normal / 600 psig minimum  [sourced — WTSM Table 5.2-2]
+ *   fill fraction    tank ~2/3 water, 1/3 nitrogen       [sourced — WTSM §5.2.4.1]
+ *   water volume     0.435 x RCS volume                  [sourced — Ginna UFSAR T15.6-15 via the
+ *                    #408 identity the old engine carries: 2x1,115 ft3 against a 5,123 ft3 RCS;
+ *                    the volume itself is DERIVED from this plant's own Layer-1 node volumes]
+ *   discharge class  full dump in ~36 s at design dP     [sourced — same Ginna table; the flow
+ *                    coefficient below is solved against it, not fitted]
+ *   boron            the RWST concentration              [sourced — WTSM §5.2.4.1: "about the
+ *                    same as that of the RWST"]
+ *   water temp       100-150 degF operating band, mid    [sourced band — WTSM Table 5.2-2]
+ *
+ * PASSIVE — deliberately NOT gated on ac_available: "The accumulators are passive components,
+ * since no operator or control actions are required in order for them to perform their function"
+ * [sourced], and CONTEXT §6.3's blackout note says the same. The one lever is the motor-operated
+ * ISOLATION VALVE, and its administrative lock (power removed above 1600 psig pressurizer
+ * pressure — Ginna TS Bases B 3.5.1) is the SHELL's refusal, not physics here (HR5).
+ *
+ * NITROGEN INJECTION AFTER EMPTY IS UNMODELED, declared — a real drained accumulator can blow
+ * cover gas into the RCS; this one just stops.
+ *
+ * DECLARED OMISSIONS (unchanged).
  *   NO RECIRCULATION, no sump, no switchover. Injection draws from an infinite RWST.
  *   NO HEAT REMOVAL PATH — this layer delivers cold water; where the heat goes is the loop's.
  *
@@ -142,6 +172,61 @@
     rwst_boron_ppm: 2500        // [sourced] ML11223A220, top of the band
   };
 
+  /* ---- THE ACCUMULATOR (#511) — constants per the header block ---------------------------- */
+  var FT3_M3 = 0.0283168;
+  var ACC = {
+    p0_mpa: (650 + 14.7) / PSI_PER_MPA,     // [sourced] 650 psig normal cover pressure (WTSM T5.2-2)
+    p_min_mpa: (600 + 14.7) / PSI_PER_MPA,  // [sourced] 600 psig minimum — the arming class the board's card quotes
+    capacity_frac: 0.435,                   // [sourced] Ginna T15.6-15 via the #408 identity: water = 0.435 x RCS volume
+    discharge_s: 36,                        // [sourced] same table — full dump in the ~36 s class
+    water_temp_c: 48.9,                     // [sourced band] 100-150 degF operating, midpoint 120 degF
+    admin_lock_psig: 1600                   // [sourced] B 3.5.1 / WTSM 5.2.4.1 — power removed from the MOV above it (SHELL enforces)
+  };
+
+  /* Volumes DERIVED from this plant's own Layer-1 geometry, resolved once at load — the same
+   * "derive, don't type" rule rhoRated follows in pwr2_sources. */
+  function accGeometry() {
+    var GEO = RD.geometry;
+    var vRcs = 0;
+    GEO.NODES.forEach(function (n) { vRcs += n.V; });          // m3, the whole RCS incl. pressurizer
+    var w0 = ACC.capacity_frac * vRcs;                          // m3 water
+    return { w0_m3: w0, vg0_m3: w0 / 2 };                       // 2/3 water -> gas space = w0/2
+  }
+
+  function createAccumulator(opts) {
+    opts = opts || {};
+    var g = accGeometry();
+    return {
+      water_m3: opts.water_m3 === undefined ? g.w0_m3 : opts.water_m3,
+      w0_m3: g.w0_m3, vg0_m3: g.vg0_m3,
+      /* the ISOLATION valve — default OPEN (the at-power lineup, SR 3.5.1.1); the shutdown
+       * preset boots it CLOSED (sourced: closed in Mode 3 below 1600 psig and Modes 4/5/6) */
+      valve_open: opts.valve_open === undefined ? true : !!opts.valve_open,
+      discharged_kg: 0
+    };
+  }
+
+  /* Cover-gas pressure NOW: isothermal expansion of the fixed nitrogen charge into the space
+   * the discharged water vacated. P·V = P0·V0. */
+  function accPressure(ac) {
+    var vg = ac.vg0_m3 + (ac.w0_m3 - ac.water_m3);
+    return vg > 0 ? ACC.p0_mpa * ac.vg0_m3 / vg : ACC.p0_mpa;
+  }
+
+  /* Flow coefficient SOLVED against the sourced ~36 s full-dump class rather than fitted:
+   * k = M0 / (36 s x sqrt(P0/2)), i.e. the mean driving head of a full blowdown discharge
+   * (cover pressure falling toward its empty-tank value against a depressurized RCS). The
+   * gate MEASURES the resulting empty time; this is the anchor, not the assertion. */
+  var _accK = null;
+  function accK() {
+    if (_accK === null) {
+      var g = accGeometry();
+      var m0 = g.w0_m3 * W.rho_l(ACC.water_temp_c, ACC.p0_mpa);
+      _accK = m0 / (ACC.discharge_s * Math.sqrt(ACC.p0_mpa / 2));
+    }
+    return _accK;
+  }
+
   function createECCS(opts) {
     opts = opts || {};
     return {
@@ -151,39 +236,76 @@
       /* fraction of nameplate available: 1 = both trains, 0.5 = one of two, 0 = failed */
       hhsiAvail: opts.hhsiAvail === undefined ? 1 : opts.hhsiAvail,
       lhsiAvail: opts.lhsiAvail === undefined ? 1 : opts.lhsiAvail,
-      injected_kg: opts.injected_kg === undefined ? 0 : opts.injected_kg
+      injected_kg: opts.injected_kg === undefined ? 0 : opts.injected_kg,
+      /* the passive tank (#511) */
+      acc: createAccumulator(opts.acc)
     };
   }
 
-  /* stepECCS(ec, sys, dt) -> {hhsi_kgs, lhsi_kgs, total_kgs, sources, ...}
-   * `sources` is Layer 3's boundary-mass shape, so the caller hands it straight to stepPlant. */
-  function stepECCS(ec, sys, dt) {
+  /* stepECCS(ec, sys, dt, drivers) -> {hhsi_kgs, lhsi_kgs, total_kgs, sources, ...}
+   * `sources` is Layer 3's boundary-mass shape, so the caller hands it straight to stepPlant.
+   * drivers.ac_available (#507 wave 4): the SI pumps are VITAL loads — diesel-carried through
+   * a LOOP, dead in a station blackout (WTSM 5.7.5's "all decay heat removal systems ... also
+   * fail"). Absent means powered. The run flags and the avail FAILURE fractions stay separate
+   * seats: a failed train and an unpowered one are different facts with different recoveries. */
+  function stepECCS(ec, sys, dt, drivers) {
     var P = sys.P;
-    var hh = ec.hhsiRunning ? hhsiFlow(P) * Math.max(0, ec.hhsiAvail) : 0;
-    var lh = ec.lhsiRunning ? lhsiFlow(P) * Math.max(0, ec.lhsiAvail) : 0;
-    var total = hh + lh;
+    var powered = !drivers || drivers.ac_available !== false;
+    var hh = (ec.hhsiRunning && powered) ? hhsiFlow(P) * Math.max(0, ec.hhsiAvail) : 0;
+    var lh = (ec.lhsiRunning && powered) ? lhsiFlow(P) * Math.max(0, ec.lhsiAvail) : 0;
+
+    /* THE ACCUMULATOR (#511): passive, so NOT behind `powered` (header). Flow whenever the
+     * cover gas beats the RCS and the isolation valve is open; sqrt(dP) through the line,
+     * capped by the water that is actually left. The check valves are the > comparison. */
+    var acFlow = 0;
+    var ac = ec.acc;
+    if (ac && ac.valve_open && ac.water_m3 > 0) {
+      var Pg = accPressure(ac);
+      if (Pg > P) {
+        acFlow = accK() * Math.sqrt(Pg - P);
+        var rho = W.rho_l(ACC.water_temp_c, Pg);
+        var maxKgs = ac.water_m3 * rho / (dt > 0 ? dt : 1);
+        if (acFlow > maxKgs) acFlow = maxKgs;
+        if (dt > 0) {
+          ac.water_m3 = Math.max(0, ac.water_m3 - acFlow * dt / rho);
+          ac.discharged_kg += acFlow * dt;
+        }
+      }
+    }
+
+    var total = hh + lh + acFlow;
     ec.injected_kg += total * dt;
 
     /* RWST water at its sourced temperature. Injected into the COLD LEG, which is where a
      * Westinghouse plant's ECCS ties in and also where it does the most good and the most
-     * thermal-shock harm — both teachable, neither decided here. */
+     * thermal-shock harm — both teachable, neither decided here. The accumulator's water is
+     * warmer (its sourced operating band) but lands on the same node; one blended source. */
     var h_inj = W.h_l(ECCS.rwst_temp_c, P);
+    var h_acc = W.h_l(ACC.water_temp_c, P);
+    var srcs = [];
+    if (hh + lh > 0) srcs.push({ node: 'cold_leg', mdot: hh + lh, h: h_inj });
+    if (acFlow > 0) srcs.push({ node: 'cold_leg', mdot: acFlow, h: h_acc });
 
     return {
-      hhsi_kgs: hh, lhsi_kgs: lh, total_kgs: total,
+      hhsi_kgs: hh, lhsi_kgs: lh, acc_kgs: acFlow, total_kgs: total,
       injected_kg: ec.injected_kg,
+      /* the tank's published state (§6.3 fields the board's card reads) */
+      acc_water_frac: ac ? (ac.w0_m3 > 0 ? ac.water_m3 / ac.w0_m3 : 0) : 0,
+      acc_pressure_mpa: ac ? accPressure(ac) : 0,
+      acc_valve_open: ac ? ac.valve_open === true : false,
       /* REPORTED so a caller can see WHY flow is zero without re-deriving it. A shutoff head is
        * not a failure and must not read like one. */
       hhsi_shutoff: P * PSI_PER_MPA >= ECCS.hhsi_shutoff_psia,
       lhsi_shutoff: P * PSI_PER_MPA >= ECCS.lhsi_shutoff_psia,
-      sources: total > 0 ? [{ node: 'cold_leg', mdot: total, h: h_inj }] : []
+      sources: srcs
     };
   }
 
   root.RD = root.RD || {};
   root.RD.pwr2 = root.RD.pwr2 || {};
   root.RD.pwr2.eccs = {
-    ECCS: ECCS, createECCS: createECCS, stepECCS: stepECCS,
+    ECCS: ECCS, ACC: ACC, createECCS: createECCS, stepECCS: stepECCS,
+    createAccumulator: createAccumulator, accPressure: accPressure, accK: accK,
     hhsiFlow: hhsiFlow, lhsiFlow: lhsiFlow, interp: interp, gpmToKgs: gpmToKgs
   };
 })(typeof globalThis !== 'undefined' ? globalThis : this);

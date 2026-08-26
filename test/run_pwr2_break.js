@@ -182,7 +182,8 @@ var MUTATIONS = [
   ['the area stops scaling the flow', '      mdot = br.cd * br.area_m2 * G;',
    '      mdot = br.cd * 0.001 * G;'],
   ['density is frozen at liquid instead of following the mixture',
-   '      rho = W.rho_from_h(node.h, sys.P);', '      rho = 716;'],
+   /* anchor re-pointed #514: the discharge density goes through RHO (the vtable idiom) now */
+   '      rho = RHO(node.h, sys.P);', '      rho = 716;'],
   ['back-pressure is ignored, so the break always sees the full system pressure',
    '    var dP = sys.P - back;', '    var dP = sys.P;'],
   ['a shut break still discharges',

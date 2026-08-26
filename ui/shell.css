@@ -671,9 +671,9 @@ button:focus-visible, input:focus-visible, select:focus-visible, [tabindex]:focu
 /* Tier-1 lines are drawn in the SVG, so they scale with the plot rather than
    needing their own layer. */
 #chartCanvas .soe-t1 { pointer-events: none; }
-/* WHERE THE RUN BEGAN (sim time zero). The chart opens holding 30 minutes of PRESEEDED
-   trend at negative sim time, so this marks a real join between the plant's history and the
-   run you are driving — not the left edge.
+/* WHERE THE RUN BEGAN (sim time zero). The chart opens empty and fills from the right
+   (#501 removed the preseeded history), so this marks where the record begins on the
+   otherwise-bare axis.
 
    THE TAG SITS AT THE BOTTOM, and that is a screenshot finding rather than a preference. At
    the top it landed inside the first lane's range label and rendered as "40% T+0 %" — the
@@ -2119,6 +2119,45 @@ select.num-input { width: auto; }
   border: 1px solid var(--caution); color: var(--caution); border-radius: 4px;
   padding: 1px 6px; font-size: 9px; font-weight: 700; letter-spacing: 1px;
 }
+/* The clock carries the halt for as long as it stands (#520). Dismissing the dialog
+   must not lose the fact that the model has stopped — that IS the defect #520 is
+   about — and the clock is the right home because a held plant's clock is the one
+   thing still moving. */
+.clock.clk-held {
+  color: var(--alarm); border: 1px solid var(--alarm); border-radius: 3px;
+  padding: 0 5px; position: relative;
+}
+.clock.clk-held::after {
+  content: 'HELD'; margin-left: 7px; font-size: 9px; font-weight: 700; letter-spacing: 1px;
+}
+/* ---- the simulation-halted dialog (#520) ------------------------------------
+   Sits on .mission-overlay / .mission-modal, so the frame, the backdrop and the
+   head are the Plant & Mission window's. Only the body and the footer are new:
+   this modal is PROSE plus a decision, where that one is a chooser.
+   Height is content-sized rather than the 84vh the mission modal fixes, because
+   four short paragraphs in a 760px-tall box reads as an error page. */
+/* Above the Plant & Mission overlay (210): a halt can be raised while that window is
+   open, and the halt is the thing that needs answering first. */
+#haltOverlay { z-index: 214; }
+.halt-modal { height: auto; max-height: min(84vh, 620px); }
+.halt-modal .mission-title { color: var(--alarm); }
+.halt-body { padding: 14px 18px; overflow-y: auto; color: var(--text); font-size: 12px; line-height: 1.55; }
+.halt-body p { margin: 0 0 10px; }
+.halt-lead { font-size: 13px; }
+.halt-why {
+  border-left: 2px solid var(--alarm); padding: 6px 10px; margin: 12px 0;
+  background: rgba(0, 0, 0, 0.25); font-size: 11px; color: var(--caution);
+}
+.halt-why:empty { display: none; }
+.halt-note { color: var(--text-dim, var(--caution)); }
+.halt-foot {
+  display: flex; gap: 10px; justify-content: flex-end;
+  padding: 10px 14px; border-top: 1px solid var(--border);
+}
+/* The reset is the ACTION, so it is the one that looks like one. Not red: red would
+   read as "danger, do not press", and pressing it is the way out. */
+.halt-go { border-color: var(--accent); color: var(--accent); font-weight: 700; }
+
 /* ---- selection screen (#443, spec §9) --------------------------------------
    Reuses .mission-overlay / .mplant-card so the front door and the Plant &
    Mission window read as one family; only the frame and the activity rows are

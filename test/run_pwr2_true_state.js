@@ -248,18 +248,24 @@ function runSuite(TS, rec, quiet) {
      ' % drained -- a fabricated healthy constant reads 61.5 in both and reds');
   /* TURNED AROUND A SECOND TIME (stage 2b): three of the four then-missing fields are real now
    * — the PORV can stick (the TMI-2 failure lever), the block valve isolates it, the tailpipe
-   * has a temperature. Only spray_stuck remains declared, and its reason must say WHY it alone
-   * survives (no spray failure lever exists). */
+   * has a temperature. AND A THIRD TIME (#507 wave 6): spray_stick is a real lever, so the
+   * last survivor's static retired too — the check turned around AGAIN to guard the repair. */
   ck('the TMI relief-path fields are SUPPLIED with earned-healthy values',
      ts.porv_stuck === false && ts.block_valve_open === true &&
      typeof ts.porv_tailpipe_temp_c === 'number' && ts.porv_tailpipe_temp_c < 100,
      'stuck ' + ts.porv_stuck + ', block ' + ts.block_valve_open + ', tailpipe ' +
      (typeof ts.porv_tailpipe_temp_c === 'number' ? ts.porv_tailpipe_temp_c.toFixed(0) : '?') +
      ' degC cold on a healthy plant — a PORV that has never passed has a cold pipe');
-  ck('...and spray_stuck, the one survivor, is a REGISTERED STATIC that says why',
-     ts.spray_stuck === false && !!TS.STATIC.spray_stuck &&
-     /no failure lever/.test(TS.STATIC.spray_stuck.reason),
-     'a reason that names the machinery outlives a reason that names a lane');
+  ck('...and spray_stuck is LIVE (#507 wave 6): false from the vessel, TRUE through a stuck ' +
+     'valve, and no longer in the statics registry',
+     ts.spray_stuck === false && TS.STATIC.spray_stuck === undefined &&
+     (function () {
+       var rStk = RD.pressurizer.stepPressurizer(RD.pressurizer.createPressurizer({}), B.sys,
+                                                 0.02, { spray_stick: true });
+       var tStk = TS.buildTrueState(Object.assign({}, B.ctx, { pressurizer: rStk }));
+       return tStk.spray_stuck === true;
+     })(),
+     'the field follows the lever, not a registered constant');
 
   /* ---- SUPPLIED VALUES COME FROM THE LAYERS, NOT FROM CONSTANTS ------------------------ */
   head('SUPPLIED VALUES TRACE TO THEIR LAYER');
@@ -394,12 +400,18 @@ function runSuite(TS, rec, quiet) {
               Math.abs(t3.steam_out_total - B.ts.steam_out_total) < 1e-9;
      })(),
      'feed half, steam whole — two different numbers at last');
-  ck('afw_blocked is a REGISTERED STATIC; afw_discharge is SUPPLIED at the SG it feeds',
-     ts.afw_blocked === false && !!TS.STATIC.afw_blocked &&
+  ck('afw_blocked is LIVE (#507 wave 6: the TMI-2 tagged-shut valves are real state); ' +
+     'afw_discharge is SUPPLIED at the SG it feeds',
+     ts.afw_blocked === false && TS.STATIC.afw_blocked === undefined &&
+     (function () {
+       var blk = RD.afw.stepAFW(RD.afw.createAFW({ mdafwRunning: true, blocked: true }), 0.02);
+       var tB = TS.buildTrueState(Object.assign({}, B.ctx, { afw: blk }));
+       return tB.afw_blocked === true && tB.afw_active === false && tB.afw_pump_running === true;
+     })() &&
      ts.afw_discharge_pressure_mpa !== undefined &&
      Math.abs(ts.afw_discharge_pressure_mpa - Math.min(8.3, ts.steam_pressure_mpa)) < 1e-9,
-     ts.afw_discharge_pressure_mpa.toFixed(2) + ' MPa -- the delivering pump sits at the SG ' +
-     'pressure it injects against, capped at its [open] 8.3 MPa dead-head');
+     ts.afw_discharge_pressure_mpa.toFixed(2) + ' MPa -- and a blocked system reads RUNNING, ' +
+     'not delivering, blocked: the three facts separated');
 
   /* ---- CORE DAMAGE: five supplied, one still declared, and the reason CHANGED -------------
    * This block is the one this file's header warns about most directly. Five of these six were
@@ -469,6 +481,60 @@ function runSuite(TS, rec, quiet) {
      tsVoid.core_uncovered_frac > 0 && tsVoid.core_uncovered_frac <= 1,
      (tsVoid.core_uncovered_frac * 100).toFixed(0) + ' % at near-saturated-steam core enthalpy');
 
+  /* ---- SUPERHEAT: THE PROXY NO LONGER SATURATES (#517) --------------------------------------
+   * The defect this pair pins is not that the proxy was wrong — it is that it STOPPED CARRYING
+   * INFORMATION. Measured on a 5 cm2 unmitigated break: `core_uncovered_frac` reached 100 % at
+   * 580 s and then reported the identical number for 1,220 s, while the core dried from 0 to
+   * 131 degC of superheat and the clad climbed 555 -> 677 degF. Two cores 200 kJ/kg apart in
+   * dryness are the same reading to every consumer, which is what the drying half fixes. */
+  head('SUPERHEAT  [void clips at 1; above h_g this is the only quantity that still moves]');
+  function coreAt(h, P) {
+    return TS.buildTrueState({ sys: { P: P, M_total: 1, expansion: [], simTime: 0,
+      nodes: B.sys.nodes.map(function (n) {
+        return { id: n.id, V: n.V, h: n.id === 'core' ? h : n.h };
+      }), mdot_loop: B.sys.mdot_loop } });
+  }
+  var P517 = 226 / 145.038;                       /* the measured plateau, 226 psia */
+  var tsWet = coreAt(RD.water.h_f(P517) + 10, P517);
+  var tsDry = coreAt(RD.water.h_g(P517) + 5, P517);
+  var tsDrier = coreAt(RD.water.h_g(P517) + 298, P517);   /* the ride's own plateau, h = 3090 */
+  ck('core_superheat_c is 0 on a two-phase core — 0 through every normal evolution',
+     tsWet.core_superheat_c === 0 && ts.core_superheat_c === 0,
+     'two-phase ' + tsWet.core_superheat_c + ', at-power ' + ts.core_superheat_c);
+  ck('...and reads the measured plateau on a dry one',
+     Math.abs(tsDrier.core_superheat_c - 128) < 3,
+     tsDrier.core_superheat_c.toFixed(1) + ' degC at h = 3090, 226 psia (measured 128)');
+  /* THE BLIND SPOT, ASSERTED DIRECTLY — void is identical at both dryness levels. Without this
+   * the check above could pass against a field nothing needed. */
+  ck('void_fraction is IDENTICAL at both, so superheat is the only discriminator',
+     tsDry.core_void_fraction === 1 && tsDrier.core_void_fraction === 1 &&
+     tsDrier.core_superheat_c - tsDry.core_superheat_c > 100,
+     'void 1.0 both; superheat ' + tsDry.core_superheat_c.toFixed(0) + ' -> ' +
+     tsDrier.core_superheat_c.toFixed(0) + ' degC');
+  ck('...and core_uncovered_frac SEPARATES them instead of pinning at 100 %',
+     tsDrier.core_uncovered_frac > tsDry.core_uncovered_frac &&
+     tsDrier.core_uncovered_frac <= 1 && tsDry.core_uncovered_frac >= 0.9,
+     (tsDry.core_uncovered_frac * 100).toFixed(1) + ' % -> ' +
+     (tsDrier.core_uncovered_frac * 100).toFixed(1) + ' % — both were 100.0 % before #517');
+
+  /* ---- THE HELD PLANT SAYS SO (#517) --------------------------------------------------------
+   * `sys.beyond_model` lived on `sys` and NOTHING published it: no true_state key matched, and
+   * `grep beyond_model ui layers` returned zero hits. The player got a plausible, internally
+   * consistent, completely static plant that went on accepting commands — 160 minutes of it on
+   * the TMI ride. A simulator that has stopped simulating must say so. */
+  head('THE HELD PLANT  [a frozen model that reports itself running is the worst case]');
+  ck('a running plant reports model_held false with reason "none"',
+     ts.model_held === false && ts.model_held_why === 'none',
+     'and "none" rather than null, because `put` drops null and the field would vanish');
+  var tsHeld = TS.buildTrueState({ sys: B.sys, beyond_model: true,
+                                   held_why: 'floor guard: pinned at 0.1 MPa' });
+  ck('...and a held plant reports model_held true, carrying the CAUSE',
+     tsHeld.model_held === true && /floor guard/.test(tsHeld.model_held_why),
+     tsHeld.model_held_why);
+  ck('...with the reason still present when the caller supplies none',
+     TS.buildTrueState({ sys: B.sys, beyond_model: true }).model_held_why === 'none',
+     'a held plant with no stated cause is still HELD — the flag never depends on the string');
+
   /* ---- THE DECLARED SIMPLIFICATION IS VISIBLE ------------------------------------------ */
   head('THE ONE-PRESSURE SIMPLIFICATION IS VISIBLE, NOT HIDDEN');
   ck('hot, cold and suction pressures are the SAME number',
@@ -520,7 +586,19 @@ function runSuite(TS, rec, quiet) {
      ' % narrow at half mass');
   ck('plant mode reads At Power on the healthy fixture and Hot Standby past a trip',
      ts.plant_mode === 1 && /At Power/.test(ts.plant_mode_name) && tsTrip.plant_mode === 3,
-     'mode ' + ts.plant_mode + ' / ' + tsTrip.plant_mode + ' -- the two modes this engine has');
+     'mode ' + ts.plant_mode + ' / ' + tsTrip.plant_mode);
+  /* the LADDER's cold rungs (#507 wave 10): Mode 4 to 350 degF, Mode 5 below 200 degF —
+   * the Mode 5 rung exists for the day Layer 0 extends below its 0.1 MPa floor */
+  var W2m = globalThis.RD.pwr2.water;
+  var tsM4 = TS.buildTrueState({ sys: globalThis.RD.pwr2.sources.createPlant(
+    { h: W2m.h_l(120, 2.5), P: 2.5 }) });
+  var tsM5 = TS.buildTrueState({ sys: globalThis.RD.pwr2.sources.createPlant(
+    { h: W2m.h_l(80, 1.0), P: 1.0 }) });
+  ck('...and the cold rungs read by Tavg: 248 degF is Mode 4 Hot Shutdown, 176 degF is ' +
+     'Mode 5 Cold Shutdown',
+     tsM4.plant_mode === 4 && /Hot Shutdown/.test(tsM4.plant_mode_name) &&
+     tsM5.plant_mode === 5 && /Cold Shutdown/.test(tsM5.plant_mode_name),
+     tsM4.plant_mode + '/' + tsM5.plant_mode);
   ck('the SR channel is DE-ENERGIZED at power and the IR reads its adopted scale',
      ts.sr_energized === false && ts.sr_counts_cps === 0 &&
      Math.abs(ts.ir_amps - 8.333e-3 * ts.power_pct / 100) < 1e-9,
@@ -565,15 +643,33 @@ var MUTATIONS = [
   ['the CVCS currency conversion is dropped (kg/s published as the #408 fraction again)',
    "    put('charging_flow_actual', cv.charging_kgs * FRAC_PER_KGS);",
    "    put('charging_flow_actual', cv.charging_kgs);"],
+  /* RETARGETED at #511: the drift target used to be msiv_open, which is a LIVE field now —
+   * the drift moves to a SURVIVING static (the single-SG imbalance constant). */
   ['a static drifts from its registered value (the registry lies about what is emitted)',
    "    Object.keys(STATIC).forEach(function (sf) { ts[sf] = STATIC[sf].value; });",
-   "    Object.keys(STATIC).forEach(function (sf) { ts[sf] = STATIC[sf].value; });\n    ts.msiv_open = false;"],
+   "    Object.keys(STATIC).forEach(function (sf) { ts[sf] = STATIC[sf].value; });\n    ts.sg_imbalance_active = true;"],
   ['the SG level map is DELETED (a drained SG reads the healthy nominal)',
    "      put('sg_level_wide_pct', clip(wide, 0, 100));",
    "      put('sg_level_wide_pct', 59.25);"],
   ['the core-uncovery proxy is pinned to zero (an uncovered core reads covered)',
-   "    put('core_uncovered_frac', clip((aCore - 0.5) / 0.5, 0, 1));",
+   "    put('core_uncovered_frac',\n        clip(0.9 * (aCore - 0.5) / 0.5, 0, 0.9) + clip(0.1 * shCore / 150, 0, 0.1));",
    "    put('core_uncovered_frac', 0);"],
+  /* ---- #517, the superheat wing + the held plant ---- */
+  ['the uncovery proxy SATURATES again — the drying half deleted (the pre-#517 blind spot)',
+   "clip(0.9 * (aCore - 0.5) / 0.5, 0, 0.9) + clip(0.1 * shCore / 150, 0, 0.1));",
+   "clip((aCore - 0.5) / 0.5, 0, 1));"],
+  ['core_superheat_c always reports 0 (void 1 is all a consumer can ever see)',
+   "      return n ? W.superheat_c(n.h, sys.P) : undefined;",
+   "      return n ? 0 : undefined;"],
+  ['core_superheat_c reads the HOT LEG, not the core',
+   "      var n = nd.core;\n      return n ? W.superheat_c(n.h, sys.P) : undefined;",
+   "      var n = nd.hot_leg;\n      return n ? W.superheat_c(n.h, sys.P) : undefined;"],
+  ['model_held is hard-wired false — a frozen plant reports itself running',
+   "    put('model_held', ctx.beyond_model === true);",
+   "    put('model_held', false);"],
+  ['model_held_why goes back to null, which `put` DROPS (the field vanishes)',
+   "    put('model_held_why', ctx.held_why || 'none');",
+   "    put('model_held_why', ctx.held_why || null);"],
   ['the sump reads a constant instead of the tracked mass',
    "      put('containment_sump_pct', clip(100 * ct.m_sump_kg / ctx.M_nominal, 0, 100));",
    "      put('containment_sump_pct', 0);"],
@@ -612,9 +708,14 @@ var MUTATIONS = [
    * nothing while looking like coverage, which is the thing this file's own header warns
    * about. Its intent is carried by the two scram mutations above, which fabricate at the
    * real assignment site instead. */
+  /* RETARGETED #507 wave 4: this mutation pinned the 'electrical' declareStatic, which
+   * retired when ac_available/station_blackout went live — the same thin-reason class now
+   * rides the surviving MSIV static. */
+  /* RE-ANCHORED at #511: the 'steam lines' static retired with the MSIV build — the same
+   * mutation now blanks a surviving static's reason. */
   ['a STATIC loses its reason (the registry stops saying why a constant is honest)',
-   "  declareStatic('electrical', 'no electrical model — AC is genuinely always available here',",
-   "  declareStatic('electrical', 'x',"],
+   "  declareStatic('secondary', 'a single-SG plant cannot have an SG imbalance',",
+   "  declareStatic('secondary', 'x',"],
   /* RETARGETED 2026-08-18: this mutation used to blank the "#472 owns it" lane attribution,
    * whose anchor text left with the old declared-missing block when pwr2_pressurizer.js landed.
    * The same failure class now lives in the SUPPLIED side: a level published as a constant
@@ -622,6 +723,9 @@ var MUTATIONS = [
   ['pzr_level_pct is fabricated as a healthy constant instead of read from the vessel',
    "    put('pzr_level_pct',     pz.level_pct);",
    "    put('pzr_level_pct',     61.5);"],
+  ['the Mode 4 rung is deleted (a 250 degF shutdown plant reads Hot Standby) -- #507 wave 10',
+   "             : (typeof tvM === 'number' && tvM < 176.7) ? 4\n             : 3;",
+   '             : 3;'],
   ['coverage() counts DECLARED gaps as supplied, inflating the fraction',
    '      if (ts[f] !== undefined) {',
    '      if (ts[f] !== undefined || MISSING[f]) {'],

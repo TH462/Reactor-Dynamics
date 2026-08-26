@@ -53,6 +53,12 @@
 
   var RD = root.RD && root.RD.pwr2;
   var W  = RD && RD.water;
+  /* #514: the flash solve's residual pays P_sat on every evaluation — through the table
+   * (pwr2_core's idiom) it is two array reads instead of pwr2_water's 80-iteration
+   * bisection. Cold-started at 62 evaluations a step this module was 16 % of the whole
+   * engine step (~174 us of 1090). */
+  var VT = RD && RD.vtable;
+  var PSAT = VT ? VT.P_sat_T : (W && W.P_sat);
 
   var FT3_PER_M3 = 35.3147;
   var PSI_PER_MPA = 145.0377;
@@ -143,7 +149,7 @@
     (function solveT() {
       function residual(T) {
         var TK = T + 273.15;
-        var Ps = W.P_sat(T);
+        var Ps = PSAT(T);
         var mv_max = Ps * 1000 * ct.V_m3 / (0.4615 * TK);
         var mv = Math.min(ct.m_water, mv_max);
         var ml = ct.m_water - mv;
@@ -163,14 +169,29 @@
       if (residual(lo) > 0) { ct.T_c = lo; }
       else if (residual(hi) < 0) { ct.T_c = hi; }
       else {
-        for (var k = 0; k < 60; k++) {
+        /* WARM-STARTED FROM LAST STEP'S SOLUTION (#514): containment temperature moves
+         * ~nothing in 0.02 s, so the root is almost always inside a bracket a fraction of a
+         * degree wide around ct.T_c — the same warm-start-tight reasoning as pwr2_core's
+         * solveP. The bracket expands 4x on a miss and the cold full-range [20, 200] search
+         * remains the fallback, so a violent transient (or the first call) behaves exactly
+         * as before. The non-monotone-above-200 clamp above is untouched. */
+        var k, span = 0.05;
+        if (ct.T_c > lo && ct.T_c < hi) {
+          for (k = 0; k < 6; k++) {
+            var wlo = Math.max(lo, ct.T_c - span), whi = Math.min(hi, ct.T_c + span);
+            if (residual(wlo) < 0 && residual(whi) >= 0) { lo = wlo; hi = whi; break; }
+            span *= 4;
+          }
+        }
+        for (k = 0; k < 60; k++) {
           var mid = 0.5 * (lo + hi);
           if (residual(mid) < 0) lo = mid; else hi = mid;
+          if (hi - lo < 1e-7) break;
         }
         ct.T_c = 0.5 * (lo + hi);
       }
       var TK2 = ct.T_c + 273.15;
-      var Ps2 = W.P_sat(ct.T_c);
+      var Ps2 = PSAT(ct.T_c);
       var mvmax = Ps2 * 1000 * ct.V_m3 / (0.4615 * TK2);
       m_vapour = Math.min(ct.m_water, mvmax);
       m_sump = ct.m_water - m_vapour;

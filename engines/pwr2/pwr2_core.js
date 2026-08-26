@@ -119,12 +119,22 @@
    *   drivers.heats: {nodeId: kW}
    *   drivers.sources: [{node, mdot, h}]  mass crossing the BOUNDARY (kg/s, kJ/kg)
    *
-   * `step` ADVANCES THE PHYSICS BY EXACTLY dt (D2 §24.2). It never returns early and never
-   * sub-steps a partial interval, because `simulation_service.js:370` credits
-   * `simTime += steps * PHYSICS_DT` unconditionally — an early return makes the plant's clock
-   * run ahead of its physics silently, with nothing to repay it. That is the exact inverse of
-   * the analysis-code pattern, where the right response to trouble is to shorten and retry.
-   * Here the step is a contract with the clock and it cannot be broken. */
+   * `step` ADVANCES THE PHYSICS BY EXACTLY dt (D2 §24.2). It never returns early, because
+   * `simulation_service.js:370` credits `simTime += steps * PHYSICS_DT` unconditionally — an
+   * early return makes the plant's clock run ahead of its physics silently, with nothing to
+   * repay it. That is the exact inverse of the analysis-code pattern, where the right response
+   * to trouble is to shorten and retry. Here the step is a contract with the clock and it
+   * cannot be broken.
+   *
+   * ⚠ THE CONTRACT IS "EXACTLY dt", NOT "ONE INTERVAL" — this comment used to say `step` "never
+   * sub-steps a partial interval", which is narrower than §24.2 actually rules and would read as
+   * forbidding what Layer 3 now does. §24.2 verbatim: *"engine.step(dt) MUST advance the physics
+   * by exactly dt, HOWEVER IT SUBDIVIDES INTERNALLY. A crossing sub-step must run to the boundary
+   * and then continue to the end of the step. It may never return early."* Subdivision is
+   * permitted; a short step is not. Since #518 `pwr2_loop.stepLoop` calls THIS function N times
+   * with dt/N when the ring's Courant limit binds — each call still advancing exactly its own
+   * interval, the sum still exactly dt. What stays forbidden here is rejecting a step and
+   * retrying it shorter. */
   function step(sys, dt, drivers) {
     drivers = drivers || {};
     var flows = drivers.flows || [], heats = drivers.heats || {}, sources = drivers.sources || [];
@@ -300,13 +310,57 @@
     }
 
     var clampedNodes = 0, discardedKJ = 0, wallHi = 0, wallLo = 0;
+    var h_next = new Array(N);            /* #518 — staged; adopted only past the latches */
     for (i = 0; i < N; i++) {
       var h_raw = a[i] + v[i] * (sol.P - sys.P);
       var h_new = hClamp(h_raw);                 /* THE SAME function the solve used */
       if (h_new !== h_raw) { clampedNodes++; discardedKJ += (h_raw - h_new) * m_n[i]; }
       if (h_new === hHi) wallHi++; else if (h_new === hLo) wallLo++;
-      sys.nodes[i].h = h_new;
+      h_next[i] = h_new;                                  /* #518 — STAGED, not written yet */
     }
+
+    /* ---- THE BLOWDOWN TERMINAL LATCHES, EVALUATED BEFORE ANYTHING IS ADOPTED (#487/#499/#518)
+     * BOTH halves of the floor latch are required, because each alone fires on a plant that is
+     * still fine: `enthalpyClamped` fires transiently in a 50 cm2 break at ~297 s with the plant
+     * at ordinary pressure (audit #488 C9: 147 node-steps, 141 kJ, finite throughout), and the
+     * solve touches the FLOOR benignly only if it can still close mass there. A solve pinned at
+     * P_MIN that cannot shed its mass surplus WHILE nodes sit outside the enthalpy envelope is
+     * the state the pressure search cannot make consistent — the issue's measured sequence is
+     * clamp at t = 842.78 s, NaN one step later. Latch on the first, never reach the second.
+     *
+     * The second signature (#499, first instance) is the SAME h-oscillation NEAR the floor, where
+     * flooredLow never asserts: nodes pinned on BOTH envelope walls at once (measured: core at
+     * +4161 kJ/kg beside upper plenum at -5.4, at 0.115 MPa, ECCS fighting the blowdown). It
+     * NEVER occurs on a legitimate ride — the benign 50 cm2 clamping episode has 45,087 clamped
+     * steps over 1200 s and zero two-sided ones.
+     *
+     * ⚠ THEY USED TO LATCH *AFTER* COMMITTING, AND SO THE HELD PLANT WAS THE BLOWN-UP STEP (#518).
+     * The state written for the player to stare at for ever was the one the guard had just
+     * rejected as uncomputable. MEASURED on a large break with the station blacked out: the last
+     * good step reads 17.6 psia and Tavg 393 degF, and the held snapshot reads 14.5 psia and
+     * **221 degF — a 172 degF fall in one 0.02 s step**, which is not a temperature the plant ever
+     * had. #520 then put a dialog in front of exactly that board, which is what made it worth
+     * fixing rather than recording.
+     *
+     * The root-jump guard above had this right from the start — "hold THIS step (nothing
+     * adopted)" — and these two now do the same thing, which is the ONLY behaviour that makes the
+     * held state mean what the dialog says it means: the last readings that were valid. The
+     * clamp counts are still REPORTED, because what was rejected is the diagnostic. */
+    if ((sol.flooredLow && clampedNodes > 0) || (wallHi > 0 && wallLo > 0)) {
+      sys.beyond_model = true;
+      sys.simTime += dt;                                  // EXACTLY dt. Always.
+      return {
+        P: sys.P, dP: 0, held: true, beyond_model: true,
+        iterations: sol.iters, capBound: !!sol.capBound, bracketWidth: sol.width,
+        unbracketed: !!sol.unbracketed, envelopeExceeded: true,
+        enthalpyClamped: clampedNodes,                    /* what was REJECTED, not adopted */
+        enthalpyDiscarded_kJ: discardedKJ, residual: 0,
+        junction: sys.nodes.map(function (n) { return { id: n.id, dm_dt: 0 }; }),
+        transfers: flows.length + sources.length
+      };
+    }
+
+    for (i = 0; i < N; i++) sys.nodes[i].h = h_next[i];   /* #518 — adopt, now that it is safe */
     var P_prev = sys.P;
     sys.P = sol.P;
     sys.M_total = M_target;
@@ -322,22 +376,6 @@
       nextExp[i] = rate;                    // carried forward as the explicit lag
     }
     sys.expansion = nextExp;
-
-    /* ---- THE BLOWDOWN TERMINAL LATCH (#487) ------------------------------------------------
-     * BOTH halves are required, because each alone fires on a plant that is still fine:
-     * `enthalpyClamped` fires transiently in a 50 cm2 break at ~297 s with the plant at
-     * ordinary pressure (audit #488 C9: 147 node-steps, 141 kJ, finite throughout), and the
-     * solve touches the FLOOR benignly only if it can still close mass there. A solve pinned
-     * at P_MIN that cannot shed its mass surplus WHILE nodes sit outside the enthalpy envelope
-     * is the state the pressure search cannot make consistent — the issue's measured sequence
-     * is clamp at t = 842.78 s, NaN one step later. Latch on the first, never reach the second. */
-    if (sol.flooredLow && clampedNodes > 0) sys.beyond_model = true;
-    /* #499, first instance: the SAME h-oscillation NEAR the floor, where flooredLow never
-     * asserts. Its signature is nodes pinned on BOTH envelope walls at once (measured: core at
-     * +4161 kJ/kg beside upper plenum at -5.4, at 0.115 MPa, ECCS fighting the blowdown) — and
-     * that signature NEVER occurs on a legitimate ride: the benign 50 cm2 clamping episode has
-     * 45,087 clamped steps over 1200 s and zero two-sided ones. Latch on the signature. */
-    if (wallHi > 0 && wallLo > 0) sys.beyond_model = true;
 
     return {
       P: sys.P, dP: sys.P - P_prev, held: false, beyond_model: !!sys.beyond_model,

@@ -1,4 +1,4 @@
-/* run_pwr2_ab.js — THE A/B HARNESS (PWR2_ARCHITECTURE.md "The A/B harness", built at last:
+/* measure_pwr2_ab.js — THE A/B HARNESS (PWR2_ARCHITECTURE.md "The A/B harness", built at last:
  * Option B put both engines behind the same surface, which is the first moment matched
  * scenarios cost nothing).
  *
@@ -22,7 +22,11 @@
  * primary_leak declares severity 1.0 = 20 cm² at the old implicit cold leg, which is the
  * equal-severity mapping this comparison rides.
  *
- * Run: node test/run_pwr2_ab.js            (~2-4 min; prints the table, writes nothing)
+ * Run: node test/measure_pwr2_ab.js        (~1-2 min; prints the table, writes nothing)
+ *
+ * RENAMED run_pwr2_ab.js -> measure_pwr2_ab.js (#513, owner-approved 2026-08-25): a
+ * measurement that exits 0 always does not belong in run_all's discovery — its ~50 s per
+ * gate run bought nothing that could fail. On-demand only now; nothing else changed.
  */
 'use strict';
 var path = require('path');
@@ -226,7 +230,7 @@ console.log('  VERDICT (mechanical half only — the reading is the adjudicator\
                     'job or the old proxy was better than believed (the prediction\'s own words)'));
 
 console.log('\n' + '='.repeat(70));
-console.log('  run_pwr2_ab measurement complete');
+console.log('  measure_pwr2_ab measurement complete');
 console.log('  (this runner never fails; adjudication is HR9, one divergence at a time,');
 console.log('   recorded in Blueprint/PWR2_VALIDATION.md)');
 console.log('='.repeat(70) + '\n');

@@ -101,7 +101,22 @@ function check(rule, where, text, why) {
 }
 
 // ---------------------------------------------------------------- the shell's asset list
-var shellSrc = fs.readFileSync(bundler.SHELL, 'utf8');
+// THE DEV-ONLY BLOCK COMES OUT FIRST, exactly as the bundler does it and from the bundler's
+// own regex — one declaration, not a second copy. It holds the RETIRED PWR engine (2026-08-26),
+// which the portable build never carries: the offline file is a distribution artifact and
+// should be the plant the site runs and nothing else.
+//
+// Scanning the raw shell instead would break this gate in BOTH of its halves and in opposite
+// directions: the inlined-script tally below would report 100 of 108 and go red on a correct
+// bundle, and the LOADS scan would read six files the bundle does not ship — certifying that
+// nothing in the offline build can load anything, partly on the strength of files that are
+// not in it. Asserting the block was there keeps a marker rename from silently turning this
+// back into a scan of the raw shell.
+var shellRaw = fs.readFileSync(bundler.SHELL, 'utf8');
+var shellSrc = shellRaw.replace(bundler.DEV_ONLY, '');
+check('TAGS', 'ui/shell.html', 'carries a DEV-ONLY block (the retired PWR engine, ' +
+  (shellRaw.length - shellSrc.length) + ' bytes of markup)',
+  shellSrc.length < shellRaw.length ? 'stripped here as the bundler strips it' : null);
 var SHELL_DIR = path.dirname(bundler.SHELL);
 var scripts = [], sheets = [], externals = [];
 
@@ -207,11 +222,26 @@ if (buildErr) {
   // guessed `RD.PwrEngine` and `RD.ControlKernel`; both are wrong (`RD.PWREngine`,
   // `RD.ControlLayer`), and a sentinel for a name that never existed fails forever, which
   // reads as a broken bundle rather than a broken test.
-  [['RD.PWREngine', 'engine'], ['RD.PwrBoard', 'board'], ['RD.MANUAL_MD', 'packed manual'],
+  //
+  // The engine sentinel was `RD.PWREngine` until 2026-08-26. PWR2 replaced it and the
+  // bundle no longer contains it at all, so that name would now fail forever for the
+  // opposite reason — and `RD.pwr2.shell` is what layers/simulation_service.js asks for
+  // when plant_id is 'pwr2', which is what ui/app.js now boots.
+  [['RD.pwr2.shell', 'engine'], ['RD.PWRInstruments', 'instrument layer'],
+   ['RD.PwrBoard', 'board'], ['RD.MANUAL_MD', 'packed manual'],
    ['RD.ControlLayer', 'control layer'], ['RD.SimulationService', 'service']
   ].forEach(function (p) {
     check('BUNDLE', 'dist', 'contains ' + p[1], built.html.indexOf(p[0]) >= 0 ? 'present' : null);
   });
+
+  // ...and the NEGATIVE sentinel, which is the one that can actually rot. Everything above
+  // fails loudly if the bundle is short; a retired engine creeping back in makes the file
+  // BIGGER and every other check still passes. `RD.PWREngine =` is the assignment at the
+  // bottom of engines/pwr/pwr_engine.js, so it matches the file being present and not the
+  // several places that merely name it in a comment.
+  check('BUNDLE', 'dist', 'does NOT contain the retired PWR engine',
+    !/RD\.PWREngine\s*=/.test(built.html)
+      ? 'the offline build is the plant the site runs, and only that' : null);
 }
 
 // ---- E. the build output is not committable -----------------------------------

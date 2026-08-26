@@ -101,6 +101,12 @@
       pumpBAvail: opts.pumpBAvail === undefined ? 1 : opts.pumpBAvail,
       auto: opts.auto === undefined ? true : !!opts.auto,
       manual_frac: opts.manual_frac === undefined ? 1.0 : opts.manual_frac,
+      /* THE OVERFEED SEAT (#510 M-12): the regulating valve failed OPEN — its own failure
+       * seat, NOT a rewrite of the operator's demand (#200): the auto/manual selector and
+       * manual_frac stay where the operator put them, demands keep moving and stay
+       * ineffective (the porv_stick shape), and clearing the seat hands control back to
+       * whatever lineup was standing. Old saves carry no field and land false — healthy. */
+      overfeed: opts.overfeed === undefined ? false : !!opts.overfeed,
       isolated: false,                          /* the FWI latch — operator-reset only */
       valve: atPower ? 1.0 / (2 * FW.pump_frac_each) : 0,   /* mid-load position at rated */
       feed_frac: atPower ? 1.0 : 0,             /* DELIVERED, behind the pump lag */
@@ -115,10 +121,16 @@
    *   steam_flow_frac    steam flow / rated           (element 2)
    *   fw_flow_frac       feed flow / rated            (element 3)
    *   si_active          the LATCHED SI signal — drives isolation after the sourced delay
+   *   power_ok           the NONVITAL bus (#507 wave 4) — the main feed pumps are non-vital
+   *                      loads (they die with the grid, diesels or not); absent means
+   *                      powered, the acAvailable(s) convention. The selectors stay where
+   *                      the operator put them (#200), so capacity <= 0 reads as
+   *                      main_feed_lost and the sourced turbine-trip/MDAFW chain fires.
    */
   function stepFeedwater(fw, dt, drivers) {
     drivers = drivers || {};
-    var capacity = FW.pump_frac_each * ((fw.pumpA ? Math.max(0, fw.pumpAAvail) : 0) +
+    var capacity = drivers.power_ok === false ? 0 :
+                   FW.pump_frac_each * ((fw.pumpA ? Math.max(0, fw.pumpAAvail) : 0) +
                                         (fw.pumpB ? Math.max(0, fw.pumpBAvail) : 0));
 
     /* SI -> feedwater isolation, the sourced 32 s behind the LATCHED signal. Held-time, not
@@ -129,8 +141,14 @@
     } else fw._siHeld_s = 0;
 
     if (fw.isolated) {
-      /* WTSM 11.1 §11.1.4: isolation closes the regulating valve and OVERRIDES the SGWLCS */
+      /* WTSM 11.1 §11.1.4: isolation closes the regulating valve and OVERRIDES the SGWLCS.
+       * Isolation beats the overfeed seat too — the FWI function trips the pumps as well as
+       * the valve, DECLARED (a failed-open valve alone cannot defeat it). */
       fw.valve = 0;
+    } else if (fw.overfeed) {
+      /* the failed-open valve (#510 M-12): the controller and the operator keep issuing
+       * demands and none of them move it */
+      fw.valve = 1;
     } else if (fw.auto) {
       var lvl = drivers.sg_level_pct;
       var wS = drivers.steam_flow_frac, wF = drivers.fw_flow_frac;
@@ -159,7 +177,9 @@
     }
 
     var demand = fw.isolated ? 0
-               : clip((fw.auto ? fw.valve : clip(fw.manual_frac / (2 * FW.pump_frac_each), 0, 1))
+               : clip((fw.overfeed ? 1
+                       : fw.auto ? fw.valve
+                       : clip(fw.manual_frac / (2 * FW.pump_frac_each), 0, 1))
                       * 2 * FW.pump_frac_each, 0, capacity);
     if (dt > 0) fw.feed_frac += (demand - fw.feed_frac) * (dt / FW.pump_tau_s);
     if (fw.feed_frac < 0) fw.feed_frac = 0;

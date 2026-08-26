@@ -50,6 +50,25 @@
  * moderator coefficient reads real density from L0, so the moderator feedback and the coolant it
  * feeds back from are the same water."
  *
+ * ⚠ TWO DEFECTS LIVED IN THAT SENTENCE UNTIL 2026-08-26 (#515 Build 3, D5 §87), both invisible
+ * from a source read and both found by measuring a TMI ride to its death:
+ *   1. The temperature term reconstructed BOTH densities through rho_from_h(h_l(T, P), P). Below
+ *      P_sat(304.5 degC) = 9.145 MPa the REFERENCE h_l(304.5, P) sits above h_f(P) and the
+ *      round trip returns a two-phase MIXTURE density (610 kg/m3 at 8.8 MPa, 155 at 5, 7.6 at
+ *      0.5) — so saturated legs at 700 ppm read +1,058 / +6,688 / +9,761 pcm where liquid water
+ *      gives +70 / +901 / +2,489. Fifteen beta of invented positive reactivity on every
+ *      depressurized plant before any injection boron: the 40 cm2 ride's "kinetics runaway"
+ *      (measured: mod +6,400..6,800 pcm at 700 ppm, 700-920 psia, dead at 79.9 s). Fixed:
+ *      liqRho() — Layer 0's compressed-liquid form on the tabulated saturation line.
+ *   2. The boron factor (1 - B/986) is a fit through 810-975 ppm, and it was extrapolated without
+ *      bound: at 2,271 ppm (safety injection at 2,500 ppm landing in a collapsing inventory) it
+ *      is -1.30 and BOTH density terms invert — a scrammed, poisoned, 99.5 %-void core went
+ *      prompt-supercritical (dry core at 0.5 MPa: +44,143 pcm at 2,271 ppm, +52,010 at 2,500).
+ *      Fixed: the factor is FLOORED at the licensing envelope's +5 pcm/degF, and the void term's
+ *      boron-positive part is CAPPED at the boron worth the balance actually holds.
+ * A related artefact: modCoeff cached its coefficient at the FIRST caller's pressure (13.4x apart
+ * between 0.5 and 15.5 MPa) — calibrate() now evaluates once at the anchor's own state.
+ *
  * ---------------------------------------------------------------------------------------
  * ⚠ WHAT IS NOT FINISHED, DECLARED LOUDLY RATHER THAN HIDDEN:
  *
@@ -75,6 +94,10 @@
   /* Resolved ONCE at load, never per call — `pwr2_sources.js` records what two missed direct calls
    * cost: Layer 4 ran seven times the cost of Layer 3. */
   var RHO_W = VT ? VT.rho_from_h : (W && W.rho_from_h);
+  /* the tabulated saturation line (0.15 us) in place of Layer 0's 80-iteration bisection
+   * (3 us) — liqRho runs twice a step in the moderator term */
+  var PSAT = VT && VT.P_sat_T ? VT.P_sat_T : (W && W.P_sat);
+  var TFH = VT ? VT.T_from_h : (W && W.T_from_h);   /* #514: same idiom for temperature */
 
   /* ================================================================ SOURCED CONSTANTS */
 
@@ -117,19 +140,6 @@
   };
   function f0() { return DECAY.H0[0] + DECAY.H0[1] + DECAY.H0[2] + DECAY.H0[3]; }
 
-  /* THE NEUTRON SOURCE FLOOR — [derived]. A shut-down core's fission power does not decay to
-   * zero: installed startup sources and intrinsic (spontaneous-fission, alpha-n) neutrons hold
-   * a subcritical-multiplication equilibrium, which is the population the source range lives
-   * on and the reason a real startup is monitorable at all. This model carries no explicit
-   * source term in the point-kinetics matrix, so without a floor P decays exponentially
-   * forever — MEASURED (2026-08-21, the hot_zero_power IC at -1140 pcm): 3.6e-7 of rated at
-   * t=0 to 7e-18 within 30 min, ~21 decades/hr, underflowing to EXACT zero on an overnight
-   * hold — and a zero population can never go critical (0 * e^(t/T) = 0), a permanently dead
-   * core no rod pull revives. The floor IS the source model: the magnitude (1e-9 of rated
-   * ~ 0.3 W) is a class figure, not sourced, and every decade it moves changes a startup's
-   * climb-to-1 % by ~2.5 min at the ~65 s stable period the delayed groups set. */
-  var SOURCE = { floor_frac: 1e-9 };
-
   /* IODINE / XENON — the decay constants are physical and [sourced]; the yields are standard
    * fission-product data. lambda_I = ln2/6.57 h, lambda_X = ln2/9.21 h. */
   var XENON = {
@@ -149,7 +159,28 @@
   var MOD = {
     boron_zero_ppm:   986.0,     // ppm at which moderator feedback is driven to zero
     anchor_pcm_per_F: -31.43,    // at the anchor temperature, zero boron
-    anchor_temp_F:    500.0
+    anchor_temp_F:    500.0,
+    /* THE CALIBRATION STATE (2026-08-26): the anchor is transposed into dk/k per kg/m3 ONCE, at
+     * the anchor temperature and the BEAVRS/Watts Bar HZP pressure (= HZP.P_mpa below; a gate
+     * ties them). It used to be whatever pressure the first caller happened to pass. */
+    cal_T_c:  260.0,             // = anchor_temp_F
+    cal_P_mpa: 15.5,
+    /* THE ENVELOPE — [sourced]. Ginna UFSAR ch15 (ML20339A101): "a maximum moderator temperature
+     * coefficient (MTC) of +5 pcm/F was [assumed]" (:69); "MTC, pcm/F 5.0 (< 70% RTP)" (:884);
+     * "A positive moderator temperature coefficient of +5.0 pcm/degF at zero power is used"
+     * (:5183). The boron factor (1 - B/boron_zero_ppm) is a straight-line FIT through three
+     * measured points at 810-975 ppm; past 986 it goes negative without bound and by 2,271 ppm
+     * (RWST water in a drained loop) both density terms had inverted. It is now FLOORED where the
+     * local MTC would exceed +5 pcm/degF at envelope_T_c — WTSM 2.1 §2.1.6.2 (ML11223A207:903):
+     * "At boric acid concentrations greater than approximately 1400 ppm, the MTC is positive" —
+     * a bounded sign change, which is what the source describes and the line did not have.
+     * THE NEGATIVE SIDE IS RECORDED, NOT APPLIED: :5621 "A maximum negative moderator coefficient
+     * of -35 pcm/degF is assumed". The fit's own zero-boron intercept is -37.3 pcm/degF at 557
+     * degF; the local MTC exceeds 35 only below ~175 ppm at 300 degC rising to ~460 ppm at 330
+     * degC — a dilution-accident regime no initial condition occupies (HZP 719, HFP ~700, Mode 4
+     * 999 ppm). Flooring it would halve the sourced anchor at 0 ppm. [open], with the numbers. */
+    mtc_max_pcm_per_F: 5.0,
+    envelope_T_c: 330.0          // the hot end of the acceptance sweep (T_sat(15.5) = 344.8)
   };
 
   /* BORON — [sourced]. 10 pcm/ppm, verbatim and independently in TWO NRC primaries, one of them
@@ -348,24 +379,48 @@
 
   /* ================================================================ REACTIVITY */
 
-  /* Moderator coefficient, calibrated ONCE against the sourced anchor but evaluated on REAL water
-   * density. The old engine differentiated its own cubic fit; this differentiates Layer 0. */
-  var _modK = null;
-  function modCoeff(P_mpa) {
-    if (_modK !== null) return _modK;
-    var Ta = (MOD.anchor_temp_F - 32) * 5 / 9;
-    var e = 0.5;
-    var dRhodT = (RHO_W(W.h_l(Ta + e, P_mpa), P_mpa) - RHO_W(W.h_l(Ta - e, P_mpa), P_mpa)) / (2 * e);
-    _modK = (MOD.anchor_pcm_per_F * 9 / 5 * 1e-5) / dRhodT;
-    return _modK;
+  /* liqRho(T_c, P_mpa) — the density of LIQUID water at (T, P): Layer 0's own compressed-liquid
+   * form (rho_l_sat with the bulk-modulus correction, the unbranched W.rho_l convention) on the
+   * tabulated saturation line. THE WHOLE POINT is the word LIQUID: the moderator's temperature
+   * term compares the water the core has against liquid at the reference temperature, and
+   * reconstructing either through an enthalpy round trip handed it a two-phase mixture below
+   * 9.145 MPa (the header's defect 1). A leg average above T_sat extrapolates the liquid branch
+   * — bounded, and negative in direction while the factor is positive; declared. */
+  function liqRho(T_c, P_mpa) {
+    var T = T_c < W.LIMITS.T_MIN ? W.LIMITS.T_MIN : (T_c > W.LIMITS.T_MAX ? W.LIMITS.T_MAX : T_c);
+    return W.rho_l_sat(T) * (1 + (P_mpa - PSAT(T)) / W.bulk_modulus(T));
+  }
+
+  /* Moderator coefficient, calibrated ONCE against the sourced anchor at the anchor's OWN state
+   * (MOD.cal_T_c, MOD.cal_P_mpa) — the old engine differentiated its own cubic fit; this
+   * differentiates Layer 0 — and the envelope floor on the boron factor, in the same pass. */
+  var _cal = null;
+  function calibrate() {
+    if (_cal !== null) return _cal;
+    var Ta = MOD.cal_T_c, P = MOD.cal_P_mpa, e = 0.5;
+    var dRhodT = (liqRho(Ta + e, P) - liqRho(Ta - e, P)) / (2 * e);            /* kg/m3 per degC */
+    var K = (MOD.anchor_pcm_per_F * 9 / 5 * 1e-5) / dRhodT;                     /* dk/k per kg/m3 */
+    var dRhoEnv = (liqRho(MOD.envelope_T_c + e, P) - liqRho(MOD.envelope_T_c - e, P)) / (2 * e);
+    /* K * g * dRho/dT (per degC) must stay <= +mtc_max (per degF -> x 9/5 per degC) at the hot
+     * end of the envelope; dRho/dT < 0, so the bound is a FLOOR on g */
+    var g_min = -(MOD.mtc_max_pcm_per_F * 9 / 5 * 1e-5) / (K * Math.abs(dRhoEnv));
+    _cal = { K: K, g_min: g_min, B_cap: MOD.boron_zero_ppm * (1 - g_min) };
+    return _cal;
+  }
+  function modCoeff() { return calibrate().K; }              /* the argument it once took is ignored */
+  function calibration() { return calibrate(); }
+  /* the fit, floored by the envelope: 1 - B/986 down to g_min (about -0.076 -> B_cap ~1,061 ppm) */
+  function boronFactor(B_ppm) {
+    var g = 1 - B_ppm / MOD.boron_zero_ppm, gm = calibrate().g_min;
+    return g < gm ? gm : g;
   }
 
   /* BORON APPEARS TWICE and porting one half is wrong: the direct worth term, and the density
    * coupling inside the moderator term. Their sum is the differential worth an operator sees, and
-   * it is larger cold than at power. */
+   * it is larger cold than at power. The reference is LIQUID at T_ref at the CURRENT pressure. */
   function moderatorReactivity(T_c, T_ref_c, B_ppm, P_mpa) {
-    var dD = RHO_W(W.h_l(T_c, P_mpa), P_mpa) - RHO_W(W.h_l(T_ref_c, P_mpa), P_mpa);
-    return modCoeff(P_mpa) * (1 - B_ppm / MOD.boron_zero_ppm) * dD;
+    var dD = liqRho(T_c, P_mpa) - liqRho(T_ref_c, P_mpa);
+    return modCoeff() * boronFactor(B_ppm) * dD;
   }
 
   /* voidReactivity(h_core, P_mpa, B_ppm) — THE OTHER HALF OF THE DENSITY COUPLING, and it was
@@ -421,13 +476,40 @@
    *
    * CORE NODE, not the leg average, deliberately: the coolant that moderates neutrons is the
    * coolant in the core, and a voided hot leg does not remove moderator from the fuel. The
-   * TEMPERATURE term above keeps its leg average untouched. */
+   * TEMPERATURE term above keeps its leg average untouched.
+   *
+   * ⚠ "HELD DEEPLY SUBCRITICAL BY ANY PLAUSIBLE NONLINEARITY" WAS ONLY TRUE FOR THE BORON THE
+   * TERM HAPPENED TO SEE (2026-08-26, #515 Build 3). The linear factor lumps TWO mechanisms:
+   *   (i)  loss of MODERATION with density — always negative for an undermoderated lattice, at
+   *        any boron: WTSM 2.1 §2.1.6.3 (ML11223A207:936) "The formation of voids in the core has
+   *        the same effect as the temperature increase of the moderator";
+   *   (ii) loss of BORON WORTH as the borated water leaves — positive, and BOUNDED by the worth
+   *        that is present: (:938) "If the moderator is borated, the decrease in moderator
+   *        density also reduces the boron concentration."
+   * Written as one factor, (ii) scaled with the density deficit WITHOUT LIMIT and by 2,271 ppm
+   * (RWST water, 2,500 ppm, landing in a drained loop) it overwhelmed (i): a dry core read
+   * +44,143 pcm and a scrammed, poisoned plant went prompt-supercritical. The form now:
+   *     rho_void = -K*deficit + min( w_B*B , (1 - g(B))*K*deficit )
+   * — the moderation loss at the fit's own coupling, plus the boron-removed part at the fit's
+   * coupling up to the boron worth actually held. THE IDENTITY THE GATE ASSERTS:
+   *     rho_void + rho_bor <= -K*deficit   for every h, P, B
+   * — boron can never make a voided core less subcritical than the unborated voided core. Inside
+   * 810-975 ppm and at every deficit the cap does not bind, this is the previous expression
+   * rearranged (the small-void coefficient at 700 ppm is unchanged: -71 pcm per % void). Above
+   * ~1,061 ppm a small bounded POSITIVE void effect survives (WTSM :939-941, "void formation
+   * could have a positive or negative effect on reactivity depending on ... boron concentration"),
+   * peaking near +1,800 pcm at 2,500 ppm and half quality — covered ten times over by the direct
+   * boron term, and [open] beyond small void (the envelope applied outside its stated condition). */
   function voidReactivity(h_core, P_mpa, B_ppm) {
     if (h_core === undefined || h_core === null || !isFinite(h_core)) return 0;
     if (h_core <= W.h_f(P_mpa)) return 0;        /* subcooled: no void, EXACTLY zero */
     var D_real = RHO_W(h_core, P_mpa);
     var D_liq  = W.rho_l_sat(W.T_sat(P_mpa));    /* what a liquid-full core would have */
-    return modCoeff(P_mpa) * (1 - B_ppm / MOD.boron_zero_ppm) * (D_real - D_liq);
+    var deficit = D_liq - D_real;
+    var K = modCoeff();
+    var lost = (1 - boronFactor(B_ppm)) * K * deficit;     /* boron leaving with the water */
+    var cap  = BORON.worth_per_ppm * B_ppm;                /* ...but no more than is there */
+    return -K * deficit + (lost < cap ? lost : cap);
   }
 
   /* Integral rod worth: the classic sinusoid-corrected ramp. scruve(0)=0 and scruve(1)=1 for ANY K,
@@ -572,6 +654,12 @@
    * wrong, and nothing was red: the plant was self-consistent, critical, and stable at the wrong
    * place. A zero-power function used at power fails QUIETLY, which is why the argument is now
    * explicit and this comment is this long. */
+  /* 2026-08-26 (#515 Build 3): reactivity in boron is PIECEWISE linear now — the envelope floor
+   * puts a kink at B_cap (~1,061 ppm) — so the two-point chord is exact only for roots below it
+   * (today's roots: 970-993 ppm, the shutdown IC's 70 ppm from the kink). A bracketed bisection
+   * replaces it: rho(B) is strictly decreasing (dRho/dB = -w_B - K*dD/B0 <= -5.5 pcm/ppm over
+   * 100-345 degC), so the root is unique; NaN if the plant cannot go critical at any boron.
+   * Called at initial-condition construction only. */
   function criticalBoron(kin, T_c, P_mpa, rodGroups, xeFrac, T_fuel_c) {
     if (xeFrac === undefined) xeFrac = 0;
     if (T_fuel_c === undefined) T_fuel_c = T_c;      /* zero power: fuel sits at the moderator */
@@ -579,11 +667,16 @@
              + (rodGroups ? rodReactivity(rodGroups) : 0)
              + OPEN.alpha_D.value * (T_fuel_c - kin.T_fuel_ref_c)
              - OPEN.xenon_worth.value * xeFrac;
-    var r0 = base + moderatorReactivity(T_c, kin.T_mod_ref_c, 0, P_mpa);
-    var r1 = base + moderatorReactivity(T_c, kin.T_mod_ref_c, 1000, P_mpa)
-                  - BORON.worth_per_ppm * 1000;
-    if (r1 === r0) return NaN;
-    return 1000 * r0 / (r0 - r1);
+    function rhoAt(B) {
+      return base + moderatorReactivity(T_c, kin.T_mod_ref_c, B, P_mpa) - BORON.worth_per_ppm * B;
+    }
+    var lo = 0, hi = 5000, rlo = rhoAt(lo), rhi = rhoAt(hi);
+    if (!(rlo >= 0) || !(rhi <= 0)) return NaN;
+    for (var i = 0; i < 64; i++) {
+      var mid = 0.5 * (lo + hi), rm = rhoAt(mid);
+      if (rm > 0) lo = mid; else hi = mid;
+    }
+    return 0.5 * (lo + hi);
   }
 
   function stepKinetics(kin, sys, dt, drivers) {
@@ -601,7 +694,7 @@
         if (sys.nodes[i].id === 'hot_leg') hot = sys.nodes[i];
         else if (sys.nodes[i].id === 'cold_leg') cold = sys.nodes[i];
       }
-      T_mod = 0.5 * (W.T_from_h(hot.h, P_mpa) + W.T_from_h(cold.h, P_mpa));
+      T_mod = 0.5 * (TFH(hot.h, P_mpa) + TFH(cold.h, P_mpa));
     }
     var B = drivers.boron_ppm === undefined ? 0 : drivers.boron_ppm;
 
@@ -644,8 +737,6 @@
     var adv = advance(kin.P, kin.C, rhoMid, dt);
     kin.P = adv.P;
     kin.C = adv.C;
-    /* the source floor — see the SOURCE block above; one line so its removal is one mutation */
-    if (kin.P < SOURCE.floor_frac) kin.P = SOURCE.floor_frac;
     kin.rho_last = rhoNow;   /* the RAW value, so the next step's ramp estimate is honest */
 
     /* XENON — explicit is fine: the fastest constant here is ~2.9e-5 /s against dt = 0.02. */
@@ -687,13 +778,13 @@
   root.RD.pwr2 = root.RD.pwr2 || {};
   root.RD.pwr2.kinetics = {
     DELAYED: DELAYED, DECAY: DECAY, XENON: XENON, MOD: MOD, RODS: RODS, OPEN: OPEN,
-    SOURCE: SOURCE,
     BORON: BORON, HZP: HZP,
     solveRhoExcess: solveRhoExcess, criticalBoron: criticalBoron,
     createKinetics: createKinetics, stepKinetics: stepKinetics,
     advance: advance, expm: expm, reactivity: reactivity,
     modCoeff: modCoeff, moderatorReactivity: moderatorReactivity,
-    voidReactivity: voidReactivity,
+    voidReactivity: voidReactivity, boronFactor: boronFactor, liqRho: liqRho,
+    calibration: calibration,
     rodReactivity: rodReactivity, scruve: scruve, scruveSlope: scruveSlope,
     xenonEq: xenonEq, f0: f0
   };

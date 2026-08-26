@@ -1,9 +1,16 @@
 # The aggregate gate, run on every push and pull request.
 #
-# `node test/run_all.js` runs all 38 runners and compares each against the BASELINES
-# map at the top of that file. Drift is symmetric — a runner scoring BETTER than its
-# baseline fails too, so a red turning green has to be acknowledged rather than
-# silently absorbed.
+# `node test/run_all.js` runs every discovered runner (~90 — the count grows; the map is
+# the authority, this comment said "38" while the suite stood at 89) and compares each
+# against the BASELINES map at the top of that file. Drift is symmetric — a runner scoring
+# BETTER than its baseline fails too, so a red turning green has to be acknowledged rather
+# than silently absorbed.
+#
+# NODE_COMPILE_CACHE (#513): run_all sets a shared V8 code-cache dir (os.tmpdir()) in every
+# child's env, so the 90 runners share compiles WITHIN a run. Deliberately NOT persisted
+# across CI runs via actions/cache — the cross-run win is a few seconds of first-compiles
+# against added restore latency and one more moving part in a workflow that has been burned
+# twice (the --fast red streak; the vendoring stalls below).
 #
 # THERE IS STILL NO package.json, AND THERE MUST NOT BE ONE. FOUR runners
 # (verify_flags_ui, verify_e2e_ui, verify_manual_follow, verify_board_check)
@@ -82,7 +89,16 @@ env:
 jobs:
   aggregate-gate:
     runs-on: ubuntu-latest
-    timeout-minutes: 55
+    # 80 -> 45 (#513, 2026-08-25): the cheaper mutation replays the note below asked for are
+    # built — the aggregate step measured 17m16s on the first green #513 run (43m31s before).
+    # 2x the known runner-class spread puts the honest slow end near ~35; the step budget is
+    # 40 and the job wraps it at 45.
+    # 55 -> 80 (#507 wave 8, 2026-08-23): the aggregate step's 45-minute budget TIMED OUT on
+    # the wave-7 push — not a red runner, the suite genuinely grew (the pwr2 mutation
+    # harnesses; the previous GREEN run took 43m31s, a 90-second margin nobody noticed
+    # shrinking). The step budget moves to 70 and the job wraps it at 80. The #496 class;
+    # the real long-term fix is cheaper mutation replays, not a bigger cap.
+    timeout-minutes: 45
 
     steps:
       # ACTION MAJORS ARE ON THE NODE 24 RUNTIME (#389, 2026-08-06). All four were on `@v4`,
@@ -148,7 +164,11 @@ jobs:
       # suite measures ~19 min locally at 10-way parallel, so the same 2x slow-end logic gives
       # ~38 — 45 keeps the step failing on its OWN name before the job's 55 does.
       - name: Aggregate gate (all runners)
-        timeout-minutes: 45
+        # 70 -> 40 (#513, 2026-08-25): measured 17m16s on the first green run after the
+        # replay-scoping/split work; 2x the runner-class spread gives ~35 — see the job note
+        # 45 -> 70 (#507 wave 8): timed out at 45 on the wave-7 push with every runner green
+        # locally — see the job-level note
+        timeout-minutes: 40
         run: node test/run_all.js
 
       - name: Upload diagnostic reports

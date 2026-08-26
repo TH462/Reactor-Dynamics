@@ -106,6 +106,32 @@ function runSuite(A, rec, quiet) {
   head('SANITY  [negative availability cannot manufacture negative flow]');
   ckT('negative availability clamps to zero, not a negative flow',
       A.stepAFW(A.createAFW({ mdafwRunning: true, mdafwAvail: -1 }), 0.02).total_kgs === 0, '');
+
+  /* ---- THE ELECTRICAL SPLIT (#507 wave 4) ------------------------------------------------ */
+  head('THE ELECTRICAL SPLIT  [MDAFW is a vital motor load; TDAFW is the sourced SBO survivor]');
+  var afB = A.createAFW({ mdafwRunning: true, tdafwRunning: true });
+  var rB = A.stepAFW(afB, 0.02, { mdafw_power_ok: false });
+  ck('an unpowered MDAFW delivers exactly zero', rB.mdafw_kgs, 0, 1e-12, 'kg/s');
+  ckT('...while its run flag STANDS -- running with no flow, never secured (#200 split)',
+      rB.mdafw_running === true, '');
+  ck('the TDAFW pump delivers its rated flow through the same blackout -- steam-driven, ' +
+     'the WTSM 5.7.5 survivor', rB.tdafw_kgs, A.tdafwRatedKgs(), 1e-9, 'kg/s');
+  ck('absent drivers mean POWERED -- the acAvailable convention, so every fixture above holds',
+     A.stepAFW(A.createAFW({ mdafwRunning: true }), 0.02).mdafw_kgs, A.mdafwRatedKgs(),
+     1e-9, 'kg/s');
+
+  /* ---- THE DISCHARGE BLOCK (#507 wave 6) -- the TMI-2 tagged-shut valves ------------------ */
+  head('THE BLOCK  [downstream of BOTH pumps; demand persists; delivery is what dies]');
+  var afK = A.createAFW({ mdafwRunning: true, tdafwRunning: true, blocked: true });
+  var rK = A.stepAFW(afK, 0.02);
+  ckT('tagged-shut discharge valves dead-head BOTH trains while every run flag stands',
+      rK.total_kgs === 0 && rK.mdafw_running === true && rK.tdafw_running === true &&
+      rK.blocked === true,
+      'the TMI-2 shape: pumps RUNNING, water going nowhere');
+  afK.blocked = false;
+  var rK2 = A.stepAFW(afK, 0.02);
+  ck('opening the valves restores delivery at the STANDING demand -- no re-start needed (#200)',
+     rK2.total_kgs, A.mdafwRatedKgs() + A.tdafwRatedKgs(), 1e-9, 'kg/s');
 }
 
 console.log('\nPWR2 Layer 5 -- AUXILIARY FEEDWATER');
@@ -127,8 +153,17 @@ var MUTATIONS = [
   ['TDAFW ratio to MDAFW silently changed (breaks the sourced 200%/100% relationship)',
    'tdafw_ginna_gpm: 340,', 'tdafw_ginna_gpm: 300,'],
   ['negative availability produces negative flow instead of clamping',
-   'af.mdafwRunning ? mdafwRatedKgs() * Math.max(0, af.mdafwAvail) : 0;',
-   'af.mdafwRunning ? mdafwRatedKgs() * af.mdafwAvail : 0;'],
+   '(open && af.mdafwRunning && mdPowered) ? mdafwRatedKgs() * Math.max(0, af.mdafwAvail) : 0;',
+   '(open && af.mdafwRunning && mdPowered) ? mdafwRatedKgs() * af.mdafwAvail : 0;'],
+  ['the MDAFW power gate is severed (a blacked-out motor pump keeps pumping)',
+   'var mdPowered = !drivers || drivers.mdafw_power_ok !== false;',
+   'var mdPowered = true;'],
+  ['the discharge block is severed (tagged-shut valves pass water) -- #507 wave 6',
+   'var open = !af.blocked;',
+   'var open = true;'],
+  ['the power gate lands on the TURBINE pump (the do-not-gate note violated)',
+   'var td = (open && af.tdafwRunning) ? tdafwRatedKgs() * Math.max(0, af.tdafwAvail) : 0;',
+   'var td = (open && af.tdafwRunning && mdPowered) ? tdafwRatedKgs() * Math.max(0, af.tdafwAvail) : 0;'],
   ['afw_flow_normalized divides by only the running trains instead of both rated',
    'var rated = mdafwRatedKgs() + tdafwRatedKgs();',
    'var rated = md + td;']

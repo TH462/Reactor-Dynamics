@@ -11,7 +11,8 @@
  *   1. LETDOWN IS AN ORIFICE. Flow must FALL as the plant depressurises. A constant-flow letdown
  *      teaches the opposite of the real coupling, and the check is a comparison across two
  *      pressures rather than a band at one.
- *   2. BORON IS A MASS BALANCE. Dilution must be slow at high concentration and fast at low,
+ *   2. BORON IS A MASS BALANCE. Dilution must be FAST at high concentration and slow at low
+ *      (rate ∝ C — #510 M-9: this header used to state the inverse of its own 4x check),
  *      because letdown carries the RCS concentration away. That SHAPE is the evidence the balance
  *      is real; a fitted ppm/min ramp would match a magnitude and get the shape wrong.
  *   3. THE SCALING BASIS IS DECLARED AND BOTH ALTERNATIVES ARE REPORTED. The engine picks volume;
@@ -38,7 +39,15 @@ function loadFrom(src) {
   return new Function('RD_ROOT', body)(root);
 }
 
-function runSuite(C, rec, quiet) {
+/* runSuite(C, rec, quiet, only) — `only` scopes a MUTATION REPLAY to the section group that
+ * can see that mutation (#513, the run_pwr2_engine idiom): 'A' the sourced anchors/scaling,
+ * 'B' the letdown orifice + RHR path + regen HX, 'C' the boron mass balance, 'D' inventory
+ * through the real loop, 'E' construction + the vital bus, 'F' the rate actuator + lab
+ * sample. The CLEAN pass runs everything; each group is also preflighted ALONE on the clean
+ * build before the replays, so a group leaning on another section's setup fails loudly
+ * instead of masquerading as a "caught" crash inside a replay. */
+function runSuite(C, rec, quiet, only) {
+  function grp(g) { return only === undefined || only === g; }
   function ck(name, got, want, tol, unit) {
     var d = Math.abs(got - want), ok = d <= tol && isFinite(got);
     rec.push({ name: name, ok: ok });
@@ -66,6 +75,7 @@ function runSuite(C, rec, quiet) {
   var N = function (n) { return Math.max(200, Math.round(n * SCALE)); };
   var GPM = function (kgs) { return kgs / 1000 * 264.172 * 60; };
 
+  if (grp('A')) {
   /* ---- 1. THE SOURCED ANCHORS SURVIVED THE SCALING ------------------------------------ */
   if (!quiet) console.log('\nSOURCED ANCHORS  [Ginna charging; the scaling basis is DECLARED]');
   ck('Ginna RCS volume is the sourced 5123 ft3', C.GINNA_RCS_M3, 5123 * 0.0283168466, 1e-9, 'm3');
@@ -102,7 +112,9 @@ function runSuite(C, rec, quiet) {
   ckT('the boric acid tank sits inside the sourced RWST band',
       C.CVCS.boric_acid_ppm >= 2000 && C.CVCS.boric_acid_ppm <= 2500,
       C.CVCS.boric_acid_ppm + ' ppm; ML11223A220 gives 2,000-2,500');
+  }
 
+  if (grp('B')) {
   /* ---- 2. LETDOWN IS AN ORIFICE ------------------------------------------------------- */
   if (!quiet) console.log('\nLETDOWN  [an ORIFICE: flow must FALL as the plant depressurises]');
   var sysN = plant(), cvN = C.createCVCS({});
@@ -133,6 +145,45 @@ function runSuite(C, rec, quiet) {
       C.stepCVCS(C.createCVCS({ letdownOpen: 0 }), plant(), 0.02).letdown_kgs === 0,
       'letdownOpen = 0');
 
+  /* ---- 2b. THE RHR LOW-PRESSURE LETDOWN PATH (#510 H-2, owner-ruled 2026-08-23) --------
+   * Sourced at the code: on shutdown cooling, letdown comes FROM the RHR system through the
+   * HCV-128 cross-connect (WTSM ch.19 / §4.1.4.5; NUREG-1431 Bases' "low pressure letdown
+   * control"), bypassing the orifice's 300 psi backpressure — which is what stranded the
+   * Mode 4 preset's 5 gpm of seal injection and sent it water-solid at 75 min. */
+  var sysRl = plant(); sysRl.P = 1.0;                    /* below the orifice backpressure */
+  var rRl = C.stepCVCS(C.createCVCS({}), sysRl, 0.02, { rhr_letdown_ok: true });
+  ckT('below the orifice backpressure the RHR path letdowns at the NORMAL magnitude',
+      Math.abs(rRl.letdown_kgs - C.normalLetdownKgs()) < 1e-9,
+      GPM(rRl.letdown_kgs).toFixed(2) + ' gpm at 145 psia with the RHR suction open');
+  ckT('...only WHILE the RHR suction is open — the driver absent means the old orifice law',
+      C.stepCVCS(C.createCVCS({}), (function () { var s = plant(); s.P = 1.0; return s; })(),
+                 0.02).letdown_kgs === 0,
+      'same 145 psia plant, no rhr_letdown_ok: letdown 0 (the pre-#510 shape, kept at power)');
+  ckT('...and the operator\'s letdown fraction still owns the path',
+      C.stepCVCS(C.createCVCS({ letdownOpen: 0 }), sysRl, 0.02,
+                 { rhr_letdown_ok: true }).letdown_kgs === 0,
+      'letdownOpen 0 passes nothing through either path');
+  ckT('at power the two paths agree — the RHR driver moves NOTHING at 2235 psia',
+      Math.abs(C.stepCVCS(C.createCVCS({}), plant(), 0.02, { rhr_letdown_ok: true }).letdown_kgs -
+               C.stepCVCS(C.createCVCS({}), plant(), 0.02).letdown_kgs) < 1e-12,
+      'the orifice is calibrated to the normal flow at operating pressure, so max() is a tie');
+
+  /* ---- 2c. THE REGENERATIVE HX (#510 H-2): letdown pre-heats the return ---------------- */
+  var sysRg = plant();
+  function coldNode(sy) {
+    for (var q = 0; q < sy.nodes.length; q++) if (sy.nodes[q].id === 'cold_leg') return sy.nodes[q];
+  }
+  var rRg = C.stepCVCS(C.createCVCS({}), sysRg, 0.02);
+  var rIso = C.stepCVCS(C.createCVCS({ letdownOpen: 0 }), plant(), 0.02);
+  ckT('with letdown in service the return arrives NEAR the cold leg (regen recovery), and ' +
+      'with letdown isolated it arrives COLD',
+      rRg.sources[0].h > 0.8 * coldNode(sysRg).h && rIso.sources[0].h < 0.5 * coldNode(sysRg).h,
+      'in-service h ' + rRg.sources[0].h.toFixed(0) + ' vs isolated h ' +
+      rIso.sources[0].h.toFixed(0) + ' kJ/kg against a ' + coldNode(sysRg).h.toFixed(0) +
+      ' kJ/kg cold leg — the ~10 % residual cold-injection effect is the real one');
+  }
+
+  if (grp('C')) {
   /* ---- 3. BORON IS A MASS BALANCE, AND THE SHAPE PROVES IT ---------------------------- */
   if (!quiet) console.log('\nBORON  [a mass balance -- the SHAPE is the evidence, not the rate]');
   function dilute(from, minutes) {
@@ -155,6 +206,29 @@ function runSuite(C, rec, quiet) {
       cvB.boron_ppm > 700 && cvB.boron_ppm < C.CVCS.boric_acid_ppm,
       cvB.boron_ppm.toFixed(1) + ' ppm after 10 min against a ' + C.CVCS.boric_acid_ppm +
       ' ppm source');
+  /* SAFETY INJECTION CARRIES RWST BORON (#510 M-1): the sourced 2,500 ppm concentration was
+   * defined and read by NOTHING — thousands of kg injected moved the RCS boron by zero. The
+   * caller hands the injected stream to this ledger; injection AT the RCS's own concentration
+   * is neutral (the discriminator that separates the term from a fitted ramp). */
+  ckT('SI RAISES boron toward the RWST concentration — and SI at the RCS\'s own ppm is ' +
+      'NEUTRAL (#510 M-1)',
+      (function () {
+        var s1 = plant(), c1 = C.createCVCS({ boron_ppm: 700 });
+        var s2 = plant(), c2 = C.createCVCS({ boron_ppm: 700 });
+        var s3 = plant(), c3 = C.createCVCS({ boron_ppm: 700 });
+        for (var q = 0; q < N(3000); q++) {
+          C.stepCVCS(c1, s1, 0.02, { si_kgs: 5, si_ppm: 2500 });
+          C.stepCVCS(c2, s2, 0.02);
+          C.stepCVCS(c3, s3, 0.02, { si_kgs: 5, si_ppm: 700 });
+        }
+        /* the margin RIDES WITH THE WINDOW (#513): +15 ppm was calibrated to the live 60 s;
+         * the quiet 9 s window moves ~2-4 ppm, and before the scoped preflight existed this
+         * check was silently RED inside every full quiet replay — a hollow catch the old
+         * whole-suite replays laundered into their per-mutation red counts */
+        var margin = 15 * N(3000) / 3000;
+        return c1.boron_ppm > c2.boron_ppm + margin && c1.boron_ppm < 2500 &&
+               Math.abs(c3.boron_ppm - c2.boron_ppm) < 0.5;
+      })(), N(3000) * 0.02 + ' s at 5 kg/s of 2,500 ppm RWST water against the untouched twin');
   /* A MATCHED LINEUP MUST HOLD BORON **WHILE INVENTORY IS CHANGING** -- and that is the only
    * place the re-concentration term is observable. Adding water at the RCS's own concentration
    * cannot shift concentration, so the transport term (+C*dM/M) and the re-concentration term
@@ -190,7 +264,78 @@ function runSuite(C, rec, quiet) {
         return lo > 0 && isFinite(lo);
       })(), 'bottoms at 4.385 ppm from 5 over 20 min at max charge -- proportional decay, so ' +
       'zero is approached and never crossed');
+  }
 
+  if (grp('F')) {
+  /* ---- 3b. THE RATE ACTUATOR (#507 wave 1) --------------------------------------------
+   * A commanded ppm/s realized as a BLENDER: the step inverts the balance for the blend
+   * concentration, clamped to [0, tank]. THE CLAMP IS THE CEILING — no ppm/s constant —
+   * so the achievable rate is inFlow*(C_tank − C)/M and the proportional-to-C dilution
+   * shape survives the actuator. */
+  if (!quiet) console.log('\nRATE ACTUATOR  [a commanded ppm/s, blender-shaped, tank-clamped]');
+  ckT('a rate command RETURNED to 0 is bit-identical to a never-commanded lineup from the ' +
+      'same state (#510 LOW rebuild: the old form set 0 on a fresh object whose DEFAULT is ' +
+      'already 0 — two constructor defaults compared, a check that could never fail)',
+      (function () {
+        var s1 = plant(), s2 = plant();
+        var c1 = C.createCVCS({}), c2 = C.createCVCS({});
+        c2.boron_rate_cmd = 0.05;                     /* USE the actuator... */
+        for (var q = 0; q < N(1500); q++) C.stepCVCS(c2, s2, 0.02);
+        c2.boron_rate_cmd = 0;                        /* ...then idle it */
+        c1.boron_ppm = c2.boron_ppm;                  /* equalize the states */
+        for (q = 0; q < N(1500); q++) { C.stepCVCS(c1, s1, 0.02); C.stepCVCS(c2, s2, 0.02); }
+        return c1.boron_ppm === c2.boron_ppm;
+      })(), 'residual actuator state after use would red this; the old vacuous form could not');
+  var cvR = C.createCVCS({ boron_ppm: 700, chargingDemand: 0.5, letdownOpen: 1 });
+  cvR.boron_rate_cmd = 0.02;
+  var sysR = plant();
+  for (var r2 = 0; r2 < N(6000); r2++) C.stepCVCS(cvR, sysR, 0.02);
+  ck('an unclamped mid-range command is METERED exactly (ppm/s achieved)',
+     (cvR.boron_ppm - 700) / (N(6000) * 0.02), 0.02, 0.001, 'ppm/s');
+  /* the ceiling: a firehose demand achieves exactly what tank concentration and the current
+   * lineup can carry — measured against the closed form, not a remembered number */
+  var cvF = C.createCVCS({ boron_ppm: 700, chargingDemand: 0.5, letdownOpen: 1 });
+  cvF.boron_rate_cmd = 99;
+  var sysF = plant();
+  var res0 = C.stepCVCS(cvF, sysF, 0.02);
+  var Mf = 0;
+  for (var kf = 0; kf < sysF.nodes.length; kf++) Mf += sysF.nodes[kf].V * W.rho_from_h(sysF.nodes[kf].h, sysF.P);
+  var ceil = (res0.charging_kgs + res0.seal_kgs) * (C.CVCS.boric_acid_ppm - 700) / Mf;
+  var cF0 = cvF.boron_ppm;
+  for (r2 = 0; r2 < N(3000); r2++) C.stepCVCS(cvF, sysF, 0.02);
+  ck('a firehose demand is CLAMPED to the tank-and-lineup ceiling',
+     (cvF.boron_ppm - cF0) / (N(3000) * 0.02), ceil, ceil * 0.05, 'ppm/s');
+  ckT('a firehose DILUTION stays PROPORTIONAL to concentration through the actuator — fast ' +
+      'at high boron, slow at low (#510 M-9: the old name said the inverse of the assertion)',
+      (function () {
+        function rate(ppm) {
+          var cv = C.createCVCS({ boron_ppm: ppm, chargingDemand: 0.5, letdownOpen: 1 });
+          cv.boron_rate_cmd = -99;
+          var sy = plant(), p0 = cv.boron_ppm;
+          for (var q = 0; q < N(3000); q++) C.stepCVCS(cv, sy, 0.02);
+          return (p0 - cv.boron_ppm) / (N(3000) * 0.02);
+        }
+        var hi = rate(1400), lo = rate(350);
+        return hi / lo > 3.4 && hi / lo < 4.6;      /* ~4x, the balance's own proportionality */
+      })(), 'C_in clamps at 0, so dilution rate stays proportional to concentration');
+  /* the lab sample: request -> pending -> posts with a new seq; a pending sample is not
+   * re-drawn (the timer is shortened white-box — 1800 s is a counter, not physics) */
+  ckT('the lab sample posts on expiry and a pending sample is not re-drawn',
+      (function () {
+        var cv = C.createCVCS({ boron_ppm: 712 }), sy = plant();
+        if (cv.sample_seq !== 1 || typeof cv.sample_ppm !== 'number') return false;
+        C.requestBoronSample(cv);
+        if (!(cv._sample_timer > 0)) return false;
+        cv._sample_timer = 100;
+        C.requestBoronSample(cv);                    /* must NOT reset to 1800 */
+        if (cv._sample_timer !== 100) return false;
+        cv._sample_timer = 0.01;
+        C.stepCVCS(cv, sy, 0.02);
+        return cv._sample_timer === 0 && cv.sample_seq === 2 && cv.sample_ppm === Math.round(cv.boron_ppm);
+      })(), 'seeded seq 1 at boot; request; expiry posts the rounded RCS ppm as seq 2');
+  }
+
+  if (grp('D')) {
   /* ---- 4. IT DRIVES THE REAL LOOP ----------------------------------------------------- */
   if (!quiet) console.log('\nINVENTORY  [the sources go straight into Layer 3, unmodified]');
   /* MEASURE THE LEDGER, NOT THE RECONSTRUCTION -- and this cost a blind spot to learn.
@@ -272,7 +417,9 @@ function runSuite(C, rec, quiet) {
       rI.sources[0].h < coldLegH - 100,
       rI.sources[0].h.toFixed(0) + ' kJ/kg into a cold leg at ' + coldLegH.toFixed(0) +
       ' -- teachable, and the reason charging moves a cold-leg temperature the operator sees');
+  }
 
+  if (grp('E')) {
   /* ---- 5. CONSTRUCTION  [written FIRST this time -- §31] ------------------------------- */
   if (!quiet) console.log('\nCONSTRUCTION  [§31: every other layer was blind here. Written first.]');
   var opt = C.createCVCS({ chargingDemand: 0.25, letdownOpen: 0.5, boron_ppm: 1234,
@@ -286,6 +433,17 @@ function runSuite(C, rec, quiet) {
       C.stepCVCS(C.createCVCS({ chargingDemand: 1, isolated: true }), plant(), 0.02)
         .charging_kgs === 0,
       'isolated with full demand delivers 0 kg/s -- the flag is not cosmetic');
+  /* THE VITAL BUS (#507 wave 4): the charging pump is a motor load and asks ac_available;
+   * letdown is an orifice against system pressure and keeps flowing -- DECLARED. */
+  var rSbo = C.stepCVCS(C.createCVCS({ chargingDemand: 1, letdownOpen: 1 }), plant(), 0.02,
+                        { ac_available: false });
+  ckT('a dead vital bus stops charging AND seal injection at full demand',
+      rSbo.charging_kgs === 0 && rSbo.seal_kgs === 0,
+      'demand stands (the #200 split) -- restored power gives the pump back');
+  ckT('...while LETDOWN keeps flowing (an orifice, not a motor load -- declared)',
+      rSbo.letdown_kgs > 0, rSbo.letdown_kgs.toFixed(3) + ' kg/s out with the bus dead');
+  ckT('absent drivers mean POWERED -- every fixture above holds (acAvailable convention)',
+      C.stepCVCS(C.createCVCS({ chargingDemand: 1 }), plant(), 0.02).charging_kgs > 0, '');
   ckT('omitting chargingDemand gives the SOURCED normal flow, not zero and not maximum',
       Math.abs(GPM(C.stepCVCS(C.createCVCS({}), plant(), 0.02).charging_kgs) -
                C.CVCS.charging_normal_gpm()) < 1e-6,
@@ -297,6 +455,7 @@ function runSuite(C, rec, quiet) {
       C.gpmToKgs(C.CVCS.charging_max_gpm(), 1000) + 1e-12 &&
       C.stepCVCS(C.createCVCS({ chargingDemand: -3 }), plant(), 0.02).charging_kgs === 0,
       'demand 9 delivers max, demand -3 delivers nothing');
+  }
 }
 
 console.log('\nPWR2 Layer 5 -- CVCS: charging, letdown and boron');
@@ -304,62 +463,93 @@ var C = loadFrom(SRC), rec = [];
 runSuite(C, rec, false);
 var pass = rec.filter(function (r) { return r.ok; }).length, fail = rec.length - pass;
 
-/* ---------------------------------------------------------------- INJECTION SELF-TEST */
+/* ---------------------------------------------------------------- INJECTION SELF-TEST
+ * Each entry's trailing { grp } names the section group that can SEE it (#513) — the replay
+ * runs only that group, and the BLIND check still reds the runner if the tag is wrong. */
 var MUTATIONS = [
+  ['the RHR letdown path severed (#510 H-2 re-armed: Mode 4 seal injection has no exit)',
+   '? cv.letdownOpen * normalLetdownKgs() : 0;', '? 0 : 0;', { grp: 'B' }],
+  ['the regen recovery deleted (the return arrives cold; the closed loop stands ~200 kW of ' +
+   'parasitic cooling)',
+   'h_in = h_charge + CVCS.regen_effectiveness', 'h_in = h_charge + 0 * CVCS.regen_effectiveness',
+   { grp: 'B' }],
   ['letdown becomes a constant flow (the coupling is destroyed)',
-   'cv.letdownOpen * cv.K * Math.sqrt(dP)', 'cv.letdownOpen * cv.K * Math.sqrt(13.34)'],
+   'cv.letdownOpen * cv.K * Math.sqrt(dP)', 'cv.letdownOpen * cv.K * Math.sqrt(13.34)',
+   { grp: 'B' }],
   ['the orifice runs backwards below its backpressure',
-   '(cv.letdownOpen <= 0 || dP <= 0) ? 0 :', '(cv.letdownOpen <= 0) ? 0 :'],
+   '(cv.letdownOpen <= 0 || dP <= 0) ? 0 :', '(cv.letdownOpen <= 0) ? 0 :', { grp: 'B' }],
+  ['the SI boron term is dropped (#510 M-1 re-armed: injection dilutes instead of borating)',
+   'var dC = (inFlow * C_in + si * C_si - letdown * cv.boron_ppm) / M;',
+   'var dC = (inFlow * C_in - letdown * cv.boron_ppm) / M;', { grp: 'C' }],
   ['letdown stops carrying the RCS concentration away (boron shape breaks)',
-   'var dC = (inFlow * C_in - letdown * cv.boron_ppm) / M;',
-   'var dC = (inFlow * C_in - letdown * 0) / M;'],
+   'var dC = (inFlow * C_in + si * C_si - letdown * cv.boron_ppm) / M;',
+   'var dC = (inFlow * C_in + si * C_si - letdown * 0) / M;', { grp: 'C' }],
   ['the re-concentration term dropped (inventory change stops affecting ppm)',
    'cv.boron_ppm = cv.boron_ppm + dt * (dC - cv.boron_ppm * dM / M);',
-   'cv.boron_ppm = cv.boron_ppm + dt * dC;'],
+   'cv.boron_ppm = cv.boron_ppm + dt * dC;', { grp: 'C' }],
   /* SEAL INJECTION, ruled unscaled 2026-08-15. It is not a control -- it runs with the charging
    * pumps -- so the mutations are that it vanishes, that it gets scaled after all, and that
    * letdown stops carrying it. */
   ['seal injection dropped entirely (letdown then over-drains the plant)',
-   'var seal = cv.isolated ? 0 : gpmToKgs(sealInjectionGpm(), 1000);', 'var seal = 0;'],
+   'var seal = (cv.isolated || !powered) ? 0 : gpmToKgs(sealInjectionGpm(), 1000);',
+   'var seal = 0;', { grp: 'B' }],
+  ['the charging power gate is severed (a blacked-out pump keeps charging) -- #507 wave 4',
+   'var powered = !drivers || drivers.ac_available !== false;',
+   'var powered = true;', { grp: 'E' }],
   ['seal injection SCALED after all (a seal shrinks because the plant is smaller)',
    'return CVCS.seal_injection_gpm_per_pump * CVCS.rcp_count;',
-   'return CVCS.seal_injection_gpm_per_pump * CVCS.rcp_count * volumeScale();'],
+   'return CVCS.seal_injection_gpm_per_pump * CVCS.rcp_count * volumeScale();', { grp: 'A' }],
   ['letdown stops carrying seal injection (inventory climbs on its own)',
    'return gpmToKgs(CVCS.charging_normal_gpm() + sealInjectionGpm(), 1000);',
-   'return gpmToKgs(CVCS.charging_normal_gpm(), 1000);'],
+   'return gpmToKgs(CVCS.charging_normal_gpm(), 1000);', { grp: 'B' }],
   ['the scale factor is written down instead of derived from Layer 1',
    'function volumeScale() { return rcsVolume() / GINNA_RCS_M3; }',
-   'function volumeScale() { return 0.20; }'],
+   'function volumeScale() { return 0.20; }', { grp: 'A' }],
   ['charging scaled by POWER instead of the declared volume basis',
    'charging_max_gpm:    function () { return 180 * volumeScale(); },',
    'charging_max_gpm:    function () { return 180 * (300 / 1520); },'],
   ['the boric acid tank leaves the sourced RWST band',
-   'boric_acid_ppm: 2500,', 'boric_acid_ppm: 3500,'],
+   'boric_acid_ppm: 2500,', 'boric_acid_ppm: 3500,', { grp: 'A' }],
   ['charging arrives at loop temperature instead of cold',
-   'var h_charge = W.h_l(Math.min(60, W.T_from_h(node ? node.h : 1250, sys.P)), sys.P);',
-   'var h_charge = node ? node.h : 1250;'],
+   /* anchor re-pointed #514: the regen-HX read goes through TFH (the vtable idiom) now */
+   'var h_charge = W.h_l(Math.min(60, TFH(node ? node.h : 1250, sys.P)), sys.P);',
+   'var h_charge = node ? node.h : 1250;', { grp: 'D' }],
   ['letdown leaves as a POSITIVE source (inventory runs away)',
-   "{ node: 'cold_leg', mdot: -letdown,  h: node ? node.h : 1250 }",
-   "{ node: 'cold_leg', mdot: letdown,  h: node ? node.h : 1250 }"],
+   "{ node: 'cold_leg', mdot: -letdown,  h: h_node }",
+   "{ node: 'cold_leg', mdot: letdown,  h: h_node }", { grp: 'D' }],
   ['the orifice coefficient stops being calibrated at NOP',
-   'return normalLetdownKgs() / Math.sqrt(dP);', 'return 0.02;'],
+   'return normalLetdownKgs() / Math.sqrt(dP);', 'return 0.02;', { grp: 'B' }],
   /* CONSTRUCTION -- the class §31 found in every other layer */
   ['caller chargingDemand ignored at construction',
    'chargingDemand: opts.chargingDemand === undefined ? null : opts.chargingDemand,',
-   'chargingDemand: null,'],
+   'chargingDemand: null,', { grp: 'E' }],
   ['caller letdownOpen ignored at construction',
-   'letdownOpen: opts.letdownOpen === undefined ? 1 : opts.letdownOpen,', 'letdownOpen: 1,'],
+   'letdownOpen: opts.letdownOpen === undefined ? 1 : opts.letdownOpen,', 'letdownOpen: 1,',
+   { grp: 'E' }],
   ['caller boron ignored at construction',
-   'boron_ppm: opts.boron_ppm === undefined ? 700 : opts.boron_ppm,', 'boron_ppm: 700,'],
+   'boron_ppm: opts.boron_ppm === undefined ? 700 : opts.boron_ppm,', 'boron_ppm: 700,',
+   { grp: 'E' }],
   ['caller makeupSource ignored at construction',
    "makeupSource: opts.makeupSource === undefined ? 'match' : opts.makeupSource,",
-   "makeupSource: 'match',"],
-  ['caller isolation ignored at construction', 'isolated: !!opts.isolated', 'isolated: false'],
+   "makeupSource: 'match',", { grp: 'E' }],
+  ['caller isolation ignored at construction', 'isolated: !!opts.isolated', 'isolated: false',
+   { grp: 'E' }],
   ['the default lineup becomes maximum charging instead of normal',
    'var demand = cv.chargingDemand === null\n      ? CVCS.charging_normal_gpm() / CVCS.charging_max_gpm()\n      : Math.max(0, Math.min(1, cv.chargingDemand));',
-   'var demand = cv.chargingDemand === null ? 1 : Math.max(0, Math.min(1, cv.chargingDemand));'],
+   'var demand = cv.chargingDemand === null ? 1 : Math.max(0, Math.min(1, cv.chargingDemand));',
+   { grp: 'E' }],
   ['demand no longer clamped (a caller can exceed the pumps)',
-   'Math.max(0, Math.min(1, cv.chargingDemand))', 'cv.chargingDemand']
+   'Math.max(0, Math.min(1, cv.chargingDemand))', 'cv.chargingDemand', { grp: 'E' }],
+  /* THE RATE ACTUATOR (#507 wave 1) */
+  ['the blender inversion is deleted (a commanded rate falls through to the match lineup)',
+   "    if (cv.boron_rate_cmd !== 0 && inFlow > 0 && M > 0) {",
+   '    if (false) {', { grp: 'F' }],
+  ['the tank clamp is deleted (a firehose demand borates at any rate the caller likes)',
+   '      C_in = Math.max(0, Math.min(CVCS.boric_acid_ppm,\n        cv.boron_ppm + cv.boron_rate_cmd * M / inFlow));',
+   '      C_in = cv.boron_ppm + cv.boron_rate_cmd * M / inFlow;', { grp: 'F' }],
+  ['the lab result never posts (the sample clock counts to nothing)',
+   '        cv.sample_ppm = Math.round(cv.boron_ppm);\n        cv.sample_seq = (cv.sample_seq || 0) + 1;',
+   '', { grp: 'F' }]
 ];
 
 /* ---- THE CLEAN-RUN GUARD --------------------------------------------------------------
@@ -384,23 +574,51 @@ if (fail > 0) {
   process.exit(1);
 }
 
+/* ---- SCOPED-CLEAN-PASS PREFLIGHT (#513) ------------------------------------------------
+ * Every group a mutation names must be GREEN when run alone on the clean build. In the replay
+ * loop a crash counts as caught, so a group whose checks lean on another section's setup would
+ * crash there and silently stand in for coverage; here, on the clean module, it fails loudly. */
+var scopeBad = 0;
+MUTATIONS.map(function (m) { return m[3] && m[3].grp; })
+  .filter(function (g, i, a) { return g && a.indexOf(g) === i; })
+  .forEach(function (g) {
+    var rg = [], threw = false;
+    try { runSuite(C, rg, true, g); } catch (e) { threw = true; }
+    var fg = rg.filter(function (r) { return !r.ok; }).length;
+    if (threw || fg > 0) {
+      scopeBad++;
+      console.log('  SCOPE ' + g + (threw ? ' THREW' : ' RED (' + fg + ')') +
+        ' on the CLEAN build -- the group cannot stand alone; GATE FAILS' +
+        (fg ? ' -- ' + rg.filter(function (r) { return !r.ok; })
+                         .map(function (r) { return r.name; }).join('; ') : ''));
+    }
+  });
+
 console.log('\n' + '='.repeat(70));
 console.log('  INJECTION SELF-TEST -- every mutation MUST redden at least one check');
 console.log('='.repeat(70));
 var blind = 0;
 MUTATIONS.forEach(function (m) {
+  var grpTag = (m[3] && m[3].grp) || undefined;
   if (SRC.indexOf(m[1]) === -1) { console.log('  ERROR   anchor not found: ' + m[0]); blind++; return; }
-  var r2 = [];
-  try { runSuite(loadFrom(SRC.split(m[1]).join(m[2])), r2, true); }
-  catch (e) { r2.push({ name: 'threw', ok: false }); }
-  var f2 = r2.filter(function (r) { return !r.ok; }).length;
+  var r2 = [], crashed = false;
+  try { runSuite(loadFrom(SRC.split(m[1]).join(m[2])), r2, true, grpTag); }
+  catch (e) { crashed = true; }
+  /* A crash counts as caught no matter how many checks recorded first (the run_pwr2_engine
+   * form) -- but a crash-only catch is REPORTED AS ITSELF rather than wearing a check's face. */
+  var realReds = r2.filter(function (r) { return !r.ok; }).length;
+  var f2 = crashed ? 1 : (r2.length ? realReds : 1);
   if (f2 === 0) { blind++; console.log('  BLIND TO  ' + m[0] + '   <-- THIS GATE CANNOT SEE IT'); }
+  else if (crashed && realReds === 0) {
+    console.log('  caught    ' + m[0].padEnd(58) + 'CRASH only -- no check red (coverage untested)');
+  }
   else console.log('  caught    ' + m[0].padEnd(58) + f2 + ' red');
 });
 
 console.log('\n' + '='.repeat(70));
 console.log('  injection self-test: ' + (MUTATIONS.length - blind) + '/' + MUTATIONS.length +
-  ' mutations caught' + (blind ? '  ** ' + blind + ' BLIND SPOTS -- GATE FAILS **' : ', no blind spots'));
+  ' mutations caught' + (blind ? '  ** ' + blind + ' BLIND SPOTS -- GATE FAILS **' : ', no blind spots') +
+  (scopeBad ? '  ** ' + scopeBad + ' GROUP(S) NOT SELF-STANDING **' : ''));
 console.log('  run_pwr2_cvcs: ' + pass + ' passed, ' + fail + ' failed  (' + rec.length + ' checks)');
 console.log('='.repeat(70) + '\n');
-process.exit((fail > 0 || blind > 0) ? 1 : 0);
+process.exit((fail > 0 || blind > 0 || scopeBad > 0) ? 1 : 0);

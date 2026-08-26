@@ -24,7 +24,12 @@ function loadAll(pzSource) {
   ['pwr2_water', 'pwr2_vtable', 'pwr2_geometry', 'pwr2_core', 'pwr2_loop', 'pwr2_sources',
    'pwr2_cvcs'
   ].forEach(function (f) {
-    delete require.cache[require.resolve(path.join(SRC, f + '.js'))];
+    /* pwr2_water + pwr2_vtable stay CACHED across replays (#513): never this gate's
+     * mutation target, and a re-execute discards the vtable's lazily-built ~0.5 s GRID
+     * per replay. Kept as a pair (the vtable closes over RD.pwr2.water at load) —
+     * see run_pwr2_engine.js's loadAll for the full note. */
+    if (f !== 'pwr2_water' && f !== 'pwr2_vtable')
+      delete require.cache[require.resolve(path.join(SRC, f + '.js'))];
     require(path.join(SRC, f + '.js'));
   });
   if (pzSource === undefined) {
@@ -64,6 +69,15 @@ function runSuite(RD, rec, quiet) {
              mdot_loop: mdot === undefined ? 1630 : mdot };
   }
   function at(err_psi) { return 15.41 + err_psi / PSI; }
+  /* drive a constructed vessel WATER-SOLID by hand: no steam, one liquid pool of subcooled
+   * water at T_c — the regime the two-region seat expresses as m_stm = 0 (2026-08-25) */
+  function driveSolid(p, T_c) {
+    p.m_sat += p.m_stm; p.m_stm = 0;
+    p.h_sat = W.h_l(T_c, 15.41);
+    p.v_sat = 1000 / W.rho_l(T_c, 15.41);
+    p.m_pzr = p.m_sat + p.m_sub;
+    return p;
+  }
 
   /* ---- 1. THE SOURCED CONSTANTS, AGAINST THEIR DOCUMENTS ----------------------------------- */
   head('SOURCED CONSTANTS  [independent literals -- the engine cannot re-derive its reference]');
@@ -97,17 +111,27 @@ function runSuite(RD, rec, quiet) {
   /* ---- 2. CONSTRUCTION ROUND-TRIPS --------------------------------------------------------- */
   head('CONSTRUCTION  [the state, the projection and the level must be ONE consistent object]');
   var pz0 = PZ.createPressurizer({});
-  ck('the projection reproduces the constructed mass EXACTLY',
-     PZ.extraMassFn(pz0)(15.41), pz0.m_pzr, 1e-9, 'kg');
+  /* #514: the projection reads the vtable while construction uses the direct two-phase
+   * split, so "EXACTLY" became "to the table's declared dome accuracy" — 0.005 % of this
+   * 1693 kg vessel is 0.085 kg; measured 0.014. The claim (state, projection and level are
+   * ONE object, no hidden transformation) is unchanged; a real hidden transformation is
+   * kilograms-to-tonnes off, not hundredths. The engine itself is internally consistent:
+   * the solve's seat and stepPressurizer's reconciliation read the SAME table function. */
+  ck('the projection reproduces the constructed mass (table dome accuracy)',
+     PZ.extraMassFn(pz0)(15.41), pz0.m_pzr, 0.1, 'kg');
   ck('...and the derived level reproduces the requested program level',
      100 * pz0.V_liq / pz0.V, 61.5, 1e-9, '%');
   var pz40 = PZ.createPressurizer({ level_frac: 0.40 });
   ck('a 40 % vessel round-trips too -- no hidden dependence on the program point',
-     PZ.extraMassFn(pz40)(15.41), pz40.m_pzr, 1e-9, 'kg');
-  ckT('h_bar sits inside the dome -- the constructed vessel is genuinely two-phase',
-      pz0.h_bar > W.h_f(15.41) && pz0.h_bar < W.h_g(15.41),
-      'h_bar ' + pz0.h_bar.toFixed(1) + ' kJ/kg between h_f ' + W.h_f(15.41).toFixed(1) +
-      ' and h_g ' + W.h_g(15.41).toFixed(1));
+     PZ.extraMassFn(pz40)(15.41), pz40.m_pzr, 0.1, 'kg');   /* tolerance: see the note above */
+  /* REFIT 2026-08-25 (#515, the two-region vessel): the constructed vessel is TWO REGIONS —
+   * saturated steam over a saturated pool, no stratified layer — where it used to be one HEM
+   * enthalpy inside the dome. Same claim (genuinely two-phase, ONE consistent object). */
+  ckT('the constructed vessel is two-region: saturated steam over a saturated pool, no bottom layer',
+      pz0.m_stm > 0 && Math.abs(pz0.h_stm - W.h_g(15.41)) < 1e-9 &&
+      pz0.m_sat > 0 && Math.abs(pz0.h_sat - W.h_f(15.41)) < 1e-9 && pz0.m_sub === 0,
+      'steam ' + pz0.m_stm.toFixed(1) + ' kg at h_g over a pool of ' + pz0.m_sat.toFixed(1) +
+      ' kg at h_f');
 
   /* ---- 3. COMPLIANCE ----------------------------------------------------------------------- */
   head('COMPLIANCE  [the bubble is soft, monotone -- and water-solid is STIFF, not clipped]');
@@ -122,7 +146,7 @@ function runSuite(RD, rec, quiet) {
       mono, 'formulation 3 in the header inverted this and ran the solve to the floor');
   var softSlope = (f0(15.51) - f0(15.31)) / 0.2;
   var solid = PZ.createPressurizer({ level_frac: 0.999999 });
-  solid.h_bar = W.h_l(340, 15.41);            /* driven SOLID: subcooled liquid fills it */
+  driveSolid(solid, 340);                     /* driven SOLID: subcooled liquid fills it */
   var solidSlope = (PZ.extraMassFn(solid)(15.51) - PZ.extraMassFn(solid)(15.31)) / 0.2;
   ckT('water-solid compliance COLLAPSES -- the regime transition, expressed not clamped',
       solidSlope > 0 && solidSlope < softSlope / 5,
@@ -176,7 +200,7 @@ function runSuite(RD, rec, quiet) {
   ckT('...and a SOLID vessel zeroes aux spray too -- no steam space, nothing to condense',
       (function () {
         var pzS2 = PZ.createPressurizer({ level_frac: 0.999999 });
-        pzS2.h_bar = W.h_l(340, 15.41);
+        driveSolid(pzS2, 340);
         PZ.stepPressurizer(pzS2, stub(15.41, 0), DT, {});   /* flags update on first step */
         return PZ.stepPressurizer(pzS2, stub(15.41, 0), DT, { aux_spray: 1.0 }).aux_spray_frac === 0;
       })(), '');
@@ -184,6 +208,46 @@ function runSuite(RD, rec, quiet) {
       once(-40, { si_active: true }).heater_kW === 0 &&
       once(-40, { si_active: true }).heaters_shed === true,
       'a -40 psi error would otherwise demand every bank');
+  /* THE VITAL BUS KILLS AUX SPRAY (#510 H-4): the charging pumps drive it, and they die on
+   * the same wire pwr2_cvcs pulls — before the gate a blackout plant delivered 29 gpm from
+   * a pump reporting zero flow, 541 psi of depressurization. */
+  var rAuxB = PZ.stepPressurizer(PZ.createPressurizer({}), stub(15.41, 0), DT,
+                                 { aux_spray: 1.0, ac_available: false });
+  ckT('a BLACKOUT kills aux spray — the pump that drives it is a vital load (#510 H-4)',
+      rAuxB.aux_spray_frac === 0 && rAuxB.aux_spray_kgs === 0,
+      'commanded 1.0 on a dead bus: delivered ' + rAuxB.aux_spray_kgs.toFixed(2) + ' kg/s');
+  /* EACH ACTUATING SIGNAL HAS ITS OWN EDGE (#510 H-6): a LOOP arriving AFTER an SI (the
+   * operator re-loaded the heaters between) must shed AGAIN — the old OR'd single edge found
+   * the OR already high and never fired, and 157.8 kW rode the diesels through the
+   * design-basis LOCA+LOOP order. */
+  ckT('a LOOP arriving AFTER an SI (operator re-load between) SHEDS the banks AGAIN',
+      (function () {
+        var pzE = PZ.createPressurizer({});
+        var sysE = stub(15.41, 0);
+        PZ.stepPressurizer(pzE, sysE, DT, { si_active: true });          /* the SI edge arms */
+        if (pzE.shedLatch !== true) return false;
+        pzE.shedLatch = false;                          /* the operator re-load (caller's clear) */
+        var r1 = PZ.stepPressurizer(pzE, sysE, DT, { si_active: true });
+        if (r1.heaters_shed !== false) return false;    /* a STANDING SI does not re-shed */
+        var r2 = PZ.stepPressurizer(pzE, sysE, DT, { si_active: true, offsite_ok: false });
+        return r2.heaters_shed === true && pzE.shedLatch === true;
+      })(), 'the second signal is its own bus-loading action (NUREG-0737 II.E.3.1)');
+  /* THE TWO WAVE-6 FAILURE SEATS (#507): a dead bank and a stuck spray valve — each distinct
+   * from the operator's override and from the shed (three seats, three different recoveries) */
+  var rHF = once(-40, { heaters_failed: true });
+  ckT('FAILED heaters deliver 0 kW while the demand STANDS and nothing is shed',
+      rHF.heater_kW === 0 && rHF.heater_frac > 0.9 && rHF.heaters_shed === false,
+      'demand ' + rHF.heater_frac.toFixed(2) + ' with dead elements — clearing the failure ' +
+      'restores output with no re-lineup (#200)');
+  var rSS = PZ.stepPressurizer(PZ.createPressurizer({}), stub(15.41), DT,
+                               { spray_stick: true, spray_manual: 0 });
+  ckT('a STUCK-OPEN spray valve sprays FULL against a manual-zero demand (the porv_stick twin)',
+      rSS.spray_frac === 1 && rSS.spray_stuck === true && rSS.spray_kgs > 0,
+      rSS.spray_kgs.toFixed(2) + ' kg/s with the operator demanding 0 — the demand moves, ' +
+      'the valve does not');
+  ckT('...and the stick still obeys physics: no RCP head, no spray',
+      PZ.stepPressurizer(PZ.createPressurizer({}), stub(15.41, 0), DT,
+                         { spray_stick: true }).spray_frac === 0, '');
   ckT('safeties open at 2500 psia and reseat 5 % lower, not at the lift point',
       (function () {
         var p = PZ.createPressurizer({});
@@ -338,12 +402,26 @@ function runSuite(RD, rec, quiet) {
   ckT('before the failure: tailpipe COLD, no discharge, stuck reads an earned false',
       prT.tailpipe_temp_c < 100 && prT.relief_kgs === 0 && prT.porv_stuck === false,
       'tailpipe ' + prT.tailpipe_temp_c.toFixed(0) + ' degC — a pipe that has never passed');
+  /* THE STICK IS A LATCH (owner design, 2026-08-25). Armed alone it moves nothing — pinned,
+   * because the pre-latch build opened the valve on arming and the plant never had to lift
+   * it. Then ONE second of the operator's lift, released: the latch must hold what the
+   * demand no longer asks for. */
+  rideT(quiet ? 20 : 60, { porv_stick: true });
+  ckT('ARMING the stick lifts nothing: shut, cold, stuck false, armed reported',
+      prT.relief_kgs === 0 && prT.porv_stuck === false && prT.porv_stick_armed === true &&
+      prT.tailpipe_temp_c < 100,
+      'stuck ' + prT.porv_stuck + ', discharge ' + prT.relief_kgs.toFixed(2) + ' kg/s');
+  rideT(1, { porv_stick: true, porv_manual: true });
   rideT(quiet ? 40 : 120, { porv_stick: true });
-  ckT('the PORV sticks: HALF the two-valve capacity flows and the tailpipe goes HOT',
-      Math.abs(prT.relief_kgs - PZ.RELIEF.porv_kgs / 2) < 1e-9 &&
+  /* RE-EXPRESSED 2026-08-26 (#515 Build 2): the flow is ONE valve's effective area times the
+   * homogeneous critical flux of what the vessel offers it, at THIS pressure — the check tests
+   * the LAW, not the rated number (which the constants section pins separately). */
+  var lawOne = (PZ.reliefAreas().porv_m2 / 2) * PZ.criticalFlux(prT.relief_h, sysT.P);
+  ckT('the PORV sticks: ONE valve\'s area times the choked flux flows, and the tailpipe goes HOT',
+      Math.abs(prT.relief_kgs - lawOne) < 1e-9 && prT.relief_kgs > 0 &&
       prT.tailpipe_temp_c > 200 && prT.porv_stuck === true,
-      prT.relief_kgs.toFixed(2) + ' kg/s (one valve of two), tailpipe ' +
-      prT.tailpipe_temp_c.toFixed(0) + ' degC — the passing indication');
+      prT.relief_kgs.toFixed(2) + ' kg/s (one valve of two, at ' + (sysT.P * PSI).toFixed(0) +
+      ' psia; rated 4.45 at 2350), tailpipe ' + prT.tailpipe_temp_c.toFixed(0) + ' degC');
   var invMid = 100 * sysT.M_total / M0T;
   rideT(quiet ? 160 : 480, { porv_stick: true });
   var invLate = 100 * sysT.M_total / M0T;
@@ -389,16 +467,170 @@ function runSuite(RD, rec, quiet) {
   ckT('charging with no letdown DRIVES THE VESSEL SOLID -- the flag earns true',
       prS.water_solid === true && prS.level_pct > 99.9,
       'solid at t = ' + (iS * DT).toFixed(0) + ' s, ' + (sysS.P * PSI).toFixed(0) + ' psia');
-  var Psolid0 = sysS.P;
+  var Psolid0 = sysS.P, tSolidWin = 0;
+  /* the window ends at the first RELIEF step: a solid vessel now passes WATER through the PORV
+   * and safeties at the choked liquid flux (#515 Build 2), and a valve-limited rate is a
+   * different claim from the liquid-compliance one this check makes */
   for (var iS2 = 0; iS2 < 10 / DT; iS2++) {
     S.stepPlant(sysS, DT, { corePower: 300000, sgDuty: 300000 + pw,
       sources: [{ node: 'cold_leg', mdot: 3.0, h: W.h_l(288, sysS.P) }] });
-    prS = PZ.stepPressurizer(pzS, sysS, DT, { spray_manual: 0, heaters_manual: 0 });
+    prS = PZ.stepPressurizer(pzS, sysS, DT, { spray_manual: 0, heaters_manual: 0, block_valve: false });
+    if (prS.relief_kgs > 0) break;
+    tSolidWin += DT;
   }
-  ckT('...and the SOLID plant pressurizes ~an order faster per kg -- the §25.3 collapse, live',
-      (sysS.P - Psolid0) / 10 > 8 * dPmax / DT * DT,
-      ((sysS.P - Psolid0) * PSI / 10).toFixed(1) + ' psi/s solid vs ' +
-      (dPmax * PSI / DT * DT).toFixed(2) + ' psi/s max while the bubble lived');
+  /* REFIT 2026-08-25 (#515): the old check asserted the solid rate > 8x "the max rate while
+   * the bubble lived" (0.21 psi/s). That bubbled rate WAS THE DEFECT D5 §84 measured — the
+   * equilibrium vessel could not spike — so the 8x ratio pinned the softness. A physical
+   * bubble pressurizes at a few psi/s under 3 kg/s and the solid vessel in the liquid-
+   * compliance class (3 kg/s into ~50 kg/MPa of liquid + loop ≈ 9 psi/s). Three claims
+   * replace the ratio, each validated on the old build too (old: 10.1 psi/s solid, 0.21
+   * bubbled — passes all three). */
+  var rateSolid = (sysS.P - Psolid0) * PSI / Math.max(tSolidWin, DT);
+  ckT('...and the SOLID plant pressurizes in the liquid-compliance class -- the §25.3 collapse, live',
+      rateSolid > 4 && rateSolid < 25,
+      rateSolid.toFixed(1) + ' psi/s solid under 3 kg/s over ' + tSolidWin.toFixed(1) +
+      ' s with no relief (liquid + loop compliance ~50 kg/MPa)');
+  var pzB = PZ.createPressurizer({});
+  var sysB = S.createPlant({ h: W.h_l(304.5, 15.41), P: 15.41, extraMass: PZ.extraMassFn(pzB) });
+  var Pb0 = sysB.P, prB = null;
+  for (var iB = 0; iB < 10 / DT; iB++) {
+    S.stepPlant(sysB, DT, { corePower: 300000, sgDuty: 300000 + pw,
+      sources: [{ node: 'cold_leg', mdot: 3.0, h: W.h_l(288, sysB.P) }] });
+    prB = PZ.stepPressurizer(pzB, sysB, DT, { spray_manual: 0, heaters_manual: 0 });
+  }
+  var rateBub = (sysB.P - Pb0) * PSI / 10;
+  /* MEASURED 2026-08-25: 6.15 psi/s bubbled vs 7.5 solid — on a 10 s window a near-critical
+   * steam bubble compresses nearly as stiffly as the liquid (the loop's own 0.24 m3/MPa is the
+   * larger compliance); condensation softens it on tau_int's timescale, not in 10 s. The claim
+   * is SOFTER, not a ratio: the first draft's "less than half" was a guess, not a source. */
+  ckT('...while the same 3 kg/s into a BUBBLED 61.5 % vessel pressurizes more slowly (softer, not solid)',
+      rateBub > 0 && rateBub < rateSolid && !prB.water_solid,
+      rateBub.toFixed(2) + ' psi/s bubbled vs ' + rateSolid.toFixed(1) + ' solid');
+  /* ---- 7. THE INSURGE COMPRESSES THE STEAM (2026-08-25, #515 — D5 §84/§85) ----------------
+   * Ginna UFSAR ch15 Table 15.2-1: a loss of load with no anticipatory trip reaches the 2425
+   * psia high-pressure trip in 5.4 s from 2190 (+235 psi). The equilibrium vessel answered the
+   * same insurge with +0.6 psi on this harness (+10 on the plant). The two-region vessel:
+   * P-ONLY HARNESS — one 1 m3 hot-leg node and the seat, a prescribed +37 kg/s of 316 degC
+   * water (200 kg / ~8 level points in 5.4 s), spray/heaters manual 0, the PORV isolated. The
+   * code safeties cannot be isolated (by design), so the rides stop at 3.0 s (111 kg), before
+   * the isentropic ceiling reaches 2500 psia. tau_int = Infinity is that ceiling; the adopted
+   * value must sit BELOW it (condensation does something) and well ABOVE the old vessel. ---- */
+  head('THE INSURGE COMPRESSES THE STEAM  [Ginna 15.2-1: +235 psi in 5.4 s; the old vessel: +0.6]');
+  var CORE = RD.core, tauSaved = PZ.STRATIFY.tau_int_s;
+  function pOnly(mdot, secs, tau, extraDrv) {
+    PZ.STRATIFY.tau_int_s = tau;
+    var p = PZ.createPressurizer({});
+    var s = CORE.createSystem({ nodes: [{ id: 'hot_leg', V: 1.0, h: W.h_l(316, 15.41) },
+                                        { id: 'cold_leg', V: 1.0, h: W.h_l(288, 15.41) }],
+                                P: 15.41, extraMass: PZ.extraMassFn(p) });
+    s.mdot_loop = 1630;                                   /* spray needs RCP head */
+    var drv = Object.assign({ spray_manual: 0, heaters_manual: 0, block_valve: false }, extraDrv || {});
+    var r = PZ.stepPressurizer(p, s, DT, drv), P0 = s.P, L0 = r.level_pct, hh = W.h_l(316, 15.41);
+    var lvlPrev = L0, mono = true, rainMax = 0, boilMax = 0, maxStep = 0, hfg;
+    for (var t = 0; t < secs; t += DT) {
+      var c = CORE.step(s, DT, { sources: mdot ? [{ node: 'hot_leg', mdot: mdot, h: hh }] : [] });
+      if (Math.abs(c.dP) > maxStep) maxStep = Math.abs(c.dP);
+      r = PZ.stepPressurizer(p, s, DT, drv);
+      if (mdot > 0 && r.level_pct < lvlPrev - 1e-9) mono = false;
+      lvlPrev = r.level_pct;
+      if (r.rain_kgs > rainMax) rainMax = r.rain_kgs;
+      if (r.boil_kgs > boilMax) boilMax = r.boil_kgs;
+    }
+    PZ.STRATIFY.tau_int_s = tauSaved;
+    hfg = W.h_g(s.P) - W.h_f(s.P);
+    return { dP_psi: (s.P - P0) * PSI, dLvl: r.level_pct - L0, mono: mono, rainMax: rainMax, boilMax: boilMax,
+             maxStep: maxStep, rep: r, pz: p, sys: s,
+             singlePhase: (p.m_sat <= 0 || p.h_sat <= W.h_f(s.P) + 1e-9) &&
+                          (p.m_sub <= 0 || p.h_sub <= W.h_f(s.P) + 1e-9) &&
+                          (p.m_stm <= 0 || p.h_stm >= W.h_g(s.P) - 1e-9) };
+  }
+  var iInf = pOnly(+37, 3.0, Infinity), iAdopt = pOnly(+37, 3.0, tauSaved), iOut = pOnly(-37, 3.0, tauSaved);
+  ckT('tau -> Infinity is the ISENTROPIC CEILING: +37 kg/s for 3 s raises pressure > 120 psi ' +
+      '(the equilibrium vessel: +0.4) and < 400 (a rigid steam space would give thousands)',
+      iInf.dP_psi > 120 && iInf.dP_psi < 400,
+      iInf.dP_psi.toFixed(1) + ' psi for ' + iInf.dLvl.toFixed(2) + ' level points');
+  ckT('the ADOPTED tau_int sits below that ceiling and well above the old vessel: condensation ' +
+      'does something, and the steam is still compressed',
+      iAdopt.dP_psi > 0.5 * iInf.dP_psi && iAdopt.dP_psi < 0.97 * iInf.dP_psi,
+      iAdopt.dP_psi.toFixed(1) + ' psi at tau ' + tauSaved + ' s vs ' + iInf.dP_psi.toFixed(1) +
+      ' isentropic (' + (100 * iAdopt.dP_psi / iInf.dP_psi).toFixed(0) + ' %)');
+  ckT('...at >= 10 psi per level point (was 0.06), the level rising MONOTONICALLY by 3-6 points',
+      iAdopt.dP_psi / iAdopt.dLvl >= 10 && iAdopt.mono && iAdopt.dLvl > 3 && iAdopt.dLvl < 6,
+      (iAdopt.dP_psi / iAdopt.dLvl).toFixed(1) + ' psi/pt, +' + iAdopt.dLvl.toFixed(2) + ' pts');
+  ckT('the OUTSURGE mirror: -37 kg/s for 3 s LOWERS pressure and the expanding steam RAINS OUT',
+      iOut.dP_psi < -30 && iOut.rainMax > 0 && iOut.dLvl < -3,
+      iOut.dP_psi.toFixed(1) + ' psi, ' + iOut.dLvl.toFixed(2) + ' pts, rain-out up to ' +
+      iOut.rainMax.toFixed(2) + ' kg/s');
+  ckT('every region is SINGLE-PHASE at the step boundary after both rides (flash and rain-out ' +
+      'at the solved P — formulation 1\'s killer, by construction)',
+      iAdopt.singlePhase && iOut.singlePhase && iInf.singlePhase,
+      'pool subcool ' + iAdopt.rep.pool_subcool_kJkg.toFixed(1) + ' kJ/kg, steam superheat ' +
+      iAdopt.rep.steam_superheat_kJkg.toFixed(1) + ' kJ/kg after the insurge');
+  ckT('no step of any ride approaches P_JUMP_MAX (2.0 MPa/step)',
+      iInf.maxStep < 0.1 && iOut.maxStep < 0.1,
+      'max |dP|/step ' + Math.max(iInf.maxStep, iOut.maxStep).toFixed(4) + ' MPa');
+  /* MANUAL heaters and spray on the design vessel, no surge: the two authorities act on their
+   * own regions (heaters boil the liquid, spray condenses the steam) */
+  var iHeat = pOnly(0, 60, tauSaved, { heaters_manual: 1 });
+  ckT('MANUAL heaters (full bank) RAISE pressure in the 0.2-1.5 psi/s class and BOIL the pool',
+      iHeat.dP_psi / 60 > 0.2 && iHeat.dP_psi / 60 < 1.5 && iHeat.boilMax > 0,
+      (iHeat.dP_psi / 60).toFixed(2) + ' psi/s, boiling up to ' + iHeat.boilMax.toFixed(3) + ' kg/s');
+  var iSpray = pOnly(0, 60, tauSaved, { spray_manual: 1 });
+  ckT('MANUAL spray (full) LOWERS pressure by CONDENSING steam into the pool',
+      iSpray.dP_psi < -20 && iSpray.rep.spray_cond_kgs > 0 && iSpray.pz.m_stm < iInf.pz.m_stm,
+      iSpray.dP_psi.toFixed(1) + ' psi over 60 s, condensing ' + iSpray.rep.spray_cond_kgs.toFixed(3) +
+      ' kg/s of steam');
+  /* the SAVE MIGRATION: a pre-#515 vessel (m_pzr / h_bar / V_liq) lands on the two-region
+   * vessel it implied — same mass to table accuracy, same level */
+  var oldPz = PZ.createPressurizer({ level_frac: 0.55 });
+  var oldLike = { V: oldPz.V, m_pzr: oldPz.m_pzr, V_liq: 0.55 * oldPz.V,
+                  h_bar: (oldPz.m_sat * W.h_f(15.41) + oldPz.m_stm * W.h_g(15.41)) / oldPz.m_pzr,
+                  setpoint_mpa: 15.41, backupOn: false, porvOpen: false, safetyOpen: false,
+                  waterSolid: false, emptied: false, heatersShed: false, levErrInt: 0,
+                  lowLevelCut: false, porvStuck: false, porvManual: false, blockOpen: true, T_tail_c: 50 };
+  var migrated = PZ.migrateState(oldLike, 15.41);
+  ckT('an OLD save (m_pzr / h_bar / V_liq) migrates to the two-region vessel it implied: same ' +
+      'mass to 0.1 kg, same level to 0.5 %, no h_bar left behind',
+      migrated.m_stm !== undefined && Math.abs(PZ.extraMassFn(migrated)(15.41) - oldPz.m_pzr) < 0.1 &&
+      Math.abs(100 * migrated.V_liq / migrated.V - 55) < 0.5 && migrated.h_bar === undefined,
+      'seat ' + PZ.extraMassFn(migrated)(15.41).toFixed(2) + ' vs ' + oldPz.m_pzr.toFixed(2) +
+      ' kg, level ' + (100 * migrated.V_liq / migrated.V).toFixed(2) + ' %');
+
+  /* ---- 8. THE CHOKED RELIEF LAW (#515 Build 2, 2026-08-26) --------------------------------- */
+  head('THE CHOKED RELIEF  [area from the rating, flux from Layer 0; steam, then flashing water]');
+  var Ar = PZ.reliefAreas(), Pr = PZ.RELIEF.porv_rated_mpa;
+  ck('a stuck PORV passes EXACTLY its rated mass of saturated steam AT the rating pressure',
+     (Ar.porv_m2 / 2) * PZ.criticalFlux(W.h_g(Pr), Pr), PZ.RELIEF.porv_kgs / 2, 1e-9, 'kg/s');
+  ck('...and the safeties theirs at 2500 psia',
+     Ar.safety_m2 * PZ.criticalFlux(W.h_g(PZ.RELIEF.safety_rated_mpa), PZ.RELIEF.safety_rated_mpa),
+     PZ.RELIEF.safety_kgs, 1e-9, 'kg/s');
+  var gS16 = PZ.criticalFlux(W.h_g(16.2), 16.2), gS69 = PZ.criticalFlux(W.h_g(6.9), 6.9),
+      gL69 = PZ.criticalFlux(W.h_f(6.9), 6.9), gS2 = PZ.criticalFlux(W.h_g(2.0), 2.0);
+  var gIdeal = function (P) { var g = 1.3, R = 461.5, T = W.T_sat(P) + 273.15;
+    return P * 1e6 * Math.sqrt(g / (R * T)) * Math.pow(2 / (g + 1), (g + 1) / (2 * (g - 1))); };
+  ckT('saturated STEAM chokes within 25 % of ideal-gas choked flow at 16.2, 6.9 and 2.0 MPa',
+      Math.abs(gS16 / gIdeal(16.2) - 1) < 0.25 && Math.abs(gS69 / gIdeal(6.9) - 1) < 0.25 &&
+      Math.abs(gS2 / gIdeal(2.0) - 1) < 0.25,
+      gS16.toFixed(0) + ' vs ' + gIdeal(16.2).toFixed(0) + ' kg/m2s at 16.2 MPa; ' +
+      gS69.toFixed(0) + ' vs ' + gIdeal(6.9).toFixed(0) + ' at 6.9');
+  ckT('...and the steam flux falls with pressure (choked flow ~ P): 6.9 MPa passes 35-50 % of 16.2',
+      gS69 / gS16 > 0.35 && gS69 / gS16 < 0.50, (100 * gS69 / gS16).toFixed(0) + ' %');
+  ckT('saturated LIQUID chokes at 2-4x the steam flux (flashing water, the Moody class) — and ' +
+      'well below the orifice law\'s sqrt(2 rho dP), which overstates flashing flow 10x',
+      gL69 / gS69 > 2 && gL69 / gS69 < 4 &&
+      gL69 < 0.4 * Math.sqrt(2 * W.rho_l_sat(W.T_sat(6.9)) * 6.8e6),
+      'liquid ' + gL69.toFixed(0) + ' vs steam ' + gS69.toFixed(0) + ' kg/m2s at 6.9 MPa; orifice ' +
+      Math.sqrt(2 * W.rho_l_sat(W.T_sat(6.9)) * 6.8e6).toFixed(0));
+  /* the SOLID vessel relieves WATER: drive the TMI vessel solid and read what leaves */
+  var pzR = PZ.createPressurizer({ level_frac: 0.999999 });
+  driveSolid(pzR, 330);
+  var rR = PZ.stepPressurizer(pzR, stub(at(120), 1630), DT, { porv_stick: true, porv_manual: true });
+  ckT('a SOLID vessel relieves LIQUID through the stuck valve — at the liquid flux, 2-4x the steam rate',
+      rR.relief_h < W.h_f(at(120)) + 1e-6 && rR.water_solid &&
+      rR.relief_kgs > 2 * (Ar.porv_m2 / 2) * PZ.criticalFlux(W.h_g(at(120)), at(120)),
+      rR.relief_kgs.toFixed(2) + ' kg/s of water at ' + rR.relief_h.toFixed(0) + ' kJ/kg vs ' +
+      ((Ar.porv_m2 / 2) * PZ.criticalFlux(W.h_g(at(120)), at(120))).toFixed(2) + ' of steam');
+
   /* ---- THE HR1 SPLIT (2026-08-20, the instrument layer's control switchover) --------------
    * CONTROL (heaters/spray/PORV ladder, level PI, 17 % cut) reads drivers.indicated_*;
    * the CODE SAFETIES read TRUE pressure. Both halves proven on LIES, because a healthy
@@ -438,7 +670,7 @@ function runSuite(RD, rec, quiet) {
 }
 
 /* ---- run + injection self-test -------------------------------------------------------------- */
-console.log('\nPWR2 Layer 5 -- THE PRESSURIZER (stage 1): sourced ladder, compliance, regimes');
+console.log('\nPWR2 Layer 5 -- THE PRESSURIZER: sourced ladder, the two-region vessel, regimes (#515)');
 var rec = [];
 runSuite(loadAll(), rec, false);
 var pass = rec.filter(function (r) { return r.ok; }).length, fail = rec.length - pass;
@@ -455,35 +687,70 @@ var MUTATIONS = [
    "    var level_ctl = drivers.indicated_level_pct !== undefined ? drivers.indicated_level_pct\n                                                              : level_pct;",
    '    var level_ctl = level_pct;'],
 
+  /* re-anchored 2026-08-25 (#515): the seat is the two-region m(P) now */
   ['the projection loses its P-dependence (a rigid vessel wearing a bubble\'s name)',
-   'return function (P) { return pz.V * W.rho_from_h(pz.h_bar, P); };',
-   'return function (P) { return pz.m_pzr; };'],
-  ['the split uses the spaces\' own densities again (formulation 1, the level collapse)',
+   'if (slack >= 0) return sum + slack * pz.rho_in;',
+   'if (slack >= 0) return sum;'],
+  ['the migration\'s split uses the spaces\' own densities (formulation 1 — an old save lands off-level)',
    'var rf = W.rho_l_sat(W.T_sat(P)), rg = W.rho_v_sat(P);\n    var Vl = (rf - rg) > 1e-9 ? (m - rg * V) / (rf - rg) : V;',
    'var rf = W.rho_from_h(1000, P), rg = W.rho_from_h(2800, P);\n    var Vl = (rf - rg) > 1e-9 ? (m - rg * V) / (rf - rg) : V;'],
+  ['the steam region is not compressed (its volume ignores the solve\'s P — a rigid steam space)',
+   'var V_stm = pz.m_stm > 0 ? pz.m_stm / RHO(pz.h_stm + pz.v_stm * dP, P) : 0;',
+   'var V_stm = pz.m_stm > 0 ? pz.m_stm / RHO(pz.h_stm, pz.P_ref) : 0;'],
+  ['the insurge lands in the POOL (formulation 2 re-armed: the bubble\'s job handed to liquid density)',
+   'pz.h_sub = (pz.m_sub * pz.h_sub + dm * h_in) / (pz.m_sub + dm);\n        pz.m_sub += dm;',
+   'addPool(pz, dm, h_in);'],
+  ['the interface is deleted (tau -> Infinity: no condensation, no de-superheat)',
+   'if (isFinite(tau) && tau > 0) {',
+   'if (false) {'],
+  ['the expanding steam never rains out (a wet steam region counts as no liquid)',
+   'pz.m_stm -= ml; pz.h_stm = hg; addPool(pz, ml, hf); rain_kgs = ml / dt;',
+   'rain_kgs = 0;'],
+  ['the pool never flashes (a superheated liquid layer counts as liquid)',
+   'mv = Math.min(1, (pz.h_sat - hf) / hfg) * pz.m_sat;',
+   'mv = 0;'],
+  ['spray condenses nothing (an energy sink with no mass transfer)',
+   'var dmS = Math.min(Q_spray_kW * dt / Math.max(pz.h_stm - hf, 1), pz.m_stm);',
+   'var dmS = 0;'],
+  ['the migration returns an old save unreconstructed',
+   'if (!pz || pz.m_stm !== undefined) return pz;',
+   'if (true) return pz;'],
   ['spray ignores the RCP (a stopped loop sprays anyway)',
    'if (SPRAY.needs_rcp && !(sys.mdot_loop > 100)) sprayFrac = 0;', ''],
+  ['the heater FAILURE seat is severed (a failed bank keeps heating) -- #507 wave 6',
+   'var Q_heat_kW = (pz.heatersShed || drivers.heaters_failed) ? 0',
+   'var Q_heat_kW = pz.heatersShed ? 0'],
+  ['the spray stick is severed (a stuck-open valve obeys the demand) -- #507 wave 6',
+   '    if (pz.sprayStuck) sprayFrac = 1;',
+   ''],
+  /* re-anchored #507 wave 4: the shed became a LATCH (armed by SI/LOOP/dead-bus, cleared by
+   * the operator's heater command), so the SI term now lives in the ARMING signal — deleting
+   * it there means an SI plant never sheds, which must red the shed check */
+  /* re-anchored #510 batch 2: the arming signal split into per-signal edges */
   ['the SI heater shed is deleted (the #447 requirement, undone)',
-   'pz.heatersShed = !!drivers.si_active || drivers.ac_available === false || pz.emptied ||\n                     pz.lowLevelCut;',
-   'pz.heatersShed = drivers.ac_available === false || pz.emptied ||\n                     pz.lowLevelCut;'],
+   'var siSig = !!drivers.si_active;',
+   'var siSig = false;'],
+  ['the LOOP edge rides the SI edge again (#510 H-6 re-armed: LOOP-after-SI never sheds)',
+   'if ((siSig && !pz._siPrev) || (loopSig && !pz._loopPrev)) pz.shedLatch = true;',
+   'if ((siSig || loopSig) && !(pz._siPrev || pz._loopPrev)) pz.shedLatch = true;'],
   ['backup heaters clear at their own on-point (the sourced -17 hysteresis flattened)',
    'else if (err_psi >= CONTROL.backup_off_psi && !backupOnLevel) pz.backupOn = false;',
    'else if (err_psi >= CONTROL.backup_on_psi && !backupOnLevel) pz.backupOn = false;'],
   ['the safeties reseat at the lift point (the sourced 5 % blowdown deleted)',
    'else if (pz.safetyOpen && P <= RELIEF.safety_open_mpa * RELIEF.safety_reseat_frac) {',
    'else if (pz.safetyOpen && P <= RELIEF.safety_open_mpa) {'],
-  ['insurge enthalpy is dropped (mass arrives carrying nothing)',
-   'H += surge_kgs * dt * (h_hot === undefined ? hf : h_hot);',
-   'H += 0;'],
+  ['insurge enthalpy is dropped (the stratified layer arrives SATURATED, not at the hot leg)',
+   'var h_in = pz.h_fill;',
+   'var h_in = hf;'],
   ['the heaters never reach the energy ledger (a demand with no watts)',
-   'H += dt * (Q_heat_kW - Q_spray_kW);',
-   'H += dt * (0 - Q_spray_kW);'],
+   'if (Q_heat_kW > 0) {',
+   'if (false) {'],
   ['the spray band opens at the backup-heater point (a sign confusion on the ladder)',
    'var sprayAuto = clip((err_psi - CONTROL.spray_start_psi) /',
    'var sprayAuto = clip((err_psi - CONTROL.backup_on_psi) /'],
   ['water-solid never flags (the regime transition clipped away)',
-   'pz.waterSolid = pz.h_bar <= hf;',
-   'pz.waterSolid = false;'],
+   'if (pz.m_stm <= STRATIFY.m_stm_floor_kg) {',
+   'if (false) {'],
   ['the level program is a constant (Tavg never reaches it)',
    'var f = (Tavg_c - LEVEL.tavg_noload_c) / (LEVEL.tavg_full_c - LEVEL.tavg_noload_c);',
    'var f = 1;'],
@@ -496,27 +763,47 @@ var MUTATIONS = [
   ['the +5 % anticipatory backup-heater signal is deleted',
    'var backupOnLevel = levErr <= -LEVEL.backup_above_program_pct;',
    'var backupOnLevel = false;'],
-  ['the stick lever is dead (drivers.porv_stick ignored)',
-   'pz.porvStuck = !!drivers.porv_stick;',
-   'pz.porvStuck = false;'],
+  ['the stick lever is dead (a lift never latches)',
+   'else if (pz.porvOpen || pz.porvManual) pz.porvStuck = true;',
+   'else if (false) pz.porvStuck = true;'],
+  ['the stick OPENS the valve on arming (the pre-2026-08-25 build: no latch, no lift needed)',
+   'else if (pz.porvOpen || pz.porvManual) pz.porvStuck = true;',
+   'else pz.porvStuck = true;'],
+  ['the clear does not release the latch',
+   'if (!stickArmed) pz.porvStuck = false;',
+   'if (false) pz.porvStuck = false;'],
   ['a stuck PORV flows BOTH valves\' capacity (one valve stuck is one valve)',
-   ': (pz.porvStuck ? RELIEF.porv_kgs / 2 : 0));',
-   ': (pz.porvStuck ? RELIEF.porv_kgs : 0));'],
+   '(pz.porvOpen ? 2 : (oneValve ? 1 : 0))',
+   '(pz.porvOpen ? 2 : (oneValve ? 2 : 0))'],
   ['the block valve never isolates',
-   'var porv_kgs = !pz.blockOpen ? 0',
-   'var porv_kgs = false ? 0'],
+   'var nPorv = !pz.blockOpen ? 0',
+   'var nPorv = false ? 0'],
+  /* #515 Build 2: the choked law */
+  ['the relief flow is PRESSURE-BLIND again (the flux evaluated at the rating pressure)',
+   'var G_relief = (nPorv > 0 || pz.safetyOpen) ? criticalFlux(relief_h, P) : 0;',
+   'var G_relief = (nPorv > 0 || pz.safetyOpen) ? criticalFlux(relief_h, RELIEF.porv_rated_mpa) : 0;'],
+  ['a SOLID vessel relieves at the STEAM flux (the liquid regime, TMI\'s, denied)',
+   'else if (pz.m_sat > 0) relief_h = pz.h_sat;',
+   'else if (pz.m_sat > 0) relief_h = hg;'],
+  ['the choked flux never chokes (the throat search returns the first sample)',
+   'if (G > best) best = G; else if (i > 2) break;',
+   'if (i === 1) best = G;'],
   ['the tailpipe never heats (the passing indication is dead)',
    'pz.T_tail_c += dt * (W.T_sat(P) - pz.T_tail_c) / RELIEF.tail_tau_heat_s;',
    ''],
   ['the tailpipe cools as fast as it heats (the deceptive half deleted)',
    'pz.T_tail_c += dt * (amb - pz.T_tail_c) / RELIEF.tail_tau_cool_s;',
    'pz.T_tail_c += dt * (amb - pz.T_tail_c) / RELIEF.tail_tau_heat_s;'],
+  /* re-anchored #510 batch 2: auxFrac grew the vital-bus gate */
   ['the aux-spray command is dead',
-   'var auxFrac = drivers.aux_spray === undefined ? 0 : clip(drivers.aux_spray, 0, 1);',
+   'var auxFrac = (drivers.aux_spray === undefined || drivers.ac_available === false)\n                  ? 0 : clip(drivers.aux_spray, 0, 1);',
    'var auxFrac = 0;'],
   ['aux spray gated on the RCPs (its reason to exist, inverted)',
-   'var auxFrac = drivers.aux_spray === undefined ? 0 : clip(drivers.aux_spray, 0, 1);',
-   'var auxFrac = !(sys.mdot_loop > 100) ? 0 : (drivers.aux_spray === undefined ? 0 : clip(drivers.aux_spray, 0, 1));']
+   'var auxFrac = (drivers.aux_spray === undefined || drivers.ac_available === false)\n                  ? 0 : clip(drivers.aux_spray, 0, 1);',
+   'var auxFrac = !(sys.mdot_loop > 100) ? 0 : ((drivers.aux_spray === undefined || drivers.ac_available === false) ? 0 : clip(drivers.aux_spray, 0, 1));'],
+  ['the aux-spray vital-bus gate is severed (#510 H-4 re-armed: 29 gpm through a blackout)',
+   'var auxFrac = (drivers.aux_spray === undefined || drivers.ac_available === false)\n                  ? 0 : clip(drivers.aux_spray, 0, 1);',
+   'var auxFrac = drivers.aux_spray === undefined ? 0 : clip(drivers.aux_spray, 0, 1);']
 ];
 
 console.log('\ninjection self-test (' + MUTATIONS.length + ' mutations):');

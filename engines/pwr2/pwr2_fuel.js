@@ -63,6 +63,11 @@
 (function (root) {
   'use strict';
 
+  /* Layer 0, for the superheat factor only (#517). This module had NO property dependency
+   * until then — every other number in it is geometry or a solved constant — so the binding is
+   * narrow on purpose: `superheatFactor` is its one consumer. */
+  var W = root.RD && root.RD.pwr2 && root.RD.pwr2.water;
+
   var IN = 0.0254;                 /* in -> m */
 
   /* ---- SOURCED: ML050910161 Fig 3-1, Westinghouse 17x17 lattice ----------------------------
@@ -311,10 +316,56 @@
    * model may not claim oxidation ONSET TIMING, only that the reaction runs once the core is dry.
    * Having the document is not having the number.
    */
-  function filmCoefficient(flowFrac, voidFrac) {
+  /* ---- THE SUPERHEAT FACTOR (#517) -----------------------------------------------------------
+   * `voidFrac` CLIPS AT 1, so until this existed a core at 131 degC of superheat and a core
+   * exactly at saturation produced the identical film coefficient. Measured, 5 cm2 unmitigated
+   * break: void reaches 1.0 at 580 s and the phase term is frozen for the remaining 1,220 s,
+   * over which the core's superheat runs 0 -> 131 degC (623 degF) at 200-380 psia.
+   *
+   * [derived] — the SAME method and the SAME property group `vapor_ratio` above is derived from,
+   * evaluated at two states instead of one: the Dittus-Boelter group k^0.6 cp^0.4 mu^-0.4 at the
+   * superheated state over its value at saturation, same pressure, same mass flux. The steam
+   * transport properties are Layer 0's `k_v`/`mu_v`, [sourced] to WCAP-16009-NP-A (ML050910161)
+   * §10-2-1-2 / ASME Steam Tables 1968 — the same document Table 10-3 came from. It is EXACTLY 1
+   * at zero superheat by construction, so `vapor_ratio` keeps its landed calibration untouched
+   * and this is a separately-testable second factor rather than a re-tune of the first.
+   *
+   * ⚠ MEASURED MAGNITUDE, AND IT IS SMALL WHERE THE PLANT NORMALLY GOES — the number matters more
+   * than the mechanism here. Across the 5 cm2 unmitigated break's own regime (54-380 psia, 0-250
+   * degC of superheat) the raw group is 0.92 to 1.09. The large penalty — 0.53 — lives at 2235
+   * psia. So this does NOT explain the missing clad heat-up on a dry core, and nobody should reach
+   * for it as the cause: that is the loop still circulating steam through an unstratified core
+   * (§83 gap 1, #472).
+   *
+   * ⚠⚠ CAPPED AT 1, AND THE CAP IS THE SOURCED PART — WITHOUT IT THIS TERM COOLS THE CORE.
+   * The raw group rises ABOVE 1 as steam superheats at low pressure, because conductivity climbs
+   * with temperature faster than viscosity costs at fixed mass flux. That is correct
+   * Dittus-Boelter arithmetic and it is the WRONG ANSWER HERE, for a reason the corpus states
+   * outright — WCAP-16009-NP-A B-2-9-2, on the ORNL dryout tests, verbatim: *"Despite increased
+   * mixture velocity, low flowrates, increasing void fraction, and superheating of vapor
+   * DECREASES heat transfer."* Everything Dittus-Boelter omits at these conditions — droplet
+   * depletion, laminarizing flow, Reynolds numbers orders below the correlation's range — runs the
+   * other way and dominates. The corpus has no correlation that captures it (declared above), so
+   * this claims only the half it can defend: superheat may DEGRADE cooling, never improve it.
+   *
+   * MEASURED, and this is why the cap is not cosmetic: on the 20 cm2 damage ride the core reaches
+   * 698 degC of superheat, where the uncapped group reads ~1.5. Uncapped, it turned a 100 %-
+   * oxidation runaway into a 24 % survivable ride and moved peak clad 27,337 -> 2,416 degF. A term
+   * added for OBSERVABILITY had quietly made core damage harder to reach, on arithmetic that
+   * contradicts the only directional evidence in the corpus. */
+  function superheatFactor(superheat_c, P_MPa) {
+    if (!(superheat_c > 0)) return 1;
+    var Ts = W.T_sat(P_MPa);
+    var g0 = W.vaporFilmGroup(Ts, P_MPa);
+    if (!(g0 > 0)) return 1;
+    var f = W.vaporFilmGroup(Ts + superheat_c, P_MPa) / g0;
+    return f < 1 ? f : 1;                    /* degrade only — see the cap note above */
+  }
+
+  function filmCoefficient(flowFrac, voidFrac, superheat_c, P_MPa) {
     var f = flowFrac > 0 ? flowFrac : 0;
     var v = voidFrac < 0 ? 0 : (voidFrac > 1 ? 1 : voidFrac);
-    var phase  = (1 - v) + v * OPEN.vapor_ratio.value;
+    var phase  = (1 - v) + v * OPEN.vapor_ratio.value * superheatFactor(superheat_c, P_MPa);
     var forced = OPEN.h_film.value * Math.pow(f, OPEN.dittus_exp.value) * phase;
     return forced > OPEN.h_stagnant.value ? forced : OPEN.h_stagnant.value;
   }
@@ -490,6 +541,17 @@
       throw new Error('pwr2_fuel: drivers.flowFrac and drivers.voidFrac are REQUIRED — this ' +
                       'layer will not assume the rods are being cooled.');
     }
+    /* ⚠ SUPERHEAT IS REQUIRED ONLY WHERE IT CAN EXIST, and that is the whole point of the guard.
+     * Below void 1 a node is two-phase and its superheat is 0 by definition, so no existing
+     * fixture is burdened; AT void 1 the node may be anywhere from h_g to 800 degC, and
+     * defaulting to zero would hand the caller "the steam is saturated" — an invention, and the
+     * same class of unearned reassurance the two throws above exist to refuse. The one production
+     * caller (pwr2_reactor.stepReactor) has the plant in hand and supplies both. */
+    if (drivers.voidFrac >= 1 &&
+        (drivers.superheat_c === undefined || drivers.P_MPa === undefined)) {
+      throw new Error('pwr2_fuel: at void 1 drivers.superheat_c and drivers.P_MPa are REQUIRED ' +
+                      '— this layer will not assume a dry core is sitting in saturated steam.');
+    }
 
     var Q_total  = drivers.Q_core_kW;
     var Q_fuel   = Q_total * OPEN.q_to_fuel.value;          /* kW through the gap */
@@ -500,7 +562,8 @@
     var Q_ox     = drivers.Q_ox_kW === undefined ? 0 : drivers.Q_ox_kW;
 
     var T_f_k = fuel.T_fuel_c + 273.15;
-    var hFilm = filmCoefficient(drivers.flowFrac, drivers.voidFrac);
+    var hFilm = filmCoefficient(drivers.flowFrac, drivers.voidFrac,
+                                drivers.superheat_c, drivers.P_MPa);
     var cond  = conductance(fuel.geom, T_f_k, hFilm);
     var UA_kW = cond.UA_W_per_K / 1000;
     var UA_fc = cond.UA_fc_W_per_K / 1000;                  /* kW/K, fuel <-> clad  */
@@ -576,7 +639,7 @@
     RHO_ZR: RHO_ZR, CP_ZR: CP_ZR,
     cp_uo2: cp_uo2, k_uo2: k_uo2,
     deriveGeometry: deriveGeometry, conductance: conductance,
-    filmCoefficient: filmCoefficient, advance2: advance2,
+    filmCoefficient: filmCoefficient, superheatFactor: superheatFactor, advance2: advance2,
     steadyFuelTemp: steadyFuelTemp, steadyCladTemp: steadyCladTemp,
     createFuel: createFuel, stepFuel: stepFuel
   };

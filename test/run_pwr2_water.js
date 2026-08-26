@@ -355,6 +355,71 @@ function runSuite(W, rec, quiet) {
       gpm / 24000 > 1.4 && gpm / 24000 < 1.7,
       'ratio ' + (gpm / 24000).toFixed(2) + 'x -- this SHOULD disagree (#479)');
 
+  /* ---- TRANSPORT PROPERTIES + SUPERHEAT (#517) ---------------------------------------------
+   * ⚠ THE ONE THING THAT CAN GO WRONG HERE IS TRANSCRIPTION, and it did on the first attempt.
+   * WCAP-16009-NP-A §10-2-1-2 mixes units INSIDE Eq 10-20 without saying so — T in degC in two
+   * terms and KELVIN in the rho^2 denominator, rho in g/cm3 not kg/m3 — and read with degC
+   * throughout the whole correlation returns 71.9 mW/m-K against a true 54.7 at 300 degC. That is
+   * +31 %: plausible, monotone, wrong, and invisible to any check written from the same reading.
+   * So these compare against values NOT taken from the source document. */
+  if (!quiet) console.log('\nsteam TRANSPORT  [WCAP-16009-NP-A sec 10-2-1-2 / ASME 1968; vs independent values]');
+  var rg300 = W.rho_v_sat(W.P_sat(300)), rg200 = W.rho_v_sat(W.P_sat(200));
+  ck('k_v  saturated steam, 300 degC', W.k_v(300, rg300) * 1000, 54.7, 2.0, 'mW/m-K');
+  ck('mu_v saturated steam, 300 degC', W.mu_v(300, rg300) * 1e6, 20.0, 0.5, 'uPa-s');
+  ck('k_v  saturated steam, 200 degC', W.k_v(200, rg200) * 1000, 33.3, 2.0, 'mW/m-K');
+  ck('mu_v saturated steam, 200 degC', W.mu_v(200, rg200) * 1e6, 16.0, 0.5, 'uPa-s');
+  /* The KELVIN term is what a degC transcription gets wrong, and only the DENSE end sees it:
+   * the rho^2 term is 18.05 mW/m-K read in degC against 1.19 in K at 300 degC. A check at low
+   * density would pass either way, which is why the 300 degC row above is the load-bearing one.
+   * Asserted here as a direction so the reason survives: conductivity must RISE with density. */
+  ckT('k_v rises with density at fixed temperature (the rho terms are not dead)',
+      W.k_v(300, 46.04) > W.k_v(300, 4.6) && W.k_v(300, 4.6) > W.k_v(300, 0.46),
+      (W.k_v(300, 46.04) * 1000).toFixed(1) + ' / ' + (W.k_v(300, 4.6) * 1000).toFixed(1) +
+      ' / ' + (W.k_v(300, 0.46) * 1000).toFixed(1) + ' mW/m-K at 46 / 4.6 / 0.46 kg/m3');
+  ckT('mu_v rises with temperature (steam thickens as it heats — the opposite of a liquid)',
+      W.mu_v(400, 1) > W.mu_v(300, 1) && W.mu_v(300, 1) > W.mu_v(200, 1),
+      (W.mu_v(200, 1) * 1e6).toFixed(1) + ' -> ' + (W.mu_v(400, 1) * 1e6).toFixed(1) + ' uPa-s');
+
+  if (!quiet) console.log('\nsuperheat accessors  [what void/quality CANNOT say — they clip at 1]');
+  var Psh = 226 / 145.038;                      /* the 5 cm2 ride's plateau, 226 psia */
+  ckT('superheat is EXACTLY 0 at and below h_g, both accessors',
+      W.superheat_kJkg(W.h_g(Psh), Psh) === 0 && W.superheat_c(W.h_g(Psh), Psh) === 0 &&
+      W.superheat_kJkg(W.h_f(Psh), Psh) === 0 && W.superheat_c(W.h_f(Psh), Psh) === 0,
+      'a blend on this must never see a sign flip when the node condenses');
+  ck('superheat_kJkg on the measured plateau (h = 3090, 226 psia)',
+     W.superheat_kJkg(3090, Psh), 3090 - W.h_g(Psh), 1e-9, 'kJ/kg');
+  ckT('superheat_c agrees with T_from_h - T_sat, the long way round',
+      Math.abs(W.superheat_c(3090, Psh) - (W.T_from_h(3090, Psh) - W.T_sat(Psh))) < 1e-9,
+      W.superheat_c(3090, Psh).toFixed(1) + ' degC');
+  /* THE FIELD THIS EXISTS FOR: quality and voidFraction are CONSTANT across this range. If they
+   * were not, the wing would be solving a problem that does not exist. */
+  ckT('...and quality/void are IDENTICAL at both ends of that range — the blind spot, asserted',
+      W.quality(2900, Psh) === 1 && W.quality(3300, Psh) === 1 &&
+      W.voidFraction(2900, Psh) === 1 && W.voidFraction(3300, Psh) === 1 &&
+      W.superheat_c(3300, Psh) - W.superheat_c(2900, Psh) > 50,
+      'void 1.0 at both h = 2900 and h = 3300, superheat differs by ' +
+      (W.superheat_c(3300, Psh) - W.superheat_c(2900, Psh)).toFixed(0) + ' degC');
+
+  if (!quiet) console.log('\nDittus-Boelter vapour group  [the ratio pwr2_fuel blends on]');
+  ckT('the group is EXACTLY 1:1 with itself at saturation (the factor is 1 by construction)',
+      W.vaporFilmGroup(W.T_sat(Psh), Psh) / W.vaporFilmGroup(W.T_sat(Psh), Psh) === 1, '');
+  /* MEASURED BAND, and it is the finding: across every pressure this plant superheats at, the
+   * group moves less than 10 %. A check that only asserted "it changes" would have passed a
+   * factor of 3 and let a fabricated degradation through. */
+  var shBand = [], shP = [54, 133, 226, 377];
+  shP.forEach(function (psia) {
+    var P = psia / 145.038, Ts = W.T_sat(P), g0 = W.vaporFilmGroup(Ts, P);
+    shBand.push(W.vaporFilmGroup(Ts + 130, P) / g0);
+  });
+  ckT('at +130 degC over 54-377 psia the group stays inside 0.90-1.10 — the MEASURED magnitude',
+      shBand.every(function (x) { return x > 0.90 && x < 1.10; }),
+      shBand.map(function (x, i) { return shP[i] + 'psia:' + x.toFixed(3); }).join(' '));
+  ckT('...while at 2235 psia the SAME +130 degC costs far more — the penalty is a HIGH-pressure ' +
+      'effect the core never reaches',
+      W.vaporFilmGroup(W.T_sat(15.41) + 130, 15.41) / W.vaporFilmGroup(W.T_sat(15.41), 15.41) < 0.7,
+      (W.vaporFilmGroup(W.T_sat(15.41) + 130, 15.41) /
+       W.vaporFilmGroup(W.T_sat(15.41), 15.41)).toFixed(3) + ' at 2235 psia');
+
   /* Loop transit is REPORTED, NOT ASSERTED. The "10-12 s" band the previous gate checked
    * was recalled, was RETRACTED by D1 §3, and the check it sat in was found CIRCULAR
    * (D3 §1). Reporting it keeps the number visible without a green tick certifying a
@@ -378,6 +443,23 @@ var fail = rec.length - pass;
  * and is reported as a failure OF THE GATE. Every mutation below corresponds to a defect
  * the previous version of this file could not see. */
 var MUTATIONS = [
+  /* ---- #517, the superheat wing ---- */
+  ['k_v: the rho^2 term read in degC, not KELVIN (the transcription trap itself)',
+   '2.1482e14 * r * r / Math.pow(TK, 4.2);', '2.1482e14 * r * r / Math.pow(T, 4.2);'],
+  ['k_v/mu_v: rho left in kg/m3 instead of g/cm3 (both correlations at once)',
+   '? rho_kgm3 : 0) / 1000;', '? rho_kgm3 : 0);'],
+  ['k_v: the density terms deleted (dilute-gas value only)',
+   'var k = k1 + (103.51 + 0.4198 * T - 2.771e-5 * T * T) * r +', 'var k = k1 + 0 * ('],
+  ['mu_v: the viscosity temperature slope deleted',
+   'var m1 = 0.407 * T + 80.4;', 'var m1 = 80.4;'],
+  ['mu_v: micropoise never converted to Pa-s',
+   'return m * 1e-7;', 'return m;'],
+  ['superheat_kJkg: measured from h_f, not h_g (quality mistaken for superheat)',
+   'var d = h_kJkg - h_g(P_MPa);', 'var d = h_kJkg - h_f(P_MPa);'],
+  ['superheat_c: reports 0 always — the blind spot restored',
+   'var d = T_from_h(h_kJkg, P_MPa) - T_sat(P_MPa);', 'var d = 0;'],
+  ['vaporFilmGroup: the viscosity exponent sign flipped',
+   "Math.pow(mu_v(T_c, rho), -0.4);", "Math.pow(mu_v(T_c, rho), 0.4);"],
   ['voidFraction returns QUALITY (the shipped defect, #490)',
    'return x * vg / (x * vg + (1 - x) * vf);', 'return x;'],
   ['delete the compressed-liquid correction',

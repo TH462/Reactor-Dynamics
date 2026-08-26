@@ -85,6 +85,7 @@ function scenario(opts) {
   var rods = [{ steps: 0, max_steps: 200, worth: 0.08 }];
   var t = 0, Qox = 0, sumOxKJ = 0, courantBad = 0, nonFinite = 0, relief = 0, pzr = null;
   var hit = {}, firstVoid = null, flowLost = null, damagedAt = null, meltedAt = null;
+  var firstSuperheat = null, maxSuperheat = 0, superheatSteps = 0;   /* #517 */
   var M0 = sys.M_total, maxOx = 0, lastR = null, lastD = null, pzEmptyAt = null;
   var steps = Math.round((opts.secs || 1200) / DT);
 
@@ -108,6 +109,11 @@ function scenario(opts) {
     var reg = R.coreRegime(sys), cf = rr.T_clad_c * 9 / 5 + 32;
     if (firstVoid === null && reg.voidFrac > 0.5) firstVoid = t;
     if (flowLost === null && reg.flowFrac < 0.05) flowLost = t;
+    /* #517 — the superheat regime, tracked so the wing has a RIDE to be accepted on. Void
+     * saturates at 1 long before this does, which is the whole reason the field exists. */
+    if (firstSuperheat === null && reg.superheat_c > 0) firstSuperheat = t;
+    if (reg.superheat_c > maxSuperheat) { maxSuperheat = reg.superheat_c; }
+    if (reg.superheat_c > 0) superheatSteps++;
     [DOC.onset_f, DOC.significant_f, DOC.pct_limit_f].forEach(function (m) {
       if (hit[m] === undefined && cf >= m) hit[m] = t;
     });
@@ -119,7 +125,9 @@ function scenario(opts) {
   return { sys: sys, rx: rx, dm: dm, t: t, M0: M0, sumOxKJ: sumOxKJ, courantBad: courantBad,
            nonFinite: nonFinite, hit: hit, firstVoid: firstVoid, flowLost: flowLost,
            damagedAt: damagedAt, meltedAt: meltedAt, maxOx: maxOx, r: lastR, d: lastD,
-           pzEmptyAt: pzEmptyAt };
+           pzEmptyAt: pzEmptyAt,
+           firstSuperheat: firstSuperheat, maxSuperheat: maxSuperheat,
+           superheatSteps: superheatSteps };
 }
 
 var rec = [];
@@ -239,6 +247,37 @@ ckT('...and the plant is FINITE there, held or floating — never NaN (#487)',
     END.nonFinite === 0 && isFinite(END.sys.P) && isFinite(END.sys.mdot_loop) && endHFinite,
     'P ' + END.sys.P.toFixed(3) + ' MPa in-envelope, every node enthalpy finite through ' +
     END.t.toFixed(0) + ' s; beyond_model latch ' + (END.sys.beyond_model ? 'FIRED' : 'not needed'));
+
+/* ---- #517: THE SUPERHEAT REGIME IS REACHABLE, AND LARGE ------------------------------------
+ * ⚠ THE TRAP THIS SECTION EXISTS FOR: "a term that is an IDENTITY in the regime you test in is
+ * a term nothing tests." The superheat wing is INERT on both rides #517 was filed about — their
+ * cores stay at quality 0.84-0.88 and never leave the dome, and the freeze there is a numerical
+ * transport instability, not a property-range event (measured, and filed separately). So the
+ * wing has to be accepted on the ride where the regime actually LIVES: the unmitigated 5 cm2
+ * break, which is the same fixture the #487 endgame section already rides. If this section ever
+ * reads zero, the wing is decoration and should be removed rather than kept green. */
+head('#517 SUPERHEAT  [the wing is inert on the rides it was filed about — this is its regime]');
+ckT('the unmitigated 5 cm2 break REACHES superheat, and is not a corner it grazes',
+    END.firstSuperheat !== null && END.superheatSteps * DT > 600,
+    END.firstSuperheat === null ? 'NEVER — the wing has no regime and is decoration' :
+      'first at ' + END.firstSuperheat.toFixed(0) + ' s, then ' +
+      (END.superheatSteps * DT).toFixed(0) + ' s of the ' + END.t.toFixed(0) + ' s ride');
+ckT('...and it goes far past the boundary — over 100 degC of superheat, not a rounding wobble',
+    END.maxSuperheat > 100,
+    'max ' + END.maxSuperheat.toFixed(0) + ' degC (' + (END.maxSuperheat * 9 / 5).toFixed(0) +
+    ' degF) above saturation');
+/* THE ENVELOPE IS NOT REACHED, which is what makes the wing honest rather than a clamp with a
+ * new name: Layer 0 is characterised to 800 degC and this ride tops out far below it. */
+ckT('...while staying INSIDE Layer 0 vapour envelope, so no reading here is a clamped value',
+    END.sys.nodes.every(function (n) { return n.h < W.h_v(W.LIMITS.TV_MAX, END.sys.P); }),
+    'the 800 degC ceiling is never touched — the superheat reported is computed, not pinned');
+/* ⚠ THE NEGATIVE CONTROL IS NOT IN THIS FILE, AND WRITING IT HERE FIRST IS THE MISTAKE WORTH
+ * RECORDING. #517's ride is the SAME 0.002 m2 break — but through the FACADE, with emergency
+ * injection answering. This harness is engine-direct with no ECCS, so the identical break
+ * superheats to 138 degC here and 18.6 degC there; a check written here read the wrong plant and
+ * failed against a number that was never the claim. Measured, and it is the interesting half:
+ * injection is what keeps that core in the dome. The control lives in `run_pwr2_endurance`
+ * beside the facade ride it is about. (Memory: reproduce a probe with ITS harness.) */
 
 console.log('\n' + '='.repeat(70));
 var pass = rec.filter(function (r) { return r.ok; }).length, fail = rec.length - pass;

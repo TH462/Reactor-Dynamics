@@ -153,7 +153,12 @@
     if (demand < 0) demand = 0;
     if (demand > 1) demand = 1;
     var avail = drivers.condenser_available === undefined ? true : !!drivers.condenser_available;
-    var dump = avail ? demand * RELIEF.dump_capacity_frac * rated : 0;
+    /* the MSIV sits UPSTREAM of the dumps and the turbine, DOWNSTREAM of the safeties and
+     * the ADV (#511 — Ginna TS Bases B 3.7.2: closing it "isolates the turbine, steam dump
+     * system, and other auxiliary steam supplies" while "the MSSVs prevent overpressure").
+     * Absent means open — the pre-#511 plants never pass it. */
+    var msivFrac = drivers.msiv_frac === undefined ? 1 : Math.max(0, Math.min(1, drivers.msiv_frac));
+    var dump = avail ? demand * RELIEF.dump_capacity_frac * rated * msivFrac : 0;
 
     var total = safety + dump + adv;
     rl.relieved_kg += total * dt;

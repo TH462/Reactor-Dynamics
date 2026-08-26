@@ -35,7 +35,14 @@ function loadFrom(src) {
   return new Function('RD_ROOT', body)(root);
 }
 
-function runSuite(G, rec, quiet) {
+/* runSuite(G, rec, quiet, only) — `only` scopes a MUTATION REPLAY to the section group that
+ * can see that mutation (#513, the run_pwr2_engine idiom): 'A' the sourced anchors, 'B' the
+ * duty couplings, 'C1' inventory/construction/tube-leak/dryout, 'C2' the driving-temperature
+ * settle pair (the expensive one — 2×45k steps; only the two mutations that need it pay it),
+ * 'C3' the primaryTavg mean-of-legs contract, 'D' the saturation line. Section 5 (A5) runs
+ * clean-pass only. Each named group is preflighted ALONE on the clean build. */
+function runSuite(G, rec, quiet, only) {
+  function grp(g) { return only === undefined || only === g; }
   function ck(name, got, want, tol, unit) {
     var d = Math.abs(got - want), ok = d <= tol && isFinite(got);
     rec.push({ name: name, ok: ok });
@@ -59,7 +66,12 @@ function runSuite(G, rec, quiet) {
     });
     return mh / m;
   }
+  /* hoisted from section 3 (#513): section 5's ride() reads steamRated too, and groups C2/C3
+   * both read the S4/W4 aliases, so these live above the group seams rather than inside one */
+  var hfg = W.h_g(G.createSG().P) - W.h_f(G.createSG().P), steamRated = 300000 / hfg;
+  var S4 = SRCS, W4 = W;
 
+  if (grp('A')) {
   /* ---- 1. THE DERIVED U, AGAINST A BAND IT WAS NOT FITTED TO ------------------------- */
   if (!quiet) console.log('\nOVERALL U  [DERIVED from sourced area + ruled duty; checked vs a SOURCED band]');
   var U = G.ratedU() * 1000;
@@ -68,7 +80,9 @@ function runSuite(G, rec, quiet) {
       'same day; this uses the ruled Tavg difference)');
   ck('heat transfer area is the sourced EPRI figure', G.SG.area_m2, 18135 / 10.7639, 0.1, 'm2');
   ck('secondary inventory is the sourced Ginna figure', G.SG.mass_nominal, 12785, 1, 'kg');
+  }
 
+  if (grp('B')) {
   /* ---- 2. DUTY AT THE RULED POINT ---------------------------------------------------- */
   if (!quiet) console.log('\nDUTY  [300 MWt at the ruled temperatures -- TRUE BY CONSTRUCTION, labelled]');
   var d0 = G.stepSG(G.createSG(), 304.5, 0.02, {});
@@ -83,15 +97,19 @@ function runSuite(G, rec, quiet) {
   ckT('and REVERSES when the primary is colder than the secondary', dCold.duty_kW < 0,
       (dCold.duty_kW / 1000).toFixed(1) + ' MWt at 260 degC (secondary Tsat ' +
       W.T_sat(G.createSG().P).toFixed(1) + ' degC)');
+  }
 
+  if (grp('C1')) {
   /* ---- 3. INVENTORY AND THE SOURCED BOIL-DRY ----------------------------------------- */
   if (!quiet) console.log('\nINVENTORY  [the ledger, and the sourced boil-dry clock]');
   var sg = G.createSG();
-  var hfg = W.h_g(sg.P) - W.h_f(sg.P), steamRated = 300000 / hfg;
   ckT('boil-dry from nominal is in the sourced family',
       G.boilDryTime(sg, steamRated) > 50 && G.boilDryTime(sg, steamRated) < 110,
       G.boilDryTime(sg, steamRated).toFixed(0) + ' s at rated steaming; Manuals/12 §8.1 sources ~78 s ' +
       'from the Ginna inventory');
+  }
+
+  if (grp('C2')) {
   /* ---- THE DRIVING-TEMPERATURE CONTRACT ---------------------------------------------
    * `ratedU()` derives U at Tavg. Nothing forced a call site to PASS Tavg, and the first A/B run
    * passed the `sg_primary` node instead (#482, D1 §29.1/§29.5) -- 7.1 degC low, and the secondary
@@ -103,7 +121,6 @@ function runSuite(G, rec, quiet) {
    * the plant's settled temperature rather than on which argument was passed, because an
    * argument-shaped check would pass for a helper that returned the wrong number. */
   if (!quiet) console.log('\nDRIVING TEMPERATURE  [ratedU derives at Tavg -- so a call site must PASS Tavg]');
-  var S4 = SRCS, W4 = W;
   function settle(useTavg) {
     var sys = S4.createPlant({ h: W4.h_l(304.5, 15.41), P: 15.41 }), sg4 = G.createSG(), o = null;
     function nd(id) { for (var q = 0; q < sys.nodes.length; q++) if (sys.nodes[q].id === id) return sys.nodes[q]; }
@@ -122,6 +139,9 @@ function runSuite(G, rec, quiet) {
       Math.abs(tavgBad - 304.5) > 5,
       'settles ' + tavgBad.toFixed(1) + ' degC, ' + (tavgBad - 304.5).toFixed(1) +
       ' degC off -- so the check above is not vacuous');
+  }
+
+  if (grp('C3')) {
   ckT('primaryTavg() is the mean of the HOT and COLD LEGS, not one of them and not the lumps',
       (function () {
         /* THE LEGS MUST ACTUALLY HAVE COME APART, AND THE PLANT MUST STILL BE A PLANT.
@@ -143,7 +163,9 @@ function runSuite(G, rec, quiet) {
         var a = W4.T_from_h(nd2('hot_leg').h, sy.P), b = W4.T_from_h(nd2('cold_leg').h, sy.P);
         return Math.abs(G.primaryTavg(sy) - 0.5 * (a + b)) < 1e-9 && Math.abs(a - b) > 1e-6;
       })(), 'and the two nodes differ, so the mean is distinguishable from either');
+  }
 
+  if (grp('C1')) {
   /* ---- CONSTRUCTION  [what an adversarial pass found this gate blind to] ------------------
    * Five layers were probed this way and every one had blind spots (D1 §31). Here the survivors
    * were `opts.mass` and `opts.U` -- and those two are not incidental: they are exactly the knobs
@@ -168,11 +190,66 @@ function runSuite(G, rec, quiet) {
   var sgM = G.createSG(), M0 = sgM.mass;
   for (var k = 0; k < 500; k++) G.stepSG(sgM, 304.5, 0.02, { feed: 100, steam: 60 });
   ck('mass balance is exact on feed minus steam', sgM.mass - M0, 40 * 500 * 0.02, 1e-6, 'kg');
-  var sgD = G.createSG();
-  for (var kd = 0; kd < 5000; kd++) G.stepSG(sgD, 304.5, 0.02, { steam: 200 });
+  /* THE THIRD STREAM (#507 wave 5): a ruptured tube's primary discharge — the overfill
+   * hazard is the MASS landing (Ginna UFSAR §15.6.3), and it lands HOT. */
+  var sgT = G.createSG(), MT0 = sgT.mass;
+  for (var kt = 0; kt < 500; kt++) {
+    G.stepSG(sgT, 304.5, 0.02, { feed: 60, steam: 100, tube_leak_kgs: 40, tube_leak_h: 1270 });
+  }
+  ck('the tube-leak stream lands in the mass ledger — feed 60 + leak 40 − steam 100 holds level',
+     sgT.mass - MT0, 0, 1e-6, 'kg');
+  var sgHot = G.createSG(), sgCold = G.createSG();
+  for (var kh = 0; kh < 500; kh++) {
+    G.stepSG(sgHot, 304.5, 0.02, { tube_leak_kgs: 40, tube_leak_h: 1270 });
+    G.stepSG(sgCold, 304.5, 0.02, { afw_kgs: 40, afw_h: 90 });
+  }
+  ckT('...and it lands HOT: 40 kg/s at primary enthalpy pressurizes the secondary where the ' +
+      'same flow of cold AFW water suppresses it',
+      sgHot.P > sgCold.P + 0.05,
+      sgHot.P.toFixed(3) + ' vs ' + sgCold.P.toFixed(3) + ' MPa after 10 s — the stream is ' +
+      'energy, not just mass');
+  var sgD = G.createSG(), lastD = null, clippedD = false;
+  for (var kd = 0; kd < 5000; kd++) {
+    lastD = G.stepSG(sgD, 304.5, 0.02, { steam: 200 });
+    if (lastD.h_clipped) clippedD = true;
+  }
   ckT('a generator with no feed goes DRY and stays bounded', sgD.dry !== false && sgD.mass >= 1,
       sgD.mass.toFixed(1) + ' kg after 100 s of steaming with no feed');
 
+  /* ---- DRYOUT (#510 H-1). Before the fix a 1 kg secondary transferred rated UA against a
+   * pressure pinned at the 0.1 MPa property floor — 1.88 GW out of the primary in one step,
+   * the review's headline. Heat transfer now scales with the wetted fraction (the old
+   * engine's own shape at the shared Ginna level map's 30 % wide point), and the vessel
+   * cannot export steam it does not hold. ---- */
+  ckT('DRY, the vessel STARVES its export — delivered ~0 with the demand standing',
+      lastD.steam_starved === true && lastD.steam_delivered_kgs < 0.5,
+      'delivered ' + lastD.steam_delivered_kgs.toFixed(3) + ' kg/s against 200 demanded');
+  ckT('...and the dry secondary EQUILIBRATES toward the primary instead of pinning at the ' +
+      'property floor as a 211 degF infinite sink',
+      sgD.P > 1.0,
+      'P ' + sgD.P.toFixed(2) + ' MPa after the boil-dry (the pre-fix defect pinned 0.1)');
+  var sgDry = G.createSG({ mass: 1 });
+  var dDry = G.stepSG(sgDry, 304.5, 0.02, {});
+  ckT('a dry SG is a NEAR-ZERO heat sink — duty collapses with the wetted fraction',
+      Math.abs(dDry.duty_kW) < 5000 && dDry.wet_frac < 0.001,
+      'duty ' + dDry.duty_kW.toFixed(0) + ' kW at 1 kg (rated is 300,000); wet ' +
+      dDry.wet_frac.toExponential(1));
+  ckT('the wetted fraction is 1 above the threshold and proportional below it',
+      Math.abs(G.stepSG(G.createSG(), 304.5, 0.02, {}).wet_frac - 1) < 1e-9 &&
+      Math.abs(G.stepSG(G.createSG({ mass: 0.2 * 12785 }), 304.5, 0.02, {}).wet_frac -
+               0.2 / G.SG.dryout_mass_frac) < 1e-6,
+      'nominal reads 1; 20 % inventory reads 0.2/0.38845');
+  ckT('the h backstop is a BACKSTOP — it never binds on a fed transient',
+      (function () {
+        var s5 = G.createSG(), hit = false;
+        for (var k5 = 0; k5 < 500; k5++) {
+          if (G.stepSG(s5, 304.5, 0.02, { feed: 100, steam: 60 }).h_clipped) hit = true;
+        }
+        return !hit;
+      })(), 'clipping on a healthy vessel would mean the ledger left the saturation span');
+  }
+
+  if (grp('D')) {
   /* ---- 4. THE SECONDARY SITS ON ITS SATURATION LINE ---------------------------------- */
   if (!quiet) console.log('\nSATURATION  [a lumped boiling vessel is ON the line by construction]');
   [0.5, 2.0, 5.688, 7.03].forEach(function (P) {
@@ -184,7 +261,9 @@ function runSuite(G, rec, quiet) {
   for (var kp = 0; kp < 200; kp++) G.stepSG(sgP, 314.5, 0.02, { feed: 0, steam: 0 });
   ckT('bottling the generator raises its pressure', sgP.P > P0,
       P0.toFixed(3) + ' -> ' + sgP.P.toFixed(3) + ' MPa with heat in and no steam out');
+  }
 
+  if (grp('E')) {
   /* ---- 5. A5 -- THE COUPLING THIS LAYER EXISTS FOR ------------------------------------ */
   if (!quiet) console.log('\nA5: THE SG IS THE ONLY HEAT SINK  [inexpressible before this layer]');
   /* START AT THE DESIGN POINT. The first draft started the primary at h = 1250 kJ/kg, which is
@@ -223,6 +302,7 @@ function runSuite(G, rec, quiet) {
       cutFeed[cutFeed.length - 1].P > withFeed[withFeed.length - 1].P,
       withFeed[withFeed.length - 1].P.toFixed(3) + ' -> ' +
       cutFeed[cutFeed.length - 1].P.toFixed(3) + ' MPa');
+  }
 }
 
 console.log('\nPWR2 Layer 5 -- the lumped SG secondary');
@@ -230,40 +310,57 @@ var G = loadFrom(SRC), rec = [];
 runSuite(G, rec, false);
 var pass = rec.filter(function (r) { return r.ok; }).length, fail = rec.length - pass;
 
+/* Each entry's trailing { grp } names the section group that can SEE it (#513) — the replay
+ * runs only that group, and the BLIND check still reds the runner if the tag is wrong. */
 var MUTATIONS = [
   ['heat transfer decoupled from the primary temperature',
-   'var Q = sg.U * sg.area * (primaryT - T_sec);', 'var Q = 300000;'],
+   'var Q = sg.U * wet * sg.area * (primaryT - T_sec);', 'var Q = 300000;', { grp: 'B' }],
   ['duty sign flipped (the SG heats the primary)',
-   'var Q = sg.U * sg.area * (primaryT - T_sec);', 'var Q = -sg.U * sg.area * (primaryT - T_sec);'],
-  ['sourced area replaced by a round number', 'area_m2: 18135 / 10.7639,', 'area_m2: 1500,'],
-  ['sourced inventory replaced', 'mass_nominal: 12785,', 'mass_nominal: 40000,'],
+   'var Q = sg.U * wet * sg.area * (primaryT - T_sec);',
+   'var Q = -sg.U * wet * sg.area * (primaryT - T_sec);', { grp: 'B' }],
+  ['the dryout wet fraction deleted (a dry SG transfers rated UA — #510 H-1 re-armed)',
+   'var Q = sg.U * wet * sg.area * (primaryT - T_sec);',
+   'var Q = sg.U * sg.area * (primaryT - T_sec);', { grp: 'C1' }],
+  ['the outflow limiter deleted (the vessel exports steam it does not hold — #510 H-1 re-armed)',
+   'var steam_eff = Math.min(steam, Math.max(0, (sg.mass - SG.mass_floor_kg) / dt + inflow));',
+   'var steam_eff = steam;', { grp: 'C1' }],
+  ['sourced area replaced by a round number', 'area_m2: 18135 / 10.7639,', 'area_m2: 1500,',
+   { grp: 'A' }],
+  ['sourced inventory replaced', 'mass_nominal: 12785,', 'mass_nominal: 40000,', { grp: 'A' }],
   ['feedwater arrives at steam enthalpy instead of the sourced 435 degF',
-   'feed * SG.h_feed', 'feed * W.h_g(sg.P)'],
-  ['steam leaves as liquid instead of vapour', '- steam * h_g;', '- steam * W.h_f(sg.P);'],
+   'feed * SG.h_feed', 'feed * W.h_g(sg.P)', { grp: 'C2' }],
+  ['the tube-leak stream is dropped from the MASS ledger (an SGTR that never overfills)',
+   'var inflow = feed + afw + leak;', 'var inflow = feed + afw;', { grp: 'C1' }],
+  ['the tube-leak stream carries no ENERGY (hot primary water arrives cold)',
+   'afw * h_afw + leak * h_leak - steam_eff * h_g;', 'afw * h_afw - steam_eff * h_g;',
+   { grp: 'C1' }],
+  ['steam leaves as liquid instead of vapour', '- steam_eff * h_g;', '- steam_eff * W.h_f(sg.P);',
+   { grp: 'C2' }],
   ['secondary mass not integrated (inventory frozen)',
-   'var m_new = sg.mass + dt * dM;', 'var m_new = sg.mass;'],
+   'var m_new = sg.mass + dt * dM;', 'var m_new = sg.mass;', { grp: 'C1' }],
   ['secondary pressure frozen (no saturation tracking)',
-   'sg.P = mid;\n    return sg.P;', 'return sg.P;'],
+   'sg.P = mid;\n    return sg.P;', 'return sg.P;', { grp: 'D' }],
   ['U derived from the wrong power (breaks the sourced-band check)',
-   'return 300000 / (SG.area_m2 * (T_prim - T_sec));', 'return 700000 / (SG.area_m2 * (T_prim - T_sec));'],
-  ['the dry floor removed (inventory goes negative)',
-   'if (m_new < 1) m_new = 1;', ''],
+   'return 300000 / (SG.area_m2 * (T_prim - T_sec));', 'return 700000 / (SG.area_m2 * (T_prim - T_sec));',
+   { grp: 'A' }],
   /* The contract itself: a helper that hands back one node instead of the mean is exactly the
    * defect #482 filed, so it must not survive. */
   ['primaryTavg returns the cold leg instead of the mean (the #482 defect, re-armed)',
-   'return 0.5 * (W2.T_from_h(hot.h, sys.P) + W2.T_from_h(cold.h, sys.P));',
-   'return W2.T_from_h(cold.h, sys.P);'],
+   /* anchor re-pointed #514: primaryTavg reads TFH (the vtable idiom) now */
+   'return 0.5 * (TFH(hot.h, sys.P) + TFH(cold.h, sys.P));',
+   'return TFH(cold.h, sys.P);', { grp: 'C3' }],
   /* The LUMP-vs-LEG confusion, re-armed. It costs only 0.14 degF today, which is exactly why it
    * needs a mutation: nothing else in this gate would notice, and the two come apart the moment
    * the core and the hot leg stop sharing an enthalpy. */
   ['primaryTavg averages the core LUMP instead of the hot LEG',
    "if (sys.nodes[i].id === 'hot_leg') hot = sys.nodes[i];",
-   "if (sys.nodes[i].id === 'core') hot = sys.nodes[i];"],
+   "if (sys.nodes[i].id === 'core') hot = sys.nodes[i];", { grp: 'C3' }],
   /* The two an adversarial CONSTRUCTION pass found -- both of them casualty-staging knobs. */
   ['caller inventory ignored at construction (every boil-dry probe stages a healthy SG)',
-   'mass: opts.mass === undefined ? SG.mass_nominal : opts.mass,', 'mass: SG.mass_nominal,'],
+   'mass: opts.mass === undefined ? SG.mass_nominal : opts.mass,', 'mass: SG.mass_nominal,',
+   { grp: 'C1' }],
   ['caller U ignored at construction (every fouling probe stages clean tubes)',
-   'U: opts.U === undefined ? ratedU() : opts.U,', 'U: ratedU(),']
+   'U: opts.U === undefined ? ratedU() : opts.U,', 'U: ratedU(),', { grp: 'C1' }]
 ];
 
 /* ---- THE CLEAN-RUN GUARD --------------------------------------------------------------
@@ -288,23 +385,51 @@ if (fail > 0) {
   process.exit(1);
 }
 
+/* ---- SCOPED-CLEAN-PASS PREFLIGHT (#513) ------------------------------------------------
+ * Every group a mutation names must be GREEN when run alone on the clean build. In the replay
+ * loop a crash counts as caught, so a group whose checks lean on another section's setup would
+ * crash there and silently stand in for coverage; here, on the clean module, it fails loudly. */
+var scopeBad = 0;
+MUTATIONS.map(function (m) { return m[3] && m[3].grp; })
+  .filter(function (g, i, a) { return g && a.indexOf(g) === i; })
+  .forEach(function (g) {
+    var rg = [], threw = false;
+    try { runSuite(G, rg, true, g); } catch (e) { threw = true; }
+    var fg = rg.filter(function (r) { return !r.ok; }).length;
+    if (threw || fg > 0) {
+      scopeBad++;
+      console.log('  SCOPE ' + g + (threw ? ' THREW' : ' RED (' + fg + ')') +
+        ' on the CLEAN build -- the group cannot stand alone; GATE FAILS' +
+        (fg ? ' -- ' + rg.filter(function (r) { return !r.ok; })
+                         .map(function (r) { return r.name; }).join('; ') : ''));
+    }
+  });
+
 console.log('\n' + '='.repeat(70));
 console.log('  INJECTION SELF-TEST -- every mutation MUST redden at least one check');
 console.log('='.repeat(70));
 var blind = 0;
 MUTATIONS.forEach(function (m) {
+  var grpTag = (m[3] && m[3].grp) || undefined;
   if (SRC.indexOf(m[1]) === -1) { console.log('  ERROR   anchor not found: ' + m[0]); blind++; return; }
-  var r2 = [];
-  try { runSuite(loadFrom(SRC.split(m[1]).join(m[2])), r2, true); }
-  catch (e) { r2.push({ name: 'threw', ok: false }); }
-  var f2 = r2.filter(function (r) { return !r.ok; }).length;
+  var r2 = [], crashed = false;
+  try { runSuite(loadFrom(SRC.split(m[1]).join(m[2])), r2, true, grpTag); }
+  catch (e) { crashed = true; }
+  /* A crash counts as caught no matter how many checks recorded first (the run_pwr2_engine
+   * form) -- but a crash-only catch is REPORTED AS ITSELF rather than wearing a check's face. */
+  var realReds = r2.filter(function (r) { return !r.ok; }).length;
+  var f2 = crashed ? 1 : (r2.length ? realReds : 1);
   if (f2 === 0) { blind++; console.log('  BLIND TO  ' + m[0] + '   <-- THIS GATE CANNOT SEE IT'); }
+  else if (crashed && realReds === 0) {
+    console.log('  caught    ' + m[0].padEnd(58) + 'CRASH only -- no check red (coverage untested)');
+  }
   else console.log('  caught    ' + m[0].padEnd(58) + f2 + ' red');
 });
 
 console.log('\n' + '='.repeat(70));
 console.log('  injection self-test: ' + (MUTATIONS.length - blind) + '/' + MUTATIONS.length +
-  ' mutations caught' + (blind ? '  ** ' + blind + ' BLIND SPOTS -- GATE FAILS **' : ', no blind spots'));
+  ' mutations caught' + (blind ? '  ** ' + blind + ' BLIND SPOTS -- GATE FAILS **' : ', no blind spots') +
+  (scopeBad ? '  ** ' + scopeBad + ' GROUP(S) NOT SELF-STANDING **' : ''));
 console.log('  run_pwr2_sg: ' + pass + ' passed, ' + fail + ' failed  (' + rec.length + ' checks)');
 console.log('='.repeat(70) + '\n');
-process.exit((fail > 0 || blind > 0) ? 1 : 0);
+process.exit((fail > 0 || blind > 0 || scopeBad > 0) ? 1 : 0);
