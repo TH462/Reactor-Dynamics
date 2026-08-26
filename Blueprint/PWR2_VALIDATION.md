@@ -4603,3 +4603,76 @@ UFSAR 15.6.1 section number is [recalled]) — i.e. the valve opens on a spuriou
 pressure spike. The ruling this section leaves open is in #515: whether the sim's TMI initiation
 is the operator's lift with the stick armed (built, above), a new `inadvertent_porv_open` row
 (sourced initiator, a one-lever build on `porv_manual`'s wire from the failure side), or both.
+
+## 83. #515 — THE P-9 DEFEAT, THE PORV THAT LIFTS BY PHYSICS, AND WHAT THE SECOND HALF OF TMI STILL NEEDS — 2026-08-25
+
+*(OWNER DIRECTIVE, 2026-08-25: "then lets get rid of that anticipatory trip so that we can
+recreate the TMI incident. what else do we need to adjust to get the TMI incidient to work. i
+dont want to lifet he PORV on a spurious signal, how can we make it work with phycis?")*
+
+**Built: `anticipatory_trip_failure`** — a casualty row (PWR2 only; `pwr2_only` on the def, and
+the old engine's `getProtectionConfig` hides it rather than ship a hollow row). It is the P-9
+turbine-trip reactor-trip CHANNEL failed: `drivers.p9_defeated` blanks the anticipatory clause
+in `pwr2_protection` and nothing else — every credited function still trips through it (pinned:
+the SG lo-lo level trip fires with the defeat standing). Built as a failure the operator injects
+rather than a deletion, because the permissive is sourced (Ginna TS Bases B 3.3.1) and every
+other turbine trip on this plant keeps it; if the owner wants it gone globally it is the one
+clause. `run_pwr2_protection` 100 → 102 (mutation "the defeat wire is cut" red),
+`run_pwr2_shell` 76 → 77 (the row injects, reports, and its clear re-arms a trip that then fires
+on the next step — the wire both ways), `run_inspect` places the row.
+
+**Why P-9 alone does not lift the valve — ablated** (loss of feed + AFW tagged shut, 100 %,
+stick armed, 180 s; harness-side source mutations, no repo change):
+
+| what was removed | peak P (psia) | power at the peak | PORV lift |
+|---|---|---|---|
+| nothing (as built) | 2233, falls | — | never (P-9 trips at 0 s) |
+| P-9 | 2268 at 18 s | 67 % | never |
+| P-9 + spray shut (manual 0) | 2269 | 67 % | never — **spray is not the suppressor** |
+| P-9 + moderator coefficient zeroed | 2292 at 18 s | 25 % | never (the 87 % high-level trip fires at 17 s) |
+| P-9 + SG inventory × 0.5 | 2267 | 67 % | never |
+| P-9 + SG inventory × 0.25 | 2348 at 153 s | 0 % | **152 s — after the SG dried** |
+| P-9 + SG inventory × 0.1 | 2363 at 36 s | 1 % | **34.5 s** (the once-through-SG plant) |
+
+**The suppressor is the U-tube steam generator's inventory.** With the reactor running against a
+tripped turbine the 40 % dumps and the SG safeties carry two-thirds of the heat, moderator
+feedback trims power to 67 %, and the SG's minute-plus of water keeps the primary from heating —
+2268 psia is where that balance sits. An SG a tenth the size (a once-through generator) lifts
+the valve at 35 s: TMI-2's initiating spike is a B&W artefact, not a Westinghouse transient.
+
+**But the PORV DOES lift by physics on this plant — later, from the dry-SG heat-up** (60-minute
+rides, stick armed):
+
+| | SG dry | PORV lifts on its own | at |
+|---|---|---|---|
+| P-9 as built (trip at 0 s) | 43.6 min | **52.4 min** | 2339 psia, Tavg 622 °F, pzr level 100 %, latched |
+| P-9 defeated (trip at 59.8 s on SG lo-lo level, 67 % power for a minute) | 12.4 min | **18.5 min** | 2344 psia, Tavg 624 °F, latched |
+
+The defeated case boils most of the SG in the minute the reactor runs (0.67 × 300 MWt × 60 s ≈
+the inventory's latent heat), which is why it lifts three times sooner. The TMI story on this
+plant therefore reads: loss of feed with the aux-feed valves tagged shut → the SG dries → the
+RCS heats on decay heat → **the PORV lifts and sticks** (18.5 min with the channel failed) →
+*then* the crew finds the aux-feed valves. TMI-2's 8-minute AFW discovery moves after the lift,
+because on this plant restoring feed before dry-out prevents it. Nothing is spurious and nothing
+is scripted: the valve lifts on pressure.
+
+**What the second half needs — the two #515 model defects, measured against the TMI timeline**
+(operator lift at 3 s, HPI throttled 4.5 min, AFW restored 8 min, RCPs tripped 73 min, block
+valve 142 min, HPI restored 200 min; harness mutations, no repo change):
+
+| build | P plateau 8–73 min | accumulators | uncovered at 120 min | block valve 142 → 200 min | outcome |
+|---|---|---|---|---|---|
+| as built | 1087 → 1061, then **collapses to 158 psia at 60 min** | **dump at 53 min** | 100 % at 98 min | — | **dead 97 min** (void-term flip) |
+| PORV choked (flow ∝ P) | **1089 → 1064 psia — the TMI plateau** | never | 94 % | P 722 → 1015 psia; HPI refills 24 → 39 % | dead 234 min (the flip, on the refill's boron) |
+| boron factor clamped ≥ 0 | collapses to 82 psia | dump at 53 min | 100 % | plant stagnant at 17 % mass | survives, not TMI |
+| **both** | **1089 → 1064 psia** | never | 94 % | recovers as above | **survives to 260 min in TMI's shape** |
+
+The choked valve alone turns the accident into TMI's: a 1065 psia plateau for an hour, no
+accumulator dump, the core uncovering progressively from 60 min (21 %) through 73 (47 %) to 120
+(94 %), and the block-valve closure recovering pressure. The boron clamp alone only keeps the
+plant alive. Both are needed, and together the sequence runs its full 4 h 20 min. **What is
+still missing after both: the cladding never heats while uncovered** — 555 °F at 94 % uncovered
+(the homogeneous core credits residual steam flow with cooling every rod; §82's gap 1, the
+deferred stratified vessel) — so no oxidation, no hydrogen, no burn. The choked-flow law is the
+sourced form (the 179,000 lb/hr rating is AT 2335 psig); the void-term fix is a design question
+(the clamp is a probe, not the answer). Both are #515's next work.

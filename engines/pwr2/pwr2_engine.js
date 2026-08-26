@@ -547,6 +547,10 @@
         /* ATWS: the trip LATCHES (annunciators, turbine trip, the record) — only the rod
          * drop is failed, which is what a failure-to-scram IS */
         eng.scramBlocked = !!value; break;
+      case 'p9_defeat':
+        /* #515: the P-9 turbine-trip channel failed — the anticipatory trip reports nothing
+         * (pwr2_protection); a persistent physical state, cleared only by the clear */
+        eng.p9Defeated = !!value; break;
       case 'pzr_heaters_failed':
         eng.pzDrivers.heaters_failed = value ? true : undefined; break;
       case 'spray_stick':
@@ -940,6 +944,7 @@
        * on the control side). One-step lag on cr, the house convention. */
       turbine_tripped: eng.tb.tripped,
       steam_dumps_available: eng._cdAvail !== false,
+      p9_defeated: eng.p9Defeated === true,           /* #515: the failed channel */
       /* [sourced ch10] the loss-of-both-feed-pumps MDAFW start's input — a STATE signal
        * (breaker positions), the turbine_tripped convention, not an analog channel */
       main_feed_lost: fwr.main_feed_lost,

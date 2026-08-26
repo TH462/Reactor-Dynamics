@@ -188,8 +188,10 @@ function runSuite(SH, rec, quiet, only) {
      pc.channels[0] === globalThis.RD.PWR_CONFIG.protection.channels.filter(function (ch) { return ch.id === 'boron_conc'; })[0] &&
      pc.interlocks.length === 0 && pc.runbacks.length === 0 &&
      alarmsOk &&
-     Object.keys(pc.failures).length === 21 &&
+     Object.keys(pc.failures).length === 22 &&
      !!pc.failures.stuck_porv_open && !!pc.failures.rcp_trip && !!pc.failures.turbine_trip &&
+     /* #515 — the P-9 channel failure (pwr2_only: the old engine's catalog hides it) */
+     !!pc.failures.anticipatory_trip_failure &&
      !!pc.failures.loss_of_feedwater &&
      /* #507 wave 3 — the rows existing machinery honestly injects */
      !!pc.failures.sg_overfeed && !!pc.failures.loss_of_offsite_power &&
@@ -595,6 +597,25 @@ function runSuite(SH, rec, quiet, only) {
        kw0 > 10 && eH.eng._pzr.heater_kW === 0 && eH.eng.pz.heatersShed === false &&
        eH.getActiveFailures().indexOf('failed_pzr_heaters') !== -1,
        kw0.toFixed(0) + ' kW -> 0');
+
+    /* anticipatory_trip_failure (#515) — the P-9 turbine-trip channel failed: a turbine
+     * trip at 100 % leaves the reactor running; the clear re-arms the trip, which then fires
+     * on the next step because the turbine is still tripped above P-9 — the wire both ways. */
+    var eA = new SH.PWR2Engine({});
+    for (i = 0; i < 100; i++) eA.step(0.02);
+    eA.applyCommand({ action: 'inject_failure', failure_id: 'anticipatory_trip_failure' });
+    eA.applyCommand({ action: 'inject_failure', failure_id: 'turbine_trip' });
+    for (i = 0; i < 100; i++) eA.step(0.02);
+    var noTripA = eA.eng.pt.reactor_trip === false && eA.eng.tb.tripped === true &&
+                  eA.getActiveFailures().indexOf('anticipatory_trip_failure') !== -1;
+    eA.applyCommand({ action: 'clear_failure', failure_id: 'anticipatory_trip_failure' });
+    eA.step(0.02);
+    ck('anticipatory_trip_failure (#515): with the P-9 channel failed a turbine trip at 100 % ' +
+       'leaves the reactor RUNNING (2 s), the row reports active, and the clear re-arms the ' +
+       'trip — which fires on the next step, turbine still tripped above P-9',
+       noTripA && eA.eng.p9Defeated === false && eA.eng.pt.reactor_trip === true &&
+       eA.getActiveFailures().indexOf('anticipatory_trip_failure') === -1,
+       'no-trip ' + noTripA + ', trip after clear ' + eA.eng.pt.reactor_trip);
 
     /* stuck_open_spray — the porv_stick twin; the plant depressurizes against its heaters */
     var eP = new SH.PWR2Engine({});

@@ -30,6 +30,17 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
 
 ## [Unreleased]
 
+### Added (#515 — the P-9 defeat and the physics PORV lift, 2026-08-25, owner directive)
+- **`anticipatory_trip_failure`** — the P-9 turbine-trip reactor-trip channel failed (PWR2 only;
+  the old engine's catalog hides it). A turbine trip above 50 % no longer trips the reactor;
+  every credited trip still does. `run_pwr2_protection` 100 → 102, `run_pwr2_shell` 76 → 77.
+- **Measured (`PWR2_VALIDATION.md` §83):** the PORV lifts BY PHYSICS on the TMI steps once the SG
+  boils dry — 52.4 min as built, **18.5 min with the channel failed** — and the armed stick
+  latches it. The initiating spike itself is not reachable (2268 vs 2335 psia; the U-tube SG's
+  inventory, not the spray or the trip, holds it). The two #515 model defects were ablated on the
+  TMI timeline: the choked PORV gives the 1065 psia plateau and no accumulator dump, the boron
+  clamp keeps the plant alive; together the sequence runs to 260 min. Still missing: clad heat-up.
+
 ### Changed (#515 — the PORV stick is a LATCH, 2026-08-25, owner design)
 - **`stuck_porv_open` on PWR2 ARMS and waits**: the valve stays shut until the plant or the
   operator lifts it, then never reseats; clearing the failure is the only release. The

@@ -656,7 +656,17 @@
      * is the turbine's own tripped flag (drivers.turbine_tripped), declared, and P-9 selects
      * its value from drivers.steam_dumps_available (absent = available, the normal lineup). */
     var p9frac = drivers.steam_dumps_available === false ? P9.frac_no_dumps : P9.frac_dumps;
-    if (drivers.turbine_tripped && drivers.power_frac >= p9frac && !pr.reactor_trip) {
+    /* THE DEFEAT (#515) — drivers.p9_defeated is the `anticipatory_trip_failure` casualty:
+     * the turbine-trip channel has failed, so this ANTICIPATORY trip reports nothing while
+     * every credited function below still trips. It exists to recreate TMI-2 on a plant
+     * whose sourced design forbids the sequence *(OWNER DIRECTIVE, 2026-08-25: "lets get rid
+     * of that anticipatory trip so that we can recreate the TMI incident")* — built as a
+     * failure the operator injects rather than a deletion, because the permissive is
+     * sourced and every other turbine trip on this plant keeps it. MEASURED (validation
+     * §83): with the channel failed a loss of feed at 100 % runs 60 s to the SG lo-lo trip
+     * at 67 % power (feedback-limited), boils most of the SG doing it, and the PORV lifts
+     * on its own at 18.5 min against 52.4 min with the trip in place. */
+    if (drivers.turbine_tripped && !drivers.p9_defeated && drivers.power_frac >= p9frac && !pr.reactor_trip) {
       pr.reactor_trip = true; pr.trip_cause = 'turbine_trip';
     }
 

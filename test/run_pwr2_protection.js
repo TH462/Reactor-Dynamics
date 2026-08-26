@@ -395,6 +395,19 @@ function runSuite(P, rec, quiet) {
       'cause ' + prT3.trip_cause);
   ckT('p9_met reports the selected value: false at 40 % available, true at 40 % unavailable',
       rT2.p9_met === false && rT3.p9_met === true, '');
+  /* THE DEFEAT (#515, owner directive 2026-08-25): the turbine-trip channel failed. The
+   * anticipatory trip reports nothing; the credited functions are untouched by it. */
+  var prT4 = atPower();
+  var d4 = withTT(1.0); d4.p9_defeated = true;
+  var rT4 = ride(prT4, d4, 30);
+  ckT('with the P-9 channel DEFEATED a turbine trip at 100 % does NOT trip the reactor (30 s)',
+      rT4.reactor_trip === false, 'trip ' + rT4.reactor_trip + ', cause ' + prT4.trip_cause);
+  var prT5 = atPower();
+  var d5 = withTT(1.0); d5.p9_defeated = true; d5.sg_level_frac = DOC.lolo_frac - 0.05;
+  var rT5 = ride(prT5, d5, 5);
+  ckT('...and the CREDITED SG lo-lo level trip still fires through the defeat',
+      rT5.reactor_trip === true && prT5.trip_cause === 'sg_lolo_level',
+      'cause ' + prT5.trip_cause);
 
   /* ---- OT/OP DELTA-T: A COMPUTED SETPOINT, EVERY COEFFICIENT Table 15.0-7's ---------------
    * OT: sp = K1 + K2*(P-P') - K3*(T-T'); OP: sp = K4 (K6 = 0.00 is the table's own value).
@@ -681,14 +694,17 @@ var MUTATIONS = [
    "          of.value >= of.setpoint - (pr.dtApproach ? 0.035 : 0.03)) dtNear = true;",
    "          of.value >= of.setpoint - (pr.dtApproach ? 0.305 : 0.30)) dtNear = true;"],
   ['the turbine-trip reactor trip is deleted (P-9 reports into a void)',
-   "    if (drivers.turbine_tripped && drivers.power_frac >= p9frac && !pr.reactor_trip) {\n      pr.reactor_trip = true; pr.trip_cause = 'turbine_trip';\n    }",
+   "    if (drivers.turbine_tripped && !drivers.p9_defeated && drivers.power_frac >= p9frac && !pr.reactor_trip) {\n      pr.reactor_trip = true; pr.trip_cause = 'turbine_trip';\n    }",
+   ''],
+  ['the P-9 defeat wire is cut (the failed channel still trips) -- #515',
+   '!drivers.p9_defeated && ',
    ''],
   ['P-9 ignores dump availability (the 8 % value is never selected)',
    "    var p9frac = drivers.steam_dumps_available === false ? P9.frac_no_dumps : P9.frac_dumps;",
    '    var p9frac = P9.frac_dumps;'],
   ['the P-9 gate is deleted (any turbine trip trips the reactor, dumps or no dumps)',
-   'drivers.turbine_tripped && drivers.power_frac >= p9frac',
-   'drivers.turbine_tripped'],
+   'drivers.turbine_tripped && !drivers.p9_defeated && drivers.power_frac >= p9frac',
+   'drivers.turbine_tripped && !drivers.p9_defeated'],
   ['the P-7 at-power gate is deleted (the high-level trip fires during heatup)',
    '        if (f.atPower && drivers.power_frac < P7.frac) asserted = false;',
    ''],

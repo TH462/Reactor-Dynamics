@@ -500,6 +500,7 @@
       /* ---- the wave-6 rows (#507): each an engine lever, each with its own probe ---- */
       else if (c.failure_id === 'afw_failure') EN.command(e, 'afw_block', true);
       else if (c.failure_id === 'failure_to_scram') EN.command(e, 'scram_block', true);
+      else if (c.failure_id === 'anticipatory_trip_failure') EN.command(e, 'p9_defeat', true);
       else if (c.failure_id === 'failed_pzr_heaters') EN.command(e, 'pzr_heaters_failed', true);
       else if (c.failure_id === 'stuck_open_spray') EN.command(e, 'spray_stick', true);
       else if (c.failure_id === 'continuous_rod_withdrawal') {
@@ -556,6 +557,7 @@
       else if (c.failure_id === 'degraded_hpi') e.ec.hhsiAvail = 1;
       else if (c.failure_id === 'afw_failure') EN.command(e, 'afw_block', false);
       else if (c.failure_id === 'failure_to_scram') EN.command(e, 'scram_block', false);
+      else if (c.failure_id === 'anticipatory_trip_failure') EN.command(e, 'p9_defeat', false);
       else if (c.failure_id === 'failed_pzr_heaters') EN.command(e, 'pzr_heaters_failed', false);
       else if (c.failure_id === 'stuck_open_spray') EN.command(e, 'spray_stick', false);
       else if (c.failure_id === 'continuous_rod_withdrawal') EN.command(e, 'rod_runaway', 0);
@@ -762,6 +764,7 @@
                       /* wave 6 (#507): the failure levers + the two instrument rows the
                        * drift mode and the mirror-only porv channel unlocked */
                       'afw_failure', 'failure_to_scram', 'failed_pzr_heaters',
+                      'anticipatory_trip_failure',   /* #515: the P-9 channel failed */
                       'stuck_open_spray', 'continuous_rod_withdrawal',
                       'tavg_sensor_failure', 'porv_indicator_stuck_closed',
                       'pzr_level_sensor_stuck', 'pzr_level_sensor_low'], out = {};
@@ -841,6 +844,7 @@
     /* the wave-6 levers (#507) */
     if (eng.aw.blocked) out.push('afw_failure');
     if (eng.scramBlocked) out.push('failure_to_scram');
+    if (eng.p9Defeated) out.push('anticipatory_trip_failure');
     if (eng.pzDrivers.heaters_failed) out.push('failed_pzr_heaters');
     if (eng.pzDrivers.spray_stick) out.push('stuck_open_spray');
     if (eng.runaway) out.push('continuous_rod_withdrawal');

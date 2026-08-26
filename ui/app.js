@@ -1130,7 +1130,7 @@
       // A new failure therefore SHOWS UP misfiled instead of disappearing, and
       // `run_inspect` asserts every catalog entry is placed.
       failGroups: [
-        { title: 'Reactivity & rods',        ids: ['continuous_rod_withdrawal', 'stuck_rod_on_scram', 'failure_to_scram'] },
+        { title: 'Reactivity & rods',        ids: ['continuous_rod_withdrawal', 'stuck_rod_on_scram', 'failure_to_scram', 'anticipatory_trip_failure'] },
         { title: 'Reactor coolant system',   ids: ['large_loca', 'sgtr', 'rcp_seal_leak', 'stuck_porv_open', 'rcp_trip'] },
         { title: 'Pressurizer & pressure',   ids: ['stuck_open_spray', 'failed_pzr_heaters'] },
         { title: 'Steam & feedwater',        ids: ['loss_of_feedwater', 'sg_overfeed', 'steam_line_break', 'steam_line_break_upstream'] },

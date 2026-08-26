@@ -1007,7 +1007,14 @@
   };
 
   PWREngine.prototype.getActiveFailures = function () { return this.active_failures.slice(); };
-  PWREngine.prototype.getProtectionConfig = function () { return this.cfg.protection; };
+  PWREngine.prototype.getProtectionConfig = function () {
+    /* #515: a def flagged pwr2_only is the new engine's row — hide it from THIS engine's
+     * catalog rather than ship a row that does nothing here (the hollow-row class, #507
+     * wave 6). The engine's own lookups keep reading this.cfg.protection.failures direct. */
+    var p = this.cfg.protection, f = p.failures || {}, keep = {}, any = false;
+    for (var id in f) { if (f[id].pwr2_only) { any = true; continue; } keep[id] = f[id]; }
+    return any ? Object.assign({}, p, { failures: keep }) : p;
+  };
 
   // ================================================================== commands
   PWREngine.prototype.applyCommand = function (cmd) {
