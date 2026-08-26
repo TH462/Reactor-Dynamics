@@ -5157,3 +5157,134 @@ into a bare root, and `W` came back undefined; loudly, which is the good case. A
 control written in the wrong harness measures a different plant**: the severity-1 control was
 first written into `run_pwr2_coredamage`, which is engine-direct with no injection, where the same
 break superheats to 138 °C instead of 18.6 — it failed against a number that was never the claim.
+
+## 89. #518 — THE CANARY WAS MEASURING THE WRONG FLOW, AND THE FREEZE WAS HIDING A WORKING ECCS — 2026-08-26
+
+*(OWNER RULING, 2026-08-26: selected "Canary + sub-step" from four options put to him with the
+measurement below — a selection, not verbatim words.)*
+
+### 89.1 The defect: one number about a different quantity
+
+`courantLimit()` divided the smallest ring node's mass by **`sys.mdot_loop`** — the HEAD flow, one
+scalar for the whole ring. What donor-cell actually transports is **`sys.junctionFlow[id]`**,
+derived per node by the walk at the bottom of `stepLoop`. Those are the same number on a healthy
+plant and nothing alike late in a blowdown: at ~7 % inventory the ring nodes hold single-digit
+kilograms, a small node's large relative `dm/dt` amplifies the derived flows, and the two diverge
+by four orders of magnitude — **990 → 13,697 → 124,675 kg/s against a head flow of 76–87.**
+
+**So the one diagnostic built to name this instability reported ZERO violations on every step of a
+ride whose true per-junction Courant number reached 2,745.** Not quiet — dead. And every existing
+check around it ran on plants where junction flows equal the head flow, i.e. exactly where the two
+forms are the same number, which is why nine days of green probes agreed with it.
+
+### 89.2 The measurement that decided the fix
+
+Sub-stepping is a smaller dt in the transport, so the question is whether a smaller dt saves the
+severity-1 ride (0.002 m² cold-leg break with injection answering):
+
+| dt | latch | P at 400 s | inventory | worst per-junction Courant |
+|---|---|---|---|---|
+| 0.02 (house) | **160.8 s** | 14.5 psia (0.1 MPa, the floor) | 8.0 % | **2,230** |
+| 0.01 | none | 207.8 psia | 4.4 % | 2.0 |
+| 0.005 | none | 207.6 psia | 4.4 % | 0.7 |
+| 0.0025 | none | 207.4 psia | 4.4 % | 0.4 |
+
+**Converged to 0.2 % across three halvings.** The dt = 0.02 answer is the outlier — a
+discretisation artefact, not a plant trajectory. And what the converged plant does matters:
+pressure falls to 82 psia (0.57 MPa), **injection refills the vessel — inventory 1.3 % → 4.0 % —
+and the clad cools 447 → 328 °F.** *The freeze was hiding a working emergency-injection recovery.*
+
+**Cost, measured on the converged trajectory** (what an outer dt of 0.02 would have needed):
+**83 extra inner solves across 90,001 outer steps — 0.09 %.** Worst case **N = 3**; the first step
+needing more than one is at **160.0 s** of an 1,800 s ride. `run_pwr2_perf` after: 84.9 µs/step,
+ratio **4.1×** against 79.1 / 3.9× before — run-to-run noise.
+
+### 89.3 What was built
+
+**The canary**, per junction: each ring node's mass against the flow leaving it, minimum over the
+ring. Still a scalar in seconds, still 0.370 s on a rated plant.
+
+**The sub-step**, in `stepLoop` (Layer 3) — `N = clamp(ceil(dt / limit), 1, 16)`, calling
+`CORE.step` N times with dt/N. **In Layer 3 and not Layer 2** because `CORE.step` is generic and
+the ring is Layer 3's; each Layer 2 call then still advances exactly its own interval and
+`run_pwr2_core`'s 22 mutation anchors are untouched. **The junction flows are re-derived between
+sub-steps** — sub-stepping a frozen flow set advances the same wrong transport N times in smaller
+pieces and arrives at the same wrong answer.
+
+**This implements `PWR2_PHYSICS.md` §17.5, which ADOPTED sub-stepping and never built it** —
+nothing in this engine subdivided anything until now. §24.2's contract is honoured verbatim: the
+last sub-interval takes the remainder rather than dt/N, so N floating-point divisions cannot leave
+the clock short. Measured drift over 500 steps at dt = 0.02, 50 at 1.0 and 20 at 5.0 s: **< 1e-13,
+floating-point accumulation, not a systematic deficit** — which is the silent failure §24.2 exists
+to prevent. `pwr2_core.js`'s own header said `step` *"never sub-steps a partial interval"* —
+narrower than §24.2 actually rules, and corrected here rather than left to read as forbidding what
+Layer 3 now does.
+
+### 89.4 Two declared departures
+
+Both are agent-authored design text, advisory under `CONTEXT.md` §3 rule 4 — weighed, departed
+from, and stated rather than slid past:
+
+1. **`PWR2_DESIGN.md` §32.2 ruled the limit "REPORTED, not enforced… the layer still takes the
+   step… and does not decide what to do about it."** Choosing N from that number IS the layer
+   deciding. The defence: it still TAKES the step and still advances exactly dt — it subdivides
+   rather than refuses, so a caller wanting a coarse survey gets the interval it asked for, and
+   `courantOK` still reports the OUTER dt. It is never handed a green light it did not earn; it is
+   simply no longer handed an unstable answer along with the warning.
+2. **`PWR2_PHYSICS.md` §26.3 declares the low-pressure limit STRUCTURAL** — *"Below roughly 1–2 MPa
+   PWR2 resolves the liquid/two-phase transition at the limit of its timestep… Sub-stepping and
+   the bracketed closure keep it stable and conservative; they do not make it accurate"*, and
+   *"Declare it; do not engineer around it."* **This claims STABILITY ONLY.** Late-blowdown numbers
+   remain quantitatively coarse, and the convergence check asserts agreement between two
+   discretisations of the same model — which is stability, not truth.
+
+### 89.5 ⛔ Found by writing the canary's own check: `courantOK` was reporting about a plant that no longer existed
+
+`r.courantLimit_s` re-evaluated `courantLimit(sys)` on the state **after** the step. By then the
+junction flows have been re-derived, so a step taken on a violating state could report
+`courantOK: true` about a state that had already been overwritten — and it made `subSteps` and
+`courantLimit_s` describe different plants: *"I needed 6 sub-steps"* beside *"you were comfortably
+inside the limit."*
+
+It surfaced because the new check hand-plants a junction flow at 100× the head flow and asserts
+`courantOK` goes false — and it did not, because the re-derivation wiped the planted flow before
+the report read it. **The binding condition is the state the step STARTED from**, so that is what
+is reported now, and it is the same number `N` was chosen from.
+
+### 89.6 A stale number in a comment, which is the worse way to be wrong
+
+`pwr2_loop.js`'s header said the binding node is *"the cold leg at ~930 kg against 1630 kg/s, i.e.
+0.435 s."* Measured: the binding node is the **RCP at 603 kg → 0.370 s**, and
+`PWR2_DESIGN.md` §32.1 had it right all along at *"~600 kg… dt ≤ 0.370 s."* **The code always
+returned 0.370; only the prose was stale** — wrong node and wrong number — and a number in a
+comment is what the next person sizing a timestep reads.
+
+### 89.7 The reds, adjudicated one at a time (Hard Rule 10)
+
+| Check | Verdict |
+|---|---|
+| `run_pwr2_loop` mutation *"Courant limit reported as a constant"* | **Anchor was verbatim the rewritten line** → ANCHOR NOT FOUND → blind → gate exits 1. Loudly, which is the good case. Re-cut. |
+| `run_pwr2_engine` *"ridden deeper the plant DECLARES beyond-model and holds"* | **The fix working + a stale fixture.** It reached the floor WITH injection running — but that blowdown was the instability. With the ring sub-stepped the same break sits at **62.9 psia and alive at 600 s**. A latch check that passed only because the transport was unstable was testing the defect. The fixture now stops the injection and the plant genuinely runs dry: **latch at 171.8 s at the floor, finite.** *The check itself is unchanged — only the condition it is asserted under.* |
+| `run_pwr2_endurance` `loca-sev1-eccs-superheat-inert` | **The fix working; the band was fitted to a frozen ride.** 40 °C was measured on a ride that died at 161 s; it now runs 1,800 s — 11× longer to superheat in — and reads **46.0 °C**. Re-banded to 70 as a **declared refit**, validated on the OLD behaviour too (the pre-#518 18.6 °C passes it as well), so it is the same claim with the frozen horizon taken out. The contrast that carries it is unchanged: **138 °C engine-direct with no injection.** |
+| `run_pwr2_coredamage` / `run_pwr2_loca` `courantBad === 0` | **Predicted red that did NOT happen, and it is worth saying why rather than banking it.** Those rides are engine-direct and never violate the per-junction limit. The facade 20 cm² unmitigated ride does: **3 violations, sub-stepped on 3 steps, max N = 6** — and it still latches at 340.7 s at the floor, because an unmitigated large break genuinely runs out of water. **The guard is untouched and still reachable.** |
+
+**Neither latch was weakened.** The plant stops reaching the floor because the transport is right,
+never because the guard got looser — both thresholds and their negative controls (§50) stand.
+
+### 89.8 Gates
+
+`run_pwr2_loop` 37 → **45**, mutations 15 → **20** (the canary back on the head flow; the sub-step
+disabled; N pinned at 1; sub-intervals not summing to dt; `courantOK` reading the sub-step; the
+flows not re-derived between sub-steps). The last of those was **BLIND to every check in the first
+draft** — the loop gate's fixtures are healthy plants where N is 1, so nothing could see a frozen
+flow set. The check that catches it is an **equivalence**: one call subdividing into N must land
+where N calls of dt/N land, driven with a heat imbalance so the flows actually move. Everything
+else at baseline: engine 94, endurance 20, coredamage 23, loca 17, core 46, sources 35, perf 4.
+**Aggregate 93 runners at baseline.**
+
+**Not done, and the docs say why:** solving the junction flows instead of deriving them. They are
+*ruled* algebraic (§23.2 step 4, §23.3); the one prior related attempt was built and diverged
+(−2.97e+12 relative energy drift, `pwr2_core.js:161-187`); the solve is an unruled Layer 3 decision
+the design says should not be guessed at. Also still open from #518: the held snapshot is the
+**blown-up step**, not the last good one — the floor and both-walls guards latch after committing,
+while the root-jump guard correctly does not.

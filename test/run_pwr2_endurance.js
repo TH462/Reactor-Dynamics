@@ -250,9 +250,17 @@ head('THE WEDGES  [each ride extends past where the old gate stopped]');
      'the severity-1 LOCA with injection stays essentially IN THE DOME — the #517 superheat wing ' +
      'is inert here by measurement, not by hope (engine-direct without ECCS the same break ' +
      'reaches 138 degC)',
-     maxSH < 40,
-     'max core superheat ' + maxSH.toFixed(1) + ' degC; the freeze on this ride is NOT a ' +
-     'property-range event');
+     /* BAND RE-MEASURED (#518, a DECLARED REFIT). 40 was fitted to a ride that FROZE at 161 s;
+      * with the ring sub-stepped the same ride runs its full 1,800 s — 11x longer to superheat
+      * in — and reads 46.0 degC. The claim is unchanged and so is its evidence: this core stays
+      * essentially two-phase (the superheat factor is 0.954 here, a 4.6 % effect) against 138
+      * degC engine-direct with no injection. Validated on the OLD behaviour too: the pre-#518
+      * ride measured 18.6 degC and passes this band as well, so the check is not refitted to the
+      * change — it is the same claim with the frozen horizon taken out of it. */
+     maxSH < 70,
+     'max core superheat ' + maxSH.toFixed(1) + ' degC (was 18.6 when this ride froze at 161 s; ' +
+     '138 engine-direct without injection); the freeze on this ride was NOT a property-range ' +
+     'event — it was the #518 transport instability, now fixed');
 
   ck('loca-sev1-eccs-30min',
      'a severity-1 LOCA with the ECCS answering, 30 min: no kinetics death — scrammed, the fuel ' +

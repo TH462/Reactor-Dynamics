@@ -312,6 +312,16 @@ function runSuite(RD, rec, quiet, only) {
   var latchA = false, threwA = null, qoxSeen = false;
   try {
     for (var kk = 0; kk < 180 / DT; kk++) {
+      /* ⚠ THE EMERGENCY INJECTION IS STOPPED FOR THIS RIDE (#518), and it has to be for the
+       * check below to mean what it says. Until #518 this fixture reached the 0.1 MPa floor
+       * WITH injection running — but that blowdown was a donor-cell transport instability, not
+       * a plant running out of water, and once the ring sub-steps the injection does its job:
+       * measured, the same break now sits at 62.9 psia and alive at 600 s. A latch check that
+       * passed only because the transport was unstable was testing the defect, not the guard.
+       * Stop the injection and the plant genuinely runs dry — latch at 171.8 s at the floor,
+       * finite — so the guard is still reachable, still tested, and now for the right reason. */
+      eng2.ec.hhsiRunning = false; eng2.ec.lhsiRunning = false;
+      if (eng2.ec.acc) eng2.ec.acc.valve_open = false;
       tsB = EN.step(eng2, DT);
       /* the oxidation WIRING's designed observable: once the damage layer reports heat, the
        * reactor must RECEIVE it next step (eng._Qox is that wire). Chaos used to catch the
@@ -331,7 +341,12 @@ function runSuite(RD, rec, quiet, only) {
        * REFERENCE (+6,400..6,800 pcm at 700 ppm) riding a thermodynamic event; with the
        * reference liquid the reactivity stays at -20,000 pcm and the INNER guard latches with
        * the blowdown at the 0.1 MPa floor (this fixture 199.6 s, P 14.5 psia; the facade probe
-       * with a 120 s settle 79.6 s) — the latch stands, the family moved. */
+       * with a 120 s settle 79.6 s) — the latch stands, the family moved.
+       * RE-MEASURED AGAIN 2026-08-26 (#518): that blowdown was the transport instability. With
+       * the ring sub-stepped the plant no longer reaches the floor on injection at all (600 s,
+       * 62.9 psia, alive), so the fixture now stops the injection above and latches at 171.8 s
+       * on a plant that has actually run out of water. THE CHECK IS UNCHANGED — only the
+       * condition it is asserted under, which is the point: the guard was never the defect. */
       latchA && threwA === null &&
       isFinite(tsB.pressure_mpa) && isFinite(tsB.fuel_temp_c),
       threwA ? ('THREW: ' + threwA.slice(0, 60)) :

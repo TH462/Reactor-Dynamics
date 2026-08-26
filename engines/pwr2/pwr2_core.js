@@ -119,12 +119,22 @@
    *   drivers.heats: {nodeId: kW}
    *   drivers.sources: [{node, mdot, h}]  mass crossing the BOUNDARY (kg/s, kJ/kg)
    *
-   * `step` ADVANCES THE PHYSICS BY EXACTLY dt (D2 §24.2). It never returns early and never
-   * sub-steps a partial interval, because `simulation_service.js:370` credits
-   * `simTime += steps * PHYSICS_DT` unconditionally — an early return makes the plant's clock
-   * run ahead of its physics silently, with nothing to repay it. That is the exact inverse of
-   * the analysis-code pattern, where the right response to trouble is to shorten and retry.
-   * Here the step is a contract with the clock and it cannot be broken. */
+   * `step` ADVANCES THE PHYSICS BY EXACTLY dt (D2 §24.2). It never returns early, because
+   * `simulation_service.js:370` credits `simTime += steps * PHYSICS_DT` unconditionally — an
+   * early return makes the plant's clock run ahead of its physics silently, with nothing to
+   * repay it. That is the exact inverse of the analysis-code pattern, where the right response
+   * to trouble is to shorten and retry. Here the step is a contract with the clock and it
+   * cannot be broken.
+   *
+   * ⚠ THE CONTRACT IS "EXACTLY dt", NOT "ONE INTERVAL" — this comment used to say `step` "never
+   * sub-steps a partial interval", which is narrower than §24.2 actually rules and would read as
+   * forbidding what Layer 3 now does. §24.2 verbatim: *"engine.step(dt) MUST advance the physics
+   * by exactly dt, HOWEVER IT SUBDIVIDES INTERNALLY. A crossing sub-step must run to the boundary
+   * and then continue to the end of the step. It may never return early."* Subdivision is
+   * permitted; a short step is not. Since #518 `pwr2_loop.stepLoop` calls THIS function N times
+   * with dt/N when the ring's Courant limit binds — each call still advancing exactly its own
+   * interval, the sum still exactly dt. What stays forbidden here is rejecting a step and
+   * retrying it shorter. */
   function step(sys, dt, drivers) {
     drivers = drivers || {};
     var flows = drivers.flows || [], heats = drivers.heats || {}, sources = drivers.sources || [];

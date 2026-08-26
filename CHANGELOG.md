@@ -30,6 +30,34 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
 
 ## [Unreleased]
 
+### Fixed (#518 — the LOCA freeze was a transport instability, and the canary was dead, 2026-08-26, owner ruling "Canary + sub-step")
+- **Deep loss-of-coolant accidents no longer freeze — and the freeze was hiding a working
+  emergency injection.** The plant's ring transport went unstable late in a blowdown: at ~7 %
+  inventory the nodes hold single-digit kilograms, so the derived junction flows amplify to
+  990 → 13,697 → 124,675 kg/s while the loop flow sits at 76–87. **Measured: the severity-1 break
+  froze at 160.8 s at the house timestep, but ran its full 1,800 s at every smaller one, all three
+  agreeing to 0.2 %** — so the freeze was a discretisation artefact, not a plant endpoint. The
+  converged plant refills (inventory 1.3 % → 4.0 %) and the cladding cools 447 → 328 °F.
+- **The Courant canary was measuring the wrong flow.** It divided by the loop's *head* flow
+  instead of the per-junction flows that actually transport — the same number on a healthy plant,
+  four orders apart in a blowdown — so it reported **zero violations on every step of a ride whose
+  true Courant number reached 2,745.** Now per junction, and it can fire.
+- **The ring sub-steps when that limit binds**, implementing a design adopted in
+  `PWR2_PHYSICS.md` §17.5 and never built. Measured cost **0.09 %** (83 extra solves in 90,001
+  steps, worst case 3); the step still advances exactly its interval, to within 1e-13. Claims
+  **stability only** — §26.3's declaration that low-pressure behaviour is quantitatively coarse
+  stands unchanged.
+- **Found while writing the canary's own check:** the reported Courant limit was evaluated on the
+  state *after* the step, so it could report "you were fine" about a plant that no longer existed,
+  and disagree with the sub-step count beside it. It now reports the state the step started from.
+- **A stale number in a comment:** the loop header named the cold leg at ~930 kg / 0.435 s as the
+  binding node. It is the reactor coolant pump node at 603 kg / 0.370 s, which the design document
+  had right all along. The code always returned 0.370; only the prose was wrong.
+- **Neither beyond-model guard was weakened.** An unmitigated large break still runs out of water
+  and still latches at the property floor (340.7 s, finite). The plant stops reaching the floor
+  because the transport is right, not because the guard got looser.
+  `Blueprint/PWR2_VALIDATION.md` §89.
+
 ### Added (#517 — the superheated-steam wing for the core node, 2026-08-26, owner ruling "Build the superheat wing anyway.")
 - **The core node can say HOW dry it is.** `core_void_fraction` clips at 1, so from the moment a
   core goes fully void it was a constant: on an unmitigated 5 cm² break it pins at 1.0 at 580 s
