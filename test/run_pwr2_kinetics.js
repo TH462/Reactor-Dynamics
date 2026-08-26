@@ -135,6 +135,7 @@ function runSuite(K, rec, quiet) {
   ck('xenon-135 decay constant', K.XENON.lambda_X, DOC.lambda_X, 1e-12, '/s');
   ck('the BEAVRS moderator zero-feedback boron', K.MOD.boron_zero_ppm, DOC.mod_boron_zero_ppm, 1e-9, 'ppm');
   ck('the BEAVRS moderator anchor', K.MOD.anchor_pcm_per_F, DOC.mod_anchor_pcm_per_F, 1e-9, 'pcm/degF');
+  ck('the MTC envelope is Ginna\'s +5 pcm/degF', K.MOD.mtc_max_pcm_per_F, 5.0, 0, 'pcm/degF');
   ck('control bank worth (WTSM 2.2)', K.RODS.worth_control, DOC.rod_worth_control, 1e-12, 'dk/k');
   ck('shutdown bank worth (WTSM 2.2)', K.RODS.worth_shutdown, DOC.rod_worth_shutdown, 1e-12, 'dk/k');
   /* Lambda is the one the OLD engine got wrong by being right-looking: 0.01 s is marked "fixed"
@@ -292,18 +293,101 @@ function runSuite(K, rec, quiet) {
    * engine uses the vtable fast path, and they differ by the table's interpolation error — 8.8e-5
    * relative, which is the table doing exactly what it is specified to do. Comparing across the two
    * paths measures the table, not the composition this check is about. */
-  var RHOV = RD.vtable ? RD.vtable.rho_from_h : RD.water.rho_from_h;
-  var dRhoReal = RHOV(RD.water.h_l(320, 15.41), 15.41) -
-                 RHOV(RD.water.h_l(304.5, 15.41), 15.41);
-  var wantMod = K.modCoeff(15.41) * (1 - 700 / K.MOD.boron_zero_ppm) * dRhoReal;
-  ck('the moderator term equals L0 density x the calibrated coefficient',
-     K.moderatorReactivity(320, 304.5, 700, 15.41), wantMod, 1e-12, 'dk/k');
+  /* REFIT 2026-08-26 (#515 Build 3, declared): the expectation used to run the enthalpy round
+   * trip rho_from_h(h_l(T, P), P) — the very path that returns a two-phase MIXTURE for the
+   * reference below 9.145 MPa (defect 1 in the module header). The moderator now reads LIQUID
+   * density (K.liqRho: Layer 0's compressed-liquid form on the tabulated saturation line), and
+   * the identity is asserted against Layer 0's own W.rho_l — the same form through the
+   * bisected saturation line — to the two lines' 1e-9 MPa disagreement. It fails the OLD build
+   * by 6e-6 dk/k: that was the round trip being wrong, not the check. */
+  var dRhoReal = RD.water.rho_l(320, 15.41) - RD.water.rho_l(304.5, 15.41);
+  var wantMod = K.modCoeff() * (1 - 700 / K.MOD.boron_zero_ppm) * dRhoReal;
+  ck('the moderator term equals L0 LIQUID density x the calibrated coefficient',
+     K.moderatorReactivity(320, 304.5, 700, 15.41), wantMod, 1e-8, 'dk/k');
+  ck('...liqRho IS Layer 0\'s rho_l (tabulated saturation line vs the bisection)',
+     K.liqRho(320, 15.41), RD.water.rho_l(320, 15.41), 0.05, 'kg/m3');
   ckT('...and the density span it uses is a REAL one, not a linear slope',
       Math.abs(dRhoReal) > 25 && Math.abs(dRhoReal) < 200,
       'rho(320 degC) - rho(304.5 degC) = ' + dRhoReal.toFixed(2) + ' kg/m3 from Layer 0');
   ckT('feedback is ZERO at the reference condition, by construction',
       Math.abs(K.moderatorReactivity(304.5, 304.5, 700, 15.41)) < 1e-15,
       'both feedbacks are perturbative about the reference, not absolute');
+
+  /* ---- THE TWO DEFECTS OF 2026-08-26 (#515 Build 3, D5 §87) ------------------------------- */
+  console.log('\nTHE VOIDED CORE IS SUBCRITICAL AT ANY BORON  [the reference is liquid; the boron factor is bounded]');
+  var cal = K.calibration();
+  ckT('the calibration is STATE-INDEPENDENT: one coefficient, whatever pressure a caller passes ' +
+      '(it used to cache the first caller\'s — 13.4x apart between 0.5 and 15.5 MPa)',
+      Math.abs(K.modCoeff(0.5) / K.modCoeff(15.5) - 1) < 1e-15 && K.MOD.cal_P_mpa === K.HZP.P_mpa,
+      'K ' + cal.K.toExponential(4) + ' dk/k per kg/m3 at ' + K.MOD.cal_T_c + ' degC / ' +
+      K.MOD.cal_P_mpa + ' MPa; g_min ' + cal.g_min.toFixed(4) + ', B_cap ' + cal.B_cap.toFixed(0) + ' ppm');
+  /* defect 1: saturated legs below 9.145 MPa read the LIQUID cooldown insertion, not a
+   * two-phase reference (today +6,688 / +9,761 pcm at 5 / 0.5 MPa; liquid +901 / +2,489) */
+  var m5 = K.moderatorReactivity(RD.water.T_sat(5), 304.5, 700, 5) * 1e5;
+  var m05 = K.moderatorReactivity(RD.water.T_sat(0.5), 304.5, 700, 0.5) * 1e5;
+  var want5 = K.modCoeff() * K.boronFactor(700) * (RD.water.rho_l(RD.water.T_sat(5), 5) - RD.water.rho_l(304.5, 5)) * 1e5;
+  ckT('saturated legs at 5 and 0.5 MPa read the LIQUID cooldown insertion (0..1,500 / 0..3,500 pcm) ' +
+      '— the two-phase reference read +6,688 / +9,761',
+      m5 > 0 && m5 < 1500 && m05 > 0 && m05 < 3500 && Math.abs(m5 - want5) < 1,
+      m5.toFixed(0) + ' pcm at 5 MPa (liquid form ' + want5.toFixed(0) + '), ' + m05.toFixed(0) + ' at 0.5');
+  /* the envelope: the local MTC over B 0-2500 ppm x T 100-330 degC */
+  var mtcMax = -1e9, mtcMin = 1e9, mtcMinB500 = 1e9, argMax = '', argMin = '';
+  for (var Bs = 0; Bs <= 2500; Bs += 100) {
+    for (var Ts = 100; Ts <= 330; Ts += 5) {
+      var mtc = (K.moderatorReactivity(Ts + 0.5, 304.5, Bs, 15.5) -
+                 K.moderatorReactivity(Ts - 0.5, 304.5, Bs, 15.5)) * 1e5 * 5 / 9;   /* pcm/degF */
+      if (mtc > mtcMax) { mtcMax = mtc; argMax = Bs + ' ppm/' + Ts + ' C'; }
+      if (mtc < mtcMin) { mtcMin = mtc; argMin = Bs + ' ppm/' + Ts + ' C'; }
+      if (Bs >= 500 && mtc < mtcMinB500) mtcMinB500 = mtc;
+    }
+  }
+  ckT('the local MTC never exceeds the sourced +5 pcm/degF over 0-2,500 ppm x 100-330 degC ' +
+      '(the unfloored factor reached a positive MTC of unbounded size at 2,271 ppm)',
+      mtcMax <= 5.0 + 1e-9, 'max ' + mtcMax.toFixed(2) + ' pcm/degF at ' + argMax);
+  ckT('...and stays above -35 pcm/degF for B >= 500 ppm (the -35 side is RECORDED, not applied: ' +
+      'the fit\'s own 0-ppm intercept is -37.3, exceeding it only below ~460 ppm hot — no IC lives there)',
+      mtcMinB500 >= -35, 'min ' + mtcMin.toFixed(1) + ' pcm/degF at ' + argMin + ' (' +
+      mtcMinB500.toFixed(1) + ' for B >= 500 ppm)');
+  /* defect 2: the theorem, void + bor <= void(0) at every state; and the dry core negative */
+  var thm = true, worst = 0, worstAt = '';
+  [0.5, 8.8, 15.5].forEach(function (P) {
+    var hf = RD.water.h_f(P), hg = RD.water.h_g(P);
+    [0.1, 0.5, 1.0].forEach(function (x) {
+      var h = x >= 1 ? RD.water.h_v(400, P) : hf + x * (hg - hf);
+      var v0 = K.voidReactivity(h, P, 0);
+      [700, 986, 1500, 2271, 2500].forEach(function (Bb) {
+        var vb = K.voidReactivity(h, P, Bb) - 1e-4 * Bb;
+        if (vb > v0 + 1e-12) thm = false;
+        if (vb - v0 > worst) { worst = vb - v0; worstAt = P + ' MPa, x ' + x + ', ' + Bb + ' ppm'; }
+      });
+    });
+  });
+  ckT('THE THEOREM: void + boron reactivity <= the UNBORATED voided core, at every (h, P, B) — boron ' +
+      'can never make a voided core less subcritical than no boron at all',
+      thm, thm ? 'holds at 45 states' : 'violated by ' + (worst * 1e5).toFixed(0) + ' pcm at ' + worstAt);
+  var dry05 = K.voidReactivity(RD.water.h_v(400, 0.5), 0.5, 2500) * 1e5;
+  var dry88 = K.voidReactivity(RD.water.h_v(400, 8.8), 8.8, 1500) * 1e5;
+  var dry155 = (K.voidReactivity(RD.water.h_v(400, 15.5), 15.5, 2500) - 0.25) * 1e5;
+  ckT('a DRY core reads negative at 2,500 ppm / 0.5 MPa and 1,500 ppm / 8.8 MPa on the void term ' +
+      'alone (the old form: +52,010 and +13,057), and with its boron at 15.5 MPa',
+      dry05 < -5000 && dry88 < 0 && dry155 < 0,
+      dry05.toFixed(0) + ', ' + dry88.toFixed(0) + ', ' + dry155.toFixed(0) + ' pcm');
+  /* the bounded positive regime above B_cap — sourced in sign, capped in size */
+  var hx = RD.water.h_f(8.827) + 0.0153 * (RD.water.h_g(8.827) - RD.water.h_f(8.827));
+  var pos = K.voidReactivity(hx, 8.827, 2500) * 1e5, peak = -1e9;
+  for (var xq = 0.02; xq <= 1.0; xq += 0.02) {
+    var hq = RD.water.h_f(8.827) + xq * (RD.water.h_g(8.827) - RD.water.h_f(8.827));
+    var vq = K.voidReactivity(hq, 8.827, 2500) * 1e5; if (vq > peak) peak = vq;
+  }
+  ckT('above B_cap the void term is BOUNDED positive (WTSM 2.1.6.3\'s "positive or negative ... ' +
+      'depending on boron"): 0 < 400 pcm at 1.5 % quality, peak <= 1,800, the old form +7,060 there',
+      pos > 0 && pos < 400 && peak <= 1800,
+      pos.toFixed(0) + ' pcm at 18.8 % void, peak ' + peak.toFixed(0) + ' over quality at 2,500 ppm');
+  ckT('the small-void coefficient at 700 ppm is UNCHANGED by the bounds (the fit inside its range)',
+      Math.abs(K.voidReactivity(hx, 8.827, 700) * 1e5 / 18.8 - (-70.9)) < 1.0,
+      (K.voidReactivity(hx, 8.827, 700) * 1e5 / 18.8).toFixed(1) + ' pcm per % void');
+  ckT('criticalBoron returns NaN for a plant that cannot go critical, not a negative ppm',
+      isNaN(K.criticalBoron(K.createKinetics({ rho_excess: -0.2 }), 291.67, 15.5, null, 0)), '');
 
   /* ---- THE VOID HALF OF THE DENSITY COUPLING (added 2026-08-17) ---------------------------
    *
@@ -546,11 +630,27 @@ var MUTATIONS = [
    'var Q_total = kin.P * (1 - f0()) + Hsum;', 'var Q_total = kin.P + Hsum;'],
   ['decay heat stops accumulating', 'kin.H[j] += (DECAY.H0[j] * DECAY.lambda[j] * kin.P - DECAY.lambda[j] * kin.H[j]) * dt;', ''],
   ['the moderator coefficient loses its boron scaling',
-   'return modCoeff(P_mpa) * (1 - B_ppm / MOD.boron_zero_ppm) * dD;',
-   'return modCoeff(P_mpa) * dD;'],
+   'return modCoeff() * boronFactor(B_ppm) * dD;',
+   'return modCoeff() * dD;'],
   ['the moderator reads a fixed density instead of Layer 0',
-   'var dD = RHO_W(W.h_l(T_c, P_mpa), P_mpa) - RHO_W(W.h_l(T_ref_c, P_mpa), P_mpa);',
+   'var dD = liqRho(T_c, P_mpa) - liqRho(T_ref_c, P_mpa);',
    'var dD = (T_ref_c - T_c) * 1.5;'],
+  /* #515 Build 3 */
+  ['the liquid branch reverts to the enthalpy round trip (a two-phase REFERENCE below 9.145 MPa)',
+   'return W.rho_l_sat(T) * (1 + (P_mpa - PSAT(T)) / W.bulk_modulus(T));',
+   'return RHO_W(W.h_l(T, P_mpa), P_mpa);'],
+  ['the envelope floor is removed (the boron factor unbounded again)',
+   'return g < gm ? gm : g;',
+   'return g;'],
+  ['the boron-worth cap is removed (boron leaving with the water without limit)',
+   'return -K * deficit + (lost < cap ? lost : cap);',
+   'return -K * deficit + lost;'],
+  ['the calibration follows the caller\'s pressure again',
+   'var Ta = MOD.cal_T_c, P = MOD.cal_P_mpa, e = 0.5;',
+   'var Ta = MOD.cal_T_c, P = 0.5, e = 0.5;'],
+  ['criticalBoron ignores the bracket sign (a negative ppm for a plant that cannot go critical)',
+   'if (!(rlo >= 0) || !(rhi <= 0)) return NaN;',
+   'if (false) return NaN;'],
   ['rod worth loses its sinusoid correction',
    'return pos - K * Math.sin(2 * Math.PI * pos) / (2 * Math.PI);', 'return pos;'],
   ['the BEAVRS moderator anchor moved', 'anchor_pcm_per_F: -31.43,', 'anchor_pcm_per_F: -20.00,'],
@@ -577,8 +677,8 @@ var MUTATIONS = [
   ['the void term is dropped from the reactivity sum (a voiding core reads as a COLD one)',
    '    var rho_void = voidReactivity(h_core, P_mpa, B_ppm);', '    var rho_void = 0;'],
   ['void reactivity inverted — voiding a PWR core RELEASES reactivity',
-   '    return modCoeff(P_mpa) * (1 - B_ppm / MOD.boron_zero_ppm) * (D_real - D_liq);',
-   '    return -modCoeff(P_mpa) * (1 - B_ppm / MOD.boron_zero_ppm) * (D_real - D_liq);'],
+   '    return -K * deficit + (lost < cap ? lost : cap);',
+   '    return K * deficit - (lost < cap ? lost : cap);'],
   ['the subcooled branch stops being exact (feedback leaks into a single-phase core)',
    '    if (h_core <= W.h_f(P_mpa)) return 0;        /* subcooled: no void, EXACTLY zero */',
    '    if (h_core <= W.h_f(P_mpa) * 0.5) return 0;'],

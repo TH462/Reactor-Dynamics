@@ -30,6 +30,19 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
 
 ## [Unreleased]
 
+### Fixed (#515 Build 3 — the void/boron reactivity, 2026-08-26, owner ruling "A. Then choked porv then void term.")
+- **A voided, boron-concentrated core is subcritical at any boron.** Two defects in one line of
+  `pwr2_kinetics.js`: the moderator term's reference density was a two-phase mixture below
+  1,326 psia (9.145 MPa) — +6,688 pcm of invented reactivity on saturated legs at 725 psia — and
+  the `(1 − B/986)` boron factor flipped the void term positive above 986 ppm (+44,143 pcm dry
+  at 2,271 ppm). Now: a liquid reference on Layer 0's compressed-liquid form, the boron factor
+  floored at the sourced +5 pcm/°F MTC envelope, the void term capped by the boron worth it can
+  remove; `void + boron ≤ −K·Δ` at every state. Dry core −33,864 pcm at every boron (0.5 MPa).
+  Nothing at the design point moves (excess reactivity, critical boron 975 ppm, the −70.9
+  pcm/%void small-void coefficient). The 40 cm² break and the severity-1 LOCA + ECCS no longer
+  go prompt-supercritical; both still hold on the core's inner guard (#517). `run_pwr2_kinetics`
+  71 → 82 / 40 → 45 mutations, `run_pwr2_endurance` 18 → 19 (`PWR2_VALIDATION.md` §87).
+
 ### Changed (#515 Build 2 — choked relief, 2026-08-26, owner ruling "A. Then choked porv…")
 - **PORV and safety discharge is area × homogeneous critical flux** (`criticalFlux`, Layer 0
   only; each valve's area derived from its sourced rating). A stuck PORV passes 1.76 kg/s of

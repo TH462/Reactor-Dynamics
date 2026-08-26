@@ -214,6 +214,41 @@ head('THE WEDGES  [each ride extends past where the old gate stopped]');
      (isNaN(tcold) ? '?' : (tcold * 9 / 5 + 32).toFixed(1)) + ' degF');
 })();
 
+(function () {  /* #515 Build 3: the severity-1 LOCA with the ECCS answering — 30 min */
+  /* BORN FAILING (2026-08-26): on the unfixed kinetics this ride died at 160.4 s — power
+   * 3.3e6 %, rho +1,239 pcm — when injection boron (2,500 ppm RWST water in a drained loop)
+   * flipped the density terms positive; the 40 cm2 ride died at 79.9 s on the two-phase
+   * reference alone. Landed as PASS in the same build, the pre-fix red recorded here. */
+  var eng = EN.createEngine({});
+  ride(eng, 30);
+  EN.command(eng, 'break_open', { area_m2: 0.002, node: 'cold_leg' });
+  var ts = null, maxRho = -1e9, maxPwr = 0, scr = false, tLatch = null;
+  for (var t = 0; t < 1800; t += DT) {
+    ts = EN.step(eng, DT);
+    if (eng._dead) break;
+    if (tLatch === null && eng.sys.beyond_model) tLatch = t;
+    if (ts.scrammed) scr = true;
+    if (scr && t > 60 && ts.reactivity_pcm > maxRho) maxRho = ts.reactivity_pcm;
+    if (scr && t > 60 && ts.power_pct > maxPwr) maxPwr = ts.power_pct;
+  }
+  /* MEASURED after the fix (2026-08-26): the kinetics never goes positive (max rho -1,411 pcm at
+   * 5 s, then -16,000..-30,000 through the blowdown) — but the core's INNER guard latches at
+   * 161.1 s (322 psia, quality 0.74, 100 % void, boron 2,393 ppm): the thermodynamic event the
+   * kinetics death was riding. That is a HELD plant (the #487/#499 contract), pre-existing and
+   * now visible; it is REPORTED here and filed, not asserted away — this ride's claim is the
+   * reactivity chain's. */
+  ck('loca-sev1-eccs-30min',
+     'a severity-1 LOCA with the ECCS answering, 30 min: no kinetics death — scrammed, the fuel ' +
+     'finite, reactivity never positive after the scram (the void term flipped positive on ' +
+     'injection boron and killed it at 160 s before #515 Build 3); the inner-guard latch is reported',
+     !eng._dead && scr && maxRho <= 0 && isFinite(ts.fuel_temp_c),
+     'dead ' + !!eng._dead + (eng._deadWhy ? ' (' + eng._deadWhy.slice(0, 50) + ')' : '') +
+     ', max rho after scram ' + (maxRho === -1e9 ? '?' : maxRho.toFixed(0)) + ' pcm, max power ' +
+     maxPwr.toFixed(2) + ' %, boron ' + ts.boron_ppm.toFixed(0) + ' ppm, void ' +
+     (ts.core_void_fraction * 100).toFixed(0) + ' %; inner guard latched ' +
+     (tLatch === null ? 'never' : 'at ' + tLatch.toFixed(1) + ' s (held, reported)'));
+})();
+
 (function () {  /* H-4 + H-5: the un-carried blackout wires, one dead-plant ride */
   var eng = EN.createEngine({ initial_state: 'hot_shutdown' });
   EN.step(eng, DT);

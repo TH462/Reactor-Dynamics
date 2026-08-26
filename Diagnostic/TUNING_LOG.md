@@ -67,6 +67,16 @@ ruling ("A. Then choked porv then void term."). Landed this session, all on `dev
   Build 1 re-run drifted on the pressurizer gate because Build 2's module was already changing
   under it. The clean record for `344a6d9` is the first run (92/93 + hardrules reconciled).
 
+- **The void/boron term (Build 3, `PWR2_VALIDATION.md` §87)**: two defects in one line — a two-phase
+  moderator REFERENCE below 1,326 psia (9.145 MPa) that invented +6,688 pcm on saturated legs at
+  725 psia, and a boron factor that flipped the void term positive above 986 ppm. Fixed as a liquid
+  reference + an envelope floor + a boron-worth cap; the theorem `void + boron ≤ −K·Δ` is gated at
+  45 states. Trap: `modCoeff` cached the FIRST caller's pressure for the process — §83's ±500,000 pcm
+  figures were a scratch harness's 0.5 MPa calibration, 13.4× the engine's. The scram-recovery
+  fixture's +12 dpm / 477 % ring was defect 1, not physics (a 4th declared re-measure).
+- The LOCA rides no longer die on kinetics; both still HOLD on the core's inner thermodynamic guard
+  (#517 — pre-existing, now visible; it carries a clad-heating observation from the TMI refill too).
+
 **Measured, for the next agent:** Case 2 τ sweep (∞ 5.7 s · 100 5.9 · 30 6.3 · 10 7.5 · 3 12.0 · 1 14.2
 · 0.3 14.5); P-only ceiling +197 psi / 3.6 pts at 3 s (old vessel +0.6 / 9.7 at 5.4 s); dry-SG lift
 53.6 min as built; perf 4.3×. Still owed on #515: Build 2 (choked PORV, the 1065 psia plateau) and

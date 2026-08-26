@@ -4904,3 +4904,80 @@ WATER SOLID rate window ends at the first relief step (a solid vessel now passes
 the valves at 25 kg/s — the compliance claim, 11.3 psi/s, is measured relief-free);
 `run_pwr2_engine` 94 (the manual-close check reads the law: 4.12 kg/s at 2202 psia); loss-of-load
 9, shell 77, endurance 18, loca 17, coredamage 20, true_state 64, cvcs 44, board 28, perf 4.
+
+## 87. #515 BUILD 3 — THE VOIDED CORE IS SUBCRITICAL AT ANY BORON — 2026-08-26
+
+*(OWNER RULING, 2026-08-25: "A. Then choked porv then void term.")* — Build 3 of three.
+
+**Two defects in one line of `pwr2_kinetics.js`, both measured before the edit.**
+
+1. **The moderator term's REFERENCE was two-phase below 1,326 psia (9.145 MPa).**
+   `moderatorReactivity` rebuilt both densities through `rho_from_h(h_l(T, P), P)`; below
+   P_sat(304.5 °C) the reference enthalpy exceeds h_f(P) and the "reference density" is a mixture
+   (610 kg/m³ at 8.8 MPa, 155 at 5, 7.6 at 0.5 — liquid truth 702–684). Every depressurized plant
+   carried invented positive reactivity BEFORE any boron moved:
+
+   | saturated legs at 700 ppm, T_ref 304.5 °C | 1,378 psia (9.5 MPa) | 1,276 (8.8) | 725 (5.0) | 73 (0.5) |
+   |---|---|---|---|---|
+   | as built (pcm) | −72 | +1,058 | +6,688 | +9,761 |
+   | liquid reference (pcm) | −72 | +70 | +901 | +2,489 |
+
+2. **The `(1 − B/986)` boron factor flipped the density terms POSITIVE above 986 ppm** — and it
+   scaled the VOID term too, so boil-off concentrating SI boron (677 → 2,271 ppm on the TMI ride,
+   §83) made a scrammed, 99.5 %-void core prompt-supercritical. The dry-core sum (void + direct
+   boron) at 73 psia (0.5 MPa), engine-consistent calibration — §83's ±500,000 figures were a
+   poisoned `modCoeff` cache: the FIRST caller's pressure was frozen for the process, and a scratch
+   harness calling at 0.5 MPa read 13.4× the engine's K:
+
+   | dry core, 0.5 MPa | 0 ppm | 700 | 986 | 1,500 | 2,271 | 2,500 |
+   |---|---|---|---|---|---|---|
+   | as built (pcm) | −33,872 | −9,825 | 0 | **+17,657** | **+44,143** | **+52,010** |
+   | Build 3 (pcm) | −33,864 | −33,864 | −33,864 | −33,864 | −33,864 | −33,864 |
+
+**The form** (`liqRho`, `calibrate`, `boronFactor`, `voidReactivity`). The calibration is computed
+ONCE at (260 °C, 15.5 MPa = `HZP.P_mpa`, tied by a gate check): K = 3.7061e-4 Δk/k per kg/m³. The
+reference is Layer 0's compressed liquid, `rho_l_sat(T)·(1 + (P − P_sat(T))/bulk_modulus(T))` on
+the tabulated `P_sat_T` (two 80-iteration `P_sat` bisections leave the step). The boron factor is
+the fit's `1 − B/986` FLOORED at g_min = −0.0762 — the value where the hot-leg MTC reaches the
+sourced +5 pcm/°F envelope (Ginna UFSAR ch15 :69, :884, :5183; at 330 °C, so B_cap = 1,061 ppm).
+The void term is `−K·Δ + min(w_B·B, (1 − g)·K·Δ)`: moderation loss, always negative (WTSM 2.1
+§2.1.6.3 :936, *"The formation of voids in the core has the same effect as the temperature
+increase of the moderator"*); the boron that leaves with the water at the fit's coupling (:938);
+capped by the boron worth the balance actually holds (10 pcm/ppm). **The theorem the gate asserts
+at 45 states: void + boron ≤ −K·Δ** — boron can never make a voided core LESS subcritical than
+the unborated voided core. Dry core at any boron: −33,864 (0.5 MPa), −25,042 (8.8), −19,427
+(15.5) pcm.
+
+**What did not move.** `rho_excess` 0.087579; `criticalBoron` at HZP 975.000 ppm (a bracketed
+bisection on [0, 5000] now, NaN if the vessel can never go critical); the small-void coefficient
+−70.9 pcm/%void at 700 ppm; the cold-worth ratio 1.786; the fit residuals at the three ITC points
+−0.41 / −0.10 / −0.08 pcm/°F (810 / 902 / 975 ppm — the 810 miss is pre-existing, the anchor
+transposed through the old engine's cubic, [open]). The MTC sweep (0–2,500 ppm × 100–330 °C)
+tops at exactly +5.00 pcm/°F (1,100 ppm, 330 °C). The −35 pcm/°F side is RECORDED, not applied:
+the fit's own 0-ppm intercept is −37 at 557 °F and the exceedance (−65.6 at 0 ppm / 330 °C)
+lives below ~460 ppm hot, a dilution regime no IC occupies — a floor there would halve the
+sourced anchor. The bounded positive void regime above 1,061 ppm (the sourced *"positive void
+effect at high boron"*, :939-941) peaks at +1,765 pcm and is covered 10× by the direct boron term.
+
+**Rides.** The 40 cm² cold-leg break: reactivity NEVER positive after the scram (the moderator
+term +721…908 pcm at 700 ppm where it read +6,400…6,800); the core's inner thermodynamic guard
+still latches (79.6 s facade / 199.6 s in the engine fixture, at the 0.1 MPa floor) — a held
+plant, not a kinetics death; the engine gate's note records that mechanism. The severity-1 large
+break + ECCS (born failing at t+210–320 s, 572 %, §80): scrammed, max reactivity ≤ 0, fuel finite
+— and the inner guard latches at 161.1 s (322 psia, 100 % void, 2,393 ppm). **Filed as #517**:
+pre-existing, now visible. The scram-recovery fixture in `run_pwr2_reactor` (a FOURTH declared
+re-measure): the +12 dpm at 20 s and the 477 % ring were defect 1 — that cooldown falls through
+1,600 psia by 16 s; the recovery now climbs at +3.24 dpm at 51 s (32 %) and settles at 100 % with
+no overshoot (0.00 dpm at 120 s). The TMI timeline (§86): unchanged within 14 psi at every row
+(1,067 / 935 / 654 / 232 / 1,218 / 1,680 psia at 15 / 30 / 50 / 60 / 220 / 260 min), alive at
+260 min — Build 3 costs it nothing. One observation, NOT adjudicated: after the 200-min HPI
+restore, with the RCPs off, zero void and 175–267 °F of subcooling, the clad reads 696–978 °F
+(205–250 min) — a covered core on natural circulation at 1.1 % decay heat, #472's territory;
+noted on #517.
+
+**Gates.** `run_pwr2_kinetics` 71 → 82, mutations 40 → 45 (the liquid branch reverting, the
+envelope floor removed, the cap removed, a calibration that follows the caller's pressure, the
+bracket sign — all red); the identity check is a declared REFIT — its expectation path was the
+artefact path; `run_pwr2_endurance` 18 → 19 (`loca-sev1-eccs-30min`); `run_pwr2_reactor` 41
+(the sample moved, the count did not); engine 94, coredamage 20, loca 17, shell 77, lossofload 9,
+cvcs 44, true_state 64, perf at baseline.

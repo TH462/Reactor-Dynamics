@@ -326,7 +326,12 @@ function runSuite(RD, rec, quiet, only) {
        * node h sits inside the envelope — no clamp, no floor pin, so no inner latch), and the
        * facade screen is the guard family that covers it. A `!_dead` condition here asserted
        * inner-only and redded on the clean build. The guard MUTATIONS stay discriminated by
-       * their other observables (maxStep pins the root-jump; the SI/finite checks move). */
+       * their other observables (maxStep pins the root-jump; the SI/finite checks move).
+       * RE-MEASURED 2026-08-26 (#515 Build 3): the runaway was the two-phase moderator
+       * REFERENCE (+6,400..6,800 pcm at 700 ppm) riding a thermodynamic event; with the
+       * reference liquid the reactivity stays at -20,000 pcm and the INNER guard latches with
+       * the blowdown at the 0.1 MPa floor (this fixture 199.6 s, P 14.5 psia; the facade probe
+       * with a 120 s settle 79.6 s) — the latch stands, the family moved. */
       latchA && threwA === null &&
       isFinite(tsB.pressure_mpa) && isFinite(tsB.fuel_temp_c),
       threwA ? ('THREW: ' + threwA.slice(0, 60)) :

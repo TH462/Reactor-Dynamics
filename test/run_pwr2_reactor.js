@@ -435,18 +435,26 @@ function runSuite(R, rec, quiet) {
   var f4 = fixture(); var rods4 = [{ steps: 228, max_steps: 228, worth: 0.04068 }];
   ride(f4, 200, null, rods4); rods4[0].steps = 0;                 /* settle, then scram */
   var sur1s  = ride(f4, 50, null, rods4);                          /* 1 s: still falling */
-  var sur20s = ride(f4, 950, null, rods4);                         /* +19 s = 20 s: climbing back */
+  /* ⚠ RE-MEASURED A FOURTH TIME (#515 Build 3, 2026-08-26), and this one is the FIX SPEAKING, not
+   * the fixture: the moderator term's two-phase REFERENCE (kinetics header, defect 1) put
+   * +6,400..+9,700 pcm of invented positive reactivity into every plant below 9.145 MPa — and
+   * this cooldown falls through 1,600 psia by 16 s. That insertion was the +12 dpm at 20 s and
+   * the 477 % ring. With a LIQUID reference the recovery is gentle: SUR turns positive at ~16 s,
+   * climbs at +3.2 dpm at 51 s (power 32 %), and settles at 100 % by ~100 s with NO overshoot
+   * (measured 0.00 dpm at 120 s). The three-phase MECHANISM is unchanged; the sample moves to
+   * 51 s and the climb bound to > 1 dpm — a physical startup rate, not the defect's. */
+  var sur20s = ride(f4, 2500, null, rods4);                        /* +50 s = 51 s: climbing back */
   /* ⚠ RE-MEASURED A THIRD TIME (#514): the fixture's trim now reads the engine's own
    * table thermometer (see fixture()) and the ring shifts phase — a third excursion dips to
    * 2.7 % near 60 s and recovers through ~82 % at 70 s before settling at 100 % by ~90 s
    * (measured 0.00 dpm at 100 s, ±0.02 through 160 s). Same rule as the two re-measures
    * above: the sample time follows the fixture, the three-phase MECHANISM is the check. */
-  var sur120s = ride(f4, 5000, null, rods4);                       /* +100 s = 120 s: re-settled */
+  var sur120s = ride(f4, 3450, null, rods4);                       /* +69 s = 120 s: re-settled */
   ckT('SUR is clearly NEGATIVE while the scrammed core is still cooling down',
       sur1s.startup_rate_dpm < -1, sur1s.startup_rate_dpm.toFixed(2) + ' dpm at 1 s');
   ckT('...and clearly POSITIVE while it climbs back THROUGH criticality -- the sourced lesson',
-      sur20s.startup_rate_dpm > 5,
-      sur20s.startup_rate_dpm.toFixed(2) + ' dpm at 20 s, power ' + sur20s.power_pct.toFixed(1) + ' %');
+      sur20s.startup_rate_dpm > 1,
+      sur20s.startup_rate_dpm.toFixed(2) + ' dpm at 51 s, power ' + sur20s.power_pct.toFixed(1) + ' %');
   ckT('...and back near zero once it has RE-SETTLED -- proves prevPower tracks the LATEST step',
       Math.abs(sur120s.startup_rate_dpm) < 2, sur120s.startup_rate_dpm.toFixed(3) + ' dpm at 120 s');
   /* THE CONVERSION CONSTANT, AS A PURE IDENTITY. SUR = C/T by definition, so SUR*T recovers C
