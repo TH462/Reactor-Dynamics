@@ -523,6 +523,12 @@
         { id: 'clad_temp',grp: 'Core damage', label: 'Peak Clad Temp', c: '#d05a3e', tru: function (t) { return t.clad_temp_c; }, range: [200, 1400], dHi: 1200, fmt: function (v) { return conv(v, 'temp').toFixed(0) + unit('temp'); } },
         { id: 'core_void',grp: 'Core damage', label: 'Core Void', c: '#8fb0d0', tru: function (t) { return t.core_void_fraction * 100; }, range: [0, 100], fmt: function (v) { return v.toFixed(1) + '%'; } },
         { id: 'uncovered',grp: 'Core damage', label: 'Core Uncovered', c: '#c04a6a', tru: function (t) { return t.core_uncovered_frac * 100; }, range: [0, 100], dHi: 1, fmt: function (v) { return v.toFixed(0) + '%'; } },
+        /* #520 — HOW DRY, and it exists because `uncovered` above SATURATES. Core void clips
+         * at 1, so once the core is fully steam-filled every field in this group is a constant:
+         * measured on an unmitigated 5 cm2 break, uncovery pins at 100 % at 580 s and reports the
+         * same number for the next 1,220 s while the core dries 0 -> 131 degC. pwr2-only — on the
+         * old engine `tru` returns undefined and the row reads a dash, which seriesLive swallows. */
+        { id: 'core_sh', grp: 'Core damage', label: 'Core Superheat', c: '#e0a040', tru: function (t) { return t.core_superheat_c; }, range: [0, 200], dHi: 1, fmt: function (v) { return conv(v, 'tempdiff').toFixed(0) + ' ' + unit('tempdiff'); } },
         { id: 'zirc',     grp: 'Core damage', label: 'Zr Oxidation Heat', c: '#e07030', tru: function (t) { return t.zirc_heat_pct; }, range: [0, 5], dHi: 0.01, fmt: function (v) { return v.toFixed(2) + '%'; } },
 
         // ---------------------------------------------------------------- primary coolant
@@ -824,6 +830,19 @@
             hint: 'the hottest fuel cladding temperature in the core, at the top of the hot channel.',
             detail: 'While the core is covered the cladding sits at the fuel temperature and this tracks it. Once the water level falls below the top of the core the uncovered part is cooled by steam instead of water, the cladding separates from the fuel node and runs away upward. This is the number core damage is judged on, because damage is local before it is average.',     v: function (t) { return dispT(t.clad_temp_c); },
             cls: function (t) { return t.clad_temp_c >= fuelDamageC() ? 'q-alarm' : t.clad_temp_c > t.fuel_temp_c + 1 ? 'q-caution' : 'q-ok'; } },
+          /* #520 — bound to the `core_sh` series above by `ser:`. That binding is what makes it
+           * REACHABLE: run_inspect counts a true-state-only series as reachable only if a physics
+           * row names it, and buildPhysIndex feeds this row's own `v()` to the Indications true
+           * column. A row whose `ser` matches no series is read by nothing — #517 shipped two of
+           * those and only driving the board caught them. */
+          { k: 'Core superheat', ser: 'core_sh',
+            hint: 'how far the core coolant is ABOVE saturation — degrees of superheat, not a temperature.',
+            detail: 'Zero whenever there is any water left in the core, so it reads zero through every normal evolution and through most of a loss-of-coolant accident. Once the core is fully steam-filled, void fraction has nothing left to say — it is pinned at 100 % — and this is the only reading that still moves. It is how far past dry the core has gone, and it climbs for as long as the steam keeps heating. On the original engine it reads a dash: that model cannot express superheat at all.',
+            v: function (t) {
+              if (t.core_superheat_c == null) return '—';
+              return physTd(t.core_superheat_c) + ' above saturation';
+            },
+            cls: nzCls('core_superheat_c') },
           { k: 'Core uncovered', ser: 'uncovered',
             hint: 'the fraction of the core the model treats as steam-cooled rather than water-cooled.',
             detail: 'Zero while the Reactor Coolant System (RCS) inventory keeps the core covered. It ramps up as inventory falls past the top of the active fuel and reaches 100 % at significant uncovery. It is the first link in the damage chain: uncovery, then zirconium oxidation heat, then a cladding temperature excursion.',     v: function (t) { return pctOf(t.core_uncovered_frac, 1); }, cls: nzCls('core_uncovered_frac') },
@@ -2296,6 +2315,8 @@
     // drainFine(). The board's vital tiles read this frame's share here.
     RD.ChartFine = pendingTiles;
     pendingTiles = null;
+
+    checkPlantHeld(s);
 
     applyUiPolicy(s);
     renderGauges(s);
@@ -5343,6 +5364,38 @@
    * they are mutually exclusive in practice, and since closing never resumes, a shared
    * key cannot leak a hold. Use these instead of touching `.hidden` directly, or the
    * next modal added will be the one that forgets. */
+  /* ---- THE SIMULATION-HALTED DIALOG (#520) ----------------------------------------------------
+   * The new-physics engine HOLDS when the plant leaves the range its property library is
+   * characterised over: state frozen, clock running, every command still accepted and doing
+   * nothing (`engines/pwr2/pwr2_engine.js` — the #487/#499 contract). That is the honest
+   * continuation, and #517 published `model_held` so it could be SEEN — but nothing displayed it,
+   * so a player still got a plausible, internally consistent, completely static plant. Measured on
+   * the Three Mile Island timeline: 160 minutes of it, every command "accepted".
+   *
+   * ⚠ EDGE-TRIGGERED, AND IT HAS TO BE. The latch NEVER clears — nothing in the repo sets
+   * `_dead = false` or `beyond_model = false`, by design — so a bare `if (ts.model_held) open()`
+   * re-opens the dialog on every frame and the player can never dismiss it or reach the board
+   * behind it. `heldShown` is the edge; `rebuildPlantUI` clears it so a LATER halt shows again.
+   *
+   * ⚠ AND DISMISSING IT MUST NOT LOSE THE FACT. The dialog is the only thing that says the model
+   * stopped, so "Leave it — let me look at the board" would re-create the exact defect this issue
+   * is about if it were the end of the story. The clock therefore carries a HELD marker for as
+   * long as the condition stands, which is a per-frame class rather than an edge. */
+  var heldShown = false;
+  function checkPlantHeld(s) {
+    var ts = s && s.true_state;
+    var held = !!(ts && ts.model_held);
+    var clk = $('clock');
+    if (clk) clk.classList.toggle('clk-held', held);
+    if (!held) { heldShown = false; return; }
+    if (heldShown) return;
+    heldShown = true;
+    var why = ts.model_held_why && ts.model_held_why !== 'none' ? ts.model_held_why : '';
+    var el = $('haltWhy');
+    if (el) el.textContent = why ? 'Reported cause — ' + why : '';
+    openModal('haltOverlay');
+  }
+
   function openModal(id) {
     var wasRunning = service.running;
     pauseSim('modal');
@@ -6339,6 +6392,16 @@
     // carried a "Plant & Mission…" button is dissolved.
     $('simStatus').addEventListener('click', openMissionSelect);
     $('missionClose').addEventListener('click', closeMissionSelect);
+    /* #520 — the halt dialog. Two ways out, and they are different decisions: reset rebuilds
+     * the plant (the ONLY recovery — the latch cannot be cleared in place), while dismiss
+     * leaves the frozen board readable. `doReset(true)` is armed because THIS DIALOG IS the
+     * confirmation; raising the native confirm on top of it would be asking twice. */
+    $('haltReset').addEventListener('click', function () {
+      closeModal('haltOverlay');
+      doReset(true);
+    });
+    $('haltDismiss').addEventListener('click', function () { closeModal('haltOverlay'); });
+    $('haltInspect').addEventListener('click', function () { closeModal('haltOverlay'); });
     // Settings — a pausing modal off the header (#439, spec §1).
     $('settingsBtn').addEventListener('click', function () { openModal('settingsOverlay'); });
     $('settingsClose').addEventListener('click', function () { closeModal('settingsOverlay'); });
@@ -7510,6 +7573,7 @@
   }
 
   function rebuildPlantUI() {
+    heldShown = false;        /* #520 — a rebuilt plant can halt again, and must say so again */
     // BEFORE chartBuf can take a row: the packed row width and the column of every series
     // come from the incoming plant's profile, and a sample taken against the old index
     // would be silently misfiled rather than empty.

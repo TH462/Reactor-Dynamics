@@ -1208,6 +1208,105 @@ async function testDiagBundle(page) {
   return log.join('\n');
 }
 
+
+/* ---- #520: THE SIMULATION-HALTED DIALOG ------------------------------------------------------
+ * The new-physics engine HOLDS when the plant leaves the range its property library is
+ * characterised over — state frozen, clock running, every control still accepted and doing
+ * nothing. #517 published `model_held` so it COULD be seen; nothing displayed it, so a player
+ * still got a plausible, internally consistent, completely static plant (measured on the Three
+ * Mile Island timeline: 160 minutes of it).
+ *
+ * ⚠ WHY THIS DRIVES A REAL HALT RATHER THAN FAKING ONE. #517's first attempt at board rows for
+ * these fields passed every gate in the suite AND WAS INERT — the rows were keyed to chart series
+ * that did not exist, so nothing rendered them, and only driving the board found it. So this rides
+ * a genuine casualty: a large break with the station blacked out has no injection to answer it and
+ * the plant actually runs dry (measured full-stack: held at 378 s).
+ *
+ * ⚠ AND IT DOES NOT DISMISS THE MISSION WINDOW FIRST. The halt dialog sits above it at z-index
+ * 214, so `click('#missionClose')` times out once the dialog is up — which is the feature working.
+ * Wait for the dialog on its own terms.
+ *
+ * ⚠ `?ff=` BUYS LESS SIM TIME THAN IT SAYS IN A TRANSIENT. ff=500 bought 261 s here, because a
+ * broadcast cycle shrinks once the plant is moving. The figure below is empirical, not arithmetic. */
+async function testHeldPlantDialog(page) {
+  var log = [];
+  var base = 'http://127.0.0.1:' + PORT + '/ui/shell.html?engine=pwr2&run=1';
+
+  await page.goto(base, { waitUntil: 'networkidle', timeout: 90000 });
+  await dismissMission(page);
+  await waitBoardLive(page, 20000);
+  if (!(await page.isHidden('#haltOverlay'))) {
+    throw new Error('#520: the halt dialog is showing on a HEALTHY plant — it must not greet you');
+  }
+  if (await page.evaluate(function () {
+        return document.getElementById('clock').classList.contains('clk-held'); })) {
+    throw new Error('#520: the clock claims HELD on a healthy plant');
+  }
+  log.push('healthy plant: dialog hidden, clock unmarked');
+
+  await page.goto(base + '&inject=large_loca,station_blackout&ff=1500',
+                  { waitUntil: 'networkidle', timeout: 180000 });
+  await page.waitForFunction(function () {
+    var o = document.getElementById('haltOverlay');
+    return !!o && !o.hidden;
+  }, { timeout: 40000, polling: 200 }).catch(function () { /* the throws below carry the message */ });
+  await page.waitForTimeout(400);
+
+  var st = await page.evaluate(function () {
+    var o = document.getElementById('haltOverlay');
+    var m = o ? o.querySelector('.mission-modal') : null;
+    if (!o || !m) return { missing: true };
+    var r = m.getBoundingClientRect();
+    return {
+      hidden: o.hidden,
+      why: (document.getElementById('haltWhy') || {}).textContent || '',
+      body: ((o.querySelector('.halt-body') || {}).textContent || '').length,
+      reset: !!document.getElementById('haltReset'),
+      clk: document.getElementById('clock').classList.contains('clk-held'),
+      rect: { l: r.left, t: r.top, r: r.right, b: r.bottom, h: r.height },
+      vw: window.innerWidth, vh: window.innerHeight
+    };
+  });
+  if (st.missing) throw new Error('#520: #haltOverlay / .mission-modal did not render at all');
+  if (st.hidden) {
+    throw new Error('#520: the plant HELD and the dialog stayed hidden — the player is back to a ' +
+                    'frozen board with no indication, which is the whole defect');
+  }
+  if (st.body < 300) throw new Error('#520: the dialog does not EXPLAIN anything (' + st.body + ' chars)');
+  if (!/property library|screen:/.test(st.why)) {
+    throw new Error('#520: the dialog does not name the cause — got "' + st.why.slice(0, 60) + '"');
+  }
+  if (!st.reset) throw new Error('#520: no reset button — the player has no way out');
+  if (!st.clk) {
+    throw new Error('#520: the clock carries no HELD marker. Dismissing the dialog would then ' +
+                    'lose the only indication, re-creating the defect this issue is about');
+  }
+  /* The #454 lesson: counting elements missed a window drawn outside the viewport. */
+  if (st.rect.l < 0 || st.rect.t < 0 || st.rect.r > st.vw + 1 || st.rect.b > st.vh + 1 || st.rect.h < 120) {
+    throw new Error('#520: the halt dialog is off-viewport or collapsed: ' + JSON.stringify(st.rect) +
+                    ' against ' + st.vw + 'x' + st.vh);
+  }
+  log.push('held plant: dialog open, cause named, clock marked, rect ' + Math.round(st.rect.h) + 'px');
+
+  /* THE BUTTON MUST ACTUALLY RECOVER THE PLANT — a dialog that explains and cannot fix is half
+   * the feature. The latch cannot be cleared in place, so this exercises the full rebuild. */
+  await page.click('#haltReset');
+  await page.waitForTimeout(2500);
+  var after = await page.evaluate(function () {
+    return { hidden: document.getElementById('haltOverlay').hidden,
+             clk: document.getElementById('clock').classList.contains('clk-held'),
+             clock: (document.getElementById('clock').textContent || '').trim() };
+  });
+  if (!after.hidden) throw new Error('#520: Reset left the dialog open');
+  if (after.clk) {
+    throw new Error('#520: Reset did not recover the plant — the clock still reads HELD at ' +
+                    after.clock + '. The latch cannot be cleared in place, so this means the ' +
+                    'rebuild did not happen');
+  }
+  log.push('reset: dialog closed, HELD cleared, clock ' + after.clock);
+  return log.join('\n');
+}
+
 async function main() {
   fs.mkdirSync(SCRATCH, { recursive: true });
   var fallback = path.join(SCRATCH, 'ui-screenshot-fallback.log');
@@ -1249,6 +1348,8 @@ async function main() {
     fs.writeFileSync(path.join(SCRATCH, 'esf-arm-buttons.log'), ebLog);
     var dbLog = await testDiagBundle(page);
     fs.writeFileSync(path.join(SCRATCH, 'diag-bundle.log'), dbLog);
+    var hpLog = await testHeldPlantDialog(page);
+    fs.writeFileSync(path.join(SCRATCH, 'held-plant-dialog.log'), hpLog);
     fs.writeFileSync(path.join(SCRATCH, 'ui-screenshot-summary.log'), summary.join('\n') + '\n');
     console.log('E2E UI verification: PASS (' + (ENGINES.length * VIEWS.length) + ' screenshots)');
   } finally {
@@ -1266,7 +1367,8 @@ async function main() {
 if (require.main !== module) {
   module.exports = { startServer: startServer, dismissMission: dismissMission,
                      testChartSettings: testChartSettings, testMonitorList: testMonitorList,
-                     testMissionCloseResumes: testMissionCloseResumes, testRunStartMark: testRunStartMark, port: function () { return PORT; } };
+                     testMissionCloseResumes: testMissionCloseResumes, testRunStartMark: testRunStartMark,
+                     testHeldPlantDialog: testHeldPlantDialog, port: function () { return PORT; } };
 } else {
   main().catch(function (e) {
     fs.mkdirSync(SCRATCH, { recursive: true });

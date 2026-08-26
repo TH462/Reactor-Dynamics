@@ -431,6 +431,41 @@
         </div>
       </div>
 
+      <!-- THE SIMULATION-HALTED DIALOG (#520). The new-physics engine HOLDS when the plant
+           reaches a state its property library cannot compute: state frozen, clock running,
+           every control still accepted and doing nothing. That is the honest continuation —
+           the alternative is fabricating numbers — but until this existed nothing SAID so, and
+           a player got a plausible, internally consistent, completely static plant. Measured on
+           the Three Mile Island timeline: 160 minutes of it.
+           Reuses .mission-overlay / .mission-modal / .mission-head deliberately: this is the
+           same kind of thing as the Plant & Mission window (a full-stop that needs a decision),
+           and a second set of modal chrome would be a second thing to keep consistent. -->
+      <div class="mission-overlay" id="haltOverlay" hidden>
+        <div class="mission-modal halt-modal">
+          <div class="mission-head">
+            <div class="mission-title">⚠ Simulation halted</div>
+            <button class="btn" id="haltDismiss" aria-label="Close">✕ Close</button>
+          </div>
+          <div class="halt-body">
+            <p class="halt-lead">The simulator has stopped calculating and is holding the last
+              state it could compute. The clock is still running, but <strong>nothing on the
+              board is moving and controls will not take effect.</strong></p>
+            <p>This is not a crash, and it is not something you did wrong. The plant reached a
+              condition the physics model has no way to compute — in practice the far end of a
+              deep loss of coolant, where the water property tables run out below about
+              15&nbsp;pounds per square inch absolute. Rather than invent numbers for it, the
+              model stops and says so.</p>
+            <p class="halt-why mono" id="haltWhy"></p>
+            <p class="halt-note">Everything you can see is the last valid reading. To carry on,
+              reset the plant to its initial condition — the current run cannot be continued.</p>
+          </div>
+          <div class="halt-foot">
+            <button class="btn" id="haltInspect">Leave it — let me look at the board</button>
+            <button class="btn halt-go" id="haltReset">Reset plant</button>
+          </div>
+        </div>
+      </div>
+
       <div class="mission-overlay" id="missionOverlay" hidden>
         <div class="mission-modal">
           <div class="mission-head">

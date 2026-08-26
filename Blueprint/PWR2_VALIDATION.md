@@ -5288,3 +5288,90 @@ else at baseline: engine 94, endurance 20, coredamage 23, loca 17, core 46, sour
 the design says should not be guessed at. Also still open from #518: the held snapshot is the
 **blown-up step**, not the last good one — the floor and both-walls guards latch after committing,
 while the root-jump guard correctly does not.
+
+## 90. #520 — A HALTED SIMULATOR NOW SAYS SO, AND OFFERS THE ONE WAY OUT — 2026-08-26
+
+*(OWNER, 2026-08-26: "Work 520. Could have a popup that explains what happened and a button to
+reset.")* — the design is the owner's; this is what it took to make it real.
+
+### 90.1 What was missing
+
+The engine HOLDS when the plant leaves the range Layer 0 is characterised over: state frozen,
+clock running, every control still accepted and doing nothing. §88 published `model_held` and
+`model_held_why` so it *could* be seen. **Nothing displayed them** — `grep model_held ui layers`
+returned zero hits — so the player still got a plausible, internally consistent, completely static
+plant. Measured on the TMI timeline: **160 minutes of it**, every command "accepted".
+
+### 90.2 The dialog, and why it reuses the mission window's chrome
+
+`#haltOverlay` is a `.mission-overlay` / `.mission-modal` — the same frame as Plant & Mission,
+deliberately, because a second set of modal chrome is a second thing to keep consistent. It opens
+through `openModal`, so it inherits the named `'modal'` pause hold; `z-index: 214` puts it above
+the mission window, since a halt is the thing that needs answering first.
+
+Three things it has to do, and each is gated:
+
+- **Explain.** Four paragraphs: what has happened, that it is not a crash and not the player's
+  fault, the cause verbatim from `model_held_why`, and that the run cannot be continued.
+- **Offer the way out.** `doReset(true)` — armed, because *this dialog is the confirmation* and
+  raising the native `confirm()` on top of it would be asking twice.
+- **Not lose the fact when dismissed.** "Leave it — let me look at the board" is a real option (a
+  frozen board is informative), so **the clock carries a `HELD` marker** for as long as the
+  condition stands. Without it, dismissing would re-create the exact defect this issue is about.
+
+**The reset had to be a rebuild.** Nothing in the repo clears `_dead` or `sys.beyond_model` —
+grep is zero, by design — so recovery is `selectPlant` constructing a fresh engine. `doReset` was
+already wired to it; no new engine code was written.
+
+### 90.3 ⛔ The lesson #517 paid for, applied here
+
+**#517's first attempt at board rows for these fields passed every gate in the suite and was
+INERT.** The rows were keyed to chart series that did not exist, `buildPhysIndex` dropped them,
+and `verify_e2e_ui` stayed green throughout. Only driving the board found it.
+
+So this was built the other way round: **the board was driven to a real halt before anything was
+claimed.** A large break with the station blacked out has no injection to answer it and the plant
+genuinely runs dry — full-stack, held at **378 s**. The dialog opened at T+18:03, named the cause,
+the clock read HELD, and Reset returned the plant to T+00:00:02 with the marker cleared.
+
+**Three traps the drive turned up, all of which would have been invisible to a source scan:**
+
+1. **`?ff=` buys less sim time than it says in a transient.** `ff=500` bought **261 s**, because a
+   broadcast cycle shrinks once the plant is moving. The first drive concluded "the dialog does
+   not open" when the plant had simply not reached the halt yet. The figure in the gate is
+   empirical, not arithmetic.
+2. **The check must NOT dismiss the mission window first.** Once the dialog is up at z-index 214
+   it covers `#missionClose` and that click times out — *which is the feature working.* The gate
+   waits for the dialog on its own terms.
+3. **A static server whose ROOT has forward slashes 404s the entire app on Windows**
+   (`fp.startsWith(ROOT)` against `path.join`'s backslashes). It looks exactly like a broken page.
+
+### 90.4 The second half — `core_superheat_c` is on the board
+
+Added as a real series (`core_sh`, Core damage group) **plus a physics row bound to it by `ser:`**.
+Both are required: `run_inspect` counts a true-state-only series as reachable only if a physics row
+names it, and `buildPhysIndex` feeds that row's own formatter to the Indications true column. A row
+whose `ser` matches no series is read by nothing — which is precisely what #517 shipped.
+
+It sits beside `Core uncovered` because that field **saturates**: once the core is fully
+steam-filled, void clips at 1 and uncovery pins at 100 %, and superheat is the only reading that
+still moves. On the original engine it reads a dash — that model cannot express superheat at all.
+
+### 90.5 Gates
+
+New `testHeldPlantDialog` in `verify_e2e_ui` — healthy plant (dialog hidden, clock unmarked) →
+real halt (open, explains, names the cause, clock marked, **rect inside the viewport and at least
+120 px tall**, the #454 lesson that counting elements missed a window drawn off-screen) → Reset
+(closed, HELD cleared). **Proved by injection**: with `checkPlantHeld` neutered it reds with *"the
+plant HELD and the dialog stayed hidden — the player is back to a frozen board with no
+indication."*
+
+No baseline moved. The +1 series does not shift any counted assertion — `verify_e2e_ui`'s channel
+check is the relation `picks === rows * 2`, not a number, and the new series is deliberately not in
+`defaultSeries` (`testMonitorList` requires its channel to be outside it). **Aggregate 93 runners
+at baseline.**
+
+**Still open from #518, unchanged here:** the held snapshot is the *blown-up* step, not the last
+good one — so the frozen board behind this dialog can show nonsense (14.5 psia, void 0 %). The
+dialog now says the readings are the last valid ones, which is honest about the fact but does not
+fix which step got committed.

@@ -30,6 +30,21 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
 
 ## [Unreleased]
 
+### Added (#520 — a halted simulator says so, and offers the way out, 2026-08-26, owner design)
+- **When the simulator stops calculating, it now tells you.** The new-physics engine holds its
+  last state when the plant reaches a condition the model cannot compute — clock running, every
+  reading frozen, controls accepted and doing nothing. Until now nothing said so, and the player
+  got a plausible, completely static plant; on the Three Mile Island timeline that ran for
+  **160 minutes**. A dialog now explains what happened, names the cause, and offers **Reset
+  plant** — which is the only recovery, because the halt cannot be cleared in place.
+- **Dismissing it does not lose the fact.** "Leave it — let me look at the board" is a real
+  choice, so the clock carries a **HELD** marker for as long as the condition stands.
+- **Core Superheat is on the board** (new-physics engine only). It sits beside Core Uncovered
+  because that reading saturates: once the core is fully steam-filled, void fraction pins at
+  100 % and superheat is the only thing that still moves — 0 → 131 °C (236 °F) over 1,220 s of
+  an unmitigated small break, while uncovery reported the same number throughout.
+  `Blueprint/PWR2_VALIDATION.md` §90.
+
 ### Fixed (#518 — the LOCA freeze was a transport instability, and the canary was dead, 2026-08-26, owner ruling "Canary + sub-step")
 - **Deep loss-of-coolant accidents no longer freeze — and the freeze was hiding a working
   emergency injection.** The plant's ring transport went unstable late in a blowdown: at ~7 %
