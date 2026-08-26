@@ -4676,3 +4676,56 @@ still missing after both: the cladding never heats while uncovered** — 555 °F
 deferred stratified vessel) — so no oxidation, no hydrogen, no burn. The choked-flow law is the
 sourced form (the 179,000 lb/hr rating is AT 2335 psig); the void-term fix is a design question
 (the clamp is a probe, not the answer). Both are #515's next work.
+
+## 84. THE SPIKE IS THE PRESSURIZER, NOT THE STEAM GENERATOR — §83 RETRACTED AGAINST GINNA'S OWN ANALYSIS — 2026-08-25
+
+*(OWNER, 2026-08-25: "How can we make this more closely resemble the tmi pressure spike? What's
+the difference between our SG and the TMI one?")*
+
+**⚠ RETRACTION.** §83 said the TMI-2 initiating spike "is a B&W once-through-generator artefact;
+this plant cannot produce it without becoming a different plant." That was read off an ablation
+of THIS MODEL (SG inventory × 0.1 lifts the PORV at 35 s) and it is wrong about the plant: **Ginna's
+own licensing analysis of a loss of load produces the spike on a U-tube plant.** Ginna UFSAR ch15
+§15.2.2 (ML20339A101, in develop's corpus), a complete loss of steam load from full power *"without
+direct reactor trip by the turbine trip signal"*, Table 15.2-1:
+
+| Ginna case (sourced) | what is credited | reactor trip | times |
+|---|---|---|---|
+| Case 2, peak RCS pressure | no spray, no PORV, no steam dump, minimum feedback | **high pressurizer pressure, 2425 psia** | **setpoint reached 5.4 s**, rods 7.4 s, safeties 7.4 s, peak **2748.5 psia at 8.5 s**, MSSVs 9.4 s |
+| Case 1, DNBR | spray + PORVs credited, no steam dump | overtemperature ΔT | 11.6 s |
+| Case 3, peak MSS pressure | pressure control credited | overtemperature ΔT | MSSVs 7.0 s, OTΔT 10.9 s |
+
+The recirculating U-tube generator is on both sides of that table. TMI-2's B&W once-through
+generator (the corpus holds no OTSG design data — GEND-061 names them only in the hydrogen
+chapter; its secondary inventory and dry-out time are [recalled] and UNVERIFIED) makes the heat
+sink vanish sooner, which matters for what follows the spike, not for the spike.
+
+**Our plant on §15.2.2's own conditions — measured** (turbine trip at 100 %, feed available, P-9
+channel defeated, 60 s, dt 0.02 s):
+
+| build | at 5.4 s: ΔP / Δlevel / power | reactor trip | peak |
+|---|---|---|---|
+| as built (dumps auto, −9.8 pcm/°F effective) | +7 psi / +6 pts / 88 % | none in 60 s | 2268 psia at 18 s |
+| ~Case 1: dumps SHUT, spray + PORV | +9 / +8 / 86 % | none | 2269 |
+| ~Case 2: dumps shut, spray manual 0, block valve shut | +9 / +8 / 86 % | none | 2271 |
+| ~Case 2 with BOL-class feedback (−2 pcm/°F) | +10 / +8 / 94 % | high pressurizer LEVEL, 16 s at 2290 psia | 2291 |
+| ~Case 2 with zero feedback | +10 / +8 / 96 % | high pressurizer level, 15 s at 2294 | 2297 |
+
+Neither the dumps nor the feedback moves the first 5 s: the primary swells the pressurizer **+8
+level points by 5.4 s** — an insurge of the right order — and the pressure answers with **+10 psi
+against Ginna's +175.** Our trip, when it comes, is the 87 % LEVEL trip at 15–16 s, a function the
+safety analysis does not credit and that Ginna's Case 2 never reached because its pressure got to
+2425 first. The softness is the pressurizer: `pwr2_pressurizer` is a single-region saturation-
+equilibrium vessel, so a 600 °F insurge mixes into 653 °F saturated contents and CONDENSES the
+steam it should be COMPRESSING — ΔP per level-point on a fast insurge measures ~1.2 psi here
+against the ~17 psi/pt Ginna's numbers imply. That is the two-region ("two-h stratified") vessel
+§46 sequenced last and the owner deferred *(OWNER RULING, 2026-08-19: "Defer. A.")*, now with a
+sourced acceptance case it did not have then: **Case 2 → 2425 psia at 5.4 s and 2748.5 psia at
+8.5 s; Case 1 → OTΔT at 11.6 s.**
+
+**What "closer to the TMI spike" therefore needs, in order:** (1) the P-9 defeat — built (§83);
+(2) the two-region pressurizer — the deferred item, ~2 days, validated against Table 15.2-1;
+(3) a beginning-of-life initial condition (minimum feedback) and the steam dumps not credited —
+each worth a few psi at 5 s and more later, both already reachable (an IC option; the dump mode
+switch). The steam generator's type is not on the list for the spike; it is on the list for how
+fast the heat sink is lost afterwards, and that is a different plant's question.

@@ -36,8 +36,10 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
   every credited trip still does. `run_pwr2_protection` 100 → 102, `run_pwr2_shell` 76 → 77.
 - **Measured (`PWR2_VALIDATION.md` §83):** the PORV lifts BY PHYSICS on the TMI steps once the SG
   boils dry — 52.4 min as built, **18.5 min with the channel failed** — and the armed stick
-  latches it. The initiating spike itself is not reachable (2268 vs 2335 psia; the U-tube SG's
-  inventory, not the spray or the trip, holds it). The two #515 model defects were ablated on the
+  latches it. The initiating spike itself is not reachable (2268 vs 2335 psia) — and §84 says why, against
+  Ginna's own §15.2.2 loss-of-load analysis (2425 psia at 5.4 s on a U-tube plant): the
+  single-region equilibrium pressurizer answers a +8-point insurge with +10 psi, not +175.
+  The spike needs the deferred two-region pressurizer, not a once-through SG. The two #515 model defects were ablated on the
   TMI timeline: the choked PORV gives the 1065 psia plateau and no accumulator dump, the boron
   clamp keeps the plant alive; together the sequence runs to 260 min. Still missing: clad heat-up.
 
