@@ -15,7 +15,7 @@ var PORT = 9750 + Math.floor(Math.random() * 50);
  * here would silently screenshot the PWR and certify nothing. The rows and their control
  * maps were deleted WITH the script tags; restoring the plants to the shell means restoring
  * both (git log this file). */
-var ENGINES = ['pwr'];
+var ENGINES = ['pwr2'];   /* the plant the site runs since 2026-08-26 — see the note at REQUIRED_BOARD_LABELS */
 var VIEWS = ['diagram', 'primary', 'secondary', 'all'];
 
 /* THE PLANT & MISSION WINDOW OPENS ON EVERY LOAD since 2026-08-11 *(OWNER DIRECTIVE: "It
@@ -23,7 +23,7 @@ var VIEWS = ['diagram', 'primary', 'secondary', 'all'];
  * navigation has to dismiss it exactly as a player does.
  *
  * It is deliberately NOT exempted by a URL parameter. A bypass list is what hid the window
- * from every real visitor: it contained `engine=`, and the site links `?engine=pwr` from
+ * from every real visitor: it contained `engine=`, and the site links `?engine=pwr2` (`?engine=pwr` until 2026-08-26) from
  * both entry points, so the one path nobody took — a bare shell.html — was the only path
  * that showed it, and that was the path my own check had used. A gate that skipped the
  * window would be testing a front door no player has. */
@@ -62,6 +62,15 @@ var REQUIRED_ACTS = {
  * than data-act, so probe the same path Instructor highlights use:
  * RD.PwrBoard.revealControl(label) -> the tile to glow, or null if unreachable.
  * The board is one stage with no view bar, so every view must render all of these. */
+/* KEYED BY ENGINE, AND BOTH PWR ENGINES WEAR THE SAME BOARD. That is not an accident of
+ * naming: ui/app.js gives ENGINES.pwr2 `plant: 'pwr'`, so the profile tables, the synoptic
+ * and this vocabulary are shared, and only the physics behind them differs. Listing them
+ * separately rather than aliasing one to the other is deliberate — the day a control exists
+ * on one engine and not the other, this table has somewhere to say so, and the reachability
+ * sweep is exactly where that difference should surface. Today they are identical.
+ *
+ * ENGINES above drives which of these is actually swept, and it is pwr2: a screenshot of a
+ * plant no published build contains is a screenshot of nothing anyone sees. */
 var REQUIRED_BOARD_LABELS = {
   pwr: [
     'Charging Pump (CVCS)', 'CVCS Inventory Control', 'Letdown Orifices (CVCS)', 'Boron',
@@ -76,6 +85,7 @@ var REQUIRED_BOARD_LABELS = {
     'Control Bank', 'Shutdown Bank', 'SCRAM',
   ],
 };
+REQUIRED_BOARD_LABELS.pwr2 = REQUIRED_BOARD_LABELS.pwr.slice();
 
 var REQUIRED_LABELS = {
   /* rbmk/bwr rows removed with their shell script tags (#514) — see ENGINES above */
@@ -158,7 +168,7 @@ async function screenshot(page, engine, view) {
 
 async function testUnitsAndInstructor(page) {
   var log = [];
-  await page.goto('http://127.0.0.1:' + PORT + '/ui/shell.html?engine=pwr&view=primary', { waitUntil: 'networkidle', timeout: 90000 });
+  await page.goto('http://127.0.0.1:' + PORT + '/ui/shell.html?engine=pwr2&view=primary', { waitUntil: 'networkidle', timeout: 90000 });
   await dismissMission(page);
   await page.waitForTimeout(500);
 
@@ -257,6 +267,11 @@ async function testUnitsAndInstructor(page) {
   await page.keyboard.press('Escape');
   await page.waitForTimeout(200);
 
+  /* STAYS ON THE RETIRED ENGINE, deliberately. Walkthroughs are authored against it and
+     ENGINES.pwr2 carries `freePlayOnly: true`, so ?engine=pwr2&follow=... would land on the
+     Free-Play-only note and this half would assert against a panel instead of a procedure.
+     It moves when the scenario-compatibility pass lifts that flag, not before. The engine
+     still loads in the repo's ui/shell.html — only PUBLISHED builds drop it. */
   await page.goto('http://127.0.0.1:' + PORT + '/ui/shell.html?engine=pwr&follow=pwr_loss_of_feedwater', { waitUntil: 'networkidle', timeout: 90000 });
   await dismissMission(page);
   await page.waitForFunction(function () {
@@ -309,7 +324,7 @@ async function testSteamFeedPair(page) {
   // belong to rather than re-banding a threshold to whatever the default happens to be
   // (HR10 — the assertion is unchanged, and 0 gpm against a live steam draw still fails it).
   var read = async function (qs) {
-    await page.goto('http://127.0.0.1:' + PORT + '/ui/shell.html?engine=pwr&init=hot_full_power&run=1' + qs,
+    await page.goto('http://127.0.0.1:' + PORT + '/ui/shell.html?engine=pwr2&init=hot_full_power&run=1' + qs,
       { waitUntil: 'networkidle', timeout: 90000 });
     await dismissMission(page);
     await waitBoardLive(page);                       /* was waitForTimeout(1200) — #513 */
@@ -329,7 +344,7 @@ async function testSteamFeedPair(page) {
         var r = e.getBoundingClientRect();
         return { right: Math.round(r.right), top: Math.round(r.top) };
       };
-      return { steam: t('ims3wm0d0bu'), feed: t('imrsgkz4lq0'), gov: t('imrppej8ulo'), dump: t('imsgunuyvon'),
+      return { steam: t('ims3wm0d0bu'), feed: t('imrsgkz4lq0'), gov: t('imrppej8ulo'), dump: t('imsgunuyvon'), adv: t('imsguptyg16'),
                steamBox: box('ims3wm0d0bu'), feedBox: box('imrsgkz4lq0') };
     });
   };
@@ -393,7 +408,26 @@ async function testSteamFeedPair(page) {
   // curve carrying ~7 % here. The sourced curve (ANS 5.1-1971 + actinides, un-multiplied)
   // puts t+600 s at ~2.4 % of rated and the dump reads 2 %. The claim is that the dump picks
   // decay heat up AT ALL, so the threshold tracks the heat there is to pick up.
-  if (!(num(tripped.dump) > 1)) throw new Error('steam dump did not pick up decay heat (dump=' + tripped.dump + ')');
+  /* THE DECAY HEAT MUST BE GOING SOMEWHERE, and on this plant it is not the condenser dumps.
+   * This read `num(tripped.dump) > 1` until 2026-08-26, when the gate moved to the engine the
+   * site ships. MEASURED on both, t+600 s after a turbine trip from hot full power:
+   *
+   *     retired engine   gov 0 %   dump  2 %   adv  0 %   steam 22 gpm  feed 22 gpm
+   *     PWR2             gov 0 %   dump  0 %   adv 61 %   steam 31 gpm  feed 33 gpm
+   *
+   * PWR2's dump reading 0 is the plant being RIGHT, not a regression: C-7 holds the condenser
+   * dumps shut on a dispatch trip (sourced — PWR2_VALIDATION.md 47), so the atmospheric dump
+   * carries it, which is the real-plant answer and the reason the ADV rung was built (#371).
+   * Pinning the CONDENSER path would have made this gate demand the interlock be defeated.
+   *
+   * The claim is unchanged and so is the discriminant (HR10): with the governor at 0 %, a
+   * steam path is open and carrying heat. It still fails on the defect this check exists for —
+   * a readout wired to the governor-only `steam_flow` channel leaves both positions at 0 and
+   * STEAM FLOW at ~0 — and it still passes on the retired engine, where the dump carries it. */
+  if (!(num(tripped.dump) > 1 || num(tripped.adv) > 1)) {
+    throw new Error('nothing is carrying decay heat with the turbine shut (dump=' +
+      tripped.dump + ' adv=' + tripped.adv + ')');
+  }
   // Floor 10, was 20, was 40. Both drops are the same story and neither touches the claim:
   // #372 put feedwater enthalpy in, so part of the decay heat goes to heating feed rather
   // than making steam (~64 -> ~39 gpm); #364 then corrected decay heat itself down ~2.4x in
@@ -510,7 +544,7 @@ async function testEsfArmButtons(page) {
  *      so the resolver's edge cases ride here rather than in a Node runner. */
 async function testChartSettings(page) {
   var log = [];
-  await page.goto('http://127.0.0.1:' + PORT + '/ui/shell.html?engine=pwr',
+  await page.goto('http://127.0.0.1:' + PORT + '/ui/shell.html?engine=pwr2',
     { waitUntil: 'networkidle', timeout: 90000 });
   await dismissMission(page);
   await waitBoardLive(page);                         /* was waitForTimeout(1500) — #513 */
@@ -720,7 +754,7 @@ async function testChartSettings(page) {
  * shares the browser context. */
 async function testMonitorList(page) {
   var log = [];
-  var URL = 'http://127.0.0.1:' + PORT + '/ui/shell.html?engine=pwr';
+  var URL = 'http://127.0.0.1:' + PORT + '/ui/shell.html?engine=pwr2';
   await page.goto(URL, { waitUntil: 'networkidle', timeout: 90000 });
   await dismissMission(page);
   await page.evaluate(function () { try { localStorage.removeItem('rd_monitor'); } catch (e) {} });
@@ -882,7 +916,7 @@ async function testMissionCloseResumes(page) {
   var running = function () {
     return page.evaluate(function () { return !document.getElementById('playBtn').classList.contains('paused'); });
   };
-  await page.goto('http://127.0.0.1:' + PORT + '/ui/shell.html?engine=pwr',
+  await page.goto('http://127.0.0.1:' + PORT + '/ui/shell.html?engine=pwr2',
     { waitUntil: 'networkidle', timeout: 90000 });
   /* was waitForTimeout(1200): the predicate is the assertion one line down (#513) */
   await page.waitForSelector('#missionOverlay', { state: 'visible', timeout: 5000 })
@@ -947,7 +981,7 @@ async function testMissionCloseResumes(page) {
  * tag's RECT against the lane chrome turns that into something a gate can hold. */
 async function testRunStartMark(page) {
   var log = [];
-  await page.goto('http://127.0.0.1:' + PORT + '/ui/shell.html?engine=pwr',
+  await page.goto('http://127.0.0.1:' + PORT + '/ui/shell.html?engine=pwr2',
     { waitUntil: 'networkidle', timeout: 90000 });
   await dismissMission(page);
   /* was waitForTimeout(2500): the predicate is the thing the check reads (#513) */
@@ -1027,7 +1061,7 @@ async function testRunStartMark(page) {
 async function testRewindPicker(page) {
   var log = [];
   var VBW = 400, PLOT_FRAC = 0.86;                 // mirror ui/app.js drawChart
-  await page.goto('http://127.0.0.1:' + PORT + '/ui/shell.html?engine=pwr&run=1',
+  await page.goto('http://127.0.0.1:' + PORT + '/ui/shell.html?engine=pwr2&run=1',
     { waitUntil: 'networkidle', timeout: 90000 });
   await dismissMission(page);
   await page.waitForTimeout(800);
@@ -1162,7 +1196,7 @@ async function testRewindPicker(page) {
  */
 async function testDiagBundle(page) {
   var log = [];
-  await page.goto('http://127.0.0.1:' + PORT + '/ui/shell.html?engine=pwr',
+  await page.goto('http://127.0.0.1:' + PORT + '/ui/shell.html?engine=pwr2',
     { waitUntil: 'networkidle', timeout: 90000 });
   await dismissMission(page);
   await waitBoardLive(page);                         /* was waitForTimeout(1500) — #513 */

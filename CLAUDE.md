@@ -333,7 +333,7 @@ to read everything.
 
 _Last updated: **2026-08-25**._
 
-**Where the PWR is.** `run_all` is **89 runners, all at baseline** — read `BASELINES`, never a
+**Where the PWR is.** `run_all` is **93 runners, all at baseline** — read `BASELINES`, never a
 number written here. The PWR is the only active plant and is feature-complete through Mode 5 ↔
 Mode 1 on integrated physics: engines, control, service, instructor and the board are built; the
 #297 audit's build wave and the #221 audit slices are landed. **What is open, in one line each:**
@@ -397,7 +397,7 @@ re-querying. Run the query.
   only, true values declared, gated by `run_pwr2_engine` (14 checks / 8 mutations; it caught the
   scram-bypasses-RPS defect and filed #499 on arrival — `PWR2_VALIDATION.md` §49). P-9 (turbine trip
   = reactor trip above it, both sourced values), the #499 beyond-model guards and the
-  DELAYED-data sourcing are all LANDED (§50–52). Built since, each with its record in `PWR2_VALIDATION.md` — **read the sections, not this line**: OTΔT/OPΔT (§53) · instruments, switchover, runback/rod stop (§54–56) · OPTION B COMPLETE — the "PWR — New Physics" menu card, Free Play only (§57–61) · the AFW starts + lo-lo trip (§62) · feed ≡ steam RETIRED (§63) · the CVCS finding (§64). The #507 parity umbrella is through TEN waves (**§67–74**): boron · RHR align · the casualty menu at **21 honest rows** · the two-bus electrical model · the SGTR · drift/dead instruments · the ICs (#508) · the rod insertion limit · the RCP restart · the shutdown preset + P-11 (§74, Mode 4 declared). **Section F is closed.** **#510 batches 1–4 LANDED** (§75–78); five LOW harness items open. **#512 made the latches PER-SYSTEM (§81)** — **the TMI termination is reachable**. **#515 (owner ruling 2026-08-25 "A. Then choked porv then void term."): the PORV stick is a LATCH and the pressurizer is TWO-REGION (§85)** — Ginna §15.2.2 Case 2 trips at 6.3 s (sourced 5.4); relief is choked and passes WATER (§86); a voided core stays subcritical at any boron (§87); the TMI timeline runs to 260 min. **#517 (owner ruling 2026-08-26 "Build the superheat wing anyway."): the core node has a SUPERHEAT wing, capped so it can only degrade cooling (§88)** — sourced steam k/mu (WCAP-16009); uncapped it turned a 100 %-oxidation runaway into 24 %. **#520 (owner design): a HALTED simulator now says so — a dialog that explains it and a Reset button, plus Core Superheat on the board (§90).** **#518 (owner ruling 2026-08-26 "Canary + sub-step"): deep LOCAs no longer freeze (§89), and a halted plant freezes on its LAST GOOD step, not the rejected one (§91)** — the Courant canary measured the loop's HEAD flow, not the per-junction flows that transport, and read 0 violations on a ride whose true number hit 2,745; the ring now sub-steps (D2 §17.5, adopted and never built) at a measured 0.09 % cost. The freeze was hiding a working ECCS refill. Remaining before replacement: R8's ambient source check, mission compatibility, the owner's replacement ruling. Still owed: delta-T lead/lag + K5 (COLR), channel redundancy, the ESF arm display, Mode 5 proper, stuck_rod_on_scram, the steam-line-break rows + auto isolation signal (the MSIV itself is BUILT, §80).
+  DELAYED-data sourcing are all LANDED (§50–52). **Everything since is recorded in `PWR2_VALIDATION.md` §53–§94 — read the sections, not this line.** In one line each: the protection channels, instruments and runback (§53–56) · the menu card and board, Free Play only (§57–61) · the #507 parity umbrella through TEN waves, casualty menu at **21 honest rows**, Section F closed (§67–74) · #510 batches 1–4, five LOW harness items open (§75–78) · per-system latches, so **the TMI termination is reachable** (§81) · the two-region pressurizer, choked relief passing water, a voided core subcritical at any boron, TMI to 260 min (§85–87) · the capped superheat wing (§88) · deep LOCAs no longer freeze and a halted plant holds its LAST GOOD step (§89, §91). **#523 (owner rulings 2026-08-26 "Flip now, track the gaps" / "Strip it at build time"): PWR2 IS THE PLANT THE SITE RUNS (§94)** — every link and `/sim` carry `?engine=pwr2`, and a **public** build contains no retired engine at all (six tags + 544,663 bytes pruned by `site/build_site.js`; `make_portable` always). The strip is CHANNEL-GATED so the PREVIEW site keeps it, because the guided content is authored against it and `freePlayOnly` stays. `pwr_config.js`/`pwr_instruments.js` are NOT the old engine and ship everywhere. Two of the three pre-replacement gaps are now #531 (R8) and #525 (mission compatibility). Still owed: delta-T lead/lag + K5 (COLR), channel redundancy, the ESF arm display, Mode 5 proper (#524), stuck_rod_on_scram, the steam-line-break rows + auto isolation signal (the MSIV itself is BUILT, §80).
   **#514 (2026-08-25): the engine steps 12.5× faster** (1,090 → ~85 µs; the vtable wired into
   every module, `T_from_h`/`P_sat_T` tabulated, two warm starts, Tavg once) — held by the new
   `run_pwr2_perf` ratio gate (≤ 8× the old engine, measures 4.1×); the vtable builds on first
@@ -454,21 +454,16 @@ ONE line, drop the rest. **A bullet is ~80 words.** (Measured 2026-08-06: the li
   an accident (`testDiagBundle` pressing play on a plant that auto-starts), and a board check
   entangled with a trend glyph. The recorder noise (#504) and the dead ECCS AUTO button
   (#503) were both invisible to every gate and found only by a player.
-- **The OBSERVER is where the defect is, and no source read finds it** (2026-08-10/11, the
-  #436 rework — #437/#439/#440/#442/#443/#393). Six of the night's defects were in the thing
-  doing the watching. A recorder's first pass emits a transition per alarm — right for a bug
-  report, and on a timeline **46 `alarm_clear` events at t=0** (now 0). A paired list
-  comparing FORMATTED strings lights five rows on a healthy plant (`-0.0` vs `0.0` among
-  them); lag measures **0.18 %**, so the band is 0.5 % with a floor at the displayed
-  precision — and the first fix, exempting rows with curated prose, swallowed the PORV
-  reading `shut` against `OPEN · STUCK`, the case it was built for. **An exponent is part of
-  that precision**: `2.0e-3 A` read as precise to 0.1 and hid a 75.9 % divergence on the
-  nuclear instruments. A cluster taking its ref from `evs[0]` points at nothing, because a
-  cascade LEADS WITH ALARMS. Two more the SCREENSHOT caught and no check did: numeric rows
-  drawn over the bottom lane (element counts all passed), and my own drive measuring lane
-  height as `plot ÷ lanes` — 56 px reported, 38 px true, which is how a floor gets certified
-  while being violated. Corollary that paid twice: **a refactor's claim is "nothing
-  changed", so pin the OLD implementation and replay it** (`run_chart_math`, 235 frames).
+- **A shared artifact keyed by the ENGINE goes silently EMPTY when the engine key changes,
+  and the neighbouring lookup that got it right is no warning** (2026-08-26, #523 §94). Making
+  PWR2 the plant the site runs broke two: `mdManual()` read `RD.MANUAL_MD[ui.engineKey]` with no
+  `|| [ui.plant]`, so the **operator's manual rendered empty** — one of only TWO areas
+  `site/flags.js` stages `public` — while `manualDoc()` fifty lines away had the fallback and had
+  disagreed for days; and `afterPlantChange()` derived the engine key from `ui.plant`, which
+  `uiPlantOf()` deliberately folds `pwr2` onto, so a PWR2 save installed the RETIRED engine's key
+  and the next Reset would ask for a constructor a published build does not contain. Neither was
+  reachable while PWR2 was a second card. **When a plant's key changes, grep every
+  `[ui.engineKey]` in the tree** — not the ones you remember.
 - **Every #510 high shipped under a green gate whose window ended before the failure began**
   (2026-08-23, the waves 1–10 swarm review → `run_pwr2_endurance`). The Mode 4 "HOLDS" check
   sampled the first 6 % of a 75-minute monotone fill; the ATWS check rode 10 s of a
@@ -535,7 +530,11 @@ thing left in the file and it grew about a bullet a session.
   leg-split formula that computed 0.0 °F on a scrammed core. **A DEGENERATE LATCH reads exactly
   like a working feature** (rescued from the #403/#433 bullet on eviction, 2026-08-12): a no-dt
   harness left `held_within_s` permanently satisfied (age `0 <= 60` for ever) and three green
-  probes certified an isolation that never once fired.
+  probes certified an isolation that never once fired. **And the OBSERVER is where
+  the defect can be, invisible to any source read** (rescued from the #436 bullet on eviction,
+  2026-08-26): a paired list comparing FORMATTED strings lit five rows on a healthy plant
+  (`-0.0` vs `0.0`), a recorder emitted 46 `alarm_clear` events at t=0, and a lane-height check
+  measuring `plot ÷ lanes` certified 56 px while 38 px was drawn.
 - **A tolerance band is a claim that what it excludes is harmless — measure that** (rescued
   from the #348 themes bullet on eviction, 2026-08-07). CA-10's 1-point "coupling lag" band
   hid an interlock with no reset differential chattering at 35 % duty.

@@ -29,6 +29,55 @@ and the user-visible summary in `CHANGELOG.md`. This file points at those and tr
 
 ---
 
+## Session log — 2026-08-26-develop-a (#523 — PWR2 is the plant the site runs)
+
+**The cutover.** Four owner rulings in planning, all 2026-08-26: **"Flip now, track the gaps"**,
+**"Strip it at build time"**, **"Keep freePlayOnly, file the compat pass"**, **"Reword to Hot
+Shutdown (Mode 4)"**. Full record: `Blueprint/PWR2_VALIDATION.md` §94. Issue #523.
+
+**What ships.** `?engine=pwr2` on every site link and the `/sim` redirect; `ui/app.js` boots and
+falls back to it; the card is plain **PWR** and the old one is **"PWR — retired engine"**.
+`site/build_site.js` deletes the retired engine's six `<script>` tags **and prunes the six files
+(544,663 bytes)** when the channel is `public`; `tools/make_portable.js` does it unconditionally.
+`pwr_config.js` and `pwr_instruments.js` stay on every build — `pwr2_shell.js:622` throws without
+them.
+
+**The channel gate is the whole design.** The preview site keeps the retired engine, because the
+guided content is authored against it and that is where it is vetted. A flag can be overridden by
+hand on a live site; a deleted `<script>` tag cannot.
+
+**Two defects the flip exposed, both latent until PWR2 was the default.**
+- `mdManual()` had no `|| [ui.plant]` fallback, so the operator's manual rendered **empty** on
+  PWR2 — one of only two `public`-staged areas. Its neighbour `manualDoc()` had the fallback and
+  was right. Caught by `verify_e2e_ui` on its first click of `#manualBtn` at `?engine=pwr2`.
+- `afterPlantChange()` derived `ui.engineKey` from `ui.plant`, which `uiPlantOf()` deliberately
+  folds `'pwr2'` onto — so a PWR2 save installed the retired engine's key, and on a published
+  build the next Reset would ask for a constructor that is not in the page.
+
+**Gates.** `run_site_build` 31 → **41** (new `RETIRED` rule, builds twice through a new
+`RD_SITE_CHANNEL` hook, injection-verified in both directions) · `run_portable` 147 → **145**
+(sentinel → `RD.pwr2.shell`, plus a negative sentinel proved non-vacuous) · `verify_e2e_ui` now
+sweeps `pwr2` · `verify_flags_ui` 27/42 → **42/42** once pointed at `?engine=pwr`, where the
+content it gates actually lives. `run_all`: 93 runners, everything else at baseline.
+
+**One assertion re-derived against a measurement.** `testSteamFeedPair` demanded `dump > 1` after
+a turbine trip. At t+600 s from hot full power: retired engine gov 0 % / dump 2 % / ADV 0 % /
+steam 22 gpm; **PWR2 gov 0 % / dump 0 % / ADV 61 % / steam 31 gpm / feed 33 gpm**. PWR2's dump at
+0 is C-7 holding the condenser dumps shut on a dispatch trip (§47, sourced) — the ADV carries it.
+Now `dump > 1 || adv > 1`; claim and discriminant unchanged, still passes on both.
+
+**Trap worth carrying forward.** *A shared artifact keyed by ENGINE will silently go empty when
+the engine key changes, and the neighbouring lookup that got it right is no help — the two had
+disagreed for days.* Both of today's defects are that one shape. When a plant's key changes, grep
+every `[ui.engineKey]` in the tree, not the ones you remember.
+
+**Open** — filed rather than absorbed: #524 Mode 5 · #525 the compatibility pass · #526 the
+procedure pool · #527 the instructor's parameter map · #528 rod AUTO · #529 turbine FOLLOW ·
+#530 steam-line break / stuck rod / vacuum decay · #531 R8 · #532 the manuals · #533 the board
+harness.
+
+---
+
 ## Session log — 2026-08-25-develop-d (#515 — TMI on PWR2: the latch, the P-9 defeat, the two-region pressurizer)
 
 **The owner's question** ("can we recreate TMI on PWR2?") became one issue, #515, and a three-build

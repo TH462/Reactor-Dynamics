@@ -45,6 +45,40 @@ where the two differ or where judgment was exercised.
 
 ---
 
+## 2026-08-26-develop-a — #523: PWR2 replaces the PWR on the site; the strip is CHANNEL-GATED
+
+**Four owner rulings, 2026-08-26, in planning** — *"Flip now, track the gaps"* · *"Strip it at
+build time"* · *"Keep freePlayOnly, file the compat pass"* · *"Reword to Hot Shutdown (Mode 4)"*.
+
+**The decision worth recording is the CONDITION, not the strip.** *"Strip it at build time"* was
+the ruling; whether it strips on **every** build or only on the **public** one was mine, and it
+goes the way it does for a reason that is not conservatism:
+
+- The public site must not carry the retired engine. That is the ruling, and it is met.
+- The **preview** site is where the campaign, the scenarios and the walkthroughs get vetted, and
+  every one of them is authored against the retired engine — which is why `ENGINES.pwr2` still
+  carries `freePlayOnly: true` under the third ruling above. A feature FLAG can be overridden by
+  hand on a live site (that is how a gated feature is inspected); a deleted `<script>` tag cannot.
+  An unconditional strip would have taken the preview site's guided content with it and left
+  nowhere to vet the thing the third ruling explicitly deferred.
+
+So the two rulings are only consistent with a channel condition. Making it unconditional later is
+deleting one branch, and `test/run_site_build.js` asserts **both** directions so neither can drift.
+
+**The portable build is unconditional, deliberately** — a distribution artifact should be the
+plant the site runs and nothing else, and a two-engine bundle would make `run_portable` certify a
+file nobody downloads.
+
+**Two files are NOT the old engine and must never be treated as it**: `pwr_config.js` and
+`pwr_instruments.js`. PWR2 reuses the published instrument layer and builds its protection config
+from `RD.PWR_CONFIG.protection`. The gate asserts them as a **precondition**, because pruning them
+yields a site with no plant while every other check passes.
+
+**Card visibility is DERIVED, not declared.** `ctorPresent()` gates the `?engine=` override, the
+boot fallback and the plant column. A published build cannot hold a static availability list —
+the answer differs per build — so the menu measures. Full record and the two defects it exposed:
+`Blueprint/PWR2_VALIDATION.md` §94.
+
 ## 2026-08-25-develop-c — #513: the aggregate gate 439 s at 10-way (was ~19 min); two owner rulings
 
 **Decisions.** (1) *(OWNER RULING, 2026-08-25, plan question — "Move it out (Recommended)")*:

@@ -56,13 +56,15 @@
      * Deliberately NOT persisted, unlike the panel state: it would save the SIDES of channel
      * selections that are themselves forgotten on reload. Reset wherever `series` is. */
     seriesSide: {},
-    plant: 'pwr',           // active plant_id
-    engineKey: 'pwr',       // active engine selector key
-    // The SHIPPED starting point *(OWNER, 2026-08-08: "the plant should start with the 50%
-    // power preset")*. Kept in step with ENGINES.pwr.init below — this one seeds the very
-    // first render, that one is what a plant switch and Reset go back to, and a mismatch
-    // shows up as a board that changes under you one broadcast in.
-    initState: '50_percent',
+    plant: 'pwr',           // active BOARD (pwr2 wears the pwr board — see uiPlantOf)
+    engineKey: 'pwr2',      // active engine selector key — the shipped plant (2026-08-26)
+    // The SHIPPED starting point. Kept in step with ENGINES.pwr2.init below — this one seeds
+    // the very first render, that one is what a plant switch and Reset go back to, and a
+    // mismatch shows up as a board that changes under you one broadcast in. It was
+    // '50_percent' *(OWNER, 2026-08-08: "the plant should start with the 50% power preset")*
+    // against the retired engine; PWR2's own preset registry opens at Hot Full Power, and
+    // ENGINES.pwr2.init is the one that decides — this line only has to agree with it.
+    initState: 'hot_full_power',
     view: 'diagram',        // plant-display active view
     pdAck: {},              // operator-acknowledged auto-actuations (ECCS/AFW → green)
     pdOp: {},               // operator-initiated systems (start green directly)
@@ -316,18 +318,50 @@
   // `soon: true` = the physics engine is complete but the M8 board / M4 control
   // surface is not extended to it yet, so the card is shown greyed and is not
   // selectable. The ?engine= dev override still reaches them deliberately.
+  //
+  // WHICH CONSTRUCTORS ACTUALLY LOADED — measured, never declared (2026-08-26). A published
+  // build carries PWR2 only: site/build_site.js deletes the retired engine's <script> tags
+  // from ui/shell.html on the `public` channel, and tools/make_portable.js deletes them from
+  // the offline download unconditionally. So this file cannot hold a list of what is
+  // available; it has to LOOK. Every consumer — the boot override, the fallback and the plant
+  // column — reads this one probe, which is what keeps the menu from offering a card whose
+  // constructor is not in the page. Same shape as #514's greyed RBMK/BWR cards, except
+  // derived rather than written down, because for the PWR the answer differs per build.
+  // Deliberately a function, not a snapshot: it is called after all <script>s have run.
+  function ctorPresent(key) {
+    switch (key) {
+      case 'pwr':       return !!RD.PWREngine;
+      case 'pwr2':      return !!(RD.pwr2 && RD.pwr2.shell);
+      case 'rbmk_pre':
+      case 'rbmk_post': return !!RD.RBMKEngine;
+      case 'bwr':       return !!RD.BWREngine;
+      default:          return false;
+    }
+  }
   var ENGINES = {
     // 50 % power, not full *(OWNER, 2026-08-08: "the plant should start with the 50% power
     // preset")* — there is somewhere to go in both directions from it. `ui.initState` above
     // carries the same value for the first render.
+    // THE RETIRED ENGINE (2026-08-26). PWR2 replaced it *(OWNER RULING, 2026-08-26: "Flip
+    // now, track the gaps")*, and a published build does not contain it at all — so this
+    // card only ever appears on a dev or preview build, where ctorPresent('pwr') is true.
+    // It is kept reachable, not deleted, for two live reasons: it is the A/B reference
+    // test/measure_pwr2_ab.js diffs against, and it is the only engine the campaign, the
+    // scenarios and the walkthroughs are authored for, so it is where that content is
+    // vetted until the compatibility pass runs.
     pwr:       { plant: 'pwr',  dv: null,              init: '50_percent',
-                 label: 'PWR', sub: 'Pressurized Water Reactor',
-                 desc: 'The stable, self-regulating starting point. Separate primary and steam loops. Home of the Three Mile Island story.' },
-    // A FIRST-CLASS CARD since 2026-08-21 (owner: "I want to be able to go into the plant
-    // and scenario selection menu and be able to choose either PWR plant").
+                 label: 'PWR — retired engine', sub: 'The previous physics · dev and preview builds only',
+                 desc: 'The engine PWR2 replaced. Kept as the A/B reference and as the plant the campaign, scenarios and walkthroughs were written against. Not in any published build.' },
+    // THE PWR, since 2026-08-26 *(OWNER RULING, 2026-08-26: "Flip now, track the gaps")* —
+    // what every site link opens, what ?engine= defaults to, and the only engine a published
+    // build carries. Was a first-class card beside the old one from 2026-08-21 (owner: "I
+    // want to be able to go into the plant and scenario selection menu and be able to choose
+    // either PWR plant"); the retired card above now outranks nothing.
     // plant:'pwr' ON PURPOSE — the whole UI (profiles, PD tables, the seven ui.plant==='pwr'
     // branches) treats this as the PWR board it is; only the ENGINE differs, carried by
-    // `engine:` and resolved at every selectPlant/reset call via engId().
+    // `engine:` and resolved at every selectPlant/reset call via engId(). The key stays
+    // 'pwr2' as well: it is the service plant_id, the save schema ('pwr2-1.0') and 37 gate
+    // runners' name for this plant, and renaming it would buy a label and cost all of that.
     // initStates OVERRIDES the profile's list: this engine carries its OWN preset registry
     // (pwr2_engine ICS — the FOUR below since #507 wave 10 added Hot Shutdown; this comment
     // said "three" while the list held four, #510 LOW. Mode 5 proper stays deferred on the
@@ -342,10 +376,11 @@
                               ['hot_zero_power', 'Hot Standby (Mode 3)'],
                               ['hot_shutdown', 'Hot Shutdown (Mode 4)']],
                  freePlayOnly: true,
-                 label: 'PWR — New Physics', sub: 'The same plant on the rebuilt engine',
-                 desc: 'The SLS-100 control room over the new from-scratch physics engine: ' +
-                       'real break locations, emergent natural circulation, the TMI level ' +
-                       'deception as physics rather than script. Free Play only for now.' },
+                 label: 'PWR', sub: 'Pressurized Water Reactor',
+                 desc: 'The SLS-100: real break locations, emergent natural circulation, the ' +
+                       'TMI level deception as physics rather than script. Starts at Hot ' +
+                       'Shutdown (Mode 4) or above. Free Play — the guided content is being ' +
+                       're-validated on this engine.' },
     rbmk_pre:  { plant: 'rbmk', dv: 'pre_chernobyl',   init: 'full_power', soon: true,
                  label: 'RBMK pre-1986', sub: 'Chernobyl-type · original design',
                  desc: 'Graphite-moderated, positive void coefficient, graphite-tipped rods — the design that failed at Chernobyl.' },
@@ -3654,7 +3689,7 @@
   // pick the plant (left column), then the mode (Free Play / Campaign /
   // Scenarios / Walkthroughs), then the specific start. Nothing changes in the
   // running sim until a start button is pressed.
-  var msel = { engine: 'pwr', mode: 'free', init: null };
+  var msel = { engine: 'pwr2', mode: 'free', init: null };   /* the shipped plant (2026-08-26) */
   var resetArmT = null;                  // the Reset arm's self-disarm timer (#443)
   /* The window PAUSES, and closing it resumes *(OWNER DIRECTIVE, 2026-08-11: "The menu
    * should freeze the plant but when you close the menu it should unfreeze the plant.")*.
@@ -3719,7 +3754,14 @@
   function renderMissionSelect() {
     // Step 1 — the plant column
     $('mpPlants').innerHTML = Object.keys(ENGINES).filter(function (k) {
-      return !ENGINES[k].hidden;               /* general gate; nothing hidden today */
+      if (ENGINES[k].hidden) return false;     /* general gate; nothing hidden today */
+      /* A card whose constructor is not in the page is not a card. On a published build that
+       * is the retired PWR engine, whose tags site/build_site.js deleted; RBMK/BWR keep their
+       * greyed `soon` cards deliberately (#514) and are exempt, because a plant on hold is a
+       * roadmap statement, not a missing file. Without this the menu would offer a plant the
+       * service cannot construct — engineCtor() returns undefined and selectPlant throws. */
+      if (!ENGINES[k].soon && !ctorPresent(k)) return false;
+      return true;
     }).map(function (k) {
       var e = ENGINES[k];
       return '<div class="mplant-card' + (k === msel.engine ? ' on' : '') + (e.soon ? ' soon' : '') + '"' +
@@ -3764,11 +3806,14 @@
     h += '<button class="btn mp-start" data-mfree="1">▶ Start Free Play — ' + mesc(e.label) + '</button>';
     return h;
   }
+  // NO BUTTONS IN HERE. verify_flags_ui counts things you can start inside #mpContent to
+  // prove the public site offers nothing ungated, and this panel now stands where the
+  // campaign used to on the plant the site actually runs.
   function freeOnlyPanel() {
     return '<div class="m-note">The guided content — campaign, scenarios and walkthroughs — ' +
-      'is authored and validated against the current PWR engine. On the new physics engine ' +
-      'it is <b>Free Play only</b> for now: every control live, every failure injectable, ' +
-      'no script grading you against the wrong plant.</div>';
+      'was written against the retired engine and is being re-validated on this one. Until ' +
+      'that pass runs it is <b>Free Play only</b>: every control live, every failure ' +
+      'injectable, no script grading you against a plant these physics do not describe.</div>';
   }
   function mpCampaign() {
     if (ENGINES[msel.engine].freePlayOnly) return freeOnlyPanel();
@@ -7294,7 +7339,14 @@
     return sp.v + (sp.u ? ' ' + sp.u : '');
   }
 
-  function mdManual() { return (RD.MANUAL_MD || {})[ui.engineKey]; }
+  /* ...FALLING BACK TO THE BOARD, exactly as manualDoc() above already did. RD.MANUAL_MD is
+   * keyed by the engine key and the packed set is written for 'pwr'; this looked at the engine
+   * key ALONE, so the moment PWR2 became the plant the site runs (2026-08-26) the operator's
+   * manual rendered EMPTY on it — and the manual is one of only two areas site/flags.js stages
+   * as 'public', so that is what a visitor would have got. Found by verify_e2e_ui the first
+   * time it opened the manual on ?engine=pwr2. The two call sites had disagreed since the
+   * pwr2 card landed; the one with the fallback was right. */
+  function mdManual() { return (RD.MANUAL_MD || {})[ui.engineKey] || (RD.MANUAL_MD || {})[ui.plant]; }
   function openManual() { if (!mdManual() && !manualProfile()) { showToast('Manual data not loaded.', 'error'); return; } $('manualOverlay').hidden = false; renderManual(); }
   function closeManual() { $('manualOverlay').hidden = true; }
 
@@ -7601,9 +7653,15 @@
   // After load: derive the plant from the restored snapshot, set the selector, rebuild.
   function afterPlantChange() {
     var snap = service.assembleSnapshot();
-    ui.plant = uiPlantOf(snap.metadata.plant_id);
+    var pid = snap.metadata.plant_id;
+    ui.plant = uiPlantOf(pid);
     var dv = snap.metadata.design_version;
-    ui.engineKey = ui.plant === 'rbmk' ? (dv === 'post_chernobyl' ? 'rbmk_post' : 'rbmk_pre') : ui.plant;
+    /* OFF THE RAW plant_id, NOT off ui.plant. uiPlantOf() folds 'pwr2' onto the 'pwr' BOARD
+     * by design, so deriving the engine key from it named the retired engine for every PWR2
+     * save — and on a published build that engine is not in the page at all, so the next
+     * Reset would ask engineCtor() for a constructor that does not exist. Latent while both
+     * engines loaded everywhere and the two keys differed only in the menu highlight. */
+    ui.engineKey = pid === 'rbmk' ? (dv === 'post_chernobyl' ? 'rbmk_post' : 'rbmk_pre') : pid;
     ui.series = Object.assign({}, prof().defaultSeries);
     ui.seriesSide = {};                    // sides follow the selections they refine (#454)
     rebuildPlantUI();
@@ -8096,14 +8154,18 @@
     bindUI(); bindCommands(); bindAutomate();
     // optional ?engine= override (dev convenience / sharing)
     var em = /[?&]engine=(pwr2|pwr|rbmk_pre|rbmk_post|bwr)/.exec(location.search || '');   /* pwr2 BEFORE pwr — alternation takes the first match */
-    var startKey = em ? em[1] : 'pwr';
-    /* #514: the shell no longer loads the RBMK/BWR scripts (on hold, cards greyed). An
-       override naming an engine whose constructor is absent falls back to the PWR instead
-       of booting a plantless page — the dev route to those plants is test_rbmk.html /
-       test_bwr.html. */
-    var ctorPresent = { pwr: !!RD.PWREngine, pwr2: !!(RD.pwr2 && RD.pwr2.shell),
-                        rbmk_pre: !!RD.RBMKEngine, rbmk_post: !!RD.RBMKEngine, bwr: !!RD.BWREngine };
-    if (!ctorPresent[startKey]) startKey = 'pwr';
+    /* PWR2 IS THE DEFAULT since 2026-08-26. Every site link still carries ?engine=pwr2
+       explicitly — a bare shell.html is a path no visitor takes, which is the trap
+       test/verify_e2e_ui.js:26 records — so this default is what a hand-typed url and the
+       offline single-file build get. */
+    var startKey = em ? em[1] : 'pwr2';
+    /* An override naming an engine whose constructor is absent falls back to the shipped
+       plant instead of booting a plantless page. Two ways that happens: #514 took the
+       RBMK/BWR scripts out of the shell (dev route: test_rbmk.html / test_bwr.html), and a
+       published build has no retired PWR engine at all (dev route: any non-public build, or
+       test_pwr.html). Falling back to 'pwr' — as this did — would now be a fallback to the
+       one engine that may not be there. */
+    if (!ctorPresent(startKey)) startKey = 'pwr2';
     var startEng = ENGINES[startKey];
     ui.engineKey = startKey; ui.plant = startEng.plant; ui.initState = startEng.init;
     // optional ?init=<state> override (dev convenience) — one of the ENGINE's presets. The

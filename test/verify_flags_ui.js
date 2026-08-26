@@ -23,7 +23,21 @@
 'use strict';
 var path = require('path');
 var ROOT = path.join(__dirname, '..');
-var SHELL = 'file:///' + path.join(ROOT, 'ui', 'shell.html').replace(/\\/g, '/');
+/* ?engine=pwr — THE RETIRED ENGINE, DELIBERATELY, and it is the subject of this gate rather
+ * than an oversight. What is under test is whether the control room OBEYS site/flags.js, and
+ * every flag in that registry gates CONTENT: 26 scenarios, 18 procedures, the campaign, the
+ * checklists. All of it is authored against the retired engine, which is why ui/app.js gives
+ * ENGINES.pwr2 `freePlayOnly: true` — on the shipped plant those tabs answer with the
+ * Free-Play-only note BEFORE any flag is consulted, so a run there would score the flags
+ * green or red on a panel that never asked them.
+ *
+ * Measured 2026-08-26, when PWR2 became the default: 27/42, and all 15 failures were that
+ * one substitution — including three "public: says COMING SOON" rows, which is the shape a
+ * flag gate CANNOT be allowed to pass by accident.
+ *
+ * This moves to pwr2 when the scenario-compatibility pass lifts freePlayOnly, and not before.
+ * The engine still loads from the repo tree; only PUBLISHED builds drop it. */
+var SHELL = 'file:///' + path.join(ROOT, 'ui', 'shell.html').replace(/\\/g, '/') + '?engine=pwr';
 var LANDING = 'file:///' + path.join(ROOT, 'index.html').replace(/\\/g, '/');
 
 var pass = 0, fail = 0;
@@ -149,20 +163,20 @@ function pinChannel(ch) {
   await b.ctx.close();
 
   // ------------------------------- the routes back in on a public build
-  b = await build('public', SHELL + '?flags=1');
+  b = await build('public', SHELL + '&flags=1');
   await openSettings(b.page);
   ck('public + ?flags=1: the Features panel is reachable', await b.page.isVisible('#featureRow'));
   await closeSettings(b.page);
   await b.ctx.close();
 
-  b = await build('public', SHELL + '?flags=%2Bcampaign');
+  b = await build('public', SHELL + '&flags=%2Bcampaign');
   // Area and item flags are independent by design: opening the area alone offers
   // nothing, because every mission inside it is still gated on its own entry.
   ck('public + ?flags=+campaign: the area alone offers no gated mission',
     /COMING SOON/.test(await openMission(b.page, 'campaign')));
   await b.ctx.close();
 
-  b = await build('public', SHELL + '?flags=all');
+  b = await build('public', SHELL + '&flags=all');
   var all = await openMission(b.page, 'campaign');
   ck('public + ?flags=all: the campaign opens in full', /Act I/.test(all) && !/COMING SOON/.test(all));
   ck('public: a URL override is never persisted',
@@ -180,14 +194,14 @@ function pinChannel(ch) {
     { flag: 'walkthroughs', tab: 'walkthroughs' },
   ];
   for (var a = 0; a < AREAS.length; a++) {
-    b = await build('public', SHELL + '?flags=all,-' + AREAS[a].flag);
+    b = await build('public', SHELL + '&flags=all,-' + AREAS[a].flag);
     ck('only ' + AREAS[a].flag + ' off (everything else on): the tab still says COMING SOON',
       /COMING SOON/.test(await openMission(b.page, AREAS[a].tab)));
     await b.ctx.close();
   }
   // checklists is not a tab: with it off, walkthroughs still list and still
   // Follow — only the 📋 buttons and the instructor picker go.
-  b = await build('public', SHELL + '?flags=all,-checklists');
+  b = await build('public', SHELL + '&flags=all,-checklists');
   var wt = await openMission(b.page, 'walkthroughs');
   ck('only checklists off: walkthroughs still list and still Follow',
     /Follow/.test(wt) && !/COMING SOON/.test(wt));

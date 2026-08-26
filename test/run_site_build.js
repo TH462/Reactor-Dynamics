@@ -191,6 +191,79 @@ NO_BUST.forEach(function (f) {
       .test(headers) ? 'revalidated on every load, so the version shown is this build' : null);
 });
 
+// ------------------------------------------- the retired PWR engine, BOTH DIRECTIONS
+/* PWR2 is the plant the site runs (2026-08-26) and a PUBLIC build must not carry the engine
+ * it replaced — six files, 532 KB — while a PREVIEW build must still carry it, because that
+ * is where the campaign, the scenarios and the walkthroughs get vetted and every one of them
+ * is authored against it.
+ *
+ * TWO BUILDS, NOT ONE. A strip proved in one direction only is satisfied by a build that
+ * strips everything and by a build that strips nothing: assert public-is-absent alone and a
+ * `return` at the top of build_site.js's copy loop passes; assert preview-is-present alone and
+ * a deleted strip passes. Both, or neither is worth running. Same reasoning as the
+ * pwr-0 / pwr2-3 disabled-button count in verify_e2e_ui.
+ *
+ * THE LIST IS DERIVED FROM THE RULE, NOT COPIED FROM THE PRODUCER. build_site.js names six
+ * files; re-parsing that array would make the two agree by construction, including when both
+ * are wrong. The rule is "everything in engines/pwr/ except the two files PWR2 REUSES", so
+ * that is what is written here — and it also catches a seventh file appearing in that
+ * directory, which a copied list never would. If PWR2's reuse ever ends, KEEPS goes empty and
+ * this check gets stricter on its own.
+ *
+ * KEEPS IS A PRECONDITION, NOT A COURTESY: pwr2_shell.js:622 throws without RD.PWR_CONFIG and
+ * RD.PWRInstruments, so a build that pruned those would produce a site with no plant at all,
+ * and every other check in this file would still pass. */
+var KEEPS = ['pwr_config.js', 'pwr_instruments.js'];
+function buildAs(channel) {
+  var dir = fs.mkdtempSync(path.join(os.tmpdir(), 'rd-site-' + channel + '-'));
+  var r = cp.spawnSync(process.execPath, [path.join(ROOT, 'site', 'build_site.js')], {
+    cwd: ROOT, encoding: 'utf8',
+    env: Object.assign({}, process.env, { RD_SITE_OUT: dir, RD_SITE_CHANNEL: channel }),
+  });
+  var shell = path.join(dir, 'ui', 'shell.html');
+  var out = {
+    status: r.status,
+    html: fs.existsSync(shell) ? fs.readFileSync(shell, 'utf8') : '',
+    files: fs.existsSync(path.join(dir, 'engines', 'pwr'))
+      ? fs.readdirSync(path.join(dir, 'engines', 'pwr')) : [],
+    dir: dir,
+  };
+  out.retired = out.files.filter(function (f) { return KEEPS.indexOf(f) === -1; });
+  out.referenced = out.retired.filter(function (f) { return out.html.indexOf('pwr/' + f) !== -1; });
+  return out;
+}
+var pub = buildAs('public'), prev = buildAs('preview');
+[['public', pub], ['preview', prev]].forEach(function (p) {
+  check('RETIRED', 'RD_SITE_CHANNEL=' + p[0], 'the build exits ' + p[1].status,
+    p[1].status === 0 ? 'both channels build' : null);
+});
+
+check('RETIRED', 'public: engines/pwr/', 'ships ' + JSON.stringify(pub.files.slice().sort()),
+  pub.retired.length === 0 ? 'only the two files PWR2 reuses survive the prune' : null);
+check('RETIRED', 'public: ui/shell.html', 'references ' + pub.referenced.length +
+  ' retired engine file(s)',
+  pub.referenced.length === 0 ? 'the DEV-ONLY block is gone from the published control room' : null);
+KEEPS.forEach(function (f) {
+  check('RETIRED', 'public: engines/pwr/' + f, 'present and still loaded',
+    pub.files.indexOf(f) !== -1 && pub.html.indexOf('pwr/' + f) !== -1
+      ? 'pwr2_shell.js:622 throws without it — pruning it would ship a site with no plant' : null);
+});
+check('RETIRED', 'public: ui/shell.html', 'loads engines/pwr2/pwr2_shell.js',
+  pub.html.indexOf('pwr2/pwr2_shell.js') !== -1 ? 'the engine the published site runs' : null);
+check('RETIRED', 'public: site pages', 'the simulator links carry ?engine=pwr2',
+  fs.readFileSync(path.join(pub.dir, 'index.html'), 'utf8').indexOf('engine=pwr2') !== -1 &&
+  fs.readFileSync(path.join(pub.dir, '_redirects'), 'utf8').indexOf('engine=pwr2') !== -1
+    ? 'index.html and the /sim redirect both open the plant the build contains' : null);
+
+check('RETIRED', 'preview: engines/pwr/', 'ships ' + prev.retired.length + ' retired file(s)',
+  prev.retired.length === 6 ? 'the preview site keeps the engine the guided content needs' : null);
+check('RETIRED', 'preview: ui/shell.html', 'references ' + prev.referenced.length +
+  ' retired engine file(s)',
+  prev.referenced.length === 6 ? 'so ?engine=pwr still reaches it for vetting and A/B' : null);
+[pub.dir, prev.dir].forEach(function (d) {
+  try { fs.rmSync(d, { recursive: true, force: true }); } catch (e) { /* scratch dir */ }
+});
+
 report();
 
 // ---------------------------------------------------------------- report
@@ -198,7 +271,7 @@ function report() {
   try { fs.rmSync(OUT, { recursive: true, force: true }); } catch (e) { /* scratch dir */ }
   var byRule = {};
   findings.forEach(function (f) { (byRule[f.rule] = byRule[f.rule] || []).push(f); });
-  ['BUILD', 'PAGES', 'BUST', 'NOCACHE'].forEach(function (r) {
+  ['BUILD', 'PAGES', 'RETIRED', 'BUST', 'NOCACHE'].forEach(function (r) {
     var all = byRule[r] || [], bad = all.filter(function (f) { return !f.why; });
     if (!all.length) return;
     console.log('\n' + B + (bad.length ? R + 'FAIL' : G + 'PASS') + X + '  ' + B + r + X +

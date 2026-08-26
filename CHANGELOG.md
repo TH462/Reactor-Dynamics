@@ -30,6 +30,58 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
 
 ## [Unreleased]
 
+### Changed (#523 — PWR2 is the plant the site runs; the retired engine leaves every published build, 2026-08-26)
+- **The simulator now opens on PWR2.** Every site link and the `/sim` redirect carry
+  `?engine=pwr2`, `ui/app.js` boots and falls back to it, and its Plant & Mission card is now
+  plain **PWR**. The engine it replaced is labelled **"PWR — retired engine"** and appears only
+  on a dev or preview build. *(OWNER RULINGS, 2026-08-26, in planning: "Flip now, track the
+  gaps" · "Strip it at build time" · "Keep freePlayOnly, file the compat pass" · "Reword to Hot
+  Shutdown (Mode 4)".)*
+- **A published build does not contain the retired engine at all.** `site/build_site.js` deletes
+  its six `<script>` tags from `ui/shell.html` and prunes the six files — **544,663 bytes** —
+  when the channel is `public`. `tools/make_portable.js` does it unconditionally, so the offline
+  download is the plant the site runs and nothing else.
+- **The strip is CHANNEL-GATED on purpose.** The preview site keeps the retired engine, because
+  the campaign, the scenarios and the walkthroughs are authored against it and that is where they
+  get vetted. A feature flag can be overridden by hand on a live site; a deleted `<script>` tag
+  cannot. Two files stay on **every** build — `pwr_config.js` and `pwr_instruments.js` — because
+  PWR2 reuses the published instrument layer and the protection tables and throws without them.
+- **The site copy stopped claiming cold shutdown.** PWR2's coldest starting condition is Hot
+  Shutdown (Mode 4, 250 °F / 350 psig): the water-property layer floors at 0.1 MPa, whose
+  saturation temperature is 211 °F, so Mode 5 is not representable (#524). Five pages reworded.
+- **Free Play only, still.** Campaign, scenarios, walkthroughs and checklists remain blocked on
+  PWR2 pending the compatibility pass (#525). No public visitor loses anything by it — all of that
+  content is stage `preview` in `site/flags.js` and was already gated off the public site.
+- Gaps filed rather than absorbed: #524 (Mode 5) · #525 (compat pass) · #526 (procedure pool) ·
+  #527 (instructor parameter map) · #528 (rod AUTO) · #529 (turbine FOLLOW) · #530 (steam-line
+  break, stuck rod, vacuum decay) · #531 (R8 ambients) · #532 (manuals) · #533 (board harness).
+
+### Fixed (#523 — two defects that were invisible until PWR2 became the default, 2026-08-26)
+- **The operator's manual rendered empty on PWR2.** `mdManual()` looked the packed manual up by
+  engine key alone while its neighbour `manualDoc()` fell back to the board; the set is keyed
+  `pwr`. The manual is one of only two areas the public site offers, so this is what a visitor
+  would have got. Found by `verify_e2e_ui` the first time it opened the manual on `?engine=pwr2`.
+- **Loading a PWR2 save installed the retired engine's key.** `afterPlantChange()` derived the
+  engine from the *board*, and PWR2 deliberately wears the PWR board — so the next Reset would ask
+  for a constructor a published build does not contain. Now derived from the snapshot's own
+  `plant_id`.
+
+### Changed (gates, #523)
+- `run_site_build` **31 → 41**: a new `RETIRED` rule builds the site **twice** (a new
+  `RD_SITE_CHANNEL` hook, because `site/channel.js` is tracked and a gate must not rewrite the
+  tree it measures) and proves the strip in **both directions** — a strip proved one way is
+  satisfied by a build that strips everything, and by one that strips nothing. Injection-verified
+  both ways.
+- `run_portable` **147 → 145**: the engine sentinel becomes `RD.pwr2.shell`, and a **negative**
+  sentinel now fails if the retired engine reappears — the only check here that can rot, since a
+  returning engine makes the bundle bigger and every other check still passes.
+- `verify_e2e_ui` sweeps `pwr2`. Two navigations stay on the retired engine deliberately, and
+  `verify_flags_ui` entirely, because both test content that only exists there.
+- `testSteamFeedPair`'s post-trip assertion re-derived against a measurement, not swapped:
+  PWR2 reads dump **0 %** / ADV **61 %** where the retired engine reads dump 2 % / ADV 0 %,
+  because C-7 holds the condenser dumps shut on a dispatch trip. The check now accepts either
+  path; its claim and its discriminant are unchanged and it still passes on both engines.
+
 ### Fixed (#519, #521 — two flaky gates that could return either verdict on the same commit, 2026-08-26)
 - **The engine performance gate now measures both engines through the same weather.** It timed
   all of the new engine's samples, then all of the old one's, so a busy neighbour overlapping one

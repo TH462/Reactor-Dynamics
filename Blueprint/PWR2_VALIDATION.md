@@ -5593,3 +5593,116 @@ does not occupy away from a guard that now holds the last good step (§91). **Th
 "is this a defect" is no** — and the reading that matters on a stagnant loop already exists and is
 sourced: `t_core_exit_c`, the post-TMI inadequate-core-cooling channel (NUREG-0737 II.F.2), which
 is the core's own temperature rather than a leg's.
+
+## 94. #523 — PWR2 IS THE PLANT THE SITE RUNS, AND THE RETIRED ENGINE LEAVES EVERY PUBLISHED BUILD — 2026-08-26
+
+The cutover. Four rulings, all given in planning on 2026-08-26 and all quoted in the issue:
+**"Flip now, track the gaps"** · **"Strip it at build time"** · **"Keep freePlayOnly, file the
+compat pass"** · **"Reword to Hot Shutdown (Mode 4)"**. This closes the third of the three items
+`CLAUDE.md` listed as remaining before replacement — the owner's replacement ruling. The other
+two are now #531 (R8's ambient source check) and #525 (mission compatibility).
+
+### What the removal actually is
+Not a deletion. `ui/shell.html` wraps six files — `pwr_thermal`, `pwr_pressurizer`,
+`pwr_pressurizer2`, `pwr_primary`, `pwr_steam_generator`, `pwr_engine` — in a DEV-ONLY marker
+pair, the same convention the site pages already used, and two consumers act on it:
+
+| consumer | when | what it does |
+|---|---|---|
+| `site/build_site.js` | channel `public` **only** | deletes the tags (1,150 bytes) **and prunes the six files** (544,663 bytes) |
+| `tools/make_portable.js` | always | deletes the tags before the inliner counts anything |
+
+**The channel gate is the design, not caution.** The preview site is where the campaign, the
+scenarios and the walkthroughs are vetted, and every one of them is authored against the retired
+engine — which is exactly why `ENGINES.pwr2` still carries `freePlayOnly: true`. A feature flag
+can be overridden by hand on a live site; a deleted `<script>` tag cannot, so an unconditional
+strip would have taken the preview site's guided content with it and left nowhere to vet it.
+Making it unconditional later is deleting one branch.
+
+The portable build is unconditional for the opposite reason: it is a **distribution artifact**,
+the one thing a stranger is handed, and it should be the plant the site runs and nothing else.
+
+### The two files that STAY, and the one that turned out not to be needed
+`pwr2_shell.js:622` throws without `RD.PWR_CONFIG` and `RD.PWRInstruments`: PWR2 reuses the
+published instrument layer (D4) and builds its protection config from `RD.PWR_CONFIG.protection`,
+which `pwr_control.js:1781` writes. So `engines/pwr/pwr_config.js` and
+`engines/pwr/pwr_instruments.js` are on every build, and the gate asserts their presence as a
+**precondition** — pruning them would produce a site with no plant at all while every other
+check still passed.
+
+`pwr_pressurizer.js` looked like a third, because `pwr_instruments.js:247` reads
+`RD.pwrPressurizer.levelProgram`. It is not: `pwr2_shell.js:686` passes `level_program_fn` and
+`_levelDev` prefers it (`pwr_instruments.js:246-250`). Verified rather than reasoned — a grep of
+`ui/`, `layers/`, `scenarios/` and `engines/pwr2/` for `pwrPressurizer|pwrThermal|pwrPrimary|
+pwrSteamGenerator` returns nothing outside `engines/pwr/` and `test/`. `pwr_instruments.js` also
+moved **up** the load list, above the marked block, so the strippable set is contiguous; it has
+no load-time dependency on anything (its `T_sat` is duplicated locally for that reason).
+
+### Two defects, and the reason neither could have been found earlier
+Both were latent for as long as PWR2 was a second card, and both fired on the first run after it
+became the default.
+
+**The operator's manual rendered EMPTY on PWR2.** `mdManual()` read
+`RD.MANUAL_MD[ui.engineKey]`; the packed set is keyed `pwr`. Fifty lines away, `manualDoc()`
+read `[ui.engineKey] || [ui.plant]`. The two call sites had disagreed since the pwr2 card
+landed and the one with the fallback was right. This is not an internal-tooling miss: the manual
+is **one of only two areas `site/flags.js` stages as `public`**, so it is half of what a visitor
+is offered. Found by `verify_e2e_ui` the first time it clicked `#manualBtn` on `?engine=pwr2`.
+
+**A PWR2 save installed the retired engine's key.** `afterPlantChange()` derived
+`ui.engineKey` from `ui.plant`, and `uiPlantOf()` folds `'pwr2'` onto the `'pwr'` **board** by
+design. On a published build that engine is not in the page, so the next Reset would ask
+`engineCtor()` for a constructor that does not exist. Now derived from the raw `plant_id`. The
+inverse seam `uiPlantOf` exists to manage is exactly where it went wrong.
+
+### The card list MEASURES, it does not declare
+`ctorPresent(key)` moved out of `init()` to module scope and now gates three things: the
+`?engine=` override, the boot fallback (`'pwr'` → `'pwr2'`) and the Plant & Mission plant column.
+A published build cannot hold a static list of what is available, because the answer differs per
+build — so the menu looks. RBMK/BWR keep their greyed `soon` cards deliberately (#514): a plant
+on hold is a roadmap statement, not a missing file.
+
+### One gate assertion re-derived, with the measurement that justified it
+`testSteamFeedPair` asserted `dump > 1` at t+600 s after a turbine trip from hot full power.
+Measured on both engines, through the gate's own harness:
+
+| | governor | condenser dump | ADV | STEAM FLOW | SG FEED |
+|---|---|---|---|---|---|
+| retired engine | 0 % | 2 % | 0 % | 22 gpm | 22 gpm |
+| **PWR2** | 0 % | **0 %** | **61 %** | 31 gpm | 33 gpm |
+
+PWR2's dump reading 0 is the plant being **right**: C-7 holds the condenser dumps shut on a
+dispatch trip (§47, sourced), so the atmospheric dump carries the decay heat — the reason the ADV
+rung was built (#371). Pinning the condenser path would have made the gate demand a sourced
+interlock be defeated. The assertion is now `dump > 1 || adv > 1`; the claim (#206 — STEAM FLOW
+must not be the governor-only channel) and the discriminant are untouched, and it still passes on
+the retired engine, which is what makes it a better check rather than a refit (HR10).
+
+### Gates
+- `run_site_build` **31 → 41**. The new `RETIRED` rule builds **twice**, through a new
+  `RD_SITE_CHANNEL` hook — `site/channel.js` is tracked, so a gate must not rewrite the tree it
+  measures. It asserts both directions and derives its file list from the **rule** ("everything in
+  `engines/pwr/` except the two PWR2 reuses") rather than re-parsing the producer's array, which
+  would make the two agree by construction and would miss a seventh file appearing there.
+  Injection-verified: strip unconditionally → 41/2 naming the preview rows; disable the strip →
+  41/2 naming the public rows.
+- `run_portable` **147 → 145**. Its shell scan now strips the DEV-ONLY block from the bundler's
+  own regex — scanning the raw shell would have broken both halves in opposite directions (the
+  tally reporting 100 of 108 on a correct bundle; the LOADS sweep certifying six files the bundle
+  does not ship). Engine sentinel `RD.PWREngine` → `RD.pwr2.shell`, plus a **negative** sentinel:
+  `/RD\.PWREngine\s*=/` must not appear. That is the only check here that can rot, because a
+  returning engine makes the file bigger and everything else still passes. Proved non-vacuous —
+  the pattern matches the retired engine's own source and not the bundle.
+- `verify_e2e_ui` sweeps `pwr2`: four screenshots, the 23-label board reachability list, chart
+  settings, monitor list, mission close, run-start mark, rewind picker, diag bundle.
+  `testEsfArmButtons` still drives **both** (pwr 0 disabled, pwr2 3 — that is the comparison).
+- `verify_flags_ui` **27/42 → 42/42** once pointed at `?engine=pwr`. All fifteen failures were
+  the same substitution — including three *"public: says COMING SOON"* rows, which is the shape a
+  flag gate must never pass by accident. Every flag in that registry gates CONTENT, and the
+  content lives on the retired engine; the file now says so where it builds its URL.
+- `run_all`: 93 runners, everything else at baseline.
+
+### What is open, and where
+#524 Mode 5 · #525 the compatibility pass · #526 the procedure pool · #527 the instructor's
+parameter map · #528 rod AUTO · #529 turbine FOLLOW · #530 steam-line break / stuck rod / vacuum
+decay · #531 R8 · #532 the manuals · #533 the board harness.
