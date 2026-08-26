@@ -389,6 +389,16 @@ function runSuite(RD, rec, quiet) {
   ckT('before the failure: tailpipe COLD, no discharge, stuck reads an earned false',
       prT.tailpipe_temp_c < 100 && prT.relief_kgs === 0 && prT.porv_stuck === false,
       'tailpipe ' + prT.tailpipe_temp_c.toFixed(0) + ' degC — a pipe that has never passed');
+  /* THE STICK IS A LATCH (owner design, 2026-08-25). Armed alone it moves nothing — pinned,
+   * because the pre-latch build opened the valve on arming and the plant never had to lift
+   * it. Then ONE second of the operator's lift, released: the latch must hold what the
+   * demand no longer asks for. */
+  rideT(quiet ? 20 : 60, { porv_stick: true });
+  ckT('ARMING the stick lifts nothing: shut, cold, stuck false, armed reported',
+      prT.relief_kgs === 0 && prT.porv_stuck === false && prT.porv_stick_armed === true &&
+      prT.tailpipe_temp_c < 100,
+      'stuck ' + prT.porv_stuck + ', discharge ' + prT.relief_kgs.toFixed(2) + ' kg/s');
+  rideT(1, { porv_stick: true, porv_manual: true });
   rideT(quiet ? 40 : 120, { porv_stick: true });
   ckT('the PORV sticks: HALF the two-valve capacity flows and the tailpipe goes HOT',
       Math.abs(prT.relief_kgs - PZ.RELIEF.porv_kgs / 2) < 1e-9 &&
@@ -561,12 +571,18 @@ var MUTATIONS = [
   ['the +5 % anticipatory backup-heater signal is deleted',
    'var backupOnLevel = levErr <= -LEVEL.backup_above_program_pct;',
    'var backupOnLevel = false;'],
-  ['the stick lever is dead (drivers.porv_stick ignored)',
-   'pz.porvStuck = !!drivers.porv_stick;',
-   'pz.porvStuck = false;'],
+  ['the stick lever is dead (a lift never latches)',
+   'else if (pz.porvOpen || pz.porvManual) pz.porvStuck = true;',
+   'else if (false) pz.porvStuck = true;'],
+  ['the stick OPENS the valve on arming (the pre-2026-08-25 build: no latch, no lift needed)',
+   'else if (pz.porvOpen || pz.porvManual) pz.porvStuck = true;',
+   'else pz.porvStuck = true;'],
+  ['the clear does not release the latch',
+   'if (!stickArmed) pz.porvStuck = false;',
+   'if (false) pz.porvStuck = false;'],
   ['a stuck PORV flows BOTH valves\' capacity (one valve stuck is one valve)',
-   ': (pz.porvStuck ? RELIEF.porv_kgs / 2 : 0));',
-   ': (pz.porvStuck ? RELIEF.porv_kgs : 0));'],
+   ': (oneValve ? RELIEF.porv_kgs / 2 : 0));',
+   ': (oneValve ? RELIEF.porv_kgs : 0));'],
   ['the block valve never isolates',
    'var porv_kgs = !pz.blockOpen ? 0',
    'var porv_kgs = false ? 0'],

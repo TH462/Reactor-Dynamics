@@ -392,10 +392,13 @@
       var sev = c.severity !== undefined ? c.severity : 0.5;
       EN.command(e, 'break_open', { area_m2: Math.max(1e-5, sev * 0.002), node: c.node || 'cold_leg' });
     },
-    /* the old open_porv wrote relief demand directly; PWR2's PORV is its controller's — the
-     * OPERATOR path is the failure lever pair (stick to open, block valve to close) */
-    open_porv_manual: function (e, c) { EN.command(e, 'porv_stick', true); },
-    close_porv:       function (e, c) { EN.command(e, 'porv_stick', false); },
+    /* THE OPERATOR'S PORV (2026-08-25): a real manual open demand on one valve. Until this
+     * date the button was routed through the STICK lever, so "open PORV" was a failure
+     * injection and the stick could never wait for a lift — see pwr2_pressurizer step 3. The
+     * close is ineffective while the stick latch holds (the manual's "close_porv overridden;
+     * PORV remains open"); the block valve is the operator's isolation. */
+    open_porv_manual: function (e, c) { EN.command(e, 'porv_manual', true); },
+    close_porv:       function (e, c) { EN.command(e, 'porv_manual', false); },
     /* grid disconnect is a load rejection: the actuator is the load target */
     disconnect_grid:  function (e, c) { EN.command(e, 'load_mwe', 0); },
     /* set_rcp: OFF secures the pump (the trip actuator + the SECURED display latch), ON is
@@ -454,6 +457,8 @@
         MAPPED.set_instrument_failure(e, { instrument_id: def.instrument_id,
           mode: def.mode === 'stuck' ? 'stuck' : def.mode, stuck_value: def.stuck_value });
       }
+      /* ARMS the latch (owner design, 2026-08-25): the valve stays shut until the plant or
+       * the operator lifts it, then it never reseats — pwr2_pressurizer step 3 */
       else if (c.failure_id === 'stuck_porv_open') EN.command(e, 'porv_stick', true);
       else if (c.failure_id === 'primary_leak') REHOMED.primary_leak(e, c);
       else if (c.failure_id === 'rcp_trip') EN.command(e, 'pump_trip', true);
@@ -817,7 +822,8 @@
    * "what is broken" and "what a clear-all clears" cannot drift apart. */
   function engineActiveFailures(eng) {
     var out = [];
-    if (eng.pz.porvStuck) out.push('stuck_porv_open');
+    /* ARMED or LATCHED — the injection is present (and clearable) before the valve has lifted */
+    if (eng.pzDrivers.porv_stick || eng.pz.porvStuck) out.push('stuck_porv_open');
     /* the break family reports by NODE — a seal leak is the rcp node's break (#507 wave 3),
      * a tube rupture the sg_primary node's (#507 wave 5) */
     if (eng.brk && eng.brk.open) {

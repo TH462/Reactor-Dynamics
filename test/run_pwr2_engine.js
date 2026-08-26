@@ -178,15 +178,32 @@ function runSuite(RD, rec, quiet, only) {
   ckT('aux_spray reaches the vessel', tAux.spray_flow_pct !== undefined &&
       eng._pzr.aux_spray_frac === 0.5, 'aux frac ' + eng._pzr.aux_spray_frac);
   EN.command(eng, 'aux_spray', 0);
+  /* THE STICK IS A LATCH (owner design, 2026-08-25): arming it moves nothing; the first lift
+   * latches it; a manual close then does nothing; only the clear releases it. Each clause
+   * pinned, because the pre-latch build opened the valve on arming. */
   EN.command(eng, 'porv_stick', true);
+  var tArm = run(eng, 1);
+  ckT('porv_stick ARMS without lifting: a shut valve stays shut, stuck reads false',
+      tArm.porv_stuck === false && tArm.porv_open === false && eng._pzr.relief_kgs === 0,
+      'stuck ' + tArm.porv_stuck + ', open ' + tArm.porv_open);
+  EN.command(eng, 'porv_manual', true);
   var tStick = run(eng, 1);
-  ckT('porv_stick reaches the vessel and the contract reports it',
+  ckT('the operator lift LATCHES the armed stick and the contract reports it',
       tStick.porv_stuck === true && tStick.porv_open === true, '');
+  EN.command(eng, 'porv_manual', false);
+  var tHeld = run(eng, 1);
+  ckT('a manual close does NOT move a latched valve (one valve still passing)',
+      tHeld.porv_stuck === true && tHeld.porv_open === true &&
+      Math.abs(eng._pzr.relief_kgs - globalThis.RD.pwr2.pressurizer.RELIEF.porv_kgs / 2) < 1e-9,
+      eng._pzr.relief_kgs.toFixed(2) + ' kg/s');
   EN.command(eng, 'block_valve', false);
   var tBlock = run(eng, 1);
   ckT('block_valve isolates the stuck valve', tBlock.block_valve_open === false &&
       eng._pzr.relief_kgs === 0, '');
   EN.command(eng, 'porv_stick', false); EN.command(eng, 'block_valve', true);
+  var tClr = run(eng, 1);
+  ckT('clearing the failure is the only release: unlatched, shut, no discharge',
+      tClr.porv_stuck === false && tClr.porv_open === false && eng._pzr.relief_kgs === 0, '');
   ckT('an unknown command THROWS — one door, spelled right',
       (function () { try { EN.command(eng, 'porv_stik', true); return false; }
                      catch (e) { return /unknown command/.test(e.message); } })(), '');
@@ -227,7 +244,7 @@ function runSuite(RD, rec, quiet, only) {
   var engQ1 = EN.createEngine({});
   run(engQ1, 30);
   var mQ0 = engQ1.sys.M_total;
-  EN.command(engQ1, 'porv_stick', true);
+  EN.command(engQ1, 'porv_stick', true); EN.command(engQ1, 'porv_manual', true);   /* arm + lift */
   run(engQ1, 30);
   ckT('a stuck PORV takes REAL mass out of the loop (the relief sink is connected)',
       engQ1.sys.M_total - mQ0 < -80,

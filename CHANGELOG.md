@@ -30,6 +30,17 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
 
 ## [Unreleased]
 
+### Changed (#515 — the PORV stick is a LATCH, 2026-08-25, owner design)
+- **`stuck_porv_open` on PWR2 ARMS and waits**: the valve stays shut until the plant or the
+  operator lifts it, then never reseats; clearing the failure is the only release. The
+  injection used to open the valve itself. PWR2 gains a real operator PORV (`porv_manual`,
+  one valve, the feed-and-bleed lift) — `open_porv_manual` was routed through the stick lever.
+  `run_pwr2_pressurizer` 68 → 69 (mutations 28 → 30), `run_pwr2_engine` 91 → 94. Measured on
+  the way (`PWR2_VALIDATION.md` §82): no loss-of-load or loss-of-feed transient lifts this
+  plant's PORV on its own — peak 2268 psia against a 2335 psia lift even with the P-9 channel
+  failed and the dumps unavailable; only an ATWS (98 s) or the operator's lift does. The old
+  engine's `stuck_porv_open` is unchanged (the TMI missions are authored on opens-and-holds).
+
 ### Changed (#513 — the aggregate gate at 7m19s, 2026-08-25)
 - **`node test/run_all.js` runs in ~7.5 min at 10-way** (measured 439 s; the workflow's own note
   said ~19 min, CI's last green pair 43m31s). Sequential true-cost sum 2,814 → ~2,100 s. No

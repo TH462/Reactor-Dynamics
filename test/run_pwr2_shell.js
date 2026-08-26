@@ -660,6 +660,7 @@ function runSuite(SH, rec, quiet, only) {
     for (i = 0; i < 100; i++) eL.step(0.02);
     eL.applyCommand({ action: 'inject_failure', failure_id: 'porv_indicator_stuck_closed' });
     eL.applyCommand({ action: 'inject_failure', failure_id: 'stuck_porv_open' });
+    eL.applyCommand({ action: 'open_porv_manual' });   /* the stick is a LATCH: it needs a lift */
     for (i = 0; i < 50; i++) eL.step(0.02);
     var tsL = eL.getTrueState();
     var lampOk = eL.instruments.reading.porv_indicator === 'closed' &&

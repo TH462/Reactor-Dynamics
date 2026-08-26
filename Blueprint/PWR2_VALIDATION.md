@@ -4540,3 +4540,66 @@ AFW-reset checks re-pointed from the narrowed `reset_protection` onto `reset_afa
 claims unchanged: clearing a latch is not securing a pump; one switch per pump). shell 76 ·
 endurance 18p/0xf · afw 25 · feedwater 29 · eccs 38 · true_state 64 · full aggregate at
 baseline.
+
+## 82. #515 — THE PORV STICK IS A LATCH, AND THE TMI STEPS DO NOT LIFT THE VALVE ON THIS PLANT — 2026-08-25
+
+*(OWNER DESIGN, 2026-08-25: "The PORV stuck failure injection should work like a latch. it
+shouldnt just open the PORV, it shouldnt activate until the PORV is opened. Once the PORV is
+opened, then the failure injection can keep it opened. Trying to follow the steps of TMI i cant
+get the PORV to open naturally through plant physics.")*
+
+**The latch.** `drivers.porv_stick` now ARMS the failure and moves nothing: the first lift —
+the controller's own +100 psi lift or the operator's manual open — sets `pz.porvStuck`, and from
+then on neither the controller's reseat nor a manual close moves the valve; clearing the failure
+is the only release. Before this the injection opened the valve itself, so the plant never had
+to lift it and the transient that lifts a PORV was never part of the casualty. Two things fell
+out of the change: (1) PWR2 had **no operator PORV** — `open_porv_manual`/`close_porv` were
+routed through the stick lever, so "open PORV" was a failure injection; there is now a real
+`porv_manual` demand on one valve (half the pair's capacity, the feed-and-bleed lift; Ginna's
+control switches are per valve), ineffective to close while the latch holds. (2) The failure
+list reports `stuck_porv_open` while ARMED, not only once latched, so the injection is visible
+and clearable before the valve has lifted. The pressurizer report carries `porv_stick_armed`
+and `porv_manual`; the `true_state` contract is unchanged (`porv_stuck` = latched, `porv_open`
+= physically passing).
+
+**Gates.** `run_pwr2_pressurizer` 68 → 69 checks, mutations 28 → 30 — armed-alone pinned as
+shut/cold/stuck-false, then one second of the operator's lift released and the latch must hold
+what the demand no longer asks for; the two new mutations are the pre-latch build (arming opens
+the valve) and a clear that never releases, both red. `run_pwr2_engine` 91 → 94: arm-without-
+lift, lift-latches, manual-close-does-not-move-a-latched-valve, clear-is-the-only-release.
+`run_pwr2_shell`'s lamp check now lifts the valve by hand before asserting the TMI-2 lamp lies
+over it. The old engine's `stuck_porv_open` is untouched: it still opens-and-holds, and the nine
+TMI missions (`pwr_tmi*.js`) are authored on that semantics.
+
+**Does anything lift the PORV on its own? MEASURED, hot full power, stick armed, dt 0.02 s.**
+The lift point is setpoint + 100 psi = 2335 psia (Ginna's 2335 psig class).
+
+| transient | peak P (psia) | PORV lift | reactor trip |
+|---|---|---|---|
+| loss of main feed + AFW tagged shut (the TMI steps), 100 % | 2233 at 0 s, then falls | never | 0 s, `turbine_trip` (P-9) |
+| turbine trip, 100 % | 2233, falls | never | 0 s, P-9 |
+| turbine trip at 45 MWe / 43 % power, rods 120 (below P-9) | 2081, falls to 1920 | never | none |
+| loss of feed + AFW shut at 43 % (below P-9) | 2081, falls | never | none in 300 s |
+| loss of feed + AFW shut with the P-9 CHANNEL FAILED (harness-mutated protection) | **2268 at 18 s** | never | 59.8 s, `sg_lolo_level` |
+| …the same plus loss of condenser vacuum (dumps unavailable) | **2269 at 16 s** | never | 61.4 s, `sg_lolo_level` |
+| loss of feed + `failure_to_scram` (ATWS), 100 % | 2501 | **98.0 s**, latched 98.0 s; safeties 102.3 s | latched 0 s, rods held |
+| operator opens the PORV (`porv_manual`), stick armed | — | 0 s, latched 0 s | 32.3 s, `ot_delta_t`; P 1467 psia at 60 s |
+
+**The reading.** TMI-2's PORV lifted 3–6 s after the turbine trip because a B&W plant has no
+anticipatory reactor trip and its once-through steam generators hold seconds of inventory — the
+reactor ran at 97 % against a vanishing heat sink and the pressure went through 2255 psig before
+the 2355 psig trip caught it at 8 s. This plant is Westinghouse-shaped and every one of those
+pieces is sourced the other way: P-9 makes a turbine trip a reactor trip above 50 % (Ginna TS
+Bases B 3.3.1), so pressure FALLS from t = 0; below P-9 the 40 % dumps carry the rejection and
+pressure still falls; and even with the P-9 channel failed and the dumps gone, moderator feedback
+walks power 100 → 66 % as Tavg rises 18 °F, the U-tube SG holds a minute of inventory, and the
+spray caps the rise at **2268 psia — 67 psi short of the lift** — before the lo-lo level trip
+at 60 s. The only unassisted lift is the ATWS at 98 s, which is a different accident. **On this
+plant the TMI initiating spike is not a transient the physics produce, and that is the
+prototypical answer, not a defect.** The sourced Westinghouse initiator for a stuck-open PORV is
+the *inadvertent* opening — "Inadvertent opening of a pressurizer relief or safety valve" is on
+the Ginna TS Bases' analyzed-event list (ML20339A221, `find_source.js` verdict 2026-08-25; the
+UFSAR 15.6.1 section number is [recalled]) — i.e. the valve opens on a spurious signal, not on a
+pressure spike. The ruling this section leaves open is in #515: whether the sim's TMI initiation
+is the operator's lift with the stick armed (built, above), a new `inadvertent_porv_open` row
+(sourced initiator, a one-lever build on `porv_manual`'s wire from the failure side), or both.

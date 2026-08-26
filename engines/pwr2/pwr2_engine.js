@@ -436,7 +436,8 @@
         break;
       case 'pzr_spray_manual':   eng.pzDrivers.spray_manual = value === null ? undefined : +value; break;
       case 'aux_spray':      eng.pzDrivers.aux_spray = +value; break;
-      case 'porv_stick':     eng.pzDrivers.porv_stick = !!value; break;
+      case 'porv_stick':     eng.pzDrivers.porv_stick = !!value; break;   /* ARMS the latch */
+      case 'porv_manual':    eng.pzDrivers.porv_manual = !!value; break;  /* the operator's lift */
       case 'block_valve':    eng.pzDrivers.block_valve = !!value; break;
       case 'dump_mode':      eng.dcDrivers.mode = value; break;    /* 'tavg'|'pressure'|'off' */
       case 'dump_pressure_setpoint_mpa': eng.dcDrivers.pressure_setpoint_mpa = +value; break;

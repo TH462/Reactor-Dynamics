@@ -253,7 +253,9 @@
       heatersShed: false,
       levErrInt: 0,                      /* the level PI's integral state, %*s */
       lowLevelCut: false,                /* the 17 % letdown-isolate / heater-cut latch */
-      porvStuck: false,                  /* the TMI failure lever (drivers.porv_stick) */
+      porvStuck: false,                  /* the TMI failure LATCH: set by the first lift while
+                                          * drivers.porv_stick is armed, cleared only with it */
+      porvManual: false,                 /* the operator's open demand (drivers.porv_manual) */
       blockOpen: true,                   /* the PORV block valve — the operator's isolation */
       T_tail_c: opts.tail_c === undefined ? 50 : opts.tail_c
     };
@@ -437,10 +439,25 @@
     /* ---- 3. RELIEF: controller PORV at +100 psi, mechanical safeties at 2500 psia. Both act
      * on their own (HR5: plant hardware) and are REPORTED for the caller to wire as a sink.
      *
-     * THE TMI LEVERS (stage 2b, 2026-08-19):
-     *   drivers.porv_stick   ONE PORV latched open regardless of the controller — the TMI-2
-     *                        failure (a legitimate lift that never reseated). Half the
-     *                        two-valve capacity, because one valve stuck is one valve.
+     * THE TMI LEVERS (stage 2b, 2026-08-19; the stick became a LATCH 2026-08-25):
+     *   drivers.porv_stick   ARMS the failure. It does NOTHING to a shut valve: the first lift
+     *                        — the controller's own +100 psi lift or the operator's manual
+     *                        open — latches ONE PORV open (pz.porvStuck), and from then on
+     *                        neither the controller's reseat nor a manual close moves it. Only
+     *                        clearing the failure releases the latch. TMI-2's valve was a
+     *                        LEGITIMATE lift that never reseated, and that is the shape
+     *                        *(OWNER DESIGN, 2026-08-25: "The PORV stuck failure injection should
+     *                        work like a latch. it shouldnt just open the PORV, it shouldnt
+     *                        activate until the PORV is opened. Once the PORV is opened, then the
+     *                        failure injection can keep it opened.")*. Before this the injection
+     *                        opened the valve itself, so the plant never had to lift it and the
+     *                        pressure transient that lifts it was never part of the casualty.
+     *                        Half the two-valve capacity, because one valve stuck is one valve.
+     *   drivers.porv_manual  the operator's open demand on ONE PORV (the feed-and-bleed lift;
+     *                        Ginna's control switches are per valve). Half capacity; closing it
+     *                        is ineffective while the latch holds. Was routed through the stick
+     *                        lever until 2026-08-25, which is why "open PORV" used to be a
+     *                        failure injection.
      *   drivers.block_valve  the motor-operated isolation upstream of the PORVs — the operator
      *                        action that ENDED the TMI-2 loss (closed at 142 min). One combined
      *                        valve for the pair, declared (Ginna has one per PORV). Default
@@ -454,11 +471,15 @@
     else if (pz.safetyOpen && P <= RELIEF.safety_open_mpa * RELIEF.safety_reseat_frac) {
       pz.safetyOpen = false;
     }
-    pz.porvStuck = !!drivers.porv_stick;
+    pz.porvManual = !!drivers.porv_manual;
+    var stickArmed = !!drivers.porv_stick;
+    if (!stickArmed) pz.porvStuck = false;                       /* the clear is the only release */
+    else if (pz.porvOpen || pz.porvManual) pz.porvStuck = true;  /* the first lift latches it */
     if (drivers.block_valve !== undefined) pz.blockOpen = !!drivers.block_valve;
+    var oneValve = pz.porvStuck || pz.porvManual;
     var porv_kgs = !pz.blockOpen ? 0
                  : (pz.porvOpen ? RELIEF.porv_kgs
-                 : (pz.porvStuck ? RELIEF.porv_kgs / 2 : 0));
+                 : (oneValve ? RELIEF.porv_kgs / 2 : 0));
     var relief_kgs = porv_kgs + (pz.safetyOpen ? RELIEF.safety_kgs : 0);
 
     /* ---- 3b. THE TAILPIPE — the TMI indication. A pipe-metal temperature: heats toward the
@@ -518,8 +539,10 @@
       aux_spray_frac: auxFrac,
       aux_spray_kgs: m_aux,
       aux_spray_duty_kW: Q_aux_kW,
-      porv_open: pz.porvOpen || (pz.porvStuck && pz.blockOpen),
-      porv_stuck: pz.porvStuck,
+      porv_open: pz.porvOpen || ((pz.porvStuck || pz.porvManual) && pz.blockOpen),
+      porv_stuck: pz.porvStuck,                /* LATCHED — armed and lifted, not merely armed */
+      porv_stick_armed: stickArmed,
+      porv_manual: pz.porvManual,
       block_valve_open: pz.blockOpen,
       tailpipe_temp_c: pz.T_tail_c,
       safety_open: pz.safetyOpen,
