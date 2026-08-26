@@ -580,11 +580,18 @@ function runSuite(RD, rec, quiet, only) {
       if (eng3.sys.beyond_model) { latch3 = true; break; }
     }
   } catch (e3) { threw3 = e3.message; }
-  ckT('a fast drain whose near root VANISHES is refused and declared — never teleported',
-      latch3 && threw3 === null && maxStep < 2.0 &&
-      ts3 !== null && isFinite(ts3.pressure_mpa),
+  /* REFIT 2026-08-25 (#515, the two-region pressurizer): the near root no longer VANISHES on
+   * this drain — the equilibrium vessel's vapour-dominated projection collapsed its
+   * compliance at ~9 % level; the two-region seat's regimes are continuous (measured: latched
+   * false, max |dP|/step 0.038 MPa, P 1037 psia at 120 s). The core's root-tracking guard keeps
+   * its own unit test (run_pwr2_core, the hand-built root jump); THIS fixture's claim is now
+   * representability under the drain: finite, no throw, no step near P_JUMP_MAX. The old
+   * clause `latch3` is reported, not asserted. */
+  ckT('a fast drain rides FINITE and representable — never teleported (max |dP|/step < 2.0), no throw',
+      threw3 === null && maxStep < 2.0 &&
+      ts3 !== null && isFinite(ts3.pressure_mpa) && ts3.power_pct < 500,
       threw3 ? ('THREW: ' + threw3.slice(0, 60)) :
-      ('latched ' + latch3 + ', max |dP|/step ' + maxStep.toFixed(3) + ' MPa, P ' +
+      ('latched ' + latch3 + ' (reported), max |dP|/step ' + maxStep.toFixed(3) + ' MPa, P ' +
        (ts3 === null ? '?' : (ts3.pressure_mpa * 145.04).toFixed(0)) + ' psia'));
   }
 

@@ -4729,3 +4729,115 @@ sourced acceptance case it did not have then: **Case 2 → 2425 psia at 5.4 s an
 each worth a few psi at 5 s and more later, both already reachable (an IC option; the dump mode
 switch). The steam generator's type is not on the list for the spike; it is on the list for how
 fast the heat sink is lost afterwards, and that is a different plant's question.
+
+## 85. #515 BUILD 1 — THE TWO-REGION PRESSURIZER: THE SPIKE IS ON THE BOARD — 2026-08-25/26
+
+*(OWNER RULING, 2026-08-25: "A. Then choked porv then void term.")* — Build 1 of three.
+
+**What was built.** `pwr2_pressurizer.js` is a two-region, non-equilibrium vessel: a STEAM region
+(`m_stm, h_stm`) compressed by an insurge along `dh = v·dP` — Layer 2's own convention inside
+`F(P)` — so it superheats and the pressure rises steeply; a saturated POOL (`m_sat, h_sat`) at the
+interface; and a stratified BOTTOM LAYER (`m_sub, h_sub`) where insurge water lands without ever
+mixing into the pool (§43.2's formulation 2 measured what happens when it does). The seat
+`extraMass(P)` compresses every region from the last reconciliation pressure, sums their volumes,
+and fills the SLACK with liquid at the hot leg's frozen density (insurge) or empties it liquid-
+first-then-steam (outsurge). No clips: no steam → water-solid (the liquid layers' bulk modulus),
+no liquid → emptied. One constant is fitted — `tau_int_s` — and it is `[open]`, declared, swept
+below. The old HEM vessel is formulation 4 in the module header, kept with its numbers.
+
+**Two corrections to §84 from the source.** Ginna Case 2 starts at **2190 psia** (Table 15.0-9,
+`Ginna_UFSAR_ch15_ML20339A101.txt:1189-1207`) with main feed lost at t = 0 (§15.2.2.4.1 F): the
+sourced rise is +235 psi in 5.4 s, and the analysis power is 1817 MWt. The "~17 psi per level
+point" was never sourceable (no level trace in the text layer) — the trip TIME is the target.
+
+**The pressurizer alone — the P-only harness** (one hot-leg node, +37 kg/s of 316 °C water,
+spray/heaters manual 0, PORV isolated; the code safeties cannot be isolated, so 3.0 s = 111 kg):
+
+| vessel | +37 kg/s insurge | psi per level point | −37 kg/s outsurge |
+|---|---|---|---|
+| HEM (formulation 4), 5.4 s | **+0.6 psi** for +9.7 pts | 0.06 | −87 psi / −10.2 pts |
+| two-region, τ = ∞, 3.0 s | **+197 psi** for +3.6 pts (the isentropic ceiling) | 55 | — |
+| two-region, τ = 30 s, 3.0 s | +166 psi for +3.9 pts (84 % of the ceiling) | **42.4** | −93 psi / −10.2 pts, rain-out |
+
+Seat compliance at the design point: **192 kg/MPa** (was 226; the central difference straddles
+the pool's saturation line — on the insurge side the steam's isentropic-class compression rules),
+solid **11.6** (was 9.2). Steam compression as tabulated: +7.6 % density per MPa from saturation
+(isentropic n ≈ 1.1 would be 5.9; saturated-following 10.9). Layer 0's compressed liquid at fixed
+enthalpy: +0.24 %/MPa, `T_from_h` +0.8 K/MPa, `(∂h/∂P)_T` = −5.2 kJ/kg/MPa — all physical.
+
+**The plant — Ginna §15.2.2 through the shell** (`run_pwr2_lossofload.js`; 60 s settle to 2215
+psia, then `anticipatory_trip_failure`, dumps shut, spray 0, heaters 0, block valve shut,
+`loss_of_feedwater`, `turbine_trip`). The τ_int sweep, the calibration published as a table:
+
+| τ_int | 2425 psia indicated | trip (hi_pzr_press) | rods | safeties | peak | level max |
+|---|---|---|---|---|---|---|
+| Ginna Case 2 (sourced) | **5.4 s** from 2190 | 7.4 s | 7.4 s | 7.4 s | 2748.5 psia at 8.5 s | not solid |
+| HEM vessel (§84) | never | never (level trip at 15 s with feed on) | — | — | 2254 psia | 84 % |
+| ∞ | 5.7 s | 7.7 | 7.9 | 6.2 | 2501 | 69.1 % |
+| 100 s | 5.9 | 7.9 | 8.0 | 6.5 | 2502 | 69.9 |
+| **30 s — adopted** | **6.3** | **8.3** | **8.4** | **7.1** | **2502** | **71.5** |
+| 10 s | 7.5 | 9.5 | 9.6 | never | 2497 | 75.4 |
+| 3 s | 12.0 | 14.1 | 14.3 | never | 2432 | 80.4 |
+| 1 s | 14.2 | 16.2 | 16.3 | never | 2428 | 81.0 |
+| 0.3 s | 14.5 | 16.5 | 16.7 | never | 2427 | 81.1 |
+
+Even the equilibrium limit (τ → 0) trips on high pressure at ~14.5 s: **the stiffness is the
+stratification, not the condensation rate** — the insurge never reaches the pool, so the pool's
+heat capacity cannot absorb it. 30 s is adopted: inside 5.4 ± 1.5 s once this plant's +25 psi start,
+mid-cycle feedback droop and 0.5 s channel lag are counted, and not on the isentropic limit. The
+peak sits at the safeties (nominal 2500 psia here; the analysis carries +3 % tolerance and a 0.8 s
+loop seal, hence 2748.5). Case 1 (spray + PORV auto): the PORV passes at 4.8 s, peak 2363 psia,
+no high-pressure trip; Ginna's OTΔT at 11.6 s needs the BOL minimum-feedback IC — reported, not
+gated (the follow-up §84 named).
+
+**Three defects found and fixed inside the build — each measured, none visible from a source read:**
+1. `h_fill` was never assigned in the step, so every insurge was booked at saturated-liquid density
+   (596 kg/m³) instead of the hot leg's (700): the stratified layer arrived saturated. Caught by
+   instrumenting the P-only ride step by step (`h_sub = 1627`).
+2. The seat evaluated the fill density at the candidate P: on a blowdown a NEGATIVE slack times a
+   two-phase density that rises with P made m(P) non-monotone, the bisection lost its bracket and
+   the core's ledger drifted **9,560 kg** on `run_pwr2_loca`'s accumulator ride. Fill densities are
+   now FROZEN at P_ref with the states; m(P) is monotone because slack(P) is.
+3. The emptied regime ratcheted: an outsurge booked at LIQUID density while the vessel held half a
+   kilogram of liquid, the placement removed steam instead, the seat and the placement disagreed
+   60× per step, and the hot leg was pumped at ±2,000 kg/s until the core's root jumped at 54 s /
+   416 psia. Two rules fixed it: a two-phase arrival SPLITS at entry (liquid to the layer, vapour
+   to the steam), and the seat's outsurge SATURATES — all the liquid first at its own density, then
+   steam — placed in the same order. The ride now runs its 120 s to 49 psia, ledger drift 0.0 kg.
+
+**Refits, declared (HR10), each validated on the old build too:** the CONSTRUCTION check (`h_bar`
+inside the dome → two regions at h_g/h_f); the two solid pokes (`m_stm = 0`); **WATER SOLID's
+"> 8× the bubbled rate"** — its 0.21 psi/s bubbled rate WAS the softness §84 measured, replaced by
+the solid rate in class [4, 25] psi/s (7.5) and bubbled < solid (6.15: on 10 s a near-critical
+bubble compresses nearly as stiffly as the liquid; the loop's own 0.24 m³/MPa is the larger
+compliance); the engine's drain root-jump fixture (`run_pwr2_engine`): the near root no longer
+vanishes on the drain (latched false, max 0.019 MPa/step, P 1037 psia) — the guard keeps its unit
+test in `run_pwr2_core`, the fixture now asserts representability. My own first draft of the
+bubbled-vessel check said "less than half" — a guess, not a source; it asserts "softer".
+
+**Gates.** `run_pwr2_pressurizer` 69 → 79 checks, mutations 30 → 37 (rigid seat, no steam
+compression, insurge into the pool, interface deleted, rain-out deleted, flash deleted, spray
+condenses nothing, migration skipped — all red); **new `run_pwr2_lossofload`** 9 checks / 2
+mutations (τ → 0 = the old vessel, a rigid steam space), born failing on the old vessel (2425 never,
+trip never, peak 2254); `run_pwr2_engine` 94 (the refit above), `run_pwr2_loca` 17, endurance 18,
+shell 77 (the save migration `migrateState` wired before the seat re-link), loadfollow 36,
+coredamage 20, cvcs 44, protection 102, true_state 64, board 28, `run_pwr2_perf` 4.3× (88.1 µs/step,
++4 % on the seat's extra table reads). Old saves migrate: an `m_pzr/h_bar/V_liq` vessel lands on the
+two regions it implied, same mass to 0.1 kg, same level (pinned).
+
+**What it does to TMI.** The dry-SG heat-up with P-9 as built lifts the PORV at **53.6 min** (SG dry
+44.1; was 52.4). With the P-9 channel failed the TMI steps now lift the PORV **from the plant's own
+pressure at 5 s** (2346 psia, Tavg 584 °F, level 65 %), the armed stick latches it, and the reactor
+trips at 43 s on OTΔT as the stuck valve depressurizes the loop — TMI-2's 3–6 s lift, the trip
+arriving on a different function because this plant's valve is big enough to turn the pressure
+before 2425. The full timeline then reads TMI through its first half hour with no operator lift
+(level 100 % from 2 min, inventory 58 % at 30 min, 940 psia) and hands over to Builds 2 and 3: the
+pressure-blind PORV takes the plant to 186 psia by 60 min and the void-term flip ends it later.
+
+**Declared, not claimed:** `tau_int_s = 30` `[open]` (no interface-condensation rate in any lane's
+corpus — `find_source.js "interfac|condens.*pressurizer"` exit 1, 2026-08-25; calibrated to one
+sourced case, shown as a sweep); no wall metal (heater-driven rate 0.36 psi/s against #472's 0.37
+prediction, in class without it); spray water's mass stays in the loop (the standing optimistic
+level error); the loop's separate 3.545 m³ `pressurizer` node (`pwr2_geometry.js:97`) is a
+declared double-count with the surge line, ~5 kg/MPa of the fast-insurge compliance, left in place
+because removing it re-clocks every inventory fixture (an #408-class change).

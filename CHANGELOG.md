@@ -30,6 +30,16 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
 
 ## [Unreleased]
 
+### Changed (#515 Build 1 — the two-region pressurizer, 2026-08-25/26, owner ruling "A")
+- **`pwr2_pressurizer.js` is a two-region, non-equilibrium vessel**: a steam region compressed
+  along `dh = v·dP`, a saturated pool, a stratified insurge layer; one `[open]` constant
+  (`tau_int_s = 30`, swept and published). Ginna UFSAR §15.2.2 Case 2 through the shell now trips
+  on HIGH PRESSURIZER PRESSURE with 2425 psia at 6.3 s (sourced 5.4 from 2190 psia), safeties
+  7.1 s, peak 2502 — the old vessel gave +10 psi and never tripped. New runner
+  `run_pwr2_lossofload` (9/2); `run_pwr2_pressurizer` 69 → 79 / 30 → 37 mutations. Old saves
+  migrate (`migrateState`). **TMI: with the P-9 channel failed the PORV now lifts from the plant's
+  own pressure at 5 s** (`PWR2_VALIDATION.md` §85). Three refits declared in the check text.
+
 ### Added (#515 — the P-9 defeat and the physics PORV lift, 2026-08-25, owner directive)
 - **`anticipatory_trip_failure`** — the P-9 turbine-trip reactor-trip channel failed (PWR2 only;
   the old engine's catalog hides it). A turbine trip above 50 % no longer trips the reactor;

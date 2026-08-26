@@ -1132,6 +1132,10 @@
     ['sys', 'rx', 'sg', 'tb', 'rl', 'cd', 'dc', 'cv', 'ec', 'aw', 'fw', 'dm', 'pt', 'pz', 'ctm', 'rh']
       .forEach(function (k) { e[k] = st[k]; });
     e.brk = st.brk || null;
+    /* #515 MIGRATION (2026-08-25): a pre-two-region save carries m_pzr/h_bar/V_liq and no
+     * region states — reconstruct the vessel the HEM enthalpy implied (pwr2_pressurizer
+     * migrateState), BEFORE the seat is re-linked to it */
+    PZ.migrateState(e.pz, e.sys.P);
     /* re-link 1: the pressurizer's seat on the conservation core */
     e.sys.extraMass = PZ.extraMassFn(e.pz);
     /* re-link 2: the internal channels' saved dynamic state onto fresh spec references */

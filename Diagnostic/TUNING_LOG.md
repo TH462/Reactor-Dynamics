@@ -29,6 +29,42 @@ and the user-visible summary in `CHANGELOG.md`. This file points at those and tr
 
 ---
 
+## Session log — 2026-08-25-develop-d (#515 — TMI on PWR2: the latch, the P-9 defeat, the two-region pressurizer)
+
+**The owner's question** ("can we recreate TMI on PWR2?") became one issue, #515, and a three-build
+ruling ("A. Then choked porv then void term."). Landed this session, all on `develop`, none pushed:
+
+- **The stick is a LATCH** (owner design): `stuck_porv_open` arms and waits for a lift; PWR2 gains a
+  real operator PORV (`porv_manual`) — "open PORV" had been routed through the failure lever.
+- **`anticipatory_trip_failure`**: the P-9 turbine-trip channel failed (PWR2 only; the old engine's
+  catalog hides `pwr2_only` defs). Built as a row, not a deletion — the permissive is sourced.
+- **The two-region pressurizer (Build 1, D5 §85)**: steam compressed along dh = v·dP, a saturated
+  pool, a stratified insurge layer; `tau_int_s = 30 [open]` swept and published. Ginna §15.2.2
+  Case 2 trips on high pressure at 6.3 s (sourced 5.4); new runner `run_pwr2_lossofload`. **The TMI
+  steps now lift the PORV from the plant's own pressure at 5 s.**
+
+**Traps worth the line:**
+- *A green mutation self-test does not mean the gate sees the physics.* The relief agent's "insurge
+  into the pool" mutation was caught by the pressurizer gate and BLIND to the plant-level runner
+  (a 5 s spike does not feel the pool's densification) — a runner lists only the mutations it can
+  see, and says which ones it cannot.
+- *A seat evaluated at the candidate pressure can be non-monotone in STATE, not in P*: a negative
+  slack times a two-phase fill density that rises with P lost the bisection's bracket and drifted
+  the core's ledger 9,560 kg on the accumulator ride — invisible until `run_pwr2_loca`'s closure
+  identity failed. Freeze the fill terms with the states; make the outsurge saturate.
+- *Two of §83's headline numbers were harness artefacts*: the dry-core ±500,000 pcm came from a
+  `modCoeff` cache keyed on the FIRST caller's pressure (13.4×), and the "B&W once-through
+  artefact" reading came from ablating the model, not the plant — Ginna's own analysis spikes on a
+  U-tube generator. Both retracted in the record (§84, Build 3's brief).
+- *The `set_letdown_flow {pct}` payload*: a wrong-shaped payload lands NaN in the engine and the
+  beyond-model catch holds the plant for ever, silently (the kernel validates `normalized`, so the
+  board cannot send it; the engine door still should refuse a non-finite value).
+
+**Measured, for the next agent:** Case 2 τ sweep (∞ 5.7 s · 100 5.9 · 30 6.3 · 10 7.5 · 3 12.0 · 1 14.2
+· 0.3 14.5); P-only ceiling +197 psi / 3.6 pts at 3 s (old vessel +0.6 / 9.7 at 5.4 s); dry-SG lift
+53.6 min as built; perf 4.3×. Still owed on #515: Build 2 (choked PORV, the 1065 psia plateau) and
+Build 3 (the void/boron reactivity form — the plan is in the approved plan file and on #515).
+
 ## Session log — 2026-08-25-develop-c (#513 — the aggregate gate at 7m19s, from ~19 min)
 
 **The ask** (owner, #513): "Find ways to reduce the time it takes to run through all the checks."
