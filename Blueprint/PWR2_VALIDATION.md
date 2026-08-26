@@ -5519,3 +5519,77 @@ is untouched, and widening it was explicitly rejected because it would have blin
 baseline.** The two fixes are different — interleaved sampling, and an atomic read — because the
 shared class ("a verdict that depends on machine load") does not imply a shared mechanism. Saying
 so beats inventing one abstraction over two unrelated races.
+
+## 93. #517 ITEM 2 ADJUDICATED — NEITHER THE HOMOGENEOUS CORE NOR THE FUEL NODE — 2026-08-26
+
+*(OWNER, 2026-08-26: "Work next.")* §87 recorded, deliberately unadjudicated: *"after the 200-min
+HPI restore, with the RCPs off, zero void and 175–267 °F of subcooling, the clad reads 696–978 °F
+(205–250 min) — a covered core on natural circulation at 1.1 % decay heat, #472's territory."*
+The item asked which of two things it was, **before touching anything**. It is neither.
+
+### 93.1 The two numbers come from two different nodes
+
+`subcooling_c` is `W.subcooling(tHot, sys.P)` — the **HOT LEG** (`pwr2_true_state.js:222`).
+`clad_temp_c` rides `coolTemp_c`, which is `pwr2_reactor.coreTemp` — the **CORE** node. Pairing
+them in one sentence is what makes the observation look impossible; individually each is correct.
+
+### 93.2 A covered core cannot read that hot, and this model does not put it there
+
+| ride | result |
+|---|---|
+| loss of flow, covered core, pumps off, no break | natural circulation settles at **85–99 kg/s (5–6 % of rated)**, clad rise **5–7 °F**, core 562–566 °F |
+| what 852 °F would require on a covered core | **flowFrac ~1e-4 (0.2 kg/s)** — 500× below what natural circulation delivers |
+| covered AND stagnant (void < 0.5, flow < 1e-3) | **0 of 17,036 / 18,860 / 90,001 steps** across the 20 cm² damage ride, an 8 cm² + injection ride with the pumps off, and the severity-1 ride |
+
+So natural circulation is healthy, the fuel node is behaving, and the regime that would produce a
+hot clad on a covered core is one this plant never occupies.
+
+**⚠ MY OWN FIRST ANSWER WAS WRONG, AND IN THE INSTRUCTIVE WAY.** §88.7 concluded "the fuel node
+cannot produce that clad temperature — at most ~46 °F of rise" from a table measured down to
+3 kg/s. True, and irrelevant: the number needed lives at 0.2 kg/s, 15× further down, where the
+same model gives 852 °F. **A bound measured over the wrong range is not a bound** — the §88.4
+lesson, arriving again in the same week from the other direction.
+
+### 93.3 What it actually is
+
+The signature — substantial reported subcooling **and** a hot clad — was reproduced: 5 cm² break
+with the pumps off, t = 595 s, hot leg **32 °F**, core 429 °F, void 100 %, reported subcooling
+361 °F, clad 848 °F. **32 °F is Layer 0's liquid floor**, i.e. the hot-leg node pinned on the
+enthalpy wall. That step *is* the beyond-model latch.
+
+Swept properly — the worst case that survives 30 further seconds of clean running:
+
+| ride | signature ≥ 30 s before any latch |
+|---|---|
+| 5 cm² + pumps off | **NEVER** |
+| 8 cm² + pumps off | **NEVER** |
+| 20 cm² unmitigated | **NEVER** |
+
+**It is an end-of-blowdown reporting artefact, confined to the last seconds before the guard
+fires** — not #472's homogeneous core, and not the fuel node.
+
+And §87's ride predates **#518**: that end-of-blowdown region was precisely where the donor-cell
+transport instability lived, driving nodes onto both envelope walls. The strongly-indicated
+reading is that the observation was a **symptom of #518, now fixed**. Stated as indicated rather
+than shown, because the TMI timeline's harness lives in `inbox/` and is not in the repo, so the
+original ride cannot be re-run here — that is what would close it beyond doubt.
+
+### 93.4 One latent finding, filed not fixed
+
+`h_stagnant = 10 W/m²K` is **UNSOURCED** and its own comment declares it *"natural convection from
+a rod to a **gas**"* — yet it floors the film coefficient whatever the core is full of. A rod in
+stagnant **water** is one to two orders higher. `find_source.js` on free/natural convection: **0
+hits across 39 documents in 3 lanes.**
+
+**It binds 0 % of the time on every ride measured**, and on the damage rides the core is 36–86 %
+voided where a gas floor is the right one — so this is latent, not active, and no number was
+moved. Changing it would touch core-damage timing, which is the §88.4 trap: a term adjusted
+outside the regime that motivated it.
+
+### 93.5 No change made
+
+The fields are individually correct, the mechanism is a pairing, and the regime is one the plant
+does not occupy away from a guard that now holds the last good step (§91). **The honest answer to
+"is this a defect" is no** — and the reading that matters on a stagnant loop already exists and is
+sourced: `t_core_exit_c`, the post-TMI inadequate-core-cooling channel (NUREG-0737 II.F.2), which
+is the core's own temperature rather than a leg's.
