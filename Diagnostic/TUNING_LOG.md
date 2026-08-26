@@ -60,6 +60,13 @@ ruling ("A. Then choked porv then void term."). Landed this session, all on `dev
   beyond-model catch holds the plant for ever, silently (the kernel validates `normalized`, so the
   board cannot send it; the engine door still should refuse a non-finite value).
 
+- **Choked relief (Build 2, D5 §86)**: area × homogeneous critical flux from Layer 0; a solid vessel
+  passes WATER (95 % of the TMI ride — measured before the law was chosen). The TMI timeline now
+  survives to 260 min with the block valve and HPI restore doing their historical jobs.
+- *A confirming aggregate run on a tree receiving the next build's edits confirms nothing*: the
+  Build 1 re-run drifted on the pressurizer gate because Build 2's module was already changing
+  under it. The clean record for `344a6d9` is the first run (92/93 + hardrules reconciled).
+
 **Measured, for the next agent:** Case 2 τ sweep (∞ 5.7 s · 100 5.9 · 30 6.3 · 10 7.5 · 3 12.0 · 1 14.2
 · 0.3 14.5); P-only ceiling +197 psi / 3.6 pts at 3 s (old vessel +0.6 / 9.7 at 5.4 s); dry-SG lift
 53.6 min as built; perf 4.3×. Still owed on #515: Build 2 (choked PORV, the 1065 psia plateau) and

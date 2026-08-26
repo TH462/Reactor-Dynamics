@@ -227,8 +227,21 @@
      * nominal setpoint 2485 psig, "did not reseat until the pressure dropped 5% below the
      * opening setpoint" (the reseat fraction is SOURCED). Capacities per-MWt scaled
      * 1520 -> 300 MWt. */
-    porv_kgs:   2 * 179000 * LB_HR * (300 / 1520),    /* 8.90 kg/s, both valves */
-    safety_kgs: 2 * 288000 * LB_HR * (300 / 1520),    /* 14.33 kg/s, both valves */
+    porv_kgs:   2 * 179000 * LB_HR * (300 / 1520),    /* 8.90 kg/s, both valves — the RATING */
+    safety_kgs: 2 * 288000 * LB_HR * (300 / 1520),    /* 14.33 kg/s, both valves — the RATING */
+    /* THE RATINGS ARE AT THE LIFT POINT, and the flow is CHOKED (#515 Build 2, 2026-08-26 —
+     * OWNER RULING 2026-08-25: "A. Then choked porv then void term."). "179,000 lb/hr at 2335
+     * psig" is the mass a valve passes of saturated STEAM at 2335 psig; the constant flow this
+     * file carried until 2026-08-26 passed 4.45 kg/s per stuck valve at 2234 psia and at 400 psia
+     * alike, which drained the TMI ride to the accumulators at 53 min instead of holding TMI-2's
+     * ~1000 psi plateau (D5 §83). Each valve is ONE EFFECTIVE AREA, derived once from its rating
+     * through the SAME flux law that then runs live (criticalFlux below); the mass it passes is
+     * area x the homogeneous critical mass flux of whatever the vessel offers it — superheated
+     * steam, saturated steam, or (a solid vessel, TMI's regime for 95 % of the ride, measured)
+     * flashing liquid. [derived]: no new constant; the sourced rating and Layer 0 fix everything. */
+    porv_rated_mpa:   16.20,             /* 2335 psig + 14.7 = 2349.7 psia */
+    safety_rated_mpa: 17.24,             /* 2485 psig, the nominal setpoint (the ASME rating point
+                                          * carries +3 % accumulation — [declared] at nominal) */
     safety_open_mpa: 17.24,              /* 2485 psig = 2500 psia */
     safety_reseat_frac: 0.95,
     porv_reseat_psi: +85,                /* reclose below +85: a 15 psi deadband, [open] — the
@@ -271,6 +284,47 @@
     var rf = W.rho_l_sat(W.T_sat(P)), rg = W.rho_v_sat(P);
     var Vl = (rf - rg) > 1e-9 ? (m - rg * V) / (rf - rg) : V;
     return { Vl: Vl, rf: rf, rg: rg };
+  }
+
+  /* ---- THE RELIEF FLUX LAW (#515 Build 2, 2026-08-26) ---------------------------------------
+   * criticalFlux(h0, P0) -> kg/m2s: the HOMOGENEOUS critical mass flux of fluid at (h0, P0)
+   * through a valve throat, from Layer 0 alone. Along a throttled (isenthalpic) path to a
+   * throat pressure P_t the flux is G(P_t) = rho(h0, P_t) * sqrt(2 * Int_{P_t}^{P0} dP / rho),
+   * and the CHOKED value is its maximum over P_t — the mixture density collapses as the fluid
+   * flashes, so the maximum exists for liquid as well as steam. [derived — a sourced FORM
+   * (homogeneous critical flow) on Layer 0's own densities; no correlation text is in any lane's
+   * corpus, and Appendix K's Moody is cited only, pwr2_break.js]. Cross-checks, 2026-08-26:
+   * saturated steam within 5-18 % of ideal-gas choked flow (23,922 vs 20,184 kg/m2s at 16.2 MPa;
+   * 9,438 vs 9,073 at 6.9); saturated LIQUID 1.8-4x the steam flux (43,158 at 16.2, 25,803 at
+   * 6.9 — the Moody class), where the orifice law sqrt(2 rho dP) reads 5.7-21x the steam flux and
+   * is the known overstatement for flashing water (the break model's own declared error). The
+   * throttled path stands in for the isentropic one (Layer 0 carries no entropy) — [declared],
+   * direction: slightly HIGH flux. The back pressure is taken as 0.1 MPa: the throat pressure at
+   * the maximum sits at 0.55-0.75 P0, far above containment for any P0 the relief sees. */
+  var CRIT_N = 60;
+  function criticalFlux(h0, P0) {
+    var Pmin = 0.1, best = 0, acc = 0, prevP = P0, prevV = 1 / RHO(h0, P0);
+    for (var i = 1; i <= CRIT_N; i++) {
+      var Pt = P0 - (P0 - Pmin) * i / CRIT_N;
+      var rho = RHO(h0, Pt), v = 1 / rho;
+      acc += 0.5 * (v + prevV) * (prevP - Pt) * 1e6;                 /* Int dP/rho, J/kg */
+      prevP = Pt; prevV = v;
+      var G = rho * Math.sqrt(2 * acc);
+      if (G > best) best = G; else if (i > 2) break;                  /* past the maximum */
+    }
+    return best;
+  }
+  /* the effective areas, derived ONCE from the ratings through the live law: the rated mass of
+   * saturated steam at the rated pressure divided by the flux the law gives it there. Lazy —
+   * the vtable builds on first use. */
+  var _areas = null;
+  function reliefAreas() {
+    if (_areas) return _areas;
+    _areas = {
+      porv_m2:   RELIEF.porv_kgs   / criticalFlux(W.h_g(RELIEF.porv_rated_mpa),   RELIEF.porv_rated_mpa),
+      safety_m2: RELIEF.safety_kgs / criticalFlux(W.h_g(RELIEF.safety_rated_mpa), RELIEF.safety_rated_mpa)
+    };
+    return _areas;    /* both valves of each pair; a stuck PORV is half porv_m2 */
   }
 
   /* ---- construction ------------------------------------------------------------------------ */
@@ -676,10 +730,24 @@
     else if (pz.porvOpen || pz.porvManual) pz.porvStuck = true;  /* the first lift latches it */
     if (drivers.block_valve !== undefined) pz.blockOpen = !!drivers.block_valve;
     var oneValve = pz.porvStuck || pz.porvManual;
-    var porv_kgs = !pz.blockOpen ? 0
-                 : (pz.porvOpen ? RELIEF.porv_kgs
-                 : (oneValve ? RELIEF.porv_kgs / 2 : 0));
-    var relief_kgs = porv_kgs + (pz.safetyOpen ? RELIEF.safety_kgs : 0);
+    /* WHAT THE VESSEL OFFERS THE VALVES: steam from the steam region at ITS enthalpy
+     * (superheated when it is); a SOLID vessel offers liquid from the pool — TMI's regime for
+     * 95 % of the ride (measured 2026-08-26), where the same valve passes flashing water at
+     * 2-4x the steam mass flux (criticalFlux). */
+    var relief_h;
+    if (pz.m_stm > STRATIFY.m_stm_floor_kg) relief_h = pz.h_stm;
+    else if (pz.m_sat > 0) relief_h = pz.h_sat;
+    else if (pz.m_sub > 0) relief_h = pz.h_sub;
+    else relief_h = hg;
+    /* THE FLOW IS AREA x CHOKED FLUX (#515 Build 2): each valve's effective area comes from its
+     * sourced rating through the same law (reliefAreas), so a stuck PORV passes its rated 4.45
+     * kg/s of steam AT the rating pressure and proportionally less below it — and 2-4x more
+     * when the vessel is solid and it passes water. */
+    var nPorv = !pz.blockOpen ? 0 : (pz.porvOpen ? 2 : (oneValve ? 1 : 0));
+    var G_relief = (nPorv > 0 || pz.safetyOpen) ? criticalFlux(relief_h, P) : 0;
+    var A = reliefAreas();
+    var porv_kgs = nPorv * (A.porv_m2 / 2) * G_relief;
+    var relief_kgs = porv_kgs + (pz.safetyOpen ? A.safety_m2 * G_relief : 0);
 
     /* ---- 3b. THE TAILPIPE — the TMI indication. A pipe-metal temperature: heats toward the
      * discharge steam's own T_sat while the PORV passes, cools toward ambient when it does not
@@ -732,12 +800,7 @@
       }
       spray_cond_kgs = dmS / dt;
     }
-    var relief_h;
-    if (pz.m_stm > STRATIFY.m_stm_floor_kg) relief_h = pz.h_stm;
-    else if (pz.m_sat > 0) relief_h = pz.h_sat;
-    else if (pz.m_sub > 0) relief_h = pz.h_sub;
-    else relief_h = hg;
-    if (relief_kgs > 0) {
+    if (relief_kgs > 0) {                                  /* relief_h was fixed in step 3 */
       var dmR = relief_kgs * dt;
       if (pz.m_stm > STRATIFY.m_stm_floor_kg) pz.m_stm = Math.max(0, pz.m_stm - dmR);
       else if (pz.m_sat > 0) pz.m_sat = Math.max(0, pz.m_sat - dmR);
@@ -828,6 +891,8 @@
     migrateState: migrateState,
     extraMassFn: extraMassFn,
     seatMass: seatMass,
+    criticalFlux: criticalFlux,
+    reliefAreas: reliefAreas,
     stepPressurizer: stepPressurizer,
     levelProgram: levelProgram,
     _satSplit: satSplit

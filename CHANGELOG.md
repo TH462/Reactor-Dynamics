@@ -30,6 +30,14 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
 
 ## [Unreleased]
 
+### Changed (#515 Build 2 — choked relief, 2026-08-26, owner ruling "A. Then choked porv…")
+- **PORV and safety discharge is area × homogeneous critical flux** (`criticalFlux`, Layer 0
+  only; each valve's area derived from its sourced rating). A stuck PORV passes 1.76 kg/s of
+  steam or 4.80 kg/s of flashing water at 1000 psia (was 4.45 at any pressure); the TMI ride is
+  water-solid 95 % of the time. The TMI timeline now runs its full 260 min — block valve at
+  142 min ends the loss, HPI at 200 min refills, pressure recovers to 1666 psia
+  (`PWR2_VALIDATION.md` §86). `run_pwr2_pressurizer` 79 → 85 / 37 → 40 mutations.
+
 ### Changed (#515 Build 1 — the two-region pressurizer, 2026-08-25/26, owner ruling "A")
 - **`pwr2_pressurizer.js` is a two-region, non-equilibrium vessel**: a steam region compressed
   along `dh = v·dP`, a saturated pool, a stratified insurge layer; one `[open]` constant

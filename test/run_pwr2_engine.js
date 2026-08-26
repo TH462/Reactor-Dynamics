@@ -192,10 +192,12 @@ function runSuite(RD, rec, quiet, only) {
       tStick.porv_stuck === true && tStick.porv_open === true, '');
   EN.command(eng, 'porv_manual', false);
   var tHeld = run(eng, 1);
-  ckT('a manual close does NOT move a latched valve (one valve still passing)',
+  var PZL = globalThis.RD.pwr2.pressurizer;
+  var lawHeld = (PZL.reliefAreas().porv_m2 / 2) * PZL.criticalFlux(eng._pzr.relief_h, eng.sys.P);
+  ckT('a manual close does NOT move a latched valve (one valve still passing, at the choked law)',
       tHeld.porv_stuck === true && tHeld.porv_open === true &&
-      Math.abs(eng._pzr.relief_kgs - globalThis.RD.pwr2.pressurizer.RELIEF.porv_kgs / 2) < 1e-9,
-      eng._pzr.relief_kgs.toFixed(2) + ' kg/s');
+      Math.abs(eng._pzr.relief_kgs - lawHeld) < 1e-9 && eng._pzr.relief_kgs > 0,
+      eng._pzr.relief_kgs.toFixed(2) + ' kg/s at ' + (eng.sys.P * 145.04).toFixed(0) + ' psia');
   EN.command(eng, 'block_valve', false);
   var tBlock = run(eng, 1);
   ckT('block_valve isolates the stuck valve', tBlock.block_valve_open === false &&

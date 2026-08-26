@@ -4841,3 +4841,66 @@ prediction, in class without it); spray water's mass stays in the loop (the stan
 level error); the loop's separate 3.545 m³ `pressurizer` node (`pwr2_geometry.js:97`) is a
 declared double-count with the surge line, ~5 kg/MPa of the fast-insurge compliance, left in place
 because removing it re-clocks every inventory fixture (an #408-class change).
+
+## 86. #515 BUILD 2 — CHOKED RELIEF: THE VALVE PASSES WHAT THE VESSEL OFFERS IT — 2026-08-26
+
+*(OWNER RULING, 2026-08-25: "A. Then choked porv then void term.")* — Build 2 of three.
+
+**Measure the regime first.** On the TMI timeline (the §85 ride, physics lift at 5 s) the
+pressurizer is **water-solid for 95.3 % of the first 78 minutes** (223,064 of 234,001 steps) and
+**89 % of the relief steps discharge liquid** (`relief_h = h_f`). The PORV is passing water —
+TMI-2's own mechanism — so the liquid law is the regime that binds, not a corner.
+
+**The law.** Each valve is ONE effective area, derived once from its sourced rating ("179,000 lb/hr
+at 2335 psig", Ginna TS Bases ML20339A221:15241; "288,000 lbm/hr per valve", ch15 :783-793) through
+the same flux law that then runs live: `criticalFlux(h0, P0)` — the homogeneous critical mass flux
+of fluid at (h0, P0) along a throttled path to the throat, `G(P_t) = ρ(h0,P_t)·√(2∫dP/ρ)`, maximised
+over P_t. No correlation text is in any lane's corpus (Appendix K's Moody is cited only); the FORM
+is sourced (homogeneous critical flow) and every number comes from Layer 0. Cross-checks:
+
+| fluid at the valve | 16.2 MPa | 6.9 MPa | 2.0 MPa |
+|---|---|---|---|
+| saturated steam, this law | 23,922 kg/m²s | 9,438 | 2,713 |
+| ideal-gas choked (γ 1.3), reference | 20,184 | 9,073 | 2,819 |
+| saturated liquid, this law | 43,158 (1.8× steam) | 25,803 (2.7×) | 10,783 (4.0×) |
+| orifice √(2ρΔP), the overstatement | 136,766 (5.7× steam) | 100,417 (10.6×) | 56,824 (21×) |
+
+The derived area is **1.86 cm² per PORV**; at 1000 psia a stuck valve passes **1.76 kg/s of steam,
+4.80 kg/s of saturated water** (the orifice law would say 18.7; the constant law said 4.45 at any
+pressure). The throttled path stands in for the isentropic one (Layer 0 carries no entropy) —
+declared, direction slightly high. Back pressure 0.1 MPa — the throat sits at 0.55–0.75 P0, far
+above containment for any relief the plant sees.
+
+**What it does to TMI** (the §85 ride, physics lift at 5 s, HPI throttled 4.5 min, AFW found
+8 min, RCPs off 73 min, block valve 142 min, HPI 200 min):
+
+| t | P (psia) | level | RCS mass | note |
+|---|---|---|---|---|
+| 1 min | 1660 | 54 % | 98.7 % | scrammed on OTΔT at 43 s |
+| 4.5 min | **1077** | **100 %** | 96.6 % | the deception — HPI throttled here |
+| 8 min | 1083 | 100 % | 90.8 % | |
+| 15 min | 1067 | 100 % | 79.6 % | |
+| 30 min | 935 | 100 % | 58.0 % | core 17 % uncovered (HEM proxy) |
+| 50 min | 649 | 94 % | 37.8 % | |
+| 60 min | 230 | 37 % | 84.7 % | the accumulators dumped (~55 min) |
+| 142 min | block valve shut | | 64 % | the loss ends |
+| 220 min | 1219 | 91 % | 112 % | HPI restored at 200 min — the vessel refills |
+| 260 min | **1666** | 100 % | 121 % | **alive** — the plant repressurizes |
+
+The whole timeline runs (the old vessel + constant valve died at 97 min); the block-valve closure
+and the HPI restore do what TMI-2's did. The plateau is SHORTER than §83's ablation predicted
+(1070–1080 psia from 4.5 to 15 min, then a slide to the accumulators at ~55 min, against
+"1065 psia from 8 to 73 min"): that ablation scaled the constant STEAM flow with pressure and never
+saw the solid vessel; the honest law passes water at 2–4× the steam flux. And this plant's PORV is
+**3.6× TMI-2's per MWt** (Ginna's 2 × 179,000 lb/hr at 1520 MWt vs TMI-2's one valve at 2772 MWt)
+with a similar inventory per MWt — so its TMI loses inventory faster than TMI-2 did, by plant
+identity, declared. §83's ablated table is superseded by the one above; §45's published table
+(1564 / 1190 / 823 / 442 psia at 1 / 3 / 11 / 16 min stuck) is superseded by the gate's own ride.
+
+**Gates.** `run_pwr2_pressurizer` 79 → 85, mutations 37 → 40 (pressure-blind flux, a solid vessel
+relieving at the steam flux, a throat search that never chokes — all red); the stuck-PORV check
+now tests the LAW (one valve's area × the flux at THIS pressure: 2.60 kg/s at 1459 psia); the
+WATER SOLID rate window ends at the first relief step (a solid vessel now passes water through
+the valves at 25 kg/s — the compliance claim, 11.3 psi/s, is measured relief-free);
+`run_pwr2_engine` 94 (the manual-close check reads the law: 4.12 kg/s at 2202 psia); loss-of-load
+9, shell 77, endurance 18, loca 17, coredamage 20, true_state 64, cvcs 44, board 28, perf 4.

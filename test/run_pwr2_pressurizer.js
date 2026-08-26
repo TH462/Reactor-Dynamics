@@ -413,11 +413,15 @@ function runSuite(RD, rec, quiet) {
       'stuck ' + prT.porv_stuck + ', discharge ' + prT.relief_kgs.toFixed(2) + ' kg/s');
   rideT(1, { porv_stick: true, porv_manual: true });
   rideT(quiet ? 40 : 120, { porv_stick: true });
-  ckT('the PORV sticks: HALF the two-valve capacity flows and the tailpipe goes HOT',
-      Math.abs(prT.relief_kgs - PZ.RELIEF.porv_kgs / 2) < 1e-9 &&
+  /* RE-EXPRESSED 2026-08-26 (#515 Build 2): the flow is ONE valve's effective area times the
+   * homogeneous critical flux of what the vessel offers it, at THIS pressure — the check tests
+   * the LAW, not the rated number (which the constants section pins separately). */
+  var lawOne = (PZ.reliefAreas().porv_m2 / 2) * PZ.criticalFlux(prT.relief_h, sysT.P);
+  ckT('the PORV sticks: ONE valve\'s area times the choked flux flows, and the tailpipe goes HOT',
+      Math.abs(prT.relief_kgs - lawOne) < 1e-9 && prT.relief_kgs > 0 &&
       prT.tailpipe_temp_c > 200 && prT.porv_stuck === true,
-      prT.relief_kgs.toFixed(2) + ' kg/s (one valve of two), tailpipe ' +
-      prT.tailpipe_temp_c.toFixed(0) + ' degC — the passing indication');
+      prT.relief_kgs.toFixed(2) + ' kg/s (one valve of two, at ' + (sysT.P * PSI).toFixed(0) +
+      ' psia; rated 4.45 at 2350), tailpipe ' + prT.tailpipe_temp_c.toFixed(0) + ' degC');
   var invMid = 100 * sysT.M_total / M0T;
   rideT(quiet ? 160 : 480, { porv_stick: true });
   var invLate = 100 * sysT.M_total / M0T;
@@ -463,11 +467,16 @@ function runSuite(RD, rec, quiet) {
   ckT('charging with no letdown DRIVES THE VESSEL SOLID -- the flag earns true',
       prS.water_solid === true && prS.level_pct > 99.9,
       'solid at t = ' + (iS * DT).toFixed(0) + ' s, ' + (sysS.P * PSI).toFixed(0) + ' psia');
-  var Psolid0 = sysS.P;
+  var Psolid0 = sysS.P, tSolidWin = 0;
+  /* the window ends at the first RELIEF step: a solid vessel now passes WATER through the PORV
+   * and safeties at the choked liquid flux (#515 Build 2), and a valve-limited rate is a
+   * different claim from the liquid-compliance one this check makes */
   for (var iS2 = 0; iS2 < 10 / DT; iS2++) {
     S.stepPlant(sysS, DT, { corePower: 300000, sgDuty: 300000 + pw,
       sources: [{ node: 'cold_leg', mdot: 3.0, h: W.h_l(288, sysS.P) }] });
-    prS = PZ.stepPressurizer(pzS, sysS, DT, { spray_manual: 0, heaters_manual: 0 });
+    prS = PZ.stepPressurizer(pzS, sysS, DT, { spray_manual: 0, heaters_manual: 0, block_valve: false });
+    if (prS.relief_kgs > 0) break;
+    tSolidWin += DT;
   }
   /* REFIT 2026-08-25 (#515): the old check asserted the solid rate > 8x "the max rate while
    * the bubble lived" (0.21 psi/s). That bubbled rate WAS THE DEFECT D5 §84 measured — the
@@ -476,10 +485,11 @@ function runSuite(RD, rec, quiet) {
    * compliance class (3 kg/s into ~50 kg/MPa of liquid + loop ≈ 9 psi/s). Three claims
    * replace the ratio, each validated on the old build too (old: 10.1 psi/s solid, 0.21
    * bubbled — passes all three). */
-  var rateSolid = (sysS.P - Psolid0) * PSI / 10;
+  var rateSolid = (sysS.P - Psolid0) * PSI / Math.max(tSolidWin, DT);
   ckT('...and the SOLID plant pressurizes in the liquid-compliance class -- the §25.3 collapse, live',
       rateSolid > 4 && rateSolid < 25,
-      rateSolid.toFixed(1) + ' psi/s solid under 3 kg/s (liquid + loop compliance ~50 kg/MPa)');
+      rateSolid.toFixed(1) + ' psi/s solid under 3 kg/s over ' + tSolidWin.toFixed(1) +
+      ' s with no relief (liquid + loop compliance ~50 kg/MPa)');
   var pzB = PZ.createPressurizer({});
   var sysB = S.createPlant({ h: W.h_l(304.5, 15.41), P: 15.41, extraMass: PZ.extraMassFn(pzB) });
   var Pb0 = sysB.P, prB = null;
@@ -585,6 +595,41 @@ function runSuite(RD, rec, quiet) {
       Math.abs(100 * migrated.V_liq / migrated.V - 55) < 0.5 && migrated.h_bar === undefined,
       'seat ' + PZ.extraMassFn(migrated)(15.41).toFixed(2) + ' vs ' + oldPz.m_pzr.toFixed(2) +
       ' kg, level ' + (100 * migrated.V_liq / migrated.V).toFixed(2) + ' %');
+
+  /* ---- 8. THE CHOKED RELIEF LAW (#515 Build 2, 2026-08-26) --------------------------------- */
+  head('THE CHOKED RELIEF  [area from the rating, flux from Layer 0; steam, then flashing water]');
+  var Ar = PZ.reliefAreas(), Pr = PZ.RELIEF.porv_rated_mpa;
+  ck('a stuck PORV passes EXACTLY its rated mass of saturated steam AT the rating pressure',
+     (Ar.porv_m2 / 2) * PZ.criticalFlux(W.h_g(Pr), Pr), PZ.RELIEF.porv_kgs / 2, 1e-9, 'kg/s');
+  ck('...and the safeties theirs at 2500 psia',
+     Ar.safety_m2 * PZ.criticalFlux(W.h_g(PZ.RELIEF.safety_rated_mpa), PZ.RELIEF.safety_rated_mpa),
+     PZ.RELIEF.safety_kgs, 1e-9, 'kg/s');
+  var gS16 = PZ.criticalFlux(W.h_g(16.2), 16.2), gS69 = PZ.criticalFlux(W.h_g(6.9), 6.9),
+      gL69 = PZ.criticalFlux(W.h_f(6.9), 6.9), gS2 = PZ.criticalFlux(W.h_g(2.0), 2.0);
+  var gIdeal = function (P) { var g = 1.3, R = 461.5, T = W.T_sat(P) + 273.15;
+    return P * 1e6 * Math.sqrt(g / (R * T)) * Math.pow(2 / (g + 1), (g + 1) / (2 * (g - 1))); };
+  ckT('saturated STEAM chokes within 25 % of ideal-gas choked flow at 16.2, 6.9 and 2.0 MPa',
+      Math.abs(gS16 / gIdeal(16.2) - 1) < 0.25 && Math.abs(gS69 / gIdeal(6.9) - 1) < 0.25 &&
+      Math.abs(gS2 / gIdeal(2.0) - 1) < 0.25,
+      gS16.toFixed(0) + ' vs ' + gIdeal(16.2).toFixed(0) + ' kg/m2s at 16.2 MPa; ' +
+      gS69.toFixed(0) + ' vs ' + gIdeal(6.9).toFixed(0) + ' at 6.9');
+  ckT('...and the steam flux falls with pressure (choked flow ~ P): 6.9 MPa passes 35-50 % of 16.2',
+      gS69 / gS16 > 0.35 && gS69 / gS16 < 0.50, (100 * gS69 / gS16).toFixed(0) + ' %');
+  ckT('saturated LIQUID chokes at 2-4x the steam flux (flashing water, the Moody class) — and ' +
+      'well below the orifice law\'s sqrt(2 rho dP), which overstates flashing flow 10x',
+      gL69 / gS69 > 2 && gL69 / gS69 < 4 &&
+      gL69 < 0.4 * Math.sqrt(2 * W.rho_l_sat(W.T_sat(6.9)) * 6.8e6),
+      'liquid ' + gL69.toFixed(0) + ' vs steam ' + gS69.toFixed(0) + ' kg/m2s at 6.9 MPa; orifice ' +
+      Math.sqrt(2 * W.rho_l_sat(W.T_sat(6.9)) * 6.8e6).toFixed(0));
+  /* the SOLID vessel relieves WATER: drive the TMI vessel solid and read what leaves */
+  var pzR = PZ.createPressurizer({ level_frac: 0.999999 });
+  driveSolid(pzR, 330);
+  var rR = PZ.stepPressurizer(pzR, stub(at(120), 1630), DT, { porv_stick: true, porv_manual: true });
+  ckT('a SOLID vessel relieves LIQUID through the stuck valve — at the liquid flux, 2-4x the steam rate',
+      rR.relief_h < W.h_f(at(120)) + 1e-6 && rR.water_solid &&
+      rR.relief_kgs > 2 * (Ar.porv_m2 / 2) * PZ.criticalFlux(W.h_g(at(120)), at(120)),
+      rR.relief_kgs.toFixed(2) + ' kg/s of water at ' + rR.relief_h.toFixed(0) + ' kJ/kg vs ' +
+      ((Ar.porv_m2 / 2) * PZ.criticalFlux(W.h_g(at(120)), at(120))).toFixed(2) + ' of steam');
 
   /* ---- THE HR1 SPLIT (2026-08-20, the instrument layer's control switchover) --------------
    * CONTROL (heaters/spray/PORV ladder, level PI, 17 % cut) reads drivers.indicated_*;
@@ -728,11 +773,21 @@ var MUTATIONS = [
    'if (!stickArmed) pz.porvStuck = false;',
    'if (false) pz.porvStuck = false;'],
   ['a stuck PORV flows BOTH valves\' capacity (one valve stuck is one valve)',
-   ': (oneValve ? RELIEF.porv_kgs / 2 : 0));',
-   ': (oneValve ? RELIEF.porv_kgs : 0));'],
+   '(pz.porvOpen ? 2 : (oneValve ? 1 : 0))',
+   '(pz.porvOpen ? 2 : (oneValve ? 2 : 0))'],
   ['the block valve never isolates',
-   'var porv_kgs = !pz.blockOpen ? 0',
-   'var porv_kgs = false ? 0'],
+   'var nPorv = !pz.blockOpen ? 0',
+   'var nPorv = false ? 0'],
+  /* #515 Build 2: the choked law */
+  ['the relief flow is PRESSURE-BLIND again (the flux evaluated at the rating pressure)',
+   'var G_relief = (nPorv > 0 || pz.safetyOpen) ? criticalFlux(relief_h, P) : 0;',
+   'var G_relief = (nPorv > 0 || pz.safetyOpen) ? criticalFlux(relief_h, RELIEF.porv_rated_mpa) : 0;'],
+  ['a SOLID vessel relieves at the STEAM flux (the liquid regime, TMI\'s, denied)',
+   'else if (pz.m_sat > 0) relief_h = pz.h_sat;',
+   'else if (pz.m_sat > 0) relief_h = hg;'],
+  ['the choked flux never chokes (the throat search returns the first sample)',
+   'if (G > best) best = G; else if (i > 2) break;',
+   'if (i === 1) best = G;'],
   ['the tailpipe never heats (the passing indication is dead)',
    'pz.T_tail_c += dt * (W.T_sat(P) - pz.T_tail_c) / RELIEF.tail_tau_heat_s;',
    ''],
