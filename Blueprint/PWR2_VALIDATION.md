@@ -5375,3 +5375,74 @@ at baseline.**
 good one — so the frozen board behind this dialog can show nonsense (14.5 psia, void 0 %). The
 dialog now says the readings are the last valid ones, which is honest about the fact but does not
 fix which step got committed.
+
+## 91. #518 CLOSE-OUT — THE HELD PLANT IS THE LAST GOOD STEP, NOT THE REJECTED ONE — 2026-08-26
+
+*(OWNER, 2026-08-26: "Work 518.")* — the second half of #518, recorded as open at §89 and left
+until #520 made it visible.
+
+### 91.1 The asymmetry
+
+Three guards in `pwr2_core.step` decide a plant has left the range Layer 0 can compute. The
+root-jump guard had it right from the day it was written — *"hold THIS step (nothing adopted),
+latch beyond_model"* — and returns before touching the state. **The two blowdown latches did not:
+they fired at the END of the step, after `sys.nodes[i].h`, `sys.P` and `sys.M_total` had all been
+written.** So the state frozen for the player was the very step the guard had just rejected as
+uncomputable.
+
+**Measured** (large break + station blackout, through the shell):
+
+| | pressure | Tavg |
+|---|---|---|
+| last good step | 17.6 psia | 393 °F |
+| **held, shown for ever** | **14.5 psia — the property floor, i.e. the rejected value** | 221 °F |
+
+§90 had just put a dialog in front of that board telling the player *"everything you can see is
+the last valid reading."* It was not.
+
+### 91.2 The fix
+
+The new enthalpies are **staged** into `h_next[]` rather than written, both latch conditions are
+evaluated, and only then are they adopted. On a latch the step returns the root-jump guard's own
+shape — `held: true, dP: 0`, nothing committed — while still REPORTING `enthalpyClamped` and
+`enthalpyDiscarded_kJ`, because what was rejected is the diagnostic.
+
+After: the held state is byte-identical to the step entry (17.6 psia, and the leg enthalpies
+unchanged).
+
+### 91.3 ⚠ The 172 °F "corruption" that turned out to be correct
+
+The held Tavg still read **221 °F against the previous step's 393**, and the obvious reading —
+another corrupted field — is wrong. At 17.59 psia both legs sit above `h_f`, so the plant is
+two-phase and `T_sat` **is** 221 °F. The 393 was the stale one: it was computed at `pwr2_engine`'s
+own `primaryTavg` call *before* that step's pressure collapse (229 → 17.6 psia in one 0.02 s step,
+inside `P_JUMP_MAX` and legitimately adopted).
+
+**So the held state is now self-consistent, and the number that looked broken was the number that
+was right.** Worth the paragraph because the instinct on seeing a 172 °F step change is to keep
+fixing, and here that would have meant "correcting" a saturation temperature to match a
+mid-step artefact.
+
+### 91.4 Two gate defects the change exposed, both mine
+
+1. **Two mutation anchors were the two latch lines**, now merged into one pre-commit condition —
+   ANCHOR NOT FOUND, blind, gate exits 1. Re-cut so each half is still mutated on its own.
+2. **The pre-commit guard SHADOWED the standing hold branch**, and the mutation that deletes that
+   branch went blind. On a frozen state the raw latch conditions still hold, so the new guard
+   re-fires each step and holds it anyway — correctly, but by a different route, at the cost of a
+   solve a frozen plant does not need. The check now pins the standing hold's own signature,
+   `transfers === 0 && iterations === 0`, which only the early branch produces.
+
+And the new mutation — *stage the enthalpies but write them anyway* — was **blind to every
+existing check**, because nothing asserted the held state equals the state the step started from.
+That is the entire claim of this fix, and it now has its own byte-identical assertion.
+
+### 91.5 Gates
+
+`run_pwr2_core` 46 → **47**, mutations 22 → **23**. Everything else at baseline; **aggregate 93
+runners at baseline**. No trajectory moved: the latch times on every fixture are unchanged, because
+the conditions are evaluated on exactly the same quantities — only the order of adopting and
+checking changed.
+
+**#518 is now closed in full.** The transport instability (§89) and the held snapshot (this
+section) were the two halves recorded on it.

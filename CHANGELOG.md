@@ -30,6 +30,17 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
 
 ## [Unreleased]
 
+### Fixed (#518 close-out — a halted plant now freezes on its last good step, 2026-08-26)
+- **The frozen board no longer shows the step that caused the halt.** The two blowdown guards
+  latched *after* writing the new state, so the readings held for the player were the very step
+  the model had just rejected as uncomputable — measured on a large break with the station
+  blacked out, the last good step read 17.6 psia and the held snapshot read **14.5, the property
+  floor itself**. They now decide before committing, exactly as the third guard always did. This
+  matters because #520 had just put a dialog in front of that board promising *"everything you
+  can see is the last valid reading."*
+- No plant trajectory moved — the same conditions on the same quantities, only the order of
+  checking and adopting changed. `Blueprint/PWR2_VALIDATION.md` §91.
+
 ### Added (#520 — a halted simulator says so, and offers the way out, 2026-08-26, owner design)
 - **When the simulator stops calculating, it now tells you.** The new-physics engine holds its
   last state when the plant reaches a condition the model cannot compute — clock running, every

@@ -325,8 +325,9 @@ function runSuite(C, rec, quiet) {
    * outside: a sink at the floor until the target mass leaves the representable range. */
   if (!quiet) console.log('\nTHE BEYOND-MODEL LATCH (#487)  [held state, flowing time, never NaN]');
   var sysZ = C.createSystem({ nodes: [{ id: 'a', V: 2.0, h: 400 }], P: 0.2 });
-  var rZ = null, latchedZ = false;
+  var rZ = null, latchedZ = false, pPre = null, hPre = null;
   for (var kz = 0; kz < 200 && !latchedZ; kz++) {
+    pPre = sysZ.P; hPre = sysZ.nodes[0].h;      /* #518 — the state the latching step STARTED from */
     rZ = C.step(sysZ, 0.02, { sources: [{ node: 'a', mdot: -800, h: 400 }], heats: { a: -200000 } });
     if (rZ.beyond_model) latchedZ = true;
   }
@@ -335,13 +336,31 @@ function runSuite(C, rec, quiet) {
       latchedZ ? 'latched at step ' + kz + ' with P ' + sysZ.P.toFixed(3) +
                  ' MPa and h finite — the pre-latch build went NaN here'
                : 'never latched in 200 sink-driven steps at the floor');
+  /* ---- #518: NOTHING IS ADOPTED ON THE LATCHING STEP -----------------------------------------
+   * The two blowdown latches used to fire AFTER committing h and P, so the state frozen for the
+   * player was the very step the guard had just rejected as uncomputable. MEASURED on a large
+   * break with the station blacked out: the last good step read 17.6 psia, the held snapshot read
+   * 14.5 — the property floor, i.e. the rejected value — and #520 then put a dialog in front of
+   * exactly that board, promising it showed "the last valid reading". The root-jump guard had
+   * this right from the start ("hold THIS step, nothing adopted"); these two now match it.
+   * BYTE-IDENTICAL is the assertion, not "close": a partial adoption is the defect. */
+  ckT('...and the latching step ADOPTS NOTHING — the held state is the one it started from (#518)',
+      latchedZ && sysZ.P === pPre && sysZ.nodes[0].h === hPre && rZ.held === true && rZ.dP === 0,
+      latchedZ ? 'P ' + sysZ.P.toFixed(4) + ' and h ' + sysZ.nodes[0].h.toFixed(2) +
+                 ' byte-identical to the step entry; held true, dP 0'
+               : 'never latched');
   var Pz = sysZ.P, hz = sysZ.nodes[0].h, tz = sysZ.simTime;
   var rZ2 = C.step(sysZ, 0.02, { sources: [{ node: 'a', mdot: -800, h: 400 }],
                                  heats: { a: -200000 } });
   ckT('...and the held step FREEZES state while time flows — a hold, not a crash and not physics',
       rZ2.held === true && rZ2.dP === 0 && sysZ.P === Pz && sysZ.nodes[0].h === hz &&
-      sysZ.simTime === tz + 0.02 && rZ2.junction.length === 1 && rZ2.junction[0].dm_dt === 0,
-      'P and h byte-identical through a driven step, simTime += dt exactly, junctions zero');
+      sysZ.simTime === tz + 0.02 && rZ2.junction.length === 1 && rZ2.junction[0].dm_dt === 0 &&
+      rZ2.transfers === 0 && rZ2.iterations === 0,
+      'P and h byte-identical through a driven step, simTime += dt exactly, junctions zero, and ' +
+      'transfers/iterations ZERO — the signature of the STANDING hold. Without those two the ' +
+      'pre-commit guard (#518) satisfies every other clause on this state, so deleting the ' +
+      'standing branch went BLIND: the guard re-fires each step and holds it anyway, correctly, ' +
+      'but by a different route and at the cost of a solve the frozen plant does not need.');
   /* ---- THE #499 GUARDS, AT THEIR OWN LAYER (migrated 2026-08-20g) ------------------------
    * These lived as facade-gate fixtures until the control/instrument switchovers MOVED the
    * facade trajectories: both now escape through the kinetics-runaway family first, so the
@@ -394,12 +413,19 @@ var MUTATIONS = [
   ['the root-tracking limit is deleted (a vanished root is ADOPTED as a teleport)',
    'var P_JUMP_MAX = 2.0;',
    'var P_JUMP_MAX = 1e9;'],
+  /* ⚠ ANCHORS RE-CUT (#518). The two latches were separate post-commit statements; they are now
+   * ONE pre-commit condition, because latching after adopting meant the held plant was the very
+   * step the guard had just rejected. Each half is still mutated on its own. */
   ['the both-walls latch is deleted (the near-floor oscillation runs unlatched)',
-   'if (wallHi > 0 && wallLo > 0) sys.beyond_model = true;',
-   ''],
-
+   '(wallHi > 0 && wallLo > 0)', '(false)'],
   ['the beyond-model latch never fires (#487 — the pre-latch build, which went NaN)',
-   '    if (sol.flooredLow && clampedNodes > 0) sys.beyond_model = true;', ''],
+   '(sol.flooredLow && clampedNodes > 0)', '(false)'],
+  /* The latch STAGES the new enthalpies and adopts them only past the guards (#518). Writing
+   * them straight into the nodes is the pre-#518 behaviour: the held plant becomes the very step
+   * the guard rejected. */
+  ['the latch ADOPTS the rejected step before holding (#518 — the held plant is the blow-up)',
+   'h_next[i] = h_new;                                  /* #518 — STAGED, not written yet */',
+   'sys.nodes[i].h = h_new; h_next[i] = h_new;'],
   ['the held step keeps integrating (the hold is announced but not performed)',
    '    if (sys.beyond_model) {\n      sys.simTime += dt;', '    if (false) {\n      sys.simTime += dt;'],
   /* THE ENTHALPY ENVELOPE (2026-08-17). Three ways to get it wrong, and the third is the one
