@@ -1061,6 +1061,18 @@ async function testRewindPicker(page) {
     throw new Error('⏪ Rewind is disabled after ' + tLive + ' s of free play — no checkpoint was laid');
   }
   await page.click('#chartRewindBtn');
+  /* ⛔ WAIT FOR PICK MODE TO SETTLE, THEN READ EVERYTHING IN ONE GO (#521). This was a fixed
+   * 300 ms sleep followed by TWO separate round trips — the marks and the x-axis span from one
+   * evaluate, the clock from another. Entering pick mode WIDENS the plot to show every reachable
+   * mark, so those two reads can straddle the redraw: the span belongs to one frame and the clock
+   * to the next, `t0 = tAfterPress - span` mixes them, and if a checkpoint appeared in between
+   * `marks[1]` is a different checkpoint altogether. That is not jitter — it is a whole mark of
+   * error, and it is why CI once read "expected T+7 s, landed T+175 s" on a commit that touched
+   * none of this and passed on a re-run of the same job (#521). */
+  await page.waitForFunction(function () {
+    return document.querySelector('.strip-chart').classList.contains('rewind-pick') &&
+           document.getElementById('playBtn').classList.contains('paused');
+  }, { timeout: 5000, polling: 50 }).catch(function () { /* the throws below carry the message */ });
   await page.waitForTimeout(300);
 
   var st = await page.evaluate(function () {
@@ -1073,6 +1085,9 @@ async function testRewindPicker(page) {
         .map(function (m) { return parseFloat(m.getAttribute('x1')); })
         .sort(function (a, b) { return a - b; }),
       axis0: (document.querySelectorAll('#chartXAxis span')[0] || {}).textContent || '',
+      /* #521 — the clock is read HERE, in the same evaluate as the marks and the span, so the
+       * three cannot come from different frames. Reading it separately is the whole defect. */
+      clock: (document.getElementById('clock').textContent || '').trim(),
       left: r.left, top: r.top, w: r.width, h: r.height,
     };
   });
@@ -1088,7 +1103,11 @@ async function testRewindPicker(page) {
   // passed on one branch and failed on the merge for pure timing reasons, which is
   // the tell that it was never asserting what it claimed. What a one-step rewind
   // does, and pick mode cannot, is move the clock BACKWARDS.
-  var tAfterPress = await clockSec();
+  var tAfterPress = (function (txt) {          /* #521 — from st, NOT a second round trip */
+    var m = /(\d+):(\d+):(\d+)/.exec(txt || '');
+    return m ? (+m[1]) * 3600 + (+m[2]) * 60 + (+m[3]) : NaN;
+  })(st.clock);
+  if (!isFinite(tAfterPress)) throw new Error('could not read the clock from the pick-mode frame ("' + st.clock + '")');
   if (tAfterPress < tLive) {
     throw new Error('pressing ⏪ rewound the plant (T+' + tLive + ' → T+' + tAfterPress +
       ') instead of opening the picker (#137)');

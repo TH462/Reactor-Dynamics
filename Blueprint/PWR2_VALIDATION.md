@@ -5446,3 +5446,76 @@ checking changed.
 
 **#518 is now closed in full.** The transport instability (§89) and the held snapshot (this
 section) were the two halves recorded on it.
+
+## 92. #519 / #521 — TWO CONTENTION FLAKES, AND THE OBVIOUS HYPOTHESIS WAS WRONG — 2026-08-26
+
+*(OWNER, 2026-08-26: "Work next.")* Both gates could return either verdict on the same commit,
+which makes a red unchaseable — the failure mode `gates.yml` once sustained for **32 consecutive
+runs** across three days, including a release to `main`.
+
+### 92.1 #519 — the ratio did not survive load, and the header said it did
+
+`run_pwr2_perf` asserts PWR2 ≤ 8× PWR1 per step, and justified the ratio like this:
+
+> *"Both engines slow down together, so PWR2-step / PWR1-step survives load."*
+
+**True only if they are measured through the same weather, and they were not.** The shipped shape
+timed all seven PWR2 reps, then all seven PWR1 reps. On a 3-way-parallel CI runner a heavy
+neighbour can start and finish inside one of those two windows.
+
+**⛔ AND THE OBVIOUS HYPOTHESIS IS WRONG, WHICH IS THE PART WORTH KEEPING.** "CI is busy" is the
+first explanation anyone reaches for, it is safe, and a fix aimed at it would have changed
+nothing. Measured, 12 spinners on 12 CPUs across **both** blocks:
+
+| | ratio | pwr2 / pwr1 |
+|---|---|---|
+| idle | 4.00× | 80.7 / 20.2 |
+| sustained load, both blocks | **2.90×** | 160.6 / 55.5 |
+
+**Sustained load drives the ratio DOWN** — both engines slow together, exactly as the header
+claimed, and it can never redden this gate. Only load *aligned with one block* inflates it. Raised
+for the PWR2 block only and dropped before the PWR1 block:
+
+| | ratio | pwr2 / pwr1 | |
+|---|---|---|---|
+| sequential, median | **8.80×** | 183.2 / 20.8 | the shipped shape — CI read **8.3× (178.7 / 20.5)** |
+| sequential, minimum | 7.56× | 150.8 / 20.0 | |
+| interleaved, median | 3.44× | 183.6 / 53.3 | verdict recovered, absolutes still inflated |
+| **interleaved, minimum** | **3.71×** | 75.2 / 20.3 | **adopted** — idle truth is 3.74–3.91× |
+
+**Interleaving is what fixes the verdict; the minimum is what fixes the reported numbers** (this
+file prints them, and contention or garbage collection can only ever make a sample slower, so the
+fastest rep is the least-corrupted estimate). Note the median was *already* there — the fix people
+reach for first was in place and had not helped.
+
+**Gated, and deterministically.** A real load generator inside a gate that runs 3-way parallel
+would be the disease. The new check reproduces the *geometry* instead: a burst that expires after
+a fixed number of CALLS, shared by whichever function is running, over two synthetic equal-cost
+twins whose true ratio is 1.00 by construction. Sequential sampling lets the first function eat
+the whole burst; interleaved shares it. **Measured: interleaved 1.00×, sequential 4.97×.**
+
+### 92.2 #521 — two round trips straddling a redraw
+
+`verify_e2e_ui`'s rewind-picker check failed on CI with *"clicking the checkpoint mark at T+7 s
+landed the plant at T+175 s"*, then **passed on a re-run of the same job at the same commit** — on
+a commit that touched none of the code it drives.
+
+A 168-second error is not jitter; it is a whole checkpoint. The cause: the marks and the x-axis
+span came from one `page.evaluate` and the clock from a **second** round trip. Entering pick mode
+WIDENS the plot to show every reachable mark, so the two reads can straddle that redraw — the span
+belongs to one frame, the clock to the next, `t0 = tAfterPress - span` mixes them, and if a
+checkpoint appeared in between, `marks[1]` is a different checkpoint.
+
+Fixed by waiting for pick mode to settle (predicate, not a sleep) and reading marks, span and
+clock in **one** evaluate, so the three cannot disagree.
+
+**Honest limit: one green run does not prove a flake is gone.** What is demonstrable is that a
+specific race has been removed; the 6 s band — the part that catches the real inversion defect —
+is untouched, and widening it was explicitly rejected because it would have blinded the check.
+
+### 92.3 Gates
+
+`run_pwr2_perf` 4 → **5**. `verify_e2e_ui` unchanged in score. **Aggregate 93 runners at
+baseline.** The two fixes are different — interleaved sampling, and an atomic read — because the
+shared class ("a verdict that depends on machine load") does not imply a shared mechanism. Saying
+so beats inventing one abstraction over two unrelated races.

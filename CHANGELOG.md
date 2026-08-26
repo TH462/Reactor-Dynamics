@@ -30,6 +30,19 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
 
 ## [Unreleased]
 
+### Fixed (#519, #521 — two flaky gates that could return either verdict on the same commit, 2026-08-26)
+- **The engine performance gate now measures both engines through the same weather.** It timed
+  all of the new engine's samples, then all of the old one's, so a busy neighbour overlapping one
+  window inflated the ratio — reproduced deliberately at **8.80×** against an idle truth of
+  3.7–4.0×, matching the 8.3× that reddened CI. Samples are now interleaved and taken as the
+  minimum. The obvious hypothesis was wrong and is recorded: load across *both* windows slows
+  both engines and drives the ratio **down** (4.00 → 2.90), so it could never have caused this.
+- **The rewind-picker check no longer straddles a chart redraw.** It read the checkpoint marks in
+  one round trip and the clock in another; entering pick mode widens the plot, so the two could
+  come from different frames and the check aimed at the wrong checkpoint — a 168-second error, not
+  jitter. All three values are now read together, after a predicate rather than a sleep.
+- Neither tolerance was widened. `Blueprint/PWR2_VALIDATION.md` §92.
+
 ### Fixed (#518 close-out — a halted plant now freezes on its last good step, 2026-08-26)
 - **The frozen board no longer shows the step that caused the halt.** The two blowdown guards
   latched *after* writing the new state, so the readings held for the player were the very step
