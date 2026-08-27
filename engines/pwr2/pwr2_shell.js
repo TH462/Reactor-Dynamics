@@ -787,8 +787,43 @@
                       'stuck_open_spray', 'continuous_rod_withdrawal',
                       'tavg_sensor_failure', 'porv_indicator_stuck_closed',
                       'pzr_level_sensor_stuck', 'pzr_level_sensor_low'], out = {};
+          /* THE INTERCEPTION IS THE RETIRED PLANT'S, AND IT IS STRIPPED (#546/#547, the
+           * #534 systemic pattern). Seven kept rows are `command_override` — a mechanism
+           * that has the KERNEL drop or rewrite the operator's command before it reaches
+           * the engine (control_kernel.js:339-350), using the OLD plant's action names and
+           * payload keys. PWR2 models every one of the seven inside its own engine
+           * (scram_block, porv_stick, pzr_heaters_failed, spray_stick, turbine_trip,
+           * feed_pump_a/b, feed_overfeed — see REHOMED.inject_failure above), so the
+           * kernel's copy was a SECOND authority speaking a vocabulary this plant does not
+           * have. Measured, all ten intercepted action names: `connect_grid` and
+           * `set_steam_demand` are in REFUSED and could only THROW; `close_porv` was
+           * rewritten into `open_porv`, also REFUSED (#547); `scram` was DROPPED outright
+           * and the #509 mirror then erased the kernel's own manual-trip latch inside the
+           * same evaluate, so the ATWS pushbutton did nothing at all (#546); `set_spray`
+           * was handed an `open` key set_spray never reads. HR9: the plant is the ground
+           * truth, so the engine keeps the failure and the kernel keeps out of it.
+           *
+           * WHAT SURVIVES is the MENU: getFailureCatalog (control_kernel.js:1302) reads
+           * id/display/category/severity_meta and the Failures tab reads exactly those.
+           * `type` stays as it is — nothing outside the kernel's `:344` interception test
+           * reads a PWR2 failure's type except `=== 'instrument'` (three sites in this
+           * file), and gen_manual_reference runs against the retired plant.
+           *
+           * VERIFIED BEFORE STRIPPING (the #295 trap — a two-part fix whose parts are each
+           * sufficient makes a one-sided injection lie). Each row armed at the engine door
+           * with the kernel NOT intercepting, then attacked with the command the kernel
+           * used to eat: loss_of_feedwater holds (pumps stopped, flow 0.0111 either way),
+           * sg_overfeed holds (1.2000 either way), turbine_trip holds (0.00 MWe), the
+           * heaters hold (0.00 kW), the spray holds (100 % stuck, 2020.7 psia either way),
+           * the PORV holds (open, 1624.5 psia either way), and the ATWS produces the
+           * DECLARED row instead of nothing. Not one is defeated by removing this. */
           keep.forEach(function (id) {
-            if (base.failures && base.failures[id]) out[id] = base.failures[id];
+            var def = base.failures && base.failures[id];
+            if (!def) return;
+            out[id] = def.type === 'command_override'
+              ? { type: def.type, category: def.category, display: def.display,
+                  severity_meta: def.severity_meta }
+              : def;
           });
           return out;
         })()

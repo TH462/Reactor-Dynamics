@@ -30,6 +30,77 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
 
 ## [Unreleased]
 
+### Fixed (#546 + #547 — the control kernel stops rewriting PWR2's commands, 2026-08-27)
+
+The **first of the two systemic patterns** #534's adversarial sweep named. PWR2's
+`getProtectionConfig` built its 22-row casualty menu out of the **retired plant's failure table,
+by reference**, and seven of those rows are `type: 'command_override'` — the control kernel's
+licence to drop or rewrite an operator command before it reaches the engine
+(`control_kernel.js:339-350`), written in the retired plant's action names and payload keys. PWR2
+models all seven of those same failures **inside its own engine**, so each was double-armed and
+the kernel's half was speaking a vocabulary this plant does not have. Of the ten intercepted
+action names, two are not commands on PWR2 at all, one was rewritten into a third name PWR2
+refuses, one was handed a payload key PWR2 never reads, and one inverted.
+
+Seven player-visible faces, each measured through the shipped stack at hot full power:
+
+- **#546 — the reactor trip pushbutton was dead during an anticipated transient without scram.**
+  The kernel dropped the command with `return null`, which is the value a *successful* command
+  also returns, and the #509 engine-owned-RPS mirror then erased the kernel's own manual-trip
+  latch inside the same `evaluate()`, so no snapshot ever carried it. At +60 s: **99.52 % power,
+  0 annunciators, no trip, no turbine trip** — against **61.19 %, 6 annunciators and a latched
+  trip (cause `manual`)** now, with the rods correctly still at 200/200, which is the row the
+  engine has declared since #507 wave 6.
+- **#547 — CLOSE PORV on a stuck-open valve was rewritten into `open_porv`**, a name PWR2's
+  `REFUSED` registry rejects, so the signature operator action of the plant's flagship accident
+  answered with internal jargon telling the player to press the button they had just pressed. Now
+  `{ok:true}`: the close is accepted, their own manual-open demand clears, and the valve stays
+  open anyway.
+- **`sg_overfeed` inverted the operator's corrective command.** Pressing feed → 0 % to stop the
+  overfeed arrived as **120 %**, and after the repair the steam generator ran to **98.13 %** level.
+  It now arrives as 0 % and level falls to **47.73 %** — a 50.4-percentage-point difference in the
+  overfill direction.
+- **`failed_pzr_heaters` destroyed the demand and it survived the repair** — 80 % typed, 0
+  delivered, and **0.00 kW for ever** after `clear_failure`. Now 29.12 kW at the standing demand.
+- **`turbine_trip` zeroed the operator's load target** (0.0 against 100.0 MWe), and
+  **`loss_of_feedwater` zeroed a feed nudge**, so their ±10 % never happened.
+- **`stuck_open_spray`'s interception was inert and the failure defeatable through it** — the
+  kernel wrote an `open` key `set_spray` never reads, so returning the spray to AUTO was accepted
+  as written.
+
+**The fix is at the plant's door, not the kernel's** (Hard Rule 9, the plant is the ground truth):
+`pwr2_shell.getProtectionConfig` now copies the **menu fields only** — id, display, category,
+severity slider — for any row the retired table types `command_override`, so the kernel's
+interception loop never sees one. The kernel is untouched; its mechanism is correct for the plants
+that use it, and `run_m4` still pins the retired plant's contract byte-for-byte.
+
+**Verified before stripping**, because a two-part fix whose parts are each sufficient makes a
+one-sided injection lie (#295): every row was armed at the engine door with the kernel not
+intercepting and then attacked with the command the kernel used to eat. **Not one of the seven is
+defeated** — the stopped feed pumps hold the loss of feedwater (flow 0.0111 of rated either way),
+not the demand; the overfeed holds at 1.2000; the turbine holds at 0.00 MWe; the heaters at
+0.00 kW; the spray at 100 % stuck; the PORV at 1624.5 psia.
+
+**New gate — `test/run_pwr2_kernel.js`**: *does the control kernel pass on what the operator
+sent?* — the question `run_pwr2_forwarding` asks of the engine's internal layers, asked one layer
+up, where nothing was asking it. 34 passed / 5 xfail / 39 checks / 7 mutations / 0 blind. Its
+differential presses **every casualty row against every board-reachable action** and compares what
+arrives at the engine: **18 divergences over 1,408 pairs before, 6 after**, and all six that remain
+are the engine refusing out loud with the arrived command byte-identical (an RCP start with no
+offsite power; the rod levers under a continuous withdrawal). It also carries a **static
+cross-plant check** — no `command_override` on any shipped plant may name an action its own engine
+lacks — which is the build-time form of #547 and applies to any future plant that reuses a table.
+
+The five xfails are a **separate** finding the sweep surfaced and this runner now tracks: five live
+board controls send commands PWR2 refuses, so the press can only throw (Grid MANUAL sends
+`connect_grid` *and* `set_load_mode`, two throws per press). `run_pwr2_board`'s no-orphan sweep is
+hollow for that case — it accepts a press whose result is "an error with a message" — which is how
+they shipped.
+
+Also: **`Manuals/07` §PWR-E13** — the ATWS *Failure* line said "scram command blocked", which was
+true of the shipped stack and not of the plant; it now names what actually fails (the rod
+insertion). Extends the pending Rev 17.
+
 ### Fixed (#542 — the main steam safety valves are a staggered bank, not a lumped ramp, 2026-08-27)
 
 The secondary code safeties' lift ramp was anchored at the **reseat** pressure, not the pop, so

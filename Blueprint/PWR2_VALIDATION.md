@@ -5989,3 +5989,210 @@ asserted *"a real Ginna trips here"* on **no measurement**; the claim is withdra
 **Still open, and NOT this issue:** **#478** files the analogous reseat-anchored ramp against the
 RETIRED engine (`pwr_steam_generator.js:299-303`, denominator `(pop - reseat)`) — same class,
 untouched, that engine is not being fixed.
+
+---
+
+## 98. #546 + #547 — THE KERNEL STOPS REWRITING THIS PLANT'S COMMANDS — 2026-08-27
+
+§97 was the last of the physics items in the #534 sweep. This is the sweep's **first systemic
+pattern**, the one it said was worth more than any single finding: *the control kernel silently
+rewrites or drops PWR2 commands.* The second pattern — the board calibrated to the retired
+engine — closed earlier today at #557/#556/#561.
+
+**The defect is one line of data, and it had seven faces.** `getProtectionConfig`
+(`pwr2_shell.js:769`) builds PWR2's casualty menu by keeping 22 rows of the **retired plant's
+failure table, by reference**. Seven of them are `type: 'command_override'` — the kernel's
+licence to drop or rewrite an operator command before it reaches the engine
+(`control_kernel.js:339-350`), written in the retired plant's action names and payload keys.
+PWR2 models **all seven of those same failures inside its own engine**. So each was
+double-armed, and the kernel's half was speaking a vocabulary this plant does not have.
+
+Read out of the built config rather than the source, because the source is where the last three
+people looked:
+
+```
+menu rows: 22
+command_override rows: 7  stuck_porv_open, turbine_trip, loss_of_feedwater,
+                          sg_overfeed, failure_to_scram, failed_pzr_heaters, stuck_open_spray
+by-reference?  true      (cfg.failures.stuck_porv_open === PWR_CONFIG.protection.failures.stuck_porv_open)
+```
+
+Ten distinct action names are intercepted. **Two are not commands on this plant at all**
+(`connect_grid`, `set_steam_demand` — both in `REFUSED`, so the kernel set a value on a command
+that could only throw). **One is rewritten into a third name that is also REFUSED**
+(`close_porv` → `open_porv`). **One is handed a payload key the plant never reads**
+(`set_spray` ← `open`). **One inverts** (`feed_pump_nudge`). The remaining five land, and
+destroy the operator's demand on the way.
+
+### The two filed faces
+
+**#546 — the reactor trip pushbutton.** `effect: 'block'` makes the kernel `return null`
+(`:345`), which is **the same value a successful command returns**. The kernel's own manual-scram
+latch (`:282`) did fire; the #509 engine-owned-RPS mirror (`:452-455`) then cleared it inside the
+very next `evaluate()`, because its erase arm is unconditional on provenance and cannot tell a
+kernel-side manual latch from an engine trip. Measured: `rps.scrammed` true immediately after the
+press, **false in the first snapshot**. No snapshot ever carried it.
+
+Hot full power, Failure to Scram armed from the shipped casualty menu, operator presses SCRAM:
+
+| at +60 s | before | after |
+|---|---|---|
+| press response | `null` | `{ok:true, action:'scram'}` |
+| power | **99.52 %** | **61.19 %** |
+| Tavg | 577.7 °F (303.2 °C) | 601.6 °F (316.4 °C) |
+| `pt.reactor_trip` | false | **true**, cause `manual` |
+| turbine tripped | false | true |
+| annunciators lit | **0** | **6** |
+| rods | 200 / 200 | 200 / 200 (correct — the DROP is what failed) |
+
+The "after" column is the row `PWR2_VALIDATION` §3739 has declared since #507 wave 6: *"the latch,
+annunciators and the turbine trip all stand, because a failure to scram is the DROP failing, not
+the logic."* The player was getting a third behaviour neither model describes, and it is
+*nothing happened*.
+
+**#547 — CLOSE PORV.** `override: 'open_porv'` replaces the **whole payload**
+(`cmd = { action: def.override }`, `:346`), and `open_porv` is in PWR2's `REFUSED` registry, so
+the press threw:
+
+```
+pwr2_shell: "open_porv" REFUSED — the PORV is its controller's; the operator path is
+open_porv_manual / close_porv (porv_manual, one valve) and the block valve
+```
+
+Internal jargon naming a command that is not a control, telling the operator to press the button
+they had just pressed — on the signature operator action of this plant's flagship accident.
+After: `{ok:true, action:'close_porv'}`, the operator's own manual-open demand clears, and the
+valve stays open anyway. The TMI-2 lesson survives; the developer jargon does not.
+
+### The five faces nobody had filed
+
+Measured on this tree while confirming the two above, each armed through the shipped casualty
+menu and pressed through the shipped stack:
+
+| | before | after |
+|---|---|---|
+| **`sg_overfeed`: the operator's corrective command is INVERTED.** They press feed → 0 % to stop the overfeed. | demand arrives as **120 %**; after the repair the steam generator runs to **98.13 %** level | demand arrives as **0 %**; after the repair level falls to **47.73 %** |
+| **`failed_pzr_heaters`: the demand is destroyed and survives the repair.** Operator sets 80 % during the failure. | demand 0; after `clear_failure` **0.00 kW, for ever** | demand 0.800; after `clear_failure` **29.12 kW** |
+| **`turbine_trip`: the load demand is destroyed.** Operator sets 100 MWe. | `tb.load_target_mwe` **0.0** | **100.0**, turbine still tripped at 0.00 MWe |
+| **`loss_of_feedwater`: a feed nudge is zeroed**, so the operator's +10 % never happened. After the repair, flow 0.1068 vs 0.2067 of rated and level 75.83 % vs 83.86 %. | | |
+| **`stuck_open_spray`: the interception is INERT and the failure is defeatable through it.** `valueFieldFor` writes `open: true`; `set_spray` (`pwr2_shell.js:153`) reads `power_pct`/`pct`/`auto`/`value` and never `open`. Measured: `{action:'set_spray', auto:true, open:true}` → `spray_manual = undefined`, i.e. **AUTO**. | | |
+
+The overfeed row is the worst of the five and it is a **50.4-percentage-point** steam-generator
+level difference in the overfill direction, created purely by the kernel turning an operator's
+corrective action into its opposite while answering `{ok:true}`.
+
+### The fix, and why it is at the plant's door rather than the kernel's
+
+`pwr2_shell.js` `getProtectionConfig` copies the **menu fields only** for any row the retired
+table types `command_override`, so the kernel's `:344` guard (`!def.intercepts` → `continue`)
+never sees one:
+
+```js
+out[id] = def.type === 'command_override'
+  ? { type: def.type, category: def.category, display: def.display,
+      severity_meta: def.severity_meta }        /* no intercepts / override / effect */
+  : def;
+```
+
+Hard Rule 9 decides where it goes: the engine already owns every one of these failures, so the
+kernel's copy was a second, contradicting authority and the plant is the one that wins.
+The kernel is untouched — its interception mechanism is *correct* for the plants that use it,
+and `run_m4.js:152` pins the retired plant's silent-ATWS-drop as the intended M4 contract, which
+is not this plant's problem to re-litigate.
+
+What survives is the **menu**: `getFailureCatalog` (`control_kernel.js:1302`) publishes
+id/display/category/severity_meta and the Failures tab reads exactly those. `type` stays as it
+is — nothing outside the kernel's interception test reads a PWR2 failure's type except
+`=== 'instrument'` (three sites in the shell), and `gen_manual_reference` runs against the
+retired plant.
+
+### THE MEASUREMENT THAT HAD TO COME FIRST
+
+Stripping the kernel's half is safe only where the engine's half actually holds — the #295 trap,
+*a two-part fix whose parts are each sufficient makes a one-sided injection lie*. Each row was
+armed at the **engine door** with the kernel not intercepting, then attacked with the command
+the kernel used to eat:
+
+| row | attack | result |
+|---|---|---|
+| `loss_of_feedwater` | feed → 100 %, then nudge +10 | flow **0.0111 of rated** either way — the STOPPED PUMPS hold it, not the demand |
+| `sg_overfeed` | feed → 0 % | **1.2000** either way |
+| `turbine_trip` | load target → 100 MWe | **0.00 MWe** either way |
+| `failed_pzr_heaters` | heater → 80 % | **0.00 kW** either way |
+| `stuck_open_spray` | spray → AUTO | 100 % stuck, **2020.7 psia** either way |
+| `stuck_porv_open` | CLOSE PORV | open, **1624.5 psia** either way |
+| `failure_to_scram` | SCRAM | the declared row, instead of nothing |
+
+**Not one of the seven is defeated by removing the interception.**
+
+### The differential: 1,408 pairs, 18 divergences → 6
+
+Every casualty row × every board-reachable action, comparing what actually **arrives** at
+`engine.applyCommand` against the same press with no row armed:
+
+```
+before   DIFFERENTIAL: 18 divergence(s) in 1408 (row x action) pairs
+after    DIFFERENTIAL:  6 divergence(s) in 1408 (row x action) pairs
+```
+
+The twelve that went are exactly the seven rows' interceptions. **All six that remain are the
+engine refusing out loud with the arrived command byte-identical** — an RCP start under
+`loss_of_offsite_power` or `station_blackout` (*"no offsite power on the nonvital bus (WTSM 3.2:
+the RCP motors cannot be supplied from the emergency diesel generators)"*) and the four rod
+levers under `continuous_rod_withdrawal`, which §3754 already declares as *"rod levers REFUSED
+out loud"*. That is the plant protecting itself, which is a different thing from the kernel
+rewriting, and the gate below encodes the distinction rather than whitelisting the rows.
+
+⚠ **THE TRAP, and it is a field that lies.** #547's collateral claim — *"the operator's heater
+demand goes to 0 and stays 0 after the repair"* — was read off
+`control_state.heater_power_pct`, which is **delivered power**, not demand
+(`pwr2_shell.js:948`, `ts.pzr_heater_kw / 157.8`). Of course it reads 0 while the heaters are
+failed; it reads 0 on the correct path too. The demand is `pzDrivers.heaters_manual`, and on
+that field the claim is **true and larger than filed**: 0.000 against 0.800, which after the
+repair is 0.00 kW against 29.12 kW. The conclusion survived the correction; the evidence for it
+did not, and a claim standing on the wrong field is one re-measurement away from being withdrawn.
+
+⚠ **A SECOND TRAP, reported by the gate's own self-test.** Two of the seven mutations came back
+BLIND. Both anchors named `REHOMED.<id>` — the **direct command** door — while each of these
+failures is armed at **two independent sites**, the other being a line of the
+`REHOMED.inject_failure` mirror, which is what the casualty menu actually reaches. The gate
+drives the menu, so only the mirror line was ever on its path. Re-pointed; 7/7 caught. This is
+the standing "a mutation goes blind when its anchor names the wrong line" trap arriving as
+*the wrong one of two correct-looking lines*.
+
+### Why 93 green runners missed it
+
+**No runner drove a PWR2 button with a casualty row armed.** `run_pwr2_board` boots a real
+`SimulationService` over PWR2 and presses real board buttons — but never with a failure
+injected. `run_pwr2_shell` reaches the kernel for exactly one action, `set_trip_block`
+(three presses). Every other `run_pwr2_*` is module- or facade-direct. `run_m4.js:165` pins the
+interception on the RETIRED plant, where `open_porv` is a live action and the rewrite is
+harmless. And `run_pwr2_shell.js:577` injects the ATWS via `eS.applyCommand` — the engine door —
+which is the one path on which the defect does not exist.
+
+**Gates.** New runner **`run_pwr2_kernel`** — *does the control kernel pass on what the operator
+sent?*, the question `run_pwr2_forwarding` asks of the engine's internal layers, asked one layer
+up. 34 passed / 5 xfail / 39 checks / 7 mutations / 0 blind, 6.9 s. Five bands: preconditions
+(the menu is 22 rows and the retired table still carries the seven — an absence check that pins
+a non-event is the hollow class this repo keeps finding), the 1,408-pair differential, behaviour
+through the shipped stack on real physics, a **static cross-plant check** that no
+`command_override` on any shipped plant names an action its own engine lacks (the build-time form
+of #547, and plant-agnostic so a future plant inherits it), and board vocabulary.
+
+**The five xfails are band 4 and they are NOT this issue.** Five live board controls send a
+command PWR2 `REFUSES`, so the press can only throw: Grid MANUAL sends `connect_grid` **and**
+`set_load_mode` (two throws per press, and the button is not disabled), the SR detector toggle,
+the condenser CW-temp box, and the ADV setpoint box. They are the **board** still speaking the
+retired plant's vocabulary — the sweep's second pattern, one door over. They are born failing
+here rather than absorbed, because `run_pwr2_board`'s no-orphan sweep is **hollow for this case**:
+it accepts a press whose result is *"an error WITH a message"*, so a button that can only throw
+developer jargon passes the gate written to catch dead buttons.
+
+**Still open, and NOT this issue:** the kernel-side items the strip does not reach — a
+`clear_all_failures` the kernel decomposes so PWR2's own layered sweep is unreachable through the
+stack; an `inject_failure` rebuilt rather than forwarded, dropping `node`; the PORV *Stuck
+Fraction* slider rendered and discarded (no `severity_scales`, and `porv_stick` is boolean); the
+kernel's interlock and seal-in refusals both inert on PWR2 because its config empties
+`interlocks` and `actuations`; trip blocks that round-trip a value the board never shows; and the
+#509 mirror's provenance-blind erase arm, which this fix removes the last live path to without
+removing the hazard.

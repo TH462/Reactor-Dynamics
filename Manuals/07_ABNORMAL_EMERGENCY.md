@@ -440,7 +440,9 @@ Core protected if any heat sink restored; recognize dual failure severity.
 ## PWR-E13 — Failure to Scram (ATWS)
 
 ### Failure
-`failure_to_scram` — scram command blocked.
+`failure_to_scram` — the rods fail to drop. The trip itself is **not** blocked: the pushbutton
+is accepted, the trip latches, annunciators come in and the turbine trips. It is the rod
+insertion that fails.
 
 ### Symptoms
 - SCRAM commanded or trip condition but rods do not fully insert / power remains  

@@ -333,7 +333,7 @@ to read everything.
 
 _Last updated: **2026-08-27**._
 
-**Where the PWR is.** `run_all` is **93 runners, all at baseline** — read `BASELINES`, never a
+**Where the PWR is.** `run_all` is **94 runners, all at baseline** — read `BASELINES`, never a
 number written here. The PWR is the only active plant and is feature-complete through Mode 5 ↔
 Mode 1 on integrated physics: engines, control, service, instructor and the board are built; the
 #297 audit's build wave and the #221 audit slices are landed. **What is open, in one line each:**
@@ -383,7 +383,7 @@ re-querying. Run the query.
   only, true values declared, gated by `run_pwr2_engine` (14 checks / 8 mutations; it caught the
   scram-bypasses-RPS defect and filed #499 on arrival — `PWR2_VALIDATION.md` §49). P-9 (turbine trip
   = reactor trip above it, both sourced values), the #499 beyond-model guards and the
-  DELAYED-data sourcing are all LANDED (§50–52). **Everything since is recorded in `PWR2_VALIDATION.md` §53–§97 — read the sections, not this line**, which is why the roll-call that used to sit here is gone. Still open out of it: **#507**'s casualty menu stands at 21 honest rows with Section F closed, and **#510** batches 1–4 landed leaving five LOW harness items. **#523 (owner rulings 2026-08-26 "Flip now, track the gaps" / "Strip it at build time"): PWR2 IS THE PLANT THE SITE RUNS (§94)** — every link and `/sim` carry `?engine=pwr2`, and a **public** build contains no retired engine at all (six tags + 544,663 bytes pruned by `site/build_site.js`; `make_portable` always). The strip is CHANNEL-GATED so the PREVIEW site keeps it, because the guided content is authored against it and `freePlayOnly` stays. `pwr_config.js`/`pwr_instruments.js` are NOT the old engine and ship everywhere. Two of the three pre-replacement gaps are now #531 (R8) and #525 (mission compatibility). Still owed: delta-T lead/lag + K5 (COLR), channel redundancy, the ESF arm display, Mode 5 proper (#524), stuck_rod_on_scram, the steam-line-break rows + auto isolation signal (the MSIV itself is BUILT, §80).
+  DELAYED-data sourcing are all LANDED (§50–52). **Everything since is recorded in `PWR2_VALIDATION.md` §53–§97 — read the sections, not this line**, which is why the roll-call that used to sit here is gone. Still open out of it: **#507**'s casualty menu stands at 22 honest rows (21 at wave 10, +`anticipatory_trip_failure` at #515) with Section F closed, and **#510** batches 1–4 landed leaving five LOW harness items. **#523 (owner rulings 2026-08-26 "Flip now, track the gaps" / "Strip it at build time"): PWR2 IS THE PLANT THE SITE RUNS (§94)** — every link and `/sim` carry `?engine=pwr2`, and a **public** build contains no retired engine at all (six tags + 544,663 bytes pruned by `site/build_site.js`; `make_portable` always). The strip is CHANNEL-GATED so the PREVIEW site keeps it, because the guided content is authored against it and `freePlayOnly` stays. `pwr_config.js`/`pwr_instruments.js` are NOT the old engine and ship everywhere. Two of the three pre-replacement gaps are now #531 (R8) and #525 (mission compatibility). Still owed: delta-T lead/lag + K5 (COLR), channel redundancy, the ESF arm display, Mode 5 proper (#524), stuck_rod_on_scram, the steam-line-break rows + auto isolation signal (the MSIV itself is BUILT, §80).
   **#514 (2026-08-25): the engine steps 12.5× faster** (1,090 → ~85 µs; the vtable wired into
   every module, `T_from_h`/`P_sat_T` tabulated, two warm starts, Tavg once) — held by the new
   `run_pwr2_perf` ratio gate (≤ 8× the old engine, measures 4.1×); the vtable builds on first
@@ -402,8 +402,12 @@ re-querying. Run the query.
   sweep. It names TWO systemic patterns. **The second is CLOSED (#557/#556/#561, 2026-08-27)**
   — the board was still calibrated to the retired engine; the plant now publishes its AFW
   rating, its pressurizer-level trip rows and its delta-T setpoint equation, and the board
-  reads them. The FIRST is open: the control kernel silently rewrites or drops PWR2 commands
-  (#546, #547). **The save/rewind/restore cluster is CLOSED** (#553/#554/#555/#548/#563 item 3,
+  reads them. **The FIRST is CLOSED too** (#546/#547, §98): PWR2 kept the retired plant's failure
+  table BY REFERENCE and seven rows were `command_override` — the kernel's licence to drop or
+  rewrite a command, in the old plant's action names; the engine already modelled all seven, so
+  `getProtectionConfig` now hands over the menu fields only, and the new `run_pwr2_kernel` holds
+  it (1,408 row×action pairs: 18 divergences → 6, all six the engine refusing out loud).
+  **The save/rewind/restore cluster is CLOSED** (#553/#554/#555/#548/#563 item 3,
   2026-08-27, `PWR2_VALIDATION` §95), and so is **#539** (§96 — the rated steam scale is frozen
   across all four presets; Mode 4's feed train and code safeties were multiplied by nought) and
   **#542** (§97 — those safeties are now the STAGGERED bank Ginna sources: one valve at 1085 psig,
@@ -413,9 +417,11 @@ re-querying. Run the query.
 
 **The manual set's revision number does not advance until a RELEASE** *(OWNER DIRECTIVE,
 2026-08-06: "The revision number only matters during a release to the website. Revision numbers
-should never go up until a release happens.")*. **Rev 14 is what the website carries** as of
-Alpha 1.4.0 (2026-08-08); everything after it is **one pending Rev 15**, however many changes it
-contains. **Do not open a new revision row for a manual edit; extend the pending row.** That is
+should never go up until a release happens.")*. **Read the top row of
+`Manuals/00_REVISION_HISTORY.md`, never a number written here** — this line said "Rev 14 …
+pending Rev 15" while that table stood at a **pending Rev 17**, which is the same rot as the
+gate baselines. The newest row is the pending one and it extends until the next release.
+**Do not open a new revision row for a manual edit; extend the pending row.** That is
 also the resolution for a revision-number collision, which is what two lanes editing the manuals
 produce — Rev 13 shipped carrying thirteen lettered items from two lanes for exactly that reason.
 
