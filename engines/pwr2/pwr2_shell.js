@@ -686,6 +686,25 @@
     ex.level_program_fn = function (tavg_c) {
       return 100 * root.RD.pwr2.pressurizer.levelProgram(tavg_c);
     };
+    /* …and the OVERTEMPERATURE / OVERPOWER SETPOINT EQUATION (#561), for the same reason and by
+     * the same route. The reused instrument layer drew its delta-T margin gauge from the retired
+     * plant's fitted DNB surface on a 33.0 degC rated split, while THIS plant's trip is the
+     * sourced Ginna Table 15.0-7 form on a 31.1 degC split — so the tile went red with 13.70
+     * margin points still standing and the "OTdT ROD STOP" annunciator, which reads the same
+     * channel, latched 436 s before the trip. Same coefficients the trip uses, read from the
+     * protection module rather than retyped; the layer feeds them the INDICATED Tavg and
+     * pressure, so HR1 is untouched. */
+    var OT = root.RD.pwr2.protection.OTDT, PSIA = root.RD.pwr2.protection.PSIA_PER_MPA;
+    ex.otdt_form = {
+      delta_t_rated_c: root.RD.pwr2.sources.DESIGN.dt_c,
+      otSp: function (tavg_c, p_mpa) {
+        return OT.k1 + OT.k2_per_psi * (p_mpa * PSIA - OT.p_ref_psia)
+                     - OT.k3_per_f * ((tavg_c * 9 / 5 + 32) - OT.t_ref_f);
+      },
+      opSp: function (tavg_c) {
+        return OT.k4 - OT.k6_per_f * ((tavg_c * 9 / 5 + 32) - OT.t_ref_f);
+      }
+    };
     ex.power_rate = this._pwrRate || 0;
     return ex;
   };
@@ -804,8 +823,38 @@
       if (f.id === 'lo_pzr_press' && typeof f.setpoint === 'number') spLo = f.setpoint;
       if (f.id === 'si_lo_pzr_press' && typeof f.setpoint === 'number') spSi = f.setpoint;
     });
+    /* THE INDICATION SETPOINTS (#556). `trip_block_status` above carries a setpoint only for a
+     * BLOCKABLE trip, because that is what it was built for — so a surface that draws where the
+     * protection line is could learn this plant's blockable numbers and nothing else. The
+     * pressurizer level tile is the case that exposed it: it painted its red edge at 100 % while
+     * this plant scrams at 87 %, and painted a second red band from the meter bottom to 12 % for
+     * a low-level scram this plant does not carry at all — both read out of the RETIRED plant's
+     * static table, which is the only pzr_level source a consumer had.
+     *
+     * `armed` is the protection module's own (pwr2_protection: available AND no permissive or
+     * block holding the function off) — NOT re-derived here, or this would be the second copy of
+     * P-7 rather than the cure. A consumer draws a red edge only where a row is armed.
+     *
+     * COVERAGE IS DELIBERATELY NARROW AND MUST BE READ THAT WAY: this carries the PRESSURIZER
+     * LEVEL function and nothing else. An absent instrument here means "not published", never
+     * "this plant has no trip on it" — the one negative that IS load-bearing is a pzr_level row
+     * with no `low` direction, which is why the whole instrument's rows go out together rather
+     * than only the row that exists. Widening it is a per-instrument measurement, not a loop. */
+    var tripSetpoints = [];
+    (rp.functions || []).forEach(function (f) {
+      if (f.id !== 'hi_pzr_level') return;
+      tripSetpoints.push({
+        id: f.id, instrument: 'pzr_level', direction: f.dir > 0 ? 'high' : 'low',
+        /* frac -> the % the pzr_level instrument and the board both speak */
+        setpoint: typeof f.setpoint === 'number' ? f.setpoint * 100 : 87,
+        armed: f.armed === true
+      });
+    });
+
     return {
       trip_blocks: { pr_low_setpoint: blocked, lo_press: loB, si_trip: siB },
+      trip_setpoints: tripSetpoints,
+      trip_setpoint_instruments: ['pzr_level'],   /* what the list above SPEAKS FOR — see comment */
       trip_block_status: {
         pr_low_setpoint: {
           blocked: blocked, asserted: asserted,
@@ -971,6 +1020,12 @@
        * model stops publishing the flag and the valve symbol comes back operable). */
       accumulator_valve_open: ts.accumulator_valve_open === true,
       afw_throttle_pct: (e.aw.mdafwRunning || e.aw.tdafwRunning) ? 100 : 0,
+      /* THE FULL SCALE `afw_flow_normalized` IS NORMALIZED ON (#557). This plant's combined
+       * sourced rating, 86.2 gpm — NOT the 640 gpm the board used to hold as a literal, which
+       * was the retired plant's fraction-of-rated-feed basis. Same shape as `load_modes`
+       * above: a capability/scale the consumer reads, absent on an engine that does not
+       * publish it. The number is the plant's, so the plant says it. */
+      afw_flow_gpm_full: RD.afw.ratedGpm(),
       sr_energized: ts.sr_energized === true,
       msiv_open: ts.msiv_open === true,
       /* flow_pct is what the board's pump animation SPINS on (pumpProps speed) — without it

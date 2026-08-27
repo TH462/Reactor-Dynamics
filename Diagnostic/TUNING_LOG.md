@@ -29,6 +29,119 @@ and the user-visible summary in `CHANGELOG.md`. This file points at those and tr
 
 ---
 
+## Session log — 2026-08-27-develop-a (#557 + #556 + #561 — three board indications were reading a different plant)
+
+**The cluster.** The #534 sweep's second systemic pattern — *"the board is still calibrated to the
+retired engine"* — taken as one change, because all three defects are the same shape and the fix
+only makes sense once. Issues #557 (high), #556 (high), #561 (medium).
+
+**The shape.** Each is the board holding its own **second copy of a plant constant**. The argument
+against that was already written in this repo, beside `getInterlockState` in `control_kernel.js`:
+*"a second copy of a threshold is the defect class this repo keeps finding — #294 and #303 are both
+that shape. So the kernel publishes it."* These are three more instances, and they are fixed the
+same way: the plant publishes the number, the board reads it, and the old static value survives
+only as the fallback for a plant or an old recording that publishes nothing.
+
+**The design call worth recording.** An engine-key branch in `pwr_board_wiring.js` was the obvious
+small fix and is wrong. That file is deliberately engine-agnostic — grep it for `plant_id`,
+`engineKey`, `pwr2` and you get nothing but comments in its own self-test — and a branch would fix
+today's symptom while re-arming the identical rot for the next plant. It is also the exact trap
+CLAUDE.md's newest standing bullet records from #523 §94. The precedent to copy was two lines above
+the defect: `GPM_HPI` is *computed from config so a retune moves it*; `GPM_AFW = 640` beside it was
+a bare literal.
+
+**#557 — the AFW gauge, 7.40× out.** Under the retired engine `afw_flow_normalized` is a fraction
+of rated FEED and full auxiliary feedwater is `afw_flow_frac` 0.15 of it, so 0.15 × 640 gpm = 96 gpm
+read correctly. PWR2 renormalized the same instrument to auxiliary feedwater's own sourced rating
+(MDAFW + TDAFW) and the board constant stayed put. Measured on the shipped page, loss of main
+feedwater at T+19:33: **213 gpm shown, 28.8 gpm (1.81 kg/s) delivered.** `pwr2_afw.ratedGpm()` now
+derives the combined rating — **86.2 gpm**, from the same two sourced Ginna points (170 / 340 gpm)
+and the same `300/1775` power scale the flow itself uses, so it cannot drift from the denominator
+it is the denominator of — and both engines publish it on `control_state.afw_flow_gpm_full`. Same
+card, re-measured: **29 gpm against 28.73 gpm true, 1.009×**.
+
+Second consumer, found by the issue's own verification note and easy to miss: `ui/app.js`'s AFW
+Flow chart channel plots the same instrument on a `[0, 40]` percent axis, sized for the retired
+15 % ceiling. On PWR2 one pump is 33 % and both are 100 % — off the top of the axis. Now `[0, 120]`,
+matching the two flow traces above it.
+
+**#556 — the pressurizer level tile. Three edges wrong, two of them filed.** `TILE_BANDS` is built
+ONCE from `_PROT = RD.PWR_CONTROL.protection`, captured at script load. Red edge at **100 %** on a
+plant that scrams at **87 %** (`hi_pzr_level`, P-7 gated) — measured, the reactor scrammed at
+indicated 87.34 % out of the AMBER band. Red band from the meter bottom to **12 %** for a low-level
+scram **PWR2 does not carry**. And the third, unfiled and found while fixing the other two: low
+ALARM edge at the retired **25 %** while PWR2's own annunciator fires at **17 %** (#500). A tile and
+the annunciator beside it, eight points apart, on the same parameter.
+
+Two new published surfaces, both deliberately narrow:
+- **`armed`** per protection function (`pwr2_protection`) — available AND no permissive or block
+  holding it off. Set **at each gate** rather than re-derived afterwards, or the cure would have
+  been another copy of P-7. It is not `asserted`, and the difference is the whole point: on a
+  healthy at-power plant the function is armed and not asserted, so a consumer keying on `asserted`
+  would erase the protection line exactly whenever the plant was safe. Pinned by three checks in
+  `run_pwr2_protection`.
+- **`trip_setpoints`** on the shell's existing `getTripBlocks()` surface, carried through the
+  kernel's engine-owned-RPS merge. It carries the pressurizer-level function **and nothing else**,
+  and `trip_setpoint_instruments` names what it speaks for — which is what makes the LOW side
+  readable at all: only because the plant says it speaks for `pzr_level` can a missing low row mean
+  "no low-level trip" rather than "not published". Absent that list the authored edges stand
+  untouched, which is what the retired engine and every old recording get.
+
+`bandsFor()` gains a fourth live-arming branch, `pzrLevelBand`, in the same shape as `powerBand` /
+`pressureBand`. **No note**, deliberately: pressureBand's "LO TRIP BLKD" is right there because an
+operator blocked that trip, and its own comment records why claiming a bypass nobody set is worse
+than saying nothing. P-7 is a permissive; the collapsed band is the indication.
+
+**#561 — the DNB / overtemperature gauge, and why a constant swap could not have fixed it.** The
+reused `pwr_instruments` delta-T channels compute from `pwr_config` (rated split 33.0 °C / 59.4 °F,
+DNB margin 8.0 °C / 14.4 °F, factor 0.60 — the last two UNVERIFIED) over a **DNB surface**, while
+PWR2's trips use the sourced Ginna Table 15.0-7 form on a **31.1 °C (56 °F)** split. Different
+equation FORM: `0.6·2·(T_sat(P) − 8 °C − Tavg)/33.0` against `k1 + k2·(P − P′) − k3·(T − T′)`.
+Copying k-values into `pwr_config` would have produced a third wrong answer.
+
+Measured before: overtemperature setpoint 122.91 % vs the plant's 132.21 %, overpower 108.00 % vs
+115.00 %, pressure sensitivity 0.146 %/psi vs 0.097 %/psi. On a depressurization the tile went RED
+**356 s before the trip** with **+13.70** margin points still standing, and the "OTdT ROD STOP"
+annunciator — same channel — latched **436 s** early. The fix rides the extras dict, the hook
+`tavg_fp` and the pressurizer level program already use, so `pwr_instruments` is unchanged for the
+retired engine byte for byte when no form is supplied. Re-measured on the same ride: board and trip
+cross **together** (−0.14 % vs −0.20 %), trip **4.5 s** later — instrument lag, which is what the
+gap should be, since the board reads indicated Tavg and pressure (HR1) and the trip reads true.
+Overpower agrees exactly at 115.00 %.
+
+**Also fixed, on the retired plant.** Its own tile edge was hard-coded to 100 under the comment
+*"No high-level trip exists"* — false there too: `pwr_control`'s `pzr_hi_level` scrams at **97 %**
+(PI-8, `Manuals/09` §3.0). Now read from the table. The issue's verification comment had spotted
+this; it is worth knowing that a comment can be wrong on the day it is written and then be believed
+for a year because it reads like a design statement.
+
+**Two traps this session, both worth the line.**
+1. **A second `mkWorld()` in a board runner silently rebinds the driver's single `ctxRef`.**
+   `onMount` is global to the driver, so every later press in the FIRST world routed its command
+   into the SECOND world's log — and the no-orphan sweep reported **five working buttons as
+   silent**. The check was right and the harness was lying. Recorded in the runner beside the fix.
+2. **Four `run_pwr2_protection` mutation anchors moved when the `armed` gates were rewritten**, and
+   the harness reported them as **BLIND SPOTS, not as passes** — which is the only reason they were
+   caught. A mutation table is source text, and a refactor of the lines it points at silently
+   disarms it. Re-anchored in the same change.
+
+**Gates.** `run_pwr2_board` **28 → 36** (mutations 6 → 11 — both ENDS of each publish are mutated
+separately, so a board that agrees with a constant by luck still reds), `verify_board_check`
+**225 → 230**, `run_pwr2_protection` **102 → 105**, plus a `GPM_AFW` cross-check in
+`run_manual_units` proven red by injection. Aggregate **93 runners at baseline**. Verified rendered
+on the shipped page in a real browser, both at power and post-trip, zero console errors.
+
+**Deliberately NOT done.** `Manuals/12` §Fidelity still quotes *"100 gpm AFW"* — the retired plant's
+figure, and it belongs to #532 (the manuals document the retired engine). Pinning it in
+`run_manual_units` alongside charging and letdown would freeze a number that is about to be
+re-derived. The other four tiles' static bands were **not** swept against PWR2's table: that is a
+measurement owed, not a claim they are right, and the comment in the file now says so instead of
+saying they are held to the same band in every mode. `pwr_board_data.js` still names the AFW item
+*"×640 gpm"* — it is GENERATED and must not be hand-edited; it is builder metadata, not player copy,
+and it corrects itself at the next board export.
+
+---
+
 ## Session log — 2026-08-26-develop-a (#523 — PWR2 is the plant the site runs)
 
 **The cutover.** Four owner rulings in planning, all 2026-08-26: **"Flip now, track the gaps"**,

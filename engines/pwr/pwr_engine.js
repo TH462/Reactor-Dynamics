@@ -1000,6 +1000,13 @@
       // control_state, so it must live here as well as in true_state.
       accumulator_valve_open: s.accumulator_valve_open !== false,
       afw_throttle_pct: (s.afw_throttle_frac != null ? s.afw_throttle_frac : 1.0) * 100,
+      // The full scale `afw_flow_normalized` is normalized on (#557). THIS plant's basis is a
+      // fraction of RATED FEED — full AFW is `afw_flow_frac` 0.15 of it — so 1.0 indicated is
+      // 640 gpm and full AFW reads 96 gpm. Config already declared the number and said it
+      // "MUST track the board's constants" (pwr_config steam_generator); publishing it is how
+      // that stops being a comment. PWR2 renormalized the same instrument to AFW's own rating
+      // and publishes 86.2 here instead, which is the whole of #557.
+      afw_flow_gpm_full: this.cfg.steam_generator.afw_flow_gpm_full,
       sr_energized: !!s.sr_energized,   // SR detector switch position
       msiv_open: s.msiv_open !== false, // main steam isolation valve position
       pumps: [{ id: 'rcp', running: s.pump_running, flow_pct: s.pump_flow_pct }],

@@ -30,6 +30,80 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
 
 ## [Unreleased]
 
+### Fixed (#557 + #556 + #561 — three board indications were reading a different plant, 2026-08-27)
+
+The second of the two systemic patterns the #534 sweep named: *"the board is still calibrated to
+the retired engine."* Each of the three is the same shape — the board holding its own second copy
+of a plant constant — so all three are fixed the same way: **the plant publishes the number and
+the board reads it**, with the old static value surviving only as the fallback for a plant (or an
+old recording) that publishes nothing. The control kernel already had the argument written down,
+in the comment beside `getInterlockState`: *"a second copy of a threshold is the defect class this
+repo keeps finding … So the kernel publishes it."*
+
+An engine-key branch in the board was considered and rejected: `pwr_board_wiring.js` is
+deliberately engine-agnostic — it carries no `plant_id`, no `engineKey` — and a branch would fix
+today's symptom while re-arming the same rot for the next plant.
+
+- **AUX FEED WATER FLOW no longer reads 7.40× the flow the plant delivers (#557).** The board
+  scaled the indication by a 640 gpm literal, which was the RETIRED plant's basis — there
+  `afw_flow_normalized` is a fraction of rated FEED and full auxiliary feedwater is 0.15 of it, so
+  0.15 × 640 = 96 gpm read correctly. PWR2 renormalized the same instrument to auxiliary
+  feedwater's OWN sourced rating and the board constant never moved. Measured on the shipped page,
+  loss of main feedwater at T+19:33: **213 gpm shown against 28.8 gpm (1.81 kg/s) delivered.** The
+  plant now publishes its combined rating — 86.2 gpm, derived from the same two sourced Ginna
+  points and the same power scale as the flow itself, not retyped — and the same card reads
+  **29 gpm against 28.73 gpm true, 1.009×**, which is the currency charging (1.01×) and letdown
+  (1.04×) beside it have used since #408. The AFW Flow chart channel was the second consumer on
+  the old basis: its `[0, 40]` axis was sized for the retired ceiling of 15 %, so one pump reads
+  33 % and both read 100 % — off the top. It now runs `[0, 120]` like the two flow traces above it.
+- **The PRESSURIZER LEVEL tile draws this plant's protection line (#556).** Three edges were
+  wrong at once, and only two were filed. Its red edge sat at **100 %** while PWR2 scrams at
+  **87 %** on `hi_pzr_level` — measured, the reactor scrammed at indicated 87.70 % out of an AMBER
+  band with 12.3 points of apparent headroom. It painted a second red band from the meter bottom
+  to **12 %** for a low-level scram **PWR2 does not carry at all**, so a player defends a limit the
+  plant does not have during any drain or shrink transient. And, unfiled, its low ALARM edge read
+  the retired table's **25 %** while PWR2's own annunciator fires at **17 %** (#500's sourced
+  heater-cutoff level) — eight points of disagreement between a tile and the annunciator beside it.
+  The tile is now the fourth with a live-arming path, beside Tavg, primary pressure and reactor
+  power.
+- **The DNB / overtemperature margin gauge and the trip are one equation again (#561).** The
+  reused `pwr_instruments` delta-T channels were computed from `pwr_config`'s fitted values — rated
+  loop delta-T 33.0 °C (59.4 °F), DNB margin 8.0 °C (14.4 °F) and margin factor 0.60, the last two
+  UNVERIFIED — over a DNB surface, while PWR2's overtemperature and overpower TRIPS use the sourced
+  Ginna UFSAR Table 15.0-7 coefficients on a 31.1 °C (56 °F) split. **The two differ in equation
+  FORM, not just constants**, so no constant swap could have reconciled them: the board computed
+  `0.6·2·(T_sat(P) − 8 °C − Tavg)/33.0`, the trip computes `k1 + k2·(P − P′) − k3·(T − T′)`.
+  Measured before: board overtemperature setpoint 122.91 % against the plant's 132.21 %, overpower
+  108.00 % against 115.00 %, and pressure sensitivity 0.146 %/psi against 0.097 %/psi — 1.5× too
+  steep on a coupling this simulator exists to teach. On a depressurization the tile went RED
+  **356 s before the trip**, with the plant's own margin still **+13.70** points, and the
+  "OTdT ROD STOP" annunciator — which reads this same channel — latched **436 s** early. The plant
+  now hands its own equation to the instrument layer through the extras dict, the way `tavg_fp` and
+  the pressurizer level program already ride it. Re-measured on the same ride: the board and the
+  trip cross together (−0.14 % against −0.20 %) and the trip arrives **4.5 s** later, which is
+  instrument lag — the board reads indicated Tavg and pressure (HR1) and the trip reads true
+  values. Overpower now agrees exactly at 115.00 %.
+
+**Also fixed, on the retired plant:** its own tile edge was hard-coded to 100 under the comment
+*"No high-level trip exists"*, which was false there too — `pwr_control`'s `pzr_hi_level` scrams at
+**97 %** (PI-8, `Manuals/09` §3.0). That edge is now read from the protection table.
+
+**Two new published surfaces, both narrow on purpose.** `pwr2_protection` reports **`armed`** per
+function — available AND no permissive or block holding it off — set at each gate rather than
+re-derived, because a consumer keying on `asserted` would erase the protection line whenever the
+plant was safe. The shell publishes **`trip_setpoints`** through the kernel's existing engine-owned
+RPS merge, carrying the pressurizer-level function **and nothing else**; `trip_setpoint_instruments`
+names what the list speaks for, so an absent row reads as a real absence there and as
+no-information everywhere else. Widening it is a per-instrument measurement, not a loop.
+
+*Gates:* `run_pwr2_board` **28 → 36** (mutations 6 → 11; both ENDS of each publish are mutated
+separately, so a board agreeing with a constant by luck still reds), `verify_board_check`
+**225 → 230**, `run_pwr2_protection` **102 → 105**, `run_manual_units` gains the `GPM_AFW`
+cross-check the charging/letdown pair has had since #408 — proven red by injection. Aggregate gate
+**93 runners at baseline**. Four `run_pwr2_protection` mutation anchors moved with the `armed`
+gates and were re-anchored in the same change: a stale anchor reports as a BLIND SPOT, not as a
+pass, which is what caught them.
+
 ### Changed (#523 — PWR2 is the plant the site runs; the retired engine leaves every published build, 2026-08-26)
 - **The simulator now opens on PWR2.** Every site link and the `/sim` redirect carry
   `?engine=pwr2`, `ui/app.js` boots and falls back to it, and its Plant & Mission card is now

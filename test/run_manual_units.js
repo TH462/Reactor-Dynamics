@@ -268,6 +268,24 @@ var gpmBad = [];
   var chgMax      = grab(cfgSrc, 'reactivity.charging_max', /charging_max:\s*(\d+(?:\.\d+)?(?:e-?\d+)?)/);
   var chgGpm      = grab(cfgSrc, 'identity.charging_max_gpm', /charging_max_gpm:\s*(\d+(?:\.\d+)?)/);
   var ldGpm       = grab(cfgSrc, 'identity.letdown_normal_gpm', /letdown_normal_gpm:\s*(\d+(?:\.\d+)?)/);
+  /* THE AFW FULL SCALE (#557). The board's `GPM_AFW` is now a FALLBACK — the running plant
+   * publishes its own scale on control_state and the readout prefers it — but the fallback is
+   * what an old recording and any engine that publishes nothing still render on, so it has to
+   * keep meaning the retired plant's basis. pwr_config declares that same number and its own
+   * comment says the two "MUST track the board's constants"; nothing enforced it, which is how
+   * the board came to be 7.40x out on the plant the site runs. This makes the comment a gate.
+   *
+   * Deliberately NOT extended to Manuals/12's "100 gpm AFW" figure alongside charging and
+   * letdown: that row quotes the RETIRED plant throughout and belongs to the manual's PWR2 pass
+   * (#532). Pinning it here would freeze a number that is about to be re-derived. */
+  var gpmAfw      = grab(wiring, 'GPM_AFW (board fallback)', /GPM_AFW\s*=\s*(\d+(?:\.\d+)?)/);
+  var afwFullCfg  = grab(cfgSrc, 'steam_generator.afw_flow_gpm_full',
+                         /afw_flow_gpm_full:\s*(\d+(?:\.\d+)?)/);
+  if (gpmAfw != null && afwFullCfg != null && gpmAfw !== afwFullCfg) {
+    gpmBad.push('board GPM_AFW (' + gpmAfw + ') != pwr_config steam_generator.afw_flow_gpm_full (' +
+      afwFullCfg + ') — the config states they must track, and the SG heat balance weighs AFW ' +
+      'against main feed on that ratio (pwr_steam_generator _afwScale)');
+  }
   if (gpmCharging == null || gpmLetdown == null || chgMax == null ||
       chgGpm == null || ldGpm == null) return;
 

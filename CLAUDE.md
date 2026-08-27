@@ -331,7 +331,7 @@ to read everything.
 > change. The dense, append-only version lives in `Blueprint/BUILD_DECISIONS.md`
 > (Status line + Open Flags table) — update both.
 
-_Last updated: **2026-08-25**._
+_Last updated: **2026-08-27**._
 
 **Where the PWR is.** `run_all` is **93 runners, all at baseline** — read `BASELINES`, never a
 number written here. The PWR is the only active plant and is feature-complete through Mode 5 ↔
@@ -411,6 +411,13 @@ re-querying. Run the query.
   waits, every `secs:` hint re-recorded. The pwr campaign missions then split in two as well
   *(OWNER RULING, 2026-08-25: "I approve the pwr campaign mission split.")* — the 257 s part A
   had become the gate's wall.
+- **#534 — the PWR2 adversarial bug hunt umbrella: 47 confirmed defects** (28 high, 18 medium,
+  1 low), filed 2026-08-27 as #535–#566. Report only; no simulator code was changed by the
+  sweep. It names TWO systemic patterns. **The second is CLOSED (#557/#556/#561, 2026-08-27)**
+  — the board was still calibrated to the retired engine; the plant now publishes its AFW
+  rating, its pressurizer-level trip rows and its delta-T setpoint equation, and the board
+  reads them. The FIRST is open: the control kernel silently rewrites or drops PWR2 commands
+  (#546, #547). Everything else in #535–#566 is untouched — `gh issue list` is the authority.
 - **RBMK and BWR** — on hold, and the source of most remaining backlog. Do not touch.
 
 **The manual set's revision number does not advance until a RELEASE** *(OWNER DIRECTIVE,
@@ -444,16 +451,14 @@ ONE line, drop the rest. **A bullet is ~80 words.** (Measured 2026-08-06: the li
   `reset_protection` never re-arming the trip edge — reset-then-scram left the latch on,
   annunciators on, and the rods standing. A row's gate must assert the EFFECT (flow, area,
   the landed value), never the write.
-- **A gate's sensing can live in the DEFECT's own transient** (2026-08-21, #501–#504, the
-  owner's first live PWR2 telemetry). Settling the hot-full-power IC (#502 — the isothermal
-  boot rang 100 → 76.6 %) sent **three previously-caught mutations blind**: the startup ring
-  had been lifting the relief, correcting level and opening the dumps, so those wires were
-  never probed deliberately. Fix the defect, re-run the INJECTIONS, give each orphaned
-  mutation its own probe. Same session: the chart pre-seed removal (#501, owner ruling — all
-  flat seeds gone, three prior rulings reversed) exposed a test that had passed ten days on
-  an accident (`testDiagBundle` pressing play on a plant that auto-starts), and a board check
-  entangled with a trend glyph. The recorder noise (#504) and the dead ECCS AUTO button
-  (#503) were both invisible to every gate and found only by a player.
+- **A constant that is RIGHT for one plant is a second copy, and it goes wrong silently the
+  day the plant changes** (2026-08-27, #557/#556/#561). Three board indications were still the
+  retired engine's: the AFW gauge read **7.40×** the delivered flow, the pressurizer tile drew
+  its scram edge at 100 % on a plant that trips at **87 %** and a second red band at 12 % for a
+  trip it does not carry, and the DNB gauge went red **356 s** before the trip with 13.70 margin
+  points standing. Fix: the plant publishes the number, the consumer reads it — an engine-key
+  branch would have re-armed the same rot. Two of the three were invisible because the board is
+  engine-agnostic by design and nothing cross-checked a RENDERED value against the plant.
 - **A shared artifact keyed by the ENGINE goes silently EMPTY when the engine key changes,
   and the neighbouring lookup that got it right is no warning** (2026-08-26, #523 §94). Making
   PWR2 the plant the site runs broke two: `mdManual()` read `RD.MANUAL_MD[ui.engineKey]` with no
@@ -534,7 +539,11 @@ thing left in the file and it grew about a bullet a session.
   the defect can be, invisible to any source read** (rescued from the #436 bullet on eviction,
   2026-08-26): a paired list comparing FORMATTED strings lit five rows on a healthy plant
   (`-0.0` vs `0.0`), a recorder emitted 46 `alarm_clear` events at t=0, and a lane-height check
-  measuring `plot ÷ lanes` certified 56 px while 38 px was drawn.
+  measuring `plot ÷ lanes` certified 56 px while 38 px was drawn. **And a MUTATION goes blind
+  when the defect it needs is FIXED, or when a refactor moves the line its anchor names**
+  (rescued from the #501–#504 bullet on eviction, 2026-08-27): settling the startup ring sent
+  three caught mutations blind; rewriting four protection gates orphaned four anchors. Fix a
+  defect, then re-run the INJECTIONS.
 - **A tolerance band is a claim that what it excludes is harmless — measure that** (rescued
   from the #348 themes bullet on eviction, 2026-08-07). CA-10's 1-point "coupling lag" band
   hid an interlock with no reset differential chattering at 35 % duty.

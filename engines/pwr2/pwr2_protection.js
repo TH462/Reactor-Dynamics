@@ -537,20 +537,28 @@
                                                        * silently-static one */
         else sp = spDyn;
       }
+      /* GATED — this function cannot assert right now, whatever the plant does, because a
+       * permissive or an operator block is holding it off. Set at each gate below rather than
+       * re-derived afterwards: a second copy of a permissive test is the defect class #294,
+       * #303 and #557 are all instances of, and the report is read by surfaces (the board's
+       * vital tiles, #556) that must not paint a protection line the plant is not standing on.
+       * `armed` is its complement over an available channel, and it is the field to read —
+       * `asserted` answers a different question (is the limit crossed RIGHT NOW). */
+      var gated = false;
       if (available) {
         if (f.leadlag) value = leadLag(pr, raw, dt);
         asserted = f.dir > 0 ? (value >= sp) : (value <= sp);
-        if (f.blockable && blockEffective) asserted = false;
+        if (f.blockable && blockEffective) { asserted = false; gated = true; }
         /* P-11's two blocks (#507 wave 10): the low-pressure REACTOR trip and the whole
          * esfas kind (the SI actuation — all three initiating rows are the one disarm the
          * sources describe). Assertion-gated like P-7, so no hold time accumulates. */
-        if (f.id === 'lo_pzr_press' && pr.blockLoPress) asserted = false;
-        if (f.kind === 'esfas' && pr.blockSI) asserted = false;
+        if (f.id === 'lo_pzr_press' && pr.blockLoPress) { asserted = false; gated = true; }
+        if (f.kind === 'esfas' && pr.blockSI) { asserted = false; gated = true; }
         /* P-7: an at-power trip is NOT ACTIVE below 10 % power. A plain gate, deliberately --
          * there is no operator request in P-7 to revoke, so the revoke-not-gate lesson from
          * P-10 does not transfer; gating the ASSERTION also zeroes the hold timer below, so
          * nothing stale accumulates while inactive. */
-        if (f.atPower && drivers.power_frac < P7.frac) asserted = false;
+        if (f.atPower && drivers.power_frac < P7.frac) { asserted = false; gated = true; }
       }
 
       /* THE DELAY IS A CONTINUOUS HOLD, not an elapsed-time-since-first-seen. A function that
@@ -566,7 +574,10 @@
         if (f.kind === 'fwi' && !anyFwi) anyFwi = f.id;
       }
       out.push({
-        id: f.id, name: f.name, kind: f.kind, available: available,
+        id: f.id, name: f.name, kind: f.kind, dir: f.dir, available: available,
+        /* ARMED — the channel is live AND no permissive or block is holding it off, so this
+         * setpoint is a line the plant will actually trip on. See `gated` above. */
+        armed: available && !gated,
         value: value, setpoint: sp, unit: f.unit,
         asserted: asserted, held_s: pr.held_s[f.id], delay_s: f.delay, tripping: tripping,
         /* SIGNED margin to the setpoint, in the function's own units: positive is safe.
@@ -727,6 +738,11 @@
   root.RD = root.RD || {};
   root.RD.pwr2 = root.RD.pwr2 || {};
   root.RD.pwr2.protection = {
+    /* OTDT is exported for ONE reason (#561): the board's overtemperature/overpower margin gauge
+     * is drawn by the reused pwr instrument layer, which computed it from the retired plant's
+     * fitted DNB surface. The shell hands these coefficients to that layer so the gauge and the
+     * trip are one equation instead of two. Exported as data, not as a second evaluator. */
+    OTDT: OTDT,
     RPS: RPS, ESFAS: ESFAS, SGLL: SGLL, DELAY: DELAY, LEADLAG: LEADLAG, P10: P10, P7: P7,
     P11: P11, RESET: RESET,
     PSIA_PER_MPA: PSIA_PER_MPA,

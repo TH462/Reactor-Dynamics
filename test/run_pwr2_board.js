@@ -102,7 +102,13 @@ function mkWorld() {
   function tick(n) { for (var i = 0; i < (n || 1); i++) snap = svc.tick(); return snap; }
   tick(10);                                       /* 10 s at 10x — the settled IC needs no more */
   RD.PwrBoard = { lastSnapshot: function () { return snap; } };
-  RD.PwrBoardDriver.onMount(global.document, { cmd: cmd, units: function (u) { return u; } }, {});
+  /* `protection` is the RUNNING plant's config (#556) — the same accessor ui/app.js passes at
+   * mount. Without it the board falls back on RD.PWR_CONTROL.protection, the retired plant's
+   * table captured at script load, and the pressurizer tile's alarm edges are 8 points out. */
+  RD.PwrBoardDriver.onMount(global.document, {
+    cmd: cmd, units: function (u) { return u; },
+    protection: function () { return svc.layer && svc.layer.config; }
+  }, {});
   return { svc: svc, cmd: cmd, tick: tick, log: log, snap: function () { return snap; } };
 }
 
@@ -130,6 +136,100 @@ function runSuite(quietRec) {
   q('power tile shows the authored at-power bands, not the startup window',
     tile && tile.tripHi === 120 && tile.max > 100 && tile.note !== 'TRIP 25%',
     tile && ('tripHi ' + tile.tripHi + ', max ' + tile.max.toFixed(0) + ', note ' + JSON.stringify(tile.note)));
+
+  /* ---- 2b. THE SCALES AND BANDS COME FROM THIS PLANT (#557, #556) -------------------------
+   * Both defects are the board holding its own second copy of a plant constant, and both were
+   * invisible to every gate: nothing cross-checked a rendered gpm against delivered kg/s, and
+   * the only band assertion in this file was on the power tile. */
+  if (!rec) head('DNB / OTdT MARGIN  [the gauge and the trip are ONE equation, #561]');
+  /* The reused pwr instrument layer drew this gauge from the retired plant's fitted DNB surface
+   * (rated delta-T 33.0 degC, margin 8.0 degC, factor 0.60 — the last two UNVERIFIED) while this
+   * plant's trip uses the sourced Ginna Table 15.0-7 coefficients on a 31.1 degC split. MEASURED
+   * before the fix: board overtemperature setpoint 122.91 % against the plant's 132.21 %, and on
+   * a depressurization the tile went RED 356 s before the trip with 13.70 margin points still
+   * standing — while the OTdT ROD STOP annunciator, which reads this same channel, latched 436 s
+   * early. Asserted at the SETPOINT, not the margin: the margin also carries instrument lag, and
+   * a band loose enough to absorb lag would absorb the defect too.
+   *
+   * FIRST in this section, on the plant as mkWorld left it. A SECOND mkWorld() here would have
+   * been the natural way to get a pristine plant and is a trap: onMount rebinds the driver's
+   * single ctxRef, so every later press in the FIRST world routes its command into the second
+   * world's log — measured, it reds the no-orphan sweep with five "silent" buttons that were
+   * working fine. */
+  var rpD = w.svc.engine.eng.rpsReport || {};
+  var sD = w.snap(), otRow = null, opRow = null;
+  (rpD.functions || []).forEach(function (f) {
+    if (f.id === 'ot_delta_t') otRow = f; if (f.id === 'op_delta_t') opRow = f;
+  });
+  /* 2 points of slack, and it is INSTRUMENT LAG, not tolerance: the gauge is fed indicated Tavg
+   * and pressure (HR1) and the trip reads true values, so on a settled plant they differ by the
+   * RTD's residual only. The defect was 9.30 points on the overtemperature setpoint and 7.00 on
+   * the overpower one — both far outside this. */
+  q('the board\'s overtemperature setpoint is the PLANT\'s, not the retired DNB surface',
+    otRow && Math.abs(sD.instruments.otdt_setpoint - otRow.setpoint * 100) < 2.0,
+    otRow && ('board ' + sD.instruments.otdt_setpoint.toFixed(2) + ' vs trip ' +
+      (otRow.setpoint * 100).toFixed(2)));
+  q('the board\'s overpower setpoint is the PLANT\'s sourced K4, not the retired 108 %',
+    opRow && Math.abs(sD.instruments.opdt_setpoint - opRow.setpoint * 100) < 2.0 &&
+    Math.abs(sD.instruments.opdt_setpoint - 115) < 0.01,
+    opRow && ('board ' + sD.instruments.opdt_setpoint.toFixed(2) + ' vs trip ' +
+      (opRow.setpoint * 100).toFixed(2)));
+  /* And the DENOMINATOR, which is the half a setpoint check cannot see: loop delta-T is
+   * normalized on 31.1 degC here, not the retired 33.0, so the two channels agree in LEVEL too. */
+  q('loop delta-T is normalized on THIS plant\'s rated split (31.1 degC), not the retired 33.0',
+    otRow && Math.abs(sD.instruments.loop_delta_t - otRow.value * 100) < 2.0,
+    otRow && ('board ' + sD.instruments.loop_delta_t.toFixed(2) + ' vs trip ' +
+      (otRow.value * 100).toFixed(2)));
+
+  if (!rec) head('PLANT-PUBLISHED SCALES  [the AFW full scale is this plant\'s, #557]');
+  /* Start ONE pump. A single motor-driven pump is the discriminating fixture: at both pumps
+   * running the indication is 1.0 and any full scale reads its own value back, so the ratio
+   * check would pass against the wrong constant — the vacuous shape #477 records. */
+  w.cmd({ action: 'set_afw', active: true });
+  w.tick(30);
+  var sAfw = w.snap();
+  var GPM_PER_KGS = 264.172 * 60 / 1000;         /* rho 1000 — pwr2_afw's own convention */
+  var eAfw = w.svc.engine.eng;
+  var trueKgs = (eAfw.aw.mdafwRunning ? RD.pwr2.afw.mdafwRatedKgs() : 0) +
+                (eAfw.aw.tdafwRunning ? RD.pwr2.afw.tdafwRatedKgs() : 0);
+  var trueGpm = trueKgs * GPM_PER_KGS;
+  var rrAfw = D.valueFor({ id: 'imrmstovyli' }, sAfw);
+  var shownGpm = rrAfw ? parseFloat(String(rrAfw.text).replace(/[^0-9.\-]/g, '')) : NaN;
+  q('AUX FEED WATER FLOW renders the flow the plant DELIVERS, not the retired plant\'s scale',
+    isFinite(shownGpm) && trueGpm > 0 && Math.abs(shownGpm / trueGpm - 1) < 0.05,
+    'board ' + (isFinite(shownGpm) ? shownGpm.toFixed(1) : '??') + ' gpm vs true ' +
+    trueGpm.toFixed(2) + ' gpm (' + trueKgs.toFixed(4) + ' kg/s) = ' +
+    (shownGpm / trueGpm).toFixed(3) + 'x');
+  q('the plant publishes its own AFW full scale, and it is the sourced rating',
+    Math.abs((sAfw.control_state.afw_flow_gpm_full || 0) - RD.pwr2.afw.ratedGpm()) < 1e-9 &&
+    Math.abs(RD.pwr2.afw.ratedGpm() - 86.197) < 0.01,
+    'control_state.afw_flow_gpm_full = ' + sAfw.control_state.afw_flow_gpm_full);
+  w.cmd({ action: 'set_afw', active: false });
+  w.tick(5);
+
+  if (!rec) head('PZR LEVEL TILE  [the trip line is THIS plant\'s, #556]');
+  /* AT POWER the at-power permissive P-7 is met, so the 87 % high-level scram is armed and the
+   * tile must draw its red edge there — not at the retired table's 100, which put the measured
+   * 87.7 % scram inside an AMBER band with 12.3 points of apparent headroom. */
+  var pz = D.compProps({ id: 'ims2immon9z' }, w.snap());
+  var setp = ((w.snap().rps_state.trip_setpoints || [])[0] || {}).setpoint;
+  q('the tile arms at the ENGINE-carried high-level setpoint (87 %), not the static 100',
+    pz && pz.tripHi === 87 && setp === 87,
+    pz && ('tripHi ' + pz.tripHi + ', published setpoint ' + setp));
+  /* THE LOW SIDE IS A REAL ABSENCE, not missing data: the plant says it speaks for pzr_level
+   * and publishes no low row, so the red band the tile used to paint from the meter bottom to
+   * 12 % marks a scram that cannot occur here. */
+  q('no low-level trip band — PWR2 carries no low pressurizer-level scram',
+    pz && pz.tripLo === 0 &&
+    (w.snap().rps_state.trip_setpoint_instruments || []).indexOf('pzr_level') >= 0 &&
+    (w.snap().rps_state.trip_setpoints || []).filter(function (r) {
+      return r.instrument === 'pzr_level' && r.direction === 'low'; }).length === 0,
+    pz && ('tripLo ' + pz.tripLo + ', speaks for ' +
+      JSON.stringify(w.snap().rps_state.trip_setpoint_instruments)));
+  /* The third edge, unfiled and found while fixing the other two: the tile read the retired
+   * table's 25 % low alarm while PWR2's own annunciator fires at #500's sourced 17 %. */
+  q('the low ALARM edge is the running plant\'s 17 %, not the retired table\'s 25 %',
+    pz && pz.alarmLo === 17, pz && ('alarmLo ' + pz.alarmLo));
 
   /* ---- 3. the payload fixes, through the whole stack -------------------------------------- */
   if (!rec) head('ROUND TRIPS  [the #506.1 payload fixes land through service+kernel+shell]');
@@ -388,7 +488,6 @@ console.log('\nPWR2 x THE BOARD DRIVER — the #506 seams, pinned headless');
 runSuite(null);
 
 /* ---- injection self-test ------------------------------------------------------------------ */
-console.log('\ninjection self-test (7 mutations):');
 var WSRC = fs.readFileSync(WIRING_PATH, 'utf8').replace(/\r\n/g, '\n');
 var SHPATH = path.join(SRC, 'pwr2_shell.js');
 var SHSRC = fs.readFileSync(SHPATH, 'utf8').replace(/\r\n/g, '\n');
@@ -407,6 +506,29 @@ var MUTS = [
   ['the kernel merge is severed (the board reads an RPS with no block surface)', KPATH, KSRC,
    '      if (engTB && engTB.trip_block_status) Object.assign(status, engTB.trip_block_status);',
    ''],
+  /* #557: the board goes back to holding the retired plant's AFW full scale as a literal —
+   * the exact shipped defect, 213 gpm rendered against 28.8 gpm delivered */
+  ['the AFW full scale is a board literal again (7.4x the flow the plant delivers)', WIRING_PATH, WSRC,
+   '(CS(s).afw_flow_gpm_full || GPM_AFW)',
+   'GPM_AFW'],
+  /* #556: the tile's live-arming branch is severed, so it falls back on the retired plant's
+   * static table — red edge at 100 for an 87 % scram, red band to 12 % for no scram at all */
+  ['the pzr level tile loses its live-arming path (static bands: 100 / 12 / 25)', WIRING_PATH, WSRC,
+   "           : (id === 'ims2immon9z' ? pzrLevelBand(s) : null)));",
+   '           : null));'],
+  /* #561: the plant stops handing its own delta-T equation to the reused instrument layer, so
+   * the gauge falls back on the retired plant's fitted DNB surface — the shipped defect */
+  ['the plant stops publishing its delta-T setpoint form (the gauge reverts to the DNB surface)',
+   SHPATH, SHSRC,
+   '    ex.otdt_form = {',
+   '    ex.otdt_form = ex.otdt_form || null; if (0) ex.otdt_form = {'],
+  /* #556, the engine end: the plant stops publishing its indication setpoints. Distinct from
+   * the branch mutation above — it proves the board is reading the PLANT and not a constant it
+   * happens to agree with, which is the failure a single mutation here would miss. */
+  ['the plant stops publishing its indication setpoints (the board has nothing to arm on)',
+   SHPATH, SHSRC,
+   "      if (f.id !== 'hi_pzr_level') return;",
+   '      return;'],
   /* RE-ANCHORED at #512 (the guard moved into eccsStop/afwUnlatch): the payload misread
    * hits every stop's `on` line at once — same defect class, same red (the round trip) */
   ['the stop payload is misread again (STOP starts the pump)', SHPATH, SHSRC,
@@ -441,6 +563,8 @@ var MUTS = [
    "      EN.command(e, 'reset_si', true);   /* permissive met: reset + secure, one click */",
    '']
 ];
+/* Counted, not written down: the number went stale the first time a mutation was added. */
+console.log('\ninjection self-test (' + MUTS.length + ' mutations):');
 var blind = 0;
 MUTS.forEach(function (m) {
   var mutated = m[2].replace(m[3], m[4]);

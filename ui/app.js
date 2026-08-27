@@ -681,7 +681,14 @@
         { id: 'sg_level', instr: 'sg_level', grp: 'Steam & feed', label: 'SG Level', c: '#806890', get: function (i) { return i.sg_level; }, tru: function (t) { return t.sg_level_pct; }, range: [0, 100], dLo: 12, fmt: function (v) { return v.toFixed(0) + '%'; } },
         { id: 'steam_flow',instr: 'steam_flow', grp: 'Steam & feed', label: 'Steam Flow',c: '#8a9a5a', get: function (i) { return i.steam_flow * 100; }, tru: function (t) { return t.steam_flow_normalized * 100; }, range: [0, 120], fmt: function (v) { return v.toFixed(0) + '%'; } },
         { id: 'fw_flow',  instr: 'fw_flow', grp: 'Steam & feed', label: 'Feed Flow',c: '#4a8a86', get: function (i) { return i.fw_flow * 100; }, tru: function (t) { return t.fw_flow_normalized * 100; }, range: [0, 120], fmt: function (v) { return v.toFixed(0) + '%'; } },
-        { id: 'afw_flow', instr: 'afw_flow', grp: 'Steam & feed', label: 'AFW Flow', c: '#5aa8a0', get: function (i) { return i.afw_flow * 100; }, tru: function (t) { return t.afw_flow_normalized * 100; }, range: [0, 40], fmt: function (v) { return v.toFixed(1) + '%'; } },
+        // AFW Flow. The axis is [0, 120] like its two siblings above, NOT the old [0, 40]
+        // (#557): 40 was sized for the retired engine's ceiling, where AFW normalizes on rated
+        // FEED and full AFW is `afw_flow_frac` 0.15 = 15 % of the axis. PWR2 normalizes on AFW's
+        // OWN rating, so one pump reads 33.3 % and both read 100 % — off the top of a 40 axis,
+        // on the plant the site runs. One profile serves both engines (uiPlantOf folds pwr2 onto
+        // pwr), so the axis has to hold the wider of the two bases; the retired engine simply
+        // draws low on it, which is honest — its AFW really is a sixth of the feed it replaces.
+        { id: 'afw_flow', instr: 'afw_flow', grp: 'Steam & feed', label: 'AFW Flow', c: '#5aa8a0', get: function (i) { return i.afw_flow * 100; }, tru: function (t) { return t.afw_flow_normalized * 100; }, range: [0, 120], fmt: function (v) { return v.toFixed(1) + '%'; } },
         // The SG's own mass balance: steam out (turbine + dump + safeties) minus TOTAL
         // feed (main + AFW). Positive means the level is on its way down, which is the
         // thing a level trace only tells you after it has already happened.
@@ -8115,6 +8122,14 @@
         units: function () { return ui.units; },
         mode: function () { return ui.diagMode; },
         overlay: function () { return ui.physOverlay; },
+        // THE RUNNING PLANT'S PROTECTION CONFIG (#556), same accessor shape and same reason as
+        // `units` above — the board is mounted once and the plant can change under it, so a
+        // captured object would freeze one plant's setpoints into another plant's board. It is
+        // `service.layer.config`, which IS `engine.getProtectionConfig()` (simulation_service
+        // builds the kernel from it). The board captured RD.PWR_CONTROL.protection at script
+        // load instead and drew PWR2's pressurizer-level alarm at the retired plant's 25 %
+        // while the annunciator fired at PWR2's own 17 %.
+        protection: function () { return service.layer && service.layer.config; },
         // #237 (owner): the paused veil was clickable to resume. The veil was removed
         // 2026-08-11; this hook is kept because the board API still declares it. Route
         // through the play button so its ▶/⏸ state stays the single source of truth.

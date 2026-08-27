@@ -956,7 +956,17 @@
     // reading instruments here left the readout at 'OFF' forever, including the shipped
     // Mode 5 lineup that spawns RHR-aligned (#235).
     ims3w61jjbi: function (s) { return String(CS(s).eccs_mode || 'off').toUpperCase(); },
-    imrmstovyli: function (s) { return dQ((IN(s).afw_flow || 0) * GPM_AFW); },   // AFW flow (true afw_flow)
+    // AFW flow (true afw_flow). THE FULL SCALE COMES FROM THE PLANT (#557): `afw_flow` is
+    // normalized 1.0 at the running plant's own AFW rating, and the two shipped plants do not
+    // share a basis — the retired engine normalizes on RATED FEED (1.0 = 640 gpm, full AFW
+    // being 0.15 of it = 96 gpm), PWR2 on AFW's own sourced rating (1.0 = 86.2 gpm). Holding
+    // the retired basis as a literal here made the gauge read 213 gpm against 28.8 gpm
+    // delivered on PWR2, 7.40x, with charging and letdown beside it literal to 1 % so nothing
+    // cued the operator. GPM_AFW survives as the fallback for a snapshot that publishes no
+    // scale — an old recording replayed through this driver, where the retired basis is right
+    // by construction. An engine BRANCH here would have been the wrong shape: this file is
+    // deliberately engine-agnostic and would rot again at the next plant.
+    imrmstovyli: function (s) { return dQ((IN(s).afw_flow || 0) * (CS(s).afw_flow_gpm_full || GPM_AFW)); },
     imrmsu1bl4r: function (s) { return dP(IN(s).afw_discharge_pressure || 0); },  // AFW discharge (true pump head)
     // AFW pump state. The V2 board draws no AFW pump — the card is the pump — so this is
     // its run light, and it reads pump DEMAND (afw_pump_demand), not delivered flow. With
@@ -1546,6 +1556,22 @@
     for (i = 0; i < a.length; i++) if (a[i].id === id) return a[i].setpoint;
     return fallback;
   }
+  /* THE RUNNING PLANT'S alarm setpoint, not the one captured at script load (#556). `_PROT`
+   * above is `RD.PWR_CONTROL.protection` — the retired plant's table, frozen at load — and
+   * TILE_BANDS is built from it ONCE, which is correct there and wrong on any other plant. The
+   * two are the same object on the retired engine, so this changes nothing for it; on PWR2 the
+   * shell rebuilds the alarms array with its own overrides (pzr_level_low 25 -> 17, the sourced
+   * heater-cutoff level, #500) and the tile was 8 points out.
+   *
+   * Live lookup, per call, deliberately: the plant can change under a mounted board. Falls back
+   * to the static table when the host passed no accessor — board_check and the headless gates
+   * mount with a partial ctx, and an old recording has no live plant at all. */
+  function liveAlarmSp(id, fallback) {
+    var p = (ctxRef && typeof ctxRef.protection === 'function') ? ctxRef.protection() : null;
+    var a = (p && p.alarms) || null, i;
+    if (a) for (i = 0; i < a.length; i++) if (a[i].id === id) return a[i].setpoint;
+    return alarmSp(id, fallback);
+  }
   var P_SET = _PZ.P_setpoint || 15.41;
   // Family + per-mode display resolution for the three tiles that carry a convertible unit.
   // `us` is the AUTHORED unit string on the item, repeated here because tile() is keyed by
@@ -1601,11 +1627,15 @@
       normHi: P_SET + (_PZ.spray_band_mpa || 0.345),
       alarmHi: alarmSp('pzr_pressure_high', 15.86),
       tripHi: tripSp('primary_pressure', 'high', 16.44) },
-    // Pressurizer level, %. No high-level trip exists, so the top region collapses at 100 —
-    // above the 75 % alarm is caution territory all the way up, which is the truth.
+    // Pressurizer level, %. THE AUTHORED ROW IS THE RETIRED PLANT'S and is now a fallback only —
+    // pzrLevelBand() arms it against the running plant (#556). The old comment here read "No
+    // high-level trip exists, so the top region collapses at 100", which was already false when
+    // written (pwr_control's own pzr_hi_level scrams at 97) and is false twice over on PWR2,
+    // which scrams at 87 % and carries no low-level trip at all.
     ims2immon9z: { min: 0, max: 100, digits: 0,
       tripLo: tripSp('pzr_level', 'low', 12), alarmLo: alarmSp('pzr_level_low', 25), normLo: 40,
-      normHi: 70, alarmHi: alarmSp('pzr_level_high', 75), tripHi: 100 },
+      normHi: 70, alarmHi: alarmSp('pzr_level_high', 75),
+      tripHi: tripSp('pzr_level', 'high', 100) },
     // SG narrow-range level, %. Trips both ways: lo-lo scram and the P-14 high-level trip.
     ims2imn1nny: { min: 0, max: 100, digits: 0,
       tripLo: tripSp('sg_level', 'low', 17), alarmLo: alarmSp('sg_level_low', 30), normLo: 45,
@@ -1649,10 +1679,19 @@
   //     being cooled down, so the band becomes "cold-shutdown cold" instead.
   //   - Primary pressure follows the LIVE pressurizer setpoint, not the rated one, so a
   //     Mode 5 plant held at 2.8 MPa shows its own control band rather than the at-power one.
-  // The other four do NOT move, and that is deliberate, not an omission: reactor power,
-  // subcooling margin, pressurizer level and SG narrow-range level are held to the same
-  // band in every mode the board can reach. Their references are the protection setpoints,
-  // which is what TILE_BANDS already reads.
+  //   - Reactor power follows WHAT IS ARMED — the startup low-flux setting when it is armed,
+  //     the 120 % backstop otherwise, and the engine's own setpoint where it publishes one.
+  //   - Pressurizer level follows the RUNNING PLANT'S OWN protection rows (#556). It was in the
+  //     "does not move" list below until PWR2 shipped, and that is exactly what went wrong: the
+  //     list's reasoning — "their references are the protection setpoints, which is what
+  //     TILE_BANDS already reads" — was true of the reference and false of the READING, because
+  //     TILE_BANDS reads ONE plant's table, captured at script load, for whatever plant is
+  //     running. A tile whose band never moves with the MODE can still need to move with the
+  //     PLANT.
+  // The other two do NOT move, and that is deliberate: subcooling margin and SG narrow-range
+  // level are held to the same band in every mode this board can reach, and neither has been
+  // MEASURED against PWR2's own table — which is a measurement owed, not a claim that they are
+  // right. Their authored edges stand until someone takes that measurement.
   var _CTL = (typeof RD !== 'undefined' && RD.PWR_CONTROL) || {};
   // Band edges are QUANTISED to a whole step of the DISPLAY unit. They are recomputed every
   // render from live signals (load for Tavg, the setpoint for pressure), and the tile rebuilds
@@ -1723,6 +1762,51 @@
     return { normHi: qz(p10), alarmHi: qz(p10), tripHi: qz(lim.setpoint),
              note: 'TRIP ' + qz(lim.setpoint) + '%' };
   }
+  /* PRESSURIZER LEVEL — the fourth live-armed tile (#556), and the first to take its trip line
+   * from the ENGINE'S OWN published protection rather than from a static table.
+   *
+   * WHAT WAS WRONG. TILE_BANDS is built once from `_PROT` = the retired plant's protection
+   * table. On PWR2 that made this tile say three untrue things at once. MEASURED on the shipped
+   * board: the reactor scrammed at indicated 87.70 % on `hi_pzr_level` while the tile put 87.7 in
+   * its AMBER region with its red edge 12.3 points further up at 100 — the operator watches a
+   * scram arrive out of a caution band with apparent headroom. Below, it painted red from the
+   * meter bottom to 12 % for a low-level scram PWR2 does not carry, so a player defends a limit
+   * the plant does not have during any drain or shrink transient. And its low alarm edge sat at
+   * the retired table's 25 % while PWR2's own annunciator fires at 17 % (#500).
+   *
+   * THE RULE. A red edge is drawn only where the running plant publishes an ARMED row. `armed`
+   * is the protection module's own flag, not a permissive re-tested here — re-testing P-7 on the
+   * board would be the second copy of a threshold, which is the defect this whole change is
+   * about. An unarmed high row (below the at-power permissive P-7, 10 % power) has no line to
+   * draw, so the top region collapses at the meter top.
+   *
+   * NO NOTE, deliberately. pressureBand's "LO TRIP BLKD" is right there because an OPERATOR
+   * blocked that trip; P-7 is a permissive nobody set, and its own comment records why claiming
+   * "a bypass nobody set" is worse than saying nothing. The collapsed band is the indication.
+   *
+   * ABSENT ≠ NONE. `trip_setpoint_instruments` is what makes the low side readable: only when the
+   * running plant says it speaks for `pzr_level` does a missing low row mean "this plant has no
+   * low-level trip". Without that list — the retired engine, an old recording — the authored
+   * trip edges stand untouched and only the alarm edges go live. */
+  function pzrLevelBand(s) {
+    var b = TILE_BANDS.ims2immon9z;
+    /* The alarm edges are live on EVERY plant: they come from the running protection config,
+     * which the retired engine and PWR2 both have, and they are what #500's override moved. */
+    var out = { alarmLo: liveAlarmSp('pzr_level_low', b.alarmLo),
+                alarmHi: liveAlarmSp('pzr_level_high', b.alarmHi) };
+    if (!s || !s.rps_state) return out;
+    var rows = s.rps_state.trip_setpoints;
+    var speaks = s.rps_state.trip_setpoint_instruments;
+    if (!rows || !speaks || speaks.indexOf('pzr_level') < 0) return out;
+    var hi = null, lo = null, i;
+    for (i = 0; i < rows.length; i++) {
+      if (rows[i].instrument !== 'pzr_level') continue;
+      if (rows[i].direction === 'high') hi = rows[i]; else lo = rows[i];
+    }
+    out.tripHi = (hi && hi.armed) ? qz(hi.setpoint) : b.max;
+    out.tripLo = (lo && lo.armed) ? qz(lo.setpoint) : b.min;
+    return out;
+  }
   // Primary pressure — the low side follows WHAT IS ARMED, same rule as power (#270).
   //
   // `primary_pressure low` carries two reactor trips (`lo_press` 12.41 MPa / 1800 psi and
@@ -1776,7 +1860,8 @@
     var b = TILE_BANDS[id];
     var mv = id === 'ims2immk7ks' ? tavgBand(s)
            : (id === 'ims2immsvn6' ? pressureBand(s)
-           : (id === 'imrzl4b7g9m' ? powerBand(s) : null));
+           : (id === 'imrzl4b7g9m' ? powerBand(s)
+           : (id === 'ims2immon9z' ? pzrLevelBand(s) : null)));
     if (!mv) return toDisplayBands(id, b);
     var out = {}; for (var k in b) out[k] = b[k];
     if (mv.normLo != null) out.normLo = mv.normLo;
@@ -3434,6 +3519,44 @@
       ck('driver: pressure tile falls back to authored bands with no rps_state',
         Math.round(qBare.tripLo) === 1800 && qBare.note === '',
         qBare.tripLo.toFixed(0) + '/' + JSON.stringify(qBare.note));
+      // ---- pressurizer level: the trip line is the RUNNING plant's (#556) -------------------
+      // Three fixtures, because the tile has three distinct answers and the shipped defect
+      // looked correct in exactly one of them. An engine that publishes indication setpoints
+      // (PWR2) arms the tile at its own number and collapses the side it has no trip on; an
+      // engine that publishes none (the retired plant, and every old recording) keeps the
+      // authored edges untouched. `armed` is the plant's own flag: an unarmed row — below the
+      // at-power permissive P-7 — has no line to draw, so the top collapses at the meter top.
+      function pzrTile(rows, speaks) {
+        var t = { instruments: { pzr_level: 60 }, control_state: {},
+                  true_state: { plant_mode: 1 }, metadata: { sim_time: 100 },
+                  rps_state: { trip_blocks: {}, scrammed: false } };
+        if (rows !== null) { t.rps_state.trip_setpoints = rows;
+                             t.rps_state.trip_setpoint_instruments = speaks || ['pzr_level']; }
+        return COMPPROPS.ims2immon9z(t);
+      }
+      var HI87 = { id: 'hi_pzr_level', instrument: 'pzr_level', direction: 'high', setpoint: 87, armed: true };
+      var zArmed = pzrTile([HI87]);
+      var zBelowP7 = pzrTile([Object.assign({}, HI87, { armed: false })]);
+      var zLegacy = pzrTile(null);
+      ck('driver: pzr level tile arms at the ENGINE-carried high setpoint (87 %), not the static edge',
+        zArmed.tripHi === 87, 'tripHi ' + zArmed.tripHi);
+      // The load-bearing negative: the plant SAYS it speaks for pzr_level and publishes no low
+      // row, so the red band the authored table paints from the meter bottom to 12 % marks a
+      // scram that cannot occur. Absent-and-spoken-for is a real absence; absent-and-silent is
+      // not, which is what zLegacy pins.
+      ck('driver: pzr level tile collapses the low trip band when the plant carries no low trip',
+        zArmed.tripLo === 0, 'tripLo ' + zArmed.tripLo);
+      ck('driver: pzr level tile draws NO high band while the row is unarmed (below P-7)',
+        zBelowP7.tripHi === 100 && zBelowP7.tripLo === 0,
+        'tripHi ' + zBelowP7.tripHi + ', tripLo ' + zBelowP7.tripLo);
+      ck('driver: pzr level tile keeps the authored edges when the plant publishes no setpoints',
+        zLegacy.tripHi === 97 && zLegacy.tripLo === 12,
+        'tripHi ' + zLegacy.tripHi + ', tripLo ' + zLegacy.tripLo);
+      // The authored high edge is now READ from the protection table instead of hard-coded to
+      // 100 under the comment "No high-level trip exists" — which was false for this plant too:
+      // pwr_control's own pzr_hi_level scrams at 97 % (PI-8, Manuals/09 §3.0).
+      ck('driver: the authored high edge is the retired plant\'s REAL 97 % scram, not 100',
+        TILE_BANDS.ims2immon9z.tripHi === 97, 'authored tripHi ' + TILE_BANDS.ims2immon9z.tripHi);
       // ---- NIS readouts show their thresholds (#271) --------------------------------------
       // The startup net is P-10 (10 %) < IR high (~20 %) < PR low setpoint (25 %). #267 made the
       // PR rung visible; these are the other two. Before this, SR went amber at its handoff

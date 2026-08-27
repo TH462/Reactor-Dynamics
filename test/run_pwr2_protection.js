@@ -362,6 +362,23 @@ function runSuite(P, rec, quiet) {
   ckT('a plant with NO level reading reports the function UNAVAILABLE, not untripped-forever',
       fn(rNoL, 'hi_pzr_level').available === false && rNoL.reactor_trip === false,
       'the optional-reading convention: absence is reported, never silently healthy');
+  /* ---- ARMED, and why it is not `asserted` (#556) ----------------------------------------
+   * The board's vital-parameter tiles draw the protection line, and the ONLY thing that told
+   * them where it was, was a static table belonging to the retired plant — which is how the
+   * pressurizer tile came to paint its red edge at 100 % on a plant that scrams at 87 %. It now
+   * reads these rows, so the report has to answer "would this setpoint actually catch me right
+   * now" separately from "am I past it". The two differ in exactly the case that matters: on a
+   * HEALTHY at-power plant the function is ARMED and NOT asserted, and a consumer keying on
+   * `asserted` would erase the line whenever the plant was safe — the whole indication. */
+  var rArm = ride(atPower(), healthy(), 5);
+  ckT('a healthy at-power plant reports the high-level function ARMED but NOT asserted',
+      fn(rArm, 'hi_pzr_level').armed === true && fn(rArm, 'hi_pzr_level').asserted === false,
+      'armed answers "is this line real", asserted answers "am I past it" — a tile needs the first');
+  ckT('below P-7 the SAME function reports NOT armed — there is no line to draw',
+      fn(rP7lo, 'hi_pzr_level').armed === false,
+      'the at-power gate, reported rather than re-derived by every consumer');
+  ckT('an UNAVAILABLE channel is never armed (no reading, no line)',
+      fn(rNoL, 'hi_pzr_level').armed === false, 'available false => armed false');
 
   /* ---- P-10, AND ITS ASYMMETRY IS THE POINT ---------------------------------------------
    * Ginna TS Bases B 3.3.1: the block is MANUAL and only PERMITTED above ~8 % RTP; the unblock
@@ -706,7 +723,7 @@ var MUTATIONS = [
    'drivers.turbine_tripped && !drivers.p9_defeated && drivers.power_frac >= p9frac',
    'drivers.turbine_tripped && !drivers.p9_defeated'],
   ['the P-7 at-power gate is deleted (the high-level trip fires during heatup)',
-   '        if (f.atPower && drivers.power_frac < P7.frac) asserted = false;',
+   '        if (f.atPower && drivers.power_frac < P7.frac) { asserted = false; gated = true; }',
    ''],
   ['the high-level setpoint drifts 87 -> 95 %',
    '    hi_pzr_level_frac:  0.87,',
@@ -746,8 +763,8 @@ var MUTATIONS = [
    '      var available = raw !== undefined && isFinite(raw);',
    '      var available = true;'],
   ['the low-flux BLOCK suppresses every function, not just the blockable one',
-   '        if (f.blockable && blockEffective) asserted = false;',
-   '        if (blockEffective) asserted = false;'],
+   '        if (f.blockable && blockEffective) { asserted = false; gated = true; }',
+   '        if (blockEffective) { asserted = false; gated = true; }'],
   ['the high-pressure setpoint moved off its sourced value',
    '    hi_pzr_press_psia:  2425,', '    hi_pzr_press_psia:  2600,'],
   ['the low-pressure setpoint moved off its sourced value',
@@ -806,10 +823,10 @@ var MUTATIONS = [
    '    if (!p11Below) {\n      if (pr.blockLoPress) pr.blockLoPress = false;\n      if (pr.blockSI) pr.blockSI = false;\n    }',
    ''],
   ['the SI block gates nothing (a "blocked" shutdown plant injects anyway)',
-   "        if (f.kind === 'esfas' && pr.blockSI) asserted = false;",
+   "        if (f.kind === 'esfas' && pr.blockSI) { asserted = false; gated = true; }",
    ''],
   ['the low-pressure trip block gates nothing',
-   "        if (f.id === 'lo_pzr_press' && pr.blockLoPress) asserted = false;",
+   "        if (f.id === 'lo_pzr_press' && pr.blockLoPress) { asserted = false; gated = true; }",
    ''],
   ['lo_flow loses its P-7 gate (a shutdown plant with secured RCPs reads as a loss-of-flow accident)',
    "        sp: RPS.lo_flow_frac, unit: 'frac', read: 'flow_frac', delay: DELAY.lo_flow,\n        atPower: true },",

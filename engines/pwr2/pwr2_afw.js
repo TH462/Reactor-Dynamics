@@ -70,6 +70,21 @@
   function mdafwRatedKgs() { return gpmToKgs(AFW.mdafw_ginna_gpm * AFW.POWER_SCALE, 1000); }
   function tdafwRatedKgs() { return gpmToKgs(AFW.tdafw_ginna_gpm * AFW.POWER_SCALE, 1000); }
 
+  /* THE COMBINED RATING IN GPM — the denominator `afw_flow_normalized` is taken against
+   * (stepAFW: `rated = mdafwRatedKgs() + tdafwRatedKgs()`), expressed in the unit the SOURCE
+   * quotes and the board renders. Derived from the same two sourced points and the same power
+   * scale, not retyped: 510 gpm x 300/1775 = 86.2 gpm.
+   *
+   * WHY IT IS PUBLISHED (#557). The board renders AFW flow as `indication x full_scale` and
+   * held its own literal full scale — 640 gpm, which was the RETIRED plant's basis (its
+   * `afw_flow_normalized` was a fraction of RATED FEED, full AFW being 0.15 of it, so
+   * 0.15 x 640 = 96 gpm read correctly there). This plant renormalized the same instrument to
+   * AFW's OWN rating, and the board constant did not move: measured on a loss of main feedwater,
+   * 213 gpm shown against 28.8 gpm (1.81 kg/s) delivered, 7.40x. A second copy of a plant
+   * constant, held by the consumer — the class control_kernel's getInterlockState comment
+   * already names. The plant says its own number instead. */
+  function ratedGpm() { return (AFW.mdafw_ginna_gpm + AFW.tdafw_ginna_gpm) * AFW.POWER_SCALE; }
+
   function createAFW(opts) {
     opts = opts || {};
     return {
@@ -129,7 +144,7 @@
   root.RD = root.RD || {};
   root.RD.pwr2 = root.RD.pwr2 || {};
   root.RD.pwr2.afw = {
-    AFW: AFW, mdafwRatedKgs: mdafwRatedKgs, tdafwRatedKgs: tdafwRatedKgs,
+    AFW: AFW, mdafwRatedKgs: mdafwRatedKgs, tdafwRatedKgs: tdafwRatedKgs, ratedGpm: ratedGpm,
     createAFW: createAFW, stepAFW: stepAFW, gpmToKgs: gpmToKgs
   };
 })(typeof globalThis !== 'undefined' ? globalThis : this);
