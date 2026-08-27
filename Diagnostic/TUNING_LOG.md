@@ -29,6 +29,95 @@ and the user-visible summary in `CHANGELOG.md`. This file points at those and tr
 
 ---
 
+## Session log — 2026-08-27-develop-b (#553 + #554 + #555 + #548 + #563 item 3 — the save/rewind/restore path)
+
+**The cluster and why it is one change.** Five #534 findings, one code path: save a plant, load it
+back, or rewind. Chosen as the easiest coherent cluster in the register because **not one plant
+number moves** — no evidence pass, no `DESIGN_CRITERIA` question, and the correct behaviour is
+already asserted by the code's own headers (`simulation_service.js` calls a rewind *"a bit-exact,
+deterministic restore"*; `pwr2_shell.js` declares *"never a silent swallow"*). Rewind is a headline
+feature on a free-play-only plant with a checkpoint every 20 s of real time, so all five fire in
+ordinary play.
+
+**They interlock — this is the reason they could not be taken one at a time.** #555's own
+verification note says today's broken restore is what MASKS the NaN (*"the restore itself clears
+`rated_steam` and the null lives for exactly one 0.02 s step"*). Persisting the two initial-condition
+constants (#563 item 3) **without** the NaN fix would have made the null permanent and left Mode 4,
+Hot Shutdown worse than before. Anyone picking these off individually walks into that.
+
+### The five, with the measurement
+
+| Issue | Site | Before | After |
+|---|---|---|---|
+| #554 | `simulation_service._restore` | a rejected file had already installed a fresh plant: 0.2 % → 100 % power, 1130 → 2234 psia (7.79 → 15.40 MPa), failures wiped, clock running | engine + layer constructed into locals, installed only after every load returns |
+| #553 | `ui/app.js` load handler | 4 of 5 reject classes toasted *"State loaded"* | the error RETURN is honoured and the toast names the reason |
+| #555 | `pwr2_shell.saveState` | Mode 4 feed regulating valve 29.73 % → **0.00 %**, Feed Flow 940 → **0 gpm** | the save NAMES its non-finite ids; the load re-installs NaN |
+| #563 item 3 | `pwr2_shell.saveState` scalars | Mode 4 rewind: `M_nominal` 51,222 → 41,613 lb, CORE INVENTORY **100.0 → 123.1 %** on −1.5 lb of real mass | `rated_steam` + `M_nominal` ride the save; metadata records the IC |
+| #548 | `pwr2_shell` `_pwrRate` | board SG narrow-range level **7.4771 points HIGH** after a rewind inside a scram | **0.000000** |
+
+### Traps this session paid for
+
+- **`isFinite(null)` is `true`, and `Number.isFinite` exists NOWHERE in this tree.** Every one of
+  the ~20 finite guards in `engines/pwr2/` is the global coercing form, so a JSON `null` reads as a
+  hard zero everywhere. The fix belongs at the SAVE BOUNDARY — do not sweep the guards; that is a
+  convention change, and a separate decision. The save's own comment claimed the round trip
+  *"PROVES serializability"*; it proved the opposite of what was needed.
+- **Two smoothers can share a name across a facade boundary and only one is saved.** `_pwrRate`
+  exists on both the shell and the inner engine. `scalars` is written back onto the ENGINE, so
+  adding the shell's copy to that list would have been a silent no-op — it needed its own block.
+  The existing save gate could not see it for three independent reasons at once: it reloads into
+  the SAME instance (so the field is already correct), on a SETTLED fixture (so the value is ~0),
+  sampling only `tavg` and `primary_pressure` (so the affected channel is not read). **Any one of
+  the three alone makes the check hollow.**
+- **A check that reads its restored value AFTER its own ride is measuring the ride.** The `_pwrRate`
+  check first compared `pb._pwrRate` to the save-point value *after* 400 steps — which move both
+  copies — and failed on a correct fix. Read it at the load. It was the scoped-clean-pass preflight
+  in `run_pwr2_shell` that caught this, not the check itself.
+- **Fixing a field orphans the mutation anchor that names it — TWICE this session, and the
+  second one is the general lesson.** Adding `nonFinite` to the `ins` block sent the *"readings
+  dict is not saved"* mutation to `ANCHOR MISS` (a green 77/77 with a blind spot). Then adding a
+  three-line COMMENT to `pwr2_instruments`'s missing-source guard orphaned a second one — because
+  that anchor quoted **the comment as well as the code**. **Never anchor a mutation on prose**: it
+  rots on the next prose edit, and the failure mode is a green tally with a hole in it. The
+  starved-channel anchor now quotes the two code lines only and keeps the block's braces.
+  Same class as the #501–#504 note in `CLAUDE.md`: **fix, then re-run the injections.**
+- **`run_hardrules` polices the RULING CITATION FORMAT, and an owner ruling given as a menu
+  SELECTION still needs one.** Dropping the ruling marker into a sentence with no date and no
+  quote reds HR11 — 383 checks, 1 failed. For a selection, copy the parenthesised form
+  `CLAUDE.md` already uses at its 25-bullet cap: marker, date, the chosen option in quotes, and
+  the words *"a selection, not verbatim words"*.
+- **And the guard cannot tell your PROSE ABOUT a citation from a citation.** The bullet above,
+  first drafted quoting the bare marker to explain the red, RED THE GATE ITSELF — 386 checks,
+  1 failed, pointing at the sentence describing the rule. Same shape as the TEMPLATE-placeholder
+  trap already in `CLAUDE.md`: **write about the marker without writing the marker.**
+
+### Gates
+
+`run_pwr2_shell` **77 → 82 checks, 29 → 32 mutations, 0 blind**; `run_m5` **23/23 104 → 26/26 120**;
+`run_pwr2_instruments` **20 → 21 checks, 11 → 12 mutations**; `verify_e2e_ui` gains
+`testSaveLoadRefusal` (score is a screenshot count, so no baseline moves).
+
+**Every new check was injection-verified**, not written beside its own fix and declared green:
+putting the pre-fix assign order back in `_restore` reds exactly 4 of the new `run_m5` checks
+(engine identity, layer identity, power, the active-failure list); each of the three shell
+mutations reds its own claim; and reverting the `ui/app.js` handler reproduces the issue's exact
+string, *"State loaded — e2e-save-nometa.json"*.
+
+**Save-format migration.** `pwr2-1.0` gains `scalars.rated_steam`, `scalars.M_nominal`,
+`ins.nonFinite`, `shell`; service metadata gains `initial_state`. All absent-tolerant, all falling
+back to the pre-fix behaviour exactly — pinned by a `run_m5` check that deletes the field and loads.
+
+### Left open, deliberately
+
+**#539** (Mode 4, Hot Shutdown boots with `rated_steam = 0` — `pwr2_engine.js:331` recomputes it
+from a turbine object line 326 has already zeroed, against the intent written on line 325) is the
+ROOT of the NaN and is **out of scope** *(OWNER RULING, 2026-08-27: selected "Leave it out" from
+options I wrote — a selection, not verbatim words)*: fixing it starts main feedwater delivering
+at Mode 4, which is a plant-behaviour change owing a Hard Rule 12 measurement pass. This cluster is
+what makes it safe to do next — with #555 fixed, #539 can land without the null becoming permanent.
+
+---
+
 ## Session log — 2026-08-27-develop-a (#557 + #556 + #561 — three board indications were reading a different plant)
 
 **The cluster.** The #534 sweep's second systemic pattern — *"the board is still calibrated to the

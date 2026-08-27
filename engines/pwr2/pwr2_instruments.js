@@ -183,7 +183,10 @@
       if (typeof truth !== 'number' || !isFinite(truth)) {
         /* a missing true field is a WIRING defect, not a plant condition — hold the last
          * reading rather than emit NaN into every consumer, and leave the lag state alone */
-        if (ins.reading[c.id] === undefined) ins.reading[c.id] = NaN;
+        /* null as well as undefined (#555): a save's JSON round trip writes a non-finite
+         * reading out as null, and a null read as a number is 0 — a plausible, wrong value
+         * that no isFinite() guard in the tree rejects. Treat it as "no reading yet". */
+        if (ins.reading[c.id] === undefined || ins.reading[c.id] === null) ins.reading[c.id] = NaN;
         return;
       }
       /* lag chain — primed to truth on the first step so a fresh plant does not spend its

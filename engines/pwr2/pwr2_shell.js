@@ -1106,6 +1106,7 @@
 
   PWR2Engine.prototype.reset = function () {
     var opts = this._opts || {};
+    this._pwrRate = 0;      /* #548: a fresh plant does not inherit the last run's smoother */
     this.eng = EN.createEngine(opts);
     this._ts = EN.step(this.eng, 0.02);
     this.instruments = new root.RD.PWRInstruments(root.RD.PWR_CONFIG, opts.seed);
@@ -1127,18 +1128,33 @@
     /* the READINGS dict itself rides along: the facade's control/RPS drivers read it one step
      * old, and a load that left it empty would hand them the first-step truth fallback for one
      * step — measured as a 6th-decimal divergence that cascades (bit-exactness is the bar) */
-    var insReading = {};
-    Object.keys(e.ins.reading).forEach(function (id) { insReading[id] = e.ins.reading[id]; });
-    (function(){
+    var insReading = {}, insNonFinite = [];
+    Object.keys(e.ins.reading).forEach(function (id) {
+      var v = e.ins.reading[id];
+      insReading[id] = v;
+      /* #555: the JSON round trip below maps NaN to null, and isFinite(null) is TRUE — so a
+       * channel with no true driver (Mode 4, Hot Shutdown's steam_flow) came back as a hard
+       * ZERO that every finite guard in the tree accepts, and the three-element feed
+       * controller's flow element read a standing -0.0750 error that drove the regulating
+       * valve shut. NAME the non-finite ids and re-install NaN on load: a dead channel stays
+       * dead, which is what bit-exactness means here. */
+      if (typeof v === 'number' && !isFinite(v)) insNonFinite.push(id);
     });
     var body = {
       sys: e.sys, rx: e.rx, sg: e.sg, tb: e.tb, rl: e.rl, cd: e.cd, dc: e.dc, cv: e.cv,
       ec: e.ec, aw: e.aw, fw: e.fw, dm: e.dm, pt: e.pt, pz: e.pz, ctm: e.ctm, rh: e.rh,
       brk: e.brk || null,
       ins: { noiseScale: e.ins.noiseScale, failure: e.ins.failure, channels: chs,
-             reading: insReading },
+             reading: insReading, nonFinite: insNonFinite },
       ts: this._ts,                                   /* the published snapshot, restored as-is */
       shellIns: this.instruments.save(),              /* pwr_instruments' own documented API */
+      /* #548: the SHELL's own smoothed power rate — the ONLY driver of the board instrument
+       * layer's shrink-and-swell term (set in step(), read as ex.power_rate in _instrExtras).
+       * `scalars` below is written back onto `e`, so the inner engine's identically named
+       * copy is a DIFFERENT number and restoring it does nothing for the board: measured
+       * 7.48 points of narrow range HIGH after a rewind taken inside a scram. An old save
+       * without this block lands on 0, which is the pre-fix state exactly. */
+      shell: { _pwrRate: this._pwrRate },
       scalars: {
         rodTarget: e.rodTarget, rodSteps: e.rodSteps, simTime: e.simTime,
         /* the second bank + the S/M/F selection + the shell display latches (#506) — an old
@@ -1168,7 +1184,17 @@
         /* the MSIV (#511) — an old save without it lands on the constructor's open valve,
          * which is the pre-#511 plant exactly (the accumulator rides inside ec) */
         msiv: e.msiv,
-        pzDrivers: e.pzDrivers, dcDrivers: e.dcDrivers
+        pzDrivers: e.pzDrivers, dcDrivers: e.dcDrivers,
+        /* THE INITIAL-CONDITION SCALES (#563 item 3) — rated_steam is every normalization's
+         * denominator (pwr2_engine: "the RATED scale") and M_nominal is core_inventory_pct's
+         * and the containment sump's. Both are set from the IC at construction, and
+         * SimulationService._restore rebuilt the engine at hot_full_power, so a save taken on
+         * any other preset came back wearing Hot Full Power's constants over its own saved
+         * mass — measured on Mode 4, Hot Shutdown: M_nominal 23,234 -> 18,876 kg (51,222 ->
+         * 41,613 lb) and the CORE INVENTORY indication 100.0 -> 123.1 % across a rewind that
+         * moved true primary mass -0.7 kg (-1.5 lb). An old save without them lands on the
+         * constructor's values, which is the pre-fix behaviour exactly. */
+        rated_steam: e.rated_steam, M_nominal: e.M_nominal
       }
     };
     var out = JSON.parse(JSON.stringify(body));      /* deep copy, and PROVES serializability */
@@ -1202,6 +1228,10 @@
     });
     e.ins.failure = st.ins.failure;
     Object.keys(st.ins.reading || {}).forEach(function (id) { e.ins.reading[id] = st.ins.reading[id]; });
+    /* #555: JSON wrote every non-finite reading out as null. Put the NaN back — the save
+     * NAMES which ids were non-finite precisely so the load does not have to guess, and a
+     * restored null would otherwise pass isFinite() and be read as a hard zero for ever. */
+    (st.ins.nonFinite || []).forEach(function (id) { e.ins.reading[id] = NaN; });
     Object.keys(st.scalars).forEach(function (k) { e[k] = st.scalars[k]; });
     /* #511 MIGRATIONS (the CHANGELOG migration-note pattern): a pre-#511 save carries no
      * MSIV and no accumulator — both land on the constructor's healthy at-power lineup
@@ -1212,6 +1242,10 @@
     }
     this._ts = st.ts;                          /* the same step's own snapshot — no re-derive */
     this.instruments.load(st.shellIns);
+    /* #548 (and the #511 migration pattern): an old save carries no shell block — 0 is the
+     * pre-fix state. The service always restores into a FRESHLY CONSTRUCTED shell, so
+     * leaving this alone means undefined, and the swell term is simply missing. */
+    this._pwrRate = (st.shell && typeof st.shell._pwrRate === 'number') ? st.shell._pwrRate : 0;
   };
 
   root.RD = root.RD || {};

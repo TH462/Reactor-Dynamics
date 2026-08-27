@@ -268,6 +268,9 @@
     if (this.instructor.connect) this.instructor.connect(this.layer);
     // 4. Initial state already loaded by the engine constructor; reset run state.
     this.activePlantId = plantId;
+    // The IC the plant was BUILT from (#563 item 3). _restore used to hard-code
+    // hot_full_power, so a rewind or a file load re-scaled a plant started anywhere else.
+    this.activeInitialState = initialState || 'hot_full_power';
     this.activeDesignVersion = designVersion || null;
     this.simTime = 0;
     this._fineBuf = [];   // timeline moved — stale sub-samples must not splice in
@@ -868,6 +871,7 @@
       metadata: {
         sim_time: this.simTime, time_acceleration: this.timeAcceleration,
         plant_id: this.activePlantId, design_version: this.activeDesignVersion,
+        initial_state: this.activeInitialState || 'hot_full_power',   // #563 item 3
         register: this.activeRegister,
       },
       engine: this.engine.saveState(),                 // physics + instrument lag + PRNG (the bulk)
@@ -893,18 +897,42 @@
     var m = state.metadata;
     var Ctor = engineCtor(m.plant_id);
     // Reconstruct the right engine + config for this plant, then restore each layer.
-    this.engine = new Ctor({ initial_state: 'hot_full_power', design_version: m.design_version || null, seed: this.seed });
-    this.layer = new RD.ControlLayer(this.engine, this.engine.getProtectionConfig());
+    //
+    // CONSTRUCT INTO LOCALS, INSTALL LAST (#554). engine.loadState throws on a schema
+    // refusal or a missing sub-object, and assigning this.engine/this.layer FIRST left the
+    // service holding a brand-new hot-full-power plant with a clean ControlLayer — every
+    // injected failure, alarm and RPS latch wiped, the clock still running — while the UI
+    // reported the file REJECTED. Measured: a scrammed 0.2 % plant at 1130 psia (7.79 MPa)
+    // became a clean 100 % plant at 2234 psia (15.40 MPa) on a "Not a valid save file".
+    // Nothing is installed until every load below has returned.
+    //
+    // m.initial_state (#563 item 3): a save taken on any preset other than Hot Full Power
+    // used to be rebuilt at hot_full_power regardless. An old save has no initial_state and
+    // falls back to hot_full_power, which is the pre-fix behaviour exactly.
+    var eng = new Ctor({ initial_state: m.initial_state || 'hot_full_power', design_version: m.design_version || null, seed: this.seed });
+    var lay = new RD.ControlLayer(eng, eng.getProtectionConfig());
+    eng.loadState(state.engine);
+    lay.loadState(state.control_failure);
+
+    this.engine = eng;
+    this.layer = lay;
     if (this.instructor.connect) this.instructor.connect(this.layer);
 
-    this.engine.loadState(state.engine);
-    this.layer.loadState(state.control_failure);
     if (!skipInstructor) {
-      this.instructor.loadState(state.instructor);
+      // The Instructor is a PERSISTENT object, not reconstructed — a throw inside its own
+      // load would leave it half-written on an otherwise good restore. Roll it back.
+      var instrBefore = this.instructor.saveState ? this.instructor.saveState() : null;
+      try {
+        this.instructor.loadState(state.instructor);
+      } catch (err) {
+        if (instrBefore !== null && this.instructor.loadState) this.instructor.loadState(instrBefore);
+        throw err;
+      }
       this.activeRegister = m.register || 'learning';
     }
 
     this.activePlantId = m.plant_id;
+    this.activeInitialState = m.initial_state || 'hot_full_power';   // #563 item 3
     this.activeDesignVersion = m.design_version || null;
     this.simTime = m.sim_time;
     this._fineBuf = [];   // timeline moved — stale sub-samples must not splice in

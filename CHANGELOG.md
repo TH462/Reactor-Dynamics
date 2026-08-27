@@ -30,6 +30,59 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
 
 ## [Unreleased]
 
+### Fixed (#553 + #554 + #555 + #548 + #563 item 3 — the save/rewind/restore path, 2026-08-27)
+
+Five of the #534 sweep's findings are one code path: **save a plant, load it back, or rewind.**
+They ship together because they interlock — persisting the constants without fixing the NaN would
+have made Mode 4, Hot Shutdown *worse*, since today's broken restore is the only thing masking it.
+No plant number moves; every one of these is a contract the code's own headers already assert
+(*"a bit-exact, deterministic restore"*, *"never a silent swallow"*) being false.
+
+- **#554 — a restore is now ALL-OR-NOTHING.** `SimulationService._restore` assigned `this.engine`
+  and `this.layer` *before* `engine.loadState()` could throw, so a file the UI reported as
+  rejected had **already** swapped the running plant: measured, a scrammed 0.2 %-power plant at
+  1130 psia (7.79 MPa) with a stuck PORV became a clean 100 %-power plant at 2234 psia (15.40 MPa),
+  every injected failure and RPS latch wiped, the clock still counting. Both layers are now
+  constructed into locals and installed only after every load has returned; the Instructor, which
+  is persistent rather than rebuilt, is rolled back from its own snapshot if its load throws.
+- **#553 — the Load button no longer reports a refusal as a success.** `loadState` signals a
+  refusal by *returning* `{type:'error'}`, not by throwing, and `ui/app.js` discarded that return —
+  so 4 of the 5 reject classes measured on a public build toasted *"State loaded"* for a save that
+  had loaded nothing. The handler now uses the same normalise-and-surface idiom as `cmd()`, and the
+  toast **names the reason** (*"unknown plant_id in save"*) instead of a generic message.
+- **#555 — a dead instrument channel no longer comes back as a plausible zero.** The save's
+  `JSON.parse(JSON.stringify(...))` round trip maps a non-finite reading to `null`, and
+  `isFinite(null)` is `true`, so every guard in the tree accepted it: on Mode 4 the restored zero
+  became a standing steam-minus-feed error that drove the main feedwater regulating valve from
+  29.73 % to **0.00 %** and the board's Feed Flow from 940 gpm (59.1 kg/s) to **0 gpm**. The save now
+  **names** its non-finite ids and the load re-installs the NaN. `pwr2_instruments` also treats a
+  stray `null` as "no reading yet" rather than as a number.
+- **#563 item 3 — a rewind no longer re-scales the plant.** `rated_steam` (every normalization's
+  denominator) and `M_nominal` (core inventory's) are initial-condition-derived and were not in the
+  save, while `_restore` rebuilt at `hot_full_power` regardless — so a save from any other preset
+  came back wearing Hot Full Power's constants over its own saved mass. Measured on Mode 4:
+  `M_nominal` 51,222 lb → 41,613 lb (23,234 → 18,876 kg) and the CORE INVENTORY indication
+  **100.0 % → 123.1 %** across a rewind that moved true primary mass −1.5 lb (−0.7 kg). Both
+  constants now ride the save, and the save records which initial condition it was built from.
+- **#548 — the board's shrink-and-swell driver survives a restore.** Two smoothers share the name
+  `_pwrRate`; the save carried the inner engine's, while the **shell's own** — the only driver of
+  the board instrument layer's swell term — was never saved. After a rewind taken inside a fast
+  power change the board's steam-generator narrow-range level read up to **7.5 points HIGH**
+  (optimistic), decaying below 1 point at t+9 to t+11 s. Measured after the fix: **0.000000**.
+
+**Save-format migration.** `pwr2-1.0` gains `scalars.rated_steam`, `scalars.M_nominal`,
+`ins.nonFinite` and a `shell` block; the service's save metadata gains `initial_state`. Every one
+is absent-tolerant and falls back to exactly the pre-fix behaviour, so old saves still load —
+pinned by checks in `run_pwr2_shell` (strip all four engine fields and load) and `run_m5` (the
+service metadata half).
+
+**Gates.** `run_pwr2_shell` **77 → 82 checks, mutations 29 → 32** (one revert per fix);
+`run_m5` **23/23 104 → 26/26 120**; `run_pwr2_instruments` **20 → 21, mutations 11 → 12**;
+`verify_e2e_ui` gains the Load-path check — the only layer that
+can see #553 — with a positive control that drives the app's own Save button and feeds the file it
+produced back in. All three were injection-verified: reverting each fix reds its own check, and the
+`ui/app.js` revert reproduces the issue's exact string, *"State loaded — e2e-save-nometa.json"*.
+
 ### Fixed (#557 + #556 + #561 — three board indications were reading a different plant, 2026-08-27)
 
 The second of the two systemic patterns the #534 sweep named: *"the board is still calibrated to

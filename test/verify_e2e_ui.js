@@ -1360,6 +1360,107 @@ async function testHeldPlantDialog(page) {
   return log.join('\n');
 }
 
+/* #553 — THE LOAD BUTTON'S HONESTY. SimulationService.loadState signals a refusal by
+ * RETURNING {type:'error'}; it does not throw. ui/app.js discarded that return and toasted
+ * "State loaded" regardless, so 4 of the 5 reject classes measured on a public build
+ * announced a save that had loaded NOTHING — including the common one after the #523
+ * cutover, a save from the retired engine whose constructor a published build no longer
+ * carries. Only the browser can see this: the defect is between the service's return value
+ * and a toast, and every Node gate hands loadState a good payload.
+ *
+ * Both arms matter. Without the POSITIVE control a handler that error-toasts everything
+ * would pass, which is the same class of hollow check as a negative assertion with no
+ * reachability proof — so the control drives the app's OWN Save button and feeds the file
+ * it produced straight back in. */
+async function testSaveLoadRefusal(page) {
+  var log = [];
+  var base = 'http://127.0.0.1:' + PORT + '/ui/shell.html?engine=pwr2&run=1';
+  await page.goto(base, { waitUntil: 'networkidle', timeout: 90000 });
+  await dismissMission(page);
+  await waitBoardLive(page, 20000);
+
+  async function toast() {
+    return await page.evaluate(function () {
+      var t = document.getElementById('appToast');
+      if (!t) return { missing: true };
+      return { text: t.textContent || '', error: t.className.indexOf('error') >= 0,
+               shown: t.className.indexOf('show') >= 0 };
+    });
+  }
+  // the toast auto-hides (2.5 s, 5 s for an error) — clear it so each arm reads its own
+  async function clearToast() {
+    await page.evaluate(function () {
+      var t = document.getElementById('appToast');
+      if (t) { t.className = 'app-toast'; t.textContent = ''; }
+    });
+  }
+
+  // --- POSITIVE CONTROL: the app's own Save, fed back through the app's own Load ---------
+  await page.click('#settingsBtn');
+  await page.waitForSelector('#settingsOverlay [data-act="save"]', { timeout: 10000 });
+  var dl = (await Promise.all([
+    page.waitForEvent('download', { timeout: 20000 }),
+    page.click('#settingsOverlay [data-act="save"]'),
+  ]))[0];
+  var goodPath = path.join(SCRATCH, 'e2e-save-good.json');
+  await dl.saveAs(goodPath);
+  var goodBytes = fs.statSync(goodPath).size;
+  if (goodBytes < 1000) throw new Error('#553 control: the Save button produced ' + goodBytes + ' bytes');
+  await clearToast();
+  await page.setInputFiles('#loadFile', goodPath);
+  await page.waitForFunction(function () {
+    var t = document.getElementById('appToast');
+    return !!t && t.className.indexOf('show') >= 0;
+  }, { timeout: 10000, polling: 100 });
+  var okT = await toast();
+  if (okT.error || !/State loaded/.test(okT.text)) {
+    throw new Error('#553 control: the app\'s OWN save must load — toast was "' + okT.text +
+                    '" (error=' + okT.error + ')');
+  }
+  log.push('control: Save -> Load round trip through the real buttons -> "' + okT.text.trim() + '"');
+
+  // --- THE CASE: a file loadState REFUSES BY RETURN, not by throwing ---------------------
+  // {"hello":"world"} is valid JSON with no metadata, so it lands on the first return guard
+  // (simulation_service: 'bad save state'). This is the app's own diagnostics-bundle class:
+  // the other .json a player can download from this very UI.
+  var badPath = path.join(SCRATCH, 'e2e-save-nometa.json');
+  fs.writeFileSync(badPath, JSON.stringify({ hello: 'world' }));
+  await clearToast();
+  await page.setInputFiles('#loadFile', badPath);
+  await page.waitForFunction(function () {
+    var t = document.getElementById('appToast');
+    return !!t && t.className.indexOf('show') >= 0;
+  }, { timeout: 10000, polling: 100 });
+  var badT = await toast();
+  if (!badT.error) {
+    throw new Error('#553: a save that loaded NOTHING was toasted as a success — "' + badT.text + '"');
+  }
+  if (/State loaded/.test(badT.text)) {
+    throw new Error('#553: the refusal toast still reads "State loaded": "' + badT.text + '"');
+  }
+  log.push('refused-by-return: "' + badT.text.trim() + '" (error class set)');
+
+  // and an unknown plant_id — the second return guard, and the post-cutover legacy-save case
+  var legacyPath = path.join(SCRATCH, 'e2e-save-legacy.json');
+  fs.writeFileSync(legacyPath, JSON.stringify({
+    schema_version: '1.0', metadata: { plant_id: 'bwr', sim_time: 0, time_acceleration: 1 },
+    engine: {}, control_failure: {}, instructor: {},
+  }));
+  await clearToast();
+  await page.setInputFiles('#loadFile', legacyPath);
+  await page.waitForFunction(function () {
+    var t = document.getElementById('appToast');
+    return !!t && t.className.indexOf('show') >= 0;
+  }, { timeout: 10000, polling: 100 });
+  var legT = await toast();
+  if (!legT.error || /State loaded/.test(legT.text)) {
+    throw new Error('#553: a save naming a plant this build has no constructor for was toasted "' +
+                    legT.text + '"');
+  }
+  log.push('unknown plant_id: "' + legT.text.trim() + '"');
+  return log.join('\n');
+}
+
 async function main() {
   fs.mkdirSync(SCRATCH, { recursive: true });
   var fallback = path.join(SCRATCH, 'ui-screenshot-fallback.log');
@@ -1403,6 +1504,8 @@ async function main() {
     fs.writeFileSync(path.join(SCRATCH, 'diag-bundle.log'), dbLog);
     var hpLog = await testHeldPlantDialog(page);
     fs.writeFileSync(path.join(SCRATCH, 'held-plant-dialog.log'), hpLog);
+    var slLog = await testSaveLoadRefusal(page);
+    fs.writeFileSync(path.join(SCRATCH, 'save-load-refusal.log'), slLog);
     fs.writeFileSync(path.join(SCRATCH, 'ui-screenshot-summary.log'), summary.join('\n') + '\n');
     console.log('E2E UI verification: PASS (' + (ENGINES.length * VIEWS.length) + ' screenshots)');
   } finally {
@@ -1421,7 +1524,8 @@ if (require.main !== module) {
   module.exports = { startServer: startServer, dismissMission: dismissMission,
                      testChartSettings: testChartSettings, testMonitorList: testMonitorList,
                      testMissionCloseResumes: testMissionCloseResumes, testRunStartMark: testRunStartMark,
-                     testHeldPlantDialog: testHeldPlantDialog, port: function () { return PORT; } };
+                     testHeldPlantDialog: testHeldPlantDialog,
+                     testSaveLoadRefusal: testSaveLoadRefusal, port: function () { return PORT; } };
 } else {
   main().catch(function (e) {
     fs.mkdirSync(SCRATCH, { recursive: true });

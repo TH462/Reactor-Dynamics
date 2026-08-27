@@ -214,6 +214,21 @@ function runSuite(IN, rec, quiet) {
   run(insM, tsM, 5);
   ckT('a vanished true field HOLDS the last reading, and nothing reads NaN',
       insM.reading.boron === before && isFinite(insM.reading.tavg), '');
+
+  /* #555 — a RESTORED null is not a reading. pwr2_shell's save round-trips through JSON,
+   * which writes a non-finite reading out as `null`, and `isFinite(null)` is TRUE — so a
+   * channel with no true driver came back as a hard ZERO that every guard in the tree
+   * accepted (the Mode 4 feed regulating valve was driven shut by it). The save now names
+   * its non-finite ids, but this layer must not read a stray null as a number either.
+   * Two arms, because "it holds a value" and "the value is not zero" are different claims. */
+  var insN = quietIns(), tsN = baseTs();
+  run(insN, tsN, 5);
+  delete tsN.boron_ppm;                       /* the channel loses its driver, as at Mode 4 */
+  insN.reading.boron = null;                  /* exactly what a pre-fix save installed */
+  run(insN, tsN, 1);
+  ckT('a restored NULL reading is treated as no-reading, not as zero',
+      typeof insN.reading.boron === 'number' && isNaN(insN.reading.boron),
+      'reading is ' + insN.reading.boron + ' (a 0 here is the #555 defect: isFinite(null) is true)');
 }
 
 console.log('\nPWR2 -- THE INSTRUMENT LAYER: what the plant SAYS (HR1), gated');
@@ -244,9 +259,17 @@ var MUTATIONS = [
     * scrolled past while the checks tally read clean). Read the whole verdict. */
    '        rngState: fnv1a(c.id) | 0',
    '        rngState: 12345'],
+  /* ANCHORED ON THE TWO CODE LINES ONLY, not the whole block. The first form quoted the
+   * guard's comment as well, so adding a line to that comment (#555, 2026-08-27) sent this
+   * mutation to ANCHOR MISS — a green 20/20 with a blind spot. An anchor that includes prose
+   * rots on the next prose edit; this one keeps the block and its braces and only replaces
+   * the body, which is the same injected defect. */
+  ['a restored null is read as a number again (#555 — isFinite(null) is true, so it is a 0)',
+   '=== undefined || ins.reading[c.id] === null)',
+   '=== undefined)'],
   ['a starved channel still draws from its stream via a fallback truth of 0',
-   "      if (typeof truth !== 'number' || !isFinite(truth)) {\n        /* a missing true field is a WIRING defect, not a plant condition — hold the last\n         * reading rather than emit NaN into every consumer, and leave the lag state alone */\n        if (ins.reading[c.id] === undefined) ins.reading[c.id] = NaN;\n        return;\n      }",
-   "      if (typeof truth !== 'number' || !isFinite(truth)) truth = 0;"],
+   "        if (ins.reading[c.id] === undefined || ins.reading[c.id] === null) ins.reading[c.id] = NaN;\n        return;",
+   "        truth = 0;"],
   ['STUCK is ignored (the failed channel keeps reporting)',
    "        if (f.mode === 'stuck') value = f.held;",
    ''],

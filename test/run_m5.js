@@ -674,6 +674,83 @@ T.push(test('save_state / load_state as COMMANDS round-trip through the service 
     Math.abs(s2.simTime - atSave) < 1e-9, atSave.toFixed(2) + ' s');
 }));
 
+// ======================= the restore is ALL-OR-NOTHING (#554, #553, #563 item 3) ==========
+// _restore is shared by every plant and by both entry points (a file load and every rewind),
+// so these are asserted on the pwr stack this file already builds. The PWR2 half — the two
+// initial-condition scales actually riding the save — is run_pwr2_shell.js group S.
+
+T.push(test('Restore — a save that fails to load leaves the RUNNING plant untouched', function (ck) {
+  var s = svc({ initial_state: '5_percent' });
+  s.advanceCycles(20);
+  s.handleCommand({ action: 'inject_failure', failure_id: 'stuck_porv_open', severity: 1 });
+  var engBefore = s.engine, layBefore = s.layer;
+  var tBefore = s.simTime, pwrBefore = s.assembleSnapshot().true_state.power_pct;
+  var failsBefore = JSON.stringify(s.assembleSnapshot().active_failures);
+
+  // A save whose metadata passes both guards but whose ENGINE payload the engine rejects.
+  // Before the fix _restore assigned this.engine and this.layer BEFORE the throw, so the
+  // operator was told "Not a valid save file" while their plant had already been swapped
+  // for a fresh hot-full-power one with every failure and latch wiped.
+  var good = JSON.parse(JSON.stringify(s.saveState()));
+  var corrupt = { metadata: good.metadata, engine: { schema: 'pwr-1.0' },
+                  control_failure: good.control_failure, instructor: good.instructor };
+  var threw = false;
+  try { s.loadState(corrupt); } catch (e) { threw = true; }
+  ck('the bad payload is reported, not swallowed', threw, threw === true, 'throws');
+  ck('the engine object is the SAME one', s.engine === engBefore, s.engine === engBefore, 'unchanged');
+  ck('the control layer is the SAME one', s.layer === layBefore, s.layer === layBefore, 'unchanged');
+  ck('sim time did not move', s.simTime.toFixed(2), Math.abs(s.simTime - tBefore) < 1e-9, tBefore.toFixed(2) + ' s');
+  var after = s.assembleSnapshot();
+  ck('reactor power did not jump to the rebuilt plant\'s', after.true_state.power_pct.toFixed(4),
+    Math.abs(after.true_state.power_pct - pwrBefore) < 1e-6, pwrBefore.toFixed(4) + ' %');
+  ck('the injected failure is still injected', JSON.stringify(after.active_failures),
+    JSON.stringify(after.active_failures) === failsBefore, failsBefore);
+  // and the good save still loads afterwards — the guard is not a one-way door
+  var ok = s.loadState(good);
+  ck('a VALID save still loads after the refusal', ok && ok.type, !ok || ok.type !== 'error', 'not an error');
+}));
+
+T.push(test('Restore — loadState signals a refusal by RETURNING, and refuses without touching the plant', function (ck) {
+  var s = svc();
+  s.advanceCycles(10);
+  var engBefore = s.engine, tBefore = s.simTime;
+
+  // ui/app.js discarded this return and toasted "State loaded" for every one of them (#553).
+  var r1 = s.loadState(null);
+  ck('a file with no metadata returns type error', r1 && r1.type, r1 && r1.type === 'error', 'error');
+  var r2 = s.loadState({ metadata: { plant_id: 'not_a_plant', sim_time: 0 } });
+  ck('an unknown plant_id returns type error', r2 && r2.type, r2 && r2.type === 'error', 'error');
+  ck('the error carries a message the UI can show', r2 && r2.message,
+    !!(r2 && r2.message && r2.message.length), 'non-empty');
+  ck('neither refusal replaced the engine', s.engine === engBefore, s.engine === engBefore, 'unchanged');
+  ck('neither refusal moved the clock', s.simTime.toFixed(2), Math.abs(s.simTime - tBefore) < 1e-9,
+    tBefore.toFixed(2) + ' s');
+}));
+
+T.push(test('Restore — the save records WHICH initial condition the plant was built from', function (ck) {
+  // _restore hard-coded initial_state:'hot_full_power', so a plant started anywhere else was
+  // rebuilt on Hot Full Power's constants (#563 item 3 — measured on PWR2 Mode 4: core
+  // inventory stepped 100.0 -> 123.1 % across a rewind).
+  var s = svc({ initial_state: '5_percent' });
+  s.advanceCycles(10);
+  var saved = JSON.parse(JSON.stringify(s.saveState()));
+  ck('metadata names the initial condition', saved.metadata.initial_state,
+    saved.metadata.initial_state === '5_percent', '5_percent');
+  var s2 = new RD.SimulationService({ seed: 42 });
+  s2.selectPlant('pwr', 'hot_full_power', null);
+  s2.loadState(saved);
+  ck('a restore adopts the SAVED plant\'s initial condition, not the running one',
+    s2.activeInitialState, s2.activeInitialState === '5_percent', '5_percent');
+  // an old save has no initial_state at all — it must still load, on the old default
+  delete saved.metadata.initial_state;
+  var s3 = new RD.SimulationService({ seed: 42 });
+  s3.selectPlant('pwr', 'hot_full_power', null);
+  var r = s3.loadState(saved);
+  ck('a pre-fix save with no initial_state still loads', r && r.type, !r || r.type !== 'error', 'not an error');
+  ck('...and falls back to hot_full_power, the pre-fix behaviour', s3.activeInitialState,
+    s3.activeInitialState === 'hot_full_power', 'hot_full_power');
+}));
+
 // -------- report --------
 var GREEN = '\x1b[32m', RED = '\x1b[31m', DIM = '\x1b[2m', RST = '\x1b[0m', BOLD = '\x1b[1m';
 var pass = 0, fail = 0;

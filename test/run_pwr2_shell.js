@@ -967,6 +967,123 @@ function runSuite(SH, rec, quiet, only) {
      firstDiff === -1,
      firstDiff === -1 ? 'every sampled field identical over ' + N + ' steps'
                       : 'first divergence at step ' + firstDiff);
+
+  /* ---- THE RESTORE, AS THE SERVICE ACTUALLY DOES IT (#553/#554/#555/#548/#563 item 3) ------
+   * Everything above reloads into the SAME instance, at hot_full_power, on a settled fixture.
+   * SimulationService._restore does none of those three: it builds a FRESH shell, and a
+   * player can start on any of four presets. Five defects lived in that gap, all invisible
+   * to a green 77-check gate. Each check below is written against the FRESH-instance,
+   * non-hot-full-power path, because that is the path the plant is restored on. */
+  head('THE RESTORE  [a FRESH shell, and a preset that is not Hot Full Power]');
+  var SET4 = quiet ? 60 : 120;
+  var m4 = new SH.PWR2Engine({ initial_state: 'hot_shutdown' });
+  run(m4, SET4);
+  var s4 = m4.saveState();
+
+  /* #555 — Mode 4, Hot Shutdown publishes no true steam flow (rated_steam is 0 there), so
+   * ins.reading.steam_flow is permanently NaN. JSON writes NaN out as null and isFinite(null)
+   * is TRUE, so the restored channel read as a hard ZERO that the three-element feed
+   * controller's flow element accepted: a standing -0.0750 error that drove the regulating
+   * valve shut. The save NAMES the non-finite ids; the load puts the NaN back. Asserted
+   * BEFORE any step — the instrument guard re-latches a stray null on the next update, and
+   * a check that stepped first would pass over a broken save. */
+  var nf = (s4.state.ins && s4.state.ins.nonFinite) || [];
+  var fresh4 = new SH.PWR2Engine({});                    /* what _restore always constructs */
+  fresh4.loadState(s4);
+  var rSF = fresh4.eng.ins.reading.steam_flow;
+  ck('a non-finite reading is NAMED in the save and comes back NaN — not the 0 a JSON null reads as',
+     nf.indexOf('steam_flow') >= 0 && typeof rSF === 'number' && isNaN(rSF),
+     'nonFinite ' + JSON.stringify(nf) + ', restored steam_flow ' + rSF);
+
+  /* #563 item 3 — rated_steam is every normalization's denominator and M_nominal is
+   * core_inventory_pct's. Both are IC-derived and the service rebuilds at hot_full_power, so
+   * before the fix a Mode 4 restore wore Hot Full Power's constants over its own saved mass:
+   * M_nominal 23,234 -> 18,876 kg (51,222 -> 41,613 lb) and the CORE INVENTORY indication
+   * stepped 100.0 -> 123.1 % on a rewind that moved true mass -0.7 kg (-1.5 lb). */
+  var hfpRated = new SH.PWR2Engine({}).eng.rated_steam;
+  var invBefore = m4.getTrueState().core_inventory_pct;
+  var invAfter = fresh4.getTrueState().core_inventory_pct;
+  ck('the initial-condition SCALES ride the save — a restore wears the SAVED plant\'s constants',
+     fresh4.eng.rated_steam === s4.state.scalars.rated_steam &&
+     fresh4.eng.M_nominal === s4.state.scalars.M_nominal &&
+     fresh4.eng.rated_steam !== hfpRated &&
+     Math.abs(invAfter - invBefore) < 0.1,
+     'rated_steam ' + fresh4.eng.rated_steam.toFixed(4) + ' (hfp would be ' +
+     hfpRated.toFixed(4) + '), M_nominal ' + fresh4.eng.M_nominal.toFixed(1) +
+     ' kg, core inventory ' + invBefore.toFixed(3) + ' -> ' + invAfter.toFixed(3) + ' %');
+
+  /* the whole restore, end to end: the same save, run forward in both plants. Feed-valve
+   * position is IN the sample because it is what the two defects above actually moved. */
+  var N4 = quiet ? 250 : 500, A4 = [], B4 = [];
+  var m4b = new SH.PWR2Engine({ initial_state: 'hot_shutdown' });
+  run(m4b, SET4);
+  var s4b = m4b.saveState();
+  for (i = 0; i < N4; i++) { var t4a = m4b.step(DT);
+    A4.push([t4a.pressure_mpa, t4a.tavg_c, t4a.pzr_level_pct, m4b.eng.fw.valve,
+             m4b.getInstruments().sg_level].join('|')); }
+  var m4c = new SH.PWR2Engine({});
+  m4c.loadState(s4b);
+  for (i = 0; i < N4; i++) { var t4b = m4c.step(DT);
+    B4.push([t4b.pressure_mpa, t4b.tavg_c, t4b.pzr_level_pct, m4c.eng.fw.valve,
+             m4c.getInstruments().sg_level].join('|')); }
+  var d4 = -1; for (i = 0; i < N4; i++) { if (A4[i] !== B4[i]) { d4 = i; break; } }
+  ck('Mode 4, Hot Shutdown -> save -> load into a FRESH shell -> ' + N4 +
+     ' steps: BIT-EXACT, feed valve included',
+     d4 === -1,
+     d4 === -1 ? 'feed valve ' + (+B4[N4 - 1].split('|')[3]).toFixed(6) + ' both sides'
+               : 'first divergence at step ' + d4 + ': ' + A4[d4] + '  vs  ' + B4[d4]);
+
+  /* #548 — TWO smoothers share the name _pwrRate. The one in `scalars` is the inner engine's;
+   * the SHELL's own is the only driver of the board instrument layer's shrink-and-swell term,
+   * and it was never saved. The fixture is a save taken 1.0 s into a scram because that is
+   * where the term is load-bearing: a settled plant has _pwrRate ~0 and cannot tell the two
+   * builds apart. Measured before the fix: 7.4771 points of narrow range HIGH — optimistic —
+   * at t+2.44 s. After: 0.000000. */
+  var SETP = quiet ? 120 : 300, NP = quiet ? 200 : 400;
+  var pa = new SH.PWR2Engine({});
+  run(pa, SETP);
+  pa.applyCommand({ action: 'scram' });
+  run(pa, 1.0);
+  var rateAtSave = pa._pwrRate;
+  var pb = new SH.PWR2Engine({});
+  pb.loadState(pa.saveState());
+  var rateAfterLoad = pb._pwrRate;      /* read it HERE — the ride below moves both copies */
+  var worstSg = 0, worstAt = 0;
+  for (i = 0; i < NP; i++) {
+    pa.step(DT); pb.step(DT);
+    var errSg = Math.abs(pa.getInstruments().sg_level - pb.getInstruments().sg_level);
+    if (errSg > worstSg) { worstSg = errSg; worstAt = (i + 1) * DT; }
+  }
+  ck('the BOARD layer\'s shrink-and-swell driver survives a restore taken inside a scram',
+     Math.abs(rateAfterLoad - rateAtSave) < 1e-9 && worstSg < 0.5,
+     '_pwrRate ' + rateAtSave.toFixed(4) + ' %/s at the save, ' + rateAfterLoad.toFixed(4) +
+     ' after the load; worst sg_level error ' + worstSg.toFixed(6) +
+     ' % NR at t+' + worstAt.toFixed(2) + ' s');
+
+  /* THE MIGRATION, asserted rather than asserted-in-prose. Four fields joined pwr2-1.0 in the
+   * #534 save-path cluster and each is documented as absent-tolerant; that is a claim, and a
+   * claim about a save format is exactly the kind that rots silently — nothing else in the
+   * tree reads an old payload. Strip all four and load: it must not throw, the constants must
+   * land on the CONSTRUCTOR's values (the pre-fix behaviour, not a zero), and the plant must
+   * step. Same shape as the #511 and #515 migrations above, which have no such check. */
+  var mg = new SH.PWR2Engine({});
+  run(mg, quiet ? 60 : 120);
+  var old = mg.saveState();
+  delete old.state.shell;
+  delete old.state.ins.nonFinite;
+  delete old.state.scalars.rated_steam;
+  delete old.state.scalars.M_nominal;
+  var mgB = new SH.PWR2Engine({}), mgThrew = '';
+  try { mgB.loadState(old); } catch (e) { mgThrew = e.message; }
+  var ctorRated = new SH.PWR2Engine({}).eng.rated_steam;
+  var mgRate = mgB._pwrRate;          /* AT the load — the ride below moves it (see above) */
+  var tsMg = mgThrew ? null : run(mgB, 10);
+  ck('a PRE-CLUSTER pwr2-1.0 save still loads, on the constructor\'s values',
+     !mgThrew && mgB.eng.rated_steam === ctorRated && mgRate === 0 &&
+     !!tsMg && isFinite(tsMg.pressure_mpa) && isFinite(mgB.getInstruments().tavg),
+     mgThrew ? 'THREW: ' + mgThrew
+             : 'rated_steam ' + mgB.eng.rated_steam.toFixed(4) + ', _pwrRate 0, plant at ' +
+               (tsMg.pressure_mpa * 145.038).toFixed(1) + ' psia after 10 s');
   }
 }
 
@@ -986,10 +1103,21 @@ var MUTATIONS = [
    "    if (!saved || saved.schema !== 'pwr2-1.0') {",
    "    if (false) {", { grp: 'S' }],
   ['the readings dict is not saved (one post-load step of truth-fed control)',
-   '             reading: insReading },',
-   '             reading: {} },', { grp: 'S' }],
+   '             reading: insReading, nonFinite: insNonFinite },',
+   '             reading: {}, nonFinite: insNonFinite },', { grp: 'S' }],
   ['the pressurizer seat is never re-linked on load (the vessel falls off the plant)',
    '    e.sys.extraMass = PZ.extraMassFn(e.pz);',
+   '', { grp: 'S' }],
+  /* the three #534 save-path fixes, each with its own revert — a restore is the one path
+   * where a dropped field is invisible until the plant has already been handed back */
+  ['the initial-condition scales leave the save again (a Mode 4 restore wears HFP constants)',
+   '        rated_steam: e.rated_steam, M_nominal: e.M_nominal',
+   '        _icScalesNotSaved: 0', { grp: 'S' }],
+  ['the non-finite readings are not re-installed (a dead channel comes back a hard zero)',
+   '    (st.ins.nonFinite || []).forEach(function (id) { e.ins.reading[id] = NaN; });',
+   '', { grp: 'S' }],
+  ['the shell shrink-and-swell driver is dropped on load (the board reads level optimistic)',
+   '    this._pwrRate = (st.shell && typeof st.shell._pwrRate === \'number\') ? st.shell._pwrRate : 0;',
    '', { grp: 'S' }],
   ['the shell instruments are never updated after construction (every gauge frozen at t=0)',
    '    this.instruments.update(this._ts, dt, this._instrExtras());',

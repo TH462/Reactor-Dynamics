@@ -417,7 +417,9 @@ re-querying. Run the query.
   — the board was still calibrated to the retired engine; the plant now publishes its AFW
   rating, its pressurizer-level trip rows and its delta-T setpoint equation, and the board
   reads them. The FIRST is open: the control kernel silently rewrites or drops PWR2 commands
-  (#546, #547). Everything else in #535–#566 is untouched — `gh issue list` is the authority.
+  (#546, #547). **The save/rewind/restore cluster is CLOSED** (#553/#554/#555/#548/#563 item 3,
+  2026-08-27, `PWR2_VALIDATION` §95); **#539 stays open by ruling** and is the root of its NaN.
+  Everything else in #535–#566 is untouched — `gh issue list` is the authority.
 - **RBMK and BWR** — on hold, and the source of most remaining backlog. Do not touch.
 
 **The manual set's revision number does not advance until a RELEASE** *(OWNER DIRECTIVE,
@@ -539,7 +541,10 @@ thing left in the file and it grew about a bullet a session.
   the defect can be, invisible to any source read** (rescued from the #436 bullet on eviction,
   2026-08-26): a paired list comparing FORMATTED strings lit five rows on a healthy plant
   (`-0.0` vs `0.0`), a recorder emitted 46 `alarm_clear` events at t=0, and a lane-height check
-  measuring `plot ÷ lanes` certified 56 px while 38 px was drawn. **And a MUTATION goes blind
+  measuring `plot ÷ lanes` certified 56 px while 38 px was drawn. **`isFinite(null)` is TRUE and
+  `Number.isFinite` is used NOWHERE in this tree** — a JSON round trip writes NaN out as null,
+  so a dead channel comes back a plausible ZERO that every guard in `engines/` accepts (#555;
+  fix at the save boundary, not by sweeping ~20 guards). **And a MUTATION goes blind
   when the defect it needs is FIXED, or when a refactor moves the line its anchor names**
   (rescued from the #501–#504 bullet on eviction, 2026-08-27): settling the startup ring sent
   three caught mutations blind; rewriting four protection gates orphaned four anchors. Fix a

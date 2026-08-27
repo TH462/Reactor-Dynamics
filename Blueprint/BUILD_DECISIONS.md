@@ -45,6 +45,31 @@ where the two differ or where judgment was exercised.
 
 ---
 
+## 2026-08-27-develop-b — #534 cluster: the restore is transactional, and the save carries its own scales
+
+**Claim.** Five #534 findings are one code path — save, load, rewind — and are fixed as one change:
+#554, #553, #555, #548 and #563 item 3. No plant number moves.
+
+**The decisions, and why each is the one taken.**
+
+| Decision | Alternative considered | Why |
+|---|---|---|
+| `_restore` constructs engine + layer into LOCALS and installs only after both loads return | a `try/catch` that rebuilds the previous plant on a throw | there is no previous plant to rebuild from — the old objects are the only copy, and a rollback path that has to reconstruct them is the same defect one layer out. Constructing into locals is a reordering, not a mechanism. |
+| The Instructor gets a snapshot-and-rollback rather than the same treatment | construct a second Instructor | it is a PERSISTENT object the service does not own the lifetime of (`connect` merely points it at the layer). Its own `saveState`/`loadState` pair is the rollback. |
+| The save NAMES its non-finite ids; the load re-installs `NaN` | sanitize non-finite to 0 at the boundary; or sweep `isFinite` → `Number.isFinite` | a zero is the DEFECT (a plausible reading nothing rejects), so substituting one at the boundary just moves it. `Number.isFinite` appears nowhere in this tree — ~20 guards in `engines/pwr2/` alone are the coercing form — so a sweep is a repo-wide convention change and a separate decision. Bit-exactness is the stated bar; a dead channel stays dead. |
+| `rated_steam` + `M_nominal` go in the ENGINE save's `scalars`, AND the service records `initial_state` | either one alone | the engine-side persistence is what actually fixes PWR2 today. The metadata field is three lines and removes the class: `_restore` hard-coded `'hot_full_power'` directly under a comment reading *"Reconstruct the right engine + config for this plant"*, which is the trap the next engine walks into. |
+| The `ui/app.js` refusal toast NAMES the reason | keep the generic *"Not a valid save file"* | the common post-#523 case is a save from the retired engine, and a returning player is owed that sentence. Costs nothing — `loadState` already returns the message. |
+
+**Open flag closed:** none. **Open flag unchanged:** #539 (Mode 4, Hot Shutdown boots with
+`rated_steam = 0`) stays open *(OWNER RULING, 2026-08-27: selected "Leave it out" from options I
+wrote — a selection, not verbatim words)*. It is the root of the NaN above, it is a
+plant-behaviour change owing a Hard Rule 12 pass, and this change is what makes it safe to take.
+
+**Migration.** Four new save fields plus one metadata field, all absent-tolerant, all falling back
+to the pre-fix behaviour exactly. Pinned by a `run_m5` check that deletes the field and loads.
+
+---
+
 ## 2026-08-26-develop-a — #523: PWR2 replaces the PWR on the site; the strip is CHANNEL-GATED
 
 **Four owner rulings, 2026-08-26, in planning** — *"Flip now, track the gaps"* · *"Strip it at

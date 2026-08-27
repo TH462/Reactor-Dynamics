@@ -5706,3 +5706,60 @@ the retired engine, which is what makes it a better check rather than a refit (H
 #524 Mode 5 · #525 the compatibility pass · #526 the procedure pool · #527 the instructor's
 parameter map · #528 rod AUTO · #529 turbine FOLLOW · #530 steam-line break / stuck rod / vacuum
 decay · #531 R8 · #532 the manuals · #533 the board harness.
+
+---
+
+## 95. #534 CLUSTER — THE RESTORE IS NOW ALL-OR-NOTHING, AND THE SAVE CARRIES WHAT IT NEEDS — 2026-08-27
+
+**What was declared and was false.** §2993 asserts the pwr2-1.0 save carries the instrument
+readings, and the shell header calls the round trip's bar bit-exactness. Both were true only for
+the ONE case the gate ran — Hot Full Power, reloaded into the SAME instance, from a settled
+fixture. `SimulationService._restore` does none of those three, and five #534 findings lived in
+that gap: **#553, #554, #555, #548 and #563 item 3.** This section replaces the "no save/restore
+gap" reading of §2993.
+
+**What changed (no plant number moves).**
+
+1. **`_restore` is transactional (#554).** The engine and control layer are constructed into
+   locals and installed only after `loadState` has returned on both; the Instructor, which is
+   persistent rather than rebuilt, is rolled back from its own snapshot if its load throws.
+   Before: a file the UI reported as REJECTED had already installed a fresh plant — measured, a
+   scrammed 0.2 %-power plant at 1130 psia (7.79 MPa) with `porv_stuck` became a clean
+   100 %-power plant at 2234 psia (15.40 MPa) with no failures, `simTime` frozen, the service
+   still ticking.
+2. **The save records its own initial condition (#563 item 3),** and `pwr2-1.0` carries
+   `rated_steam` and `M_nominal` — the two initial-condition-derived constants that are every
+   normalization's and core inventory's denominators. Before: `_restore` hard-coded
+   `initial_state:'hot_full_power'`, so three of the four shipped presets came back wearing Hot
+   Full Power's constants over their own saved mass. Mode 4, Hot Shutdown measured: `M_nominal`
+   23,234 → 18,876 kg (51,222 → 41,613 lb) and CORE INVENTORY **100.0 → 123.1 %** across a rewind
+   that moved true primary mass −0.7 kg (−1.5 lb).
+3. **A non-finite reading survives the save as non-finite (#555).** The save NAMES its non-finite
+   ids (`ins.nonFinite`) and the load re-installs `NaN`. Before, `JSON.parse(JSON.stringify(...))`
+   wrote them out as `null` — and **`isFinite(null)` is `true`**, so the restored channel read as
+   a hard zero that every guard in the tree accepted. On Mode 4 that became a standing
+   steam-minus-feed error driving the main feedwater regulating valve 29.73 % → **0.00 %**.
+4. **The board layer's shrink-and-swell driver rides the save (#548).** Two smoothers share the
+   name `_pwrRate`; only the inner engine's was saved. After a restore taken inside a fast power
+   change the board's SG narrow-range level read up to **7.4771 points HIGH** — optimistic —
+   decaying below 1 point at t+9 to t+11 s. Now **0.000000** over the same 400 steps.
+5. **The UI honours a refusal (#553).** `loadState` refuses by RETURNING `{type:'error'}`, and
+   `ui/app.js` discarded that return: 4 of 5 reject classes measured on a public build toasted
+   *"State loaded"* for a save that loaded nothing.
+
+**Migration.** Every added field is absent-tolerant and falls back to exactly the pre-fix
+behaviour, so a save taken before this change still loads — pinned by a `run_m5` check that
+deletes `metadata.initial_state` and loads.
+
+**Gates.** `run_pwr2_shell` 77 → 82 checks / 29 → 32 mutations / 0 blind; `run_m5` 23/23 104 →
+26/26 120; `run_pwr2_instruments` 20 → 21 / 11 → 12 mutations; `verify_e2e_ui` gains
+`testSaveLoadRefusal` — the only layer that can see #553 — with a
+positive control that drives the app's own Save button and feeds the file back in. Each new check
+was verified by injection, and the `ui/app.js` revert reproduces the issue's exact reported string.
+
+**Still open** *(OWNER RULING, 2026-08-27: selected "Leave it out" from options I wrote — a
+selection, not verbatim words)*. **#539** — Mode 4, Hot Shutdown boots with `rated_steam = 0`
+because `pwr2_engine.js:331` recomputes it from a turbine object line 326 has already zeroed
+(against the intent stated on line 325). That is WHY the NaN exists. It is a plant-behaviour change
+owing a Hard Rule 12 measurement pass, and it is now safe to take: with item 3 above landed, fixing
+it cannot turn the null permanent.

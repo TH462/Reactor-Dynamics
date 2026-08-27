@@ -6366,7 +6366,23 @@
     });
     $('loadFile').addEventListener('change', function (e) {
       var f = e.target.files[0]; if (!f) return; var r = new FileReader();
-      r.onload = function () { try { var st = JSON.parse(r.result); service.loadState(st); afterPlantChange(); diagReset('restore', { engine_key: ui.engineKey }); showToast('State loaded — ' + f.name); } catch (err) { showToast('Not a valid save file: ' + f.name, 'error'); } };
+      /* #553: loadState signals a REFUSAL by RETURNING {type:'error'}, it does not throw —
+       * so discarding the return announced every rejected save as "State loaded". Measured
+       * on a public build: 4 of 5 reject classes lied, including the common one (a save from
+       * the retired engine, whose constructor a published build no longer contains). Same
+       * normalise-a-throw-into-the-service's-own-error-shape idiom as cmd(). */
+      r.onload = function () {
+        var res;
+        try { res = service.loadState(JSON.parse(r.result)); }
+        catch (err) { res = { type: 'error', message: String(err && err.message || err) }; }
+        if (res && res.type === 'error') {
+          showToast('Save not loaded — ' + (res.message || f.name), 'error');
+          return;                            /* no afterPlantChange, no diagReset: nothing moved */
+        }
+        afterPlantChange();
+        diagReset('restore', { engine_key: ui.engineKey });
+        showToast('State loaded — ' + f.name);
+      };
       r.readAsText(f);
     });
     // --- plant-display wiring ---
