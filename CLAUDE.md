@@ -348,37 +348,23 @@ re-querying. Run the query.
   mini-pass; the declared ~7,500 gal makes absolute-size components ~5–6× fractionally bigger
   than the power-scaled rows) and the wave-3 mission items, the tag+defend "quiet night" story
   the beat graph cannot express (#416). Wave 1's re-clock and the relief sizing are landed.
-- **#436 — the control-room rework, BUILT to its content gates** (2026-08-10/11). Its plan filed
-  **#437–#446**; #436 is the tracking issue. Landed: **#438** feedback · **#437** `RD.Events` ·
-  **#439** right column + merged list · **#443** navigation, relevance ordering, manual anchors ·
-  **#393** `ui/chart_math.js` · **#440** the lane stack · **#442** the SOE layer · **#444** the
-  highlight bus · **#445** splitters. The chart is now one lane per indication with a shared
-  cursor and an event ribbon; `ui/test_panel/lane_reference.html` is the golden artifact and
-  measures itself — **change it first, re-measure, then port**. Open by design: **#441** (needs
-  the rung authoring pass), **#446** (deferred by ruling). Filed: **#449** — three steady-state
-  indicated-vs-true disagreements the merged list surfaced, 20–400× larger than instrument lag.
-- **#454 — the chart settings WINDOW, built and gated** (2026-08-11). Supersedes the anchored
-  popover #436 shipped hours earlier: large, modal, pausing, 120 channels each with both live
-  readings and one selector per value. A channel set to `both` is **one lane, one union-fitted
-  scale, two traces** (physics = lighter dashed twin) — an owner ruling that settles a
-  contradiction inside the issue's own text and left `laneSplit`/`pinOrder`/`drawLanes`
-  untouched. `ui.seriesSide` is the only new state; `sideOf()`'s fallback is the old global rule
-  verbatim, pinned by replay at 50,160 comparisons/mode before the change landed.
-- **#477 — the Indications tick is a MONITOR LIST, built and gated** (2026-08-12). Ticking a row
-  copies it into a `Monitoring` block above every group (both values, same divergence flag);
-  the tick no longer writes `ui.series`, so **#454's chart-settings window is the only writer**
-  and the row keeps a passive "trending" dot. Saved per plant in `rd_monitor`. Trap worth the
-  line: the check that carries the change — *a tick must not touch the chart* — was **vacuous**
-  written on `tavg`, which is in `defaultSeries` and so already plotted; the old handler
-  re-injected passed it green. On `thot` the same injection reads 3 → 4 traces.
+- **#436 — the control-room rework, BUILT to its content gates** (2026-08-10/11), children
+  #437–#446 landed bar two. The chart is one lane per indication with a shared cursor and an
+  event ribbon; `ui/test_panel/lane_reference.html` is the golden artifact and measures itself —
+  **change it first, re-measure, then port**. Open: **#441** (needs the rung authoring pass),
+  **#446** (deferred by ruling), **#449** (three steady-state indicated-vs-true disagreements the
+  merged list surfaced, 20–400× larger than instrument lag).
+- **#454 / #477 — the chart settings WINDOW and the Indications MONITOR LIST, both built, gated
+  and CLOSED** (2026-08-11/12). The one fact that still binds: **#454's window is the ONLY writer
+  of `ui.series`** — an Indications tick copies a row into the `Monitoring` block and must not
+  touch the chart. Trap worth the line: the check carrying that claim was **vacuous** written on
+  `tavg`, which is in `defaultSeries` and so already plotted, so the old handler re-injecting
+  passed it green; on `thot` the same injection reads 3 → 4 traces.
 - **Built, waiting on review or a close** — **#458** (shutdown cooling and low-head injection are
   the same pumps: the ALIGN is refused while SI runs — *(OWNER RULING, 2026-08-12: "A'")*. It is
   **not** a plant interlock and the code/manual/message all say so; declared `Manuals/12` §12.20),
-  #460 (rods ship in MANUAL — one owner call open: it
-  brushes #331's "Leave automatic systems in place", and it was built to the NARROW reading),
-  #432/#431 (bug-report recorder, schema 1.1, see themes), #433, #429, #403, #399, #398, #397. **#413** the Cloudflare migration is DONE and
-  merged — Vercel is out of the release path and `vercel.json`/`.vercelignore` are deleted;
-  two owner actions remain (delete the Vercel project, revoke a token).
+  #431 (bug-report recorder, schema 1.1), #433, #429, #399, #398, #397. **Two OWNER actions are
+  still owed on the finished Cloudflare migration**: delete the Vercel project, revoke its token.
 - **#479 PWR2** — Layers 0–5 + core damage + protection + **the pressurizer through stage 2c**
   (ruled 2026-08-18 "Option 1") — **MERGED INTO `develop` 2026-08-21** *(OWNER DIRECTIVE,
   2026-08-21: "Full merge and push. Don't publish to main yet.")* — merge `b4122a7`, 86 runners
@@ -397,7 +383,7 @@ re-querying. Run the query.
   only, true values declared, gated by `run_pwr2_engine` (14 checks / 8 mutations; it caught the
   scram-bypasses-RPS defect and filed #499 on arrival — `PWR2_VALIDATION.md` §49). P-9 (turbine trip
   = reactor trip above it, both sourced values), the #499 beyond-model guards and the
-  DELAYED-data sourcing are all LANDED (§50–52). **Everything since is recorded in `PWR2_VALIDATION.md` §53–§94 — read the sections, not this line.** In one line each: the protection channels, instruments and runback (§53–56) · the menu card and board, Free Play only (§57–61) · the #507 parity umbrella through TEN waves, casualty menu at **21 honest rows**, Section F closed (§67–74) · #510 batches 1–4, five LOW harness items open (§75–78) · per-system latches, so **the TMI termination is reachable** (§81) · the two-region pressurizer, choked relief passing water, a voided core subcritical at any boron, TMI to 260 min (§85–87) · the capped superheat wing (§88) · deep LOCAs no longer freeze and a halted plant holds its LAST GOOD step (§89, §91). **#523 (owner rulings 2026-08-26 "Flip now, track the gaps" / "Strip it at build time"): PWR2 IS THE PLANT THE SITE RUNS (§94)** — every link and `/sim` carry `?engine=pwr2`, and a **public** build contains no retired engine at all (six tags + 544,663 bytes pruned by `site/build_site.js`; `make_portable` always). The strip is CHANNEL-GATED so the PREVIEW site keeps it, because the guided content is authored against it and `freePlayOnly` stays. `pwr_config.js`/`pwr_instruments.js` are NOT the old engine and ship everywhere. Two of the three pre-replacement gaps are now #531 (R8) and #525 (mission compatibility). Still owed: delta-T lead/lag + K5 (COLR), channel redundancy, the ESF arm display, Mode 5 proper (#524), stuck_rod_on_scram, the steam-line-break rows + auto isolation signal (the MSIV itself is BUILT, §80).
+  DELAYED-data sourcing are all LANDED (§50–52). **Everything since is recorded in `PWR2_VALIDATION.md` §53–§97 — read the sections, not this line**, which is why the roll-call that used to sit here is gone. Still open out of it: **#507**'s casualty menu stands at 21 honest rows with Section F closed, and **#510** batches 1–4 landed leaving five LOW harness items. **#523 (owner rulings 2026-08-26 "Flip now, track the gaps" / "Strip it at build time"): PWR2 IS THE PLANT THE SITE RUNS (§94)** — every link and `/sim` carry `?engine=pwr2`, and a **public** build contains no retired engine at all (six tags + 544,663 bytes pruned by `site/build_site.js`; `make_portable` always). The strip is CHANNEL-GATED so the PREVIEW site keeps it, because the guided content is authored against it and `freePlayOnly` stays. `pwr_config.js`/`pwr_instruments.js` are NOT the old engine and ship everywhere. Two of the three pre-replacement gaps are now #531 (R8) and #525 (mission compatibility). Still owed: delta-T lead/lag + K5 (COLR), channel redundancy, the ESF arm display, Mode 5 proper (#524), stuck_rod_on_scram, the steam-line-break rows + auto isolation signal (the MSIV itself is BUILT, §80).
   **#514 (2026-08-25): the engine steps 12.5× faster** (1,090 → ~85 µs; the vtable wired into
   every module, `T_from_h`/`P_sat_T` tabulated, two warm starts, Tavg once) — held by the new
   `run_pwr2_perf` ratio gate (≤ 8× the old engine, measures 4.1×); the vtable builds on first
