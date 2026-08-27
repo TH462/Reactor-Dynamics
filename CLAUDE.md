@@ -418,7 +418,8 @@ re-querying. Run the query.
   rating, its pressurizer-level trip rows and its delta-T setpoint equation, and the board
   reads them. The FIRST is open: the control kernel silently rewrites or drops PWR2 commands
   (#546, #547). **The save/rewind/restore cluster is CLOSED** (#553/#554/#555/#548/#563 item 3,
-  2026-08-27, `PWR2_VALIDATION` §95); **#539 stays open by ruling** and is the root of its NaN.
+  2026-08-27, `PWR2_VALIDATION` §95), and so is **#539** (§96 — the rated steam scale is frozen
+  across all four presets; Mode 4's feed train and code safeties were multiplied by nought).
   Everything else in #535–#566 is untouched — `gh issue list` is the authority.
 - **RBMK and BWR** — on hold, and the source of most remaining backlog. Do not touch.
 

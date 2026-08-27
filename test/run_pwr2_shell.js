@@ -980,37 +980,60 @@ function runSuite(SH, rec, quiet, only) {
   run(m4, SET4);
   var s4 = m4.saveState();
 
-  /* #555 — Mode 4, Hot Shutdown publishes no true steam flow (rated_steam is 0 there), so
-   * ins.reading.steam_flow is permanently NaN. JSON writes NaN out as null and isFinite(null)
-   * is TRUE, so the restored channel read as a hard ZERO that the three-element feed
-   * controller's flow element accepted: a standing -0.0750 error that drove the regulating
-   * valve shut. The save NAMES the non-finite ids; the load puts the NaN back. Asserted
-   * BEFORE any step — the instrument guard re-latches a stray null on the next update, and
-   * a check that stepped first would pass over a broken save. */
-  var nf = (s4.state.ins && s4.state.ins.nonFinite) || [];
+  /* #555 — JSON writes a non-finite reading out as null and isFinite(null) is TRUE, so a
+   * restored channel read as a hard ZERO that the three-element feed controller's flow element
+   * accepted: a standing -0.0750 error that drove the regulating valve shut. The save NAMES
+   * the non-finite ids; the load puts the NaN back. Asserted BEFORE any step — the instrument
+   * guard re-latches a stray null on the next update, and a check that stepped first would
+   * pass over a broken save.
+   *
+   * THE NaN IS INJECTED, not borrowed from the fixture (re-written 2026-08-27, #539). This
+   * check used to lean on Mode 4 carrying a permanently-NaN `steam_flow`, which it did only
+   * because that preset's rated_steam was 0 and pwr2_true_state's truthiness guard therefore
+   * never published the driver. #539 froze the scale, the driver came back, the preset has no
+   * dead channel left — and the check went red on a plant that got BETTER. A regression pin
+   * must assert its own mechanism, not depend on some preset happening to be broken. */
+  var m4nan = new SH.PWR2Engine({ initial_state: 'hot_shutdown' });
+  run(m4nan, quiet ? 30 : 60);
+  m4nan.eng.ins.reading.steam_flow = NaN;                /* a channel that lost its driver */
+  var sNan = m4nan.saveState();
+  var nf = (sNan.state.ins && sNan.state.ins.nonFinite) || [];
+  var jsonRT = JSON.parse(JSON.stringify(sNan));         /* the file path, byte for byte */
   var fresh4 = new SH.PWR2Engine({});                    /* what _restore always constructs */
-  fresh4.loadState(s4);
+  fresh4.loadState(jsonRT);
   var rSF = fresh4.eng.ins.reading.steam_flow;
   ck('a non-finite reading is NAMED in the save and comes back NaN — not the 0 a JSON null reads as',
-     nf.indexOf('steam_flow') >= 0 && typeof rSF === 'number' && isNaN(rSF),
-     'nonFinite ' + JSON.stringify(nf) + ', restored steam_flow ' + rSF);
+     nf.indexOf('steam_flow') >= 0 &&
+     jsonRT.state.ins.reading.steam_flow === null &&      /* JSON really did destroy it */
+     typeof rSF === 'number' && isNaN(rSF),
+     'nonFinite ' + JSON.stringify(nf) + ', JSON carried ' +
+     jsonRT.state.ins.reading.steam_flow + ', restored ' + rSF);
+  fresh4.loadState(s4);                                  /* back to the plain Mode 4 save */
 
   /* #563 item 3 — rated_steam is every normalization's denominator and M_nominal is
    * core_inventory_pct's. Both are IC-derived and the service rebuilds at hot_full_power, so
    * before the fix a Mode 4 restore wore Hot Full Power's constants over its own saved mass:
    * M_nominal 23,234 -> 18,876 kg (51,222 -> 41,613 lb) and the CORE INVENTORY indication
    * stepped 100.0 -> 123.1 % on a rewind that moved true mass -0.7 kg (-1.5 lb). */
-  var hfpRated = new SH.PWR2Engine({}).eng.rated_steam;
+  /* THE DISCRIMINATOR IS M_nominal (re-pointed 2026-08-27, #539). It was rated_steam, on the
+   * reasoning that Mode 4's scale differed from Hot Full Power's — true then, and it is the
+   * whole point of #539 that it is no longer: the rated scale is now FROZEN, one number for
+   * every preset, so "differs from the constructor's" stopped discriminating anything.
+   * M_nominal is the constant that legitimately varies by preset (a cold plant holds more
+   * water: 23,234 kg / 51,222 lb against 18,876 kg / 41,613 lb hot), so it is what proves the
+   * restore wore the SAVED plant's constants rather than the fresh one's. rated_steam stays in
+   * the equality arms — it must still ride the save, it just cannot tell the two apart. */
+  var hfpNominal = new SH.PWR2Engine({}).eng.M_nominal;
   var invBefore = m4.getTrueState().core_inventory_pct;
   var invAfter = fresh4.getTrueState().core_inventory_pct;
   ck('the initial-condition SCALES ride the save — a restore wears the SAVED plant\'s constants',
      fresh4.eng.rated_steam === s4.state.scalars.rated_steam &&
      fresh4.eng.M_nominal === s4.state.scalars.M_nominal &&
-     fresh4.eng.rated_steam !== hfpRated &&
+     Math.abs(fresh4.eng.M_nominal - hfpNominal) > 1000 &&
      Math.abs(invAfter - invBefore) < 0.1,
-     'rated_steam ' + fresh4.eng.rated_steam.toFixed(4) + ' (hfp would be ' +
-     hfpRated.toFixed(4) + '), M_nominal ' + fresh4.eng.M_nominal.toFixed(1) +
-     ' kg, core inventory ' + invBefore.toFixed(3) + ' -> ' + invAfter.toFixed(3) + ' %');
+     'M_nominal ' + fresh4.eng.M_nominal.toFixed(1) + ' kg (a fresh hot shell would be ' +
+     hfpNominal.toFixed(1) + '), rated_steam ' + fresh4.eng.rated_steam.toFixed(4) +
+     ', core inventory ' + invBefore.toFixed(3) + ' -> ' + invAfter.toFixed(3) + ' %');
 
   /* the whole restore, end to end: the same save, run forward in both plants. Feed-valve
    * position is IN the sample because it is what the two defects above actually moved. */

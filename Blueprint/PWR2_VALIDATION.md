@@ -5757,9 +5757,68 @@ deletes `metadata.initial_state` and loads.
 positive control that drives the app's own Save button and feeds the file back in. Each new check
 was verified by injection, and the `ui/app.js` revert reproduces the issue's exact reported string.
 
-**Still open** *(OWNER RULING, 2026-08-27: selected "Leave it out" from options I wrote — a
-selection, not verbatim words)*. **#539** — Mode 4, Hot Shutdown boots with `rated_steam = 0`
+**CLOSED by §96 the same day** — it was deferred out of the save cluster *(OWNER RULING,
+2026-08-27: selected "Leave it out" from options I wrote — a selection, not verbatim words)* and
+then taken as its own change. **#539** — Mode 4, Hot Shutdown boots with `rated_steam = 0`
 because `pwr2_engine.js:331` recomputes it from a turbine object line 326 has already zeroed
 (against the intent stated on line 325). That is WHY the NaN exists. It is a plant-behaviour change
 owing a Hard Rule 12 measurement pass, and it is now safe to take: with item 3 above landed, fixing
 it cannot turn the null permanent.
+
+---
+
+## 96. #539 — THE RATED SCALE IS FROZEN, AND MODE 4's SECONDARY IS REAL — 2026-08-27
+
+**What §3808 declared and the code did not do.** *"feed and turbine at the IC's own dispatch
+with `rated_steam` still frozen at the RATED scale (every normalization's denominator)."*
+`steamDemand` has exactly two inputs — the dispatch and the steam pressure — and the scale was
+frozen on **neither**:
+
+| preset | before | after |
+|---|---|---|
+| `hot_full_power` | 164.2471 kg/s (2,609 gpm) | 164.2471 |
+| `50_percent` | 165.1924 (+0.57 %) | 164.2471 |
+| `hot_zero_power` | 165.6972 (+0.88 %) | 164.2471 |
+| `hot_shutdown` | **0.0000** | 164.2471 |
+
+The literal read each preset's own `sg.P`; a second recompute in the cold branch read `tb`
+after `eng.tb.load_target_mwe = ic.load_mwe` had zeroed it — and `eng.tb` **is** `tb`. The
+recompute is **deleted**, not reordered, so the aliasing cannot be re-armed. The design
+pressure is load-bearing: at Mode 4's own 0.2059 MPa the surviving line alone returns
+**171.9449 kg/s**.
+
+**Measured after (Mode 4, the preset the shipped card offers as the plant's floor).**
+
+- **Main feed delivers**: +3,934 kg (+8,672 lbm) into the steam generator over 120 s on a 50 %
+  manual demand. Before: **0.0000 kg/s at every demand**, behind a feed gauge reading back
+  exactly what was dialled.
+- **Code safeties pass steam**: 0.0000 → **137.9676 kg/s = 0.84 × rated**, bit-identical to the
+  `hot_zero_power` control arm. Before, the annunciator lit `SG SAFETY OPEN` and nothing left —
+  the secondary had no overpressure relief.
+- **The feed controller has feedback**: untouched 90 min, the valve settles at 0 rather than
+  railing at the 1.2000 two-pump ceiling against a vessel whose mass never moved; primary drift
+  −1.6 °F → −0.4 °F. `run_pwr2_endurance` **20/20, unchanged, no re-banding**.
+- Boot unchanged on its point: mode 4, 121.10 °C, 364.0 psia, level 25.00 %, no scram, no SI.
+- `ins.reading.steam_flow` stops being permanently NaN — a zero denominator made
+  `pwr2_true_state:283`'s truthiness guard skip the driver entirely. **That NaN was the root of
+  #555**, so the §95 entry's "still open" line is now closed.
+
+**`pwr2_relief`'s guard, tightened.** It was `=== undefined`: it refused to invent a *missing*
+plant and silently accepted one of size *nought* — the same fabrication, differently spelled,
+and the only hard refusal in the whole chain. It did not fire on the case that shipped. Now
+`> 0`, against §1021's own house rule (*"Every PWR2 layer so far throws rather than fabricate a
+missing driver … `rated_steam_kgs`"*).
+
+**Why 93 green runners missed it.** Every existing check measured a **consequence** at **one**
+preset. A denominator that is wrong at every preset *in a different way* is invisible to that.
+The new gate asserts the **invariant**: all four presets, one number, re-derived from the rated
+dispatch and the design pressure rather than read back off the engine.
+
+**Gates.** `run_pwr2_engine` 94 → 97 checks / 55 → 57 mutations / 0 blind (one revert per axis);
+`run_pwr2_relief` 42 → 43 / 24 → 25. Two `d239e76` checks were **re-pointed, not regressions** —
+both leaned on Mode 4 being broken: one used "Mode 4's scale differs from Hot Full Power's" as a
+proxy (they are now equal by design; it discriminates on `M_nominal` instead), and one borrowed
+Mode 4's permanently-NaN channel as its fixture (it now **injects** its own NaN).
+
+**Still open:** **#542** — the code-safety bank parks cracked open 21.5 psi below its own pop
+setpoint and never reseats. Same valves; this restored their **capacity**, not their **ramp**.

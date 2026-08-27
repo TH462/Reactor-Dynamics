@@ -30,6 +30,62 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
 
 ## [Unreleased]
 
+### Fixed (#539 — the rated steam scale is frozen; Mode 4's secondary is real, 2026-08-27)
+
+`rated_steam` is **every secondary normalization's denominator** — main feed is
+`feed_frac × it`, the steam dumps are `0.28 × it`, the code safeties `0.84 × it`, and the
+auxiliary feedwater fraction divides by it. `PWR2_VALIDATION.md:3808` declares it *"frozen at
+the RATED scale"* whatever the preset's own dispatch is. **It was frozen on neither of the two
+axes that set it.**
+
+| preset | before | after |
+|---|---|---|
+| Hot Full Power | 164.2471 kg/s (2,609 gpm) | 164.2471 |
+| 50 % Power | 165.1924 (+0.57 %) | 164.2471 |
+| Hot Standby (Mode 3) | 165.6972 (+0.88 %) | 164.2471 |
+| **Hot Shutdown (Mode 4)** | **0.0000** | **164.2471** |
+
+The scale is now computed once, at the **rated dispatch** and the **design steam pressure**,
+and the cold-preset recompute that produced the zero is **deleted** rather than reordered — a
+reorder would have left the same coupling for the next editor. (At Mode 4's own 0.2059 MPa the
+remaining line alone would read 171.9449 kg/s, so the design pressure is load-bearing.)
+
+**What Mode 4 gets back.** It is one of four presets on the shipped menu card, and the card
+says the plant *"Starts at Hot Shutdown (Mode 4) or above"* — so this is a plant players pick:
+
+- **Main feedwater delivers.** A 50 % manual demand now puts **+3,934 kg (+8,672 lbm)** into
+  the steam generator over 120 s. It delivered **0.0000 kg/s at every demand** before, while
+  the feed-flow gauge read back exactly what was dialled — a fabricated indication, not a
+  stuck one.
+- **The code safeties pass steam.** Forced 104 psi above the sourced 1,085 psig pop with the
+  atmospheric dump isolated, they now pass **137.9676 kg/s = 0.84 × rated**, bit-identical to
+  the Hot Standby control arm. Before: the annunciator lit `SG SAFETY OPEN` and **0.0000 kg/s**
+  left — the secondary had no overpressure relief at all.
+- **The feed controller has feedback again.** Untouched for 90 minutes, the regulating valve
+  now settles at 0 instead of railing at the two-pump ceiling against a steam generator whose
+  mass never moved, and the primary's drift over that ride falls from −1.6 °F to −0.4 °F.
+- The `steam_flow` instrument channel stops being permanently NaN — it had no true driver
+  because `pwr2_true_state`'s truthiness guard skipped a zero denominator. That NaN was the
+  root of #555.
+
+**Also fixed:** `pwr2_relief`'s rated-flow guard was `=== undefined`, so it refused to invent a
+*missing* plant and then silently accepted one of size *nought* — the same fabrication,
+differently spelled, and the only hard refusal in the chain that could have caught this at the
+layer boundary. It is now `> 0`.
+
+**Gates.** `run_pwr2_engine` **94 → 97 checks, mutations 55 → 57** (one revert per axis);
+`run_pwr2_relief` **42 → 43, mutations 24 → 25**. The new frozen-scale check asserts the
+**invariant**, not one of its consequences — which is why the defect survived 93 green
+runners: every existing check measured a consequence at a single preset, and a denominator
+wrong at every preset *in a different way* is invisible that way. The 90-minute Mode 4
+endurance ride stays **20/20** with no re-banding.
+
+**Two checks from `d239e76` were re-pointed, not regressions** — both leaned on Mode 4 being
+broken. One asserted Mode 4's scale *differed* from Hot Full Power's (it no longer does, which
+is the point); it now discriminates on `M_nominal`, which legitimately varies by preset. The
+other borrowed Mode 4's permanently-NaN channel as its fixture; it now **injects** its own NaN,
+which is the form it should always have had.
+
 ### Fixed (#553 + #554 + #555 + #548 + #563 item 3 — the save/rewind/restore path, 2026-08-27)
 
 Five of the #534 sweep's findings are one code path: **save a plant, load it back, or rewind.**

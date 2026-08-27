@@ -111,10 +111,18 @@
    */
   function stepRelief(rl, P_mpa, dt, drivers) {
     drivers = drivers || {};
-    if (drivers.rated_steam_kgs === undefined) {
-      throw new Error('pwr2_relief: drivers.rated_steam_kgs is REQUIRED — every capacity here is a ' +
-                      'FRACTION of rated flow, and this layer will not invent the plant it is a ' +
-                      'fraction of.');
+    /* `> 0`, not `!== undefined` (#539). The old guard refused to invent a MISSING plant and
+     * then silently accepted a ZERO one — the same fabrication with a different spelling, and
+     * it is what let Mode 4 ship with every capacity multiplied by nought: the safety-valve
+     * latch says OPEN (it keys on pressure alone) while safety_kgs is 0.84 * 0. This is the
+     * only hard refusal in the whole rated-scale chain and it did not fire on the case that
+     * actually shipped. PWR2_VALIDATION.md:1021 states the house rule: "Every PWR2 layer so
+     * far throws rather than fabricate a missing driver (fuelTemp_c, Q_core_kW,
+     * rated_steam_kgs)." */
+    if (!(drivers.rated_steam_kgs > 0)) {
+      throw new Error('pwr2_relief: drivers.rated_steam_kgs must be > 0 — every capacity here is ' +
+                      'a FRACTION of rated flow, and this layer will not invent the plant it is a ' +
+                      'fraction of. Got: ' + drivers.rated_steam_kgs);
     }
     var rated = drivers.rated_steam_kgs;
 

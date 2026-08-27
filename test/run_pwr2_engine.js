@@ -1078,6 +1078,32 @@ function runSuite(RD, rec, quiet, only) {
   ckT('an IC this engine does not carry THROWS (cold shutdown waits on an RCP restart — ' +
       'declared in the registry, not silently hot-full-power)',
       threwIC === true, '');
+
+  /* ---- THE RATED SCALE IS FROZEN (#539) --------------------------------------------------
+   * `rated_steam` is every secondary normalization's denominator, and PWR2_VALIDATION.md:3808
+   * declares it "frozen at the RATED scale" whatever the IC's own dispatch is. It was frozen
+   * on NEITHER of steamDemand's two axes: the literal read each preset's OWN sg.P (50 % and
+   * Hot Standby drifted +0.57 % / +0.88 %) and a second recompute in the cold branch ran after
+   * the dispatch had been zeroed, so Mode 4 booted at 0.0000 kg/s.
+   *
+   * THIS ASSERTS THE INVARIANT ITSELF, not one of its consequences — which is why the defect
+   * lived through 93 green runners: every existing check measured a consequence at a single
+   * preset, and a denominator that is wrong at every preset in a DIFFERENT way is invisible
+   * that way. Four presets, one number, and the number is re-derived here from the rated
+   * dispatch and the design pressure rather than read back off the engine. */
+  var RATED_ICS = ['hot_full_power', '50_percent', 'hot_zero_power', 'hot_shutdown'];
+  var ratedVals = RATED_ICS.map(function (n) {
+    return EN.createEngine({ initial_state: n }).rated_steam;
+  });
+  var ratedRef = TB.steamDemand(TB.createTurbine({ load_target_mwe: TB.TURB.mwe_rated }),
+                                G.createSG({}).P, G.SG.h_feed);
+  var ratedSpread = Math.max.apply(null, ratedVals) - Math.min.apply(null, ratedVals);
+  ckT('the RATED SCALE is FROZEN: all four presets carry one rated_steam, and it is ' +
+      'steamDemand at the rated dispatch and the DESIGN steam pressure',
+      ratedSpread === 0 && ratedVals.every(function (v) { return v === ratedRef; }) &&
+      ratedVals[0] > 0,
+      ratedVals.map(function (v) { return v.toFixed(4); }).join(' / ') +
+      ' kg/s, spread ' + ratedSpread.toExponential(1) + ', reference ' + ratedRef.toFixed(4));
   }
 
   if (grp('L')) {
@@ -1266,6 +1292,49 @@ function runSuite(RD, rec, quiet, only) {
   catch (eP) { thrP11 = /P-11/.test(eP.message); }
   ckT('engaging either block ABOVE P-11 is REFUSED (the #295 defeatable-trip lesson)',
       thrP11 === true, '');
+
+  /* ---- MODE 4's SECONDARY IS REAL (#539) -------------------------------------------------
+   * Both checks assert the EFFECT — kilograms into the vessel, kilograms out of the valve —
+   * never the demand. That distinction is the whole defect: the feed gauge read back exactly
+   * what was dialled (25.1 / 50.1 / 100.0 %) while 0.0000 kg/s crossed the tube bundle, and
+   * the code-safety annunciator lit OPEN while nothing left. A check on either indication
+   * would have passed on the broken plant. */
+  var engF = EN.createEngine({ initial_state: 'hot_shutdown' });
+  var mF0 = engF.sg.mass;
+  EN.command(engF, 'feed_auto', false);
+  EN.command(engF, 'feed_manual_frac', 0.5);
+  for (var ff = 0; ff < (quiet ? 60 : 120) / DT; ff++) EN.step(engF, DT);
+  ckT('Mode 4 MAIN FEED DELIVERS: 50 % manual demand puts real mass in the steam generator ' +
+      '(it delivered 0.0000 kg/s at every demand while rated_steam was 0)',
+      engF.sg.mass - mF0 > 500 && isFinite(engF.ins.reading.steam_flow),
+      'SG mass +' + (engF.sg.mass - mF0).toFixed(0) + ' kg (+' +
+      ((engF.sg.mass - mF0) * 2.20462).toFixed(0) + ' lbm), steam_flow reading ' +
+      engF.ins.reading.steam_flow);
+
+  /* the code safeties, with the ADV isolated so it cannot mask them. Hot Standby is the
+   * CONTROL arm: it always lifted to 0.84 x rated, so a Mode 4 that now matches it is the
+   * scale being right rather than the valve being re-tuned. */
+  function safetyPeak(icName) {
+    var e = EN.createEngine({ initial_state: icName });
+    EN.step(e, DT);
+    e.advBlock = true;
+    var pk = 0, op = false, t;
+    for (var i = 0; i < 50; i++) {
+      e.sg.P = 8.2;                      /* 1189 psia — 104 psi above the sourced 1085 psig pop */
+      t = EN.step(e, DT);
+      if (t.sg_safety_open) op = true;
+      if (t.sg_safety_kgs > pk) pk = t.sg_safety_kgs;
+    }
+    return { peak: pk, open: op, rated: e.rated_steam };
+  }
+  var sfM4 = safetyPeak('hot_shutdown'), sfHZP = safetyPeak('hot_zero_power');
+  ckT('Mode 4 CODE SAFETIES PASS FLOW at the designed 0.84 x rated — the annunciator used to ' +
+      'light OPEN while 0.0000 kg/s left',
+      sfM4.open && sfHZP.open &&
+      Math.abs(sfM4.peak - 0.84 * sfM4.rated) < 0.5 &&
+      Math.abs(sfM4.peak - sfHZP.peak) < 1e-6,
+      'Mode 4 ' + sfM4.peak.toFixed(4) + ' kg/s vs Hot Standby ' + sfHZP.peak.toFixed(4) +
+      '; 0.84 x rated = ' + (0.84 * sfM4.rated).toFixed(2));
   }
 }
 
@@ -1427,9 +1496,25 @@ var MUTATIONS = [
    "        if (eng.runaway) {\n          throw new Error('pwr2_engine: rod command REFUSED — continuous withdrawal failure ' +\n            'active; clear the failure first');\n        }",
    '', { grp: 'I' }],
   /* THE INITIAL CONDITIONS (#507 §F, wave 7) */
+  /* re-pointed 2026-08-27 (#539): the anchor quoted the whole two-line `sg` expression, and
+   * hoisting `sgDesign` out of it orphaned the mutation — a green 94/94 with a blind spot.
+   * It now quotes the ONE line that carries the claim (the non-full-power branch). */
   ['the 50 % secondary lands at the full-power literal (an IC whose SG fights its plant)',
-   "    var sg = ic.pf === 1 ? G.createSG({})\n           : G.createSG({ P: W.P_sat(tavg0 - ic.pf * (TREF - W.T_sat(G.createSG({}).P))) });",
-   '    var sg = G.createSG({});', { grp: 'K' }],
+   "           : G.createSG({ P: W.P_sat(tavg0 - ic.pf * (TREF - W.T_sat(sgDesign.P))) });",
+   '           : sgDesign;', { grp: 'K' }],
+  /* THE RATED SCALE (#539) — one revert per axis steamDemand reads, because the shipped
+   * defect got BOTH wrong and either alone is enough to break the invariant. */
+  ['the rated scale reads the PRESET\'s own SG pressure again (the 0.57 / 0.88 % drift)',
+   '      rated_steam: TB.steamDemand(tb, sgDesign.P, G.SG.h_feed),',
+   '      rated_steam: TB.steamDemand(tb, sg.P, G.SG.h_feed),', { grp: 'K' }],
+  /* scoped to K, not N: under this mutation Mode 4's rated_steam is 0 again, and pwr2_relief's
+   * tightened `> 0` guard THROWS the moment such a plant is stepped — so in a stepping group it
+   * scores "CRASH only, coverage untested". K's frozen-scale check only CONSTRUCTS, so the
+   * mutation reds the claim itself. (The crash is the guard working; it is just not a test of
+   * the check.) */
+  ['the cold branch recomputes the rated scale after the dispatch is zeroed (Mode 4 back to 0)',
+   '    if (ic.cold) {',
+   '    if (ic.cold) {\n      eng.rated_steam = TB.steamDemand(tb, sgDesign.P, G.SG.h_feed);', { grp: 'K' }],
   ['the kinetics seed at full power regardless of the IC (the SS-6 class, re-armed)',
    '    var powf = ic.pf > 0 ? ic.pf : 1e-6;',
    '    var powf = 1.0;', { grp: 'K' }],

@@ -230,6 +230,17 @@ function runSuite(R, rec, quiet) {
         try { R.stepRelief(R.createRelief({}), 6.0, 1, { dump_demand: 1 }); return false; }
         catch (e) { return /rated_steam_kgs/.test(e.message); }
       })(), '');
+  /* ...and a ZERO throws too (#539). The guard used to be `=== undefined`, so it refused to
+   * invent a MISSING plant and then silently accepted a plant of size nought — the same
+   * fabrication, differently spelled, and it is the case that actually shipped: Mode 4 booted
+   * with rated_steam 0, so every capacity here was 0 x its fraction while the safety-valve
+   * latch (which keys on pressure alone) still reported OPEN. This is the arm that would have
+   * caught it at the layer boundary. */
+  ckT('...and so does a ZERO — 0 x every fraction is a fabricated plant, not a missing one',
+      (function () {
+        try { R.stepRelief(R.createRelief({}), 8.2, 1, { rated_steam_kgs: 0, dump_demand: 1 }); return false; }
+        catch (e) { return /rated_steam_kgs/.test(e.message); }
+      })(), '');
 }
 
 console.log('\nPWR2 Layer 5 -- RELIEF: the steam paths that are not the turbine');
@@ -238,6 +249,9 @@ runSuite(R, rec, false);
 var pass = rec.filter(function (r) { return r.ok; }).length, fail = rec.length - pass;
 
 var MUTATIONS = [
+  ['the rated-flow guard goes back to `=== undefined` (a plant of size nought sails through)',
+   'if (!(drivers.rated_steam_kgs > 0)) {',
+   'if (drivers.rated_steam_kgs === undefined) {'],
   ['the ADV auto function is dead (overpressure rides straight to the safeties)',
    'var advAuto = (P_mpa - RELIEF.adv_setpoint_mpa) / RELIEF.adv_band_mpa;',
    'var advAuto = 0 * (P_mpa - RELIEF.adv_setpoint_mpa) / RELIEF.adv_band_mpa;'],

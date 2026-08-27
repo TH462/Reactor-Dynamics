@@ -29,6 +29,84 @@ and the user-visible summary in `CHANGELOG.md`. This file points at those and tr
 
 ---
 
+## Session log — 2026-08-27-develop-c (#539 — the rated steam scale is frozen)
+
+**What it is.** `rated_steam` is every secondary normalization's denominator, and
+`PWR2_VALIDATION.md:3808` declares it *"frozen at the RATED scale"*. It was frozen on neither
+of `steamDemand`'s two axes. Owner ruled **fix the class, not just the zero** *(OWNER RULING,
+2026-08-27: selected "Fix the class — one frozen scale" from options I wrote — a selection, not
+verbatim words)*, and **adjudicate the reds one at a time** *(same date, same form)*.
+
+| preset | before | after |
+|---|---|---|
+| Hot Full Power | 164.2471 kg/s | 164.2471 |
+| 50 % Power | 165.1924 (+0.57 %) | 164.2471 |
+| Hot Standby | 165.6972 (+0.88 %) | 164.2471 |
+| Hot Shutdown (Mode 4) | **0.0000** | 164.2471 |
+
+Two wrongs, one line apart: the literal read each preset's **own** `sg.P`, and a second
+recompute in the cold branch read `tb` **after** `eng.tb.load_target_mwe = ic.load_mwe` had
+zeroed it — and `eng.tb` IS `tb`, the same object. The recompute is **deleted**, not reordered:
+a reorder leaves the aliasing for the next editor.
+
+### Measured
+
+- Mode 4 **main feed delivers**: +3,934 kg (+8,672 lbm) into the steam generator over 120 s on
+  a 50 % manual demand. Before: 0.0000 kg/s at every demand, with the gauge reading back what
+  was dialled.
+- Mode 4 **code safeties**: 0.0000 → **137.9676 kg/s = 0.84 × rated**, bit-identical to the Hot
+  Standby control arm.
+- Mode 4 90 min untouched: the feed valve settles at 0 instead of railing at the 1.2000
+  two-pump ceiling against a vessel whose mass never moved; primary drift −1.6 °F → −0.4 °F.
+  `run_pwr2_endurance` **20/20, no re-banding.**
+- Mode 4 boot unchanged on its point: mode 4, 121.10 °C, 364.0 psia, level 25.00 %, no scram,
+  no SI.
+- The design pressure is **load-bearing, not tidiness**: at Mode 4's own 0.2059 MPa the
+  surviving line alone would return **171.9449 kg/s**.
+
+### Traps this session paid for
+
+- **Anchor a mutation on the LINE that carries the claim, never on the expression around it.**
+  Hoisting `sgDesign` out of the two-line `sg` construction orphaned the *"50 % secondary lands
+  at the full-power literal"* mutation — a green 94/94 with a blind spot. Second orphan in two
+  sessions; the other one quoted a comment. Both times the fix was to quote less.
+- **A regression pin that borrows a broken fixture dies when the plant is fixed.** Two checks
+  I wrote yesterday reddened here, and both leaned on Mode 4 being broken: one used "Mode 4's
+  scale differs from Hot Full Power's" as a proxy for "the restore wore the saved constants"
+  (they are now equal *by design*), the other borrowed Mode 4's permanently-NaN `steam_flow` as
+  its non-finite fixture (there is no dead channel left). **The NaN check now injects its own
+  NaN** — assert the mechanism, never depend on some preset happening to be broken. Neither was
+  a regression, and saying so per-probe is what the one-at-a-time ruling is for.
+- **A mutation that makes the plant ILLEGAL scores "CRASH only — coverage untested"** if its
+  group steps. Restoring the cold recompute makes Mode 4's scale 0, which my own tightened
+  relief guard now throws on, so in a stepping group the mutant crashed instead of reddening a
+  check. Scoped it to the group that only CONSTRUCTS and it reds the claim cleanly. The crash
+  is the guard working; it is just not a test of the check.
+- **`=== undefined` refuses a MISSING plant and waves through a plant of size NOUGHT.**
+  `pwr2_relief`'s guard is the only hard refusal in the whole rated-scale chain, its message
+  says *"this layer will not invent the plant it is a fraction of"*, and it did not fire on the
+  case that shipped. Now `> 0`, with its own check and mutation.
+- **The invariant, not its consequences.** This survived 93 green runners because every check
+  measured a consequence at ONE preset. A denominator that is wrong at every preset *in a
+  different way* is invisible to that. The new check re-derives the number from the rated
+  dispatch and the design pressure and compares all four presets to it.
+
+### Gates
+
+`run_pwr2_engine` **94 → 97 checks / 55 → 57 mutations / 0 blind**; `run_pwr2_relief` **42 → 43
+/ 24 → 25**; `run_pwr2_shell` 82 (two checks re-pointed, count unchanged);
+`run_pwr2_loadfollow` unchanged but its local harness was brought onto the design pressure or
+it would have gone on certifying the retired convention. `run_pwr2_sg` and
+`run_pwr2_feedwater` are pure-module gates and never see an IC — they do not move.
+
+### Still open
+
+**#542** — the code-safety bank parks cracked open 21.5 psi *below* its own pop setpoint and
+never reseats (the lift ramp is anchored at the reseat pressure). Same valves; this change
+restored their **capacity**, not their **ramp**.
+
+---
+
 ## Session log — 2026-08-27-develop-b (#553 + #554 + #555 + #548 + #563 item 3 — the save/rewind/restore path)
 
 **The cluster and why it is one change.** Five #534 findings, one code path: save a plant, load it

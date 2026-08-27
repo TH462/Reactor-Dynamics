@@ -244,10 +244,24 @@
     /* the secondary lands where the primary's duty puts it: Tsec = Tavg − pf·(the design
      * split), P = Psat(Tsec). The full-power path keeps the module's own default literal
      * (byte-identical construction, the save-replay bar). */
-    var sg = ic.pf === 1 ? G.createSG({})
-           : G.createSG({ P: W.P_sat(tavg0 - ic.pf * (TREF - W.T_sat(G.createSG({}).P))) });
-    /* rated_steam is the RATED scale (every normalization's denominator) — computed at the
-     * rated dispatch whatever the IC's own load is, then the turbine takes the IC's */
+    var sgDesign = G.createSG({});            /* the DESIGN point: 825 psia, Ginna outlet class */
+    var sg = ic.pf === 1 ? sgDesign
+           : G.createSG({ P: W.P_sat(tavg0 - ic.pf * (TREF - W.T_sat(sgDesign.P))) });
+    /* rated_steam is the RATED scale — every secondary normalization's denominator (main feed
+     * is feed_frac × it, the dumps are 0.28 × it, the code safeties 0.84 × it, and the AFW
+     * fraction divides by it). It is FROZEN ON BOTH AXES steamDemand reads: the RATED dispatch
+     * (MWE_RATED, which is why `tb` is built with it below and only takes the IC's own dispatch
+     * afterwards) AND the DESIGN steam pressure. Neither the IC's own load nor the IC's own SG
+     * pressure may move this number — PWR2_VALIDATION.md:3808, "feed and turbine at the IC's own
+     * dispatch with rated_steam still frozen at the RATED scale".
+     *
+     * #539: it was frozen on NEITHER axis. This line used the IC's own `sg.P`, so 50 % Power and
+     * Hot Standby drifted +0.57 % / +0.88 %; and a second recompute in the cold branch below ran
+     * AFTER the dispatch had been zeroed, so Mode 4 booted at 0.0000 kg/s — an inert feed train
+     * behind a feed gauge reading back exactly what was dialled, and code safeties that indicated
+     * OPEN while passing nothing. That recompute is now GONE rather than reordered: a reorder
+     * leaves the same coupling for the next editor. (At Mode 4's own 0.2059 MPa this line alone
+     * would have read 171.9449 kg/s, so the design pressure is load-bearing, not tidiness.) */
     var tb = TB.createTurbine({ load_target_mwe: MWE_RATED });
     var eng = {
       sys: sys, pz: pz, rx: rx, sg: sg, tb: tb,
@@ -268,7 +282,7 @@
                                 blockLoPress: !!ic.cold, blockSI: !!ic.cold }),
       brk: null,
       ctm: CT.createContainment({}),
-      rated_steam: TB.steamDemand(tb, sg.P, G.SG.h_feed),
+      rated_steam: TB.steamDemand(tb, sgDesign.P, G.SG.h_feed),
       M_nominal: sys.M_total,
       simTime: 0,
       /* command state */
@@ -322,13 +336,15 @@
       ins: IN.createInstruments(opts.instruments),
       rh: RD.rhr.createRHR({})
     };
-    /* the turbine takes the IC's own dispatch AFTER rated_steam froze the rated scale */
+    /* the turbine takes the IC's own dispatch — and NOTE that `eng.tb` IS `tb`, the same
+     * object the rated scale was read off above. That aliasing is what made #539: the cold
+     * branch used to re-read `tb` AFTER this line zeroed it. rated_steam is now computed once,
+     * in the literal above, and nothing below may touch it. */
     eng.tb.load_target_mwe = ic.load_mwe;
-    /* SHUTDOWN extras: rated_steam recomputed at the DESIGN steam pressure (a 30 psia cold
-     * SG would otherwise become every normalization's denominator), and RHR ALIGNED — the
-     * Mode 4 heat sink, openable because 350 psig sits under the 425 psig permissive */
+    /* SHUTDOWN extras: RHR ALIGNED — the Mode 4 heat sink, openable because 350 psig sits
+     * under the 425 psig permissive. (The rated_steam recompute that lived here is GONE — see
+     * the rated-scale note above; it was the #539 defect, not a shutdown extra.) */
     if (ic.cold) {
-      eng.rated_steam = TB.steamDemand(tb, G.createSG({}).P, G.SG.h_feed);
       /* RHR ALIGNED (suction open — 350 psig sits under the 425 psig permissive) with the
        * HX THROTTLED SHUT: a HOLD, not a cooldown. Measured with hx 0.5: the HX pulled the
        * heat-free plant down 26 degC in 300 s (−560 degF/hr class) and drained the

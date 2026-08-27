@@ -45,6 +45,29 @@ where the two differ or where judgment was exercised.
 
 ---
 
+## 2026-08-27-develop-c — #539: the rated scale is frozen on BOTH of steamDemand's axes
+
+**Claim.** `rated_steam` is every secondary normalization's denominator and
+`PWR2_VALIDATION.md:3808` declares it frozen at the rated scale. It was frozen on neither axis:
+164.2471 / 165.1924 / 165.6972 / **0.0000** kg/s across the four presets. Now one number,
+spread exactly zero.
+
+**The decisions.**
+
+| Decision | Alternative considered | Why |
+|---|---|---|
+| DELETE the cold-branch recompute; compute the scale once at the design pressure | reorder `eng.tb.load_target_mwe = ic.load_mwe` below the cold block | a reorder fixes the symptom and leaves the aliasing (`eng.tb` **is** `tb`) for the next editor. Deleting removes the coupling. And a reorder alone would still leave 50 % / Hot Standby drifting, because that half of the defect is the preset's own `sg.P`, not the ordering. |
+| Freeze ALL FOUR presets, not just the zero *(OWNER RULING, 2026-08-27: selected "Fix the class — one frozen scale" from options I wrote — a selection, not verbatim words)* | fix Mode 4 only, #539's filed scope | the 0.57 % / 0.88 % drift is the SAME line and the same declared-design violation. Fixing the zero alone leaves §3808 still describing something the code does not do, and it returns as its own finding at the next sweep. |
+| `pwr2_relief`'s guard becomes `> 0` | leave it; the engine no longer passes 0 | the guard is the only hard refusal in the chain and its own message says it will not invent a plant. `=== undefined` refuses a MISSING plant and accepts a NOUGHT one. Defence in depth at a layer boundary costs one character. |
+| The new gate asserts the INVARIANT across all four presets, re-derived | add more consequence checks (feed delivers, safeties lift) at Mode 4 | both, actually — but the invariant is the one that would have caught this. 93 green runners each measured a consequence at ONE preset, and a denominator wrong at every preset in a DIFFERENT way is invisible that way. |
+| Two `d239e76` checks re-pointed, and one rewritten to INJECT its NaN | re-band them, or delete them | they were stale fixtures, not regressions, and each was adjudicated on its own per the owner's second ruling. The NaN one is the sharper lesson: a regression pin that borrows a broken preset as its fixture dies the day the preset is fixed. |
+
+**Open flag closed:** #539. **Open flag unchanged:** #542 (the code-safety lift ramp is anchored
+at the reseat pressure, so the bank parks cracked open below its own pop and never reseats).
+This change restored the bank's CAPACITY; its RAMP is that issue.
+
+---
+
 ## 2026-08-27-develop-b — #534 cluster: the restore is transactional, and the save carries its own scales
 
 **Claim.** Five #534 findings are one code path — save, load, rewind — and are fixed as one change:
