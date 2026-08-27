@@ -37,8 +37,18 @@ function loadFrom(src) {
 /* THE SOURCES, RETYPED INDEPENDENTLY of the engine's copy — the ECCS discipline.
  *   Ginna TS Bases (ML20339A221): MSSVs hold secondary at "approximately 1085 psig"
  *   Ginna UFSAR ch10 §10.4 (ML20339A040): eight dump valves passing "approximately 28% rated
- *   steam flow"  */
-var DOC = { safety_pop_psig: 1085.0, dump_frac: 0.28, safety_flow_frac: 0.84, blowdown: 0.033 };
+ *   steam flow"
+ *   Ginna UFSAR ch10 §10.3.2.4 (ML20339A040), the STAGGERED BANK (#542): "There are four main
+ *   steam safety valves (MSSV) for each steam line. The first valve lifts at 1085 psig and the
+ *   remaining three valves are set to lift at 1140 psig. The minimum total relieving capacity
+ *   is 6.58 x 10^6 lbm/hr" — and the same chapter's equipment table: "797,689: two valves at
+ *   1085 psig +3% accumulation / 837,600: six valves at 1140 psig +3% accumulation" (eight
+ *   valves = four per line; this single-loop plant carries one line's worth).  */
+var DOC = { safety_pop_psig: 1085.0, dump_frac: 0.28, safety_flow_frac: 0.84, blowdown: 0.033,
+            stage2_psig: 1140.0, accum: 0.03,
+            stage1_lbhr: 797689.0, stage2_lbhr: 3 * 837600.0,
+            /* §10.3.2.4's own total, for BOTH steam lines */
+            bank_total_lbhr: 6.58e6 };
 var RATED = 164.25;      /* kg/s — this plant's rated steam flow (D4 §21.2, §22.2) */
 
 function runSuite(R, rec, quiet) {
@@ -106,20 +116,121 @@ function runSuite(R, rec, quiet) {
       step(rl, mid).safety_open === false,
       'the hysteresis works in both directions, or it is not hysteresis');
 
+  /* ---- THE STAGGERED BANK (#542) -----------------------------------------------------------
+   * ⚠ THE CHECK THAT USED TO LIVE HERE COULD NEVER FAIL. It asserted "flow RAMPS between first
+   * lift and full lift, it does not step" while sampling at reseat+0.05 MPa (1056.0 psig) and
+   * reseat+0.20 MPa (1078.0 psig) — BOTH BELOW the 1085 psig pop. The ramp it was walking was
+   * the part of the ramp that lay below the setpoint, which is the defect, not the claim: the
+   * bank stepped from shut to 60.05 % of rated in ONE 0.02 s step at the pop and this gate saw
+   * green (HR10). Every check below is anchored on the POP or on a stage setpoint, never on the
+   * reseat, and each one was run against the pre-#542 source and confirmed RED. */
+  var PSI = R.PSI_PER_MPA;
+  function mpaOf(psig) { return (psig + 14.7) / PSI; }
+  var S1 = R.SAFETY_STAGES[0], S2 = R.SAFETY_STAGES[1];
+  var s1Full = mpaOf(DOC.safety_pop_psig * (1 + DOC.accum));    /* 1117.6 psig */
+  var s2Full = mpaOf(DOC.stage2_psig     * (1 + DOC.accum));    /* 1174.2 psig */
+  var share1 = DOC.stage1_lbhr / (DOC.stage1_lbhr + DOC.stage2_lbhr);
+
+  head('THE SOURCED STAGGER  [one valve at 1085, three at 1140 — §10.3.2.4, not a lumped band]');
+  ckT('the bank has exactly the TWO stages the source describes', R.SAFETY_STAGES.length === 2, '');
+  ck('stage 1 lifts at the sourced first-lift setpoint', S1.set_mpa * PSI - 14.7,
+     DOC.safety_pop_psig, 1e-9, 'psig');
+  ck('stage 2 lifts at the sourced 1140 psig', S2.set_mpa * PSI - 14.7, DOC.stage2_psig,
+     1e-9, 'psig');
+  ck('stage 1 carries its sourced share of bank capacity', S1.share, share1, 1e-9, 'frac');
+  ck('...and stage 2 the rest', S2.share, 1 - share1, 1e-9, 'frac');
+  ck('each stage reaches FULL lift at its own sourced +3 % accumulation',
+     (S2.set_mpa + S2.band_mpa) * PSI - 14.7, DOC.stage2_psig * (1 + DOC.accum), 1e-9, 'psig');
+  ckT("the source's OWN capacity cross-check lands", (function () {
+        /* both steam lines, against §10.3.2.4's stated 6.58e6 lbm/hr total */
+        var both = 2 * (DOC.stage1_lbhr + DOC.stage2_lbhr);
+        return Math.abs(both - DOC.bank_total_lbhr) / DOC.bank_total_lbhr < 0.01;
+      })(), '2 x (797,689 + 3 x 837,600) = 6,620,978 lb/hr against the stated 6.58e6 — 0.6 % apart');
+  ckT('...and so does the DESIGN BASIS — full bank lift under 110 % of the first-lift setpoint',
+      (s2Full * PSI - 14.7) <= 1.10 * DOC.safety_pop_psig,
+      (s2Full * PSI - 14.7).toFixed(1) + ' psig against ' + (1.10 * DOC.safety_pop_psig).toFixed(1) +
+      ' — B 3.7.1: "limit the secondary system to <= 110% of design pressure"');
+
   /* ---- SAFETY FLOW ------------------------------------------------------------------------- */
-  head('SAFETY FLOW  [a bank of staggered valves, lumped into one ramp]');
+  head('SAFETY FLOW  [the ramp lives ABOVE the pop, and there is no step at the pop]');
   var rl2 = R.createRelief({});
   step(rl2, pop + 0.001);                                       /* lift it */
-  var full = step(rl2, reseat + R.RELIEF.safety_full_lift_mpa + 0.5);
+  var full = step(rl2, s2Full + 0.5);
   ck('at full lift it passes the sourced fraction of rated flow', full.safety_kgs,
      DOC.safety_flow_frac * RATED, 1e-9, 'kg/s');
   ckT('...and it CLAMPS there rather than growing without bound',
       Math.abs(step(rl2, 20).safety_kgs - full.safety_kgs) < 1e-9,
       'at 20 MPa it still passes ' + full.safety_kgs.toFixed(2) + ' kg/s');
-  ckT('flow RAMPS between first lift and full lift, it does not step', (function () {
-        var a = step(rl2, reseat + 0.05).safety_kgs, b = step(rl2, reseat + 0.20).safety_kgs;
-        return a > 0 && b > a && b < full.safety_kgs;
-      })(), 'a single valve popping to full flow at one pressure would make the secondary ring');
+  ckT('...and full lift needs the SOURCED 1174.2 psig, not one stage-width above the pop',
+      Math.abs(step(R.createRelief({}), s2Full).safety_kgs - DOC.safety_flow_frac * RATED) < 1e-9 &&
+      step(R.createRelief({}), s2Full - 1 / PSI).safety_kgs < DOC.safety_flow_frac * RATED,
+      'a bank at full flow BELOW its top valves\' accumulation is a bank that never staggered');
+
+  /* THE #542 CHECK. A fresh bank walked up through the pop in 0.1 psi steps: nothing below the
+   * setpoint, and no single sample allowed to jump. Pre-#542 the first sample AT the pop read
+   * 60.05 % of rated out of a shut valve. */
+  ckT('NOTHING passes below the first-lift setpoint, and the pop is not a STEP', (function () {
+        var r = R.createRelief({}), worst = 0, below = 0, prev = 0;
+        for (var p = DOC.safety_pop_psig - 5; p <= DOC.safety_pop_psig + 5; p += 0.1) {
+          var o = step(r, mpaOf(p));
+          if (p < DOC.safety_pop_psig - 1e-9 && o.safety_kgs > 0) below++;
+          var d = Math.abs(o.safety_kgs - prev);
+          if (d > worst) worst = d;
+          prev = o.safety_kgs;
+        }
+        return below === 0 && worst < 0.02 * RATED;
+      })(), 'pre-#542 this walk read 98.63 kg/s = 60.05 % of rated in the FIRST sample at the ' +
+            'pop, out of a valve that was shut 0.1 psi earlier');
+
+  /* THE OTHER HALF OF #542, and the one that makes the park impossible rather than merely
+   * relocating it: while a stage is latched BELOW its own setpoint, its flow is a constant. */
+  ckT('a latched stage below its setpoint passes a CONSTANT flow — no equilibrium to park in',
+      (function () {
+        var r = R.createRelief({});
+        step(r, s1Full + 0.01);                       /* stage 1 ratcheted to full lift */
+        var a = step(r, mpaOf(1080)).safety_kgs;      /* both inside stage 1's blowdown band */
+        var b = step(r, mpaOf(1055)).safety_kgs;
+        return a > 0 && Math.abs(a - b) < 1e-12;
+      })(), 'a pop valve does not modulate back down; pre-#542 flow tracked pressure all the way ' +
+            'to reseat, so the bank settled wherever relief met production — measured, 24.2 % of ' +
+            'rated at 1063.3 psig, 21 psi BELOW the setpoint, for an hour with 0 reseats');
+
+  ckT('stage 2 lifts ONLY above its own 1140 psig setpoint, and reseats on its OWN blowdown',
+      (function () {
+        var r = R.createRelief({});
+        var mid  = step(r, mpaOf(1130));                          /* stage 1 only */
+        var both = step(r, mpaOf(1150));                          /* stage 2 in as well */
+        var held = step(r, mpaOf(1105));                          /* above stage 2's reseat */
+        var shut = step(r, mpaOf(1095));                          /* below it */
+        return mid.safety_stages[1].open === false &&
+               both.safety_stages[1].open === true &&
+               held.safety_stages[1].open === true &&
+               shut.safety_stages[1].open === false &&
+               shut.safety_stages[0].open === true &&
+               shut.safety_kgs > 0;
+      })(), 'stage 2 reseats at ' + (S2.reseat_mpa * PSI - 14.7).toFixed(1) + ' psig while stage 1 ' +
+            'stays open to ' + (S1.reseat_mpa * PSI - 14.7).toFixed(1) + ' — the staircase a ' +
+            'single lumped latch cannot express');
+
+  /* ---- THE SAVE MIGRATION (#542) -----------------------------------------------------------
+   * pwr2_shell saves `rl` wholesale and restores it wholesale, so a save written before the
+   * staggered bank carries `safety_open` and NO `stages`. Nothing else in the tree reads an old
+   * relief payload, so this gate is the only thing that can hold the migration. The injection
+   * self-test found this section missing: the "migrates to a SHUT bank" mutation was BLIND. */
+  head('THE SAVE MIGRATION  [a pre-stagger save carries a flag and no stages]');
+  ckT('a legacy LIFTED save comes back passing stage 1\'s full flow, not nothing', (function () {
+        var legacy = { safety_open: true, relieved_kg: 0 };     /* no `stages` key at all */
+        var o = step(legacy, mpaOf(1060));                      /* inside stage 1's blowdown band */
+        return o.safety_open === true &&
+               Math.abs(o.safety_kgs - S1.share * DOC.safety_flow_frac * RATED) < 1e-9;
+      })(), 'the old model passed flow whenever that flag was set; landing on a shut bank would ' +
+            'silently drop a relief path mid-transient');
+  ckT('...and a legacy SHUT save comes back shut, which is the pre-#542 plant exactly',
+      (function () {
+        var legacy = { safety_open: false, relieved_kg: 0 };
+        var o = step(legacy, mpaOf(1060));
+        return o.safety_open === false && o.safety_kgs === 0;
+      })(), '');
 
   /* ---- THE DUMP: HYDRAULICS ONLY ----------------------------------------------------------- */
   head('THE DUMP  [hydraulics here; the POSITION is the control layer\'s, by ruling]');
@@ -266,14 +377,41 @@ var MUTATIONS = [
   ['the block valve is ignored',
    'var advBlock = drivers.adv_block === undefined ? true : !!drivers.adv_block;',
    'var advBlock = true;'],
+  /* #542 re-anchored the latch onto the per-stage loop; these three follow it there. */
   ['THE LATCH IS LOST — a stateless valve that chatters at the setpoint',
-   '    if (!rl.safety_open && P_mpa >= RELIEF.safety_pop_mpa) rl.safety_open = true;\n    else if (rl.safety_open && P_mpa <= reseat) rl.safety_open = false;',
-   '    rl.safety_open = P_mpa >= RELIEF.safety_pop_mpa;'],
+   '      if (!st.open && P_mpa >= S.set_mpa) st.open = true;\n      else if (st.open && P_mpa <= S.reseat_mpa) { st.open = false; st.lift = 0; }',
+   '      st.open = P_mpa >= S.set_mpa;'],
   ['the valve reseats at the POP pressure (no blowdown, so no hysteresis)',
-   'else if (rl.safety_open && P_mpa <= reseat) rl.safety_open = false;',
-   'else if (rl.safety_open && P_mpa <= RELIEF.safety_pop_mpa) rl.safety_open = false;'],
-  ['blowdown inverted — reseat ABOVE pop', 'return RELIEF.safety_pop_mpa * (1 - RELIEF.safety_blowdown);',
-   'return RELIEF.safety_pop_mpa * (1 + RELIEF.safety_blowdown);'],
+   'else if (st.open && P_mpa <= S.reseat_mpa) { st.open = false; st.lift = 0; }',
+   'else if (st.open && P_mpa <= S.set_mpa) { st.open = false; st.lift = 0; }'],
+  ['blowdown inverted — reseat ABOVE pop', 'function reseatOf(setMpa) { return setMpa * (1 - RELIEF.safety_blowdown); }',
+   'function reseatOf(setMpa) { return setMpa * (1 + RELIEF.safety_blowdown); }'],
+  /* ---- #542 ITSELF, replayed. The top one IS the shipped defect. ---- */
+  ['#542: THE LIFT RAMP IS ANCHORED AT THE RESEAT, NOT THE SETPOINT (the shipped defect)',
+   '        var lift = (P_mpa - S.set_mpa) / S.band_mpa;',
+   '        var lift = (P_mpa - S.reseat_mpa) / S.band_mpa;'],
+  ['#542: the RATCHET is dropped — a pop valve that modulates back down as pressure falls',
+   '        if (lift > st.lift) st.lift = lift;          /* THE RATCHET */',
+   '        st.lift = lift;'],
+  ['#542: the two sourced stages collapse onto one setpoint (the stagger deleted)',
+   '    safety_stage2_psig:  1140.0,', '    safety_stage2_psig:  1085.0,'],
+  ['#542: the sourced capacity split is replaced by an even one',
+   '    safety_stage1_lbhr:  797689.0,\n    safety_stage2_lbhr:  3 * 837600.0,',
+   '    safety_stage1_lbhr:  1000000.0,\n    safety_stage2_lbhr:  1000000.0,'],
+  ['#542: the accumulation band moves off the sourced +3 %',
+   '    safety_accumulation: 0.03,', '    safety_accumulation: 0.12,'],
+  ['#542: a stage reseats on the BANK\'s reseat instead of its own',
+   '        reseat_mpa: reseatOf(set),', '        reseat_mpa: reseatOf(RELIEF.safety_pop_mpa),'],
+  /* ⚠ NOT `rl.stages[0].open`, which the injection self-test proved is a NO-OP: stage 1's
+   * setpoint AND its reseat both sit below stage 2's, so on any continuous pressure path stage 2
+   * can never be open while stage 1 is shut, and the two expressions are identical. A mutation
+   * that changes nothing reports as "blind spot" and is really a mutation that is not one. The
+   * TOP stage is the half that can genuinely go missing. */
+  ['#542: the bank flag reports only the TOP stage (a lifting first valve the board cannot see)',
+   '    rl.safety_open = anyOpen;', '    rl.safety_open = rl.stages[1].open;'],
+  ['#542: a pre-stagger save migrates to a SHUT bank (a relief path dropped mid-transient)',
+   '      out.push({ open: i === 0 && wasOpen, lift: (i === 0 && wasOpen) ? 1 : 0 });',
+   '      out.push({ open: false, lift: 0 });'],
   ['the safety pop setpoint moves off the sourced Ginna figure',
    'safety_pop_psig:     1085.0,', 'safety_pop_psig:     1234.0,'],
   ['the MPa setpoint is typed instead of derived from the psig figure',
@@ -283,17 +421,17 @@ var MUTATIONS = [
   ['the safety full-lift capacity moves off its sourced fraction',
    'safety_flow_frac:    0.84,', 'safety_flow_frac:    0.50,'],
   ['safety flow no longer clamps at full lift (unbounded with pressure)',
-   '      if (lift > 1) lift = 1;', ''],
+   '        if (lift > 1) lift = 1;', ''],
   ['safety flow STEPS to full capacity instead of ramping',
-   '      var lift = (P_mpa - reseat) / RELIEF.safety_full_lift_mpa;', '      var lift = 1;'],
+   '        var lift = (P_mpa - S.set_mpa) / S.band_mpa;', '        var lift = 1;'],
   ['THE LAYER DECIDES ITS OWN DUMP POSITION (control logic in the engine)',
    '    var demand = drivers.dump_demand === undefined ? 0 : drivers.dump_demand;',
    '    var demand = drivers.dump_demand === undefined ? (P_mpa > 7.03 ? 1 : 0) : drivers.dump_demand;'],
   ['the dump command is trusted unclamped',
    '    if (demand > 1) demand = 1;', ''],
   ['losing the condenser stops the SAFETY valves too',
-   '      safety = lift * RELIEF.safety_flow_frac * rated;',
-   '      safety = avail ? lift * RELIEF.safety_flow_frac * rated : 0;'],
+   '    var safety = safetyFrac * RELIEF.safety_flow_frac * rated;',
+   '    var safety = avail ? safetyFrac * RELIEF.safety_flow_frac * rated : 0;'],
   ['the dump ignores condenser availability',
    '    var dump = avail ? demand * RELIEF.dump_capacity_frac * rated * msivFrac : 0;',
    '    var dump = demand * RELIEF.dump_capacity_frac * rated * msivFrac;'],

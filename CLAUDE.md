@@ -419,7 +419,9 @@ re-querying. Run the query.
   reads them. The FIRST is open: the control kernel silently rewrites or drops PWR2 commands
   (#546, #547). **The save/rewind/restore cluster is CLOSED** (#553/#554/#555/#548/#563 item 3,
   2026-08-27, `PWR2_VALIDATION` §95), and so is **#539** (§96 — the rated steam scale is frozen
-  across all four presets; Mode 4's feed train and code safeties were multiplied by nought).
+  across all four presets; Mode 4's feed train and code safeties were multiplied by nought) and
+  **#542** (§97 — those safeties are now the STAGGERED bank Ginna sources: one valve at 1085 psig,
+  three at 1140, and no more parking 21 psi under its own setpoint).
   Everything else in #535–#566 is untouched — `gh issue list` is the authority.
 - **RBMK and BWR** — on hold, and the source of most remaining backlog. Do not touch.
 
@@ -535,7 +537,9 @@ thing left in the file and it grew about a bullet a session.
   `(false ? ' (partial)' : '')` (#485); make it a function and test the claim, don't spell it. And
   a term that is
   an IDENTITY in the regime you test in is a term nothing tests — 44 green probes agreed with a
-  leg-split formula that computed 0.0 °F on a scrammed core. **A DEGENERATE LATCH reads exactly
+  leg-split formula that computed 0.0 °F on a scrammed core. **A check can SAMPLE THE DEFECT and
+  call it the claim**: "flow RAMPS, it does not step" took both samples BELOW the setpoint, where
+  the mis-anchored ramp lived — certifying a 60 %-of-rated step for as long as it existed (#542). **A DEGENERATE LATCH reads exactly
   like a working feature** (rescued from the #403/#433 bullet on eviction, 2026-08-12): a no-dt
   harness left `held_within_s` permanently satisfied (age `0 <= 60` for ever) and three green
   probes certified an isolation that never once fired. **And the OBSERVER is where

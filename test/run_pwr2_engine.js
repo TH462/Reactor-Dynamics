@@ -1320,7 +1320,14 @@ function runSuite(RD, rec, quiet, only) {
     e.advBlock = true;
     var pk = 0, op = false, t;
     for (var i = 0; i < 50; i++) {
-      e.sg.P = 8.2;                      /* 1189 psia — 104 psi above the sourced 1085 psig pop */
+      /* 8.3 MPa = 1189.1 psig, ABOVE the sourced 1174.2 psig at which the bank's top three
+       * valves reach full lift (#542, Ginna UFSAR ch10 §10.3.2.4 + table: 1140 psig +3 %
+       * accumulation). It was 8.2 MPa = 1174.6 psig, which clears that point by 0.4 psi —
+       * measured green, but a fixture standing 0.4 psi from the thing it asserts is a fixture
+       * waiting to go red on a rounding change. Measured on BOTH the pre-#542 lumped ramp and
+       * the staggered bank, 8.3 MPa reads 0.84 x rated, so this is a better fixture rather than
+       * one refitted to the change (HR10). */
+      e.sg.P = 8.3;
       t = EN.step(e, DT);
       if (t.sg_safety_open) op = true;
       if (t.sg_safety_kgs > pk) pk = t.sg_safety_kgs;

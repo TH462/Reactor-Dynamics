@@ -5822,3 +5822,141 @@ Mode 4's permanently-NaN channel as its fixture (it now **injects** its own NaN)
 
 **Still open:** **#542** — the code-safety bank parks cracked open 21.5 psi below its own pop
 setpoint and never reseats. Same valves; this restored their **capacity**, not their **ramp**.
+
+---
+
+## 97. #542 — THE SAFETY BANK IS THE STAGGERED ONE THE SOURCE DESCRIBES — 2026-08-27
+
+§96 closed with *"this restored their capacity, not their ramp."* This is the ramp.
+
+**The defect.** `pwr2_relief.js` computed lift as `(P - reseat) / safety_full_lift_mpa`, so the
+ramp began at the **reseat** pressure, 36.3 psi below the pop. Two consequences, and the second
+is the one the player sees:
+
+- **71.5 % of the ramp lay below the setpoint**, so the bank went from shut to **98.63 kg/s =
+  60.05 % of rated in ONE 0.02 s step** at first lift — precisely the step the file's own
+  declaration said the ramp existed to prevent.
+- **The whole blowdown band was a continuum of stable partial-lift equilibria**, so the bank
+  could settle anywhere inside it and stay there.
+
+The declared band was also wrong 3.5x: `safety_full_lift_mpa` was declared "first lift to FULL
+lift" = 0.35 MPa (50.8 psi); measured from the pop it was **0.0998 MPa (14.5 psi)**.
+
+**Measured before** (hot full power stepped to 12.8 MWe, condenser available, no scram):
+
+| t | safety flow | % of rated | SG pressure |
+|---|---|---|---|
+| 300 s | 41.60 kg/s | 25.33 % | 1064.0 psig |
+| 900 s | 41.34 | 25.17 | 1063.9 |
+| 1800 s | 39.73 | 24.19 | 1063.3 |
+| 3600 s | 39.68 | 24.16 | 1063.3 |
+
+**21 psi BELOW its own 1085 psig setpoint**, where no valve in a real staggered bank has one.
+**0 reseats in the hour, 750,078 lbm (340,230 kg) vented**, plant otherwise stable. Meanwhile
+`sg_safety_open` lit "SG Safeties Lifting" on a board whose help text tells the player these
+valves *"lift on steam pressure alone and reseat when it falls back."*
+
+### The evidence pass found the whole bank in this plant's own anchor
+
+The lump was standing in for something the corpus already had. **Ginna UFSAR ch10 §10.3.2.4
+(ML20339A040)**, verbatim: *"There are four main steam safety valves (MSSV) for each steam line.
+**The first valve lifts at 1085 psig and the remaining three valves are set to lift at 1140
+psig.** The minimum total relieving capacity is 6.58 x 10^6 lbm/hr"* — and the same chapter's
+equipment table gives the capacities and the accumulation: *"797,689: two valves at 1085 psig
++3% accumulation / 837,600: six valves at 1140 psig +3% accumulation"* (eight valves = four per
+line; this single-loop plant carries one line's worth). **Ginna TS Bases B 3.7.1 (ML20339A221)**
+says why: *"The MSSV design includes staggered setpoints so that only the needed valves will
+actuate. Staggered setpoints reduce the potential for valve chattering that is due to steam
+pressure insufficient to fully open all valves following a turbine/reactor trip."*
+
+The same Bases also make the old behaviour a **named abnormality**: OPERABILITY is *"the ability
+to open within the setpoint tolerances, relieve SG overpressure, and reseat when pressure has
+been reduced"*, and *"failure to reclose once opened"* is listed as an **active failure mode**.
+The model shipped that failure mode as normal operation.
+
+So the `[derived]` 0.35 MPa is **retired** and every constant in the bank is sourced:
+
+| stage | setpoint | full lift (+3 %) | reseat (3.3 % blowdown) | share of capacity |
+|---|---|---|---|---|
+| 1 valve | 1085 psig | 1117.6 psig | 1048.7 psig | 797,689 / 3,310,489 = **0.24096** |
+| 3 valves | 1140 psig | 1174.2 psig | 1101.9 psig | **0.75904** |
+
+**Both of the source's own cross-checks land.** 2 lines x (797,689 + 3 x 837,600) =
+**6,620,978 lb/hr** against §10.3.2.4's stated 6.58 x 10^6 — 0.6 % apart. And full bank lift at
+1174.2 psig is **98.4 % of 110 % of the 1085 psig first lift**, satisfying B 3.7.1's *"limit the
+secondary system to <= 110% of design pressure when passing 100% of design flow."*
+
+### The ratchet, not the re-anchor, is what fixes it
+
+Re-anchoring the ramp at the setpoint only **moves** the park — a continuous ramp still admits a
+stable partial lift wherever relief meets production. What abolishes it is that a **pop-type
+safety valve does not modulate back down**: it snaps open and holds until blowdown. Each stage
+therefore ratchets its lift while latched, which makes its flow **independent of pressure below
+its setpoint**, and a constant cannot be an equilibrium. One line:
+
+```
+if (lift > st.lift) st.lift = lift;          /* THE RATCHET */
+```
+
+**Measured after**, same ride:
+
+| t | safety flow | % of rated | SG pressure |
+|---|---|---|---|
+| first lift | **0.113 kg/s** | **0.07 %** (was 60.2 %) | 1085.4 psig |
+| 300 s | 33.24 kg/s | 20.24 % | 1113.8 psig |
+| 900 s | 33.24 | 20.24 | 1111.8 |
+| 1800 s | 33.24 | 20.24 | 1100.6 |
+| 3600 s | 33.24 | 20.24 | **1094.6 psig** |
+
+The bank now parks **above** its setpoint with stage 1 alone at full lift — a real physical
+state, not a spurious equilibrium — and 20.24 % of rated is exactly `0.24096 x 0.84`. It still
+does not reseat on that ride, and **that is correct**: the plant genuinely makes more steam than
+its sinks take, and the indication now means what the board says it means.
+
+**The board-reachable path reseats.** Main steam isolation valve closed at power: first lift
+0.004 kg/s (0.00 % of rated) at 1085.1 psig, **RESEAT at t = 109.0 s at 1048.7 psig** — the
+blowdown point exactly — and seated for the remaining 791 s. Before: first lift 60.1 % of rated
+in one step, then cracked past 600 s at ~1049.5 psig.
+
+**Unchanged, checked:** turbine trip + scram never lifts the bank at all (secondary settles at
+1050.2 psig on the ADV band), and `safety_pop_psig`, `safety_flow_frac`, `safety_blowdown`, the
+ADV, the steam dump and the main steam isolation valve are untouched. `sg_safety_open` keeps its
+name and meaning, so the `true_state` contract does not move.
+
+**Save migration** (the `msiv` pattern): the shell saves and restores `rl` wholesale, so a
+pre-stagger save carries `safety_open` and no `stages`. A **lifted** legacy flag seeds stage 1
+open at full lift — the old model passed flow whenever that flag was set, and landing on a shut
+bank would silently drop a relief path mid-transient. A **shut** flag lands on a shut bank, which
+is the pre-#542 plant exactly. Construction and restore travel the same `seedStages` path.
+
+### Two traps, both found by the injection self-test rather than by reading
+
+**1. The check forbidding the step could never see it (HR10).** `run_pwr2_relief`'s *"flow RAMPS
+between first lift and full lift, it does not step"* sampled at reseat+0.05 MPa (1056.0 psig) and
+reseat+0.20 MPa (1078.0 psig) — **both below the 1085 psig pop**. It was walking the part of the
+ramp that lay under the setpoint, i.e. the defect, and reported green for as long as the defect
+existed. Every new check is anchored on the pop or on a stage setpoint, never on the reseat, and
+each was confirmed RED against the pre-fix source before being trusted.
+
+**2. A "blind spot" that was really a mutation that was not one.** Flipping the bank flag from
+`anyOpen` to `rl.stages[0].open` reddened nothing — correctly: stage 1's setpoint **and** its
+reseat both sit below stage 2's, so on any continuous pressure path stage 2 can never be open
+while stage 1 is shut, and the two expressions are identical. The blind-spot report was the gate
+telling the truth about an equivalent mutant. Re-pointed at `rl.stages[1].open`, which is the
+half that can genuinely go missing, and caught.
+
+**Gates.** `run_pwr2_relief` 43 -> **56 checks**, mutations 25 -> **33**, 0 blind spots.
+`run_pwr2_engine` 97/97 unchanged — its `safetyPeak` fixture forced `sg.P = 8.2` MPa (1174.6
+psig), which clears the new 1174.2 psig full-lift point by **0.4 psi**; measured green there, but
+raised to **8.3 MPa** because a fixture standing 0.4 psi from the thing it asserts is one
+rounding change from red. It reads 0.84 x rated on **both** the old lumped ramp and the staggered
+bank, so it is a better fixture rather than one refitted to the change (HR10).
+`run_pwr2_loadfollow` 36/36, `run_pwr2_shell` 82/82, `run_pwr2_board` 36/36, all unchanged — the
+A5 acceptance (`sgP < 8.0` with the turbine removed) lands at 7.846 MPa (1123.3 psig), 22 psi of
+margin.
+
+**Still open, and NOT this issue:** the ride above runs an hour at 64 % power with the turbine at
+12.8 MWe and **no scram** (`rps_scrammed` never sets). A real Ginna trips here. That is a
+protection question, not a relief one. **#478** files the analogous reseat-anchored ramp against
+the RETIRED engine (`pwr_steam_generator.js:299-303`, denominator `(pop - reseat)`) — same class,
+untouched, that engine is not being fixed.

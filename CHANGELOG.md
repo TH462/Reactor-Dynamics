@@ -30,6 +30,52 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
 
 ## [Unreleased]
 
+### Fixed (#542 — the main steam safety valves are a staggered bank, not a lumped ramp, 2026-08-27)
+
+The secondary code safeties' lift ramp was anchored at the **reseat** pressure, not the pop, so
+**71.5 % of it lay below the 1085 psig setpoint**. Two consequences, both measured on the shipped
+plant (hot full power stepped to 12.8 MWe, condenser available, no scram):
+
+- the bank went from shut to **98.63 kg/s = 60.05 % of rated steam flow in ONE 0.02 s step** at
+  first lift — the exact step the file's own declaration said the ramp existed to prevent;
+- the whole blowdown band was a continuum of stable partial-lift equilibria, so the bank **parked
+  for an hour at 24.2 % of rated and 1063.3 psig — 21 psi BELOW its own setpoint**, with **0
+  reseats** and **750,078 lbm (340,230 kg)** vented to atmosphere, while the board annunciated
+  "SG Safeties Lifting" over help text promising it would *"reseat when it falls back."*
+
+The evidence pass found the whole bank in this plant's own anchor, so the `[derived]` 0.35 MPa
+lumped band is **retired** and every constant is now sourced. **Ginna UFSAR ch10 §10.3.2.4
+(ML20339A040):** *"The first valve lifts at 1085 psig and the remaining three valves are set to
+lift at 1140 psig"*, with the same chapter's equipment table giving *"797,689: two valves at 1085
+psig +3% accumulation / 837,600: six valves at 1140 psig +3% accumulation."* **Ginna TS Bases B
+3.7.1 (ML20339A221)** supplies the mechanism (*"staggered setpoints so that only the needed valves
+will actuate"*) and makes the old behaviour a named abnormality — *"failure to reclose once
+opened"* is listed as an **active failure mode**, and the model shipped it as normal operation.
+
+Each stage now latches on its own setpoint, ramps over its own +3 % accumulation, and reseats on
+its own 3.3 % blowdown. **The load-bearing part is the ratchet**, not the re-anchor: a pop-type
+safety valve does not modulate back down as pressure falls, so holding its lift while latched makes
+the flow independent of pressure below the setpoint — and a constant cannot be an equilibrium.
+Re-anchoring alone would only have moved the park.
+
+Measured after: first lift **0.07 % of rated** (was 60.2 %), the bank parks at **1094–1114 psig,
+above its setpoint**, and the board-reachable path — main steam isolation valve closed at power —
+**reseats at t = 109.0 s at 1048.7 psig** and stays seated (it had stayed cracked past 600 s). Both
+of the source's own cross-checks land: 6,620,978 lb/hr against §10.3.2.4's stated 6.58 × 10⁶, and
+full bank lift at 1174.2 psig = 98.4 % of B 3.7.1's 110 %-of-design ceiling. Turbine trip + scram
+still never lifts the bank; `sg_safety_open` keeps its name and meaning, so the `true_state`
+contract does not move.
+
+**Migration note.** `rl` gains per-stage `stages` state, which the shell saves and restores
+wholesale. A pre-#542 save carries `safety_open` and no `stages`: a **lifted** flag seeds stage 1
+open at full lift (the old model passed flow whenever that flag was set, and landing on a shut bank
+would silently drop a relief path mid-transient); a **shut** flag lands on a shut bank, which is the
+pre-#542 plant exactly. Construction and restore travel the same `seedStages` path.
+
+Gates: `run_pwr2_relief` 43 → **56 checks**, mutations 25 → **33**, 0 blind spots — including a
+replay of the shipped defect itself. Full write-up, both traps the injection self-test found, and
+the before/after tables: `Blueprint/PWR2_VALIDATION.md` §97.
+
 ### Fixed (#539 — the rated steam scale is frozen; Mode 4's secondary is real, 2026-08-27)
 
 `rated_steam` is **every secondary normalization's denominator** — main feed is

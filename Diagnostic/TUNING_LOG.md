@@ -29,6 +29,68 @@ and the user-visible summary in `CHANGELOG.md`. This file points at those and tr
 
 ---
 
+## Session log — 2026-08-27-develop-d (#542 — the safety bank is staggered, and the ramp was anchored at the reseat)
+
+**RESOLVED: #542** (`#534` umbrella, priority-high, type-bug). `engines/pwr2/pwr2_relief.js`
+computed main-steam-safety lift as `(P - reseat) / safety_full_lift_mpa`, so the ramp started
+36.3 psi **below** the 1085 psig pop and 71.5 % of it lay under the setpoint. Measured, hot full
+power stepped to 12.8 MWe: shut → **98.63 kg/s = 60.05 % of rated in ONE 0.02 s step**, then a
+one-hour park at **24.2 % of rated and 1063.3 psig — 21 psi UNDER its own setpoint**, 0 reseats,
+750,078 lbm vented. The declared band was wrong 3.5x too: "first lift to FULL lift" = 0.35 MPa
+(50.8 psi) against an actual 0.0998 MPa (14.5 psi) measured from the pop.
+
+**The evidence pass replaced a lump with the real bank.** `find_source` turned up the whole
+arrangement in this plant's own anchor — Ginna UFSAR ch10 §10.3.2.4 + the ch10 equipment table
+(ML20339A040): ONE valve at 1085 psig / 797,689 lb/hr and THREE at 1140 psig / 837,600 lb/hr each,
+"+3% accumulation"; TS Bases B 3.7.1 (ML20339A221) supplies the mechanism and lists *"failure to
+reclose once opened"* as an **active failure mode**, which is what the model was shipping as normal
+operation. `safety_full_lift_mpa` is **retired**; both of the source's own cross-checks land
+(6,620,978 vs the stated 6.58e6 lb/hr; full lift 1174.2 psig = 98.4 % of the 110 %-of-design
+ceiling). Full write-up, tables and traps: **`Blueprint/PWR2_VALIDATION.md` §97**.
+
+**The trap worth carrying: the re-anchor is NOT the fix.** Anchoring the ramp at the setpoint only
+*moves* the park — a continuous ramp still admits a stable partial lift wherever relief meets
+production. What abolishes it is that a pop valve **does not modulate back down**: ratcheting each
+stage's lift while latched makes its flow *independent of pressure* below its setpoint, and a
+constant cannot be an equilibrium. One line (`if (lift > st.lift) st.lift = lift;`) carries the
+whole fix; the sourced stagger is what makes the rest of the curve honest.
+
+**Second trap, HR10 in its purest form.** The check that existed to forbid exactly this step —
+`run_pwr2_relief`'s *"flow RAMPS between first lift and full lift, it does not step"* — sampled at
+reseat+0.05 MPa (1056.0 psig) and reseat+0.20 MPa (1078.0 psig), **both below the 1085 psig pop**.
+It was walking the sub-setpoint part of the ramp, i.e. the defect itself, and stayed green for as
+long as the defect existed. Same file, `:113` computed its full-lift fixture as
+`reseat + safety_full_lift_mpa + 0.5` — 1172.0 psig, which is **below** the sourced 1174.2 psig
+full-bank lift, so it would have read 0.799 x rated. Every new check is anchored on the pop or on a
+stage setpoint, never on the reseat, and each was confirmed RED against the pre-fix source first.
+
+**Third trap: a "blind spot" that was an equivalent mutant.** A mutation flipping the bank flag from
+`anyOpen` to `rl.stages[0].open` reddened nothing, and correctly so — stage 1's setpoint AND its
+reseat both sit below stage 2's, so on any continuous pressure path stage 2 can never be open while
+stage 1 is shut. The gate was telling the truth about a mutation that changes nothing. Re-pointed at
+`rl.stages[1].open` (the half that can genuinely go missing) and caught. The injection self-test
+also found the save migration untested — the "migrates to a SHUT bank" mutation was blind until a
+`THE SAVE MIGRATION` section was written; nothing else in the tree reads an old relief payload.
+
+**Measured after.** First lift **0.07 % of rated** (was 60.2 %); parks at **1094-1114 psig, ABOVE
+the setpoint**; the board-reachable main-steam-isolation-valve path **reseats at t = 109.0 s at
+1048.7 psig** and stays seated (before: cracked past 600 s). Turbine trip + scram still never lifts
+the bank at all. `sg_safety_open` unchanged in name and meaning — no `true_state` contract move.
+
+**Gates.** `run_pwr2_relief` 43 → **56 checks**, mutations 25 → **33**, 0 blind spots.
+`run_pwr2_engine` 97/97, `run_pwr2_loadfollow` 36/36, `run_pwr2_shell` 82/82, `run_pwr2_board`
+36/36 — all unchanged. One fixture moved, declared: `run_pwr2_engine`'s `safetyPeak` forced
+`sg.P = 8.2` MPa (1174.6 psig), clearing the new full-lift point by **0.4 psi**; measured green
+there, raised to **8.3 MPa** because it reads 0.84 x rated on *both* the old lumped ramp and the
+staggered bank, which makes it a better fixture rather than one refitted to the change (HR10).
+
+**Still open, and not this issue.** The one-hour ride sits at 64 % power with the turbine at
+12.8 MWe and `rps_scrammed` never setting. A real Ginna trips here; that is a protection question.
+**#478** files the same reseat-anchored ramp against the RETIRED engine
+(`pwr_steam_generator.js:299-303`) — untouched, that engine is not being fixed.
+
+---
+
 ## Session log — 2026-08-27-develop-c (#539 — the rated steam scale is frozen)
 
 **What it is.** `rated_steam` is every secondary normalization's denominator, and
