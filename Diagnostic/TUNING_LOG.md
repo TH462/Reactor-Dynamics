@@ -85,7 +85,19 @@ there, raised to **8.3 MPa** because it reads 0.84 x rated on *both* the old lum
 staggered bank, which makes it a better fixture rather than one refitted to the change (HR10).
 
 **Still open, and not this issue.** The one-hour ride sits at 64 % power with the turbine at
-12.8 MWe and `rps_scrammed` never setting. A real Ginna trips here; that is a protection question.
+12.8 MWe and `rps_scrammed` never setting. **Asked and MEASURED, and there is nothing to file**:
+every ARMED protection function stays positive for the whole hour — closest approach high
+pressurizer level **+0.0352 frac**, then low loop flow +0.0773, overpower delta-T +0.1057,
+overtemperature delta-T +0.2311, high pressurizer pressure +0.5909 MPa (85.7 psi). **Zero
+negative margins.** With rods in MANUAL the plant self-limits hot on moderator feedback and the
+relief ladder carries the rest — `run_pwr2_loadfollow` §42 already records that shape.
+**THE TRAP (HR12 catching its author):** the first pass filtered on `f.available` and reported
+`hi_flux_lo` at **−0.6257**, an exceeded trip that never fired — which reads exactly like the
+defect being hunted. `available` is not `armed`: the LOW-setting high-flux trip is blocked by
+P-10 above ~8 % power and is never armed on this ride. `pwr2_protection.js:580` defines `armed`
+as `available && !gated` for this reason, its comment saying *"the setpoint is a line the plant
+will actually trip on."* The earlier "a real Ginna trips here" was unmeasured and is **withdrawn**
+— it had already reached the §97 draft, the `14bc653` commit message and the #542 close comment.
 **#478** files the same reseat-anchored ramp against the RETIRED engine
 (`pwr_steam_generator.js:299-303`) — untouched, that engine is not being fixed.
 
