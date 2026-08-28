@@ -29,6 +29,60 @@ and the user-visible summary in `CHANGELOG.md`. This file points at those and tr
 
 ---
 
+## Session log — 2026-08-27-develop-g (#570 — gating the seam where prose and plant come apart)
+
+**RESOLVED: #570** *(OWNER: "Build by your recommendation.", on a ranked proposal of three)*. Full
+write-up: `Blueprint/PWR2_VALIDATION.md` §101.
+
+### Why
+
+Two clusters in two days were caused by design-bearing prose nobody re-measured — and **the second
+was prose written the day before by this agent**. The two are not the same failure:
+
+| | shape | gateable |
+|---|---|---|
+| #562 | prose claimed a capability the code lacked (`CONTEXT.md`, Indications, `Manuals/03` all described an AFW throttle and level hold that did not exist) | partly — both FIELDS existed, `afw_throttle_pct` hard-coded to the run lamp |
+| §99.4 | prose was ACCURATE, an absence was inferred from it (a module header named a two-consequence function; no consumer of the field I expected, so I called it unbuilt — it was built under another name) | **no** — a procedure failure |
+
+### Built
+
+1. **`run_pwr2_roundtrip`** (NEW, 20 checks / 2 mutations, 18 s) — two engines, same IC, stepped
+   identically, one given the command; the difference is the effect. **Its own draft 1 asked "did
+   anything move" on ONE engine and passed 28/28 with zero possible failures** — the plant is
+   running, so charging flow / feed speed / governor move whatever you press. **A gate built to
+   catch hollow checks was hollow on its first draft.** Draft 2 discriminated but 11 of 11 "dead"
+   were the fixture (idempotent verbs sent twice; manual levers an auto channel overwrites) — the
+   MANUAL-FIRST directive arriving as a test-design constraint.
+2. **`run_manual_commands`** (NEW, 3 checks) — `Manuals/03` §18 vs the shipped registries. **4 of 46
+   documented actions were REFUSED by the plant the site runs**: `open_porv` (#547's action name),
+   `set_steam_demand`, `set_sr_detector`, `set_condenser_cw_temp`, plus a swallowed steam-dump
+   payload. All corrected.
+3. **One rule BROADENED, not added** — CLAUDE.md's coverage bullet now covers *"X is not built"*,
+   names a module header as an inherited claim, and says **grep for the EFFECT, never the name you
+   expected it to have.** A sixth rule nobody reads is worse than a fifth that binds.
+
+### Two defects fell out of building them
+
+- **STEAM DUMP OPEN was a live button that could only throw** — its refusal is raised INSIDE the
+  MAPPED `set_steam_dump` handler, so neither the #567 registry sweep (written hours earlier for
+  exactly this class) nor `run_pwr2_kernel` band 4 could see it. **Two gates for the class, both
+  blind, found by a throwaway prototype for a different check.** Darkened via
+  `steam_dump_open_fixed`; the board sweep extended to "errors at all, unless declared conditional
+  with the condition named".
+- **`set_steam_dump` silently accepted `{mode:'manual'}` and `{pct}`** — inert, and documented in
+  the manual as supported, which is how a latent dead command becomes a live one. Both refuse now.
+
+### Still ungated, and said so rather than papered over
+
+**Prose that is wrong about a MECHANISM while every symbol it names exists.** #562's *"capacity ×
+throttle × level hold"* would pass all three of these today if the throttle existed and the hold did
+not. The round-trip gate catches the dead-lever half; nothing catches a false *description* of a
+live lever. Inventing a fourth gate that pretended to would be worse than saying so. The honest
+mitigation is fewer load-bearing assertions in comments — and agent comment volume is part of the
+mechanism, which no runner fixes.
+
+---
+
 ## Session log — 2026-08-27-develop-f (#558 + #551/#559 + #567 + #560 — the turbine latch and the refusal that reaches the screen)
 
 **RESOLVED: #558, #551, #559, #567, #560** (all `#534` umbrella). The cluster #567's own

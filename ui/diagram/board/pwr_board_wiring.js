@@ -3207,6 +3207,10 @@
       //  the same way; the pattern is kept here, not the stale id.)
       // SR detector: the plant declares the channel has no operator lever (#567).
       if (item.id === 'bdSrDetector') return CS(s).sr_detector_fixed === true;
+      // STEAM DUMP OPEN: no manual full-open lever on this plant (#570). Its refusal came from
+      // INSIDE the MAPPED handler, not the REFUSED registry, which is why the #567 sweep missed
+      // it — a live button that could only throw. AUTO and CLOSED beside it stay live.
+      if (item.id === 'imrppquqg16') return CS(s).steam_dump_open_fixed === true;
       return false;
     },
     // The number-box mirror of buttonDisabled (#506): a setpoint box whose machinery the

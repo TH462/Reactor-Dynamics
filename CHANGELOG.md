@@ -30,6 +30,36 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
 
 ## [Unreleased]
 
+### Added (#570 — gating the seam where prose and plant come apart, 2026-08-27)
+
+Two clusters in two days were caused by design-bearing prose nobody re-measured, and the second was
+prose written the day before. *(OWNER: "Build by your recommendation.")* Three pieces, in the order
+recommended. Full write-up: `Blueprint/PWR2_VALIDATION.md` §101.
+
+- **`run_pwr2_roundtrip` — does a command move anything the player can read back?** Two engines from
+  the same initial condition, stepped identically, one given the command; the difference between
+  them is the command's effect. Built because #562 shipped a published `afw_throttle_pct` hard-coded
+  to the run lamp — **a constant dressed as a variable reads exactly like a working one**, and every
+  gate we had agreed with it. Its own first draft asked "did anything move" on ONE engine and passed
+  **28 of 28 with zero possible failures**, because the plant is running; the control leg is the
+  whole test. Self-tests by restoring the #562 defect verbatim.
+- **`run_manual_commands` — the operator's manual against the shipped command surface.** On its first
+  run: **4 of 46 documented actions are REFUSED by the plant the site runs.** `open_porv` (the
+  operator path is `open_porv_manual` — the action name at the centre of #547), `set_steam_demand`,
+  `set_sr_detector` and `set_condenser_cw_temp`, plus a fifth row documenting a steam-dump payload
+  the shell silently swallowed. All corrected.
+- **One rule broadened, not added.** `CLAUDE.md` already said *"to prove something is untested, break
+  it and run the gate"*. It now covers *"X is not built"* too, names a module header as an inherited
+  claim, and says: **grep for the EFFECT, never the name you expected it to have.**
+
+**Two defects fell out of building them.** The **STEAM DUMP OPEN** button was live and could only
+throw — its refusal is raised inside a MAPPED handler, so neither the #567 registry sweep nor
+`run_pwr2_kernel` band 4 could see it. It darkens now (AUTO and CLOSED stay live), and the board
+sweep was extended: an enabled button that errors at all is dead unless its refusal is **conditional
+and the condition is named**. And `set_steam_dump` silently accepted `{mode:'manual'}` and `{pct}`;
+both refuse by name.
+
+
 ### Fixed (#558 + #551/#559 + #567 + #560 — the turbine comes back, and the board says why, 2026-08-27)
 
 On the plant the site runs, **one scram permanently ended electrical generation for that session**,

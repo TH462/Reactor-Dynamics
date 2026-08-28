@@ -575,9 +575,15 @@ async function testEsfArmButtons(page) {
    * is the turbine LATCH now (#551/#559), an enabled control with a real command behind it —
    * and SR DET JOINED it, because the plant publishes `sr_detector_fixed` and the board reads
    * it. Net 3 either way, which is exactly why a count alone would have missed the swap;
-   * `mustInclude` is what pins identity, and it is the half that moved. */
-  var expect = { pwr: 0, pwr2: 3 };
-  var mustInclude = ['AUTO', 'ROD AUTO', 'SR DET'];
+   * `mustInclude` is what pins identity, and it is the half that moved.
+   *
+   * AND AGAIN WITH #570: STEAM DUMP **OPEN** joined. It was a live button that could ONLY
+   * throw — the dump is controller-driven and has no manual full-open lever — and its refusal
+   * is raised INSIDE the MAPPED `set_steam_dump` handler, so neither the #567 registry sweep
+   * nor run_pwr2_kernel band 4 could see it. AUTO and CLOSED beside it stay live, which is why
+   * the label here is OPEN and not the whole dump panel. */
+  var expect = { pwr: 0, pwr2: 4 };
+  var mustInclude = ['AUTO', 'ROD AUTO', 'SR DET', 'OPEN'];
   for (var i = 0; i < 2; i++) {
     var eng = ['pwr', 'pwr2'][i];
     await page.goto('http://127.0.0.1:' + PORT + '/ui/shell.html?engine=' + eng,

@@ -6536,3 +6536,108 @@ casualties that drop the circulating water:
 Scanner check. `verify_e2e_ui`'s disabled-button set was **re-derived, not bumped**: FOLLOW left it
 (that tile is the latch now) and SR DET joined it — net 3 either way, which is exactly why the
 count alone would have missed the swap, and why `mustInclude` is the half that matters.
+
+---
+
+## 101. #570 — GATING THE SEAM WHERE PROSE AND PLANT COME APART — 2026-08-27
+
+*(OWNER: "Build by your recommendation.", 2026-08-27, on a ranked proposal of three.)*
+
+Two clusters in two days were caused by design-bearing prose nobody re-measured, and the second was
+prose written the day before by this agent. The two are **not the same failure**, and separating
+them is what made the work tractable.
+
+| | shape | gateable? |
+|---|---|---|
+| **#562** | prose claimed a capability the code lacked — `CONTEXT.md`, the Indications tab and `Manuals/03` all described an AFW throttle and level hold that did not exist | **partly.** Both FIELDS existed; `afw_throttle_pct` was published and hard-coded `running ? 100 : 0`. A constant dressed as a variable reads exactly like a working one |
+| **§99.4** | prose was ACCURATE and an absence was inferred from it — `pwr2_protection.js`'s header named a two-consequence function, no `turbine_trip_hi_level` consumer existed, so the trip was reported unbuilt. It was built, under the FWI latch | **no.** A procedure failure, and the procedure already existed |
+
+### 101.1 The one that needed no new rule
+
+`CLAUDE.md` already carried: *"A claim about COVERAGE is an unmeasured claim — prove it by
+injection. To prove something is untested, break it and run the gate."* Applied to the **plant**
+instead of the suite, that catches §99.4 exactly — delete the FWI line's `tb.tripped = true` and
+everything changes, so the trip exists. It was not applied because the bullet said *untested*, not
+*unbuilt*.
+
+**Broadened rather than added to**, because a sixth rule nobody reads is worse than a fifth that
+binds. The bullet now covers *"X is not built"*, names **a module header as an inherited claim**,
+and ends with the operative instruction: **grep for the EFFECT, never the name you expected it to
+have.**
+
+### 101.2 `run_pwr2_roundtrip` — and its own first two drafts are the finding
+
+The question no existing gate asked: **press it, and does the plant's own published `control_state`
+answer differently than if you had not?**
+
+- **DRAFT 1** snapshotted `control_state` on one engine, before and after. **28 of 28 passed, 0
+  failed** — because the plant is running: charging flow, feed pump speed, governor position and
+  the pump list move every step whatever you press. **A gate built to catch hollow checks was
+  itself hollow on its first draft**, and only running it said so.
+- **DRAFT 2** added the control leg — two engines from the same IC, stepped identically, one given
+  the command — and discriminated 17 live / 11 not. But **11 of 11 were the FIXTURE**: idempotent
+  verbs sent twice (`{} -> {}`), and manual levers an automation channel owns and overwrites within
+  a step. Both are the **MANUAL-FIRST directive arriving as a test-design constraint**: to test a
+  manual lever, take the automation off it; to test a valve, open it and then shut it.
+- **DRAFT 3** — the shipped form — left one real defect and one finding the runner could not make
+  itself (below).
+
+**It is verified by injection, on the defect it exists for.** The self-test restores #562 verbatim
+— publish the throttle readback as the run lamp — and the runner goes red on exactly the check that
+should catch it. A second mutation freezes the pressurizer setpoint readback. 20 checks, 2/2
+mutations, 18 s.
+
+**The determinism check earns its place**: two untouched engines must be bit-identical after 90 s,
+or the control leg is noise and every result below it is meaningless. It is asserted first, and the
+sweep is skipped if it fails rather than reporting differences nobody can trust.
+
+### 101.3 What the prototype found that the gate could not
+
+**The STEAM DUMP OPEN button was live on the board and could only throw** — and neither
+`run_pwr2_kernel` band 4 nor the `run_pwr2_board` REFUSED-registry check added hours earlier for
+#567 could see it, **because the refusal is raised INSIDE the MAPPED `set_steam_dump` handler**
+rather than from the REFUSED registry. Two gates written for exactly this class, both blind to it,
+found by a throwaway prototype for a different check.
+
+Fixed the #567 way: the plant publishes `steam_dump_open_fixed` and the board darkens the button;
+AUTO and CLOSED stay live. And the sweep was extended — **an enabled button that errors at all is
+dead unless its refusal is CONDITIONAL**, with the condition named in a declared list (RHR
+ALIGN/ISOLATE's sourced 425 psig permissive, the turbine latch's six holds, the AFW stop's reset
+window). An entry with no condition is a control that can never work.
+
+`set_steam_dump` also **silently swallowed `{mode:'manual'}` and `{pct}`** — accepted, inert, and
+documented in `Manuals/03` §18 as a supported payload, which is how a latent dead command becomes a
+live one. Both refuse by name now.
+
+### 101.4 `run_manual_commands` — the cheapest check on the widest seam
+
+`Manuals/03` §18 is the operator's command reference and nothing checked it. **On its first run it
+found 4 of 46 documented actions REFUSED by the plant the site runs:**
+
+| documented | the plant's refusal |
+|---|---|
+| `open_porv` (§6.1) | the operator path is `open_porv_manual` — **#547's action name**, the one the control kernel used to rewrite into |
+| `set_steam_demand` (§12.2) | the turbine is dispatched by load target only |
+| `set_sr_detector` (§4.3) | the channel auto-energizes below the P-6 class point |
+| `set_condenser_cw_temp` (§13.1) | the condenser model has CW pumps on/off only |
+
+All four corrected, plus the `{mode | pct}` payload row.
+
+**This is the one case where iterating a hand-maintained table is right rather than the trap** —
+the trap is a gate that iterates a map to test the CODE, and here **the map IS the claim**. Its
+limits are stated in the file: it checks that an action exists and is not refused; it cannot check
+the payload KEY (#562's row was correct while the shell read a different key) and it cannot check
+the prose around the row. The reverse direction — every action documented — is **deliberately not
+asserted**: the manual may say less than the plant does, but nothing it says may be false.
+
+### 101.5 What is still ungated
+
+**Prose that is wrong about a mechanism while every symbol it names exists.** #562's *"capacity ×
+throttle × level hold"* would still pass all three of these today if the throttle existed and the
+hold did not. `run_pwr2_roundtrip` catches the dead-lever half; nothing catches a *description* of
+how a live lever works. That is not solved, and inventing a fourth gate that pretends to solve it
+would be worse than saying so.
+
+**The honest mitigation is fewer load-bearing assertions in comments**, and this agent's own
+commenting volume is part of the mechanism — both failures this week were confident prose written
+by an agent. That is not fixable by a runner.

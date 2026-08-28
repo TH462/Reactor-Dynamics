@@ -45,6 +45,49 @@ where the two differ or where judgment was exercised.
 
 ---
 
+## 2026-08-27-develop-g — #570: three gates on the prose/plant seam, and why only two of them exist
+
+**THE DECISION THAT SHAPED THIS was refusing to treat one failure as two instances of another.**
+#562 (prose claimed a capability the code lacked) and §99.4 (prose was accurate, an absence was
+inferred from it) look like one problem — "stale docs" — and are not. The first is partly gateable;
+the second is a procedure failure and no runner reaches it. Building one gate for both would have
+produced something that caught neither well.
+
+**The ungateable half got a BROADENED rule, not a new one.** CLAUDE.md's coverage bullet already
+said "to prove something is untested, break it and run the gate"; it now covers "X is not built".
+A sixth rule nobody reads is worse than a fifth that binds, and the repo's own history (the
+2026-07-27 "too many instructions" ruling) is the argument.
+
+**The round-trip gate's design is a CONTROL LEG, and its first two drafts are why the file says so
+at length.** Draft 1 — snapshot `control_state` before and after on one engine — passed 28 of 28
+with zero possible failures, because the plant is running. That is the hollow-check pattern written
+fresh into a gate whose entire purpose is to catch it, and it is recorded in the file header rather
+than quietly fixed, because the next person to build a "did anything change" check will reach for
+draft 1 first.
+
+**DECLARED EXEMPTIONS ARE STRICT, both here and in the board sweep.** `INERT` (round-trip) and
+`CONDITIONAL` (board) each require the REASON, and an entry whose reason stops being true reds the
+runner by passing. An exemption list without reasons is a skip list, and a skip list is how the
+five #567 controls survived a sweep written to find them.
+
+**`run_manual_commands` iterates a hand-maintained table ON PURPOSE**, which is normally the trap
+this repo catalogues ("a gate that iterates a hand-maintained MAP tests the map"). The distinction:
+that trap is about using a map to test the CODE. Here the map IS the claim under test — the manual
+is what might be lying. Its limits are written into the file: it cannot check payload KEYS (#562's
+row was correct while the shell read a different key) and it cannot check surrounding prose.
+
+**The reverse direction is deliberately not asserted.** Requiring a manual row for every MAPPED
+action would push an operator's manual toward a command dump. The asymmetry is the point: the
+manual may say less than the plant does, but nothing it says may be false.
+
+### Open flags this entry leaves
+
+- **Prose that misdescribes a LIVE mechanism is still ungated**, and stated as such in §101.5
+  rather than covered by a gate that would only look like it.
+- **`run_pwr2_roundtrip` covers 19 actions**, not the whole registry. The list is hand-written and
+  should grow when a new operator lever lands; it is not claimed to be exhaustive.
+- Agent comment volume is part of the failure mechanism and no runner addresses it.
+
 ## 2026-08-27-develop-f — #558/#551/#559/#567/#560: the latch refuses by name, and the board is engine-agnostic about it
 
 **The design decision that mattered was not the latch — it was the REFUSAL.** `latch_turbine` is

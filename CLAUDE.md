@@ -354,12 +354,6 @@ re-querying. Run the query.
   **change it first, re-measure, then port**. Open: **#441** (needs the rung authoring pass),
   **#446** (deferred by ruling), **#449** (three steady-state indicated-vs-true disagreements the
   merged list surfaced, 20–400× larger than instrument lag).
-- **#454 / #477 — the chart settings WINDOW and the Indications MONITOR LIST, both built, gated
-  and CLOSED** (2026-08-11/12). The one fact that still binds: **#454's window is the ONLY writer
-  of `ui.series`** — an Indications tick copies a row into the `Monitoring` block and must not
-  touch the chart. Trap worth the line: the check carrying that claim was **vacuous** written on
-  `tavg`, which is in `defaultSeries` and so already plotted, so the old handler re-injecting
-  passed it green; on `thot` the same injection reads 3 → 4 traces.
 - **Built, waiting on review or a close** — **#458** (shutdown cooling and low-head injection are
   the same pumps: the ALIGN is refused while SI runs — *(OWNER RULING, 2026-08-12: "A'")*. It is
   **not** a plant interlock and the code/manual/message all say so; declared `Manuals/12` §12.20),
@@ -416,11 +410,11 @@ re-querying. Run the query.
   each hold a MASS and an ENERGY limiter now, aux feed has the flow control valves the contract
   had been describing all along, and its STOP secures BOTH pumps. **The TURBINE cluster too**
   (#558/#551/#559/#567/#560, §100): nothing un-latched the turbine, so one scram ended generation
-  for the session; it LATCHES now and refuses BY NAME against the six standing conditions instead
-  of being overwritten. A refused board press also reaches the screen at all — #558 is the
-  mechanism behind every dead-button report — no live control can only throw, and a lost condenser
-  stops reading better than a healthy one. Rest of #535–#566 untouched; `gh issue list` is the
-  authority.
+  for the session; it LATCHES now and refuses BY NAME instead of being overwritten. A refused
+  board press also reaches the screen (#558 is the mechanism behind every dead-button report), no
+  live control can only throw, and a lost condenser stops reading better than a healthy one.
+  **#570** then gated the prose/plant seam both clusters came through — two new runners, §101.
+  Rest of #535–#566 untouched; `gh issue list` is the authority.
 - **RBMK and BWR** — on hold, and the source of most remaining backlog. Do not touch.
 
 **The manual set's revision number does not advance until a RELEASE** *(OWNER DIRECTIVE,
@@ -441,11 +435,12 @@ ONE line, drop the rest. **A bullet is ~80 words.** (Measured 2026-08-06: the li
 7 bullets averaging 500 words, two of them duplicating traps already rescued below.)
 
 - **An ACCEPTED command the next step overwrites is worse than a missing one; a MODULE
-  HEADER is an inherited claim** (2026-08-27, #551/#559/#567/#558, §100). Nothing un-latched
-  PWR2's turbine — 896 combinations — so one scram ended generation for the session. The
-  facade lever alone would have been silently undone: the engine level-holds the trip in SIX
-  places. It REFUSES BY NAME instead. Same session: #562 called a protection half "unbuilt"
-  off a module header, never grepping the engine, which had built it.
+  HEADER is an inherited claim** (2026-08-27, #551/#559/#567/#558/#570, §100–101). Nothing
+  un-latched PWR2's turbine — 896 combinations — so one scram ended generation for the
+  session, and the facade lever alone would have been silently undone (six level-holds). It
+  REFUSES BY NAME now. Same day, #562 called a protection half "unbuilt" off a module header
+  without grepping the engine, which had built it — so *"prove it by injection"* now covers
+  **unbuilt**, not just untested.
 - **The SPECIFICATION can be the stale second copy, and that is worse than a stale constant**
   (2026-08-27, #562/#549/#541/#540, §99). `CONTEXT.md` defined AFW flow as *"capacity ×
   throttle × level hold"*, the Indications tab told the player the feed was level-controlled,
@@ -501,12 +496,17 @@ thing left in the file and it grew about a bullet a session.
   lane) and `DESIGN_COMPANION` §8.34, which declared *"no document in any lane's corpus"* two days
   after the refuting document landed in develop's. It exits **1** on a genuine zero, so "not in the
   corpus" is a command's verdict rather than your claim.
-- **A claim about COVERAGE is an unmeasured claim — prove it by injection** *(my call, 2026-07-31;
-  not an owner ruling)*. HR12 binds plant-dynamics claims; the class that keeps going wrong is the
-  neighbouring one — *"X is untested"*, *"the gate covers Y"*. **To prove something is untested,
-  break it and run the gate.** That is how #286 found five inert automation channels behind a green
-  24/24. **Inherited claims are the risky ones**: a sentence from a review, an issue or this file
-  has usually aged, and repeating it in your own voice launders it into a fresh assertion.
+- **A claim about COVERAGE OR ABOUT WHAT IS BUILT is an unmeasured claim — prove it by injection**
+  *(my call, 2026-07-31; broadened from tests to the PLANT 2026-08-27, #570)*. HR12 binds
+  plant-dynamics claims; the class that keeps going wrong is the neighbouring one — *"X is
+  untested"*, *"the gate covers Y"*, **and *"X is not built"***. **To prove something is untested or
+  unbuilt, BREAK IT AND SEE WHAT NOTICES.** That is how #286 found five inert automation channels
+  behind a green 24/24 — and skipping it is how #562 reported a protection half as newly built when
+  the engine had carried it all along (deleting the one line it "lacked" would have changed nothing;
+  deleting the FWI line's `tb.tripped` changes everything). **Inherited claims are the risky ones,
+  and A MODULE HEADER IS ONE**: a sentence from a review, an issue, a file header or this file has
+  usually aged, and repeating it in your own voice launders it into a fresh assertion. **Grep for
+  the EFFECT, never the name you expected it to have.**
 - **Verify a claim before you act on it.** Roughly half the issues touched on 2026-07-27 were stale
   or mis-framed. An issue's own investigation comment is a claim like any other, and this repo
   merges faster than one ages well (#326 — both comments were correct when written and wrong hours
@@ -809,9 +809,10 @@ harness is testing a plant the player never gets.
 |---|---|
 | **engine-direct** | `run_pwr`, `run_rbmk`, `run_bwr`, `run_meltdown`, `run_procedures` |
 | **engine + M4** (looks full-stack, isn't) | `run_ops`, `run_behavior`, `run_m4` |
+| **shell A/B** (two engines, one command apart) | `run_pwr2_roundtrip` — does a command move anything the player can read back? The control leg IS the test (#570) |
 | **full stack** (M4+M5+M6) | `run_procedures_stack`, `run_procedures_chain` (one CONTINUOUS plant across procedures — the seam the per-procedure IC reload cannot see), `run_m5`, `run_m6`/`run_m6ph` (integration halves), `run_m7`, `run_autoctl`, `run_campaign`, `run_checklist`, `run_scenarios`, `run_e2e_controls` |
 | **browser** | `verify_e2e_ui`, `verify_manual_follow` (the latter never plays the sim — control-surface reachability only) |
-| **static** (source/doc/registry consistency — the plant is never stepped) | `run_hr3`, `run_hardrules`, `run_contract` (resets the engine to read its field list, never runs it), `run_inspect`, `run_flags` |
+| **static** (source/doc/registry consistency — the plant is never stepped) | `run_hr3`, `run_hardrules`, `run_contract` (resets the engine to read its field list, never runs it), `run_inspect`, `run_flags`, `run_manual_commands` (the manual's command table vs the registries — #570) |
 
 Engine-direct is the right choice for isolated-physics acceptance; the mistake is *relying*
 on it for anything the control layer decides. **When you write a procedure, scenario, or

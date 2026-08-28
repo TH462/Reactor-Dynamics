@@ -307,7 +307,17 @@ function runSuite(quietRec) {
                 bdOneOverM: 1 /* opens the 1/M plot window */ };
   var buttons = items.filter(function (it) { return it.kind === 'button'; });
   var orphans = [], disabled = 0, momentary = 0, local = 0, unreasoned = [], refused = [];
+  var alwaysThrows = [];
   var SH_REFUSED = (globalThis.RD.pwr2.shell && globalThis.RD.pwr2.shell.REFUSED) || {};
+  /* CONDITIONAL REFUSALS — a press that refuses HERE, at hot full power, but works in a state the
+   * player can reach. Each entry names the condition, because an entry without one is indis-
+   * tinguishable from a control that can never work, which is the defect this list exists beside. */
+  var CONDITIONAL = {
+    ims3wg27iif: 'RHR ALIGN — the sourced 425 psig suction-valve permissive; works on a cooldown',
+    ims3xfeye1q: 'RHR ISOLATE — the mirror of the above',
+    imro8ktzs3u: 'TURBINE LATCH — refuses while any of the six trip conditions stands (#551)',
+    imrmssoa137: 'AFW STOP — refuses inside the sourced actuation reset window / under a standing SI'
+  };
   buttons.forEach(function (it) {
     if (LOCAL[it.id]) { local++; return; }
     if (D.buttonDisabled(it, w.snap())) { disabled++; return; }
@@ -331,6 +341,20 @@ function runSuite(quietRec) {
        * plant. A REFUSED action is fine — the plant is right to refuse it — but the control
        * that sends it must be DARK, and this loop only reaches enabled buttons. */
       if (SH_REFUSED[b.action] !== undefined) refused.push(it.id + ':' + b.action);
+      /* ...AND THE REGISTRY IS NOT THE ONLY PLACE A REFUSAL COMES FROM (#570). The check above
+       * asks whether the ACTION is in REFUSED; `set_steam_dump` is MAPPED and raises its refusal
+       * INSIDE the handler for `mode:'open'`, so the STEAM DUMP OPEN button — live on the board —
+       * could only ever throw and neither this sweep nor run_pwr2_kernel band 4 could see it. It
+       * was found by a round-trip prototype, not by either gate that exists for the class.
+       *
+       * So: an enabled button that ERRORS is dead unless its refusal is CONDITIONAL — true now,
+       * false in a state the player can reach. That distinction cannot be measured cheaply here
+       * (it would mean driving the plant to each permissive), so it is DECLARED, with the
+       * condition named. An entry with no condition is a control that can never work. */
+      if (r && r.type === 'error') {
+        var why = CONDITIONAL[it.id];
+        if (!why) alwaysThrows.push(it.id + ':' + b.action);
+      }
     });
     w.tick(1);
   });
@@ -342,6 +366,10 @@ function runSuite(quietRec) {
   q('no ENABLED button sends an action in the PWR2 REFUSED registry — a control that can only ' +
     'throw is a dead button wearing an error message (#567)',
     refused.length === 0, refused.slice(0, 6).join(', ') || 'no enabled button can only throw');
+  q('...and no ENABLED button THROWS from inside a MAPPED handler either, unless its refusal is ' +
+    'declared CONDITIONAL with the condition named (#570)',
+    alwaysThrows.length === 0,
+    alwaysThrows.slice(0, 6).join(', ') || 'every refusing button is conditional and says so');
   /* #507 waves 1-2 re-enabled the boron panel (a real channel now) and RHR ALIGN/ISOLATE
    * (a real align command) — the deliberate set is now HPI AUTO, FOLLOW, ROD AUTO */
   q('the disables are the deliberate set, not everything and not nothing',

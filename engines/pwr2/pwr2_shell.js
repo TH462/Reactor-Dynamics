@@ -464,6 +464,15 @@
         throw new Error('pwr2_shell: set_steam_dump "open" REFUSED — the dump is controller-driven ' +
           '(tavg/pressure modes); no manual full-open lever is modeled. AUTO or CLOSED.');
       }
+      /* ...AND EVERYTHING ELSE USED TO FALL OFF THE END, silently accepted (#570). `{mode:
+       * 'manual'}` and `{pct: N}` both returned ok and did nothing — the #506 dead-command class,
+       * latent because the board sends only the three modes above, and documented in Manuals/03
+       * §18 as `{mode | pct}`, which is how a latent one becomes a live one. Refuse by name. */
+      else if (c.pct !== undefined || c.mode !== undefined) {
+        throw new Error('pwr2_shell: set_steam_dump ' + JSON.stringify(c.mode || c.pct) +
+          ' REFUSED — this dump has no manual position lever. The modes are AUTO (controller) ' +
+          'and CLOSED; the setpoint it controls to is set_steam_dump_setpoint.');
+      }
     },
     set_instrument_failure: function (e, c) {
       /* the pwr1 instrument ids and pwr2 channel ids largely coincide (deliberately);
@@ -1227,6 +1236,12 @@
        * to press. */
       sr_detector_fixed: true,         /* the SR channel auto-energizes below the P-6 class point */
       condenser_cw_temp_fixed: true,   /* the condenser model has CW pumps on/off only */
+      /* #570: the STEAM DUMP OPEN button could ONLY throw. Its refusal is raised INSIDE the
+       * MAPPED `set_steam_dump` handler rather than from the REFUSED registry, so neither
+       * run_pwr2_kernel band 4 nor run_pwr2_board's registry sweep could see it — the hole the
+       * round-trip prototype found. The dump is controller-driven (tavg/pressure modes) and has
+       * no manual full-open lever, so the button darkens; AUTO and CLOSED stay live. */
+      steam_dump_open_fixed: true,
       /* the CONTROLLER's live setpoint, not the driver override: dcDrivers only carries a
        * value after the operator sets one, so the box read 0 psi until first touched —
        * dc.pressure_setpoint_mpa holds the 7.03 MPa (1019 psi) Ginna no-load anchor */

@@ -910,7 +910,7 @@ Listed for cross-reference — normal operation never requires typing a command.
 | CVCS inventory AUTO (§7.4) | `set_cvcs_auto` | `{active}` |
 | PZR heaters (§5.2) | `set_heater` | `{power_pct}` |
 | PZR spray (§5.3) | `set_spray` | `{open}` |
-| PORV open / close (§6.1) | `open_porv` / `close_porv` | — |
+| PORV open / close (§6.1) | `open_porv_manual` / `close_porv` | — |
 | PORV block valve (§6.2) | `open_block_valve` / `close_block_valve` | — |
 | RCP run / stop (§8.1) | `set_rcp` | `{running}` |
 | Feed pump speed (§9.2) | `set_feed_pump_speed` | `{pct}` |
@@ -923,18 +923,26 @@ Listed for cross-reference — normal operation never requires typing a command.
 | Generator **LATCH** (§12.1) | `latch_turbine` | — |
 | Generator **TRIP** (§12.1) | `trip_turbine` | — |
 | Generator **OFF** — planned offline (§12.1) | `disconnect_grid` | — |
-| Turbine load (§12.2) | `set_steam_demand` | `{mwe}` |
-| CW inlet temperature (§13.1) | `set_condenser_cw_temp` | `{c}` |
-| Steam dump / bypass (§12.3) | `set_steam_dump` | `{mode | pct}` |
+| Turbine load (§12.2) | `set_load_target` | `{mwe}` |
+| CW inlet temperature (§13.1) | *(no operator lever — the condenser model has circulating-water pumps on/off only; the box reads dark)* | — |
+| Steam dump / bypass (§12.3) | `set_steam_dump` | `{mode}` — **AUTO or CLOSED only**; there is no manual position lever |
 | Pressure setpoint box (§5) | `set_pressure_setpoint` | `{mpa}` |
 | Steam-dump setpoint box (§12.3) | `set_steam_dump_setpoint` | `{mpa}` |
 | HPI/LPI (§11.0) | `set_hpi` | `{active}` |
 | RHR suction valve (§11.2) | `set_rhr` | `{active}` |
 | RHR cooldown rate / HX split (§11.2) | `set_rhr_hx` | `{fraction | pct}` |
-| SR detector on/off (§4.3) | `set_sr_detector` | `{on}` |
+| SR detector on/off (§4.3) | *(no operator lever — the source-range channel energizes itself below the P-6 class point; the button reads dark)* | — |
 | Startup trip blocks (§4.4) | `set_trip_block` | `{trip_id, blocked}` |
 | MSIV open / close (§9.2) | `open_msiv` / `close_msiv` | — |
 | Automation AUTO/MAN (§14) | `set_auto_channel` / `set_auto_setpoint` | `{channel_id, engaged}` / `{channel_id, value}` |
+
+> **Four rows of this table documented actions the plant REFUSES**, found 2026-08-27 by the new
+> `test/run_manual_commands.js` gate and corrected above: `open_porv` (the operator path is
+> `open_porv_manual`), `set_steam_demand` (this turbine is dispatched by load target), and the
+> circulating-water temperature and source-range detector levers, neither of which this plant has.
+> A fifth documented `set_steam_dump {pct}`, which the shell silently swallowed. **A manual that
+> tells the operator to use a command they will be refused for is the same defect as a board button
+> that can only throw** — see §12.1's note on the generator card for the board half of it.
 
 ---
 
