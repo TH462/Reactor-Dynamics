@@ -920,15 +920,21 @@
       'FOLLOW makes electrical load track reactor power with about a 45-second lag; MAN holds the MWe ' +
       'you set; OFF disconnects from the grid. Both FOLLOW and MAN bring the machine online — they ' +
       'clear a prior trip or disconnect if condenser vacuum permits.', CI, '12.1'),
-    imro8ktzs3u: e('FOLLOW',
-      'Turbine load tracks reactor power automatically.',
-      'The normal at-power lineup. It connects the grid as well as selecting the mode, which is why ' +
-      'it works after an OFF: selecting a load mode alone never un-trips a machine.', CI, '12.1'),
-    imro8lddxi: e('MAN',
-      'You set the electrical load target; the turbine holds it.',
-      'Load becomes a demand on the reactor rather than a consequence of it. Raise load and steam ' +
-      'draw rises, T-cold falls, and the reactor answers through moderator feedback before you touch ' +
-      'a rod.', CI, '12.2'),
+    imro8ktzs3u: e('LATCH (turbine)',
+      'Latches the turbine back up after a trip — the way back onto the grid.',
+      'Latched and tripped are the two states of the machine, and this is the operator action ' +
+      'that moves it from one to the other. It will REFUSE, and say why, while anything is still ' +
+      'holding the trip: the reactor trip latched, the main steam isolation valve shut, both main ' +
+      'feed pumps gone, the condenser unavailable, or the high-high level isolation standing. ' +
+      'That refusal is the useful part — the recipe after a scram is reset the protection, latch ' +
+      'the turbine, set a load target, in that order. Latching does not by itself make power: the ' +
+      'reactor has to be making steam.', CI, '12.1'),
+    imro8lddxi: e('TRIP (turbine)',
+      'Trips the turbine by hand — shuts the stop valves and drops load.',
+      'The deliberate version of what the plant does for you on a reactor trip, a lost condenser, ' +
+      'a shut main steam isolation valve, loss of both feed pumps, or high-high generator level. ' +
+      'Above the P-9 power setpoint a turbine trip IS a reactor trip, so at power this scrams as ' +
+      'well; below it the reactor rides out on the steam dumps.', CI, '12.2'),
     imro8len0oi: e('OFF',
       'Disconnects the turbine from the grid — a planned offline, not a trip.',
       'Load goes to zero and the steam dump takes over the generator\'s output. The lamp reads the ' +

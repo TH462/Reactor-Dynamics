@@ -86,19 +86,22 @@ var RD = globalThis.RD;
  * #534 pattern-2 shape one door over from this runner's subject — and are tracked separately.
  * A fix that lands without promoting its entry reds this runner. */
 var XFAIL = {
-  'board-vocab-connect_grid':
-    'Grid MANUAL and Grid FOLLOW both send connect_grid; MANUAL also sends set_load_mode, so ' +
-    'one press throws twice. The reconnect path is three real commands (see the REFUSED text).',
-  'board-vocab-set_load_mode':
-    'Grid MANUAL sends it; PWR2 has one dispatch mode. The button is not disabled.',
-  'board-vocab-set_sr_detector':
-    'The SR DET toggle has no lever on this plant (the channel auto-energizes below P-6).',
-  'board-vocab-set_condenser_cw_temp':
-    'The condenser CW temp box has no lever on this plant (CW pumps on/off only).',
-  'board-vocab-set_adv_setpoint':
-    'The ADV setpoint box sends it; the setpoint is a sourced constant. The box is darkened ' +
-    'by numberDisabled, so this one is probably unreachable — kept because "probably" is not ' +
-    'a measurement and the source scan cannot tell.'
+  /* ALL FIVE PROMOTED (#551/#559/#567, 2026-08-27) — the entries are kept as a record of what
+   * they were, because a promoted xfail with its reason deleted is a check nobody can date.
+   *
+   *   connect_grid / set_load_mode — Grid MANUAL and FOLLOW were a dispatch-MODE pair on a
+   *     plant with one dispatch mode, and MANUAL threw TWICE per press. The pair is the
+   *     turbine LATCH / TRIP now, which is what those tiles were reaching for: the real gap
+   *     was that NO command in the registry un-latched the turbine (896 combinations).
+   *   set_sr_detector / set_condenser_cw_temp — the plant publishes `sr_detector_fixed` and
+   *     `condenser_cw_temp_fixed`, and the board darkens them the way it already darkens the
+   *     ADV box. The refusal texts stay; the invitation to press does not.
+   *   set_adv_setpoint — this one WAS already unreachable, and the entry said so while
+   *     admitting "probably is not a measurement". It never needed a fix, only the measurement
+   *     that band 4 now makes. Promoting it is the measurement landing.
+   *
+   * The band still runs for every action, so a NEW refused board action reds this runner
+   * instead of joining a list. */
 };
 
 /* ---- PAYLOAD SHAPES ARE THE BOARD'S OWN --------------------------------------------------
@@ -115,9 +118,10 @@ var ACTIONS = [
   { action: 'rod_stop', group_id: 'control_rods' },
   { action: 'rod_stop_all' },
   { action: 'set_load_target', mwe: 80 },
-  { action: 'connect_grid' },
+  /* connect_grid and set_load_mode LEFT this list with the tiles that sent them
+   * (#551/#559/#567): the grid FOLLOW / MAN pair is the turbine LATCH / TRIP pair now. */
   { action: 'disconnect_grid' },
-  { action: 'set_load_mode', mode: 'manual' },
+  { action: 'latch_turbine' },
   { action: 'trip_turbine' },
   { action: 'set_heater', power_pct: 60 },
   { action: 'set_heater', auto: true },
@@ -515,10 +519,26 @@ function runSuite(rec, quiet, only) {
     head('4 -- BOARD VOCABULARY: a press must not land in the REFUSED registry');
     var names = ACTIONS.map(function (c) { return c.action; })
       .filter(function (a, i, arr) { return arr.indexOf(a) === i; });
+    /* A REFUSED ACTION IS ONLY A DEFECT IF THE PLAYER CAN REACH IT (#567). The board darkens
+     * a control the running plant does not carry, off a capability flag the plant publishes —
+     * so an action may legitimately stay in REFUSED provided its control is dark. This band
+     * owns the PLANT half of that claim: the flag exists and is set. The BOARD half — that the
+     * control actually reads the flag and renders disabled — is `run_pwr2_board`'s, where a
+     * real board is mounted. Neither half is worth anything alone, which is why they name each
+     * other rather than one of them quietly covering both. */
+    var DARKENED = {
+      set_sr_detector:       'sr_detector_fixed',
+      set_condenser_cw_temp: 'condenser_cw_temp_fixed',
+      set_adv_setpoint:      'adv_setpoint_fixed'
+    };
+    var csV = eng.getControlState();
     names.forEach(function (a) {
-      if (SH.REFUSED[a] === undefined && !XFAIL['board-vocab-' + a]) return;   /* only the interesting ones */
-      ck('board-vocab-' + a, 'the board never sends "' + a + '" (PWR2 has no such lever)',
-         SH.REFUSED[a] === undefined);
+      if (SH.REFUSED[a] === undefined) return;             /* only the interesting ones */
+      var flag = DARKENED[a];
+      ck('board-vocab-' + a,
+         'the board never sends "' + a + '", or the plant publishes the flag that darkens it',
+         !!flag && csV[flag] === true,
+         flag ? ('control_state.' + flag + ' = ' + csV[flag]) : 'REFUSED and nothing darkens it');
     });
     var unknown = names.filter(function (a) {
       return !SH.MAPPED[a] && !SH.REHOMED[a] && SH.REFUSED[a] === undefined &&

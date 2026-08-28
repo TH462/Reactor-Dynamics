@@ -605,19 +605,42 @@ function and secures the pumps even with the signal still present.
 
 **Highlight id:** `turbine-generator`
 
-### 12.1 Load mode
+### 12.1 Latch, trip and offline
 
-The generator card carries a three-position selector: **FOLLOW / MAN / OFF**.
+The generator card carries three buttons: **LATCH / TRIP / OFF**.
 
-| Position | Operator action | Behavior |
+| Button | Operator action | Behavior |
 |------|-----------------|----------|
-| **FOLLOW** | Press **FOLLOW** (`connect_grid`) | Synchronises and loads; load tracks reactor power (lag ~45 s) |
-| **MAN** | Press **MAN**, or move the load slider | Synchronises and loads; operator sets the MWe target |
-| **OFF** | Press **OFF** (`disconnect_grid`) | Breaker open, **0 MWe** — a **planned offline** |
+| **LATCH** | Press **LATCH** (`latch_turbine`) | Latches the machine back up after a trip and puts it on the line. **Refuses, and says why, while anything is still holding the trip** |
+| **TRIP** | Press **TRIP** (`trip_turbine`) | Trips the turbine by hand — stop valves shut, load to zero |
+| **OFF** | Press **OFF** (`disconnect_grid`) | Breaker open, **0 MWe** — a **planned offline**, no trip |
+
+> **This card used to be a FOLLOW / MAN dispatch-mode selector, and it was replaced.** This
+> plant has one dispatch mode — you set a load target and the turbine holds it — so a mode
+> selector had nothing to select, and worse: **nothing in the whole command set could un-latch
+> the turbine**, so after any trip the generator was dead for the rest of the session and the
+> two buttons that looked like the way back could only refuse. *Latched* and *tripped* are the
+> real states of a turbine, and these are the two operator actions that move it between them.
+
+**What LATCH refuses on.** It will not latch a machine into a plant that is still tripping it,
+and the refusal names which of these is standing:
+
+| Holding the trip | Clear it by |
+|---|---|
+| The **reactor trip** is latched | Reset the protection system |
+| The **main steam isolation valve** is shut | Open it — the turbine has no steam supply |
+| **Both main feed pumps** are lost | Restore feed |
+| The **condenser** is unavailable | Restore circulating water / vacuum |
+| **High-high SG level** isolation is latched | Let level recover, then reset |
+| The trip is an **injected casualty** | The instructor clears it |
+
+**The order after a scram is: reset the protection, LATCH, then set a load target.** Latching
+does not by itself make power — the reactor has to be making steam, and after a scram it is
+subcritical.
 
 **A planned offline is NOT a turbine trip.** Pressing **OFF** opens the generator breaker:
 load goes to zero, but the **stop valves stay open**, no trip latches, and **P-9 is never
-armed** — so it does not scram the reactor and it is fully reversible with FOLLOW or MAN.
+armed** — so it does not scram the reactor and it is fully reversible by setting a load target.
 A real turbine trip arrives by its own routes: low vacuum, the P-14 high-high SG level
 actuation, a reactor trip, MSIV closure at load, or the injected `turbine_trip` failure.
 Overspeed is configured as a sixth route but **cannot occur here** — this plant has no turbine
@@ -626,10 +649,10 @@ roll model, so the rotor never exceeds the rated speed the grid holds it at (**1
 **WARNING:** a genuine **turbine trip above 50 % power (P-9) scrams the reactor** — see `09`
 §2.0 and **PWR-E03**. What this plant rides out is a *load rejection*, not a turbine trip.
 
-**NOTE — selecting a mode does not un-trip the machine.** FOLLOW and MAN go through
-`connect_grid`, which clears a prior trip and re-synchronises; a bare load-mode selection on a
-tripped turbine does nothing. If the machine is tripped and the card looks unresponsive, that
-is what you are seeing — press **FOLLOW** or **MAN**, not the load slider.
+**NOTE — the load slider does not un-trip the machine.** Typing a load target at a tripped
+turbine is accepted and reads back at the target you asked for while the governor sits at
+0.0 % and the machine makes nothing. If the card looks unresponsive, that is what you are
+seeing — press **LATCH**, not the load slider.
 
 The **OFF** lamp lights on either condition — breaker open *or* turbine tripped — so read
 **TURB TRIP** to tell a planned offline from a trip.
@@ -897,7 +920,8 @@ Listed for cross-reference — normal operation never requires typing a command.
 | AFW block / discharge valve (§10) | `set_afw_block` | `{open}` |
 | ESF auto re-arm (§17.4) | `set_esf_auto` | `{system, auto}` |
 | Accumulator discharge isolation (§11.1) | `open_accumulator_valve` / `close_accumulator_valve` | — |
-| Generator **FOLLOW / MAN** (§12.1) | `connect_grid` (+ `set_load_mode`) | — / `{mode}` |
+| Generator **LATCH** (§12.1) | `latch_turbine` | — |
+| Generator **TRIP** (§12.1) | `trip_turbine` | — |
 | Generator **OFF** — planned offline (§12.1) | `disconnect_grid` | — |
 | Turbine load (§12.2) | `set_steam_demand` | `{mwe}` |
 | CW inlet temperature (§13.1) | `set_condenser_cw_temp` | `{c}` |

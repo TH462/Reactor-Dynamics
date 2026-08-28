@@ -306,7 +306,8 @@ function runSuite(quietRec) {
   var LOCAL = { imrsk4xz2dm: 1, imrpk8169ds: 1, imrpk8grvcz: 1, imrpk8kjsjs: 1,
                 bdOneOverM: 1 /* opens the 1/M plot window */ };
   var buttons = items.filter(function (it) { return it.kind === 'button'; });
-  var orphans = [], disabled = 0, momentary = 0, local = 0, unreasoned = [];
+  var orphans = [], disabled = 0, momentary = 0, local = 0, unreasoned = [], refused = [];
+  var SH_REFUSED = (globalThis.RD.pwr2.shell && globalThis.RD.pwr2.shell.REFUSED) || {};
   buttons.forEach(function (it) {
     if (LOCAL[it.id]) { local++; return; }
     if (D.buttonDisabled(it, w.snap())) { disabled++; return; }
@@ -320,6 +321,16 @@ function runSuite(quietRec) {
       if (r && (r.type === 'error' || r.type === 'blocked') && !r.message) {
         unreasoned.push(it.id + ':' + b.action);
       }
+      /* A CONTROL THAT CAN ONLY THROW IS NOT A LIVE CONTROL (#567). This sweep used to accept
+       * a press as acknowledged when the result was ok / blocked / ERROR WITH A MESSAGE, on the
+       * reasoning that the app surfaces all three since #505 — and a button whose action is in
+       * PWR2's REFUSED registry satisfies that third clause with developer jargon. Five did:
+       * Grid MANUAL (twice per press), Grid FOLLOW, the SR detector toggle, the condenser CW
+       * temp box and the ADV setpoint box. The sweep was doing what it said; what it said was
+       * too weak for this class, which is the hollow-check pattern in the GATE rather than the
+       * plant. A REFUSED action is fine — the plant is right to refuse it — but the control
+       * that sends it must be DARK, and this loop only reaches enabled buttons. */
+      if (SH_REFUSED[b.action] !== undefined) refused.push(it.id + ':' + b.action);
     });
     w.tick(1);
   });
@@ -328,6 +339,9 @@ function runSuite(quietRec) {
     orphans.length === 0, orphans.slice(0, 5).join(', ') || 'no silent presses');
   q('every refused/errored press carries a MESSAGE the scanner bar can show',
     unreasoned.length === 0, unreasoned.slice(0, 5).join(', ') || 'all reasoned');
+  q('no ENABLED button sends an action in the PWR2 REFUSED registry — a control that can only ' +
+    'throw is a dead button wearing an error message (#567)',
+    refused.length === 0, refused.slice(0, 6).join(', ') || 'no enabled button can only throw');
   /* #507 waves 1-2 re-enabled the boron panel (a real channel now) and RHR ALIGN/ISOLATE
    * (a real align command) — the deliberate set is now HPI AUTO, FOLLOW, ROD AUTO */
   q('the disables are the deliberate set, not everything and not nothing',

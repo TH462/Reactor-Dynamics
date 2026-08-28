@@ -216,6 +216,43 @@
     set_load_target:  function (e, c) { EN.command(e, 'load_mwe', c.mwe !== undefined ? c.mwe : c.value); },
     trip_turbine:     function (e, c) { EN.command(e, 'turbine_trip', true); },
     turbine_trip:     function (e, c) { EN.command(e, 'turbine_trip', true); },
+    /* LATCH THE TURBINE (#551/#559, 2026-08-27) — the verb the real plant uses, and the half
+     * of this pair that did not exist. Both mappers above hard-code `true`; NO key in MAPPED
+     * (48) or REHOMED (16) ever passed false, `connect_grid` and `set_load_mode` are REFUSED,
+     * and `clear_failure {turbine_trip}` fell off the end of its if-chain. Measured: 896
+     * command/payload combinations against a tripped plant, NONE cleared `tb.tripped`. One
+     * scram ended electrical generation for the session, while `load_target_mwe` read back the
+     * MWe the operator typed so the board looked like it was obeying.
+     *
+     * [sourced] WTSM 11.3 (ML11223A295): *"If the turbine is latched (not tripped), it is
+     * controlled in one of two operational modes"* — LATCHED is the plant's own word for the
+     * state this command establishes, and its opposite is TRIPPED. Ginna UFSAR ch10
+     * (ML20339A040): *"The defeat switch is automatically bypassed when the turbine is
+     * latched."*
+     *
+     * IT REFUSES OUT LOUD RATHER THAN BEING OVERWRITTEN, which is the whole design. A bare
+     * un-latch would be accepted and then undone on the next step by whichever of the six
+     * level-holds is standing — the #509 §79 defect, where the plant agrees and nothing
+     * happens. `turbineTripCauses` enumerates them and this names them back to the operator,
+     * the same shape `afwUnlatch` above uses for the aux feed and safety-injection latches.
+     *
+     * DELIBERATELY NOT BUILT: turbine roll and generator synchronisation. WTSM 11.3 describes
+     * a real sequence (latch closes the throttle and governor valves, speed control rolls the
+     * machine, then load control), and this plant's turbine is binary — rpm is `tripped ? 0 :
+     * rated`. Modelling the roll is #307, CLOSED and `status-deliberate` as "open by design"
+     * (CURRICULUM PWR-N05). Latching puts the machine back on the line
+     * *(OWNER RULING, 2026-08-27: selected "Latch = back on the line" over modelling the roll
+     * and over a timed ramp — a menu selection, cited in that form)*. */
+    latch_turbine:    function (e, c) {
+      if (!e.tb.tripped) return;                          /* already latched — a no-op, not an error */
+      var causes = EN.turbineTripCauses(e);
+      if (causes.length) {
+        throw new Error('TURBINE LATCH BLOCKED: ' +
+          causes.map(function (x) { return x.why; }).join('; and ') +
+          '. Clear it and latch again.');
+      }
+      EN.command(e, 'turbine_trip', false);
+    },
     set_pressure_setpoint: function (e, c) { EN.command(e, 'pzr_setpoint_mpa', c.mpa !== undefined ? c.mpa : c.value); },
     /* PAYLOAD KEYS ARE THE BOARD'S, FIRST (#506.1, 2026-08-22): the board's heater panel
      * sends `power_pct` (pwr_board_wiring MANUAL/OFF/% box) — the shipped mapper read only
@@ -571,7 +608,7 @@
       else if (c.failure_id === 'stuck_porv_open') EN.command(e, 'porv_stick', true);
       else if (c.failure_id === 'primary_leak') REHOMED.primary_leak(e, c);
       else if (c.failure_id === 'rcp_trip') EN.command(e, 'pump_trip', true);
-      else if (c.failure_id === 'turbine_trip') EN.command(e, 'turbine_trip', true);
+      else if (c.failure_id === 'turbine_trip') EN.command(e, 'turbine_trip_failed', true);
       else if (c.failure_id === 'loss_of_feedwater') MAPPED.loss_of_feedwater(e, c);
       /* #507 wave 3 — the rows PWR2's existing machinery honestly injects */
       else if (c.failure_id === 'sg_overfeed') MAPPED.sg_overfeed(e, c);
@@ -663,6 +700,15 @@
       }
       else if (c.failure_id === 'sg_overfeed') EN.command(e, 'feed_overfeed', false);
       else if (c.failure_id === 'loss_of_condenser_vacuum') EN.command(e, 'cw_pumps', true);
+      /* #551: this row fell off the end of the chain — the instructor could inject a turbine
+       * trip and neither clear it nor see it listed. Clearing it LATCHES the machine, and it
+       * goes through the same permissive as the operator's own command: a clear that silently
+       * failed because something else was holding the trip would be the original defect wearing
+       * an instructor's hat. */
+      else if (c.failure_id === 'turbine_trip') {
+        EN.command(e, 'turbine_trip_failed', false);
+        if (EN.turbineTripCauses(e).length === 0) EN.command(e, 'turbine_trip', false);
+      }
       else if (c.failure_id === 'degraded_hpi') e.ec.hhsiAvail = 1;
       else if (c.failure_id === 'afw_failure') EN.command(e, 'afw_block', false);
       else if (c.failure_id === 'failure_to_scram') EN.command(e, 'scram_block', false);
@@ -687,7 +733,12 @@
     open_pzr_safety:  'code safeties are spring-loaded metal with no lever — deliberate (§55)',
     close_pzr_safety: 'code safeties are spring-loaded metal with no lever — deliberate (§55)',
     set_load_mode:    'one dispatch mode exists (operator load target); Follow/Disconnected are the old engine\'s',
-    connect_grid:     'reconnection is: reset protection, un-trip the turbine, set a load target — three real commands',
+    /* #551: this text's recipe named an action that DID NOT EXIST for as long as the refusal
+     * did — "un-trip the turbine" had no command behind it anywhere in the tree, so the one
+     * message telling the player what to do instead sent them hunting the board for a control
+     * that was never built. `latch_turbine` exists now and the recipe is true; the verb is the
+     * plant's own (WTSM 11.3: "if the turbine is LATCHED (not tripped)"). */
+    connect_grid:     'reconnection is three real commands, not one synthetic verb: reset_rps, latch_turbine, set_load_target',
     set_adv_setpoint: 'the ADV auto setpoint is a sourced constant (1040 psig, §48); only demand is an operator lever',
     set_sr_detector:  'the SR channel auto-energizes below the P-6 class point; no operator lever',
     set_condensate_pump: 'no discrete condensate pump lever — the feed train (pwr2_feedwater) models the pumps as the feed module\'s own A/B pair',
@@ -1039,6 +1090,22 @@
     if (eng.aw.blocked) out.push('afw_failure');
     if (eng.scramBlocked) out.push('failure_to_scram');
     if (eng.p9Defeated) out.push('anticipatory_trip_failure');
+    /* THE TURBINE ROW (#551, the half buried in its verification note). `inject_failure
+     * {turbine_trip}` has been in the keep-list and has set the trip since the menu was built,
+     * but this detector had NO turbine branch — so the row never appeared in the Failures tab
+     * and `clear_failure` / `clear_all_failures`, which both read this one function (#510 M-3),
+     * could not clear it. Measured: inject -> tripped=true, getActiveFailures()=[], clear ->
+     * still tripped, 0.00 MWe. An instructor could inject a casualty that was invisible and
+     * unclearable.
+     *
+     * IT READS A SEAT, NOT THE TRIP STATE, and the first draft got that wrong in a way worth
+     * recording: it reported `tb.tripped && no other cause`, which is empty in the very case an
+     * instructor uses it — injecting a turbine trip at 100 % power trips the REACTOR through
+     * P-9, so "another cause" is instantly standing and the row vanishes. Inferring a casualty
+     * from a state the plant reaches by itself cannot work. Every other lever here is a seat
+     * (`porv_stick`, `overfeed`, `p9Defeated`), so this is one too: it says the trip was
+     * INJECTED, which is the only thing the Failures tab is asking. */
+    if (eng.tbTripFailed) out.push('turbine_trip');
     if (eng.pzDrivers.heaters_failed) out.push('failed_pzr_heaters');
     if (eng.pzDrivers.spray_stick) out.push('stuck_open_spray');
     if (eng.runaway) out.push('continuous_rod_withdrawal');
@@ -1151,6 +1218,15 @@
                 : e.advDemand === 0,
       adv_setpoint: 1040 / 145.03774,
       adv_setpoint_fixed: true,        /* a sourced constant (§48) — the board darkens its box */
+      /* TWO MORE CAPABILITY FLAGS (#567, 2026-08-27), same law as the one above: the board
+       * darkens a control the running plant does not carry, and an engine that later grows the
+       * machinery stops publishing the flag and gets its control back for free. They exist
+       * because both controls were rendered LIVE in front of a refusal — a press could only
+       * throw, which is the dead-button class wearing an error message. The refusal texts stay
+       * (they are correct and they teach); what changes is that the player is no longer invited
+       * to press. */
+      sr_detector_fixed: true,         /* the SR channel auto-energizes below the P-6 class point */
+      condenser_cw_temp_fixed: true,   /* the condenser model has CW pumps on/off only */
       /* the CONTROLLER's live setpoint, not the driver override: dcDrivers only carries a
        * value after the operator sets one, so the box read 0 psi until first touched —
        * dc.pressure_setpoint_mpa holds the 7.03 MPa (1019 psi) Ginna no-load anchor */

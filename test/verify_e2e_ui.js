@@ -481,14 +481,103 @@ async function testSteamFeedPair(page) {
  * COMMAND_ERROR. Counting `.bd-btn:disabled` per engine pins both directions: pwr2 gets
  * exactly ONE disabled button (labelled AUTO), pwr gets ZERO — so the guard cannot silently
  * disable everything, and cannot silently disable nothing. */
+/* THE REFUSAL HAS TO REACH A FRAME (#558) — and this is the only place that can say so.
+ * `run_pwr2_board` copies the try/catch into a Node harness that never renders a Scanner, and
+ * this file counted disabled buttons without ever pressing one and reading the message back. So
+ * the mechanism that turns every refusal in the sim into a dead button — the class the owner has
+ * found by hand three times (#503, #506, #509) — had no gate at all, and #505 was CLOSED on a fix
+ * that is true of `cmd()` and false of the board, which is the only control surface PWR2 has.
+ *
+ * THE DEFECT: `inspectFlash` writes the reason into `inspectCur`, then the BODY-LEVEL
+ * click-to-inspect listener runs later in the SAME dispatch, resolves the button under the
+ * pointer and overwrites it. Written and destroyed synchronously — measured at 0 of 426 frames
+ * across four refused presses.
+ *
+ * SAMPLE ACROSS FRAMES, never once: a single read after the click cannot tell "painted then
+ * replaced" from "never painted", and the whole defect lives in that difference. The press must
+ * go to the <button> INSIDE the tile (pwr_board.js:374) — clicking the tile wrapper only bubbles
+ * to the body inspector and sends no command, which reads as a pass. */
+async function testRefusalReachesTheScanner(page) {
+  var log = [];
+  await page.goto('http://127.0.0.1:' + PORT + '/ui/shell.html?engine=pwr2',
+    { waitUntil: 'networkidle', timeout: 90000 });
+  await dismissMission(page);
+  await waitBoardLive(page);
+  /* RHR ALIGN is the honest fixture: at power its refusal is the SOURCED suction-valve
+   * permissive, i.e. a message the player is meant to LEARN from, and #558 measured it at
+   * 0 frames. It is a refusal the plant will always raise at power, so the check cannot
+   * silently stop exercising anything. */
+  var r = await page.evaluate(async function () {
+    var tile = document.querySelector('[data-item="ims3wg27iif"]');
+    if (!tile) return { missing: true };
+    var btn = tile.matches('button') ? tile : tile.querySelector('button');
+    if (!btn || btn.disabled) return { unusable: true };
+    function scan() {
+      var p = document.querySelector('#scannerPanel');
+      return p ? p.innerText.replace(/\s+/g, ' ').trim() : '';
+    }
+    btn.click();
+    var frames = 0, hit = 0;
+    await new Promise(function (res) {
+      var t0 = performance.now();
+      (function tick() {
+        frames++;
+        if (/Command error|Blocked/i.test(scan())) hit++;
+        if (performance.now() - t0 < 1200) requestAnimationFrame(tick); else res();
+      })();
+    });
+    return { frames: frames, hit: hit, text: scan().slice(0, 140) };
+  });
+  if (r.missing || r.unusable) {
+    console.error('FAIL: the RHR ALIGN fixture is gone from the board — re-point this check');
+    process.exitCode = 1;
+    return 'refusal-scanner: FIXTURE MISSING' + String.fromCharCode(10);
+  }
+  log.push('frames ' + r.hit + '/' + r.frames + '  text: ' + r.text);
+  if (!(r.frames > 10 && r.hit === r.frames)) {
+    console.error('FAIL: a refused board press must put its reason on the Scanner and LEAVE it ' +
+      'there — ' + r.hit + ' of ' + r.frames + ' frames carried it (#558). Text: ' + r.text);
+    process.exitCode = 1;
+  } else {
+    console.log('  refusal reaches the Scanner and persists: ' + r.hit + '/' + r.frames + ' frames');
+  }
+  /* THE OTHER HALF: a later HOVER over something HINTED still clears it. The fix must not turn
+   * the flash into a message that sticks for ever — the block's own documented behaviour is
+   * that the next hover replaces it, and a guard scoped to time rather than to the dispatch
+   * would break that.
+   *
+   * IT MUST BE A HINTED ELEMENT. A first draft moved the pointer to (12,12) and reddened: that
+   * is bare page, `inspectResolve` returns null, and `inspectAt` returns early BY DESIGN —
+   * "pointing at nothing keeps the last description on screen rather than blanking the block".
+   * The check was asserting against the panel's own persistence rule, not against the guard. */
+  var after = await page.evaluate(function () {
+    var other = document.querySelector('[data-item="imrmsslj42u"]');   /* AFW START, hinted */
+    if (other) other.dispatchEvent(new MouseEvent('mouseover', { bubbles: true }));
+    var p = document.querySelector('#scannerPanel');
+    return p ? p.innerText.replace(/\s+/g, ' ').trim() : '';
+  });
+  log.push('after hover: ' + after.slice(0, 100));
+  if (/Command error/i.test(after)) {
+    console.error('FAIL: the refusal outlived a hover — the dispatch guard has become a timer (#558)');
+    process.exitCode = 1;
+  }
+  return log.join(String.fromCharCode(10)) + String.fromCharCode(10);
+}
+
 async function testEsfArmButtons(page) {
   var log = [];
   /* pwr disables NOTHING; pwr2 disables the DELIBERATE set: the HPI AUTO re-arm (#503),
-   * grid FOLLOW and ROD AUTO (#506 honest-absent). The boron panel and RHR came back with
-   * #507 waves 1-2 (a real kernel channel and a real align command). Count pins both
-   * directions (cannot silently disable everything or nothing); membership pins identity. */
+   * ROD AUTO (#506 honest-absent) and the SR DET toggle (#567). The boron panel and RHR came
+   * back with #507 waves 1-2 (a real kernel channel and a real align command). Count pins both
+   * directions (cannot silently disable everything or nothing); membership pins identity.
+   *
+   * THE SET CHANGED WITH #567 AND WAS RE-DERIVED, NOT BUMPED. Grid FOLLOW LEFT it — that tile
+   * is the turbine LATCH now (#551/#559), an enabled control with a real command behind it —
+   * and SR DET JOINED it, because the plant publishes `sr_detector_fixed` and the board reads
+   * it. Net 3 either way, which is exactly why a count alone would have missed the swap;
+   * `mustInclude` is what pins identity, and it is the half that moved. */
   var expect = { pwr: 0, pwr2: 3 };
-  var mustInclude = ['AUTO', 'FOLLOW', 'ROD AUTO'];
+  var mustInclude = ['AUTO', 'ROD AUTO', 'SR DET'];
   for (var i = 0; i < 2; i++) {
     var eng = ['pwr', 'pwr2'][i];
     await page.goto('http://127.0.0.1:' + PORT + '/ui/shell.html?engine=' + eng,
@@ -1500,6 +1589,8 @@ async function main() {
     fs.writeFileSync(path.join(SCRATCH, 'rewind-picker.log'), rpLog);
     var ebLog = await testEsfArmButtons(page);
     fs.writeFileSync(path.join(SCRATCH, 'esf-arm-buttons.log'), ebLog);
+    var rfLog = await testRefusalReachesTheScanner(page);
+    fs.writeFileSync(path.join(SCRATCH, 'refusal-scanner.log'), rfLog);
     var dbLog = await testDiagBundle(page);
     fs.writeFileSync(path.join(SCRATCH, 'diag-bundle.log'), dbLog);
     var hpLog = await testHeldPlantDialog(page);

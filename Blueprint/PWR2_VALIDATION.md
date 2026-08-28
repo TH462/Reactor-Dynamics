@@ -6277,12 +6277,27 @@ against the curve.
   level indication during secondary plant startup **by throttling** the feedwater bypass
   regulating valves."*
 
-**`pwr2_protection.js`'s own header has called the hi-hi function "P-14 class: feedwater regulator
-closure + TURBINE TRIP" since it was written, and built only the regulator half.** The trip had no
-report field and no consumer anywhere. It matters the moment the vessel has a wet wall, and it is
-now built, riding the same `fwi` latch so the two halves of one bistable cannot drift apart.
-Measured: **t+105 s of a steam-generator overfeed, on a running turbine at 100 MWe**, at ~90 %
-narrow range — off the line before carryover begins at 100 %.
+**⚠ CORRECTION, 2026-08-27 (same day, next session).** This paragraph originally read *"the trip
+half had no report field and no consumer anywhere … it is now built"*. **That was wrong, and the
+error is the more useful half of this entry.** `pwr2_engine.js` had tripped the turbine on
+`ptr.fwi` since the FWI line was written — `if (ptr.fwi) { eng.fw.isolated = true; eng.tb.tripped
+= true; }` — **with the WTSM 3.2 citation in its own comment**. The function was complete. What
+#562 actually added was a REPORT FIELD (`turbine_trip_hi_level`) and a DUPLICATE consumer; the
+duplicate was removed the next day, the field kept.
+
+**How the error was made, because it is repeatable:** the conclusion came from reading
+`pwr2_protection.js`'s header — *"P-14 class: feedwater regulator closure + turbine trip"* — and
+inferring, from the absence of a `turbine_trip_hi_level` consumer, that the trip half was unbuilt.
+The engine was never grepped for `tb.tripped`. **A module header is an inherited claim**, and
+CLAUDE.md's standing rule covers exactly this case: *"Verify a claim before you act on it…
+inherited claims are the risky ones."* The measurement reported alongside it — the trip firing at
+t+105 s of an overfeed on a running turbine at 100 MWe — is REAL; it was measuring behaviour that
+already existed.
+
+**What the field is worth anyway**, stated so the next reader does not fold it back: one
+protective function with two consequences, reported as a single boolean, is precisely how a reader
+concludes the second consequence is missing. Naming it is what stops the next person making this
+mistake. It rides the same `fwi` latch, so the halves cannot drift apart.
 
 **DECLARED EXTENSION on the 33 ± 5 % target**: WTSM §19.0 throttles the *feedwater bypass* valves,
 not the aux feed valves. What it gives is this plant's own narrow-range target and band in the
@@ -6366,3 +6381,158 @@ dry-secondary equilibrium check sampled a fixed t = 100 s of a climb the energy 
 35 s, so it read 0.585 MPa mid-flight; it now asserts the **endpoint**, and **both the pre-#549
 mass-only limiter and the current one reach 9.145 MPa = Psat(304.5 °C) exactly**, so the new form
 passes on the old behaviour too (HR10).
+
+---
+
+## 100. #558 + #551/#559 + #567 + #560 — THE TURBINE COMES BACK, AND THE BOARD SAYS WHY — 2026-08-27
+
+The cluster #567's own recommendation names. On the plant the site runs, **one scram permanently
+ended electrical generation for that session**, and every control that would have explained why was
+mute or lying. Two owner rulings scope it *(both 2026-08-27, both menu selections, cited in that
+form)*: **"Latch = back on the line"** and **"Replace the pair with LATCH / TRIP"**.
+
+### 100.1 #558 first, because it is the mechanism behind the others
+
+`ui/app.js`'s `inspectFlash` writes a refusal into the Scanner; the **body-level click listener
+runs later in the SAME dispatch**, resolves the button under the pointer and overwrites it. Written
+and destroyed synchronously — **0 of 426 frames** across four refused presses. #505 was CLOSED on a
+fix that is true of `cmd()` and false of the board, which is the only control surface PWR2 has, and
+this is the mechanism that turns every refusal in the sim into a dead button — the class the owner
+has found by hand three times (#503, #506, #509).
+
+The guard is **scoped to the dispatch, not to time**, and only the click path consults it: a flash
+stamped with the current click count was raised by this click and stands; a later hover still
+clears it, which is the block's own documented behaviour. Measured after: **71 of 71 frames**, and
+the hover still clears.
+
+**It is gated in a browser, which is the only place it can be.** `run_pwr2_board` copies the
+try/catch into a Node harness that never renders a Scanner; `verify_e2e_ui` counted disabled
+buttons without ever pressing one. The new check presses RHR ALIGN — whose refusal is the sourced
+suction-valve permissive, a message the player is meant to LEARN from, and which #558 measured at
+zero frames — and samples every animation frame. **Verified by injection**: neuter the guard and it
+reads 0 of 68.
+
+**THE TRIP BLOCKS ROWS ARE COVERED TOO, and by the same guard.** Those rows carry no `data-item`,
+so the geometric fallback answers with a neighbouring tile — #558 measured pressing BLOCK on "RCS
+LOW FLOW" printing an unrelated instrument's description. Measured after: it prints its own
+refusal (*"trip block \"lo_flow\" REFUSED — this RPS blocks the 35 % low-flux setting"*), because
+the flash survives the dispatch whatever the fallback would have resolved to. **What remains is
+narrower than the finding**: HOVERING such a row — no press, no flash — still answers with the
+neighbour. That is a wrong hover description, not an erased message, and it is left unfixed rather
+than folded in silently.
+
+Two traps in writing it. The press must go to the `<button>` INSIDE the tile (`pwr_board.js:374`) —
+clicking the tile wrapper only bubbles to the body inspector, sends no command, and reads as a
+pass. And the hover half must target a **hinted** element: a first draft moved the pointer to bare
+page, where `inspectResolve` returns null and `inspectAt` returns early *by design* — it was
+asserting against the panel's own persistence rule, not against the guard.
+
+### 100.2 #551/#559 — the latch, and why a bare un-latch would have been worse than nothing
+
+`pwr2_shell.js`'s two turbine mappers both hard-coded `true`; no key in MAPPED (48) or REHOMED (16)
+ever passed false; `connect_grid` and `set_load_mode` were REFUSED. **896 command/payload
+combinations, none cleared `tb.tripped`** — while `load_target_mwe` read back the MWe the operator
+typed, so the board looked like it was obeying.
+
+**But the facade lever alone does not fix it**, and the measurement says so: it restores 60 MWe
+within the step on a clean manual trip, and after a scram it is silently overwritten on the very
+next step. `pwr2_engine.js` level-holds `eng.tb.tripped = true` in **six** places — MSIV under
+90 %, condenser unavailable, `main_feed_lost`, `reactor_trip`, `fwi`, and now the injected-casualty
+seat. An accepted-then-overwritten command is the **#509 §79** defect one layer deeper.
+
+So the six are enumerated once, in `turbineTripCauses(eng)`, and `latch_turbine` **refuses out
+loud, naming which stands** — the `afwUnlatch` idiom this shell already uses for the aux feed and
+safety-injection latches. **The level-holds are not weakened**: a latch that could defeat a
+standing trip is #545's defect, still open on the reactor side, and importing it here would trade
+one bug for a worse one.
+
+| measured through the shell | result |
+|---|---|
+| turbine trip on a CRITICAL plant (P-9 defeated), then `latch_turbine` + a 50 MWe target | **50.00 MWe at 1800 rpm**, governor 50.3 %, and it **holds for 600 s** |
+| `latch_turbine` under a standing scram | REFUSED: *"the reactor trip is LATCHED — reset the protection system first"* |
+| ...then `reset_rps`, then latch | **accepted** |
+| `latch_turbine` with the MSIV shut | REFUSED, naming the valve and its position |
+| injected `turbine_trip` | now **appears in `getActiveFailures()`** and `clear_failure` clears it |
+
+**[sourced]** WTSM 11.3 (ML11223A295): *"If the turbine is latched (not tripped), it is controlled
+in one of two operational modes"* — *latched* is the plant's own word and its opposite is
+*tripped*. Ginna UFSAR ch10 (ML20339A040): *"The defeat switch is automatically bypassed when the
+turbine is latched."*
+
+**Turbine roll and generator synchronisation are NOT built** *(owner ruling)*. WTSM 11.3 describes
+a real sequence — latch closes the throttle and governor valves, speed control rolls the machine,
+then load control — and this plant's turbine is binary (`rpm = tripped ? 0 : rated`). Modelling it
+is **#307**, CLOSED and `status-deliberate` as "open by design" (CURRICULUM PWR-N05).
+
+**The casualty was a seat, not a state, and the first draft got that wrong.** It reported
+`tb.tripped && no other cause standing`, which is **empty in the very case an instructor uses it**:
+injecting a turbine trip at 100 % power trips the reactor through P-9, so "another cause" is
+instantly standing and the row vanishes. Inferring a casualty from a state the plant reaches by
+itself cannot work. Every other lever here is a seat (`porv_stick`, `overfeed`, `p9Defeated`); this
+is one too.
+
+### 100.3 #567 — five controls that could only throw
+
+The board darkens a control off **what the plant publishes**, never an engine name. PWR2 now
+publishes `sr_detector_fixed` and `condenser_cw_temp_fixed` beside the existing
+`adv_setpoint_fixed`, and the board reads them. Grid MANUAL and FOLLOW became the LATCH / TRIP pair
+*(owner ruling)* — a dispatch-mode selector on a plant with one dispatch mode is not a control, and
+MANUAL threw **twice per press**.
+
+**The shared board meant PWR1 had to keep working**, and `board_check` caught it immediately: the
+tile is shared, so changing its meaning globally broke the retired engine's own gate. The retired
+engine gets `latch_turbine` as the latch half of its `connect_grid` (keeping its sourced vacuum
+permissive), and it also leaves `disconnected` — a latched machine is not off the line, and not
+doing that left the OFF tile lit over a healthy turbine. **DECLARED CONSEQUENCE**: the retired
+engine's board loses its dispatch-mode selector. `set_load_mode` is still a command there; HR9 says
+content follows the plant that ships, and #523 strips that engine from every published build.
+
+**The gate that missed all five was tightened, and the claim was split across the two layers that
+can each prove half of it.** `run_pwr2_board`'s no-orphan sweep accepted *"ok / blocked / error
+WITH a message"* — so a button that can only throw developer jargon satisfied it. It now fails any
+**enabled** button whose action is in REFUSED. `run_pwr2_kernel` band 4 was re-expressed the other
+way: a REFUSED action is only a defect if the player can reach it, so it asserts that the darkening
+**flag is published**, and names `run_pwr2_board` as the half that proves the board reads it.
+
+### 100.4 #560 — the casualty that lied about itself
+
+`pwr2_condenser.js`'s branch selector keyed **entirely on `Q`**. The `else` arm is the "no steam"
+case and correctly pins the shell to the circulating-water temperature — but it was entered for
+both *"no steam, water flowing"* and *"no steam, NO water"*, because **it never tested `cw`**.
+#510 M-6's turbine trip on `condenser.available` makes the second case reachable in one step, so
+the genuine 0 kPa signal existed for 0.02 s against a 5.0 s instrument lag.
+
+One condition — `cw <= 0` reaches the degraded arm whatever `Q` is. Measured on all three
+casualties that drop the circulating water:
+
+| | before | after |
+|---|---|---|
+| `loss_of_condenser_vacuum` | 100.12 kPa = **29.57 inHg — 2.04 inHg BETTER than healthy**, permanently | **0.00 kPa / 0.00 inHg** |
+| `loss_of_offsite_power` | same | same |
+| `station_blackout` | same | same |
+| COND VAC LO / COND VAC TRIP | **never lit**, across a 17-ride battery | both at **t+6 s** |
+
+### 100.5 Traps
+
+- **A MODULE HEADER IS AN INHERITED CLAIM.** §99.4's correction belongs here too: #562 concluded
+  the high-high level turbine trip was unbuilt by reading `pwr2_protection.js`'s header, without
+  grepping the engine for `tb.tripped`. It had been built all along.
+- **A shared control cannot be given a new meaning for one plant.** `pwr_board_wiring.js` serves
+  both engines; rewiring a tile for PWR2 broke PWR1's gate in eight places from **one** press
+  (`board_check` clicked what used to be MAN, which is TRIP now — it tripped the machine, scrammed
+  the plant, and every later check failed on a dead plant). The cascade all came from one line.
+- **A refusal check must press the BUTTON, not the tile.** The wrapper only bubbles to the body
+  inspector; nothing is sent, and the check passes for the wrong reason.
+- **A check that hovers "nothing" is asserting the persistence rule, not the fix.**
+- **Reachability and capability are two claims at two layers.** A REFUSED action is fine if its
+  control is dark; proving that needs the plant (the flag exists) *and* the board (it reads it),
+  and either alone is worth nothing.
+
+### 100.6 Gates
+
+`run_pwr2_shell` **101 / 33 mutations**, `run_pwr2_kernel` **37 / 7** (five xfails promoted),
+`run_pwr2_board` **38 / 11**, `run_pwr2_condenser` **30 / 19**, `run_pwr2_protection` **106 / 58**,
+`run_pwr2_engine` **97 / 57**, `verify_board_check` **230**, `verify_e2e_ui` PASS with the new
+Scanner check. `verify_e2e_ui`'s disabled-button set was **re-derived, not bumped**: FOLLOW left it
+(that tile is the latch now) and SR DET joined it — net 3 either way, which is exactly why the
+count alone would have missed the swap, and why `mustInclude` is the half that matters.

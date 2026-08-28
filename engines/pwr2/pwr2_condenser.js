@@ -149,15 +149,31 @@
       T_cw_out = cd.cw_inlet_c + Q / (cw * cp);
       T_cond   = T_cw_out + Q / UA_kW;
       P_cond   = W.P_sat(T_cond);
-    } else if (Q > 0) {
-      /* No circulating water, or no steam: the shell walks to whatever the incoming steam is at.
-       * With the pumps off there is nothing removing heat, so the condenser floods toward the
-       * turbine exhaust condition — represented as a hard loss of vacuum rather than a number. */
+    } else if (cw <= 0) {
+      /* NO CIRCULATING WATER — and this arm is reached WHATEVER Q IS (#560). It used to be
+       * `else if (Q > 0)`, with the no-heat case falling through to the arm below, which pins
+       * the shell to the circulating-water temperature. That arm is right for "no steam, water
+       * flowing" and catastrophically wrong for "no steam, NO water" — and #510 M-6's turbine
+       * trip on `condenser.available` makes the second case reachable IN ONE STEP, so the
+       * genuine 0 kPa signal existed for 0.02 s against a 5.0 s instrument lag and the
+       * indication never moved.
+       *
+       * MEASURED before the fix, injecting loss_of_condenser_vacuum at hot full power: true
+       * vacuum settled at 100.12 kPa = 29.57 inHg, which is 2.04 inHg BETTER than the healthy
+       * plant's 93.20 kPa, permanently — the gauge said the opposite of the truth about the
+       * system that had just failed. Both COND VAC annunciators (84.7 and 74.5 kPa) were
+       * unreachable across a 17-ride battery. Scope is wider than the menu row: a loss of
+       * offsite power and a station blackout drop the circulating water too.
+       *
+       * With no water there is nothing removing heat, so the shell walks toward the turbine
+       * exhaust condition whether or not steam is arriving this instant — a condenser without
+       * cooling does not recover its vacuum by having nothing to condense. */
       T_cond = cd.cw_inlet_c + 90;
       P_cond = W.P_sat(T_cond);
       T_cw_out = cd.cw_inlet_c;
     } else {
-      /* No heat to reject: the shell sits at the circulating water temperature. */
+      /* No heat to reject, water still flowing: the shell sits at the circulating water
+       * temperature. Reachable now only with `cw > 0`, which is the case this arm describes. */
       T_cw_out = cd.cw_inlet_c;
       T_cond   = cd.cw_inlet_c;
       P_cond   = W.P_sat(T_cond);

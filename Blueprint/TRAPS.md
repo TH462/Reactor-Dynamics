@@ -142,3 +142,21 @@ bound at once; this is what came out.
   paint, one frame late, 1475 rows in and 35 recorded — is **rescued to the standing list**
   rather than retired, because no gate reaches it. The rest is `run_diag_bundle`'s subject
   and is pinned by its 31 checks.
+
+## Evicted 2026-08-27 (the turbine cluster's themes bullet took the rotation over)
+
+- **An acceptance WINDOW that ends before the failure begins is a green gate over a defect**
+  (the #510 waves 1–10 themes bullet, 2026-08-23, on its rotation out). Every #510 high shipped
+  under one: the Mode 4 "HOLDS" check sampled the first 6 % of a 75-minute monotone fill, and the
+  ATWS check rode 10 s of a divergence that starts at ~110 s. The law it produced — settledness is
+  equilibrium DERIVATIVES at the measured wander floor over a long ride's FINAL window, plus
+  position against the boot point, never a sampled value inside a band fitted to the first minutes
+  — is **evictable under the criterion above because `test/run_pwr2_endurance.js` IS that law**.
+  The runner exists for nothing else, it rides past the horizons, and every known defect in it is
+  a born-failing strict xfail, so a fix that lands without promoting its entry reds it.
+
+  What the runner does NOT enforce, and what the bullet also said: **assert PRECONDITIONS, not
+  just claims** — its own first run caught two of its own checks, one reading a field the contract
+  does not publish (`undefined || 0` sailing over 26.6 MMBtu/hr) and one whose fixture was
+  satisfied by the 17 % low-level cut rather than by the latch under test. That half is covered by
+  the standing hollow-check bullet, which already carries the unpublished-field case.

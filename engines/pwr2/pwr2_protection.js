@@ -717,20 +717,23 @@
       afas_tdafw_cause: pr.afas_tdafw_cause,
       fwi: pr.fwi,
       fwi_cause: pr.fwi_cause,
-      /* THE HIGH-HIGH LEVEL TURBINE TRIP (#562, 2026-08-27) [sourced] — WTSM 3.2
-       * (ML11223A213): *"a high-high steam generator level turbine trip to protect the
-       * turbine against excessive moisture carryover."* This module's OWN HEADER has named
-       * the function as "P-14 class: feedwater regulator closure + TURBINE TRIP" since it was
-       * written, and built only the regulator half; the trip half had no consumer anywhere.
-       * That mattered from the moment #562 gave the generator a wet wall: without it the
-       * machine stays on the line while the steam lines carry water, which is the damage the
-       * source says the trip exists to prevent (Ginna UFSAR ch15: *"the possibility of steam
-       * generator overfill and damage to the turbine and steam piping"*).
+      /* THE HIGH-HIGH LEVEL TURBINE TRIP, NAMED (#562, 2026-08-27) [sourced] — WTSM 3.2
+       * (ML11223A213): *"a high-high steam generator level turbine trip to protect the turbine
+       * against excessive moisture carryover."*
        *
-       * IT RIDES THE FWI LATCH, deliberately: same bistable, same setpoint, same latch, so
-       * the two halves of one protective function cannot drift apart. LEVEL-HELD while the
-       * latch stands — the operator cannot re-latch the turbine into a flooded steam line —
-       * which is the convention the reactor trip's own turbine wire already uses. */
+       * ⚠ THIS FIELD NAMES A CONSEQUENCE THAT WAS ALREADY BUILT. It is `!!pr.fwi` by
+       * construction, and pwr2_engine has tripped the turbine off `ptr.fwi` since the FWI line
+       * was written, with this same citation in its comment. #562 added it believing the trip
+       * half had no consumer — a conclusion drawn from THIS MODULE'S HEADER ("P-14 class:
+       * feedwater regulator closure + turbine trip") without grepping the engine, and the
+       * duplicate consumer it also added was removed the next day. The field EARNS ITS PLACE
+       * anyway, for the reason the mistake shows: one protective function with two consequences
+       * reported as one boolean is exactly how a reader concludes the second one is missing.
+       * A consumer reading this can see the function has two halves; do not fold it back.
+       *
+       * It rides the FWI latch — same bistable, same setpoint, same latch — so the halves
+       * cannot drift apart, and it is LEVEL-HELD, which is what stops the operator re-latching
+       * the turbine into a steam line that is carrying water. */
       turbine_trip_hi_level: !!pr.fwi,
       p10_met: p10Met,
       p11_permit: p11Below,

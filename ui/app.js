@@ -6822,7 +6822,10 @@
     // hover; a click on any hinted element also explains it, alongside whatever
     // the click does). See the inspect* helpers below for the two tiers.
     document.body.addEventListener('mouseover', function (e) { inspectAt(e); });
-    document.body.addEventListener('click', function (e) { inspectAt(e); });
+    /* THE CLICK PATH IS FLASH-AWARE (#558) — see inspectAt. A press that raises a refusal
+     * writes it here and this listener, running later in the SAME dispatch, used to
+     * overwrite it with the button's own help text before a single frame was painted. */
+    document.body.addEventListener('click', function (e) { inspectAt(e, true); });
     var sp = $('scannerPanel');
     if (sp) sp.addEventListener('click', function (e) {
       var m = e.target.closest && e.target.closest('[data-scan-doc]');
@@ -6896,7 +6899,34 @@
              sec: el.getAttribute('data-scanner-sec') || null,
              inherited: false };
   }
-  function inspectAt(e) {
+  /* THE FLASH DISPATCH GUARD (#558). A refused press writes its reason with inspectFlash and
+   * the BODY-LEVEL click listener runs later in the SAME event dispatch, resolves the button
+   * under the pointer and overwrites it — the message was written and destroyed synchronously,
+   * so it never reached a frame. MEASURED before the fix: the Scanner DOM sampled every
+   * animation frame for 2.0 s after four refused board presses carried the message in
+   * 0 of 426 frames; at the button-level listener it reads the refusal, and at the body-level
+   * listener, same dispatch, it already reads the button's help text.
+   *
+   * THIS IS THE MECHANISM THAT TURNS EVERY REFUSAL IN THE SIM INTO A DEAD BUTTON — the class
+   * the owner has now found by hand three times (#503, #506, #509) — and #505 was CLOSED on a
+   * fix that is true of cmd() and false of the board, which is the only control surface PWR2
+   * has. The contrast that pins it: the same refusal from a NUMBER BOX, committed with Enter
+   * and therefore no click, renders and still reads 2.0 s later.
+   *
+   * The guard is scoped to the DISPATCH, not to time, and only the CLICK path consults it. A
+   * later hover still clears the flash, which is this block's documented behaviour ("the next
+   * hover clears it") — preserved rather than reinvented. A stamp rather than a boolean so a
+   * flash raised by an EARLIER click cannot suppress a later, unrelated one. */
+  var inspectClickSeq = 0;              /* bumped once per body-level click dispatch */
+  function inspectAt(e, fromClick) {
+    if (fromClick) {
+      /* A flash stamped with the CURRENT count was raised after the previous body click and
+       * therefore by THIS one — the button's own handler runs first, then this listener. It
+       * is the answer to the press, so it stands; a flash from an earlier click does not. */
+      var fresh = !!(inspectCur && inspectCur.flashAt === inspectClickSeq);
+      inspectClickSeq++;
+      if (fresh) return;
+    }
     var res = inspectResolve(e);
     // Persistence (§11): pointing at nothing keeps the last description on screen
     // rather than blanking the block, so it stays readable while you act on it.
@@ -6963,7 +6993,9 @@
   // It goes through the same state as a hover so expanding does not silently
   // replace it with whatever was last inspected, and the next hover clears it.
   function inspectFlash(title, msg) {
-    inspectCur = { key: 'flash:' + msg, title: title, brief: msg, detail: null, inherited: false };
+    /* `flashAt` stamps which click dispatch raised this — inspectAt's guard (#558). */
+    inspectCur = { key: 'flash:' + msg, title: title, brief: msg, detail: null, inherited: false,
+                   flashAt: inspectClickSeq };
     inspectRender();
   }
   /* FULL DESCRIPTION GROWS THE LINE IN PLACE *(OWNER DIRECTIVE, 2026-08-11: "The scanner

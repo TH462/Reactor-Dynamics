@@ -633,8 +633,24 @@
     // of being off line — the trip path sets it too (SG.tripTurbine) — which is what this
     // lamp is actually reporting. The FOLLOW/MAN pair still exclude a tripped machine:
     // a tripped turbine is not online in any mode, whatever load_mode last said.
-    imro8ktzs3u: { press: function () { cmd({ action: 'connect_grid' }); }, active: function (s) { return !IN(s).turbine_tripped && CS(s).load_mode === 'follow'; } },
-    imro8lddxi: { press: function () { cmd({ action: 'connect_grid' }); cmd({ action: 'set_load_mode', mode: 'manual' }); }, active: function (s) { return !IN(s).turbine_tripped && CS(s).load_mode === 'manual'; } },
+    // TURBINE LATCH / TRIP (#551/#559/#567) — this pair was FOLLOW / MAN, a dispatch-MODE
+    // selector, and PWR2 publishes `load_modes: ['manual']`: one mode, always in it. FOLLOW was
+    // already dark and MAN was LIVE and emitted TWO REFUSED commands per press (`connect_grid`
+    // then `set_load_mode`), so the operator's only route back onto the grid after a trip was a
+    // button that could do nothing but throw — while the real gap was that NO command in the
+    // whole registry un-latched the turbine (896 combinations, measured).
+    //
+    // The pair now carries the two real operator actions, in the plant's own vocabulary [WTSM
+    // 11.3, ML11223A295: "if the turbine is LATCHED (not tripped)"]. LATCH left, TRIP right —
+    // the START/STOP order every other panel on this board uses.
+    // `active()` reads the TRUE latch state, so a refused LATCH visibly fails to take rather
+    // than lying about the lineup, and the refusal now names what is holding the trip.
+    // *(OWNER RULING, 2026-08-27: selected "Replace the pair with LATCH / TRIP" over keeping
+    // the dispatch pair darkened beside a third button — a menu selection, cited in that form.)*
+    // FOLLOW comes back for free if #529 ever builds load following: it returns as its own
+    // control gated on the same `load_modes` capability that used to darken this one.
+    imro8ktzs3u: { press: function () { cmd({ action: 'latch_turbine' }); }, active: function (s) { return !IN(s).turbine_tripped; } },
+    imro8lddxi: { press: function () { cmd({ action: 'trip_turbine' }); }, active: function (s) { return !!IN(s).turbine_tripped; } },
     imro8len0oi: { press: function () { cmd({ action: 'disconnect_grid' }); }, active: function (s) { return !!IN(s).turbine_tripped || CS(s).load_mode === 'disconnected'; } },
     // --- SG feed pump: AUTO / MAN / OFF ---
     // AUTO = the three-element feedwater channel (feed_sg), which is the plant's real feed
@@ -2721,6 +2737,11 @@
       // 710..757 inside a card ending 765, and the neighbour starts at 770.
       // Patched here, never in pwr_board_data.js — that file is GENERATED and a re-export
       // would silently undo an edit there.
+      // The grid pair becomes the turbine LATCH / TRIP pair (#551/#559/#567). Labels patched
+      // here because pwr_board_data.js is GENERATED — a re-export would silently restore
+      // FOLLOW / MAN over controls that no longer do that.
+      imro8ktzs3u: { props: { label: 'LATCH', name: 'Turbine latch  ·  sim: latch_turbine' } },
+      imro8lddxi:  { props: { label: 'TRIP',  name: 'Turbine trip  ·  sim: trip_turbine' } },
       imrmssto6d:  { props: { height: 115 } },
       ims3v3lpw5v: { props: { top: 770 } },
       ims3xoryten: { props: { top: 793 } },
@@ -3181,11 +3202,11 @@
       // RHR align/isolate: the engine declares the system by publishing rhr_hx_fraction
       // (pwr always does); absent = the align command does not exist yet (#458 class).
       if (RHR_BUTTONS[item.id]) return CS(s).rhr_hx_fraction === undefined;
-      // Grid FOLLOW when the engine publishes its dispatch-mode capability list without it.
-      if (item.id === 'imro8ktzs3u') {
-        var lm = CS(s).load_modes;
-        return !!(lm && lm.indexOf('follow') === -1);
-      }
+      // (The grid FOLLOW dispatch gate retired with the tile — imro8ktzs3u is the turbine
+      //  LATCH now, #567. When #529 builds load following its control gates on `load_modes`
+      //  the same way; the pattern is kept here, not the stale id.)
+      // SR detector: the plant declares the channel has no operator lever (#567).
+      if (item.id === 'bdSrDetector') return CS(s).sr_detector_fixed === true;
       return false;
     },
     // The number-box mirror of buttonDisabled (#506): a setpoint box whose machinery the
@@ -3194,6 +3215,7 @@
       if (item.id === 'imrpq29jo7t') return !chan(s, 'boron_conc');          /* boron ppm */
       if (item.id === 'ims3xu86zm5') return CS(s).rhr_hx_fraction === undefined; /* RHR HX % */
       if (item.id === 'bdAdvSp') return CS(s).adv_setpoint_fixed === true;   /* sourced constant */
+      if (item.id === 'ims3v42jghn') return CS(s).condenser_cw_temp_fixed === true;  /* #567 */
       return false;
     },
     // Control tiles to append to the board that aren't in the generated board_data.js.

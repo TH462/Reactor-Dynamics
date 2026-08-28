@@ -286,7 +286,14 @@
       clickBtn('imro96h8lip'); ck('func: heater OFF -> heater_auto false & 0%', cs().heater_auto === false && cs().heater_power_pct === 0);
       clickBtn('imrmtimrch3'); ck('func: letdown A -> orifice A on / B off', cs().letdown_orifice_a === true && cs().letdown_orifice_b === false);
       clickBtn('imrmtimyxef'); ck('func: letdown A+B -> both on', cs().letdown_orifice_a === true && cs().letdown_orifice_b === true);
-      clickBtn('imro8lddxi'); ck('func: generator MAN -> load_mode manual', cs().load_mode === 'manual');
+      // THIS TILE IS THE TURBINE **TRIP** NOW (#551/#559/#567) — it was MAN, a dispatch-mode
+      // selector that on PWR2 could only throw. Clicking it here would trip the machine and
+      // scram the plant, which cascades into every check below (measured: 8 failures from this
+      // one press). The dispatch-mode claim it used to make belongs to a plant with more than
+      // one dispatch mode; assert the load-mode STATE instead, which is what the check was
+      // really about, without pressing a control that has a different job.
+      ck('func: the shipped lineup dispatches in load-following manual mode',
+        cs().load_mode === 'manual' || cs().load_mode === 'follow', cs().load_mode);
       // The two LOAD TARGET checks. They were red on 2026-08-03 for TWO independent
       // reasons, both in the harness — the board was correct throughout.
       //
@@ -656,7 +663,12 @@
         + ' tripLog=[' + (_tripLog.join(' ') || 'empty') + ']');
       RD.PwrBoard.render(g1);
       ck('feedback: OFF tile lit while off line', tileActive('imro8len0oi'));
-      ck('feedback: FOLLOW tile dark while off line', !tileActive('imro8ktzs3u'));
+      // THE TILE IS LATCH NOW (#551/#559/#567), and on a PLANNED offline the machine is off
+      // the line but still LATCHED — so this tile is LIT and OFF is lit too. Both statements
+      // are true and they are different statements: OFF says where the load is, LATCH says
+      // what state the machine is in. The old assertion read FOLLOW-the-dispatch-mode.
+      ck('feedback: LATCH tile lit while off line — a planned offline does not un-latch',
+        tileActive('imro8ktzs3u'));
       ck('feedback: MAN tile dark while off line', !tileActive('imro8lddxi'));
       // the other half: a REAL turbine trip must still light OFF
       svc.handleCommand({ action: 'trip_turbine' }); ticks(4);
@@ -664,13 +676,17 @@
       ck('func: trip_turbine does trip the turbine', g2.instruments.turbine_tripped === true);
       RD.PwrBoard.render(g2);
       ck('feedback: OFF tile lit on a real turbine trip', tileActive('imro8len0oi'));
-      // FOLLOW must clear the trip and re-synchronise — a planned offline is reversible
+      // LATCH must clear the trip — a planned offline is reversible. THIS TILE WAS FOLLOW
+      // until #551/#559/#567: a dispatch-MODE selector on a plant with one dispatch mode, whose
+      // press on PWR2 could only throw, while nothing anywhere un-latched the turbine. The pair
+      // is LATCH / TRIP on both engines now, so the mode clause goes — this engine keeps
+      // `set_load_mode` as a command, it simply no longer has a board tile for it.
       clickBtn('imro8ktzs3u'); ticks(4);
       var g3 = svc.assembleSnapshot();
       RD.PwrBoard.render(g3);
-      ck('func: FOLLOW puts it back on line', (g3.control_state || {}).load_mode === 'follow' &&
-        g3.instruments.turbine_tripped === false, (g3.control_state || {}).load_mode);
-      ck('feedback: FOLLOW tile lit back on line', tileActive('imro8ktzs3u'));
+      ck('func: LATCH puts it back on line', g3.instruments.turbine_tripped === false,
+        'turbine_tripped ' + g3.instruments.turbine_tripped);
+      ck('feedback: LATCH tile lit back on line', tileActive('imro8ktzs3u'));
       ck('feedback: OFF tile dark back on line', !tileActive('imro8len0oi'));
       // SCRAM two-step: arm then confirm. It lives HERE, in the one window where the plant is
       // on line with no standing trip signal — this is the whole fix to a pre-existing red

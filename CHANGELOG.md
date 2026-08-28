@@ -30,6 +30,57 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
 
 ## [Unreleased]
 
+### Fixed (#558 + #551/#559 + #567 + #560 — the turbine comes back, and the board says why, 2026-08-27)
+
+On the plant the site runs, **one scram permanently ended electrical generation for that session**,
+and every control that would have explained why was mute or lying. Two owner rulings scope it: LATCH
+puts the machine back on the line (turbine roll stays out under #307), and the generator card's
+dispatch-mode pair is replaced by LATCH / TRIP. Full write-up: `Blueprint/PWR2_VALIDATION.md` §100.
+
+- **#558 — a refused press now puts its reason on screen, which nothing else in the sim depended on
+  more.** `inspectFlash` wrote the refusal into the Scanner and the body-level click-to-inspect
+  overwrote it **later in the same dispatch** — written and destroyed synchronously, **0 of 426
+  frames** across four refused presses. This is the mechanism that turns every refusal in the sim
+  into a dead button, the class found by hand three times (#503, #506, #509); #505 was closed on a
+  fix that is true of `cmd()` and false of the board, which is PWR2's only control surface. Now
+  **71 of 71 frames**, and a later hover still clears it. Gated in a real browser — the only place
+  it can be — by pressing the RHR suction-valve permissive and sampling every animation frame.
+- **#551 / #559 — the turbine can be latched again.** Both shell mappers hard-coded *trip*; no key
+  in either registry ever passed false; `connect_grid` and `set_load_mode` were refused. **896
+  command/payload combinations were fired at a tripped plant and none cleared it**, while the load
+  target read back the MWe the operator typed so the board looked like it was obeying. `latch_turbine`
+  is the plant's own verb [WTSM 11.3, ML11223A295] and it **refuses out loud, naming what is holding
+  the trip** — the reactor trip latched, the main steam isolation valve shut, both main feed pumps
+  gone, the condenser unavailable, high-high level standing, or an instructor's injected casualty.
+  That matters more than the success: a bare un-latch is accepted and then silently overwritten on
+  the next step. Measured: turbine trip on a critical plant → **50.00 MWe at 1800 rpm, held for
+  600 s**. An injected turbine trip also appears in the Failures tab and can be cleared, which it
+  never could.
+- **#567 — five live controls that could only throw.** Grid MANUAL (two refusals per press), Grid
+  FOLLOW, the source-range detector toggle, the condenser circulating-water temperature box and the
+  ADV setpoint box. The grid pair is the LATCH / TRIP pair now; the other two darken off capability
+  flags the plant publishes, the way the ADV box already did. **The gate that missed them was
+  tightened**: the no-orphan sweep accepted *"error with a message"* as an acknowledged press, so a
+  button that could only throw developer jargon satisfied it.
+- **#560 — loss of condenser vacuum stops reading better than normal.** The condenser branched
+  entirely on rejected heat, so with the turbine tripped in one step the model fell into its
+  "no steam" arm and pinned the shell to the lake temperature **whether or not any cooling water
+  was flowing**. The gauge settled **2.04 inHg BETTER than a healthy plant, permanently**, and both
+  COND VAC annunciators were unreachable. One condition — no circulating water reaches the degraded
+  state whatever the heat load — and all three casualties that drop the water (loss of vacuum, loss
+  of offsite power, station blackout) now take the gauge **27.52 → 0.00 inHg** and light both
+  annunciators at t+6 s.
+
+**Also:** the generator card is documented as LATCH / TRIP / OFF with the table of what LATCH
+refuses on (`Manuals/03` §12.1); the retired engine gains the same latch verb so the shared board
+keeps working there, and loses its dispatch-mode selector as a declared consequence.
+
+**Correction to the previous entry:** the #562 note said the high-high level turbine trip was newly
+built. It was not — the engine had tripped the turbine off the feedwater-isolation latch since that
+line was written, citation and all. What was added is the report field that names it, plus a
+duplicate consumer since removed. `PWR2_VALIDATION.md` §99.4 records how the mistake was made.
+
+
 ### Fixed (#540 + #549 + #541 + #562 — the steam generator's two walls, and the lever between them, 2026-08-27)
 
 Four `priority-high` children of #534, taken together because they are one system: the plant's
@@ -61,12 +112,13 @@ dropped the mechanism.
 - **#562 — the wall itself, and the trip that was documented but never built.** Above the top of
   the narrow range the generator carries water into the steam lines (*"carryover of water into the
   steam lines … excessive cooldown of the primary system"*, Ginna TS Bases ML20339A221); at the top
-  of the wide range the shell is solid and passes what it takes. `pwr2_protection.js`'s own header
-  has called the high-high level function *"P-14 class: feedwater regulator closure **+ turbine
-  trip**"* since it was written and built only the regulator half. The turbine-trip half is now
-  built on the same latch (WTSM 3.2, ML11223A213 — *"to protect the turbine against excessive
-  moisture carryover"*) and fires **t+105 s** of a steam-generator overfeed on a running turbine at
-  100 MWe.
+  of the wide range the shell is solid and passes what it takes. The **high-high level turbine
+  trip** (WTSM 3.2, ML11223A213 — *"to protect the turbine against excessive moisture carryover"*)
+  fires **t+105 s** of a steam-generator overfeed on a running turbine at 100 MWe. *(Corrected
+  2026-08-27: this entry first said that trip was newly built. It was not — the engine had tripped
+  the turbine off the feedwater-isolation latch since that line was written, citation and all.
+  What #562 added is the report field that NAMES it, plus a duplicate consumer since removed.
+  `PWR2_VALIDATION.md` §99.4 has how the mistake was made.)*
 - **#549 — a boiled-dry generator is no longer an absorbing state.** Restoring aux feed used to do
   nothing at all: 6,526 kg in, 6,526 kg straight back out as steam, **net 0.000 kg**, with the
   enthalpy backstop — commented "expected never to bind" — binding **100 % of steps** and supplying

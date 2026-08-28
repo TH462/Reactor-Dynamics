@@ -45,6 +45,57 @@ where the two differ or where judgment was exercised.
 
 ---
 
+## 2026-08-27-develop-f — #558/#551/#559/#567/#560: the latch refuses by name, and the board is engine-agnostic about it
+
+**The design decision that mattered was not the latch — it was the REFUSAL.** `latch_turbine` is
+one line of engine door; the reason this took a design is that `pwr2_engine` level-holds
+`tb.tripped = true` in SIX places, so a bare un-latch is ACCEPTED and then overwritten on the next
+step. That is #509 §79's defect exactly (the plant agrees and nothing happens), and shipping it
+would have been worse than the missing command, because a refusal at least tells you something.
+`turbineTripCauses(eng)` enumerates the six and the command names which one stands.
+
+**The level-holds were deliberately NOT weakened.** The tempting simplification — let the latch win
+and drop the re-assert — is #545's open defect on the reactor side (a latched trip that the rods can
+be driven out from under). The engine keeps holding; only the *reason* became addressable.
+
+**LATCH puts the machine on the line, and the roll stays out** *(OWNER RULING, 2026-08-27: selected
+"Latch = back on the line")*. WTSM 11.3 describes a real sequence — latch closes throttle and
+governor, speed control rolls, then load control — and this turbine is binary (`rpm = tripped ? 0 :
+rated`). Modelling it is #307, CLOSED and `status-deliberate` as "open by design". Latch is the
+defect fix; the roll is a feature that ruling already declined.
+
+**THE SHARED BOARD IS THE CONSTRAINT NOBODY REMEMBERS UNTIL IT REDDENS.** `pwr_board_wiring.js`
+serves PWR1 and PWR2, and the owner's ruling replaces a tile pair. Changing a tile's meaning for one
+plant broke the other engine's gate in eight places from a single press — `board_check` clicks what
+used to be MAN, which is TRIP now, so it tripped the machine, scrammed the plant, and every check
+below failed on a dead plant. The resolution was NOT an engine-key branch (that is the #557 rot the
+capability-flag idiom exists to avoid): the RETIRED engine gets the same verb, `latch_turbine`, as
+the latch half of its own `connect_grid`, keeping its sourced vacuum permissive. **Declared
+consequence**: that engine's board loses its dispatch-mode selector. `set_load_mode` is still a
+command there, HR9 says content follows the plant that ships, and #523 strips it from every
+published build.
+
+**The refusal-visibility fix is scoped to the DISPATCH, not to time.** A timer would have been
+easier and wrong: the Scanner's documented behaviour is that the next hover replaces a flash, and a
+time-boxed guard breaks that. A click-dispatch counter stamped on the flash keeps both properties,
+and the browser check asserts both halves — the message persists across frames AND a hover clears
+it.
+
+**Reachability was split across two runners rather than duplicated.** A REFUSED action is not a
+defect if the control is dark, so the claim has two halves that need different fixtures: the PLANT
+publishes the darkening flag (`run_pwr2_kernel` band 4, cheap and static) and the BOARD reads it
+and renders disabled (`run_pwr2_board`, a real mounted board). Each names the other. Band 4's old
+form — "the board never sends an action that is in REFUSED" — could not express the fix at all,
+because the fix keeps the actions refused and darkens the controls.
+
+### Open flags this entry leaves
+
+- **#529** is untouched and its premise is now falsified — commented, not worked. It needs two
+  sourcing answers first.
+- **#545** stays open and adjacent. Anyone touching `turbineTripCauses` should read it before
+  weakening a level-hold.
+- The retired engine's board has no dispatch-mode control. Declared above, not a defect to file.
+
 ## 2026-08-27-develop-e — #540/#549/#541/#562: the SG gets an energy limiter at both walls, and aux feed gets its valve
 
 **The decision that shaped everything else: where the level hold lives.** *(OWNER RULING,
@@ -87,12 +138,16 @@ off one of its points — two files that had to be edited together. Given a clus
 entirely about second copies of plant constants, adding two more to the same shape was not an
 option; the map got one owner and three readers.
 
-**A documented function was completed rather than invented.** `pwr2_protection.js`'s header has
-described the high-high level function as *"P-14 class: feedwater regulator closure **+ turbine
-trip**"* since the module was written, and quoted WTSM 3.2 for the trip half, while building only
-the regulator half. The trip had no report field and no consumer. It is now built on the **same
-`fwi` latch** — one bistable, two consumers, level-held — so the halves cannot drift apart. This is
-completing a function the module already claimed, not adding one.
+**⚠ A FUNCTION THAT WAS ALREADY COMPLETE — corrected the next session.** This entry originally
+said the high-high level turbine trip "had no report field and no consumer" and was now built. The
+consumer existed: `pwr2_engine`'s FWI line has read `if (ptr.fwi) { eng.fw.isolated = true;
+eng.tb.tripped = true; }` since it was written, carrying the WTSM 3.2 citation. The conclusion came
+from `pwr2_protection.js`'s HEADER — *"P-14 class: feedwater regulator closure + turbine trip"* —
+plus the absence of a `turbine_trip_hi_level` consumer, without grepping the engine for
+`tb.tripped`. **A module header is an inherited claim, and this repo's own standing rule says
+inherited claims are the risky ones.** The duplicate consumer was removed; the report field stays,
+because a two-consequence function reported as one boolean is exactly how the next reader repeats
+the mistake.
 
 **BOARD: one control, not three.** The engine has a switch per pump [sourced, Ginna TS Bases
 B 3.3.2(a)] and `set_afw {pump}` reaches either, but this plant has one steam generator and one aux

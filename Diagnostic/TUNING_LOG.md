@@ -29,6 +29,83 @@ and the user-visible summary in `CHANGELOG.md`. This file points at those and tr
 
 ---
 
+## Session log — 2026-08-27-develop-f (#558 + #551/#559 + #567 + #560 — the turbine latch and the refusal that reaches the screen)
+
+**RESOLVED: #558, #551, #559, #567, #560** (all `#534` umbrella). The cluster #567's own
+recommendation named. Full write-up: `Blueprint/PWR2_VALIDATION.md` §100.
+
+**TWO OWNER RULINGS** *(2026-08-27, both menu selections)*: **"Latch = back on the line"** (turbine
+roll and generator synchronisation stay out under #307, CLOSED and `status-deliberate`), and
+**"Replace the pair with LATCH / TRIP"**.
+
+### What was wrong
+
+| | measured on the shipped tree |
+|---|---|
+| **#558** | `inspectFlash` wrote the refusal; the body-level click-to-inspect overwrote it **later in the same dispatch**. **0 of 426 frames** carried the message across four refused presses. |
+| **#551/#559** | Both turbine mappers hard-coded `true`; `connect_grid`/`set_load_mode` REFUSED. **896 command/payload combinations cleared nothing.** One scram ended generation for the session while `load_target_mwe` read back the operator's number. |
+| **#567** | Five rendered controls whose action is in REFUSED — Grid MANUAL threw **twice per press**. |
+| **#560** | Loss of vacuum read **2.04 inHg BETTER than healthy**, permanently; both COND VAC annunciators unreachable across a 17-ride battery. |
+
+### After
+
+- **#558** 71/71 frames, and a hover still clears it. **Verified by injection** — neuter the guard
+  and the new browser check reads 0/68.
+- **#551/#559** turbine trip on a critical plant → `latch_turbine` → **50.00 MWe at 1800 rpm, held
+  600 s**. Under a standing scram it REFUSES naming the reactor trip; after `reset_rps` it is
+  accepted. An injected turbine trip now lists and clears.
+- **#567** all five closed, the five `board-vocab-*` xfails promoted.
+- **#560** all three water-dropping casualties: **27.52 → 0.00 inHg**, both annunciators at t+6 s.
+
+### The thing worth carrying forward
+
+**A bare un-latch verb would have been worse than nothing.** `pwr2_engine` level-holds
+`tb.tripped = true` in SIX places, so the facade lever is accepted and silently overwritten on the
+next step — the #509 §79 defect one layer deeper. The six are enumerated in `turbineTripCauses` and
+the latch refuses against them **by name**. The level-holds are NOT weakened: a latch that could
+defeat a standing trip is #545's defect, still open, and importing it would trade one bug for a
+worse one.
+
+### ⚠ CORRECTION TO YESTERDAY'S ENTRY (`-e`, #562)
+
+**The high-high level turbine trip was NOT newly built.** `pwr2_engine` had tripped the turbine off
+`ptr.fwi` since that line was written, with the WTSM 3.2 citation in its own comment. The
+conclusion came from reading `pwr2_protection.js`'s HEADER and finding no `turbine_trip_hi_level`
+consumer — **the engine was never grepped for `tb.tripped`**. What #562 added is the report field
+that names the function's second half, plus a duplicate consumer, now removed. The t+105 s
+measurement is real; it was measuring behaviour that already existed. `PWR2_VALIDATION` §99.4,
+CHANGELOG and BUILD_DECISIONS all corrected.
+
+### Traps recorded (full six in §100.5)
+
+1. **A module header is an inherited claim** — the correction above.
+2. **A shared control cannot be given a new meaning for one plant.** `pwr_board_wiring.js` serves
+   both engines; rewiring one tile reddened `board_check` in **eight places from one press** (the
+   harness clicked what used to be MAN, which is TRIP now — it tripped the machine, scrammed the
+   plant, and everything downstream failed on a dead plant).
+3. **A refusal check must press the `<button>` inside the tile**, not the tile — the wrapper only
+   bubbles to the body inspector, sends nothing, and passes for the wrong reason.
+4. **A check that hovers "nothing" is asserting the panel's persistence rule, not the fix.**
+5. **A casualty must be a SEAT, not an inferred state** — the first draft reported "tripped and
+   nothing else holding it", which is empty in the very case an instructor uses it (injecting at
+   power trips the reactor through P-9).
+6. **Reachability and capability are two claims at two layers** — the plant publishes the darkening
+   flag (`run_pwr2_kernel` band 4), the board reads it (`run_pwr2_board`); either alone proves
+   nothing.
+
+### Still open in this area
+
+- **#529** (load following / FOLLOW) untouched — a `type-feature` whose body names two sourcing
+  questions to answer first. Its premise that the `connect_grid` refusal is "arguably an
+  improvement: three real operator actions" is what this cluster falsified; commented on the issue.
+- **#545** (a latched trip disables every remaining trip and the rods drive back OUT) — adjacent
+  and severe, deliberately untouched. The six level-holds must not be weakened into it.
+- **DECLARED**: the retired engine's board loses its dispatch-mode selector, since the tiles that
+  carried it now carry the latch. `set_load_mode` is still a command there; #523 strips that engine
+  from every published build.
+
+---
+
 ## Session log — 2026-08-27-develop-e (#540 + #549 + #541 + #562 — the SG's two walls and the lever between them)
 
 **RESOLVED: #540, #549, #541, #562** (all `#534` umbrella, all priority-high). One cluster,
@@ -69,9 +146,12 @@ SPECIFICATION, which is worse, because a specification is what you check the cod
 - **#562** MANUAL wide open now **walls at 245.0 %** (the level map's own 100 % wide-range point);
   in AUTO it peaks **107.7 %**, holds **NR 36.9 %** inside the sourced 33 ± 5 % band, and the
   primary falls **3.1 °F** in five hours instead of 190.
-- The **high-high level TURBINE TRIP** is built — `pwr2_protection.js`'s own header had called the
-  function *"P-14 class: feedwater regulator closure **+ turbine trip**"* since it was written and
-  built only the regulator half. Fires **t+105 s** of an overfeed on a running turbine at 100 MWe.
+- The **high-high level TURBINE TRIP** fires **t+105 s** of an overfeed on a running turbine at
+  100 MWe. **⚠ CORRECTED next session**: this first said the trip was newly built off a header
+  that claimed only the regulator half was. It was NOT — `pwr2_engine` had tripped the turbine on
+  `ptr.fwi` since that line was written, WTSM 3.2 citation and all. What landed is the report
+  field naming it, plus a duplicate consumer since removed. **A module header is an inherited
+  claim; the engine was never grepped.** PWR2_VALIDATION §99.4.
 
 ### Gates
 

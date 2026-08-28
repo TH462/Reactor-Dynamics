@@ -1136,6 +1136,29 @@
         RD.LoadMode.setMode(s, 'follow', { rated: this.cfg.turbine.mwe_rated });
         if (s.condenser_vacuum_kpa >= this.cfg.turbine.vacuum_trip_kpa) s.turbine_tripped = false;
         break;
+      case 'latch_turbine':
+        /* THE SHARED BOARD'S VERB (#551/#559/#567, 2026-08-27). The generator card's tile pair
+         * was FOLLOW / MAN — a dispatch-MODE selector — and became LATCH / TRIP, because on
+         * PWR2 there is one dispatch mode and MAN could only throw while nothing in the whole
+         * registry un-latched the turbine. `pwr_board_wiring.js` is shared, so this engine
+         * needs the same verb or the shared tile breaks here: it is the latch HALF of
+         * connect_grid above, without the mode selection.
+         *
+         * The vacuum permissive is kept — it is this engine's own and it is sourced
+         * (WTSM 11.3, ML11223A295: the vacuum trip latch "automatically disengages when the
+         * condenser vacuum reaches 23 - 25 inches Hg"). DECLARED CONSEQUENCE: this engine's
+         * board loses its dispatch-mode selector, since the tiles that carried it now carry
+         * the latch. It is the RETIRED engine (#523 strips it from every published build) and
+         * `set_load_mode` is still reachable as a command; HR9 says content follows the plant
+         * that ships. It DOES take the machine out of 'disconnected', because that mode means
+         * "off the line" and a latched machine is not — leaving it there kept the board's OFF
+         * tile lit over a healthy turbine, which board_check caught. It picks MANUAL, not
+         * FOLLOW: a re-latched machine holding the operator's load target is the conservative
+         * of the two, and connect_grid above is still the one that asks for load following. */
+        if (s.condenser_vacuum_kpa >= this.cfg.turbine.vacuum_trip_kpa) s.turbine_tripped = false;
+        if (s.load_mode === 'disconnected')
+          RD.LoadMode.setMode(s, 'manual', { rated: this.cfg.turbine.mwe_rated });
+        break;
       case 'set_steam_demand':
         s.load_mode = 'manual';
         // Sets the ASK only. The three derived fields below are re-computed from the

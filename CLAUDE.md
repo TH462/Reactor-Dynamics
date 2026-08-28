@@ -414,10 +414,13 @@ re-querying. Run the query.
   three at 1140, and no more parking 21 psi under its own setpoint).
   **The STEAM-GENERATOR cluster is CLOSED** (#540/#549/#541/#562, §99): the sink's two walls
   each hold a MASS and an ENERGY limiter now, aux feed has the flow control valves the contract
-  had been describing all along, its STOP secures BOTH pumps, and the high-high level TURBINE
-  TRIP the protection header has claimed since it was written is finally built. Two owner
-  rulings scope it (model the overfill wall; the level hold is a control-layer channel, not an
-  engine term). Everything else in #535–#566 is untouched — `gh issue list` is the authority.
+  had been describing all along, and its STOP secures BOTH pumps. **The TURBINE cluster too**
+  (#558/#551/#559/#567/#560, §100): nothing un-latched the turbine, so one scram ended generation
+  for the session; it LATCHES now and refuses BY NAME against the six standing conditions instead
+  of being overwritten. A refused board press also reaches the screen at all — #558 is the
+  mechanism behind every dead-button report — no live control can only throw, and a lost condenser
+  stops reading better than a healthy one. Rest of #535–#566 untouched; `gh issue list` is the
+  authority.
 - **RBMK and BWR** — on hold, and the source of most remaining backlog. Do not touch.
 
 **The manual set's revision number does not advance until a RELEASE** *(OWNER DIRECTIVE,
@@ -437,6 +440,12 @@ FIRST** — ask what in it would still burn someone in a month, move that to the
 ONE line, drop the rest. **A bullet is ~80 words.** (Measured 2026-08-06: the list was running
 7 bullets averaging 500 words, two of them duplicating traps already rescued below.)
 
+- **An ACCEPTED command the next step overwrites is worse than a missing one; a MODULE
+  HEADER is an inherited claim** (2026-08-27, #551/#559/#567/#558, §100). Nothing un-latched
+  PWR2's turbine — 896 combinations — so one scram ended generation for the session. The
+  facade lever alone would have been silently undone: the engine level-holds the trip in SIX
+  places. It REFUSES BY NAME instead. Same session: #562 called a protection half "unbuilt"
+  off a module header, never grepping the engine, which had built it.
 - **The SPECIFICATION can be the stale second copy, and that is worse than a stale constant**
   (2026-08-27, #562/#549/#541/#540, §99). `CONTEXT.md` defined AFW flow as *"capacity ×
   throttle × level hold"*, the Indications tab told the player the feed was level-controlled,
@@ -469,16 +478,6 @@ ONE line, drop the rest. **A bullet is ~80 words.** (Measured 2026-08-06: the li
   and the next Reset would ask for a constructor a published build does not contain. Neither was
   reachable while PWR2 was a second card. **When a plant's key changes, grep every
   `[ui.engineKey]` in the tree** — not the ones you remember.
-- **Every #510 high shipped under a green gate whose window ended before the failure began**
-  (2026-08-23, the waves 1–10 swarm review → `run_pwr2_endurance`). The Mode 4 "HOLDS" check
-  sampled the first 6 % of a 75-minute monotone fill; the ATWS check rode 10 s of a
-  divergence starting at ~110 s. The fix is a LAW, not longer bands: settledness =
-  equilibrium DERIVATIVES at the measured wander floor over a long ride's final window PLUS
-  position against the boot point — and every known defect rides as a STRICT expected-fail
-  (born failing; a fix landing without promoting its xfail reds the runner). The runner's
-  own first run caught two of its own checks — a field read the contract doesn't publish
-  (`undefined || 0` passing over 26.6 MMBtu/hr), and a fixture the 17 % low-level cut
-  satisfied in place of the latch under test. Assert preconditions, not just claims.
 **Standing procedure — not part of the rotation above; these do not expire.** One trap per entry.
 **MAX 25 BULLETS** *(OWNER RULING, 2026-08-10: selected "Cap at 25, evict to TRAPS.md" from
 options I wrote — a selection, not verbatim words)*, gated by `test/run_doc_budget.js`. Adding

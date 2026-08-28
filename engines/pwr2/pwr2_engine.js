@@ -571,6 +571,15 @@
         /* ATWS: the trip LATCHES (annunciators, turbine trip, the record) — only the rod
          * drop is failed, which is what a failure-to-scram IS */
         eng.scramBlocked = !!value; break;
+      case 'turbine_trip_failed':
+        /* THE INJECTED TURBINE TRIP, as a SEAT (#551). The menu row has set `turbine_trip`
+         * since it was built, but a bare state cannot be reported or cleared — the Failures
+         * tab and clear_failure both read a detector, and a trip the plant reaches by itself
+         * is indistinguishable from an injected one. A seat says WHO tripped it. It also holds
+         * the latch: the operator cannot latch away the instructor's casualty. */
+        eng.tbTripFailed = !!value;
+        if (value) eng.tb.tripped = true;
+        break;
       case 'p9_defeat':
         /* #515: the P-9 turbine-trip channel failed — the anticipatory trip reports nothing
          * (pwr2_protection); a persistent physical state, cleared only by the clear */
@@ -833,6 +842,10 @@
      * level, not edge, same as the reactor-trip→turbine wiring; P-9 then decides whether
      * the reactor trips, which is the source's own ">50% of full power" clause. */
     if (fwr.main_feed_lost) eng.tb.tripped = true;
+    eng._mainFeedLost = fwr.main_feed_lost === true;   /* the latch permissive reads it (#551) */
+    /* the injected trip level-holds like every other seat — an instructor's casualty does not
+     * heal because the operator pressed LATCH (#551) */
+    if (eng.tbTripFailed) eng.tb.tripped = true;
     /* AFW steps BEFORE the SG so its delivery lands in this step's balance — it is the SG's
      * second, COLD feed stream (stepAFW reads only its own state, so the hoist is free).
      * AFW is additive on top of main feed — the "merge, do not displace" rule the module's
@@ -1022,13 +1035,14 @@
      * turbine automatically trips following a reactor trip. Zero delay is assumed". Level,
      * not edge: while the trip is latched the operator cannot re-latch the turbine. */
     if (ptr.reactor_trip) eng.tb.tripped = true;
-    /* ...and on HIGH-HIGH steam generator level [sourced] — WTSM 3.2 (ML11223A213): "a
-     * high-high steam generator level turbine trip to protect the turbine against excessive
-     * moisture carryover". The other half of the same P-14 bistable that closes the feed
-     * regulating valve, unbuilt until #562 gave the generator a wet wall for it to protect
-     * against. Level-held on the same latch, so the machine cannot be re-latched into a steam
-     * line that is carrying water. */
-    if (ptr.turbine_trip_hi_level) eng.tb.tripped = true;
+    /* THE HIGH-HIGH LEVEL TURBINE TRIP IS NOT WIRED HERE — it rides the FWI line below, and
+     * it did so BEFORE #562. A duplicate consumer stood on this line for one commit
+     * (`if (ptr.turbine_trip_hi_level) eng.tb.tripped = true;`) because #562 read
+     * pwr2_protection's header — which says the function is "P-14 class: feedwater regulator
+     * closure + turbine trip" — and concluded the trip half had no consumer WITHOUT grepping
+     * this file for one. It had one: `if (ptr.fwi) { eng.fw.isolated = true; eng.tb.tripped =
+     * true; }`, carrying the WTSM 3.2 citation in its own comment. Inherited claims are the
+     * risky ones, and a module header is an inherited claim. */
     if (ptr.si) { eng.ec.hhsiRunning = true; eng.ec.lhsiRunning = true; }
     /* The AFW starts, same caller's-half law: level-held while the latch stands, so the
      * operator cannot secure an actuated pump until reset_protection clears the latch —
@@ -1121,10 +1135,56 @@
     return ts;
   }
 
+  /* turbineTripCauses(eng) -> [{ id, why }] — WHICH standing conditions are holding the turbine
+   * latch open right now, in the operator's words. Empty means the machine can be latched.
+   *
+   * WHY THIS EXISTS (#551/#559). Nothing in the shipped command surface un-latched the turbine —
+   * 896 command/payload combinations were fired at a tripped plant and none cleared `tb.tripped`,
+   * so ONE SCRAM ENDED ELECTRICAL GENERATION FOR THE SESSION. But a bare un-latch verb would have
+   * been WORSE THAN NOTHING, and the measurement says so: the facade lever restores 60.0 MWe
+   * within the step on a clean manual trip, and after a scram it is silently overwritten on the
+   * very next step, because `main_feed_lost` and `fwi` are both standing. An accepted-then-
+   * overwritten command is the #509 §79 defect one layer deeper — the operator presses, the plant
+   * agrees, and nothing happens.
+   *
+   * So the six sites that LEVEL-HOLD `eng.tb.tripped = true` are enumerated HERE, once, and the
+   * shell's `latch_turbine` refuses against them by name. The level-holds themselves are correct
+   * and are NOT weakened — a latch that could defeat a standing trip is #545's defect, which is
+   * still open on the reactor side and must not be imported here. What changes is that the reason
+   * is addressable instead of invisible.
+   *
+   * KEEP THIS IN STEP WITH THE SITES. Each entry names the line that holds it; adding a
+   * seventh level-hold without an entry here re-creates the silent-overwrite defect, and
+   * `run_pwr2_engine` counts the sites against this list so that cannot happen quietly. */
+  function turbineTripCauses(eng) {
+    var out = [];
+    var ptr = eng.rpsReport || {};
+    if (eng.msiv && eng.msiv.pos < 0.9)
+      out.push({ id: 'msiv', why: 'the main steam isolation valve is not open (' +
+        (eng.msiv.pos * 100).toFixed(0) + ' %) — the turbine has no steam supply' });
+    if (eng._cdAvail === false)
+      out.push({ id: 'condenser', why: 'the condenser is unavailable — there is nowhere for the ' +
+        'exhaust to go' });
+    if (eng._mainFeedLost === true)
+      out.push({ id: 'main_feed', why: 'both main feedwater pumps are lost [sourced, Ginna UFSAR ' +
+        'ch10: "if both main feedwater pumps fail, the turbine will be tripped"]' });
+    if (ptr.reactor_trip === true)
+      out.push({ id: 'reactor_trip', why: 'the reactor trip is LATCHED — reset the protection ' +
+        'system first' });
+    if (ptr.fwi === true)
+      out.push({ id: 'hi_hi_level', why: 'the high-high steam generator level isolation is ' +
+        'LATCHED — the steam lines may be carrying water [WTSM 3.2]' });
+    if (eng.tbTripFailed === true)
+      out.push({ id: 'injected', why: 'the turbine trip is an injected casualty and has not ' +
+        'been cleared' });
+    return out;
+  }
+
   root.RD.pwr2.engine = {
     createEngine: createEngine,
     command: command,
     step: step,
+    turbineTripCauses: turbineTripCauses,
     designHmap: designHmap,   /* exported so the equivalence fixture boots the SAME plant */
     ICS: ICS,                 /* the initial-condition registry — the shell/UI menu reads it */
     RIL: RIL, insertionLimitSteps: insertionLimitSteps,

@@ -533,6 +533,89 @@ function runSuite(SH, rec, quiet, only) {
        e7c.getActiveFailures().indexOf('loss_of_offsite_power') === -1, '');
   })();
 
+  /* ---- 1e-i. THE TURBINE LATCH (#551, #559) --------------------------------------------------
+   * Nothing in the shipped command surface un-latched the turbine: both mappers hard-coded
+   * `true`, connect_grid and set_load_mode were REFUSED, and 896 command/payload combinations
+   * were fired at a tripped plant without clearing `tb.tripped`. ONE SCRAM ENDED ELECTRICAL
+   * GENERATION FOR THE SESSION, while load_target_mwe read back the MWe the operator typed.
+   *
+   * The half that matters most here is the REFUSAL. A bare un-latch would be accepted and then
+   * overwritten on the next step by whichever of the six level-holds is standing — the #509 §79
+   * defect, where the plant agrees and nothing happens — so these checks assert the refusal by
+   * NAME, not just that a latch sometimes works. ---- */
+  head('THE TURBINE LATCH  [#551/#559 — and it must REFUSE rather than be overwritten]');
+  (function () {
+    var eL = new SH.PWR2Engine({ initial_state: '50_percent' });
+    for (i = 0; i < 9000; i++) eL.step(0.02);
+    /* P-9 defeated so the turbine trip does not take the reactor with it — above P-9 a turbine
+     * trip IS a reactor trip [sourced], and P-9 is met at the 50 % IC too, so this menu row is
+     * the only way to reach a turbine trip on a critical plant. */
+    eL.applyCommand({ action: 'inject_failure', failure_id: 'anticipatory_trip_failure' });
+    eL.applyCommand({ action: 'trip_turbine' });
+    for (i = 0; i < 6000; i++) eL.step(0.02);
+    var tsL = eL.getTrueState();
+    ck('a turbine trip on a CRITICAL plant is the fixture — 0 MWe with the reactor up',
+       tsL.turbine_tripped === true && tsL.mwe_output < 0.01 && tsL.scrammed === false,
+       'MWe ' + tsL.mwe_output.toFixed(2) + ', scrammed ' + tsL.scrammed);
+    eL.applyCommand({ action: 'latch_turbine' });
+    eL.applyCommand({ action: 'set_load_target', mwe: 50 });
+    for (i = 0; i < 3000; i++) eL.step(0.02);
+    var tsL2 = eL.getTrueState();
+    ck('#551: latch_turbine brings the machine back — MWe, rpm and the governor all return',
+       tsL2.turbine_tripped === false && tsL2.mwe_output > 45 && tsL2.turbine_rpm > 1700,
+       'MWe ' + tsL2.mwe_output.toFixed(2) + ' at ' + tsL2.turbine_rpm.toFixed(0) + ' rpm');
+    for (i = 0; i < 30000; i++) eL.step(0.02);
+    ck('...and it HOLDS for 600 s — a latch that is overwritten next step is the #509 defect',
+       eL.getTrueState().turbine_tripped === false && eL.getTrueState().mwe_output > 45,
+       'MWe ' + eL.getTrueState().mwe_output.toFixed(2) + ' at t+600 s');
+
+    /* THE REFUSAL, per standing condition. Each of the six level-holds must NAME itself. */
+    var eR = new SH.PWR2Engine({});
+    for (i = 0; i < 3000; i++) eR.step(0.02);
+    eR.applyCommand({ action: 'scram' });
+    for (i = 0; i < 3000; i++) eR.step(0.02);
+    var msg = null;
+    try { eR.applyCommand({ action: 'latch_turbine' }); } catch (eX) { msg = eX.message; }
+    ck('#559: a latch under a STANDING reactor trip REFUSES, and names it',
+       msg !== null && /reactor trip is LATCHED/.test(msg), msg ? msg.slice(0, 90) : 'ACCEPTED!');
+    ck('...and the refusal carries the SOURCED recipe order — reset first, then latch',
+       msg !== null && /reset the protection/.test(msg), '');
+    eR.applyCommand({ action: 'reset_rps' });
+    for (i = 0; i < 500; i++) eR.step(0.02);
+    var msg2 = null;
+    try { eR.applyCommand({ action: 'latch_turbine' }); } catch (eX2) { msg2 = eX2.message; }
+    ck('...and once the protection is reset the same command is ACCEPTED',
+       msg2 === null, msg2 ? msg2.slice(0, 80) : 'accepted');
+
+    /* THE MSIV LEG — a condition the operator can actually clear, so the refusal is not
+     * just a post-scram special case. */
+    var eM = new SH.PWR2Engine({});
+    for (i = 0; i < 3000; i++) eM.step(0.02);
+    eM.applyCommand({ action: 'close_msiv' });
+    for (i = 0; i < 3000; i++) eM.step(0.02);
+    var msg3 = null;
+    try { eM.applyCommand({ action: 'latch_turbine' }); } catch (eX3) { msg3 = eX3.message; }
+    ck('a shut MSIV names ITSELF in the refusal — the six holds are enumerated, not lumped',
+       msg3 !== null && /main steam isolation valve/.test(msg3), msg3 ? msg3.slice(0, 80) : 'ACCEPTED!');
+
+    /* THE CASUALTY SEAT — #551's buried half. */
+    var eF = new SH.PWR2Engine({});
+    for (i = 0; i < 3000; i++) eF.step(0.02);
+    eF.applyCommand({ action: 'inject_failure', failure_id: 'turbine_trip' });
+    for (i = 0; i < 250; i++) eF.step(0.02);
+    ck('#551: an INJECTED turbine trip appears in the failures list — it never did, so the ' +
+       'instructor could inject a casualty that was invisible AND unclearable',
+       eF.getActiveFailures().indexOf('turbine_trip') !== -1,
+       '[' + eF.getActiveFailures().join(',') + ']');
+    var msg4 = null;
+    try { eF.applyCommand({ action: 'latch_turbine' }); } catch (eX4) { msg4 = eX4.message; }
+    ck('...the operator cannot latch away an instructor casualty',
+       msg4 !== null && /injected casualty/.test(msg4), msg4 ? msg4.slice(0, 80) : 'ACCEPTED!');
+    eF.applyCommand({ action: 'clear_failure', failure_id: 'turbine_trip' });
+    ck('...and clear_failure clears it, without THROWING (a clear is not an operator latch)',
+       eF.getActiveFailures().indexOf('turbine_trip') === -1, '');
+  })();
+
   /* ---- 1e-ii. THE AUX FEED COMMAND SURFACE (#541, #562) -------------------------------------
    * THE REACHABILITY CLAIMS, and they live here because the SHELL's registry is what makes a
    * capability reachable. run_pwr2_engine has always proved the two facade doors and passed
