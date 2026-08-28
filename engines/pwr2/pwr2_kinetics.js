@@ -70,6 +70,33 @@
  * between 0.5 and 15.5 MPa) — calibrate() now evaluates once at the anchor's own state.
  *
  * ---------------------------------------------------------------------------------------
+ * THERE IS A NEUTRON SOURCE, AND THE OLD ENGINE'S CONSTANT COULD NOT BE COPIED (#536).
+ * Without one a subcritical core is a pure decaying exponential: measured on the shipped shell
+ * at hot zero power, untouched for 300 s, power fell 3.6031e-5 % -> 6.3798e-8 % while the board
+ * read a steady -0.341 dpm startup rate and a -76 s period on a plant nobody was touching, and
+ * an hour after a scram it read -0.322 dpm / -81 s for ever. WTSM 2.1 §2.1.10 (ML11223A207:1464)
+ * is explicit that this is wrong: "the neutron population of a subcritical reactor does not
+ * decrease to 0; it reaches an equilibrium value which depends on the source neutron strength
+ * and the value of Keff" — N = S/(1 - Keff).
+ *
+ * ⚠ THE OLD ENGINE'S `source: 1.0e-6` IS IN THE WRONG UNITS FOR THIS PLANT, and copying it is
+ * the move that looks safe. The subcritical equilibrium is P_eq = S·Lambda/(-rho), so the
+ * constant is TIED TO LAMBDA — and that engine's Lambda is the 0.01 s crutch this file exists to
+ * be rid of, 500x the physical value. Reproducing its 1e-4 % level at the real Lambda needs
+ * S = 5.7e-4 /s, an installed source of 2.6e11 n/s (about 500x any real one), and it would ramp
+ * an EXACTLY CRITICAL reactor at 0.05 %/s out of the source alone — against the same source's
+ * "the source neutrons become inconsequential" at criticality. It is DERIVED here instead, from
+ * this plant's own rated neutron population; see `OPEN.source`.
+ *
+ * THE INTEGRATION IS THEREFORE AUGMENTED, 8x8 RATHER THAN 7x7. A constant source makes the
+ * system AFFINE, not linear, so the closed form needs the particular integral as well as the
+ * propagator. State [P, C1..C6, 1] with A[0][7] = S and a ZERO bottom row: one matrix exponential
+ * of the block-triangular matrix returns both halves. Measured cost, 8x8 against 7x7: 1.28x on
+ * advance(), which is 8.7 % of a plant step — 75 -> ~77 us, against `run_pwr2_perf`'s 8x bound at
+ * a measured 4.0x. At S = 0 the augmented form returns the 7x7 answer bit for bit (0.865166918 at
+ * -101 pcm), which is how the gate keeps the pure-integrator claim testable.
+ *
+ * ---------------------------------------------------------------------------------------
  * ⚠ WHAT IS NOT FINISHED, DECLARED LOUDLY RATHER THAN HIDDEN:
  *
  *   DOPPLER READS A CALLER-SUPPLIED FUEL TEMPERATURE. `pwr2_fuel.js` does not exist yet — its
@@ -274,12 +301,54 @@
       value: 2.0e-5,           // s^-1
       why: 'Xe-135 burnout rate at rated flux. DERIVABLE from sigma_Xe (~2.6e6 b) and rated flux ' +
            'rather than sourced — the derivation is the deliverable.'
+    },
+    /* THE NEUTRON SOURCE (#536). Units: FRACTION OF RATED POWER PER SECOND — the same
+     * normalisation P carries — so it scales with Lambda and is NOT portable between engines.
+     *
+     * THE DERIVATION, and only its last input is unsourced:
+     *
+     *   N_rated = nu * (P_rated / E_f) * Lambda            the rated neutron population
+     *           = 2.43 * (300e6 W / 3.204e-11 J) * 2.0e-5 s
+     *           = 2.43 * 9.3633e18 fissions/s * 2.0e-5 s   = 4.5506e14 neutrons
+     *   S_norm  = S_installed / N_rated = 5.0e8 / 4.5506e14 = 1.0988e-6 /s
+     *
+     * nu = 2.43 and "roughly 200 MeV per fission" are BOTH WTSM 2.1 (ML11223A207 Table 2.1-2 at
+     * :1653; :227 verbatim — "thus, the net energy available is 197 MeV, or roughly 200 MeV per
+     * fission"). P_rated is this plant's own 300 MWt (pwr2_reactor's RATED_KW) — written here as
+     * a literal so Layer 5 files stay independent of each other, exactly as DEFAULT_T_FUEL_REF
+     * is, and the GATE ties the two modules together so they cannot drift apart silently.
+     *
+     * WHY 5.0e8 n/s AND NOT 1e8 OR 2e9 — a prototypicality test, not a preference. It is the
+     * strength that leaves the SOURCED P-6 permissive (5e-11 A, Ginna TS Bases; PWR2_VALIDATION
+     * §34) UNMET at hot standby — the plant reads 1.61e-11 A there — and brings it in at
+     * -366 pcm, partway up the control bank, which is where a real startup meets it. At 2e9 n/s
+     * the plant sits over P-6 before the operator has touched a rod; at 1e8 the shutdown
+     * indication is a fifth of a count per second.
+     *
+     * WHAT IT OWES: an installed-source strength in n/s from a document. DOE-HDBK-1019/1-93
+     * NP-02 gives Cf-252 at 2e12 n/s per GRAM and describes the Sb-Be startup sources, but no
+     * corpus document gives an ASSEMBLY total or a core loading, so the total is not derivable
+     * today (searched: neutron source / source range / cps / subcritical multiplication).
+     * ⚠ AND ONE CONSTANT CANNOT CARRY BOTH REGIMES: NP-02's photoneutron source in a core that
+     * HAS operated is orders larger than the installed one, which is why a tripped plant counts
+     * higher than a fresh one. This is the fresh-core installed value. [declared] */
+    source: {
+      value: 1.0988e-6,          // fraction of rated per second
+      installed_n_per_s: 5.0e8,  // the unsourced input — everything else above is cited
+      N_rated: 4.5506e14,        // neutrons at rated power, from the derivation above
+      why: 'NEUTRON SOURCE. The DERIVATION is sourced (WTSM 2.1: nu = 2.43, ~200 MeV/fission; ' +
+           'N_rated = nu * P_rated/E_f * Lambda) and only the installed source STRENGTH is not — ' +
+           'no corpus document gives an assembly total or a core loading. Owes that figure.'
     }
   };
 
   /* ================================================================ THE ANALYTIC ADVANCE */
 
-  var N = 7;   /* power + six precursors */
+  /* Power + six precursors + THE AUGMENTED CONSTANT. The eighth state is the literal 1 that
+   * carries the neutron source through the matrix exponential — see `advance`. Its row is all
+   * zeros, so it propagates as itself and the block-triangular exponential returns the affine
+   * solution in one call. It was 7 until #536. */
+  var N = 8;
 
   /* SCRATCH BUFFERS, ALLOCATED ONCE. The first version allocated a fresh Float64Array inside
    * matmul, which runs ~25 times per exponential and twice per plant step: measured 31.7 us per
@@ -355,9 +424,23 @@
     return r;
   }
 
-  /* Advance (P, C[6]) exactly over dt with rho held constant. */
-  function advance(P, C, rho, dt) {
+  /* Advance (P, C[6]) exactly over dt with rho held constant, WITH the neutron source.
+   *
+   * `S` DEFAULTS TO THE PLANT'S OWN CONSTANT, so production behaviour is right without a caller
+   * remembering it; a caller that wants the bare homogeneous propagator — the gate's
+   * pure-integrator contrast — passes 0 EXPLICITLY. That split is deliberate. The INTEGRATOR
+   * claim ("analytic holds a critical reactor critical, exactly") is a statement about the
+   * solver and has to stay testable at 1e-9 after the source landed; the PLANT's answer is that
+   * an exactly critical reactor with a source CREEPS, at a rate the source sets. Both are true
+   * and they are different claims, so the gate asserts both rather than widening a band.
+   *
+   * THE AUGMENTATION. dx/dt = A·x + b is affine, so x(dt) = e^{A·dt}·x0 + ∫e^{A·s}ds·b. Writing
+   * the state as [P, C1..C6, 1] and putting b in the last column makes ONE exponential return
+   * both halves, and the zero bottom row means the eighth component comes back exactly 1 — which
+   * the gate asserts, because a drifting augmented variable would scale the source silently. */
+  function advance(P, C, rho, dt, S) {
     var i, q;
+    if (S === undefined) S = OPEN.source.value;
     for (q = 0; q < N * N; q++) _A[q] = 0;
     _A[0] = (rho - DELAYED.beta) / DELAYED.Lambda;
     for (i = 0; i < 6; i++) {
@@ -365,16 +448,33 @@
       _A[(1 + i) * N + 0] = DELAYED.beta_i[i] / DELAYED.Lambda;
       _A[(1 + i) * N + (1 + i)] = -DELAYED.lambda_i[i];
     }
+    _A[0 * N + (N - 1)] = S;      /* the source, into the power equation and nothing else */
     for (q = 0; q < N * N; q++) _A[q] *= dt;
     expmInto(_A, _E);
     _v[0] = P;
     for (i = 0; i < 6; i++) _v[1 + i] = C[i];
+    _v[N - 1] = 1;                /* the augmented constant */
     for (var r = 0; r < N; r++) {
       var acc = 0;
       for (var c = 0; c < N; c++) acc += _E[r * N + c] * _v[c];
       _o[r] = acc;
     }
-    return { P: Math.max(0, _o[0]), C: [_o[1], _o[2], _o[3], _o[4], _o[5], _o[6]] };
+    return { P: Math.max(0, _o[0]), C: [_o[1], _o[2], _o[3], _o[4], _o[5], _o[6]],
+             /* REPORTED so the augmentation can be checked rather than trusted. */
+             one: _o[N - 1] };
+  }
+
+  /* sourceLevel(rho) — the equilibrium a source-held subcritical core settles at: N = S/(1-Keff)
+   * (WTSM 2.1 §2.1.10) in this file's normalisation, P_eq = S·Lambda/(-rho).
+   *
+   * EXPORTED because the engine's subcritical initial conditions must be BUILT at it rather than
+   * left to ring down to it over five minutes — the settled-construction rule (#502), and the
+   * ICS header's own stated convention. NaN at or above critical, where there is no equilibrium:
+   * the caller has asked a question with no answer and must not get a plausible number back. */
+  function sourceLevel(rho, S) {
+    if (S === undefined) S = OPEN.source.value;
+    if (!(rho < 0)) return NaN;
+    return S * DELAYED.Lambda / (-rho);
   }
 
   /* ================================================================ REACTIVITY */
@@ -781,7 +881,7 @@
     BORON: BORON, HZP: HZP,
     solveRhoExcess: solveRhoExcess, criticalBoron: criticalBoron,
     createKinetics: createKinetics, stepKinetics: stepKinetics,
-    advance: advance, expm: expm, reactivity: reactivity,
+    advance: advance, expm: expm, reactivity: reactivity, sourceLevel: sourceLevel,
     modCoeff: modCoeff, moderatorReactivity: moderatorReactivity,
     voidReactivity: voidReactivity, boronFactor: boronFactor, liqRho: liqRho,
     calibration: calibration,

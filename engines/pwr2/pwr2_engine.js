@@ -136,8 +136,9 @@
    *   - hot_zero_power is SUBCRITICAL by the adopted 1000 pcm margin (+100 ppm at the
    *     10 pcm/ppm worth), control bank IN, shutdown bank OUT (WTSM 8.1.1: withdrawn
    *     prior to criticality) — pulling the control bank toward criticality IS the
-   *     startup. Fission power seeds at 1e-6 (the old engine's source-level convention;
-   *     point kinetics has no source term and an exact zero could never start). Decay
+   *     startup. Fission power seeds at THE SOURCE EQUILIBRIUM for the margin the trim
+   *     actually landed — S·Lambda/(-rho), 1.93e-9 at hot zero power (#536); it used to
+   *     seed the retired engine's 1e-6 literal, back when this plant had no source. Decay
    *     heat ~0: a CLEAN core, declared — this is the before-first-startup state, not
    *     post-trip (the post-trip plant is reached by tripping, #468's produced-vs-preset
    *     lesson).
@@ -205,8 +206,10 @@
       if (hmap[n.id] === undefined) throw new Error('pwr2_engine: designHmap has no entry for node "' + n.id + '"');
     });
     /* fission seeds at the IC's power (kinetics/xenon/decay at that power's own equilibrium
-     * — the createKinetics convention); 1e-6 is the subcritical source level (ICS header).
-     * The kinetics REFERENCES stay at their defaults — see the detonation note above. */
+     * — the createKinetics convention). A SUBCRITICAL IC gets a PROVISIONAL seed here and is
+     * re-seeded at its own source equilibrium below, once the boron trim and the rod lineup are
+     * settled and the reactivity is known — see the block after `if (ic.cold)`. The kinetics
+     * REFERENCES stay at their defaults — see the detonation note above. */
     var powf = ic.pf > 0 ? ic.pf : 1e-6;
     var rx = R.createReactor({ P: powf, coolTemp_c: tavg0 });
     /* TWO BANKS (#506.3, 2026-08-22): control + shutdown, worths from the kinetics module's
@@ -241,6 +244,38 @@
      * would make the solver pay the bank's 3676 pcm in boron and hand back a cold plant
      * with LESS boron than a hot one (#468's measured 671-vs-857 ppm inversion). */
     if (ic.cold) rodBank[1].steps = 0;
+    /* ---- THE SUBCRITICAL SEED IS THE SOURCE EQUILIBRIUM, NOT A LITERAL (#536) --------------
+     * `powf` above is 1e-6 — the RETIRED engine's source level, carried over with a comment
+     * that said point kinetics had no source term. It has one now, and a subcritical core does
+     * not sit wherever it was placed: it settles at P = S·Lambda/(-rho) (WTSM 2.1 §2.1.10,
+     * N = S/(1-Keff)). Seeding the literal would open free play with a five-minute ring down
+     * three decades — the exact symptom #536 is about, just transient — so the state is BUILT
+     * at its equilibrium instead, which is the ICS header's own settled-construction rule (#502).
+     *
+     * IT HAS TO RUN HERE and not beside `powf`, because the equilibrium depends on the plant's
+     * OWN reactivity, and that is not known until the boron trim (which reads `rx.kin`) and the
+     * #468 bank order above have both settled. Measured at the two subcritical initial
+     * conditions: hot zero power -1137.2 pcm -> 1.93e-9 (502 cps), Mode 4 hot shutdown
+     * -5634.9 pcm -> 3.90e-10 (101 cps). The rebuild also re-seeds the precursors, xenon and the
+     * decay-heat ladder at that power, which is why it is a construction rather than an
+     * assignment — a hand-set kin.P with the OLD precursor inventory jumps on the first step. */
+    if (ic.subcritical) {
+      var hCore0;
+      for (var hn = 0; hn < sys.nodes.length; hn++) {
+        if (sys.nodes[hn].id === 'core') { hCore0 = sys.nodes[hn].h; break; }
+      }
+      var rho0 = RD.kinetics.reactivity(rx.kin, tavg0, rx.fuel.T_fuel_c, boron0, rodBank,
+                                        icP, hCore0);
+      var pEq = RD.kinetics.sourceLevel(rho0);
+      /* NaN means the trim landed at or above critical, which a subcritical IC by definition is
+       * not — refuse rather than ship a plant seeded from a non-number (the designHmap rule two
+       * blocks up: a mis-seeded state is worse than a build that stops). */
+      if (!(pEq > 0)) {
+        throw new Error('pwr2_engine: subcritical IC "' + icName + '" trimmed to rho = ' +
+                        (rho0 * 1e5).toFixed(1) + ' pcm, which has no source equilibrium');
+      }
+      rx = R.createReactor({ P: pEq, coolTemp_c: tavg0 });
+    }
     /* the secondary lands where the primary's duty puts it: Tsec = Tavg − pf·(the design
      * split), P = Psat(Tsec). The full-power path keeps the module's own default literal
      * (byte-identical construction, the save-replay bar). */

@@ -1659,6 +1659,99 @@ function runSuite(RD, rec, quiet, only) {
       'Mode 4 ' + sfM4.peak.toFixed(4) + ' kg/s vs Hot Standby ' + sfHZP.peak.toFixed(4) +
       '; 0.84 x rated = ' + (0.84 * sfM4.rated).toFixed(2));
   }
+
+  if (grp('O')) {
+  /* ---- 13. THE NEUTRON SOURCE, ON THE REAL PLANT (#536) ------------------------------------
+   * `pwr2_kinetics` owns the term and its own gate proves the physics. What THIS gate owns is
+   * everything the term touches once a plant is built around it: the subcritical initial
+   * conditions are CONSTRUCTED at their own source equilibrium rather than at a literal, the
+   * approach to criticality reads forwards, and a tripped plant stops falling.
+   *
+   * WHAT IT LOOKED LIKE BEFORE (measured on the shipped shell): hot standby untouched for 300 s
+   * fell 3.6031e-5 % -> 6.3798e-8 % with the board reading -0.341 dpm and -76 s; pulling the
+   * bank from there took the neutron level DOWN for another 60 s and 42 of the first 200 steps
+   * before it turned; and an hour after a scram the board still read -0.322 dpm / -81 s. */
+  head('THE NEUTRON SOURCE  [a subcritical plant HOLDS; the approach reads forwards; a trip levels off]');
+  var SUBHOLD = quiet ? 60 : 300;
+  function subLevel(eng) {          /* the equilibrium THIS plant's own reactivity implies */
+    return K.sourceLevel(EN.step(eng, DT).reactivity_pcm / 1e5);
+  }
+  /* O1. SETTLED CONSTRUCTION (#502's bar). The seed used to be the retired engine's 1e-6 —
+   * three decades above where this plant's source holds it — so free play opened with a
+   * five-minute ring down, which is the defect's own symptom wearing a transient's face. */
+  var engNS = EN.createEngine({ initial_state: 'hot_zero_power' });
+  var nsEq = subLevel(engNS), nsOpen = EN.step(engNS, DT).power_pct / 100;
+  var nsHeld = run(engNS, SUBHOLD).power_pct / 100;
+  ckT('hot standby OPENS at its own source equilibrium — no ring, no literal',
+      Math.abs(nsOpen / nsEq - 1) < 0.02,
+      'opened at ' + nsOpen.toExponential(4) + ' against S·Lambda/(-rho) = ' +
+      nsEq.toExponential(4) + '; the old seed was 1e-6, three decades high');
+  ckT('...and HOLDS it untouched, instead of decaying to nothing',
+      Math.abs(nsHeld / nsOpen - 1) < 0.02,
+      nsOpen.toExponential(4) + ' -> ' + nsHeld.toExponential(4) + ' over ' + SUBHOLD +
+      ' s; the sourceless plant fell by a factor of 568 over 300 s here');
+  /* O2. THE LEVEL IS THE PLANT'S, NOT A CONSTANT. Mode 4 sits ~4,500 pcm deeper than hot
+   * standby, so it must indicate LOWER — and by the ratio of the two reactivities. A hard-coded
+   * seed passes O1 and fails this; that is the whole point of asserting two initial conditions. */
+  var engNS4 = EN.createEngine({ initial_state: 'hot_shutdown' });
+  var ns4Eq = subLevel(engNS4), ns4Open = EN.step(engNS4, DT).power_pct / 100;
+  var ns4Held = run(engNS4, SUBHOLD);
+  ckT('Mode 4 sits DEEPER and therefore indicates LOWER — the level tracks reactivity',
+      Math.abs(ns4Open / ns4Eq - 1) < 0.02 && ns4Open < nsOpen * 0.5 &&
+      Math.abs(ns4Held.power_pct / 100 / ns4Open - 1) < 0.02,
+      'Mode 4 ' + ns4Open.toExponential(3) + ' (' + ns4Held.sr_counts_cps.toFixed(0) +
+      ' cps) against hot standby ' + nsOpen.toExponential(3) + ' — a seeded literal would ' +
+      'give both the same number');
+  /* O3. THE APPROACH READS FORWARDS. The symptom a player meets: pulling rods while the meter
+   * falls. Counted over the whole withdrawal, not sampled — a sample can straddle the dip. */
+  var engAP = EN.createEngine({ initial_state: 'hot_zero_power' });
+  run(engAP, 30);
+  EN.command(engAP, 'rod_target', 200);
+  var apFell = 0, apPrev = EN.step(engAP, DT).power_pct, apTs = null, apSteps = 0;
+  for (var ap = 0; ap < Math.round((quiet ? 60 : 200) / DT); ap++) {
+    apTs = EN.step(engAP, DT); apSteps++;
+    if (apTs.power_pct < apPrev * 0.999999) apFell++;
+    apPrev = apTs.power_pct;
+    if (apTs.power_pct > 1) break;
+  }
+  ckT('the approach to criticality RISES from the first rod step — the meter never runs backwards',
+      apFell === 0,
+      apFell + ' of ' + apSteps + ' withdrawal steps fell; the sourceless plant took the level ' +
+      'DOWN for 60 s and 42 of its first 200 steps before turning');
+  ckT('...and the source range climbs with it, which is what makes 1/M readable',
+      apTs.power_pct > 100 * nsOpen,
+      'from ' + (nsOpen * 100).toExponential(2) + ' % to ' + apTs.power_pct.toExponential(2) +
+      ' % over the withdrawal');
+  /* O4. THE TRIPPED PLANT LEVELS OFF — WTSM 2.1 §2.1.10: the level "begins to decrease
+   * exponentially with a startup rate of -1/3 decade per minute", which this plant already did,
+   * and then "the neutron population eventually levels off". It was the levelling that was
+   * missing: -0.322 dpm and -81 s at every sample of a 20 h ride, until kin.P underflowed to
+   * exactly 0.0 at 16.62 h and the board read "steady" on a core with no neutrons in it.
+   *
+   * ⚠ LIVE-PASS ONLY, BY COST, AND SAYING SO. The decay from rated to source level is ~25 min of
+   * plant — 90,000 steps — and running it inside every group-O mutation replay would put minutes
+   * on this gate for a claim the three checks above already carry at the construction end. The
+   * MUTATION-VISIBLE half of #536 is O1-O3; this is the end-to-end witness. */
+  if (!quiet) {
+    var engTR = EN.createEngine({});
+    run(engTR, 60);
+    EN.command(engTR, 'scram');
+    var trMid = run(engTR, 540);                      /* 600 s: still on the decade rate */
+    var trEnd = run(engTR, 1200);                     /* 1800 s: levelled */
+    var trEq = K.sourceLevel(trEnd.reactivity_pcm / 1e5);
+    ckT('a tripped plant falls at the sourced -1/3 decade per minute and THEN LEVELS OFF',
+        trMid.startup_rate_dpm < -0.25 && trMid.startup_rate_dpm > -0.40 &&
+        Math.abs(trEnd.startup_rate_dpm) < 0.02 &&
+        Math.abs(trEnd.power_pct / 100 / trEq - 1) < 0.05,
+        'SUR ' + trMid.startup_rate_dpm.toFixed(3) + ' dpm at 600 s (WTSM -1/3), ' +
+        trEnd.startup_rate_dpm.toFixed(5) + ' dpm at 1800 s, holding ' +
+        (trEnd.power_pct / 100).toExponential(3) + ' against S·Lambda/(-rho) = ' +
+        trEq.toExponential(3) + ' — the board read -0.322 dpm and -81 s here for ever');
+    ckT('...and the source range reads it, in the hundreds of counts rather than pinned at zero',
+        trEnd.sr_counts_cps > 50 && trEnd.sr_counts_cps < 200 && trEnd.sr_energized === true,
+        trEnd.sr_counts_cps.toFixed(0) + ' cps on a tripped plant');
+  }
+  }
 }
 
 console.log('\nPWR2 -- THE ENGINE FACADE: one door, the gates\' wiring written once');
@@ -1921,7 +2014,21 @@ var MUTATIONS = [
    '      eng.rh.hx_fraction = 0.5;', { grp: 'N' }],
   ['the P-11 engage refusal is severed on the SI block (an at-power bypass)',
    "          if (pInd2 >= PT.P11.mpa) {",
-   '          if (false) {', { grp: 'N' }]
+   '          if (false) {', { grp: 'N' }],
+  /* THE NEUTRON SOURCE'S CONSTRUCTION HALF (#536). The term itself lives in pwr2_kinetics and
+   * is mutated there; what these three guard is that the plant is BUILT at the level it holds. */
+  ['the subcritical seed reverts to the retired engine\'s 1e-6 literal (free play opens ringing)',
+   '    if (ic.subcritical) {\n      var hCore0;', '    if (false) {\n      var hCore0;',
+   { grp: 'O' }],
+  ['the seed is taken BEFORE the boron trim, so it is built at the wrong margin',
+   '      var rho0 = RD.kinetics.reactivity(rx.kin, tavg0, rx.fuel.T_fuel_c, boron0, rodBank,\n' +
+   '                                        icP, hCore0);',
+   '      var rho0 = RD.kinetics.reactivity(rx.kin, tavg0, rx.fuel.T_fuel_c, 0, rodBank,\n' +
+   '                                        icP, hCore0);',
+   { grp: 'O' }],
+  ['the seed ignores the plant and uses a fixed reactivity (both ICs get the same level)',
+   '      var pEq = RD.kinetics.sourceLevel(rho0);',
+   '      var pEq = RD.kinetics.sourceLevel(-0.011372);', { grp: 'O' }]
 ];
 var CORESRC = fs.readFileSync(path.join(SRC, 'pwr2_core.js'), 'utf8').replace(/\r\n/g, '\n');
 

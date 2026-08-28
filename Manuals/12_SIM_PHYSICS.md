@@ -103,14 +103,24 @@ Standard point-kinetics equations with **six delayed-neutron groups** (U-235 dat
 | Parameter | Value |
 |---|---|
 | β (total delayed fraction) | **0.006502** |
-| Λ (prompt generation time) | **0.01 s** |
+| Λ (prompt generation time) | **2.0 × 10⁻⁵ s** |
 | Delayed groups | 6, λ from 0.0124 to 3.01 s⁻¹ |
+
+Λ is the **physical** prompt generation time. An earlier engine carried 0.01 s — 500 times that — because its explicit integrator was only stable with it; the equations here are integrated in closed form instead (a matrix exponential each step), so the real value is used. It matters to more than the prompt response: the subcritical source level below scales with Λ.
 
 There is **no spatial flux shape**. The whole core is one point. This is the single largest simplification in the model, and its consequences are stated in §12.1.
 
 ### 4.2 The neutron source
 
-A small constant source term is present at all times. It is what gives a subcritical core its **1/M behaviour**: at equilibrium, power sits at `source · Λ / (−ρ)`, so power and startup rate respond visibly to every rod step during the approach to criticality instead of the core sitting dark until it is too late.
+A small constant source term is present at all times, representing the startup sources every real core carries. It is what gives a subcritical core its **1/M behaviour**: at equilibrium, power sits at `source · Λ / (−ρ)`, so power and startup rate respond visibly to every rod step during the approach to criticality instead of the core sitting dark until it is too late. It is also why a tripped reactor levels off at a low, steady indication instead of falling for ever.
+
+| Parameter | Value |
+|---|---|
+| Source (fraction of rated power per second) | **1.0988 × 10⁻⁶** |
+| …derived from an installed source strength of | 5 × 10⁸ neutrons/s |
+| …over this plant's rated neutron population | 4.55 × 10¹⁴ neutrons |
+
+The source strength itself is the one **unverified** figure in the block: no reference in the source set gives an assembly total for a startup source, so it is chosen to place the shutdown indication where the plant's own instrument setpoints say it belongs — the intermediate range reads under the **P-6** permissive at Hot Standby and crosses it partway up the control bank.
 
 This is a real feature of real startup instrumentation, and it is why the 1/M plot in this trainer works.
 

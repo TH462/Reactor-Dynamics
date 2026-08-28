@@ -30,6 +30,59 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
 
 ## [Unreleased]
 
+### Fixed (#536 — the neutron source the reactor did not have, 2026-08-28)
+
+Full write-up: `Blueprint/PWR2_VALIDATION.md` §107.
+
+- **A shut-down reactor now holds a steady neutron level instead of fading to nothing.** Point
+  kinetics had no constant source term, so a subcritical core was a pure decaying exponential.
+  Measured at Hot Standby, untouched for 300 s: power fell 3.6031e-5 % → 6.3798e-8 % while the
+  board read a steady **−0.341 dpm startup rate and a −76 s period on a plant nobody was
+  touching**, and the source range collapsed from 181 counts/s to a floored 0.5. It now holds
+  1.93e-7 % and 502 counts/s.
+- **The approach to criticality reads forwards.** Pulling the control bank used to take the
+  neutron level DOWN for another 60 s and **42 of the first 200 steps** before it turned, then
+  put the whole visible rise into the last few seconds — the "nothing, then runaway" the retired
+  engine had been explicitly tuned out of. Measured over the same withdrawal now: **0 falling
+  steps**. This also makes subcritical multiplication and the **1/M (inverse count rate)**
+  technique representable, which they were not.
+- **A tripped reactor levels off.** It fell at the sourced −1/3 decade per minute for ever —
+  −0.322 dpm and −81 s at every sample of a 20 h ride — until the neutron population underflowed
+  to *exactly zero* at 16.62 h, at which point the board reported "steady" on a core with no
+  neutrons in it. It now settles at 89 counts/s with a zero startup rate, which is the second
+  half of the behaviour the reference describes.
+- **⚠ The retired engine's constant could not be copied, and copying it was the trap.** The
+  subcritical level is `source · Λ / (−ρ)`, so the constant is tied to the prompt generation
+  time — and the old engine's Λ is the 0.01 s integrator crutch this engine exists to be rid of,
+  500× the physical value. Matching its level would have needed a source ~500× any real one, and
+  would have ramped an *exactly critical* reactor at 0.05 %/s out of nothing. Derived from this
+  plant's own rated neutron population instead (ν and MeV/fission both sourced); only the
+  installed source strength is unverified, and it is declared as such.
+- **The point-kinetics integration is now 8×8.** A constant source makes the system affine rather
+  than linear, so the closed-form step needs the particular integral as well as the propagator.
+  Measured cost: 1.28× on the matrix advance, which is 8.7 % of a plant step — 4.1× the retired
+  engine against the gate's 8× bound.
+- **The source-range gauge was calibrated to the retired plant** *(OWNER RULING, 2026-08-28:
+  "Re-scale the gauges too", selected from three options)*. Its scale had been sized against a
+  level that engine produced *with the inflated Λ*, so on this plant it read the shutdown reactor
+  half a count per second. Re-anchored so Hot Standby reads the ~500 counts/s that
+  `Manuals/09` §9.0 already documented — the plant was brought up to prose it already ships. The
+  **intermediate**-range scale deliberately did NOT move: the sourced 20 %-current-equivalent rod
+  stop is derived through it. Both display floors are gone; they existed only to stop the gauges
+  reading a core that had decayed to zero.
+- **Initial conditions are built at the level they hold.** Both subcritical presets seeded the
+  retired engine's literal — three decades high — so free play would have opened with a
+  five-minute ring down. They are constructed at `source · Λ / (−ρ)` for the margin the boron
+  trim actually landed: Hot Standby −1137.2 pcm → 502 counts/s, Mode 4 Hot Shutdown −5634.9 pcm →
+  101 counts/s.
+- Gates: `run_pwr2_kinetics` 82 → **94** (45 → 54 mutations), `run_pwr2_engine` 111 → **118**
+  (66 → 69, new group), `run_pwr2_true_state` 71 → **75** (24 → 28); `run_pwr2_reactor` and
+  `run_pwr2_perf` unchanged and green. The critical-hold check was **split, not widened** — the
+  integrator claim runs with the source off, the plant's creep is its own check (HR10).
+- Manuals: `12` §4.1 (the Λ row still said 0.01 s) and §4.2, `09` §11.0's intermediate-range row
+  at Hot Standby. `Blueprint/PWR2_VALIDATION.md` §34 corrected — it asserted the opposite of what
+  was measured, which is why this was an unfiled regression rather than a known gap.
+
 ### Fixed (#552 + #538 + #537 — the three pressurizer controls that lied about themselves, 2026-08-28)
 
 Full write-up: `Blueprint/PWR2_VALIDATION.md` §106.

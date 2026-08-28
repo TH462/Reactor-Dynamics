@@ -460,7 +460,7 @@ persists is either a transient in progress or a failed instrument.
 | Boron (ppm) | ≈ 747 | ≈ 837 | ≈ 846 | ≈ 363 | ≈ 919 |
 | Net reactivity (pcm) | 0 | 0 | ≈ 0 | ≈ −1000 | ≈ −1000 |
 | Source range (cps) | 0 (de-energized) | 0 (de-energized) | 0 (de-energized) | ≈ 500 | ≈ 500 |
-| Intermediate range (A) | ≈ 8e-3 | ≈ 4e-3 | ≈ 5e-4 | ≈ 8e-9 | ≈ 8e-9 |
+| Intermediate range (A) | ≈ 8e-3 | ≈ 4e-3 | ≈ 5e-4 | ≈ 1.6e-11 | ≈ 1.6e-11 |
 | SR detector | OFF | OFF | OFF | Energized | Energized |
 | Condenser vacuum (kPa) | ≈ 96.5 | ≈ 96.5 | ≈ 96.5 | ≈ 96.5 | ≈ 96.5 |
 | Turbine speed (RPM) | 1800 | 1800 | 1800 | 1800 | 1800 |

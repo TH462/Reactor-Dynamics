@@ -45,6 +45,64 @@ where the two differ or where judgment was exercised.
 
 ---
 
+## 2026-08-28-develop-f — #536: the neutron source, and a constant that could not be ported
+
+**THE DECISION THAT SHAPED THIS: a tuning constant belongs to the ENGINE it was tuned against.**
+PWR2's point kinetics had no source term, so a subcritical core decayed without bound. The obvious
+repair is to port `pwr_config.kinetics.source = 1.0e-6` from the engine PWR2 replaces. **That is
+wrong, and it is wrong in a way that looks conservative.** The subcritical equilibrium is
+`P_eq = S·Λ/(−ρ)`, so the constant is tied to the prompt generation time — and the old engine's Λ
+is the 0.01 s explicit-integrator crutch PWR2 exists to be rid of, 500× physical. Matching its
+level at the real Λ needs `S = 5.7e-4 /s` (an installed source ~500× any real one) and would ramp
+an *exactly critical* reactor at 0.05 %/s out of nothing, against WTSM 2.1 §2.1.10's *"the source
+neutrons become inconsequential"* at criticality.
+
+**Built instead as a derivation with one declared gap.** `N_rated = ν·(P_rated/E_f)·Λ = 4.5506e14`
+neutrons (ν = 2.43 and ~200 MeV/fission both WTSM 2.1, ML11223A207); `S = 5.0e8 / N_rated =
+1.0988e-6 /s`. Only the installed source strength is unsourced — no corpus document gives an
+assembly total — so it lives in `pwr2_kinetics.OPEN`, whose count rises 3 → 4. **That figure was
+picked by a prototypicality test, not taste:** it leaves the sourced P-6 permissive (5e-11 A,
+Ginna TS Bases) unmet at Hot Standby and brings it in at −366 pcm, partway up the bank.
+
+**Deviation from the module's own integration note, and it is required, not preferred.** A constant
+source makes the system **affine**, so the closed-form advance needs the particular integral as
+well as the propagator. The matrix is augmented 7×7 → **8×8** (state `[P, C₁..C₆, 1]`, `A[0][7] =
+S`, zero bottom row). Measured 1.28× on `advance`, 8.7 % of a plant step; `run_pwr2_perf` 4.1×
+against its 8× bound. At `S = 0` it returns the 7×7 answer bit for bit, which is what lets the
+integrator claims keep their 1e-9 tolerance (HR10 — the critical-hold check was **split, not
+widened**).
+
+**OWNER RULING, 2026-08-28: "Re-scale the gauges too"** — selected from three options put to him
+(leave the scales and file the gap · leave everything · re-scale). The source-range scale
+`k_sr = 5.0e8` was inherited from `pwr_config`'s `nis` block, where it had been sized against a
+level the old engine produced *with the inflated Λ*; on PWR2 it read the shutdown plant 0.5 cps.
+Now **2.6e11**, anchored so Hot Standby reads the ~500 cps `Manuals/09` §9.0 already documents —
+prose the plant was brought *up to*, not edited. **`k_ir` deliberately did NOT move**: the sourced
+20 %-current-equivalent intermediate-range rod stop (WTSM 8.1 §8.1.7.3) is derived through it, so
+re-scaling it would move a sourced setpoint. The ruling was read as *which gauge is actually
+wrong*, not *change both*.
+
+**Two smaller calls.** Both `Math.max(pFrac, 1e-9)` display floors are removed — they existed only
+to stop the gauges reading a core that had decayed to zero, and they pinned the settled post-trip
+plant at 0.5 cps against a true 89. And `sr_energized` moved off its `pFrac < 1e-3` literal onto
+the 1e5 cps securing cue `Manuals/03` §4.3 prints, so the rule cannot drift from the scale again.
+
+**Subcritical initial conditions are now CONSTRUCTED at their own source equilibrium** (#502),
+after the boron trim and the #468 bank order, because the equilibrium depends on the reactivity
+those settle. A NaN refuses the build rather than seeding a plant from a non-number.
+
+### Open flags this entry leaves
+
+None new. The unsourced installed-source strength is carried where the module's other unsourced
+constants are — `pwr2_kinetics.OPEN`, asserted non-empty and flagged by `run_pwr2_kinetics`, whose
+count check moved 3 → 4 so the entry cannot be quietly dropped or quietly promoted. One gap is
+**named but not opened as a flag** because it is unmeasured and belongs with #523/#525: the
+`Manuals/09` §11.0 initial-condition table is still the retired plant's — it carries a
+`cold_shutdown` column PWR2 does not have and a Hot Standby net-reactivity row of ≈ −1000 pcm
+against a measured −1137. Only the row this change made wrong was corrected.
+
+---
+
 ## 2026-08-28-develop-c — #572: the ruling was honoured and its subject moved
 
 **THE DECISION THAT SHAPED THIS: an owner ruling names the WORK, and the evidence pass names the

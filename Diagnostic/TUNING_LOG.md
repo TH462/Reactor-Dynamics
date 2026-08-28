@@ -29,6 +29,82 @@ and the user-visible summary in `CHANGELOG.md`. This file points at those and tr
 
 ---
 
+## Session log — 2026-08-28-develop-f (#536 — the neutron source the reactor did not have)
+
+Full write-up with every number: `Blueprint/PWR2_VALIDATION.md` §107. This is the continuity note.
+
+- **The defect.** `pwr2_kinetics.advance` built a 7×7 matrix with no constant source term, so a
+  subcritical core was a pure decaying exponential. Hot Standby, untouched 300 s: **3.6031e-5 % →
+  6.3798e-8 %**, board reading a steady **−0.341 dpm / −76 s** on a plant nobody was touching and
+  the source range collapsing 181 → 0.5 cps (floored). The approach to criticality took the level
+  DOWN for 60 s and **42 of the first 200 steps**. Post-trip: −0.322 dpm / −81 s for ever, `kin.P`
+  underflowing to **exactly 0.0** at 16.62 h with the board reading "steady".
+- **⚠ THE TRAP, and it is the one to carry.** `pwr_config.kinetics.source = 1.0e-6` is **not
+  portable**. `P_eq = S·Λ/(−ρ)`, so S is tied to Λ — and the retired engine's Λ is the 0.01 s
+  integrator crutch, 500× physical. Matching its level at PWR2's real Λ = 2.0e-5 s needs
+  **S = 5.7e-4 /s**, an installed source of 2.6e11 n/s, and it would ramp an *exactly critical*
+  reactor at **0.05 %/s out of nothing** — against WTSM 2.1 §2.1.10's own *"the source neutrons
+  become inconsequential"* at criticality. Copying it would have looked like the safe move.
+- **What it is instead.** `N_rated = ν·(P_rated/E_f)·Λ = 2.43 × (300 MWt / 200 MeV) × 2.0e-5 =
+  4.5506e14`; `S = 5.0e8 / 4.5506e14 = 1.0988e-6 /s`. ν and 200 MeV/fission are both WTSM 2.1
+  (ML11223A207 :1653, :227); `P_rated` comes from `pwr2_reactor.RATED_THERMAL_KW` and the gate
+  ties the modules. Only the **installed strength** is unsourced → `OPEN.source`, count 3 → 4.
+  **5.0e8 n/s was picked by a prototypicality test, not taste**: it leaves the sourced P-6
+  permissive (5e-11 A, Ginna TS Bases) UNMET at Hot Standby (1.61e-11 A) and brings it in at
+  −366 pcm, partway up the bank. 2e9 puts the plant over P-6 before the operator touches a rod.
+- **The integration is 8×8 now** — a source makes the system affine, so the closed form needs the
+  particular integral. State `[P, C₁..C₆, 1]`, `A[0][7] = S`, zero bottom row. Verified before
+  writing it: reproduces `S·Λ/(−ρ)` to 5 figures at −10/−100/−1137/−6450 pcm from above AND
+  below; at S = 0 returns the 7×7 answer bit for bit. Cost **1.28× on `advance` = 8.7 % of a
+  step**; `run_pwr2_perf` 81.5 µs, **4.1×** against its 8× bound.
+- **⚠ HR10: the critical-hold check was SPLIT, not widened.** `P = 1.0 ± 1e-9` after one step now
+  reads +3.4e-9. `advance` takes S explicitly; the integrator checks pass **S = 0** (which also
+  validates the augmentation against the 7×7 behaviour it replaced), and the plant's creep is its
+  own check with an independent witness — `d/dt(P + ΣC) = ρ/Λ·P + S` is a conservation identity
+  that appears nowhere in the engine, and at ρ = 0 the inventory grows at precisely S (measured
+  1.26e-4 relative). It also explains the creep: the inventory is ~4,240× the power, so power
+  drifts **1.6e-8** over 30 s, not the naive `S·t = 3.3e-5`.
+- **Both subcritical ICs are CONSTRUCTED at the level** (#502), after the boron trim and the #468
+  bank order, because the equilibrium depends on the reactivity those settle. NaN refuses the
+  build. Hot Standby −1137.2 pcm → 1.93e-9; Mode 4 −5634.9 pcm → 3.90e-10. **Two ICs is what
+  makes the check real** — a hard-coded seed passes "opens at equilibrium" and fails "Mode 4 sits
+  deeper and indicates lower".
+- **The source-range gauge scale was inherited from the retired plant and is 500× wrong**
+  *(OWNER RULING, 2026-08-28: "Re-scale the gauges too", from three options)*. `k_sr` 5.0e8 →
+  **2.6e11**, anchored so Hot Standby reads the ~500 cps `Manuals/09` §9.0 **already documents**.
+  **`k_ir` does NOT move** — `pwr2_protection` derives the sourced 20 %-current-equivalent rod
+  stop through it (WTSM 8.1 §8.1.7.3), so re-scaling it moves a sourced setpoint; and it does not
+  need to. Both `Math.max(pFrac, 1e-9)` floors removed (they existed only to hide a core that had
+  decayed to zero — they pinned the settled post-trip plant at 0.5 cps against a true 89), and
+  `sr_energized` moved off `pFrac < 1e-3` onto the 1e5 cps cue `Manuals/03` §4.3 prints, so it
+  cannot drift from the scale again.
+- **Ladder, measured:** Hot Standby 502 cps / 1.61e-11 A · P-6 at −366 pcm, 1,560 cps · −100 pcm
+  5,700 cps · handoff caution −11.4 pcm · SR secured −5.7 pcm · Mode 4 101 cps · settled post-trip
+  89 cps. After: Hot Standby holds 1.9325e-7 % → 1.9275e-7 % over 300 s; **0 falling steps of
+  6,500** through the withdrawal; post-trip −0.322 dpm at 600 s (the sourced −1/3 decade/min) then
+  levelled by 1,800 s.
+- **Gates.** `run_pwr2_kinetics` 82 → **94** (45 → 54 mutations), `run_pwr2_true_state` 71 → **75**
+  (24 → 28), `run_pwr2_engine` 111 → **118** (66 → 69, new group `O`); `run_pwr2_reactor` 41 and
+  `run_pwr2_perf` 5 unchanged. `run_pwr2_engine`'s `secs` hint corrected 165 → 410 (it was stale
+  before this change). One cleanup rode along: a `run_pwr2_kinetics` banner was unguarded by
+  `quiet` and printed once per mutation.
+- **⚠ Not one of these checks is one mutation testing could have supplied.** This gate scored
+  50/50 with 25/25 mutations while the direct boron term did not exist; it would have done the
+  same here. Same file, same lesson, second time.
+- **Docs.** `PWR2_VALIDATION` §34 **corrected** — it asserted *"kinetics already tracks the fission
+  power fraction with full dynamic range from deep subcritical"*, which is why this was an unfiled
+  regression rather than a known gap. `Manuals/12` §4.1 (the Λ row still said 0.01 s) and §4.2,
+  `Manuals/09` §11.0's intermediate-range row at Hot Standby (8e-9 → 1.6e-11 A), all on the pending
+  Rev 17 row. §9.0 did NOT change: already true, plant brought up to it. CLAUDE.md's #534 bullet
+  was compressed to a pointer — **eight of the issues it called CLOSED were still open** (measured
+  with `gh issue list`, 2026-08-28), which is the rot that bullet's own header warns about.
+- **Left open, and named so it is not lost:** the `Manuals/09` §11.0 initial-condition table is
+  still the RETIRED plant's — it carries a `cold_shutdown` column PWR2 does not have, and its
+  Hot Standby net-reactivity row says ≈ −1000 pcm against a measured −1137. Only the row this
+  change made wrong was corrected; the rest is unmeasured and belongs with #525/#523.
+
+---
+
 ## Session log — 2026-08-28-develop-e (#552/#538/#537 — the three pressurizer controls that lied about themselves)
 
 The #534 hunt's pressurizer operator surface, in one change. Full write-up with every number:

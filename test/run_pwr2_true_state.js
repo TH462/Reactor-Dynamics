@@ -609,6 +609,50 @@ function runSuite(TS, rec, quiet) {
      Math.abs(ts.ir_amps - 8.333e-3 * ts.power_pct / 100) < 1e-9,
      'SR protected above the P-6 class point; IR ' + ts.ir_amps.toExponential(2) + ' A tracks ' +
      ts.power_pct.toFixed(0) + ' % through the adopted k_ir');
+  /* ---- THE SOURCE-RANGE SCALE IS THIS PLANT'S, NOT THE RETIRED PLANT'S (#536) -------------
+   * k_sr was 5.0e8, inherited from `pwr_config`'s nis block where it had been sized against a
+   * subcritical level that engine produced with a 500x-inflated prompt generation time. PWR2
+   * runs the real Lambda, so its source-held level is ~500x lower and the SAME scale read the
+   * shutdown plant at 0.5 cps, pinned on a display floor. Re-anchored so hot standby reads the
+   * "~500 cps class at HZP source equilibrium" that `Manuals/09` §9.0 already documents.
+   * The two levels below are MEASURED off the engine (pwr2_engine, 2026-08-28), not invented. */
+  var HZP_FRAC = 1.9325e-9;      /* hot standby, -1137.2 pcm  */
+  var TRIP_FRAC = 3.4068e-10;    /* settled post-trip, -6450 pcm */
+  function atFlux(frac) {
+    return TS.buildTrueState(Object.assign({}, B.ctx, {
+      reactor: Object.assign({}, B.r, { power_pct: frac * 100 }) }));
+  }
+  var tsHZP = atFlux(HZP_FRAC), tsTripped = atFlux(TRIP_FRAC);
+  ck('the shutdown plant indicates in the hundreds of counts per second, as the manual says',
+     tsHZP.sr_energized === true && tsHZP.sr_counts_cps > 300 && tsHZP.sr_counts_cps < 1000,
+     tsHZP.sr_counts_cps.toFixed(0) + ' cps at the hot-standby source level — the retired ' +
+     'plant\'s k_sr read this plant 0.5 cps there');
+  /* A FLOOR IS INVISIBLE UNTIL SOMETHING SITS UNDER IT, which is why this compares two levels
+   * rather than checking one. Both channels carried Math.max(pFrac, 1e-9): under it every
+   * reading collapses to the same number and the gauge stops carrying information. */
+  ck('there is NO display floor — a deeper-subcritical plant reads LOWER, in exact proportion',
+     Math.abs((tsTripped.sr_counts_cps / tsHZP.sr_counts_cps) / (TRIP_FRAC / HZP_FRAC) - 1) < 1e-9 &&
+     Math.abs((tsTripped.ir_amps / tsHZP.ir_amps) / (TRIP_FRAC / HZP_FRAC) - 1) < 1e-9,
+     'settled post-trip reads ' + tsTripped.sr_counts_cps.toFixed(0) + ' cps / ' +
+     tsTripped.ir_amps.toExponential(2) + ' A against hot standby\'s ' +
+     tsHZP.sr_counts_cps.toFixed(0) + ' / ' + tsHZP.ir_amps.toExponential(2) +
+     ' — the floor pinned both at 0.5 cps and 8.3e-12 A');
+  /* THE TEST THAT PICKED THE SOURCE STRENGTH, asserted rather than left in a comment: the
+   * SOURCED P-6 permissive (5e-11 A, Ginna TS Bases; PWR2_VALIDATION §34) must be UNMET on a
+   * plant at hot standby and met partway up the approach — which is where a real startup meets
+   * it. A stronger installed source puts the plant over P-6 before the operator touches a rod. */
+  ck('the sourced P-6 permissive is UNMET at hot standby and comes in during the approach',
+     tsHZP.ir_amps < 5.0e-11 && atFlux(2.19e-8).ir_amps > 5.0e-11,
+     tsHZP.ir_amps.toExponential(2) + ' A at hot standby, ' +
+     atFlux(2.19e-8).ir_amps.toExponential(2) + ' A at -100 pcm, against P-6 at 5.0e-11 A');
+  /* THE SECURING CUE IS THE SETPOINT, NOT A POWER LITERAL. `Manuals/03` §4.3: "Secure SR during
+   * power rise BEFORE SR high-flux trip (1e5 cps)". Written against 1e5 the rule survives a
+   * scale change; written as `pFrac < 1e-3` — what it was — it silently became four decades
+   * past the gauge's own 1e6 range top the moment k_sr moved. */
+  ck('the SR de-energizes at its own 1e5 cps cue, so the rule cannot drift from the scale again',
+     atFlux(3.8e-7).sr_energized === true && atFlux(3.9e-7).sr_energized === false,
+     'live at ' + atFlux(3.8e-7).sr_counts_cps.toExponential(2) + ' cps, secured just ' +
+     'past 1e5 — a `pFrac < 1e-3` rule would have kept indicating to 2.6e8 cps');
   ck('the governor IS the steam demand and the stop valve is the trip',
      ts.governor_valve_pct > 90 && ts.stop_valve_pct === 100,
      'governor ' + ts.governor_valve_pct.toFixed(1) + ' %, stop 100 -- and a tripped turbine ' +
@@ -645,6 +689,17 @@ runSuite(TS, rec, false);
 var pass = rec.filter(function (r) { return r.ok; }).length, fail = rec.length - pass;
 
 var MUTATIONS = [
+  /* ---- THE NIS GAUGE SCALES (#536) ---- */
+  ['k_sr reverts to the RETIRED plant\'s scale (the shutdown board reads half a count)',
+   '    var K_SR = 2.6e11;', '    var K_SR = 5.0e8;'],
+  ['the display floors come back (every deeply subcritical state reads the same number)',
+   "    put('sr_counts_cps', srOn ? K_SR * pFrac : 0);\n    put('ir_amps',       K_IR * pFrac);",
+   "    put('sr_counts_cps', srOn ? K_SR * Math.max(pFrac, 1e-9) : 0);\n" +
+   "    put('ir_amps',       K_IR * Math.max(pFrac, 1e-9));"],
+  ['the SR securing cue goes back to a power literal instead of its own setpoint',
+   '    var srOn = pFrac * K_SR < SR_SECURE_CPS;', '    var srOn = pFrac < 1e-3;'],
+  ['k_ir drifts, moving the SOURCED intermediate-range rod stop with it',
+   '    var K_IR = 8.333e-3;', '    var K_IR = 4.0e-3;'],
   ['the CVCS currency conversion is dropped (kg/s published as the #408 fraction again)',
    "    put('charging_flow_actual', cv.charging_kgs * FRAC_PER_KGS);",
    "    put('charging_flow_actual', cv.charging_kgs);"],

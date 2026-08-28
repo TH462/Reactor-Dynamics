@@ -381,42 +381,20 @@ Measured AGAIN 2026-08-28: a whole bullet of seven, all closed. Run the query.
   The rest was a changelog and is in `Diagnostic/TUNING_LOG.md` 2026-08-25.
 - **#534 — the PWR2 adversarial bug hunt umbrella: 47 confirmed defects** (28 high, 18 medium,
   1 low), filed 2026-08-27 as #535–#566. Report only; no simulator code was changed by the
-  sweep. It names TWO systemic patterns. **The second is CLOSED (#557/#556/#561, 2026-08-27)**
-  — the board was still calibrated to the retired engine; the plant now publishes its AFW
-  rating, its pressurizer-level trip rows and its delta-T setpoint equation, and the board
-  reads them. **The FIRST is CLOSED too** (#546/#547, §98): PWR2 kept the retired plant's failure
-  table BY REFERENCE and seven rows were `command_override` — the kernel's licence to drop or
-  rewrite a command, in the old plant's action names; the engine already modelled all seven, so
-  `getProtectionConfig` now hands over the menu fields only, and the new `run_pwr2_kernel` holds
-  it (1,408 row×action pairs: 18 divergences → 6, all six the engine refusing out loud).
-  **The save/rewind/restore cluster is CLOSED** (#553/#554/#555/#548/#563 item 3,
-  2026-08-27, `PWR2_VALIDATION` §95), and so is **#539** (§96 — the rated steam scale is frozen
-  across all four presets; Mode 4's feed train and code safeties were multiplied by nought) and
-  **#542** (§97 — those safeties are now the STAGGERED bank Ginna sources: one valve at 1085 psig,
-  three at 1140, and no more parking 21 psi under its own setpoint).
-  **The STEAM-GENERATOR and TURBINE clusters are CLOSED** (#540/#549/#541/#562, §99;
-  #558/#551/#559/#567/#560, §100): the sink has mass AND energy limiters, aux feed has its
-  throttle and a STOP that secures both pumps, the turbine LATCHES and refuses BY NAME, and a
-  refused board press reaches the screen — #558 is the mechanism behind every dead-button
-  report. **#570** then gated the prose/plant seam both came through, two runners, §101.
-  **#545 CLOSED** (§102): the rods were the last trip consumer on the latch's rising EDGE, so
-  holding WITHDRAW after a scram took the core back to 61.18 % with SCRAMMED lit everywhere —
-  level-held now, both banks both ways [sourced: open trip breakers cut CRDM power], making an
-  ATWS a boration problem. **#571 CLOSED** (§103): the reset's trip-signal permissive iterated a
-  table PWR2 hands over EMPTY, so a reset through a standing trip signal was ACCEPTED and
-  re-latched 0.1 s later. **#572 CLOSED** (§104): all four kernel protection lists are empty for
-  this plant, and a board band was drawn off one — the ruled "build the block" became the TWO
-  sourced flux rod stops (103 %, 20 %), because no startup-rate stop exists in any source.
-  **Grep every consumer of those lists.** **The LOCA / loss-of-heat-sink cluster is CLOSED**
-  (#543/#544/#566/#563 item 5/#550/#535, 2026-08-28, §105): the break sees live containment
-  pressure, the containment carries its air's heat capacity, the relief's energy leaves once and
-  lands at its own enthalpy, the leak gauge separates 2.4 from 2,117 gpm, and an unmitigated
-  loss of heat sink ends HELD at ~105 min (0.14 GJ discarded vs 55.4) instead of immortal.
-  **The PRESSURIZER OPERATOR SURFACE too** (#552/#538/#537, §106): the PORV lamp shows the
-  operator's demand, the heater box reads back what you type (40 % → 40 %, was 9 %), and
-  spray-with-pumps-stopped is a DECLARED stand-in (ruled; quoted in §106.3) for the aux spray
-  this board has no control for, not an arbitrary flow literal.
-  Rest of #535–#566 untouched; `gh issue list` is the authority.
+  sweep. It named TWO systemic patterns, both now fixed and gated: the board was calibrated to
+  the RETIRED engine (#557/#556/#561), and PWR2 kept the retired plant's failure table BY
+  REFERENCE, seven rows of it the kernel's licence to drop or rewrite a command (#546/#547,
+  `run_pwr2_kernel`). **They are one trap, and it is the one to carry forward — this engine
+  inherited the old plant's tables, scales and constants by reference, and each is wrong until
+  measured against THIS plant.** #536 was the latest: a neutron-source constant tied to the old
+  engine's 500×-inflated prompt generation time, and a gauge scale sized the same way (§107).
+  Second standing fact out of the sweep: **all four kernel protection lists are EMPTY for this
+  plant** — a board band drawn off one (#572) and a reset permissive iterating one (#571) both
+  read as working features. **Grep every consumer.**
+  **The work is written up in `PWR2_VALIDATION.md` §95–§107 — read the sections, not this line**,
+  which is where a roll-call of two dozen per-issue summaries used to sit. Measured 2026-08-28:
+  eight of the issues it called CLOSED were still open. **Run `gh issue list`; it is the
+  authority, and this line is not.**
 - **RBMK and BWR** — on hold, and the source of most remaining backlog. Do not touch.
 
 **The manual set's revision number does not advance until a RELEASE** *(OWNER DIRECTIVE,
@@ -452,13 +430,13 @@ ONE line, drop the rest. **A bullet is ~80 words.** (Measured 2026-08-06: the li
   door refusing, the demand never gets set, so deleting the hold moved nothing and `run_pwr2_engine`
   came back **59/60**. Reproduced by an agent who had quoted the #295 rule three lines above.
   **Plant the demand PAST the half you are not testing.**
-- **An ACCEPTED command the next step overwrites is worse than a missing one; a MODULE
-  HEADER is an inherited claim** (2026-08-27, #551/#559/#567/#558/#570, §100–101). Nothing
-  un-latched PWR2's turbine — 896 combinations — so one scram ended generation for the
-  session, and the facade lever alone would have been silently undone (six level-holds). It
-  REFUSES BY NAME now. Same day, #562 called a protection half "unbuilt" off a module header
-  without grepping the engine, which had built it — so *"prove it by injection"* now covers
-  **unbuilt**, not just untested.
+- **A constant tuned against ANOTHER engine's wrong number cannot be ported — and porting it is
+  the move that looks safe** (2026-08-28, #536 §107). PWR2 had no neutron source: hot standby
+  fell 3.6031e-5 % → 6.3798e-8 % untouched in 300 s while the board read −0.341 dpm / −76 s, and
+  a tripped plant read −81 s for ever. The retired engine's `source: 1.0e-6` is tied to ITS
+  500×-inflated prompt generation time — copying it needs a source ~500× any real one and would
+  ramp an exactly critical reactor at 0.05 %/s out of nothing. **Derive from the plant in front of
+  you, not from its predecessor.** Its gauge scale was inherited the same way and was 500× wrong.
 - **The SPECIFICATION can be the stale second copy, and that is worse than a stale constant**
   (2026-08-27, #562/#549/#541/#540, §99). `CONTEXT.md` defined AFW flow as *"capacity ×
   throttle × level hold"*, the Indications tab told the player the feed was level-controlled,

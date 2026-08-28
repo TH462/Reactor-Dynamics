@@ -481,16 +481,47 @@
     put('ac_available',     ctx.ac_available !== false);
     put('station_blackout', ctx.station_blackout === true);
 
-    /* --- NIS display channels [adopted]: cps = k_sr*P, amps = k_ir*P with the current
-     * engine's k_sr 5.0e8 / k_ir 8.333e-3 (pwr_config.js nis block) — gauge scales, not
-     * physics; the flux behind them is this engine's own --- */
+    /* --- NIS display channels: cps = K_SR*P, amps = K_IR*P — gauge scales, not physics; the
+     * flux behind them is this engine's own. PWR2_VALIDATION §34 records the genuine zero
+     * behind both: no corpus document gives a full-scale calibration for turning a neutron
+     * population into counts or amps, so these are ADOPTED numbers and say so.
+     *
+     * ⚠ K_SR IS THIS PLANT'S, NOT THE RETIRED PLANT'S, SINCE #536. It was 5.0e8 — inherited
+     * from `pwr_config.js`'s nis block, where it had been sized against a subcritical level
+     * that engine produced with a 500x-inflated prompt generation time. PWR2 runs the real
+     * Lambda, so its source-held level is ~500x lower and the SAME scale read the shutdown
+     * plant at 0.5 counts per second, pinned on a display floor. Re-anchored (owner ruling,
+     * 2026-08-28, choosing "re-scale the gauges too" from three options put to him) so that
+     * HOT STANDBY READS ~500 cps — which is what `Manuals/09` §9.0 already documents, "~500 cps
+     * class at HZP source equilibrium", so this makes the plant match prose it already ships.
+     * Measured across the ladder: Mode 3 hot standby 502, P-6 point 1,560, SR->IR handoff
+     * caution 5.0e4, Mode 4 hot shutdown 101, settled post-trip 89.
+     *
+     * ⚠ K_IR DOES NOT MOVE, AND MUST NOT. `pwr2_protection.js` derives the SOURCED intermediate-
+     * range high-flux rod stop through it — WTSM 8.1 §8.1.7.3's "20 % current equivalent power"
+     * IS 1.667e-3 A only at 8.333e-3 — so re-scaling it would move a sourced setpoint. It also
+     * does not need to: at this scale the sourced P-6 permissive (5e-11 A, Ginna TS Bases) is
+     * UNMET at hot standby (1.61e-11 A) and comes in at -366 pcm, partway up the bank, which is
+     * where a real startup meets it. That is the test that picked the source strength. --- */
+    var K_SR = 2.6e11;      /* cps per unit rated fraction  [adopted] — anchor above */
+    var K_IR = 8.333e-3;    /* amps per unit rated fraction [adopted] — pwr_config nis block */
+    var SR_SECURE_CPS = 1.0e5;
     var pFrac = (ts.power_pct !== undefined ? ts.power_pct : 0) / 100;
-    /* the SR proportional counter is DE-ENERGIZED at power (protected — the P-6 class fact);
-     * this model has no operator lever, so energization derives from flux alone [derived] */
-    var srOn = pFrac < 1e-3;
+    /* The SR proportional counter is DE-ENERGIZED on the way up (protected — the P-6 class
+     * fact); this model has no operator lever, so energization derives from flux alone
+     * [derived]. THE CUE IS THE ONE THE MANUAL ALREADY GIVES — `Manuals/03` §4.3 and
+     * `Manuals/04`: "Secure SR during power rise BEFORE SR high-flux trip (1e5 cps)" — rather
+     * than the bare `pFrac < 1e-3` literal this carried, which was the same cue expressed on the
+     * OLD scale and at the new one would let the gauge indicate 2.6e8 cps, four decades past its
+     * own 1e6 range top. Written against the setpoint, so it cannot drift from k_sr again. */
+    var srOn = pFrac * K_SR < SR_SECURE_CPS;
     put('sr_energized', srOn);
-    put('sr_counts_cps', srOn ? 5.0e8 * Math.max(pFrac, 1e-9) : 0);
-    put('ir_amps',       8.333e-3 * Math.max(pFrac, 1e-9));
+    /* NO FLOOR. Both channels carried `Math.max(pFrac, 1e-9)`, which existed ONLY because a
+     * sourceless core decayed to zero and the gauges had to be stopped from reading it. With a
+     * source the level is genuinely non-zero at every plant state, and the floor now hides real
+     * physics: it pinned the post-trip plant at 0.5 cps against a true 89. */
+    put('sr_counts_cps', srOn ? K_SR * pFrac : 0);
+    put('ir_amps',       K_IR * pFrac);
 
     /* --- core uncovery: a DECLARED HEM PROXY (D4 sec 8 upheld). The homogeneous model has
      * no water level; sustained high core void is the nearest honest stand-in. Expect A/B
