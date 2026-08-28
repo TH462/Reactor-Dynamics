@@ -29,6 +29,55 @@ and the user-visible summary in `CHANGELOG.md`. This file points at those and tr
 
 ---
 
+## Session log — 2026-08-28-develop-d (#543/#544/#566/#563.5/#550/#535 — the casualty endgame tells the truth)
+
+The largest open #534 cluster, six defects, one seam order: relief booking → containment energy
+→ containment T/P → break backpressure → leak currency → ceiling latch. Full write-up with every
+number: `Blueprint/PWR2_VALIDATION.md` §105. This is the continuity note.
+
+- **#563 item 5** — the relief sink booked the DISCHARGE enthalpy the pressurizer had already
+  debited; now the hot leg's own h (mass out, zero dH — the refill). Ledger ratio 1.618 → 1.148
+  (ideal 1.000; the residue is the h-basis audit's own flow-work term, ~V·ΔP, not plant).
+- **#566** — containment inlet blends break + relief mdot-weighted (exact, linear ledger).
+  Compound-casualty shortfall 8.3 % → 0.0 %.
+- **#544** — the air's 3,372 kJ/K is in the flash residual AND the seed (`U_total_kJ`, renamed;
+  exact-continuity migration). Stuck-PORV containment: 290.6 °F at 100 s → 152.3, no 392 °F
+  clamp, no 230 °F collapse. The 200 °C bound stays (still load-bearing at post-blowdown water
+  masses — new branch-pinning check after the air term sent the unbounded-bisection mutation
+  blind at the IC).
+- **#543** — every non-SGTR break now discharges against last step's containment pressure
+  (`eng._ctP`, saved; undefined → sourced 1.0 psig default). Adverse gradient NEVER occurs
+  (was: 12,857 kg up a 19.6 psi gradient).
+- **#550** — `ts.leak_flow` in the shared #408 currency (× 1/28,391). Board: 2 / 26 / 205 /
+  2,078 gpm across the injectable range (was flat 27,000 for all four).
+  `run_pwr2_true_state:321` had PINNED the kg/s form — rewritten + twin mutation.
+- **#535** — third terminal-latch arm: >60 s of CONSECUTIVE active ceiling discard
+  (`sys._ceilHold`; measured criterion — longest healthy episode 4.26 s on a 50 cm² break,
+  defect holds 969 s+). The 8 h blackout: discard 55.35 GJ → 0.14 GJ, held from ~105 min with
+  the #520 dialog. `run_pwr2_coredamage`'s #487-endgame check re-scoped (its old floor-region
+  endpoint was reached only by riding through ~30 min of deleted heat) — the old immortal
+  behaviour now fails it deliberately.
+
+**Gates:** `run_pwr2_engine` 107→111 (66/66 mutations, +4: sink-wire, ledger band, blend
+reconstruction, no-adverse-flow) · `run_pwr2_containment` 25→27 (20/20, +2 air mutations +
+branch check) · `run_pwr2_core` 47→48 (25/25, ceiling fixture + 2 mutations) ·
+`run_pwr2_shell` 120→121 (37/37, migration check + severed-migration mutation) ·
+`run_pwr2_true_state` 71 (24/24) · coredamage 23 · break/loca/endurance/roundtrip unchanged.
+BASELINES updated; `run_all` at baseline (94 runners).
+
+**Traps worth carrying:** (1) a probe HARNESS ages like a spec — the hunt's `p12_air`/`p17`
+hand-built A/B columns silently broke on the ledger rename (they now print 68 °F; the SHIPPED
+column is the measurement). (2) An energy audit in Σm·h carries a ~V·ΔP flow-work term that
+reads as non-conservation on any ride that moves pressure — bound it, don't chase it. (3) A
+fixed defect un-caught a THIRD-party mutation: the #544 air term fixed the initial condition
+that exposed the unbounded-bisection mutation, which went blind until a new state pinned the
+non-monotone branch — re-run ALL of a file's injections after a physics fix, not just yours.
+
+**Open out of this session:** `measure_pwr2_ab.js:65` still classes `leak_flow` PROXY — can be
+re-classed to a translation now the currencies agree (not in the aggregate gate, #513 ruling).
+
+---
+
 ## Session log — 2026-08-28-develop-c (#572 — the rod stop that was not there)
 
 *(OWNER RULING, 2026-08-28: "A" — build the block, from two costed options.)* Write-up:

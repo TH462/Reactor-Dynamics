@@ -30,6 +30,42 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
 
 ## [Unreleased]
 
+### Fixed (#543 + #544 + #566 + #563 item 5 + #550 + #535 — the casualty endgame tells the truth, 2026-08-28)
+
+Six measured defects from the #534 hunt — the whole LOCA / loss-of-heat-sink honesty cluster.
+Full write-up with every number: `Blueprint/PWR2_VALIDATION.md` §105.
+
+- **The break sees LIVE containment pressure (#543).** Every non-SGTR break discharged against a
+  frozen 1.0 psig for ever: containment passed RCS pressure at 995 s of a sev-1 LOCA and the hole
+  kept flowing — 12,857 kg moved UP a 19.6 psi (0.135 MPa) adverse gradient, discharge 15 % high.
+  The adverse condition now never occurs; the blowdown approaches equilibrium (RCS 102.3 psia
+  over containment 95.1 at 1800 s). The retired engine had this coupling; the rebuild lost it.
+- **Containment obeys the first law (#544).** The flash solver ignored the 4,697 kg of air
+  (3,372 kJ/K), so a stuck-open PORV read 392 °F (200 °C — the solver's own bound) at 155 s and
+  then FELL 230 °F with no heat removal in the model. With the air carried: 152 °F at 100 s,
+  no clamp, no collapse. Old saves migrate exactly.
+- **The relief stream's energy leaves ONCE (#563 item 5).** The loop-side sink was booked at the
+  discharge enthalpy the pressurizer had already debited — 1,063 MJ of energy left the plant that
+  no mass carried out in 300 s of hot-standby relief, cooling 11.0 °F (6.1 °C) too fast and
+  parking 72 psi (0.50 MPa) low. The sink now rides the hot leg's own enthalpy.
+- **Containment books the break AND the relief at their own enthalpies (#566)** — the pick-one
+  form under-read the diagnosis instruments by 1.9 psia / 5.7 °F on the compound casualty.
+- **The leak gauge reads the leak (#550).** `leak_flow` published kg/s into the normalized
+  contract field — 28,391× the shared currency — so the break-flow gauge pegged at 27,000 gpm
+  for a 2.4 gpm seal leak and a 2,117 gpm guillotine alike. Now: 2 / 26 / 205 / 2,078 gpm
+  across the injectable range; sizing the leak is a readable skill again. The covering gate had
+  pinned the wrong currency and was rewritten.
+- **Loss of heat sink is no longer immortal (#535).** The property-envelope ceiling had no
+  terminal latch: an unmitigated blackout parked at 1,472 °F for 8 hours, silently destroying
+  55.4 GJ (79 % of decay heat) with every health flag green — doing nothing "survived" a total
+  loss of feedwater. A measured persistence latch (60 s of continuous ceiling discard; the
+  longest healthy episode is 4.26 s) now holds the plant honestly at ~105 min with the halt
+  dialog and the range-departure reason; total discard drops to 0.14 GJ.
+- Gates: `run_pwr2_engine` 107→111, `run_pwr2_containment` 25→27, `run_pwr2_core` 47→48,
+  `run_pwr2_shell` 120→121 — all mutations caught, every new check injection-verified. Save
+  format gains the backpressure carrier and the containment-ledger migration, both
+  absent-tolerant.
+
 ### Fixed (#572 — the rod stop that was not there, and the two that should have been, 2026-08-28)
 
 The board painted a red band on the startup-rate readout and called it a rod-withdrawal block at

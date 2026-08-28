@@ -334,7 +334,12 @@
     put('rhr_valve_open', rh.valve_open !== undefined ? rh.valve_open : rh.permissive_may_open);
 
     /* --- break / leak --- */
-    put('leak_flow', br.mdot_kgs !== undefined ? br.mdot_kgs : 0);   /* no break = zero leak, stated */
+    /* THE SAME #408 CURRENCY AS THE CVCS FLOWS ABOVE (#550): §6.3 defines leak_flow as
+     * NORMALIZED (inventory-fraction/s) and the instrument spec's whole range is [0, 0.06].
+     * Published raw kg/s it was 28,391x the currency — the board's break-flow gauge pegged
+     * at 0.0600 (27,000 gpm) for a 2.4 gpm seal leak and a 2,117 gpm guillotine alike, and
+     * sizing the leak is the seal-leak row's whole teaching point. */
+    put('leak_flow', (br.mdot_kgs || 0) * FRAC_PER_KGS);   /* no break = zero leak, stated */
 
     /* --- containment --- */
     put('containment_pressure_mpa', ct.containment_pressure_mpa);

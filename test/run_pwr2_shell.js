@@ -1479,6 +1479,29 @@ function runSuite(SH, rec, quiet, only) {
      mgThrew ? 'THREW: ' + mgThrew
              : 'rated_steam ' + mgB.eng.rated_steam.toFixed(4) + ', _pwrRate 0, plant at ' +
                (tsMg.pressure_mpa * 145.038).toFixed(1) + ' psia after 10 s');
+
+  /* #544: a PRE-AIR-LEDGER save carries the containment ledger water-only under its old name.
+   * Hand-build that shape (the rename makes it detectable), load, and require the SAME
+   * containment temperature on the next step — the migration reconstructs the total at the
+   * saved T, so continuity is exact, not approximate. Without the air term the migrated
+   * plant re-solves ~90 degF hot on a mid-blowdown state. */
+  var cg = new SH.PWR2Engine({});
+  cg.applyCommand({ action: 'inject_failure', failure_id: 'primary_leak', severity: 0.5 });
+  run(cg, quiet ? 30 : 60);
+  var cgSave = cg.saveState();
+  var cgT0 = cg.getTrueState().containment_temp_c;
+  var cgCt = cgSave.state.ctm;
+  cgCt.U_water_kJ = cgCt.U_total_kJ -
+                    cgCt.m_air * 0.718 * (cgCt.T_c + 273.15);  /* the old water-only ledger */
+  delete cgCt.U_total_kJ;
+  var cgB = new SH.PWR2Engine({});
+  cgB.loadState(cgSave);
+  var cgT1 = cgB.step(DT).containment_temp_c;
+  ck('a PRE-AIR-LEDGER containment save migrates onto the SAME temperature',
+     Math.abs(cgT1 - cgT0) < 0.5 && cgB.eng.ctm.U_total_kJ !== undefined &&
+     cgB.eng.ctm.U_water_kJ === undefined,
+     'saved ' + (cgT0 * 9 / 5 + 32).toFixed(1) + ' degF, migrated re-solves ' +
+     (cgT1 * 9 / 5 + 32).toFixed(1) + ' degF (air term dropped: ~+90 degF)');
   }
 }
 
@@ -1531,6 +1554,9 @@ var MUTATIONS = [
    '', { grp: 'S' }],
   ['the shell shrink-and-swell driver is dropped on load (the board reads level optimistic)',
    '    this._pwrRate = (st.shell && typeof st.shell._pwrRate === \'number\') ? st.shell._pwrRate : 0;',
+   '', { grp: 'S' }],
+  ['the containment ledger migration is severed (#544 — an old save loads water-only)',
+   '    root.RD.pwr2.containment.migrateState(e.ctm);',
    '', { grp: 'S' }],
   ['the shell instruments are never updated after construction (every gauge frozen at t=0)',
    '    this.instruments.update(this._ts, dt, this._instrExtras());',

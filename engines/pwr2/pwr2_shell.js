@@ -1530,6 +1530,10 @@
         _pzSurgeHeat: e._pzSurgeHeat, _eccsKgs: e._eccsKgs,
         /* the SGTR stream's one-step carriers (#507 wave 5) — old saves land on 0, healthy */
         _sgtrKgs: e._sgtrKgs, _sgtrH: e._sgtrH,
+        /* the break's live containment backpressure carrier (#543) — an old save lands on
+         * undefined and the break rides the sourced 1.0 psig default for ONE step, the
+         * pre-fix constant exactly */
+        _ctP: e._ctP,
         /* the wave-6 failure levers (#507) — old saves land on the healthy defaults;
          * aw.blocked and the pzDrivers seats ride their own saved objects */
         scramBlocked: e.scramBlocked, runaway: e.runaway,
@@ -1576,6 +1580,9 @@
      * region states — reconstruct the vessel the HEM enthalpy implied (pwr2_pressurizer
      * migrateState), BEFORE the seat is re-linked to it */
     PZ.migrateState(e.pz, e.sys.P);
+    /* #544 MIGRATION: a pre-air-ledger save carries the water-only U_water_kJ — reconstruct
+     * the total at the saved temperature (exact residual continuity), same pattern */
+    root.RD.pwr2.containment.migrateState(e.ctm);
     /* re-link 1: the pressurizer's seat on the conservation core */
     e.sys.extraMass = PZ.extraMassFn(e.pz);
     /* re-link 2: the internal channels' saved dynamic state onto fresh spec references */

@@ -251,6 +251,81 @@ function runSuite(RD, rec, quiet, only) {
   ckT('a stuck PORV takes REAL mass out of the loop (the relief sink is connected)',
       engQ1.sys.M_total - mQ0 < -80,
       'M_total ' + (engQ1.sys.M_total - mQ0).toFixed(1) + ' kg over 30 s (sink dropped: -11)');
+
+  /* #563 item 5 — THE RELIEF DEBITS THE LOOP ONCE. The pressurizer removes the discharge
+   * from its own regions at the discharge's enthalpy; the loop-side sink then removes the
+   * refill mass at the HOT LEG's h. Booked at the discharge enthalpy instead, the energy
+   * left twice: measured pre-fix, |residual + relief energy| = 1,062.7 MJ over 300 s of
+   * hot-standby relief (post-fix 265.2 MJ — the h-basis audit's own flow-work term, see the
+   * band note below). The ride is
+   * HOT ZERO POWER on purpose — there the PORV passes ~2,750 kJ/kg steam against a
+   * ~1,240 kJ/kg hot leg; at full power the two enthalpies nearly agree and the defect
+   * (and this check) go blind. The claim: energy leaves the plant ONLY with the mass
+   * that carries it, so the ledger residual must equal minus the relieved stream's own
+   * energy. */
+  var eaA = { heats: 0, sg: 0, srcOther: 0, pump: 0, heater: 0, spray: 0, surge: 0,
+              reliefKg: 0, reliefE: 0, sinkN: 0, sinkAtHot: 0, sinkVsRelief_min: 1e9 };
+  var eaRho = (RD.vtable && RD.vtable.rho_from_h) || W.rho_from_h;
+  var eaEtot = function (e) {
+    var E = 0, sy = e.sys;
+    for (var ei = 0; ei < sy.nodes.length; ei++)
+      E += sy.nodes[ei].V * eaRho(sy.nodes[ei].h, sy.P) * sy.nodes[ei].h;
+    return E + (e.pz.m_stm || 0) * (e.pz.h_stm || 0) + (e.pz.m_sub || 0) * (e.pz.h_sub || 0) +
+           (e.pz.m_sat || 0) * (e.pz.h_sat || 0);
+  };
+  var engEA = EN.createEngine({ initial_state: 'hot_zero_power' });
+  run(engEA, 30);
+  EN.command(engEA, 'porv_stick', true); EN.command(engEA, 'porv_manual', true);
+  var eaPlant = S.stepPlant, eaPzStep = PZ.stepPressurizer;
+  S.stepPlant = function (sy, dt, d) {
+    var k; for (k in (d.heats || {})) eaA.heats += d.heats[k] * dt;
+    eaA.sg += (d.sgDuty || 0) * dt;
+    (d.sources || []).forEach(function (s) {
+      if (s.node === 'hot_leg' && s.mdot < 0) {
+        /* the wire half: the sink's booked h vs the hot leg's own, at call time */
+        eaA.sinkN++;
+        for (var ni = 0; ni < sy.nodes.length; ni++) {
+          if (sy.nodes[ni].id === 'hot_leg') {
+            if (s.h === sy.nodes[ni].h) eaA.sinkAtHot++;
+            break;
+          }
+        }
+      } else {
+        eaA.srcOther += (s.mdot || 0) * (s.h || 0) * dt;
+      }
+    });
+    var r = eaPlant(sy, dt, d);
+    eaA.pump += (r.pumpWork_kW || 0) * dt;
+    return r;
+  };
+  PZ.stepPressurizer = function (pz, sy, dt, d) {
+    var r = eaPzStep(pz, sy, dt, d);
+    eaA.heater += (r.heater_kW || 0) * dt;
+    eaA.spray += ((r.spray_duty_kW || 0) + (r.aux_spray_duty_kW || 0)) * dt;
+    eaA.surge += (r.surge_heat_kW || 0) * dt;
+    eaA.reliefKg += (r.relief_kgs || 0) * dt;
+    eaA.reliefE += (r.relief_kgs || 0) * (r.relief_h || 0) * dt;
+    return r;
+  };
+  var eaE0 = eaEtot(engEA);
+  try { run(engEA, 60); }
+  finally { S.stepPlant = eaPlant; PZ.stepPressurizer = eaPzStep; }
+  var eaAcc = eaA.heats - eaA.sg + eaA.srcOther + eaA.pump + eaA.heater - eaA.spray - eaA.surge;
+  var eaResid = (eaEtot(engEA) - eaE0) - eaAcc;
+  ckT('the relief sink is booked at the HOT LEG\'s own enthalpy, every push',
+      eaA.sinkN > 100 && eaA.sinkAtHot === eaA.sinkN,
+      eaA.sinkAtHot + ' of ' + eaA.sinkN + ' sink pushes at the hot leg\'s h — booked at the ' +
+      'DISCHARGE h (~2,700 vs ~1,240 kJ/kg here) the discharge enthalpy leaves twice');
+  /* the band carries the h-basis ledger's own flow-work term (sum m*h is not sum m*u, and this
+   * ride drops P ~6 MPa across ~45 m3 — a ~200 MJ book-keeping term the audit cannot see), so
+   * it is a COARSE guard: measured 145.1 MJ fixed vs 430.6 MJ double-debited on this exact
+   * ride (2026-08-28). */
+  ckT('the relief debits the loop ONCE — the ledger gap stays at the flow-work scale',
+      eaA.reliefKg > 50 && Math.abs(eaResid + eaA.reliefE) < 250000,
+      'residual ' + (eaResid / 1000).toFixed(1) + ' MJ vs -reliefE ' +
+      (-eaA.reliefE / 1000).toFixed(1) + ' MJ (gap ' +
+      (Math.abs(eaResid + eaA.reliefE) / 1000).toFixed(1) +
+      ' MJ; fixed 145.1, double-debit 430.6), relief ' + eaA.reliefKg.toFixed(1) + ' kg');
   var engQ2 = EN.createEngine({});
   run(engQ2, 30);
   var cdQ0 = engQ2.cv.chargingDemand;
@@ -298,6 +373,33 @@ function runSuite(RD, rec, quiet, only) {
       tsB.scrammed === true && tsB.rod_steps === 0 && eng2.pt.trip_cause !== null,
       'trip on ' + eng2.pt.trip_cause + ', rods ' + tsB.rod_steps + ' — pwr2_protection only ' +
       'reports; the caller half lived nowhere until this file');
+
+  /* ---- #543: THE BREAK SEES LIVE CONTAINMENT PRESSURE. Against the frozen 1.0 psig
+   * constant, a sev-1 LOCA's containment passed RCS pressure at 995 s and the hole KEPT
+   * FLOWING — 12,857 kg moved up a 19.6 psi adverse gradient by 1800 s. Coupled, the two
+   * approach equilibrium and the gradient never inverts. The invariant is checked every
+   * step because it is the effect, not the wire: both the reverted ternary and a severed
+   * stash reproduce the adverse flow well inside this ride. ---- */
+  var engBP = EN.createEngine({});
+  run(engBP, quiet ? 10 : 30);
+  EN.command(engBP, 'break_open', { area_m2: 0.002, node: 'cold_leg' });
+  var bpN = Math.round(1200 / DT), bpAdverse = 0, bpWorst = 0, bpTs = null;   /* adverse hit at 995 s pre-fix */
+  for (var bpI = 0; bpI < bpN; bpI++) {
+    bpTs = EN.step(engBP, DT);
+    var bpGap = bpTs.containment_pressure_mpa - bpTs.pressure_mpa;
+    if (bpGap > 1e-6 && engBP.brk && bpTs.leak_flow > 0) {
+      bpAdverse++;
+      if (bpGap > bpWorst) bpWorst = bpGap;
+    }
+  }
+  ckT('a full LOCA blowdown NEVER discharges up the pressure gradient (live backpressure)',
+      bpAdverse === 0 && bpTs.containment_pressure_mpa > 0.5 &&
+      bpTs.pressure_mpa >= bpTs.containment_pressure_mpa - 1e-6,
+      bpAdverse + ' adverse-flow steps of ' + bpN + ' (worst +' +
+      (bpWorst * 145.038).toFixed(1) + ' psi); ends RCS ' +
+      (bpTs.pressure_mpa * 145.038).toFixed(1) + ' vs ctmt ' +
+      (bpTs.containment_pressure_mpa * 145.038).toFixed(1) +
+      ' psia — the frozen constant gave 88.0 vs 95.6 at 1200 s with the hole still flowing');
   ckT('...and the SI latch STARTS the ECCS lineup, uncommanded',
       eng2.pt.si === true && eng2.ec.hhsiRunning === true && eng2.ec.lhsiRunning === true,
       'SI on ' + eng2.pt.si_cause);
@@ -947,6 +1049,41 @@ function runSuite(RD, rec, quiet, only) {
       engT.brk.node === 'cold_leg' && engT._sgtrKgs === 0 &&
       tsT2.containment_pressure_mpa > ctP0 + 1e-5,
       'ctmt now ' + (tsT2.containment_pressure_mpa * 145.038).toFixed(2) + ' psia');
+
+  /* ---- #566: TWO STREAMS, EACH AT ITS OWN ENTHALPY. A small break plus a lifted PORV is
+   * the compound casualty (seal leak + feed-and-bleed); reconstruct containment's energy
+   * ledger from each stream's OWN carrier and require the module's ledger to match. Under
+   * the pick-one form the relief (~2,700 kJ/kg steam) is booked at the break's ~1,240 and
+   * the tallies diverge by MJ within seconds. ---- */
+  var engCT = EN.createEngine({});
+  run(engCT, 10);
+  EN.command(engCT, 'porv_stick', true); EN.command(engCT, 'porv_manual', true);
+  EN.command(engCT, 'break_open', { area_m2: 2e-5, node: 'cold_leg' });
+  var ctBK = RD.break_, ctRawBreak = ctBK.stepBreak, ctRawPz = PZ.stepPressurizer;
+  var ctExp = 0, ctBoth = 0, ctSteps = 0, ctBrH = 0, ctPzH = 0;
+  ctBK.stepBreak = function (bk, sy, dt, d) {
+    var r = ctRawBreak(bk, sy, dt, d);
+    ctBrH = r.mdot_kgs > 0 ? r.mdot_kgs * r.source.h * dt : 0;
+    return r;
+  };
+  PZ.stepPressurizer = function (pz, sy, dt, d) {
+    var r = ctRawPz(pz, sy, dt, d);
+    ctPzH = (r.relief_kgs || 0) * (r.relief_h || 0) * dt;
+    ctSteps++;
+    if (ctBrH > 0 && ctPzH > 0) ctBoth++;
+    ctExp += ctBrH + ctPzH;
+    return r;
+  };
+  var ctE0 = engCT.ctm.energy_in_kJ;
+  try { run(engCT, 60); }
+  finally { ctBK.stepBreak = ctRawBreak; PZ.stepPressurizer = ctRawPz; }
+  var ctGot = engCT.ctm.energy_in_kJ - ctE0;
+  ckT('containment books the break AND the relief at their OWN enthalpies (both flowing)',
+      ctBoth > 0.9 * ctSteps && ctExp > 0 &&
+      Math.abs(ctGot - ctExp) < 1e-6 * ctExp,
+      'ledger ' + (ctGot / 1000).toFixed(2) + ' MJ vs reconstructed ' +
+      (ctExp / 1000).toFixed(2) + ' MJ over 60 s, both streams live on ' + ctBoth + '/' +
+      ctSteps + ' steps (pick-one books the relief at the break\'s h and diverges in MJ)');
   }
 
   if (grp('I')) {
@@ -1515,8 +1652,12 @@ var pass = rec.filter(function (r) { return r.ok; }).length, fail = rec.length -
 var ENSRC = fs.readFileSync(path.join(SRC, 'pwr2_engine.js'), 'utf8').replace(/\r\n/g, '\n');
 var MUTATIONS = [
   ['the pressurizer relief sink is dropped (mass relieves without leaving)',
-   "srcs.push({ node: 'hot_leg', mdot: -eng._pzRelief, h: eng._pzReliefH });",
+   "srcs.push({ node: 'hot_leg', mdot: -eng._pzRelief, h: sys.nodes[iHL].h });",
    '', { grp: 'A' }],
+  ['the relief sink is booked at the DISCHARGE enthalpy again (#563 item 5 — the double debit)',
+   "srcs.push({ node: 'hot_leg', mdot: -eng._pzRelief, h: sys.nodes[iHL].h });",
+   "srcs.push({ node: 'hot_leg', mdot: -eng._pzRelief, h: eng._pzReliefH });",
+   { grp: 'A' }],
   ['the level controller is unhooked from charging',
    'eng.cv.chargingDemand = pzr.charging_demand;',
    '', { grp: 'A' }],
@@ -1666,8 +1807,14 @@ var MUTATIONS = [
    * house rule forbids. The write stays in the command as documented intent. */
   /* THE SGTR (#507 wave 5) — one mutation per seam */
   ['the SGTR backpressure driver is cut (the tube discharges against containment pressure)',
-   'toSG ? { backpressure_mpa: sr.P_sec } : {}) : null;',
-   '{}) : null;', { grp: 'H' }],
+   'toSG ? { backpressure_mpa: sr.P_sec }\n                                         : { backpressure_mpa: eng._ctP }) : null;',
+   '{ backpressure_mpa: eng._ctP }) : null;', { grp: 'H' }],
+  ['the break backpressure is the frozen constant again (#543 — coolant climbs the gradient)',
+   'toSG ? { backpressure_mpa: sr.P_sec }\n                                         : { backpressure_mpa: eng._ctP }) : null;',
+   'toSG ? { backpressure_mpa: sr.P_sec } : {}) : null;', { grp: 'D' }],
+  ['the containment-pressure stash is severed (#543 — the pass reads undefined for ever)',
+   'eng._ctP = ctr.containment_pressure_mpa;',
+   '', { grp: 'D' }],
   ['the SGTR stash is severed (primary water leaves and never reaches the SG)',
    '    eng._sgtrKgs = toSG && br ? br.mdot_kgs : 0;',
    '    eng._sgtrKgs = 0;', { grp: 'H' }],
@@ -1675,8 +1822,12 @@ var MUTATIONS = [
    '                                          tube_leak_kgs: eng._sgtrKgs || 0,',
    '                                          tube_leak_kgs: 0,', { grp: 'H' }],
   ['the containment exclusion is dropped (a tube rupture pressurizes containment)',
-   '    var ctIn = (br && !toSG ? br.mdot_kgs : 0) + (eng._pzRelief > 0 ? eng._pzRelief : 0);',
-   '    var ctIn = (br ? br.mdot_kgs : 0) + (eng._pzRelief > 0 ? eng._pzRelief : 0);',
+   '    var mBr = br && !toSG && br.mdot_kgs > 0 ? br.mdot_kgs : 0;',
+   '    var mBr = br && br.mdot_kgs > 0 ? br.mdot_kgs : 0;',
+   { grp: 'H' }],
+  ['the containment inlet books ONE enthalpy again (#566 — the relief rides at the break\'s h)',
+   'h_kJkg: (mBr * (mBr > 0 ? br.source.h : 0) + mPz * eng._pzReliefH) / ctIn }',
+   'h_kJkg: mBr > 0 ? br.source.h : eng._pzReliefH }',
    { grp: 'H' }],
   /* THE FAILURE LEVERS (#507 wave 6) */
   ['the ATWS gate is severed (a blocked scram drops the rods anyway)',

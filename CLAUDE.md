@@ -333,7 +333,7 @@ to read everything.
 
 _Last updated: **2026-08-28**._
 
-**Where the PWR is.** `run_all` is **94 runners, all at baseline** — read `BASELINES`, never a
+**Where the PWR is.** `run_all` is **96 runners, all at baseline** — read `BASELINES`, never a
 number written here. The PWR is the only active plant and is feature-complete through Mode 5 ↔
 Mode 1 on integrated physics: engines, control, service, instructor and the board are built; the
 #297 audit's build wave and the #221 audit slices are landed. **What is open, in one line each:**
@@ -410,7 +410,12 @@ Measured AGAIN 2026-08-28: a whole bullet of seven, all closed. Run the query.
   re-latched 0.1 s later. **#572 CLOSED** (§104): all four kernel protection lists are empty for
   this plant, and a board band was drawn off one — the ruled "build the block" became the TWO
   sourced flux rod stops (103 %, 20 %), because no startup-rate stop exists in any source.
-  **Grep every consumer of those lists.** Rest of #535–#566 untouched; `gh issue list` is the authority.
+  **Grep every consumer of those lists.** **The LOCA / loss-of-heat-sink cluster is CLOSED**
+  (#543/#544/#566/#563 item 5/#550/#535, 2026-08-28, §105): the break sees live containment
+  pressure, the containment carries its air's heat capacity, the relief's energy leaves once and
+  lands at its own enthalpy, the leak gauge separates 2.4 from 2,117 gpm, and an unmitigated
+  loss of heat sink ends HELD at ~105 min (0.14 GJ discarded vs 55.4) instead of immortal.
+  Rest of #535–#566 untouched; `gh issue list` is the authority.
 - **RBMK and BWR** — on hold, and the source of most remaining backlog. Do not touch.
 
 **The manual set's revision number does not advance until a RELEASE** *(OWNER DIRECTIVE,
@@ -544,8 +549,10 @@ thing left in the file and it grew about a bullet a session.
   **And a MUTATION goes blind
   when the defect it needs is FIXED, or when a refactor moves the line its anchor names**
   (rescued from the #501–#504 bullet on eviction, 2026-08-27): settling the startup ring sent
-  three caught mutations blind; rewriting four protection gates orphaned four anchors. Fix a
-  defect, then re-run the INJECTIONS.
+  three caught mutations blind; rewriting four protection gates orphaned four anchors — and a
+  NEIGHBOUR's fix blinds too: #544's air term fixed the initial condition that was exposing the
+  unbounded-bisection mutation (2026-08-28). Fix a
+  defect, then re-run the INJECTIONS — the whole file's, not just yours.
 - **A tolerance band is a claim that what it excludes is harmless — measure that** (rescued
   from the #348 themes bullet on eviction, 2026-08-07). CA-10's 1-point "coupling lag" band
   hid an interlock with no reset differential chattering at 35 % duty.

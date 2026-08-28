@@ -94,21 +94,43 @@
      * so the air mass is the air's. */
     var Pv0 = W.P_sat(T);
     var Pa0 = Math.max(0, P - Pv0);
+    var m_air = Pa0 * 1000 * V / (R_AIR * (T + 273.15));
     return {
       V_m3: V,
       T_c: T,
-      m_air: Pa0 * 1000 * V / (R_AIR * (T + 273.15)),
+      m_air: m_air,
       m_water: Pv0 * 1000 * V / (0.4615 * (T + 273.15)),   /* steam, R_v = 0.4615 kJ/kgK */
       /* ⚠ SEEDED WITH INTERNAL ENERGY, NOT ENTHALPY. The residual below works in u, and seeding
        * this with h_g overstated it by the flow-work term R_v*T -- about 150 kJ/kg, 6 % -- which
        * was enough to push the INITIAL condition past the solver bound and report 392 degF for a
        * containment the source says starts at 125. Incoming break flow IS added as enthalpy,
-       * which is correct: what a stream carries in is h. Only the seed is a state. */
-      U_water_kJ: (Pv0 * 1000 * V / (0.4615 * (T + 273.15))) *
-                  (W.h_g(Pv0) - 0.4615 * (T + 273.15)),
+       * which is correct: what a stream carries in is h. Only the seed is a state.
+       * ⚠ THE LEDGER IS THE WHOLE ATMOSPHERE'S, WATER AND AIR (#544). The 4,697 kg of air is
+       * 3,372 kJ/K -- larger than the steam's own capacity for most of an event -- and a
+       * residual that hands the solved T to the air without debiting it walks straight to the
+       * solver bound: measured, a stuck-open PORV read 392.0 degF (the 200 degC clamp itself)
+       * at 154.6 s and then FELL 229.8 degF as the sump formed, a first-law violation on a
+       * sealed volume still gaining mass. Air energy is m_air*cv*T on the same absolute-Kelvin
+       * reference here and in the residual -- the air mass never changes, so the reference
+       * cancels and the seed still solves the sourced 125 degF exactly. */
+      U_total_kJ: (Pv0 * 1000 * V / (0.4615 * (T + 273.15))) *
+                  (W.h_g(Pv0) - 0.4615 * (T + 273.15)) +
+                  m_air * CV_AIR * (T + 273.15),
       energy_in_kJ: opts.energy_in_kJ === undefined ? 0 : opts.energy_in_kJ,
       mass_in_kg: opts.mass_in_kg === undefined ? 0 : opts.mass_in_kg
     };
+  }
+
+  /* An old save's containment carries the water-only ledger under its old name (#544 renamed
+   * it when the air's energy entered the residual). Reconstruct the total at the SAVED
+   * temperature -- residual continuity is exact, so a migrated plant re-solves the T it was
+   * saved at rather than stepping. Absent-tolerant, the #553-555/§95 pattern. */
+  function migrateState(ct) {
+    if (ct && ct.U_total_kJ === undefined && ct.U_water_kJ !== undefined) {
+      ct.U_total_kJ = ct.U_water_kJ + ct.m_air * CV_AIR * (ct.T_c + 273.15);
+      delete ct.U_water_kJ;
+    }
+    return ct;
   }
 
   /* stepContainment(ct, dt, drivers) -> pressure and temperature.
@@ -129,7 +151,7 @@
       ct.mass_in_kg += dm;
       ct.energy_in_kJ += dm * drivers.h_kJkg;
       ct.m_water += dm;
-      ct.U_water_kJ += dm * drivers.h_kJkg;
+      ct.U_total_kJ += dm * drivers.h_kJkg;
     }
 
     /* ⚠ THE ATMOSPHERE IS SOLVED AS A FLASH EQUILIBRIUM, and the first version was not.
@@ -153,10 +175,13 @@
         var mv_max = Ps * 1000 * ct.V_m3 / (0.4615 * TK);
         var mv = Math.min(ct.m_water, mv_max);
         var ml = ct.m_water - mv;
-        /* internal energy: liquid at h_f, vapour at h_g less the flow work it no longer does */
+        /* internal energy: liquid at h_f, vapour at h_g less the flow work it no longer does,
+         * and the AIR at m*cv*T on the same absolute reference the seed used (#544) — the
+         * 3,372 kJ/K the first build handed the solved temperature without debiting */
         var U = mv * (W.h_g(Ps) - Ps * 1000 / (Ps * 1000 / (0.4615 * TK)))
-              + ml * W.h_f(Ps);
-        return U - ct.U_water_kJ;
+              + ml * W.h_f(Ps)
+              + ct.m_air * CV_AIR * TK;
+        return U - ct.U_total_kJ;
       }
       /* ⚠ THE SEARCH IS BOUNDED AT 200 degC BECAUSE THE RESIDUAL IS NOT MONOTONE ABOVE IT.
        * h_g peaks near 235 degC and FALLS toward the critical point, so the energy residual rises
@@ -226,6 +251,7 @@
   root.RD.pwr2.containment = {
     CTMT: CTMT, freeVolumeM3: freeVolumeM3, volumeScale: volumeScale,
     createContainment: createContainment, stepContainment: stepContainment,
+    migrateState: migrateState,
     PSI_PER_MPA: PSI_PER_MPA
   };
 })(typeof globalThis !== 'undefined' ? globalThis : this);

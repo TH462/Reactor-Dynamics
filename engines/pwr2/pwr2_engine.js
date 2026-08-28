@@ -328,8 +328,10 @@
        * turbine-driven aux feed pump keep their steam. ~5 s stroke [derived, valve class];
        * `open` is the demanded position (the board lamp), `pos` the travel the flow sees. */
       msiv: { open: true, pos: 1 },
-      /* one-step-lag carriers */
+      /* one-step-lag carriers. _ctP starts UNDEFINED on purpose: pwr2_break falls to its
+       * sourced 1.0 psig pre-accident default until containment has stepped once (#543). */
       _Qox: 0, _pzRelief: 0, _pzReliefH: 0, _pzSurgeHeat: 0, _eccsKgs: 0, _sgtrKgs: 0, _sgtrH: 0,
+      _ctP: undefined,
       _pzr: null, _dcr: null, _lastTrip: false,
       _scramT: null, _manualTrip: false, _rodStopSig: false, _runbackSig: false,
       _rbT: 0, _rbActive: false,
@@ -988,10 +990,17 @@
      * (same step — stepSG ran above), so the sourced EOP falls out of the ΔP: "reduce
      * reactor coolant system pressure to equilibrate with the ruptured steam generator
      * secondary side pressure to minimize the coolant discharge" (§15.6.3). Every other
-     * break keeps the containment backpressure default. */
+     * break discharges against LIVE containment pressure (#543) — LAST step's, since
+     * containment steps below this (one-step lag, the house convention; the retired engine's
+     * pwr_primary.js carried the same coupling the same way). Undefined on the first step
+     * (and on an old save) falls to the sourced 1.0 psig pre-accident default in pwr2_break.
+     * Without this a large break kept discharging against a frozen 1.0 psig after containment
+     * passed RCS pressure: measured, 12,857 kg moved UP a 19.6 psi adverse gradient and total
+     * discharge ran 15 % high at 1800 s. */
     var toSG = !!(eng.brk && eng.brk.node === 'sg_primary');
     var br = eng.brk ? BK.stepBreak(eng.brk, sys, dt,
-                                    toSG ? { backpressure_mpa: sr.P_sec } : {}) : null;
+                                    toSG ? { backpressure_mpa: sr.P_sec }
+                                         : { backpressure_mpa: eng._ctP }) : null;
     eng._sgtrKgs = toSG && br ? br.mdot_kgs : 0;
     eng._sgtrH = toSG && br && br.mdot_kgs > 0 ? br.source.h : 0;
 
@@ -1033,7 +1042,21 @@
     if (ecr.sources) srcs = srcs.concat(ecr.sources);
     if (br) srcs.push(br.source);
     if (eng._pzRelief > 0) {
-      srcs.push({ node: 'hot_leg', mdot: -eng._pzRelief, h: eng._pzReliefH });
+      /* THE LOOP-SIDE SINK IS AT THE HOT LEG'S OWN ENTHALPY, NOT THE DISCHARGE'S (#563 item
+       * 5). The pressurizer has ALREADY debited the discharged mass at its own enthalpy from
+       * its regions, and the vessel refills from the loop — so the loop loses mass at the hot
+       * leg's h (a source at the node's own h moves dM and zero dH, which is exactly "the
+       * vessel refills from the loop") while `_pzReliefH` rides the CONTAINMENT inflow below,
+       * the single correct debit. Booking this sink at `_pzReliefH` removed the discharge
+       * enthalpy TWICE: measured, a stuck-open PORV at hot standby destroyed 2,782.6 MJ that
+       * no mass carried out (control residual 0.3 MJ) and cooled 11.0 degF / 72 psi more in
+       * 10 min than conservation allows. */
+      for (var iHL = 0; iHL < sys.nodes.length; iHL++) {
+        if (sys.nodes[iHL].id === 'hot_leg') {
+          srcs.push({ node: 'hot_leg', mdot: -eng._pzRelief, h: sys.nodes[iHL].h });
+          break;
+        }
+      }
     }
     var heats = rrx.heats;
     if (rhrR.duty_kW > 0) {
@@ -1154,11 +1177,20 @@
     /* containment receives the break AND the pressurizer relief (PORV/safety discharge ends
      * up there via the relief tank; the tank itself is unmodelled, declared). An SGTR is
      * EXCLUDED — the tube discharges into the SG, a closed receiver, and containment seeing
-     * nothing is the accident's containment-bypass signature (#507 wave 5). */
-    var ctIn = (br && !toSG ? br.mdot_kgs : 0) + (eng._pzRelief > 0 ? eng._pzRelief : 0);
-    var ctH = br && !toSG && br.mdot_kgs > 0 ? br.source.h : eng._pzReliefH;
+     * nothing is the accident's containment-bypass signature (#507 wave 5).
+     * EACH STREAM CARRIES ITS OWN ENTHALPY (#566): the relief is pressurizer steam or hot
+     * saturated liquid, the break is its node's water, and picking one carrier for the pair
+     * under-booked containment energy 8.3 % on a compound casualty. The mdot-weighted mean
+     * is EXACT here, not an approximation — the containment ledger accumulates dm and dm*h
+     * linearly, so one blended call equals two single-stream calls to the last bit. */
+    var mBr = br && !toSG && br.mdot_kgs > 0 ? br.mdot_kgs : 0;
+    var mPz = eng._pzRelief > 0 ? eng._pzRelief : 0;
+    var ctIn = mBr + mPz;
     var ctr = CT.stepContainment(eng.ctm, dt,
-      ctIn > 0 ? { mdot_kgs: ctIn, h_kJkg: ctH } : { mdot_kgs: 0 });
+      ctIn > 0 ? { mdot_kgs: ctIn,
+                   h_kJkg: (mBr * (mBr > 0 ? br.source.h : 0) + mPz * eng._pzReliefH) / ctIn }
+               : { mdot_kgs: 0 });
+    eng._ctP = ctr.containment_pressure_mpa;   /* next step's break backpressure (#543) */
 
     eng.simTime += dt;
     eng._pzr = pzr; eng._dcr = dcr;

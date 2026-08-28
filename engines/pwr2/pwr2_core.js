@@ -291,6 +291,9 @@
      * gate break peaks at 0.104, everything operational is < 0.001), the defect's jump was
      * 6.1 MPa. A solve landing further than P_JUMP_MAX from the previous step's root is the
      * compliance-collapse condition — hold THIS step (nothing adopted), latch beyond_model. */
+    var CEIL_HOLD_LATCH_S = 60;   /* s of CONTINUOUS active ceiling discard [derived] — 14x the
+     * longest healthy episode (4.26 s, 50 cm2 break flash), 16x under the loss-of-heat-sink
+     * hold it exists to latch (#535); rationale at the latch below. */
     var P_JUMP_MAX = 2.0;   /* MPa per step [derived] — 3x above the worst measured legit move.
      * CAVEAT, measured: a PRESSURIZER-LESS rigid loop under a hand-pinned uniform h moves
      * 2.589 MPa/step at ~3,000 MW-equivalent forcing — a HARNESS idiom, not an engine
@@ -309,15 +312,23 @@
       };
     }
 
-    var clampedNodes = 0, discardedKJ = 0, wallHi = 0, wallLo = 0;
+    var clampedNodes = 0, discardedKJ = 0, wallHi = 0, wallLo = 0, ceilClamped = 0;
     var h_next = new Array(N);            /* #518 — staged; adopted only past the latches */
     for (i = 0; i < N; i++) {
       var h_raw = a[i] + v[i] * (sol.P - sys.P);
       var h_new = hClamp(h_raw);                 /* THE SAME function the solve used */
       if (h_new !== h_raw) { clampedNodes++; discardedKJ += (h_raw - h_new) * m_n[i]; }
+      /* ACTIVE ceiling clamp THIS step (#535) — distinct from the sitting-at-wall census
+       * below: a node parked exactly AT hHi with h_raw inside counts for wallHi but not
+       * here, and it is the active discard that means physics is being deleted right now */
+      if (h_new !== h_raw && h_raw > hHi) ceilClamped++;
       if (h_new === hHi) wallHi++; else if (h_new === hLo) wallLo++;
       h_next[i] = h_new;                                  /* #518 — STAGED, not written yet */
     }
+    /* #535: consecutive seconds of active ceiling discard. Rides `sys` into every save;
+     * absent on an old save reads 0, healthy. Reset by ANY step with no active ceiling
+     * clamp, so only a SUSTAINED discard can accumulate to the latch below. */
+    sys._ceilHold = ceilClamped > 0 ? (sys._ceilHold || 0) + dt : 0;
 
     /* ---- THE BLOWDOWN TERMINAL LATCHES, EVALUATED BEFORE ANYTHING IS ADOPTED (#487/#499/#518)
      * BOTH halves of the floor latch are required, because each alone fires on a plant that is
@@ -345,8 +356,21 @@
      * The root-jump guard above had this right from the start — "hold THIS step (nothing
      * adopted)" — and these two now do the same thing, which is the ONLY behaviour that makes the
      * held state mean what the dialog says it means: the last readings that were valid. The
-     * clamp counts are still REPORTED, because what was rejected is the diagnostic. */
-    if ((sol.flooredLow && clampedNodes > 0) || (wallHi > 0 && wallLo > 0)) {
+     * clamp counts are still REPORTED, because what was rejected is the diagnostic.
+     *
+     * THE THIRD ARM IS THE CEILING'S (#535), and it is a PERSISTENCE latch because the ceiling
+     * has a benign mode the floor does not: a 50 cm2 break flashes nodes onto hHi transiently
+     * during the blowdown — measured, 453 active-ceiling steps with the LONGEST run 4.26 s,
+     * finite and healthy throughout — so latching on first contact would kill a legitimate
+     * LOCA. What has no benign mode is a SUSTAINED discard: an unmitigated loss of heat sink
+     * pins core/upper-plenum/hot-leg on the ceiling and holds them there for ever (measured:
+     * first clamp 88.8 min, then a single 969 s-and-climbing run, 79 % of decay heat deleted,
+     * 55.4 GJ over 8 h, peak clad 1,616 degF FALLING against a 2,200 degF damage latch —
+     * an immortal plant with every health flag green). CEIL_HOLD_LATCH_S = 60 is 14x the
+     * longest measured healthy episode and 16x under the defect's hold; a minute of
+     * continuously deleting decay heat is not a state this property library can speak to. */
+    if ((sol.flooredLow && clampedNodes > 0) || (wallHi > 0 && wallLo > 0) ||
+        sys._ceilHold > CEIL_HOLD_LATCH_S) {
       sys.beyond_model = true;
       sys.simTime += dt;                                  // EXACTLY dt. Always.
       return {

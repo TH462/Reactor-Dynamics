@@ -239,10 +239,18 @@ head('#487 ENDGAME  [the filed NaN was cured incidentally; this is what keeps it
 var END = scenario({ feedback: true, secs: 1800, area_m2: 0.0005 });
 var endHFinite = true;
 END.sys.nodes.forEach(function (n) { if (!isFinite(n.h)) endHFinite = false; });
-ckT('the filed 5 cm2 case reaches the floor REGION — the check is not passing above the endgame',
-    END.sys.P < 0.5 && 100 * END.sys.M_total / END.M0 < 1.0,
+/* RE-SCOPED at #535 (2026-08-28): this used to require P < 0.5 MPa and < 1 % inventory —
+ * an endgame the ride only reached by riding THROUGH ~30 min of sustained ceiling discard
+ * (deleted decay heat). The ceiling persistence latch now holds the plant honestly at
+ * 4.56 MPa / 5.8 % inventory, mid-boil-off, so the endpoint claim is: DEEP in the casualty
+ * and TERMINALLY LATCHED. The old floats-unlatched-for-ever behaviour FAILS this form —
+ * deliberate, that immortality is the #535 defect; the latch mechanism itself is
+ * unit-tested and mutation-pinned in run_pwr2_core. */
+ckT('the filed 5 cm2 case runs DEEP into the endgame and ends TERMINALLY LATCHED (#487/#535)',
+    END.sys.beyond_model === true && 100 * END.sys.M_total / END.M0 < 10,
     END.sys.P.toFixed(3) + ' MPa, ' + (100 * END.sys.M_total / END.M0).toFixed(2) +
-    ' % inventory at 1800 s — a run that never got here would prove nothing');
+    ' % inventory at 1800 s, beyond_model ' + END.sys.beyond_model +
+    ' — a run held shallow, or riding free on deleted heat, would prove nothing');
 ckT('...and the plant is FINITE there, held or floating — never NaN (#487)',
     END.nonFinite === 0 && isFinite(END.sys.P) && isFinite(END.sys.mdot_loop) && endHFinite,
     'P ' + END.sys.P.toFixed(3) + ' MPa in-envelope, every node enthalpy finite through ' +

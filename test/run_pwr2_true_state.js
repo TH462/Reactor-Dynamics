@@ -318,9 +318,14 @@ function runSuite(TS, rec, quiet) {
 
   /* ---- THE NEWLY-WIRED SYSTEMS: break, containment, condenser, ECCS ---------------------- */
   head('BREAK / CONTAINMENT / CONDENSER / ECCS -- built earlier this session, wired NOW');
-  ck('leak_flow is the break\'s own discharge, not re-derived',
-     ts.leak_flow === B.brk.mdot_kgs && ts.leak_flow > 0,
-     ts.leak_flow.toFixed(4) + ' kg/s -- a small leak at full power, not a placeholder');
+  /* #550: the SHARED #408 currency (inventory-frac/s), same conversion as the CVCS flows —
+   * the raw-kg/s form this check used to PIN pegged the [0, 0.06] instrument at top of
+   * scale for every injectable break (27,000 gpm for a 2.4 gpm seal leak). Reds on it. */
+  ck('leak_flow is the break\'s own discharge in the SHARED currency (frac/s, not kg/s)',
+     Math.abs(ts.leak_flow - B.brk.mdot_kgs * (60 * 264.172 / 1000 / 450000)) < 1e-15 &&
+     ts.leak_flow > 0,
+     (ts.leak_flow * 450000).toFixed(1) + ' gpm from ' + B.brk.mdot_kgs.toFixed(3) +
+     ' kg/s -- a small leak at full power, on the instrument\'s own scale');
   ck('containment pressure is SUPPLIED and near its sourced initial condition',
      ts.containment_pressure_mpa !== undefined &&
      Math.abs(ts.containment_pressure_mpa - B.ctr.containment_pressure_mpa) < 1e-12 &&
@@ -643,6 +648,9 @@ var MUTATIONS = [
   ['the CVCS currency conversion is dropped (kg/s published as the #408 fraction again)',
    "    put('charging_flow_actual', cv.charging_kgs * FRAC_PER_KGS);",
    "    put('charging_flow_actual', cv.charging_kgs);"],
+  ['the LEAK currency conversion is dropped (#550 — the gauge pegs at 27,000 gpm for any break)',
+   "    put('leak_flow', (br.mdot_kgs || 0) * FRAC_PER_KGS);",
+   "    put('leak_flow', br.mdot_kgs || 0);"],
   /* RETARGETED at #511: the drift target used to be msiv_open, which is a LIVE field now —
    * the drift moves to a SURVIVING static (the single-SG imbalance constant). */
   ['a static drifts from its registered value (the registry lies about what is emitted)',

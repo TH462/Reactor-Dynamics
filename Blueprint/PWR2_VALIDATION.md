@@ -6992,3 +6992,125 @@ on RATE**, the SUR HI annunciator at 1 DPM is the whole rate cue, and the interl
 actually meets is the 20 % flux stop. `09` §2.0 now carries all four stops in one table under one
 citation. That is five sites for one wrong number, which is the argument for the seam gates #570
 built — none of which could catch this one, because every symbol the prose named existed.
+
+## 105. #543 + #544 + #566 + #563.5 + #550 + #535 — THE CASUALTY ENDGAME TELLS THE TRUTH — 2026-08-28
+
+The largest cluster still open from the #534 hunt: six measured defects that together made the
+severe-casualty families dishonest — a break that ignored its receiver, a containment that
+violated the first law, a relief stream whose energy left twice, a leak gauge with one reading
+for every leak, and a loss of heat sink that ran for ever. Fixed in seam order (relief booking →
+containment energy → containment T/P → break backpressure), each stage re-measured with the
+hunt's own filing probes before the next landed.
+
+### 105.1 #563 item 5 — the relief debits the loop ONCE
+
+The hot-leg relief sink was pushed at `_pzReliefH` (the discharge's ~2,700 kJ/kg steam) when the
+pressurizer had already debited that mass at that enthalpy from its own regions — the vessel
+refills from the loop, so the loop's half is the HOT LEG's own h (a source at the node's own h
+moves dM and zero dH, which is the refill exactly). Measured on the filing probe
+(`hunt/fac/energy_audit2.js`, hot zero power, stuck PORV, 300 s): residual −2,782.7 MJ at ratio
+1.618 before, −2,058.4 MJ at ratio **1.148** after — the ratio's ideal is 1.000 (residual =
+the discharged stream's own energy) and the remaining 0.148 is dominated by the h-basis audit's
+own flow-work term (Σm·h is not Σm·u; the ride drops ~6 MPa across ~45 m³ ≈ 200 MJ of
+book-keeping the audit cannot see), not by a plant defect. The observable half: hot standby with
+the valve stuck open no longer cools 11.0 °F too fast / parks 72 psi too low. Two new
+`run_pwr2_engine` checks: the wire (2,999 of 2,999 sink pushes at the hot leg's h) and the
+coarse ledger band (gap 145.1 MJ fixed vs 430.6 double-debited, on the check's own 60 s ride);
+mutations for the revert and for a dropped sink both red.
+
+### 105.2 #566 — containment books each stream at its OWN enthalpy
+
+`ctH` picked ONE carrier for break + relief; the fix is the mdot-weighted mean, which is EXACT —
+the containment ledger accumulates dm and dm·h linearly, so one blended call equals two
+single-stream calls to the last bit. The filing probe (`hunt/lag/c13_ctmt.js`, 0.2 cm² leak +
+stuck PORV, 900 s) read an 8.3 % energy shortfall and −1.93 psi / −5.7 °F on the diagnosis
+instruments before; after, shipped = blended to the digit (33.19 psia / 220.0 °F, shortfall
+0.0 %). New check reconstructs `ctm.energy_in_kJ` from each stream's own carrier over a
+compound casualty (760.66 MJ, float-exact match, both streams live on 3,000/3,000 steps).
+
+### 105.3 #544 — the containment air is IN the energy balance
+
+`CV_AIR` was defined and referenced nowhere in the repo: the flash residual balanced delivered
+enthalpy against the WATER's internal energy alone, and the 4,697 kg of air (3,372 kJ/K — more
+capacity than the steam for most of an event) was handed the solved temperature free. The
+stuck-PORV board trajectory read 199.4 °F at 40 s → 392.0 °F (the 200 °C solver bound itself) at
+154.6 s → then FELL 229.8 °F as the sump formed — a first-law violation on a sealed volume still
+gaining mass. Fix: the ledger is the whole atmosphere's (`U_total_kJ`, renamed from
+`U_water_kJ` so an old save's water-only ledger is detectable), seeded and residual-debited with
+`m_air·cv·T` on the same absolute-Kelvin reference — the air mass never changes, so the sourced
+125 °F initial condition still solves exactly. Measured after: 152.3 °F at 100 s (was 290.6),
+288.6 °F at 800 s (was clamped 392.0), the bound never reached, no collapse — the filing A/B's
+own numbers. Old saves migrate by exact reconstruction at the saved temperature
+(`CT.migrateState`, the §95 pattern; `run_pwr2_shell` pins T continuity to 0.0 °F and a severed
+migration reds). The 200 °C bound STAYS — at post-blowdown water masses the residual still falls
+past the h_g peak, and a new check pins the physical branch (an unbounded search reports 370 °C
+for a 190 °C state); the air term had sent that mutation blind at the initial condition.
+
+### 105.4 #543 — the break discharges against LIVE containment pressure
+
+Only the SGTR branch had a backpressure driver; every other break fell to the sourced 1.0 psig
+constant for ever, so a sev-1 LOCA's containment passed RCS pressure at 995 s and the hole kept
+flowing — 12,857 kg moved UP a 19.6 psi adverse gradient by 1800 s, total discharge 15 % high,
+and the recirculation endgame (the two pressures equalize) unreachable. The engine now stashes
+`eng._ctP` after the containment step and hands it to every non-SGTR break — one step old, the
+house lag convention, the same coupling `pwr_primary.js:218` carried and the PWR2 rebuild lost;
+undefined (first step, old saves) falls to the sourced default. Measured on the filing probe:
+the adverse condition NEVER occurs; at 1800 s RCS 102.3 psia over containment 95.1 (was 78.7
+UNDER 98.2 with 16.5 kg/s still passing). `_ctP` rides the save's scalars (bit-exactness bar).
+New check: a 1200 s blowdown with 0 adverse-flow steps of 60,000; mutations for the reverted
+ternary and the severed stash both red through it.
+
+### 105.5 #550 — the leak gauge reads the leak
+
+`ts.leak_flow` published raw kg/s into the contract's normalized inventory-frac/s field —
+28,391× the shared #408 currency, so the [0, 0.06] instrument pegged at 27,000 gpm for a
+2.4 gpm seal leak and a 2,117 gpm guillotine alike, and the chart's truth trace read
+67,957–59,969,032 gpm on a 2,000 gpm lane. One-token fix with the CVCS conversion idiom already
+in scope 15 lines up. Measured through the shipped board (`hunt/ledger/r11_pegged.js`): the four
+filing cases now read 2 / 26 / 205 / 2,078 gpm — the gauge separates the injectable range, and
+the Technical-Specification 1 gpm chart cue is reachable. `run_pwr2_true_state:321` had PINNED
+the kg/s currency (asserting `ts.leak_flow === B.brk.mdot_kgs`); rewritten to assert the
+conversion, with the twin mutation beside the CVCS one.
+
+### 105.6 #535 — the ceiling latch: loss of heat sink is no longer immortal
+
+The property-envelope ceiling discarded surplus enthalpy with no terminal latch — the floor arm
+needs `flooredLow` (a pressure-search fact a healthy root never asserts) and the #499 arm needs
+BOTH walls. An unmitigated station blackout + AFW failure parked at Thot = 1,472.0 °F (TV_MAX
+itself) from 88.8 min for ever: 79 % of decay heat deleted (55.4 GJ over 8 h), peak clad
+1,616 °F and FALLING against the 2,200 °F damage latch, `model_held` false, no dialog, commands
+accepted at 8 h. The lesson inverted: doing nothing survived a total loss of feedwater.
+
+**The criterion was measured before it was chosen** (the pre-declared rule: healthy ceiling
+contact → persistence, sized off the longest healthy episode). Census over six rides: the benign
+50 cm² break DOES actively ceiling-clamp — 453 steps, longest run **4.26 s**, 209 MJ, finite and
+healthy throughout — so a first-contact latch kills a legitimate LOCA; the defect rides hold the
+ceiling CONTINUOUSLY (a 969 s-and-climbing run on the blackout). The third arm is therefore
+`sys._ceilHold > 60 s` of CONSECUTIVE active ceiling discard (14× the healthy episode, 16× under
+the defect's hold), counted separately from the sitting-at-wall census, reset by any clean step,
+riding `sys` into every save (absent → 0). Measured after, the full 8 h blackout ride: first
+clamp 104.3 min (the stage-1–4 fixes moved the trajectory), 61 s of clamped steps, then HELD for
+the remaining 6.7 h — `model_held` true with the range-departure why-string, TOTAL discard
+**0.14 GJ against the shipped 55.35 GJ**; the two-click loss-of-feedwater family latches the
+same way at ~105 min. Instead of immortal, the casualty ends where the model's authority ends.
+`run_pwr2_core` gains the ceiling-only fixture (the both-walls fixture minus its negative heat:
+latches at 60.02 s, healthy at 30 s, pressure root untouched) and two mutations (arm deleted,
+counter never accumulates). One consequence adjudicated: `run_pwr2_coredamage`'s #487-endgame
+check required the 5 cm² break to reach P < 0.5 MPa — an endgame it reached only by riding
+THROUGH ~30 min of sustained discard. Re-scoped to "deep in the casualty AND terminally latched"
+(4.56 MPa / 5.8 % inventory, held); the old floats-unlatched-for-ever behaviour fails the new
+form deliberately.
+
+### 105.7 The bill
+
+`run_pwr2_engine` 107 → 111 (66/66 mutations), `run_pwr2_containment` 25 → 27 (20/20),
+`run_pwr2_core` 47 → 48 (25/25), `run_pwr2_shell` 120 → 121 (37/37), `run_pwr2_true_state` 71
+(24/24, one check rewritten — it had pinned the defect), `run_pwr2_coredamage` 23 (one
+re-scoped), `run_pwr2_break` 29, `run_pwr2_loca` 17, `run_pwr2_endurance` 20,
+`run_pwr2_roundtrip` 20 — all green, every new check injection-verified. Save format pwr2-1.0
+gains `scalars._ctP` (absent-tolerant) and renames the containment ledger with an exact
+migration. Two prior-session harness notes: the hunt's `p12_air`/`p17_collapse` A/B columns now
+read a broken 68 °F because their hand-built comparison references the renamed field — the
+SHIPPED column is the measurement; and `measure_pwr2_ab.js:65` still classes `leak_flow` PROXY
+(not in the aggregate gate, #513 ruling) — it can be re-classed to a translation now that the
+currencies agree.

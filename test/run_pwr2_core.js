@@ -402,6 +402,35 @@ function runSuite(C, rec, quiet) {
         'only this guard');
   })();
 
+  /* ---- #535: a CEILING-ONLY pin with a healthy pressure root latches on PERSISTENCE.
+   * The both-walls fixture above with the negative heat dropped: one tiny node takes heat
+   * for ever, pins on hHi and discards every step, while the pressure root never moves and
+   * the floor is never touched — so neither older arm can fire. Pre-#535 this ran
+   * UNLATCHED indefinitely (the loss-of-heat-sink immortality: 79 % of decay heat deleted
+   * for 8 h with every health flag green). The latch must NOT fire on first contact — a
+   * 50 cm2 break touches the ceiling for 4.26 s healthy — and MUST fire once the hold
+   * passes CEIL_HOLD_LATCH_S = 60 s of continuous discard. ---- */
+  (function () {
+    var sysC = C.createSystem({ nodes: [
+      { id: 'n0', V: 0.01, h: 1000 }, { id: 'n1', V: 0.01, h: 1000 },
+      { id: 'n2', V: 50, h: 1000 }, { id: 'n3', V: 50, h: 1000 }], P: 5.0 });
+    var fC = [{ from: 'n0', to: 'n1', mdot: 0.1 }, { from: 'n1', to: 'n2', mdot: 0.1 },
+              { from: 'n2', to: 'n3', mdot: 0.1 }, { from: 'n3', to: 'n0', mdot: 0.1 }];
+    var latchedAt = null, notAt30 = null, rC = null;
+    for (var iC = 0; iC < 3300; iC++) {
+      rC = C.step(sysC, 0.02, { flows: fC, heats: { n0: 2e6 } });
+      var tC = (iC + 1) * 0.02;
+      if (Math.abs(tC - 30) < 0.011) notAt30 = sysC.beyond_model !== true;
+      if (sysC.beyond_model === true && latchedAt === null) latchedAt = tC;
+    }
+    ckT('a ceiling-only pin latches beyond-model on SUSTAINED discard — and not before',
+        latchedAt !== null && latchedAt > 55 && latchedAt < 66 && notAt30 === true &&
+        sysC.P > 4.5 && sysC.P < 5.5,
+        'latched at ' + (latchedAt === null ? 'NEVER' : latchedAt.toFixed(2) + ' s') +
+        ' (healthy at 30 s: ' + notAt30 + '), P ' + sysC.P.toFixed(2) +
+        ' MPa — pre-#535 this state ran unlatched for ever');
+  })();
+
 }
 
 console.log('\nPWR2 Layer 2 -- node/junction conservation core');
@@ -418,6 +447,11 @@ var MUTATIONS = [
    * step the guard had just rejected. Each half is still mutated on its own. */
   ['the both-walls latch is deleted (the near-floor oscillation runs unlatched)',
    '(wallHi > 0 && wallLo > 0)', '(false)'],
+  ['the ceiling persistence latch is deleted (#535 — loss of heat sink is immortal again)',
+   '        sys._ceilHold > CEIL_HOLD_LATCH_S', '        false'],
+  ['the ceiling hold never accumulates (#535 — the counter resets every step)',
+   "    sys._ceilHold = ceilClamped > 0 ? (sys._ceilHold || 0) + dt : 0;",
+   "    sys._ceilHold = 0;"],
   ['the beyond-model latch never fires (#487 — the pre-latch build, which went NaN)',
    '(sol.flooredLow && clampedNodes > 0)', '(false)'],
   /* The latch STAGES the new enthalpies and adopts them only past the guards (#518). Writing
