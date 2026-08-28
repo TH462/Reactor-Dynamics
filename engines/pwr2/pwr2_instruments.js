@@ -104,6 +104,19 @@
                                                                   NARROW range on purpose: the lo-lo function's sourced LSSS is "a percent of narrow
                                                                   range instrument span" (Ginna TS Bases B 3.3.2, ML20339A221). The downcomer
                                                                   shrink/swell SHIFT arrives via extras — see stepInstruments. */
+    { id: 'sg_steam_flow',    src: 'steam_out_total',          tau_s: 1.0,  sigma: 0.01, range: [0, 2.5] },      /* [open] venturi dP, steam_flow's class.
+                                                                  THE ELEMENT-2 CHANNEL (#540). `steam_flow` is the TURBINE's draw; this is TOTAL
+                                                                  steam leaving the generator (turbine + dumps + ADV + code safeties). The
+                                                                  three-element controller's flow error is steam OUT minus feed IN (WTSM 11.1),
+                                                                  and post-trip the dumps carry the steam while `steam_flow` reads ~0 — so a
+                                                                  controller on the turbine channel sees no demand and feeds nothing.
+                                                                  IT DID NOT EXIST UNTIL #540, and pwr2_engine.js read it anyway: the wire was
+                                                                  `rdF.sg_steam_flow !== undefined ? ... : rdF.steam_flow`, so it took the
+                                                                  fallback on EVERY step and #509 item 5 was never actually fixed. Measured on
+                                                                  a turbine trip with P-9 defeated, dumps carrying 0.701 of rated: 3,452 kg
+                                                                  (7,611 lbm) and 28.5 narrow-range points lost at the dip. Appending is safe
+                                                                  here — each channel's PRNG is seeded from a hash of its OWN id (see the
+                                                                  header), which is the whole reason this module departed from pwr_instruments. */
     { id: 'fw_flow',          src: 'fw_flow_normalized',       tau_s: 1.0,  sigma: 0.01, range: [0, 2.5] },      /* [open] venturi dP, steam_flow's class —
                                                                   the three-element controller's element 3 (WTSM 11.1: flow error = steam − feed) */
     { id: 'mwe_output',       src: 'mwe_output',               tau_s: 0.5,  sigma: 0.2,  range: [0, 120] },      /* [open] wattmeter */

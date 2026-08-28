@@ -743,17 +743,22 @@
 
     imrmssto6d: e('Auxiliary Feedwater',
       'The emergency feed path — starts, stops or arms AFW to the steam generator.',
-      'AFW is the heat sink of last resort after main feed is lost. AUTO arms it to start on low SG ' +
-      'level (about 20 %); manual action takes it out of AUTO. It delivers far less than main feed — ' +
-      'enough to remove decay heat, not enough to run the plant.', CI, '10.0'),
+      'AFW is the heat sink of last resort after main feed is lost. AUTO arms it to start on low-low SG ' +
+      'level (17 % of narrow range); manual action takes it out of AUTO. It delivers far less than main ' +
+      'feed — enough to remove decay heat, not enough to run the plant. Starting the pumps is only half ' +
+      'the job: the THROTTLE box below sets how much of that flow actually reaches the generator, and ' +
+      'leaving it wide open overcools the primary.', CI, '10.0'),
     imrmsslj42u: e('START (AFW)',
       'Starts auxiliary feedwater by hand.',
       'Takes AFW to MANUAL. Verify the level actually responds: run lights show pump DEMAND, and a ' +
       'shut block valve leaves them lit with no water reaching the generator.', CI, '10.0'),
-    imrmssoa137: e('STOP (AFW)',
-      'Stops auxiliary feedwater and disarms the auto-start.',
+    imrmssoa137: e('STOP (Auxiliary Feedwater (AFW))',
+      'Secures BOTH auxiliary feed pumps and disarms the auto-start.',
       'This is why the status readout distinguishes SECURED from STANDBY: a stopped AFW that is still ' +
-      'armed will come back on its own, and one that is secured will not.', CI, '10.0'),
+      'armed will come back on its own, and one that is secured will not. It reaches the turbine-driven ' +
+      'pump as well as the motor-driven one — those are two separate machines with a switch each, and ' +
+      'this button works both. If a safety injection is standing, it will refuse and say so: an SI ' +
+      'signal is itself an aux feed start, so secure the injection first.', CI, '10.0'),
     imrmssr9ihq: e('AUTO (Auxiliary Feedwater (AFW))',
       'Arms AFW to auto-start on low steam generator level.',
       'The standing lineup at power — armed and idle. It is what makes a loss of main feed survivable ' +
@@ -857,6 +862,19 @@
       'Steam pressure the automatic atmospheric dump holds, in the pressure unit shown.',
       'Same idiom as the Dump SP box and the same limits: it clamps to the code-safety band, and ' +
       'lowering it walks the secondary — and the primary with it — down the saturation curve.', CI, '12.3'),
+    bdAfwThrottle: e('Auxiliary Feedwater (AFW) Throttle',
+      'How far the auxiliary feedwater flow control valves are open, in per cent.',
+      'Throttling auxiliary feed is the operator\'s one continuous job after a trip, and it cuts ' +
+      'both ways. Too little and the generator boils down toward the low-low level that started ' +
+      'the pumps in the first place. Too much and you overcool the primary: auxiliary feed arrives ' +
+      'at about 70 degF (21 degC) against a secondary near 550 degF (288 degC), so an unthrottled ' +
+      'pump drags reactor coolant temperature down with it, and if you leave it there long enough ' +
+      'the generator fills past the top of the narrow range and starts carrying water into the ' +
+      'steam lines. The tell that you have too much is the one the procedures name: all the steam ' +
+      'dump valves shut. This is the VALVE, not the pumps — shutting it leaves the run lights lit, ' +
+      'because a throttled pump is still available. AUTO on the aux feed panel hands the valve to ' +
+      'a controller that holds level in a band; taking it to MANUAL hands it back to you.',
+      CI, '9.2'),
     bdAdvPct: e('ADV Position',
       'How far the atmospheric dump valves are open, in per cent.',
       'Reads the valve position, not the demand. At zero the valves are seated and nothing is venting ' +

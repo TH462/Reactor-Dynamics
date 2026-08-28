@@ -6196,3 +6196,173 @@ kernel's interlock and seal-in refusals both inert on PWR2 because its config em
 `interlocks` and `actuations`; trip blocks that round-trip a value the board never shows; and the
 #509 mirror's provenance-blind erase arm, which this fix removes the last live path to without
 removing the hazard.
+
+---
+
+## 99. #540 + #549 + #541 + #562 — THE STEAM GENERATOR'S TWO WALLS, AND THE LEVER BETWEEN THEM — 2026-08-27
+
+Four `priority-high` children of #534, taken as one cluster because they are one system: the
+plant's only heat sink and the inventory control around it, which was broken at **both walls and
+the lever between them**. Plus the **overfill wall**, ruled in by the owner during planning
+*(OWNER RULING, 2026-08-27: selected "Model it now" over "Defer, declare it")*, and the
+**level-hold placement** *(OWNER RULING, 2026-08-27: selected "Throttle in engine + AUTO channel"
+over an engine-side always-on hold and over a manual-only throttle)*.
+
+**Every number below was measured through the SHELL or the FULL STACK** — the surface the player
+drives — on a hand-rolled harness, because `measure_stack`, `ops_harness` and `perturb_sweep` all
+accept `pwr|rbmk|bwr` only.
+
+### 99.1 The lever the contract had already described
+
+Three published surfaces described a plant that did not exist. `Blueprint/CONTEXT.md` defined
+`afw_flow_normalized` as *"capacity × throttle × level hold"*. The Indications tab told the player
+*"this plant's auxiliary feed is level-controlled and delivers nothing until generator level falls
+into its band."* `Manuals/03` §10.0 documented a **THROTTLE %** control and `set_afw_flow {pct}`.
+**PWR2 had none of it**: `stepAFW` was `rated × avail`, an on/off with no level input and no
+throttle; `afw_throttle_pct` was hard-coded `running ? 100 : 0`; and `set_afw_flow` read only
+`c.normalized`, so the board's own `{pct: 0}` evaluated `undefined !== undefined ? … : 1 > 0` =
+**true** and *re-asserted the pump*. The retired engine had both halves (`afw_throttle_frac`,
+`afw_level_target: 32.0`). PWR2 kept the copy and dropped the mechanism: the #557/#556/#561
+pattern one layer in, and this time the second copy was the **specification**.
+
+### 99.2 What each defect measured, before and after
+
+| | before | after |
+|---|---|---|
+| **#540** element 2's dark wire. Turbine trip, P-9 defeated, dumps carrying the load | min inventory **21,184 lbm** (75.2 % of nominal), min narrow range **38.6 %**, settling **45.4 %** — 20 points under the ruled 65 % program | min **27,639 lbm** (98.1 %), min NR **62.9 %**, settling **65.5 %**, on program |
+| **#549** dry wall. Boil dry, restore aux feed at t+3600 s, **steam path open** | 6,526 kg in, 6,526 kg out, **net 0.000 kg**; the clip bound 100 % of steps supplying **16,236 MJ = 13.5 MW (46.2 MMBtu/hr)**; clad rising | 6,525.8 kg in, 2,165.3 out, **net +4,360.5 kg**; clip **0.4 MJ (0.0003 MW)**; clad **652 → 520 °F (344 → 271 °C)**; secondary recovers to **798.9 psia (5.51 MPa)** |
+| **#541** turbine-driven pump stop. Loss of offsite power, board AFW STOP at t+120 s | STOP returns `{ok:true}` and secures the motor pump only; +1 h **52,643 lbm = 186.8 % of nominal**, run lamp lit | STOP secures **both**; +1 h **1,127 lbm (4.0 %)** — the plant does what the operator asked |
+| **#562** the fill. Loss of offsite power, 5 h, valves left wide open | **861.7 %** of nominal (242,866 lbm in a shell rated for 28,186) and **still rising**; primary cools **190 °F (106 °C)** | walled at **245.0 %** — the level map's own 100 % wide-range point — from t+60 min |
+| **#562** the same ride with the `afw_level` channel in AUTO | *(no such channel)* | peak **107.7 %**, level settles **NR 36.9 %** inside the sourced band, primary falls **3.1 °F (1.7 °C)** in five hours |
+
+### 99.3 Both walls now have a MASS limiter and an ENERGY limiter
+
+`pwr2_sg.js` had the mass limiter at the dry wall (#510 H-1) and nothing else. It now has four:
+
+- **Dry, mass** (#510 H-1, unchanged): the vessel cannot export steam it does not hold.
+- **Dry, energy** (#549, NEW): nor vapour it has no energy to raise. It is the `h_lo` clip's own
+  inequality **solved for `s` instead of absorbed** —
+  `s <= [m(h - h_lo) + dt(E_in - h_lo*inflow)] / [dt(h_out - h_lo)]` — so it binds exactly where
+  the clip was binding and nowhere else (`m(h - h_lo)` is ~10.9 GJ at nominal).
+  **`h_lo`, not `h_f(P)`, and that is load-bearing**: `h` **is** `h_f(sg.P)` by construction, since
+  `updatePressure` inverts the saturated-liquid line, so an `h_f(P)` reference would make the
+  export heat-limited at *every* operating point and take the demand out of the model entirely.
+  Measured both ways before choosing; the gate carries the wrong one as a mutation.
+- **Wet, carryover** (#562, NEW): above the top of the narrow range the export quality slides from
+  1 to 0, so the export enthalpy slides `h_g` toward `h_f`. Measured on the walled ride: 0 % →
+  35.5 % → 58.3 % → 100 % liquid, export enthalpy 2,769 → 1,176 kJ/kg.
+- **Wet, solid** (#562, NEW): the exact mirror of the mass floor. At the top of the instrument the
+  export is forced **up** to the inflow, whatever the valves ask, because the alternative is
+  inventing volume.
+
+**No new geometry constants.** `carryover_mass_frac` (1.32929) and `mass_full_frac` (2.45) are read
+off the plant's own level map, which **moved to `SG.LEVEL_MAP`** in the same change. It had been a
+local inside `pwr2_true_state.js` while `pwr2_sg.js` held a hand-copied `dryout_mass_frac` off one
+of its points — two files that had to be edited together, which is precisely the second-copy shape
+this cluster is otherwise about. One owner, three readers, and the gate asserts all three constants
+against the curve.
+
+### 99.4 The sourced wall
+
+`tools/find_source.js`, exit 0 on all four:
+
+- **WTSM 3.2 (ML11223A213)** — *"a high-high steam generator level turbine trip to protect the
+  turbine against excessive moisture carryover."*
+- **Ginna TS Bases (ML20339A221)** — high SG level *"could cause carryover of water into the steam
+  lines and result in excessive cooldown of the primary system."*
+- **Ginna UFSAR ch15 (ML20339A101)** — *"the possibility of steam generator overfill and damage to
+  the turbine and steam piping. Protection is provided by isolating feedwater flow at the high
+  steam generator level setpoint."*
+- **WTSM §19.0 (ML11223A342)** step 15 — *"Maintain steam generator levels at 33 ± 5% narrow-range
+  level indication during secondary plant startup **by throttling** the feedwater bypass
+  regulating valves."*
+
+**`pwr2_protection.js`'s own header has called the hi-hi function "P-14 class: feedwater regulator
+closure + TURBINE TRIP" since it was written, and built only the regulator half.** The trip had no
+report field and no consumer anywhere. It matters the moment the vessel has a wet wall, and it is
+now built, riding the same `fwi` latch so the two halves of one bistable cannot drift apart.
+Measured: **t+105 s of a steam-generator overfeed, on a running turbine at 100 MWe**, at ~90 %
+narrow range — off the line before carryover begins at 100 %.
+
+**DECLARED EXTENSION on the 33 ± 5 % target**: WTSM §19.0 throttles the *feedwater bypass* valves,
+not the aux feed valves. What it gives is this plant's own narrow-range target and band in the
+low-power throttled-feed regime, which is the regime aux feed works in; the hardware doing the
+throttling here is WTSM 7.2's, which names no number. Neither source alone gives both halves, and
+that is stated rather than blended away. The retired engine's 32.0 carried no citation at all.
+
+### 99.5 Where the level hold lives, and why it is not in the engine
+
+*(OWNER RULING, 2026-08-27: selected "Throttle in engine + AUTO channel" — a menu selection, cited
+in that form, the #539 precedent)*. The throttle is a physical valve in `pwr2_afw.js`; the hold is the
+**`afw_level` automation channel**, `defaultOn`, `ff 100 + kp 20 + ki 0` — the retired engine's
+shape (full flow below the band, tapering shut across it) about the sourced 33 %. `ki` is zero
+because an integrator on a level that aux feed itself moves winds up through every dry-out.
+
+The channel def lives in **`pwr2_shell.js`, not `pwr_control.js`'s shared table**: the retired
+engine already holds level inside its steam-generator module, and a second authority over one valve
+is the duplicate-authority veto (DESIGN_CRITERIA Q4) on an engine #523 retired. It is PWR2's
+**second** admitted channel, and it meets `getProtectionConfig`'s own stated criterion without
+bending it — its whole vocabulary is `set_afw_flow {pct}`, a command PWR2 now really has, and
+`instruments.sg_level` has been live since the AFAS build.
+
+**Manual first, then auto** (the 2026-08-12 directive): the throttle was built and measured with
+the channel disengaged — set and readback in one currency at 100/75/50/25/0 %, delivery linear,
+pumps still RUNNING behind a shut valve (the #200 split) — before the channel was allowed to hold
+it.
+
+**DECLARED COSMETIC RESIDUE**: the kernel consults `standby` for the snapshot flag and, in the note
+path, only for `kind:'rods'`. So a healthy at-power plant shows this channel `saturated:'lo'` with
+*"at minimum output — no authority to correct"*. True (shut valve, no pump running) but it reads
+like a fault. Fixing it means teaching the PID path about standby, which is a kernel change
+touching every plant; not taken, and not pretended absent.
+
+### 99.6 What #549 did NOT fix, measured rather than waved away
+
+The `h_lo` clip still binds **3,872 of 60,000 steps** on the filed transient — and **every one** is
+the same condition: the vessel is at the 0.1 MPa property floor and aux feed is arriving at
+88.5 kJ/kg, below `h_f(0.1 MPa)` = 417.5. That makes the lump **subcooled**, a state a model whose
+pressure is the inverse of the saturated-liquid line cannot represent. **That is #524** (extend the
+water tables below 0.1 MPa), not the energy balance, and no limiter can fix it. It is worth
+**0.4 MJ over 1,200 s** against a pre-fix **16,236 MJ** — a 40,000x cut — and the gate asserts the
+residual is confined to that condition rather than asserting a percentage that would drift.
+
+### 99.7 Traps this cluster is the record of
+
+- **A constant-primary-temperature fixture always finds a BOIL EQUILIBRIUM, and it looks exactly
+  like a failed fix.** Two drafts of the #549 module checks reddened before this was understood: at
+  304.5 °C a 37 kg vessel takes 14.1 MW across its wetted fraction, which is precisely what boiling
+  5.44 kg/s of 70 °F water costs; at 120 °C it lands at 370 kg for the same reason (0.0745 of the
+  bundle across a 20 °C approach is still 14.03 MW). Both are honest heat balances, neither is the
+  defect. To test that a vessel is exporting vapour *the heat did not make*, the fixture has to take
+  the heat away for real — build at the property floor and hold the primary at that pressure's own
+  saturation, so the duty is zero by construction rather than by hope.
+- **A CHECK THAT READS ITS OWN REFERENCE FROM MUTATED STATE IS NOT A CHECK.** The carryover check
+  compared `steam_out_h` against `W.h_g(sgC.P)` with `sgC.P` read **after** `stepSG` had moved it;
+  the "carryover deleted" mutation came back BLIND because the post-step pressure shifted h_g to the
+  wrong side of the comparison. Read the reference before the step.
+- **REPORTED FIELDS AND THE LEDGER ARE TWO CLAIMS.** A `dH` that kept booking the export at `h_g`
+  left `carryover_frac` and `steam_out_h` both correct and every trajectory check passing, while the
+  vessel quietly lost energy it was carrying out as water. It stayed blind until the gate asserted
+  the one-step **energy identity**, `m1*h1 = m0*h0 + dt(Q + feed*h_feed - steam*h_out)`.
+- **A TEST MAY ONLY READ THE PUBLISHED SURFACE.** A protection check asserted
+  `rHH3.fwi_live === false`; `fwi_live` is internal state (`pr.fwi_live`) and the report does not
+  carry it, so it read `undefined`. It failed loudly rather than vacuously, which is luck —
+  `undefined === false` is false. Same class as the #510 endurance field read.
+- **SIX MUTATION ANCHORS WENT BLIND ON THIS REFACTOR** across four runners — the AFW throttle added
+  ` * thr` to two lines, the SG energy limiter split one line into three, the shell's channel filter
+  gained a `.concat`. Every one was caught only by the self-test line, which is easy to scroll past
+  under a clean checks tally. **Read the self-test, not just the tally.**
+- **A GREEN CHECK AT THE WRONG LAYER** (#541): `run_pwr2_engine.js` proved the per-pump switch by
+  driving the **facade doors**, which the shell did not expose — `afw_tdafw` was in no registry and
+  threw "unknown action". The reachability claim now lives in `run_pwr2_shell`, where the registry
+  is, and the engine check says in its own text that it is not making that claim.
+
+### 99.8 Gates
+
+`run_pwr2_sg` **44 checks / 27 mutations**, `run_pwr2_afw` **35 / 15**, `run_pwr2_protection`
+**106 / 58**, `run_pwr2_shell` **91 / 33**, `run_pwr2_instruments` **22 / 14**, `run_pwr2_engine`
+**97 / 57**, `verify_board_check` **230**. One check was re-expressed rather than refitted: the
+dry-secondary equilibrium check sampled a fixed t = 100 s of a climb the energy limiter slows by
+35 s, so it read 0.585 MPa mid-flight; it now asserts the **endpoint**, and **both the pre-#549
+mass-only limiter and the current one reach 9.145 MPa = Psat(304.5 °C) exactly**, so the new form
+passes on the old behaviour too (HR10).

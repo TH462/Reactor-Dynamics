@@ -683,7 +683,20 @@ function runSuite(RD, rec, quiet, only) {
   var threwT = null;
   try { EN.command(eng8, 'afw_tdafw', false); } catch (eT) { threwT = eT.message; }
   var ts8b = run(eng8, 5);
-  ckT('...then each pump\'s own switch secures it (TS Bases: one switch per pump)',
+  /* THIS CHECK PROVED THE WRONG LAYER FOR MONTHS (#541). It drives the FACADE doors `afw` and
+   * `afw_tdafw` directly and passed green — while pwr2_shell exposed only the first, so
+   * `afw_tdafw` was in NO registry and `applyCommand` threw "unknown action". The board's one
+   * AFW panel sent `set_afw`, which returned {ok:true}, cleared both actuation latches and
+   * secured only the motor-driven pump: measured on a loss of offsite power, the generator held
+   * 52,643 lbm (186.8 % of nominal) an hour AFTER the operator pressed STOP, run lamp lit. A
+   * green check on a control the player does not have — CLAUDE.md's trap 4 exactly.
+   *
+   * It stays HERE because the facade doors are this gate's subject, but the claim is narrowed
+   * to what an engine-direct fixture can honestly make: the two doors exist and each secures
+   * its own pump. THE REACHABILITY CLAIM IS run_pwr2_shell's, where the shell's registry is,
+   * and it is asserted there against `set_afw {pump}`. Do not re-broaden this wording. */
+  ckT('...then each pump\'s own FACADE DOOR secures it (TS Bases: one switch per pump). ' +
+      'REACHABILITY through the shell is run_pwr2_shell\'s claim, not this one — #541',
       threwT === null && eng8.aw.mdafwRunning === false && eng8.aw.tdafwRunning === false &&
       ts8b.afw_pump_running === false && eng8.pt.afas_mdafw === false,
       threwT ? ('THREW: ' + threwT.slice(0, 60)) : 'secured, and no re-latch on the healed gauge');

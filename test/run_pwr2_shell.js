@@ -184,8 +184,17 @@ function runSuite(SH, rec, quiet, only) {
   ck('getProtectionConfig is PWR2 OWN config: acting parts empty EXCEPT the boron channel',
      pc !== globalThis.RD.PWR_CONFIG.protection &&
      pc.trips.length === 0 && pc.actuations.length === 0 &&
-     pc.channels.length === 1 && pc.channels[0].id === 'boron_conc' &&
-     pc.channels[0] === globalThis.RD.PWR_CONFIG.protection.channels.filter(function (ch) { return ch.id === 'boron_conc'; })[0] &&
+     /* TWO channels since #562, and they are NAMED rather than counted: the point of this
+      * clause is that PWR2 admits pwr channels ONE AT A TIME, by an explicit criterion (its
+      * whole vocabulary is a command PWR2 has, its input is live). A count would let a third
+      * arrive unexamined, which is the thing the emptying rationale exists to prevent.
+      * `boron_conc` rides BY REFERENCE off the pwr table; `afw_level` is PWR2's own def,
+      * held in pwr2_shell because the retired engine already holds level inside its engine
+      * and a second authority over one valve is the duplicate-authority veto. */
+     pc.channels.length === 2 &&
+     pc.channels.map(function (ch) { return ch.id; }).sort().join(',') === 'afw_level,boron_conc' &&
+     pc.channels.filter(function (ch) { return ch.id === 'boron_conc'; })[0] === globalThis.RD.PWR_CONFIG.protection.channels.filter(function (ch) { return ch.id === 'boron_conc'; })[0] &&
+     globalThis.RD.PWR_CONFIG.protection.channels.filter(function (ch) { return ch.id === 'afw_level'; }).length === 0 &&
      pc.interlocks.length === 0 && pc.runbacks.length === 0 &&
      alarmsOk &&
      Object.keys(pc.failures).length === 22 &&
@@ -229,8 +238,8 @@ function runSuite(SH, rec, quiet, only) {
      (function () {
        var lay = new globalThis.RD.ControlLayer(eng, eng.getProtectionConfig());
        var a = lay.getAutomationState();
-       return a && a.esf && a.esf.afw === 'auto' && a.channels.length === 1 &&
-              a.channels[0].id === 'boron_conc';
+       return a && a.esf && a.esf.afw === 'auto' && a.channels.length === 2 &&
+              a.channels.map(function (c) { return c.id; }).sort().join(',') === 'afw_level,boron_conc';
      })(),
      'the board\'s STANDBY word reads this dict, nothing else');
   ck('getStartupLineup/getActiveFailures exist and answer',
@@ -522,6 +531,73 @@ function runSuite(SH, rec, quiet, only) {
     ck('...and clearing the LOOP afterwards restores the grid (the layered recovery lands)',
        e7c.eng.elec.offsite === true &&
        e7c.getActiveFailures().indexOf('loss_of_offsite_power') === -1, '');
+  })();
+
+  /* ---- 1e-ii. THE AUX FEED COMMAND SURFACE (#541, #562) -------------------------------------
+   * THE REACHABILITY CLAIMS, and they live here because the SHELL's registry is what makes a
+   * capability reachable. run_pwr2_engine has always proved the two facade doors and passed
+   * green while `afw_tdafw` was in NO shell registry — `applyCommand` threw "unknown action",
+   * the board's one panel sent `set_afw`, that returned {ok:true}, cleared both actuation
+   * latches and secured only the motor-driven pump. Measured on a loss of offsite power: the
+   * generator held 52,643 lbm (186.8 % of nominal) one hour AFTER the operator pressed STOP,
+   * run lamp lit. A check at the wrong layer (CLAUDE.md trap 4). ---- */
+  head('THE AUX FEED COMMAND SURFACE  [#541 per-pump reach, #562 the throttle]');
+  (function () {
+    var eA = new SH.PWR2Engine({});
+    for (i = 0; i < 100; i++) eA.step(0.02);
+    eA.applyCommand({ action: 'inject_failure', failure_id: 'loss_of_offsite_power' });
+    for (i = 0; i < 6000; i++) eA.step(0.02);
+    ck('the actuation starts BOTH pumps [sourced ch10] — the fixture the stop must clear',
+       eA.eng.aw.mdafwRunning === true && eA.eng.aw.tdafwRunning === true, '');
+    eA.applyCommand({ action: 'set_afw', active: false });
+    ck('#541: ONE board STOP secures BOTH pumps — the turbine-driven pump is reachable at all',
+       eA.eng.aw.mdafwRunning === false && eA.eng.aw.tdafwRunning === false,
+       'md ' + eA.eng.aw.mdafwRunning + ', td ' + eA.eng.aw.tdafwRunning);
+    eA.applyCommand({ action: 'set_afw', active: true, pump: 'tdafw' });
+    ck('...and the per-pump discriminator reaches ONLY the pump it names [TS Bases B 3.3.2(a), ' +
+       '"one switch for each pump"]',
+       eA.eng.aw.mdafwRunning === false && eA.eng.aw.tdafwRunning === true, '');
+    var badPump = null;
+    try { eA.applyCommand({ action: 'set_afw', active: false, pump: 'lpsi' }); }
+    catch (ep) { badPump = ep.message; }
+    ck('...and an unknown pump name REFUSES out loud rather than silently securing both',
+       badPump !== null && /lpsi/.test(badPump), badPump ? badPump.slice(0, 70) : 'accepted!');
+
+    /* #562: the payload key. `pct` is what control_kernel declares, CONTEXT.md names and
+     * ui/app.js sends — and the shell read only `c.normalized`, so `{pct: 0}` fell to its
+     * `: 1` default, evaluated `1 > 0` = true and RE-ASSERTED the pump. The payload-key
+     * mismatch class from #506 / #507 wave 6, on the plant the site runs. */
+    eA.applyCommand({ action: 'set_afw', active: true });
+    eA.applyCommand({ action: 'set_afw_flow', pct: 0 });
+    eA.step(0.02);
+    ck('#562: set_afw_flow {pct:0} SHUTS the valve — the declared payload key, which the shell ' +
+       'used to ignore in favour of `normalized` (so {pct:0} re-STARTED the pump)',
+       eA.getControlState().afw_throttle_pct === 0 &&
+       eA.getTrueState().afw_flow_normalized === 0,
+       'throttle ' + eA.getControlState().afw_throttle_pct + ' %, delivered ' +
+       eA.getTrueState().afw_flow_normalized);
+    ck('...and the pumps are still RUNNING behind it — throttling is delivery, not securing ' +
+       '(#200); a shut valve that secured them would heal on the next START',
+       eA.eng.aw.mdafwRunning === true && eA.eng.aw.tdafwRunning === true &&
+       eA.getTrueState().afw_pump_running === true, '');
+    eA.applyCommand({ action: 'set_afw_flow', pct: 60 }); eA.step(0.02);
+    ck('the readback is the VALVE, in the same currency as the command — it used to be ' +
+       '`running ? 100 : 0`, a second name for the run lamp',
+       Math.abs(eA.getControlState().afw_throttle_pct - 60) < 1e-9 &&
+       Math.abs(eA.getTrueState().afw_flow_normalized - 0.6) < 1e-9, '');
+    eA.applyCommand({ action: 'set_afw_flow', normalized: 0.25 }); eA.step(0.02);
+    ck('...and the legacy `normalized` key still lands, so nothing that spoke it breaks',
+       Math.abs(eA.getControlState().afw_throttle_pct - 25) < 1e-9, '');
+
+    /* THE CHANNEL IS PART OF THE SURFACE: the kernel only runs channels the plant's config
+     * lists, and PWR2's getProtectionConfig admits them one at a time by name. */
+    var pcA = eA.getProtectionConfig();
+    ck('#562: the afw_level channel is in PWR2\'s config, and its command is one PWR2 HAS',
+       pcA.channels.filter(function (c) { return c.id === 'afw_level'; }).length === 1 &&
+       pcA.channels.filter(function (c) { return c.id === 'afw_level'; })[0]
+         .cmd(50).action === 'set_afw_flow',
+       'a channel whose cmd the shell REFUSES would throw inside the service tick — the ' +
+       'reason every other pwr channel is excluded');
   })();
   }
 
@@ -1154,9 +1230,16 @@ var MUTATIONS = [
   ['the REFUSED registry is emptied (39 refusals become unknown-action errors with no reasons)',
    'var REFUSED = {',
    'var REFUSED = {}; var REFUSED_gone = {', { grp: 'A' }],
+  /* RE-POINTED for #562 (2026-08-27): the filter gained `.concat([AFW_LEVEL_CHANNEL])`, so the
+   * old one-line anchor no longer exists and this went BLIND. The runner said ANCHOR MISS,
+   * which is the only reason it was caught — a mutation whose anchor a refactor moved reports
+   * as "caught" nowhere and quietly stops guarding anything. */
   ['the pwr automation channels LEAK into the config (M4 would command a plant it does not know)',
-   "        channels: (base.channels || []).filter(function (ch) { return ch.id === 'boron_conc'; }),",
-   '        channels: base.channels,', { grp: 'A' }],
+   "(base.channels || []).filter(function (ch) { return ch.id === 'boron_conc'; })",
+   '(base.channels || [])', { grp: 'A' }],
+  ['PWR2 own afw_level channel is dropped from the config (#562 — the level hold never runs, ' +
+   'and the AFW panel AUTO button goes back to meaning nothing)',
+   '.concat([AFW_LEVEL_CHANNEL])', '.concat([])', { grp: 'A' }],
   ['the charging setter reads the currency as a demand fraction again (any setpoint ~= zero flow)',
    '      var gpm = (c.normalized !== undefined ? c.normalized : c.value) * 450000;\n      e.cv.chargingDemand = Math.max(0, Math.min(1, gpm / RD.cvcs.CVCS.charging_max_gpm()));',
    '      e.cv.chargingDemand = Math.max(0, Math.min(1, c.normalized !== undefined ? c.normalized : c.value));',

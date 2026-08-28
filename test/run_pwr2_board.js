@@ -185,14 +185,31 @@ function runSuite(quietRec) {
   /* Start ONE pump. A single motor-driven pump is the discriminating fixture: at both pumps
    * running the indication is 1.0 and any full scale reads its own value back, so the ratio
    * check would pass against the wrong constant — the vacuous shape #477 records. */
-  w.cmd({ action: 'set_afw', active: true });
+  w.cmd({ action: 'set_afw', active: true, pump: 'mdafw' });
+  /* THE THROTTLE MUST BE OPENED, AND THE FIXTURE MUST SAY SO (#562). Delivery stopped being a
+   * function of pump state alone the day the flow control valves landed: the `afw_level`
+   * channel ships engaged and holds the valve SHUT above its band, so at power this check saw
+   * a board correctly rendering 0.0 gpm against an expectation of 86.20 and reddened. That is
+   * the fixture being stale, not the board. Take the channel to MANUAL and open the valve so
+   * there is a flow to scale at all — a zero indication would make the ratio vacuous. */
+  w.cmd({ action: 'set_auto_channel', channel_id: 'afw_level', engaged: false });
+  w.cmd({ action: 'set_afw_flow', pct: 100 });
   w.tick(30);
   var sAfw = w.snap();
   var GPM_PER_KGS = 264.172 * 60 / 1000;         /* rho 1000 — pwr2_afw's own convention */
   var eAfw = w.svc.engine.eng;
-  var trueKgs = (eAfw.aw.mdafwRunning ? RD.pwr2.afw.mdafwRatedKgs() : 0) +
-                (eAfw.aw.tdafwRunning ? RD.pwr2.afw.tdafwRatedKgs() : 0);
+  /* READ THE PLANT'S OWN DELIVERED FLOW, do not re-derive it. The old form summed the RATED
+   * flows of whichever pumps were running — a second copy of the delivery law, which went
+   * wrong the moment the law gained a throttle term. That is the same class of defect #557 is
+   * about, in the check rather than the board. */
+  var trueKgs = (sAfw.true_state.afw_flow_normalized || 0) *
+                (RD.pwr2.afw.mdafwRatedKgs() + RD.pwr2.afw.tdafwRatedKgs());
   var trueGpm = trueKgs * GPM_PER_KGS;
+  /* ...and the fixture still has to be DISCRIMINATING: one pump only, so the indication is
+   * 0.333 rather than 1.0 and a wrong full scale cannot read its own value back (#477). */
+  q('the AFW fixture is discriminating — ONE pump, valve open, so the indication is not 1.0',
+    Math.abs((sAfw.true_state.afw_flow_normalized || 0) - 1 / 3) < 0.02,
+    'afw_flow_normalized ' + (sAfw.true_state.afw_flow_normalized || 0).toFixed(4));
   var rrAfw = D.valueFor({ id: 'imrmstovyli' }, sAfw);
   var shownGpm = rrAfw ? parseFloat(String(rrAfw.text).replace(/[^0-9.\-]/g, '')) : NaN;
   q('AUX FEED WATER FLOW renders the flow the plant DELIVERS, not the retired plant\'s scale',
@@ -205,6 +222,7 @@ function runSuite(quietRec) {
     Math.abs(RD.pwr2.afw.ratedGpm() - 86.197) < 0.01,
     'control_state.afw_flow_gpm_full = ' + sAfw.control_state.afw_flow_gpm_full);
   w.cmd({ action: 'set_afw', active: false });
+  w.cmd({ action: 'set_auto_channel', channel_id: 'afw_level', engaged: true });
   w.tick(5);
 
   if (!rec) head('PZR LEVEL TILE  [the trip line is THIS plant\'s, #556]');

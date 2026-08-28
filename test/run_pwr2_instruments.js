@@ -65,6 +65,17 @@ function runSuite(IN, rec, quiet) {
   ckT('the sg_level channel exists, sourced from the narrow-range sg_level_pct',
       IN.CHANNELS.some(function (c) { return c.id === 'sg_level' && c.src === 'sg_level_pct'; }),
       'pwr2_protection\'s lo-lo function and both AFW starts read this channel (2026-08-20)');
+  /* #540: pwr2_engine's element-2 wire reads `sg_steam_flow` and FALLS BACK SILENTLY when it
+   * is missing — which is what it did for six days, onto the turbine-only channel the wire
+   * exists to stop reading. A consumer that degrades quietly needs its channel asserted BY
+   * ID here, because no engine gate can tell the fallback from the real thing. The SRC half
+   * is load-bearing too: `steam_flow` would satisfy an id-only check and reintroduce the
+   * defect exactly. */
+  ckT('the sg_steam_flow channel exists, sourced from TOTAL steam out (not the turbine draw)',
+      IN.CHANNELS.some(function (c) { return c.id === 'sg_steam_flow' && c.src === 'steam_out_total'; }) &&
+      IN.CHANNELS.some(function (c) { return c.id === 'steam_flow' && c.src === 'steam_flow_normalized'; }),
+      'the three-element controller\'s element 2 reads this; post-trip the dumps carry the ' +
+      'steam and steam_flow reads ~0 (#540)');
 
   /* ---- 1. PRIMING + STEP RESPONSE: the sourced taus, MEASURED --------------------------- */
   head('STEP RESPONSE  [the sourced 2.0 s RTD and 3.5 s hot-leg filter, measured not retyped]');
@@ -241,6 +252,12 @@ var MUTATIONS = [
   ['the sg_level channel is DELETED (the AFAS/lo-lo trip loses its gauge silently)',
    "    { id: 'sg_level',         src: 'sg_level_pct',             tau_s: 1.0,  sigma: 0.3,  range: [0, 100] },",
    ''],
+  ['the sg_steam_flow channel is DELETED (element 2 silently falls back to the turbine draw — #540)',
+   "    { id: 'sg_steam_flow',    src: 'steam_out_total',          tau_s: 1.0,  sigma: 0.01, range: [0, 2.5] },",
+   ''],
+  ['sg_steam_flow is repointed at the TURBINE channel (the #540 defect, wearing the right id)',
+   "    { id: 'sg_steam_flow',    src: 'steam_out_total',",
+   "    { id: 'sg_steam_flow',    src: 'steam_flow_normalized',"],
   ['the lag is deleted (every reading is instant truth)',
    '      var a1 = dt / Math.max(c.tau_s, dt);\n      ch.lag1 += a1 * (truth - ch.lag1);',
    '      ch.lag1 = truth;'],

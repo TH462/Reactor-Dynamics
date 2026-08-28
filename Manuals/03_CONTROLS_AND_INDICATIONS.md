@@ -525,19 +525,34 @@ heat that is a very small number.
 
 | Control | Effect |
 |---------|--------|
-| **Start / Stop** | Enable AFW delivery to SG |
-| **Throttle %** | 0–100 % of capacity |
-| **AUTO arm** | Auto-starts on low SG level (~**20 %** instrument) when armed |
+| **Start / Stop** | Start or secure the aux feed pumps. **STOP secures BOTH** — the motor-driven and the turbine-driven pump are separate machines with a switch each, and this button works both |
+| **Throttle %** | The flow control valves, 0–100 % of capacity. **This is the valve, not the pumps:** shutting it leaves the run lights lit, because a throttled pump is still available |
+| **AUTO arm** | Arms the actuation to start the pumps on **low-low SG level, 17 % of narrow range** — the same signal that trips the reactor |
 | **Manual action** | Puts AFW in MANUAL until AUTO re-armed |
-| **Delivery** | Capacity × throttle × level-hold taper near target |
+| **Delivery** | Capacity × throttle. Level control lives in the **`afw_level` automation channel**, which holds narrow-range level at **33 ± 5 %** — full flow below 28 %, tapering shut by 38 % — and which you can take to MANUAL to throttle by hand |
+
+> **Throttling aux feed is the operator's one continuous job after a trip, and it cuts both
+> ways.** Too little and the generator boils down toward the low-low level that started the
+> pumps. Too much and you overcool the primary: aux feed arrives at about **70 °F (21.1 °C)**
+> against a secondary near **550 °F (287.8 °C)**, so an unthrottled pump drags reactor coolant
+> temperature down with it. **The symptom the procedures name is that all the steam dump valves
+> shut** — if the dumps are closed and temperature is still falling, you have too much aux feed.
+> Leave it wide open long enough and the generator fills past the top of the narrow range and
+> starts carrying water into the steam lines; the **high-high level turbine trip at 90 % narrow
+> range** exists to get the machine off the line before that happens.
 
 **Procedure — establish AFW (loss of main feed)**
 
 1. Confirm main feed lost / SG level falling.  
 2. SCRAM if not already tripped.  
 3. **AFW Start** (or verify auto-start).  
-4. Throttle to hold SG level without overcooling.  
+4. Throttle to hold SG level without overcooling — watch the steam dumps, not just the level.  
 5. Re-arm AUTO when stable if desired.  
+
+**Securing note:** an aux feed stop is refused while a **safety injection** is standing, because
+the SI signal is itself an aux feed start — secure the injection at its own panel first. Inside
+the actuation reset time delay the stop refuses and says so; after it, one click resets the
+function and secures the pumps even with the signal still present.
 
 **Failure note:** `afw_failure` can show pumps “running” with **zero delivery** (shut valves) — verify level response, not just run lights.
 

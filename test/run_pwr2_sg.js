@@ -224,10 +224,21 @@ function runSuite(G, rec, quiet, only) {
   ckT('DRY, the vessel STARVES its export — delivered ~0 with the demand standing',
       lastD.steam_starved === true && lastD.steam_delivered_kgs < 0.5,
       'delivered ' + lastD.steam_delivered_kgs.toFixed(3) + ' kg/s against 200 demanded');
+  /* THE CLAIM IS THE ENDPOINT, NOT A SAMPLE (#549, 2026-08-27). This read `sgD.P > 1.0` on
+   * the state left by the loop above — a fixed t = 100 s sample of a climb that takes the
+   * vessel from the floor to the primary's saturation in ~2 minutes. #549's energy limiter
+   * slows the LAST seconds of the drain (dry at 99.24 s where the mass-only limiter went dry
+   * at 63.92 s — correct: the final kilograms cannot leave as vapour without the heat to
+   * raise them), so the same sample landed at 0.585 MPa mid-climb and the check reddened
+   * while the mechanism it names was untouched. MEASURED ON BOTH: the pre-#549 mass-only
+   * limiter and the current one BOTH equilibrate at 9.145 MPa = Psat(304.5 degC) exactly, so
+   * this form passes on the old behaviour too — it is a better test, not a refitted one. */
+  for (var kd2 = 0; kd2 < 15000; kd2++) G.stepSG(sgD, 304.5, 0.02, { steam: 200 });
   ckT('...and the dry secondary EQUILIBRATES toward the primary instead of pinning at the ' +
       'property floor as a 211 degF infinite sink',
-      sgD.P > 1.0,
-      'P ' + sgD.P.toFixed(2) + ' MPa after the boil-dry (the pre-fix defect pinned 0.1)');
+      Math.abs(sgD.P - W.P_sat(304.5)) < 0.01 && sgD.P > 1.0,
+      'P ' + sgD.P.toFixed(3) + ' MPa at equilibrium vs Psat(304.5 degC) = ' +
+      W.P_sat(304.5).toFixed(3) + ' (the pre-fix defect pinned 0.1)');
   var sgDry = G.createSG({ mass: 1 });
   var dDry = G.stepSG(sgDry, 304.5, 0.02, {});
   ckT('a dry SG is a NEAR-ZERO heat sink — duty collapses with the wetted fraction',
@@ -247,6 +258,188 @@ function runSuite(G, rec, quiet, only) {
         }
         return !hit;
       })(), 'clipping on a healthy vessel would mean the ledger left the saturation span');
+
+  /* ---- #549: THE DRY WALL'S ENERGY LIMITER. The check above is the one that made the
+   * defect invisible — it feeds a HEALTHY vessel (12,785 kg) at 100 kg/s against 60 kg/s of
+   * demand, where the clip cannot bind and inflow > demand. The defect lived at the MASS
+   * FLOOR with a standing demand, which no fixture here reached: `steam_eff` reduced to
+   * `inflow`, so 6,526 kg went in and 6,526 kg came straight back out as steam, net 0.000,
+   * and the clip supplied 96 % of the latent heat. The claim is RECOVERY: a dry generator
+   * that is fed must gain mass even with the steam demand standing. ---- */
+  if (!quiet) console.log('\nTHE DRY WALL  [#549 — a boiled-dry vessel must not be an absorbing state]');
+  /* THE FIXTURE'S PRIMARY TEMPERATURE IS THE WHOLE TEST, and TWO drafts of these checks got it
+   * wrong in the same way — worth recording, because the wrong fixture looked like a failed fix.
+   * ANY constant primaryT finds a BOIL EQUILIBRIUM: the vessel accumulates until its wetted
+   * fraction carries exactly the duty that boiling the inflow costs. At 304.5 degC that lands
+   * at 37 kg; at 120 degC it lands at 370 kg, because 0.0745 of the wetted bundle across a
+   * 20 degC approach is still 14.03 MW against the 14.07 MW that boiling 5.44 kg/s of 70 degF
+   * water costs. Both are HONEST heat balances and neither is the defect. The defect is a
+   * vessel exporting vapour THE HEAT DID NOT MAKE, so the fixture has to take the heat away
+   * for real: build the vessel AT the 0.1 MPa property floor (where h IS h_lo, so the clip has
+   * nothing left to give) and hold the primary at that pressure's own saturation, 99.6 degC,
+   * so the duty is zero by construction rather than by hope. */
+  var P_FLOOR = 0.1, T_FLOOR = W.T_sat(P_FLOOR), H_AFW = 88.5, AFW_KGS = 5.44;
+  var sgR = G.createSG({ P: P_FLOOR, mass: 1 }), inR = 0, outR = 0, clipR = 0, nR = 0;
+  for (var kr = 0; kr < 30000; kr++) {          /* 600 s of AFW into a dry, steaming vessel */
+    var rr = G.stepSG(sgR, T_FLOOR, 0.02, { afw_kgs: AFW_KGS, afw_h: H_AFW, steam: 60 });
+    inR += AFW_KGS * 0.02; outR += rr.steam_delivered_kgs * 0.02;
+    nR++; if (rr.h_clipped) clipR++;
+  }
+  ckT('feeding a DRY generator with NO duty to boil it RE-FILLS it — mass in is not mass ' +
+      'straight back out',
+      sgR.mass > 3000 && (inR - outR) > 3000,
+      'in ' + inR.toFixed(1) + ' kg, out ' + outR.toFixed(1) + ' kg, NET ' +
+      (inR - outR).toFixed(1) + ' kg over 600 s; vessel ' + sgR.mass.toFixed(0) + ' kg ' +
+      '(the pre-fix ledger gave NET 0.000 kg — it exported every kilogram fed to it)');
+  ckT('...and the export is ENERGY-starved there, not mass-starved — the wall is NAMED, ' +
+      'because the operator\'s action differs (no water vs no heat)',
+      (function () {
+        var s6 = G.createSG({ P: P_FLOOR, mass: 1 });
+        var r6 = G.stepSG(s6, T_FLOOR, 0.02, { afw_kgs: AFW_KGS, afw_h: H_AFW, steam: 60 });
+        return r6.steam_starved === true && r6.energy_starved === true &&
+               r6.mass_starved === false && r6.steam_delivered_kgs < 1e-9;
+      })(), 'a vessel holding water it has no heat to boil reports energy_starved and ' +
+            'delivers 0.000 kg/s; the pre-fix ledger delivered the whole 5.44 kg/s inflow');
+  /* WHAT THE CLIP STILL DOES, STATED EXACTLY RATHER THAN WISHED AWAY. On this fixture it binds
+   * on 100 % of steps, and a first draft of this check asserted "< 10 %" and reddened — which
+   * was the check being wrong, not the fix. The binding here is a DIFFERENT wall: the vessel is
+   * at the 0.1 MPa property floor and auxiliary feedwater arrives at 88.5 kJ/kg, below
+   * h_f(0.1 MPa) = 417.5, so the lump is SUBCOOLED — a state a model whose pressure is the
+   * inverse of the saturated-liquid line cannot represent. That is #524 (extend the tables
+   * below 0.1 MPa), and no energy limiter can fix it. The claim that IS this fix's is that the
+   * clip no longer funds a BOIL, which the ledger check below measures; the claim here is that
+   * the residual is confined to that one condition. Measured through the engine on the filed
+   * #549 transient: 0.4 MJ over 1,200 s (0.0003 MW) against a pre-fix 16,236 MJ (13.5 MW). */
+  ckT('...and every step where the backstop still binds is the SUBCOOLED-INFLOW case at the ' +
+      '0.1 MPa property floor — #524, not this ledger',
+      (function () {
+        var s9 = G.createSG({ P: P_FLOOR, mass: 1 }), offFloor = 0, hotIn = 0;
+        for (var k9 = 0; k9 < 30000; k9++) {
+          var P9 = s9.P;
+          if (G.stepSG(s9, T_FLOOR, 0.02, { afw_kgs: AFW_KGS, afw_h: H_AFW, steam: 60 }).h_clipped) {
+            if (P9 > 0.1001) offFloor++;
+            if (H_AFW >= W.h_f(0.1)) hotIn++;
+          }
+        }
+        return offFloor === 0 && hotIn === 0;
+      })(),
+      'a clip ABOVE the floor, or with the inflow already at saturation, would be this ' +
+      'limiter failing — clipR ' + clipR + '/' + nR + ' on this fixture, all at the floor');
+  /* THE SHARPEST FORM: the ledger, not the trajectory. A trajectory check is satisfied by a
+   * vessel that happens to sit at an equilibrium — which is exactly how the two wrong fixtures
+   * above passed for the wrong reason on the old code's neighbours. This one asks whether the
+   * CLIP is funding the export at all, and it holds on any fixture. Pre-fix it supplied 96 %
+   * of the latent heat: 16,236 MJ = 13.5 MW against 0.374 MW of real primary duty. */
+  ckT('the clip funds ~none of the exported latent heat — the energy comes from the primary',
+      (function () {
+        var s8 = G.createSG({ mass: 1 }), fabMJ = 0, latMJ = 0, h_lo8 = W.h_f(0.1);
+        for (var k8 = 0; k8 < 30000; k8++) {
+          var m0 = s8.mass, hh0 = s8.h, P0 = s8.P;
+          var r8 = G.stepSG(s8, 120, 0.02, { afw_kgs: AFW_KGS, afw_h: H_AFW, steam: 60 });
+          latMJ += r8.steam_delivered_kgs * (W.h_g(P0) - H_AFW) * 0.02 / 1000;
+          if (r8.h_clipped) {
+            var hUn = (m0 * hh0 + 0.02 * (r8.duty_kW + AFW_KGS * H_AFW -
+                       r8.steam_delivered_kgs * W.h_g(P0))) / s8.mass;
+            if (hUn < h_lo8) fabMJ += (h_lo8 - hUn) * s8.mass / 1000;
+          }
+        }
+        return fabMJ < 0.05 * Math.max(latMJ, 1) && fabMJ < 100;
+      })(),
+      'pre-fix the h_f(0.1 MPa) clip supplied 96 % of it — 16,236 MJ = 13.5 MW ' +
+      '(46.2 MMBtu/hr) against 0.374 MW of real primary duty');
+  ckT('the limiter is INERT on a healthy vessel — it must not make the plant heat-limited ' +
+      'at every operating point (why h_lo, not h_f(P), is the reference)',
+      (function () {
+        var s7 = G.createSG(), starved = false;
+        for (var k7 = 0; k7 < 3000; k7++) {
+          if (G.stepSG(s7, 304.5, 0.02, { feed: 165, steam: 165 }).energy_starved) starved = true;
+        }
+        return !starved;
+      })(), 'an h_f(P) reference would bind at steady full power, since h IS h_f(P) here');
+
+  /* ---- #562: THE WET WALL. The mirror of everything above. The lump had NO volume limit:
+   * measured full-stack on a loss of offsite power with the flow control valves left open,
+   * the generator reached 861.7 % of nominal (242,866 lbm in a shell rated for 28,186) at
+   * five hours and was still filling, with both gauges pegged. Both points of the wall come
+   * off SG.LEVEL_MAP, so there is nothing here to keep in step by hand. ---- */
+  if (!quiet) console.log('\nTHE WET WALL  [#562 — carryover, then a shell that cannot hold more]');
+  ckT('the wall reads the plant\'s OWN level map — carryover at the top of the narrow range, ' +
+      'solid at the top of the instrument',
+      (function () {
+        var M = G.SG.LEVEL_MAP, wide = {}, i;
+        for (i = 0; i < M.length; i++) wide[M[i][1]] = M[i][0];
+        return Math.abs(G.SG.carryover_mass_frac - wide[75]) < 1e-9 &&
+               Math.abs(G.SG.mass_full_frac - wide[100]) < 1e-9 &&
+               Math.abs(G.SG.dryout_mass_frac - wide[30]) < 1e-9;
+      })(),
+      'three constants, one curve — a second copy is the #557/#556/#561 shape and this is ' +
+      'where it would start');
+  ckT('a NORMAL vessel exports DRY steam — the wall is inert everywhere the plant lives',
+      (function () {
+        var r = G.stepSG(G.createSG(), 304.5, 0.02, { feed: 165, steam: 165 });
+        return r.carryover_frac === 0 && r.solid === false &&
+               Math.abs(r.steam_out_h - W.h_g(G.createSG().P)) < 1e-9;
+      })(), 'at nominal the export enthalpy must be h_g exactly, as it was before #562');
+  /* THE PRESSURE MUST BE READ BEFORE THE STEP. A first draft compared `steam_out_h` against
+   * `W.h_g(sgC.P)` with sgC.P read AFTER stepSG had moved it, and the "carryover deleted"
+   * mutation came back BLIND — the post-step pressure had shifted enough for h_g to land the
+   * wrong side of the comparison. A check that reads its own reference from mutated state is
+   * not a check. */
+  ckT('above the top of the NARROW range the export starts carrying water',
+      (function () {
+        var mid = 0.5 * (G.SG.carryover_mass_frac + G.SG.mass_full_frac) * G.SG.mass_nominal;
+        var sgC = G.createSG({ mass: mid }), P0 = sgC.P;
+        var r = G.stepSG(sgC, 304.5, 0.02, { feed: 165, steam: 165 });
+        return r.carryover_frac > 0.45 && r.carryover_frac < 0.55 &&
+               r.steam_out_h < W.h_g(P0) - 100 && r.steam_out_h > W.h_f(P0) - 1e-6;
+      })(),
+      'halfway up the band the export is ~half liquid — the TS Bases\' "carryover of water ' +
+      'into the steam lines"');
+  /* ...AND THE LEDGER BOOKS IT. Separate check, because `carryover_frac` and `steam_out_h`
+   * are REPORTED fields: a dH that kept using h_g would leave both of them correct and every
+   * trajectory check above still passing, while the vessel quietly lost energy it was
+   * carrying out as water. This is the ENERGY IDENTITY over one step, which nothing else
+   * here asserts — the mutation that books the export at h_g was BLIND until it existed. */
+  ckT('...and the ENERGY LEDGER books the export at that enthalpy, not at h_g',
+      (function () {
+        var mid = 0.5 * (G.SG.carryover_mass_frac + G.SG.mass_full_frac) * G.SG.mass_nominal;
+        var sgC = G.createSG({ mass: mid });
+        var m0 = sgC.mass, h0 = sgC.h, dt = 0.02, feed = 165, steam = 165;
+        var r = G.stepSG(sgC, 304.5, dt, { feed: feed, steam: steam });
+        var expect = (m0 * h0 + dt * (r.duty_kW + feed * G.SG.h_feed -
+                      r.steam_delivered_kgs * r.steam_out_h)) / sgC.mass;
+        return !r.h_clipped && Math.abs(sgC.h - expect) < 1e-6 * Math.abs(expect);
+      })(),
+      'closes m1*h1 = m0*h0 + dt*(Q + feed*h_feed - steam*h_out) exactly; booking at h_g ' +
+      'over-drains a carrying-over vessel by (h_g - h_out) per kilogram');
+  ckT('THE WALL ITSELF: a full shell passes what it takes, whatever the valves ask',
+      (function () {
+        var full = G.SG.mass_full_frac * G.SG.mass_nominal;
+        var sgF = G.createSG({ mass: full });
+        var r = G.stepSG(sgF, 304.5, 0.02, { feed: 50, afw_kgs: 5.44, afw_h: 88.5, steam: 0 });
+        return r.solid === true && Math.abs(r.steam_delivered_kgs - 55.44) < 1e-6 &&
+               sgF.mass <= full + 1e-6;
+      })(),
+      'demand ZERO and 55.44 kg/s arriving — the export is forced to 55.44, because the ' +
+      'alternative is inventing volume');
+  ckT('...and it holds against a LONG fill, monotone, from nominal',
+      (function () {
+        var sgL = G.createSG(), peak = 0;
+        for (var kL = 0; kL < 200000; kL++) {           /* 4,000 s at 40 kg/s net inflow */
+          G.stepSG(sgL, 304.5, 0.02, { feed: 90, steam: 50 });
+          if (sgL.mass > peak) peak = sgL.mass;
+        }
+        return peak <= G.SG.mass_full_frac * G.SG.mass_nominal * 1.0001;
+      })(),
+      'peak inventory cannot pass the map\'s own 100 % wide-range point; the unwalled ' +
+      'ledger reached 8.617x nominal full-stack');
+  ckT('the wall does not FREEZE the vessel — a solid generator that stops being fed drains ' +
+      'again (a one-way clamp would be a new absorbing state, the #549 mistake mirrored)',
+      (function () {
+        var sgD2 = G.createSG({ mass: G.SG.mass_full_frac * G.SG.mass_nominal });
+        for (var kD = 0; kD < 5000; kD++) G.stepSG(sgD2, 304.5, 0.02, { steam: 50 });
+        return sgD2.mass < G.SG.mass_full_frac * G.SG.mass_nominal * 0.98;
+      })(), '');
   }
 
   if (grp('D')) {
@@ -321,9 +514,44 @@ var MUTATIONS = [
   ['the dryout wet fraction deleted (a dry SG transfers rated UA — #510 H-1 re-armed)',
    'var Q = sg.U * wet * sg.area * (primaryT - T_sec);',
    'var Q = sg.U * sg.area * (primaryT - T_sec);', { grp: 'C1' }],
+  /* THE ANCHOR MOVED WITH #549 (2026-08-27) — the one line became three, and a mutation whose
+   * anchor has been refactored away goes BLIND, which the runner reports but which is easy to
+   * wave through. Re-pointed at the surviving `min`, and the two halves now have an anchor
+   * each so deleting either one is caught separately. */
   ['the outflow limiter deleted (the vessel exports steam it does not hold — #510 H-1 re-armed)',
-   'var steam_eff = Math.min(steam, Math.max(0, (sg.mass - SG.mass_floor_kg) / dt + inflow));',
+   'var steam_eff = Math.min(steam, Math.max(0, s_mass), Math.max(0, s_energy));',
    'var steam_eff = steam;', { grp: 'C1' }],
+  ['the MASS half of the limiter deleted (#510 H-1 re-armed on its own)',
+   'var steam_eff = Math.min(steam, Math.max(0, s_mass), Math.max(0, s_energy));',
+   'var steam_eff = Math.min(steam, Math.max(0, s_energy));', { grp: 'C1' }],
+  ['the ENERGY half deleted (a boiled-dry SG is an absorbing state again — #549 re-armed)',
+   'var steam_eff = Math.min(steam, Math.max(0, s_mass), Math.max(0, s_energy));',
+   'var steam_eff = Math.min(steam, Math.max(0, s_mass));', { grp: 'C1' }],
+  ['the energy limiter loses the inflow-heating term (it over-permits the export)',
+   'var s_energy = (sg.mass * (sg.h - h_lo) + dt * (E_in - h_lo * inflow)) /',
+   'var s_energy = (sg.mass * (sg.h - h_lo) + dt * E_in) /', { grp: 'C1' }],
+  ['the energy limiter is referenced at h_f(P) instead of the property floor (the plant goes ' +
+   'heat-limited at every operating point)',
+   'var s_energy = (sg.mass * (sg.h - h_lo) + dt * (E_in - h_lo * inflow)) /',
+   'var s_energy = (sg.mass * (sg.h - W.h_f(sg.P)) + dt * (E_in - W.h_f(sg.P) * inflow)) /',
+   { grp: 'C1' }],
+
+  /* ---- #562: THE WET WALL ---------------------------------------------------------------- */
+  ['the SOLID limiter deleted (the shell accepts unbounded water — #562 re-armed)',
+   'if (solid) steam_eff = Math.max(0, s_solid);', '', { grp: 'C1' }],
+  ['the vessel is declared full at TWICE its own level map (the wall moves off the geometry)',
+   'mass_full_frac: 2.45,', 'mass_full_frac: 4.9,', { grp: 'C1' }],
+  ['carryover deleted (an overfilled generator still exports DRY steam)',
+   'var h_out = h_f_now + x_out * (h_g - h_f_now);', 'var h_out = h_g;', { grp: 'C1' }],
+  ['carryover starts at the top of the WIDE range instead of the narrow (it never engages ' +
+   'before the vessel is solid)',
+   'carryover_mass_frac: 1.32929,', 'carryover_mass_frac: 2.44,', { grp: 'C1' }],
+  ['the export enthalpy is not carried into the ledger (carryover reported, never booked)',
+   'var dH = E_in - steam_eff * h_out;', 'var dH = E_in - steam_eff * h_g;', { grp: 'C1' }],
+  ['the level map is repointed so dryout and the wall read different geometry',
+   'LEVEL_MAP: [[0, 0], [0.38845, 30], [0.5484, 37.65], [1.0, 59.25], [1.32929, 75], [2.45, 100]],',
+   'LEVEL_MAP: [[0, 0], [0.5, 30], [0.6, 37.65], [1.0, 59.25], [1.5, 75], [3.0, 100]],',
+   { grp: 'C1' }],
   ['sourced area replaced by a round number', 'area_m2: 18135 / 10.7639,', 'area_m2: 1500,',
    { grp: 'A' }],
   ['sourced inventory replaced', 'mass_nominal: 12785,', 'mass_nominal: 40000,', { grp: 'A' }],
@@ -331,10 +559,15 @@ var MUTATIONS = [
    'feed * SG.h_feed', 'feed * W.h_g(sg.P)', { grp: 'C2' }],
   ['the tube-leak stream is dropped from the MASS ledger (an SGTR that never overfills)',
    'var inflow = feed + afw + leak;', 'var inflow = feed + afw;', { grp: 'C1' }],
+  /* RE-POINTED at E_in (#549, 2026-08-27): the enthalpy sum moved OUT of `dH` and above the
+   * limiters, because the energy limiter needs the same number. The old anchor named the dH
+   * line and went BLIND on the refactor — the runner said so, which is the only reason it was
+   * caught. Read the self-test line, not just the checks tally. */
   ['the tube-leak stream carries no ENERGY (hot primary water arrives cold)',
-   'afw * h_afw + leak * h_leak - steam_eff * h_g;', 'afw * h_afw - steam_eff * h_g;',
-   { grp: 'C1' }],
-  ['steam leaves as liquid instead of vapour', '- steam_eff * h_g;', '- steam_eff * W.h_f(sg.P);',
+   'var E_in = Q + feed * SG.h_feed + afw * h_afw + leak * h_leak;',
+   'var E_in = Q + feed * SG.h_feed + afw * h_afw;', { grp: 'C1' }],
+  ['steam leaves as liquid instead of vapour', 'var h_out = h_f_now + x_out * (h_g - h_f_now);',
+   'var h_out = h_f_now;',
    { grp: 'C2' }],
   ['secondary mass not integrated (inventory frozen)',
    'var m_new = sg.mass + dt * dM;', 'var m_new = sg.mass;', { grp: 'C1' }],

@@ -466,6 +466,14 @@
        * set_afw/set_afw_flow route here); 'afw_tdafw' is the turbine-driven pump's own. */
       case 'afw':            eng.aw.mdafwRunning = !!value; break;
       case 'afw_tdafw':      eng.aw.tdafwRunning = !!value; break;
+      /* THE FLOW CONTROL VALVES (#562) — 0..1, ONE valve downstream of both pumps. It is
+       * the operator's continuous post-trip task on a real plant (WAT 05 Transients: "it is
+       * necessary to throttle AFW flow to control RCS temperature at this point"), and until
+       * this door existed the plant had no lever at all: `set_afw_flow` read only
+       * `c.normalized`, so the board's own `{pct: 0}` evaluated `undefined !== undefined ?
+       * ... : 1 > 0` = TRUE and RE-ASSERTED the pump. Throttling is DELIVERY, never demand —
+       * a shut valve leaves the run lamps lit, the #200 split. */
+      case 'afw_throttle':   eng.aw.throttle = Math.max(0, Math.min(1, +value)); break;
       /* THE FEED TRAIN (2026-08-21) */
       case 'feed_auto':      eng.fw.auto = !!value; break;
       /* the overfeed SEAT (#510 M-12) — the regulating valve failed open; see pwr2_feedwater */
@@ -805,6 +813,14 @@
        * demand and delivered nothing for ~3 min while level walked down (#509 item 5;
        * the exact defect pwr1's feed channel fixed for itself — see the SOURCE comment
        * in pwr_instruments.js and pwr_control's feed_sg input) */
+      /* THE CHANNEL EXISTS SINCE #540 (2026-08-27) and this line finally takes its first
+       * branch. For six days it did not: `pwr2_instruments.js` had no `sg_steam_flow`, so
+       * the ternary took the `steam_flow` fallback on every step — the turbine-only channel
+       * the comment above says not to read — and #509 item 5 was recorded fixed while the
+       * pre-fix symptom stood. The FALLBACKS STAY: a Layer-5 fixture with no instrument
+       * layer is a harness, not a plant, and `out / eng.rated_steam` is the same quantity
+       * unlagged. Do not "simplify" them away; do not let this become an undefined read
+       * again — run_pwr2_instruments now asserts the channel by id. */
       steam_flow_frac: rdF.sg_steam_flow !== undefined ? rdF.sg_steam_flow
                        : (rdF.steam_flow !== undefined ? rdF.steam_flow : out / eng.rated_steam),
       fw_flow_frac: rdF.fw_flow !== undefined ? rdF.fw_flow : eng.fw.feed_frac,
@@ -1006,6 +1022,13 @@
      * turbine automatically trips following a reactor trip. Zero delay is assumed". Level,
      * not edge: while the trip is latched the operator cannot re-latch the turbine. */
     if (ptr.reactor_trip) eng.tb.tripped = true;
+    /* ...and on HIGH-HIGH steam generator level [sourced] — WTSM 3.2 (ML11223A213): "a
+     * high-high steam generator level turbine trip to protect the turbine against excessive
+     * moisture carryover". The other half of the same P-14 bistable that closes the feed
+     * regulating valve, unbuilt until #562 gave the generator a wet wall for it to protect
+     * against. Level-held on the same latch, so the machine cannot be re-latched into a steam
+     * line that is carrying water. */
+    if (ptr.turbine_trip_hi_level) eng.tb.tripped = true;
     if (ptr.si) { eng.ec.hhsiRunning = true; eng.ec.lhsiRunning = true; }
     /* The AFW starts, same caller's-half law: level-held while the latch stands, so the
      * operator cannot secure an actuated pump until reset_protection clears the latch —

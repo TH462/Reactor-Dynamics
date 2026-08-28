@@ -30,6 +30,71 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
 
 ## [Unreleased]
 
+### Fixed (#540 + #549 + #541 + #562 — the steam generator's two walls, and the lever between them, 2026-08-27)
+
+Four `priority-high` children of #534, taken together because they are one system: the plant's
+only heat sink and the inventory control around it, broken at **both walls and the lever between
+them**. Two owner rulings scope it — the overfill wall is **modelled**, not deferred, and the
+level hold lives in the **control layer** rather than the engine. Full write-up with the A/B
+tables: `Blueprint/PWR2_VALIDATION.md` §99.
+
+**The lever the specification had already described.** Three published surfaces documented a plant
+that did not exist: `CONTEXT.md` defined `afw_flow_normalized` as *"capacity × throttle × level
+hold"*, the Indications tab told the player *"this plant's auxiliary feed is level-controlled"*,
+and `Manuals/03` §10.0 documented a THROTTLE control and `set_afw_flow {pct}`. PWR2 had **none** of
+it — `stepAFW` was `rated × avail`, `afw_throttle_pct` was hard-coded `running ? 100 : 0`, and
+`set_afw_flow` read only `c.normalized`, so the board's own `{pct: 0}` fell through to its `: 1`
+default and **re-started the pump**. The retired engine had both halves; PWR2 kept the copy and
+dropped the mechanism.
+
+- **#562 — auxiliary feedwater gains its flow control valves, and the generator gains a top.**
+  Measured before: a loss of offsite power with the valves left open reached **861.7 % of nominal
+  inventory** (242,866 lbm in a shell rated for 28,186) at five hours and was still filling, both
+  gauges pegged, primary cooled **190 °F (106 °C)**. Now: a real throttle in the engine, `pct`
+  honoured on the command, the valve position reported back instead of the run lamp, a **THROTTLE
+  box on the board**, and an `afw_level` automation channel holding narrow-range level at a sourced
+  **33 ± 5 %** (WTSM §19.0, ML11223A342) that the operator can take to MANUAL — because throttling
+  aux feed is the operator's own post-trip task (*"it is necessary to throttle AFW flow to control
+  RCS temperature at this point"*, WAT 05 Transients ML11216A094). In AUTO the same ride peaks at
+  **107.7 %** and the primary falls **3.1 °F** in five hours. Left in MANUAL wide open it now walls
+  at **245.0 %** — the level map's own 100 % wide-range point — instead of running away.
+- **#562 — the wall itself, and the trip that was documented but never built.** Above the top of
+  the narrow range the generator carries water into the steam lines (*"carryover of water into the
+  steam lines … excessive cooldown of the primary system"*, Ginna TS Bases ML20339A221); at the top
+  of the wide range the shell is solid and passes what it takes. `pwr2_protection.js`'s own header
+  has called the high-high level function *"P-14 class: feedwater regulator closure **+ turbine
+  trip**"* since it was written and built only the regulator half. The turbine-trip half is now
+  built on the same latch (WTSM 3.2, ML11223A213 — *"to protect the turbine against excessive
+  moisture carryover"*) and fires **t+105 s** of a steam-generator overfeed on a running turbine at
+  100 MWe.
+- **#549 — a boiled-dry generator is no longer an absorbing state.** Restoring aux feed used to do
+  nothing at all: 6,526 kg in, 6,526 kg straight back out as steam, **net 0.000 kg**, with the
+  enthalpy backstop — commented "expected never to bind" — binding **100 % of steps** and supplying
+  **13.5 MW (46.2 MMBtu/hr)** of latent heat from nowhere. The outflow limiter had a mass half and
+  no energy half. It has both now: **net +4,360 kg** over the same ride with the steam path open,
+  clad falling **652 → 520 °F (344 → 271 °C)**, and the backstop down to **0.0003 MW** — all of it
+  the separate 0.1 MPa property-floor limitation tracked as #524, not this ledger.
+- **#541 — the turbine-driven aux feed pump can be secured.** It had no stop on the player's side
+  at all: the board's AFW STOP returned `{ok:true}`, cleared both actuation latches and secured only
+  the motor-driven pump, and the generator held **52,643 lbm — 186.8 % of nominal — one hour after
+  the operator pressed it**, run lamp lit. STOP now secures both [sourced, Ginna TS Bases B 3.3.2(a),
+  *"one switch for each pump"*], and `set_afw {pump}` reaches either on its own.
+- **#540 — the three-element feed controller's steam-flow element was a dark wire.** It read
+  `sg_steam_flow`, a channel `pwr2_instruments.js` did not have, and silently fell back to the
+  turbine-only channel — the exact channel the #509 fix was written to stop reading, recorded as
+  landed while the pre-fix symptom stood. Whenever the dumps carry the load the generator sat
+  **20 narrow-range points under its programmed level**. The channel now exists: minimum inventory
+  on a turbine trip with the anticipatory trip defeated goes **21,184 → 27,639 lbm**, minimum level
+  **38.6 → 62.9 %**, and it settles back on the ruled 65 % program.
+
+**Also:** the steam-generator level map moved to a single owner (`SG.LEVEL_MAP`) — it was a local in
+`pwr2_true_state.js` while `pwr2_sg.js` held a hand-copied point off it, and the wall needed two
+more; new `true_state.sg_carryover_frac` with its §6.3 contract line; the `CONTEXT.md`,
+Indications and manual copy that promised a level hold corrected to say where it actually lives;
+and the AFW AUTO-arm setpoint corrected on the board and in `Manuals/03` from a stale *"~20 %"* to
+the sourced **17 % of narrow range**.
+
+
 ### Fixed (#546 + #547 — the control kernel stops rewriting PWR2's commands, 2026-08-27)
 
 The **first of the two systemic patterns** #534's adversarial sweep named. PWR2's

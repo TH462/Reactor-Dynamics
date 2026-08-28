@@ -563,9 +563,12 @@ var MUTATIONS = [
   ['the secondary temperature stops tracking its pressure (no back-pressure on the duty)',
    'var T_sec = W.T_sat(sg.P);', 'var T_sec = 272.11;'],
   /* anchors re-pointed #507 wave 5: the SG ledger grew the tube-leak stream */
+  /* RE-POINTED for #549/#562 (2026-08-27): the enthalpy sum moved out of `dH` into `E_in`
+   * (the energy limiter needs the same number) and the export enthalpy became `h_out`, so both
+   * anchors naming the old one-line `dH` went BLIND. The runner said ANCHOR MISS — read the
+   * self-test line, not just the checks tally. */
   ['steam draw no longer removes energy (demand cannot be felt)',
-   'var dH = Q + feed * SG.h_feed + afw * h_afw + leak * h_leak - steam_eff * h_g;   // kW',
-   'var dH = Q + feed * SG.h_feed + afw * h_afw + leak * h_leak - steam_eff * SG.h_feed;'],
+   'var dH = E_in - steam_eff * h_out;', 'var dH = E_in - steam_eff * SG.h_feed;'],
   ['steam draw no longer removes mass',
    'var dM = inflow - steam_eff;', 'var dM = 0;'],
   ['the secondary pressure never updates', '    updatePressure(sg);', ''],
@@ -579,8 +582,8 @@ var MUTATIONS = [
    'return 300000 / (SG.area_m2 * (T_prim - T_sec)); // kW/m2-K',
    'return 150000 / (SG.area_m2 * (T_prim - T_sec)); // kW/m2-K'],
   ['feedwater arrives at steam enthalpy (the secondary cannot be cooled by feed)',
-   'var dH = Q + feed * SG.h_feed + afw * h_afw + leak * h_leak - steam_eff * h_g;   // kW',
-   'var dH = Q + feed * h_g + afw * h_g + leak * h_leak - steam_eff * h_g;']
+   'var E_in = Q + feed * SG.h_feed + afw * h_afw + leak * h_leak;',
+   'var E_in = Q + feed * W.h_g(sg.P) + afw * W.h_g(sg.P) + leak * h_leak;']
 ];
 
 if (fail > 0) {

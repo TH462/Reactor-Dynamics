@@ -188,6 +188,7 @@
     // reason: set_adv_setpoint clamps to [0.2, sg_safety_open_mpa], so the box
     // refuses what the engine would silently clamp. Read from config, never a literal.
     bdAdvSp:     [0.2, _SG.sg_safety_open_mpa || 7.58],
+    bdAfwThrottle: [0, 100],                                         // AFW flow control valves, % (#562)
     ims3xu86zm5: [0, 100],                                           // RHR HX flow split, %
     // Circulating-water inlet temperature — the modelled range (the engine clips to the
     // same band, so the box refuses what the engine would clamp).
@@ -821,6 +822,35 @@
       // input 20 px it needed — measured, "1247" overflowed a 32 px field by 12 px.
       left: 1351, top: 488, label: 'ADV SP', width: 90, value: 1247, step: 1, digits: 0,
       editable: true, color: '#4fe3ff', fontSize: 12 },
+    // AUX FEED THROTTLE (#562) — the flow control valves, the operator's own continuous
+    // post-trip task. SOURCED, WAT 05 Transients (ML11216A094): "It is necessary to throttle
+    // AFW flow to control RCS temperature at this point. One symptom that AFW flow needs to be
+    // throttled is closure of all steam dump valves."
+    //
+    // THE BOARD HAD NO SURFACE FOR IT AT ALL, and the handler for one already existed:
+    // ui/app.js's 'afw-flow-set' emits `set_afw_flow {pct}` and NO DOM element emitted it. The
+    // plant had no throttle either, so the dead handler was matched by a dead command — measured
+    // full-stack, a loss of offsite power reached 861.7 % of nominal SG inventory with the
+    // player holding no lever at all.
+    //
+    // GEOMETRY, measured off the doc rather than authored: AUX FEED WATER (imrmssto6d) is
+    // 1455,650 195x60 with its button row at 680..705, so the card is FULL and this row does
+    // not fit in it. DOC_PATCHES below grows the card to h100 (ends 750) and moves CONDENSER
+    // COOLING and its three children down 40 px (715->755, ends 825); nothing else lives in
+    // that column below 785, measured. The row then mirrors the CONDENSER COOLING row exactly
+    // — caption at 1464, 90 px number at 1550 — so the two cards read as one family.
+    //
+    // ONE CONTROL, NOT THREE. The engine has a switch per pump [sourced, Ginna TS Bases
+    // B 3.3.2(a) "one switch for each pump"] and `set_afw {pump}` reaches either, but this
+    // plant has ONE steam generator and the board has ONE aux feed panel: two more pump
+    // buttons would be two controls the player cannot tell apart, which is the Q4 veto in
+    // DESIGN_CRITERIA. STOP already secures both pumps since #541, which is what that issue
+    // asked for. The per-pump discriminator stays a command-surface capability for the
+    // instructor and scenarios.
+    { id: 'bdAfwThrottle', kind: 'number',
+      name: 'AUX FEED THROTTLE  ·  sim: set_afw_flow pct',
+      left: 1550, top: 710, label: 'THROTTLE', width: 90, value: 100, step: 5, digits: 0,
+      unit: '%', editable: true, color: '#4fe3ff', fontSize: 12 },
     { id: 'bdAdvPct', kind: 'value', name: 'ADV position  ·  sim: instruments.adv_valve, % open',
       // rAnchor — `left` is the RIGHT edge for a value tile. Measured the hard way:
       // left-anchored at 1579 it rendered 12 px OUTSIDE the card's left border.
@@ -924,6 +954,15 @@
     // the SG runs ~819 psi against a 1194 psi setpoint, which is WHY the dump is shut.
     ims31tq7mgc: { set: function (v) { cmd({ action: 'set_steam_dump_setpoint', mpa: v }); }, get: function (s) { return CS(s).steam_dump_setpoint || 0; } },
     bdAdvSp:     { set: function (v) { cmd({ action: 'set_adv_setpoint', mpa: v }); },        get: function (s) { return CS(s).adv_setpoint || 0; } },
+    // AUX FEED THROTTLE (#562). `pct` is the field control_kernel declares for this action,
+    // CONTEXT.md names (afw_throttle_pct) and the manual documents — and until 2026-08-27
+    // pwr2_shell read only `c.normalized`, so `{pct: 0}` fell to its `: 1` default and
+    // RE-STARTED the pump. The readback is the VALVE POSITION, not the delivered flow: the
+    // AFW FLOW gauge on the other card is the delivery, and the two disagreeing is how the
+    // player sees a shut block valve or a dead motor. Engine-agnostic by construction — any
+    // engine publishing afw_throttle_pct gets the box, which is the buttonDisabled law.
+    bdAfwThrottle: { set: function (v) { cmd({ action: 'set_afw_flow', pct: v }); },
+                     get: function (s) { var v = CS(s).afw_throttle_pct; return v == null ? 100 : v; } },
     // RHR heat-exchanger flow split, % — the cooldown-RATE knob (Q_rhr scales with it,
     // pwr_thermal.js:90-93). Deliberately NOT an alignment command: the control layer
     // excludes set_rhr_hx from the 'rhr' ESF arm's disarming command list, so trimming
@@ -2668,6 +2707,25 @@
       // an edit there, which is the whole reason DOC_PATCHES exists.
       // `board_check.html` asserts the policy over the rendered board, so a future re-export
       // that reintroduces title-case text reddens the gate instead of shipping quietly.
+      // AUX FEED WATER makes room for the THROTTLE row (#562, see bdAfwThrottle in
+      // EXTRA_ITEMS). The card grows 60 -> 115 and CONDENSER COOLING plus its three children
+      // drop 55 px. MEASURED off the doc before authoring: AUX FEED WATER 1455,650 195x60
+      // (buttons 680..705, so 705..710 is all the slack it had); CONDENSER COOLING 1455,715
+      // 195x70 with children at 738/740/755; NOTHING in the 1430..1700 column below 785.
+      //
+      // THE FIRST NUMBERS WERE WRONG AND ONLY THE BROWSER SAID SO — the same trap the PZR
+      // SPRAY readout above records. Authored at h100 / top 755 on the arithmetic that a
+      // number tile is ~25 px like the buttons beside it; MEASURED in Edge, a number box
+      // renders ~47 px because it carries the ▲▼ nudge arrows, so the box overran its own
+      // card by 12 px and lapped CONDENSER COOLING by 6. h115 with the box at 710 puts it at
+      // 710..757 inside a card ending 765, and the neighbour starts at 770.
+      // Patched here, never in pwr_board_data.js — that file is GENERATED and a re-export
+      // would silently undo an edit there.
+      imrmssto6d:  { props: { height: 115 } },
+      ims3v3lpw5v: { props: { top: 770 } },
+      ims3xoryten: { props: { top: 793 } },
+      ims3v42jghn: { props: { top: 795 } },
+      ims3xp168iy: { props: { top: 810 } },
       imrppvnburd: { props: { text: 'LOAD' } },
       imrppilyy52: { props: { text: 'OUTPUT' } },
       imrppim9gdg: { props: { text: 'GOVERNOR' } },

@@ -717,6 +717,21 @@
       afas_tdafw_cause: pr.afas_tdafw_cause,
       fwi: pr.fwi,
       fwi_cause: pr.fwi_cause,
+      /* THE HIGH-HIGH LEVEL TURBINE TRIP (#562, 2026-08-27) [sourced] — WTSM 3.2
+       * (ML11223A213): *"a high-high steam generator level turbine trip to protect the
+       * turbine against excessive moisture carryover."* This module's OWN HEADER has named
+       * the function as "P-14 class: feedwater regulator closure + TURBINE TRIP" since it was
+       * written, and built only the regulator half; the trip half had no consumer anywhere.
+       * That mattered from the moment #562 gave the generator a wet wall: without it the
+       * machine stays on the line while the steam lines carry water, which is the damage the
+       * source says the trip exists to prevent (Ginna UFSAR ch15: *"the possibility of steam
+       * generator overfill and damage to the turbine and steam piping"*).
+       *
+       * IT RIDES THE FWI LATCH, deliberately: same bistable, same setpoint, same latch, so
+       * the two halves of one protective function cannot drift apart. LEVEL-HELD while the
+       * latch stands — the operator cannot re-latch the turbine into a flooded steam line —
+       * which is the convention the reactor trip's own turbine wire already uses. */
+      turbine_trip_hi_level: !!pr.fwi,
       p10_met: p10Met,
       p11_permit: p11Below,
       lo_press_blocked: pr.blockLoPress,

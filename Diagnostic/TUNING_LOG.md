@@ -29,6 +29,90 @@ and the user-visible summary in `CHANGELOG.md`. This file points at those and tr
 
 ---
 
+## Session log — 2026-08-27-develop-e (#540 + #549 + #541 + #562 — the SG's two walls and the lever between them)
+
+**RESOLVED: #540, #549, #541, #562** (all `#534` umbrella, all priority-high). One cluster,
+because it is one system: the plant's only heat sink and the inventory control around it, broken
+at **both walls and the lever between them**. Full write-up, A/B tables and sourcing:
+`Blueprint/PWR2_VALIDATION.md` §99.
+
+**TWO OWNER RULINGS scope it** *(2026-08-27, both given as menu selections)*: the overfill wall is
+**"Model it now"**, not deferred; and the level hold is **"Throttle in engine + AUTO channel"** —
+the physics lever in `pwr2_afw.js`, the hold as a control-layer automation channel the operator can
+take to MANUAL, rather than the retired engine's always-on engine-side taper.
+
+### What was wrong, in one line each
+
+| | measured on the shipped tree |
+|---|---|
+| **#540** | Element 2 read `rdF.sg_steam_flow`, a channel `pwr2_instruments.js` **did not have**, and fell back silently to the turbine-only channel — the exact channel #509's fix was written to stop reading, and recorded as landed. With the dumps carrying the load the generator sat **20 narrow-range points under program**. |
+| **#549** | The outflow limiter had a MASS half and no ENERGY half, so a boiled-dry generator was an **absorbing state**: 6,526 kg in, 6,526 kg out, **net 0.000 kg**, with the `h_f(0.1 MPa)` backstop binding **100 % of steps** for **13.5 MW (46.2 MMBtu/hr)** of invented latent heat. |
+| **#541** | `afw_tdafw` was in **no shell registry**; the board's one AFW panel sent `set_afw`, which returned `{ok:true}` and secured the motor pump only. **52,643 lbm — 186.8 % of nominal — one hour after the operator pressed STOP.** |
+| **#562** | No throttle and no level hold anywhere. Loss of offsite power, valves open, 5 h: **861.7 % of nominal inventory** and still rising; primary cooled **190 °F (106 °C)**. |
+
+### The thing worth carrying forward
+
+**Three published surfaces described the plant this cluster had to build.** `CONTEXT.md` defined
+`afw_flow_normalized` as *"capacity × throttle × level hold"*; the Indications tab told the player
+*"this plant's auxiliary feed is level-controlled"*; `Manuals/03` §10.0 documented a THROTTLE
+control and `set_afw_flow {pct}`. PWR2 had none of the three. The retired engine had both halves.
+**This is #557/#556/#561's pattern one layer in — and this time the stale second copy was the
+SPECIFICATION, which is worse, because a specification is what you check the code against.**
+
+### After
+
+- **#540** min inventory **21,184 → 27,639 lbm**, min narrow range **38.6 → 62.9 %**, settling
+  **45.4 → 65.5 %** (back on the ruled program).
+- **#549** net **0.000 → +4,360 kg** over the same restore with the steam path OPEN; clad
+  **652 → 520 °F (344 → 271 °C)**; backstop **13.5 MW → 0.0003 MW**.
+- **#541** STOP secures both pumps; +1 h **52,643 → 1,127 lbm**.
+- **#562** MANUAL wide open now **walls at 245.0 %** (the level map's own 100 % wide-range point);
+  in AUTO it peaks **107.7 %**, holds **NR 36.9 %** inside the sourced 33 ± 5 % band, and the
+  primary falls **3.1 °F** in five hours instead of 190.
+- The **high-high level TURBINE TRIP** is built — `pwr2_protection.js`'s own header had called the
+  function *"P-14 class: feedwater regulator closure **+ turbine trip**"* since it was written and
+  built only the regulator half. Fires **t+105 s** of an overfeed on a running turbine at 100 MWe.
+
+### Gates
+
+`run_pwr2_sg` 44/27 mutations · `run_pwr2_afw` 35/15 · `run_pwr2_protection` 106/58 ·
+`run_pwr2_shell` 91/33 · `run_pwr2_instruments` 22/14 · `run_pwr2_engine` 97/57 ·
+`verify_board_check` 230 · `run_manual_rev` 15/0 · `run_manual_units` 0 failed.
+
+### Traps recorded (the full six are in PWR2_VALIDATION §99.7)
+
+1. **A constant-primary-temperature fixture always finds a BOIL EQUILIBRIUM, and it looks exactly
+   like a failed fix.** Two drafts of the #549 checks reddened on this: at 304.5 °C the vessel
+   settles at 37 kg, at 120 °C at 370 kg, both because the wetted fraction carries exactly the duty
+   that boiling the inflow costs. Honest heat balances, not the defect. Build the fixture where the
+   duty is **zero by construction**.
+2. **A check that reads its own reference from mutated state is not a check** — the carryover check
+   compared against `W.h_g(sgC.P)` with P read *after* the step, and its mutation came back BLIND.
+3. **Reported fields and the ledger are two claims** — a `dH` still booking at `h_g` left every
+   reported field and every trajectory check correct. Only the one-step **energy identity** saw it.
+4. **A test may only read the PUBLISHED surface** — a check asserted `fwi_live`, which is internal
+   state; it read `undefined` and failed loudly, which was luck.
+5. **Six mutation anchors went blind on this refactor**, across four runners. Only the self-test
+   line said so, under a clean checks tally.
+6. **A green check at the wrong layer** — `run_pwr2_engine` proved the per-pump switch through the
+   facade doors the shell did not expose. The reachability claim moved to `run_pwr2_shell`.
+
+### Still open in this area
+
+- **#524** owns the residual: the `h_lo` clip still binds 3,872/60,000 steps on the #549 transient,
+  every one of them the vessel sitting at the 0.1 MPa property floor with **subcooled** aux feed
+  arriving (88.5 kJ/kg against `h_f(0.1)` = 417.5). Worth 0.4 MJ. No energy limiter can fix it —
+  the model's pressure is the inverse of the saturated-liquid line.
+- **A declared cosmetic residue on the new channel**: the kernel consults `standby` for the snapshot
+  flag and, in the note path, only for `kind:'rods'`, so a healthy at-power plant shows `afw_level`
+  as `saturated:'lo'` — *"at minimum output — no authority to correct"*. True, reads like a fault.
+  Fixing it is a kernel change touching every plant.
+- **#532** stands: the manual set still documents the retired engine throughout. This session
+  corrected only the claims it made false (`Manuals/03` §10.0, `Manuals/12` §8.4) plus the stale
+  *"~20 %"* aux feed auto-start setpoint, which is the sourced **17 %**.
+
+---
+
 ## Session log — 2026-08-27-develop-d (#542 — the safety bank is staggered, and the ramp was anchored at the reseat)
 
 **RESOLVED: #542** (`#534` umbrella, priority-high, type-bug). `engines/pwr2/pwr2_relief.js`

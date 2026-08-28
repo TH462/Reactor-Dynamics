@@ -329,11 +329,36 @@ function runSuite(P, rec, quiet) {
       rHH2.fwi === true && rHH2.fwi_cause === 'hi_hi_sg_level' &&
       rHH2.reactor_trip === false && rHH2.si === false,
       'a hi-hi is an actuation, not a scram; the turbine trip is the CALLER\'s half');
+  /* THE TURBINE-TRIP HALF (#562, 2026-08-27) [sourced] — WTSM 3.2 (ML11223A213): "a high-high
+   * steam generator level turbine trip to protect the turbine against excessive moisture
+   * carryover". This module's own header has called the function "P-14 class: feedwater
+   * regulator closure + TURBINE TRIP" since it was written and reported only the regulator
+   * half — the trip had no field on the report and no consumer in the engine, so a generator
+   * filling into its steam lines left the machine on the line. It matters now because #562
+   * gave the vessel a wet wall for it to protect against: measured full-stack, this trip
+   * fires at t+105 s of a steam-generator overfeed, on a running turbine at 100 MWe. */
+  ckT('...and the SAME latch carries the sourced TURBINE TRIP — one bistable, two consumers, ' +
+      'so the halves cannot drift apart',
+      rHH2.turbine_trip_hi_level === true && rHH1.turbine_trip_hi_level === false,
+      'WTSM 3.2: "to protect the turbine against excessive moisture carryover"; it must not ' +
+      'lead the fwi latch either — rHH1 is inside the delay');
   var rHH3 = ride(prHH, healthy(), 10);
-  ckT('the fwi LATCHES through recovery, and reset clears it',
-      rHH3.fwi === true &&
+  /* BOTH consumers must ride the LATCH, not the live signal. Asserting the turbine trip only
+   * while the level is still high cannot tell the two apart — the live signal and the latch
+   * agree there — and a `!!pr.fwi_live` mutation came back BLIND until this line named the
+   * recovery. It is also the behaviour that matters: a machine that re-latched itself the
+   * moment level dipped back would put the turbine on the line with water in the steam lines.
+   *
+   * A first draft also asserted `rHH3.fwi_live === false` — and `fwi_live` is INTERNAL state
+   * (`pr.fwi_live`), not a report field, so it read `undefined`. It failed loudly rather than
+   * vacuously, which is luck: `undefined === false` is false. The published surface is what a
+   * check may read, and the live-vs-latch claim needs no extra field — rHH3 rides a HEALTHY
+   * reading, so a trip wired to the live signal is already false here. */
+  ckT('the fwi LATCHES through recovery — and so does the turbine trip — and reset clears both',
+      rHH3.fwi === true && rHH3.turbine_trip_hi_level === true &&
       (function () { P.reset(prHH);
-                     return P.stepProtection(prHH, DT, healthy()).fwi === false; })(), '');
+                     var rR = P.stepProtection(prHH, DT, healthy());
+                     return rR.fwi === false && rR.turbine_trip_hi_level === false; })(), '');
 
   /* ---- THE HIGH-LEVEL TRIP AND P-7 (stage 2b, 2026-08-19) ---------------------------------
    * WTSM 10.3.4.3: an AT-POWER trip, "only active if either reactor power or turbine power is
@@ -834,6 +859,12 @@ var MUTATIONS = [
   /* THE FEED-TRAIN FUNCTIONS (2026-08-21) */
   ['the hi-hi setpoint moved off the adopted 90 %',
    '    hi_hi_frac: 0.90,', '    hi_hi_frac: 0.99,'],
+  ['the hi-hi TURBINE TRIP is dropped from the report (#562 — the machine stays on the line ' +
+   'while the steam lines carry water)',
+   '      turbine_trip_hi_level: !!pr.fwi,', '      turbine_trip_hi_level: false,'],
+  ['the hi-hi turbine trip is wired to the LIVE signal instead of the latch (it un-trips ' +
+   'itself the moment level recovers)',
+   '      turbine_trip_hi_level: !!pr.fwi,', '      turbine_trip_hi_level: !!pr.fwi_live,'],
   ['the hi-hi row is DELETED (nothing stops an overfeed)',
    "      { id: 'hi_hi_sg_level', name: 'High-high steam generator water level', kind: 'fwi', dir: +1,\n        sp: SGLL.hi_hi_frac, unit: 'frac', read: 'sg_level_frac', delay: DELAY.hi_hi_sg_level },",
    ''],

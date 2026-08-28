@@ -86,6 +86,83 @@
     }
     EN.command(e, pump, on);
   }
+  /* AUXILIARY FEEDWATER LEVEL HOLD — PWR2's SECOND automation channel (#562, 2026-08-27).
+   *
+   * IT LIVES HERE, NOT IN pwr_control.js's PWR_CHANNELS, and that is deliberate. The retired
+   * engine ALREADY holds level inside its own steam-generator module (pwr_steam_generator.js
+   * afw_flow = capacity x throttle x hold, target pwr_config's afw_level_target 32.0). Adding
+   * a channel to the shared table would give that plant a SECOND authority over one valve —
+   * the duplicate-authority veto, DESIGN_CRITERIA Q4 — for no gain, on an engine #523 retired.
+   * PWR2 is the plant that has the valve and no hold, so PWR2 carries the def. Every other
+   * field follows the PWR_CHANNELS shape exactly; the kernel does not care where a def came
+   * from (config.channels is just a list).
+   *
+   * WHY IT QUALIFIES UNDER getProtectionConfig's OWN RULE. That filter admits a pwr channel
+   * only when its whole vocabulary is a command PWR2 really has and its input is live. Both
+   * hold as of this change: `set_afw_flow {pct}` lands on the engine's `afw_throttle` door,
+   * and `instruments.sg_level` has been live since the AFAS build. The rule is not being
+   * bent — the second qualifying channel simply now exists.
+   *
+   * THE CONTRACT DESCRIBED THIS BEFORE IT EXISTED. Blueprint/CONTEXT.md defines
+   * afw_flow_normalized as "capacity x throttle x LEVEL HOLD"; the Indications tab told the
+   * player "this plant's auxiliary feed is level-controlled and delivers nothing until
+   * generator level falls into its band"; the board's AFW AUTO button was already rendered.
+   * None of it was true: measured on a loss of offsite power, the generator reached 186.8 %
+   * of nominal inventory one hour AFTER the operator pressed STOP.
+   *
+   * OWNER RULING, 2026-08-27 (selected "Throttle in engine + AUTO channel"): the hold is a
+   * CHANNEL, not an engine term, because the sourced action is the OPERATOR'S — WAT 05
+   * Transients (ML11216A094): *"It is necessary to throttle AFW flow to control RCS
+   * temperature at this point. One symptom that AFW flow needs to be throttled is closure of
+   * all steam dump valves."* Baking the hold in, as the retired plant did, deletes that task
+   * and teaches the very thing #562 says the plant currently teaches — that auxiliary feed is
+   * fire-and-forget. As a channel the player takes it to MANUAL and does the real job, and
+   * AUTO is what holds what manual proved (the MANUAL-FIRST directive, 2026-08-12).
+   *
+   * THE TARGET IS SOURCED, not the retired engine's unattributed 32.0. Westinghouse Technology
+   * Systems Manual sec 19.0 (ML11223A342), plant startup step 15: *"Maintain steam generator
+   * levels at 33 +/- 5% narrow-range level indication during secondary plant startup BY
+   * THROTTLING the feedwater bypass regulating valves."* DECLARED EXTENSION: that source
+   * throttles the FEEDWATER BYPASS valves, not the auxiliary feed valves. What it gives is
+   * this plant's own narrow-range target and band in the low-power throttled-feed regime,
+   * which is the regime auxiliary feedwater works in; the hardware doing the throttling here
+   * is WTSM 7.2's (*"the AFW flow control valves are throttled closed. The steam generator
+   * water levels are maintained at the appropriate values"*), which names no number. Neither
+   * source alone gives both halves, and that is stated rather than blended away.
+   *
+   * ff 100 + kp 20 REPRODUCES THE RETIRED ENGINE'S SHAPE — full flow below the band, tapering
+   * to zero across it — with ki 0, because an integrator on a level auxiliary feedwater itself
+   * moves winds up through every dry-out. 28 % narrow range (33-5) clips the demand at 100;
+   * 38 % (33+5) reaches 0. NOTHING HERE STARTS OR STOPS A PUMP: the throttle is delivery, the
+   * pumps stay latched where protection put them (HR5). */
+  var AFW_LEVEL_CHANNEL = {
+    id: 'afw_level', kind: 'pid', group: 'Secondary',
+    label: 'Aux feedwater → SG level (throttle)',
+    hint: 'Holds steam-generator narrow-range level with the auxiliary feedwater flow control valves — full flow below the band, tapering shut across it. It throttles; it never starts or stops a pump. MANUAL hands you the valve, which is the real post-trip task: too much auxiliary feed overcools the primary.',
+    pv: function (s) { return s.instruments.sg_level; },
+    ff: function () { return 100; },
+    cmd: function (u) { return { action: 'set_afw_flow', pct: u }; },
+    manual_overrides: ['set_afw_flow'],
+    /* STANDBY, not stood-down. The channel stays ACTIVE with no pump running, deliberately:
+     * that is what pre-positions the valve shut so an AFAS start delivers nothing until level
+     * falls into the band — the behaviour the Indications tab has always described and the
+     * retired engine's always-on hold had. `offWhen` would instead leave the valve wherever it
+     * was last, and a loss of offsite power would open both pumps wide for one 3 s period
+     * before the controller caught up. DECLARED COSMETIC RESIDUE: the kernel consults
+     * `standby` for the snapshot flag and, in the note path, only for `kind:'rods'` — so a
+     * healthy at-power plant shows this channel `saturated:'lo'` with "at minimum output — no
+     * authority to correct". True (shut valve, no pump), but it reads like a fault. Fixing it
+     * means teaching the PID path about standby, which is a kernel change touching every
+     * plant; not taken here, and not worth pretending is absent. */
+    standby: function (s) { return !(s.instruments && s.instruments.afw_pump_running); },
+    standbyNote: 'standing by — no auxiliary feed pump running',
+    defaultOn: function () { return true; },
+    uMin: 0, uMax: 100, kp: 20, ki: 0, db: 0.5, minDelta: 1.0, period: 3.0, pvTau: 1.5,
+    program: function () { return 33; },      /* [sourced] WTSM 19.0 step 15 — 33 +/- 5 % NR */
+    spSlew: 0.1,
+    sp: { capture: function () { return 33; }, min: 20, max: 60, unit: '%', dp: 0, step: 1 }
+  };
+
   /* NOTE the dependency: a standing SI LATCH is itself an AFW start signal (the SGLL
    * block's si line), so AFW cannot be unlatched from under it — secure the ECCS first. */
   function afwUnlatch(e) {
@@ -243,15 +320,47 @@
      * while the first minute of a valid actuation stays protected. Starts always pass. */
     set_hpi:           function (e, c) { eccsStop(e, 'hhsi', c); },
     set_lpi:           function (e, c) { eccsStop(e, 'lhsi', c); },
+    /* THE PUMP SWITCHES ARE PER PUMP [sourced] — Ginna TS Bases B 3.3.2 (a), "one switch for
+     * each pump", which pwr2_afw.js has cited since it was written and which the ENGINE has
+     * always honoured with two doors (`afw`, `afw_tdafw`). THE SHELL WIRED ONLY THE FIRST
+     * (#541): `afw_tdafw` was in no registry, so it threw "unknown action", and the board's
+     * one AFW panel sent `set_afw` — which returned {ok:true}, cleared BOTH actuation latches
+     * and secured only the motor-driven pump. Measured on a loss of offsite power, one hour
+     * after the operator pressed STOP: 52,643 lbm (23,879 kg) in a shell rated for 28,186 —
+     * 186.8 % of nominal, +22,107 lbm added AFTER the stop, run lamp still lit.
+     *
+     * `pump` selects: 'mdafw' | 'tdafw' | absent = BOTH. Absent-means-both keeps every
+     * existing caller (the board's old panel, the instructor, saved missions) meaning what it
+     * meant, while the new per-pump switches say which one they are. The unlatch runs ONCE for
+     * either, because the actuation latch is per FUNCTION, not per pump. */
     set_afw:           function (e, c) {
       var on = (c.active !== undefined ? c.active : c.running) !== false;
+      var p = c.pump;
+      if (p !== undefined && p !== 'mdafw' && p !== 'tdafw')
+        throw new Error('pwr2_shell: set_afw pump "' + p + '" — this plant has one ' +
+          'motor-driven ("mdafw") and one turbine-driven ("tdafw") auxiliary feed pump.');
       if (!on) afwUnlatch(e);
-      EN.command(e, 'afw', on);
+      if (p !== 'tdafw') EN.command(e, 'afw', on);
+      if (p !== 'mdafw') EN.command(e, 'afw_tdafw', on);
     },
+    /* THE THROTTLE (#562). `pct` is what layers/control/control_kernel.js declares as this
+     * action's value field, what Blueprint/CONTEXT.md names (`afw_throttle_pct`), what the
+     * manual documents and what ui/app.js's own handler sends. THIS READ ONLY `c.normalized`,
+     * so `{pct: 0}` fell through to the `: 1` default, evaluated `1 > 0` = true and RE-STARTED
+     * the pump — the payload-key-mismatch class from #506 and #507 wave 6, on the plant the
+     * site runs. Both keys are accepted; `pct` wins because it is the declared one.
+     *
+     * THROTTLING IS NOT SECURING. Closing the valve leaves the pumps running, which is the
+     * plant's own idiom and the reason `afwUnlatch` is NOT called here: a throttled-shut pump
+     * is available to re-open instantly, and making the throttle secure the pumps would make
+     * it refuse inside the actuation reset window for no physical reason. */
     set_afw_flow:      function (e, c) {
-      var on = (c.normalized !== undefined ? c.normalized : 1) > 0;
-      if (!on) afwUnlatch(e);
-      EN.command(e, 'afw', on);
+      var frac = c.pct !== undefined ? +c.pct / 100
+               : c.normalized !== undefined ? +c.normalized
+               : c.fraction !== undefined ? +c.fraction : 1;
+      if (!isFinite(frac))
+        throw new Error('pwr2_shell: set_afw_flow needs a numeric pct (0-100) or normalized (0-1).');
+      EN.command(e, 'afw_throttle', frac);
     },
     /* THE FEED TRAIN (2026-08-21, pwr2_feedwater) — the old refusals retired. Payload shapes
      * are the current engine's: pct 0-120, delta_pct, {active}. */
@@ -737,7 +846,8 @@
          * (instruments.boron_analyzer) has been live all along. Every other pwr channel
          * stays out: their actuators are PWR2's own internal controllers. By reference,
          * like the alarms — the def is the pwr table's own. */
-        channels: (base.channels || []).filter(function (ch) { return ch.id === 'boron_conc'; }),
+        channels: (base.channels || []).filter(function (ch) { return ch.id === 'boron_conc'; })
+                    .concat([AFW_LEVEL_CHANNEL]),
         /* ONE esf entry, DISPLAY-TRUE by construction (2026-08-20, the AFAS build): the board's
          * AUX FEED word is RUNNING / STANDBY / SECURED and STANDBY requires
          * automation.esf.afw === 'auto', which the kernel only emits for a listed system. The
@@ -1054,7 +1164,13 @@
        * *_fixed capability flags retired exactly as designed (an engine that grows the
        * model stops publishing the flag and the valve symbol comes back operable). */
       accumulator_valve_open: ts.accumulator_valve_open === true,
-      afw_throttle_pct: (e.aw.mdafwRunning || e.aw.tdafwRunning) ? 100 : 0,
+      /* THE REAL VALVE POSITION since #562 — this used to be `running ? 100 : 0`, a second
+       * name for the run lamp. It reported 100 through the whole unbounded fill and 0 for a
+       * running pump against a shut throttle, so the one readback that could have told the
+       * player their throttle command had not landed agreed with the command that had not
+       * landed. VALVE POSITION, not delivered flow: `afw_flow_normalized` is the delivery,
+       * and the two disagreeing is the diagnosis (a shut block valve, a dead motor). */
+      afw_throttle_pct: 100 * (e.aw.throttle === undefined ? 1 : e.aw.throttle),
       /* THE FULL SCALE `afw_flow_normalized` IS NORMALIZED ON (#557). This plant's combined
        * sourced rating, 86.2 gpm — NOT the 640 gpm the board used to hold as a literal, which
        * was the retired plant's fraction-of-rated-feed basis. Same shape as `load_modes`

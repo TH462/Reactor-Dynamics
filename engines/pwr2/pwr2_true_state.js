@@ -270,6 +270,19 @@
     put('steam_pressure_mpa', sg.P_sec);
     put('t_sg_c',             sg.T_sec);
     put('sg_mass_frac',       sg.mass_frac);
+    /* THE WET WALL IS NOT PUBLISHED ON true_state, and the reason is a gate boundary worth
+     * knowing (#562). `sg_carryover_frac` — the liquid fraction of the steam leaving the
+     * generator — was written here and PULLED: `Blueprint/CONTEXT.md` §6.3 is checked by
+     * `run_contract.js` against the RETIRED `engines/pwr` engine ONLY, so a PWR2-only field
+     * cannot be documented there without the gate reporting it STALE, and publishing it
+     * UNdocumented breaks the §6.3 rule in the other direction. Making the retired engine emit
+     * a constant 0 to satisfy the gate would be exactly the fabricated-zero defect this file's
+     * header exists to forbid — a containment at 0 MPa reads like a containment that is fine.
+     * So carryover is reported on `stepSG`'s RETURN (`carryover_frac`, `solid`, `steam_out_h`)
+     * where the engine consumes it, and the player sees the wall through what it DOES: the
+     * high-high level turbine trip, the pegged level gauges and the primary's cooldown.
+     * THE REAL GAP IS THAT run_contract IS PWR1-ONLY WHILE PWR2 IS THE PLANT THE SITE RUNS —
+     * filed rather than worked around here. */
 
     /* --- turbine / generator --- */
     put('mwe_output',        tb.mwe_output);
@@ -498,7 +511,14 @@
      * geometry [adopted: sg_mass_map, pwr_config.js — same Ginna 85,359 lbm nominal both
      * engines]. Wide % from the piecewise map; narrow is its 30-75 window (sg_wr_lo/hi). --- */
     if (ts.sg_mass_frac !== undefined) {
-      var MAP = [[0, 0], [0.38845, 30], [0.5484, 37.65], [1.0, 59.25], [1.32929, 75], [2.45, 100]];
+      /* THE MAP MOVED TO pwr2_sg.js's SG.LEVEL_MAP (#562, 2026-08-27) and this reads it. It
+       * is steam-generator GEOMETRY, and it was a local here while pwr2_sg held a hand-copied
+       * `dryout_mass_frac` off one of its points — two files to edit together, which is the
+       * second-copy shape #557/#556/#561 record. The wall needed two more points off the same
+       * curve, so it got one owner. Falls back to the literal only if Layer 5 is absent from
+       * the fixture, which the true-state gate does deliberately. */
+      var MAP = (RD.sg && RD.sg.SG && RD.sg.SG.LEVEL_MAP) ||
+                [[0, 0], [0.38845, 30], [0.5484, 37.65], [1.0, 59.25], [1.32929, 75], [2.45, 100]];
       var mf = ts.sg_mass_frac, wide = 100;
       for (var mi = 1; mi < MAP.length; mi++) {
         if (mf <= MAP[mi][0]) {

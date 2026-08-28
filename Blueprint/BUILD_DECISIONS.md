@@ -45,6 +45,76 @@ where the two differ or where judgment was exercised.
 
 ---
 
+## 2026-08-27-develop-e — #540/#549/#541/#562: the SG gets an energy limiter at both walls, and aux feed gets its valve
+
+**The decision that shaped everything else: where the level hold lives.** *(OWNER RULING,
+2026-08-27, selected "Throttle in engine + AUTO channel" from three options.)* The retired engine
+holds steam-generator level **inside** its own SG module — an always-on proportional taper the
+operator cannot leave. Copying that into PWR2 was the cheapest option and it was rejected, because
+it deletes the task the sourced material says is the operator's: *"It is necessary to throttle AFW
+flow to control RCS temperature at this point"* (WAT 05 Transients, ML11216A094). An always-on hold
+teaches exactly what #562 says the plant currently teaches — that auxiliary feed is
+fire-and-forget. So the **throttle** is physics (`pwr2_afw.js`, a valve downstream of both pumps)
+and the **hold** is an automation channel (`afw_level`) the player can take to MANUAL.
+
+**The channel def lives in `pwr2_shell.js`, not `pwr_control.js`'s shared `PWR_CHANNELS`.** It was
+written there first and moved. Putting it in the shared table gives the RETIRED engine a second
+authority over a valve its own engine already holds — the duplicate-authority veto
+(DESIGN_CRITERIA Q4) — for no gain, on an engine #523 retired from public builds. PWR2 admits pwr
+channels one at a time by an explicit criterion (its whole vocabulary is a command PWR2 has, its
+input is live); `afw_level` is the second to meet it, and it meets it without the rule being bent.
+
+**MANUAL FIRST, THEN AUTO** (the 2026-08-12 directive) was followed literally: the throttle was
+built and measured with the channel disengaged — set and readback in one currency at 100/75/50/25/0
+%, delivery linear, pumps still RUNNING behind a shut valve — before the channel was allowed to
+hold it. The auto-mode measurement then asserts the controller *holds* what manual proved, which is
+a different claim.
+
+**The energy limiter's reference point is `h_lo`, not `h_f(P)`, and the choice is load-bearing.**
+#549's fix is the existing enthalpy clip's own inequality solved for the export instead of
+absorbed. Referencing `h_f(sg.P)` looks more principled and is wrong here: `sg.h` **is** `h_f(sg.P)`
+by construction, because `updatePressure` inverts the saturated-liquid line, so the stored term
+vanishes identically and the export becomes heat-limited at *every* operating point — the demand
+would stop setting the flow at all. Measured both ways before choosing. The gate carries the
+`h_f(P)` form as a mutation so the reasoning cannot be quietly undone.
+
+**The overfill wall is MODELLED, not declared** *(OWNER RULING, 2026-08-27: "Model it now")*. The
+plan offered deferring it with a declared simplification; the owner took the model. It cost two
+constants and neither is new: `carryover_mass_frac` and `mass_full_frac` are read off the plant's
+own level map, which **moved to `SG.LEVEL_MAP` in `pwr2_sg.js`** in the same change. That map had
+been a local inside `pwr2_true_state.js` while `pwr2_sg.js` held a hand-copied `dryout_mass_frac`
+off one of its points — two files that had to be edited together. Given a cluster that is otherwise
+entirely about second copies of plant constants, adding two more to the same shape was not an
+option; the map got one owner and three readers.
+
+**A documented function was completed rather than invented.** `pwr2_protection.js`'s header has
+described the high-high level function as *"P-14 class: feedwater regulator closure **+ turbine
+trip**"* since the module was written, and quoted WTSM 3.2 for the trip half, while building only
+the regulator half. The trip had no report field and no consumer. It is now built on the **same
+`fwi` latch** — one bistable, two consumers, level-held — so the halves cannot drift apart. This is
+completing a function the module already claimed, not adding one.
+
+**BOARD: one control, not three.** The engine has a switch per pump [sourced, Ginna TS Bases
+B 3.3.2(a)] and `set_afw {pump}` reaches either, but this plant has one steam generator and one aux
+feed panel, and the panel was already full. Two more pump buttons would be two controls the player
+cannot tell apart — the Q4 veto. **STOP now secures both pumps**, which is what #541 asked for; the
+per-pump discriminator stays a command-surface capability for the instructor and scenarios. The
+panel grew 60 → 100 px and CONDENSER COOLING dropped 40 px to make room for the THROTTLE box, both
+through `DOC_PATCHES` — geometry measured off the doc first, and nothing else lives in that column
+below 785.
+
+### Open flags this entry leaves
+
+- **The `h_lo` clip still binds** 3,872 of 60,000 steps on the #549 transient, worth 0.4 MJ against
+  a pre-fix 16,236 MJ. Every binding step is the vessel at the 0.1 MPa property floor with
+  **subcooled** aux feed arriving — a state a saturated-line model cannot represent. That is
+  **#524**, not this ledger, and it is stated in the code rather than papered over.
+- **`afw_level` shows `saturated:'lo'` on a healthy at-power plant** ("at minimum output — no
+  authority to correct"). True — shut valve, no pump running — but it reads like a fault. The
+  kernel consults `standby` for the snapshot flag and, in the note path, only for `kind:'rods'`;
+  teaching the PID path about standby is a kernel change touching every plant. Declared, not fixed.
+- **#532 stands.** Only the manual claims this change made false were corrected.
+
 ## 2026-08-27-develop-c — #539: the rated scale is frozen on BOTH of steamDemand's axes
 
 **Claim.** `rated_steam` is every secondary normalization's denominator and

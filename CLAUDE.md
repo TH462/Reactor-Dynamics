@@ -412,7 +412,12 @@ re-querying. Run the query.
   across all four presets; Mode 4's feed train and code safeties were multiplied by nought) and
   **#542** (§97 — those safeties are now the STAGGERED bank Ginna sources: one valve at 1085 psig,
   three at 1140, and no more parking 21 psi under its own setpoint).
-  Everything else in #535–#566 is untouched — `gh issue list` is the authority.
+  **The STEAM-GENERATOR cluster is CLOSED** (#540/#549/#541/#562, §99): the sink's two walls
+  each hold a MASS and an ENERGY limiter now, aux feed has the flow control valves the contract
+  had been describing all along, its STOP secures BOTH pumps, and the high-high level TURBINE
+  TRIP the protection header has claimed since it was written is finally built. Two owner
+  rulings scope it (model the overfill wall; the level hold is a control-layer channel, not an
+  engine term). Everything else in #535–#566 is untouched — `gh issue list` is the authority.
 - **RBMK and BWR** — on hold, and the source of most remaining backlog. Do not touch.
 
 **The manual set's revision number does not advance until a RELEASE** *(OWNER DIRECTIVE,
@@ -432,6 +437,13 @@ FIRST** — ask what in it would still burn someone in a month, move that to the
 ONE line, drop the rest. **A bullet is ~80 words.** (Measured 2026-08-06: the list was running
 7 bullets averaging 500 words, two of them duplicating traps already rescued below.)
 
+- **The SPECIFICATION can be the stale second copy, and that is worse than a stale constant**
+  (2026-08-27, #562/#549/#541/#540, §99). `CONTEXT.md` defined AFW flow as *"capacity ×
+  throttle × level hold"*, the Indications tab told the player the feed was level-controlled,
+  and the manual documented the THROTTLE box and `set_afw_flow {pct}` — while PWR2 had no
+  throttle, no hold, a readback hard-coded to the run lamp, and a `set_afw_flow` that ignored
+  `pct` and **re-started the pump**. Measured: **861.7 %** of nominal SG inventory in five
+  hours. A spec is what you check code against, so nothing could catch it.
 - **An engine-owned latch the kernel cannot see makes every reset a permanent no-op — and
   the seal-ins it guards read as dead buttons** (2026-08-24, #509 §79). PWR2's automatic
   trips never set the kernel's `rps.scrammed`, so `resetRps` returned null FOR EVER and
@@ -439,15 +451,6 @@ ONE line, drop the rest. **A bullet is ~80 words.** (Measured 2026-08-06: the li
   dead-button class one layer deeper. An accepted-then-overwritten command must REFUSE at
   the layer that re-asserts it. Same seam: the kernel judged a good reset against the
   facade's previous-step snapshot and told the operator "rods not inserted".
-- **Three shipped wave-3 rows were quietly hollow, and only writing wave-6's probes found
-  them** (2026-08-22, #507 waves 4–6): `degraded_hpi` wrote a field the physics never reads
-  (inert on flow through two green gate runs), the seal-leak severity slider was rendered
-  and discarded, and the advanced panel's typed freeze-at value was dropped by a payload-key
-  mismatch. Same batch: the pressurizer's `ac_available` driver had been documented, read,
-  and **never passed** since the module was built (a dark wire), and the ATWS probe caught
-  `reset_protection` never re-arming the trip edge — reset-then-scram left the latch on,
-  annunciators on, and the rods standing. A row's gate must assert the EFFECT (flow, area,
-  the landed value), never the write.
 - **A constant that is RIGHT for one plant is a second copy, and it goes wrong silently the
   day the plant changes** (2026-08-27, #557/#556/#561). Three board indications were still the
   retired engine's: the AFW gauge read **7.40×** the delivered flow, the pressurizer tile drew
@@ -541,7 +544,11 @@ thing left in the file and it grew about a bullet a session.
   measuring `plot ÷ lanes` certified 56 px while 38 px was drawn. **`isFinite(null)` is TRUE and
   `Number.isFinite` is used NOWHERE in this tree** — a JSON round trip writes NaN out as null,
   so a dead channel comes back a plausible ZERO that every guard in `engines/` accepts (#555;
-  fix at the save boundary, not by sweeping ~20 guards). **And a MUTATION goes blind
+  fix at the save boundary, not by sweeping ~20 guards). **A row's gate must assert the
+  EFFECT — flow, area, the landed value — never the WRITE**, or a DARK WIRE (a driver
+  documented, read, and never passed; a field read off a channel nothing publishes) reads as a
+  working feature: #507 wave 6 shipped three that way, #540 shipped a fourth for six days.
+  **And a MUTATION goes blind
   when the defect it needs is FIXED, or when a refactor moves the line its anchor names**
   (rescued from the #501–#504 bullet on eviction, 2026-08-27): settling the startup ring sent
   three caught mutations blind; rewriting four protection gates orphaned four anchors. Fix a
