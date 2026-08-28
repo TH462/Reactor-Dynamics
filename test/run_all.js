@@ -2445,7 +2445,22 @@ async function main() {
   if (!quiet) {
     results.filter(function (r) { return !r.ok; }).forEach(function (r) {
       console.log(C.red + '  ── ' + r.file + C.off);
-      var tail = strip(r.out).trimEnd().split('\n').slice(-14);
+      var lines = strip(r.out).trimEnd().split('\n');
+      /* THE FAILING CHECKS BY NAME, BEFORE the tail (2026-08-28). The tail alone is the
+       * mutation self-test and the tally — the one thing it never contains is WHICH check
+       * went red, because that line is printed hundreds of lines earlier. Measured: a CI
+       * red at 110/111 on a runner green locally could not be diagnosed at all from the
+       * log, and the failing name is exactly what separates "my new check is knife-edge on
+       * another platform" from "a fixture moved". Capped so a runner failing wholesale
+       * cannot bury the tail. */
+      var bad = lines.filter(function (l) { return /^\s*(FAIL|✗|x)\s/.test(l) || /\bFAIL\b/.test(l); });
+      if (bad.length) {
+        console.log(C.red + '      failing checks (' + bad.length + '):' + C.off);
+        console.log(C.dim + bad.slice(0, 20).map(function (l) { return '      ✗ ' + l.trim(); })
+                              .join('\n') + C.off);
+        if (bad.length > 20) console.log(C.dim + '      ✗ …and ' + (bad.length - 20) + ' more' + C.off);
+      }
+      var tail = lines.slice(-14);
       console.log(C.dim + tail.map(function (l) { return '      │ ' + l; }).join('\n') + C.off);
     });
   }
