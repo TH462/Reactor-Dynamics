@@ -1064,14 +1064,20 @@
       var asked = (CS(s).spray_valve_pct || 0) > 2;
       return { text: v.toFixed(0), color: (asked && v < 20) ? BD_WARN : BD_OK };
     },
-    // SUR, DPM (#271). NOT a log channel and it has no trip — the limits are the `sur_high`
-    // ALARM at 1.0 and the rod-withdrawal INTERLOCK at 1.5 (clearing below 0.8), which is a
-    // command block rather than a scram. Red therefore means "the withdrawal block is on", not
-    // "you are about to trip", and that is the more useful thing to say here.
+    // SUR, DPM (#271). NOT a log channel and it has no trip. The `sur_high` ALARM at 1.0 is
+    // amber on every plant. RED is the rod-withdrawal INTERLOCK — a command block rather than a
+    // scram, so red means "the withdrawal block is on", not "you are about to trip" — and it is
+    // drawn ONLY when the RUNNING plant actually has that interlock (#572). PWR1 does, at
+    // 1.5 DPM. PWR2 does NOT and never did: the evidence pass found no startup-rate rod stop in
+    // the corpus, and its sourced stops (power-range 103 %, intermediate-range 20 %, the delta-T
+    // pair) are flux and temperature functions that this readout does not show. Painting red
+    // there promised protection the plant does not have — measured, 10.00 DPM with 90
+    // withdrawals accepted.
     imro6qsncb9: function (s) {
       var v = IN(s).startup_rate || 0;
       var text = (v >= 0 ? '+' : '') + v.toFixed(2);
-      var color = v >= surBlockDpm() ? NIS_TRIP_COLOR
+      var blk = surBlockDpm(s);
+      var color = (blk != null && v >= blk) ? NIS_TRIP_COLOR
                 : v >= surAlarmDpm() ? SR_HANDOFF_COLOR : SR_NORMAL_COLOR;
       return { text: text, color: color };
     },
@@ -1226,13 +1232,32 @@
   // Resolved LAZILY, not captured. `_PROT` is a `var` assigned further down the file, so reading
   // it at this point would take `undefined` — the same load-order trap tile() already documents.
   function surAlarmDpm() { return alarmSp('sur_high', 1.0); }
-  function surBlockDpm() {
-    var il = _PROT.interlocks || [];
+  /* THE STARTUP-RATE WITHDRAWAL BLOCK, IF THE RUNNING PLANT HAS ONE (#572).
+   *
+   * This read `_PROT.interlocks` and fell back to a literal `1.5`, and BOTH halves were wrong
+   * for PWR2. `_PROT` resolves to the pwr table whichever plant is running (see its definition),
+   * so the lookup did not miss and reach the fallback — it FOUND the retired plant's interlock
+   * and drew its band. Measured on PWR2: the plant reached 10.00 DPM, 6.7x that band, across 90
+   * consecutive withdrawal commands with none refused, because PWR2 has no startup-rate
+   * interlock and never did. Exactly the #557 class — a constant right for one plant, read by a
+   * board that is engine-agnostic by design.
+   *
+   * It reads the LIVE snapshot now: the kernel publishes each interlock's instrument, blocks
+   * list, direction and (since this change) its setpoint. A plant with no such interlock
+   * returns null and the readout draws no block band — which is the honest answer, not 1.5.
+   *
+   * PWR2 deliberately has none: the evidence pass behind #572 found NO startup-rate rod stop in
+   * the corpus at all. Its sourced rod stops are the power-range 103 % and intermediate-range
+   * 20 % flux stops plus the delta-T pair, and they live in the engine (pwr2_protection's
+   * ROD_STOP block), where they refuse by name at the rod door. */
+  function surBlockDpm(s) {
+    var il = (s && s.interlocks) || [];
     for (var i = 0; i < il.length; i++) {
       if (il[i].instrument === 'startup_rate' && il[i].direction === 'high' &&
-          (il[i].blocks || []).indexOf('rod_start') >= 0) return il[i].setpoint;
+          (il[i].blocks || []).indexOf('rod_start') >= 0 &&
+          il[i].setpoint != null && isFinite(il[i].setpoint)) return il[i].setpoint;
     }
-    return 1.5;
+    return null;
   }
   function nisArmed(instrument, direction, s) {
     var t = limitingArmedTrip(instrument, direction, s);
@@ -3646,9 +3671,13 @@
       // PR rung visible; these are the other two. Before this, SR went amber at its handoff
       // caution and NOTHING marked either trip — so on the channel whose whole job is to catch a
       // missed block, the caution and the scram looked identical, and IR looked like nothing.
-      function nis(id, ins, blocks) {
+      /* `ils` is the LIVE interlock list the kernel publishes (#572) — the SUR readout's block
+       * band is drawn from it and from nothing else, so a plant without the interlock must be
+       * expressible here. Defaults to EMPTY, which is PWR2's real state. */
+      function nis(id, ins, blocks, ils) {
         return RD.PwrBoardDriver.valueFor({ id: id }, {
           instruments: ins, control_state: {}, true_state: { plant_mode: 2 },
+          interlocks: ils || [],
           metadata: { sim_time: 10 }, rps_state: { trip_blocks: blocks || {}, scrammed: false }
         });
       }
@@ -3671,15 +3700,32 @@
       ck('driver: IR readout goes neutral once ir_high is blocked',
         nis('imro6rctcgm', { intermediate_range: 2e-3 }, { ir_high: true }).color === NIS_IDLE_COLOR,
         nis('imro6rctcgm', { intermediate_range: 2e-3 }, { ir_high: true }).color);
-      // SUR has no trip: red means the ROD WITHDRAWAL BLOCK is on (1.5 DPM), amber the alarm (1.0).
-      ck('driver: SUR readout marks the 1.0 alarm and the 1.5 withdrawal block',
-        nis('imro6qsncb9', { startup_rate: 0.3 }).color === SR_NORMAL_COLOR &&
-        nis('imro6qsncb9', { startup_rate: 1.1 }).color === SR_HANDOFF_COLOR &&
-        nis('imro6qsncb9', { startup_rate: 1.6 }).color === NIS_TRIP_COLOR,
-        [0.3, 1.1, 1.6].map(function (v) { return nis('imro6qsncb9', { startup_rate: v }).color; }).join(' '));
-      // Both thresholds come from the protection tables, not literals — a retune must move them.
-      ck('driver: SUR thresholds are read from the alarm and interlock tables',
-        surAlarmDpm() === 1.0 && surBlockDpm() === 1.5, surAlarmDpm() + ' / ' + surBlockDpm());
+      // SUR has no trip: red means the ROD WITHDRAWAL BLOCK is on, amber the alarm (1.0). The
+      // block band is drawn from the LIVE interlock list and from nothing else (#572).
+      var SUR_IL = [{ instrument: 'startup_rate', direction: 'high', setpoint: 1.5,
+                      blocks: ['rod_start', 'rod_nudge'], withdrawal_only: true }];
+      ck('driver: SUR readout marks the 1.0 alarm and, on a plant that HAS the interlock, its ' +
+         'withdrawal block',
+        nis('imro6qsncb9', { startup_rate: 0.3 }, null, SUR_IL).color === SR_NORMAL_COLOR &&
+        nis('imro6qsncb9', { startup_rate: 1.1 }, null, SUR_IL).color === SR_HANDOFF_COLOR &&
+        nis('imro6qsncb9', { startup_rate: 1.6 }, null, SUR_IL).color === NIS_TRIP_COLOR,
+        [0.3, 1.1, 1.6].map(function (v) { return nis('imro6qsncb9', { startup_rate: v }, null, SUR_IL).color; }).join(' '));
+      // THE #572 CHECK, and the one that would have caught it. PWR2 publishes NO interlocks —
+      // its rod stops are flux and delta-T functions inside the engine, and no startup-rate stop
+      // exists in the corpus at all. The readout must not promise a block that is not there:
+      // measured before the fix, the plant ran to 10.00 DPM (6.7x the band it was painting)
+      // across 90 consecutive withdrawals with none refused.
+      ck('driver: with NO startup-rate interlock published, SUR never paints the block colour — ' +
+         'the band follows the plant, not a module-load table (#572)',
+        surBlockDpm({ interlocks: [] }) === null &&
+        surBlockDpm({}) === null &&
+        nis('imro6qsncb9', { startup_rate: 9.9 }).color === SR_HANDOFF_COLOR,
+        'blk ' + surBlockDpm({ interlocks: [] }) + ', 9.9 DPM -> ' +
+        nis('imro6qsncb9', { startup_rate: 9.9 }).color);
+      // The alarm setpoint still comes from the protection table — a retune must move it.
+      ck('driver: the SUR alarm threshold is read from the alarm table, not a literal',
+        surAlarmDpm() === 1.0 && surBlockDpm(null) === null,
+        surAlarmDpm() + ' / ' + surBlockDpm(null));
 
       // The clamps in bandsFor are one-sided and CAN cross a moved band over itself.
       ck('driver: no tile can emit an inverted normal band', (function () {

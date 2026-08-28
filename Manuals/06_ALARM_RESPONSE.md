@@ -193,7 +193,7 @@ The board therefore **reclassifies** these alarms rather than removing them. The
 |-------|---------|
 | **Setpoint** | SUR ≥ **1 DPM** |
 | **Means** | Power rising quickly. |
-| **Actions** | 1) Stop withdrawal. 2) Insert if needed. 3) Expect withdrawal interlock at **1.5 DPM**. 4) Resume only when SUR &lt; **0.8 DPM**. |
+| **Actions** | 1) Stop withdrawal. 2) Insert if needed. 3) **Do not expect an interlock to stop you** — there is no rate block; this alarm is the whole rate cue. 4) Resume when the rate is back under control. The interlock you will meet is the **20 % intermediate range flux rod stop**, and it is about power, not rate. |
 
 ---
 

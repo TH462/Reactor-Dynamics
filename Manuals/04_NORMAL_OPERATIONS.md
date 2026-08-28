@@ -223,7 +223,7 @@ Take the reactor from **Mode 3, Hot Standby** to **Mode 2, Startup** (critical, 
 
 | Type | Text |
 |------|------|
-| **CAUTION** | Target SUR ≤ **1 DPM** (SUR HI at 1 DPM). Rod withdrawal blocks at **1.5 DPM** until SUR < **0.8 DPM**. Insertion is never blocked. |
+| **CAUTION** | Target SUR ≤ **1 DPM** (SUR HI at 1 DPM). **Nothing blocks withdrawal on rate** — the alarm is the only rate cue and the rate is yours to control. Withdrawal blocks on **flux**: the intermediate range rod stop at **20 % current equivalent**, until the low-setting trips are blocked at P-10. Insertion is never blocked. |
 | **CAUTION** | Plot **enough 1/M points**. Early predictions always read high (flat toe of the worth curve). Two points can predict ~711 vs true ~319; six points land within a handful of steps. **Never** withdraw straight to the first prediction. |
 | **CAUTION** | One fine step near the band is ~**1 ¢ (6.5–6.7 pcm)**. Final approach: **Slow**, single steps. |
 | **WARNING** | Secure **Source Range** before ~1e5 cps (SR high-flux trip). Handoff when **P-6** is met (IR ≥ **1e-10 A**). |

@@ -6893,3 +6893,102 @@ defect, and it makes the RCP-trip fixture useless for this. A loss of feedwater 
 the level. An `rcp_seal_leak` at severity 1.0 does not trip the plant at all in 1200 s. The rows
 that genuinely persist are the pressure and level ones, and a **large LOCA** is the cheapest of
 them. Recorded here so the next author does not re-derive it.
+
+---
+
+## 104. #572 — THE ROD STOP THAT WAS NOT THERE, AND THE TWO THAT SHOULD HAVE BEEN — 2026-08-28
+
+*(OWNER RULING, 2026-08-28: "A" — build the block, from two costed options.)*
+
+Filed at the end of §103 as "the same seam, one list over". It is, and the evidence pass then
+changed what the fix is.
+
+### 104.1 What was filed, and why it was half right
+
+The board's startup-rate readout painted a red band at **1.5 DPM** and called it a rod-withdrawal
+block. Measured, the plant reached **10.00 DPM — 6.7× that band — across 90 consecutive
+`rod_start` commands with ZERO refused**, stopping only at a `hi_flux_lo` trip. That measurement
+stands. **The mechanism in the issue body was wrong**, and it is worth correcting on the record
+because the wrong mechanism suggests a different fix: `surBlockDpm()` did *not* fall through to
+its `return 1.5` fallback. `_PROT` is resolved at module load as `RD.PWR_CONTROL.protection` —
+**the pwr table, whichever plant is running** — so the lookup SUCCEEDED and drew the retired
+plant's interlock. The #557 class exactly, not a missing-data fallback.
+
+### 104.2 The evidence pass changed the answer
+
+Option A was *"build the 1.5 DPM startup-rate block"*. **There is no startup-rate rod stop in the
+corpus.** WTSM 8.1 §8.1.7.3 (ML11223A252), *Manual Rod Withdrawal Stops*:
+
+> 1. Power range high flux rod stop, 1/4, power range power > **103%**,
+> 2. Intermediate range high flux rod stop, 1/2, intermediate range power > **20%**,
+> 3. Overtemperature ΔT rod stop and runback, 2/4, loop ΔT > (OTΔT reactor trip setpoint − 3%), and
+> 4. Overpower ΔT rod stop and runback, 2/4, loop ΔT > (OPΔT reactor trip setpoint − 3%).
+>
+> These interlocks or rod stops **only prevent outward rod motion**. The rods can always be
+> inserted into the core using either manual or automatic rod control.
+
+Corroborated on the anchor plant — Ginna UFSAR ch7 (ML20339A027): *"initiated by one-out-of-four
+high nuclear flux of 103%; one-out-of-two high flux at 20% current equivalent power"* — and in
+WAT 05 Transients (ML11216A094). PWR2 had 3 and 4 (`_rodStopSig`). **1 and 2 were missing, and
+the 1.5 DPM figure appears in no source at all.**
+
+So the ruling was honoured and the *subject* of it moved: build the stops that are real, retire
+the band that never had anything behind it. **Building the filed number would have shipped an
+unprototypical interlock behind a sourced-looking citation**, which is the failure the
+evidence-pass SOP exists to prevent — and `Manuals/09` §2.0 had been citing WTSM 8.1 §8.1.7.3, the
+very document that lists the four, three lines under the startup-rate row it contradicts.
+
+### 104.3 Why the intermediate-range stop is blockable, and why that decided the design
+
+`ir_amps = 8.333e-3 × power_frac` and the instrument saturates its range by ~24 % power, so an
+unblockable 20 % stop would stand **for ever** at power and block all withdrawal. The source
+resolves it: Ginna TS Bases B 3.3.1 on the IR function — *"This Function may be manually blocked
+by the operator when two-out-of-four power range channels are greater than approximately 8% RTP
+(P-10 setpoint). Above the P-10 setpoint, the Power Range Neutron Flux-High trip provides core
+protection for a rod withdrawal accident."*
+
+So it rides the **same operator block `hi_flux_lo` does** — one lever, the power-ascension step —
+and measured, **both shipped at-power ICs boot with `blockLowFlux` true**. The stop therefore
+asserts during an *unblocked* startup, where it is the lesson, and is gated at power, where every
+existing gate lives. That is why this change reddened nothing except the checks that were pinning
+the old behaviour.
+
+**20 % current equivalent is expressed in `power_frac`, not amps**, deliberately: the amps mapping
+lives in `pwr2_true_state` and `pwr_config`'s channel comment already records "1.67e-3 ≈ 20 %".
+A conversion here would be a second copy of it — the #557 class again, in the fix for #557's cousin.
+
+### 104.4 Two things built beyond the literal ask, both to avoid shipping a fresh defect
+
+- **The stop REFUSES BY NAME at the rod door.** The integrator had zeroed outward `move` on
+  `_rodStopSig` silently since the delta-T pair was built — an accepted command the next step
+  discards, which is precisely the class #545 and §100 spent two days removing. Shipping a NEW
+  block with the same silence would have recreated it on arrival. The clamp stays as the belt: a
+  stop that arrives mid-travel with the demand already standing is not a command and cannot be
+  refused at a door.
+- **The board reads the LIVE plant.** `getInterlockState()` now publishes each interlock's
+  `setpoint` and `direction`, and `surBlockDpm(s)` reads the snapshot — returning `null`, and
+  painting no band, on a plant with no such interlock.
+
+### 104.5 Measured after
+
+| | |
+|---|---|
+| IR stop asserts at | **20.19 % indicated** against the sourced 20.00 % — the gap is the one-step channel lag |
+| controlled (slow) withdrawal, Hot Standby, unblocked | bank parks at **89.1 of a demanded 200 steps** and holds 900 s; power ~**28 %**; **no trip** (the low setting is 35 %) |
+| the same withdrawal at FAST | peak **90.30 %**, trips on `hi_flux_lo` |
+| P-10 block applied | stop clears, withdrawal accepted |
+| shipped at-power ICs | unaffected — no cause standing, withdrawal accepted |
+
+**The FAST row is not a failure and is worth keeping.** A rod stop is not a substitute for a trip:
+an excursion steep enough to outrun the stop is what the trip is for, and the plant does exactly
+that. The stop's regime is the controlled withdrawal, and there it is the difference between a
+plant that trips and one that does not.
+
+### 104.6 The prose bill
+
+Five chapters documented the interlock that never existed — `01` §4.0, `03` §3.1, `04` §PWR-N03's
+CAUTION, `06`'s SUR HI response and `09` §2.0 (twice). All corrected: **nothing blocks withdrawal
+on RATE**, the SUR HI annunciator at 1 DPM is the whole rate cue, and the interlock a startup
+actually meets is the 20 % flux stop. `09` §2.0 now carries all four stops in one table under one
+citation. That is five sites for one wrong number, which is the argument for the seam gates #570
+built — none of which could catch this one, because every symbol the prose named existed.

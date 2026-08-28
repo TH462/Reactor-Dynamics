@@ -543,14 +543,21 @@ function runSuite(RD, rec, quiet, only) {
   EN.command(eng7, 'rod_target', 199.0);
   run(eng7, 2);                                  /* inward: always allowed */
   var rodsIn = eng7.rodSteps;
-  EN.command(eng7, 'rod_target', 200);
-  run(eng7, 1);                                  /* outward: refused while the signal stands
-                                                  * (refusal is immediate — one second shows
-                                                  * zero motion; three bought nothing but
-                                                  * trip-delay maturity) */
-  ckT('the ROD STOP: inward moves, outward is refused while the signal stands',
-      rodsIn < 199.5 && eng7.rodSteps <= rodsIn + 1e-9,
-      'in to ' + rodsIn.toFixed(1) + ', then held at ' + eng7.rodSteps.toFixed(1));
+  /* OUTWARD IS REFUSED — and since #572 it is refused OUT LOUD, at the door, rather than
+   * silently clamped in the step block. The check's claim is unchanged and its name was always
+   * "refused"; what changed is that the plant now says so. Before, this command returned
+   * normally and the rods simply did not move, which is the accepted-then-discarded shape
+   * #545/#558 spent two days removing everywhere else. */
+  var thr7 = null;
+  try { EN.command(eng7, 'rod_target', 200); } catch (e7x) { thr7 = e7x.message; }
+  run(eng7, 1);                                  /* one second shows zero motion; three bought
+                                                  * nothing but trip-delay maturity */
+  ckT('the ROD STOP: inward moves, outward is REFUSED BY NAME while the signal stands',
+      rodsIn < 199.5 && eng7.rodSteps <= rodsIn + 1e-9 &&
+      thr7 !== null && /ROD WITHDRAWAL BLOCKED/.test(thr7) &&
+      /Inward motion is still available/.test(thr7),
+      'in to ' + rodsIn.toFixed(1) + ', then held at ' + eng7.rodSteps.toFixed(1) +
+      '; refusal: ' + (thr7 ? thr7.slice(22, 80) : 'NONE — accepted silently'));
   /* the operator's half [sourced: "appropriate adjustments"]: rods IN, at FAST, 18 steps.
    * Re-scripted with the two-bank build (#506.3): the control bank now carries its real
    * 4068 pcm worth — HALF the old lumped 8000 — so the pre-#506 "12 steps at the old
@@ -1086,6 +1093,49 @@ function runSuite(RD, rec, quiet, only) {
       engV.runaway !== null && engV.rodSteps - sV0 < 0.3 && engV.pt.reactor_trip === true,
       sV0.toFixed(1) + ' -> ' + engV.rodSteps.toFixed(1) + ' steps in 120 s at 5.0/s ' +
       '(unheld it caps at 200)');
+
+  /* ---- 8c. THE INTERMEDIATE-RANGE ROD STOP HOLDS A STARTUP (#572) ---------------------------
+   * The protection suite pins the SIGNAL; this pins what the plant does with it, which is the
+   * claim that matters: a rod stop that reports and does not hold is the wiring gap this file's
+   * header exists to catch.
+   *
+   * THE REGIME IS THE POINT. At FAST the excursion is steep enough that the 35 % low-setting
+   * flux trip terminates it anyway (measured: peak 90.30 % indicated, tripped) — which is
+   * correct and prototypical, and is exactly why a rod stop is not a substitute for a trip. The
+   * stop's own regime is a CONTROLLED withdrawal, and there it is the difference between a
+   * plant that trips and one that does not. */
+  var engW = EN.createEngine({ initial_state: 'hot_zero_power' });
+  run(engW, 120);
+  EN.command(engW, 'rod_speed', 'slow');
+  EN.command(engW, 'rod_target', 200);            /* one press, held — the board's own idiom */
+  var onsetW = null, tsW = null;
+  for (var kW = 0; kW < 2400 / DT; kW++) {
+    tsW = EN.step(engW, DT);
+    if (!onsetW && engW.rpsReport.rod_stop_causes.ir_high_flux) {
+      onsetW = { pwr: engW.ins.reading.power_range, steps: engW.rodSteps };
+    }
+    if (tsW.scrammed) break;
+  }
+  ckT('the IR rod stop asserts ON its sourced 20 % setpoint during a controlled withdrawal',
+      !!onsetW && Math.abs(onsetW.pwr - 20.0) < 1.5,
+      onsetW ? ('asserted at ' + onsetW.pwr.toFixed(2) + ' % indicated, ' +
+                onsetW.steps.toFixed(1) + ' steps — the gap is the one-step channel lag')
+             : 'NEVER ASSERTED');
+  var restW = engW.rodSteps;
+  run(engW, 900);
+  ckT('...and it HOLDS the bank against a standing 200-step demand, short of the trip',
+      engW.rodSteps === restW && engW.rodTarget === 200 &&
+      tsW.scrammed === false && engW.pt.reactor_trip === false,
+      'rods parked at ' + engW.rodSteps.toFixed(1) + ' of a demanded 200 for 900 s, power ' +
+      engW.ins.reading.power_range.toFixed(1) + ' % against the 35 % low-setting trip — before ' +
+      'this the same withdrawal ran to that trip');
+  var thrW = null;
+  try { EN.command(engW, 'rod_target', 200); } catch (eW) { thrW = eW.message; }
+  var thrWin = null;
+  try { EN.command(engW, 'rod_target', engW.rodSteps - 5); } catch (eW2) { thrWin = eW2.message; }
+  ckT('...outward REFUSES by name and INWARD still takes — the source\'s own scope',
+      thrW !== null && /INTERMEDIATE RANGE/.test(thrW) && thrWin === null,
+      thrW ? ('out: ' + thrW.slice(22, 70) + ' | in: accepted') : 'outward was ACCEPTED');
   }
 
   if (grp('K')) {
@@ -1500,9 +1550,21 @@ var MUTATIONS = [
   ['the SHUTDOWN bank ignores them (the half a control-bank-only check cannot see)',
    'if (eng._scramT === null && rodDrivePowered && eng.sdSteps !== eng.sdTarget) {',
    'if (eng._scramT === null && eng.sdSteps !== eng.sdTarget) {', { grp: 'I' }],
+  /* anchor RE-POINTED at #572: rodDriveDoor grew the rod-stop branch, so the one-line trip
+   * guard this named no longer exists. It went ANCHOR MISS rather than blind, which is the
+   * louder of the two failures and the reason the runner reports them separately. */
   ['the rod drive door accepts silently instead of refusing by name',
-   '    if (!eng.pt.reactor_trip) return;',
+   "    if (eng.pt.reactor_trip) {\n      if (!moving) return;",
+   "    if (false) {\n      if (!moving) return;", { grp: 'I' }],
+  /* #572: the ROD STOP half of the same door. Separate anchor because it fails separately —
+   * the trip branch above refuses BOTH directions and this one refuses OUTWARD only, and a
+   * single mutation could not tell the two apart. */
+  ['the rod stop is clamped silently again (accepted, then discarded by the integrator)',
+   '    if (!(target > steps + 1e-9)) return;',
    '    return;', { grp: 'I' }],
+  ['the rod stop refuses INWARD motion too (the source says it never may)',
+   '    if (!(target > steps + 1e-9)) return;',
+   '    if (!(Math.abs(target - steps) > 1e-9)) return;', { grp: 'I' }],
   ['the dump controller never reaches the relief valves',
    'dump_demand: dcr.dump_demand,',
    'dump_demand: 0,', { grp: 'A' }],

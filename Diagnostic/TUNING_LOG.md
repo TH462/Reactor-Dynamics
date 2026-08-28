@@ -29,6 +29,59 @@ and the user-visible summary in `CHANGELOG.md`. This file points at those and tr
 
 ---
 
+## Session log — 2026-08-28-develop-c (#572 — the rod stop that was not there)
+
+*(OWNER RULING, 2026-08-28: "A" — build the block, from two costed options.)* Write-up:
+`Blueprint/PWR2_VALIDATION.md` §104. This is the continuity note.
+
+**THE RULING WAS HONOURED AND ITS SUBJECT MOVED, which is the thing to carry forward.** Option A
+was "build the 1.5 DPM startup-rate rod-withdrawal block". The evidence pass found **no
+startup-rate rod stop in the corpus at all** — WTSM 8.1 §8.1.7.3 (ML11223A252) lists FOUR manual
+rod withdrawal stops, corroborated on Ginna (UFSAR ch7, ML20339A027) and in WAT 05 Transients
+(ML11216A094), and a rate one is not among them. The 1.5 DPM figure is the retired engine's. So
+what was built is the two that are real and missing: **power range high flux at 103 %** and
+**intermediate range high flux at 20 % current equivalent**. The plant already had the ΔT pair.
+
+**The issue body named the wrong MECHANISM and it is corrected on the issue.** `surBlockDpm()` did
+not fall through to its `return 1.5`; `_PROT` resolves at module load to `RD.PWR_CONTROL.protection`
+— the pwr table whichever plant runs — so the lookup SUCCEEDED against the wrong plant. #557's
+class, not a missing-data fallback. Worth knowing because the two suggest different fixes.
+
+**The design hinge: the IR stop had to be BLOCKABLE or it would wedge the plant.** `ir_amps` is
+linear in power and saturates its instrument range by ~24 %, so an unblockable 20 % stop stands
+for ever at power. The source resolves it — Ginna TS Bases B 3.3.1: the IR function *"may be
+manually blocked by the operator when two-out-of-four power range channels are greater than
+approximately 8% RTP (P-10 setpoint)"* — so it rides the **same block `hi_flux_lo` does**, one
+lever, the ascension step. Measured: **both shipped at-power ICs boot with `blockLowFlux` true**,
+which is why this change reddened nothing but the checks pinning the old behaviour.
+
+**Measured after** — controlled (slow) withdrawal from Hot Standby, unblocked: the stop asserts at
+**20.19 % indicated** (sourced 20.00; the gap is the one-step channel lag) and the bank **parks at
+89.1 of a demanded 200 steps** and holds 900 s at ~**28 %** power with **no trip**. Before, the
+same withdrawal ran to the 35 % trip. At FAST the excursion outruns the stop and the trip takes it
+(peak 90.30 %) — correct, and the reason a rod stop is not a substitute for a trip.
+
+**Two things built beyond the literal ask**, both to avoid shipping a fresh defect: the stop
+**refuses by name at the rod door** (the integrator had clamped outward motion SILENTLY since the
+ΔT pair was built — an accepted command the next step discards, the #545/§100 class, and a new
+block with the same silence would have recreated it); and the **board reads the live plant** —
+`getInterlockState()` publishes each interlock's setpoint now, so no band is drawn where no
+interlock exists.
+
+**The prose bill: five chapters for one wrong number.** `01` §4.0, `03` §3.1, `04` §PWR-N03's
+CAUTION, `06`'s SUR HI response and `09` §2.0 twice. `09` §2.0 had been citing WTSM 8.1 §8.1.7.3 —
+the document that lists the four — three lines under the startup-rate row that contradicts it.
+**None of #570's three seam gates could have caught this**, because every symbol the prose named
+existed; only the evidence pass could.
+
+**Gates** — `run_pwr2_protection` 106 → **114** (63/63 mutations, five new),
+`run_pwr2_engine` 104 → **107** (62/62, three new), `verify_board_check` 230 → **232**.
+The #545 door mutation went **ANCHOR MISS** here rather than blind — `rodDriveDoor` grew a branch
+and the line it named moved — which is the standing trap and the louder of the two failures.
+Re-pointed. Manuals corrected under the pending Rev 17.
+
+---
+
 ## Session log — 2026-08-28-develop-b (#571 — the reset's other permissive was dead)
 
 Surfaced by #545 (entry `-a` below), which touches the same reset. `Blueprint/PWR2_VALIDATION.md`

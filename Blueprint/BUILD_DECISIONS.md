@@ -45,6 +45,65 @@ where the two differ or where judgment was exercised.
 
 ---
 
+## 2026-08-28-develop-c — #572: the ruling was honoured and its subject moved
+
+**THE DECISION THAT SHAPED THIS: an owner ruling names the WORK, and the evidence pass names the
+THING.** Option A was *"build the 1.5 DPM startup-rate rod-withdrawal block"*, and the ruling was
+A. The evidence pass — which option A explicitly required, because the figure was unsourced —
+found **no startup-rate rod stop in the corpus at all**. WTSM 8.1 §8.1.7.3 (ML11223A252) lists
+four *Manual Rod Withdrawal Stops*; corroborated on the anchor plant (Ginna UFSAR ch7,
+ML20339A027) and in WAT 05 Transients (ML11216A094); a rate one is not among them. The 1.5 DPM
+figure is the retired engine's.
+
+So the block that got built is the two that are real and were missing — **power range high flux
+at 103 %** and **intermediate range high flux at 20 % current equivalent** — and the band that had
+nothing behind it is gone. Reading the ruling literally would have shipped an unprototypical
+interlock behind a sourced-looking citation, which is the exact failure the evidence-pass SOP
+exists to prevent, and it would have been *citable* afterwards. Recorded this way so the next
+agent reads "A" as the decision it was: build the interlock, having first found out what it is.
+
+**The measurement in the issue stands; the mechanism in it did not.** `surBlockDpm()` did not fall
+through to its `return 1.5`. `_PROT` resolves at module load to `RD.PWR_CONTROL.protection` — the
+pwr table, whichever plant is running — so the lookup SUCCEEDED and drew the retired plant's
+interlock. That is #557's class, not a missing-data fallback, and the two suggest different fixes;
+corrected on the issue before building.
+
+**THE DESIGN HINGE was that the intermediate-range stop had to be blockable.** `ir_amps` is linear
+in power and saturates its instrument range by ~24 %, so an unblockable 20 % stop would stand for
+ever at power and refuse all withdrawal — a wedge, and the kind that only shows up after release.
+The source resolves it rather than a judgement call: Ginna TS Bases B 3.3.1 says the IR function
+*"may be manually blocked by the operator when two-out-of-four power range channels are greater
+than approximately 8% RTP (P-10 setpoint)"*. It rides the same block `hi_flux_lo` does — **one
+lever, the power-ascension step** — and measured, both shipped at-power ICs boot with it
+requested. That is why a change to the rod drive at 20 % power reddened nothing at power.
+
+**WHAT WAS BUILT** — full write-up and every number in `Blueprint/PWR2_VALIDATION.md` §104.
+
+| | where | |
+|---|---|---|
+| the signals | `pwr2_protection` | `ROD_STOP` constants + `rod_stop_causes`, reported per-cause so a surface can name which stop stands. Neither leaks into the RUNBACK — no source gives a flux stop one |
+| the refusal | `pwr2_engine` | `rodDriveDoor` refuses OUTWARD motion by name. Inward always takes: *"The rods can always be inserted into the core"* |
+| the board | `control_kernel` + `pwr_board_wiring` | `getInterlockState()` publishes each interlock's setpoint; the SUR band is drawn from the LIVE list and is absent on a plant without the interlock |
+
+**TWO THINGS BUILT BEYOND THE LITERAL ASK, and the reason is the same both times: shipping the
+minimum would have shipped a fresh instance of a defect this repo just spent two days removing.**
+The integrator had clamped outward motion on `_rodStopSig` **silently** since the ΔT pair was
+built — an accepted command the next step discards (#545, §100). A new block with the same silence
+recreates it on arrival. And a board band drawn from a module-load table is how the filed defect
+existed at all; leaving that mechanism in place while fixing its symptom would have re-armed it.
+
+### Open flags this entry leaves
+
+- **An unblocked startup now stops itself at 20 % power.** Prototypical, and the P-10 block is
+  already the documented ascension step — but it is a NEW way for a startup to appear stuck, and
+  the refusal message is the only thing carrying the player through it. No mission or checklist
+  has been walked end to end against it (#525 is the standing mission-compatibility gap).
+- **`_PROT` is still a module-load reference to the pwr table** everywhere else in
+  `pwr_board_wiring`. This change fixed the one consumer that was measured wrong; the others —
+  `_PROT.trips`, `_PROT.alarms` — have not been audited for the same shape.
+- The rod stop guards the **control bank only**; the shutdown bank's drive is deliberately
+  unguarded (the existing declared choice for the ΔT pair, inherited here rather than revisited).
+
 ## 2026-08-28-develop-b — #571: the reset's other permissive was dead, and the manual documented it as live
 
 **THE DECISION THAT SHAPED THIS was refusing to fix it in the kernel.** The obvious repair is to
@@ -102,11 +161,16 @@ beside it.
 
 - **MEASURED and FILED as #572** — the flag carried over from `-a` is a real defect. PWR1 has three
   interlocks blocking OUTWARD rod motion; PWR2 rebuilt two in the engine (the delta-T pair,
-  `_rodStopSig`) and **not the 1.5 DPM startup-rate one**, while `surBlockDpm()` falls back to a
-  literal 1.5 and the board draws a red band for it. Proven by EFFECT: **10.00 DPM indicated,
-  6.7× the setpoint, 90 consecutive withdrawals, ZERO refused**, stopped only by a `hi_flux_lo`
-  trip. Two options costed on the issue; the 1.5 figure owes an evidence pass before it becomes
-  this plant's number, which is why it is filed rather than built here.
+  `_rodStopSig`) and **not the 1.5 DPM startup-rate one**, while the board drew a red band for it.
+  Proven by EFFECT: **10.00 DPM indicated, 6.7× the setpoint, 90 consecutive withdrawals, ZERO
+  refused**, stopped only by a `hi_flux_lo` trip. Two options costed on the issue; the 1.5 figure
+  owes an evidence pass before it becomes this plant's number, which is why it is filed rather
+  than built here. **RESOLVED the same day — see `-c` below, and read that entry rather than this
+  one**: the evidence pass found no startup-rate rod stop in the corpus at all, so the two SOURCED
+  flux stops were built instead and the band was retired. This row also named the wrong mechanism
+  (it said `surBlockDpm()` reached its fallback; in fact `_PROT` resolves to the pwr table
+  whichever plant runs, so the lookup SUCCEEDED against the retired plant) — left visible, with
+  the correction, because a flag that was half wrong is worth seeing next to what it became.
 - The permissive covers `kind: 'rps'` rows only. The SI, AFAS and FWI latches have their own
   securing permissives (#512) and are not affected, but nothing checks that the two families stay
   disjoint as rows are added.

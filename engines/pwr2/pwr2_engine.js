@@ -380,13 +380,52 @@
    * the shell's mapper implements that as "target := current position" — a flat refusal would
    * make letting go of the button an error. So the test is whether the command asks the bank
    * to MOVE, which `rod_stop` and `rod_stop_all` never do. */
+  /* ROD STOP NAMES (#572) — one per contributor to `ptr.rod_stop_causes`, so the refusal below
+   * says WHICH stop is standing. A lumped "a rod stop is active" would make the intermediate-
+   * range one — the only stop a player meets during a startup — indistinguishable from the
+   * delta-T pair they meet at power. */
+  var ROD_STOP_WHY = {
+    ir_high_flux: 'the INTERMEDIATE RANGE high flux rod stop is standing (above 20 % current ' +
+      'equivalent power) [sourced, WTSM 8.1 §8.1.7.3 ML11223A252]. Block the low-setting flux ' +
+      'trips above P-10 to clear it, which is the power-ascension step',
+    pr_high_flux: 'the POWER RANGE high flux rod stop is standing (above 103 % power) ' +
+      '[sourced, WTSM 8.1 §8.1.7.3 ML11223A252]. Reduce power',
+    delta_t: 'an OVERTEMPERATURE / OVERPOWER delta-T rod stop is standing (within 3 % of the ' +
+      'trip setpoint) [sourced, Ginna UFSAR ch7 §7.2.3.2.1]. The turbine is running back; let ' +
+      'delta-T recover'
+  };
+
   function rodDriveDoor(eng, value, steps) {
-    if (!eng.pt.reactor_trip) return;
-    if (!(Math.abs(Math.max(0, Math.min(200, value)) - steps) > 1e-9)) return;
-    throw new Error('ROD DRIVE BLOCKED: the reactor trip is LATCHED — the reactor trip ' +
-      'breakers are open and power to the control rod drive mechanisms is interrupted ' +
-      '[sourced, Ginna TS Bases B 3.3.1 ML20339A221]. Reset the RPS to restore rod drive ' +
-      'power; the rods stay where they are until you deliberately withdraw them.');
+    var target = Math.max(0, Math.min(200, value));
+    var moving = Math.abs(target - steps) > 1e-9;
+    if (eng.pt.reactor_trip) {
+      if (!moving) return;
+      throw new Error('ROD DRIVE BLOCKED: the reactor trip is LATCHED — the reactor trip ' +
+        'breakers are open and power to the control rod drive mechanisms is interrupted ' +
+        '[sourced, Ginna TS Bases B 3.3.1 ML20339A221]. Reset the RPS to restore rod drive ' +
+        'power; the rods stay where they are until you deliberately withdraw them.');
+    }
+    /* THE ROD STOPS REFUSE OUTWARD MOTION ONLY, which is the source's own scope: *"These
+     * interlocks or rod stops only prevent outward rod motion. The rods can always be inserted
+     * into the core using either manual or automatic rod control."* (WTSM 8.1 §8.1.7.3). So the
+     * test is direction, not motion — unlike the trip above, where the drive has no power at
+     * all and INSERT is refused too.
+     *
+     * WHY IT REFUSES AT ALL, rather than being clamped in the step block as it was: the
+     * integrator has zeroed outward `move` on `_rodStopSig` since the delta-T pair was built,
+     * silently. That is an ACCEPTED command the next step discards — the #551/#559 law, and
+     * exactly the dead-button class #545 fixed one system over. Shipping a NEW block with the
+     * same silence would have recreated it on arrival. The clamp stays as the belt: a stop that
+     * arrives mid-travel, with the demand already standing, is not a command and cannot be
+     * refused at a door. */
+    if (!(target > steps + 1e-9)) return;
+    var causes = eng.rpsReport && eng.rpsReport.rod_stop_causes;
+    if (!causes) return;
+    var why = causes.ir_high_flux ? ROD_STOP_WHY.ir_high_flux
+            : causes.pr_high_flux ? ROD_STOP_WHY.pr_high_flux
+            : causes.delta_t      ? ROD_STOP_WHY.delta_t : null;
+    if (!why) return;
+    throw new Error('ROD WITHDRAWAL BLOCKED: ' + why + '. Inward motion is still available.');
   }
 
   /* ---- THE ONE DOOR ------------------------------------------------------------------------ */

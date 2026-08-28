@@ -374,19 +374,11 @@ Measured AGAIN 2026-08-28: a whole bullet of seven, all closed. Run the query.
   scram-bypasses-RPS defect and filed #499 on arrival — `PWR2_VALIDATION.md` §49). P-9 (turbine trip
   = reactor trip above it, both sourced values), the #499 beyond-model guards and the
   DELAYED-data sourcing are all LANDED (§50–52). **Everything since is recorded in `PWR2_VALIDATION.md` §53–§97 — read the sections, not this line**, which is why the roll-call that used to sit here is gone. Still open out of it: **#507**'s casualty menu stands at 22 honest rows (21 at wave 10, +`anticipatory_trip_failure` at #515) with Section F closed, and **#510** batches 1–4 landed leaving five LOW harness items. **#523 (owner rulings 2026-08-26 "Flip now, track the gaps" / "Strip it at build time"): PWR2 IS THE PLANT THE SITE RUNS (§94)** — every link and `/sim` carry `?engine=pwr2`, and a **public** build contains no retired engine at all (six tags + 544,663 bytes pruned by `site/build_site.js`; `make_portable` always). The strip is CHANNEL-GATED so the PREVIEW site keeps it, because the guided content is authored against it and `freePlayOnly` stays. `pwr_config.js`/`pwr_instruments.js` are NOT the old engine and ship everywhere. Two of the three pre-replacement gaps are now #531 (R8) and #525 (mission compatibility). Still owed: delta-T lead/lag + K5 (COLR), channel redundancy, the ESF arm display, Mode 5 proper (#524), stuck_rod_on_scram, the steam-line-break rows + auto isolation signal (the MSIV itself is BUILT, §80).
-  **#514 (2026-08-25): the engine steps 12.5× faster** (1,090 → ~85 µs; the vtable wired into
-  every module, `T_from_h`/`P_sat_T` tabulated, two warm starts, Tavg once) — held by the new
-  `run_pwr2_perf` ratio gate (≤ 8× the old engine, measures 4.1×); the vtable builds on first
-  use (was 0.5 s at every page load); **shell.html no longer loads RBMK/BWR** (~308 KB,
-  owner-ruled — dev route `test_rbmk.html`/`test_bwr.html`, `verify_e2e_ui` PWR-only).
-  **#513 (2026-08-25): the aggregate gate at 7m19s** (was ~19 min; sequential 2,814 → ~2,100 s):
-  mutation-replay scoping ported to 5 more runners (`grp:` + a scoped-clean-pass preflight that
-  caught a latent hollow catch in cvcs), the vtable cache-keep across replays, NODE_COMPILE_CACHE
-  for all 91 children, `run_behavior` split in thirds + `run_campaign` by plant (owner-ruled),
-  `run_pwr2_ab` → `measure_pwr2_ab` (out of the gate, owner-ruled), `verify_e2e_ui` predicate
-  waits, every `secs:` hint re-recorded. The pwr campaign missions then split in two as well
-  *(OWNER RULING, 2026-08-25: "I approve the pwr campaign mission split.")* — the 257 s part A
-  had become the gate's wall.
+  **#514 and #513 (2026-08-25), both CLOSED** — the engine steps 12.5x faster (1,090 -> ~85 us,
+  held by the `run_pwr2_perf` ratio gate) and the aggregate gate runs in a third of the time.
+  Two facts outlive them: **shell.html no longer loads RBMK/BWR** (dev route `test_rbmk.html` /
+  `test_bwr.html`, `verify_e2e_ui` PWR-only), and mutation replay is `grp:`-scoped in 6 runners.
+  The rest was a changelog and is in `Diagnostic/TUNING_LOG.md` 2026-08-25.
 - **#534 — the PWR2 adversarial bug hunt umbrella: 47 confirmed defects** (28 high, 18 medium,
   1 low), filed 2026-08-27 as #535–#566. Report only; no simulator code was changed by the
   sweep. It names TWO systemic patterns. **The second is CLOSED (#557/#556/#561, 2026-08-27)**
@@ -415,8 +407,10 @@ Measured AGAIN 2026-08-28: a whole bullet of seven, all closed. Run the query.
   level-held now, both banks both ways [sourced: open trip breakers cut CRDM power], making an
   ATWS a boration problem. **#571 CLOSED** (§103): the reset's trip-signal permissive iterated a
   table PWR2 hands over EMPTY, so a reset through a standing trip signal was ACCEPTED and
-  re-latched 0.1 s later. **All four kernel protection lists are empty for this plant — grep
-  every consumer of them.** Rest of #535–#566 untouched; `gh issue list` is the authority.
+  re-latched 0.1 s later. **#572 CLOSED** (§104): all four kernel protection lists are empty for
+  this plant, and a board band was drawn off one — the ruled "build the block" became the TWO
+  sourced flux rod stops (103 %, 20 %), because no startup-rate stop exists in any source.
+  **Grep every consumer of those lists.** Rest of #535–#566 untouched; `gh issue list` is the authority.
 - **RBMK and BWR** — on hold, and the source of most remaining backlog. Do not touch.
 
 **The manual set's revision number does not advance until a RELEASE** *(OWNER DIRECTIVE,
@@ -466,14 +460,13 @@ ONE line, drop the rest. **A bullet is ~80 words.** (Measured 2026-08-06: the li
   throttle, no hold, a readback hard-coded to the run lamp, and a `set_afw_flow` that ignored
   `pct` and **re-started the pump**. Measured: **861.7 %** of nominal SG inventory in five
   hours. A spec is what you check code against, so nothing could catch it.
-- **A constant that is RIGHT for one plant is a second copy, and it goes wrong silently the
-  day the plant changes** (2026-08-27, #557/#556/#561). Three board indications were still the
-  retired engine's: the AFW gauge read **7.40×** the delivered flow, the pressurizer tile drew
-  its scram edge at 100 % on a plant that trips at **87 %** and a second red band at 12 % for a
-  trip it does not carry, and the DNB gauge went red **356 s** before the trip with 13.70 margin
-  points standing. Fix: the plant publishes the number, the consumer reads it — an engine-key
-  branch would have re-armed the same rot. Two of the three were invisible because the board is
-  engine-agnostic by design and nothing cross-checked a RENDERED value against the plant.
+- **An owner ruling names the WORK; the evidence pass names the THING — and a citation can sit
+  three lines from the row it refutes** (2026-08-28, #572 §104). Ruled "build the 1.5 DPM
+  startup-rate rod-withdrawal block". No such stop exists in the corpus: WTSM 8.1 §8.1.7.3 lists
+  FOUR and none is on rate, and `Manuals/09` had been CITING that document beside the row it
+  contradicts. The figure was the retired plant's, reached because `_PROT` resolves to the pwr
+  table whichever plant runs. Measured: 10.00 DPM, 90 withdrawals, none refused. Built the two
+  that are real (103 % and 20 % flux). **Read a ruling as: build it, having found out what it is.**
 **Standing procedure — not part of the rotation above; these do not expire.** One trap per entry.
 **MAX 25 BULLETS** *(OWNER RULING, 2026-08-10: selected "Cap at 25, evict to TRAPS.md" from
 options I wrote — a selection, not verbatim words)*, gated by `test/run_doc_budget.js`. Adding

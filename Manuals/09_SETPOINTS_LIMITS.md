@@ -74,14 +74,33 @@
 | **P-12** | Tavg low **532.4 °F (278 °C)** | LO TAVG annunciator (`PWR-A29`) — ~14.4 °F (8 °C) below the 546.8 °F (286 °C) no-load anchor (#419 wave 3; Ginna's numeric P-12 is in its TS proper, fetch owed) |
 | SR re-energize block | IR ≥ **1e-6 A** | Protects SR detector |
 
-### Rod withdrawal interlock
+### Rod withdrawal interlocks — the four rod stops
 
-| Parameter | Value |
-|-----------|-------|
-| Block withdrawal when SUR ≥ | **1.5 DPM** |
-| Clear when SUR &lt; | **0.8 DPM** |
-| **Block withdrawal when OTΔT or OPΔT margin ≤** | **3 % of rated ΔT** (clears above 6 %) |
-| Insertion | Always allowed |
+| Rod stop | Blocks withdrawal when | Notes |
+|---|---|---|
+| **Power range high flux** | power range power > **103 %** | Not blockable. Sits below the 118 % high-setting trip: the stop acts first, the trip is what happens if it does not hold |
+| **Intermediate range high flux** | intermediate range > **20 % current equivalent** | **Blockable at P-10**, on the same control that blocks the 35 % low-setting flux trip — that block is the power-ascension step, and it is why this stop is a startup interlock rather than an at-power one |
+| **Overtemperature ΔT** | OTΔT margin ≤ **3 % of rated ΔT** (clears above 6 %) | Also drives the turbine runback — see below |
+| **Overpower ΔT** | OPΔT margin ≤ **3 % of rated ΔT** (clears above 6 %) | Also drives the turbine runback |
+| **Insertion** | never blocked, by any of them | |
+
+**All four are sourced together**, WTSM 8.1 §8.1.7.3 (ML11223A252), *Manual Rod Withdrawal Stops*,
+and corroborated on the anchor plant — Ginna UFSAR ch7 (ML20339A027): *"The overpower rod stops
+are initiated by one-out-of-four high nuclear flux of 103 %; one-out-of-two high flux at 20 %
+current equivalent power; two-out-of-four high overtemperature delta T at 3 % of rated loop T
+below trip setpoints; and high overpower delta T at 3 % of rated."*
+
+**Pressing WITHDRAW into a standing rod stop is refused, and the refusal names which stop.**
+Inward motion still takes — that is the source's own scope, quoted at the end of this section.
+
+> **There is no startup-rate rod stop, and this table used to say there was** (#572). It listed a
+> withdrawal block at **1.5 DPM** clearing below **0.8**, and the SUR readout on the board painted
+> a red band there. No source in the corpus contains such an interlock; the figure came from the
+> retired engine's control tables, which the board was still reading. **Measured before the fix:
+> the plant ran to 10.00 DPM — 6.7× the band it was painting — across 90 consecutive withdrawal
+> commands with none refused**, and stopped only at a reactor trip. The band is gone. The **SUR HI
+> alarm at 1 DPM is real and stays**: it is an annunciator, not an interlock, and it is still the
+> right thing to watch on a startup.
 
 **The ΔT rod stops are the OTΔT / OPΔT trip's own early warning**, three percent before it fires, and they annunciate as **OTΔT ROD STOP** / **OPΔT ROD STOP** on Panel A. Sourced: WTSM 12.2 §12.2.3.7–.8 and Table 12.2-2 rows C-3/C-4 — *"Loop ΔT > (OTΔT reactor trip setpoint − 3%)… Stops control rod outward motion (manual & automatic) and initiates a turbine runback."* **The turbine runback is built** (#318), and it is the half that acts rather than refuses. When the ΔT margin has HELD below the rod stop for about **8.5 seconds** — a brief dip does not count, and that delay stands in for the two-out-of-four loop voting a single-loop plant cannot have — the plant reduces the **generator load target** by **5 % of rated in about 1.5 seconds, then holds it steady for 28.5 seconds and looks again** — if the condition has not cleared, another 5 % in the next 30-second interval, and so on. You will see the number in the Generator Load box drop in steps with nobody touching it. It does **not** put the load back afterwards; that is yours to do once the condition is fixed. It never touches the reactor: it reduces LOAD, and the core follows the load down through the moderator coefficient, which is why it works and also why it is not instant. Sourced: WTSM 11.3 *Westinghouse Electrohydraulic Control System* (ML11223A295), Turbine Runbacks — *"the EHC system reduces load at 200%/min for 1.5 sec (a 5% load change), then holds the load constant for 28.5 sec. If the runback condition has not cleared, the load will be reduced by another 5% in the next 30-sec interval."* Measured on this plant: a **15 % steam line break** takes two steps to 90 MWe and becomes a ride-out instead of a reactor trip, while a **30 % break** and a continuous rod withdrawal still trip — they outrun the coupling the runback works through. Like every rod stop here, it blocks **withdrawal only** — *"The rods can always be inserted into the core using either manual or automatic rod control"* (WTSM 8.1 §8.1.7.3).
 
@@ -383,7 +402,7 @@ Commercial practice keeps boron sufficient for at least **1 % Δk/k** (WTSM 19.2
 
 | Parameter | Training target |
 |-----------|-----------------|
-| SUR on approach | ≤ **1 DPM** — the SUR HI alarm sits exactly there and withdrawal blocks at 1.5 DPM |
+| SUR on approach | ≤ **1 DPM** — the SUR HI alarm sits exactly there, and it is the ONLY rate cue: nothing blocks withdrawal on rate (§2.0) |
 | Reactor period | ≥ **30 s** preferred on startup range |
 | Power ramp ceiling | ~**10 %/min** class where achievable |
 | Load imbalance (SG annunciator) | &gt; ~**4 MWe** mismatch (4 % of rated) → filling/draining cue. Annunciated as **LOAD IMBAL** (Panel B, caution) — see §4. Reducing reactor power without walking the turbine load setpoint down is the usual cause in MANUAL, and it overcools the primary; the annunciator is the only thing that tells you. |

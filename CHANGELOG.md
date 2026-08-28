@@ -30,6 +30,39 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
 
 ## [Unreleased]
 
+### Fixed (#572 — the rod stop that was not there, and the two that should have been, 2026-08-28)
+
+The board painted a red band on the startup-rate readout and called it a rod-withdrawal block at
+1.5 DPM. Measured, the plant reached **10.00 DPM — 6.7× that band — across 90 consecutive
+withdrawal commands with none refused**, stopping only at a reactor trip.
+*(OWNER RULING, 2026-08-28: "A" — build the block.)* Full write-up:
+`Blueprint/PWR2_VALIDATION.md` §104.
+
+- **There is no startup-rate rod stop in the sources, and five chapters said there was.** The
+  evidence pass found four manual rod withdrawal stops (WTSM 8.1 §8.1.7.3, corroborated on the
+  anchor plant and in a third document) and no rate one; the 1.5 DPM figure came from the retired
+  engine's control tables, which the board was reading whichever plant was running. Building what
+  was asked for would have shipped an unprototypical interlock behind a sourced-looking citation.
+- **The two real stops that were missing are built** — the **power range high flux rod stop at
+  103 %** and the **intermediate range high flux rod stop at 20 % current equivalent**. The plant
+  already had the overtemperature and overpower ΔT pair.
+- **The intermediate-range stop blocks at P-10**, on the same control that blocks the low-setting
+  flux trip — one lever, and it is the power-ascension step the manual already documents. A
+  startup that has not blocked now **stops itself at 20 % power** instead of running to the trip:
+  measured, the bank parks at 89.1 of a demanded 200 steps and holds at ~28 % power with no trip.
+  A plant already at power is unaffected; both at-power initial conditions have the block set.
+- **Pressing WITHDRAW into a rod stop is refused, and the refusal names which stop.** It had been
+  clamped silently since the ΔT pair was built — an accepted command the next step discards, the
+  same class as the two fixes before this one. Insertion is never blocked, which is the source's
+  own scope.
+- **The board's rod-stop band follows the plant now.** The kernel publishes each interlock's
+  setpoint, and a plant with no such interlock gets no band rather than a borrowed one.
+- **Manuals** — `01`, `03`, `04`, `06` and `09` corrected; `09` §2.0 carries all four rod stops in
+  one table under one citation. Pending Rev 17.
+- **Gates** — `run_pwr2_protection` 106 → 114 (63/63 mutations), `run_pwr2_engine` 104 → 107
+  (62/62), `verify_board_check` 230 → 232. A `run_pwr2_engine` check was pinning the old silent
+  clamp; its claim ("outward is refused") was always right and only the plant's manners changed.
+
 ### Fixed (#571 — the reset's other permissive was dead, and the manual documented it as live, 2026-08-28)
 
 `Manuals/03` §3.5.1 names TWO conditions gating the RPS reset, each with its own board caption.

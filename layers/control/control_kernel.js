@@ -1272,6 +1272,14 @@
         index: i,
         active: !!this.interlockActive[i],
         instrument: il.instrument,
+        /* THE SETPOINT AND DIRECTION RIDE ALONG (#572). Without them a consumer can learn THAT
+         * an interlock exists but not WHERE it bites, so it reads a module-load table instead —
+         * which is how the board's startup-rate readout came to mark a 1.5 DPM rod-withdrawal
+         * block on a plant that has no such interlock at all (`_PROT` resolves to the pwr table
+         * whichever plant is running: the #557 class). A consumer reading these reads the LIVE
+         * plant. Copied, not referenced, like every other field here. */
+        setpoint: il.setpoint,
+        direction: il.direction,
         blocks: (il.blocks || []).slice(),
         withdrawal_only: !!il.withdrawal_only,
         message_learning: il.message_learning || '',

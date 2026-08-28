@@ -271,6 +271,28 @@
     src: 'Ginna TS Bases B 3.3.1 (ML20339A221), P-9 Permissive'
   };
 
+  /* ---- SOURCED: the two FLUX rod stops (#572) ------------------------------------------------
+   * WTSM 8.1 §8.1.7.3 (ML11223A252), Manual Rod Withdrawal Stops, items 1 and 2 verbatim:
+   * *"1. Power range high flux rod stop, 1/4, power range power > 103%, 2. Intermediate range
+   * high flux rod stop, 1/2, intermediate range power > 20%"*. Corroborated on the anchor plant
+   * — Ginna UFSAR ch7 (ML20339A027): *"initiated by one-out-of-four high nuclear flux of 103%;
+   * one-out-of-two high flux at 20% current equivalent power"* — and in WAT 05 Transients
+   * (ML11216A094): *"103 High power rod stop"*, *"20% current equivalent High flux rod stop"*.
+   *
+   * BOTH ARE EXPRESSED IN power_frac, deliberately. The IR figure is "20 % CURRENT EQUIVALENT
+   * power", and on this plant `ir_amps = 8.333e-3 * power_frac` (pwr2_true_state), so 20 %
+   * current-equivalent IS 1.667e-3 A — the same number `pwr_config`'s IR channel comment
+   * already records for the high-flux trip. Converting here would put a second copy of that
+   * mapping in a second file, which is the #557 class; the mapping stays in one place and this
+   * module reads the driver it already has. Channel logic (1/4, 1/2) collapses to one
+   * comparison on this plant's lumped flux signal, declared — the P-9/P-10 precedent. */
+  var ROD_STOP = {
+    kind: '[sourced]',
+    pr_frac: 1.03,
+    ir_frac: 0.20,
+    src: 'WTSM 8.1 §8.1.7.3 (ML11223A252); Ginna UFSAR ch7 (ML20339A027)'
+  };
+
   /* THE RESET PERMISSIVE (#512) [sourced — WTSM 12.3.2.3, ML11223A310]: the reset circuit's
    * time-delay relay "produces an output (energizes) some time after it is started (usually
    * 45 - 60 sec)"; the top of the band is used. SI reset additionally requires P-4 (the
@@ -705,9 +727,63 @@
     pr.dtApproach = dtNear;
     var dtApproach = dtNear;
 
+    /* THE OTHER TWO MANUAL ROD WITHDRAWAL STOPS (#572) [sourced] — WTSM 8.1 §8.1.7.3
+     * (ML11223A252) lists FOUR, and this module carried only the delta-T pair:
+     *
+     *   1. Power range high flux rod stop, 1/4, power range power > 103%,
+     *   2. Intermediate range high flux rod stop, 1/2, intermediate range power > 20%,
+     *   3. Overtemperature delta-T rod stop and runback, 2/4, ...
+     *   4. Overpower delta-T rod stop and runback, 2/4, ...
+     *
+     * Corroborated on the ANCHOR PLANT — Ginna UFSAR ch7 (ML20339A027): *"The overpower rod
+     * stops are initiated by one-out-of-four high nuclear flux of 103%; one-out-of-two high
+     * flux at 20% current equivalent power; two-out-of-four high overtemperature delta T at 3%
+     * of rated loop T below trip setpoints; and high overpower delta T at 3% of rated"* — and
+     * again in WAT 05 Transients (ML11216A094): *"20% current equivalent High flux rod stop"*,
+     * *"103 High power rod stop"*.
+     *
+     * WHAT THIS REPLACES. #572 was filed as "the 1.5 DPM STARTUP-RATE rod withdrawal block does
+     * not exist and the board draws a red band for it". The evidence pass found no such stop in
+     * the corpus at all — the 1.5 DPM figure is the retired plant's and is unsourced — while two
+     * REAL stops were genuinely missing. So the band goes and these arrive; building the filed
+     * number would have shipped an unprototypical interlock behind a sourced-looking citation.
+     *
+     * THE INTERMEDIATE-RANGE ONE IS BLOCKABLE, and that is what makes it safe as well as right.
+     * [sourced] Ginna TS Bases B 3.3.1 (ML20339A221) on the IR function: *"This Function may be
+     * manually blocked by the operator when two-out-of-four power range channels are greater
+     * than approximately 8% RTP (P-10 setpoint). Above the P-10 setpoint, the Power Range
+     * Neutron Flux-High trip provides core protection for a rod withdrawal accident."* So it
+     * rides the SAME operator block `hi_flux_lo` does — one lever, the one the power-ascension
+     * procedure already calls for — and a plant that ascended through P-10 has it requested.
+     * Measured: both shipped at-power ICs boot with `blockLowFlux` true, so this asserts during
+     * an UNBLOCKED startup (where it is the lesson) and is gated at power (where it would
+     * otherwise stand for ever, because ir_amps saturates its range top by ~24 % power).
+     *
+     * 20 % CURRENT EQUIVALENT IS 1.667e-3 A ON THIS PLANT, and that is not a new number:
+     * `pwr2_true_state` computes ir_amps = 8.333e-3 * power_frac, and `pwr_config`'s IR channel
+     * comment already records "1.67e-3 ≈ 20 %" for the high-flux trip. Expressed here in
+     * power_frac, which is the driver the rest of this module reads — the amps mapping is
+     * linear and lives in one place, so a second copy of it here would be the #557 class. */
+    var prHiFluxStop = drivers.power_frac >= ROD_STOP.pr_frac;
+    var irHiFluxStop = drivers.power_frac >= ROD_STOP.ir_frac && !blockEffective;
+
     return {
       functions: out,
-      rod_stop: dtApproach,
+      /* ONE SIGNAL, FOUR CONTRIBUTORS — the caller inhibits OUTWARD motion on it and nothing
+       * else, which is the source's own scope: *"These interlocks or rod stops only prevent
+       * outward rod motion. The rods can always be inserted into the core."* The delta-T pair
+       * additionally drives the runback, which is why `runback` stays the delta-T signal alone
+       * and does NOT gain the flux stops — a flux rod stop has no runback in any source. */
+      rod_stop: dtApproach || prHiFluxStop || irHiFluxStop,
+      /* WHICH one is standing, so a surface can say so rather than lighting a generic lamp.
+       * The board's rod-stop annunciators are per-cause (#311) and a lumped boolean would make
+       * the IR one — the only stop a player meets during a startup — indistinguishable from the
+       * delta-T pair they meet at power. */
+      rod_stop_causes: {
+        delta_t: dtApproach,
+        pr_high_flux: prHiFluxStop,
+        ir_high_flux: irHiFluxStop
+      },
       runback: dtApproach,
       reactor_trip: pr.reactor_trip,
       si: pr.si,
@@ -763,6 +839,9 @@
     OTDT: OTDT,
     RPS: RPS, ESFAS: ESFAS, SGLL: SGLL, DELAY: DELAY, LEADLAG: LEADLAG, P10: P10, P7: P7,
     P11: P11, RESET: RESET,
+    /* the board reads ROD_STOP.pr_frac / ir_frac so its rod-stop marks come from the PLANT and
+     * not from a literal — the #572 defect was exactly a board band drawn from a fallback */
+    ROD_STOP: ROD_STOP,
     PSIA_PER_MPA: PSIA_PER_MPA,
     functions: functions, leadLag: leadLag,
     createProtection: createProtection, stepProtection: stepProtection, reset: reset

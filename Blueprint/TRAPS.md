@@ -214,3 +214,31 @@ than the oldest by date.
   was written for, and the DATA the seam hands across is empty or absent.** A grep for
   `config.trips`, `config.interlocks`, `config.actuations` and `config.runbacks` — all four
   emptied for PWR2 by `getProtectionConfig` — is the cheap way to find the rest.
+
+## Evicted 2026-08-28b (a THEMES-rotation eviction — the #557 bullet, out for #572's)
+
+Not a standing-list eviction; the standing list is at its 25-bullet cap. The incoming #572
+bullet is an INSTANCE of this one — a board reading a constant that is right for a different
+plant — so the lesson is not lost by the rotation, only its three worked measurements are, and
+they are here.
+
+- **A constant that is RIGHT for one plant is a second copy, and it goes wrong silently the
+  day the plant changes** (2026-08-27, #557/#556/#561). Three board indications were still the
+  retired engine's: the AFW gauge read **7.40×** the delivered flow, the pressurizer tile drew
+  its scram edge at 100 % on a plant that trips at **87 %** and a second red band at 12 % for a
+  trip it does not carry, and the DNB gauge went red **356 s** before the trip with 13.70 margin
+  points standing. Fix: the plant publishes the number, the consumer reads it — an engine-key
+  branch would have re-armed the same rot. Two of the three were invisible because the board is
+  engine-agnostic by design and nothing cross-checked a RENDERED value against the plant.
+**Standing procedure — not part of the rotation above; these do not expire.** One trap per entry.
+
+  **Its instruction is carried forward by #572's bullet**, which is the fourth instance of the
+  same shape: `_PROT` in `pwr_board_wiring` resolves at module load to the pwr protection table
+  WHICHEVER plant is running, so the startup-rate readout drew the retired plant's 1.5 DPM
+  rod-withdrawal band on a plant with no such interlock. Fixed the way this bullet prescribes —
+  the plant publishes the number (the kernel's interlock state now carries each setpoint) and
+  the consumer reads it, with no band at all where the plant has no interlock.
+
+  **What is still open and is this entry's own**: `_PROT.trips` and `_PROT.alarms` have the same
+  module-load shape and have NOT been audited. #572 fixed the one consumer that was measured
+  wrong.

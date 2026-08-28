@@ -94,7 +94,7 @@ FISSION HEAT (core)
 | **RPS (Reactor Protection)** | SCRAM on trip setpoints (reads instruments) |
 | **ESF arms (HPI, AFW, RHR)** | AUTO or MANUAL; manual action disarms AUTO until re-armed |
 | **Alarms** | Annunciate before / with trips; read instruments only |
-| **Interlocks** | e.g. rod withdrawal blocked on high Startup Rate (SUR) |
+| **Interlocks** | e.g. rod withdrawal blocked by a rod stop (high flux, or ΔT margin) |
 
 ---
 
