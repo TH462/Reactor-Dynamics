@@ -394,14 +394,11 @@ Measured AGAIN 2026-08-28: a whole bullet of seven, all closed. Run the query.
   across all four presets; Mode 4's feed train and code safeties were multiplied by nought) and
   **#542** (§97 — those safeties are now the STAGGERED bank Ginna sources: one valve at 1085 psig,
   three at 1140, and no more parking 21 psi under its own setpoint).
-  **The STEAM-GENERATOR cluster is CLOSED** (#540/#549/#541/#562, §99): the sink's two walls
-  each hold a MASS and an ENERGY limiter now, aux feed has the flow control valves the contract
-  had been describing all along, and its STOP secures BOTH pumps. **The TURBINE cluster too**
-  (#558/#551/#559/#567/#560, §100): nothing un-latched the turbine, so one scram ended generation
-  for the session; it LATCHES now and refuses BY NAME instead of being overwritten. A refused
-  board press also reaches the screen (#558 is the mechanism behind every dead-button report), no
-  live control can only throw, and a lost condenser stops reading better than a healthy one.
-  **#570** then gated the prose/plant seam both clusters came through — two new runners, §101.
+  **The STEAM-GENERATOR and TURBINE clusters are CLOSED** (#540/#549/#541/#562, §99;
+  #558/#551/#559/#567/#560, §100): the sink has mass AND energy limiters, aux feed has its
+  throttle and a STOP that secures both pumps, the turbine LATCHES and refuses BY NAME, and a
+  refused board press reaches the screen — #558 is the mechanism behind every dead-button
+  report. **#570** then gated the prose/plant seam both came through, two runners, §101.
   **#545 CLOSED** (§102): the rods were the last trip consumer on the latch's rising EDGE, so
   holding WITHDRAW after a scram took the core back to 61.18 % with SCRAMMED lit everywhere —
   level-held now, both banks both ways [sourced: open trip breakers cut CRDM power], making an
@@ -415,6 +412,10 @@ Measured AGAIN 2026-08-28: a whole bullet of seven, all closed. Run the query.
   pressure, the containment carries its air's heat capacity, the relief's energy leaves once and
   lands at its own enthalpy, the leak gauge separates 2.4 from 2,117 gpm, and an unmitigated
   loss of heat sink ends HELD at ~105 min (0.14 GJ discarded vs 55.4) instead of immortal.
+  **The PRESSURIZER OPERATOR SURFACE too** (#552/#538/#537, §106): the PORV lamp shows the
+  operator's demand, the heater box reads back what you type (40 % → 40 %, was 9 %), and
+  spray-with-pumps-stopped is a DECLARED stand-in (ruled; quoted in §106.3) for the aux spray
+  this board has no control for, not an arbitrary flow literal.
   Rest of #535–#566 untouched; `gh issue list` is the authority.
 - **RBMK and BWR** — on hold, and the source of most remaining backlog. Do not touch.
 

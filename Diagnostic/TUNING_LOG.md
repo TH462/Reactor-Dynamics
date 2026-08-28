@@ -29,6 +29,54 @@ and the user-visible summary in `CHANGELOG.md`. This file points at those and tr
 
 ---
 
+## Session log — 2026-08-28-develop-e (#552/#538/#537 — the three pressurizer controls that lied about themselves)
+
+The #534 hunt's pressurizer operator surface, in one change. Full write-up with every number:
+`Blueprint/PWR2_VALIDATION.md` §106. This is the continuity note.
+
+- **#552** — `porv_commanded_open` published the AUTO controller's demand only, so a hand-opened
+  PORV blew **1137 psi (7.84 MPa)** out of the RCS with the lamp, the PORV OPEN annunciator and
+  `porv_demand` all reading CLOSED, and the Indications pane flagging a permanent divergence on a
+  healthy instrument. Both publish sites union the operator now; `'shut'` → `'closed'` (contract).
+- **#538** — manual heater demand addressed the proportional bank, readback was of the total, one
+  board widget did both: 40 % read back 9.23 %, and MANUAL (which re-sends the readback) walked
+  14.45 → 0.04 kW in four presses. One currency now; the `=== 1` float cliff (4.34× across
+  0.1 points) is gone; the hard-coded 157.8 is derived. 40 → 40.000, press is a fixed point.
+- **#537** — the spray gate was `mdot_loop > 100`, an untagged literal that is not the pump: the
+  whole natural-circulation band (to 244.5 kg/s) sprayed, giving **639.7 psi (4.41 MPa)** free in a
+  blackout. *(OWNER RULING, 2026-08-28: "Leave the spray working during a blackout to cover the
+  lack of an aux spray. Declare the deviation.")* — so the departure is now DECLARED
+  (`rcp_gate_enforced: false` beside a `needs_rcp` that still states the physics), and the arbitrary
+  flow threshold is gone.
+- **Adjacent**: `set_spray` never read the `{open}` key `Manuals/03` §18 documents and the Mode 1
+  procedure sends — it fell through to AUTO. Fixed; that is the #562 class and exactly the blind
+  spot `run_manual_commands` names in its own header.
+
+**Gates:** `run_pwr2_shell` 121→128 (42/42 mutations), `run_pwr2_pressurizer` 85→86 (41/41),
+engine 111, board 41, kernel 37, true_state 71, manual rev/units/commands green. BASELINES updated.
+
+**Traps worth carrying:**
+1. **A fixture that feeds a gate its DEGENERATE input tests nothing and its mutation lies.** All
+   three spray-needs-RCP checks passed `mdot = 0` into a stub with no pump state, so they passed
+   under any gate at all — flow threshold, pump predicate, or `1e6` — and the mutation deleting the
+   line was "caught" by them while being unable to tell a correct gate from the shipped wrong one.
+   The defect lived in the band the fixture never visited.
+2. **Rebuilding a hollow check can fix the wrong half.** #510 had already rebuilt the PORV lamp
+   check once, to assert "closed over a genuinely OPEN valve" — still an identity, because the
+   operator's open never reached the lamp. The discriminator was the DEMAND, not the valve.
+3. **A static source-scan check cannot be mutation-tested by an in-memory harness** — it reads the
+   file from disk. Recorded in the file beside it so the missing mutation reads as a decision.
+4. **The measured answer can invert the ruling's intent, and that is worth going back with**: the
+   aux-spray fallback would have made a blacked-out plant depressurize FASTER than a healthy one
+   (53 % of the flow, ~201 % of the duty, because 131 °F charging water condenses harder than
+   550 °F loop water) on top of a CVCS energy double-count. Measuring before building turned a
+   ruling into a better one.
+
+**Open out of this session:** the CVCS double-count for aux spray is real but unreachable (no shell
+door) — worth filing if an aux-spray control is ever added.
+
+---
+
 ## Session log — 2026-08-28-develop-d (#543/#544/#566/#563.5/#550/#535 — the casualty endgame tells the truth)
 
 The largest open #534 cluster, six defects, one seam order: relief booking → containment energy

@@ -7114,3 +7114,111 @@ read a broken 68 °F because their hand-built comparison references the renamed 
 SHIPPED column is the measurement; and `measure_pwr2_ab.js:65` still classes `leak_flow` PROXY
 (not in the aggregate gate, #513 ruling) — it can be re-classed to a translation now that the
 currencies agree.
+
+## 106. #552 + #538 + #537 — THE THREE CONTROLS THAT LIED ABOUT THEMSELVES — 2026-08-28
+
+The pressurizer operator surface: a lamp that ignored the operator, a percent box that read back a
+quarter of what was typed, and a spray gate that was never the thing it claimed to be. All three
+are on the controls a player touches, all three were invisible to a green suite, and in two of the
+three **the manual prose was already right and the plant was wrong** — the reverse of the usual
+seam failure.
+
+### 106.1 #552 — the PORV demand channel dropped the operator's own hand
+
+`ex.porv_commanded_open` published `!!e.pz.porvOpen`, which is only the automatic pressure
+controller's demand; the operator's lever is `pz.porvManual`. The line's own comment claimed
+"the controller/operator command". Measured on a healthy plant with nothing injected:
+`open_porv_manual` took RCS pressure 2215.1 → 1078.1 psia (15.27 → 7.43 MPa) over 300 s — **1137
+psi (7.84 MPa)** — while the lamp read `closed`, `control_state.porv_demand` read `'shut'`, and the
+PORV OPEN annunciator (live for PWR2, riding `getProtectionConfig`'s alarm map by reference) never
+came in. The Indications pane then flagged a permanent indicated-vs-true divergence, i.e. the UI
+accused a healthy instrument of lying.
+
+Both publish sites now union the operator's demand. A second, separate defect on the same line went
+with it: PWR2 emitted `'shut'` where `CONTEXT.md` §6.3 and `WIRING_REFERENCE` both say
+`"open" | "closed"`. After: lamp `open`, demand `open`, truth `true`.
+
+**The covering gate was hollow, and the rebuild is the lesson.** `run_pwr2_shell`'s
+`porv_indicator_stuck_closed` check asserted "the lamp reads closed while the valve is genuinely
+open" — which was an IDENTITY, because `open_porv_manual` never reached the lamp at all. Measured:
+with the injection removed, both central clauses still held. Its predecessor had been rebuilt once
+already for exactly this class and fixed the wrong half. What separates the deception from the
+plant is the DEMAND, so the clause now requires `porv_demand === 'open'` alongside the closed lamp,
+and a new honest-lamp check — no injection, hand-open, everything reads open — makes the injection
+load-bearing. Three mutations added; the wire had **none** before, which is how the operator stayed
+missing from it.
+
+### 106.2 #538 — one widget, two currencies
+
+`drivers.heaters_manual` scaled the 36.4 kW proportional bank alone, with the 121.4 kW backup group
+bolted on at `heaters_manual === 1` — a strict float equality. The shell published
+`heater_power_pct` against the 157.8 kW total. The board's percent box is ONE widget doing both, so
+it read back 23 % of what was typed, and its MANUAL button — which captures the readback as the new
+demand — was a ratchet. Measured: **40 % → 9.23 → 2.13 → 0.49 → 0.11 %** in four presses,
+14.45 kW to 0.04 kW. The cliff measured **4.34×** across a 0.1-point move (0.999 → 36.364 kW,
+1.000 → 157.800 kW). The same break made the automation's disengage — whose own hint promises
+"Manual = both freeze at their current output" — drop 36.400 kW to 8.397 kW.
+
+MANUAL is now a fraction of the installed total, delivered continuously; AUTO's sourced two-bank
+ladder is untouched (WTSM 3.2's 18/414 kW proportional + 60/1380 kW backup split, and Ginna UFSAR
+ch7's pressure/level contactor logic). The continuity is a declared simplification and a small one:
+the backup group is 60 discrete heaters, ~1.7 % of total per element. The shell's hard-coded 157.8
+became a derivation from the two constants, so the drift is structurally impossible rather than
+merely gated. Measured after: 40 → 40.000 %, 90 → 90.000, 99 → 99.000; the MANUAL press is a fixed
+point; the hand-back moves < 0.001 kW; 99.9 % and 100 % now differ by 0.158 kW instead of 121.4.
+
+### 106.3 #537 — the spray gate was never the pump, and the departure is now declared
+
+`if (SPRAY.needs_rcp && !(sys.mdot_loop > 100)) sprayFrac = 0;` — an untagged 100 kg/s literal on
+LOOP FLOW, in a module whose own `SPRAY` block says "Spray needs a running RCP: the driving head is
+the loop dP the pump makes". Flow is not the pump: this plant's natural-circulation band runs to
+244.5 kg/s and the RHR floor adds its own, so the whole band sprayed at full ladder authority.
+Measured on the shipped build, station blackout with spray demanded: **639.7 psi (4.41 MPa)** of
+free depressurization by 620 s against a no-demand control, with loop flow asymptoting just above
+the literal — the window never closed.
+
+The physics is not in doubt. Ginna TS Bases Rev 101 (ML20339A221), PORV Applicable Safety Analyses:
+*"A loss of offsite power is assumed to accompany the event, and thus, normal pressurizer spray is
+unavailable to reduce RCS pressure. The PORVs are assumed to be used for RCS depressurization."*
+A real unit answers that with auxiliary spray (WTSM 3.2 — "during cool down if the reactor coolant
+pumps are not operating").
+
+**This board has no auxiliary-spray control and will not be given one** *(OWNER RULING, 2026-08-28:
+"Leave the spray working during a blackout to cover the lack of an aux spray. Declare the
+deviation.")*, so the one spray lever stands in for it and the departure is DECLARED rather than
+accidental. `needs_rcp` keeps stating the physics; a new `rcp_gate_enforced: false` states what the
+sim does about it, and flipping it is one line the day an aux-spray control exists.
+
+**Routing the lever to the aux path instead was costed and rejected**, and the numbers are why:
+aux is 29.4 gpm (1.83 kg/s) of ~131 °F (55 °C) charging water for ~8.74e6 BTU/hr (2,562 kW) against
+main's 73.9 gpm (3.45 kg/s) of ~550 °F (287.8 °C) water for ~4.34e6 BTU/hr (1,273 kW) — **53 % of
+the flow but about 201 % of the duty**, so a blacked-out plant would have depressurized FASTER than
+a healthy one. Worse, that 2,562 kW is energy the CVCS charging stream is already booked for at the
+cold leg, i.e. a double count that is unreachable today and would have been promoted to the board.
+The main-path stand-in is the conservative half of the trade at roughly half the authority.
+
+The gate that covered this could not have caught it: all three spray-needs-RCP checks passed
+`mdot = 0` into a `stub()` with no pump state at all, so they passed under any gate whatsoever, and
+the mutation deleting the line was caught by those same zero-flow fixtures. `stub()` now takes the
+breaker explicitly (absent = closed, mirroring the `ac_available === false` convention), the checks
+state the declared departure out loud, and a new check pins the enforced gate at the defect's own
+state — breaker open at 200 kg/s of natural circulation gives no spray, breaker closed at the same
+flow gives spray, which the retired literal could not tell apart.
+
+### 106.4 Adjacent — `set_spray` dropped the payload key its own manual documents
+
+`Manuals/03` §18 lists `set_spray {open}` and the Mode 1 pressure-control procedure sends exactly
+that; the mapper read `power_pct`/`pct`/`auto`/`value` and not `open`, so the step that says "open
+the spray" fell through to `null` and **selected AUTO**. This is precisely the blind spot
+`run_manual_commands` names in its own header — it can check that an action exists, never that the
+plant reads the key the manual prints (the #562 class). One line, plus a check and a mutation.
+
+### 106.5 The bill
+
+`run_pwr2_shell` 121 → 128 (42/42 mutations), `run_pwr2_pressurizer` 85 → 86 (41/41),
+`run_pwr2_engine` 111, `run_pwr2_board` 41, `run_pwr2_kernel` 37, `run_pwr2_true_state` 71 — all
+green. One check is deliberately mutation-free and says so: the anti-drift scan for the retyped
+157.8 reads the file from disk while the harness mutates an in-memory copy, so a replay can never
+move it; it was hand-verified in both directions instead. `Manuals/03` §5.3 and §8.1 changed (the
+spray rows the ruling makes false) and rode the pending Rev 17 row; §5.2 and §11.0 did NOT — that
+prose was already true, and the plant was brought up to it.

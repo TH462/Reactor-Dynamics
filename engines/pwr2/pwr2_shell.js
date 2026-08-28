@@ -339,6 +339,14 @@
     },
     set_spray:        function (e, c) {
       var p = c.power_pct !== undefined ? c.power_pct : c.pct;
+      /* `open` IS A DOCUMENTED PAYLOAD KEY and was being dropped (#537 adjacent, 2026-08-28):
+       * Manuals/03's command table lists `set_spray {open}` and the Mode 1 pressure-control
+       * procedure sends exactly that — which fell through to `null` and selected AUTO, so the
+       * step that says "open the spray" handed control back to the controller instead. Same
+       * class as the #506.1 payload-key defect three lines up, and precisely the blind spot
+       * run_manual_commands names in its own header: it can check that an action EXISTS, never
+       * that the plant reads the key the manual prints. */
+      if (p === undefined && c.open !== undefined) p = c.open ? 100 : 0;
       var v = p !== undefined ? p / 100 : (c.auto ? null : c.value);
       EN.command(e, 'pzr_spray_manual', v === undefined ? null : v);
     },
@@ -940,9 +948,15 @@
     ex.boron_sample = this.eng.cv.sample_ppm;
     ex.boron_sample_pending = this.eng.cv._sample_timer > 0;
     ex.boron_sample_seq = this.eng.cv.sample_seq || 0;
-    /* COMMANDED, not the disc: pz.porvOpen is the controller/operator command and porvStuck
-     * stays out of it — this is the TMI-2 indicator lie, kept exactly (HR1) */
-    ex.porv_commanded_open = !!e.pz.porvOpen;
+    /* COMMANDED, not the disc: BOTH demands — the controller's ladder (pz.porvOpen) and the
+     * OPERATOR's lever (pz.porvManual) — while porvStuck stays out of it, which is the TMI-2
+     * indicator lie kept exactly (HR1). The comment used to say "controller/operator" while
+     * the code carried only the controller (#552): a hand-opened PORV blew 1,145 psi (7.90 MPa)
+     * out of the RCS with this lamp, the PORV OPEN annunciator and control_state.porv_demand
+     * all reading CLOSED, and the Indications pane flagging a permanent divergence on a plant
+     * whose instruments were fine. The stuck disc is what this channel must MISS; the
+     * operator's own hand is not. */
+    ex.porv_commanded_open = !!(e.pz.porvOpen || e.pz.porvManual);
     /* PWR2's own level-program anchor, not the old engine's computed _tavg_fp */
     ex.tavg_fp = root.RD.pwr2.pressurizer.LEVEL.tavg_full_c;
     /* …and the program LINE itself, so the deviation gauge measures against the plant's own
@@ -1281,9 +1295,19 @@
           speed: e.rodSpeedSel || 'normal', scrammed: !!ts.scrammed,
           insertion_limit_steps: null, at_insertion_limit: false },
       ],
-      porv_demand: e.pz.porvOpen ? 'open' : 'shut',
+      /* the OPERATOR's lever counts as a demand here too (#552 — same union as the lamp
+       * above), and the word is the CONTRACT's: §6.3 and WIRING_REFERENCE both say
+       * "open" | "closed", while this line shipped "shut" — a second, separate divergence
+       * from the retired plant on the same line */
+      porv_demand: (e.pz.porvOpen || e.pz.porvManual) ? 'open' : 'closed',
       porv_block_open: e.pz.blockOpen !== false,
-      heater_power_pct: ts.pzr_heater_kw !== undefined ? 100 * ts.pzr_heater_kw / 157.8 : 0,
+      /* DERIVED, not retyped (#538): this was the literal 157.8 — a second written-down copy
+       * of the two bank constants, the protection-cadence failure mode. Deriving it makes the
+       * drift structurally impossible instead of merely gated, and it is now the SAME currency
+       * the manual demand speaks, so the round trip is the identity and the board's MANUAL
+       * capture is bumpless. */
+      heater_power_pct: ts.pzr_heater_kw !== undefined
+        ? 100 * ts.pzr_heater_kw / (PZ.HEATERS.prop_kW + PZ.HEATERS.backup_kW) : 0,
       spray_valve_pct: ts.spray_flow_pct !== undefined ? ts.spray_flow_pct : 0,
       heater_auto: e.pzDrivers.heaters_manual === undefined,
       spray_auto: e.pzDrivers.spray_manual === undefined,

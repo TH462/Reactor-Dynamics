@@ -145,7 +145,42 @@
      * Spray needs a running RCP: the driving head is the loop dP the pump makes (WTSM 3.2,
      * and #472's measured lesson). Auxiliary spray from CVCS is stage 2. */
     max_kgs: 3.45,
+    /* PHYSICALLY TRUE, AND DELIBERATELY NOT ENFORCED — a DECLARED DEPARTURE (#537).
+     *
+     * The physics is not in doubt, and the source is explicit. Ginna TS Bases Rev 101
+     * (ML20339A221), PORV Applicable Safety Analyses: "A loss of offsite power is assumed to
+     * accompany the event, and thus, NORMAL PRESSURIZER SPRAY IS UNAVAILABLE to reduce RCS
+     * pressure. The PORVs are assumed to be used for RCS depressurization." A real unit
+     * answers that with AUXILIARY spray — WTSM 3.2: "auxiliary spray to the vapor space of
+     * the pressurizer during cool down if the reactor coolant pumps are not operating."
+     *
+     * THIS PLANT HAS THE AUX PATH IN THE ENGINE BUT NO CONTROL FOR IT ON THE BOARD, and the
+     * owner has ruled against adding one *(OWNER RULING, 2026-08-28: "Leave the spray working
+     * during a blackout to cover the lack of an aux spray. Declare the deviation."; and
+     * earlier the same day: "Only have one set of spray controls... I don't want to add any
+     * more controls to the UI.")*. So the ONE spray lever keeps working with the pumps
+     * stopped, standing in for the auxiliary spray the player cannot reach.
+     *
+     * The stand-in is CONSERVATIVE, which is why it is tolerable: main spray delivers
+     * 73.9 gpm (3.45 kg/s) of ~550 degF (288 degC) cold-leg water for about 4.34e6 BTU/hr
+     * (1,273 kW) of condensing duty, while real auxiliary spray is 29.4 gpm (1.83 kg/s) of
+     * ~131 degF (55 degC) charging water for about 8.74e6 BTU/hr (2,562 kW) — roughly HALF
+     * the authority the modelled aux path would give, because cold charging water condenses
+     * far harder per pound. Routing the lever to the aux path instead was costed and
+     * rejected: it would have made a blacked-out plant depressurize FASTER than a healthy
+     * one, and its 2,562 kW is energy the CVCS charging stream is already booked for at the
+     * cold leg (pwr2_cvcs), i.e. a double count.
+     *
+     * WHAT WAS ACTUALLY WRONG, and is fixed: the gate read `!(sys.mdot_loop > 100)` — an
+     * untagged flow threshold nobody derived, which is not the pump and not this departure
+     * either. It let spray die at an arbitrary 6.1 % of rated flow while the whole
+     * natural-circulation band (up to 244.5 kg/s here) sprayed at full ladder authority. The
+     * departure is now DECLARED and total rather than accidental and partial.
+     *
+     * `needs_rcp` states the PHYSICS and stays true; `rcp_gate_enforced` states what the sim
+     * does about it. Give the board an auxiliary-spray control and this flips to true. */
     needs_rcp: true,
+    rcp_gate_enforced: false,
     /* AUXILIARY SPRAY (stage 2c, 2026-08-19) — WTSM 3.2: "A flow path from the CVCS to the
      * pressurizer spray line is also provided. This connection provides auxiliary spray to the
      * vapor space of the pressurizer during cool down if the reactor coolant pumps are not
@@ -662,10 +697,27 @@
      * whatever the demand or the shed state. A third seat, deliberately distinct from the
      * operator's manual override and the shed latch: a failure is not a lineup, and clearing
      * it must not touch either (the #200 split). */
+    /* ⚠ THE MANUAL DEMAND SPANS THE INSTALLED TOTAL; AUTO KEEPS THE SOURCED TWO-BANK LADDER
+     * (#538, 2026-08-28). The operator's 0..1 used to address the PROPORTIONAL bank alone,
+     * with the backup group bolted on at `heaters_manual === 1` — a strict float equality, so
+     * 0.999 delivered 36.36 kW and 1.0 delivered 157.80, a 4.34x cliff across a 0.1-point
+     * move. The shell publishes heater_power_pct against the TOTAL, and the board's percent
+     * box is ONE widget doing both, so the readback was 23 % of what the operator typed and
+     * its MANUAL button — which re-sends the readback as the new demand — walked the bank
+     * down: measured 14.45 -> 3.36 -> 0.78 -> 0.18 -> 0.04 kW in four presses. The same
+     * currency break made the automation's "bumpless" hand-back (pwr_control.js's pzr_pressure
+     * disengage, whose own hint promises the heaters freeze at their current output) drop
+     * 36.4 kW to 8.4 kW.
+     * MANUAL is therefore fraction-of-total, delivered continuously. That continuity is a
+     * DECLARED simplification and a small one: the sourced backup group is 60 discrete
+     * heaters (WTSM 3.2 — 18 proportional/414 kW, 60 backup/1380 kW), so its real granularity
+     * is ~1.7 % of the installed total. AUTO is untouched and stays prototypical: the
+     * proportional bank modulates and the backup group is a latched contactor on the sourced
+     * pressure/level signals (Ginna UFSAR ch7). */
     var Q_heat_kW = (pz.heatersShed || drivers.heaters_failed) ? 0
-                  : heatFrac * HEATERS.prop_kW +
-                    ((pz.backupOn && drivers.heaters_manual === undefined) ||
-                     drivers.heaters_manual === 1 ? HEATERS.backup_kW : 0);
+                  : drivers.heaters_manual !== undefined
+                    ? heatFrac * (HEATERS.prop_kW + HEATERS.backup_kW)
+                    : prop * HEATERS.prop_kW + (pz.backupOn ? HEATERS.backup_kW : 0);
 
     var sprayAuto = clip((err_psi - CONTROL.spray_start_psi) /
                          (CONTROL.spray_full_psi - CONTROL.spray_start_psi), 0, 1);
@@ -677,7 +729,12 @@
      * engine's spray_stuck comment names). Still needs RCP head and steam to condense. */
     pz.sprayStuck = !!drivers.spray_stick;
     if (pz.sprayStuck) sprayFrac = 1;
-    if (SPRAY.needs_rcp && !(sys.mdot_loop > 100)) sprayFrac = 0;   /* no RCP head, no spray */
+    /* THE PUMP, NOT THE FLOW — and the gate is DECLARED OFF (#537, see the SPRAY block). The
+     * predicate that matters is the BREAKER (`sys.pumpTripped`), never loop flow: natural
+     * circulation and the RHR floor both carry flow with no pump making head, which is the
+     * same trap pwr2_shell's `rcp_running` comment records. While `rcp_gate_enforced` is
+     * false the lever stands in for the auxiliary spray this board has no control for. */
+    if (SPRAY.needs_rcp && SPRAY.rcp_gate_enforced && sys.pumpTripped === true) sprayFrac = 0;
     if (pz.waterSolid) sprayFrac = 0;                               /* no steam to condense */
     /* Auxiliary spray: operator-commanded, RCP-independent (see the SPRAY block) — but NOT
      * power-independent (#510 H-4): the CHARGING PUMPS drive it, and they are vital loads

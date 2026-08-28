@@ -250,7 +250,16 @@ injection does not put them back**.
 |------|--------|
 | **AUTO** | Spray when pressure above setpoint band |
 | **Manual open / %** | Condenses steam — **lowers** pressure |
-| **Requires** | RCP flow (no flow → no effective spray) |
+| **Requires** | Nothing on this simulator — see the note |
+
+**DECLARED DEPARTURE — spray keeps working with the Reactor Coolant Pumps (RCPs) stopped.**
+On a real unit the spray line is driven by the pumps' own differential head, so a loss of
+offsite power takes normal spray away and the operator depressurizes with the Power Operated
+Relief Valve (PORV) instead. A real unit answers that with **auxiliary spray** from the
+charging pumps, which this board has no control for — so the one spray control keeps working
+without the pumps, standing in for it. The stand-in is the conservative direction: it gives
+about **half** the condensing duty real auxiliary spray would, because 550 °F (287.8 °C)
+cold-leg water condenses far less per pound than 131 °F (55 °C) charging water.
 
 **Use to LOWER pressure** carefully. Return to AUTO when on target.
 
@@ -402,7 +411,7 @@ displayed target snap to the lab number, so the next dose is computed from reali
 
 | Item | Detail |
 |------|--------|
-| **Running** | Forced flow; spray works; coastdown on trip |
+| **Running** | Forced flow; coastdown on trip (spray works either way on this simulator — §5.3) |
 | **Trip** | Flow falls; low-flow protection SCRAMs; natural circulation for decay heat |
 | **Run / Stop** | **Run** starts the pumps (`set_rcp{running:true}`) and clears any RCP-trip failure; **Stop** secures them (`set_rcp{running:false}`). Starting the RCPs is the first step of the Mode 5→3 heatup and the Mode 5→1 startup. |
 | **Modeling note** | Single representative pump. (Blocked while the station is blacked out — no AC.) |

@@ -62,11 +62,16 @@ function runSuite(RD, rec, quiet) {
   /* A stub plant at an exact pressure — stepPressurizer reads only P, node h and mdot_loop,
    * so the ladder can be exercised at the psi it actuates at rather than hoping a transient
    * passes through it. */
-  function stub(P_mpa, mdot) {
+  function stub(P_mpa, mdot, pumpTripped) {
+    /* pumpTripped is THIRD and explicit (#537): the spray gate's predicate is the pump
+     * BREAKER, and a fixture that leaves it undefined tests neither state on purpose.
+     * Absent means the breaker is CLOSED, matching createPlant's own `!!opts.pumpTripped`
+     * -- the mirror of the `ac_available === false` convention this module uses for power. */
     return { P: P_mpa,
              nodes: [{ id: 'hot_leg', h: W.h_l(310, P_mpa) },
                      { id: 'cold_leg', h: W.h_l(288, P_mpa) }],
-             mdot_loop: mdot === undefined ? 1630 : mdot };
+             mdot_loop: mdot === undefined ? 1630 : mdot,
+             pumpTripped: pumpTripped === true };
   }
   function at(err_psi) { return 15.41 + err_psi / PSI; }
   /* drive a constructed vessel WATER-SOLID by hand: no steam, one liquid pool of subcooled
@@ -180,17 +185,48 @@ function runSuite(RD, rec, quiet) {
   ckT('+75 psi: spray full; +100: PORV OPEN',
       once(75).spray_frac >= 1 - 1e-9 && once(100.5).porv_open === true &&
       once(100.5).relief_kgs > 0, '');
-  ckT('spray needs a running RCP -- stopped loop, no spray at any error',
-      PZ.stepPressurizer(PZ.createPressurizer({}), stub(at(60), 0), DT, {}).spray_frac === 0,
-      'the driving head is the pump\'s (WTSM 3.2, #472\'s measured lesson)');
+  /* ⚠ THIS CHECK WAS TURNED AROUND (#537, 2026-08-28) — it used to assert "stopped loop, no
+   * spray", which was NEVER what the plant did: the gate read loop flow against an untagged
+   * 100 kg/s literal, and this fixture handed it exactly 0, so it passed under any gate at
+   * all and could not tell the shipped flow proxy from the pump predicate it claimed to be
+   * testing. Measured on the shipped build: a station blackout with spray demanded delivered
+   * full flow and 639.7 psi (4.41 MPa) of free depressurization, because coastdown and
+   * natural circulation sit ABOVE the literal.
+   * The behaviour is now a DECLARED DEPARTURE, ruled and documented in the SPRAY block: with
+   * no auxiliary-spray control on the board, the one spray lever keeps working with the pumps
+   * stopped, standing in for it at roughly half the authority real aux spray would give. So
+   * the claim here is the DEPARTURE, stated out loud — and the flag that would restore the
+   * physics is pinned beside it, so flipping it cannot go unnoticed. */
+  ckT('spray still delivers with the loop STOPPED -- the declared aux-spray stand-in (#537)',
+      PZ.stepPressurizer(PZ.createPressurizer({}), stub(at(60), 0, true), DT, {}).spray_frac > 0 &&
+      PZ.SPRAY.needs_rcp === true && PZ.SPRAY.rcp_gate_enforced === false,
+      'physics says needs_rcp (Ginna TS Bases: "normal pressurizer spray is unavailable" on a ' +
+      'loss of offsite power); the sim declares the gate unenforced because the board has no ' +
+      'aux-spray control -- flip rcp_gate_enforced when it gets one');
+  ckT('...and the gate, when enforced, reads the BREAKER and not the flow -- natural ' +
+      'circulation is not a pump',
+      (function () {
+        var saved = PZ.SPRAY.rcp_gate_enforced;
+        PZ.SPRAY.rcp_gate_enforced = true;
+        /* 200 kg/s is inside this plant's own natural-circulation band (up to 244.5 kg/s):
+         * the retired flow proxy sprayed here at full authority, the breaker does not */
+        var stopped = PZ.stepPressurizer(PZ.createPressurizer({}), stub(at(60), 200, true), DT, {});
+        var running = PZ.stepPressurizer(PZ.createPressurizer({}), stub(at(60), 200, false), DT, {});
+        PZ.SPRAY.rcp_gate_enforced = saved;
+        return stopped.spray_frac === 0 && running.spray_frac > 0;
+      })(),
+      'breaker open at 441 lb/s (200 kg/s) of natural circulation -> no spray; breaker closed ' +
+      'at the same flow -> spray. The retired 100 kg/s literal could not tell these apart');
   /* AUXILIARY SPRAY (stage 2c): the CVCS path that works EXACTLY when main spray cannot --
    * "auxiliary spray to the vapor space ... during cool down if the reactor coolant pumps are
    * not operating" (WTSM 3.2). Operator-commanded, never automatic. */
-  var rAux = PZ.stepPressurizer(PZ.createPressurizer({}), stub(15.41, 0), DT, { aux_spray: 1.0 });
+  var rAux = PZ.stepPressurizer(PZ.createPressurizer({}), stub(15.41, 0, true), DT,
+                                { aux_spray: 1.0, spray_manual: 0 });
   ckT('AUX spray condenses with the RCPs STOPPED -- the capability #472 measured missing',
-      rAux.spray_frac === 0 && rAux.aux_spray_frac === 1 && rAux.aux_spray_duty_kW > 1000,
+      rAux.aux_spray_frac === 1 && rAux.aux_spray_duty_kW > 1000,
       rAux.aux_spray_duty_kW.toFixed(0) + ' kW of VCT-cold condensing duty on ' +
-      rAux.aux_spray_kgs.toFixed(2) + ' kg/s -- main spray dead at zero loop flow');
+      rAux.aux_spray_kgs.toFixed(2) + ' kg/s -- roughly TWICE main spray\'s duty on 53 % of ' +
+      'its flow, which is why the #537 stand-in uses the main path and not this one');
   /* THE DUPLICATED CONSTANT, PINNED (the protection-cadence / MDOT_RATED pattern): aux capacity
    * is the CVCS charging maximum written down twice; the gate owns the consistency claim. */
   var auxTie = CV.CVCS.charging_max_gpm() * 6.30902e-5 *
@@ -245,9 +281,16 @@ function runSuite(RD, rec, quiet) {
       rSS.spray_frac === 1 && rSS.spray_stuck === true && rSS.spray_kgs > 0,
       rSS.spray_kgs.toFixed(2) + ' kg/s with the operator demanding 0 — the demand moves, ' +
       'the valve does not');
-  ckT('...and the stick still obeys physics: no RCP head, no spray',
-      PZ.stepPressurizer(PZ.createPressurizer({}), stub(15.41, 0), DT,
-                         { spray_stick: true }).spray_frac === 0, '');
+  ckT('...and the stick obeys the ENFORCED gate: breaker open, no spray (#537)',
+      (function () {
+        var saved = PZ.SPRAY.rcp_gate_enforced;
+        PZ.SPRAY.rcp_gate_enforced = true;
+        var r = PZ.stepPressurizer(PZ.createPressurizer({}), stub(15.41, 0, true), DT,
+                                   { spray_stick: true });
+        PZ.SPRAY.rcp_gate_enforced = saved;
+        return r.spray_frac === 0;
+      })(), 'a latched-open valve with no head passes nothing -- the failure is the VALVE, ' +
+            'not the demand (#200), so it must still bow to the physics gate when that is on');
   ckT('safeties open at 2500 psia and reseat 5 % lower, not at the lift point',
       (function () {
         var p = PZ.createPressurizer({});
@@ -715,8 +758,11 @@ var MUTATIONS = [
   ['the migration returns an old save unreconstructed',
    'if (!pz || pz.m_stm !== undefined) return pz;',
    'if (true) return pz;'],
-  ['spray ignores the RCP (a stopped loop sprays anyway)',
-   'if (SPRAY.needs_rcp && !(sys.mdot_loop > 100)) sprayFrac = 0;', ''],
+  ['the spray gate reads FLOW again instead of the breaker (#537 -- natural circulation sprays)',
+   'if (SPRAY.needs_rcp && SPRAY.rcp_gate_enforced && sys.pumpTripped === true) sprayFrac = 0;',
+   'if (SPRAY.needs_rcp && SPRAY.rcp_gate_enforced && !(sys.mdot_loop > 100)) sprayFrac = 0;'],
+  ['the DECLARED departure is silently reversed (#537 -- the stand-in disappears)',
+   '    rcp_gate_enforced: false,', '    rcp_gate_enforced: true,'],
   ['the heater FAILURE seat is severed (a failed bank keeps heating) -- #507 wave 6',
    'var Q_heat_kW = (pz.heatersShed || drivers.heaters_failed) ? 0',
    'var Q_heat_kW = pz.heatersShed ? 0'],

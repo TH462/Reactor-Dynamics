@@ -1056,8 +1056,17 @@ function runSuite(SH, rec, quiet, only) {
     eL.applyCommand({ action: 'open_porv_manual' });   /* the stick is a LATCH: it needs a lift */
     for (i = 0; i < 50; i++) eL.step(0.02);
     var tsL = eL.getTrueState();
+    /* ⚠ AND THE DECEPTION CLAUSE IS NOW LOAD-BEARING (#552, 2026-08-28). The rebuild above
+     * fixed the wrong half: "closed over a genuinely open valve" was STILL an identity here,
+     * because `open_porv_manual` never reached the lamp at all — measured, with this
+     * injection REMOVED the lamp read "closed" over porv_open true just the same, so the
+     * failure contributed nothing but its own bookkeeping. What separates the deception from
+     * the plant is the DEMAND: the operator asked for open, control_state says open, and the
+     * lamp still says closed. Remove the injection now and porv_demand's 'open' makes this
+     * clause fail, which is what the honest-lamp check below independently proves. */
     var lampOk = eL.instruments.reading.porv_indicator === 'closed' &&
                  tsL.porv_open === true &&
+                 eL.getControlState().porv_demand === 'open' &&
                  !!eL.instruments.failed.porv_indicator &&
                  eL.getActiveFailures().indexOf('instrument:porv_indicator') !== -1;
     eL.applyCommand({ action: 'clear_failure', failure_id: 'stuck_porv_open' });
@@ -1069,6 +1078,29 @@ function runSuite(SH, rec, quiet, only) {
        lampOk && !eL.instruments.failed.porv_indicator &&
        eL.getActiveFailures().indexOf('instrument:porv_indicator') === -1,
        'lamp "closed" over porv_open ' + tsL.porv_open + ' — the deception, not the healthy state');
+
+  /* THE HONEST LAMP (#552) — the case that could not exist before the fix, and the one that
+   * makes the deception above mean something. No failure injected: the operator opens the
+   * PORV by hand, and the demand-side surfaces must all say so. Shipped behaviour was lamp
+   * "closed" / porv_demand "shut" over a 1,145 psi (7.90 MPa) blowdown — a lie for free, on
+   * a plant whose instruments were healthy, which also made the Indications pane flag a
+   * permanent indicated-vs-true divergence and left the PORV OPEN annunciator dark. */
+  var eH = new SH.PWR2Engine({});
+  for (i = 0; i < 100; i++) eH.step(0.02);
+  eH.applyCommand({ action: 'open_porv_manual' });
+  for (i = 0; i < 50; i++) eH.step(0.02);
+  var tsH = eH.getTrueState(), csH = eH.getControlState();
+  ck('a hand-opened PORV reaches the LAMP and the demand readback — no failure injected, ' +
+     'so nothing here is allowed to lie',
+     eH.instruments.reading.porv_indicator === 'open' && csH.porv_demand === 'open' &&
+     tsH.porv_open === true && !eH.instruments.failed.porv_indicator,
+     'lamp ' + eH.instruments.reading.porv_indicator + ', porv_demand ' + csH.porv_demand +
+     ', truth ' + tsH.porv_open + ' — shipped: closed / shut / true');
+  ck('porv_demand speaks the CONTRACT\'s words ("open" | "closed", §6.3), not "shut"',
+     csH.porv_demand === 'open' &&
+     new SH.PWR2Engine({}).getControlState().porv_demand === 'closed',
+     'a shut valve reads "' + new SH.PWR2Engine({}).getControlState().porv_demand +
+     '" — the retired plant and WIRING_REFERENCE both say "closed"');
 
     /* the advanced panel's `value` key (latent fix 3) and the seal-leak slider (fix 2) */
     var eV = new SH.PWR2Engine({});
@@ -1217,6 +1249,65 @@ function runSuite(SH, rec, quiet, only) {
   }
 
   if (grp('A')) {
+  /* ---- THE HEATER CURRENCY (#538) — set and get must speak the same units ------------------
+   * The board's percent box is ONE widget: `set` sends power_pct, `get` reads
+   * heater_power_pct. When those disagree the control fights its own indication, and its
+   * MANUAL button — which captures the readback as the new demand — becomes a ratchet.
+   * Shipped: type 40 %, read back 9.2 %, and four MANUAL presses walked 14.45 kW to 0.04 kW.
+   * The round trip is asserted at a value that is neither 0 nor 100 on purpose: 100 was the
+   * one point that round-tripped correctly, by accident of a `=== 1` special case, and it is
+   * exactly the value the pre-existing checks in this suite happened to use. */
+  head('THE HEATER CURRENCY  [one widget, one currency — the round trip is the claim]');
+  var eHC = new SH.PWR2Engine({});
+  for (i = 0; i < 100; i++) eHC.step(0.02);
+  eHC.applyCommand({ action: 'set_heater', power_pct: 37 });
+  for (i = 0; i < 25; i++) eHC.step(0.02);
+  var hc1 = eHC.getControlState().heater_power_pct;
+  ck('what the board types is what the board reads back (37 %, not 0 and not 100)',
+     Math.abs(hc1 - 37) < 1e-9,
+     'set 37 % -> read ' + hc1.toFixed(3) + ' % (shipped: 8.53 %, a 4.34x prop-bank/total split)');
+  /* the MANUAL button, reproduced exactly: pwr_board_wiring re-sends the READBACK as demand */
+  eHC.applyCommand({ action: 'set_heater', power_pct: eHC.getControlState().heater_power_pct });
+  for (i = 0; i < 25; i++) eHC.step(0.02);
+  var hc2 = eHC.getControlState().heater_power_pct;
+  eHC.applyCommand({ action: 'set_heater', power_pct: eHC.getControlState().heater_power_pct });
+  for (i = 0; i < 25; i++) eHC.step(0.02);
+  var hc3 = eHC.getControlState().heater_power_pct;
+  ck('pressing MANUAL is a FIXED POINT, not a ratchet — the capture cannot walk the bank down',
+     Math.abs(hc2 - 37) < 1e-9 && Math.abs(hc3 - 37) < 1e-9,
+     '37 -> ' + hc2.toFixed(3) + ' -> ' + hc3.toFixed(3) + ' % (shipped: 37 -> 8.53 -> 1.97)');
+  /* the SECOND caller of the same set path — the automation's disengage, whose own hint
+   * promises "Manual = both freeze at their current output" */
+  var eBL = new SH.PWR2Engine({});
+  for (i = 0; i < 200; i++) eBL.step(0.02);
+  var blAuto = eBL.getTrueState().pzr_heater_kw;
+  eBL.applyCommand({ action: 'set_heater', power_pct: eBL.getControlState().heater_power_pct });
+  for (i = 0; i < 100; i++) eBL.step(0.02);
+  ck('the AUTO -> MANUAL hand-back is BUMPLESS, which is what pwr_control\'s own hint promises',
+     Math.abs(eBL.getTrueState().pzr_heater_kw - blAuto) < 0.5,
+     'heaters ' + blAuto.toFixed(3) + ' -> ' + eBL.getTrueState().pzr_heater_kw.toFixed(3) +
+     ' kW across the transfer (shipped: 36.400 -> 8.397)');
+  /* Read here, not from the module-level SHSRC — that is assigned AFTER runSuite returns.
+   * COMMENTS ARE STRIPPED FIRST: the fix's own comment names the retired literal, and a scan
+   * that cannot tell prose from code would forbid explaining what was fixed. */
+  var shCode = fs.readFileSync(path.join(SRC, 'pwr2_shell.js'), 'utf8')
+                 .replace(/\/\*[\s\S]*?\*\//g, '').replace(/^[ \t]*\/\/.*$/gm, '');
+  /* the manual's own documented payload key, which the plant was dropping — the Mode 1
+   * pressure-control procedure sends {open:true} and used to get AUTO for it */
+  var eSO = new SH.PWR2Engine({});
+  for (i = 0; i < 50; i++) eSO.step(0.02);
+  eSO.applyCommand({ action: 'set_spray', open: true });
+  var soOpen = eSO.getControlState().spray_auto === false;
+  eSO.applyCommand({ action: 'set_spray', open: false });
+  for (i = 0; i < 5; i++) eSO.step(0.02);
+  ck('set_spray reads the {open} key Manuals/03 documents — it does not silently mean AUTO',
+     soOpen && eSO.getControlState().spray_auto === false,
+     '{open:true} -> manual demand (spray_auto false), {open:false} -> manual zero; shipped: ' +
+     'both fell through to null and re-selected AUTO');
+  ck('the total bank capacity is DERIVED in code, never a second typed copy of the constants',
+     shCode.indexOf('157.8') === -1,
+     'the literal 157.8 is prop_kW + backup_kW written down twice — the cadence failure mode');
+
   /* ---- 2. THE COMMAND PARTITION -------------------------------------------------------------- */
   head('THE PARTITION  [every old-engine action in exactly one registry, refusals reasoned]');
   var oldSrc = fs.readFileSync(path.join(__dirname, '..', 'engines', 'pwr', 'pwr_engine.js'), 'utf8');
@@ -1555,6 +1646,31 @@ var MUTATIONS = [
   ['the shell shrink-and-swell driver is dropped on load (the board reads level optimistic)',
    '    this._pwrRate = (st.shell && typeof st.shell._pwrRate === \'number\') ? st.shell._pwrRate : 0;',
    '', { grp: 'S' }],
+  /* #552 — the PORV demand channel had NO mutation of any kind before 2026-08-28: deleting
+   * or corrupting either publish site was caught by nothing, which is how the operator's own
+   * lever stayed missing from it. One per site, plus the contract word. */
+  /* #538 — the currency, mutated two ways on purpose: a WRONG divisor (which the numeric
+   * round trip catches) and the RETYPED literal (which only the source scan catches), so
+   * neither check can stand in for the other. */
+  ['the heater readback is a fraction of the PROPORTIONAL bank (#538 — a third currency)',
+   'ts.pzr_heater_kw / (PZ.HEATERS.prop_kW + PZ.HEATERS.backup_kW) : 0,',
+   'ts.pzr_heater_kw / PZ.HEATERS.prop_kW : 0,', { grp: 'A' }],
+  /* NO mutation for the retyped-literal case, deliberately: that check reads the file from
+   * DISK while this harness mutates an in-memory copy, so a replay can never move it. It is
+   * a static drift guard, hand-verified by restoring the literal (red) and removing it
+   * (green) — recorded here so the absence reads as a decision, not an oversight. */
+  ['set_spray drops the documented {open} key again (the manual\'s step selects AUTO)',
+   'if (p === undefined && c.open !== undefined) p = c.open ? 100 : 0;',
+   '', { grp: 'A' }],
+  ['the PORV lamp loses the OPERATOR again (#552 — a hand-opened valve reads CLOSED)',
+   'ex.porv_commanded_open = !!(e.pz.porvOpen || e.pz.porvManual);',
+   'ex.porv_commanded_open = !!e.pz.porvOpen;', { grp: 'G' }],
+  ['porv_demand loses the OPERATOR again (the control-state readback half)',
+   "porv_demand: (e.pz.porvOpen || e.pz.porvManual) ? 'open' : 'closed',",
+   "porv_demand: e.pz.porvOpen ? 'open' : 'closed',", { grp: 'G' }],
+  ['porv_demand speaks a word the contract does not have ("shut")',
+   "porv_demand: (e.pz.porvOpen || e.pz.porvManual) ? 'open' : 'closed',",
+   "porv_demand: (e.pz.porvOpen || e.pz.porvManual) ? 'open' : 'shut',", { grp: 'G' }],
   ['the containment ledger migration is severed (#544 — an old save loads water-only)',
    '    root.RD.pwr2.containment.migrateState(e.ctm);',
    '', { grp: 'S' }],

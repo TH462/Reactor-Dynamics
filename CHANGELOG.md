@@ -30,6 +30,32 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
 
 ## [Unreleased]
 
+### Fixed (#552 + #538 + #537 — the three pressurizer controls that lied about themselves, 2026-08-28)
+
+Full write-up: `Blueprint/PWR2_VALIDATION.md` §106.
+
+- **A hand-opened relief valve now lights its own lamp (#552).** Opening the PORV by hand blew
+  1137 psi (7.84 MPa) out of the reactor coolant system while the position light, the PORV OPEN
+  annunciator and the demand readback all said CLOSED — the lamp was wired to the automatic
+  controller alone, so it ignored the operator. It shows both demands now. The stuck-lamp failure
+  is once again the only thing that makes it lie, which is the Three Mile Island lesson intact.
+- **The heater percent box means what it says (#538).** Typing 40 % read back 9 %, because the
+  demand drove one heater bank while the indication measured all of them — and the MANUAL button,
+  which captures the readback, walked the heaters from 14.45 kW to 0.04 kW in four presses. One
+  currency now: 40 % reads back 40 %, pressing MANUAL changes nothing, and handing control back
+  from automatic no longer drops the heat. A 0.1-point move at the top of the range used to change
+  delivered power by 4.34x; it now changes it by 0.1 %.
+- **Pressurizer spray with the pumps stopped is now a declared departure, not an accident (#537).**
+  The gate compared loop flow against an arbitrary threshold nobody derived, so spray kept working
+  through a station blackout — 639.7 psi (4.41 MPa) of free depressurization — and then died at an
+  unprincipled point. Real plants lose normal spray on a loss of offsite power and depressurize
+  with the relief valve instead, answering with auxiliary spray this board has no control for. By
+  owner ruling the one spray lever keeps working and stands in for it; the manual now says so, and
+  says that the stand-in is deliberately about half the authority real auxiliary spray would give.
+- **The spray step in the Mode 1 pressure-control procedure works.** It sent the payload the manual
+  documents, which the plant was dropping — so the step that says "open the spray" was quietly
+  selecting AUTO instead.
+
 ### Fixed (#543 + #544 + #566 + #563 item 5 + #550 + #535 — the casualty endgame tells the truth, 2026-08-28)
 
 Six measured defects from the #534 hunt — the whole LOCA / loss-of-heat-sink honesty cluster.
