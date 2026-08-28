@@ -411,7 +411,7 @@ function runSuite(RD, rec, quiet, only) {
   /* #499 first instance, now GUARDED: ridden deeper, the near-floor h-oscillation (nodes
    * pinned on BOTH envelope walls at once) must latch beyond_model and hold — the pre-guard
    * build threw NaN out of pwr2_damage at t = 68.5 s. Measured post-guard: latches 46.9 s. */
-  var latchA = false, threwA = null, qoxSeen = false;
+  var latchA = false, threwA = null, qoxSeen = false, nonFiniteA = 0;
   try {
     for (var kk = 0; kk < 180 / DT; kk++) {
       /* ⚠ THE EMERGENCY INJECTION IS STOPPED FOR THIS RIDE (#518), and it has to be for the
@@ -425,6 +425,9 @@ function runSuite(RD, rec, quiet, only) {
       eng2.ec.hhsiRunning = false; eng2.ec.lhsiRunning = false;
       if (eng2.ec.acc) eng2.ec.acc.valve_open = false;
       tsB = EN.step(eng2, DT);
+      /* EVERY STEP, not just the last (2026-08-28) — the filed defect's NaN appeared MID-RIDE
+       * at 68.5 s, so an end-of-ride finiteness test could only ever see it by luck. */
+      if (!isFinite(tsB.pressure_mpa) || !isFinite(tsB.fuel_temp_c)) nonFiniteA++;
       /* the oxidation WIRING's designed observable: once the damage layer reports heat, the
        * reactor must RECEIVE it next step (eng._Qox is that wire). Chaos used to catch the
        * zeroed-wire mutation incidentally; this sees it deterministically. */
@@ -449,12 +452,26 @@ function runSuite(RD, rec, quiet, only) {
        * 62.9 psia, alive), so the fixture now stops the injection above and latches at 171.8 s
        * on a plant that has actually run out of water. THE CHECK IS UNCHANGED — only the
        * condition it is asserted under, which is the point: the guard was never the defect. */
-      latchA && threwA === null &&
+      /* RE-SCOPED 2026-08-28 (#543): the claim is NEVER NaN, NOT "latches by second 180".
+       * This fixture BIFURCATES, and it is a cliff rather than a drift — perturbing the break
+       * area by 1..16 ulp latches at exactly 160.0 s every time, and by 32 ulp the plant never
+       * latches at all and stabilizes finite at 100.6 psia out to 900 s. A last-bit difference
+       * therefore decides the BRANCH, which is why this passed here at 160.0 s and failed on
+       * the CI runner (a different platform and Node build) at the full window with the plant
+       * sitting finite at 110.9 psia — the other side of the same cliff. Neither branch is a
+       * defect: one runs dry and says so, one equilibrates against a containment that is now
+       * allowed to push back (that is #543's fix). What the filed defect DID do is go
+       * non-finite mid-ride at 68.5 s, so finiteness at every step is the discriminating
+       * claim and is strictly stronger than the old end-of-ride test. The latch MECHANISM is
+       * pinned deterministically, with its own mutations, on hand-built fixtures in
+       * run_pwr2_core — it does not need a chaotic full-plant ride to be tested. */
+      threwA === null && nonFiniteA === 0 &&
       isFinite(tsB.pressure_mpa) && isFinite(tsB.fuel_temp_c),
       threwA ? ('THREW: ' + threwA.slice(0, 60)) :
-      ('latched ' + latchA + ' at ' + tsB.sim_time_s.toFixed(1) + ' s, P ' +
-       (tsB.pressure_mpa * 145.04).toFixed(1) + ' psia — 46.9 s truth-fed, ~168 s since the ' +
-       'RPS moved to instruments (the switchover shifted the trajectory; latch+finite is the claim)'));
+      (nonFiniteA + ' non-finite steps; ' +
+       (latchA ? 'latched at ' + tsB.sim_time_s.toFixed(1) + ' s' : 'stabilized, no latch') +
+       ', P ' + (tsB.pressure_mpa * 145.04).toFixed(1) + ' psia — the pre-guard build went ' +
+       'NaN out of pwr2_damage at 68.5 s, which is what this reds on'));
   ckT('...and the oxidation heat the damage layer reported REACHED the reactor on the way down',
       qoxSeen, 'eng._Qox > 0 observed during the ride — the wiring, seen directly');
 
