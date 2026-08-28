@@ -340,9 +340,9 @@ Mode 1 on integrated physics: engines, control, service, instructor and the boar
 
 **Do not read the list below as the issue tracker** — `gh issue list --state open` is the
 authority and this is a summary that ages. Measured 2026-08-10: five entries here described
-#386, #425, #385, #418 and #419 as open-on-owner-review when all five were **closed**, and two
-of them had been rewritten from the stale text hours earlier by an agent who compressed without
-re-querying. Run the query.
+#386, #425, #385, #418 and #419 as open-on-owner-review when all five were **closed**, two of
+them rewritten from the stale text hours earlier by an agent who compressed without re-querying.
+Measured AGAIN 2026-08-28: a whole bullet of seven, all closed. Run the query.
 
 - **#408** — the accident-inventory clock umbrella. Open: the SGTR/seal amendment rows (evidence
   mini-pass; the declared ~7,500 gal makes absolute-size components ~5–6× fractionally bigger
@@ -352,13 +352,9 @@ re-querying. Run the query.
   #437–#446 landed bar two. The chart is one lane per indication with a shared cursor and an
   event ribbon; `ui/test_panel/lane_reference.html` is the golden artifact and measures itself —
   **change it first, re-measure, then port**. Open: **#441** (needs the rung authoring pass),
-  **#446** (deferred by ruling), **#449** (three steady-state indicated-vs-true disagreements the
-  merged list surfaced, 20–400× larger than instrument lag).
-- **Built, waiting on review or a close** — **#458** (shutdown cooling and low-head injection are
-  the same pumps: the ALIGN is refused while SI runs — *(OWNER RULING, 2026-08-12: "A'")*. It is
-  **not** a plant interlock and the code/manual/message all say so; declared `Manuals/12` §12.20),
-  #431 (bug-report recorder, schema 1.1), #433, #429, #399, #398, #397. **Two OWNER actions are
-  still owed on the finished Cloudflare migration**: delete the Vercel project, revoke its token.
+  and **#446** (deferred by ruling).
+- **Two OWNER actions are still owed on the finished Cloudflare migration**: delete the Vercel
+  project, revoke its token.
 - **#479 PWR2** — Layers 0–5 + core damage + protection + **the pressurizer through stage 2c**
   (ruled 2026-08-18 "Option 1") — **MERGED INTO `develop` 2026-08-21** *(OWNER DIRECTIVE,
   2026-08-21: "Full merge and push. Don't publish to main yet.")* — merge `b4122a7`, 86 runners
@@ -417,7 +413,10 @@ re-querying. Run the query.
   **#545 CLOSED** (§102): the rods were the last trip consumer on the latch's rising EDGE, so
   holding WITHDRAW after a scram took the core back to 61.18 % with SCRAMMED lit everywhere —
   level-held now, both banks both ways [sourced: open trip breakers cut CRDM power], making an
-  ATWS a boration problem. Rest of #535–#566 untouched; `gh issue list` is the authority.
+  ATWS a boration problem. **#571 CLOSED** (§103): the reset's trip-signal permissive iterated a
+  table PWR2 hands over EMPTY, so a reset through a standing trip signal was ACCEPTED and
+  re-latched 0.1 s later. **All four kernel protection lists are empty for this plant — grep
+  every consumer of them.** Rest of #535–#566 untouched; `gh issue list` is the authority.
 - **RBMK and BWR** — on hold, and the source of most remaining backlog. Do not touch.
 
 **The manual set's revision number does not advance until a RELEASE** *(OWNER DIRECTIVE,
@@ -437,6 +436,22 @@ FIRST** — ask what in it would still burn someone in a month, move that to the
 ONE line, drop the rest. **A bullet is ~80 words.** (Measured 2026-08-06: the list was running
 7 bullets averaging 500 words, two of them duplicating traps already rescued below.)
 
+- **A silent `undefined` reads exactly like a WORKING INTERLOCK; the check that catches it is
+  the one asserting the ORDINARY case still works** (2026-08-28, #571 §103). The kernel refuses a
+  reset against a live trip signal by iterating `config.trips`, which PWR2 hands over EMPTY and
+  correctly — so the refusal could never fire while `Manuals/03` documented it as one of two live
+  permissives with its own board caption. Measured: a LOCA holding the low-pressure trip at
+  **1074 psia against 1775**, reset ACCEPTED, re-latched 0.1 s later. The FIX then broke the same
+  way — instrument published, not named in the status list, `crossed(undefined)` false, every
+  reset refused. Both look strict.
+- **A multi-part fix whose parts are EACH SUFFICIENT makes its own mutations go blind — and the
+  bullet warning of it is no protection** (2026-08-28, #545 §102). The rods were the one reactor
+  trip consumer wired to the latch's rising EDGE, so holding WITHDRAW after a scram took the core
+  back to **61.18 %** with SCRAMMED lit on truth, instrument and kernel at once and the flux trip
+  asserted 751.6 s doing nothing. The fix is a level hold AND a door that refuses by name; with the
+  door refusing, the demand never gets set, so deleting the hold moved nothing and `run_pwr2_engine`
+  came back **59/60**. Reproduced by an agent who had quoted the #295 rule three lines above.
+  **Plant the demand PAST the half you are not testing.**
 - **An ACCEPTED command the next step overwrites is worse than a missing one; a MODULE
   HEADER is an inherited claim** (2026-08-27, #551/#559/#567/#558/#570, §100–101). Nothing
   un-latched PWR2's turbine — 896 combinations — so one scram ended generation for the
@@ -451,13 +466,6 @@ ONE line, drop the rest. **A bullet is ~80 words.** (Measured 2026-08-06: the li
   throttle, no hold, a readback hard-coded to the run lamp, and a `set_afw_flow` that ignored
   `pct` and **re-started the pump**. Measured: **861.7 %** of nominal SG inventory in five
   hours. A spec is what you check code against, so nothing could catch it.
-- **An engine-owned latch the kernel cannot see makes every reset a permanent no-op — and
-  the seal-ins it guards read as dead buttons** (2026-08-24, #509 §79). PWR2's automatic
-  trips never set the kernel's `rps.scrammed`, so `resetRps` returned null FOR EVER and
-  ECCS/AFW/feed stops were ACCEPTED then re-asserted next step, silently — the #506
-  dead-button class one layer deeper. An accepted-then-overwritten command must REFUSE at
-  the layer that re-asserts it. Same seam: the kernel judged a good reset against the
-  facade's previous-step snapshot and told the operator "rods not inserted".
 - **A constant that is RIGHT for one plant is a second copy, and it goes wrong silently the
   day the plant changes** (2026-08-27, #557/#556/#561). Three board indications were still the
   retired engine's: the AFW gauge read **7.40×** the delivered flow, the pressurizer tile drew
@@ -466,14 +474,6 @@ ONE line, drop the rest. **A bullet is ~80 words.** (Measured 2026-08-06: the li
   points standing. Fix: the plant publishes the number, the consumer reads it — an engine-key
   branch would have re-armed the same rot. Two of the three were invisible because the board is
   engine-agnostic by design and nothing cross-checked a RENDERED value against the plant.
-- **A multi-part fix whose parts are EACH SUFFICIENT makes its own mutations go blind — and the
-  bullet warning of it is no protection** (2026-08-28, #545 §102). The rods were the one reactor
-  trip consumer wired to the latch's rising EDGE, so holding WITHDRAW after a scram took the core
-  back to **61.18 %** with SCRAMMED lit on truth, instrument and kernel at once and the flux trip
-  asserted 751.6 s doing nothing. The fix is a level hold AND a door that refuses by name; with the
-  door refusing, the demand never gets set, so deleting the hold moved nothing and `run_pwr2_engine`
-  came back **59/60**. Reproduced by an agent who had quoted the #295 rule three lines above.
-  **Plant the demand PAST the half you are not testing.**
 **Standing procedure — not part of the rotation above; these do not expire.** One trap per entry.
 **MAX 25 BULLETS** *(OWNER RULING, 2026-08-10: selected "Cap at 25, evict to TRAPS.md" from
 options I wrote — a selection, not verbatim words)*, gated by `test/run_doc_budget.js`. Adding

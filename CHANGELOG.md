@@ -30,6 +30,43 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
 
 ## [Unreleased]
 
+### Fixed (#571 — the reset's other permissive was dead, and the manual documented it as live, 2026-08-28)
+
+`Manuals/03` §3.5.1 names TWO conditions gating the RPS reset, each with its own board caption.
+The first — *no trip signal standing* — was implemented in the control kernel by iterating a trip
+table that PWR2 hands over EMPTY, correctly, because this plant's protection lives inside the
+engine. So it could never fire. The second still did, which is exactly why nobody noticed: the
+reset *was* gated, just by one of the two conditions the operator is told about. Surfaced by #545,
+which touches the same reset. Full write-up: `Blueprint/PWR2_VALIDATION.md` §103.
+
+- **Measured before the fix**: a large LOCA holding the low pressurizer pressure trip at
+  **1074 psia against a 1775 psia setpoint**, asserted and tripping, rods seated — the reset was
+  **accepted**, the latch cleared, and one 0.1 s protection step later it **re-latched on the same
+  signal**. An accepted reset that undoes itself, with the SCRAMMED lamp blinking and nothing
+  saying why. The section's own lesson — *"a trip you have not actually fixed keeps the plant
+  latched … Recovery is procedural, not a button"* — was false on the plant that shipped.
+- **One derivation, three consumers**: the plant publishes whether a trip signal is standing; the
+  kernel's reset permissive reads it (which is what paints the caption **before** the press —
+  the board needed no change, its `TRIP SIGNAL STANDING` caption has been wired all along), and
+  the direct command path refuses too, naming the channel, its value and its setpoint.
+- **The trip signal is named first when both permissives are holding** — a breaker will not hold
+  in against a live signal whatever the rods are doing.
+- **A blocked trip is not a standing one.** The permissive reads each channel the way the
+  protection system does, so blocking the low-pressure trip inside P-11 — a required cooldown
+  step — releases it. Without that a cooldown could not reset the trip it caused.
+- **Manuals** — `03` §3.5.1 gains both clarifications. Manual set stays at the pending Rev 17.
+- **Filed while writing this up (#572, not built)** — the same seam, one list over. PWR1 blocks
+  outward rod motion on three interlocks; PWR2 rebuilt two in the engine and not the 1.5 DPM
+  startup-rate one, while the board falls back to a literal and draws a red band for it. Measured:
+  **10.00 DPM indicated, 6.7× the setpoint, 90 consecutive withdrawals, none refused**, stopped
+  only by a reactor trip. **When a plant empties a shared config list, grep every consumer of it.**
+- **Gates** — `run_pwr2_shell` 112 → 120 (three new mutations), `run_pwr2_board` 39 → 41, `run_hardrules` 399 → 398 (a citation site left with the stale bullet). The first draft was **silently
+  broken**: written against the shared instrument status list, the new instrument never reached
+  the reading, `crossed(undefined, 'is_true')` is false, and **every** reset was refused including
+  the ordinary post-scram one. A silent-undefined reads exactly like a working interlock; the only
+  thing that told the difference was a check asserting the clean recovery still works, which is
+  why that check leads the section.
+
 
 ### Fixed (#545 — the reactor trip breakers take the rod drive's power away, 2026-08-28)
 

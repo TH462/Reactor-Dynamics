@@ -124,10 +124,21 @@ The reset is **permissive-gated** — it will not take until both conditions hol
 The caption under **SCRAMMED** tells you which one is holding, so you do not have to press
 the control to find out. When both are satisfied it reads **PRESS TO RESET**.
 
+**When both are holding, the caption names the trip signal** — a breaker will not hold in
+against a live signal whatever the rods are doing, so that is the more fundamental refusal and
+it is reported first.
+
 Pressing while blocked is refused and the reason is annunciated — it costs nothing, and it
 names the condition. A trip you have not actually fixed keeps the plant latched: after a
 loss of feedwater, for example, the reset stays blocked on low steam generator level until
 the heat sink is restored. **Recovery is procedural, not a button.**
+
+> **A BLOCKED trip is not a standing one.** The permissive reads each channel the way the
+> protection system does, so a trip you have legitimately blocked no longer holds the reset —
+> which matters on a cooldown, where blocking the low-pressure reactor trip inside **P-11** is
+> a required step (**05 §4.0** step C1a). Without that, a cooldown would depressurize below the
+> low-pressure setpoint and then be unable to reset the trip it caused. Blocking a trip you have
+> *not* satisfied the permissive for is refused at the block control itself, not here.
 
 **Procedure — RPS reset**
 

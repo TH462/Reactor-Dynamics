@@ -507,11 +507,43 @@ function runSuite(quietRec) {
     rMfw && rMfw.type === 'error' && /MFW RESTORE BLOCKED/.test(rMfw.message || ''),
     String(rMfw && rMfw.message).slice(0, 70));
 
-  /* reset under a STANDING signal is accepted and re-latches — not refused, not a wedge */
+  /* RESET UNDER A STANDING SIGNAL — REWRITTEN AT #571, and the original check's concern is
+   * KEPT rather than dropped. It read "accepted and the protection RE-LATCHES within 3 s —
+   * not refused, not a wedge", and the second half of that is the real requirement: a reset
+   * that can never be satisfied is the #509 defect class, a button with no way out. The first
+   * half was PINNING THE DEFECT. `control_kernel.rpsResetBlock` refuses against a live trip
+   * signal by iterating `config.trips`, which PWR2 hands over EMPTY (§98), so the refusal
+   * could never fire — and `Manuals/03` §3.5.1 documented it as one of TWO live permissives
+   * with its own board caption. What the operator actually got was an accepted reset that
+   * undid itself one 0.1 s protection step later: the SCRAMMED lamp blinking, and nothing
+   * saying why.
+   *
+   * So the claim splits in two, and BOTH have to hold. Note that the pair fails on the old
+   * build for the right reason — the refusal check reds because the reset was accepted — so
+   * this is a strengthening, not a refit of the test to the change (HR10). */
   var rRe = w3.cmd({ action: 'reset_rps' }); w3.tick(3);
-  q('reset under a standing LOCA is accepted and the protection RE-LATCHES within 3 s',
-    (rRe == null || !rRe.type) && w3.snap().rps_state.scrammed === true && e3.pt.si === true,
-    'resp ' + JSON.stringify(rRe) + ', scrammed ' + w3.snap().rps_state.scrammed);
+  q('#571: reset under a standing LOCA is REFUSED by name — the caption the board has had ' +
+    'wired since #75 finally has a reason behind it',
+    !!rRe && rRe.type === 'blocked' && rRe.reason === 'TRIP_SIGNAL_PRESENT' &&
+    w3.snap().rps_state.scrammed === true && e3.pt.si === true,
+    'resp ' + JSON.stringify(rRe && rRe.reason) + ', scrammed ' + w3.snap().rps_state.scrammed);
+  q('...and the board can say so BEFORE the press — rps_state.reset_block carries the reason ' +
+    'the SCRAM tile\'s caption maps to "TRIP SIGNAL STANDING"',
+    !!(w3.snap().rps_state.reset_block &&
+       w3.snap().rps_state.reset_block.reason === 'TRIP_SIGNAL_PRESENT') &&
+    w3.snap().rps_state.reset_permitted === false,
+    'reset_block ' + JSON.stringify((w3.snap().rps_state.reset_block || {}).reason));
+  /* THE ORIGINAL CHECK'S OWN CONCERN, kept and now actually asserted rather than implied: it
+   * must not be a WEDGE. The way out is the sourced cooldown action — block the low-pressure
+   * reactor trip inside P-11 — and it works because the permissive reads each channel the way
+   * the protection system does, gates included. A refusal with no reachable exit would be the
+   * dead-button class this whole cluster (#503/#506/#509/#558) exists to kill. */
+  w3.cmd({ action: 'set_trip_block', trip_id: 'lo_press', blocked: true }); w3.tick(2);
+  var rRe2 = w3.cmd({ action: 'reset_rps' }); w3.tick(3);
+  q('...and it is NOT A WEDGE: blocking the low-pressure trip (P-11) releases the permissive ' +
+    'and the same press then takes',
+    (rRe2 == null || !rRe2.type) && w3.snap().rps_state.scrammed === false,
+    'resp ' + JSON.stringify(rRe2) + ', scrammed ' + w3.snap().rps_state.scrammed);
 
   /* items 1/5 recovery: manual scram -> blocked during the drop -> accepted at the seat */
   var w4 = mkWorld();

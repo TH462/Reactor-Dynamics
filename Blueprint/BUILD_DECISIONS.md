@@ -45,6 +45,72 @@ where the two differ or where judgment was exercised.
 
 ---
 
+## 2026-08-28-develop-b — #571: the reset's other permissive was dead, and the manual documented it as live
+
+**THE DECISION THAT SHAPED THIS was refusing to fix it in the kernel.** The obvious repair is to
+teach `rpsResetBlock` about PWR2 — but the kernel is plant-agnostic by rule (HR3), and its
+implementation is not wrong: it iterates `config.trips`, which is the right source for a plant
+whose protection the kernel owns. PWR2 hands it `trips: []` **deliberately** (#546/#547, §98),
+because this plant's protection lives inside the engine. So the seam is where the fix belongs, and
+the shape that fits it is the one the kernel already offers: **a data row against an instrument
+the plant publishes.**
+
+That choice is what makes the board free. `SCRAM_RESET_NOTE.TRIP_SIGNAL_PRESENT` →
+`'TRIP SIGNAL STANDING'` has been wired since #75, waiting for a `reason` PWR2 never sent; a row
+carrying that reason lights it with **no UI change at all**. A shell-side guard alone could not
+have — the board's promise in `Manuals/03` §3.5.1 is that the caption tells you *before* you press,
+and only the kernel's permissive is consulted before a press.
+
+**THE DEFECT.** Measured, a large LOCA holding `lo_pzr_press` at **1074 psia against 1775 psia**,
+asserted and tripping, rods seated: `rpsResetBlock()` null, `resetRps()` null, the latch cleared,
+and **one 0.1 s protection step later it re-latched on the same signal**. Self-correcting, and
+therefore quiet — the SCRAMMED lamp blinks and nothing says why. The section's own teaching point
+(*"Recovery is procedural, not a button"*) was false on the plant that shipped.
+
+**WHAT WAS BUILT** — one derivation, `standingTrip(e)`, feeding three consumers; full write-up and
+every number in `Blueprint/PWR2_VALIDATION.md` §103.
+
+| consumer | what it gets |
+|---|---|
+| `ex.no_trip_signal_standing` | the published instrument, in the POSITIVE so an `is_true` row reads as the condition that must hold — the `rods_fully_in` convention beside it |
+| `getProtectionConfig().rps_reset_permissive` | the row, **prepended** to the pwr rows, carrying `reason: 'TRIP_SIGNAL_PRESENT'`. Order is the message, and the kernel's own comment says which is more fundamental |
+| `MAPPED.reset_rps` | the facade's refusal, checked before rod bottom, naming the channel, its value and its setpoint — the detail a static row cannot carry |
+
+**`asserted`, NOT `tripping`** — mirroring the kernel's `crossed(...)`: no delay, gates honoured.
+A blocked trip therefore does not hold the reset, which is required on a cooldown (P-11 blocks the
+low-pressure trip; without the carve-out a cooldown could not reset the trip it caused), and the
+two implementations agree **by construction** rather than by a second copy of the gate tests —
+the #294/#303/#557 class avoided by not writing the test twice.
+
+**A DEADLOCK THAT DID NOT HAPPEN, recorded because it was close.** `turbine_trip` and the manual
+pushbutton are latch INPUTS in `pwr2_protection`, not table rows, so they never appear in
+`functions` and cannot reach this derivation. That is load-bearing: the turbine stays tripped
+until latched, `latch_turbine` refuses under a standing reactor trip (§100), and a turbine row
+here would have deadlocked the two commands against each other with no way out from the board.
+
+**THE METHOD NOTE.** The first draft was **silently broken and looked strict**. Written against
+the shared instrument status list, the new instrument never reached the reading —
+`_copyStatus` does `this.reading[st[i]] = ex[st[i]]` over `specs.status` only — so
+`crossed(undefined, 'is_true')` was false and **every** reset was refused, the ordinary
+post-scram one included. A silent `undefined` reads exactly like a working interlock. The only
+thing that told the difference was a check asserting the **clean recovery still works**, which is
+why that check leads the gate section. Same family as the #545 blind mutation the day before: the
+failure mode is a fix that cannot be distinguished from correct behaviour by the tests written
+beside it.
+
+### Open flags this entry leaves
+
+- **MEASURED and FILED as #572** — the flag carried over from `-a` is a real defect. PWR1 has three
+  interlocks blocking OUTWARD rod motion; PWR2 rebuilt two in the engine (the delta-T pair,
+  `_rodStopSig`) and **not the 1.5 DPM startup-rate one**, while `surBlockDpm()` falls back to a
+  literal 1.5 and the board draws a red band for it. Proven by EFFECT: **10.00 DPM indicated,
+  6.7× the setpoint, 90 consecutive withdrawals, ZERO refused**, stopped only by a `hi_flux_lo`
+  trip. Two options costed on the issue; the 1.5 figure owes an evidence pass before it becomes
+  this plant's number, which is why it is filed rather than built here.
+- The permissive covers `kind: 'rps'` rows only. The SI, AFAS and FWI latches have their own
+  securing permissives (#512) and are not affected, but nothing checks that the two families stay
+  disjoint as rows are added.
+
 ## 2026-08-28-develop-a — #545: the reactor trip breakers take the rod drive's power away
 
 **THE DECISION THAT SHAPED THIS is that the source answered a question I was going to put as a

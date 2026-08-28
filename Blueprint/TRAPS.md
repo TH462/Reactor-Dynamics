@@ -185,3 +185,32 @@ whole. **If it bites someone anyway, that is the evidence to put it back.**
   carrying: **a lookup keyed by a value that can change goes silently empty rather than loudly
   wrong, and a correct neighbour doing the same lookup is not a warning — it is the thing that
   makes the wrong one look fine.**
+
+## Evicted 2026-08-28 (a THEMES-rotation eviction — the #509 bullet, out for #571's)
+
+Not a standing-list eviction; the standing list is at its 25-bullet cap and `CLAUDE.md` was
+**11 words OVER** its own limit when the rotation was applied, so this lands here whole and the
+incoming bullet was cut to fit rather than the number being raised. **Half of it was already
+duplicated** in the file — see below, which is the honest reason this was the one to go rather
+than the oldest by date.
+
+- **An engine-owned latch the kernel cannot see makes every reset a permanent no-op — and the
+  seal-ins it guards read as dead buttons** (the #509 §79 themes bullet, 2026-08-24, on its
+  rotation out). PWR2's automatic trips never set the kernel's `rps.scrammed`, so `resetRps`
+  returned null FOR EVER and ECCS/AFW/feed stops were ACCEPTED then re-asserted next step,
+  silently — the #506 dead-button class one layer deeper. Same seam: the kernel judged a good
+  reset against the facade's previous-step snapshot and told the operator "rods not inserted".
+
+  **Its instruction — *an accepted-then-overwritten command must REFUSE at the layer that
+  re-asserts it* — is NOT lost**: the #551/#559 bullet in the standing rotation carries it in
+  its sharper form (*"an ACCEPTED command the next step overwrites is worse than a missing
+  one"*), which is why this one could go while newer-by-date bullets stayed.
+
+  What is genuinely this entry's own, and worth keeping findable: **the seam it names is the
+  ENGINE/KERNEL one, and it has now produced three defects in five days** — #509 (the latch the
+  kernel could not see), #545 (the facade reset with no rods-in guard, only the kernel
+  permissive) and #571 (the kernel's own trip-signal permissive iterating a table this plant
+  hands over empty). The shape they share: **the kernel's code is right for the architecture it
+  was written for, and the DATA the seam hands across is empty or absent.** A grep for
+  `config.trips`, `config.interlocks`, `config.actuations` and `config.runbacks` — all four
+  emptied for PWR2 by `getProtectionConfig` — is the cheap way to find the rest.

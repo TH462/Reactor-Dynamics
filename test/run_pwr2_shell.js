@@ -722,6 +722,113 @@ function runSuite(SH, rec, quiet, only) {
     eA2.applyCommand({ action: 'clear_failure', failure_id: 'failure_to_scram' });
   })();
 
+  /* ---- 1e-ic. THE RESET'S OTHER PERMISSIVE (#571) --------------------------------------------
+   * `control_kernel.rpsResetBlock` refuses a reset against a live trip signal by iterating
+   * `this.config.trips` — and `getProtectionConfig` hands PWR2 an EMPTY trips list, correctly,
+   * because this plant's protection lives in the engine (#546/#547, §98). So the loop ran ZERO
+   * times, TRIP_SIGNAL_PRESENT could never be returned, and `Manuals/03` §3.5.1 documented it
+   * as one of TWO live permissives with its own board caption ("TRIP SIGNAL STANDING") that
+   * nothing could light. MEASURED before the fix: a large LOCA holding lo_pzr_press at
+   * 1074 psia against 1775 psia, asserted and tripping — rpsResetBlock() null, resetRps() null,
+   * the latch cleared, and ONE 0.1 s protection step later it re-latched on the same signal.
+   *
+   * BOTH PATHS ARE CHECKED because they are different consumers of one derivation: the kernel
+   * reads the published instrument (which is what paints the caption BEFORE the press), the
+   * facade reads standingTrip() directly (which is what a dev-channel session and any harness
+   * reach). They cannot drift — there is one derivation — but each can be wired wrong. */
+  head('THE RESET PERMISSIVE  [#571 — a breaker will not hold in against a live trip signal]');
+  (function () {
+    function kern(e) { return new globalThis.RD.ControlLayer(e, e.getProtectionConfig(), { register: 'learning' }); }
+    function ridek(e, k, secs) {
+      var acc = 0;
+      for (var j = 0, n = Math.round(secs / 0.02); j < n; j++) {
+        e.step(0.02); acc += 0.02;
+        if (acc >= 0.1 - 1e-9) { k.evaluate(e.getInstruments(), acc); acc = 0; }
+      }
+    }
+    function facReset(e) {
+      try { e.applyCommand({ action: 'reset_rps' }); return null; } catch (x) { return x.message; }
+    }
+
+    /* A. THE ORDINARY RECOVERY IS UNTOUCHED — the check that would have caught the first draft.
+     * Written against the SHARED instrument status list, `no_trip_signal_standing` never reached
+     * the reading, `crossed(undefined, 'is_true')` is FALSE, and EVERY reset was refused
+     * including this one. A silent-undefined that reads exactly like a working interlock. */
+    var eP = new SH.PWR2Engine({}), kP = kern(eP);
+    ridek(eP, kP, 60);
+    eP.applyCommand({ action: 'scram' });
+    ridek(eP, kP, 30);
+    ck('a CLEAN scram still resets — no rps row is asserted at Hot Standby, so the new ' +
+       'permissive is satisfied and the ordinary post-trip recovery is untouched',
+       eP.getInstruments().no_trip_signal_standing === true &&
+       kP.rpsResetBlock(eP.getInstruments()) === null && kP.resetRps() === null &&
+       eP.eng.pt.reactor_trip === false,
+       'no_trip_signal_standing ' + eP.getInstruments().no_trip_signal_standing +
+       ', latch ' + eP.eng.pt.reactor_trip);
+
+    /* B. A STANDING SIGNAL BLOCKS BOTH PATHS. */
+    var eQ = new SH.PWR2Engine({}), kQ = kern(eQ);
+    ridek(eQ, kQ, 60);
+    eQ.applyCommand({ action: 'inject_failure', failure_id: 'large_loca', severity: 0.35 });
+    for (i = 0; i < 20 && !eQ.eng.pt.reactor_trip; i++) ridek(eQ, kQ, 10);
+    ridek(eQ, kQ, 60);
+    var live = (eQ.eng.rpsReport.functions || []).filter(function (f) { return f.kind === 'rps' && f.asserted; });
+    ck('the fixture is honest: a trip signal IS standing with the rods seated (lo_pzr_press ' +
+       'well under its setpoint), which is the state the manual describes',
+       live.length > 0 && eQ.eng.rodSteps === 0 && eQ.eng.sdSteps === 0,
+       live.map(function (f) { return f.id + ' ' + (f.value * 145.038).toFixed(0) + ' vs ' +
+         (f.setpoint * 145.038).toFixed(0) + ' psia'; }).join(', ') || 'NO SIGNAL — bad fixture');
+    var blkQ = kQ.rpsResetBlock(eQ.getInstruments());
+    ck('#571: the KERNEL now refuses with TRIP_SIGNAL_PRESENT — the reason the board\'s ' +
+       '"TRIP SIGNAL STANDING" caption has been wired for and never received',
+       !!blkQ && blkQ.reason === 'TRIP_SIGNAL_PRESENT' && !!blkQ.message,
+       blkQ ? blkQ.reason : 'ACCEPTED! (the shipped defect)');
+    var rQ = kQ.resetRps();
+    ck('...and resetRps() hands back the blocked shape the scanner bar renders, leaving the ' +
+       'latch STANDING (pre-fix it cleared and re-latched one 0.1 s step later)',
+       !!rQ && rQ.type === 'blocked' && rQ.code === 'INTERLOCK' &&
+       rQ.reason === 'TRIP_SIGNAL_PRESENT' && eQ.eng.pt.reactor_trip === true,
+       rQ ? (rQ.type + '/' + rQ.reason) : 'null — ACCEPTED');
+    var mQ = facReset(eQ);
+    ck('...and the FACADE refuses too, naming the channel, its value and its setpoint — the ' +
+       'detail a static permissive row cannot carry',
+       mQ !== null && /RPS RESET BLOCKED/.test(mQ) && /trip signal is still asserted/.test(mQ) &&
+       /Low pressurizer pressure/.test(mQ),
+       mQ ? mQ.slice(0, 95) : 'ACCEPTED!');
+
+    /* C. ORDER IS THE MESSAGE: with the rods ALSO out, the trip signal is named first — the
+     * kernel's own reasoning, "a breaker will not hold in against a live trip signal ... the
+     * most fundamental refusal, so it is checked first". */
+    var eR = new SH.PWR2Engine({}), kR = kern(eR);
+    ridek(eR, kR, 60);
+    eR.applyCommand({ action: 'inject_failure', failure_id: 'failure_to_scram' });
+    eR.applyCommand({ action: 'inject_failure', failure_id: 'large_loca', severity: 0.35 });
+    for (i = 0; i < 20 && !eR.eng.pt.reactor_trip; i++) ridek(eR, kR, 10);
+    ridek(eR, kR, 40);
+    var blkR = kR.rpsResetBlock(eR.getInstruments());
+    ck('with BOTH permissives failing the trip signal is named FIRST, not rod bottom',
+       eR.getInstruments().rods_fully_in === false &&
+       eR.getInstruments().no_trip_signal_standing === false &&
+       !!blkR && blkR.reason === 'TRIP_SIGNAL_PRESENT',
+       'rods_fully_in false, reason ' + (blkR ? blkR.reason : 'null'));
+
+    /* D. IT IS A PERMISSIVE, NOT A WALL — and the release is the operator's own sourced P-11
+     * cooldown action, which is also the proof that the GATE is honoured. The derivation reads
+     * `asserted`, and `asserted` is already false under a block, so the shell and the kernel's
+     * own version agree by construction rather than by a second copy of the gate tests. */
+    ck('blocking the low-pressure trip (P-11, the sourced cooldown action) RELEASES the ' +
+       'permissive — the derivation honours the gate, so no second copy of the block test',
+       (function () {
+         eQ.applyCommand({ action: 'set_trip_block', trip_id: 'lo_press', blocked: true });
+         ridek(eQ, kQ, 2);
+         return eQ.getInstruments().no_trip_signal_standing === true &&
+                kQ.rpsResetBlock(eQ.getInstruments()) === null && facReset(eQ) === null;
+       })(), 'blocked -> released, reset accepted');
+    ridek(eQ, kQ, 5);
+    ck('...and it STAYS reset — the pre-fix accepted reset re-latched within one protection step',
+       eQ.eng.pt.reactor_trip === false, 'latch ' + eQ.eng.pt.reactor_trip + ' 5 s on');
+  })();
+
   /* ---- 1e-ii. THE AUX FEED COMMAND SURFACE (#541, #562) -------------------------------------
    * THE REACHABILITY CLAIMS, and they live here because the SHELL's registry is what makes a
    * capability reachable. run_pwr2_engine has always proved the two facade doors and passed
@@ -1384,6 +1491,24 @@ var SHSRC = fs.readFileSync(path.join(SRC, 'pwr2_shell.js'), 'utf8').replace(/\r
 /* Each entry's trailing { grp } names the section group that can SEE it (#513) — the replay
  * runs only that group, and the BLIND check still reds the runner if the tag is wrong. */
 var MUTATIONS = [
+  /* #571, the three wires behind ONE derivation. They are separately anchored because they
+   * fail separately: kill the derivation and both paths go quiet; kill the status-list entry
+   * and only the KERNEL path does (silently, reading `undefined`); kill the permissive row and
+   * the board's caption goes dark while the facade still refuses. That last pair is the whole
+   * argument for checking both paths — a fix that reddens neither would have shipped. */
+  ['the standing-trip derivation always says CLEAR (the #571 dead permissive, restored)',
+   "      if (fns[i].kind === 'rps' && fns[i].asserted) return fns[i];",
+   '', { grp: 'E' }],
+  ['the instrument is published but never named in the status list (it reads undefined)',
+   "        status: (this.instruments.specs.status || []).concat(['no_trip_signal_standing'])",
+   '        status: (this.instruments.specs.status || [])', { grp: 'E' }],
+  /* DROPS the row rather than inverting it: an inverted direction blocks EVERY reset, which
+   * reds the clean-recovery check for the opposite reason and would pass as "caught" while
+   * proving nothing. Dropped, the FACADE still refuses and only the kernel path — the caption's
+   * path — goes quiet, which is the discrimination this mutation exists to make. */
+  ['the kernel loses its reset permissive row (the board caption goes dark again)',
+   '        }].concat(base.rps_reset_permissive || []),',
+   '        }].slice(0, 0).concat(base.rps_reset_permissive || []),', { grp: 'E' }],
   ['a REFUSED command is silently swallowed (reads exactly like a plant that survived it)',
    "    if (REFUSED[a] !== undefined) {\n      throw new Error('pwr2_shell: \"' + a + '\" REFUSED — ' + REFUSED[a]);\n    }",
    '    if (REFUSED[a] !== undefined) { return { ok: true, action: a }; }', { grp: 'A' }],

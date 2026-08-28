@@ -163,6 +163,42 @@
     sp: { capture: function () { return 33; }, min: 20, max: 60, unit: '%', dp: 0, step: 1 }
   };
 
+  /* THE STANDING TRIP SIGNAL (#571) — the ONE derivation behind three consumers: the
+   * instrument the board's caption reads, the kernel's reset permissive, and this shell's own
+   * reset refusal. A second copy of a protection test is the defect class #294, #303 and #557
+   * are all instances of, so there is exactly one.
+   *
+   * WHY IT HAD TO BE BUILT HERE. `control_kernel.rpsResetBlock` implements this refusal by
+   * iterating `this.config.trips` — and `getProtectionConfig` hands PWR2 an EMPTY trips list,
+   * correctly, because this plant's protection lives in the engine (#546/#547, validation §98).
+   * So the loop ran zero times and TRIP_SIGNAL_PRESENT could never be returned, while
+   * `Manuals/03` §3.5.1 documented it as one of TWO live permissives with its own board
+   * caption. MEASURED: a large LOCA holding lo_pzr_press at 1074 psia against its 1775 psia
+   * setpoint, asserted and tripping — `rpsResetBlock()` returned null, `resetRps()` returned
+   * null, the latch cleared, and ONE 0.1 s protection step later it re-latched on the same
+   * signal. An accepted reset that undoes itself, with the SCRAMMED lamp blinking and nothing
+   * saying why.
+   *
+   * IT READS `asserted`, NOT `tripping`, to mirror the kernel's own semantics exactly: that
+   * version tests the raw `crossed(...)` with no delay, and skips blocked and condition-gated
+   * rows. `asserted` is already false under every gate this plant has (the operator's block,
+   * P-7, P-11), so the two agree by construction rather than by a second copy of the gate
+   * tests. It is also the conservative half — a channel past its setpoint but not yet through
+   * its delay will re-latch, and the breakers would not hold in against it either.
+   *
+   * `turbine_trip` and the manual pushbutton are deliberately NOT reachable here: both are
+   * latch INPUTS in pwr2_protection, not table rows, so they never appear in `functions`.
+   * That is load-bearing — the turbine stays tripped until it is latched, and `latch_turbine`
+   * itself refuses under a standing reactor trip, so a turbine row here would deadlock the
+   * two commands against each other. */
+  function standingTrip(e) {
+    var fns = (e.rpsReport && e.rpsReport.functions) || [];
+    for (var i = 0; i < fns.length; i++) {
+      if (fns[i].kind === 'rps' && fns[i].asserted) return fns[i];
+    }
+    return null;
+  }
+
   /* NOTE the dependency: a standing SI LATCH is itself an AFW start signal (the SGLL
    * block's si line), so AFW cannot be unlatched from under it — secure the ECCS first. */
   function afwUnlatch(e) {
@@ -208,6 +244,18 @@
      * instant power came back, with no press behind it. This is the one place a latched demand
      * may legitimately be cleared — everywhere else, rewriting it is the heals-itself trap. */
     reset_rps:        function (e, c) {
+      /* ORDER IS THE MESSAGE (#571): the standing-trip check runs FIRST, matching the kernel's
+       * own ordering and its reason — a breaker will not hold in against a live trip signal,
+       * which is the more fundamental refusal. Rod bottom is the second one. */
+      if (e.pt.reactor_trip) {
+        var live = standingTrip(e);
+        if (live) {
+          throw new Error('RPS RESET BLOCKED: the ' + live.name + ' trip signal is still ' +
+            'asserted (' + live.value.toFixed(3) + ' against a setpoint of ' +
+            live.setpoint.toFixed(3) + ' ' + (live.unit || '') + ') — a breaker will not hold ' +
+            'in against a live trip signal. Clear the condition first.');
+        }
+      }
       if (e.pt.reactor_trip && !(e.rodSteps <= 0.5 && e.sdSteps <= 0.5)) {
         throw new Error('RPS RESET BLOCKED: the rods are not at the bottom of their travel ' +
           '(control ' + e.rodSteps.toFixed(0) + ', shutdown ' + e.sdSteps.toFixed(0) +
@@ -806,7 +854,17 @@
        * number, the #500 override pattern, copied so the shared table is untouched. */
       this.instruments.specs = Object.assign({}, this.instruments.specs, {
         rod_limit_margin: Object.assign({}, this.instruments.specs.rod_limit_margin,
-                                        { range: [0, 200] })
+                                        { range: [0, 200] }),
+        /* ONE NAME ADDED TO THE STATUS LIST (#571), the same copy-don't-touch pattern.
+         * `_copyStatus` reads ONLY this array — `this.reading[st[i]] = ex[st[i]]` — so a key
+         * `_instrExtras` publishes but the list does not name never reaches the reading at all.
+         * MEASURED when this was first written against the SHARED list: the permissive read
+         * `undefined`, `crossed(undefined, 'is_true')` is FALSE, and every reset was refused
+         * including the ordinary post-scram one. A silent-undefined that reads as a working
+         * interlock, which is why it is worth the two lines to keep the array explicit.
+         * PWR1 is deliberately untouched: it needs no such instrument, because on that plant
+         * the kernel's own `config.trips` loop supplies this refusal. */
+        status: (this.instruments.specs.status || []).concat(['no_trip_signal_standing'])
       });
       /* reset() PRIMES the lag buffers from truth — update() alone leaves the linear-lag
        * branch integrating from undefined (measured: every reading NaN) */
@@ -863,6 +921,13 @@
      * shutdown bank seats FIRST (SD_SCRAM_S 2.0 s against SCRAM_S 2.5 s); measured wrong on
      * the failure-to-scram path, where rods 0/200 published `rods_fully_in: true`. */
     ex.rods_fully_in = e.rodSteps <= 0.5 && e.sdSteps <= 0.5;
+    /* THE RESET'S OTHER PERMISSIVE (#571), published in the POSITIVE so a `direction:
+     * 'is_true'` row reads as the condition that must HOLD, like rods_fully_in beside it.
+     * The board's caption (`SCRAM_RESET_NOTE.TRIP_SIGNAL_PRESENT` -> "TRIP SIGNAL STANDING")
+     * has been wired and waiting for a reason PWR2 never sent — this is what sends it, with
+     * no board change at all. See standingTrip() for why the kernel's own version is dead
+     * here and why this reads `asserted`. */
+    ex.no_trip_signal_standing = !standingTrip(e);
     ex.above_p9 = !!(e.rpsReport && e.rpsReport.p9_met);
     ex.afw_block_open = e.aw.blocked !== true;      /* LIVE since #507 wave 6 made aw.blocked
                                                      * real state; the pinned `true` here kept
@@ -930,6 +995,27 @@
       var base = root.RD.PWR_CONFIG.protection;
       this._protCfg = Object.assign({}, base, {
         trips: [], actuations: [], interlocks: [], runbacks: [],
+        /* THE RESET'S FIRST PERMISSIVE, RESTORED (#571). The kernel implements this refusal by
+         * iterating `trips` — which is empty two lines up, correctly — so TRIP_SIGNAL_PRESENT
+         * could never fire on this plant while `Manuals/03` §3.5.1 documented it as one of two.
+         * It rides here instead, on the instrument the shell publishes from the engine's own
+         * report, PREPENDED to the pwr table's rows because order is the message the operator
+         * gets and the kernel's own comment says why: a breaker will not hold in against a live
+         * trip signal, so that is the more fundamental refusal and is named first.
+         *
+         * The message is GENERIC where the kernel's names the channel, because a permissive row
+         * carries static text and teaching the kernel to interpolate would be a shared-code
+         * change for one plant (HR3). The annunciators name which trip is in — that is what
+         * they are for — and the shell's own reset refusal, which the facade and the board both
+         * reach, quotes the channel, its value and its setpoint. */
+        rps_reset_permissive: [{
+          instrument: 'no_trip_signal_standing', direction: 'is_true',
+          reason: 'TRIP_SIGNAL_PRESENT',
+          message_learning: 'A reactor trip signal is still asserted — the breakers will not ' +
+            'hold in against it. Clear the condition that tripped the plant first; the ' +
+            'annunciators name which channel is in.',
+          message_industry: 'RPS RESET BLOCKED — trip signal still asserted'
+        }].concat(base.rps_reset_permissive || []),
         /* EXACTLY ONE automation channel rides through (#507 wave 1): the boron batch-dose
          * panel. The emptying rationale above ("channels issue commands PWR2 REFUSES") no
          * longer bars this one — its whole vocabulary is set_boron_adjust {rate} and
