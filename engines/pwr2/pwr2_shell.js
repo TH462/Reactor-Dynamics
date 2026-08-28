@@ -1309,6 +1309,12 @@
       heater_power_pct: ts.pzr_heater_kw !== undefined
         ? 100 * ts.pzr_heater_kw / (PZ.HEATERS.prop_kW + PZ.HEATERS.backup_kW) : 0,
       spray_valve_pct: ts.spray_flow_pct !== undefined ? ts.spray_flow_pct : 0,
+      /* THE HEATER BANK'S ELEVATION, so the board draws it where the model loses authority
+       * (#473/#573). The plant publishes; the board reads — the #557 shape. There is
+       * deliberately no second copy of these two numbers anywhere: `comp_pressurizer.js` draws
+       * the band it is handed, so moving `HEATERS.elev_*_pct` moves the drawn bank with it and
+       * the modelled and drawn elevations cannot drift apart. */
+      heater_elev_pct: [PZ.HEATERS.elev_bot_pct, PZ.HEATERS.elev_top_pct],
       heater_auto: e.pzDrivers.heaters_manual === undefined,
       spray_auto: e.pzDrivers.spray_manual === undefined,
       pressure_setpoint: e.pz.setpoint_mpa,

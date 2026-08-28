@@ -1282,7 +1282,19 @@
     ts.adv_flow_kgs = rr.adv_kgs;
     ts.sg_safety_kgs = rr.safety_kgs;
     ts.pzr_surge_kgs = pzr.surge_kgs;
-    ts.pzr_heater_kw = pzr.heater_kW;
+    /* THE ENERGIZED BANK, NOT THE DELIVERED HEAT (#573). A heater kW indication is ELECTRICAL:
+     * an uncovered bank is still drawing full current, it is simply not heating water. Two
+     * reasons this is the right field, not a nicety:
+     *   1. The shell derives `heater_power_pct` from here and the board's MANUAL button
+     *      re-sends that readback as the new demand — publishing the DERATED number would walk
+     *      the operator's demand down on every press over a partly-uncovered bank, which is
+     *      #538 arriving by a new road.
+     *   2. It is the HE-3 lesson: the gauge reads full, the level channel reads 55 %, and
+     *      pressure falls anyway. A "heaters 40 % submerged" readout would hand the player the
+     *      answer the failed-transmitter case exists to make them find.
+     * `pzr.heater_kW` (delivered) is what the vessel's energy balance and run_pwr2_engine's
+     * closed energy audit use — they read the module result directly, not this field. */
+    ts.pzr_heater_kw = pzr.heater_energized_kW;
     ts.oxidation_frac = dr.oxidation_frac;
     /* the instruments read THIS step's truth; every consumer sees them NEXT step.
      * The sg_level SHIFT is the downcomer shrink/swell — swell_factor × smoothed dPower/dt,

@@ -1752,6 +1752,80 @@ function runSuite(RD, rec, quiet, only) {
         trEnd.sr_counts_cps.toFixed(0) + ' cps on a tripped plant');
   }
   }
+
+  if (grp('P')) {
+  /* ---- 14. HEATER ELEVATION, END TO END (#573) ---------------------------------------------
+   * `pwr2_pressurizer`'s gate owns the derate itself. What THIS gate owns is the seam: the
+   * plant publishes the ENERGIZED bank as `pzr_heater_kw` while the vessel receives the
+   * DELIVERED heat, and the two are different numbers the moment the bank uncovers.
+   *
+   * ⚠ PUBLISHING THE DERATED NUMBER LOOKS RIGHT AND IS #538 ARRIVING BY A NEW ROAD: the shell
+   * turns this field into `heater_power_pct` and the board's MANUAL button re-sends that
+   * readback as the new demand, so the operator's demand would halve on every press over a
+   * half-dry bank. A heater kW indication is ELECTRICAL — an uncovered element still draws
+   * full current — so the energized value is also the prototypical one. */
+  head('HEATER ELEVATION  [the plant publishes the BUS LOAD; the vessel receives the wetted heat]');
+  var engHE = EN.createEngine({});
+  run(engHE, 20);
+  EN.command(engHE, 'pzr_heaters_manual', 1.0);
+  var tsCov = run(engHE, 2);
+  var covKw = engHE._pzr.heater_kW, covEn = engHE._pzr.heater_energized_kW;
+  ckT('covered, the two agree — which is why nothing before this could tell them apart',
+      Math.abs(covKw - covEn) < 1e-9 && covEn > 100 &&
+      Math.abs(tsCov.pzr_heater_kw - covEn) < 1e-9,
+      covEn.toFixed(2) + ' kW energized and delivered, wetted ' +
+      engHE._pzr.heater_wetted_frac.toFixed(3));
+  /* HE-3: stick the level channel HIGH so the 17 % bistable is fooled, then put the TRUE level
+   * in the band. Straight into the state deliberately — draining through the CVCS would take
+   * plant-minutes and would be measuring the charging controller, not this seam. */
+  EN.command(engHE, 'instrument_fail',
+             { id: 'pzr_level', mode: 'stuck', value: 55 });
+  var HEB2 = RD.pressurizer.HEATERS.elev_bot_pct, HET2 = RD.pressurizer.HEATERS.elev_top_pct;
+  /* ⚠ TWO TRAPS IN GETTING THE PLANT INTO THIS STATE, BOTH OF WHICH THIS PROBE WALKED INTO.
+   *
+   * FIRST: scale the vessel's LIQUID MASS, not `V_liq`. `V_liq` is DERIVED at the end of every
+   * step from m_sub/m_sat and their densities, so an assignment to it survives one step and the
+   * check then measures a COVERED bank while printing the level it had asked for — it passed
+   * against a plant with no derate at all.
+   *
+   * SECOND: THE STATE DOES NOT HOLD, and that is physics rather than a fixture defect. Taking
+   * ~1,400 kg out of the vessel drops RCS pressure, the subcooled loop expands, and the
+   * pressurizer refills within a couple of steps. A pressurizer genuinely sitting in the heater
+   * band means a genuinely drained RCS — which is the LOCA regime, and far more plant than this
+   * seam needs. So the probe ADVANCES UNTIL THE STATE ARRIVES and asserts THERE, bounded, and
+   * fails loudly if it never does. That is robust to the propagation delay changing; a hard
+   * "step exactly twice" was not. */
+  var lvlRatio = ((HEB2 + HET2) / 2) / (100 * engHE.pz.V_liq / RD.pressurizer.GEOM.V_pzr_m3);
+  engHE.pz.m_sub *= lvlRatio; engHE.pz.m_sat *= lvlRatio;
+  var tsDry = null, wetSeen = 1;
+  for (var kHE = 0; kHE < 20 && tsDry === null; kHE++) {
+    var rHE = EN.step(engHE, DT);
+    if (engHE._pzr.heater_wetted_frac < 0.9) { tsDry = rHE; wetSeen = engHE._pzr.heater_wetted_frac; }
+  }
+  ckT('the bank really does uncover (the premise, MEASURED — the level is derived state)',
+      tsDry !== null && wetSeen > 0.05 && wetSeen < 0.9,
+      'wetted ' + wetSeen.toFixed(3) + (tsDry === null ? ' — NEVER REACHED' : ''));
+  ckT('uncovered with the latch FOOLED: the BUS LOAD published, the WETTED heat delivered',
+      tsDry !== null && engHE.pz.lowLevelCut === false && engHE.pz.heatersShed === false &&
+      Math.abs(engHE._pzr.heater_energized_kW - covEn) < 1e-6 &&
+      Math.abs(tsDry.pzr_heater_kw - covEn) < 1e-6 &&
+      Math.abs(engHE._pzr.heater_kW - wetSeen * covEn) < 1e-6 &&
+      engHE._pzr.heater_kW < 0.9 * covEn,
+      'published ' + (tsDry ? tsDry.pzr_heater_kw.toFixed(2) : '?') + ' kW (the full bank), ' +
+      'delivered ' + engHE._pzr.heater_kW.toFixed(2) + ' kW at wetted ' + wetSeen.toFixed(3) +
+      ', cut ' + engHE.pz.lowLevelCut + ' — the gauge reads full and the pressure does not ' +
+      'follow it, which is the whole of HE-3');
+  /* THE OTHER END OF THE SAME FIELD, and without it "publish the energized bank" is satisfied
+   * by publishing the INSTALLED bank — a constant, which reads full through a shed. The
+   * published number has to be able to reach zero, and a bus-loading shed is what takes it
+   * there (NUREG-0737 II.E.3.1, the latch group G exercises on the module side). */
+  EN.command(engHE, 'offsite_power', false);
+  var tsShed = run(engHE, 1);
+  ckT('...and a SHED bank publishes zero — the field is the bus load, not the installed rating',
+      engHE.pz.heatersShed === true && tsShed.pzr_heater_kw === 0 &&
+      engHE._pzr.heater_energized_kW === 0,
+      'shed ' + engHE.pz.heatersShed + ', published ' + tsShed.pzr_heater_kw + ' kW');
+  }
 }
 
 console.log('\nPWR2 -- THE ENGINE FACADE: one door, the gates\' wiring written once');
@@ -2028,7 +2102,15 @@ var MUTATIONS = [
    { grp: 'O' }],
   ['the seed ignores the plant and uses a fixed reactivity (both ICs get the same level)',
    '      var pEq = RD.kinetics.sourceLevel(rho0);',
-   '      var pEq = RD.kinetics.sourceLevel(-0.011372);', { grp: 'O' }]
+   '      var pEq = RD.kinetics.sourceLevel(-0.011372);', { grp: 'O' }],
+  /* THE HEATER SEAM (#573). The one that matters is the first: it is the change a reasonable
+   * editor makes on purpose, and it re-opens #538 from the other end. */
+  ['the DERATED heater power is published, so the board\'s MANUAL capture walks the demand down',
+   '    ts.pzr_heater_kw = pzr.heater_energized_kW;',
+   '    ts.pzr_heater_kw = pzr.heater_kW;', { grp: 'P' }],
+  ['the published heater power is pinned to the installed bank (the shed reads full)',
+   '    ts.pzr_heater_kw = pzr.heater_energized_kW;',
+   '    ts.pzr_heater_kw = 157.8;', { grp: 'P' }]
 ];
 var CORESRC = fs.readFileSync(path.join(SRC, 'pwr2_core.js'), 'utf8').replace(/\r\n/g, '\n');
 

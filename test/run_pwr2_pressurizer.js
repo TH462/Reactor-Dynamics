@@ -710,6 +710,89 @@ function runSuite(RD, rec, quiet) {
       pzL.lowLevelCut === true && rLvl.heater_kW === 0,
       'cut ' + pzL.lowLevelCut + ', heaters ' + rLvl.heater_kW + ' kW');
 
+  /* ---- HEATER ELEVATION (#573) — the ruled physics, and the one case it is FOR -------------
+   * *(OWNER RULING, 2026-08-12, answer 3 of five: "physical heater elevation with progressive
+   * authority loss", narrowed the same day by "2: keep both" — the bistable above survives ON
+   * TOP as protection.)* Catalog rows HE-1 / HE-2 / HE-3; HE-2 is the check immediately above.
+   *
+   * ⚠ THE FEATURE IS UNREACHABLE ON A HEALTHY PLANT, BY CONSTRUCTION. The band sits below the
+   * 17 % cut, so the bistable de-energizes the bank before the derate can do anything. Every
+   * check here therefore drives the level channel to LIE — which is not a contrivance, it is
+   * HE-3, the case the mechanism exists for. A probe run at a healthy indicated level would
+   * pass against a plant with no derate at all. */
+  head('HEATER ELEVATION  [progressive loss on TRUE level; the bistable is a different thing]');
+  var HEB = PZ.HEATERS.elev_bot_pct, HET = PZ.HEATERS.elev_top_pct;
+  /* THE ORDERING IS THE CLAIM, not the two literals. S1 exists to de-energize the bank BEFORE
+   * it uncovers; a band straddling the cut would make the protection fire in the middle of its
+   * own subject, and the two numbers could drift into that without any probe noticing. */
+  ckT('the band sits ENTIRELY below the sourced 17 % cut — the ordering S1 exists for',
+      HET < PZ.LEVEL.low_cut_pct && HEB < HET && HEB > 0,
+      HEB + ' .. ' + HET + ' % against a cut at ' + PZ.LEVEL.low_cut_pct + ' %');
+  /* the level channel STUCK HIGH at 55 %: the latch never fires, so the derate is the only
+   * thing left — HE-3's premise, built once and reused down the ramp */
+  function atTrueLevel(pct) {
+    var p = PZ.createPressurizer({ level_frac: pct / 100 });
+    var sy = S.createPlant({ h: W.h_l(304.5, 15.41), P: 15.41, extraMass: PZ.extraMassFn(p) });
+    return { r: PZ.stepPressurizer(p, sy, 0.02, { indicated_level_pct: 55, heaters_manual: 1 }),
+             pz: p };
+  }
+  var eBelow = atTrueLevel(HEB - 2), eMid = atTrueLevel((HEB + HET) / 2),
+      eAbove = atTrueLevel(HET + 5);
+  var TOTKW = PZ.HEATERS.prop_kW + PZ.HEATERS.backup_kW;
+  ckT('HE-1: the wetted fraction RAMPS across the bank — 0 below, 0.5 mid, 1 above',
+      eBelow.r.heater_wetted_frac === 0 &&
+      Math.abs(eMid.r.heater_wetted_frac - 0.5) < 1e-9 &&
+      eAbove.r.heater_wetted_frac === 1,
+      eBelow.r.heater_wetted_frac.toFixed(3) + ' / ' + eMid.r.heater_wetted_frac.toFixed(3) +
+      ' / ' + eAbove.r.heater_wetted_frac.toFixed(3) + ' — the 0-or-full cliff is what this ' +
+      'replaces as the PHYSICS (#348 and #447 are records of what a cliff does)');
+  ckT('...and DELIVERED power follows it, half a bank delivering half the kW',
+      Math.abs(eMid.r.heater_kW - 0.5 * TOTKW) < 1e-6 &&
+      eBelow.r.heater_kW === 0 && Math.abs(eAbove.r.heater_kW - TOTKW) < 1e-6,
+      eBelow.r.heater_kW.toFixed(2) + ' / ' + eMid.r.heater_kW.toFixed(2) + ' / ' +
+      eAbove.r.heater_kW.toFixed(2) + ' kW against an installed ' + TOTKW.toFixed(2));
+  /* THE SPLIT IS THE TRAP, so it gets its own check rather than riding on the one above.
+   * The bank is still ENERGIZED when it is dry — a heater kW indication is electrical — and
+   * publishing the derated number would walk the operator's demand down on every MANUAL press
+   * (#538 by a new road, since the board re-sends its readback as the new demand). */
+  ckT('the ENERGIZED bank is full at every level: the gauge is electrical, not thermal',
+      Math.abs(eBelow.r.heater_energized_kW - TOTKW) < 1e-6 &&
+      Math.abs(eMid.r.heater_energized_kW - TOTKW) < 1e-6,
+      'dry bank still drawing ' + eBelow.r.heater_energized_kW.toFixed(2) + ' kW while ' +
+      'delivering ' + eBelow.r.heater_kW.toFixed(2) + ' — that difference IS the HE-3 lesson');
+  /* HE-3, AS AN EFFECT AND NOT A FRACTION. The standing rule: a row's gate must assert the
+   * effect, never the write. Two identical plants, both with the level channel stuck at 55 %,
+   * one inside the band and one above it — the uncovered one must pressurize measurably more
+   * slowly, and the latch must be FOOLED in both (that is what makes it HE-3 rather than HE-2). */
+  /* ⚠ THE PLANT MUST BE STEPPED TOO, and the first version of this probe was not — it stepped
+   * the pressurizer alone and both legs read +0.00 psi, because pressure is solved by Layer 2
+   * from mass and energy with this vessel's extraMass in it, not returned by this module. A
+   * probe that measures 0 on BOTH sides passes any inequality you happen to write; it measured
+   * nothing. Core power and SG duty are held at zero so the ONLY thing moving pressure is the
+   * heater — the manual-before-auto order, applied to a single term. */
+  function riseRate(truePct) {
+    var p = PZ.createPressurizer({ level_frac: truePct / 100 });
+    var sy = S.createPlant({ h: W.h_l(304.5, 15.41), P: 15.41, extraMass: PZ.extraMassFn(p) });
+    var P0 = sy.P, pwk = 0;
+    for (var i = 0; i < 1500; i++) {
+      var sr = S.stepPlant(sy, 0.02, { corePower: 0, sgDuty: pwk });
+      pwk = sr.pumpWork_kW;
+      PZ.stepPressurizer(p, sy, 0.02, { indicated_level_pct: 55, heaters_manual: 1 });
+    }
+    return { dP_psi: (sy.P - P0) * PSI, cut: p.lowLevelCut, shed: p.heatersShed };
+  }
+  var hotDry = riseRate(HEB + 0.5), hotWet = riseRate(HET + 10);
+  ckT('HE-3: with the level channel STUCK at 55 % the 17 % latch is FOOLED — it never fires',
+      hotDry.cut === false && hotDry.shed === false && hotWet.cut === false,
+      'lowLevelCut ' + hotDry.cut + ' at a TRUE ' + (HEB + 0.5) + ' % — the operator and the ' +
+      'bistable are lied to by the same transmitter (the CA-10 leg)');
+  ckT('...and the PHYSICS is then the only thing bounding the deadhead — the dry bank ' +
+      'pressurizes far more slowly',
+      hotDry.dP_psi < 0.25 * hotWet.dP_psi && hotWet.dP_psi > 0.5,
+      '+' + hotDry.dP_psi.toFixed(2) + ' psi over 30 s uncovered against +' +
+      hotWet.dP_psi.toFixed(2) + ' covered — #334 ran full power into an uncovered bank to ' +
+      '2207 psia with the coolant 240 degC subcooled');
+
 }
 
 /* ---- run + injection self-test -------------------------------------------------------------- */
@@ -764,8 +847,27 @@ var MUTATIONS = [
   ['the DECLARED departure is silently reversed (#537 -- the stand-in disappears)',
    '    rcp_gate_enforced: false,', '    rcp_gate_enforced: true,'],
   ['the heater FAILURE seat is severed (a failed bank keeps heating) -- #507 wave 6',
-   'var Q_heat_kW = (pz.heatersShed || drivers.heaters_failed) ? 0',
-   'var Q_heat_kW = pz.heatersShed ? 0'],
+   /* RE-ANCHORED at #573: the variable split into energized/delivered, so this anchor moved
+    * with it. The mutation is the same one — the failure seat severed. */
+   'var Q_energized_kW = (pz.heatersShed || drivers.heaters_failed) ? 0',
+   'var Q_energized_kW = pz.heatersShed ? 0'],
+  /* ---- HEATER ELEVATION (#573) ---- */
+  ['the elevation derate is deleted (the 0-or-full cliff is the physics again)',
+   '    var Q_heat_kW = Q_energized_kW * wetted;', '    var Q_heat_kW = Q_energized_kW;'],
+  ['the wetted fraction reads the INSTRUMENT instead of the plant (HR1 inverted, HE-3 dead)',
+   '      ? clip((level_pct - HEATERS.elev_bot_pct) /',
+   '      ? clip((level_ctl - HEATERS.elev_bot_pct) /'],
+  ['the band straddles the sourced 17 % cut (protection fires inside its own subject)',
+   '    elev_top_pct: 15.0', '    elev_top_pct: 22.0'],
+  ['the band loses its floor, so a dry bank still delivers (the deadhead reopens)',
+   '    elev_bot_pct: 5.0,', '    elev_bot_pct: -50.0,'],
+  ['the wetted fraction is not clipped (an overfull vessel over-delivers)',
+   '      ? clip((level_pct - HEATERS.elev_bot_pct) /\n' +
+   '             (HEATERS.elev_top_pct - HEATERS.elev_bot_pct), 0, 1)',
+   '      ? (level_pct - HEATERS.elev_bot_pct) /\n' +
+   '             (HEATERS.elev_top_pct - HEATERS.elev_bot_pct)'],
+  ['the ENERGIZED reading is derated too (#538 by a new road: MANUAL walks the demand down)',
+   '      heater_energized_kW: Q_energized_kW,', '      heater_energized_kW: Q_heat_kW,'],
   ['the spray stick is severed (a stuck-open valve obeys the demand) -- #507 wave 6',
    '    if (pz.sprayStuck) sprayFrac = 1;',
    ''],

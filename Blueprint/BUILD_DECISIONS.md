@@ -45,6 +45,63 @@ where the two differ or where judgment was exercised.
 
 ---
 
+## 2026-08-28-develop-g — #573/#473: heater elevation, and the drawn level that was never a volume
+
+**THE DECISION THAT SHAPED THIS: a ruling is not landed until it is on the plant that ships.**
+*(OWNER RULING, 2026-08-12, answer 3 of five: "physical heater elevation with progressive authority
+loss. Replaces the 17 % cliff", narrowed the same day by "2: keep both" — the cliff loses its role
+as the PHYSICS, not the interlock's existence.)* It was executed: `pwr_pressurizer2.js:355` with the
+band at `pwr_config.js:1211`, gated by `run_pzr2.js`, 49 checks green. Both files are in
+`site/build_site.js`'s `RETIRED` set and are stripped from public builds by #523. **PWR2 — the
+plant the site runs — had the cliff and nothing else, and every document said the ruling was done.**
+
+**Built on PWR2's own geometry, not ported.** `V = 4.176 m³` at L/D = 5 (the shape assumption the
+vessel-mass derivation already uses) gives D 1.021 m, L 5.104 m, so 10 points of VOLUME is 0.510 m
+of bundle sitting 0.255–0.766 m above the bottom head. `elev_bot_pct 5.0 / elev_top_pct 15.0`,
+declared estimate. The retired engine reached the same two percentages on a vessel 2.8 % larger —
+adopted by derivation, with the arithmetic in the module so the coincidence is not mistaken for a
+copy. What the gate pins is the **ordering** (`elev_top_pct < low_cut_pct`), because that is the
+claim; two literals can drift into a band straddling their own protection without any probe seeing.
+
+**⚠ A DELIVERED/ENERGIZED SPLIT WAS FORCED, AND THE NAMES CARRY THE REASON.** The obvious
+implementation multiplies the heater kW by the wetted fraction and publishes it. That resurrects
+**#538 by a new road**: the shell derives `heater_power_pct` from the published kW and the board's
+MANUAL button re-sends the readback as the new demand, so a half-dry bank halves the operator's
+demand on every press. And `run_pwr2_engine`'s **closed energy audit** sums the module's
+`heater_kW`, which must be the delivered number. So: `heater_kW` delivered,
+`heater_energized_kW` published. A heater kW indication is **electrical** — an uncovered element
+still draws full current — so the split is prototypical as well as necessary.
+
+**No "heaters N % submerged" readout was added**, deliberately and against the reflex. The whole
+teaching payload of HE-3 is that the gauge reads full while pressure will not come up; a
+submergence readout hands the player the answer. The cue is documented instead (`Manuals/03` §5.2).
+
+**#473 turned out to be a mapping defect, not a pixel move — which is why it was worth taking in
+the same change** *(OWNER RULING, 2026-08-28: "Both in one change", from three options put with the
+measurement attached)*. The drawn rods sat at level **15.6–24.6 %**, straddling and above the 17 %
+cutoff: a bank the level could never fall through. The reason was that `comp_pressurizer.js` ramped
+level LINEARLY IN HEIGHT while level is a fraction of VOLUME everywhere else in the project — the
+engine's `V_liq/V_pzr`, and Ginna's own *"650 cubic feet, which is equivalent to 87%"*. The drawn
+cavity's bottom dish alone holds 10.35 % of the volume, so the surface was **17.9 px** out at 5 %
+and 10.4 px at the high-level trip. `yForLevel()` integrates the cavity now; the bank draws at
+y 501.3–460.4 and rod spans derive from the cavity half-width at each rod's own y.
+
+**The elevation is ONE number:** `HEATERS.elev_*_pct` → `getControlState().heater_elev_pct` → the
+wiring → the component draws the band it is handed. The component's bare-mount default is
+deliberately the OLD, WRONG elevation so a dropped prop is visible rather than silently correct.
+
+### Open flags this entry leaves
+
+None new; the unverified band is carried in the module and in `Manuals/12` §7.1, both marked. **Two
+existing declarations are now NAMED AS STALE for the shipped plant and are not fixed here**:
+`Manuals/12` §12.15 still declares the retired engine's `K_heater` departure (*"about 347× the
+sourced rating"*) and §7.1 still frames the vessel as *"effective coefficients, not
+thermodynamics"*. PWR2 has neither — it puts joules into a real two-region energy balance. Both
+need their own measurement, and re-deriving them inside a heater-elevation change would have been
+a second subsystem in the blast radius.
+
+---
+
 ## 2026-08-28-develop-f — #536: the neutron source, and a constant that could not be ported
 
 **THE DECISION THAT SHAPED THIS: a tuning constant belongs to the ENGINE it was tuned against.**

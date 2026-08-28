@@ -407,9 +407,18 @@ protection — *OWNER RULING, 2026-08-12: "keep both"*):
 
 | ID | Behavior | Tier | Probe | Status |
 |----|----------|------|-------|--------|
-| HE-1 | Delivered heater power falls PROGRESSIVELY as TRUE level falls through the bank (wetted fraction over the elevation band) — replacing the 0-or-full cliff (#348/#447 are what a cliff does) | C | todo→#472-P3 | [NEW-UNMEASURED] |
+| HE-1 | Delivered heater power falls PROGRESSIVELY as TRUE level falls through the bank (wetted fraction over the elevation band) — replacing the 0-or-full cliff (#348/#447 are what a cliff does) | C | `run_pwr2_pressurizer` HEATER ELEVATION | **PASS on PWR2** (#573, 2026-08-28) — band 5–15 %, wetted 0 / 0.5 / 1 below / mid / above, delivered 0.00 / 78.90 / 157.80 kW |
 | HE-2 | The S1 bistable survives on top: 17 % cut / 20 % restore latch on INDICATED level (HR1) — protection independent of the physics (today CA-10) | I | CA-10 today | PASS today — preserved |
-| HE-3 | Failed transmitter: the latch is fooled exactly as the operator is (CA-10 leg), and the PHYSICS now bounds the damage — #334's 2207-psi steam-heating deadhead becomes unreachable | C | todo→#472-P3 | [NEW-UNMEASURED] |
+| HE-3 | Failed transmitter: the latch is fooled exactly as the operator is (CA-10 leg), and the PHYSICS now bounds the damage — #334's 2207-psi steam-heating deadhead becomes unreachable | C | `run_pwr2_pressurizer` HEATER ELEVATION · `run_pwr2_engine` grp P | **PASS on PWR2** (#573, 2026-08-28) — level channel stuck at 55 %, `lowLevelCut` never fires, and the uncovered bank pressurizes **+0.78 psi** over 30 s against **+13.13** covered |
+
+> **Where these landed, and where they did NOT** *(#573, 2026-08-28)*. The ruling was executed on
+> the RETIRED engine (`pwr_pressurizer2.js`, `run_pzr2.js`) and PWR2 — the plant the site runs —
+> never inherited it. HE-1/HE-3 are now built and gated **on PWR2**; the retired implementation is
+> stripped from public builds by #523 and is not what these rows describe. Two things came with
+> them and are worth knowing: the published heater kW is the **energized bank**, not the delivered
+> heat (a heater indication is electrical, and derating it walks the board's MANUAL capture down —
+> #538 by a new road), and the board draws the bank at the modelled elevation (#473), which
+> required the drawn level mapping to be placed by **volume** rather than height.
 
 **SB / SA / BD — small-break lift, solid plant, blowdown:**
 

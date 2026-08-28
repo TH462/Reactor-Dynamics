@@ -395,6 +395,14 @@ Measured AGAIN 2026-08-28: a whole bullet of seven, all closed. Run the query.
   which is where a roll-call of two dozen per-issue summaries used to sit. Measured 2026-08-28:
   eight of the issues it called CLOSED were still open. **Run `gh issue list`; it is the
   authority, and this line is not.**
+- **#573 + #473 (2026-08-28, §108) — the pressurizer heater elevation the 2026-08-12 ruling asked
+  for, which had been built on the RETIRED engine and never reached this one.** Progressive
+  authority loss on TRUE level across a 5–15 % band (the 17 % bistable keeps the INSTRUMENT and
+  survives on top — catalog HE-1/HE-3 now PASS), and the board draws the bank there *(OWNER
+  RULING, 2026-08-28: "Both in one change")*. Two facts outlive it: the published heater kW is the
+  **ENERGIZED bank**, never the delivered heat (deriving the readback from delivered power
+  re-creates #538), and the cutaway places level **by volume** now — it ramped by height, which is
+  why the bank was drawn at 15.6–24.6 %, above its own 17 % cutoff.
 - **RBMK and BWR** — on hold, and the source of most remaining backlog. Do not touch.
 
 **The manual set's revision number does not advance until a RELEASE** *(OWNER DIRECTIVE,
@@ -437,13 +445,13 @@ ONE line, drop the rest. **A bullet is ~80 words.** (Measured 2026-08-06: the li
   500×-inflated prompt generation time — copying it needs a source ~500× any real one and would
   ramp an exactly critical reactor at 0.05 %/s out of nothing. **Derive from the plant in front of
   you, not from its predecessor.** Its gauge scale was inherited the same way and was 500× wrong.
-- **The SPECIFICATION can be the stale second copy, and that is worse than a stale constant**
-  (2026-08-27, #562/#549/#541/#540, §99). `CONTEXT.md` defined AFW flow as *"capacity ×
-  throttle × level hold"*, the Indications tab told the player the feed was level-controlled,
-  and the manual documented the THROTTLE box and `set_afw_flow {pct}` — while PWR2 had no
-  throttle, no hold, a readback hard-coded to the run lamp, and a `set_afw_flow` that ignored
-  `pct` and **re-started the pump**. Measured: **861.7 %** of nominal SG inventory in five
-  hours. A spec is what you check code against, so nothing could catch it.
+- **A RULING CAN BE EXECUTED ON THE WRONG PLANT, and every document then says it is done**
+  (2026-08-28, #573/#473 §108). The 2026-08-12 heater-elevation ruling was built — in
+  `pwr_pressurizer2.js`, gated 49/49, on the engine #523 strips from public builds. PWR2 had the
+  cliff and nothing else. **Check which engine a "done" landed in.** Two more from the same
+  change: derating the PUBLISHED heater kW would have re-created #538 (the board re-sends its own
+  readback as demand), and the board drew the bank at **15.6–24.6 % level — above its own 17 %
+  cutoff** — because the cutaway ramped level linearly in HEIGHT where level is a VOLUME fraction.
 - **An owner ruling names the WORK; the evidence pass names the THING — and a citation can sit
   three lines from the row it refutes** (2026-08-28, #572 §104). Ruled "build the 1.5 DPM
   startup-rate rod-withdrawal block". No such stop exists in the corpus: WTSM 8.1 §8.1.7.3 lists
@@ -487,8 +495,13 @@ thing left in the file and it grew about a bullet a session.
   the engine had carried it all along (deleting the one line it "lacked" would have changed nothing;
   deleting the FWI line's `tb.tripped` changes everything). **Inherited claims are the risky ones,
   and A MODULE HEADER IS ONE**: a sentence from a review, an issue, a file header or this file has
-  usually aged, and repeating it in your own voice launders it into a fresh assertion. **Grep for
-  the EFFECT, never the name you expected it to have.**
+  usually aged, and repeating it in your own voice launders it into a fresh assertion. **AND THE
+  SPECIFICATION CAN BE THE STALE SECOND COPY** (rescued from the #562 themes bullet on eviction,
+  2026-08-28): `CONTEXT.md` defined AFW flow as *"capacity × throttle × level hold"* and the manual
+  documented the throttle box while PWR2 had none of the three — a spec is what you check code
+  against, so nothing could catch it. Same shape as a ruling that was executed on the RETIRED
+  engine and never reached the shipped one (#573). **Grep for the EFFECT, never the name you
+  expected it to have.**
 - **Verify a claim before you act on it.** Roughly half the issues touched on 2026-07-27 were stale
   or mis-framed. An issue's own investigation comment is a claim like any other, and this repo
   merges faster than one ages well (#326 — both comments were correct when written and wrong hours

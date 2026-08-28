@@ -29,6 +29,80 @@ and the user-visible summary in `CHANGELOG.md`. This file points at those and tr
 
 ---
 
+## Session log — 2026-08-28-develop-g (#573 + #473 — heater elevation, in the model and on the board)
+
+Full write-up with every number: `Blueprint/PWR2_VALIDATION.md` §108. This is the continuity note.
+
+- **What was owed.** *(OWNER RULING, 2026-08-12, answer 3 of five: "physical heater elevation with
+  progressive authority loss", narrowed the same day by "2: keep both".)* It was **built on the
+  RETIRED engine** — `pwr_pressurizer2.js:355` with the band at `pwr_config.js:1211`, both in
+  `build_site.js`'s `RETIRED` set and stripped from public builds by #523. PWR2, the plant the
+  site runs, had the 17 % cliff and nothing else. Catalog rows HE-1/HE-3.
+- **⚠ THE FEATURE IS UNREACHABLE ON A HEALTHY PLANT, AND THAT SHAPES EVERY PROBE.** The band sits
+  below the 17 % cut, so the bistable de-energizes the bank before the derate can act. A check
+  written at a healthy indicated level **passes against a plant with no derate at all**. Every one
+  drives the level channel to lie — which is HE-3, the mechanism's own subject.
+- **Measured** (level stuck at 55 %, heaters manual full, plant stepped, core power and SG duty
+  zero so only the heater moves pressure): true 3 % → wetted 0.000, delivered 0.00 kW, **+0.01 psi**
+  / 30 s · 7.5 % → 0.243, 38.39 kW, +3.77 · 10 % → 0.488, 76.93 kW, +7.38 · 12.5 % → 0.733,
+  115.61 kW, +10.82 · 15 % → 0.979, 154.43 kW, +14.13 · 55 % → 1.000, 157.80 kW, +10.57.
+  **The energized column never moves: 157.80 kW at every row.**
+- **The band, derived on PWR2's own vessel:** V = 4.176 m3 at L/D = 5 → D 1.021 m, L 5.104 m,
+  cross-section 0.8183 m2 → 10 points of VOLUME = 0.510 m of bundle, 0.255–0.766 m above the
+  bottom head. `elev_bot_pct 5.0 / elev_top_pct 15.0` [declared estimate]. The elevation is
+  sourced (WTSM 3.2 ML11223A213, "lower portion of the pressurizer vessel"); the percentages are
+  not, and `find_source.js` finds no vessel height, diameter or bundle length in any lane.
+  **⚠ #573's body says 125.2 ft3 (3.545 m3); the code says 4.176 m3 = 147.5 ft3.** Verified first.
+- **The gate pins the ORDERING, not the literals** — `elev_top_pct < LEVEL.low_cut_pct`. S1 exists
+  to de-energize the bank BEFORE it uncovers; a band straddling 17 % makes the protection fire
+  inside its own subject, and two literals drift into that silently.
+- **⚠ THE TRAP: derating the PUBLISHED kW is #538 by a new road.** The shell derives
+  `heater_power_pct` from `ts.pzr_heater_kw` and the board's MANUAL button re-sends the readback as
+  the new demand — a half-dry bank would halve the operator's demand every press. Separately
+  `run_pwr2_engine:303` sums the module's `heater_kW` into its CLOSED ENERGY AUDIT, which needs the
+  delivered number. Split by name: `heater_kW` delivered (energy balance), `heater_energized_kW`
+  the bus load (published — a heater indication is ELECTRICAL), `heater_wetted_frac` for the gate
+  and the board. **No "submerged %" readout**, deliberately: it hands the player HE-3's answer.
+- **The board (#473) — the drawn bank was ABOVE its own cutoff.** Rods at y 422–458 against a
+  106–541 water span = level **15.6–24.6 %**. But the pixels were not the fix: `levelY` ramped
+  LINEARLY IN HEIGHT while level is a fraction of VOLUME everywhere else (the engine's
+  `V_liq/V_pzr`; Ginna's "650 cubic feet, which is equivalent to 87%"). Cavity volume shares:
+  dish **10.35 %**, shell 82.14 %, dome 7.51 % — so the surface sat **17.9 px** out at 5 % and
+  10.4 px at the 87 % trip, worst exactly where the bank lives. `yForLevel()` integrates it now.
+  Bank draws at y 501.3–460.4, straddling the dish/shell joint; rod spans derive from the cavity
+  half-width (the authored x 58..150 was 3 px wider than the cavity and drew through the wall).
+  **The art's own comment was what was wrong** — it kept the rods out of the dish on an aesthetic
+  assumption made when the mapping was linear. Direct-immersion heaters penetrate the bottom head.
+- **One number, not two:** `HEATERS.elev_*_pct` → `getControlState().heater_elev_pct` → the
+  wiring's `pressurizer:` mapper → the component draws the band it is handed (#557 shape). The
+  component's bare-mount default is deliberately the OLD, WRONG elevation, so a dropped prop is
+  visible instead of silently correct.
+- **⚠ THREE PROBES THAT MEASURED NOTHING, in one session.** (1) The rate probe stepped the
+  pressurizer alone: both legs read **+0.00 psi** and an inequality between two zeros passes —
+  pressure is Layer 2's solve, the plant must be stepped. (2) Setting `pz.V_liq` to place the
+  level PASSED VACUOUSLY: `V_liq` is DERIVED at the end of every step from m_sub/m_sat, so the
+  assignment survived one step and the check measured a covered bank while printing the level it
+  had asked for. (3) The state does not hold at all — removing ~1,400 kg drops RCS pressure, the
+  subcooled loop expands, the vessel refills in a couple of steps. The engine/shell probes now
+  ADVANCE UNTIL THE STATE ARRIVES, bounded, and fail loudly if it never does.
+- **board_check pinned the pressurizer's PORTS and nothing inside them**, which is how a bank
+  above its own cutoff survived. Five checks, expectation an INDEPENDENTLY RETYPED cavity integral.
+  **Proven by injection, both halves:** linear mapping restored → 17.92 px red; authored pixels
+  restored → 4 of 4 rods outside; wiring prop dropped → the MOUNTED-board check reds.
+- **Gates.** `run_pwr2_pressurizer` 86 → **92** (41 → 47 mutations), `run_pwr2_engine` 118 → **122**
+  (69 → 71, group `P`), `run_pwr2_shell` 128 → **130**, `verify_board_check` 231 → **236**;
+  `run_pwr2_kernel` 37 and `run_pwr2_endurance` 20 unchanged. One mutation anchor re-pointed (the
+  failure-seat mutation named the variable the split renamed) rather than dropped.
+- **Docs.** `Manuals/03` §5.2 (a fifth way heater power reads wrong — the one where the reading is
+  not zero and the heat is), `12` §7.1, `09` §6.0, all on the pending Rev 17 row.
+  `PWR_BEHAVIOR_CATALOG` HE-1/HE-3 `[NEW-UNMEASURED]` → PASS with probe names.
+- **Left open, and named:** `Manuals/12` §12.15 still declares the retired engine's `K_heater`
+  departure ("about 347x the sourced rating") and §7.1 still frames the vessel as "effective
+  coefficients, not thermodynamics". PWR2 has neither — it puts joules into a real energy balance.
+  Both rows are stale for the shipped plant and need their own measurement.
+
+---
+
 ## Session log — 2026-08-28-develop-f (#536 — the neutron source the reactor did not have)
 
 Full write-up with every number: `Blueprint/PWR2_VALIDATION.md` §107. This is the continuity note.

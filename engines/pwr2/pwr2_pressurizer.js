@@ -132,7 +132,53 @@
     backup_kW: 121.4,
     /* Ginna TS Bases B 3.4.9 + NUREG-0737 II.E.3.1 (7) (#447): heaters shed on SI or loss of
      * offsite power, and shed when uncovered (D2 §25.3's emptied regime). */
-    shed_on_si: true
+    shed_on_si: true,
+
+    /* ---- THE ELEVATION BAND (#573, the 2026-08-12 ruling) --------------------------------
+     * The bank occupies a BAND of the vessel, and delivered power falls with the WETTED
+     * FRACTION of that band as TRUE level passes through it. That is the physics; the sourced
+     * 17 %/20 % bistable below survives ON TOP of it as protection *(OWNER RULING, 2026-08-12,
+     * answer 3 of five given as "1: B  2: A  3: A  4: A and then B after the pzr  5: yes,
+     * behind, rename" — rendered on #472 as "A: physical heater elevation with progressive
+     * authority loss"; narrowed the same day, "1: accept as drafted  2: keep both  3: out of
+     * scope, but measured", which settles that what the cliff loses is its role as the PHYSICS,
+     * not the interlock's existence)*.
+     *
+     * THE SOURCED HALF is the elevation itself — WTSM 3.2 (ML11223A213): "replaceable,
+     * direct-immersion, tubular-sheath type heaters ... located in the LOWER PORTION of the
+     * pressurizer vessel". That is why WTSM 10.3 puts a cutoff at 17 % at all: below it the
+     * bank is uncovered and operating in steam damages it.
+     *
+     * THE TWO PERCENTAGES ARE NOT SOURCED and say so. `find_source.js` finds no pressurizer
+     * height, diameter, shell thickness or heater-bundle length in any lane's corpus. They are
+     * DERIVED from this plant's own vessel, on the same L/D = 5 shape assumption the vessel-mass
+     * derivation uses (Westinghouse pressurizers are tall):
+     *
+     *   V = 4.176 m3 (GEOM above) at L/D = 5  ->  D = (4V/5pi)^(1/3) = 1.021 m, L = 5.104 m
+     *   cross-section 0.8183 m2  ->  10 points of VOLUME = 0.510 m of bundle,
+     *   sitting from 0.255 m to 0.766 m above the bottom head
+     *
+     * — roughly the physical depth of an immersion-heater bundle. The retired engine reached
+     * the same two percentages on a vessel 2.8 % larger (4.292 m3); they are adopted here BY
+     * DERIVATION, not by copying, which is why the arithmetic is written out.
+     *
+     * ⚠ THE BAND SITS ENTIRELY BELOW THE 17 % CUT, and that ordering is the whole point of the
+     * cut: S1 exists to de-energize the bank BEFORE it uncovers, not after. A band straddling
+     * 17 % would make the protection fire in the middle of its own subject. The gate asserts
+     * `elev_top_pct < LEVEL.low_cut_pct` directly rather than trusting the two literals.
+     *
+     * ⚠ THESE TWO KEYS ARE THE SINGLE SOURCE FOR THE BOARD (#473). The shell publishes them
+     * through `getControlState().heater_elev_pct` and `comp_pressurizer.js` draws the bank
+     * between them — move one and the drawn elevation moves with it. There is deliberately no
+     * second number to drift, which is the #557 shape.
+     *
+     * ⚠ AND THE CONSEQUENCE ONLY BITES WHEN THE LEVEL CHANNEL LIES. The band is below the cut,
+     * so on a healthy plant the bistable de-energizes the bank before the derate can do
+     * anything. The case it exists for is behaviour-catalog HE-3: a stuck transmitter fools the
+     * latch exactly as it fools the operator, and the wetted fraction is then the only thing
+     * bounding #334's 2207-psi steam-heating deadhead. [declared estimate] */
+    elev_bot_pct: 5.0,
+    elev_top_pct: 15.0
   };
 
   var SPRAY = {
@@ -714,10 +760,48 @@
      * is ~1.7 % of the installed total. AUTO is untouched and stays prototypical: the
      * proportional bank modulates and the backup group is a latched contactor on the sourced
      * pressure/level signals (Ginna UFSAR ch7). */
-    var Q_heat_kW = (pz.heatersShed || drivers.heaters_failed) ? 0
-                  : drivers.heaters_manual !== undefined
-                    ? heatFrac * (HEATERS.prop_kW + HEATERS.backup_kW)
-                    : prop * HEATERS.prop_kW + (pz.backupOn ? HEATERS.backup_kW : 0);
+    /* THE ENERGIZED BANK — the bus load, after the shed latch and the failure seat. This is
+     * what the heater kW INDICATION reads, because a real heater indication is electrical. */
+    var Q_energized_kW = (pz.heatersShed || drivers.heaters_failed) ? 0
+                       : drivers.heaters_manual !== undefined
+                         ? heatFrac * (HEATERS.prop_kW + HEATERS.backup_kW)
+                         : prop * HEATERS.prop_kW + (pz.backupOn ? HEATERS.backup_kW : 0);
+
+    /* ---- THE WETTED FRACTION (#573) — PHYSICS, ON TRUE LEVEL ------------------------------
+     * A rod in steam cannot heat water. `level_pct` is the plant's own liquid volume; the 17 %
+     * bistable a few lines above reads `level_ctl`, the INSTRUMENT. That is the same HR1 split
+     * this file already makes for the pressure ladder, and it is what makes HE-3 expressible:
+     * a stuck level transmitter fools the latch, and this term is then the only thing bounding
+     * the damage.
+     *
+     * ⚠ THE DRY FRACTION DELIVERS NOTHING — a DECLARED simplification, not an oversight. A
+     * direct-immersion element in steam does transfer some heat, but through a film
+     * coefficient two orders down; it burns out rather than usefully heating the steam space.
+     * Crediting it would be re-opening #334's deadhead by arithmetic. Note the energy block
+     * below still has an `m_stm` branch for the heater — with this term that branch becomes
+     * unreachable, which is exactly the point (HE-3: "#334's 2207-psi steam-heating deadhead
+     * becomes unreachable").
+     *
+     * ⚠ IT IS A VOLUME FRACTION, because `level_pct` is. On a straight-sided vessel that is the
+     * height fraction; on this one the heads make them differ, and the BOARD is what has to
+     * agree — `comp_pressurizer.js` maps level to a drawn height by volume for that reason
+     * (#473). Declared here so the two cannot be reconciled in opposite directions later. */
+    var wetted = HEATERS.elev_top_pct > HEATERS.elev_bot_pct
+      ? clip((level_pct - HEATERS.elev_bot_pct) /
+             (HEATERS.elev_top_pct - HEATERS.elev_bot_pct), 0, 1)
+      : (level_pct > HEATERS.elev_top_pct ? 1 : 0);
+
+    /* ⚠ DELIVERED AND ENERGIZED ARE DIFFERENT NUMBERS AND THE SPLIT IS LOAD-BEARING (#573).
+     * `Q_heat_kW` is what reaches the water — the energy balance below and
+     * `run_pwr2_engine`'s closed energy audit both sum THIS. `Q_energized_kW` is what the
+     * gauge reads, and `pwr2_engine` publishes THAT as `pzr_heater_kw`.
+     *
+     * DERATING THE PUBLISHED NUMBER WOULD RESURRECT #538 BY A NEW ROAD: the shell derives
+     * `heater_power_pct` from the published kW and the board's MANUAL button re-sends that
+     * readback as the new demand, so a partly-uncovered bank would walk the operator's demand
+     * down on every press — the same walk (14.45 -> 0.04 kW in four presses) that #538 fixed
+     * from the other end. The readback must stay an identity. */
+    var Q_heat_kW = Q_energized_kW * wetted;
 
     var sprayAuto = clip((err_psi - CONTROL.spray_start_psi) /
                          (CONTROL.spray_full_psi - CONTROL.spray_start_psi), 0, 1);
@@ -891,7 +975,14 @@
       m_pzr: pz.m_pzr,
       surge_kgs: surge_kgs,
       surge_heat_kW: surge_heat_kW,
+      /* DELIVERED into the water (energized x wetted) — the number the energy balance uses and
+       * the one `run_pwr2_engine`'s closed audit sums. NOT the gauge; see the split above. */
       heater_kW: Q_heat_kW,
+      /* THE BUS LOAD, un-derated — what an electrical kW indication reads, and what the shell
+       * publishes so #538's readback round trip stays an identity on an uncovered bank. */
+      heater_energized_kW: Q_energized_kW,
+      /* the fraction of the bank under water, for the gate and for the board's drawing (#473) */
+      heater_wetted_frac: wetted,
       heater_frac: heatFrac,
       backup_on: pz.backupOn,
       heaters_shed: pz.heatersShed,

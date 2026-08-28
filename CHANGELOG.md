@@ -30,6 +30,41 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
 
 ## [Unreleased]
 
+### Added (#573 + #473 — the pressurizer heaters lose authority as the level falls past them, 2026-08-28)
+
+Full write-up: `Blueprint/PWR2_VALIDATION.md` §108.
+
+- **The heater bank has a physical elevation now, and delivered heat falls with the part of it
+  under water.** The bank occupies roughly **5 % to 15 %** of pressurizer level; half covered
+  delivers half its 157.8 kW, below the bank it delivers nothing. This replaces a 0-or-full
+  cliff — a **2026-08-12 owner ruling that was built on the engine since retired and never
+  reached the plant the site runs.** The sourced 17 % / 20 % cutoff survives on top of it as
+  protection, unchanged.
+- **The heater power indication does NOT fall with it, and that is deliberate.** It reads
+  electrical power, and an uncovered element still draws full current. Measured at a true level
+  of 10 %: **157.8 kW energized, 76.9 kW delivered**, and pressure rises at half the rate.
+- **The case it exists for is a lying level channel.** On a healthy plant the 17 % cutoff
+  de-energizes the bank before it can uncover, so you never meet this. With the level transmitter
+  stuck, the same failure that fools you fools the cutoff — the heaters sit energized in steam,
+  the gauge reads full, and pressure will not come up. Measured over 30 s: **+0.78 psi uncovered
+  against +13.13 psi covered**. That is the plant's only bound on a fault that previously ran the
+  full bank into a dry vessel.
+- **The board draws the bank where that happens** *(OWNER, 2026-08-12: "We need the heater in the
+  diagram to visually match the height the heater is located in reality"; scoped 2026-08-28:
+  "Both in one change")*. It was drawn at **15.6–24.6 % level — straddling and above the 17 %
+  cutoff**, i.e. a bank the level could never fall through.
+- **…and the vessel's water line is placed by VOLUME now, not by height.** Level is a fraction of
+  water volume everywhere else in the simulator, but the cutaway ramped it linearly down the
+  vessel — and the bottom dish alone holds 10 % of the volume. The surface was up to **17.9 px**
+  out at low level and 10.4 px at the high-level trip. That mapping error is why "draw the
+  heaters at the right height" was not a pixel move.
+- Gates: `run_pwr2_pressurizer` 86 → **92** (41 → 47 mutations), `run_pwr2_engine` 118 → **122**
+  (new group), `run_pwr2_shell` 128 → **130**, `verify_board_check` 231 → **236** — the
+  pressurizer's inside was previously ungated entirely.
+- Manuals: `03` §5.2 gains the fifth way heater power reads wrong, `12` §7.1 the mechanism with
+  its elevation marked unverified, `09` §6.0 the band. Catalog rows HE-1 and HE-3 move from
+  unmeasured to PASS.
+
 ### Fixed (#536 — the neutron source the reactor did not have, 2026-08-28)
 
 Full write-up: `Blueprint/PWR2_VALIDATION.md` §107.

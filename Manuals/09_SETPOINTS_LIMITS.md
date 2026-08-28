@@ -250,6 +250,7 @@ Inward motion still takes — that is the source's own scope, quoted at the end 
 | Pressure setpoint | **2235 psi (15.41 MPa)** |
 | Heater proportional band | **30 psi (0.207 MPa)** |
 | Heater low-level cutoff / restore | **17 % / 20 %** indicated PZR level |
+| Heater bank elevation | **5 % – 15 %** TRUE PZR level (unverified estimate; the elevation is sourced, the two figures are this plant's). Delivered heat scales with the wetted fraction of the band — entirely below the cutoff above, so it is reachable only when the level channel is lying |
 | Heater ESF load shed | **safety injection** signal or **loss of offsite power** — latched; cleared only by an operator heater action, not by securing injection |
 | Spray proportional band | **50 psi (0.345 MPa)** |
 

@@ -466,6 +466,10 @@ Three behaviours are worth understanding at the board:
 
 **A raised pressure setpoint slews; a lowered one takes effect at once.** Heating a large subcooled pressurizer to a higher saturation point takes time regardless of heater margin, so the effective target walks up at 3 psi (0.02 MPa)/s (a full cold-to-NOP pressurization ≈ 11 simulated minutes). Depressurisation is spray- and cooling-limited on its own and needs no slew.
 
+**The heaters sit low in the vessel and lose authority as the level falls past them.** The bank occupies a band from about **5 % to 15 % level**, and delivered heat scales with the fraction of that band under water — half covered, half the heat; below the bank, none. The elevation itself is sourced (the heaters are *"direct-immersion, tubular-sheath type … located in the lower portion of the pressurizer vessel"*); the two percentages are this plant's own estimate, derived from its vessel volume on a tall-and-slender shape, and are **unverified** — no reference in the source set gives a bundle length or a vessel height. What they *are* pinned to is an ordering: the band sits entirely below the 17 % heater cutoff, because that cutoff exists to de-energize the bank **before** it uncovers.
+
+The band is therefore unreachable on a healthy plant, and that is the point of it. It becomes the only thing bounding the damage when **the level channel lies** — a stuck transmitter fools the cutoff exactly as it fools the operator, the bank stays energized in steam, and the heater indication keeps reading full because it reads electrical power. See `03_CONTROLS_AND_INDICATIONS.md` §5.2.
+
 ### 7.2 Saturation pinning
 
 When the primary voids, **or** whenever the saturation pressure of Tavg exceeds actual pressure, the model switches regimes: pressure is **pulled to Psat(Tavg)** rather than allowed to fall below it. A liquid cannot superheat, and a model that let pressure crash below saturation would report impossible negative subcooling.

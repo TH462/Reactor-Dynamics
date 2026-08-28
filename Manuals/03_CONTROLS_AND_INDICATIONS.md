@@ -244,6 +244,21 @@ The shed is the one that needs a deliberate decision: the heaters are healthy an
 is alive, they have just been dropped off it to make room for safety loads, and **securing
 injection does not put them back**.
 
+**And there is a fifth case where the reading is NOT zero and the heat is.** The bank sits low
+in the vessel — roughly **5 % to 15 % level** — and heat only enters water it is actually
+immersed in. As the level falls through that band the delivered heat falls with it: at 10 %
+the bank is half covered and delivers half its rating, and below 5 % it delivers nothing at all.
+
+The **HTR PWR indication does not fall with it**, because it reads electrical power and an
+uncovered element is still drawing full current. That is not a fault in the gauge — it is the
+only honest thing an ammeter can say. On a healthy plant you never meet this: the 17 % cutoff
+in the table above de-energizes the bank *before* it uncovers, which is exactly why that
+setpoint exists. **You meet it when the level channel is lying to you** — the same failed
+transmitter that fools you fools the cutoff, the heaters stay energized into steam, and the
+only symptom is that pressure will not come up no matter what you demand. Cross-check level
+against charging/letdown flow and subcooling margin before you conclude the heaters have
+failed.
+
 ### 5.3 PZR Spray
 
 | Mode | Effect |

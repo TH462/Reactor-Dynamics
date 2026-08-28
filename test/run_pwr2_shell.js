@@ -1287,6 +1287,49 @@ function runSuite(SH, rec, quiet, only) {
      Math.abs(eBL.getTrueState().pzr_heater_kw - blAuto) < 0.5,
      'heaters ' + blAuto.toFixed(3) + ' -> ' + eBL.getTrueState().pzr_heater_kw.toFixed(3) +
      ' kW across the transfer (shipped: 36.400 -> 8.397)');
+  /* ⚠ AND THE ROUND TRIP MUST SURVIVE AN UNCOVERED BANK (#573). The two checks above run at
+   * program level, where the heater elevation derate is inert — so they would pass against a
+   * plant that published DELIVERED power and walked the demand down the moment the bank went
+   * partly dry. That is #538 arriving by a new road, and the only probe that can see it is one
+   * standing where the derate bites. The level channel is stuck HIGH so the 17 % bistable does
+   * not fire and take the heaters out from under the test. */
+  var eUC = new SH.PWR2Engine({});
+  for (i = 0; i < 100; i++) eUC.step(0.02);
+  eUC.applyCommand({ action: 'set_instrument_failure', instrument_id: 'pzr_level',
+                     mode: 'stuck', value: 55 });
+  /* Drop the TRUE level into the band by scaling the vessel's LIQUID MASS — the shortest path
+   * to the state; draining through the CVCS would take plant-minutes and would measure the
+   * charging controller instead of the currency. ⚠ NOT by assigning `pz.V_liq`: that is DERIVED
+   * from the masses at the end of every step, so the assignment survives one step and the check
+   * silently reverts to measuring a covered bank. The wetted fraction is asserted below, not
+   * assumed, for exactly that reason. */
+  var PZM = globalThis.RD.pwr2.pressurizer, band = PZM.HEATERS;
+  var midPct = (band.elev_bot_pct + band.elev_top_pct) / 2;
+  eUC.applyCommand({ action: 'set_heater', power_pct: 40 });
+  for (i = 0; i < 25; i++) eUC.step(0.02);
+  var ratio = midPct / (100 * eUC.eng.pz.V_liq / PZM.GEOM.V_pzr_m3);
+  eUC.eng.pz.m_sub *= ratio; eUC.eng.pz.m_sat *= ratio;
+  /* ⚠ ADVANCE UNTIL IT ARRIVES, and assert THERE. The state does not hold: taking the liquid
+   * out drops RCS pressure, the subcooled loop expands and the vessel refills within a couple
+   * of steps (a pressurizer genuinely sitting in the heater band means a genuinely drained
+   * RCS — the LOCA regime, far more plant than this seam needs). A fixed step count would rot
+   * the moment the propagation delay changed; this fails loudly if it never arrives. */
+  var uc1 = null, ucWet = 1;
+  for (i = 0; i < 20 && uc1 === null; i++) {
+    eUC.step(0.02);
+    if (eUC.eng._pzr.heater_wetted_frac < 0.9) {
+      ucWet = eUC.eng._pzr.heater_wetted_frac;
+      uc1 = eUC.getControlState().heater_power_pct;
+    }
+  }
+  ck('...the bank really does uncover (the premise, MEASURED — the level is derived state)',
+     uc1 !== null && ucWet > 0.05 && ucWet < 0.9,
+     'wetted ' + ucWet.toFixed(3) + (uc1 === null ? ' — NEVER REACHED' : ''));
+  ck('...and the readback is STILL 40 % with the bank part uncovered — the gauge is electrical',
+     uc1 !== null && Math.abs(uc1 - 40) < 1e-9,
+     'set 40 % -> reads ' + (uc1 === null ? '?' : uc1.toFixed(3)) + ' % at wetted ' +
+     ucWet.toFixed(3) + '; publishing DELIVERED power here would read ' +
+     (40 * ucWet).toFixed(1) + ' %, and the MANUAL capture would shrink it again every press');
   /* Read here, not from the module-level SHSRC — that is assigned AFTER runSuite returns.
    * COMMENTS ARE STRIPPED FIRST: the fix's own comment names the retired literal, and a scan
    * that cannot tell prose from code would forbid explaining what was fixed. */

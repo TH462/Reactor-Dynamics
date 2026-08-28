@@ -59,6 +59,7 @@
   var GPM_FEED = 1000;   // full-rated feed flow, for the measured fw_flow indication (normalized 0-1)
   var _CFG = (typeof RD !== 'undefined' && RD.PWR_CONFIG) || {};
   var _RX = _CFG.reactivity || {}, _PZ = _CFG.pressurizer || {}, _ID = _CFG.identity || {};
+  var _PZ2 = _CFG.pressurizer2 || {};   /* the v2 vessel block — heater ELEVATION lives here */
   var _SG = _CFG.steam_generator || {}, _EM = _CFG.emergency || {}, _TB = _CFG.turbine || {};
   var GPM_CHARGING = 450000, GPM_LETDOWN = 450000;   // = GPM_RCS_PER_FRAC (literals: run_manual_units parses these statically)
   // ECCS full-scale = the RATED combined injection in real gpm (~324 on the declared
@@ -1324,7 +1325,17 @@
       // Fluid color tracks the LIVE pressurizer temperature = saturation temp of the RCS
       // pressure (the pressurizer sits at saturation), so it runs red hot at operating
       // pressure and cools as the plant depressurizes — not a fixed 345 °C.
-      return { level: IN(s).pzr_level, heaterPower: c.heater_power_pct,
+      // THE HEATER BANK'S ELEVATION COMES FROM THE PLANT (#473). The drawn bank and the band
+      // the model loses authority across are ONE pair of numbers, published through
+      // getControlState so they cannot drift — the #557 shape. The fallback is the dev PWR
+      // route's: `pwr_config.pressurizer2` carries the same pair for the v2 vessel (the
+      // ELEVATION is in that block, the 17 % CUTOFF in `pressurizer` — two blocks, one fact,
+      // so both are read by name). A plant that publishes neither leaves the component on its
+      // own bare-mount default.
+      var hev = c.heater_elev_pct ||
+        (isFinite(_PZ2.heater_elev_bot_pct) && isFinite(_PZ2.heater_elev_top_pct)
+          ? [_PZ2.heater_elev_bot_pct, _PZ2.heater_elev_top_pct] : null);
+      return { level: IN(s).pzr_level, heaterPower: c.heater_power_pct, heaterElevPct: hev,
         heaterOn: (c.heater_power_pct || 0) > 0 || (c.heater_auto && (IN(s).power_range || 0) > 0),
         spray: (c.spray_valve_pct || 0) > 2, temp: satTempC(IN(s).primary_pressure),
         // the spray runs carry COLD-LEG water — same live temp as the external spray pipe (#237)
