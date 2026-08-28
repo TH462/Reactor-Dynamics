@@ -76,6 +76,25 @@ non-monotone branch — re-run ALL of a file's injections after a physics fix, n
 **Open out of this session:** `measure_pwr2_ab.js:65` still classes `leak_flow` PROXY — can be
 re-classed to a translation now the currencies agree (not in the aggregate gate, #513 ruling).
 
+**CI FALLOUT, and the trap is the best thing in this session.** The push came back RED:
+`run_pwr2_engine` 110/111 on CI against a tree reproducibly 111/111 here, and **the log could
+not say which check** — `run_all` dumped a drifting runner's last 14 lines, which are the
+mutation self-test and the tally, never the FAIL line printed hundreds of lines earlier. Fixed
+first (`c1c735b`, failing checks now print by name, injection-verified), because the diagnosis
+was blocked on it. The named check was #499's guard: *"ridden deeper the plant DECLARES
+beyond-model and holds"*, requiring the latch inside 180 s.
+
+**It is a CLIFF, not drift** — perturb the fixture's break area by 1, 2, 4, 8, 16 ulp and it
+latches at **exactly 160.0 s** every time; by 32 ulp it **never** latches and stabilizes finite
+at 100.6 psia out to 900 s. CI's red ended finite at 110.9 psia: the far side of the same cliff,
+picked by one rounded operation on a different platform and Node build (24.19/Linux vs
+24.18/Windows). **Neither branch is a defect** — one runs dry and says so, the other equilibrates
+against a containment #543 finally let push back. So this was my own fix moving a fixture.
+Re-scoped to the invariant the FILED defect violated (it went non-finite mid-ride at 68.5 s):
+no throw, finite at EVERY step — strictly stronger than the old end-of-ride sample, and free of
+the coin flip. Injection-verified both ways; 111/111, 66/66 mutations, no blind spots. The latch
+MECHANISM keeps its deterministic coverage in `run_pwr2_core`, which is where it belongs.
+
 ---
 
 ## Session log — 2026-08-28-develop-c (#572 — the rod stop that was not there)

@@ -242,3 +242,26 @@ they are here.
   **What is still open and is this entry's own**: `_PROT.trips` and `_PROT.alarms` have the same
   module-load shape and have NOT been audited. #572 fixed the one consumer that was measured
   wrong.
+
+### Provenance matters more than it looks — evicted 2026-08-28
+
+**Evicted under the 25-bullet cap** to make room for the bifurcation trap (#543 fallout), and it
+is the right one to move because it is the rare standing bullet that **names its own gates**:
+`test/run_hr3.js` guards Hard Rule 3, and `test/run_hardrules.js` guards Hard Rules 1, 5 and 11
+— 400 checks as of this date. The criterion for eviction is "move what a GATE already catches",
+and HR11's own form (a ruling needs a date and the owner's verbatim words) is exactly what
+`run_hardrules` enforces.
+
+The bullet, verbatim as it stood:
+
+> **Provenance matters more than it looks.** Many "owner rulings" here were written by agents, and
+> all agent work commits under the owner's name, so git blame proves nothing. A ruling without a
+> date and a verbatim owner quote is advisory — `CONTEXT.md` §3. **`test/run_hr3.js` guards HR3;
+> `test/run_hardrules.js` guards HR1, HR5 and HR11.**
+
+**The half no gate covers, and why it is still worth reading**: the gate can check that a ruling
+*carries* a date and a quote; it cannot check that the quote is the owner's. Agent-authored
+"rulings" that were never said are invisible to it, and `git blame` cannot tell them apart
+because every agent commit lands under the owner's name. When a decision looks load-bearing and
+its provenance is a bare assertion, treat it as advisory and say so — that judgement is the
+part that does not automate. See also the `agent-authored-rulings` memory.

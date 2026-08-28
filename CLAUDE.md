@@ -479,6 +479,10 @@ one means evicting one to **`Blueprint/TRAPS.md`**, and the criterion is written
 what a GATE already catches**, keep what nothing can tell you. This list was the only unbounded
 thing left in the file and it grew about a bullet a session.
 
+- **A check can pin a BIFURCATION, not a claim** (2026-08-28, #543 fallout). #499's guard wanted
+  a latch inside 180 s: the fixture latches at **exactly 160.0 s** under 1–16 ulp and **never**
+  under 32 — a cliff, so one bit picks the branch (green here, red on CI). **Assert the
+  invariant the defect violated**, at every step.
 - **A pre-declared reject criterion can outlive its measurement** (rescued from the #394
   limit-cycle bullet on eviction, 2026-08-10): #378's was void the next day. Re-measure the
   criterion, not just the result, before you let it reject anything.
@@ -626,10 +630,6 @@ thing left in the file and it grew about a bullet a session.
   all correct to a source scan, and green to a Node gate that hands it the rows itself.
   `drainFine()` is the single `takeFine()` caller and is called synchronously from
   `render()`; keep it there.
-- **Provenance matters more than it looks.** Many "owner rulings" here were written by agents, and
-  all agent work commits under the owner's name, so git blame proves nothing. A ruling without a
-  date and a verbatim owner quote is advisory — `CONTEXT.md` §3. **`test/run_hr3.js` guards HR3;
-  `test/run_hardrules.js` guards HR1, HR5 and HR11.**
 - **On a board issue, read `git log develop`, not just the lane TAGS.** A tag says someone is
   THERE; the log says what they have already DONE. Four #357 items were worked against a
   convention #350 had already inverted.
