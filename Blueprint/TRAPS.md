@@ -160,3 +160,28 @@ bound at once; this is what came out.
   does not publish (`undefined || 0` sailing over 26.6 MMBtu/hr) and one whose fixture was
   satisfied by the 17 % low-level cut rather than by the latch under test. That half is covered by
   the standing hollow-check bullet, which already carries the unpublished-field case.
+
+## Evicted 2026-08-28 (a THEMES-rotation eviction — the #523 bullet, out for #545's)
+
+Not a standing-list eviction, and for the same reason as the 2026-08-24 one above: the standing
+list stood at its 25-bullet cap and `CLAUDE.md` at **68 words of headroom**, so rescuing this
+trap into that list would have cost a second eviction and a net gain of nothing. It lands here
+whole. **If it bites someone anyway, that is the evidence to put it back.**
+
+- **A shared artifact keyed by the ENGINE goes silently EMPTY when the engine key changes, and
+  the neighbouring lookup that got it right is no warning** (the #523 §94 themes bullet,
+  2026-08-26, on its rotation out). Making PWR2 the plant the site runs broke two:
+  `mdManual()` read `RD.MANUAL_MD[ui.engineKey]` with no `|| [ui.plant]`, so the **operator's
+  manual rendered empty** — one of only TWO areas `site/flags.js` stages `public` — while
+  `manualDoc()` fifty lines away had the fallback and had disagreed for days; and
+  `afterPlantChange()` derived the engine key from `ui.plant`, which `uiPlantOf()` deliberately
+  folds `pwr2` onto, so a PWR2 save installed the RETIRED engine's key and the next Reset would
+  ask for a constructor a published build does not contain. Neither was reachable while PWR2 was
+  a second card.
+
+  The instruction it produced — **when a plant's key changes, grep every `[ui.engineKey]` in the
+  tree, not the ones you remember** — is narrower than it looks now that the key change has
+  happened and PWR2 *is* the plant. What generalizes is the shape, and that is the half worth
+  carrying: **a lookup keyed by a value that can change goes silently empty rather than loudly
+  wrong, and a correct neighbour doing the same lookup is not a warning — it is the thing that
+  makes the wrong one look fine.**

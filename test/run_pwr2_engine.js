@@ -987,6 +987,105 @@ function runSuite(RD, rec, quiet, only) {
   run(engJ, 5);
   ckT('...and a WORKING scram beats the drive: rods drop, the runaway clears',
       engJ.rodSteps < 50 && engJ.runaway === null, 'gravity wins');
+
+  /* ---- 8b. THE TRIP BREAKERS TAKE THE DRIVE'S POWER (#545) ----------------------------------
+   * [sourced] Ginna TS Bases B 3.3.1 (ML20339A221): "Opening of the RTBs interrupts power to
+   * the CRDMs, which allows the shutdown rods and control rods to fall into the core by
+   * gravity". So a LATCHED trip means no drive power, either bank, either direction.
+   *
+   * WHAT THIS REPLACES. Measured on the pre-fix tree, full facade: scram from hot_full_power,
+   * rods 0/0 and 2.71 % at t+10 s, then `rod_start {direction:1}` ACCEPTED on both groups and
+   * the plant back at 61.18 % true power / 61.93 % core heat / 598.4 degF at t+910 s, rods
+   * 200/200 — with `scrammed` true on the true state, on the instrument and in the kernel at
+   * once, while hi_flux_lo sat at 0.6170 against its 0.350 setpoint, asserted, TRIPPING, held
+   * 751.6 s, and could not act because the latch it would set was already set. The rods were
+   * the one trip consumer wired to the latch's rising EDGE; every other one below it is
+   * level-held.
+   *
+   * THE POWER CHECK IS THE POINT, not the step count: a hold that stopped the rods but left a
+   * critical core would read identically at 0/0 for the first minute. */
+  head('THE TRIP BREAKERS  [a latched trip is rod drive power removed, both banks, both ways]');
+  var engT = EN.createEngine({});
+  run(engT, quiet ? 20 : 60);
+  EN.command(engT, 'scram');
+  var tsT10 = run(engT, 10);
+  var sT0 = engT.rodSteps, sdT0 = engT.sdSteps;
+  var thrTc = false, thrTs = false;
+  try { EN.command(engT, 'rod_target', 200); } catch (eT1) { thrTc = /ROD DRIVE BLOCKED/.test(eT1.message); }
+  try { EN.command(engT, 'sd_target', 200); } catch (eT2) { thrTs = /ROD DRIVE BLOCKED/.test(eT2.message); }
+  ckT('under a latched trip BOTH bank doors refuse by name — not silently clamped (#551 law)',
+      thrTc === true && thrTs === true && engT.rodTarget === 0 && engT.sdTarget === 0,
+      'targets untouched at ' + engT.rodTarget + '/' + engT.sdTarget);
+  /* THE DEMAND IS PLANTED PAST THE DOOR, AND IT HAS TO BE. The hold and the door are each
+   * SUFFICIENT for the operator's own sequence, so a one-sided injection lies (#295): with the
+   * door refusing, `rodTarget` never reaches 200, so deleting the level hold moves nothing and
+   * its mutation goes blind. Measured — that is exactly what the first draft of this section
+   * did. Writing the field directly is the honest reproduction of the OTHER arrival: a standing
+   * withdrawal demand already latched when the trip lands (the operator holding WITHDRAW, or an
+   * ATWS, where the trip edge never zeroes the targets). */
+  engT.rodTarget = 200; engT.sdTarget = 200;
+  var tsT = run(engT, 900);
+  ckT('...and 900 s of standing withdrawal demand moves neither bank and the core stays down',
+      engT.rodSteps === sT0 && engT.sdSteps === sdT0 &&
+      tsT.power_pct < 0.5 && tsT.scrammed === true,
+      'rods ' + engT.rodSteps.toFixed(1) + '/' + engT.sdSteps.toFixed(1) + ' against a 200/200 ' +
+      'demand, power ' + tsT10.power_pct.toFixed(2) + ' -> ' + tsT.power_pct.toFixed(2) +
+      ' % (pre-fix: 0/0 -> 200/200 and 2.71 -> 61.18 %)');
+  engT.rodTarget = engT.rodSteps; engT.sdTarget = engT.sdSteps;
+  /* the RELEASE verbs must survive the guard: the board sends rod_stop on EVERY button
+   * release and its mapper sets target := current position. A flat refusal would make
+   * letting go of the button an error, which is why the door tests for MOTION. */
+  var thrStop = null;
+  try { EN.command(engT, 'rod_target', engT.rodSteps); EN.command(engT, 'sd_target', engT.sdSteps); }
+  catch (eT3) { thrStop = eT3.message; }
+  ckT('...while rod_stop / rod_stop_all still take — the door refuses MOTION, not the press',
+      thrStop === null, thrStop ? ('THREW: ' + thrStop.slice(0, 50)) : 'target := position accepted');
+  /* THE RESET IS THE WAY OUT, and it must leave no standing motion demand behind — Manuals/03
+   * §3.5.1: "The rods stay where they are until you deliberately withdraw them." */
+  EN.command(engT, 'reset_protection', true);
+  engT.rodTarget = engT.rodSteps; engT.sdTarget = engT.sdSteps;   /* the shell's reset does this */
+  EN.command(engT, 'rod_target', 40);
+  run(engT, 60);
+  ckT('...and after the reset the drive works again — 60 s at normal speed is ~40 steps out',
+      engT.rodSteps > 35 && engT.rodSteps <= 42 && engT.pt.reactor_trip === false,
+      engT.rodSteps.toFixed(1) + ' steps (0.702/s x 60 s, capped by the 40-step demand)');
+
+  /* THE ATWS IS WHERE THE BOTH-DIRECTIONS HALF IS OBSERVABLE — under a normal trip the rods
+   * are already at 0, so in/out cannot be told apart. With the drop failed the operator can no
+   * longer walk the bank back in by hand and the response is emergency boration, which is the
+   * prototypical one *(OWNER RULING, 2026-08-28: selected "Refuse both directions" over
+   * allowing inward motion — a menu selection, cited in that form)*. */
+  var engU = EN.createEngine({});
+  run(engU, quiet ? 20 : 30);
+  EN.command(engU, 'scram_block', true);
+  EN.command(engU, 'scram');
+  run(engU, 5);
+  var thrU = false, thrBoron = null;
+  try { EN.command(engU, 'rod_target', 0); } catch (eU) { thrU = /ROD DRIVE BLOCKED/.test(eU.message); }
+  try { EN.command(engU, 'boron_rate', 0.05); } catch (eU2) { thrBoron = eU2.message; }
+  ckT('ATWS: the INWARD command is refused too — the breakers are open, not the drive selective',
+      thrU === true && engU.rodSteps === 200, 'rods held at ' + engU.rodSteps.toFixed(0));
+  ckT('...and emergency boration is still reachable, which is the response that is left',
+      thrBoron === null, thrBoron ? ('THREW: ' + thrBoron.slice(0, 50)) : 'boron_rate accepted, ' + engU.cv.boron_rate_cmd + ' ppm/s');
+  /* a continuous-withdrawal DRIVE fault is downstream of the same power supply. The scram edge
+   * clears eng.runaway ("gravity beats a drive"), but the ATWS path never reaches that edge —
+   * this is the branch that catches it. Measured 175.0 -> 175.1 steps over 120 s: one step of
+   * the house one-step lag, against an uncapped 200. */
+  var engV = EN.createEngine({});
+  run(engV, quiet ? 20 : 30);
+  EN.command(engV, 'load_mwe', 60);
+  run(engV, 120);
+  EN.command(engV, 'rod_target', 175);
+  run(engV, 60);
+  EN.command(engV, 'scram_block', true);
+  EN.command(engV, 'rod_runaway', 5.0);
+  var sV0 = engV.rodSteps;
+  EN.command(engV, 'scram');
+  run(engV, 120);
+  ckT('ATWS + rod runaway: the latch stops the DRIVE FAULT too, one step of lag and no further',
+      engV.runaway !== null && engV.rodSteps - sV0 < 0.3 && engV.pt.reactor_trip === true,
+      sV0.toFixed(1) + ' -> ' + engV.rodSteps.toFixed(1) + ' steps in 120 s at 5.0/s ' +
+      '(unheld it caps at 200)');
   }
 
   if (grp('K')) {
@@ -1391,6 +1490,19 @@ var MUTATIONS = [
   ['the rod slew is deleted (commands teleport the bank)',
    '      eng.rodSteps += move;',
    '      eng.rodSteps = eng.rodTarget;', { grp: 'A' }],
+  /* #545, the three halves of the trip-breaker hold. The level hold and the door are
+   * SEPARATELY sufficient for the normal-trip case — a one-sided injection would lie (#295) —
+   * so each is anchored on its own and the checks discriminate them: kill the level hold and
+   * the standing-demand ride moves the bank; kill the door and the refusal checks go quiet. */
+  ['the control bank ignores the open trip breakers (the #545 rising-edge plant)',
+   '    } else if (!rodDrivePowered) {',
+   '    } else if (false) {', { grp: 'I' }],
+  ['the SHUTDOWN bank ignores them (the half a control-bank-only check cannot see)',
+   'if (eng._scramT === null && rodDrivePowered && eng.sdSteps !== eng.sdTarget) {',
+   'if (eng._scramT === null && eng.sdSteps !== eng.sdTarget) {', { grp: 'I' }],
+  ['the rod drive door accepts silently instead of refusing by name',
+   '    if (!eng.pt.reactor_trip) return;',
+   '    return;', { grp: 'I' }],
   ['the dump controller never reaches the relief valves',
    'dump_demand: dcr.dump_demand,',
    'dump_demand: 0,', { grp: 'A' }],

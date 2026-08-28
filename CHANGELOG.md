@@ -30,6 +30,52 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
 
 ## [Unreleased]
 
+
+### Fixed (#545 — the reactor trip breakers take the rod drive's power away, 2026-08-28)
+
+A latched reactor trip held the turbine, the safety-injection pumps, the auxiliary-feedwater starts
+and the feedwater isolation — but not the rods, which were the one trip consumer wired to the
+latch's rising EDGE rather than level-held. So after a scram the two board WITHDRAW controls were
+accepted and the core came back. *(OWNER RULINGS, 2026-08-28: "#545 + the two one-liners";
+"Refuse both directions".)* Full write-up: `Blueprint/PWR2_VALIDATION.md` §102.
+
+- **Measured before the fix**, full facade from Hot Full Power: scram, rods 0/0 and 2.71 % power at
+  t+10 s, then hold WITHDRAW on both banks → **200/200 steps and 61.18 % true power** (61.93 % core
+  thermal = 186 MWt / 634 MMBtu/hr) at t+910 s, T-avg **598.4 °F (314.7 °C)** — with SCRAMMED lit on
+  the true state, on the instrument and in the control kernel at once, while the 35 % power-range
+  flux trip sat at **0.6170 against 0.350, asserted, tripping, held 751.6 s** and could do nothing,
+  because the latch it would set was already set. `reset_rps` was then refused `RODS_NOT_INSERTED`
+  on the kernel path — rods that nothing would insert.
+- **The rod drive is now level-held against the latch, both banks, both directions** [sourced —
+  Ginna TS Bases B 3.3.1, ML20339A221: *"Opening of the RTBs interrupts power to the CRDMs, which
+  allows the shutdown rods and control rods to fall into the core by gravity"*]. The scram's own
+  gravity ramp is untouched; what stops is the DRIVE, including an injected continuous-withdrawal
+  drive fault. After: 900 s of standing withdrawal demand leaves the banks at 0/0 and the core on
+  the decay curve at 0.00 %.
+- **The bank doors refuse by name** rather than being silently clamped — the §100 law, and the
+  refusal reaches the screen through the #558 path, so it is a message and not a dead button. It
+  refuses MOTION, not the press: `rod_stop` and `rod_stop_all` still take, because the board sends
+  them on every button release.
+- **A failure to scram can no longer be walked back with the rod buttons.** With the breakers open
+  there is nothing to drive the mechanisms with, so INSERT is refused too and the response is
+  emergency boration — which stays reachable, and is the prototypical one.
+- **`rods_fully_in` is both banks now** (`rodSteps <= 0.5 && sdSteps <= 0.5`). The retired engine has
+  had `.every()` over its groups since #75; PWR2's was a second copy that lost it, so the kernel's
+  `RODS_NOT_INSERTED` reset permissive judged the reset on the control bank alone — measured, rods
+  0/200 published `rods_fully_in: true`.
+- **The facade `reset_rps` now needs the rods in.** It had no guard at all; only the kernel
+  permissive did, so the direct path reset the trip at 200/200. It also snaps both rod demands to
+  position on a successful reset, which is `Manuals/03` §3.5.1's own sentence — *"the rods stay
+  where they are until you deliberately withdraw them"* — and stops a demand latched before the trip
+  from driving the bank the instant the breakers close.
+- **Manuals** — `03` §3.5.1 gains the missing consequence of a sentence it already carried, and `05`
+  §PWR-T06 step 2 the one-line pointer. Manual set stays at the pending Rev 17.
+- **Gates** — `run_pwr2_engine` 97 → 104 checks (60/60 mutations, three new), `run_pwr2_shell` 101 → 112.
+  The first draft's level-hold mutation went **blind**: the hold and the door are each sufficient for
+  the operator's own sequence, so with the door refusing there is no demand left for the hold to
+  hold. The #295 one-sided-injection trap, reproduced by an agent who had just quoted it. The demand
+  is planted past the door now.
+
 ### Added (#570 — gating the seam where prose and plant come apart, 2026-08-27)
 
 Two clusters in two days were caused by design-bearing prose nobody re-measured, and the second was

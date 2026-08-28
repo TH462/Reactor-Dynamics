@@ -6641,3 +6641,110 @@ would be worse than saying so.
 **The honest mitigation is fewer load-bearing assertions in comments**, and this agent's own
 commenting volume is part of the mechanism — both failures this week were confident prose written
 by an agent. That is not fixable by a runner.
+
+---
+
+## 102. #545 — THE TRIP BREAKERS TAKE THE ROD DRIVE'S POWER AWAY — 2026-08-28
+
+*(OWNER RULING, 2026-08-28: selected "#545 + the two one-liners" over the tightest and the widest
+scope, and "Refuse both directions" over allowing inward motion — both menu selections, cited in
+that form.)*
+
+The worst finding left in **#534**, and the same latch-integrity class as the turbine cluster
+(§100) one system over: **the rods were the only reactor-trip consumer wired to the latch's rising
+EDGE.** The turbine trip, the safety-injection pumps, the auxiliary-feedwater starts and the
+feedwater isolation on the three lines beneath it are all level-held while the latch stands. The
+rods were not, so a trip that had already latched held nothing.
+
+### 102.1 What the plant did, measured
+
+Full facade (`pwr2_shell` → `pwr2_engine`), `hot_full_power`, 300 MWt / 100 MWe rated, `DT` 0.02 s.
+Scram at t = 0, then the board's own two verbs — `rod_start {group_id, direction: 1}` on each bank,
+which is what holding WITHDRAW sends.
+
+| | t + 10 s | t + 910 s |
+|---|---|---|
+| control / shutdown bank | 0 / 0 steps | **200 / 200** |
+| true power | 2.71 % | **61.18 %** |
+| core thermal power | 8.10 % | **61.93 %** = 186 MWt (634 MMBtu/hr) |
+| indicated power range | 2.72 % | 60.90 % |
+| T-avg | 563.6 °F (295.3 °C) | **598.4 °F (314.7 °C)** |
+| `true_state.scrammed` · `rps_scrammed` · kernel latch | true · true · true | **true · true · true** |
+
+Both `rod_start` commands returned `{"ok":true}`. Throughout, the 35 % power-range low-setting flux
+trip stood at **0.6170 against its 0.350 setpoint, asserted, tripping, held 751.6 s** — and did
+nothing, because the latch it would set was already set (`pwr2_protection.js`: `if (anyRps &&
+!pr.reactor_trip)`). A board reading 186 MWt of fission power with **SCRAMMED lit on the true
+state, the instrument and the control kernel at once**, and no trip left that can act.
+
+*(The issue reported 68.04 % / 206 MWt on 2026-08-27. Re-measured here on the current tree at
+61.18 %; the plant has moved under it. Same defect, this lane's number — CLAUDE.md's "re-measure
+on the tree you are standing in".)*
+
+### 102.2 The source settles it, and it settles the ATWS too
+
+Ginna TS Bases B 3.3.1 (ML20339A221), *Reactor Trip Switchgear*:
+
+> "The RTBs are in the electrical power supply line from the control rod drive motor generator set
+> power supply to the control rod drive mechanisms (CRDMs). **Opening of the RTBs interrupts power
+> to the CRDMs**, which allows the shutdown rods and control rods to fall into the core by gravity
+> and shutdown the reactor."
+
+So the latch means **no rod drive power at all** — either bank, either direction — until the reset
+re-closes the breakers. The same sentence supplies the gravity branch that already existed: the
+scram ramp is not the drive and is untouched.
+
+**The both-directions half is only observable in a failure to scram**, because under a normal trip
+the rods are already at 0. There, the operator can no longer walk the bank back in by hand and the
+response is **emergency boration** — which is the prototypical one, and is what the curriculum's
+failure-to-scram beat is for. Ruled, not assumed.
+
+### 102.3 The fix, and why it is two halves that are each sufficient
+
+| | where | what |
+|---|---|---|
+| **the level hold** | `pwr2_engine.js`, the rod block | `rodDrivePowered = !eng.pt.reactor_trip`; a new branch above the runaway branch holds both banks, and the shutdown bank's own drive is guarded. Demands are **not** rewritten — the heals-itself trap |
+| **the door** | `pwr2_engine.js`, `rodDriveDoor()` | `rod_target` / `sd_target` **refuse by name** while latched. An accepted command the next step overwrites is worse than a missing one (§100) |
+| **`rods_fully_in`** | `pwr2_shell.js` | `rodSteps <= 0.5` **&& `sdSteps <= 0.5`**. The retired engine has had `.every()` since #75; this was a second copy that lost it, so the kernel's `RODS_NOT_INSERTED` permissive judged the reset on the control bank alone. Measured: rods 0/200 published `rods_fully_in: true` |
+| **the reset** | `pwr2_shell.js`, `MAPPED.reset_rps` | refuses with the rods out — the facade had **no** guard, only the kernel permissive did (measured: `reset_rps` at 200/200 returned `{"ok":true}` and cleared the latch). It also snaps both demands to position, which is `Manuals/03` §3.5.1's own sentence |
+
+**The door refuses MOTION, not the press.** The board sends `rod_stop` on every button release and
+its mapper sets target := current position; a flat refusal would make letting go of the button an
+error. The refusal reaches the operator through the #558 flash-dispatch guard, which is the board's
+sanctioned answer for BLOCKED — the ROD status word was removed by owner directive 2026-08-03 in
+favour of *"the interlock's own refusal message when the player presses WITHDRAW"*.
+
+### 102.4 The first draft's mutation went blind, and the reason is a rule this repo already has
+
+`run_pwr2_engine`'s injection self-test came back **59/60, one blind spot**: deleting the level hold
+changed nothing. **The two halves are each sufficient for the operator's own sequence** — with the
+door refusing, `rodTarget` never reaches 200, so there is no demand for the hold to hold. That is
+CLAUDE.md's #295 bullet exactly (*"a multi-part fix whose parts are each sufficient makes a
+one-sided injection lie — revert BOTH to reproduce"*), reproduced by an agent who had quoted it in
+the comment three lines above.
+
+The fix is not to weaken either half. It is to plant the demand **past the door** — writing
+`rodTarget` / `sdTarget` directly, which is the honest reproduction of the *other* arrival: a
+withdrawal demand already standing when the trip lands (the operator holding WITHDRAW, or an ATWS,
+where the trip edge never zeroes the targets).
+
+### 102.5 After
+
+Scram, then hold WITHDRAW on both banks for 900 s: rods **0 / 0**, true power **0.00 %**, core
+thermal **2.16 %** decay, and the flux trip has fallen to **0.0052** — there is nothing left for it
+to act on. Both doors refuse by name; `rod_stop`, `rod_stop_all` and boration still take. Reset is
+accepted with the rods in, leaves both demands at position (nothing moves for 30 s idle), and
+WITHDRAW then works again at the expected **31.6 steps in 30 s** (1.053 steps/s, fast). ATWS: INSERT
+refused, rods held at 200, facade reset refused by name, and an injected continuous-withdrawal drive
+fault stops at **175.0 → 175.1 steps over 120 s** at 5.0 steps/s — one step of the house one-step
+lag against an uncapped 200.
+
+### 102.6 Filed, not built: the reset's other permissive is dead on this plant
+
+`control_kernel.rpsResetBlock` iterates `this.config.trips` for its **`TRIP_SIGNAL_PRESENT`**
+refusal — and `pwr2_shell.getProtectionConfig` hands the kernel `trips: []`, because PWR2's
+protection lives inside the engine (§98). So that permissive **cannot fire on the plant the site
+runs**, while `Manuals/03` §3.5.1 documents it as one of **two** live permissives, with its own
+board caption. Same #570 prose/plant class, different mechanism: it needs a PWR2 data path from
+`rpsReport` into a shell-published instrument. Filed under #534 rather than folded in here — it is
+its own measurement.

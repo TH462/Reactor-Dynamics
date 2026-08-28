@@ -369,6 +369,26 @@
     return eng;
   }
 
+  /* THE ROD DRIVE'S DOOR (#545) — a bank command REFUSES BY NAME while the reactor trip is
+   * latched, because the trip breakers have taken the CRDMs' power away [sourced, Ginna TS
+   * Bases B 3.3.1 ML20339A221 — the quote is on the level hold in stepInner]. The step block
+   * would hold the rods anyway; this is the other half, and it is the half that matters:
+   * an ACCEPTED command the next step overwrites is worse than a missing one (#551/#559,
+   * §100), and the operator gets a reason on the screen instead of a dead button (#558).
+   *
+   * IT REFUSES MOTION, NOT THE PRESS. The board sends `rod_stop` on EVERY button release and
+   * the shell's mapper implements that as "target := current position" — a flat refusal would
+   * make letting go of the button an error. So the test is whether the command asks the bank
+   * to MOVE, which `rod_stop` and `rod_stop_all` never do. */
+  function rodDriveDoor(eng, value, steps) {
+    if (!eng.pt.reactor_trip) return;
+    if (!(Math.abs(Math.max(0, Math.min(200, value)) - steps) > 1e-9)) return;
+    throw new Error('ROD DRIVE BLOCKED: the reactor trip is LATCHED — the reactor trip ' +
+      'breakers are open and power to the control rod drive mechanisms is interrupted ' +
+      '[sourced, Ginna TS Bases B 3.3.1 ML20339A221]. Reset the RPS to restore rod drive ' +
+      'power; the rods stay where they are until you deliberately withdraw them.');
+  }
+
   /* ---- THE ONE DOOR ------------------------------------------------------------------------ */
   function command(eng, name, value) {
     switch (name) {
@@ -381,8 +401,11 @@
           throw new Error('pwr2_engine: rod command REFUSED — continuous withdrawal failure ' +
             'active; clear the failure first');
         }
+        rodDriveDoor(eng, +value, eng.rodSteps);
         eng.rodTarget = Math.max(0, Math.min(200, +value)); break;
-      case 'sd_target':      eng.sdTarget = Math.max(0, Math.min(200, +value)); break;
+      case 'sd_target':
+        rodDriveDoor(eng, +value, eng.sdSteps);
+        eng.sdTarget = Math.max(0, Math.min(200, +value)); break;
       case 'rod_speed':      eng.rodSpeedSel = (value in ROD_SPEEDS) ? value : 'normal'; break;
       /* THE P-11 PAIR (#507 wave 10) — the cooldown's "block SI" actions. ENGAGING is
        * refused above P-11 (the #295 F1 lesson: a block acceptable at power is a defeatable
@@ -694,6 +717,31 @@
     var acAvail = !eng.elec.blackout;                       /* vital (diesel-backed) buses */
     var offsiteOk = eng.elec.offsite && !eng.elec.blackout; /* nonvital buses */
 
+    /* THE REACTOR TRIP BREAKERS TAKE THE DRIVE'S POWER AWAY (#545) [sourced] — Ginna TS
+     * Bases B 3.3.1 (ML20339A221), Reactor Trip Switchgear: "The RTBs are in the electrical
+     * power supply line from the control rod drive motor generator set power supply to the
+     * control rod drive mechanisms (CRDMs). Opening of the RTBs interrupts power to the
+     * CRDMs, which allows the shutdown rods and control rods to fall into the core by
+     * gravity and shutdown the reactor."
+     *
+     * So a LATCHED reactor trip means no rod drive power AT ALL — neither bank, neither
+     * direction — until the RPS reset re-closes the breakers. LEVEL-HELD while the latch
+     * stands, which is the caller's-half law the turbine trip, the SI pumps, the AFW starts
+     * and the feedwater isolation below already follow; the rods were the one consumer wired
+     * to the latch's rising EDGE alone. MEASURED before this line existed: scram from
+     * hot_full_power, then hold WITHDRAW on both banks, and the plant went 0/0 -> 200/200 and
+     * 2.71 % -> 61.18 % true power with `scrammed` reading true on the true state, the
+     * instrument AND the kernel at once, while hi_flux_lo sat asserted at 0.6170 against its
+     * 0.350 setpoint, tripping, held 751.6 s, and could do nothing — the latch it would set
+     * was already set. One step old, the house lag convention.
+     *
+     * The ATWS is where the BOTH-DIRECTIONS half is observable (under a normal trip the rods
+     * are already at 0): with the drop failed the operator can no longer walk the rods back
+     * in by hand, and the response is emergency boration, which is the prototypical one
+     * *(OWNER RULING, 2026-08-28: selected "Refuse both directions" over allowing inward
+     * motion — a menu selection, cited in that form)*. */
+    var rodDrivePowered = !eng.pt.reactor_trip;
+
     /* rods: slew toward target; a scram overrides the slew. TWO BANKS since #506.3 —
      * both insert on a trip, shutdown slightly faster (the pwr1 2.5/2.0 pair). */
     if (eng._scramT !== null) {
@@ -704,6 +752,15 @@
       eng.rodSteps = Math.max(0, Math.min(eng.rodSteps, 200 * (1 - eng._scramT / SCRAM_S)));
       eng.sdSteps = Math.max(0, Math.min(eng.sdSteps, 200 * (1 - eng._scramT / SD_SCRAM_S)));
       if (eng.rodSteps === 0 && eng.rodTarget === 0) eng._scramT = null;
+    } else if (!rodDrivePowered) {
+      /* THE BREAKERS ARE OPEN — neither bank moves under drive. Ahead of the runaway branch
+       * on purpose: a continuous-withdrawal DRIVE fault is downstream of the same power
+       * supply, so it stops too. The scram edge below already clears `eng.runaway` ("gravity
+       * beats a drive"), but the ATWS path never reaches that edge, and this is the branch
+       * that catches it. The demands are NOT rewritten here — the demand-heals-itself trap
+       * (#200/#329/#332): take the delivered motion away, leave the operator's latched
+       * target where the operator put it. The RPS reset snaps them to position, which is the
+       * only place a demand may legitimately be cleared (pwr2_shell's reset_rps). */
     } else if (eng.runaway) {
       /* CONTINUOUS ROD WITHDRAWAL (#507 wave 6): the drive faults OUTWARD at the failure's
        * rate — target ignored, and the rod stop too (the stop inhibits the demand path; a
@@ -726,7 +783,7 @@
      * operator work, nothing auto-re-withdraws; the #468 lesson). The rod stop guards the
      * CONTROL bank's approach to the delta-T trip; the shutdown bank's outward motion is a
      * deliberate shutdown-margin evolution and is not guarded here. */
-    if (eng._scramT === null && eng.sdSteps !== eng.sdTarget) {
+    if (eng._scramT === null && rodDrivePowered && eng.sdSteps !== eng.sdTarget) {
       var dSd = ROD_SPEEDS[eng.rodSpeedSel] * dt;
       eng.sdSteps += Math.max(-dSd, Math.min(dSd, eng.sdTarget - eng.sdSteps));
     }

@@ -102,6 +102,18 @@ re-closes the reactor trip breakers; it does **not** withdraw rods and it does *
 restart the reactor. The rods stay where they are until you deliberately withdraw them,
 under the startup net.
 
+> **While the trip is latched the rod drive has no power.** The reactor trip breakers sit in
+> the supply line from the rod drive motor-generator set to the control rod drive mechanisms,
+> so opening them removes power from the mechanisms — which is what lets the rods fall in by
+> gravity in the first place. Until you reset the RPS, **WITHDRAW and INSERT are both refused
+> on both banks**, and the refusal names the breakers. Pressing STOP still works: it is the
+> release of a button, not a demand for motion.
+>
+> This is why the reset comes **before** any rod motion in every recovery procedure, and it is
+> the reason a failure to scram cannot be walked back with the rod buttons — with the breakers
+> open there is nothing to drive the mechanisms with. The response to rods that did not insert
+> is **emergency boration** (**§7.5**, Borate), not the rod controls.
+
 The reset is **permissive-gated** — it will not take until both conditions hold:
 
 | Permissive | Why | Caption when it is holding |

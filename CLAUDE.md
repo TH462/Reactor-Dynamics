@@ -331,7 +331,7 @@ to read everything.
 > change. The dense, append-only version lives in `Blueprint/BUILD_DECISIONS.md`
 > (Status line + Open Flags table) — update both.
 
-_Last updated: **2026-08-27**._
+_Last updated: **2026-08-28**._
 
 **Where the PWR is.** `run_all` is **94 runners, all at baseline** — read `BASELINES`, never a
 number written here. The PWR is the only active plant and is feature-complete through Mode 5 ↔
@@ -414,7 +414,10 @@ re-querying. Run the query.
   board press also reaches the screen (#558 is the mechanism behind every dead-button report), no
   live control can only throw, and a lost condenser stops reading better than a healthy one.
   **#570** then gated the prose/plant seam both clusters came through — two new runners, §101.
-  Rest of #535–#566 untouched; `gh issue list` is the authority.
+  **#545 CLOSED** (§102): the rods were the last trip consumer on the latch's rising EDGE, so
+  holding WITHDRAW after a scram took the core back to 61.18 % with SCRAMMED lit everywhere —
+  level-held now, both banks both ways [sourced: open trip breakers cut CRDM power], making an
+  ATWS a boration problem. Rest of #535–#566 untouched; `gh issue list` is the authority.
 - **RBMK and BWR** — on hold, and the source of most remaining backlog. Do not touch.
 
 **The manual set's revision number does not advance until a RELEASE** *(OWNER DIRECTIVE,
@@ -463,16 +466,14 @@ ONE line, drop the rest. **A bullet is ~80 words.** (Measured 2026-08-06: the li
   points standing. Fix: the plant publishes the number, the consumer reads it — an engine-key
   branch would have re-armed the same rot. Two of the three were invisible because the board is
   engine-agnostic by design and nothing cross-checked a RENDERED value against the plant.
-- **A shared artifact keyed by the ENGINE goes silently EMPTY when the engine key changes,
-  and the neighbouring lookup that got it right is no warning** (2026-08-26, #523 §94). Making
-  PWR2 the plant the site runs broke two: `mdManual()` read `RD.MANUAL_MD[ui.engineKey]` with no
-  `|| [ui.plant]`, so the **operator's manual rendered empty** — one of only TWO areas
-  `site/flags.js` stages `public` — while `manualDoc()` fifty lines away had the fallback and had
-  disagreed for days; and `afterPlantChange()` derived the engine key from `ui.plant`, which
-  `uiPlantOf()` deliberately folds `pwr2` onto, so a PWR2 save installed the RETIRED engine's key
-  and the next Reset would ask for a constructor a published build does not contain. Neither was
-  reachable while PWR2 was a second card. **When a plant's key changes, grep every
-  `[ui.engineKey]` in the tree** — not the ones you remember.
+- **A multi-part fix whose parts are EACH SUFFICIENT makes its own mutations go blind — and the
+  bullet warning of it is no protection** (2026-08-28, #545 §102). The rods were the one reactor
+  trip consumer wired to the latch's rising EDGE, so holding WITHDRAW after a scram took the core
+  back to **61.18 %** with SCRAMMED lit on truth, instrument and kernel at once and the flux trip
+  asserted 751.6 s doing nothing. The fix is a level hold AND a door that refuses by name; with the
+  door refusing, the demand never gets set, so deleting the hold moved nothing and `run_pwr2_engine`
+  came back **59/60**. Reproduced by an agent who had quoted the #295 rule three lines above.
+  **Plant the demand PAST the half you are not testing.**
 **Standing procedure — not part of the rotation above; these do not expire.** One trap per entry.
 **MAX 25 BULLETS** *(OWNER RULING, 2026-08-10: selected "Cap at 25, evict to TRAPS.md" from
 options I wrote — a selection, not verbatim words)*, gated by `test/run_doc_budget.js`. Adding

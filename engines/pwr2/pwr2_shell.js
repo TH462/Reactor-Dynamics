@@ -190,7 +190,32 @@
     open_accumulator_valve:  function (e, c) { accValve(e, true); },
     close_accumulator_valve: function (e, c) { accValve(e, false); },
     scram:            function (e, c) { EN.command(e, 'scram', true); },
-    reset_rps:        function (e, c) { EN.command(e, 'reset_protection', true); },
+    /* THE RESET NEEDS THE RODS IN, ON EVERY PATH (#545). The engine's `reset_protection` door
+     * clears the latch unconditionally, and until this guard the kernel's RODS_NOT_INSERTED
+     * permissive was the ONLY thing enforcing it — so the facade reset the trip at 200/200
+     * (measured), and on the ATWS path it reset with the shutdown bank fully withdrawn. The
+     * guard lives HERE rather than in the engine because this is the operator's door, which
+     * is where `latch_turbine` and `afwUnlatch` put theirs; the engine door stays raw for the
+     * gates. The retired engine enforces the same interlock in its own `reset_rps`.
+     *
+     * `e.pt.reactor_trip &&` is load-bearing: an un-tripped plant sits at 200/200 and there
+     * is nothing to reset, so an unconditional guard would refuse a harmless no-op (run_pwr2_
+     * kernel sweeps this action against exactly that plant).
+     *
+     * THE DEMAND SNAP is the manual's own sentence — Manuals/03 §3.5.1, "The rods stay where
+     * they are until you deliberately withdraw them". The breakers re-close with no standing
+     * motion demand; without it a target latched before the trip would drive the bank the
+     * instant power came back, with no press behind it. This is the one place a latched demand
+     * may legitimately be cleared — everywhere else, rewriting it is the heals-itself trap. */
+    reset_rps:        function (e, c) {
+      if (e.pt.reactor_trip && !(e.rodSteps <= 0.5 && e.sdSteps <= 0.5)) {
+        throw new Error('RPS RESET BLOCKED: the rods are not at the bottom of their travel ' +
+          '(control ' + e.rodSteps.toFixed(0) + ', shutdown ' + e.sdSteps.toFixed(0) +
+          ' of 200 steps) — the reactor trip breakers reset with the rods in.');
+      }
+      EN.command(e, 'reset_protection', true);
+      e.rodTarget = e.rodSteps; e.sdTarget = e.sdSteps;
+    },
     /* GROUP-ROUTED since #506.3-4 (two real banks): before this, group_id was DROPPED, so
      * the board's shutdown drive silently moved the CONTROL bank. The S/M/F selection rides
      * on the command (the board's convention) and lands in the engine's rod_speed door. */
@@ -831,7 +856,13 @@
      * is overridden to the sourced RIL+10 in this currency — see getProtectionConfig) */
     ex.rod_at_limit = e._rodAtLimit === true;
     ex.rod_limit_margin = e._rodLimitMargin === undefined ? 200 : e._rodLimitMargin;
-    ex.rods_fully_in = e.rodSteps <= 0.5;
+    /* BOTH BANKS (#545). The retired engine has had this right since #75 —
+     * `this.rod_groups.every(g => g.position_pct <= RODS_IN_PCT)` — and this was a second
+     * copy that lost the `every`, so the kernel's RODS_NOT_INSERTED reset permissive was
+     * judging the reset on the CONTROL bank alone. Invisible under a normal trip, where the
+     * shutdown bank seats FIRST (SD_SCRAM_S 2.0 s against SCRAM_S 2.5 s); measured wrong on
+     * the failure-to-scram path, where rods 0/200 published `rods_fully_in: true`. */
+    ex.rods_fully_in = e.rodSteps <= 0.5 && e.sdSteps <= 0.5;
     ex.above_p9 = !!(e.rpsReport && e.rpsReport.p9_met);
     ex.afw_block_open = e.aw.blocked !== true;      /* LIVE since #507 wave 6 made aw.blocked
                                                      * real state; the pinned `true` here kept

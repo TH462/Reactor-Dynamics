@@ -616,6 +616,112 @@ function runSuite(SH, rec, quiet, only) {
        eF.getActiveFailures().indexOf('turbine_trip') === -1, '');
   })();
 
+  /* ---- 1e-ib. THE ROD DRIVE UNDER A LATCHED TRIP (#545) --------------------------------------
+   * THE SAME LATCH-INTEGRITY CLASS AS THE BLOCK ABOVE, one system over, and it lives HERE
+   * because the operator's rod verbs are the SHELL's — `rod_start`, `rod_nudge`, `rod_stop`
+   * and `rod_stop_all` all funnel into the engine's two bank doors and the board sends only
+   * these four. run_pwr2_engine proves the doors and the hold; nothing there can tell you the
+   * board's own verbs reach them, which is the layer mistake #562 shipped through.
+   *
+   * [sourced] Ginna TS Bases B 3.3.1 (ML20339A221): "Opening of the RTBs interrupts power to
+   * the CRDMs". Measured pre-fix through THIS facade: scram, then `rod_start {direction: 1}`
+   * on both groups returned {"ok":true} and the plant went 0/0 -> 200/200 and 2.71 -> 61.18 %
+   * true power with SCRAMMED lit on the true state, the instrument and the kernel at once. */
+  head('THE ROD DRIVE  [#545 — a latched trip is the breakers open; the board\'s own verbs]');
+  (function () {
+    var eD = new SH.PWR2Engine({});
+    for (i = 0; i < 3000; i++) eD.step(0.02);
+    eD.applyCommand({ action: 'scram' });
+    for (i = 0; i < 500; i++) eD.step(0.02);
+    var s0 = eD.eng.rodSteps, sd0 = eD.eng.sdSteps;
+    /* THE BOARD'S OWN PAYLOADS (pwr_board_wiring's startHoldRod): rod_start on press,
+     * rod_stop on release, per group_id. A synthetic payload would test a command no
+     * player can send. */
+    var mW = null, mS = null;
+    try { eD.applyCommand({ action: 'rod_start', group_id: 'control_rods', direction: 1, speed: 'fast' }); }
+    catch (x1) { mW = x1.message; }
+    try { eD.applyCommand({ action: 'rod_start', group_id: 'shutdown_rods', direction: 1, speed: 'fast' }); }
+    catch (x2) { mS = x2.message; }
+    ck('#545: WITHDRAW on the control bank REFUSES under a latched trip, and names the breakers',
+       mW !== null && /ROD DRIVE BLOCKED/.test(mW) && /trip breakers are open/.test(mW),
+       mW ? mW.slice(0, 90) : 'ACCEPTED! (the shipped defect)');
+    ck('#545: ...and so does the SHUTDOWN bank — group_id is routed, not dropped (#506.3)',
+       mS !== null && /ROD DRIVE BLOCKED/.test(mS), mS ? mS.slice(0, 60) : 'ACCEPTED!');
+    ck('...and the refusal names the way out, so the operator is not left guessing',
+       mW !== null && /Reset the RPS/.test(mW), '');
+    /* rod_stop is sent on EVERY button release and its mapper sets target := position. If the
+     * guard refused the PRESS rather than the MOTION, letting go would be an error. */
+    var mStop = null;
+    try {
+      eD.applyCommand({ action: 'rod_stop', group_id: 'control_rods' });
+      eD.applyCommand({ action: 'rod_stop', group_id: 'shutdown_rods' });
+      eD.applyCommand({ action: 'rod_stop_all' });
+    } catch (x3) { mStop = x3.message; }
+    ck('...while rod_stop and rod_stop_all still take — a refused RELEASE would be a new defect',
+       mStop === null, mStop ? ('THREW: ' + mStop.slice(0, 60)) : 'all three accepted');
+    for (i = 0; i < 45000; i++) eD.step(0.02);      /* 900 s */
+    var tsD = eD.getTrueState(), insD = eD.getInstruments();
+    ck('...and 900 s later NEITHER bank has moved and the core is still down (pre-fix: ' +
+       '200/200 at 61.18 % with SCRAMMED lit everywhere)',
+       eD.eng.rodSteps === s0 && eD.eng.sdSteps === sd0 && tsD.power_pct < 0.5 &&
+       tsD.scrammed === true && insD.rps_scrammed === true,
+       'rods ' + eD.eng.rodSteps.toFixed(1) + '/' + eD.eng.sdSteps.toFixed(1) + ', power ' +
+       tsD.power_pct.toFixed(2) + ' %');
+    /* THE WAY OUT WORKS, and leaves no standing demand behind it (Manuals/03 §3.5.1). */
+    var mR = null;
+    try { eD.applyCommand({ action: 'reset_rps' }); } catch (x4) { mR = x4.message; }
+    ck('...the reset is ACCEPTED with the rods in, and snaps both demands to position',
+       mR === null && eD.eng.pt.reactor_trip === false &&
+       eD.eng.rodTarget === eD.eng.rodSteps && eD.eng.sdTarget === eD.eng.sdSteps,
+       mR ? ('THREW: ' + mR.slice(0, 60)) : 'targets ' + eD.eng.rodTarget.toFixed(1) + '/' +
+       eD.eng.sdTarget.toFixed(1));
+    for (i = 0; i < 1500; i++) eD.step(0.02);
+    ck('...and NOTHING moves on its own after it — the reset re-closes breakers, it does not ' +
+       'withdraw rods',
+       eD.eng.rodSteps === s0 && eD.eng.sdSteps === sd0,
+       eD.eng.rodSteps.toFixed(1) + '/' + eD.eng.sdSteps.toFixed(1) + ' after 30 s idle');
+    eD.applyCommand({ action: 'rod_start', group_id: 'control_rods', direction: 1, speed: 'fast' });
+    for (i = 0; i < 1500; i++) eD.step(0.02);
+    ck('...and the board\'s WITHDRAW works again once the breakers are shut — 30 s at fast ' +
+       'is ~31.6 steps',
+       eD.eng.rodSteps > 28 && eD.eng.rodSteps < 35,
+       eD.eng.rodSteps.toFixed(1) + ' steps (1.053/s x 30 s)');
+
+    /* THE ATWS PAIR — the shutdown bank stuck OUT is the one state where `rods_fully_in`
+     * being control-bank-only was observable, and where the facade reset had no guard at
+     * all. Measured pre-fix: rods 0/200 published `rods_fully_in: true`, and reset_rps at
+     * 200/200 returned {"ok":true} and cleared the latch. */
+    var eA2 = new SH.PWR2Engine({});
+    for (i = 0; i < 3000; i++) eA2.step(0.02);
+    eA2.applyCommand({ action: 'inject_failure', failure_id: 'failure_to_scram' });
+    eA2.applyCommand({ action: 'scram' });
+    for (i = 0; i < 500; i++) eA2.step(0.02);
+    var mIn = null;
+    try { eA2.applyCommand({ action: 'rod_start', group_id: 'control_rods', direction: -1, speed: 'fast' }); }
+    catch (x5) { mIn = x5.message; }
+    ck('ATWS: INSERT is refused too — with the breakers open the drive has no power either way ' +
+       '(OWNER RULING 2026-08-28, "Refuse both directions")',
+       mIn !== null && /ROD DRIVE BLOCKED/.test(mIn) && eA2.eng.rodSteps === 200,
+       mIn ? ('rods held at ' + eA2.eng.rodSteps.toFixed(0)) : 'ACCEPTED!');
+    var mRA = null;
+    try { eA2.applyCommand({ action: 'reset_rps' }); } catch (x6) { mRA = x6.message; }
+    ck('#545: the FACADE reset is refused with the rods out — it had NO guard, only the kernel ' +
+       'permissive did',
+       mRA !== null && /RPS RESET BLOCKED/.test(mRA) && eA2.eng.pt.reactor_trip === true,
+       mRA ? mRA.slice(0, 95) : 'ACCEPTED! (the shipped defect)');
+    /* rods_fully_in is the kernel's RODS_NOT_INSERTED permissive input. Drive the control
+     * bank to 0 with the shutdown bank still out — the exact state the missing `every`
+     * published as `true`. */
+    eA2.eng.rodSteps = 0; eA2.eng.rodTarget = 0;
+    eA2.step(0.02);
+    ck('#545: rods_fully_in is BOTH banks — 0/200 is not "rods in" (the retired engine\'s ' +
+       '`.every()`, lost in the second copy)',
+       eA2.getInstruments().rods_fully_in === false && eA2.eng.sdSteps === 200,
+       'control 0, shutdown ' + eA2.eng.sdSteps.toFixed(0) + ' -> rods_fully_in ' +
+       eA2.getInstruments().rods_fully_in);
+    eA2.applyCommand({ action: 'clear_failure', failure_id: 'failure_to_scram' });
+  })();
+
   /* ---- 1e-ii. THE AUX FEED COMMAND SURFACE (#541, #562) -------------------------------------
    * THE REACHABILITY CLAIMS, and they live here because the SHELL's registry is what makes a
    * capability reachable. run_pwr2_engine has always proved the two facade doors and passed

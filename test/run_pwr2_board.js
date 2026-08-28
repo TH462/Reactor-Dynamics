@@ -316,7 +316,17 @@ function runSuite(quietRec) {
     ims3wg27iif: 'RHR ALIGN — the sourced 425 psig suction-valve permissive; works on a cooldown',
     ims3xfeye1q: 'RHR ISOLATE — the mirror of the above',
     imro8ktzs3u: 'TURBINE LATCH — refuses while any of the six trip conditions stands (#551)',
-    imrmssoa137: 'AFW STOP — refuses inside the sourced actuation reset window / under a standing SI'
+    imrmssoa137: 'AFW STOP — refuses inside the sourced actuation reset window / under a standing SI',
+    /* #545. The reactor trip breakers are in the supply line to the control rod drive
+     * mechanisms, so a LATCHED trip is rod drive power removed — both banks, both directions
+     * [sourced, Ginna TS Bases B 3.3.1 ML20339A221]. Reset the RPS and both work again, which
+     * is the state the player reaches on every post-trip recovery. Only the SHUTDOWN pair is
+     * listed: the control bank's WITHDRAW/INSERT are `hold` buttons and this sweep classes
+     * them momentary, so it never presses them. */
+    imrpnyaxsb3: 'SHUTDOWN WITHDRAW — refuses while the reactor trip is LATCHED; works once the ' +
+                 'RPS is reset (#545)',
+    imrpnyf37ju: 'SHUTDOWN INSERT — the mirror of the above; the breakers take power off the ' +
+                 'drive in BOTH directions (#545)'
   };
   buttons.forEach(function (it) {
     if (LOCAL[it.id]) { local++; return; }

@@ -29,6 +29,75 @@ and the user-visible summary in `CHANGELOG.md`. This file points at those and tr
 
 ---
 
+## Session log — 2026-08-28-develop-a (#545 — the trip breakers take the rod drive's power away)
+
+**The worst finding left in #534, and the same latch-integrity class as yesterday's turbine
+cluster (§100) one system over.** `Blueprint/PWR2_VALIDATION.md` §102 is the write-up; this is the
+continuity note.
+
+*(OWNER RULINGS, 2026-08-28, both menu selections cited in that form: "#545 + the two one-liners"
+— fix #545 plus the two adjacent one-liners, file the third gap; "Refuse both directions" — under
+a failure to scram the rod buttons refuse both ways.)*
+
+**The mechanism, in one line.** `pwr2_protection` latches `reactor_trip` and cannot re-fire it, and
+the facade's only rod-insertion wire was the latch's **rising edge**. The turbine trip, the SI
+pumps, the AFW starts and the feedwater isolation on the three lines beneath it are all
+**level-held**. The rods were not.
+
+**Measured before the fix**, full facade, `hot_full_power`, `DT` 0.02:
+
+| | t+10 s | t+910 s |
+|---|---|---|
+| control / shutdown bank | 0 / 0 | **200 / 200** |
+| true power · core thermal | 2.71 % · 8.10 % | **61.18 % · 61.93 %** (186 MWt / 634 MMBtu/hr) |
+| T-avg | 563.6 °F (295.3 °C) | **598.4 °F (314.7 °C)** |
+| `scrammed` truth · instrument · kernel | true · true · true | **true · true · true** |
+
+`hi_flux_lo` stood at **0.6170 against 0.350, asserted, tripping, held 751.6 s** and did nothing.
+Both `rod_start` commands returned `{"ok":true}`. (The issue reported 68.04 % on 2026-08-27; the
+plant has moved under it — re-measure on the tree you are standing in.)
+
+**The source settles it and settles the ATWS with it** — Ginna TS Bases B 3.3.1 (ML20339A221):
+*"The RTBs are in the electrical power supply line from the control rod drive motor generator set
+power supply to the CRDMs. Opening of the RTBs interrupts power to the CRDMs, which allows the
+shutdown rods and control rods to fall into the core by gravity."* No drive power, either bank,
+either direction, until the reset. The gravity ramp is a different branch and is untouched.
+
+**Landed** — `pwr2_engine`: `rodDrivePowered = !eng.pt.reactor_trip`, a level-hold branch above the
+runaway branch (so an injected drive fault stops too), the shutdown bank's drive guarded, and
+`rodDriveDoor()` refusing `rod_target`/`sd_target` **by name**. `pwr2_shell`: `rods_fully_in` is
+both banks, and `MAPPED.reset_rps` refuses with the rods out and snaps both demands to position.
+
+**The trap worth carrying forward.** The first draft's level-hold mutation went **BLIND** —
+`run_pwr2_engine` came back 59/60. The hold and the door are **each sufficient** for the operator's
+own sequence: with the door refusing, `rodTarget` never reaches 200, so there is no demand left for
+the hold to hold. That is CLAUDE.md's #295 bullet (*"a multi-part fix whose parts are each
+sufficient makes a one-sided injection lie"*), reproduced by an agent who had quoted it in the
+comment three lines above the check. The fix is to plant the demand **past the door**, which is the
+honest reproduction of the other arrival: a withdrawal demand already standing when the trip lands.
+
+**Two smaller ones, both second copies:** `rods_fully_in` was `rodSteps <= 0.5` with no shutdown
+bank — the retired engine has had `.every()` since #75 — so rods **0/200 published `true`**; and the
+facade `reset_rps` had **no** rods-in guard at all, so it reset the trip at **200/200** while only
+the kernel permissive refused.
+
+**Gates** — `run_pwr2_engine` 97 → **104** (60/60 mutations, three new), `run_pwr2_shell`
+101 → **112**, `run_hardrules` 395 → **399** (the two dated rulings, cited in four places). `run_pwr2_kernel` 37,
+`run_pwr2_roundtrip` 20, `run_pwr2_protection` 106, `run_pwr2_board` 39, `run_contract` 177 — all
+unmoved. `run_pwr2_board` DID red once and correctly: its #570 no-orphan sweep found the shutdown
+bank's two latch buttons throwing from inside a MAPPED handler, which is now a declared CONDITIONAL
+refusal naming the reset as the way out. Manuals `03 §3.5.1` and `05 §PWR-T06` extended under the
+pending Rev 17.
+
+**Filed, not built — the reset's OTHER permissive is dead on this plant.**
+`control_kernel.rpsResetBlock` iterates `this.config.trips` for `TRIP_SIGNAL_PRESENT`, and
+`getProtectionConfig` hands PWR2 `trips: []` (§98), so that refusal cannot fire — while
+`Manuals/03` §3.5.1 documents it as one of **two** live permissives with its own board caption.
+Same #570 prose/plant class, different mechanism; it needs a PWR2 data path from `rpsReport` into a
+shell-published instrument. Filed under #534.
+
+---
+
 ## Session log — 2026-08-27-develop-g (#570 — gating the seam where prose and plant come apart)
 
 **RESOLVED: #570** *(OWNER: "Build by your recommendation.", on a ranked proposal of three)*. Full

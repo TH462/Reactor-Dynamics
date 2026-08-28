@@ -45,6 +45,69 @@ where the two differ or where judgment was exercised.
 
 ---
 
+## 2026-08-28-develop-a — #545: the reactor trip breakers take the rod drive's power away
+
+**THE DECISION THAT SHAPED THIS is that the source answered a question I was going to put as a
+design choice.** The plan's second open question was whether, under a failure to scram, the rod
+buttons should refuse outward only (following the engine's existing rod-stop idiom, *"inward is
+always allowed — it HELPS"*) or both ways. `tools/find_source.js` settled it before it was asked —
+Ginna TS Bases B 3.3.1 (ML20339A221): *"The RTBs are in the electrical power supply line from the
+control rod drive motor generator set power supply to the CRDMs. **Opening of the RTBs interrupts
+power to the CRDMs**, which allows the shutdown rods and control rods to fall into the core by
+gravity."* One sentence supplies the whole fix: the latch means the breakers are open, the breakers
+being open means no drive power **in either direction**, and gravity is what acts instead — which
+is the scram ramp the engine already had, on its own branch, untouched.
+
+*(OWNER RULINGS, 2026-08-28, both menu selections cited in that form: "#545 + the two one-liners";
+"Refuse both directions".)*
+
+**THE DEFECT** was the same shape as yesterday's turbine cluster one system over: the rods were the
+**only** reactor-trip consumer wired to the latch's rising EDGE. The turbine trip, the SI pumps, the
+AFW starts and the feedwater isolation on the three lines beneath it are all level-held. Measured,
+full facade from Hot Full Power: scram, then hold WITHDRAW on both banks, and at t+910 s the plant
+sat at **200/200 steps and 61.18 % true power** (61.93 % core thermal, 186 MWt / 634 MMBtu/hr) and
+**598.4 °F (314.7 °C)** with `scrammed` reading true on the true state, the instrument **and** the
+control kernel simultaneously — while the 35 % power-range flux trip stood asserted at 0.6170
+against 0.350, tripping, held 751.6 s, and could do nothing, because the latch it would set was
+already set.
+
+**WHAT WAS BUILT** — full write-up and every number in `Blueprint/PWR2_VALIDATION.md` §102.
+
+| | file | |
+|---|---|---|
+| the level hold | `pwr2_engine.js` | `rodDrivePowered = !eng.pt.reactor_trip`; a branch **above** the runaway branch, so an injected continuous-withdrawal drive fault stops too; the shutdown bank's own drive guarded. Demands are not rewritten (the heals-itself trap) |
+| the door | `pwr2_engine.js` | `rodDriveDoor()` — `rod_target` / `sd_target` refuse **by name**, and refuse MOTION rather than the press, because the board sends `rod_stop` on every button release |
+| `rods_fully_in` | `pwr2_shell.js` | both banks. The retired engine has had `.every()` since #75; this was a second copy that lost it, so rods **0/200 published `true`** |
+| the reset | `pwr2_shell.js` | refuses with the rods out (the facade had **no** guard — measured, `reset_rps` at 200/200 returned `{"ok":true}`), and snaps both demands to position |
+
+**THE METHOD NOTE WORTH KEEPING.** The first draft's level-hold mutation went **BLIND** —
+`run_pwr2_engine` came back 59/60. The hold and the door are **each sufficient** for the operator's
+own sequence: with the door refusing, `rodTarget` never reaches 200, so there is no demand left for
+the hold to hold. That is the #295 bullet (*"a multi-part fix whose parts are each sufficient makes
+a one-sided injection lie — revert BOTH to reproduce"*) reproduced by an agent who had quoted it in
+the comment three lines above the check. Neither half was weakened; the demand is planted **past**
+the door instead, which is the honest reproduction of the other arrival — a withdrawal demand
+already standing when the trip lands, which is exactly what an ATWS is.
+
+**THE BOARD GATE EARNED ITS KEEP.** `run_pwr2_board` reddened on the change, correctly: its #570
+no-orphan sweep found the shutdown bank's two latch buttons throwing from inside a MAPPED handler,
+which is the *"a control that can only throw is a dead button"* class. They are now declared
+CONDITIONAL with the condition named — the one distinction that separates a permissive from a dead
+control, and the reason that list is required to carry a reason.
+
+### Open flags this entry leaves
+
+- **The reset's OTHER permissive is dead on PWR2 and the manual documents it as live.**
+  `control_kernel.rpsResetBlock` iterates `this.config.trips` for `TRIP_SIGNAL_PRESENT`, and
+  `getProtectionConfig` hands PWR2 `trips: []` (§98). `Manuals/03` §3.5.1 lists it as one of **two**
+  permissives, with its own board caption. Filed under #534; needs a PWR2 data path from
+  `rpsReport` into a shell-published instrument.
+- **`pwr_board_wiring.surBlockDpm()` reads `_PROT.interlocks` for the 1.5 DPM startup-rate rod
+  withdrawal block and falls back to 1.5.** PWR2's interlock list is empty, so that block may not
+  exist on this plant at all. **Noticed, not measured** — verify before writing it down anywhere.
+- The both-directions rule makes a failure to scram a **boration** problem. Nothing in the campaign
+  teaches that yet; the Tier C core casualty list (#507) is where it would land.
+
 ## 2026-08-27-develop-g — #570: three gates on the prose/plant seam, and why only two of them exist
 
 **THE DECISION THAT SHAPED THIS was refusing to treat one failure as two instances of another.**
