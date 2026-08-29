@@ -45,6 +45,41 @@ where the two differ or where judgment was exercised.
 
 ---
 
+## 2026-08-28-develop-j — #588: a gate for the invariance the service asserts about itself
+
+`layers/simulation_service.js` claims acceleration invariance **twice in its own comments** — that
+controllers "behave identically at any time acceleration" (`:333`) and that "the reactor gets the
+same protection at 3600x as at 1x" (`:337`). **Nothing checked either.**
+`test/run_service_invariance.js` now does. Full write-up: `PWR2_VALIDATION.md` §111.
+
+**The defect is in the source, not inferred from a trajectory.** `tick()` declares
+`var sinceEval = 0;` as a **per-tick local**, so the accrued sim time since the last protection
+evaluation is discarded at every broadcast boundary. Once a broadcast is shorter than
+`PROTECTION_DT` the in-loop cadence never fires and protection runs at the BROADCAST rate — which
+is 1x, and only 1x, because the cadence halves to 50 ms in a transient. Measured **10.85
+evaluations/sim-s at 1x against 10.00 above it**, and **267.31 psi against 269.87 at 200 s**
+through a large break with the station blacked out. **Above 1x it holds bit-for-bit** (10x/30x/60x
+all read 297.9055 psi at 198.0 s), so the defect is bounded to the one speed a player watches a
+casualty in and no gate uses.
+
+**⚠ AND THE GATE CAUGHT ITSELF BEING HOLLOW.** Before SI-6 was added to the XFAIL map it was
+simply red, so every mutation "caught" it and the self-test read 3/3. Adding it dropped the score
+to **1/3** and exposed two mutations that had never caught anything — the clean-run-guard failure
+`run_pwr2_geometry` documents, arriving from inside the scored set instead of from a red clean
+run. SI-7 (10x vs 60x bit-for-bit on a MOVING plant) was added because the repaired self-test then
+showed the quiet plant cannot see a cadence mutation at all.
+
+**A mutation visible only through an xfail is DECLARED, not counted** — reported under `blocked`
+with its reason. A blind spot the gate creates for itself is a gate failure; one an open named gap
+creates is a fact about the gap.
+
+### Open flags this entry leaves
+
+**#588 is NOT fixed.** The fix is one line — carry `sinceEval` on the instance — and its blast
+radius is every plant and every full-stack runner, at exactly the speed the authored content was
+built at. That is an owner decision with a measured before/after. The three xfails (SI-2, SI-4,
+SI-6) are one defect and should retire together; one closing alone is information.
+
 ## 2026-08-28-develop-i — #583: one pressurizer, and a check the defect had been feeding
 
 *(OWNER RULINGS, 2026-08-28, selected from options I wrote: **"Delete the phantom, re-base"** and

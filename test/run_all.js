@@ -1070,6 +1070,20 @@ var BASELINES = {
   // engine (<= 8x; measures 4.1x) for run_pwr2_vtable's contention reason; absolutes REPORTED
   // only. Also pins the #514 lazy vtable build (0.5 s at page load, paid by every player, PWR2
   // selected or not -> first use) and self-tests by injecting a 51x-class slowdown.
+  /* NEW (#588, 2026-08-28): IS THE PLANT THE SAME PLANT AT EVERY TIME ACCELERATION?
+   * `simulation_service.js` claims this twice in its own comments and NOTHING checked either.
+   * It is the check that would have found #588 without a browser: a large break with the
+   * station blacked out ends the session at one acceleration and not at another, because the
+   * blowdown endgame sits on a cliff and ~1 % of perturbation picks the branch.
+   * THREE STRICT XFAILS, all #588 and all one defect: `tick()` declares `var sinceEval = 0;`
+   * as a per-tick LOCAL, so the protection sim-time cadence cannot carry across broadcasts and
+   * degenerates to the broadcast rate once a broadcast is shorter than PROTECTION_DT — which is
+   * 1x under the transient cadence. Measured 10.85 evaluations/sim-s at 1x against 10.00 above
+   * it, and 267.31 psi against 269.87 at 200 s (0.96 %). ABOVE 1x it holds BIT-FOR-BIT (SI-7:
+   * 10x and 60x agree to every digit through the same casualty), so the defect is bounded to
+   * the one speed a player watches a casualty in and no gate uses. Closing #588 should retire
+   * all three xfails together; one closing alone is information. */
+  'run_service_invariance.js': { code: 0, score: '5passed 3xfail 0failed 8checks', secs: 67 },
   'run_pwr2_perf.js':      { code: 0, score: '5passed 0failed 5checks', secs: 2 },   // 4 -> 5 (#519, 2026-08-26): the ratio is sampled INTERLEAVED and taken as the MINIMUM. The header claimed "both engines slow down together, so the ratio survives load" — true only if they are measured through the same weather, and they were not: all seven pwr2 reps, then all seven pwr1 reps, so a neighbour that starts and finishes inside one window inflates the ratio. Reproduced deliberately: sequential median 8.80x (183.2/20.8) against CI's 8.3x (178.7/20.5), interleaved min 3.71x against an idle truth of 3.7-4.0x. Sustained load across BOTH blocks was the wrong hypothesis — it lowers the ratio (4.00 -> 2.90) and can never redden this. The new check demonstrates it on equal-cost twins: interleaved 1.00x, sequential 4.97x.
   'run_pwr2_water.js':     { code: 0, score: '255passed 0failed 255checks', secs: 2 },   // +11 (#490, 2026-08-18): voidFraction(h,P) added -- HEM alpha from quality, pinned at three pressures against independent volume algebra plus the identity rho_from_h == (1-alpha)*rho_f + alpha*rho_g; mutation 'voidFraction returns QUALITY' replays the shipped defect, 10 checks red. Mutation set 26 -> 27.   // 164 -> 231 (2026-08-14, second pass): hardened after an INDEPENDENT review applied 19 mutations of its own and 11 stayed green -- three on exported functions the suite never called. Two REAL defects found (P_sat returned a vacuum below 99.6 degC; a 1.45 kg/m3 discontinuity at h_g), five accuracy claims false OFF-GRID, and 7 of 8 cp_f references not from NIST in a file claiming none were recalled. Mutation set 17 -> 26. TRAP: git autocrlf made every MULTI-LINE mutation anchor silently stop matching -- the runner now normalises line endings before matching, because a gate whose coverage depends on the checkout's line-ending policy is not a gate.
   'run_contract.js':       { code: 0, score: '177checks 0failed' },   // 175 -> 177 (#447): the pzr_heaters_shed true_state field's §6.3 line + the PZR HTRS SHED alarm's category check   // 168 -> 175 (#386 stage 3): 4 hydrogen true_state fields + 3 new alarms' category checks. 167 -> 168 (#385 node stage 1): the pzr_mass_frac inventory-node field's §6.3 line. 159 -> 167 (#386 stage 2): 4 new true_state fields (spray/fan demand+active) + 4 new containment alarms' category checks

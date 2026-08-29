@@ -30,6 +30,17 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
 
 ## [Unreleased]
 
+### Added (#588 — a gate for time-acceleration invariance, 2026-08-28)
+
+Full write-up: `Blueprint/PWR2_VALIDATION.md` §111.
+
+- **The simulator now checks that fast-forwarding gives you the same plant.** A new gate drives
+  one casualty to the same plant-time at 1x, 10x and 60x and compares. Above 1x the plant is
+  identical to every digit; **at 1x it is not**, by about 1 % — and near the end of a large break
+  that 1 % decides whether the run ends in a halted board or a plant you can keep operating.
+- **Known and tracked, not fixed here** — three checks ship as declared known-failures against
+  the open issue. Nothing a player sees has changed.
+
 ### Fixed (#583 — the pressurizer was in the mass ledger twice, 2026-08-28)
 
 Full write-up: `Blueprint/PWR2_VALIDATION.md` §110.

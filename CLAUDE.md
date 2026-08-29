@@ -333,7 +333,7 @@ to read everything.
 
 _Last updated: **2026-08-28**._
 
-**Where the PWR is.** `run_all` is **96 runners, all at baseline** — read `BASELINES`, never a
+**Where the PWR is.** `run_all` is **97 runners, all at baseline** — read `BASELINES`, never a
 number written here. The PWR is the only active plant and is feature-complete through Mode 5 ↔
 Mode 1 on integrated physics: engines, control, service, instructor and the board are built; the
 #297 audit's build wave and the #221 audit slices are landed. **What is open, in one line each:**

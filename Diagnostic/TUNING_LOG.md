@@ -29,6 +29,43 @@ and the user-visible summary in `CHANGELOG.md`. This file points at those and tr
 
 ---
 
+## Session log — 2026-08-28-develop-j (#588 — the gate for a claim the service made twice and nothing checked)
+
+Full write-up: `Blueprint/PWR2_VALIDATION.md` §111. This is the continuity note.
+
+- **What was owed.** `layers/simulation_service.js` claims acceleration invariance in its own
+  comments **twice** (`:333` controllers, `:337` protection "the same protection at 3600x as at
+  1x") and **nothing checked either**. New runner `test/run_service_invariance.js` — 8 checks,
+  3 mutations, 1 declared blocked. It is the check that would have found #588 without a browser.
+- **THE DEFECT, LOCATED IN THE SOURCE.** `tick()` declares **`var sinceEval = 0;` as a per-tick
+  LOCAL**, so the accrued sim time since the last protection evaluation is discarded at every
+  broadcast boundary and the "sim-time cadence" cannot carry across broadcasts. Once a broadcast
+  is shorter than `PROTECTION_DT` (0.1 s) the in-loop test never fires and the post-loop call
+  evaluates once per broadcast — protection runs at the BROADCAST rate. That is **1x only**,
+  because the cadence halves to 50 ms in a transient.
+- **MEASURED.** Transient evaluations/sim-s: **10.85 at 1x against 10.00 at 10x / 30x / 60x**;
+  quiet plant 10.00 everywhere. Pressure at 200.0 s through a large break + blackout:
+  **267.31 psi at 1x against 269.87 at 10x (0.96 %)**. ⚠ **Above 1x it holds BIT-FOR-BIT** —
+  10x/30x/60x read 297.9055 psi at 198.0 s, identical to every digit. So the defect is bounded
+  to the one speed a player watches a casualty in and no gate uses.
+- **Gate:** `run_service_invariance` **5 passed, 3 xfail, 0 failed (8 checks)**, 3/3 mutations,
+  67 s. SI-2 / SI-4 / SI-6 are strict xfails on #588 — one defect, three faces; closing it should
+  retire all three **together**, and one closing alone is information.
+- **⚠ A PERMANENTLY-RED CHECK MAKES AN INJECTION SELF-TEST HOLLOW, and it happened while writing
+  this.** Before SI-6 was put in the XFAIL map it was just red, so EVERY mutation "caught" it and
+  the tally read 3/3. Adding it dropped the score to **1/3** and exposed two mutations that had
+  never caught anything. Same shape as `run_pwr2_geometry`'s clean-run guard, arriving from the
+  other side: there the guard refuses to score a red clean run; here the red check sat inside the
+  scored set and inflated it. SI-7 (10x vs 60x bit-for-bit on a MOVING plant) exists because the
+  repaired self-test then showed the quiet plant is too insensitive to catch a cadence mutation.
+- **A mutation visible only through an xfail is DECLARED, not counted** — printed under
+  `blocked` with its reason, excluded from the tally. A blind spot the gate creates for itself is
+  a gate failure; one an open named gap creates is a fact about the gap.
+- **NOT FIXED.** The fix is one line (carry `sinceEval` on the instance) and its blast radius is
+  every plant and every full-stack runner, at exactly the speed the authored content was built
+  at. That is an owner decision with a measured before/after, not a rider on the gate that makes
+  it answerable.
+
 ## Session log — 2026-08-28-develop-i (#583 — one pressurizer, and a check the defect had been feeding)
 
 Full write-up with every number: `Blueprint/PWR2_VALIDATION.md` §110. This is the continuity note.

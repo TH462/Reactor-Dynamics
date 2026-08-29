@@ -8005,3 +8005,70 @@ metal is not modelled (no heat capacity, no wall condensation)"*, and the plant 
 metal; building it belongs in Layer 5, where it would damp the heater-driven pressure rate and add
 a condensation surface, and where it would re-open the Ginna-calibrated `tau_int_s`. Bundling that
 into a ledger fix is how a physics change hides inside an accounting one.
+
+## 111. #588 — THE GATE FOR A CLAIM THE SERVICE MADE TWICE AND NOTHING CHECKED — 2026-08-28
+
+`layers/simulation_service.js` asserts acceleration invariance in its own comments, twice:
+
+> `:333` *"Automation channels run in-stack at physics rate (fixed sim-time cadence inside)… so
+> controllers behave identically at any time acceleration."*
+> `:337` *"Protection is on a SIM-time cadence, not a per-broadcast one (#153): the reactor gets
+> the same protection at 3600× as at 1×."*
+
+**Nothing checked either.** `test/run_service_invariance.js` does — 8 checks, 3 mutations, one
+declared blocked. It is the check that would have found #588 without a browser.
+
+### 111.1 The defect, located in the source rather than inferred
+
+`tick()` declares **`var sinceEval = 0;` as a per-tick LOCAL**. The accumulated sim time since
+the last protection evaluation is therefore thrown away at every broadcast boundary, so the
+"sim-time cadence" cannot carry across broadcasts. Once a broadcast is **shorter than
+`PROTECTION_DT` (0.1 s)** the in-loop `if (sinceEval >= PROTECTION_DT)` never fires at all and the
+post-loop call evaluates once per broadcast — i.e. protection runs at the **broadcast** rate.
+
+That happens at **1×, and only at 1×–2×**, because the broadcast cadence halves to 50 ms in a
+transient. Measured:
+
+| | 1× | 10× | 30× | 60× |
+|---|---|---|---|---|
+| quiet plant, evaluations / sim-s | 10.00 | 10.00 | — | 10.00 |
+| **transient**, evaluations / sim-s | **10.85** | 10.00 | 10.00 | 10.00 |
+| transient, P at 200.0 s | **267.31 psi** | **269.87 psi** | — | — |
+| transient, P at 198.0 s | — | 297.9055 | 297.9055 | 297.9055 |
+
+**Above 1× it holds bit-for-bit** — 10×, 30× and 60× agree to every printed digit through the
+same casualty, because a broadcast at those speeds covers ≥ `PROTECTION_DT` and the in-loop
+cadence governs. That is what makes this a *bounded* defect rather than a vague one, and it is
+the inversion of the shape `CLAUDE.md` records: **1× is the odd one out, and 1× is the speed a
+player watches a casualty in and no gate uses.**
+
+### 111.2 The gate
+
+`SI-0`, `SI-1`, `SI-3`, `SI-5`, **`SI-7`** pass. `SI-2`, `SI-4`, `SI-6` are **strict xfails** on
+#588 — all three are one defect, and closing it should retire all three together; **one closing
+alone is information**. `SI-7` (10× vs 60× bit-for-bit through the casualty) is the live check on
+a *moving* plant, and it exists because the quiet plant turned out to be too insensitive to catch
+a cadence mutation — which the injection self-test proved rather than my guessing it.
+
+### 111.3 ⚠ Two things this gate taught while being written
+
+**A permanently-red check makes an injection self-test hollow, and it happened here.** Before
+`SI-6` was added to the XFAIL map it was simply red, so *every* mutation "caught" it and the
+tally read 3/3. Adding it to XFAIL dropped the score to 1/3 and exposed two mutations that were
+never catching anything. This is the clean-run guard `run_pwr2_geometry` documents, arriving from
+the other direction: there the guard refuses to score when the clean run is red; here the red
+check was inside the scored set and inflated it.
+
+**A mutation only visible through an xfail is DECLARED, not counted.** One mutation — the
+post-loop call over-counting with `PROTECTION_DT` instead of the accrued time — can be seen only
+by `SI-2`/`SI-4`, both xfail. It is run and printed under `blocked`, with the reason, and
+excluded from the tally. A blind spot the gate creates for *itself* is a gate failure; a blind
+spot an open, named gap creates is a fact about the gap. Whoever closes #588 promotes it.
+
+### 111.4 Not fixed here, and why
+
+The fix is one line — carry `sinceEval` on the instance. **Its blast radius is every plant and
+every full-stack runner**, and it changes protection cadence at exactly the speed the authored
+content was built at. That is a decision to put to the owner with a measured before/after, not
+something to slip into the change that built the gate. The gate is what makes the decision
+answerable: after the fix, `SI-2`/`SI-4`/`SI-6` must all go XPASS together.
