@@ -25,18 +25,22 @@
  *
  * TIMING IS NOT A CLAIM. When the cladding reaches a given temperature depends on `pwr2_fuel.js`'s
  * low-flow film coefficient, which is UNSOURCED, and on two declared optimistic simplifications
- * (no departure from nucleate boiling; a coolant clamped at the property library's 800 degC
- * ceiling). The times below are recorded so the ACCELERATION can be measured as a difference
- * between two runs of the same model — which is a real comparison — not offered as plant data.
+ * (no departure from nucleate boiling; a coolant clamped at the property library's vapour ceiling
+ * — 1000 degC since #586, IAPWS-95's own upper limit). The times below are recorded so the
+ * ACCELERATION can be measured as a difference between two runs of the same model — which is a
+ * real comparison — not offered as plant data.
  *
- * THE END STATE IS NOT A CLAIM EITHER, and this is the one place this model runs PESSIMISTIC where
- * every other declared simplification runs optimistic. With no mitigation the reaction consumes
- * 100 % of the cladding, because nothing here models the two things that actually terminate it in
- * a real accident: **relocation** (GEND-061 lists *"Zircaloy melting and relocation to generally
- * colder regions and resulting reduced exposed-surface areas"* among what makes TMI-2 hard to
- * calculate) and **quenching**. TMI-2 itself stopped at ~45 % because injection was restored. So
- * the terminal 100 % is what an UNMITIGATED, UNRELOCATED core would do, and it is reported rather
- * than asserted as prototypical.
+ * THE END STATE IS NOT A CLAIM EITHER. The ride ends where the MODEL ends, not where the accident
+ * would: the fluid reaches the vapour ceiling and the plant holds, at 4.68 % of the cladding
+ * oxidised with the damage limit just crossed. Nothing here models the two things that actually
+ * terminate the reaction in a real accident — **relocation** (GEND-061 lists *"Zircaloy melting
+ * and relocation to generally colder regions and resulting reduced exposed-surface areas"* among
+ * what makes TMI-2 hard to calculate) and **quenching** — nor anything that would carry it
+ * further. TMI-2 itself reached ~45 % because injection was restored when it was. So this gate
+ * asserts that the chain REACHES the damage limit and which criteria it breaches on the way;
+ * where an unmitigated core would finish is outside what this library can speak to.
+ * (Before #586 this paragraph described a terminal 100 % oxidation — that number came from
+ * stepping a plant that had been frozen for 470 s, and it is the reason the fence existed.)
  *
  * Run: node test/run_pwr2_coredamage.js
  */
@@ -88,7 +92,7 @@ function scenario(opts) {
   var hit = {}, firstVoid = null, flowLost = null, damagedAt = null, meltedAt = null;
   var firstSuperheat = null, maxSuperheat = 0, superheatSteps = 0;   /* #517 */
   var maxSuperheatAt = null, clampAt = null;                          /* #574 — see the wing check */
-  var M0 = sys.M_total, maxOx = 0, lastR = null, lastD = null, pzEmptyAt = null;
+  var M0 = sys.M_total, maxOx = 0, maxClad = 0, lastR = null, lastD = null, pzEmptyAt = null;
   var steps = Math.round((opts.secs || 1200) / DT);
 
   for (var i = 0; i < steps; i++) {
@@ -125,6 +129,9 @@ function scenario(opts) {
     if (clampAt === null && clampedThisStep) clampAt = t;
 
     var reg = R.coreRegime(sys), cf = rr.T_clad_c * 9 / 5 + 32;
+    /* #586 — the PEAK cladding temperature on the valid ride. Tracked inside the loop, which
+     * breaks at the hold, so it can never be a held plant's number. */
+    if (cf > maxClad) maxClad = cf;
     if (firstVoid === null && reg.voidFrac > 0.5) firstVoid = t;
     if (flowLost === null && reg.flowFrac < 0.05) flowLost = t;
     /* #517 — the superheat regime, tracked so the wing has a RIDE to be accepted on. Void
@@ -150,7 +157,8 @@ function scenario(opts) {
   return { sys: sys, rx: rx, dm: dm, t: t, M0: M0, sumOxKJ: sumOxKJ, courantBad: courantBad, heldAt: heldAt,
            maxSuperheatAt: maxSuperheatAt, clampAt: clampAt,
            nonFinite: nonFinite, hit: hit, firstVoid: firstVoid, flowLost: flowLost,
-           damagedAt: damagedAt, meltedAt: meltedAt, maxOx: maxOx, r: lastR, d: lastD,
+           damagedAt: damagedAt, meltedAt: meltedAt, maxOx: maxOx, maxClad: maxClad,
+           r: lastR, d: lastD,
            pzEmptyAt: pzEmptyAt,
            firstSuperheat: firstSuperheat, maxSuperheat: maxSuperheat,
            superheatSteps: superheatSteps };
@@ -186,43 +194,61 @@ ckT('...and the flow collapses before the cladding reaches the hydrogen onset',
     ON.hit[DOC.onset_f].toFixed(0) + ' s — the heat-up follows the loss of cooling, not the break');
 
 /* ============================================================================================
- * ⚠ EVERYTHING PAST THE HYDROGEN ONSET IS DECLARED BLOCKED, NOT DELETED — #586.
+ * THE CHAIN COMPLETES INSIDE THE ENVELOPE AGAIN — #586 UNBLOCKED, 2026-08-29.
  *
- * This gate used to assert the 1800 and 2200 degF crossings, the damage latch, the melt order,
- * the ON-vs-OFF milestone comparison and a 100 % oxidation endpoint. MEASURED 2026-08-28, on the
- * PRE-#574 plant as well as the post — so this is NOT the metal walls: the plant latches
- * `beyond_model` at **469 s** on this 20 cm2 break, and the 2200 degF crossing was at **939 s**.
- * `pwr2_core.step` returns early on a held plant — mass stops moving, junctions read zero — so
- * every one of those numbers came from 470+ seconds of FROZEN PHYSICS while only the systems
- * around the plant kept running. Fourth probe in this engine to read a plant outside its own
- * valid regime; `run_pwr2_cvcs` carries the comment about the first three.
+ * HISTORY, because the shape of this fence is the lesson. The gate once asserted the 1800 and
+ * 2200 degF crossings, the damage latch and a 100 % oxidation endpoint — and every one of those
+ * numbers came from 470+ seconds of FROZEN PHYSICS, because the plant latched `beyond_model` at
+ * 469 s and the harness kept stepping it. The claims were then DECLARED BLOCKED rather than
+ * re-fitted to what a held plant produces *(OWNER RULING, 2026-08-28: "Keep the guard, shrink
+ * the claims")*, and the wall was measured rather than assumed *(OWNER RULING, 2026-08-29:
+ * "Measure, then settle" — selected from written options)*.
  *
- * WHICH WALL BLOCKS IT WAS MEASURED 2026-08-29 (#586, owner-ruled "measure, then settle"), and
- * it is NOT the 0.1 MPa pressure floor this banner used to name: on every unmitigated break
- * size (5/10/20/40 cm2) the plant latches on the CEILING-PERSISTENCE arm — the core node
- * pinned at the VAPOUR branch's 800 degC envelope edge (h = 4161 kJ/kg) for 60 continuous
- * seconds of active discard — with pressure parked at 15.7 psia, comfortably ABOVE the floor.
- * So the chain is NOT blocked on #524 (the sub-floor extension Mode 5 waits on); it is blocked
- * on TV_MAX, the superheated-vapour fits' validated ceiling. The honest ride reaches the
- * 1200 degF onset and peaks at 1698-1735 degF STILL CLIMBING at the latch, oxidation < 1 % —
- * about 65 degF short of the 1800 degF milestone. Un-blocking means extending the four
- * cp_v/Z(P) fits past 800 degC against fresh IAPWS-95 anchors and re-calibrating the
- * CEIL_HOLD_LATCH_S margin — its own scoped work item, not a constant bump.
+ * THE WALL WAS THE VAPOUR CEILING, NOT THE PRESSURE FLOOR. Every unmitigated break latched on
+ * the CEILING-PERSISTENCE arm with the core node pinned at h_v(TV_MAX, P) — at 15.7 psia, ABOVE
+ * the 14.5 psia floor. So this was never blocked on #524's sub-floor extension: it was blocked
+ * on `TV_MAX`, which was 800 degC only because the fetch query that built the fits stopped
+ * there (`PWR2_L0_REBUILD` §3, `THigh=800`) — a data boundary that had never been argued.
  *
- * *(OWNER RULING, 2026-08-28: "Keep the guard, shrink the claims", from three costed options.)*
- * Every claim the VALID plant supports is kept; the rest is named here rather than quietly
- * re-fitted to whatever a held plant produces. A gate that is green and false is worse than one
- * that is honest about its reach.
+ * TV_MAX IS NOW 1000 degC, IAPWS-95's own documented upper limit, with the four
+ * superheated-vapour parameters REFITTED over the whole extended range against freshly fetched
+ * NIST SRD 69 reference data (h_v max 32.8 kJ/kg over 1,814 points — better than the old fit's
+ * 35.1 over its shorter range). The old coefficients did NOT extrapolate: evaluated past their
+ * range they measured cp 34.8 % out at 1000 degC. Raising the ceiling without the refit would
+ * have published that as physics.
+ *
+ * WHAT THE VALID PLANT NOW REACHES, all measured 2026-08-29 on the 20 cm2 unmitigated break:
+ *   void > 50 %   33 s        flow < 5 %    110 s      1200 degF (GEND-061)   308.0 s
+ *   1800 degF    489.9 s      2200 degF     590.0 s    damage latch           590.0 s
+ *   model holds  596.4 s      peak clad     2229 degF  oxidation              4.68 %
+ * The chain completes with 6.4 s of valid plant to spare, and MELT does not occur — that is
+ * declared below rather than chased, because it sits past the last ceiling this library can
+ * claim to be validated at rather than extrapolated to.
  * ========================================================================================== */
-ckT('the ride stops WHERE THE MODEL DOES — the chain past the onset is #586, not a claim',
-    ON.heldAt !== null && ON.hit[DOC.onset_f] < ON.heldAt,
-    'onset at ' + ON.hit[DOC.onset_f].toFixed(0) + ' s, beyond_model at ' +
-    (ON.heldAt === null ? 'never' : ON.heldAt.toFixed(0) + ' s') + ' — 1800 degF, 2200 degF, the ' +
-    'damage latch and the oxidation endpoint all sit past that floor and are DECLARED BLOCKED');
-ckT('...and the damage latch has NOT tripped, because the plant never got there',
-    ON.damagedAt === null && ON.meltedAt === null,
-    'damaged ' + ON.damagedAt + ', melted ' + ON.meltedAt +
-    ' — the old gate latched it at 939 s, on a plant frozen since 469');
+ckT('the chain COMPLETES inside the valid envelope — every milestone, in order, on a running plant',
+    ON.hit[DOC.onset_f] !== undefined && ON.hit[DOC.significant_f] !== undefined &&
+    ON.hit[DOC.pct_limit_f] !== undefined && ON.heldAt !== null &&
+    ON.hit[DOC.onset_f] < ON.hit[DOC.significant_f] &&
+    ON.hit[DOC.significant_f] < ON.hit[DOC.pct_limit_f] &&
+    ON.hit[DOC.pct_limit_f] < ON.heldAt,
+    '1200 degF ' + ON.hit[DOC.onset_f].toFixed(1) + ' s, 1800 ' +
+    ON.hit[DOC.significant_f].toFixed(1) + ' s, 2200 ' + ON.hit[DOC.pct_limit_f].toFixed(1) +
+    ' s, model holds ' + ON.heldAt.toFixed(1) + ' s — the ordering IS the mechanism, and every ' +
+    'one of these is read off a plant inside its own envelope');
+/* THE LATCH AND THE CROSSING ARE THE SAME EVENT, and asserting them as a pair is what stops a
+ * damage flag that fires off some other quantity reading as the 50.46 limit working. */
+ckT('the damage latch trips ON the 2200 degF crossing — the same step, not merely nearby',
+    ON.damagedAt !== null && Math.abs(ON.damagedAt - ON.hit[DOC.pct_limit_f]) <= 2 * DT,
+    'damaged at ' + ON.damagedAt.toFixed(2) + ' s against the 2200 degF crossing at ' +
+    ON.hit[DOC.pct_limit_f].toFixed(2) + ' s');
+/* DECLARED, NOT CHASED: melt needs temperatures past the extended ceiling. Asserted as an
+ * ABSENCE with its reason, so that if a later property extension makes melt reachable this
+ * check reds and the claim gets re-measured rather than silently acquiring a melt path. */
+ckT('MELT is still out of reach, and that is a declared property-range limit, not a plant claim',
+    ON.meltedAt === null,
+    'melted never; peak clad ' + ON.maxClad.toFixed(0) + ' degF against a 2200 degF damage limit ' +
+    '— the fluid reaches TV_MAX ' + RD.water.LIMITS.TV_MAX + ' degC, IAPWS-95\'s own upper limit, ' +
+    'so a melt path would have to be extrapolated rather than validated');
 
 /* ---- THE FEEDBACK, WHICH IS THE WHOLE POINT ----------------------------------------------- */
 head('THE FEEDBACK  [the only thing here no single-file gate can see]');
@@ -235,18 +261,28 @@ ckT('BOTH runs reach the hydrogen onset at the same time — the feedback cannot
     Math.abs(ON.hit[DOC.onset_f] - OFF.hit[DOC.onset_f]) < 1.0,
     'ON ' + ON.hit[DOC.onset_f].toFixed(2) + ' s, OFF ' + OFF.hit[DOC.onset_f].toFixed(2) +
     ' s — identical, which is what makes the divergence AFTER it attributable');
-/* ⚠ THE DIVERGENCE ITSELF IS WHAT #586 TAKES AWAY. The old checks compared the 2200 degF
- * crossings and the terminal oxidation fractions, and both sit past the floor. What CAN be
- * asserted on a valid plant is that the feedback is already doing something by the time the
- * model stops: the ON leg must have oxidised MORE, and the OFF leg must have oxidised at all,
- * or the comparison is against a model that does nothing. The magnitudes are small because the
- * valid ride is short, and they are REPORTED rather than banded — a band here would be fitted
- * to a horizon that #586 is expected to change. */
-ckT('the feedback is already accelerating the reaction by the time the model stops',
+/* ⚠ AND HERE IS THE PAYOFF THE FENCE USED TO HIDE (#586, 2026-08-29). With the chain completing
+ * inside the envelope the A/B is a REAL comparison of outcomes rather than of two truncated
+ * ride fragments: the oxidation feedback is what carries this core over the damage limit AT
+ * ALL. MEASURED on the 20 cm2 unmitigated break — ON reaches 1800 degF at 489.9 s, OFF at
+ * 513.2; ON crosses 2200 degF at 590.0 s and latches damage; **OFF NEVER CROSSES IT**, peaking
+ * at 2090 degF before the model stops. Same break, same plant, one term. That is the strongest
+ * statement this gate has ever been able to make, and it was unreachable while everything past
+ * the onset sat behind the fence. */
+ckT('the FEEDBACK is what takes this core over the damage limit — without it, 2200 degF is never ' +
+    'reached on the same break',
+    ON.hit[DOC.pct_limit_f] !== undefined && OFF.hit[DOC.pct_limit_f] === undefined &&
+    OFF.maxClad < DOC.pct_limit_f,
+    'ON crosses 2200 degF at ' + ON.hit[DOC.pct_limit_f].toFixed(1) + ' s; OFF peaks at ' +
+    OFF.maxClad.toFixed(0) + ' degF and never does — one term, same break');
+ckT('...and it gets there SOONER at every milestone past the onset, never later',
+    ON.hit[DOC.significant_f] < OFF.hit[DOC.significant_f] &&
     ON.maxOx > OFF.maxOx && OFF.maxOx > 0,
-    (ON.maxOx * 100).toFixed(3) + ' % with feedback against ' + (OFF.maxOx * 100).toFixed(3) +
-    ' % without, at ' + ON.t.toFixed(0) + ' s — the old gate read 100 % against 15.8 %, both past ' +
-    'the floor. Everything else in this plant decays; this is the one thing that accelerates');
+    '1800 degF at ' + ON.hit[DOC.significant_f].toFixed(1) + ' s with feedback against ' +
+    OFF.hit[DOC.significant_f].toFixed(1) + ' without (' +
+    (OFF.hit[DOC.significant_f] - ON.hit[DOC.significant_f]).toFixed(1) + ' s earlier); oxidation ' +
+    (ON.maxOx * 100).toFixed(2) + ' % against ' + (OFF.maxOx * 100).toFixed(2) +
+    ' %. Everything else in this plant decays; this is the one thing that accelerates');
 ckT('the run WITHOUT feedback still oxidises, so the difference is the feedback and not the model',
     OFF.maxOx > 0,
     (OFF.maxOx * 100).toFixed(3) + ' % — a zero here would mean the comparison was against a ' +
@@ -267,18 +303,23 @@ ckT('the reaction never consumes more zirconium than the core contains',
 
 /* ---- THE 50.46 CRITERIA, AND WHICH ONE GOES FIRST ---------------------------------------- */
 head('10 CFR 50.46  [an unmitigated core must breach them, and in the right order]');
-/* ⚠ BOTH 50.46 CRITERIA LIVE PAST THE PROPERTY FLOOR — DECLARED BLOCKED, #586. The old pair
- * asserted that criterion 1 (2200 degF peak clad) is breached and that criterion 3 (1 % of the
- * hypothetical hydrogen) is reached before criterion 2 (17 % oxidation). Both were true only of
- * a HELD plant: this ride stops at `beyond_model` with 0.8 % oxidation, an order under either
- * criterion. What is still assertable on a valid plant is that the model CARRIES the criteria
- * and their ordering, which is a claim about the criteria and not about a frozen ride. */
+/* ⚠ RESTORED 2026-08-29 (#586) — these were DECLARED BLOCKED while the ride stopped at 0.8 %
+ * oxidation on a plant whose milestones all sat past the ceiling. On the valid plant the
+ * unmitigated core now breaches TWO of the three criteria and not the third, which is a
+ * sharper and more teachable result than "breaches everything": the 2200 degF peak-clad limit
+ * and the 1 % hydrogen limit go, while 17 % oxidation does not — so the ORDERING claim
+ * (hydrogen binds 17x before oxidation) is demonstrated by the plant rather than merely
+ * carried by the constants. */
 ckT('the model carries all three 50.46 criteria, and the hydrogen one is the tightest',
     DOC.h2_criterion < DOC.ox_criterion && DOC.pct_limit_f === 2200 &&
     ON.dm.geom.M_clad_kg > 0,
-    '1 % hydrogen against 17 % oxidation — 17x tighter, so it binds first; 2200 degF is the ' +
-    'third. WHETHER this plant reaches any of them is #586: it stops at ' +
-    (ON.maxOx * 100).toFixed(2) + ' % oxidation when the model does');
+    '1 % hydrogen against 17 % oxidation — 17x tighter, so it binds first; 2200 degF is the third');
+ckT('the unmitigated core BREACHES the peak-clad and hydrogen criteria, and NOT the oxidation ' +
+    'one — the tightest goes first, demonstrated rather than assumed',
+    ON.maxClad >= DOC.pct_limit_f && ON.maxOx > DOC.h2_criterion && ON.maxOx < DOC.ox_criterion,
+    'peak clad ' + ON.maxClad.toFixed(0) + ' degF (limit 2200), oxidation ' +
+    (ON.maxOx * 100).toFixed(2) + ' % — past the 1 % hydrogen criterion, short of the 17 % ' +
+    'oxidation one, on a plant inside its own envelope throughout');
 
 /* ---- THE PLANT SURVIVED THE RIDE AS A MODEL ----------------------------------------------- */
 head('NUMERICS  [the scenario must stay inside what the engine claims to compute]');
@@ -287,14 +328,19 @@ ckT('nothing went non-finite in either run', ON.nonFinite === 0 && OFF.nonFinite
 ckT('the Courant limit held at the house cadence, with no substepping',
     ON.courantBad === 0 && OFF.courantBad === 0,
     'dt = ' + DT + ' s throughout, ' + (ON.t / DT).toFixed(0) + ' steps');
-/* ⚠ THE HORIZON CHECK IS INVERTED NOW, and deliberately. It used to require both runs to
- * complete 1,200 s, which they did — by stepping a frozen plant for the last 700 of them. The
- * honest claim is that both runs stop at the model's own floor and stop TOGETHER, within a few
- * seconds of each other, because the feedback is not what takes the plant there. */
-ckT('both runs stop at the model\'s OWN floor, and within seconds of each other',
-    ON.heldAt !== null && OFF.heldAt !== null && Math.abs(ON.heldAt - OFF.heldAt) < 30,
-    ON.t.toFixed(0) + ' s and ' + OFF.t.toFixed(0) + ' s of VALID plant — the old form required ' +
-    '1,190 s and got it by stepping a held plant for the last 700');
+/* ⚠ THE HORIZON CHECK, RE-AIMED TWICE AND WORTH THE HISTORY. It first required both runs to
+ * complete 1,200 s — which they did, by stepping a FROZEN plant for the last 700. It was then
+ * inverted to "both stop at the model's own floor, within 30 s of each other". On the extended
+ * ceiling that band is wrong for a real reason rather than a fixture reason: the runs now stop
+ * 49.5 s apart (596.4 ON, 645.9 OFF), because the feedback's heat is what carries the fluid to
+ * the ceiling SOONER. So the ordering is the claim, not the closeness — the ON leg must stop
+ * FIRST, and both must stop on the model's own limit rather than by running out of steps. */
+ckT('both runs stop on the model\'s OWN limit, and the FEEDBACK leg gets there first',
+    ON.heldAt !== null && OFF.heldAt !== null && ON.heldAt < OFF.heldAt &&
+    ON.t < 1200 - DT && OFF.t < 1200 - DT,
+    ON.t.toFixed(1) + ' s with feedback against ' + OFF.t.toFixed(1) + ' without (' +
+    (OFF.heldAt - ON.heldAt).toFixed(1) + ' s later) — both inside the 1,200 s horizon, so ' +
+    'neither is a run that merely ran out of steps');
 
 /* ---- #487: THE ENDGAME PAST THE FLOOR ------------------------------------------------------
  * The filed case: a 5 cm2 break ran clean for 840 s and went NaN in the reactor the step after
@@ -344,9 +390,10 @@ ckT('...and it goes far past the boundary — over 100 degC of superheat, not a 
     'max ' + END.maxSuperheat.toFixed(0) + ' degC (' + (END.maxSuperheat * 9 / 5).toFixed(0) +
     ' degF) above saturation');
 /* THE ENVELOPE IS NOT REACHED, which is what makes the wing honest rather than a clamp with a
- * new name: Layer 0 is characterised to 800 degC and this ride tops out far below it. */
+ * new name: Layer 0 is characterised to TV_MAX (1000 degC since #586) and this ride tops out
+ * below it. */
 /* ⚠ THE CLAIM IS ABOUT WHEN THE NUMBER WAS TAKEN, NOT ABOUT THE FINAL STATE (#574).
- * This asserted that no node ends past Layer 0's 800 degC vapour ceiling. On the 5 cm2 ride the
+ * This asserted that no node ends past Layer 0's vapour ceiling. On the 5 cm2 ride the
  * plant now carries down to 0.137 MPa and the core node ends pinned EXACTLY on it — h = 4162.1
  * against h_v = 4162.1 — so the check that existed to prove the superheat is COMPUTED was itself
  * reading a pinned value. Note the clamp fires BEFORE the beyond-model latch, so stopping at the

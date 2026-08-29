@@ -31,8 +31,9 @@
  * SOURCE OF TRUTH. Every coefficient below is [derived] by least squares from [sourced]
  * IAPWS-95 data: the NIST Chemistry WebBook (SRD 69, Wagner & Pruss 2002), fetched
  * 2026-08-14 as 354 saturation points by temperature, 220 by pressure, and 11 isobars of
- * 159 points each spanning compressed liquid and superheated vapour. Provenance and the
- * refit scripts: Blueprint/PWR2_L0_REBUILD.md.
+ * 159 points each spanning compressed liquid and superheated vapour; EXTENDED 2026-08-29
+ * (#586) with 24 isobars to 1000 degC, 1,814 vapour rows, for the superheated refit.
+ * Provenance and the fetch queries: Blueprint/PWR2_L0_REBUILD.md (the extension is 3a).
  *
  * This is NOT IAPWS-95. It is a correlation set fitted over this plant's envelope, and
  * every function declares the error MEASURED against IAPWS-95 across its whole range.
@@ -47,7 +48,8 @@
  * VALID RANGE — outside it, inputs are CLAMPED to the envelope, never extrapolated.
  *     pressure     0.1 .. 18.0 MPa        (14.5 .. 2611 psia)
  *     liquid T     20 .. 358 degC         (68 .. 676 degF)
- *     vapour T     T_sat .. 800 degC      (.. 1472 degF)  — core uncovery needs this
+ *     vapour T     T_sat .. 1000 degC     (.. 1832 degF)  — core uncovery needs this; raised
+ *                                                     from 800 for #586, IAPWS-95's own limit
  * rangeOK() reports whether a call was inside. **It has no internal callers, and saying
  * otherwise was this file's own version of the defect it accused its predecessor of** — the
  * first rebuild's header claimed "it is CALLED INTERNALLY, not decorative" while nothing
@@ -67,7 +69,15 @@
   /* ---------------------------------------------------------------- envelope */
   var P_MIN = 0.1, P_MAX = 18.0;        // MPa
   var T_MIN = 20.0, T_MAX = 358.0;      // degC, LIQUID branch (must cover T_sat at P_MAX)
-  var TV_MAX = 800.0;                   // degC, vapour branch
+  /* degC, vapour branch. RAISED 800 -> 1000 on 2026-08-29 (#586) so the core-damage chain can
+   * complete inside the envelope: every unmitigated break was latching beyond_model on the
+   * CEILING-PERSISTENCE arm with the core node pinned at h_v(800, P), at 15.7 psia — above the
+   * pressure floor, so the wall was this constant and not #524's. 1000 degC is IAPWS-95's own
+   * documented upper limit (and the NIST SRD 69 table's), so it is the last ceiling this
+   * library can claim to be VALIDATED at rather than extrapolated to; the fits were refitted
+   * against fetched reference data over the whole extended range, never extrapolated (see the
+   * superheated-vapour block below for the measured before/after). */
+  var TV_MAX = 1000.0;
   var P_CRIT = 22.064, T_CRIT = 373.946, TK_CRIT = T_CRIT + 273.15;   // [sourced] IAPWS-95
 
   function clip(x, lo, hi) { return x < lo ? lo : (x > hi ? hi : x); }
@@ -275,13 +285,33 @@
    * that (a 7-term one measured 134 kJ/kg error). The g*dT term carries the slow rise of
    * steam cp at high temperature, without which the far field drifts 84 kJ/kg.
    *
-   * All four parameters are [derived] cubics in ln(P), from 11 isobars x 159 points.
-   * MEASURED max error over 1215 superheated points, 0.1-17 MPa, T_sat..800 degC:
-   * 35.1 kJ/kg (15.1 Btu/lb) = 1.17 % of a typical 3000 kJ/kg value. */
-  var C_CI  = [1.9886183447e+0, -6.7492402839e-2, 6.9138313090e-2, 5.4715052594e-2];
-  var C_G   = [5.7406321266e-4, 3.8617679975e-4, -1.4736026735e-4, -1.5106133929e-4];
-  var C_CS  = [9.7058024787e-1, 6.0807427476e-2, 7.4528354768e-2, 4.2357695149e-2];
-  var C_TAU = [3.9595288634e+0, 1.0397971612e-1, -3.3322761492e-2, -4.8309024628e-2];
+   * All four parameters are [derived] polynomials in ln(P), fitted per isobar and then
+   * smoothed across pressure.
+   *
+   * ⚠ REFITTED 2026-08-29 (#586) WHEN THE CEILING MOVED 800 -> 1000 degC, AND THE OLD FIT DID
+   * NOT EXTRAPOLATE — which is the finding, because the form looks like it should. `g*dT` rises
+   * LINEARLY for ever while real steam cp flattens toward its ideal-gas value, so evaluating the
+   * old coefficients past their fitted range (clip lifted) measured **cp 10.5 % out at 800 degC
+   * and 34.8 % at 1000**, h_v 130.5 kJ/kg at 1000 against 19.7 at 800. A ceiling raised without
+   * a refit would have published those numbers as physics.
+   *
+   * The FORM survived the refit — the far field genuinely is a gentle near-linear rise, measured
+   * 0.00063 kJ/kg-K per degC at 0.1 MPa and 0.00022 at 17 — so this is the same four parameters
+   * over the longer range, not a new model. Two things changed: the polynomial went CUBIC ->
+   * QUARTIC in ln(P) (`rho_v`'s Z_sat was already 5-term, so the shape is precedented), because
+   * with the per-isobar fits at 19.6 kJ/kg the CUBIC SMOOTHING was the binding error at 42.7;
+   * and the isobar set went 11 -> 24 to pin the high-pressure end where the parameters move
+   * fastest.
+   *
+   * MEASURED over 1,814 superheated points, 24 isobars, 0.1-17 MPa, T_sat..1000 degC (IAPWS-95,
+   * NIST SRD 69, fetched 2026-08-29): **h_v max 32.8 kJ/kg (14.1 Btu/lb, 0.96 %)**, worst at
+   * 540 degC / 17 MPa in the near-saturation collapse; **19.1 kJ/kg (0.42 %) in the new
+   * 800-1000 degC band**. The old fit's own claim was 35.1 kJ/kg over the SHORTER range, so the
+   * range grew by 200 degC and the error did not. */
+  var C_CI  = [1.9865071738e+0, 6.3616541252e-2, -1.1077192522e-2, 1.4039413850e-2, 9.5617477313e-3];
+  var C_G   = [5.7975192728e-4, -3.1378496267e-5, 4.9579813429e-5, -2.3876528748e-5, -1.9918704041e-5];
+  var C_CS  = [9.7805457155e-1, 1.6027433233e-1, 9.4006750979e-3, 1.6524057128e-2, 9.9962098409e-3];
+  var C_TAU = [4.1235907793e+0, -2.6844447348e-2, 3.6569524379e-2, -1.3677762425e-2, -1.0559335221e-2];
   function shParams(P_MPa) {
     var lp = Math.log(clip(P_MPa, P_MIN, P_MAX));
     return { ci: poly(C_CI, lp), g: poly(C_G, lp),

@@ -125,7 +125,22 @@ var SUP_V = [
      independent review showed g x1.4 passing every moderate-dT point. */
   [ 0.37, 800, 4158.9744,  0.74755497, 2.3464183],
   [ 1.73, 750, 4035.4721,  3.6782652,  2.3297341],
-  [ 0.10, 700, 3929.3710,  0.22271881, 2.2731466]
+  [ 0.10, 700, 3929.3710,  0.22271881, 2.2731466],
+  /* THE EXTENSION BAND (#586, 2026-08-29) — fetched 2026-08-29 from the same NIST SRD 69
+   * source and retyped. The ceiling moved 800 -> 1000 degC and the fits were REFITTED over the
+   * longer range; without these rows the gate would still be checking only the range the old
+   * fit was made over, which is how an extension ships unmeasured. Nine rows spanning the whole
+   * pressure span, because the old fit's failure past its range was pressure-dependent — it
+   * measured 19.7 kJ/kg out at 800 degC and 130.5 at 1000, worst at 17 MPa every time. */
+  [ 0.10, 850, 4278.2476, 0.19294575, 2.3780977],
+  [ 0.50, 1000, 4641.3962, 0.85121487, 2.4807399],
+  [ 1.00, 900, 4394.7520, 1.8490041,  2.4195718],
+  [ 4.00, 950, 4506.8208, 7.1098773,  2.4736213],
+  [ 7.00, 1000, 4622.5059, 11.965911, 2.5218637],
+  [10.00, 850, 4237.7644, 19.569792,  2.4746674],
+  [13.00, 950, 4477.5386, 23.282205,  2.5398437],
+  [15.41, 900, 4342.1981, 28.949835,  2.5420782],
+  [17.00, 1000, 4593.4060, 29.238419, 2.5865522]
 ];
 
 /* ---------------------------------------------------------------- the suite
@@ -322,7 +337,14 @@ function runSuite(W, rec, quiet) {
   if (!quiet) console.log('\nrangeOK / clamping  [the honesty guard]');
   ckT('in-range accepted (288 degC, 15.41 MPa)', W.rangeOK(288, 15.41) === true);
   ckT('over-pressure rejected (288 degC, 20 MPa)', W.rangeOK(288, 20) === false);
-  ckT('over-temp rejected (900 degC, 15 MPa)', W.rangeOK(900, 15) === false);
+  /* RE-AIMED 2026-08-29 (#586): the ceiling moved 800 -> 1000 degC, so 900 is now IN range and
+   * this check's old form was pinning the old constant. It asserts the SAME claim at the new
+   * boundary — and it straddles it (accepts 1000, refuses just past) rather than testing one
+   * side, because "rejects 1100" alone passes for a library that rejects everything hot. */
+  ckT('over-temp rejected past the vapour ceiling, and 900/1000 degC now accepted',
+      W.rangeOK(1000, 15) === true && W.rangeOK(900, 15) === true &&
+      W.rangeOK(1000.1, 15) === false && W.rangeOK(1100, 15) === false,
+      'TV_MAX ' + W.LIMITS.TV_MAX + ' degC — IAPWS-95\'s own documented upper limit');
   ckT('out-of-range CLAMPS rather than extrapolating',
       Math.abs(W.h_l_sat(400) - W.h_l_sat(W.LIMITS.T_MAX)) < 1e-9 &&
       Math.abs(W.rho_l_sat(400) - W.rho_l_sat(W.LIMITS.T_MAX)) < 1e-9,

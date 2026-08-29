@@ -369,7 +369,7 @@
      * only as fast as pressure does, and `F` is called ~10 times per step on the hot path that
      * D1 §26 already recorded a performance stop condition against. Fixed bounds also make the
      * clamp a pure function of `a` and `P` within the step, which is what keeps `F` monotone. */
-    var hHi = W.h_v(W.LIMITS.TV_MAX, sys.P);     /* vapour at 800 degC — the envelope ceiling */
+    var hHi = W.h_v(W.LIMITS.TV_MAX, sys.P);     /* vapour at TV_MAX — the envelope ceiling */
     var hLo = W.h_l(0, sys.P);                   /* liquid at 0 degC — the envelope floor */
     function hClamp(h) { return h > hHi ? hHi : (h < hLo ? hLo : h); }
 
@@ -398,7 +398,7 @@
      * the fuel temperature. The whole plant is NaN 62 s into a large break.
      *
      * WHAT MADE IT INVISIBLE is that every READER already clamps. `T_from_h`, `rho_from_h` and
-     * the vtable all saturate at the envelope, so a node at h = 1e+304 reports 800 degC and a
+     * the vtable all saturate at the envelope, so a node at h = 1e+304 reports TV_MAX and a
      * sane density — the state was absurd for tens of seconds while every gauge read plausibly.
      * That is why no gate caught it and why the clamp costs nothing: a node inside the envelope
      * is never touched, and a node outside it was ALREADY being read as clamped. The only
@@ -424,7 +424,17 @@
      * compliance-collapse condition — hold THIS step (nothing adopted), latch beyond_model. */
     var CEIL_HOLD_LATCH_S = 60;   /* s of CONTINUOUS active ceiling discard [derived] — 14x the
      * longest healthy episode (4.26 s, 50 cm2 break flash), 16x under the loss-of-heat-sink
-     * hold it exists to latch (#535); rationale at the latch below. */
+     * hold it exists to latch (#535); rationale at the latch below.
+     *
+     * RE-MEASURED 2026-08-29 (#586) when TV_MAX moved 800 -> 1000 degC, because a margin sized
+     * against the OLD ceiling is a margin against a different plant. It got MORE conservative,
+     * not less: the 50 cm2 flash that produced the 4.26 s figure now touches the ceiling **not
+     * at all** (0 clamped steps in 400 s), so the benign case this constant was sized against
+     * has left the regime entirely. The defect signature sharpened at the same time — the
+     * unmitigated 20 cm2 and 5 cm2 rides go from no contact to a CONTINUOUS episode with no
+     * benign interruption, hitting the 60 s latch on their first sustained clamp (94.7 MJ and
+     * 69.4 MJ discarded). So the constant stands unchanged and is now separating cases that no
+     * longer overlap at all. */
     var P_JUMP_MAX = 2.0;   /* MPa per step [derived] — 3x above the worst measured legit move.
      * CAVEAT, measured: a PRESSURIZER-LESS rigid loop under a hand-pinned uniform h moves
      * 2.589 MPa/step at ~3,000 MW-equivalent forcing — a HARNESS idiom, not an engine

@@ -273,7 +273,7 @@ function runSuite(C, rec, quiet) {
    * limit instead of the vapour one — which pins every steam node ~2400 kJ/kg too low and
    * satisfies "at most" perfectly. A one-sided check on a clamp can only ever see the clamp
    * failing OPEN; the interesting failure is it closing in the wrong place. */
-  ckT('a node driven past 800 degC is HELD AT the ceiling — not above it and not below it',
+  ckT('a node driven past the vapour ceiling is HELD AT it — not above it and not below it',
       isFinite(sysX.nodes[0].h) && Math.abs(sysX.nodes[0].h - hCeil) < 1.0,
       'h = ' + sysX.nodes[0].h.toFixed(1) + ' kJ/kg against a ceiling of ' + hCeil.toFixed(1));
   ckT('...and the clamp SAYS SO rather than absorbing it silently',

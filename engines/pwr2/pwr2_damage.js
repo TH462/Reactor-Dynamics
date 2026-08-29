@@ -78,7 +78,8 @@
  * plant would breach them sooner.
  *
  * These compound with `pwr2_fuel.js`'s own two optimistic declarations (no departure from nucleate
- * boiling, and a coolant clamped at the 800 degC property ceiling) rather than cancelling them.
+ * boiling, and a coolant clamped at the property library's vapour ceiling, 1000 degC since
+ * #586) rather than cancelling them.
  * **This model understates damage SEVERITY, and within this file every declared simplification
  * points that way.** ⚠ The claim is scoped to the severity chain and does NOT compound across
  * files onto the TIMELINE: `pwr2_break.js` declares (and measured) a ~2x overstatement of

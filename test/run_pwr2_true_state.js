@@ -506,9 +506,18 @@ function runSuite(TS, rec, quiet) {
   ck('core_superheat_c is 0 on a two-phase core — 0 through every normal evolution',
      tsWet.core_superheat_c === 0 && ts.core_superheat_c === 0,
      'two-phase ' + tsWet.core_superheat_c + ', at-power ' + ts.core_superheat_c);
-  ck('...and reads the measured plateau on a dry one',
-     Math.abs(tsDrier.core_superheat_c - 128) < 3,
-     tsDrier.core_superheat_c.toFixed(1) + ' degC at h = 3090, 226 psia (measured 128)');
+  /* RE-ANCHORED TO THE SOURCE, 2026-08-29 (#586), AND THAT IS THE POINT OF THE CHANGE. This
+   * asserted `128 +/- 3` — the model's OWN output when the check was written, which is the
+   * trap HR10 names: a check written from observed behaviour can only confirm that behaviour,
+   * including its error. The #586 vapour refit moved it to 123.3 and this check went red for
+   * being RIGHT. IAPWS-95 (NIST SRD 69, fetched 2026-08-29): h = 3090 kJ/kg at 1.5582 MPa is
+   * 324.07 degC, T_sat is 200.29, so the TRUE superheat is 123.78 degC. The old fit was 4.2
+   * degC out; the refit is 0.5. The band is now +/- 3 degC around the SOURCED value, so it
+   * fails if the library drifts away from IAPWS rather than away from its old self. */
+  ck('...and reads the SOURCED plateau on a dry one (IAPWS-95, not the model\'s own old output)',
+     Math.abs(tsDrier.core_superheat_c - 123.78) < 3,
+     tsDrier.core_superheat_c.toFixed(1) + ' degC at h = 3090, 226 psia — IAPWS-95 says 123.78 ' +
+     '(324.07 degC less T_sat 200.29); the pre-#586 fit read 128, 4.2 degC out');
   /* THE BLIND SPOT, ASSERTED DIRECTLY — void is identical at both dryness levels. Without this
    * the check above could pass against a field nothing needed. */
   ck('void_fraction is IDENTICAL at both, so superheat is the only discriminator',

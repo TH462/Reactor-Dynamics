@@ -20,7 +20,8 @@
  * WHAT IT CANNOT PROVE: that the clad reaches these temperatures at the right TIME. That depends
  * on `pwr2_fuel.js`'s low-flow film coefficient, which is unsourced, and on two declared
  * optimistic simplifications (no departure from nucleate boiling; a coolant clamped at the
- * property library's 800 degC ceiling). Timing claims belong to the scenario gate, not here.
+ * property library's vapour ceiling, 1000 degC since #586). Timing claims belong to the
+ * scenario gate, not here.
  *
  * Run: node test/run_pwr2_damage.js
  */

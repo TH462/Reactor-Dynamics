@@ -589,7 +589,7 @@ function runSuite(K, rec, quiet) {
       'a term that saturates or turns over would let a dry core come back critical');
   /* ⚠ THE FULLY-VOIDED CASE IS THE ONE THAT MATTERS AND THE ONE THE FIRST VERSION GOT WRONG.
    * Referencing "liquid at the node's own temperature" collapses at low pressure — T_from_h
-   * clamps a dry node to 800 degC, h_l clamps that back to 358, and the result is itself
+   * clamps a dry node to the vapour ceiling, h_l clamps that back to 358, and the result is itself
    * two-phase — so the term reported -7.6 pcm on a completely dry core at 0.1 MPa. A void
    * coefficient that switches itself off in a voided core is worse than not having one. */
   ckT('a DRY core at the bottom of a blowdown is held deeply subcritical, not released',
