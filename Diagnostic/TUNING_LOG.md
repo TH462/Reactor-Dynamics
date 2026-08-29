@@ -97,10 +97,17 @@ Full write-up with every number: `Blueprint/PWR2_VALIDATION.md` §110. This is t
   property floor at t = 393.43 s** (0.201 MPa, capBound, 4 enthalpies clamped, 59 MJ discarded) and
   `pwr2_core.js:505` latches on that ONE step — while the reported pressure is 82.76 psi and RISING.
   The browser never takes it: bottoms at 64 psi ~615 s and **recovers to a stable 83 psia held for
-  6,000 s**. The only input that differs is sim-time-per-cycle from `advanceCycles` (1,155 vs
-  1,110 s at ff=1500, 4 %). **The latch ORs three arms and only `sys._ceilHold > CEIL_HOLD_LATCH_S`
-  requires persistence**; `flooredLow && clampedNodes > 0` ends the session in 0.02 s. So #520 did
-  not break — the plant changed branch (#543's trap, second instance).
+  6,000 s**.
+  ⚠ **AND MY FIRST MECHANISM WAS WRONG, disproved by injection.** I named
+  `flooredLow && clampedNodes > 0` as the arm that latches on one step, off a code read. Disabling
+  it changes nothing — same 396.0 s. Two-sided-wall: same. Root-jump: same. **All three fire and
+  each is individually sufficient**, so every single-arm experiment is blind (#295's trap, as a
+  DIAGNOSIS problem). All three off: the plant runs to 4,953 s at 0.52 % inventory, finite, **no
+  NaN** — failing the design's own "clamp, NaN one step later" premise. The real finding is
+  upstream (**#588**): **time acceleration perturbs the plant ~1 %** — 1x reads 267.31 psi at 200 s
+  where 10x reads 269.87, 0.3 % at 300 s — against a service written to be acceleration-invariant
+  and saying so twice. ~1 % is the whole ballgame at a cliff. So #520 did not break — the plant
+  changed branch (#543's trap, second instance).
 - **Gate bill:** `run_pwr2_geometry` 39 → **41** (21 → **24** mutations, three of them the double
   count returning three ways) · `run_pwr2_reactor` 41 → **42** · `run_pwr2_pressurizer` 92 → **94**.
   Every other PWR2 runner unmoved at baseline.

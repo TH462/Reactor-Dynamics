@@ -126,8 +126,12 @@ blowdown lands. ⚠ And the browser/Node disagreement that came with it is **a C
 chased down and filed as **#588**. The two agree to ~1 % through the first 375 s; then Node's
 pressure solve lands unbracketed at the property floor at t = 393.43 s and `pwr2_core.js:505`
 latches on that ONE step, while the reported pressure is 82.76 psi and rising. The browser never
-takes it and recovers to a stable 83 psia. The latch ORs three arms and only
-`sys._ceilHold > CEIL_HOLD_LATCH_S` requires persistence.
+takes it and recovers to a stable 83 psia. ⚠ The mechanism I first wrote — that the `flooredLow`
+arm latches on one step and wants persistence — was read off the code and **disproved by
+injection**: disabling any ONE of the three arms changes nothing, because all three fire and each
+is individually sufficient (#295's trap as a diagnosis problem). The real finding is that **time
+acceleration perturbs the plant ~1 %** (1x 267.31 psi at 200 s against 10x's 269.87) on a service
+written to be acceleration-invariant — and ~1 % is the whole ballgame at a cliff.
 
 **Gate bill.** `run_pwr2_geometry` 39 → **41** (21 → **24** mutations, three of them the double
 count returning three different ways) · `run_pwr2_reactor` 41 → **42** · `run_pwr2_pressurizer`

@@ -7970,11 +7970,22 @@ MPa, `capBound`, 4 node enthalpies clamped, 59 MJ discarded — and `pwr2_core.j
 The browser never takes that step: its pressure bottoms at 64 psi around 615 s and **recovers to a
 stable 83 psia it holds for the next 6,000 seconds**.
 
-What differs between them is only how much sim time `advanceCycles` buys under the transient
-broadcast cadence — 1,155 s against 1,110 s for the same requested `ff=1500`, **4 %** — and that is
-enough to pick the branch. **The latch condition ORs three arms and only the third
-(`sys._ceilHold > CEIL_HOLD_LATCH_S`) requires persistence**; the `flooredLow && clampedNodes > 0`
-arm ends the session on a single 0.02 s step. That asymmetry is #588, filed and not fixed here.
+**⚠ AND THE MECHANISM I FIRST WROTE HERE WAS WRONG.** This section said the
+`flooredLow && clampedNodes > 0` arm ends the session on a single step and wants the persistence
+its ceiling sibling has. That was read off the code, and **breaking it disproved it**: disabling
+that arm changes nothing — the plant latches at the same 396.0 s. Disabling the two-sided-wall arm:
+same. The root-jump arm: same. **All three fire in that window and each is individually
+sufficient**, so every single-arm experiment comes back blind — #295's trap arriving as a
+*diagnosis* problem rather than a test one. Only with all three off does the plant run on, to
+4,953 s at 0.52 % inventory and 483.9 °C clad, **finite throughout with no NaN** — which also fails
+to reproduce the design's own "clamp, NaN one step later" justification for latching on contact.
+
+The real finding is upstream and is **#588**: the endgame is cliff-sensitive, and **time
+acceleration supplies the perturbation**. Same seed, same initial condition, same injections,
+driven to the SAME sim time: 1× reads **267.31 psi at 200 s where 10× reads 269.87** — 0.96 % — and
+0.3 % at 300 s. `simulation_service.js` is written to be acceleration-invariant and says so twice;
+its post-loop protection evaluation is once per broadcast, which is 0.1 s of sim at 1× and 6 s at
+60×. **~1 % is the whole ballgame at a cliff.**
 
 So the #520 check did not break — **the plant changed branch**, which is the standing #543 trap
 (*"a check can pin a BIFURCATION, not a claim"*) arriving in a second place. The three-failure
