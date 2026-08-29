@@ -316,19 +316,49 @@ var gpmBad = [];
     gpmBad.push('identity.letdown_normal_gpm is ' + ldGpm + ' but orifice A nominal ' +
       LETDOWN_A_NOMINAL + ' x GPM_LETDOWN ' + gpmLetdown + ' = ' + wantLd + ' gpm');
   }
-  // ...and the manual must quote the same two numbers it documents.
-  var fid = fs.readFileSync(path.join(DIR, '12_SIM_PHYSICS.md'), 'utf8')
-    .split('\n').filter(function (l) { return /\*\*Indicative\*\*/.test(l); })[0];
-  if (!fid) {
-    gpmBad.push('Manuals/12 §Fidelity "Indicative" row not found — the manual side is unguarded');
-  } else {
-    [[chgGpm, 'charging'], [ldGpm, 'letdown']].forEach(function (p) {
-      var re = new RegExp('(\\d+(?:\\.\\d+)?)\\s*gpm\\s+' + p[1]);
-      var m = fid.match(re);
-      if (!m) gpmBad.push('Manuals/12 §Fidelity does not quote a "N gpm ' + p[1] + '" figure');
-      else if (Math.abs(parseFloat(m[1]) - p[0]) > 0.5) {
-        gpmBad.push('Manuals/12 §Fidelity says ' + m[1] + ' gpm ' + p[1] +
-          ', config/board say ' + p[0]);
+  /* ...and the manual must quote the SHIPPING plant's rates.
+   *
+   * ⚠ THIS CHECK USED TO POINT AT THE RETIRED ENGINE, AND THAT IS THE DEFECT #579 FILED. It
+   * read the "Indicative" fidelity row and matched it against `pwr_config.identity` — 60 gpm
+   * charging, 30 gpm letdown — so a manual quoting the retired plant PASSED, and a manual
+   * corrected to the plant the site runs would have FAILED. A gate pointed at the wrong plant
+   * does not merely miss the error; it defends it.
+   *
+   * The figures moved to §6.3 and they are DERIVED — `pwr2_cvcs` computes charging from the
+   * live geometry (`GEO.rcsVolume()`), so a regex over source cannot read them and a literal
+   * retyped here would be the second copy this whole family of defects is made of. The modules
+   * are loaded and asked. They are pure data + arithmetic, no plant is stepped, so this stays
+   * a static gate in everything but the loader. */
+  var pwr2Src = path.join(__dirname, '..', 'engines', 'pwr2');
+  var CV = null, AW = null;
+  try {
+    ['pwr2_water', 'pwr2_vtable', 'pwr2_geometry', 'pwr2_cvcs', 'pwr2_afw']
+      .forEach(function (f) { require(path.join(pwr2Src, f + '.js')); });
+    CV = globalThis.RD.pwr2.cvcs; AW = globalThis.RD.pwr2.afw;
+  } catch (e) {
+    gpmBad.push('could not load pwr2_cvcs/pwr2_afw to derive the shipping rates: ' + e.message);
+  }
+  if (CV && AW) {
+    var want = [
+      ['charging', CV.CVCS.charging_max_gpm()],
+      ['letdown', CV.normalLetdownKgs() / CV.gpmToKgs(1)],
+      ['auxiliary feedwater', AW.ratedGpm()]
+    ];
+    var sec = fs.readFileSync(path.join(DIR, '12_SIM_PHYSICS.md'), 'utf8');
+    want.forEach(function (p) {
+      /* the row shape is `| Charging, maximum | **30.1 gpm** | …` — match the label then the
+       * next bolded gpm figure on the same line, so a table reflow does not silently unguard
+       * it the way a whole-line regex would. */
+      var re = new RegExp('^\\|[^|]*' + p[0].split(' ')[0] +
+        '[^|]*\\|\\s*\\*\\*(\\d+(?:\\.\\d+)?) gpm\\*\\*', 'im');
+      var m = sec.match(re);
+      if (!m) {
+        gpmBad.push('Manuals/12 does not carry a bolded "N gpm" rating row for ' + p[0] +
+          ' — the shipping plant derives ' + p[1].toFixed(1) + ' gpm and nothing states it');
+      } else if (Math.abs(parseFloat(m[1]) - p[1]) > 0.15) {
+        gpmBad.push('Manuals/12 says ' + m[1] + ' gpm ' + p[0] + ', the shipping plant derives ' +
+          p[1].toFixed(1) + ' — pwr2 recomputes it from the geometry, so re-read it, do not ' +
+          'edit the plant to match the manual');
       }
     });
   }

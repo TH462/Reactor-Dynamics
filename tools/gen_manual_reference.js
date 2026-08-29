@@ -229,7 +229,7 @@ var ALARM_RESPONSE = {
     sur_high:          { m: 'The startup rate (reactor period) is high — power is rising quickly.', r: 'Stop withdrawing rods and let the rate fall before continuing the ascent.' },
     sr_high_flux:      { m: 'Source-range count rate is high — the reactor is approaching the point to transfer to the intermediate range.', r: 'Complete the SR→IR handoff (de-energize the source range) before its high-flux trip cuts the ascent short.' },
     pzr_level_high:    { m: 'Pressurizer level is above its normal band.' },
-    pzr_level_low:     { m: 'Pressurizer level is below its normal band — watch inventory and charging.' },
+    pzr_level_low:     { m: 'Pressurizer level is far below its PROGRAMMED value — make-up has lost it.', r: 'Charging to maximum, letdown isolated; check for a leak. The 17 % heater cutoff annunciates separately as PZR HTRS SHED.' },
     rod_limit:         { m: 'A control-rod group has reached its travel (insertion/withdrawal) limit.' },
     sg_level_hihi:     { m: 'Steam Generator level is HIGH-HIGH (P-14) — a feedwater overfill.', r: 'Reduce feed at once; expect the coordinated P-14 response: turbine trip, MAIN feedwater isolation (AFW keeps feeding), and — at power — a reactor trip.' },
     sg_level_high:     { m: 'Steam Generator level is above its normal band.' },

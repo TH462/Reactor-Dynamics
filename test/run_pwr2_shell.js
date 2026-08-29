@@ -164,21 +164,37 @@ function runSuite(SH, rec, quiet, only) {
    * parts empty (trips/actuations/channels/interlocks/ESF/runbacks are the engine's own),
    * the annunciator shape adopted, the failures menu exactly the injectable levers. */
   var pc = eng.getProtectionConfig();
-  /* the alarms row is a COPY with exactly ONE override since #500 (2026-08-22): every row
-   * rides through by reference except pzr_level_low, rebuilt at 17 % — 25.0 was this
-   * plant's own sourced no-load program point, a standing annunciator on a healthy Mode 3 */
   var baseAlarms = globalThis.RD.PWR_CONFIG.protection.alarms;
-  /* TWO overrides since #507 wave 8 (was one, #500): pzr_level_low 25 -> 17 and
-   * rod_limit_approach 40 -> 10 (the sourced RIL+10 in this bank's own step currency);
-   * every other row must stay shared BY REFERENCE — a third silent divergence reds here. */
+  /* ONE override since #500 closed (2026-08-29) — was two. `rod_limit_approach` 40 -> 10 (the
+   * sourced RIL+10 in this bank's own step currency) is the survivor; every other row must
+   * stay shared BY REFERENCE, and a second silent divergence reds here.
+   *
+   * ⚠ THE #500 OVERRIDE IS GONE AND THAT IS THE POINT OF THIS CHANGE, not an omission. It
+   * rebuilt `pzr_level_low` at 17 % because the shared table's FIXED 25.0 % is this plant's
+   * own sourced no-load level program point, so a healthy Mode 3, Hot Standby plant rode its
+   * indicated level on the annunciator (measured: hot zero power settles 23.6-26.4 % over an
+   * hour). The ruling reversed the SHAPE rather than the number *(OWNER RULING, 2026-08-28:
+   * "go with as recommended for all")*: the shared row now reads `pzr_level_dev` at -20 points
+   * and is correct on BOTH plants, so there is nothing left to override. Asserting the row is
+   * shared by reference is therefore a real claim here — re-introducing a per-plant copy reds
+   * it — and the second clause below pins the shape so "shared" cannot mean "shared and
+   * absolute again". */
   var alarmsOk = Array.isArray(pc.alarms) && pc.alarms.length === baseAlarms.length &&
     pc.alarms.every(function (a, i) {
-      return a.id === 'pzr_level_low'
-        ? (a.setpoint === 17.0 && baseAlarms[i].id === 'pzr_level_low' && baseAlarms[i].setpoint === 25.0)
-        : a.id === 'rod_limit_approach'
+      return a.id === 'rod_limit_approach'
         ? (a.setpoint === 10 && baseAlarms[i].id === 'rod_limit_approach' && baseAlarms[i].setpoint === 40)
         : a === baseAlarms[i];
-    });
+    }) &&
+    (function () {
+      var lo = pc.alarms.filter(function (a) { return a.id === 'pzr_level_low'; })[0];
+      var dev = pc.alarms.filter(function (a) { return a.id === 'pzr_level_dev_low'; })[0];
+      /* the two-rung deviation ladder: both on the program-relative channel, the warning
+       * DEEPER than the caution, and the absolute rung retired. `pzr_level_lolo` stays
+       * absolute on purpose — a hard inventory floor is not a program question. */
+      return !!lo && !!dev && lo.instrument === 'pzr_level_dev' &&
+             dev.instrument === 'pzr_level_dev' && lo.setpoint < dev.setpoint &&
+             lo.priority === 'warning' && dev.priority === 'caution';
+    })();
   /* channels carries EXACTLY the boron batch-dose panel since #507 wave 1 — its whole
    * vocabulary (set_boron_adjust {rate}, take_boron_sample, boron_analyzer) is real on this
    * plant now; every other pwr channel stays out (their actuators are internal) */
@@ -215,8 +231,8 @@ function runSuite(SH, rec, quiet, only) {
      !!pc.failures.failed_pzr_heaters && !!pc.failures.stuck_open_spray &&
      !!pc.failures.continuous_rod_withdrawal &&
      !!pc.failures.tavg_sensor_failure && !!pc.failures.porv_indicator_stuck_closed,
-     'M4 gets a shape it can hold; pzr_level_low 25 -> 17 (the sourced heater-cutoff level), ' +
-     'every other alarm row shared by reference; boron_conc by reference from the pwr table');
+     'M4 gets a shape it can hold; the level ladder is program-relative on both plants ' +
+     '(#500) so no alarm row is overridden but rod_limit_approach; boron_conc by reference');
   /* THE ONE ESF ENTRY (2026-08-20, the AFAS build). The board's AUX FEED word needs
    * automation.esf.afw === 'auto' to say STANDBY, and the kernel only emits that for a
    * listed system — before this entry the tile read SECURED over an armed AFAS. commands
@@ -895,6 +911,39 @@ function runSuite(SH, rec, quiet, only) {
          .cmd(50).action === 'set_afw_flow',
        'a channel whose cmd the shell REFUSES would throw inside the service tick — the ' +
        'reason every other pwr channel is excluded');
+  })();
+
+  /* ---- THE BREAK-SIZE LABEL TELLS THE TRUTH (#580 stage 1) ---------------------------------
+   *
+   * The slider's unit read "% of a full pipe shear" while severity 1.0 opened 20 cm2 — 0.75 %
+   * of this plant's own double-ended cold leg. Nothing in the tree asserted it: grep of test/
+   * for "pipe shear" and "Break Size" returned zero, so the label and the plant were free to
+   * mean different things for as long as nobody read both.
+   *
+   * ASSERT THE EFFECT, NOT THE STRING. The unit's number is parsed out and compared against
+   * the area the shell ACTUALLY OPENS at severity 1.0, taken off the live break object. A
+   * check that merely grepped for the new wording would pass on a rescaled plant with a stale
+   * label — the exact defect, one wording later. And the shear reference is computed from
+   * pwr2_geometry rather than retyped, so the manual's "0.75 % of a shear" cannot drift either. */
+  (function () {
+    var meta = globalThis.RD.PWR_CONFIG.protection.failures.large_loca.severity_meta;
+    var m = /(\d+(?:\.\d+)?)\s*cm/.exec(meta.unit);
+    var eB = new SH.PWR2Engine({});
+    for (var i = 0; i < 50; i++) eB.step(0.02);
+    eB.applyCommand({ action: 'inject_failure', failure_id: 'large_loca', severity: 1.0 });
+    eB.step(0.02);
+    var area = eB.eng && eB.eng.brk ? eB.eng.brk.area_m2 : null;
+    ck('#580: the Break Size unit states the area severity 1.0 actually opens',
+       !!m && area !== null && Math.abs(parseFloat(m[1]) - area * 1e4) < 0.05,
+       'unit "' + meta.unit + '" vs ' + (area === null ? 'no break' : (area * 1e4).toFixed(2) + ' cm2 opened'));
+    /* the claim the OLD unit made, measured against the geometry it was making it about */
+    var G = globalThis.RD.pwr2.geometry;
+    var nCL = G.NODES.filter(function (n) { return n.id === 'cold_leg'; })[0];
+    var degM2 = 2 * (nCL.V / G.LOOP.cold_leg.L);
+    ck('...and it no longer claims a pipe shear, which is 130x larger than what it opens',
+       !/shear/i.test(meta.unit) && area !== null && degM2 / area > 100,
+       'double-ended cold leg ' + (degM2 * 1e4).toFixed(0) + ' cm2 = ' +
+       (degM2 / area).toFixed(0) + 'x the slider top (' + (100 * area / degM2).toFixed(2) + ' % of a shear)');
   })();
   }
 
@@ -1836,10 +1885,15 @@ var MUTATIONS = [
   ['the instrument-failure command maps every mode to STUCK',
    "      var mode = c.mode === 'fail_low' ? 'low' : c.mode === 'fail_high' ? 'high'\n               : c.mode === 'noisy' ? 'noisy' : c.mode === 'drift' ? 'drift'\n               : c.mode === 'dead' ? 'dead' : 'stuck';",
    "      var mode = 'stuck';", { grp: 'D3' }],
-  /* anchor grew with the wave-8 rod-limit override; the claim is the same */
-  ['the #500 alarm override is dropped (pzr_level_low back to the plant\'s own program point)',
-   "          return a.id === 'pzr_level_low'\n            ? Object.assign({}, a, { setpoint: 17.0 })\n            : a.id === 'rod_limit_approach'",
-   "          return a.id === 'nope_pzr_level_low'\n            ? Object.assign({}, a, { setpoint: 17.0 })\n            : a.id === 'rod_limit_approach'", { grp: 'A' }],
+  /* ⚠ INVERTED AT #500's CLOSE (2026-08-29), and it had to be. The old mutation DELETED the
+   * pzr_level_low override to prove the override existed; the override is now retired, so that
+   * anchor is gone and a mutation whose anchor no longer matches is BLIND, not passing. The
+   * claim inverted with it — what must not happen now is a per-plant ABSOLUTE row coming back,
+   * so the mutation ADDS one. It reds both halves: the shared-by-reference sweep and the
+   * ladder-shape clause beside it. */
+  ['a per-plant ABSOLUTE pzr_level_low override is re-introduced (the #500 shape undone)',
+   "          return a.id === 'rod_limit_approach'\n            ? Object.assign({}, a, { setpoint: 10 })\n            : a;",
+   "          return a.id === 'pzr_level_low'\n            ? Object.assign({}, a, { instrument: 'pzr_level', setpoint: 17.0 })\n            : a.id === 'rod_limit_approach'\n            ? Object.assign({}, a, { setpoint: 10 })\n            : a;", { grp: 'A' }],
   ['the shutdown group reverts to the pre-#506 snap (200 -> 0 in one frame on scram)',
    "          steps: Math.round(e.sdSteps), max_steps: 200,\n          position_pct: 100 * e.sdSteps / 200,",
    '          steps: ts.scrammed ? 0 : 200, max_steps: 200,\n          position_pct: ts.scrammed ? 0 : 100,', { grp: 'B' }],
@@ -1876,8 +1930,11 @@ var MUTATIONS = [
    '    ex.rod_limit_margin = e._rodLimitMargin === undefined ? 200 : e._rodLimitMargin;',
    '    ex.rod_limit_margin = 200;', { grp: 'I' }],
   ['the ROD LIMIT LO override is dropped (the row fires at 40 of this bank\'s steps — 4x early)',
-   "            : a.id === 'rod_limit_approach'\n            ? Object.assign({}, a, { setpoint: 10 })\n            : a;",
-   '            : a;', { grp: 'I' }],
+   /* anchor re-cut when #500's override left the map (2026-08-29) — it used to open with the
+    * `: ` that chained off the pzr_level_low arm, and an anchor that no longer matches is a
+    * BLIND mutation, not a passing one. The runner's ANCHOR MISS report is what caught it. */
+   "          return a.id === 'rod_limit_approach'\n            ? Object.assign({}, a, { setpoint: 10 })\n            : a;",
+   '          return a;', { grp: 'I' }],
   ['the SECURED latch is dropped (an operator-stopped pump reads LOST) -- #507 wave 9',
    "        e._rcpSecured = true;               /* the OPERATOR stopped it — the handswitch\n                                             * reads SECURED, not LOST (#200's split) */",
    '', { grp: 'J' }],

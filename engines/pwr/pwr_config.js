@@ -68,6 +68,24 @@
       // the same real currency. The paragraph this replaces disclaimed the opposite —
       // "pacing flavour … NO single RCS volume makes both true" (#194/#261) — which was
       // true of the retired two-scale split and is exactly what #408 removed.
+      //
+      // ⚠⚠ EVERY NUMBER BELOW IS THE **RETIRED** ENGINE'S, AND THE MANUAL NO LONGER QUOTES
+      // THEM (#579, 2026-08-29). They stayed correct for the plant they describe and stopped
+      // describing the plant the site runs: `site/build_site.js` forbids the retired-engine
+      // prune from deleting this file (pwr2_shell throws without it), so these bytes ship in
+      // every public build while PWR2 derives its own ratings from its own geometry —
+      //     charging max      30.1 gpm   (Ginna 180 gpm × the volume ratio 0.1675)
+      //     charging normal    7.7 gpm   (Ginna 46 gpm, same ratio)
+      //     letdown, orifice A 12.7 gpm  (pressure-driven, 300 psi backpressure not 348)
+      //     auxiliary feed     86.2 gpm  (Ginna 510 gpm × the power ratio 300/1775)
+      // against a 6,418 gal reactor coolant system, not 7,500. So `Manuals/12` §6.3 now states
+      // the DERIVED figures and `run_manual_units` cross-checks the manual against
+      // `pwr2_cvcs` / `pwr2_afw` rather than against this block. What is still gated here is
+      // the board's own fallback scale, which is what an old recording renders on.
+      //
+      // DO NOT "correct" these to PWR2's. They are the retired plant's display conversions and
+      // the retired plant's engine still computes against them; changing them here would move
+      // that engine's numbers without moving its physics.
       rcs_flow_gpm: 24000,              // rated RCS flow (not displayed — the board shows % of rated)
       charging_max_gpm: 60,             // = charging_max 1.33333e-4 frac/s × 450,000 (#408 — literal)
       letdown_normal_gpm: 30,           // = orifice A ≈ 6.7e-5 frac/s at NOP × 450,000 (#408 — literal)
@@ -613,9 +631,12 @@
       // (ML11223A290) §10.3.4.1: "This bistable provides a low level interlock at 17%
       // level in the pressurizer … and turns off all pressurizer heaters. … the heater
       // cutoff protects the heaters which would be damaged if operated in a steam
-      // environment." Sits below the existing `pzr_level_low` alarm (25 %, which is also
-      // WTSM 10.3's low level setpoint) and above `pzr_level_lolo` (12 %), so the operator
-      // gets the warning first and the CRITICAL alarm is still the one that means trouble.
+      // environment." Sits above `pzr_level_lolo` (12 %), so the CRITICAL alarm is still the
+      // one that means trouble. (This comment used to place it below `pzr_level_low` at 25 %,
+      // "which is also WTSM 10.3's low level setpoint" — and that COINCIDENCE was the defect:
+      // 25 % is the sourced no-load level PROGRAM point, so the alarm stood on a healthy Mode 3
+      // plant. #500 made that alarm program-relative; this cutoff is a fixed ELEVATION and is
+      // unchanged, annunciating on its own through PZR HTRS SHED.)
       heater_cutoff_level_pct: 17.0,
       // …and the RESET differential, % INDICATED level (#348, 2026-08-04). Also not [tune]:
       // it is taken from this plant's own model of the OTHER half of the same bistable —
@@ -1074,8 +1095,11 @@
       // WCAP-16009-NP-A §11-4-5, the pressurizer's 2-phase surge-line DISCHARGE
       // during blowdown. CA-18 pins the algebra and both fences. [tune]
       void_weight_surge_ref: 0.01,
-      level_prog_floor: 28.0,      // % — base(Tavg) floor below the program band; 3 % above the
-                                   // pzr_level_low alarm (25) so no-load/sagged states don't sit in alarm [tune]
+      level_prog_floor: 28.0,      // % — base(Tavg) floor below the program band. Sized 3 points
+                                   // above what was then a fixed 25 % pzr_level_low alarm, so
+                                   // no-load/sagged states did not sit in alarm; that alarm is
+                                   // program-relative since #500 and no longer constrains this
+                                   // number, which stays put as the retired engine's own. [tune]
       // % — the CVCS level program's MAXIMUM (pwr_pressurizer.levelProgram). NOT a physics
       // clamp: levelBase is unbounded upward, because the coolant really does expand.
       //

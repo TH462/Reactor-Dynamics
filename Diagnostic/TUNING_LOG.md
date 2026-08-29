@@ -29,6 +29,80 @@ and the user-visible summary in `CHANGELOG.md`. This file points at those and tr
 
 ---
 
+## Session log — 2026-08-29-develop-e (#579/#580/#577/#575/#500/#576c — the retired plant's numbers, as the player reads them)
+
+**Six issues, one trap.** Four carried the dated ruling of 2026-08-28 (*"go with as recommended
+for all"*) and `git log` showed none of them had been built; two are factual and needed no ruling.
+The theme is the standing one: **PWR2 inherited the retired plant's numbers, labels and tables by
+reference.** Two of the six were live on the public site, which stages exactly two areas — free
+play and the operator's manual.
+
+Full write-up with every measurement: `Blueprint/PWR2_VALIDATION.md` §119.
+
+### What was measured (no PWR2 route through `measure_stack`; hand-rolled off `run_pwr2_engine`'s loader, DT 0.02)
+
+- **Flow and chemistry ratings**, read from the shipping plant rather than adopted: RCS
+  **6,418 gal**, charging max **30.14 gpm**, normal **7.70**, seal **5**, letdown **12.70**,
+  auxiliary feedwater **86.20**. Boration ceiling **0.047 ppm/s** at 626 ppm, dilution
+  **0.026**; the control channel's commanded 0.05 delivers **0.043** — so 0.05 is not
+  "deliberately generous" as its comment claimed, it is essentially the plant's ceiling.
+- **Cold-leg geometry**: 0.13336 m² (1,333.6 cm², 16.22 in bore); double-ended shear 2,667 cm².
+  The Break Size slider's 100 % opens **20 cm² — 0.75 % of a shear**.
+- **The break ladder** (this is the finding that blocks #580 stage 2): 40 cm² and 46 cm² run
+  clean for 600 / 900 s; **47 cm² latches at 60.7 s**; 60 cm² at 47.3 s on a −2.027 MPa root
+  jump; 180–1,334 cm² on the floor + two-sided-envelope arm; **2,667 cm² latches on step ONE**
+  with a −2.019 MPa jump against `P_JUMP_MAX` 2.0. The ruled target — the sourced 25–38 s
+  blowdown at a real shear — is unreachable, and the wall is the pressure solve, not the slider.
+- **Feedwater crossover**: `h_f(P) = 962.0` at **2.5007 MPa (362.7 psi), Tsat 435.1 °F**. On a
+  fast secondary blowdown the feed adds heat for 92–131 s, **0.7–2.6 MJ, peak 31–120 kW** —
+  0.04 % of rated. Small, self-limiting, declared not modelled.
+- **Cavitation chatter**: 2 / 1 / 0 transitions per hour on a 20 cm² break, a 5 cm² break and a
+  stuck-open PORV; 3 s total within ±0.9 °F of the threshold. **No deadband needed** — the
+  opposite of #565's ~1,954 transitions over 8 h.
+- **Pressurizer level bands**, hour-long settled samples: hot zero power **±1.37**, 50 percent
+  −2.56..+2.38, hot full power −2.77..+2.38; a 100 → 90 MWe change spans −2.71..+3.15 and ends
+  at **+0.34**. Every injectable leak drives the deviation to −33..−40 inside 30 min.
+
+### What shipped
+
+`pzr_level_low` becomes **`pzr_level_dev` at −20** (a warning below the existing −10 caution,
+`pzr_level_lolo` staying absolute at 12), the PWR2 17 % override is retired, and the plant
+publishes `pzr_level_program_pct` so the board's tile draws `program + setpoint`.
+`pzr_heaters_shed` goes **`status` → `caution`** fleet-wide. The plant publishes
+`pressure_band_psi` (−25/+25, its sourced ladder) and the board reads it. The Break Size unit
+states its area. The manual set's pending **Rev 17** row is extended with item (d).
+
+### The red that was not about the change, and was the best thing in it
+
+`run_m7` reds on *"each trip has an earlier-warning alarm"* — a deviation setpoint cannot warn
+about an ABSOLUTE trip, so the 12 % pressurizer-level scram lost the cover the old fixed 25 %
+gave it. Following that found something older: `PWR_ACTUATIONS` isolates **both letdown
+orifices** at 17 % (latched, no reset action — the operator re-opens by hand), PWR2 honours it,
+and **nothing on the board said so**. New annunciator **PZR LTDN ISOL** at 17 % absolute:
+sourced, above the 12 % trip, 6.6 points below the measured Mode 3 band. `run_m7` 32/33 -> 33/33.
+
+### Three traps
+
+1. **A "display scale" can be another engine's physics multiplier.** `severity_meta.max` is text
+   to `ui/app.js` and a leak coefficient to `pwr_engine.js:1623`. Rescaling the Break Size range
+   to put an area in the number would have cut the retired plant's design-basis LOCA **16×**
+   across five gates, silently and in the direction that reads as a tuning result.
+2. **A gate pointed at the wrong plant DEFENDS the error.** `run_manual_units` matched
+   `Manuals/12`'s flow figures against `pwr_config.identity`, so a manual quoting the retired
+   plant passed and a corrected one would have failed. Retargeted at `pwr2_cvcs`/`pwr2_afw`,
+   injection-verified.
+3. **A mutation goes blind two ways, and both happened here.** Deleting a neighbour destroyed
+   the rod-limit mutation's anchor (the runner's own `ANCHOR MISS` report caught it), and
+   falsifying a ternary's condition just selected the working else-branch. Remove the
+   capability, not the spelling.
+
+### Still open out of it
+
+**#580 stage 2 needs an owner decision** — the ruled rescale is refuted by measurement; the
+options and a recommendation are on the issue. #576 items (a) and (b) — no continuous bypass
+spray, no vessel ambient loss, heaters cannot fail ON — were never in scope and the issue stays
+open carrying them.
+
 ## Session log — 2026-08-29-develop-d (#586 — the vapour ceiling raised, refitted, and the damage chain unblocked)
 
 Full write-up: `Blueprint/PWR2_VALIDATION.md` §118. This is the continuity note.

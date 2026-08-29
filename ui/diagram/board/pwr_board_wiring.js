@@ -1651,17 +1651,27 @@
    * above is `RD.PWR_CONTROL.protection` — the retired plant's table, frozen at load — and
    * TILE_BANDS is built from it ONCE, which is correct there and wrong on any other plant. The
    * two are the same object on the retired engine, so this changes nothing for it; on PWR2 the
-   * shell rebuilds the alarms array with its own overrides (pzr_level_low 25 -> 17, the sourced
-   * heater-cutoff level, #500) and the tile was 8 points out.
+   * shell rebuilds the alarms array with its own overrides and the tile was 8 points out.
+   * (The example that used to sit here — pzr_level_low 25 -> 17 — is retired: #500 made that
+   * row program-relative on BOTH plants, so it is no longer overridden. `rod_limit_approach`
+   * 40 -> 10 is the one that remains, and the live-lookup rule is unchanged.)
    *
    * Live lookup, per call, deliberately: the plant can change under a mounted board. Falls back
    * to the static table when the host passed no accessor — board_check and the headless gates
    * mount with a partial ctx, and an old recording has no live plant at all. */
   function liveAlarmSp(id, fallback) {
+    var r = liveAlarmRow(id);
+    return r ? r.setpoint : alarmSp(id, fallback);
+  }
+  /* The WHOLE row, not just its number — a consumer that has to know which INSTRUMENT the
+   * alarm watches needs it (#500 made `pzr_level_low` read `pzr_level_dev` on both plants, and
+   * a deviation setpoint drawn on an absolute scale is a red edge in the wrong place). Same
+   * live-lookup-with-static-fallback rule as liveAlarmSp; null when there is no live plant. */
+  function liveAlarmRow(id) {
     var p = (ctxRef && typeof ctxRef.protection === 'function') ? ctxRef.protection() : null;
     var a = (p && p.alarms) || null, i;
-    if (a) for (i = 0; i < a.length; i++) if (a[i].id === id) return a[i].setpoint;
-    return alarmSp(id, fallback);
+    if (a) for (i = 0; i < a.length; i++) if (a[i].id === id) return a[i];
+    return null;
   }
   var P_SET = _PZ.P_setpoint || 15.41;
   // Family + per-mode display resolution for the three tiles that carry a convertible unit.
@@ -1714,6 +1724,8 @@
     ims2immsvn6: { min: 0, max: psi2MPa(2600), digits: 0,
       tripLo: tripSp('primary_pressure', 'low', 12.41),
       alarmLo: alarmSp('pzr_pressure_low', 14.82),
+      /* the AUTHORED fallback — the retired plant's -30/+50 psi. pressureBand() overrides it
+       * from the running plant's own published ladder where there is one (#576c). */
       normLo: P_SET - (_PZ.heater_band_mpa || 0.207),
       normHi: P_SET + (_PZ.spray_band_mpa || 0.345),
       alarmHi: alarmSp('pzr_pressure_high', 15.86),
@@ -1885,6 +1897,19 @@
      * which the retired engine and PWR2 both have, and they are what #500's override moved. */
     var out = { alarmLo: liveAlarmSp('pzr_level_low', b.alarmLo),
                 alarmHi: liveAlarmSp('pzr_level_high', b.alarmHi) };
+    /* ⚠ THE LOW ALARM IS PROGRAM-RELATIVE SINCE #500 (2026-08-29) and this tile's scale is
+     * ABSOLUTE, so its setpoint is a DEVIATION and drawing it as a level would paint a red
+     * edge at -20 %. Where the plant publishes its live level program, the edge is drawn where
+     * that deviation actually lands — `program + setpoint` — and it therefore MOVES with Tavg,
+     * which is the whole point of the change: on a Mode 3, Hot Standby plant programmed to
+     * 25 % the warning edge sits at 5 %, and at full power's 61.5 % program it sits at 41.5 %.
+     * A plant that publishes no program (the retired engine, an old recording) keeps its
+     * authored absolute edge untouched. */
+    var lowRow = liveAlarmRow('pzr_level_low');
+    if (lowRow && lowRow.instrument === 'pzr_level_dev') {
+      var prog = CS(s).pzr_level_program_pct;
+      out.alarmLo = (prog != null && isFinite(prog)) ? qz(prog + lowRow.setpoint) : b.min;
+    }
     if (!s || !s.rps_state) return out;
     var rows = s.rps_state.trip_setpoints;
     var speaks = s.rps_state.trip_setpoint_instruments;
@@ -1921,13 +1946,27 @@
   // plant at 400 psi and a LOCA at 400 psi are the same reading and must not look the same. In a
   // LOCA the setpoint stays at NOP, P-11 is satisfied on the way down, the trips are armed, and
   // this returns the authored hot bands with the red band intact.
+  /* THE HALF-WIDTHS, live off the running plant (#576c, 2026-08-29) — the last member of the
+   * #556/#557 family still standing on the plant the site runs. `_PZ` is `RD.PWR_CONFIG.
+   * pressurizer` CAPTURED AT SCRIPT LOAD, i.e. the RETIRED engine's -30/+50 psi, and the
+   * SETPOINT beside it was already live, so the tile drew the right centre with the wrong
+   * width. A plant that publishes `pressure_band_psi` gets its own band; everything else —
+   * the retired engine, a partial mount, an old recording — falls back to the authored
+   * config literals, byte-identical to what it drew before. */
+  function pressBandMpa(s) {
+    var pb = CS(s).pressure_band_psi;
+    if (pb && pb.length === 2 && isFinite(pb[0]) && isFinite(pb[1]))
+      return [psi2MPa(Math.abs(pb[0])), psi2MPa(Math.abs(pb[1]))];
+    return [(_PZ.heater_band_mpa || 0.207), (_PZ.spray_band_mpa || 0.345)];
+  }
   function pressureBand(s) {
     var b = TILE_BANDS.ims2immsvn6;
     var sp = CS(s).pressure_setpoint;
     if (sp == null || !isFinite(sp)) sp = P_SET;
+    var hw = pressBandMpa(s);
     var out = {
-      normLo: sp - (_PZ.heater_band_mpa || 0.207),
-      normHi: sp + (_PZ.spray_band_mpa || 0.345)
+      normLo: sp - hw[0],
+      normHi: sp + hw[1]
     };
     if (!s || !s.rps_state) return out;                                // no RPS section → authored
     if (limitingArmedTrip('primary_pressure', 'low', s)) return out;   // armed → authored, red intact

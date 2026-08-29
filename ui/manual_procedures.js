@@ -1002,7 +1002,7 @@
     // ALARMS, measured against `.state` rather than presence (the `getAlarms()` trap):
     //   t+60 s   nothing active at all
     //   t+181 s  `charging_high` active — and it is the ONLY alarm that ever comes in
-    //   PZR LVL LO (25 %) and PZR LVL DEV LO never assert, exactly as the procedure warns
+    //   PZR LVL LO (program - 20) and PZR LVL DEV LO never assert, exactly as the procedure warns
     //
     // Step 1 puts CVCS in AUTO explicitly — real procedure (confirm the lineup before you
     // judge a leak by how hard make-up is working).
@@ -1023,7 +1023,7 @@
       from: 'hot_full_power',
       prereq: ['At-power operation, CVCS available.'],
       cautions: [
-        'PZR LVL LO does NOT come in. It is set at 25 % and a held leak parks level near 54 % — waiting for a level alarm means waiting all shift.',
+        'PZR LVL LO does NOT come in. It sits 20 points below the programmed level and a held leak parks within a point or two of program — waiting for a level alarm means waiting all shift.',
         'PZR LVL DEV LO stays clear too. The deviation only opens when make-up STOPS holding, so its silence is information, not the absence of a problem.',
         'This leak is NOT pressure-modulated. Unlike an SGTR, depressurizing does nothing to it — you cannot terminate it from the control room.',
         'Rule out the impostors before believing the leak: isolated or throttled letdown, or a deliberate level-setpoint change, produce the same high-charging picture.',

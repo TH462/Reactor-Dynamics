@@ -245,9 +245,55 @@ function runSuite(quietRec) {
     pz && ('tripLo ' + pz.tripLo + ', speaks for ' +
       JSON.stringify(w.snap().rps_state.trip_setpoint_instruments)));
   /* The third edge, unfiled and found while fixing the other two: the tile read the retired
-   * table's 25 % low alarm while PWR2's own annunciator fires at #500's sourced 17 %. */
-  q('the low ALARM edge is the running plant\'s 17 %, not the retired table\'s 25 %',
-    pz && pz.alarmLo === 17, pz && ('alarmLo ' + pz.alarmLo));
+   * table's 25 % low alarm while PWR2's own annunciator fired somewhere else entirely.
+   *
+   * THE CLAIM CHANGED SHAPE AT #500 (2026-08-29) AND IS NOW STRONGER, not merely renumbered.
+   * The old form pinned a NUMBER (17), which any fixed setpoint satisfies by existing; the
+   * alarm is program-relative now, so the edge is `program + setpoint` and the thing worth
+   * asserting is that it MOVES with the program — a claim the old form could not make and
+   * which no static table can pass. */
+  var progAtPower = w.svc.engine.getControlState().pzr_level_program_pct;
+  var lowSp = (w.svc.layer.config.alarms.filter(function (a) {
+    return a.id === 'pzr_level_low'; })[0] || {});
+  q('the low ALARM edge is the running plant\'s PROGRAM plus its own deviation setpoint',
+    pz && lowSp.instrument === 'pzr_level_dev' && progAtPower != null &&
+    Math.abs(pz.alarmLo - (progAtPower + lowSp.setpoint)) < 0.51,
+    pz && ('alarmLo ' + pz.alarmLo + ' vs program ' +
+      (progAtPower == null ? '?' : progAtPower.toFixed(1)) + ' + ' + lowSp.setpoint));
+
+  /* PRIMARY PRESSURE TILE (#576c). run_pwr2_board's only band assertion used to be the power
+   * tile's, so nothing in the tree ever checked this one against a PWR2 plant — and the half
+   * that was wrong is invisible to a source read, because the tile's CENTRE was already live
+   * off `pressure_setpoint` while its two HALF-WIDTHS came from `RD.PWR_CONFIG.pressurizer`
+   * captured at script load, i.e. the retired engine's -30/+50 psi. Right middle, wrong width.
+   *
+   * PWR2's ladder is sourced and asymmetric (pwr2_pressurizer CONTROL, WTSM Fig 10.2-3):
+   * backup heaters in at -25 psi, spray starting at +25. The tile takes those two edges
+   * because each is an actuation the player can see the plant take, which is what the tile's
+   * own comment says NORMAL means. Asserted against the PLANT'S numbers, never retyped —
+   * retyping them here would be the second copy this whole family of defects is made of. */
+  if (!rec) head('PRIMARY PRESSURE TILE  [the control band is THIS plant\'s, #576c]');
+  var pr = D.compProps({ id: 'ims2immsvn6' }, w.snap());
+  var csP = w.svc.engine.getControlState();
+  var PZC = globalThis.RD.pwr2.pressurizer.CONTROL;
+  /* the tile's props arrive in its DISPLAY unit (psia); the control state is engine-internal
+   * SI (MPa). Converting the setpoint once, here, keeps both sides in the tile's currency. */
+  var PSI = 145.0377, spPsi = csP.pressure_setpoint * PSI;
+  q('the NORMAL band is the running plant\'s own ladder, not the retired -30/+50 psi',
+    pr && csP.pressure_band_psi &&
+    Math.abs(pr.normLo - (spPsi + PZC.backup_on_psi)) < 0.1 &&
+    Math.abs(pr.normHi - (spPsi + PZC.spray_start_psi)) < 0.1,
+    pr && ('normLo/normHi ' + pr.normLo.toFixed(1) + '/' + pr.normHi.toFixed(1) +
+      ' psia about a ' + spPsi.toFixed(1) + ' psia setpoint'));
+  /* THE DISCRIMINATOR. Width, not position — the previous check would still pass if the band
+   * were centred right and 30/50 wide, because both edges move with the setpoint. This one
+   * fails on exactly that, and it is the shipped defect's own signature: SYMMETRIC at the
+   * plant's 25 psi, against the retired plant's 30 below / 50 above. */
+  q('and it is SYMMETRIC (+-25 psi), which the retired -30/+50 band is not',
+    pr && Math.abs((spPsi - pr.normLo) - (pr.normHi - spPsi)) < 0.1 &&
+    Math.abs((pr.normHi - pr.normLo) - 50) < 0.2,
+    pr && ('below ' + (spPsi - pr.normLo).toFixed(1) +
+      ' psi, above ' + (pr.normHi - spPsi).toFixed(1) + ' psi'));
 
   /* ---- 3. the payload fixes, through the whole stack -------------------------------------- */
   if (!rec) head('ROUND TRIPS  [the #506.1 payload fixes land through service+kernel+shell]');
@@ -618,6 +664,26 @@ var MUTS = [
   ['the pzr level tile loses its live-arming path (static bands: 100 / 12 / 25)', WIRING_PATH, WSRC,
    "           : (id === 'ims2immon9z' ? pzrLevelBand(s) : null)));",
    '           : null));'],
+  /* #500, the ENGINE end: the plant stops publishing its live level program, so the tile has
+   * nothing to hang the deviation edge on. Distinct from the branch mutation above and from
+   * the setpoint mutation below, for the same reason those two are distinct — this one proves
+   * the edge is computed from the PLANT'S program and not from a number the board happens to
+   * agree with. Falls to the meter bottom, which is the honest failure. */
+  ['the plant stops publishing its live level program (the deviation edge has no anchor)',
+   SHPATH, SHSRC,
+   /* ⚠ the field is killed OUTRIGHT, not gated. A first attempt falsified the ternary's
+    * condition — and went BLIND, because the else-branch is the working `PZ.levelProgram`
+    * fallback, so "breaking" it just selected the equivalent path. A mutation has to remove
+    * the CAPABILITY, not pick between two spellings of it. */
+   '      pzr_level_program_pct: (e._pzr && e._pzr.level_program_pct !== undefined)\n                             ? e._pzr.level_program_pct : 100 * PZ.levelProgram(ts.tavg_c),',
+   '      pzr_level_program_pct: undefined,'],
+  /* #576c: the plant stops publishing its pressure control band, so the primary-pressure tile
+   * falls back on the RETIRED engine's -30/+50 psi against PWR2's sourced -25/+25 — the exact
+   * shipped defect, and invisible to a source read because the fallback IS the old code. */
+  ['the plant stops publishing its pressure control band (the tile reverts to -30/+50 psi)',
+   SHPATH, SHSRC,
+   '      pressure_band_psi: [PZ.CONTROL.backup_on_psi, PZ.CONTROL.spray_start_psi],',
+   '      pressure_band_psi: undefined,'],
   /* #561: the plant stops handing its own delta-T equation to the reused instrument layer, so
    * the gauge falls back on the retired plant's fitted DNB surface — the shipped defect */
   ['the plant stops publishing its delta-T setpoint form (the gauge reverts to the DNB surface)',

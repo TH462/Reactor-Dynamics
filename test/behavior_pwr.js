@@ -3429,9 +3429,13 @@
           'damaged ' + String(ta.fuel_damaged) + ', melted ' + String(ta.melted),
           ta.fuel_damaged !== true && ta.melted !== true, 'neither');
         // The cue the player actually gets. Not "an alarm exists" — the GAUGE moves, a long
-        // way, and parks there. pzr_level_low is 25 %, so this is annunciated and stays so.
+        // way, and parks there. THE 25 IS THE GAUGE, NOT THE ALARM (#500, 2026-08-29): this
+        // line read "pzr_level_low is 25 %, so this is annunciated" and that alarm is now
+        // program-relative, so 25 no longer names a rung. The claim worth keeping was always
+        // the MOVEMENT — level parks far below where it started — so the threshold stays put
+        // as a measured cue and stops borrowing an alarm's authority for it.
         ck('and the pressurizer level gives an unmissable cue — parked deep in alarm',
-          fmt(ta.pzr_level_pct, 2) + ' %', ta.pzr_level_pct < 25, '< 25 % (in alarm)');
+          fmt(ta.pzr_level_pct, 2) + ' %', ta.pzr_level_pct < 25, '< 25 % (far below program)');
 
         // ---- leg B: THE LAW. The pressurizer does not know which way the flow is going,
         // so a deficit and a surplus of the SAME size must move the level the same distance.

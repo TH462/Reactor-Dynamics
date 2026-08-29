@@ -486,7 +486,7 @@ Charging pump available.
 
 | Type | Text |
 |------|------|
-| **NOTE** | Boron is slow vs rods. Concentration is known by **chemistry sample** (~60 s compressed lab), not a live meter. |
+| **NOTE** | Boron is slow vs rods. Concentration is known by **chemistry sample** (a real 30-minute lab turnaround), not a live meter. |
 | **NOTE** | Charging must be **On** for borate/dilute. |
 | **CAUTION** | Mixing lag ~30 s — stop early, do not chase. |
 

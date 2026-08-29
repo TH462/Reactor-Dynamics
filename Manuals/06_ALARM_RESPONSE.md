@@ -79,6 +79,7 @@ The board therefore **reclassifies** these alarms rather than removing them. The
 | PWR-A11 | SUBCOOL LOST | critical | A |
 | PWR-A12 | PZR LVL HI | caution | A |
 | PWR-A13 | PZR LVL LO | warning | A |
+| PWR-A13a | PZR LTDN ISOL | warning | A |
 | PWR-A14 | PZR LVL LO LO | critical | A |
 | PWR-A15 | ROD INS LIMIT | warning | A |
 | PWR-A16 | SG LVL HI | caution | B |
@@ -109,7 +110,7 @@ The board therefore **reclassifies** these alarms rather than removing them. The
 | PWR-A40 | CTMT H2 HI | warning | B |
 | PWR-A41 | CTMT H2 BURN | critical | B |
 | PWR-A42 | H2 RECOMB ON | status | B |
-| PWR-A43 | PZR HTRS SHED | status | B |
+| PWR-A43 | PZR HTRS SHED | caution | B |
 
 ---
 
@@ -237,13 +238,27 @@ The board therefore **reclassifies** these alarms rather than removing them. The
 
 ---
 
-## PWR-A13 — Pressurizer Level Low (PZR LVL LO)
+## PWR-A13 — Pressurizer Level Far Below Program (PZR LVL LO)
 
 | Field | Content |
 |-------|---------|
-| **Setpoint** | ≤ **25 %** |
-| **Means** | Inventory low or cooldown contraction. |
-| **Actions** | 1) Increase charging; isolate letdown if needed. 2) Check for leak. 3) Watch for LO-LO trip at **12 %**. |
+| **Setpoint** | Indicated level ≥ **20 %** below its programmed value |
+| **Means** | **Make-up has lost it.** The deeper rung of the same ladder as **A31** — see that card for why level is measured against its program rather than as an absolute number. |
+| **Why it is not an absolute level any more** | It was ≤ 25 % through Rev 16, and 25 % is this plant's own programmed no-load level: at Mode 3, Hot Standby a perfectly healthy plant sat on the setpoint and the alarm stood in. Measured, hot zero power settles at 23.6–26.4 % for an hour on end. A fixed number on a programmed level collides the moment the program reaches it. The 20-point band is measured too: the worst healthy excursion on any initial condition is 2.8 points, and a 100 → 90 MWe load change spans 5.9 — so the alarm sits about seven times clear of normal wander, and every leak the plant can host crosses it inside half an hour. |
+| **Where the old 17 %/25 % protection went** | Nowhere — it was never this alarm's job. The heaters cut out and letdown isolates at **17 % actual level**, a fixed elevation in the vessel, and that annunciates on its own as **PZR HTRS SHED (A43)**. The reactor trip stays absolute at 12 % (**A14**). |
+| **Actions** | 1) Increase charging; isolate letdown if needed. 2) Check for leak. 3) Watch for **A43** — heaters lost means pressure control is next. 4) Watch for LO-LO trip at **12 %**. |
+
+---
+
+## PWR-A13a — Letdown Isolated on Low Level (PZR LTDN ISOL)
+
+| Field | Content |
+|-------|---------|
+| **Setpoint** | Indicated pressurizer level ≤ **17 %** |
+| **Means** | The plant has just isolated **both letdown orifices** and cut the pressurizer heaters. Both are automatic and both are latched: the fire latch re-arms only above 20 %, and there is **no automatic restoration** — letdown stays shut until you re-open an orifice by hand. |
+| **Why it exists** | The actions were always there; the lamp was not. An automatic action the operator cannot see is one they cannot undo, and this one takes away a flow path they then have to restore deliberately. It is also the **last annunciation before the 12 % reactor trip** — the alarm that used to sit above that trip was a fixed 25 %, which collided with this plant's own programmed no-load level and became program-relative at Rev 17. |
+| **Actions** | 1) Charging to maximum; letdown is already isolated for you. 2) Check for a leak — **A31/A13** will have come in first if make-up has lost it. 3) Expect **PZR HTRS SHED (A43)** with it: pressure control is gone until you reload the heaters. 4) Watch for **PZR LVL LO LO** and the trip at **12 %**. 5) On recovery, level past 20 % re-arms the latch — then **re-open an orifice yourself**. |
+| **Not the same as A43** | A43 says the heaters are off the bus; this says letdown is shut. Different actions, different recoveries — a button versus an orifice. |
 
 ---
 
@@ -427,7 +442,7 @@ The board therefore **reclassifies** these alarms rather than removing them. The
 |-------|---------|
 | **Setpoint** | Charging flow ≥ **60 % of maximum** |
 | **Means** | The chemical and volume control system is making up more than it normally does. Charging is a **level controller**: it only works this hard because pressurizer level is being pulled down. Something is taking inventory out of the reactor coolant system. |
-| **Why this alarm exists** | A leak small enough for charging to keep up is **held indefinitely** and moves level only a per cent or two — far above the **PZR LVL LO** alarm at 25 %, which never comes in. Without this annunciator the plant would lose inventory silently with make-up near its limit. This is the one that tells you to look. |
+| **Why this alarm exists** | A leak small enough for charging to keep up is **held indefinitely** and moves level only a per cent or two — far above **PZR LVL LO**, the deeper rung of the same deviation ladder, which never comes in. Without this annunciator the plant would lose inventory silently with make-up near its limit. This is the one that tells you to look. |
 | **Automatic actions** | None. Charging is already responding; that response *is* the indication. |
 | **Immediate operator actions** | 1) Confirm level is at or below its program (**A31** if the deviation is large). 2) Check letdown is not isolated or throttled — the same alarm comes in if charging is making up for letdown that was shut. 3) Look for the leak: containment sump and humidity, pressurizer relief tank pressure and temperature (a weeping PORV or safety), steam generator activity (**PWR-E05**, tube leak). 4) Log the charging demand and trend it — a rising demand at steady load means a growing leak. |
 | **If not expected** | Treat as unidentified reactor coolant leakage. If charging reaches its maximum and level still falls, make-up has lost the leak — see **A31** and **PWR-E04**. |
@@ -441,7 +456,7 @@ The board therefore **reclassifies** these alarms rather than removing them. The
 |-------|---------|
 | **Setpoint** | Indicated level ≥ **10 %** below its programmed value |
 | **Means** | **Make-up is no longer holding.** Level is programmed against Tavg, so it is *supposed* to move on a load change — this alarm measures the gap between where level is and where the program says it should be, which only opens when mass is actually leaving the system faster than charging replaces it. |
-| **Why a deviation and not a low level** | Level legitimately swings more than eight percentage points across a normal load change, so any absolute setpoint tight enough to catch a leak early would come in every time load moved. The deviation does not move on load at all. It also beats **PZR LVL LO** to the condition: this alarm comes in while absolute level is still around 28 %. |
+| **Why a deviation and not a low level** | Level legitimately swings more than eight percentage points across a normal load change, so any absolute setpoint tight enough to catch a leak early would come in every time load moved. The deviation does not move on load at all. It is also the shallower of the two deviation rungs — **A31** at 10 points below program, **A13** at 20 — so this one comes in first and A13 says the situation has got away. |
 | **Automatic actions** | None at this alarm. Charging is already at or near maximum. |
 | **Immediate operator actions** | 1) Verify charging at maximum and letdown isolated — recover any make-up capacity that is being wasted. 2) Confirm subcooling margin and pressure; falling level with falling pressure is a leak, falling level with rising pressure is not. 3) Enter **PWR-E04** (loss of reactor coolant). 4) Prepare for safety injection if level continues down toward **PZR LVL LO LO** at 12 %. |
 | **Companion alarm** | **A30** normally comes in first and stays in. **A30 alone** = a leak inside make-up authority, held. **A30 with A31** = make-up has lost it. That pair is the diagnosis. |
@@ -582,8 +597,8 @@ The board therefore **reclassifies** these alarms rather than removing them. The
 
 | Field | Content |
 |-------|---------|
-| **Logic** | `pzr_heaters_shed` — latched by a **safety injection** signal or a **loss of offsite power** |
-| **Means** | The heaters are a large non-safety load, so they are automatically dropped off the emergency buses to leave capacity for equipment that matters more. They are **not** faulted and the bus is **not** dead — they have simply been taken off it. This lamp is the only thing that separates a shed from the three other reasons heater power can read zero (a blackout, the 17 % low-level cutoff, and a heater failure). |
+| **Logic** | `pzr_heaters_shed` — latched by a **safety injection** signal or a **loss of offsite power**, and also asserted by the **17 % low-level heater cutoff** |
+| **Means** | The heaters are a large non-safety load, so they are automatically dropped off the emergency buses to leave capacity for equipment that matters more. They are **not** faulted and the bus is **not** dead — they have simply been taken off it. This lamp separates a shed from the other reasons heater power can read zero (a blackout and a heater failure), and it is also what annunciates the **17 % low-level cutoff** — the point at which falling level uncovers the bank. Raised from `status` to `caution` at Rev 17: losing pressure control is not a lineup report, and a `status` row arrives pre-acknowledged behind a grey dot. |
 | **Actions** | 1) Expect heater power **0 %** and the pressurizer to stop holding pressure — pressure now follows the plant, not the controller. 2) They do **not** come back on their own, and **securing safety injection does not restore them**. 3) When you want pressure control back, put them back deliberately: any heater action (AUTO, MANUAL, OFF, or typing a %) reloads them. 4) Before you do, know what you are asking for — on a depressurized plant the heaters answer at full demand, so expect a pressure rise, and with a relief path or a break still open that rise also increases what leaves through it. 5) Restoring pressure control matters most for **natural circulation**, where subcooling has to be maintained without the pumps. |
 
 ---

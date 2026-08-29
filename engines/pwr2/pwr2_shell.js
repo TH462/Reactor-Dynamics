@@ -1048,22 +1048,27 @@
          * AFW arm control sends auto:true (a re-arm pushbutton). A disarmable arm here would
          * claim an authority the engine does not grant it — the duplicate-authority veto. */
         esf_systems: [{ id: 'afw', label: 'Auxiliary feedwater', commands: [] }],
-        /* THE ONE ALARM OVERRIDE (#500, 2026-08-22): every row rides through by reference
-         * EXCEPT pzr_level_low, rebuilt at 17 % — the pwr table's 25.0 % IS this plant's
-         * sourced no-load level program point (WTSM 10.3: "low level setpoint of 25%",
-         * pwr2_pressurizer LEVEL/GEOM), so at Mode 3 the annunciator stood on a healthy
-         * plant sitting exactly on program. 17 % is the sourced heater-cutoff level
-         * (LEVEL.low_cut_pct, same WTSM section) — the point at which something real is
-         * about to happen. pzr_level_lolo (12) stays below it; the pwr1 table is untouched. */
+        /* THE ONE ALARM OVERRIDE LEFT, every other row riding through BY REFERENCE.
+         *
+         * ⚠ THE #500 OVERRIDE IS GONE (2026-08-29). It rebuilt `pzr_level_low` at 17 %, the
+         * sourced heater-cutoff level, because the pwr table's fixed 25.0 % IS this plant's own
+         * sourced no-load level program point (WTSM 10.3) and a healthy Mode 3, Hot Standby
+         * plant therefore rode its indicated level right on the annunciator. That fixed the
+         * NUMBER; the ruling reversed the SHAPE *(OWNER RULING, 2026-08-28: "go with as
+         * recommended for all")*, and the shared row is now program-relative — it reads
+         * `pzr_level_dev` at -20 points, which is correct on BOTH plants, so there is nothing
+         * left for this plant to override. The 17 % cutoff did not lose its voice: it is a fixed
+         * ELEVATION, it still fires `lowLevelCut` -> `heatersShed` in pwr2_pressurizer, and that
+         * annunciates as PZR HTRS SHED (raised to `caution` by #577 in the same change).
+         *
+         * The deviation channel is this plant's own: `extras.level_program_fn` below hands
+         * pwr_instruments PWR2's 25..61.5 % program line, so the alarm measures against the
+         * program the plant actually runs, not the retired engine's. */
         alarms: (base.alarms || []).map(function (a) {
-          /* two PWR2 setpoint overrides, every other row shared by reference:
-           * pzr_level_low 25 -> 17 (#500, the sourced heater-cutoff level);
-           * rod_limit_approach 40 -> 10 (#507 wave 8): the shared 40 is the sourced
+          /* rod_limit_approach 40 -> 10 (#507 wave 8): the shared 40 is the sourced
            * "RIL + 10 steps" in pwr1's FINE-step currency (4 fine per step) — this bank's
            * steps ARE the currency, so the same physical number is 10. */
-          return a.id === 'pzr_level_low'
-            ? Object.assign({}, a, { setpoint: 17.0 })
-            : a.id === 'rod_limit_approach'
+          return a.id === 'rod_limit_approach'
             ? Object.assign({}, a, { setpoint: 10 })
             : a;
         }),
@@ -1318,6 +1323,30 @@
       heater_auto: e.pzDrivers.heaters_manual === undefined,
       spray_auto: e.pzDrivers.spray_manual === undefined,
       pressure_setpoint: e.pz.setpoint_mpa,
+      /* THE PRESSURE CONTROL BAND'S HALF-WIDTHS, in psi about whatever setpoint the operator
+       * has dialled (#576c). Same "the plant publishes, the board reads" shape as
+       * `heater_elev_pct` above and for the same reason: `pwr_board_wiring` drew the primary
+       * pressure tile's NORMAL band as setpoint -30/+50 psi out of `pwr_config.pressurizer`,
+       * captured at SCRIPT LOAD from the RETIRED engine. The centre was already live off
+       * `pressure_setpoint` on the line above, so the tile was drawn around the right middle
+       * with the wrong width — the #556/#557 family, with this the last member standing on
+       * the plant the site runs.
+       *
+       * -25/+25 psi, and the pair is chosen rather than merely copied: PWR2's sourced ladder
+       * (pwr2_pressurizer CONTROL, WTSM Fig 10.2-3, spray corroborated by Ginna ch15 Model 1)
+       * is asymmetric and four-tiered — proportional heaters over -15..+15, BACKUP heaters in
+       * at -25, spray starting at +25, spray full at +75. A tile has one band, so it gets the
+       * two edges that are each an ACTUATION the player can see the plant take, which is what
+       * the tile's own comment says NORMAL means. Read from CONTROL, never retyped, so moving
+       * the ladder moves the band. */
+      pressure_band_psi: [PZ.CONTROL.backup_on_psi, PZ.CONTROL.spray_start_psi],
+      /* THE LIVE LEVEL PROGRAM, % of span at the current Tavg (#500). Already computed every
+       * step by pwr2_pressurizer and, until now, read by exactly one test — so the board drew
+       * the pressurizer level tile's low red edge from a FIXED alarm setpoint while the alarm
+       * itself went program-relative. Publishing it lets the tile draw `program + N`, which is
+       * the only way an absolute 0-100 % scale can show a deviation alarm at all. */
+      pzr_level_program_pct: (e._pzr && e._pzr.level_program_pct !== undefined)
+                             ? e._pzr.level_program_pct : 100 * PZ.levelProgram(ts.tavg_c),
       /* the #408 currency (gpm / 450,000) — the board multiplies back to gpm. Demand is a
        * fraction of THIS plant's sourced-scaled max; letdown lineup of its rated point. */
       charging_flow_normalized: (e.cv.chargingDemand === null ? 0 : e.cv.chargingDemand) *

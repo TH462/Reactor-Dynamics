@@ -394,16 +394,20 @@ by an agent who compressed without re-querying. Run the query.
   which is where a roll-call of two dozen per-issue summaries used to sit. Measured 2026-08-28:
   eight of the issues it called CLOSED were still open. **Run `gh issue list`; it is the
   authority, and this line is not.**
-- **#573/#473, #574 and #583 (2026-08-28, §108–§110).** The pressurizer heaters lose authority over
-  a 5–15 % TRUE level band and the board draws the bank by VOLUME; every ring node carries its own
-  metal wall (**39,128 kJ/K, 49 % of the fluid**, a fixed-duty cooldown 1.391× longer, a scram
-  unmoved) — `wallLumps` had shipped with zero consumers. And the pressurizer is **no longer in the
-  ledger twice**: the phantom 125.2 ft³ node is gone, RCS mass fell **13.5 % to 36,016 lbm** and the
-  design point moved 0.1 psi. Out of it since: the WALL landed as **#587** (§113, owner review);
-  **#584, #585, #582 and #586 all closed 2026-08-29** (§114–118). **#586 ended in a Layer-0
-  change**: the vapour ceiling was `THigh=800` in a fetch URL and is now **1000 °C, IAPWS-95's
-  own limit**, with the superheated fits REFITTED — so the chain now runs to the 2200 °F damage
-  latch inside the envelope, and the oxidation feedback is measurably what takes it there.
+- **#573/#473, #574 and #583 (2026-08-28, §108–§110).** The heaters lose authority over a 5–15 %
+  TRUE level band; every ring node carries its own metal wall (**39,128 kJ/K, 49 % of the fluid**)
+  — `wallLumps` had shipped with zero consumers. And the pressurizer is **no longer in the ledger
+  twice**: RCS mass fell **13.5 % to 36,016 lbm**, the design point moved 0.1 psi. Since: the WALL
+  is **#587** (§113, owner review); **#584/#585/#582/#586 closed 2026-08-29** (§114–118). **#586
+  ended in a Layer-0 change**: the vapour ceiling was `THigh=800` in a fetch URL and is now
+  **1000 °C, IAPWS-95's own limit**, fits REFITTED — the chain now runs to the 2200 °F damage
+  latch inside the envelope.
+- **#579/#580/#577/#575/#500/#576c (2026-08-29, §119).** The retired plant's rates reached the
+  PUBLIC manual (60/30/100 gpm against a derived **30.1/12.7/86.2**, boron "2 ppm/s" against a
+  mass-balance **0.047**); Break Size promised a pipe shear and opens **0.75 %** of one; the
+  low-level alarm is program-relative at **−20 points** because a fixed 25 % WAS this plant's
+  no-load program point. **#580 stage 2 is refuted and owes a ruling** — the model latches above
+  **46 cm²**, a real 2,667 cm² shear on step one.
 - **RBMK and BWR** — on hold, and the source of most remaining backlog. Do not touch.
 
 **The manual set's revision number does not advance until a RELEASE** *(OWNER DIRECTIVE,
@@ -423,6 +427,13 @@ FIRST** — ask what in it would still burn someone in a month, move that to the
 ONE line, drop the rest. **A bullet is ~80 words.** (Measured 2026-08-06: the list was running
 7 bullets averaging 500 words, two of them duplicating traps already rescued below.)
 
+- **A NUMBER THAT LOOKS COSMETIC CAN BE ANOTHER ENGINE'S PHYSICS — AND A GATE POINTED AT THE
+  WRONG PLANT DEFENDS THE ERROR** (2026-08-29, #579/#580 §119). `severity_meta.max` is display
+  text to `ui/app.js` and a leak COEFFICIENT to `pwr_engine.js:1623`; rescaling the Break Size
+  range to state an area would have cut the retired plant's design-basis LOCA **16x** across five
+  gates. Worse, `run_manual_units` matched `Manuals/12`'s flow figures against `pwr_config` —
+  the RETIRED plant — so the wrong manual passed and a CORRECTED one would have failed.
+  **Ask which plant a check is defending.**
 - **A CONSTANT WITH NO DERIVATION IS USUALLY A TOOL'S DEFAULT, AND A FIT THAT LOOKS LIKE IT
   EXTRAPOLATES USUALLY DOES NOT** (2026-08-29, #586 §118). The 800 °C vapour ceiling the
   core-damage chain died against was `THigh=800` in the fetch URL that built Layer 0 — three
@@ -453,14 +464,6 @@ ONE line, drop the rest. **A bullet is ~80 words.** (Measured 2026-08-06: the li
   the wall film, both surfaced by ONE red: no phase term absorbed **1,100 MJ** into a voided core, and
   the repair then put the FORCED vapour ratio on a FREE-convection floor, leaving an unmitigated break
   unable to reach the 50.46 clad limit at all. **Four of the five reds were not about the change.**
-- **A silent `undefined` reads exactly like a WORKING INTERLOCK; the check that catches it is
-  the one asserting the ORDINARY case still works** (2026-08-28, #571 §103). The kernel refuses a
-  reset against a live trip signal by iterating `config.trips`, which PWR2 hands over EMPTY and
-  correctly — so the refusal could never fire while `Manuals/03` documented it as one of two live
-  permissives with its own board caption. Measured: a LOCA holding the low-pressure trip at
-  **1074 psia against 1775**, reset ACCEPTED, re-latched 0.1 s later. The FIX then broke the same
-  way — instrument published, not named in the status list, `crossed(undefined)` false, every
-  reset refused. Both look strict.
 **Standing procedure — not part of the rotation above; these do not expire.** One trap per entry.
 **MAX 25 BULLETS** *(OWNER RULING, 2026-08-10: selected "Cap at 25, evict to TRAPS.md" from
 options I wrote — a selection, not verbatim words)*, gated by `test/run_doc_budget.js`. Adding

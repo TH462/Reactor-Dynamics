@@ -52,8 +52,8 @@ is the failure's physical size — the response procedures below apply at any se
 |---------|--------|-------|---------|
 | SG Tube Rupture (E06) | Rupture Severity | 0 – 100 % of full rupture | 40 % |
 | Degraded HPI (E11) | HPI Capacity | 100 → 0 % of rated | 50 % |
-| Large LOCA (E09) | Break Size | 0 – 50 % rated flow | 20 % |
-| Continuous Rod Withdrawal (E17) | Withdrawal Rate | 0 – 6 steps/s | 3 |
+| Large LOCA (E09) | Break Size | 0 – 100 % — 100 % is a 3.1 in² (20 cm²) hole | 40 % |
+| Continuous Rod Withdrawal (E17) | Withdrawal Rate | 0 – 24 steps/s | 12 |
 | Rod Stuck on Scram (E18) | Rod Worth Held | 0 – 40 % of total | 20 % |
 | Main Steam Line Break, downstream (E19) | Break Size | 0 – 100 % effective area | 30 % |
 | Main Steam Line Break, upstream (E19u) | Break Size | 0 – 100 % effective area | 30 % |
@@ -249,7 +249,7 @@ Core covered and cooled on natural circulation with AFW. **This is achievable** 
 ## PWR-E06 — Steam Generator Tube Rupture (SGTR)
 
 ### Failure
-`sgtr` — primary-to-secondary leak; severity = leak rate % rated flow (default ~3 %, max 8 %).
+`sgtr` — primary-to-secondary leak; severity = **0 – 100 % of a full double-ended tube rupture**, default 40 %.
 
 ### Symptoms
 - Primary inventory dropping; charging rises and then saturates  
@@ -735,7 +735,7 @@ this one does not care what the primary is at. You do not terminate it from the 
 - At low severity, no alarm at all — only an elevated charging trend
 
 ### What the board will NOT tell you
-**PZR LVL LO does not come in.** It is set at 25 % and a held leak parks level around 52–54 %.
+**PZR LVL LO does not come in.** It is 20 points below the programmed level and a held leak parks within a point or two of program, around 52–54 % absolute.
 If you are waiting for a level alarm to tell you there is a leak, you will wait for the whole
 shift. Likewise **PZR LVL DEV LO (A31) stays clear** — the deviation only opens when make-up
 *stops* holding, so its silence here is information, not the absence of a problem.

@@ -170,7 +170,7 @@ Inward motion still takes — that is the source's own scope, quoted at the end 
   operator's call, and it should not be left running once a trusted heat sink is back.  
 - **Level hold: full flow below 32 %, tapering to zero at 40 %.** Against decay-heat steam
   draw an AFW-only generator settles around **37 %** — inside the normal green band, clear
-  of the 30 % SG LVL LO alarm. The approach is slow (AFW is only 15 % of rated feed), so
+  of the 30 % SG LVL LO alarm. The approach is slow (AFW is rated 86.2 gpm against main feed), so
   expect level to take the best part of an hour to walk back up from a low-level start.  
 
 ---
@@ -196,7 +196,8 @@ Inward motion still takes — that is the source's own scope, quoted at the end 
 | subcooling_low | LO SUBCOOL | subcooling_margin | low | **20 °F** (11.1 °C) | warning |
 | subcooling_lost | SUBCOOL LOST | subcooling_margin | low | **0 °F** (0 °C) | critical |
 | pzr_level_high | PZR LVL HI | pzr_level | high | **75 %** | caution |
-| pzr_level_low | PZR LVL LO | pzr_level | low | **25 %** | warning |
+| pzr_level_low | PZR LVL LO | pzr_level_dev | low | **20 % below program** | warning |
+| pzr_level_cutoff | PZR LTDN ISOL | pzr_level | low | **17 %** | warning |
 | pzr_level_lolo | PZR LVL LO LO | pzr_level | low | **12 %** | critical |
 | rod_limit | ROD INS LIMIT | rod_at_limit | true | — | warning |
 | otdt_approach | OTΔT ROD STOP | otdt_margin | low | **3 % of rated ΔT** | warning |

@@ -30,6 +30,49 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
 
 ## [Unreleased]
 
+### Fixed (#579/#580/#577/#575/#500/#576c — the retired plant's numbers, as the player reads them, 2026-08-29)
+
+Full write-up: `Blueprint/PWR2_VALIDATION.md` §119. Four of the six carried a dated owner ruling
+of 2026-08-28 and none had been built; two were live on the public site, which stages exactly two
+areas — free play and the operator's manual.
+
+- **The manual's flow and chemistry rates were the retired engine's** (#579). `Manuals/12` §6.3
+  now carries the figures the shipping plant derives from its own geometry: **30.1 gpm** charging
+  maximum, 7.7 gpm normal balance, 5 gpm seal injection, **12.7 gpm** orifice-A letdown and
+  **86.2 gpm** auxiliary feedwater against a **6,418 gal** reactor coolant system — against the
+  published 60 / 30 / 100 gpm and ~7,500 gal. Boron is no longer "2 ppm/s with a 60 s grab
+  sample": there is no rate constant at all, the mass balance sets it (**0.047 ppm/s** borating,
+  **0.026 ppm/s** diluting, measured at 626 ppm), and the lab takes a real **30 minutes**.
+  Matching corrections in `Manuals/03`, `04`, `09` and `10`, and the boron channel's own comment,
+  which justified its rate against a four-loop plant 14× this one's volume and concluded backwards.
+- **The Break Size slider said "% of a full pipe shear" and delivers 0.75 % of one** (#580 stage
+  1). It now states the area it opens — 100 % is a 3.1 in² (20 cm²) hole — in the control, the
+  manual and the failure catalog together. Stage 2, the rescale, is **blocked by a measured wall**
+  and stays open: the model latches beyond-model above ~46 cm² of cold-leg break, and a real
+  double-ended shear (2,667 cm²) latches on the first step.
+- **The pressurizer low-level alarm is program-relative** (#500). It was a fixed 25 %, which is
+  this plant's own sourced no-load level program point — so a healthy Mode 3 plant rode its
+  indicated level on the annunciator. It is now **20 points below program**, sized against
+  measured wander (worst healthy excursion 2.8 points; a 100 → 90 MWe load change spans 5.9), and
+  sits below the existing 10-point deviation caution as the deeper rung of one ladder. The
+  17 % heater cutoff is unchanged and annunciates on its own.
+- **PZR HTRS SHED asks for an acknowledgement** (#577). It shipped at `status`, the one class that
+  arrives pre-acknowledged and sorts last behind a grey dot, while its own design note says the
+  shed is the thing the player must act on. Raised to `caution`. The cavitation half was measured
+  and needs nothing: 0–2 annunciator transitions per hour on every ride tested.
+- **The primary-pressure tile drew the retired plant's control band** (#576c). Its centre was
+  already live; its half-widths were the old −30/+50 psi. The plant now publishes its own sourced
+  −25/+25 psi ladder and the board reads it, with the old literals kept as the fallback for
+  recordings and the retired engine.
+- **A new annunciator: PZR LTDN ISOL.** The plant has always isolated both letdown orifices and
+  cut the pressurizer heaters at 17 % indicated level — latched, with no automatic restoration —
+  and nothing on the board said so. Found by following a red the alarm rework caused: it is also
+  the last annunciation before the 12 % reactor trip.
+- **Main feedwater adds heat below 363 psi** (#575) — 435.2 °F feed is hotter than the shell
+  there. Measured at 0.7–2.6 MJ over about two minutes, peaking at 120 kW, and now declared in
+  `Manuals/12` §8.4 and §12.16 rather than modelled away.
+
+
 ### Changed (#586 — core damage runs to the regulatory limit inside the model's own envelope, 2026-08-29)
 
 Full write-up: `Blueprint/PWR2_VALIDATION.md` §118.

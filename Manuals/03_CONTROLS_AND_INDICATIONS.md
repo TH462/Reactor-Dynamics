@@ -371,7 +371,7 @@ cold-leg water condenses far less per pound than 131 °F (55 °C) charging water
 | **Hold** | Leave the target where it is — a running dose finishes and stops itself |
 | **How** | **BORON CONTROL ON/OFF + target ppm** — you set a target and the batch dose delivers it: *borate* = raise the target, *dilute* = lower it |
 | **Requires** | Charging pump running |
-| **Rate** | Compressed for training (~ppm/s scale); real plants are slower |
+| **Rate** | Not a dial and not compressed — the mass balance sets it. About **0.047 ppm/s borating / 0.026 ppm/s diluting** at full charging (measured at 626 ppm); boration slows toward the 2,500 ppm boric-acid tank, dilution slows as boron falls |
 | **Indication** | Chemistry samples (CHEM) — there is **no live boron meter** on the panels |
 
 **How you know the concentration — chemistry, not a gauge.** There is no online boron
@@ -383,14 +383,17 @@ you ordered, and from the plant's response — rod position, Tavg drift.
 
 **BORON CONTROL (target ppm) — batch dose.** The board's BORON CONTROL ON/OFF + target
 works like a real makeup panel: entering a new target computes the change and **meters it
-as a batch** at ~0.05 ppm/s, stopped by the flow totalizer — a dose lands on the ppm
-asked without overshoot. Any target change executes, however small (1 ppm nudges work).
+as a batch**, stopped by the flow totalizer — a dose lands on the ppm asked without
+overshoot. The panel asks for 0.05 ppm/s and the plant delivers what the charging lineup
+and the boric-acid tank allow, which is about **0.043 ppm/s** at normal reactor coolant
+boron: there is no rate constant to dial, only a mass balance. Any target change executes, however small (1 ppm nudges work).
 The dose pauses if the charging pump stops and resumes with it. Boron driven directly
 (a procedure walkthrough issuing a borate/dilute rate) takes the channel to **MAN**.
 
 **CHEM SAMPLE — the authoritative number.** Chemistry confirms every completed dose
 automatically: an RCS grab sample is drawn and the lab posts the result (`sample N ppm`)
-after a compressed ~60 s turnaround — real labs take 30–60 min. Take a **manual sample**
+after a **30-minute** lab turnaround — real time, matching a real lab's 30–60 min. (Through
+Rev 16 this read “compressed ~60 s”, which was the retired engine's.) Take a **manual sample**
 (CHEM SAMPLE button) when the dose books may be stale: after ECCS/accumulator injection
 (which borates the core outside the makeup system) or after boron was driven directly in
 a procedure. A fresh result while no dose is running **re-baselines the panel** — the books and the
@@ -868,7 +871,7 @@ meter can still cross the 120 % trip.
 | mwe_output | MWe | 0 – 130 | 0.2 s | Grid | — |
 | turbine_rpm | RPM | 0 – 2000 | 0.5 s | Sync (overspeed unreachable — **12** §12.14) | — |
 | condenser_vacuum | inHg (kPa) | 0 – 30.1 (0 – 102) | 5 s | Turbine health | COND VAC LO / TRIP |
-| boron_sample (CHEM) | ppm | 0 – 2500 | ~60 s lab | Chemistry grab sample — the boron reference | — |
+| boron_sample (CHEM) | ppm | 0 – 2500 | 30 min lab | Chemistry grab sample — the boron reference | — |
 | charging_flow / letdown_flow | norm | 0 – 0.12 | 2 s | CVCS lineup | — |
 | hpi_flow | norm | 0 – 1.2 | 1 s | ECCS delivery | (HPI ACTIVE status) |
 | hpi_discharge_pressure | psi (MPa) | 0 – 2611 (0 – 18) | 0.5 s | Pump vs RCS head | — |

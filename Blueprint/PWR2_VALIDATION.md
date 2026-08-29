@@ -8583,3 +8583,176 @@ sourced value, so it now fails if the library drifts from IAPWS rather than from
 check; 35/35 mutations). `run_pwr2_coredamage` 20 → **23** — back to its pre-fence count, at
 honest values. Six other gates that read the ceiling (`core`, `vtable`, `damage`, `kinetics`,
 `fuel`, `true_state`) held at baseline.
+
+## 119. #579/#580/#577/#575/#500/#576c — THE RETIRED PLANT'S NUMBERS, AS THE PLAYER READS THEM — 2026-08-29
+
+Six issues, one trap, and it is the standing one: **PWR2 inherited the retired plant's numbers,
+labels and tables by reference, and each is wrong until measured against THIS plant.** Four
+carried a dated ruling *(OWNER RULING, 2026-08-28: "go with as recommended for all")* and none
+had been built; two are factual and needed none. Two were live on the public site — `site/flags.js`
+stages exactly two areas `public` and they are **free play** and **the operator's manual**.
+
+### What the plant actually does — every figure measured this session
+
+| | shipped value | what was published instead |
+|---|---|---|
+| Reactor coolant system volume | **857.9 ft³ (6,418 gal / 24.29 m³)** | ~7,500 gal |
+| Charging, maximum | **30.1 gpm** | 60 gpm |
+| Charging, normal balance | **7.7 gpm** | ~31 gpm |
+| Letdown, orifice A | **12.7 gpm** | 30 gpm |
+| Letdown backpressure | **300 psi (2.07 MPa)** | 348 psi (2.4 MPa) |
+| Auxiliary feedwater, both pumps | **86.2 gpm** | 100 gpm, or "15 % of rated feed" |
+| Boration ceiling at 626 ppm | **0.047 ppm/s** | 2 ppm/s |
+| Dilution ceiling at 626 ppm | **0.026 ppm/s** | — |
+| Chemistry lab turnaround | **1,800 s (30 min)** | 60 s |
+| Cold-leg flow area | **0.13336 m² (1,333.6 cm², 16.22 in bore)** | — |
+| Double-ended cold-leg shear | **0.26671 m² (2,667 cm²)** | what the slider said 100 % was |
+| Break Size at 100 % | **20 cm² (3.1 in²) — 0.75 % of a shear** | "100 % of a full pipe shear" |
+
+**The boron comment's verdict was backwards, not just its provenance.** It justified
+`rate: 0.05` ppm/s against "~150 gpm into ~90 000 gal" — a four-loop plant, 14× this one's
+volume — and concluded 0.05 was *"deliberately generous"*. PWR2 has **no ppm/s constant at all**:
+the achievable rate is `inFlow × (C_in − C) / M` clamped by the 2,500 ppm boric-acid tank.
+Commanding a saturating +10 ppm/s delivers **0.047**; commanding 0.05 delivers **0.043**. The
+channel asks for slightly *more* than the plant can give.
+
+### #580 — the label was relabelled; the ruled RESCALE is blocked, and the wall is measured
+
+Stage 1 shipped: the unit states the area it opens. **Stage 2 did not, and the reason is not the
+slider.** Cold-leg break areas swept against `beyond_model`, mitigated, DT 0.02 s:
+
+| break | outcome | latch arm |
+|---|---|---|
+| 40 cm² | runs 600 s clean | — |
+| **46 cm²** | **runs 900 s clean** | — |
+| 47 cm² | held at 60.7 s | root jump |
+| 60 cm² | held at 47.3 s | root jump (−2.027 MPa) |
+| 180–1,334 cm² | held at 16.7–2.8 s | floor + two-sided envelope, unbracketed |
+| **2,667 cm² (a real shear)** | **held on step ONE** | root jump −2.019 MPa vs `P_JUMP_MAX` 2.0 |
+
+So the ruled target — the sourced 25–38 s blowdown at a real double-ended shear — is
+**unreachable**: the model's ceiling is ~46 cm², **58× under a shear**, and the wall is
+`pwr2_core`'s compliance-collapse guard, not the control. Rescaling the slider to a shear would
+ship a top-of-range that freezes the plant on the first step. **Owner decision owed** — see the
+issue.
+
+Two things found on the way. **`severity_meta.max` reads like a display scale and is a PHYSICS
+MULTIPLIER on the retired engine** (`pwr_engine.js:1623`: `severity × (meta.max/100) × leak_scale`,
+reconstructed identically in `run_e2e_controls`). Rescaling the range to put an area in the number
+would have cut the retired plant's design-basis LOCA **16×** across `behavior_pwr`, `meltdown_pwr`,
+`run_m4`, `run_m5` and `run_meltdown_stack` — silently, and in the direction that looks like a
+tuning result. The area went into the unit STRING instead. And `REHOMED.primary_leak` floors at
+`1e-5 m²`, so **every severity below ~0.005 opens the same 0.1 cm² hole** — the bottom of the
+slider is one break, not a range.
+
+### #575 — the feedwater sign flip is real, reachable and small
+
+`SG.h_feed` = 962.0 kJ/kg is applied unclamped into a shell whose enthalpy **is** `h_f(P)` by
+construction. Layer 0 puts `h_f = 962.0` at **2.5007 MPa (362.7 psi), Tsat 435.1 °F** — exactly
+the feed temperature, as it must be. Below that, main feed adds heat.
+
+Measured on a fast secondary blowdown from hot zero power (dumps to 0.2 MPa, atmospheric relief
+wide): the window is **92–131 s**, the energy **0.7–2.6 MJ**, the peak **31–120 kW — 0.04 % of
+rated**. Self-limiting, because the level controller shuts the regulating valve as the generator
+empties. Declared in `Manuals/12` §8.4 and §12.16 per the ruling; the heater train stays unbuilt.
+
+### #577 — the chatter does not exist, and that is the finding
+
+`rcp_cavitating` is `cavF > 0.5`, a bare threshold at 2.7 °F of suction subcooling with no
+hysteresis. Transitions per hour, three rides: **20 cm² break 2, 5 cm² break 1, stuck-open PORV
+0**, with 3 s total spent within ±0.9 °F of the threshold. Against #565's steam-generator-pressure
+row at ~1,954 transitions over 8 h, this is not the same class. **No deadband added.**
+
+Item 2 shipped: `pzr_heaters_shed` **`status` → `caution`**. `status` is the one class that cannot
+ask for anything — it is acknowledged on the plant's behalf on arrival *(OWNER RULING,
+2026-07-28: "I want status-class alarms to spawn (and arrive) pre-acknowledged")* and sorts last
+behind a grey dot — so a tile whose own comment says the shed is
+"the one the player is expected to ACT on" was rendered as furniture. Injection proves the pair:
+reverting the word takes the check from `active_unacknowledged` to **`active_acknowledged`**.
+
+### #500 — the two-rung deviation ladder, and what the ruling did not know
+
+The ruling said re-point the alarm at `pzr_level_dev_low` and retire the fixed 17 %. But
+`pzr_level_dev_low` already existed at −10, sized by measurement to *avoid* duplicating
+`pzr_level_low`. Put to the owner; **two-rung ladder selected**.
+
+Measured bands, hour-long samples on settled plants:
+
+| initial condition | indicated level | deviation |
+|---|---|---|
+| hot zero power (Mode 3) | 23.6–26.4 % | **±1.37** |
+| 50 percent | 38.7–42.3 % | −2.56 .. +2.38 |
+| hot full power | 55.7–59.7 % | −2.77 .. +2.38 |
+| 100 → 90 MWe, 30 min | 61.1 → 61.8 % | −2.71 .. +3.15, **ending +0.34** |
+| any injectable leak, 30 min | drains | **−33 to −40 (channel clip)** |
+
+The Mode 3 row is the whole issue: level sits **on** the retired fixed 25 %, which is this plant's
+own sourced no-load program point. So `pzr_level_low` becomes **`pzr_level_dev` at −20** — 7.2×
+the worst healthy excursion, 6.4× the worst load transient, and crossed by every leak — as a
+warning *below* the −10 caution. `pzr_level_lolo` stays absolute at 12 %: a hard inventory floor
+is not a program question. The PWR2 17 % override is retired; the shared row is now correct on
+both plants, so `run_pwr2_shell` asserts the row is shared **by reference** again.
+
+**Nothing lost the 17 % heater cutoff.** It is a fixed ELEVATION, it still sets `lowLevelCut` →
+`heatersShed`, and it annunciates as **PZR HTRS SHED** — which #577 raised to `caution` in the
+same change. A deviation alarm cannot express "17 % absolute" across a program running
+25 → 61.5 %, and it no longer has to. The two issues resolve each other.
+
+The board consequence and its fix: `pzrLevelBand()` drew the tile's low red edge from the alarm's
+setpoint onto an **absolute** scale, where a deviation setpoint would paint a red edge at −20 %.
+`pwr2_pressurizer` had computed `level_program_pct` every step with **zero consumers outside one
+test**; it is published now, and the tile draws `program + setpoint` — so the edge sits at 5 % at
+Mode 3 and 41.5 % at full power, moving with Tavg.
+
+### The red that was not about the change, and was the best thing in it
+
+`run_m7` went red on *"each trip has an earlier-warning alarm"*, naming `pzr_level low`. Its rule
+is that every instrument-based trip carries a LESS EXTREME alarm on the SAME instrument, so the
+player is annunciated before the scram — and the 12 % pressurizer-level scram had been covered by
+`pzr_level_low` at an absolute 25 %. **A deviation setpoint cannot warn about an absolute trip:
+there is no magnitude to compare.**
+
+Following it found something older and worse than the gate's complaint. `PWR_ACTUATIONS` isolates
+**both letdown orifices** at 17 % indicated level — latched, `reset_below: 20`, and with **no
+reset action**, so letdown stays shut until the operator re-opens an orifice by hand — and PWR2
+honours it (`lowLevelCut` → `letdown_isolated` → `pwr2_engine:1160` zeroes `letdownOpen`).
+**Nothing on the board said so.** An automatic action the player cannot see is the
+`DESIGN_CRITERIA` Q4 observability failure, and this one takes away a flow path they then have to
+restore deliberately.
+
+So the ladder gains **`PZR LTDN ISOL`, a warning at 17 % absolute** — sourced rather than
+invented, above the 12 % trip, and **6.6 points below the measured Mode 3 band (23.6–26.4 %)**,
+which is the collision that filed #500. It is not a duplicate of `PZR HTRS SHED`: that lamp says
+the heaters are off the bus, this one says letdown is shut, and the recoveries differ (a button
+versus an orifice). `run_m7` 32/33 → **33/33**, for the right reason.
+
+### #576c — the last member of the #556/#557 family on the shipping plant
+
+The primary-pressure tile's **centre** was already live off `pressure_setpoint`; its two
+**half-widths** came from `RD.PWR_CONFIG.pressurizer` captured at script load — the retired
+plant's **−30/+50 psi**. Right middle, wrong width, and invisible to a source read because the
+fallback *is* the old code. PWR2 publishes `pressure_band_psi` from its sourced ladder
+(`CONTROL.backup_on_psi` / `spray_start_psi`, **−25/+25**), the board reads it, and the config
+literals stay as the fallback for old recordings — bit-identical on the retired engine, which
+`pwr_board_wiring`'s own selfTest pins at 333/413 psi.
+
+The ladder is four-tiered (proportional ±15, backup in at −25, spray from +25 to +75) and a tile
+has one band, so the pair chosen is the two edges that are each an **actuation the player can see
+the plant take** — which is what the tile's own comment says NORMAL means.
+
+### Three traps worth carrying
+
+1. **A "display scale" can be another engine's physics multiplier.** `severity_meta.max` is text
+   to `ui/app.js` and a leak coefficient to `pwr_engine.js`. Grep every consumer before you move
+   a number that looks cosmetic.
+2. **A gate pointed at the wrong plant does not miss the error — it DEFENDS it.**
+   `run_manual_units` matched `Manuals/12`'s flow figures against `pwr_config.identity`, so the
+   manual quoting the RETIRED plant passed and a corrected manual would have failed. Retargeted at
+   `pwr2_cvcs`/`pwr2_afw` and injection-verified: it now reds on exactly the figures it used to
+   require.
+3. **A mutation goes blind two ways here, and both happened in this change.** Its anchor can be
+   destroyed by deleting the NEIGHBOUR it chained off — the rod-limit mutation opened with the
+   `: ` belonging to the retired `pzr_level_low` arm, and only the runner's own `ANCHOR MISS`
+   report caught it. And a mutation can "break" a line by selecting an **equivalent fallback**:
+   falsifying `pzr_level_program_pct`'s ternary condition just took the else-branch, which works.
+   Remove the capability, not the spelling.
