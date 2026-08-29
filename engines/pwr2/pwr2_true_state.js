@@ -207,6 +207,14 @@
                                                 : (RD.sg ? RD.sg.primaryTavg(sys) : undefined));
     put('core_void_fraction',    nodeAlpha(nd, sys.P, 'core'));
     put('primary_void_fraction', nodeAlpha(nd, sys.P, 'hot_leg'));
+    /* THE COLD LEG'S OWN VOID (#516 item 7, 2026-08-29). The hot leg had one and the cold leg
+     * did not, so nothing downstream could tell the two apart once the loop saturated — and
+     * once it does, TEMPERATURE cannot: both legs sit at T_sat(P) by definition, which is
+     * correct physics and is why `thot` and `tcold` read EXACTLY equal through a loss-of-coolant
+     * accident. Measured on a 20 cm2 break, the legs differ by up to 0.35 in QUALITY (hot 0.868
+     * against cold 0.516 at 600 s) while reading the same temperature to the decimal. The
+     * information moved out of temperature and into void, and only the hot leg published it. */
+    put('cold_leg_void_fraction', nodeAlpha(nd, sys.P, 'cold_leg'));
     /* #517 — HOW DRY. `core_void_fraction` clips at 1, so from the moment the core goes fully
      * void it is a constant and the board can no longer distinguish a core that has just dried
      * out from one 131 degC into superheat. Measured, 5 cm2 unmitigated break: void hits 1.0 at

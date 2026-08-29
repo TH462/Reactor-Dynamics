@@ -9207,3 +9207,92 @@ worth less than an honest note.
 35/35 **unmoved** — the extension is additive and in-envelope behaviour is bit-identical by
 construction. `run_pwr2_loca`, `run_pwr2_vtable`, `run_pwr2_true_state`, `run_pwr2_fuel` and
 `run_pwr2_sources` all unmoved.
+
+---
+
+## 123. #516 ITEMS 6, 7 AND 8 — THE VESSEL WAS DRAWING A MASS FRACTION, THE PIPES WERE DRAWING WATER, AND THE THING THAT LOOKED MOST LIKE A DEFECT WAS CORRECT PHYSICS — 2026-08-29
+
+The last three of the owner's playtest list, all about what the board shows during core damage.
+Two were real and are fixed; one does not reproduce.
+
+### Item 6 — the vessel drew a MASS FRACTION where a LEVEL was needed
+
+The owner: *"The core and vessel unrecovery visuals dont match the physics."* They did not, and the
+reason is a units-of-meaning error rather than a scale error.
+
+`comp_reactor_vessel`'s water column is driven by `coreInv`, and the board fed it
+`true_state.core_inventory_pct` — which is `100 * M_total / M_nominal`, **the RCS-wide mass
+fraction**. That is not a level. Early in a blowdown the mass collapses because the water
+**flashes**, while the column standing in the vessel falls nothing like as fast.
+
+Measured on a 20 cm² break with injection secured:
+
+| t | `core_inventory_pct` (what the art drew) | `core_uncovered_frac` (what the plant meant) |
+|---|---|---|
+| 90 s | **17.3 %** | 0.690 — so ~31 % still covered |
+| 180 s | 4.4 % | 0.883 |
+| 630 s | **0.74 %** — an essentially dry vessel | 0.908 — **9 % still covered** |
+
+`core_uncovered_frac` is the field that *is* a level. It is a declared homogeneous-model proxy —
+its own note in `pwr2_true_state` says so — but a proxy for the **right quantity**, and it is what
+the damage chain itself keys on. The component's `coreInv` runs 0–100 over the whole vessel and
+splits at 50 (upper plenum above, core pool below), so each half is now fed from what the plant
+publishes about it: the core's own uncovery below, the hot-leg void above. The mass fraction stays
+as the fallback for a plant publishing neither.
+
+**The discriminating check holds `core_inventory_pct` CONSTANT across a covered core and a dry
+one** — the old wiring answered both with the same number.
+
+### Item 7 — the pipes declared WATER unconditionally, and the thing that looked like the defect was not
+
+The owner: *"When core started to melt down the whole coolant loop showed the coolant was very
+hot."*
+
+**The first thing I measured looked like a defect and is correct physics.** Through a whole
+loss-of-coolant accident `thot` and `tcold` read **exactly equal** — 285.5/285.5, 269.9/269.9,
+232.9/232.9 — so the hot/cold split, a Tier A teaching coupling, appears to die the moment the
+accident starts. It measures 32.7 °C at power and 13.3 °C on natural circulation, and identically
+zero here.
+
+It is not a defect. Both legs are **saturated**, and a saturated node's temperature *is* `T_sat(P)`
+by definition — measured, `thot = tcold = T_sat(P)` at every sample. Real plants see exactly this:
+loss of subcooling, and the leg temperatures converge. **It is a real accident signature, and
+"fixing" it would be inventing a split the plant does not have** (HR9).
+
+**What the measurement does expose is that the information moved.** The two legs differ by up to
+**0.35 in quality** — hot 0.868 against cold 0.516 at 600 s — while reading the same temperature to
+the decimal. Temperature has stopped being the variable that separates them, and the board had no
+other: `coldLeg()` and the hot-leg branch both declared `contents: 'water'` **unconditionally**, so
+the board drew liquid coolant through a loop that had voided. That is the run saying the wrong
+thing about itself, and it is the half of item 7 that is real.
+
+Phase now comes from the **void**, on a volumetric-majority cut — above half void the run is mostly
+vapour and paints with `std_pipe`'s steam ramp, which already exists. And the cold leg had to start
+publishing a void at all: `primary_void_fraction` was the hot leg's and there was no counterpart,
+so nothing downstream could tell the legs apart in the one quantity that still separated them.
+
+**A check that was hollow before it ran.** The first draft asserted item 7 by grepping the wiring
+source for `legContents` and `cold_leg_void_fraction` — the exact shape the standing trap list
+names: *a source scan cannot tell you the rule is reached.* Replaced with a behavioural check that
+drives `compProps` on the hot leg at void 0.00 and 0.95 and reads the contents back.
+
+### Item 8 — does not reproduce, measured
+
+The owner: *"Core temperature kept swinging up and down while melting down."*
+
+**It does not reproduce on this build.** The cladding trace through the damage phase has **3
+direction reversals in 1200 samples** and rises monotonically: 1141 → 1169 → 1200 → 1234 → 1274 →
+1321 → 1381 → 1467 → 1632 → 1670 °C over 100 s across the interesting window.
+
+Three changes that landed the same day would each plausibly have caused what he saw, and are the
+honest candidates: **#585** (a held plant used to be re-stepped rather than frozen, so a board
+could show a value that stopped and started), **#586** (the vapour ceiling, against which the core
+node pinned and was released repeatedly), and this session's own clad-melt cut-off (without which
+the oxidation runs away). *(OWNER RULING, 2026-08-29: selected "Close it as fixed-by-neighbours,
+with the measurement" from options I wrote — a selection, not verbatim words.)* Recorded rather
+than chased, with the trace, so a recurrence has a before to point at.
+
+### Scores
+
+`run_pwr2_board` 48 -> **52**, mutations 15 -> **17**. `run_pwr2_true_state` 77 -> **79**,
+mutations 29 -> **30**. `verify_board_check` 236/0 and `run_contract` 178/0 unmoved.

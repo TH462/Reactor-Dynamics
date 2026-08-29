@@ -352,6 +352,59 @@ function runSuite(quietRec) {
     fbStart != null && fbEnd != null && fbMoved > fbN * fbStep * 0.9,
     'per click ' + (fbMoved / fbN).toFixed(3) + ' gpm (shipped defect: 0.06)');
 
+  /* ---- 2d. THE VESSEL DRAWS A LEVEL, NOT A MASS FRACTION (#516 item 6) ----------------------
+   * `core_inventory_pct` is `M_total / M_nominal` RCS-wide, and early in a blowdown the mass
+   * collapses because the water FLASHES while the column does not fall anything like as fast.
+   * Measured on a 20 cm2 break with injection secured: at 90 s the mass fraction read 17.3 %
+   * against a core 69 % uncovered, and by 630 s it read 0.74 % — an essentially dry vessel —
+   * while the plant said 9 % of the core was still covered. */
+  if (!rec) head('REACTOR VESSEL LEVEL  [the art is fed a LEVEL, not an inventory, #516 item 6]');
+  function vesselInv(unc, hlv, massPct) {
+    return D.compProps({ id: 'reactorVessel' },
+      { true_state: { core_uncovered_frac: unc, primary_void_fraction: hlv,
+                      core_inventory_pct: massPct, core_void_fraction: 0 },
+        instruments: {}, control_state: {}, rod_groups: [] }).coreInv;
+  }
+  var vFull = vesselInv(0, 0, 100), vHalf = vesselInv(0.5, 1, 0.5), vDry = vesselInv(1, 1, 0.5);
+  q('a covered core with a full upper plenum draws a FULL vessel',
+    Math.abs(vFull - 100) < 0.01, 'coreInv ' + vFull);
+  /* THE DISCRIMINATOR: all three of these carry the SAME `core_inventory_pct`, so a vessel still
+   * reading the mass fraction returns one identical number for a covered core and a dry one. */
+  q('...and uncovery MOVES it while the RCS mass fraction is held constant — the old wiring ' +
+    'returned the same number for a covered core and a dry one',
+    vHalf > vDry && vDry < 1 && Math.abs(vHalf - 25) < 0.01,
+    'half-uncovered ' + vHalf + ', fully uncovered ' + vDry + ', both at mass fraction 0.5');
+
+  /* ---- 2e. THE PIPES SAY WHAT IS IN THEM (#516 item 7) --------------------------------------
+   * The primary runs declared `contents: 'water'` unconditionally, so the board drew liquid
+   * coolant through a voided loop — and temperature could not say otherwise, because once the
+   * loop saturates BOTH legs sit at T_sat(P). That equality is CORRECT physics (measured: thot
+   * and tcold equal to the decimal through a whole loss-of-coolant accident, legs differing by
+   * 0.35 in quality); it is the reason the phase has to come from the void instead. */
+  if (!rec) head('PRIMARY PIPE CONTENTS  [a voided loop must not draw as water, #516 item 7]');
+  /* ⚠ BEHAVIOURAL, NOT A SOURCE SCAN. A first draft grepped the wiring for `legContents` and
+   * `cold_leg_void_fraction`, which is the hollow shape the standing trap list names: a source
+   * scan cannot tell you the rule is REACHED. `ims2kt7fu64` is the hot leg at the surge-line
+   * branch and takes its contents from the hot-leg void; the plant end is asserted separately
+   * below, because a rule keyed on a field nothing publishes is a rule that never fires. */
+  function hotLegContents(v) {
+    return D.compProps({ id: 'ims2kt7fu64' },
+      { true_state: { primary_void_fraction: v }, instruments: {}, control_state: {},
+        loop_flow: {} }).contents;
+  }
+  var cWet = hotLegContents(0.0), cVoid = hotLegContents(0.95);
+  q('a water-solid loop draws WATER and a voided one draws STEAM — the run says what is in it',
+    cWet === 'water' && cVoid === 'steam',
+    'void 0.00 -> "' + cWet + '", void 0.95 -> "' + cVoid + '"');
+  /* THE DISCRIMINATOR is the plant end: once the loop saturates, TEMPERATURE cannot separate the
+   * legs (both sit at T_sat by definition), so the board needs a per-leg void — and the cold leg
+   * published none. A rule keyed on a field nothing emits never fires. */
+  var tsV = w.svc.engine.getTrueState();
+  q('...and the plant publishes a COLD-leg void, which it did not before — the hot leg had one ' +
+    'and the cold leg did not',
+    typeof tsV.cold_leg_void_fraction === 'number' && isFinite(tsV.cold_leg_void_fraction),
+    'cold_leg_void_fraction ' + tsV.cold_leg_void_fraction);
+
   /* ---- 3. the payload fixes, through the whole stack -------------------------------------- */
   if (!rec) head('ROUND TRIPS  [the #506.1 payload fixes land through service+kernel+shell]');
   /* WHITE-BOX on the pump switch: at 2235 psia a started HHSI pump is DEADHEADED (zero flow
@@ -756,6 +809,18 @@ var MUTS = [
   ['the SG feed box reads DELIVERED flow again (the arrows stop walking)', WIRING_PATH, WSRC,
    "var d = c.feed_demand_pct; return ((d != null && isFinite(d)) ? d : (c.feed_pump_speed_pct || 0)) * GPM_FEED_PER_PCT;",
    'return (c.feed_pump_speed_pct || 0) * GPM_FEED_PER_PCT;'],
+  /* #516 item 6: the vessel goes back to reading the RCS-wide mass fraction, so its water level
+   * is a mass number and stops tracking uncovery — the shipped defect. */
+  ['the vessel reads the RCS mass fraction again (its level stops tracking uncovery)',
+   WIRING_PATH, WSRC,
+   '          if (unc == null) return t.core_inventory_pct != null ? t.core_inventory_pct : 100;',
+   '          return t.core_inventory_pct != null ? t.core_inventory_pct : 100;'],
+  /* #516 item 7: the primary runs go back to declaring liquid water unconditionally, so a
+   * voided loop draws as coolant — the shipped defect. Not a severed publication but a swapped
+   * READ, the #516-item-1 shape: the void can be published perfectly and the pipe ignore it. */
+  ['the primary pipes declare WATER again (a voided loop draws as coolant)', WIRING_PATH, WSRC,
+   "  function legContents(v) { return (v != null && isFinite(v) && v > 0.5) ? 'steam' : 'water'; }",
+   "  function legContents(v) { return 'water'; }"],
   /* #561: the plant stops handing its own delta-T equation to the reused instrument layer, so
    * the gauge falls back on the retired plant's fitted DNB surface — the shipped defect */
   ['the plant stops publishing its delta-T setpoint form (the gauge reverts to the DNB surface)',

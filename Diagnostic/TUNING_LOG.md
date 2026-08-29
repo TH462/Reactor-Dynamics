@@ -204,6 +204,46 @@ mutation would be coverage theatre.
 (the retirement). **`run_pwr2_water` 282/282 and 35/35 unmoved** — the extension is additive and
 in-envelope behaviour is bit-identical by construction.
 
+### Items 6, 7 and 8 — what the board shows during core damage
+
+Full write-up: `Blueprint/PWR2_VALIDATION.md` §123. **All 11 items of #516 are now closed out.**
+
+**Item 6 — the vessel drew a MASS FRACTION where a LEVEL was needed.** `comp_reactor_vessel`'s
+water column was fed `core_inventory_pct` = `M_total / M_nominal` RCS-wide. That is not a level:
+early in a blowdown the mass collapses because the water FLASHES while the column does not.
+Measured on a 20 cm2 break, injection secured: **17.3 % mass at 90 s against a core 69 %
+uncovered**, and **0.74 % at 630 s — an essentially dry vessel — while 9 % was still covered**.
+Now `core_uncovered_frac` below the component's half-way split and the hot-leg void above it.
+
+**Item 7 — and the thing that looked most like the defect was CORRECT PHYSICS.** Through a whole
+loss-of-coolant accident `thot` and `tcold` read **exactly equal**, which looks like the leg
+split — a Tier A coupling — dying at the worst possible moment. It is not: both legs are
+saturated, and a saturated node's temperature IS `T_sat(P)`. Measured, `thot = tcold = T_sat(P)`
+at every sample. Real plants show exactly this. **Fixing it would have been inventing a split the
+plant does not have** (HR9), and the owner's ruling was given on my framing before I had that
+measurement.
+
+What the measurement DOES expose is that the information moved: the legs differ by up to **0.35 in
+quality** (0.868 hot against 0.516 cold at 600 s) while reading the same temperature to the
+decimal. And the board had no other channel — `coldLeg()` and the hot-leg branch both declared
+`contents: 'water'` **unconditionally**, so it drew liquid coolant through a voided loop. Phase now
+comes from the void on a volumetric-majority cut, and the COLD leg publishes a void for the first
+time.
+
+**Item 8 — does not reproduce, and is recorded rather than chased** *(OWNER RULING, 2026-08-29:
+selected "Close it as fixed-by-neighbours, with the measurement" from options I wrote — a
+selection, not verbatim words)*. The cladding trace through the damage phase has **3 direction
+reversals in 1200 samples** and rises monotonically, 1141 -> 1670 degC over 100 s. The honest
+candidates for what fixed it are all same-day: #585's whole-plant hold, #586's vapour ceiling, and
+this session's clad-melt cut-off.
+
+### A check that was hollow before it ever ran
+
+Item 7's first draft asserted the fix by grepping the wiring SOURCE for `legContents` and
+`cold_leg_void_fraction` — the exact shape the standing trap list names, *a source scan cannot
+tell you the rule is REACHED*. Replaced with a behavioural check driving `compProps` on the hot
+leg at void 0.00 and 0.95 and reading the contents back.
+
 ### Gates
 
 `run_pwr2_board` 43 -> **48** (mutations 13 -> 15), `run_pwr2_pressurizer` 97 -> **100**

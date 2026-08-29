@@ -1328,7 +1328,31 @@
         regFrac: cr ? cr.position_pct / 100 : 0.9,
         shutFrac: sr ? sr.position_pct / 100 : 1,
         power: (IN(s).power_range || 0) / 100,
-        coreInv: t.core_inventory_pct != null ? t.core_inventory_pct : 100,
+        /* THE VESSEL DRAWS A LEVEL, SO IT MUST BE FED A LEVEL (#516 item 6, owner playtest
+         * 2026-08-29: "The core and vessel unrecovery visuals dont match the physics").
+         * `core_inventory_pct` is `100 * M_total / M_nominal` — an RCS-WIDE MASS fraction, which
+         * is not a level at all: early in a blowdown the mass collapses because the water
+         * FLASHES, while the column in the vessel does not fall anything like as fast.
+         *
+         * MEASURED on a 20 cm2 break with injection secured, and the two disagree from the first
+         * minute: at 90 s the mass fraction reads 17.3 % while the core is 69 % uncovered (so
+         * ~31 % covered); by 630 s it reads 0.74 %, which paints an essentially dry vessel, while
+         * the plant says 9 % of the core is still under water.
+         *
+         * `core_uncovered_frac` is the field that IS a level — a declared homogeneous-model proxy
+         * (see its note in pwr2_true_state), but a proxy for the right quantity, and the one the
+         * damage chain itself keys on. The component's `coreInv` runs 0-100 over the WHOLE
+         * vessel, splitting at 50: above it the upper plenum drains, below it the core pool. So
+         * the two halves are fed from the two things the plant actually publishes about them —
+         * the core's own uncovery below, the hot-leg void above — and the old mass fraction
+         * stays as the fallback for a plant that publishes neither. */
+        coreInv: (function () {
+          var unc = t.core_uncovered_frac, hlv = t.primary_void_fraction;
+          if (unc == null) return t.core_inventory_pct != null ? t.core_inventory_pct : 100;
+          var core = 50 * (1 - Math.max(0, Math.min(1, unc)));
+          var upper = 50 * (1 - Math.max(0, Math.min(1, hlv == null ? 0 : hlv)));
+          return core + upper;
+        })(),
         boil: Math.min(100, Math.max(voidFrac * 400, (sub != null && sub < 0) ? -sub * 3 : 0)),
         // coolant water color = live leg temperatures (fuel/glow stay power-driven)
         tcold: IN(s).tcold, thot: IN(s).thot,
@@ -1538,7 +1562,9 @@
     // Hot leg, at the point the pressurizer surge line branches off it. The surge line is
     // always open — it is how the pressurizer stays connected to the RCS.
     ims2kt7fu64: function (s) {
-      return { temp: IN(s).thot, contents: 'water', flowing: LF(s).primary > 0,
+      return { temp: IN(s).thot,
+               contents: legContents((s && s.true_state || {}).primary_void_fraction),
+               flowing: LF(s).primary > 0,
         speed: sysSpeed(s, 'primary') };
     },
     // Feedwater: feed-pump discharge + the AFW branch, into the SG. Tracks the FW-heater
@@ -1594,8 +1620,25 @@
   // between two crawling pipes is the #236 defect from the other side. `speed` is the primary
   // system's banded dash velocity, the same number the pipes either side of it read, which is
   // what keeps the dashes matched across the joint (#231).
+  /* WHAT IS ACTUALLY IN THE PIPE (#516 item 7, owner playtest 2026-08-29: "When core started to
+   * melt down the whole coolant loop showed the coolant was very hot").
+   *
+   * The primary runs declared `contents: 'water'` unconditionally, so the board drew liquid
+   * coolant through a loop that had voided. And it could not fall back on temperature to say
+   * otherwise: once the loop saturates BOTH legs sit at T_sat(P) — measured, `thot` and `tcold`
+   * equal to the decimal through a whole loss-of-coolant accident, which is CORRECT physics and
+   * a real accident signature rather than a defect. The information is in the VOID, where the
+   * two legs differ by up to 0.35 in quality (0.868 hot against 0.516 cold at 600 s).
+   *
+   * VOLUMETRIC MAJORITY is the cut, because that is what a pipe looks like: above half void the
+   * run is mostly vapour and paints as steam, which `std_pipe` already has a colour ramp for.
+   * Absent a void field it stays 'water', so the retired engine and any partial mount are
+   * unchanged. */
+  function legContents(v) { return (v != null && isFinite(v) && v > 0.5) ? 'steam' : 'water'; }
   function coldLeg(s, legs) {
-    var p = { temp: IN(s).tcold, contents: 'water', flowing: LF(s).primary > 0,
+    var p = { temp: IN(s).tcold,
+              contents: legContents((s && s.true_state || {}).cold_leg_void_fraction),
+              flowing: LF(s).primary > 0,
               speed: sysSpeed(s, 'primary') };
     if (legs) for (var k in legs) if (Object.prototype.hasOwnProperty.call(legs, k)) p[k] = legs[k];
     return p;

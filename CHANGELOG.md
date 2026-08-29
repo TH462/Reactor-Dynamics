@@ -30,6 +30,33 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
 
 ## [Unreleased]
 
+### Fixed (#516 items 6, 7 and 8 — what the board shows during core damage, 2026-08-29)
+
+Full write-up: `Blueprint/PWR2_VALIDATION.md` §123. The last three of the owner's playtest list.
+
+- **The reactor vessel drew a mass fraction where a level was needed** (item 6). Its water column
+  was fed `core_inventory_pct` — the RCS-wide `M_total / M_nominal` — which is not a level: early
+  in a blowdown the mass collapses because the water **flashes**, while the column in the vessel
+  falls nothing like as fast. Measured on a 20 cm² break with injection secured, it read **17.3 %
+  at 90 s against a core 69 % uncovered**, and **0.74 % at 630 s — an essentially dry vessel —
+  while 9 % of the core was still covered**. Now driven by the core's own uncovery below the
+  half-way split and the hot-leg void above it.
+- **The primary pipes declared liquid water unconditionally** (item 7), so the board drew coolant
+  through a loop that had voided. Phase now comes from the void, and the cold leg publishes one
+  for the first time — the hot leg always had one, and without a counterpart nothing could tell
+  the legs apart.
+- **What looked most like the defect turned out to be correct physics, and was left alone.**
+  Through a whole loss-of-coolant accident the hot and cold leg temperatures read **exactly
+  equal** — which looks like the leg split dying at the worst moment, and is instead both legs
+  sitting at saturation temperature, as they must, and as real plants show. The legs still differ
+  by up to **0.35 in quality**; the information moved out of temperature and into void, which is
+  why the pipes now read the latter.
+- **Core temperature no longer swings during a meltdown** (item 8). It does not reproduce on this
+  build — the cladding trace has 3 direction reversals in 1200 samples and rises monotonically
+  through the damage phase. Most likely resolved by the whole-plant hold, the vapour ceiling, and
+  this release's clad-melt cut-off. Recorded with the trace rather than chased.
+
+
 ### Changed (#516 item 9 — the melt path, and three claims withdrawn, 2026-08-29)
 
 Full write-up: `Blueprint/PWR2_VALIDATION.md` §122. *(OWNER RULING, 2026-08-29: selected

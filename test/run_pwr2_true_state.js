@@ -549,6 +549,30 @@ function runSuite(TS, rec, quiet) {
      TS.buildTrueState({ sys: B.sys, beyond_model: true }).model_held_why === 'none',
      'a held plant with no stated cause is still HELD — the flag never depends on the string');
 
+  /* ---- THE COLD LEG HAS A VOID TOO (#516 item 7) --------------------------------------------
+   * The hot leg published one and the cold leg did not, which left every consumer unable to tell
+   * the two apart once the loop saturated — and once it does, TEMPERATURE cannot: both legs sit
+   * at T_sat(P) by definition. Measured on a 20 cm2 break, `thot` and `tcold` are equal to the
+   * decimal for the whole ride while the legs differ by up to 0.35 in quality. */
+  head('THE COLD-LEG VOID  [once the loop saturates, temperature stops telling the legs apart]');
+  ck('the cold leg publishes its own void fraction, beside the hot leg it always had',
+     typeof ts.cold_leg_void_fraction === 'number' && isFinite(ts.cold_leg_void_fraction) &&
+     typeof ts.primary_void_fraction === 'number',
+     'cold ' + ts.cold_leg_void_fraction + ', hot ' + ts.primary_void_fraction);
+  /* THE DISCRIMINATOR: it must read the COLD leg's node, not echo the hot one. Built by voiding
+   * one leg and not the other, so a copy-paste that publishes the hot value twice reddens. */
+  var sysCV = JSON.parse(JSON.stringify(B.sys));
+  (function () {
+    var Wv = RD.water, P = sysCV.P;
+    for (var i = 0; i < sysCV.nodes.length; i++)
+      if (sysCV.nodes[i].id === 'hot_leg') sysCV.nodes[i].h = Wv.h_g(P);   /* hot leg all vapour */
+  })();
+  var tsCV = TS.buildTrueState({ sys: sysCV });
+  ck('...and it reads the COLD leg, not a second copy of the hot one',
+     tsCV.primary_void_fraction > 0.5 && tsCV.cold_leg_void_fraction < 0.5,
+     'hot leg voided to ' + tsCV.primary_void_fraction.toFixed(3) +
+     ' while the cold leg stays at ' + tsCV.cold_leg_void_fraction.toFixed(3));
+
   /* ---- WHICH SIDE OF THE VALIDATED RANGE (#516 item 9) --------------------------------------
    * Layer 0 carries a SOURCED ideal-gas branch above IAPWS-95's 1000 degC limit so the
    * core-damage chain can run to its own end. That branch is DECLARED, not validated, and the
@@ -718,6 +742,12 @@ runSuite(TS, rec, false);
 var pass = rec.filter(function (r) { return r.ok; }).length, fail = rec.length - pass;
 
 var MUTATIONS = [
+  /* #516 item 7: the cold-leg void becomes a second copy of the hot leg's, so the two legs stop
+   * being distinguishable in the one quantity that still separates them once the loop is
+   * saturated and temperature no longer can. */
+  ['the cold-leg void echoes the HOT leg (the legs stop being distinguishable)',
+   "put('cold_leg_void_fraction', nodeAlpha(nd, sys.P, 'cold_leg'));",
+   "put('cold_leg_void_fraction', nodeAlpha(nd, sys.P, 'hot_leg'));"],
   /* #516 item 9: the regime reporter goes back to scanning the KEYED lookup, whose `.length` is
    * undefined — so the loop runs zero times and every plant reports 'ok'. This is the defect the
    * check caught on its first outing, and it is the dangerous shape: a reporter that always says
