@@ -58,7 +58,8 @@ function runSuite(B, rec, quiet) {
     var M0 = sys.M_total, r = null, n = Math.round(secs / 0.02);
     for (var i = 0; i < n; i++) {
       r = B.stepBreak(br, sys, 0.02, {});
-      S.stepPlant(sys, 0.02, { sources: [r.source] });
+      var p = S.stepPlant(sys, 0.02, { sources: [r.source] });
+      if (p.held !== true) B.book(br, r);   /* #585 — the plant's acceptance books the ledger */
     }
     return { sys: sys, br: br, r: r, lost: M0 - sys.M_total, M0: M0 };
   }
@@ -155,6 +156,24 @@ function runSuite(B, rec, quiet) {
         return Math.abs(o.source.h - nodeH) < 1e-9 && Math.abs(nodeH - 1362) > 50;
       })(), 'tested at a node enthalpy far from the default, so a remembered constant cannot pass');
 
+  /* ---- THE HOLD (#585) -------------------------------------------------------------------- */
+  head('THE HOLD  [#585 -- a held plant discharges NOTHING, and only acceptance books]');
+  ckT('a break on a beyond_model plant proposes zero flow and books nothing', (function () {
+        var sysH = plant(); sysH.beyond_model = true;
+        var brH = B.createBreak({ area_m2: 0.01, open: true });
+        var o = B.stepBreak(brH, sysH, 0.02, {});
+        B.book(brH, o);
+        return o.mdot_kgs === 0 && o.held === true && o.step_kg === 0 && brH.discharged_kg === 0;
+      })(), 'guard, reporter and ledger agree — 69.4 kg of created mass is what this fences');
+  ckT('book() commits exactly the accepted step, and only through step_kg', (function () {
+        var sysL = plant();
+        var brL = B.createBreak({ area_m2: 0.001, open: true });
+        var o = B.stepBreak(brL, sysL, 0.02, {});
+        if (brL.discharged_kg !== 0) return false;          /* stepBreak itself must not book */
+        B.book(brL, o);
+        return o.step_kg > 0 && Math.abs(brL.discharged_kg - o.mdot_kgs * 0.02) < 1e-12;
+      })(), 'the ledger means "mass the plant actually lost", by construction');
+
   /* ---- REFUSALS --------------------------------------------------------------------------- */
   head('REFUSALS  [a break is an area in a SPECIFIC node]');
   ckT('stepping without a plant throws', (function () {
@@ -205,7 +224,14 @@ var MUTATIONS = [
   ['the discharge leaves at a fixed enthalpy instead of the node condition',
    '      source: { node: br.node, mdot: -mdot, h: node.h },',
    '      source: { node: br.node, mdot: -mdot, h: 1362 },'],
-  ['the ledger stops accumulating', '    br.discharged_kg += mdot * dt;', ''],
+  /* #585 re-anchored: the booking moved out of stepBreak into book() — the plant's acceptance
+   * commits the ledger, so a step the core holds books nothing. */
+  ['the ledger stops accumulating',
+   '    br.discharged_kg += r.step_kg * (frac === undefined ? 1 : frac);', ''],
+  ['the proposed step mass is zeroed, so book() commits nothing',
+   '      step_kg: mdot * dt,', '      step_kg: 0,'],
+  ['the held-plant guard is removed — a frozen plant goes on discharging (#585)',
+   '    if (sys.beyond_model === true) open = false;', ''],
   ['the App. K coefficient range moves', 'cd_min: 0.6, cd_max: 1.0,', 'cd_min: 0.3, cd_max: 1.5,'],
   ['the sourced back-pressure moves', 'backpressure_mpa: (1.0 + 14.696) / 145.0377,',
    'backpressure_mpa: 0.5,'],

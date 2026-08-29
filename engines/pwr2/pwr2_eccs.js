@@ -253,6 +253,24 @@
    * seats: a failed train and an unpowered one are different facts with different recoveries. */
   function stepECCS(ec, sys, dt, drivers) {
     var P = sys.P;
+    /* #585 — A HELD PLANT ACCEPTS NO INJECTION. Once the core latches `beyond_model` its mass is
+     * frozen, so a train that kept delivering would DESTROY the water it discharged (the break's
+     * mirror image: it was creating mass at 49 kg/s into containment). Zero flow, and the
+     * accumulator keeps its water — the tank must not drain into a plant that refuses it. */
+    if (sys.beyond_model === true) {
+      var ac0 = ec.acc;
+      return {
+        hhsi_kgs: 0, lhsi_kgs: 0, acc_kgs: 0, total_kgs: 0,
+        injected_kg: ec.injected_kg,
+        acc_water_frac: ac0 ? (ac0.w0_m3 > 0 ? ac0.water_m3 / ac0.w0_m3 : 0) : 0,
+        acc_pressure_mpa: ac0 ? accPressure(ac0) : 0,
+        acc_valve_open: ac0 ? ac0.valve_open === true : false,
+        hhsi_shutoff: P * PSI_PER_MPA >= ECCS.hhsi_shutoff_psia,
+        lhsi_shutoff: P * PSI_PER_MPA >= ECCS.lhsi_shutoff_psia,
+        held: true,
+        sources: []
+      };
+    }
     var powered = !drivers || drivers.ac_available !== false;
     var hh = (ec.hhsiRunning && powered) ? hhsiFlow(P) * Math.max(0, ec.hhsiAvail) : 0;
     var lh = (ec.lhsiRunning && powered) ? lhsiFlow(P) * Math.max(0, ec.lhsiAvail) : 0;

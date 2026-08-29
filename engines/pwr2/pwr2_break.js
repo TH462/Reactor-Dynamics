@@ -116,6 +116,10 @@
 
     var dP = sys.P - back;
     var open = br.open && br.area_m2 > 0 && dP > 0;
+    /* #585 — A HELD PLANT DISCHARGES NOTHING. Once the core latches `beyond_model` its mass is
+     * frozen, so a break that kept flowing would create mass out of nothing (measured before this
+     * guard: 69.4 kg over 222 held steps, at the rate of the break, into containment). */
+    if (sys.beyond_model === true) open = false;
     var mdot = 0, rho = 0, G = 0;
     if (open) {
       /* HOMOGENEOUS density of whatever the node holds — subcooled liquid, saturated mixture or
@@ -157,13 +161,15 @@
       G = Math.sqrt(2 * rho * dP_eff * 1e6);      /* MPa -> Pa; kg/m2s */
       mdot = br.cd * br.area_m2 * G;
     }
-    br.discharged_kg += mdot * dt;
-
     /* computed ONCE for the two reporter fields below (#514 — it was evaluated twice) */
     var P_flash = PSAT(TFH(node.h, sys.P));
 
     return {
       mdot_kgs: mdot,
+      /* #585 — THE STEP'S PROPOSED DISCHARGE, NOT YET BOOKED. `stepBreak` offers; the plant's
+       * acceptance books. The caller commits with `book(br, r)` only after the core step comes
+       * back un-held, so a step the core refuses puts nothing on the ledger. */
+      step_kg: mdot * dt,
       /* THE SHAPE LAYER 3 WANTS. Negative mdot REMOVES mass, and the enthalpy carried out is the
        * NODE's — a break does not sort the fluid it takes. */
       source: { node: br.node, mdot: -mdot, h: node.h },
@@ -176,7 +182,9 @@
       flux_kg_m2s: G,
       rho_mix: rho,
       quality: W.quality(node.h, sys.P),
-      discharged_kg: br.discharged_kg,
+      /* #585 — reported so a caller can SEE why a live break reads zero flow. The ledger itself
+       * lives on `br` and moves only through book(). */
+      held: sys.beyond_model === true,
       /* REPORTED so a caller can see the discharge is a fraction of a pipe, not a bare area. */
       area_m2: br.area_m2,
       cd: br.cd,
@@ -188,10 +196,30 @@
     };
   }
 
+  /* book(br, r) — commit one step's discharge to the ledger, AFTER the core accepted the step.
+   *
+   * #585: the ledger used to be booked inside stepBreak, BEFORE the core could refuse the step —
+   * so on the step the hold latches, the break booked mass the primary never lost, and containment
+   * received it: mass out of nothing. Rolling the ledger back afterwards was tried twice and both
+   * repairs were wrong (see the issue). So the booking is deferred instead: `discharged_kg` means
+   * "mass the plant actually lost", by construction. Callers gate it on the core's own verdict:
+   *
+   *     var r = BK.stepBreak(br, sys, dt, drv);
+   *     var p = S.stepPlant(sys, dt, { sources: [r.source] });
+   *     BK.book(br, r, p.dt_accepted / dt);       // and containment intake books the same time
+   *
+   * `frac` (default 1) is the accepted fraction of the step — `p.dt_accepted / dt`. It exists
+   * because the Courant sub-stepping can integrate PART of the step before the latch refuses
+   * the rest (measured: one of two substeps, 0.966 kg), and the fraction is the PLANT'S report
+   * of what it took, not caller arithmetic about what a defect did. */
+  function book(br, r, frac) {
+    br.discharged_kg += r.step_kg * (frac === undefined ? 1 : frac);
+  }
+
   root.RD = root.RD || {};
   root.RD.pwr2 = root.RD.pwr2 || {};
   root.RD.pwr2.break_ = {
     BREAK: BREAK, pipeAreaM2: pipeAreaM2,
-    createBreak: createBreak, stepBreak: stepBreak
+    createBreak: createBreak, stepBreak: stepBreak, book: book
   };
 })(typeof globalThis !== 'undefined' ? globalThis : this);

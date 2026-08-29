@@ -58,8 +58,14 @@ function runSuite(C, rec, quiet) {
     var ct = C.createContainment({}), r = null, cr = null;
     for (var i = 0; i < Math.round(secs / 0.02); i++) {
       r = B.stepBreak(br, sys, 0.02, { backpressure_mpa: cr ? cr.containment_pressure_mpa : undefined });
-      cr = C.stepContainment(ct, 0.02, { mdot_kgs: r.mdot_kgs, h_kJkg: r.source.h });
-      S.stepPlant(sys, 0.02, { sources: [r.source] });
+      /* #585 — the plant's acceptance books: ledger and containment intake both ride the core's
+       * verdict, so a held step can neither book nor deliver. (Order swap is inert: containment
+       * feeds back only through NEXT step's backpressure.) */
+      var p = S.stepPlant(sys, 0.02, { sources: [r.source] });
+      if (p.held !== true) {
+        B.book(br, r);
+        cr = C.stepContainment(ct, 0.02, { mdot_kgs: r.mdot_kgs, h_kJkg: r.source.h });
+      }
     }
     return { cr: cr, br: br, sys: sys, ct: ct };
   }

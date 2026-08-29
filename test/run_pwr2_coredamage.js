@@ -110,6 +110,7 @@ function scenario(opts) {
     var srcs = [br.source];
     if (relief > 0) srcs.push({ node: 'hot_leg', mdot: -relief, h: pzr.relief_h });
     var pr = S.stepPlant(sys, DT, { heats: rr.heats, sources: srcs });
+    RD.break_.book(brk, br, pr.dt_accepted / DT);    /* #585 — book only what the plant accepted */
     pzr = PZ.stepPressurizer(pz, sys, DT, {});
     relief = pzr.relief_kgs;
     if (pzEmptyAt === null && pzr.emptied) pzEmptyAt = t;
@@ -196,9 +197,17 @@ ckT('...and the flow collapses before the cladding reaches the hydrogen onset',
  * around the plant kept running. Fourth probe in this engine to read a plant outside its own
  * valid regime; `run_pwr2_cvcs` carries the comment about the first three.
  *
- * What blocks it is Layer 0's 0.1 MPa property floor, which an unmitigated break reaches. That is
- * the same wall PWR2_VALIDATION §74 records from the other side for Mode 5, and settling it —
- * extend Layer 0, or re-design the ride so the chain completes inside the envelope — is #586.
+ * WHICH WALL BLOCKS IT WAS MEASURED 2026-08-29 (#586, owner-ruled "measure, then settle"), and
+ * it is NOT the 0.1 MPa pressure floor this banner used to name: on every unmitigated break
+ * size (5/10/20/40 cm2) the plant latches on the CEILING-PERSISTENCE arm — the core node
+ * pinned at the VAPOUR branch's 800 degC envelope edge (h = 4161 kJ/kg) for 60 continuous
+ * seconds of active discard — with pressure parked at 15.7 psia, comfortably ABOVE the floor.
+ * So the chain is NOT blocked on #524 (the sub-floor extension Mode 5 waits on); it is blocked
+ * on TV_MAX, the superheated-vapour fits' validated ceiling. The honest ride reaches the
+ * 1200 degF onset and peaks at 1698-1735 degF STILL CLIMBING at the latch, oxidation < 1 % —
+ * about 65 degF short of the 1800 degF milestone. Un-blocking means extending the four
+ * cp_v/Z(P) fits past 800 degC against fresh IAPWS-95 anchors and re-calibrating the
+ * CEIL_HOLD_LATCH_S margin — its own scoped work item, not a constant bump.
  *
  * *(OWNER RULING, 2026-08-28: "Keep the guard, shrink the claims", from three costed options.)*
  * Every claim the VALID plant supports is kept; the rest is named here rather than quietly

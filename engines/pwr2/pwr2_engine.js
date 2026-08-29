@@ -757,7 +757,12 @@
   }
 
   function step(eng, dt) {
-    if (eng._dead) {
+    /* #585 — THE HOLD IS THE WHOLE PLANT (owner-ruled 2026-08-29). `beyond_model` used to stop
+     * only the primary's mass/energy solve while all 19 subsystems kept stepping around it — so
+     * the break went on booking discharge into containment at ~49 kg/s and every accumulator
+     * (AFW delivered_kg, CVCS, damage) kept its own clock against a frozen plant. Held means one
+     * thing: the same short-circuit the runaway screen (_dead) already takes. */
+    if (eng._dead || (eng.sys && eng.sys.beyond_model === true)) {
       eng.simTime += dt;
       if (eng._lastTs) { stampHeld(eng); return eng._lastTs; }
     }
@@ -1122,6 +1127,13 @@
     }
     var pr = S.stepPlant(sys, dt, { heats: heats, sgDuty: sr.duty_kW, sources: srcs });
 
+    /* #585 — the break's ledger books only what the plant ACCEPTED. A mid-step latch integrates
+     * part of the step before refusing the rest (Courant sub-stepping), and `dt_accepted` is the
+     * plant's own report of that time; the ledger and containment's intake below both book
+     * exactly it — 0 on a refused step, dt on a healthy one, the adopted fraction at the latch. */
+    var dtAcc = pr.dt_accepted === undefined ? (pr.held === true ? 0 : dt) : pr.dt_accepted;
+    if (br && dtAcc > 0) BK.book(eng.brk, br, dtAcc / dt);
+
     var pzr = PZ.stepPressurizer(eng.pz, sys, dt, Object.assign({
       /* HR1 (2026-08-20): the heater/spray/PORV ladder, the level PI and the 17 % low-level
        * cut read the INSTRUMENTS (one step old); the code safeties inside the module read
@@ -1234,13 +1246,17 @@
      * under-booked containment energy 8.3 % on a compound casualty. The mdot-weighted mean
      * is EXACT here, not an approximation — the containment ledger accumulates dm and dm*h
      * linearly, so one blended call equals two single-stream calls to the last bit. */
+    /* #585: containment receives the streams over the time the primary actually LOST them —
+     * `dtAcc`, the plant's own report. Mass the plant did not lose cannot arrive anywhere, so a
+     * refused step delivers nothing and a mid-latch step delivers its accepted fraction. */
     var mBr = br && !toSG && br.mdot_kgs > 0 ? br.mdot_kgs : 0;
     var mPz = eng._pzRelief > 0 ? eng._pzRelief : 0;
     var ctIn = mBr + mPz;
-    var ctr = CT.stepContainment(eng.ctm, dt,
-      ctIn > 0 ? { mdot_kgs: ctIn,
-                   h_kJkg: (mBr * (mBr > 0 ? br.source.h : 0) + mPz * eng._pzReliefH) / ctIn }
-               : { mdot_kgs: 0 });
+    var ctr = CT.stepContainment(eng.ctm, dtAcc > 0 ? dtAcc : dt,
+      ctIn > 0 && dtAcc > 0
+        ? { mdot_kgs: ctIn,
+            h_kJkg: (mBr * (mBr > 0 ? br.source.h : 0) + mPz * eng._pzReliefH) / ctIn }
+        : { mdot_kgs: 0 });
     eng._ctP = ctr.containment_pressure_mpa;   /* next step's break backpressure (#543) */
 
     eng.simTime += dt;

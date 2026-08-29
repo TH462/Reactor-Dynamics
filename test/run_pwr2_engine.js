@@ -766,6 +766,31 @@ function runSuite(RD, rec, quiet, only) {
       threw3 ? ('THREW: ' + threw3.slice(0, 60)) :
       ('latched ' + latch3 + ' (reported), max |dP|/step ' + maxStep.toFixed(3) + ' MPa, P ' +
        (ts3 === null ? '?' : (ts3.pressure_mpa * 145.04).toFixed(0)) + ' psia'));
+
+  /* ---- THE HOLD IS THE WHOLE PLANT (#585, owner-ruled 2026-08-29) --------------------------
+   * Once beyond_model latches, the facade must stop stepping EVERY subsystem — before this,
+   * only the primary froze while the 19-system ladder kept its own clocks: the break booked
+   * ~49 kg/s into containment out of nothing, and AFW went on feeding a frozen plant (measured
+   * on this ride with the short-circuit reverted: +18 kg of delivered_kg in 10 held seconds —
+   * AFW is the ONE ledger only the facade guard protects, since break/ECCS carry their own
+   * held-plant doors and the containment intake rides dt_accepted). Clock still runs; the
+   * held snapshot stays stamped. */
+  var engH = EN.createEngine({});
+  EN.command(engH, 'break_open', { area_m2: 0.008, node: 'cold_leg' });
+  var tsH = null, tH = 0;
+  while (tH < 300) { tsH = EN.step(engH, DT); tH += DT; if (tsH.model_held) break; }
+  var hDis = engH.brk.discharged_kg, hCtm = engH.ctm.mass_in_kg, hAfw = engH.aw.delivered_kg,
+      hAcc = engH.ec.acc.water_m3, hM = engH.sys.M_total, hSim = engH.simTime;
+  for (var hh = 0; hh < 500; hh++) tsH = EN.step(engH, DT);
+  var hDrift = Math.max(
+    Math.abs(engH.brk.discharged_kg - hDis), Math.abs(engH.ctm.mass_in_kg - hCtm),
+    Math.abs(engH.aw.delivered_kg - hAfw), Math.abs(engH.ec.acc.water_m3 - hAcc),
+    Math.abs(engH.sys.M_total - hM));
+  ckT('a latched plant is held WHOLE: 500 more steps move no ledger, and the clock still runs',
+      tsH !== null && tsH.model_held === true && hDrift === 0 &&
+      Math.abs(engH.simTime - hSim - 500 * DT) < 1e-9,
+      'latched t=' + tH.toFixed(1) + ' s; max ledger drift ' + hDrift.toFixed(6) +
+      ' kg over 10 held s (break, containment, AFW, accumulator, M_total) — exact zero required');
   }
 
   if (grp('E')) {
@@ -1860,6 +1885,9 @@ var pass = rec.filter(function (r) { return r.ok; }).length, fail = rec.length -
 
 var ENSRC = fs.readFileSync(path.join(SRC, 'pwr2_engine.js'), 'utf8').replace(/\r\n/g, '\n');
 var MUTATIONS = [
+  ['the facade hold is unwired — every subsystem keeps stepping a held plant (#585)',
+   'if (eng._dead || (eng.sys && eng.sys.beyond_model === true)) {',
+   'if (eng._dead) {', { grp: 'D' }],
   ['the pressurizer relief sink is dropped (mass relieves without leaving)',
    "srcs.push({ node: 'hot_leg', mdot: -eng._pzRelief, h: sys.nodes[iHL].h });",
    '', { grp: 'A' }],

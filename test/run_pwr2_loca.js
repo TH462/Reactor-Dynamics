@@ -51,70 +51,59 @@ function scenario(opts) {
                                     node: 'cold_leg', open: true });
   var ctm = RD.containment.createContainment({});
   var ecc = RD.eccs.createECCS({ hhsiRunning: !!opts.eccsLinedUp, lhsiRunning: !!opts.eccsLinedUp });
-  var M0 = sys.M_total, courantBad = 0, eccsStartedAt = null, injected = 0,
-      heldAt = null, heldDis = 0, heldInj = 0;
-  var M1s = sys.M_total, dis1 = 0, inj1 = 0;
+  var M0 = sys.M_total, courantBad = 0, eccsStartedAt = null, injected = 0;
   var steps = opts.steps || 3000, t = 0, lastR = null, lastCt = null, lastEc = null;
+  /* THE HOLD, POST-#585: the loop deliberately keeps stepping PAST the latch, because the claim
+   * worth a check is the one the defect violated — that a held plant and its books are FROZEN
+   * TOGETHER. Before the fix this fixture created 69.4 kg out of nothing over 222 held steps
+   * (the break booked at ~49 kg/s into containment while M_total stood still), and the interim
+   * fixture here could only snapshot the last running step and name the frozen step's 1.9 kg as
+   * a measured number. Now `stepBreak`/`stepECCS` refuse a held plant at their own doors, the
+   * ledger books only through `book()` on the core's acceptance, and the latching step — which
+   * the core refuses whole — books nothing. The drift tracker below asserts exact zeros. */
+  var heldAt = null, heldSteps = 0, heldDrift = 0, hM = 0, hDis = 0, hCtm = 0, hInj = 0, hAcc = 0;
   for (var i = 0; i < steps; i++) {
-    /* ⚠ THE GUARD IS AT THE TOP, and putting it at the bottom left exactly one step's worth of
-     * error behind — 0.977 kg, which is one 0.02 s step at this break's ~49 kg/s. `step` latches
-     * `beyond_model` inside the solve and returns HELD from the NEXT call, so by the time
-     * `r.held` is visible the frozen step's break discharge has already been booked. Stopping
-     * before stepping is what makes the identity exact rather than nearly exact. */
-    if (sys.beyond_model) { heldAt = t; break; }
-    /* the ledger as it stood BEFORE this step — see the hold note below */
-    var dis0 = brk.discharged_kg, inj0 = injected;
     var br = RD.break_.stepBreak(brk, sys, DT, {});
     var ec = RD.eccs.stepECCS(ecc, sys, DT);
     var merged = S.mergeSources([br.source], ec.sources);
     var r = S.stepPlant(sys, DT, { sources: merged });
-    PZ.stepPressurizer(pz, sys, DT, {});
-    var ct = RD.containment.stepContainment(ctm, DT,
-      br.mdot_kgs > 0 ? { mdot_kgs: br.mdot_kgs, h_kJkg: br.source.h } : { mdot_kgs: 0 });
-    if (!r.courantOK) courantBad++;
-    if (eccsStartedAt === null && ec.total_kgs > 0) eccsStartedAt = t;
-    injected += ec.total_kgs * DT;
+    /* the plant's own report of how much of the step it integrated: DT on a healthy step, 0 on
+     * a held one, the adopted-substep sum on the step the latch fires mid-way (#585). The
+     * ledger, containment's intake and the injection tally all book exactly this time — the
+     * same acceptance gate pwr2_engine runs. */
+    var dtAcc = r.dt_accepted;
+    if (dtAcc > 0) {
+      RD.break_.book(brk, br, dtAcc / DT);
+      lastCt = RD.containment.stepContainment(ctm, dtAcc,
+        br.mdot_kgs > 0 ? { mdot_kgs: br.mdot_kgs, h_kJkg: br.source.h } : { mdot_kgs: 0 });
+      injected += ec.total_kgs * dtAcc;
+    }
+    if (r.held !== true) {
+      PZ.stepPressurizer(pz, sys, DT, {});
+      if (!r.courantOK) courantBad++;
+      if (eccsStartedAt === null && ec.total_kgs > 0) eccsStartedAt = t;
+    } else {
+      if (heldAt === null) {
+        heldAt = t;
+        hM = sys.M_total; hDis = brk.discharged_kg; hCtm = ctm.mass_in_kg; hInj = injected;
+        hAcc = ecc.acc ? ecc.acc.water_m3 : 0;
+      } else {
+        /* every book the plant, the break, containment, the ECCS tally or the tank keeps must
+         * sit EXACTLY where the latch left it — the largest departure is the check's number */
+        heldDrift = Math.max(heldDrift,
+          Math.abs(sys.M_total - hM), Math.abs(brk.discharged_kg - hDis),
+          Math.abs(ctm.mass_in_kg - hCtm), Math.abs(injected - hInj),
+          Math.abs((ecc.acc ? ecc.acc.water_m3 : 0) - hAcc));
+      }
+      heldSteps++;
+    }
     t += DT;
-    lastR = r; lastCt = ct; lastEc = ec;
-    /* ⚠ STOP AT THE BEYOND-MODEL HOLD, AND THE MASS IDENTITIES ARE WHY.
-     *
-     * A HELD step freezes the plant (`pwr2_core` returns early, M_total does not move) while
-     * `stepBreak` goes on reporting discharge and containment goes on receiving it. So across a
-     * hold the primary stops losing what the break says it lost, and the identity below is
-     * comparing a frozen plant against a still-counting ledger. MEASURED (#574, 2026-08-28):
-     * this 40 cm2 fixture reaches the 0.1 MPa property floor and is held for **222 steps**,
-     * during which the closure drifts by **69.4 kg**. Before the metal walls the same fixture
-     * stopped at 0.339 MPa and never reached the hold, so the identity closed to -0.000 kg and
-     * nothing here had ever stood next to a hold.
-     *
-     * That divergence is a REAL DEFECT and it is not this gate's and not the walls' — a held
-     * plant creating mass in containment is filed separately. What this fixture must not do is
-     * assert a running-plant identity across a frozen one.
-     *
-     * ⚠ THE LATCHING STEP IS ITSELF HELD, and that is why the identities are asserted against a
-     * SNAPSHOT of the last running step rather than against the final state. Measured at
-     * t = 115.58 s: one step reports `held`, clamps two nodes, discards 2,910 MJ, and books
-     * break discharge the plant never lost. Stopping *after* it left exactly that behind —
-     * 0.977 kg, one 0.02 s step at this break's ~49 kg/s, small enough to read as a rounding
-     * tolerance rather than as a frozen step. It is not one.
-     *
-     * Two arithmetic repairs were tried before the snapshot and BOTH were wrong, which is worth
-     * recording because both looked right: rolling `discharged_kg` back broke the containment
-     * identity (containment DID receive that mass), and subtracting the held step's measured
-     * discharge overshot by exactly one step again. Any arithmetic here is a claim about what
-     * the defect did; the snapshot makes no claim at all. */
-    if (r.held) { heldDis = brk.discharged_kg - dis0; heldInj = injected - inj0;
-                  heldAt = t; break; }
-    /* THE LAST RUNNING STEP's ledger — the last state at which the plant and its books were the
-     * same plant. The identities are asserted here rather than by arithmetic about what the
-     * frozen step did, because that arithmetic is itself a claim about a defect. */
-    M1s = sys.M_total; dis1 = brk.discharged_kg; inj1 = injected;
+    lastR = r; lastEc = ec;
   }
   return { sys: sys, M0: M0, M1: sys.M_total, brk: brk, ctm: ctm, courantBad: courantBad,
            steps: steps, eccsStartedAt: eccsStartedAt, injected: injected,
            lastR: lastR, lastCt: lastCt, lastEc: lastEc,
-           heldAt: heldAt, heldDis: heldDis, heldInj: heldInj,
-           M1s: M1s, dis1: dis1, inj1: inj1 };
+           heldAt: heldAt, heldSteps: heldSteps, heldDrift: heldDrift };
 }
 
 function runSuite(rec, quiet) {
@@ -183,39 +172,45 @@ function runSuite(rec, quiet) {
   ckT('ECCS actually injected something worth checking', b.injected > 10,
       b.injected.toFixed(1) + ' kg returned to the primary');
 
-  /* ---- 4. THE COURANT LIMIT HOLDS AT THE HOUSE dt = 0.02 s ----------------------------------
-   * The performance constraint: no substep machinery was added to guarantee this. A break moves
-   * mass fast, but courantLimit() binds on the MAIN LOOP flow through the smallest ring node, not
-   * on break flow directly -- so the existing cadence should already be sufficient, and this is
-  /* ---- THE ACCUMULATOR IN THE JOINT RIDE (#511) — pumps OFF, a bigger break, and the
+  /* ---- 4. THE ACCUMULATOR IN THE JOINT RIDE (#511) — pumps OFF, a bigger break, and the
    * passive tank answers on its own once the blowdown crosses the ~650 psig cover pressure.
    * The closure identities must hold with the passive stream in them, and containment must
-   * stay blind to it (injection adds to the PRIMARY only). ---- */
+   * stay blind to it (injection adds to the PRIMARY only). This is also the ride that reaches
+   * the beyond-model hold (~107 s), which is what section 5 stands on. ---- */
   head('THE ACCUMULATOR  [#511: passive injection joins the closure; containment never sees it]');
   var c = scenario({ steps: N * 2, area_m2: 0.004, eccsLinedUp: false });
   ckT('with NO pumps lined up the accumulator still injected (passive, below its cover pressure)',
       c.injected > 100 && c.lastEc.acc_water_frac < 1,
       c.injected.toFixed(0) + ' kg injected, tank at ' +
       (100 * c.lastEc.acc_water_frac).toFixed(1) + ' %');
-  /* ⚠ THE HELD STEP IS SUBTRACTED BY NAME, NOT ABSORBED INTO A TOLERANCE (#574). This fixture
-   * now reaches the beyond-model hold at 107.26 s, and the LATCHING step is itself held: the
-   * break books 1.9238 kg and containment receives it while the plant's mass does not move.
-   * (115.58 s / 0.977 kg before #583 — the same break on a plant 13.5 % smaller gets there
-   * sooner, which is the whole shape of that change.) That
-   * is the plant creating mass, it is filed as its own defect, and the honest thing for this
-   * gate is to state the number rather than widen `1e-6` until it disappears. The identity is
-   * asserted over the RUNNING portion; the held step is named on the next line. */
-  ck('primary net change = discharged MINUS injection, at the last RUNNING step',
-     c.M0 - c.M1s, c.dis1 - c.inj1, 1e-6 * Math.max(1, c.dis1), 'kg');
-  ckT('...and the FROZEN step\'s discharge is a measured number, not a tolerance',
-      c.heldAt !== null && c.heldDis > 0,
-      c.heldDis.toFixed(4) + ' kg booked by the break at t = ' +
-      (c.heldAt === null ? 'never' : c.heldAt.toFixed(2) + ' s') + ' on a step the plant was ' +
-      'HELD for — mass this plant created, filed separately');
+  /* Post-#585 these identities are asserted at the FINAL state, held steps included — the
+   * interim fixture that snapshotted the last RUNNING step and named the frozen step's booking
+   * (1.9238 kg at 107.26 s) as "mass this plant created" is retired WITH the defect. */
+  ck('primary net change = discharged MINUS injection, ACROSS the hold',
+     c.M0 - c.M1, c.brk.discharged_kg - c.injected, 1e-6 * Math.max(1, c.brk.discharged_kg), 'kg');
   ck('containment STILL received exactly the break\'s discharge — the tank is invisible to it',
      c.ctm.mass_in_kg, c.brk.discharged_kg, 1e-6 * c.brk.discharged_kg, 'kg');
 
-  /* the check that would say otherwise if it were not. */
+  /* ---- 5. THE HOLD FREEZES THE PLANT AND ITS BOOKS TOGETHER (#585) --------------------------
+   * The invariant the defect violated, asserted at every held step rather than at one endpoint
+   * (the standing CLAUDE.md rule about #543-class cliffs). Before the fix: 222 held steps,
+   * 69.4 kg created — the break kept booking into containment while M_total stood still, and
+   * the LATCHING step itself booked 1.9238 kg the plant refused. Now the plant's mass, the
+   * break ledger, containment's receipt, the injection tally and the accumulator's water must
+   * all sit EXACTLY where the latch left them — zero, not a tolerance. */
+  head('THE HOLD  [#585: a held plant and its books are frozen TOGETHER]');
+  ckT('the ride reaches the hold and rides through it (the fixture section 5 requires)',
+      c.heldAt !== null && c.heldSteps > 100,
+      'latched at t = ' + (c.heldAt === null ? 'never' : c.heldAt.toFixed(2) + ' s') + ', ' +
+      c.heldSteps + ' held steps ridden PAST the latch, none skipped');
+  ck('across every held step, NOTHING moved — plant, break, containment, ECCS, tank',
+     c.heldDrift, 0, 0, 'kg (largest departure from the latch state, exact zero required)');
+
+  /* ---- 6. THE COURANT LIMIT HOLDS AT THE HOUSE dt = 0.02 s ----------------------------------
+   * The performance constraint: no substep machinery was added to guarantee this. A break moves
+   * mass fast, but courantLimit() binds on the MAIN LOOP flow through the smallest ring node,
+   * not on break flow directly — so the existing cadence should already be sufficient, and this
+   * is the check that would say otherwise if it were not. Counted on RUNNING steps only. */
   head('COURANT LIMIT  [proving dt = 0.02 s is enough, not adding a substep to guarantee it]');
   ckT('scenario A (ECCS off) never violated the Courant limit', a.courantBad === 0,
       a.courantBad + ' / ' + a.steps + ' steps over limit');

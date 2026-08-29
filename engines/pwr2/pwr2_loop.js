@@ -253,6 +253,12 @@
      * divisions cannot leave the clock short — §24.2's contract is with the accumulator, and a
      * 1e-16 deficit per step is still a deficit nothing repays. */
     var hSub = dt / nSub, spent = 0;
+    /* #585 — the time this step actually INTEGRATED, reported to the caller as `dt_accepted`.
+     * A mid-step latch adopts the substeps before it and refuses the rest, so a ledger that
+     * books all-or-nothing on the outer step is wrong by the accepted fraction (measured:
+     * 0.966 kg — one of two substeps — on the 40 cm2 accumulator fixture's latching step).
+     * The plant reports what it took; every boundary ledger books exactly that. */
+    var accepted = 0;
 
     var r = null, flows = null, headFlowFirst = 0, carry = 0;
     for (var s = 0; s < nSub; s++) {
@@ -278,6 +284,7 @@
          * matters in, so the fraction has to be the plant's real one, not a constant 1. */
         flowFrac: Math.abs(sys.mdot_loop) / MDOT_RATED
       });
+      if (r.held !== true) accepted += h;   /* #585 — a refused substep integrated nothing */
 
       /* ---- DERIVE the next step's junction flows, sequentially round the ring.
        * mdot_out,i = mdot_in,i - dm_i/dt. Walking the ring from the head propagates the driving
@@ -317,6 +324,10 @@
      * (#518) — the hand-planted junction flow was wiped by the re-derivation before the report
      * read it. The binding condition is the state the step STARTED from, so that is what is
      * reported, and it is the same number `nSub` was chosen from. */
+    /* #585 — the plant's own report of how much of `dt` it integrated: `dt` on a healthy step,
+     * 0 on an already-held one, the adopted-substep sum on the step the latch fires mid-way.
+     * The break/containment/ECCS ledgers book THIS, never the outer dt. */
+    r.dt_accepted = accepted;
     r.courantLimit_s = lim0;
     r.courantOK = dt <= r.courantLimit_s;
     r.subSteps = nSub;                   /* #518 — 1 in every healthy regime; REPORTED */
