@@ -8319,3 +8319,144 @@ inert** — 61.5 % of the area at the design point, and most of why the number i
 `run_all` 97 at baseline.** Three checks added and each asserts an EFFECT or an INVARIANT: the mass
 retyped independently from the vessel's volume; the sink **absorbs** when the vessel warms (the
 check that would have caught defect 1); and the shell does not subcool the pool (defect 2).
+
+---
+
+## 114. #585 — A HELD PLANT CREATES NO MASS: THE HOLD IS THE WHOLE PLANT, AND THE LEDGER BOOKS ON ACCEPTANCE — 2026-08-29
+
+**The ruling** *(owner, 2026-08-29, a selection from options I wrote with a recommendation —
+"Whole-plant hold")*: `beyond_model` freezes the WHOLE plant; the latching step books nothing;
+discharge is committed only after the core accepts the step. The alternative — Layer-2-only hold
+with every source refused loudly — was declined.
+
+**What shipped, in four pieces:**
+
+1. **The facade short-circuit** (`pwr2_engine.step`): `beyond_model` now takes the same
+   early-return the runaway screen (`_dead`) always took. Before it, only the primary froze
+   while all 19 subsystems kept their own clocks. **The one ledger only this guard protects is
+   AFW's** — measured with the short-circuit reverted, `delivered_kg` drifts **+18.1 kg in 10
+   held seconds** while break/containment/accumulator stay frozen behind their own doors. That
+   is also why the facade mutation is not blind (#545's each-part-sufficient trap): the check
+   asserts the AFW ledger specifically.
+2. **Deferred booking** (`pwr2_break.book`): `stepBreak` proposes; the plant's acceptance books.
+   `discharged_kg` means "mass the plant actually lost" **by construction** — no rollback
+   arithmetic (both 2026-08-28 repairs were wrong, per the issue's own warning).
+3. **`dt_accepted`** (`pwr2_loop`): the Courant sub-stepping can integrate PART of the latching
+   step before the latch refuses the rest. All-or-nothing booking was wrong by exactly that
+   fraction — measured **0.966 kg, one of two substeps**, on the 40 cm² accumulator fixture's
+   latching step. The loop now reports the time it actually integrated, and the break ledger,
+   containment intake and injection tally all book exactly it. Injection-verified: pin
+   `dt_accepted = dt` and the loca closure identity reds by 0.966 kg.
+4. **Held-plant doors** on `stepBreak` (zero flow) and `stepECCS` (zero flow, **tank keeps its
+   water** — an accumulator draining into a frozen plant destroys mass, the break's mirror
+   image). The ECCS door's check lives in `run_pwr2_eccs`, deliberately: the loca fixture's tank
+   is empty by the time its ride latches, so the joint gate structurally cannot see that guard.
+
+**The declared simplification:** on the single LATCHING step, subsystems that run before the
+core (AFW, CVCS, ECCS pumps) have already acted — one step of secondary-side bookkeeping, and
+one step of ECCS tank draw at most, none of it across the primary's mass boundary. Post-latch,
+the facade short-circuit freezes everything.
+
+**The gate now asserts the invariant the defect violated, at every step** (the #543-class rule):
+`run_pwr2_loca` rides **638 held steps past the latch** and the largest departure of
+plant/break/containment/ECCS/tank from the latch state is **exactly 0 kg**; both closure
+identities hold at the FINAL state to 1e-6 relative — the interim last-running-step snapshot
+retired with the defect. Scores: `run_pwr2_loca` 18→**19**, `run_pwr2_break` 29→**31** (20/20
+mutations), `run_pwr2_eccs` 38→**39** (24/24), `run_pwr2_engine` 124→**125** (72/72).
+
+**One injection finding worth keeping:** with the whole architecture in, reverting the break's
+own held-door reds NOTHING in the loca gate — the booking gate alone protects every ledger
+identity. The door's observable is the flow REPORTERS on a held plant, and its coverage lives in
+`run_pwr2_break`'s own hold section. Two sufficient halves, each pinned in the file that owns it.
+
+---
+
+## 115. #586 — WHICH WALL BLOCKS THE CORE-DAMAGE CHAIN: THE VAPOUR CEILING, NOT THE PRESSURE FLOOR — 2026-08-29
+
+**The ruling** *(owner, 2026-08-29, selection from written options — "Measure, then settle")*:
+find which envelope wall latches each ride; pressure floor → document unreachable-until-#524 and
+close; enthalpy ceiling only → scope the extension, and stop and report if it balloons.
+
+**The measurement** (probe on the coredamage load order, feedback ON, DT 0.02 s):
+
+| break | latch | arm | P at latch | peak clad (honest) | max oxidation |
+|---|---|---|---|---|---|
+| 5 cm² | 959.9 s | CEILING PERSISTENCE (`_ceilHold` 60.0 s) | 15.7 psia | 1698 °F, still climbing | 0.78 % |
+| 10 cm² | 634.3 s | CEILING PERSISTENCE | 15.7 psia | — | — |
+| 20 cm² | 480.2 s | CEILING PERSISTENCE | 15.7 psia | 1735 °F, still climbing | 0.84 % |
+| 40 cm² | 399.4 s | CEILING PERSISTENCE | 15.7 psia | — | — |
+
+Every ride latches with the CORE node pinned at the **vapour branch's 800 °C envelope edge**
+(h = 4161 kJ/kg = `h_v(TV_MAX, P)`) for 60 continuous seconds of active discard — and pressure
+parked at 15.7 psia, comfortably **above** the 14.5 psia property floor (the plant equalizes
+toward containment backpressure and stops falling; the break's ΔP is spent).
+
+**Two conclusions, both now written into the gate's fence banner:**
+1. **The chain is NOT blocked on #524.** The issue's own hypothesis (the 0.1 MPa floor, §74's
+   Mode 5 wall) is refuted — Mode 5 and the damage chain wait on DIFFERENT walls.
+2. **The blocking wall is `TV_MAX = 800 °C`**, the validated ceiling of the four superheated-
+   vapour fits (cp_v relaxation + real-gas Z, fitted over 11 isobars × 159 IAPWS-95 points,
+   T_sat..800 °C, max error 35.1 kJ/kg). The honest ride crosses the 1200 °F onset and peaks at
+   **1698–1735 °F still climbing** — about 65 °F short of the 1800 °F milestone, oxidation
+   < 1 %. Un-blocking means extrapolation-validated (or refitted) vapour fits past 800 °C
+   against fresh NIST/IAPWS-95 anchors, plus a re-calibration of `CEIL_HOLD_LATCH_S`'s margins
+   and a re-measure of every coredamage milestone. That is its own scoped work item — per the
+   ruling's own stop condition, it is reported rather than started inside this bundle.
+
+---
+
+## 116. #582 — THE PLATEAU GATE PWR2 NEVER HAD, AND THE AFW FLOOR IS DERIVED — 2026-08-29
+
+**The ruling** *(owner, 2026-08-28: "go with as recommended for all")*: retire CA-20b
+deliberately; build the PWR2 plateau gate; measure the auxiliary-feedwater throttle's delivered
+floor on a real post-trip drain.
+
+**CA-20b retired** — probe (102 lines), XFAIL row and COVERAGE row deleted together; the catalog
+row is re-aimed RETIRED with a pointer to the new gate. The `run_behavior` battery's only strict
+expected-fail leaves with the retired engine it fenced. The id-mod-3 split reshuffles the
+survivors, so all three part scores moved: A 24 pass 1 xfail → **25 pass 0 xfail**, B **25**
+(unmoved), C 25 → **24**.
+
+**The plateau, measured on PWR2 first** (5 cm² unmitigated cold-leg break, 30 min, facade):
+the primary RIDES its heat sink. Worst departure below the steam generator after the trip
+transient: **−31.6 psi at 701 s** (the quench transient), late-ride coupling within ~10 psi —
+against the retired engine's **266 psi below** with the secondary drained through the tubes to
+202 psi. SG inventory **never falls below its initial 12,796 kg** and ends at 17,117 kg with AFW
+throttled to 1/3. The 10 cm² ride shows a deeper −151 psi excursion at 300 s mid-quench, which is
+why the gate rides 5 cm². `run_pwr2_endurance` +2: leg A (never a 0.35 MPa band below the sink)
+and leg B (the secondary keeps its water) — CA-20b's two mechanism claims, re-derived at measured
+values. 20→**22**.
+
+**The AFW throttle, measured in AUTO under the real control kernel** (shell + `ControlLayer` +
+`engageDefaults`, the full-stack seam CLAUDE.md's layer table warns about): on a 30-min post-trip
+drain the channel opens **0 → 0.64 → 1.00 ahead of the pump start** (standby pre-positions the
+valve), AFAS starts both pumps at lo-lo, and the system settles at **~36 % narrow range holding
+0.41–0.46 of rated** — exactly the ff 100 + kp 20 proportional line meeting decay-heat boil-off.
+**#391's question is answered: the delivered floor is DERIVED, not a fixture.** The gate
+(`run_pwr2_shell` group T, 130→**133**, 44/44 mutations) rides the settle from ABOVE — trip,
+isolate, pumps started by hand — so three claims are live on one drain: valve delivers NOTHING
+above the band with the pumps running (throttled, not secured), the delivery TAPERS across the
+band (a ramp, not a step), and the settle lands inside 33±5 % with flow off both rails. Two new
+mutations: the program moved off the sourced 33 %, and kp zeroed.
+
+---
+
+## 117. #584 — THE 347× HEATER DEPARTURE IS GONE: PWR2 MEASURES +10 % — 2026-08-29
+
+**Measured end to end on the shipping vessel** (module harness, full plant fixture, heaters
+manual full, spray blocked, 120 s from a settled design point): the 157.8 kW bank slews
+**0.2539 psi/s (1.75 kPa/s)** — 2246 → 2276 psia — against the sourced 0.23 psi/s (WTSM 3.2's
+"approximately 55 °F/hr" at 1794 kW, scaled). The retired engine's §12.15 departure was a
+`K_heater` CONTROL GAIN 347× the sourced rating; PWR2 has no such gain to inflate — the joules
+go into the two-region balance and the pressure follows. The +10 % is the model's honest
+arithmetic (consistent with the wall-aware 0.2093–0.2594 psi/s marks in `pwr2_pressurizer.js`
+and `BUILD_DECISIONS.md`).
+
+**Manuals/12 rewritten in place** (three rows, the pending Rev 17 row extended — item (c)):
+§7.1's opening now describes the two-region vessel and its ONE calibrated constant (τ = 30 s,
+fitted to Ginna Table 15.2-1 Case 2 — 5.9 s modelled against the sourced 5.4 s); §12.5 flips
+from "effective coefficients, not two-phase thermodynamics" to the two-region vessel with its
+declared constant; §12.15 carries the fresh measurement and strikes the retired consequence
+("1 °F vs 9 °F at the 17 % cutoff"). The REST of the chapter — and Manuals/04's 0.23 psi/s
+setpoint-slew quotes — still describe the retired engine; that is #532's umbrella, and these
+rows are PWR2-correct islands inside it, deliberately scoped.

@@ -29,6 +29,46 @@ and the user-visible summary in `CHANGELOG.md`. This file points at those and tr
 
 ---
 
+## Session log — 2026-08-29-develop-c (#585/#586/#582/#584 — the held-plant fallout bundle)
+
+Full write-ups: `Blueprint/PWR2_VALIDATION.md` §114–117. This is the continuity note.
+
+- **#585 CLOSED (owner-ruled 2026-08-29 "Whole-plant hold").** A held plant can no longer create
+  mass: the facade short-circuits every subsystem on `beyond_model` (AFW's `delivered_kg` was the
+  one ledger only that guard protects — +18.1 kg/10 s with it reverted); the break's ledger books
+  through `book()` on the plant's ACCEPTANCE; `stepBreak`/`stepECCS` refuse a held plant at their
+  own doors (the tank keeps its water). The trap worth keeping: **the Courant sub-stepping
+  integrates PART of the latching step**, so all-or-nothing booking was wrong by exactly the
+  accepted fraction (0.966 kg, one of two substeps) — `pwr2_loop` now reports `dt_accepted` and
+  every boundary ledger books the plant's own number. `run_pwr2_loca` rides 638 held steps and
+  asserts drift EXACTLY 0; both closure identities hold at the FINAL state. Scores: loca 19,
+  break 31 (20/20 mut), eccs 39 (24/24), engine 125 (72/72).
+- **#586 MEASURED, re-scoped (owner-ruled "measure, then settle").** The blocking wall is the
+  VAPOUR CEILING (`TV_MAX` 800 °C — core node pinned at h = 4161 kJ/kg, 60 s persistence arm),
+  NOT the 0.1 MPa floor: every ride latches at 15.7 psia, above the floor, so the chain is NOT
+  blocked on #524. Honest peak clad 1698–1735 °F still climbing, ~65 °F short of the 1800 °F
+  milestone. The extension (refit/validate the four cp_v/Z fits past 800 °C on fresh IAPWS
+  anchors + re-calibrate `CEIL_HOLD_LATCH_S`) balloons — reported on the issue per the ruling's
+  stop condition, not started.
+- **#582 CLOSED (ruled "A" 2026-08-28).** CA-20b retired whole (probe + XFAIL + COVERAGE deleted,
+  catalog row re-aimed RETIRED → `run_pwr2_endurance`); the id%3 split reshuffled all three
+  behavior parts (A 25p 0x, B 25, C 24 — the battery's only strict xfail is gone). The PWR2
+  plateau gate is BUILT at measured values (worst −31.6 psi below the heat sink vs the retired
+  engine's −266; SG inventory never below initial): endurance 22. The AFW throttle measured in
+  AUTO under the real control kernel: settles ~36 % NR at 0.41–0.46 of rated — **the delivered
+  floor is DERIVED** (ff 100 + kp 20 meets decay-heat boil-off), #391 answered; shell group T,
+  133 (44/44 mut). Harness note: `engageDefaults()` must be called or both PWR2 channels sit
+  disengaged — the exact CLAUDE.md layer-table trap, met again in this session's first probe.
+- **#584 CLOSED.** PWR2's heater pressure authority measured end to end: **0.2539 psi/s at the
+  delivered 157.8 kW** vs sourced 0.23 — +10 %, honest arithmetic, no gain to inflate; the 347×
+  departure was the retired engine's and is struck. Manuals/12 §7.1/§12.5/§12.15 rewritten to
+  the two-region vessel (pending Rev 17 row extended, item (c); `run_manual_rev` +
+  `run_manual_units` green — `psia` and comma-grouped numbers break the units parser, use
+  `2246 psi (15.486 MPa)` form). Manuals/04's setpoint-slew quotes and the rest of chapter 12
+  stay #532's umbrella.
+
+---
+
 ## Session log — 2026-08-29-develop-b (#587 — the pressurizer's shell, and why 39 % of its heat capacity is nearly inert)
 
 Full write-up: `Blueprint/PWR2_VALIDATION.md` §113. This is the continuity note.

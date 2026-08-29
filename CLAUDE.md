@@ -399,9 +399,10 @@ by an agent who compressed without re-querying. Run the query.
   metal wall (**39,128 kJ/K, 49 % of the fluid**, a fixed-duty cooldown 1.391× longer, a scram
   unmoved) — `wallLumps` had shipped with zero consumers. And the pressurizer is **no longer in the
   ledger twice**: the phantom 125.2 ft³ node is gone, RCS mass fell **13.5 % to 36,016 lbm** and the
-  design point moved 0.1 psi. Open out of it: **#584**, **#585** (a HELD plant creates mass), **#586**,
-  and the Layer-5 pressurizer WALL that left with the node. Still dark: `transport: 'plug'`,
-  `surge_line_voided`.
+  design point moved 0.1 psi. Out of it since: the WALL landed as **#587** (§113, owner review);
+  **#584, #585 and #582 closed 2026-08-29** and **#586 re-measured** — the core-damage chain is
+  blocked on the vapour-branch 800 °C ceiling, NOT the 0.1 MPa floor, so not on #524 (§114–117).
+  Still dark: `transport: 'plug'`, `surge_line_voided`.
 - **RBMK and BWR** — on hold, and the source of most remaining backlog. Do not touch.
 
 **The manual set's revision number does not advance until a RELEASE** *(OWNER DIRECTIVE,
@@ -421,6 +422,13 @@ FIRST** — ask what in it would still burn someone in a month, move that to the
 ONE line, drop the rest. **A bullet is ~80 words.** (Measured 2026-08-06: the list was running
 7 bullets averaging 500 words, two of them duplicating traps already rescued below.)
 
+- **An all-or-nothing ledger over a SUB-STEPPED solver is wrong by the accepted fraction — and
+  only the solver can say what that fraction was** (2026-08-29, #585 §114). The latching step's
+  break booking was refused whole while the Courant sub-stepping had already integrated ONE of
+  its two substeps: 0.966 kg unaccounted, after two earlier arithmetic repairs had each failed
+  differently. `dt_accepted` is now the loop's own report and every boundary ledger books
+  exactly it. **Caller arithmetic about a partial step is a claim; the solver's report is a
+  measurement.**
 - **A DECLARED simplification is not a LICENSED one — and a FIXTURE can be producing its subject
   out of the defect you are removing** (2026-08-28, #583 §110). PWR2 carried the pressurizer TWICE,
   a rigid 125.2 ft3 ring node plus the 147.5 ft3 Layer-5 vessel: **983 ft3 of RCS against its own
@@ -452,13 +460,6 @@ ONE line, drop the rest. **A bullet is ~80 words.** (Measured 2026-08-06: the li
   door refusing, the demand never gets set, so deleting the hold moved nothing and `run_pwr2_engine`
   came back **59/60**. Reproduced by an agent who had quoted the #295 rule three lines above.
   **Plant the demand PAST the half you are not testing.**
-- **A constant tuned against ANOTHER engine's wrong number cannot be ported — and porting it is
-  the move that looks safe** (2026-08-28, #536 §107). PWR2 had no neutron source: hot standby
-  fell 3.6031e-5 % → 6.3798e-8 % untouched in 300 s while the board read −0.341 dpm / −76 s, and
-  a tripped plant read −81 s for ever. The retired engine's `source: 1.0e-6` is tied to ITS
-  500×-inflated prompt generation time — copying it needs a source ~500× any real one and would
-  ramp an exactly critical reactor at 0.05 %/s out of nothing. **Derive from the plant in front of
-  you, not from its predecessor.** Its gauge scale was inherited the same way and was 500× wrong.
 **Standing procedure — not part of the rotation above; these do not expire.** One trap per entry.
 **MAX 25 BULLETS** *(OWNER RULING, 2026-08-10: selected "Cap at 25, evict to TRAPS.md" from
 options I wrote — a selection, not verbatim words)*, gated by `test/run_doc_budget.js`. Adding

@@ -30,6 +30,55 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
 
 ## [Unreleased]
 
+### Fixed (#585 — a held plant can no longer create mass, 2026-08-29)
+
+Full write-up: `Blueprint/PWR2_VALIDATION.md` §114. Owner-ruled 2026-08-29: **the hold is the
+whole plant.**
+
+- **`beyond_model` now freezes every subsystem**, not just the primary — before this the break
+  went on booking discharge into containment at ~49 kg/s (69.4 kg over 222 held steps, from
+  nothing) and AFW kept feeding a frozen plant (+18.1 kg/10 s).
+- **The break's ledger books on the plant's ACCEPTANCE** (`book()`, deferred), and the Courant
+  sub-stepping's partial latching step is booked at the plant's own reported `dt_accepted` —
+  the 0.966 kg one-of-two-substeps gap that survived two earlier arithmetic repairs.
+- **ECCS refuses a held plant too** — zero flow, the accumulator keeps its water.
+- `run_pwr2_loca` now rides 638 held steps past the latch and asserts EXACT zero drift; the
+  interim last-running-step snapshot fixture is retired. Gates: loca 19, break 31, eccs 39,
+  engine 125 — all mutation replays clean.
+
+### Added (#582 — the small-break plateau gate and the AFW throttle floor, 2026-08-29)
+
+Full write-up: `Blueprint/PWR2_VALIDATION.md` §116. Owner-ruled 2026-08-28 "A".
+
+- **CA-20b retired deliberately** — the behavior battery's only strict expected-fail pinned the
+  RETIRED engine's plateau defect; probe, XFAIL and COVERAGE rows deleted together, catalog row
+  re-aimed at the new gate. All three behavior part scores moved (25/25/24, 0 xfail).
+- **PWR2's plateau gate, at measured values**: on a 5 cm² unmitigated break the primary rides
+  its heat sink (worst −31.6 psi vs the retired engine's −266) and the SG keeps its water
+  (never below initial inventory). `run_pwr2_endurance` 22.
+- **The AFW throttle measured in AUTO under the real control kernel**: settles at ~36 % narrow
+  range holding 0.41–0.46 of rated — the delivered floor is DERIVED (the controller's line
+  meeting decay-heat boil-off), answering #391. `run_pwr2_shell` group T, 133, 44/44 mutations.
+
+### Changed (#584 — Manuals/12's pressurizer rows describe the shipping vessel, 2026-08-29)
+
+Full write-up: `Blueprint/PWR2_VALIDATION.md` §117.
+
+- **The 347× heater-authority departure is struck**: measured on PWR2, the full 157.8 kW bank
+  slews 0.2539 psi/s against the sourced 0.23 — +10 %, with no authority multiplier in the
+  model at all. §7.1/§12.5/§12.15 rewritten to the two-region vessel and its one calibrated
+  30 s interface constant (Ginna Table 15.2-1 Case 2). Pending Rev 17 row extended, item (c).
+
+### Measured (#586 — which wall blocks the core-damage chain, 2026-08-29)
+
+Full write-up: `Blueprint/PWR2_VALIDATION.md` §115. Owner-ruled "measure, then settle": the
+blocking wall is the **vapour-branch 800 °C ceiling**, not the 0.1 MPa pressure floor — every
+unmitigated ride latches at 15.7 psia with the core node pinned at the envelope edge, peak clad
+1698–1735 °F still climbing, ~65 °F short of the 1800 °F milestone. Not blocked on #524; the
+ceiling extension is its own scoped work item, reported on the issue per the ruling's stop
+condition.
+
+
 ### Added (#587 — the pressurizer's shell has heat capacity, 2026-08-29)
 
 Full write-up: `Blueprint/PWR2_VALIDATION.md` §113.

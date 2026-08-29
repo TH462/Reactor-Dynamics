@@ -45,6 +45,33 @@ where the two differ or where judgment was exercised.
 
 ---
 
+## 2026-08-29-develop-c — #585/#586/#582/#584: the held-plant fallout bundle
+
+Full record: `PWR2_VALIDATION.md` §114–117; continuity in `TUNING_LOG` 2026-08-29-develop-c.
+
+- **RULING (owner, 2026-08-29, selections from options I wrote with recommendations — not
+  verbatim owner words): #585 → "Whole-plant hold"; #586 → "Measure, then settle."** The first
+  makes `beyond_model` freeze every subsystem and the ledgers book on the plant's acceptance;
+  the second pre-declared the decision rule the measurement then executed.
+- **Design choice (#585): deferred booking + `dt_accepted`, not rollback.** `stepBreak` proposes,
+  `book()` commits after the core's verdict, and the Courant sub-stepping's partial latching
+  step books the loop's own reported fraction (0.966 kg measured gap). Two arithmetic repairs
+  had already failed; the plant's own report is the only non-claim available.
+- **Declared simplification (#585):** pre-core subsystems act once on the LATCHING step
+  (secondary bookkeeping, one ECCS tank step at most); nothing crosses the primary mass
+  boundary. Post-latch the facade short-circuit freezes all of it.
+- **Measurement (#586): the vapour ceiling blocks the damage chain, not the pressure floor** —
+  all four break sizes latch on the `_ceilHold` persistence arm at 15.7 psia. #524 and #586
+  wait on DIFFERENT walls; the ceiling extension is scoped on the issue, not started.
+- **#582 executed as ruled:** CA-20b deleted whole (probe/XFAIL/COVERAGE; catalog row RETIRED
+  → `run_pwr2_endurance`); plateau gate built at measured values; AFW throttle floor measured
+  DERIVED (0.41–0.46 of rated at ~36 % NR) under the real control kernel.
+- **#584 measured and struck:** 0.2539 psi/s at 157.8 kW vs sourced 0.23 — the 347× departure
+  left with the retired engine; Manuals/12 §7.1/§12.5/§12.15 rewritten, Rev 17 pending row
+  extended (c).
+- Gates: loca 19 · break 31 · eccs 39 · engine 125 · endurance 22 · shell 133 · behavior
+  25/25/24 (0 xfail — the battery’s only strict xfail retired). All mutation replays clean.
+
 ## 2026-08-29-develop-b — #587: the pressurizer's shell, measured and mostly inert
 
 `pwr2_pressurizer.js:87` declared "Wall metal is not modelled" from #515; #574 gave the ring's
