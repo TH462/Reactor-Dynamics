@@ -30,6 +30,41 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
 
 ## [Unreleased]
 
+### Changed (#516 item 9 — the melt path, and three claims withdrawn, 2026-08-29)
+
+Full write-up: `Blueprint/PWR2_VALIDATION.md` §122. *(OWNER RULING, 2026-08-29: selected
+"Build a melt path, extrapolating properties" from options I wrote — a selection, not verbatim
+words.)*
+
+- **A core-damage ride no longer ends on a fitting boundary.** Layer 0's vapour branch stopped at
+  1000 °C — IAPWS-95's own documented upper limit — and every unmitigated break froze there with
+  the core pinned against it, **1,609 °C short** of the sourced uranium-dioxide melting point.
+  Above that ceiling the vapour is now treated as an **ideal gas with constant specific heat**,
+  which is a documented licensing-basis simplification with a citation rather than a curve walked
+  past its data: **WCAP-16009-NP-A**, the NRC-approved WCOBRA/TRAC large-break model — already
+  this file's source for the transport properties. The constant is taken at the **seam**, not from
+  the source's γ = 1.3: the fit gives 2.42–2.48 kJ/kg·K at 1000 °C against the source's 2.00, so
+  adopting the source's value would put a 23 % step in specific heat exactly where the interesting
+  physics starts. Enthalpy is continuous in value and slope across the seam to **0.001 %**. The
+  validated range is unchanged and still reported as such; a new regime readout distinguishes
+  "inside IAPWS-95" from "on the sourced extension".
+- **The cladding now stops reacting when it melts.** With the ceiling lifted the core does reach
+  fuel melt — through **three seconds** in which the cladding goes from its own melting point to
+  **16,311 °C**, because Appendix K's sourced *"not steam limited"* assumption keeps a *surface*
+  rate law running on a surface that has relocated. GEND-061's *"reduced exposed-surface areas"*
+  is the argument for stopping it. Peak cladding is now **1958 °C** and the whole ride is bounded.
+- **Fuel melt is still not reached, and the reason has changed** — which is the deliverable. It
+  was a property-range artifact; it is now a physical limit: the oxidation heat source dies with
+  the cladding and decay heat alone cannot close the remaining 862 °C. Reaching it needs a
+  melt-progression model (relocation, candling, a molten pool) that nothing in the corpus supports.
+- **Three claims from the previous release are withdrawn as artifacts of where the ride stopped.**
+  The no-feedback core *does* cross the 10 CFR 50.46 limit (at 690 s against 582); the unmitigated
+  core breaches *all three* criteria, not two; and neither leg stops early. Every ordering claim
+  survives and is stronger — in particular the feedback is now shown to be what **melts the
+  cladding**, which is why the leg with feedback ends *less* oxidised (17.6 % against 52.7 %): it
+  stops reacting when its surface goes, while the slower leg keeps reacting all ride.
+
+
 ### Changed (#516 Group C — the board polish, 2026-08-29)
 
 Full write-up: `Blueprint/PWR2_VALIDATION.md` §121. Items 3, 4 and 5 of the owner's playtest list,

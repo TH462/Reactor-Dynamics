@@ -123,6 +123,87 @@ than the action, and RESET was not on it at all.
 landed — the check working: a tile that hovers to nothing is a defect. 236/0, unchanged, because
 that assertion is one check over all items.
 
+### Item 9 — the melt path, and three of #586's claims withdrawn
+
+*(OWNER RULING, 2026-08-29: selected "Build a melt path, extrapolating properties" from options I
+wrote — a selection, not verbatim words.)* Full write-up: `Blueprint/PWR2_VALIDATION.md` §122.
+
+**The first half of the owner's item was already fixed by #586** — the core reaches 2229 degF, not
+the ~1400 he saw. The second half needed the ruling.
+
+**What blocked melt, measured.** Peak FUEL 1218 degC against the sourced 2827 degC
+uranium-dioxide melting point — **1,609 degC short** — because the ride ended at 596.4 s on the
+ceiling-persistence arm with the core node pinned at `h_v(TV_MAX, P)`. The wall was `TV_MAX`
+again, standing at IAPWS-95's own documented upper limit.
+
+**The extension is SOURCED, not an extrapolation of the fit** — extrapolating is what #586 proved
+fails (34.8 % out on cp). Above the ceiling the vapour is an IDEAL GAS with constant cp, per
+**WCAP-16009-NP-A §10-2-1-2**, the NRC-approved WCOBRA/TRAC model, *already this file's source for
+the transport properties*. **The constant is the SEAM's, not the source's gamma = 1.3**: the fit
+gives 2.42-2.48 kJ/kg-K at 1000 degC against the source's 2.00, so the source's own value would
+put a **23 % step in cp** at the seam. Measured continuity: dh/dT steps by at most **0.001 %**.
+`rangeOK` still answers false above the validated ceiling; a new `water_regime` field says which
+side the fluid is on.
+
+**And the ceiling was not the only wall.** With it lifted the fuel does melt — via three seconds in
+which the clad goes from its own melting point (645.3 s) to **16,311 degC** (648.3 s), because
+Appendix K's sourced *"not steam limited"* keeps a SURFACE rate law running on a surface that has
+relocated. GEND-061's *"resulting reduced exposed-surface areas"* is the argument for stopping it.
+With the cut-off: peak clad **1958 degC**, the ride runs the full horizon live, and **melt is still
+862 degC out of reach**.
+
+**That is the deliverable: melt's REASON changed.** It was a property-range artifact; it is now
+physical — the oxidation heat source dies with the cladding and decay heat cannot close the gap.
+Reaching it needs a melt-progression model nothing in the corpus supports.
+
+### Three claims withdrawn as artifacts of where the ride stopped
+
+The same lesson #586 recorded about its own fence, arriving one level up.
+
+1. *"The oxidation feedback is what takes this core over the damage limit AT ALL"* — the
+   no-feedback leg peaked at 2090 degF and never crossed, **because the ride ended**. Run to
+   completion it peaks at **2940 degF and crosses at 690.3 s**. Sooner, not possible.
+2. *"Two of three 50.46 criteria breach and not the third"* — oxidation now reaches **17.57 %**
+   against 17 %. All three go. The ordering survives in a stronger form: hydrogen is breached by a
+   wide margin while oxidation only just clears.
+3. *"Both runs stop on the model's own limit"* — neither stops. That check had been re-aimed twice
+   before, each version pinning a LIMITATION, which is why each broke when the limitation moved.
+
+**And the cleanest statement the gate has ever made falls out of the cut-off**: the feedback is
+what MELTS THE CLADDING. The ON leg melts at 645.3 s; the OFF leg never does — which is why the
+oxidation comparison INVERTS, 17.57 % against 52.67 %.
+
+### Four gate defects the injection harness found, all mine
+
+- The first cut zeroed the HEAT and left the rate law integrating — zirconium consumed with no
+  energy released, breaking the 1510 cal/g closure by 5.7x. Caught by that closure.
+- A fixture that produced its own subject out of the defect: held at 3400 degF from step one, so
+  the cut-off latched immediately and no oxide ever grew.
+- **Two guards masking each other's mutation** (a freeze on `w`, a gate on `Q_ox_kW`, each
+  sufficient). The discriminator asserts the OXIDE STOPS GROWING, which only the freeze provides.
+- **A TOLERANCE KEYED TO A QUANTITY THE MUTATION ALSO INFLATES** — `run_pwr2_core` bounded its
+  reconstruction error by `|residual| * 1.5`, and a clamp outside the solve inflates both. It
+  survived only while the defect outran that growth. An absolute bound was added.
+
+Plus a fifth in my own new code: the `water_regime` scan iterated the KEYED node lookup, whose
+`.length` is undefined, so it ran **zero times and reported 'ok' for every plant**. Caught on the
+check's first outing, and now its own mutation.
+
+### One mutation RETIRED, honestly
+
+`run_pwr2_core`'s "the clamp sits OUTSIDE the pressure solve" is **behaviourally inert** at the
+extended ceiling — clean and mutant agree **to the last digit** across 1/3/10/200 steps, drives
+from 2e6 to 2e8 kW, and a floor-side cold drive. The guard stays in the code; only the coverage
+claim is withdrawn, with the reason at the site. Manufacturing a fixture to separate an inert
+mutation would be coverage theatre.
+
+### Gates
+
+`run_pwr2_damage` 45 -> **49** (mutations 23 -> 24), `run_pwr2_coredamage` 23 -> **26**,
+`run_pwr2_true_state` 75 -> **77** (28 -> 29), `run_pwr2_core` 56/56 with mutations 35 -> **34**
+(the retirement). **`run_pwr2_water` 282/282 and 35/35 unmoved** — the extension is additive and
+in-envelope behaviour is bit-identical by construction.
+
 ### Gates
 
 `run_pwr2_board` 43 -> **48** (mutations 13 -> 15), `run_pwr2_pressurizer` 97 -> **100**

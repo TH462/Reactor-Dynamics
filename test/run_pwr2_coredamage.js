@@ -90,6 +90,7 @@ function scenario(opts) {
   var t = 0, Qox = 0, sumOxKJ = 0, courantBad = 0, nonFinite = 0, relief = 0, pzr = null;
   var heldAt = null;
   var hit = {}, firstVoid = null, flowLost = null, damagedAt = null, meltedAt = null;
+  var cladMeltAt = null;                       /* #516 item 9 — when the oxidation surface goes */
   var firstSuperheat = null, maxSuperheat = 0, superheatSteps = 0;   /* #517 */
   var maxSuperheatAt = null, clampAt = null;                          /* #574 — see the wing check */
   var M0 = sys.M_total, maxOx = 0, maxClad = 0, lastR = null, lastD = null, pzEmptyAt = null;
@@ -108,6 +109,7 @@ function scenario(opts) {
       { boron_ppm: 700, rodGroups: rods, Q_ox_kW: feedback ? Qox : undefined });
     if (!isFinite(rr.T_clad_c) || !isFinite(rr.T_fuel_c)) { nonFinite++; break; }
     var dr = DG.stepDamage(dm, DT, { cladTemp_c: rr.T_clad_c, fuelTemp_c: rr.T_fuel_c });
+    if (cladMeltAt === null && dr.clad_melted) cladMeltAt = t;
     Qox = dr.Q_ox_kW;
     sumOxKJ += Qox * DT;
     var br = RD.break_.stepBreak(brk, sys, DT, {});
@@ -157,7 +159,8 @@ function scenario(opts) {
   return { sys: sys, rx: rx, dm: dm, t: t, M0: M0, sumOxKJ: sumOxKJ, courantBad: courantBad, heldAt: heldAt,
            maxSuperheatAt: maxSuperheatAt, clampAt: clampAt,
            nonFinite: nonFinite, hit: hit, firstVoid: firstVoid, flowLost: flowLost,
-           damagedAt: damagedAt, meltedAt: meltedAt, maxOx: maxOx, maxClad: maxClad,
+           damagedAt: damagedAt, meltedAt: meltedAt, cladMeltAt: cladMeltAt,
+           maxOx: maxOx, maxClad: maxClad,
            r: lastR, d: lastD,
            pzEmptyAt: pzEmptyAt,
            firstSuperheat: firstSuperheat, maxSuperheat: maxSuperheat,
@@ -225,30 +228,57 @@ ckT('...and the flow collapses before the cladding reaches the hydrogen onset',
  * declared below rather than chased, because it sits past the last ceiling this library can
  * claim to be validated at rather than extrapolated to.
  * ========================================================================================== */
-ckT('the chain COMPLETES inside the valid envelope — every milestone, in order, on a running plant',
+/* RE-EXPRESSED at #516 item 9 (2026-08-29). This check used to require `ON.heldAt !== null` and
+ * assert the 2200 degF crossing landed BEFORE the hold — because until now the ride always ended
+ * on the ceiling-persistence arm, 6.4 s past the crossing, and "the chain fits inside the
+ * envelope" was a real and hard-won claim (#586, §118). Layer 0 now carries a sourced ideal-gas
+ * branch above TV_MAX and the plant DOES NOT HOLD AT ALL on this ride, so requiring a hold would
+ * pin the very limitation the extension removed. The ordering claim — which was always the
+ * mechanism — is unchanged, and is now asserted on a plant that runs the whole way. */
+ckT('the chain COMPLETES on a running plant — every milestone, in order, and no hold at all',
     ON.hit[DOC.onset_f] !== undefined && ON.hit[DOC.significant_f] !== undefined &&
-    ON.hit[DOC.pct_limit_f] !== undefined && ON.heldAt !== null &&
+    ON.hit[DOC.pct_limit_f] !== undefined && ON.heldAt === null &&
     ON.hit[DOC.onset_f] < ON.hit[DOC.significant_f] &&
-    ON.hit[DOC.significant_f] < ON.hit[DOC.pct_limit_f] &&
-    ON.hit[DOC.pct_limit_f] < ON.heldAt,
+    ON.hit[DOC.significant_f] < ON.hit[DOC.pct_limit_f],
     '1200 degF ' + ON.hit[DOC.onset_f].toFixed(1) + ' s, 1800 ' +
     ON.hit[DOC.significant_f].toFixed(1) + ' s, 2200 ' + ON.hit[DOC.pct_limit_f].toFixed(1) +
-    ' s, model holds ' + ON.heldAt.toFixed(1) + ' s — the ordering IS the mechanism, and every ' +
-    'one of these is read off a plant inside its own envelope');
+    ' s, and the model never holds — the ceiling that used to end this ride 6.4 s past the ' +
+    'limit has moved');
 /* THE LATCH AND THE CROSSING ARE THE SAME EVENT, and asserting them as a pair is what stops a
  * damage flag that fires off some other quantity reading as the 50.46 limit working. */
 ckT('the damage latch trips ON the 2200 degF crossing — the same step, not merely nearby',
     ON.damagedAt !== null && Math.abs(ON.damagedAt - ON.hit[DOC.pct_limit_f]) <= 2 * DT,
     'damaged at ' + ON.damagedAt.toFixed(2) + ' s against the 2200 degF crossing at ' +
     ON.hit[DOC.pct_limit_f].toFixed(2) + ' s');
-/* DECLARED, NOT CHASED: melt needs temperatures past the extended ceiling. Asserted as an
- * ABSENCE with its reason, so that if a later property extension makes melt reachable this
- * check reds and the claim gets re-measured rather than silently acquiring a melt path. */
-ckT('MELT is still out of reach, and that is a declared property-range limit, not a plant claim',
+/* THE CLADDING MELTS, AND THAT IS WHERE THE HEAT SOURCE ENDS (#516 item 9). Measured WITHOUT
+ * the cut-off: the clad crosses its melting point at 645.3 s and reaches 16,311 degC three
+ * seconds later, because Appendix K's sourced "shall be assumed not to be steam limited" keeps
+ * a SURFACE rate law running on a surface that has relocated. */
+ckT('the cladding reaches its melting point AFTER the 50.46 limit, and the oxidation heat ends there',
+    ON.cladMeltAt !== null && ON.cladMeltAt > ON.hit[DOC.pct_limit_f],
+    'clad melts at ' + ON.cladMeltAt.toFixed(1) + ' s, after the 2200 degF crossing at ' +
+    ON.hit[DOC.pct_limit_f].toFixed(1) + ' s');
+/* THE BOUND IS THE POINT. A gate that only checked "melt did not happen" would pass happily on
+ * an unbounded run that reaches 29,392 degF, which is not a temperature. */
+ckT('...and the peak cladding temperature stays PHYSICAL — the runaway is bounded, not merely absent',
+    ON.maxClad < 4000,
+    'peak clad ' + ON.maxClad.toFixed(0) + ' degF; without the cut-off the same ride reaches ' +
+    '29,392 degF within three seconds of the melting point');
+/* DECLARED, NOT CHASED — AND THE REASON HAS CHANGED, which is the finding. It used to be a
+ * property-range limit: the fluid pinned at the ceiling and the ride ended there. That wall is
+ * gone. Melt is still out of reach, now because the oxidation heat source DIES WITH THE CLADDING
+ * and decay heat alone cannot close the remaining gap to the uranium-dioxide melting point.
+ * Reaching it would need a melt-progression model — relocation, candling, a molten pool — which
+ * nothing in the corpus supports and which this module declares it does not have. Asserted as an
+ * absence with its reason, so a later change that makes melt reachable reds this check and gets
+ * re-measured rather than silently acquiring a melt path. */
+ckT('MELT is still out of reach — no longer a property-range limit, but the absence of a ' +
+    'melt-progression model',
     ON.meltedAt === null,
-    'melted never; peak clad ' + ON.maxClad.toFixed(0) + ' degF against a 2200 degF damage limit ' +
-    '— the fluid reaches TV_MAX ' + RD.water.LIMITS.TV_MAX + ' degC, IAPWS-95\'s own upper limit, ' +
-    'so a melt path would have to be extrapolated rather than validated');
+    'melted never; peak fuel stays short of the sourced ' + (3100 - 273.15).toFixed(0) +
+    ' degC uranium-dioxide melting point. The fluid ceiling is no longer the wall (Layer 0 now ' +
+    'extends to ' + RD.water.LIMITS.TV_EXT_MAX + ' degC on the sourced ideal-gas branch) — the ' +
+    'wall is that this model cannot follow cladding that has relocated');
 
 /* ---- THE FEEDBACK, WHICH IS THE WHOLE POINT ----------------------------------------------- */
 head('THE FEEDBACK  [the only thing here no single-file gate can see]');
@@ -261,28 +291,48 @@ ckT('BOTH runs reach the hydrogen onset at the same time — the feedback cannot
     Math.abs(ON.hit[DOC.onset_f] - OFF.hit[DOC.onset_f]) < 1.0,
     'ON ' + ON.hit[DOC.onset_f].toFixed(2) + ' s, OFF ' + OFF.hit[DOC.onset_f].toFixed(2) +
     ' s — identical, which is what makes the divergence AFTER it attributable');
-/* ⚠ AND HERE IS THE PAYOFF THE FENCE USED TO HIDE (#586, 2026-08-29). With the chain completing
- * inside the envelope the A/B is a REAL comparison of outcomes rather than of two truncated
- * ride fragments: the oxidation feedback is what carries this core over the damage limit AT
- * ALL. MEASURED on the 20 cm2 unmitigated break — ON reaches 1800 degF at 489.9 s, OFF at
- * 513.2; ON crosses 2200 degF at 590.0 s and latches damage; **OFF NEVER CROSSES IT**, peaking
- * at 2090 degF before the model stops. Same break, same plant, one term. That is the strongest
- * statement this gate has ever been able to make, and it was unreachable while everything past
- * the onset sat behind the fence. */
-ckT('the FEEDBACK is what takes this core over the damage limit — without it, 2200 degF is never ' +
-    'reached on the same break',
-    ON.hit[DOC.pct_limit_f] !== undefined && OFF.hit[DOC.pct_limit_f] === undefined &&
-    OFF.maxClad < DOC.pct_limit_f,
-    'ON crosses 2200 degF at ' + ON.hit[DOC.pct_limit_f].toFixed(1) + ' s; OFF peaks at ' +
-    OFF.maxClad.toFixed(0) + ' degF and never does — one term, same break');
+/* ⚠ A CLAIM THIS GATE MADE AT #586 IS NOW WITHDRAWN, AND THAT IS THE FINDING (#516 item 9,
+ * 2026-08-29). With the ride ending on the vapour ceiling at 596 s, the no-feedback leg peaked at
+ * 2090 degF and NEVER crossed the 50.46 limit, and this gate said in as many words that the
+ * oxidation feedback "is what takes this core over the damage limit AT ALL". Once Layer 0's
+ * sourced ideal-gas branch let both legs run to completion, the OFF leg peaks at **2940 degF** —
+ * it crosses the limit too, just later. **The old claim was an artifact of where the ride was
+ * truncated**, which is the same lesson #586 recorded about its own fence, arriving one level up.
+ *
+ * What survives is the claim that was always the mechanism, and it is still strong: the feedback
+ * gets the core there SOONER, and the ordering is asserted rather than the reachability. */
+ckT('BOTH legs cross the damage limit once the ride can finish — and the FEEDBACK leg gets there ' +
+    'first, which is the claim that survives the fence coming down',
+    ON.hit[DOC.pct_limit_f] !== undefined && OFF.hit[DOC.pct_limit_f] !== undefined &&
+    ON.hit[DOC.pct_limit_f] < OFF.hit[DOC.pct_limit_f],
+    'ON crosses 2200 degF at ' + ON.hit[DOC.pct_limit_f].toFixed(1) + ' s, OFF at ' +
+    OFF.hit[DOC.pct_limit_f].toFixed(1) + ' s (' +
+    (OFF.hit[DOC.pct_limit_f] - ON.hit[DOC.pct_limit_f]).toFixed(1) +
+    ' s later) — same break, same plant, one term');
+/* THE OXIDATION COMPARISON INVERTS, and it is not a defect — it is the cut-off showing through.
+ * The feedback leg reaches the cladding melting point EARLIER, which freezes its reaction
+ * earlier, so it ends with LESS total oxide (17.57 %) than the leg that heated slowly and kept
+ * reacting for longer (52.67 %). The old check asserted ON > OFF, which was true only while
+ * neither leg could reach the melting point. Asserted in its true direction, with the reason. */
 ckT('...and it gets there SOONER at every milestone past the onset, never later',
-    ON.hit[DOC.significant_f] < OFF.hit[DOC.significant_f] &&
-    ON.maxOx > OFF.maxOx && OFF.maxOx > 0,
+    ON.hit[DOC.significant_f] < OFF.hit[DOC.significant_f],
     '1800 degF at ' + ON.hit[DOC.significant_f].toFixed(1) + ' s with feedback against ' +
     OFF.hit[DOC.significant_f].toFixed(1) + ' without (' +
-    (OFF.hit[DOC.significant_f] - ON.hit[DOC.significant_f]).toFixed(1) + ' s earlier); oxidation ' +
-    (ON.maxOx * 100).toFixed(2) + ' % against ' + (OFF.maxOx * 100).toFixed(2) +
-    ' %. Everything else in this plant decays; this is the one thing that accelerates');
+    (OFF.hit[DOC.significant_f] - ON.hit[DOC.significant_f]).toFixed(1) + ' s earlier). ' +
+    'Everything else in this plant decays; this is the one thing that accelerates');
+/* AND THE CLEANEST STATEMENT IN THIS GATE FALLS OUT OF IT: the feedback is what MELTS THE
+ * CLADDING. The ON leg reaches the melting point at 645.3 s; the OFF leg never reaches it at all
+ * within the horizon, peaking at 2940 degF (1616 degC). Which is why the oxidation comparison
+ * INVERTS — the feedback leg stops reacting when its cladding goes, while the leg that heats
+ * slowly keeps reacting for the rest of the ride and ends with three times the oxide. The old
+ * check asserted ON > OFF and was true only while neither leg could get near the melting point. */
+ckT('...and the FEEDBACK is what melts the cladding — the OFF leg never reaches the melting ' +
+    'point at all, so it ends MORE oxidised despite being the cooler ride',
+    ON.cladMeltAt !== null && OFF.cladMeltAt === null &&
+    ON.maxOx < OFF.maxOx && ON.maxOx > 0,
+    'cladding melts at ' + ON.cladMeltAt.toFixed(1) + ' s with feedback and never without; ' +
+    'oxidation ' + (ON.maxOx * 100).toFixed(2) + ' % against ' + (OFF.maxOx * 100).toFixed(2) +
+    ' % — the reaction stops when the surface it runs on does');
 ckT('the run WITHOUT feedback still oxidises, so the difference is the feedback and not the model',
     OFF.maxOx > 0,
     (OFF.maxOx * 100).toFixed(3) + ' % — a zero here would mean the comparison was against a ' +
@@ -303,23 +353,33 @@ ckT('the reaction never consumes more zirconium than the core contains',
 
 /* ---- THE 50.46 CRITERIA, AND WHICH ONE GOES FIRST ---------------------------------------- */
 head('10 CFR 50.46  [an unmitigated core must breach them, and in the right order]');
-/* ⚠ RESTORED 2026-08-29 (#586) — these were DECLARED BLOCKED while the ride stopped at 0.8 %
- * oxidation on a plant whose milestones all sat past the ceiling. On the valid plant the
- * unmitigated core now breaches TWO of the three criteria and not the third, which is a
- * sharper and more teachable result than "breaches everything": the 2200 degF peak-clad limit
- * and the 1 % hydrogen limit go, while 17 % oxidation does not — so the ORDERING claim
- * (hydrogen binds 17x before oxidation) is demonstrated by the plant rather than merely
- * carried by the constants. */
+/* ⚠ RESTORED at #586 and RE-EXPRESSED at #516 item 9, and the re-expression is the interesting
+ * part. At #586, with the ride ending on the vapour ceiling, the unmitigated core breached TWO of
+ * the three 10 CFR 50.46 criteria and not the third, and this gate called that "sharper and more
+ * teachable than breaching everything". Once the ride can finish, oxidation reaches 17.57 %
+ * and the third criterion goes too — so "and NOT the oxidation one" was, again, a statement about
+ * where the ride stopped rather than about the plant.
+ *
+ * THE ORDERING CLAIM IS THE ONE THAT WAS ALWAYS REAL, and it survives in a stronger form: the
+ * hydrogen criterion is not merely crossed first, it is crossed by a WIDE MARGIN while oxidation
+ * only just clears its own. That is what "17x tighter" means, measured on the plant instead of
+ * read off two constants. */
 ckT('the model carries all three 50.46 criteria, and the hydrogen one is the tightest',
     DOC.h2_criterion < DOC.ox_criterion && DOC.pct_limit_f === 2200 &&
     ON.dm.geom.M_clad_kg > 0,
     '1 % hydrogen against 17 % oxidation — 17x tighter, so it binds first; 2200 degF is the third');
-ckT('the unmitigated core BREACHES the peak-clad and hydrogen criteria, and NOT the oxidation ' +
-    'one — the tightest goes first, demonstrated rather than assumed',
-    ON.maxClad >= DOC.pct_limit_f && ON.maxOx > DOC.h2_criterion && ON.maxOx < DOC.ox_criterion,
-    'peak clad ' + ON.maxClad.toFixed(0) + ' degF (limit 2200), oxidation ' +
-    (ON.maxOx * 100).toFixed(2) + ' % — past the 1 % hydrogen criterion, short of the 17 % ' +
-    'oxidation one, on a plant inside its own envelope throughout');
+ckT('the unmitigated core breaches ALL THREE criteria — and the HYDROGEN one by far the widest ' +
+    'margin, which is the ordering demonstrated rather than assumed',
+    ON.maxClad >= DOC.pct_limit_f &&
+    ON.d.h2_frac_hypothetical > DOC.h2_criterion &&
+    ON.maxOx > DOC.ox_criterion &&
+    (ON.d.h2_frac_hypothetical / DOC.h2_criterion) > 3 * (ON.maxOx / DOC.ox_criterion),
+    'peak clad ' + ON.maxClad.toFixed(0) + ' degF (limit 2200); hydrogen ' +
+    (ON.d.h2_frac_hypothetical * 100).toFixed(2) + ' % against a 1 % criterion (' +
+    (ON.d.h2_frac_hypothetical / DOC.h2_criterion).toFixed(1) + 'x over); oxidation ' +
+    (ON.maxOx * 100).toFixed(2) + ' % against 17 % (' +
+    (ON.maxOx / DOC.ox_criterion).toFixed(2) + 'x over) — the tight one goes deep, the loose ' +
+    'one only just goes');
 
 /* ---- THE PLANT SURVIVED THE RIDE AS A MODEL ----------------------------------------------- */
 head('NUMERICS  [the scenario must stay inside what the engine claims to compute]');
@@ -328,19 +388,23 @@ ckT('nothing went non-finite in either run', ON.nonFinite === 0 && OFF.nonFinite
 ckT('the Courant limit held at the house cadence, with no substepping',
     ON.courantBad === 0 && OFF.courantBad === 0,
     'dt = ' + DT + ' s throughout, ' + (ON.t / DT).toFixed(0) + ' steps');
-/* ⚠ THE HORIZON CHECK, RE-AIMED TWICE AND WORTH THE HISTORY. It first required both runs to
- * complete 1,200 s — which they did, by stepping a FROZEN plant for the last 700. It was then
- * inverted to "both stop at the model's own floor, within 30 s of each other". On the extended
- * ceiling that band is wrong for a real reason rather than a fixture reason: the runs now stop
- * 49.5 s apart (596.4 ON, 645.9 OFF), because the feedback's heat is what carries the fluid to
- * the ceiling SOONER. So the ordering is the claim, not the closeness — the ON leg must stop
- * FIRST, and both must stop on the model's own limit rather than by running out of steps. */
-ckT('both runs stop on the model\'s OWN limit, and the FEEDBACK leg gets there first',
-    ON.heldAt !== null && OFF.heldAt !== null && ON.heldAt < OFF.heldAt &&
-    ON.t < 1200 - DT && OFF.t < 1200 - DT,
-    ON.t.toFixed(1) + ' s with feedback against ' + OFF.t.toFixed(1) + ' without (' +
-    (OFF.heldAt - ON.heldAt).toFixed(1) + ' s later) — both inside the 1,200 s horizon, so ' +
-    'neither is a run that merely ran out of steps');
+/* ⚠ THE HORIZON CHECK, RE-AIMED THREE TIMES NOW AND THE HISTORY IS THE POINT. It first required
+ * both runs to complete 1,200 s — which they did, by stepping a FROZEN plant for the last 700.
+ * It was then inverted to "both stop at the model's own floor", and at #586 to "both stop on the
+ * ceiling, ON first (596.4 vs 645.9)". Each of those was true of the plant at the time and each
+ * was pinning a LIMITATION rather than a behaviour, which is why each had to be re-aimed when the
+ * limitation moved. With Layer 0's extension (#516 item 9) neither leg stops at all: both run the
+ * full horizon on a live plant.
+ *
+ * So the claim is inverted one last time, and this form should survive — it asserts the thing the
+ * first version was actually reaching for and got wrong by accident: **both runs are still being
+ * STEPPED at the end**, not frozen. `heldAt === null` is what makes the last 700 s real rather
+ * than 35,000 repetitions of one state, which is the defect the original wording concealed. */
+ckT('neither run stops early — both are LIVE at the horizon, not a frozen plant being re-stepped',
+    ON.heldAt === null && OFF.heldAt === null &&
+    ON.t >= 1200 - 2 * DT && OFF.t >= 1200 - 2 * DT,
+    'ON ran ' + ON.t.toFixed(1) + ' s and OFF ' + OFF.t.toFixed(1) +
+    ' s, neither held — the ceiling that used to stop both legs has moved');
 
 /* ---- #487: THE ENDGAME PAST THE FLOOR ------------------------------------------------------
  * The filed case: a 5 cm2 break ran clean for 840 s and went NaN in the reactor the step after
@@ -361,11 +425,18 @@ END.sys.nodes.forEach(function (n) { if (!isFinite(n.h)) endHFinite = false; });
  * and TERMINALLY LATCHED. The old floats-unlatched-for-ever behaviour FAILS this form —
  * deliberate, that immortality is the #535 defect; the latch mechanism itself is
  * unit-tested and mutation-pinned in run_pwr2_core. */
-ckT('the filed 5 cm2 case runs DEEP into the endgame and ends TERMINALLY LATCHED (#487/#535)',
-    END.sys.beyond_model === true && 100 * END.sys.M_total / END.M0 < 10,
+/* ⚠ RE-SCOPED AGAIN at #516 item 9. At #535 this required the plant to end TERMINALLY LATCHED,
+ * because the alternative then on offer was the #535 defect — an immortal plant floating for ever
+ * on deleted decay heat, with every health flag green. That is no longer the alternative: the
+ * ceiling this ride used to latch against has moved, the clad-melt cut-off bounds the heat source
+ * honestly, and the plant now runs the whole 1,800 s LIVE and deeply drained. The #535 concern is
+ * met by the cut-off rather than by the latch, so what this asserts is DEPTH plus a live plant,
+ * and the #487 finiteness claim below is unchanged and does the rest. */
+ckT('the filed 5 cm2 case runs DEEP into the endgame, on a LIVE plant (#487/#535)',
+    END.sys.beyond_model !== true && 100 * END.sys.M_total / END.M0 < 10,
     END.sys.P.toFixed(3) + ' MPa, ' + (100 * END.sys.M_total / END.M0).toFixed(2) +
-    ' % inventory at 1800 s, beyond_model ' + END.sys.beyond_model +
-    ' — a run held shallow, or riding free on deleted heat, would prove nothing');
+    ' % inventory at 1800 s, never held — a run held shallow would prove nothing, and one ' +
+    'riding free on DELETED heat is the #535 defect, which the clad-melt cut-off now bounds');
 ckT('...and the plant is FINITE there, held or floating — never NaN (#487)',
     END.nonFinite === 0 && isFinite(END.sys.P) && isFinite(END.sys.mdot_loop) && endHFinite,
     'P ' + END.sys.P.toFixed(3) + ' MPa in-envelope, every node enthalpy finite through ' +

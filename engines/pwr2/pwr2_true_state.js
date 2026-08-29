@@ -432,6 +432,39 @@
      * plant is a field `run_contract` can never see — the same convention `destruction_cause`
      * already uses for exactly this reason. */
     put('model_held_why', ctx.held_why || 'none');
+    /* ---- WHICH SIDE OF THE VALIDATED RANGE IS THE FLUID ON (#516 item 9, 2026-08-29) --------
+     * Layer 0 now carries a SOURCED ideal-gas branch above IAPWS-95's 1000 degC upper limit, so
+     * the core-damage chain can run to its own end instead of stopping on a fitting boundary
+     * (WCAP-16009-NP-A; see pwr2_water's TV_EXT_MAX). That branch is DECLARED, not validated,
+     * and the difference has to reach the player or the extension is a quiet softening of what
+     * the model claims — the exact thing `model_held` above exists to prevent one step further
+     * out.
+     *
+     * PUBLISHED, NOT MERELY DEFINED. `waterRegime()` with no consumer would be `wallLumps` all
+     * over again: specified, shipped, and inert. The hottest node decides, because one node out
+     * on the extension is enough to make the whole step an extended-range answer.
+     *   'ok'        every node inside IAPWS-95's validated range
+     *   'extended'  at least one node on the sourced ideal-gas branch — usable, declared
+     *   'out'       past even that, which is what `model_held` then latches on */
+    put('water_regime', (function () {
+      /* ⚠ ENTHALPY DOMAIN, NOT TEMPERATURE, AND THAT IS A PERFORMANCE FACT MEASURED HERE. The
+       * first cut called `T_from_h` per node per step to ask `waterRegime(T, P)`. `T_from_h`
+       * inverts `h_v` by a 60-iteration bisection for any superheated state, so eleven nodes
+       * bought ~660 extra evaluations every step: `run_pwr2_perf` went from inside its 8x budget
+       * to **15.7x (316.8 us against 20.1)** — the ratio gate #513/#514 exists to hold. The
+       * question is identical in the enthalpy domain and the ceilings are TWO calls for the
+       * whole step, not one inversion per node. */
+      var W = RD.water;
+      var hVal = W.h_v(W.LIMITS.TV_MAX, sys.P);        /* top of the validated range */
+      var hExt = W.h_v(W.LIMITS.TV_EXT_MAX, sys.P);    /* top of the sourced extension */
+      var worst = 'ok';
+      for (var i = 0; i < sys.nodes.length; i++) {
+        var h = sys.nodes[i].h;
+        if (h > hExt) return 'out';
+        if (h > hVal) worst = 'extended';
+      }
+      return worst;
+    })());
 
     put('clad_temp_c',       rx.T_clad_c);
     put('fuel_damaged',      dg.fuel_damaged);

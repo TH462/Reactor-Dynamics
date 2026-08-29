@@ -549,6 +549,26 @@ function runSuite(TS, rec, quiet) {
      TS.buildTrueState({ sys: B.sys, beyond_model: true }).model_held_why === 'none',
      'a held plant with no stated cause is still HELD — the flag never depends on the string');
 
+  /* ---- WHICH SIDE OF THE VALIDATED RANGE (#516 item 9) --------------------------------------
+   * Layer 0 carries a SOURCED ideal-gas branch above IAPWS-95's 1000 degC limit so the
+   * core-damage chain can run to its own end. That branch is DECLARED, not validated, and the
+   * difference has to reach the player — the same argument `model_held` above rests on, one step
+   * further out. Published rather than merely defined, because a `waterRegime()` with no consumer
+   * is `wallLumps` again. */
+  head('THE WATER REGIME  [an extension the player is not told about is a quiet softening]');
+  ck('a normal plant reports water_regime "ok" — every node inside the validated range',
+     ts.water_regime === 'ok', 'got "' + ts.water_regime + '"');
+  /* A node ON the extension: h above the validated ceiling but below the extended one. Built
+   * from Layer 0's own limits rather than a typed enthalpy, so it tracks a moved boundary. */
+  var Wq = RD.water, Pq = B.sys.P;
+  var hExt = 0.5 * (Wq.h_v(Wq.LIMITS.TV_MAX, Pq) + Wq.h_v(Wq.LIMITS.TV_EXT_MAX, Pq));
+  var sysExt = JSON.parse(JSON.stringify(B.sys));
+  sysExt.nodes[0].h = hExt;
+  ck('...and ONE node out on the sourced ideal-gas branch reports "extended"',
+     TS.buildTrueState({ sys: sysExt }).water_regime === 'extended',
+     'node 0 at ' + hExt.toFixed(0) + ' kJ/kg, between the validated ' +
+     Wq.LIMITS.TV_MAX + ' degC ceiling and the ' + Wq.LIMITS.TV_EXT_MAX + ' degC extension');
+
   /* ---- THE DECLARED SIMPLIFICATION IS VISIBLE ------------------------------------------ */
   head('THE ONE-PRESSURE SIMPLIFICATION IS VISIBLE, NOT HIDDEN');
   ck('hot, cold and suction pressures are the SAME number',
@@ -698,6 +718,13 @@ runSuite(TS, rec, false);
 var pass = rec.filter(function (r) { return r.ok; }).length, fail = rec.length - pass;
 
 var MUTATIONS = [
+  /* #516 item 9: the regime reporter goes back to scanning the KEYED lookup, whose `.length` is
+   * undefined — so the loop runs zero times and every plant reports 'ok'. This is the defect the
+   * check caught on its first outing, and it is the dangerous shape: a reporter that always says
+   * "fine" is indistinguishable from a plant that is. */
+  ['the water-regime scan iterates the keyed lookup (zero times) — every plant reads "ok"',
+   'for (var i = 0; i < sys.nodes.length; i++) {',
+   'for (var i = 0; i < nd.length; i++) {'],
   /* ---- THE NIS GAUGE SCALES (#536) ---- */
   ['k_sr reverts to the RETIRED plant\'s scale (the shutdown board reads half a count)',
    '    var K_SR = 2.6e11;', '    var K_SR = 5.0e8;'],

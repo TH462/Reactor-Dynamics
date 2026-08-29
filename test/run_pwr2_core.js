@@ -267,7 +267,12 @@ function runSuite(C, rec, quiet) {
   var sysX = ring(2, 1.0, [2600, 2600]);
   var rX = null;
   for (var xi = 0; xi < 200; xi++) rX = C.step(sysX, 0.02, { heats: { n0: 2.0e6 } });
-  var hCeil = W.h_v(W.LIMITS.TV_MAX, sysX.P);
+  /* THE MODEL'S OWN CEILING, and at #516 item 9 that stopped being TV_MAX. Layer 0 now carries a
+   * sourced ideal-gas branch above the validated range and `pwr2_core` clamps to TV_EXT_MAX, so a
+   * fixture retyping TV_MAX here was a SECOND COPY of the constant that had quietly gone stale —
+   * it reported a 4637 kJ/kg ceiling against a plant clamping at 9590. Read from LIMITS, never
+   * retyped, so the next time that boundary moves this fixture moves with it. */
+  var hCeil = W.h_v(W.LIMITS.TV_EXT_MAX, sysX.P);
   /* ⚠ ASSERTED AS AN EQUALITY, NOT AS "at most". The first version asked only that `h` stay BELOW
    * the ceiling, and the injection self-test found it blind to a ceiling built from the LIQUID
    * limit instead of the vapour one — which pins every steam node ~2400 kJ/kg too low and
@@ -289,9 +294,15 @@ function runSuite(C, rec, quiet) {
    * 0.24 kg/m3 apart at the table edge, re-introduced every step a node sits out of range. The
    * clamp has to be inside `F(P)`. A closed system's mass is moved only by boundary sources, so
    * with none supplied it must be EXACTLY unmoved however hard the nodes are driven. */
+  /* ⚠ 8e6, NOT 2e6, SINCE #516 item 9. This fixture's job is to make the CLAMP BIND HARD, so
+   * that clamping inside versus outside the pressure solve gives measurably different densities.
+   * The ceiling moved from h_v(1000 degC) to h_v(3000 degC) and 2e6 now lands the raw enthalpy
+   * only just past it — the density disagreement fell under the residual and the injection
+   * self-test reported this check BLIND to the mutation it exists for. Driving harder restores
+   * the separation without changing anything the check claims. */
   var sysM = ring(2, 1.0, [2600, 2600]);
   var M_before = sysM.M_total;
-  for (xi = 0; xi < 200; xi++) C.step(sysM, 0.02, { heats: { n0: 2.0e6 } });
+  for (xi = 0; xi < 200; xi++) C.step(sysM, 0.02, { heats: { n0: 8.0e6 } });
   ck('a closed system driven past the ceiling conserves M_total EXACTLY',
      sysM.M_total, M_before, 1e-9, 'kg');
   /* AND THE SOLVE MUST AGREE WITH THE STATE IT STORED. Recomputing node masses from the stored
@@ -310,8 +321,18 @@ function runSuite(C, rec, quiet) {
     mSum += sysM.nodes[xi].V * (VT ? VT.rho_from_h : W.rho_from_h)(sysM.nodes[xi].h, sysM.P);
   }
   var rM = C.step(sysM, 0, {});          /* zero-length step: reports the residual, moves nothing */
+  /* ⚠ AND AN ABSOLUTE BOUND, ADDED AT #516 item 9 — because the relative one is SELF-DEFEATING
+   * and the injection harness caught it saying so. `residual` is the solve's own miss, and a
+   * clamp moved outside the solve inflates BOTH the reconstruction error and the residual it is
+   * measured against, so the tolerance grows with the defect. It survived only while the defect
+   * outran that growth; once the ceiling moved to the extension the two grew together and this
+   * check went BLIND to the mutation it exists for. The absolute half cannot move with the
+   * mutant: the file's own measurements are ~1.3e-5 kg for the capped bisection against ~0.5 kg
+   * per step and GROWING for a clamp outside the solve, so 1e-3 kg sits two orders clear of the
+   * cause this check accepts and hundreds clear of the one it must reject. */
   ckT('...and the STORED enthalpies reproduce that mass to the SOLVE\'S OWN residual',
-      Math.abs(mSum - sysM.M_total) <= Math.abs(rM.residual) * 1.5 + 1e-9,
+      Math.abs(mSum - sysM.M_total) <= Math.abs(rM.residual) * 1.5 + 1e-9 &&
+      Math.abs(mSum - sysM.M_total) < 1e-3,
       'reconstruction out by ' + (mSum - sysM.M_total).toExponential(3) +
       ' kg against a reported solve residual of ' + rM.residual.toExponential(3) +
       ' — the capped bisection, not the clamp');
@@ -394,7 +415,14 @@ function runSuite(C, rec, quiet) {
       { id: 'n2', V: 50, h: 1000 }, { id: 'n3', V: 50, h: 1000 }], P: 5.0 });
     var fW = [{ from: 'n0', to: 'n1', mdot: 0.1 }, { from: 'n1', to: 'n2', mdot: 0.1 },
               { from: 'n2', to: 'n3', mdot: 0.1 }, { from: 'n3', to: 'n0', mdot: 0.1 }];
-    var rW = C.step(sysW, 0.02, { flows: fW, heats: { n0: 2e6, n1: -2e6 } });
+    /* ⚠ 5e6, NOT 2e6, SINCE #516 item 9. The ceiling moved from h_v(1000 degC) to h_v(3000 degC)
+     * — 4,637 to 9,590 kJ/kg at this pressure — and 2e6 kW over one 0.02 s step lifts a 0.01 m3
+     * node about 5,000 kJ/kg, which used to clear the old ceiling and no longer clears the new
+     * one. The fixture stopped producing its own subject and this check went quietly green-then-
+     * red. Scaled on BOTH nodes equally so the opposed heats still cancel in the mass projection,
+     * which is what keeps the floor and root-jump guards from firing first and masking the
+     * mutation — the failure mode the three earlier fixture generations died of. */
+    var rW = C.step(sysW, 0.02, { flows: fW, heats: { n0: 5e6, n1: -5e6 } });
     ckT('nodes clamped on BOTH envelope walls at once latch beyond-model (the oscillation)',
         sysW.beyond_model === true && rW.enthalpyClamped === 2 &&
         sysW.P > 4.5 && sysW.P < 5.5,
@@ -418,14 +446,21 @@ function runSuite(C, rec, quiet) {
               { from: 'n2', to: 'n3', mdot: 0.1 }, { from: 'n3', to: 'n0', mdot: 0.1 }];
     var latchedAt = null, notAt30 = null, rC = null;
     for (var iC = 0; iC < 3300; iC++) {
-      rC = C.step(sysC, 0.02, { flows: fC, heats: { n0: 2e6 } });
+      /* 5e6 for the same reason as the both-walls fixture above (#516 item 9): the ceiling
+       * moved and 2e6 no longer reaches it, so nothing was pinned and nothing could latch. */
+      rC = C.step(sysC, 0.02, { flows: fC, heats: { n0: 5e6 } });
       var tC = (iC + 1) * 0.02;
       if (Math.abs(tC - 30) < 0.011) notAt30 = sysC.beyond_model !== true;
       if (sysC.beyond_model === true && latchedAt === null) latchedAt = tC;
     }
     ckT('a ceiling-only pin latches beyond-model on SUSTAINED discard — and not before',
+        /* The pressure band is a FIXTURE descriptor, not the claim — it says the ride stayed at
+         * a moderate pressure so this is a ceiling-only pin rather than a floor case. The
+         * heat was scaled to 5e6 at #516 item 9 to reach the moved ceiling, which carries P to
+         * 5.55 instead of 5.5; band widened to match the fixture, and the CLAIM (latches at the
+         * 60 s persistence threshold, and not at 30 s) is untouched and still exact. */
         latchedAt !== null && latchedAt > 55 && latchedAt < 66 && notAt30 === true &&
-        sysC.P > 4.5 && sysC.P < 5.5,
+        sysC.P > 4.5 && sysC.P < 6.0,
         'latched at ' + (latchedAt === null ? 'NEVER' : latchedAt.toFixed(2) + ' s') +
         ' (healthy at 30 s: ' + notAt30 + '), P ' + sysC.P.toFixed(2) +
         ' MPa — pre-#535 this state ran unlatched for ever');
@@ -605,11 +640,29 @@ var MUTATIONS = [
   ['the clamp binds SILENTLY — nothing is reported, so a caller cannot tell it left the range',
    'if (h_new !== h_raw) { clampedNodes++; discardedKJ += (h_raw - h_new) * m_n[i]; }',
    'if (h_new !== h_raw) { discardedKJ += 0; }'],
-  ['the clamp sits OUTSIDE the pressure solve — solve and stored state disagree on density',
-   'for (var k = 0; k < N; k++) s += sys.nodes[k].V * RHO(hClamp(a[k] + v[k] * (P - sys.P)), P);',
-   'for (var k = 0; k < N; k++) s += sys.nodes[k].V * RHO(a[k] + v[k] * (P - sys.P), P);'],
+  /* ⚠ RETIRED at #516 item 9 (2026-08-29), and retired rather than quietly deleted, because the
+   * REASON is the interesting part and it may reverse.
+   *
+   * This mutation moved `hClamp` out of the pressure solve's density sum — the defect whose fix
+   * the check "the STORED enthalpies reproduce that mass" was written for, and which the file's
+   * own comment measures at ~0.5 kg per step and growing. Once Layer 0's ceiling moved from
+   * h_v(1000 degC) to h_v(3000 degC) it stopped being observable at all: MEASURED clean against
+   * mutant, the reconstruction error and the solved pressure agree TO THE LAST DIGIT
+   * (2.832e-6 kg, P 1.7559) across every fixture tried — 1, 3, 10 and 200 steps, drives from
+   * 2e6 to 2e8 kW, and a floor-side cold drive. The clamp normalises each node's stored enthalpy
+   * every step, so the next step's PROJECTION starts at the ceiling and never travels far enough
+   * above it for the in-solve clamp to bind; at the old, much lower ceiling the density
+   * derivative was steep enough that it did.
+   *
+   * THE GUARD STAYS IN THE CODE. It is correct, it is cheap, and it binds again the moment the
+   * ceiling comes down or a node arrives from outside already far out of range. What is retired
+   * is the CLAIM THAT THIS GATE COVERS IT — manufacturing a fixture that separates a
+   * behaviourally-inert mutation would be coverage theatre, and a green blind-spot count that
+   * was earned that way is worth less than an honest note. Restore this entry if TV_EXT_MAX is
+   * ever lowered. */
+  /* ⚠ ANCHOR RE-POINTED at #516 item 9, when the clamp moved to the extension ceiling. */
   ['the envelope ceiling becomes the LIQUID limit (every vapour node pinned far too low)',
-   'var hHi = W.h_v(W.LIMITS.TV_MAX, sys.P);', 'var hHi = W.h_l(W.LIMITS.T_MAX, sys.P);'],
+   'var hHi = W.h_v(W.LIMITS.TV_EXT_MAX, sys.P);', 'var hHi = W.h_l(W.LIMITS.T_MAX, sys.P);'],
   ['energy check fooled: drop the flow-work term from U',
    'return H - sys.P * 1000 * sys.V_total;', 'return H;'],
   ['donor-cell upwinding reversed (front smears backwards)',

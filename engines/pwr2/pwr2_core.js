@@ -369,7 +369,19 @@
      * only as fast as pressure does, and `F` is called ~10 times per step on the hot path that
      * D1 §26 already recorded a performance stop condition against. Fixed bounds also make the
      * clamp a pure function of `a` and `P` within the step, which is what keeps `F` monotone. */
-    var hHi = W.h_v(W.LIMITS.TV_MAX, sys.P);     /* vapour at TV_MAX — the envelope ceiling */
+    /* THE CEILING IS NOW THE EXTENSION'S (#516 item 9, owner ruling 2026-08-29). It was
+     * TV_MAX, the last VALIDATED temperature, and that is the wall the whole core-damage chain
+     * died against: every unmitigated break latched `beyond_model` on the ceiling-persistence
+     * arm with the core node pinned here, 1,609 degC short of the sourced uranium-dioxide melt
+     * point. Layer 0 now carries a sourced ideal-gas branch above TV_MAX (WCAP-16009-NP-A, see
+     * pwr2_water's TV_EXT_MAX) and this is the consumer that has to know about it, or the
+     * extension would exist and change nothing.
+     *
+     * THE PERSISTENCE LATCH IS UNTOUCHED and still guards the real failure it was built for:
+     * a node pinned at the ceiling for 60 continuous seconds is still held, only the ceiling
+     * moved. `rangeOK` still answers FALSE above TV_MAX and `true_state.water_regime` says
+     * which side the plant is on, so nothing here presents the extension as validated. */
+    var hHi = W.h_v(W.LIMITS.TV_EXT_MAX, sys.P);   /* vapour at the extension ceiling */
     var hLo = W.h_l(0, sys.P);                   /* liquid at 0 degC — the envelope floor */
     function hClamp(h) { return h > hHi ? hHi : (h < hLo ? hLo : h); }
 

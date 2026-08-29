@@ -9023,3 +9023,187 @@ get nothing from is a defect, and adding the card without the entry would have s
 because the item-coverage assertion is one check over all items rather than one per item.
 
 `run_pwr2_board` 48/48 unmoved.
+
+---
+
+## 122. #516 ITEM 9 — THE MELT PATH: THE CEILING WAS NOT THE ONLY WALL, AND THREE OF #586's CLAIMS WERE ARTIFACTS OF WHERE THE RIDE STOPPED — 2026-08-29
+
+*(OWNER RULING, 2026-08-29: selected "Build a melt path, extrapolating properties" from options I
+wrote — a selection, not verbatim words. The option was put WITH the caveat that this is
+unvalidated extrapolation and that #586 had measured the previous fit running 34.8 % out on
+specific heat just past its range.)*
+
+The owner, playtesting: *"Core never fully melted down or got below about 1400F when fully
+uncovered."*
+
+**The first half was already fixed by #586** and this section verifies it: the core reaches
+2229 degF, not 1400. The second half is what the ruling is about.
+
+### What actually blocked melt, measured
+
+| quantity | value |
+|---|---|
+| sourced uranium-dioxide melting point (GEND-061) | 3100 K = **2827 degC (5120 degF)** |
+| peak FUEL temperature on the 20 cm2 unmitigated break | **1218 degC** |
+| **shortfall** | **1,609 degC** |
+| where the ride ended | `beyond_model` at 596.4 s, ceiling-persistence arm, core node pinned at `h_v(TV_MAX, P)` |
+
+So the wall was `TV_MAX` again — the same constant #586 moved once already, now standing at
+1000 degC, which is **IAPWS-95's own documented upper limit**. There is no more reference data to
+refit against, which is exactly why #586 recorded melt as a declared absence rather than chasing it.
+
+### The extension is SOURCED, not an extrapolation of the fit
+
+Extrapolating the correlation is precisely what #586 proved fails — evaluated past its range the
+old fit measured cp **34.8 % out at 1000 degC**. So above `TV_MAX` the vapour is treated as an
+**ideal gas with constant specific heat**, which is a documented licensing-basis simplification
+with a citation rather than a curve walked off the end of its data:
+
+> **WCAP-16009-NP-A (ML050910161) §10-2-1-2**, the NRC-approved WCOBRA/TRAC best-estimate
+> large-break model: *"Cp,ideal is defined by ideal gas behavior"*, *"where Rs is the gas constant
+> for steam (461.7 J/kg-K) and gamma_ideal = 1.3 is the ratio of ideal specific heats for steam."*
+
+**That document is already this file's source for the transport properties** — the same
+correlation set, one section over. It was found by `tools/find_source.js`, not recalled.
+
+**But the constant used is the SEAM's, not the source's**, and that is a continuity argument.
+Measured: the refitted correlation gives cp **2.419–2.484 kJ/kg-K at 1000 degC** across
+0.1–15 MPa, so adopting the source's flat gamma = 1.3 value (2.0007) would put a **23 % STEP in cp
+at the seam** — a kink in the energy balance exactly where the interesting physics starts. Holding
+`cp_v(TV_MAX, P)` makes h continuous in value *and* slope by construction, and lands nearer the
+truth as well: NIST puts real steam at 1000 degC near 2.29 kJ/kg-K, so the fit is ~7 % high and the
+source's ideal value ~13 % low.
+
+**Measured continuity across the seam**, dh/dT stepping by at most **0.001 %**:
+
+| P (MPa) | h(999.9) | h(1000.1) | cp(999.9) | cp(1000.1) | slope step |
+|---|---|---|---|---|---|
+| 0.1 | 4643.59 | 4644.08 | 2.4607 | 2.4607 | 0.001 % |
+| 7 | 4620.06 | 4620.55 | 2.4838 | 2.4838 | 0.000 % |
+| 15 | 4595.87 | 4596.35 | 2.4187 | 2.4186 | −0.001 % |
+
+`TV_EXT_MAX` is 3000 degC. `rangeOK` **still answers false above TV_MAX** — every caller that asked
+before gets the same answer — and a new `waterRegime()` reports `ok` / `extended` / `out` so a
+consumer can distinguish "outside the validated envelope" from "outside it and outside the
+extension too". Transport properties are **not** extended: `k_v`'s sourced cubic reaches a
+**negative** conductivity (−1218 mW/m-K) by 3000 degC, so both are held at the ceiling value,
+declared at all three sites.
+
+### And the ceiling was not the only wall
+
+With it lifted, the fuel does reach melt — and the ride gets there through **three seconds of
+cladding temperature that nothing in this model defends**:
+
+| milestone | time |
+|---|---|
+| clad 1800 degF | 489.9 s |
+| clad 2200 degF (10 CFR 50.46) | 582.4 s |
+| **clad 1850 degC — its own melting point** | **645.3 s** |
+| clad 5000 degC | 647.2 s |
+| fuel 2827 degC (melt latch) | 648.3 s |
+| **peak clad** | **16,311 degC (29,392 degF)** |
+
+**Two declared simplifications produce that between them, and both are in the module header.**
+Appendix K's sourced *"reaction shall be assumed not to be steam limited"* keeps the parabolic rate
+law running at full rate for ever — conservative for a licensing calculation that stops at
+2200 degF, meaningless past it. And `pwr2_damage` declares **NO GEOMETRY CHANGE FROM RELOCATION**,
+which is harmless while the cladding is intact and is exactly what produces the runaway once it is
+not.
+
+GEND-061 settles it in a sentence this file already quotes: Zircaloy melting and relocation give
+*"resulting reduced exposed-surface areas"*. **The reaction is a surface reaction on intact
+cladding.** Past the melting point that surface has gone somewhere this model cannot follow, so the
+reaction stops. The melting point itself is **[UNVERIFIED]** and flagged as such — the corpus copy
+of GEND-061 is OCR-corrupt where a numeric value would sit and `find_source.js` returns one prose
+hit across 39 documents in 3 lanes — but what it gates rests on the sourced sentence, not on the
+number's precision.
+
+**With the cut-off:** peak clad **1958 degC (3557 degF)**, peak fuel 1964.5 degC, the ride runs the
+full horizon live, and **melt is still not reached — by 862 degC.**
+
+### The finding: melt's reason changed, and that is the deliverable
+
+It was a **property-range artifact** — the fluid pinned at a fitting boundary and the ride ended.
+That wall is gone. It is now a **physical** limit: the oxidation heat source dies with the cladding
+and decay heat alone cannot close the remaining gap. Reaching fuel melt would need a
+melt-progression model — relocation, candling, a molten pool — which nothing in the corpus supports
+and which this module declares it does not have. Asserted as an absence **with its reason**, so a
+later change that makes melt reachable reds the check and gets re-measured.
+
+### THREE OF #586's OWN CLAIMS WERE ARTIFACTS OF THE TRUNCATION
+
+This is the part worth carrying forward, and it is the same lesson #586 recorded about its own
+fence, arriving one level up.
+
+1. **"The oxidation feedback is what takes this core over the damage limit AT ALL."** With the ride
+   ending at 596 s the no-feedback leg peaked at 2090 degF and never crossed. Run to completion it
+   peaks at **2940 degF and crosses at 690.3 s** — 107.9 s after the feedback leg. The feedback
+   makes it **sooner**, not **possible**. Withdrawn and re-expressed as the ordering.
+2. **"Two of the three 50.46 criteria breach and not the third."** Oxidation now reaches
+   **17.57 %** against its 17 % criterion — all three go. The ordering claim survives in a
+   stronger form: hydrogen is breached by a wide margin while oxidation only just clears, which is
+   what "17x tighter" means measured on the plant instead of read off two constants.
+3. **"Both runs stop on the model's own limit."** Neither stops. That check had been re-aimed twice
+   before and each version pinned a *limitation*, which is why each broke when the limitation
+   moved. It now asserts the thing the first version was reaching for: both legs are **live** at
+   the horizon, not a frozen plant being re-stepped.
+
+**And the cleanest statement this gate has ever made falls out of the cut-off:** the feedback is
+what **melts the cladding**. The ON leg reaches the melting point at 645.3 s; the OFF leg never
+reaches it at all. Which is why the oxidation comparison **inverts** — the feedback leg stops
+reacting when its surface goes, at 17.57 %, while the slower leg keeps reacting to **52.67 %**.
+
+### Four gate defects the injection harness found, all mine
+
+- **The first cut of the cut-off zeroed the HEAT and left the rate law integrating**, so zirconium
+  went on being consumed with no energy released — breaking the gate's own 1510 cal/g closure by
+  5.7x and driving oxidation to 100 %. Caught by that closure check, which is what it is for.
+- **A fixture that produced its own subject out of the defect**: the clad-melt fixture held at
+  3400 degF from step one, so the cut-off latched immediately, no oxide ever grew, and the
+  "history is kept" check reported w = 0.00. Two phases now.
+- **Two guards that mask each other's mutation.** The cut-off is implemented twice — a freeze on
+  `w` and a gate on `Q_ox_kW` — and each is sufficient, so mutating either goes blind. The
+  discriminating check asserts the **oxide stops growing**, which only the freeze provides. The
+  #295 shape: plant the demand past the half you are not testing.
+- **A TOLERANCE KEYED TO A QUANTITY THE MUTATION ALSO INFLATES.** `run_pwr2_core`'s reconstruction
+  check bounded its error by `|residual| * 1.5` — and a clamp moved outside the solve inflates
+  both. It survived only while the defect outran that growth. An absolute bound was added; it is
+  the more transferable half of this whole section.
+
+### A fifth, in my own new code, and a sixth that only the PERF gate could see
+
+`water_regime`'s scan iterated `nd` — the **keyed** node lookup built above it, whose `.length` is
+undefined. It ran **zero times and reported 'ok' for every plant**. Caught on the check's first
+outing, which is the only reason it is not shipping: a regime reporter that always says "fine"
+reads exactly like a plant that is. It has its own mutation now.
+
+And the fixed version was **too expensive**, which no correctness check could tell me. The first
+working cut asked `waterRegime(T, P)` per node per step, which needs `T_from_h` — a **60-iteration
+bisection** for any superheated state. Eleven nodes bought ~660 extra evaluations every step and
+`run_pwr2_perf` went from inside its budget to **15.7x (316.8 us against 20.1)** — the ratio gate
+#513/#514 exists to hold. The question is identical in the **enthalpy domain**, where the two
+ceiling enthalpies are two calls for the whole step rather than one inversion per node: **4.6x
+(92.0 us)** after the rewrite. **A field published every step is a cost, and the only gate that
+states it is the perf one.**
+
+### One mutation RETIRED, honestly
+
+`run_pwr2_core`'s "the clamp sits OUTSIDE the pressure solve" is now **behaviourally inert**:
+measured clean against mutant, the reconstruction error and the solved pressure agree **to the last
+digit** (2.832e-6 kg, P 1.7559) across 1, 3, 10 and 200 steps, drives from 2e6 to 2e8 kW, and a
+floor-side cold drive. The clamp normalises each node every step, so the next projection starts
+*at* the ceiling and never travels far enough above it to bind; at the old, much lower ceiling the
+density derivative was steep enough that it did.
+
+**The guard stays in the code** — correct, cheap, and binding again the moment the ceiling comes
+down. What is retired is the *claim that the gate covers it*. Manufacturing a fixture to separate a
+behaviourally-inert mutation would be coverage theatre, and a blind-spot count earned that way is
+worth less than an honest note.
+
+### Scores
+
+`run_pwr2_damage` 45 -> **49**, mutations 23 -> **24**. `run_pwr2_coredamage` 23 -> **26**.
+`run_pwr2_core` 56/56 with mutations 35 -> **34** (the retirement). `run_pwr2_water` 282/282 and
+35/35 **unmoved** — the extension is additive and in-envelope behaviour is bit-identical by
+construction. `run_pwr2_loca`, `run_pwr2_vtable`, `run_pwr2_true_state`, `run_pwr2_fuel` and
+`run_pwr2_sources` all unmoved.

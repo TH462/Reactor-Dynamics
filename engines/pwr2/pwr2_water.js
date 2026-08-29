@@ -78,6 +78,49 @@
    * against fetched reference data over the whole extended range, never extrapolated (see the
    * superheated-vapour block below for the measured before/after). */
   var TV_MAX = 1000.0;
+  /* THE EXTENSION CEILING (#516 item 9, owner ruling 2026-08-29), degC, vapour branch.
+   *
+   * TV_MAX above is the last temperature this library is VALIDATED at: 1000 degC is IAPWS-95's
+   * own documented upper limit, so there is no more reference data to refit against and #586
+   * said so explicitly. But the core-damage chain does not end there. The 10 CFR 50.46 clad
+   * limit is reached at 2229 degF (1220 degC) and the sourced uranium-dioxide melting point is
+   * 3100 K = **2827 degC**; measured on the 20 cm2 unmitigated break, the fuel peaks 1,609 degC
+   * SHORT of that latch because the plant hits the CEILING-PERSISTENCE arm of `beyond_model` at
+   * 596 s with the core node pinned at h_v(TV_MAX, P) — the same wall #586 moved once already.
+   *
+   * *(OWNER RULING, 2026-08-29: selected "Build a melt path, extrapolating properties" from
+   * options I wrote — a selection, not verbatim words. The option was presented WITH the caveat
+   * that this is unvalidated extrapolation and that #586 measured the previous fit running
+   * 34.8 % out on cp just past its range.)*
+   *
+   * SO THE EXTENSION IS NOT AN EXTRAPOLATION OF THE FIT — that is exactly what #586 proved
+   * fails. Above TV_MAX the vapour is treated as an IDEAL GAS with constant specific heat,
+   * which is a documented licensing-basis simplification rather than a curve walked off the end
+   * of its data: **WCAP-16009-NP-A (ML050910161)**, the NRC-approved WCOBRA/TRAC best-estimate
+   * large-break model — already this file's source for the transport properties below —
+   * defines superheated vapour that way in §10-2-1-2, *"Cp,ideal is defined by ideal gas
+   * behavior"*, with *"Rs ... (461.7 J/kg-K) and gamma_ideal = 1.3"*.
+   *
+   * THE CONSTANT IS THE SEAM'S, NOT THE SOURCE'S 2.0007 kJ/kg-K, and that is a continuity
+   * argument. Measured: the refitted correlation gives cp = 2.419-2.484 kJ/kg-K at 1000 degC
+   * across 0.1-15 MPa, so adopting the source's flat gamma = 1.3 value would put a **23 % STEP
+   * in cp at the seam** — a kink in the energy balance exactly where the interesting physics
+   * starts. Holding `cp_v(TV_MAX, P)` instead makes h continuous in value AND slope by
+   * construction, and it is nearer the truth as well: NIST puts real steam at 1000 degC near
+   * 2.29 kJ/kg-K, so the fit is ~7 % high and the source's ideal value ~13 % low.
+   *
+   * WHAT IS AND IS NOT CLAIMED. Real steam cp keeps rising slowly with temperature (~2.6
+   * kJ/kg-K by 2000 degC) and then dissociation begins, which this does not model at all. A
+   * constant cp is therefore within roughly 10 % over the extension and OPTIMISTIC about the
+   * heat the steam absorbs at the top of it. That is declared, `rangeOK` still reports FALSE
+   * out here, and `waterRegime()` below exists so a caller — and the board — can say which side
+   * of 1000 degC the plant is on rather than presenting the two as equally sound.
+   *
+   * TRANSPORT PROPERTIES ARE NOT EXTENDED: `k_v` and `mu_v` keep clipping at TV_MAX, because
+   * their sourced correlations are polynomials that go physically wrong rather than merely
+   * inaccurate — `k1`'s -4.51e-8 T^3 term alone reaches -1218 mW/m-K at 3000 degC, i.e. a
+   * NEGATIVE conductivity. Held at the ceiling value, declared here and at both sites. */
+  var TV_EXT_MAX = 3000.0;
   var P_CRIT = 22.064, T_CRIT = 373.946, TK_CRIT = T_CRIT + 273.15;   // [sourced] IAPWS-95
 
   function clip(x, lo, hi) { return x < lo ? lo : (x > hi ? hi : x); }
@@ -88,6 +131,19 @@
    * that cares (the gate, diagnostics, the node model's sanity check) asks. */
   function rangeOK(T_c, P_MPa) {
     return (P_MPa >= P_MIN && P_MPa <= P_MAX && T_c >= T_MIN && T_c <= TV_MAX);
+  }
+  /* WHICH SIDE OF THE VALIDATED CEILING IS THIS STATE ON (#516 item 9)? `rangeOK` deliberately
+   * does NOT soften — it still answers false above TV_MAX, because a state out there is not
+   * validated and every caller that asked before must keep getting the same answer. This is the
+   * finer question the extension makes worth asking, and it exists so a consumer can DISTINGUISH
+   * "outside the envelope" from "outside the envelope and outside the extension too":
+   *   'ok'        inside IAPWS-95's validated range
+   *   'extended'  above TV_MAX, on the sourced ideal-gas branch — usable, declared, not validated
+   *   'out'       outside pressure, below T_MIN, or above TV_EXT_MAX — genuinely beyond model */
+  function waterRegime(T_c, P_MPa) {
+    if (P_MPa < P_MIN || P_MPa > P_MAX || T_c < T_MIN) return 'out';
+    if (T_c <= TV_MAX) return 'ok';
+    return T_c <= TV_EXT_MAX ? 'extended' : 'out';
   }
 
   /* ---------------------------------------------------------------- saturation line
@@ -317,16 +373,31 @@
     return { ci: poly(C_CI, lp), g: poly(C_G, lp),
              cs: Math.exp(poly(C_CS, lp)), tau: Math.exp(poly(C_TAU, lp)) };
   }
-  /* cp_v(T,P): vapour specific heat. At or below saturation returns the saturated value. */
-  function cp_v(T_c, P_MPa) {
+  /* THE FITTED BRANCH, T_sat..TV_MAX — untouched, and BIT-IDENTICAL below the ceiling by
+   * construction: both functions below clip to TV_MAX exactly as they always did, and the
+   * extension is a separate term added only when the argument is above it. */
+  function cp_v_fit(T_c, P_MPa) {
     var p = shParams(P_MPa), dT = Math.max(0, clip(T_c, 0, TV_MAX) - T_sat(P_MPa));
     return p.ci + p.g * dT + (p.cs - p.ci) * Math.exp(-dT / p.tau);
   }
-  /* h_v(T,P): superheated-vapour enthalpy. At saturation it returns h_g exactly. */
-  function h_v(T_c, P_MPa) {
+  function h_v_fit(T_c, P_MPa) {
     var p = shParams(P_MPa), dT = Math.max(0, clip(T_c, 0, TV_MAX) - T_sat(P_MPa));
     return h_g(P_MPa) + p.ci * dT + 0.5 * p.g * dT * dT +
            (p.cs - p.ci) * p.tau * (1 - Math.exp(-dT / p.tau));
+  }
+  /* cp_v(T,P): vapour specific heat. At or below saturation returns the saturated value; above
+   * TV_MAX it is HELD at the seam value — the sourced ideal-gas treatment (#516 item 9, see
+   * TV_EXT_MAX). Constant, so h below stays C1-continuous across the seam. */
+  function cp_v(T_c, P_MPa) {
+    if (T_c <= TV_MAX) return cp_v_fit(T_c, P_MPa);
+    return cp_v_fit(TV_MAX, P_MPa);
+  }
+  /* h_v(T,P): superheated-vapour enthalpy. At saturation it returns h_g exactly; above TV_MAX
+   * it continues linearly at the seam's own cp, so h and dh/dT are both continuous there. */
+  function h_v(T_c, P_MPa) {
+    if (T_c <= TV_MAX) return h_v_fit(T_c, P_MPa);
+    var T = clip(T_c, 0, TV_EXT_MAX);
+    return h_v_fit(TV_MAX, P_MPa) + cp_v_fit(TV_MAX, P_MPa) * (T - TV_MAX);
   }
   /* rho_v(T,P): superheated-vapour density from the real gas law with a fitted compressibility
    * factor, Z relaxing from its saturated value toward 1 as the steam superheats:
@@ -344,7 +415,10 @@
   var C_TZ = [4.8119576999e+0, 1.0268904870e-1, -2.1583255242e-2, -1.0075930158e-2];
   function rho_v(T_c, P_MPa) {
     var P = clip(P_MPa, P_MIN, P_MAX), lp = Math.log(P);
-    var Ts = T_sat(P), T = Math.max(Ts, clip(T_c, 0, TV_MAX));
+    /* #516 item 9: the clip follows the extension. `Z` here already relaxes toward 1 with
+     * superheat, so past TV_MAX this IS the ideal-gas law the extension assumes — the branch
+     * needs no special case, only room. Anchoring to rho_v_sat is unchanged. */
+    var Ts = T_sat(P), T = Math.max(Ts, clip(T_c, 0, TV_EXT_MAX));
     var Zs = poly(C_ZS, lp);
     var Z = 1 - (1 - Zs) * Math.exp(-(T - Ts) / Math.exp(poly(C_TZ, lp)));
     // ANCHORED to rho_v_sat, so rho_v(T_sat, P) === rho_v_sat(P) EXACTLY and rho_from_h is
@@ -444,7 +518,10 @@
     var hf = h_f(P_MPa), hg = h_g(P_MPa), Ts = T_sat(P_MPa);
     if (h_kJkg >= hf && h_kJkg <= hg) return Ts;               // two-phase: T IS T_sat
     if (h_kJkg > hg) {                                          // superheated: invert h_v
-      var lo = Ts, hi = TV_MAX, mid = Ts;
+      /* #516 item 9: the bracket's top follows the extension, or an enthalpy out on the
+       * ideal-gas branch would invert to a temperature pinned at the validated ceiling — which
+       * is precisely the pin the extension exists to lift. */
+      var lo = Ts, hi = TV_EXT_MAX, mid = Ts;
       for (var k = 0; k < 60; k++) { mid = 0.5 * (lo + hi); if (h_v(mid, P_MPa) < h_kJkg) lo = mid; else hi = mid; }
       return mid;
     }
@@ -502,8 +579,8 @@
     k_v: k_v, mu_v: mu_v, vaporFilmGroup: vaporFilmGroup,
     quality: quality, voidFraction: voidFraction, T_from_h: T_from_h, rho_from_h: rho_from_h,
     subcooling: subcooling, superheat_kJkg: superheat_kJkg, superheat_c: superheat_c,
-    rangeOK: rangeOK,
+    rangeOK: rangeOK, waterRegime: waterRegime,
     LIMITS: { P_MIN: P_MIN, P_MAX: P_MAX, T_MIN: T_MIN, T_MAX: T_MAX, TV_MAX: TV_MAX,
-              P_CRIT: P_CRIT, T_CRIT: T_CRIT }
+              TV_EXT_MAX: TV_EXT_MAX, P_CRIT: P_CRIT, T_CRIT: T_CRIT }
   };
 })(typeof globalThis !== 'undefined' ? globalThis : this);

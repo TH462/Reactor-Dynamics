@@ -119,6 +119,16 @@
   var TMI = {
     kind: '[sourced]',
     uo2_melt_k:      3100,       /* "the melting point of uranium dioxide", 5100 degF */
+    /* THE CLADDING'S OWN MELTING POINT, degC — **[UNVERIFIED]**, and flagged rather than
+     * quietly adopted (#516 item 9, 2026-08-29). GEND-061 sources the MECHANISM in this file's
+     * own header quote — *"Zircaloy melting and relocation to generally colder regions and
+     * resulting reduced exposed-surface areas"* — but the corpus copy is OCR-corrupt where a
+     * numeric value would sit, and `tools/find_source.js` returns that one prose hit and
+     * nothing else across 39 documents in 3 lanes. So the VALUE is adopted from the standard
+     * Zircaloy figure and marked unverified; an evidence pass is owed before it is cited as
+     * sourced anywhere. What it gates is argued at the cut-off below, and that argument rests
+     * on the sourced sentence, not on this number's precision. */
+    clad_melt_c:     1850,       /* [UNVERIFIED] adopted — see above */
     onset_f:         1200,       /* "very little hydrogen is generated until … 1,200 °F (650 °C)" */
     core_zr_kg:      23600,      /* "a calculated 23,600 kg (52,000 lb) of zirconium" */
     core_mwt:        2772,       /* TMI-2 rating, for the power scaling of the cross-check */
@@ -162,6 +172,9 @@
       rated_thermal_kW: opts.rated_thermal_kW === undefined ? 300000 : opts.rated_thermal_kW,
       w_mg_cm2:  opts.w_mg_cm2 === undefined ? 0 : opts.w_mg_cm2,
       fuel_damaged: false,
+      /* the cladding has passed its melting point — the oxidation surface is gone (#516 item 9).
+       * Old saves carry no field and land false, which is the healthy value. */
+      clad_melted: false,
       melted: false,
       destruction_cause: 'none'
     };
@@ -213,8 +226,37 @@
     var w_max = wMax(g);
     var T_k   = drivers.cladTemp_c + 273.15;
 
+    /* ---- THE SURFACE STOPS EXISTING (#516 item 9, owner ruling 2026-08-29) -----------------
+     * MEASURED, on the 20 cm2 unmitigated break once Layer 0's ceiling stopped ending the ride:
+     * the clad crosses its own melting point at 645.3 s and reaches **16,311 degC at 648.3 s** —
+     * three seconds. Nothing in this model stops it, and the reason is in the file header two
+     * places at once. Appendix K's *"reaction shall be assumed not to be steam limited"* keeps
+     * the parabolic rate law running at full rate for ever, which is CONSERVATIVE for a
+     * licensing calculation that stops at 2200 degF and meaningless past it; and this module
+     * declares NO GEOMETRY CHANGE FROM RELOCATION, which is harmless while the cladding is
+     * intact and is precisely what produces the runaway once it is not.
+     *
+     * GEND-061 settles it in the sentence this file already quotes: Zircaloy melting and
+     * relocation give *"resulting reduced exposed-surface areas"*. The reaction is a SURFACE
+     * reaction on intact cladding. Past the melting point that surface has gone somewhere this
+     * model cannot follow, so the honest thing is to stop generating heat on it rather than to
+     * keep integrating a rate law whose subject no longer exists.
+     *
+     * THIS IS A BOUND, NOT A MELT-PROGRESSION MODEL. It does not model candling, a molten pool,
+     * or relocation to the lower head — it says where this model stops being able to speak. The
+     * damage latches below still fire, and `clad_melted` is reported so a consumer can say WHY
+     * the oxidation went quiet instead of inferring it from a flat curve. */
+    var cladMolten = drivers.cladTemp_c >= TMI.clad_melt_c;
+    if (cladMolten) dm.clad_melted = true;
+
     var w0 = dm.w_mg_cm2;
-    var w1 = Math.sqrt(w0 * w0 + rate(T_k) * (dt > 0 ? dt : 0));
+    /* THE REACTION STOPS, NOT JUST ITS HEAT (#516 item 9). The first cut of this change zeroed
+     * `Q_ox_kW` alone and left the rate law integrating — so zirconium went on being consumed
+     * with no energy released, which broke the gate's own 1510 cal/g closure by 5.7x and drove
+     * `oxidation_frac` to 100 %. Caught by that closure check, which is exactly what it is for.
+     * A surface that has relocated does not keep reacting silently; it stops reacting. */
+    var w1 = dm.clad_melted ? w0
+                            : Math.sqrt(w0 * w0 + rate(T_k) * (dt > 0 ? dt : 0));
     if (w1 > w_max) w1 = w_max;                 /* cannot oxidise metal that is no longer there */
     dm.w_mg_cm2 = w1;
 
@@ -223,8 +265,11 @@
     var zr_kg   = w1 * g.clad_surface_m2 / 100;
     var h2_kg   = zr_kg * H2_PER_ZR;
 
-    /* Heat: 1510 cal/g on the mass reacted. cal -> J -> kW. */
-    var Q_ox_kW = dt > 0 ? dZr_kg * 1000 * BJ.heat_cal_per_g * CAL_J / 1000 / dt : 0;
+    /* Heat: 1510 cal/g on the mass reacted. cal -> J -> kW. ZERO once the cladding has melted —
+     * see the cut-off note above; the oxide inventory `w` is left where it is rather than
+     * rewound, because the metal that reacted before the melt really did react. */
+    var Q_ox_kW = (dt > 0 && !dm.clad_melted)
+                  ? dZr_kg * 1000 * BJ.heat_cal_per_g * CAL_J / 1000 / dt : 0;
 
     /* ---- THE LATCHES. Latched, never cleared: a core that has been damaged stays damaged. ---- */
     var pct_c = (LIM.pct_limit_f - 32) * 5 / 9;
@@ -244,6 +289,7 @@
       zirc_heat_pct: Q_ox_kW / dm.rated_thermal_kW * 100,
       rate_mg2_cm4_s: rate(T_k),
       fuel_damaged: dm.fuel_damaged,
+      clad_melted: dm.clad_melted === true,
       melted: dm.melted,
       destruction_cause: dm.destruction_cause,
       /* Margins, REPORTED so a consumer does not have to re-derive the criteria. */
