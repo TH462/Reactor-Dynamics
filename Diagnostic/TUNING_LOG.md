@@ -98,10 +98,15 @@ sourced, above the 12 % trip, 6.6 points below the measured Mode 3 band. `run_m7
 
 ### Still open out of it
 
-**#580 stage 2 needs an owner decision** — the ruled rescale is refuted by measurement; the
-options and a recommendation are on the issue. #576 items (a) and (b) — no continuous bypass
-spray, no vessel ambient loss, heaters cannot fail ON — were never in scope and the issue stays
-open carrying them.
+**#580 is CLOSED** — stage 2's rescale was put to the owner with three costed options and
+declined *(OWNER RULING, 2026-08-29: "A")*: the range stays at 20 cm², now honestly labelled.
+Option C, raising `pwr2_core`'s pressure-solve ceiling so a design-basis LOCA becomes
+representable at all, was offered and not taken — so it is deliberately NOT filed, and the
+measurements that would start it are §119's table.
+
+**#576 items (a) and (b)** — no continuous bypass spray, no vessel ambient loss, heaters cannot
+fail ON — were never in scope and that issue stays open carrying them. **#577 and #500 carry
+`status-owner-review`** for the `caution` rung and the two-rung ladder shape.
 
 ## Session log — 2026-08-29-develop-d (#586 — the vapour ceiling raised, refitted, and the damage chain unblocked)
 

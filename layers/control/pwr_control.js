@@ -881,13 +881,20 @@
     // in the right direction to look like a tuning result. So the AREA goes in the unit STRING
     // and the range does not move.
     //
-    // STAGE 2, THE RESCALE, IS NOT HERE AND THE REASON IS MEASURED (#580; see the issue). The
-    // ruled target was the sourced 25-38 s blowdown at a real shear, and the shipping model
-    // cannot run one: swept cold-leg break areas latch `beyond_model` before the blowdown
-    // completes above ~46 cm2 (46 cm2 rides 900 s clean, 47 cm2 latches at 60.7 s), and the
-    // 2,667 cm2 shear latches on step ONE with a 2.019 MPa root jump against pwr2_core's
-    // P_JUMP_MAX of 2.0. The wall is the pressure solve's compliance-collapse guard, not the
-    // slider. Raising it is its own piece of work.
+    // STAGE 2, THE RESCALE, WAS PUT TO THE OWNER AND DECLINED — THE RANGE STAYS AT 20 cm2
+    // *(OWNER RULING, 2026-08-29: "A" — selected from three options I costed, A being "leave the
+    // range at 20 cm2, now honestly labelled")*. It supersedes the rescale half of the
+    // 2026-08-28 ruling, which asked for 100 % to be a real double-ended shear against the
+    // sourced 25-38 s blowdown, because that target is not buildable and the reason is MEASURED:
+    // swept cold-leg break areas latch `beyond_model` before the blowdown completes above
+    // ~46 cm2 (46 cm2 rides 900 s clean, 47 cm2 latches at 60.7 s), and the 2,667 cm2 shear
+    // latches on step ONE with a 2.019 MPa root jump against pwr2_core's P_JUMP_MAX of 2.0.
+    //
+    // THE WALL IS THE PRESSURE SOLVE'S COMPLIANCE-COLLAPSE GUARD, NOT THIS SLIDER, and raising
+    // it was offered as its own piece of work and NOT taken. So do not "fix" this range: a top
+    // of 2,667 cm2 would be a button that freezes the plant on its first step, and anything
+    // between 47 cm2 and there latches mid-blowdown. If a design-basis LOCA is ever wanted, the
+    // work starts in pwr2_core, not here. Full measurements: PWR2_VALIDATION.md §119.
     large_loca:                  { type: 'physics_parameter', category: 'coolant', effect: 'primary_leak', severity_scales: 'leak_rate', leak_scale: 0.04,
                                    severity_meta: { label: 'Break Size', unit: '% (100 % = a 3.1 in² / 20 cm² hole)', min: 0, max: 100, default: 40 }, display: 'Large LOCA (Cold-Leg Break)' },
     continuous_rod_withdrawal:   { type: 'physics_parameter', category: 'reactivity', effect: 'rod_withdrawal_runaway', severity_scales: 'withdraw_rate',

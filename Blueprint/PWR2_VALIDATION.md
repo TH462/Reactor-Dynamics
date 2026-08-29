@@ -8633,8 +8633,16 @@ slider.** Cold-leg break areas swept against `beyond_model`, mitigated, DT 0.02 
 So the ruled target — the sourced 25–38 s blowdown at a real double-ended shear — is
 **unreachable**: the model's ceiling is ~46 cm², **58× under a shear**, and the wall is
 `pwr2_core`'s compliance-collapse guard, not the control. Rescaling the slider to a shear would
-ship a top-of-range that freezes the plant on the first step. **Owner decision owed** — see the
-issue.
+ship a top-of-range that freezes the plant on the first step.
+
+**RULED: the range stays at 20 cm²** *(OWNER RULING, 2026-08-29: "A" — selected from three
+costed options: **A** leave it at 20 cm², now honestly labelled; **B** raise to 40 cm², the
+largest the gates exercise; **C** raise the solver's ceiling first, then rescale as originally
+ruled)*. This supersedes the rescale half of the 2026-08-28 ruling on the measurement's
+authority, which is Hard Rule 9 working as intended — the plant decides and the label follows.
+**C was offered and not taken**, so a design-basis LOCA is unreachable by decision rather than
+by oversight; if it is ever wanted, the work starts in `pwr2_core`'s pressure solve and not in
+the control layer.
 
 Two things found on the way. **`severity_meta.max` reads like a display scale and is a PHYSICS
 MULTIPLIER on the retired engine** (`pwr_engine.js:1623`: `severity × (meta.max/100) × leak_scale`,

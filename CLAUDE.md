@@ -385,15 +385,14 @@ by an agent who compressed without re-querying. Run the query.
   REFERENCE, seven rows of it the kernel's licence to drop or rewrite a command (#546/#547,
   `run_pwr2_kernel`). **They are one trap, and it is the one to carry forward — this engine
   inherited the old plant's tables, scales and constants by reference, and each is wrong until
-  measured against THIS plant.** #536 was the latest: a neutron-source constant tied to the old
-  engine's 500×-inflated prompt generation time, and a gauge scale sized the same way (§107).
-  Second standing fact out of the sweep: **all four kernel protection lists are EMPTY for this
-  plant** — a board band drawn off one (#572) and a reset permissive iterating one (#571) both
-  read as working features. **Grep every consumer.**
-  **The work is written up in `PWR2_VALIDATION.md` §95–§107 — read the sections, not this line**,
-  which is where a roll-call of two dozen per-issue summaries used to sit. Measured 2026-08-28:
-  eight of the issues it called CLOSED were still open. **Run `gh issue list`; it is the
-  authority, and this line is not.**
+  measured against THIS plant.** Latest instances: #536's neutron-source constant, tied to the
+  old engine's 500×-inflated prompt generation time (§107), and the whole 2026-08-29 bundle
+  (§119). Second standing fact: **all four kernel protection lists are EMPTY for this plant** —
+  a board band drawn off one (#572) and a reset permissive iterating one (#571) both read as
+  working features. **Grep every consumer.**
+  **The work is in `PWR2_VALIDATION.md` §95–§107 — read the sections, not this line.** Measured
+  2026-08-28: eight of the issues it called CLOSED were still open. **Run `gh issue list`; it is
+  the authority, and this line is not.**
 - **#573/#473, #574 and #583 (2026-08-28, §108–§110).** The heaters lose authority over a 5–15 %
   TRUE level band; every ring node carries its own metal wall (**39,128 kJ/K, 49 % of the fluid**)
   — `wallLumps` had shipped with zero consumers. And the pressurizer is **no longer in the ledger
@@ -403,11 +402,12 @@ by an agent who compressed without re-querying. Run the query.
   **1000 °C, IAPWS-95's own limit**, fits REFITTED — the chain now runs to the 2200 °F damage
   latch inside the envelope.
 - **#579/#580/#577/#575/#500/#576c (2026-08-29, §119).** The retired plant's rates reached the
-  PUBLIC manual (60/30/100 gpm against a derived **30.1/12.7/86.2**, boron "2 ppm/s" against a
-  mass-balance **0.047**); Break Size promised a pipe shear and opens **0.75 %** of one; the
-  low-level alarm is program-relative at **−20 points** because a fixed 25 % WAS this plant's
-  no-load program point. **#580 stage 2 is refuted and owes a ruling** — the model latches above
-  **46 cm²**, a real 2,667 cm² shear on step one.
+  PUBLIC manual (60/30/100 gpm against a derived **30.1/12.7/86.2**, boron "2 ppm/s" against
+  **0.047**); Break Size promised a pipe shear and opens **0.75 %** of one; the
+  low-level alarm is program-relative at **−20 points** because a fixed 25 % WAS the no-load
+  program point. **The break range STAYS at 20 cm²** *(OWNER RULING, 2026-08-29: "A")* —
+  the model latches above **46 cm²**, a 2,667 cm² shear on step ONE: a design-basis LOCA needs
+  `pwr2_core`'s solve, not a bigger slider.
 - **RBMK and BWR** — on hold, and the source of most remaining backlog. Do not touch.
 
 **The manual set's revision number does not advance until a RELEASE** *(OWNER DIRECTIVE,
@@ -431,9 +431,9 @@ ONE line, drop the rest. **A bullet is ~80 words.** (Measured 2026-08-06: the li
   WRONG PLANT DEFENDS THE ERROR** (2026-08-29, #579/#580 §119). `severity_meta.max` is display
   text to `ui/app.js` and a leak COEFFICIENT to `pwr_engine.js:1623`; rescaling the Break Size
   range to state an area would have cut the retired plant's design-basis LOCA **16x** across five
-  gates. Worse, `run_manual_units` matched `Manuals/12`'s flow figures against `pwr_config` —
-  the RETIRED plant — so the wrong manual passed and a CORRECTED one would have failed.
-  **Ask which plant a check is defending.**
+  gates. Worse, `run_manual_units` matched `Manuals/12`'s flows against `pwr_config` — the
+  RETIRED plant — so the wrong manual passed and a CORRECTED one would have failed. **Ask which
+  plant a check defends.**
 - **A CONSTANT WITH NO DERIVATION IS USUALLY A TOOL'S DEFAULT, AND A FIT THAT LOOKS LIKE IT
   EXTRAPOLATES USUALLY DOES NOT** (2026-08-29, #586 §118). The 800 °C vapour ceiling the
   core-damage chain died against was `THigh=800` in the fetch URL that built Layer 0 — three
