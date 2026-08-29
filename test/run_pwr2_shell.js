@@ -49,8 +49,9 @@ var DT = 0.02;
  * partition + commands-land (three sections sharing one engine), 'B' the two banks, 'D' the
  * casualty rows, 'D3' the board rails, 'E' the electrical pair, 'F' the SGTR row, 'G' the
  * wave-6 levers, 'H' the ICs through the class, 'I' the rod limit, 'J' the RCP handswitch,
- * 'K' the shutdown preset, 'S' the save contract. The CLEAN pass runs everything; each named
- * group is preflighted ALONE on the clean build before the replays. */
+ * 'K' the shutdown preset, 'S' the save contract, 'T' the AFW throttle on a real drain
+ * (#582 — full channel runtime under the control kernel). The CLEAN pass runs everything;
+ * each named group is preflighted ALONE on the clean build before the replays. */
 function runSuite(SH, rec, quiet, only) {
   function grp(g) { return only === undefined || only === g; }
   function ck(name, cond, note) {
@@ -1646,6 +1647,67 @@ function runSuite(SH, rec, quiet, only) {
      'saved ' + (cgT0 * 9 / 5 + 32).toFixed(1) + ' degF, migrated re-solves ' +
      (cgT1 * 9 / 5 + 32).toFixed(1) + ' degF (air term dropped: ~+90 degF)');
   }
+
+  if (grp('T')) {
+  /* ---- 5. THE AFW THROTTLE ON A REAL POST-TRIP DRAIN (#582 item 2) ---------------------------
+   * #562 landed the flow control valves and the afw_level channel SHIPS ENGAGED; #391's question
+   * — is the auxiliary-feed delivery floor derived, or a fixture? — moved to that channel the
+   * day it landed, and nothing exercised it in AUTO on a falling level. MEASURED first
+   * (2026-08-29, the 30-min decay-heat drain): level falls through the 38 -> 28 % band with the
+   * channel opening 0 -> 0.64 -> 1.00 ahead of the pumps; AFAS starts both pumps at lo-lo; full
+   * flow recovers the level into the band; and the channel settles at ~36 % NR holding
+   * ~0.41-0.46 of rated — which is exactly ff 100 + kp 20 against the decay-heat boil-off,
+   * i.e. THE FLOOR IS DERIVED (the P-controller's line meets the boil-off), not a fixture.
+   * This fixture shortens the wait by draining at POWER: feed isolated, the boil-off at
+   * 300 MWt crashes the level, sg_lolo trips the reactor and starts the pumps for real. */
+  head('THE AFW THROTTLE  [#582: full channel runtime on a real drain — the floor is DERIVED]');
+  (function () {
+    var eT = new SH.PWR2Engine({});
+    var layT = new globalThis.RD.ControlLayer(eT, eT.getProtectionConfig());
+    layT.engageDefaults();
+    function runAuto(secs) {
+      var out = null;
+      for (var i = 0; i < Math.round(secs / DT); i++) {
+        layT.stepAutomation(DT); out = eT.step(DT);
+      }
+      return out;
+    }
+    runAuto(10);
+    /* trip, isolate main feed, and start BOTH pumps by hand — the drain then approaches the
+     * band from ABOVE at decay heat, which is the regime where every claim below is live at
+     * once: valve shut above the band with the pumps running, taper across it, settle where
+     * the controller's line meets the boil-off. (The AFAS-start variant of this fixture was
+     * measured too — the deep drain recovers railed for 15+ min and asserts less.) */
+    eT.applyCommand({ action: 'scram' });
+    eT.applyCommand({ action: 'isolate_feedwater', value: true });
+    eT.applyCommand({ action: 'set_afw', on: true });
+    var t = 0, worstFlowAbove = 0, sawAbove = false, sawTaper = false, ts = null;
+    while (t < 1100) {
+      layT.stepAutomation(DT); ts = eT.step(DT); t += DT;
+      var lvl = eT.getInstruments().sg_level;
+      /* 20 s of grace for the controller's first periods, then: above the band the pumps run
+       * and the VALVE holds the delivery at zero — throttling is not securing (#562) */
+      if (t > 20 && lvl > 40 && ts.afw_pump_running) {
+        sawAbove = true;
+        if (ts.afw_flow_normalized > worstFlowAbove) worstFlowAbove = ts.afw_flow_normalized;
+      }
+      if (lvl < 37.5 && lvl > 33 && ts.afw_flow_normalized > 0.02 &&
+          ts.afw_flow_normalized < 0.98) sawTaper = true;
+    }
+    var lvlEnd = eT.getInstruments().sg_level, flowEnd = ts.afw_flow_normalized;
+    ck('above the band the pumps RUN and the valve delivers NOTHING — throttled shut, not secured',
+       sawAbove && worstFlowAbove < 0.05 && ts.afw_pump_running === true,
+       'max delivered above 40 % NR: ' + worstFlowAbove.toFixed(3) + ' of rated');
+    ck('the delivery TAPERS across the sourced 33 +/- 5 % NR band — a ramp, not a step',
+       sawTaper, 'partial flow observed inside the band on the way down');
+    ck('the drain settles INSIDE the band with the flow throttled off both rails — the ' +
+       'delivered floor is DERIVED (the kp 20 / ff 100 line meets decay-heat boil-off), ' +
+       'not a fixture (#391\'s question, answered)',
+       lvlEnd > 28 && lvlEnd < 40 && flowEnd > 0.1 && flowEnd < 0.9,
+       'level ' + lvlEnd.toFixed(1) + ' % NR, flow ' + flowEnd.toFixed(2) +
+       ' of rated (measured 0.41-0.46 at the 30-min settle of the AFAS variant)');
+  })();
+  }
 }
 
 console.log('\nPWR2 -- THE SHELL CLASS (Option B stage B2): the surface the stack holds');
@@ -1748,6 +1810,13 @@ var MUTATIONS = [
   ['PWR2 own afw_level channel is dropped from the config (#562 — the level hold never runs, ' +
    'and the AFW panel AUTO button goes back to meaning nothing)',
    '.concat([AFW_LEVEL_CHANNEL])', '.concat([])', { grp: 'A' }],
+  ['the throttle program moves off the sourced 33 % NR — the settle point is the claim (#582)',
+   'program: function () { return 33; },',
+   'program: function () { return 70; },', { grp: 'T' }],
+  ['the throttle proportional gain is zeroed — the valve never tapers off the rail (#582)',
+   'uMin: 0, uMax: 100, kp: 20, ki: 0, db: 0.5, minDelta: 1.0, period: 3.0, pvTau: 1.5,',
+   'uMin: 0, uMax: 100, kp: 0, ki: 0, db: 0.5, minDelta: 1.0, period: 3.0, pvTau: 1.5,',
+   { grp: 'T' }],
   ['the charging setter reads the currency as a demand fraction again (any setpoint ~= zero flow)',
    '      var gpm = (c.normalized !== undefined ? c.normalized : c.value) * 450000;\n      e.cv.chargingDemand = Math.max(0, Math.min(1, gpm / RD.cvcs.CVCS.charging_max_gpm()));',
    '      e.cv.chargingDemand = Math.max(0, Math.min(1, c.normalized !== undefined ? c.normalized : c.value));',

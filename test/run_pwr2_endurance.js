@@ -274,6 +274,44 @@ head('THE WEDGES  [each ride extends past where the old gate stopped]');
      (tLatch === null ? 'never' : 'at ' + tLatch.toFixed(1) + ' s (held, reported)'));
 })();
 
+(function () {  /* #582: the SMALL-BREAK PLATEAU — CA-20b's mechanism claims, re-derived on PWR2.
+   * The retired engine drove the primary 266 psi BELOW its own heat sink and then drained the
+   * secondary through the tubes to 202 psi (#451); CA-20b pinned that as a strict expected-fail
+   * until the engine swap made it a gate on code no public build runs (owner ruling 2026-08-28:
+   * retire it deliberately, build the PWR2 gate it never had). MEASURED here first (2026-08-29,
+   * Hard Rule 12): on a 5 cm2 unmitigated cold-leg break the primary RIDES its heat sink — the
+   * worst departure below the SG after the trip transient is -31.6 psi at 701 s, the late-ride
+   * coupling is within ~10 psi, and the SG's inventory never falls below its initial 12,796 kg
+   * (it ENDS at 17,117 kg with AFW throttled to 1/3). The bands below carry those numbers with
+   * margin; the MECHANISM asserted is the same two legs CA-20b carried. */
+  var eng = EN.createEngine({});
+  ride(eng, 10);
+  EN.command(eng, 'break_open', { area_m2: 0.0005, node: 'cold_leg' });
+  var ts = null, worstGap = 0, sgM0 = eng.sg.mass, minSgM = 1e18, held = false;
+  for (var t = 0; t < 1800; t += DT) {
+    ts = EN.step(eng, DT);
+    if (ts.model_held) { held = true; break; }
+    if (eng.sg.mass < minSgM) minSgM = eng.sg.mass;
+    var gap = (ts.pressure_mpa - eng.sg.P) * 145.038;
+    if (t > 120 && gap < worstGap) worstGap = gap;
+  }
+  ck('loca-small-break-plateau-legA',
+     'the small-break primary never falls a control band below its own heat sink — the plateau ' +
+     'is the SG holding the primary, which is the mechanism CA-20b\'s leg A asserted (0.35 MPa ' +
+     'band, the retired engine measured 266 psi below)',
+     !held && worstGap > -50.8,
+     'worst (P_rcs - P_sg) after 120 s: ' + worstGap.toFixed(1) + ' psi (measured -31.6 at ' +
+     '701 s on the quench transient; late-ride coupling ~10 psi)');
+  ck('loca-small-break-plateau-legB',
+     'the heat sink is still a heat sink: the secondary is NOT drained through the tubes ' +
+     '(CA-20b leg B — the retired engine pulled the SG to 202 psi through the 5 % reverse path)',
+     minSgM > 0.9 * sgM0,
+     'SG inventory min ' + minSgM.toFixed(0) + ' kg of ' + sgM0.toFixed(0) + ' initial (' +
+     (100 * minSgM / sgM0).toFixed(1) + ' %), final ' + eng.sg.mass.toFixed(0) + ' kg, AFW ' +
+     (ts.afw_flow_normalized === undefined ? '?' : ts.afw_flow_normalized.toFixed(2)) +
+     ' of rated');
+})();
+
 (function () {  /* H-4 + H-5: the un-carried blackout wires, one dead-plant ride */
   var eng = EN.createEngine({ initial_state: 'hot_shutdown' });
   EN.step(eng, DT);
