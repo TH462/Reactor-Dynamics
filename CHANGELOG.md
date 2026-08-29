@@ -35,11 +35,13 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
 Full write-up: `Blueprint/PWR2_VALIDATION.md` §111.
 
 - **The simulator now checks that fast-forwarding gives you the same plant.** A new gate drives
-  one casualty to the same plant-time at 1x, 10x and 60x and compares. Above 1x the plant is
-  identical to every digit; **at 1x it is not**, by about 1 % — and near the end of a large break
-  that 1 % decides whether the run ends in a halted board or a plant you can keep operating.
-- **Known and tracked, not fixed here** — three checks ship as declared known-failures against
-  the open issue. Nothing a player sees has changed.
+  one casualty to the same plant-time at 1x, 10x and 60x and compares every shared instant. The
+  plant is **identical to every digit at all three** — fast-forwarding a casualty gives you the
+  same plant as watching it.
+- **One real difference found and fixed:** the protection system was evaluated slightly more
+  often at 1x during a transient than at higher speeds. It changed nothing measurable — no
+  scenario, mission or check moved — but the simulator claimed the rates were equal and they
+  were not. Nothing a player sees has changed.
 
 ### Fixed (#583 — the pressurizer was in the mass ledger twice, 2026-08-28)
 

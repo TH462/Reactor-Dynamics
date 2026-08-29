@@ -7970,6 +7970,22 @@ MPa, `capBound`, 4 node enthalpies clamped, 59 MJ discarded — and `pwr2_core.j
 The browser never takes that step: its pressure bottoms at 64 psi around 615 s and **recovers to a
 stable 83 psia it holds for the next 6,000 seconds**.
 
+> **⚠⚠ CORRECTED 2026-08-29, and the correction is the lesson. The claim below that TIME
+> ACCELERATION perturbs the plant ~1 % is FALSE, and the number came from comparing two plants
+> at DIFFERENT TIMES.** `while (svc.simTime < target)` overshoots by up to one broadcast — 1×
+> stops at **200.02 s**, 10× at **200.00 s** — and on a blowdown moving ~128 psi/s that reads as
+> 267.31 psi against 269.87. Measured properly, at **matched sim instants**, the two agree to
+> **0.000e+0 across 66 shared instants — before AND after the cadence fix.** The service's
+> trajectory-invariance claim was true all along.
+>
+> **What WAS real is narrower**: the protection EVALUATION RATE varied — 10.85 per sim-second at
+> 1× in a transient against 10.00 above it — because `tick()` held `sinceEval` as a per-tick
+> local and the post-loop `evaluate` was unconditional, putting a floor of one evaluation per
+> broadcast under the rate. Fixed 2026-08-29 (§112); **it moved ZERO gates.**
+>
+> **So the browser/Node cliff difference is UNEXPLAINED again** — but now with acceleration
+> positively ruled out rather than assumed. I filed #588 twice on numbers taken from an endpoint.
+
 **⚠ AND THE MECHANISM I FIRST WROTE HERE WAS WRONG.** This section said the
 `flooredLow && clampedNodes > 0` arm ends the session on a single step and wants the persistence
 its ceiling sibling has. That was read off the code, and **breaking it disproved it**: disabling
@@ -8017,6 +8033,22 @@ into a ledger fix is how a physics change hides inside an accounting one.
 
 **Nothing checked either.** `test/run_service_invariance.js` does — 8 checks, 3 mutations, one
 declared blocked. It is the check that would have found #588 without a browser.
+
+> **⚠⚠ CORRECTED 2026-08-29, and the correction is the lesson. The claim below that TIME
+> ACCELERATION perturbs the plant ~1 % is FALSE, and the number came from comparing two plants
+> at DIFFERENT TIMES.** `while (svc.simTime < target)` overshoots by up to one broadcast — 1×
+> stops at **200.02 s**, 10× at **200.00 s** — and on a blowdown moving ~128 psi/s that reads as
+> 267.31 psi against 269.87. Measured properly, at **matched sim instants**, the two agree to
+> **0.000e+0 across 66 shared instants — before AND after the cadence fix.** The service's
+> trajectory-invariance claim was true all along.
+>
+> **What WAS real is narrower**: the protection EVALUATION RATE varied — 10.85 per sim-second at
+> 1× in a transient against 10.00 above it — because `tick()` held `sinceEval` as a per-tick
+> local and the post-loop `evaluate` was unconditional, putting a floor of one evaluation per
+> broadcast under the rate. Fixed 2026-08-29 (§112); **it moved ZERO gates.**
+>
+> **So the browser/Node cliff difference is UNEXPLAINED again** — but now with acceleration
+> positively ruled out rather than assumed. I filed #588 twice on numbers taken from an endpoint.
 
 ### 111.1 The defect, located in the source rather than inferred
 
@@ -8072,3 +8104,89 @@ every full-stack runner**, and it changes protection cadence at exactly the spee
 content was built at. That is a decision to put to the owner with a measured before/after, not
 something to slip into the change that built the gate. The gate is what makes the decision
 answerable: after the fix, `SI-2`/`SI-4`/`SI-6` must all go XPASS together.
+
+## 112. #588 — THE CADENCE FIX, AND THE MEASUREMENT THAT RETRACTED MY OWN DIAGNOSIS TWICE — 2026-08-29
+
+*(OWNER RULING, 2026-08-29: "A" — from options I wrote: (a) fix it and re-baseline whatever
+moves, (b) measure first, (c) leave it tracked.)*
+
+### 112.1 What was fixed
+
+`tick()` held **`sinceEval` as a per-tick local** and the post-loop `layer.evaluate()` was
+**unconditional**, so every broadcast forced at least one protection evaluation — a floor under
+the rate. Above 1× that floor is far below the 10 Hz cadence and invisible; at 1×, where the
+broadcast halves to 50 ms in a transient, it *was* the cadence.
+
+The accumulator now carries on the instance, the post-loop call fires only at the cadence, and
+both comparisons use the same `- 1e-9` epsilon the fine sampler already uses (0.02 does not sum
+exactly in binary and a 1e-17 shortfall must not silently double the protection interval). It is
+reset wherever the timeline moves — `selectPlant`, plant reset, and checkpoint restore.
+
+| | 1× | 10× | 30× | 60× |
+|---|---|---|---|---|
+| transient, evaluations / sim-s, **before** | **10.85** | 10.00 | 10.00 | 10.00 |
+| transient, evaluations / sim-s, **after** | **10.00** | 10.00 | 10.00 | 10.00 |
+
+**It moved ZERO gates. `run_all` is 97 runners at baseline, unchanged.** Which is itself the
+answer to the question option (b) would have asked: every gate runs at 10× or above, where the
+rate was already 10.00.
+
+### 112.2 ⚠ AND THE DIAGNOSIS I FILED WAS WRONG. TWICE. FROM THE SAME MISTAKE.
+
+**#588 said time acceleration perturbs the plant ~1 % and that the perturbation picks the branch
+at the blowdown cliff. It does not perturb it at all.**
+
+Measured at **matched sim instants** — every instant both legs actually landed on, intersected —
+1× and 10× agree to **0.000e+0 across 66 shared instants**, and 10× against 60× to 0.000e+0
+across 42. **Before and after the fix, identically.** The service's trajectory-invariance claim
+was true the whole time.
+
+The "0.96 %" came from `while (svc.simTime < target)`, which overshoots by up to one broadcast:
+**1× stops at 200.02 s and 10× at 200.00 s**, and a blowdown moving ~128 psi/s covers 2.56 psi in
+those 0.02 s. 267.31 against 269.87. **I compared two plants at two different times and called
+the difference a divergence — in the issue body, in three tracked documents, and then again in
+the gate's own SI-4 check.**
+
+The first #588 diagnosis (the `flooredLow` latch arm) was disproved by injection. The second (this
+one) was disproved by measuring properly. **Both were read off something persuasive instead of
+being broken first** — a code comment, then an endpoint number.
+
+**So the browser/Node cliff difference is UNEXPLAINED again.** That is a worse position than
+"explained", and a better one than "explained wrongly": acceleration is now positively ruled out
+by a gate rather than assumed by me.
+
+### 112.3 The gate, rebuilt around the mistake
+
+`run_service_invariance` is **8 passed, 0 xfail, 0 failed, 4/4 mutations**. Every check now
+compares at matched sim instants, and `SI-0`/`SI-5` assert the **intersection is non-empty** —
+a comparison that met nowhere must not pass by having nothing to disagree about.
+
+All three xfails closed, for three different reasons that were worth keeping apart:
+
+- **SI-2 — closed by the fix.** The rate is 10.00 everywhere.
+- **SI-6 — closed by the fix, after the check itself was repaired.** Its first form scanned raw
+  source for `var sinceEval = 0;` and went on failing *after* the fix landed, because **the
+  fix's own comment quotes the line it replaced**. A source scan that cannot tell code from prose
+  reports the thing it is describing. Comments are stripped now, and it asserts the POSITIVE
+  (read from the instance *and* written back) — "the bad line is absent" is also satisfied by
+  deleting the mechanism.
+- **SI-4 — was never a real failure.** The endpoint artefact above.
+
+### 112.4 ⚠ Two mutations went blind and NEITHER was a gate failure
+
+Worth the space, because the two cases look identical from the tally and mean opposite things:
+
+- *"automation stepped once per broadcast with the lumped dt"* — **equivalent, always was.**
+  `stepAutomation` accumulates dt against its own sim-time cadence internally, exactly as
+  `simulation_service.js:333` claims. Delivering 5 × 0.02 s or 1 × 0.10 s produces the same
+  plant. The mutation was trying to break something that is not there to break.
+- *"the post-loop call over-counts with `PROTECTION_DT`"* — **equivalent SINCE THE FIX.** The
+  post-loop call now only fires when `sinceEval >= PROTECTION_DT`, so the constant and the
+  variable agree to the epsilon. It was a real defect the day before.
+
+**A mutation that stops being catchable because the code got better looks exactly like a blind
+spot.** Both were replaced by mutations that re-introduce #588 one half at a time — the strongest
+regression guard available for a fix, because each half alone must still be caught, and both are.
+
+Adding `sg_level_pct` and `boron_ppm` to the compared fields came out of the same pass: the gate
+had been comparing only what the *break* moves and calling it the plant.

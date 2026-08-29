@@ -29,10 +29,57 @@ and the user-visible summary in `CHANGELOG.md`. This file points at those and tr
 
 ---
 
+## Session log — 2026-08-29-develop-a (#588 — the cadence fix, and a diagnosis retracted twice)
+
+Full write-up: `Blueprint/PWR2_VALIDATION.md` §112. This is the continuity note.
+*(OWNER RULING, 2026-08-29: "A" — fix it and re-baseline whatever moves.)*
+
+- **FIXED.** `tick()` held `sinceEval` as a per-tick LOCAL and the post-loop `layer.evaluate()`
+  was UNCONDITIONAL, so every broadcast forced at least one protection evaluation — a floor under
+  the rate. The accumulator carries on the instance now, the post-loop call fires only at the
+  cadence, both comparisons use the fine sampler's `- 1e-9` epsilon, and it resets wherever the
+  timeline moves. Transient evaluations/sim-s at 1x: **10.85 -> 10.00**, matching every other
+  speed. **It moved ZERO gates — `run_all` 97 runners at baseline, unchanged.** That is the
+  before/after option (b) would have bought: every gate runs at 10x or above, where the rate was
+  already 10.00.
+- **⚠⚠ AND MY DIAGNOSIS WAS WRONG, TWICE, FROM THE SAME MISTAKE.** #588 claimed acceleration
+  perturbs the plant ~1 % and that this picks the branch at the blowdown cliff. **It does not
+  perturb it at all.** At MATCHED SIM INSTANTS, 1x and 10x agree to **0.000e+0 over 66 shared
+  instants**, and 10x/60x over 42 — **before AND after the fix**. The "0.96 %" came from
+  `while (simTime < target)` overshooting: 1x stops at **200.02 s**, 10x at **200.00 s**, and a
+  blowdown moving ~128 psi/s covers 2.56 psi in that gap. I compared two plants at two different
+  times and called it a divergence — in the issue, in three documents, and again in the gate's
+  own SI-4.
+- **The first #588 diagnosis was disproved by injection; the second by measuring properly. Both
+  were read off something persuasive instead of being broken first** — a code comment, then an
+  endpoint number.
+- **The browser/Node cliff is UNEXPLAINED again**, with acceleration now positively ruled out by
+  a gate rather than assumed. Worse than "explained", better than "explained wrongly".
+- **Gate: `run_service_invariance` 5/3xfail -> 8 passed, 0 xfail, 0 failed, 4/4 mutations.**
+  Every check compares at matched instants; SI-0/SI-5 assert the intersection is NON-EMPTY.
+  All three xfails closed for three different reasons — SI-2 by the fix, SI-6 by the fix after
+  the CHECK was repaired (its first form scanned raw source and kept failing because the FIX'S
+  OWN COMMENT quotes the line it replaced), SI-4 because it was never a real failure.
+- **⚠ TWO MUTATIONS WENT BLIND AND NEITHER WAS A GATE FAILURE**, which look identical from the
+  tally: automation-lumped-per-broadcast is EQUIVALENT (stepAutomation accumulates dt internally,
+  exactly as its comment claims), and the post-loop over-count became equivalent BECAUSE OF THE
+  FIX. **A mutation that stops being catchable because the code got better looks exactly like a
+  blind spot.** Both replaced by mutations that re-introduce #588 one half at a time; each half
+  alone is still caught. Adding `sg_level_pct` + `boron_ppm` to the compared fields came from the
+  same pass — the gate had been comparing only what the BREAK moves and calling it the plant.
+
 ## Session log — 2026-08-28-develop-j (#588 — the gate for a claim the service made twice and nothing checked)
 
 Full write-up: `Blueprint/PWR2_VALIDATION.md` §111. This is the continuity note.
 
+- **⚠⚠ CORRECTED 2026-08-29 (§112). The "time acceleration perturbs the plant ~1 %" claim in
+  this entry and in `-develop-i` is FALSE.** The number compared two plants at DIFFERENT
+  TIMES: `while (simTime < target)` stops 1x at **200.02 s** and 10x at **200.00 s**, and on
+  a blowdown moving ~128 psi/s that reads as 267.31 against 269.87 psi. At **matched sim
+  instants** they agree to **0.000e+0 over 66 instants, before AND after the fix**. What was
+  real is only the protection EVALUATION RATE (10.85/sim-s at 1x against 10.00), now fixed —
+  and fixing it **moved ZERO gates**. The browser/Node cliff is unexplained again, with
+  acceleration now ruled OUT rather than assumed.
 - **What was owed.** `layers/simulation_service.js` claims acceleration invariance in its own
   comments **twice** (`:333` controllers, `:337` protection "the same protection at 3600x as at
   1x") and **nothing checked either**. New runner `test/run_service_invariance.js` — 8 checks,

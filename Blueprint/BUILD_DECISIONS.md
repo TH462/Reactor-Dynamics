@@ -45,7 +45,47 @@ where the two differ or where judgment was exercised.
 
 ---
 
+## 2026-08-29-develop-a — #588: the cadence fix, and a diagnosis retracted twice
+
+*(OWNER RULING, 2026-08-29: "A" — fix it and re-baseline whatever moves.)* Full write-up:
+`PWR2_VALIDATION.md` §112.
+
+**Fixed.** `tick()` held `sinceEval` as a per-tick local and the post-loop `layer.evaluate()` was
+unconditional, so every broadcast forced at least one protection evaluation — a floor under the
+rate, invisible above 1x and the whole cadence at 1x once the broadcast halves to 50 ms in a
+transient. The accumulator carries on the instance, the post-loop call fires only at the cadence,
+both comparisons take the fine sampler's `- 1e-9` epsilon, and it resets wherever the timeline
+moves. **10.85 evaluations/sim-s at 1x became 10.00**, matching every other speed, and it moved
+**zero gates** — `run_all` 97 at baseline.
+
+**⚠⚠ AND THE DIAGNOSIS BEHIND #588 WAS WRONG, TWICE, FROM THE SAME MISTAKE.** The claim that
+acceleration perturbs the plant ~1 % is false: at MATCHED SIM INSTANTS 1x and 10x agree to
+**0.000e+0 over 66 shared instants, before and after the fix**. The number came from
+`while (simTime < target)` stopping 1x at 200.02 s and 10x at 200.00 s on a blowdown moving
+~128 psi/s. **Two plants, two different times, called a divergence** — in the issue, in three
+documents, and again in the gate's own SI-4 check. The first diagnosis (the `flooredLow` latch
+arm) was disproved by injection; this one by measuring properly. Both were read off something
+persuasive rather than broken first.
+
+**⚠ TWO MUTATIONS WENT BLIND AND NEITHER WAS A GATE FAILURE.** Automation-lumped-per-broadcast is
+EQUIVALENT — `stepAutomation` accumulates dt internally exactly as its comment claims — and the
+post-loop over-count became equivalent BECAUSE OF THE FIX. A mutation that stops being catchable
+because the code got better looks exactly like a blind spot. Both replaced by mutations that
+re-introduce #588 one half at a time.
+
+### Open flags this entry leaves
+
+**The browser/Node cliff difference (#588) is unexplained again**, with time acceleration now
+positively ruled out by a gate rather than assumed. That is worse than "explained" and better
+than "explained wrongly".
+
 ## 2026-08-28-develop-j — #588: a gate for the invariance the service asserts about itself
+
+**⚠⚠ CORRECTED 2026-08-29 (`-develop-k`): the "acceleration perturbs the plant ~1 %" claim in
+this entry and in `-develop-i` is FALSE** — it compared two plants at different times (1x stops at
+200.02 s, 10x at 200.00 s, on a blowdown moving ~128 psi/s). At matched sim instants they agree to
+**0.000e+0, before AND after the fix**. Only the protection EVALUATION RATE was ever wrong, and
+fixing it moved **zero gates**.
 
 `layers/simulation_service.js` claims acceleration invariance **twice in its own comments** — that
 controllers "behave identically at any time acceleration" (`:333`) and that "the reactor gets the

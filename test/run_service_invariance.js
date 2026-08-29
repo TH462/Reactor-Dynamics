@@ -8,10 +8,16 @@
  *   :337  "Protection is on a SIM-time cadence, not a per-broadcast one (#153): the reactor
  *          gets the same protection at 3600x as at 1x."
  *
- * NOTHING CHECKED EITHER OF THEM. This runner does, and it is the check that would have found
- * #588 without a browser: a large break with the station blacked out ends the session at one
- * acceleration and not at another, because the endgame sits on a cliff and ~1 % of perturbation
- * picks the branch. The perturbation comes from here.
+ * NOTHING CHECKED EITHER OF THEM. This runner does.
+ *
+ * ⚠ AND IT SETTLED A QUESTION IN THE OPPOSITE DIRECTION TO THE ONE IT WAS BUILT FOR. #588 was
+ * filed believing acceleration perturbed the plant ~1 % and that the perturbation picked the
+ * branch at the blowdown cliff. Measured here at MATCHED SIM INSTANTS — before and after the
+ * cadence fix — the trajectories are identical to 0.000e+0 at every shared instant. The "~1 %"
+ * was an endpoint artefact (see the note on walk()/compare() below). What WAS real is narrower
+ * and is now fixed: the protection EVALUATION RATE varied with acceleration, 10.85 per sim-s at
+ * 1x in a transient against 10.00 above it. The browser/Node cliff difference #588 records is
+ * therefore still UNEXPLAINED, and this gate is the instrument that rules acceleration out.
  *
  * ⚠ WHY THE CLAIM MATTERS RATHER THAN BEING A TIDINESS POINT. A player who fast-forwards a
  * casualty must be operating the SAME plant as one who watches it in real time. If not, the
@@ -37,24 +43,22 @@ var SVC_PATH = path.join(R, 'layers', 'simulation_service.js');
 var SVC_SRC = fs.readFileSync(SVC_PATH, 'utf8').replace(/\r\n/g, '\n');
 
 /* ---- THE KNOWN GAPS. Each names the issue, the measurement, and what closes it. --------- */
-var XFAIL = {
-  'SI-2': '#588 — protection is evaluated at the BROADCAST rate whenever a broadcast is ' +
-          'shorter than PROTECTION_DT. `sinceEval` is a per-tick local in `tick()`, so the ' +
-          'sim-time cadence does not carry across broadcasts: at 1x under the transient ' +
-          'cadence (50 ms) the in-loop `sinceEval >= PROTECTION_DT` never fires and the ' +
-          'post-loop call evaluates every 0.05 s. Measured 10.85 evaluations/sim-s at 1x ' +
-          'against 10.00 at 10x and 60x. Closes by carrying `sinceEval` on the instance.',
-  'SI-4': '#588 — the same defect, seen as a trajectory. Measured on a large break with the ' +
-          'station blacked out: 267.31 psi at 200.0 s at 1x against 269.87 at 10x (0.96 %). ' +
-          'Small, and it is the whole ballgame at the blowdown cliff — it decides whether the ' +
-          'beyond-model latch fires at ~396 s or the plant recovers and runs for hours.',
-  'SI-6': '#588 — the MECHANISM behind SI-2 and SI-4, asserted against the source rather than ' +
-          'inferred from a trajectory. `tick()` declares `var sinceEval = 0;` as a per-tick ' +
-          'local, so the accumulated sim time since the last protection evaluation is thrown ' +
-          'away at every broadcast boundary. Closes by carrying it on the instance — at which ' +
-          'point SI-2 and SI-4 should close with it, and all three XFAIL entries come out ' +
-          'together. If one closes without the others, that is information.'
-};
+/* ---- NO KNOWN GAPS. All three xfails this file shipped with on 2026-08-28 are gone, and
+ * the reasons differ — which is the point of having had them separately:
+ *   SI-2 CLOSED BY A FIX. `tick()`'s `sinceEval` now carries on the instance and the post-loop
+ *        evaluation obeys the cadence, so the rate is 10.00/sim-s at every acceleration (it was
+ *        10.85 at 1x in a transient).
+ *   SI-6 CLOSED BY THE SAME FIX — and its first form was itself defective: it scanned the raw
+ *        source for `var sinceEval = 0;` and went on failing afterwards because the FIX'S OWN
+ *        COMMENT quotes the line it replaced. Comments are stripped now and it asserts the
+ *        positive.
+ *   SI-4 WAS NEVER A REAL FAILURE. It compared the two legs at their STOPPING POINTS, which
+ *        differ by up to one broadcast — 200.02 s against 200.00 s — and on a blowdown moving
+ *        ~128 psi/s that reads as 267.31 vs 269.87 psi, "0.96 %". Measured at matched instants,
+ *        before AND after the fix, the trajectories are identical to 0.000e+0. The service's
+ *        trajectory-invariance claim was true all along; only the evaluation RATE was not.
+ * A gap that closes for a reason is worth more than one that closes. */
+var XFAIL = {};
 
 /* ---- LOAD ------------------------------------------------------------------------------ */
 function loadAll(svcSrc) {
@@ -78,8 +82,18 @@ function loadAll(svcSrc) {
 
 /* ---- THE DRIVE ------------------------------------------------------------------------- */
 /* Drive off simTime, never a cycle count — CLAUDE.md's own rule, and the reason #194 filed a
- * plant defect that did not exist. `evals` counts what the invariance claim is ABOUT. */
-function ride(RD, speed, target, casualty) {
+ * plant defect that did not exist. `evals` counts what the invariance claim is ABOUT.
+ *
+ * ⚠⚠ AND COMPARE AT MATCHED SIM INSTANTS, NEVER AT THE ENDPOINT. `while (simTime < target)`
+ * overshoots by up to one broadcast, and a broadcast is 0.02-0.1 s at 1x against 1 s at 10x.
+ * Comparing the two stopping points therefore compares the plant at two DIFFERENT TIMES: on a
+ * blowdown moving ~128 psi/s that reads as 267.31 psi against 269.87 — "0.96 % divergence" —
+ * on trajectories that are in fact IDENTICAL. That artefact was filed as a defect on #588,
+ * twice, and both times the number came from the endpoint. `walk()` below records every
+ * instant and `compare()` intersects the two grids; the intersection size is asserted, so a
+ * comparison that met nowhere cannot pass by having nothing to disagree about. */
+/* every broadcast instant on the way to `target`, keyed by sim time */
+function walk(RD, speed, target, casualty) {
   var svc = new RD.SimulationService({ seed: 0x1234 });
   svc.selectPlant('pwr2', 'hot_full_power', null, undefined);
   if (casualty) {
@@ -90,14 +104,36 @@ function ride(RD, speed, target, casualty) {
   var evals = 0, _ev = svc.layer.evaluate.bind(svc.layer);
   svc.layer.evaluate = function (ins, dt) { evals++; return _ev(ins, dt); };
   svc.handleCommand({ action: 'set_speed', value: speed });
-  var snap = null, guard = 0;
-  while (svc.simTime < target && guard++ < 500000) snap = svc.advanceCycles(1);
-  var ts = snap.true_state;
-  return {
-    speed: speed, simTime: svc.simTime, evals: evals, rate: evals / svc.simTime,
-    P: ts.pressure_mpa, Tcore: ts.t_core_exit_c, inv: ts.core_inventory_pct,
-    pwr: ts.power_pct, held: !!ts.model_held
-  };
+  var at = {}, guard = 0;
+  while (svc.simTime < target && guard++ < 500000) {
+    var s = svc.advanceCycles(1), ts = s.true_state;
+    /* ⚠ THE COMPARED FIELDS DECIDE WHAT THIS GATE CAN SEE. Pressure, inventory and core
+     * temperature are what a BREAK moves; `sg_level_pct` and `boron_ppm` are what the
+     * AUTOMATION moves, and without them the "automation lumped into one call per broadcast"
+     * mutation came back BLIND — the gate was measuring the plant the casualty drives and
+     * calling it the plant. */
+    at[svc.simTime.toFixed(2)] = { P: ts.pressure_mpa, inv: ts.core_inventory_pct,
+                                   Tcore: ts.t_core_exit_c, sg: ts.sg_level_pct,
+                                   boron: ts.boron_ppm };
+  }
+  return { at: at, evals: evals, simTime: svc.simTime, rate: evals / svc.simTime };
+}
+
+/* worst relative difference over the instants BOTH legs actually landed on */
+function compare(a, b) {
+  var n = 0, worst = 0, at = null;
+  Object.keys(a.at).forEach(function (k) {
+    var x = a.at[k], y = b.at[k];
+    if (!y) return;
+    n++;
+    [['P', x.P, y.P], ['inv', x.inv, y.inv], ['Tcore', x.Tcore, y.Tcore],
+     ['sg_level', x.sg, y.sg], ['boron', x.boron, y.boron]].forEach(function (f) {
+      if (typeof f[1] !== 'number' || typeof f[2] !== 'number') return;
+      var d = Math.abs(f[1] - f[2]) / Math.max(1e-12, Math.abs(f[2]));
+      if (d > worst) { worst = d; at = k + ' s (' + f[0] + ')'; }
+    });
+  });
+  return { n: n, worst: worst, at: at };
 }
 
 var LOCA = ['large_loca', 'station_blackout'];
@@ -115,53 +151,44 @@ function runSuite(RD, rec, quiet) {
   function rel(a, b) { return Math.abs(a - b) / Math.max(1e-12, Math.abs(a)); }
 
   /* ---- 1. A QUIET PLANT. The claim must hold where nothing is happening, or it holds
-   * nowhere — and this is the half that PASSES, which is what makes the other half mean
-   * something. Both legs land inside one 60x cycle of the target, so the comparison is at
-   * matched sim time rather than at matched cycles. */
+   * nowhere. Compared at MATCHED SIM INSTANTS — see the note on walk()/compare(). */
   head('QUIET PLANT  [200 s at power — the claim where nothing is moving]');
-  var q1 = ride(RD, 1, 200, null), q10 = ride(RD, 10, 200, null), q60 = ride(RD, 60, 200, null);
-  ck('SI-0', 'the legs land at comparable sim times, so the comparison is not vacuous',
-     Math.abs(q1.simTime - q10.simTime) < 1.0 && q1.simTime >= 200 && q10.simTime >= 200,
-     '1x ' + q1.simTime.toFixed(2) + ' s, 10x ' + q10.simTime.toFixed(2) +
-     ' s, 60x ' + q60.simTime.toFixed(2) + ' s');
+  var q1 = walk(RD, 1, 200, null), q10 = walk(RD, 10, 200, null), q60 = walk(RD, 60, 200, null);
+  var qc = compare(q1, q10);
+  ck('SI-0', 'the two legs actually MET — a comparison over an empty intersection cannot fail',
+     qc.n >= 100,
+     qc.n + ' shared sim instants (1x ran to ' + q1.simTime.toFixed(2) + ' s, 10x to ' +
+     q10.simTime.toFixed(2) + ')');
   ck('SI-1', 'protection is evaluated at the SAME rate per sim second at every acceleration',
      Math.abs(q1.rate - q10.rate) < 0.05 && Math.abs(q1.rate - q60.rate) < 0.05,
      q1.rate.toFixed(2) + ' / ' + q10.rate.toFixed(2) + ' / ' + q60.rate.toFixed(2) +
      ' per sim-s at 1x / 10x / 60x');
-  ck('SI-3', 'the plant is the SAME plant at 1x and 10x (pressure, core temp, inventory)',
-     rel(q1.P, q10.P) < 1e-3 && rel(q1.Tcore, q10.Tcore) < 1e-3 && rel(q1.inv, q10.inv) < 1e-3,
-     'P ' + (q1.P * 145.038).toFixed(3) + ' vs ' + (q10.P * 145.038).toFixed(3) + ' psi (' +
-     (100 * rel(q1.P, q10.P)).toFixed(4) + ' %)');
+  ck('SI-3', 'the plant is BIT-FOR-BIT the same plant at 1x and 10x, at every shared instant',
+     qc.worst < 1e-9,
+     'worst relative difference ' + qc.worst.toExponential(3) +
+     (qc.at ? ' at ' + qc.at : '') + ' over ' + qc.n + ' instants');
 
-  /* ---- 2. A TRANSIENT. This is where it breaks, and it is the regime the claim is FOR:
-   * nobody fast-forwards a steady plant. The casualty is the one #588 was found on. */
+  /* ---- 2. A TRANSIENT. The regime the claim is FOR — nobody fast-forwards a steady plant,
+   * and a quiet plant turned out to be too insensitive to catch a cadence mutation at all
+   * (the injection self-test below is what showed that, not a guess). */
   head('TRANSIENT  [large break + station blackout — the regime the claim exists for]');
-  var t1 = ride(RD, 1, 200, LOCA), t10 = ride(RD, 10, 200, LOCA);
-  ck('SI-5', 'both transient legs land at comparable sim times',
-     Math.abs(t1.simTime - t10.simTime) < 0.5,
-     '1x ' + t1.simTime.toFixed(2) + ' s, 10x ' + t10.simTime.toFixed(2) + ' s');
+  var t1 = walk(RD, 1, 200, LOCA), t10 = walk(RD, 10, 200, LOCA), t60 = walk(RD, 60, 200, LOCA);
+  var tc = compare(t1, t10), tc6 = compare(t10, t60);
+  ck('SI-5', 'the transient legs actually MET, at enough instants to be worth comparing',
+     tc.n >= 30 && tc6.n >= 30,
+     '1x/10x share ' + tc.n + ' instants, 10x/60x share ' + tc6.n);
   ck('SI-2', 'protection is evaluated at the same rate per sim second IN A TRANSIENT',
      Math.abs(t1.rate - t10.rate) < 0.05,
      t1.rate.toFixed(2) + ' vs ' + t10.rate.toFixed(2) + ' per sim-s — the broadcast cadence ' +
      'halves to 50 ms in a transient, which is BELOW PROTECTION_DT (0.1 s) at 1x');
-  /* ⚠ AND ABOVE 1x IT HOLDS EXACTLY, which is what makes SI-2/SI-4 a bounded defect rather
-   * than a vague one. 10x / 30x / 60x agree to every printed digit through the same casualty,
-   * because a broadcast at those speeds covers >= PROTECTION_DT and the in-loop sim-time
-   * cadence governs. The break binds at 1x-2x ONLY: the speed a player watches a casualty in,
-   * and the speed no gate uses. This is a LIVE check on a MOVING plant — SI-3's quiet plant is
-   * too insensitive to catch a cadence mutation, which the injection self-test below proves. */
-  var t60 = ride(RD, 60, 198, LOCA), t10b = ride(RD, 10, 198, LOCA);
-  ck('SI-7', 'above 1x the plant is BIT-FOR-BIT the same plant through a casualty (10x vs 60x)',
-     rel(t10b.P, t60.P) < 1e-9 && rel(t10b.inv, t60.inv) < 1e-9 &&
-     Math.abs(t10b.rate - t60.rate) < 1e-9 && Math.abs(t10b.simTime - t60.simTime) < 1e-9,
-     'P ' + (t10b.P * 145.038).toFixed(4) + ' vs ' + (t60.P * 145.038).toFixed(4) + ' psi, ' +
-     'inventory ' + t10b.inv.toFixed(4) + ' vs ' + t60.inv.toFixed(4) + ' %, both at ' +
-     t10b.simTime.toFixed(2) + ' s');
-  ck('SI-4', 'the plant is the SAME plant at 1x and 10x THROUGH A CASUALTY',
-     rel(t1.P, t10.P) < 1e-3 && rel(t1.inv, t10.inv) < 1e-3,
-     'P ' + (t1.P * 145.038).toFixed(2) + ' vs ' + (t10.P * 145.038).toFixed(2) + ' psi (' +
-     (100 * rel(t1.P, t10.P)).toFixed(2) + ' %), inventory ' + t1.inv.toFixed(3) + ' vs ' +
-     t10.inv.toFixed(3) + ' % (' + (100 * rel(t1.inv, t10.inv)).toFixed(2) + ' %)');
+  ck('SI-4', 'the plant is BIT-FOR-BIT the same plant at 1x and 10x THROUGH A CASUALTY',
+     tc.worst < 1e-9,
+     'worst relative difference ' + tc.worst.toExponential(3) + (tc.at ? ' at ' + tc.at : '') +
+     ' over ' + tc.n + ' instants');
+  ck('SI-7', '...and at 10x against 60x, through the same casualty',
+     tc6.worst < 1e-9,
+     'worst relative difference ' + tc6.worst.toExponential(3) + (tc6.at ? ' at ' + tc6.at : '') +
+     ' over ' + tc6.n + ' instants');
 
   /* ---- 3. THE MECHANISM, NAMED. A trajectory check says something is wrong; this says
    * WHERE. `sinceEval` is a local in `tick()`, re-initialised to 0 every broadcast, so the
@@ -169,13 +196,24 @@ function runSuite(RD, rec, quiet) {
    * once a broadcast is shorter than PROTECTION_DT. Asserted against the SOURCE, because the
    * defect is structural and a trajectory can only ever be evidence for it. */
   head('THE MECHANISM  [named in the source, not inferred from a trajectory]');
-  var tickBody = SVC_SRC.slice(SVC_SRC.indexOf('SimulationService.prototype.tick ='),
-                               SVC_SRC.indexOf('SimulationService.prototype.tick =') + 4000);
+  /* ⚠ COMMENTS ARE STRIPPED FIRST, and that is not fussiness — the first version of this check
+   * matched `/var\s+sinceEval\s*=\s*0\s*;/` against the raw source and went on failing after the
+   * fix landed, because the fix's OWN COMMENT quotes the defective line it replaced. A source
+   * scan that cannot tell code from prose reports the thing it is describing. It also asserts
+   * the POSITIVE now (the accumulator is read from the instance AND written back), because
+   * "the bad line is absent" is satisfied by deleting the mechanism altogether. */
+  var tickAt = SVC_SRC.indexOf('SimulationService.prototype.tick =');
+  var tickBody = SVC_SRC.slice(tickAt, tickAt + 12000)
+                        .replace(/\/\*[\s\S]*?\*\//g, ' ').replace(/\/\/[^\n]*/g, ' ');
+  var reads = /var\s+sinceEval\s*=\s*this\._sinceEval\s*\|\|\s*0\s*;/.test(tickBody);
+  var writes = /this\._sinceEval\s*=\s*sinceEval\s*;/.test(tickBody);
+  var perTick = /var\s+sinceEval\s*=\s*0\s*;/.test(tickBody);
   ck('SI-6', '`sinceEval` carries ACROSS broadcasts — a per-tick local cannot hold a sim-time cadence',
-     !/var\s+sinceEval\s*=\s*0\s*;/.test(tickBody),
-     /var\s+sinceEval\s*=\s*0\s*;/.test(tickBody)
-       ? 'declared `var sinceEval = 0;` inside tick() — resets every broadcast (#588)'
-       : 'not a per-tick local');
+     reads && writes && !perTick,
+     perTick ? 'still declared `var sinceEval = 0;` inside tick() — resets every broadcast (#588)'
+             : (reads && writes ? 'read from the instance and written back'
+                                : 'reads=' + reads + ' writes=' + writes + ' — the accumulator ' +
+                                  'does not round-trip, so the cadence cannot carry'));
 }
 
 /* ---- RUN ------------------------------------------------------------------------------- */
@@ -206,26 +244,41 @@ if (nXpass) {
  * A check written beside its own subject is not green until it has been made to go red. The
  * mutations break the invariance DELIBERATELY; each must redden a check that is not already
  * an xfail, or this gate is measuring nothing. */
+/* ⚠ EVERY MUTATION HERE IS A REAL DEFECT, and two that looked like defects were removed once
+ * the gate showed they are not. Both came back BLIND and neither was a gate failure:
+ *
+ *   "automation stepped once per broadcast with the lumped dt" — EQUIVALENT. `stepAutomation`
+ *   accumulates dt against its own sim-time cadence internally, exactly as `:333` claims, so
+ *   delivering 5 x 0.02 s or 1 x 0.10 s produces the same plant. The mutation was testing the
+ *   claim by breaking something that is not there to break.
+ *
+ *   "the post-loop call over-counts with PROTECTION_DT instead of the accrued time" — EQUIVALENT
+ *   SINCE THE FIX. The post-loop call now only fires when `sinceEval >= PROTECTION_DT`, so the
+ *   constant and the variable agree to the epsilon. It WAS a defect before the fix, and the fix
+ *   is what retired it. Worth the four lines to say so: a mutation that stops being catchable
+ *   because the code got better is the opposite of a blind spot, and it looks identical.
+ *
+ * The two replacements below re-introduce #588 itself, one half at a time — the strongest form
+ * of regression guard there is for a fix, because each half alone must still be caught. */
 var MUTATIONS = [
-  ['protection evaluated once per BROADCAST instead of on its sim-time cadence',
-   'if (sinceEval >= PROTECTION_DT', 'if (false && sinceEval >= PROTECTION_DT'],
-  ['automation stepped once per broadcast instead of per physics step',
-   'if (this.layer.stepAutomation) this.layer.stepAutomation(PHYSICS_DT);',
-   'if (this.layer.stepAutomation && i === 0) this.layer.stepAutomation(PHYSICS_DT * steps);'],
+  ['the in-loop sim-time cadence is disabled (protection falls to the broadcast rate)',
+   'if (sinceEval >= PROTECTION_DT - 1e-9 && i < steps - 1) {',
+   'if (false && i < steps - 1) {'],
+  ['#588 RETURNS, half one: the accumulator stops carrying across broadcasts',
+   'this._sinceEval = sinceEval;', 'this._sinceEval = 0;'],
+  ['#588 RETURNS, half two: the post-loop evaluation fires every broadcast again',
+   'if (sinceEval >= PROTECTION_DT - 1e-9) {', 'if (true) {'],
   ['the fine-sample budget leaks into the step loop (a per-broadcast quantity reaching physics)',
    'this.engine.step(PHYSICS_DT);',
    'this.engine.step(PHYSICS_DT * (1 + 1e-9 * steps));']
 ];
 
-/* ⚠ DECLARED, NOT HIDDEN: a mutation this gate cannot see WHILE #588's xfails stand, because
- * the only checks that would notice it are the ones already declared failing. It is named and
- * reported but not scored. A blind spot the gate creates for ITSELF is a gate failure; a blind
- * spot an open, named gap creates is a fact about the gap. Whoever closes #588 should promote
- * this into MUTATIONS and expect it to be caught. */
-var MUTATIONS_BLOCKED = [
-  ['the post-loop protection call over-counts with PROTECTION_DT instead of the accrued time',
-   'only SI-2 / SI-4 (the 1x legs) can see a post-loop dt change, and both are xfail on #588']
-];
+/* This list held one mutation while SI-2/SI-4 were xfail, because the only checks that could
+ * see it were the ones already declared failing. Both are live now and it has been PROMOTED
+ * into MUTATIONS above. Kept as an empty seam with its history, because the rule it encodes is
+ * the point: a blind spot the gate creates for ITSELF is a gate failure; a blind spot an open,
+ * named gap creates is a fact about the gap, and it must be named rather than scored. */
+var MUTATIONS_BLOCKED = [];
 
 console.log('\n' + '='.repeat(70));
 console.log('  INJECTION SELF-TEST — every mutation MUST redden a check that is not an xfail');
