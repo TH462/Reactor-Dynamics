@@ -265,3 +265,23 @@ The bullet, verbatim as it stood:
 because every agent commit lands under the owner's name. When a decision looks load-bearing and
 its provenance is a bare assertion, treat it as advisory and say so — that judgement is the
 part that does not automate. See also the `agent-authored-rulings` memory.
+
+---
+
+## An approved plan's sizing target can be measured on a RETIRED scale
+
+*Evicted from `CLAUDE.md`'s standing list 2026-08-28, at its 25-bullet cap, to make room for the
+#572 ruling-vs-thing trap. It goes because another BINDING rule already carries its instruction:
+`DESIGN_CRITERIA.md` Q0 — "what are the tested numbers?" — is described in `CLAUDE.md` itself as
+"a GATE, not a vote: no measurement, no decision (HR12)", and re-deriving a sizing target from the
+measurement rather than from the plan IS Q0. What follows is the worked case.*
+
+#385 asked for a pressurizer flash term. The sizing target inside its approved plan had been
+measured BEFORE the #408 slider re-map, on a scale that no longer existed by the time the plan was
+executed. Re-measured against the current plant, the term came out unnecessary — so it was never
+built, and the plan that approved it had been carrying a number nobody re-checked.
+
+**The trap is that an APPROVED plan reads as settled.** A measurement inside it is a fact that has
+been signed off, which is exactly the shape that stops getting re-run. Re-derive the sizing from a
+fresh Q0 at the moment you build, not from the figure the plan carries — a plan is a claim like
+any other and this repo moves faster than one ages well.

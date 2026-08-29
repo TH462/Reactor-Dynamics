@@ -395,14 +395,14 @@ Measured AGAIN 2026-08-28: a whole bullet of seven, all closed. Run the query.
   which is where a roll-call of two dozen per-issue summaries used to sit. Measured 2026-08-28:
   eight of the issues it called CLOSED were still open. **Run `gh issue list`; it is the
   authority, and this line is not.**
-- **#573 + #473 (2026-08-28, §108) — the pressurizer heater elevation the 2026-08-12 ruling asked
-  for, which had been built on the RETIRED engine and never reached this one.** Progressive
-  authority loss on TRUE level across a 5–15 % band (the 17 % bistable keeps the INSTRUMENT and
-  survives on top — catalog HE-1/HE-3 now PASS), and the board draws the bank there *(OWNER
-  RULING, 2026-08-28: "Both in one change")*. Two facts outlive it: the published heater kW is the
-  **ENERGIZED bank**, never the delivered heat (deriving the readback from delivered power
-  re-creates #538), and the cutaway places level **by volume** now — it ramped by height, which is
-  why the bank was drawn at 15.6–24.6 %, above its own 17 % cutoff.
+- **#573/#473 and #574 (2026-08-28, §108/§109) — two owner requests from 2026-08-12 that had never
+  reached this engine.** The pressurizer heaters now lose authority progressively over a 5–15 % TRUE
+  level band and the board draws the bank there by VOLUME; every one of the eleven ring nodes now
+  carries its own metal wall — **43,484 kJ/K, 46 % of the fluid**, a fixed-duty cooldown 1.391× longer
+  and a scram unmoved. `wallLumps` had shipped on all eleven nodes with zero consumers. Filed out of
+  it and NOT fixed: **#583** (the pressurizer is in the mass ledger twice, 17.6 % over the declared
+  RCS), **#584**, **#585** (a HELD plant creates mass), **#586** (the core-damage chain is measured on
+  one). Still dark: `transport: 'plug'` and `surge_line_voided`.
 - **RBMK and BWR** — on hold, and the source of most remaining backlog. Do not touch.
 
 **The manual set's revision number does not advance until a RELEASE** *(OWNER DIRECTIVE,
@@ -422,6 +422,13 @@ FIRST** — ask what in it would still burn someone in a month, move that to the
 ONE line, drop the rest. **A bullet is ~80 words.** (Measured 2026-08-06: the list was running
 7 bullets averaging 500 words, two of them duplicating traps already rescued below.)
 
+- **A METAL MASS is 46 % of this plant's heat capacity and a FILM COEFFICIENT decides whether it
+  is felt — and the film is where my own two defects were** (2026-08-28, #574 §109). PWR2 carried
+  `wallLumps` on all eleven nodes with ZERO consumers; the ring's metal measures 43,484 kJ/K against
+  93,855 of fluid, the VESSEL a quarter of it where the request named the tubes. Both defects were in
+  the wall film, both surfaced by ONE red: no phase term absorbed **1,100 MJ** into a voided core, and
+  the repair then put the FORCED vapour ratio on a FREE-convection floor, leaving an unmitigated break
+  unable to reach the 50.46 clad limit at all. **Four of the five reds were not about the change.**
 - **A silent `undefined` reads exactly like a WORKING INTERLOCK; the check that catches it is
   the one asserting the ORDINARY case still works** (2026-08-28, #571 §103). The kernel refuses a
   reset against a live trip signal by iterating `config.trips`, which PWR2 hands over EMPTY and
@@ -451,14 +458,6 @@ ONE line, drop the rest. **A bullet is ~80 words.** (Measured 2026-08-06: the li
   cliff and nothing else. **Check which engine a "done" landed in.** Two more from the same
   change: derating the PUBLISHED heater kW would have re-created #538 (the board re-sends its own
   readback as demand), and the board drew the bank at **15.6–24.6 % level — above its own 17 %
-  cutoff** — because the cutaway ramped level linearly in HEIGHT where level is a VOLUME fraction.
-- **An owner ruling names the WORK; the evidence pass names the THING — and a citation can sit
-  three lines from the row it refutes** (2026-08-28, #572 §104). Ruled "build the 1.5 DPM
-  startup-rate rod-withdrawal block". No such stop exists in the corpus: WTSM 8.1 §8.1.7.3 lists
-  FOUR and none is on rate, and `Manuals/09` had been CITING that document beside the row it
-  contradicts. The figure was the retired plant's, reached because `_PROT` resolves to the pwr
-  table whichever plant runs. Measured: 10.00 DPM, 90 withdrawals, none refused. Built the two
-  that are real (103 % and 20 % flux). **Read a ruling as: build it, having found out what it is.**
 **Standing procedure — not part of the rotation above; these do not expire.** One trap per entry.
 **MAX 25 BULLETS** *(OWNER RULING, 2026-08-10: selected "Cap at 25, evict to TRAPS.md" from
 options I wrote — a selection, not verbatim words)*, gated by `test/run_doc_budget.js`. Adding
@@ -476,10 +475,11 @@ thing left in the file and it grew about a bullet a session.
 - **A bracketed TEMPLATE placeholder cites like a number** (rescued from the #380 bullet on
   eviction, 2026-08-09): NUREG-1431's "~30–32 %" SG lo-lo survived two evidence passes because
   both verdicted the mechanism and inherited the figure. Ginna, the anchor plant, says 17 %.
-- **An approved plan's sizing target can be measured on a RETIRED scale** (rescued from the
-  #385 bullet on eviction, 2026-08-09): its flash term predated the #408 slider re-map, so it
-  measured unnecessary and was never built. Re-derive sizing from the Q0, not the plan.
 
+- **A ruling names the WORK, not the THING — read it as "build it, having found out what it is"**
+  (rescued from the #572 bullet on eviction, 2026-08-28): "build the 1.5 DPM startup-rate rod block"
+  named a stop that exists in no source, and `Manuals/09` was CITING the document that lists the four
+  real ones beside the row contradicting it. A citation can sit three lines from what it refutes.
 - **Before you declare anything UNSOURCED, run `node tools/find_source.js <regex>`.** The corpus is
   three lanes' `inbox/sources` and they cannot see each other, so a one-lane grep has now shipped
   two wrong claims — #315 §6 (an OTΔT argument built and reverted while the primary sat in another

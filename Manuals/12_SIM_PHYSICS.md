@@ -375,6 +375,20 @@ The simulation **ends at fuel damage**. Containment pressure, temperature, sump 
 
 ---
 
+### 5.6 The metal has heat capacity too
+
+Every one of the eleven primary control volumes carries the **mass of its own metal wall**, at the temperature that metal is actually at — not at the temperature of the water inside it. The pipe walls, the reactor vessel shell and heads, the core barrel, the steam-generator tubes and the pump casing are all in the ledger.
+
+**Measured on this plant: the metal is 43 484 kJ/K against the coolant's 93 855 kJ/K — 46 % as much heat capacity as the water it contains.** That is not a correction; it is a third of the system's total stored heat.
+
+**What it changes for you.** Heat you take out of the coolant during a cooldown comes partly back out of the steel, so a cooldown at a fixed dump duty takes **about 1.4× longer** than the water alone would suggest. A **scram is almost unaffected** — Tavg falls 0.4 % less over the first 30 seconds — and the reason is the thing worth carrying: a wall gives up its heat only as fast as heat can *conduct out of it*. A steam-generator tube is 0.05 in (1.27 mm) thick and answers in seconds. The reactor vessel shell is **4.5 in (114 mm)** thick and its own diffusion time is around **21 minutes**, so a 30-second transient reaches only its inner face while a two-hour cooldown reaches all of it. **The thicker the metal, the slower it argues with you, and the longer it keeps arguing.**
+
+This is also why the plant does not go cold when the pumps stop. The wall-side heat-transfer film falls with flow, but it has a **natural-circulation floor** rather than going to zero — which is exactly the condition under which stored wall heat matters most.
+
+**Trust class, and one thing to know.** The pipe and tube masses are derived from sourced wall-thickness data and the plant's own geometry (the implied tube-bore volume reproduces the model's steam-generator node to **0.015 %**, and nothing was fitted to make that happen). The **reactor vessel and internals are DERIVED ESTIMATES** — the vessel from a standard pressure-vessel thickness formula, the internals and supports from a flat engineering estimate — and they are the largest single term, about a quarter of the metal. Treat the vessel number as *Indicative* (§14.0). **The fuel and cladding are not part of this** — they are modelled separately (§5.5) and counting them here would double them.
+
+---
+
 ## 6.0 Primary system
 
 ### 6.1 One pressure state, three pressures

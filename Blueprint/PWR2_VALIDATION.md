@@ -7594,3 +7594,165 @@ delivered split renamed.
 departure (*"about 347× the sourced rating"*). PWR2 has no such gain — it puts joules into a real
 energy balance — so that row, and §7.1's "effective coefficients, not thermodynamics" framing, are
 stale for the shipped plant. Re-deriving them is its own measurement and its own issue.
+
+## 109. #574 — EVERY NODE CARRIES ITS METAL, AND FIVE REDS THAT WERE NOT ABOUT IT — 2026-08-28
+
+*(OWNER, 2026-08-12, on #474: "each node should carry the heat capacity of its own metal wall, not
+just the fluid it contains… thermal lag through cladding/tube walls, RCP casing warm-up, RPV wall
+stored heat during a cooldown. The U-tubes and RCP casing are probably where it matters most.")*
+
+`PWR2_PHYSICS.md` §222-224 named `M_wall`, `cp_wall`, `A`, `T_wall[]` and `Q_wall`; `pwr2_core.js`
+built every control volume as `{ id, V, h }`. `pwr2_geometry.js` shipped **`wallLumps` on all
+eleven nodes and a `transport` flag with zero consumers** — a table that read as a working feature.
+No metal thermal mass existed anywhere in PWR2.
+
+### 109.1 The measurement came first, and it partly overturned the request
+
+| | |
+|---|---|
+| Ring **fluid** heat capacity, measured off the plant | **93,855 kJ/K** (16,949 kg × 5.538) |
+| Total **metal**, derived | **88,164 kg → 43,484 kJ/K = 46.3 %** |
+
+The comment guessed the tubes and pump casing mattered most. **They are ~9 % between them; the
+reactor vessel is ~25 %.** Put to the owner with the numbers — *(OWNER RULING, 2026-08-28: "All
+eleven nodes", from three costed options)*.
+
+| node | M_wall kg | lumps | C kJ/K | wall diffusion time |
+|---|---|---|---|---|
+| downcomer — RPV shell | 21,465 | 3 | 10,732 | 1,267 s |
+| lower_plenum — head + core plate | 10,023 | 2 | 5,012 | 1,267 s |
+| sg_primary — tube metal | 17,088 | 1 | 7,946 | ~0 s |
+| core — the BARREL, not the fuel | 7,541 | 1 | 3,770 | 617 s |
+| pressurizer / vessel_heads / upper_plenum / rcp / 3 legs | 32,047 | — | 16,024 | 156–2,507 s |
+
+**A cross-check that was never fitted.** The steam-generator tube bore implied by the **sourced**
+18,135 ft² heat-transfer area and the Model 51 tube size gives a tube-interior volume of
+**7.3437 m³** against Layer 1's independently derived `sg_primary` node volume of **7.3426 m³** —
+**0.015 %**. Two numbers arrived at by different routes.
+
+**⚠ The fuel is not in here.** `pwr2_fuel` owns the rods; a "core wall" that included them would
+double-count the one metal capacity the plant already had. The core's wall is the barrel.
+
+### 109.2 The effect, and why the fixture decides whether you can see it
+
+| | |
+|---|---|
+| 20 °C cooldown at a FIXED 3 MW duty | 407 s dry → **567 s** (**1.391×**) |
+| the same at 10 MW | 122 s → 156 s (**1.270×**) |
+| scram, Tavg fall over 30 s | −11.23 °C dry → −11.18 °C (**0.4 %**) |
+
+The slower the cooldown the more of the thick vessel wall participates, approaching the 1.46
+capacity ratio. The fast transient barely moves — which is `wallLumps` holding: the shell is
+114 mm and its diffusion time is ~1,270 s, so a 30-second transient reaches only its inner lump.
+
+**⚠ A SETPOINT-LIMITED FIXTURE MEASURES 1.000× AND LOOKS LIKE A NULL RESULT.** The first
+engine-level cooldown walked the steam-dump setpoint down; the pace was then set by the ramp, not
+by the thermal mass, and the dumps simply passed more steam. A probe whose pace the operator sets
+cannot see thermal mass at all. Fixed duty is what makes it a measurement.
+
+### 109.3 ⚠ Two defects in this change, both found by ONE red, neither by anything I wrote
+
+Both in the wall's film coefficient. `run_pwr2_coredamage` going red is what surfaced them.
+
+1. **No phase term.** The module comment claimed to follow `pwr2_fuel.filmCoefficient` and took
+   only the flow half. On a 20 cm² break the core is 100 % void by 300 s and the superheated steam
+   was coupled to 88 t of metal through a **liquid** film: the metal absorbed **1,100 MJ** and
+   capped peak clad temperature at 1,698 °F against 1,910 dry.
+2. **The floor had the wrong phase factor.** `vapor_ratio` 0.5 is a *forced*-convection ratio at
+   equal mass flux; the floor is *free* convection, which scales with the fluid's own conductivity
+   (~0.1 for steam). With 0.5 standing, **an unmitigated break with no emergency cooling never
+   reached the 10 CFR 50.46 clad limit in 4,000 s.** A real one melts.
+
+Wall absorption 1,100 → 353 → **37 MJ**. The lesson is the one the standing list already carries in
+another form: *a coefficient that is nearly right rewrites a whole scenario class silently*, and
+**the red that finds it will look like a stale band.**
+
+### 109.4 The five reds, adjudicated one at a time — and four were not about the walls
+
+The standing rule earns its keep here. Batch-judging these as "the metal moved things" would have
+buried two defects in the change and four pre-existing ones in the suite.
+
+**1. `run_pwr2_loop` — a negative control passing by 0.024 MPa.** *"A BALANCED plant at full power
+never trips the envelope flag"* drove 300 MWt through a rigid loop with no pressurizer and asserted
+the flag never set. It passed at **17.976 MPa of an 18.0 MPa envelope**, and "balanced" was never
+true: a rigid ring redistributing enthalpy moves pressure, and this one moved it +2.57 MPa.
+Re-stated at a duty the fixture can hold, asserting the **margin** — 1.215 MPa, and it passes on
+both plants.
+
+**2. `run_pwr2_loca` — a HELD plant creating mass. Filed #585.** The walls carry the blowdown
+deeper, past Layer 0's 0.1 MPa floor, and the plant latches `beyond_model`. `pwr2_core.step` then
+returns early — mass stops moving — while `stepBreak` books discharge and containment receives it.
+**222 held steps, 69.4 kg of mass out of nothing.** The dry plant closed to −0.000 kg because it
+never reached the hold, so nothing here had ever stood next to one.
+⚠ **Two arithmetic repairs were tried first and both were wrong**, which is worth recording: rolling
+`discharged_kg` back broke the containment identity (containment *did* receive it), and subtracting
+the held step's measured discharge overshot by exactly one step. Any arithmetic there is a claim
+about what the defect did. The identities are asserted against a **snapshot of the last running
+step** instead, and the frozen step's discharge is a named measured number.
+
+**3. `run_pwr2_cvcs` — a fixture railed at the property ceiling since 5 s, dry.** Its own comment
+records shortening 60 s → 10 s because the divergence grew; that cut the divergence to 0.0109 % and
+everyone read it as "inside the envelope". Measured: **pinned at 2611 psia — 18.0 MPa exactly —
+from 5 s, on the pre-#574 plant.** The band measured how far a railed plant had drifted, not whether
+it had railed. Halved to 150 MWt it stays inside on both (2398 / 2466 psia) and the divergence
+collapses to **0.0007 %**, three orders better than the old fixture managed dry. The charging
+result is untouched — 21.7 kg at 300, 150, 60 and 30 MWt, because the power was scenery. **The
+envelope is now asserted directly, not through a proxy for it.**
+
+**4. `run_pwr2_shell` — a rod limit sampled inside the boot transient.** The insertion limit is a
+straight function of power, and the check sampled at 4 s. The DRY plant reads RIL **137, the bottom
+of the check's own 137–141 band**, climbing to 139 by 60 s. The walls lengthen the ramp slightly
+(97.19 % against 97.47 % at 4 s) and took it to 136. Sampled at 60 s both read 139, mid-band.
+
+**5. `run_pwr2_coredamage` — the whole chain measured on a held plant. Filed #586.** A guard added
+here (a check was reading a node pinned *exactly* at the property ceiling) stopped the ride at
+`beyond_model` and the milestones went unreached. Measured on the **pre-#574** plant: the latch is
+at **469 s** and the 2200 °F crossing was at **939 s** — 470 s of frozen physics behind the 50.46
+crossing, the damage latch, the 100 % oxidation endpoint and the ON-vs-OFF comparison. Fourth probe
+in this engine to read a plant outside its own valid regime.
+*(OWNER RULING, 2026-08-28: "Keep the guard, shrink the claims", from three options.)* Kept: the
+1200 °F onset, the ordering of the chain up to it, the feedback-attribution property (both runs
+reach onset within 1 s), and the energy and hydrogen closure identities, which are per-step.
+Declared blocked to #586: everything past the floor. And the superheat maximum is now **tracked
+only while the plant is unclamped**, so "computed, not pinned" is true by construction rather than
+by a check that hoped it was.
+
+### 109.5 What the walls are made of
+
+**Legs** — bore from Layer 1's own `V/L`, thickness scaled from the sourced reference
+(ML11223A213 Table 3.2-1) by the same `r_D` rule the volumes use: 3,279 / 3,650 / 3,328 kg at
+16.26 / 16.27 / 16.22 in. ⚠ `PWR_LOOP_GEOMETRY.md`'s own M_wall table is **not** reusable — it is
+computed on the §5 lengths `pwr2_geometry` explicitly rejected.
+**Vessel** — ASME thin-wall `t = P·r/(S − 0.6P)` at the code-safety design pressure, the identical
+method `pwr_config` used for the pressurizer vessel and one the owner ruled acceptable
+*(2026-08-15: "Go with your recommendations")* on the argument that a **mass** is something a
+document can later settle where a gain never could. The shell goes to the **downcomer** — it is the
+annulus against the vessel wall, which is also why Layer 1 already gave that node `wallLumps: 3` and
+the note *"thick vessel wall, Biot not small"*. Two things written for different reasons agreeing.
+**RCP** — `PWR_LOOP_GEOMETRY`'s 5,300 lbm is on a 9.5 ft³ cavity this plant does not use; the
+METHOD is reused on Layer 1's own 28.1 ft³ one.
+**Support structures** — a flat estimate, marked separately, and the weakest number in the file.
+
+### 109.6 The integration
+
+`Q_wall = G₀·(T_wall[0] − T_fluid)` with `G₀` the film in series with **half a lump of metal** —
+omitting that half is what makes a thick wall respond like a thin one. Equal-mass lumps in series,
+innermost sees the fluid, outermost **adiabatic**. Evaluated **once per step, outside the pressure
+solve**: `F(P)` is called ~10× per step on the path D1 §26 already carries a stop condition
+against, and the wall does not depend on the candidate pressure. `internalEnergy` gains the wall's
+stored energy, or the layer's own 3e-4 conservation budget absorbs the thing being added.
+`run_pwr2_perf`: **3.9×** against its 8× bound, unmoved.
+
+### 109.7 The bill
+
+`run_pwr2_core` 48 → **55** (25 → 34 mutations) · `run_pwr2_geometry` 33 → **39** (16 → 21) ·
+`run_pwr2_loop` 45 → **51** (20 → 23) · `run_pwr2_cvcs` 44 → **45** · `run_pwr2_loca` 17 → **18** ·
+`run_pwr2_coredamage` 23 → **20** (claims removed, not added) · `run_pwr2_shell` **130** unchanged.
+
+Filed on the way, none of them fixed here: **#583** (the pressurizer is in the mass ledger twice,
+17.6 % over the declared RCS), **#584** (`Manuals/12` §12.15/§7.1 describe the retired pressurizer),
+**#585** (a held plant creates mass), **#586** (the core-damage chain is measured on a held plant).
+
+**Still dark and named:** `transport: 'plug'` has no consumer — every node is donor-cell — which is
+what makes cold-water accumulation in a leg unrepresentable; and `surge_line_voided` appears
+nowhere in `engines/ layers/ ui/ test/`.

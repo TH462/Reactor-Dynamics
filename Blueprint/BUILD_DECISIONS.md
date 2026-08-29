@@ -45,6 +45,63 @@ where the two differ or where judgment was exercised.
 
 ---
 
+## 2026-08-28-develop-h — #574: the metal is in the model, and four of its five reds were somebody else's
+
+**THE DECISION THAT SHAPED THIS: measure before you scope, even when the request already names the
+scope.** *(OWNER, 2026-08-12: "each node should carry the heat capacity of its own metal wall...
+The U-tubes and RCP casing are probably where it matters most.")* The ring's fluid heat capacity
+measures **93,855 kJ/K** and the metal **43,484** — 46.3 % — of which the tubes and pump casing are
+~9 % and the **reactor vessel is ~25 %**. The instinct in the request was half right and pointed at
+the smaller half. *(OWNER RULING, 2026-08-28: "All eleven nodes", taken on that measurement.)*
+
+**Layer 1 owns the masses, Layer 3 wires, Layer 2 integrates** — the existing division, no new
+file. Every number in the geometry block is COMPUTED from a stated rule rather than typed, so a
+derivation cannot drift away from its value. The one number that is not geometry is the wall-side
+film, and it follows `pwr2_fuel.filmCoefficient`'s existing idiom rather than inventing a second.
+
+**⚠ AND THE FILM IS WHERE THIS CHANGE'S OWN TWO DEFECTS WERE, both found by ONE red.** The first
+cut took the flow half of that idiom and not the phase half, while its comment claimed to follow
+it: a 100 %-void core stayed coupled to 88 t of metal through a LIQUID film and absorbed 1,100 MJ.
+The repair then applied the FORCED-convection vapour ratio to the FREE-convection floor, which is a
+different physical quantity — free convection scales with the fluid's own conductivity — and left
+an unmitigated break unable to reach the 10 CFR 50.46 clad limit at all. **A coefficient that is
+nearly right rewrites a scenario class silently, and the red that finds it looks like a stale band.**
+
+**THE ADJUDICATION RULE PAID FOR ITSELF, and this is the entry's other point.** Five reds. Batch-
+judging them as "the metal moved things" would have buried both defects above and four pre-existing
+ones: a negative control passing by **0.024 MPa** of an 18.0 MPa envelope; a fixture railed at the
+property-table ceiling **from 5 s, on the pre-change plant**, with its divergence band reading that
+as healthy; a rod-limit check sampled inside the boot ramp at the bottom edge of its own band; and
+`run_pwr2_coredamage` measuring its entire chain on a plant frozen since 469 s. Three of the four
+were checks passing by a hair on plants outside their own valid regime.
+
+**⚠ AND THREE MUTATIONS WENT BLIND**, which is the standing "a neighbour's change blinds a
+mutation" trap arriving live. Two had only ever been caught INCIDENTALLY, by trajectory checks that
+happened to diverge — so the repair is to assert the WIRING, which no trajectory can take away, and
+that required exposing `eng._brkBackP`: the backpressure the break actually used was unobservable
+from outside, which is the same dark-wire shape as `wallLumps` itself. The third was **mis-tagged
+`grp: 'C'` when its checks live in group I**, so the scoped replay ran a group with no opinion about
+it. A wrong group tag scores a covered mutation as blind — the mirror of the usual failure, and
+invisible unless you apply the mutation by hand.
+
+**A test seam is declared as one.** `dryWalls` builds the pre-#574 plant so the walls can be A/B'd
+against their own absence. Zeroing the masses instead is NOT a substitute: `M → 1e-9` divides the
+lump temperature by nothing, the wall goes non-finite, and the "dry" plant then sits at a frozen
+Tavg through a scram — an A/B that looked like a result and was an arithmetic failure.
+
+### Open flags this entry leaves
+
+None new. Four issues filed and none fixed here: **#583** (the pressurizer is in the mass ledger
+twice — a rigid off-loop node plus the Layer-5 vessel, 17.6 % over the declared RCS), **#584**
+(`Manuals/12` §12.15/§7.1 describe the retired pressurizer), **#585** (a held plant creates mass),
+**#586** (the core-damage chain is measured on a held plant). Two dark wires stay named and unbuilt:
+`transport: 'plug'` — every node is donor-cell, which is what makes cold-water accumulation in a leg
+unrepresentable — and `surge_line_voided`, which appears nowhere in `engines/ layers/ ui/ test/`.
+The support-structure mass is the weakest number in the geometry block and is marked so it can be
+replaced alone.
+
+---
+
 ## 2026-08-28-develop-g — #573/#473: heater elevation, and the drawn level that was never a volume
 
 **THE DECISION THAT SHAPED THIS: a ruling is not landed until it is on the plant that ships.**

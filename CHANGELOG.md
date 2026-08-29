@@ -30,6 +30,31 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
 
 ## [Unreleased]
 
+### Added (#574 — every node carries the heat capacity of its own metal, 2026-08-28)
+
+Full write-up: `Blueprint/PWR2_VALIDATION.md` §109.
+
+- **The plant's metal is in the model now — all of it.** The reactor vessel, its heads, the core
+  barrel, the steam-generator tubes, the pump casing, the three loop pipes and the pressurizer
+  each carry their own wall, and heat moves between that metal and the water it touches.
+  **88,164 kg of steel, 46 % of the water's own heat capacity** — a *2026-08-12 owner ruling that
+  had been written into the specification and never built*. The geometry file had shipped the
+  per-node lump counts for months with nothing reading them.
+- **A cooldown now takes as long as it should.** At a fixed heat-removal duty a 20 °C cooldown
+  takes **1.39×** longer with the metal in it, because the stored heat has to come out too. A fast
+  transient barely moves — 0.4 % on a scram — because the vessel wall is 114 mm thick and takes
+  ~21 minutes to give up its heat. That spread is the point: the tubes respond in seconds, the
+  vessel over the length of a cooldown.
+- **⚠ The owner's own instinct was measured and partly overturned.** The request guessed the
+  U-tubes and pump casing mattered most; they are ~9 % between them, and the **reactor vessel is
+  ~25 %**. The ruling to build all eleven nodes was taken on that measurement.
+- Adjudicating the five test failures this caused — one at a time, as the standing rule requires —
+  turned up **two defects in the change itself** (the wall's heat-transfer film had no steam/water
+  distinction, which let a dry core soak 1,100 MJ into the metal and made a core-melt sequence
+  unreachable) and **four pre-existing problems in the test suite**, three of them checks that were
+  passing by a hair on plants outside their own valid range. Four issues filed (#583–#586); none
+  of them fixed here.
+
 ### Added (#573 + #473 — the pressurizer heaters lose authority as the level falls past them, 2026-08-28)
 
 Full write-up: `Blueprint/PWR2_VALIDATION.md` §108.

@@ -373,6 +373,31 @@ function runSuite(RD, rec, quiet, only) {
       tsB.scrammed === true && tsB.rod_steps === 0 && eng2.pt.trip_cause !== null,
       'trip on ' + eng2.pt.trip_cause + ', rods ' + tsB.rod_steps + ' — pwr2_protection only ' +
       'reports; the caller half lived nowhere until this file');
+  /* ⚠ #543's BACKPRESSURE WIRING, ASSERTED DIRECTLY (added #574). Two mutations that had been
+   * caught for weeks — the frozen-constant backpressure and the severed containment stash —
+   * went BLIND when the metal walls moved the ride's trajectory: they were only ever caught
+   * incidentally, by trajectory checks that happened to diverge. That is the standing trap
+   * about a NEIGHBOUR's change blinding a mutation, and the repair is not to restore the old
+   * trajectory but to assert the WIRING, which no trajectory can take away.
+   * The break sees LIVE containment pressure, one step behind, and containment is pressurising:
+   * a frozen constant or a severed stash both fail this outright. */
+  ckT('the break sees LIVE containment pressure, one step behind — not a frozen constant (#543)',
+      eng2._ctP !== undefined && eng2._ctP > 0.1082 &&
+      Math.abs(eng2._ctP - tsB.containment_pressure_mpa) < 1e-9,
+      'stash ' + (eng2._ctP === undefined ? 'UNDEFINED' : eng2._ctP.toFixed(5)) +
+      ' MPa against containment ' + tsB.containment_pressure_mpa.toFixed(5) +
+      ', up from the 0.1082 initial condition — the coolant climbs a REAL gradient');
+  /* ⚠ ONE STEP BEHIND, NOT EQUAL — the stash is a one-step-lag carrier by design, so the break
+   * used the PREVIOUS step's containment pressure and an exact comparison fails by 8e-5. The
+   * claim is that it used a LIVE one: far off the 0.1082 MPa default it falls back to, and
+   * within a single step's containment rise of the current value. */
+  ckT('...and the break ACTUALLY USED it — the stash reaching the door, not just existing',
+      eng2._brkBackP !== undefined && eng2._brkBackP > 0.15 &&
+      Math.abs(eng2._brkBackP - eng2._ctP) < 5e-3,
+      'break discharged against ' +
+      (eng2._brkBackP === undefined ? 'NOTHING' : eng2._brkBackP.toFixed(5)) + ' MPa, stash ' +
+      eng2._ctP.toFixed(5) + ', default 0.10820 — a stash that is set and never passed is the ' +
+      'dark wire again');
 
   /* ---- #543: THE BREAK SEES LIVE CONTAINMENT PRESSURE. Against the frozen 1.0 psig
    * constant, a sev-1 LOCA's containment passed RCS pressure at 995 s and the hole KEPT
@@ -1905,9 +1930,14 @@ var MUTATIONS = [
   ['the runback never reaches the turbine (the RPS warns into a void)',
    "        eng.tb.load_target_mwe = Math.max(0,\n          eng.tb.load_target_mwe - (2.0 * MWE_RATED / 60) * dt);",
    '', { grp: 'C' }],
+  /* ⚠ RE-GROUPED C -> I at #574. The checks that catch this live in group I (the IR rod stop
+   * during a controlled withdrawal); the tag said C, so the grp:-scoped replay ran a group with
+   * no opinion about rod motion and reported BLIND. Verified by applying the mutation to the
+   * engine by hand: it reddens TWO group-I checks. A wrong group tag is a mutation that scores
+   * as uncovered while being covered — the mirror of one that scores as covered while not. */
   ['the rod stop never blocks (outward motion continues at 3 % from the trip)',
    '      if (eng._rodStopSig && move > 0) move = 0;',
-   '', { grp: 'C' }],
+   '', { grp: 'I' }],
   ['the pressurizer ladder wire is cut (control reads truth again; no lie can drive the heaters)',
    'indicated_pressure_mpa: eng.ins.reading.primary_pressure,',
    '', { grp: 'B' }],

@@ -84,12 +84,22 @@ function scenario(opts) {
                                     node: 'cold_leg', open: true });
   var rods = [{ steps: 0, max_steps: 200, worth: 0.08 }];
   var t = 0, Qox = 0, sumOxKJ = 0, courantBad = 0, nonFinite = 0, relief = 0, pzr = null;
+  var heldAt = null;
   var hit = {}, firstVoid = null, flowLost = null, damagedAt = null, meltedAt = null;
   var firstSuperheat = null, maxSuperheat = 0, superheatSteps = 0;   /* #517 */
+  var maxSuperheatAt = null, clampAt = null;                          /* #574 — see the wing check */
   var M0 = sys.M_total, maxOx = 0, lastR = null, lastD = null, pzEmptyAt = null;
   var steps = Math.round((opts.secs || 1200) / DT);
 
   for (var i = 0; i < steps; i++) {
+    /* ⚠ STOP WHEN THE PLANT DECLARES ITSELF BEYOND MODEL (#574). Every check below reads the
+     * FINAL state, and a held plant's final state is an out-of-envelope one by definition —
+     * that is what the hold exists to say. MEASURED 2026-08-28 on the 5 cm2 ride: with the metal
+     * walls feeding the boil-off the blowdown carries to 0.137 MPa (against 4.571 dry) and the
+     * core node ends pinned EXACTLY at the property ceiling, h = 4162 against h_v = 4162 — so
+     * "no reading here is a clamped value" read a clamped value. The claim is about the RUNNING
+     * plant and is now asserted on one. */
+    if (sys.beyond_model) { heldAt = t; break; }
     var rr = R.stepReactor(rx, sys, DT,
       { boron_ppm: 700, rodGroups: rods, Q_ox_kW: feedback ? Qox : undefined });
     if (!isFinite(rr.T_clad_c) || !isFinite(rr.T_fuel_c)) { nonFinite++; break; }
@@ -104,7 +114,14 @@ function scenario(opts) {
     relief = pzr.relief_kgs;
     if (pzEmptyAt === null && pzr.emptied) pzEmptyAt = t;
     if (!pr.courantOK) courantBad++;
+    /* #574 — WHEN the property clamp first fires. The superheat wing's claim is that its
+     * numbers are COMPUTED and not pinned, and that is a claim about when they were taken. */
+    var clampedThisStep = pr.enthalpyClamped > 0;
     t += DT;
+    /* ⚠ STAMPED AFTER `t += DT`, like every other timestamp in this loop. Stamped before it, the
+     * clamp and the superheat maximum recorded the SAME step as two different times, and the
+     * comparison between them came out as a tie rather than as an ordering. */
+    if (clampAt === null && clampedThisStep) clampAt = t;
 
     var reg = R.coreRegime(sys), cf = rr.T_clad_c * 9 / 5 + 32;
     if (firstVoid === null && reg.voidFrac > 0.5) firstVoid = t;
@@ -112,7 +129,14 @@ function scenario(opts) {
     /* #517 — the superheat regime, tracked so the wing has a RIDE to be accepted on. Void
      * saturates at 1 long before this does, which is the whole reason the field exists. */
     if (firstSuperheat === null && reg.superheat_c > 0) firstSuperheat = t;
-    if (reg.superheat_c > maxSuperheat) { maxSuperheat = reg.superheat_c; }
+    /* #574 — the maximum is tracked ONLY while every node is inside the property envelope.
+     * The wing's claim is that its superheat is COMPUTED, not pinned, and a maximum taken
+     * after the clamp fires cannot support it: measured, the peak sat at 691 degC at 1247 s
+     * with the clamp first firing at 1187. Capping the tracking makes the reported number
+     * defensible BY CONSTRUCTION rather than by a check that hopes it was. */
+    if (clampAt === null && reg.superheat_c > maxSuperheat) {
+      maxSuperheat = reg.superheat_c; maxSuperheatAt = t;
+    }
     if (reg.superheat_c > 0) superheatSteps++;
     [DOC.onset_f, DOC.significant_f, DOC.pct_limit_f].forEach(function (m) {
       if (hit[m] === undefined && cf >= m) hit[m] = t;
@@ -122,7 +146,8 @@ function scenario(opts) {
     if (dr.oxidation_frac > maxOx) maxOx = dr.oxidation_frac;
     lastR = rr; lastD = dr;
   }
-  return { sys: sys, rx: rx, dm: dm, t: t, M0: M0, sumOxKJ: sumOxKJ, courantBad: courantBad,
+  return { sys: sys, rx: rx, dm: dm, t: t, M0: M0, sumOxKJ: sumOxKJ, courantBad: courantBad, heldAt: heldAt,
+           maxSuperheatAt: maxSuperheatAt, clampAt: clampAt,
            nonFinite: nonFinite, hit: hit, firstVoid: firstVoid, flowLost: flowLost,
            damagedAt: damagedAt, meltedAt: meltedAt, maxOx: maxOx, r: lastR, d: lastD,
            pzEmptyAt: pzEmptyAt,
@@ -158,40 +183,64 @@ ckT('...and the flow collapses before the cladding reaches the hydrogen onset',
     ON.flowLost < ON.hit[DOC.onset_f],
     'flow lost at ' + ON.flowLost.toFixed(0) + ' s, GEND-061 1200 degF at ' +
     ON.hit[DOC.onset_f].toFixed(0) + ' s — the heat-up follows the loss of cooling, not the break');
-ckT('...and the three sourced clad milestones arrive in the order the documents put them',
-    ON.hit[DOC.onset_f] < ON.hit[DOC.significant_f] &&
-    ON.hit[DOC.significant_f] < ON.hit[DOC.pct_limit_f],
-    '1200 degF at ' + ON.hit[DOC.onset_f].toFixed(0) + ' s, 1800 at ' +
-    ON.hit[DOC.significant_f].toFixed(0) + ' s, 2200 at ' + ON.hit[DOC.pct_limit_f].toFixed(0) +
-    ' s (TIMES ARE NOT A CLAIM — see the header)');
-ckT('...and the damage latch trips at the 50.46 limit, not before and not after',
-    ON.damagedAt !== null && Math.abs(ON.damagedAt - ON.hit[DOC.pct_limit_f]) <= 2 * DT,
-    'latched at ' + ON.damagedAt.toFixed(2) + ' s against the 2200 degF crossing at ' +
-    ON.hit[DOC.pct_limit_f].toFixed(2));
-ckT('...and MELT comes after damage, never before it',
-    ON.meltedAt === null || ON.meltedAt > ON.damagedAt,
-    ON.meltedAt === null ? 'not reached in this run' :
-      'melted at ' + ON.meltedAt.toFixed(0) + ' s, damaged at ' + ON.damagedAt.toFixed(0));
+
+/* ============================================================================================
+ * ⚠ EVERYTHING PAST THE HYDROGEN ONSET IS DECLARED BLOCKED, NOT DELETED — #586.
+ *
+ * This gate used to assert the 1800 and 2200 degF crossings, the damage latch, the melt order,
+ * the ON-vs-OFF milestone comparison and a 100 % oxidation endpoint. MEASURED 2026-08-28, on the
+ * PRE-#574 plant as well as the post — so this is NOT the metal walls: the plant latches
+ * `beyond_model` at **469 s** on this 20 cm2 break, and the 2200 degF crossing was at **939 s**.
+ * `pwr2_core.step` returns early on a held plant — mass stops moving, junctions read zero — so
+ * every one of those numbers came from 470+ seconds of FROZEN PHYSICS while only the systems
+ * around the plant kept running. Fourth probe in this engine to read a plant outside its own
+ * valid regime; `run_pwr2_cvcs` carries the comment about the first three.
+ *
+ * What blocks it is Layer 0's 0.1 MPa property floor, which an unmitigated break reaches. That is
+ * the same wall PWR2_VALIDATION §74 records from the other side for Mode 5, and settling it —
+ * extend Layer 0, or re-design the ride so the chain completes inside the envelope — is #586.
+ *
+ * *(OWNER RULING, 2026-08-28: "Keep the guard, shrink the claims", from three costed options.)*
+ * Every claim the VALID plant supports is kept; the rest is named here rather than quietly
+ * re-fitted to whatever a held plant produces. A gate that is green and false is worse than one
+ * that is honest about its reach.
+ * ========================================================================================== */
+ckT('the ride stops WHERE THE MODEL DOES — the chain past the onset is #586, not a claim',
+    ON.heldAt !== null && ON.hit[DOC.onset_f] < ON.heldAt,
+    'onset at ' + ON.hit[DOC.onset_f].toFixed(0) + ' s, beyond_model at ' +
+    (ON.heldAt === null ? 'never' : ON.heldAt.toFixed(0) + ' s') + ' — 1800 degF, 2200 degF, the ' +
+    'damage latch and the oxidation endpoint all sit past that floor and are DECLARED BLOCKED');
+ckT('...and the damage latch has NOT tripped, because the plant never got there',
+    ON.damagedAt === null && ON.meltedAt === null,
+    'damaged ' + ON.damagedAt + ', melted ' + ON.meltedAt +
+    ' — the old gate latched it at 939 s, on a plant frozen since 469');
 
 /* ---- THE FEEDBACK, WHICH IS THE WHOLE POINT ----------------------------------------------- */
 head('THE FEEDBACK  [the only thing here no single-file gate can see]');
+/* THE ATTRIBUTION PROPERTY SURVIVES INTACT, and it was always the real claim: the feedback
+ * cannot act before there is a reaction, so both runs must reach the onset together. It is
+ * asserted on a RUNNING plant — the onset is at ~352 s against a floor at 469. */
 ckT('BOTH runs reach the hydrogen onset at the same time — the feedback cannot act before there ' +
     'is a reaction',
+    ON.hit[DOC.onset_f] !== undefined && OFF.hit[DOC.onset_f] !== undefined &&
     Math.abs(ON.hit[DOC.onset_f] - OFF.hit[DOC.onset_f]) < 1.0,
-    'ON ' + ON.hit[DOC.onset_f].toFixed(0) + ' s, OFF ' + OFF.hit[DOC.onset_f].toFixed(0) +
+    'ON ' + ON.hit[DOC.onset_f].toFixed(2) + ' s, OFF ' + OFF.hit[DOC.onset_f].toFixed(2) +
     ' s — identical, which is what makes the divergence AFTER it attributable');
-ckT('...and the 50.46 limit arrives MEASURABLY EARLIER with the reaction heat fed back',
-    ON.hit[DOC.pct_limit_f] < OFF.hit[DOC.pct_limit_f] - 60,
-    'ON ' + ON.hit[DOC.pct_limit_f].toFixed(0) + ' s against OFF ' +
-    OFF.hit[DOC.pct_limit_f].toFixed(0) + ' s — ' +
-    (OFF.hit[DOC.pct_limit_f] - ON.hit[DOC.pct_limit_f]).toFixed(0) + ' s earlier');
-ckT('...and far more of the cladding is consumed, on the same break and the same decay heat',
-    ON.maxOx > OFF.maxOx * 2,
-    (ON.maxOx * 100).toFixed(1) + ' % with feedback against ' + (OFF.maxOx * 100).toFixed(1) +
-    ' % without — everything else in this plant decays; this is the one thing that accelerates');
+/* ⚠ THE DIVERGENCE ITSELF IS WHAT #586 TAKES AWAY. The old checks compared the 2200 degF
+ * crossings and the terminal oxidation fractions, and both sit past the floor. What CAN be
+ * asserted on a valid plant is that the feedback is already doing something by the time the
+ * model stops: the ON leg must have oxidised MORE, and the OFF leg must have oxidised at all,
+ * or the comparison is against a model that does nothing. The magnitudes are small because the
+ * valid ride is short, and they are REPORTED rather than banded — a band here would be fitted
+ * to a horizon that #586 is expected to change. */
+ckT('the feedback is already accelerating the reaction by the time the model stops',
+    ON.maxOx > OFF.maxOx && OFF.maxOx > 0,
+    (ON.maxOx * 100).toFixed(3) + ' % with feedback against ' + (OFF.maxOx * 100).toFixed(3) +
+    ' % without, at ' + ON.t.toFixed(0) + ' s — the old gate read 100 % against 15.8 %, both past ' +
+    'the floor. Everything else in this plant decays; this is the one thing that accelerates');
 ckT('the run WITHOUT feedback still oxidises, so the difference is the feedback and not the model',
-    OFF.maxOx > 0.05,
-    (OFF.maxOx * 100).toFixed(1) + ' % — a zero here would mean the comparison was against a ' +
+    OFF.maxOx > 0,
+    (OFF.maxOx * 100).toFixed(3) + ' % — a zero here would mean the comparison was against a ' +
     'model that does nothing, which would prove nothing');
 
 /* ---- CLOSURE: the defence this gate has instead of a mutation harness --------------------- */
@@ -209,13 +258,18 @@ ckT('the reaction never consumes more zirconium than the core contains',
 
 /* ---- THE 50.46 CRITERIA, AND WHICH ONE GOES FIRST ---------------------------------------- */
 head('10 CFR 50.46  [an unmitigated core must breach them, and in the right order]');
-ckT('criterion 1 (2200 degF peak clad) is breached, so the model can express a design-basis ' +
-    'failure at all',
-    ON.damagedAt !== null, 'a model that could never breach it could never grade an accident');
-ckT('criterion 3 (1 % of the hypothetical hydrogen) goes LONG before criterion 2 (17 % oxidation)',
-    DOC.h2_criterion < DOC.ox_criterion && ON.maxOx > DOC.h2_criterion,
-    'the hydrogen criterion is 17x tighter than the oxidation one, so it is the binding constraint ' +
-    'first — at ' + (ON.maxOx * 100).toFixed(1) + ' % oxidation both are long past');
+/* ⚠ BOTH 50.46 CRITERIA LIVE PAST THE PROPERTY FLOOR — DECLARED BLOCKED, #586. The old pair
+ * asserted that criterion 1 (2200 degF peak clad) is breached and that criterion 3 (1 % of the
+ * hypothetical hydrogen) is reached before criterion 2 (17 % oxidation). Both were true only of
+ * a HELD plant: this ride stops at `beyond_model` with 0.8 % oxidation, an order under either
+ * criterion. What is still assertable on a valid plant is that the model CARRIES the criteria
+ * and their ordering, which is a claim about the criteria and not about a frozen ride. */
+ckT('the model carries all three 50.46 criteria, and the hydrogen one is the tightest',
+    DOC.h2_criterion < DOC.ox_criterion && DOC.pct_limit_f === 2200 &&
+    ON.dm.geom.M_clad_kg > 0,
+    '1 % hydrogen against 17 % oxidation — 17x tighter, so it binds first; 2200 degF is the ' +
+    'third. WHETHER this plant reaches any of them is #586: it stops at ' +
+    (ON.maxOx * 100).toFixed(2) + ' % oxidation when the model does');
 
 /* ---- THE PLANT SURVIVED THE RIDE AS A MODEL ----------------------------------------------- */
 head('NUMERICS  [the scenario must stay inside what the engine claims to compute]');
@@ -224,8 +278,14 @@ ckT('nothing went non-finite in either run', ON.nonFinite === 0 && OFF.nonFinite
 ckT('the Courant limit held at the house cadence, with no substepping',
     ON.courantBad === 0 && OFF.courantBad === 0,
     'dt = ' + DT + ' s throughout, ' + (ON.t / DT).toFixed(0) + ' steps');
-ckT('both runs completed their full horizon', ON.t > 1190 && OFF.t > 1190,
-    ON.t.toFixed(0) + ' s and ' + OFF.t.toFixed(0) + ' s of plant');
+/* ⚠ THE HORIZON CHECK IS INVERTED NOW, and deliberately. It used to require both runs to
+ * complete 1,200 s, which they did — by stepping a frozen plant for the last 700 of them. The
+ * honest claim is that both runs stop at the model's own floor and stop TOGETHER, within a few
+ * seconds of each other, because the feedback is not what takes the plant there. */
+ckT('both runs stop at the model\'s OWN floor, and within seconds of each other',
+    ON.heldAt !== null && OFF.heldAt !== null && Math.abs(ON.heldAt - OFF.heldAt) < 30,
+    ON.t.toFixed(0) + ' s and ' + OFF.t.toFixed(0) + ' s of VALID plant — the old form required ' +
+    '1,190 s and got it by stepping a held plant for the last 700');
 
 /* ---- #487: THE ENDGAME PAST THE FLOOR ------------------------------------------------------
  * The filed case: a 5 cm2 break ran clean for 840 s and went NaN in the reactor the step after
@@ -276,9 +336,22 @@ ckT('...and it goes far past the boundary — over 100 degC of superheat, not a 
     ' degF) above saturation');
 /* THE ENVELOPE IS NOT REACHED, which is what makes the wing honest rather than a clamp with a
  * new name: Layer 0 is characterised to 800 degC and this ride tops out far below it. */
-ckT('...while staying INSIDE Layer 0 vapour envelope, so no reading here is a clamped value',
-    END.sys.nodes.every(function (n) { return n.h < W.h_v(W.LIMITS.TV_MAX, END.sys.P); }),
-    'the 800 degC ceiling is never touched — the superheat reported is computed, not pinned');
+/* ⚠ THE CLAIM IS ABOUT WHEN THE NUMBER WAS TAKEN, NOT ABOUT THE FINAL STATE (#574).
+ * This asserted that no node ends past Layer 0's 800 degC vapour ceiling. On the 5 cm2 ride the
+ * plant now carries down to 0.137 MPa and the core node ends pinned EXACTLY on it — h = 4162.1
+ * against h_v = 4162.1 — so the check that existed to prove the superheat is COMPUTED was itself
+ * reading a pinned value. Note the clamp fires BEFORE the beyond-model latch, so stopping at the
+ * hold is not enough on its own; #535's latch waits for SUSTAINED discard.
+ * The honest form is the one the wing actually needs: the maximum superheat this gate reports was
+ * measured while every node was still inside the envelope. That is a statement about the reading,
+ * which is what "computed, not pinned" always meant. */
+ckT('the superheat MAXIMUM was measured before any node touched the vapour ceiling',
+    END.maxSuperheatAt !== null &&
+    (END.clampAt === null || END.maxSuperheatAt < END.clampAt),
+    'peak ' + END.maxSuperheat.toFixed(0) + ' degC at ' + END.maxSuperheatAt.toFixed(0) +
+    ' s; the property clamp first fires at ' +
+    (END.clampAt === null ? 'never in this ride' : END.clampAt.toFixed(0) + ' s') +
+    ' — the reported superheat is computed, and the ride past that point is #586');
 /* ⚠ THE NEGATIVE CONTROL IS NOT IN THIS FILE, AND WRITING IT HERE FIRST IS THE MISTAKE WORTH
  * RECORDING. #517's ride is the SAME 0.002 m2 break — but through the FACADE, with emergency
  * injection answering. This harness is engine-direct with no ECCS, so the identical break

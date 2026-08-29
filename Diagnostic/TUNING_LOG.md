@@ -29,6 +29,80 @@ and the user-visible summary in `CHANGELOG.md`. This file points at those and tr
 
 ---
 
+## Session log — 2026-08-28-develop-h (#574 — every node carries its metal, and five reds that were not about it)
+
+Full write-up with every number: `Blueprint/PWR2_VALIDATION.md` §109. This is the continuity note.
+
+- **What was owed.** *(OWNER, 2026-08-12, on #474: "each node should carry the heat capacity of its
+  own metal wall... The U-tubes and RCP casing are probably where it matters most.")*
+  `PWR2_PHYSICS.md` §222-224 named `M_wall`, `cp_wall`, `A`, `T_wall[]`, `Q_wall`; `pwr2_core`
+  built `{ id, V, h }`. `pwr2_geometry` shipped **`wallLumps` on all eleven nodes and a
+  `transport` flag with ZERO consumers**. No metal thermal mass existed anywhere in PWR2.
+- **MEASURED FIRST, and it partly overturned the request.** Ring fluid heat capacity **93,855
+  kJ/K**; total metal **88,164 kg → 43,484 kJ/K = 46.3 %**. Tubes + pump casing are ~9 %; the
+  **REACTOR VESSEL is ~25 %**. *(OWNER RULING, 2026-08-28: "All eleven nodes", from three costed
+  options put with those numbers.)*
+- **The effect, at a FIXED duty:** 20 degC cooldown 407 → **567 s** (1.391x) at 3 MW, 122 → 156 s
+  (1.270x) at 10 MW; scram Tavg fall over 30 s **-11.23 → -11.18 degC** (0.4 %). Slow rides reach
+  more of the 114 mm shell (diffusion time ~1,270 s); fast ones reach its inner lump only.
+  **⚠ A SETPOINT-LIMITED FIXTURE MEASURES 1.000x.** The first engine cooldown walked the dump
+  setpoint down, so the pace was the ramp's and the dumps just passed more steam. Fixed duty.
+- **⚠ TWO DEFECTS IN MY OWN CHANGE, both found by ONE red and neither by anything I wrote.**
+  (1) The film had no PHASE term — the module comment claimed to follow `pwr2_fuel.filmCoefficient`
+  and took only the flow half, so a 100 %-void core was coupled to 88 t of metal through a LIQUID
+  film: **1,100 MJ absorbed**, peak clad 1,698 degF against 1,910 dry. (2) The FLOOR then took the
+  wrong phase factor — `vapor_ratio` 0.5 is FORCED convection at equal mass flux; a free-convection
+  floor scales with the fluid's conductivity (~0.1). With 0.5 standing, **an unmitigated break with
+  no ECCS never reached the 50.46 clad limit in 4,000 s.** Absorption 1,100 → 353 → **37 MJ**.
+- **THE FIVE REDS, ONE AT A TIME — and four were not about the walls.**
+  1. `run_pwr2_loop`: a negative control passing by **0.024 MPa** of an 18.0 MPa envelope, on a
+     300 MWt rigid fixture that was never "balanced". Re-stated at a duty it can hold, asserting
+     margin (1.215 MPa), passing on both plants.
+  2. `run_pwr2_loca`: a HELD plant **creates mass** — 222 held steps, **69.4 kg** — because
+     `pwr2_core` freezes while `stepBreak` books discharge into containment. **Filed #585.** Two
+     arithmetic repairs were tried and both were wrong (rolling `discharged_kg` back broke the
+     containment identity; subtracting the held step overshot by exactly one step). Identities now
+     assert against a SNAPSHOT of the last running step.
+  3. `run_pwr2_cvcs`: its envelope guard was a PROXY. Measured — the 300 MWt fixture was pinned at
+     **2611 psia, 18.0 MPa exactly, from 5 s, on the PRE-#574 plant**. Halved to 150 MWt both
+     plants stay inside and the divergence falls to **0.0007 %**; the envelope is asserted directly.
+  4. `run_pwr2_shell`: a rod insertion limit sampled at **4 s**, inside the boot ramp — the DRY
+     plant read 137, the bottom of the check's own 137-141 band. At 60 s both read 139, mid-band.
+  5. `run_pwr2_coredamage`: **the whole chain was measured on a HELD plant.** Pre-#574:
+     `beyond_model` at **469 s**, the 2200 degF crossing at **939**. **Filed #586.**
+     *(OWNER RULING, 2026-08-28: "Keep the guard, shrink the claims".)* Kept: the 1200 degF onset,
+     the chain ordering up to it, the feedback-attribution property, the energy and hydrogen
+     closure identities. Declared blocked: everything past the floor. The superheat maximum is now
+     tracked ONLY while unclamped, so "computed, not pinned" is true by construction.
+- **AND THREE MUTATIONS WENT BLIND IN `run_pwr2_engine`** — the standing "a neighbour's change
+  blinds a mutation" trap, live. Two #543 ones had only ever been caught INCIDENTALLY, by
+  trajectory checks that happened to diverge; the repair is to assert the WIRING, which no
+  trajectory can take away, and that needed `eng._brkBackP` — the backpressure the break actually
+  used — because it was unobservable from outside. The third was **mis-tagged `grp: 'C'` when its
+  checks live in group I**, so the scoped replay ran a group with no opinion about it: a wrong
+  group tag scores a covered mutation as blind, the mirror of the usual failure.
+- **What the walls are made of.** Pipes: bore from Layer 1's own `V/L`, thickness on the sourced
+  r_D rule → 3,279/3,650/3,328 kg. ⚠ `PWR_LOOP_GEOMETRY`'s own M_wall table is NOT reusable — it is
+  on the §5 lengths `pwr2_geometry` rejected. Vessel: ASME `t = P·r/(S-0.6P)`, the method
+  `pwr_config` used for the pressurizer vessel *(owner-ruled acceptable 2026-08-15)*; the shell goes
+  to the DOWNCOMER, which Layer 1 had already given `wallLumps: 3` and the note "thick vessel wall,
+  Biot not small" — two things written for different reasons agreeing. SG tubes from the sourced
+  18,135 ft2 area, and **the implied tube-bore volume reproduces Layer 1's own sg_primary node to
+  0.015 %** — nothing fitted them to each other. Support structures: a flat estimate, marked.
+- **⚠ THE FUEL IS NOT IN THERE.** `pwr2_fuel` owns the rods; the core node's wall is the BARREL.
+- **Gates.** `run_pwr2_core` 48 → **56** (25 → 35 mutations) · `geometry` 33 → **39** (16 → 21) ·
+  `loop` 45 → **51** (20 → 23) · `cvcs` 44 → **45** · `loca` 17 → **18** · `coredamage` 23 → **20**
+  (claims removed) · `engine` 122 → **124** (71/71) · `run_hardrules` 409 → **411** ·
+  `run_pwr2_perf` **3.9x** against its 8x bound, unmoved.
+- **Filed, none fixed here:** #583 (the pressurizer is in the mass ledger TWICE — a rigid 3.5453 m3
+  off-loop node plus the 4.176 m3 vessel, 17.6 % over the declared RCS), #584 (`Manuals/12`
+  §12.15/§7.1 describe the retired pressurizer), #585, #586.
+- **Still dark and named:** `transport: 'plug'` has no consumer — every node is donor-cell, which
+  is what makes cold-water accumulation in a leg unrepresentable — and `surge_line_voided` appears
+  nowhere in `engines/ layers/ ui/ test/`.
+
+---
+
 ## Session log — 2026-08-28-develop-g (#573 + #473 — heater elevation, in the model and on the board)
 
 Full write-up with every number: `Blueprint/PWR2_VALIDATION.md` §108. This is the continuity note.

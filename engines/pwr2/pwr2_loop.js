@@ -56,6 +56,13 @@
   /* Carried as volume, not transported. */
   var OFF_LOOP = ['vessel_heads', 'pressurizer'];
 
+  /* THE RATED LOOP FLOW, ONE COPY. It was a bare 1630 inside createLoop, and #574 needed a
+   * second reader — the wall film scales with flow over rated — which is exactly how the
+   * PROTECTION_DT trap starts. Layer 4's `pwr2_sources.PUMP.mdot_rated` is the same number and
+   * is the one Layer 4 uses; this layer cannot read upward, so the two are tied by a gate check
+   * rather than by an import. */
+  var MDOT_RATED = 1630;
+
   function geoNode(id) {
     for (var i = 0; i < GEO.NODES.length; i++) if (GEO.NODES[i].id === id) return GEO.NODES[i];
     return null;
@@ -77,7 +84,27 @@
       var g = geoNode(id);
       if (!g) throw new Error('Layer 3: no geometry for node ' + id);
       var h = (opts.h && typeof opts.h === 'object') ? opts.h[id] : opts.h;
-      return { id: id, V: g.V, h: h === undefined ? 1250 : h };
+      var node = { id: id, V: g.V, h: h === undefined ? 1250 : h };
+      /* ---- THE METAL WALL (#574) --------------------------------------------------------
+       * Layer 1 owns the mass and the area, Layer 2 owns the integration, and THIS is the
+       * wiring between them — the same division as everywhere else in the stack. `wallLumps`
+       * has been on every node in the geometry table since it was written, with ZERO consumers
+       * until now; this line is what stops it reading as a working feature to the next person
+       * who opens that file.
+       *
+       * REFUSED, not defaulted, when the geometry has no wall for a node: a node that silently
+       * got zero metal would be the same dark wire in a new place, and the whole point is that
+       * every node has one. `opts.dryWalls` is the deliberate escape for Layer 2/3 fixtures
+       * that want the old rigid-and-dry plant to compare against. */
+      if (!opts.dryWalls) {
+        var gw = GEO.WALLS && GEO.WALLS[id];
+        if (!gw) throw new Error('Layer 3: no metal wall for node ' + id + ' — #574 puts one ' +
+                                 'on every node; a missing entry is a defect, not a default');
+        var mat = GEO.WALL_MAT[gw.mat];
+        node.wall = { M_kg: gw.M_kg, cp: mat.cp, k: mat.k,
+                      A_m2: gw.A_m2, t_m: gw.t_m, lumps: g.wallLumps };
+      }
+      return node;
     });
     /* extraMass IS FORWARDED, and it was not until 2026-08-15. Layer 2 owns the compressible-volume
      * hook that the PRESSURIZER plugs into (D1 §25.3), but `createLoop` did not pass it through --
@@ -88,7 +115,7 @@
     var sys = CORE.createSystem({ nodes: nodes, P: P, iterCap: opts.iterCap,
                                   extraMass: opts.extraMass });
     sys.ring = RING.slice();
-    sys.mdot_loop = opts.mdot === undefined ? 1630 : opts.mdot;
+    sys.mdot_loop = opts.mdot === undefined ? MDOT_RATED : opts.mdot;
     /* Junction flows, one per ring segment, indexed by the node the segment LEAVES.
      * Seeded at the loop flow; from the first step on they are DERIVED. */
     sys.junctionFlow = {};
@@ -238,7 +265,11 @@
       if (s === 0) headFlowFirst = flows[0].mdot;
 
       r = CORE.step(sys, h, {
-        flows: flows, heats: drivers.heats || {}, sources: drivers.sources || []
+        flows: flows, heats: drivers.heats || {}, sources: drivers.sources || [],
+        /* #574 — the wall's film coefficient scales with loop flow, and the FLOOR under it is
+         * what keeps the metal coupled when the pumps stop. That is the regime the stored heat
+         * matters in, so the fraction has to be the plant's real one, not a constant 1. */
+        flowFrac: Math.abs(sys.mdot_loop) / MDOT_RATED
       });
 
       /* ---- DERIVE the next step's junction flows, sequentially round the ring.

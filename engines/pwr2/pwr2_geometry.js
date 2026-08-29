@@ -133,6 +133,178 @@
    * sourced one in six months. It is on the geometry evidence list (§7). */
   var LOOP_INERTIA_OMITTED = 0.053;
 
+  /* ================================================================ METAL WALLS (#574)
+   * *(OWNER, 2026-08-12, on #474: "each node should carry the heat capacity of its own metal
+   * wall, not just the fluid it contains ... thermal lag through cladding/tube walls, RCP casing
+   * warm-up, RPV wall stored heat during a cooldown.")* — built for all eleven nodes
+   * *(OWNER RULING, 2026-08-28: "All eleven nodes", from three costed options)*.
+   *
+   * ⚠ THE RULING WAS TAKEN AGAINST A MEASUREMENT THAT PARTLY OVERTURNED ITS OWN PREMISE. The
+   * comment above guessed "the U-tubes and RCP casing are probably where it matters most".
+   * Measured before designing (HR12): the ring's FLUID heat capacity is 93,855 kJ/K, and against
+   * it the tubes and casing are ~9 % between them while the REACTOR VESSEL is ~25 %. The whole
+   * metal set is ~40 % of the fluid. The vessel is the term that decides a cooldown.
+   *
+   * ⚠ AND THE BLAST RADIUS IS SET BY CONDUCTION TIME, NOT BY THAT 40 %. A tube wall is 1.27 mm
+   * and tracks its fluid in seconds — it brings its whole capacity to a fast transient. The
+   * vessel shell is ~114 mm and its own diffusion time t^2/alpha is ~1,080 s, so a 30-second
+   * transient reaches only its inner lump. THAT IS WHAT `wallLumps` IS FOR, and it is why this
+   * change should move cooldowns hard and trips barely at all.
+   *
+   * WHAT EACH NUMBER IS MADE OF — nothing here is typed, everything is computed from a stated
+   * rule so the derivation cannot drift away from the value:
+   *
+   *   PIPES      bore from this file's OWN V/L, wall thickness scaled from the sourced
+   *              reference (ML11223A213 Table 3.2-1) by the same r_D diameter rule the volumes
+   *              use. ⚠ Do NOT take PWR_LOOP_GEOMETRY.md's M_wall table — it is computed on the
+   *              §5 lengths this file explicitly REJECTED (see LOOP above).
+   *   SG TUBES   from the SOURCED heat-transfer area (18,135 ft2, EPRI NP-1721 Model 51) and
+   *              the Model 51 tube size. CROSS-CHECK, and it is a strong one: the tube INNER
+   *              volume implied by that area and bore is 7.343 m3 against this file's
+   *              independently derived sg_primary node volume of 7.3426 m3 — 0.006 %. Two
+   *              numbers that were never fitted to each other agree, so the tube geometry is
+   *              consistent with the volume ledger.
+   *   VESSEL     ASME thin-wall at the code-safety design pressure, t = P*r/(S - 0.6P) — the
+   *              IDENTICAL method pwr_config.js used for the pressurizer vessel, and one the
+   *              owner ruled acceptable *(OWNER RULING, 2026-08-15: "Go with your
+   *              recommendations")* on the argument that a MASS is something a document can
+   *              later settle where a gain never could. The shell goes to the DOWNCOMER (it is
+   *              the annulus against the vessel wall), the heads to the plenum and head nodes.
+   *   INTERNALS  the core barrel is DERIVED from the downcomer annulus this file already fixes;
+   *              the support structures are a flat ESTIMATE and are the least defensible number
+   *              in this block. Marked separately so they can be replaced alone.
+   *
+   * ⚠ THE FUEL IS NOT HERE. `pwr2_fuel.js` owns the rods' thermal mass; adding it again as
+   * "core wall" would double-count the one metal capacity the plant already had. */
+  var WALL_MAT = {
+    /* SA-508 / SA-533B pressure-boundary steel — the pipes, the vessel, the heads. [derived
+     * from standard property tables; cp matches the 0.5 pwr_config uses for the same steel] */
+    cs:    { rho: 7850, cp: 0.50,  k: 40, name: 'carbon / low-alloy pressure steel' },
+    /* Inconel 600 — Model 51 tubing. */
+    tube:  { rho: 8470, cp: 0.465, k: 15, name: 'Inconel 600 tubing' },
+    /* Type 304 — core barrel, internals, pump casing. */
+    ss:    { rho: 7900, cp: 0.50,  k: 16, name: 'Type 304 stainless' }
+  };
+  var IN_M = 0.0254;
+  /* the reference plant's sourced pipe sizes, ML11223A213 Table 3.2-1 (inches) */
+  var REF_PIPE = { hot_leg:   { D: 29.0, t: 2.84 },
+                   crossover: { D: 31.0, t: 2.99 },
+                   cold_leg:  { D: 27.5, t: 2.69 } };
+  /* ASME thin-wall inputs. 17.13 MPa is the code-safety design pressure this plant is built to
+   * (pwr2_pressurizer's safety setpoint); 138 MPa is the SA-533B allowable at temperature. */
+  var ASME = { P_design_mpa: 17.13, S_allow_mpa: 138 };
+  function asmeT(r_m) { return ASME.P_design_mpa * r_m / (ASME.S_allow_mpa - 0.6 * ASME.P_design_mpa); }
+
+  /* ---- the derivations, run once at load so the numbers ARE their rule ---------------------- */
+  var WALLS = (function () {
+    var w = {}, i;
+    function nodeV(id) { for (i = 0; i < NODES.length; i++) if (NODES[i].id === id) return NODES[i].V; }
+
+    /* PIPES ---------------------------------------------------------------------------------- */
+    ['hot_leg', 'crossover', 'cold_leg'].forEach(function (id) {
+      var L = LOOP[id].L, A = nodeV(id) / L, D = Math.sqrt(4 * A / Math.PI);
+      var t = REF_PIPE[id].t * IN_M * (D / (REF_PIPE[id].D * IN_M));   /* same r_D rule as the volumes */
+      var Vm = Math.PI * t * (D + t) * L;
+      w[id] = { M_kg: Vm * WALL_MAT.cs.rho, A_m2: Math.PI * D * L, t_m: t, mat: 'cs',
+                kind: '[derived]', note: 'bore ' + (D / IN_M).toFixed(2) + ' in from V/L; wall ' +
+                      (t / IN_M).toFixed(3) + ' in, ML11223A213 Table 3.2-1 scaled by r_D' };
+    });
+
+    /* SG TUBES ------------------------------------------------------------------------------- */
+    var TUBE_OD = 0.875 * IN_M, TUBE_WALL = 0.050 * IN_M;   /* [sourced] EPRI NP-1721 Model 51 */
+    var TUBE_ID = TUBE_OD - 2 * TUBE_WALL;
+    var A_out = 18135 / 10.7639;                            /* [sourced] m2, the SAME area pwr2_sg uses */
+    var L_tube_total = A_out / (Math.PI * TUBE_OD);         /* total tube length, m */
+    var A_in = Math.PI * TUBE_ID * L_tube_total;
+    var Vm_tube = Math.PI / 4 * (TUBE_OD * TUBE_OD - TUBE_ID * TUBE_ID) * L_tube_total;
+    w.sg_primary = { M_kg: Vm_tube * WALL_MAT.tube.rho, A_m2: A_in, t_m: TUBE_WALL, mat: 'tube',
+                     kind: '[derived from sourced]',
+                     note: 'Model 51 0.875 in OD x 0.050 in wall over the sourced 18,135 ft2; the ' +
+                           'implied tube-bore volume reproduces this file\'s own sg_primary node' };
+    /* the cross-check itself, published so a consumer can assert it rather than trust this note */
+    w.sg_primary.V_implied_m3 = Math.PI / 4 * TUBE_ID * TUBE_ID * L_tube_total;
+
+    /* VESSEL --------------------------------------------------------------------------------- */
+    /* internal volume = the five vessel-side nodes, grossed up by Almaraz's 6.6 % residual */
+    var V_vessel = (nodeV('downcomer') + nodeV('lower_plenum') + nodeV('core') +
+                    nodeV('upper_plenum') + nodeV('vessel_heads')) / (1 - 0.066);
+    var LD = 2.5;                                            /* [derived] RPV proportion, declared */
+    var D_v = Math.cbrt(4 * V_vessel / (LD * Math.PI)), L_v = LD * D_v, r_v = D_v / 2;
+    var t_v = asmeT(r_v);
+    var Vm_shell = Math.PI * L_v * t_v * (D_v + t_v);
+    var Vm_head  = 2 * Math.PI * r_v * r_v * t_v;            /* one hemisphere */
+    /* THE SHELL IS THE DOWNCOMER'S WALL. The downcomer is the annulus between the barrel and
+     * the vessel, so it is the node whose water touches the pressure boundary — which is also
+     * why this file already gives it wallLumps: 3 and the note "thick vessel wall, Biot not
+     * small". The two agree, and neither was written for the other. */
+    w.downcomer = { M_kg: Vm_shell * WALL_MAT.cs.rho, A_m2: Math.PI * D_v * L_v, t_m: t_v, mat: 'cs',
+                    kind: '[derived]', note: 'RPV shell, ASME t = ' + (t_v * 1000).toFixed(0) +
+                          ' mm at ' + ASME.P_design_mpa + ' MPa; ID ' + D_v.toFixed(3) + ' m' };
+    w.lower_plenum = { M_kg: Vm_head * WALL_MAT.cs.rho, A_m2: 2 * Math.PI * r_v * r_v, t_m: t_v,
+                       mat: 'cs', kind: '[derived]', note: 'lower hemispherical head' };
+    w.vessel_heads = { M_kg: Vm_head * WALL_MAT.cs.rho, A_m2: 2 * Math.PI * r_v * r_v, t_m: t_v,
+                       mat: 'cs', kind: '[derived]', note: 'upper hemispherical head' };
+
+    /* CORE BARREL — derived from the downcomer annulus, which this file already fixes.
+     * The barrel's OD follows from the vessel ID and the downcomer volume over the core height. */
+    var L_dc = LOOP.core.L + 0.34;                           /* [derived] active fuel + lower nozzle */
+    var d_barrel = Math.sqrt(D_v * D_v - 4 * nodeV('downcomer') / (Math.PI * L_dc));
+    var t_barrel = 0.050;                                    /* [estimate] 50 mm, standard barrel */
+    var Vm_barrel = Math.PI * t_barrel * d_barrel * L_dc;
+    w.core = { M_kg: Vm_barrel * WALL_MAT.ss.rho, A_m2: Math.PI * d_barrel * L_dc, t_m: t_barrel,
+               mat: 'ss', kind: '[derived]',
+               note: 'core barrel, OD ' + d_barrel.toFixed(3) + ' m from the downcomer annulus. ' +
+                     'THE FUEL IS NOT HERE — pwr2_fuel owns the rods' };
+
+    /* ⚠ THE SUPPORT STRUCTURES ARE THE WEAKEST NUMBER IN THIS FILE and are marked so they can
+     * be replaced without touching anything else. No corpus document gives an internals weight.
+     * 6,000 kg apiece for the upper support/guide-tube assembly and the lower core plate is an
+     * ENGINEERING ESTIMATE of the same class as PWR_LOOP_GEOMETRY.md's pump casing, and of the
+     * same class the owner accepted for the pressurizer vessel mass — a MASS a document can
+     * settle later. It is ~13 % of the metal total, so it is not where the answer comes from. */
+    var M_support = 6000;
+    w.upper_plenum = { M_kg: M_support, A_m2: 40, t_m: 0.060, mat: 'ss', kind: '[estimate]',
+                       note: 'upper support / guide tubes — UNSOURCED, replace when a weight surfaces' };
+    Object.assign(w.lower_plenum, {});                        /* head only; the core plate rides below */
+    w.lower_plenum.M_kg += M_support;
+    w.lower_plenum.note += ' + lower core plate [estimate], UNSOURCED';
+    w.lower_plenum.kind = '[derived + estimate]';
+
+    /* RCP CASING ----------------------------------------------------------------------------- */
+    /* ⚠ PWR_LOOP_GEOMETRY.md's 5,300 lbm is NOT reusable: it was computed on a 9.5 ft3 casing
+     * cavity, and this file's rcp node is 28.1 ft3 (sourced casing water, power-scaled). The
+     * METHOD is reused instead — a shell 2.5x the adjoining cold-leg pipe wall — on this file's
+     * own cavity, so the estimate is consistent with the geometry it sits in. Squat proportion
+     * L/D = 1.3, a single-stage centrifugal casing. [estimate], as the source method is. */
+    var V_rcp = nodeV('rcp'), LD_p = 1.3;
+    var D_p = Math.cbrt(4 * V_rcp / (LD_p * Math.PI)), L_p = LD_p * D_p;
+    var t_p = 2.5 * w.cold_leg.t_m;
+    w.rcp = { M_kg: Math.PI * t_p * (D_p + t_p) * L_p * WALL_MAT.ss.rho,
+              A_m2: Math.PI * D_p * L_p, t_m: t_p, mat: 'ss', kind: '[estimate]',
+              note: 'casing shell 2.5x the cold-leg wall (PWR_LOOP_GEOMETRY method) on THIS ' +
+                    'file\'s 28.1 ft3 cavity — its own 5,300 lbm is on a 9.5 ft3 one' };
+
+    /* PRESSURIZER ---------------------------------------------------------------------------- */
+    /* ⚠ THIS NODE IS UNDER DISPUTE (#583): the ring carries it as an off-loop volume AND
+     * pwr2_pressurizer's vessel is added on top as extraMass, so the pressurizer is in the mass
+     * ledger twice at two different sizes. Its wall is derived here on the SAME ASME rule as the
+     * vessel so that, if #583 resolves by deleting the node, the wall moves with it and there is
+     * one place to change rather than two. */
+    var V_pz = nodeV('pressurizer'), LD_z = 5;               /* Westinghouse pressurizers are tall */
+    var D_z = Math.cbrt(4 * V_pz / (LD_z * Math.PI)), L_z = LD_z * D_z, r_z = D_z / 2;
+    var t_z = asmeT(r_z);
+    w.pressurizer = { M_kg: (Math.PI * L_z * t_z * (D_z + t_z) + 2 * Math.PI * r_z * r_z * t_z) *
+                            WALL_MAT.cs.rho,
+                      A_m2: Math.PI * D_z * L_z + 2 * Math.PI * r_z * r_z, t_m: t_z, mat: 'cs',
+                      kind: '[derived]', note: 'ASME on the node\'s own volume at L/D 5 — see #583' };
+    return w;
+  })();
+
+  /* the metal:fluid ratio, published so a gate can pin it rather than re-derive it */
+  function wallMassTotal() {
+    var m = 0; Object.keys(WALLS).forEach(function (k) { m += WALLS[k].M_kg; }); return m;
+  }
+
   /* Form losses — the ONLY [recalled] family in this file, and it is ruled.
    * *(OWNER RULING, 2026-08-14: selected "Declare unsourced, proceed")* after a dedicated
    * evidence pass found nothing in any lane's corpus or in NUREG/IA-0444. They feed the
@@ -151,6 +323,10 @@
   root.RD.pwr2.geometry = {
     NODES: NODES, LEDGER: LEDGER, LOOP: LOOP, FORM_LOSS_K: FORM_LOSS_K,
     LOOP_INERTIA_OMITTED: LOOP_INERTIA_OMITTED,
+    /* THE METAL WALLS (#574). One entry per node, keyed by node id; every node has one, which
+     * is the point — `wallLumps` shipped on all eleven with zero consumers for months and read
+     * as a working feature. A node missing from here is a defect, and the gate says so. */
+    WALLS: WALLS, WALL_MAT: WALL_MAT, ASME: ASME, wallMassTotal: wallMassTotal,
     RCS_TOTAL_M3: RCS_TOTAL_M3,
     UNATTRIBUTED_M3: UNATTRIBUTED_M3,
     /* The declared band travels WITH the data, so a consumer cannot read the volumes

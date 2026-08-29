@@ -197,9 +197,16 @@
     var hmap = designHmap(tavg0, dT0, icP);
     /* the shutdown IC boots with its RCPs SECURED and the loop still (natural circulation
      * on an isothermal loop is zero; the heatup's first act is the wave-9 rcp_start) */
+    /* `opts.dryWalls` builds the PRE-#574 plant — no metal anywhere — and exists so the metal
+     * walls can be A/B'd against their own absence on the real engine. It is a TEST SEAM and is
+     * declared as one: nothing in the shipped stack passes it, and zeroing the masses instead is
+     * not a substitute (measured 2026-08-28: M -> 1e-9 divides the lump temperature by ~nothing,
+     * the wall goes non-finite, and the "dry" plant then sits at a frozen Tavg through a scram —
+     * an A/B that looked like a result and was an arithmetic failure). */
     var sys = S.createPlant(ic.cold
-      ? { h: hmap, P: icP, extraMass: PZ.extraMassFn(pz), omega: 0, pumpTripped: true, mdot: 0 }
-      : { h: hmap, P: icP, extraMass: PZ.extraMassFn(pz) });
+      ? { h: hmap, P: icP, extraMass: PZ.extraMassFn(pz), omega: 0, pumpTripped: true, mdot: 0,
+          dryWalls: opts.dryWalls }
+      : { h: hmap, P: icP, extraMass: PZ.extraMassFn(pz), dryWalls: opts.dryWalls });
     /* completeness is structural: a node the map misses falls back to Layer 3's 1250 kJ/kg
      * silently — refuse to build a plant with a mis-seeded node instead */
     sys.nodes.forEach(function (n) {
@@ -1038,6 +1045,13 @@
                                          : { backpressure_mpa: eng._ctP }) : null;
     eng._sgtrKgs = toSG && br ? br.mdot_kgs : 0;
     eng._sgtrH = toSG && br && br.mdot_kgs > 0 ? br.source.h : 0;
+    /* THE BACKPRESSURE THE BREAK ACTUALLY USED, recovered from its own reported dP (#574). It
+     * is a DIAGNOSTIC, on the same `eng._*` shelf as the carriers above, and it exists because
+     * the wiring one line up was UNOBSERVABLE from outside: the mutation that freezes the
+     * backpressure at its default was caught for weeks only incidentally, by trajectory checks
+     * that happened to diverge, and went BLIND the moment #574's metal walls moved the ride.
+     * A wire nobody can see reads as a working feature — which is the whole subject of #574. */
+    eng._brkBackP = br ? sys.P - br.dP_mpa : undefined;
 
     var rrx = R.stepReactor(eng.rx, sys, dt,
       { boron_ppm: cvr.boron_ppm, rodGroups: eng.rodBank, Q_ox_kW: eng._Qox });

@@ -1170,7 +1170,15 @@ function runSuite(SH, rec, quiet, only) {
   head('THE ROD LIMIT SURFACES  [live control-state fields, the margin channel, the 10-step row]');
   (function () {
     var eR = new SH.PWR2Engine({});
-    for (var i = 0; i < 200; i++) eR.step(0.02);
+    /* ⚠ 4 s WAS INSIDE THE INITIAL-CONDITION TRANSIENT, and the check was passing on its edge.
+     * The rod insertion limit is a straight function of power, so sampling before the plant has
+     * settled samples the boot ramp: measured 2026-08-28, the DRY plant reads RIL 137 at 4 s —
+     * the bottom of this check's own 137-141 band — climbing through 138 at 20 s to 139 at 60 s
+     * where it stays. #574's metal walls lengthen that ramp slightly (97.19 % against 97.47 % at
+     * 4 s) and took it to 136, one step under.
+     * The band was never the problem: 60 s reads 139 on BOTH plants, mid-band, which is what
+     * "the LIVE limit, ~139 steps" was always meant to be about. A settled plant is the subject. */
+    for (var i = 0; i < 3000; i++) eR.step(0.02);
     var gs = eR.getControlState().rod_groups;
     ck('the control group carries the LIVE limit (~139 steps, not at limit) and the ' +
        'shutdown group stays exempt (its evolutions are deliberate)',
