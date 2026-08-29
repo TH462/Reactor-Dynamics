@@ -8230,3 +8230,92 @@ is the one input class not yet varied.
 four enthalpies clamped, 59 MJ discarded on the latching step. **Two runs agreeing to three
 significant figures ten seconds earlier end one session and not the other. The cliff is the
 defect; which side you land on is the symptom.**
+
+## 113. #587 — THE PRESSURIZER'S SHELL, AND WHY 39 % OF ITS HEAT CAPACITY IS NEARLY INERT — 2026-08-29
+
+`pwr2_pressurizer.js:87` declared it from #515 onward: *"Wall metal is not modelled (no heat
+capacity, no wall condensation)."* #574 gave the ring's **phantom** pressurizer node a wall on the
+ASME rule; #583 deleted it with the node. This builds the real one, on the real vessel.
+
+### 113.1 The metal
+
+Computed from the vessel's own volume by the rule beside it, through **Layer 1's** `ASME` inputs
+and `WALL_MAT.cs` table so there is one rule and one material list:
+
+```
+V 4.176 m3 at L/D 5  ->  D 1.021 m, L 5.104 m, t 68.4 mm
+M 10,262 kg (22,624 lbm)   C 5,131 kJ/K   A 18.00 m2   lumps 2
+```
+
+**39 % of the vessel's own liquid heat capacity** (13,119 kJ/K at the design point) and **13× the
+steam space's** (~400 kJ/K). `lumps: 2` by Layer 1's stated conduction-time rule — this shell's
+`t²/α` is **459 s** against the reactor vessel's 1,275 s at 3 lumps.
+
+### 113.2 ⚠ AND IT IS NEARLY INERT. THE MEASUREMENT PARTLY OVERTURNS THE REQUEST.
+
+A/B'd against its own absence (`dryWall`, a declared test seam):
+
+| regime | without | with | |
+|---|---|---|---|
+| heater-driven rate, full bank, 20–80 s | 0.2093 psi/s | **0.2096** | **0.1 %** |
+| Ginna loss-of-load spike (+173 psi in 5.4 s) | 2388.0 psia | **2388.0** | **nil** |
+| Mode 4 hold, 2 h | 371.4 psia | **370.6** | **−0.77 psi (0.21 %)**, 2.89 MJ absorbed |
+
+**#472 predicted the heater-driven rate would fall with a wall. It does not.** The reason is
+structural rather than a tuning miss: **a saturated pressurizer's temperature is pinned by its
+pressure.** Tsat moves ~0.04 °C per psi at operating pressure, so a 15 psi ramp asks the metal for
+half a degree and 5,131 kJ/K of it barely notices. The capacity only bites over a *large* pressure
+swing — a real cooldown to cold shutdown would take Tsat 344 → 100 °C and ask for **~585 MJ**,
+which is exactly the evolution #524 says this plant cannot yet do.
+
+**So the half that matters is the half NOT built here: wall condensation.** Steam touching cold
+metal condenses on it, and that is a mass-and-latent-heat term, not a capacity one. The module
+header's declaration is now half true instead of wholly true, and it says which half.
+
+### 113.3 ⚠ BOTH DEFECTS IN THIS CHANGE WERE IN THE COUPLING, NOT THE MASS — #574's shape exactly
+
+**1. The wall read the stratified insurge layer as the whole wetted wall.** The first version took
+the HEATERS' region priority (`m_sub` if present, else the pool) — right for a heater sitting in
+the bottom layer, wrong for a shell that touches all of it. The metal differenced itself against
+~304 °C insurge water, sat **33 K hotter than the fluid**, and pushed **92 kW average / 5.54 MJ
+INTO** the vessel — **58 % more energy than the heaters themselves** — so the metal made the
+heater-driven rate *faster*, 0.2093 → 0.2594 psi/s.
+
+> **A heat sink that heats is the sign the temperature it is differenced against is the wrong one.**
+
+Found by the A/B on the first run. A one-sided check ("the wall exchanges heat") passes on it.
+
+**2. The shell must not touch the saturated pool at all.** The pool region is saturated *by
+definition* here — `addPool` and the flash/rain-out step both re-establish it — so heat taken out
+of it does not lower its temperature, it **condenses steam**. Coupling it anyway left the pool
+**subcooled by 40.7 kJ/kg** beside steam superheated by 43.2 after an insurge, and reddened
+`run_pwr2_pressurizer`'s own *"every region is SINGLE-PHASE at the step boundary"* check — the one
+that exists because that is formulation 1's killer. **A lumped wall that can subcool a saturated
+pool is not a simplification, it is a broken invariant.**
+
+The metal now exchanges only with the two regions that legitimately carry a temperature: the steam
+space and the stratified bottom layer. **The saturated pool's share of the shell is declared
+inert** — 61.5 % of the area at the design point, and most of why the number in §113.2 is so small.
+
+### 113.4 Three more things this change tripped over, all standing traps
+
+- **⚠ MY OWN NEW CHECK WAS WRONG, and HR10 is what caught it.** I asserted pool subcooling
+  `< 1 kJ/kg` without measuring the baseline. Measured against the OLD behaviour: the spray path
+  already leaves **1.49 kJ/kg**, with the wall and without it alike. The claim was right and the
+  threshold was invented. Rewritten as an **A/B** (`with − without < 0.05`), which cannot rot on a
+  baseline change and pins the actual defect, which read 40.7.
+- **⚠ AN EDIT ORPHANED A MUTATION ANCHOR.** Building the shell before `migrateState`'s early return
+  split `if (!pz || pz.m_stm !== undefined) return pz;` in two, and the mutation naming that line
+  silently stopped applying — `ANCHOR MISS`, the standing trap arriving live. Re-anchored on the
+  reconstruction's own first line, which is what the check is about.
+- **THE WALL IS BUILT BEFORE THE EARLY RETURN**, and that placement is the point: a post-#515 save
+  already has regions, takes the `return`, and would have skipped the shell entirely — a save
+  restored onto a vessel with no metal, silently, on the one path that looks like it needs nothing
+  done to it. It carries its own mutation now.
+
+### 113.5 The bill
+
+`run_pwr2_pressurizer` 94 → **97** (48 mutations, no blind spots). **Every other runner unmoved —
+`run_all` 97 at baseline.** Three checks added and each asserts an EFFECT or an INVARIANT: the mass
+retyped independently from the vessel's volume; the sink **absorbs** when the vessel warms (the
+check that would have caught defect 1); and the shell does not subcool the pool (defect 2).

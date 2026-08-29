@@ -45,6 +45,40 @@ where the two differ or where judgment was exercised.
 
 ---
 
+## 2026-08-29-develop-b — #587: the pressurizer's shell, measured and mostly inert
+
+`pwr2_pressurizer.js:87` declared "Wall metal is not modelled" from #515; #574 gave the ring's
+PHANTOM pressurizer node one and #583 deleted it with the node. The real vessel has one now:
+**10,262 kg (22,624 lbm), 5,131 kJ/K, 18.00 m2, 2 lumps** — ASME on the vessel's OWN volume
+through Layer 1's inputs, reusing Layer 2's `buildWall`/`stepWall` rather than growing a second
+wall model. Full write-up: `PWR2_VALIDATION.md` §113.
+
+**⚠ THE MEASUREMENT PARTLY OVERTURNS THE REQUEST.** #472 predicted the heater-driven pressure rate
+would fall with a wall. A/B'd against `dryWall`: **0.2093 -> 0.2096 psi/s, 0.1 %**; the sourced
+Ginna spike unmoved; a 2 h Mode 4 hold -0.77 psi. **A saturated pressurizer's temperature is pinned
+by its pressure** (~0.04 degC/psi), so 39 % of the vessel's liquid heat capacity is asked for half
+a degree and does nothing. It bites only over a large swing — a cooldown to cold shutdown would ask
+~585 MJ, which is #524's evolution. **The half that matters is wall condensation, still unbuilt.**
+
+**⚠ BOTH DEFECTS WERE IN THE COUPLING, NOT THE MASS.** (1) The wall took the heaters' region
+priority, read the stratified insurge layer as the whole wetted wall, and pushed 92 kW / 5.54 MJ
+INTO the vessel — 58 % more than the heaters — making the rate FASTER. A heat sink that heats is
+the sign the temperature it is differenced against is the wrong one. (2) The saturated pool cannot
+be subcooled by definition; coupling it broke the module's own single-phase invariant at
+40.7 kJ/kg. The pool's share of the shell is declared inert.
+
+**And three standing traps arrived live:** my own new check asserted a threshold without measuring
+the baseline (HR10 caught it — the spray path already leaves 1.49 kJ/kg either way); an edit
+orphaned a mutation anchor by splitting the line it named; and the wall had to be built BEFORE
+`migrateState`'s early return, because the save that needs no other migration is the one that
+would have come back with no metal.
+
+### Open flags this entry leaves
+
+**Wall condensation is still not modelled** and is now the measured-to-be-important half of
+#587's subject. The heat capacity is in and is nearly inert until #524 makes a real cooldown
+possible.
+
 ## 2026-08-29-develop-a — #588: the cadence fix, and a diagnosis retracted twice
 
 *(OWNER RULING, 2026-08-29: "A" — fix it and re-baseline whatever moves.)* Full write-up:

@@ -30,6 +30,19 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
 
 ## [Unreleased]
 
+### Added (#587 — the pressurizer's shell has heat capacity, 2026-08-29)
+
+Full write-up: `Blueprint/PWR2_VALIDATION.md` §113.
+
+- **The pressurizer's steel is in the model** — 22,624 lbm of it, about 39 % of the heat capacity
+  of the water it holds. The vessel had none since it was rebuilt.
+- **It changes almost nothing today, and that is the finding.** A pressurizer sitting at
+  saturation has its temperature set by its pressure, so the metal is never asked for much:
+  measured, the heater-driven pressure rate moves 0.1 % and the sourced loss-of-load spike does
+  not move at all. It will matter when a full cooldown to cold shutdown becomes possible.
+- **Still not modelled:** steam condensing on the cold shell, which is the part that would damp a
+  pressure spike. Named in the engine and tracked.
+
 ### Added (#588 — a gate for time-acceleration invariance, 2026-08-28)
 
 Full write-up: `Blueprint/PWR2_VALIDATION.md` §111.

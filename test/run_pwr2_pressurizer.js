@@ -129,6 +129,78 @@ function runSuite(RD, rec, quiet) {
       RD.geometry.NODES.length + ' nodes, off-loop = ' + RD.loop.OFF_LOOP.join(', '));
 
   /* ---- 2. CONSTRUCTION ROUND-TRIPS --------------------------------------------------------- */
+  /* ---- THE SHELL'S METAL (#587) ------------------------------------------------------------
+   * The vessel carried no wall from #515 until now; #574 gave the ring's PHANTOM pressurizer
+   * node one and #583 deleted it with the node. These assert the EFFECT and the INVARIANT, not
+   * that a field exists — a wall that is present and inert is the dark wire this repo keeps
+   * finding, and BOTH defects made building this one were in the coupling rather than the mass. */
+  head('THE SHELL (#587)  [the metal, its sign, and the regime rule it must not break]');
+  (function () {
+    var pzW = PZ.createPressurizer({ P: 15.41 });
+    /* 1. THE MASS, retyped from the vessel's own volume by hand — so a transcription slip in
+     *    the module cannot pass by equalling itself (run_pwr2_geometry's idiom for pipe walls). */
+    var GEOx = RD.geometry, V = PZ.GEOM.V_pzr_m3, LD = 5;
+    var D = Math.cbrt(4 * V / (LD * Math.PI)), L = LD * D, r = D / 2;
+    var t = GEOx.ASME.P_design_mpa * r / (GEOx.ASME.S_allow_mpa - 0.6 * GEOx.ASME.P_design_mpa);
+    var M = (Math.PI * L * t * (D + t) + 2 * Math.PI * r * r * t) * GEOx.WALL_MAT.cs.rho;
+    ckT('the shell is ASME on the vessel-s OWN volume, retyped independently',
+        !!pzW.wall && Math.abs(pzW.wall.M_kg / M - 1) < 1e-9 && pzW.wall.n === 2,
+        (pzW.wall ? pzW.wall.M_kg.toFixed(0) : '-') + ' kg (' +
+        (pzW.wall ? (pzW.wall.M_kg * 2.20462).toFixed(0) : '-') + ' lbm), ' +
+        (pzW.wall ? (pzW.wall.C * pzW.wall.n).toFixed(0) : '-') + ' kJ/K, ' +
+        (pzW.wall ? (pzW.wall.t_m * 1000).toFixed(1) : '-') + ' mm, ' +
+        (pzW.wall ? pzW.wall.n : '-') + ' lumps');
+    /* 2. THE SIGN, BOTH WAYS. This is the check that would have caught this change's first
+     *    defect: the wall read the stratified insurge layer as the whole wetted wall, sat 33 K
+     *    hot and pushed 92 kW INTO the vessel — a heat sink that heats. A one-sided check
+     *    ("the wall exchanges heat") passes on that. */
+    function ride(warm) {
+      var pz = PZ.createPressurizer({ P: 15.41 });
+      var sys = S.createPlant({ h: W.h_l(304.5, 15.41), P: 15.41, extraMass: PZ.extraMassFn(pz) });
+      var Q = 0, r = null;
+      for (var i = 0; i < 40 / DT; i++) {
+        S.stepPlant(sys, DT, {});
+        r = PZ.stepPressurizer(pz, sys, DT,
+              { heater_frac: warm ? 1 : 0, spray_frac: warm ? 0 : 1, block_open: false });
+        Q += (r.wall_kW || 0) * DT;
+      }
+      return Q;
+    }
+    var Qwarm = ride(true);
+    ckT('a warming vessel puts heat INTO the metal — the sink is a sink',
+        Qwarm <= 0, Qwarm.toFixed(1) + ' kJ net to the fluid over 40 s of full heaters ' +
+        '(negative = absorbed; +5,540 kJ was this change-s first defect)');
+    /* 3. THE REGIME INVARIANT the second defect broke: the saturated pool is saturated BY
+     *    DEFINITION, so the shell must not be able to subcool it. Measured with the pool
+     *    coupled: 40.7 kJ/kg subcooled after an insurge. */
+    /* ⚠ ASSERTED AS AN A/B, NOT AGAINST AN ABSOLUTE FLOOR — and the first version of this check
+     * was the absolute one, at "< 1 kJ/kg". It went red, and the baseline is why: the spray path
+     * already leaves the pool 1.49 kJ/kg subcooled at the step boundary in this fixture, WITH THE
+     * WALL AND WITHOUT IT ALIKE. The claim (the shell must not subcool the pool) was right and
+     * the threshold was invented — measured against the OLD behaviour, as HR10 requires, it says
+     * nothing about the wall at all. The A/B form cannot rot on a baseline change and pins the
+     * actual defect, which took this to 40.7 kJ/kg. */
+    (function () {
+      function worstSub(dry) {
+        var pz = PZ.createPressurizer({ P: 15.41, dryWall: dry });
+        var sys = S.createPlant({ h: W.h_l(304.5, 15.41), P: 15.41,
+                                  extraMass: PZ.extraMassFn(pz) });
+        var worst = 0;
+        for (var i = 0; i < 60 / DT; i++) {
+          S.stepPlant(sys, DT, {});
+          PZ.stepPressurizer(pz, sys, DT, { heater_frac: 0, spray_frac: 1, block_open: false });
+          if (pz.m_sat > 0) { var d = W.h_f(sys.P) - pz.h_sat; if (d > worst) worst = d; }
+        }
+        return worst;
+      }
+      var sw = worstSub(false), sd = worstSub(true);
+      ckT('the shell does not subcool the saturated pool — that is wall condensation, unmodelled',
+          sw - sd < 0.05,
+          'worst pool subcooling ' + sw.toFixed(2) + ' kJ/kg with the metal against ' +
+          sd.toFixed(2) + ' without it (this change-s second defect read 40.7)');
+    })();
+  })();
+
   head('CONSTRUCTION  [the state, the projection and the level must be ONE consistent object]');
   var pz0 = PZ.createPressurizer({});
   /* #514: the projection reads the vtable while construction uses the direct two-phase
@@ -853,9 +925,18 @@ var MUTATIONS = [
   ['spray condenses nothing (an energy sink with no mass transfer)',
    'var dmS = Math.min(Q_spray_kW * dt / Math.max(pz.h_stm - hf, 1), pz.m_stm);',
    'var dmS = 0;'],
+  /* ⚠ RE-ANCHORED AT #587. This named `if (!pz || pz.m_stm !== undefined) return pz;`, which
+   * #587 split in two so the shell could be built BEFORE the early return. The mutation then
+   * silently stopped applying and the runner reported ANCHOR MISS — the standing trap ("a
+   * refactor moves the line its anchor names") arriving in this file. Anchored on the
+   * reconstruction's own first line now, which is what the check is actually about. */
   ['the migration returns an old save unreconstructed',
-   'if (!pz || pz.m_stm !== undefined) return pz;',
+   'if (pz.m_stm !== undefined) return pz;',
    'if (true) return pz;'],
+  /* #587 — and the wall must be built for a save that needs no OTHER migration, which is the
+   * path that looks like it needs nothing done to it. */
+  ['a restored save comes back with no shell metal (the path that needs no other migration)',
+   'if (!pz.wall) {', 'if (false) {'],
   ['the spray gate reads FLOW again instead of the breaker (#537 -- natural circulation sprays)',
    'if (SPRAY.needs_rcp && SPRAY.rcp_gate_enforced && sys.pumpTripped === true) sprayFrac = 0;',
    'if (SPRAY.needs_rcp && SPRAY.rcp_gate_enforced && !(sys.mdot_loop > 100)) sprayFrac = 0;'],

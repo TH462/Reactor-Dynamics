@@ -29,6 +29,44 @@ and the user-visible summary in `CHANGELOG.md`. This file points at those and tr
 
 ---
 
+## Session log — 2026-08-29-develop-b (#587 — the pressurizer's shell, and why 39 % of its heat capacity is nearly inert)
+
+Full write-up: `Blueprint/PWR2_VALIDATION.md` §113. This is the continuity note.
+
+- **BUILT.** `pwr2_pressurizer.js:87` declared "Wall metal is not modelled" from #515; #574 gave
+  the ring's PHANTOM node a wall and #583 deleted it with the node. The real vessel has one now:
+  **10,262 kg (22,624 lbm), 5,131 kJ/K, 18.00 m2, 2 lumps**, ASME on the vessel's OWN 4.176 m3 at
+  L/D 5 through Layer 1's `ASME` inputs and `WALL_MAT.cs` — one rule, one material list. Reuses
+  Layer 2's `buildWall`/`stepWall` rather than growing a second wall model, and steps ONCE per
+  step outside the pressure solve (`seatMass` is called ~11x inside the bisection).
+- **⚠ AND IT IS NEARLY INERT — the measurement partly overturns #472's request.** A/B against
+  `dryWall`: heater-driven rate 0.2093 -> **0.2096 psi/s (0.1 %)**; the Ginna loss-of-load spike
+  **unmoved** (2388.0 both); a 2 h Mode 4 hold **-0.77 psi (0.21 %)**, 2.89 MJ absorbed. #472
+  predicted the heater rate would FALL. It does not, and the reason is structural: **a saturated
+  pressurizer's temperature is pinned by its pressure** (~0.04 degC per psi), so a 15 psi ramp asks
+  5,131 kJ/K for half a degree. The capacity only bites over a LARGE swing — a real cooldown to
+  cold shutdown would ask ~585 MJ, the evolution #524 says this plant cannot yet do. **The half
+  that matters is the half not built: wall condensation.**
+- **⚠ BOTH DEFECTS IN THIS CHANGE WERE IN THE COUPLING, NOT THE MASS — #574's shape exactly.**
+  (1) The wall took the HEATERS' region priority and read the stratified insurge layer at ~304 degC
+  as the whole wetted wall: 33 K hot, **92 kW / 5.54 MJ INTO** the vessel — 58 % more than the
+  heaters — making the rate FASTER (0.2093 -> 0.2594). **A heat sink that heats is the sign the
+  temperature it is differenced against is the wrong one.** (2) The pool is saturated BY
+  DEFINITION, so heat out of it condenses steam rather than cooling it; coupling it left the pool
+  **40.7 kJ/kg subcooled** and reddened the module's own single-phase check. The pool's 61.5 %
+  share of the shell is now DECLARED INERT, which is most of why the numbers above are so small.
+- **⚠ MY OWN NEW CHECK WAS WRONG and HR10 caught it.** I asserted pool subcooling < 1 kJ/kg
+  without measuring the baseline; the spray path already leaves **1.49 kJ/kg with the wall and
+  without it alike**. The claim was right, the threshold was invented. Rewritten as an A/B.
+- **⚠ AN EDIT ORPHANED A MUTATION ANCHOR** — building the shell before `migrateState`'s early
+  return split the line a mutation named, and it silently stopped applying (`ANCHOR MISS`).
+  Re-anchored, plus a new mutation for the save path that needs no OTHER migration — the path that
+  looks like it needs nothing done to it, and would have restored a vessel with no metal.
+- **Gate: `run_pwr2_pressurizer` 94 -> 97** (48 mutations, no blind spots); every other runner
+  unmoved, `run_all` **97 at baseline**. The three new checks assert an EFFECT or an INVARIANT:
+  the mass retyped independently, the sink ABSORBS when the vessel warms, the shell does not
+  subcool the pool.
+
 ## Session log — 2026-08-29-develop-a (#588 — the cadence fix, and a diagnosis retracted twice)
 
 Full write-up: `Blueprint/PWR2_VALIDATION.md` §112. This is the continuity note.

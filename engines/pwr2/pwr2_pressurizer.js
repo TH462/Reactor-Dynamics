@@ -107,6 +107,9 @@
    * (x > 1) the steam region compresses into; nothing here inverts h → T. */
   var VT = RD && RD.vtable;
   var RHO = VT ? VT.rho_from_h : (W && W.rho_from_h);
+  /* #587 — the shell's metal talks to a TEMPERATURE, and it is evaluated ONCE a step, outside
+   * the pressure solve, so it takes the table for the same reason everything else here does. */
+  var TFH = VT ? VT.T_from_h : (W && W.T_from_h);
   if (!W) throw new Error('pwr2_pressurizer: load pwr2_water.js first');
 
   var PSI = 145.037738;                  /* psi per MPa */
@@ -122,6 +125,28 @@
      * THE SCALING METHOD IS THE CLAIM — per-MWt from the anchor plant, declared, not recalled. */
     V_pzr_m3: 4.176,
     hi_level_trip_frac: 0.87,            /* Ginna TS Bases: the 650 ft3 / high-level-trip point */
+    /* ---- THE SHELL'S METAL (#587) --------------------------------------------------------
+     * COMPUTED from this vessel's own volume by the rule beside it, never typed — the
+     * discipline `pwr2_geometry` uses for every ring node's wall, and the reason a derivation
+     * cannot drift away from its value. ASME thin-wall `t = P·r/(S − 0.6P)` at the code-safety
+     * design pressure, on the SAME L/D = 5 shape the heater-elevation block above already
+     * assumes for this vessel (Westinghouse pressurizers are tall), through Layer 1's own
+     * `ASME` inputs and `WALL_MAT.cs` table so there is one rule and one material list.
+     *
+     *   V 4.176 m3, L/D 5  ->  D 1.021 m, L 5.104 m, t 68.4 mm
+     *   M 10,262 kg (22,624 lbm)   C 5,131 kJ/K   A 18.00 m2
+     *
+     * ⚠ WHY IT IS WORTH HAVING. 5,131 kJ/K is **39 % of the vessel's own liquid heat capacity**
+     * (13,119 kJ/K at the design point) and **13x the steam space's** (~400 kJ/K) — and the
+     * steam space is where the insurge superheat and the heater-driven pressure rate both live.
+     * The module header declared "no wall metal" from #515 until now; #574 gave the ring's
+     * PHANTOM pressurizer node a wall on the same rule, and #583 deleted it with the node.
+     *
+     * `lumps: 2` by the same conduction-time rule Layer 1 states: this shell is 68.4 mm and its
+     * diffusion time `t²/α` is **459 s** against the reactor vessel's 1,275 s at 3 lumps. A
+     * scram reaches its inner lump; a cooldown reaches all of it. */
+    wall_LD: 5,
+    wall_lumps: 2,
     level_program_full: 0.615,           /* WTSM 10.3 (ML11223A290): "high level setpoint of 61.5%" */
     level_program_noload: 0.25           /* WTSM 10.3: "low level setpoint of 25%" */
   };
@@ -417,6 +442,23 @@
   /* A saturated, unstratified vessel at (P, level): steam at h_g above a pool at h_f, no bottom
    * layer. Densities come from the SAME table the seat reads, so the seat reproduces the
    * constructed mass EXACTLY at P (the regions fill the vessel with zero slack). */
+  /* wallSpec() — the shell, from GEOM's own volume through Layer 1's ASME rule and material
+   * table. Returned in `pwr2_core.buildWall`'s shape so Layer 5 reuses Layer 2's lump chain
+   * rather than growing a second wall model — the thing #574's own note warns is most likely
+   * to be built in parallel by mistake, because a parallel chain behaves like one lump and
+   * looks perfectly reasonable from outside. */
+  function wallSpec() {
+    var GEO = RD && RD.geometry;
+    if (!GEO || !GEO.ASME || !GEO.WALL_MAT) return null;
+    var V = GEOM.V_pzr_m3, LD = GEOM.wall_LD;
+    var D = Math.cbrt(4 * V / (LD * Math.PI)), L = LD * D, r = D / 2;
+    var A = GEO.ASME, cs = GEO.WALL_MAT.cs;
+    var t = A.P_design_mpa * r / (A.S_allow_mpa - 0.6 * A.P_design_mpa);
+    var V_metal = Math.PI * L * t * (D + t) + 2 * Math.PI * r * r * t;
+    return { M_kg: V_metal * cs.rho, cp: cs.cp, k: cs.k, t_m: t,
+             A_m2: Math.PI * D * L + 2 * Math.PI * r * r, lumps: GEOM.wall_lumps };
+  }
+
   function createPressurizer(opts) {
     opts = opts || {};
     var P = opts.P === undefined ? CONTROL.setpoint_default_mpa : opts.P;
@@ -450,6 +492,14 @@
       blockOpen: true,                   /* the PORV block valve — the operator's isolation */
       T_tail_c: opts.tail_c === undefined ? 50 : opts.tail_c
     };
+    /* THE SHELL, SEEDED AT THE VESSEL'S OWN SATURATION — not at some plant average. A wall
+     * seeded anywhere else makes every initial condition ring for minutes, which is the defect
+     * wearing a transient's face (Layer 2's own note, and it applies identically here).
+     * `opts.dryWall` builds the pre-#587 vessel so the effect can be A/B'd against its absence. */
+    if (!opts.dryWall) {
+      var ws = wallSpec(), CORE = RD && RD.core;
+      if (ws && CORE && CORE.buildWall) pz.wall = CORE.buildWall(ws, W.T_sat(P));
+    }
     freeze(pz, P);
     return pz;
   }
@@ -460,7 +510,18 @@
    * The old fields are deleted — two authorities for one vessel is the trap. Old saves land
    * on a saturated, unstratified vessel: the pre-build plant exactly. */
   function migrateState(pz, P) {
-    if (!pz || pz.m_stm !== undefined) return pz;
+    if (!pz) return pz;
+    /* ⚠ THE SHELL IS ADDED BEFORE THE EARLY RETURN (#587), and that placement is the point: a
+     * post-#515 save already HAS regions, so it takes the `return` below and would have skipped
+     * the wall entirely — a save restored onto a vessel with no metal, silently, on the one
+     * path that looks like it needs no migration. Seeded at the restored plant's saturation
+     * rather than at a stored temperature: the wall's own history is not in an old save, and
+     * saturation is the state it would have been sitting at. */
+    if (!pz.wall) {
+      var ws0 = wallSpec(), CORE0 = RD && RD.core;
+      if (ws0 && CORE0 && CORE0.buildWall) pz.wall = CORE0.buildWall(ws0, W.T_sat(P));
+    }
+    if (pz.m_stm !== undefined) return pz;
     var V = pz.V === undefined ? GEOM.V_pzr_m3 : pz.V;
     var hf = W.h_f(P), hg = W.h_g(P), m = pz.m_pzr, hb = pz.h_bar;
     pz.V = V;
@@ -921,6 +982,70 @@
       else if (pz.m_sat > 0) pz.h_sat += dHh / pz.m_sat;
       else if (pz.m_stm > 0) pz.h_stm += dHh / pz.m_stm;
     }
+    /* ---- THE SHELL'S METAL (#587) ------------------------------------------------------------
+     * ⚠ ONCE PER STEP, OUTSIDE THE PRESSURE SOLVE — the same rule Layer 2's `stepWall` states
+     * for itself. `seatMass(P)` is called ~11x inside Layer 2's bisection and the wall does not
+     * depend on the candidate pressure; evaluating it there would be paid eleven times for
+     * nothing, and #514's whole point was that this hot path is measured.
+     *
+     * ONE LUMP CHAIN OVER THE WHOLE SHELL, area-weighted by level. The vessel is wetted below
+     * the water line and dry above, at very different films, so both the fluid temperature the
+     * metal talks to and the film coefficient are weighted by the steam VOLUME fraction:
+     *   f_dry = 1 − V_liq/V ;  T_fluid = f_dry·T_steam + (1−f_dry)·T_liquid ;  film v = f_dry
+     * `wallFilm(0, v)` then lands on Layer 2's FREE-convection floor — there is no forced flow
+     * in a pressurizer — so this introduces NO new coefficient. **DECLARED SIMPLIFICATION**: a
+     * real vessel has two walls at two temperatures, not one at their mixture; the mixture
+     * cannot represent a hot dry shell above a cold pool. The level is last step's (the house
+     * one-step-lag convention, as `h_fill` and the relief already use).
+     *
+     * WALL CONDENSATION IS STILL NOT MODELLED — the module header's other half. Steam touching
+     * cold metal condenses on it, which damps an insurge beyond what heat capacity alone does.
+     * This change is the capacity, and only the capacity. */
+    var Q_wall_kW = 0;
+    if (pz.wall && RD.core && RD.core.stepWall) {
+      /* ⚠⚠ THE SHELL DOES NOT TOUCH THE SATURATED POOL, and that is a REGIME rule rather than a
+       * geometry one. The pool region is saturated BY DEFINITION here — `addPool` and the
+       * flash/rain-out step both re-establish it — so heat taken out of it does not lower its
+       * temperature, it CONDENSES STEAM. That is wall condensation, which this change does not
+       * model. MEASURED with the pool coupled anyway: after an insurge the pool came out
+       * **subcooled by 40.7 kJ/kg** beside steam superheated by 43.2, and
+       * `run_pwr2_pressurizer`'s "every region is SINGLE-PHASE at the step boundary" check —
+       * which exists because that is formulation 1's killer — went red. A lumped wall that can
+       * subcool a saturated pool is not a simplification, it is a broken invariant.
+       *
+       * So the metal exchanges with the two regions that legitimately CARRY a temperature: the
+       * steam space, and the stratified bottom layer when there is one. Weights are VOLUME
+       * fractions, and the saturated pool's share of the shell is **inert** — declared, not
+       * hidden. At the design point that is 61.5 % of the area doing nothing, which is most of
+       * why this metal turns out to be nearly inert (§113).
+       *
+       * ⚠ AND THE FIRST VERSION HAD A SECOND DEFECT, same family: the liquid temperature took
+       * the HEATERS' priority (`m_sub` if present, else the pool). That is right for a heater
+       * sitting in the bottom layer and wrong for a shell. The wall read the stratified insurge
+       * layer at ~304 degC as the whole wetted wall, sat 33 K hotter than the fluid, and pushed
+       * 92 kW / 5.54 MJ INTO the vessel — 58 % more than the heaters — making the heater-driven
+       * rate FASTER (0.2093 -> 0.2594 psi/s). **A heat sink that heats is the sign the
+       * temperature it is differenced against is the wrong one.** */
+      var V_stm = pz.m_stm > 0 ? pz.m_stm / RHO(pz.h_stm, P) : 0;
+      var V_sub = pz.m_sub > 0 ? pz.m_sub / RHO(pz.h_sub, P) : 0;
+      var fStm = clip(V_stm / V, 0, 1), fSub = clip(V_sub / V, 0, 1);
+      var fAct = fStm + fSub;                       /* the participating area fraction */
+      if (fAct > 1) { fStm /= fAct; fSub /= fAct; fAct = 1; }
+      if (fAct > 1e-6) {
+        var T_stmW = pz.m_stm > 0 ? TFH(pz.h_stm, P) : W.T_sat(P);
+        var T_subW = pz.m_sub > 0 ? TFH(pz.h_sub, P) : W.T_sat(P);
+        var T_wallFluid = (fStm * T_stmW + fSub * T_subW) / fAct;
+        /* `flowFrac` 0 — there is no forced flow in a pressurizer, so Layer 2's film lands on
+         * its FREE-convection floor and this introduces no new coefficient. The void the film
+         * sees is the steam share OF THE PARTICIPATING AREA. */
+        Q_wall_kW = RD.core.stepWall(pz.wall, T_wallFluid, 0, fStm / fAct, dt) * fAct;
+        var dHw = Q_wall_kW * dt;
+        var dHwS = fAct > 0 ? dHw * (fStm / fAct) : 0, dHwB = dHw - dHwS;
+        if (pz.m_stm > 0) pz.h_stm += dHwS / pz.m_stm; else dHwB += dHwS;
+        if (pz.m_sub > STRATIFY.m_liq_floor_kg) pz.h_sub += dHwB / pz.m_sub;
+        else if (pz.m_stm > 0) pz.h_stm += dHwB / pz.m_stm;
+      }
+    }
     if (pz.m_sub > 0 && pz.h_sub >= hf) {
       addPool(pz, pz.m_sub, pz.h_sub); pz.m_sub = 0;
     }
@@ -983,6 +1108,12 @@
       /* DELIVERED into the water (energized x wetted) — the number the energy balance uses and
        * the one `run_pwr2_engine`'s closed audit sums. NOT the gauge; see the split above. */
       heater_kW: Q_heat_kW,
+      /* THE SHELL (#587). Reported as the EFFECT — kW into the water, positive when the metal
+       * is giving heat back — plus the inner lump's temperature, because a wall that is not
+       * tracking its fluid is the failure mode a heat number alone cannot show. */
+      wall_kW: Q_wall_kW,
+      wall_T_inner_c: pz.wall ? pz.wall.T[0] : undefined,
+      wall_T_outer_c: pz.wall ? pz.wall.T[pz.wall.n - 1] : undefined,
       /* THE BUS LOAD, un-derated — what an electrical kW indication reads, and what the shell
        * publishes so #538's readback round trip stays an identity on an uncovered bank. */
       heater_energized_kW: Q_energized_kW,
