@@ -8460,3 +8460,126 @@ declared constant; §12.15 carries the fresh measurement and strikes the retired
 ("1 °F vs 9 °F at the 17 % cutoff"). The REST of the chapter — and Manuals/04's 0.23 psi/s
 setpoint-slew quotes — still describe the retired engine; that is #532's umbrella, and these
 rows are PWR2-correct islands inside it, deliberately scoped.
+
+---
+
+## 118. #586 — THE VAPOUR CEILING WAS A FETCH QUERY'S BOUND, AND THE OLD FIT DID NOT EXTRAPOLATE — 2026-08-29
+
+**The ruling** *(owner, 2026-08-29: "586: a", selecting the extension over leaving the fence
+standing)*. §115 had measured the wall and reported that the extension "balloons"; the owner
+took it anyway. It did not balloon — but only because the FORM held. Had it not, this would
+have been a new property model.
+
+### The ceiling had no derivation. It was `THigh=800` in a URL.
+
+`PWR2_L0_REBUILD.md` §3 records the fetch queries that built Layer 0, and the isobar row reads
+`&Type=IsoBar&P=<P>&TLow=20&THigh=800&TInc=5`. That bound became `TV_MAX`, and `TV_MAX` became
+the wall the whole core-damage chain died against — while three lines above it in the same file
+the *liquid* ceiling carries a real argument (*"358 degC is not arbitrary — it is what
+T_sat(P_MAX = 18 MPa) demands"*). **A constant with a derivation beside a constant without one,
+and only the second was load-bearing.** Nothing in the repo recorded IAPWS-95's own validity
+limit either, so there was no way to see the headroom without going to the source.
+
+**1000 °C is now the ceiling: IAPWS-95's own documented upper limit**, which makes it the last
+ceiling this library can claim to be VALIDATED at rather than extrapolated to. That is the
+argument the old constant never had.
+
+### The old coefficients did NOT extrapolate — measured before trusting them
+
+The form *looks* like it should extrapolate, which is exactly why this had to be measured
+rather than assumed. Evaluated past their fitted range with the clip lifted, against 357 freshly
+fetched IAPWS-95 points:
+
+| T | h_v max error | cp_v max error |
+|---|---|---|
+| 800 °C (the old ceiling) | 19.7 kJ/kg | 10.5 % |
+| 900 °C | 56.7 kJ/kg | 22.5 % |
+| 1000 °C | **130.5 kJ/kg** | **34.8 %** |
+
+The cause is structural: `cp = ci + g·ΔT + (cs−ci)·e^(−ΔT/τ)` rises **linearly for ever**
+through `g·ΔT`, while real steam cp flattens toward its ideal-gas value (measured: 2.478 at
+0.1 MPa / 1000 °C, 2.587 at 17 MPa). **Raising the ceiling without a refit would have published
+a 35 % error as physics** — and the gate would not have caught it, because every reference row
+it held stopped at 800 °C.
+
+### The refit: same form, two changes, both forced by measurement
+
+The **form survived** — the far field genuinely is a gentle near-linear rise (0.00063 kJ/kg-K
+per °C at 0.1 MPa, 0.00022 at 17), so this is the same four parameters over a longer range, not
+a new model. What changed:
+
+1. **Cubic → quartic in ln(P).** With per-isobar fits at 19.6 kJ/kg and the smoothed result at
+   42.7, the binding error was the *cubic smoothing*, not the fit. (`rho_v`'s `Z_sat` was
+   already 5-term, so the shape is precedented.)
+2. **11 → 24 isobars**, to pin the high-pressure end where the parameters move fastest — the
+   per-isobar RMS runs 0.018 at 0.1 MPa and 1.339 at 17.
+
+**Measured over 1,814 points, 24 isobars, 0.1–17 MPa, T_sat–1000 °C: h_v max 32.8 kJ/kg
+(0.96 %), 19.1 kJ/kg (0.42 %) in the new 800–1000 °C band.** The old fit's own claim was
+35.1 kJ/kg over the *shorter* range: **the range grew 200 °C and the error did not.**
+
+### Two things checked that the ruling did not name
+
+- **The sourced transport correlations** (`k_v`/`mu_v`, WCAP-16009 via ASME 1968) clip at
+  `TV_MAX`, so raising it extends their use — they would have started extrapolating silently.
+  Measured against the same fetch's viscosity and conductivity columns: **2.4 % for both in the
+  800–1000 °C band**, against 43.7 % (k) and 11.6 % (µ) in the near-saturation region they
+  already work in. **The extension band is the easiest region for them**, so they extend safely.
+- **`CEIL_HOLD_LATCH_S = 60` was re-measured**, because a margin sized against the old ceiling
+  is a margin against a different plant. It got **more** conservative: the 50 cm² flash that
+  produced its 4.26 s benign figure now touches the ceiling **not at all** (0 clamped steps in
+  400 s), while the unmitigated rides go from no contact to a continuous episode and latch on
+  their first sustained clamp. The two populations no longer overlap. Constant unchanged.
+
+### What the plant does now — the fence comes down
+
+MEASURED on the 20 cm² unmitigated break, oxidation feedback ON, every number off a plant
+inside its own envelope:
+
+| | |
+|---|---|
+| void > 50 % | 33 s |
+| loop flow < 5 % | 110 s |
+| 1200 °F (GEND-061 hydrogen onset) | 308.0 s |
+| 1800 °F (significant damage) | 489.9 s |
+| **2200 °F (10 CFR 50.46 limit)** | **590.0 s** |
+| **damage latch** | **590.0 s — the same step** |
+| model holds | 596.4 s |
+| peak cladding | 2229 °F |
+| oxidation | 4.68 % |
+
+**And the feedback A/B is a real comparison at last, which is the payoff the fence was hiding.**
+Same break, same plant, one term: with the oxidation feedback ON the core crosses 2200 °F and
+latches damage; **with it OFF the core never gets there**, peaking at 2090 °F. It also reaches
+1800 °F 23.3 s sooner and oxidises 4.68 % against 4.15 %. Both legs still reach the 1200 °F
+onset within 0.5 s of each other, which is what makes the divergence attributable to the
+feedback rather than to two different rides. **The oxidation feedback is what takes this core
+from "badly damaged" to "past the regulatory limit"** — the single most teachable statement
+this gate has ever been able to make, and it was unreachable while everything past the onset
+sat behind the fence.
+
+**10 CFR 50.46: two of three criteria breached, and NOT the third** — peak clad (2229 °F vs
+2200) and hydrogen (4.68 % vs the 1 % criterion) go; 17 % oxidation does not. So the ordering
+claim the gate used to assert from its constants — *the hydrogen criterion is 17× tighter, so
+it binds first* — is now **demonstrated by the plant**.
+
+**Melt remains unreachable, and is asserted as an ABSENCE with its reason**: it needs
+temperatures past the extended ceiling, so a melt path would have to be extrapolated rather
+than validated. If a later property extension makes it reachable, that check reds and the claim
+gets re-measured instead of the model quietly acquiring a melt path.
+
+### The check that went red for being RIGHT
+
+`run_pwr2_true_state`'s superheat probe asserted `128 ± 3 °C` at h = 3090 / 226 psia — **the
+model's own output when the check was written**, which is the HR10 trap in one line: a check
+written from observed behaviour can only confirm that behaviour, *including its error*. The
+refit moved it to 123.3 and the check failed. IAPWS-95 says the truth is **123.78 °C**
+(324.07 °C less T_sat 200.29). The old fit was 4.2 °C out; the refit is 0.5. Re-anchored to the
+sourced value, so it now fails if the library drifts from IAPWS rather than from its old self.
+
+### Scores
+
+`run_pwr2_water` 255 → **282** (+9 reference rows in the extension band, +1 straddling range
+check; 35/35 mutations). `run_pwr2_coredamage` 20 → **23** — back to its pre-fence count, at
+honest values. Six other gates that read the ceiling (`core`, `vtable`, `damage`, `kinetics`,
+`fuel`, `true_state`) held at baseline.

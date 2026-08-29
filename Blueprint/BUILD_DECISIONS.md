@@ -45,6 +45,29 @@ where the two differ or where judgment was exercised.
 
 ---
 
+## 2026-08-29-develop-d — #586: the vapour ceiling raised to IAPWS-95's limit, and refitted
+
+Full record: `PWR2_VALIDATION.md` §118; continuity in `TUNING_LOG` 2026-08-29-develop-d.
+
+- **RULING (owner, 2026-08-29: "586: a")** — build the extension rather than keep the fence.
+- **`TV_MAX` 800 → 1000 degC.** The old value had NO derivation: it was `THigh=800` in the fetch
+  query that built Layer 0 (`PWR2_L0_REBUILD` §3). 1000 is IAPWS-95's own documented limit, so
+  it is the last ceiling this library can claim to be validated at rather than extrapolated to.
+- **The four superheated-vapour parameters were REFITTED, not extended.** Measured first: the old
+  coefficients evaluated past their range are 34.8 % out on cp at 1000 degC (the `g*dT` term rises
+  linearly for ever). Form kept; cubic → quartic in ln(P) because the SMOOTHING was the binding
+  error, not the per-isobar fits; 11 → 24 isobars. h_v max 32.8 kJ/kg over the whole extended
+  range against the old fit's 35.1 over its shorter one.
+- **Two consumers checked that the ruling did not name:** the sourced `k_v`/`mu_v` transport
+  correlations (clip at TV_MAX — measured 2.4 % in the new band, their easiest region) and
+  `CEIL_HOLD_LATCH_S` (re-measured; got more conservative, constant unchanged).
+- **Claim restoration, not claim invention:** `run_pwr2_coredamage` goes 20 → 23, back to its
+  pre-fence count, with every restored claim measured on a plant inside its envelope. The 50.46
+  ordering is now demonstrated by the plant (two criteria breached, the third not) rather than
+  asserted from constants; melt is asserted as an ABSENCE with its reason.
+- Gates: water 255 → 282 (35/35 mutations), coredamage 20 → 23; six other ceiling-reading gates
+  held at baseline.
+
 ## 2026-08-29-develop-c — #585/#586/#582/#584: the held-plant fallout bundle
 
 Full record: `PWR2_VALIDATION.md` §114–117; continuity in `TUNING_LOG` 2026-08-29-develop-c.

@@ -29,6 +29,49 @@ and the user-visible summary in `CHANGELOG.md`. This file points at those and tr
 
 ---
 
+## Session log — 2026-08-29-develop-d (#586 — the vapour ceiling raised, refitted, and the damage chain unblocked)
+
+Full write-up: `Blueprint/PWR2_VALIDATION.md` §118. This is the continuity note.
+
+- **RULED (owner, 2026-08-29: "586: a")** — build the property extension rather than leave the
+  fence standing. §115 had said it "balloons"; it did not, but only because the fit FORM held.
+- **The ceiling had no derivation: it was `THigh=800` in the fetch URL that built Layer 0**
+  (`PWR2_L0_REBUILD` §3) — a data boundary that became `TV_MAX` and then became the wall the
+  whole core-damage chain died against, three lines from a *liquid* ceiling that carries a real
+  argument. **Now 1000 degC, IAPWS-95's own documented limit**, so it is the last ceiling this
+  library can claim to be validated at rather than extrapolated to.
+- **THE TRAP WORTH CARRYING: the old fit did NOT extrapolate, and the form looks like it should.**
+  Evaluated past its range with the clip lifted it measures **cp 34.8 % out at 1000 degC** and
+  h_v 130.5 kJ/kg (against 19.7 at 800) — `g*dT` rises linearly for ever while real steam cp
+  flattens toward ideal-gas. A ceiling raised without a refit publishes that as physics, and no
+  gate could have caught it: **every reference row the gate held stopped at the old ceiling.**
+  Refit: same form, cubic -> quartic in ln(P) (the SMOOTHING was the binding error at 42.7, not
+  the per-isobar fits at 19.6), 11 -> 24 isobars, 1,814 fetched NIST rows. **h_v max 32.8 kJ/kg
+  over the whole extended range against the old fit's 35.1 over its shorter one.**
+- **Two things checked that the ruling did not name.** (1) The SOURCED transport correlations
+  `k_v`/`mu_v` clip at `TV_MAX`, so raising it extends their use — measured 2.4 % in the new band
+  against 43.7 % near saturation, i.e. the extension band is their easiest region. (2)
+  `CEIL_HOLD_LATCH_S = 60` re-measured: it got MORE conservative — the 50 cm2 flash that produced
+  its 4.26 s benign figure now touches the ceiling **not at all**, while defect rides go from no
+  contact to a continuous episode. Constant unchanged, derivation comment rewritten.
+- **The fence is down and the payoff was hiding behind it.** 20 cm2 unmitigated, feedback ON:
+  1200 degF at 308.0 s, 1800 at 489.9, **2200 at 590.0 with the damage latch on the same step**,
+  model holds 596.4 — 6.4 s of valid plant to spare. **Feedback OFF never crosses 2200 degF**
+  (peaks 2090). Same break, one term. Two of three 10 CFR 50.46 criteria breached (peak clad,
+  1 % hydrogen), the 17 % oxidation one not — so the "hydrogen binds 17x first" ordering is now
+  demonstrated by the plant instead of carried by constants. Melt stays unreachable and is
+  asserted as an ABSENCE with its reason.
+- **A check went red for being RIGHT** — `run_pwr2_true_state` asserted superheat `128 +/- 3` at
+  h = 3090 / 226 psia, which was **the model's own output when the check was written** (the HR10
+  trap in one line). IAPWS says 123.78; the old fit was 4.2 degC out, the refit 0.5. Re-anchored
+  to the sourced value so it fails on drift from IAPWS, not from its own past.
+- Gates: `run_pwr2_water` 255 -> **282** (35/35 mutations), `run_pwr2_coredamage` 20 -> **23**
+  (its pre-fence count, at honest values); core/vtable/damage/kinetics/fuel/true_state held.
+  **Harness note: `run_all.js` BASELINES rows end `},` — a `//` comment appended before that
+  comma swallows it and the whole map fails to parse.**
+
+---
+
 ## Session log — 2026-08-29-develop-c (#585/#586/#582/#584 — the held-plant fallout bundle)
 
 Full write-ups: `Blueprint/PWR2_VALIDATION.md` §114–117. This is the continuity note.

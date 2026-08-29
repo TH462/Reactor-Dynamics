@@ -400,9 +400,10 @@ by an agent who compressed without re-querying. Run the query.
   unmoved) — `wallLumps` had shipped with zero consumers. And the pressurizer is **no longer in the
   ledger twice**: the phantom 125.2 ft³ node is gone, RCS mass fell **13.5 % to 36,016 lbm** and the
   design point moved 0.1 psi. Out of it since: the WALL landed as **#587** (§113, owner review);
-  **#584, #585 and #582 closed 2026-08-29** and **#586 re-measured** — the core-damage chain is
-  blocked on the vapour-branch 800 °C ceiling, NOT the 0.1 MPa floor, so not on #524 (§114–117).
-  Still dark: `transport: 'plug'`, `surge_line_voided`.
+  **#584, #585, #582 and #586 all closed 2026-08-29** (§114–118). **#586 ended in a Layer-0
+  change**: the vapour ceiling was `THigh=800` in a fetch URL and is now **1000 °C, IAPWS-95's
+  own limit**, with the superheated fits REFITTED — so the chain now runs to the 2200 °F damage
+  latch inside the envelope, and the oxidation feedback is measurably what takes it there.
 - **RBMK and BWR** — on hold, and the source of most remaining backlog. Do not touch.
 
 **The manual set's revision number does not advance until a RELEASE** *(OWNER DIRECTIVE,
@@ -422,6 +423,14 @@ FIRST** — ask what in it would still burn someone in a month, move that to the
 ONE line, drop the rest. **A bullet is ~80 words.** (Measured 2026-08-06: the list was running
 7 bullets averaging 500 words, two of them duplicating traps already rescued below.)
 
+- **A CONSTANT WITH NO DERIVATION IS USUALLY A TOOL'S DEFAULT, AND A FIT THAT LOOKS LIKE IT
+  EXTRAPOLATES USUALLY DOES NOT** (2026-08-29, #586 §118). The 800 °C vapour ceiling the
+  core-damage chain died against was `THigh=800` in the fetch URL that built Layer 0 — three
+  lines from a *liquid* ceiling carrying a real argument. **Ask whether the neighbour has a
+  derivation and this one merely has a value.** Moving such a bound: the old fit ran **34.8 %
+  out on cp** just past its range, and **every reference row the gate held stopped at the old
+  bound**, so nothing could catch it. Extend a range only by refitting AND fetching reference
+  data inside the extension.
 - **An all-or-nothing ledger over a SUB-STEPPED solver is wrong by the accepted fraction — and
   only the solver can say what that fraction was** (2026-08-29, #585 §114). The latching step's
   break booking was refused whole while the Courant sub-stepping had already integrated ONE of
@@ -452,14 +461,6 @@ ONE line, drop the rest. **A bullet is ~80 words.** (Measured 2026-08-06: the li
   **1074 psia against 1775**, reset ACCEPTED, re-latched 0.1 s later. The FIX then broke the same
   way — instrument published, not named in the status list, `crossed(undefined)` false, every
   reset refused. Both look strict.
-- **A multi-part fix whose parts are EACH SUFFICIENT makes its own mutations go blind — and the
-  bullet warning of it is no protection** (2026-08-28, #545 §102). The rods were the one reactor
-  trip consumer wired to the latch's rising EDGE, so holding WITHDRAW after a scram took the core
-  back to **61.18 %** with SCRAMMED lit on truth, instrument and kernel at once and the flux trip
-  asserted 751.6 s doing nothing. The fix is a level hold AND a door that refuses by name; with the
-  door refusing, the demand never gets set, so deleting the hold moved nothing and `run_pwr2_engine`
-  came back **59/60**. Reproduced by an agent who had quoted the #295 rule three lines above.
-  **Plant the demand PAST the half you are not testing.**
 **Standing procedure — not part of the rotation above; these do not expire.** One trap per entry.
 **MAX 25 BULLETS** *(OWNER RULING, 2026-08-10: selected "Cap at 25, evict to TRAPS.md" from
 options I wrote — a selection, not verbatim words)*, gated by `test/run_doc_budget.js`. Adding
@@ -559,7 +560,9 @@ thing left in the file and it grew about a bullet a session.
   would have hidden two real defects — each red is the fix working, a stale fixture, or a new
   defect, and only per-probe adjudication (HR10) tells which.
 - **Know which LAYER owns the effect you are asserting** (table below). A multi-part fix whose
-  parts are each sufficient makes a one-sided injection lie — revert BOTH to reproduce (#295).
+  parts are each sufficient makes a one-sided injection lie — revert BOTH to reproduce (#295;
+  #545 shipped it again with a level hold AND a door that refuses by name, and `run_pwr2_engine`
+  came back 59/60 — **plant the demand PAST the half you are not testing**).
   Neutering an automation channel: blank the ENGAGE direction ONLY, or the plant sits in the IC's
   own AUTO and the probe passes against a dead channel (#286).
 - **A de-energization written into the operator's DEMAND heals itself on the next button press.**

@@ -30,6 +30,25 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
 
 ## [Unreleased]
 
+### Changed (#586 — core damage runs to the regulatory limit inside the model's own envelope, 2026-08-29)
+
+Full write-up: `Blueprint/PWR2_VALIDATION.md` §118.
+
+- **The water library's steam ceiling is raised 800 → 1000 °C** — IAPWS-95's own upper limit —
+  and its superheated-steam correlations were **refitted** over the extended range against 1,814
+  freshly fetched reference points. The old coefficients did not extrapolate (34.8 % out on
+  specific heat at 1000 °C), so raising the ceiling without the refit would have shipped that
+  error as physics.
+- **An unmitigated core now reaches 2200 °F cladding and latches fuel damage on a plant that is
+  still inside its validated range** — previously it stopped ~65 °F short and every milestone
+  past that point was fenced off as unassertable.
+- **The metal-water reaction feedback is what carries the core over the damage limit.** Same
+  break, same plant: with the feedback modelled the cladding crosses 2200 °F at 590 s; without
+  it, it never does (peaks 2090 °F). Two of the three 10 CFR 50.46 criteria are breached
+  — peak cladding temperature and hydrogen generation — and the 17 % oxidation one is not.
+- Core melt remains outside the model's range and is declared as such rather than modelled.
+
+
 ### Fixed (#585 — a held plant can no longer create mass, 2026-08-29)
 
 Full write-up: `Blueprint/PWR2_VALIDATION.md` §114. Owner-ruled 2026-08-29: **the hold is the

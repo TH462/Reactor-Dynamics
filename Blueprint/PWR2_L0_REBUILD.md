@@ -92,6 +92,43 @@ https://webbook.nist.gov/cgi/fluid.cgi?Action=Data&Wide=on&ID=C7732185&Digits=8
 | Saturation by pressure | `&Type=SatT&PLow=0.1&PHigh=22&PInc=0.1` | 220 |
 | Isobars (liquid + vapour) | `&Type=IsoBar&P=<P>&TLow=20&THigh=800&TInc=5` at P = 0.1, 0.5, 1, 2, 3, 5, 7, 10, 12, 15.41, 17 MPa | 159 each |
 
+### 3a. The vapour extension, fetched 2026-08-29 (#586)
+
+**`THigh=800` in the row above is where the 800 °C ceiling came from** — it was the fetch
+query's bound, never an argued limit, and it sat in the library as `TV_MAX` for a fortnight
+while `pwr2_water.js` explained the *liquid* ceiling's derivation right beside it. It became
+load-bearing when the core-damage chain turned out to be blocked on it (§115): every
+unmitigated break latched `beyond_model` on the ceiling-persistence arm at 15.7 psia — above
+the pressure floor — so the wall was this constant.
+
+**The ceiling is now 1000 °C, which is IAPWS-95's own documented upper limit** (and the NIST
+SRD 69 table's), so it is the last ceiling this library can claim to be *validated* at rather
+than extrapolated to. Extension dataset, same base URL:
+
+| Set | Query | Rows |
+|---|---|---|
+| Isobars, extended | `&Type=IsoBar&P=<P>&TLow=100&THigh=1000&TInc=10` at P = 0.1, 0.15, 0.2, 0.3, 0.5, 0.7, 1, 1.5, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15.41, 16, 17 MPa | 1,814 vapour rows total |
+| Isotherms, spot | `&Type=IsoTherm&T=<T>&PLow=0.1&PHigh=17` at T = 700…1000 °C | 51 each |
+
+**The old coefficients did not extrapolate, and that is the finding.** Evaluated past their
+fitted range with the clip lifted they measure **cp 10.5 % out at 800 °C rising to 34.8 % at
+1000**, h_v 19.7 kJ/kg at 800 against **130.5 at 1000** — because `g·ΔT` rises linearly for
+ever while real steam cp flattens toward its ideal-gas value. Raising the ceiling without a
+refit would have published that as physics.
+
+The **form** survived (the far field genuinely is a gentle near-linear rise: 0.00063 kJ/kg-K
+per °C at 0.1 MPa, 0.00022 at 17). Two things changed: cubic → **quartic** in ln(P), because
+with the per-isobar fits at 19.6 kJ/kg the cubic *smoothing* was the binding error at 42.7;
+and 11 → **24 isobars** to pin the high-pressure end where the parameters move fastest.
+Measured after: **h_v max 32.8 kJ/kg (0.96 %) over the whole extended range**, 19.1 kJ/kg in
+the new 800–1000 °C band — the range grew 200 °C and the error did not.
+
+**The sourced transport correlations were re-checked over the extension rather than assumed**
+(`k_v`/`mu_v`, WCAP-16009 via ASME 1968 — they clip at `TV_MAX`, so raising it extends their
+use). Measured against the same fetched data's viscosity and conductivity columns: **2.4 % for
+both in the 800–1000 °C band**, against 43.7 % (k) and 11.6 % (µ) in the near-saturation
+region they already operate in. The extension band is the *easiest* region for them.
+
 **Authenticity check** (values a wrong reference state would not reproduce): at 100.000 °C the
 served data gives P = 0.10141800 MPa, h_f = 419.16616, ρ_f = 958.34905, h_g = 2675.5699 — the
 canonical steam-table values, with P_sat at exactly 100 °C correctly *above* one atmosphere
