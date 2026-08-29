@@ -339,10 +339,9 @@ Mode 1 on integrated physics: engines, control, service, instructor and the boar
 #297 audit's build wave and the #221 audit slices are landed. **What is open, in one line each:**
 
 **Do not read the list below as the issue tracker** — `gh issue list --state open` is the
-authority and this is a summary that ages. Measured 2026-08-10: five entries here described
-#386, #425, #385, #418 and #419 as open-on-owner-review when all five were **closed**, two of
-them rewritten from the stale text hours earlier by an agent who compressed without re-querying.
-Measured AGAIN 2026-08-28: a whole bullet of seven, all closed. Run the query.
+authority and this is a summary that ages. Measured twice (2026-08-10, 2026-08-28): whole
+bullets called issues open that were closed, once rewritten from the stale text hours earlier
+by an agent who compressed without re-querying. Run the query.
 
 - **#408** — the accident-inventory clock umbrella. Open: the SGTR/seal amendment rows (evidence
   mini-pass; the declared ~7,500 gal makes absolute-size components ~5–6× fractionally bigger
@@ -395,14 +394,14 @@ Measured AGAIN 2026-08-28: a whole bullet of seven, all closed. Run the query.
   which is where a roll-call of two dozen per-issue summaries used to sit. Measured 2026-08-28:
   eight of the issues it called CLOSED were still open. **Run `gh issue list`; it is the
   authority, and this line is not.**
-- **#573/#473 and #574 (2026-08-28, §108/§109) — two owner requests from 2026-08-12 that had never
-  reached this engine.** The pressurizer heaters now lose authority progressively over a 5–15 % TRUE
-  level band and the board draws the bank there by VOLUME; every one of the eleven ring nodes now
-  carries its own metal wall — **43,484 kJ/K, 46 % of the fluid**, a fixed-duty cooldown 1.391× longer
-  and a scram unmoved. `wallLumps` had shipped on all eleven nodes with zero consumers. Filed out of
-  it and NOT fixed: **#583** (the pressurizer is in the mass ledger twice, 17.6 % over the declared
-  RCS), **#584**, **#585** (a HELD plant creates mass), **#586** (the core-damage chain is measured on
-  one). Still dark: `transport: 'plug'` and `surge_line_voided`.
+- **#573/#473, #574 and #583 (2026-08-28, §108–§110).** The pressurizer heaters lose authority over
+  a 5–15 % TRUE level band and the board draws the bank by VOLUME; every ring node carries its own
+  metal wall (**39,128 kJ/K, 49 % of the fluid**, a fixed-duty cooldown 1.391× longer, a scram
+  unmoved) — `wallLumps` had shipped with zero consumers. And the pressurizer is **no longer in the
+  ledger twice**: the phantom 125.2 ft³ node is gone, RCS mass fell **13.5 % to 36,016 lbm** and the
+  design point moved 0.1 psi. Open out of it: **#584**, **#585** (a HELD plant creates mass), **#586**,
+  and the Layer-5 pressurizer WALL that left with the node. Still dark: `transport: 'plug'`,
+  `surge_line_voided`.
 - **RBMK and BWR** — on hold, and the source of most remaining backlog. Do not touch.
 
 **The manual set's revision number does not advance until a RELEASE** *(OWNER DIRECTIVE,
@@ -422,6 +421,14 @@ FIRST** — ask what in it would still burn someone in a month, move that to the
 ONE line, drop the rest. **A bullet is ~80 words.** (Measured 2026-08-06: the list was running
 7 bullets averaging 500 words, two of them duplicating traps already rescued below.)
 
+- **A DECLARED simplification is not a LICENSED one — and a FIXTURE can be producing its subject
+  out of the defect you are removing** (2026-08-28, #583 §110). PWR2 carried the pressurizer TWICE,
+  a rigid 125.2 ft3 ring node plus the 147.5 ft3 Layer-5 vessel: **983 ft3 of RCS against its own
+  declared 835.8**, 2,539 kg of it unreachable. Two files named it and kept it because removing it
+  "re-clocks every inventory fixture" — a CONTENT cost, which never votes on physics. Mass fell
+  13.5 %, the design point moved **0.1 psi**, four consumers had been reading `Σ NODES` as the whole
+  plant — and a void check rode a rigid loop that only reached saturation **because the phantom
+  ballasted it**.
 - **A METAL MASS is 46 % of this plant's heat capacity and a FILM COEFFICIENT decides whether it
   is felt — and the film is where my own two defects were** (2026-08-28, #574 §109). PWR2 carried
   `wallLumps` on all eleven nodes with ZERO consumers; the ring's metal measures 43,484 kJ/K against
@@ -452,12 +459,6 @@ ONE line, drop the rest. **A bullet is ~80 words.** (Measured 2026-08-06: the li
   500×-inflated prompt generation time — copying it needs a source ~500× any real one and would
   ramp an exactly critical reactor at 0.05 %/s out of nothing. **Derive from the plant in front of
   you, not from its predecessor.** Its gauge scale was inherited the same way and was 500× wrong.
-- **A RULING CAN BE EXECUTED ON THE WRONG PLANT, and every document then says it is done**
-  (2026-08-28, #573/#473 §108). The 2026-08-12 heater-elevation ruling was built — in
-  `pwr_pressurizer2.js`, gated 49/49, on the engine #523 strips from public builds. PWR2 had the
-  cliff and nothing else. **Check which engine a "done" landed in.** Two more from the same
-  change: derating the PUBLISHED heater kW would have re-created #538 (the board re-sends its own
-  readback as demand), and the board drew the bank at **15.6–24.6 % level — above its own 17 %
 **Standing procedure — not part of the rotation above; these do not expire.** One trap per entry.
 **MAX 25 BULLETS** *(OWNER RULING, 2026-08-10: selected "Cap at 25, evict to TRAPS.md" from
 options I wrote — a selection, not verbatim words)*, gated by `test/run_doc_budget.js`. Adding

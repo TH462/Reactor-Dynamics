@@ -187,8 +187,11 @@
    * "derive, don't type" rule rhoRated follows in pwr2_sources. */
   function accGeometry() {
     var GEO = RD.geometry;
-    var vRcs = 0;
-    GEO.NODES.forEach(function (n) { vRcs += n.V; });          // m3, the whole RCS incl. pressurizer
+    /* the whole RCS INCLUDING the pressurizer — which since #583 is the Layer-5 vessel and not
+     * a ring node, so this must be GEO.rcsVolume() and not a bare `Σ NODES` (that sum stopped
+     * being the plant the moment the phantom node went; it would have shrunk the accumulator
+     * 15 % while the comment still claimed "incl. pressurizer") */
+    var vRcs = GEO.rcsVolume();                                // m3
     var w0 = ACC.capacity_frac * vRcs;                          // m3 water
     return { w0_m3: w0, vg0_m3: w0 / 2 };                       // 2/3 water -> gas space = w0/2
   }

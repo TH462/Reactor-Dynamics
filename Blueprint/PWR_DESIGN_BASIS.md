@@ -163,6 +163,16 @@ it.** Sized at 15 % of total RCS volume (WTSM reference: 1,800 ft³ pressurizer 
 
 **Pressurizer ≈ 125 ft³.**
 
+> **⚠ SUPERSEDED, 2026-08-28 (#583). The check this section demanded was never run, and the
+> placeholder shipped.** #472's own number is **147.5 ft³ (4.176 m³)** — Ginna TS Bases
+> ML20339A221 B 3.4.9, 650 ft³ = 87 %, scaled per-MWt — and it lives in
+> `engines/pwr2/pwr2_pressurizer.js` `GEOM.V_pzr_m3`. The 125.2 ft³ above was copied into
+> `pwr2_geometry.js` as BOTH a ledger row and a ring NODE, so the engine carried the
+> pressurizer twice at two different sizes: 983 ft³ of modelled RCS against a declared 835.8.
+> The node is deleted, the ledger row is now the real vessel, and
+> `run_pwr2_pressurizer` asserts `LEDGER.pressurizer.m3 === GEOM.V_pzr_m3` so the two cannot
+> drift again. **Read §7's table with the correction below.**
+
 ---
 
 ## 7. Closure — the whole ledger, and three independent cross-checks
@@ -173,8 +183,12 @@ it.** Sized at 15 % of total RCS volume (WTSM reference: 1,800 ft³ pressurizer 
 | Loop piping (§4) | 108.1 ft³ | 13.0 % |
 | SG primary (§5) | 214.5 ft³ | 25.7 % |
 | RCP (§4) | 10.0 ft³ | 1.2 % |
-| Pressurizer (§6) | 125.2 ft³ | 15.0 % |
-| **RCS TOTAL** | **834.4 ft³ = 6,242 gal** | |
+| Pressurizer (§6) | ~~125.2 ft³~~ **147.5 ft³** (#583) | 17.2 % |
+| **RCS TOTAL** | ~~834.4 ft³~~ **856.7 ft³ = 6,409 gal** | |
+
+**The pressurizer row was corrected 2026-08-28 (#583)** — see the box in §6. The as-built
+engine's own ledger (`pwr2_geometry.js`, which derives the RPV, piping and SG independently of
+this document) reads **858.1 ft³** on the same correction.
 
 **Three checks, none of which were fitted:**
 
@@ -218,7 +232,8 @@ and they were not made to.
 - **Secondary side and containment** — the same forward method applies (SG secondary from
   steam mass flow and shell sizing; containment free volume from peak-pressure design)
   but is not derived in this pass.
-- **The pressurizer's real design** — #472's, §6 is a ledger placeholder only.
+- **The pressurizer's real design** — #472's, §6 is a ledger placeholder only. ⚠ And a
+  placeholder that was adopted anyway: see the #583 box in §6.
 - **Any code change.** Nothing in this document is wired into the engine.
 
 ---

@@ -308,6 +308,13 @@ that had to land for it to work.
 **New ledger: 315.1 (RPV) + 108.1 (piping) + 259.3 (SG) + 28.1 (RCP) + 125.2 (PZR) = 835.8 ft³**,
 i.e. **2.79 ft³/MWt** against the previous 2.29.
 
+> **⚠ CORRECTED 2026-08-28 (#583): the PZR row is 147.5 ft³, not 125.2, so the ledger is
+> 858.1 ft³ = 2.86 ft³/MWt.** The 125.2 was `PWR_DESIGN_BASIS.md` §6's declared placeholder,
+> and §6 said it "must be checked against #472's own number". #472's vessel is 4.176 m³, sourced
+> from Ginna TS Bases. The residual against the target falls 101.4 → **79.1 ft³**, so the
+> declared inventory uncertainty is **9.2 %**, not 12.1 %. The engine also carried the
+> placeholder as a ring NODE on top of the vessel; see `PWR2_VALIDATION.md` §110.
+
 ### The vintage correction — flagged by review, recorded by me, and never applied until now
 
 The review's objection to any ft³/MWt metric was that **Ginna's RCS hardware did not change at

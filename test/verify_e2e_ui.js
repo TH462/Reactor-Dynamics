@@ -1367,8 +1367,23 @@ async function testDiagBundle(page) {
  * ⚠ WHY THIS DRIVES A REAL HALT RATHER THAN FAKING ONE. #517's first attempt at board rows for
  * these fields passed every gate in the suite AND WAS INERT — the rows were keyed to chart series
  * that did not exist, so nothing rendered them, and only driving the board found it. So this rides
- * a genuine casualty: a large break with the station blacked out has no injection to answer it and
- * the plant actually runs dry (measured full-stack: held at 378 s).
+ * a genuine casualty: a large break with the station blacked out AND NO AUXILIARY FEED has nothing
+ * to answer it and the plant actually runs dry.
+ *
+ * ⚠ `afw_failure` IS LOAD-BEARING, and #583 is how that was found. Until 2026-08-28 the driver was
+ * `large_loca,station_blackout` alone, and it held. After #583 removed 2,539 kg of phantom
+ * pressurizer water from the reactor coolant system, the SAME casualty stops holding IN THE
+ * BROWSER: measured at ff=7200 (6,807 s of plant time) the primary parks at **83 psia against
+ * containment backpressure**, 0 % pressurizer level, and sits there — a wrecked plant that never
+ * leaves the property library's range, because the steam generators still have auxiliary feed and
+ * keep taking the decay heat. Block AFW and it runs dry and goes out of range: **22 psia, held,
+ * dialog up**, at ff=1500 and again at ff=3000.
+ *
+ * ⚠ AND NOTE WHICH LAYER SAID WHAT. The identical service, seed, initial condition, injections and
+ * fast-forward driven in NODE reports `model_held: true` on the two-failure casualty; the browser
+ * does not. That divergence is unexplained and is NOT what this check is for — the three-failure
+ * casualty holds on both. If this check ever goes red again, measure the plant before touching the
+ * budget: a driver that only just reached the envelope edge is the shape that rots.
  *
  * ⚠ AND IT DOES NOT DISMISS THE MISSION WINDOW FIRST. The halt dialog sits above it at z-index
  * 214, so `click('#missionClose')` times out once the dialog is up — which is the feature working.
@@ -1392,7 +1407,7 @@ async function testHeldPlantDialog(page) {
   }
   log.push('healthy plant: dialog hidden, clock unmarked');
 
-  await page.goto(base + '&inject=large_loca,station_blackout&ff=1500',
+  await page.goto(base + '&inject=large_loca,station_blackout,afw_failure&ff=1500',
                   { waitUntil: 'networkidle', timeout: 180000 });
   await page.waitForFunction(function () {
     var o = document.getElementById('haltOverlay');

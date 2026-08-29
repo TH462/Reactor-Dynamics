@@ -7756,3 +7756,229 @@ Filed on the way, none of them fixed here: **#583** (the pressurizer is in the m
 **Still dark and named:** `transport: 'plug'` has no consumer — every node is donor-cell — which is
 what makes cold-water accumulation in a leg unrepresentable; and `surge_line_voided` appears
 nowhere in `engines/ layers/ ui/ test/`.
+
+## 110. #583 — ONE PRESSURIZER, AND A CHECK WHOSE SUBJECT THE DEFECT HAD BEEN MANUFACTURING — 2026-08-28
+
+*(OWNER RULINGS, 2026-08-28, selected from options I wrote: "Delete the phantom, re-base" and
+"Delete it, file the follow-up".)*
+
+PWR2 carried the pressurizer **twice, at two different sizes**: a rigid off-loop ring node at
+`pwr2_geometry.js:97`, **125.2 ft³ (3.5453 m³)**, and the Layer-5 vessel in Layer 2's `extraMass`
+seat, **147.5 ft³ (4.176 m³)**. So the plant modelled **983.1 ft³ (27.840 m³)** of reactor coolant
+system against its own declared ledger of **835.8 ft³ (23.667 m³)** — **+17.6 %** — and **5,598 lbm
+(2,539 kg)** of the ring was water that no break, safety injection, chemical-and-volume-control or
+residual-heat-removal path could ever move.
+
+### 110.1 It was DECLARED, and declaring it is what let it stand for a fortnight
+
+Two places named it. `pwr2_pressurizer.js:91` and §85's own *Declared, not claimed* list:
+
+> *"the loop's separate 3.545 m³ `pressurizer` node (`pwr2_geometry.js:97`) is a declared
+> double-count with the surge line, ~5 kg/MPa of the fast-insurge compliance, **left in place
+> because removing it re-clocks every inventory fixture (an #408-class change)**."*
+
+#583's body says *"Nothing in `PWR2_VALIDATION.md` records it"*; §85 does, and that correction is
+on the issue. **The lesson is the other way round: a DECLARATION IS NOT A LICENCE.** The cost of
+re-clocking fixtures is a content cost, and Hard Rule 9 says content churn is never an input to a
+physics decision *(OWNER DIRECTIVE, 2026-08-07: "Documentation and gameplay always follow the
+model/physics, not the other way around.")*. The declaration made the defect legible and then held it in
+place for the one reason that is explicitly not allowed to.
+
+**And the ledger row was flagged a placeholder by the document that wrote it.**
+`PWR_DESIGN_BASIS.md` §6: *"#472 owns the pressurizer… This section exists only to close the volume
+ledger and **must be checked against #472's own number, not adopted over it**."* #472's number is
+the 4.176 m³. Nothing ever checked, because no gate loaded both files. There is one now.
+
+### 110.2 What the node actually did — and the four consumers that read `Σ NODES` as "the plant"
+
+Traced, not assumed. **Not** transported, **not** a source target, **not** a heat target, excluded
+from the Courant limit, from transit time, and from the residual-heat-removal duty split (#510
+M-11 had already carved it out). It **was** in `V_total`, `totalMass`, `internalEnergy`, `F(P)`,
+the metal-wall table, `M_nominal`, and:
+
+| consumer | what it computed off `Σ GEO.NODES` |
+|---|---|
+| `pwr2_cvcs.js:89` `rcsVolume()` | the charging/letdown gpm scale |
+| `pwr2_cvcs.js:306` | the boron dilution mixing mass |
+| `pwr2_cvcs.js:372` | max fill rate, fraction per minute |
+| `pwr2_eccs.js:191` | accumulator water at 0.435 × RCS — its comment read *"the whole RCS incl. pressurizer"* |
+
+**`Σ NODES` was the whole plant ONLY BECAUSE THE PHANTOM WAS IN IT.** Deleting the node and
+leaving those four alone would have cut charging and accumulator inventory **15 %** on a plant that
+still has a pressurizer — a second defect created by fixing the first, and every one of them would
+have looked like the fix working. They now call `GEO.rcsVolume()` (nodes + the Layer-5 vessel,
+computed once in Layer 1) and the boron ledger uses `sys.M_total`.
+
+**The boron change inverts a decision that was correct when it was made.** `pwr2_cvcs.js:72`
+refused `sys.M_total` at #514 *because* "the ledger total includes the pressurizer via `extraMass`;
+substituting would quietly grow the boron dilution volume by the pressurizer". Once the node is
+gone, the node sum is the one missing a pressurizer and `M_total` is the honest mixing mass:
+17,182 kg → **16,337 kg**, so boron moves ~5 % faster rather than the ~17 % that leaving the line
+alone would have produced.
+
+### 110.3 The measurement — same harness, before and after
+
+Facade `RD.pwr2.engine.createEngine` and the shell where the ride needs commands, `DT = 0.02`.
+
+| | before | after |
+|---|---|---|
+| `GEO.NODES` | 11 | **10** |
+| Σ NODES | 835.7 ft³ (23.6635 m³) | **710.5 ft³ (20.1183 m³)** |
+| declared `RCS_TOTAL_M3` | 835.8 ft³ | **858.1 ft³ (24.2987 m³)** |
+| MODELLED RCS (nodes + vessel) | **983.1 ft³** | **857.9 ft³** |
+| `LEDGER.pressurizer` vs `PZ.GEOM.V_pzr_m3` | 125.2 ft³ vs 147.5 ft³ | **147.5 = 147.5** |
+| unattributed / declared uncertainty | 101.4 ft³ / 12.1 % | **79.1 ft³ / 9.2 %** |
+| **M_total, hot full power** | 41,614 lbm (18,875.7 kg) | **36,016 lbm (16,336.5 kg)** — **−13.5 %** |
+| M_total, hot zero power | 41,341 lbm (18,751.8 kg) | **35,457 lbm (16,083.2 kg)** |
+| M_nominal, Mode 4 hot shutdown | 51,222 lbm (23,234 kg) | **43,849 lbm (19,889 kg)** |
+| metal mass / heat capacity | 194,367 lbm / 43,484 kJ/K | **175,160 lbm / 39,128 kJ/K** |
+| ring fluid heat capacity | 93,855 kJ/K | **79,579 kJ/K** |
+| **metal : fluid** | 46.3 % | **49.2 %** |
+| charging max / normal | 29.36 / 7.50 gpm | **30.14 / 7.70 gpm** (+2.7 %) |
+
+**The design point does not move, and that is the strongest result here.** Settled at 300 s, hot
+full power: **2226.4 → 2226.5 psia**, hot leg 319.53 °C unmoved, cold leg 286.71 → 286.72,
+subcooling 44.1 °F both, level 57.65 → 57.68 %, power 99.74 → 99.73 %. Hot zero power: **2238.8
+psia both.** A 13.5 % mass change that leaves the equilibrium untouched is what you should expect
+from removing an inert volume — the pressurizer sets the pressure, and the phantom was never
+participating in that.
+
+### 110.4 The compliance number came back to its own published value
+
+| | before | after | §85's published figure |
+|---|---|---|---|
+| bubbled seat compliance | 182.8 kg/MPa | **192.6 kg/MPa** | **192** |
+| ring-node compliance, all nodes | 36.90 kg/MPa | 31.10 kg/MPa | — |
+| …the deleted node's share | **5.79 kg/MPa** | absent | §85: *"~5 kg/MPa"* |
+
+§85 priced the node at "~5 kg/MPa of the fast-insurge compliance" and measured **5.79**. It also
+published the seat at 192 kg/MPa, which the shipped plant read as **182.8** with the phantom in
+the ledger and reads as **192.6** without it — the double count had been detuning the number the
+document quotes.
+
+### 110.5 The plant, on two rides
+
+**The sourced Ginna loss-of-load spike (`run_pwr2_lossofload` case 2) holds every band.**
+
+| | before | after | band / source |
+|---|---|---|---|
+| settled start | 2215.2 psia | 2215.2 | 2200–2245 |
+| pressure at 5.4 s | 2382.8 psia (+168) | **2388.0 (+173)** | Table 15.2-1: **2425** |
+| indicated 2425 psia | 6.80 s | **6.68 s** | 3.5–8.0 |
+| peak | 2500.5 psia at 7.74 s | **2501.2 at 7.58 s** | 2500–2750 |
+
+It moved **toward** the sourced number, by 5 psi of 168. ⚠ The peak sits **1.2 psi** above its own
+band floor and sat 0.5 psi above it before — that margin is pre-existing and thin, and it is the
+band, not the plant, that should be looked at when someone next has cause to.
+
+**A small break (2.0 × 10⁻⁴ m², cold leg) runs ~15 % faster on a 13.5 % smaller plant**, which is
+the whole shape of the change and the reason §85 called it #408-class:
+
+| inventory | before | after |
+|---|---|---|
+| ≤ 95 % | 34.1 s | **29.2 s** |
+| ≤ 90 % | 78.7 s | **65.7 s** |
+| ≤ 85 % | 131.9 s | **114.1 s** |
+| ≤ 80 % | 189.7 s | **165.5 s** |
+| ≤ 75 % | 250.0 s | **219.5 s** |
+| at 1800 s | 16.54 %, 710.9 psia | **14.60 %, 671.0 psia** |
+
+Same break area, less water: the fractions arrive sooner and the gauge is now normalised against a
+denominator that is the plant rather than the plant plus a phantom. `run_pwr2_loca`'s named
+beyond-model hold moves with it, **115.58 s / 0.977 kg → 107.26 s / 1.9238 kg** (#585 is the defect
+that step names; it is unchanged in kind).
+
+A fixed-duty Mode 4 hold is untouched: Tavg 121.08 → **121.09 °C** over an hour, pressure
+364.3 → 370.5 psia on both sides.
+
+### 110.6 ⚠ THE RED THAT MATTERED: a check whose subject the defect had been manufacturing
+
+`run_pwr2_reactor`'s void-half check reported **`0.00 % void, 0 pcm = NaN pcm per % void`**.
+
+It rode `fixture({ rigid: true })` — a loop with no compressible volume — under a comment that
+argued the choice honestly: *"this check rides the RIGID plant DELIBERATELY… a boiling core is
+exactly what it honestly produces."* **Measured 2026-08-28: that loop parked at 8.55 MPa on the
+saturation line with 0.477 % quality ONLY BECAUSE THE PHANTOM NODE WAS IN IT** — 3.5453 m³ of
+stagnant water sitting at Tavg, acting as thermal ballast. Take the node out and the identical
+fixture runs to the **0.1 MPa property floor** with a **99 °C subcooled** core. Booting the rigid
+loop on the dome instead does not recover it: 8.0, 8.5 and 9.0 MPa all collapse to the floor too.
+**No arrangement of an uncontrolled loop reproduces the state, because the state was an artefact
+of the defect.**
+
+So the subject is **constructed and named** now — the settled plant's own pressure (2214 psia) and
+critical boron (626 ppm), core node placed at a stated 1.0 % quality = 5.71 % void by volume,
+giving **−386 pcm = −67.5 pcm per % void** inside the −250…−20 band. And because a term asserted at
+one state cannot be told from a constant, a second check pins that it **scales** (twice the quality
+→ −736 pcm) and is **exactly zero** one kJ/kg below `h_f`.
+
+**The trap to carry: a fixture that "honestly produces" a state can be producing it out of the
+defect you are about to remove.** Nothing in that comment was wrong when it was written; it was
+reasoning about a plant that had 3.5 m³ of water in it that should not have been there.
+
+### 110.7 The other five reds, one at a time
+
+1. **`run_pwr2_geometry` — "ALL nodes sum to the declared RCS total", 710.5 against 858.1.** The
+   fix working. Closure is now nodes **plus** the Layer-5 vessel, and `rcsVolume()` is asserted
+   beside it so the helper the engine actually calls cannot drift from the typed total.
+2. **"the declared band is exposed to consumers", 9.2 % against a `> 0.10` floor.** The fix
+   working, and **not a re-band to get green**: the pressurizer row was a 125.2 ft³ placeholder
+   against a 135.3 ft³ reference target, so #472's real 147.5 ft³ **attributes** 22.3 ft³ that had
+   been sitting in the unattributed residual. The declared uncertainty fell because a gap closed.
+   The floor moved to 0.05 and still catches the mutation it exists for (a declaration quietly
+   cut to 0.030).
+3. **"pressurizer is the highest node" — a TypeError on `null.z`.** Stale fixture. The claim it was
+   really making survives without that node: the **steam generator** is the loop's top, which is
+   what the natural-circulation thermal centre needs.
+4. **The #574 metal:fluid band, 39,128 kJ/K against a `> 40000` floor.** The check was
+   **mis-shaped**, and this is what exposed it: the denominator was the typed constant 93,855 and
+   the assertion was an ABSOLUTE band on the numerator. Deleting the node took metal **and** fluid
+   out together, so the absolute failed while the **ratio the #574 ruling was taken on went UP**,
+   46.3 % → 49.2 %. A typed denominator cannot tell a mass edit from a whole node leaving; the
+   denominator is computed from the node volumes now, and both numbers are reported.
+5. **`run_pwr2_loop` — "off-loop volumes are CARRIED but not transported", `OFF_LOOP.length === 2`.**
+   Stale fixture. One off-loop node now, and the check names it rather than counting it. ⚠ Two
+   margins narrowed and are recorded in the file: the transit check's off-loop-vs-total ratio falls
+   **1.290 → 1.097** against its own `> 1.05` guard, and the Courant off-loop filter's inert margin
+   falls from 3.6× to **1.8×**.
+
+### 110.7a ⚠ THE SIXTH RED, and it is a plant finding: the halt casualty stopped halting
+
+`verify_e2e_ui`'s #520 check drives a **real** casualty rather than faking `model_held` — a large
+break with the station blacked out — and waits for the simulation-halted dialog. After #583 it
+never came.
+
+**Measured in the browser, at ff=7200 (6,807 s of plant time): the primary parks at 83 psia against
+containment backpressure, 0 % pressurizer level, −50 °F subcooling, and STAYS there.** It is a
+wrecked plant that never leaves the property library's characterised range, because the steam
+generators still have auxiliary feed and keep taking the decay heat. More fast-forward does not
+help: 1,500 / 3,000 / 7,200 s all park at the same 83 psia. The old plant, with 2,539 kg more
+water in it, went out of range instead.
+
+**Block the auxiliary feed and it runs dry and leaves the envelope: 22 psia, held, dialog up** — at
+ff=1500 and again at ff=3000. So the driver is now
+`large_loca,station_blackout,afw_failure`, and `afw_failure` is load-bearing rather than
+decoration. That is a *better* casualty: the two-failure version was passing on where an
+uncontrolled blowdown happened to land, and this one names the reason the plant cannot cope.
+
+**⚠ AND ONE THING IS UNEXPLAINED, recorded rather than smoothed over.** The identical service,
+seed, initial condition, injections and fast-forward driven in **Node** report `model_held: true`
+on the two-failure casualty (held at 394 s); the **browser** does not. Everything I could compare —
+`seed: 0x1234`, `hot_full_power`, `severity: 1` on both failures, `set_speed 60` +
+`advanceCycles(250)`, `broadcastMs 100`, attention stops on — matches. The three-failure casualty
+holds on both, so the check is sound; the divergence is not, and it is written down here because
+the next person to see a browser/Node disagreement should not have to re-derive it.
+
+### 110.8 The bill
+
+`run_pwr2_geometry` 39 → **41** (21 → **24** mutations, three of them the double count coming back
+three different ways) · `run_pwr2_reactor` 41 → **42** · `run_pwr2_pressurizer` 92 → **94**
+(one vessel, one number — asserted across layers for the first time) · `verify_e2e_ui` unchanged at
+4 screenshots, with its #520 driver re-pointed per §110.7a. **Every other PWR2 runner is at baseline
+unmoved**, including all 12 pure-module gates and `run_pwr2_core`.
+
+**Filed and NOT fixed here:** the Layer-5 pressurizer's **metal wall** — 19,200 lbm (8,708 kg),
+4,354 kJ/K — which left with the node it was hung on. `pwr2_pressurizer.js:87` declares *"Wall
+metal is not modelled (no heat capacity, no wall condensation)"*, and the plant really has that
+metal; building it belongs in Layer 5, where it would damp the heater-driven pressure rate and add
+a condensation surface, and where it would re-open the Ginna-calibrated `tau_int_s`. Bundling that
+into a ledger fix is how a physics change hides inside an accounting one.

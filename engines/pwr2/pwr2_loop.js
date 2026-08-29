@@ -34,8 +34,14 @@
  *
  * OFF-LOOP, and deliberately NOT wired here:
  *   vessel_heads  a stagnant branch off the upper plenum — carried as volume, no transport
- *   pressurizer   hangs off the hot leg through the surge line. Its three-state model is
- *                 Layer 5 and #472 owns it; Layer 3 exposes the attachment point and stops.
+ *
+ * ⚠ THE PRESSURIZER IS NOT A NODE (#583, 2026-08-28). It hangs off the hot leg through the
+ * surge line, but its volume lives ENTIRELY in Layer 5 (`pwr2_pressurizer`, three regions,
+ * plugged into Layer 2's `extraMass` seat below). This list carried a second `pressurizer`
+ * here for a fortnight after Layer 5 landed, so the plant modelled 983 ft3 of RCS against its
+ * own declared 835.8 — 2,539 kg of RIGID water that no break, ECCS, CVCS or RHR path could
+ * reach, stiffening the pressure solve and inflating `M_nominal`. Layer 3's job at the surge
+ * line is the ATTACHMENT POINT (`hot_leg`), not a volume.
  *
  * UNITS ARE SI, as Layer 2. P MPa · h kJ/kg · V m3 · mdot kg/s · Q kW
  */
@@ -53,8 +59,9 @@
   /* The transport ring, in flow order. Names are Layer 1's node ids. */
   var RING = ['downcomer', 'lower_plenum', 'core', 'upper_plenum', 'hot_leg',
               'sg_primary', 'crossover', 'rcp', 'cold_leg'];
-  /* Carried as volume, not transported. */
-  var OFF_LOOP = ['vessel_heads', 'pressurizer'];
+  /* Carried as volume, not transported. ONE member since #583 — the pressurizer left because
+   * it was never a volume this layer owned; see the header. */
+  var OFF_LOOP = ['vessel_heads'];
 
   /* THE RATED LOOP FLOW, ONE COPY. It was a bare 1630 inside createLoop, and #574 needed a
    * second reader — the wall film scales with flow over rated — which is exactly how the

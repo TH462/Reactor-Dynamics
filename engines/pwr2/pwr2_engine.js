@@ -116,9 +116,11 @@
     var Pm = P_mpa === undefined ? P0 : P_mpa;
     var hH = W.h_l(Tm + dT / 2, Pm), hC = W.h_l(Tm - dT / 2, Pm),
         hA = W.h_l(Tm, Pm);
+    /* TEN nodes since #583 — there is no `pressurizer` key because there is no pressurizer
+     * NODE; the vessel is Layer 5's and seeds itself in createPressurizer. */
     return { downcomer: hC, lower_plenum: hC, core: hH, upper_plenum: hH, hot_leg: hH,
              sg_primary: hC, crossover: hC, rcp: hC, cold_leg: hC,
-             vessel_heads: hA, pressurizer: hA };
+             vessel_heads: hA };
   }
 
   /* THE INITIAL CONDITIONS (#507 §F, wave 7). Each is a SETTLED construction — the #502

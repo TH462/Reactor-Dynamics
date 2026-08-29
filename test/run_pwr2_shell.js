@@ -1527,14 +1527,15 @@ function runSuite(SH, rec, quiet, only) {
   /* #563 item 3 — rated_steam is every normalization's denominator and M_nominal is
    * core_inventory_pct's. Both are IC-derived and the service rebuilds at hot_full_power, so
    * before the fix a Mode 4 restore wore Hot Full Power's constants over its own saved mass:
-   * M_nominal 23,234 -> 18,876 kg (51,222 -> 41,613 lb) and the CORE INVENTORY indication
+   * M_nominal 19,889 -> 16,337 kg (43,849 -> 36,016 lb; 23,234 -> 18,876 before #583 took the
+   * phantom pressurizer node out of both) and the CORE INVENTORY indication
    * stepped 100.0 -> 123.1 % on a rewind that moved true mass -0.7 kg (-1.5 lb). */
   /* THE DISCRIMINATOR IS M_nominal (re-pointed 2026-08-27, #539). It was rated_steam, on the
    * reasoning that Mode 4's scale differed from Hot Full Power's — true then, and it is the
    * whole point of #539 that it is no longer: the rated scale is now FROZEN, one number for
    * every preset, so "differs from the constructor's" stopped discriminating anything.
    * M_nominal is the constant that legitimately varies by preset (a cold plant holds more
-   * water: 23,234 kg / 51,222 lb against 18,876 kg / 41,613 lb hot), so it is what proves the
+   * water: 19,889 kg / 43,849 lb against 16,337 kg / 36,016 lb hot), so it is what proves the
    * restore wore the SAVED plant's constants rather than the fresh one's. rated_steam stays in
    * the equality arms — it must still ride the save, it just cannot tell the two apart. */
   var hfpNominal = new SH.PWR2Engine({}).eng.M_nominal;

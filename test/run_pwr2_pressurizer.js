@@ -112,6 +112,21 @@ function runSuite(RD, rec, quiet) {
      PZ.RELIEF.porv_kgs, 2 * 179000 / 7936.64 * 300 / 1520, 0.01, 'kg/s');
   ck('level program full-power point is WTSM 10.3\'s 61.5 %', PZ.GEOM.level_program_full, 0.615, 0, '-');
   ck('high-level trip is Ginna\'s 87 %', PZ.GEOM.hi_level_trip_frac, 0.87, 0, '-');
+  /* ---- ONE VESSEL, ONE NUMBER (#583) -------------------------------------------------------
+   * The plant's volume ledger and this module both name a pressurizer volume, in two files, and
+   * NOTHING asserted they agree. They did not: Layer 1 carried 125.2 ft3 (a design-basis
+   * PLACEHOLDER `PWR_DESIGN_BASIS.md` §6 explicitly said "must be checked against #472's own
+   * number, not adopted over it") while this module derived 147.5 ft3 from Ginna — an 18 % split
+   * between two live numbers for one vessel, on top of the ring ALSO carrying it as a node. This
+   * is the check that was missing, and it is a cross-LAYER one: Layer 1 is the ledger, Layer 5
+   * owns the vessel, and the ledger row must be the vessel. */
+  ckT('the volume ledger\'s pressurizer row IS this vessel, to the last bit (#583)',
+      RD.geometry.LEDGER.pressurizer.m3 === PZ.GEOM.V_pzr_m3,
+      'ledger ' + RD.geometry.LEDGER.pressurizer.m3 + ' m3 vs GEOM ' + PZ.GEOM.V_pzr_m3 + ' m3');
+  ckT('...and the pressurizer is NOT also a ring node — that was the double count',
+      !RD.geometry.NODES.some(function (n) { return n.id === 'pressurizer'; }) &&
+      RD.loop.OFF_LOOP.indexOf('pressurizer') === -1,
+      RD.geometry.NODES.length + ' nodes, off-loop = ' + RD.loop.OFF_LOOP.join(', '));
 
   /* ---- 2. CONSTRUCTION ROUND-TRIPS --------------------------------------------------------- */
   head('CONSTRUCTION  [the state, the projection and the level must be ONE consistent object]');

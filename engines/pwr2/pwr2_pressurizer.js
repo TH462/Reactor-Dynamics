@@ -88,9 +88,14 @@
  *   - Relief discharge is REPORTED (`relief_kgs` at the steam region's own h — superheated when
  *     it is; liquid from the pool when solid) and must be wired by the caller as a negative
  *     source, the same one-step-lag convention as the break.
- *   - The loop's own 3.545 m3 'pressurizer' node (pwr2_geometry) is a stagnant liquid volume the
- *     mass ledger carries alongside this 4.176 m3 seat — a declared double-count with the surge
- *     line, worth ~5 kg/MPa of the fast-insurge compliance (D5 §85).
+ *   - ⚠ RESOLVED AT #583 (2026-08-28), and the line it replaces is kept because the shape of the
+ *     mistake is the lesson: "The loop's own 3.545 m3 'pressurizer' node (pwr2_geometry) is a
+ *     stagnant liquid volume the mass ledger carries alongside this 4.176 m3 seat — a declared
+ *     double-count with the surge line, worth ~5 kg/MPa of the fast-insurge compliance (D5 §85)."
+ *     DECLARING a double count is not the same as being allowed to keep one: it put 2,539 kg of
+ *     RIGID water in the plant, 17.6 % over the ledger's own total, and every inventory fraction
+ *     was normalised against it. The node is gone; this vessel is the only pressurizer, and
+ *     `run_pwr2_pressurizer` now asserts `GEO.LEDGER.pressurizer.m3 === GEOM.V_pzr_m3`.
  */
 (function (root) {
   'use strict';

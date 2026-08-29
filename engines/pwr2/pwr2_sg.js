@@ -181,7 +181,7 @@
    * gets broken by the next person who writes `stepSG(sg, someTemperature, ...)`. */
   function primaryTavg(sys) {
     /* THE LEGS, not `core` and `sg_primary`. Tavg IS (Thot + Tcold)/2 by definition, and this
-     * plant HAS hot_leg and cold_leg nodes -- Layer 1 builds eleven of them. The first version of
+     * plant HAS hot_leg and cold_leg nodes -- Layer 1 builds ten of them (eleven before #583). The first version of
      * this helper averaged the core and SG lumps instead, which are volume averages rather than
      * leg temperatures. Measured, it costs 0.14 degF (580.36 against 580.50), so it was not
      * material -- but it was the wrong pair, and `run_pwr2_sg`'s own tavg() helper had used the

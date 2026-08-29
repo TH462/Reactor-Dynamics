@@ -198,8 +198,10 @@ function runSuite(rec, quiet) {
       c.injected.toFixed(0) + ' kg injected, tank at ' +
       (100 * c.lastEc.acc_water_frac).toFixed(1) + ' %');
   /* ⚠ THE HELD STEP IS SUBTRACTED BY NAME, NOT ABSORBED INTO A TOLERANCE (#574). This fixture
-   * now reaches the beyond-model hold at 115.58 s, and the LATCHING step is itself held: the
-   * break books 0.977 kg and containment receives it while the plant's mass does not move. That
+   * now reaches the beyond-model hold at 107.26 s, and the LATCHING step is itself held: the
+   * break books 1.9238 kg and containment receives it while the plant's mass does not move.
+   * (115.58 s / 0.977 kg before #583 — the same break on a plant 13.5 % smaller gets there
+   * sooner, which is the whole shape of that change.) That
    * is the plant creating mass, it is filed as its own defect, and the honest thing for this
    * gate is to state the number rather than widen `1e-6` until it disappears. The identity is
    * asserted over the RUNNING portion; the held step is named on the next line. */

@@ -34,9 +34,12 @@ function loadFrom(src) {
   return new Function('RD_ROOT', body)(root);
 }
 
+/* TEN nodes since #583 — no `pressurizer` key, because there is no pressurizer node. The
+ * 1600 kJ/kg this map used to give it was the fixture's way of proving an off-loop node keeps
+ * its boot value; `vessel_heads` at 1280 (off the ring's 1240-1300 band) still does that. */
 var H0 = { downcomer: 1240, lower_plenum: 1245, core: 1290, upper_plenum: 1300, hot_leg: 1300,
            sg_primary: 1270, crossover: 1245, rcp: 1245, cold_leg: 1240,
-           vessel_heads: 1280, pressurizer: 1600 };
+           vessel_heads: 1280 };
 
 function runSuite(L, rec, quiet) {
   function ck(name, got, want, tol, unit) {
@@ -75,12 +78,19 @@ function runSuite(L, rec, quiet) {
       mismatched.length ? mismatched.join(', ') : sys.nodes.length + ' nodes matched exactly');
   var ringV = 0, totV = 0;
   sys.nodes.forEach(function (n) { totV += n.V; if (L.RING.indexOf(n.id) !== -1) ringV += n.V; });
+  /* ONE off-loop node since #583, not two. The pressurizer left because it was never a volume
+   * this layer owned — Layer 5's vessel plugs into the extraMass seat and the ring node of the
+   * same name was a 3.5453 m3 double count. `vessel_heads` is the whole off-loop set now, and
+   * the check still has to see that it is CARRIED (in sys.nodes, in the mass ledger) and NOT
+   * transported (no junction names it) — which the flow-list scan below is what proves. */
   ckT('off-loop volumes are CARRIED but not transported',
-      totV > ringV && L.OFF_LOOP.length === 2,
-      'ring ' + (ringV * 35.3147).toFixed(1) + ' ft3 of ' + (totV * 35.3147).toFixed(1) + ' ft3 total');
+      totV > ringV && L.OFF_LOOP.length === 1 && L.OFF_LOOP[0] === 'vessel_heads' &&
+      L.OFF_LOOP.indexOf('pressurizer') === -1,
+      'ring ' + (ringV * 35.3147).toFixed(1) + ' ft3 of ' + (totV * 35.3147).toFixed(1) +
+      ' ft3 total; off-loop = ' + L.OFF_LOOP.join(', '));
 
   /* ---- THE METAL WALLS ARE WIRED ON (#574) --------------------------------------------------
-   * This is the layer where the dark wire was. Layer 1 has shipped `wallLumps` on all eleven
+   * This is the layer where the dark wire was. Layer 1 has shipped `wallLumps` on every
    * nodes since it was written and NOTHING read it, so the table looked like a working feature.
    * These checks are about the WIRING — Layer 2 owns the physics and has its own. */
   if (!quiet) console.log('\nMETAL WALLS WIRED  [Layer 1 had them, nothing read them]');
@@ -332,6 +342,10 @@ function runSuite(L, rec, quiet) {
   sysT.nodes.forEach(function (n) { Vall += n.V; if (L.RING.indexOf(n.id) !== -1) Vring += n.V; });
   var rho = RD.water.rho_from_h(sysT.nodes[0].h, sysT.P);
   ck('transit uses the RING volume, not the whole plant', tt, Vring / (1630 / rho), 1e-9, 's');
+  /* ⚠ MARGIN NOTE (#583): this ratio was 1.290 while the phantom pressurizer node was in the
+   * ledger and is 1.097 now that `vessel_heads` is the only off-loop volume. The check still
+   * bites, but on 4.7 points instead of 24 — if a future change ever makes the off-loop set
+   * small enough to pass this vacuously, the transit check above stops being able to fail. */
   ckT('...and the two genuinely differ, so that check can fail', Vall > Vring * 1.05,
       'ring ' + Vring.toFixed(2) + ' m3 vs plant ' + Vall.toFixed(2) + ' m3');
   ckT('loop transit is REPORTED, never banded', isFinite(tt) && tt > 0,
@@ -421,8 +435,11 @@ function runSuite(L, rec, quiet) {
       'dt = ' + (lim * 2).toFixed(3) + ' s -- the layer still STEPS; it just stops doing so silently');
   /* THE OFF-LOOP FILTER IS CORRECT AND CURRENTLY INERT, and that was measured rather than
    * assumed. Deleting `if (RING.indexOf(...) === -1) continue;` changes nothing today, because
-   * both off-loop nodes -- vessel heads 1.78 m3 and the pressurizer 3.55 m3 -- are LARGER than
-   * the cold leg at 0.99 m3, so the minimum does not move. It carries no mutation for the same
+   * the one off-loop node -- vessel heads at 1.78 m3 -- is LARGER than the cold leg at 0.99 m3,
+   * so the minimum does not move. (It read "both off-loop nodes ... and the pressurizer 3.55 m3"
+   * until #583 deleted that node; the conclusion is unchanged, the count is not.) The margin is
+   * now 1.8x rather than 3.6x, so this is closer to becoming live than it was. It carries no
+   * mutation for the same
    * reason NH and the boron floor carry none (D1 §31.1d): a mutation that cannot fail is noise in
    * a self-test that exists to prove things can. The filter STAYS because it is correct -- an
    * off-loop node is not on the transport path and its residence time is meaningless there -- not
@@ -436,8 +453,8 @@ function runSuite(L, rec, quiet) {
           if (m < mm) { mm = m; id = n.id; }
         });
         return id !== null && L.OFF_LOOP.indexOf(id) === -1;
-      })(), 'binds on a ring node; both off-loop volumes are larger, so excluding them is inert ' +
-      'TODAY and would not be if one ever shrank');
+      })(), 'binds on a ring node; the off-loop volume is larger, so excluding it is inert ' +
+      'TODAY and would not be if it ever shrank');
 
   ckT('the limit tightens when the loop runs faster', (function () {
         var slow = L.createLoop({ h: H0, P: 15.41, mdot: 400 });

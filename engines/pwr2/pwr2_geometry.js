@@ -19,9 +19,12 @@
  * ---------------------------------------------------------------------------------------
  * THE HONEST HEADLINE, because it governs how much anything below is worth:
  *
- * **The RCS volume ledger carries a 12.1 % unattributed fraction** — 101.4 ft³ (2.87 m³) of
- * 835.8 ft³ (23.67 m³). Inventory-dependent timings (boil-off, time to uncovery, ECCS
- * adequacy margins) are good to about ±12 % and NO BETTER. Declared, not hidden: D1 §24.
+ * **The RCS volume ledger carries a 9.2 % unattributed fraction** — 79.1 ft³ (2.24 m³) of
+ * 858.1 ft³ (24.30 m³). Inventory-dependent timings (boil-off, time to uncovery, ECCS
+ * adequacy margins) are good to about ±9 % and NO BETTER. Declared, not hidden: D1 §24.
+ * (It was 12.1 % of 835.8 ft³ until #583: the pressurizer row was a 125.2 ft³ DESIGN-BASIS
+ * PLACEHOLDER, and #472's real vessel is 147.5 ft³ — swapping it closes 22.3 ft³ of the
+ * declared shortfall. The fraction fell because a gap was CLOSED, not because a band moved.)
  *
  * **The vessel split assumes internal proportions are SCALE-INVARIANT** and that is a claim,
  * not a measurement (D3 §7.0). Its likely error direction is known — a smaller plant's plena
@@ -52,13 +55,36 @@
     piping:       { m3: ft3(108.1), kind: '[derived]', note: 'Almaraz per-loop 353 ft3 x 0.3054' },
     sg_primary:   { m3: ft3(259.3), kind: '[derived]', note: 'EPRI NP-1721 Model 51 tube geometry, scaled' },
     rcp:          { m3: ft3(28.1),  kind: '[derived]', note: 'sourced casing water 80 ft3 x 300/852.75' },
-    pressurizer:  { m3: ft3(125.2), kind: '[derived]', note: '#472 owns the model; volume from the design basis' }
+    /* ⚠ NOT A NODE (#583). This row is the Layer-5 VESSEL — `pwr2_pressurizer.GEOM.V_pzr_m3`,
+     * 4.176 m3 — and it deliberately has no entry in NODES below. Until 2026-08-28 the ring
+     * ALSO carried a stagnant `pressurizer` node at the 125.2 ft3 design-basis placeholder, so
+     * the plant modelled 983 ft3 of RCS against this table's own 835.8: the pressurizer was in
+     * the ledger twice, at two different sizes, and 2,539 kg of it was rigid water no break,
+     * ECCS, CVCS or RHR path could reach. `PWR_DESIGN_BASIS.md` §6 flagged the 125.2 as a
+     * placeholder when it wrote it — "must be checked against #472's own number, not adopted
+     * over it" — and nothing ever checked. `run_pwr2_pressurizer` now asserts the equality. */
+    pressurizer:  { m3: 4.176, kind: '[derived]',
+                    note: 'the LAYER-5 VESSEL, not a ring node (#583) — pwr2_pressurizer GEOM, ' +
+                          'Ginna TS Bases ML20339A221 B 3.4.9 (650 ft3 = 87 %) scaled per-MWt = 147.5 ft3' }
   };
-  var RCS_TOTAL_M3 = ft3(835.8);        // [derived] the ledger sum
-  var UNATTRIBUTED_M3 = ft3(101.4);     // [derived] D1 §24 — 12.1 % of the total, DECLARED
+  var RCS_TOTAL_M3 = ft3(858.1);        // [derived] the ledger sum = 10 ring nodes + the vessel
+  var UNATTRIBUTED_M3 = ft3(79.1);      // [derived] D1 §24 — 9.2 % of the total, DECLARED
+  /* THE WHOLE REACTOR COOLANT SYSTEM, computed — nodes PLUS the Layer-5 vessel.
+   * Four consumers used to sum NODES and call it the plant (CVCS volume scale, CVCS boron mass,
+   * CVCS max fill rate, the ECCS accumulator, whose comment literally read "the whole RCS incl.
+   * pressurizer"). That was accidentally right while the phantom node existed and would have
+   * silently cut charging and accumulator inventory 15 % the moment it went. One function now,
+   * so the next consumer cannot get it wrong: #583. */
+  function rcsVolume() {
+    var V = 0;
+    for (var i = 0; i < NODES.length; i++) V += NODES[i].V;
+    return V + LEDGER.pressurizer.m3;
+  }
 
   /* ================================================================ NODES
-   * The 12-node topology is D3 §2. Volumes below are what §2's table never carried.
+   * The topology is D3 §2's, less its `pressurizer` row — TEN nodes since #583, because the
+   * pressurizer is Layer 5's vessel and a ring node of that name double-counted it. Volumes
+   * below are what §2's table never carried.
    *
    * VESSEL SPLIT — *(OWNER RULING, 2026-08-14: selected "Scale from real-plant proportions")*.
    * Almaraz vessel internal fractions, [sourced] NUREG/IA-0444 Table 6:
@@ -93,9 +119,11 @@
     { id: 'rcp',         V: ft3(28.1), z: -1.52, transport: 'stirred', wallLumps: 1,
       kind: '[derived]', note: 'sourced casing water 80 ft3, power-scaled' },
     { id: 'cold_leg',    V: ft3(34.85),z:  0.61, transport: 'plug',    wallLumps: 2,
-      kind: '[derived]', note: 'Almaraz 3.23 m3 x 0.3054; ECCS injects here' },
-    { id: 'pressurizer', V: ft3(125.2),z:  9.00, transport: 'stirred', wallLumps: 1,
-      kind: '[derived]', note: '#472 owns the model — three states, D2 §25.2' }
+      kind: '[derived]', note: 'Almaraz 3.23 m3 x 0.3054; ECCS injects here' }
+    /* ⚠ THERE IS NO `pressurizer` NODE, and that is the fix, not an omission (#583). The
+     * vessel is Layer 5's — three regions, its own volume, plugged into Layer 2's `extraMass`
+     * seat — and a ring node of the same name double-counted it. See LEDGER.pressurizer above.
+     * The topology is TEN nodes: nine on the ring plus `vessel_heads` off it. */
   ];
 
   /* ================================================================ LOOP RUNS
@@ -136,8 +164,9 @@
   /* ================================================================ METAL WALLS (#574)
    * *(OWNER, 2026-08-12, on #474: "each node should carry the heat capacity of its own metal
    * wall, not just the fluid it contains ... thermal lag through cladding/tube walls, RCP casing
-   * warm-up, RPV wall stored heat during a cooldown.")* — built for all eleven nodes
-   * *(OWNER RULING, 2026-08-28: "All eleven nodes", from three costed options)*.
+   * warm-up, RPV wall stored heat during a cooldown.")* — built for EVERY node
+   * *(OWNER RULING, 2026-08-28: "All eleven nodes", from three costed options; there are ten
+   * since #583 deleted the phantom pressurizer, and the ruling was "every one", not "eleven")*.
    *
    * ⚠ THE RULING WAS TAKEN AGAINST A MEASUREMENT THAT PARTLY OVERTURNED ITS OWN PREMISE. The
    * comment above guessed "the U-tubes and RCP casing are probably where it matters most".
@@ -284,19 +313,18 @@
               note: 'casing shell 2.5x the cold-leg wall (PWR_LOOP_GEOMETRY method) on THIS ' +
                     'file\'s 28.1 ft3 cavity — its own 5,300 lbm is on a 9.5 ft3 one' };
 
-    /* PRESSURIZER ---------------------------------------------------------------------------- */
-    /* ⚠ THIS NODE IS UNDER DISPUTE (#583): the ring carries it as an off-loop volume AND
-     * pwr2_pressurizer's vessel is added on top as extraMass, so the pressurizer is in the mass
-     * ledger twice at two different sizes. Its wall is derived here on the SAME ASME rule as the
-     * vessel so that, if #583 resolves by deleting the node, the wall moves with it and there is
-     * one place to change rather than two. */
-    var V_pz = nodeV('pressurizer'), LD_z = 5;               /* Westinghouse pressurizers are tall */
-    var D_z = Math.cbrt(4 * V_pz / (LD_z * Math.PI)), L_z = LD_z * D_z, r_z = D_z / 2;
-    var t_z = asmeT(r_z);
-    w.pressurizer = { M_kg: (Math.PI * L_z * t_z * (D_z + t_z) + 2 * Math.PI * r_z * r_z * t_z) *
-                            WALL_MAT.cs.rho,
-                      A_m2: Math.PI * D_z * L_z + 2 * Math.PI * r_z * r_z, t_m: t_z, mat: 'cs',
-                      kind: '[derived]', note: 'ASME on the node\'s own volume at L/D 5 — see #583' };
+    /* PRESSURIZER — DELIBERATELY ABSENT (#583) ------------------------------------------------
+     * There was a `w.pressurizer` here, 8,708 kg / 4,354 kJ/K on an ASME shell derived from the
+     * ring node's own 3.5453 m3. The NODE was a double count of the Layer-5 vessel and is gone,
+     * and the header this block used to carry said so: "if #583 resolves by deleting the node,
+     * the wall moves with it and there is one place to change rather than two." It did, so it has.
+     *
+     * ⚠ THE PLANT REALLY HAS THAT METAL — this file is not the place it now belongs.
+     * `pwr2_pressurizer.js` declares "Wall metal is not modelled (no heat capacity, no wall
+     * condensation)", so the vessel's shell is owed to LAYER 5, where it would damp the
+     * heater-driven pressure rate and add a condensation surface. Filed as its own issue rather
+     * than smuggled in here on a node that does not exist. WALLS is keyed by NODE ID and every
+     * node must have one (the gate asserts it); a Layer-5 vessel is not a node. */
     return w;
   })();
 
@@ -324,14 +352,21 @@
     NODES: NODES, LEDGER: LEDGER, LOOP: LOOP, FORM_LOSS_K: FORM_LOSS_K,
     LOOP_INERTIA_OMITTED: LOOP_INERTIA_OMITTED,
     /* THE METAL WALLS (#574). One entry per node, keyed by node id; every node has one, which
-     * is the point — `wallLumps` shipped on all eleven with zero consumers for months and read
+     * is the point — `wallLumps` shipped on every node with zero consumers for months and read
      * as a working feature. A node missing from here is a defect, and the gate says so. */
     WALLS: WALLS, WALL_MAT: WALL_MAT, ASME: ASME, wallMassTotal: wallMassTotal,
     RCS_TOTAL_M3: RCS_TOTAL_M3,
+    /* THE WHOLE RCS, computed: nodes + the Layer-5 vessel. Consumers that mean "the plant" call
+     * THIS, not `Σ NODES` — which stopped being the plant when #583 deleted the phantom node. */
+    rcsVolume: rcsVolume,
     UNATTRIBUTED_M3: UNATTRIBUTED_M3,
     /* The declared band travels WITH the data, so a consumer cannot read the volumes
-     * without meeting the uncertainty. D1 §24. */
-    INVENTORY_UNCERTAINTY: 0.121,
+     * without meeting the uncertainty. D1 §24.
+     * 0.121 -> 0.092 at #583: NOT a re-band. The pressurizer row was a 125.2 ft3 placeholder
+     * against a 135.3 ft3 reference target; #472's real vessel is 147.5, so 22.3 ft3 of the
+     * declared shortfall is now attributed. The gate's floor moved with it, and its own comment
+     * says why. */
+    INVENTORY_UNCERTAINTY: 0.092,
     ALMARAZ_VESSEL_FRACTIONS: {                       // [sourced], kept for re-derivation
       upper_head: 0.117, upper_plenum: 0.278, core: 0.140,
       lower_plenum: 0.200, downcomer: 0.198, residual: 0.066

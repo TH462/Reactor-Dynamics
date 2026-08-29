@@ -30,6 +30,29 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
 
 ## [Unreleased]
 
+### Fixed (#583 — the pressurizer was in the mass ledger twice, 2026-08-28)
+
+Full write-up: `Blueprint/PWR2_VALIDATION.md` §110.
+
+- **The plant had two pressurizers.** A rigid 125.2 ft³ stand-in sat in the coolant loop while the
+  real 147.5 ft³ vessel ran alongside it, so the reactor coolant system modelled **983 ft³ against
+  its own declared 835.8** — 17.6 % too much water, and **5,598 lbm (2,539 kg)** of it was water no
+  leak, injection or cooldown path could ever move. The stand-in is gone; the ledger now carries
+  the real vessel.
+- **Reactor coolant mass is 36,016 lbm (16,337 kg), down 13.5 %** — and the plant settles exactly
+  where it did: **2226.4 → 2226.5 psia**, 44.1 °F of core subcooling, hot leg unmoved. The removed
+  water was inert, so the design point never depended on it.
+- **A leak now empties the plant at the right rate.** A small break reaches 75 % inventory in
+  **219.5 s instead of 250.0** — the same hole in a smaller plant. The RCS INVENTORY indication is
+  a fraction of the real plant instead of the plant plus a phantom.
+- **Charging and accumulator sizing were pinned to the whole plant, not the loop.** Maximum
+  charging reads **30.1 gpm** and the safety-injection accumulator is sized on the whole coolant
+  system including the pressurizer — both would have silently dropped 15 % otherwise. Boron now
+  mixes into the plant's real mass, so boration and dilution move about 5 % faster.
+- **Pressurizer pressure response is 5 % softer to a fast insurge** (192.6 kg/MPa against 182.8) —
+  the stand-in had been stiffening it. The sourced Ginna loss-of-load pressure spike moves 5 psi
+  closer to the real plant's recorded 2425 psia.
+
 ### Added (#574 — every node carries the heat capacity of its own metal, 2026-08-28)
 
 Full write-up: `Blueprint/PWR2_VALIDATION.md` §109.
