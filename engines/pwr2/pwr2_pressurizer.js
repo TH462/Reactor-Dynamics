@@ -327,6 +327,30 @@
      * (holds program, restores after a drain), not these two numbers. */
     kp_per_pct: 0.05,
     ki_per_pct_s: 1 / 300,
+    /* THE PROGRAM REFERENCE'S OWN LAG, seconds (#516 item 10, 2026-08-29). The program is a
+     * function of Tavg and the caller wires it to the INDICATED channel, correctly (HR1) —
+     * but it was reading that channel RAW. The slope here is 36.5 points of level over the
+     * 12.83 degC span, i.e. 2.84 % per degC, so instrument noise is AMPLIFIED into setpoint
+     * motion. Measured at steady full power with feed in manual: TRUE Tavg spanned 0.022 degC
+     * while INDICATED spanned 0.63 degC, and the published program swung 1.77 % — the charging
+     * controller chased it from 0 to 17 gpm, which is what "charging in auto doesnt hold the
+     * pzr level" looks like from the board.
+     *
+     * The PI cannot reject this. Its own sourced justification (WTSM 10.3, quoted below) is to
+     * ignore "small temporary level perturbations" — noise on the MEASUREMENT — and this noise
+     * arrives on the SETPOINT, where no amount of integral action helps.
+     *
+     * A lag is the physical answer, not merely a filter: the program represents the THERMAL
+     * EXPANSION of the coolant, and the bulk inventory of an RCS cannot change volume at the
+     * bandwidth of an RTD's noise. Same shape and same reason as pwr2_feedwater's sourced
+     * `level_lag_s`.
+     *
+     * 25 s, and the trade is measured both ways. Program noise falls 2.472 -> 1.018 % and the
+     * charging hunt 9.99 -> 7.80 gpm; 60 s would reach 0.593 % but a first-order lag costs
+     * tau*rate of TRACKING error on a real ramp, so at the ruled 100 degF/hr limit (0.01543
+     * degC/s over a 2.845 %/degC slope) 25 s lags program by 1.10 % and 60 s by 2.63 %. The
+     * larger lag buys 0.4 % of noise for 1.5 % of ramp error, which is the wrong way round. */
+    program_lag_s: 25.0,
     demand_bias: 46 / 180                /* the source's "normally maintained at 46 gpm" over
                                           * its 180 gpm max — the balance point the PI trims */
   };
@@ -485,6 +509,10 @@
       emptied: false,
       heatersShed: false,
       levErrInt: 0,                      /* the level PI's integral state, %*s */
+      /* the PROGRAM REFERENCE's lagged temperature (#516 item 10). undefined until the first
+       * step, which primes it from that step's Tavg — so a boot, a load and a rewind all start
+       * on program rather than ramping onto it. Old saves carry no field and prime the same. */
+      tavgProg_c: undefined,
       lowLevelCut: false,                /* the 17 % letdown-isolate / heater-cut latch */
       porvStuck: false,                  /* the TMI failure LATCH: set by the first lift while
                                           * drivers.porv_stick is armed, cleared only with it */
@@ -752,7 +780,14 @@
     var level_pct = 100 * pz.V_liq / V;
     var level_ctl = drivers.indicated_level_pct !== undefined ? drivers.indicated_level_pct
                                                               : level_pct;
-    var program_pct = 100 * (drivers.tavg_c !== undefined ? levelProgram(drivers.tavg_c)
+    /* THE PROGRAM REFERENCE, off the LAGGED indicated Tavg (#516 item 10) — see
+     * LEVEL.program_lag_s for the measurement and why a lag rather than a faster controller. */
+    if (drivers.tavg_c !== undefined) {
+      if (pz.tavgProg_c === undefined || !isFinite(pz.tavgProg_c)) pz.tavgProg_c = drivers.tavg_c;
+      else if (dt > 0)
+        pz.tavgProg_c += (dt / LEVEL.program_lag_s) * (drivers.tavg_c - pz.tavgProg_c);
+    }
+    var program_pct = 100 * (drivers.tavg_c !== undefined ? levelProgram(pz.tavgProg_c)
                                                           : GEOM.level_program_full);
     var levErr = program_pct - level_ctl;              /* positive = level LOW, charge more */
     /* ANTI-WINDUP: the integral's authority is capped at ±0.5 of demand (±150 %·s at this Ki)

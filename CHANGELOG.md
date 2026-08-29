@@ -30,6 +30,71 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
 
 ## [Unreleased]
 
+### Changed (#516 Group C — the board polish, 2026-08-29)
+
+Full write-up: `Blueprint/PWR2_VALIDATION.md` §121. Items 3, 4 and 5 of the owner's playtest list,
+all measured off the board doc rather than eyeballed.
+
+- **The core fluid column now runs from the top of the fuel to the bottom of the plate below it**
+  (item 5). It was drawn 269–456 while the fuel rods run 276–454 — so the water started **7 px
+  above the top of the fuel**, and 276 is exactly where the upper-plenum fluid *ends*, so the two
+  overlapped instead of meeting. Now 276–472, the lower bound being the flow-hole blocks under the
+  core, with named constants replacing four hard-coded literals.
+- **The REACTIVITY / PERIOD readouts have a card behind them** (item 4). They sat on bare canvas
+  because the NUC INSTR (NIS) card above them ends at y 415 — the exact pixel the REACTIVITY label
+  starts on. The new card follows that card's own 120-wide inner-box idiom. The PERIOD readout
+  moves up 5 px and right-aligns with the reactivity value above it, which was 15 px away despite
+  the two being stacked numbers.
+- **The Plant & Mission button says what it does** (item 3): **Select Plant, Mission & Reset**.
+  The old label named the window rather than the action, and reset — the one irreversible thing
+  behind it — was not on the button at all.
+
+
+### Fixed (#516 Group A — the owner's own playtest, three controls that lied, 2026-08-29)
+
+Full write-up: `Blueprint/PWR2_VALIDATION.md` §120. GitHub issue #516 is the owner's free-play
+session against PWR2 in the browser — 11 items, filed unlabelled and never worked while 20-plus
+commits of agent-found defect work landed around it. *(OWNER RULING, 2026-08-29: selected
+"All 11, in order A->B->C" from options I wrote — a selection, not verbatim words.)* Group A is
+the four control items.
+
+- **The charging setpoint box was bounded on the RETIRED plant, at exactly 2× this plant's
+  capacity** (item 11). The board took its ceiling from `RD.PWR_CONFIG.reactivity.charging_max`
+  captured at script load — 60 gpm — while the shell clamps the demand against PWR2's own
+  **30.14 gpm (6.85 m³/h)**, so every setpoint between the two landed on the same full-open
+  valve, under a caption reading "0-60 gpm". **The unfinished half of #579**, which derived
+  30.1 gpm and corrected only the manual. The plant now publishes `charging_max_gpm`; the board
+  prefers it and keeps the config literal as a byte-identical fallback for the retired engine.
+  The caption is derived too — it is a literal string inside *generated* board data, so a bound
+  fixed without it leaves the lie on the screen. The `Charging flow` inspect card's three
+  dynamic claims were the retired plant's as well and are re-measured: max charging against
+  isolated letdown raises level **5 %/min** (not 33) and trips the reactor on high pressurizer
+  level at **87 %** in about **five minutes** (not the 97 % trip "in a little over a minute"),
+  and against both letdown orifices it **gains 3 %/min and trips in under eight** — the shipped
+  copy said it loses 0.7 %/min, the wrong sign.
+- **The SG Feed setpoint box read back DELIVERED flow, so its arrows could not walk** (item 1).
+  Measured through the renderer's own path: eight +1 gpm clicks moved the box **+0.5 gpm**,
+  because each click re-anchored the operator's demand onto a value still trailing the 8 s feed
+  pump lag. The retired engine published that channel as the COMMANDED value until 2026-07-25
+  and the box was authored against that convention. The plant now publishes `feed_demand_pct`
+  beside the delivered figure, which is untouched — five reader tiles are calibrated to it.
+  After: **+1.000 gpm per click**.
+- **Charging in AUTO chased a noisy setpoint** (item 10). The pressurizer level program is a
+  function of Tavg, correctly wired to the *indicated* channel — but read raw, and its slope is
+  **2.845 % per °C**. At steady full power the true Tavg spans **0.022 °C** while the indicated
+  channel spans **0.63 °C**, swinging the published program **1.77 %** and hunting charging from
+  0 to 17 gpm. The level controller structurally cannot reject that, because it arrives on the
+  setpoint rather than the measurement. The reference now carries a **25 s** lag — the program
+  is coolant thermal expansion, which cannot move at an RTD's noise bandwidth — taking program
+  noise to **1.018 %** and the hunt to **7.80 gpm**, at a measured 1.097 % of tracking error on
+  a 100 °F/hr ramp.
+- **The feedwater flow controller was missing its proportional half.** The module header says
+  the source gives the structure as *two* PI controllers; the second was realized as valve rate
+  alone, which is an I, not a PI. Now built. This is **not** the fix for the owner's item 2 —
+  the feed loop limit-cycles at steady full power (2.27 % of SG level, and **0.80 % of reactor
+  power** with it) and no gain in the module fixes it. Measured, diagnosed and filed as **#590**.
+
+
 ### Fixed (#579/#580/#577/#575/#500/#576c — the retired plant's numbers, as the player reads them, 2026-08-29)
 
 Full write-up: `Blueprint/PWR2_VALIDATION.md` §119. Four of the six carried a dated owner ruling

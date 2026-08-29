@@ -295,6 +295,63 @@ function runSuite(quietRec) {
     pr && ('below ' + (spPsi - pr.normLo).toFixed(1) +
       ' psi, above ' + (pr.normHi - spPsi).toFixed(1) + ' psi'));
 
+  /* ---- 2b. THE CHARGING BOX'S CEILING (#516 item 11) --------------------------------------
+   * The owner read "0-60 gpm" off the board and found the box refused anything over 30. Both
+   * halves came from `RD.PWR_CONFIG.reactivity.charging_max` captured at script load — the
+   * RETIRED engine — while `set_charging_flow` clamps the demand to [0,1] against THIS plant's
+   * 30.14 gpm, so the top half of the range was one indistinguishable value. */
+  if (!rec) head('CHARGING SETPOINT BOX  [the ceiling belongs to THIS plant, #516 item 11]');
+  var CVC = globalThis.RD.pwr2.cvcs.CVCS;
+  var chgMax = CVC.charging_max_gpm();
+  var cb = D.boundsFor({ id: 'imrpq48hn3t', unit: 'gpm' });
+  q('the bound is this plant CHARGING CAPACITY, not the retired 60 gpm',
+    cb && Math.abs(cb[1] - chgMax) <= 1 && cb[0] === 0,
+    cb ? (cb[0] + '-' + cb[1] + ' gpm against CVCS ' + chgMax.toFixed(2)) : 'no bounds');
+  /* THE DISCRIMINATOR: a box that still carried the retired 60 would pass nothing here, and a
+   * box bounded at some OTHER wrong number would pass the check above only if it happened to
+   * sit within 1 gpm of the plant. This one names the defect's own signature — the shipped
+   * ceiling was exactly 2x the plant's. */
+  q('and it is NOT the retired 60 gpm, which is 2x what this plant can charge',
+    cb && cb[1] < 45,
+    cb ? ('max ' + cb[1] + ' gpm; retired board bound was 60') : 'no bounds');
+  /* The CAPTION is the half the owner actually read. Its authored label is the literal string
+   * "0-60 gpm" in generated board data, so a bound fixed without the caption leaves the lie on
+   * the screen. */
+  var chgHint = D.numberHint({ id: 'imrpq48hn3t', unit: 'gpm', label: '0-60 gpm' });
+  q('the range caption is DERIVED, so it cannot still read the authored "0-60 gpm"',
+    typeof chgHint === 'string' && chgHint.indexOf('60') === -1 &&
+    chgHint.indexOf(String(Math.round(chgMax))) !== -1,
+    'caption "' + chgHint + '"');
+
+  /* ---- 2c. THE SG FEED BOX WALKS (#516 item 1) --------------------------------------------
+   * The owner: the arrows "don't like to change the number". The box read back
+   * `feed_pump_speed_pct` — the DELIVERED feed fraction, behind the feed pump lag — so each
+   * click re-anchored the operator's demand onto a value still trailing the previous click.
+   * Measured on the shipped plant: eight +1 gpm clicks moved the box +0.5 gpm in total.
+   *
+   * THIS DRIVES THE RENDERER'S OWN PATH, numberFor -> onNumber, not the NUMBERS map directly,
+   * so it covers the unit layer and the driver seam the operator actually goes through. */
+  if (!rec) head('SG FEED SETPOINT BOX  [an arrow click must move it one step, #516 item 1]');
+  var fbItem = { id: 'imro8xhy2me', unit: 'gpm' };
+  var fbStart = D.numberFor(fbItem, w.snap());
+  var fbN = 8, fbStep = 1;
+  for (var fbI = 0; fbI < fbN; fbI++) {
+    D.onNumber(fbItem, D.numberFor(fbItem, w.snap()) + fbStep);
+    w.tick(1);
+  }
+  var fbEnd = D.numberFor(fbItem, w.snap());
+  var fbMoved = fbEnd - fbStart;
+  q('eight +1 gpm arrow clicks move the box +8 gpm, not a fraction of one',
+    fbStart != null && fbEnd != null && Math.abs(fbMoved - fbN * fbStep) < 0.5,
+    'moved ' + fbMoved.toFixed(2) + ' gpm of ' + (fbN * fbStep) + ' asked');
+  /* THE DISCRIMINATOR. A box reading the DELIVERY is not merely slow — it CONVERGES, because
+   * each click's increment is eaten by the lag the previous click has not worked off. The
+   * shipped defect moved 6 % of what was asked; anything reading a lagging channel lands far
+   * below one step per click however long the ride. */
+  q('and the walk is monotone per click (a delivery-reading box converges instead)',
+    fbStart != null && fbEnd != null && fbMoved > fbN * fbStep * 0.9,
+    'per click ' + (fbMoved / fbN).toFixed(3) + ' gpm (shipped defect: 0.06)');
+
   /* ---- 3. the payload fixes, through the whole stack -------------------------------------- */
   if (!rec) head('ROUND TRIPS  [the #506.1 payload fixes land through service+kernel+shell]');
   /* WHITE-BOX on the pump switch: at 2235 psia a started HHSI pump is DEADHEADED (zero flow
@@ -684,6 +741,21 @@ var MUTS = [
    SHPATH, SHSRC,
    '      pressure_band_psi: [PZ.CONTROL.backup_on_psi, PZ.CONTROL.spray_start_psi],',
    '      pressure_band_psi: undefined,'],
+  /* #516 item 11: the plant stops publishing its charging ceiling, so the setpoint box falls
+   * back on the RETIRED engine's 60 gpm against PWR2's 30.14 — the exact shipped defect, and
+   * invisible to a source read for the same reason #576c was: the fallback IS the old code. */
+  ['the plant stops publishing its charging ceiling (the box reverts to 60 gpm)',
+   SHPATH, SHSRC,
+   '      charging_max_gpm: RD.cvcs.CVCS.charging_max_gpm(),',
+   '      charging_max_gpm: undefined,'],
+  /* #516 item 1: the SG feed setpoint box goes back to reading the DELIVERED feed fraction —
+   * the shipped defect exactly. Not a severed publication but a swapped READ, because that is
+   * the shape the defect had: `feed_demand_pct` can be published perfectly and the box still
+   * ignore it. Falls to the old channel, which is the working fallback, so a source read sees
+   * nothing wrong — the arrows just stop walking. */
+  ['the SG feed box reads DELIVERED flow again (the arrows stop walking)', WIRING_PATH, WSRC,
+   "var d = c.feed_demand_pct; return ((d != null && isFinite(d)) ? d : (c.feed_pump_speed_pct || 0)) * GPM_FEED_PER_PCT;",
+   'return (c.feed_pump_speed_pct || 0) * GPM_FEED_PER_PCT;'],
   /* #561: the plant stops handing its own delta-T equation to the reused instrument layer, so
    * the gauge falls back on the retired plant's fitted DNB surface — the shipped defect */
   ['the plant stops publishing its delta-T setpoint form (the gauge reverts to the DNB surface)',

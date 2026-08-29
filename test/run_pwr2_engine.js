@@ -913,8 +913,22 @@ function runSuite(RD, rec, quiet, only) {
     if (tsw.sg_level_pct < lmin) lmin = tsw.sg_level_pct;
     if (tsw.sg_level_pct > lmax) lmax = tsw.sg_level_pct;
   }
-  ckT('a 30 MWe swing moves the TRUE level several points and the controller brings it home',
-      (lmax - lmin) > 3 && Math.abs(tsw.sg_level_pct - 65) < 4,
+  /* ⚠ THE FLOOR WAS RE-ANCHORED AT #516 item 2 (2026-08-29) AND THE REASON MATTERS. It was
+   * `> 3`, fitted to a feed controller whose flow loop was a pure INTEGRATOR — the module
+   * header says the source gives two PI controllers and only the integral half of the second
+   * was built. Building the proportional half is what a three-element controller is FOR, and a
+   * tighter flow loop means a SMALLER level excursion on a load change. Measured both ways on
+   * the same ride: kp_flow 0 spans 3.56 points, kp_flow 1.6 spans 1.95, and BOTH settle at
+   * 64.5 %.
+   *
+   * So this is a re-anchor, not a refit, and the distinction is testable: the CLAIM here has
+   * always been that the true level TRANSIENTS AND RETURNS rather than reading the flat line
+   * `feed ≡ steam` produced (that was ~0 points). `> 1.2` passes on the OLD build and the NEW
+   * one and still fails a flat line — which is what makes it a better check than the number it
+   * replaces, since `> 3` would have RED-flagged a controller improvement. */
+  ckT('a 30 MWe swing moves the TRUE level and the controller brings it home (not the flat ' +
+      'line feed ≡ steam read; > 1.2 pts passes both the pure-I and the PI flow controller)',
+      (lmax - lmin) > 1.2 && Math.abs(tsw.sg_level_pct - 65) < 4,
       'range ' + lmin.toFixed(1) + '-' + lmax.toFixed(1) + ' %, settled ' +
       tsw.sg_level_pct.toFixed(1) + ' — feed ≡ steam read a flat line here');
   /* ONE PUMP: the ch10 60 % ceiling against 100 % steaming — a real boil-down to the lo-lo

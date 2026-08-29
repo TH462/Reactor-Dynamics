@@ -1351,6 +1351,16 @@
        * fraction of THIS plant's sourced-scaled max; letdown lineup of its rated point. */
       charging_flow_normalized: (e.cv.chargingDemand === null ? 0 : e.cv.chargingDemand) *
                                 RD.cvcs.CVCS.charging_max_gpm() / 450000,
+      /* THIS PLANT'S CHARGING CEILING, gpm (#516 item 11, 2026-08-29) — the #576c pattern, and
+       * the same defect one system over. The board bounded its charging box at
+       * `GPM_CHARGING * RD.PWR_CONFIG.reactivity.charging_max` = the RETIRED engine's 60 gpm,
+       * and captured it at SCRIPT LOAD, while `set_charging_flow` two hundred lines up clamps
+       * `gpm / CVCS.charging_max_gpm()` into [0,1]. So everything the operator typed between
+       * 30.14 and 60 gpm landed on the same full-open valve, under a caption reading "0-60 gpm".
+       * #579 derived 30.1 gpm and corrected the MANUAL; the board was left on the retired
+       * plant's number. Read from CVCS, never retyped, so a re-derived volume basis moves the
+       * box and its caption together. */
+      charging_max_gpm: RD.cvcs.CVCS.charging_max_gpm(),
       letdown_flow_normalized: e.cv.letdownOpen *
                                (RD.cvcs.CVCS.charging_normal_gpm() + RD.cvcs.sealInjectionGpm()) / 450000,
       /* the RHR lineup — real since #507 wave 2 (the valve, not the permissive; the split
@@ -1371,6 +1381,13 @@
       /* REAL since the feed train (2026-08-21): the delivered main-feed fraction — the
        * "speed" gauge presentation the board's five reader tiles expect (measured) */
       feed_pump_speed_pct: Math.min(120, e.fw.feed_frac * 100),
+      /* THE DEMAND, beside the delivery (#516 item 1). `feed_pump_speed_pct` above is what the
+       * pumps are DELIVERING, and it must stay that way — five reader tiles are calibrated to
+       * it. This is what the feed train is being ASKED for, which is what a setpoint box has to
+       * read back or its arrows fight the pump lag. In MANUAL it is the operator's own number;
+       * in AUTO it is the controller's, so the box tracks the channel instead of going stale. */
+      feed_demand_pct: Math.min(120, (e._fwDemandFrac !== undefined
+                                      ? e._fwDemandFrac : e.fw.feed_frac) * 100),
       feed_coupled: e.fw.auto === true,
       /* THE PER-SYSTEM LATCH LAMPS (#512, owner design): the panel's button carries an
        * ACTUATED color while its function is latched; the panel's own securing click is

@@ -29,6 +29,108 @@ and the user-visible summary in `CHANGELOG.md`. This file points at those and tr
 
 ---
 
+## Session log — 2026-08-29-develop-f (#516 Group A — the owner's own playtest: three controls that lied, and one that oscillates)
+
+**The bundle is GitHub issue #516, "Issues found playtesting"** — the owner's free-play session
+against PWR2 in the browser, 11 numbered items, filed unlabelled and never worked
+(`git log --all --grep='#516'` returned nothing) while 20-plus commits of agent-found defect work
+landed around it. *(OWNER RULING, 2026-08-29: selected "All 11, in order A->B->C" from options I
+wrote — a selection, not verbatim words.)* This entry is **Group A**: items 1, 2, 10 and 11.
+
+Full write-up with every measurement: `Blueprint/PWR2_VALIDATION.md` §120.
+
+**Item 11 — the charging box was bounded on the RETIRED plant, at exactly 2x this plant's
+capacity.** `pwr_board_wiring.js:69` took its ceiling from `RD.PWR_CONFIG.reactivity.charging_max`
+captured at script load — 60 gpm — while `pwr2_shell.set_charging_flow` clamps the demand against
+`CVCS.charging_max_gpm()` = **30.14 gpm**. The top half of the range was one indistinguishable
+value, under a caption reading "0-60 gpm". **The unfinished half of #579**, which derived 30.1 gpm
+and corrected only the manual. Fixed the #576c way (the plant publishes `charging_max_gpm`, the
+board prefers it, the config literal stays as a byte-identical fallback), and the CAPTION had to
+become derived because it is a literal string inside generated board data.
+
+**Item 1 — the SG feed box read back DELIVERED flow, so its arrows could not walk.** Measured
+through the renderer's own path: eight +1 gpm clicks moved the box **+0.5 gpm**. The box's `get`
+read `feed_pump_speed_pct`, which is `fw.feed_frac` behind the 8 s pump lag, so each click
+re-anchored the demand onto a value trailing the previous click. The retired engine published that
+channel as the COMMANDED value until 2026-07-25. `feed_demand_pct` now published beside it; the
+delivered channel is untouched because five reader tiles are calibrated to it. After: **+1.000 gpm
+per click.**
+
+**Item 10 — the pressurizer level PROGRAM read its Tavg channel raw.** The program is a function
+of Tavg wired to the INDICATED channel (correct, HR1) but read raw, and its slope is
+**2.845 % per degC**. Measured at steady full power with feed in manual: TRUE Tavg spanned
+**0.022 degC**, INDICATED **0.63**, and the published program swung **1.77 %** while charging
+hunted 0 to 17 gpm. **The level PI structurally cannot reject this** — its sourced justification is
+to ignore noise on the MEASUREMENT, and this arrives on the SETPOINT. A 25 s lag on the reference
+(the `pwr2_feedwater` `level_lag_s` precedent; the program IS coolant thermal expansion) takes
+program noise **2.472 -> 1.018 %** and the hunt **9.99 -> 7.80 gpm**, at a measured 1.097 % of
+tracking error on a 100 degF/hr ramp.
+
+**Item 2 — FILED AS #590, not closed.** The feed loop limit-cycles at steady full power with
+nothing touched: **2.271 %** of detrended SG level over 30 min against **0.003 %** with feed in
+MANUAL. It is not instrument noise (sigma to zero: 2.156 %) and no gain in the module fixes it —
+`kv_per_s` down makes the LEVEL worse. **The whole plant is in the cycle**: reactor power
+**0.801 %**, steam pressure 6.7 psi, Tavg 0.497 degF, with the rods static (#528). One structural
+defect was found and fixed on its own merit: the module header says the source gives **two PI
+controllers** and the comment on `kv_per_s` admitted the second was "realized as valve RATE (its
+integral)" — a PI realized as pure rate is an I. `kp_flow` builds the proportional half. It moves
+the level only 2.271 -> 2.095 % and does not close #590.
+
+### Three traps worth carrying
+
+**A ruling that corrects a number must be grepped for every SURFACE that states it.** #579 derived
+charging at 30.1 gpm and fixed the manual; the board kept 60 for another day. §119's *"ask which
+plant a check defends"* has this companion.
+
+**A probe can mutate the wrong plant's table and return a confident null.** The first noise test
+zeroed `RD.PWR_CONFIG.instruments.sg_level` and produced three rows identical to the last digit —
+that is the RETIRED plant's instrument table; PWR2's channels are its own in `pwr2_instruments.js`.
+A null result from a probe is a claim like any other.
+
+**A check can go hollow before it is ever green.** The ramp-tracking check's first draft ran
+1800 s, which leaves the level program's 12.83 degC span entirely — both sides clamp to the 25 %
+floor and it reported a triumphant **0.000 %** while asserting nothing. Caught only because the
+number looked too good. It ramps 400 s now with a LOWER bound and an in-span assertion.
+
+### A red that was the fix working, adjudicated one at a time
+
+`run_pwr2_engine`'s load-swing check asserted `(lmax-lmin) > 3` and came back at 2.4. Measured both
+ways on the same ride: **kp_flow 0 spans 3.56 points, kp_flow 1.6 spans 1.95, and both settle at
+64.5 %** — a tighter flow loop means a smaller level excursion, which is what a three-element
+controller is FOR. The threshold was fitted to the pure-integrator controller. Re-anchored to
+`> 1.2`, which **passes on the old build and the new one** and still fails the flat line
+`feed = steam` produced — a re-anchor, not a refit, and the distinction is testable.
+
+`run_hardrules` also reddened: §120's ruling citation was written with a date but **no quoted
+string**. A selection from written options still has to quote the option — the CLAUDE.md
+"a selection, not verbatim words" idiom. 426 -> 427 sites.
+
+### Group C — the board polish (items 3, 4, 5)
+
+All three measured off the board doc. **The core fluid column started 7 px ABOVE the fuel**: drawn
+269..456 while the rods run 276..454, and 276 is exactly where the upper-plenum fluid ENDS, so the
+two overlapped instead of meeting. Now 276..472, the bottom being the flow-hole blocks under the
+core. **The REACTIVITY/PERIOD pair had no card because the NIS card above it ENDS at y 415 — the
+exact pixel the REACTIVITY label starts on**; the new card follows that card's own 120-wide
+inner-box idiom, and it must be a `box` because `pwr_board.js` lifts value/text/number to z-index 1
+and leaves boxes at 0, so an appended box lands BEHIND the readouts. The period readout moves up
+5 px and right-aligns to 750 — both readouts are `rAnchor`, so they were 15 px apart despite being
+stacked numbers. Both via `DOC_PATCHES`/`EXTRA_ITEMS`, never `pwr_board_data.js`, which is
+generated. **The button now says `Select Plant, Mission & Reset`** — it named the window rather
+than the action, and RESET was not on it at all.
+
+`verify_board_check` reddened on *"every board item inspects to something"* the moment the card
+landed — the check working: a tile that hovers to nothing is a defect. 236/0, unchanged, because
+that assertion is one check over all items.
+
+### Gates
+
+`run_pwr2_board` 43 -> **48** (mutations 13 -> 15), `run_pwr2_pressurizer` 97 -> **100**
+(48 -> 49), `run_hardrules` 426 -> **427**, `run_pwr2_engine` 125/125 with its threshold
+re-anchored. `run_pwr2_feedwater` 29/29, `run_pwr2_cvcs` 45/45, `run_pwr2_shell` 135/135,
+`run_pwr2_roundtrip` 20/20 unmoved. Aggregate `--fast` at baseline.
+
+
 ## Session log — 2026-08-29-develop-e (#579/#580/#577/#575/#500/#576c — the retired plant's numbers, as the player reads them)
 
 **Six issues, one trap.** Four carried the dated ruling of 2026-08-28 (*"go with as recommended

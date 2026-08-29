@@ -990,6 +990,13 @@
      * the reactor trips, which is the source's own ">50% of full power" clause. */
     if (fwr.main_feed_lost) eng.tb.tripped = true;
     eng._mainFeedLost = fwr.main_feed_lost === true;   /* the latch permissive reads it (#551) */
+    /* THE DEMAND, kept apart from the DELIVERY (#516 item 1, 2026-08-29). `feed_frac` is what
+     * the pumps are actually putting into the SG, behind `pump_tau_s`; `demand_frac` is what
+     * the valve is calling for. Five board tiles legitimately read the delivered figure, but
+     * the SG FEED SETPOINT BOX was reading it too — so each up-arrow click re-anchored the
+     * operator's demand onto a value still lagging the previous click. Measured: eight clicks
+     * asking +1 gpm each moved the box +0.5 gpm total. A setpoint reads back the SETPOINT. */
+    eng._fwDemandFrac = fwr.demand_frac;
     /* the injected trip level-holds like every other seat — an instructor's casualty does not
      * heal because the operator pressed LATCH (#551) */
     if (eng.tbTripFailed) eng.tb.tripped = true;

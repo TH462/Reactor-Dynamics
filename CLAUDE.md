@@ -457,13 +457,13 @@ ONE line, drop the rest. **A bullet is ~80 words.** (Measured 2026-08-06: the li
   13.5 %, the design point moved **0.1 psi**, four consumers had been reading `Σ NODES` as the whole
   plant — and a void check rode a rigid loop that only reached saturation **because the phantom
   ballasted it**.
-- **A METAL MASS is 46 % of this plant's heat capacity and a FILM COEFFICIENT decides whether it
-  is felt — and the film is where my own two defects were** (2026-08-28, #574 §109). PWR2 carried
-  `wallLumps` on all eleven nodes with ZERO consumers; the ring's metal measures 43,484 kJ/K against
-  93,855 of fluid, the VESSEL a quarter of it where the request named the tubes. Both defects were in
-  the wall film, both surfaced by ONE red: no phase term absorbed **1,100 MJ** into a voided core, and
-  the repair then put the FORCED vapour ratio on a FREE-convection floor, leaving an unmitigated break
-  unable to reach the 50.46 clad limit at all. **Four of the five reds were not about the change.**
+- **NOISE ON A SETPOINT IS NOISE NO CONTROLLER CAN REJECT — and a RULING that corrects a number
+  must be grepped for every SURFACE that states it** (2026-08-29, #516 Group A §120, the owner's
+  own playtest, 11 items filed and never worked). The pressurizer level program read its Tavg
+  channel RAW at **2.845 %/°C**: true Tavg spans 0.022 °C, indicated 0.63, program **1.77 %**,
+  charging hunting 0→17 gpm — the PI ignores noise on the MEASUREMENT, and this arrived on the
+  SETPOINT. And #579 derived charging at 30.1 gpm, fixed the MANUAL, and left the board bounded
+  at the retired plant's 60 — exactly 2×, so half the box was one value.
 **Standing procedure — not part of the rotation above; these do not expire.** One trap per entry.
 **MAX 25 BULLETS** *(OWNER RULING, 2026-08-10: selected "Cap at 25, evict to TRAPS.md" from
 options I wrote — a selection, not verbatim words)*, gated by `test/run_doc_budget.js`. Adding

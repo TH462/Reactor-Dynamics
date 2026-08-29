@@ -81,8 +81,21 @@
     level_ti_s: 120.0,
     /* [tune] level PI proportional gain, flow-fraction per % narrow range */
     kp_lvl: 0.02,
-    /* [tune] valve slew gain — the total-error PI realized as valve RATE (its integral) */
+    /* [tune] the FLOW controller's INTEGRAL gain, valve fraction per unit flow error per second */
     kv_per_s: 0.25,
+    /* [tune] the FLOW controller's PROPORTIONAL gain — THE HALF THAT WAS MISSING (#516 item 2,
+     * 2026-08-29). This module's own header says the source gives TWO PI controllers, and the
+     * comment on kv_per_s used to say the second was "the total-error PI realized as valve RATE
+     * (its integral)". A PI realized as pure rate is an I. Measured on the shipped plant at
+     * steady full power, no disturbance: the level limit-cycled 2.26 % detrended with 85
+     * direction reversals in 30 min and the valve swung 0.158, while the SAME plant in MANUAL
+     * held level to 0.003 %. The frequency is the pure integrator's own: with kv 0.25/s into
+     * the 8 s pump lag and the 1 s flow instrument, crossover computes at 0.155 rad/s = a 40.5 s
+     * period against a MEASURED ~42 s, and the phase margin there is 30 degrees. Detuning kv
+     * does not fix it — at 0.05 the valve calms and the LEVEL gets worse (2.82 %), because a
+     * slower flow loop tracks the level controller's demand less well. The proportional term
+     * puts a zero in the loop instead, which is what buys phase back. */
+    kp_flow: 1.6,
     /* [sourced] Table 15.0-6 "Feedwater Isolation Delay from SI ... 32.0" */
     si_fwi_delay_s: 32.0,
     src: 'Ginna UFSAR ch10 (ML20339A040); WTSM 11.1 (ML11223A293); WAT 05 (ML11216A094) ' +
@@ -109,6 +122,11 @@
       overfeed: opts.overfeed === undefined ? false : !!opts.overfeed,
       isolated: false,                          /* the FWI latch — operator-reset only */
       valve: atPower ? 1.0 / (2 * FW.pump_frac_each) : 0,   /* mid-load position at rated */
+      /* the flow controller's INTEGRAL STATE (#516 item 2). `valve` is the position everything
+       * else reads — integral PLUS proportional; this is the integral half alone. Old saves
+       * carry no field and are primed from `valve` at the first step, which is bumpless because
+       * the proportional term is zero at zero error. */
+      valveI: atPower ? 1.0 / (2 * FW.pump_frac_each) : 0,
       feed_frac: atPower ? 1.0 : 0,             /* DELIVERED, behind the pump lag */
       lvlLag: FW.program_pct,                   /* primed on-program: no boot kick */
       lvlInt: 0,                                /* % NR · s */
@@ -160,6 +178,9 @@
          * 100 % NR / 17,033 kg after the trip. (1) no integration while the valve is
          * RAILED — a saturated actuator cannot use more demand; (2) the bank is capped
          * at a 0.25 flow-fraction contribution, a real trim, never the whole valve. */
+        /* the anti-windup gate reads the EFFECTIVE valve (integral + proportional), because that
+         * is the one that rails — gating on the integral state alone would let the level bank
+         * error while the actuator was already hard over (#516 item 2). */
         if (fw.valve > 0.02 && fw.valve < 0.98) {
           fw.lvlInt = clip(fw.lvlInt + lvlErr * dt,
                            -0.25 / FW.kp_lvl * FW.level_ti_s, 0.25 / FW.kp_lvl * FW.level_ti_s);
@@ -167,13 +188,24 @@
         var pi = FW.kp_lvl * (lvlErr + fw.lvlInt / FW.level_ti_s);    /* flow-fraction */
         var flowErr = (wS !== undefined && wF !== undefined && isFinite(wS) && isFinite(wF))
                       ? (wS - wF) : 0;
-        /* the total-error controller, realized as the valve's rate (its own integral) */
-        fw.valve = clip(fw.valve + FW.kv_per_s * (pi + flowErr) * dt, 0, 1);
+        /* THE FLOW CONTROLLER, PI AT LAST (#516 item 2). The total error is the level PI's trim
+         * on top of the steam/feed mismatch — the three-element form, unchanged. What changed is
+         * that it now drives BOTH an integral state and a proportional term, instead of the
+         * integral alone. The integral still carries the steady-state position (a flow
+         * controller must, or the valve cannot hold against a standing mismatch); the
+         * proportional term is what stops the loop ringing at its own crossover. */
+        var totalErr = pi + flowErr;
+        if (fw.valveI === undefined) fw.valveI = fw.valve;   /* old saves: prime, bumplessly */
+        fw.valveI = clip(fw.valveI + FW.kv_per_s * totalErr * dt, 0, 1);
+        fw.valve = clip(fw.valveI + FW.kp_flow * totalErr, 0, 1);
       }
     } else {
       /* MANUAL: the operator's demand is a flow fraction; the valve is slaved so a later
        * re-engage of auto starts from the position that carries today's flow */
       fw.valve = capacity > 0 ? clip(fw.manual_frac / (2 * FW.pump_frac_each), 0, 1) : fw.valve;
+      /* the integral state is slaved too (#516 item 2) — re-engaging AUTO must start from the
+       * position that carries today's flow, and with the split that position lives in valveI. */
+      fw.valveI = fw.valve;
     }
 
     var demand = fw.isolated ? 0

@@ -829,6 +829,25 @@
     // left is AUTO / SHUT, the setpoint box, and position.
     // AUTO must be #5aad7c — selfTest asserts every button captioned AUTO carries the
     // standard green, so one colour keeps one meaning across the board.
+    /* THE REACTIVITY / PERIOD CARD (#516 item 4, owner playtest 2026-08-29: "Move period
+     * indication up a little so it looks intentional and put a card behind it").
+     *
+     * MEASURED off the doc, not eyeballed. The NUC INSTR (NIS) card is 530,190 255x225, so it
+     * ENDS at y 415 — exactly where the REACTIVITY label begins. The reactivity and period
+     * readouts were therefore floating on bare canvas immediately under a card, which is what
+     * makes them read as unintentional. Its two inner boxes (535,345 and 660,345) are both
+     * 120x65, so a 120-wide box at left 660 aligns with the right-hand one directly above it.
+     *
+     * 660,412 120x72 covers REACTIVITY (675,415), the reactivity value (right edge 750, top
+     * 430), PERIOD (690,450) and the period value. Clear of PZR TEMP (880,440), the t-hot
+     * value (745,505) and the surge component (830,520).
+     *
+     * IT MUST BE A `box`: pwr_board.js lifts value/text/number/button to z-index 1 and leaves
+     * boxes at 0, so an appended box lands BEHIND the readouts. Any lifted kind here would
+     * cover them. */
+    { id: 'bdReactivityCard', kind: 'box', name: '',
+      left: 660, top: 412, width: 120, height: 72,
+      bg: '#0b1119', border: '#25333e', radius: 8, title: '', fontSize: 10, ports: [], stick: false },
     { id: 'bdAdvAuto', kind: 'button', name: 'ADV auto  ·  sim: set_adv mode:auto',
       left: 1351, top: 458, label: 'AUTO', width: 44, height: 22, color: '#5aad7c', fontSize: 11 },
     { id: 'bdAdvClose', kind: 'button', name: 'ADV shut  ·  sim: set_adv mode:closed',
@@ -960,7 +979,14 @@
      * fast the plant may move. Falls back to the reference before any load is set. */
     imro8rmka2y: { set: function (v) { cmd({ action: 'set_load_target', mwe: v }); },
       get: function (s) { var c = CS(s); return c.load_cmd_mwe != null ? c.load_cmd_mwe : c.load_target_mwe; } },   // Generator Load MW
-    imro8xhy2me: { set: function (v) { cmd({ action: 'set_feed_pump_speed', pct: v / GPM_FEED_PER_PCT }); }, get: function (s) { return (CS(s).feed_pump_speed_pct || 0) * GPM_FEED_PER_PCT; } }, // SG Feed rate gpm
+    /* A SETPOINT BOX READS BACK THE SETPOINT, NOT THE DELIVERY (#516 item 1, 2026-08-29).
+     * `feed_pump_speed_pct` is the DELIVERED feed fraction, behind the feed pump lag — the
+     * retired engine published this channel as the COMMANDED value until 2026-07-25 and this
+     * box was authored against that convention. Reading the delivery makes every arrow click
+     * re-anchor the demand onto a lagging number: measured, eight +1 gpm clicks moved the box
+     * +0.5 gpm. `feed_demand_pct` is the plant's own demand; the delivered channel stays where
+     * it is for the five reader tiles, and is the fallback for anything not publishing it. */
+    imro8xhy2me: { set: function (v) { cmd({ action: 'set_feed_pump_speed', pct: v / GPM_FEED_PER_PCT }); }, get: function (s) { var c = CS(s); var d = c.feed_demand_pct; return ((d != null && isFinite(d)) ? d : (c.feed_pump_speed_pct || 0)) * GPM_FEED_PER_PCT; } }, // SG Feed rate gpm
     imro929i738: { set: function (v) { cmd({ action: 'set_spray', pct: v }); }, get: function (s) { return CS(s).spray_valve_pct; } },                    // spray %
     imro96mj15p: { set: function (v) { cmd({ action: 'set_heater', power_pct: v }); }, get: function (s) { return CS(s).heater_power_pct; } },             // heater %
     imrpq29jo7t: { set: function (v) { cmd({ action: 'set_auto_setpoint', channel_id: 'boron_conc', value: v }); }, get: function (s) { var c = chan(s, 'boron_conc'); return c && c.setpoint != null ? c.setpoint : null; } }, // boron target ppm (control-layer channel setpoint)
@@ -1953,6 +1979,18 @@
    * width. A plant that publishes `pressure_band_psi` gets its own band; everything else —
    * the retired engine, a partial mount, an old recording — falls back to the authored
    * config literals, byte-identical to what it drew before. */
+  /* THIS PLANT'S CHARGING CEILING in gpm (#516 item 11, 2026-08-29) — the pressBandMpa shape,
+   * one system over. `CHARGING_MAX_GPM` is `GPM_CHARGING * _RX.charging_max` where `_RX` is
+   * `RD.PWR_CONFIG.reactivity` CAPTURED AT SCRIPT LOAD, i.e. the RETIRED engine's 60 gpm.
+   * PWR2's own maximum is 30.14 gpm (180 gpm power-scaled by its declared volume basis), and
+   * `pwr2_shell.set_charging_flow` clamps the demand to [0,1], so the top HALF of the box's
+   * range was one value the player could not tell apart. A plant that publishes
+   * `charging_max_gpm` gets its own ceiling; everything else — the retired engine, a partial
+   * mount, an old recording — falls back to the authored literal, byte-identical. */
+  function chargingMaxGpm(s) {
+    var g = CS(s || {}).charging_max_gpm;
+    return (g != null && isFinite(g) && g > 0) ? g : CHARGING_MAX_GPM;
+  }
   function pressBandMpa(s) {
     var pb = CS(s).pressure_band_psi;
     if (pb && pb.length === 2 && isFinite(pb[0]) && isFinite(pb[1]))
@@ -2773,6 +2811,13 @@
       // CVCS flow captions to 14 px — #350 item 27, see the note above DOC_PATCHES.
       // NIS caption authored "d TEMP AVG" — the builder text lost its Δ (#235).
       imrsho1qu6t: { props: { text: 'Δ TEMP AVG' } },
+      /* PERIOD readout: up 5 px and right-aligned with the reactivity value above it (#516
+       * item 4). Both are `rAnchor`, so `left` is the RIGHT edge — they were authored at 750
+       * and 735, a 15 px mismatch on two numbers stacked in the same card, which is half of
+       * why the pair looked accidental. The 5 px lift also evens the label-to-value gaps
+       * (REACTIVITY 415 -> 430 is 15; PERIOD was 450 -> 460, now 450 -> 455). Patched here
+       * rather than in pwr_board_data.js, which is GENERATED — a re-export would undo it. */
+      ims89mkaj2r: { props: { top: 455, left: 750 } },
       // RHR ALIGN / ISOLATE move up 30 px each into the slot the removed AUTO button
       // vacated (#453) — authored 665/695 under AUTO at 635. The card is 175 tall from
       // top 605; with AUTO gone, leaving them where they were would put a 30 px hole under
@@ -3112,6 +3157,14 @@
     boundsFor: function (item) {
       var b = NUM_BOUNDS_BASE[item.id];
       if (!b) return null;
+      /* The charging box's ceiling is THE RUNNING PLANT'S, not the authored config's (#516
+       * item 11). `lastSnapshot()` is the established idiom for a state-free callback here
+       * (see the button press path); absent a snapshot chargingMaxGpm falls back to the
+       * literal, so the retired engine and a cold board are unchanged. */
+      if (item.id === 'imrpq48hn3t') {
+        b = [b[0], chargingMaxGpm(RD.PwrBoard && RD.PwrBoard.lastSnapshot
+                                  ? RD.PwrBoard.lastSnapshot() : null)];
+      }
       var m = numFam(item);
       if (!m) return [b[0], b[1]];
       var p = Math.pow(10, m.d);
@@ -3145,6 +3198,18 @@
     numberHint: function (item) {
       var lab = item.label == null ? '' : item.label;
       var n = NUM_UNIT[item.id];
+      /* THE CHARGING CAPTION IS DERIVED IN BOTH MODES (#516 item 11). Its authored label is
+       * the literal string "0-60 gpm" — the RETIRED plant's ceiling, baked into generated
+       * board data, and the exact thing the owner read off the board while the box refused
+       * anything over 30. This is NOT the dump box's case two comments down: that one is a
+       * one-unit rounding slip in a caption that still describes its own plant, and leaving
+       * it put the fix where someone would look. This caption describes a DIFFERENT PLANT,
+       * `pwr_board_data.js` is generated so it cannot be hand-corrected, and the number moves
+       * with the volume basis — so it is derived from boundsFor(), like the SI hints. */
+      if (item.id === 'imrpq48hn3t' && n) {
+        var cb = RD.PwrBoardDriver.boundsFor(item);
+        if (cb) return trimNum(cb[0]) + '-' + trimNum(cb[1]) + ' ' + uStr(n.fam, item.unit);
+      }
       if (!lab || !n || U() !== 'SI') return lab;
       var b = RD.PwrBoardDriver.boundsFor(item);
       if (!b) return lab;

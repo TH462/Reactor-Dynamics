@@ -434,7 +434,51 @@ function runSuite(RD, rec, quiet) {
   ckT('...and CLAMPS beyond both ends — a cooldown below no-load does not program a vacuum',
       Math.abs(PZ.levelProgram(280) - 0.25) < 1e-12 &&
       Math.abs(PZ.levelProgram(320) - 0.615) < 1e-12, '');
-  ck('the low-level cut is the sourced 17 %', PZ.LEVEL.low_cut_pct, 17, 0, '%');
+  /* THE PROGRAM REFERENCE REJECTS INSTRUMENT NOISE (#516 item 10). The caller wires this to
+   * the INDICATED Tavg, correctly (HR1) — and the program's 2.845 %/degC slope amplifies that
+   * channel's noise straight onto the SETPOINT, where the level PI cannot reject it. Measured
+   * on the shipped plant at steady full power: TRUE Tavg spanned 0.022 degC, INDICATED 0.63,
+   * and the published program swung 1.77 % while charging hunted 0 to 17 gpm.
+   *
+   * DRIVEN WITH A SQUARE WAVE, not noise: a deterministic +-0.35 degC alternation about the
+   * full-power Tavg, which is the measured indicated span and needs no PRNG. */
+  var pzN = PZ.createPressurizer({ level_frac: 0.615 });
+  var progLo = null, progHi = null, tN = 0;
+  for (var iN = 0; iN < Math.round(600 / DT); iN++) {
+    var tavgN = 304.5 + (Math.floor(tN / 2) % 2 ? 0.35 : -0.35);   /* 2 s half-period */
+    var rN = PZ.stepPressurizer(pzN, stub(15.41), DT, { tavg_c: tavgN });
+    tN += DT;
+    if (tN > 300) {                       /* after the lag has settled */
+      if (progLo === null || rN.level_program_pct < progLo) progLo = rN.level_program_pct;
+      if (progHi === null || rN.level_program_pct > progHi) progHi = rN.level_program_pct;
+    }
+  }
+  var progSwing = progHi - progLo, inSwing = 0.70 * 2.845;   /* what an UNLAGGED program would do */
+  ckT('the program reference LAGS its Tavg input, so channel noise does not become setpoint ' +
+      'motion (unlagged, a +-0.35 degC channel swings the program ' + inSwing.toFixed(2) + ' %)',
+      progSwing < inSwing * 0.15,
+      'program swings ' + progSwing.toFixed(3) + ' % of an unlagged ' + inSwing.toFixed(2) + ' %');
+  /* THE DISCRIMINATOR: a lag long enough to kill the noise must still TRACK a real ramp, or it
+   * has traded one defect for a worse one. At the ruled 100 degF/hr cooldown limit the
+   * first-order lag's steady error is tau*rate, and the check names the number rather than
+   * asserting the constant — a retune of program_lag_s moves both sides together. */
+  var pzR = PZ.createPressurizer({ level_frac: 0.615 });
+  /* ⚠ 400 s, NOT 1800. The first draft ramped for 30 min, which at this rate leaves the
+   * program's 12.83 degC span entirely — both sides then clamp to the 25 % floor and the check
+   * reports a triumphant 0.000 % error while asserting nothing at all. 400 s covers 6.2 degC
+   * and stays inside the span, where the two sides can actually differ. */
+  var tavgR = 304.5, rateR = 55.556 / 3600;      /* 100 degF/hr in degC/s */
+  var rR = null;
+  for (var iR = 0; iR < Math.round(400 / DT); iR++) {
+    tavgR -= rateR * DT;
+    rR = PZ.stepPressurizer(pzR, stub(15.41), DT, { tavg_c: tavgR });
+  }
+  var trackErr = Math.abs(rR.level_program_pct - 100 * PZ.levelProgram(tavgR));
+  ckT('...and it still TRACKS a 100 degF/hr ramp to within 1.5 % of program (tau*rate, not drift)',
+      trackErr < 1.5 && trackErr > 0.2 &&
+      100 * PZ.levelProgram(tavgR) > 26 && 100 * PZ.levelProgram(tavgR) < 60,
+      'lags program by ' + trackErr.toFixed(3) + ' % at tau ' + PZ.LEVEL.program_lag_s + ' s');
+  ck('the low-level cut is the sourced 17 %', PZ.LEVEL.low_cut_pct, 17, 0, '%');  ck('the low-level cut is the sourced 17 %', PZ.LEVEL.low_cut_pct, 17, 0, '%');
   ck('the high-level alarm is the sourced 70 %', PZ.LEVEL.hi_alarm_pct, 70, 0, '%');
   ck('the anticipatory backup-heater band is the sourced +5 %',
      PZ.LEVEL.backup_above_program_pct, 5, 0, '%');
@@ -1039,6 +1083,13 @@ var MUTATIONS = [
    'pz.T_tail_c += dt * (amb - pz.T_tail_c) / RELIEF.tail_tau_cool_s;',
    'pz.T_tail_c += dt * (amb - pz.T_tail_c) / RELIEF.tail_tau_heat_s;'],
   /* re-anchored #510 batch 2: auxFrac grew the vital-bus gate */
+  /* #516 item 10: the program reference goes back to reading the Tavg channel RAW — the
+   * shipped defect. The lag STATE is left in place and simply bypassed, so this is a mutation
+   * of the CAPABILITY rather than a spelling: with it, 0.63 degC of channel noise becomes
+   * 1.8 % of setpoint motion again and the charging controller chases it. */
+  ['the level program reads Tavg RAW again (channel noise becomes setpoint motion)',
+   'var program_pct = 100 * (drivers.tavg_c !== undefined ? levelProgram(pz.tavgProg_c)',
+   'var program_pct = 100 * (drivers.tavg_c !== undefined ? levelProgram(drivers.tavg_c)'],
   ['the aux-spray command is dead',
    'var auxFrac = (drivers.aux_spray === undefined || drivers.ac_available === false)\n                  ? 0 : clip(drivers.aux_spray, 0, 1);',
    'var auxFrac = 0;'],

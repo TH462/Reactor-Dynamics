@@ -8764,3 +8764,262 @@ the plant take** — which is what the tile's own comment says NORMAL means.
    report caught it. And a mutation can "break" a line by selecting an **equivalent fallback**:
    falsifying `pzr_level_program_pct`'s ternary condition just took the else-branch, which works.
    Remove the capability, not the spelling.
+
+---
+
+## 120. #516 GROUP A — THE OWNER'S OWN PLAYTEST: THREE CONTROLS THAT LIED, AND ONE THAT OSCILLATES — 2026-08-29
+
+**GitHub issue #516, "Issues found playtesting", is the owner's free-play session against PWR2 in
+the browser: 11 numbered items, filed unlabelled, and — measured on the day — never worked.**
+`git log --all --grep='#516'` returned nothing while 20-plus commits of agent-found defect work
+landed around it. It is the only open issue in the tracker whose findings came from a player
+rather than from an agent reading its own code. *(OWNER RULING, 2026-08-29: selected
+"All 11, in order A->B->C" from options I wrote — a selection, not verbatim words.)*
+
+This section is **Group A**, the four control items: 1, 2, 10 and 11.
+
+### Item 11 — the charging box was bounded on the RETIRED plant, at exactly 2x this plant's capacity
+
+The owner: *"charging wont let me set above 30 but the label above shows 0-60."*
+
+Both halves of that sentence are the same defect, and it is the #576c shape one system over.
+`pwr_board_wiring.js:69` computes the bound as `GPM_CHARGING * (_RX.charging_max || 60/450000)`,
+where `_RX` is `RD.PWR_CONFIG.reactivity` — **the retired engine's config, captured at script
+load**, which still ships everywhere by design (#523). That is 60 gpm. Meanwhile
+`pwr2_shell.set_charging_flow` clamps `gpm / CVCS.charging_max_gpm()` into `[0,1]`:
+
+| quantity | value |
+|---|---|
+| `CVCS.charging_max_gpm()` — PWR2, derived | **30.14 gpm (6.85 m3/h)** |
+| board bound | **60 gpm (13.6 m3/h)** |
+| PWR2 reactor coolant system volume | 24.2943 m3 = 857.9 ft3 |
+| `volumeScale()` against the sourced Ginna basis | 0.16747 |
+
+**So the top half of the box's range was one indistinguishable value.** Every setpoint the player
+typed between 30.14 and 60 gpm landed on the same full-open valve, under a caption reading
+"0-60 gpm".
+
+**This was the unfinished half of the previous commit.** #579 derived charging at 30.1 gpm and
+corrected the *manual*; the *board* was left on the retired plant's number. §119's trap — *ask
+which plant a check defends* — has a companion: **when a ruling corrects a number, grep for every
+surface that states it, not only the one the issue named.**
+
+Fixed the #557/#576c way: `pwr2_shell.getControlState()` publishes `charging_max_gpm` read
+straight from `RD.cvcs.CVCS`, never retyped; `chargingMaxGpm(s)` prefers it and falls back to the
+authored literal, byte-identical, for the retired engine and old recordings.
+
+**THE CAPTION HAD TO BECOME DERIVED, and that is the half a source read would miss.** The authored
+label is the literal string "0-60 gpm" inside `pwr_board_data.js`, which is **generated** — so it
+cannot be hand-corrected, and a bound fixed without it leaves the lie on the screen. `numberHint`
+now derives that one box's caption from `boundsFor()` in **both** unit modes. Deliberately *not*
+the treatment given to the steam-dump box's known caption slip three lines below: that one is a
+one-unit rounding error in a caption still describing its own plant, and leaving it puts the fix
+where someone would look. This caption described a different plant.
+
+### Item 1 — the SG feed box read back DELIVERED flow, so its arrows could not walk
+
+The owner: *"SG Feed control has trouble when clicking up/down arrows to change flow manually, it
+doesn't like to change the number."*
+
+**Measured, driving the renderer's own `numberFor` -> `onNumber` path: eight up-arrow clicks of
++1 gpm each moved the box +0.5 gpm in total.**
+
+| click | box reads | writes | demand % | delivered % |
+|---|---|---|---|---|
+| 1 | 1013.5 | 1014.5 | 101.45 | 101.36 |
+| 4 | 1013.7 | 1014.7 | 101.47 | 101.38 |
+| 8 | 1013.9 | 1014.9 | 101.49 | 101.40 |
+
+The box's `get` read `control_state.feed_pump_speed_pct`, which the shell publishes as
+`min(120, fw.feed_frac * 100)` — and `feed_frac` is the **delivered** feed fraction, behind the
+feed pump's 8 s lag. Each click read a value still trailing the previous click, added one step and
+wrote that back as a demand. The clicks very nearly cancel.
+
+**The retired engine published this channel as the COMMANDED value until 2026-07-25**
+(`pwr_board_wiring.js:1190` records the change) and the box was authored against that convention.
+Same family as #557/#556/#561.
+
+`pwr2_engine` now stashes `fwr.demand_frac`; the shell publishes `feed_demand_pct` beside the
+delivered figure, which stays exactly as it was because five reader tiles are calibrated to it.
+After: **+1.000 gpm per click, +8.00 of 8 asked.**
+
+### Item 10 — the level PROGRAM read its Tavg channel raw, so instrument noise became setpoint motion
+
+The owner: *"Charging in auto doesnt hold the pzr level. it should try to maintain ideal pzr
+level."*
+
+The level control system is built and sourced (WTSM 10.3 / ML11223A290) and it does hold — within
+about 1.8 % of program, recovering from a 2.7 % disturbance. What it does not do is sit still:
+charging hunts 0 to 17 gpm continuously.
+
+**The setpoint is what moves.** The program is a function of Tavg and the caller wires it to the
+INDICATED channel, correctly (HR1) — but it read that channel **raw**, and the program's slope is
+36.5 points over a 12.83 degC span, i.e. **2.845 % per degC**. Measured at steady full power with
+feed in manual, so the plant itself was quiet:
+
+| quantity | span over 10 min |
+|---|---|
+| **TRUE Tavg** | **0.022 degC** |
+| **INDICATED Tavg** | **0.63 degC** |
+| **published level program** | **1.77 %** |
+| charging demand | 0 to 17 gpm |
+
+**The level PI structurally cannot reject this.** Its own sourced justification is to ignore
+*"small temporary level perturbations"* — noise on the MEASUREMENT. This noise arrives on the
+SETPOINT.
+
+The fix is a 25 s first-order lag on the program's temperature input, in the same idiom and for
+the same reason as `pwr2_feedwater`'s sourced `level_lag_s`: the program represents the **thermal
+expansion of the coolant**, and the bulk inventory of a reactor coolant system cannot change
+volume at the bandwidth of an RTD's noise.
+
+| `program_lag_s` | program oscillation | charging hunt | level oscillation |
+|---|---|---|---|
+| **none (as shipped)** | **2.472 %** | **9.99 gpm** | 1.227 % |
+| 5 s | 1.852 % | 8.92 | 1.206 % |
+| **25 s (adopted)** | **1.018 %** | **7.80** | 0.971 % |
+| 60 s | 0.593 % | 6.16 | 0.701 % |
+
+**The trade is measured both ways, and that is what picks 25 over 60.** A first-order lag costs
+`tau x rate` of tracking error on a real ramp: at the ruled 100 degF/hr limit (0.01543 degC/s over
+a 2.845 %/degC slope) 25 s lags program by **1.097 %** — the gate measures exactly that — and 60 s
+by 2.63 %. The larger lag buys 0.4 % of noise for 1.5 % of ramp error, which is the wrong way
+round.
+
+**A CHECK THAT WENT HOLLOW BEFORE IT WAS EVER GREEN.** The ramp-tracking check's first draft ran
+the ramp for 1800 s. At that rate it covers 27.8 degC, which leaves the program's 12.83 degC span
+entirely — both sides then clamp to the 25 % floor and the check reported a triumphant **0.000 %**
+while asserting nothing at all. It ramps 400 s now and carries a **lower** bound plus an in-span
+assertion so it cannot go hollow again. The "identity in the regime you test in" trap, caught only
+because the number looked too good.
+
+### Item 2 — the feed loop limit-cycles, it carries the whole plant, and no gain in the module fixes it
+
+The owner: *"The SG Feed in auto bounces back and fourth."* **Filed as #590 rather than closed
+here**, because unlike its three neighbours it is not a board defect: the loop is structurally the
+sourced three-element controller and the oscillation survives every gain in it.
+
+Detrended spans over 30 min from the settled hot-full-power initial condition — **detrended
+because a plain span cannot tell a limit cycle from a drift**, and the manual case below is almost
+entirely drift:
+
+| lineup | SG level oscillation | reversals / 30 min | valve |
+|---|---|---|---|
+| **feed AUTO (as shipped)** | **2.271 %** | 85 | 0.158 |
+| feed MANUAL at 100 % | **0.003 %** | 8 | 0.000 |
+
+It is not instrument noise (`sg_level` sigma to zero gives 2.156 % against 2.259 %) and no knob
+helps: `kv_per_s` 0.25 -> 0.05 makes the LEVEL *worse* (2.814 %) while calming the valve, `kp_lvl`
+is worse in both directions, and removing the level integral entirely reaches only 1.859 %.
+
+**And the whole plant is in the cycle**, feed in AUTO: reactor power **0.801 %**, steam pressure
+0.046 MPa (6.7 psi), steam generator temperature 0.530 degF, Tavg 0.497 degF. The rods are static
+— PWR2 has no automatic rod control (#528) — so the power swing is pure reactivity feedback. The
+loop is feed valve -> SG mass -> SG pressure and temperature -> Tavg -> moderator and Doppler ->
+power -> steam -> level, and the feed controller is the only active element in it, which is why
+manual kills it.
+
+**A wrong diagnosis, recorded because it was well-founded and still wrong.** The flow loop is an
+integrator into the 8 s pump lag and the 1 s flow instrument; crossover computes at 0.155 rad/s —
+a 40.5 s period against a measured ~42 s — at 30 degrees of phase margin. That pointed at a real
+defect: the module header says the source gives the STRUCTURE as **two PI controllers**, and the
+comment on `kv_per_s` read *"the total-error PI realized as valve RATE (its integral)"*. **A PI
+realized as pure rate is an I.** The proportional half is now built (`kp_flow`, with the integral
+state split out as `fw.valveI`, anti-windup reading the EFFECTIVE valve because that is the one
+that rails, and the manual branch slaving both so re-engaging AUTO stays bumpless) — and it moves
+the level only 2.271 -> 2.095 %. **Kept on its own merit; it does not close #590.**
+
+### A probe that mutated the wrong plant's table
+
+Recorded because it is the standing trap arriving in a *measurement* rather than in shipped code.
+The first noise test mutated `RD.PWR_CONFIG.instruments.sg_level` and produced three rows
+identical to the last digit — because that is the **retired** plant's instrument table. PWR2's
+channels are its own, in `pwr2_instruments.js:103`. A null result from a probe is a claim like any
+other, and this one was about to be written down as evidence.
+
+### Scores
+
+`run_pwr2_board` 43 -> **48**, mutations 13 -> **15**. `run_pwr2_pressurizer` 97 -> **100**,
+mutations 48 -> **49**. Both with no blind spots. `run_pwr2_feedwater` 29/29, `run_pwr2_cvcs`
+45/45, `run_pwr2_shell` 135/135 and `run_pwr2_roundtrip` 20/20 unmoved.
+
+---
+
+## 121. #516 GROUP C — THE BOARD POLISH: A BUTTON THAT NAMED THE WINDOW, AND A FLUID COLUMN 7 px ABOVE ITS FUEL — 2026-08-29
+
+Items 3, 4 and 5 of the owner's playtest list. All three are HMI, all three were **measured off
+the board doc rather than eyeballed** — the standing rule, and in item 5's case the measurement is
+the whole finding.
+
+### Item 5 — the core fluid column started 7 px above the fuel and stopped 16 px short of the plate
+
+The owner: *"adjust the top level of the core fluid movement indication so the top level is level
+with the top of the fuel rods. also adjust the hot side fluid so the bottom matches. Move the
+bottom of the moving fluid to the bottom of the blocks under the fuel rods."*
+
+`comp_reactor_vessel.js` drew the pool, its clip and its upflow dashes over **269..456**, hard-coded
+in four places. The drawn internals sit at:
+
+| element | extent |
+|---|---|
+| fuel rods | `coreTop`..`coreBot` = **276..454** |
+| upper-plenum ("hot side") fluid | `hotresFullTop`..`hotresFullBot = coreTop` = 160..**276** |
+| lower support plate + its flow-hole blocks | 455..**472** |
+| **core fluid column, as drawn** | **269..456** |
+
+So the water began **7 px above the top of the fuel** — and 276 is exactly where the upper-plenum
+fluid *ends*, which is why the two overlapped instead of meeting. That overlap is the "hot side
+fluid so the bottom matches" half of the owner's sentence: it was already at 276; the core column
+was the one out of place.
+
+The column is now `poolTop = coreTop` (276) to `poolBot = 472` (the bottom of the blocks), named
+constants replacing four literals, and `applyInventory` drains from the new top against the new
+bottom.
+
+### Item 4 — the reactivity pair had no card because the card above it ENDS at their first pixel
+
+The owner: *"Move period indication up a little so it looks intentional and put a card behind
+it."*
+
+Measured off the doc, and the reason is exact: the **NUC INSTR (NIS) card is 530,190 255x225, so
+it ends at y = 415** — and the REACTIVITY label is authored at y = 415. The two readouts were
+floating on bare canvas immediately below a card edge, which is precisely what makes them read as
+unintentional rather than as a group.
+
+The card is `bdReactivityCard`, 660,412 120x72, on the NIS card's own inner-box idiom (its two
+inner boxes are 535,345 and 660,345, both 120x65 — so 120 wide at left 660 aligns with the one
+directly above). Clear of PZR TEMP (880,440), the hot-leg value (745,505) and the surge component
+(830,520).
+
+**It must be a `box`, and that is a z-order fact rather than a style choice.** `pwr_board.js`
+lifts `button/value/readout/text/number/scram` to z-index 1 and leaves boxes at 0, so an item
+appended through `EXTRA_ITEMS` — which pushes to the end of `doc.items` — still renders *behind*
+the readouts. Any lifted kind would have covered them.
+
+The period readout moves **up 5 px and right-aligns to 750**. Both readouts are `rAnchor`, so
+`left` is the RIGHT edge, and they were authored at 750 and 735 — a **15 px mismatch on two
+numbers stacked in the same card**, which is the other half of why the pair looked accidental. The
+lift also evens the label-to-value gaps: REACTIVITY 415 -> 430 is 15, PERIOD was 450 -> 460 and is
+now 450 -> 455.
+
+Both are `DOC_PATCHES` / `EXTRA_ITEMS`, not edits to `pwr_board_data.js`, which is **generated** —
+a re-export would silently undo them.
+
+### Item 3 — the button was named after the window, not after what it does
+
+The owner: *"The plant and mission button isn't obvious what it does. it should say something like
+select plant and mission and reset."*
+
+`Plant & Mission` -> **`Select Plant, Mission & Reset`**, and the scanner hint gains the reset
+clause. RESET is the one irreversible thing behind that button and it was not on the button at
+all.
+
+### The gate that caught the card
+
+`verify_board_check` reddened immediately on *"driver: every board item inspects to something"* —
+a new board item with no inspect entry. That is the check working: a tile a player can hover and
+get nothing from is a defect, and adding the card without the entry would have shipped one.
+`bdReactivityCard` now carries a Reactivity & Period entry. **236 checks, 0 failed** — unchanged,
+because the item-coverage assertion is one check over all items rather than one per item.
+
+`run_pwr2_board` 48/48 unmoved.

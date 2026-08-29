@@ -285,3 +285,30 @@ built, and the plan that approved it had been carrying a number nobody re-checke
 been signed off, which is exactly the shape that stops getting re-run. Re-derive the sizing from a
 fresh Q0 at the moment you build, not from the figure the plan carries — a plan is a claim like
 any other and this repo moves faster than one ages well.
+
+---
+
+## A metal mass is half this plant's heat capacity, and the FILM decides whether it is felt
+
+*Evicted from `CLAUDE.md`'s **Recent themes** rotation 2026-08-29, at its 5-bullet cap, to make
+room for the #516 setpoint-noise trap. It goes rather than being rescued to the standing list
+because a GATE now catches it — `run_pwr2_pressurizer` and `run_pwr2_engine` both assert the wall
+term directly, and the dead-data half (a specified field with zero consumers) is already covered
+by the standing bullet on proving coverage by injection. What follows is the worked case, kept
+because the FILM half of it is a modelling lesson no gate states.*
+
+#574 (`PWR2_VALIDATION.md` §109). PWR2 carried `wallLumps` on all eleven nodes with **zero
+consumers** — specified, shipped, and inert. The ring's metal measures **43,484 kJ/K against
+93,855 kJ/K of fluid**, and the VESSEL holds a quarter of it where the request had named the
+tubes.
+
+**Both defects the change introduced were in the wall FILM, not in the mass**, and both surfaced
+through ONE red: with no phase term the wall absorbed **1,100 MJ** into a voided core, and the
+repair for that then put the FORCED-convection vapour ratio on a FREE-convection floor, which left
+an unmitigated break unable to reach the 10 CFR 50.46 clad limit at all.
+
+**The trap: adding a correctly-sized thermal mass is the easy half.** How it couples — the film
+coefficient, and which convection regime that film is in — decides whether the mass is felt at
+all, and gets the sign of the error wrong in both directions if you guess. **Four of the five reds
+that change produced were not about the change**, which is the other half of the lesson: adjudicate
+a physics change's reds one at a time.

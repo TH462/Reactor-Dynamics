@@ -174,6 +174,16 @@
       'instrument can. Startup is a handoff up that chain — source range to intermediate range to ' +
       'power range — and this card is where you watch it happen. Everything here reads an ' +
       'instrument, so a failed detector lies here first.', CI, '4.0'),
+    /* The REACTIVITY / PERIOD card, added at #516 item 4 — see EXTRA_ITEMS in
+     * pwr_board_wiring.js for the geometry and why it is a `box`. It needs an entry because
+     * verify_board_check asserts every board item inspects to something. */
+    bdReactivityCard: e('Reactivity & Period',
+      'The two numbers that say which way the core is going, and how fast.',
+      'REACTIVITY is the net imbalance driving the core, in pcm; PERIOD is how long the power ' +
+      'takes to change by a factor of e at the present rate — the shorter it is, the faster ' +
+      'power is moving. A steady core reads zero reactivity and an infinite period. These are ' +
+      'the teaching pair for rod, boron and temperature effects: move any of the three and ' +
+      'watch reactivity step, then watch period answer it.', CI, '4.0'),
     ims176nions: e('Source Range',
       'The lowest flux range — counts per second, the only instrument that reads a shutdown core.',
       'A proportional counter reading 1 to 1e6 cps. It is the instrument for approach to criticality ' +
@@ -444,7 +454,8 @@
       'The Chemical and Volume Control System (CVCS) charging pump — make-up INTO the primary. Raises inventory and pressurizer level.',
       'AUTO runs the pump with inventory make-up modulating the flow; MAN runs it at the flow you set; ' +
       'OFF secures it. Charging is also the carrier for boron: a boration or dilution is only ' +
-      'delivered while this pump runs. Normal band is 0–60 gpm (0–14 m³/h).', CI, '7.1'),
+      'delivered while this pump runs. The band runs to 30 gpm (6.9 m³/h) — the charging '  +
+      'capacity of THIS plant, power-scaled from the sourced Ginna basis.', CI, '7.1'),
     imrmtg3r8ez: e('AUTO (charging)',
       'Charging pump runs with automatic inventory make-up.',
       'The controller modulates charging flow to hold inventory, which in practice holds pressurizer ' +
@@ -459,10 +470,12 @@
       'restarts. With letdown still lined up, securing charging is a net drain on the primary.', CI, '7.1'),
     imrpq48hn3t: e('Charging flow',
       'Charging flow setpoint — how fast make-up enters the cold leg.',
-      'The normal make-up band runs to 60 gpm. Maximum charging is a lot of make-up: against an ' +
-      'isolated letdown it raises pressurizer level about 33 % a minute, so from a normal 55 % it ' +
-      'reaches the 97 % going-solid trip in a little over a minute. Against A+B letdown the same ' +
-      'flow barely holds, losing about 0.7 % a minute. Typing here takes Chemical and Volume Control System (CVCS) inventory control to ' +
+      'The band runs to 30 gpm (6.9 m³/h). Maximum charging is a lot of make-up: against an ' +
+      'isolated letdown it raises pressurizer level about 5 % a minute, so from a normal 58 % it ' +
+      'trips the reactor on high pressurizer level (87 %) in about five minutes. Letdown does NOT ' +
+      'hold it — with both orifices open the same flow still gains about 3 % a minute and trips ' +
+      'in under eight, because this plant charges at 30 gpm against a 13 gpm letdown lineup. ' +
+      'Typing here takes Chemical and Volume Control System (CVCS) inventory control to ' +
       'manual.', CI, '7.2'),
     imrqp87ueqb: e('Charging Pump',
       'The positive-displacement pump that injects make-up into the primary.',
