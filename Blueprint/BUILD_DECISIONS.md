@@ -122,9 +122,12 @@ the property library's range, because the steam generators still have auxiliary 
 / 7,200 s all park at the same pressure, so it is not a budget problem. **Block AFW and it runs dry
 — 22 psia, held, dialog up.** The driver is now `large_loca,station_blackout,afw_failure`, which is
 a better casualty because it names the reason the plant cannot cope instead of relying on where a
-blowdown lands. ⚠ Recorded and NOT explained: the identical service, seed, initial condition,
-injections and fast-forward driven in **Node** report `model_held: true` on the two-failure
-casualty; the **browser** does not.
+blowdown lands. ⚠ And the browser/Node disagreement that came with it is **a CLIFF, not a physics divergence** —
+chased down and filed as **#588**. The two agree to ~1 % through the first 375 s; then Node's
+pressure solve lands unbracketed at the property floor at t = 393.43 s and `pwr2_core.js:505`
+latches on that ONE step, while the reported pressure is 82.76 psi and rising. The browser never
+takes it and recovers to a stable 83 psia. The latch ORs three arms and only
+`sys._ceilHold > CEIL_HOLD_LATCH_S` requires persistence.
 
 **Gate bill.** `run_pwr2_geometry` 39 → **41** (21 → **24** mutations, three of them the double
 count returning three different ways) · `run_pwr2_reactor` 41 → **42** · `run_pwr2_pressurizer`

@@ -91,9 +91,16 @@ Full write-up with every number: `Blueprint/PWR2_VALIDATION.md` §110. This is t
   the steam generators still have auxiliary feed. 1,500 / 3,000 / 7,200 s all park at the same
   83 psia, so it is NOT a budget problem. **Block AFW and it runs dry: 22 psia, held, dialog up.**
   Driver is now `large_loca,station_blackout,afw_failure` and `afw_failure` is load-bearing.
-  ⚠ **Unexplained and recorded:** the identical service, seed, IC, injections and fast-forward in
-  NODE report `model_held: true` on the two-failure casualty (394 s); the BROWSER does not. Every
-  comparable input matches. The three-failure casualty holds on both.
+  ⚠ **AND THE BROWSER/NODE DISAGREEMENT IS A CLIFF, NOT A PHYSICS DIVERGENCE — chased down and
+  filed as #588.** Sampled at matched sim times the two agree to **~1 %** through the first 375 s
+  (1040/1041 psi at 57 s, 198/201 at ~373 s). Then Node's pressure solve lands **unbracketed at the
+  property floor at t = 393.43 s** (0.201 MPa, capBound, 4 enthalpies clamped, 59 MJ discarded) and
+  `pwr2_core.js:505` latches on that ONE step — while the reported pressure is 82.76 psi and RISING.
+  The browser never takes it: bottoms at 64 psi ~615 s and **recovers to a stable 83 psia held for
+  6,000 s**. The only input that differs is sim-time-per-cycle from `advanceCycles` (1,155 vs
+  1,110 s at ff=1500, 4 %). **The latch ORs three arms and only `sys._ceilHold > CEIL_HOLD_LATCH_S`
+  requires persistence**; `flooredLow && clampedNodes > 0` ends the session in 0.02 s. So #520 did
+  not break — the plant changed branch (#543's trap, second instance).
 - **Gate bill:** `run_pwr2_geometry` 39 → **41** (21 → **24** mutations, three of them the double
   count returning three ways) · `run_pwr2_reactor` 41 → **42** · `run_pwr2_pressurizer` 92 → **94**.
   Every other PWR2 runner unmoved at baseline.

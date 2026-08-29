@@ -7960,13 +7960,25 @@ ff=1500 and again at ff=3000. So the driver is now
 decoration. That is a *better* casualty: the two-failure version was passing on where an
 uncontrolled blowdown happened to land, and this one names the reason the plant cannot cope.
 
-**⚠ AND ONE THING IS UNEXPLAINED, recorded rather than smoothed over.** The identical service,
-seed, initial condition, injections and fast-forward driven in **Node** report `model_held: true`
-on the two-failure casualty (held at 394 s); the **browser** does not. Everything I could compare —
-`seed: 0x1234`, `hot_full_power`, `severity: 1` on both failures, `set_speed 60` +
-`advanceCycles(250)`, `broadcastMs 100`, attention stops on — matches. The three-failure casualty
-holds on both, so the check is sound; the divergence is not, and it is written down here because
-the next person to see a browser/Node disagreement should not have to re-derive it.
+**⚠ AND THE BROWSER/NODE DISAGREEMENT IS NOT A PHYSICS DIVERGENCE — IT IS A CLIFF (#588).**
+This section first recorded it as unexplained; it is explained, and the explanation is worth more
+than the observation. Sampled at matched sim times the two agree to **~1 %** for the first 375 s
+(1040 vs 1041 psi at 57 s; 321 vs 320 at ~314 s; 198 vs 201 at ~373 s). Then they take opposite
+branches. Node's pressure solve lands **unbracketed at the property floor at t = 393.43 s** — 0.201
+MPa, `capBound`, 4 node enthalpies clamped, 59 MJ discarded — and `pwr2_core.js:505` latches
+`beyond_model` on that ONE step, while the plant's own reported pressure is 82.76 psi and RISING.
+The browser never takes that step: its pressure bottoms at 64 psi around 615 s and **recovers to a
+stable 83 psia it holds for the next 6,000 seconds**.
+
+What differs between them is only how much sim time `advanceCycles` buys under the transient
+broadcast cadence — 1,155 s against 1,110 s for the same requested `ff=1500`, **4 %** — and that is
+enough to pick the branch. **The latch condition ORs three arms and only the third
+(`sys._ceilHold > CEIL_HOLD_LATCH_S`) requires persistence**; the `flooredLow && clampedNodes > 0`
+arm ends the session on a single 0.02 s step. That asymmetry is #588, filed and not fixed here.
+
+So the #520 check did not break — **the plant changed branch**, which is the standing #543 trap
+(*"a check can pin a BIFURCATION, not a claim"*) arriving in a second place. The three-failure
+casualty leaves the envelope decisively on both, which is why it is the right driver.
 
 ### 110.8 The bill
 
