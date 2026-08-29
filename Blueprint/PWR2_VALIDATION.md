@@ -8190,3 +8190,43 @@ regression guard available for a fix, because each half alone must still be caug
 
 Adding `sg_level_pct` and `boron_ppm` to the compared fields came out of the same pass: the gate
 had been comparing only what the *break* moves and calling it the plant.
+
+### 112.5 The cliff, narrowed to a five-second window — and eight hypotheses eliminated
+
+No fix. Recorded so the next attempt starts from the eliminations rather than repeating them.
+
+Aligned on sim time, with the app's **verbatim** `?ff=700` burst replicated in Node, the two agree
+through the collapse and part at **~382 s**:
+
+| sim s | Node | browser |
+|---|---|---|
+| 372 | **201.06** psi | **201** psi |
+| 378 | 86.67 | 91 |
+| 380 | 81.70 | 83 |
+| **382** | **81.40** | **85** |
+| **384** | **81.34** | **113** |
+| 390 | 82.83 | ~163 |
+| 393.50 | **LATCHES** | — |
+| 460 | — | 167, still running |
+
+**The browser repressurises out of the minimum at ~14 psi/s with Tavg climbing 309 → 329 °F; Node
+sits flat at 81.3 and reaches the solver guard.**
+
+**Eliminated by measurement:** (1) time acceleration — 0.000e+0 at matched instants; (2) a mid-ride
+speed change — 0.000e+0 for 60×→1× at 200 s and 300 s; (3) the wall-clock sandbox checkpoint —
+identical with 22 fired; (4) the fine chart sampler in the step loop — identical with 19,674 taken;
+(5) dismissing the mission window — 201 psi either side; (6) the burst sequence — Node with the
+app's verbatim sequence still latches at 393.50 s; (7) each latch arm individually — all three fire
+and each is sufficient; (8) **V8 build differences** — `Math.pow/exp/log/cbrt` and six water-table
+outputs are **bit-identical** between node v24.18.0 (v8 13.6.233.17) and Chrome 151.0.7922.34,
+0 of 11 differing.
+
+**What is left:** every Node test drives `advanceCycles(1)` in a tight loop with perfectly regular
+spacing; a browser at 1× is driven by a real timer under `requestAnimationFrame`, irregularly. That
+is the one input class not yet varied.
+
+⚠ **And the plant behaviour is the finding, not the environment.** At ~382 s this plant sits at
+81.3 psi with 6.4 % inventory where the pressure solve is marginal — `unbracketed`, `capBound`,
+four enthalpies clamped, 59 MJ discarded on the latching step. **Two runs agreeing to three
+significant figures ten seconds earlier end one session and not the other. The cliff is the
+defect; which side you land on is the symptom.**

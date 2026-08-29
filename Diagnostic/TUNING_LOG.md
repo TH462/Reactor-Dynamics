@@ -55,6 +55,14 @@ Full write-up: `Blueprint/PWR2_VALIDATION.md` §112. This is the continuity note
   endpoint number.
 - **The browser/Node cliff is UNEXPLAINED again**, with acceleration now positively ruled out by
   a gate rather than assumed. Worse than "explained", better than "explained wrongly".
+- **NARROWED (§112.5): the divergence starts at sim ~382 s.** With the app's VERBATIM `?ff=700`
+  burst replicated in Node, both read 201 psi at 372 s and agree through the collapse; from 382 s
+  the browser repressurises at ~14 psi/s (Tavg 309 -> 329 degF) while Node sits flat at 81.3 and
+  hits the solver guard at 393.50 s. **Eight hypotheses eliminated by measurement:** acceleration,
+  mid-ride speed change, the wall-clock sandbox checkpoint, the fine sampler, the mission dismiss,
+  the burst sequence, each latch arm individually, and **V8 build differences (bit-identical,
+  0 of 11, including six water-table outputs)**. Left untested: every Node drive is a tight loop
+  with regular spacing; a browser at 1x is a real timer under rAF, irregular.
 - **Gate: `run_service_invariance` 5/3xfail -> 8 passed, 0 xfail, 0 failed, 4/4 mutations.**
   Every check compares at matched instants; SI-0/SI-5 assert the intersection is NON-EMPTY.
   All three xfails closed for three different reasons — SI-2 by the fix, SI-6 by the fix after
