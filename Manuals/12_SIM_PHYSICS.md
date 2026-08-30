@@ -707,9 +707,24 @@ The indicator shows **commanded** state. A stuck-open PORV with a "closed" indic
 
 The AFW level-hold valve, the CVCS charging servo and its level program, and the steam-dump Tavg program all read **indications**, one step old. A failed transmitter mis-programs the automatics exactly as it misleads the operator.
 
-### 10.5 Shrink and swell
+### 10.5 Shrink and swell — NOT MODELLED
 
-SG narrow-range level indication moves **the wrong way** on a fast power change before the lag lets it settle. This lives in the *indication*, not in the physical level.
+**This plant does not model shrink and swell**, and the reason is structural rather than an
+omission: the steam generator is a single lumped shell with **no recirculation ratio, no
+downcomer and no separator** (§8.1). Swell is a *downcomer* measurement artefact — the level tap
+reads a column whose density changes when boiling rate changes — and with no downcomer there is
+nothing to produce it.
+
+On a real unit this is one of the things that makes feedwater control hard: a load increase
+raises steam flow *and* momentarily raises indicated level, so the level signal argues for LESS
+feed at the moment more is needed, and the control system is built to ignore it for a few seconds.
+Here, indicated level moves only when the shell's mass moves.
+
+**One consequence is worth knowing**, because it shows up in the feed controller: that controller
+carries a sourced five-second lag on its level input whose stated purpose is to ride out swell
+(WAT 05 §5.3.2). On this plant it is guarding against something that cannot happen. Measured
+during #590, removing it changes the loop's behaviour by about **5 %** — it is nearly inert, and
+it is kept because the controller's *structure* is the sourced one.
 
 ### 10.6 Log-scale nuclear instruments
 
@@ -717,17 +732,19 @@ Source range (counts/s) and intermediate range (chamber amps) carry their lag an
 
 ### 10.7 RCS loop flow — and why the trip that reads it changed
 
-Until 2026-07-29 the **low-flow reactor trip read true flow**, because no flow instrument had ever been built. It was the last exception in the plant, and it meant the single most safety-significant trip could not lag, could not drift, and could not be fooled — so it could not be *taught*. It now reads `rcs_flow`, an ordinary instrument with lag and injectable failures, and **there is no exception left**: every trip and actuation on this plant reads an indication.
+Until 2026-07-29 the **low-flow reactor trip read true flow**, because no flow instrument had ever been built. It was the last exception in the plant, and it meant the single most safety-significant trip could not lag, could not drift, and could not be fooled — so it could not be *taught*. It now reads `loop_flow`, an ordinary instrument with lag and injectable failures, and **there is no exception left**: every trip and actuation on this plant reads an indication.
 
 **RCS Loop Flow** is modelled on the real measurement: **elbow taps** on the crossover-leg 90° elbow, reading the differential pressure between the inner and outer radius of the bend, with ΔP ∝ flow². Nothing is inserted into the flow path. Real accuracy figures for this channel are ±10 % absolute, with trip-point repeatability around ±1 %.
 
-The **setpoint is the real one — 87 % of rated, blocked below P-7 (10 % power)**. Adopted 2026-07-29, replacing an unsourced 25 % / 5 % pair. Measured on an RCP trip from full power: the indication crosses 90 % at **1.8 s** and DNB onset is at **10.9 s**, so the trip now fires about nine seconds *before* the core exit reaches DNB. The old 25 % setpoint fired at 16.2 s — about five seconds *after* it. Its entire practical effect was to let DNB happen.
+The **setpoint is 87 % of rated, blocked below P-7 (10 % power)**. Measured on this plant, an RCP trip from full power: indicated flow crosses the setpoint at **3.7 s**, the trip fires at **4.6 s** on the sourced one-second delay, and the core **never voids at all** — peak void fraction **0.000**, indicated subcooling bottoming at **38.4 °F (21.3 °C)**. The trip does its job with margin to spare, which is the un-dramatic answer and the true one.
 
-**One departure remains, and it is deliberate: this plant has ONE flow channel**, where a real Westinghouse unit has **three detectors per loop and trips on 2-of-3**. That follows from the plant being single-loop and from every other protection function here being single-channel too — but be clear about what it costs, because it is the thing this event is now built to teach:
+**One departure remains, and it is deliberate: this plant has ONE flow channel**, where a real Westinghouse unit has **three detectors per loop and trips on 2-of-3**. That follows from the plant being single-loop and from every other protection function here being single-channel too — but be clear about what it costs, because it is the thing this event is built to teach:
 
-> A **stuck-high flow transmitter defeats the low-flow trip completely.** Measured, with the channel stuck at 100 % and the pump tripped: DNB onset at 9 s, core void peaking at 0.60, fuel reaching ~1706 °F (930 °C) against a damage threshold of 2192 °F (1200 °C), and the reactor finally scrammed at **~35 s on HIGH PRIMARY PRESSURE** — a different channel, a different instrument, catching a *consequence*. RCS Flow - Low never actuates at all. 2-of-3 coincidence exists precisely to stop one lying transmitter from doing this.
+> A **stuck-high flow transmitter defeats the low-flow trip completely.** Measured with the channel frozen at 100 % and the pump tripped: **RCS Flow - Low never actuates at all**, and what stops the event is **Overpower ΔT at 8.5 s** — a different channel, a different instrument, catching the *consequence* rather than the cause. 2-of-3 coincidence exists precisely to stop one lying transmitter from doing this.
+>
+> **Note what this plant does NOT do**, because the difference is the point: the core still does not void (peak 0.000) and peak fuel reaches **1292 °F (700 °C)**, far below any damage threshold. The ΔT protection is fast enough here that a lying flow channel costs about four seconds and a different trip, not a damaged core. On a plant with weaker ΔT protection the same lie is far more expensive.
 
-The surviving indication in that event is **subcooling margin**, which falls to 11.2 °F (6.2 °C) — below its 19.8 °F (11 °C) caution — while the flow gauge still reads 100 %. That is the cross-check the scenario asks for; see `04` PWR-N13 and `06` PWR-E02.
+*(These two figures are read from the protection layer directly, which is where the trip logic lives; the board's own channels are published through the reused instrument layer and are one step removed from them.)*
 
 ---
 

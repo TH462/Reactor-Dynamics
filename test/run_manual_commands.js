@@ -115,6 +115,44 @@ ck('...and none of them is one the plant REFUSES — the manual must not instruc
    refused.length === 0,
    refused.length ? refused.join(' | ') : 'no documented action lands in REFUSED');
 
+/* ---- THE CASUALTY MENU (#532) -------------------------------------------------------------
+ * The same seam one door over: `07_ABNORMAL_EMERGENCY.md` names a failure id per event, and the
+ * shipped plant either has that lever or it does not. Found when this was written: THREE events
+ * documented a casualty the player cannot cause — `steam_line_break`, `steam_line_break_upstream`
+ * and `stuck_rod_on_scram` (#530). They are not deleted; a procedure is real operator knowledge
+ * and the reasoning in it is true of the plant's steam path as modelled. They carry a NOT
+ * INJECTABLE note instead, which is the §8.36 ROD AUTO convention applied to a casualty, and this
+ * check holds that note in place.
+ *
+ * ⚠ BOTH DIRECTIONS, for the reason the setpoint gate gives: a marker that can be applied to
+ * anything is a hiding place. An id the plant HAS must not carry the note, and an id it lacks
+ * must. */
+var EMERG = path.join(__dirname, '..', 'Manuals', '07_ABNORMAL_EMERGENCY.md');
+var emd = fs.readFileSync(EMERG, 'utf8').replace(/\r\n/g, '\n');
+var shipped = (new SH.PWR2Engine({})).getProtectionConfig().failures || {};
+/* A Failure BLOCK is `### Failure` followed by the backticked ids that event injects, up to the
+ * next heading. Parsing the block rather than the whole file keeps prose mentions of a casualty
+ * out of it — the claim is "this event injects X", not "X is mentioned". */
+var blocks = emd.split(/\n### Failure\n/).slice(1);
+var noteMissing = [], noteSpurious = [], nIds = 0;
+blocks.forEach(function (b) {
+  var body = b.split(/\n##+ /)[0];
+  var marked = /NOT INJECTABLE/i.test(body);
+  (body.match(/`[a-z][a-z0-9_]+`/g) || []).forEach(function (m) {
+    var id = m.replace(/`/g, '');
+    if (!/_/.test(id)) return;
+    nIds++;
+    if (!shipped[id] && !marked) noteMissing.push(id);
+    if (shipped[id] && marked) noteSpurious.push(id);
+  });
+});
+ck('every casualty an event documents EXISTS in the shipped failure menu, or the event says it ' +
+   'does not', noteMissing.length === 0,
+   noteMissing.length ? noteMissing.join(' | ') : nIds + ' documented failure ids, all accounted for');
+ck('...and no event carries the NOT INJECTABLE note over a casualty the plant DOES have',
+   noteSpurious.length === 0,
+   noteSpurious.length ? noteSpurious.join(' | ') : 'the marker is not a hiding place');
+
 /* THE REVERSE DIRECTION is deliberately NOT asserted. Plenty of MAPPED actions have no board
  * control and no manual row — the instructor's casualty levers, the facade doors scenarios drive
  * — and requiring a row for each would push the manual toward a command dump, which is not what

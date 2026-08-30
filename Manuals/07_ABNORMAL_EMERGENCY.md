@@ -565,6 +565,12 @@ Power terminated; scram successful or ATWS path if combined.
 ### Failure
 `stuck_rod_on_scram` — portion of rod worth held out; severity % worth held.
 
+> **NOT INJECTABLE ON THIS PLANT (#530).** The lever does not exist in the shipped failure menu,
+> so you cannot cause this one deliberately. The procedure is kept because the condition is real
+> operator knowledge and because the *reasoning* — a scram that does not take power as low as it
+> should, and what you do about it — is exactly what the boration steps below teach. Read it as
+> reference, not as a drill you can run.
+
 ### Symptoms
 - After SCRAM, power not as low as expected  
 - Partial rod insertion indication  
@@ -590,6 +596,12 @@ Power reduced by boron/feedback; core cooled; damage avoided.
 `steam_line_break` — break **downstream** of the MSIV (turbine hall); severity break size %.  
 `steam_line_break_upstream` — break **upstream** of the MSIV (between generator and valve);
 same severity scale.
+
+> **NOT INJECTABLE ON THIS PLANT (#530)** — neither of them. The MSIV itself is built and works, and the
+> automatic isolation signal is not — so the break that would exercise it has no lever in the
+> failure menu. The procedure is kept: the location-decides-the-outcome reasoning below is the
+> whole lesson of the event and it is true of the plant's steam path as modelled. Read it as
+> reference, not as a drill you can run.
 
 **The location decides whether you can end it.** The MSIV sits between the steam generator and
 the turbine. A break downstream of the valve is on the far side of it, so shutting the MSIV puts
