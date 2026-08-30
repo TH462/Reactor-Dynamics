@@ -131,7 +131,7 @@ The board therefore **reclassifies** these alarms rather than removing them. The
 
 | Field | Content |
 |-------|---------|
-| **Setpoint** | Power range ≥ **108 %** (alarm); trip at **120 %** |
+| **Setpoint** | Power range ≥ **108 %** (alarm); trip at **118 %** |
 | **Means** | Neutron power high. |
 | **Actions** | 1) Stop withdrawal. 2) Insert rods. 3) Reduce turbine load if overcooling/power mismatch. 4) If rising through trip, expect/verify SCRAM. |
 | **Related** | Continuous rod withdrawal failure **PWR-E17** |
@@ -142,7 +142,7 @@ The board therefore **reclassifies** these alarms rather than removing them. The
 
 | Field | Content |
 |-------|---------|
-| **Setpoint** | Tavg ≥ **594 °F (312.2 °C)** (alarm); trip **635 °F (335 °C)** |
+| **Setpoint** | Tavg ≥ **594 °F (312.2 °C)** (alarm). There is **no high-Tavg reactor trip** on this plant — see `09` §2.0; the overtemperature ΔT trip covers this ground instead |
 | **Means** | Average coolant temperature high — often load rejection, loss of heat sink, or power high vs steam demand. |
 | **Actions** | 1) Check power vs MWe / steam flow. 2) Check SG level and feed. 3) Insert rods / reduce power. 4) Restore heat sink (AFW if needed). 5) Verify pressure not also high. |
 
@@ -172,9 +172,9 @@ The board therefore **reclassifies** these alarms rather than removing them. The
 
 | Field | Content |
 |-------|---------|
-| **Setpoint** | ≤ **1800 psi (12.41 MPa)** (also low-pressure SCRAM) |
+| **Setpoint** | ≤ **1800 psi (12.41 MPa)** alarm; the low-pressure reactor trip is lower, at **1775 psi (12.24 MPa)** |
 | **Means** | Dangerously low RCS pressure. |
-| **Actions** | 1) Verify SCRAM. 2) Verify **HPI** actuation (~1798 psi (12.4 MPa) AUTO if armed). 3) Isolate stuck PORV with **block valve** if indicated. 4) Stop spray. 5) Do not throttle HPI on PZR level alone. → **PWR-E07**, **E09** |
+| **Actions** | 1) Verify SCRAM. 2) Verify **HPI** actuation (~1715 psi (11.824 MPa) AUTO if armed). 3) Isolate stuck PORV with **block valve** if indicated. 4) Stop spray. 5) Do not throttle HPI on PZR level alone. → **PWR-E07**, **E09** |
 
 ---
 

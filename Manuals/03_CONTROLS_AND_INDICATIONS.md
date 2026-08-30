@@ -615,7 +615,7 @@ function and secures the pumps even with the signal still present.
 | Control | Effect |
 |---------|--------|
 | **On / Off** | Start/stop merged high/low pressure injection |
-| **AUTO arm** | Actuates on low primary pressure (~**1798 psi (12.4 MPa)**) when armed |
+| **AUTO arm** | Actuates on low primary pressure (~**1715 psi (11.824 MPa)**) when armed |
 | **Pump curve** | High-head trickle at operating pressure; high volume below ~**653 psi (4.5 MPa)** shutoff region |
 | **Indication** | `hpi_flow`, HPI ACTIVE alarm/status |
 
@@ -854,7 +854,7 @@ Not a plant control — **trainer control**.
 Every board instrument, with its indicating range, typical lag, and the annunciators it
 drives (see `06_ALARM_RESPONSE.md` for each alarm's response). A reading pegged at a range
 end may be **over-range, not truth** — the power range reads to 200 % precisely so a pegged
-meter can still cross the 120 % trip.
+meter can still cross the 118 % trip.
 
 | Instrument | Unit | Range | Typical lag | Primary use | Drives alarms |
 |------------|------|-------|-------------|-------------|---------------|

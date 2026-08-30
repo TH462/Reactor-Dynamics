@@ -1152,6 +1152,7 @@ var BASELINES = {
   // (182 → 186 → 215 → 218 → 220), all noise. Baselining that would train the next
   // author to rewrite the number without reading it. Coverage is printed on the
   // line above the tally, out of the scraper's reach.
+  'run_manual_setpoints.js': { code: 0, score: '5passed 0failed 5checks' },   // NEW (#532, 2026-08-30): DOES THE SETPOINT CHAPTER DESCRIBE THE PLANT WE SHIP? `Manuals/09` is the chapter that tells a player what the plant TRIPS AT and nothing checked a figure in it — `run_manual_units` cross-checks the BOARD against the RETIRED `pwr_config` and never reads the manual's numbers. Measured on arrival: EIGHT wrong setpoints (power range 120 vs 118 %, low setting 25 vs 35 %, pressure high 2384 vs 2425 psia, low 1800 vs 1775, RCS flow 90 vs 87 %, SI trip 1798 vs 1715 psia, PZR level 97 vs 87 %, P-10 10 vs 8 %) plus a high-Tavg trip and a low-pressurizer-level trip THIS PLANT DOES NOT HAVE. Every plant-side value is READ from `pwr2_protection`'s own objects, never retyped. COVERAGE IS ASSERTED — an unmapped manual row fails rather than going silently unchecked, which is the one failure this design is exposed to — and the NOT MODELLED marker is checked in BOTH directions so it cannot become a hiding place.
   'run_manual_units.js':   { code: 0, score: '0failed' },
   // New 2026-07-30 — the manual set's revision history. UNLIKE run_manual_units above,
   // this one IS baselined on its check count: the checks are structural (table shape,
