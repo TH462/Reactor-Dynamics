@@ -18,7 +18,7 @@ Campaign `teaches` and procedure titles now use the manuals' **Mode N, Name** co
 | Critical ≤ 5 % | **Mode 2, Startup** |
 | `hot_zero_power` | **Mode 3, Hot Standby** |
 | Heatup/cooldown transit | **Mode 4, Hot Shutdown** **[sim]** |
-| `cold_shutdown` | **Mode 5, Cold Shutdown** **[sim]** |
+| `hot_shutdown` | **Mode 4, Hot Shutdown** **[sim]** — there is no Mode 5 or cold-shutdown state on this plant (#524) |
 
 ---
 

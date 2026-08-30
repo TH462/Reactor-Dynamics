@@ -7,7 +7,7 @@
 
 **NOTE:** Values are trainer setpoints (SI). Real US plant Tech Specs differ.
 
-**Plant MODES:** Mode 1, At Power = Power Operation (power > 5 %); Mode 2, Startup = Startup (critical ≤ 5 %); Mode 3, Hot Standby = Hot Standby; **Mode 4, Hot Shutdown and Mode 5, Cold Shutdown are simulated** — `cold_shutdown` is a Free Play initial condition and the full heatup/cooldown runs on integrated physics. See `05_MODE_TRANSITIONS.md`.
+**Plant MODES:** Mode 1, At Power = Power Operation (power > 5 %); Mode 2, Startup = Startup (critical ≤ 5 %); Mode 3, Hot Standby = Hot Standby; **Mode 4, Hot Shutdown is simulated and is the cold end of this plant** — `hot_shutdown` is a Free Play initial condition and the Mode 4 ↔ Mode 1 heatup/cooldown runs on integrated physics. **There is no Mode 5** (§11.0, #524). See `05_MODE_TRANSITIONS.md`.
 
 ---
 
@@ -18,12 +18,12 @@
 | Reactor power | **100 %** | Mode 1, At Power |
 | Electrical output | **≈ 100 MWe** | Mode 1, At Power |
 | Primary pressure | **2235 psi (15.41 MPa)** | Mode 1, At Power |
-| Tavg | **≈ 580.1 °F (304.5 °C)** | Mode 1, At Power |
-| Thot / Tcold | **≈ 610.5 / 551.3 °F** (321.4 / 288.5 °C) (ΔT ≈ 59.4 °F / 33 °C) | Mode 1, At Power |
-| Pressurizer level | **≈ 55 %** | Mode 1, At Power |
+| Tavg | **≈ 577.7 °F (303.2 °C)** | Mode 1, At Power |
+| Thot / Tcold | **≈ 607.2 / 548.2 °F** (319.6 / 286.8 °C) (ΔT ≈ 59.0 °F / 32.8 °C) | Mode 1, At Power |
+| Pressurizer level | **≈ 57 %** | Mode 1, At Power |
 | Steam Generator level | **≈ 65 %** | Mode 1, At Power |
-| Secondary steam pressure | **≈ 825 psi (5.69 MPa)** — Ginna's sourced 810 psig full-load outlet (#419 wave 3) | Mode 1, At Power |
-| Subcooling margin | **≈ 73.1 °F** (40.6 °C) | Mode 1, At Power |
+| Secondary steam pressure | **≈ 808 psi (5.57 MPa)** — measured on a settled ride; Ginna's sourced 810 psig full-load outlet is the anchor it was tuned to (#419 wave 3) | Mode 1, At Power |
+| Subcooling margin | **≈ 45 °F** (25 °C) | Mode 1, At Power |
 | Control bank position | **≈ 92 %** withdrawn | Mode 1, At Power |
 | Core inventory | **100 %** | Mode 1, At Power |
 | Decay heat (after long power run) | **≈ 7 %** at scram instant | — |
@@ -442,40 +442,40 @@ Commercial practice keeps boron sufficient for at least **1 % Δk/k** (WTSM 19.2
 ## 11.0 Normal values by initial condition
 
 Expected readings at each named engine initial condition, captured from the live engine after
-settling (60 s at the steady-power states, 5 s otherwise). Four are offered in the Free Play
-picker — `hot_full_power`, `50_percent`, `hot_zero_power`, `cold_shutdown`; **`5_percent` is
-scenario-only** and is listed here as a reference point for low-power work. Use this table to verify a
+settling **70 s at 10x, the same for every column** — the low-power states are still walking their pressure up at 6 s, which is how the old table came to quote a hot-standby pressure 9 psi (0.06 MPa) light. **These four are the whole list** — the Free Play picker offers `hot_full_power`, `50_percent`, `hot_zero_power` and `hot_shutdown`, and the engine refuses any other name.
+
+> **THERE IS NO COLD SHUTDOWN INITIAL CONDITION ON THIS PLANT, AND NO MODE 5.** The cold end of the ladder is **Mode 4, Hot Shutdown** — 250 °F (121.1 °C), 369 psi (2.545 MPa), RHR in service, reactor coolant pumps secured, both banks in. `cold_shutdown` and `5_percent` are the retired engine's and are **refused by name**. The reason is in the water properties, not the plant model: the property floor is **14.5 psi (0.1 MPa)**, whose saturation temperature is **211 °F (99.4 °C)**, so a steam generator at or below Mode 5's **200 °F (93.3 °C)** boundary cannot be represented at all. Tracked as **#524**; until it lands, every Mode 5 instruction in this manual set describes a state you cannot load.
 healthy board after selecting an IC, and as the "what should this read?" reference during
 evolutions. At steady state the **indicated** values track these true values through each
 instrument's lag and noise (see `03_CONTROLS_AND_INDICATIONS.md` §16.0) — a mismatch that
 persists is either a transient in progress or a failed instrument.
 
-| Parameter | `hot_full_power` | `50_percent` | `5_percent` | `hot_zero_power` | `cold_shutdown` |
-|---|---|---|---|---|---|
-| Plant MODE | At Power (1) | At Power (1) | At Power (1) | Hot Standby (3) | Cold Shutdown (5) |
-| Reactor power (%) | 100 | ≈ 50 | ≈ 6 | ~0 (source) | ~0 |
-| Generator output (MWe) | 100 | ≈ 50 | ≈ 6 | 0 | 0 |
-| Tavg °F (°C) | 579.2 (304) | ≈ 572 (300) | ≈ 566.6 (297) | 566.6 (297) | 122 (50) |
-| T-hot / T-cold °F (°C) | 609.8 / 550.4 (321 / 288) | 588.2 / 557.6 (309 / 292) | 568.4 / 564.8 (298 / 296) | 566.6 / 566.6 (297 / 297) | 122 / 122 (50 / 50) |
-| Primary pressure psi (MPa) | 2235 (15.41) | 2235 (15.41) | 2235 (15.41) | 2235 (15.41) | 363 (2.50) |
-| Subcooling margin (°C) | ≈ 41 | ≈ 45 | ≈ 48 | ≈ 48 | ≈ 173 |
-| PZR level (%) | 55 | ≈ 46 | ≈ 38 | ≈ 37 | 30 |
-| SG level (%) | 65 | ≈ 64 | ≈ 65 | 65 | 65 |
-| SG / steam pressure psi (MPa) | 819 (5.65) | ≈ 986 (6.8) | ≈ 1160 (8.0) | 1194 (8.23) | ≈ 15 (0.1) |
-| Steam / feed flow (norm.) | 1.00 | 0.50 | 0.06 | 0 | 0 |
-| Fuel average temp °F (°C) | ≈ 1279.4 (693) | ≈ 924.8 (496) | ≈ 609.8 (321) | 566.6 (297) | 122 (50) |
-| Decay heat (%) | 7.0 | 3.5 | ≈ 0.4 | ≈ 0.5 | ~0 |
-| Xenon (% of equilibrium) | 100 | ≈ 66 | ≈ 11 | 0 | 0 |
-| Boron (ppm) | ≈ 747 | ≈ 837 | ≈ 846 | ≈ 363 | ≈ 919 |
-| Net reactivity (pcm) | 0 | 0 | ≈ 0 | ≈ −1000 | ≈ −1000 |
-| Source range (cps) | 0 (de-energized) | 0 (de-energized) | 0 (de-energized) | ≈ 500 | ≈ 500 |
-| Intermediate range (A) | ≈ 8e-3 | ≈ 4e-3 | ≈ 5e-4 | ≈ 1.6e-11 | ≈ 1.6e-11 |
-| SR detector | OFF | OFF | OFF | Energized | Energized |
-| Condenser vacuum (kPa) | ≈ 96.5 | ≈ 96.5 | ≈ 96.5 | ≈ 96.5 | ≈ 96.5 |
-| Turbine speed (RPM) | 1800 | 1800 | 1800 | 1800 | 1800 |
-| MSIV | Open | Open | Open | Open | Open |
-| RHR | Out of service | Out of service | Out of service | Out of service | **In service** |
-| ECCS mode indicator | off | off | off | off | **RHR** |
+| Parameter | `hot_full_power` | `50_percent` | `hot_zero_power` | `hot_shutdown` |
+|---|---|---|---|---|
+| Plant MODE | At Power (1) | At Power (1) | Hot Standby (3) | **Hot Shutdown (4)** |
+| Reactor power (%) | 99.6 | 49.6 | ~0 (source) | ~0 (source) |
+| Generator output (MWe) | 100.0 | 50.0 | 0 | 0 |
+| Tavg °F (°C) | 577.7 (303.2) | 566.7 (296.9) | 547.2 (286.2) | 250.4 (121.3) |
+| T-hot / T-cold °F (°C) | 607.2 / 548.2 (319.6 / 286.8) | 582.1 / 551.4 (305.6 / 288.6) | 547.2 / 547.2 (286.2 / 286.2) | 250.4 / 250.5 (121.3 / 121.4) |
+| Primary pressure psi (MPa) | 2235 (15.41) | 2235 (15.41) | 2246 (15.482) | 369 (2.545) |
+| Subcooling margin °F (°C) | 45 (25) | 70 (39) | 105 (58.5) | 186 (103.6) |
+| PZR level (%) | 57 | 40 | 25 | 25 |
+| SG level (%) | 65 | 65 | 65 | 65 |
+| SG / steam pressure psi (MPa) | 808 (5.57) | 943 (6.50) | 1020 (7.03) | 30 (0.207) |
+| Steam / feed flow (norm.) | 1.00 | 0.50 | 0 | 0 |
+| Fuel average temp °F (°C) | 1292 (700) | 896 (480) | 547 (286.1) | 250 (121.1) |
+| Decay heat (%) | 6.23 | 3.11 | ~0 | ~0 |
+| Xenon (% of equilibrium) | 100 | 66 | 0 | 0 |
+| Boron (ppm) | 626 | 774 | 719 | 894 |
+| Net reactivity (pcm) | 0 | 0 | ≈ −1141 | ≈ −5635 |
+| Source range (cps) | 0 (de-energized) | 0 (de-energized) | ≈ 501 | ≈ 101 |
+| Intermediate range (A) | ≈ 8.3e-3 | ≈ 4.1e-3 | ≈ 1.6e-11 | ≈ 3.2e-12 |
+| SR detector | OFF | OFF | Energized | Energized |
+| Condenser vacuum (kPa) | 93.2 | 98.0 | 100.1 | 100.1 |
+| Turbine speed (RPM) | 1800 | 1800 | 1800 | 1800 |
+| MSIV | Open | Open | Open | Open |
+| RHR | Out of service | Out of service | Out of service | **In service** |
+| ECCS mode indicator | standby | standby | standby | **RHR** |
 
 Notes:
 
@@ -486,8 +486,7 @@ Notes:
 - **Boron differs per IC by design** (rod position and xenon differ); the `hot_zero_power`
   value is low because the control bank is fully inserted and xenon-free ≈ criticality is
   held down by rods, not boron.
-- `cold_shutdown` starts with RCPs secured, RHR aligned, and the SR detector energized —
-  see `05_MODE_TRANSITIONS.md` PWR-T20 for the climb out.
+- `hot_shutdown` starts with RCPs secured, RHR aligned, both banks in and the SR detector energized — the cooldown's own lineup, with the P-11 blocks already taken. See `05_MODE_TRANSITIONS.md` PWR-T20 for the climb out, and read its Mode 5 steps against the note above.
 
 ---
 

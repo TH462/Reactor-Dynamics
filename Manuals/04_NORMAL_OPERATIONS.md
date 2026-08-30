@@ -70,7 +70,7 @@ Heat and pressurize the RCS from **Mode 5, Cold Shutdown** through **Mode 4, Hot
 - Master path: **PWR-T20** Phase A.
 
 ### Prerequisites
-1. Plant in Mode 5: subcritical, RCS cold (~122 °F / 50 °C class), depressurized (~363 psi / 2.5 MPa).
+1. Plant in **Mode 4, Hot Shutdown**: subcritical, RCS **250 °F (121.1 °C)**, **369 psi (2.545 MPa)**, RHR in service, RCPs secured, both banks in. (This step used to read *Mode 5, ~122 °F (50 °C)* — the retired engine's cold initial condition. There is no Mode 5 on this plant; **09 §11.0** and #524.)
 2. RHR aligned for shutdown cooling.
 3. SI accumulators **isolated** (correct Mode 5 lineup — plant is below cover-gas pressure).
 4. Generator **off line**.
@@ -119,10 +119,13 @@ Heat and pressurize the RCS from **Mode 5, Cold Shutdown** through **Mode 4, Hot
 ### Expected heatup performance
 Pump heat only — no rod motion, no dilution. Heat source is RCP work (about 0.55 % of rated core heat at full flow) plus pressurizer heaters.
 
-Measured full stack from the `cold_shutdown` initial condition on the default lineup, no rod
+Measured full stack from the retired engine's `cold_shutdown` initial condition on the default lineup, no rod
 motion. **Mode boundaries on this plant are by Tavg:** Mode 5 ≤ **199.4 °F (93 °C)**, Mode 3 ≥
 **350.6 °F (177 °C)**, Mode 4 between them — so on the way *up* 350 °F is the Mode 4 → 3
 boundary, not the Mode 5 → 4 one.
+
+
+> **⚠ THESE FIGURES WERE MEASURED ON THE RETIRED ENGINE (2026-08-02) AND HAVE NOT BEEN RE-MEASURED ON THE PLANT THAT SHIPS.** Treat them as the shape of the evolution, not as this plant's numbers. The Mode 5 rows are unreachable in any case — the cold end here is **Mode 4, Hot Shutdown** at 250 °F (121.1 °C) (**09 §11.0**, #524).
 
 | Milestone | Plant time | Notes |
 |-----------|-----------|--------|
@@ -742,6 +745,9 @@ transcription. Conditions: `hot_zero_power`, free-play default lineup, seed 42, 
 a **programmed −90 °F/hr (−50 °C/hr)** with **63 °F (35 °C)** of subcooling held throughout. Run
 it at a different rate and every row below moves; that is the point of a programmed cooldown.
 
+
+> **⚠ THESE FIGURES WERE MEASURED ON THE RETIRED ENGINE (2026-08-02) AND HAVE NOT BEEN RE-MEASURED ON THE PLANT THAT SHIPS.** Treat them as the shape of the evolution, not as this plant's numbers. The Mode 5 rows are unreachable in any case — the cold end here is **Mode 4, Hot Shutdown** at 250 °F (121.1 °C) (**09 §11.0**, #524).
+
 | Milestone | Plant time | Notes |
 |-----------|-----------|--------|
 | Start Mode 3 | 0 | **566.6 °F (297 °C)**, **2235 psi (15.41 MPa)**, 683 ppm |
@@ -751,7 +757,7 @@ it at a different rate and every row below moves; that is the point of a program
 | RHR permissive reached, **440 psi (3.03 MPa)** | **~3.16 plant-h** | Tavg **382.8 °F (194.9 °C)** — close to the commercial ~350 °F / ~350 psig practice in the NOTE above |
 | RHR aligned, RCPs secured | ~3.19 plant-h | HX split 7 %; RHR carries the heat from here |
 | **Mode 4 entry** (350 °F (176.7 °C)) | ~3.49 plant-h | 392 psi (2.70 MPa) |
-| Cold end, **Mode 5** (199.4 °F (93 °C)) | **~4.89 plant-h** | boron **857 ppm**, accumulators **100 % full and isolated**, RHR on, RCPs off. The checklist runs on to **177 °F (80.5 °C)** at **363 psi (2.50 MPa)** — the `cold_shutdown` initial condition's own pressure |
+| Cold end, **Mode 5** (199.4 °F (93 °C)) — **NOT REACHABLE ON THIS PLANT (#524)** | **~4.89 plant-h** | boron **857 ppm**, accumulators **100 % full and isolated**, RHR on, RCPs off. The checklist runs on to **177 °F (80.5 °C)** at **363 psi (2.50 MPa)** — the `cold_shutdown` initial condition's own pressure |
 
 Measured rate: **−85 to −100 °F/hr (−47 to −56 °C/hr)** through the secondary-led legs and
 **−65 to −118 °F/hr (−36 to −66 °C/hr)** on the RHR leg. The worst transient anywhere in the

@@ -52,6 +52,8 @@ require(path.join(__dirname, '..', 'engines', 'load_mode.js'));
 require(path.join(__dirname, '..', 'engines', 'pwr', 'pwr_config.js'));
 require(path.join(__dirname, '..', 'layers', 'control', 'control_kernel.js'));
 require(path.join(__dirname, '..', 'layers', 'control', 'pwr_control.js'));
+/* the shell class REUSES the published instrument layer, so booting an engine needs it */
+require(path.join(__dirname, '..', 'engines', 'pwr', 'pwr_instruments.js'));
 ['pwr2_water', 'pwr2_vtable', 'pwr2_geometry', 'pwr2_core', 'pwr2_loop', 'pwr2_kinetics',
  'pwr2_fuel', 'pwr2_reactor', 'pwr2_sources', 'pwr2_sg', 'pwr2_turbine', 'pwr2_relief',
  'pwr2_condenser', 'pwr2_cvcs', 'pwr2_eccs', 'pwr2_afw', 'pwr2_damage', 'pwr2_protection',
@@ -315,6 +317,113 @@ ck('...and so do its instrument, direction and priority — a row can be right a
    'and wrong about which channel raises it',
    aMeta.length === 0,
    aMeta.length ? aMeta.join('  |  ') : 'instrument/direction/priority agree on every row');
+
+/* ---- §11.0, NORMAL VALUES BY INITIAL CONDITION (#532 phase 3c) -----------------------------
+ * The THIRD table in this chapter that nothing read, and the one a player is told to check a
+ * fresh board against. Measured 2026-08-30 before this check existed: it carried a
+ * `cold_shutdown` column for an initial condition THE ENGINE REFUSES BY NAME, a `5_percent`
+ * column for another, and wrong figures throughout the columns that did exist — Tavg 579.2
+ * against a measured 577.7 degF, subcooling 41 against 25 degC, boron 747 against 626 ppm.
+ *
+ * This check BOOTS THE PLANT rather than reading a config, because the table's claim is "what a
+ * settled board reads" and only a settled board can answer it. That makes it much the slowest
+ * work in this file, and it is worth it: a static read could not have caught the subcooling.
+ *
+ * ⚠ COVERAGE IS ASSERTED IN THE COLUMN DIRECTION TOO. The header's initial-condition names must
+ * be exactly the ones the engine has. A column for an IC that does not exist is the defect this
+ * found; a missing column for one that does is the same defect mirrored. The engine's list is
+ * READ FROM THE ENGINE — pwr2_engine puts it in its own refusal message — never retyped here. */
+require(path.join(SRC, 'pwr2_engine.js'));
+require(path.join(SRC, 'pwr2_shell.js'));
+require(path.join(__dirname, '..', 'layers', 'instructor_layer.js'));
+require(path.join(__dirname, '..', 'layers', 'simulation_service.js'));
+
+var shippedICs = [];
+try { new RD.pwr2.shell.PWR2Engine({ initial_state: '__no_such_ic__' }); }
+catch (e) {
+  var m = /this engine has ([a-z0-9_ /]+)/i.exec(e.message);
+  if (m) shippedICs = m[1].trim().split(/\s*\/\s*/);
+}
+
+/* ⚠ TWO tables in this chapter open with '| Parameter |' — §1.0's normal operating point is the
+ * first of them, and picking it yielded an EMPTY column list, which made the coverage check
+ * vacuous in exactly the direction it exists to assert. Require a backticked IC name. */
+var icHeader = md.split('\n').filter(function (l) {
+  return /^\| Parameter \|/.test(l) && /`[a-z0-9_]+`/.test(l);
+})[0] || '';
+var icCols = (icHeader.match(/`[a-z0-9_]+`/g) || []).map(function (x) { return x.replace(/`/g, ''); });
+
+console.log('\n' + BOLD + 'THE INITIAL-CONDITION TABLE vs A BOOTED PLANT  (Manuals/09 §11.0)' + RST);
+
+ck('the engine\'s own initial-condition list was read (not retyped)',
+   shippedICs.length >= 3, shippedICs.join(', ') || 'REFUSAL MESSAGE DID NOT PARSE');
+ck('the table\'s columns are EXACTLY the initial conditions the plant has — a column for one it ' +
+   'refuses tells the player to load a state that does not exist',
+   icCols.length === shippedICs.length &&
+   icCols.every(function (c) { return shippedICs.indexOf(c) !== -1; }) &&
+   shippedICs.every(function (c) { return icCols.indexOf(c) !== -1; }),
+   'table [' + icCols.join(', ') + ']  ·  plant [' + shippedICs.join(', ') + ']');
+
+/* label -> the true_state field it quotes, its tolerance, and the conversion into the manual's
+ * unit. Prose rows (MSIV, SR detector, ECCS mode) are covered by the column check above, not
+ * compared numerically. Tolerances are the manual's rounding, not a licence to drift. */
+var IC_ROWS = {
+  'Tavg':              { f: 'tavg_c',        tol: 1.0, cv: function (c) { return c * 9 / 5 + 32; } },
+  'Primary pressure':  { f: 'pressure_mpa',  tol: 3.0, cv: function (x) { return x * PSI; } },
+  'Subcooling margin': { f: 'subcooling_c',  tol: 2.0, cv: function (c) { return c * 9 / 5; } },
+  'PZR level':         { f: 'pzr_level_pct', tol: 1.5 },
+  'SG level':          { f: 'sg_level_pct',  tol: 1.5 },
+  'Boron':             { f: 'boron_ppm',     tol: 20 }
+};
+
+var booted = {};
+icCols.forEach(function (ic) {
+  if (shippedICs.indexOf(ic) === -1) return;                 /* the column check already failed */
+  var svc = new RD.SimulationService({ seed: 1 });
+  svc.selectPlant('pwr2', ic, null, undefined);
+  svc.running = true; svc.timeAcceleration = 10; svc.attentionStops = false;
+  var s = null, n = 700;   /* uniform: the low-power ICs are still walking pressure up at 60 */
+  for (var i = 0; i < n; i++) s = svc.tick();
+  booted[ic] = s.true_state;
+});
+
+/* ⚠ SCAN §11.0's TABLE ONLY, and match the label by PREFIX. Two earlier tables in this chapter
+ * (§7.5's estimated-critical-condition grids) also carry a `Tavg` row with five-plus cells, so a
+ * whole-file scan compared this table's expectations against those — "manual 0, plant 577.7" was
+ * a bank-position row. And the unit suffix cannot be stripped by cutting at the first bracket:
+ * `Primary pressure psi (MPa)` becomes `Primary pressure psi`, which matched nothing at all, so
+ * that row was silently unchecked while the runner reported cells compared. */
+var icWrong = [], icChecked = 0;
+var icLines = md.split('\n');
+var icStart = icLines.indexOf(icHeader);
+var icEnd = icLines.findIndex(function (l, i) { return i > icStart && /^##\s/.test(l); });
+if (icEnd === -1) icEnd = icLines.length;
+icLines.slice(icStart, icEnd).forEach(function (line) {
+  if (line.charAt(0) !== '|') return;
+  var cells = line.split('|').slice(1, -1).map(function (c) { return c.trim(); });
+  var label = (cells[0] || '').trim();
+  var key = Object.keys(IC_ROWS).filter(function (k) { return label.indexOf(k) === 0; })[0];
+  var spec = key ? IC_ROWS[key] : null;
+  if (spec) label = key;
+  if (!spec || cells.length < icCols.length + 1) return;
+  icCols.forEach(function (ic, k) {
+    var T = booted[ic];
+    if (!T) return;
+    var mm = (cells[k + 1] || '').match(/(-?\d+(?:\.\d+)?)/);
+    if (!mm) return;
+    var want = spec.cv ? spec.cv(T[spec.f]) : T[spec.f];
+    icChecked++;
+    if (Math.abs(parseFloat(mm[1]) - want) > spec.tol) {
+      icWrong.push(label + ' @ ' + ic + ': manual ' + mm[1] + ', plant ' + want.toFixed(1));
+    }
+  });
+});
+
+ck('the table was actually read — rows matched against booted plants',
+   icChecked >= 20, icChecked + ' cells compared across ' + Object.keys(booted).length + ' booted ICs');
+ck('every figure matches what that initial condition actually settles at',
+   icWrong.length === 0,
+   icWrong.length ? icWrong.join('  |  ') : 'all ' + icChecked + ' cells agree with the booted plant');
 
 console.log(DIM + '  (numbers and existence only — the Notes prose and the chapter narrative are ' +
             'not machine-checkable; that is the rest of #532)' + RST);

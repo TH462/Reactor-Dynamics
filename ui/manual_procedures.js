@@ -52,7 +52,10 @@
       id: 'pwr_heatup', category: 'startup', manual_ref: 'PWR-N01',
       title: 'Mode 5, Cold Shutdown → Mode 3, Hot Standby — plant heatup (pump heat)',
       purpose: 'Take the plant from Mode 5, Cold Shutdown to Mode 3, Hot Standby on reactor-coolant-pump heat alone: start the RCPs, pressurize to NOP, bottle the steam generator, re-align the SI accumulators, and ride temperature up with the reactor never critical. This is the commercial heatup and what mission "The Big Warm-Up" drives.',
-      from: 'cold_shutdown',
+      // #532 (2026-08-30): this said 'cold_shutdown', which THIS ENGINE REFUSES BY NAME — there
+      // is no Mode 5 (the water-property floor saturates at 211 degF, above the 200 degF Mode 5
+      // boundary; #524). The cold end of the ladder is Mode 4 at 250 degF / 369 psia.
+      from: 'hot_shutdown',
       prereq: ['Plant in Mode 5, Cold Shutdown: cold (~122 °F / 50 °C), depressurized (~363 psi / 2.5 MPa), subcritical, RHR in service.', 'RCPs available to start (heat source).'],
       // #395 — machine-checkable entry conditions, MEASURED on the cold_shutdown
       // IC (tavg 50.0 °C, 2.50 MPa, power 0): every row reads MET on its own IC.
@@ -575,7 +578,7 @@
           { p: 'tavg_rate_c_per_hr', op: '<', v: -150 },
         ],
       },
-      outcome: 'Mode 5, Cold Shutdown: cold, depressurized to 363 psi (2.50 MPa), RHR in service, reactor coolant pumps secured, accumulators full and isolated, boron at the cold shutdown margin of 857 ppm. This is the `cold_shutdown` initial condition, reached on integrated physics. PWR-N01 takes it back up.',
+      outcome: 'Mode 4, Hot Shutdown (there is no Mode 5 on this plant, #524): 250 degF (121.1 degC), depressurized to 369 psi (2.545 MPa), RHR in service, reactor coolant pumps secured, accumulators full and isolated, boron at the cold shutdown margin of 857 ppm. This is the `cold_shutdown` initial condition, reached on integrated physics. PWR-N01 takes it back up.',
     },
     // PWR-T06 — the post-trip response. Authored 2026-08-03 (#319): the procedure was
     // documented but had NO runnable checklist, while PWR-E03 (turbine trip) explicitly
@@ -1231,5 +1234,28 @@
   ];
 
   RD.MANUAL_PROCEDURES = { pwr: PWR, rbmk_pre: RBMK, rbmk_post: RBMK, bwr: BWR };
+
+  /* ---- `from` IS THE SHIPPED PLANT'S IC NAME. The RETIRED engine needs a translation. -------
+   * (#532, 2026-08-30.) `proc.from` is not documentation — `run_procedures.js:77` and
+   * `procedures_harness.js:105` LOAD it, which a grep of ui/ and layers/ alone does not show. So
+   * when PWR-N01's start state was corrected from `cold_shutdown` (which the shipped engine
+   * refuses by name — there is no Mode 5, #524) to `hot_shutdown`, those two harnesses went red:
+   * they drive `RD.PWREngine`, the RETIRED plant, where `cold_shutdown` is the right name and
+   * `hot_shutdown` is a different, HOT state — so the heatup started at power and tripped on
+   * overtemperature ΔT at step 9.
+   *
+   * ⚠ THE FIX IS A NAME TRANSLATION, NOT A CHANGED ASSERTION. Every harness keeps testing exactly
+   * what it tested; only the IC label is mapped for the engine that uses the other vocabulary.
+   * The alternative — reverting `from` — would have left the checklist a PLAYER RUNS declaring a
+   * state their plant refuses, so that a gate aimed at a retired engine could stay green. That is
+   * the #579 trap: a check pointed at the wrong plant defending the wrong plant's value.
+   *
+   * It lives HERE as a SIBLING of RD.MANUAL_PROCEDURES, not a property of it — that object is
+   * iterated by profile name and a function on it broke every consumer at once. Beside the
+   * procedures because both harnesses need it and there is no shared
+   * test module — and a constant written down twice is the PROTECTION_DT trap. */
+  RD.RETIRED_ENGINE_IC = function (from) {
+    return from === 'hot_shutdown' ? 'cold_shutdown' : from;
+  };
 
 })(globalThis.RD || (globalThis.RD = {}));
