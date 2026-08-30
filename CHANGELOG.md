@@ -30,6 +30,46 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
 
 ## [Unreleased]
 
+### Changed (the public website describes the plant it is about to ship, 2026-08-30)
+
+The same shape as #532 one directory up: `#523` flipped every site link and `/sim` to
+`?engine=pwr2`, and the marketing copy still described the engine that flip retires. Five
+statements, each checked against `engines/pwr2/` rather than against the previous copy. No
+version bump and no `changelog.html` entry — these are website changes, not simulator changes.
+
+- **`about.html` promised a cold plant and contradicted its own plant section.** *"Bring a cold
+  plant to life"* against a coldest initial condition of **Hot Shutdown (Mode 4), 250 °F
+  (121.1 °C) / 350 psig** (`pwr2_engine.js:168`); the page's own *The plant* paragraph already
+  said Mode 4. Mode 5 waits on the Layer-0 floor (#524).
+- **`about.html` offered the Three Mile Island *sequence* as a selectable option.** `ENGINES.pwr2`
+  carries `freePlayOnly: true`, so the Scenarios tab answers with the free-play notice
+  (`ui/app.js:3832`), and the `scenarios` flag is `preview` on the public channel besides. The
+  true and better claim is the one `PWR2_VALIDATION.md` §41–46 measured: **the level deception is
+  emergent physics**, not a script.
+- **`download.html` promised the training missions in the offline file.**
+  `tools/make_portable.js` strips the retired engine **unconditionally**, so the download is the
+  PWR2 free-play plant.
+- **`physics.html` stated the retired engine's decay-heat form** — *"two-term exponential
+  production"* against PWR2's **four** decay groups, each relaxing toward its own equilibrium
+  fraction (`pwr2_kinetics.js:158`, `:849`). Power-history dependence itself was correct.
+- **`physics.html` omitted the void reactivity term**, which PWR2 has and the retired engine did
+  not model this way (`voidReactivity`, `pwr2_kinetics.js:549`).
+- **`roadmap.html` gave a stale reason for the hold on guided content.** The wait is no longer
+  only end-to-end play-through: the engine was rebuilt underneath it and every mission and
+  procedure needs re-validating (#525).
+
+**Verified correct and deliberately left alone**, because the interesting half of a copy audit is
+what survives it: six-group point kinetics (sourced, DOE-HDBK-1019/1-93 Table 3), S-curve bank
+worth, Doppler / moderator-from-density / boron / xenon / core-excess, the iodine–xenon chain with
+burnout, accumulators, RCP cavitation from suction margin, the cladding hot node, physics.html's
+*"Hot shutdown (Mode 4, 250 °F)"* — exactly right — and roadmap.html's containment paragraph
+(`pwr2_containment.js` has atmosphere pressure, temperature and a sump mass, and has **no** spray
+and **no** fan coolers, which is what the page says is next).
+
+Gates: `run_site_build` 41, `run_site_meta` 164, `run_channel` 25, `run_release` 23,
+`run_portable` 145, `run_flags` 19/19, `verify_flags_ui` 42/42 — all at baseline.
+
+
 ### Changed (#532 — the manual set describes the plant the site runs, 2026-08-30)
 
 *(OWNER RULING, 2026-08-30: selected "The whole set, prose included" from options I wrote — a
