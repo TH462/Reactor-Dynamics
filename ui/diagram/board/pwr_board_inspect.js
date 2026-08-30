@@ -907,7 +907,9 @@
       'which is exactly the shutdown and cooldown condition this plant now starts in. Without it ' +
       'the only remaining way down in pressure with the pumps off is to lift the relief valve and ' +
       'dump reactor coolant into containment, which is the thing the real system exists to avoid. ' +
-      'It is slow and it is deliberate — expect hundreds of psi over ten minutes, not a step. ' +
+      'It is slow and it is deliberate. Measured on a plant at hot standby with every reactor ' +
+      'coolant pump secured, full open takes pressure down about 880 psi (6.07 MPa) over ten ' +
+      'minutes — a long steady walk, not a step. ' +
       'There is no automatic mode: nothing opens this valve but you.',
       CI, '12.3'),
     bdAdvPct: e('ADV Position',
