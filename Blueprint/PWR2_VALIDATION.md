@@ -9296,3 +9296,112 @@ than chased, with the trace, so a recurrence has a before to point at.
 
 `run_pwr2_board` 48 -> **52**, mutations 15 -> **17**. `run_pwr2_true_state` 77 -> **79**,
 mutations 29 -> **30**. `verify_board_check` 236/0 and `run_contract` 178/0 unmoved.
+
+---
+
+## 124. #590 — THE FEED LOOP WAS NOT LIMIT-CYCLING: IT WAS CHASING ITS OWN INSTRUMENTS — 2026-08-29
+
+The owner, playtesting (#516 item 2): *"The SG Feed in auto bounces back and fourth."* It did —
+1.975 % of SG level and 0.567 % of reactor power, peak-to-peak, at constant full power with
+nothing touched — and **every hypothesis about the controller was wrong, including the one that
+was ruled in.**
+
+### The acceptance criterion, written first, and it had never existed
+
+**No PWR2 gate asserted steady-state quiet on any variable.** The retired engine carried a whole
+family of them for its own limit cycles (#378, #394, #418 — `test/behavior_pwr.js` still reads
+*"…and STAYS settled — 25-35 min p2p ≤ 6 pts"*); PWR2 inherited none. That gap is why this
+shipped, and it is the same shape as everything else this plant took by reference.
+
+*(OWNER RULING, 2026-08-29: selected "0.5 % peak-to-peak narrow range" from options I wrote — a
+selection, not verbatim words.)* WTSM 11.1 gives only the TRANSIENT bounds the level program
+exists to satisfy and says nothing about steady state, so the number is a judgement.
+
+The gate went in **before** any constant moved, and was **red**: 1.975 % against 0.5 %, and
+0.567 % against 0.25 %. It is **detrended**, which is not a refinement — a plain span reports the
+manual case's slow drift as oscillation, and that mistake made my first reading of #590 wrong in
+the direction of blaming the steam generator.
+
+### Five hypotheses, all refuted by measurement
+
+Recorded because the refutations are the value here — each looked right and each was tested rather
+than argued.
+
+| hypothesis | test | result |
+|---|---|---|
+| **The sourced anti-swell lag is phase loss** — `pwr2_sg` declares this plant has no shrink/swell, so `level_lag_s = 5` guards nothing. **Owner-ruled in.** | swept 5 → 0.5 | 1.975 → **1.875 %**. ~5 % of the effect. **Refuted.** |
+| The flow controller's zero sits above the level crossover, so the valve still acts as a pure integrator there | `kp_flow` 1.6 → 64 | 1.975 → **1.873 %** while the valve swung 8× harder. **Refuted.** |
+| The level PI is over-gained | `kp_lvl` swept | on a CLEAN signal, higher gain *reduces* wander monotonically (3.20 → 1.00 %). The loop was **under**-tuned, and my first sweep said the opposite because noise was on. |
+| The reactivity feedback closes the loop | steam flow p2p | **0.00017** — flat. The primary follows; it does not drive. |
+| Structural: P-only level, fast/slow flow loop | 7 variants | best **1.463 %**. Nothing reached 0.5 %. |
+
+**No combination of `kp_lvl`, `level_ti_s`, `kv_per_s`, `kp_flow` or `level_lag_s` got below
+1.275 %.** That is what said the cause was not in the controller.
+
+### The cause: a correlation time chosen for a gauge, sitting in the control band
+
+Zeroing the three instrument noises settles the level to **0.001 %** — identical to the plant in
+MANUAL. **There was no limit cycle.** The controller was integrating its own instruments.
+
+Contributions of the 1.975 %: the flow channels ~1.17 %, the level channel ~0.80 %.
+
+And the culprit is not σ, it is **`NOISE_TAU_S = 8`**, the AR(1) correlation time — whose own
+comment states a **display** rationale: *"band-limited, the lesson pwr_instruments learned the
+hard way: white noise re-drawn every step reads twitchy, not alive."* True, and still honoured.
+What was never asked is what an 8 s correlation does to a **controller** reading the same channel
+— and **8 s is exactly the feed pump's time constant**, dead centre of the feed loop's band.
+
+**THE DERIVATION: sensor noise cannot be slower than the sensor's own damping.** A transmitter
+that takes `tau_s` to follow the process cannot pass a fluctuation lasting 8× longer than that. A
+wander on that timescale is not noise — it is **drift**, and a controller is *supposed* to chase
+drift. The global 8 s was 8× the flow and level channels' 1.0 s lag and 40× the power range's
+0.2 s.
+
+So the correlation is now **per channel**, `tau_s × NOISE_TAU_FRAC`, and the fraction is
+**bounded at both ends and chosen between them**, which is what an honest `[tune]` looks like:
+physics caps it above (≤ `tau_s`, or it is drift), the original display rationale caps it below
+(at DT 0.02 s, 0.25 s is 12.5 steps — nothing like a per-step redraw).
+
+| frac | SG level | reactor power | INDICATED level (the gauge) |
+|---|---|---|---|
+| *shipped, global 8 s* | *1.975 %* | *0.567 %* | *2.873 %* |
+| 1.00 | 0.717 % | 0.260 % | 2.348 % |
+| 0.50 | 0.509 % | 0.194 % | 2.285 % |
+| **0.25 — adopted** | **0.361 %** | **0.141 %** | **2.142 %** |
+| 0.15 | 0.280 % | 0.112 % | 1.964 % — the gauge starts to go quiet |
+
+**The gauge keeps 75 % of its liveliness because σ is untouched.** What changed is only how long
+a wander lasts. That is the whole point: the display rationale and the control requirement were
+never in conflict — one constant was just carrying both jobs and had been sized for only one.
+
+### Two checks that were pinning numbers instead of claims
+
+**`run_pwr2_instruments`' band-limit check** asserted autocorrelation at a hard-coded **8 s** — the
+old global constant retyped into the fixture. It read 0.041 and failed on a correct model. The
+claim ("band-limited, not white") survives and is now asserted at the channel's **own** correlation
+time, read from the module via `IN.noiseTau` rather than retyped, and **paired with a far-lag
+reading** — which is what makes it discriminating: white noise fails the near lag, and noise
+correlated far too slowly (the #590 defect) passes the near one and fails the far one.
+
+**`run_pwr2_engine`'s controlled-startup check** read `p84 > 0.2` while the fixture measured
+**0.2115** — passing by 5 % on a quantity instrument noise moves. The re-derivation shifted it to
+0.1994 and it reddened, on a startup unchanged in everything the check is about: the block still
+comes at 17.8 % above P-10 and the ascension still passes 35 % untripped. **A check can pin a
+NUMBER instead of a CLAIM.** Widened to 0.05, which holds on both builds.
+
+### The steady-state checks carry no mutation, deliberately
+
+`run_pwr2_engine`'s harness can only mutate `pwr2_engine.js` and `pwr2_core.js`, and these
+constants live in `pwr2_instruments.js` and `pwr2_feedwater.js` — an entry would ANCHOR MISS and
+read as a blind spot. They have the stronger proof: **red on the pre-fix build, green on the fix,
+criterion unchanged between the two runs.** A check that failed on the real defect and passes on
+the real repair has been injection-verified by the defect itself. The mutation that pins the cause
+lives where the cause lives — `run_pwr2_instruments`' *"the noise correlation reverts to a flat
+8 s"*, which the far-lag check catches.
+
+### Scores
+
+`run_pwr2_engine` 125 → **128** (the three steady-state checks), mutations 72/72.
+`run_pwr2_instruments` 22 → **23**, mutations 14 → **15**. `run_pwr2_feedwater` 29/29 and
+`run_pwr2_loadfollow` 36/36 **unmoved** — the calmer loop did not buy a sluggish one, which was
+the standing risk.

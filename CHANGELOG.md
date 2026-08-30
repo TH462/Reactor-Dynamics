@@ -30,6 +30,33 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
 
 ## [Unreleased]
 
+### Fixed (#590 — the feed loop was chasing its own instruments, 2026-08-29)
+
+Full write-up: `Blueprint/PWR2_VALIDATION.md` §124. Filed out of #516 item 2, the owner
+playtesting: *"The SG Feed in auto bounces back and fourth."*
+
+- **The steam generator level now sits still.** At constant full power with nothing touched it
+  wandered **1.975 %** peak-to-peak and carried reactor power **0.567 %** with it; it now sits at
+  **0.361 %** and **0.141 %**. *(OWNER RULING, 2026-08-29: selected "0.5 % peak-to-peak narrow
+  range" from options I wrote — a selection, not verbatim words.)*
+- **It was never a limit cycle.** With the instrument noise zeroed the level settles to 0.001 % —
+  identical to the plant in manual. The feed controller was integrating its own instruments.
+  Every controller hypothesis was measured and refuted: no combination of the level gain, its
+  integral time, the valve slew, the flow gain or the anti-swell lag got below 1.275 %.
+- **The cause was a noise correlation time chosen for how a gauge looks.** Instrument noise was
+  correlated over a flat 8 seconds — which is *exactly* the feed pump's time constant, and 8×
+  slower than the level and flow channels' own sensing lag. A transmitter cannot pass a
+  fluctuation slower than its own damping; a wander on that timescale is **drift**, and a
+  controller is supposed to chase drift. The correlation is now tied to each channel's own lag.
+- **The gauges stay alive.** The noise *amplitude* is untouched, so indicated level still swings
+  2.14 % against 2.29 % before — only the *duration* of a wander changed. The display rationale
+  and the control requirement were never in conflict; one constant was carrying both jobs and had
+  been sized for only one.
+- **Steady state is now gated, on level and on reactor power, and it never was before** — on any
+  variable. The retired engine carried a whole family of such checks for its own limit cycles;
+  this plant inherited none, which is why this shipped.
+
+
 ### Fixed (#516 items 6, 7 and 8 — what the board shows during core damage, 2026-08-29)
 
 Full write-up: `Blueprint/PWR2_VALIDATION.md` §123. The last three of the owner's playtest list.

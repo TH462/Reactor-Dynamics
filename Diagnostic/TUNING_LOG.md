@@ -29,6 +29,64 @@ and the user-visible summary in `CHANGELOG.md`. This file points at those and tr
 
 ---
 
+## Session log — 2026-08-29-develop-g (#590 — the feed loop was not limit-cycling: it was chasing its own instruments)
+
+Full write-up: `Blueprint/PWR2_VALIDATION.md` §124.
+
+**THE ACCEPTANCE GATE WENT IN FIRST AND WAS RED.** Nothing in this tree asserted steady-state
+quiet on ANY variable — the retired engine carried a whole family of such checks for its own
+limit cycles (#378/#394/#418) and PWR2 inherited none, which is why this shipped. Level 1.975 %
+and power 0.567 % against an owner-ruled 0.5 % / 0.25 %. DETRENDED, which is not a refinement:
+a plain span reports the manual case's drift as oscillation, and that mistake made my first
+reading of #590 wrong.
+
+**FIVE HYPOTHESES, ALL REFUTED BY MEASUREMENT** — including the one the owner ruled in. The
+sourced anti-swell lag looked like pure phase loss (`pwr2_sg` declares this plant has no
+shrink/swell); swept 5 -> 0.5 s it bought **5 %** of the effect. The flow controller's zero:
+`kp_flow` 1.6 -> 64 moved the level 1.975 -> 1.873 % while the valve swung 8x harder. The level
+PI turned out **UNDER**-gained on a clean signal, the opposite of my first sweep, which had noise
+on. Steam flow p2p **0.00017** killed the reactivity-coupling story. **No combination of any
+controller constant reached below 1.275 %** — which is what said the cause was not in the
+controller.
+
+**THE CAUSE: A CORRELATION TIME CHOSEN FOR A GAUGE, SITTING IN THE CONTROL BAND.** Zeroing the
+three instrument noises settles the level to **0.001 %**, identical to MANUAL. There was no limit
+cycle. `NOISE_TAU_S = 8` — whose own comment gives a **display** rationale, *"white noise
+re-drawn every step reads twitchy, not alive"* — is **exactly the feed pump's time constant**
+and 8x the level and flow channels' own 1.0 s sensing lag.
+
+**The derivation: sensor noise cannot be SLOWER than the sensor's own damping.** A transmitter
+that takes `tau_s` to follow the process cannot pass a fluctuation lasting 8x longer; that is
+DRIFT, and a controller is supposed to chase drift. Now per-channel, `tau_s x 0.25`, with the
+fraction **bounded at both ends and chosen between them** — physics caps it above (<= tau_s),
+the original display rationale caps it below (0.25 s is 12.5 steps at DT 0.02, nothing like a
+per-step redraw). **Level 0.361 %, power 0.141 %, and the gauge keeps 75 % of its liveliness
+because SIGMA IS UNTOUCHED.** The display rationale and the control requirement were never in
+conflict; one constant was carrying both jobs and had been sized for only one.
+
+### Two checks that were pinning NUMBERS instead of CLAIMS
+
+`run_pwr2_instruments`' band-limit check asserted autocorrelation at a hard-coded **8 s** — the
+old global constant retyped into the fixture — and failed at 0.041 on a correct model. Now read
+from the module at the channel's own correlation time and **paired with a far-lag reading**, which
+is the discriminator: white noise fails the near lag, drift-slow noise passes it and fails the far
+one. And `run_pwr2_engine`'s controlled-startup check read `p84 > 0.2` while measuring **0.2115**
+— passing by 5 % on a quantity instrument noise moves; the re-derivation shifted it to 0.1994
+and it reddened on a startup unchanged in everything the check claims. Widened to 0.05, holding on
+both builds.
+
+### A cost that only the clock showed
+
+Group E is two 35-minute rides, and a mutation with no `grp` tag replays EVERY group — so the
+untagged entries were each paying for both. Measured: the gate went **478 s -> 983 s**. Group E is
+now skipped in replay unless targeted; back to 650 s.
+
+### Gates
+
+`run_pwr2_engine` 125 -> **128** (mutations 72/72), `run_pwr2_instruments` 22 -> **23**
+(14 -> 15). `run_pwr2_feedwater` 29/29 and `run_pwr2_loadfollow` 36/36 **unmoved** — the calmer
+loop did not buy a sluggish one, which was the standing risk.
+
 ## Session log — 2026-08-29-develop-f (#516 Group A — the owner's own playtest: three controls that lied, and one that oscillates)
 
 **The bundle is GitHub issue #516, "Issues found playtesting"** — the owner's free-play session

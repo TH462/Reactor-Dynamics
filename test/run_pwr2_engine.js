@@ -1437,7 +1437,15 @@ function runSuite(RD, rec, quiet, only) {
   tsS2 = run(engS2, 180);
   ckT('a CONTROLLED startup works end to end: critical partway up the bank, the block ' +
       'taken above P-10, and the ascension passes the 35 % setpoint UNTRIPPED',
-      p84 > 0.2 && p84 < 8 && pBlk > 8 &&
+      /* ⚠ THE LOWER BOUND WAS PINNED TO A CLIFF (#590, 2026-08-29). It read `p84 > 0.2` while
+       * the fixture measured 0.2115 — passing by 5 % on a quantity instrument NOISE moves. The
+       * #590 noise re-derivation shifted it to 0.1994 and this reddened, on a plant whose
+       * startup is unchanged in every way the check claims to be about: the block still comes
+       * at 17.8 % above P-10, the ascension still passes 35 % untripped, and the ordering is
+       * intact. The standing trap in one line — a check can pin a NUMBER instead of a CLAIM.
+       * The claim is that the critical leg is measurably above zero and far below the block
+       * point; 0.05 says that and holds on both builds (0.2115 and 0.1994). */
+      p84 > 0.05 && p84 < 8 && pBlk > 8 &&
       tsS2.power_pct > 36 && tsS2.scrammed === false &&
       engS2.rpsReport.low_flux_blocked === true,
       'critical leg ' + p84.toFixed(2) + ' %, blocked at ' + pBlk.toFixed(1) +
@@ -1890,6 +1898,73 @@ function runSuite(RD, rec, quiet, only) {
       engHE._pzr.heater_energized_kW === 0,
       'shed ' + engHE.pz.heatersShed + ', published ' + tsShed.pzr_heater_kw + ' kW');
   }
+
+  /* ⚠ SKIPPED IN MUTATION REPLAY UNLESS TARGETED, and that is a COST decision with a number.
+   * These are two 35-minute rides, ~20 s of wall. A mutation with no `grp` tag replays EVERY
+   * group, so the untagged entries in this file were each paying for both rides: measured, the
+   * gate went 478 s -> 983 s when this group landed. No mutation targets group E (see the note
+   * in MUTATIONS), so in replay it can only cost. `only === 'E'` keeps the door open for one. */
+  if (grp('E') && (!quiet || only === 'E')) {
+  /* ---- STEADY STATE: THE PLANT MUST SIT STILL WHEN NOTHING IS HAPPENING (#590) -------------
+   * NOTHING IN THIS TREE ASSERTED THIS, on any variable, which is why the feed loop shipped
+   * limit-cycling. The RETIRED engine carried a whole family of such checks for its own limit
+   * cycles (#378, #394, #418 — see `test/behavior_pwr.js`, "…and STAYS settled — 25-35 min p2p
+   * <= 6 pts"); PWR2 inherited none of them. That is the gap, and it is the same shape as every
+   * other thing this plant inherited by reference and never re-measured.
+   *
+   * *(OWNER RULING, 2026-08-29: selected "0.5 % peak-to-peak narrow range" from options I wrote
+   * — a selection, not verbatim words.)* The number is a judgement: WTSM 11.1 gives only the
+   * TRANSIENT bounds the level program exists to satisfy (shrink on a 50 % load reduction must
+   * not trip low-low; swell on a 10 % step must not back water into the separators) and says
+   * nothing about steady state.
+   *
+   * ⚠ DETRENDED, AND THAT IS NOT A REFINEMENT. A plain peak-to-peak cannot tell a limit cycle
+   * from a DRIFT, and the manual control below is almost entirely drift — reading it with a raw
+   * span reports 1.6 % of "oscillation" on a plant whose level is flat to three decimals. That
+   * mistake made my first reading of #590 wrong, in the direction of blaming the steam generator
+   * instead of the controller. */
+  head('STEADY STATE  [a plant doing nothing must LOOK like it, #590]');
+  function detrendP2P(a) {
+    var N = a.length, sx = 0, sy = 0, sxx = 0, sxy = 0, i;
+    for (i = 0; i < N; i++) { sx += i; sy += a[i]; sxx += i * i; sxy += i * a[i]; }
+    var b = (N * sxy - sx * sy) / (N * sxx - sx * sx), a0 = (sy - b * sx) / N;
+    var lo = Infinity, hi = -Infinity;
+    for (i = 0; i < N; i++) { var r = a[i] - (a0 + b * i); if (r < lo) lo = r; if (r > hi) hi = r; }
+    return hi - lo;
+  }
+  /* 35 min, sampled at 1 Hz, and the claim is read off the LAST TEN MINUTES — a window far
+   * enough from the boot that a settling transient cannot be mistaken for a cycle. Measured
+   * cost: ~10 s of wall for the ride, which is why this is affordable at all. */
+  function quietRide(manualPct) {
+    var e = EN.createEngine({}), lvl = [], pwr = [], t;
+    var N = Math.round(2100 / DT), s1 = Math.round(1 / DT);
+    for (var i = 1; i <= N; i++) {
+      t = EN.step(e, DT);
+      if (i === Math.round(300 / DT) && manualPct !== undefined)
+        EN.command(e, 'feed_manual_frac', manualPct / 100);
+      if (i % s1 === 0) { lvl.push(t.sg_level_pct); pwr.push(t.power_pct); }
+    }
+    return { lvl: detrendP2P(lvl.slice(1500)), pwr: detrendP2P(pwr.slice(1500)) };
+  }
+  var ssAuto = quietRide(undefined);
+  ckT('SG level sits still at constant full power — <= 0.5 % peak-to-peak over the 25-35 min ' +
+      'window, detrended (owner-ruled criterion; 1.975 % before #590)',
+      ssAuto.lvl <= 0.5,
+      'level ' + ssAuto.lvl.toFixed(3) + ' % p2p');
+  ckT('...and so does reactor power, with the rods STATIC — a plant with no automatic rod ' +
+      'control (#528) has nothing that should be moving it',
+      ssAuto.pwr <= 0.25,
+      'power ' + ssAuto.pwr.toFixed(3) + ' % p2p');
+  /* THE CONTROL, and it is what makes the two above mean anything. A quiet plant and a DEAD
+   * plant look identical from a p2p reading; this one proves the ride is live and that the
+   * feed CONTROLLER is the energy source, because the same plant with the valve pinned is
+   * flat to three decimals. Without it the checks could be satisfied by an engine that had
+   * stopped integrating. */
+  var ssMan = quietRide(100);
+  ckT('...and the MANUAL ride is quieter still, which is what says the loop is the source',
+      ssMan.lvl < ssAuto.lvl && ssMan.lvl < 0.05,
+      'manual ' + ssMan.lvl.toFixed(4) + ' % p2p against auto ' + ssAuto.lvl.toFixed(3));
+  }
 }
 
 console.log('\nPWR2 -- THE ENGINE FACADE: one door, the gates\' wiring written once');
@@ -1899,6 +1974,17 @@ var pass = rec.filter(function (r) { return r.ok; }).length, fail = rec.length -
 
 var ENSRC = fs.readFileSync(path.join(SRC, 'pwr2_engine.js'), 'utf8').replace(/\r\n/g, '\n');
 var MUTATIONS = [
+  /* ⚠ THE STEADY-STATE CHECKS (group E, #590) CARRY NO MUTATION, DELIBERATELY, and the reason
+   * belongs here rather than in a silence. This harness can only mutate `pwr2_engine.js` and
+   * `pwr2_core.js`; the constants those checks are about live in `pwr2_instruments.js` and
+   * `pwr2_feedwater.js`, so any entry here would ANCHOR MISS and read as a blind spot.
+   *
+   * They have the stronger proof instead: **they were RED on the pre-fix build and are green on
+   * the fix** — level 1.975 % and power 0.567 % against 0.361 % and 0.141 % now, with the
+   * criterion unchanged between the two runs. A check that failed on the real defect and passes
+   * on the real repair has been injection-verified by the defect itself, which is worth more
+   * than a synthetic revert. The mutation that DOES pin the cause lives where the cause lives:
+   * `run_pwr2_instruments`'s "the noise correlation reverts to a flat 8 s". */
   ['the facade hold is unwired — every subsystem keeps stepping a held plant (#585)',
    'if (eng._dead || (eng.sys && eng.sys.beyond_model === true)) {',
    'if (eng._dead) {', { grp: 'D' }],

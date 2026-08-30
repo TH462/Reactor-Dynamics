@@ -74,9 +74,49 @@
   }
 
   var NOISY_MULT = 12;          /* 'noisy' failure: sigma multiplier [open] */
-  var NOISE_TAU_S = 8;          /* AR(1) correlation time [open] — band-limited, the lesson
-                                 * pwr_instruments learned the hard way: white noise re-drawn
-                                 * every step reads twitchy, not alive */
+  /* AR(1) CORRELATION TIME, PER CHANNEL — [derived], and it used to be a global 8 s (#590).
+   *
+   * THE ORIGINAL RATIONALE WAS A DISPLAY ONE, and its own comment said so: *"band-limited, the
+   * lesson pwr_instruments learned the hard way: white noise re-drawn every step reads twitchy,
+   * not alive."* True, and it is still honoured below. What was never asked is what an 8 s
+   * correlation does to a CONTROLLER reading the same channel — and 8 s is exactly the feed
+   * pump's time constant, i.e. dead centre of the feed loop's control band.
+   *
+   * MEASURED (#590): the feed controller integrates it. At steady full power with nothing
+   * touched, SG level wandered 1.975 % peak-to-peak and reactor power 0.567 %, against 0.001 %
+   * with the noise off — identical to the plant in MANUAL. There was no limit cycle to tune
+   * out; the controller was chasing its own instruments, and no gain in the module could tell
+   * the difference between that and a real disturbance.
+   *
+   * THE DERIVATION: sensor noise cannot be SLOWER than the sensor's own damping. A transmitter
+   * that takes tau_s to follow the process cannot pass a fluctuation that lasts 8x longer than
+   * that — a wander on that timescale is not noise, it is DRIFT, and a controller is supposed to
+   * chase drift. So the correlation is tied to each channel's own tau_s, at half of it, which is
+   * the only per-channel timescale this model has. The global 8 s was 8x the flow and level
+   * channels' 1.0 s lag and 40x the power range's 0.2 s.
+   *
+   * THE DISPLAY RATIONALE SURVIVES: at DT 0.02 s a 0.5 s correlation is 25 steps, nothing like
+   * the per-step redraw the original comment was avoiding, and the board damps these channels
+   * again for the eye (`sg_level` 1.5, `fw_flow` 2). Measured, the INDICATED level still swings
+   * 2.29 % against 2.87 % before — the gauge stays alive because SIGMA IS UNTOUCHED. */
+  /* THE FRACTION IS BOUNDED AT BOTH ENDS AND CHOSEN BETWEEN THEM, which is what an honest
+   * [tune] looks like. ABOVE: physics — the correlation must not exceed the sensing lag, or the
+   * "noise" is slower than the transmitter can follow and is drift by another name, so
+   * frac <= 1.0. BELOW: the display rationale this constant was born with — at DT 0.02 s a 0.25 s
+   * correlation is 12.5 steps, nothing like the per-step redraw that reads twitchy; below about
+   * 0.1 it starts to. Inside that range the value is set on the ruled control criterion, and
+   * this comment says so rather than presenting it as derived.
+   *
+   * MEASURED across the range (steady full power, 25-35 min window, detrended peak-to-peak):
+   *   frac   SG level   reactor power   INDICATED level (the gauge)
+   *   1.00     0.717 %      0.260 %          2.348 %
+   *   0.50     0.509 %      0.194 %          2.285 %
+   *   0.25     0.361 %      0.141 %          2.142 %      <- adopted
+   *   0.15     0.280 %      0.112 %          1.964 %      <- the gauge starts to go quiet
+   * against 1.975 % / 0.567 % / 2.873 % on the shipped global 8 s. The GAUGE KEEPS 75 % of its
+   * liveliness because sigma is untouched; what changed is only how long a wander lasts. */
+  var NOISE_TAU_FRAC = 0.25;
+  function noiseTau(c) { return Math.max(0.05, (c.tau_s || 1.0) * NOISE_TAU_FRAC); }
 
   /* THE CHANNEL TABLE. src = the true_state field feeding it (the published contract — this
    * module consumes true_state exactly like an external reader, which is what makes it
@@ -217,7 +257,7 @@
       var f = ins.failure[c.id];
       var sig = c.sigma * ins.noiseScale * (f && f.mode === 'noisy' ? NOISY_MULT : 1);
       if (sig > 0) {
-        var rho = Math.exp(-dt / NOISE_TAU_S);
+        var rho = Math.exp(-dt / noiseTau(c));
         var r1 = rngNext(ch.rngState); var r2 = rngNext(r1.state);
         ch.rngState = r2.state;
         var u1 = Math.max(r1.value, 1e-12), u2 = r2.value;
@@ -245,7 +285,9 @@
   root.RD.pwr2.instruments = {
     CHANNELS: CHANNELS,
     NOISY_MULT: NOISY_MULT,
-    NOISE_TAU_S: NOISE_TAU_S,
+    /* the per-channel correlation time, exported so a gate can assert it against each
+     * channel's own tau_s rather than retyping the rule (#590) */
+    noiseTau: noiseTau,
     createInstruments: createInstruments,
     stepInstruments: stepInstruments,
     fail: fail,

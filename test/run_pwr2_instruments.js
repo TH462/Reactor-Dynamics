@@ -115,12 +115,32 @@ function runSuite(IN, rec, quiet) {
   var mean = xs.reduce(function (a, b) { return a + b; }, 0) / xs.length;
   var sig = Math.sqrt(xs.reduce(function (a, b) { return a + (b - mean) * (b - mean); }, 0) / xs.length);
   ck('tavg noise sigma matches the channel spec (0.15 degC)', sig, 0.15, 0.05, 'degC');
-  /* lag-8s autocorrelation ~ 1/e for NOISE_TAU_S = 8 */
-  var k8 = Math.round(8 / DT), num = 0, den = 0;
-  for (i = 0; i < xs.length - k8; i++) { num += (xs[i] - mean) * (xs[i + k8] - mean); }
-  for (i = 0; i < xs.length; i++) { den += (xs[i] - mean) * (xs[i] - mean); }
-  ck('...and it is BAND-LIMITED: autocorrelation at 8 s is ~1/e, not ~0 (white)',
-     num / den * (xs.length / (xs.length - k8)), Math.exp(-1), 0.15, '');
+  /* ⚠ RE-EXPRESSED at #590 (2026-08-29), and it is a STRENGTHENING rather than a repair. This
+   * asserted the autocorrelation at a hard-coded 8 s — the old GLOBAL NOISE_TAU_S retyped into
+   * the fixture, so it pinned the constant rather than the claim. The correlation is now per
+   * channel (tau_s x NOISE_TAU_FRAC), `tavg` sits at 0.5 s, and the old form read 0.041 at 8 s
+   * and failed on a correct model.
+   *
+   * The CLAIM was always "band-limited, not white", and it is still true and still worth
+   * asserting. It is now asserted at the channel's OWN correlation time, read from the module
+   * via `IN.noiseTau` rather than retyped — so a moved correlation moves the check with it —
+   * and PAIRED with a far-lag reading, which is the half that makes it discriminating: white
+   * noise fails the near lag, and noise correlated far too SLOWLY (the #590 defect) passes the
+   * near one and fails the far one. */
+  var tauN = IN.noiseTau(IN.CHANNELS.filter(function (c) { return c.id === 'tavg'; })[0]);
+  function autocorr(lagS) {
+    var k = Math.round(lagS / DT), num = 0, den = 0, j;
+    for (j = 0; j < xs.length - k; j++) num += (xs[j] - mean) * (xs[j + k] - mean);
+    for (j = 0; j < xs.length; j++) den += (xs[j] - mean) * (xs[j] - mean);
+    return num / den * (xs.length / (xs.length - k));
+  }
+  ck('...and it is BAND-LIMITED: autocorrelation at the CHANNEL OWN correlation time is ~1/e',
+     autocorr(tauN), Math.exp(-1), 0.15, '(tau ' + tauN.toFixed(2) + ' s)');
+  ckT('...and DECORRELATED well beyond it — noise that is still correlated 16x out is drift, ' +
+      'which is what the feed controller was chasing (#590)',
+      Math.abs(autocorr(16 * tauN)) < 0.15,
+      'r(' + (16 * tauN).toFixed(1) + ' s) = ' + autocorr(16 * tauN).toFixed(4) +
+      '; the shipped global 8 s read 0.37 here');
   var insZ = quietIns();
   run(insZ, baseTs(), 30);
   ckT('noise_scale 0 reads EXACT truth once settled', Math.abs(insZ.reading.tavg - 300) < 1e-9, '');
@@ -267,9 +287,16 @@ var MUTATIONS = [
   ['priming is removed (a fresh plant climbs from zero)',
    "      if (ch.lag1 === null) { ch.lag1 = truth; ch.lag2 = truth; }",
    '      if (ch.lag1 === null) { ch.lag1 = 0; ch.lag2 = 0; }'],
+  /* ⚠ ANCHOR RE-POINTED at #590, when the global NOISE_TAU_S became a per-channel noiseTau(). */
   ['the noise is WHITE (the band limit dropped)',
-   '        var rho = Math.exp(-dt / NOISE_TAU_S);',
+   '        var rho = Math.exp(-dt / noiseTau(c));',
    '        var rho = 0;'],
+  /* #590: the correlation goes back to the global 8 s — noise correlated 16x slower than the
+   * sensing lag, which the feed controller cannot tell from a real disturbance and integrates.
+   * The near-lag check still passes on this; the FAR-lag check is what catches it. */
+  ['the noise correlation reverts to a flat 8 s (drift the controller chases)',
+   '  var NOISE_TAU_FRAC = 0.25;',
+   '  var NOISE_TAU_FRAC = 8.0;'],
   ['every channel shares ONE seed (the streams collapse into each other)',
    /* repointed after the B2 PRNG-state rework — and the ORIGINAL anchor miss shipped in the
     * B2 commit itself, hidden for a day by tail-piping the runner output (the self-test line
