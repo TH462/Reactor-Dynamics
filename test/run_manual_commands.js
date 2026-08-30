@@ -115,6 +115,41 @@ ck('...and none of them is one the plant REFUSES — the manual must not instruc
    refused.length === 0,
    refused.length ? refused.join(' | ') : 'no documented action lands in REFUSED');
 
+/* ---- THE ESF ARM PAYLOAD (#532) -----------------------------------------------------------
+ * `set_esf_auto` is KERNEL_OWNED above, so the two checks either side of this one pass it
+ * without ever asking WHICH systems it accepts — and that exemption is exactly where a defect
+ * hid for as long as PWR2 has shipped. Measured 2026-08-30: §17.4 taught an "ESF AUTO / MAN
+ * arms" model in which manual action takes HPI or AFW to MANUAL and AUTO re-arms it, while the
+ * shipped plant declares ONE arm (`afw`), no operator command disarms even that one, and
+ * `set_esf_auto {system:'hpi'}` is REFUSED — `unknown esf system`. The board already knew
+ * (#503 disables an arm button whose system the snapshot does not declare); only the manual
+ * did not.
+ *
+ * The §18 row is the machine-readable half of that claim: its payload cell names the system
+ * ids the manual instructs the operator to send. They must be ids this plant declares.
+ *
+ * ⚠ It holds the PAYLOAD, not the prose — §17.4's model is not gateable and is checked by
+ * reading. What it does guarantee is that the day an arm is added or removed, the row that
+ * tells the operator to send it goes red. */
+var esfSystems = ((new SH.PWR2Engine({})).getProtectionConfig().esf_systems || [])
+                 .map(function (e) { return e.id; });
+var esfRow = section.split('\n').filter(function (l) { return /`set_esf_auto`/.test(l); })[0] || '';
+var esfNamed = (esfRow.match(/'([a-z][a-z0-9_]*)'/g) || [])
+               .map(function (m) { return m.replace(/'/g, ''); });
+
+ck('the ESF arm row names the system ids explicitly — a bare `{system, auto}` payload is a ' +
+   'claim that any system works',
+   esfNamed.length > 0,
+   esfRow ? 'row: ' + esfRow.trim() : 'NO set_esf_auto ROW FOUND in §18');
+ck('...and every arm the manual names EXISTS on the shipped plant',
+   esfNamed.length > 0 && esfNamed.every(function (id) { return esfSystems.indexOf(id) !== -1; }),
+   'manual names [' + esfNamed.join(', ') + '] · plant declares [' + esfSystems.join(', ') + ']');
+ck('...and every arm the plant declares is named — an undocumented arm is a control the ' +
+   'operator has no way to learn',
+   esfSystems.every(function (id) { return esfNamed.indexOf(id) !== -1; }),
+   esfSystems.filter(function (id) { return esfNamed.indexOf(id) === -1; }).join(', ') ||
+   esfSystems.length + ' declared arm(s), all documented');
+
 /* ---- THE CASUALTY MENU (#532) -------------------------------------------------------------
  * The same seam one door over: `07_ABNORMAL_EMERGENCY.md` names a failure id per event, and the
  * shipped plant either has that lever or it does not. Found when this was written: THREE events

@@ -21,7 +21,7 @@ Describe every operator control and major indication on the PWR board, with purp
 | **Command path** | Controls issue commands; the next snapshot shows the result. Nothing “teleports.” |
 | **Instruments only** | You see lagged/noisy/failable readings, not true state (unless diagnostic overlay). |
 | **AUTO vs MAN** | Manual action on an automated control often forces MAN until re-engaged. |
-| **ESF arms** | Manual start/stop/throttle of HPI or AFW takes that system to MANUAL; press AUTO to re-arm. |
+| **ESF actuations LATCH** | Safety injection and aux feed start themselves and **stay started**. A manual stop is not a MANUAL selection — it is **refused**, out loud, until the actuation's reset permissive is satisfied (§17.4). |
 | **Two-press** | SCRAM, MSIV close, PORV block isolate, etc. require arm then confirm. |
 | **Tap vs. hold (rod drive)** | Control-bank Raise/Lower: a quick click steps one step; hold to drive continuously, release to stop. Shutdown-bank Withdraw/Insert: one click drives the whole way (fast speed) — no hold. |
 
@@ -298,7 +298,7 @@ cold-leg water condenses far less per pound than 131 °F (55 °C) charging water
 | Item | Detail |
 |------|--------|
 | **Purpose** | Power-Operated Relief Valve — rapid pressure relief |
-| **Auto** | Opens ~**2350 psi (16.20 MPa)**, reseats ~**2300 psi (15.86 MPa)** (control layer on pressure instrument) |
+| **Auto** | **It follows YOUR setpoint, it is not a fixed number.** The valve lifts at **Press SP + 100 psi (0.69 MPa)** and reseats at **+85 psi (0.586 MPa)** — a 15 psi (0.103 MPa) deadband, at the top of the same error ladder the heaters and spray sit on. At the normal **2235 psi (15.41 MPa)** setpoint that is **2335 psi (16.10 MPa)** open, **2320 psi (15.996 MPa)** shut. **Lower Press SP on a cooldown and the PORV lift point comes down with it** — which is the point, and also the trap: a setpoint dropped faster than the plant depressurizes puts the relief path under the pressure you are still sitting at |
 | **Indicator** | Shows **commanded** position — can disagree with actual (TMI) |
 | **Tailpipe temp** | Hot discharge (~302 °F (150 °C) class) can reveal steam passing while light says closed |
 
@@ -321,8 +321,11 @@ cold-leg water condenses far less per pound than 131 °F (55 °C) charging water
 
 ### 6.3 Safety valves (indication only)
 
-- Mechanical / control-actuated spring safeties.  
-- Open ≈ **2485 psi (17.13 MPa)**, reseat ≈ **2400 psi (16.55 MPa)**.  
+- Mechanical spring safeties, inside the engine — **not** a control-layer actuation, and nothing
+  on the board arms, blocks or isolates them.  
+- Open at **2500 psi (17.24 MPa)** — the 2485 psig nominal setpoint — and reseat **5 % below**,
+  at **2375 psi (16.375 MPa)**. Unlike the PORV these do **not** follow Press SP: they are a fixed
+  mechanical rating and they are the last line.  
 - No direct operator open/close command.  
 
 ---
@@ -452,7 +455,7 @@ displayed target snap to the lab number, so the next dose is computed from reali
 | Indication | Normal |
 |------------|--------|
 | SG level | ≈ **65 %** |
-| Steam pressure | ≈ **819 psi (5.65 MPa)** at power |
+| Steam pressure | ≈ **808 psi (5.57 MPa)** at power |
 
 **Shrink and swell:** On rapid load/power change, indicated level can move the **wrong way** briefly. Do not chase with large feed swings.
 
@@ -577,8 +580,8 @@ heat that is a very small number.
 |---------|--------|
 | **Start / Stop** | Start or secure the aux feed pumps. **STOP secures BOTH** — the motor-driven and the turbine-driven pump are separate machines with a switch each, and this button works both |
 | **Throttle %** | The flow control valves, 0–100 % of capacity. **This is the valve, not the pumps:** shutting it leaves the run lights lit, because a throttled pump is still available |
-| **AUTO arm** | Arms the actuation to start the pumps on **low-low SG level, 17 % of narrow range** — the same signal that trips the reactor |
-| **Manual action** | Puts AFW in MANUAL until AUTO re-armed |
+| **AUTO** | A **lamp, not a defeat**. The actuation starts the pumps on **low-low SG level, 17 % of narrow range** — the same signal that trips the reactor — and also on a standing safety injection, loss of main feed, or loss of offsite power. **Nothing you can press disarms it**, so the lamp is lit whenever the pumps are not in your hands, and pressing AUTO cannot make it lit any harder. |
+| **Manual action** | Does **not** take AFW to MANUAL. Start and throttle are yours whenever no actuation is latched; while one is, the pumps are held running and a stop is refused — see the securing note below |
 | **Delivery** | Capacity × throttle. Level control lives in the **`afw_level` automation channel**, which holds narrow-range level at **33 ± 5 %** — full flow below 28 %, tapering shut by 38 % — and which you can take to MANUAL to throttle by hand |
 
 > **Throttling aux feed is the operator's one continuous job after a trip, and it cuts both
@@ -597,7 +600,7 @@ heat that is a very small number.
 2. SCRAM if not already tripped.  
 3. **AFW Start** (or verify auto-start).  
 4. Throttle to hold SG level without overcooling — watch the steam dumps, not just the level.  
-5. Re-arm AUTO when stable if desired.  
+5. When stable, secure the pumps if the procedure calls for it — the AUTO lamp needs no action from you, and the actuation is standing whether or not you touched the pumps.  
 
 **Securing note:** an aux feed stop is refused while a **safety injection** is standing, because
 the SI signal is itself an aux feed start — secure the injection at its own panel first. Inside
@@ -615,8 +618,8 @@ function and secures the pumps even with the signal still present.
 | Control | Effect |
 |---------|--------|
 | **On / Off** | Start/stop merged high/low pressure injection |
-| **AUTO arm** | Actuates on low primary pressure (~**1715 psi (11.824 MPa)**) when armed |
-| **Pump curve** | High-head trickle at operating pressure; high volume below ~**653 psi (4.5 MPa)** shutoff region |
+| **AUTO** | **A LAMP, NOT A CONTROL — it is disabled on this plant and pressing it does nothing.** The injection actuates on low primary pressure (~**1715 psi (11.824 MPa)**) unconditionally: there is no arm to set, and nothing on the board disarms it. What the button *does* do is **light while a safety injection is latched**, so read it as SI ACTUATED. It is left in place because the contrast is the lesson — a real plant gives the operator an ESF arm here, and this one does not; what it gives you instead is the reset permissive (§17.4). |
+| **Pump curve** | **Two pumps with two very different curves, merged into one control.** The high-head set shuts off at **1390 psi (9.58 MPa)** — above that it delivers nothing at all — and rises from a trickle there to full **300 gpm** only once you are below about **515 psi (3.55 MPa)**. The low-head set shuts off much lower, at **215 psi (1.48 MPa)**, and is where the volume is: **1200 gpm** near atmospheric. So injection that reads as barely moving the inventory at 1200 psi (8.27 MPa) is not broken — **it is the pressure**, and depressurizing is what turns the flow on |
 | **Indication** | `hpi_flow`, HPI ACTIVE alarm/status |
 
 **Procedure — HPI on small-break LOCA / stuck PORV**
@@ -626,6 +629,15 @@ function and secures the pumps even with the signal still present.
 3. **Do not throttle** solely on rising PZR level.  
 4. Isolate PORV path if stuck open.  
 5. Restore inventory and subcooling.  
+
+**Securing note — two conditions, and the clock is the one that surprises people.** Once safety
+injection has latched, **Off is refused** until *both*: the reset time-delay relay has run
+(**60 s** from the actuation), **and** the reactor is tripped — the P-4 permissive. The refusal
+message names whichever one you are waiting on and counts the seconds down. After both are
+satisfied, one click resets the function and secures the pumps, **signal present or not** — so
+securing injection on a live low-pressure signal is something the board will let you do, and
+owning that decision is the point of the delay. Aux feed cannot be secured underneath a standing
+injection at all (§10), because the SI signal is itself an aux feed start.
 
 ### 11.1 Accumulators (passive)
 
@@ -732,7 +744,7 @@ The **OFF** lamp lights on either condition — breaker open *or* turbine trippe
 |------|-----|
 | **AUTO** | Opens on high SG pressure / load rejection as configured |
 | **Manual % / Open** | Dump steam to condenser, bypass turbine |
-| **Dump SP** | No-load steam-dump **pressure setpoint** (MPa, live readout + numeric box; 29 – 1349 psi (0.2 – 9.3 MPa), engine clamps to the SG-safety band) the AUTO dump holds. **Lower** it on a cooldown to vent the SG and cool the primary through the steam generators; **raise** it back toward the no-load point on a heatup. |
+| **Dump SP** | No-load steam-dump **pressure setpoint** (MPa, live readout + numeric box; **29 – 1099 psi (0.2 – 7.58 MPa)** — the box refuses anything above the SG safeties' first lift, because the engine itself does **not** clamp it) the AUTO dump holds. **Lower** it on a cooldown to vent the SG and cool the primary through the steam generators; **raise** it back toward the no-load point on a heatup. |
 
 ### 12.4 Indications
 
@@ -937,18 +949,48 @@ pump holds the speed you set while steam flow falls away beneath it, so the mism
 even though you touched nothing. **STEAM FLOW is the indication that shows this happening** —
 level will not admit it for several minutes. Re-engage AUTO when done — **PWR-N12**.
 
-### 17.4 ESF AUTO / MAN arms (Mode 1)
+### 17.4 Getting an ESF actuation back — the reset permissive (Mode 1)
 
-- **AUTO:** AFW / HPI can start themselves on setpoints.  
-- **Any manual** Start/Stop/throttle → that system **MANUAL** until you press **AUTO** re-arm.  
-- Re-arm with a standing start condition may **fire immediately**.  
+**There is no ESF AUTO / MAN selector on this plant.** A real plant gives the operator an arm
+switch per engineered-safeguard system, and pressing MAN takes that system out of automatic. Here
+the actuations live inside the protection logic and **nothing on the board defeats them** — the
+HPI AUTO button is dark, and the AFW AUTO button is a lamp that is already lit. What you get
+instead is a **reset permissive**, and it is a better thing to learn, because it is what a real
+operator is actually fighting on a trip.
+
+**What an actuation does.** Safety injection and aux feed **latch**. While a latch stands the
+pumps are held running: the demand is re-asserted every step, so an Off click does not quietly
+lose to the plant a second later — it is **refused up front**, with the reason on the screen.
+
+**What clears it.**
+
+| To secure | You must have |
+|---|---|
+| **Safety injection** (HPI/LPI, §11) | the reset time-delay relay run out — **60 s** from actuation — **and** a tripped reactor (**P-4**) |
+| **Aux feed** (§10) | **no standing safety injection** (secure that first — it is itself an aux feed start), then the same **60 s** relay |
+
+Once satisfied, **one click both resets the function and secures the pumps** — you do not reset
+and then stop as two actions. And it works **with the actuating signal still present**: the
+circuit blocks automatic *re*-actuation on that same standing signal, so securing injection while
+pressure is still low is a thing the board will let you do. That is the decision the delay exists
+to make you own.
+
+**The trap.** The refusal counts down in seconds and reads like a malfunction the first time. It
+is not — it is the relay. Read the message: it names *which* permissive you are short of, and the
+two are cleared in different ways (one by waiting, one by tripping the reactor).
+
+*Sourced — the reset circuit's time-delay relay "produces an output (energizes) some time after
+it is started (usually 45–60 sec)", with SI reset additionally requiring the P-4 reactor-trip
+contact: Westinghouse Technical Systems Manual §12.3.2.3 (ADAMS ML11223A310). The top of the band
+is the installed value.*
 
 **PWR-T12**. Campaign: `pwr_esf`.
 
 ### 17.5 MSIV — “bottle the boiler” (Mode 1)
 
 1. **MSIV Close** (CONFIRM?) isolates main steam.  
-2. Turbine load rejects; SG pressure rises toward **SG safeties** (~1350 psi (9.31 MPa) open).  
+2. Turbine load rejects; SG pressure rises toward the **SG safeties** — a staggered bank, first
+   lift **1099 psi (7.58 MPa)**, the rest at **1155 psi (7.96 MPa)** (**09 §3.0**).  
 3. With feed lost or reduced, SG level can fall toward LO-LO trip on a short clock.  
 4. Establish **AFW** / trip reactor as required.  
 
@@ -988,7 +1030,7 @@ Listed for cross-reference — normal operation never requires typing a command.
 | AFW start / stop (§10) | `set_afw` | `{active}` |
 | AFW throttle (§10) | `set_afw_flow` | `{pct}` |
 | AFW block / discharge valve (§10) | `set_afw_block` | `{open}` |
-| ESF auto re-arm (§17.4) | `set_esf_auto` | `{system, auto}` |
+| ESF arm — **`afw` only**, and only `auto: true` (§17.4) | `set_esf_auto` | `{system: 'afw', auto}` |
 | Accumulator discharge isolation (§11.1) | `open_accumulator_valve` / `close_accumulator_valve` | — |
 | Generator **LATCH** (§12.1) | `latch_turbine` | — |
 | Generator **TRIP** (§12.1) | `trip_turbine` | — |
