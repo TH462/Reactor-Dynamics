@@ -217,7 +217,7 @@ Inward motion still takes — that is the source's own scope, quoted at the end 
 | turbine_trip | TURB TRIP | steam_demand_low | true | — | warning † |
 | load_imbalance | LOAD IMBAL | sg_imbalance_active | true | > **4 %** of rated (4 MWe) | caution |
 | msiv_closed | MSIV SHUT | msiv_open | false | — | warning |
-| sg_press_high | SG PRESS HI | steam_pressure | high | **1305 psi (9.0 MPa)** | caution |
+| sg_press_high | SG PRESS HI | steam_pressure | high | **1063 psi (7.33 MPa)** | caution |
 | cond_vac_low | COND VAC LO | condenser_vacuum | low | **25 inHg (84.7 kPa)** | caution |
 | cond_vac_trip | COND VAC TRIP | condenser_vacuum | low | **22 inHg (74.5 kPa)** | warning |
 | rcp_cavitation | RCP CAVITATION | rcp_cavitating | true | — | warning |

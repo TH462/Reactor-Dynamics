@@ -378,7 +378,7 @@ The board therefore **reclassifies** these alarms rather than removing them. The
 
 | Field | Content |
 |-------|---------|
-| **Setpoint** | ≥ **1305 psi (9.0 MPa)** (alarm); SG safeties ~**1350 / 1305 psi** (9.31 / 9.0 MPa) open/reseat |
+| **Setpoint** | ≥ **1063 psi (7.33 MPa)** (alarm). The main steam safeties are a STAGGERED bank: first lift **1099 psi (7.58 MPa)**, three more at **1155 psi (7.96 MPa)** — so the alarm arrives just under the first valve, which is the point of it |
 | **Means** | Secondary pressure high — often MSIV shut or loss of steam path. |
 | **Actions** | 1) Steam dump if available. 2) Reduce reactor power / verify trip. 3) Do not overfeed dry SG without procedure. |
 

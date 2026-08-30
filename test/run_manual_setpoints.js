@@ -46,6 +46,12 @@
 var fs = require('fs');
 var path = require('path');
 var SRC = path.join(__dirname, '..', 'engines', 'pwr2');
+/* The ANNUNCIATOR half needs the control layer's alarm table, which PWR2 keeps from the pwr
+ * object by design — see the note above that section. */
+require(path.join(__dirname, '..', 'engines', 'load_mode.js'));
+require(path.join(__dirname, '..', 'engines', 'pwr', 'pwr_config.js'));
+require(path.join(__dirname, '..', 'layers', 'control', 'control_kernel.js'));
+require(path.join(__dirname, '..', 'layers', 'control', 'pwr_control.js'));
 ['pwr2_water', 'pwr2_vtable', 'pwr2_geometry', 'pwr2_core', 'pwr2_loop', 'pwr2_kinetics',
  'pwr2_fuel', 'pwr2_reactor', 'pwr2_sources', 'pwr2_sg', 'pwr2_turbine', 'pwr2_relief',
  'pwr2_condenser', 'pwr2_cvcs', 'pwr2_eccs', 'pwr2_afw', 'pwr2_damage', 'pwr2_protection',
@@ -122,7 +128,12 @@ function tableRows(startRe, endRe) {
     if (/^\|[\s:-]+\|/.test(L)) continue;                       /* the --- rule row */
     var cells = L.split('|').slice(1, -1).map(function (c) { return c.trim(); });
     if (cells.length < 2) continue;
-    if (!/\d/.test(L) && !/NOT MODELLED/i.test(L)) continue;    /* header rows carry neither */
+    /* Header and rule rows carry no digit, no NOT MODELLED marker and no lowercase_id first
+     * cell. The third clause was added for the annunciator tables, whose STATE alarms
+     * (`reactor_trip`, `porv_open`) have an em dash where a setpoint would be — nine rows that a
+     * digit-only filter dropped, leaving their instrument and priority unchecked. */
+    if (!/\d/.test(L) && !/NOT MODELLED/i.test(L) &&
+        !/^\|\s*[a-z][a-z0-9_]*\s*\|/.test(L)) continue;
     out.push({ label: cells[0], cells: cells, raw: L });
   }
   return out;
@@ -190,6 +201,74 @@ ck('a trip the plant does NOT have is marked NOT MODELLED, so it cannot read as 
 ck('...and nothing the plant DOES have is marked that way — the marker is not a hiding place',
    marked.length === 0,
    marked.length ? marked.join('  |  ') : 'no live function is declared absent');
+
+/* ---- THE ANNUNCIATOR TABLES (§4.0) vs THE SHIPPED ALARM CONFIG ---------------------------
+ * A second, much wider surface in the same chapter: 37 rows carrying id, instrument, direction,
+ * setpoint and priority — a 1:1 map onto the alarm objects, which is unusually checkable prose.
+ *
+ * ⚠ THESE ALARMS ARE THE RETIRED PLANT'S TABLE, ON PURPOSE, and that is why they are checked
+ * against `RD.PWR_CONFIG.protection.alarms` rather than against pwr2. `pwr2_shell.getProtection-
+ * Config` keeps the pwr object's SHAPE — "alarms, permissives, labels ride along; annunciators
+ * only READ instruments" — and empties only the ACTING parts. So the shipped annunciator setpoints
+ * genuinely come from that table, and checking them against pwr2 would be the mirror of the
+ * #579 trap: a gate pointed at the wrong plant, failing correct prose. Measured while writing
+ * this: the `PZR PRESS LO LO` alarm really is 1800 psi even though the low-pressure TRIP is 1775. */
+var alarms = (globalThis.RD.PWR_CONFIG.protection.alarms) || [];
+var byId = {};
+alarms.forEach(function (a) { byId[a.id] = a; });
+
+var arows = tableRows(/^##\s+4\.0 Alarm setpoints/, /^##\s+5\./);
+ck('the annunciator tables parse', arows.length >= 25,
+   arows.length + ' rows parsed against ' + alarms.length + ' shipped alarms');
+
+/* The manual quotes US-first, so the SI half in parentheses is the one that compares directly to
+ * the config. Pulled from the parenthesis where there is one; otherwise the bare figure IS the
+ * config's unit (percent, DPM, counts). */
+function siFigure(cell) {
+  var par = cell.match(/\(\s*(-?[−\d][\d.eE+-]*)/);
+  if (par) return parseFloat(par[1].replace('−', '-'));
+  var m = cell.match(/\*\*\s*(-?[−\d][\d.eE+-]*)/);
+  return m ? parseFloat(m[1].replace('−', '-')) : null;
+}
+var aGhost = [], aWrong = [], aMeta = [];
+arows.forEach(function (row) {
+  var id = row.cells[0], a = byId[id];
+  if (!a) { aGhost.push(id); return; }
+  var instr = row.cells[2], dir = row.cells[3], sp = row.cells[4] || '', pri = (row.cells[5] || '');
+  if (a.instrument !== instr) aMeta.push(id + ': instrument ' + instr + ' vs ' + a.instrument);
+  /* STATE alarms are written in the Dir column as human shorthand — `true`, `false`, `open` for
+   * the config's `is_true` / `is_false` / `open`. That is the column doing its job (it is read by
+   * an operator, not a parser), so the shorthand is accepted rather than the manual bent to match
+   * an internal spelling. Analog directions (`high`/`low`) must match exactly. */
+  var STATE_DIR = { 'true': 'is_true', 'false': 'is_false', 'open': 'is_open' };
+  var wantDir = STATE_DIR[dir] || dir;
+  if (String(a.direction) !== wantDir)
+    aMeta.push(id + ': direction ' + dir + ' vs ' + a.direction);
+  if (pri.indexOf(a.priority) === -1) aMeta.push(id + ': priority "' + pri + '" vs ' + a.priority);
+  if (a.setpoint === null || a.setpoint === undefined) return;   /* state alarms carry no figure */
+  var got = siFigure(sp);
+  if (got === null) { aWrong.push(id + ': no figure in "' + sp + '"'); return; }
+  /* ⚠ A DEVIATION ALARM CARRIES ITS SIGN IN THE WORDING, NOT THE NUMBER. `PZR LVL LO` is written
+   * "20 % below program" against a shipped -20 on the deviation channel — the manual is RIGHT and
+   * a naive compare calls it wrong, which is exactly the false positive that would get a correct
+   * row "fixed". Read the direction from the prose where the prose carries it. */
+  if (/below/i.test(sp) && got > 0) got = -got;
+  if (/above/i.test(sp) && got < 0) got = -got;
+  var tol = Math.max(Math.abs(a.setpoint) * 0.005, 0.05);
+  if (Math.abs(got - a.setpoint) > tol)
+    aWrong.push(id + ': manual ' + got + ' vs shipped ' + a.setpoint);
+});
+
+ck('every documented annunciator EXISTS in the shipped alarm table',
+   aGhost.length === 0,
+   aGhost.length ? aGhost.join(' | ') : arows.length + ' rows, every id real');
+ck('...and its SETPOINT matches what the plant will actually alarm at',
+   aWrong.length === 0,
+   aWrong.length ? aWrong.join('  |  ') : 'every documented setpoint agrees');
+ck('...and so do its instrument, direction and priority — a row can be right about the number ' +
+   'and wrong about which channel raises it',
+   aMeta.length === 0,
+   aMeta.length ? aMeta.join('  |  ') : 'instrument/direction/priority agree on every row');
 
 console.log(DIM + '  (numbers and existence only — the Notes prose and the chapter narrative are ' +
             'not machine-checkable; that is the rest of #532)' + RST);
