@@ -333,15 +333,15 @@ to read everything.
 
 _Last updated: **2026-08-28**._
 
-**Where the PWR is.** `run_all` is **97 runners, all at baseline** — read `BASELINES`, never a
-number written here. The PWR is the only active plant and is feature-complete through Mode 5 ↔
-Mode 1 on integrated physics: engines, control, service, instructor and the board are built; the
-#297 audit's build wave and the #221 audit slices are landed. **What is open, in one line each:**
+**Where the PWR is.** Read `BASELINES` for the runner count, never a number written here. The PWR
+is the only active plant: engines, control, service, instructor and the board are built, and the
+#297 build wave and #221 audit slices are landed. **It is feature-complete Mode 4 ↔ Mode 1, NOT
+Mode 5** — the water-property floor saturates at 211 °F (99.4 °C), above the Mode 5 boundary
+(#524; #532 corrected seven chapters that said otherwise). **What is open, in one line each:**
 
-**Do not read the list below as the issue tracker** — `gh issue list --state open` is the
-authority and this is a summary that ages. Measured twice (2026-08-10, 2026-08-28): whole
-bullets called issues open that were closed, once rewritten from the stale text hours earlier
-by an agent who compressed without re-querying. Run the query.
+**Do not read the list below as the issue tracker** — `gh issue list --state open` is the authority
+and this summary ages. Measured twice (2026-08-10, 2026-08-28): whole bullets called issues open
+that were closed. **Run the query.**
 
 - **#408** — the accident-inventory clock umbrella. Open: the SGTR/seal amendment rows (evidence
   mini-pass; the declared ~7,500 gal makes absolute-size components ~5–6× fractionally bigger
@@ -373,11 +373,9 @@ by an agent who compressed without re-querying. Run the query.
   scram-bypasses-RPS defect and filed #499 on arrival — `PWR2_VALIDATION.md` §49). P-9 (turbine trip
   = reactor trip above it, both sourced values), the #499 beyond-model guards and the
   DELAYED-data sourcing are all LANDED (§50–52). **Everything since is recorded in `PWR2_VALIDATION.md` §53–§97 — read the sections, not this line**, which is why the roll-call that used to sit here is gone. Still open out of it: **#507**'s casualty menu stands at 22 honest rows (21 at wave 10, +`anticipatory_trip_failure` at #515) with Section F closed, and **#510** batches 1–4 landed leaving five LOW harness items. **#523 (owner rulings 2026-08-26 "Flip now, track the gaps" / "Strip it at build time"): PWR2 IS THE PLANT THE SITE RUNS (§94)** — every link and `/sim` carry `?engine=pwr2`, and a **public** build contains no retired engine at all (six tags + 544,663 bytes pruned by `site/build_site.js`; `make_portable` always). The strip is CHANNEL-GATED so the PREVIEW site keeps it, because the guided content is authored against it and `freePlayOnly` stays. `pwr_config.js`/`pwr_instruments.js` are NOT the old engine and ship everywhere. Two of the three pre-replacement gaps are now #531 (R8) and #525 (mission compatibility). Still owed: delta-T lead/lag + K5 (COLR), channel redundancy, the ESF arm display, Mode 5 proper (#524), stuck_rod_on_scram, the steam-line-break rows + auto isolation signal (the MSIV itself is BUILT, §80).
-  **#514 and #513 (2026-08-25), both CLOSED** — the engine steps 12.5x faster (1,090 -> ~85 us,
-  held by the `run_pwr2_perf` ratio gate) and the aggregate gate runs in a third of the time.
-  Two facts outlive them: **shell.html no longer loads RBMK/BWR** (dev route `test_rbmk.html` /
-  `test_bwr.html`, `verify_e2e_ui` PWR-only), and mutation replay is `grp:`-scoped in 6 runners.
-  The rest was a changelog and is in `Diagnostic/TUNING_LOG.md` 2026-08-25.
+  **#514/#513 (2026-08-25), both CLOSED.** Two facts outlive them: **shell.html no longer loads
+  RBMK/BWR** (dev routes `test_rbmk.html` / `test_bwr.html`, `verify_e2e_ui` PWR-only), and
+  mutation replay is `grp:`-scoped in 6 runners. Rest: `Diagnostic/TUNING_LOG.md` 2026-08-25.
 - **#534 — the PWR2 adversarial bug hunt umbrella: 47 confirmed defects** (28 high, 18 medium,
   1 low), filed 2026-08-27 as #535–#566. Report only; no simulator code was changed by the
   sweep. It named TWO systemic patterns, both now fixed and gated: the board was calibrated to
@@ -427,6 +425,14 @@ FIRST** — ask what in it would still burn someone in a month, move that to the
 ONE line, drop the rest. **A bullet is ~80 words.** (Measured 2026-08-06: the list was running
 7 bullets averaging 500 words, two of them duplicating traps already rescued below.)
 
+- **A GATE CAN BE POINTED AT TWO OF ITS SUBJECT'S THREE TABLES AND REPORT GREEN — AND THE BOARD
+  KNEW BEFORE THE MANUAL DID, THREE TIMES** (2026-08-30, #532, Rev 17 (e)–(p)). `run_manual_setpoints`
+  shipped in this same effort reading chapter 09's §2.0 and §4.0 and scored **9/9** over a §3.0 that
+  was entirely the retired plant's: the PORV fixed at 2350 psi when it rides **Press SP + 100**, seven
+  actuations that do not exist, **two of the three real ones missing**. Nothing was wrong with the
+  checks. **Ask what a gate READS, not only what it asserts.** Meanwhile ROD AUTO was dark, the HPI
+  arm disabled and the picker offered *Hot Shutdown (Mode 4)* while seven chapters and the checklist
+  a player runs named a `cold_shutdown` the engine **refuses by name**.
 - **A NUMBER THAT LOOKS COSMETIC CAN BE ANOTHER ENGINE'S PHYSICS — AND A GATE POINTED AT THE
   WRONG PLANT DEFENDS THE ERROR** (2026-08-29, #579/#580 §119). `severity_meta.max` is display
   text to `ui/app.js` and a leak COEFFICIENT to `pwr_engine.js:1623`; rescaling the Break Size
@@ -449,14 +455,6 @@ ONE line, drop the rest. **A bullet is ~80 words.** (Measured 2026-08-06: the li
   differently. `dt_accepted` is now the loop's own report and every boundary ledger books
   exactly it. **Caller arithmetic about a partial step is a claim; the solver's report is a
   measurement.**
-- **A DECLARED simplification is not a LICENSED one — and a FIXTURE can be producing its subject
-  out of the defect you are removing** (2026-08-28, #583 §110). PWR2 carried the pressurizer TWICE,
-  a rigid 125.2 ft3 ring node plus the 147.5 ft3 Layer-5 vessel: **983 ft3 of RCS against its own
-  declared 835.8**, 2,539 kg of it unreachable. Two files named it and kept it because removing it
-  "re-clocks every inventory fixture" — a CONTENT cost, which never votes on physics. Mass fell
-  13.5 %, the design point moved **0.1 psi**, four consumers had been reading `Σ NODES` as the whole
-  plant — and a void check rode a rigid loop that only reached saturation **because the phantom
-  ballasted it**.
 - **NOISE ON A SETPOINT IS NOISE NO CONTROLLER CAN REJECT — and a RULING that corrects a number
   must be grepped for every SURFACE that states it** (2026-08-29, #516 Group A §120, the owner's
   own playtest, 11 items filed and never worked). The pressurizer level program read its Tavg
@@ -620,10 +618,13 @@ thing left in the file and it grew about a bullet a session.
   Indications-tab bullet on eviction, 2026-08-17): a "pressurizer mass-only level" row promised
   a TMI divergence that measures 0.0 everywhere, because `pzr_level_pct` is `clip(that,0,100)`
   of the very same number. HR12 does not stop at engine prose.
-- **Nothing gates manual prose against the rulings the engine implements** (rescued from the
-  #468 bullet on eviction, 2026-08-22): `Manuals/` §5.0 called the 100 °F/hr rate limit
-  UNSOURCED four months after it was ruled and shipped to the board. When a ruling lands, grep
-  the manual for its subject — no runner will do it for you.
+- **THREE runners now gate the manual's NUMBERS against the engine, and NOTHING gates its PROSE**
+  (rewritten 2026-08-30, #532; was "nothing gates manual prose", #468 via 2026-08-22).
+  `run_manual_setpoints` checks chapter 09's three tables and BOOTS all four initial conditions;
+  `run_manual_commands` checks §18 and the ESF arm payload. **A setpoint, action or IC that drifts
+  now reddens a gate — a described BEHAVIOUR or a procedure's reasoning still does not**, and #532
+  found six sites teaching an ESF arm that never existed. **Grep the manual for the subject of every
+  ruling and board change**, and add the map entry when you add a row: coverage is asserted.
 - **A subscriber that reads inside the rAF paint is ONE FRAME LATE, and only a browser
   can see it** (rescued from the #432 themes bullet on eviction, 2026-08-11): the
   recorder's drain sat in the paint and logged **1475 rows in, 35 recorded** — call sites
