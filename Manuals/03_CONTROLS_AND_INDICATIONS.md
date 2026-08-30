@@ -271,10 +271,43 @@ failed.
 On a real unit the spray line is driven by the pumps' own differential head, so a loss of
 offsite power takes normal spray away and the operator depressurizes with the Power Operated
 Relief Valve (PORV) instead. A real unit answers that with **auxiliary spray** from the
-charging pumps, which this board has no control for — so the one spray control keeps working
-without the pumps, standing in for it. The stand-in is the conservative direction: it gives
-about **half** the condensing duty real auxiliary spray would, because 550 °F (287.8 °C)
-cold-leg water condenses far less per pound than 131 °F (55 °C) charging water.
+charging pumps. This departure was declared because the board had no auxiliary spray control,
+so the one spray control was left working without the pumps, standing in for it.
+
+**The board now HAS that control — see §5.3a — and the departure has not been retired yet, so
+both levers work with the pumps stopped.** That is one more pump-less way down in pressure than
+a real unit has, and it is a known overlap rather than a modelled feature. Retiring the
+departure — making normal spray lose its head with the pumps off, which is what the real plant
+does — is filed and will be its own change.
+
+The stand-in's old "conservative direction" note is **withdrawn**: it claimed about **half** the
+condensing duty of real auxiliary spray, and this plant measures the opposite. From Hot Standby
+at 2235 psi (15.41 MPa) with every RCP secured, 600 s at 100 %:
+
+| lever | pressure after 600 s |
+|---|---|
+| normal spray | **1212 psi (8.36 MPa)** |
+| auxiliary spray | **1353 psi (9.33 MPa)** |
+| neither | 2245 psi (15.48 MPa) |
+
+The stand-in is the **stronger** lever here, not the weaker one.
+
+### 5.3a PZR Auxiliary Spray
+
+| Control | Effect |
+|---------|--------|
+| **AUX SPRAY %** (pressurizer card) | Charging-pump spray into the steam space — **lowers** pressure with the RCPs stopped |
+| **Requires** | AC power. There is **no AUTO** — nothing opens this valve but the operator |
+
+Auxiliary spray is fed from the **charging pumps**, not the cold leg, so it does not depend on
+reactor coolant pump head. It is the real system's answer to depressurizing a plant whose pumps
+are secured — which on this plant is the Hot Shutdown (Mode 4) cooldown and every pump-trip
+casualty. Without it the only remaining path is to lift the PORV and put reactor coolant into
+containment, which is the action auxiliary spray exists to avoid.
+
+It is **slow and deliberate**: expect hundreds of psi over ten minutes, not a step. Measured
+above, 100 % takes the plant from 2235 psi (15.41 MPa) to 1353 psi (9.33 MPa) in 600 s where the
+untouched plant holds.
 
 **Use to LOWER pressure** carefully. Return to AUTO when on target.
 
@@ -1028,6 +1061,7 @@ Listed for cross-reference — normal operation never requires typing a command.
 | CVCS inventory AUTO (§7.4) | `set_cvcs_auto` | `{active}` |
 | PZR heaters (§5.2) | `set_heater` | `{power_pct}` |
 | PZR spray (§5.3) | `set_spray` | `{open}` |
+| PZR auxiliary spray (§5.3a) | `set_aux_spray` | `{pct}` |
 | PORV open / close (§6.1) | `open_porv_manual` / `close_porv` | — |
 | PORV block valve (§6.2) | `open_block_valve` / `close_block_valve` | — |
 | RCP run / stop (§8.1) | `set_rcp` | `{running}` |

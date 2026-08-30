@@ -441,6 +441,103 @@ function runSuite(SH, rec, quiet, only) {
        eR.eng.ins.reading.primary_pressure < 0.5,
        'board ' + eR.instruments.reading.primary_pressure + ' vs range floor ' + spec.range[0]);
   })();
+
+  /* ---- 1d3b. EVERY PANEL ROW CAN ACTUALLY BE FAILED (#563 item 1) ----------------------------
+   * The advanced instrument-failure panel is the Hard Rule 1 teaching tool, and physics.html
+   * sells it. It refused 35 of its own 50 rows with a raw module string until 2026-08-30,
+   * because the mirror-only path was hard-coded to ONE id. The regression was invisible to
+   * every gate here: the partition check compares the shell's action list against the RETIRED
+   * engine's, and `set_instrument_failure` is present in both, so nothing asked whether the
+   * ids it accepts are the ids the panel offers.
+   *
+   * Three separate claims, because they fail separately: the command is accepted; a genuinely
+   * unknown id is STILL refused (the property that stops a typo landing silently); and the
+   * reading MOVES, which is the only one that cannot be satisfied by a dark wire. */
+  (function () {
+    var specs = globalThis.RD.PWR_CONFIG.instruments;
+    var e0 = new SH.PWR2Engine({});
+    var rows = Object.keys(e0.getInstruments()).filter(function (id) { return specs[id]; });
+
+    var threw = [];
+    rows.forEach(function (id) {
+      var eF = new SH.PWR2Engine({});
+      for (var i = 0; i < 20; i++) eF.step(0.02);
+      try { eF.applyCommand({ action: 'set_instrument_failure', instrument_id: id, mode: 'dead' }); }
+      catch (err) { threw.push(id); }
+    });
+    ck('every row of the advanced panel accepts an instrument failure — all ' + rows.length +
+       ' of them (#563 item 1: 35 threw `pwr2_instruments: no channel "<id>"` at the player, ' +
+       'because only porv_indicator was allowed down the mirror-only path)',
+       threw.length === 0, threw.length + ' refused' + (threw.length ? ': ' + threw.slice(0, 6).join(', ') : ''));
+
+    var unknownRefused = false;
+    var eU = new SH.PWR2Engine({});
+    try { eU.applyCommand({ action: 'set_instrument_failure', instrument_id: 'not_a_channel', mode: 'dead' }); }
+    catch (err) { unknownRefused = true; }
+    ck('...and an id that is not a board channel is STILL refused — the generalised guard tests ' +
+       'the numeric channel map, not merely "the engine has never heard of it"',
+       unknownRefused, 'accepted a typo');
+
+    /* THE EFFECT, NOT THE WRITE. A count, not one channel: a single hand-picked id is one
+     * refactor away from being the only one that works. 21 of the 50 legitimately do not move
+     * under `dead` at hot full power — they already read their own range floor there (hpi_flow,
+     * afw_flow, adv_valve and friends at zero flow), plus six DERIVED channels recomputed after
+     * _applyFailure that are dark on the retired engine too (subcooling_margin, the OT-delta-T and OP-delta-T pairs,
+     * tavg_rate, pzr_level_dev, rod_limit_margin — pre-existing, shared, and NOT fixed here).
+     * MEASURED 2026-08-30 over the same 50 rows: retired 28 move, PWR2 29. */
+    var moved = 0;
+    rows.forEach(function (id) {
+      var a = new SH.PWR2Engine({}), b = new SH.PWR2Engine({});
+      for (var i = 0; i < 100; i++) { a.step(0.02); b.step(0.02); }
+      try { b.applyCommand({ action: 'set_instrument_failure', instrument_id: id, mode: 'dead' }); }
+      catch (err) { return; }
+      for (i = 0; i < 5; i++) { a.step(0.02); b.step(0.02); }
+      if (a.getInstruments()[id] !== b.getInstruments()[id]) moved++;
+    });
+    ck('...and the BOARD READING actually moves for at least as many rows as the retired ' +
+       'engine managed — 28 of 50 there, measured; accepting the command is not the claim',
+       moved >= 28, moved + ' of ' + rows.length + ' rows changed under `dead`');
+  })();
+
+  /* ---- 1d3c. AUXILIARY SPRAY HAS A DOOR (#563 item 2) ----------------------------------------
+   * Built at stage 2c, gated in run_pwr2_pressurizer, mutation-tested — and in NONE of MAPPED,
+   * REHOMED or REFUSED, so the partition this file asserts was satisfied by an action that did
+   * not exist rather than by one that worked. That is the hole a new capability falls through:
+   * the partition is checked against the RETIRED engine's action list, and the retired engine
+   * never had auxiliary spray.
+   *
+   * THE EFFECT, NOT THE WRITE, and it takes a real ride: the claim is depressurization
+   * authority with the reactor coolant pumps secured, which is the Mode 4 cooldown regime. */
+  (function () {
+    function ride(pct) {
+      var e = new SH.PWR2Engine({ initial_state: 'hot_zero_power' });
+      e.applyCommand({ action: 'set_rcp', running: false });
+      if (pct !== null) e.applyCommand({ action: 'set_aux_spray', pct: pct });
+      for (var i = 0; i < 30000; i++) e.step(0.02);          /* 600 s */
+      return e;
+    }
+    var eOff = ride(null), eOn = ride(100);
+    var pOff = eOff.eng.sys.P * 145.038, pOn = eOn.eng.sys.P * 145.038;
+    ck('set_aux_spray is a REAL door: 100 % with every reactor coolant pump secured takes the ' +
+       'plant down ~890 psi in 600 s where the shut leg holds — the normal spray draws its ' +
+       'motive head from the loop, so this is the only way down that does not lift the PORV',
+       pOff - pOn > 700 && pOn < 1600,
+       'shut ' + pOff.toFixed(0) + ' psia vs aux ' + pOn.toFixed(0) + ' psia (' +
+       (pOff - pOn).toFixed(0) + ' psi)');
+
+    /* the READBACK, because the board's own box reads this field and a demand the plant does
+     * not publish is a box that snaps back to zero under the player's fingers */
+    var eR = new SH.PWR2Engine({ initial_state: 'hot_zero_power' });
+    for (var k = 0; k < 50; k++) eR.step(0.02);
+    var before = eR.getControlState().aux_spray_pct;
+    eR.applyCommand({ action: 'set_aux_spray', pct: 60 });
+    eR.step(0.02);
+    var after = eR.getControlState().aux_spray_pct;
+    ck('...and the control state publishes the standing DEMAND back, so the board box holds ' +
+       'what the operator typed (0 -> 60)',
+       before === 0 && Math.abs(after - 60) < 1e-6,
+       'before ' + before + ', after ' + after);
+  })();
   }
 
   if (grp('D4')) {
@@ -1881,6 +1978,20 @@ var MUTATIONS = [
    "        esf_systems: [{ id: 'afw', label: 'Auxiliary feedwater', commands: [] }],",
    "        esf_systems: [{ id: 'afw', label: 'Auxiliary feedwater', commands: ['set_afw'] }],",
    { grp: 'A' }],
+  /* #563 item 2 RETURNS, as the SEAT rather than the action: the door still exists and still
+   * accepts, and lands the demand nowhere — which is the shape the original defect would most
+   * plausibly have been "fixed" into, and the one a check that only asserted acceptance would
+   * pass. Reds the ride and the readback together. */
+  ['the aux-spray door accepts and drops the demand on the floor (a door onto a wall)',
+   "      EN.command(e, 'aux_spray', Math.max(0, Math.min(1, v)));",
+   '      EN.command(e, \'aux_spray\', 0);', { grp: 'D3' }],
+  /* #563 item 1 RETURNS: the mirror-only path is hard-coded back to the single id it carried
+   * until 2026-08-30. Reds the "every panel row accepts" check (35 of 50 refuse again) and the
+   * "reading moves" check with it, while leaving the unknown-id refusal green — which is the
+   * discrimination that says the guard was narrowed rather than deleted. */
+  ['the mirror-only path is hard-coded to porv_indicator again (35 of the 50 panel rows throw)',
+   '      if (!e.ins.channels[id] && boardNumericChannel(id)) return;',
+   "      if (!e.ins.channels[id] && id === 'porv_indicator') return;", { grp: 'D3' }],
   /* anchor grew with the wave-6 modes; the claim is the same collapse */
   ['the instrument-failure command maps every mode to STUCK',
    "      var mode = c.mode === 'fail_low' ? 'low' : c.mode === 'fail_high' ? 'high'\n               : c.mode === 'noisy' ? 'noisy' : c.mode === 'drift' ? 'drift'\n               : c.mode === 'dead' ? 'dead' : 'stuck';",

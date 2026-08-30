@@ -69,6 +69,30 @@
    * with the reason inside the window, and resets-then-executes after it, signal present
    * or not (the WTSM 12.3.2.3 circuit; the re-arm block stops automatic re-actuation). */
   function resetDelayS() { return root.RD.pwr2.protection.RESET.delay_s; }
+
+  /* MIRROR-ONLY: a NUMERIC board reading the reused pwr instrument layer publishes and this
+   * engine has no internal twin for. Such a failure is landed by _mirrorInstr on the board
+   * layer alone; the engine command would throw first, before applyCommand ever reached the
+   * mirror. #507 wave 6 built that path for exactly one id (porv_indicator) and hard-coded it,
+   * which is the whole of #563 item 1.
+   *
+   * MEASURED 2026-08-30, both engines at hot full power, over the shell's own published list:
+   *   RETIRED  85 channels, 85 accept a set_instrument_failure,  0 throw
+   *   PWR2     86 channels, 16 accept,                          70 THROW
+   * — `pwr2_instruments: no channel "rcs_flow"` in the player's face, on the Hard Rule 1
+   * teaching tool, for 35 of the advanced panel's own 50-row dropdown. A regression, not a gap.
+   *
+   * The test is `specs[id]`, the NUMERIC map, and the two exclusions it leaves are deliberate:
+   *   - An id that is not a board channel at all still THROWS. That property is what stops a
+   *     typo landing silently, and it is why this is not simply `if (!e.ins.channels[id])`.
+   *   - A STATUS boolean still throws, and that is BETTER than the retired engine, which
+   *     accepted all 35 and did nothing with any of them (measured: `_applyFailure` runs only
+   *     over the numeric SOURCE loop, and `_copyStatus` overwrites the reading unconditionally
+   *     afterwards). Making them accept here would ship a 35-wide dark wire to match. */
+  function boardNumericChannel(id) {
+    var sp = root.RD.PWR_CONFIG && root.RD.PWR_CONFIG.instruments;
+    return !!(sp && typeof id === 'string' && sp[id]);
+  }
   function eccsStop(e, pump, c) {
     var on = (c.active !== undefined ? c.active : c.running) !== false;
     if (!on && e.pt.si) {
@@ -350,6 +374,30 @@
       var v = p !== undefined ? p / 100 : (c.auto ? null : c.value);
       EN.command(e, 'pzr_spray_manual', v === undefined ? null : v);
     },
+    /* AUXILIARY SPRAY (#563 item 2, wired 2026-08-30). Built at stage 2c, gated
+     * (run_pwr2_pressurizer), mutation-tested — and in NONE of MAPPED, REHOMED or REFUSED,
+     * which this file's own header says cannot happen. Not a declared gap; simply no door.
+     *
+     * It is the cooldown path for a plant with its reactor coolant pumps secured, and since
+     * #507 wave 10 that is the SHIPPED cold end (Mode 4, Hot Shutdown). The normal spray draws
+     * its motive head from the loop, so with the pumps down and the coastdown past, the only
+     * other way down in pressure is to lift the PORV into containment — the action the real
+     * system carries auxiliary spray to avoid (WTSM 3.2, quoted in pwr2_pressurizer.js:263).
+     *
+     * MEASURED authority — hot zero power, every pump tripped, heaters manual 0, 600 s:
+     *   with aux spray 100 %:  2238.1 -> 1365.3 psia (15.43 -> 9.41 MPa)
+     *   with it shut:          2238.1 -> 2229.2 psia (15.43 -> 15.37 MPa)
+     * 864 psi (5.96 MPa) of depressurization authority, 1.83 kg/s (29.0 gpm), up to 2,523 kW.
+     *
+     * NO AUTO BRANCH, deliberately: the module is explicit that this is an operator command and
+     * never automatic. The payload otherwise follows set_spray's exactly — `open` key included
+     * — because the two controls sit beside each other and a procedure will send either. */
+    set_aux_spray: function (e, c) {
+      var p = c.power_pct !== undefined ? c.power_pct : c.pct;
+      if (p === undefined && c.open !== undefined) p = c.open ? 100 : 0;
+      var v = p !== undefined ? p / 100 : (c.value !== undefined ? c.value : 0);
+      EN.command(e, 'aux_spray', Math.max(0, Math.min(1, v)));
+    },
     open_block_valve:  function (e, c) { EN.command(e, 'block_valve', true); },
     close_block_valve: function (e, c) { EN.command(e, 'block_valve', false); },
     stuck_porv_open:   function (e, c) { EN.command(e, 'porv_stick', true); },
@@ -570,16 +618,19 @@
                : c.mode === 'noisy' ? 'noisy' : c.mode === 'drift' ? 'drift'
                : c.mode === 'dead' ? 'dead' : 'stuck';
       var val = c.stuck_value !== undefined ? c.stuck_value : c.value;
-      /* MIRROR-ONLY channels (#507 wave 6): porv_indicator is a STRING lamp the reused
-       * board layer special-cases and the internal numeric table cannot host — skip the
-       * engine command (which would throw before the applyCommand mirror ran) and let the
-       * mirror land it on the board layer alone. Any other unknown id still throws. */
-      if (!e.ins.channels[id] && id === 'porv_indicator') return;
+      /* MIRROR-ONLY channels (#507 wave 6, generalised at #563 item 1): a numeric board
+       * reading with no internal twin — skip the engine command (which would throw before the
+       * applyCommand mirror ran) and let the mirror land it on the board layer alone. The
+       * derivation, the measurement and what is deliberately still refused: boardNumericChannel
+       * above. porv_indicator is one of these, not a special case any more. */
+      if (!e.ins.channels[id] && boardNumericChannel(id)) return;
       EN.command(e, 'instrument_fail', { id: id, mode: mode, value: val });
     },
     clear_instrument_failure: function (e, c) {
       var cid = c.instrument_id !== undefined ? c.instrument_id : c.instrument;
-      if (cid === 'porv_indicator') return;          /* mirror-only — the mirror clears it */
+      /* mirror-only — the mirror clears it. Same set as the failure side (#563 item 1); a
+       * per-id clear on a channel the engine never knew about would throw on the way out. */
+      if (typeof cid === 'string' && !e.ins.channels[cid] && boardNumericChannel(cid)) return;
       EN.command(e, 'instrument_restore', typeof cid === 'string' ? cid : true);
     },
     clear_all_failures: function (e, c) {
@@ -1314,6 +1365,13 @@
       heater_power_pct: ts.pzr_heater_kw !== undefined
         ? 100 * ts.pzr_heater_kw / (PZ.HEATERS.prop_kW + PZ.HEATERS.backup_kW) : 0,
       spray_valve_pct: ts.spray_flow_pct !== undefined ? ts.spray_flow_pct : 0,
+      /* AUXILIARY SPRAY DEMAND, for the board's own box (#563 item 2). The OPERATOR'S
+       * STANDING DEMAND, not delivered flow: this is what the editable tile reads back, and a
+       * box that reads delivery would fight the player's typing every step the two disagree —
+       * which on this valve is most of them, since the module gates delivery on ac_available.
+       * Undefined driver means the lever has never been touched, which is 0, not "missing". */
+      aux_spray_pct: e.pzDrivers.aux_spray === undefined ? 0
+                     : 100 * Math.max(0, Math.min(1, e.pzDrivers.aux_spray)),
       /* THE HEATER BANK'S ELEVATION, so the board draws it where the model loses authority
        * (#473/#573). The plant publishes; the board reads — the #557 shape. There is
        * deliberately no second copy of these two numbers anywhere: `comp_pressurizer.js` draws
