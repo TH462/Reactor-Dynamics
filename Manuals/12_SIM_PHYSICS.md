@@ -461,14 +461,14 @@ five minutes.
 
 | Segment | Shutoff head | Character |
 |---|---|---|
-| High head | **2384 psi (16.44 MPa)** | Low flow; the only segment in play at TMI pressures |
-| Low head | **653 psi (4.5 MPa)** | High flow; dominates in a large LOCA |
+| High head | **1390 psi (9.58 MPa)** | Low flow, and it reaches its full **300 gpm** only below about **515 psi (3.55 MPa)**. **At the 2235 psi (15.41 MPa) operating point it delivers nothing at all** — its shutoff is 845 psi (5.83 MPa) below the plant it is meant to inject into, so a stuck-open PORV that holds pressure high keeps injection out |
+| Low head | **215 psi (1.48 MPa)** | High flow — **1200 gpm** near atmospheric; dominates in a large LOCA, and only there |
 
 **Accumulators** are passive, borated, and **finite**. They arm at **600 psi (4.14 MPa)** (600 psi — the real core-flood-tank / SIT cover-gas setpoint) through a check valve in series with a motor-operated isolation valve, and they deplete as they inject. Their nitrogen cover-gas pressure is computed and indicated as the tank empties — but it is **indication only**: injection is gated on cold-leg pressure against the fixed arming setpoint.
 
 **All emergency injection water is borated to 2500 ppm** and mixes into the core concentration, so ECCS injection adds negative reactivity — the shutdown-margin role of borated safety injection. It also enters at **104 °F (40 °C)**, removing sensible heat as it mixes (§5.4).
 
-**RHR** takes suction from the **hot leg** through a valve on **two interlock setpoints**: it can only be opened below **400 psi (2.76 MPa)**, and **auto-closes** only once pressure climbs back above **600 psi (4.14 MPa)**. The ~200 psi (1.38 MPa) of deadband is prototypical (NUREG-0933 Issue 99: autoclose typically 600 psig against a block-open at 425 psig) and it is what stops the valve chattering on a plant hunting near the lower setpoint. It recirculates — hot leg → heat exchanger → cold leg — so it changes no inventory. Cooldown rate is throttled by the heat-exchanger flow split, and its sink temperature **moves with circulating-water temperature**, so warm circ water raises the floor a cooldown can reach.
+**RHR** takes suction from the **hot leg** through a valve on **two interlock setpoints**: it can only be opened below **440 psi (3.03 MPa)** — the sourced 425 psig — and **auto-closes** only once pressure climbs back above **600 psi (4.14 MPa)**, the sourced 585 psig. The ~200 psi (1.38 MPa) of deadband is prototypical (NUREG-0933 Issue 99: autoclose typically 600 psig against a block-open at 425 psig) and it is what stops the valve chattering on a plant hunting near the lower setpoint. It recirculates — hot leg → heat exchanger → cold leg — so it changes no inventory. Cooldown rate is throttled by the heat-exchanger flow split, and its sink temperature **moves with circulating-water temperature**, so warm circ water raises the floor a cooldown can reach.
 
 **Shutdown cooling and low-head injection are the same pumps in two alignments, and you can only be in one.** The RHR pumps *are* the low-head half of the merged HPI/LPI system above. In the **injection** alignment they take suction from the refueling water tank and discharge to the cold legs, and their heat exchangers have **no cooling water** — WTSM 5.2 §5.2.4.5 (ML11223A220): *"Upon receipt of a safety injection actuation signal, the RHR pumps start and recirculate water through the **uncooled** RHR heat exchangers."* In the **shutdown-cooling** alignment they take hot-leg suction through valves 8701/8702 and their heat exchangers reject to circulating water. WTSM 5.1 §5.1.4.1 puts the two functions as *"independent of any engineered safety features function"*, and Ginna TS Bases B 3.5.3 has them actively interfering — being on shutdown cooling **degrades** the ECCS function. **So placing RHR in service is refused while safety injection is running**, and the board says why. Secure injection first. See §12.20 for what that refusal is and is not.
 
@@ -557,8 +557,8 @@ inventory — are the sourced ones.
 
 | Valve | Opens | Closes / reseats |
 |---|---|---|
-| **PORV** | 2350 psi (16.20 MPa) (2350 psia) | 2300 psi (15.86 MPa) (2300 psia) |
-| **Spring safeties** | 2485 psi (17.13 MPa) (2485 psia) | 2400 psi (16.55 MPa) (2400 psia) |
+| **PORV** | pressure setpoint **+100 psi (0.69 MPa)** — **2335 psi (16.099 MPa)** at the 2235 psi (15.41 MPa) nominal | **+85 psi (0.586 MPa)** — **2320 psi (15.996 MPa)** at nominal |
+| **Spring safeties** | **2500 psi (17.24 MPa)** — the 2485 psig nominal | **2375 psi (16.375 MPa)** — 5 % below, the sourced reseat fraction |
 
 The **block valve** is upstream of the PORV. Closing it stops **all** flow through the PORV line — relief and inventory loss alike — regardless of PORV position. That is the TMI recovery action.
 

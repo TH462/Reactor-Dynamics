@@ -59,7 +59,8 @@ require(path.join(__dirname, '..', 'layers', 'control', 'pwr_control.js'));
  'pwr2_true_state', 'pwr2_instruments', 'pwr2_feedwater'
 ].forEach(function (f) { require(path.join(SRC, f + '.js')); });
 
-var P = globalThis.RD.pwr2.protection;
+var RD = globalThis.RD;
+var P = RD.pwr2.protection;
 var PSI = P.PSIA_PER_MPA;
 var RED = '[31m', GREEN = '[32m', BOLD = '[1m', DIM = '[2m', RST = '[0m';
 var nPass = 0, nFail = 0;
@@ -108,7 +109,49 @@ var ROWS = [
   { m: /^\*\*P-6\*\*/,                       narrative: true },
   { m: /^\*\*P-9\*\*/,                       narrative: true },
   { m: /^\*\*P-12\*\*/,                      narrative: true },
-  { m: /^SR re-energize block/,             narrative: true }
+  { m: /^SR re-energize block/,             narrative: true },
+
+  /* ---- §3.0, ENGINEERED SAFETY & AUTOMATIC ACTUATIONS (added 2026-08-30, #532 phase 3b) -----
+   * ⚠ THIS SECTION WAS OUTSIDE THE GATE UNTIL NOW, AND THAT IS THE WHOLE POINT. The runner
+   * shipped covering §2.0 and §4.0, reported 9/9 on a chapter whose §3.0 still carried the
+   * RETIRED plant's PORV and safety setpoints, an "ESF arm must be AUTO" instruction for arms
+   * this plant does not have, an SI-on-low-level path that does not exist, and four containment
+   * actuations the engine declares unmodeled — while OMITTING two of the three engineered-
+   * safeguards entries the plant actually ships. A green gate over a section it does not read
+   * is the hollow-check trap in its purest form: nothing was wrong with the checks, they were
+   * pointed at two of the chapter's three tables.
+   *
+   * §3.0's columns are Function | Instrument | Direction | Setpoint | Notes — the direction is
+   * the THIRD cell, not the second, which is why tableRows takes a dirCol. */
+  { m: /^Open PORV/,                        narrative: true },   /* setpoint-RELATIVE (SP+100); no single figure to pin */
+  { m: /^Open PZR safety/,                  want: RD.pwr2.pressurizer.RELIEF.safety_open_mpa * PSI, unit: 'psi', tol: 2 },
+  { m: /^HPI start \(Safety Injection\)/,    want: P.ESFAS.si_lo_pzr_press_psia,   unit: 'psi', tol: 1 },
+  { m: /^HPI start \(SI on low steam pressure\)/, want: P.ESFAS.si_lo_steam_press_psia, unit: 'psi', tol: 1 },
+  { m: /^HPI start \(SI on high-high steam flow\)/, want: P.ESFAS.hi_hi_steam_flow_frac, unit: 'frac', tol: 0.01 },
+  { m: /^HPI start \(SI on PZR level lo-lo\)/, absent: true, what: 'a safety injection on low pressurizer level' },
+  { m: /^Letdown isolation/,                absent: true, what: 'an automatic letdown isolation' },
+  { m: /^Feedwater isolation \(on SI\)/,     want: P.ESFAS.si_lo_pzr_press_psia,   unit: 'psi', tol: 1 },
+  { m: /^\*\*Atmospheric dump \(ADV\)\*\*/,     want: RD.pwr2.relief.RELIEF.adv_setpoint_psig + 14.7, unit: 'psi', tol: 1 },
+  { m: /^\*\*Main steam line isolation \(MSLI\)\*\*/, absent: true, what: 'any automatic main steam line isolation' },
+  { m: /^\*\*MSLI \(containment leg\)\*\*/,      absent: true, what: 'a containment-pressure steam line isolation' },
+  { m: /^\*\*SI backup \(containment\)\*\*/,     absent: true, what: 'a containment-pressure safety injection' },
+  { m: /^\*\*Containment spray\*\*/,           absent: true, what: 'containment spray' },
+  { m: /^\*\*Fan coolers/,                    absent: true, what: 'a containment fan-cooler safety realign' },
+  { m: /recombiners/,                       absent: true, what: 'hydrogen recombiners' },
+  { m: /flammability alarm/,                narrative: true },
+  { m: /ignition \(the burn\)/,              absent: true, what: 'a hydrogen deflagration' },
+  { m: /^AFW start$/,                       want: P.SGLL.lolo_frac * 100,         unit: '%',   tol: 0.5 },
+  { m: /^AFW start \(loss of MFW/,           narrative: true },
+  { m: /^MFW isolation \+ AFW start \(P-4\)/, narrative: true },
+  { m: /^SR re-energize assist/,            narrative: true },
+  { m: /^Open SG safety/,                   want: RD.pwr2.relief.RELIEF.safety_pop_psig + 14.7, unit: 'psi', tol: 1 },
+  { m: /^Turbine trip \(vacuum\)/,           narrative: true },
+  { m: /^Turbine trip \(overspeed\)/,        narrative: true },
+  { m: /^Turbine trip \(SG hi-hi/,           want: P.SGLL.hi_hi_frac * 100,        unit: '%',   tol: 0.5 },
+  { m: /^Steam dump \(pressure mode\)/,      narrative: true },
+  { m: /^Steam dump \(trip-open mode\)/,     narrative: true },
+  { m: /^Spray flow cap/,                   narrative: true },
+  { m: /^Main feedwater isolation \(P-14\)/, want: P.SGLL.hi_hi_frac * 100,        unit: '%',   tol: 0.5 }
 ];
 
 var MD_PATH = path.join(__dirname, '..', 'Manuals', '09_SETPOINTS_LIMITS.md');
@@ -117,7 +160,7 @@ var md = fs.readFileSync(MD_PATH, 'utf8').replace(/\r\n/g, '\n');
 /* Parse the two tables between the reactor-trip heading and the section after the permissives.
  * Header/rule rows are dropped by requiring a NUMBER or the NOT MODELLED marker somewhere in the
  * row — a header has neither. */
-function tableRows(startRe, endRe) {
+function tableRows(startRe, endRe, dirCol) {
   var lines = md.split('\n'), out = [], on = false;
   for (var i = 0; i < lines.length; i++) {
     if (!on && startRe.test(lines[i])) { on = true; continue; }
@@ -134,12 +177,15 @@ function tableRows(startRe, endRe) {
      * digit-only filter dropped, leaving their instrument and priority unchecked. */
     if (!/\d/.test(L) && !/NOT MODELLED/i.test(L) &&
         !/^\|\s*[a-z][a-z0-9_]*\s*\|/.test(L)) continue;
-    out.push({ label: cells[0], cells: cells, raw: L });
+    out.push({ label: cells[0], cells: cells, raw: L,
+               dir: (cells[dirCol === undefined ? 1 : dirCol] || '').toLowerCase() });
   }
   return out;
 }
 var rows = tableRows(/^\|\s*Instrument \/ condition/, /^### Permissives/)
-   .concat(tableRows(/^\|\s*Name\s*\|\s*Value/, /^##\s/));
+   .concat(tableRows(/^\|\s*Name\s*\|\s*Value/, /^##\s/))
+   /* §3.0 — Function | Instrument | Direction | Setpoint | Notes: the direction is cell 2. */
+   .concat(tableRows(/^\|\s*Function\s*\|\s*Instrument/, /^### HPI pump curve/, 2));
 
 console.log('\n' + BOLD + 'THE SETPOINT CHAPTER vs THE SHIPPED PLANT  (Manuals/09 vs pwr2_protection)' + RST);
 
@@ -161,7 +207,7 @@ var unclaimed = [], wrong = [], unmarked = [], marked = [];
 rows.forEach(function (row) {
   var hits = ROWS.filter(function (r) {
     if (!r.m.test(row.label)) return false;
-    return r.dir === undefined || (row.cells[1] || '').toLowerCase() === r.dir;
+    return r.dir === undefined || row.dir === r.dir;
   });
   if (hits.length !== 1) { unclaimed.push(row.label + (hits.length > 1 ? '  (AMBIGUOUS)' : '')); return; }
   var spec = hits[0];

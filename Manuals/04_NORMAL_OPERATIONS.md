@@ -523,7 +523,7 @@ PZR in normal level band; RCP running for effective spray.
 
 ### Precautions
 - Low pressure erodes **subcooling**.
-- High pressure approaches PORV **2350 psi (16.20 MPa)** and safeties **2485 psi (17.13 MPa)**.
+- High pressure approaches the PORV — which lifts **100 psi (0.69 MPa) above your setpoint**, so **2335 psi (16.099 MPa)** at the nominal 2235 psi (15.41 MPa) — and then the safeties at a fixed **2500 psi (17.24 MPa)**.
 
 ### Procedure
 
@@ -692,7 +692,7 @@ After **PWR-N14** or any hot, subcritical plant.
 | **WARNING** | **Isolate SI accumulators** at **1000 psi (6.895 MPa)** before cover-gas **600 psi (4.14 MPa)**. Nothing automatic shuts them. Failure dumps all four (empty SITs, boron dragged toward 2500 ppm, water-solid Mode 5). Basis: NUREG-1431 **LCO 3.5.1** / **SR 3.4.12.3**. |
 | **WARNING** | **Block BOTH low-pressure reactor trips (steps 1c/1d), not just SI.** Two entries in the trip table watch reactor coolant pressure downward: the **low-pressure reactor trip** at **1775 psi (12.24 MPa)** and the **reactor trip on safety injection** at the **1715 psi (11.824 MPa)** SI setpoint. Taking HPI/LPI to OFF stops the *pumps* and leaves both trips armed. Neither block is available until pressure is inside the **P-11** permissive (below **1972 psi / 13.6 MPa**), which is why step 1b lowers the Pressure SP first. Measured with the blocks missed: the plant scrams about five plant-minutes into the first leg, the resulting turbine trip drives the steam dump into its Tavg-error mode, and the cooldown runs away at **−551 °F/hr (−306 °C/hr)**. Measured with only the low-pressure trip blocked: it scrams anyway, one step later. |
 | **NOTE** | The SI block of step 1a stops the *pumps*. It does nothing to the passive accumulators — those are a separate, manual isolation at step 4 — and nothing to the two reactor trips above. All three are needed. |
-| **NOTE** | RHR is placed in service in the low-pressure band (~**400 psi (2.76 MPa)** block-open interlock on this plant). Commercial SOPs place RHR near intermediate temperature and pressure (often on the order of ~350 °F / ~350 psig). |
+| **NOTE** | RHR is placed in service in the low-pressure band (the **440 psi (3.03 MPa)** block-open interlock on this plant — the sourced 425 psig). Commercial SOPs place RHR near intermediate temperature and pressure (often on the order of ~350 °F / ~350 psig). |
 | **NOTE** | Secure RCPs once RHR carries the cooldown so the SG is not the only sink. |
 | **NOTE** | **The ~90 °F/hr (50 °C/hr) used throughout this procedure is THIS PLANT'S programmed rate; the LIMIT it sits inside is 100 °F/hr and is sourced** — *"Do not exceed a heatup rate of 100 °F/hr in the pressurizer or 100 °F/hr in the RCS"* (WTSM App 19-1, ML11223A342) and the RCS design cycles at *"<100 °F/hr"* (WTSM §3.2 Table 3.2-10, ML11223A213); Tech Spec basis NUREG-1431 LCO 3.4.3 *(OWNER RULING, 2026-08-09: "100 F/hr TS + 50 admin")*. This NOTE claimed no source existed until 2026-08-12 — see §5.0. What remains true is that 90 °F/hr is a **programme**, not a limit, and that the pressure–temperature curves LCO 3.4.3 actually derives from are not modelled here. |
 
@@ -708,7 +708,7 @@ After **PWR-N14** or any hot, subcritical plant.
 | 2 | 3 → 4 | **Walk Dump SP and Pressure SP down TOGETHER along the saturation curve**, at the cooldown rate — Dump SP to Psat(target Tavg), Pressure SP to Psat(target Tavg + subcooling margin). Four legs of ~46.8 °F (26 °C): **1194 → 814 → 580 → 347 → 197 psi** on the dump against **1901 → 1352 → 1004 → 641 → 395 psi** on the pressurizer. Maintain AFW/feed for SG level | Dump SP / Pressure SP / Feed | Tavg falling at the programmed rate; subcooling held |
 | 3 | Mode 4 | Keep the pressure walk-down *behind* the temperature — spray as needed, subcooling positive throughout | Pressure SP / Spray | P falling controlled; subcooling > 0 |
 | 4 | Mode 4 | At **1000 psi (6.895 MPa)**: **close accumulator discharge** | Accumulator valve | Valve shut; SIT fill holds |
-| 5 | Mode 4 | Below the **400 psi (2.76 MPa)** RHR block-open interlock: **set the HX split to ~7 % FIRST**, then place **RHR On**. The split arrives at 100 % from the at-power lineup and 100 % onto a 379.4 °F (193 °C) plant is a **−1517.4 °F/hr (−843 °C/hr)** shock | RHR HX / RHR | RHR active; rate still on programme |
+| 5 | Mode 4 | Below the **440 psi (3.03 MPa)** RHR block-open interlock: **set the HX split to ~7 % FIRST**, then place **RHR On**. The split arrives at 100 % from the at-power lineup and 100 % onto a 379.4 °F (193 °C) plant is a **−1517.4 °F/hr (−843 °C/hr)** shock | RHR HX / RHR | RHR active; rate still on programme |
 | 6 | 4 → 5 | **Secure RCPs** once RHR carries heat; from here the **HX split is the rate control**, and it has to keep RISING — walk it **7 → 25 %** as the gap to the RHR sink closes | RCP Stop / RHR HX | Flow to RHR path |
 | 7 | Mode 5 | Arrive cold (≤ ~199.4 °F (93 °C)), depressurized, RHR in service, accumulators isolated | (observe) | Mode 5 |
 
@@ -748,7 +748,7 @@ it at a different rate and every row below moves; that is the point of a program
 | Boration to the cold-shutdown boron complete | ~1.0 plant-h | 857 ppm; **cooling does not start until this is done** |
 | SI blocked, both reactor trips blocked | ~1.09 plant-h | 1901 psi (13.11 MPa), inside P-11 |
 | Isolate accumulators at **1000 psi (6.895 MPa)** | **~2.04 plant-h** | Tavg **482.7 °F (250.4 °C)**; SIT inventory still 100 % |
-| RHR permissive reached, **400 psi (2.76 MPa)** | **~3.16 plant-h** | Tavg **382.8 °F (194.9 °C)** — close to the commercial ~350 °F / ~350 psig practice in the NOTE above |
+| RHR permissive reached, **440 psi (3.03 MPa)** | **~3.16 plant-h** | Tavg **382.8 °F (194.9 °C)** — close to the commercial ~350 °F / ~350 psig practice in the NOTE above |
 | RHR aligned, RCPs secured | ~3.19 plant-h | HX split 7 %; RHR carries the heat from here |
 | **Mode 4 entry** (350 °F (176.7 °C)) | ~3.49 plant-h | 392 psi (2.70 MPa) |
 | Cold end, **Mode 5** (199.4 °F (93 °C)) | **~4.89 plant-h** | boron **857 ppm**, accumulators **100 % full and isolated**, RHR on, RCPs off. The checklist runs on to **177 °F (80.5 °C)** at **363 psi (2.50 MPa)** — the `cold_shutdown` initial condition's own pressure |

@@ -79,7 +79,7 @@ This is an **accident of information**, not primarily of equipment unavailabilit
 |------|--------|
 | 1 | Start **Hot Full Power**, speed 1×–10× |
 | 2 | Optional: inject **Loss of Main Feedwater** (historical initiator) |
-| 3 | Observe pressure rise → PORV auto-open near **2350 psi (16.20 MPa)** |
+| 3 | Observe pressure rise → PORV auto-open **100 psi (0.69 MPa) above the pressure setpoint** — **2335 psi (16.099 MPa)** at the 2235 psi (15.41 MPa) nominal |
 | 4 | Inject **PORV Stuck Open** |
 | 5 | Inject **PORV Indicator Stuck Closed** |
 | 6 | Watch the board without using Learning duals if practicing Realistic |
