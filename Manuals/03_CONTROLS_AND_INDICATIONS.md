@@ -798,7 +798,7 @@ pumps, condenser air removal), and the walk continues to **COND VAC TRIP** (22 i
 
 ### 14.1 Engage a channel
 
-1. Find the channel's AUTO control on its board card — **STEAM GEN FEED → AUTO** (three-element SG level), **ROD AUTO** on the rod-control card (Tavg), **BORON → ON** (target ppm), **STEAM DUMP → AUTO**, **CHARGING → AUTO**.  
+1. Find the channel's AUTO control on its board card — **STEAM GEN FEED → AUTO** (three-element SG level), **BORON → ON** (target ppm), **STEAM DUMP → AUTO**, **CHARGING → AUTO**. (**ROD AUTO** is on the rod-control card but is **dark on this plant** — see §14.3.)  
 2. Where the card carries a setpoint box (boron target ppm, dump setpoint), set/verify it; the other channels capture the current reading on engage.  
 3. Press **AUTO** — the button stays lit while the channel is engaged.  
 
@@ -807,17 +807,32 @@ pumps, condenser air removal), and the walk continues to **COND VAC TRIP** (22 i
 1. Operate the underlying control (rods, feed %, etc.), **or** select **MAN**.  
 2. Channel disengages; operator owns the parameter.  
 
-### 14.3 Rod AUTO (Tavg)
+### 14.3 Rod control is MANUAL on this plant, and that is deliberate
 
-- **The shipped lineup has the rods in MANUAL.** The plant load-follows without them: on a 100 → 80 MWe cut, moderator feedback alone takes power to 81.8 % and parks it in about 3½ minutes. What it does *not* do is put Tavg back on program — it settles roughly 17 °F (9.4 °C) high. Trimming that off is the operator's job, in MAN or by engaging this channel.  
-- **Rods set temperature; the turbine sets power.** Inserting 60 fine steps at 80 MWe moves Tavg about 6 °F (3.3 °C) and generator load less than one point. Roughly 0.1 °F (0.06 °C) per fine step, linear over the useful range.  
-- **T-ref is PROGRAMMED on turbine load, not captured from Tavg** — a sliding line from 546.8 °F (286.0 °C) at no load to 580.1 °F (304.5 °C) at full power, re-derived from indicated steam flow every evaluation. Engaging does not freeze a target; as load moves, T-ref moves with it.  
-- Holds Tavg with variable rod speed and deadband (±1.5 °F / ±0.8 °C).  
-- **Rod gain is scheduled on bank position.** One rod step is worth several times more reactivity mid-bank than near either stop, so the controller de-rates itself as the bank comes in and returns to full gain while the load program is sliding. The operator sees nothing of this; it is what keeps the plant steady at part power.  
-- Manual rod motion → MAN.  
-- Drops out on scram.  
+**There is no automatic rod controller here.** The **ROD AUTO** pushbutton on the rod-control
+card is present and **dark**, and it will stay dark *(OWNER DIRECTIVE, 2026-08-30: "I want to keep
+rod control manual. This is a learning plant not an actual power plant and I think making the
+player move rods manually will help their learning.")*.
 
-**CAUTION:** If you engage **ROD AUTO** with Tavg well off program, rods will drive hard — toward the *program*, not toward where Tavg happens to sit. Check the Tavg/T-ref deviation before engaging, and if the plant is far off, trim in MAN first.
+A real plant hands the control bank to a controller that holds average coolant temperature on a
+reference programmed from turbine load, and the operator supervises it. Knowing that is the point
+of the button being visible: the contrast is the lesson.
+
+**What that leaves you holding:**
+
+- **The rods set temperature; the turbine sets power.** Inserting 60 fine steps at 80 MWe moves
+  Tavg about 6 °F (3.3 °C) and generator load less than one point — roughly **0.1 °F (0.06 °C) per
+  fine step**, linear over the useful range.
+- **The plant load-follows without the rods, but it does not put Tavg back.** On a 100 → 80 MWe
+  cut, moderator feedback alone takes power to 81.8 % and parks it in about 3½ minutes — and
+  settles Tavg roughly **17 °F (9.4 °C) above program**. Trimming that off is your job, in MAN.
+  A controller would have closed it for you and you would not have seen the coupling work.
+- **Reactivity per step is not constant.** One rod step is worth several times more mid-bank than
+  near either stop, so the same tap moves the plant differently depending on where the bank is.
+  With no controller de-rating itself on your behalf, this is yours to feel.
+
+> **NOTE:** every rod stop in this plant still acts — see **09 §**. The stops block *withdrawal*;
+> insertion is always available.
 
 ---
 
@@ -894,15 +909,20 @@ These topics appear as dedicated **campaign** missions; manuals cover them here 
 - When Intermediate Range ≥ **1e-10 A** (P-6), secure **SR detector** — see **PWR-T13** / **PWR-N03**.  
 - Campaign mission `pwr_startup` / `pwr_startup_challenge` grade this path; manuals do not auto-grade.
 
-### 17.2 Rod AUTO — T-ref capture trap (Mode 1)
+### 17.2 Holding Tavg by hand (Mode 1)
 
-1. Stabilize Tavg where you want it.  
-2. Engage **ROD AUTO** (rod-control card) — the reference **captures current indicated Tavg**.  
-3. If you engage with a large Tavg error vs desired plant, rods will drive hard.  
-4. Any manual rod motion → **MAN**.  
-5. Channel drops out on SCRAM.  
+There is no ROD AUTO on this plant (§14.3), so this is the drill that replaces the old
+engage-the-controller one.
 
-See **PWR-T10** / **T11**. Campaign: `pwr_rod_auto`.
+1. Note **Tavg** against **T-ref** on the rod-control card.
+2. Tap the bank in the direction that closes the deviation and **stop** — rod worth per step
+   changes with bank position, so the same tap does not always move the plant the same amount.
+3. Wait for the plant to answer before tapping again. The coupling is slow; chasing it is the
+   commonest mistake.
+4. Change generator load and watch T-ref slide. **The turbine set the power; you set the
+   temperature.**
+
+See **PWR-T10** / **T11**.
 
 ### 17.3 Feed specialist — three-element vs MANUAL (Mode 1)
 

@@ -140,15 +140,24 @@
       'Frame around the shutdown-bank step readout. See the Shutdown Bank card for what the number ' +
       'should read.', CI, '3.3'),
 
+    /* THIS BUTTON IS DARK ON PURPOSE AND STAYS THAT WAY (#528, 2026-08-30). The card used to
+     * describe the RETIRED engine's `rods_tavg` channel in full — programmed T-ref, the
+     * deadband, the numbers — a behaviour the plant the site runs has never had and now never
+     * will. Player-facing copy promising a feature that does not exist is the trap this repo
+     * keeps re-learning; the fix is not to delete the control but to let it carry the contrast,
+     * which is the whole point of the ruling. */
     ims5glucngg: e('ROD AUTO',
-      'Hands the control bank to the Tavg automation channel — rods hold coolant temperature on the load program.',
-      'The reference is PROGRAMMED on turbine load, not captured: Tref slides along a line from ' +
-      '566.6 °F (297.0 °C) at no load to 579.2 °F (304.0 °C) at full power, and the rods drive indicated Tavg to ' +
-      'it at variable speed, locking up inside a deadband of about ±1.4 °F (±0.8 °C). Drop load from 100 to ' +
-      '60 MWe and the reference walks itself from 579.3 °F (304.07 °C) down to 574.2 °F (301.24 °C) — the ' +
-      'rods answer a load change before you do. On a free-play start it engages itself above P-10 (10 % ' +
-      'power), so at power it is already in. Any manual rod motion drops the channel to manual, and so ' +
-      'does a scram.', CI, '14.3'),
+      'Dark on this plant, deliberately — you hold Tavg with the rods yourself.',
+      'A real plant hands the control bank to an automatic controller that holds average coolant ' +
+      'temperature on a programmed reference, and the operator watches it. This simulator does ' +
+      'not, and that is a teaching decision rather than a missing feature *(OWNER DIRECTIVE, ' +
+      '2026-08-30: "I want to keep rod control manual. This is a learning plant not an actual ' +
+      'power plant and I think making the player move rods manually will help their learning.")*. ' +
+      'So the coupling stays yours: THE RODS SET TEMPERATURE AND THE TURBINE SETS POWER. Drop ' +
+      'load and the plant follows on moderator feedback alone — power walks down and parks ' +
+      'itself in about three and a half minutes — but it settles with Tavg well above program, ' +
+      'and closing that gap is the part a controller would have hidden from you. Roughly ' +
+      '0.1 °F (0.06 °C) of Tavg per fine step, linear over the useful range.', CI, '14.3'),
 
     imrqr8ecji6: e('SCRAM',
       'Manual reactor trip — drives every rod in. Arm, then confirm.',

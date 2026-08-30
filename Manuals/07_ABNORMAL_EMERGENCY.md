@@ -636,7 +636,8 @@ without melt.
 
 ### Symptoms
 - Tavg disagrees with Thot/Tcold average story  
-- Rod AUTO (Tavg) may drive rods wrongly  
+- A lying Tavg misleads YOUR rod moves — rod control is manual here, so the wrong rod
+  motion is the one you make from a bad reading (**03 §14.3**)  
 - Tavg-based alarms/trips can misbehave  
 
 ### Immediate actions

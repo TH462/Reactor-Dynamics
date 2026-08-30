@@ -30,6 +30,27 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
 
 ## [Unreleased]
 
+### Changed (#528 — rod control is manual on this plant, by ruling, 2026-08-30)
+
+*(OWNER DIRECTIVE, 2026-08-30: "I want to keep rod control manual. This is a learning plant not an
+actual power plant and I think making the player move rods manually will help their learning.")*
+Declared departure recorded at `Blueprint/DESIGN_COMPANION.md` §8.36.
+
+- **There is no automatic rod controller, and there will not be one.** A real plant holds average
+  coolant temperature with a controller on a programmed reference; this one leaves it to you. The
+  **ROD AUTO** button stays on the board, permanently dark, because the contrast is the lesson —
+  removing it would hide the comparison the decision is about. Its Scanner card now says so.
+- **Five manual chapters documented it as a live control** and are corrected. **03 §14.3** is
+  rewritten from a controller description to what the operator is actually left holding: the rods
+  set temperature while the turbine sets power (~0.1 °F / 0.06 °C per fine step), the plant
+  load-follows on moderator feedback alone but parks Tavg ~17 °F (9.4 °C) above program with the
+  trim left to you, and reactivity per step varies several-fold across the bank. **03 §17.2**'s
+  *T-ref capture trap* drill becomes a hold-Tavg-by-hand drill — it had also survived the Rev 15
+  correction still teaching that engaging ROD AUTO *"captures current indicated Tavg"*, which that
+  revision established had never been true of any build. Also **02**, **04** (two optional *engage
+  ROD AUTO* steps), **07** and **11**.
+
+
 ### Fixed (#590 — the feed loop was chasing its own instruments, 2026-08-29)
 
 Full write-up: `Blueprint/PWR2_VALIDATION.md` §124. Filed out of #516 item 2, the owner

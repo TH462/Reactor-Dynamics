@@ -29,6 +29,62 @@ and the user-visible summary in `CHANGELOG.md`. This file points at those and tr
 
 ---
 
+## Session log — 2026-08-30-develop-a (#528 — rod control is manual by ruling, and five chapters said otherwise)
+
+*(OWNER DIRECTIVE, 2026-08-30: "I want to keep rod control manual. This is a learning plant not an
+actual power plant and I think making the player move rods manually will help their learning.")*
+
+**Not a defect — a design decision, and #528 closes as DELIBERATE.** Recorded as a declared
+departure at `Blueprint/DESIGN_COMPANION.md` §8.36, which is the DESIGN_CRITERIA **Q3 route taken
+openly**: it costs prototypicality on Q2 (a real plant automates this, WTSM 8.1) and buys back the
+Tier A coupling, because a controller in the loop does the learning for the player.
+
+**THE RULING HAD A FOOTPRINT NOBODY WOULD HAVE FOUND FROM THE ISSUE.** CLAUDE.md's standing rule
+— *when a ruling lands, grep the manual for its subject; no runner will do it for you* — turned up
+**five manual chapters plus a board card** documenting ROD AUTO as a live control, describing
+programmed T-ref, the deadband and gain scheduling in detail. All of it describes the RETIRED
+engine and now describes something that will never exist.
+
+**And two of those sites contradicted each other.** `03 §17.2` still taught the *T-ref capture
+trap* — that engaging ROD AUTO *"captures current indicated Tavg"* — which **Rev 15(b) corrected
+§14.3 for, on the grounds that it had never been true of any build**. The correction was applied to
+one section and not to the drill built on the same premise, and it survived three revisions.
+
+**THE BUTTON STAYS, DARK** *(OWNER RULING, 2026-08-30: selected "Keep it dark, and make it teach"
+from options I wrote — a selection, not verbatim words)*. Under Q4's orphan-control test a control
+that can never act is a defect; the answer here is that **the contrast IS the lesson** — removing
+it hides the comparison the ruling is about. The Scanner card now leads with why it is dark and
+what the player holds instead. Also the safe choice: the rod card's geometry was measured against
+that button's position (#350 item notes).
+
+`03 §14.3` is rewritten from a controller description to the operator's actual job — rods set
+temperature while the turbine sets power (~0.1 degF / 0.06 degC per fine step, linear), a load cut
+parks Tavg ~17 degF (9.4 degC) above program on moderator feedback alone, and reactivity per step
+varies several-fold across the bank with nothing de-rating itself on the player's behalf.
+`03 §17.2` becomes a hold-Tavg-by-hand drill. Also `02`, `03 §14` automation list, `04`
+§PWR-N02/N05, `07` and `11`.
+
+**NOT changed:** `09 §2.0`'s rod-stop citation quotes the source on stopping *"manual & automatic"*
+withdrawal — a statement about the REAL plant, left verbatim. Deciding which mentions were claims
+about OUR plant and which were quotations about a real one is the whole care in a pass like this.
+
+**Recorded, not deleted:** campaign mission `pwr_rod_auto` teaches the channel and is unreachable
+while missions are free-play-only (#523); noted on #525 rather than ripped out, which is that
+issue's call. `§8.30`'s steam-dump auto-clear can never fire in a manual-rod lineup — already
+recorded there since #489.
+
+### Gates
+
+Manual set: revision row **17 extended** (pending — not a new row, per the standing rule), stamped
+and repacked. `run_manual_rev` 15/0, `run_manual_units` 0 failed, `run_manual_commands` 3/3,
+`verify_board_check` 236/0, `run_hardrules` 436 -> **438**. Aggregate `--fast`: 95 runners at
+baseline.
+
+**One self-inflicted red worth the line:** the board card's new `0.1 degF (0.06 degC)` pair was
+split across two source lines, so `run_manual_units` saw an SI value with no US partner. The gate
+reads SOURCE lines, not rendered text — a correctly-worded sentence can still fail it on where the
+string concatenation breaks.
+
 ## Session log — 2026-08-29-develop-g (#590 — the feed loop was not limit-cycling: it was chasing its own instruments)
 
 Full write-up: `Blueprint/PWR2_VALIDATION.md` §124.
