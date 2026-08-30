@@ -1507,7 +1507,7 @@ var BASELINES = {
   // 16 -> 17 on 2026-08-07 with Alpha 1.3.0; 17 -> 18 on 2026-08-08 with Alpha 1.4.0 — the
   // same mechanism each time. This key moves on every RELEASE and on nothing else, so a bump
   // here with no release in the same change is the signal that something else added a check.
-  'run_release.js':        { code: 0, score: '23checks 0failed' },   // 22 -> 23 (Alpha 1.6.1): one more CROSS pairing, as every release adds. | 21 -> 22 (Alpha 1.6.0): one more CROSS pairing, as every release adds. | 20 -> 21 (Alpha 1.5.2): one more CROSS pairing, as every release adds.   // 19 -> 20 (2026-08-09, Alpha 1.5.1): same mechanism as the row below — one more CROSS pairing. | 18 -> 19 (2026-08-09, Alpha 1.5.0): one more CROSS row — the check pairs each changelog.html entry with its CHANGELOG.md heading, so it grows by one per release. 9 published entries, 9 version headings.
+  'run_release.js':        { code: 0, score: '24checks 0failed' },   // 22 -> 23 (Alpha 1.6.1): one more CROSS pairing, as every release adds. | 21 -> 22 (Alpha 1.6.0): one more CROSS pairing, as every release adds. | 20 -> 21 (Alpha 1.5.2): one more CROSS pairing, as every release adds.   // 19 -> 20 (2026-08-09, Alpha 1.5.1): same mechanism as the row below — one more CROSS pairing. | 18 -> 19 (2026-08-09, Alpha 1.5.0): one more CROSS row — the check pairs each changelog.html entry with its CHANGELOG.md heading, so it grows by one per release. 9 published entries, 9 version headings.
   // NEW 2026-08-06 — the public site's SOCIAL CARDS. Every page carried a RELATIVE
   // `og:image` ("site/hero.png") from launch, and Slack / Discord / iMessage / X do not
   // resolve a relative og:image, so every link ever shared into a chat rendered with no

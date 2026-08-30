@@ -30,6 +30,8 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
 
 ## [Unreleased]
 
+## [Alpha 1.7.0] — 2026-08-30
+
 ### Changed (the public website describes the plant it is about to ship, 2026-08-30)
 
 The same shape as #532 one directory up: `#523` flipped every site link and `/sim` to
