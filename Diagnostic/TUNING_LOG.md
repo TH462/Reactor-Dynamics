@@ -29,6 +29,68 @@ and the user-visible summary in `CHANGELOG.md`. This file points at those and tr
 
 ---
 
+## Session log — 2026-08-30-develop-b (#532 — the manual set was the retired plant's, in every chapter)
+
+**Where it ended.** All 13 chapters + `README`, `ISSUES_AND_FINDINGS` and the in-app checklist
+have had their pass. Six commits on `develop` (`b1d7918`, `c754d95`, `8b305ed`, `027513f`,
+`9fd87f9`, `9e45ae9`, `1778a5a`, `47bbc06`), `run_all --fast` **96 runners at baseline** after each.
+The per-item record is **Rev 17 (e)–(p)** in `Manuals/00_REVISION_HISTORY.md` and is not repeated
+here. **Nothing merged** — the standing hold applies.
+
+**The trap this pass is the record of, and it is the one already at the top of `CLAUDE.md`:**
+*this engine inherited the old plant's tables, scales and constants by reference, and each is
+wrong until measured against THIS plant.* The manual is simply the largest such surface, and it
+had never been checked against the engine at all — `run_manual_units` cross-checks the **board**
+against `pwr_config.js`, the **retired** plant, and never reads the manual's numbers.
+
+**Four things worth carrying forward that the diff does not show.**
+
+1. **A GATE CAN BE POINTED AT TWO OF ITS SUBJECT'S THREE TABLES AND REPORT GREEN.**
+   `run_manual_setpoints` shipped in this same effort covering chapter 09's §2.0 and §4.0 and
+   reported **9/9** — over a §3.0 that still carried the retired plant's PORV and safety
+   setpoints, an *"ESF arm must be AUTO"* instruction for arms this plant has never had, an
+   SI-on-low-level path that does not exist, and four containment actuations the engine declares
+   unmodeled, **while omitting two of the three engineered-safeguards entries the plant ships**.
+   Nothing was wrong with the checks. Ask what a gate READS, not only what it asserts.
+
+2. **THE BOARD KNEW FIRST, THREE TIMES.** ROD AUTO was dark (#528), the HPI AUTO arm was disabled
+   (#503), the initial-condition picker offered *Hot Shutdown (Mode 4)* — and the manual
+   contradicted all three. When a control-surface fix lands, the manual does not follow it; there
+   is no runner that could make it. **Grep the manual for the subject of every board change.**
+   The one place the board is NOT ahead is #592, filed this session: the circulating-water number
+   box still sends `set_condenser_cw_temp`, which the plant REFUSES.
+
+3. **A FIELD THAT LOOKS LIKE DOCUMENTATION CAN BE LOAD-BEARING, AND A PARTIAL GREP WILL SAY IT IS
+   NOT.** `proc.from` on the in-app checklists was called documentation on a grep of `ui/` and
+   `layers/`; `run_procedures.js:77` and `procedures_harness.js:105` **load** it. Correcting
+   PWR-N01's start state reddened `run_procedures` 29→28 — those harnesses drive the RETIRED
+   engine, where `hot_shutdown` is a different, HOT state, so the heatup started at power and
+   tripped on overtemperature ΔT at step 9. Resolved as a **name translation**
+   (`RD.RETIRED_ENGINE_IC`), not a changed assertion. Reverting instead would have left a
+   checklist players run naming a state their plant refuses, so a gate aimed at a retired engine
+   could stay green — the #579 trap. **Grep `test/` too.**
+
+4. **TWO NUMBERS THAT LOOK LIKE A UNIT ERROR CAN BE THREE DIFFERENT QUANTITIES.** `08 §6` gave the
+   damage limit as *"fuel temperature ≥ 2192 °F"*. The latch is a **CLADDING** temperature against
+   the sourced **2200 °F**; 2192 °F is a converted Celsius round number; and `pwr2_damage` carries
+   a third figure, **1200 °F**, the hydrogen-generation onset, whose digits look exactly like the
+   wrong conversion of the first. Almost certainly how the line came to exist.
+
+**Two re-measurement jobs are OPEN and deliberately not done here** — both are behaviour
+measurements rather than constants, both carry a provenance banner in the manual saying so, and
+both were taken on the retired engine before the swap. Filed as **#593**:
+
+- **`04`'s two evolution-timing tables** (2026-08-02) — every plant-hour, Tavg and rate in the
+  heatup and cooldown. A 4.9-plant-hour scripted evolution, and there is no PWR2 measurement CLI
+  (`measure_stack` refuses pwr2), so it needs a driver built first.
+- **`07`'s two SGTR figures** (2026-08-03) — the "0 % break-flow change with injection running"
+  result and the "134.6 vs 134.0 psi MSIV" pair.
+
+**One first reading was wrong and is recorded so it is not re-made:** `07` lines 280 and 625 are
+**not** contradictory. One is a tube rupture with no steam line to isolate, so the MSIV changes
+nothing and secondary pressure tracks Psat(Tavg); the other is a downstream break, which the MSIV
+terminates. "Fixing" that would have broken a correct row.
+
 ## Session log — 2026-08-30-develop-a (#528 — rod control is manual by ruling, and five chapters said otherwise)
 
 *(OWNER DIRECTIVE, 2026-08-30: "I want to keep rod control manual. This is a learning plant not an

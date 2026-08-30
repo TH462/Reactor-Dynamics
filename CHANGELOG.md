@@ -30,6 +30,49 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
 
 ## [Unreleased]
 
+### Changed (#532 — the manual set describes the plant the site runs, 2026-08-30)
+
+*(OWNER RULING, 2026-08-30: selected "The whole set, prose included" from options I wrote — a
+selection, not verbatim words; and "Keep the row, mark it NOT MODELLED, say why".)*
+
+`Manuals/` documented the engine #523 retired. All 13 chapters and the support documents have
+had a pass; the full record is Rev 17 items (e)–(p) in `Manuals/00_REVISION_HISTORY.md`.
+
+- **The setpoints a player is told the plant trips at were the retired plant's** — nine of
+  thirteen reactor-trip rows wrong, missing or mis-classified, and the whole engineered-safeguards
+  section besides. Power range high **118 %** not 120, primary pressure **2425 / 1775 psi** not
+  2384 / 1800, RCS flow **87 %** not 90, pressurizer level high **87 %** not 97, safety injection
+  **1715 psi** not 1798.
+- **There is no Mode 5 on this plant, and seven chapters told you to load one.** The cold end is
+  **Mode 4, Hot Shutdown** — 250 °F (121.1 °C), 369 psi (2.545 MPa) — because the water-property
+  floor saturates at 211 °F (99.4 °C), above the Mode 5 boundary (#524). The engine refuses
+  `cold_shutdown` by name; the board has offered *Hot Shutdown (Mode 4)* all along. This reached
+  the **PWR-N01 checklist a player actually runs**.
+- **There is no ESF arm.** Safety injection and aux feed **latch**: a manual stop is refused, out
+  loud, until a **60 s reset time-delay relay** has run and — for injection — the reactor is
+  tripped. Six sites taught "press AUTO to re-arm" instead, including the cooldown's *"Block SI —
+  HPI/LPI to OFF"*, which secures the pumps and leaves the actuation live.
+- **The PORV is not a fixed setpoint.** It lifts **100 psi above the operator's pressure
+  setpoint**, so lowering Press SP on a cooldown lowers the relief point with it.
+- **Emergency injection delivers nothing at the operating point.** The high-head pump's shutoff is
+  **1390 psi (9.58 MPa)**, 845 psi below where the plant sits; the chapter had called it "the only
+  segment in play at TMI pressures", which is backwards.
+- Also corrected: SG safeties **1099 / 1155 psi** not 1350, the RHR block-open permissive
+  **440 psi** not 400, the circulating-water temperature (a control this plant **does not have**),
+  the clad damage limit (**2200 °F peak cladding**, not a fuel temperature), and the normal-values
+  table for every initial condition, re-measured from booted engines.
+- **Protection a real plant has and this one does not is KEPT and marked NOT MODELLED**, with the
+  reason — the §8.36 ROD AUTO precedent. Eleven rows, including all three main-steam-isolation
+  legs, containment spray and the hydrogen recombiners.
+- **Three new gates hold it there.** `run_manual_setpoints` (13 checks) now covers all three of
+  chapter 09's tables and **boots all four initial conditions** to check 24 cells against a settled
+  plant; `run_manual_commands` (8) holds the ESF arm payload in both directions. Coverage is
+  asserted, so a row added without a map entry reddens the runner.
+
+Filed and not fixed: **#592**, the board's circulating-water box sends a command the plant refuses;
+and **#593**, four behaviour measurements in 04 and 07 that are the retired engine's and need the
+evolution re-run rather than a number changed.
+
 ### Changed (#528 — rod control is manual on this plant, by ruling, 2026-08-30)
 
 *(OWNER DIRECTIVE, 2026-08-30: "I want to keep rod control manual. This is a learning plant not an
