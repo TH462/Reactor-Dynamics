@@ -16,10 +16,10 @@ This folder contains the **operator’s manuals** for the PWR unit of Reactor⚛
 They cover:
 
 1. How to **use the simulator** (HMI, plant MODES, missions, tools).
-2. How to **operate the plant** (every control, normal evolutions, **Mode 1, At Power** through **Mode 5, Cold Shutdown** transitions).
+2. How to **operate the plant** (every control, normal evolutions, **Mode 1, At Power** through **Mode 4, Hot Shutdown** transitions — this plant has no Mode 5 (#524)).
 3. How to **respond** to alarms, upsets, and accidents (including Three Mile Island).
 
-**Primary operator paths:** take the plant **Mode 5, Cold Shutdown → Mode 1, At Power** (cold shutdown to power operation) and **Mode 1, At Power → Mode 5, Cold Shutdown** (power operation to cold shutdown). See `05_MODE_TRANSITIONS.md` procedures **PWR-T20** and **PWR-T21**.
+**Primary operator paths:** take the plant **Mode 4, Hot Shutdown → Mode 1, At Power** and **Mode 1, At Power → Mode 5, Cold Shutdown** (power operation to cold shutdown). See `05_MODE_TRANSITIONS.md` procedures **PWR-T20** and **PWR-T21**.
 
 These manuals are training documentation derived from `Blueprint/` design specs, the as-built engines/control layer, and the validated procedure data (`ui/manual_procedures.js`). **They are the PWR operator's manual** — the in-app Manual renders these same files (packed by `tools/pack_manuals.js`), so an edit here is an edit to the product. They are **not** licensing basis documents for a real nuclear plant.
 
@@ -34,7 +34,7 @@ These manuals are training documentation derived from `Blueprint/` design specs,
 | [`02_SIMULATOR_USER_GUIDE.md`](02_SIMULATOR_USER_GUIDE.md) | Simulator user guide | Starting the trainer, UI layout, free play vs missions |
 | [`03_CONTROLS_AND_INDICATIONS.md`](03_CONTROLS_AND_INDICATIONS.md) | Controls & indications | Operating any individual control or reading any gauge |
 | [`04_NORMAL_OPERATIONS.md`](04_NORMAL_OPERATIONS.md) | Normal operating procedures | Startup, power ops, shutdown, system control procedures |
-| [`05_MODE_TRANSITIONS.md`](05_MODE_TRANSITIONS.md) | MODE transition procedures | Mode 5, Cold Shutdown↔Mode 1, At Power, Mode 3, Hot Standby↔Mode 1, At Power, load/AUTO |
+| [`05_MODE_TRANSITIONS.md`](05_MODE_TRANSITIONS.md) | MODE transition procedures | Mode 4, Hot Shutdown↔Mode 1, At Power, Mode 3, Hot Standby↔Mode 1, At Power, load/AUTO (the procedures are written through Mode 5; the plant stops at Mode 4, #524) |
 | [`06_ALARM_RESPONSE.md`](06_ALARM_RESPONSE.md) | Alarm response procedures | Responding to each annunciator |
 | [`07_ABNORMAL_EMERGENCY.md`](07_ABNORMAL_EMERGENCY.md) | Abnormal & emergency procedures | Managing every modeled failure |
 | [`08_ACCIDENT_TMI.md`](08_ACCIDENT_TMI.md) | Accident study — TMI-2 | Studying the 1979 accident of information |
@@ -55,7 +55,7 @@ These manuals are training documentation derived from `Blueprint/` design specs,
 | Prefix | Meaning | Example |
 |--------|---------|---------|
 | **PWR-N##** | Normal operations | PWR-N03 Approach to criticality |
-| **PWR-T##** | Plant MODE transitions | PWR-T03 Mode 3, Hot Standby → Mode 1, At Power; PWR-T20 Mode 5, Cold Shutdown → Mode 1, At Power |
+| **PWR-T##** | Plant MODE transitions | PWR-T03 Mode 3, Hot Standby → Mode 1, At Power; PWR-T20 Mode 4, Hot Shutdown → Mode 1, At Power |
 | **PWR-C##** | Control / system procedure | PWR-C10 Pressurizer pressure control |
 | **PWR-A##** | Alarm response | PWR-A09 LO SUBCOOL |
 | **PWR-E##** | Abnormal / emergency (failure response) | PWR-E01 Loss of main feedwater |
@@ -81,7 +81,7 @@ These manuals are training documentation derived from `Blueprint/` design specs,
 | **2** | **Mode 2, Startup** | Critical, power **≤ 5 %**, RCS hot | [sim] |
 | **3** | **Mode 3, Hot Standby** | Subcritical, RCS hot | [sim] |
 | **4** | **Mode 4, Hot Shutdown** | Subcritical, intermediate T | [sim] |
-| **5** | **Mode 5, Cold Shutdown** | Subcritical, cold | [sim] — a Free Play initial condition |
+| **5** | **Mode 5, Cold Shutdown** | Subcritical, cold | **NOT ON THIS PLANT** — the water-property floor saturates at 211 °F (99.4 °C), above the Mode 5 boundary; the cold end is Mode 4 (#524) |
 | **6** | **Mode 6, Refueling** | Head detensioned / refueling | Out of scope |
 
 Do **not** confuse plant MODES with **turbine load modes** (Follow / Manual / Disconnected).
