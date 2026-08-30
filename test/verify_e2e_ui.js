@@ -1409,10 +1409,38 @@ async function testHeldPlantDialog(page) {
 
   await page.goto(base + '&inject=large_loca,station_blackout,afw_failure&ff=1500',
                   { waitUntil: 'networkidle', timeout: 180000 });
+  /* TWO WAITS, NOT ONE (#589). This used to wait only for the overlay and then throw "the plant
+   * HELD and the dialog stayed hidden" — a message that names a fact the check never measured.
+   * A plant that has simply not reached the envelope yet produces the identical error, so a slow
+   * machine and a broken dialog were indistinguishable in the log, and three red CI runs could
+   * not be told apart from one real defect. Measured on Windows 2026-08-30: the overlay appears
+   * 5.2 s after navigation against the old 40 s budget, and this runner takes 104 s locally
+   * against 120 s on CI — a 15 % spread, which is NOT enough to explain a 40 s timeout. So the
+   * budget was never the interesting variable; knowing WHICH half failed is.
+   *
+   * The plant first, generously, because that is the slow part and the part a loaded CI box
+   * delays. Then the dialog, tightly, because once the plant holds the overlay is a render away
+   * — and that is the claim #520 is actually about. */
+  var plantHeld = true;
+  await page.waitForFunction(function () {
+    var c = document.getElementById('clock');
+    return !!c && c.classList.contains('clk-held');
+  }, { timeout: 90000, polling: 200 }).catch(function () { plantHeld = false; });
+  if (!plantHeld) {
+    var never = await page.evaluate(function () {
+      var c = document.getElementById('clock');
+      return { clock: c ? c.textContent.replace(/\s+/g, ' ').trim() : '(no clock)',
+               overlay: !!(document.getElementById('haltOverlay') || {}).hidden };
+    });
+    throw new Error('#520 fixture: THE PLANT NEVER HELD in 90 s of wall clock — clock reads ' +
+      never.clock + '. This is the driver failing to reach the envelope, NOT the dialog: do not ' +
+      'touch the overlay, measure the casualty. (#589 — the old single wait reported this case as ' +
+      'a hidden dialog, which sent one investigation the wrong way.)');
+  }
   await page.waitForFunction(function () {
     var o = document.getElementById('haltOverlay');
     return !!o && !o.hidden;
-  }, { timeout: 40000, polling: 200 }).catch(function () { /* the throws below carry the message */ });
+  }, { timeout: 15000, polling: 200 }).catch(function () { /* the throws below carry the message */ });
   await page.waitForTimeout(400);
 
   var st = await page.evaluate(function () {
