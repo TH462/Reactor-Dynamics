@@ -349,7 +349,7 @@ cold-leg water condenses far less per pound than 131 °F (55 °C) charging water
 
 - Two fixed orifices, each independently **in** or **out** — four lineups: **off / A / B / A+B**.  
 - Removes coolant from the RCS (bleeds the cold leg to the letdown HX / VCT); lowers inventory / PZR level.  
-- Flow is **pressure-driven** (∝ √ΔP across the orifice, referenced to the 348 psi (2.4 MPa) letdown backpressure),
+- Flow is **pressure-driven** (∝ √ΔP across the orifice, referenced to the **300 psi (2.07 MPa)** letdown backpressure — the pressure-control valve downstream of the orifice, WTSM §4.1),
   so it **tails off as RCS pressure falls** on a cooldown — it is not a throttled setpoint.  
 - Nominal at NOP: **A ≈ 3 %**, **B ≈ 4 %**, **A+B ≈ 7 %** of rated (A+B is max letdown — a net drain,
   exceeding normal charging, for level reduction / depressurization).  
@@ -648,7 +648,7 @@ injection at all (§10), because the SI signal is itself an aux feed start.
   Default **aligned (open)**. Isolate before depressurizing below the check-valve setpoint on a normal
   cooldown so the accumulators do **not** spuriously dump into the depressurized RCS; also used to isolate
   a leaking/mispositioned tank. A shut valve **blocks discharge at any pressure**.  
-- **Cold-water quench:** accumulator/ECCS water injects **cold** (RWST/SIT ~104 °F (40 °C)), so a large-break dump
+- **Cold-water quench:** accumulator/ECCS water injects **cold**, and the two sources are not the same temperature: the **RWST is 70 °F (21.1 °C)** — the usual Technical Specification floor, and what the injection pumps deliver — while the **accumulators sit at 120 °F (48.9 °C)**, the midpoint of their sourced 100–150 °F operating band, so a large-break dump
   **cools T-avg** as well as restoring inventory and boron.  
 
 ### 11.2 RHR
@@ -777,27 +777,33 @@ penalty grows with load, because more heat is rejected across the tubes at high 
 
 | Property | Value |
 |----------|-------|
-| Command | `set_condenser_cw_temp` |
-| Range | **35 – 85 °F** (1.7 – 29.4 °C) — near-freezing lake water to the analyzed ceiling |
-| Reference | **60 °F** (15.6 °C) — the default; at the reference the plant makes exactly rated vacuum |
+| Command | `set_condenser_cw_temp` — **REFUSED ON THIS PLANT.** The condenser model has circulating-water pumps on/off only, so the inlet temperature is not an operator variable |
+| Fixed at | **50 °F (10 °C)** — the sourced design inlet, and the value every initial condition boots at. Measured there: **100.0 MWe** and **27.52 inHg (93.2 kPa)** of vacuum at full power, i.e. the design point IS the rated point |
+| Formerly documented | an adjustable **35 – 85 °F** range with a **60 °F** reference. That is the retired engine's control; this one has no such knob, and the 60 °F figure was never this plant's default |
 
-The ceiling is the real plant's own limit for this lake water: Technical Specifications
-require the intake bay at or below **85 °F** for the service-water system to be OPERABLE (the
-accident analyses bound the supply at a deliberately sub-freezing 30 °F). The floor allows
-for the slight warm-up between a lake that can sit at freezing and the condenser inlet. The
-condenser itself is designed around a **50 °F** lake, so the 60 °F default is an ordinary day.
+> **⚠ THE BOARD STILL DRAWS THE BOX.** The circulating-water temperature entry next to COND VAC
+> accepts a number and sends a command the engine refuses, so nothing happens and nothing says so.
+> Filed as **#592** — the same class as #567's five refused board controls and #503's dark ESF arm.
+> The readout beside it is honest: it shows the fixed 50 °F (10 °C).
 
-**What it does:**
+The **85 °F** ceiling below is the real plant's own limit for this lake water and is kept because
+it is what a licensed plant lives inside, not because you can dial it here: Technical
+Specifications require the intake bay at or below **85 °F** for the service-water system to be
+OPERABLE, and the accident analyses bound the supply at a deliberately sub-freezing 30 °F.
 
-- **Warm circ water** → less vacuum → **less MWe at the same steam flow**. At the 85 °F
-  ceiling the full-power cost measures about **5 MWe**, with vacuum at
-  **27.2 inHg (92.0 kPa)** — a real summer derate.
-- **Cold circ water** → vacuum **above** the rated value: about **101 MWe** on a 50 °F
-  design day, and about **102 MWe** at the 35 °F floor, just under the condenser's
-  practical vacuum ceiling. The winter uprate is real too.
-- It also raises the floor an **RHR cooldown** can reach: the RHR heat exchanger rejects to
-  the same circulating water, so warm circ water both raises the achievable temperature and
-  slows the approach to it (§11.2, and `05` PWR-T21).
+**What circulating-water temperature does — a real coupling you cannot exercise here:**
+
+- **Warm circ water** → less vacuum → **less MWe at the same steam flow**, and the
+  **22 inHg (74.5 kPa)** turbine trip gets closer.
+- **Cold circ water** → vacuum **above** the rated value, and more MWe at the same steam flow.
+- It also raises the floor an **RHR cooldown** can reach: the heat exchanger rejects to the same
+  circulating water, so warm water both raises the achievable temperature and slows the approach
+  to it (§11.2, and `05` PWR-T21).
+
+**The MWe figures this section used to quote — about 5 MWe of summer derate at 85 °F, 101 MWe on
+a 50 °F day, 102 MWe at a 35 °F floor — were measured on the retired engine through a control this
+one does not have, and are withdrawn rather than re-measured.** The 50 °F row above is the one
+point this plant actually sits at, and it is measured.
 
 **NOTE:** lake temperature alone cannot walk vacuum to the **COND VAC LO** alarm
 (25 inHg (84.7 kPa)) — even the 85 °F ceiling leaves ~2 inHg of margin at full power.

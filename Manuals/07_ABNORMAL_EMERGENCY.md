@@ -70,7 +70,7 @@ is the failure's physical size — the response procedures below apply at any se
 | 3 | **Inventory & subcooling:** pressure, HPI, isolate open relief path |
 | 4 | **Load:** turbine disconnected or matched |
 | 5 | **Diagnose** on diverse instruments — never one light |
-| 6 | **Re-arm ESF AUTO** only when intentional |
+| 6 | **Securing an engineered-safeguards actuation is a RESET, not a MANUAL selection** — there is no ESF arm on this plant, and the pumps are held running until the reset permissive is satisfied (**03 §17.4**) |
 
 ---
 
@@ -275,9 +275,9 @@ Core covered and cooled on natural circulation with AFW. **This is achievable** 
 | 1 | SCRAM if not automatic / as pressure falls |
 | 2 | Identify the leak on the PRIMARY side — inventory falling with charging saturated, level below program and still going, subcooling eroding. The steam generator will not confirm it for you (see the departure above) |
 | 3 | Maximize charging / ensure HPI as needed |
-| 3a | **SECURE high-pressure injection before you depressurize — check the criteria first:** subcooling in hand, heat sink established on AFW, core covered. **This step is what makes step 4 work at all.** Injection holds the primary up at pressure, so with it running the Pressure SP does nothing and break flow does not move: measured, walking the setpoint 2235 → 1450 psi (15.41 → 10.0 MPa) with HPI in cut break flow by **0 %** and drifted the plant toward solid at 106.8 % inventory. Securing it first cut break flow **84 % in one minute** and 87 % held out to twenty. Same reason every real SGTR procedure carries an SI-termination step: injection and depressurization work against each other |
+| 3a | **SECURE high-pressure injection before you depressurize — check the criteria first:** subcooling in hand, heat sink established on AFW, core covered. **This step is what makes step 4 work at all.** Injection holds the primary up at pressure, so with it running the Pressure SP does nothing and break flow does not move: measured, walking the setpoint 2235 → 1450 psi (15.41 → 10.0 MPa) with HPI in cut break flow by **0 %** (measured on the RETIRED engine, 2026-08-03; not re-measured since the swap) and drifted the plant toward solid at 106.8 % inventory. Securing it first cut break flow **84 % in one minute** and 87 % held out to twenty. Same reason every real SGTR procedure carries an SI-termination step: injection and depressurization work against each other |
 | 4 | Depressurize primary carefully toward secondary pressure to reduce break flow (heaters off, spray if available, PORV only with care) |
-| 5 | Isolate / control steam paths per training objective (MSIV strategy if used). **On this trainer the MSIV does not change the secondary pressure trend** — SG pressure is capped at Psat(Tavg), so it tracks primary temperature rather than steam inventory. Measured: 134.6 psi with the MSIV open against 134.0 psi shut, at the same point in the transient |
+| 5 | Isolate / control steam paths per training objective (MSIV strategy if used). **On this trainer the MSIV does not change the secondary pressure trend** — SG pressure is capped at Psat(Tavg), so it tracks primary temperature rather than steam inventory. Measured on the RETIRED engine (2026-08-03, before the engine swap): 134.6 psi (0.928 MPa) with the MSIV open against 134.0 psi (0.924 MPa) shut, at the same point in the transient. Not re-measured on the plant that ships |
 | 6 | Maintain heat sink and subcooling |
 
 ### Acceptance
@@ -622,7 +622,7 @@ break there is nothing to fall back on. Trip, and ride the cooldown out.
 | Step | Action |
 |------|--------|
 | 1 | **SCRAM**  
-| 2 | **MSIV Close** (two-press). **Downstream break: this terminates it** — steam pressure stops falling and the bottled generator re-pressurizes to its code safeties (1350 psi (9.31 MPa) lift / 9.0 reseat), and you are now in the bottled-SG condition of alarm card **PWR-A23**. **Upstream break: it will not help** — steam pressure keeps falling; do not wait on it  
+| 2 | **MSIV Close** (two-press). **Downstream break: this terminates it** — steam pressure stops falling and the bottled generator re-pressurizes to its code safeties — a staggered bank, first lift **1099 psi (7.58 MPa)** and the rest at **1155 psi (7.96 MPa)** (**09 §3.0**) (formerly stated as a single 1350 psi (9.31 MPa) lift / 9.0 reseat), and you are now in the bottled-SG condition of alarm card **PWR-A23**. **Upstream break: it will not help** — steam pressure keeps falling; do not wait on it  
 | 3 | Stop AFW/feed overfill into faulted path if level high  
 | 4 | Control pressure (spray/heaters) as primary cools  
 | 5 | Borate if return-to-power risk  
