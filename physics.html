@@ -51,7 +51,7 @@
         <span></span><span></span><span></span>
       </button>
       <nav class="site-nav" id="siteNav">
-      <a href="ui/shell.html?engine=pwr">Simulator</a>
+      <a href="ui/shell.html?engine=pwr2">Simulator</a>
       <a href="about.html">About</a>
       <a class="active" href="physics.html">Physics</a>
       <a href="roadmap.html">Roadmap</a>
@@ -69,12 +69,13 @@
   <h2>The plant — SLS-100</h2>
   <p>The <strong>SLS-100</strong> (Single Loop Simulated) is a compact
   PWR of about 100&nbsp;MWe: one RCS loop (core, RCP,
-  U-tube SG, pressurizer), BOP, CVCS, ECCS, RHR, and RPS/ESF. Cold shutdown
-  through full power is one continuous plant.</p>
+  U-tube SG, pressurizer), BOP, CVCS, ECCS, RHR, and RPS/ESF. Hot shutdown
+  (Mode 4, 250&nbsp;°F) through full power is one continuous plant.</p>
 
-  <p><strong>Model in short:</strong> six-group point kinetics · lumped heat
-  and mass balances · load coupled through the secondary · protection on
-  instrument channels · degraded regimes open · no spatial core.</p>
+  <p><strong>Model in short:</strong> six-group point kinetics · nodal loop with
+  real break locations · steam tables under everything · load coupled through the
+  secondary · protection on instrument channels · degraded regimes open · no
+  spatial core.</p>
 
   <h2>Core power and reactivity</h2>
   <ul>
@@ -83,11 +84,11 @@
     instruments.</li>
     <li><strong>Reactivity terms:</strong> rods (S-curve bank worth), Doppler
     (fuel temperature), moderator from coolant <em>density</em> (not a fixed
-    MTC), boron, xenon, and core excess.</li>
+    MTC), void, boron, xenon, and core excess.</li>
     <li><strong>I–Xe</strong> chain with burnout — whole-core only, no spatial
     oscillation.</li>
-    <li><strong>Decay heat</strong> with power-history dependence (two-term
-    exponential production).</li>
+    <li><strong>Decay heat</strong> with power-history dependence — four decay
+    groups, each relaxing toward its own equilibrium fraction of power.</li>
   </ul>
 
   <h2>Heat, pressure, and inventory</h2>

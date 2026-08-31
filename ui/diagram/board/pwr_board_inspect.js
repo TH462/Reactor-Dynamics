@@ -140,15 +140,24 @@
       'Frame around the shutdown-bank step readout. See the Shutdown Bank card for what the number ' +
       'should read.', CI, '3.3'),
 
+    /* THIS BUTTON IS DARK ON PURPOSE AND STAYS THAT WAY (#528, 2026-08-30). The card used to
+     * describe the RETIRED engine's `rods_tavg` channel in full — programmed T-ref, the
+     * deadband, the numbers — a behaviour the plant the site runs has never had and now never
+     * will. Player-facing copy promising a feature that does not exist is the trap this repo
+     * keeps re-learning; the fix is not to delete the control but to let it carry the contrast,
+     * which is the whole point of the ruling. */
     ims5glucngg: e('ROD AUTO',
-      'Hands the control bank to the Tavg automation channel — rods hold coolant temperature on the load program.',
-      'The reference is PROGRAMMED on turbine load, not captured: Tref slides along a line from ' +
-      '566.6 °F (297.0 °C) at no load to 579.2 °F (304.0 °C) at full power, and the rods drive indicated Tavg to ' +
-      'it at variable speed, locking up inside a deadband of about ±1.4 °F (±0.8 °C). Drop load from 100 to ' +
-      '60 MWe and the reference walks itself from 579.3 °F (304.07 °C) down to 574.2 °F (301.24 °C) — the ' +
-      'rods answer a load change before you do. On a free-play start it engages itself above P-10 (10 % ' +
-      'power), so at power it is already in. Any manual rod motion drops the channel to manual, and so ' +
-      'does a scram.', CI, '14.3'),
+      'Dark on this plant, deliberately — you hold Tavg with the rods yourself.',
+      'A real plant hands the control bank to an automatic controller that holds average coolant ' +
+      'temperature on a programmed reference, and the operator watches it. This simulator does ' +
+      'not, and that is a teaching decision rather than a missing feature *(OWNER DIRECTIVE, ' +
+      '2026-08-30: "I want to keep rod control manual. This is a learning plant not an actual ' +
+      'power plant and I think making the player move rods manually will help their learning.")*. ' +
+      'So the coupling stays yours: THE RODS SET TEMPERATURE AND THE TURBINE SETS POWER. Drop ' +
+      'load and the plant follows on moderator feedback alone — power walks down and parks ' +
+      'itself in about three and a half minutes — but it settles with Tavg well above program, ' +
+      'and closing that gap is the part a controller would have hidden from you. Roughly ' +
+      '0.1 °F (0.06 °C) of Tavg per fine step, linear over the useful range.', CI, '14.3'),
 
     imrqr8ecji6: e('SCRAM',
       'Manual reactor trip — drives every rod in. Arm, then confirm.',
@@ -174,6 +183,16 @@
       'instrument can. Startup is a handoff up that chain — source range to intermediate range to ' +
       'power range — and this card is where you watch it happen. Everything here reads an ' +
       'instrument, so a failed detector lies here first.', CI, '4.0'),
+    /* The REACTIVITY / PERIOD card, added at #516 item 4 — see EXTRA_ITEMS in
+     * pwr_board_wiring.js for the geometry and why it is a `box`. It needs an entry because
+     * verify_board_check asserts every board item inspects to something. */
+    bdReactivityCard: e('Reactivity & Period',
+      'The two numbers that say which way the core is going, and how fast.',
+      'REACTIVITY is the net imbalance driving the core, in pcm; PERIOD is how long the power ' +
+      'takes to change by a factor of e at the present rate — the shorter it is, the faster ' +
+      'power is moving. A steady core reads zero reactivity and an infinite period. These are ' +
+      'the teaching pair for rod, boron and temperature effects: move any of the three and ' +
+      'watch reactivity step, then watch period answer it.', CI, '4.0'),
     ims176nions: e('Source Range',
       'The lowest flux range — counts per second, the only instrument that reads a shutdown core.',
       'A proportional counter reading 1 to 1e6 cps. It is the instrument for approach to criticality ' +
@@ -444,7 +463,8 @@
       'The Chemical and Volume Control System (CVCS) charging pump — make-up INTO the primary. Raises inventory and pressurizer level.',
       'AUTO runs the pump with inventory make-up modulating the flow; MAN runs it at the flow you set; ' +
       'OFF secures it. Charging is also the carrier for boron: a boration or dilution is only ' +
-      'delivered while this pump runs. Normal band is 0–60 gpm (0–14 m³/h).', CI, '7.1'),
+      'delivered while this pump runs. The band runs to 30 gpm (6.9 m³/h) — the charging '  +
+      'capacity of THIS plant, power-scaled from the sourced Ginna basis.', CI, '7.1'),
     imrmtg3r8ez: e('AUTO (charging)',
       'Charging pump runs with automatic inventory make-up.',
       'The controller modulates charging flow to hold inventory, which in practice holds pressurizer ' +
@@ -459,10 +479,12 @@
       'restarts. With letdown still lined up, securing charging is a net drain on the primary.', CI, '7.1'),
     imrpq48hn3t: e('Charging flow',
       'Charging flow setpoint — how fast make-up enters the cold leg.',
-      'The normal make-up band runs to 60 gpm. Maximum charging is a lot of make-up: against an ' +
-      'isolated letdown it raises pressurizer level about 33 % a minute, so from a normal 55 % it ' +
-      'reaches the 97 % going-solid trip in a little over a minute. Against A+B letdown the same ' +
-      'flow barely holds, losing about 0.7 % a minute. Typing here takes Chemical and Volume Control System (CVCS) inventory control to ' +
+      'The band runs to 30 gpm (6.9 m³/h). Maximum charging is a lot of make-up: against an ' +
+      'isolated letdown it raises pressurizer level about 5 % a minute, so from a normal 58 % it ' +
+      'trips the reactor on high pressurizer level (87 %) in about five minutes. Letdown does NOT ' +
+      'hold it — with both orifices open the same flow still gains about 3 % a minute and trips ' +
+      'in under eight, because this plant charges at 30 gpm against a 13 gpm letdown lineup. ' +
+      'Typing here takes Chemical and Volume Control System (CVCS) inventory control to ' +
       'manual.', CI, '7.2'),
     imrqp87ueqb: e('Charging Pump',
       'The positive-displacement pump that injects make-up into the primary.',
@@ -743,17 +765,22 @@
 
     imrmssto6d: e('Auxiliary Feedwater',
       'The emergency feed path — starts, stops or arms AFW to the steam generator.',
-      'AFW is the heat sink of last resort after main feed is lost. AUTO arms it to start on low SG ' +
-      'level (about 20 %); manual action takes it out of AUTO. It delivers far less than main feed — ' +
-      'enough to remove decay heat, not enough to run the plant.', CI, '10.0'),
+      'AFW is the heat sink of last resort after main feed is lost. AUTO arms it to start on low-low SG ' +
+      'level (17 % of narrow range); manual action takes it out of AUTO. It delivers far less than main ' +
+      'feed — enough to remove decay heat, not enough to run the plant. Starting the pumps is only half ' +
+      'the job: the THROTTLE box below sets how much of that flow actually reaches the generator, and ' +
+      'leaving it wide open overcools the primary.', CI, '10.0'),
     imrmsslj42u: e('START (AFW)',
       'Starts auxiliary feedwater by hand.',
       'Takes AFW to MANUAL. Verify the level actually responds: run lights show pump DEMAND, and a ' +
       'shut block valve leaves them lit with no water reaching the generator.', CI, '10.0'),
-    imrmssoa137: e('STOP (AFW)',
-      'Stops auxiliary feedwater and disarms the auto-start.',
+    imrmssoa137: e('STOP (Auxiliary Feedwater (AFW))',
+      'Secures BOTH auxiliary feed pumps and disarms the auto-start.',
       'This is why the status readout distinguishes SECURED from STANDBY: a stopped AFW that is still ' +
-      'armed will come back on its own, and one that is secured will not.', CI, '10.0'),
+      'armed will come back on its own, and one that is secured will not. It reaches the turbine-driven ' +
+      'pump as well as the motor-driven one — those are two separate machines with a switch each, and ' +
+      'this button works both. If a safety injection is standing, it will refuse and say so: an SI ' +
+      'signal is itself an aux feed start, so secure the injection first.', CI, '10.0'),
     imrmssr9ihq: e('AUTO (Auxiliary Feedwater (AFW))',
       'Arms AFW to auto-start on low steam generator level.',
       'The standing lineup at power — armed and idle. It is what makes a loss of main feed survivable ' +
@@ -857,6 +884,34 @@
       'Steam pressure the automatic atmospheric dump holds, in the pressure unit shown.',
       'Same idiom as the Dump SP box and the same limits: it clamps to the code-safety band, and ' +
       'lowering it walks the secondary — and the primary with it — down the saturation curve.', CI, '12.3'),
+    bdAfwThrottle: e('Auxiliary Feedwater (AFW) Throttle',
+      'How far the auxiliary feedwater flow control valves are open, in per cent.',
+      'Throttling auxiliary feed is the operator\'s one continuous job after a trip, and it cuts ' +
+      'both ways. Too little and the generator boils down toward the low-low level that started ' +
+      'the pumps in the first place. Too much and you overcool the primary: auxiliary feed arrives ' +
+      'at about 70 degF (21 degC) against a secondary near 550 degF (288 degC), so an unthrottled ' +
+      'pump drags reactor coolant temperature down with it, and if you leave it there long enough ' +
+      'the generator fills past the top of the narrow range and starts carrying water into the ' +
+      'steam lines. The tell that you have too much is the one the procedures name: all the steam ' +
+      'dump valves shut. This is the VALVE, not the pumps — shutting it leaves the run lights lit, ' +
+      'because a throttled pump is still available. AUTO on the aux feed panel hands the valve to ' +
+      'a controller that holds level in a band; taking it to MANUAL hands it back to you.',
+      CI, '9.2'),
+    bdAuxSpray: e('Pressurizer Auxiliary Spray',
+      'How far the auxiliary spray valve is open, in per cent.',
+      'The normal pressurizer spray is driven by the reactor coolant pumps: it taps the cold leg ' +
+      'and needs the pump\'s own head to push water up into the steam space. Stop the pumps and ' +
+      'the spray goes with them — commanded fully open it still delivers only a few per cent, ' +
+      'which is measured, not asserted. Auxiliary spray is the answer to that. It is fed from the ' +
+      'charging pumps instead, so it works on a plant with every reactor coolant pump secured, ' +
+      'which is exactly the shutdown and cooldown condition this plant now starts in. Without it ' +
+      'the only remaining way down in pressure with the pumps off is to lift the relief valve and ' +
+      'dump reactor coolant into containment, which is the thing the real system exists to avoid. ' +
+      'It is slow and it is deliberate. Measured on a plant at hot standby with every reactor ' +
+      'coolant pump secured, full open takes pressure down about 880 psi (6.07 MPa) over ten ' +
+      'minutes — a long steady walk, not a step. ' +
+      'There is no automatic mode: nothing opens this valve but you.',
+      CI, '12.3'),
     bdAdvPct: e('ADV Position',
       'How far the atmospheric dump valves are open, in per cent.',
       'Reads the valve position, not the demand. At zero the valves are seated and nothing is venting ' +
@@ -902,15 +957,21 @@
       'FOLLOW makes electrical load track reactor power with about a 45-second lag; MAN holds the MWe ' +
       'you set; OFF disconnects from the grid. Both FOLLOW and MAN bring the machine online — they ' +
       'clear a prior trip or disconnect if condenser vacuum permits.', CI, '12.1'),
-    imro8ktzs3u: e('FOLLOW',
-      'Turbine load tracks reactor power automatically.',
-      'The normal at-power lineup. It connects the grid as well as selecting the mode, which is why ' +
-      'it works after an OFF: selecting a load mode alone never un-trips a machine.', CI, '12.1'),
-    imro8lddxi: e('MAN',
-      'You set the electrical load target; the turbine holds it.',
-      'Load becomes a demand on the reactor rather than a consequence of it. Raise load and steam ' +
-      'draw rises, T-cold falls, and the reactor answers through moderator feedback before you touch ' +
-      'a rod.', CI, '12.2'),
+    imro8ktzs3u: e('LATCH (turbine)',
+      'Latches the turbine back up after a trip — the way back onto the grid.',
+      'Latched and tripped are the two states of the machine, and this is the operator action ' +
+      'that moves it from one to the other. It will REFUSE, and say why, while anything is still ' +
+      'holding the trip: the reactor trip latched, the main steam isolation valve shut, both main ' +
+      'feed pumps gone, the condenser unavailable, or the high-high level isolation standing. ' +
+      'That refusal is the useful part — the recipe after a scram is reset the protection, latch ' +
+      'the turbine, set a load target, in that order. Latching does not by itself make power: the ' +
+      'reactor has to be making steam.', CI, '12.1'),
+    imro8lddxi: e('TRIP (turbine)',
+      'Trips the turbine by hand — shuts the stop valves and drops load.',
+      'The deliberate version of what the plant does for you on a reactor trip, a lost condenser, ' +
+      'a shut main steam isolation valve, loss of both feed pumps, or high-high generator level. ' +
+      'Above the P-9 power setpoint a turbine trip IS a reactor trip, so at power this scrams as ' +
+      'well; below it the reactor rides out on the steam dumps.', CI, '12.2'),
     imro8len0oi: e('OFF',
       'Disconnects the turbine from the grid — a planned offline, not a trip.',
       'Load goes to zero and the steam dump takes over the generator\'s output. The lamp reads the ' +

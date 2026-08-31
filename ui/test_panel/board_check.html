@@ -165,6 +165,105 @@
           ck('geom: pressurizer spray stub runs level (y ' + (pa ? pa.y : '?') + ' vs waypoint ' + (wp ? wp[1] : '?') + ')',
             !!(pa && wp) && Math.abs(pa.y - wp[1]) <= 1, pa && wp ? 'off by ' + (pa.y - wp[1]) : 'missing');
         })();
+
+        // ---- THE PRESSURIZER'S INSIDE (#473) --------------------------------------------
+        // This harness pinned the vessel's PORTS and nothing about what is drawn inside it,
+        // which is how the heater bank came to be drawn at level 19-27 % — ABOVE the 17 %
+        // cutoff that exists because the bank uncovers. A bank that can never uncover is a
+        // bank the level can never fall through, and no check could see it.
+        //
+        // THE EXPECTATION IS RETYPED, NOT IMPORTED. `yVol` below is an independent
+        // implementation of the cavity integral from the design's own shell constants; if it
+        // agreed with the component by sharing code it would agree with any component.
+        (function () {
+          var cavR = 50, dishB = 62, domeB = 45, yFloor = 541, yShellBot = 479, yShellTop = 151;
+          var vDish = (2 / 3) * Math.PI * cavR * cavR * dishB;
+          var vCyl = Math.PI * cavR * cavR * (yShellBot - yShellTop);
+          var vDome = (2 / 3) * Math.PI * cavR * cavR * domeB;
+          var vTot = vDish + vCyl + vDome;
+          function cap(hh, b) { var s = hh / b - 1; return Math.PI * cavR * cavR * b * (s - s * s * s / 3 + 2 / 3); }
+          function yVol(pct) {
+            var V = Math.max(0, Math.min(100, pct)) / 100 * vTot, lo, hi, i, m;
+            if (V <= vDish) {
+              lo = 0; hi = dishB;
+              for (i = 0; i < 40; i++) { m = (lo + hi) / 2; if (cap(m, dishB) < V) lo = m; else hi = m; }
+              return yFloor - (lo + hi) / 2;
+            }
+            if (V <= vDish + vCyl) return yShellBot - (V - vDish) / (Math.PI * cavR * cavR);
+            lo = 0; hi = domeB;
+            for (i = 0; i < 40; i++) {
+              m = (lo + hi) / 2;
+              if (vDish + vCyl + (vDome - cap(domeB - m, domeB)) < V) lo = m; else hi = m;
+            }
+            return yShellTop - (lo + hi) / 2;
+          }
+          var comp = RD.BoardComps && RD.BoardComps.Pressurizer;
+          if (!comp || !comp.build) { ck('art: pressurizer component available', false, 'not registered'); return; }
+          // A DETACHED instance, driven directly — the mounted one is at whatever level the
+          // plant happens to be at, and a mapping check needs to choose its own levels.
+          var inst = comp.build({ id: 'chkPzr', comp: 'Pressurizer', showControls: false },
+            { h: RD.BoardH.h, uid: RD.BoardH.uid, StdPipe: window.StdPipe, onControl: function () {} });
+          // the ELEVATION lives in the v2 pressurizer block, the CUTOFF in the v1 one — two
+          // blocks, one fact, which is why both are read by name here rather than assumed
+          var CFGP = (RD.PWR_CONFIG && RD.PWR_CONFIG.pressurizer) || {};
+          var CFGP2 = (RD.PWR_CONFIG && RD.PWR_CONFIG.pressurizer2) || {};
+          var bandBot = CFGP2.heater_elev_bot_pct, bandTop = CFGP2.heater_elev_top_pct;
+          inst.update({ level: 55, heaterElevPct: [bandBot, bandTop] });
+          var water = inst.el.querySelector('[data-role="pzr-water"]');
+          var rods = inst.el.querySelectorAll('[data-role="pzr-rod"]');
+          // 1. THE MAPPING. A linear-in-height ramp — what this drew until #473 — differs by
+          // up to 18 px at the low end and 10 px at the high-level trip, so the tolerance
+          // discriminates between the two rather than merely admitting both.
+          var worst = 0, worstAt = null, linWorst = 0;
+          [0, 5, 15, 25, 50, 61.5, 87, 100].forEach(function (lv) {
+            inst.update({ level: lv, heaterElevPct: [bandBot, bandTop] });
+            var got = parseFloat(water.getAttribute('y'));
+            var want = yVol(lv), lin = yFloor - (lv / 100) * (yFloor - 106);
+            if (Math.abs(got - want) > worst) { worst = Math.abs(got - want); worstAt = lv; }
+            if (Math.abs(lin - want) > linWorst) linWorst = Math.abs(lin - want);
+          });
+          ck('art: pressurizer water surface is placed by VOLUME, not by height (worst ' +
+             worst.toFixed(2) + ' px at ' + worstAt + ' %)', worst < 0.6,
+             'a linear height ramp would be ' + linWorst.toFixed(1) + ' px out at its worst');
+          // 2. THE BANK IS INSIDE THE BAND THE PLANT PUBLISHES.
+          inst.update({ level: 55, heaterElevPct: [bandBot, bandTop] });
+          var yTopB = yVol(bandTop), yBotB = yVol(bandBot), outside = 0, poking = 0;
+          Array.prototype.forEach.call(rods, function (r) {
+            var ry = parseFloat(r.getAttribute('y')) + 2.4;
+            if (ry < yTopB - 0.5 || ry > yBotB + 0.5) outside++;
+            var x0 = parseFloat(r.getAttribute('x')), w = parseFloat(r.getAttribute('width'));
+            var u = ry > yShellBot ? (ry - yShellBot) / dishB : ry < yShellTop ? (yShellTop - ry) / domeB : 0;
+            var half = cavR * Math.sqrt(Math.max(0, 1 - Math.min(1, u) * Math.min(1, u)));
+            if (x0 < 100 - half - 0.01 || x0 + w > 100 + half + 0.01) poking++;
+          });
+          ck('art: the heater bank is drawn INSIDE the elevation band the plant publishes (' +
+             bandBot + '-' + bandTop + ' %, y ' + yTopB.toFixed(1) + '-' + yBotB.toFixed(1) + ')',
+             rods.length === 4 && outside === 0, outside + ' of ' + rods.length + ' rods outside');
+          ck('art: every heater rod stays inside the vessel cavity (the dished wall is curved)',
+             poking === 0, poking + ' rod(s) drawn through the shell');
+          // 3. THE DEFECT ITSELF, stated as the ordering it violated: the bank must sit BELOW
+          // the level at which the plant cuts the heaters, or it is a bank that can never
+          // uncover and the cutoff protects nothing.
+          ck('art: the drawn bank sits BELOW the heater cutoff level (it was drawn 15.6-24.6 % ' +
+             'against a 17 % cut)',
+             isFinite(bandTop) && bandTop < CFGP.heater_cutoff_level_pct,
+             'band top ' + bandTop + ' % vs cutoff ' + CFGP.heater_cutoff_level_pct + ' %');
+          // 4. THE WIRED PATH, which the three checks above cannot see: they hand the band to a
+          // DETACHED instance themselves. This reads the bank on the MOUNTED board, so a
+          // `heaterElevPct` prop that never arrives is visible — the component's bare-mount
+          // default is deliberately the old, wrong elevation for exactly this reason.
+          var mounted = document.querySelector('[data-item="pressurizer"]');
+          var mRods = mounted ? mounted.querySelectorAll('[data-role="pzr-rod"]') : [];
+          var mOut = 0;
+          Array.prototype.forEach.call(mRods, function (r) {
+            var ry = parseFloat(r.getAttribute('y')) + 2.4;
+            if (ry < yTopB - 0.5 || ry > yBotB + 0.5) mOut++;
+          });
+          ck('art: the MOUNTED board draws the bank at the band too — the prop really arrives',
+             mRods.length === 4 && mOut === 0,
+             mRods.length + ' rods on the board, ' + mOut + ' outside ' + yTopB.toFixed(1) +
+             '-' + yBotB.toFixed(1) + ' (a dropped prop leaves them at the pre-#473 elevation)');
+        })();
         // The condensate train's three drops. Only the FIRST was ever crooked (1527 vs
         // 1525) — the other two were already plumb, so this pins all three or a "fix" that
         // straightens one by bending the others goes unnoticed. The condenser is what
@@ -286,7 +385,14 @@
       clickBtn('imro96h8lip'); ck('func: heater OFF -> heater_auto false & 0%', cs().heater_auto === false && cs().heater_power_pct === 0);
       clickBtn('imrmtimrch3'); ck('func: letdown A -> orifice A on / B off', cs().letdown_orifice_a === true && cs().letdown_orifice_b === false);
       clickBtn('imrmtimyxef'); ck('func: letdown A+B -> both on', cs().letdown_orifice_a === true && cs().letdown_orifice_b === true);
-      clickBtn('imro8lddxi'); ck('func: generator MAN -> load_mode manual', cs().load_mode === 'manual');
+      // THIS TILE IS THE TURBINE **TRIP** NOW (#551/#559/#567) — it was MAN, a dispatch-mode
+      // selector that on PWR2 could only throw. Clicking it here would trip the machine and
+      // scram the plant, which cascades into every check below (measured: 8 failures from this
+      // one press). The dispatch-mode claim it used to make belongs to a plant with more than
+      // one dispatch mode; assert the load-mode STATE instead, which is what the check was
+      // really about, without pressing a control that has a different job.
+      ck('func: the shipped lineup dispatches in load-following manual mode',
+        cs().load_mode === 'manual' || cs().load_mode === 'follow', cs().load_mode);
       // The two LOAD TARGET checks. They were red on 2026-08-03 for TWO independent
       // reasons, both in the harness — the board was correct throughout.
       //
@@ -656,7 +762,12 @@
         + ' tripLog=[' + (_tripLog.join(' ') || 'empty') + ']');
       RD.PwrBoard.render(g1);
       ck('feedback: OFF tile lit while off line', tileActive('imro8len0oi'));
-      ck('feedback: FOLLOW tile dark while off line', !tileActive('imro8ktzs3u'));
+      // THE TILE IS LATCH NOW (#551/#559/#567), and on a PLANNED offline the machine is off
+      // the line but still LATCHED — so this tile is LIT and OFF is lit too. Both statements
+      // are true and they are different statements: OFF says where the load is, LATCH says
+      // what state the machine is in. The old assertion read FOLLOW-the-dispatch-mode.
+      ck('feedback: LATCH tile lit while off line — a planned offline does not un-latch',
+        tileActive('imro8ktzs3u'));
       ck('feedback: MAN tile dark while off line', !tileActive('imro8lddxi'));
       // the other half: a REAL turbine trip must still light OFF
       svc.handleCommand({ action: 'trip_turbine' }); ticks(4);
@@ -664,13 +775,17 @@
       ck('func: trip_turbine does trip the turbine', g2.instruments.turbine_tripped === true);
       RD.PwrBoard.render(g2);
       ck('feedback: OFF tile lit on a real turbine trip', tileActive('imro8len0oi'));
-      // FOLLOW must clear the trip and re-synchronise — a planned offline is reversible
+      // LATCH must clear the trip — a planned offline is reversible. THIS TILE WAS FOLLOW
+      // until #551/#559/#567: a dispatch-MODE selector on a plant with one dispatch mode, whose
+      // press on PWR2 could only throw, while nothing anywhere un-latched the turbine. The pair
+      // is LATCH / TRIP on both engines now, so the mode clause goes — this engine keeps
+      // `set_load_mode` as a command, it simply no longer has a board tile for it.
       clickBtn('imro8ktzs3u'); ticks(4);
       var g3 = svc.assembleSnapshot();
       RD.PwrBoard.render(g3);
-      ck('func: FOLLOW puts it back on line', (g3.control_state || {}).load_mode === 'follow' &&
-        g3.instruments.turbine_tripped === false, (g3.control_state || {}).load_mode);
-      ck('feedback: FOLLOW tile lit back on line', tileActive('imro8ktzs3u'));
+      ck('func: LATCH puts it back on line', g3.instruments.turbine_tripped === false,
+        'turbine_tripped ' + g3.instruments.turbine_tripped);
+      ck('feedback: LATCH tile lit back on line', tileActive('imro8ktzs3u'));
       ck('feedback: OFF tile dark back on line', !tileActive('imro8len0oi'));
       // SCRAM two-step: arm then confirm. It lives HERE, in the one window where the plant is
       // on line with no standing trip signal — this is the whole fix to a pre-existing red
@@ -1214,7 +1329,12 @@
           usFeed + ' -> ' + valOf('imrsgkz4lq0'));
         // A unit-NEUTRAL indication must not move. Half the board is %/ppm/MW/rpm, and a
         // layer that converted those would be worse than no layer.
-        ck('units: a unit-neutral readout does not move', valOf('ims2immon9z') === usPzrLvl, usPzrLvl);
+        // TREND GLYPHS ARE STRIPPED before comparing: the flip clears the tile's trace
+        // (unit-mixed history would splice °F onto °C), and since the #501 seed removal the
+        // trend arrow honestly resets with it — the claim here is the VALUE does not
+        // convert, and the arrow is observer state entangled in the same text node.
+        var stripTrend = function (s) { return String(s).replace(/[▲▼▶–—]/g, ''); };
+        ck('units: a unit-neutral readout does not move', stripTrend(valOf('ims2immon9z')) === stripTrend(usPzrLvl), usPzrLvl + ' -> ' + valOf('ims2immon9z'));
 
         // --- setpoint boxes: value, unit span, decimals, ▲▼ step, bounds and the range hint
         (function () {

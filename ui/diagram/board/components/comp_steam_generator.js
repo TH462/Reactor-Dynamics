@@ -56,7 +56,11 @@
       ' L310,' + shellBot + ' A100 ' + botRy + ' 0 0 1 110,' + shellBot + ' Z';
     var inner = 'M123,' + (shellTop + 1) + ' A87 ' + (domeRy - 12) + ' 0 0 1 297,' + (shellTop + 1) +
       ' L297,' + (shellBot - 1) + ' A87 ' + (botRy - 8) + ' 0 0 1 123,' + (shellBot - 1) + ' Z';
-    var legBot = 470, tubeSheetY = 440;
+    var tubeSheetY = 440;
+    // Tube legs end at the BOTTOM of the tube sheet (its 10 px slab), not 30 px below it —
+    // they used to run to y=470, deep into the channel-head reservoirs, which read as extra
+    // water column ("the U-tubes go deep into the bottom reservoirs", #509 item 8).
+    var legBot = tubeSheetY + 10;
     // Whole-vessel WIDE-range water column: wide 0 % = tube sheet, 100 % = up in the dome.
     var waterBot = tubeSheetY - 5, waterTopFull = 48;
     function fullY(wr) { return waterBot - (clampN(wr, 0, 100) / 100) * (waterBot - waterTopFull); }
@@ -122,7 +126,8 @@
       style: { transition: 'height 0.15s linear' }
     });
     var waterRect = h('rect', {
-      x: 110, y: waterBot, width: 200, height: 40, fill: 'url(#' + ids.water + ')', opacity: 0.72,
+      x: 110, y: waterBot, width: 200, height: tubeSheetY - waterBot,   /* ends at the tube sheet (#509 item 8) */
+      fill: 'url(#' + ids.water + ')', opacity: 0.72,
       style: { transition: 'y 0.15s linear, height 0.15s linear' }
     });
     var surfLine = h('line', {
@@ -213,7 +218,9 @@
       }),
       h('rect', { x: 138, y: bundleTopY, width: 144, height: bundleBoxH, rx: 48, fill: 'none', stroke: '#2c3d47', strokeWidth: 1.4, opacity: 0.7 }),
       glowRect,
-      h('rect', { x: 131, y: tubeSheetY, width: 158, height: 10, rx: 2, fill: '#2b3d4a' }),
+      // the tube sheet spans wall to wall (inner shell 123..297) — at 131..289 it left an
+      // ~8 px water-painted gap each side and "looked like water can pass by it" (#509 item 8)
+      h('rect', { x: 123, y: tubeSheetY, width: 174, height: 10, rx: 2, fill: '#2b3d4a' }),
       h('g', { clipPath: 'url(#' + ids.clip + ')' },
         hotcRect, coldcRect,
         h('rect', { x: cx - 2, y: tubeSheetY + 10, width: 4, height: 90, fill: '#0e1620' })),
@@ -382,7 +389,9 @@
       if (level !== last.level) {
         steamRect.setAttribute('height', String(Math.max(0, levelY - 20)));
         waterRect.setAttribute('y', String(levelY));
-        waterRect.setAttribute('height', String(Math.max(0, waterBot + 40 - levelY)));
+        // the water body ends AT the tube sheet — the old +40 slab painted water past the
+        // sheet into the channel-head side gaps (#509 item 8)
+        waterRect.setAttribute('height', String(Math.max(0, tubeSheetY - levelY)));
         surfLine.style.transform = 'translate(0px,' + levelY.toFixed(2) + 'px)';
         steamGrad.setAttribute('y1', String(levelY));
         // The bubble clip is the WATER, so it ends at the water surface — same correction as

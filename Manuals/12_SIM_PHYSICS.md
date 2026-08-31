@@ -2,7 +2,7 @@
 
 **Document:** PWR-SP-12  
 **Plant:** **SLS-100** (Single Loop Simulated, ≈ 100 MWe / ≈ 300 MWt)  
-**Revision:** 16  
+**Revision:** 17  
 
 ---
 
@@ -103,14 +103,24 @@ Standard point-kinetics equations with **six delayed-neutron groups** (U-235 dat
 | Parameter | Value |
 |---|---|
 | β (total delayed fraction) | **0.006502** |
-| Λ (prompt generation time) | **0.01 s** |
+| Λ (prompt generation time) | **2.0 × 10⁻⁵ s** |
 | Delayed groups | 6, λ from 0.0124 to 3.01 s⁻¹ |
+
+Λ is the **physical** prompt generation time. An earlier engine carried 0.01 s — 500 times that — because its explicit integrator was only stable with it; the equations here are integrated in closed form instead (a matrix exponential each step), so the real value is used. It matters to more than the prompt response: the subcritical source level below scales with Λ.
 
 There is **no spatial flux shape**. The whole core is one point. This is the single largest simplification in the model, and its consequences are stated in §12.1.
 
 ### 4.2 The neutron source
 
-A small constant source term is present at all times. It is what gives a subcritical core its **1/M behaviour**: at equilibrium, power sits at `source · Λ / (−ρ)`, so power and startup rate respond visibly to every rod step during the approach to criticality instead of the core sitting dark until it is too late.
+A small constant source term is present at all times, representing the startup sources every real core carries. It is what gives a subcritical core its **1/M behaviour**: at equilibrium, power sits at `source · Λ / (−ρ)`, so power and startup rate respond visibly to every rod step during the approach to criticality instead of the core sitting dark until it is too late. It is also why a tripped reactor levels off at a low, steady indication instead of falling for ever.
+
+| Parameter | Value |
+|---|---|
+| Source (fraction of rated power per second) | **1.0988 × 10⁻⁶** |
+| …derived from an installed source strength of | 5 × 10⁸ neutrons/s |
+| …over this plant's rated neutron population | 4.55 × 10¹⁴ neutrons |
+
+The source strength itself is the one **unverified** figure in the block: no reference in the source set gives an assembly total for a startup source, so it is chosen to place the shutdown indication where the plant's own instrument setpoints say it belongs — the intermediate range reads under the **P-6** permissive at Hot Standby and crosses it partway up the control bank.
 
 This is a real feature of real startup instrumentation, and it is why the 1/M plot in this trainer works.
 
@@ -365,6 +375,20 @@ The simulation **ends at fuel damage**. Containment pressure, temperature, sump 
 
 ---
 
+### 5.6 The metal has heat capacity too
+
+Every one of the eleven primary control volumes carries the **mass of its own metal wall**, at the temperature that metal is actually at — not at the temperature of the water inside it. The pipe walls, the reactor vessel shell and heads, the core barrel, the steam-generator tubes and the pump casing are all in the ledger.
+
+**Measured on this plant: the metal is 43 484 kJ/K against the coolant's 93 855 kJ/K — 46 % as much heat capacity as the water it contains.** That is not a correction; it is a third of the system's total stored heat.
+
+**What it changes for you.** Heat you take out of the coolant during a cooldown comes partly back out of the steel, so a cooldown at a fixed dump duty takes **about 1.4× longer** than the water alone would suggest. A **scram is almost unaffected** — Tavg falls 0.4 % less over the first 30 seconds — and the reason is the thing worth carrying: a wall gives up its heat only as fast as heat can *conduct out of it*. A steam-generator tube is 0.05 in (1.27 mm) thick and answers in seconds. The reactor vessel shell is **4.5 in (114 mm)** thick and its own diffusion time is around **21 minutes**, so a 30-second transient reaches only its inner face while a two-hour cooldown reaches all of it. **The thicker the metal, the slower it argues with you, and the longer it keeps arguing.**
+
+This is also why the plant does not go cold when the pumps stop. The wall-side heat-transfer film falls with flow, but it has a **natural-circulation floor** rather than going to zero — which is exactly the condition under which stored wall heat matters most.
+
+**Trust class, and one thing to know.** The pipe and tube masses are derived from sourced wall-thickness data and the plant's own geometry (the implied tube-bore volume reproduces the model's steam-generator node to **0.015 %**, and nothing was fitted to make that happen). The **reactor vessel and internals are DERIVED ESTIMATES** — the vessel from a standard pressure-vessel thickness formula, the internals and supports from a flat engineering estimate — and they are the largest single term, about a quarter of the metal. Treat the vessel number as *Indicative* (§14.0). **The fuel and cladding are not part of this** — they are modelled separately (§5.5) and counting them here would double them.
+
+---
+
 ## 6.0 Primary system
 
 ### 6.1 One pressure state, three pressures
@@ -401,14 +425,33 @@ pressurizer geometry, well clear of it (§12.4c).
 
 **Every flow runs on one real scale** (Rev 14 — this section previously described a
 deliberate two-scale split with charging and letdown compressed ×0.012; the accident
-re-clock retired it and this chapter had not caught up). The RCS is declared at
-~1,000 ft³ / ~7,500 gal, and leaks, relief, ECCS, accumulators, charging and letdown all
-move real fractions-per-second against it: full charging is ~60 gpm, the normal balance
-~31 gpm, and an uncompensated orifice-A drain walks pressurizer level down 15 points in
-roughly five minutes. Real-plant flow comparisons are now legitimate — the caveat that used
-to sit here calling them a category error described the retired split.
+re-clock retired it and this chapter had not caught up). Leaks, relief, ECCS, accumulators,
+charging and letdown all move real fractions-per-second against the reactor coolant system's
+own inventory. Real-plant flow comparisons are legitimate — the caveat that used to sit here
+calling them a category error described the retired split.
 
-**Letdown is pressure-driven, not commanded.** Two fixed orifices, each independently in or out; each passes flow proportional to √(cold-leg pressure − 348 psi (2.4 MPa) backpressure). So letdown **tails off toward zero as the RCS depressurises on a cooldown** — it is not a constant you dial in.
+The **charging and letdown ratings are not dialled in; they are derived** from the plant's
+volume against Ginna's sourced rates, so they move when the geometry moves and there is no
+second copy of them to drift. As built today:
+
+| | rating | basis |
+|---|---|---|
+| Reactor coolant system volume | **857.9 ft³ (6,418 gal / 24.29 m³)** | the component ledger, 9.2 % of it unattributed and declared |
+| Charging, maximum | **30.1 gpm** | Ginna's 180 gpm scaled by the volume ratio 0.1675 |
+| Charging, normal balance | **7.7 gpm** | Ginna's 46 gpm, same ratio |
+| Seal injection | **5 gpm** | unscaled — a per-pump rating, and this plant has one pump |
+| Letdown, orifice A nominal | **12.7 gpm** | pressure-driven, see below |
+| Auxiliary feedwater, both pumps | **86.2 gpm** | Ginna's 510 gpm scaled by power, 300/1,775 |
+
+> **These are smaller than the figures Rev 16 and earlier quoted** (60 gpm charging, 30 gpm
+> letdown, 100 gpm auxiliary feedwater), and the older numbers were the **retired** engine's —
+> a different plant with a different declared volume. Nothing about the plant got weaker; the
+> manual caught up with the plant the simulator runs.
+
+An uncompensated orifice-A drain still walks pressurizer level down about 15 points in roughly
+five minutes.
+
+**Letdown is pressure-driven, not commanded.** Two fixed orifices, each independently in or out; each passes flow proportional to √(cold-leg pressure − 300 psi (2.07 MPa) backpressure — the orifice discharges to the letdown heat exchanger and volume control tank, not to atmosphere). So letdown **tails off toward zero as the RCS depressurises on a cooldown** — it is not a constant you dial in.
 
 **Charging in AUTO holds programmed pressurizer level**, reading the *indicated* level and the *indicated* Tavg through a 20-second damping filter. The level program and the physical thermal-expansion line are the **same line**, by construction — so a heat-up raises level and setpoint together, and thermal expansion can never read as a leak. A leak makes itself up because it lowers the level; no leak detection is involved.
 
@@ -418,14 +461,14 @@ to sit here calling them a category error described the retired split.
 
 | Segment | Shutoff head | Character |
 |---|---|---|
-| High head | **2384 psi (16.44 MPa)** | Low flow; the only segment in play at TMI pressures |
-| Low head | **653 psi (4.5 MPa)** | High flow; dominates in a large LOCA |
+| High head | **1390 psi (9.58 MPa)** | Low flow, and it reaches its full **300 gpm** only below about **515 psi (3.55 MPa)**. **At the 2235 psi (15.41 MPa) operating point it delivers nothing at all** — its shutoff is 845 psi (5.83 MPa) below the plant it is meant to inject into, so a stuck-open PORV that holds pressure high keeps injection out |
+| Low head | **215 psi (1.48 MPa)** | High flow — **1200 gpm** near atmospheric; dominates in a large LOCA, and only there |
 
 **Accumulators** are passive, borated, and **finite**. They arm at **600 psi (4.14 MPa)** (600 psi — the real core-flood-tank / SIT cover-gas setpoint) through a check valve in series with a motor-operated isolation valve, and they deplete as they inject. Their nitrogen cover-gas pressure is computed and indicated as the tank empties — but it is **indication only**: injection is gated on cold-leg pressure against the fixed arming setpoint.
 
 **All emergency injection water is borated to 2500 ppm** and mixes into the core concentration, so ECCS injection adds negative reactivity — the shutdown-margin role of borated safety injection. It also enters at **104 °F (40 °C)**, removing sensible heat as it mixes (§5.4).
 
-**RHR** takes suction from the **hot leg** through a valve on **two interlock setpoints**: it can only be opened below **400 psi (2.76 MPa)**, and **auto-closes** only once pressure climbs back above **600 psi (4.14 MPa)**. The ~200 psi (1.38 MPa) of deadband is prototypical (NUREG-0933 Issue 99: autoclose typically 600 psig against a block-open at 425 psig) and it is what stops the valve chattering on a plant hunting near the lower setpoint. It recirculates — hot leg → heat exchanger → cold leg — so it changes no inventory. Cooldown rate is throttled by the heat-exchanger flow split, and its sink temperature **moves with circulating-water temperature**, so warm circ water raises the floor a cooldown can reach.
+**RHR** takes suction from the **hot leg** through a valve on **two interlock setpoints**: it can only be opened below **440 psi (3.03 MPa)** — the sourced 425 psig — and **auto-closes** only once pressure climbs back above **600 psi (4.14 MPa)**, the sourced 585 psig. The ~200 psi (1.38 MPa) of deadband is prototypical (NUREG-0933 Issue 99: autoclose typically 600 psig against a block-open at 425 psig) and it is what stops the valve chattering on a plant hunting near the lower setpoint. It recirculates — hot leg → heat exchanger → cold leg — so it changes no inventory. Cooldown rate is throttled by the heat-exchanger flow split, and its sink temperature **moves with circulating-water temperature**, so warm circ water raises the floor a cooldown can reach.
 
 **Shutdown cooling and low-head injection are the same pumps in two alignments, and you can only be in one.** The RHR pumps *are* the low-head half of the merged HPI/LPI system above. In the **injection** alignment they take suction from the refueling water tank and discharge to the cold legs, and their heat exchangers have **no cooling water** — WTSM 5.2 §5.2.4.5 (ML11223A220): *"Upon receipt of a safety injection actuation signal, the RHR pumps start and recirculate water through the **uncooled** RHR heat exchangers."* In the **shutdown-cooling** alignment they take hot-leg suction through valves 8701/8702 and their heat exchangers reject to circulating water. WTSM 5.1 §5.1.4.1 puts the two functions as *"independent of any engineered safety features function"*, and Ginna TS Bases B 3.5.3 has them actively interfering — being on shutdown cooling **degrades** the ECCS function. **So placing RHR in service is refused while safety injection is running**, and the board says why. Secure injection first. See §12.20 for what that refusal is and is not.
 
@@ -444,7 +487,7 @@ These are separate states with separate calibrations on purpose. Combining them 
 
 ### 7.1 Pressure
 
-Pressure is an integrator driven by a signed sum of effects — heaters up; spray, PORV flow, safety flow and break depressurisation down; and a **surge** term. Gains are in MPa/s and are **effective coefficients, not thermodynamics** (§12.5).
+Pressure comes out of a **two-region energy balance**, not an integrator with per-effect gains *(rewritten 2026-08-29, #584 — the "signed sum of effective coefficients" this paragraph used to describe is the retired engine's)*. The vessel carries a compressed-steam region over a stratified liquid: heater joules go into the bottom of the liquid, spray condenses into the steam space, the surge line exchanges mass and enthalpy with the hot leg, and pressure is whatever state that balance lands at — there is no pressure "gain" anywhere in it to tune. One calibrated constant governs the interface: a **30 s condensation/de-superheat time constant**, declared open and fitted to a single sourced case — Ginna UFSAR Table 15.2-1 Case 2's 5.4 s ride to the 2425 psi (16.72 MPa) trip, which the model runs in 5.9 s at τ = 30 s (§12.5).
 
 Three behaviours are worth understanding at the board:
 
@@ -455,6 +498,10 @@ Three behaviours are worth understanding at the board:
 **Spray is capacity-limited to 12 % of full flow.** It is sized for step insurges, not for a loss-of-heat-sink repressurisation. A TMI-style heat-up **outruns the spray and lifts the PORV** — as it must.
 
 **A raised pressure setpoint slews; a lowered one takes effect at once.** Heating a large subcooled pressurizer to a higher saturation point takes time regardless of heater margin, so the effective target walks up at 3 psi (0.02 MPa)/s (a full cold-to-NOP pressurization ≈ 11 simulated minutes). Depressurisation is spray- and cooling-limited on its own and needs no slew.
+
+**The heaters sit low in the vessel and lose authority as the level falls past them.** The bank occupies a band from about **5 % to 15 % level**, and delivered heat scales with the fraction of that band under water — half covered, half the heat; below the bank, none. The elevation itself is sourced (the heaters are *"direct-immersion, tubular-sheath type … located in the lower portion of the pressurizer vessel"*); the two percentages are this plant's own estimate, derived from its vessel volume on a tall-and-slender shape, and are **unverified** — no reference in the source set gives a bundle length or a vessel height. What they *are* pinned to is an ordering: the band sits entirely below the 17 % heater cutoff, because that cutoff exists to de-energize the bank **before** it uncovers.
+
+The band is therefore unreachable on a healthy plant, and that is the point of it. It becomes the only thing bounding the damage when **the level channel lies** — a stuck transmitter fools the cutoff exactly as it fools the operator, the bank stays energized in steam, and the heater indication keeps reading full because it reads electrical power. See `03_CONTROLS_AND_INDICATIONS.md` §5.2.
 
 ### 7.2 Saturation pinning
 
@@ -510,8 +557,8 @@ inventory — are the sourced ones.
 
 | Valve | Opens | Closes / reseats |
 |---|---|---|
-| **PORV** | 2350 psi (16.20 MPa) (2350 psia) | 2300 psi (15.86 MPa) (2300 psia) |
-| **Spring safeties** | 2485 psi (17.13 MPa) (2485 psia) | 2400 psi (16.55 MPa) (2400 psia) |
+| **PORV** | pressure setpoint **+100 psi (0.69 MPa)** — **2335 psi (16.099 MPa)** at the 2235 psi (15.41 MPa) nominal | **+85 psi (0.586 MPa)** — **2320 psi (15.996 MPa)** at nominal |
+| **Spring safeties** | **2500 psi (17.24 MPa)** — the 2485 psig nominal | **2375 psi (16.375 MPa)** — 5 % below, the sourced reseat fraction |
 
 The **block valve** is upstream of the PORV. Closing it stops **all** flow through the PORV line — relief and inventory loss alike — regardless of PORV position. That is the TMI recovery action.
 
@@ -570,9 +617,15 @@ Third, **a fully-open ADV cools far faster than the technical-specification limi
 
 Main feedwater requires the **condensate pump**, an available **condenser**, and an **open MSIV** — the feed pumps are steam-driven off the main line downstream of the MSIV, and the condensate pump draws from the hotwell. Any of the three closes the chain: heat-sink loss → main feed loss → SG inventory falls → low-low level trip. **The ride-out plant trips on a genuine limit, never on anticipation.**
 
-**AFW** is 15 % of rated feed capacity, auto-starting on the **17 % low-low** narrow-range level — the same signal that trips the reactor (single-signal, as in the real plant; #380 retired the 3-point offset this plant used to carry). It **latches**: the pump demand has no reset and stands until the operator secures it, as in a real plant. Delivery is capacity × operator throttle × a built-in proportional level hold (full flow below 32 %, tapering to zero by 40 %), and the hold senses **the level instrument** — so a failed level sensor fools the AFW regulator exactly as it fools you.
+**AFW is rated at 86.2 gpm** for both pumps together — Ginna's sourced 510 gpm (one 170 gpm motor-driven pump plus a turbine-driven pump at twice that) scaled by power, 300/1,775. (Through Rev 16 this read "15 % of rated feed capacity", which was the retired engine's normalisation against a different plant's feed rating.) It auto-starts on the **17 % low-low** narrow-range level — the same signal that trips the reactor (single-signal, as in the real plant; #380 retired the 3-point offset this plant used to carry). It **latches**: the pump demand has no reset and stands until the operator secures it, as in a real plant. Delivery is capacity × **operator throttle** — the flow control valves, one set downstream of both pumps.
+
+**Where the level hold lives differs between the two engines, and it matters.** The retired engine holds level *inside* the steam generator model — a built-in proportional taper, full flow below 32 %, shut by 40 %, which the operator cannot leave. **The current plant holds it in the control layer instead**, as the `afw_level` automation channel: full flow below **28 %** of narrow range, tapering shut by **38 %**, about a sourced target of **33 ± 5 %** (Westinghouse Technology Systems Manual §19.0, ML11223A342 — *"maintain steam generator levels at 33 ± 5 % narrow-range level indication … by throttling"*). The difference is the point: **you can take that channel to MANUAL and throttle by hand**, which is what a real operator does — *"it is necessary to throttle AFW flow to control RCS temperature at this point"* (WAT 05 Transients, ML11216A094). Either way the hold senses **the level instrument** — so a failed level sensor fools the AFW regulator exactly as it fools you.
+
+**And the generator has a top.** Above the top of the narrow range the separators stop keeping up and the export starts carrying liquid into the steam lines; by the top of the wide range the shell is water-solid and passes whatever is fed to it. Carryover is what turns unthrottled aux feed into an *"excessive cooldown of the primary system"* (R.E. Ginna Technical Specification Bases, ML20339A221), and the **high-high level turbine trip at 90 % narrow range** gets the machine off the line before the water arrives (Westinghouse Technology Systems Manual §3.2, ML11223A213). Measured with the valves left wide open through a loss of offsite power: the generator pins at **245 %** of its nominal inventory and the primary cools **190 °F (105.6 °C)** in five hours.
 
 **Feedwater carries enthalpy.** The heat crossing the tube bundle first raises feed to saturation, then boils it — so overfeeding cools the generator and drops its pressure (the classic overcooling signature, with a small power rise on moderator feedback), and cold auxiliary feedwater is a **genuine heat sink**: at decay-heat levels, full AFW flow absorbs more heat than crosses the tubes, steam generation stops, and the plant is pulled below the no-load anchor until the level hold throttles the flow back. Main feed is modelled at a **constant final feed temperature of 435.2 °F (224 °C)** — since Rev 14 the top of the R.E. Ginna UFSAR's sourced 390–435 °F final-feed band (the earlier 440.6 °F sat just above it) — and the regenerative heater train is still not modelled, so feed temperature does not fall at part load (declared, §12.16).
+
+> **Where that sentence stops being true: 363 psi (2.50 MPa).** "Raises feed to saturation, then boils it" assumes the feed is *colder* than the shell. Saturated water at 363 psia is 435.2 °F — exactly the modelled feed temperature — so **below that steam-generator pressure the constant-temperature main feed is the hotter stream and adds heat instead of absorbing it.** It is small and short-lived (§12.16 measures 0.7–2.6 MJ over about two minutes on a fast secondary blowdown, peaking at 120 kW), because the level controller shuts the regulating valve as the generator empties. Auxiliary feedwater is unaffected — it arrives at ~70 °F condensate-storage-tank temperature and is a heat sink at every pressure. Below 363 psia, read the heat sink as **AFW**, not main feed.
 
 **AFW pumps can run against a shut discharge valve.** When they do, discharge pressure sits at **shutoff head** rather than at SG-plus-margin. That distinction is the tell separating "AFW blocked" from "AFW not started" — and it is the TMI-2 pumps-running/valves-shut condition.
 
@@ -654,9 +707,24 @@ The indicator shows **commanded** state. A stuck-open PORV with a "closed" indic
 
 The AFW level-hold valve, the CVCS charging servo and its level program, and the steam-dump Tavg program all read **indications**, one step old. A failed transmitter mis-programs the automatics exactly as it misleads the operator.
 
-### 10.5 Shrink and swell
+### 10.5 Shrink and swell — NOT MODELLED
 
-SG narrow-range level indication moves **the wrong way** on a fast power change before the lag lets it settle. This lives in the *indication*, not in the physical level.
+**This plant does not model shrink and swell**, and the reason is structural rather than an
+omission: the steam generator is a single lumped shell with **no recirculation ratio, no
+downcomer and no separator** (§8.1). Swell is a *downcomer* measurement artefact — the level tap
+reads a column whose density changes when boiling rate changes — and with no downcomer there is
+nothing to produce it.
+
+On a real unit this is one of the things that makes feedwater control hard: a load increase
+raises steam flow *and* momentarily raises indicated level, so the level signal argues for LESS
+feed at the moment more is needed, and the control system is built to ignore it for a few seconds.
+Here, indicated level moves only when the shell's mass moves.
+
+**One consequence is worth knowing**, because it shows up in the feed controller: that controller
+carries a sourced five-second lag on its level input whose stated purpose is to ride out swell
+(WAT 05 §5.3.2). On this plant it is guarding against something that cannot happen. Measured
+during #590, removing it changes the loop's behaviour by about **5 %** — it is nearly inert, and
+it is kept because the controller's *structure* is the sourced one.
 
 ### 10.6 Log-scale nuclear instruments
 
@@ -664,17 +732,19 @@ Source range (counts/s) and intermediate range (chamber amps) carry their lag an
 
 ### 10.7 RCS loop flow — and why the trip that reads it changed
 
-Until 2026-07-29 the **low-flow reactor trip read true flow**, because no flow instrument had ever been built. It was the last exception in the plant, and it meant the single most safety-significant trip could not lag, could not drift, and could not be fooled — so it could not be *taught*. It now reads `rcs_flow`, an ordinary instrument with lag and injectable failures, and **there is no exception left**: every trip and actuation on this plant reads an indication.
+Until 2026-07-29 the **low-flow reactor trip read true flow**, because no flow instrument had ever been built. It was the last exception in the plant, and it meant the single most safety-significant trip could not lag, could not drift, and could not be fooled — so it could not be *taught*. It now reads `loop_flow`, an ordinary instrument with lag and injectable failures, and **there is no exception left**: every trip and actuation on this plant reads an indication.
 
 **RCS Loop Flow** is modelled on the real measurement: **elbow taps** on the crossover-leg 90° elbow, reading the differential pressure between the inner and outer radius of the bend, with ΔP ∝ flow². Nothing is inserted into the flow path. Real accuracy figures for this channel are ±10 % absolute, with trip-point repeatability around ±1 %.
 
-The **setpoint is the real one — 90 % of rated, blocked below P-7 (10 % power)**. Adopted 2026-07-29, replacing an unsourced 25 % / 5 % pair. Measured on an RCP trip from full power: the indication crosses 90 % at **1.8 s** and DNB onset is at **10.9 s**, so the trip now fires about nine seconds *before* the core exit reaches DNB. The old 25 % setpoint fired at 16.2 s — about five seconds *after* it. Its entire practical effect was to let DNB happen.
+The **setpoint is 87 % of rated, blocked below P-7 (10 % power)**. Measured on this plant, an RCP trip from full power: indicated flow crosses the setpoint at **3.7 s**, the trip fires at **4.6 s** on the sourced one-second delay, and the core **never voids at all** — peak void fraction **0.000**, indicated subcooling bottoming at **38.4 °F (21.3 °C)**. The trip does its job with margin to spare, which is the un-dramatic answer and the true one.
 
-**One departure remains, and it is deliberate: this plant has ONE flow channel**, where a real Westinghouse unit has **three detectors per loop and trips on 2-of-3**. That follows from the plant being single-loop and from every other protection function here being single-channel too — but be clear about what it costs, because it is the thing this event is now built to teach:
+**One departure remains, and it is deliberate: this plant has ONE flow channel**, where a real Westinghouse unit has **three detectors per loop and trips on 2-of-3**. That follows from the plant being single-loop and from every other protection function here being single-channel too — but be clear about what it costs, because it is the thing this event is built to teach:
 
-> A **stuck-high flow transmitter defeats the low-flow trip completely.** Measured, with the channel stuck at 100 % and the pump tripped: DNB onset at 9 s, core void peaking at 0.60, fuel reaching ~1706 °F (930 °C) against a damage threshold of 2192 °F (1200 °C), and the reactor finally scrammed at **~35 s on HIGH PRIMARY PRESSURE** — a different channel, a different instrument, catching a *consequence*. RCS Flow - Low never actuates at all. 2-of-3 coincidence exists precisely to stop one lying transmitter from doing this.
+> A **stuck-high flow transmitter defeats the low-flow trip completely.** Measured with the channel frozen at 100 % and the pump tripped: **RCS Flow - Low never actuates at all**, and what stops the event is **Overpower ΔT at 8.5 s** — a different channel, a different instrument, catching the *consequence* rather than the cause. 2-of-3 coincidence exists precisely to stop one lying transmitter from doing this.
+>
+> **Note what this plant does NOT do**, because the difference is the point: the core still does not void (peak 0.000) and peak fuel reaches **1292 °F (700 °C)**, far below any damage threshold. The ΔT protection is fast enough here that a lying flow channel costs about four seconds and a different trip, not a damaged core. On a plant with weaker ΔT protection the same lie is far more expensive.
 
-The surviving indication in that event is **subcooling margin**, which falls to 11.2 °F (6.2 °C) — below its 19.8 °F (11 °C) caution — while the flow gauge still reads 100 %. That is the cross-check the scenario asks for; see `04` PWR-N13 and `06` PWR-E02.
+*(These two figures are read from the protection layer directly, which is where the trip logic lives; the board's own channels are published through the reused instrument layer and are one step removed from them.)*
 
 ---
 
@@ -709,16 +779,16 @@ Each of these is intentional, acceptable for the educational purpose, and stated
 | 12.4c | **Water-solid: the surge stiffens and SPRAY STOPS WORKING — relief and the heaters keep their bubbled-plant gains** *(new 2026-08-04, #346; spray added #347 — before this, a solid RCS taking safety injection did not repressurize at all: the surplus mass was discarded at a numerical ceiling and pressure sat flat while ECCS ran on)* | When the pressurizer goes water-solid the only compressible volume in the RCS is gone, so an insurge compresses **liquid** and the pressure gain steps up to the bulk modulus (≈ 1.3 GPa, ~4× the bubbled gain). **Spray also loses all authority** — it controls pressure by condensing the steam bubble, and there is none — which is modelled because it turned out to be load-bearing rather than cosmetic: with spray still credited, it pinned pressure 164 psi below the code-safety setpoint and the safeties could not lift at all. **Break blowdown was added to the regime 2026-08-05 (#361)**: on a liquid break the depressurization term is a bubbled-plant mechanism — liquid leaves, the bubble expands to fill the space, pressure falls — so with no bubble it is switched off and the break's mass moves pressure through the bulk modulus alone, which it was already doing. Counted twice, it held the plant about 2000 psi below the relief band, emergency injection never terminated, and inventory ran to the numerical ceiling. **Relief joined the regime with the proportional valve (Rev 14 — this row previously declared it deferred)**: at solid the per-unit-mass relief gain steps to the bulk modulus exactly as the surge's does, because with real valve mass flows the bubbled-plant gain could no longer pass unterminated injection and inventory walked to the numerical ceiling by a fourth road. What is still **not** modelled: the heaters have no bubble to flash but keep their normal-operation gain — unobservable in this regime (pressure sits above their setpoint) and ruled (F14). The historical caution stands: an earlier relief-only correction *on the old valve scale* was measured worse than nothing — it dropped the relieving equilibrium ~145 psi and un-deadheaded the injection | **Minor, and it errs toward calm.** A real solid plant is *harder* to control than this one: relief is stronger per unit mass and heater response is weaker. The lesson is intact and is the one that matters — **going solid costs you the pressurizer as a pressure controller.** Spray does nothing, the heaters cannot help, and the relief valve becomes your pressure control whether you wanted it or not. Do not read the cycling *rate* as a real-plant figure. |
 | 12.4d | **Containment is one lumped volume with a flash-gated steam inventory — and since stage 2 it fights back** *(new 2026-08-05, #386 stage 1; ACTIVE HEAT REMOVAL + actuations added 2026-08-08, stage 2, AUTO-ONLY by owner ruling — no board controls until the board redesign; passive sink re-worked 2026-08-08, #425)* | A real containment is a large dry volume with structural heat sinks, containment spray, fan coolers, a pressurizer relief tank (PRT) between the relief valves and the atmosphere, and a recirculation sump. Here: one steam inventory behind a **flash fraction** (hot break liquid partly flashes to steam — cp·ΔT/h_fg — an h_fg/cp span of 972 °F (540 °C) — while cold spill rains straight to the sump), a passive condensation term standing in for the structural heat sinks *plus normal-mode fan cooling* (declared) — **since #425 it strengthens with saturation elevation over the structures, on a deliberate lag** (a blowdown pulse spends seconds above the threshold and barely feels it; a sustained boil-off arrives fully braked; the constants are fitted and also stand in for the missing PRT), relief discharging **directly to the atmosphere** (no PRT), a sump that indicates but does not recirculate (no refueling-water storage tank inventory exists to swap from), and a pressure stiffness that is **fitted rather than computed from a free volume** — no document in the corpus gives one. Stage 2 adds the ACTIVE trains as fitted condensation terms: **containment spray** on the sourced 30 psig high-high (two 100 % trains at the reference plant, Ginna TS B 3.6.6), auto-securing once pressure recovers below the SI signal (a declared inference — WTSM documents SI reset only, and the auto-only build has no operator surface to secure it); **fan-cooler safety realign** on any SI (same source); the sourced **3.5 psig SI backup** that cannot be blocked; a steam-line-isolation leg on the same hi-hi; and the **upstream steam-line-break source term** (a fitted secondary→containment conversion — the MSLB is the limiting containment case, peaking at ~80 % of design pressure, above the DBA LOCA's ~60 %; re-solved at #425). Spray/fan capacities are **fitted like the pressure stiffness** — no document in any lane's corpus carries either capacity | **Know which way it errs.** The pressure SHAPE is right — it peaks on the hot early blowdown, and now comes DOWN in minutes when spray runs — and a steam generator tube rupture correctly reads **nothing**, because that break discharges into the steam generator: the one leak containment cannot see. **A prolonged station-blackout boil-off pressurizes the building SLOWLY and parks under the 30 psig spray point** — 44.7 psi (0.308 MPa) absolute — (#425 — measured, ~22 psig after ~2 h with all feed lost; before the re-work the same ride passed the 60 psig design pressure on relief steam alone, which no real TMLB' analysis supports — TMI-2 sat near 1.3 psig after ~10 h of stuck-PORV discharge, GEND-061): boil-off alone never summons spray, so a containment climbing PAST the spray point means the hydrogen era has begun (§12.4e). Protection now actuates on containment pressure (SI backup, spray, steam-line isolation), all automatic: **there are no containment controls on the board in this build** — you will see the annunciators (A36–A39) and the Physics-tab group act on their own. Do not read the psig values as a licensing calculation. |
 | 12.4e | **Hydrogen: the generation RATE is the oxidation term itself; the absolute scale, the transport and the recombiners are the model's** *(new 2026-08-08, #386 stage 3 — the burn shape is RULED: a one-time TMI-2-style deflagration, spike + latched event, containment holds)* | The rate law needs no defence: hydrogen comes from the same Baker-Just reaction event as the oxidation heat (2 mol H₂ and 190 kJ per mol Zr — Appendix K mandates Baker-Just for *"hydrogen generation"* by name), so d(H₂)/dt is exactly proportional to a term that is already sourced. Around it, the model's own parts, each declared: the **absolute scale** is one fitted constant bracketed by two sourced anchors (an ECCS-mitigated design-basis LOCA must sit far under the 4.1 v/o flammability limit — Ginna's own limiting analysis reports core-wide oxidation of 0.30 % against the 10 CFR 50.46(b)(3) 1 % limit — while a TMI-class unmitigated event must reach ignition; TMI-2 averaged 7.9 v/o from ~40 % of its zirconium, GEND-061); the concentration DENOMINATOR is Ginna's sourced 1.0×10⁶ ft³ net free volume; **transport** to the building runs on a fitted time constant and only while a containment-side path *exists* — an SGTR's hydrogen goes into the steam generator (untracked), a closed block valve holds it in the RCS; **generation stops at the melt endpoint** (real accidents make most of their H₂ during melt progression — this plant's total is therefore LOW); the **ignition point [8.0 v/o] and consumed fraction [85 %] are bracketed NUREG-1431 TEMPLATE values from the ice-condenser igniter section** — adopted because TMI-2's own analysis corroborates both (7.9 v/o preburn, 86 % consumed — GEND-061 §4.6.3); the burn **pressure spike is anchored on TMI-2's measured one** (≈27.5 psi observed with ~5 psi lost to in-burn cooling — GEND-061 §3.1/fig 4-13 — so the instantaneous deposit uses the ~32.5 psi adiabatic form and this plant's sinks do the cooling after); the **one-time latch stands in for oxygen depletion** — no O₂ ledger, so hydrogen can re-accumulate past ignition afterward and will never burn again; **recombiner capacity is fitted** (existence sourced — WTSM 5.0, NUREG-0737 II.E.4.1 — but no capacity figure exists in any lane's corpus) and their auto-start/auto-secure is a declared inference (real ones are manually placed in service; this build has no operator surface); the burn makes no gas-temperature excursion of its own (TMI-2's atmosphere momentarily hit 1202 °F (650 °C); ours rides the saturation model); and the H₂ analyzer's 30 s lag is declared, the sourced NUREG-0737 figure being availability, not response | **Know what the shape teaches.** A well-mitigated LOCA never comes near flammability — that is the 50.46(b)(3) design basis working, and the recombiners exist for that slow tail. A core that stays uncovered and hot makes hydrogen faster than any combustible-gas control can remove it — measured here as everywhere: once the cladding passes ~1652 °F (900 °C) the excursion outruns a restored injection, and the burn happens anyway, exactly one time, as a single sharp pressure spike the containment absorbs and the ESF answers (the spike crosses the 30 psig spray point by ruling) — **and the containment HOLDS in every family that reaches ignition, the station blackout included** (#425: the SBO boil-off base was re-worked to park under the spray point, which put its burn back under the 60 psig design pressure — it peaked ABOVE design before). TMI-2's operators first read that spike as electrical noise. Do not quote this plant's H₂ percentages or its time-to-ignition as real-plant figures — the shape is the lesson, the clock is compressed. |
-| 12.5 | **Pressurizer uses effective coefficients, not two-phase thermodynamics** | Flash evaporation, condensation, subcooled surge into a steam space | **No.** Directions and magnitudes are right, and the TMI-critical level rise during voiding is fully captured. |
-| 12.15 | **Heater authority is far above the real one, so pressure droops LESS than it should during a loss of inventory** *(new 2026-08-04, #337; re-stated 2026-08-07, #419 — the Mode 5↔1 time compression that once framed this as "27×" is retired, so the departure now stands alone at its full size)* | WTSM 3.2 (ML11223A213) rates the real heaters at 1794 kW, *"capable of raising the temperature of the pressurizer and its contents at approximately 55 °F/hr"* — 0.23 psi/s (1.6e-3 MPa/s), and since #419 the plant's own pressurization slew runs exactly that sourced rate. The heater CONTROL authority, however, is 80 psi/s (0.55 MPa/s) — about **347×** the sourced rating. | **Yes, in one direction, and it is deliberate.** The surge itself is modelled (§7.1), so pressure and subcooling *do* respond to inventory — but the heaters rebalance against them, so the cue is smaller than a real plant's. A leak that drives the pressurizer to its 17 % heater cutoff costs about **1 °F** of subcooling margin here against roughly **9 °F** at the sourced heater rating. Treat the *direction and ordering* as the lesson, never the magnitude. The value is RULED (F14, re-affirmed 2026-08-07 on current numbers) — it is what lets this plant ride out a full load rejection without a trip. |
+| 12.5 | **Pressurizer is a two-region vessel with ONE calibrated interface constant** *(rewritten 2026-08-29, #584 — the old row, "effective coefficients, not two-phase thermodynamics", described the retired engine)* | Flash evaporation, condensation and subcooled surge into the steam space are computed by a real two-region energy balance (§7.1); what is calibrated rather than derived is the interface's 30 s time constant — fitted to one sourced case, Ginna UFSAR Table 15.2-1 Case 2 — and the shell's condensation film (#587). | **No.** The TMI-critical level rise during voiding falls out of the mechanism itself, and the one fitted constant is declared where it lives. |
+| 12.15 | **Heater pressure authority runs about 10 % above the sourced rating — not 347×** *(re-measured 2026-08-29, #584, on the shipped engine; the 347× departure was the retired engine’s heater control gain and left with it)* | WTSM 3.2 (ML11223A213) rates the real heaters at 1794 kW, *"capable of raising the temperature of the pressurizer and its contents at approximately 55 °F/hr (30.6 °C/hr)"* — 0.23 psi/s (1.59 kPa/s) at the design point. The shipped plant puts the scaled bank’s 157.8 kW into the two-region energy balance (§7.1) and the measured full-bank slew is **0.2539 psi/s (1.75 kPa/s)** — 2246 psi (15.486 MPa) to 2276 psi (15.69 MPa) over 120 s from a settled design point, spray blocked. Pressure follows from the joules; there is no authority multiplier for a gain to inflate. | **No.** The +10 % is the two-region model’s honest arithmetic, not a control gain — direction, ordering and magnitude are all usable at the board. The old row’s consequence (*"about 1 °F of subcooling at the 17 % heater cutoff against roughly 9 °F at the sourced rating"*) was measured on the retired engine and is struck with it. |
 | 12.6 | **No sensor redundancy or voting** | Real plants use ~3 channels with 2-of-3 voting; one failed sensor cannot trip or block a trip alone | **Yes — instrument failures are *more* impactful here.** That is arguably better teaching, but it is not prototypical. |
 | 12.7 | **Xenon has no spatial oscillation** | Xenon power tilts swinging around a large core over hours | **No** at this plant size. Total inventory suppression is modelled. |
 | 12.8 | **Turbine and condenser are behavioural** | Stage efficiencies, feedwater heaters, hotwell level | **No.** Trip and vacuum-loss behaviour is right; the thermodynamic detail is not part of any lesson. |
 | 12.9 | **Steam-dump load-rejection arm is a bistable — there is a cliff — and it disarms itself** | A rejection just under 40 MWe gets no fast dump; staircased rejections never arm. And once armed, the fast mode stands down on its own when the reactor catches the load — a real one stays armed until an operator turns a RESET selector | **Yes — see the warning in §8.3.** Ruled and declared, not a defect. The real arm is far more sensitive (a 10 % step), affordable only because a human de-arms it; the blunt arm and the auto-clear are one trade, and any change takes both | 
-| 12.10 | **Boron chemistry is an idealised rate** | Blender dynamics, VCT mixing, real makeup-flow chemistry | **No**, but note the compressed time scale: borating/diluting runs at 2 ppm/s, and a grab sample returns in 60 s against a real lab's 30–60 min. |
+| 12.10 | **Boron chemistry is an idealised mixing model** | Blender dynamics, volume-control-tank mixing, real makeup-flow chemistry | **No, and it is no longer compressed** — this row said "2 ppm/s, grab sample in 60 s" through Rev 16 and both figures were the retired engine's. There is no rate constant at all now: the achievable rate is the mass balance's own, inflow × (tank ppm − reactor coolant ppm) ÷ mass, clamped by the 2,500 ppm boric-acid tank. Measured at 626 ppm and full charging, a saturating demand delivers **0.047 ppm/s borating and 0.026 ppm/s diluting** — so boration slows as you approach the tank and dilution runs fast at high boron and slow at low. The grab sample takes a real **30-minute** lab turnaround. |
 | 12.11 | **One control group and one shutdown group** | Multi-bank sequencing, programmed overlap, bank overlap indication, core maps | **Not for operating**, but the single bank carries the *whole* control worth, which is why its worth curve is deliberately flattened (§4.3). |
 | 12.12 | **Pressurizer level is geometric, not a calibrated span** | Reference-leg behaviour and a true narrow/wide calibration | **No.** Note this does **not** apply to SG level, which *does* have a real narrow/wide window (§8.1). |
-| 12.16 | **Final feedwater temperature is constant** *(new 2026-08-05, #372 — feed used to carry no enthalpy at all; value SOURCED Rev 14)* | Real final feed temperature falls with load as extraction-steam heating fades; here it is 435.2 °F (224 °C) at every load — since Rev 14 the top of the Ginna UFSAR's 390–435 °F final-feed band, where the earlier 440.6 °F sat just above it — and the feedwater-heater train and moisture-separator reheaters do not exist as components. Loss-of-feedwater-heating — a standard overcooling transient — therefore remains unreachable, and part-load overcooling from cold feed is milder than the real plant's. | No. Overfeed and AFW cues read correctly now; just don't expect a feed-heater casualty to exist. |
+| 12.16 | **Final feedwater temperature is constant** *(new 2026-08-05, #372 — feed used to carry no enthalpy at all; value SOURCED Rev 14)* | Real final feed temperature falls with load as extraction-steam heating fades; here it is 435.2 °F (224 °C) at every load — since Rev 14 the top of the Ginna UFSAR's 390–435 °F final-feed band, where the earlier 440.6 °F sat just above it — and the feedwater-heater train and moisture-separator reheaters do not exist as components. Loss-of-feedwater-heating — a standard overcooling transient — therefore remains unreachable, and part-load overcooling from cold feed is milder than the real plant's. **And below 363 psi (2.50 MPa) in the steam generator the sign inverts:** 435.2 °F feed is then *hotter* than the shell's saturated water, so main feed stops absorbing heat and starts adding it. Measured on a fast secondary blowdown from hot standby, the window is short and self-limiting — **0.7 to 2.6 MJ over about two minutes, peaking at 120 kW (0.04 % of rated)** — because the level controller shuts the regulating valve as the generator empties. It is a declared artefact of having no feedwater-heater train, not a mechanism to fly against. | No, on both counts. Overfeed and AFW cues read correctly; don't expect a feed-heater casualty to exist, and don't read the sub-363-psia sign flip as plant behaviour. |
 | 12.17 | **The steam lines isolate on containment pressure too — this row records what closed it** *(new 2026-08-05, #370 as "nothing reads containment pressure"; revised 2026-08-06; CLOSED at #386 stage 2, 2026-08-08)* | The gap this row declared is built: the MSIV now also closes on the sourced 30 psig high-high containment signal (ML11223A310: isolation on *"a high-high containment pressure signal or high steam flow coincident with…"*), sharing one seal-in with the flow/pressure pair — either signal, same latch, released when the building recovers below the SI signal. | **No longer.** A break inside containment that never spikes steam flow now isolates on the building's own pressure. What remains declared is §12.19 (the fixed rather than load-programmed flow setpoint). |
 | 12.19 | **The steam-flow isolation setpoint is fixed, not programmed on turbine load** *(new 2026-08-05, #370)* | The real setpoint slides with turbine load, so it stays sensitive at any power. Ours is a fixed fraction of RATED flow. | **Yes, at low power.** A break that is large *relative to the load* need not reach the fixed setpoint when the plant is well below full power, so it may not isolate automatically. At power the separation is wide and measured. Below about half load, treat the MSIV as your lever, not the plant's. |
 | 12.18 | **The atmospheric dump valve is sourced now — this row records what closed it** *(new 2026-08-05, #371 as "size is not sourced"; narrowed 2026-08-06; CLOSED at #419 wave 3, when the whole ladder became Ginna's)* | Capacity 0.10 of rated steam flow is WTSM §7.1.3.3's own per-generator figure; the 1060 psi (7.31 MPa) setpoint is that section's placement rule applied to the Ginna ladder **and** sits inside Ginna's own ARV solenoid band (1005–1060 psig, UFSAR ch 10). Automatic modulation was already prototypical. What remains an engineering choice is only the single-valve lumping. | **One behavior still matters.** Losing the condenser does not start a cooldown by itself — AUTO caps steam pressure at the setpoint but the plant stays hot, so you must lower the setpoint or open the valve. And once open, it cools **much faster than the 100 °F/hr limit** — throttle it, and watch the cooldown-rate meter (**A34**). |
@@ -773,9 +843,28 @@ If you expect one of these and cannot find it, it is not hidden — it does not 
 | **Structural** — fixed physical constants and real-plant setpoints | High | β and Λ, six-group delayed data, fuel damage/melt thresholds, PORV and safety setpoints, the 600 psi (4.14 MPa) accumulator arming pressure, the 400 psi (2.76 MPa) RHR block-open permissive and its 600 psi (4.14 MPa) autoclose |
 | **Calibrated** — arbitrated by the physics acceptance suites | Directionally right, magnitude roughly right | Heat-transfer coefficients, decay-heat constants, level coefficients, dump and AFW capacities |
 | **Compressed** — deliberately faster than reality for training | Right in behaviour, wrong in duration | **This class has largely emptied** (#408 put the accident-inventory family — ECCS injection included — on the real Ginna scale; #419 retired the Mode 5↔1 pacing: the pressurisation slew now runs the sourced 0.23 psi/s heater rate, the boron rate is a derived physical ceiling, and the grab-sample turnaround is a real 30-minute lab). What remains: the **cooldown depressurisation rate** — see §14.1 |
-| **Indicative** — display flavour derived from normalised internals | Illustrative | The gpm conversions (24 000 gpm RCS flow, 60 gpm charging, 30 gpm letdown, 100 gpm AFW) |
+| **Indicative** — display flavour derived from normalised internals | Illustrative | The RCS flow conversion (**≈ 34 500 gpm** at cold-leg conditions — see the note below). **The charging, letdown and auxiliary-feedwater ratings left this class** and are now *Derived*: §6.3 carries them (30.1 gpm charging, 12.7 gpm letdown, 86.2 gpm auxiliary feedwater), each computed from this plant's volume or power against a sourced Ginna rate rather than read off a display scale |
 
 > **NOTE.** The plant's absolute ratings — ≈ 300 MWt, ≈ 100 MWe, one loop, one SG, one RCP — are a **design choice**, not a measurement of any real unit. The SLS-100 is its own plant.
+
+> **NOTE — the RCS flow figure was CORRECTED in Rev 17, and it is worth knowing why.** This row
+> read **24 000 gpm** from the first revision until 2026-08-14. That figure was not derived from
+> anything: it disagreed with this plant's *own* ruled identity by about 1.5×. Take the ruled
+> numbers — 300 MWt, 610 °F hot leg, 550 °F cold leg, 2235 psia — and the energy balance
+> `Q = ṁ·Δh` gives a rise of **185 Btu/lb (185.4 kJ/kg)** across the core and therefore
+> **3 590 lbm/s (1 630 kg/s)**, which is **≈ 34 500 gpm** at cold-leg density. Nothing in the
+> simulator could detect the disagreement, because the model has no physical mass flow to check
+> it against — it runs on a normalised flow fraction. That is exactly why the figure sat wrong
+> for so long, and it is the defect that opened the physics-engine rewrite (**#479**).
+>
+> **A volumetric flow is meaningless without a temperature**, because the water expands as it
+> heats: the same 3 590 lbm/s reads ≈ 34 500 gpm cold-leg, ≈ 36 100 gpm at T-avg, and
+> ≈ 38 200 gpm hot-leg. Real plants quote cold-leg, and so does this row now. **The mass flow is
+> the unambiguous number** — quote that one if it matters.
+>
+> This row stays **Indicative**, and the class is the point: the value is now consistent with the
+> plant's identity, but the current model still does not *compute* a flow. It is a label on a
+> normalised fraction, not a measurement.
 
 ### 14.1 The one Compressed rate left worth knowing by name
 

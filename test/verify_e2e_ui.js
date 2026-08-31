@@ -10,7 +10,12 @@ var ROOT = path.join(__dirname, '..');
 var SCRATCH = process.env.GROK_GOAL_SCRATCH || path.join(require('os').tmpdir(), 'grok-goal-e2e-ui');
 var PORT = 9750 + Math.floor(Math.random() * 50);
 
-var ENGINES = ['pwr', 'rbmk_pre', 'rbmk_post', 'bwr'];
+/* PWR ONLY since #514 (owner-ruled): the shell no longer loads the RBMK/BWR scripts, and
+ * app.js falls back to the PWR when an override names an absent engine — so an rbmk/bwr row
+ * here would silently screenshot the PWR and certify nothing. The rows and their control
+ * maps were deleted WITH the script tags; restoring the plants to the shell means restoring
+ * both (git log this file). */
+var ENGINES = ['pwr2'];   /* the plant the site runs since 2026-08-26 — see the note at REQUIRED_BOARD_LABELS */
 var VIEWS = ['diagram', 'primary', 'secondary', 'all'];
 
 /* THE PLANT & MISSION WINDOW OPENS ON EVERY LOAD since 2026-08-11 *(OWNER DIRECTIVE: "It
@@ -18,7 +23,7 @@ var VIEWS = ['diagram', 'primary', 'secondary', 'all'];
  * navigation has to dismiss it exactly as a player does.
  *
  * It is deliberately NOT exempted by a URL parameter. A bypass list is what hid the window
- * from every real visitor: it contained `engine=`, and the site links `?engine=pwr` from
+ * from every real visitor: it contained `engine=`, and the site links `?engine=pwr2` (`?engine=pwr` until 2026-08-26) from
  * both entry points, so the one path nobody took — a bare shell.html — was the only path
  * that showed it, and that was the path my own check had used. A gate that skipped the
  * window would be testing a front door no player has. */
@@ -31,22 +36,41 @@ async function dismissMission(page) {
   } catch (e) { /* not mounted yet on some early navigations */ }
 }
 
+/* Wait until the board is PAINTED and the sim has ticked — the condition most of this
+ * file's fixed sleeps were approximating with wall time (#513: 44.45 s of waitForTimeout
+ * against a 54 s runner). The predicate is the header clock leaving T+00:00:00, i.e. at
+ * least one broadcast has landed and rendered (the overlay close auto-starts the plant —
+ * owner ruling 2026-08-11). Ceiling ~3x the sleeps it replaces; every assertion still runs
+ * AFTER the wait, so a conversion can only delay a red, never create a green. */
+async function waitBoardLive(page, timeoutMs) {
+  await page.waitForFunction(function () {
+    var c = document.getElementById('clock');
+    return !!c && /^T\+\d/.test(c.textContent || '') && c.textContent !== 'T+00:00:00';
+  }, { timeout: timeoutMs || 7500, polling: 100 });
+}
+
 /* Recently-added controls that must render on the shipped UI (data-act wiring).
  * PWR has NO entries here on purpose: data-act buttons are emitted only by
  * populateControlBar() into #pdCtlRow (ui/app.js:374,379,384), and the PWR returns
  * before that path to mount the learning board instead (ui/app.js:3413, :3459-3460).
  * The PWR board is covered by REQUIRED_BOARD_LABELS below. */
 var REQUIRED_ACTS = {
-  'rbmk_pre-primary': ['rbmk-eccs-on'],
-  'rbmk_pre-secondary': ['rbmk-turbine-set', 'dump-open'],
-  'rbmk_post-primary': ['rbmk-eccs-on'],
-  'bwr-secondary': ['dump-open', 'ic-on', 'stop-lpcs', 'slc-stop'],
+  /* rbmk/bwr rows removed with their shell script tags (#514) — see ENGINES above */
 };
 
 /* Board-rendered plants (PWR) expose controls through the label vocabulary rather
  * than data-act, so probe the same path Instructor highlights use:
  * RD.PwrBoard.revealControl(label) -> the tile to glow, or null if unreachable.
  * The board is one stage with no view bar, so every view must render all of these. */
+/* KEYED BY ENGINE, AND BOTH PWR ENGINES WEAR THE SAME BOARD. That is not an accident of
+ * naming: ui/app.js gives ENGINES.pwr2 `plant: 'pwr'`, so the profile tables, the synoptic
+ * and this vocabulary are shared, and only the physics behind them differs. Listing them
+ * separately rather than aliasing one to the other is deliberate — the day a control exists
+ * on one engine and not the other, this table has somewhere to say so, and the reachability
+ * sweep is exactly where that difference should surface. Today they are identical.
+ *
+ * ENGINES above drives which of these is actually swept, and it is pwr2: a screenshot of a
+ * plant no published build contains is a screenshot of nothing anyone sees. */
 var REQUIRED_BOARD_LABELS = {
   pwr: [
     'Charging Pump (CVCS)', 'CVCS Inventory Control', 'Letdown Orifices (CVCS)', 'Boron',
@@ -61,11 +85,10 @@ var REQUIRED_BOARD_LABELS = {
     'Control Bank', 'Shutdown Bank', 'SCRAM',
   ],
 };
+REQUIRED_BOARD_LABELS.pwr2 = REQUIRED_BOARD_LABELS.pwr.slice();
 
 var REQUIRED_LABELS = {
-  'rbmk_pre-secondary': ['Electrical Output', 'Turbine RPM', 'Cond. Vacuum'],
-  'rbmk_post-secondary': ['Electrical Output', 'Turbine RPM', 'Cond. Vacuum'],
-  'bwr-secondary': ['Electrical Output', 'Turbine RPM', 'Cond. Vacuum'],
+  /* rbmk/bwr rows removed with their shell script tags (#514) — see ENGINES above */
 };
 
 function mime(p) {
@@ -145,7 +168,7 @@ async function screenshot(page, engine, view) {
 
 async function testUnitsAndInstructor(page) {
   var log = [];
-  await page.goto('http://127.0.0.1:' + PORT + '/ui/shell.html?engine=pwr&view=primary', { waitUntil: 'networkidle', timeout: 90000 });
+  await page.goto('http://127.0.0.1:' + PORT + '/ui/shell.html?engine=pwr2&view=primary', { waitUntil: 'networkidle', timeout: 90000 });
   await dismissMission(page);
   await page.waitForTimeout(500);
 
@@ -244,6 +267,11 @@ async function testUnitsAndInstructor(page) {
   await page.keyboard.press('Escape');
   await page.waitForTimeout(200);
 
+  /* STAYS ON THE RETIRED ENGINE, deliberately. Walkthroughs are authored against it and
+     ENGINES.pwr2 carries `freePlayOnly: true`, so ?engine=pwr2&follow=... would land on the
+     Free-Play-only note and this half would assert against a panel instead of a procedure.
+     It moves when the scenario-compatibility pass lifts that flag, not before. The engine
+     still loads in the repo's ui/shell.html — only PUBLISHED builds drop it. */
   await page.goto('http://127.0.0.1:' + PORT + '/ui/shell.html?engine=pwr&follow=pwr_loss_of_feedwater', { waitUntil: 'networkidle', timeout: 90000 });
   await dismissMission(page);
   await page.waitForFunction(function () {
@@ -296,10 +324,10 @@ async function testSteamFeedPair(page) {
   // belong to rather than re-banding a threshold to whatever the default happens to be
   // (HR10 — the assertion is unchanged, and 0 gpm against a live steam draw still fails it).
   var read = async function (qs) {
-    await page.goto('http://127.0.0.1:' + PORT + '/ui/shell.html?engine=pwr&init=hot_full_power&run=1' + qs,
+    await page.goto('http://127.0.0.1:' + PORT + '/ui/shell.html?engine=pwr2&init=hot_full_power&run=1' + qs,
       { waitUntil: 'networkidle', timeout: 90000 });
     await dismissMission(page);
-    await page.waitForTimeout(1200);
+    await waitBoardLive(page);                       /* was waitForTimeout(1200) — #513 */
     return page.evaluate(function () {
       var t = function (id) {
         var e = document.querySelector('[data-item="' + id + '"]');
@@ -316,7 +344,7 @@ async function testSteamFeedPair(page) {
         var r = e.getBoundingClientRect();
         return { right: Math.round(r.right), top: Math.round(r.top) };
       };
-      return { steam: t('ims3wm0d0bu'), feed: t('imrsgkz4lq0'), gov: t('imrppej8ulo'), dump: t('imsgunuyvon'),
+      return { steam: t('ims3wm0d0bu'), feed: t('imrsgkz4lq0'), gov: t('imrppej8ulo'), dump: t('imsgunuyvon'), adv: t('imsguptyg16'),
                steamBox: box('ims3wm0d0bu'), feedBox: box('imrsgkz4lq0') };
     });
   };
@@ -380,7 +408,26 @@ async function testSteamFeedPair(page) {
   // curve carrying ~7 % here. The sourced curve (ANS 5.1-1971 + actinides, un-multiplied)
   // puts t+600 s at ~2.4 % of rated and the dump reads 2 %. The claim is that the dump picks
   // decay heat up AT ALL, so the threshold tracks the heat there is to pick up.
-  if (!(num(tripped.dump) > 1)) throw new Error('steam dump did not pick up decay heat (dump=' + tripped.dump + ')');
+  /* THE DECAY HEAT MUST BE GOING SOMEWHERE, and on this plant it is not the condenser dumps.
+   * This read `num(tripped.dump) > 1` until 2026-08-26, when the gate moved to the engine the
+   * site ships. MEASURED on both, t+600 s after a turbine trip from hot full power:
+   *
+   *     retired engine   gov 0 %   dump  2 %   adv  0 %   steam 22 gpm  feed 22 gpm
+   *     PWR2             gov 0 %   dump  0 %   adv 61 %   steam 31 gpm  feed 33 gpm
+   *
+   * PWR2's dump reading 0 is the plant being RIGHT, not a regression: C-7 holds the condenser
+   * dumps shut on a dispatch trip (sourced — PWR2_VALIDATION.md 47), so the atmospheric dump
+   * carries it, which is the real-plant answer and the reason the ADV rung was built (#371).
+   * Pinning the CONDENSER path would have made this gate demand the interlock be defeated.
+   *
+   * The claim is unchanged and so is the discriminant (HR10): with the governor at 0 %, a
+   * steam path is open and carrying heat. It still fails on the defect this check exists for —
+   * a readout wired to the governor-only `steam_flow` channel leaves both positions at 0 and
+   * STEAM FLOW at ~0 — and it still passes on the retired engine, where the dump carries it. */
+  if (!(num(tripped.dump) > 1 || num(tripped.adv) > 1)) {
+    throw new Error('nothing is carrying decay heat with the turbine shut (dump=' +
+      tripped.dump + ' adv=' + tripped.adv + ')');
+  }
   // Floor 10, was 20, was 40. Both drops are the same story and neither touches the claim:
   // #372 put feedwater enthalpy in, so part of the decay heat goes to heating feed rather
   // than making steam (~64 -> ~39 gpm); #364 then corrected decay heat itself down ~2.4x in
@@ -427,58 +474,148 @@ async function testSteamFeedPair(page) {
  * would pass on all three defects; only clicking a specific mark and reading back
  * the clock pins the mapping. It aims at the second-oldest mark on purpose — the
  * newest and the oldest are both reachable by a broken inversion that clamps. */
-/* The trend graphs open on a REAL 30 minutes, not a flat line *(OWNER, 2026-08-01: "when you
- * make preset starts, run them for 30 minutes to fill up the graph with real data before
- * saving")*.
+/* ESF AUTO re-arm buttons disable themselves when the running engine declares no such arm
+ * (#503). The kernel writes automation.esf keys only for config-declared systems; PWR2
+ * declares only afw (pwr2_shell.js), so its board must show the HPI AUTO pushbutton dark —
+ * the alternative is the shipped defect: a pressed button answered by an invisible
+ * COMMAND_ERROR. Counting `.bd-btn:disabled` per engine pins both directions: pwr2 gets
+ * exactly ONE disabled button (labelled AUTO), pwr gets ZERO — so the guard cannot silently
+ * disable everything, and cannot silently disable nothing. */
+/* THE REFUSAL HAS TO REACH A FRAME (#558) — and this is the only place that can say so.
+ * `run_pwr2_board` copies the try/catch into a Node harness that never renders a Scanner, and
+ * this file counted disabled buttons without ever pressing one and reading the message back. So
+ * the mechanism that turns every refusal in the sim into a dead button — the class the owner has
+ * found by hand three times (#503, #506, #509) — had no gate at all, and #505 was CLOSED on a fix
+ * that is true of `cmd()` and false of the board, which is the only control surface PWR2 has.
  *
- * A preset start seeds the chart's 30-minute record window instantly with flat samples and
- * then swaps in a genuinely-run trace, computed in setTimeout slices off the main thread and
- * cached per plant+design-version+initial-state (ui/app.js `ensurePreseed`). Flat-first is
- * deliberate — the real run costs ~1.9 s, and paying that synchronously would freeze boot,
- * every reset, every plant switch and every mission start.
+ * THE DEFECT: `inspectFlash` writes the reason into `inspectCur`, then the BODY-LEVEL
+ * click-to-inspect listener runs later in the SAME dispatch, resolves the button under the
+ * pointer and overwrites it. Written and destroyed synchronously — measured at 0 of 426 frames
+ * across four refused presses.
  *
- * THE CHECK IS THE SPREAD, and it discriminates hard. Measured by A/B on the real page,
- * neutering only the `ensurePreseed` call: with the swap the busiest plotted series has
- * **28 distinct y-values** across its 61 points; without it, **exactly 1** — a perfectly
- * horizontal line, which is the defect this was raised about. Anything > 1 means the swap
- * landed, so the band is wide but the negative control is unambiguous.
- *
- * Note what this canNOT be: an assertion about interesting SHAPE. The initial conditions are
- * constructed as true steady states, so 30 real minutes is a noisy flat line — the gain is
- * instrument texture and the genuine slow drifts (xenon, boron), not a different curve. */
-async function testTrendPreseed(page) {
+ * SAMPLE ACROSS FRAMES, never once: a single read after the click cannot tell "painted then
+ * replaced" from "never painted", and the whole defect lives in that difference. The press must
+ * go to the <button> INSIDE the tile (pwr_board.js:374) — clicking the tile wrapper only bubbles
+ * to the body inspector and sends no command, which reads as a pass. */
+async function testRefusalReachesTheScanner(page) {
   var log = [];
-  await page.goto('http://127.0.0.1:' + PORT + '/ui/shell.html?engine=pwr',
+  await page.goto('http://127.0.0.1:' + PORT + '/ui/shell.html?engine=pwr2',
     { waitUntil: 'networkidle', timeout: 90000 });
   await dismissMission(page);
-  // The run is sliced; give it room on a loaded CI box. It is ~1.9 s of work.
-  await page.waitForTimeout(12000);
-  var st = await page.evaluate(function () {
-    var svg = document.getElementById('chartCanvas');
-    if (!svg) return { found: false };
-    var best = 0, pts = 0;
-    Array.prototype.forEach.call(svg.querySelectorAll('polyline'), function (el) {
-      var raw = (el.getAttribute('points') || '').trim();
-      if (!raw) return;
-      var ys = raw.split(/\s+/).map(function (p) { return parseFloat(p.split(',')[1]); })
-                  .filter(function (y) { return isFinite(y); });
-      var seen = {}, n = 0;
-      ys.forEach(function (y) { var k = y.toFixed(3); if (!seen[k]) { seen[k] = 1; n++; } });
-      if (n > best) { best = n; pts = ys.length; }
+  await waitBoardLive(page);
+  /* RHR ALIGN is the honest fixture: at power its refusal is the SOURCED suction-valve
+   * permissive, i.e. a message the player is meant to LEARN from, and #558 measured it at
+   * 0 frames. It is a refusal the plant will always raise at power, so the check cannot
+   * silently stop exercising anything. */
+  var r = await page.evaluate(async function () {
+    var tile = document.querySelector('[data-item="ims3wg27iif"]');
+    if (!tile) return { missing: true };
+    var btn = tile.matches('button') ? tile : tile.querySelector('button');
+    if (!btn || btn.disabled) return { unusable: true };
+    function scan() {
+      var p = document.querySelector('#scannerPanel');
+      return p ? p.innerText.replace(/\s+/g, ' ').trim() : '';
+    }
+    btn.click();
+    var frames = 0, hit = 0;
+    await new Promise(function (res) {
+      var t0 = performance.now();
+      (function tick() {
+        frames++;
+        if (/Command error|Blocked/i.test(scan())) hit++;
+        if (performance.now() - t0 < 1200) requestAnimationFrame(tick); else res();
+      })();
     });
-    return { found: true, distinct: best, points: pts,
-             series: svg.querySelectorAll('polyline').length };
+    return { frames: frames, hit: hit, text: scan().slice(0, 140) };
   });
-  if (!st.found) throw new Error('trend chart (#chartCanvas) did not render');
-  if (!st.series) throw new Error('trend chart rendered no series');
-  if (st.distinct <= 1) {
-    throw new Error('the trend graph opened FLAT — ' + st.distinct + ' distinct y-value(s) across ' +
-      st.points + ' points. The 30-minute preseed did not swap in real data (ui/app.js ensurePreseed).');
+  if (r.missing || r.unusable) {
+    console.error('FAIL: the RHR ALIGN fixture is gone from the board — re-point this check');
+    process.exitCode = 1;
+    return 'refusal-scanner: FIXTURE MISSING' + String.fromCharCode(10);
   }
-  log.push('trend preseed: ' + st.series + ' series, busiest has ' + st.distinct +
-           ' distinct y over ' + st.points + ' points (flat seed scores 1)');
+  log.push('frames ' + r.hit + '/' + r.frames + '  text: ' + r.text);
+  if (!(r.frames > 10 && r.hit === r.frames)) {
+    console.error('FAIL: a refused board press must put its reason on the Scanner and LEAVE it ' +
+      'there — ' + r.hit + ' of ' + r.frames + ' frames carried it (#558). Text: ' + r.text);
+    process.exitCode = 1;
+  } else {
+    console.log('  refusal reaches the Scanner and persists: ' + r.hit + '/' + r.frames + ' frames');
+  }
+  /* THE OTHER HALF: a later HOVER over something HINTED still clears it. The fix must not turn
+   * the flash into a message that sticks for ever — the block's own documented behaviour is
+   * that the next hover replaces it, and a guard scoped to time rather than to the dispatch
+   * would break that.
+   *
+   * IT MUST BE A HINTED ELEMENT. A first draft moved the pointer to (12,12) and reddened: that
+   * is bare page, `inspectResolve` returns null, and `inspectAt` returns early BY DESIGN —
+   * "pointing at nothing keeps the last description on screen rather than blanking the block".
+   * The check was asserting against the panel's own persistence rule, not against the guard. */
+  var after = await page.evaluate(function () {
+    var other = document.querySelector('[data-item="imrmsslj42u"]');   /* AFW START, hinted */
+    if (other) other.dispatchEvent(new MouseEvent('mouseover', { bubbles: true }));
+    var p = document.querySelector('#scannerPanel');
+    return p ? p.innerText.replace(/\s+/g, ' ').trim() : '';
+  });
+  log.push('after hover: ' + after.slice(0, 100));
+  if (/Command error/i.test(after)) {
+    console.error('FAIL: the refusal outlived a hover — the dispatch guard has become a timer (#558)');
+    process.exitCode = 1;
+  }
+  return log.join(String.fromCharCode(10)) + String.fromCharCode(10);
+}
+
+async function testEsfArmButtons(page) {
+  var log = [];
+  /* pwr disables NOTHING; pwr2 disables the DELIBERATE set: the HPI AUTO re-arm (#503),
+   * ROD AUTO (#506 honest-absent) and the SR DET toggle (#567). The boron panel and RHR came
+   * back with #507 waves 1-2 (a real kernel channel and a real align command). Count pins both
+   * directions (cannot silently disable everything or nothing); membership pins identity.
+   *
+   * THE SET CHANGED WITH #567 AND WAS RE-DERIVED, NOT BUMPED. Grid FOLLOW LEFT it — that tile
+   * is the turbine LATCH now (#551/#559), an enabled control with a real command behind it —
+   * and SR DET JOINED it, because the plant publishes `sr_detector_fixed` and the board reads
+   * it. Net 3 either way, which is exactly why a count alone would have missed the swap;
+   * `mustInclude` is what pins identity, and it is the half that moved.
+   *
+   * AND AGAIN WITH #570: STEAM DUMP **OPEN** joined. It was a live button that could ONLY
+   * throw — the dump is controller-driven and has no manual full-open lever — and its refusal
+   * is raised INSIDE the MAPPED `set_steam_dump` handler, so neither the #567 registry sweep
+   * nor run_pwr2_kernel band 4 could see it. AUTO and CLOSED beside it stay live, which is why
+   * the label here is OPEN and not the whole dump panel. */
+  var expect = { pwr: 0, pwr2: 4 };
+  var mustInclude = ['AUTO', 'ROD AUTO', 'SR DET', 'OPEN'];
+  for (var i = 0; i < 2; i++) {
+    var eng = ['pwr', 'pwr2'][i];
+    await page.goto('http://127.0.0.1:' + PORT + '/ui/shell.html?engine=' + eng,
+      { waitUntil: 'networkidle', timeout: 90000 });
+    await dismissMission(page);
+    await waitBoardLive(page);                       /* was waitForTimeout(2500) — #513 */
+    var st = await page.evaluate(function () {
+      var dis = Array.prototype.slice.call(document.querySelectorAll('.bd-btn:disabled'));
+      return { total: document.querySelectorAll('.bd-btn').length,
+               disabled: dis.map(function (b) { return (b.textContent || '').trim(); }) };
+    });
+    if (!st.total) throw new Error(eng + ': board rendered no buttons');
+    if (st.disabled.length !== expect[eng]) {
+      throw new Error(eng + ': expected ' + expect[eng] + ' disabled board button(s), found ' +
+        st.disabled.length + ' [' + st.disabled.join(',') + ']');
+    }
+    if (eng === 'pwr2') {
+      var missing = mustInclude.filter(function (m) { return st.disabled.indexOf(m) === -1; });
+      if (missing.length) {
+        throw new Error('pwr2: deliberate disables missing [' + missing.join(',') +
+          '] from [' + st.disabled.join(',') + ']');
+      }
+    }
+    log.push(eng + ': ' + st.disabled.length + '/' + st.total + ' buttons disabled' +
+      (st.disabled.length ? ' (' + st.disabled.join(',') + ')' : ''));
+  }
   return log.join('\n') + '\n';
 }
+
+/* (testTrendPreseed deleted 2026-08-21 with the pre-seed itself, #501 — the chart now
+ * deliberately opens empty and fills live, so a check demanding 30 minutes of opening
+ * history would be asserting the removed behaviour.) */
 
 /* THE CHART SETTINGS WINDOW (#454) — large, pausing, every channel with its live value, and
  * a per-row indication / physics / both choice.
@@ -502,10 +639,10 @@ async function testTrendPreseed(page) {
  *      so the resolver's edge cases ride here rather than in a Node runner. */
 async function testChartSettings(page) {
   var log = [];
-  await page.goto('http://127.0.0.1:' + PORT + '/ui/shell.html?engine=pwr',
+  await page.goto('http://127.0.0.1:' + PORT + '/ui/shell.html?engine=pwr2',
     { waitUntil: 'networkidle', timeout: 90000 });
   await dismissMission(page);
-  await page.waitForTimeout(1500);
+  await waitBoardLive(page);                         /* was waitForTimeout(1500) — #513 */
 
   // ---- 1. it opens, and the list is actually on screen -------------------------------
   await page.click('#chartOptsBtn');
@@ -689,6 +826,174 @@ async function testChartSettings(page) {
   return log.join('\n') + '\n';
 }
 
+/* THE MONITOR LIST (#477) — the Indications tab's tick, repurposed.
+ *
+ * *(OWNER, 2026-08-12: "the check boxes select what you see in the [strip chart] which is
+ * redundant because now the strip chart has its own menu… they are going to be used for
+ * indications that I want to monitor… they place a duplicate at the top of the indications
+ * panel above all the other indications.")*
+ *
+ * WRITTEN TO FAIL ON THE OLD BEHAVIOUR TOO (HR10). The easy version of this check — "a
+ * duplicate row appears" — would pass on a build that ALSO still plotted the channel, and the
+ * plot side is the half nothing in the list can show you. So the trace count is recorded
+ * across the tick: a leftover `drawChart()`/`ui.series` write in the row handler moves it, and
+ * that assertion is the one that says the repurpose actually happened. Conversely a build with
+ * the OLD handler and no block fails on the first assertion. Neither half passes alone.
+ *
+ * The other four are the cases the feature is only useful if it holds: the copy carries BOTH
+ * values and they equal the source's (a watch list printing a different number from the row it
+ * copies is worse than no watch list); the copy is the FIRST row in the panel; a row-type chip
+ * cannot hide it; and the selection survives a reload, which is the only reason to curate one.
+ *
+ * It cleans up after itself — `rd_monitor` is real localStorage and the rest of this gate
+ * shares the browser context. */
+async function testMonitorList(page) {
+  var log = [];
+  var URL = 'http://127.0.0.1:' + PORT + '/ui/shell.html?engine=pwr2';
+  await page.goto(URL, { waitUntil: 'networkidle', timeout: 90000 });
+  await dismissMission(page);
+  await page.evaluate(function () { try { localStorage.removeItem('rd_monitor'); } catch (e) {} });
+  await page.goto(URL, { waitUntil: 'networkidle', timeout: 90000 });
+  await dismissMission(page);
+  await page.click('[data-tab="indications"]');
+  await page.waitForTimeout(900);
+
+  /* THE SUBJECT MUST BE AN UNPLOTTED CHANNEL, and this asserts it rather than assuming it.
+   * The first version of this check ticked `tavg` — which is in `PROFILES.pwr.defaultSeries`
+   * and therefore ALREADY on the chart, so "the trace count did not move" was true no matter
+   * what the handler did. Re-injecting the old `ui.series[id] = checked; drawChart()` passed
+   * it green. A red that cannot go red is worse than no check, so the precondition is
+   * measured: `thot` carries no trace and no swatch before the tick. */
+  var start = await page.evaluate(function () {
+    var src = document.querySelector('#indicationsList .ind-grp:not(.ind-monitor) .num-line[data-ser="thot"]');
+    return { polys: document.querySelectorAll('#chartCanvas polyline').length,
+             mon: document.querySelectorAll('#indMonitor .num-line').length,
+             head: !!document.querySelector('#indMonitor .ind-monitor'),
+             plotted: !!(src && src.querySelector('.ser-swatch')) };
+  });
+  if (start.mon !== 0 || start.head) {
+    throw new Error('the Monitoring block must render NOTHING when nothing is ticked — got ' +
+      start.mon + ' rows, heading=' + start.head);
+  }
+  if (start.plotted) {
+    throw new Error('Hot Leg is already plotted, so "the tick did not touch the chart" cannot ' +
+      'fail — pick a channel outside PROFILES.pwr.defaultSeries. This precondition exists ' +
+      'because the check was once written on `tavg`, which IS in the defaults, and it passed ' +
+      'with the old plot-on-tick handler injected straight back in.');
+  }
+
+  /* ---- 1. a tick copies the row to the top, and does NOT touch the chart --------------
+   *
+   * EVERY SOURCE-ROW SELECTOR BELOW CARRIES `:not(.ind-monitor)`, and it is load-bearing.
+   * The block keeps `.ind-grp` for its row metrics, so `.ind-grp .num-line[data-ser=x]`
+   * matches the COPY first (it is earlier in the document) and every "did the source row
+   * do Y?" check would silently be asking about the duplicate instead. That is how this
+   * check first ran red on a build where the CSS was correct. */
+  await page.click('#indicationsList .ind-grp:not(.ind-monitor) .num-line[data-ser="thot"] input[data-monitor]');
+  await page.waitForTimeout(700);
+  var one = await page.evaluate(function () {
+    var list = document.getElementById('indicationsList');
+    var dup = document.querySelector('#indMonitor .num-line[data-ser="thot"]');
+    var src = document.querySelector('#indicationsList .ind-grp:not(.ind-monitor) .num-line[data-ser="thot"]');
+    return {
+      dup: !!dup,
+      first: list.querySelector('.num-line') === dup,
+      polys: document.querySelectorAll('#chartCanvas polyline').length,
+      plotted: !!src.querySelector('.ser-swatch'),
+      dupInd: dup ? dup.querySelector('.nv').textContent : null,
+      srcInd: src ? src.querySelector('.nv').textContent : null,
+      dupPhys: dup ? dup.querySelector('.nv-true').textContent : null,
+      srcPhys: src ? src.querySelector('.nv-true').textContent : null,
+      srcChecked: !!src.querySelector('input[data-monitor]').checked,
+      count: (document.querySelector('.ind-mon-n') || {}).textContent,
+    };
+  });
+  if (!one.dup) throw new Error('ticking a row did not copy it into #indMonitor');
+  if (!one.first) throw new Error('the monitored copy is not the FIRST row in the panel');
+  if (one.polys !== start.polys || one.plotted) {
+    throw new Error('ticking an Indications row CHANGED THE CHART: ' + start.polys + ' -> ' +
+      one.polys + ' traces, swatch=' + one.plotted + '. Since #477 the tick curates the ' +
+      'monitor list and nothing else; the chart is chosen in its own settings window. (Two ' +
+      'assertions, not one: the swatch catches a `ui.series` write even in a state where the ' +
+      'trace count happens not to move.)');
+  }
+  if (!one.srcChecked) throw new Error('the source row\'s own box did not end up ticked');
+  if (one.dupInd !== one.srcInd || one.dupPhys !== one.srcPhys) {
+    throw new Error('the monitored copy disagrees with the row it copies: ind "' + one.dupInd +
+      '" vs "' + one.srcInd + '", phys "' + one.dupPhys + '" vs "' + one.srcPhys + '"');
+  }
+  if (one.dupInd === '—' || one.dupPhys === '—') {
+    throw new Error('the monitored copy is not being painted (ind "' + one.dupInd + '", phys "' +
+      one.dupPhys + '") — a new row must not wait for the next broadcast to read');
+  }
+  if (one.count !== '1') throw new Error('the block heading counts wrong: "' + one.count + '"');
+  log.push('tick: Hot Leg copied to the top reading ' + one.dupInd + ' / ' + one.dupPhys +
+    ', chart unchanged at ' + one.polys + ' traces');
+
+  // ---- 2. profile order, not tick order ---------------------------------------------
+  // `core_exit` precedes `thot` in PROFILES.pwr.series and sits in a different group, so
+  // ticking it SECOND must place it FIRST — and the block must flatten the grouping.
+  await page.click('#indicationsList .ind-grp:not(.ind-monitor) .num-line[data-ser="core_exit"] input[data-monitor]');
+  await page.waitForTimeout(500);
+  var order = await page.evaluate(function () {
+    return Array.prototype.slice.call(document.querySelectorAll('#indMonitor .num-line'))
+      .map(function (l) { return l.getAttribute('data-ser'); });
+  });
+  if (order.join(',') !== 'core_exit,thot') {
+    throw new Error('the block is in tick order, not profile order: [' + order.join(', ') + ']');
+  }
+  log.push('order: [' + order.join(', ') + '] — profile order, not the order they were ticked');
+
+  // ---- 3. a row-type chip cannot hide a monitored row --------------------------------
+  await page.click('#indFilters [data-indfilter="phys"]');
+  await page.waitForTimeout(400);
+  var filtered = await page.evaluate(function () {
+    var vis = function (el) { return !!(el && el.getBoundingClientRect().height); };
+    return { src: vis(document.querySelector('#indicationsList .ind-grp:not(.ind-monitor) .num-line[data-ser="thot"]')),
+             dup: vis(document.querySelector('#indMonitor .num-line[data-ser="thot"]')) };
+  });
+  if (filtered.src) throw new Error('the "Physics only" chip did not hide the paired Hot Leg row');
+  if (!filtered.dup) throw new Error('a row-type chip hid a MONITORED row — the block is an explicit selection and outranks the filter');
+  await page.click('#indFilters [data-indfilter="all"]');
+  await page.waitForTimeout(300);
+  log.push('filter: "Physics only" hides the source row and leaves the monitored copy standing');
+
+  // ---- 4. it survives a reload -------------------------------------------------------
+  await page.goto(URL, { waitUntil: 'networkidle', timeout: 90000 });
+  await dismissMission(page);
+  await page.click('[data-tab="indications"]');
+  await page.waitForTimeout(900);
+  var kept = await page.evaluate(function () {
+    return { rows: Array.prototype.slice.call(document.querySelectorAll('#indMonitor .num-line'))
+               .map(function (l) { return l.getAttribute('data-ser'); }),
+             box: !!(document.querySelector('#indicationsList .ind-grp:not(.ind-monitor) .num-line[data-ser="thot"] input[data-monitor]') || {}).checked };
+  });
+  if (kept.rows.join(',') !== 'core_exit,thot' || !kept.box) {
+    throw new Error('the monitor list did not survive a reload: [' + kept.rows.join(', ') +
+      '], source box checked=' + kept.box);
+  }
+  log.push('persistence: both channels came back after a reload with their boxes ticked');
+
+  // ---- 5. unticking FROM THE COPY clears both ----------------------------------------
+  await page.click('#indMonitor .num-line[data-ser="thot"] input[data-monitor]');
+  await page.waitForTimeout(500);
+  var gone = await page.evaluate(function () {
+    return { dup: !!document.querySelector('#indMonitor .num-line[data-ser="thot"]'),
+             box: !!(document.querySelector('#indicationsList .ind-grp:not(.ind-monitor) .num-line[data-ser="thot"] input[data-monitor]') || {}).checked,
+             left: document.querySelectorAll('#indMonitor .num-line').length };
+  });
+  if (gone.dup) throw new Error('unticking from the copy left the copy in place');
+  if (gone.box) throw new Error('unticking from the copy left the SOURCE row still ticked');
+  if (gone.left !== 1) throw new Error('unticking one row took ' + (2 - gone.left) + ' rows with it');
+  log.push('untick: clearing the copy clears the source row too, and leaves the other alone');
+
+  // Leave the browser context as we found it — this is real localStorage.
+  await page.click('#indMonitor .num-line[data-ser="core_exit"] input[data-monitor]');
+  await page.waitForTimeout(300);
+  await page.evaluate(function () { try { localStorage.removeItem('rd_monitor'); } catch (e) {} });
+  return log.join('\n') + '\n';
+}
+
 /* CLOSING PLANT & MISSION LEAVES THE PLANT RUNNING *(OWNER, 2026-08-11: "When i close the
  * plant menu after starting the sim the sim should start playing. it currently starts
  * paused. it should start running after closing the plant & mission menu.")*.
@@ -706,9 +1011,11 @@ async function testMissionCloseResumes(page) {
   var running = function () {
     return page.evaluate(function () { return !document.getElementById('playBtn').classList.contains('paused'); });
   };
-  await page.goto('http://127.0.0.1:' + PORT + '/ui/shell.html?engine=pwr',
+  await page.goto('http://127.0.0.1:' + PORT + '/ui/shell.html?engine=pwr2',
     { waitUntil: 'networkidle', timeout: 90000 });
-  await page.waitForTimeout(1200);
+  /* was waitForTimeout(1200): the predicate is the assertion one line down (#513) */
+  await page.waitForSelector('#missionOverlay', { state: 'visible', timeout: 5000 })
+    .catch(function () { /* the throw below carries the real message */ });
 
   // The window opens on every load, so this is the very first thing a player does.
   if (!(await page.isVisible('#missionOverlay'))) throw new Error('Plant & Mission did not open on load');
@@ -722,7 +1029,15 @@ async function testMissionCloseResumes(page) {
   await page.waitForTimeout(400);
   if (!(await page.isVisible('#missionOverlay'))) throw new Error('could not reopen Plant & Mission');
   await page.click('[data-mfree]');
-  await page.waitForTimeout(1200);
+  /* was waitForTimeout(1200): wait on the two states the assertions read — closed AND
+   * running (#513). On the defect it waits the ceiling and reds as before. NOTE the
+   * player-paused twin below keeps its fixed sleep DELIBERATELY: it asserts a negative
+   * (the plant must NOT resume after the rebuild), and a shortened window would weaken it. */
+  await page.waitForFunction(function () {
+    var ov = document.getElementById('missionOverlay');
+    var closed = !ov || ov.style.display === 'none' || ov.hidden || !ov.offsetParent;
+    return closed && !document.getElementById('playBtn').classList.contains('paused');
+  }, { timeout: 3600, polling: 100 }).catch(function () { /* assertions below carry the message */ });
   if (await page.isVisible('#missionOverlay')) throw new Error('Free Play did not close the window');
   if (!(await running())) {
     throw new Error('starting Free Play left the plant PAUSED — switchEngine took the ' +
@@ -751,9 +1066,9 @@ async function testMissionCloseResumes(page) {
 /* THE RUN-START MARK — sim time zero *(OWNER, 2026-08-11: "The strip chart should have a
  * line to show the start of the sim at time=0.")*.
  *
- * IT MARKS A REAL JOIN, which is why it is worth gating rather than eyeballing. A preset
- * start preseeds 30 minutes of genuinely-run trend at NEGATIVE sim time, so at T+10 s on the
- * default 5-minute window 290 s of the plot is history and 10 s is the run you are driving.
+ * Since the pre-seed removal (#501) the chart opens empty, so the line marks where the
+ * record begins on an otherwise-bare axis rather than a join with synthetic history — the
+ * geometry being gated (position from chartExtent's t0/window mapping) is unchanged.
  *
  * THE OVERLAP CHECK IS THE ONE THAT EARNED ITS PLACE. The tag first rendered at the TOP of
  * the plot and landed inside the first lane's range label — "40% T+0 %" on screen. Every
@@ -761,10 +1076,14 @@ async function testMissionCloseResumes(page) {
  * tag's RECT against the lane chrome turns that into something a gate can hold. */
 async function testRunStartMark(page) {
   var log = [];
-  await page.goto('http://127.0.0.1:' + PORT + '/ui/shell.html?engine=pwr',
+  await page.goto('http://127.0.0.1:' + PORT + '/ui/shell.html?engine=pwr2',
     { waitUntil: 'networkidle', timeout: 90000 });
   await dismissMission(page);
-  await page.waitForTimeout(2500);
+  /* was waitForTimeout(2500): the predicate is the thing the check reads (#513) */
+  await page.waitForFunction(function () {
+    return !!document.querySelector('#chartCanvas .run-start') &&
+           !!document.querySelector('.run-start-tag');
+  }, { timeout: 7500, polling: 100 });
 
   var st = await page.evaluate(function () {
     var line = document.querySelector('#chartCanvas .run-start');
@@ -807,7 +1126,13 @@ async function testRunStartMark(page) {
    * 600x, then drop to 1x (whose ladder offers a 60 s rung) so the run is far older than the
    * window. */
   await page.click('#speed [data-speed="600"]');
-  await page.waitForTimeout(6000);
+  /* was waitForTimeout(6000): the point is SIM time, not wall time — the run start only
+   * needs to be far older than the 60 s window the negative control uses (#513). At 600x
+   * this crosses in well under a second of wall clock. */
+  await page.waitForFunction(function () {
+    var m = /^T\+(\d+):(\d+):(\d+)/.exec((document.getElementById('clock') || {}).textContent || '');
+    return !!m && (+m[1] * 3600 + +m[2] * 60 + +m[3]) > 300;
+  }, { timeout: 18000, polling: 100 });
   await page.click('#speed [data-speed="1"]');
   await page.waitForTimeout(600);
   await page.click('#graphWindow [data-win="60"]');
@@ -831,7 +1156,7 @@ async function testRunStartMark(page) {
 async function testRewindPicker(page) {
   var log = [];
   var VBW = 400, PLOT_FRAC = 0.86;                 // mirror ui/app.js drawChart
-  await page.goto('http://127.0.0.1:' + PORT + '/ui/shell.html?engine=pwr&run=1',
+  await page.goto('http://127.0.0.1:' + PORT + '/ui/shell.html?engine=pwr2&run=1',
     { waitUntil: 'networkidle', timeout: 90000 });
   await dismissMission(page);
   await page.waitForTimeout(800);
@@ -865,6 +1190,18 @@ async function testRewindPicker(page) {
     throw new Error('⏪ Rewind is disabled after ' + tLive + ' s of free play — no checkpoint was laid');
   }
   await page.click('#chartRewindBtn');
+  /* ⛔ WAIT FOR PICK MODE TO SETTLE, THEN READ EVERYTHING IN ONE GO (#521). This was a fixed
+   * 300 ms sleep followed by TWO separate round trips — the marks and the x-axis span from one
+   * evaluate, the clock from another. Entering pick mode WIDENS the plot to show every reachable
+   * mark, so those two reads can straddle the redraw: the span belongs to one frame and the clock
+   * to the next, `t0 = tAfterPress - span` mixes them, and if a checkpoint appeared in between
+   * `marks[1]` is a different checkpoint altogether. That is not jitter — it is a whole mark of
+   * error, and it is why CI once read "expected T+7 s, landed T+175 s" on a commit that touched
+   * none of this and passed on a re-run of the same job (#521). */
+  await page.waitForFunction(function () {
+    return document.querySelector('.strip-chart').classList.contains('rewind-pick') &&
+           document.getElementById('playBtn').classList.contains('paused');
+  }, { timeout: 5000, polling: 50 }).catch(function () { /* the throws below carry the message */ });
   await page.waitForTimeout(300);
 
   var st = await page.evaluate(function () {
@@ -877,6 +1214,9 @@ async function testRewindPicker(page) {
         .map(function (m) { return parseFloat(m.getAttribute('x1')); })
         .sort(function (a, b) { return a - b; }),
       axis0: (document.querySelectorAll('#chartXAxis span')[0] || {}).textContent || '',
+      /* #521 — the clock is read HERE, in the same evaluate as the marks and the span, so the
+       * three cannot come from different frames. Reading it separately is the whole defect. */
+      clock: (document.getElementById('clock').textContent || '').trim(),
       left: r.left, top: r.top, w: r.width, h: r.height,
     };
   });
@@ -892,7 +1232,11 @@ async function testRewindPicker(page) {
   // passed on one branch and failed on the merge for pure timing reasons, which is
   // the tell that it was never asserting what it claimed. What a one-step rewind
   // does, and pick mode cannot, is move the clock BACKWARDS.
-  var tAfterPress = await clockSec();
+  var tAfterPress = (function (txt) {          /* #521 — from st, NOT a second round trip */
+    var m = /(\d+):(\d+):(\d+)/.exec(txt || '');
+    return m ? (+m[1]) * 3600 + (+m[2]) * 60 + (+m[3]) : NaN;
+  })(st.clock);
+  if (!isFinite(tAfterPress)) throw new Error('could not read the clock from the pick-mode frame ("' + st.clock + '")');
   if (tAfterPress < tLive) {
     throw new Error('pressing ⏪ rewound the plant (T+' + tLive + ' → T+' + tAfterPress +
       ') instead of opening the picker (#137)');
@@ -947,20 +1291,27 @@ async function testRewindPicker(page) {
  */
 async function testDiagBundle(page) {
   var log = [];
-  await page.goto('http://127.0.0.1:' + PORT + '/ui/shell.html?engine=pwr',
+  await page.goto('http://127.0.0.1:' + PORT + '/ui/shell.html?engine=pwr2',
     { waitUntil: 'networkidle', timeout: 90000 });
   await dismissMission(page);
-  await page.waitForTimeout(1500);
-  // SPEED FIRST, THEN PLAY. Ticks taken at 1x produce no fine rows at all — a 1x broadcast
-  // carries 0.1 s of sim against the service's 0.2 s fine grid — so a single tick between
-  // pressing play and the speed landing latches `sampling.source` to "mixed" for the rest of
-  // the session. Ordering it this way makes the run deterministic instead of a race the
-  // parallel gate loses on a loaded box.
+  await waitBoardLive(page);                         /* was waitForTimeout(1500) — #513 */
+  // THE PLANT IS ALREADY RUNNING — closing the boot mission overlay auto-starts it
+  // *(OWNER DIRECTIVE, 2026-08-11: "Sim should start running not paused.")*, so an
+  // unconditional #playBtn press PAUSES it. This test carried that press from before the
+  // ruling and passed for ten days on an accident: the plant raced at 600x for the
+  // ~100 ms between the speed click and the play click, and those few broadcasts held
+  // enough fine rows to satisfy the spacing check. The #501 pre-seed removal shortened
+  // boot enough to shrink that window below one broadcast, which is what exposed it.
+  // Press play only if the clock is actually stopped; `source` will read "mixed" (the 1x
+  // prefix), which the check below accepts — the spacing is the real test.
   await page.evaluate(function () {
     var b = document.querySelector('#speedSeg [data-speed="600"], [data-speed="600"]');
     if (b) b.click();
   });
-  await page.click('#playBtn');
+  var clockAt = function () { return page.evaluate(function () { return (document.querySelector('#clock, .clock') || {}).textContent; }); };
+  var c0 = await clockAt();
+  await page.waitForTimeout(400);
+  if (await clockAt() === c0) await page.click('#playBtn');
   await page.waitForTimeout(6000);
 
   // ONE CLICK, from the header (#438/#439). This used to be `Settings tab -> #fbBtn`,
@@ -1005,6 +1356,283 @@ async function testDiagBundle(page) {
   return log.join('\n');
 }
 
+
+/* ---- #520: THE SIMULATION-HALTED DIALOG ------------------------------------------------------
+ * The new-physics engine HOLDS when the plant leaves the range its property library is
+ * characterised over — state frozen, clock running, every control still accepted and doing
+ * nothing. #517 published `model_held` so it COULD be seen; nothing displayed it, so a player
+ * still got a plausible, internally consistent, completely static plant (measured on the Three
+ * Mile Island timeline: 160 minutes of it).
+ *
+ * ⚠ WHY THIS DRIVES A REAL HALT RATHER THAN FAKING ONE. #517's first attempt at board rows for
+ * these fields passed every gate in the suite AND WAS INERT — the rows were keyed to chart series
+ * that did not exist, so nothing rendered them, and only driving the board found it. So this rides
+ * a genuine casualty: a large break with the station blacked out AND NO AUXILIARY FEED has nothing
+ * to answer it and the plant actually runs dry.
+ *
+ * ⚠ `afw_failure` IS LOAD-BEARING, and #583 is how that was found. Until 2026-08-28 the driver was
+ * `large_loca,station_blackout` alone, and it held. After #583 removed 2,539 kg of phantom
+ * pressurizer water from the reactor coolant system, the SAME casualty stops holding IN THE
+ * BROWSER: measured at ff=7200 (6,807 s of plant time) the primary parks at **83 psia against
+ * containment backpressure**, 0 % pressurizer level, and sits there — a wrecked plant that never
+ * leaves the property library's range, because the steam generators still have auxiliary feed and
+ * keep taking the decay heat. Block AFW and it runs dry and goes out of range: **22 psia, held,
+ * dialog up**, at ff=1500 and again at ff=3000.
+ *
+ * ⚠ AND NOTE WHICH LAYER SAID WHAT. The identical service, seed, initial condition, injections and
+ * fast-forward driven in NODE reports `model_held: true` on the two-failure casualty; the browser
+ * does not. That divergence is unexplained and is NOT what this check is for — the three-failure
+ * casualty holds on both. If this check ever goes red again, measure the plant before touching the
+ * budget: a driver that only just reached the envelope edge is the shape that rots.
+ *
+ * ⚠ AND IT DOES NOT DISMISS THE MISSION WINDOW FIRST. The halt dialog sits above it at z-index
+ * 214, so `click('#missionClose')` times out once the dialog is up — which is the feature working.
+ * Wait for the dialog on its own terms.
+ *
+ * ⚠ `?ff=` BUYS LESS SIM TIME THAN IT SAYS IN A TRANSIENT. ff=500 bought 261 s here, because a
+ * broadcast cycle shrinks once the plant is moving. The figure below is empirical, not arithmetic. */
+async function testHeldPlantDialog(page) {
+  var log = [];
+  var base = 'http://127.0.0.1:' + PORT + '/ui/shell.html?engine=pwr2&run=1';
+
+  await page.goto(base, { waitUntil: 'networkidle', timeout: 90000 });
+  await dismissMission(page);
+  await waitBoardLive(page, 20000);
+  if (!(await page.isHidden('#haltOverlay'))) {
+    throw new Error('#520: the halt dialog is showing on a HEALTHY plant — it must not greet you');
+  }
+  if (await page.evaluate(function () {
+        return document.getElementById('clock').classList.contains('clk-held'); })) {
+    throw new Error('#520: the clock claims HELD on a healthy plant');
+  }
+  log.push('healthy plant: dialog hidden, clock unmarked');
+
+  /* THE FIXTURE CARRIES failure_to_scram, AND THAT IS THE WHOLE FIX (#588/#589).
+   *
+   * The three-failure casualty this used to drive is MARGINAL, and marginal here does not mean
+   * "close to a threshold" — it means the blowdown endgame has sensitive dependence and ONE ULP
+   * picks the branch. Measured 2026-08-30 by nudging the initial pressure by single ulps (a
+   * relative perturbation of 1e-16, the smallest a double can carry) through the app's verbatim
+   * ff=1500 burst:
+   *
+   *   nudge   delivered   model_held      final
+   *   +0      1164 s      YES at 399 s    19.2 psia
+   *   +1      1092 s      NEVER           87.1 psia     <- and this IS the Linux branch
+   *   +2      1092 s      NEVER           87.1 psia
+   *   +8      1236 s      YES at 273 s    158.1 psia
+   *
+   * Three outcomes from four adjacent bit patterns. Windows and Linux were never disagreeing
+   * about physics — every Math primitive and all 3,600 water-table evaluations hash BIT-IDENTICAL
+   * across the two — they were landing on different branches of a chaotic trajectory, which is
+   * what #588 spent nine hypotheses hunting as a mechanism. There is no mechanism. There is a
+   * bifurcation, and this check was pinning it.
+   *
+   * That is the standing trap in CLAUDE.md, one level up from where #543 found it:
+   *   "A check can pin a BIFURCATION, not a claim ... one bit picks the branch (green here, red
+   *    on CI). Assert the invariant the defect violated."
+   *
+   * So the fixture moves off the cliff instead of the budget moving. Adding the ATWS drives the
+   * plant unambiguously outside the property library's range, and it holds on EVERY branch —
+   * measured at ulp +0/+1/+3/+8/+32 on BOTH platforms, ten runs, ten holds:
+   *
+   *   Windows   YES 243 / 228 / 411 / 273 / 273 s
+   *   Linux     YES 267 / 270 / 345 / 366 / 273 s
+   *
+   * ⚠ THE LATCH TIME IS NOT A CLAIM — it spans 228-411 s across those ten runs. Assert THAT it
+   * holds and that the dialog follows; never WHEN. A check that pins the second is this defect
+   * again wearing a number. */
+  await page.goto(base + '&inject=large_loca,station_blackout,afw_failure,failure_to_scram&ff=1500',
+                  { waitUntil: 'networkidle', timeout: 180000 });
+  /* TWO WAITS, NOT ONE (#589). This used to wait only for the overlay and then throw "the plant
+   * HELD and the dialog stayed hidden" — a message that names a fact the check never measured.
+   * A plant that has simply not reached the envelope yet produces the identical error, so a slow
+   * machine and a broken dialog were indistinguishable in the log, and three red CI runs could
+   * not be told apart from one real defect. Measured on Windows 2026-08-30: the overlay appears
+   * 5.2 s after navigation against the old 40 s budget, and this runner takes 104 s locally
+   * against 120 s on CI — a 15 % spread, which is NOT enough to explain a 40 s timeout. So the
+   * budget was never the interesting variable; knowing WHICH half failed is.
+   *
+   * The plant first, generously, because that is the slow part and the part a loaded CI box
+   * delays. Then the dialog, tightly, because once the plant holds the overlay is a render away
+   * — and that is the claim #520 is actually about. */
+  var plantHeld = true;
+  await page.waitForFunction(function () {
+    var c = document.getElementById('clock');
+    return !!c && c.classList.contains('clk-held');
+  }, { timeout: 90000, polling: 200 }).catch(function () { plantHeld = false; });
+  if (!plantHeld) {
+    var never = await page.evaluate(function () {
+      var c = document.getElementById('clock');
+      return { clock: c ? c.textContent.replace(/\s+/g, ' ').trim() : '(no clock)',
+               overlay: !!(document.getElementById('haltOverlay') || {}).hidden };
+    });
+    throw new Error('#520 fixture: THE PLANT NEVER HELD in 90 s of wall clock — clock reads ' +
+      never.clock + '. This is the driver failing to reach the envelope, NOT the dialog: do not ' +
+      'touch the overlay, measure the casualty. (#589 — the old single wait reported this case as ' +
+      'a hidden dialog, which sent one investigation the wrong way.)');
+  }
+  await page.waitForFunction(function () {
+    var o = document.getElementById('haltOverlay');
+    return !!o && !o.hidden;
+  }, { timeout: 15000, polling: 200 }).catch(function () { /* the throws below carry the message */ });
+  await page.waitForTimeout(400);
+
+  var st = await page.evaluate(function () {
+    var o = document.getElementById('haltOverlay');
+    var m = o ? o.querySelector('.mission-modal') : null;
+    if (!o || !m) return { missing: true };
+    var r = m.getBoundingClientRect();
+    return {
+      hidden: o.hidden,
+      why: (document.getElementById('haltWhy') || {}).textContent || '',
+      body: ((o.querySelector('.halt-body') || {}).textContent || '').length,
+      reset: !!document.getElementById('haltReset'),
+      clk: document.getElementById('clock').classList.contains('clk-held'),
+      rect: { l: r.left, t: r.top, r: r.right, b: r.bottom, h: r.height },
+      vw: window.innerWidth, vh: window.innerHeight
+    };
+  });
+  if (st.missing) throw new Error('#520: #haltOverlay / .mission-modal did not render at all');
+  if (st.hidden) {
+    throw new Error('#520: the plant HELD and the dialog stayed hidden — the player is back to a ' +
+                    'frozen board with no indication, which is the whole defect');
+  }
+  if (st.body < 300) throw new Error('#520: the dialog does not EXPLAIN anything (' + st.body + ' chars)');
+  if (!/property library|screen:/.test(st.why)) {
+    throw new Error('#520: the dialog does not name the cause — got "' + st.why.slice(0, 60) + '"');
+  }
+  if (!st.reset) throw new Error('#520: no reset button — the player has no way out');
+  if (!st.clk) {
+    throw new Error('#520: the clock carries no HELD marker. Dismissing the dialog would then ' +
+                    'lose the only indication, re-creating the defect this issue is about');
+  }
+  /* The #454 lesson: counting elements missed a window drawn outside the viewport. */
+  if (st.rect.l < 0 || st.rect.t < 0 || st.rect.r > st.vw + 1 || st.rect.b > st.vh + 1 || st.rect.h < 120) {
+    throw new Error('#520: the halt dialog is off-viewport or collapsed: ' + JSON.stringify(st.rect) +
+                    ' against ' + st.vw + 'x' + st.vh);
+  }
+  log.push('held plant: dialog open, cause named, clock marked, rect ' + Math.round(st.rect.h) + 'px');
+
+  /* THE BUTTON MUST ACTUALLY RECOVER THE PLANT — a dialog that explains and cannot fix is half
+   * the feature. The latch cannot be cleared in place, so this exercises the full rebuild. */
+  await page.click('#haltReset');
+  await page.waitForTimeout(2500);
+  var after = await page.evaluate(function () {
+    return { hidden: document.getElementById('haltOverlay').hidden,
+             clk: document.getElementById('clock').classList.contains('clk-held'),
+             clock: (document.getElementById('clock').textContent || '').trim() };
+  });
+  if (!after.hidden) throw new Error('#520: Reset left the dialog open');
+  if (after.clk) {
+    throw new Error('#520: Reset did not recover the plant — the clock still reads HELD at ' +
+                    after.clock + '. The latch cannot be cleared in place, so this means the ' +
+                    'rebuild did not happen');
+  }
+  log.push('reset: dialog closed, HELD cleared, clock ' + after.clock);
+  return log.join('\n');
+}
+
+/* #553 — THE LOAD BUTTON'S HONESTY. SimulationService.loadState signals a refusal by
+ * RETURNING {type:'error'}; it does not throw. ui/app.js discarded that return and toasted
+ * "State loaded" regardless, so 4 of the 5 reject classes measured on a public build
+ * announced a save that had loaded NOTHING — including the common one after the #523
+ * cutover, a save from the retired engine whose constructor a published build no longer
+ * carries. Only the browser can see this: the defect is between the service's return value
+ * and a toast, and every Node gate hands loadState a good payload.
+ *
+ * Both arms matter. Without the POSITIVE control a handler that error-toasts everything
+ * would pass, which is the same class of hollow check as a negative assertion with no
+ * reachability proof — so the control drives the app's OWN Save button and feeds the file
+ * it produced straight back in. */
+async function testSaveLoadRefusal(page) {
+  var log = [];
+  var base = 'http://127.0.0.1:' + PORT + '/ui/shell.html?engine=pwr2&run=1';
+  await page.goto(base, { waitUntil: 'networkidle', timeout: 90000 });
+  await dismissMission(page);
+  await waitBoardLive(page, 20000);
+
+  async function toast() {
+    return await page.evaluate(function () {
+      var t = document.getElementById('appToast');
+      if (!t) return { missing: true };
+      return { text: t.textContent || '', error: t.className.indexOf('error') >= 0,
+               shown: t.className.indexOf('show') >= 0 };
+    });
+  }
+  // the toast auto-hides (2.5 s, 5 s for an error) — clear it so each arm reads its own
+  async function clearToast() {
+    await page.evaluate(function () {
+      var t = document.getElementById('appToast');
+      if (t) { t.className = 'app-toast'; t.textContent = ''; }
+    });
+  }
+
+  // --- POSITIVE CONTROL: the app's own Save, fed back through the app's own Load ---------
+  await page.click('#settingsBtn');
+  await page.waitForSelector('#settingsOverlay [data-act="save"]', { timeout: 10000 });
+  var dl = (await Promise.all([
+    page.waitForEvent('download', { timeout: 20000 }),
+    page.click('#settingsOverlay [data-act="save"]'),
+  ]))[0];
+  var goodPath = path.join(SCRATCH, 'e2e-save-good.json');
+  await dl.saveAs(goodPath);
+  var goodBytes = fs.statSync(goodPath).size;
+  if (goodBytes < 1000) throw new Error('#553 control: the Save button produced ' + goodBytes + ' bytes');
+  await clearToast();
+  await page.setInputFiles('#loadFile', goodPath);
+  await page.waitForFunction(function () {
+    var t = document.getElementById('appToast');
+    return !!t && t.className.indexOf('show') >= 0;
+  }, { timeout: 10000, polling: 100 });
+  var okT = await toast();
+  if (okT.error || !/State loaded/.test(okT.text)) {
+    throw new Error('#553 control: the app\'s OWN save must load — toast was "' + okT.text +
+                    '" (error=' + okT.error + ')');
+  }
+  log.push('control: Save -> Load round trip through the real buttons -> "' + okT.text.trim() + '"');
+
+  // --- THE CASE: a file loadState REFUSES BY RETURN, not by throwing ---------------------
+  // {"hello":"world"} is valid JSON with no metadata, so it lands on the first return guard
+  // (simulation_service: 'bad save state'). This is the app's own diagnostics-bundle class:
+  // the other .json a player can download from this very UI.
+  var badPath = path.join(SCRATCH, 'e2e-save-nometa.json');
+  fs.writeFileSync(badPath, JSON.stringify({ hello: 'world' }));
+  await clearToast();
+  await page.setInputFiles('#loadFile', badPath);
+  await page.waitForFunction(function () {
+    var t = document.getElementById('appToast');
+    return !!t && t.className.indexOf('show') >= 0;
+  }, { timeout: 10000, polling: 100 });
+  var badT = await toast();
+  if (!badT.error) {
+    throw new Error('#553: a save that loaded NOTHING was toasted as a success — "' + badT.text + '"');
+  }
+  if (/State loaded/.test(badT.text)) {
+    throw new Error('#553: the refusal toast still reads "State loaded": "' + badT.text + '"');
+  }
+  log.push('refused-by-return: "' + badT.text.trim() + '" (error class set)');
+
+  // and an unknown plant_id — the second return guard, and the post-cutover legacy-save case
+  var legacyPath = path.join(SCRATCH, 'e2e-save-legacy.json');
+  fs.writeFileSync(legacyPath, JSON.stringify({
+    schema_version: '1.0', metadata: { plant_id: 'bwr', sim_time: 0, time_acceleration: 1 },
+    engine: {}, control_failure: {}, instructor: {},
+  }));
+  await clearToast();
+  await page.setInputFiles('#loadFile', legacyPath);
+  await page.waitForFunction(function () {
+    var t = document.getElementById('appToast');
+    return !!t && t.className.indexOf('show') >= 0;
+  }, { timeout: 10000, polling: 100 });
+  var legT = await toast();
+  if (!legT.error || /State loaded/.test(legT.text)) {
+    throw new Error('#553: a save naming a plant this build has no constructor for was toasted "' +
+                    legT.text + '"');
+  }
+  log.push('unknown plant_id: "' + legT.text.trim() + '"');
+  return log.join('\n');
+}
+
 async function main() {
   fs.mkdirSync(SCRATCH, { recursive: true });
   var fallback = path.join(SCRATCH, 'ui-screenshot-fallback.log');
@@ -1034,16 +1662,24 @@ async function main() {
     fs.writeFileSync(path.join(SCRATCH, 'steam-feed-pair.log'), sfLog);
     var csLog = await testChartSettings(page);
     fs.writeFileSync(path.join(SCRATCH, 'chart-settings.log'), csLog);
+    var mlLog = await testMonitorList(page);
+    fs.writeFileSync(path.join(SCRATCH, 'monitor-list.log'), mlLog);
     var mcLog = await testMissionCloseResumes(page);
     fs.writeFileSync(path.join(SCRATCH, 'mission-close-resumes.log'), mcLog);
     var rsLog = await testRunStartMark(page);
     fs.writeFileSync(path.join(SCRATCH, 'run-start-mark.log'), rsLog);
     var rpLog = await testRewindPicker(page);
     fs.writeFileSync(path.join(SCRATCH, 'rewind-picker.log'), rpLog);
-    var tpLog = await testTrendPreseed(page);
-    fs.writeFileSync(path.join(SCRATCH, 'trend-preseed.log'), tpLog);
+    var ebLog = await testEsfArmButtons(page);
+    fs.writeFileSync(path.join(SCRATCH, 'esf-arm-buttons.log'), ebLog);
+    var rfLog = await testRefusalReachesTheScanner(page);
+    fs.writeFileSync(path.join(SCRATCH, 'refusal-scanner.log'), rfLog);
     var dbLog = await testDiagBundle(page);
     fs.writeFileSync(path.join(SCRATCH, 'diag-bundle.log'), dbLog);
+    var hpLog = await testHeldPlantDialog(page);
+    fs.writeFileSync(path.join(SCRATCH, 'held-plant-dialog.log'), hpLog);
+    var slLog = await testSaveLoadRefusal(page);
+    fs.writeFileSync(path.join(SCRATCH, 'save-load-refusal.log'), slLog);
     fs.writeFileSync(path.join(SCRATCH, 'ui-screenshot-summary.log'), summary.join('\n') + '\n');
     console.log('E2E UI verification: PASS (' + (ENGINES.length * VIEWS.length) + ' screenshots)');
   } finally {
@@ -1060,7 +1696,10 @@ async function main() {
  * re-running all 16 screenshots. Running the file directly is unaffected. */
 if (require.main !== module) {
   module.exports = { startServer: startServer, dismissMission: dismissMission,
-                     testChartSettings: testChartSettings, testMissionCloseResumes: testMissionCloseResumes, testRunStartMark: testRunStartMark, port: function () { return PORT; } };
+                     testChartSettings: testChartSettings, testMonitorList: testMonitorList,
+                     testMissionCloseResumes: testMissionCloseResumes, testRunStartMark: testRunStartMark,
+                     testHeldPlantDialog: testHeldPlantDialog,
+                     testSaveLoadRefusal: testSaveLoadRefusal, port: function () { return PORT; } };
 } else {
   main().catch(function (e) {
     fs.mkdirSync(SCRATCH, { recursive: true });

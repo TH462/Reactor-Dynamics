@@ -239,7 +239,12 @@ async function main() {
 
   try {
     Object.keys(RD.MANUAL_PROCEDURES).forEach(function () {}); /* load check */
-    var profiles = Object.keys(RD.MANUAL_PROCEDURES);
+    /* PWR ONLY since #514 (owner-ruled): the shell no longer loads the RBMK/BWR engines, so
+     * an ?engine=rbmk_pre page cannot start a follow — the nav renders hidden and this gate
+     * timed out clicking it. The rbmk/bwr rows in manual_ui_map.js are left in place: they
+     * are data, and restoring the plants to the shell restores this loop by deleting the
+     * filter (git log this file). Same decision as verify_e2e_ui's ENGINES list. */
+    var profiles = Object.keys(RD.MANUAL_PROCEDURES).filter(function (p) { return p === 'pwr'; });
     for (var pi = 0; pi < profiles.length; pi++) {
       var prof = profiles[pi];
       var procs = RD.MANUAL_PROCEDURES[prof];

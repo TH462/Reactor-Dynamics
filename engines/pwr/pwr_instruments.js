@@ -237,9 +237,17 @@
     // lines on purpose, and this gauge reports the CONTROL deviation — level against what the
     // CVCS is holding it to. Reading the physics line here would peg PZR LVL DEV LO at ~−39 %
     // for the whole of a load rejection while the controller sat exactly on its setpoint.
+    // A host plant may hand in ITS OWN program line (extras.level_program_fn, %-returning):
+    // the PWR2 shell reuses this layer over a plant whose program is a different sourced
+    // line, and measuring its level against THIS plant's program read a standing +6.4 %
+    // deviation on a plant sitting exactly on its own program. HR1 is kept either way — the
+    // program is still evaluated at the INDICATED Tavg, so a stuck transmitter corrupts it
+    // here exactly as before. The current engine passes nothing and is unchanged.
+    var exFn = (extras || {}).level_program_fn;
     var lb = RD.pwrPressurizer && RD.pwrPressurizer.levelProgram;
-    if (!lb) return 0;
-    var prog = lb({ tavg_c: this.reading.tavg, _tavg_fp: (extras || {}).tavg_fp }, this.cfg);
+    if (!exFn && !lb) return 0;
+    var prog = exFn ? exFn(this.reading.tavg)
+                    : lb({ tavg_c: this.reading.tavg, _tavg_fp: (extras || {}).tavg_fp }, this.cfg);
     var spec = this.specs.pzr_level_dev, dev = this.reading.pzr_level - prog;
     return spec ? clip(dev, spec.range[0], spec.range[1]) : dev;
   };
@@ -271,14 +279,42 @@
   PWRInstruments.prototype._deltaTChannels = function (extras) {
     var o = this.cfg.otdt_opdt, sp = this.specs;
     if (!o || !sp.loop_delta_t) return;
-    var dt0 = this.cfg.thermal.delta_T_rated;                 // °C at rated
-    var Tpp = (extras || {}).tavg_fp;                         // T″ = full-power Tavg (OPΔT only)
+    var ex = extras || {};
+    /* THE RUNNING PLANT'S OWN SETPOINT EQUATION, when it supplies one (#561).
+     *
+     * This layer is REUSED by both engines (D4), and its delta-T channels were fitted to the
+     * retired thermal model: rated loop delta-T 33.0 degC, DNB margin 8.0 degC and margin factor
+     * 0.60 (both [tune]/UNVERIFIED), against a local saturation correlation. PWR2's rated split
+     * is 31.1 degC (56 degF) and its overtemperature/overpower TRIPS use the sourced Ginna UFSAR
+     * Table 15.0-7 coefficients — so the gauge and the trip disagreed in LEVEL and in PRESSURE
+     * SENSITIVITY at once. MEASURED on a 1,240 s depressurization at full power: the tile went
+     * RED at t = 616 s with the plant's own overtemperature margin still +13.70 %, and the trip
+     * did not arrive until t = 972 s — 356 s later — while the "OTdT ROD STOP" annunciator, which
+     * reads this same channel, latched 436 s early.
+     *
+     * A CONSTANT SWAP WOULD NOT HAVE FIXED IT: the two sides differ in equation FORM. The one
+     * below is a DNB surface, 0.6*2*(T_sat(P) - 8 degC - Tavg)/33.0; the sourced trip is
+     * k1 + k2*(P - P') - k3*(T - T'). So the plant passes its own form through, the same way
+     * `tavg_fp` and the pressurizer level program already ride this dict — one supplier, no
+     * second copy. Absent it, every line below is byte-identical to what it always was.
+     *
+     * HR1 is unchanged: the form is fed the INDICATED Tavg and pressure, so the gauge still shows
+     * what the operator's instruments say, not what the plant is. The declared lead/lag
+     * compensation gap (and OP's K5 rate term, which lives in the COLR) belongs to the TRIP
+     * channel and is a different, still-open item. */
+    var form = ex.otdt_form;
+    var dt0 = (form && form.delta_t_rated_c) || this.cfg.thermal.delta_T_rated;   // °C at rated
+    var Tpp = ex.tavg_fp;                                     // T″ = full-power Tavg (OPΔT only)
     if (Tpp == null) Tpp = this.reading.tavg;                  // pre-init fallback: zero penalty
     var T = this.reading.tavg, P = this.reading.primary_pressure;
     var dT = 100 * (this.reading.thot - this.reading.tcold) / dt0;
     // This plant's DNB-limiting ΔT at the INDICATED T and P, scaled by the margin factor.
-    var ot = 100 * o.dnb_margin_factor * 2 * (T_sat(P) - this.cfg.thermal.dnb_margin_c - T) / dt0;
-    var op = 100 * (o.K4 - (o.K6_per_c || 0) * Math.max(0, T - Tpp));
+    var ot = (form && form.otSp)
+      ? 100 * form.otSp(T, P)
+      : 100 * o.dnb_margin_factor * 2 * (T_sat(P) - this.cfg.thermal.dnb_margin_c - T) / dt0;
+    var op = (form && form.opSp)
+      ? 100 * form.opSp(T)
+      : 100 * (o.K4 - (o.K6_per_c || 0) * Math.max(0, T - Tpp));
     this.reading.loop_delta_t  = clip(dT, sp.loop_delta_t.range[0], sp.loop_delta_t.range[1]);
     this.reading.otdt_setpoint = clip(ot, sp.otdt_setpoint.range[0], sp.otdt_setpoint.range[1]);
     this.reading.opdt_setpoint = clip(op, sp.opdt_setpoint.range[0], sp.opdt_setpoint.range[1]);

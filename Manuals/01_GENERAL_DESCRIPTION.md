@@ -4,7 +4,7 @@
 **Plant:** Pressurized Water Reactor (PWR)  
 **Plant:** **SLS-100** (Single Loop Simulated, 100 MWe)
 **Rating:** ≈ 100 MWe / ≈ 300 MWt — a compact **single-loop experimental PWR** (one reactor coolant pump, one U-tube steam generator, one main steam line). Small and generously margined by design, and reactor trips are reserved for genuine limits. The steam dump is sized at **40 %** of rated steam flow, the prototypical Westinghouse capacity: a **50 % loss of load** is absorbed with no trip and no relief lift, and a larger rejection is ridden out by the reactor itself running back, with the PORV as the backstop.  
-**Revision:** 16  
+**Revision:** 17  
 
 ---
 
@@ -94,7 +94,7 @@ FISSION HEAT (core)
 | **RPS (Reactor Protection)** | SCRAM on trip setpoints (reads instruments) |
 | **ESF arms (HPI, AFW, RHR)** | AUTO or MANUAL; manual action disarms AUTO until re-armed |
 | **Alarms** | Annunciate before / with trips; read instruments only |
-| **Interlocks** | e.g. rod withdrawal blocked on high Startup Rate (SUR) |
+| **Interlocks** | e.g. rod withdrawal blocked by a rod stop (high flux, or ΔT margin) |
 
 ---
 
@@ -108,7 +108,7 @@ This trainer uses **commercial PWR MODE numbers**. In prose, say **Mode 1, At Po
 | **2** | **Mode 2, Startup** | Startup | Critical, power **≤ 5 %**, RCS hot | After approach to criticality **[sim]** |
 | **3** | **Mode 3, Hot Standby** | Hot Standby | Subcritical, RCS **hot** (Tavg ≥ 350.6 °F (177 °C)) | `hot_zero_power` **[sim]** |
 | **4** | **Mode 4, Hot Shutdown** | Hot Shutdown | Subcritical, Tavg **between** 199.4 °F (93 °C) and 350.6 °F (177 °C) | Heatup / cooldown transit **[sim]** |
-| **5** | **Mode 5, Cold Shutdown** | Cold Shutdown | Subcritical, RCS **cold** (Tavg ≤ 199.4 °F (93 °C)) | `cold_shutdown` **[sim]** — a Free Play initial condition |
+| **5** | **Mode 5, Cold Shutdown** | Cold Shutdown | Subcritical, RCS **cold** (Tavg ≤ 199.4 °F (93 °C)) | **NOT AVAILABLE ON THIS PLANT.** There is no Mode 5 and no cold-shutdown initial condition: the water-property floor is 14.5 psi (0.1 MPa), whose saturation temperature is 211 °F (99.4 °C), so a steam generator at or below the 200 °F (93.3 °C) Mode 5 boundary cannot be represented. The cold end of the ladder is **Mode 4, Hot Shutdown** (`hot_shutdown`). Tracked as **#524**. |
 | **6** | **Mode 6, Refueling** | Refueling | Head detensioned / refueling | **Out of scope** |
 
 > **Modes 3/4/5 are decided by TEMPERATURE alone, not by pressure.** A subcritical plant at
@@ -118,8 +118,8 @@ This trainer uses **commercial PWR MODE numbers**. In prose, say **Mode 1, At Po
 
 **Full commercial paths** (see `05_MODE_TRANSITIONS.md`) — both run **on integrated physics**, end to end on the board:
 
-- **Mode 5, Cold Shutdown → Mode 1, At Power** — procedure **PWR-T20**, starting from the `cold_shutdown` initial condition.  
-- **Mode 1, At Power → Mode 5, Cold Shutdown** — procedure **PWR-T21**, down to a cold, depressurized plant on RHR.  
+- **Mode 4, Hot Shutdown → Mode 1, At Power** — procedure **PWR-T20**, starting from the `hot_shutdown` initial condition. The procedure is written from Mode 5 and its first steps describe a state this plant cannot load — read them for the shape of the evolution, and start where the plant starts (**09 §11.0**).  
+- **Mode 1, At Power → Mode 4, Hot Shutdown** — procedure **PWR-T21**, down to a depressurized plant on RHR. It is written through to Mode 5; the plant stops at the 250 °F (121.1 °C) Mode 4 end (**09 §11.0**).  
 
 **NOTE:** the heatup runs on **real plant rates** (#419 — ride the long legs at time acceleration); on the cooldown side the depressurisation rate remains deliberately compressed. See `12_SIM_PHYSICS.md` §14.
 
@@ -141,7 +141,7 @@ Independent of plant MODE, the generator has three **load modes**:
 
 **Manual is the default you actually get, not Follow.** Follow is the engine's own fallback and is
 what `5_percent` starts in; the startup lineup overrides it to **Manual** at both main at-power
-initial conditions, and `cold_shutdown` spawns off line.
+initial conditions, and `hot_shutdown` spawns off line.
 
 **Coupled feedwater is a fallback, not the level control.** Feed is briefly tied to the load
 target, but the **three-element feed controller** (`STEAM GEN FEED → AUTO`) is engaged by default

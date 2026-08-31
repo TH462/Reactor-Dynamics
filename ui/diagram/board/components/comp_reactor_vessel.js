@@ -18,6 +18,14 @@
 
   // Geometry constants — verbatim from the design source.
   var coreL = 186, coreR = 374, coreTop = 276, coreBot = 454;
+  /* THE CORE FLUID COLUMN'S OWN EXTENTS (#516 item 5, owner playtest 2026-08-29). The pool and
+   * its upflow were authored 269..456 while the fuel rods run coreTop..coreBot = 276..454, so
+   * the water started 7 px ABOVE the rods — and 276 is exactly where the upper-plenum fluid
+   * (`hotresFullBot = coreTop`) ENDS, which is why the two overlapped instead of meeting.
+   * The bottom now reaches the lower support plate's flow-hole blocks (authored y 455, height
+   * 17), so the column runs from the top of the fuel to the bottom of the blocks beneath it,
+   * which is what the owner asked for and what the drawn internals actually show. */
+  var poolTop = coreTop, poolBot = 472, poolH = poolBot - poolTop;   /* 276..472, 196 */
   var coreW = coreR - coreL, coreH = coreBot - coreTop, cx = 280;
   var barrelL = 180, barrelR = 380;
   var stripBottom = 216, stripH = 216, tubeTop = -20, tubeW = 26;
@@ -80,7 +88,7 @@
       h('linearGradient', { id: ids.ctrl, x1: '0', y1: '0', x2: '1', y2: '0' },
         h('stop', { offset: '0', stopColor: '#1c232a' }), h('stop', { offset: '0.5', stopColor: '#48535e' }), h('stop', { offset: '1', stopColor: '#1c232a' })),
       h('clipPath', { id: ids.coreClip }, h('rect', { x: coreL, y: coreTop, width: coreW, height: coreH })),
-      h('clipPath', { id: ids.poolClip }, R.poolClipRect = h('rect', { x: coreL, y: 456 - 187, width: coreW, height: 187 })),
+      h('clipPath', { id: ids.poolClip }, R.poolClipRect = h('rect', { x: coreL, y: poolTop, width: coreW, height: poolH })),
       // stripClip: clip windows for the two moving indicator fills (one rect per bank tube)
       h('clipPath', { id: ids.stripClip },
         h('rect', { x: 225, y: 0, width: tubeW, height: stripH }),
@@ -240,14 +248,14 @@
       h('rect', { x: coreL, y: 276, width: coreW, height: 180, fill: '#d7e0e5', opacity: 0.14 })));
     // core channel water + upflow, clipped to the (dynamic) core pool level
     R.wideflow = h('line', {
-      x1: cx, y1: 456, x2: cx, y2: 269, stroke: 'url(#' + ids.cdash + ')', strokeWidth: coreW,
+      x1: cx, y1: poolBot, x2: cx, y2: poolTop, stroke: 'url(#' + ids.cdash + ')', strokeWidth: coreW,
       strokeLinecap: 'butt', strokeDasharray: '15 9', opacity: 0.94,
       // .flowwide from the source, applied inline (dasharray 15 9 + flowmove 1.5s)
       style: { animation: 'flowmove 1.5s linear infinite' }
     });
     svgKids.push(h('g', { clipPath: 'url(#' + ids.poolClip + ')' },
-      h('rect', { x: coreL, y: 269, width: coreW, height: 187, fill: 'url(#' + ids.cflow + ')', opacity: 0.45 }),
-      h('line', { x1: cx, y1: 456, x2: cx, y2: 269, stroke: 'url(#' + ids.cflow + ')', strokeWidth: coreW, strokeLinecap: 'butt', opacity: 0.78 }),
+      h('rect', { x: coreL, y: poolTop, width: coreW, height: poolH, fill: 'url(#' + ids.cflow + ')', opacity: 0.45 }),
+      h('line', { x1: cx, y1: poolBot, x2: cx, y2: poolTop, stroke: 'url(#' + ids.cflow + ')', strokeWidth: coreW, strokeLinecap: 'butt', opacity: 0.78 }),
       R.wideflow));
     // fuel rods
     var fuelXs = [196, 238, 280, 322, 364];
@@ -404,8 +412,8 @@
       R.hotres.setAttribute('height', String(hotresH));
       R.hotres.setAttribute('rx', String(Math.min(10, hotresH / 2)));
       show(R.coreSteam, corePoolFrac < 0.999);
-      R.poolClipRect.setAttribute('y', String(456 - 187 * corePoolFrac));
-      R.poolClipRect.setAttribute('height', String(187 * corePoolFrac));
+      R.poolClipRect.setAttribute('y', String(poolBot - poolH * corePoolFrac));
+      R.poolClipRect.setAttribute('height', String(poolH * corePoolFrac));
     }
 
     function applyBubbles(force) {

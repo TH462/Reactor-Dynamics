@@ -195,7 +195,12 @@
     for (i = 0; i < s.alarms.length; i++) {
       var a = s.alarms[i]; byId[a.id] = a.state;
       var was = r.lastAlarms ? r.lastAlarms[a.id] : a.state;
-      if (r.lastAlarms === null || was !== a.state) this.event(t, 'alarm', { id: a.id, state: a.state, was: was });
+      // First pass (lastAlarms === null): capture only the NON-CLEAR starting state — an
+      // already-alarmed panel is information, an all-clear one is inferable. The old rule
+      // emitted every alarm as a clear→clear non-transition, 47 noise rows of the 48
+      // events in each 2026-08-21 bundle (#504). Later passes log transitions only.
+      var firstPass = r.lastAlarms === null;
+      if (firstPass ? a.state !== 'clear' : was !== a.state) this.event(t, 'alarm', { id: a.id, state: a.state, was: was });
     }
     r.lastAlarms = byId;
     var sc = !!(s.rps_state && s.rps_state.scrammed);

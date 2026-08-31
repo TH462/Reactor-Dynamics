@@ -54,7 +54,7 @@ const DIRS = ['site', 'ui', 'engines', 'layers', 'scenarios'];
  * PAGES + NOT_PUBLISHED must TOTAL the root `*.html` glob: `test/run_site_meta.js` proves
  * the partition, so a new root page cannot exist without some file saying whether it ships.
  * That is the property `.vercelignore` used to provide, kept rather than dropped. */
-const NOT_PUBLISHED = ['test_pwr.html', 'test_bwr.html', 'test_rbmk.html'];
+const NOT_PUBLISHED = ['test_pwr.html', 'test_pwr2.html', 'test_bwr.html', 'test_rbmk.html'];
 
 /* THE SAME RULE, ONE DIRECTORY DOWN — and it was missing, which is not hypothetical (#476).
  * NOT_PUBLISHED partitions the root `*.html` glob and nothing else, while the DIRS loop below
@@ -135,6 +135,81 @@ for (const d of OPTIONAL_DIRS) {
 /* THE PART THAT MAKES THE ALLOWLIST SAFE. Follow every local reference in every
  * published page and confirm it resolves inside the output. Query strings are
  * stripped: `ui/shell.html?engine=pwr` is a reference to a file plus a parameter. */
+/* DEV-ONLY blocks are DELETED from published pages, not CSS-hidden: they may link at
+ * pages in NOT_PUBLISHED (the PWR2 preview, #479), and a hidden dead link is still a dead
+ * link — checkHtml below would (rightly) fail the build on it. This pass runs FIRST: both
+ * the completeness scan and the extensionless rewrite read the stripped copy. */
+let devOnlyStripped = 0;
+PAGES.forEach((rel) => {
+  const abs = path.join(OUT, rel);
+  let src = fs.readFileSync(abs, 'utf8');
+  const next = src.replace(/[ \t]*<!-- DEV-ONLY-START[\s\S]*?<!-- DEV-ONLY-END -->\r?\n?/g, '');
+  if (next !== src) { devOnlyStripped++; fs.writeFileSync(abs, next); }
+});
+if (devOnlyStripped) console.log(`stripped DEV-ONLY block(s) from ${devOnlyStripped} page(s)`);
+/* ------------------------------------------- ui/shell.html, and why it is CHANNEL-GATED
+ * The control room carries a DEV-ONLY block too since 2026-08-26: the RETIRED PWR physics
+ * engine (six files, 532 KB), which PWR2 replaced *(OWNER RULING, 2026-08-26: "Strip it at
+ * build time")*. It is stripped ONLY on the `public` channel, and that condition is the
+ * design rather than caution:
+ *
+ *   - The public site must not carry the retired engine at all. That is the ruling.
+ *   - The PREVIEW site is where the owner vets the campaign, the scenarios and the
+ *     walkthroughs, and every one of them is authored against the retired engine — which is
+ *     why ui/app.js ENGINES.pwr2 carries `freePlayOnly: true`. A feature FLAG can be
+ *     overridden by hand on a live site; a deleted <script> tag cannot. An unconditional
+ *     strip would take the preview site's guided content with it and leave nowhere to vet it.
+ *
+ * Making it unconditional later is deleting the `isPublic` branch below. The channel comes
+ * from site/channel.js, which site/stamp_version.js writes BEFORE this file runs (see
+ * BUILD_ONLY); a bare local run resolves 'dev', so a hand-built dist-site keeps both engines.
+ * That is why test/run_site_build.js FORCES the channel and asserts BOTH directions — a strip
+ * proved one way only is satisfied by a build that strips everything, or nothing.
+ *
+ * The retired engine is not deleted from the repo: test_pwr.html, ~30 Node runners and
+ * test/measure_pwr2_ab.js all still drive it, and ui/shell.html?engine=pwr still reaches it
+ * on any non-public build. */
+/* RD_SITE_CHANNEL is the same kind of hook as RD_SITE_OUT above and exists for the same
+ * reason: test/run_site_build.js has to build BOTH ways to prove the strip, and site/channel.js
+ * is a TRACKED file — a gate that rewrote it to force the answer would be editing the tree it
+ * is measuring. The deploy never sets it; there, stamp_version.js has already written the real
+ * channel into site/channel.js by the time this runs. */
+const CHANNEL = (() => {
+  if (process.env.RD_SITE_CHANNEL) return process.env.RD_SITE_CHANNEL;
+  const f = path.join(ROOT, 'site', 'channel.js');
+  const m = fs.existsSync(f) && /RD_CHANNEL\s*=\s*"([^"]+)"/.exec(fs.readFileSync(f, 'utf8'));
+  return m ? m[1] : 'dev';
+})();
+/* NO SILENT CAPS: say which way it went and what it cost, BOTH times. A build log that is
+ * silent about a 532 KB deletion reads identically to one that never attempted it. */
+if (CHANNEL === 'public') {
+  const abs = path.join(OUT, 'ui', 'shell.html');
+  const src = fs.readFileSync(abs, 'utf8');
+  const next = src.replace(/[ \t]*<!-- DEV-ONLY-START[\s\S]*?<!-- DEV-ONLY-END -->\r?\n?/g, '');
+  if (next === src) throw new Error('ui/shell.html has no DEV-ONLY block — the retired-engine ' +
+    'strip found nothing to remove, so a public build would ship it. Restore the markers.');
+  fs.writeFileSync(abs, next);
+  /* ...and DELETE the files themselves. The DIRS loop above copies engines/ WHOLESALE, so
+   * without this they sit on the origin unreferenced: 532 KB of a retired plant, fetchable
+   * by url, indistinguishable to anyone reading the deploy from an engine we still ship.
+   * The two files PWR2 REUSES are not on this list and must never be — pwr2_shell.js:622
+   * throws without RD.PWRInstruments/RD.PWR_CONFIG. Each unlink asserts the file was there:
+   * a rename upstream must redden this build, not quietly prune nothing. */
+  const RETIRED = ['pwr_thermal.js', 'pwr_pressurizer.js', 'pwr_pressurizer2.js',
+                   'pwr_primary.js', 'pwr_steam_generator.js', 'pwr_engine.js'];
+  let pruned = 0;
+  RETIRED.forEach((f) => {
+    const p = path.join(OUT, 'engines', 'pwr', f);
+    if (!fs.existsSync(p)) throw new Error('retired-engine prune: engines/pwr/' + f +
+      ' is not in the build — the list is stale, so the prune is silently doing less than it says');
+    pruned += fs.statSync(p).size;
+    fs.unlinkSync(p);
+  });
+  console.log(`channel=public - stripped the retired PWR engine from ui/shell.html (${src.length - next.length} bytes) and pruned its ${RETIRED.length} files (${pruned} bytes)`);
+} else {
+  console.log(`channel=${CHANNEL} - ui/shell.html KEEPS the retired PWR engine (public builds strip it)`);
+}
+
 const problems = [];
 function checkHtml(rel) {
   const abs = path.join(OUT, rel);
@@ -284,7 +359,7 @@ PAGES.forEach(bustAssets);
 bustAssets('ui/shell.html');
 
 // /sim must land on the FINAL url, not one that redirects again.
-fs.writeFileSync(path.join(OUT, '_redirects'), '/sim  /ui/shell?engine=pwr  302\n');
+fs.writeFileSync(path.join(OUT, '_redirects'), '/sim  /ui/shell?engine=pwr2  302\n');
 
 // THE VERSION STAMPS MUST NOT BE CACHED FOR FOUR HOURS. Cloudflare Pages defaults static
 // assets to `max-age=14400`, which is fine for engine code — it is immutable per deploy and

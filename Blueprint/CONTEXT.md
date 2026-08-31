@@ -521,6 +521,10 @@ physical-quantity vocabulary.
                                       //   Ramps from 0 at core_top_uncover (70 % inventory) to 1 at
                                       //   significant_uncover (50 %). The DRIVER behind clad_temp_c: it is what
                                       //   exposes the hot node at all, and it has no instrument of any kind.
+                                      //   PWR2 (#517): a DECLARED HEM PROXY with no water level. Void 0.5->1.0
+                                      //   carries 0 -> 0.9 of the range and core_superheat_c 0 -> 150 C the last
+                                      //   0.1, because the void half SATURATED an hour before anything was
+                                      //   damaged and reported one number for 1,220 s of a drying core.
     "zirc_heat_pct": number,          // Zr + 2H2O oxidation heat, % of RATED (#238). The second heat source, and
                                       //   the one that makes core damage ACCELERATE rather than decay with the
                                       //   decay tail. Exactly 0 on a covered core — the OXIDE state behind it is
@@ -564,7 +568,18 @@ physical-quantity vocabulary.
     "afw_discharge_pressure_mpa": float,   // AFW discharge head: SG pressure + margin while delivering, pinned at
                                       //   SHUTOFF when demanded into a blocked discharge, 0 when not demanded.
                                       //   Deadheaded-at-shutoff is the tell that separates afw_blocked from afw_active=false.
-    "afw_flow_normalized": float,     // TRUE delivered AFW flow (capacity × throttle × level hold; 0 when blocked)
+    "afw_flow_normalized": float,     // TRUE delivered AFW flow (capacity × throttle; 0 when blocked or unpowered).
+                                      //   WHERE THE LEVEL HOLD LIVES DIFFERS BY ENGINE, and this line used to say
+                                      //   "capacity × throttle × level hold" for both, which was FALSE of PWR2 for
+                                      //   the whole time it was the plant the site runs (#562): PWR2 had neither
+                                      //   term, so a loss of offsite power reached 861.7 % of nominal inventory in
+                                      //   five hours. The retired engine holds level INSIDE the engine
+                                      //   (pwr_steam_generator, target pwr_config afw_level_target). PWR2 holds it
+                                      //   in the CONTROL LAYER, as the `afw_level` automation channel the operator
+                                      //   can take to MANUAL — because throttling auxiliary feed is the operator's
+                                      //   own post-trip task (WAT 05 Transients, ML11216A094). Either way the
+                                      //   number here is DELIVERED FLOW; the valve position is control_state's
+                                      //   afw_throttle_pct, and the two disagreeing is a diagnosis, not a bug.
     "condensate_flow_normalized": float,   // TRUE main-feed / condensate flow (main feed only — excludes AFW)
     "condensate_pump_running": bool,  // condensate pump state — operator-controlled, and it GATES main feed
     "porv_tailpipe_temp_c": number,   // PORV discharge/quench-tank line temperature — warm baseline (seat leakage), hot while relief flows; feeds instruments.porv_tailpipe_temp (the TMI-2 tell)

@@ -1000,6 +1000,13 @@
       // control_state, so it must live here as well as in true_state.
       accumulator_valve_open: s.accumulator_valve_open !== false,
       afw_throttle_pct: (s.afw_throttle_frac != null ? s.afw_throttle_frac : 1.0) * 100,
+      // The full scale `afw_flow_normalized` is normalized on (#557). THIS plant's basis is a
+      // fraction of RATED FEED — full AFW is `afw_flow_frac` 0.15 of it — so 1.0 indicated is
+      // 640 gpm and full AFW reads 96 gpm. Config already declared the number and said it
+      // "MUST track the board's constants" (pwr_config steam_generator); publishing it is how
+      // that stops being a comment. PWR2 renormalized the same instrument to AFW's own rating
+      // and publishes 86.2 here instead, which is the whole of #557.
+      afw_flow_gpm_full: this.cfg.steam_generator.afw_flow_gpm_full,
       sr_energized: !!s.sr_energized,   // SR detector switch position
       msiv_open: s.msiv_open !== false, // main steam isolation valve position
       pumps: [{ id: 'rcp', running: s.pump_running, flow_pct: s.pump_flow_pct }],
@@ -1007,7 +1014,14 @@
   };
 
   PWREngine.prototype.getActiveFailures = function () { return this.active_failures.slice(); };
-  PWREngine.prototype.getProtectionConfig = function () { return this.cfg.protection; };
+  PWREngine.prototype.getProtectionConfig = function () {
+    /* #515: a def flagged pwr2_only is the new engine's row — hide it from THIS engine's
+     * catalog rather than ship a row that does nothing here (the hollow-row class, #507
+     * wave 6). The engine's own lookups keep reading this.cfg.protection.failures direct. */
+    var p = this.cfg.protection, f = p.failures || {}, keep = {}, any = false;
+    for (var id in f) { if (f[id].pwr2_only) { any = true; continue; } keep[id] = f[id]; }
+    return any ? Object.assign({}, p, { failures: keep }) : p;
+  };
 
   // ================================================================== commands
   PWREngine.prototype.applyCommand = function (cmd) {
@@ -1121,6 +1135,29 @@
       case 'connect_grid':
         RD.LoadMode.setMode(s, 'follow', { rated: this.cfg.turbine.mwe_rated });
         if (s.condenser_vacuum_kpa >= this.cfg.turbine.vacuum_trip_kpa) s.turbine_tripped = false;
+        break;
+      case 'latch_turbine':
+        /* THE SHARED BOARD'S VERB (#551/#559/#567, 2026-08-27). The generator card's tile pair
+         * was FOLLOW / MAN — a dispatch-MODE selector — and became LATCH / TRIP, because on
+         * PWR2 there is one dispatch mode and MAN could only throw while nothing in the whole
+         * registry un-latched the turbine. `pwr_board_wiring.js` is shared, so this engine
+         * needs the same verb or the shared tile breaks here: it is the latch HALF of
+         * connect_grid above, without the mode selection.
+         *
+         * The vacuum permissive is kept — it is this engine's own and it is sourced
+         * (WTSM 11.3, ML11223A295: the vacuum trip latch "automatically disengages when the
+         * condenser vacuum reaches 23 - 25 inches Hg"). DECLARED CONSEQUENCE: this engine's
+         * board loses its dispatch-mode selector, since the tiles that carried it now carry
+         * the latch. It is the RETIRED engine (#523 strips it from every published build) and
+         * `set_load_mode` is still reachable as a command; HR9 says content follows the plant
+         * that ships. It DOES take the machine out of 'disconnected', because that mode means
+         * "off the line" and a latched machine is not — leaving it there kept the board's OFF
+         * tile lit over a healthy turbine, which board_check caught. It picks MANUAL, not
+         * FOLLOW: a re-latched machine holding the operator's load target is the conservative
+         * of the two, and connect_grid above is still the one that asks for load following. */
+        if (s.condenser_vacuum_kpa >= this.cfg.turbine.vacuum_trip_kpa) s.turbine_tripped = false;
+        if (s.load_mode === 'disconnected')
+          RD.LoadMode.setMode(s, 'manual', { rated: this.cfg.turbine.mwe_rated });
         break;
       case 'set_steam_demand':
         s.load_mode = 'manual';

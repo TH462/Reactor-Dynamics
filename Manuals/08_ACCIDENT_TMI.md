@@ -2,7 +2,7 @@
 
 **Document:** PWR-X01  
 **Title:** Three Mile Island — An Accident of Information  
-**Revision:** 16  
+**Revision:** 17  
 **Category:** Accident case study (narrative + recoverable drill)  
 
 ---
@@ -79,7 +79,7 @@ This is an **accident of information**, not primarily of equipment unavailabilit
 |------|--------|
 | 1 | Start **Hot Full Power**, speed 1×–10× |
 | 2 | Optional: inject **Loss of Main Feedwater** (historical initiator) |
-| 3 | Observe pressure rise → PORV auto-open near **2350 psi (16.20 MPa)** |
+| 3 | Observe pressure rise → PORV auto-open **100 psi (0.69 MPa) above the pressure setpoint** — **2335 psi (16.099 MPa)** at the 2235 psi (15.41 MPa) nominal |
 | 4 | Inject **PORV Stuck Open** |
 | 5 | Inject **PORV Indicator Stuck Closed** |
 | 6 | Watch the board without using Learning duals if practicing Realistic |
@@ -102,7 +102,7 @@ This is an **accident of information**, not primarily of equipment unavailabilit
 | 4 | Ensure **HPI On** — leave it on | Inventory |
 | 5 | Restore heat sink (AFW if feed lost) | Decay heat |
 | 6 | When isolated, recover pressure/level deliberately | Stabilize |
-| 7 | Re-arm ESF only when intentional | Avoid surprises |
+| 7 | Securing an ESF actuation is a RESET, not a MANUAL selection — there is no arm on this plant (**03 §17.4**) | The stop is refused until the permissive is satisfied |
 
 ### 5.5 Incorrect path (historical — avoid)
 
@@ -142,7 +142,7 @@ Recover a stuck-open PORV LOCA with possible lying indicator without core damage
 | 3 | Establish heat sink | AFW / feed | SG level held |
 | 4 | Attempt PORV Close | PORV Close | May not work |
 | 5 | **Isolate PORV Block Valve** | Block Valve Isolate | Inventory loss stops |
-| 6 | Verify HPI running; leave on until subcooling/inventory healthy | HPI On / AUTO | Injection active as needed |
+| 6 | Verify HPI running; leave on until subcooling/inventory healthy | HPI On (there is no AUTO — the actuation is not defeatable) | Injection active as needed |
 | 7 | Stabilize pressure with heaters when leak isolated — injection actuated early here, so they are **shed**; reload them first | PZR Heaters | P recovering toward 2235 psi (15.41 MPa) class |
 | 8 | Restore normal CVCS carefully | CVCS | Level control without losing subcooling |
 | 9 | Clear drill failures when complete | Failures tab | Clean board |
@@ -152,7 +152,7 @@ Leak isolated; core covered; plant in controlled Hot Shutdown — the recovery T
 
 ### Guard criteria (training)
 - Never melted.  
-- Prefer fuel temperature never ≥ **2192 °F (1200 °C)** (cladding damage threshold in model).  
+- Prefer peak **CLADDING** temperature never ≥ **2200 °F (1204.4 °C)** — 10 CFR 50.46 criterion 1, *"the calculated maximum fuel element cladding temperature shall not exceed 2200F"*, and the model's own damage latch. It is a CLAD limit, not a fuel one, and the fuel runs far hotter than the clad in normal operation. (This line read "fuel temperature at or above 2192 °F" — a converted Celsius round number. Beware the digits: **1200 °F (648.9 °C)** is a third quantity, the onset of significant hydrogen generation.)  
 
 ---
 

@@ -51,7 +51,7 @@
         <span></span><span></span><span></span>
       </button>
       <nav class="site-nav" id="siteNav">
-      <a href="ui/shell.html?engine=pwr">Simulator</a>
+      <a href="ui/shell.html?engine=pwr2">Simulator</a>
       <a href="about.html">About</a>
       <a href="physics.html">Physics</a>
       <a href="roadmap.html">Roadmap</a>
@@ -165,6 +165,24 @@
        ================================================================== -->
 
   <details class="log-entry" open>
+    <summary class="log-head">
+      <h2>A new physics engine</h2>
+      <span class="log-ver mono">Alpha 1.7.0</span>
+      <time class="log-date mono" datetime="2026-08-30">30 August 2026</time>
+    </summary>
+    <ul>
+      <li><span class="log-tag added">Added</span><strong>The PWR runs on a rebuilt physics engine.</strong> Derived design basis, steam-table water properties throughout, and conservation laws the plant can be measured against.</li>
+      <li><span class="log-tag changed">Changed</span><strong>The plant now starts at Hot Shutdown (Mode&nbsp;4, 250&nbsp;&deg;F) &mdash; Cold Shutdown is gone for now.</strong> Mode&nbsp;5 is not modelled on the new engine. Four starting states: Hot Full Power, 50&nbsp;% Power, Hot Standby, Hot Shutdown.</li>
+      <li><span class="log-tag added">Added</span><strong>Auxiliary pressurizer spray</strong>, on the pressurizer card. It lowers pressure with the reactor coolant pumps stopped, which the normal spray cannot do.</li>
+      <li><span class="log-tag changed">Changed</span><strong>The Three Mile Island level deception is emergent.</strong> Leave a relief valve stuck open and pressurizer level rises while the plant loses water &mdash; produced by the model, not scripted.</li>
+      <li><span class="log-tag fixed">Fixed</span><strong>Every row of the instrument-failure panel works.</strong> 35 of its 50 instruments previously refused to fail.</li>
+      <li><span class="log-tag fixed">Fixed</span><strong>A tripped turbine can be re-latched.</strong> One scram used to end electrical generation for the rest of the session.</li>
+      <li><span class="log-tag fixed">Fixed</span><strong>Board indications, alarm setpoints and control ranges read this plant's numbers</strong> rather than the previous engine's.</li>
+      <li><span class="log-tag changed">Changed</span><strong>Operator manuals at Revision&nbsp;17.</strong></li>
+    </ul>
+  </details>
+
+  <details class="log-entry">
     <summary class="log-head">
       <h2>Cold shutdown starts with the rods in</h2>
       <span class="log-ver mono">Alpha 1.6.1</span>

@@ -1,0 +1,514 @@
+<!DOCTYPE html>
+<html lang="en" data-channel="dev">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>PWR2 — SLS-100 rebuild (dev preview)</title>
+  <!-- ============================================================================
+       test_pwr2.html — the PWR2 playable preview (2026-08-19, owner ruling "A").
+
+       WHAT THIS IS: the from-scratch PWR2 engine (#479), driven live through the
+       pwr2_engine facade. Since 2026-08-20 the INSTRUMENT LAYER is live (Hard
+       Rule 1): dot-marked readouts are INDICATED — lag, noise, failable from
+       the panel — and the RPS reads the same channels. The TRUE button is the
+       diagnostic overlay. The banner below tells the player; keep it current.
+
+       WHAT THIS IS NOT: the shipped control room. No M5 service, no snapshots,
+       no instructor, no missions. It is listed in NOT_PUBLISHED in
+       site/build_site.js — dev channel only, never on the public site.
+
+       Self-contained: runs from file://, loads only the pwr2 stack below (gate
+       order — the same ORDER every test/run_pwr2_*.js uses) and inlines all its
+       own CSS/JS. test/run_portable.js's no-runtime-load rule does not apply
+       (this page is not part of the portable build), but keep it true anyway.
+       ============================================================================ -->
+  <style>
+    :root {
+      --bg: #0f1115; --panel: #161a21; --edge: #2a3040; --ink: #d8dee9;
+      --dim: #7a8290; --good: #8ce0a6; --warn: #e0c98c; --bad: #e08c8c;
+      --accent: #8cb8e0;
+    }
+    * { box-sizing: border-box; }
+    body { font: 13px/1.45 ui-monospace, Menlo, Consolas, monospace;
+           background: var(--bg); color: var(--ink); margin: 0; padding: 14px 18px; }
+    h1 { font-size: 17px; margin: 0 0 2px; }
+    .truth-banner { background: #3a2f1b; color: #e0c98c; border: 1px solid #6a5730;
+      border-radius: 6px; padding: 7px 12px; margin: 8px 0 12px; font-size: 12.5px; }
+    .truth-banner strong { letter-spacing: 0.8px; }
+    .cols { display: grid; grid-template-columns: 330px 1fr; gap: 14px; align-items: start; }
+    @media (max-width: 900px) { .cols { grid-template-columns: 1fr; } }
+    .panel { background: var(--panel); border: 1px solid var(--edge); border-radius: 8px;
+             padding: 10px 12px; margin-bottom: 12px; }
+    .panel h2 { font-size: 12px; text-transform: uppercase; letter-spacing: 1.2px;
+                color: var(--dim); margin: 0 0 8px; }
+    .row { display: flex; align-items: center; gap: 8px; margin: 5px 0; flex-wrap: wrap; }
+    .row label { flex: 0 0 108px; color: var(--dim); }
+    input[type=range] { flex: 1; min-width: 80px; }
+    input[type=number] { width: 76px; background: #0d0f13; color: var(--ink);
+      border: 1px solid var(--edge); border-radius: 4px; padding: 3px 6px; font: inherit; }
+    select { background: #0d0f13; color: var(--ink); border: 1px solid var(--edge);
+      border-radius: 4px; padding: 3px 6px; font: inherit; }
+    button { background: #222a38; color: var(--ink); border: 1px solid var(--edge);
+      border-radius: 5px; padding: 4px 10px; font: inherit; cursor: pointer; }
+    button:hover { background: #2b3547; }
+    button.armed { background: #4a2020; border-color: #7a3535; color: #f0b0b0; }
+    button.on { background: #1b3a2b; border-color: #3a7a52; color: var(--good); }
+    button.big { font-size: 14px; font-weight: 700; padding: 7px 14px; }
+    .val { color: var(--accent); min-width: 52px; text-align: right; }
+    .lamps { display: flex; gap: 8px; flex-wrap: wrap; margin: 8px 0 12px; }
+    .lamp { border: 1px solid var(--edge); border-radius: 5px; padding: 3px 10px;
+            color: var(--dim); background: #12151b; font-size: 12px; }
+    .lamp.lit-bad { background: #3a1b1b; border-color: #7a3535; color: var(--bad); font-weight: 700; }
+    .lamp.lit-warn { background: #3a2f1b; border-color: #6a5730; color: var(--warn); font-weight: 700; }
+    .lamp.lit-good { background: #1b3a2b; border-color: #3a7a52; color: var(--good); font-weight: 700; }
+    .reads { display: grid; grid-template-columns: repeat(auto-fill, minmax(148px, 1fr)); gap: 6px; }
+    .read { background: #12151b; border: 1px solid var(--edge); border-radius: 6px; padding: 5px 9px; }
+    .read .k { font-size: 10.5px; color: var(--dim); text-transform: uppercase; letter-spacing: 0.6px; }
+    .read .v { font-size: 15px; }
+    .read .u { font-size: 10.5px; color: var(--dim); }
+    canvas { width: 100%; height: 340px; display: block; background: #0d0f13;
+             border: 1px solid var(--edge); border-radius: 6px; }
+    .dead { background: #3a1b1b; color: var(--bad); border: 1px solid #7a3535;
+      border-radius: 6px; padding: 8px 12px; margin: 10px 0; display: none; }
+    .topbar { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin: 6px 0 4px; }
+    .clock { color: var(--accent); font-size: 15px; min-width: 90px; }
+    .foot { color: var(--dim); font-size: 11.5px; margin-top: 10px; }
+  </style>
+</head>
+<body>
+  <h1>Reactor⚛️Dynamics — <strong>PWR2</strong> · SLS-100 physics rebuild <span style="color:var(--dim)">(#479, dev preview)</span></h1>
+  <div class="truth-banner"><strong>⚙ INSTRUMENTS LIVE</strong> — readouts marked with a dot
+    show <strong>indicated</strong> values: sensing lag (the RTD's sourced 2.0 s among them),
+    band-limited noise, and channels you can fail from the panel below. The reactor protection
+    system reads these same channels — <strong>fail one and the RPS believes the lie</strong>.
+    Unmarked readouts are true-state diagnostics. The TRUE button switches everything to truth.
+    The strip chart always draws truth.</div>
+
+  <div class="topbar">
+    <button id="runBtn" class="big">&#9654; Run</button>
+    <label>speed <select id="accel">
+      <option value="1">1&times;</option><option value="10" selected>10&times;</option>
+      <option value="60">60&times;</option><option value="300">300&times;</option>
+    </select></label>
+    <button id="trueBtn" title="show true values instead of indicated">TRUE</button>
+    <span class="clock" id="clock">t = 0 s</span>
+    <span style="color:var(--dim)" id="perf"></span>
+  </div>
+
+  <div class="lamps" id="lamps"></div>
+  <div class="dead" id="dead"></div>
+
+  <div class="cols">
+    <div>
+      <div class="panel"><h2>Reactivity &amp; turbine</h2>
+        <div class="row"><label>load target</label>
+          <input type="range" id="loadMwe" min="0" max="100" step="1" value="100">
+          <span class="val" id="loadMweV">100 MWe</span></div>
+        <div class="row"><label>rod target</label>
+          <input type="range" id="rodT" min="0" max="200" step="1" value="200">
+          <span class="val" id="rodTV">200 st</span></div>
+        <div class="row">
+          <button id="scramBtn" class="big">SCRAM</button>
+          <button id="tbTrip">Turbine trip</button>
+          <button id="rpsReset">Reset protection</button></div>
+        <div class="row"><label>makeup</label>
+          <select id="makeup"><option value="match" selected>match (auto)</option>
+            <option value="borate">borate</option><option value="dilute">dilute</option></select>
+          <label style="flex:0 0 auto">letdown</label>
+          <input type="range" id="letdown" min="0" max="1" step="0.05" value="1" style="width:70px">
+          <span class="val" id="letdownV">100%</span></div>
+      </div>
+
+      <div class="panel"><h2>Pressurizer</h2>
+        <div class="row"><label>setpoint</label>
+          <input type="number" id="pzrSp" value="2235" step="5"> <span class="u">psia</span></div>
+        <div class="row"><label>heaters</label>
+          <select id="htrMode"><option value="auto" selected>AUTO</option><option value="man">MANUAL</option></select>
+          <input type="range" id="htrMan" min="0" max="1" step="0.05" value="0" disabled style="width:70px">
+          <span class="val" id="htrManV">–</span></div>
+        <div class="row"><label>spray</label>
+          <select id="spyMode"><option value="auto" selected>AUTO</option><option value="man">MANUAL</option></select>
+          <input type="range" id="spyMan" min="0" max="1" step="0.05" value="0" disabled style="width:70px">
+          <span class="val" id="spyManV">–</span></div>
+        <div class="row"><label>aux spray</label>
+          <input type="range" id="auxSpy" min="0" max="1" step="0.05" value="0">
+          <span class="val" id="auxSpyV">0%</span></div>
+        <div class="row">
+          <button id="porvStick">Stick PORV open</button>
+          <button id="blockValve" class="on">Block valve OPEN</button></div>
+      </div>
+
+      <div class="panel"><h2>Steam relief</h2>
+        <div class="row"><label>dump mode</label>
+          <select id="dumpMode"><option value="tavg" selected>Tavg (loss-of-load)</option>
+            <option value="pressure">steam pressure</option><option value="off">OFF</option></select></div>
+        <div class="row"><label>dump SP</label>
+          <input type="number" id="dumpSp" value="1005" step="5"> <span class="u">psia (pressure mode)</span></div>
+        <div class="row"><label>ADV demand</label>
+          <input type="range" id="advDem" min="0" max="1" step="0.05" value="0">
+          <span class="val" id="advDemV">0%</span>
+          <button id="advBlock">Block ADVs</button></div>
+      </div>
+
+      <div class="panel"><h2>Safeguards &amp; pumps</h2>
+        <div class="row">
+          <button id="hhsi">HHSI</button><button id="lhsi">LHSI</button>
+          <button id="afw">AFW</button></div>
+        <div class="row">
+          <button id="cw" class="on">CW pumps ON</button>
+          <button id="rcpTrip">Trip the RCP</button></div>
+      </div>
+
+      <div class="panel"><h2>Instrument failures</h2>
+        <div class="row"><label>channel</label>
+          <select id="insCh"></select></div>
+        <div class="row"><label>mode</label>
+          <select id="insMode"><option value="stuck">stuck (lies still)</option>
+            <option value="low">fail LOW</option><option value="high">fail HIGH</option>
+            <option value="noisy">noisy</option></select></div>
+        <div class="row">
+          <button id="insFail" class="big">FAIL CHANNEL</button>
+          <button id="insRestore">Restore all</button></div>
+      </div>
+
+      <div class="panel"><h2>Break (casualty)</h2>
+        <div class="row"><label>area</label>
+          <input type="number" id="brkArea" value="5" step="1" min="0.1"> <span class="u">cm&sup2;</span>
+          <select id="brkNode"><option value="cold_leg" selected>cold leg</option>
+            <option value="hot_leg">hot leg</option><option value="core">core</option></select></div>
+        <div class="row">
+          <button id="brkOpen" class="big">OPEN BREAK</button>
+          <button id="brkClose">Close</button></div>
+      </div>
+    </div>
+
+    <div>
+      <div class="panel"><h2>Plant readouts <span style="text-transform:none;letter-spacing:0">(● = indicated)</span></h2>
+        <div class="reads" id="reads"></div>
+      </div>
+      <div class="panel"><h2>Strip chart — 20 min window</h2>
+        <canvas id="chart" width="900" height="340"></canvas>
+      </div>
+      <p class="foot">PWR2 is the from-scratch physics rebuild — every constant sourced or
+        declared, validated in <code>Blueprint/PWR2_VALIDATION.md</code>. This page and the
+        <code>pwr2_engine</code> facade are gated by <code>test/run_pwr2_engine.js</code>.
+        Beyond-model states are declared, not hidden: a deep blowdown may freeze the plant
+        (latched) or halt this page with the engine's own error.</p>
+    </div>
+  </div>
+
+  <!-- The PWR2 stack, gate order — the same ORDER every test/run_pwr2_*.js loads. -->
+  <script src="engines/pwr2/pwr2_water.js"></script>
+  <script src="engines/pwr2/pwr2_vtable.js"></script>
+  <script src="engines/pwr2/pwr2_geometry.js"></script>
+  <script src="engines/pwr2/pwr2_core.js"></script>
+  <script src="engines/pwr2/pwr2_loop.js"></script>
+  <script src="engines/pwr2/pwr2_kinetics.js"></script>
+  <script src="engines/pwr2/pwr2_fuel.js"></script>
+  <script src="engines/pwr2/pwr2_reactor.js"></script>
+  <script src="engines/pwr2/pwr2_sources.js"></script>
+  <script src="engines/pwr2/pwr2_sg.js"></script>
+  <script src="engines/pwr2/pwr2_turbine.js"></script>
+  <script src="engines/pwr2/pwr2_relief.js"></script>
+  <script src="engines/pwr2/pwr2_condenser.js"></script>
+  <script src="engines/pwr2/pwr2_cvcs.js"></script>
+  <script src="engines/pwr2/pwr2_eccs.js"></script>
+  <script src="engines/pwr2/pwr2_afw.js"></script>
+  <script src="engines/pwr2/pwr2_damage.js"></script>
+  <script src="engines/pwr2/pwr2_protection.js"></script>
+  <script src="engines/pwr2/pwr2_pressurizer.js"></script>
+  <script src="engines/pwr2/pwr2_dumpctl.js"></script>
+  <script src="engines/pwr2/pwr2_break.js"></script>
+  <script src="engines/pwr2/pwr2_containment.js"></script>
+  <script src="engines/pwr2/pwr2_rhr.js"></script>
+  <script src="engines/pwr2/pwr2_true_state.js"></script>
+  <script src="engines/pwr2/pwr2_instruments.js"></script>
+  <script src="engines/pwr2/pwr2_feedwater.js"></script>
+  <script src="engines/pwr2/pwr2_engine.js"></script>
+
+  <script>
+  (function () {
+    'use strict';
+    var EN = RD.pwr2.engine;
+    var DT = 0.02;                 /* the gates' own step */
+    var PSIA = 145.03774;          /* MPa -> psia */
+    function F(c) { return c * 1.8 + 32; }
+    function dF(c) { return c * 1.8; }
+    var $ = function (id) { return document.getElementById(id); };
+
+    var eng = EN.createEngine({});
+    var ts = EN.step(eng, DT);
+    var running = false, dead = false;
+
+    /* ---- commands (every lever goes through the one door) ---------------- */
+    function cmd(n, v) { if (!dead) EN.command(eng, n, v); }
+    function bindRange(id, label, fmt, name, map) {
+      var el = $(id);
+      el.addEventListener('input', function () {
+        $(label).textContent = fmt(+el.value);
+        if (name) cmd(name, map ? map(+el.value) : +el.value);
+      });
+    }
+    bindRange('loadMwe', 'loadMweV', function (v) { return v + ' MWe'; }, 'load_mwe');
+    bindRange('rodT', 'rodTV', function (v) { return v + ' st'; }, 'rod_target');
+    bindRange('letdown', 'letdownV', function (v) { return (v * 100).toFixed(0) + '%'; }, 'letdown');
+    bindRange('auxSpy', 'auxSpyV', function (v) { return (v * 100).toFixed(0) + '%'; }, 'aux_spray');
+    bindRange('advDem', 'advDemV', function (v) { return (v * 100).toFixed(0) + '%'; }, 'adv_demand');
+    $('scramBtn').addEventListener('click', function () { cmd('scram', true); });
+    $('rpsReset').addEventListener('click', function () {
+      cmd('reset_protection', true); cmd('rod_target', +$('rodT').value);
+    });
+    $('makeup').addEventListener('change', function () { cmd('makeup', this.value); });
+    $('pzrSp').addEventListener('change', function () { cmd('pzr_setpoint_mpa', +this.value / PSIA); });
+    $('dumpMode').addEventListener('change', function () { cmd('dump_mode', this.value); });
+    $('dumpSp').addEventListener('change', function () { cmd('dump_pressure_setpoint_mpa', +this.value / PSIA); });
+
+    function manualPair(modeId, sldId, valId, name) {
+      var mode = $(modeId), sld = $(sldId), val = $(valId);
+      function push() {
+        var man = mode.value === 'man';
+        sld.disabled = !man;
+        val.textContent = man ? (sld.value * 100).toFixed(0) + '%' : '–';
+        cmd(name, man ? +sld.value : null);
+      }
+      mode.addEventListener('change', push);
+      sld.addEventListener('input', push);
+    }
+    manualPair('htrMode', 'htrMan', 'htrManV', 'pzr_heaters_manual');
+    manualPair('spyMode', 'spyMan', 'spyManV', 'pzr_spray_manual');
+
+    function toggle(id, name, onText, offText, invert) {
+      var el = $(id), state = el.classList.contains('on');
+      el.addEventListener('click', function () {
+        state = !state;
+        el.classList.toggle('on', state && !invert);
+        el.classList.toggle('armed', state && !!invert);
+        el.textContent = state ? onText : offText;
+        cmd(name, state);
+      });
+    }
+    toggle('tbTrip', 'turbine_trip', 'Turbine TRIPPED', 'Turbine trip', true);
+    toggle('porvStick', 'porv_stick', 'PORV STUCK OPEN', 'Stick PORV open', true);
+    toggle('advBlock', 'adv_block', 'ADVs BLOCKED', 'Block ADVs', true);
+    toggle('hhsi', 'hhsi', 'HHSI RUNNING', 'HHSI');
+    toggle('lhsi', 'lhsi', 'LHSI RUNNING', 'LHSI');
+    toggle('afw', 'afw', 'AFW RUNNING', 'AFW');
+    /* block valve and CW start true — flip the initial sense */
+    (function () {
+      var el = $('blockValve'), open = true;
+      el.addEventListener('click', function () {
+        open = !open;
+        el.classList.toggle('on', open); el.classList.toggle('armed', !open);
+        el.textContent = open ? 'Block valve OPEN' : 'Block valve SHUT';
+        cmd('block_valve', open);
+      });
+    })();
+    (function () {
+      var el = $('cw'), on = true;
+      el.addEventListener('click', function () {
+        on = !on;
+        el.classList.toggle('on', on); el.classList.toggle('armed', !on);
+        el.textContent = on ? 'CW pumps ON' : 'CW pumps OFF';
+        cmd('cw_pumps', on);
+      });
+    })();
+    $('rcpTrip').addEventListener('click', function () {
+      cmd('pump_trip', true); this.classList.add('armed'); this.textContent = 'RCP TRIPPED';
+    });
+    $('brkOpen').addEventListener('click', function () {
+      cmd('break_open', { area_m2: +$('brkArea').value / 10000, node: $('brkNode').value });
+      this.classList.add('armed');
+    });
+    $('brkClose').addEventListener('click', function () {
+      cmd('break_close', true); $('brkOpen').classList.remove('armed');
+    });
+
+    /* ---- readouts (US customary first, the house rule) -------------------- */
+    /* [label, trueGetter, unit, indicatedGetter?] — rows with an indicated getter read the
+     * INSTRUMENTS by default (dot-marked); rows without stay true-state diagnostics. rd()
+     * is the live readings dict. Subcooling's indicated form is a saturation-margin monitor:
+     * computed from the INDICATED pressure and hot-leg temperature, like the real device. */
+    var rd = function () { return eng.ins.reading; };
+    var Wp = RD.pwr2.water;
+    var READS = [
+      ['Pressure', function () { return (ts.pressure_mpa * PSIA).toFixed(0); }, 'psia',
+        function () { return (rd().primary_pressure * PSIA).toFixed(0); }],
+      ['Tavg', function () { return F(ts.tavg_c).toFixed(1); }, '°F',
+        function () { return F(rd().tavg).toFixed(1); }],
+      ['T-hot / T-cold', function () { return F(ts.thot_c).toFixed(0) + ' / ' + F(ts.tcold_c).toFixed(0); }, '°F',
+        function () { return F(rd().thot).toFixed(0) + ' / ' + F(rd().tcold).toFixed(0); }],
+      ['Subcooling', function () { return dF(ts.subcooling_c).toFixed(1); }, '°F',
+        function () { return dF(Wp.T_sat(Math.max(rd().primary_pressure, 0.101)) - rd().thot).toFixed(1); }],
+      ['Power', function () { return ts.power_pct.toFixed(1); }, '% fission',
+        function () { return rd().power_range.toFixed(1); }],
+      ['Core heat', function () { return ts.core_heat_pct.toFixed(1); }, '% (incl. decay)'],
+      ['Generator', function () { return ts.mwe_output.toFixed(1); }, 'MWe',
+        function () { return rd().mwe_output.toFixed(1); }],
+      ['Rods', function () { return ts.rod_steps.toFixed(0); }, 'steps'],
+      ['Boron', function () { return ts.boron_ppm.toFixed(0); }, 'ppm',
+        function () { return rd().boron.toFixed(0); }],
+      ['Startup rate', function () { return ts.startup_rate_dpm.toFixed(2); }, 'dpm',
+        function () { return rd().startup_rate.toFixed(2); }],
+      ['PZR level', function () { return ts.pzr_level_pct.toFixed(1); }, '%',
+        function () { return rd().pzr_level.toFixed(1); }],
+      ['PZR heaters', function () { return ts.pzr_heater_kw.toFixed(0); }, 'kW'],
+      ['Spray', function () { return ts.spray_flow_pct.toFixed(0); }, '%'],
+      ['PORV tailpipe', function () { return F(ts.porv_tailpipe_temp_c).toFixed(0); }, '°F',
+        function () { return F(rd().porv_tailpipe_temp).toFixed(0); }],
+      ['Steam pressure', function () { return (ts.steam_pressure_mpa * PSIA).toFixed(0); }, 'psia',
+        function () { return (rd().steam_pressure * PSIA).toFixed(0); }],
+      ['Steam flow', function () { return (ts.steam_flow_normalized * 100).toFixed(0); }, '% rated',
+        function () { return (rd().steam_flow * 100).toFixed(0); }],
+      ['RCS flow', function () { return ts.pump_flow_pct.toFixed(0); }, '%',
+        function () { return rd().loop_flow.toFixed(0); }],
+      ['Inventory', function () { return ts.core_inventory_pct.toFixed(1); }, '%'],
+      ['Core void', function () { return (ts.core_void_fraction * 100).toFixed(1); }, '%'],
+      ['Clad temp', function () { return F(ts.clad_temp_c).toFixed(0); }, '°F'],
+      ['Fuel temp', function () { return F(ts.fuel_temp_c).toFixed(0); }, '°F'],
+      ['Containment', function () { return (ts.containment_pressure_mpa * PSIA).toFixed(1); }, 'psia',
+        function () { return (rd().containment_pressure * PSIA).toFixed(1); }],
+      ['Xenon', function () { return ts.xenon_pct_eq.toFixed(0); }, '% of eq.'],
+      ['Reactivity', function () { return ts.reactivity_pcm.toFixed(0); }, 'pcm']
+    ];
+    var showTrue = false;
+    var readsRoot = $('reads'), readEls = [];
+    READS.forEach(function (r) {
+      var d = document.createElement('div'); d.className = 'read';
+      var dot = r[3] ? ' <span style="color:#e0c98c" title="indicated — an instrument channel">●</span>' : '';
+      d.innerHTML = '<div class="k">' + r[0] + dot + '</div><div class="v">–</div><div class="u">' + r[2] + '</div>';
+      readsRoot.appendChild(d); readEls.push(d.children[1]);
+    });
+
+    var LAMPS = [
+      ['SCRAMMED', function () { return ts.scrammed; }, 'lit-bad'],
+      ['SI', function () { return eng.pt.si; }, 'lit-bad'],
+      ['ECCS', function () { return ts.eccs_mode !== 'off' ? ts.eccs_mode : false; }, 'lit-warn'],
+      ['DUMP ARMED', function () { return ts.dump_armed; }, 'lit-warn'],
+      ['PORV', function () { return ts.porv_open; }, 'lit-warn'],
+      ['SG SAFETY', function () { return ts.sg_safety_open; }, 'lit-warn'],
+      ['HTRS SHED', function () { return ts.pzr_heaters_shed; }, 'lit-warn'],
+      ['RUNBACK', function () { return ts.runback_signal; }, 'lit-warn'],
+      ['ROD STOP', function () { return ts.rod_stop; }, 'lit-warn'],
+      ['NAT CIRC', function () { return ts.natural_circulation; }, 'lit-warn'],
+      ['AFW', function () { return ts.afw_active; }, 'lit-good'],
+      ['FUEL DAMAGE', function () { return ts.fuel_damaged; }, 'lit-bad'],
+      ['MELTED', function () { return ts.melted; }, 'lit-bad']
+    ];
+    var lampsRoot = $('lamps'), lampEls = [];
+    LAMPS.forEach(function (l) {
+      var d = document.createElement('span'); d.className = 'lamp'; d.textContent = l[0];
+      lampsRoot.appendChild(d); lampEls.push(d);
+    });
+
+    /* ---- strip chart: 4 stacked auto-scaled lanes, 20 min at 1 Hz ---------- */
+    var CH = [
+      ['Pressure psia', '#8cb8e0', function () { return ts.pressure_mpa * PSIA; }],
+      ['Tavg °F', '#e0c98c', function () { return F(ts.tavg_c); }],
+      ['Power %', '#8ce0a6', function () { return ts.power_pct; }],
+      ['PZR level %', '#c79be0', function () { return ts.pzr_level_pct; }]
+    ];
+    var BUF_N = 1200, buf = CH.map(function () { return []; });
+    var lastSample = -1;
+    function sample() {
+      var sec = Math.floor(ts.sim_time_s);
+      if (sec === lastSample) return;
+      lastSample = sec;
+      CH.forEach(function (c, i) {
+        buf[i].push(c[2]());
+        if (buf[i].length > BUF_N) buf[i].shift();
+      });
+    }
+    var cv = $('chart'), cx = cv.getContext('2d');
+    function drawChart() {
+      var w = cv.width, h = cv.height, laneH = h / CH.length;
+      cx.clearRect(0, 0, w, h);
+      CH.forEach(function (c, i) {
+        var y0 = i * laneH, d = buf[i];
+        cx.strokeStyle = '#232838'; cx.beginPath();
+        cx.moveTo(0, y0 + laneH - 0.5); cx.lineTo(w, y0 + laneH - 0.5); cx.stroke();
+        if (d.length < 2) return;
+        var lo = Infinity, hi = -Infinity;
+        for (var k = 0; k < d.length; k++) { if (d[k] < lo) lo = d[k]; if (d[k] > hi) hi = d[k]; }
+        if (hi - lo < 1e-6) { hi += 0.5; lo -= 0.5; }
+        var pad = (hi - lo) * 0.12; lo -= pad; hi += pad;
+        cx.strokeStyle = c[1]; cx.beginPath();
+        for (k = 0; k < d.length; k++) {
+          var x = k / (BUF_N - 1) * w;
+          var y = y0 + laneH - (d[k] - lo) / (hi - lo) * (laneH - 14) - 7;
+          if (k === 0) cx.moveTo(x, y); else cx.lineTo(x, y);
+        }
+        cx.stroke();
+        cx.fillStyle = c[1]; cx.font = '11px ui-monospace, Consolas, monospace';
+        cx.fillText(c[0] + '  ' + d[d.length - 1].toFixed(1), 6, y0 + 13);
+        cx.fillStyle = '#5a6272';
+        cx.fillText(hi.toFixed(0), w - 44, y0 + 13);
+        cx.fillText(lo.toFixed(0), w - 44, y0 + laneH - 5);
+      });
+    }
+
+    /* ---- the loop ---------------------------------------------------------- */
+    function paint() {
+      READS.forEach(function (r, i) {
+        readEls[i].textContent = (!showTrue && r[3]) ? r[3]() : r[1]();
+      });
+      LAMPS.forEach(function (l, i) {
+        var lit = l[1]();
+        lampEls[i].className = 'lamp' + (lit ? ' ' + l[2] : '');
+        lampEls[i].textContent = typeof lit === 'string' ? l[0] + ': ' + lit.toUpperCase() : l[0];
+      });
+      var t = ts.sim_time_s;
+      $('clock').textContent = 't = ' + (t < 120 ? t.toFixed(0) + ' s'
+        : (t / 60).toFixed(1) + ' min');
+      drawChart();
+    }
+    var timer = null;
+    function tick() {
+      var accel = +$('accel').value;
+      var steps = Math.round(accel * 0.04 / DT);   /* 40 ms of wall time */
+      var t0 = performance.now();
+      try {
+        for (var i = 0; i < steps; i++) {
+          ts = EN.step(eng, DT);
+          sample();
+        }
+      } catch (e) {
+        /* the engine's own beyond-model throw — declare it, freeze the plant */
+        dead = true; stop();
+        var d = $('dead'); d.style.display = 'block';
+        d.textContent = '☠ BEYOND MODEL — the engine halted itself: ' + e.message +
+          '  (t = ' + ts.sim_time_s.toFixed(1) + ' s; reload the page to start over)';
+      }
+      $('perf').textContent = (performance.now() - t0).toFixed(0) + ' ms/tick';
+      paint();
+    }
+    function start() {
+      if (dead) return;
+      running = true; $('runBtn').textContent = '⏸ Pause'; $('runBtn').classList.add('on');
+      timer = setInterval(tick, 40);
+    }
+    function stop() {
+      running = false; $('runBtn').textContent = '▶ Run'; $('runBtn').classList.remove('on');
+      if (timer) { clearInterval(timer); timer = null; }
+    }
+    $('runBtn').addEventListener('click', function () { running ? stop() : start(); });
+    $('trueBtn').addEventListener('click', function () {
+      showTrue = !showTrue;
+      this.classList.toggle('on', showTrue);
+      this.textContent = showTrue ? 'TRUE ✓' : 'TRUE';
+      paint();
+    });
+    /* failure panel — channels from the module's own table, so a new channel appears here
+     * without a page edit */
+    RD.pwr2.instruments.CHANNELS.forEach(function (c) {
+      var o = document.createElement('option'); o.value = c.id; o.textContent = c.id;
+      $('insCh').appendChild(o);
+    });
+    $('insFail').addEventListener('click', function () {
+      cmd('instrument_fail', { id: $('insCh').value, mode: $('insMode').value });
+    });
+    $('insRestore').addEventListener('click', function () { cmd('instrument_restore', true); });
+    paint();
+  })();
+  </script>
+</body>
+</html>

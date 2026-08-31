@@ -56,13 +56,15 @@
      * Deliberately NOT persisted, unlike the panel state: it would save the SIDES of channel
      * selections that are themselves forgotten on reload. Reset wherever `series` is. */
     seriesSide: {},
-    plant: 'pwr',           // active plant_id
-    engineKey: 'pwr',       // active engine selector key
-    // The SHIPPED starting point *(OWNER, 2026-08-08: "the plant should start with the 50%
-    // power preset")*. Kept in step with ENGINES.pwr.init below — this one seeds the very
-    // first render, that one is what a plant switch and Reset go back to, and a mismatch
-    // shows up as a board that changes under you one broadcast in.
-    initState: '50_percent',
+    plant: 'pwr',           // active BOARD (pwr2 wears the pwr board — see uiPlantOf)
+    engineKey: 'pwr2',      // active engine selector key — the shipped plant (2026-08-26)
+    // The SHIPPED starting point. Kept in step with ENGINES.pwr2.init below — this one seeds
+    // the very first render, that one is what a plant switch and Reset go back to, and a
+    // mismatch shows up as a board that changes under you one broadcast in. It was
+    // '50_percent' *(OWNER, 2026-08-08: "the plant should start with the 50% power preset")*
+    // against the retired engine; PWR2's own preset registry opens at Hot Full Power, and
+    // ENGINES.pwr2.init is the one that decides — this line only has to agree with it.
+    initState: 'hot_full_power',
     view: 'diagram',        // plant-display active view
     pdAck: {},              // operator-acknowledged auto-actuations (ECCS/AFW → green)
     pdOp: {},               // operator-initiated systems (start green directly)
@@ -72,6 +74,16 @@
     inspectExpanded: false, // Scanner grown to show the full description (owner, 2026-08-11)
     indFilter: 'all',       // merged list row-type chip: all | paired | ind | phys (#439)
     indTruth: null,         // HR1 truth column: null = follow the mode default (off in missions)
+    /* THE MONITOR LIST (#477): id -> true for every channel the operator has ticked to
+     * watch. Each one is DUPLICATED into a block above the groups, so a set of seven or
+     * eight readings can be read without hunting down the list for them.
+     *
+     * PERSISTED, per plant — deliberately unlike `series`/`seriesSide` above. Those two are
+     * a view setting that a plant change invalidates outright; this is the player's own
+     * curated watch list, and one you have to rebuild on every reload is one you stop
+     * using. Saved and loaded in saveMonitor()/loadMonitor(), keyed by plant because the
+     * series ids differ between profiles. */
+    monitor: {},
   };
   var service, latest = null, lastScrammed = false;
   // Operator automation now lives IN-STACK (layers/control/control_kernel.js);
@@ -306,13 +318,69 @@
   // `soon: true` = the physics engine is complete but the M8 board / M4 control
   // surface is not extended to it yet, so the card is shown greyed and is not
   // selectable. The ?engine= dev override still reaches them deliberately.
+  //
+  // WHICH CONSTRUCTORS ACTUALLY LOADED — measured, never declared (2026-08-26). A published
+  // build carries PWR2 only: site/build_site.js deletes the retired engine's <script> tags
+  // from ui/shell.html on the `public` channel, and tools/make_portable.js deletes them from
+  // the offline download unconditionally. So this file cannot hold a list of what is
+  // available; it has to LOOK. Every consumer — the boot override, the fallback and the plant
+  // column — reads this one probe, which is what keeps the menu from offering a card whose
+  // constructor is not in the page. Same shape as #514's greyed RBMK/BWR cards, except
+  // derived rather than written down, because for the PWR the answer differs per build.
+  // Deliberately a function, not a snapshot: it is called after all <script>s have run.
+  function ctorPresent(key) {
+    switch (key) {
+      case 'pwr':       return !!RD.PWREngine;
+      case 'pwr2':      return !!(RD.pwr2 && RD.pwr2.shell);
+      case 'rbmk_pre':
+      case 'rbmk_post': return !!RD.RBMKEngine;
+      case 'bwr':       return !!RD.BWREngine;
+      default:          return false;
+    }
+  }
   var ENGINES = {
     // 50 % power, not full *(OWNER, 2026-08-08: "the plant should start with the 50% power
     // preset")* — there is somewhere to go in both directions from it. `ui.initState` above
     // carries the same value for the first render.
+    // THE RETIRED ENGINE (2026-08-26). PWR2 replaced it *(OWNER RULING, 2026-08-26: "Flip
+    // now, track the gaps")*, and a published build does not contain it at all — so this
+    // card only ever appears on a dev or preview build, where ctorPresent('pwr') is true.
+    // It is kept reachable, not deleted, for two live reasons: it is the A/B reference
+    // test/measure_pwr2_ab.js diffs against, and it is the only engine the campaign, the
+    // scenarios and the walkthroughs are authored for, so it is where that content is
+    // vetted until the compatibility pass runs.
     pwr:       { plant: 'pwr',  dv: null,              init: '50_percent',
+                 label: 'PWR — retired engine', sub: 'The previous physics · dev and preview builds only',
+                 desc: 'The engine PWR2 replaced. Kept as the A/B reference and as the plant the campaign, scenarios and walkthroughs were written against. Not in any published build.' },
+    // THE PWR, since 2026-08-26 *(OWNER RULING, 2026-08-26: "Flip now, track the gaps")* —
+    // what every site link opens, what ?engine= defaults to, and the only engine a published
+    // build carries. Was a first-class card beside the old one from 2026-08-21 (owner: "I
+    // want to be able to go into the plant and scenario selection menu and be able to choose
+    // either PWR plant"); the retired card above now outranks nothing.
+    // plant:'pwr' ON PURPOSE — the whole UI (profiles, PD tables, the seven ui.plant==='pwr'
+    // branches) treats this as the PWR board it is; only the ENGINE differs, carried by
+    // `engine:` and resolved at every selectPlant/reset call via engId(). The key stays
+    // 'pwr2' as well: it is the service plant_id, the save schema ('pwr2-1.0') and 37 gate
+    // runners' name for this plant, and renaming it would buy a label and cost all of that.
+    // initStates OVERRIDES the profile's list: this engine carries its OWN preset registry
+    // (pwr2_engine ICS — the FOUR below since #507 wave 10 added Hot Shutdown; this comment
+    // said "three" while the list held four, #510 LOW. Mode 5 proper stays deferred on the
+    // Layer-0 floor) and offering the pwr profile's presets the constructor refuses would
+    // be a menu that lies.
+    // freePlayOnly: the campaign/scenario/walkthrough content is authored and validated
+    // against the current engine; running it silently on different physics would grade the
+    // player against the wrong plant. Lifts when the scenario-compat pass runs.
+    pwr2:      { plant: 'pwr', engine: 'pwr2', dv: null, init: 'hot_full_power',
+                 initStates: [['hot_full_power', 'Hot Full Power (Mode 1)'],
+                              ['50_percent', '50 % Power (Mode 1)'],
+                              ['hot_zero_power', 'Hot Standby (Mode 3)'],
+                              ['hot_shutdown', 'Hot Shutdown (Mode 4)']],
+                 freePlayOnly: true,
                  label: 'PWR', sub: 'Pressurized Water Reactor',
-                 desc: 'The stable, self-regulating starting point. Separate primary and steam loops. Home of the Three Mile Island story.' },
+                 desc: 'The SLS-100: real break locations, emergent natural circulation, the ' +
+                       'TMI level deception as physics rather than script. Starts at Hot ' +
+                       'Shutdown (Mode 4) or above. Free Play — the guided content is being ' +
+                       're-validated on this engine.' },
     rbmk_pre:  { plant: 'rbmk', dv: 'pre_chernobyl',   init: 'full_power', soon: true,
                  label: 'RBMK pre-1986', sub: 'Chernobyl-type · original design',
                  desc: 'Graphite-moderated, positive void coefficient, graphite-tipped rods — the design that failed at Chernobyl.' },
@@ -490,6 +558,12 @@
         { id: 'clad_temp',grp: 'Core damage', label: 'Peak Clad Temp', c: '#d05a3e', tru: function (t) { return t.clad_temp_c; }, range: [200, 1400], dHi: 1200, fmt: function (v) { return conv(v, 'temp').toFixed(0) + unit('temp'); } },
         { id: 'core_void',grp: 'Core damage', label: 'Core Void', c: '#8fb0d0', tru: function (t) { return t.core_void_fraction * 100; }, range: [0, 100], fmt: function (v) { return v.toFixed(1) + '%'; } },
         { id: 'uncovered',grp: 'Core damage', label: 'Core Uncovered', c: '#c04a6a', tru: function (t) { return t.core_uncovered_frac * 100; }, range: [0, 100], dHi: 1, fmt: function (v) { return v.toFixed(0) + '%'; } },
+        /* #520 — HOW DRY, and it exists because `uncovered` above SATURATES. Core void clips
+         * at 1, so once the core is fully steam-filled every field in this group is a constant:
+         * measured on an unmitigated 5 cm2 break, uncovery pins at 100 % at 580 s and reports the
+         * same number for the next 1,220 s while the core dries 0 -> 131 degC. pwr2-only — on the
+         * old engine `tru` returns undefined and the row reads a dash, which seriesLive swallows. */
+        { id: 'core_sh', grp: 'Core damage', label: 'Core Superheat', c: '#e0a040', tru: function (t) { return t.core_superheat_c; }, range: [0, 200], dHi: 1, fmt: function (v) { return conv(v, 'tempdiff').toFixed(0) + ' ' + unit('tempdiff'); } },
         { id: 'zirc',     grp: 'Core damage', label: 'Zr Oxidation Heat', c: '#e07030', tru: function (t) { return t.zirc_heat_pct; }, range: [0, 5], dHi: 0.01, fmt: function (v) { return v.toFixed(2) + '%'; } },
 
         // ---------------------------------------------------------------- primary coolant
@@ -607,7 +681,14 @@
         { id: 'sg_level', instr: 'sg_level', grp: 'Steam & feed', label: 'SG Level', c: '#806890', get: function (i) { return i.sg_level; }, tru: function (t) { return t.sg_level_pct; }, range: [0, 100], dLo: 12, fmt: function (v) { return v.toFixed(0) + '%'; } },
         { id: 'steam_flow',instr: 'steam_flow', grp: 'Steam & feed', label: 'Steam Flow',c: '#8a9a5a', get: function (i) { return i.steam_flow * 100; }, tru: function (t) { return t.steam_flow_normalized * 100; }, range: [0, 120], fmt: function (v) { return v.toFixed(0) + '%'; } },
         { id: 'fw_flow',  instr: 'fw_flow', grp: 'Steam & feed', label: 'Feed Flow',c: '#4a8a86', get: function (i) { return i.fw_flow * 100; }, tru: function (t) { return t.fw_flow_normalized * 100; }, range: [0, 120], fmt: function (v) { return v.toFixed(0) + '%'; } },
-        { id: 'afw_flow', instr: 'afw_flow', grp: 'Steam & feed', label: 'AFW Flow', c: '#5aa8a0', get: function (i) { return i.afw_flow * 100; }, tru: function (t) { return t.afw_flow_normalized * 100; }, range: [0, 40], fmt: function (v) { return v.toFixed(1) + '%'; } },
+        // AFW Flow. The axis is [0, 120] like its two siblings above, NOT the old [0, 40]
+        // (#557): 40 was sized for the retired engine's ceiling, where AFW normalizes on rated
+        // FEED and full AFW is `afw_flow_frac` 0.15 = 15 % of the axis. PWR2 normalizes on AFW's
+        // OWN rating, so one pump reads 33.3 % and both read 100 % — off the top of a 40 axis,
+        // on the plant the site runs. One profile serves both engines (uiPlantOf folds pwr2 onto
+        // pwr), so the axis has to hold the wider of the two bases; the retired engine simply
+        // draws low on it, which is honest — its AFW really is a sixth of the feed it replaces.
+        { id: 'afw_flow', instr: 'afw_flow', grp: 'Steam & feed', label: 'AFW Flow', c: '#5aa8a0', get: function (i) { return i.afw_flow * 100; }, tru: function (t) { return t.afw_flow_normalized * 100; }, range: [0, 120], fmt: function (v) { return v.toFixed(1) + '%'; } },
         // The SG's own mass balance: steam out (turbine + dump + safeties) minus TOTAL
         // feed (main + AFW). Positive means the level is on its way down, which is the
         // thing a level trace only tells you after it has already happened.
@@ -629,7 +710,7 @@
         stat({ id: 'msiv',      grp: 'Steam & feed', label: 'MSIV Open', c: '#8090a8', ins: 'msiv_open', tru: 'msiv_open', on: 'OPEN', off: 'SHUT', alarm: 'off', hint: 'whether the main steam isolation valve is open.', detail: 'The boundary between the steam generator and everything downstream of it. Shutting it isolates a steam line break outside containment and stops the generator being blown down through it — at the cost of the turbine, the dump valves and the condenser all at once, leaving the atmospheric dump and the code safeties as the only heat removal path.' }),
         stat({ id: 'mfw_iso',   grp: 'Steam & feed', label: 'Main Feed Isolated', c: '#a06868', ins: 'mfw_isolated', on: 'ISOLATED', off: 'no', alarm: 'on', hint: 'whether main feedwater has been isolated from the steam generator.', detail: 'Main feed is isolated automatically on a safety injection and on high steam generator level. It is the right action — cold feed into a depressurizing generator makes things worse — but it means the only water going in is auxiliary feedwater, at a small fraction of the flow, so level will fall for a while and that is expected.' }),
         stat({ id: 'cond_pump', grp: 'Steam & feed', label: 'Condensate Pump', c: '#588880', ins: 'condensate_pump_running', tru: 'condensate_pump_running', on: 'RUN', off: 'stopped', hint: 'whether the condensate pump is running.', detail: 'Condensate is the first stage of the feed path: it takes water out of the condenser hotwell and sends it toward the feed pumps. No condensate means no main feedwater however the feed pumps are lined up, which is why this reading and the feed flow beside it should be read together.' }),
-        stat({ id: 'afw_act',   grp: 'Steam & feed', label: 'AFW Actuated', c: '#5ab0a8', ins: 'afw_active', tru: 'afw_active', on: 'ACTUATED', off: 'no', hint: 'whether the auxiliary feedwater system has been actuated.', detail: 'The signal, not the flow. Auxiliary feedwater is the backup water supply to the steam generators for when main feed is gone, and it actuates automatically on a reactor trip. Actuated with no flow beside it is normal: this plant\'s auxiliary feed is level-controlled and delivers nothing until generator level falls into its band.' }),
+        stat({ id: 'afw_act',   grp: 'Steam & feed', label: 'AFW Actuated', c: '#5ab0a8', ins: 'afw_active', tru: 'afw_active', on: 'ACTUATED', off: 'no', hint: 'whether the auxiliary feedwater system has been actuated.', detail: 'The signal, not the flow. Auxiliary feedwater is the backup water supply to the steam generators for when main feed is gone, and it actuates automatically on a reactor trip. Actuated with no flow beside it is normal: the flow control valves are held shut by the level controller until generator level falls into its band, and they open as it does. Take that controller to MANUAL and the throttle is yours — which is the real job, because unthrottled auxiliary feed overcools the primary.' }),
         stat({ id: 'afw_pump',  grp: 'Steam & feed', label: 'AFW Pump Running', c: '#48908a', ins: 'afw_pump_running', tru: 'afw_pump_running', on: 'RUN', off: 'stopped', hint: 'whether an auxiliary feedwater pump is turning.', detail: 'Distinct from the actuation signal above: this says a pump is actually running. It matters most in a blackout, where the electric pumps are gone and only steam-driven capability remains — the demand can stand while nothing is delivering.' }),
         stat({ id: 'afw_block', grp: 'Steam & feed', label: 'AFW Block Valve', c: '#3a7870', ins: 'afw_block_open', on: 'OPEN', off: 'SHUT', hint: 'whether the auxiliary feedwater block valve is open.', detail: 'The flow path downstream of the pump. A running pump against a shut block valve delivers nothing, and the two readings are separate here precisely so that combination is visible rather than hidden inside one "auxiliary feedwater OK" light.' }),
         stat({ id: 'sg_imbal',  grp: 'Steam & feed', label: 'SG Level Imbalance', c: '#b09068', ins: 'sg_imbalance_active', tru: 'sg_imbalance_active', on: 'ACTIVE', off: 'no', alarm: 'on', hint: 'whether the steam generator level control has gone out of balance.', detail: 'Flags the feed controller failing to hold level against the steam being drawn — the mismatch that precedes both an overfill and a boil-down. Read it against the steam-minus-feed row on the Physics tab, which is the number it is computed from.' }),
@@ -676,7 +757,7 @@
         { id: 'rod_steps',grp: 'Controls', label: 'Control Rod Steps', c: '#5ac0a0', ctl: function (c) { var g = rodGrp(c, 'control_rods'); return g ? g.steps : null; }, range: [0, 912], fmt: function (v) { return v.toFixed(0) + ' st'; }, hint: 'where the control bank is, in steps withdrawn.', detail: 'The operator\'s fast reactivity control, and the only one that acts in seconds. Withdrawing adds reactivity and raises power; inserting does the reverse. Plot it against average coolant temperature and the whole rod-control loop becomes visible — the bank chasing the temperature program rather than power directly.' },
         { id: 'sd_steps', grp: 'Controls', label: 'Shutdown Rod Steps', c: '#3a8070', ctl: function (c) { var g = rodGrp(c, 'shutdown_rods'); return g ? g.steps : null; }, range: [0, 912], fmt: function (v) { return v.toFixed(0) + ' st'; }, hint: 'where the shutdown bank is, in steps withdrawn.', detail: 'The shutdown bank is parked fully out during power operation and exists to be dropped. Its worth is the margin that makes a trip effective, which is why it is withdrawn first during a startup and why an insertion limit on the control bank is enforced separately.' },
         { id: 'heater',   grp: 'Controls', label: 'PZR Heater', c: '#d09040', ctl: function (c) { return c.heater_power_pct; }, range: [0, 100], fmt: function (v) { return v.toFixed(0) + '%'; }, hint: 'how hard the pressurizer heaters are being driven, as a percentage.', detail: 'Heaters are the slow way UP in pressure: they boil water in the pressurizer steam space over minutes, where spray drops pressure in seconds. They also need alternating-current power, so pressure control is asymmetric in a blackout — and a safety injection or a loss of offsite power SHEDS them off the bus until you put them back — you can still spray, but you cannot heat.' },
-        { id: 'spray',    grp: 'Controls', label: 'PZR Spray', c: '#50a8d0', ctl: function (c) { return c.spray_valve_pct; }, range: [0, 100], fmt: function (v) { return v.toFixed(0) + '%'; }, hint: 'how far the pressurizer spray valve has been commanded open.', detail: 'Spray is the fast way DOWN in pressure: cold leg water sprayed into the steam space condenses steam and drops pressure in seconds. It is drawn from the reactor coolant pump discharge, so it needs a running pump to work at all — losing the pumps costs the pressure control you are most likely to want.' },
+        { id: 'spray',    grp: 'Controls', label: 'PZR Spray', c: '#50a8d0', ctl: function (c) { return c.spray_valve_pct; }, range: [0, 100], fmt: function (v) { return v.toFixed(0) + '%'; }, hint: 'how far the pressurizer spray valve has been commanded open.', detail: 'Spray is the fast way DOWN in pressure: cold leg water sprayed into the steam space condenses steam and drops pressure in seconds. It is drawn from the reactor coolant pump discharge, so on a real unit it needs a running pump and a loss of offsite power takes it away — there, you depressurize with the relief valve instead. This simulator keeps the spray working without the pumps, standing in for the auxiliary spray line it has no separate control for; that stand-in is deliberately the weaker half of the trade, giving about half the condensing duty real auxiliary spray would.' },
         { id: 'dump',     grp: 'Controls', label: 'Steam Dump', c: '#a0b850', ctl: function (c) { return c.steam_dump_pct; }, range: [0, 100], fmt: function (v) { return v.toFixed(0) + '%'; }, hint: 'how far the steam dump valves have been commanded open.', detail: 'The turbine bypass: steam routed straight to the condenser instead of the turbine. It is what lets the plant survive a load rejection without tripping, and it only works while the condenser is available. Plot it against steam pressure to see the pressure control loop working.' },
         { id: 'feed_pump',grp: 'Controls', label: 'Feed Pump Speed', c: '#40988a', ctl: function (c) { return c.feed_pump_speed_pct; }, range: [0, 120], fmt: function (v) { return v.toFixed(0) + '%'; }, hint: 'the commanded feed pump speed, as a percentage.', detail: 'The demand behind main feedwater flow. The three-element controller sets it from level, steam flow and feed flow together, which is what lets it anticipate a load change instead of chasing level after the fact. Commanded speed and delivered flow part company whenever the suction side cannot supply it.' },
         // Charging and letdown are INSTRUMENTED (both have flow indications on the CVCS
@@ -791,6 +872,19 @@
             hint: 'the hottest fuel cladding temperature in the core, at the top of the hot channel.',
             detail: 'While the core is covered the cladding sits at the fuel temperature and this tracks it. Once the water level falls below the top of the core the uncovered part is cooled by steam instead of water, the cladding separates from the fuel node and runs away upward. This is the number core damage is judged on, because damage is local before it is average.',     v: function (t) { return dispT(t.clad_temp_c); },
             cls: function (t) { return t.clad_temp_c >= fuelDamageC() ? 'q-alarm' : t.clad_temp_c > t.fuel_temp_c + 1 ? 'q-caution' : 'q-ok'; } },
+          /* #520 — bound to the `core_sh` series above by `ser:`. That binding is what makes it
+           * REACHABLE: run_inspect counts a true-state-only series as reachable only if a physics
+           * row names it, and buildPhysIndex feeds this row's own `v()` to the Indications true
+           * column. A row whose `ser` matches no series is read by nothing — #517 shipped two of
+           * those and only driving the board caught them. */
+          { k: 'Core superheat', ser: 'core_sh',
+            hint: 'how far the core coolant is ABOVE saturation — degrees of superheat, not a temperature.',
+            detail: 'Zero whenever there is any water left in the core, so it reads zero through every normal evolution and through most of a loss-of-coolant accident. Once the core is fully steam-filled, void fraction has nothing left to say — it is pinned at 100 % — and this is the only reading that still moves. It is how far past dry the core has gone, and it climbs for as long as the steam keeps heating. On the original engine it reads a dash: that model cannot express superheat at all.',
+            v: function (t) {
+              if (t.core_superheat_c == null) return '—';
+              return physTd(t.core_superheat_c) + ' above saturation';
+            },
+            cls: nzCls('core_superheat_c') },
           { k: 'Core uncovered', ser: 'uncovered',
             hint: 'the fraction of the core the model treats as steam-cooled rather than water-cooled.',
             detail: 'Zero while the Reactor Coolant System (RCS) inventory keeps the core covered. It ramps up as inventory falls past the top of the active fuel and reaches 100 % at significant uncovery. It is the first link in the damage chain: uncovery, then zirconium oxidation heat, then a cladding temperature excursion.',     v: function (t) { return pctOf(t.core_uncovered_frac, 1); }, cls: nzCls('core_uncovered_frac') },
@@ -1064,7 +1158,9 @@
               return m + ' · ' + conv(g, 'flow').toFixed(0) + ' ' + unit('flow');
             },
             cls: function (t) {
-              if (t.eccs_mode && t.eccs_mode !== 'off') return 'q-caution';
+              // 'standby' is PWR2's armed-and-quiet word — off-equivalent, not a caution
+              // (it lit this tile amber on every healthy PWR2 plant, #507 wave 2)
+              if (t.eccs_mode && t.eccs_mode !== 'off' && t.eccs_mode !== 'standby') return 'q-caution';
               return t.rhr_active ? 'q-caution' : 'q-ok';
             } },
           { k: 'Condenser heat sink', ser: 'vacuum',
@@ -1095,7 +1191,7 @@
       // A new failure therefore SHOWS UP misfiled instead of disappearing, and
       // `run_inspect` asserts every catalog entry is placed.
       failGroups: [
-        { title: 'Reactivity & rods',        ids: ['continuous_rod_withdrawal', 'stuck_rod_on_scram', 'failure_to_scram'] },
+        { title: 'Reactivity & rods',        ids: ['continuous_rod_withdrawal', 'stuck_rod_on_scram', 'failure_to_scram', 'anticipatory_trip_failure'] },
         { title: 'Reactor coolant system',   ids: ['large_loca', 'sgtr', 'rcp_seal_leak', 'stuck_porv_open', 'rcp_trip'] },
         { title: 'Pressurizer & pressure',   ids: ['stuck_open_spray', 'failed_pzr_heaters'] },
         { title: 'Steam & feedwater',        ids: ['loss_of_feedwater', 'sg_overfeed', 'steam_line_break', 'steam_line_break_upstream'] },
@@ -1487,40 +1583,66 @@
     RD.ChartCols = serCol;
   }
 
-  // ---- the PLOT COLUMN, shared by the Physics and Indications lists ---------------------
-  // *(OWNER, 2026-08-08: "I would like a column to the left of the lables with a checkbox for
-  // the strip chart. when you check this box it puts this value on the chart.")*
-  //
-  // One cell renderer for both lists, so a quantity that appears on both (Tavg is an
-  // indication AND a physics row) toggles the SAME series and cannot end up half-ticked. A
-  // row with no series id renders an EMPTY cell of the same width rather than no cell: the
-  // composite rows — "intact · 507 °F to damage", "SPRAY + FANS-SI", "BURNED" — are text, not
-  // traces, and losing the column on those rows would step every label in the group sideways.
-  function plotCell(serId) {
+  /* ---- the TICK COLUMN of the Indications list ------------------------------------------
+   * *(OWNER, 2026-08-08: "I would like a column to the left of the lables with a checkbox for
+   * the strip chart. when you check this box it puts this value on the chart.")*
+   *
+   * THE TICK NOW MEANS "WATCH THIS", NOT "PLOT THIS" *(OWNER, 2026-08-12: "the check boxes
+   * select what you see in the [strip chart] which is redundant because now the strip chart
+   * has its own menu… they are going to be used for indications that I want to monitor.")*
+   * — #477. The 2026-08-08 directive above was answered by this column because it was the
+   * only surface there was; #454 then built the chart its own settings window, with a search
+   * box and a SEPARATE selector for each side of every channel, and from that moment this
+   * column was a strictly weaker duplicate of it. What the column had that the window does
+   * not is a tick sitting on the row you are already reading — so that is what it keeps,
+   * pointed at a list the reader curates instead of at the chart.
+   *
+   * The swatch stays and is now PASSIVE: it says "this channel is trending", which the tick
+   * no longer answers and which is otherwise only visible in the chart's own window. It is
+   * not a control — `pointer-events: none`, and clicking it hits the row, not the dot.
+   *
+   * A row with no series id renders an EMPTY cell of the same width rather than no cell: the
+   * composite rows — "intact · 507 °F to damage", "SPRAY + FANS-SI", "BURNED" — are text, not
+   * channels, and losing the column on those rows would step every label in the group sideways.
+   */
+  function monCell(serId) {
     if (!serId) return '<span class="plot-cell"></span>';
-    var s = seriesById(serId), on = !!ui.series[serId];
-    return '<span class="plot-cell"><input type="checkbox" data-series="' + serId + '"' +
-           (on ? ' checked' : '') + ' title="Plot on the strip chart">' +
-           (on && s ? '<i class="ser-swatch" style="background:' + s.c + '"></i>' : '') + '</span>';
+    var s = seriesById(serId), on = !!ui.monitor[serId], plotted = !!ui.series[serId];
+    return '<span class="plot-cell" data-ser="' + serId + '">' +
+           '<input type="checkbox" data-monitor="' + serId + '"' + (on ? ' checked' : '') +
+           ' title="Watch this — copies the row to the Monitoring list at the top">' +
+           (plotted && s ? '<i class="ser-swatch" style="background:' + s.c +
+             '" title="Trending on the strip chart"></i>' : '') + '</span>';
   }
   function seriesById(id) {
     var a = prof().series;
     for (var i = 0; i < a.length; i++) if (a[i].id === id) return a[i];
     return null;
   }
-  // A series toggled anywhere has to show as toggled EVERYWHERE — the Graph/Indications list
-  // and the Physics list are two views of one `ui.series` map, and the swatch appears or
-  // disappears with the tick. Re-rendered rather than diffed because the cells are cheap and
-  // this runs on a click, not on a broadcast.
-  function syncPlotCells() {
-    document.querySelectorAll('.plot-cell input[data-series]').forEach(function (cb) {
-      var id = cb.getAttribute('data-series'), on = !!ui.series[id];
-      cb.checked = on;
-      var cell = cb.parentNode, sw = cell.querySelector('.ser-swatch');
-      if (on && !sw) {
+  /* One pass over every tick cell in the document, setting BOTH of the things it shows: the
+   * checkbox from `ui.monitor` and the swatch from `ui.series`. They come from different
+   * places and change independently — a channel added in the chart-settings window must
+   * light its dot here, and a row ticked here must not touch the chart — but they live in
+   * one cell, so one function owns it.
+   *
+   * A channel is listed TWICE while it is monitored (its own row, and its copy in the block
+   * at the top), which is why this sweeps the document rather than one list: unticking from
+   * the duplicate has to clear the original's box too, and it is the same series either way.
+   * Re-rendered rather than diffed because the cells are cheap and this runs on a click. */
+  function syncIndCells() {
+    document.querySelectorAll('.plot-cell[data-ser]').forEach(function (cell) {
+      var id = cell.getAttribute('data-ser');
+      var cb = cell.querySelector('input[data-monitor]');
+      if (cb) cb.checked = !!ui.monitor[id];
+      var plotted = !!ui.series[id], sw = cell.querySelector('.ser-swatch');
+      if (plotted && !sw) {
         var s = seriesById(id);
-        if (s) { sw = document.createElement('i'); sw.className = 'ser-swatch'; sw.style.background = s.c; cell.appendChild(sw); }
-      } else if (!on && sw) { cell.removeChild(sw); }
+        if (s) {
+          sw = document.createElement('i'); sw.className = 'ser-swatch';
+          sw.style.background = s.c; sw.title = 'Trending on the strip chart';
+          cell.appendChild(sw);
+        }
+      } else if (!plotted && sw) { cell.removeChild(sw); }
     });
   }
 
@@ -1582,47 +1704,104 @@
     var hasTru = !!(s.tru || (indPhysIdx && indPhysIdx[s.id]));
     return hasInd && hasTru ? 'paired' : hasInd ? 'ind' : 'phys';
   }
+  // One row's markup. Shared by the list and by its Monitoring copies (#477) so a duplicate
+  // is the SAME row, not a second rendering of one — the two could otherwise drift apart in
+  // exactly the way that makes a watch list untrustworthy.
+  function indRowHtml(s, dup) {
+    // Same two-tier scanner copy the Physics rows carry (#350 item 3), and needed here for
+    // the same reason: this is the densest list in the shell and rows like "OPΔT Margin" or
+    // "Above P-9" are unreadable from the label alone. The block splits the summary on
+    // ' — ', so the row label becomes its title.
+    var cp = indicationCopy(s);
+    var attrs = (cp.hint ? ' data-scanner-hint="' + esc(s.label + ' — ' + cp.hint) + '"' : '') +
+                (cp.hint && cp.detail ? ' data-scanner-detail="' + esc(cp.detail) + '"' : '');
+    return '<div class="num-line" data-rowtype="' + rowType(s) + '" data-ser="' + s.id + '"' +
+           (dup ? ' data-mon-dup="1"' : '') + attrs + '>' + monCell(s.id) +
+           '<span class="nk">' + s.label + '</span>' +
+           '<span class="nv">—</span>' +
+           '<span class="nv-true">—</span>' +
+           '<span class="nv-warn" title="The instrument disagrees with the plant">⚠</span>' +
+           '</div>';
+  }
   function buildIndications() {
     var box = $('indicationsList'); if (!box) return;
     indRows = [];
     buildPhysIndex();
+    loadMonitor();          // the watch list is per plant and outlives the session (#477)
     // EVERY series now, not just the instrumented ones: the physics-only rows are the
     // third row type, and dropping them would lose exactly the channels the merge exists
     // to show. (RBMK/BWR have no `physics` block at all — they land as ind/phys rows and
     // render as a plain list, which is what they had before.)
     var rows = prof().series.slice();
-    var html = '', grp = null;
+    // The Monitoring block is the FIRST child and is rewritten on its own — see
+    // rebuildMonitor(). Emitted empty here so the container exists before anything ticks.
+    var html = '<div id="indMonitor"></div>', grp = null;
     rows.forEach(function (s) {
       if (s.grp !== grp) {
         if (grp !== null) html += '</div>';
         grp = s.grp;
         html += '<div class="ind-grp">' + (grp ? '<h4>' + grp + '</h4>' : '');
       }
-      // Same two-tier scanner copy the Physics rows carry (#350 item 3), and needed here for
-      // the same reason: this is the densest list in the shell and rows like "OPΔT Margin" or
-      // "Above P-9" are unreadable from the label alone. The block splits the summary on
-      // ' — ', so the row label becomes its title.
-      var cp = indicationCopy(s);
-      var attrs = (cp.hint ? ' data-scanner-hint="' + esc(s.label + ' — ' + cp.hint) + '"' : '') +
-                  (cp.hint && cp.detail ? ' data-scanner-detail="' + esc(cp.detail) + '"' : '');
-      var ty = rowType(s);
-      html += '<div class="num-line" data-rowtype="' + ty + '"' + attrs + '>' + plotCell(s.id) +
-              '<span class="nk">' + s.label + '</span>' +
-              '<span class="nv">—</span>' +
-              '<span class="nv-true">—</span>' +
-              '<span class="nv-warn" title="The instrument disagrees with the plant">⚠</span>' +
-              '</div>';
+      html += indRowHtml(s, false);
     });
     if (grp !== null) html += '</div>';
     box.innerHTML = html;
-    var lines = box.querySelectorAll('.num-line'), n = 0;
+    /* `:not(.ind-monitor)` is not decoration. The Monitoring block carries `.ind-grp` too —
+     * it wants the same row metrics — so every `.ind-grp` selector reaches it as well, and a
+     * bare `.ind-grp .num-line` here would splice the duplicates into `indRows` and pair each
+     * cached element ref with the wrong series. It happens to be empty at this point in the
+     * build; relying on that is one reorder away from a silent mismatch. */
+    var lines = box.querySelectorAll('.ind-grp:not(.ind-monitor) .num-line'), n = 0;
     rows.forEach(function (s) {
       var el = lines[n++];
       indRows.push({ line: el, el: el.querySelector('.nv'), tel: el.querySelector('.nv-true'),
                      ser: s, phys: indPhysIdx[s.id] || null, type: rowType(s) });
     });
+    rebuildMonitor();
     applyIndFilter();
     applyTruthMode();
+  }
+  /* ---- the MONITORING block (#477) ------------------------------------------------------
+   *
+   * The ticked channels, duplicated above every system group *(OWNER, 2026-08-12: "they place
+   * a duplicate at the top of the indications panel above all the other indications so that I
+   * can easily see my list that I want to monitor")*.
+   *
+   * ONLY THIS DIV IS REWRITTEN on a tick. Rebuilding the whole list would be simpler and is
+   * wrong: it is ~120 rows and it would throw away the reader's scroll position — you tick a
+   * row half way down the panel and the panel jumps to the top, which is the one thing a
+   * watch list must not do to the person building one.
+   *
+   * ORDER IS PROFILE ORDER, not the order they were ticked. It matches the spine the rest of
+   * the panel is in, so a channel sits in the same relative place in both copies; and it
+   * avoids `pinOrder()`'s trap (see its comment) where the ORDER of a selection is carried by
+   * the insertion order of an object's keys and a re-tick silently restores an old slot.
+   *
+   * NOTHING RENDERS WHEN NOTHING IS TICKED — no heading, no empty band. A section that is
+   * always on screen and usually empty is one the reader stops seeing.
+   */
+  var monRows = [];
+  function monitorSeries() {
+    return prof().series.filter(function (s) { return !!ui.monitor[s.id]; });
+  }
+  function rebuildMonitor() {
+    var box = $('indMonitor'); if (!box) return;
+    monRows = [];
+    var list = monitorSeries();
+    if (!list.length) { box.innerHTML = ''; return; }
+    var html = '<div class="ind-grp ind-monitor"><h4>Monitoring <span class="ind-mon-n">' +
+               list.length + '</span></h4>';
+    list.forEach(function (s) { html += indRowHtml(s, true); });
+    box.innerHTML = html + '</div>';
+    var lines = box.querySelectorAll('.num-line'), n = 0;
+    list.forEach(function (s) {
+      var el = lines[n++];
+      monRows.push({ line: el, el: el.querySelector('.nv'), tel: el.querySelector('.nv-true'),
+                     ser: s, phys: indPhysIdx[s.id] || null, type: rowType(s) });
+    });
+    // Paint immediately rather than waiting for the next broadcast: at 1x that is a second of
+    // a new row reading "—", which reads as a broken row rather than a pending one.
+    if (latest) renderIndications(latest);
   }
   // The true side of a row, formatted. Prefers the curated physics prose where one exists
   // for this series — see the note above.
@@ -1759,21 +1938,34 @@
     // No history yet (or a dead-steady channel): fall back to the relative band.
     return d > IND_DIV_REL * Math.max(Math.abs(raw.i), Math.abs(raw.t));
   }
-  function renderIndications(s) {
-    if (!indRows.length || !paneVisible('indications')) return;
-    var showTrue = indTruth();
-    indRows.forEach(function (r) {
+  /* One row painted. `memo` carries what a row costs to work out, keyed by series id, and is
+   * the reason a monitored channel does not pay for itself twice: indDiverged() walks up to
+   * 60 s of chartBuf per row, and the Monitoring copy asks it the same question about the
+   * same channel in the same frame. It is also a correctness guard — a duplicate that
+   * recomputed its own value could print a different number from the row it duplicates,
+   * which is exactly the failure that makes a watch list not worth watching. */
+  function paintIndRow(r, s, showTrue, memo) {
+    var m = memo[r.ser.id];
+    if (!m) {
       var txt = seriesLive(r.ser, s);
       var missing = (txt == null || txt === '—' || /NaN|Infinity/.test(txt));
-      var shown = missing ? '—' : txt;
-      if (r.el.textContent !== shown) r.el.textContent = shown;
-      if (!showTrue) return;                       // HR1: nothing about truth is computed
-      var tv = seriesTrue(r, s);
-      var tshown = (tv == null || /NaN|Infinity/.test(tv)) ? '—' : tv;
-      if (r.tel.textContent !== tshown) r.tel.textContent = tshown;
-      var div = missing ? false : indDiverged(r, s, txt);
-      if (r.line.classList.contains('diverged') !== div) r.line.classList.toggle('diverged', div);
-    });
+      m = memo[r.ser.id] = { shown: missing ? '—' : txt, tshown: null, div: false };
+      if (showTrue) {
+        var tv = seriesTrue(r, s);
+        m.tshown = (tv == null || /NaN|Infinity/.test(tv)) ? '—' : tv;
+        m.div = missing ? false : indDiverged(r, s, txt);
+      }
+    }
+    if (r.el.textContent !== m.shown) r.el.textContent = m.shown;
+    if (!showTrue) return;                         // HR1: nothing about truth is computed
+    if (r.tel.textContent !== m.tshown) r.tel.textContent = m.tshown;
+    if (r.line.classList.contains('diverged') !== m.div) r.line.classList.toggle('diverged', m.div);
+  }
+  function renderIndications(s) {
+    if (!indRows.length || !paneVisible('indications')) return;
+    var showTrue = indTruth(), memo = {};
+    indRows.forEach(function (r) { paintIndRow(r, s, showTrue, memo); });
+    monRows.forEach(function (r) { paintIndRow(r, s, showTrue, memo); });
   }
   // ---- filter chips + the HR1 truth switch ---------------------------------------
   function applyIndFilter() {
@@ -2152,7 +2344,7 @@
     // ui.plant / the gauge-chart profile still describe the old one — every
     // profile-bound reader would throw on the foreign instrument set. Catch
     // up the UI instead of rendering the mismatch.
-    var snapPlant = s.metadata.plant_id;
+    var snapPlant = uiPlantOf(s.metadata.plant_id);
     if (snapPlant && ui.plant && snapPlant !== ui.plant) {
       // An old plant's sub-samples must not reach a new one — and since #432 that means all
       // three shares, not just the tiles'. The recorder's row is packed over the OLD plant's
@@ -2165,6 +2357,8 @@
     // drainFine(). The board's vital tiles read this frame's share here.
     RD.ChartFine = pendingTiles;
     pendingTiles = null;
+
+    checkPlantHeld(s);
 
     applyUiPolicy(s);
     renderGauges(s);
@@ -2235,7 +2429,7 @@
     // Re-measured after both: **8.8 MB** for 51 series — LESS than the 10.2 MB the old
     // 16-series buffer cost, with three times the quantities. The resolution cost is nil
     // in practice: the widest window is 1800 s across ~400 px of plot, so 2 Hz is still
-    // ~9x oversampled, and the preseed writes at 5 s intervals either way.
+    // ~9x oversampled.
     // SAMPLE TIMES ARE QUANTISED TO THE GRID, not taken as whatever sim_time happened to
     // cross the gate (2026-08-05). The old form stamped the row with the raw `sim_time` of
     // the first broadcast past the interval, so spacing was irregular — at 1x the broadcast
@@ -2250,23 +2444,15 @@
     if (lastT != null && gridT - lastT < CHART_SAMPLE_SEC - 1e-9) { drawChart(); return; }
     var one = chartSample(rawIns, s.true_state, s.control_state);
     var sv = one.v, stv = one.tv;
-    // #237 (owner): presets start with 30 minutes of history so the graphs are populated —
-    // the plant has been RUNNING, it didn't just appear. A fresh buffer (boot, reset, plant
-    // switch, mission start — anything that cleared chartBuf) seeds the full record window,
-    // and the cutoff trim below retires that tail as real history accrues.
-    //
-    // The seed is FLAT here and then replaced with a REAL 30-minute run, computed off the
-    // main thread and swapped in when ready *(OWNER, 2026-08-01: "when you make preset starts,
-    // run them for 30 minutes to fill up the graph with real data before saving")*. Flat-first
-    // is deliberate: the real run costs ~2 s of wall clock, and paying that synchronously
-    // would freeze boot, every reset, every plant switch and every mission start. See
-    // ensurePreseed. (sv/stv are frozen after this call, so sharing one object per row is safe.)
-    if (!chartBuf.length) {
-      for (var pt = gridT - CHART_RECORD_SEC; pt < gridT; pt += 5) {
-        chartBuf.push({ t: pt, v: sv, tv: stv });
-      }
-      ensurePreseed(s.metadata.sim_time);
-    }
+    // NO SEEDED HISTORY. A fresh buffer starts EMPTY and fills from the right — the #237
+    // flat seed and the 30-minute background pre-seed run that replaced it were both removed
+    // *(OWNER RULING, 2026-08-21: selected "All flat seeds everywhere" [be removed] from
+    // options I wrote — reversing #237 and the 2026-08-01 preseed ruling)*. The pre-seed's
+    // hidden 10× SimulationService froze the UI for ~1-2 min per plant select on PWR2
+    // (#501: 0.9 fps, continuous 1.9 s long tasks — its slice size was calibrated to the
+    // old engine's tick cost). drawChart renders < 2 rows as the deliberate "waiting" lane
+    // stack, and the axis spans ui.window regardless of buffer, so empty is a first-class
+    // state, not a blank screen.
     // FINE SUB-SAMPLES FIRST, then the broadcast instant. The service samples the plant on a
     // fixed SIM-time interval inside its step loop (see setFineSampler there), so the chart's
     // resolution stops depending on time acceleration: at 60× a broadcast carries 6 s of sim
@@ -2311,8 +2497,8 @@
   }
 
   // ---- ONE chart sample -------------------------------------------------------------
-  // Extracted so the live recorder and the 30-minute preseed below cannot disagree about
-  // what a row contains. Records ONE VALUE PER SERIES — instrument in `v`, true state in
+  // The single place a chart row is composed (the 30-minute preseed that shared it is
+  // gone, #501). Records ONE VALUE PER SERIES — instrument in `v`, true state in
   // `tv` — rather than a copy of the whole instrument + true_state dicts: the chart only
   // ever reads the ~15 plotted quantities and the buffer holds 30 min at frame rate, so
   // keeping the full dicts cost ~100 MB (and carrying truth alongside would have doubled
@@ -2351,89 +2537,6 @@
     // old report and a new one disagree by 100× on the same quantity. Ten doubles beside two
     // 96-wide arrays; the cost in this function is the call, not the packing.
     return { v: v, tv: tv, dv: RD.DiagRecorder.pack(ui.plant, trueState) };
-  }
-
-  // ---- REAL 30-minute trend preseed (owner, 2026-08-01) -------------------------------
-  // "when you make preset starts, run them for 30 minutes to fill up the graph with real
-  // data before saving". The graphs used to open on 360 IDENTICAL flat samples, so a fresh
-  // plant showed a ruler-straight line where a running plant shows instrument texture.
-  //
-  // WHAT THIS CHANGES, honestly: the initial conditions are constructed as TRUE steady
-  // states (`_buildState` derives the secondary temps so each preset is genuinely settled),
-  // so 30 real minutes is a NOISY FLAT LINE, not a different shape — measured at
-  // hot_full_power: power 99.78–100.2 %, Tavg 304.0–304.2 °C, pzr level 54.6–55.3 %. The
-  // gain is that it reads as a plant that has been running, plus the genuine slow drifts
-  // (xenon, boron) a synthetic seed cannot have.
-  //
-  // WHY IT IS ASYNC AND CACHED. A 30-plant-minute full-stack run measured 1874 ms, and a
-  // fresh chart buffer happens on boot, reset, plant switch AND every mission start —
-  // paying that synchronously would freeze all four. So: seed flat immediately (above),
-  // compute the real trace in setTimeout slices, swap it in, and cache it per
-  // plant+design-version+initial-state for the session, because the answer is identical
-  // every time that triple repeats.
-  // `pendingT0` is tracked separately from the run because the SAME preset can be re-seeded
-  // while its trace is still computing (reset to the same IC, a mission restart). The trace
-  // is still valid — the preset has not changed — but it must land against the NEW seed
-  // time, so ensurePreseed updates this and the completion reads it rather than closing over
-  // the t0 it started with.
-  var preseed = { cache: {}, runningKey: null, pendingT0: 0 };
-  function preseedKey() {
-    var e = ENGINES[ui.engineKey] || {};
-    return ui.plant + '|' + (e.dv || '') + '|' + ui.initState;
-  }
-  // Splice a computed trace into the synthetic tail. `t0` is the sim time the buffer was
-  // seeded at, so rows land on [t0 − CHART_RECORD_SEC, t0) and anything the live recorder
-  // has added since (t ≥ t0) is preserved untouched.
-  function applyPreseed(rows, t0, key) {
-    // The world may have moved while we were computing: a reset, a plant switch, a rewind
-    // or another seed. Any of those makes this trace the wrong answer — drop it silently.
-    if (key !== preseedKey() || !chartBuf.length) return;
-    var live = chartBuf.filter(function (r) { return r.t >= t0 - 1e-9; });
-    if (!live.length) return;                      // buffer was cleared out from under us
-    var seeded = [];
-    for (var i = 0; i < rows.length; i++) {
-      var t = t0 - CHART_RECORD_SEC + i * 5;
-      if (t >= t0) break;
-      seeded.push({ t: t, v: rows[i].v, tv: rows[i].tv });
-    }
-    chartBuf = seeded.concat(live);
-    drawChart();
-  }
-  function ensurePreseed(t0) {
-    if (!RD.SimulationService) return;
-    var key = preseedKey();
-    if (preseed.cache[key]) { applyPreseed(preseed.cache[key], t0, key); return; }
-    preseed.pendingT0 = t0;
-    if (preseed.runningKey === key) return;        // already computing — the new t0 is enough
-    preseed.runningKey = key;
-    var e = ENGINES[ui.engineKey] || {};
-    var probe;
-    try {
-      // A SEPARATE service — never the live one. Default lineup (no `noDefaults`), so the
-      // trace is the plant a player actually gets, including the channels that are
-      // `defaultOn` (rod control since #289).
-      probe = new RD.SimulationService({ seed: 0x51EED });
-      probe.selectPlant(ui.plant, ui.initState, e.dv || undefined, undefined);
-      probe.running = true;
-      probe.timeAcceleration = 10;                 // 1.0 sim-s per broadcast → 5 s every 5 ticks
-      probe.attentionStops = false;                // nobody is watching a background run
-    } catch (err) { preseed.runningKey = null; return; }
-    var rows = [], ticks = 0;
-    // 40 ticks per slice, not 120. Measured, a tick costs ~1.04 ms, so 40 is ~42 ms of work
-    // — under the ~50 ms a user perceives as a stutter — where 120 would be ~125 ms of
-    // visible jank, fifteen times over, while the plant is live behind it.
-    var TICKS = CHART_RECORD_SEC, SLICE = 40;
-    (function step() {
-      if (preseed.runningKey !== key) return;      // superseded — abandon this run
-      for (var n = 0; n < SLICE && ticks < TICKS; n++, ticks++) {
-        var snap = probe.tick();
-        if (ticks % 5 === 0 && snap) rows.push(chartSample(snap.instruments, snap.true_state, snap.control_state));
-      }
-      if (ticks < TICKS) { setTimeout(step, 0); return; }
-      preseed.cache[key] = rows;
-      preseed.runningKey = null;
-      applyPreseed(rows, preseed.pendingT0, key);
-    })();
   }
 
   // Held between frames, per gauge: the LATCHED band, so a reading parked on a setpoint
@@ -2494,9 +2597,9 @@
       // sample count, so the mini chart spans the same minute at any time-accel.
       var h = gaugeHist[g.id], now = s.metadata.sim_time;
       while (h.length && h[h.length - 1].t > now + 1e-9) h.pop();   // drop samples ahead of us (rewind)
-      // fresh gauge → seed its 60 s sparkline flat at the current value (#237,
-      // same steady-state preseed as the strip chart; also settles the trend arrow)
-      if (!h.length) for (var ps = now - 60; ps < now; ps += 5) h.push({ t: ps, v: raw });
+      // No flat seed on a fresh gauge — the sparkline fills live from the right, like the
+      // strip chart (#501: the #237 seeds were all removed, owner ruling 2026-08-21). The
+      // trend arrow's h.length > 4 gate simply waits the few seconds it takes to earn one.
       h.push({ t: now, v: raw });
       while (h.length > 1 && h[0].t < now - 60) h.shift();          // 60 s window
       // #237: deadband + hysteresis on the trend arrow. The old rule (0.2 % of
@@ -3500,6 +3603,13 @@
   // campaign is a recommended ORDER with progress markers, not a gate.
   // Helpers take an optional engine key so the Plant & Mission window can show
   // a plant that isn't the active one; default is the running engine.
+  // the ENGINE id for the service (PWR2 parallel phase: board 'pwr', engine 'pwr2')
+  function engId(key) { var e = ENGINES[key || ui.engineKey]; return (e && e.engine) || (e && e.plant); }
+  // ...and the inverse seam: snapshots from the service carry plant_id 'pwr2' while the
+  // parallel phase wears the pwr BOARD — normalize wherever a snapshot id meets ui.plant,
+  // or the foreign-snapshot guards refuse to render and the catch-up path installs a plant
+  // id no profile table has (both measured at the first boot).
+  function uiPlantOf(id) { return id === 'pwr2' ? 'pwr' : id; }
   function campaign(key) { return (RD.CAMPAIGNS || {})[ENGINES[key || ui.engineKey].plant] || null; }
   function campaignMissions(c) {
     var out = [];
@@ -3586,7 +3696,7 @@
   // pick the plant (left column), then the mode (Free Play / Campaign /
   // Scenarios / Walkthroughs), then the specific start. Nothing changes in the
   // running sim until a start button is pressed.
-  var msel = { engine: 'pwr', mode: 'free', init: null };
+  var msel = { engine: 'pwr2', mode: 'free', init: null };   /* the shipped plant (2026-08-26) */
   var resetArmT = null;                  // the Reset arm's self-disarm timer (#443)
   /* The window PAUSES, and closing it resumes *(OWNER DIRECTIVE, 2026-08-11: "The menu
    * should freeze the plant but when you close the menu it should unfreeze the plant.")*.
@@ -3650,7 +3760,16 @@
   }
   function renderMissionSelect() {
     // Step 1 — the plant column
-    $('mpPlants').innerHTML = Object.keys(ENGINES).map(function (k) {
+    $('mpPlants').innerHTML = Object.keys(ENGINES).filter(function (k) {
+      if (ENGINES[k].hidden) return false;     /* general gate; nothing hidden today */
+      /* A card whose constructor is not in the page is not a card. On a published build that
+       * is the retired PWR engine, whose tags site/build_site.js deleted; RBMK/BWR keep their
+       * greyed `soon` cards deliberately (#514) and are exempt, because a plant on hold is a
+       * roadmap statement, not a missing file. Without this the menu would offer a plant the
+       * service cannot construct — engineCtor() returns undefined and selectPlant throws. */
+      if (!ENGINES[k].soon && !ctorPresent(k)) return false;
+      return true;
+    }).map(function (k) {
       var e = ENGINES[k];
       return '<div class="mplant-card' + (k === msel.engine ? ' on' : '') + (e.soon ? ' soon' : '') + '"' +
         ' data-mplant="' + k + '"' + (e.soon ? ' aria-disabled="true" title="Control room under construction"' : '') + '>' +
@@ -3683,7 +3802,7 @@
   function mpFree() {
     if (!flagOn('free_play')) return soonPanel('free_play');
     var e = ENGINES[msel.engine];
-    var states = PROFILES[e.plant].initStates;
+    var states = e.initStates || PROFILES[e.plant].initStates;   /* per-ENGINE override (PWR2: one IC) */
     if (!states.some(function (s) { return s[0] === msel.init; })) msel.init = e.init;
     var h = '<div class="m-note">Free Play — the plant is yours: no script, no grading, every control live. Pick the starting condition.</div>' +
       '<div class="g-section-title" style="margin-top:12px">Starting condition</div>';
@@ -3694,12 +3813,23 @@
     h += '<button class="btn mp-start" data-mfree="1">▶ Start Free Play — ' + mesc(e.label) + '</button>';
     return h;
   }
+  // NO BUTTONS IN HERE. verify_flags_ui counts things you can start inside #mpContent to
+  // prove the public site offers nothing ungated, and this panel now stands where the
+  // campaign used to on the plant the site actually runs.
+  function freeOnlyPanel() {
+    return '<div class="m-note">The guided content — campaign, scenarios and walkthroughs — ' +
+      'was written against the retired engine and is being re-validated on this one. Until ' +
+      'that pass runs it is <b>Free Play only</b>: every control live, every failure ' +
+      'injectable, no script grading you against a plant these physics do not describe.</div>';
+  }
   function mpCampaign() {
+    if (ENGINES[msel.engine].freePlayOnly) return freeOnlyPanel();
     if (!flagOn('campaign')) return soonPanel('campaign');
     return '<div class="m-note" data-scanner-hint="Campaign — the guided path from first scram to a full qualification, in the recommended order. Completed missions stay replayable.">The guided path — zero to operator, in order. Every mission stays replayable.</div>' +
       campaignHtml(msel.engine);
   }
   function mpScenarios() {
+    if (ENGINES[msel.engine].freePlayOnly) return freeOnlyPanel();
     if (!flagOn('scenarios')) return soonPanel('scenarios');
     var p = progress();
     var doneS = p.completed_scenarios || [];
@@ -3720,6 +3850,7 @@
     }).join('') : '<div class="m-note">No scenarios for this plant yet.</div>');
   }
   function mpWalkthroughs() {
+    if (ENGINES[msel.engine].freePlayOnly) return freeOnlyPanel();
     if (!flagOn('walkthroughs')) return soonPanel('walkthroughs');
     var p = progress();
     var all = procsFor(msel.engine);
@@ -3787,6 +3918,34 @@
      * launcher live, and opening folded hides the one surface that tells a new player what
      * to do next. The tab choice is still restored — that is a preference; this is a
      * starting state. */
+  }
+
+  /* THE MONITOR LIST SURVIVES A RELOAD (#477), which `ui.series` and `ui.seriesSide`
+   * deliberately do not. Those two are a view setting on a chart that is rebuilt from the
+   * plant's own defaults every load; this is a list the player curated by hand, and one that
+   * has to be re-made every launch is the same class of annoyance as a re-dragged splitter.
+   *
+   * KEYED BY PLANT, because series ids are per profile: `tavg` exists on all three, `void_pct`
+   * on one, and a flat list would resurrect one plant's channels under another's. Ids are
+   * filtered against the live profile on the way in, so a channel that is renamed or removed
+   * drops out silently instead of becoming a permanent row reading "—". */
+  var MONITOR_KEY = 'rd_monitor';
+  function saveMonitor() {
+    try {
+      var all = JSON.parse(localStorage.getItem(MONITOR_KEY) || '{}') || {};
+      all[ui.plant] = monitorSeries().map(function (s) { return s.id; });
+      localStorage.setItem(MONITOR_KEY, JSON.stringify(all));
+    } catch (e) { /* private mode */ }
+  }
+  function loadMonitor() {
+    ui.monitor = {};
+    var ids;
+    try { ids = (JSON.parse(localStorage.getItem(MONITOR_KEY) || '{}') || {})[ui.plant]; }
+    catch (e) { return; }
+    if (!Array.isArray(ids)) return;
+    var live = {};
+    prof().series.forEach(function (s) { live[s.id] = true; });
+    ids.forEach(function (id) { if (live[id]) ui.monitor[id] = true; });
   }
 
   var SEEN_KEY = 'rd_seen_';
@@ -4327,9 +4486,12 @@
    * and physics if they want.")*.
    *
    * TWO MAPS, NOT ONE, and the split is load-bearing. `ui.series[id]` still means exactly
-   * what it meant before — "is this channel plotted at all" — because it is shared with the
-   * Indications tab and the board's plot cells through syncPlotCells(). `ui.seriesSide[id]`
-   * is the NEW question and only ever refines an already-plotted channel.
+   * what it meant before — "is this channel plotted at all". `ui.seriesSide[id]` is the NEW
+   * question and only ever refines an already-plotted channel.
+   *
+   * SINCE #477 THE CHART-SETTINGS WINDOW IS THE ONLY WRITER of either. The Indications tab
+   * used to write `ui.series` through a tick on the row; that tick now curates the Monitoring
+   * list, and the row shows the plotted state as a passive dot instead (syncIndCells).
    *
    * THE FALLBACK IS THE OLD GLOBAL RULE, VERBATIM. A series nobody has overridden traces
    * whatever `chartTruth()` says, so an untouched plant charts identically to before and the
@@ -4374,7 +4536,7 @@
   }
   // The EXTREMES this sample covers, on whichever side is being plotted. Fine rows carry
   // the min/max the service folded over their sub-interval (see setFineSampler there);
-  // broadcast rows and the preseed carry none, and collapse to the point value — which is
+  // broadcast rows carry none, and collapse to the point value — which is
   // correct, they represent one instant rather than a span.
   function seriesExt(ser, sample, val, side) {
     var i = serCol[ser.id]; if (i == null) return [val, val];
@@ -4482,7 +4644,6 @@
    * Read from the LIVE element, not from a constant: the splitters (#445) make the region's
    * height the operator's to choose, so the lane count has to follow it. */
   var NUM_ROW_PX = 18;                  // a demoted channel's numeric row, per the reference
-  var LANE_TARGET_PX = 56;              // the top of the spec's 44-56 band
   /* The split is JOINTLY constrained and has to be solved as one: every channel demoted to a
    * numeric row TAKES 18 px from the lanes above it, so "how many lanes fit" depends on how
    * many were demoted, which depends on how many fit. Computing the lane count first and
@@ -4498,13 +4659,14 @@
       var lanes = n - d;
       var avail = px - d * NUM_ROW_PX;
       if (avail / lanes >= LANE_FLOOR_PX) {
-        /* EXTRA SPACE ADDS ROWS, IT DOES NOT INFLATE THEM (#445, spec §8). Dragging the
-         * strip taller with three channels pinned must not give three enormous traces —
-         * "which is nobody's intent". Lanes stop growing at the target height and the
-         * surplus is simply not used by the stack; it becomes room for the next channel
-         * the operator pins, which is the point of having dragged. */
-        var used = Math.min(avail, lanes * LANE_TARGET_PX);
-        return { lanes: lanes, rows: d, px: used };
+        /* LANES STRETCH TO FILL *(OWNER SELECTION, 2026-08-24, #509 item 4: "Lanes stretch
+         * to fill" — chosen over keeping the cap)*. This retires the #445 spec §8 56 px
+         * target ("extra space adds rows, it does not inflate them"): with two or three
+         * channels pinned, the capped stack left the bottom two-thirds of the plot blank,
+         * which the owner's playtest read as the chart failing to scale. The 36 px FLOOR
+         * and the demote-to-numeric-rows rule (the 2026-08-10 owner selection) stand — only
+         * the ceiling is gone. */
+        return { lanes: lanes, rows: d, px: avail };
       }
     }
     return { lanes: 1, rows: n - 1, px: Math.max(LANE_FLOOR_PX, px - (n - 1) * NUM_ROW_PX) };
@@ -4883,12 +5045,10 @@
     /* WHERE THE RUN BEGAN — sim time zero *(OWNER, 2026-08-11: "The strip chart should have
      * a line to show the start of the sim at time=0.")*.
      *
-     * IT IS A REAL BOUNDARY, NOT THE LEFT EDGE. The chart opens already holding 30 minutes
-     * of trend, because a preset start is preseeded with a genuinely-run trace laid at
-     * NEGATIVE sim time (applyPreseed: rows land on [t0 − CHART_RECORD_SEC, t0)). Measured
-     * at T+10 s on a fresh load with the default 5-minute window: 290 s of the plot is that
-     * synthetic history and 10 s is the run you are driving, with nothing marking the join.
-     * This line is the join.
+     * Since the pre-seed removal (#501) the chart opens EMPTY and fills from the right, so
+     * for the first `window` seconds this line marks where the record begins on an
+     * otherwise-bare axis rather than a join with synthetic history. It stays: it is still
+     * the only mark that says "the run started here".
      *
      * Distinct from every other full-height mark by construction: checkpoints are blue
      * `3,3`, tier-1 events amber (plant) or cyan `2,2` (operator), the cursor solid white.
@@ -5090,9 +5250,10 @@
    * the resume is correct for free: closing releases only the `modal` hold, so a plant the
    * player had already stopped with ⏸ stays stopped.
    *
-   * ONE SOURCE OF TRUTH, still. `ui.series` is written here exactly as the Indications tab
-   * writes it, and syncPlotCells() carries the change back — the side is the only NEW
-   * state, and it lives in `ui.seriesSide` where sideOf() reads it.
+   * ONE SOURCE OF TRUTH, still — and since #477 this window is the ONLY place `ui.series` is
+   * written, the Indications tab's tick having been repurposed to the Monitoring list. The
+   * side is the only NEW state, and it lives in `ui.seriesSide` where sideOf() reads it.
+   * syncIndCells() carries a change here back to the list's passive "trending" dots.
    *
    * Module level, not inside bindUI(): render() has to reach renderChartSettings the same
    * way it reaches renderIndications. Only the listeners live in bindUI. */
@@ -5255,6 +5416,38 @@
    * they are mutually exclusive in practice, and since closing never resumes, a shared
    * key cannot leak a hold. Use these instead of touching `.hidden` directly, or the
    * next modal added will be the one that forgets. */
+  /* ---- THE SIMULATION-HALTED DIALOG (#520) ----------------------------------------------------
+   * The new-physics engine HOLDS when the plant leaves the range its property library is
+   * characterised over: state frozen, clock running, every command still accepted and doing
+   * nothing (`engines/pwr2/pwr2_engine.js` — the #487/#499 contract). That is the honest
+   * continuation, and #517 published `model_held` so it could be SEEN — but nothing displayed it,
+   * so a player still got a plausible, internally consistent, completely static plant. Measured on
+   * the Three Mile Island timeline: 160 minutes of it, every command "accepted".
+   *
+   * ⚠ EDGE-TRIGGERED, AND IT HAS TO BE. The latch NEVER clears — nothing in the repo sets
+   * `_dead = false` or `beyond_model = false`, by design — so a bare `if (ts.model_held) open()`
+   * re-opens the dialog on every frame and the player can never dismiss it or reach the board
+   * behind it. `heldShown` is the edge; `rebuildPlantUI` clears it so a LATER halt shows again.
+   *
+   * ⚠ AND DISMISSING IT MUST NOT LOSE THE FACT. The dialog is the only thing that says the model
+   * stopped, so "Leave it — let me look at the board" would re-create the exact defect this issue
+   * is about if it were the end of the story. The clock therefore carries a HELD marker for as
+   * long as the condition stands, which is a per-frame class rather than an edge. */
+  var heldShown = false;
+  function checkPlantHeld(s) {
+    var ts = s && s.true_state;
+    var held = !!(ts && ts.model_held);
+    var clk = $('clock');
+    if (clk) clk.classList.toggle('clk-held', held);
+    if (!held) { heldShown = false; return; }
+    if (heldShown) return;
+    heldShown = true;
+    var why = ts.model_held_why && ts.model_held_why !== 'none' ? ts.model_held_why : '';
+    var el = $('haltWhy');
+    if (el) el.textContent = why ? 'Reported cause — ' + why : '';
+    openModal('haltOverlay');
+  }
+
   function openModal(id) {
     var wasRunning = service.running;
     pauseSim('modal');
@@ -5309,19 +5502,31 @@
     // A chat interaction click (e.g. the maintenance tag) is the player acting —
     // release the transcript's reading dwell so the exchange answers promptly.
     if (c && c.action === 'instructor_interact') chatState.nextAt = 0;
-    var r = service.handleCommand(c);
+    // A THROW is a refusal, not a crash (#505/#506). The pwr2 shell deliberately throws
+    // on a REFUSED command — right for a harness, but nothing on the click path caught it,
+    // so the handler unwound silently: no record, no message, and the SECOND command of a
+    // two-command press (charging AUTO, generator MAN) was never sent. Caught here it
+    // becomes the service's own error shape and flows through every consumer below.
+    var r;
+    try { r = service.handleCommand(c); }
+    catch (e) { r = { type: 'error', code: 'COMMAND_ERROR', message: String(e && e.message || e) }; }
     var cmdT = latest && latest.metadata ? latest.metadata.sim_time : 0;
     diag.command(cmdT, c, !!(r && r.type === 'blocked'), !!(r && r.type === 'error'));
     // The operator half of the SOE stream (#437). Actor is KNOWN here, not inferred:
     // this is the player acting. Blocked commands are dropped inside command().
     if (RD.Events) RD.Events.command(cmdT, c, !!(r && r.type === 'blocked') || !!(r && r.type === 'error'));
     TEL.command(c, !!(r && r.type === 'blocked'));
-    // The command was blocked, not executed — show why. Instructor gates focus
+    // The command was blocked or refused, not executed — show why. Instructor gates focus
     // the Instructor card (its commentary carries the message); plant interlocks
-    // (M4, e.g. the rod-withdrawal block) flash theirs in the scanner bar.
+    // (M4, e.g. the rod-withdrawal block) flash theirs in the scanner bar; an ERROR —
+    // a refused/unknown command — flashes the same way (#505: an errored press reading
+    // as a dead button is exactly what the 2026-08-21 telemetry session was).
     if (r && r.type === 'blocked') {
       if (r.code === 'INTERLOCK' && r.message) inspectFlash('⛔ Blocked', r.message);
       else { msgHold.bypass = true; setFocus('instructor'); }   // gate feedback jumps the dwell queue
+      latest = service.assembleSnapshot(); render(latest);
+    } else if (r && r.type === 'error' && r.message) {
+      inspectFlash('⚠ Command error', r.message);
       latest = service.assembleSnapshot(); render(latest);
     }
     if (!service.running) { latest = service.assembleSnapshot(); render(latest); }
@@ -5711,9 +5916,10 @@
     'letdown-b-out': function () { cmd({ action: 'set_letdown_orifices', b: false }); },
     'cvcs-auto': function () { cmd({ action: 'set_cvcs_auto', active: true }); },
     'cvcs-manual': function () { cmd({ action: 'set_cvcs_auto', active: false }); },
-    'eccs-on': function () { ui.pdOp.eccs = true; cmd({ action: 'set_hpi', active: true }); }, 'eccs-off': function () { cmd({ action: 'set_hpi', active: false }); },
-    'eccs-auto': function () { cmd({ action: 'set_esf_auto', system: 'hpi', auto: true }); },
-    'afw-auto': function () { cmd({ action: 'set_esf_auto', system: 'afw', auto: true }); },
+    // (No eccs-on/off/auto or afw-auto handlers: the CG_ECCS card that emitted them was
+    // never wired into a diagram, and set_esf_auto now lives on the board's re-arm
+    // pushbuttons only — which disable themselves when the running engine declares no such
+    // arm, #503. rhr-auto went with #453's RHR arm removal.)
     'afw-flow-set': function () { cmd({ action: 'set_afw_flow', pct: inputVal('afwFlowSet') }); },
     // NIS: SR detector switch (P-6 interlocked) + startup-trip block toggles (P-10 gated)
     'sr-on': function () { cmd({ action: 'set_sr_detector', on: true }); },
@@ -5760,9 +5966,6 @@
     // (No dhr-on/dhr-off handlers: nothing emits them. The set_dhr COMMAND alias
     // still lives in the engine/kernel as a save-file contract — pinned by
     // run_e2e_controls — but the UI speaks RHR only. #145)
-    // synoptic emergency card: RHR — AUTO re-arms the ESF actuation (a manual
-    // On/Off flips it to MANUAL, like the HPI and AFW arms).
-    'rhr-auto': function () { cmd({ action: 'set_esf_auto', system: 'rhr', auto: true }); },
     'rhr-on': function () { cmd({ action: 'set_rhr', active: true }); }, 'rhr-off': function () { cmd({ action: 'set_rhr', active: false }); },
     'dump-set': function () { cmd({ action: 'set_steam_dump', pct: inputVal('dumpSet') }); },
     // No-load steam-dump pressure setpoint (MPa) — lowered on a cooldown; engine clamps to the SG-safety band.
@@ -6013,23 +6216,24 @@
       attnStops = b.getAttribute('data-attn') === 'on';
       cmd({ action: 'set_attention_stops', value: attnStops });
     });
-    // ONE delegated handler for every plot checkbox in the Tools block, wherever it lives —
-    // the plot list, the Physics tab's column, the Indications tab's column. Bound on the
-    // tab body rather than on each pane because those panes are rebuilt on a plant change
-    // and a per-pane listener would be re-attached (or silently lost) each time.
+    /* ONE delegated handler for every monitor checkbox in the Tools block, wherever it lives
+     * — the Indications list and the Monitoring copies above it. Bound on the tab body rather
+     * than on each pane because those panes are rebuilt on a plant change and a per-pane
+     * listener would be re-attached (or silently lost) each time. The duplicate rows get this
+     * for free, which is what makes unticking from the copy work.
+     *
+     * NOTE WHAT IS NOT HERE: `drawChart()`. Ticking a row no longer touches `ui.series`,
+     * `ui.seriesSide` or the chart at all — that is the whole of #477, and the browser gate
+     * asserts the trace count is unchanged across a tick precisely because a leftover call
+     * here would be invisible from the list. */
     var tabBody = document.querySelector('.tab-body');
     if (tabBody) tabBody.addEventListener('change', function (e) {
-      var cb = e.target.closest('input[data-series]'); if (!cb) return;
-      var sid = cb.getAttribute('data-series');
-      ui.series[sid] = cb.checked;
-      // UNTICKING ANYWHERE CLEARS THE SIDE (#454). The plain tickbox here and the two
-      // selectors in the chart-settings window are two ways to reach one setting, so they
-      // must leave the same state behind: "not plotted" means no side, and re-ticking gives
-      // the channel its default rather than silently restoring a choice made in the other
-      // surface an hour ago. Ticking sets nothing — an absent side IS the default.
-      if (!cb.checked) delete ui.seriesSide[sid];
-      syncPlotCells();     // the same series may be listed on more than one tab
-      drawChart();
+      var cb = e.target.closest('input[data-monitor]'); if (!cb) return;
+      var sid = cb.getAttribute('data-monitor');
+      if (cb.checked) ui.monitor[sid] = true; else delete ui.monitor[sid];
+      saveMonitor();
+      rebuildMonitor();    // the block is rewritten; the rest of the list is left alone
+      syncIndCells();      // the same channel is listed twice while it is monitored
     });
     // The row carries the System Scanner hint, and the checkbox sits inside the row — so a
     // click meant for the tickbox would also open the inspector over the panel you are
@@ -6038,6 +6242,19 @@
       if (e.target.closest('.plot-cell')) e.stopPropagation();
     }, true);
     $('graphWindow').addEventListener('click', function (e) { var b = e.target.closest('[data-win]'); if (!b) return; ui.window = +b.getAttribute('data-win'); chartRange = {}; drawChart(); });
+
+    /* Redraw on RESIZE — the lane split reads the live plot height, but drawChart only ran
+     * on the next snapshot tick (never, if paused), so a splitter drag or window resize
+     * left the lanes at the old geometry (#509 item 4). The board's splitter dispatches a
+     * window resize event after layout() for exactly this listener. Debounced one frame. */
+    (function () {
+      var pend = false;
+      window.addEventListener('resize', function () {
+        if (pend) return;
+        pend = true;
+        requestAnimationFrame(function () { pend = false; drawChart(); });
+      });
+    })();
 
     $('chartOptsBtn').addEventListener('click', function () { openChartSettings(); });
     $('chartOptsClose').addEventListener('click', closeChartSettings);
@@ -6074,7 +6291,7 @@
           ui.series[ser.id] = true;
           ui.seriesSide[ser.id] = (wantInd && wantPhys) ? 'both' : wantInd ? 'ind' : 'phys';
         }
-        syncPlotCells();
+        syncIndCells();     // the Indications list's passive "trending" dots follow this
         syncChartSettings();
         chartRange = {};    // the union fit changes when a side is added or dropped
         drawChart();
@@ -6094,28 +6311,29 @@
     if (indList) {
       indList.addEventListener('mouseover', function (e) {
         var row = e.target.closest('.num-line'); if (!row) return;
-        var cb = row.querySelector('input[data-series]'); if (!cb) return;
-        RD.Highlight.enter(RD.Highlight.forSeries(cb.getAttribute('data-series')));
+        var id = row.getAttribute('data-ser'); if (!id) return;
+        RD.Highlight.enter(RD.Highlight.forSeries(id));
       });
       indList.addEventListener('mouseleave', function () { RD.Highlight.clearHover(); });
       indList.addEventListener('click', function (e) {
         var row = e.target.closest('.num-line'); if (!row) return;
         if (e.target.closest('.plot-cell')) return;        // the checkbox is its own gesture
-        var cb = row.querySelector('input[data-series]'); if (!cb) return;
-        RD.Highlight.pin(RD.Highlight.forSeries(cb.getAttribute('data-series')));
+        var id = row.getAttribute('data-ser'); if (!id) return;
+        RD.Highlight.pin(RD.Highlight.forSeries(id));
       });
-      /* THE UI RELATION (spec §7): hovering a trend checkbox highlights what it CHANGES —
-       * the chart. And when the channel is already plotted it highlights THAT LANE rather
-       * than the whole chart, because once several are up "which line is this one" is the
-       * more useful answer. */
+      /* THE UI RELATION (spec §7): hovering the tick highlights what it CHANGES. Since #477
+       * that is the Monitoring block, not the chart — and when the channel is already
+       * monitored it lights THAT COPY rather than the whole block, because once seven or
+       * eight are up "which one is this" is the more useful answer. The block is absent when
+       * nothing is ticked, in which case there is nothing to point at and nothing lights,
+       * which is honest: the first tick is the thing that creates it. */
       indList.addEventListener('mouseover', function (e) {
         var cell = e.target.closest('.plot-cell'); if (!cell) return;
-        var cb = cell.querySelector('input[data-series]'); if (!cb) return;
-        var id = cb.getAttribute('data-series');
-        var lane = ui.series[id] ? document.querySelector('.lane-chrome[data-ser="' + id + '"]') : null;
-        var chart = document.querySelector('.strip-chart');
-        if (lane) lane.classList.add('hl-lane');
-        else if (chart) chart.classList.add('hl-lane');
+        var id = cell.getAttribute('data-ser'); if (!id) return;
+        var dup = ui.monitor[id]
+          ? indList.querySelector('#indMonitor .num-line[data-ser="' + id + '"]') : null;
+        var target = dup || indList.querySelector('.ind-monitor');
+        if (target) target.classList.add('hl-lane');
       });
       indList.addEventListener('mouseout', function (e) {
         if (!e.target.closest('.plot-cell')) return;
@@ -6148,7 +6366,23 @@
     });
     $('loadFile').addEventListener('change', function (e) {
       var f = e.target.files[0]; if (!f) return; var r = new FileReader();
-      r.onload = function () { try { var st = JSON.parse(r.result); service.loadState(st); afterPlantChange(); diagReset('restore', { engine_key: ui.engineKey }); showToast('State loaded — ' + f.name); } catch (err) { showToast('Not a valid save file: ' + f.name, 'error'); } };
+      /* #553: loadState signals a REFUSAL by RETURNING {type:'error'}, it does not throw —
+       * so discarding the return announced every rejected save as "State loaded". Measured
+       * on a public build: 4 of 5 reject classes lied, including the common one (a save from
+       * the retired engine, whose constructor a published build no longer contains). Same
+       * normalise-a-throw-into-the-service's-own-error-shape idiom as cmd(). */
+      r.onload = function () {
+        var res;
+        try { res = service.loadState(JSON.parse(r.result)); }
+        catch (err) { res = { type: 'error', message: String(err && err.message || err) }; }
+        if (res && res.type === 'error') {
+          showToast('Save not loaded — ' + (res.message || f.name), 'error');
+          return;                            /* no afterPlantChange, no diagReset: nothing moved */
+        }
+        afterPlantChange();
+        diagReset('restore', { engine_key: ui.engineKey });
+        showToast('State loaded — ' + f.name);
+      };
       r.readAsText(f);
     });
     // --- plant-display wiring ---
@@ -6226,6 +6460,16 @@
     // carried a "Plant & Mission…" button is dissolved.
     $('simStatus').addEventListener('click', openMissionSelect);
     $('missionClose').addEventListener('click', closeMissionSelect);
+    /* #520 — the halt dialog. Two ways out, and they are different decisions: reset rebuilds
+     * the plant (the ONLY recovery — the latch cannot be cleared in place), while dismiss
+     * leaves the frozen board readable. `doReset(true)` is armed because THIS DIALOG IS the
+     * confirmation; raising the native confirm on top of it would be asking twice. */
+    $('haltReset').addEventListener('click', function () {
+      closeModal('haltOverlay');
+      doReset(true);
+    });
+    $('haltDismiss').addEventListener('click', function () { closeModal('haltOverlay'); });
+    $('haltInspect').addEventListener('click', function () { closeModal('haltOverlay'); });
     // Settings — a pausing modal off the header (#439, spec §1).
     $('settingsBtn').addEventListener('click', function () { openModal('settingsOverlay'); });
     $('settingsClose').addEventListener('click', function () { closeModal('settingsOverlay'); });
@@ -6578,7 +6822,10 @@
     // hover; a click on any hinted element also explains it, alongside whatever
     // the click does). See the inspect* helpers below for the two tiers.
     document.body.addEventListener('mouseover', function (e) { inspectAt(e); });
-    document.body.addEventListener('click', function (e) { inspectAt(e); });
+    /* THE CLICK PATH IS FLASH-AWARE (#558) — see inspectAt. A press that raises a refusal
+     * writes it here and this listener, running later in the SAME dispatch, used to
+     * overwrite it with the button's own help text before a single frame was painted. */
+    document.body.addEventListener('click', function (e) { inspectAt(e, true); });
     var sp = $('scannerPanel');
     if (sp) sp.addEventListener('click', function (e) {
       var m = e.target.closest && e.target.closest('[data-scan-doc]');
@@ -6652,7 +6899,34 @@
              sec: el.getAttribute('data-scanner-sec') || null,
              inherited: false };
   }
-  function inspectAt(e) {
+  /* THE FLASH DISPATCH GUARD (#558). A refused press writes its reason with inspectFlash and
+   * the BODY-LEVEL click listener runs later in the SAME event dispatch, resolves the button
+   * under the pointer and overwrites it — the message was written and destroyed synchronously,
+   * so it never reached a frame. MEASURED before the fix: the Scanner DOM sampled every
+   * animation frame for 2.0 s after four refused board presses carried the message in
+   * 0 of 426 frames; at the button-level listener it reads the refusal, and at the body-level
+   * listener, same dispatch, it already reads the button's help text.
+   *
+   * THIS IS THE MECHANISM THAT TURNS EVERY REFUSAL IN THE SIM INTO A DEAD BUTTON — the class
+   * the owner has now found by hand three times (#503, #506, #509) — and #505 was CLOSED on a
+   * fix that is true of cmd() and false of the board, which is the only control surface PWR2
+   * has. The contrast that pins it: the same refusal from a NUMBER BOX, committed with Enter
+   * and therefore no click, renders and still reads 2.0 s later.
+   *
+   * The guard is scoped to the DISPATCH, not to time, and only the CLICK path consults it. A
+   * later hover still clears the flash, which is this block's documented behaviour ("the next
+   * hover clears it") — preserved rather than reinvented. A stamp rather than a boolean so a
+   * flash raised by an EARLIER click cannot suppress a later, unrelated one. */
+  var inspectClickSeq = 0;              /* bumped once per body-level click dispatch */
+  function inspectAt(e, fromClick) {
+    if (fromClick) {
+      /* A flash stamped with the CURRENT count was raised after the previous body click and
+       * therefore by THIS one — the button's own handler runs first, then this listener. It
+       * is the answer to the press, so it stands; a flash from an earlier click does not. */
+      var fresh = !!(inspectCur && inspectCur.flashAt === inspectClickSeq);
+      inspectClickSeq++;
+      if (fresh) return;
+    }
     var res = inspectResolve(e);
     // Persistence (§11): pointing at nothing keeps the last description on screen
     // rather than blanking the block, so it stays readable while you act on it.
@@ -6719,7 +6993,9 @@
   // It goes through the same state as a hover so expanding does not silently
   // replace it with whatever was last inspected, and the next hover clears it.
   function inspectFlash(title, msg) {
-    inspectCur = { key: 'flash:' + msg, title: title, brief: msg, detail: null, inherited: false };
+    /* `flashAt` stamps which click dispatch raised this — inspectAt's guard (#558). */
+    inspectCur = { key: 'flash:' + msg, title: title, brief: msg, detail: null, inherited: false,
+                   flashAt: inspectClickSeq };
     inspectRender();
   }
   /* FULL DESCRIPTION GROWS THE LINE IN PLACE *(OWNER DIRECTIVE, 2026-08-11: "The scanner
@@ -7118,7 +7394,14 @@
     return sp.v + (sp.u ? ' ' + sp.u : '');
   }
 
-  function mdManual() { return (RD.MANUAL_MD || {})[ui.engineKey]; }
+  /* ...FALLING BACK TO THE BOARD, exactly as manualDoc() above already did. RD.MANUAL_MD is
+   * keyed by the engine key and the packed set is written for 'pwr'; this looked at the engine
+   * key ALONE, so the moment PWR2 became the plant the site runs (2026-08-26) the operator's
+   * manual rendered EMPTY on it — and the manual is one of only two areas site/flags.js stages
+   * as 'public', so that is what a visitor would have got. Found by verify_e2e_ui the first
+   * time it opened the manual on ?engine=pwr2. The two call sites had disagreed since the
+   * pwr2 card landed; the one with the fallback was right. */
+  function mdManual() { return (RD.MANUAL_MD || {})[ui.engineKey] || (RD.MANUAL_MD || {})[ui.plant]; }
   function openManual() { if (!mdManual() && !manualProfile()) { showToast('Manual data not loaded.', 'error'); return; } $('manualOverlay').hidden = false; renderManual(); }
   function closeManual() { $('manualOverlay').hidden = true; }
 
@@ -7388,7 +7671,7 @@
     ui.series = Object.assign({}, prof().defaultSeries);
     ui.seriesSide = {};                    // sides follow the selections they refine (#454)
     pauseSim('plant_change');
-    service.handleCommand({ action: 'reset', plant_id: e.plant, initial_state: ui.initState, design_version: e.dv });
+    service.handleCommand({ action: 'reset', plant_id: (e.engine || e.plant), initial_state: ui.initState, design_version: e.dv });
     rebuildPlantUI();
     diagReset('plant_change', { engine_key: key, initial_state: ui.initState });
     // The hold covered the swap; the swap is done. It does NOT resume a plant the player
@@ -7397,6 +7680,7 @@
   }
 
   function rebuildPlantUI() {
+    heldShown = false;        /* #520 — a rebuilt plant can halt again, and must say so again */
     // BEFORE chartBuf can take a row: the packed row width and the column of every series
     // come from the incoming plant's profile, and a sample taken against the old index
     // would be silently misfiled rather than empty.
@@ -7424,9 +7708,15 @@
   // After load: derive the plant from the restored snapshot, set the selector, rebuild.
   function afterPlantChange() {
     var snap = service.assembleSnapshot();
-    ui.plant = snap.metadata.plant_id;
+    var pid = snap.metadata.plant_id;
+    ui.plant = uiPlantOf(pid);
     var dv = snap.metadata.design_version;
-    ui.engineKey = ui.plant === 'rbmk' ? (dv === 'post_chernobyl' ? 'rbmk_post' : 'rbmk_pre') : ui.plant;
+    /* OFF THE RAW plant_id, NOT off ui.plant. uiPlantOf() folds 'pwr2' onto the 'pwr' BOARD
+     * by design, so deriving the engine key from it named the retired engine for every PWR2
+     * save — and on a published build that engine is not in the page at all, so the next
+     * Reset would ask engineCtor() for a constructor that does not exist. Latent while both
+     * engines loaded everywhere and the two keys differed only in the menu highlight. */
+    ui.engineKey = pid === 'rbmk' ? (dv === 'post_chernobyl' ? 'rbmk_post' : 'rbmk_pre') : pid;
     ui.series = Object.assign({}, prof().defaultSeries);
     ui.seriesSide = {};                    // sides follow the selections they refine (#454)
     rebuildPlantUI();
@@ -7439,7 +7729,7 @@
     if (!armed && !confirm('Reset to ' + ui.initState + '? Current run is lost.')) return;
     ui.scenario = null; ui.follow = null;   // a plant reset ends instructed content
     pauseSim('reset');
-    service.handleCommand({ action: 'reset', plant_id: ui.plant, initial_state: ui.initState, design_version: ENGINES[ui.engineKey].dv });
+    service.handleCommand({ action: 'reset', plant_id: engId(), initial_state: ui.initState, design_version: ENGINES[ui.engineKey].dv });
     rebuildPlantUI();
     // Same transient hold, same release *(OWNER SELECTION, 2026-08-11, from the options
     // presented: "Fix both")*. A reset lands you on a running plant at the chosen initial
@@ -7545,7 +7835,8 @@
   function R(k, get, opts) { var r = { k: k, get: get }; if (opts) for (var o in opts) r[o] = opts[o]; return r; }
 
   // control-group literals reused across the plant-display views
-  function CG_ECCS() { return { l: 'ECCS', emergency: 1, hint: 'Emergency Core Cooling — high-pressure injection. AUTO actuates on low pressure.', seg: [{ l: 'Auto', act: 'eccs-auto', on: 1, run: 1 }, { l: 'On', act: 'eccs-on' }, { l: 'Off', act: 'eccs-off' }] }; }
+  // (CG_ECCS deleted with #503 — it was never placed in any diagram list, and its three
+  // act ids were the only emitters of the handlers removed above.)
   function CG_MSIV() { return { l: 'MSIV', hint: 'Main Steam Isolation Valve' + (ui.plant === 'bwr' ? ' — isolates main steam (closes the turbine path).' : ' — (steam-line isolation; modeled on the BWR; placeholder here).'), seg: [{ l: 'Open', act: 'msiv-open', on: 1 }, { l: 'Close', act: 'msiv-close', warn: 1 }] }; }
 
   // (legacy PWR partial-loop diagrams retired — the V2 board in
@@ -7819,7 +8110,7 @@
     // Cross-plant transition guard: a ?scenario= deep link (or any scenario
     // that switches the plant) can broadcast the NEW plant's snapshot before
     // ui.plant catches up — never feed a foreign snapshot to a display.
-    var snapPlant = s && s.metadata && s.metadata.plant_id;
+    var snapPlant = uiPlantOf(s && s.metadata && s.metadata.plant_id);
     if (snapPlant && snapPlant !== ui.plant) return;
     if (ui.plant === 'pwr') { RD.PwrBoard.render(s); return; }   // one learning-board stage — no views
     renderStatusBar(s);
@@ -7879,6 +8170,14 @@
         units: function () { return ui.units; },
         mode: function () { return ui.diagMode; },
         overlay: function () { return ui.physOverlay; },
+        // THE RUNNING PLANT'S PROTECTION CONFIG (#556), same accessor shape and same reason as
+        // `units` above — the board is mounted once and the plant can change under it, so a
+        // captured object would freeze one plant's setpoints into another plant's board. It is
+        // `service.layer.config`, which IS `engine.getProtectionConfig()` (simulation_service
+        // builds the kernel from it). The board captured RD.PWR_CONTROL.protection at script
+        // load instead and drew PWR2's pressurizer-level alarm at the retired plant's 25 %
+        // while the annunciator fired at PWR2's own 17 %.
+        protection: function () { return service.layer && service.layer.config; },
         // #237 (owner): the paused veil was clickable to resume. The veil was removed
         // 2026-08-11; this hook is kept because the board API still declares it. Route
         // through the play button so its ▶/⏸ state stays the single source of truth.
@@ -7917,19 +8216,36 @@
     if (RD.OneOverM) { RD.OneOverM.init({ getSnap: autoSnap, cmd: cmd }); service.subscribe(RD.OneOverM.tick); }
     bindUI(); bindCommands(); bindAutomate();
     // optional ?engine= override (dev convenience / sharing)
-    var em = /[?&]engine=(pwr|rbmk_pre|rbmk_post|bwr)/.exec(location.search || '');
-    var startKey = em ? em[1] : 'pwr', startEng = ENGINES[startKey];
+    var em = /[?&]engine=(pwr2|pwr|rbmk_pre|rbmk_post|bwr)/.exec(location.search || '');   /* pwr2 BEFORE pwr — alternation takes the first match */
+    /* PWR2 IS THE DEFAULT since 2026-08-26. Every site link still carries ?engine=pwr2
+       explicitly — a bare shell.html is a path no visitor takes, which is the trap
+       test/verify_e2e_ui.js:26 records — so this default is what a hand-typed url and the
+       offline single-file build get. */
+    var startKey = em ? em[1] : 'pwr2';
+    /* An override naming an engine whose constructor is absent falls back to the shipped
+       plant instead of booting a plantless page. Two ways that happens: #514 took the
+       RBMK/BWR scripts out of the shell (dev route: test_rbmk.html / test_bwr.html), and a
+       published build has no retired PWR engine at all (dev route: any non-public build, or
+       test_pwr.html). Falling back to 'pwr' — as this did — would now be a fallback to the
+       one engine that may not be there. */
+    if (!ctorPresent(startKey)) startKey = 'pwr2';
+    var startEng = ENGINES[startKey];
     ui.engineKey = startKey; ui.plant = startEng.plant; ui.initState = startEng.init;
-    // optional ?init=<state> override (dev convenience) — one of the plant's presets
+    // optional ?init=<state> override (dev convenience) — one of the ENGINE's presets. The
+    // engine's own initStates override (pwr2: its ICS registry, three presets since #507
+    // wave 7) wins over the plant profile's list, matching the Free Play picker —
+    // validating against prof() alone let ?engine=pwr2&init=cold_shutdown pass and then
+    // be silently ignored (#502).
     var initm = /[?&]init=([a-z0-9_]+)/.exec(location.search || '');
-    if (initm && (prof().initStates || []).some(function (s) { return s[0] === initm[1]; })) ui.initState = initm[1];
+    var initList = startEng.initStates || prof().initStates || [];
+    if (initm && initList.some(function (s) { return s[0] === initm[1]; })) ui.initState = initm[1];
     ui.series = Object.assign({}, prof().defaultSeries);
     ui.seriesSide = {};                    // sides follow the selections they refine (#454)
     buildSeriesIndex();   // must precede the first chartSample — see rebuildPlantUI
     syncUnitsScope();
     buildGauges(); buildIndications(); buildPhysics(); updateSimSummary();
     buildPlantDisplay();
-    service.selectPlant(startEng.plant, ui.initState, startEng.dv);   // initial snapshot → render (defaults engaged in-stack)
+    service.selectPlant(engId(startKey), ui.initState, startEng.dv);   // initial snapshot → render (defaults engaged in-stack)
     diagReset('init', { engine_key: startKey, initial_state: ui.initState });
     buildFailures();
     buildAutomate();

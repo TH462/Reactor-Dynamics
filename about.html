@@ -51,7 +51,7 @@
         <span></span><span></span><span></span>
       </button>
       <nav class="site-nav" id="siteNav">
-      <a href="ui/shell.html?engine=pwr">Simulator</a>
+      <a href="ui/shell.html?engine=pwr2">Simulator</a>
       <a class="active" href="about.html">About</a>
       <a href="physics.html">Physics</a>
       <a href="roadmap.html">Roadmap</a>
@@ -72,7 +72,7 @@
   <p>Nothing to install, no account. Desktop or laptop for now.</p>
 
   <p class="page-cta">
-    <a class="cta" href="ui/shell.html?engine=pwr">▶&nbsp; Enter the Control Room</a>
+    <a class="cta" href="ui/shell.html?engine=pwr2">▶&nbsp; Enter the Control Room</a>
   </p>
 
   <div class="hero-shot page-hero">
@@ -97,7 +97,7 @@
   another one did.</p>
 
   <h2>What this is</h2>
-  <p>A pressurized-water plant in the browser, cold shutdown to full power on
+  <p>A pressurized-water plant in the browser, hot shutdown to full power on
   one continuous model. You operate the board. Two things to take away:</p>
   <ul>
     <li><strong>What</strong> — plant operation: startup order, holding power,
@@ -112,18 +112,21 @@
 
   <h2>What you can do</h2>
   <ul>
-    <li><strong>Bring a cold plant to life.</strong> Pressurize, start the
-    reactor coolant pumps, heat to hot standby, go critical, raise power, put
-    the generator on the grid, and take the plant to 100%.</li>
+    <li><strong>Bring a shut-down plant up to power.</strong> Start at hot
+    shutdown (Mode&nbsp;4, 250&nbsp;&deg;F): pressurize, start the reactor
+    coolant pumps, heat to hot standby, go critical, raise power, put the
+    generator on the grid, and take the plant to 100%.</li>
     <li><strong>Keep it online.</strong> Load changes, boration and dilution,
     feedwater and level control, holding steady through xenon.</li>
     <li><strong>Work plant casualties.</strong> Trips and recovery, stuck
     valves, pump trips, steam generator tube leaks, loss of heat sink — on your
     terms or without warning.</li>
   </ul>
-  <p>Optional: the Three Mile Island sequence (stuck-open relief, inventory
-  loss, recovery). Same plant model for every session — an easier run is a
-  gentler scenario, not a simpler plant.</p>
+  <p>The Three Mile Island sequence is not a script: leave a relief valve stuck
+  open and this model produces it — inventory draining while the pressurizer
+  level <em>rises</em>, which is the reading that fooled the crew. Same plant
+  model for every session — an easier run is a gentler scenario, not a
+  simpler plant.</p>
   <p>Operator manuals are in the control room. Free play is always available.</p>
 
   <h2>Coming next</h2>
@@ -136,8 +139,10 @@
 
   <h2>The plant</h2>
   <p>A compact pressurized water reactor: about 100&nbsp;MWe, one coolant loop,
-  one steam generator. Cold shutdown to full power is one continuous path. Other
-  plant types are on the <a href="roadmap.html">Roadmap</a>.</p>
+  one steam generator. Hot shutdown (Mode 4) to full power is one continuous
+  path — heat up on pump heat, take the reactor critical, load the turbine, and
+  back down again. Other plant types are on the
+  <a href="roadmap.html">Roadmap</a>.</p>
 
   <h2>Where it runs</h2>
   <p>A modern desktop browser. The simulation runs on your machine — this site,
@@ -164,7 +169,7 @@
   <a href="physics.html">Physics behind the simulator</a>.</p>
 
   <p class="page-cta page-cta-bottom">
-    <a class="cta" href="ui/shell.html?engine=pwr">▶&nbsp; Enter the Control Room</a>
+    <a class="cta" href="ui/shell.html?engine=pwr2">▶&nbsp; Enter the Control Room</a>
   </p>
   <!-- The page-level safety disclaimer that stood here was deleted 2026-08-06: it
        printed the same sentence the site footer prints, immediately above the site

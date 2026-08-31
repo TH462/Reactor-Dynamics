@@ -173,11 +173,12 @@
       //
       // Measured (run_events TR-1, before this guard): a steady 20 s at hot full power
       // produced 46 events, every one of them `alarm_clear` at t≈0 — the recorder's own
-      // first pass, which emits a transition for EVERY alarm because it has no previous
-      // state to compare against (`r.lastAlarms === null` in ui/diag_recorder.js). That is
-      // correct for a bug report, which wants the starting state of the panel; it is an
-      // observer artefact on a timeline. Same trap as this file's own `seed` guard, on the
-      // other side of the hook.
+      // first pass, which then emitted a row for EVERY alarm (`r.lastAlarms === null` in
+      // ui/diag_recorder.js). The recorder now suppresses clear→clear rows itself (#504,
+      // its first pass captures only the non-clear starting state), so this guard's
+      // remaining work is the genuine case: a clear for an alarm that annunciated before
+      // this stream attached. Same trap as this file's own `seed` guard, on the other
+      // side of the hook.
       if (!this.alarmOn[id]) return null;
       delete this.alarmOn[id];
       // Tier 3: the annunciator is where alarms are watched, and a ribbon that draws every

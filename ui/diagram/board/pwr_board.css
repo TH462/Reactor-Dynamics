@@ -38,9 +38,14 @@
  * z-index 5, which pulled a hovered panel out in front of the vessel and its
  * neighbours and obscured them (issue #202, item 2). Pin the authored layer here
  * — pwr_board.css loads after shell.css, so this wins. The halo is a box-shadow
- * and still reads where the tile is visible. */
+ * and still reads where the tile is visible. The #444 highlight-bus classes
+ * (.hl-glow/.hl-pin) carry the same z-index 5 lift and were never added to this
+ * list — an indications-panel hover popped its board tile over the diagram
+ * indication it was pointing at (#509 item 9). */
 .pwr-board-stage .bd-tile.ckl-glow,
-.pwr-board-stage .bd-tile.instr-glow { z-index: auto; }
+.pwr-board-stage .bd-tile.instr-glow,
+.pwr-board-stage .bd-tile.hl-glow,
+.pwr-board-stage .bd-tile.hl-pin { z-index: auto; }
 .bd-box-title {
   position: absolute; left: 10px; top: 7px; color: #6b8598;
   letter-spacing: 0.16em; white-space: nowrap;
@@ -73,6 +78,10 @@
 /* Warning state (yellow) — a caution independent of the authored active color. Reserved
    for genuine "needs attention" conditions on the green/yellow/red severity scale. */
 .bd-btn.bd-warn { background: #3a2408; border-color: #ffd166; color: #ffd166; }
+/* ACTUATED (#512, owner design): a protection latch is holding this system. Amber-orange,
+ * deliberately distinct from bd-warn's yellow (attention) and bd-active's selection color —
+ * this one means "the plant did this and is holding it; your securing click is the reset". */
+.bd-btn.bd-actuated { background: #3d1c06; border-color: #ff9e57; color: #ff9e57; box-shadow: 0 0 6px rgba(255, 158, 87, 0.35); }
 /* Informational/neutral state (grey) — a non-alarm condition the operator has deliberately
    set, e.g. reactor trips intentionally BLOCKED as part of a startup/shutdown lineup. Grey
    keeps it OFF the green(normal)/yellow(attention)/red(alarm) severity scale — it's a

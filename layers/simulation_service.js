@@ -166,6 +166,9 @@
   // Plant id → engine constructor. RBMK/BWR register when M2/M3 land.
   function engineCtor(plantId) {
     if (plantId === 'pwr') return RD.PWREngine;
+    /* the PWR2 parallel phase (#479 Option B): reachable via ?engine=pwr2 only; replaces
+     * RD.PWREngine outright when the owner rules the replacement */
+    if (plantId === 'pwr2') return RD.pwr2 && RD.pwr2.shell && RD.pwr2.shell.PWR2Engine;
     if (plantId === 'rbmk') return RD.RBMKEngine;
     if (plantId === 'bwr') return RD.BWREngine;
     return null;
@@ -213,6 +216,7 @@
     this.activeRegister = 'learning';
 
     this.simTime = 0;
+    this._sinceEval = 0;  // the protection accumulator rides the timeline (#588)
     this._fineBuf = [];   // timeline moved — stale sub-samples must not splice in
     this.timeAcceleration = 1.0;
     // True while the CURRENT acceleration was requested by a scenario beat (an
@@ -265,8 +269,12 @@
     if (this.instructor.connect) this.instructor.connect(this.layer);
     // 4. Initial state already loaded by the engine constructor; reset run state.
     this.activePlantId = plantId;
+    // The IC the plant was BUILT from (#563 item 3). _restore used to hard-code
+    // hot_full_power, so a rewind or a file load re-scaled a plant started anywhere else.
+    this.activeInitialState = initialState || 'hot_full_power';
     this.activeDesignVersion = designVersion || null;
     this.simTime = 0;
+    this._sinceEval = 0;  // the protection accumulator rides the timeline (#588)
     this._fineBuf = [];   // timeline moved — stale sub-samples must not splice in
     this._prevTrueState = null;
     this._prevAlarms = null;
@@ -307,7 +315,16 @@
     // cheap enough not to appear in its own measurement.
     var _perfT0 = (typeof performance !== 'undefined' && performance.now) ? performance.now() : 0;
     var steps = this._stepsPerBroadcast();
-    var sinceEval = 0;
+    /* THE PROTECTION CADENCE CARRIES ACROSS BROADCASTS (#588). This was `var sinceEval = 0;`
+     * — a per-tick LOCAL — so the accrued sim time since the last evaluation was thrown away
+     * at every broadcast boundary and the post-loop call below (then unconditional) put a
+     * FLOOR of one evaluation per broadcast under the rate. Above 1x that floor is far below
+     * the cadence and invisible; at 1x, where the broadcast halves to 50 ms in a transient, it
+     * IS the cadence. Measured before the fix: 10.85 evaluations per sim-second at 1x against
+     * 10.00 at 10x / 30x / 60x, and a large break with the station blacked out read 267.31 psi
+     * at 200 s at 1x against 269.87 at 10x — 0.96 %, which is the whole ballgame at the
+     * blowdown cliff #588 records. Gated by `test/run_service_invariance.js`. */
+    var sinceEval = this._sinceEval || 0;
     // Fine chart sampling. The interval is the LARGER of the fixed sim-time grid and what
     // fits in the per-broadcast cap, so resolution is constant in sim time at ordinary
     // speeds and degrades gracefully instead of exploding at extreme ones: at 60× the
@@ -355,7 +372,7 @@
         acc = null;
         sinceFine = 0;
       }
-      if (sinceEval >= PROTECTION_DT && i < steps - 1) {
+      if (sinceEval >= PROTECTION_DT - 1e-9 && i < steps - 1) {
         // `sinceEval` is the SIM time this evaluation covers, and it is passed so the alarm
         // minimum on-time accrues in plant seconds rather than in evaluations. That is what
         // makes the hold identical at 1x and at 3600x — the same property #153 established
@@ -364,9 +381,21 @@
         sinceEval = 0;
       }
     }
-    // The final evaluation covers whatever sim time has accrued since the last one — NOT
-    // PROTECTION_DT, which would over-count at 1x where the loop above never fires.
-    this.layer.evaluate(this.engine.getInstruments(), sinceEval);   // trips/actuations/alarms on the new readings (HR1)
+    /* The final evaluation covers whatever sim time has accrued since the last one — NOT
+     * PROTECTION_DT, which would over-count at 1x where the loop above never fires.
+     *
+     * ⚠ AND IT IS CONDITIONAL SINCE #588. Unconditional, it fired once per broadcast whatever
+     * had accrued, which is what put a floor under the evaluation rate. Conditional, 1x at the
+     * ordinary 100 ms cadence is UNCHANGED — five steps accrue exactly PROTECTION_DT and this
+     * call is still the one the snapshot is assembled from — while 1x under the 50 ms transient
+     * cadence now carries its 0.04-0.06 s forward instead of evaluating on it. The epsilon is
+     * the same idiom the fine sampler above uses: 0.02 does not sum exactly in binary, and a
+     * 1e-17 shortfall must not silently double the protection interval. */
+    if (sinceEval >= PROTECTION_DT - 1e-9) {
+      this.layer.evaluate(this.engine.getInstruments(), sinceEval);   // trips/actuations/alarms on the new readings (HR1)
+      sinceEval = 0;
+    }
+    this._sinceEval = sinceEval;
     this.simTime += steps * PHYSICS_DT;
 
     // Stop the clock BEFORE broadcasting: subscribers run synchronously inside _broadcast,
@@ -865,6 +894,7 @@
       metadata: {
         sim_time: this.simTime, time_acceleration: this.timeAcceleration,
         plant_id: this.activePlantId, design_version: this.activeDesignVersion,
+        initial_state: this.activeInitialState || 'hot_full_power',   // #563 item 3
         register: this.activeRegister,
       },
       engine: this.engine.saveState(),                 // physics + instrument lag + PRNG (the bulk)
@@ -890,20 +920,45 @@
     var m = state.metadata;
     var Ctor = engineCtor(m.plant_id);
     // Reconstruct the right engine + config for this plant, then restore each layer.
-    this.engine = new Ctor({ initial_state: 'hot_full_power', design_version: m.design_version || null, seed: this.seed });
-    this.layer = new RD.ControlLayer(this.engine, this.engine.getProtectionConfig());
+    //
+    // CONSTRUCT INTO LOCALS, INSTALL LAST (#554). engine.loadState throws on a schema
+    // refusal or a missing sub-object, and assigning this.engine/this.layer FIRST left the
+    // service holding a brand-new hot-full-power plant with a clean ControlLayer — every
+    // injected failure, alarm and RPS latch wiped, the clock still running — while the UI
+    // reported the file REJECTED. Measured: a scrammed 0.2 % plant at 1130 psia (7.79 MPa)
+    // became a clean 100 % plant at 2234 psia (15.40 MPa) on a "Not a valid save file".
+    // Nothing is installed until every load below has returned.
+    //
+    // m.initial_state (#563 item 3): a save taken on any preset other than Hot Full Power
+    // used to be rebuilt at hot_full_power regardless. An old save has no initial_state and
+    // falls back to hot_full_power, which is the pre-fix behaviour exactly.
+    var eng = new Ctor({ initial_state: m.initial_state || 'hot_full_power', design_version: m.design_version || null, seed: this.seed });
+    var lay = new RD.ControlLayer(eng, eng.getProtectionConfig());
+    eng.loadState(state.engine);
+    lay.loadState(state.control_failure);
+
+    this.engine = eng;
+    this.layer = lay;
     if (this.instructor.connect) this.instructor.connect(this.layer);
 
-    this.engine.loadState(state.engine);
-    this.layer.loadState(state.control_failure);
     if (!skipInstructor) {
-      this.instructor.loadState(state.instructor);
+      // The Instructor is a PERSISTENT object, not reconstructed — a throw inside its own
+      // load would leave it half-written on an otherwise good restore. Roll it back.
+      var instrBefore = this.instructor.saveState ? this.instructor.saveState() : null;
+      try {
+        this.instructor.loadState(state.instructor);
+      } catch (err) {
+        if (instrBefore !== null && this.instructor.loadState) this.instructor.loadState(instrBefore);
+        throw err;
+      }
       this.activeRegister = m.register || 'learning';
     }
 
     this.activePlantId = m.plant_id;
+    this.activeInitialState = m.initial_state || 'hot_full_power';   // #563 item 3
     this.activeDesignVersion = m.design_version || null;
     this.simTime = m.sim_time;
+    this._sinceEval = 0;  // the protection accumulator rides the timeline (#588)
     this._fineBuf = [];   // timeline moved — stale sub-samples must not splice in
     this.timeAcceleration = m.time_acceleration;
     this._authoredSpeed = false;

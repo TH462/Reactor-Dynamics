@@ -55,8 +55,38 @@ var T = [];
 // Optional name filter: `node test/run_campaign.js <substring>` runs only matching
 // suites (dev convenience, #418 A1 — the aggregate gate passes no argv, unchanged).
 var _only = process.argv[2] || null;
+/* THE GATE IS SPLIT ACROSS THREE RUNNERS (#513, two owner rulings 2026-08-25): this file
+ * is part A (the structural suites + most pwr_* missions), run_campaign_b.js is part B
+ * (rbmk_* + bwr_* — the on-hold plants, ~8 s), and run_campaign_c.js is part C (the
+ * three HEAVY pwr missions below — approved after the by-plant split left part A at
+ * 257 s, the whole gate's new wall).
+ *
+ * PART C IS A MEASURED-COST LIST, NOT A COUNT SPLIT. Parity alternation was tried first
+ * and landed 25 s / 229 s, because the handful of heavy suites happened to sit at odd
+ * registration indexes — suite costs here span 0-51 s and a partition that cannot see
+ * cost cannot balance it. Measured 2026-08-25, solo seconds per suite: mode5_to_mode3 51 ·
+ * tmi2_p1 "Fog of War" 32 · tmi2_p3 "no deviations" 33 · xenon 31 · tmi2_p2 31 ·
+ * return_to_mode1 11 · tmi2_p3 "caught late" 10 · qualify(x3) 8 · everything else <= 5.
+ * The list takes the first three (~116 s); part A keeps the rest (~120 s incl. the
+ * structural suites). A NEW pwr mission lands in part A by default and moves part A's
+ * suite-count baseline, so the partition cannot drift silently; put it in the lighter
+ * part and re-measure when that happens.
+ *
+ * A scheduling change, not a test change — every suite still runs, each part against its
+ * own BASELINES entry. The `_only` name filter ignores the partition, so the dev
+ * convenience reaches every suite. */
+var _part = globalThis.__CAMPAIGN_PART || 0;
+var PART_C = ['pwr_mode5_to_mode3', 'Fog of War', 'no deviations'];
+function partOf(name) {
+  if (/^(rbmk_|bwr_)/.test(name)) return 1;
+  if (/^pwr_/.test(name)) {
+    return PART_C.some(function (s) { return name.indexOf(s) !== -1; }) ? 2 : 0;
+  }
+  return 0;                                  /* the structural suites stay in part A */
+}
 function test(name, fn) {
   if (_only && name.indexOf(_only) === -1) return;
+  if (!_only && partOf(name) !== _part) return;
   var checks = [];
   var ck = function (desc, observed, pass, expected) {
     checks.push({ desc: desc, observed: observed, expected: expected, pass: !!pass });

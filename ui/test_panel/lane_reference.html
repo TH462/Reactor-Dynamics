@@ -37,7 +37,7 @@
   }
   .lane {
     position: relative;
-    height: 48px;                    /* 44-56 target; 36 hard floor */
+    height: 48px;                    /* sample height; lanes FILL the plot (owner, 2026-08-24, #509.4) — 36 hard floor */
     padding: 2px 4px;                /* 2 vertical, 4 horizontal */
     box-sizing: border-box;
     display: grid;
@@ -233,7 +233,7 @@
   <div class="measure" id="measure">measuring…</div>
 
   <table class="spec">
-    <tr><td>Lane height</td><td>48 px (44–56 target, <b>36 hard floor</b>)</td></tr>
+    <tr><td>Lane height</td><td>fills the plot — lanes divide the available height (owner selection 2026-08-24, #509 item 4; the 44–56 target is retired), <b>36 hard floor</b>, excess channels demote to numeric rows</td></tr>
     <tr><td>Internal padding</td><td>2 px vertical, 4 px horizontal</td></tr>
     <tr><td>Lane separation</td><td>1 px hairline, zero gap</td></tr>
     <tr><td>Label / value type</td><td>10–11 px, tabular figures</td></tr>

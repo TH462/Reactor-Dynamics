@@ -52,7 +52,10 @@
       id: 'pwr_heatup', category: 'startup', manual_ref: 'PWR-N01',
       title: 'Mode 5, Cold Shutdown → Mode 3, Hot Standby — plant heatup (pump heat)',
       purpose: 'Take the plant from Mode 5, Cold Shutdown to Mode 3, Hot Standby on reactor-coolant-pump heat alone: start the RCPs, pressurize to NOP, bottle the steam generator, re-align the SI accumulators, and ride temperature up with the reactor never critical. This is the commercial heatup and what mission "The Big Warm-Up" drives.',
-      from: 'cold_shutdown',
+      // #532 (2026-08-30): this said 'cold_shutdown', which THIS ENGINE REFUSES BY NAME — there
+      // is no Mode 5 (the water-property floor saturates at 211 degF, above the 200 degF Mode 5
+      // boundary; #524). The cold end of the ladder is Mode 4 at 250 degF / 369 psia.
+      from: 'hot_shutdown',
       prereq: ['Plant in Mode 5, Cold Shutdown: cold (~122 °F / 50 °C), depressurized (~363 psi / 2.5 MPa), subcritical, RHR in service.', 'RCPs available to start (heat source).'],
       // #395 — machine-checkable entry conditions, MEASURED on the cold_shutdown
       // IC (tavg 50.0 °C, 2.50 MPa, power 0): every row reads MET on its own IC.
@@ -445,7 +448,7 @@
       ],
       cautions: [
         'THE COOLDOWN IS A RAMP, NOT A CHASE. Walk the Dump SP down against a schedule and the dump only ever opens as far as it must to keep up. Chase it — retype the setpoint to track whatever Tavg reads right now — and you have built a positive feedback loop: a 55 psi (0.38 MPa) error is wider than the dump\'s 36 psi (0.25 MPa) proportional band, the dump saturates, and the plant free-falls. Measured with the setpoint driven to its 29 psi (0.2 MPa) stop: -2340 °F/hr (-1300 °C/hr), from 566.6 °F (297 °C) to 251.6 °F (122 °C) in eight plant-minutes.',
-        'THREE THINGS WOULD TRIP YOU ON THE WAY DOWN AND ONLY ONE OF THEM IS "SI". The depressurization crosses the 1798 psi (12.4 MPa) SI actuation setpoint and the 1800 psi (12.41 MPa) low-pressure reactor trip. Taking HPI/LPI to OFF stops the PUMPS; it does NOT stop the RPS. Both the low-pressure trip and the reactor-trip-on-SI have to be BLOCKED by hand at the Trip Blocks panel, and neither block is available until pressure is inside the P-11 permissive (below 1972 psi / 13.6 MPa) — which is why step 3 lowers the Pressure SP before steps 4 and 5 block anything. Measured with the blocks missed: the plant scrams at 1800 psi about six plant-minutes into the first leg, the turbine trip drives the dump into its Tavg-error mode, and the cooldown runs away at -550.8 °F/hr (-306 °C/hr).',
+        'THREE THINGS WOULD TRIP YOU ON THE WAY DOWN AND ONLY ONE OF THEM IS "SI". The depressurization crosses the 1715 psi (11.824 MPa) SI actuation setpoint and the 1775 psi (12.24 MPa) low-pressure reactor trip. Taking HPI/LPI to OFF stops the PUMPS; it does NOT stop the RPS. Both the low-pressure trip and the reactor-trip-on-SI have to be BLOCKED by hand at the Trip Blocks panel, and neither block is available until pressure is inside the P-11 permissive (below 1972 psi / 13.6 MPa) — which is why step 3 lowers the Pressure SP before steps 4 and 5 block anything. Measured with the blocks missed: the plant scrams at 1800 psi about six plant-minutes into the first leg, the turbine trip drives the dump into its Tavg-error mode, and the cooldown runs away at -550.8 °F/hr (-306 °C/hr).',
         'The accumulators are PRESSURE and a check valve, not a pump — blocking SI does nothing to them. Isolate them at 1000 psi (6.895 MPa), where LCO 3.5.1 stops requiring them OPERABLE and 355 psi (2.45 MPa) above their 600 psi (4.14 MPa) cover gas. Miss it and all four dump into the RCS: empty tanks, boron dragged toward the 2500 ppm RWST charge, and a water-solid arrival at Mode 5.',
         'PLACE RHR WITH THE HEAT EXCHANGER THROTTLED, and set the split BEFORE you open the suction. The split arrives at 100 % from the at-power lineup; measured, opening the hot-leg suction at full split on a 379.4 °F (193 °C) plant takes the rate to -1517.4 °F/hr (-843 °C/hr). At the 7 % of step 12 the placement transient peaks at -171 °F/hr (-95 °C/hr) for about ten seconds and then settles back on programme.',
         'From the moment the pumps are secured the HX split IS the rate control, and it has to keep rising: RHR removes heat in proportion to (Tavg − sink), so a split that gives -90 °F/hr at 379 °F gives a third of that at 210 °F. Step 15 walks it 7 → 25 %. The sink is about 122 °F (50 °C) and moves with the circulating-water inlet temperature, so a warm summer river raises the floor this cooldown can reach.',
@@ -466,16 +469,16 @@
           cmd: { action: 'set_pressure_setpoint', mpa: 13.11 }, hold: 300,
           acc: { p: 'pressure_mpa', op: '<', v: 13.6 },
           hl: ['Pressure SP', 'Plant Pressure'] },
-        { text: 'BLOCK the low-pressure reactor trip (Trip Blocks → PZR PRESS LO LO). It is armed at 1800 psi (12.41 MPa) and you are about to drive straight through it. You could not have blocked it a step ago: the block is an ENABLE, not a switch, and P-11 is what enables it — which is why the Pressure SP came down first. It stands as long as you stay below P-11, and reinstates itself when pressure climbs back through P-11 on the next heatup, whoever set it.',
+        { text: 'BLOCK the low-pressure reactor trip (Trip Blocks → PZR PRESS LO LO). It trips at 1775 psi (12.24 MPa) — the panel is captioned for the 1800 psi (12.41 MPa) ALARM, which is a different setpoint on the same channel — and you are about to drive straight through both. You could not have blocked it a step ago: the block is an ENABLE, not a switch, and P-11 is what enables it — which is why the Pressure SP came down first. It stands as long as you stay below P-11, and reinstates itself when pressure climbs back through P-11 on the next heatup, whoever set it.',
           control: 'Trip Blocks', target: 'lo-press trip BLOCKED',
           cmd: { action: 'set_trip_block', trip_id: 'lo_press', blocked: true }, hold: 10,
           hl: ['Trip Blocks'] },
-        { text: 'BLOCK the reactor trip on safety injection as well (Trip Blocks). This is a SECOND trip on the same channel, armed at the 1798 psi (12.4 MPa) SI setpoint — a real casualty means the reactor does not stay up, and a planned cooldown is not one. Blocking the SI pumps in the next step does nothing to this trip.',
+        { text: 'BLOCK the reactor trip on safety injection as well (Trip Blocks). This is a SECOND trip on the same channel, armed at the 1715 psi (11.824 MPa) SI setpoint — a real casualty means the reactor does not stay up, and a planned cooldown is not one. THIS BLOCK IS ALSO WHAT STOPS THE INJECTION ITSELF: there is no ESF arm on this plant, so switching the pumps off in the next step secures them without stopping the actuation from starting them again.',
           control: 'Trip Blocks', target: 'SI reactor trip BLOCKED',
           note: 'Found by building this checklist: with only the low-pressure trip blocked the plant still scrams on the way down, because two entries in the trip table watch the same instrument in the same direction. Both blocks are needed and both are the operator\'s.',
           cmd: { action: 'set_trip_block', trip_id: 'si_trip', blocked: true }, hold: 10,
           hl: ['Trip Blocks'] },
-        { text: 'Take HPI/LPI to OFF — the P-11 cold lineup. Armed, it reads the depressurization as a Loss-Of-Coolant Accident and injects 2500 ppm RWST water. Measured with it left in AUTO: boron ends at 2500 ppm instead of 857 and the cold injection cools the plant about ten times faster than you are asking for.',
+        { text: 'Take HPI/LPI to OFF — the P-11 cold lineup. This SECURES THE PUMPS; it is the si_trip block above that stops the actuation, because this plant has no ESF arm to take to MANUAL. Left unblocked, the actuation reads the depressurization as a Loss-Of-Coolant Accident and injects 2500 ppm RWST water. Measured with it left in AUTO: boron ends at 2500 ppm instead of 857 and the cold injection cools the plant about ten times faster than you are asking for.',
           control: 'HPI/LPI', target: 'HPI/LPI in MANUAL, OFF',
           cmd: { action: 'set_hpi', active: false }, hold: 10,
           acc: { p: 'hpi_active', op: '<', v: 0.5 },
@@ -575,7 +578,7 @@
           { p: 'tavg_rate_c_per_hr', op: '<', v: -150 },
         ],
       },
-      outcome: 'Mode 5, Cold Shutdown: cold, depressurized to 363 psi (2.50 MPa), RHR in service, reactor coolant pumps secured, accumulators full and isolated, boron at the cold shutdown margin of 857 ppm. This is the `cold_shutdown` initial condition, reached on integrated physics. PWR-N01 takes it back up.',
+      outcome: 'Mode 4, Hot Shutdown (there is no Mode 5 on this plant, #524): 250 degF (121.1 degC), depressurized to 369 psi (2.545 MPa), RHR in service, reactor coolant pumps secured, accumulators full and isolated, boron at the cold shutdown margin of 857 ppm. This is the `cold_shutdown` initial condition, reached on integrated physics. PWR-N01 takes it back up.',
     },
     // PWR-T06 — the post-trip response. Authored 2026-08-03 (#319): the procedure was
     // documented but had NO runnable checklist, while PWR-E03 (turbine trip) explicitly
@@ -1002,7 +1005,7 @@
     // ALARMS, measured against `.state` rather than presence (the `getAlarms()` trap):
     //   t+60 s   nothing active at all
     //   t+181 s  `charging_high` active — and it is the ONLY alarm that ever comes in
-    //   PZR LVL LO (25 %) and PZR LVL DEV LO never assert, exactly as the procedure warns
+    //   PZR LVL LO (program - 20) and PZR LVL DEV LO never assert, exactly as the procedure warns
     //
     // Step 1 puts CVCS in AUTO explicitly — real procedure (confirm the lineup before you
     // judge a leak by how hard make-up is working).
@@ -1023,7 +1026,7 @@
       from: 'hot_full_power',
       prereq: ['At-power operation, CVCS available.'],
       cautions: [
-        'PZR LVL LO does NOT come in. It is set at 25 % and a held leak parks level near 54 % — waiting for a level alarm means waiting all shift.',
+        'PZR LVL LO does NOT come in. It sits 20 points below the programmed level and a held leak parks within a point or two of program — waiting for a level alarm means waiting all shift.',
         'PZR LVL DEV LO stays clear too. The deviation only opens when make-up STOPS holding, so its silence is information, not the absence of a problem.',
         'This leak is NOT pressure-modulated. Unlike an SGTR, depressurizing does nothing to it — you cannot terminate it from the control room.',
         'Rule out the impostors before believing the leak: isolated or throttled letdown, or a deliberate level-setpoint change, produce the same high-charging picture.',
@@ -1231,5 +1234,28 @@
   ];
 
   RD.MANUAL_PROCEDURES = { pwr: PWR, rbmk_pre: RBMK, rbmk_post: RBMK, bwr: BWR };
+
+  /* ---- `from` IS THE SHIPPED PLANT'S IC NAME. The RETIRED engine needs a translation. -------
+   * (#532, 2026-08-30.) `proc.from` is not documentation — `run_procedures.js:77` and
+   * `procedures_harness.js:105` LOAD it, which a grep of ui/ and layers/ alone does not show. So
+   * when PWR-N01's start state was corrected from `cold_shutdown` (which the shipped engine
+   * refuses by name — there is no Mode 5, #524) to `hot_shutdown`, those two harnesses went red:
+   * they drive `RD.PWREngine`, the RETIRED plant, where `cold_shutdown` is the right name and
+   * `hot_shutdown` is a different, HOT state — so the heatup started at power and tripped on
+   * overtemperature ΔT at step 9.
+   *
+   * ⚠ THE FIX IS A NAME TRANSLATION, NOT A CHANGED ASSERTION. Every harness keeps testing exactly
+   * what it tested; only the IC label is mapped for the engine that uses the other vocabulary.
+   * The alternative — reverting `from` — would have left the checklist a PLAYER RUNS declaring a
+   * state their plant refuses, so that a gate aimed at a retired engine could stay green. That is
+   * the #579 trap: a check pointed at the wrong plant defending the wrong plant's value.
+   *
+   * It lives HERE as a SIBLING of RD.MANUAL_PROCEDURES, not a property of it — that object is
+   * iterated by profile name and a function on it broke every consumer at once. Beside the
+   * procedures because both harnesses need it and there is no shared
+   * test module — and a constant written down twice is the PROTECTION_DT trap. */
+  RD.RETIRED_ENGINE_IC = function (from) {
+    return from === 'hot_shutdown' ? 'cold_shutdown' : from;
+  };
 
 })(globalThis.RD || (globalThis.RD = {}));

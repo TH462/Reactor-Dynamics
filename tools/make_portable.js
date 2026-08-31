@@ -77,6 +77,21 @@ function release() {
  * Every caller in ui/app.js already guards on `window.RD && RD.Telemetry`, so absence is
  * a supported state: the consent prompt never opens and the in-sim report form stays
  * hidden, which is correct for a build that has nowhere to send anything. */
+/* THE RETIRED PWR PHYSICS ENGINE — deleted from the bundle, unconditionally (2026-08-26).
+ *
+ * ui/shell.html wraps it in a DEV-ONLY-START/END marker pair, the same convention the site
+ * pages use, and site/build_site.js deletes it from PUBLIC builds only — the preview site
+ * keeps it because that is where the guided content, which is authored against it, gets
+ * vetted. This build has no such reason to keep it: the portable file is a DISTRIBUTION
+ * artifact, the one thing a stranger is handed, and it should be the plant the site runs and
+ * nothing else. Keeping it would also make test/run_portable.js certify a bundle nobody
+ * downloads.
+ *
+ * Unconditional, so there is exactly one portable build and it always matches the public
+ * site. Anyone who wants the retired engine opens ui/shell.html?engine=pwr in the repo.
+ * Same regex as site/build_site.js; the markers are the single declaration of the block. */
+const DEV_ONLY = /[ \t]*<!-- DEV-ONLY-START[\s\S]*?<!-- DEV-ONLY-END -->\r?\n?/g;
+
 const OMIT = {
   '../site/telemetry.js':
     'usage-data client — an offline build collects nothing, and does not carry the code that could.',
@@ -97,6 +112,19 @@ function isExternal(src) { return /^(?:[a-z]+:)?\/\//i.test(src) || src[0] === '
 function build() {
   const css = [], js = [], dropped = [];
   let html = fs.readFileSync(SHELL, 'utf8');
+
+  // --- the retired PWR engine comes out FIRST, before anything counts tags ------
+  // Order matters: the inliner below would otherwise inline the six files and the tally in
+  // test/run_portable.js would agree with itself while the bundle carried a plant the site
+  // does not ship. Asserting the block was there makes a marker rename a red build rather
+  // than a silent no-op.
+  const beforeDevOnly = html.length;
+  html = html.replace(DEV_ONLY, '');
+  const devOnlyCut = beforeDevOnly - html.length;
+  if (!devOnlyCut) throw new Error(
+    'ui/shell.html has no DEV-ONLY block. The retired PWR engine is supposed to live in one ' +
+    '(see the comment above its <script> tags); without the markers this build would inline ' +
+    'it into the offline file. Restore them, or delete DEV_ONLY here and say why.');
 
   // --- stylesheets -> <style>, in place so cascade order is preserved -----------
   html = html.replace(/[ \t]*<link\s+rel="stylesheet"\s+href="([^"]+)"\s*\/?>[ \t]*\r?\n?/g,
@@ -141,7 +169,7 @@ function build() {
     '  Runs with no server and no network: open it in any desktop browser.\n' +
     '  Code AGPL-3.0, manuals & training prose CC BY 4.0, (c) 2026 Timothy Holt.\n-->');
 
-  return { html: html, css: css, js: js, dropped: dropped };
+  return { html: html, css: css, js: js, dropped: dropped, devOnlyCut: devOnlyCut };
 }
 
 // ------------------------------------------------------------------ CLI
@@ -155,6 +183,8 @@ if (require.main === module) {
   const kb = n => (n / 1024).toFixed(0) + ' KB';
   console.log('\nPORTABLE BUILD - ' + release());
   console.log('  inlined      ' + b.js.length + ' scripts, ' + b.css.length + ' stylesheets');
+  console.log('  stripped     the retired PWR engine (' + kb(b.devOnlyCut) + ' of markup; the ' +
+              'six files it named are ~532 KB of source)');
   // Print the REASON the file was actually left out, not a hardcoded one. This said
   // "(declared: analytics beacon)" for everything, so the first OMIT entry —
   // site/telemetry.js, left out for the opposite reason — was logged as an analytics
@@ -167,4 +197,5 @@ if (require.main === module) {
   console.log('quarantine .html attachments, and the recipient sees nothing at all.\n');
 }
 
-module.exports = { build: build, release: release, DROP: DROP, OMIT: OMIT, SHELL: SHELL };
+module.exports = { build: build, release: release, DROP: DROP, OMIT: OMIT, SHELL: SHELL,
+                   DEV_ONLY: DEV_ONLY };

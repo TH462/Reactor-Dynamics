@@ -61,7 +61,7 @@
         <span></span><span></span><span></span>
       </button>
       <nav class="site-nav" id="siteNav">
-      <a href="ui/shell.html?engine=pwr">Simulator</a>
+      <a href="ui/shell.html?engine=pwr2">Simulator</a>
       <a href="about.html">About</a>
       <a href="physics.html">Physics</a>
       <a href="roadmap.html">Roadmap</a>
@@ -76,8 +76,8 @@
 <section class="hero">
   <h1>Run a nuclear power plant<br>from your browser.</h1>
   <p class="sub" data-flag="campaign"
-     data-flag-off="Real reactor physics — a whole plant, from cold shutdown to full power. Nothing to install: it all runs locally in your browser.">Real
-  reactor physics — a whole plant, from cold shutdown to full power. Guided
+     data-flag-off="Real reactor physics — a whole plant, from hot shutdown to full power. Nothing to install: it all runs locally in your browser.">Real
+  reactor physics — a whole plant, from hot shutdown to full power. Guided
   training when you&rsquo;re ready. Nothing to install — it all runs locally in
   your browser.</p>
   <!-- WHO IT IS FOR. Say it before the CTA, in plain words, and say it about the
@@ -93,8 +93,16 @@
   operator&rsquo;s manual, and you can break the plant on purpose from the first
   minute. If you do have the background &mdash; Navy nuke, NE student, plant
   staff &mdash; the physics is modelled to reward it.</p>
-  <a class="cta" href="ui/shell.html?engine=pwr">▶&nbsp; Enter the Control Room</a>
+  <a class="cta" href="ui/shell.html?engine=pwr2">▶&nbsp; Enter the Control Room</a>
   <div class="alpha-note">🚧 Alpha · desktop or laptop only — not for phones or tablets yet</div>
+  <!-- DEV-ONLY-START — build_site.js deletes this block from every published page.
+       The PWR2 physics-rebuild preview (#479): test_pwr2.html is in NOT_PUBLISHED, so a
+       published link to it would be dead (the builder's dead-link check proves that, which
+       is why this is a STRIP, not a CSS hide). The CSS gate (html[data-channel="dev"],
+       default-hidden like .dev-bar) still guards the local/preview copies. -->
+  <a class="pwr2-dev-link" href="test_pwr2.html">🧪 PWR2 physics rebuild &mdash; dev preview
+  (true values, no instruments)</a>
+  <!-- DEV-ONLY-END -->
   <div class="hero-shot">
     <!-- Full PWR control-room board (site/hero.png). onerror collapses the frame
          if the asset is missing so the page still reads cleanly. -->
@@ -102,7 +110,7 @@
          onerror="this.parentNode.style.display='none'">
   </div>
   <p class="hero-intro">The live plant is the <strong>SLS-100</strong>, a
-  compact single-loop PWR (~100&nbsp;MWe) — cold shutdown to full power, with
+  compact single-loop PWR (~100&nbsp;MWe) — hot shutdown to full power, with
   procedures and failures on the same model. Start with
   <a href="about.html">About</a> for what this is and how to approach it.</p>
 </section>
