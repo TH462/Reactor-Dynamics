@@ -331,7 +331,7 @@ to read everything.
 > change. The dense, append-only version lives in `Blueprint/BUILD_DECISIONS.md`
 > (Status line + Open Flags table) — update both.
 
-_Last updated: **2026-08-28**._
+_Last updated: **2026-08-30**._
 
 **Where the PWR is.** Read `BASELINES` for the runner count, never a number written here. The PWR
 is the only active plant: engines, control, service, instructor and the board are built, and the
@@ -358,7 +358,7 @@ that were closed. **Run the query.**
   (ruled 2026-08-18 "Option 1") — **MERGED INTO `develop` 2026-08-21** *(OWNER DIRECTIVE,
   2026-08-21: "Full merge and push. Don't publish to main yet.")* — merge `b4122a7`, 86 runners
   at baseline; the standing no-merge hold above is SPENT (its bar was the merge, which the owner
-  ordered; `main` still waits). The owner's first live PWR2 session (telemetry, 2026-08-21) filed
+  ordered). **SHIPPED as Alpha 1.7.0, 2026-08-30.** The owner's first live PWR2 session (telemetry, 2026-08-21) filed
   and fixed #501–#504; the free-play IC quirk is CLOSED (#502, §65: the isothermal boot retired —
   a settled start no longer rings 100→76.6 %). The #488 audit adjudicated and closed; #486/#487
   resolved; **the plant settles at its
