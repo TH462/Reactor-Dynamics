@@ -30,6 +30,8 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
 
 ## [Unreleased]
 
+## [Alpha 1.7.1] — 2026-08-31
+
 ### Fixed (in-sim report: the AUX SPRAY box goes, and the render pass stops repainting the world — 2026-08-31)
 
 In-sim bug report `2026-08-31_mth3218c-fp42sbsl` (#596), two items, both landed:
