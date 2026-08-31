@@ -251,7 +251,7 @@
       x1: cx, y1: poolBot, x2: cx, y2: poolTop, stroke: 'url(#' + ids.cdash + ')', strokeWidth: coreW,
       strokeLinecap: 'butt', strokeDasharray: '15 9', opacity: 0.94,
       // .flowwide from the source, applied inline (dasharray 15 9 + flowmove 1.5s)
-      style: { animation: 'flowmove 1.5s steps(36) infinite' }
+      style: { animation: 'flowmove 1.5s linear infinite' }
     });
     svgKids.push(h('g', { clipPath: 'url(#' + ids.poolClip + ')' },
       h('rect', { x: coreL, y: poolTop, width: coreW, height: poolH, fill: 'url(#' + ids.cflow + ')', opacity: 0.45 }),
@@ -453,7 +453,7 @@
         // Set once. Element i always draws the same keyframe name (i % 3), so a reused
         // circle never needs its animation reassigned — only re-timed.
         if (!el.__anim) {
-          el.style.animation = rises[i % 3] + ' ' + dur + 's steps(' + Math.max(2, Math.round(dur * 24)) + ') infinite';
+          el.style.animation = rises[i % 3] + ' ' + dur + 's linear infinite';
           el.style.animationDelay = delay + 's';
           el.__anim = true;
         } else if (el.style.animationDuration !== dur + 's') {

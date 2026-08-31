@@ -165,6 +165,57 @@
   // board-wide `.bd-frozen` freeze holds the whole clock.
   var FLOW_FPS = 24;
   var flowClockMs = 0, flowLastMs = 0, flowTimer = 0, flowRafPend = false;
+
+  /* ---- EVERY OTHER ANIMATION ON THE PAGE RIDES THE SAME CLOCK (2026-08-31) ----------------
+   * ONE RUNNING CSS ANIMATION ANYWHERE COSTS THE WHOLE 60 Hz FRAME LOOP, so converting the
+   * dashes alone bought almost nothing. MEASURED, 15 s traces, main-thread RunTask against a
+   * 21.0 s baseline: kill the bubbles 18.6, the spins 20.9, the sprays/puffs/plumes 19.5 —
+   * 4.0 s of savings between them — but kill ALL of them together and it is 12.6 s. The
+   * per-element cost is small; the fixed per-frame cost (style, layerize, commit) is what
+   * dominates, and it is paid at the display rate for as long as ANY animation runs.
+   *
+   * ALIGNING THE STEP EDGES DOES NOT WORK, and it was the cheaper idea: quantizing every
+   * animation's duration AND delay onto one 1/24 s grid so they all step together measured
+   * 20.7 s against 21.0 — nothing. Blink commits a frame for a running CSS animation whether
+   * or not the computed value changed. The animation has to actually STOP.
+   *
+   * SO: pause them and SEEK them. `document.getAnimations()` hands back the live CSSAnimation
+   * objects for the CSS this board already declares — pausing each one and advancing its
+   * `currentTime` here reproduces the motion exactly, at this clock's rate, with no keyframe
+   * rewritten and no component file touched. It also covers animations added later for free.
+   * (The steps() quantization this replaces was reverted to `linear` in the same change: the
+   * clock IS the sample rate now, and a second quantization at a near-but-not-equal rate
+   * beats against it.)
+   *
+   * THREE THINGS IT DELIBERATELY DOES NOT TOUCH: CSSTransition (short, one-shot, and
+   * pausing them would strand a half-finished level move), anything whose INLINE
+   * animation-play-state says paused (the house "hold" flag), and anything inside a frozen
+   * board stage — the board freezes, the alarm flash and the clock pulse do NOT, and they
+   * are page-level. Advancing by DELTA rather than to an absolute time is what lets a
+   * frozen element hold and then resume in its own phase. */
+  var animPrevMs = 0;
+  function tickAnimations(now) {
+    if (!document.getAnimations) return;
+    var dt = animPrevMs ? now - animPrevMs : 0;
+    animPrevMs = now;
+    if (!(dt > 0)) return;
+    var frozen = document.querySelector('.pwr-board-stage.bd-frozen');
+    var list;
+    try { list = document.getAnimations(); } catch (e) { return; }
+    for (var i = 0; i < list.length; i++) {
+      var a = list[i];
+      var cn = a.constructor && a.constructor.name;
+      if (cn === 'CSSTransition') continue;
+      var st = a.playState;
+      if (st === 'finished' || st === 'idle') continue;
+      if (st === 'running') { try { a.pause(); } catch (e) { continue; } }
+      var el = a.effect && a.effect.target;
+      if (el && el.style && el.style.animationPlayState === 'paused') continue;
+      if (frozen && el && frozen.contains(el)) continue;
+      try { a.currentTime = (a.currentTime || 0) + dt; } catch (e) {}
+    }
+  }
+
   function flowTick() {
     flowRafPend = false;
     var now = performance.now();
@@ -172,6 +223,7 @@
     if (!flowLastMs) flowLastMs = now;
     if (!frozen) flowClockMs += now - flowLastMs;
     flowLastMs = now;
+    tickAnimations(now);
     if (frozen) return;
     var els = document.querySelectorAll('polyline[data-dash-cyc]');
     if (!els.length) return;

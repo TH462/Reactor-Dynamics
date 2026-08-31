@@ -30,6 +30,26 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
 
 ## [Unreleased]
 
+### Fixed (#596: every animation on the page joins the shared clock — the frame loop is a FIXED cost — 2026-08-31)
+
+- **All board animations now ride one 24 Hz clock**, not just the pipe dashes. The ticker in
+  `std_pipe.js` pauses each live `CSSAnimation` (`document.getAnimations()`) and advances its
+  `currentTime` by the tick delta — no keyframe rewritten, no component file touched, and any
+  animation added later is covered for free. The `steps()` quantization from earlier the same
+  day is reverted to `linear`: the clock is the sample rate now, and a second quantization at a
+  near-but-not-equal rate beats against it. **Measured: main-thread work 21.0 → 16.9 s per 15 s
+  trace, raster 7.2 → 6.1 s.**
+- **Why partial conversion bought so little** — sub-family A/B against the 21.0 s baseline:
+  killing the bubbles alone 18.6 s, the spins 20.9 s, the sprays/puffs 19.5 s (4.0 s between
+  them), but **all of them together 12.6 s**. The per-element cost is small; the fixed per-frame
+  cost is paid at the display rate for as long as ANY animation runs. Also refuted, and it was
+  the cheaper idea: aligning every animation's step edges onto one 1/24 s grid measured 20.7 s
+  against 21.0 — Blink commits a frame for a running animation whether or not its value changed.
+- Excluded deliberately: CSS **transitions** (one-shot; pausing strands a half-finished level
+  move), anything with an inline `animation-play-state: paused` (the house hold flag), and
+  anything inside a frozen board stage — the board freezes, the alarm flash and clock pulse do
+  not. The remaining 60 Hz driver is those transitions (a further 16.9 → 13.8 s); tracked on #596.
+
 ### Fixed (the 1.7.1 stress reports: 24 Hz animations, and the heater was chasing its own instrument — 2026-08-31)
 
 - **Board animation clock 12 → 24 Hz** *(OWNER, 2026-08-31: "The 12hz may be too slow. It

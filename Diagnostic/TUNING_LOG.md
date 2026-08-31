@@ -29,6 +29,53 @@ and the user-visible summary in `CHANGELOG.md`. This file points at those and tr
 
 ---
 
+## Session log — 2026-08-31-develop-d (#596 — every animation on the page joins the shared clock; the frame loop is a FIXED cost, not a per-element one)
+
+**The finding that reframed the whole effort.** Sub-family A/B, 15 s traces, main-thread
+RunTask against a **21.0 s** baseline (15 s wall — the thread is saturated):
+
+| killed | RunTask |
+|---|---|
+| nothing (shipped 24 Hz) | 21.0 s |
+| the bubbles | 18.6 s |
+| the spins/sweeps | 20.9 s |
+| the sprays/puffs/vents/plumes | 19.5 s |
+| **all transform/opacity animations together** | **12.6 s** |
+| everything, animations and transitions | 3.5 s |
+
+The parts sum to 4.0 s; the whole is 8.4 s. **The per-element cost is small — the fixed
+per-frame cost (style, layerize, commit) is what dominates, and it is paid at the DISPLAY
+rate for as long as ANY animation is running.** That is why converting the pipe dashes alone
+(develop-b) bought so little, and why the 12 → 24 Hz raise (develop-c) gave most of it back:
+neither stopped the 60 Hz loop, because everything else was still animating.
+
+**The cheaper idea was tested and REFUTED.** Quantizing every animation's duration AND delay
+onto one 1/24 s grid, so every step edge lands on the same instant: **20.7 s against 21.0 —
+nothing.** Blink commits a frame for a running CSS animation whether or not the computed value
+changed. The animation has to actually STOP.
+
+**What shipped: pause them and SEEK them.** `document.getAnimations()` returns the live
+CSSAnimation objects for the CSS the board already declares, so the ticker in `std_pipe.js`
+pauses each one and advances its `currentTime` by the tick delta. **No keyframe was rewritten
+and no component file was touched** — and it covers any animation added later for free. The
+`steps()` quantization from develop-c was reverted to `linear` in the same change: the clock is
+the sample rate now, and a second quantization at a near-but-not-equal rate beats against it.
+Verified live: 87 of 94 animations paused, `currentTime` advancing in lockstep (5648 ms at
+t+5.6 s). **Measured: RunTask 21.0 → 16.9 s, raster 7.2 → 6.1 s.**
+
+Three exclusions, each deliberate: `CSSTransition` (short, one-shot — pausing them strands a
+half-finished level move), anything whose INLINE `animation-play-state` is `paused` (the house
+hold flag), and anything inside a frozen board stage — **the board freezes, the alarm flash and
+the clock pulse do not, and they are page-level**. Advancing by DELTA rather than to an absolute
+time is what lets a frozen element hold and resume in its own phase.
+
+**STILL OPEN, and it is the owner's call: the CSS TRANSITIONS.** The 7 animations still running
+after the conversion are all `CSSTransition` — the `0.15 s` level-fill/marker glides and the
+`0.3 s` rod glide, re-triggered on every 10 Hz snapshot, so one is permanently in flight and
+holds the 60 Hz loop open by itself. Disabling them measures **16.9 → 13.8 s**. They exist to
+smooth a 10 Hz update stream into 60 Hz motion; removing them makes those bars step at the data
+rate. Options and recommendation are on #596.
+
 ## Session log — 2026-08-31-develop-c (the 1.7.1 stress reports: 24 Hz, and the heater was chasing its own instrument)
 
 **Source**: the owner's two post-1.7.1 stress bundles (`mthfjoe1`, `mthfpr49`, saved in
