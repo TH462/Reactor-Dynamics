@@ -166,7 +166,16 @@
      * its own equilibrium. The old 0.30 booted the controller 5 points above program, so
      * the untouched ride opened with a standing drain demand. */
     hot_shutdown:   { pf: 0, load_mwe: 0, subcritical: true, cold: true,
-                      tavg_c: 121.1, P_mpa: 2.51, pzr_level: 0.25 }
+                      tavg_c: 121.1, P_mpa: 2.51, pzr_level: 0.25 },
+    /* MODE 5, COLD SHUTDOWN (#524, 2026-08-31) — representable since Layer 0's floor moved
+     * 0.1 -> 0.002 MPa: the SG secondary lands at P_sat(50 degC) ~ 0.0124 MPa (1.8 psia), a
+     * state the old floor pinned at 211 degF. 122 degF / 363 psia is the retired preset's
+     * own point and what the manuals' cooldown procedures already print; construction is the
+     * wave-10 Mode 4 lineup one step colder — RHR aligned HX-shut (the hold), RCPs SECURED,
+     * heaters AUTO about the boot setpoint, dumps OFF, P-11 blocks taken, accumulators
+     * isolated, and the #468 order pays the shutdown bank's worth in RODS, not boron. */
+    cold_shutdown:  { pf: 0, load_mwe: 0, subcritical: true, cold: true,
+                      tavg_c: 50.0, P_mpa: 2.5, pzr_level: 0.25 }
   };
 
   function createEngine(opts) {

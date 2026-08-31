@@ -7,7 +7,7 @@
 
 **NOTE:** Values are trainer setpoints (SI). Real US plant Tech Specs differ.
 
-**Plant MODES:** Mode 1, At Power = Power Operation (power > 5 %); Mode 2, Startup = Startup (critical ≤ 5 %); Mode 3, Hot Standby = Hot Standby; **Mode 4, Hot Shutdown is simulated and is the cold end of this plant** — `hot_shutdown` is a Free Play initial condition and the Mode 4 ↔ Mode 1 heatup/cooldown runs on integrated physics. **There is no Mode 5** (§11.0, #524). See `05_MODE_TRANSITIONS.md`.
+**Plant MODES:** Mode 1, At Power = Power Operation (power > 5 %); Mode 2, Startup = Startup (critical ≤ 5 %); Mode 3, Hot Standby = Hot Standby; **Mode 5, Cold Shutdown is simulated and is the cold end of this plant** — `cold_shutdown` and `hot_shutdown` are Free Play initial conditions and the Mode 5 ↔ Mode 1 heatup/cooldown runs on integrated physics (#524, landed 2026-08-31). See `05_MODE_TRANSITIONS.md`.
 
 ---
 
@@ -442,40 +442,40 @@ Commercial practice keeps boron sufficient for at least **1 % Δk/k** (WTSM 19.2
 ## 11.0 Normal values by initial condition
 
 Expected readings at each named engine initial condition, captured from the live engine after
-settling **70 s at 10x, the same for every column** — the low-power states are still walking their pressure up at 6 s, which is how the old table came to quote a hot-standby pressure 9 psi (0.06 MPa) light. **These four are the whole list** — the Free Play picker offers `hot_full_power`, `50_percent`, `hot_zero_power` and `hot_shutdown`, and the engine refuses any other name.
+settling **70 s at 10x, the same for every column** — the low-power states are still walking their pressure up at 6 s, which is how the old table came to quote a hot-standby pressure 9 psi (0.06 MPa) light. **These five are the whole list** — the Free Play picker offers `hot_full_power`, `50_percent`, `hot_zero_power`, `hot_shutdown` and `cold_shutdown`, and the engine refuses any other name.
 
-> **THERE IS NO COLD SHUTDOWN INITIAL CONDITION ON THIS PLANT, AND NO MODE 5.** The cold end of the ladder is **Mode 4, Hot Shutdown** — 250 °F (121.1 °C), 369 psi (2.545 MPa), RHR in service, reactor coolant pumps secured, both banks in. `cold_shutdown` and `5_percent` are the retired engine's and are **refused by name**. The reason is in the water properties, not the plant model: the property floor is **14.5 psi (0.1 MPa)**, whose saturation temperature is **211 °F (99.4 °C)**, so a steam generator at or below Mode 5's **200 °F (93.3 °C)** boundary cannot be represented at all. Tracked as **#524**; until it lands, every Mode 5 instruction in this manual set describes a state you cannot load.
+> **MODE 5 EXISTS (#524, landed 2026-08-31).** The water-property floor moved from 14.5 psi (0.1 MPa) to **0.29 psi (0.002 MPa)**, so a steam generator can sit at ambient — the `cold_shutdown` column below is a real, loadable state whose secondary rides at **1.8 psi (0.0127 MPa)**, saturation at the plant's own 123 °F (50.6 °C). The cold end of the ladder is **Mode 5, Cold Shutdown** — 122 °F (50 °C), 363 psi (2.50 MPa) at boot, RHR in service, reactor coolant pumps secured, both banks in. `5_percent` remains the retired engine's and is **refused by name**.
 healthy board after selecting an IC, and as the "what should this read?" reference during
 evolutions. At steady state the **indicated** values track these true values through each
 instrument's lag and noise (see `03_CONTROLS_AND_INDICATIONS.md` §16.0) — a mismatch that
 persists is either a transient in progress or a failed instrument.
 
-| Parameter | `hot_full_power` | `50_percent` | `hot_zero_power` | `hot_shutdown` |
-|---|---|---|---|---|
-| Plant MODE | At Power (1) | At Power (1) | Hot Standby (3) | **Hot Shutdown (4)** |
-| Reactor power (%) | 99.6 | 49.6 | ~0 (source) | ~0 (source) |
-| Generator output (MWe) | 100.0 | 50.0 | 0 | 0 |
-| Tavg °F (°C) | 577.7 (303.2) | 566.7 (296.9) | 547.2 (286.2) | 250.4 (121.3) |
-| T-hot / T-cold °F (°C) | 607.2 / 548.2 (319.6 / 286.8) | 582.1 / 551.4 (305.6 / 288.6) | 547.2 / 547.2 (286.2 / 286.2) | 250.4 / 250.5 (121.3 / 121.4) |
-| Primary pressure psi (MPa) | 2235 (15.41) | 2235 (15.41) | 2246 (15.482) | 369 (2.545) |
-| Subcooling margin °F (°C) | 45 (25) | 70 (39) | 105 (58.5) | 186 (103.6) |
-| PZR level (%) | 57 | 40 | 25 | 25 |
-| SG level (%) | 65 | 65 | 65 | 65 |
-| SG / steam pressure psi (MPa) | 808 (5.57) | 943 (6.50) | 1020 (7.03) | 30 (0.207) |
-| Steam / feed flow (norm.) | 1.00 | 0.50 | 0 | 0 |
-| Fuel average temp °F (°C) | 1292 (700) | 896 (480) | 547 (286.1) | 250 (121.1) |
-| Decay heat (%) | 6.23 | 3.11 | ~0 | ~0 |
-| Xenon (% of equilibrium) | 100 | 66 | 0 | 0 |
-| Boron (ppm) | 626 | 774 | 719 | 894 |
-| Net reactivity (pcm) | 0 | 0 | ≈ −1141 | ≈ −5635 |
-| Source range (cps) | 0 (de-energized) | 0 (de-energized) | ≈ 501 | ≈ 101 |
-| Intermediate range (A) | ≈ 8.3e-3 | ≈ 4.1e-3 | ≈ 1.6e-11 | ≈ 3.2e-12 |
-| SR detector | OFF | OFF | Energized | Energized |
-| Condenser vacuum (kPa) | 93.2 | 98.0 | 100.1 | 100.1 |
-| Turbine speed (RPM) | 1800 | 1800 | 1800 | 1800 |
-| MSIV | Open | Open | Open | Open |
-| RHR | Out of service | Out of service | Out of service | **In service** |
-| ECCS mode indicator | standby | standby | standby | **RHR** |
+| Parameter | `hot_full_power` | `50_percent` | `hot_zero_power` | `hot_shutdown` | `cold_shutdown` |
+|---|---|---|---|---|---|
+| Plant MODE | At Power (1) | At Power (1) | Hot Standby (3) | **Hot Shutdown (4)** | **Cold Shutdown (5)** |
+| Reactor power (%) | 99.6 | 49.6 | ~0 (source) | ~0 (source) | ~0 (source) |
+| Generator output (MWe) | 100.0 | 50.0 | 0 | 0 | 0 |
+| Tavg °F (°C) | 577.7 (303.2) | 566.7 (296.9) | 547.2 (286.2) | 250.4 (121.3) | 123.0 (50.6) |
+| T-hot / T-cold °F (°C) | 607.2 / 548.2 (319.6 / 286.8) | 582.1 / 551.4 (305.6 / 288.6) | 547.2 / 547.2 (286.2 / 286.2) | 250.4 / 250.5 (121.3 / 121.4) | 123.0 / 123.0 (50.6 / 50.6) |
+| Primary pressure psi (MPa) | 2235 (15.41) | 2235 (15.41) | 2246 (15.482) | 369 (2.545) | 368 (2.537) |
+| Subcooling margin °F (°C) | 45 (25) | 70 (39) | 105 (58.5) | 186 (103.6) | 313 (174.2) |
+| PZR level (%) | 57 | 40 | 25 | 25 | 25 |
+| SG level (%) | 65 | 65 | 65 | 65 | 66 |
+| SG / steam pressure psi (MPa) | 808 (5.57) | 943 (6.50) | 1020 (7.03) | 30 (0.207) | 1.8 (0.0127) |
+| Steam / feed flow (norm.) | 1.00 | 0.50 | 0 | 0 | 0 |
+| Fuel average temp °F (°C) | 1292 (700) | 896 (480) | 547 (286.1) | 250 (121.1) | 123 (50.5) |
+| Decay heat (%) | 6.23 | 3.11 | ~0 | ~0 | ~0 |
+| Xenon (% of equilibrium) | 100 | 66 | 0 | 0 | 0 |
+| Boron (ppm) | 626 | 774 | 719 | 894 | 918 |
+| Net reactivity (pcm) | 0 | 0 | ≈ −1141 | ≈ −5635 | ≈ −5809 |
+| Source range (cps) | 0 (de-energized) | 0 (de-energized) | ≈ 501 | ≈ 101 | ≈ 98 |
+| Intermediate range (A) | ≈ 8.3e-3 | ≈ 4.1e-3 | ≈ 1.6e-11 | ≈ 3.2e-12 | ≈ 3.2e-12 |
+| SR detector | OFF | OFF | Energized | Energized | Energized |
+| Condenser vacuum (kPa) | 93.2 | 98.0 | 100.1 | 100.1 | 100.1 |
+| Turbine speed (RPM) | 1800 | 1800 | 1800 | 1800 | 1800 |
+| MSIV | Open | Open | Open | Open | Open |
+| RHR | Out of service | Out of service | Out of service | **In service** | **In service** |
+| ECCS mode indicator | standby | standby | standby | **RHR** | **RHR** |
 
 Notes:
 

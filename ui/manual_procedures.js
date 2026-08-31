@@ -52,10 +52,10 @@
       id: 'pwr_heatup', category: 'startup', manual_ref: 'PWR-N01',
       title: 'Mode 5, Cold Shutdown → Mode 3, Hot Standby — plant heatup (pump heat)',
       purpose: 'Take the plant from Mode 5, Cold Shutdown to Mode 3, Hot Standby on reactor-coolant-pump heat alone: start the RCPs, pressurize to NOP, bottle the steam generator, re-align the SI accumulators, and ride temperature up with the reactor never critical. This is the commercial heatup and what mission "The Big Warm-Up" drives.',
-      // #532 (2026-08-30): this said 'cold_shutdown', which THIS ENGINE REFUSES BY NAME — there
-      // is no Mode 5 (the water-property floor saturates at 211 degF, above the 200 degF Mode 5
-      // boundary; #524). The cold end of the ladder is Mode 4 at 250 degF / 369 psia.
-      from: 'hot_shutdown',
+      // #524 (2026-08-31): cold_shutdown is REAL again — the water-property floor moved
+      // 0.002 MPa and PWR2 carries a Mode 5 IC (122 degF / 363 psia / 918 ppm). The #532
+      // hot_shutdown fence this line wore for a day is retired with the wall that forced it.
+      from: 'cold_shutdown',
       prereq: ['Plant in Mode 5, Cold Shutdown: cold (~122 °F / 50 °C), depressurized (~363 psi / 2.5 MPa), subcritical, RHR in service.', 'RCPs available to start (heat source).'],
       // #395 — machine-checkable entry conditions, MEASURED on the cold_shutdown
       // IC (tavg 50.0 °C, 2.50 MPa, power 0): every row reads MET on its own IC.
@@ -65,8 +65,8 @@
         { p: 'power_pct', op: '<', v: 1, text: 'Reactor shut down' },
       ],
       cautions: [
-        'This heatup runs on REAL rates (#419 wave 1 — the training compression is retired; time acceleration carries the pacing). Measured full-stack, cold to the no-load anchor is about 12.3 plant-hours at a steady ~30 °F/hr (16.7 °C/hr) after the first hour, and normal operating pressure arrives about 1.8 plant-hours after the Pressure SP command (the setpoint walks at the sourced 0.23 psi/s heater class; early thermal swell rides ahead of it).',
-        'The heat source is the reactor coolant pumps (pump_heat_frac 0.55 % of rated core heat at full flow) plus the pressurizer heaters. Do NOT pull the CONTROL bank or dilute — Hot Standby means hot AND subcritical, and the control bank stays at its cold-shutdown position the whole way. The SHUTDOWN bank is the exception and has its own step: Mode 5 ships with both banks inserted (ρ = −4676 pcm on 857 ppm), and withdrawing the shutdown bank is a prerequisite for the approach to criticality, not part of it.',
+        'This heatup runs on REAL rates (#419 wave 1 — the training compression is retired; time acceleration carries the pacing). Measured on THIS engine (2026-08-31, engine-direct): the pumps alone warm the Mode 5 plant at 94.9 °F/hr (52.7 °C/hr) over the first half hour, and at the rated rotor the pump-heat class runs up to 113.7 °F/hr (63.2 °C/hr) — ABOVE the 100 °F/hr administrative limit, so rate compliance is yours: trim the RHR heat exchanger to bleed the excess (the same lever the cooldown throttles). The Pressure SP walks at the sourced 0.23 psi/s heater class.',
+        'The heat source is the reactor coolant pumps (pump_heat_frac 0.55 % of rated core heat at full flow) plus the pressurizer heaters. Do NOT pull the CONTROL bank or dilute — Hot Standby means hot AND subcritical, and the control bank stays at its cold-shutdown position the whole way. The SHUTDOWN bank is the exception and has its own step: Mode 5 ships with both banks inserted (measured on this engine: ρ = −5807 pcm on 918 ppm; the bank alone is worth 3676 pcm), and withdrawing the shutdown bank is a prerequisite for the approach to criticality, not part of it.',
         'The steam dump is a COARSE lever at these powers: measured, a 5 % manual dump demand is roughly ten times pump-heat generation and reverses the heatup at −263 °F/hr (−146 °C/hr) anywhere above about 302 °F (150 °C); below ~219.2 °F (104 °C) the same demand only ARRESTS the climb. To slow or hold a heatup, secure the RCP — measured, that takes the rate to 0.004 °F/hr.',
         'Keep the turbine OFF LINE and the dumps SHUT so the SG bottles: heat crossing the tubes then has nowhere to go but into secondary pressure, which rides up with Tavg. A turbine left in FOLLOW opens its governor and takes the whole heat source (~6 % open is enough on pump heat alone). The cold_shutdown IC spawns already off line (#251); the Disconnect Grid step confirms rather than changes.',
         'Step 7 (re-align the SI accumulators) is YOURS, nothing does it for you, and it belongs INSIDE step 6 rather than after it — on the real pressurization clock the compliant 600-to-1000 psi window is ~14 plant-minutes wide (measured: opens ~+9 min, shuts ~+23 min) and closes about an hour and a half before the full pressurization completes. The cold lineup ships them isolated — correct below their 600 psi (4.14 MPa) cover gas — and re-alignment is deliberately procedural *(OWNER RULING, 2026-07-30: "lets leave opening of the accumulators to the procedure instead of auto opening them.")*. Skip it and you reach Mode 1 with no passive injection; the SI ACCUM ALIGNED annunciator (PWR-A32) is silent on this case because shut tanks are what it clears on.',
@@ -522,7 +522,7 @@
           control: 'Residual Heat Removal (RHR)', target: 'HX split 7 %',
           cmd: { action: 'set_rhr_hx', pct: 7 }, hold: 10,
           hl: ['Residual Heat Removal (RHR)'] },
-        { text: 'Align RHR — open the hot-leg suction valve (RHR card → ALIGN). The engine refuses this above 400 psi (2.76 MPa), which is why leg 4 had to finish first. Note the two setpoints are not one number: the block-open permissive is 400 psi and the AUTOCLOSURE that would shut a standing-open valve is 600 psi (4.14 MPa), about 200 psi higher, so the valve does not chatter across a single boundary (#288).',
+        { text: 'Align RHR — open the hot-leg suction valve (RHR card → ALIGN). The engine refuses this above 425 psig (440 psi / 3.03 MPa) — the sourced WTSM 5.1 block-open permissive, which leg 4 already put you under. Note the two setpoints are not one number: the AUTOCLOSURE that would shut a standing-open valve is 585 psig (600 psi / 4.14 MPa), about 160 psi higher, so the valve does not chatter across a single boundary (#288; the 400/600 pair this step used to quote was the retired engine\'s).',
           control: 'Residual Heat Removal (RHR)', target: 'RHR aligned, ECCS mode RHR',
           cmd: { action: 'set_rhr', active: true }, hold: 20,
           acc: { p: 'rhr_active', op: '>', v: 0 },
@@ -578,7 +578,7 @@
           { p: 'tavg_rate_c_per_hr', op: '<', v: -150 },
         ],
       },
-      outcome: 'Mode 4, Hot Shutdown (there is no Mode 5 on this plant, #524): 250 degF (121.1 degC), depressurized to 369 psi (2.545 MPa), RHR in service, reactor coolant pumps secured, accumulators full and isolated, boron at the cold shutdown margin of 857 ppm. This is the `cold_shutdown` initial condition, reached on integrated physics. PWR-N01 takes it back up.',
+      outcome: 'Mode 5, Cold Shutdown, reached on integrated physics (#524, 2026-08-31): coolant below 199.4 degF (93 degC), depressurized to about 363 psi (2.50 MPa), RHR carrying the plant, reactor coolant pumps secured, accumulators full and isolated, boron at the cold shutdown margin. This is the state the `cold_shutdown` initial condition loads (its own shipped trim is 918 ppm). PWR-N01 takes it back up.',
     },
     // PWR-T06 — the post-trip response. Authored 2026-08-03 (#319): the procedure was
     // documented but had NO runnable checklist, while PWR-E03 (turbine trip) explicitly
@@ -1253,7 +1253,13 @@
    * It lives HERE as a SIBLING of RD.MANUAL_PROCEDURES, not a property of it — that object is
    * iterated by profile name and a function on it broke every consumer at once. Beside the
    * procedures because both harnesses need it and there is no shared
-   * test module — and a constant written down twice is the PROTECTION_DT trap. */
+   * test module — and a constant written down twice is the PROTECTION_DT trap.
+   *
+   * #524 (2026-08-31): PWR-N01's `from` is `cold_shutdown` again — BOTH engines now carry
+   * that name, so the mapping below currently translates nothing. It stays, because the
+   * vocabulary gap it bridges is still real (the retired engine has no `hot_shutdown`), and
+   * deleting it re-opens the silent-red path the header describes the day any checklist
+   * starts from the Mode 4 preset. */
   RD.RETIRED_ENGINE_IC = function (from) {
     return from === 'hot_shutdown' ? 'cold_shutdown' : from;
   };

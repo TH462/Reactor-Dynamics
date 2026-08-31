@@ -1281,11 +1281,21 @@ function runSuite(SH, rec, quiet, only) {
        'holds through the class (measured 49.2 % / 50.0 MWe at 30 s)',
        ts9.power_pct > 48 && ts9.power_pct < 51 && Math.abs(ts9.mwe_output - 50) < 1.5,
        ts9.power_pct.toFixed(1) + ' % / ' + ts9.mwe_output.toFixed(1) + ' MWe');
+    /* RE-AIMED 2026-08-31 (#524): cold_shutdown exists — the refusal claim keeps its
+     * mechanism on a name no registry carries, and the new preset's round trip is asserted. */
     var thrIC = false;
-    try { new SH.PWR2Engine({ initial_state: 'cold_shutdown' }); }
+    try { new SH.PWR2Engine({ initial_state: '5_percent' }); }
     catch (e2) { thrIC = /unknown initial_state/.test(e2.message); }
     ck('a preset the engine does not carry throws through the class too — the #502 rule ' +
        '(an accepted-then-ignored preset is a menu that lies)', thrIC === true, '');
+    (function () {
+      var e5 = new SH.PWR2Engine({ initial_state: 'cold_shutdown' });
+      var t5 = e5.step(DT);            /* the class step returns the true state directly */
+      ck('cold_shutdown boots THROUGH THE CLASS at Mode 5 (#524) — the picker\'s fifth row ' +
+         'is a state the plant actually loads',
+         t5.plant_mode === 5 && Math.abs(t5.tavg_c - 50) < 2, 'mode ' + t5.plant_mode +
+         ' at ' + (t5.tavg_c * 9 / 5 + 32).toFixed(1) + ' degF');
+    })();
 
     /* the block button's whole path: board -> kernel (empty trips -> FORWARD) -> shell ->
      * engine request; the kernel snapshot carries the ENGINE's own 35 % setpoint */

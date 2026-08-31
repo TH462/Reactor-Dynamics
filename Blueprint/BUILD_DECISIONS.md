@@ -45,6 +45,29 @@ where the two differ or where judgment was exercised.
 
 ---
 
+## 2026-08-31-develop-c — #524: Mode 5 exists — the pressure floor was a fetch bound, and both directions of the claim were measured
+
+**Claim:** extending Layer 0's floor 0.1 → 0.002 MPa (owner-ruled) is sufficient for Mode 5 — no
+new physics, five refit coefficient sets, and every consumer re-measured. Record:
+`PWR2_VALIDATION.md` §126; provenance `PWR2_L0_REBUILD.md` §3b.
+
+- **Why 0.002**: T_sat 17.5 °C — an SG can sit at ambient; matches the liquid branch's 20 °C
+  corpus edge. The floor's 0.1 was `PLow=0.1` in the NIST fetch URL (#586's `THigh=800` shape).
+- **Refit decisions**: `rho_v_sat` deg 6→9 (T_sat's precedented shape; deg 6 did not
+  extrapolate — 1e27 %); superheated smoothing quartic→sextic over 33 isobars, extraction moved
+  from cp-fit to **h-form-fit** (recovered the 19.6 kJ/kg per-isobar floor; composed h_v 21.4
+  vs the shipped 32.8 on a 50× narrower range); `Z_sat` deg 4→6 with `tau_z` on the direct Z
+  residual. Off-grid validation: 5 unfitted isobars, 8.6 kJ/kg max.
+- **Consumer verdicts (HR10, per-probe)**: the SG §99.6 clip residual RETIRED (floor below
+  every physical inflow; flag now material-only — roundoff ticks at an exactly-landed energy
+  limit are the mass floor's own idiom); the LOCA 40 cm² fixture's 107 s hold was the FLOOR
+  masking end-of-blowdown — the ride now completes at 15.7 psia containment backpressure, and
+  the frozen-books contract moved to a manual latch; the core-damage CEILING latch unmoved (§115 held).
+- **The IC**: wave-10 construction one step colder; trim lands 918 ppm / −5,809 pcm both banks
+  in — FEWER ppm than Mode 4's 999 because boron worth per ppm rises with density, the #468
+  order intact either way. vtable cap 260→320 kB, justified by the 0.136 %-vs-0.12 % superheat
+  measurement at the old NP.
+
 ## 2026-08-31-develop-b — #596: the in-sim report — AUX SPRAY box removed, render pass off the 60 Hz treadmill
 
 Two decisions of record; full continuity in `TUNING_LOG` 2026-08-31-develop-b.

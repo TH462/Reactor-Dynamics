@@ -32,8 +32,11 @@
  * IAPWS-95 data: the NIST Chemistry WebBook (SRD 69, Wagner & Pruss 2002), fetched
  * 2026-08-14 as 354 saturation points by temperature, 220 by pressure, and 11 isobars of
  * 159 points each spanning compressed liquid and superheated vapour; EXTENDED 2026-08-29
- * (#586) with 24 isobars to 1000 degC, 1,814 vapour rows, for the superheated refit.
- * Provenance and the fetch queries: Blueprint/PWR2_L0_REBUILD.md (the extension is 3a).
+ * (#586) with 24 isobars to 1000 degC, 1,814 vapour rows, for the superheated refit;
+ * EXTENDED AGAIN 2026-08-31 (#524) below 0.1 MPa — 136 saturation rows 0.002-0.1 MPa plus
+ * 9 low-pressure isobars (0.002-0.07 MPa) to 1000 degC and 5 off-grid validation isobars,
+ * for the low-pressure refit that makes Mode 5 representable.
+ * Provenance and the fetch queries: Blueprint/PWR2_L0_REBUILD.md (extensions are 3a, 3b).
  *
  * This is NOT IAPWS-95. It is a correlation set fitted over this plant's envelope, and
  * every function declares the error MEASURED against IAPWS-95 across its whole range.
@@ -46,7 +49,8 @@
  *   [ruled]    none in this file. There are no [tune] values and there must never be.
  *
  * VALID RANGE — outside it, inputs are CLAMPED to the envelope, never extrapolated.
- *     pressure     0.1 .. 18.0 MPa        (14.5 .. 2611 psia)
+ *     pressure     0.002 .. 18.0 MPa      (0.29 .. 2611 psia)  — floor LOWERED from 0.1 for
+ *                                                     #524, so Mode 5 (Cold Shutdown) exists
  *     liquid T     20 .. 358 degC         (68 .. 676 degF)
  *     vapour T     T_sat .. 1000 degC     (.. 1832 degF)  — core uncovery needs this; raised
  *                                                     from 800 for #586, IAPWS-95's own limit
@@ -67,7 +71,15 @@
   'use strict';
 
   /* ---------------------------------------------------------------- envelope */
-  var P_MIN = 0.1, P_MAX = 18.0;        // MPa
+  /* P_MIN LOWERED 0.1 -> 0.002 on 2026-08-31 (#524), the floor's own #586 story: 0.1 was the
+   * fetch query's `PLow=0.1`, never an argued limit, and its T_sat of 99.6 degC (211 degF) was
+   * the wall Mode 5, Cold Shutdown died against — an SG at or below the 200 degF boundary
+   * could not exist, and a pegged secondary would pour ~61 MW of false heat into a colder
+   * primary for ever (PWR2_VALIDATION §74). 0.002 MPa (T_sat 17.5 degC / 63.5 degF) lets a
+   * secondary sit at ambient; the P-domain fits below were REFITTED over the extension against
+   * freshly fetched IAPWS-95 data, never extrapolated — measured before trusting, the shipped
+   * rho_v_sat read 1e27 % wrong at 0.002 MPa with its clip lifted. */
+  var P_MIN = 0.002, P_MAX = 18.0;      // MPa
   var T_MIN = 20.0, T_MAX = 358.0;      // degC, LIQUID branch (must cover T_sat at P_MAX)
   /* degC, vapour branch. RAISED 800 -> 1000 on 2026-08-29 (#586) so the core-damage chain can
    * complete inside the envelope: every unmitigated break was latching beyond_model on the
@@ -238,20 +250,25 @@
   /* h_f(P) / h_g(P) — the saturation enthalpies as functions of PRESSURE, which is how the
    * node model asks (it holds h and P, never T). h_g is DERIVED as h_f + h_fg so the three
    * can never disagree with each other.
-   * MEASURED max error of the composed h_g over 0.1-17 MPa: 1.16 kJ/kg (0.50 Btu/lb).
-   * (The previous independent h_v fit measured 27.3 kJ/kg against a +/-15 header claim that
-   * its own inline comment contradicted with +/-25.) */
+   * MEASURED max error of the composed h_g over 0.002-17 MPa: 3.14 kJ/kg (1.35 Btu/lb), at
+   * the 0.002 MPa cold corner where h_fg extrapolates 2.5 degC below its 20 degC fit corpus;
+   * over the pre-#524 0.1-17 MPa band the old 1.16 kJ/kg (0.50 Btu/lb) still holds. */
   function h_f(P_MPa) { return h_l_sat(T_sat(P_MPa)); }
   function h_g(P_MPa) { var t = T_sat(P_MPa); return h_l_sat(t) + h_fg_T(t); }
 
-  /* rho_v_sat(P) — [derived] log-log degree-6 in ln(P), 0.1-18 MPa, 180 points.
-   * MEASURED max error, OFF-GRID: 1.25 %.
-   * (The previous cubic measured 4.4 % at the operating point against a +/-2 % gate claim,
-   * hidden because the reference it was checked against was the 15.0 MPa value.)
-   * The envelope stops at 18 MPa deliberately: measured, extending to 22 MPa takes the error
-   * to 16.8 % because rho_g turns sharply upward toward the critical point. */
-  var C_RVSAT = [1.6357855486e+0, 9.4528020440e-1, 2.3893947845e-2, 1.1473595330e-2,
-                 -6.4170420680e-3, -7.3132059352e-4, 1.0865161976e-3];
+  /* rho_v_sat(P) — [derived] log-log degree-9 in ln(P), 0.002-18 MPa, 278 points.
+   * MEASURED max error, OFF-GRID (133 rows incl. the fine 0.002-0.02 sweep): 0.74 %.
+   * REFITTED 2026-08-31 (#524) when the floor moved 0.1 -> 0.002: the old degree-6 fit did
+   * NOT extrapolate — 1e27 % at 0.002 MPa with the clip lifted (rho_g spans five decades and
+   * the poly tail runs away) — and degree 9 over the longer ln(P) span is T_sat's own
+   * precedented shape. The refit is BETTER on the old band too (old claim 1.25 %).
+   * MONOTONE in P over the whole envelope, checked on a dense grid — the pressure solve
+   * brackets through this function. The envelope stops at 18 MPa deliberately: measured,
+   * extending to 22 MPa takes the error to 16.8 % because rho_g turns sharply upward toward
+   * the critical point. */
+  var C_RVSAT = [1.6364587109e+0, 9.4953169301e-1, 1.7108214279e-2, 7.6099175329e-3,
+                 -5.5353309083e-4, -7.8882201911e-4, 1.0217141617e-4, 1.1568786892e-4,
+                 2.1242463499e-5, 1.2289911935e-6];
   function rho_v_sat(P_MPa) { return Math.exp(poly(C_RVSAT, Math.log(clip(P_MPa, P_MIN, P_MAX)))); }
 
   /* ---------------------------------------------------------------- compressed liquid
@@ -359,15 +376,30 @@
    * and the isobar set went 11 -> 24 to pin the high-pressure end where the parameters move
    * fastest.
    *
-   * MEASURED over 1,814 superheated points, 24 isobars, 0.1-17 MPa, T_sat..1000 degC (IAPWS-95,
-   * NIST SRD 69, fetched 2026-08-29): **h_v max 32.8 kJ/kg (14.1 Btu/lb, 0.96 %)**, worst at
-   * 540 degC / 17 MPa in the near-saturation collapse; **19.1 kJ/kg (0.42 %) in the new
-   * 800-1000 degC band**. The old fit's own claim was 35.1 kJ/kg over the SHORTER range, so the
-   * range grew by 200 degC and the error did not. */
-  var C_CI  = [1.9865071738e+0, 6.3616541252e-2, -1.1077192522e-2, 1.4039413850e-2, 9.5617477313e-3];
-  var C_G   = [5.7975192728e-4, -3.1378496267e-5, 4.9579813429e-5, -2.3876528748e-5, -1.9918704041e-5];
-  var C_CS  = [9.7805457155e-1, 1.6027433233e-1, 9.4006750979e-3, 1.6524057128e-2, 9.9962098409e-3];
-  var C_TAU = [4.1235907793e+0, -2.6844447348e-2, 3.6569524379e-2, -1.3677762425e-2, -1.0559335221e-2];
+   * ⚠ REFITTED AGAIN 2026-08-31 (#524) WHEN THE PRESSURE FLOOR MOVED 0.1 -> 0.002 MPa — the
+   * same lesson at the other wall. The smoothing went QUARTIC -> SEXTIC in ln(P) (the span
+   * grew from 5.1 to 9.1 natural-log units) and the isobar set 24 -> 33 (9 new low-pressure
+   * isobars 0.002-0.07 MPa); the per-isobar extraction now fits the H-FORM directly rather
+   * than cp (cp stays its exact derivative), which is what recovered the shipped fit's own
+   * 19.6 kJ/kg per-isobar floor over the wider range (19.3 measured).
+   *
+   * MEASURED over 3,133 superheated points, 38 isobars (5 of them off-grid validation),
+   * 0.002-17 MPa, T_sat..1000 degC (IAPWS-95, NIST SRD 69, fetched 2026-08-29 + 2026-08-31):
+   * **h_v max 21.4 kJ/kg (9.2 Btu/lb, 0.8 %)**, worst just above saturation at 17 MPa.
+   * The pre-#524 fit's own claim was 32.8 kJ/kg over the NARROWER range — the floor moved
+   * 50x down in pressure and the error fell. cp_v (the derivative) keeps the known
+   * near-saturation collapse at high pressure: **38 % right at T_sat / 17 MPa** (the old fit
+   * measured 31.5 % at the same point), falling to **10.5 % by 30 degC of superheat** —
+   * anything needing accurate cp_v within a few degC of saturation above ~15 MPa must not
+   * use this, which is cp_l's own honesty idiom at its critical-point end. */
+  var C_CI  = [1.9641704390e+0, 6.7586674249e-2, 1.1189738572e-2, 6.4950768838e-3,
+               3.7083238438e-3, 7.9061168648e-4, 5.5307892896e-5];
+  var C_G   = [6.2133491744e-4, -4.3278132888e-5, 1.4926657312e-7, -8.1976347354e-6,
+               -7.3316855626e-6, -1.7133868410e-6, -1.2381550171e-7];
+  var C_CS  = [9.6163467480e-1, 1.5757743281e-1, 2.5963501769e-2, 9.7179185442e-3,
+               5.3131506636e-3, 1.1332349322e-3, 8.0195031536e-5];
+  var C_TAU = [4.2072652161e+0, 3.8403466941e-2, 2.2181762860e-2, -2.7561663290e-2,
+               -4.6904672003e-3, 3.3362527709e-4, 4.6443667845e-5];
   function shParams(P_MPa) {
     var lp = Math.log(clip(P_MPa, P_MIN, P_MAX));
     return { ci: poly(C_CI, lp), g: poly(C_G, lp),
@@ -403,16 +435,23 @@
    * factor, Z relaxing from its saturated value toward 1 as the steam superheats:
    *     Z(dT,P) = 1 - (1 - Z_sat(P)) * exp(-dT/tau_z(P))
    *     rho     = P / (Z * R * T)
-   * MEASURED max error over 1226 IAPWS-95 points, 0.1-17 MPa, T_sat..800 degC: 7.5 %.
+   * MEASURED max error over 3,133 IAPWS-95 points, 0.002-17 MPa, T_sat..1000 degC: 9.5 %,
+   * worst just above saturation at 17 MPa (the pre-#524 fit measured 8.1 % at the same
+   * point over its narrower range). Z_sat and tau_z REFITTED 2026-08-31 (#524) over the
+   * extension — degree 4 -> 6 in ln(P), tau_z now fitted on the DIRECT Z residual so the
+   * near-saturation region (where 1-Z is large) is what the fit serves. At the extreme low
+   * end the Z_sat poly can read up to 1.003 against a true 0.9985 — (1-Zs) then flips sign
+   * and Z relaxes down toward 1 instead of up, a 0.4 % effect the anchored form absorbs.
    *
    * Ideal-gas scaling off the saturated point — the obvious first choice, and what a first
    * draft of this file used — measures 55 % error. Saturated steam at 2235 psia has
    * Z = 0.536, so it is nowhere near ideal, and it approaches ideal AS IT SUPERHEATS; density
    * therefore falls FASTER than the ideal ratio, not at the same rate. */
   var R_STEAM = 0.4615;                                        // [sourced] kJ/kg-K
-  var C_ZS = [9.2630513474e-1, -4.8957980927e-2, -6.5003048016e-3, -3.7915875377e-3,
-              -2.3609659436e-3];
-  var C_TZ = [4.8119576999e+0, 1.0268904870e-1, -2.1583255242e-2, -1.0075930158e-2];
+  var C_ZS = [9.2602636592e-1, -4.6369174782e-2, -1.1548854381e-2, -2.7871468806e-3,
+              -1.2292417892e-3, -2.8487745523e-4, -2.1729074170e-5];
+  var C_TZ = [4.8031233110e+0, 8.8854197721e-2, -1.4862259978e-2, -3.2531186045e-3,
+              2.5032290918e-4, -3.0685477150e-4, -8.5996975307e-5];
   function rho_v(T_c, P_MPa) {
     var P = clip(P_MPa, P_MIN, P_MAX), lp = Math.log(P);
     /* #516 item 9: the clip follows the extension. `Z` here already relaxes toward 1 with
@@ -457,6 +496,11 @@
    * MEASURED against independent saturated-steam values: k 54.99 vs 54.7 mW/m-K (+0.5 %) and
    * mu 19.84 vs 20.0 uPa-s (-0.8 %) at 300 degC; k +4.1 % and mu -2.2 % at 200 degC. That is
    * the transcription check, and it is why those two lines are here rather than in a comment.
+   * The #524 floor extension EXTENDS THEIR USE below 0.1 MPa (they clamp at the envelope), so
+   * they were re-checked over the new band rather than assumed (#586's own precedent):
+   * against the fetched low-pressure isobars' viscosity and conductivity columns, k_v 4.0 %
+   * and mu_v 7.3 % max in 0.002-0.07 MPa, both worst at the 20 degC cold corner — well inside
+   * the 43.7 % (k) they already carry near saturation in the operating band.
    *
    * RETURNED IN SI: k in W/m-K, mu in Pa-s. The correlations' own mW and micropoise are
    * converted at the return, once, where the source form is still in view. */

@@ -335,9 +335,9 @@ _Last updated: **2026-08-31**._
 
 **Where the PWR is.** Read `BASELINES` for the runner count, never a number written here. The PWR
 is the only active plant: engines, control, service, instructor and the board are built, and the
-#297 build wave and #221 audit slices are landed. **It is feature-complete Mode 4 ↔ Mode 1, NOT
-Mode 5** — the water-property floor saturates at 211 °F (99.4 °C), above the Mode 5 boundary
-(#524; #532 corrected seven chapters that said otherwise). **What is open, in one line each:**
+#297 build wave and #221 audit slices are landed. **It is feature-complete Mode 5 ↔ Mode 1** —
+#524 landed 2026-08-31: the floor moved 0.1 → 0.002 MPa, `cold_shutdown` is the fifth IC
+(`PWR2_VALIDATION.md` §126). **What is open, in one line each:**
 
 **Do not read the list below as the issue tracker** — `gh issue list --state open` is the authority
 and this summary ages. Measured twice (2026-08-10, 2026-08-28): whole bullets called issues open
@@ -372,7 +372,7 @@ that were closed. **Run the query.**
   only, true values declared, gated by `run_pwr2_engine` (14 checks / 8 mutations; it caught the
   scram-bypasses-RPS defect and filed #499 on arrival — `PWR2_VALIDATION.md` §49). P-9 (turbine trip
   = reactor trip above it, both sourced values), the #499 beyond-model guards and the
-  DELAYED-data sourcing are all LANDED (§50–52). **Everything since is recorded in `PWR2_VALIDATION.md` §53–§97 — read the sections, not this line**, which is why the roll-call that used to sit here is gone. Still open out of it: **#507**'s casualty menu stands at 22 honest rows (21 at wave 10, +`anticipatory_trip_failure` at #515) with Section F closed, and **#510** batches 1–4 landed leaving five LOW harness items. **#523 (owner rulings 2026-08-26 "Flip now, track the gaps" / "Strip it at build time"): PWR2 IS THE PLANT THE SITE RUNS (§94)** — every link and `/sim` carry `?engine=pwr2`, and a **public** build contains no retired engine at all (six tags + 544,663 bytes pruned by `site/build_site.js`; `make_portable` always). The strip is CHANNEL-GATED so the PREVIEW site keeps it, because the guided content is authored against it and `freePlayOnly` stays. `pwr_config.js`/`pwr_instruments.js` are NOT the old engine and ship everywhere. Two of the three pre-replacement gaps are now #531 (R8) and #525 (mission compatibility). Still owed: delta-T lead/lag + K5 (COLR), channel redundancy, the ESF arm display, Mode 5 proper (#524), stuck_rod_on_scram, the steam-line-break rows + auto isolation signal (the MSIV itself is BUILT, §80).
+  DELAYED-data sourcing are all LANDED (§50–52). **Everything since is recorded in `PWR2_VALIDATION.md` §53–§97 — read the sections, not this line**, which is why the roll-call that used to sit here is gone. Still open out of it: **#507**'s casualty menu stands at 22 honest rows (21 at wave 10, +`anticipatory_trip_failure` at #515) with Section F closed, and **#510** batches 1–4 landed leaving five LOW harness items. **#523 (owner rulings 2026-08-26 "Flip now, track the gaps" / "Strip it at build time"): PWR2 IS THE PLANT THE SITE RUNS (§94)** — every link and `/sim` carry `?engine=pwr2`, and a **public** build contains no retired engine at all (six tags + 544,663 bytes pruned by `site/build_site.js`; `make_portable` always). The strip is CHANNEL-GATED so the PREVIEW site keeps it, because the guided content is authored against it and `freePlayOnly` stays. `pwr_config.js`/`pwr_instruments.js` are NOT the old engine and ship everywhere. Two of the three pre-replacement gaps are now #531 (R8) and #525 (mission compatibility). Still owed: delta-T lead/lag + K5 (COLR), channel redundancy, the ESF arm display, stuck_rod_on_scram, the steam-line-break rows + auto isolation signal (the MSIV itself is BUILT, §80).
   **#514/#513 (2026-08-25), both CLOSED.** Two facts outlive them: **shell.html no longer loads
   RBMK/BWR** (dev routes `test_rbmk.html` / `test_bwr.html`, `verify_e2e_ui` PWR-only), and
   mutation replay is `grp:`-scoped in 6 runners. Rest: `Diagnostic/TUNING_LOG.md` 2026-08-25.
@@ -425,6 +425,12 @@ FIRST** — ask what in it would still burn someone in a month, move that to the
 ONE line, drop the rest. **A bullet is ~80 words.** (Measured 2026-08-06: the list was running
 7 bullets averaging 500 words, two of them duplicating traps already rescued below.)
 
+- **A FIXTURE BUILT AT AN ENVELOPE WALL EXPIRES WITH THE WALL** (2026-08-31, #524 §126).
+  `P_MIN = 0.1` was `PLow=0.1` in the NIST URL — #586's `THigh=800` at the other wall; same
+  discipline to move it (refit + fetch reference data INSIDE the extension; the old fit read
+  1e27 % extrapolated). Then three SG fixtures and a LOCA hold check, each built AT the old
+  floor for "zero duty by construction", reddened on the fix itself — adjudicated per-probe,
+  the 107 s floor-arm latch was the floor masking a blowdown that now completes honestly.
 - **A RENDER-BOUND FLICKER IS MEASURED IN THE BROWSER'S PIPELINE, NOT OUR JS — AND PER-ELEMENT
   THROTTLING OF ANIMATIONS CUTS NOTHING** (2026-08-31, #596, the in-sim report:
   4.7 fps). Two 60 Hz wastes behind a 10 Hz display: the chart rebuilt an IDENTICAL SVG every
@@ -454,14 +460,6 @@ ONE line, drop the rest. **A bullet is ~80 words.** (Measured 2026-08-06: the li
   gates. Worse, `run_manual_units` matched `Manuals/12`'s flows against `pwr_config` — the
   RETIRED plant — so the wrong manual passed and a CORRECTED one would have failed. **Ask which
   plant a check defends.**
-- **A CONSTANT WITH NO DERIVATION IS USUALLY A TOOL'S DEFAULT, AND A FIT THAT LOOKS LIKE IT
-  EXTRAPOLATES USUALLY DOES NOT** (2026-08-29, #586 §118). The 800 °C vapour ceiling the
-  core-damage chain died against was `THigh=800` in the fetch URL that built Layer 0 — three
-  lines from a *liquid* ceiling carrying a real argument. **Ask whether the neighbour has a
-  derivation and this one merely has a value.** Moving such a bound: the old fit ran **34.8 %
-  out on cp** just past its range, and **every reference row the gate held stopped at the old
-  bound**, so nothing could catch it. Extend a range only by refitting AND fetching reference
-  data inside the extension.
 **Standing procedure — not part of the rotation above; these do not expire.** One trap per entry.
 **MAX 25 BULLETS** *(OWNER RULING, 2026-08-10: selected "Cap at 25, evict to TRAPS.md" from
 options I wrote — a selection, not verbatim words)*, gated by `test/run_doc_budget.js`. Adding

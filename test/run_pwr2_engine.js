@@ -1460,12 +1460,24 @@ function runSuite(RD, rec, quiet, only) {
   ckT('below P-10 the block request is AUTO-REVOKED (the sourced asymmetric gate)',
       reqAt === true && engR2.pt.blockLowFlux === false, '');
 
+  /* RE-AIMED 2026-08-31 (#524): `cold_shutdown` EXISTS now — the old form of this check
+   * pinned the refusal to that name and flipped red the day the IC landed. The claim is the
+   * refusal MECHANISM (#502: an accepted-then-ignored preset is a menu that lies), so it is
+   * asserted with a name no registry will ever carry — and the flip side is asserted too:
+   * the five real names all construct. */
   var threwIC = null;
-  try { EN.createEngine({ initial_state: 'cold_shutdown' }); }
+  try { EN.createEngine({ initial_state: '5_percent' }); }
   catch (eIC) { threwIC = /unknown initial_state/.test(eIC.message); }
-  ckT('an IC this engine does not carry THROWS (cold shutdown waits on an RCP restart — ' +
-      'declared in the registry, not silently hot-full-power)',
+  ckT('an IC this engine does not carry THROWS (5_percent is the retired engine\'s — ' +
+      'declared refusal, not silently hot-full-power)',
       threwIC === true, '');
+  ckT('cold_shutdown CONSTRUCTS — Mode 5 exists (#524; it threw here until 2026-08-31)',
+      (function () {
+        var e5 = EN.createEngine({ initial_state: 'cold_shutdown' });
+        var t5 = EN.step(e5, DT);      /* step returns the true state directly */
+        return t5.plant_mode === 5 && /Cold Shutdown/.test(t5.plant_mode_name) &&
+               Math.abs(t5.tavg_c - 50) < 2;
+      })(), 'boots Mode 5 at ~122 degF');
 
   /* ---- THE RATED SCALE IS FROZEN (#539) --------------------------------------------------
    * `rated_steam` is every secondary normalization's denominator, and PWR2_VALIDATION.md:3808
@@ -1479,14 +1491,15 @@ function runSuite(RD, rec, quiet, only) {
    * preset, and a denominator that is wrong at every preset in a DIFFERENT way is invisible
    * that way. Four presets, one number, and the number is re-derived here from the rated
    * dispatch and the design pressure rather than read back off the engine. */
-  var RATED_ICS = ['hot_full_power', '50_percent', 'hot_zero_power', 'hot_shutdown'];
+  var RATED_ICS = ['hot_full_power', '50_percent', 'hot_zero_power', 'hot_shutdown',
+                   'cold_shutdown'];
   var ratedVals = RATED_ICS.map(function (n) {
     return EN.createEngine({ initial_state: n }).rated_steam;
   });
   var ratedRef = TB.steamDemand(TB.createTurbine({ load_target_mwe: TB.TURB.mwe_rated }),
                                 G.createSG({}).P, G.SG.h_feed);
   var ratedSpread = Math.max.apply(null, ratedVals) - Math.min.apply(null, ratedVals);
-  ckT('the RATED SCALE is FROZEN: all four presets carry one rated_steam, and it is ' +
+  ckT('the RATED SCALE is FROZEN: all five presets carry one rated_steam, and it is ' +
       'steamDemand at the rated dispatch and the DESIGN steam pressure',
       ratedSpread === 0 && ratedVals.every(function (v) { return v === ratedRef; }) &&
       ratedVals[0] > 0,

@@ -469,7 +469,19 @@ function runSuite(R, rec, quiet) {
    * 2.7 % near 60 s and recovers through ~82 % at 70 s before settling at 100 % by ~90 s
    * (measured 0.00 dpm at 100 s, ±0.02 through 160 s). Same rule as the two re-measures
    * above: the sample time follows the fixture, the three-phase MECHANISM is the check. */
-  var sur120s = ride(f4, 3450, null, rods4);                       /* +69 s = 120 s: re-settled */
+  /* ⚠ A FIFTH TIME (#524, 2026-08-31), and this one RETIRED the leg's old sink: the "settles
+   * at 100 % by ~90 s" ending was partly the 0.1 MPa PROPERTY FLOOR's artifact. The rated
+   * sink drags this unprotected plant's pressure through 0.12 MPa at ~130 s; pre-#524 the
+   * solve PINNED there and the ring froze quiet (0.00 dpm read as "settled"), and with the
+   * floor at 0.002 the same ride boils toward vacuum and rings ±600 dpm for ever — no settle
+   * exists under a standing rated sink. The check's stated subject is the prevPower
+   * BOOKKEEPING on a settled plant, so the settle leg now rides a DUTY-MATCHED sink (heat
+   * out follows the core) — which settles honestly on BOTH floors (validated against the old
+   * behaviour per HR10, not refit to the new): measured −0.75 dpm at 120 s, −0.5..−0.8
+   * through 180 s, power gliding at ~0.5 %. The negative and positive phases keep the rated
+   * sink and their samples, unchanged. */
+  var dutyM = function () { return (f4.rx.kin.P || 1) * RATED; };  /* sink follows the core */
+  var sur120s = ride(f4, 3450, dutyM, rods4);                      /* +69 s = 120 s: re-settled */
   ckT('SUR is clearly NEGATIVE while the scrammed core is still cooling down',
       sur1s.startup_rate_dpm < -1, sur1s.startup_rate_dpm.toFixed(2) + ' dpm at 1 s');
   ckT('...and clearly POSITIVE while it climbs back THROUGH criticality -- the sourced lesson',

@@ -63,7 +63,12 @@
    *    is where the interpolation has to be good, so it gets the most lines; the subcooled and
    *    superheated wings are nearly linear in x and need fewer. x = 0 and x = 1 are grid lines
    *    exactly, by construction of the band edges. */
-  var P_MIN = 0.1, P_MAX = 18.0, NP = 110;
+  /* P_MIN follows Layer 0's #524 floor extension (0.1 -> 0.002, 2026-08-31). The ln(P) span
+   * grew 5.19 -> 9.10; NP1 grew with it to hold the 1-D saturation tables' spacing (they carry
+   * the steep P-dependence), while NP stays measured-not-generous — the 2-D wings store
+   * v/v_edge ratios that are nearly pressure-independent, so widening their grid spacing is
+   * cheap (re-measured in run_pwr2_vtable's region sweep, now sampling down to 0.002). */
+  var P_MIN = 0.002, P_MAX = 18.0, NP = 150;
   /* THE SATURATION LINE GETS ITS OWN, MUCH FINER 1-D GRID, and the reason is a measurement.
    * With h_f shared on the coarse 60-point grid the dome read 0.23 % wrong AT x = 0.01 — where
    * v is essentially v_f and should have been near-exact. The sensitivity is through the
@@ -72,7 +77,7 @@
    * 1-D arrays are almost free, so the saturation line is resolved 400 ways while the 2-D wing
    * table stays coarse in P — the wings' error is x-driven and refining P there did nothing
    * (measured: 1.116 -> 1.164 for 3x the pressure lines). */
-  var NP1 = 400;
+  var NP1 = 700;   // 400 -> 700 with the #524 span growth, same ln(P) spacing
   var X_LO = -2.2, X_HI = 2.6, NSUB = 40, NDOME = 45, NSUP = 110;
 
   var Pg = new Float64Array(NP);

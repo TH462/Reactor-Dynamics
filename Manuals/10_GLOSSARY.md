@@ -20,7 +20,7 @@ Terms used in the PWR manuals and on the simulator board. Acronym first, then pl
 | **5** | **Mode 5, Cold Shutdown** | Subcritical, RCS cold |
 | **6** | **Mode 6, Refueling** | Cold, vessel head not fully tensioned (out of scope here) |
 
-**Mode 4, Hot Shutdown → Mode 1, At Power** and **Mode 1, At Power → Mode 4, Hot Shutdown** master procedures: `05_MODE_TRANSITIONS.md` (**PWR-T20**, **PWR-T21**). Both are written through **Mode 5**, which this plant does not have — its cold end is Mode 4 at 250 °F (121.1 °C), and the reason is the water-property floor rather than the plant model (**09 §11.0**, #524).
+**Mode 5, Cold Shutdown → Mode 1, At Power** and **Mode 1, At Power → Mode 5, Cold Shutdown** master procedures: `05_MODE_TRANSITIONS.md` (**PWR-T20**, **PWR-T21**). Both run end to end on integrated physics — Mode 5 was restored 2026-08-31 when the water-property floor moved below its boundary (**09 §11.0**, #524).
 
 **Not plant MODES:** turbine load modes Follow / Manual / Disconnected.
 
@@ -71,7 +71,7 @@ Terms used in the PWR manuals and on the simulator board. Acronym first, then pl
 | **Heat sink** | Where core heat goes — primarily the Steam Generators (secondary water/steam). |
 | **Hot Full Power (HFP)** | ~100 % power, ~100 MWe, equilibrium — full-power **Mode 1, At Power**. |
 | **Hot Standby** | Subcritical, hot, at operating temperature and pressure — **Mode 3, Hot Standby**. |
-| **Hot Shutdown** | Subcritical with RCS not yet cold — commercial **Mode 4, Hot Shutdown**. **[sim]**: the trainer derives it from power, reactivity and Tavg, so it is what the board declares while transiting between Mode 3 and Mode 5. A post-trip board still at operating temperature is Mode 3, Hot Standby by temperature class. |
+| **Hot Shutdown** | Subcritical with RCS not yet cold — commercial **Mode 4, Hot Shutdown**. **[sim]**: the trainer derives it from power, reactivity and Tavg, so it is what the board declares while transiting between Mode 3 and Mode 5, and what the `hot_shutdown` preset loads. A post-trip board still at operating temperature is Mode 3, Hot Standby by temperature class. |
 | **Cold Shutdown** | Subcritical and cold — **Mode 5, Cold Shutdown**. **[sim]** — see the Cold Shutdown entry under **C**. |
 | **HPI / LPI** | High- / Low-Pressure Injection — merged emergency injection with a two-segment pump curve. |
 | **HR1** | Simulator hard rule: protection and alarms read **instruments**, never true state. |

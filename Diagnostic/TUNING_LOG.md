@@ -29,6 +29,45 @@ and the user-visible summary in `CHANGELOG.md`. This file points at those and tr
 
 ---
 
+## Session log — 2026-08-31-develop-e (#524 — Mode 5 exists: the pressure floor was a fetch query's bound)
+
+**The full record is `Blueprint/PWR2_VALIDATION.md` §126**; this is the index entry.
+
+- **Layer 0's floor moved 0.1 → 0.002 MPa** (owner-ruled from options; T_sat there 63.5 °F, an
+  SG can sit at ambient). The 0.1 was `PLow=0.1` in the NIST fetch URL — the #586 `THigh=800`
+  shape at the other wall. Refits measured against fresh IAPWS-95 data (`PWR2_L0_REBUILD` §3b):
+  rho_v_sat deg 6→9 (0.52 % off-grid), superheated smoothing quartic→sextic over 33 isobars
+  fitted on the h-form (h_v max **21.4 kJ/kg** over a range 50× wider than the 32.8 it
+  replaces), Z pair refit (rho_v 9.5 %), transport re-checked (k 4.0 / mu 7.3 % in the band).
+  The old fits did NOT extrapolate — rho_v_sat read 1e27 % at 0.002 with the clip lifted.
+- **`cold_shutdown` is the fifth IC**: Mode 5, 122 °F / 363 psia / 918 ppm / ρ −5,809 pcm both
+  banks in; SG secondary at **1.79 psia tracking the primary** — §74's ~61 MW false gradient is
+  gone. Holds 90 min untouched (0.79 °F/hr final window, level flat); reached by operating too
+  (RHR HX 15 % takes Mode 4 across in 0.56 plant-h). Heatup: pump heat warms it at 94.9 °F/hr.
+- **The 40 cm² unmitigated blowdown now COMPLETES** — drains to 11.7 kg, equalizes at 15.7 psia
+  against containment, flow 0 — instead of latching `beyond_model` at 107 s on the floor arm.
+  §115 held: the core-damage chain latches on the CEILING and did not move. The `run_pwr2_sg`
+  §99.6 clip residual is RETIRED (the floor now sits below every physical inflow).
+- **Gates**: water 327 (36 mut), vtable 24 (regions to 0.002, cap 260→320 kB justified by
+  measurement), sg 44, loca 22 (completion + manual-latch hold), endurance 25 (three Mode 5
+  legs), engine/shell refusal checks re-aimed at `5_percent`, manual_setpoints 13 with the
+  live-captured §11.0 column. Content: picker row 5, PWR-N01 from `cold_shutdown`, PWR-N15 to
+  the Mode 5 outcome, the RHR 425/585 psig pair replacing the retired 400/600 (checklist +
+  board comment), ~14 manual sites un-fenced (Rev 17 pending row extended), site copy restored.
+- **Two more fixtures expired with the wall, found by the full gate** (the CLAUDE.md theme's
+  second half): `run_pwr2_reactor`'s SUR settle sample — its adversarial rated-sink ride
+  "settled" pre-#524 only because the pressure solve PINNED at 0.1 MPa and froze the ring; the
+  settle leg now rides a duty-matched sink (settles on BOTH floors, HR10). And
+  `verify_e2e_ui`'s #520 held-dialog fixture — NO menu-injectable casualty reaches
+  `beyond_model` in a testable window any more (the same four failures ride 8,000 s LIVE
+  through clad damage at 3,033 °F (1,667 °C)); the fixture now latches the flag
+  directly through a new `?dev=1` hook, the run_pwr2_loca manual-latch adjudication at the UI
+  layer. The #588 ulp cliff retires with it — no branch left to land on.
+- **Still open out of it**: the guided Mode 5 missions stay behind #525; chapter 04's
+  cooldown/heatup performance tables and the 857-ppm boration family remain retired-engine
+  figures under their banners (re-measure with the #525 pass); `5_percent` remains the only
+  refused legacy IC name (#507's inventory).
+
 ## Session log — 2026-08-31-develop-d (#596 — every animation on the page joins the shared clock; the frame loop is a FIXED cost, not a per-element one)
 
 **The finding that reframed the whole effort.** Sub-family A/B, 15 s traces, main-thread

@@ -30,6 +30,43 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
 
 ## [Unreleased]
 
+### Added (#524: Mode 5, Cold Shutdown exists — the water-property floor extended below 0.1 MPa — 2026-08-31)
+
+- **Layer 0's pressure floor moved 0.1 → 0.002 MPa** (owner-ruled). The 0.1 was the NIST fetch
+  query's own `PLow=0.1` — the #586 `THigh=800` shape at the other wall — and its 211 °F
+  (99.4 °C) saturation temperature was the wall Mode 5 died against (§74's ~61 MW false-heat
+  SG). Refits measured against freshly fetched IAPWS-95 data (`PWR2_L0_REBUILD.md` §3b):
+  `rho_v_sat` degree 6→9 (0.52 % off-grid over 0.002–18 MPa), the superheated smoothing
+  quartic→sextic over 33 isobars refitted on the h-form (h_v max **21.4 kJ/kg** — the range
+  grew 50× down in pressure and the error fell from 32.8), the Z pair refit (rho_v 9.5 %),
+  transport re-checked over the extension (k_v 4.0 %, mu_v 7.3 %). The vtable followed
+  (NP 110→150, NP1 400→700). The old fits did NOT extrapolate — `rho_v_sat` read 1e27 % at
+  0.002 MPa with its clip lifted.
+- **`cold_shutdown` is the PWR's fifth initial condition**: Mode 5, 122 °F (50 °C) / 363 psi
+  (2.50 MPa) / 918 ppm, ρ = −5,809 pcm both banks in, RHR in service, RCPs secured,
+  accumulators isolated, P-11 blocks taken — the wave-10 construction one step colder, the
+  #468 bank-after-trim order intact. The SG secondary sits at **1.8 psi (0.0127 MPa), tracking
+  the primary** — the state the old floor could not represent. Holds 90 min untouched
+  (final-window rates 0.79 °F/hr / 2.1 psi/hr, level flat at 25 %); reachable by operating too
+  (the RHR heat exchanger at 15 % takes Mode 4 across the boundary in 0.56 plant-h); pump heat
+  warms it back up at 94.9 °F/hr. In the Free Play picker as **Cold Shutdown (Mode 5)**.
+- **The 40 cm² unmitigated blowdown now COMPLETES** — drains to 11.7 kg, equalizes at the
+  containment backpressure (15.7 psia), break flow → 0 — instead of latching `beyond_model`
+  at 107 s on the floor arm (the floor was masking the end of blowdown; the core-damage
+  chain's CEILING latch is unmoved, §115). The `pwr2_sg` §99.6 backstop-clip residual is
+  RETIRED: the floor now sits below every physical inflow, and the clip flag reports material
+  corrections only (float-roundoff ticks at an exactly-landed energy limit no longer count).
+- **Checklists and manuals un-fence**: PWR-N01 starts from `cold_shutdown`, PWR-N15 runs to a
+  real Mode 5 outcome, and the RHR align step quotes the shipped engine's sourced
+  **425/585 psig** interlock pair (WTSM 5.1) in place of the retired 400/600 (also fixed in
+  the board-wiring comment — the #557 board-reads-the-retired-plant class). ~14 manual sites
+  retract their #524 disclaimers (Rev 17 pending row); chapter 09 §11.0 gains the
+  `cold_shutdown` column captured live and gated by `run_manual_setpoints`. Site copy reads
+  "cold shutdown to full power" again per the issue. Guided Mode 5 missions stay behind #525.
+- Gates: `run_pwr2_water` 282→327 (36 mutations), `run_pwr2_loca` 19→22 (completion +
+  manual-latch hold), `run_pwr2_endurance` 22→25 (three Mode 5 legs), `run_pwr2_engine` and
+  `run_pwr2_shell` assert the fifth IC and re-aim the refusal probes at `5_percent`.
+
 ### Fixed (#596: every animation on the page joins the shared clock — the frame loop is a FIXED cost — 2026-08-31)
 
 - **All board animations now ride one 24 Hz clock**, not just the pipe dashes. The ticker in

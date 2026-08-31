@@ -178,6 +178,54 @@ head('THE ICs, 30 sim-min each (Mode 4: 90 min — past its #510 failure horizon
      s.rateOk && s.posOk, s.note);
 })();
 
+(function () {
+  /* MODE 5 (#524, 2026-08-31) — the fifth IC, same acceptance law as Mode 4 one step
+   * colder. Measured before this check was written: 90 min untouched holds Mode 5 at
+   * +1.0 degC total, level flat at 25 %, final-45-min rates 0.79 degF/hr / 2.1 psi/hr /
+   * 0.11 %/hr — the charging-exchange class, and NO fill-solid (the RHR low-pressure
+   * letdown path closes the inventory loop here exactly as it does at Mode 4). */
+  var eng = EN.createEngine({ initial_state: 'cold_shutdown' });
+  var trace = [];
+  var ts = ride(eng, 5400, trace, 30);
+  var s = settled(trace, 2700);
+  ck('mode5-untouched-holds',
+     'cold_shutdown: 90 min untouched stays Mode 5 — level < 60 %, pressure > 200 psia, ' +
+     'Tavg under the 93.3 degC boundary, never held',
+     ts.pzr_level_pct < 60 && ts.pressure_mpa * 145.038 > 200 &&
+     ts.tavg_c < 93.3 && ts.plant_mode === 5 && !eng.sys.beyond_model,
+     'level ' + ts.pzr_level_pct.toFixed(1) + ' %, P ' +
+     (ts.pressure_mpa * 145.038).toFixed(1) + ' psia, Tavg ' + ts.tavg_c.toFixed(1) +
+     ' degC at 90 min');
+  ck('mode5-settled-derivatives',
+     'cold_shutdown: SETTLED — the same rate-plus-position law as the other ICs',
+     s.rateOk && s.posOk, s.note);
+})();
+
+(function () {
+  /* MODE 5 IS REACHED BY OPERATING, not only by loading (#524) — the integration claim the
+   * floor extension exists for: the RHR heat exchanger pulls the WHOLE coupled plant (SG
+   * attached, secondary FOLLOWING the primary below the old 211 degF wall instead of pouring
+   * §74's ~61 MW of false heat back) across the Mode 5 boundary. Measured before writing:
+   * hx 0.15 takes Mode 4 to Mode 5 in 0.56 plant-h. The HX split here is the operator's
+   * rate lever — 15 % overshoots the 100 degF/hr administrative limit (worst 1-min −159),
+   * which is the checklist's business, not this physics check's. */
+  var eng = EN.createEngine({ initial_state: 'hot_shutdown' });
+  eng.rh.hx_fraction = 0.15;
+  var ts = null, m5at = null, t = 0;
+  for (var i = 0; i < 135000 && m5at === null; i++) {           /* up to 45 plant-min */
+    ts = EN.step(eng, DT); t += DT;
+    if (ts.plant_mode === 5) m5at = t;
+  }
+  var sgTsec = globalThis.RD.pwr2.water.T_sat(eng.sg.P);
+  ck('mode5-reached-by-cooldown',
+     'hot_shutdown driven through the RHR HX crosses into Mode 5 on integrated physics, ' +
+     'with the SG secondary tracking BELOW the retired 99.6 degC floor',
+     m5at !== null && ts.plant_mode === 5 && sgTsec < 99.0 && !eng.sys.beyond_model,
+     (m5at === null ? 'never reached in 45 min' : 'Mode 5 at ' + (m5at / 60).toFixed(1) +
+      ' plant-min') + ', SG T_sec ' + sgTsec.toFixed(1) + ' degC (' +
+     (sgTsec * 9 / 5 + 32).toFixed(1) + ' degF)');
+})();
+
 /* ================= 2. THE #510 WEDGES, RIDDEN PAST THEIR HORIZONS ======================= */
 head('THE WEDGES  [each ride extends past where the old gate stopped]');
 

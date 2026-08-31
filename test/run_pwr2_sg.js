@@ -275,10 +275,16 @@ function runSuite(G, rec, quiet, only) {
    * 20 degC approach is still 14.03 MW against the 14.07 MW that boiling 5.44 kg/s of 70 degF
    * water costs. Both are HONEST heat balances and neither is the defect. The defect is a
    * vessel exporting vapour THE HEAT DID NOT MAKE, so the fixture has to take the heat away
-   * for real: build the vessel AT the 0.1 MPa property floor (where h IS h_lo, so the clip has
-   * nothing left to give) and hold the primary at that pressure's own saturation, 99.6 degC,
-   * so the duty is zero by construction rather than by hope. */
-  var P_FLOOR = 0.1, T_FLOOR = W.T_sat(P_FLOOR), H_AFW = 88.5, AFW_KGS = 5.44;
+   * for real: build the vessel AT the property floor (where h IS h_lo, so the clip has
+   * nothing left to give) and hold the primary at that pressure's own saturation, so the
+   * duty is zero by construction rather than by hope.
+   * RE-BASED 2026-08-31 (#524): the floor moved 0.1 -> 0.002 MPa and the fixture moved WITH
+   * it — at 0.1 the old "zero-duty" primary (99.6 degC) now stands 82 degC PROUD of a
+   * secondary that can finally cool below 211 degF, so the vessel boiled its inflow honestly
+   * and the refill assertion read the fix as a defect. At the new floor the same claim holds
+   * one step colder; the 70 degF CST inflow (88.5 kJ/kg) is now slightly ABOVE the floor
+   * enthalpy (h_f(0.002) ~ 73 kJ/kg), so a small honest boil-off (~0.03 kg/s) rides along. */
+  var P_FLOOR = W.LIMITS.P_MIN, T_FLOOR = W.T_sat(P_FLOOR), H_AFW = 88.5, AFW_KGS = 5.44;
   var sgR = G.createSG({ P: P_FLOOR, mass: 1 }), inR = 0, outR = 0, clipR = 0, nR = 0;
   for (var kr = 0; kr < 30000; kr++) {          /* 600 s of AFW into a dry, steaming vessel */
     var rr = G.stepSG(sgR, T_FLOOR, 0.02, { afw_kgs: AFW_KGS, afw_h: H_AFW, steam: 60 });
@@ -294,37 +300,33 @@ function runSuite(G, rec, quiet, only) {
   ckT('...and the export is ENERGY-starved there, not mass-starved — the wall is NAMED, ' +
       'because the operator\'s action differs (no water vs no heat)',
       (function () {
+        /* inflow AT the floor enthalpy for this probe — with the #524 floor below the 70 degF
+         * CST temperature, 88.5 kJ/kg water carries a real (small) boil and the "delivers
+         * 0.000" claim needs genuinely heat-free inflow to stay exact */
         var s6 = G.createSG({ P: P_FLOOR, mass: 1 });
-        var r6 = G.stepSG(s6, T_FLOOR, 0.02, { afw_kgs: AFW_KGS, afw_h: H_AFW, steam: 60 });
+        var r6 = G.stepSG(s6, T_FLOOR, 0.02, { afw_kgs: AFW_KGS, afw_h: W.h_f(P_FLOOR), steam: 60 });
         return r6.steam_starved === true && r6.energy_starved === true &&
                r6.mass_starved === false && r6.steam_delivered_kgs < 1e-9;
       })(), 'a vessel holding water it has no heat to boil reports energy_starved and ' +
             'delivers 0.000 kg/s; the pre-fix ledger delivered the whole 5.44 kg/s inflow');
-  /* WHAT THE CLIP STILL DOES, STATED EXACTLY RATHER THAN WISHED AWAY. On this fixture it binds
-   * on 100 % of steps, and a first draft of this check asserted "< 10 %" and reddened — which
-   * was the check being wrong, not the fix. The binding here is a DIFFERENT wall: the vessel is
-   * at the 0.1 MPa property floor and auxiliary feedwater arrives at 88.5 kJ/kg, below
-   * h_f(0.1 MPa) = 417.5, so the lump is SUBCOOLED — a state a model whose pressure is the
-   * inverse of the saturated-liquid line cannot represent. That is #524 (extend the tables
-   * below 0.1 MPa), and no energy limiter can fix it. The claim that IS this fix's is that the
-   * clip no longer funds a BOIL, which the ledger check below measures; the claim here is that
-   * the residual is confined to that one condition. Measured through the engine on the filed
-   * #549 transient: 0.4 MJ over 1,200 s (0.0003 MW) against a pre-fix 16,236 MJ (13.5 MW). */
-  ckT('...and every step where the backstop still binds is the SUBCOOLED-INFLOW case at the ' +
-      '0.1 MPa property floor — #524, not this ledger',
+  /* THE RESIDUAL IS RETIRED (#524, 2026-08-31). This check used to assert the clip's binding
+   * was CONFINED to the subcooled-inflow-at-the-floor case (~2,996/30,000 steps here, 0.4 MJ
+   * on the filed #549 transient) — the one state the pre-#524 library could not represent,
+   * because 70 degF feedwater sat below h_f(0.1 MPa) = 417.5. With the floor at 0.002 MPa the
+   * floor enthalpy is ~73 kJ/kg, BELOW every physical inflow this plant has, so that state is
+   * representable and the clip must not bind AT ALL on this transient. A clip that binds now
+   * is a new defect, not a declared residual. */
+  ckT('...and the backstop clip no longer binds at all — the #524 subcooled-inflow residual ' +
+      'is RETIRED with the floor extension',
       (function () {
-        var s9 = G.createSG({ P: P_FLOOR, mass: 1 }), offFloor = 0, hotIn = 0;
+        var s9 = G.createSG({ P: P_FLOOR, mass: 1 }), hits = 0;
         for (var k9 = 0; k9 < 30000; k9++) {
-          var P9 = s9.P;
-          if (G.stepSG(s9, T_FLOOR, 0.02, { afw_kgs: AFW_KGS, afw_h: H_AFW, steam: 60 }).h_clipped) {
-            if (P9 > 0.1001) offFloor++;
-            if (H_AFW >= W.h_f(0.1)) hotIn++;
-          }
+          if (G.stepSG(s9, T_FLOOR, 0.02, { afw_kgs: AFW_KGS, afw_h: H_AFW, steam: 60 }).h_clipped) hits++;
         }
-        return offFloor === 0 && hotIn === 0;
+        return hits === 0 && clipR === 0;
       })(),
-      'a clip ABOVE the floor, or with the inflow already at saturation, would be this ' +
-      'limiter failing — clipR ' + clipR + '/' + nR + ' on this fixture, all at the floor');
+      'clipR ' + clipR + '/' + nR + ' on the refill fixture — pre-#524 this read 2996, ' +
+      'declared; now the floor is below every physical inflow and 0 is the only honest count');
   /* THE SHARPEST FORM: the ledger, not the trajectory. A trajectory check is satisfied by a
    * vessel that happens to sit at an equilibrium — which is exactly how the two wrong fixtures
    * above passed for the wrong reason on the old code's neighbours. This one asks whether the
@@ -332,7 +334,9 @@ function runSuite(G, rec, quiet, only) {
    * of the latent heat: 16,236 MJ = 13.5 MW against 0.374 MW of real primary duty. */
   ckT('the clip funds ~none of the exported latent heat — the energy comes from the primary',
       (function () {
-        var s8 = G.createSG({ mass: 1 }), fabMJ = 0, latMJ = 0, h_lo8 = W.h_f(0.1);
+        /* h_lo8 follows the #524 floor — measured against the retired h_f(0.1) reference this
+         * check counted honest below-417 enthalpy as fabricated and reddened on the fix */
+        var s8 = G.createSG({ mass: 1 }), fabMJ = 0, latMJ = 0, h_lo8 = W.h_f(W.LIMITS.P_MIN);
         for (var k8 = 0; k8 < 30000; k8++) {
           var m0 = s8.mass, hh0 = s8.h, P0 = s8.P;
           var r8 = G.stepSG(s8, 120, 0.02, { afw_kgs: AFW_KGS, afw_h: H_AFW, steam: 60 });

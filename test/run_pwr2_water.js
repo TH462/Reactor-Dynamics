@@ -71,6 +71,16 @@ function loadFrom(src) {
  * NIST Chemistry WebBook, SRD 69 (Wagner & Pruss 2002 formulation), fetched 2026-08-14.
  * Saturation by pressure: [P MPa, T_sat degC, h_f kJ/kg, h_g kJ/kg, rho_g kg/m3] */
 var SAT_P = [
+  /* THE #524 LOW-PRESSURE EXTENSION (fetched 2026-08-31) — the floor moved 0.1 -> 0.002 MPa
+   * so Mode 5, Cold Shutdown exists. Without rows below 0.1 the gate would still be checking
+   * only the range the old fit was made over, which is how an extension ships unmeasured
+   * (#586's own lesson). 0.0125 MPa is the cold IC's own secondary point (~P_sat(50 degC)). */
+  [0.002,  17.494681,  73.428279, 2532.8769,   0.014928297],  // THE FLOOR
+  [0.0035, 26.672154, 111.82126,  2549.5324,   0.025338093],  // off-node
+  [0.0125, 50.240320, 210.34681,  2591.7135,   0.084083489],  // off-node — the cold SG
+  [0.02,   60.057960, 251.42297,  2608.9358,   0.13075395 ],
+  [0.05,   81.316893, 340.54189,  2645.2152,   0.30863938 ],
+  [0.075,  91.757999, 384.43744,  2662.3862,   0.45106566 ],
   [0.10,  99.605929,  417.50391, 2674.9477,   0.59034398],
   [0.37, 140.81943,   592.67721, 2734.5001,   2.0099438 ],   // off-node
   [0.50, 151.83108,   640.08513, 2748.1090,   2.6680480 ],
@@ -140,7 +150,17 @@ var SUP_V = [
   [10.00, 850, 4237.7644, 19.569792,  2.4746674],
   [13.00, 950, 4477.5386, 23.282205,  2.5398437],
   [15.41, 900, 4342.1981, 28.949835,  2.5420782],
-  [17.00, 1000, 4593.4060, 29.238419, 2.5865522]
+  [17.00, 1000, 4593.4060, 29.238419, 2.5865522],
+  /* THE #524 LOW-PRESSURE BAND (fetched 2026-08-31) — the floor moved 0.1 -> 0.002 MPa and
+   * the superheated smoothing went quartic -> sextic over 33 isobars. 0.004 and 0.06 MPa are
+   * OFF-GRID isobars (not in the fit set); 0.004/30 sits 1 degC above saturation, where a
+   * smoothing wiggle at the new cold end would land; 0.02/1000 is the extension corner both
+   * ways at once. */
+  [ 0.002, 100, 2688.4361, 0.011616741, 1.8929623],
+  [ 0.004,  30, 2555.6592, 0.028643057, 1.9130732],   // off-grid, 1 degC superheat
+  [ 0.004, 300, 3076.8827, 0.015123230, 2.0000171],   // off-grid
+  [ 0.06,  500, 3489.1596, 0.16822693,  2.1329963],   // off-grid
+  [ 0.02, 1000, 4642.7884, 0.034038250, 2.4777375]    // both extension corners
 ];
 
 /* ---------------------------------------------------------------- the suite
@@ -184,7 +204,10 @@ function runSuite(W, rec, quiet) {
   if (!quiet) console.log('\nh_f(P) / h_g(P) / rho_v_sat(P)  [h_g is DERIVED as h_f + h_fg]');
   SAT_P.forEach(function (r) {
     ck('h_f(' + r[0] + ' MPa)', W.h_f(r[0]), r[2], 1.5, 'kJ/kg');
-    if (r[0] <= 17) ck('h_g(' + r[0] + ' MPa)', W.h_g(r[0]), r[3], 1.8, 'kJ/kg');
+    /* h_g banded: below 0.1 MPa the composed error is 3.14 kJ/kg at the 0.002 corner (h_fg
+     * extrapolating 2.5 degC below its 20 degC fit corpus — the source header states it);
+     * the pre-#524 band keeps its old 1.8. */
+    if (r[0] <= 17) ck('h_g(' + r[0] + ' MPa)', W.h_g(r[0]), r[3], r[0] < 0.1 ? 3.5 : 1.8, 'kJ/kg');
     if (r[0] <= 18) ck('rho_v_sat(' + r[0] + ' MPa) rel', W.rho_v_sat(r[0]) / r[4], 1.0, 0.015, '(frac)');
   });
 
@@ -330,8 +353,14 @@ function runSuite(W, rec, quiet) {
   /* bulk modulus -- banded tightly enough to reject a 35 % error, which passed before */
   ck('bulk_modulus(550 degF) vs IAPWS 440 MPa', W.bulk_modulus(288), 440, 70, 'MPa');
   ck('bulk_modulus(212 degF) vs IAPWS 2086 MPa', W.bulk_modulus(100), 2086, 250, 'MPa');
-  /* rangeOK boundaries exactly -- moving them was invisible */
-  ckT('rangeOK boundary P_MIN', W.rangeOK(288, 0.1) === true && W.rangeOK(288, 0.0999) === false);
+  /* rangeOK boundaries exactly -- moving them was invisible.
+   * RE-AIMED 2026-08-31 (#524): the floor moved 0.1 -> 0.002 MPa, so 0.1 and 0.01 are now IN
+   * range and the old form was pinning the retired constant. Straddles the new boundary, same
+   * rule as the #586 ceiling check below. */
+  ckT('rangeOK boundary P_MIN — 0.002 accepted, just below refused, 0.01/0.1 now in range',
+      W.rangeOK(288, 0.002) === true && W.rangeOK(288, 0.0019) === false &&
+      W.rangeOK(288, 0.01) === true && W.rangeOK(288, 0.1) === true,
+      'P_MIN ' + W.LIMITS.P_MIN + ' MPa — T_sat there 17.5 degC, so an SG can sit at ambient (#524)');
   ckT('rangeOK boundary T_MIN', W.rangeOK(20, 7) === true && W.rangeOK(19.9, 7) === false);
 
   if (!quiet) console.log('\nrangeOK / clamping  [the honesty guard]');
@@ -547,6 +576,8 @@ var MUTATIONS = [
   ['rangeOK envelope moved (P_MIN 0.5, T_MIN -50)',
    'return (P_MPa >= P_MIN && P_MPa <= P_MAX && T_c >= T_MIN && T_c <= TV_MAX);',
    'return (P_MPa >= 0.5 && P_MPa <= P_MAX && T_c >= -50 && T_c <= TV_MAX);'],
+  ['the pressure floor left at the retired 0.1 MPa (the #524 wall restored)',
+   'var P_MIN = 0.002, P_MAX = 18.0;', 'var P_MIN = 0.1, P_MAX = 18.0;'],
   ['P_sat bracket collapses below 0.1 MPa (the REAL defect, restored)',
    'var T = clip(T_c, 0.0, T_CRIT), lo = 1.0e-5, hi = P_CRIT, mid = lo;',
    'var T = clip(T_c, 0.0, T_CRIT), lo = 0.1, hi = P_CRIT, mid = lo;'],

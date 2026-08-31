@@ -1454,35 +1454,49 @@ async function testHeldPlantDialog(page) {
    * ⚠ THE LATCH TIME IS NOT A CLAIM — it spans 228-411 s across those ten runs. Assert THAT it
    * holds and that the dialog follows; never WHEN. A check that pins the second is this defect
    * again wearing a number. */
-  await page.goto(base + '&inject=large_loca,station_blackout,afw_failure,failure_to_scram&ff=1500',
+  /* ⚠ THE PHYSICAL LATCH IS RETIRED FROM THIS FIXTURE (#524, 2026-08-31). The ulp study above
+   * is history now in a second way: with the property floor at 0.002 MPa and the #586/#516
+   * ceiling work, the extended envelope CONTAINS this casualty — measured at the shell layer,
+   * the same four failures ride 8,000 s LIVE through clad damage at 1,667 degC with no hold on
+   * ANY branch, and no menu-injectable combo reaches `beyond_model` inside a testable window.
+   * That is the engine getting better, not the dialog losing its subject: the hold still
+   * exists (run_pwr2_core unit-tests the arms; run_pwr2_loca rides one manually), and #520's
+   * claim was always about the UI CONTRACT — a held plant must SHOW the dialog. So the fixture
+   * now latches the flag DIRECTLY through the ?dev=1 hook, at `sys.beyond_model` — the exact
+   * flag every consumer checks — mid-casualty, the same manual-latch adjudication
+   * run_pwr2_loca's hold section made. The ulp cliff goes with it: no branch to land on. */
+  await page.goto(base + '&dev=1&inject=large_loca,station_blackout,afw_failure,failure_to_scram&ff=120',
                   { waitUntil: 'networkidle', timeout: 180000 });
-  /* TWO WAITS, NOT ONE (#589). This used to wait only for the overlay and then throw "the plant
-   * HELD and the dialog stayed hidden" — a message that names a fact the check never measured.
-   * A plant that has simply not reached the envelope yet produces the identical error, so a slow
-   * machine and a broken dialog were indistinguishable in the log, and three red CI runs could
-   * not be told apart from one real defect. Measured on Windows 2026-08-30: the overlay appears
-   * 5.2 s after navigation against the old 40 s budget, and this runner takes 104 s locally
-   * against 120 s on CI — a 15 % spread, which is NOT enough to explain a 40 s timeout. So the
-   * budget was never the interesting variable; knowing WHICH half failed is.
-   *
-   * The plant first, generously, because that is the slow part and the part a loaded CI box
-   * delays. Then the dialog, tightly, because once the plant holds the overlay is a render away
-   * — and that is the claim #520 is actually about. */
+  await page.waitForTimeout(1500);
+  var latched = await page.evaluate(function () {
+    try {
+      var svc = globalThis.RD.__dev.service();
+      svc.engine.eng.sys.beyond_model = true;                /* the latch, at the flag itself */
+      /* the casualty's attention-stop PAUSES the service (measured: frozen at 66 s with no
+       * broadcasts, so the held state never rendered) — resume so a broadcast carries it */
+      svc.attentionStops = false;
+      if (!svc.running) svc.start();
+      return { ok: true, running: svc.running };
+    } catch (e) { return { ok: false, err: String(e) }; }
+  });
+  if (!latched.ok) {
+    throw new Error('#520 fixture: the ?dev=1 latch hook failed — ' + latched.err +
+      '. This is the harness door, not the dialog: check RD.__dev in ui/app.js.');
+  }
   var plantHeld = true;
   await page.waitForFunction(function () {
     var c = document.getElementById('clock');
     return !!c && c.classList.contains('clk-held');
-  }, { timeout: 90000, polling: 200 }).catch(function () { plantHeld = false; });
+  }, { timeout: 30000, polling: 200 }).catch(function () { plantHeld = false; });
   if (!plantHeld) {
     var never = await page.evaluate(function () {
       var c = document.getElementById('clock');
       return { clock: c ? c.textContent.replace(/\s+/g, ' ').trim() : '(no clock)',
                overlay: !!(document.getElementById('haltOverlay') || {}).hidden };
     });
-    throw new Error('#520 fixture: THE PLANT NEVER HELD in 90 s of wall clock — clock reads ' +
-      never.clock + '. This is the driver failing to reach the envelope, NOT the dialog: do not ' +
-      'touch the overlay, measure the casualty. (#589 — the old single wait reported this case as ' +
-      'a hidden dialog, which sent one investigation the wrong way.)');
+    throw new Error('#520: the plant was LATCHED at the flag and the clock never read HELD — ' +
+      'clock ' + never.clock + '. The latch was set, so this IS the display half failing (#589\'s ' +
+      'two-wait split still holds: this wait is the render, not the physics).');
   }
   await page.waitForFunction(function () {
     var o = document.getElementById('haltOverlay');

@@ -363,10 +363,9 @@
     // 'pwr2' as well: it is the service plant_id, the save schema ('pwr2-1.0') and 37 gate
     // runners' name for this plant, and renaming it would buy a label and cost all of that.
     // initStates OVERRIDES the profile's list: this engine carries its OWN preset registry
-    // (pwr2_engine ICS — the FOUR below since #507 wave 10 added Hot Shutdown; this comment
-    // said "three" while the list held four, #510 LOW. Mode 5 proper stays deferred on the
-    // Layer-0 floor) and offering the pwr profile's presets the constructor refuses would
-    // be a menu that lies.
+    // (pwr2_engine ICS — FIVE since #524 landed Cold Shutdown on the extended water-property
+    // floor, 2026-08-31; before that, four since #507 wave 10) and offering the pwr
+    // profile's presets the constructor refuses would be a menu that lies.
     // freePlayOnly: the campaign/scenario/walkthrough content is authored and validated
     // against the current engine; running it silently on different physics would grade the
     // player against the wrong plant. Lifts when the scenario-compat pass runs.
@@ -374,13 +373,14 @@
                  initStates: [['hot_full_power', 'Hot Full Power (Mode 1)'],
                               ['50_percent', '50 % Power (Mode 1)'],
                               ['hot_zero_power', 'Hot Standby (Mode 3)'],
-                              ['hot_shutdown', 'Hot Shutdown (Mode 4)']],
+                              ['hot_shutdown', 'Hot Shutdown (Mode 4)'],
+                              ['cold_shutdown', 'Cold Shutdown (Mode 5)']],
                  freePlayOnly: true,
                  label: 'PWR', sub: 'Pressurized Water Reactor',
                  desc: 'The SLS-100: real break locations, emergent natural circulation, the ' +
-                       'TMI level deception as physics rather than script. Starts at Hot ' +
-                       'Shutdown (Mode 4) or above. Free Play — the guided content is being ' +
-                       're-validated on this engine.' },
+                       'TMI level deception as physics rather than script. Cold Shutdown ' +
+                       '(Mode 5) to full power on integrated physics. Free Play — the guided ' +
+                       'content is being re-validated on this engine.' },
     rbmk_pre:  { plant: 'rbmk', dv: 'pre_chernobyl',   init: 'full_power', soon: true,
                  label: 'RBMK pre-1986', sub: 'Chernobyl-type · original design',
                  desc: 'Graphite-moderated, positive void coefficient, graphite-tipped rods — the design that failed at Chernobyl.' },
@@ -3826,7 +3826,7 @@
   function mpFree() {
     if (!flagOn('free_play')) return soonPanel('free_play');
     var e = ENGINES[msel.engine];
-    var states = e.initStates || PROFILES[e.plant].initStates;   /* per-ENGINE override (PWR2: one IC) */
+    var states = e.initStates || PROFILES[e.plant].initStates;   /* per-ENGINE override (pwr2: its own five-IC registry) */
     if (!states.some(function (s) { return s[0] === msel.init; })) msel.init = e.init;
     var h = '<div class="m-note">Free Play — the plant is yours: no script, no grading, every control live. Pick the starting condition.</div>' +
       '<div class="g-section-title" style="margin-top:12px">Starting condition</div>';
@@ -8249,6 +8249,15 @@
     ui.series = Object.assign({}, PROFILES.pwr.defaultSeries);
     ui.seriesSide = {};                    // sides follow the selections they refine (#454)
     service = new RD.SimulationService({ seed: 0x1234 });
+    // DEV HOOK (?dev=1) — hands the harness the live service, nothing else. Exists for
+    // verify_e2e_ui's #520 held-dialog fixture (#524, 2026-08-31): the engine no longer
+    // reaches `beyond_model` on any menu-injectable casualty inside a testable window (the
+    // extended property envelope now CONTAINS the rides that used to latch), so the fixture
+    // latches the flag directly — the same manual-latch adjudication run_pwr2_loca's hold
+    // section made. A closure getter so it always reflects the current service.
+    if (/[?&]dev=1/.test(location.search || '')) {
+      RD.__dev = { service: function () { return service; } };
+    }
     // Fine strip-chart sampling. The service calls this on a fixed SIM-time interval inside
     // its step loop, so the chart sees the plant between broadcasts and its resolution stops
     // depending on time acceleration. It returns the same shape `chartSample` produces for
@@ -8283,10 +8292,10 @@
     var startEng = ENGINES[startKey];
     ui.engineKey = startKey; ui.plant = startEng.plant; ui.initState = startEng.init;
     // optional ?init=<state> override (dev convenience) — one of the ENGINE's presets. The
-    // engine's own initStates override (pwr2: its ICS registry, three presets since #507
-    // wave 7) wins over the plant profile's list, matching the Free Play picker —
-    // validating against prof() alone let ?engine=pwr2&init=cold_shutdown pass and then
-    // be silently ignored (#502).
+    // engine's own initStates override (pwr2: its ICS registry — five presets since #524)
+    // wins over the plant profile's list, matching the Free Play picker — validating
+    // against prof() alone let ?engine=pwr2&init=cold_shutdown pass and then be silently
+    // ignored back when the engine refused that name (#502).
     var initm = /[?&]init=([a-z0-9_]+)/.exec(location.search || '');
     var initList = startEng.initStates || prof().initStates || [];
     if (initm && initList.some(function (s) { return s[0] === initm[1]; })) ui.initState = initm[1];

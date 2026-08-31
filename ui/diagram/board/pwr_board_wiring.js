@@ -572,13 +572,14 @@
     imrldz0wqds: { press: function () { cmd({ action: 'set_hpi', active: false }); }, active: function (s) { return !esfAuto(s, 'hpi') && !IN(s).hpi_active; } },
     imrle1mc0lk: { press: function () { cmd({ action: 'set_esf_auto', system: 'hpi', auto: true }); }, active: function (s) { return esfAuto(s, 'hpi'); } },
     // --- RHR (V2 board: its own card, separate from the ECCS pump triad) ---
-    // RHR has NO pump of its own — it is a suction ALIGNMENT on the shared ECCS train
-    // (rhr_active === rhr_valve_open, pwr_engine.js:319), which is why these are
-    // ALIGN/ISOLATE rather than START/STOP. The hot-leg suction valve has TWO interlock
-    // setpoints (#288): the engine REFUSES the open above emergency.rhr_valve_interlock_mpa
-    // (2.76 MPa / 400 psi) and force-closes a standing-open valve only above the separate
-    // emergency.rhr_autoclose_mpa (4.14 MPa / 600 psig). active() reads the true valve
-    // state — a refused press visibly fails to latch instead of lying about the lineup.
+    // RHR has NO pump of its own — it is a suction ALIGNMENT on the shared ECCS train,
+    // which is why these are ALIGN/ISOLATE rather than START/STOP. The hot-leg suction
+    // valve has TWO interlock setpoints (#288): the SHIPPED engine (pwr2_rhr.js, sourced
+    // WTSM 5.1) REFUSES the open above 425 psig and force-closes a standing-open valve only
+    // above the separate 585 psig autoclosure. (This comment used to cite the retired
+    // engine's emergency.rhr_valve_interlock_mpa 400/600 pair — the #557-class board-reads-
+    // the-retired-plant trap, corrected with #524.) active() reads the true valve state —
+    // a refused press visibly fails to latch instead of lying about the lineup.
     // NOT the HPI triad — RHR is ALIGN/ISOLATE ONLY, with no AUTO (#453). RHR used to carry
     // an ESF arm because an actuation opened the suction valve by itself once the plant was
     // scrammed and depressurized. No plant does that (WTSM 5.1 §5.1.3.3: the interlocks

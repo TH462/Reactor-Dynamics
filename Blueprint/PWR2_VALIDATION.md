@@ -9647,3 +9647,89 @@ the AFW START button this change removes. It reddened for a reason unrelated to 
 `querySelector` returned null, no mouseover was ever dispatched, and the refusal stayed put
 because nothing asked it to move. Re-pointed at AFW STOP, **and the silent `if (other)` is now a
 loud failure**, which is the half that let a missing fixture read as a broken guard.
+
+---
+
+## 126. #524 — MODE 5 EXISTS: THE PRESSURE FLOOR WAS A FETCH QUERY'S BOUND, AND EXTENDING IT LET THE BLOWDOWN FINISH — 2026-08-31
+
+**The ruling** *(owner, 2026-08-31, selections from written options: "0.002 MPa" and "Include
+checklists")*: extend the water-property floor to 0.002 MPa (T_sat 63.5 °F / 17.5 °C — an SG can
+sit at ambient) and make the heatup/cooldown checklists' Mode 5 legs live; scenarios/campaign
+stay #525's ruled work.
+
+### The floor was §74's wall, and it was `PLow=0.1` in a URL
+Layer 0's `P_MIN = 0.1` MPa came from the fetch query's own bound — the exact #586 `THigh=800`
+shape at the other wall, sitting three lines from constants with real derivations. Measured
+before refitting (the §118 rule): with the clip lifted, `rho_v_sat` read **1e27 %** wrong at
+0.002 MPa and `Z_sat` 2.6 against a true 0.9985 — the old coefficients did not extrapolate.
+`T_sat` needed nothing (already fitted 0.0017–22 MPa) and the liquid branch is T-domain.
+
+### The refits, measured over the whole new range (provenance: `PWR2_L0_REBUILD.md` §3b)
+`rho_v_sat` degree 6 → 9: **0.74 % on-grid / 0.52 % off-grid** over 0.002–18 MPa (old claim
+1.25 % over 0.1–18 — the range grew and the error fell). Superheated smoothing quartic →
+sextic over 33 isobars, per-isobar extraction refitted on the **h-form directly** (cp stays its
+exact derivative): **h_v max 21.4 kJ/kg (0.8 %)** over 3,133 points, 0.002–17 MPa,
+T_sat..1000 °C — against the shipped 32.8 over a range 50× narrower in pressure; five off-grid
+isobars read 8.6 kJ/kg max (no inter-isobar wiggle). `Z_sat` degree 4 → 6 with `tau_z` on the
+direct Z residual: composed `rho_v` **9.5 %** (old 8.1 % on the narrower range). Transport
+re-checked over the extension: k_v 4.0 %, mu_v 7.3 %, worst at the 20 °C corner. The vtable
+followed (NP 110 → 150, NP1 400 → 700, cap 260 → 320 kB — justified by the superheat wing
+measuring 0.136 % against its 0.12 % claim at the old NP over the 1.75× ln-span).
+
+### Three consumers, three verdicts (HR10, one at a time)
+- **`pwr2_sg`**: `h_lo` follows the floor, and the §99.6 residual is **RETIRED** — h_f(0.002)
+  ~ 73 kJ/kg sits below every physical inflow, so the 3,872-step subcooled-AFW clip binding is
+  now zero. What remained was the flag ticking on FLOAT ROUNDOFF when the #549 energy limiter
+  lands h exactly AT h_lo (3,966/30,000 ticks, 0.000 MJ moved) — the flag now reports material
+  corrections only, the mass floor's own idiom. Three gate fixtures had been built AT the old
+  floor to make "duty zero by construction" and read the fix as a defect; each moved with it.
+- **`pwr2_core`/the blowdown family**: §115's finding held — the damage chain latches on the
+  CEILING arm and did not move. But `run_pwr2_loca`'s 40 cm² no-ECCS fixture used to latch the
+  hold at **107.1 s on the FLOOR arm** — that was the floor masking the end of blowdown. **The
+  same ride now COMPLETES**: drains 16,091 → 11.7 kg, equalizes at the break's containment
+  backpressure (15.7 psia, comfortably above the new floor), flow → 0, zero clamps, no hold.
+  The gate's frozen-books claim (#585) moved to a manual-latch fixture (`beyond_model` set at
+  the flag every consumer checks); the completion is asserted as its own check.
+- **The mode ladder**: the rung built at wave 10 reads 5 below 93.3 °C — nothing to change.
+
+### The IC, and Mode 5 both ways (dt 0.02 s)
+`cold_shutdown`: the wave-10 construction one step colder — 122 °F / 363 psia (parity with the
+retired preset and what the manuals print), pzr level 25 % (the program's cold clamp), RCPs
+SECURED, RHR aligned HX-shut, heaters AUTO about the boot setpoint, dumps OFF, P-11 blocks
+taken, accumulators isolated, the #468 order paying the shutdown bank in RODS. Boot: **Mode 5,
+918 ppm, ρ = −5,809 pcm** both banks in (the bank's 3,676 pcm rides as margin in rods; the
+colder trim carries FEWER ppm than Mode 4's 999 because boron worth per ppm rises with
+density). **The SG secondary lands at 1.79 psia with T_sec 122 °F — tracking the primary**;
+§74's ~61 MW false gradient measures as the ~0 °F approach it should be. Untouched 90 min:
+Mode 5 throughout, level flat at 25 %, final-45-min rates 0.79 °F/hr / 2.1 psi/hr — NO
+fill-solid (the RHR letdown path closes the loop here as at Mode 4). Reached by OPERATING
+too: `hot_shutdown` through the RHR HX at 15 % crosses the boundary in **0.56 plant-h**
+(worst 1-min −159 °F/hr — over the 100 °F/hr limit, which is why the checklist ramp starts at
+7 %; compliance is the operator's throttle, §77's story). The heatup direction: pump heat
+alone warms the Mode 5 plant at **94.9 °F/hr** over the first half hour.
+
+### Gates and content
+`run_pwr2_water` 282 → **327** (36 mutations, +floor-restored), `run_pwr2_vtable` 24 (regions
+swept to 0.002), `run_pwr2_sg` 44 (residual-retired check), `run_pwr2_loca` 19 → **22**
+(completion + manual-latch hold), `run_pwr2_endurance` 22 → **25** (Mode 5 hold, settle,
+reach-by-cooldown), `run_pwr2_engine`/`run_pwr2_shell` refusal checks re-aimed at `5_percent`
+with the fifth IC boot asserted, `run_manual_setpoints` 13 (the §11.0 column captured live).
+Content: the picker's fifth row, PWR-N01 from `cold_shutdown`, PWR-N15 to the Mode 5 outcome,
+the RHR step's sourced 425/585 psig pair replacing the retired 400/600 (also in the board
+wiring comment — the #557 trap class), ~14 manual sites un-fenced (Rev 17 pending row), and
+the site copy's "cold shutdown to full power" restored per the issue.
+
+### §126 addendum — two more fixtures expired with the wall (found by the full gate)
+- **`run_pwr2_reactor`'s SUR settle sample**: the adversarial rated-sink scram ride "settled at
+  100 % by ~90 s" pre-#524 partly because the pressure solve PINNED at the 0.1 MPa floor at
+  ~130 s and froze the ring; with the floor at 0.002 the same ride boils toward vacuum and rings
+  ±600 dpm indefinitely — no settle exists under a standing rated sink. The settle leg now rides
+  a DUTY-MATCHED sink (heat out follows the core), which settles honestly on BOTH floors
+  (−0.75 dpm at 120 s) — validated against the old behaviour, not refit (HR10). 42/42.
+- **`verify_e2e_ui`'s #520 held-dialog fixture**: the four-failure combo (large LOCA + SBO +
+  AFW failure + ATWS) that used to latch `beyond_model` at 228–411 s now rides **8,000 s LIVE**
+  through clad damage at 3,033 °F (1,667 °C) — the extended envelope contains the casualty, and
+  no menu-injectable combo reaches the hold in a testable window. #520's claim is the UI
+  contract (a held plant must SHOW the dialog), so the fixture latches `sys.beyond_model`
+  directly through a new `?dev=1` hook in `ui/app.js` — the same manual-latch adjudication as
+  the LOCA gate's hold section. The #588 one-ulp branch cliff retires with it.

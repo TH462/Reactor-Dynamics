@@ -134,6 +134,45 @@ served data gives P = 0.10141800 MPa, h_f = 419.16616, ρ_f = 958.34905, h_g = 2
 canonical steam-table values, with P_sat at exactly 100 °C correctly *above* one atmosphere
 (the normal boiling point is 99.974 °C on ITS-90).
 
+### 3b. The low-pressure extension, fetched 2026-08-31 (#524)
+
+**`PLow=0.1` in the §3 saturation-by-pressure row is where the 0.1 MPa floor came from** — the
+same fetch-query-bound-becomes-physics shape as §3a's `THigh=800`, and its T_sat of 99.6 °C
+(211 °F) was the wall Mode 5, Cold Shutdown died against (`PWR2_VALIDATION` §74: an SG pinned
+at the floor pours ~61 MW of false heat into a colder primary for ever). **The floor is now
+0.002 MPa** (T_sat 17.5 °C / 63.5 °F), so a secondary can sit at ambient. Extension dataset,
+same base URL, stored in `inbox/sources/nist_lowP/`:
+
+| Set | Query | Rows |
+|---|---|---|
+| Saturation by pressure | `&Type=SatT&PLow=0.002&PHigh=0.1&PInc=0.001` | 99 |
+| Saturation, fine validation | `&Type=SatT&PLow=0.002&PHigh=0.02&PInc=0.0005` | 37 |
+| Saturation by pressure, full | `&Type=SatT&PLow=0.1&PHigh=18&PInc=0.1` (refetched) | 180 |
+| Saturation by temperature | `&Type=SatP&TLow=15&THigh=110&TInc=1` | 96 |
+| Isobars, low-pressure | `&Type=IsoBar&P=<P>&TLow=20&THigh=1000&TInc=10` at P = 0.002, 0.003, 0.005, 0.007, 0.01, 0.02, 0.03, 0.05, 0.07 MPa | ~99 each |
+| Isobars, off-grid validation | same, at P = 0.004, 0.06, 0.4, 2.5, 12.5 MPa | 101 each |
+
+**Measured before trusting (the §3a rule): the old fits did NOT extrapolate.** With the clip
+lifted, `rho_v_sat` read **1e27 %** wrong at 0.002 MPa (a degree-6 ln-ln poly's tail across
+five decades of density) and `Z_sat` read 2.6 where truth is 0.9985. `T_sat` needed nothing —
+it was already fitted 0.0017–22 MPa (the 2026-08-14 review fix), and the liquid branch is
+T-domain. What changed, each refit measured over the whole new range:
+
+- **`rho_v_sat` degree 6 → 9** (T_sat's own precedented shape): 0.74 % on-grid worst at
+  18 MPa, **0.52 % off-grid** — better than the old fit's 1.25 % over the narrower range.
+- **`Z_sat` degree 4 → 6, `tau_z` fitted on the direct Z residual** (the log-residual form
+  over-weighted the far field); composed `rho_v` **9.5 % max** over 0.002–17 MPa,
+  T_sat..1000 °C (old: 8.1 % measured over its narrower range).
+- **The superheated smoothing quartic → sextic in ln(P), 24 → 33 isobars**, and the
+  per-isobar extraction now fits the **h-form directly** (cp stays its exact derivative),
+  which recovered the shipped fit's own 19.6 kJ/kg per-isobar floor (19.3 measured). Composed
+  **h_v max 21.4 kJ/kg (0.8 %)** over 3,133 points — the range grew 50× down in pressure and
+  the error FELL from 32.8. Off-grid isobars: 8.6 kJ/kg max — no inter-isobar wiggle.
+- **Transport re-checked over the extension** (they clamp at the envelope, so lowering P_MIN
+  extends their use): k_v 4.0 %, mu_v 7.3 % max in 0.002–0.07 MPa, worst at the 20 °C corner.
+- **`pwr2_vtable` followed**: NP 110 → 150 (at 110 the superheat wing measured 0.136 %
+  against its 0.12 % claim over the wider span; 150 restores 0.044 %), NP1 400 → 700.
+
 **`nrc.gov` note, corrected 2026-08-13 and still true:** it 403s a bare user-agent but returns
 200 with a full browser header set. NIST WebBook needs no such treatment — bare `curl` returns
 200.
