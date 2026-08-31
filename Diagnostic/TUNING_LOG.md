@@ -80,6 +80,11 @@ page (Playwright + CPU profile + devtools.timeline, `?engine=pwr2&init=hot_full_
   kept its private elapsed time and rejoined the world dash grid out of phase, permanently. The
   shared clock repairs this as a side effect — a resumed line lands back on the grid.
 
+**The gate caught the gate** (release run, same day): entering rewind-pick redraws through
+`render(latest)` — not a direct `drawChart()` call — so the redraw key skipped it and the
+checkpoint marks never drew. `verify_e2e_ui` testRewindPicker went red (0 marks); `ui.rewindPick`
+joined `chartDrawKey`. The "every other path calls drawChart directly" claim was one path short.
+
 **Gates**: run_pwr2_shell 145/145 · run_manual_rev 15/15 · run_manual_commands 8/8 ·
 run_manual_setpoints 13/13 · run_manual_units 0 failed · run_inspect 56/56 ·
 verify_board_check 237 checks PASS · full `run_all` at session end.

@@ -4736,13 +4736,17 @@
 
   /* What the broadcast path's redraw gate compares (see the CHART_SAMPLE_SEC gate). Names
    * every input that can change the drawn chart with NO new row landing: the buffer identity
-   * (a rewind pops rows without adding one), the window, and the event count (the SOE ribbon
-   * draws events the instant they arrive, between rows). Deliberately NOT here: cursor,
-   * resize, series/settings, rewind-pick — each of those paths calls drawChart() directly. */
+   * (a rewind pops rows without adding one), the window, the event count (the SOE ribbon
+   * draws events the instant they arrive, between rows), and rewind-pick state — ENTERING
+   * pick mode redraws through render(latest), not a direct drawChart() call, so without the
+   * flag here the widened plot and its checkpoint marks never drew (caught by
+   * verify_e2e_ui's testRewindPicker: 0 marks after 5 cadence intervals). Deliberately NOT
+   * here: cursor, resize, series/settings, pick EXIT — those paths call drawChart() directly. */
   var chartDrawnKey = '';
   function chartDrawKey() {
     return chartBuf.length + ':' + (chartBuf.length ? chartBuf[chartBuf.length - 1].t : -1) +
-           ':' + ui.window + ':' + (RD.Events ? RD.Events.count() : 0);
+           ':' + ui.window + ':' + (RD.Events ? RD.Events.count() : 0) +
+           ':' + (ui.rewindPick ? 1 : 0);
   }
   function drawChart() {
     chartDrawnKey = chartDrawKey();
