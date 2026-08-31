@@ -1576,6 +1576,45 @@ function runSuite(SH, rec, quiet, only) {
      Math.abs(eng.getInstruments().tavg - t80.tavg_c) < 2.0,
      'ind ' + eng.getInstruments().tavg.toFixed(2) + ' vs true ' + t80.tavg_c.toFixed(2) +
      ' degC after the load change moved Tavg');
+  /* THE CIRCULATING-WATER SINK (#591 item 1) — the door built after the owner's playtest found
+   * the box did nothing. It is checked HERE, at the shell, because the defect was never in the
+   * physics: pwr2_condenser has computed the vacuum from this temperature since it was written,
+   * and the action sat in REFUSED carrying the RETIRED plant's reason. So the claim is the WIRE
+   * and the CLAMP, and the assertion is the EFFECT (a landed field is the dark-wire shape #540
+   * shipped). Measured through this door, hot full power: 50 degF -> 2.400 in Hg, 92 -> 7.442,
+   * 93 -> the C-9 removal turbine trip. */
+  (function () {
+    var cwE = new SH.PWR2Engine({ initial_state: 'hot_full_power' });
+    var f2cL = function (f) { return (f - 32) * 5 / 9; };
+    var base = run(cwE, 200).condenser_vacuum_kpa;
+    cwE.applyCommand({ action: 'set_condenser_cw_temp', c: f2cL(90) });
+    var warm = run(cwE, 200).condenser_vacuum_kpa;
+    ck('set_condenser_cw_temp MOVES THE VACUUM (not just a landed field)',
+       base - warm > 10,
+       'design 50 degF ' + base.toFixed(2) + ' kPa -> 90 degF ' + warm.toFixed(2) + ' kPa');
+    cwE.applyCommand({ action: 'set_condenser_cw_temp', c: f2cL(500) });
+    var CDmod = globalThis.RD.pwr2.condenser;
+    ck('...and the shell CLAMPS to the condenser’s own band, never its own copy of it',
+       Math.abs(cwE.eng.cd.cw_inlet_c - f2cL(CDmod.COND.cw_max_f)) < 1e-9,
+       'asked 500 degF, landed ' + (cwE.eng.cd.cw_inlet_c * 9 / 5 + 32).toFixed(1) + ' degF');
+    cwE.applyCommand({ action: 'set_condenser_cw_temp', c: null });
+    ck('...and a null payload leaves the sink where it was rather than clamping it to a bound',
+       Math.abs(cwE.eng.cd.cw_inlet_c - f2cL(CDmod.COND.cw_max_f)) < 1e-9, '');
+    var csCw = cwE.getControlState();
+    /* The band must come from the MODULE, never be retyped here or in the board — that is the
+     * whole #557 law. It happens to be the same 35-85 degF the retired engine clipped to, and
+     * that is not an inherited constant: the ceiling is sourced (Ginna TS Bases B 3.7.8) and the
+     * floor is a standing owner directive. So the claim is PROVENANCE, not a different number. */
+    ck('the control state publishes the sink AND its band, read from the condenser module',
+       Math.abs(csCw.cw_inlet_temp_c - cwE.eng.cd.cw_inlet_c) < 1e-12 &&
+       csCw.cw_inlet_range_c && csCw.cw_inlet_range_c.length === 2 &&
+       Math.abs(csCw.cw_inlet_range_c[0] - f2cL(CDmod.COND.cw_min_f)) < 1e-9 &&
+       Math.abs(csCw.cw_inlet_range_c[1] - f2cL(CDmod.COND.cw_max_f)) < 1e-9,
+       'band ' + csCw.cw_inlet_range_c.map(function (c) { return (c * 9 / 5 + 32).toFixed(0); }).join('-') +
+       ' degF, taken from pwr2_condenser.COND rather than restated');
+    ck('...and `condenser_cw_temp_fixed` is GONE — the flag that darkened the box',
+       csCw.condenser_cw_temp_fixed === undefined, '');
+  })();
   eng.applyCommand({ action: 'set_instrument_failure', instrument: 'primary_pressure', mode: 'fail_low' });
   var tF = run(eng, 10);
   ck('an instrument failure through the CLASS reaches the internal RPS — the lying channel trips',
@@ -1865,6 +1904,17 @@ var SHSRC = fs.readFileSync(path.join(SRC, 'pwr2_shell.js'), 'utf8').replace(/\r
 /* Each entry's trailing { grp } names the section group that can SEE it (#513) — the replay
  * runs only that group, and the BLIND check still reds the runner if the tag is wrong. */
 var MUTATIONS = [
+  /* #591 item 1 — the circulating-water sink. TWO anchors because the halves fail separately:
+   * sever the door and the vacuum stops answering (the defect the owner actually found), while
+   * publishing the RETIRED plant's band leaves the sink working but puts the C-9 removal point
+   * outside the box the player types into — a control that works everywhere except the casualty
+   * it exists to teach. */
+  ['the CW sink door drops its payload (the dark wire, restored)',
+   "    set_condenser_cw_temp: function (e, c) { EN.command(e, 'cw_inlet_temp', c.c); },",
+   '    set_condenser_cw_temp: function (e, c) { },', { grp: 'A' }],
+  ['the published band is RETYPED instead of read from the condenser module',
+   '      cw_inlet_range_c: [(CD.COND.cw_min_f - 32) * 5 / 9, (CD.COND.cw_max_f - 32) * 5 / 9],',
+   '      cw_inlet_range_c: [4.4444, 37.7778],', { grp: 'A' }],
   /* #571, the three wires behind ONE derivation. They are separately anchored because they
    * fail separately: kill the derivation and both paths go quiet; kill the status-list entry
    * and only the KERNEL path does (silently, reading `undefined`); kill the permissive row and

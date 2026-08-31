@@ -166,6 +166,24 @@
 
   <details class="log-entry" open>
     <summary class="log-head">
+      <h2>Playtest fixes and a faster board</h2>
+      <span class="log-ver mono">Alpha 1.7.1</span>
+      <time class="log-date mono" datetime="2026-08-31">31 August 2026</time>
+    </summary>
+    <ul>
+      <li><span class="log-tag fixed">Fixed</span><strong>The condenser cooling-water temperature box works.</strong> Vacuum follows the water temperature, and a warm enough lake now rings COND VAC LO (crossing ~76&nbsp;&deg;F).</li>
+      <li><span class="log-tag fixed">Fixed</span><strong>Frame rate and flicker under load.</strong> The strip chart no longer redraws unchanged frames and board animations run on a 12&nbsp;Hz clock &mdash; render load cut roughly in half.</li>
+      <li><span class="log-tag fixed">Fixed</span><strong>The pressurizer spray box shows the demand you set</strong>, not delivered flow &mdash; it no longer zeroes on a solid pressurizer or reads 100&nbsp;% on a stuck valve.</li>
+      <li><span class="log-tag fixed">Fixed</span><strong>Trip-block rows match this plant's protection</strong> &mdash; dead rows removed, the safety-injection block added.</li>
+      <li><span class="log-tag fixed">Fixed</span><strong>The Failures tab lists named failures for the PWR</strong> (was raw internal ids), and a refused injection is no longer shown as active.</li>
+      <li><span class="log-tag fixed">Fixed</span><strong>Rod stop and turbine runback are indicated</strong> on the &Delta;T power tile, and the period readout no longer overlaps it.</li>
+      <li><span class="log-tag changed">Changed</span><strong>Auxiliary feedwater manual START and throttle removed</strong> &mdash; the automatic level control runs auxiliary feed.</li>
+      <li><span class="log-tag changed">Changed</span><strong>The AUX SPRAY box is removed</strong> from the pressurizer card.</li>
+    </ul>
+  </details>
+
+  <details class="log-entry">
+    <summary class="log-head">
       <h2>A new physics engine</h2>
       <span class="log-ver mono">Alpha 1.7.0</span>
       <time class="log-date mono" datetime="2026-08-30">30 August 2026</time>

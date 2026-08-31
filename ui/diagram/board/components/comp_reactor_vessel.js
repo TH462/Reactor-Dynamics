@@ -251,7 +251,7 @@
       x1: cx, y1: poolBot, x2: cx, y2: poolTop, stroke: 'url(#' + ids.cdash + ')', strokeWidth: coreW,
       strokeLinecap: 'butt', strokeDasharray: '15 9', opacity: 0.94,
       // .flowwide from the source, applied inline (dasharray 15 9 + flowmove 1.5s)
-      style: { animation: 'flowmove 1.5s linear infinite' }
+      style: { animation: 'flowmove 1.5s steps(18) infinite' }
     });
     svgKids.push(h('g', { clipPath: 'url(#' + ids.poolClip + ')' },
       h('rect', { x: coreL, y: poolTop, width: coreW, height: poolH, fill: 'url(#' + ids.cflow + ')', opacity: 0.45 }),
@@ -453,7 +453,7 @@
         // Set once. Element i always draws the same keyframe name (i % 3), so a reused
         // circle never needs its animation reassigned — only re-timed.
         if (!el.__anim) {
-          el.style.animation = rises[i % 3] + ' ' + dur + 's linear infinite';
+          el.style.animation = rises[i % 3] + ' ' + dur + 's steps(' + Math.max(2, Math.round(dur * 12)) + ') infinite';
           el.style.animationDelay = delay + 's';
           el.__anim = true;
         } else if (el.style.animationDuration !== dur + 's') {
@@ -494,16 +494,16 @@
       var CYC = K.DASH_CYCLE_S || 1.04;
       function flowLine(pts) {
         var scaled = pts.map(function (q) { return [q[0] * s, q[1] * s]; });
-        var ph = K.dashPhase ? K.dashPhase(scaled, 1, CYC) : { pts: scaled, dir: 1, offset: 0, delay: 0 };
+        var ph = K.dashPhase ? K.dashPhase(scaled, 1, CYC) : { pts: scaled, dir: 1, offset: 0, delay: 0, t: 0 };
         return h('polyline', {
           points: ph.pts.map(function (q) { return q[0] + ',' + q[1]; }).join(' '),
           fill: 'none', stroke: env.StdPipe.phaseTempColor('water', st.tcold).flow,
           strokeWidth: D * 0.42, strokeLinecap: 'round', strokeLinejoin: 'round',
           strokeDasharray: '10 15', strokeDashoffset: ph.offset, opacity: 0.9,
-          style: {
-            animation: (ph.dir < 0 ? 'stdPipeFlowRev ' : 'stdPipeFlow ') + CYC.toFixed(3) + 's linear infinite',
-            animationDelay: ph.delay.toFixed(3) + 's'
-          }
+          // Driven by StdPipe's shared ~12 Hz dash clock (std_pipe.js flowTick), not a CSS
+          // animation — same contract as every K.pipe run, same grid, same timebase.
+          'data-dash-t': ph.t.toFixed(6), 'data-dash-dir': String(ph.dir),
+          'data-dash-cyc': CYC.toFixed(4), 'data-dash-sign': String(ph.dir)
         });
       }
       // hot leg / cold leg: bare mating flanges at the vessel wall (no protruding stub);

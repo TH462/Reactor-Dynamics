@@ -526,9 +526,14 @@ function runSuite(rec, quiet, only) {
      * control actually reads the flag and renders disabled — is `run_pwr2_board`'s, where a
      * real board is mounted. Neither half is worth anything alone, which is why they name each
      * other rather than one of them quietly covering both. */
+    /* `set_condenser_cw_temp` LEFT THIS MAP at #591 item 1 / #592, and its check left with it —
+     * the action moved from REFUSED to MAPPED, so there is no longer a refusal to darken. The
+     * entry is deleted rather than kept: this loop iterates REFUSED and looks each action up
+     * here, so a leftover row would be a map entry nothing can reach, which is the
+     * hand-maintained-map trap this repo already has a name for. What replaced it is a live
+     * wire and three checks in `run_pwr2_condenser` plus four in `run_pwr2_board`. */
     var DARKENED = {
       set_sr_detector:       'sr_detector_fixed',
-      set_condenser_cw_temp: 'condenser_cw_temp_fixed',
       set_adv_setpoint:      'adv_setpoint_fixed'
     };
     var csV = eng.getControlState();

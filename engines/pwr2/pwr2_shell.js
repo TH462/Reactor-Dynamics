@@ -43,7 +43,7 @@
 
   var RD = root.RD && root.RD.pwr2;
   if (!RD || !RD.engine) throw new Error('pwr2_shell: load the pwr2 stack (incl. pwr2_engine) first');
-  var EN = RD.engine, PZ = RD.pressurizer, IN = RD.instruments;
+  var EN = RD.engine, PZ = RD.pressurizer, IN = RD.instruments, CD = RD.condenser;
 
   /* THE ACCUMULATOR VALVE'S ADMINISTRATIVE LOCK (#511) [sourced — Ginna TS Bases B 3.5.1:
    * the motor operated isolation valves "are maintained open with AC power removed under
@@ -471,6 +471,23 @@
     set_rhr_hx:        function (e, c) {
       EN.command(e, 'rhr_hx', c.fraction !== undefined ? c.fraction : (c.pct !== undefined ? c.pct / 100 : 1));
     },
+    /* CIRCULATING-WATER INLET TEMPERATURE (#591 item 1, owner playtest 2026-08-30: "changing
+     * condenser cooling temp didn't affect anything notably").
+     *
+     * IT WAS A DARK WIRE, NOT A MISSING FEATURE. `pwr2_condenser` has computed the vacuum from
+     * this temperature since it was written — its own header says so ("handed warmer lake
+     * water, and the backpressure follows — which is what makes the C-9 permissive something
+     * the player can lose rather than something the scenario asserts") — and `cw_inlet_c` is
+     * real state on the module. Nothing wrote it after `createCondenser`. This action sat in
+     * REFUSED carrying the retired plant's reason, "the condenser model has CW pumps on/off
+     * only", which was FALSE for this engine, and the board drew the box dark off the
+     * capability flag that refusal justified. Same shape as #540 and the #507 wave-6 rows: a
+     * driver documented, read, and never passed.
+     *
+     * MEASURED through this door, hot full power, 600 s, DT 0.02 — the sweep and the two
+     * sourced C-9 crossings are in `pwr2_condenser.js` beside the range it clamps to. Payload
+     * is `c` in degC, matching the board and the retired engine's command shape. */
+    set_condenser_cw_temp: function (e, c) { EN.command(e, 'cw_inlet_temp', c.c); },
     /* the board sends `active` (HPI/AFW START/STOP) — reading only `running` made STOP
      * evaluate `undefined !== false` = true, so STOP STARTED the pump (#506.1, measured)
      *
@@ -883,7 +900,6 @@
     set_adv_setpoint: 'the ADV auto setpoint is a sourced constant (1040 psig, §48); only demand is an operator lever',
     set_sr_detector:  'the SR channel auto-energizes below the P-6 class point; no operator lever',
     set_condensate_pump: 'no discrete condensate pump lever — the feed train (pwr2_feedwater) models the pumps as the feed module\'s own A/B pair',
-    set_condenser_cw_temp: 'the condenser model has CW pumps on/off only',
     set_containment_spray: 'containment sprays are unmodeled (matches the shim\'s registered statics)',
     set_ctmt_fans:    'containment fan coolers are unmodeled (registered static)',
     set_ctmt_recombiners: 'recombiners are unmodeled (registered static)',
@@ -1365,6 +1381,17 @@
       heater_power_pct: ts.pzr_heater_kw !== undefined
         ? 100 * ts.pzr_heater_kw / (PZ.HEATERS.prop_kW + PZ.HEATERS.backup_kW) : 0,
       spray_valve_pct: ts.spray_flow_pct !== undefined ? ts.spray_flow_pct : 0,
+      /* THE DEMAND, PUBLISHED SEPARATELY (#564 item 1). `spray_valve_pct` above is DELIVERED
+       * flow, and the board was reading it twice — as the operator's own demand box and as
+       * the `asked` half of the SPRAY FLOW readout's amber. So the readout's stated purpose,
+       * "called for and not arriving", was an identity that is always zero, and the player's
+       * setting was erased from the box they typed it into. MEASURED on this plant, both
+       * directions: with a standing 60 % demand the pressurizer going SOLID drove the box to
+       * 0.0 while the demand stood; and with the operator demanding 0, `stuck_open_spray` drove
+       * the box to 100.0 — the board attributing a failed valve to the player. This is the
+       * demand BEFORE the physical gates, exactly like `aux_spray_pct` below, and it excludes
+       * the stuck-valve override on purpose (#200). */
+      spray_demand_pct: ts.spray_demand_pct,
       /* AUXILIARY SPRAY DEMAND, for the board's own box (#563 item 2). The OPERATOR'S
        * STANDING DEMAND, not delivered flow: this is what the editable tile reads back, and a
        * box that reads delivery would fight the player's typing every step the two disagree —
@@ -1486,7 +1513,19 @@
        * (they are correct and they teach); what changes is that the player is no longer invited
        * to press. */
       sr_detector_fixed: true,         /* the SR channel auto-energizes below the P-6 class point */
-      condenser_cw_temp_fixed: true,   /* the condenser model has CW pumps on/off only */
+      /* `condenser_cw_temp_fixed` RETIRED at #591 item 1 — the flag was true because the action
+       * was refused, and the action was refused for a reason that belonged to the retired
+       * plant. The box is live and the sink moves; the board keeps its numberDisabled law for
+       * any engine that does not publish `cw_inlet_temp_c`. */
+      cw_inlet_temp_c: e.cd.cw_inlet_c,
+      /* AND THE RANGE, published rather than left to the board (#591 item 1). The board's
+       * NUM_BOUNDS_BASE entry read `RD.PWR_CONFIG.turbine.cw_inlet_min_c/max_c` captured at
+       * script load — the RETIRED plant's 35-85 degF — against this plant's 35-95 degF, so
+       * the box would have refused the ten degrees that contain the C-9 removal point and
+       * the turbine trip: the whole reason the control teaches anything. Same shape as the
+       * charging ceiling (#516 item 11) and the pressure band (#576c). Derived from
+       * pwr2_condenser's own constants, never retyped. */
+      cw_inlet_range_c: [(CD.COND.cw_min_f - 32) * 5 / 9, (CD.COND.cw_max_f - 32) * 5 / 9],
       /* #570: the STEAM DUMP OPEN button could ONLY throw. Its refusal is raised INSIDE the
        * MAPPED `set_steam_dump` handler rather than from the REFUSED registry, so neither
        * run_pwr2_kernel band 4 nor run_pwr2_board's registry sweep could see it — the hole the

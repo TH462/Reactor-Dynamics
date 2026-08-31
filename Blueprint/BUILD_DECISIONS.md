@@ -45,6 +45,76 @@ where the two differ or where judgment was exercised.
 
 ---
 
+## 2026-08-31-develop-b — #596: the in-sim report — AUX SPRAY box removed, render pass off the 60 Hz treadmill
+
+Two decisions of record; full continuity in `TUNING_LOG` 2026-08-31-develop-b.
+
+- **The AUX SPRAY board tile (#563 item 2) is REMOVED, one day after it shipped** *(OWNER
+  DIRECTIVE, 2026-08-31, in-sim report `mth3218c-fp42sbsl`: "remove aux spray box.")*. The
+  `set_aux_spray` engine door STAYS (scenarios/instructor, `run_pwr2_shell`); `Manuals/03`
+  §5.3a and its §18 row deleted, §5.3's declared departure reverts to being the board's one
+  pump-less depressurization path (pending Rev 17 (e)). Board decision, not a plant one (HR9).
+- **Board animation moved off per-element 60 Hz CSS onto a shared ~12 Hz JS clock** (pipe
+  dashes, `std_pipe.js`) **with the rest quantized to `steps()`** — measured against the
+  report's 4.7 fps render-bound verdict: chart redraw gate −59 % drawChart JS, raster
+  8.9 → 6.5 s / 15 s, paint events −39 %. Remaining animations join the shared clock under
+  #596 (open follow-up; measured floor 3.8 s raster).
+
+---
+
+## 2026-08-31-develop-a — #591 + #564 + #578 + #592: the owner's playtest, and four controls that read as working
+
+Full record: `PWR2_VALIDATION.md` §125; continuity in `TUNING_LOG` 2026-08-31-develop-a.
+
+**Seven items, one shape.** The circulating-water inlet box was a DARK WIRE — `pwr2_condenser` has
+computed the vacuum from that temperature since it was written, and only the engine's command door
+was missing, while the shell's REFUSED entry (carrying the retired plant's reason) justified the
+capability flag that darkened the box. The pressurizer SPRAY box read delivered flow as both the
+operator's demand and the "not arriving" test of its own indication. Three TRIP BLOCKS rows offered
+blocks this plant does not have while `si_trip`, one it does, had no row. The Failures tab offered
+raw internal ids and listed refusals as successes. The delta-T tile derived a rod stop from the
+retired plant's constant instead of reading the two signals the engine publishes.
+
+**Two DECISIONS are recorded here rather than only in the write-up:**
+
+1. **The AUX FEED THROTTLE and the manual START leave the board** *(OWNER RULING, 2026-08-31:
+   selected "Remove START and the THROTTLE box" from three options put to him)*. This **withdraws
+   the board half of #562**, which was sourced (WAT 05, ML11216A094 — "It is necessary to throttle
+   AFW flow to control RCS temperature at this point"). There is no automation-channel panel on
+   this board (#439 removed it), so the operator now has NO lever over post-trip cooldown rate:
+   `afw_level` holds the valves and the player's authority is STOP, then re-arm AUTO. The cost was
+   put to the owner before the ruling. `set_afw_flow` remains a command for scenarios, the
+   instructor and the channel.
+2. **The circulating-water band stays 35–85 °F, and the reason is provenance, not inheritance.**
+   A first pass widened it to 95 °F so the C-9 removal point (93 °F) would be reachable — a real
+   educational argument — on the reading that 35–85 °F was another retired-plant constant carried
+   by reference. It is not: **85 °F is sourced** (Ginna TS Bases B 3.7.8, service-water OPERABILITY
+   at ≤ 85 °F) under a **standing owner directive** for the floor (2026-08-08). Losing the
+   condenser stays an equipment casualty. **What was wrong was the board reading the right value
+   from the wrong plant**, so the fix is that PWR2 publishes `cw_inlet_range_c` and the board reads
+   it — same numbers, different authority.
+
+**A behaviour change fell out of it and contradicts the manual:** lake temperature alone now rings
+**COND VAC LO** (25 inHg / 84.7 kPa), crossing at about **76 °F**, where `Manuals/03` §13.1 claimed
+~2 inHg of margin at the 85 °F ceiling. That figure was the retired engine's; measured here, 24.85
+inHg at 77 °F and 23.68 inHg at 85 °F, annunciator confirmed through the full stack. Two more
+claims in the same section are withdrawn as measured-false on this plant: MWe does not fall with
+vacuum (100.0 MWe across the whole band — this turbine is dispatched to a load target), and the RHR
+cooldown floor does not move with it (shutdown cooling rejects to its own 95 °F component-cooling
+water). Manuals to Rev 17, pending row extended.
+
+**LEFT OPEN, deliberately: #578's dedicated lamps.** Measured doc-wide with art included, the board
+has no free 130 × 32 rectangle inside its bounding box; the only free space starts at x 1650 and
+going there extends the canvas, which shrinks every tile on it. The delta-T tile cannot carry a word
+either (9 px short of the NIS card title). So the **turbine runback has no indication the tile's
+colour can separate from a rod stop**, and growing the canvas is an owner decision.
+
+Gates: `run_pwr2_condenser` 30 → 35 · `run_pwr2_shell` 140 → 145 · `run_pwr2_board` 52 → 67 ·
+`verify_board_check` 236 → 237 · `run_pwr2_kernel` 37 → 36 (a check correctly lost with the refusal
+it guarded) · `verify_e2e_ui` gains `testAdvFailPanel`. Every new check injection-verified.
+
+---
+
 ## 2026-08-29-develop-d — #586: the vapour ceiling raised to IAPWS-95's limit, and refitted
 
 Full record: `PWR2_VALIDATION.md` §118; continuity in `TUNING_LOG` 2026-08-29-develop-d.

@@ -600,6 +600,15 @@
         eng.fw.isolated = !!value;
         break;
       case 'cw_pumps':       eng.cwPumps = !!value; break;
+      /* CIRCULATING-WATER INLET TEMPERATURE, degC (#591 item 1). NOT a plant control — it is
+       * the heat sink the site is given, and the door exists so the coupling the condenser
+       * module was built around is reachable rather than asserted. `pwr2_condenser` owns the
+       * range; a null/non-finite value is ignored rather than clamped, so a malformed command
+       * cannot silently move the sink. */
+      case 'cw_inlet_temp':
+        var cwc = CD.clampCwInlet(value);
+        if (cwc !== null) eng.cd.cw_inlet_c = cwc;
+        break;
       case 'pump_trip':      eng.sys.pumpTripped = true; break;
       /* THE RCP START (#507 wave 9) — the one-way trip is RETIRED: the rotor the coastdown
        * decelerates can be motored back up (pwr2_sources' start branch). Gated on the

@@ -2,7 +2,8 @@
  * Visual language follows the Claude Design "PWR Reactor" project: dark #0a0e13
  * canvas, IBM Plex-style mono labels (system fallbacks —
  * no webfont dependency), cyan #4fe3ff accent.
- * stdPipeFlow / stdPipeFlowRev keyframes are injected by std_pipe.js itself.
+ * Pipe dashes are driven by std_pipe.js's shared ~12 Hz JS clock (no CSS keyframes);
+ * .bd-frozen below still freezes them — the ticker checks for it and holds its clock.
  */
 
 .pwr-board-wrap {

@@ -274,11 +274,11 @@ Relief Valve (PORV) instead. A real unit answers that with **auxiliary spray** f
 charging pumps. This departure was declared because the board had no auxiliary spray control,
 so the one spray control was left working without the pumps, standing in for it.
 
-**The board now HAS that control — see §5.3a — and the departure has not been retired yet, so
-both levers work with the pumps stopped.** That is one more pump-less way down in pressure than
-a real unit has, and it is a known overlap rather than a modelled feature. Retiring the
-departure — making normal spray lose its head with the pumps off, which is what the real plant
-does — is filed and will be its own change.
+**The engine models auxiliary spray, but it has no board control** — one was added 2026-08-30
+and removed the next day by owner direction, so on the board this departure is once again the
+only pump-less way down in pressure. The capability remains in the model for scenarios and the
+instructor. Retiring the departure — making normal spray lose its head with the pumps off,
+which is what the real plant does — is filed and will be its own change.
 
 The stand-in's old "conservative direction" note is **withdrawn**: it claimed about **half** the
 condensing duty of real auxiliary spray, and this plant measures the opposite. From Hot Standby
@@ -291,23 +291,6 @@ at 2235 psi (15.41 MPa) with every RCP secured, 600 s at 100 %:
 | neither | 2245 psi (15.48 MPa) |
 
 The stand-in is the **stronger** lever here, not the weaker one.
-
-### 5.3a PZR Auxiliary Spray
-
-| Control | Effect |
-|---------|--------|
-| **AUX SPRAY %** (pressurizer card) | Charging-pump spray into the steam space — **lowers** pressure with the RCPs stopped |
-| **Requires** | AC power. There is **no AUTO** — nothing opens this valve but the operator |
-
-Auxiliary spray is fed from the **charging pumps**, not the cold leg, so it does not depend on
-reactor coolant pump head. It is the real system's answer to depressurizing a plant whose pumps
-are secured — which on this plant is the Hot Shutdown (Mode 4) cooldown and every pump-trip
-casualty. Without it the only remaining path is to lift the PORV and put reactor coolant into
-containment, which is the action auxiliary spray exists to avoid.
-
-It is **slow and deliberate**: expect hundreds of psi over ten minutes, not a step. Measured
-above, 100 % takes the plant from 2235 psi (15.41 MPa) to 1353 psi (9.33 MPa) in 600 s where the
-untouched plant holds.
 
 **Use to LOWER pressure** carefully. Return to AUTO when on target.
 
@@ -611,29 +594,33 @@ heat that is a very small number.
 
 | Control | Effect |
 |---------|--------|
-| **Start / Stop** | Start or secure the aux feed pumps. **STOP secures BOTH** — the motor-driven and the turbine-driven pump are separate machines with a switch each, and this button works both |
-| **Throttle %** | The flow control valves, 0–100 % of capacity. **This is the valve, not the pumps:** shutting it leaves the run lights lit, because a throttled pump is still available |
+| **STOP** | Secures the aux feed pumps. **STOP secures BOTH** — the motor-driven and the turbine-driven pump are separate machines with a switch each, and this button works both. There is **no manual START:** the card is STOP and AUTO |
 | **AUTO** | A **lamp, not a defeat**. The actuation starts the pumps on **low-low SG level, 17 % of narrow range** — the same signal that trips the reactor — and also on a standing safety injection, loss of main feed, or loss of offsite power. **Nothing you can press disarms it**, so the lamp is lit whenever the pumps are not in your hands, and pressing AUTO cannot make it lit any harder. |
-| **Manual action** | Does **not** take AFW to MANUAL. Start and throttle are yours whenever no actuation is latched; while one is, the pumps are held running and a stop is refused — see the securing note below |
-| **Delivery** | Capacity × throttle. Level control lives in the **`afw_level` automation channel**, which holds narrow-range level at **33 ± 5 %** — full flow below 28 %, tapering shut by 38 % — and which you can take to MANUAL to throttle by hand |
+| **Manual action** | Securing the pumps is the one manual action on this card. While an actuation is latched the pumps are held running and a stop is refused — see the securing note below |
+| **Delivery** | Capacity × throttle, and **the throttle is not yours.** Level control lives in the **`afw_level` automation channel**, which holds narrow-range level at **33 ± 5 %** — full flow below 28 %, tapering shut by 38 % |
 
-> **Throttling aux feed is the operator's one continuous job after a trip, and it cuts both
-> ways.** Too little and the generator boils down toward the low-low level that started the
-> pumps. Too much and you overcool the primary: aux feed arrives at about **70 °F (21.1 °C)**
-> against a secondary near **550 °F (287.8 °C)**, so an unthrottled pump drags reactor coolant
-> temperature down with it. **The symptom the procedures name is that all the steam dump valves
-> shut** — if the dumps are closed and temperature is still falling, you have too much aux feed.
-> Leave it wide open long enough and the generator fills past the top of the narrow range and
-> starts carrying water into the steam lines; the **high-high level turbine trip at 90 % narrow
-> range** exists to get the machine off the line before that happens.
+> **Aux feed throttling cuts both ways, and on this board the CHANNEL does it, not you.** Too
+> little and the generator boils down toward the low-low level that started the pumps. Too much
+> and you overcool the primary: aux feed arrives at about **70 °F (21.1 °C)** against a secondary
+> near **550 °F (287.8 °C)**, so an unthrottled pump drags reactor coolant temperature down with
+> it. **The symptom the procedures name is that all the steam dump valves shut** — if the dumps
+> are closed and temperature is still falling, there is too much aux feed. Left wide open long
+> enough the generator fills past the top of the narrow range and starts carrying water into the
+> steam lines; the **high-high level turbine trip at 90 % narrow range** exists to get the
+> machine off the line before that happens.
+>
+> **What you watch, since you no longer hold the valve:** the steam dumps and the level trend.
+> If the dumps are shut and temperature keeps falling, the channel is overfeeding — secure the
+> pumps with **STOP** and let level recover, then re-arm **AUTO**. That is the whole of the
+> operator's authority over aux feed on this plant.
 
 **Procedure — establish AFW (loss of main feed)**
 
 1. Confirm main feed lost / SG level falling.  
 2. SCRAM if not already tripped.  
-3. **AFW Start** (or verify auto-start).  
-4. Throttle to hold SG level without overcooling — watch the steam dumps, not just the level.  
-5. When stable, secure the pumps if the procedure calls for it — the AUTO lamp needs no action from you, and the actuation is standing whether or not you touched the pumps.  
+3. **Verify the auto-start.** The pumps start themselves on low-low SG level, a standing safety injection, loss of main feed, or loss of offsite power — there is no manual start to press.  
+4. Verify the level recovers toward **33 % narrow range** and that the steam dumps are not all shut — the channel throttles, and shut dumps with falling temperature mean it is overfeeding.  
+5. When stable, secure the pumps with **STOP** if the procedure calls for it — the AUTO lamp needs no action from you, and the actuation is standing whether or not you touched the pumps.  
 
 **Securing note:** an aux feed stop is refused while a **safety injection** is standing, because
 the SI signal is itself an aux feed start — secure the injection at its own panel first. Inside
@@ -810,38 +797,50 @@ penalty grows with load, because more heat is rejected across the tubes at high 
 
 | Property | Value |
 |----------|-------|
-| Command | `set_condenser_cw_temp` — **REFUSED ON THIS PLANT.** The condenser model has circulating-water pumps on/off only, so the inlet temperature is not an operator variable |
-| Fixed at | **50 °F (10 °C)** — the sourced design inlet, and the value every initial condition boots at. Measured there: **100.0 MWe** and **27.52 inHg (93.2 kPa)** of vacuum at full power, i.e. the design point IS the rated point |
-| Formerly documented | an adjustable **35 – 85 °F** range with a **60 °F** reference. That is the retired engine's control; this one has no such knob, and the 60 °F figure was never this plant's default |
+| Command | `set_condenser_cw_temp` — **live** (#592). The box next to COND VAC sets the inlet temperature; the condenser computes the vacuum from it |
+| Range | **35 – 85 °F (1.7 – 29.4 °C)**. The **85 °F** ceiling is the real plant's own: Technical Specifications require the intake bay at or below 85 °F for the service-water system to be OPERABLE, and the accident analyses bound the supply there. The **35 °F** floor is an owner judgment about intake-transit warming — the analyses' own floor is a sub-freezing 30 °F |
+| Boots at | **50 °F (10 °C)** — the sourced design inlet, on every initial condition. Measured there: **100.0 MWe** and **27.52 inHg (93.2 kPa)** of vacuum at full power, i.e. the design point IS the rated point |
 
-> **⚠ THE BOARD STILL DRAWS THE BOX.** The circulating-water temperature entry next to COND VAC
-> accepts a number and sends a command the engine refuses, so nothing happens and nothing says so.
-> Filed as **#592** — the same class as #567's five refused board controls and #503's dark ESF arm.
-> The readout beside it is honest: it shows the fixed 50 °F (10 °C).
+> **⚠ THE BOX WAS DARK UNTIL 2026-08-31, AND THE REASON MATTERS.** The condenser has computed
+> vacuum from this temperature since it was built; the *command* sat in the engine's refused list
+> carrying the retired plant's reason ("pumps on/off only"), and the board darkened the box on the
+> strength of that refusal. Nothing was missing but the door. Filed as **#592** by the manual pass
+> that found the mismatch, and fixed with the owner's playtest item on the same card.
 
-The **85 °F** ceiling below is the real plant's own limit for this lake water and is kept because
-it is what a licensed plant lives inside, not because you can dial it here: Technical
-Specifications require the intake bay at or below **85 °F** for the service-water system to be
-OPERABLE, and the accident analyses bound the supply at a deliberately sub-freezing 30 °F.
+**MEASURED ACROSS THE BAND** — hot full power, 600 s, and every figure re-taken on *this* plant:
 
-**What circulating-water temperature does — a real coupling you cannot exercise here:**
+| CW inlet | Vacuum | Backpressure | MWe |
+|----------|--------|--------------|-----|
+| 35 °F (floor) | 28.40 inHg (96.2 kPa) | 1.53 inHg | 100.0 |
+| **50 °F (design)** | **27.52 inHg (93.2 kPa)** | 2.40 inHg | 100.0 |
+| 60 °F | 26.72 inHg (90.5 kPa) | 3.20 inHg | 100.0 |
+| 77 °F | 24.85 inHg (84.1 kPa) | 5.08 inHg | 100.0 |
+| 85 °F (ceiling) | 23.68 inHg (80.2 kPa) | 6.24 inHg | 100.0 |
 
-- **Warm circ water** → less vacuum → **less MWe at the same steam flow**, and the
-  **22 inHg (74.5 kPa)** turbine trip gets closer.
-- **Cold circ water** → vacuum **above** the rated value, and more MWe at the same steam flow.
-- It also raises the floor an **RHR cooldown** can reach: the heat exchanger rejects to the same
-  circulating water, so warm water both raises the achievable temperature and slows the approach
-  to it (§11.2, and `05` PWR-T21).
+**What circulating-water temperature does on this plant:**
 
-**The MWe figures this section used to quote — about 5 MWe of summer derate at 85 °F, 101 MWe on
-a 50 °F day, 102 MWe at a 35 °F floor — were measured on the retired engine through a control this
-one does not have, and are withdrawn rather than re-measured.** The 50 °F row above is the one
-point this plant actually sits at, and it is measured.
+- **Warm circ water** → the condenser can only pull down to a warmer saturation → **less vacuum**,
+  and the **22 inHg (74.5 kPa)** turbine trip gets closer.
+- **Cold circ water** → vacuum **above** the rated value.
+- **It does NOT move MWe here** — measured **100.0 MWe at every step from 35 °F to 85 °F**. This
+  turbine is dispatched to a **load target**, not floated on the backpressure, so warm water costs
+  you vacuum and margin rather than output. On a real machine it costs both; that is a declared
+  departure of this model, not a claim about plants.
+- **Nor does it move the RHR cooldown floor.** Shutdown cooling on this plant rejects to its own
+  component-cooling water at a fixed **95 °F (35 °C)**, which does not read this box. The old
+  coupling was the retired engine's.
 
-**NOTE:** lake temperature alone cannot walk vacuum to the **COND VAC LO** alarm
-(25 inHg (84.7 kPa)) — even the 85 °F ceiling leaves ~2 inHg of margin at full power.
-Falling vacuum with normal circ-water temperature means equipment trouble (circulating-water
-pumps, condenser air removal), and the walk continues to **COND VAC TRIP** (22 inHg (74.5 kPa)).
+**⚠ CHANGED, AND IT IS A REAL ONE: lake temperature ALONE CAN NOW RING COND VAC LO.** The alarm is
+at **25 inHg (84.7 kPa)** and the band crosses it at about **76 °F** — measured, 24.85 inHg at
+77 °F and 23.68 inHg at the 85 °F ceiling, with the annunciator confirmed in through the full
+stack. The previous edition of this section said the opposite ("even the 85 °F ceiling leaves
+~2 inHg of margin"); that was measured on the retired engine and is false here by about 1.3 inHg
+the wrong way. **A hot summer day is now an alarm you have to answer.**
+
+The walk continues to **COND VAC TRIP (22 inHg / 74.5 kPa)**, but *not* from lake temperature: the
+ceiling stops 1.7 inHg short. Reaching the trip — and the **C-9** interlock removal that takes the
+steam dumps with it — needs an equipment casualty: the circulating-water pumps, condenser air
+removal, or tube fouling.
 
 ---
 
@@ -1061,7 +1060,6 @@ Listed for cross-reference — normal operation never requires typing a command.
 | CVCS inventory AUTO (§7.4) | `set_cvcs_auto` | `{active}` |
 | PZR heaters (§5.2) | `set_heater` | `{power_pct}` |
 | PZR spray (§5.3) | `set_spray` | `{open}` |
-| PZR auxiliary spray (§5.3a) | `set_aux_spray` | `{pct}` |
 | PORV open / close (§6.1) | `open_porv_manual` / `close_porv` | — |
 | PORV block valve (§6.2) | `open_block_valve` / `close_block_valve` | — |
 | RCP run / stop (§8.1) | `set_rcp` | `{running}` |
@@ -1076,7 +1074,7 @@ Listed for cross-reference — normal operation never requires typing a command.
 | Generator **TRIP** (§12.1) | `trip_turbine` | — |
 | Generator **OFF** — planned offline (§12.1) | `disconnect_grid` | — |
 | Turbine load (§12.2) | `set_load_target` | `{mwe}` |
-| CW inlet temperature (§13.1) | *(no operator lever — the condenser model has circulating-water pumps on/off only; the box reads dark)* | — |
+| CW inlet temperature (§13.1) | **CW INLET TEMP** box on the CONDENSER COOLING card, 35 – 85 °F | `set_condenser_cw_temp` |
 | Steam dump / bypass (§12.3) | `set_steam_dump` | `{mode}` — **AUTO or CLOSED only**; there is no manual position lever |
 | Pressure setpoint box (§5) | `set_pressure_setpoint` | `{mpa}` |
 | Steam-dump setpoint box (§12.3) | `set_steam_dump_setpoint` | `{mpa}` |

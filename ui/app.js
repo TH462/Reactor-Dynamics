@@ -2173,7 +2173,10 @@
   function advFailAction(apply) {
     var id = $('advInstr') && $('advInstr').value; if (!id) return;
     if (!apply) {
-      cmd({ action: 'clear_instrument_failure', instrument_id: id });
+      /* the same law on the clear path: a REFUSED clear must not remove the row, or the panel
+       * would report an instrument healed that is still failed */
+      var rc = cmd({ action: 'clear_instrument_failure', instrument_id: id });
+      if (rc && (rc.type === 'error' || rc.type === 'blocked')) return;
       delete advFailed[id]; renderAdvActive(); return;
     }
     var mode = $('advMode').value, m = ADV_MODES[mode];
@@ -2183,7 +2186,15 @@
       if (!isNaN(v)) c.value = v;
       else if (mode !== 'stuck') c.value = m.def;   // stuck: blank = current reading
     }
-    cmd(c);
+    /* THE RESULT DECIDES WHETHER THE ROW IS PAINTED (#564 item 3). This ran `cmd(c)` and then
+     * recorded the failure UNCONDITIONALLY, so a refused injection flashed a command error AND
+     * listed itself as "⚠ Failed: <id> (<mode>)" in the same press — three mutually
+     * contradictory pieces of feedback (an error, a claim of success, and a healthy gauge) from
+     * one click. `cmd()` returns the service's own result shape and has since #505; nothing
+     * here read it. Only a command that was neither refused nor blocked has actually failed an
+     * instrument. */
+    var r = cmd(c);
+    if (r && (r.type === 'error' || r.type === 'blocked')) return;
     advFailed[id] = mode; renderAdvActive();
   }
 
@@ -2441,7 +2452,20 @@
     // evenly.
     var gridT = Math.floor(s.metadata.sim_time / CHART_SAMPLE_SEC) * CHART_SAMPLE_SEC;
     var lastT = chartBuf.length ? chartBuf[chartBuf.length - 1].t : null;
-    if (lastT != null && gridT - lastT < CHART_SAMPLE_SEC - 1e-9) { drawChart(); return; }
+    /* NO NEW ROW → REDRAW ONLY IF SOMETHING ELSE CHANGED (the 2026-08-31 bug report:
+     * 4.7 fps, render 29 ms avg, RENDER-BOUND). drawChart rebuilds the whole SVG via
+     * innerHTML, and this path used to call it on EVERY broadcast — at the 10 Hz normal
+     * cadence with a row landing only each 0.2 s of SIM time, most of those rebuilds were
+     * pixel-identical (all of them at 1× only re-plot the same buffer; profiled: drawChart
+     * was the largest JS consumer and ~40% of a core sat in native style/layout/parse).
+     * chartDrawKey() names every input that can change the picture WITHOUT a new row: the
+     * buffer identity, the window, a new event for the SOE ribbon. Everything else that
+     * moves the chart (cursor, resize, series/settings, rewind) already calls drawChart()
+     * itself, unconditionally — this gate exists on the broadcast path alone. */
+    if (lastT != null && gridT - lastT < CHART_SAMPLE_SEC - 1e-9) {
+      if (chartDrawKey() !== chartDrawnKey) drawChart();
+      return;
+    }
     var one = chartSample(rawIns, s.true_state, s.control_state);
     var sv = one.v, stv = one.tv;
     // NO SEEDED HISTORY. A fresh buffer starts EMPTY and fills from the right — the #237
@@ -4710,7 +4734,22 @@
     return { t0: t0, t1: t1, span: t1 - t0 };
   }
 
+  /* What the broadcast path's redraw gate compares (see the CHART_SAMPLE_SEC gate). Names
+   * every input that can change the drawn chart with NO new row landing: the buffer identity
+   * (a rewind pops rows without adding one), the window, the event count (the SOE ribbon
+   * draws events the instant they arrive, between rows), and rewind-pick state — ENTERING
+   * pick mode redraws through render(latest), not a direct drawChart() call, so without the
+   * flag here the widened plot and its checkpoint marks never drew (caught by
+   * verify_e2e_ui's testRewindPicker: 0 marks after 5 cadence intervals). Deliberately NOT
+   * here: cursor, resize, series/settings, pick EXIT — those paths call drawChart() directly. */
+  var chartDrawnKey = '';
+  function chartDrawKey() {
+    return chartBuf.length + ':' + (chartBuf.length ? chartBuf[chartBuf.length - 1].t : -1) +
+           ':' + ui.window + ':' + (RD.Events ? RD.Events.count() : 0) +
+           ':' + (ui.rewindPick ? 1 : 0);
+  }
   function drawChart() {
+    chartDrawnKey = chartDrawKey();
     var svg = $('chartCanvas'), floats = $('chartFloats'), W = 400, H = 120;
     var active = prof().series.filter(function (s) { return ui.series[s.id]; });
     if (chartBuf.length < 2) {
@@ -5920,7 +5959,12 @@
     // never wired into a diagram, and set_esf_auto now lives on the board's re-arm
     // pushbuttons only — which disable themselves when the running engine declares no such
     // arm, #503. rhr-auto went with #453's RHR arm removal.)
-    'afw-flow-set': function () { cmd({ action: 'set_afw_flow', pct: inputVal('afwFlowSet') }); },
+    /* 'afw-flow-set' REMOVED at #591 item 2. It emitted `set_afw_flow` for an `afwFlowSet`
+     * input that no DOM anywhere contains — a dead handler, which is exactly what #562
+     * found here and answered by BUILDING the board tile that would emit it. The owner has
+     * now removed that tile, so the handler is dead again and goes rather than sitting here
+     * reading as a wire. `set_afw_flow` is still a live command: the `afw_level` automation
+     * channel issues it every evaluation, and scenarios and the instructor can send it. */
     // NIS: SR detector switch (P-6 interlocked) + startup-trip block toggles (P-10 gated)
     'sr-on': function () { cmd({ action: 'set_sr_detector', on: true }); },
     'sr-off': function () { cmd({ action: 'set_sr_detector', on: false }); },
@@ -7347,7 +7391,14 @@
     { id: 'failures', label: 'Failures' }, { id: 'glossary', label: 'Glossary' },
   ];
   function mesc(s) { return String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;'); }
-  function manualProfile() { return (RD.MANUAL || {})[ui.engineKey]; }
+  /* THE SAME KEY-THEN-PLANT LOOKUP `manualRef()` DOES (#564 item 3). This had only the engine
+   * key, so on the plant the site runs — `RD.MANUAL` is keyed pwr / rbmk_pre / rbmk_post / bwr
+   * and has no `pwr2` — it returned undefined and the Failures tab's advanced instrument panel
+   * fell through to `Object.keys(latest.instruments)`, offering the player a dropdown of raw
+   * internal ids (`power_range`, `thot`, `primary_pressure`…) in place of 50 human-named
+   * indications. `manualRef()` fifty lines up has carried the fallback since it was written;
+   * this one was the copy that did not. */
+  function manualProfile() { return (RD.MANUAL || {})[ui.engineKey] || (RD.MANUAL || {})[ui.plant] || null; }
   var OPSYM = { '>': '≥', '<': '≤', '>=': '≥', '<=': '≤', '~': '≈' };   // acceptance display
   // Dimension of a dimensioned instrument-id / true_state field so the manual
   // converts to the active unit setting (US/SI) like the board. Everything else
