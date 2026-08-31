@@ -365,11 +365,25 @@ function runSuite(C, rec, quiet, only) {
    * The first version ran 60 s and read the reconstruction, so it was reporting a plant that had
    * been pinned at the ceiling for three quarters of the run. FOURTH unphysical fixture this
    * session. The window is now inside the envelope and the guard below ASSERTS that it is. */
+  /* ⚠ AND THE 10 s WINDOW WAS NOT ENOUGH — THE FIXTURE RAILED AT 5 s, ON BOTH PLANTS (#574).
+   * Shortening 60 -> 10 s cut the DIVERGENCE to 0.0109 %, comfortably under the 1e-3 band, and
+   * everyone read that as "inside the envelope". It was not: measured 2026-08-28, this fixture
+   * is pinned at 2611 psia — 18.0 MPa, the table ceiling, EXACTLY — from **5 s** onward, dry.
+   * The band was measuring how far a railed plant had drifted, not whether it had railed.
+   *
+   * #574's metal walls changed the enthalpy distribution while the pressure was railed and took
+   * the divergence to 0.153 %, which is what surfaced it. THE DRIVE IS THE PROBLEM: 300 MW into
+   * a loop whose sink is a fixed number rather than a modelled SG, with no compressible volume,
+   * has nowhere to put the redistribution. Halved to 150 MW the plant stays INSIDE the envelope
+   * on both — 2398 psia dry, 2466 with walls — and the divergence collapses to 0.0007 %, three
+   * orders better than the old fixture managed dry. The charging result is untouched: dM = 21.7 kg
+   * at 300, 150, 60 and 30 MW, because the power was scenery and the charging is the subject.
+   * The envelope is now asserted DIRECTLY below, not through a proxy for it. */
   var M0 = sysI.M_total;
   var rI = null;
   for (var t = 0; t < 500; t++) {
     rI = C.stepCVCS(cvI, sysI, 0.02);
-    S.stepPlant(sysI, 0.02, { corePower: 300000, sgDuty: 300000, sources: rI.sources });
+    S.stepPlant(sysI, 0.02, { corePower: 150000, sgDuty: 150000, sources: rI.sources });
   }
   var M1 = sysI.M_total;
   var recon = 0; sysI.nodes.forEach(function (n) { recon += n.V * W.rho_from_h(n.h, sysI.P); });
@@ -379,6 +393,13 @@ function runSuite(C, rec, quiet, only) {
   /* THE SATURATION GUARD. Ledger and reconstruction must agree, or the plant has left the
    * envelope the property table can represent and every number read from it is suspect. Nothing
    * reported this when it happened -- the run looked entirely normal. */
+  /* THE ENVELOPE, ASSERTED DIRECTLY. This is the check the divergence band was standing in for,
+   * and it would have caught the railed fixture on day one instead of waiting for a physics
+   * change to widen the proxy past its threshold. 18.0 MPa is the property table's own ceiling. */
+  ckT('the plant stayed INSIDE the property envelope  [the precondition, not a proxy for it]',
+      sysI.P < 17.9,
+      (sysI.P * 145.037738).toFixed(0) + ' psia against the table ceiling at 2611 -- the 300 MW ' +
+      'form of this fixture railed there at 5 s and the divergence band read it as healthy');
   ckT('the ledger and the reconstructed inventory still AGREE  [envelope guard]',
       Math.abs(M1 - recon) / M1 < 1e-3,
       'ledger ' + M1.toFixed(1) + ' vs reconstructed ' + recon.toFixed(1) + ' kg (' +

@@ -83,7 +83,20 @@ function runSuite(G, rec, quiet) {
   ck('leg nodes sum to the piping component', piping, G.LEDGER.piping.m3 * FT3, 0.2, 'ft3');
   var all = 0;
   G.NODES.forEach(function (n) { all += n.V * FT3; });
-  ck('ALL nodes sum to the declared RCS total', all, G.RCS_TOTAL_M3 * FT3, 0.3, 'ft3');
+  /* NODES + THE LAYER-5 VESSEL (#583). The pressurizer is not a node — it is the ledger row
+   * that has no NODES entry, because Layer 5 owns the vessel and a ring node of the same name
+   * double-counted it. So the closure is nodes PLUS that row, and `rcsVolume()` is the function
+   * the engine's own consumers call for exactly this sum. Asserting the function too, because a
+   * computed helper that nothing checks is how the two pressurizer sizes drifted apart. */
+  ck('ALL nodes PLUS the Layer-5 vessel sum to the declared RCS total',
+     all + G.LEDGER.pressurizer.m3 * FT3, G.RCS_TOTAL_M3 * FT3, 0.3, 'ft3');
+  ck('...and rcsVolume() is that same whole-plant number', G.rcsVolume() * FT3,
+     G.RCS_TOTAL_M3 * FT3, 0.3, 'ft3');
+  ckT('the pressurizer is NOT a node — it would be a double count of the Layer-5 vessel (#583)',
+      !G.NODES.some(function (n) { return n.id === 'pressurizer'; }) &&
+      G.LEDGER.pressurizer !== undefined && G.NODES.length === 10,
+      G.NODES.length + ' nodes, and the ledger still carries the vessel at ' +
+      (G.LEDGER.pressurizer.m3 * FT3).toFixed(1) + ' ft3');
   var ledger = 0;
   Object.keys(G.LEDGER).forEach(function (k) { ledger += G.LEDGER[k].m3 * FT3; });
   ck('components sum to the declared RCS total', ledger, G.RCS_TOTAL_M3 * FT3, 0.3, 'ft3');
@@ -107,8 +120,14 @@ function runSuite(G, rec, quiet) {
   if (!quiet) console.log('\nDECLARED UNCERTAINTY  [D1 §24 — it must travel WITH the data]');
   ck('unattributed fraction matches the declaration',
      G.UNATTRIBUTED_M3 / G.RCS_TOTAL_M3, G.INVENTORY_UNCERTAINTY, 0.002, '(frac)');
+  /* The floor was 0.10 until #583 and the band is now 0.05-0.15. THAT IS NOT A RE-BAND TO GET
+   * GREEN: the pressurizer ledger row was a 125.2 ft3 design-basis PLACEHOLDER against a
+   * 135.3 ft3 reference target, and #472's real vessel is 147.5 — so swapping it ATTRIBUTES
+   * 22.3 ft3 that used to sit in the unattributed residual (101.4 -> 79.1 ft3). The declared
+   * uncertainty fell because a gap closed. The floor still catches the mutation it was written
+   * for (a declaration quietly reduced to 0.030). */
   ckT('the declared band is exposed to consumers', typeof G.INVENTORY_UNCERTAINTY === 'number' &&
-      G.INVENTORY_UNCERTAINTY > 0.10 && G.INVENTORY_UNCERTAINTY < 0.15,
+      G.INVENTORY_UNCERTAINTY > 0.05 && G.INVENTORY_UNCERTAINTY < 0.15,
       (G.INVENTORY_UNCERTAINTY * 100).toFixed(1) + ' %');
 
   /* ---- 5. PHYSICAL SANITY ----------------------------------------------------------- */
@@ -117,8 +136,12 @@ function runSuite(G, rec, quiet) {
       'SG ' + node('sg_primary').z + ' m vs core ' + node('core').z + ' m');
   ckT('RCP is at a low point (NPSH margin)',
       node('rcp').z < node('core').z && node('rcp').z < node('cold_leg').z);
-  ckT('pressurizer is the highest node', node('pressurizer').z ===
-      Math.max.apply(null, G.NODES.map(function (n) { return n.z; })));
+  /* This was "pressurizer is the highest node" until #583 deleted that node. The claim it was
+   * really making — the loop's top is the STEAM GENERATOR, which is what the natural-circulation
+   * thermal centre needs and what the surge line hangs off above — survives without it. */
+  ckT('the steam generator is the highest node (the loop\'s thermal centre, #583)',
+      node('sg_primary').z === Math.max.apply(null, G.NODES.map(function (n) { return n.z; })),
+      'SG ' + node('sg_primary').z + ' m; the pressurizer is Layer 5\'s vessel, not a node');
   ckT('every node has a positive volume', G.NODES.every(function (n) { return n.V > 0; }));
   /* Velocity, computed from Layer 0's energy balance rather than assumed. */
   var dh = W.h_l(321, 15.41) - W.h_l(288, 15.41), mdot = 300000 / dh;
@@ -126,7 +149,12 @@ function runSuite(G, rec, quiet) {
   var vHot = Qh / (node('hot_leg').V / G.LOOP.hot_leg.L);
   ckT('hot-leg velocity is in a real-plant family', vHot > 10 && vHot < 22,
       vHot.toFixed(1) + ' m/s (' + (vHot * 3.281).toFixed(0) + ' ft/s)');
-  var transit = (G.RCS_TOTAL_M3 - node('pressurizer').V) / Qh;
+  /* THE FLOW PATH ONLY. Until #583 this subtracted the pressurizer node and left `vessel_heads`
+   * in — an off-loop volume on the transit path, which overstated it. Both off-loop volumes are
+   * out now, and the pressurizer is out by construction (it is not in NODES at all). */
+  var ringV = 0;
+  G.NODES.forEach(function (n) { if (n.id !== 'vessel_heads') ringV += n.V; });
+  var transit = ringV / Qh;
   ckT('loop transit is REPORTED, not banded', isFinite(transit) && transit > 0,
       transit.toFixed(1) + ' s -- NO BAND ASSERTED (the 10-12 s figure is RETRACTED, D1 §3)');
 
@@ -199,6 +227,74 @@ function runSuite(G, rec, quiet) {
   /* A DECLARED gap silently set to zero stops being a declaration. Layer 4's gate bands this;
    * Layer 1 should own the number it declares rather than rely on a consumer to notice. */
   ck('the omitted-inertia fraction is the declared 5.3 %', G.LOOP_INERTIA_OMITTED, 0.053, 1e-9, '');
+
+  /* ---- THE METAL WALLS (#574) --------------------------------------------------------------
+   * `wallLumps` shipped on every node with ZERO consumers, so the table read as a working
+   * feature to anyone who opened it. The first check is therefore about COVERAGE: a node that
+   * quietly gets no wall is the same dark wire in a new place. */
+  if (!quiet) console.log('\nMETAL WALLS  [every node, or the dark wire is back]');
+  var noWall = G.NODES.filter(function (n) { return !G.WALLS[n.id]; }).map(function (n) { return n.id; });
+  ckT('EVERY node has a metal wall — the ruling was "all of them", not "the ones that were easy"',
+      noWall.length === 0 && Object.keys(G.WALLS).length === G.NODES.length,
+      noWall.length ? 'missing: ' + noWall.join(', ') : G.NODES.length + ' of ' + G.NODES.length);
+  var bad = G.NODES.filter(function (n) {
+    var w = G.WALLS[n.id];
+    return !(w && w.M_kg > 0 && w.A_m2 > 0 && w.t_m > 0 && G.WALL_MAT[w.mat] && w.kind);
+  }).map(function (n) { return n.id; });
+  ckT('...each with a positive mass, area and thickness, a known material and a provenance kind',
+      bad.length === 0, bad.length ? 'bad: ' + bad.join(', ') : G.NODES.length + ' complete');
+  /* THE STEAM GENERATOR'S CROSS-CHECK, and it is the strongest number in this block: the tube
+   * bore implied by the SOURCED heat-transfer area and the Model 51 tube size reproduces this
+   * file's INDEPENDENTLY derived sg_primary node volume. Two numbers that were never fitted to
+   * each other. If a future edit moves either, this is what notices. */
+  var sgV = G.NODES.filter(function (n) { return n.id === 'sg_primary'; })[0].V;
+  ck('the SG tube bore implied by the sourced area reproduces the sg_primary node volume',
+     G.WALLS.sg_primary.V_implied_m3 / sgV, 1.0, 2e-3, '');
+  /* THE PIPE WALLS, RETYPED — the r_D rule applied by hand to the sourced reference sizes, so
+   * a transcription slip in the module cannot pass by equalling itself. */
+  (function () {
+    var REF = { hot_leg: [29.0, 2.84], crossover: [31.0, 2.99], cold_leg: [27.5, 2.69] };
+    var worst = 0, at = null;
+    Object.keys(REF).forEach(function (id) {
+      var L = G.LOOP[id].L, V = G.NODES.filter(function (n) { return n.id === id; })[0].V;
+      var D = Math.sqrt(4 * (V / L) / Math.PI);
+      var t = REF[id][1] * 0.0254 * (D / (REF[id][0] * 0.0254));
+      var M = Math.PI * t * (D + t) * L * 7850;
+      var e = Math.abs(M / G.WALLS[id].M_kg - 1);
+      if (e > worst) { worst = e; at = id; }
+    });
+    ckT('the three pipe walls match an independently retyped r_D derivation',
+        worst < 1e-9, 'worst ' + worst.toExponential(2) + (at ? ' at ' + at : ''));
+  })();
+  /* THE HEADLINE RATIO, PINNED. It is what the #574 ruling was taken on and it is the number
+   * that decides how much a cooldown moves — so it must not drift silently when a mass is edited.
+   *
+   * ⚠ THE DENOMINATOR IS COMPUTED NOW, and #583 is why. It used to be the typed constant
+   * 93,855 kJ/K with an absolute band (40,000-47,000) on the numerator. Deleting the phantom
+   * pressurizer node took 8,708 kg of metal AND 2,772 kg of fluid out together, so the absolute
+   * band failed while the RATIO — the thing the ruling was actually about — went UP, 46.3 % to
+   * 49.2 %. A typed denominator cannot tell those two cases apart; a live one can. Both numbers
+   * are reported so a future edit is read, not just judged. */
+  (function () {
+    var C = 0, Cf = 0;
+    var rhoD = W.rho_l(304.5, 15.41);                        // design-point liquid density
+    var cpD = W.h_l(305, 15.41) - W.h_l(304, 15.41);         // kJ/kg-K there, from Layer 0
+    G.NODES.forEach(function (n) {
+      var w = G.WALLS[n.id]; C += w.M_kg * G.WALL_MAT[w.mat].cp;
+      Cf += n.V * rhoD * cpD;
+    });
+    ckT('the metal:fluid heat-capacity ratio is where the #574 ruling was taken (~49 %)',
+        C / Cf > 0.42 && C / Cf < 0.56,
+        C.toFixed(0) + ' kJ/K of metal against ' + Cf.toFixed(0) + ' of ring fluid = ' +
+        (100 * C / Cf).toFixed(1) + ' % (was 46.3 % of 93,855 before #583 removed the ' +
+        'phantom pressurizer node — metal AND fluid left together)');
+  })();
+  /* ⚠ THE FUEL IS NOT IN HERE. `pwr2_fuel` owns the rods' thermal mass; a "core wall" that
+   * included them would double-count the one metal capacity the plant already had. The core's
+   * wall is the BARREL, and its mass has to be barrel-sized, not core-sized. */
+  ckT('the core node\'s wall is the BARREL, not the fuel — pwr2_fuel already owns the rods',
+      G.WALLS.core.M_kg < 15000 && /barrel/i.test(G.WALLS.core.note),
+      G.WALLS.core.M_kg.toFixed(0) + ' kg: ' + G.WALLS.core.note);
   ckT('the form-loss map is exactly the three declared families',
       Object.keys(G.FORM_LOSS_K).length === 3 &&
       Object.keys(G.FORM_LOSS_K).every(function (k) { return G.FORM_LOSS_K[k].K > 0; }),
@@ -213,6 +309,18 @@ var pass = rec.filter(function (r) { return r.ok; }).length, fail = rec.length -
 
 /* ---------------------------------------------------------------- INJECTION SELF-TEST */
 var MUTATIONS = [
+  /* ---- THE METAL WALLS (#574) ---- */
+  ['a node quietly gets no wall (the dark wire returns, one node at a time)',
+   "    w.rcp = { M_kg:", "    if (false) w.rcp = { M_kg:"],
+  ['the SG tube wall thickness is mistyped (the cross-check against the node volume is the tell)',
+   'TUBE_WALL = 0.050 * IN_M', 'TUBE_WALL = 0.065 * IN_M'],
+  ['the pipe wall stops scaling with the r_D rule (reference thickness used raw)',
+   '      var t = REF_PIPE[id].t * IN_M * (D / (REF_PIPE[id].D * IN_M));',
+   '      var t = REF_PIPE[id].t * IN_M;'],
+  ['the ASME wall goes thin (the vessel stops being the biggest term)',
+   'S_allow_mpa: 138', 'S_allow_mpa: 400'],
+  ['the core wall takes the FUEL as well as the barrel (the rods counted twice)',
+   "    var t_barrel = 0.050;", "    var t_barrel = 0.400;"],
   ['downcomer takes the AREA-RULE volume (the rejected basis)', "V: ft3(62.5), z: -0.30", "V: ft3(44.7), z: -0.30"],
   ['vessel split silently rebalanced (ledger still closes)',
    "{ id: 'lower_plenum',V: ft3(49.0)", "{ id: 'lower_plenum',V: ft3(56.0)"],
@@ -220,8 +328,18 @@ var MUTATIONS = [
   ['piping scaled by the wrong power ratio', "V: ft3(34.30)", "V: ft3(30.00)"],
   ['SG dropped below the core (kills natural circulation)', "z:  8.00", "z: -8.00"],
   ['RCP raised off the low point', "{ id: 'rcp',         V: ft3(28.1), z: -1.52", "{ id: 'rcp',         V: ft3(28.1), z:  1.52"],
-  ['declared uncertainty quietly reduced', "INVENTORY_UNCERTAINTY: 0.121", "INVENTORY_UNCERTAINTY: 0.030"],
-  ['unattributed volume zeroed but the band left standing', "UNATTRIBUTED_M3 = ft3(101.4)", "UNATTRIBUTED_M3 = ft3(0.0)"],
+  ['declared uncertainty quietly reduced', "INVENTORY_UNCERTAINTY: 0.092", "INVENTORY_UNCERTAINTY: 0.030"],
+  ['unattributed volume zeroed but the band left standing', "UNATTRIBUTED_M3 = ft3(79.1)", "UNATTRIBUTED_M3 = ft3(0.0)"],
+  /* ---- THE #583 DOUBLE COUNT, three ways it could come back ---- */
+  ['the pressurizer NODE returns (the #583 double count, restored verbatim)',
+   "      kind: '[derived]', note: 'Almaraz 3.23 m3 x 0.3054; ECCS injects here' }",
+   "      kind: '[derived]', note: 'Almaraz 3.23 m3 x 0.3054; ECCS injects here' },\n" +
+   "    { id: 'pressurizer', V: ft3(125.2),z:  9.00, transport: 'stirred', wallLumps: 1,\n" +
+   "      kind: '[derived]', note: 'the defect #583 removed' }"],
+  ['rcsVolume() forgets the Layer-5 vessel (Sum NODES called the plant again)',
+   'return V + LEDGER.pressurizer.m3;', 'return V;'],
+  ['the ledger row reverts to the 125.2 ft3 DESIGN-BASIS PLACEHOLDER (#472 owns the real number)',
+   'pressurizer:  { m3: 4.176', 'pressurizer:  { m3: ft3(125.2)'],
   ['a provenance tag dropped', "kind: '[sourced]', note: 'hemispherical pair", "note: 'hemispherical pair"],
   ['a [tune] constant introduced', "kind: '[derived]', note: 'Almaraz 3.18 m3", "kind: '[tune]', note: 'Almaraz 3.18 m3"],
   ['a SECOND [recalled] family appears', "kind: '[derived]', note: 'Almaraz 3.60 m3", "kind: '[recalled]', note: 'Almaraz 3.60 m3"],

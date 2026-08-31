@@ -172,9 +172,14 @@
           <button class="btn demo-btn" id="demoBtn" title="Board focus — hide the side panel and enlarge the plant diagram" data-scanner-hint="Board focus — hides the simulator panel on the right and moves the time controls atop the alarms/graph column, giving the plant diagram more room. Click again to bring the panel back.">⛶</button>
         </div>
         <!-- What's running now — the always-visible mission entry point -->
-        <button class="sim-status" id="simStatus" data-scanner-hint="Plant &amp; Mission — click to switch reactors or change what you are running."
+        <button class="sim-status" id="simStatus" data-scanner-hint="Select Plant, Mission &amp; Reset — click to switch reactors, change what you are running, or restart the plant from a clean initial condition."
               data-scanner-detail="One window covers both choices: which reactor, and whether you are in free play (with a starting plant condition) or running guided content. Switching either one restarts the simulation from a fresh initial condition.">
-          <span class="ss-lbl">Plant &amp; Mission</span>
+          <!-- The label NAMES ALL THREE THINGS THE WINDOW DOES (#516 item 3, owner playtest
+               2026-08-29: "The plant and mission button isn't obvious what it does. it should say
+               something like select plant and mission and reset."). It read "Plant &amp; Mission",
+               which names the window rather than the action, and RESET — the one irreversible
+               thing behind it — was not on the button at all. -->
+          <span class="ss-lbl">Select Plant, Mission &amp; Reset</span>
           <span class="ss-txt" id="simStatusText">—</span><span class="ss-chev">›</span>
         </button>
         <!-- Points at the button that reopens the Plant &amp; Mission window, for a few

@@ -267,13 +267,18 @@ function runSuite(C, rec, quiet) {
   var sysX = ring(2, 1.0, [2600, 2600]);
   var rX = null;
   for (var xi = 0; xi < 200; xi++) rX = C.step(sysX, 0.02, { heats: { n0: 2.0e6 } });
-  var hCeil = W.h_v(W.LIMITS.TV_MAX, sysX.P);
+  /* THE MODEL'S OWN CEILING, and at #516 item 9 that stopped being TV_MAX. Layer 0 now carries a
+   * sourced ideal-gas branch above the validated range and `pwr2_core` clamps to TV_EXT_MAX, so a
+   * fixture retyping TV_MAX here was a SECOND COPY of the constant that had quietly gone stale —
+   * it reported a 4637 kJ/kg ceiling against a plant clamping at 9590. Read from LIMITS, never
+   * retyped, so the next time that boundary moves this fixture moves with it. */
+  var hCeil = W.h_v(W.LIMITS.TV_EXT_MAX, sysX.P);
   /* ⚠ ASSERTED AS AN EQUALITY, NOT AS "at most". The first version asked only that `h` stay BELOW
    * the ceiling, and the injection self-test found it blind to a ceiling built from the LIQUID
    * limit instead of the vapour one — which pins every steam node ~2400 kJ/kg too low and
    * satisfies "at most" perfectly. A one-sided check on a clamp can only ever see the clamp
    * failing OPEN; the interesting failure is it closing in the wrong place. */
-  ckT('a node driven past 800 degC is HELD AT the ceiling — not above it and not below it',
+  ckT('a node driven past the vapour ceiling is HELD AT it — not above it and not below it',
       isFinite(sysX.nodes[0].h) && Math.abs(sysX.nodes[0].h - hCeil) < 1.0,
       'h = ' + sysX.nodes[0].h.toFixed(1) + ' kJ/kg against a ceiling of ' + hCeil.toFixed(1));
   ckT('...and the clamp SAYS SO rather than absorbing it silently',
@@ -289,9 +294,15 @@ function runSuite(C, rec, quiet) {
    * 0.24 kg/m3 apart at the table edge, re-introduced every step a node sits out of range. The
    * clamp has to be inside `F(P)`. A closed system's mass is moved only by boundary sources, so
    * with none supplied it must be EXACTLY unmoved however hard the nodes are driven. */
+  /* ⚠ 8e6, NOT 2e6, SINCE #516 item 9. This fixture's job is to make the CLAMP BIND HARD, so
+   * that clamping inside versus outside the pressure solve gives measurably different densities.
+   * The ceiling moved from h_v(1000 degC) to h_v(3000 degC) and 2e6 now lands the raw enthalpy
+   * only just past it — the density disagreement fell under the residual and the injection
+   * self-test reported this check BLIND to the mutation it exists for. Driving harder restores
+   * the separation without changing anything the check claims. */
   var sysM = ring(2, 1.0, [2600, 2600]);
   var M_before = sysM.M_total;
-  for (xi = 0; xi < 200; xi++) C.step(sysM, 0.02, { heats: { n0: 2.0e6 } });
+  for (xi = 0; xi < 200; xi++) C.step(sysM, 0.02, { heats: { n0: 8.0e6 } });
   ck('a closed system driven past the ceiling conserves M_total EXACTLY',
      sysM.M_total, M_before, 1e-9, 'kg');
   /* AND THE SOLVE MUST AGREE WITH THE STATE IT STORED. Recomputing node masses from the stored
@@ -310,8 +321,18 @@ function runSuite(C, rec, quiet) {
     mSum += sysM.nodes[xi].V * (VT ? VT.rho_from_h : W.rho_from_h)(sysM.nodes[xi].h, sysM.P);
   }
   var rM = C.step(sysM, 0, {});          /* zero-length step: reports the residual, moves nothing */
+  /* ⚠ AND AN ABSOLUTE BOUND, ADDED AT #516 item 9 — because the relative one is SELF-DEFEATING
+   * and the injection harness caught it saying so. `residual` is the solve's own miss, and a
+   * clamp moved outside the solve inflates BOTH the reconstruction error and the residual it is
+   * measured against, so the tolerance grows with the defect. It survived only while the defect
+   * outran that growth; once the ceiling moved to the extension the two grew together and this
+   * check went BLIND to the mutation it exists for. The absolute half cannot move with the
+   * mutant: the file's own measurements are ~1.3e-5 kg for the capped bisection against ~0.5 kg
+   * per step and GROWING for a clamp outside the solve, so 1e-3 kg sits two orders clear of the
+   * cause this check accepts and hundreds clear of the one it must reject. */
   ckT('...and the STORED enthalpies reproduce that mass to the SOLVE\'S OWN residual',
-      Math.abs(mSum - sysM.M_total) <= Math.abs(rM.residual) * 1.5 + 1e-9,
+      Math.abs(mSum - sysM.M_total) <= Math.abs(rM.residual) * 1.5 + 1e-9 &&
+      Math.abs(mSum - sysM.M_total) < 1e-3,
       'reconstruction out by ' + (mSum - sysM.M_total).toExponential(3) +
       ' kg against a reported solve residual of ' + rM.residual.toExponential(3) +
       ' — the capped bisection, not the clamp');
@@ -394,12 +415,158 @@ function runSuite(C, rec, quiet) {
       { id: 'n2', V: 50, h: 1000 }, { id: 'n3', V: 50, h: 1000 }], P: 5.0 });
     var fW = [{ from: 'n0', to: 'n1', mdot: 0.1 }, { from: 'n1', to: 'n2', mdot: 0.1 },
               { from: 'n2', to: 'n3', mdot: 0.1 }, { from: 'n3', to: 'n0', mdot: 0.1 }];
-    var rW = C.step(sysW, 0.02, { flows: fW, heats: { n0: 2e6, n1: -2e6 } });
+    /* ⚠ 5e6, NOT 2e6, SINCE #516 item 9. The ceiling moved from h_v(1000 degC) to h_v(3000 degC)
+     * — 4,637 to 9,590 kJ/kg at this pressure — and 2e6 kW over one 0.02 s step lifts a 0.01 m3
+     * node about 5,000 kJ/kg, which used to clear the old ceiling and no longer clears the new
+     * one. The fixture stopped producing its own subject and this check went quietly green-then-
+     * red. Scaled on BOTH nodes equally so the opposed heats still cancel in the mass projection,
+     * which is what keeps the floor and root-jump guards from firing first and masking the
+     * mutation — the failure mode the three earlier fixture generations died of. */
+    var rW = C.step(sysW, 0.02, { flows: fW, heats: { n0: 5e6, n1: -5e6 } });
     ckT('nodes clamped on BOTH envelope walls at once latch beyond-model (the oscillation)',
         sysW.beyond_model === true && rW.enthalpyClamped === 2 &&
         sysW.P > 4.5 && sysW.P < 5.5,
         'both walls clamped at P ' + sysW.P.toFixed(2) + ' MPa — no floor, no root-jump, ' +
         'only this guard');
+  })();
+
+  /* ---- #535: a CEILING-ONLY pin with a healthy pressure root latches on PERSISTENCE.
+   * The both-walls fixture above with the negative heat dropped: one tiny node takes heat
+   * for ever, pins on hHi and discards every step, while the pressure root never moves and
+   * the floor is never touched — so neither older arm can fire. Pre-#535 this ran
+   * UNLATCHED indefinitely (the loss-of-heat-sink immortality: 79 % of decay heat deleted
+   * for 8 h with every health flag green). The latch must NOT fire on first contact — a
+   * 50 cm2 break touches the ceiling for 4.26 s healthy — and MUST fire once the hold
+   * passes CEIL_HOLD_LATCH_S = 60 s of continuous discard. ---- */
+  (function () {
+    var sysC = C.createSystem({ nodes: [
+      { id: 'n0', V: 0.01, h: 1000 }, { id: 'n1', V: 0.01, h: 1000 },
+      { id: 'n2', V: 50, h: 1000 }, { id: 'n3', V: 50, h: 1000 }], P: 5.0 });
+    var fC = [{ from: 'n0', to: 'n1', mdot: 0.1 }, { from: 'n1', to: 'n2', mdot: 0.1 },
+              { from: 'n2', to: 'n3', mdot: 0.1 }, { from: 'n3', to: 'n0', mdot: 0.1 }];
+    var latchedAt = null, notAt30 = null, rC = null;
+    for (var iC = 0; iC < 3300; iC++) {
+      /* 5e6 for the same reason as the both-walls fixture above (#516 item 9): the ceiling
+       * moved and 2e6 no longer reaches it, so nothing was pinned and nothing could latch. */
+      rC = C.step(sysC, 0.02, { flows: fC, heats: { n0: 5e6 } });
+      var tC = (iC + 1) * 0.02;
+      if (Math.abs(tC - 30) < 0.011) notAt30 = sysC.beyond_model !== true;
+      if (sysC.beyond_model === true && latchedAt === null) latchedAt = tC;
+    }
+    ckT('a ceiling-only pin latches beyond-model on SUSTAINED discard — and not before',
+        /* The pressure band is a FIXTURE descriptor, not the claim — it says the ride stayed at
+         * a moderate pressure so this is a ceiling-only pin rather than a floor case. The
+         * heat was scaled to 5e6 at #516 item 9 to reach the moved ceiling, which carries P to
+         * 5.55 instead of 5.5; band widened to match the fixture, and the CLAIM (latches at the
+         * 60 s persistence threshold, and not at 30 s) is untouched and still exact. */
+        latchedAt !== null && latchedAt > 55 && latchedAt < 66 && notAt30 === true &&
+        sysC.P > 4.5 && sysC.P < 6.0,
+        'latched at ' + (latchedAt === null ? 'NEVER' : latchedAt.toFixed(2) + ' s') +
+        ' (healthy at 30 s: ' + notAt30 + '), P ' + sysC.P.toFixed(2) +
+        ' MPa — pre-#535 this state ran unlatched for ever');
+  })();
+
+  /* ---- 8. THE METAL WALL (#574) -----------------------------------------------------------
+   * *(OWNER, 2026-08-12: "each node should carry the heat capacity of its own metal wall";
+   * OWNER RULING, 2026-08-28: "All eleven nodes".)* The specification named `M_wall`, `cp_wall`,
+   * `A`, `T_wall[]` and `Q_wall` and the nodes were built without any of them, while
+   * `pwr2_geometry` shipped `wallLumps` on all eleven with ZERO consumers — a table that read
+   * as a working feature. These checks are what stop that recurring. */
+  if (!quiet) console.log('\nMETAL WALLS  [the spec named them and the nodes were built without them]');
+  function walledNode(h, lumps, M, A, t) {
+    return { id: 'w0', V: 2.0, h: h,
+             wall: { M_kg: M, cp: 0.5, k: 40, A_m2: A, t_m: t, lumps: lumps } };
+  }
+  /* ⚠ THE ZERO CHECK IS THE ONE THAT CATCHES A SIGN ERROR, and it passes on the PRE-#574 plant
+   * too (no wall, no heat) — which is what makes it a better check rather than a fitted one. */
+  (function () {
+    var sysW = C.createSystem({ nodes: [walledNode(1250, 1, 20000, 20, 0.1)], P: 15.41 });
+    var r = C.step(sysW, 0.02, {});
+    ckT('a wall AT its fluid temperature moves EXACTLY nothing',
+        r.wallHeat_kW === 0 && sysW.nodes[0].wall.T[0] === sysW.nodes[0].wall.T[0],
+        'wallHeat ' + r.wallHeat_kW + ' kW — the check a sign error cannot survive');
+  })();
+  /* THE DIRECTION, and the energy that goes with it. */
+  (function () {
+    var sysW = C.createSystem({ nodes: [walledNode(1250, 1, 20000, 20, 0.1)], P: 15.41 });
+    var w = sysW.nodes[0].wall, T0 = w.T[0];
+    w.T[0] = T0 + 50;                                   /* metal hotter than its water */
+    var U0 = C.internalEnergy(sysW), h0 = sysW.nodes[0].h;
+    var Q = 0;
+    for (var i = 0; i < 500; i++) Q += C.step(sysW, 0.02, {}).wallHeat_kW * 0.02;
+    var U1 = C.internalEnergy(sysW);
+    ckT('a HOT wall heats its fluid and cools itself — both, and by the same joules',
+        sysW.nodes[0].h > h0 && sysW.nodes[0].wall.T[0] < T0 + 50 && Q > 0,
+        'fluid ' + h0.toFixed(1) + ' -> ' + sysW.nodes[0].h.toFixed(1) + ' kJ/kg, wall ' +
+        (T0 + 50).toFixed(1) + ' -> ' + sysW.nodes[0].wall.T[0].toFixed(1) + ' degC, ' +
+        Q.toFixed(0) + ' kJ moved');
+    /* THE WALL'S ENERGY IS IN THE BUDGET. Without it the layer's own 3e-4 conservation claim
+     * silently absorbs every joule the metal takes up or gives back, and a budget that absorbs
+     * the thing being added has stopped measuring anything. */
+    ckT('...and the CLOSED system still conserves internal energy to the layer\'s own budget',
+        Math.abs(U1 - U0) / Math.abs(U0) < 3e-4,
+        'dU/U = ' + (Math.abs(U1 - U0) / Math.abs(U0)).toExponential(2) +
+        ' with the wall counted; counting only the fluid it would read ' +
+        (Math.abs(Q / U0)).toExponential(2));
+  })();
+  /* ⚠ THE LUMP CHAIN IS A CHAIN, AND THIS IS THE CHECK THAT CATCHES IT WIRED IN PARALLEL —
+   * which behaves like one fat lump, responds too fast, and looks entirely reasonable from
+   * outside. `wallLumps: 3` exists because the vessel shell is 114 mm and its own diffusion
+   * time is ~1,080 s; a parallel wiring would throw that away silently. */
+  (function () {
+    var sysW = C.createSystem({ nodes: [walledNode(1250, 3, 30000, 20, 0.12)], P: 15.41 });
+    var w = sysW.nodes[0].wall;
+    for (var i = 0; i < 3; i++) w.T[i] += 60;           /* a hot wall, uniformly */
+    var d0 = [], seen = [w.T[0], w.T[1], w.T[2]];
+    for (i = 0; i < 2000; i++) C.step(sysW, 0.02, {});
+    d0 = [seen[0] - w.T[0], seen[1] - w.T[1], seen[2] - w.T[2]];
+    ckT('the lumps are a CHAIN: the inner one gives up its heat first, the outer one last',
+        d0[0] > d0[1] && d0[1] > d0[2] && d0[2] > 0,
+        'dropped ' + d0.map(function (x) { return x.toFixed(2); }).join(' / ') +
+        ' degC inner->outer over 40 s — wired in PARALLEL all three would fall together');
+    ckT('...and the OUTERMOST lump is adiabatic — no heat leaves the plant through the wall',
+        w.T[2] > w.T[1],
+        'outer ' + w.T[2].toFixed(2) + ' > middle ' + w.T[1].toFixed(2) +
+        ' degC: it can only lose heat INWARD');
+  })();
+  /* THE FILM FOLLOWS THE FLOW, AND HAS A FLOOR. A stopped loop is exactly when stored wall heat
+   * matters; a film that went to zero there would decouple the metal in the one regime the
+   * feature exists for. */
+  (function () {
+    var full = C.wallFilm(1, 0), half = C.wallFilm(0.5, 0), dead = C.wallFilm(0, 0);
+    ckT('the wall film scales with flow^0.8 and FLOORS at natural convection',
+        Math.abs(full - C.WALL_FILM.h_rated_W_m2K) < 1e-9 &&
+        Math.abs(half - C.WALL_FILM.h_rated_W_m2K * Math.pow(0.5, 0.8)) < 1e-9 &&
+        dead === C.WALL_FILM.h_stagnant_W_m2K,
+        full.toFixed(0) + ' / ' + half.toFixed(0) + ' / ' + dead.toFixed(0) +
+        ' W/m2K at flow 1 / 0.5 / 0 — the floor is what keeps the metal coupled on a ' +
+        'natural-circulation cooldown');
+    /* ⚠ AND IT MUST FALL IN STEAM, WHICH THE FLOW HALF ABOVE CANNOT SEE. Leaving the phase term
+     * out was a real defect in this feature's first cut: a dry, superheated core stayed coupled
+     * to 88 t of metal through a LIQUID film, the metal absorbed 1,100 MJ, and an unmitigated
+     * break with no emergency cooling stopped reaching the 10 CFR 50.46 clad limit at all.
+     * BOTH branches need it and they need DIFFERENT factors — forced convection takes the
+     * Dittus-Boelter group ratio (0.5), free convection takes the conductivity ratio (~0.1),
+     * and using the forced one for the floor was the second half of the same defect. */
+    var wetF = C.wallFilm(1, 0), dryF = C.wallFilm(1, 1);
+    var wetS = C.wallFilm(0, 0), dryS = C.wallFilm(0, 1);
+    ckT('...and it FALLS IN STEAM, on both branches and by different factors',
+        Math.abs(dryF / wetF - C.WALL_FILM.vapor_ratio) < 1e-9 &&
+        Math.abs(dryS / wetS - C.WALL_FILM.vapor_ratio_free) < 1e-9 &&
+        C.WALL_FILM.vapor_ratio_free < C.WALL_FILM.vapor_ratio,
+        'forced ' + wetF.toFixed(0) + ' -> ' + dryF.toFixed(0) + ' (x' +
+        C.WALL_FILM.vapor_ratio + ', the Dittus-Boelter group), free ' + wetS.toFixed(0) +
+        ' -> ' + dryS.toFixed(0) + ' (x' + C.WALL_FILM.vapor_ratio_free +
+        ', the conductivity ratio) — one factor for both was worth 1,100 MJ');
+  })();
+  /* A NODE WITH NO WALL MUST BE UNTOUCHED — Layer 2's own fixtures are rigid and dry, and every
+   * check above this section runs on one. If a wall-less node picked up a wall term by default,
+   * all of them would be measuring a different plant than they say. */
+  (function () {
+    var sysD = C.createSystem({ nodes: [{ id: 'd0', V: 2.0, h: 1250 }], P: 15.41 });
+    var r = C.step(sysD, 0.02, {});
+    ckT('a node with NO wall stays rigid and dry — no wall is not a zero wall',
+        sysD.nodes[0].wall === undefined && r.wallHeat_kW === 0, '');
   })();
 
 }
@@ -410,6 +577,38 @@ runSuite(C, rec, false);
 var pass = rec.filter(function (r) { return r.ok; }).length, fail = rec.length - pass;
 
 var MUTATIONS = [
+  /* ---- THE METAL WALL (#574) ---- */
+  ['the wall heat never reaches the fluid (the metal stores heat and nothing comes back)',
+   '      dH[i] += Qw;', '      dH[i] += 0 * Qw;'],
+  ['the wall heat has the wrong SIGN (a hot wall cools its fluid)',
+   '    var Q = G0 * (w.T[0] - T_fluid);', '    var Q = G0 * (T_fluid - w.T[0]);'],
+  ['the lumps are wired in PARALLEL — all of them see the fluid, none sees its neighbour',
+   '      if (i === 0) net -= Q;\n      if (i > 0) net += w.Gc * (w.T[i - 1] - w.T[i]);\n' +
+   '      if (i < w.n - 1) net += w.Gc * (w.T[i + 1] - w.T[i]);',
+   '      net -= Q / w.n;'],
+  ['the outermost lump leaks to ambient (heat leaves the plant through the vessel wall)',
+   '      if (i < w.n - 1) net += w.Gc * (w.T[i + 1] - w.T[i]);',
+   '      if (i < w.n - 1) net += w.Gc * (w.T[i + 1] - w.T[i]);\n' +
+   '      else net += w.Gc * (20 - w.T[i]);'],
+  ['the wall energy is left out of the conservation budget (the layer stops measuring)',
+   '      for (var j = 0; j < w.n; j++) H += w.C * w.T[j];', ''],
+  /* RE-ANCHORED when the film gained its PHASE term (#574) — the same two mutations, on the
+   * lines the phase split moved them to. A third joins them: the phase term is what stops a
+   * dry, superheated core being coupled to 88 t of metal through a LIQUID film, and leaving it
+   * out cost 1,100 MJ of absorbed heat and made a core-melt sequence unreachable. */
+  ['the film loses its natural-convection floor (a stopped loop decouples the metal)',
+   '    return forced > floor ? forced : floor;', '    return forced;'],
+  ['the film stops tracking flow (Dittus-Boelter\'s exponent dropped)',
+   '                 ((1 - v) + v * WALL_FILM.vapor_ratio);',
+   '                 ((1 - v) + v * WALL_FILM.vapor_ratio) * Math.pow(f, -WALL_FILM.dittus_exp);'],
+  ['the film loses its PHASE term (steam coupled to the metal through a LIQUID film)',
+   '    var floor  = WALL_FILM.h_stagnant_W_m2K * ((1 - v) + v * WALL_FILM.vapor_ratio_free);',
+   '    var floor  = WALL_FILM.h_stagnant_W_m2K;'],
+  ['the wall is constructed at a fixed temperature instead of its fluid\'s (every IC rings)',
+   '      if (n.wall) node.wall = buildWall(n.wall, TFH(n.h, spec.P));',
+   '      if (n.wall) node.wall = buildWall(n.wall, 20);'],
+  ['the half-lump of metal in series with the film is dropped (a thick wall responds thin)',
+   '    var G0 = 1 / (1 / hA + w.R_half_KW);', '    var G0 = hA;'],
   ['the root-tracking limit is deleted (a vanished root is ADOPTED as a teleport)',
    'var P_JUMP_MAX = 2.0;',
    'var P_JUMP_MAX = 1e9;'],
@@ -418,6 +617,11 @@ var MUTATIONS = [
    * step the guard had just rejected. Each half is still mutated on its own. */
   ['the both-walls latch is deleted (the near-floor oscillation runs unlatched)',
    '(wallHi > 0 && wallLo > 0)', '(false)'],
+  ['the ceiling persistence latch is deleted (#535 — loss of heat sink is immortal again)',
+   '        sys._ceilHold > CEIL_HOLD_LATCH_S', '        false'],
+  ['the ceiling hold never accumulates (#535 — the counter resets every step)',
+   "    sys._ceilHold = ceilClamped > 0 ? (sys._ceilHold || 0) + dt : 0;",
+   "    sys._ceilHold = 0;"],
   ['the beyond-model latch never fires (#487 — the pre-latch build, which went NaN)',
    '(sol.flooredLow && clampedNodes > 0)', '(false)'],
   /* The latch STAGES the new enthalpies and adopts them only past the guards (#518). Writing
@@ -436,11 +640,29 @@ var MUTATIONS = [
   ['the clamp binds SILENTLY — nothing is reported, so a caller cannot tell it left the range',
    'if (h_new !== h_raw) { clampedNodes++; discardedKJ += (h_raw - h_new) * m_n[i]; }',
    'if (h_new !== h_raw) { discardedKJ += 0; }'],
-  ['the clamp sits OUTSIDE the pressure solve — solve and stored state disagree on density',
-   'for (var k = 0; k < N; k++) s += sys.nodes[k].V * RHO(hClamp(a[k] + v[k] * (P - sys.P)), P);',
-   'for (var k = 0; k < N; k++) s += sys.nodes[k].V * RHO(a[k] + v[k] * (P - sys.P), P);'],
+  /* ⚠ RETIRED at #516 item 9 (2026-08-29), and retired rather than quietly deleted, because the
+   * REASON is the interesting part and it may reverse.
+   *
+   * This mutation moved `hClamp` out of the pressure solve's density sum — the defect whose fix
+   * the check "the STORED enthalpies reproduce that mass" was written for, and which the file's
+   * own comment measures at ~0.5 kg per step and growing. Once Layer 0's ceiling moved from
+   * h_v(1000 degC) to h_v(3000 degC) it stopped being observable at all: MEASURED clean against
+   * mutant, the reconstruction error and the solved pressure agree TO THE LAST DIGIT
+   * (2.832e-6 kg, P 1.7559) across every fixture tried — 1, 3, 10 and 200 steps, drives from
+   * 2e6 to 2e8 kW, and a floor-side cold drive. The clamp normalises each node's stored enthalpy
+   * every step, so the next step's PROJECTION starts at the ceiling and never travels far enough
+   * above it for the in-solve clamp to bind; at the old, much lower ceiling the density
+   * derivative was steep enough that it did.
+   *
+   * THE GUARD STAYS IN THE CODE. It is correct, it is cheap, and it binds again the moment the
+   * ceiling comes down or a node arrives from outside already far out of range. What is retired
+   * is the CLAIM THAT THIS GATE COVERS IT — manufacturing a fixture that separates a
+   * behaviourally-inert mutation would be coverage theatre, and a green blind-spot count that
+   * was earned that way is worth less than an honest note. Restore this entry if TV_EXT_MAX is
+   * ever lowered. */
+  /* ⚠ ANCHOR RE-POINTED at #516 item 9, when the clamp moved to the extension ceiling. */
   ['the envelope ceiling becomes the LIQUID limit (every vapour node pinned far too low)',
-   'var hHi = W.h_v(W.LIMITS.TV_MAX, sys.P);', 'var hHi = W.h_l(W.LIMITS.T_MAX, sys.P);'],
+   'var hHi = W.h_v(W.LIMITS.TV_EXT_MAX, sys.P);', 'var hHi = W.h_l(W.LIMITS.T_MAX, sys.P);'],
   ['energy check fooled: drop the flow-work term from U',
    'return H - sys.P * 1000 * sys.V_total;', 'return H;'],
   ['donor-cell upwinding reversed (front smears backwards)',

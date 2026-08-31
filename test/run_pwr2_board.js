@@ -102,7 +102,13 @@ function mkWorld() {
   function tick(n) { for (var i = 0; i < (n || 1); i++) snap = svc.tick(); return snap; }
   tick(10);                                       /* 10 s at 10x — the settled IC needs no more */
   RD.PwrBoard = { lastSnapshot: function () { return snap; } };
-  RD.PwrBoardDriver.onMount(global.document, { cmd: cmd, units: function (u) { return u; } }, {});
+  /* `protection` is the RUNNING plant's config (#556) — the same accessor ui/app.js passes at
+   * mount. Without it the board falls back on RD.PWR_CONTROL.protection, the retired plant's
+   * table captured at script load, and the pressurizer tile's alarm edges are 8 points out. */
+  RD.PwrBoardDriver.onMount(global.document, {
+    cmd: cmd, units: function (u) { return u; },
+    protection: function () { return svc.layer && svc.layer.config; }
+  }, {});
   return { svc: svc, cmd: cmd, tick: tick, log: log, snap: function () { return snap; } };
 }
 
@@ -130,6 +136,425 @@ function runSuite(quietRec) {
   q('power tile shows the authored at-power bands, not the startup window',
     tile && tile.tripHi === 120 && tile.max > 100 && tile.note !== 'TRIP 25%',
     tile && ('tripHi ' + tile.tripHi + ', max ' + tile.max.toFixed(0) + ', note ' + JSON.stringify(tile.note)));
+
+  /* ---- 2b. THE SCALES AND BANDS COME FROM THIS PLANT (#557, #556) -------------------------
+   * Both defects are the board holding its own second copy of a plant constant, and both were
+   * invisible to every gate: nothing cross-checked a rendered gpm against delivered kg/s, and
+   * the only band assertion in this file was on the power tile. */
+  if (!rec) head('DNB / OTdT MARGIN  [the gauge and the trip are ONE equation, #561]');
+  /* The reused pwr instrument layer drew this gauge from the retired plant's fitted DNB surface
+   * (rated delta-T 33.0 degC, margin 8.0 degC, factor 0.60 — the last two UNVERIFIED) while this
+   * plant's trip uses the sourced Ginna Table 15.0-7 coefficients on a 31.1 degC split. MEASURED
+   * before the fix: board overtemperature setpoint 122.91 % against the plant's 132.21 %, and on
+   * a depressurization the tile went RED 356 s before the trip with 13.70 margin points still
+   * standing — while the OTdT ROD STOP annunciator, which reads this same channel, latched 436 s
+   * early. Asserted at the SETPOINT, not the margin: the margin also carries instrument lag, and
+   * a band loose enough to absorb lag would absorb the defect too.
+   *
+   * FIRST in this section, on the plant as mkWorld left it. A SECOND mkWorld() here would have
+   * been the natural way to get a pristine plant and is a trap: onMount rebinds the driver's
+   * single ctxRef, so every later press in the FIRST world routes its command into the second
+   * world's log — measured, it reds the no-orphan sweep with five "silent" buttons that were
+   * working fine. */
+  var rpD = w.svc.engine.eng.rpsReport || {};
+  var sD = w.snap(), otRow = null, opRow = null;
+  (rpD.functions || []).forEach(function (f) {
+    if (f.id === 'ot_delta_t') otRow = f; if (f.id === 'op_delta_t') opRow = f;
+  });
+  /* 2 points of slack, and it is INSTRUMENT LAG, not tolerance: the gauge is fed indicated Tavg
+   * and pressure (HR1) and the trip reads true values, so on a settled plant they differ by the
+   * RTD's residual only. The defect was 9.30 points on the overtemperature setpoint and 7.00 on
+   * the overpower one — both far outside this. */
+  q('the board\'s overtemperature setpoint is the PLANT\'s, not the retired DNB surface',
+    otRow && Math.abs(sD.instruments.otdt_setpoint - otRow.setpoint * 100) < 2.0,
+    otRow && ('board ' + sD.instruments.otdt_setpoint.toFixed(2) + ' vs trip ' +
+      (otRow.setpoint * 100).toFixed(2)));
+  q('the board\'s overpower setpoint is the PLANT\'s sourced K4, not the retired 108 %',
+    opRow && Math.abs(sD.instruments.opdt_setpoint - opRow.setpoint * 100) < 2.0 &&
+    Math.abs(sD.instruments.opdt_setpoint - 115) < 0.01,
+    opRow && ('board ' + sD.instruments.opdt_setpoint.toFixed(2) + ' vs trip ' +
+      (opRow.setpoint * 100).toFixed(2)));
+  /* And the DENOMINATOR, which is the half a setpoint check cannot see: loop delta-T is
+   * normalized on 31.1 degC here, not the retired 33.0, so the two channels agree in LEVEL too. */
+  q('loop delta-T is normalized on THIS plant\'s rated split (31.1 degC), not the retired 33.0',
+    otRow && Math.abs(sD.instruments.loop_delta_t - otRow.value * 100) < 2.0,
+    otRow && ('board ' + sD.instruments.loop_delta_t.toFixed(2) + ' vs trip ' +
+      (otRow.value * 100).toFixed(2)));
+
+  if (!rec) head('PLANT-PUBLISHED SCALES  [the AFW full scale is this plant\'s, #557]');
+  /* Start ONE pump. A single motor-driven pump is the discriminating fixture: at both pumps
+   * running the indication is 1.0 and any full scale reads its own value back, so the ratio
+   * check would pass against the wrong constant — the vacuous shape #477 records. */
+  w.cmd({ action: 'set_afw', active: true, pump: 'mdafw' });
+  /* THE THROTTLE MUST BE OPENED, AND THE FIXTURE MUST SAY SO (#562). Delivery stopped being a
+   * function of pump state alone the day the flow control valves landed: the `afw_level`
+   * channel ships engaged and holds the valve SHUT above its band, so at power this check saw
+   * a board correctly rendering 0.0 gpm against an expectation of 86.20 and reddened. That is
+   * the fixture being stale, not the board. Take the channel to MANUAL and open the valve so
+   * there is a flow to scale at all — a zero indication would make the ratio vacuous. */
+  w.cmd({ action: 'set_auto_channel', channel_id: 'afw_level', engaged: false });
+  w.cmd({ action: 'set_afw_flow', pct: 100 });
+  w.tick(30);
+  var sAfw = w.snap();
+  var GPM_PER_KGS = 264.172 * 60 / 1000;         /* rho 1000 — pwr2_afw's own convention */
+  var eAfw = w.svc.engine.eng;
+  /* READ THE PLANT'S OWN DELIVERED FLOW, do not re-derive it. The old form summed the RATED
+   * flows of whichever pumps were running — a second copy of the delivery law, which went
+   * wrong the moment the law gained a throttle term. That is the same class of defect #557 is
+   * about, in the check rather than the board. */
+  var trueKgs = (sAfw.true_state.afw_flow_normalized || 0) *
+                (RD.pwr2.afw.mdafwRatedKgs() + RD.pwr2.afw.tdafwRatedKgs());
+  var trueGpm = trueKgs * GPM_PER_KGS;
+  /* ...and the fixture still has to be DISCRIMINATING: one pump only, so the indication is
+   * 0.333 rather than 1.0 and a wrong full scale cannot read its own value back (#477). */
+  q('the AFW fixture is discriminating — ONE pump, valve open, so the indication is not 1.0',
+    Math.abs((sAfw.true_state.afw_flow_normalized || 0) - 1 / 3) < 0.02,
+    'afw_flow_normalized ' + (sAfw.true_state.afw_flow_normalized || 0).toFixed(4));
+  var rrAfw = D.valueFor({ id: 'imrmstovyli' }, sAfw);
+  var shownGpm = rrAfw ? parseFloat(String(rrAfw.text).replace(/[^0-9.\-]/g, '')) : NaN;
+  q('AUX FEED WATER FLOW renders the flow the plant DELIVERS, not the retired plant\'s scale',
+    isFinite(shownGpm) && trueGpm > 0 && Math.abs(shownGpm / trueGpm - 1) < 0.05,
+    'board ' + (isFinite(shownGpm) ? shownGpm.toFixed(1) : '??') + ' gpm vs true ' +
+    trueGpm.toFixed(2) + ' gpm (' + trueKgs.toFixed(4) + ' kg/s) = ' +
+    (shownGpm / trueGpm).toFixed(3) + 'x');
+  q('the plant publishes its own AFW full scale, and it is the sourced rating',
+    Math.abs((sAfw.control_state.afw_flow_gpm_full || 0) - RD.pwr2.afw.ratedGpm()) < 1e-9 &&
+    Math.abs(RD.pwr2.afw.ratedGpm() - 86.197) < 0.01,
+    'control_state.afw_flow_gpm_full = ' + sAfw.control_state.afw_flow_gpm_full);
+  w.cmd({ action: 'set_afw', active: false });
+  w.cmd({ action: 'set_auto_channel', channel_id: 'afw_level', engaged: true });
+  w.tick(5);
+
+  if (!rec) head('PZR LEVEL TILE  [the trip line is THIS plant\'s, #556]');
+  /* AT POWER the at-power permissive P-7 is met, so the 87 % high-level scram is armed and the
+   * tile must draw its red edge there — not at the retired table's 100, which put the measured
+   * 87.7 % scram inside an AMBER band with 12.3 points of apparent headroom. */
+  var pz = D.compProps({ id: 'ims2immon9z' }, w.snap());
+  var setp = ((w.snap().rps_state.trip_setpoints || [])[0] || {}).setpoint;
+  q('the tile arms at the ENGINE-carried high-level setpoint (87 %), not the static 100',
+    pz && pz.tripHi === 87 && setp === 87,
+    pz && ('tripHi ' + pz.tripHi + ', published setpoint ' + setp));
+  /* THE LOW SIDE IS A REAL ABSENCE, not missing data: the plant says it speaks for pzr_level
+   * and publishes no low row, so the red band the tile used to paint from the meter bottom to
+   * 12 % marks a scram that cannot occur here. */
+  q('no low-level trip band — PWR2 carries no low pressurizer-level scram',
+    pz && pz.tripLo === 0 &&
+    (w.snap().rps_state.trip_setpoint_instruments || []).indexOf('pzr_level') >= 0 &&
+    (w.snap().rps_state.trip_setpoints || []).filter(function (r) {
+      return r.instrument === 'pzr_level' && r.direction === 'low'; }).length === 0,
+    pz && ('tripLo ' + pz.tripLo + ', speaks for ' +
+      JSON.stringify(w.snap().rps_state.trip_setpoint_instruments)));
+  /* The third edge, unfiled and found while fixing the other two: the tile read the retired
+   * table's 25 % low alarm while PWR2's own annunciator fired somewhere else entirely.
+   *
+   * THE CLAIM CHANGED SHAPE AT #500 (2026-08-29) AND IS NOW STRONGER, not merely renumbered.
+   * The old form pinned a NUMBER (17), which any fixed setpoint satisfies by existing; the
+   * alarm is program-relative now, so the edge is `program + setpoint` and the thing worth
+   * asserting is that it MOVES with the program — a claim the old form could not make and
+   * which no static table can pass. */
+  var progAtPower = w.svc.engine.getControlState().pzr_level_program_pct;
+  var lowSp = (w.svc.layer.config.alarms.filter(function (a) {
+    return a.id === 'pzr_level_low'; })[0] || {});
+  q('the low ALARM edge is the running plant\'s PROGRAM plus its own deviation setpoint',
+    pz && lowSp.instrument === 'pzr_level_dev' && progAtPower != null &&
+    Math.abs(pz.alarmLo - (progAtPower + lowSp.setpoint)) < 0.51,
+    pz && ('alarmLo ' + pz.alarmLo + ' vs program ' +
+      (progAtPower == null ? '?' : progAtPower.toFixed(1)) + ' + ' + lowSp.setpoint));
+
+  /* PRIMARY PRESSURE TILE (#576c). run_pwr2_board's only band assertion used to be the power
+   * tile's, so nothing in the tree ever checked this one against a PWR2 plant — and the half
+   * that was wrong is invisible to a source read, because the tile's CENTRE was already live
+   * off `pressure_setpoint` while its two HALF-WIDTHS came from `RD.PWR_CONFIG.pressurizer`
+   * captured at script load, i.e. the retired engine's -30/+50 psi. Right middle, wrong width.
+   *
+   * PWR2's ladder is sourced and asymmetric (pwr2_pressurizer CONTROL, WTSM Fig 10.2-3):
+   * backup heaters in at -25 psi, spray starting at +25. The tile takes those two edges
+   * because each is an actuation the player can see the plant take, which is what the tile's
+   * own comment says NORMAL means. Asserted against the PLANT'S numbers, never retyped —
+   * retyping them here would be the second copy this whole family of defects is made of. */
+  if (!rec) head('PRIMARY PRESSURE TILE  [the control band is THIS plant\'s, #576c]');
+  var pr = D.compProps({ id: 'ims2immsvn6' }, w.snap());
+  var csP = w.svc.engine.getControlState();
+  var PZC = globalThis.RD.pwr2.pressurizer.CONTROL;
+  /* the tile's props arrive in its DISPLAY unit (psia); the control state is engine-internal
+   * SI (MPa). Converting the setpoint once, here, keeps both sides in the tile's currency. */
+  var PSI = 145.0377, spPsi = csP.pressure_setpoint * PSI;
+  q('the NORMAL band is the running plant\'s own ladder, not the retired -30/+50 psi',
+    pr && csP.pressure_band_psi &&
+    Math.abs(pr.normLo - (spPsi + PZC.backup_on_psi)) < 0.1 &&
+    Math.abs(pr.normHi - (spPsi + PZC.spray_start_psi)) < 0.1,
+    pr && ('normLo/normHi ' + pr.normLo.toFixed(1) + '/' + pr.normHi.toFixed(1) +
+      ' psia about a ' + spPsi.toFixed(1) + ' psia setpoint'));
+  /* THE DISCRIMINATOR. Width, not position — the previous check would still pass if the band
+   * were centred right and 30/50 wide, because both edges move with the setpoint. This one
+   * fails on exactly that, and it is the shipped defect's own signature: SYMMETRIC at the
+   * plant's 25 psi, against the retired plant's 30 below / 50 above. */
+  q('and it is SYMMETRIC (+-25 psi), which the retired -30/+50 band is not',
+    pr && Math.abs((spPsi - pr.normLo) - (pr.normHi - spPsi)) < 0.1 &&
+    Math.abs((pr.normHi - pr.normLo) - 50) < 0.2,
+    pr && ('below ' + (spPsi - pr.normLo).toFixed(1) +
+      ' psi, above ' + (pr.normHi - spPsi).toFixed(1) + ' psi'));
+
+  /* ---- 2b. THE CHARGING BOX'S CEILING (#516 item 11) --------------------------------------
+   * The owner read "0-60 gpm" off the board and found the box refused anything over 30. Both
+   * halves came from `RD.PWR_CONFIG.reactivity.charging_max` captured at script load — the
+   * RETIRED engine — while `set_charging_flow` clamps the demand to [0,1] against THIS plant's
+   * 30.14 gpm, so the top half of the range was one indistinguishable value. */
+  if (!rec) head('CHARGING SETPOINT BOX  [the ceiling belongs to THIS plant, #516 item 11]');
+  var CVC = globalThis.RD.pwr2.cvcs.CVCS;
+  var chgMax = CVC.charging_max_gpm();
+  var cb = D.boundsFor({ id: 'imrpq48hn3t', unit: 'gpm' });
+  q('the bound is this plant CHARGING CAPACITY, not the retired 60 gpm',
+    cb && Math.abs(cb[1] - chgMax) <= 1 && cb[0] === 0,
+    cb ? (cb[0] + '-' + cb[1] + ' gpm against CVCS ' + chgMax.toFixed(2)) : 'no bounds');
+  /* THE DISCRIMINATOR: a box that still carried the retired 60 would pass nothing here, and a
+   * box bounded at some OTHER wrong number would pass the check above only if it happened to
+   * sit within 1 gpm of the plant. This one names the defect's own signature — the shipped
+   * ceiling was exactly 2x the plant's. */
+  q('and it is NOT the retired 60 gpm, which is 2x what this plant can charge',
+    cb && cb[1] < 45,
+    cb ? ('max ' + cb[1] + ' gpm; retired board bound was 60') : 'no bounds');
+  /* The CAPTION is the half the owner actually read. Its authored label is the literal string
+   * "0-60 gpm" in generated board data, so a bound fixed without the caption leaves the lie on
+   * the screen. */
+  var chgHint = D.numberHint({ id: 'imrpq48hn3t', unit: 'gpm', label: '0-60 gpm' });
+  q('the range caption is DERIVED, so it cannot still read the authored "0-60 gpm"',
+    typeof chgHint === 'string' && chgHint.indexOf('60') === -1 &&
+    chgHint.indexOf(String(Math.round(chgMax))) !== -1,
+    'caption "' + chgHint + '"');
+
+  /* ---- 2c. THE SG FEED BOX WALKS (#516 item 1) --------------------------------------------
+   * The owner: the arrows "don't like to change the number". The box read back
+   * `feed_pump_speed_pct` — the DELIVERED feed fraction, behind the feed pump lag — so each
+   * click re-anchored the operator's demand onto a value still trailing the previous click.
+   * Measured on the shipped plant: eight +1 gpm clicks moved the box +0.5 gpm in total.
+   *
+   * THIS DRIVES THE RENDERER'S OWN PATH, numberFor -> onNumber, not the NUMBERS map directly,
+   * so it covers the unit layer and the driver seam the operator actually goes through. */
+  if (!rec) head('SG FEED SETPOINT BOX  [an arrow click must move it one step, #516 item 1]');
+  var fbItem = { id: 'imro8xhy2me', unit: 'gpm' };
+  var fbStart = D.numberFor(fbItem, w.snap());
+  var fbN = 8, fbStep = 1;
+  for (var fbI = 0; fbI < fbN; fbI++) {
+    D.onNumber(fbItem, D.numberFor(fbItem, w.snap()) + fbStep);
+    w.tick(1);
+  }
+  var fbEnd = D.numberFor(fbItem, w.snap());
+  var fbMoved = fbEnd - fbStart;
+  q('eight +1 gpm arrow clicks move the box +8 gpm, not a fraction of one',
+    fbStart != null && fbEnd != null && Math.abs(fbMoved - fbN * fbStep) < 0.5,
+    'moved ' + fbMoved.toFixed(2) + ' gpm of ' + (fbN * fbStep) + ' asked');
+  /* THE DISCRIMINATOR. A box reading the DELIVERY is not merely slow — it CONVERGES, because
+   * each click's increment is eaten by the lag the previous click has not worked off. The
+   * shipped defect moved 6 % of what was asked; anything reading a lagging channel lands far
+   * below one step per click however long the ride. */
+  q('and the walk is monotone per click (a delivery-reading box converges instead)',
+    fbStart != null && fbEnd != null && fbMoved > fbN * fbStep * 0.9,
+    'per click ' + (fbMoved / fbN).toFixed(3) + ' gpm (shipped defect: 0.06)');
+
+  /* ---- 2b2. THE CIRCULATING-WATER BOX (#591 item 1) ---------------------------------------
+   * The owner: "changing condenser cooling temp didn't affect anything notably." It could not:
+   * the action sat in the shell's REFUSED registry carrying the RETIRED plant's reason, and the
+   * board drew the box dark off the capability flag that refusal justified — while
+   * pwr2_condenser has computed the vacuum from this temperature since it was written. Two
+   * halves, and the second is the one a fix to the first would have left behind: the box's
+   * BOUNDS came from `RD.PWR_CONFIG.turbine` (35-85 degF), which stops BELOW the C-9 removal
+   * point at 93 degF, so a live box would still have hidden the casualty. */
+  if (!rec) head('CW INLET TEMP BOX  [live, and bounded by THIS plant, #591 item 1]');
+  var cwItem = { id: 'ims3v42jghn', unit: 'F' };
+  var CDm = globalThis.RD.pwr2.condenser;
+  q('the box is LIVE on the plant the site runs (it was dark behind a refusal)',
+    D.numberDisabled(cwItem, w.snap()) === false, '');
+  var cwB = D.boundsFor(cwItem);
+  q('its bounds are the CONDENSER MODULE own band, not the retired config',
+    cwB && Math.abs(cwB[0] - CDm.COND.cw_min_f) < 0.6 &&
+    Math.abs(cwB[1] - CDm.COND.cw_max_f) < 0.6,
+    cwB ? (cwB[0] + '-' + cwB[1] + ' degF against the module ' +
+           CDm.COND.cw_min_f + '-' + CDm.COND.cw_max_f) : 'no bounds');
+  /* THE DISCRIMINATOR. The band happens to be the same 35-85 degF the retired config carries, so
+   * "the numbers match" proves nothing on its own — what is asserted is PROVENANCE: mutate what
+   * the plant publishes and the box must follow it, which a board reading `_TB` at script load
+   * cannot do. The ceiling itself is SOURCED (Ginna TS Bases B 3.7.8, service water OPERABLE at
+   * <= 85 degF) and must not be widened to put the C-9 removal point in reach. */
+  q('...and the bound FOLLOWS the plant, not a config captured at script load',
+    (function () {
+      var snap = w.snap();
+      var moved = { true_state: snap.true_state, instruments: snap.instruments,
+                    control_state: Object.assign({}, snap.control_state,
+                                                 { cw_inlet_range_c: [0, 40] }),
+                    rod_groups: [] };
+      var saved = RD.PwrBoard.lastSnapshot;
+      RD.PwrBoard.lastSnapshot = function () { return moved; };
+      var b2 = D.boundsFor(cwItem);
+      RD.PwrBoard.lastSnapshot = saved;
+      return b2 && Math.abs(b2[1] - 104) < 1.5;   /* 40 degC = 104 degF */
+    })(),
+    'a plant publishing 0-40 degC must move the box to 32-104 degF');
+  q('and the box READS BACK the running plant sink',
+    Math.abs(D.numberFor(cwItem, w.snap()) - 50) < 1.0,
+    'reads ' + D.numberFor(cwItem, w.snap()) + ' degF against the sourced 50 degF design inlet');
+
+  /* ---- 2b3. THE PZR SPRAY BOX READS THE DEMAND (#564 item 1) -------------------------------
+   * `control_state.spray_valve_pct` is DELIVERED flow on this plant, after the stuck-valve
+   * override and the water-solid gate — and the board read it TWICE: as the operator's own
+   * demand box and as the `asked` half of the SPRAY FLOW readout's "demanded and not arriving"
+   * amber, which made that amber an identity that is always zero. Both directions measured on
+   * the shipped plant: a standing 60 % demand read 0.0 in the box once the pressurizer went
+   * solid, and with the operator demanding 0 a stuck valve read back 100 %. */
+  if (!rec) head('PZR SPRAY BOX  [the operator DEMAND, never the delivery, #564 item 1]');
+  function sprayView(demandPct, deliveredPct) {
+    var snap = { true_state: {}, instruments: { pzr_spray_flow: deliveredPct }, control_state: {
+      spray_demand_pct: demandPct, spray_valve_pct: deliveredPct }, rod_groups: [] };
+    return { box: D.numberFor({ id: 'imro929i738', unit: '%' }, snap),
+             read: D.valueFor({ id: 'imsgt6qmdgx' }, snap) };
+  }
+  var svGap = sprayView(60, 0), svStuck = sprayView(0, 100);
+  q('a standing demand SURVIVES the plant refusing it (the box does not erase the player)',
+    Math.abs(svGap.box - 60) < 0.01,
+    'demand 60 %, delivery 0 % -> box reads ' + svGap.box);
+  /* THE STATE THE READOUT EXISTS FOR. Reading the delivery made `asked && v < 20` an identity
+   * that can never be true, so this rendered green — "nothing to see" — in the one case the
+   * indication was built to flag. */
+  q('...and SPRAY FLOW goes AMBER on demanded-and-not-arriving, which was unreachable',
+    svGap.read && svGap.read.color !== '#5aad7c' &&
+    svStuck.read && svGap.read.color !== svStuck.read.color,
+    'gap ' + (svGap.read && svGap.read.color) + ' against healthy ' +
+    (svStuck.read && svStuck.read.color) + ' — the colour constant itself lives in the ' +
+    'wiring; the claim here is that the two states RENDER DIFFERENTLY, which they could not');
+  /* THE OTHER DIRECTION, which the issue did not name: a stuck valve was attributed to the
+   * player, their own box reading a 100 % they never asked for. */
+  q('...and a STUCK valve is not attributed to the operator (box stays at their 0 %)',
+    Math.abs(svStuck.box - 0) < 0.01 &&
+    svStuck.read && svStuck.read.color === '#5aad7c',
+    'demand 0 %, delivery 100 % -> box ' + svStuck.box + ', readout ' +
+    (svStuck.read && svStuck.read.color));
+
+  /* ---- 2b4. THE TRIP BLOCKS PANEL (#564 item 2) --------------------------------------------
+   * Five rows were drawn and this plant publishes three blocks. `lo_flow`, `rcp_breaker` and
+   * `ir_high` had no `trip_block_status` entry, so `ts.can_block === false` was false and all
+   * three rendered ENABLED in every plant state — each press throwing — while two of them name
+   * reactor trips pwr2_protection does not contain at all. And the inverse: `si_trip`, a block
+   * this plant DOES carry and a real operator action on a cooldown, had no row. */
+  if (!rec) head('TRIP BLOCKS PANEL  [the plant publishes, the board offers, #564 item 2]');
+  var tbRows = D.tripBlockRows(w.snap()), tbById = {};
+  tbRows.forEach(function (r) { tbById[r.id] = r; });
+  var tbPub = (w.snap().rps_state && w.snap().rps_state.trip_block_status) || {};
+  q('every row the panel draws that this plant does NOT publish reads N/A and is disabled',
+    tbRows.filter(function (r) { return !r.supported; }).length > 0 &&
+    tbRows.every(function (r) {
+      return Object.prototype.hasOwnProperty.call(tbPub, r.id)
+             ? r.supported === true
+             : (r.supported === false && r.disabled === true && r.text === 'N/A');
+    }),
+    'published ' + Object.keys(tbPub).sort().join(',') + ' — rows ' +
+    tbRows.map(function (r) { return r.id + ':' + r.text; }).join(' '));
+  /* THE DISCRIMINATOR: naming the three by id, so a change that disabled the WHOLE panel — or
+   * one that left the panel alone and merely stopped drawing the rows — cannot pass this. */
+  q('...specifically lo_flow, rcp_breaker and ir_high, the three that could only throw',
+    ['lo_flow', 'rcp_breaker', 'ir_high'].every(function (id) {
+      return tbById[id] && tbById[id].disabled === true && tbById[id].supported === false;
+    }) && tbById.pr_low_setpoint && tbById.pr_low_setpoint.supported === true,
+    '');
+  q('and SI ACTUATION — a block this plant carries — now HAS a row, and it is live',
+    tbById.si_trip && tbById.si_trip.supported === true && tbById.si_trip.text !== 'N/A',
+    tbById.si_trip ? ('si_trip reads "' + tbById.si_trip.text + '", disabled ' +
+                      tbById.si_trip.disabled) : 'NO ROW');
+  /* A LEGACY snapshot — no trip_block_status at all — must say NOTHING about capability, or
+   * every old recording and minimal fixture would render the whole panel dead. */
+  q('a snapshot with no trip_block_status leaves every row live (the legacy shape)',
+    D.tripBlockRows({ true_state: {}, instruments: {}, control_state: {},
+                      rps_state: { trip_blocks: {} } })
+     .every(function (r) { return r.supported === true; }), '');
+
+  /* ---- 2b5. THE ROD STOP AND THE TURBINE RUNBACK ARE VISIBLE (#578) ------------------------
+   * `pwr2_engine.js:1324-1325` has published `ts.rod_stop` and `ts.runback_active` since the
+   * delta-T pair was built, and a tree-wide grep of `ui/diagram/board/` found NEITHER read —
+   * lamps existed only on the dev page. The delta-T margin tile's amber came from comparing the
+   * margin against `RD.PWR_CONFIG` (the RETIRED plant's constant) and was blind to both FLUX
+   * rod stops and to the runback outright. It now reads the plant's own signals.
+   *
+   * THE FIXTURES ARE HAND-BUILT SNAPSHOTS, deliberately: the flux stops are what the derived
+   * colour could never see, and holding the margin HEALTHY in every row is the only way to show
+   * that the word comes from the signal rather than from the arithmetic. */
+  if (!rec) head('ROD STOP / RUNBACK (#578)  [read from the plant, not re-derived]');
+  function dtTile(ts) {
+    return D.valueFor({ id: 'bdDtMargin' },
+      { true_state: ts || {}, instruments: { otdt_margin: 31.2, opdt_margin: 40.0 },
+        control_state: {}, rod_groups: [] });
+  }
+  var dtClear = dtTile({}), dtStop = dtTile({ rod_stop: true }),
+      dtRb = dtTile({ rod_stop: true, runback_active: true });
+  q('a healthy plant with a wide margin reads NORMAL',
+    dtClear && dtClear.color === '#5aad7c',
+    dtClear ? ('"' + dtClear.text + '" ' + dtClear.color) : 'no tile');
+  /* THE DISCRIMINATOR, and the whole point: the margin is 31.2 % — nowhere near the 3 % rod-stop
+   * line — in EVERY row here. A tile that still derives the state from the margin cannot tell
+   * these three snapshots apart, which is exactly how both FLUX rod stops (which have no
+   * delta-T margin at all) were invisible on this board. */
+  q('a standing ROD STOP lights it with the delta-T margin wide open (31.2 %)',
+    dtStop && dtStop.color !== dtClear.color,
+    dtStop ? ('"' + dtStop.text + '" ' + dtStop.color) : 'no tile');
+  q('...and so does a RUNBACK on its own signal',
+    dtRb && dtRb.color === dtStop.color,
+    dtRb ? ('"' + dtRb.text + '" ' + dtRb.color) : 'no tile');
+  /* The margin NUMBER is untouched: it is what the player acts on, and this change is a colour
+   * source, not a re-authoring of the readout. */
+  q('...and the margin number itself is unchanged in every state',
+    dtStop && /31\.2/.test(dtStop.text) && dtRb && /31\.2/.test(dtRb.text) &&
+    dtClear && /31\.2/.test(dtClear.text), '');
+
+  /* ---- 2d. THE VESSEL DRAWS A LEVEL, NOT A MASS FRACTION (#516 item 6) ----------------------
+   * `core_inventory_pct` is `M_total / M_nominal` RCS-wide, and early in a blowdown the mass
+   * collapses because the water FLASHES while the column does not fall anything like as fast.
+   * Measured on a 20 cm2 break with injection secured: at 90 s the mass fraction read 17.3 %
+   * against a core 69 % uncovered, and by 630 s it read 0.74 % — an essentially dry vessel —
+   * while the plant said 9 % of the core was still covered. */
+  if (!rec) head('REACTOR VESSEL LEVEL  [the art is fed a LEVEL, not an inventory, #516 item 6]');
+  function vesselInv(unc, hlv, massPct) {
+    return D.compProps({ id: 'reactorVessel' },
+      { true_state: { core_uncovered_frac: unc, primary_void_fraction: hlv,
+                      core_inventory_pct: massPct, core_void_fraction: 0 },
+        instruments: {}, control_state: {}, rod_groups: [] }).coreInv;
+  }
+  var vFull = vesselInv(0, 0, 100), vHalf = vesselInv(0.5, 1, 0.5), vDry = vesselInv(1, 1, 0.5);
+  q('a covered core with a full upper plenum draws a FULL vessel',
+    Math.abs(vFull - 100) < 0.01, 'coreInv ' + vFull);
+  /* THE DISCRIMINATOR: all three of these carry the SAME `core_inventory_pct`, so a vessel still
+   * reading the mass fraction returns one identical number for a covered core and a dry one. */
+  q('...and uncovery MOVES it while the RCS mass fraction is held constant — the old wiring ' +
+    'returned the same number for a covered core and a dry one',
+    vHalf > vDry && vDry < 1 && Math.abs(vHalf - 25) < 0.01,
+    'half-uncovered ' + vHalf + ', fully uncovered ' + vDry + ', both at mass fraction 0.5');
+
+  /* ---- 2e. THE PIPES SAY WHAT IS IN THEM (#516 item 7) --------------------------------------
+   * The primary runs declared `contents: 'water'` unconditionally, so the board drew liquid
+   * coolant through a voided loop — and temperature could not say otherwise, because once the
+   * loop saturates BOTH legs sit at T_sat(P). That equality is CORRECT physics (measured: thot
+   * and tcold equal to the decimal through a whole loss-of-coolant accident, legs differing by
+   * 0.35 in quality); it is the reason the phase has to come from the void instead. */
+  if (!rec) head('PRIMARY PIPE CONTENTS  [a voided loop must not draw as water, #516 item 7]');
+  /* ⚠ BEHAVIOURAL, NOT A SOURCE SCAN. A first draft grepped the wiring for `legContents` and
+   * `cold_leg_void_fraction`, which is the hollow shape the standing trap list names: a source
+   * scan cannot tell you the rule is REACHED. `ims2kt7fu64` is the hot leg at the surge-line
+   * branch and takes its contents from the hot-leg void; the plant end is asserted separately
+   * below, because a rule keyed on a field nothing publishes is a rule that never fires. */
+  function hotLegContents(v) {
+    return D.compProps({ id: 'ims2kt7fu64' },
+      { true_state: { primary_void_fraction: v }, instruments: {}, control_state: {},
+        loop_flow: {} }).contents;
+  }
+  var cWet = hotLegContents(0.0), cVoid = hotLegContents(0.95);
+  q('a water-solid loop draws WATER and a voided one draws STEAM — the run says what is in it',
+    cWet === 'water' && cVoid === 'steam',
+    'void 0.00 -> "' + cWet + '", void 0.95 -> "' + cVoid + '"');
+  /* THE DISCRIMINATOR is the plant end: once the loop saturates, TEMPERATURE cannot separate the
+   * legs (both sit at T_sat by definition), so the board needs a per-leg void — and the cold leg
+   * published none. A rule keyed on a field nothing emits never fires. */
+  var tsV = w.svc.engine.getTrueState();
+  q('...and the plant publishes a COLD-leg void, which it did not before — the hot leg had one ' +
+    'and the cold leg did not',
+    typeof tsV.cold_leg_void_fraction === 'number' && isFinite(tsV.cold_leg_void_fraction),
+    'cold_leg_void_fraction ' + tsV.cold_leg_void_fraction);
 
   /* ---- 3. the payload fixes, through the whole stack -------------------------------------- */
   if (!rec) head('ROUND TRIPS  [the #506.1 payload fixes land through service+kernel+shell]');
@@ -188,7 +613,28 @@ function runSuite(quietRec) {
   var LOCAL = { imrsk4xz2dm: 1, imrpk8169ds: 1, imrpk8grvcz: 1, imrpk8kjsjs: 1,
                 bdOneOverM: 1 /* opens the 1/M plot window */ };
   var buttons = items.filter(function (it) { return it.kind === 'button'; });
-  var orphans = [], disabled = 0, momentary = 0, local = 0, unreasoned = [];
+  var orphans = [], disabled = 0, momentary = 0, local = 0, unreasoned = [], refused = [];
+  var alwaysThrows = [];
+  var SH_REFUSED = (globalThis.RD.pwr2.shell && globalThis.RD.pwr2.shell.REFUSED) || {};
+  /* CONDITIONAL REFUSALS — a press that refuses HERE, at hot full power, but works in a state the
+   * player can reach. Each entry names the condition, because an entry without one is indis-
+   * tinguishable from a control that can never work, which is the defect this list exists beside. */
+  var CONDITIONAL = {
+    ims3wg27iif: 'RHR ALIGN — the sourced 425 psig suction-valve permissive; works on a cooldown',
+    ims3xfeye1q: 'RHR ISOLATE — the mirror of the above',
+    imro8ktzs3u: 'TURBINE LATCH — refuses while any of the six trip conditions stands (#551)',
+    imrmssoa137: 'AFW STOP — refuses inside the sourced actuation reset window / under a standing SI',
+    /* #545. The reactor trip breakers are in the supply line to the control rod drive
+     * mechanisms, so a LATCHED trip is rod drive power removed — both banks, both directions
+     * [sourced, Ginna TS Bases B 3.3.1 ML20339A221]. Reset the RPS and both work again, which
+     * is the state the player reaches on every post-trip recovery. Only the SHUTDOWN pair is
+     * listed: the control bank's WITHDRAW/INSERT are `hold` buttons and this sweep classes
+     * them momentary, so it never presses them. */
+    imrpnyaxsb3: 'SHUTDOWN WITHDRAW — refuses while the reactor trip is LATCHED; works once the ' +
+                 'RPS is reset (#545)',
+    imrpnyf37ju: 'SHUTDOWN INSERT — the mirror of the above; the breakers take power off the ' +
+                 'drive in BOTH directions (#545)'
+  };
   buttons.forEach(function (it) {
     if (LOCAL[it.id]) { local++; return; }
     if (D.buttonDisabled(it, w.snap())) { disabled++; return; }
@@ -202,6 +648,30 @@ function runSuite(quietRec) {
       if (r && (r.type === 'error' || r.type === 'blocked') && !r.message) {
         unreasoned.push(it.id + ':' + b.action);
       }
+      /* A CONTROL THAT CAN ONLY THROW IS NOT A LIVE CONTROL (#567). This sweep used to accept
+       * a press as acknowledged when the result was ok / blocked / ERROR WITH A MESSAGE, on the
+       * reasoning that the app surfaces all three since #505 — and a button whose action is in
+       * PWR2's REFUSED registry satisfies that third clause with developer jargon. Five did:
+       * Grid MANUAL (twice per press), Grid FOLLOW, the SR detector toggle, the condenser CW
+       * temp box and the ADV setpoint box. The sweep was doing what it said; what it said was
+       * too weak for this class, which is the hollow-check pattern in the GATE rather than the
+       * plant. A REFUSED action is fine — the plant is right to refuse it — but the control
+       * that sends it must be DARK, and this loop only reaches enabled buttons. */
+      if (SH_REFUSED[b.action] !== undefined) refused.push(it.id + ':' + b.action);
+      /* ...AND THE REGISTRY IS NOT THE ONLY PLACE A REFUSAL COMES FROM (#570). The check above
+       * asks whether the ACTION is in REFUSED; `set_steam_dump` is MAPPED and raises its refusal
+       * INSIDE the handler for `mode:'open'`, so the STEAM DUMP OPEN button — live on the board —
+       * could only ever throw and neither this sweep nor run_pwr2_kernel band 4 could see it. It
+       * was found by a round-trip prototype, not by either gate that exists for the class.
+       *
+       * So: an enabled button that ERRORS is dead unless its refusal is CONDITIONAL — true now,
+       * false in a state the player can reach. That distinction cannot be measured cheaply here
+       * (it would mean driving the plant to each permissive), so it is DECLARED, with the
+       * condition named. An entry with no condition is a control that can never work. */
+      if (r && r.type === 'error') {
+        var why = CONDITIONAL[it.id];
+        if (!why) alwaysThrows.push(it.id + ':' + b.action);
+      }
     });
     w.tick(1);
   });
@@ -210,6 +680,13 @@ function runSuite(quietRec) {
     orphans.length === 0, orphans.slice(0, 5).join(', ') || 'no silent presses');
   q('every refused/errored press carries a MESSAGE the scanner bar can show',
     unreasoned.length === 0, unreasoned.slice(0, 5).join(', ') || 'all reasoned');
+  q('no ENABLED button sends an action in the PWR2 REFUSED registry — a control that can only ' +
+    'throw is a dead button wearing an error message (#567)',
+    refused.length === 0, refused.slice(0, 6).join(', ') || 'no enabled button can only throw');
+  q('...and no ENABLED button THROWS from inside a MAPPED handler either, unless its refusal is ' +
+    'declared CONDITIONAL with the condition named (#570)',
+    alwaysThrows.length === 0,
+    alwaysThrows.slice(0, 6).join(', ') || 'every refusing button is conditional and says so');
   /* #507 waves 1-2 re-enabled the boron panel (a real channel now) and RHR ALIGN/ISOLATE
    * (a real align command) — the deliberate set is now HPI AUTO, FOLLOW, ROD AUTO */
   q('the disables are the deliberate set, not everything and not nothing',
@@ -337,11 +814,43 @@ function runSuite(quietRec) {
     rMfw && rMfw.type === 'error' && /MFW RESTORE BLOCKED/.test(rMfw.message || ''),
     String(rMfw && rMfw.message).slice(0, 70));
 
-  /* reset under a STANDING signal is accepted and re-latches — not refused, not a wedge */
+  /* RESET UNDER A STANDING SIGNAL — REWRITTEN AT #571, and the original check's concern is
+   * KEPT rather than dropped. It read "accepted and the protection RE-LATCHES within 3 s —
+   * not refused, not a wedge", and the second half of that is the real requirement: a reset
+   * that can never be satisfied is the #509 defect class, a button with no way out. The first
+   * half was PINNING THE DEFECT. `control_kernel.rpsResetBlock` refuses against a live trip
+   * signal by iterating `config.trips`, which PWR2 hands over EMPTY (§98), so the refusal
+   * could never fire — and `Manuals/03` §3.5.1 documented it as one of TWO live permissives
+   * with its own board caption. What the operator actually got was an accepted reset that
+   * undid itself one 0.1 s protection step later: the SCRAMMED lamp blinking, and nothing
+   * saying why.
+   *
+   * So the claim splits in two, and BOTH have to hold. Note that the pair fails on the old
+   * build for the right reason — the refusal check reds because the reset was accepted — so
+   * this is a strengthening, not a refit of the test to the change (HR10). */
   var rRe = w3.cmd({ action: 'reset_rps' }); w3.tick(3);
-  q('reset under a standing LOCA is accepted and the protection RE-LATCHES within 3 s',
-    (rRe == null || !rRe.type) && w3.snap().rps_state.scrammed === true && e3.pt.si === true,
-    'resp ' + JSON.stringify(rRe) + ', scrammed ' + w3.snap().rps_state.scrammed);
+  q('#571: reset under a standing LOCA is REFUSED by name — the caption the board has had ' +
+    'wired since #75 finally has a reason behind it',
+    !!rRe && rRe.type === 'blocked' && rRe.reason === 'TRIP_SIGNAL_PRESENT' &&
+    w3.snap().rps_state.scrammed === true && e3.pt.si === true,
+    'resp ' + JSON.stringify(rRe && rRe.reason) + ', scrammed ' + w3.snap().rps_state.scrammed);
+  q('...and the board can say so BEFORE the press — rps_state.reset_block carries the reason ' +
+    'the SCRAM tile\'s caption maps to "TRIP SIGNAL STANDING"',
+    !!(w3.snap().rps_state.reset_block &&
+       w3.snap().rps_state.reset_block.reason === 'TRIP_SIGNAL_PRESENT') &&
+    w3.snap().rps_state.reset_permitted === false,
+    'reset_block ' + JSON.stringify((w3.snap().rps_state.reset_block || {}).reason));
+  /* THE ORIGINAL CHECK'S OWN CONCERN, kept and now actually asserted rather than implied: it
+   * must not be a WEDGE. The way out is the sourced cooldown action — block the low-pressure
+   * reactor trip inside P-11 — and it works because the permissive reads each channel the way
+   * the protection system does, gates included. A refusal with no reachable exit would be the
+   * dead-button class this whole cluster (#503/#506/#509/#558) exists to kill. */
+  w3.cmd({ action: 'set_trip_block', trip_id: 'lo_press', blocked: true }); w3.tick(2);
+  var rRe2 = w3.cmd({ action: 'reset_rps' }); w3.tick(3);
+  q('...and it is NOT A WEDGE: blocking the low-pressure trip (P-11) releases the permissive ' +
+    'and the same press then takes',
+    (rRe2 == null || !rRe2.type) && w3.snap().rps_state.scrammed === false,
+    'resp ' + JSON.stringify(rRe2) + ', scrammed ' + w3.snap().rps_state.scrammed);
 
   /* items 1/5 recovery: manual scram -> blocked during the drop -> accepted at the seat */
   var w4 = mkWorld();
@@ -388,7 +897,6 @@ console.log('\nPWR2 x THE BOARD DRIVER — the #506 seams, pinned headless');
 runSuite(null);
 
 /* ---- injection self-test ------------------------------------------------------------------ */
-console.log('\ninjection self-test (7 mutations):');
 var WSRC = fs.readFileSync(WIRING_PATH, 'utf8').replace(/\r\n/g, '\n');
 var SHPATH = path.join(SRC, 'pwr2_shell.js');
 var SHSRC = fs.readFileSync(SHPATH, 'utf8').replace(/\r\n/g, '\n');
@@ -407,6 +915,76 @@ var MUTS = [
   ['the kernel merge is severed (the board reads an RPS with no block surface)', KPATH, KSRC,
    '      if (engTB && engTB.trip_block_status) Object.assign(status, engTB.trip_block_status);',
    ''],
+  /* #557: the board goes back to holding the retired plant's AFW full scale as a literal —
+   * the exact shipped defect, 213 gpm rendered against 28.8 gpm delivered */
+  ['the AFW full scale is a board literal again (7.4x the flow the plant delivers)', WIRING_PATH, WSRC,
+   '(CS(s).afw_flow_gpm_full || GPM_AFW)',
+   'GPM_AFW'],
+  /* #556: the tile's live-arming branch is severed, so it falls back on the retired plant's
+   * static table — red edge at 100 for an 87 % scram, red band to 12 % for no scram at all */
+  ['the pzr level tile loses its live-arming path (static bands: 100 / 12 / 25)', WIRING_PATH, WSRC,
+   "           : (id === 'ims2immon9z' ? pzrLevelBand(s) : null)));",
+   '           : null));'],
+  /* #500, the ENGINE end: the plant stops publishing its live level program, so the tile has
+   * nothing to hang the deviation edge on. Distinct from the branch mutation above and from
+   * the setpoint mutation below, for the same reason those two are distinct — this one proves
+   * the edge is computed from the PLANT'S program and not from a number the board happens to
+   * agree with. Falls to the meter bottom, which is the honest failure. */
+  ['the plant stops publishing its live level program (the deviation edge has no anchor)',
+   SHPATH, SHSRC,
+   /* ⚠ the field is killed OUTRIGHT, not gated. A first attempt falsified the ternary's
+    * condition — and went BLIND, because the else-branch is the working `PZ.levelProgram`
+    * fallback, so "breaking" it just selected the equivalent path. A mutation has to remove
+    * the CAPABILITY, not pick between two spellings of it. */
+   '      pzr_level_program_pct: (e._pzr && e._pzr.level_program_pct !== undefined)\n                             ? e._pzr.level_program_pct : 100 * PZ.levelProgram(ts.tavg_c),',
+   '      pzr_level_program_pct: undefined,'],
+  /* #576c: the plant stops publishing its pressure control band, so the primary-pressure tile
+   * falls back on the RETIRED engine's -30/+50 psi against PWR2's sourced -25/+25 — the exact
+   * shipped defect, and invisible to a source read because the fallback IS the old code. */
+  ['the plant stops publishing its pressure control band (the tile reverts to -30/+50 psi)',
+   SHPATH, SHSRC,
+   '      pressure_band_psi: [PZ.CONTROL.backup_on_psi, PZ.CONTROL.spray_start_psi],',
+   '      pressure_band_psi: undefined,'],
+  /* #516 item 11: the plant stops publishing its charging ceiling, so the setpoint box falls
+   * back on the RETIRED engine's 60 gpm against PWR2's 30.14 — the exact shipped defect, and
+   * invisible to a source read for the same reason #576c was: the fallback IS the old code. */
+  ['the plant stops publishing its charging ceiling (the box reverts to 60 gpm)',
+   SHPATH, SHSRC,
+   '      charging_max_gpm: RD.cvcs.CVCS.charging_max_gpm(),',
+   '      charging_max_gpm: undefined,'],
+  /* #516 item 1: the SG feed setpoint box goes back to reading the DELIVERED feed fraction —
+   * the shipped defect exactly. Not a severed publication but a swapped READ, because that is
+   * the shape the defect had: `feed_demand_pct` can be published perfectly and the box still
+   * ignore it. Falls to the old channel, which is the working fallback, so a source read sees
+   * nothing wrong — the arrows just stop walking. */
+  ['the SG feed box reads DELIVERED flow again (the arrows stop walking)', WIRING_PATH, WSRC,
+   "var d = c.feed_demand_pct; return ((d != null && isFinite(d)) ? d : (c.feed_pump_speed_pct || 0)) * GPM_FEED_PER_PCT;",
+   'return (c.feed_pump_speed_pct || 0) * GPM_FEED_PER_PCT;'],
+  /* #516 item 6: the vessel goes back to reading the RCS-wide mass fraction, so its water level
+   * is a mass number and stops tracking uncovery — the shipped defect. */
+  ['the vessel reads the RCS mass fraction again (its level stops tracking uncovery)',
+   WIRING_PATH, WSRC,
+   '          if (unc == null) return t.core_inventory_pct != null ? t.core_inventory_pct : 100;',
+   '          return t.core_inventory_pct != null ? t.core_inventory_pct : 100;'],
+  /* #516 item 7: the primary runs go back to declaring liquid water unconditionally, so a
+   * voided loop draws as coolant — the shipped defect. Not a severed publication but a swapped
+   * READ, the #516-item-1 shape: the void can be published perfectly and the pipe ignore it. */
+  ['the primary pipes declare WATER again (a voided loop draws as coolant)', WIRING_PATH, WSRC,
+   "  function legContents(v) { return (v != null && isFinite(v) && v > 0.5) ? 'steam' : 'water'; }",
+   "  function legContents(v) { return 'water'; }"],
+  /* #561: the plant stops handing its own delta-T equation to the reused instrument layer, so
+   * the gauge falls back on the retired plant's fitted DNB surface — the shipped defect */
+  ['the plant stops publishing its delta-T setpoint form (the gauge reverts to the DNB surface)',
+   SHPATH, SHSRC,
+   '    ex.otdt_form = {',
+   '    ex.otdt_form = ex.otdt_form || null; if (0) ex.otdt_form = {'],
+  /* #556, the engine end: the plant stops publishing its indication setpoints. Distinct from
+   * the branch mutation above — it proves the board is reading the PLANT and not a constant it
+   * happens to agree with, which is the failure a single mutation here would miss. */
+  ['the plant stops publishing its indication setpoints (the board has nothing to arm on)',
+   SHPATH, SHSRC,
+   "      if (f.id !== 'hi_pzr_level') return;",
+   '      return;'],
   /* RE-ANCHORED at #512 (the guard moved into eccsStop/afwUnlatch): the payload misread
    * hits every stop's `on` line at once — same defect class, same red (the round trip) */
   ['the stop payload is misread again (STOP starts the pump)', SHPATH, SHSRC,
@@ -440,7 +1018,43 @@ var MUTS = [
   ['the securing click stops resetting (stop accepted, pump re-asserted next tick)', SHPATH, SHSRC,
    "      EN.command(e, 'reset_si', true);   /* permissive met: reset + secure, one click */",
    '']
+,
+  /* #591 item 1, the BOARD end: the box goes back to the retired config's 35-85 degF band.
+   * Deliberately NOT a severed publication — the box stays live and the sink still moves, so
+   * every other check here is happy; what is lost is the ten degrees containing the C-9
+   * removal point, which is exactly how a fix to the refusal alone would have shipped. */
+  ['the CW box takes the retired 35-85 degF band (the turbine trip falls outside it)',
+   WIRING_PATH, WSRC,
+   "    var r = CS(s || {}).cw_inlet_range_c;",
+   '    var r = null; if (0) r = CS(s || {}).cw_inlet_range_c;'],
+  /* #591 item 1, the DARKENING end: the board reverts to the #567 capability flag, which the
+   * shell no longer publishes — so `=== true` is false and the box would stay live. It must
+   * therefore be mutated to the shape that DOES darken it, or the mutation proves nothing. */
+  ['the CW box is darkened again (the control the owner found inert)', WIRING_PATH, WSRC,
+   "      if (item.id === 'ims3v42jghn') return CS(s).cw_inlet_temp_c === undefined;",
+   "      if (item.id === 'ims3v42jghn') return true;"],
+  /* #564 item 1: the spray box reads DELIVERED flow again. A swapped READ, not a severed
+   * publication — the same shape as the SG feed mutation above, and the reason the defect was
+   * invisible to a source scan: the fallback IS the old code. */
+  ['the PZR spray box reads DELIVERED flow again (the demand is erased from the player)',
+   WIRING_PATH, WSRC,
+   "    var d = CS(s).spray_demand_pct;\n    return (d != null && isFinite(d)) ? d : CS(s).spray_valve_pct;",
+   '    return CS(s).spray_valve_pct;'],
+  /* #564 item 2: presence stops gating the rows, so the three the plant does not publish go
+   * live again — the shipped defect, three BLOCK buttons that could only throw. */
+  ['the trip rows stop asking whether the plant carries them (three inert BLOCKs return)',
+   WIRING_PATH, WSRC,
+   "    return Object.prototype.hasOwnProperty.call(st, id);",
+   '    return true;'],
+  /* #578: the delta-T tile goes back to DERIVING the stop from the margin, so both flux rod
+   * stops and the runback are invisible again — the shipped state. */
+  ['the delta-T tile derives the rod stop from the margin again (the flux stops go dark)',
+   WIRING_PATH, WSRC,
+   "    var held = t.rod_stop === true || t.runback_active === true;",
+   '    var held = false;']
 ];
+/* Counted, not written down: the number went stale the first time a mutation was added. */
+console.log('\ninjection self-test (' + MUTS.length + ' mutations):');
 var blind = 0;
 MUTS.forEach(function (m) {
   var mutated = m[2].replace(m[3], m[4]);

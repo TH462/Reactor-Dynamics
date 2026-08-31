@@ -681,7 +681,14 @@
         { id: 'sg_level', instr: 'sg_level', grp: 'Steam & feed', label: 'SG Level', c: '#806890', get: function (i) { return i.sg_level; }, tru: function (t) { return t.sg_level_pct; }, range: [0, 100], dLo: 12, fmt: function (v) { return v.toFixed(0) + '%'; } },
         { id: 'steam_flow',instr: 'steam_flow', grp: 'Steam & feed', label: 'Steam Flow',c: '#8a9a5a', get: function (i) { return i.steam_flow * 100; }, tru: function (t) { return t.steam_flow_normalized * 100; }, range: [0, 120], fmt: function (v) { return v.toFixed(0) + '%'; } },
         { id: 'fw_flow',  instr: 'fw_flow', grp: 'Steam & feed', label: 'Feed Flow',c: '#4a8a86', get: function (i) { return i.fw_flow * 100; }, tru: function (t) { return t.fw_flow_normalized * 100; }, range: [0, 120], fmt: function (v) { return v.toFixed(0) + '%'; } },
-        { id: 'afw_flow', instr: 'afw_flow', grp: 'Steam & feed', label: 'AFW Flow', c: '#5aa8a0', get: function (i) { return i.afw_flow * 100; }, tru: function (t) { return t.afw_flow_normalized * 100; }, range: [0, 40], fmt: function (v) { return v.toFixed(1) + '%'; } },
+        // AFW Flow. The axis is [0, 120] like its two siblings above, NOT the old [0, 40]
+        // (#557): 40 was sized for the retired engine's ceiling, where AFW normalizes on rated
+        // FEED and full AFW is `afw_flow_frac` 0.15 = 15 % of the axis. PWR2 normalizes on AFW's
+        // OWN rating, so one pump reads 33.3 % and both read 100 % — off the top of a 40 axis,
+        // on the plant the site runs. One profile serves both engines (uiPlantOf folds pwr2 onto
+        // pwr), so the axis has to hold the wider of the two bases; the retired engine simply
+        // draws low on it, which is honest — its AFW really is a sixth of the feed it replaces.
+        { id: 'afw_flow', instr: 'afw_flow', grp: 'Steam & feed', label: 'AFW Flow', c: '#5aa8a0', get: function (i) { return i.afw_flow * 100; }, tru: function (t) { return t.afw_flow_normalized * 100; }, range: [0, 120], fmt: function (v) { return v.toFixed(1) + '%'; } },
         // The SG's own mass balance: steam out (turbine + dump + safeties) minus TOTAL
         // feed (main + AFW). Positive means the level is on its way down, which is the
         // thing a level trace only tells you after it has already happened.
@@ -703,7 +710,7 @@
         stat({ id: 'msiv',      grp: 'Steam & feed', label: 'MSIV Open', c: '#8090a8', ins: 'msiv_open', tru: 'msiv_open', on: 'OPEN', off: 'SHUT', alarm: 'off', hint: 'whether the main steam isolation valve is open.', detail: 'The boundary between the steam generator and everything downstream of it. Shutting it isolates a steam line break outside containment and stops the generator being blown down through it — at the cost of the turbine, the dump valves and the condenser all at once, leaving the atmospheric dump and the code safeties as the only heat removal path.' }),
         stat({ id: 'mfw_iso',   grp: 'Steam & feed', label: 'Main Feed Isolated', c: '#a06868', ins: 'mfw_isolated', on: 'ISOLATED', off: 'no', alarm: 'on', hint: 'whether main feedwater has been isolated from the steam generator.', detail: 'Main feed is isolated automatically on a safety injection and on high steam generator level. It is the right action — cold feed into a depressurizing generator makes things worse — but it means the only water going in is auxiliary feedwater, at a small fraction of the flow, so level will fall for a while and that is expected.' }),
         stat({ id: 'cond_pump', grp: 'Steam & feed', label: 'Condensate Pump', c: '#588880', ins: 'condensate_pump_running', tru: 'condensate_pump_running', on: 'RUN', off: 'stopped', hint: 'whether the condensate pump is running.', detail: 'Condensate is the first stage of the feed path: it takes water out of the condenser hotwell and sends it toward the feed pumps. No condensate means no main feedwater however the feed pumps are lined up, which is why this reading and the feed flow beside it should be read together.' }),
-        stat({ id: 'afw_act',   grp: 'Steam & feed', label: 'AFW Actuated', c: '#5ab0a8', ins: 'afw_active', tru: 'afw_active', on: 'ACTUATED', off: 'no', hint: 'whether the auxiliary feedwater system has been actuated.', detail: 'The signal, not the flow. Auxiliary feedwater is the backup water supply to the steam generators for when main feed is gone, and it actuates automatically on a reactor trip. Actuated with no flow beside it is normal: this plant\'s auxiliary feed is level-controlled and delivers nothing until generator level falls into its band.' }),
+        stat({ id: 'afw_act',   grp: 'Steam & feed', label: 'AFW Actuated', c: '#5ab0a8', ins: 'afw_active', tru: 'afw_active', on: 'ACTUATED', off: 'no', hint: 'whether the auxiliary feedwater system has been actuated.', detail: 'The signal, not the flow. Auxiliary feedwater is the backup water supply to the steam generators for when main feed is gone, and it actuates automatically on a reactor trip. Actuated with no flow beside it is normal: the flow control valves are held shut by the level controller until generator level falls into its band, and they open as it does. Take that controller to MANUAL and the throttle is yours — which is the real job, because unthrottled auxiliary feed overcools the primary.' }),
         stat({ id: 'afw_pump',  grp: 'Steam & feed', label: 'AFW Pump Running', c: '#48908a', ins: 'afw_pump_running', tru: 'afw_pump_running', on: 'RUN', off: 'stopped', hint: 'whether an auxiliary feedwater pump is turning.', detail: 'Distinct from the actuation signal above: this says a pump is actually running. It matters most in a blackout, where the electric pumps are gone and only steam-driven capability remains — the demand can stand while nothing is delivering.' }),
         stat({ id: 'afw_block', grp: 'Steam & feed', label: 'AFW Block Valve', c: '#3a7870', ins: 'afw_block_open', on: 'OPEN', off: 'SHUT', hint: 'whether the auxiliary feedwater block valve is open.', detail: 'The flow path downstream of the pump. A running pump against a shut block valve delivers nothing, and the two readings are separate here precisely so that combination is visible rather than hidden inside one "auxiliary feedwater OK" light.' }),
         stat({ id: 'sg_imbal',  grp: 'Steam & feed', label: 'SG Level Imbalance', c: '#b09068', ins: 'sg_imbalance_active', tru: 'sg_imbalance_active', on: 'ACTIVE', off: 'no', alarm: 'on', hint: 'whether the steam generator level control has gone out of balance.', detail: 'Flags the feed controller failing to hold level against the steam being drawn — the mismatch that precedes both an overfill and a boil-down. Read it against the steam-minus-feed row on the Physics tab, which is the number it is computed from.' }),
@@ -750,7 +757,7 @@
         { id: 'rod_steps',grp: 'Controls', label: 'Control Rod Steps', c: '#5ac0a0', ctl: function (c) { var g = rodGrp(c, 'control_rods'); return g ? g.steps : null; }, range: [0, 912], fmt: function (v) { return v.toFixed(0) + ' st'; }, hint: 'where the control bank is, in steps withdrawn.', detail: 'The operator\'s fast reactivity control, and the only one that acts in seconds. Withdrawing adds reactivity and raises power; inserting does the reverse. Plot it against average coolant temperature and the whole rod-control loop becomes visible — the bank chasing the temperature program rather than power directly.' },
         { id: 'sd_steps', grp: 'Controls', label: 'Shutdown Rod Steps', c: '#3a8070', ctl: function (c) { var g = rodGrp(c, 'shutdown_rods'); return g ? g.steps : null; }, range: [0, 912], fmt: function (v) { return v.toFixed(0) + ' st'; }, hint: 'where the shutdown bank is, in steps withdrawn.', detail: 'The shutdown bank is parked fully out during power operation and exists to be dropped. Its worth is the margin that makes a trip effective, which is why it is withdrawn first during a startup and why an insertion limit on the control bank is enforced separately.' },
         { id: 'heater',   grp: 'Controls', label: 'PZR Heater', c: '#d09040', ctl: function (c) { return c.heater_power_pct; }, range: [0, 100], fmt: function (v) { return v.toFixed(0) + '%'; }, hint: 'how hard the pressurizer heaters are being driven, as a percentage.', detail: 'Heaters are the slow way UP in pressure: they boil water in the pressurizer steam space over minutes, where spray drops pressure in seconds. They also need alternating-current power, so pressure control is asymmetric in a blackout — and a safety injection or a loss of offsite power SHEDS them off the bus until you put them back — you can still spray, but you cannot heat.' },
-        { id: 'spray',    grp: 'Controls', label: 'PZR Spray', c: '#50a8d0', ctl: function (c) { return c.spray_valve_pct; }, range: [0, 100], fmt: function (v) { return v.toFixed(0) + '%'; }, hint: 'how far the pressurizer spray valve has been commanded open.', detail: 'Spray is the fast way DOWN in pressure: cold leg water sprayed into the steam space condenses steam and drops pressure in seconds. It is drawn from the reactor coolant pump discharge, so it needs a running pump to work at all — losing the pumps costs the pressure control you are most likely to want.' },
+        { id: 'spray',    grp: 'Controls', label: 'PZR Spray', c: '#50a8d0', ctl: function (c) { return c.spray_valve_pct; }, range: [0, 100], fmt: function (v) { return v.toFixed(0) + '%'; }, hint: 'how far the pressurizer spray valve has been commanded open.', detail: 'Spray is the fast way DOWN in pressure: cold leg water sprayed into the steam space condenses steam and drops pressure in seconds. It is drawn from the reactor coolant pump discharge, so on a real unit it needs a running pump and a loss of offsite power takes it away — there, you depressurize with the relief valve instead. This simulator keeps the spray working without the pumps, standing in for the auxiliary spray line it has no separate control for; that stand-in is deliberately the weaker half of the trade, giving about half the condensing duty real auxiliary spray would.' },
         { id: 'dump',     grp: 'Controls', label: 'Steam Dump', c: '#a0b850', ctl: function (c) { return c.steam_dump_pct; }, range: [0, 100], fmt: function (v) { return v.toFixed(0) + '%'; }, hint: 'how far the steam dump valves have been commanded open.', detail: 'The turbine bypass: steam routed straight to the condenser instead of the turbine. It is what lets the plant survive a load rejection without tripping, and it only works while the condenser is available. Plot it against steam pressure to see the pressure control loop working.' },
         { id: 'feed_pump',grp: 'Controls', label: 'Feed Pump Speed', c: '#40988a', ctl: function (c) { return c.feed_pump_speed_pct; }, range: [0, 120], fmt: function (v) { return v.toFixed(0) + '%'; }, hint: 'the commanded feed pump speed, as a percentage.', detail: 'The demand behind main feedwater flow. The three-element controller sets it from level, steam flow and feed flow together, which is what lets it anticipate a load change instead of chasing level after the fact. Commanded speed and delivered flow part company whenever the suction side cannot supply it.' },
         // Charging and letdown are INSTRUMENTED (both have flow indications on the CVCS
@@ -2166,7 +2173,10 @@
   function advFailAction(apply) {
     var id = $('advInstr') && $('advInstr').value; if (!id) return;
     if (!apply) {
-      cmd({ action: 'clear_instrument_failure', instrument_id: id });
+      /* the same law on the clear path: a REFUSED clear must not remove the row, or the panel
+       * would report an instrument healed that is still failed */
+      var rc = cmd({ action: 'clear_instrument_failure', instrument_id: id });
+      if (rc && (rc.type === 'error' || rc.type === 'blocked')) return;
       delete advFailed[id]; renderAdvActive(); return;
     }
     var mode = $('advMode').value, m = ADV_MODES[mode];
@@ -2176,7 +2186,15 @@
       if (!isNaN(v)) c.value = v;
       else if (mode !== 'stuck') c.value = m.def;   // stuck: blank = current reading
     }
-    cmd(c);
+    /* THE RESULT DECIDES WHETHER THE ROW IS PAINTED (#564 item 3). This ran `cmd(c)` and then
+     * recorded the failure UNCONDITIONALLY, so a refused injection flashed a command error AND
+     * listed itself as "⚠ Failed: <id> (<mode>)" in the same press — three mutually
+     * contradictory pieces of feedback (an error, a claim of success, and a healthy gauge) from
+     * one click. `cmd()` returns the service's own result shape and has since #505; nothing
+     * here read it. Only a command that was neither refused nor blocked has actually failed an
+     * instrument. */
+    var r = cmd(c);
+    if (r && (r.type === 'error' || r.type === 'blocked')) return;
     advFailed[id] = mode; renderAdvActive();
   }
 
@@ -2434,7 +2452,20 @@
     // evenly.
     var gridT = Math.floor(s.metadata.sim_time / CHART_SAMPLE_SEC) * CHART_SAMPLE_SEC;
     var lastT = chartBuf.length ? chartBuf[chartBuf.length - 1].t : null;
-    if (lastT != null && gridT - lastT < CHART_SAMPLE_SEC - 1e-9) { drawChart(); return; }
+    /* NO NEW ROW → REDRAW ONLY IF SOMETHING ELSE CHANGED (the 2026-08-31 bug report:
+     * 4.7 fps, render 29 ms avg, RENDER-BOUND). drawChart rebuilds the whole SVG via
+     * innerHTML, and this path used to call it on EVERY broadcast — at the 10 Hz normal
+     * cadence with a row landing only each 0.2 s of SIM time, most of those rebuilds were
+     * pixel-identical (all of them at 1× only re-plot the same buffer; profiled: drawChart
+     * was the largest JS consumer and ~40% of a core sat in native style/layout/parse).
+     * chartDrawKey() names every input that can change the picture WITHOUT a new row: the
+     * buffer identity, the window, a new event for the SOE ribbon. Everything else that
+     * moves the chart (cursor, resize, series/settings, rewind) already calls drawChart()
+     * itself, unconditionally — this gate exists on the broadcast path alone. */
+    if (lastT != null && gridT - lastT < CHART_SAMPLE_SEC - 1e-9) {
+      if (chartDrawKey() !== chartDrawnKey) drawChart();
+      return;
+    }
     var one = chartSample(rawIns, s.true_state, s.control_state);
     var sv = one.v, stv = one.tv;
     // NO SEEDED HISTORY. A fresh buffer starts EMPTY and fills from the right — the #237
@@ -4703,7 +4734,22 @@
     return { t0: t0, t1: t1, span: t1 - t0 };
   }
 
+  /* What the broadcast path's redraw gate compares (see the CHART_SAMPLE_SEC gate). Names
+   * every input that can change the drawn chart with NO new row landing: the buffer identity
+   * (a rewind pops rows without adding one), the window, the event count (the SOE ribbon
+   * draws events the instant they arrive, between rows), and rewind-pick state — ENTERING
+   * pick mode redraws through render(latest), not a direct drawChart() call, so without the
+   * flag here the widened plot and its checkpoint marks never drew (caught by
+   * verify_e2e_ui's testRewindPicker: 0 marks after 5 cadence intervals). Deliberately NOT
+   * here: cursor, resize, series/settings, pick EXIT — those paths call drawChart() directly. */
+  var chartDrawnKey = '';
+  function chartDrawKey() {
+    return chartBuf.length + ':' + (chartBuf.length ? chartBuf[chartBuf.length - 1].t : -1) +
+           ':' + ui.window + ':' + (RD.Events ? RD.Events.count() : 0) +
+           ':' + (ui.rewindPick ? 1 : 0);
+  }
   function drawChart() {
+    chartDrawnKey = chartDrawKey();
     var svg = $('chartCanvas'), floats = $('chartFloats'), W = 400, H = 120;
     var active = prof().series.filter(function (s) { return ui.series[s.id]; });
     if (chartBuf.length < 2) {
@@ -5913,7 +5959,12 @@
     // never wired into a diagram, and set_esf_auto now lives on the board's re-arm
     // pushbuttons only — which disable themselves when the running engine declares no such
     // arm, #503. rhr-auto went with #453's RHR arm removal.)
-    'afw-flow-set': function () { cmd({ action: 'set_afw_flow', pct: inputVal('afwFlowSet') }); },
+    /* 'afw-flow-set' REMOVED at #591 item 2. It emitted `set_afw_flow` for an `afwFlowSet`
+     * input that no DOM anywhere contains — a dead handler, which is exactly what #562
+     * found here and answered by BUILDING the board tile that would emit it. The owner has
+     * now removed that tile, so the handler is dead again and goes rather than sitting here
+     * reading as a wire. `set_afw_flow` is still a live command: the `afw_level` automation
+     * channel issues it every evaluation, and scenarios and the instructor can send it. */
     // NIS: SR detector switch (P-6 interlocked) + startup-trip block toggles (P-10 gated)
     'sr-on': function () { cmd({ action: 'set_sr_detector', on: true }); },
     'sr-off': function () { cmd({ action: 'set_sr_detector', on: false }); },
@@ -6359,7 +6410,23 @@
     });
     $('loadFile').addEventListener('change', function (e) {
       var f = e.target.files[0]; if (!f) return; var r = new FileReader();
-      r.onload = function () { try { var st = JSON.parse(r.result); service.loadState(st); afterPlantChange(); diagReset('restore', { engine_key: ui.engineKey }); showToast('State loaded — ' + f.name); } catch (err) { showToast('Not a valid save file: ' + f.name, 'error'); } };
+      /* #553: loadState signals a REFUSAL by RETURNING {type:'error'}, it does not throw —
+       * so discarding the return announced every rejected save as "State loaded". Measured
+       * on a public build: 4 of 5 reject classes lied, including the common one (a save from
+       * the retired engine, whose constructor a published build no longer contains). Same
+       * normalise-a-throw-into-the-service's-own-error-shape idiom as cmd(). */
+      r.onload = function () {
+        var res;
+        try { res = service.loadState(JSON.parse(r.result)); }
+        catch (err) { res = { type: 'error', message: String(err && err.message || err) }; }
+        if (res && res.type === 'error') {
+          showToast('Save not loaded — ' + (res.message || f.name), 'error');
+          return;                            /* no afterPlantChange, no diagReset: nothing moved */
+        }
+        afterPlantChange();
+        diagReset('restore', { engine_key: ui.engineKey });
+        showToast('State loaded — ' + f.name);
+      };
       r.readAsText(f);
     });
     // --- plant-display wiring ---
@@ -6799,7 +6866,10 @@
     // hover; a click on any hinted element also explains it, alongside whatever
     // the click does). See the inspect* helpers below for the two tiers.
     document.body.addEventListener('mouseover', function (e) { inspectAt(e); });
-    document.body.addEventListener('click', function (e) { inspectAt(e); });
+    /* THE CLICK PATH IS FLASH-AWARE (#558) — see inspectAt. A press that raises a refusal
+     * writes it here and this listener, running later in the SAME dispatch, used to
+     * overwrite it with the button's own help text before a single frame was painted. */
+    document.body.addEventListener('click', function (e) { inspectAt(e, true); });
     var sp = $('scannerPanel');
     if (sp) sp.addEventListener('click', function (e) {
       var m = e.target.closest && e.target.closest('[data-scan-doc]');
@@ -6873,7 +6943,34 @@
              sec: el.getAttribute('data-scanner-sec') || null,
              inherited: false };
   }
-  function inspectAt(e) {
+  /* THE FLASH DISPATCH GUARD (#558). A refused press writes its reason with inspectFlash and
+   * the BODY-LEVEL click listener runs later in the SAME event dispatch, resolves the button
+   * under the pointer and overwrites it — the message was written and destroyed synchronously,
+   * so it never reached a frame. MEASURED before the fix: the Scanner DOM sampled every
+   * animation frame for 2.0 s after four refused board presses carried the message in
+   * 0 of 426 frames; at the button-level listener it reads the refusal, and at the body-level
+   * listener, same dispatch, it already reads the button's help text.
+   *
+   * THIS IS THE MECHANISM THAT TURNS EVERY REFUSAL IN THE SIM INTO A DEAD BUTTON — the class
+   * the owner has now found by hand three times (#503, #506, #509) — and #505 was CLOSED on a
+   * fix that is true of cmd() and false of the board, which is the only control surface PWR2
+   * has. The contrast that pins it: the same refusal from a NUMBER BOX, committed with Enter
+   * and therefore no click, renders and still reads 2.0 s later.
+   *
+   * The guard is scoped to the DISPATCH, not to time, and only the CLICK path consults it. A
+   * later hover still clears the flash, which is this block's documented behaviour ("the next
+   * hover clears it") — preserved rather than reinvented. A stamp rather than a boolean so a
+   * flash raised by an EARLIER click cannot suppress a later, unrelated one. */
+  var inspectClickSeq = 0;              /* bumped once per body-level click dispatch */
+  function inspectAt(e, fromClick) {
+    if (fromClick) {
+      /* A flash stamped with the CURRENT count was raised after the previous body click and
+       * therefore by THIS one — the button's own handler runs first, then this listener. It
+       * is the answer to the press, so it stands; a flash from an earlier click does not. */
+      var fresh = !!(inspectCur && inspectCur.flashAt === inspectClickSeq);
+      inspectClickSeq++;
+      if (fresh) return;
+    }
     var res = inspectResolve(e);
     // Persistence (§11): pointing at nothing keeps the last description on screen
     // rather than blanking the block, so it stays readable while you act on it.
@@ -6940,7 +7037,9 @@
   // It goes through the same state as a hover so expanding does not silently
   // replace it with whatever was last inspected, and the next hover clears it.
   function inspectFlash(title, msg) {
-    inspectCur = { key: 'flash:' + msg, title: title, brief: msg, detail: null, inherited: false };
+    /* `flashAt` stamps which click dispatch raised this — inspectAt's guard (#558). */
+    inspectCur = { key: 'flash:' + msg, title: title, brief: msg, detail: null, inherited: false,
+                   flashAt: inspectClickSeq };
     inspectRender();
   }
   /* FULL DESCRIPTION GROWS THE LINE IN PLACE *(OWNER DIRECTIVE, 2026-08-11: "The scanner
@@ -7292,7 +7391,14 @@
     { id: 'failures', label: 'Failures' }, { id: 'glossary', label: 'Glossary' },
   ];
   function mesc(s) { return String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;'); }
-  function manualProfile() { return (RD.MANUAL || {})[ui.engineKey]; }
+  /* THE SAME KEY-THEN-PLANT LOOKUP `manualRef()` DOES (#564 item 3). This had only the engine
+   * key, so on the plant the site runs — `RD.MANUAL` is keyed pwr / rbmk_pre / rbmk_post / bwr
+   * and has no `pwr2` — it returned undefined and the Failures tab's advanced instrument panel
+   * fell through to `Object.keys(latest.instruments)`, offering the player a dropdown of raw
+   * internal ids (`power_range`, `thot`, `primary_pressure`…) in place of 50 human-named
+   * indications. `manualRef()` fifty lines up has carried the fallback since it was written;
+   * this one was the copy that did not. */
+  function manualProfile() { return (RD.MANUAL || {})[ui.engineKey] || (RD.MANUAL || {})[ui.plant] || null; }
   var OPSYM = { '>': '≥', '<': '≤', '>=': '≥', '<=': '≤', '~': '≈' };   // acceptance display
   // Dimension of a dimensioned instrument-id / true_state field so the manual
   // converts to the active unit setting (US/SI) like the board. Everything else
@@ -8115,6 +8221,14 @@
         units: function () { return ui.units; },
         mode: function () { return ui.diagMode; },
         overlay: function () { return ui.physOverlay; },
+        // THE RUNNING PLANT'S PROTECTION CONFIG (#556), same accessor shape and same reason as
+        // `units` above — the board is mounted once and the plant can change under it, so a
+        // captured object would freeze one plant's setpoints into another plant's board. It is
+        // `service.layer.config`, which IS `engine.getProtectionConfig()` (simulation_service
+        // builds the kernel from it). The board captured RD.PWR_CONTROL.protection at script
+        // load instead and drew PWR2's pressurizer-level alarm at the retired plant's 25 %
+        // while the annunciator fired at PWR2's own 17 %.
+        protection: function () { return service.layer && service.layer.config; },
         // #237 (owner): the paused veil was clickable to resume. The veil was removed
         // 2026-08-11; this hook is kept because the board API still declares it. Route
         // through the play button so its ▶/⏸ state stays the single source of truth.

@@ -223,6 +223,19 @@ the two fits cannot drift.
 | **DERIVED each step** | **`m = ρ(h,P)·V`** · `T`, `ρ`, `x` (quality), `α` (void fraction) — all from `h`, `P` via L0 |
 | **Per-node flags** | `transport: plug \| stirred` · `wallLumps: N` |
 
+**BUILT 2026-08-28 (#574) — with one flag still dark.** `M_wall`, `cp_wall`, `A`, `T_wall[]` and
+`wallLumps` are live on all eleven ring nodes: masses derived in `pwr2_geometry.js` (`WALLS`),
+wired in `pwr2_loop.js`, integrated by `pwr2_core.buildWall`/`stepWall`, and counted in
+`internalEnergy`. The lump chain is explicit — conduction between neighbours, outermost lump
+adiabatic — and the wall-side film is `pwr2_core.wallFilm`, Dittus-Boelter on flow fraction with a
+free-convection floor and a phase term. Measured: **43,484 kJ/K of metal against 93,855 of fluid**;
+`PWR2_VALIDATION.md` §109. **`transport: plug` still has NO consumer** — every node is donor-cell,
+which is what makes cold-water accumulation in a leg unrepresentable. Do not read this table as
+saying it is built.
+
+**The FUEL is not one of these walls.** `pwr2_fuel.js` owns the rods and their cladding; the core
+node's wall is the CORE BARREL. Adding fuel metal here would double-count it.
+
 **`m` is DERIVED, not integrated** — §0.1. A rigid node has one thermal degree of freedom, and
 carrying both `m` and `h` is the over-determination the review found. The system-level mass ledger
 is a *single* integrated scalar, `M_total`, and it is what the pressure solve consumes (§0.3).

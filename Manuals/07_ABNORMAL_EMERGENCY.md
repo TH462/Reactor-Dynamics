@@ -52,8 +52,8 @@ is the failure's physical size — the response procedures below apply at any se
 |---------|--------|-------|---------|
 | SG Tube Rupture (E06) | Rupture Severity | 0 – 100 % of full rupture | 40 % |
 | Degraded HPI (E11) | HPI Capacity | 100 → 0 % of rated | 50 % |
-| Large LOCA (E09) | Break Size | 0 – 50 % rated flow | 20 % |
-| Continuous Rod Withdrawal (E17) | Withdrawal Rate | 0 – 6 steps/s | 3 |
+| Large LOCA (E09) | Break Size | 0 – 100 % — 100 % is a 3.1 in² (20 cm²) hole | 40 % |
+| Continuous Rod Withdrawal (E17) | Withdrawal Rate | 0 – 24 steps/s | 12 |
 | Rod Stuck on Scram (E18) | Rod Worth Held | 0 – 40 % of total | 20 % |
 | Main Steam Line Break, downstream (E19) | Break Size | 0 – 100 % effective area | 30 % |
 | Main Steam Line Break, upstream (E19u) | Break Size | 0 – 100 % effective area | 30 % |
@@ -70,7 +70,7 @@ is the failure's physical size — the response procedures below apply at any se
 | 3 | **Inventory & subcooling:** pressure, HPI, isolate open relief path |
 | 4 | **Load:** turbine disconnected or matched |
 | 5 | **Diagnose** on diverse instruments — never one light |
-| 6 | **Re-arm ESF AUTO** only when intentional |
+| 6 | **Securing an engineered-safeguards actuation is a RESET, not a MANUAL selection** — there is no ESF arm on this plant, and the pumps are held running until the reset permissive is satisfied (**03 §17.4**) |
 
 ---
 
@@ -112,7 +112,7 @@ lined up and coming, not to chase the trip.
 | 2 | **SCRAM** if not tripped |
 | 3 | Turbine load **0 / Disconnected** |
 | 4 | **AFW Start** (verify delivery by level response) |
-| 5 | Throttle AFW to hold level without severe overcooling |
+| 5 | Verify AFW holds level without severe overcooling — the `afw_level` channel throttles the valves; the board's levers are STOP and AUTO |
 | 6 | Stabilize PZR pressure |
 
 ### Recovery / acceptance
@@ -249,7 +249,7 @@ Core covered and cooled on natural circulation with AFW. **This is achievable** 
 ## PWR-E06 — Steam Generator Tube Rupture (SGTR)
 
 ### Failure
-`sgtr` — primary-to-secondary leak; severity = leak rate % rated flow (default ~3 %, max 8 %).
+`sgtr` — primary-to-secondary leak; severity = **0 – 100 % of a full double-ended tube rupture**, default 40 %.
 
 ### Symptoms
 - Primary inventory dropping; charging rises and then saturates  
@@ -275,9 +275,9 @@ Core covered and cooled on natural circulation with AFW. **This is achievable** 
 | 1 | SCRAM if not automatic / as pressure falls |
 | 2 | Identify the leak on the PRIMARY side — inventory falling with charging saturated, level below program and still going, subcooling eroding. The steam generator will not confirm it for you (see the departure above) |
 | 3 | Maximize charging / ensure HPI as needed |
-| 3a | **SECURE high-pressure injection before you depressurize — check the criteria first:** subcooling in hand, heat sink established on AFW, core covered. **This step is what makes step 4 work at all.** Injection holds the primary up at pressure, so with it running the Pressure SP does nothing and break flow does not move: measured, walking the setpoint 2235 → 1450 psi (15.41 → 10.0 MPa) with HPI in cut break flow by **0 %** and drifted the plant toward solid at 106.8 % inventory. Securing it first cut break flow **84 % in one minute** and 87 % held out to twenty. Same reason every real SGTR procedure carries an SI-termination step: injection and depressurization work against each other |
+| 3a | **SECURE high-pressure injection before you depressurize — check the criteria first:** subcooling in hand, heat sink established on AFW, core covered. **This step is what makes step 4 work at all.** Injection holds the primary up at pressure, so with it running the Pressure SP does nothing and break flow does not move: measured, walking the setpoint 2235 → 1450 psi (15.41 → 10.0 MPa) with HPI in cut break flow by **0 %** (measured on the RETIRED engine, 2026-08-03; not re-measured since the swap) and drifted the plant toward solid at 106.8 % inventory. Securing it first cut break flow **84 % in one minute** and 87 % held out to twenty. Same reason every real SGTR procedure carries an SI-termination step: injection and depressurization work against each other |
 | 4 | Depressurize primary carefully toward secondary pressure to reduce break flow (heaters off, spray if available, PORV only with care) |
-| 5 | Isolate / control steam paths per training objective (MSIV strategy if used). **On this trainer the MSIV does not change the secondary pressure trend** — SG pressure is capped at Psat(Tavg), so it tracks primary temperature rather than steam inventory. Measured: 134.6 psi with the MSIV open against 134.0 psi shut, at the same point in the transient |
+| 5 | Isolate / control steam paths per training objective (MSIV strategy if used). **On this trainer the MSIV does not change the secondary pressure trend** — SG pressure is capped at Psat(Tavg), so it tracks primary temperature rather than steam inventory. Measured on the RETIRED engine (2026-08-03, before the engine swap): 134.6 psi (0.928 MPa) with the MSIV open against 134.0 psi (0.924 MPa) shut, at the same point in the transient. Not re-measured on the plant that ships |
 | 6 | Maintain heat sink and subcooling |
 
 ### Acceptance
@@ -440,7 +440,9 @@ Core protected if any heat sink restored; recognize dual failure severity.
 ## PWR-E13 — Failure to Scram (ATWS)
 
 ### Failure
-`failure_to_scram` — scram command blocked.
+`failure_to_scram` — the rods fail to drop. The trip itself is **not** blocked: the pushbutton
+is accepted, the trip latches, annunciators come in and the turbine trips. It is the rod
+insertion that fails.
 
 ### Symptoms
 - SCRAM commanded or trip condition but rods do not fully insert / power remains  
@@ -563,6 +565,12 @@ Power terminated; scram successful or ATWS path if combined.
 ### Failure
 `stuck_rod_on_scram` — portion of rod worth held out; severity % worth held.
 
+> **NOT INJECTABLE ON THIS PLANT (#530).** The lever does not exist in the shipped failure menu,
+> so you cannot cause this one deliberately. The procedure is kept because the condition is real
+> operator knowledge and because the *reasoning* — a scram that does not take power as low as it
+> should, and what you do about it — is exactly what the boration steps below teach. Read it as
+> reference, not as a drill you can run.
+
 ### Symptoms
 - After SCRAM, power not as low as expected  
 - Partial rod insertion indication  
@@ -589,6 +597,12 @@ Power reduced by boron/feedback; core cooled; damage avoided.
 `steam_line_break_upstream` — break **upstream** of the MSIV (between generator and valve);
 same severity scale.
 
+> **NOT INJECTABLE ON THIS PLANT (#530)** — neither of them. The MSIV itself is built and works, and the
+> automatic isolation signal is not — so the break that would exercise it has no lever in the
+> failure menu. The procedure is kept: the location-decides-the-outcome reasoning below is the
+> whole lesson of the event and it is true of the plant's steam path as modelled. Read it as
+> reference, not as a drill you can run.
+
 **The location decides whether you can end it.** The MSIV sits between the steam generator and
 the turbine. A break downstream of the valve is on the far side of it, so shutting the MSIV puts
 steel between the generator and the break and the blowdown **stops**. A break upstream is on the
@@ -608,7 +622,7 @@ break there is nothing to fall back on. Trip, and ride the cooldown out.
 | Step | Action |
 |------|--------|
 | 1 | **SCRAM**  
-| 2 | **MSIV Close** (two-press). **Downstream break: this terminates it** — steam pressure stops falling and the bottled generator re-pressurizes to its code safeties (1350 psi (9.31 MPa) lift / 9.0 reseat), and you are now in the bottled-SG condition of alarm card **PWR-A23**. **Upstream break: it will not help** — steam pressure keeps falling; do not wait on it  
+| 2 | **MSIV Close** (two-press). **Downstream break: this terminates it** — steam pressure stops falling and the bottled generator re-pressurizes to its code safeties — a staggered bank, first lift **1099 psi (7.58 MPa)** and the rest at **1155 psi (7.96 MPa)** (**09 §3.0**) (formerly stated as a single 1350 psi (9.31 MPa) lift / 9.0 reseat), and you are now in the bottled-SG condition of alarm card **PWR-A23**. **Upstream break: it will not help** — steam pressure keeps falling; do not wait on it  
 | 3 | Stop AFW/feed overfill into faulted path if level high  
 | 4 | Control pressure (spray/heaters) as primary cools  
 | 5 | Borate if return-to-power risk  
@@ -634,7 +648,8 @@ without melt.
 
 ### Symptoms
 - Tavg disagrees with Thot/Tcold average story  
-- Rod AUTO (Tavg) may drive rods wrongly  
+- A lying Tavg misleads YOUR rod moves — rod control is manual here, so the wrong rod
+  motion is the one you make from a bad reading (**03 §14.3**)  
 - Tavg-based alarms/trips can misbehave  
 
 ### Immediate actions
@@ -733,7 +748,7 @@ this one does not care what the primary is at. You do not terminate it from the 
 - At low severity, no alarm at all — only an elevated charging trend
 
 ### What the board will NOT tell you
-**PZR LVL LO does not come in.** It is set at 25 % and a held leak parks level around 52–54 %.
+**PZR LVL LO does not come in.** It is 20 points below the programmed level and a held leak parks within a point or two of program, around 52–54 % absolute.
 If you are waiting for a level alarm to tell you there is a leak, you will wait for the whole
 shift. Likewise **PZR LVL DEV LO (A31) stays clear** — the deviation only opens when make-up
 *stops* holding, so its silence here is information, not the absence of a problem.

@@ -65,6 +65,17 @@ function runSuite(IN, rec, quiet) {
   ckT('the sg_level channel exists, sourced from the narrow-range sg_level_pct',
       IN.CHANNELS.some(function (c) { return c.id === 'sg_level' && c.src === 'sg_level_pct'; }),
       'pwr2_protection\'s lo-lo function and both AFW starts read this channel (2026-08-20)');
+  /* #540: pwr2_engine's element-2 wire reads `sg_steam_flow` and FALLS BACK SILENTLY when it
+   * is missing — which is what it did for six days, onto the turbine-only channel the wire
+   * exists to stop reading. A consumer that degrades quietly needs its channel asserted BY
+   * ID here, because no engine gate can tell the fallback from the real thing. The SRC half
+   * is load-bearing too: `steam_flow` would satisfy an id-only check and reintroduce the
+   * defect exactly. */
+  ckT('the sg_steam_flow channel exists, sourced from TOTAL steam out (not the turbine draw)',
+      IN.CHANNELS.some(function (c) { return c.id === 'sg_steam_flow' && c.src === 'steam_out_total'; }) &&
+      IN.CHANNELS.some(function (c) { return c.id === 'steam_flow' && c.src === 'steam_flow_normalized'; }),
+      'the three-element controller\'s element 2 reads this; post-trip the dumps carry the ' +
+      'steam and steam_flow reads ~0 (#540)');
 
   /* ---- 1. PRIMING + STEP RESPONSE: the sourced taus, MEASURED --------------------------- */
   head('STEP RESPONSE  [the sourced 2.0 s RTD and 3.5 s hot-leg filter, measured not retyped]');
@@ -104,12 +115,32 @@ function runSuite(IN, rec, quiet) {
   var mean = xs.reduce(function (a, b) { return a + b; }, 0) / xs.length;
   var sig = Math.sqrt(xs.reduce(function (a, b) { return a + (b - mean) * (b - mean); }, 0) / xs.length);
   ck('tavg noise sigma matches the channel spec (0.15 degC)', sig, 0.15, 0.05, 'degC');
-  /* lag-8s autocorrelation ~ 1/e for NOISE_TAU_S = 8 */
-  var k8 = Math.round(8 / DT), num = 0, den = 0;
-  for (i = 0; i < xs.length - k8; i++) { num += (xs[i] - mean) * (xs[i + k8] - mean); }
-  for (i = 0; i < xs.length; i++) { den += (xs[i] - mean) * (xs[i] - mean); }
-  ck('...and it is BAND-LIMITED: autocorrelation at 8 s is ~1/e, not ~0 (white)',
-     num / den * (xs.length / (xs.length - k8)), Math.exp(-1), 0.15, '');
+  /* ⚠ RE-EXPRESSED at #590 (2026-08-29), and it is a STRENGTHENING rather than a repair. This
+   * asserted the autocorrelation at a hard-coded 8 s — the old GLOBAL NOISE_TAU_S retyped into
+   * the fixture, so it pinned the constant rather than the claim. The correlation is now per
+   * channel (tau_s x NOISE_TAU_FRAC), `tavg` sits at 0.5 s, and the old form read 0.041 at 8 s
+   * and failed on a correct model.
+   *
+   * The CLAIM was always "band-limited, not white", and it is still true and still worth
+   * asserting. It is now asserted at the channel's OWN correlation time, read from the module
+   * via `IN.noiseTau` rather than retyped — so a moved correlation moves the check with it —
+   * and PAIRED with a far-lag reading, which is the half that makes it discriminating: white
+   * noise fails the near lag, and noise correlated far too SLOWLY (the #590 defect) passes the
+   * near one and fails the far one. */
+  var tauN = IN.noiseTau(IN.CHANNELS.filter(function (c) { return c.id === 'tavg'; })[0]);
+  function autocorr(lagS) {
+    var k = Math.round(lagS / DT), num = 0, den = 0, j;
+    for (j = 0; j < xs.length - k; j++) num += (xs[j] - mean) * (xs[j + k] - mean);
+    for (j = 0; j < xs.length; j++) den += (xs[j] - mean) * (xs[j] - mean);
+    return num / den * (xs.length / (xs.length - k));
+  }
+  ck('...and it is BAND-LIMITED: autocorrelation at the CHANNEL OWN correlation time is ~1/e',
+     autocorr(tauN), Math.exp(-1), 0.15, '(tau ' + tauN.toFixed(2) + ' s)');
+  ckT('...and DECORRELATED well beyond it — noise that is still correlated 16x out is drift, ' +
+      'which is what the feed controller was chasing (#590)',
+      Math.abs(autocorr(16 * tauN)) < 0.15,
+      'r(' + (16 * tauN).toFixed(1) + ' s) = ' + autocorr(16 * tauN).toFixed(4) +
+      '; the shipped global 8 s read 0.37 here');
   var insZ = quietIns();
   run(insZ, baseTs(), 30);
   ckT('noise_scale 0 reads EXACT truth once settled', Math.abs(insZ.reading.tavg - 300) < 1e-9, '');
@@ -214,6 +245,21 @@ function runSuite(IN, rec, quiet) {
   run(insM, tsM, 5);
   ckT('a vanished true field HOLDS the last reading, and nothing reads NaN',
       insM.reading.boron === before && isFinite(insM.reading.tavg), '');
+
+  /* #555 — a RESTORED null is not a reading. pwr2_shell's save round-trips through JSON,
+   * which writes a non-finite reading out as `null`, and `isFinite(null)` is TRUE — so a
+   * channel with no true driver came back as a hard ZERO that every guard in the tree
+   * accepted (the Mode 4 feed regulating valve was driven shut by it). The save now names
+   * its non-finite ids, but this layer must not read a stray null as a number either.
+   * Two arms, because "it holds a value" and "the value is not zero" are different claims. */
+  var insN = quietIns(), tsN = baseTs();
+  run(insN, tsN, 5);
+  delete tsN.boron_ppm;                       /* the channel loses its driver, as at Mode 4 */
+  insN.reading.boron = null;                  /* exactly what a pre-fix save installed */
+  run(insN, tsN, 1);
+  ckT('a restored NULL reading is treated as no-reading, not as zero',
+      typeof insN.reading.boron === 'number' && isNaN(insN.reading.boron),
+      'reading is ' + insN.reading.boron + ' (a 0 here is the #555 defect: isFinite(null) is true)');
 }
 
 console.log('\nPWR2 -- THE INSTRUMENT LAYER: what the plant SAYS (HR1), gated');
@@ -226,6 +272,12 @@ var MUTATIONS = [
   ['the sg_level channel is DELETED (the AFAS/lo-lo trip loses its gauge silently)',
    "    { id: 'sg_level',         src: 'sg_level_pct',             tau_s: 1.0,  sigma: 0.3,  range: [0, 100] },",
    ''],
+  ['the sg_steam_flow channel is DELETED (element 2 silently falls back to the turbine draw — #540)',
+   "    { id: 'sg_steam_flow',    src: 'steam_out_total',          tau_s: 1.0,  sigma: 0.01, range: [0, 2.5] },",
+   ''],
+  ['sg_steam_flow is repointed at the TURBINE channel (the #540 defect, wearing the right id)',
+   "    { id: 'sg_steam_flow',    src: 'steam_out_total',",
+   "    { id: 'sg_steam_flow',    src: 'steam_flow_normalized',"],
   ['the lag is deleted (every reading is instant truth)',
    '      var a1 = dt / Math.max(c.tau_s, dt);\n      ch.lag1 += a1 * (truth - ch.lag1);',
    '      ch.lag1 = truth;'],
@@ -235,18 +287,33 @@ var MUTATIONS = [
   ['priming is removed (a fresh plant climbs from zero)',
    "      if (ch.lag1 === null) { ch.lag1 = truth; ch.lag2 = truth; }",
    '      if (ch.lag1 === null) { ch.lag1 = 0; ch.lag2 = 0; }'],
+  /* ⚠ ANCHOR RE-POINTED at #590, when the global NOISE_TAU_S became a per-channel noiseTau(). */
   ['the noise is WHITE (the band limit dropped)',
-   '        var rho = Math.exp(-dt / NOISE_TAU_S);',
+   '        var rho = Math.exp(-dt / noiseTau(c));',
    '        var rho = 0;'],
+  /* #590: the correlation goes back to the global 8 s — noise correlated 16x slower than the
+   * sensing lag, which the feed controller cannot tell from a real disturbance and integrates.
+   * The near-lag check still passes on this; the FAR-lag check is what catches it. */
+  ['the noise correlation reverts to a flat 8 s (drift the controller chases)',
+   '  var NOISE_TAU_FRAC = 0.25;',
+   '  var NOISE_TAU_FRAC = 8.0;'],
   ['every channel shares ONE seed (the streams collapse into each other)',
    /* repointed after the B2 PRNG-state rework — and the ORIGINAL anchor miss shipped in the
     * B2 commit itself, hidden for a day by tail-piping the runner output (the self-test line
     * scrolled past while the checks tally read clean). Read the whole verdict. */
    '        rngState: fnv1a(c.id) | 0',
    '        rngState: 12345'],
+  /* ANCHORED ON THE TWO CODE LINES ONLY, not the whole block. The first form quoted the
+   * guard's comment as well, so adding a line to that comment (#555, 2026-08-27) sent this
+   * mutation to ANCHOR MISS — a green 20/20 with a blind spot. An anchor that includes prose
+   * rots on the next prose edit; this one keeps the block and its braces and only replaces
+   * the body, which is the same injected defect. */
+  ['a restored null is read as a number again (#555 — isFinite(null) is true, so it is a 0)',
+   '=== undefined || ins.reading[c.id] === null)',
+   '=== undefined)'],
   ['a starved channel still draws from its stream via a fallback truth of 0',
-   "      if (typeof truth !== 'number' || !isFinite(truth)) {\n        /* a missing true field is a WIRING defect, not a plant condition — hold the last\n         * reading rather than emit NaN into every consumer, and leave the lag state alone */\n        if (ins.reading[c.id] === undefined) ins.reading[c.id] = NaN;\n        return;\n      }",
-   "      if (typeof truth !== 'number' || !isFinite(truth)) truth = 0;"],
+   "        if (ins.reading[c.id] === undefined || ins.reading[c.id] === null) ins.reading[c.id] = NaN;\n        return;",
+   "        truth = 0;"],
   ['STUCK is ignored (the failed channel keeps reporting)',
    "        if (f.mode === 'stuck') value = f.held;",
    ''],

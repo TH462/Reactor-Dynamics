@@ -193,7 +193,7 @@
           var drift = ((i % 2 ? 1 : -1) * (3 + (i % 4) * 4)) * (0.5 + f);
           p.style.setProperty('--adv-dx', drift.toFixed(1) + 'px');
           if (!p.__bdAnim) {
-            p.style.animation = 'advPuff ' + dur.toFixed(2) + 's linear infinite';
+            p.style.animation = 'advPuff ' + dur.toFixed(2) + 's steps(' + Math.max(2, Math.round(dur * 12)) + ') infinite';
             p.style.animationDelay = (i * (dur / NPUFF)).toFixed(2) + 's';
             p.__bdAnim = true;
           } else {

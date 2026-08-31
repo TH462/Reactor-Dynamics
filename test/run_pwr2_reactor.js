@@ -267,27 +267,47 @@ function runSuite(R, rec, quiet) {
    * honestly produces. Normalised on VOID FRACTION BY VOLUME rather than on quality: at 1.53 %
    * quality the volume void is 18.8 %, a 12x difference, and dividing by the wrong one puts
    * the coefficient outside every published range and invites "re-tuning" a correct term. */
-  var voidF = fixture({ rigid: true });
-  ride(voidF, SETTLE);
-  function void_core() {
-    for (var vq = 0; vq < voidF.sys.nodes.length; vq++) {
-      if (voidF.sys.nodes[vq].id === 'core') return voidF.sys.nodes[vq];
-    }
-    return null;
-  }
-  var voidFrac = (function () {
-    var cn = void_core(), P = voidF.sys.P, x = W.quality(cn.h, P);
-    if (!(x > 0)) return 0;
-    var rf = W.rho_l(W.T_sat(P), P), rg = W.rho_v_sat(P);
+  /* ⚠ #583 TOOK THIS CHECK'S SUBJECT AWAY, AND THAT IS THE PART WORTH KEEPING. It used to ride
+   * `fixture({ rigid: true })` — a loop with no compressible volume — on the argument that "a
+   * boiling core is exactly what it honestly produces". MEASURED 2026-08-28: that loop parked at
+   * 8.55 MPa on the saturation line ONLY BECAUSE THE PHANTOM PRESSURIZER NODE WAS IN IT —
+   * 3.5453 m3 of stagnant water at Tavg acting as thermal ballast. Delete the node (#583) and the
+   * identical fixture runs to the 0.1 MPa property FLOOR with a 99 degC subcooled core, and the
+   * check reports `0 pcm = NaN per % void`. Booting the rigid loop on the dome instead does not
+   * help: 8.0, 8.5 and 9.0 MPa all collapse to the floor too. THE SUBJECT WAS MANUFACTURED BY
+   * THE DEFECT, and no arrangement of an uncontrolled loop reproduces it.
+   *
+   * So the void state is now CONSTRUCTED AND NAMED: the settled plant's OWN pressure, with the
+   * core node placed at a stated quality. It is the state a real casualty produces —
+   * `run_pwr2_coredamage` drives the whole chain on the shipped engine — and it is the only
+   * form of this check that is not an accident of where an uncontrolled loop lands. Normalised
+   * on VOID FRACTION BY VOLUME, not quality: at 1.0 % quality the volume void is 5.65 %, and
+   * dividing by the wrong one puts the coefficient outside every published range. */
+  var voidP = hold_P(), voidX = 0.01, voidB = holdF.B;
+  var voidH = W.h_f(voidP) + voidX * (W.h_g(voidP) - W.h_f(voidP));
+  function voidFracAt(x) {
+    var rf = W.rho_l(W.T_sat(voidP), voidP), rg = W.rho_v_sat(voidP);
     return (x / rg) / ((x / rg) + ((1 - x) / rf));
-  })();
-  var voidPcm = K.voidReactivity(void_core().h, voidF.sys.P, voidF.B) * 1e5;
+  }
+  var voidFrac = voidFracAt(voidX);
+  var voidPcm = K.voidReactivity(voidH, voidP, voidB) * 1e5;
   ckT('the VOID half of the density coupling is live, negative, and real-PWR sized',
       voidFrac > 0.02 && voidPcm < 0 &&
       (voidPcm / (voidFrac * 100)) > -250 && (voidPcm / (voidFrac * 100)) < -20,
-      (voidFrac * 100).toFixed(2) + ' % void by volume on the rigid plant, ' + voidPcm.toFixed(0) +
-      ' pcm = ' + (voidPcm / (voidFrac * 100)).toFixed(1) + ' pcm per % void, against a ' +
-      'real-PWR range of roughly -100 to -250');
+      (voidFrac * 100).toFixed(2) + ' % void by volume at the plant\'s own ' +
+      (voidP * 145.038).toFixed(0) + ' psia and ' + voidB.toFixed(0) + ' ppm, ' +
+      voidPcm.toFixed(0) + ' pcm = ' + (voidPcm / (voidFrac * 100)).toFixed(1) +
+      ' pcm per % void, against a real-PWR range of roughly -100 to -250');
+  /* ...AND IT IS A FUNCTION OF THE VOID, not a constant that happens to be negative. A term
+   * asserted at ONE state cannot tell those apart — the trap this file already names for the
+   * subcooled case. Both ends, plus the exact-zero contract on the subcooled side. */
+  var voidPcm2 = K.voidReactivity(
+    W.h_f(voidP) + 2 * voidX * (W.h_g(voidP) - W.h_f(voidP)), voidP, voidB) * 1e5;
+  ckT('...and it SCALES with the void and is EXACTLY zero without it',
+      voidPcm2 < voidPcm * 1.7 &&
+      K.voidReactivity(W.h_f(voidP) - 1, voidP, voidB) === 0,
+      'twice the quality gives ' + voidPcm2.toFixed(0) + ' pcm against ' + voidPcm.toFixed(0) +
+      '; one kJ/kg below h_f gives exactly 0');
   ckT('nothing in the ride is NaN — the coupling does not lose a value',
       isFinite(hold.power_pct) && isFinite(hold.T_fuel_c) && isFinite(hold.rho_pcm) &&
       isFinite(hold.heats.core), '');

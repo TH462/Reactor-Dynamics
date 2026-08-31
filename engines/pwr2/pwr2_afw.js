@@ -70,6 +70,21 @@
   function mdafwRatedKgs() { return gpmToKgs(AFW.mdafw_ginna_gpm * AFW.POWER_SCALE, 1000); }
   function tdafwRatedKgs() { return gpmToKgs(AFW.tdafw_ginna_gpm * AFW.POWER_SCALE, 1000); }
 
+  /* THE COMBINED RATING IN GPM — the denominator `afw_flow_normalized` is taken against
+   * (stepAFW: `rated = mdafwRatedKgs() + tdafwRatedKgs()`), expressed in the unit the SOURCE
+   * quotes and the board renders. Derived from the same two sourced points and the same power
+   * scale, not retyped: 510 gpm x 300/1775 = 86.2 gpm.
+   *
+   * WHY IT IS PUBLISHED (#557). The board renders AFW flow as `indication x full_scale` and
+   * held its own literal full scale — 640 gpm, which was the RETIRED plant's basis (its
+   * `afw_flow_normalized` was a fraction of RATED FEED, full AFW being 0.15 of it, so
+   * 0.15 x 640 = 96 gpm read correctly there). This plant renormalized the same instrument to
+   * AFW's OWN rating, and the board constant did not move: measured on a loss of main feedwater,
+   * 213 gpm shown against 28.8 gpm (1.81 kg/s) delivered, 7.40x. A second copy of a plant
+   * constant, held by the consumer — the class control_kernel's getInterlockState comment
+   * already names. The plant says its own number instead. */
+  function ratedGpm() { return (AFW.mdafw_ginna_gpm + AFW.tdafw_ginna_gpm) * AFW.POWER_SCALE; }
+
   function createAFW(opts) {
     opts = opts || {};
     return {
@@ -86,6 +101,33 @@
        * BOTH pumps, so blocking dead-heads the whole system while every run flag stands.
        * The old engine's afw_failure shape; afw_blocked reports it on the contract. */
       blocked: opts.blocked === undefined ? false : !!opts.blocked,
+      /* THE FLOW CONTROL VALVES (#562) — 0..1, and 1 is the boot state, so a plant that never
+       * touches them behaves exactly as this module did before.
+       *
+       * WHY THIS EXISTS AT ALL. Until 2026-08-27 this layer had NO level input and no throttle:
+       * `rated x avail`, an on/off. Nothing upstream tapered it either — pwr2_protection LATCHES
+       * the pumps on and pwr2_engine re-asserts them every step — so a plain loss of main
+       * feedwater filled the generator without bound. THE CONTRACT ALREADY SAID OTHERWISE:
+       * `Blueprint/CONTEXT.md` defines afw_flow_normalized as "capacity x throttle x level
+       * hold", `afw_throttle_pct` is a declared control-state field that pwr2_shell hard-coded
+       * to 100/0, and the Indications tab told the player "this plant's auxiliary feed is
+       * level-controlled". The retired engine had both halves (pwr_engine's afw_throttle_frac,
+       * pwr_config's afw_level_target 32.0). PWR2 kept the copy and dropped the mechanism.
+       *
+       * SOURCED, and it is the OPERATOR'S valve, not an automatic one — the level hold lives in
+       * the control layer where the player can take it off AUTO (owner ruling, 2026-08-27):
+       *   WAT 05 Transients (ML11216A094): *"It is necessary to throttle AFW flow to control RCS
+       *   temperature at this point. One symptom that AFW flow needs to be throttled is closure
+       *   of all steam dump valves."*
+       *   WTSM 7.2 (ML11223A246): *"the AFW flow control valves are throttled closed. The steam
+       *   generator water levels are maintained at the appropriate values."*
+       *
+       * ONE VALVE FOR BOTH TRAINS, deliberately. A real multi-loop plant throttles per steam
+       * generator; this plant has ONE, so a per-train split would be two controls the player
+       * cannot tell apart (DESIGN_CRITERIA Q4). It sits DOWNSTREAM of both pumps, the same
+       * place `blocked` sits and for the same reason, and `afw_throttle_pct` is a single
+       * contract field. DECLARED: no valve stroke time — the demand lands in one step. */
+      throttle: opts.throttle === undefined ? 1 : Math.min(1, Math.max(0, +opts.throttle)),
       delivered_kg: opts.delivered_kg === undefined ? 0 : opts.delivered_kg
     };
   }
@@ -108,8 +150,14 @@
     var mdPowered = !drivers || drivers.mdafw_power_ok !== false;
     /* the tagged-shut discharge valves dead-head BOTH trains — delivery only, never demand */
     var open = !af.blocked;
-    var md = (open && af.mdafwRunning && mdPowered) ? mdafwRatedKgs() * Math.max(0, af.mdafwAvail) : 0;
-    var td = (open && af.tdafwRunning) ? tdafwRatedKgs() * Math.max(0, af.tdafwAvail) : 0;
+    /* THE FLOW CONTROL VALVES (#562) — DELIVERY ONLY, never demand, exactly like `blocked`
+     * above and for the same reason: a throttled-shut pump is RUNNING with no flow, not
+     * SECURED (the #200/#329/#332 split this file's own header already enforces for power).
+     * Absent state means wide open, so an old save and a Layer-5 fixture both behave as
+     * before. */
+    var thr = af.throttle === undefined ? 1 : Math.min(1, Math.max(0, af.throttle));
+    var md = (open && af.mdafwRunning && mdPowered) ? mdafwRatedKgs() * Math.max(0, af.mdafwAvail) * thr : 0;
+    var td = (open && af.tdafwRunning) ? tdafwRatedKgs() * Math.max(0, af.tdafwAvail) * thr : 0;
     var total = md + td;
     af.delivered_kg += total * dt;
     var rated = mdafwRatedKgs() + tdafwRatedKgs();
@@ -120,6 +168,7 @@
        * demanded pump with avail 0 is RUNNING with no flow, not SECURED. */
       mdafw_running: !!af.mdafwRunning, tdafw_running: !!af.tdafwRunning,
       blocked: !!af.blocked,
+      throttle: thr,
       h_kJkg: W.h_l(f2c(AFW.afw_temp_f), 0.1),      /* near-atmospheric CST, cold */
       delivered_kg: af.delivered_kg,
       afw_flow_normalized: rated > 0 ? total / rated : 0
@@ -129,7 +178,7 @@
   root.RD = root.RD || {};
   root.RD.pwr2 = root.RD.pwr2 || {};
   root.RD.pwr2.afw = {
-    AFW: AFW, mdafwRatedKgs: mdafwRatedKgs, tdafwRatedKgs: tdafwRatedKgs,
+    AFW: AFW, mdafwRatedKgs: mdafwRatedKgs, tdafwRatedKgs: tdafwRatedKgs, ratedGpm: ratedGpm,
     createAFW: createAFW, stepAFW: stepAFW, gpmToKgs: gpmToKgs
   };
 })(typeof globalThis !== 'undefined' ? globalThis : this);

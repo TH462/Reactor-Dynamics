@@ -102,7 +102,9 @@
     if (!svc) {
       var P = PLANTS[profKey];
       svc = new RD.SimulationService({ seed: opts.seed != null ? opts.seed : 42 });
-      svc.selectPlant(P.plant, proc.from, P.version, opts.bare ? { noDefaults: true } : undefined);
+      /* the RETIRED engine's IC vocabulary — see RD.RETIRED_ENGINE_IC's note in ui/manual_procedures.js */
+      svc.selectPlant(P.plant, RD.RETIRED_ENGINE_IC(proc.from), P.version,
+                      opts.bare ? { noDefaults: true } : undefined);
       svc.running = true;                       // gates drive tick() directly
       svc.timeAcceleration = ACCEL;
       // …and it has to STAY at ACCEL. `_attentionStop` drops fast-forward to 1× on the

@@ -34,8 +34,14 @@
  *
  * OFF-LOOP, and deliberately NOT wired here:
  *   vessel_heads  a stagnant branch off the upper plenum — carried as volume, no transport
- *   pressurizer   hangs off the hot leg through the surge line. Its three-state model is
- *                 Layer 5 and #472 owns it; Layer 3 exposes the attachment point and stops.
+ *
+ * ⚠ THE PRESSURIZER IS NOT A NODE (#583, 2026-08-28). It hangs off the hot leg through the
+ * surge line, but its volume lives ENTIRELY in Layer 5 (`pwr2_pressurizer`, three regions,
+ * plugged into Layer 2's `extraMass` seat below). This list carried a second `pressurizer`
+ * here for a fortnight after Layer 5 landed, so the plant modelled 983 ft3 of RCS against its
+ * own declared 835.8 — 2,539 kg of RIGID water that no break, ECCS, CVCS or RHR path could
+ * reach, stiffening the pressure solve and inflating `M_nominal`. Layer 3's job at the surge
+ * line is the ATTACHMENT POINT (`hot_leg`), not a volume.
  *
  * UNITS ARE SI, as Layer 2. P MPa · h kJ/kg · V m3 · mdot kg/s · Q kW
  */
@@ -53,8 +59,16 @@
   /* The transport ring, in flow order. Names are Layer 1's node ids. */
   var RING = ['downcomer', 'lower_plenum', 'core', 'upper_plenum', 'hot_leg',
               'sg_primary', 'crossover', 'rcp', 'cold_leg'];
-  /* Carried as volume, not transported. */
-  var OFF_LOOP = ['vessel_heads', 'pressurizer'];
+  /* Carried as volume, not transported. ONE member since #583 — the pressurizer left because
+   * it was never a volume this layer owned; see the header. */
+  var OFF_LOOP = ['vessel_heads'];
+
+  /* THE RATED LOOP FLOW, ONE COPY. It was a bare 1630 inside createLoop, and #574 needed a
+   * second reader — the wall film scales with flow over rated — which is exactly how the
+   * PROTECTION_DT trap starts. Layer 4's `pwr2_sources.PUMP.mdot_rated` is the same number and
+   * is the one Layer 4 uses; this layer cannot read upward, so the two are tied by a gate check
+   * rather than by an import. */
+  var MDOT_RATED = 1630;
 
   function geoNode(id) {
     for (var i = 0; i < GEO.NODES.length; i++) if (GEO.NODES[i].id === id) return GEO.NODES[i];
@@ -77,7 +91,27 @@
       var g = geoNode(id);
       if (!g) throw new Error('Layer 3: no geometry for node ' + id);
       var h = (opts.h && typeof opts.h === 'object') ? opts.h[id] : opts.h;
-      return { id: id, V: g.V, h: h === undefined ? 1250 : h };
+      var node = { id: id, V: g.V, h: h === undefined ? 1250 : h };
+      /* ---- THE METAL WALL (#574) --------------------------------------------------------
+       * Layer 1 owns the mass and the area, Layer 2 owns the integration, and THIS is the
+       * wiring between them — the same division as everywhere else in the stack. `wallLumps`
+       * has been on every node in the geometry table since it was written, with ZERO consumers
+       * until now; this line is what stops it reading as a working feature to the next person
+       * who opens that file.
+       *
+       * REFUSED, not defaulted, when the geometry has no wall for a node: a node that silently
+       * got zero metal would be the same dark wire in a new place, and the whole point is that
+       * every node has one. `opts.dryWalls` is the deliberate escape for Layer 2/3 fixtures
+       * that want the old rigid-and-dry plant to compare against. */
+      if (!opts.dryWalls) {
+        var gw = GEO.WALLS && GEO.WALLS[id];
+        if (!gw) throw new Error('Layer 3: no metal wall for node ' + id + ' — #574 puts one ' +
+                                 'on every node; a missing entry is a defect, not a default');
+        var mat = GEO.WALL_MAT[gw.mat];
+        node.wall = { M_kg: gw.M_kg, cp: mat.cp, k: mat.k,
+                      A_m2: gw.A_m2, t_m: gw.t_m, lumps: g.wallLumps };
+      }
+      return node;
     });
     /* extraMass IS FORWARDED, and it was not until 2026-08-15. Layer 2 owns the compressible-volume
      * hook that the PRESSURIZER plugs into (D1 §25.3), but `createLoop` did not pass it through --
@@ -88,7 +122,7 @@
     var sys = CORE.createSystem({ nodes: nodes, P: P, iterCap: opts.iterCap,
                                   extraMass: opts.extraMass });
     sys.ring = RING.slice();
-    sys.mdot_loop = opts.mdot === undefined ? 1630 : opts.mdot;
+    sys.mdot_loop = opts.mdot === undefined ? MDOT_RATED : opts.mdot;
     /* Junction flows, one per ring segment, indexed by the node the segment LEAVES.
      * Seeded at the loop flow; from the first step on they are DERIVED. */
     sys.junctionFlow = {};
@@ -219,6 +253,12 @@
      * divisions cannot leave the clock short — §24.2's contract is with the accumulator, and a
      * 1e-16 deficit per step is still a deficit nothing repays. */
     var hSub = dt / nSub, spent = 0;
+    /* #585 — the time this step actually INTEGRATED, reported to the caller as `dt_accepted`.
+     * A mid-step latch adopts the substeps before it and refuses the rest, so a ledger that
+     * books all-or-nothing on the outer step is wrong by the accepted fraction (measured:
+     * 0.966 kg — one of two substeps — on the 40 cm2 accumulator fixture's latching step).
+     * The plant reports what it took; every boundary ledger books exactly that. */
+    var accepted = 0;
 
     var r = null, flows = null, headFlowFirst = 0, carry = 0;
     for (var s = 0; s < nSub; s++) {
@@ -238,8 +278,13 @@
       if (s === 0) headFlowFirst = flows[0].mdot;
 
       r = CORE.step(sys, h, {
-        flows: flows, heats: drivers.heats || {}, sources: drivers.sources || []
+        flows: flows, heats: drivers.heats || {}, sources: drivers.sources || [],
+        /* #574 — the wall's film coefficient scales with loop flow, and the FLOOR under it is
+         * what keeps the metal coupled when the pumps stop. That is the regime the stored heat
+         * matters in, so the fraction has to be the plant's real one, not a constant 1. */
+        flowFrac: Math.abs(sys.mdot_loop) / MDOT_RATED
       });
+      if (r.held !== true) accepted += h;   /* #585 — a refused substep integrated nothing */
 
       /* ---- DERIVE the next step's junction flows, sequentially round the ring.
        * mdot_out,i = mdot_in,i - dm_i/dt. Walking the ring from the head propagates the driving
@@ -279,6 +324,10 @@
      * (#518) — the hand-planted junction flow was wiped by the re-derivation before the report
      * read it. The binding condition is the state the step STARTED from, so that is what is
      * reported, and it is the same number `nSub` was chosen from. */
+    /* #585 — the plant's own report of how much of `dt` it integrated: `dt` on a healthy step,
+     * 0 on an already-held one, the adopted-substep sum on the step the latch fires mid-way.
+     * The break/containment/ECCS ledgers book THIS, never the outer dt. */
+    r.dt_accepted = accepted;
     r.courantLimit_s = lim0;
     r.courantOK = dt <= r.courantLimit_s;
     r.subSteps = nSub;                   /* #518 — 1 in every healthy regime; REPORTED */

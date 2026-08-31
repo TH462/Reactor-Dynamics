@@ -543,7 +543,7 @@
     }
     /* ⚠ SUPERHEAT IS REQUIRED ONLY WHERE IT CAN EXIST, and that is the whole point of the guard.
      * Below void 1 a node is two-phase and its superheat is 0 by definition, so no existing
-     * fixture is burdened; AT void 1 the node may be anywhere from h_g to 800 degC, and
+     * fixture is burdened; AT void 1 the node may be anywhere from h_g to the vapour ceiling, and
      * defaulting to zero would hand the caller "the steam is saturated" — an invention, and the
      * same class of unearned reassurance the two throws above exist to refuse. The one production
      * caller (pwr2_reactor.stepReactor) has the plant in hand and supplies both. */

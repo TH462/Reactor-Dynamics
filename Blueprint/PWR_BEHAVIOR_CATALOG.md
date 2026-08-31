@@ -372,7 +372,7 @@ rows then assert the controller holds what manual proved.
 | CA-18 | A loop break DRAINS the pressurizer (TRUE level < 25 at core-top uncovery; indicated never re-rises past 75); the RELIEF path keeps the FULL lift (the TMI fence, exact); void 0.2 on the deception line reads 78.3 ± 0.2 %; boundary flicker can only ratchet the credit DOWN | C | probe | PASS — absorbed v4.0 |
 | CA-19 | A refilled solid RCS with a break settles at injection = discharge (mass frozen on the solid line, both streams flowing, pressure at the config-solved balance); injection defeated, the same state DRAINS | I | probe | PASS — absorbed v4.0 |
 | CA-20 | A loop break vents the RCS toward containment — falls past Psat of the hot remnant and never below the LIVE backpressure; SGTR and relief keep the saturation pin (clone-triplet algebra) | I | probe | PASS — absorbed v4.0 |
-| CA-20b | A small break holds its plateau — the STEAM GENERATORS hold the primary up: never > 51 psi below its own heat sink AND the secondary not drained through the tubes | I | probe | **XFAIL** (#451; the plateau was HEATER-HELD, #447 shed removed the prop — **do NOT re-band green**) — absorbed v4.0 · **OUT OF SCOPE for #472, MEASURED through it** *(owner ruling 2026-08-12)*: the dominant term is the ECCS quench gain, not the pressurizer; re-measured in Phase 1 and the Phase-3d A/B so the rebuild cannot move it silently |
+| CA-20b | A small break holds its plateau — the STEAM GENERATORS hold the primary up: never > 51 psi below its own heat sink AND the secondary not drained through the tubes | I | probe | **RETIRED 2026-08-29 (#582, owner ruling 2026-08-28 "A": retire deliberately, build the PWR2 gate)** — the strict expected-fail pinned a defect in `engines/pwr/` code no public build runs (#523 strips it), and the 2026-08-12 ruling it executed guarded the #472 rebuild, itself on the retired prune list. **The claim moved to the shipping plant and PASSES there**: `run_pwr2_endurance` `loca-small-break-plateau-legA/legB` — measured 2026-08-29, worst departure −31.6 psi against the 50.8 psi band, SG inventory never below its initial 12,796 kg. The probe, its XFAIL row and its COVERAGE row were deleted together. |
 | CA-23 | The pressurizer node: no-leak families BITWISE the frozen levelRaw line (< 1e-9); the node IS its law; credit ∈ [0, level_per_void·void]; pre-node saves seed bitwise | C | probe | PASS — absorbed v4.0 · **dies with v1 at #472 cutover → CV-1…4** |
 | CA-25 | Safety injection SHEDS the heaters (NUREG-0737 II.E.3.1 (7)); the post-LOCA plant SETTLES instead of limit-cycling (0 heater samples in the settled tail, ≤ 2 reversals); HEATER AUTO clears the shed and answers; the operator's manual demand is never overwritten | I | probe | PASS — absorbed v4.0 |
 
@@ -407,9 +407,18 @@ protection — *OWNER RULING, 2026-08-12: "keep both"*):
 
 | ID | Behavior | Tier | Probe | Status |
 |----|----------|------|-------|--------|
-| HE-1 | Delivered heater power falls PROGRESSIVELY as TRUE level falls through the bank (wetted fraction over the elevation band) — replacing the 0-or-full cliff (#348/#447 are what a cliff does) | C | todo→#472-P3 | [NEW-UNMEASURED] |
+| HE-1 | Delivered heater power falls PROGRESSIVELY as TRUE level falls through the bank (wetted fraction over the elevation band) — replacing the 0-or-full cliff (#348/#447 are what a cliff does) | C | `run_pwr2_pressurizer` HEATER ELEVATION | **PASS on PWR2** (#573, 2026-08-28) — band 5–15 %, wetted 0 / 0.5 / 1 below / mid / above, delivered 0.00 / 78.90 / 157.80 kW |
 | HE-2 | The S1 bistable survives on top: 17 % cut / 20 % restore latch on INDICATED level (HR1) — protection independent of the physics (today CA-10) | I | CA-10 today | PASS today — preserved |
-| HE-3 | Failed transmitter: the latch is fooled exactly as the operator is (CA-10 leg), and the PHYSICS now bounds the damage — #334's 2207-psi steam-heating deadhead becomes unreachable | C | todo→#472-P3 | [NEW-UNMEASURED] |
+| HE-3 | Failed transmitter: the latch is fooled exactly as the operator is (CA-10 leg), and the PHYSICS now bounds the damage — #334's 2207-psi steam-heating deadhead becomes unreachable | C | `run_pwr2_pressurizer` HEATER ELEVATION · `run_pwr2_engine` grp P | **PASS on PWR2** (#573, 2026-08-28) — level channel stuck at 55 %, `lowLevelCut` never fires, and the uncovered bank pressurizes **+0.78 psi** over 30 s against **+13.13** covered |
+
+> **Where these landed, and where they did NOT** *(#573, 2026-08-28)*. The ruling was executed on
+> the RETIRED engine (`pwr_pressurizer2.js`, `run_pzr2.js`) and PWR2 — the plant the site runs —
+> never inherited it. HE-1/HE-3 are now built and gated **on PWR2**; the retired implementation is
+> stripped from public builds by #523 and is not what these rows describe. Two things came with
+> them and are worth knowing: the published heater kW is the **energized bank**, not the delivered
+> heat (a heater indication is electrical, and derating it walks the board's MANUAL capture down —
+> #538 by a new road), and the board draws the bank at the modelled elevation (#473), which
+> required the drawn level mapping to be placed by **volume** rather than height.
 
 **SB / SA / BD — small-break lift, solid plant, blowdown:**
 

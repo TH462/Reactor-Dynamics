@@ -481,14 +481,122 @@ async function testSteamFeedPair(page) {
  * COMMAND_ERROR. Counting `.bd-btn:disabled` per engine pins both directions: pwr2 gets
  * exactly ONE disabled button (labelled AUTO), pwr gets ZERO — so the guard cannot silently
  * disable everything, and cannot silently disable nothing. */
+/* THE REFUSAL HAS TO REACH A FRAME (#558) — and this is the only place that can say so.
+ * `run_pwr2_board` copies the try/catch into a Node harness that never renders a Scanner, and
+ * this file counted disabled buttons without ever pressing one and reading the message back. So
+ * the mechanism that turns every refusal in the sim into a dead button — the class the owner has
+ * found by hand three times (#503, #506, #509) — had no gate at all, and #505 was CLOSED on a fix
+ * that is true of `cmd()` and false of the board, which is the only control surface PWR2 has.
+ *
+ * THE DEFECT: `inspectFlash` writes the reason into `inspectCur`, then the BODY-LEVEL
+ * click-to-inspect listener runs later in the SAME dispatch, resolves the button under the
+ * pointer and overwrites it. Written and destroyed synchronously — measured at 0 of 426 frames
+ * across four refused presses.
+ *
+ * SAMPLE ACROSS FRAMES, never once: a single read after the click cannot tell "painted then
+ * replaced" from "never painted", and the whole defect lives in that difference. The press must
+ * go to the <button> INSIDE the tile (pwr_board.js:374) — clicking the tile wrapper only bubbles
+ * to the body inspector and sends no command, which reads as a pass. */
+async function testRefusalReachesTheScanner(page) {
+  var log = [];
+  await page.goto('http://127.0.0.1:' + PORT + '/ui/shell.html?engine=pwr2',
+    { waitUntil: 'networkidle', timeout: 90000 });
+  await dismissMission(page);
+  await waitBoardLive(page);
+  /* RHR ALIGN is the honest fixture: at power its refusal is the SOURCED suction-valve
+   * permissive, i.e. a message the player is meant to LEARN from, and #558 measured it at
+   * 0 frames. It is a refusal the plant will always raise at power, so the check cannot
+   * silently stop exercising anything. */
+  var r = await page.evaluate(async function () {
+    var tile = document.querySelector('[data-item="ims3wg27iif"]');
+    if (!tile) return { missing: true };
+    var btn = tile.matches('button') ? tile : tile.querySelector('button');
+    if (!btn || btn.disabled) return { unusable: true };
+    function scan() {
+      var p = document.querySelector('#scannerPanel');
+      return p ? p.innerText.replace(/\s+/g, ' ').trim() : '';
+    }
+    btn.click();
+    var frames = 0, hit = 0;
+    await new Promise(function (res) {
+      var t0 = performance.now();
+      (function tick() {
+        frames++;
+        if (/Command error|Blocked/i.test(scan())) hit++;
+        if (performance.now() - t0 < 1200) requestAnimationFrame(tick); else res();
+      })();
+    });
+    return { frames: frames, hit: hit, text: scan().slice(0, 140) };
+  });
+  if (r.missing || r.unusable) {
+    console.error('FAIL: the RHR ALIGN fixture is gone from the board — re-point this check');
+    process.exitCode = 1;
+    return 'refusal-scanner: FIXTURE MISSING' + String.fromCharCode(10);
+  }
+  log.push('frames ' + r.hit + '/' + r.frames + '  text: ' + r.text);
+  if (!(r.frames > 10 && r.hit === r.frames)) {
+    console.error('FAIL: a refused board press must put its reason on the Scanner and LEAVE it ' +
+      'there — ' + r.hit + ' of ' + r.frames + ' frames carried it (#558). Text: ' + r.text);
+    process.exitCode = 1;
+  } else {
+    console.log('  refusal reaches the Scanner and persists: ' + r.hit + '/' + r.frames + ' frames');
+  }
+  /* THE OTHER HALF: a later HOVER over something HINTED still clears it. The fix must not turn
+   * the flash into a message that sticks for ever — the block's own documented behaviour is
+   * that the next hover replaces it, and a guard scoped to time rather than to the dispatch
+   * would break that.
+   *
+   * IT MUST BE A HINTED ELEMENT. A first draft moved the pointer to (12,12) and reddened: that
+   * is bare page, `inspectResolve` returns null, and `inspectAt` returns early BY DESIGN —
+   * "pointing at nothing keeps the last description on screen rather than blanking the block".
+   * The check was asserting against the panel's own persistence rule, not against the guard. */
+  /* RE-POINTED at #591 item 2: this hovered AFW START (`imrmsslj42u`), and that button was
+   * REMOVED from the board by owner ruling. The check then reddened for a reason that had
+   * nothing to do with its claim — `querySelector` returned null, no mouseover was ever
+   * dispatched, and the refusal stayed on the Scanner because nothing asked it to move. It
+   * hovers AFW STOP now (same card, still hinted). AND IT SAYS SO WHEN THE FIXTURE GOES: the
+   * silent `if (other)` was the hollow half — a check that cannot tell "the guard broke" from
+   * "my fixture left the board" is the class the RHR fixture guard above already covers. */
+  var after = await page.evaluate(function () {
+    var other = document.querySelector('[data-item="imrmssoa137"]');   /* AFW STOP, hinted */
+    if (!other) return { missing: true };
+    other.dispatchEvent(new MouseEvent('mouseover', { bubbles: true }));
+    var p = document.querySelector('#scannerPanel');
+    return { text: p ? p.innerText.replace(/\s+/g, ' ').trim() : '' };
+  });
+  if (after.missing) {
+    console.error('FAIL: the hover fixture (AFW STOP) is gone from the board — re-point this check');
+    process.exitCode = 1;
+    after = { text: '' };
+  }
+  log.push('after hover: ' + after.text.slice(0, 100));
+  if (/Command error/i.test(after.text)) {
+    console.error('FAIL: the refusal outlived a hover — the dispatch guard has become a timer (#558)');
+    process.exitCode = 1;
+  }
+  return log.join(String.fromCharCode(10)) + String.fromCharCode(10);
+}
+
 async function testEsfArmButtons(page) {
   var log = [];
   /* pwr disables NOTHING; pwr2 disables the DELIBERATE set: the HPI AUTO re-arm (#503),
-   * grid FOLLOW and ROD AUTO (#506 honest-absent). The boron panel and RHR came back with
-   * #507 waves 1-2 (a real kernel channel and a real align command). Count pins both
-   * directions (cannot silently disable everything or nothing); membership pins identity. */
-  var expect = { pwr: 0, pwr2: 3 };
-  var mustInclude = ['AUTO', 'FOLLOW', 'ROD AUTO'];
+   * ROD AUTO (#506 honest-absent) and the SR DET toggle (#567). The boron panel and RHR came
+   * back with #507 waves 1-2 (a real kernel channel and a real align command). Count pins both
+   * directions (cannot silently disable everything or nothing); membership pins identity.
+   *
+   * THE SET CHANGED WITH #567 AND WAS RE-DERIVED, NOT BUMPED. Grid FOLLOW LEFT it — that tile
+   * is the turbine LATCH now (#551/#559), an enabled control with a real command behind it —
+   * and SR DET JOINED it, because the plant publishes `sr_detector_fixed` and the board reads
+   * it. Net 3 either way, which is exactly why a count alone would have missed the swap;
+   * `mustInclude` is what pins identity, and it is the half that moved.
+   *
+   * AND AGAIN WITH #570: STEAM DUMP **OPEN** joined. It was a live button that could ONLY
+   * throw — the dump is controller-driven and has no manual full-open lever — and its refusal
+   * is raised INSIDE the MAPPED `set_steam_dump` handler, so neither the #567 registry sweep
+   * nor run_pwr2_kernel band 4 could see it. AUTO and CLOSED beside it stay live, which is why
+   * the label here is OPEN and not the whole dump panel. */
+  var expect = { pwr: 0, pwr2: 4 };
+  var mustInclude = ['AUTO', 'ROD AUTO', 'SR DET', 'OPEN'];
   for (var i = 0; i < 2; i++) {
     var eng = ['pwr', 'pwr2'][i];
     await page.goto('http://127.0.0.1:' + PORT + '/ui/shell.html?engine=' + eng,
@@ -1272,8 +1380,23 @@ async function testDiagBundle(page) {
  * ⚠ WHY THIS DRIVES A REAL HALT RATHER THAN FAKING ONE. #517's first attempt at board rows for
  * these fields passed every gate in the suite AND WAS INERT — the rows were keyed to chart series
  * that did not exist, so nothing rendered them, and only driving the board found it. So this rides
- * a genuine casualty: a large break with the station blacked out has no injection to answer it and
- * the plant actually runs dry (measured full-stack: held at 378 s).
+ * a genuine casualty: a large break with the station blacked out AND NO AUXILIARY FEED has nothing
+ * to answer it and the plant actually runs dry.
+ *
+ * ⚠ `afw_failure` IS LOAD-BEARING, and #583 is how that was found. Until 2026-08-28 the driver was
+ * `large_loca,station_blackout` alone, and it held. After #583 removed 2,539 kg of phantom
+ * pressurizer water from the reactor coolant system, the SAME casualty stops holding IN THE
+ * BROWSER: measured at ff=7200 (6,807 s of plant time) the primary parks at **83 psia against
+ * containment backpressure**, 0 % pressurizer level, and sits there — a wrecked plant that never
+ * leaves the property library's range, because the steam generators still have auxiliary feed and
+ * keep taking the decay heat. Block AFW and it runs dry and goes out of range: **22 psia, held,
+ * dialog up**, at ff=1500 and again at ff=3000.
+ *
+ * ⚠ AND NOTE WHICH LAYER SAID WHAT. The identical service, seed, initial condition, injections and
+ * fast-forward driven in NODE reports `model_held: true` on the two-failure casualty; the browser
+ * does not. That divergence is unexplained and is NOT what this check is for — the three-failure
+ * casualty holds on both. If this check ever goes red again, measure the plant before touching the
+ * budget: a driver that only just reached the envelope edge is the shape that rots.
  *
  * ⚠ AND IT DOES NOT DISMISS THE MISSION WINDOW FIRST. The halt dialog sits above it at z-index
  * 214, so `click('#missionClose')` times out once the dialog is up — which is the feature working.
@@ -1297,12 +1420,74 @@ async function testHeldPlantDialog(page) {
   }
   log.push('healthy plant: dialog hidden, clock unmarked');
 
-  await page.goto(base + '&inject=large_loca,station_blackout&ff=1500',
+  /* THE FIXTURE CARRIES failure_to_scram, AND THAT IS THE WHOLE FIX (#588/#589).
+   *
+   * The three-failure casualty this used to drive is MARGINAL, and marginal here does not mean
+   * "close to a threshold" — it means the blowdown endgame has sensitive dependence and ONE ULP
+   * picks the branch. Measured 2026-08-30 by nudging the initial pressure by single ulps (a
+   * relative perturbation of 1e-16, the smallest a double can carry) through the app's verbatim
+   * ff=1500 burst:
+   *
+   *   nudge   delivered   model_held      final
+   *   +0      1164 s      YES at 399 s    19.2 psia
+   *   +1      1092 s      NEVER           87.1 psia     <- and this IS the Linux branch
+   *   +2      1092 s      NEVER           87.1 psia
+   *   +8      1236 s      YES at 273 s    158.1 psia
+   *
+   * Three outcomes from four adjacent bit patterns. Windows and Linux were never disagreeing
+   * about physics — every Math primitive and all 3,600 water-table evaluations hash BIT-IDENTICAL
+   * across the two — they were landing on different branches of a chaotic trajectory, which is
+   * what #588 spent nine hypotheses hunting as a mechanism. There is no mechanism. There is a
+   * bifurcation, and this check was pinning it.
+   *
+   * That is the standing trap in CLAUDE.md, one level up from where #543 found it:
+   *   "A check can pin a BIFURCATION, not a claim ... one bit picks the branch (green here, red
+   *    on CI). Assert the invariant the defect violated."
+   *
+   * So the fixture moves off the cliff instead of the budget moving. Adding the ATWS drives the
+   * plant unambiguously outside the property library's range, and it holds on EVERY branch —
+   * measured at ulp +0/+1/+3/+8/+32 on BOTH platforms, ten runs, ten holds:
+   *
+   *   Windows   YES 243 / 228 / 411 / 273 / 273 s
+   *   Linux     YES 267 / 270 / 345 / 366 / 273 s
+   *
+   * ⚠ THE LATCH TIME IS NOT A CLAIM — it spans 228-411 s across those ten runs. Assert THAT it
+   * holds and that the dialog follows; never WHEN. A check that pins the second is this defect
+   * again wearing a number. */
+  await page.goto(base + '&inject=large_loca,station_blackout,afw_failure,failure_to_scram&ff=1500',
                   { waitUntil: 'networkidle', timeout: 180000 });
+  /* TWO WAITS, NOT ONE (#589). This used to wait only for the overlay and then throw "the plant
+   * HELD and the dialog stayed hidden" — a message that names a fact the check never measured.
+   * A plant that has simply not reached the envelope yet produces the identical error, so a slow
+   * machine and a broken dialog were indistinguishable in the log, and three red CI runs could
+   * not be told apart from one real defect. Measured on Windows 2026-08-30: the overlay appears
+   * 5.2 s after navigation against the old 40 s budget, and this runner takes 104 s locally
+   * against 120 s on CI — a 15 % spread, which is NOT enough to explain a 40 s timeout. So the
+   * budget was never the interesting variable; knowing WHICH half failed is.
+   *
+   * The plant first, generously, because that is the slow part and the part a loaded CI box
+   * delays. Then the dialog, tightly, because once the plant holds the overlay is a render away
+   * — and that is the claim #520 is actually about. */
+  var plantHeld = true;
+  await page.waitForFunction(function () {
+    var c = document.getElementById('clock');
+    return !!c && c.classList.contains('clk-held');
+  }, { timeout: 90000, polling: 200 }).catch(function () { plantHeld = false; });
+  if (!plantHeld) {
+    var never = await page.evaluate(function () {
+      var c = document.getElementById('clock');
+      return { clock: c ? c.textContent.replace(/\s+/g, ' ').trim() : '(no clock)',
+               overlay: !!(document.getElementById('haltOverlay') || {}).hidden };
+    });
+    throw new Error('#520 fixture: THE PLANT NEVER HELD in 90 s of wall clock — clock reads ' +
+      never.clock + '. This is the driver failing to reach the envelope, NOT the dialog: do not ' +
+      'touch the overlay, measure the casualty. (#589 — the old single wait reported this case as ' +
+      'a hidden dialog, which sent one investigation the wrong way.)');
+  }
   await page.waitForFunction(function () {
     var o = document.getElementById('haltOverlay');
     return !!o && !o.hidden;
-  }, { timeout: 40000, polling: 200 }).catch(function () { /* the throws below carry the message */ });
+  }, { timeout: 15000, polling: 200 }).catch(function () { /* the throws below carry the message */ });
   await page.waitForTimeout(400);
 
   var st = await page.evaluate(function () {
@@ -1360,6 +1545,179 @@ async function testHeldPlantDialog(page) {
   return log.join('\n');
 }
 
+/* #553 — THE LOAD BUTTON'S HONESTY. SimulationService.loadState signals a refusal by
+ * RETURNING {type:'error'}; it does not throw. ui/app.js discarded that return and toasted
+ * "State loaded" regardless, so 4 of the 5 reject classes measured on a public build
+ * announced a save that had loaded NOTHING — including the common one after the #523
+ * cutover, a save from the retired engine whose constructor a published build no longer
+ * carries. Only the browser can see this: the defect is between the service's return value
+ * and a toast, and every Node gate hands loadState a good payload.
+ *
+ * Both arms matter. Without the POSITIVE control a handler that error-toasts everything
+ * would pass, which is the same class of hollow check as a negative assertion with no
+ * reachability proof — so the control drives the app's OWN Save button and feeds the file
+ * it produced straight back in. */
+async function testSaveLoadRefusal(page) {
+  var log = [];
+  var base = 'http://127.0.0.1:' + PORT + '/ui/shell.html?engine=pwr2&run=1';
+  await page.goto(base, { waitUntil: 'networkidle', timeout: 90000 });
+  await dismissMission(page);
+  await waitBoardLive(page, 20000);
+
+  async function toast() {
+    return await page.evaluate(function () {
+      var t = document.getElementById('appToast');
+      if (!t) return { missing: true };
+      return { text: t.textContent || '', error: t.className.indexOf('error') >= 0,
+               shown: t.className.indexOf('show') >= 0 };
+    });
+  }
+  // the toast auto-hides (2.5 s, 5 s for an error) — clear it so each arm reads its own
+  async function clearToast() {
+    await page.evaluate(function () {
+      var t = document.getElementById('appToast');
+      if (t) { t.className = 'app-toast'; t.textContent = ''; }
+    });
+  }
+
+  // --- POSITIVE CONTROL: the app's own Save, fed back through the app's own Load ---------
+  await page.click('#settingsBtn');
+  await page.waitForSelector('#settingsOverlay [data-act="save"]', { timeout: 10000 });
+  var dl = (await Promise.all([
+    page.waitForEvent('download', { timeout: 20000 }),
+    page.click('#settingsOverlay [data-act="save"]'),
+  ]))[0];
+  var goodPath = path.join(SCRATCH, 'e2e-save-good.json');
+  await dl.saveAs(goodPath);
+  var goodBytes = fs.statSync(goodPath).size;
+  if (goodBytes < 1000) throw new Error('#553 control: the Save button produced ' + goodBytes + ' bytes');
+  await clearToast();
+  await page.setInputFiles('#loadFile', goodPath);
+  await page.waitForFunction(function () {
+    var t = document.getElementById('appToast');
+    return !!t && t.className.indexOf('show') >= 0;
+  }, { timeout: 10000, polling: 100 });
+  var okT = await toast();
+  if (okT.error || !/State loaded/.test(okT.text)) {
+    throw new Error('#553 control: the app\'s OWN save must load — toast was "' + okT.text +
+                    '" (error=' + okT.error + ')');
+  }
+  log.push('control: Save -> Load round trip through the real buttons -> "' + okT.text.trim() + '"');
+
+  // --- THE CASE: a file loadState REFUSES BY RETURN, not by throwing ---------------------
+  // {"hello":"world"} is valid JSON with no metadata, so it lands on the first return guard
+  // (simulation_service: 'bad save state'). This is the app's own diagnostics-bundle class:
+  // the other .json a player can download from this very UI.
+  var badPath = path.join(SCRATCH, 'e2e-save-nometa.json');
+  fs.writeFileSync(badPath, JSON.stringify({ hello: 'world' }));
+  await clearToast();
+  await page.setInputFiles('#loadFile', badPath);
+  await page.waitForFunction(function () {
+    var t = document.getElementById('appToast');
+    return !!t && t.className.indexOf('show') >= 0;
+  }, { timeout: 10000, polling: 100 });
+  var badT = await toast();
+  if (!badT.error) {
+    throw new Error('#553: a save that loaded NOTHING was toasted as a success — "' + badT.text + '"');
+  }
+  if (/State loaded/.test(badT.text)) {
+    throw new Error('#553: the refusal toast still reads "State loaded": "' + badT.text + '"');
+  }
+  log.push('refused-by-return: "' + badT.text.trim() + '" (error class set)');
+
+  // and an unknown plant_id — the second return guard, and the post-cutover legacy-save case
+  var legacyPath = path.join(SCRATCH, 'e2e-save-legacy.json');
+  fs.writeFileSync(legacyPath, JSON.stringify({
+    schema_version: '1.0', metadata: { plant_id: 'bwr', sim_time: 0, time_acceleration: 1 },
+    engine: {}, control_failure: {}, instructor: {},
+  }));
+  await clearToast();
+  await page.setInputFiles('#loadFile', legacyPath);
+  await page.waitForFunction(function () {
+    var t = document.getElementById('appToast');
+    return !!t && t.className.indexOf('show') >= 0;
+  }, { timeout: 10000, polling: 100 });
+  var legT = await toast();
+  if (!legT.error || /State loaded/.test(legT.text)) {
+    throw new Error('#553: a save naming a plant this build has no constructor for was toasted "' +
+                    legT.text + '"');
+  }
+  log.push('unknown plant_id: "' + legT.text.trim() + '"');
+  return log.join('\n');
+}
+
+/* THE ADVANCED INSTRUMENT-FAILURE PANEL (#564 item 3) — the Hard Rule 1 teaching tool that
+ * physics.html sells: fail one gauge, watch the plant behind it stay real. On the plant the
+ * site runs it had lost BOTH halves of being usable, and only a browser can see either.
+ *
+ *   1. THE LABELS. `manualProfile()` was `(RD.MANUAL||{})[ui.engineKey]` with no `|| [ui.plant]`
+ *      fallback — the one `manualRef()` fifty lines away has always had. `RD.MANUAL` is keyed
+ *      pwr / rbmk_pre / rbmk_post / bwr and has no `pwr2`, so the lookup came back undefined and
+ *      the panel fell through to `Object.keys(latest.instruments)`: 85 rows of raw internal ids
+ *      (`power_range`, `thot`, `primary_pressure`) where the retired engine showed 50 named
+ *      indications.
+ *   2. THE PAINT. `advFailAction` ran `cmd(c)` and then recorded `advFailed[id] = mode`
+ *      UNCONDITIONALLY, so a REFUSED injection flashed a command error AND listed itself as
+ *      "Failed: <id>" — an error, a claim of success and a healthy gauge from one press.
+ *
+ * A SOURCE SCAN CANNOT SEE EITHER. Both are live-lookup fallbacks that read as working code,
+ * which is why this is a browser check and not a grep. */
+async function testAdvFailPanel(page) {
+  var log = [];
+  await page.goto('http://127.0.0.1:' + PORT + '/ui/shell.html?engine=pwr2&run=1',
+                  { waitUntil: 'networkidle', timeout: 90000 });
+  await dismissMission(page);
+  await waitBoardLive(page, 20000);
+
+  var r = await page.evaluate(function () {
+    var t = document.getElementById('advExpToggle');
+    if (t) t.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    var sel = document.getElementById('advInstr');
+    if (!sel) return { err: 'the advanced panel did not build' };
+    var rows = [];
+    for (var i = 0; i < sel.options.length; i++)
+      rows.push({ v: sel.options[i].value, t: sel.options[i].text });
+    function apply() {
+      var b = document.getElementById('advApply');
+      if (b) b.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    }
+    function active() {
+      var el = document.getElementById('advActive');
+      return el ? el.textContent.trim() : '';
+    }
+    sel.value = 'tavg'; apply();
+    var afterGood = active();
+    /* a channel this plant does not have — the refusal path, which no dropdown row can reach
+     * now that every offered row is injectable (#563 item 1 fixed that half) */
+    var o = document.createElement('option');
+    o.value = 'not_a_channel'; o.text = 'bogus';
+    sel.appendChild(o); sel.value = 'not_a_channel'; apply();
+    return { rows: rows.length,
+             named: rows.filter(function (x) { return x.t !== x.v; }).length,
+             raw: rows.filter(function (x) { return x.t === x.v; }).map(function (x) { return x.v; }).slice(0, 6),
+             afterGood: afterGood, afterRefused: active() };
+  });
+
+  if (r.err) throw new Error('#564 item 3: ' + r.err);
+  if (r.named !== r.rows || r.rows < 40) {
+    throw new Error('#564 item 3: the instrument dropdown must be HUMAN-NAMED — ' + r.named +
+      ' of ' + r.rows + ' named; raw ids still offered: ' + r.raw.join(', '));
+  }
+  log.push('dropdown: ' + r.rows + ' rows, all human-named (the defect offered 85 raw ids)');
+
+  if (!/tavg/.test(r.afterGood)) {
+    throw new Error('#564 item 3 control: an ACCEPTED injection must be listed — active read "' +
+                    r.afterGood + '"');
+  }
+  /* THE CASE. Without the guard the refused id is appended to the list beside the good one. */
+  if (r.afterRefused !== r.afterGood || /not_a_channel/.test(r.afterRefused)) {
+    throw new Error('#564 item 3: a REFUSED injection was listed as an active failure — ' +
+      'before "' + r.afterGood + '", after "' + r.afterRefused + '"');
+  }
+  log.push('refusal: the active list is unchanged by a refused injection ("' + r.afterRefused + '")');
+  return log.join('\n') + '\n';
+}
+
 async function main() {
   fs.mkdirSync(SCRATCH, { recursive: true });
   var fallback = path.join(SCRATCH, 'ui-screenshot-fallback.log');
@@ -1399,10 +1757,16 @@ async function main() {
     fs.writeFileSync(path.join(SCRATCH, 'rewind-picker.log'), rpLog);
     var ebLog = await testEsfArmButtons(page);
     fs.writeFileSync(path.join(SCRATCH, 'esf-arm-buttons.log'), ebLog);
+    var rfLog = await testRefusalReachesTheScanner(page);
+    fs.writeFileSync(path.join(SCRATCH, 'refusal-scanner.log'), rfLog);
     var dbLog = await testDiagBundle(page);
     fs.writeFileSync(path.join(SCRATCH, 'diag-bundle.log'), dbLog);
     var hpLog = await testHeldPlantDialog(page);
     fs.writeFileSync(path.join(SCRATCH, 'held-plant-dialog.log'), hpLog);
+    var slLog = await testSaveLoadRefusal(page);
+    fs.writeFileSync(path.join(SCRATCH, 'save-load-refusal.log'), slLog);
+    var afLog = await testAdvFailPanel(page);
+    fs.writeFileSync(path.join(SCRATCH, 'adv-fail-panel.log'), afLog);
     fs.writeFileSync(path.join(SCRATCH, 'ui-screenshot-summary.log'), summary.join('\n') + '\n');
     console.log('E2E UI verification: PASS (' + (ENGINES.length * VIEWS.length) + ' screenshots)');
   } finally {
@@ -1421,7 +1785,8 @@ if (require.main !== module) {
   module.exports = { startServer: startServer, dismissMission: dismissMission,
                      testChartSettings: testChartSettings, testMonitorList: testMonitorList,
                      testMissionCloseResumes: testMissionCloseResumes, testRunStartMark: testRunStartMark,
-                     testHeldPlantDialog: testHeldPlantDialog, port: function () { return PORT; } };
+                     testHeldPlantDialog: testHeldPlantDialog,
+                     testSaveLoadRefusal: testSaveLoadRefusal, port: function () { return PORT; } };
 } else {
   main().catch(function (e) {
     fs.mkdirSync(SCRATCH, { recursive: true });

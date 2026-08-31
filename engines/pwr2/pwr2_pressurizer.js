@@ -88,9 +88,14 @@
  *   - Relief discharge is REPORTED (`relief_kgs` at the steam region's own h — superheated when
  *     it is; liquid from the pool when solid) and must be wired by the caller as a negative
  *     source, the same one-step-lag convention as the break.
- *   - The loop's own 3.545 m3 'pressurizer' node (pwr2_geometry) is a stagnant liquid volume the
- *     mass ledger carries alongside this 4.176 m3 seat — a declared double-count with the surge
- *     line, worth ~5 kg/MPa of the fast-insurge compliance (D5 §85).
+ *   - ⚠ RESOLVED AT #583 (2026-08-28), and the line it replaces is kept because the shape of the
+ *     mistake is the lesson: "The loop's own 3.545 m3 'pressurizer' node (pwr2_geometry) is a
+ *     stagnant liquid volume the mass ledger carries alongside this 4.176 m3 seat — a declared
+ *     double-count with the surge line, worth ~5 kg/MPa of the fast-insurge compliance (D5 §85)."
+ *     DECLARING a double count is not the same as being allowed to keep one: it put 2,539 kg of
+ *     RIGID water in the plant, 17.6 % over the ledger's own total, and every inventory fraction
+ *     was normalised against it. The node is gone; this vessel is the only pressurizer, and
+ *     `run_pwr2_pressurizer` now asserts `GEO.LEDGER.pressurizer.m3 === GEOM.V_pzr_m3`.
  */
 (function (root) {
   'use strict';
@@ -102,6 +107,9 @@
    * (x > 1) the steam region compresses into; nothing here inverts h → T. */
   var VT = RD && RD.vtable;
   var RHO = VT ? VT.rho_from_h : (W && W.rho_from_h);
+  /* #587 — the shell's metal talks to a TEMPERATURE, and it is evaluated ONCE a step, outside
+   * the pressure solve, so it takes the table for the same reason everything else here does. */
+  var TFH = VT ? VT.T_from_h : (W && W.T_from_h);
   if (!W) throw new Error('pwr2_pressurizer: load pwr2_water.js first');
 
   var PSI = 145.037738;                  /* psi per MPa */
@@ -117,6 +125,28 @@
      * THE SCALING METHOD IS THE CLAIM — per-MWt from the anchor plant, declared, not recalled. */
     V_pzr_m3: 4.176,
     hi_level_trip_frac: 0.87,            /* Ginna TS Bases: the 650 ft3 / high-level-trip point */
+    /* ---- THE SHELL'S METAL (#587) --------------------------------------------------------
+     * COMPUTED from this vessel's own volume by the rule beside it, never typed — the
+     * discipline `pwr2_geometry` uses for every ring node's wall, and the reason a derivation
+     * cannot drift away from its value. ASME thin-wall `t = P·r/(S − 0.6P)` at the code-safety
+     * design pressure, on the SAME L/D = 5 shape the heater-elevation block above already
+     * assumes for this vessel (Westinghouse pressurizers are tall), through Layer 1's own
+     * `ASME` inputs and `WALL_MAT.cs` table so there is one rule and one material list.
+     *
+     *   V 4.176 m3, L/D 5  ->  D 1.021 m, L 5.104 m, t 68.4 mm
+     *   M 10,262 kg (22,624 lbm)   C 5,131 kJ/K   A 18.00 m2
+     *
+     * ⚠ WHY IT IS WORTH HAVING. 5,131 kJ/K is **39 % of the vessel's own liquid heat capacity**
+     * (13,119 kJ/K at the design point) and **13x the steam space's** (~400 kJ/K) — and the
+     * steam space is where the insurge superheat and the heater-driven pressure rate both live.
+     * The module header declared "no wall metal" from #515 until now; #574 gave the ring's
+     * PHANTOM pressurizer node a wall on the same rule, and #583 deleted it with the node.
+     *
+     * `lumps: 2` by the same conduction-time rule Layer 1 states: this shell is 68.4 mm and its
+     * diffusion time `t²/α` is **459 s** against the reactor vessel's 1,275 s at 3 lumps. A
+     * scram reaches its inner lump; a cooldown reaches all of it. */
+    wall_LD: 5,
+    wall_lumps: 2,
     level_program_full: 0.615,           /* WTSM 10.3 (ML11223A290): "high level setpoint of 61.5%" */
     level_program_noload: 0.25           /* WTSM 10.3: "low level setpoint of 25%" */
   };
@@ -132,7 +162,53 @@
     backup_kW: 121.4,
     /* Ginna TS Bases B 3.4.9 + NUREG-0737 II.E.3.1 (7) (#447): heaters shed on SI or loss of
      * offsite power, and shed when uncovered (D2 §25.3's emptied regime). */
-    shed_on_si: true
+    shed_on_si: true,
+
+    /* ---- THE ELEVATION BAND (#573, the 2026-08-12 ruling) --------------------------------
+     * The bank occupies a BAND of the vessel, and delivered power falls with the WETTED
+     * FRACTION of that band as TRUE level passes through it. That is the physics; the sourced
+     * 17 %/20 % bistable below survives ON TOP of it as protection *(OWNER RULING, 2026-08-12,
+     * answer 3 of five given as "1: B  2: A  3: A  4: A and then B after the pzr  5: yes,
+     * behind, rename" — rendered on #472 as "A: physical heater elevation with progressive
+     * authority loss"; narrowed the same day, "1: accept as drafted  2: keep both  3: out of
+     * scope, but measured", which settles that what the cliff loses is its role as the PHYSICS,
+     * not the interlock's existence)*.
+     *
+     * THE SOURCED HALF is the elevation itself — WTSM 3.2 (ML11223A213): "replaceable,
+     * direct-immersion, tubular-sheath type heaters ... located in the LOWER PORTION of the
+     * pressurizer vessel". That is why WTSM 10.3 puts a cutoff at 17 % at all: below it the
+     * bank is uncovered and operating in steam damages it.
+     *
+     * THE TWO PERCENTAGES ARE NOT SOURCED and say so. `find_source.js` finds no pressurizer
+     * height, diameter, shell thickness or heater-bundle length in any lane's corpus. They are
+     * DERIVED from this plant's own vessel, on the same L/D = 5 shape assumption the vessel-mass
+     * derivation uses (Westinghouse pressurizers are tall):
+     *
+     *   V = 4.176 m3 (GEOM above) at L/D = 5  ->  D = (4V/5pi)^(1/3) = 1.021 m, L = 5.104 m
+     *   cross-section 0.8183 m2  ->  10 points of VOLUME = 0.510 m of bundle,
+     *   sitting from 0.255 m to 0.766 m above the bottom head
+     *
+     * — roughly the physical depth of an immersion-heater bundle. The retired engine reached
+     * the same two percentages on a vessel 2.8 % larger (4.292 m3); they are adopted here BY
+     * DERIVATION, not by copying, which is why the arithmetic is written out.
+     *
+     * ⚠ THE BAND SITS ENTIRELY BELOW THE 17 % CUT, and that ordering is the whole point of the
+     * cut: S1 exists to de-energize the bank BEFORE it uncovers, not after. A band straddling
+     * 17 % would make the protection fire in the middle of its own subject. The gate asserts
+     * `elev_top_pct < LEVEL.low_cut_pct` directly rather than trusting the two literals.
+     *
+     * ⚠ THESE TWO KEYS ARE THE SINGLE SOURCE FOR THE BOARD (#473). The shell publishes them
+     * through `getControlState().heater_elev_pct` and `comp_pressurizer.js` draws the bank
+     * between them — move one and the drawn elevation moves with it. There is deliberately no
+     * second number to drift, which is the #557 shape.
+     *
+     * ⚠ AND THE CONSEQUENCE ONLY BITES WHEN THE LEVEL CHANNEL LIES. The band is below the cut,
+     * so on a healthy plant the bistable de-energizes the bank before the derate can do
+     * anything. The case it exists for is behaviour-catalog HE-3: a stuck transmitter fools the
+     * latch exactly as it fools the operator, and the wetted fraction is then the only thing
+     * bounding #334's 2207-psi steam-heating deadhead. [declared estimate] */
+    elev_bot_pct: 5.0,
+    elev_top_pct: 15.0
   };
 
   var SPRAY = {
@@ -145,7 +221,42 @@
      * Spray needs a running RCP: the driving head is the loop dP the pump makes (WTSM 3.2,
      * and #472's measured lesson). Auxiliary spray from CVCS is stage 2. */
     max_kgs: 3.45,
+    /* PHYSICALLY TRUE, AND DELIBERATELY NOT ENFORCED — a DECLARED DEPARTURE (#537).
+     *
+     * The physics is not in doubt, and the source is explicit. Ginna TS Bases Rev 101
+     * (ML20339A221), PORV Applicable Safety Analyses: "A loss of offsite power is assumed to
+     * accompany the event, and thus, NORMAL PRESSURIZER SPRAY IS UNAVAILABLE to reduce RCS
+     * pressure. The PORVs are assumed to be used for RCS depressurization." A real unit
+     * answers that with AUXILIARY spray — WTSM 3.2: "auxiliary spray to the vapor space of
+     * the pressurizer during cool down if the reactor coolant pumps are not operating."
+     *
+     * THIS PLANT HAS THE AUX PATH IN THE ENGINE BUT NO CONTROL FOR IT ON THE BOARD, and the
+     * owner has ruled against adding one *(OWNER RULING, 2026-08-28: "Leave the spray working
+     * during a blackout to cover the lack of an aux spray. Declare the deviation."; and
+     * earlier the same day: "Only have one set of spray controls... I don't want to add any
+     * more controls to the UI.")*. So the ONE spray lever keeps working with the pumps
+     * stopped, standing in for the auxiliary spray the player cannot reach.
+     *
+     * The stand-in is CONSERVATIVE, which is why it is tolerable: main spray delivers
+     * 73.9 gpm (3.45 kg/s) of ~550 degF (288 degC) cold-leg water for about 4.34e6 BTU/hr
+     * (1,273 kW) of condensing duty, while real auxiliary spray is 29.4 gpm (1.83 kg/s) of
+     * ~131 degF (55 degC) charging water for about 8.74e6 BTU/hr (2,562 kW) — roughly HALF
+     * the authority the modelled aux path would give, because cold charging water condenses
+     * far harder per pound. Routing the lever to the aux path instead was costed and
+     * rejected: it would have made a blacked-out plant depressurize FASTER than a healthy
+     * one, and its 2,562 kW is energy the CVCS charging stream is already booked for at the
+     * cold leg (pwr2_cvcs), i.e. a double count.
+     *
+     * WHAT WAS ACTUALLY WRONG, and is fixed: the gate read `!(sys.mdot_loop > 100)` — an
+     * untagged flow threshold nobody derived, which is not the pump and not this departure
+     * either. It let spray die at an arbitrary 6.1 % of rated flow while the whole
+     * natural-circulation band (up to 244.5 kg/s here) sprayed at full ladder authority. The
+     * departure is now DECLARED and total rather than accidental and partial.
+     *
+     * `needs_rcp` states the PHYSICS and stays true; `rcp_gate_enforced` states what the sim
+     * does about it. Give the board an auxiliary-spray control and this flips to true. */
     needs_rcp: true,
+    rcp_gate_enforced: false,
     /* AUXILIARY SPRAY (stage 2c, 2026-08-19) — WTSM 3.2: "A flow path from the CVCS to the
      * pressurizer spray line is also provided. This connection provides auxiliary spray to the
      * vapor space of the pressurizer during cool down if the reactor coolant pumps are not
@@ -216,6 +327,30 @@
      * (holds program, restores after a drain), not these two numbers. */
     kp_per_pct: 0.05,
     ki_per_pct_s: 1 / 300,
+    /* THE PROGRAM REFERENCE'S OWN LAG, seconds (#516 item 10, 2026-08-29). The program is a
+     * function of Tavg and the caller wires it to the INDICATED channel, correctly (HR1) —
+     * but it was reading that channel RAW. The slope here is 36.5 points of level over the
+     * 12.83 degC span, i.e. 2.84 % per degC, so instrument noise is AMPLIFIED into setpoint
+     * motion. Measured at steady full power with feed in manual: TRUE Tavg spanned 0.022 degC
+     * while INDICATED spanned 0.63 degC, and the published program swung 1.77 % — the charging
+     * controller chased it from 0 to 17 gpm, which is what "charging in auto doesnt hold the
+     * pzr level" looks like from the board.
+     *
+     * The PI cannot reject this. Its own sourced justification (WTSM 10.3, quoted below) is to
+     * ignore "small temporary level perturbations" — noise on the MEASUREMENT — and this noise
+     * arrives on the SETPOINT, where no amount of integral action helps.
+     *
+     * A lag is the physical answer, not merely a filter: the program represents the THERMAL
+     * EXPANSION of the coolant, and the bulk inventory of an RCS cannot change volume at the
+     * bandwidth of an RTD's noise. Same shape and same reason as pwr2_feedwater's sourced
+     * `level_lag_s`.
+     *
+     * 25 s, and the trade is measured both ways. Program noise falls 2.472 -> 1.018 % and the
+     * charging hunt 9.99 -> 7.80 gpm; 60 s would reach 0.593 % but a first-order lag costs
+     * tau*rate of TRACKING error on a real ramp, so at the ruled 100 degF/hr limit (0.01543
+     * degC/s over a 2.845 %/degC slope) 25 s lags program by 1.10 % and 60 s by 2.63 %. The
+     * larger lag buys 0.4 % of noise for 1.5 % of ramp error, which is the wrong way round. */
+    program_lag_s: 25.0,
     demand_bias: 46 / 180                /* the source's "normally maintained at 46 gpm" over
                                           * its 180 gpm max — the balance point the PI trims */
   };
@@ -331,6 +466,23 @@
   /* A saturated, unstratified vessel at (P, level): steam at h_g above a pool at h_f, no bottom
    * layer. Densities come from the SAME table the seat reads, so the seat reproduces the
    * constructed mass EXACTLY at P (the regions fill the vessel with zero slack). */
+  /* wallSpec() — the shell, from GEOM's own volume through Layer 1's ASME rule and material
+   * table. Returned in `pwr2_core.buildWall`'s shape so Layer 5 reuses Layer 2's lump chain
+   * rather than growing a second wall model — the thing #574's own note warns is most likely
+   * to be built in parallel by mistake, because a parallel chain behaves like one lump and
+   * looks perfectly reasonable from outside. */
+  function wallSpec() {
+    var GEO = RD && RD.geometry;
+    if (!GEO || !GEO.ASME || !GEO.WALL_MAT) return null;
+    var V = GEOM.V_pzr_m3, LD = GEOM.wall_LD;
+    var D = Math.cbrt(4 * V / (LD * Math.PI)), L = LD * D, r = D / 2;
+    var A = GEO.ASME, cs = GEO.WALL_MAT.cs;
+    var t = A.P_design_mpa * r / (A.S_allow_mpa - 0.6 * A.P_design_mpa);
+    var V_metal = Math.PI * L * t * (D + t) + 2 * Math.PI * r * r * t;
+    return { M_kg: V_metal * cs.rho, cp: cs.cp, k: cs.k, t_m: t,
+             A_m2: Math.PI * D * L + 2 * Math.PI * r * r, lumps: GEOM.wall_lumps };
+  }
+
   function createPressurizer(opts) {
     opts = opts || {};
     var P = opts.P === undefined ? CONTROL.setpoint_default_mpa : opts.P;
@@ -357,6 +509,10 @@
       emptied: false,
       heatersShed: false,
       levErrInt: 0,                      /* the level PI's integral state, %*s */
+      /* the PROGRAM REFERENCE's lagged temperature (#516 item 10). undefined until the first
+       * step, which primes it from that step's Tavg — so a boot, a load and a rewind all start
+       * on program rather than ramping onto it. Old saves carry no field and prime the same. */
+      tavgProg_c: undefined,
       lowLevelCut: false,                /* the 17 % letdown-isolate / heater-cut latch */
       porvStuck: false,                  /* the TMI failure LATCH: set by the first lift while
                                           * drivers.porv_stick is armed, cleared only with it */
@@ -364,6 +520,14 @@
       blockOpen: true,                   /* the PORV block valve — the operator's isolation */
       T_tail_c: opts.tail_c === undefined ? 50 : opts.tail_c
     };
+    /* THE SHELL, SEEDED AT THE VESSEL'S OWN SATURATION — not at some plant average. A wall
+     * seeded anywhere else makes every initial condition ring for minutes, which is the defect
+     * wearing a transient's face (Layer 2's own note, and it applies identically here).
+     * `opts.dryWall` builds the pre-#587 vessel so the effect can be A/B'd against its absence. */
+    if (!opts.dryWall) {
+      var ws = wallSpec(), CORE = RD && RD.core;
+      if (ws && CORE && CORE.buildWall) pz.wall = CORE.buildWall(ws, W.T_sat(P));
+    }
     freeze(pz, P);
     return pz;
   }
@@ -374,7 +538,18 @@
    * The old fields are deleted — two authorities for one vessel is the trap. Old saves land
    * on a saturated, unstratified vessel: the pre-build plant exactly. */
   function migrateState(pz, P) {
-    if (!pz || pz.m_stm !== undefined) return pz;
+    if (!pz) return pz;
+    /* ⚠ THE SHELL IS ADDED BEFORE THE EARLY RETURN (#587), and that placement is the point: a
+     * post-#515 save already HAS regions, so it takes the `return` below and would have skipped
+     * the wall entirely — a save restored onto a vessel with no metal, silently, on the one
+     * path that looks like it needs no migration. Seeded at the restored plant's saturation
+     * rather than at a stored temperature: the wall's own history is not in an old save, and
+     * saturation is the state it would have been sitting at. */
+    if (!pz.wall) {
+      var ws0 = wallSpec(), CORE0 = RD && RD.core;
+      if (ws0 && CORE0 && CORE0.buildWall) pz.wall = CORE0.buildWall(ws0, W.T_sat(P));
+    }
+    if (pz.m_stm !== undefined) return pz;
     var V = pz.V === undefined ? GEOM.V_pzr_m3 : pz.V;
     var hf = W.h_f(P), hg = W.h_g(P), m = pz.m_pzr, hb = pz.h_bar;
     pz.V = V;
@@ -605,7 +780,14 @@
     var level_pct = 100 * pz.V_liq / V;
     var level_ctl = drivers.indicated_level_pct !== undefined ? drivers.indicated_level_pct
                                                               : level_pct;
-    var program_pct = 100 * (drivers.tavg_c !== undefined ? levelProgram(drivers.tavg_c)
+    /* THE PROGRAM REFERENCE, off the LAGGED indicated Tavg (#516 item 10) — see
+     * LEVEL.program_lag_s for the measurement and why a lag rather than a faster controller. */
+    if (drivers.tavg_c !== undefined) {
+      if (pz.tavgProg_c === undefined || !isFinite(pz.tavgProg_c)) pz.tavgProg_c = drivers.tavg_c;
+      else if (dt > 0)
+        pz.tavgProg_c += (dt / LEVEL.program_lag_s) * (drivers.tavg_c - pz.tavgProg_c);
+    }
+    var program_pct = 100 * (drivers.tavg_c !== undefined ? levelProgram(pz.tavgProg_c)
                                                           : GEOM.level_program_full);
     var levErr = program_pct - level_ctl;              /* positive = level LOW, charge more */
     /* ANTI-WINDUP: the integral's authority is capped at ±0.5 of demand (±150 %·s at this Ki)
@@ -662,10 +844,65 @@
      * whatever the demand or the shed state. A third seat, deliberately distinct from the
      * operator's manual override and the shed latch: a failure is not a lineup, and clearing
      * it must not touch either (the #200 split). */
-    var Q_heat_kW = (pz.heatersShed || drivers.heaters_failed) ? 0
-                  : heatFrac * HEATERS.prop_kW +
-                    ((pz.backupOn && drivers.heaters_manual === undefined) ||
-                     drivers.heaters_manual === 1 ? HEATERS.backup_kW : 0);
+    /* ⚠ THE MANUAL DEMAND SPANS THE INSTALLED TOTAL; AUTO KEEPS THE SOURCED TWO-BANK LADDER
+     * (#538, 2026-08-28). The operator's 0..1 used to address the PROPORTIONAL bank alone,
+     * with the backup group bolted on at `heaters_manual === 1` — a strict float equality, so
+     * 0.999 delivered 36.36 kW and 1.0 delivered 157.80, a 4.34x cliff across a 0.1-point
+     * move. The shell publishes heater_power_pct against the TOTAL, and the board's percent
+     * box is ONE widget doing both, so the readback was 23 % of what the operator typed and
+     * its MANUAL button — which re-sends the readback as the new demand — walked the bank
+     * down: measured 14.45 -> 3.36 -> 0.78 -> 0.18 -> 0.04 kW in four presses. The same
+     * currency break made the automation's "bumpless" hand-back (pwr_control.js's pzr_pressure
+     * disengage, whose own hint promises the heaters freeze at their current output) drop
+     * 36.4 kW to 8.4 kW.
+     * MANUAL is therefore fraction-of-total, delivered continuously. That continuity is a
+     * DECLARED simplification and a small one: the sourced backup group is 60 discrete
+     * heaters (WTSM 3.2 — 18 proportional/414 kW, 60 backup/1380 kW), so its real granularity
+     * is ~1.7 % of the installed total. AUTO is untouched and stays prototypical: the
+     * proportional bank modulates and the backup group is a latched contactor on the sourced
+     * pressure/level signals (Ginna UFSAR ch7). */
+    /* THE ENERGIZED BANK — the bus load, after the shed latch and the failure seat. This is
+     * what the heater kW INDICATION reads, because a real heater indication is electrical. */
+    var Q_energized_kW = (pz.heatersShed || drivers.heaters_failed) ? 0
+                       : drivers.heaters_manual !== undefined
+                         ? heatFrac * (HEATERS.prop_kW + HEATERS.backup_kW)
+                         : prop * HEATERS.prop_kW + (pz.backupOn ? HEATERS.backup_kW : 0);
+
+    /* ---- THE WETTED FRACTION (#573) — PHYSICS, ON TRUE LEVEL ------------------------------
+     * A rod in steam cannot heat water. `level_pct` is the plant's own liquid volume; the 17 %
+     * bistable a few lines above reads `level_ctl`, the INSTRUMENT. That is the same HR1 split
+     * this file already makes for the pressure ladder, and it is what makes HE-3 expressible:
+     * a stuck level transmitter fools the latch, and this term is then the only thing bounding
+     * the damage.
+     *
+     * ⚠ THE DRY FRACTION DELIVERS NOTHING — a DECLARED simplification, not an oversight. A
+     * direct-immersion element in steam does transfer some heat, but through a film
+     * coefficient two orders down; it burns out rather than usefully heating the steam space.
+     * Crediting it would be re-opening #334's deadhead by arithmetic. Note the energy block
+     * below still has an `m_stm` branch for the heater — with this term that branch becomes
+     * unreachable, which is exactly the point (HE-3: "#334's 2207-psi steam-heating deadhead
+     * becomes unreachable").
+     *
+     * ⚠ IT IS A VOLUME FRACTION, because `level_pct` is. On a straight-sided vessel that is the
+     * height fraction; on this one the heads make them differ, and the BOARD is what has to
+     * agree — `comp_pressurizer.js` maps level to a drawn height by volume for that reason
+     * (#473). Declared here so the two cannot be reconciled in opposite directions later. */
+    var wetted = HEATERS.elev_top_pct > HEATERS.elev_bot_pct
+      ? clip((level_pct - HEATERS.elev_bot_pct) /
+             (HEATERS.elev_top_pct - HEATERS.elev_bot_pct), 0, 1)
+      : (level_pct > HEATERS.elev_top_pct ? 1 : 0);
+
+    /* ⚠ DELIVERED AND ENERGIZED ARE DIFFERENT NUMBERS AND THE SPLIT IS LOAD-BEARING (#573).
+     * `Q_heat_kW` is what reaches the water — the energy balance below and
+     * `run_pwr2_engine`'s closed energy audit both sum THIS. `Q_energized_kW` is what the
+     * gauge reads, and `pwr2_engine` publishes THAT as `pzr_heater_kw`.
+     *
+     * DERATING THE PUBLISHED NUMBER WOULD RESURRECT #538 BY A NEW ROAD: the shell derives
+     * `heater_power_pct` from the published kW and the board's MANUAL button re-sends that
+     * readback as the new demand, so a partly-uncovered bank would walk the operator's demand
+     * down on every press — the same walk (14.45 -> 0.04 kW in four presses) that #538 fixed
+     * from the other end. The readback must stay an identity. */
+    var Q_heat_kW = Q_energized_kW * wetted;
 
     var sprayAuto = clip((err_psi - CONTROL.spray_start_psi) /
                          (CONTROL.spray_full_psi - CONTROL.spray_start_psi), 0, 1);
@@ -677,7 +914,12 @@
      * engine's spray_stuck comment names). Still needs RCP head and steam to condense. */
     pz.sprayStuck = !!drivers.spray_stick;
     if (pz.sprayStuck) sprayFrac = 1;
-    if (SPRAY.needs_rcp && !(sys.mdot_loop > 100)) sprayFrac = 0;   /* no RCP head, no spray */
+    /* THE PUMP, NOT THE FLOW — and the gate is DECLARED OFF (#537, see the SPRAY block). The
+     * predicate that matters is the BREAKER (`sys.pumpTripped`), never loop flow: natural
+     * circulation and the RHR floor both carry flow with no pump making head, which is the
+     * same trap pwr2_shell's `rcp_running` comment records. While `rcp_gate_enforced` is
+     * false the lever stands in for the auxiliary spray this board has no control for. */
+    if (SPRAY.needs_rcp && SPRAY.rcp_gate_enforced && sys.pumpTripped === true) sprayFrac = 0;
     if (pz.waterSolid) sprayFrac = 0;                               /* no steam to condense */
     /* Auxiliary spray: operator-commanded, RCP-independent (see the SPRAY block) — but NOT
      * power-independent (#510 H-4): the CHARGING PUMPS drive it, and they are vital loads
@@ -775,6 +1017,70 @@
       else if (pz.m_sat > 0) pz.h_sat += dHh / pz.m_sat;
       else if (pz.m_stm > 0) pz.h_stm += dHh / pz.m_stm;
     }
+    /* ---- THE SHELL'S METAL (#587) ------------------------------------------------------------
+     * ⚠ ONCE PER STEP, OUTSIDE THE PRESSURE SOLVE — the same rule Layer 2's `stepWall` states
+     * for itself. `seatMass(P)` is called ~11x inside Layer 2's bisection and the wall does not
+     * depend on the candidate pressure; evaluating it there would be paid eleven times for
+     * nothing, and #514's whole point was that this hot path is measured.
+     *
+     * ONE LUMP CHAIN OVER THE WHOLE SHELL, area-weighted by level. The vessel is wetted below
+     * the water line and dry above, at very different films, so both the fluid temperature the
+     * metal talks to and the film coefficient are weighted by the steam VOLUME fraction:
+     *   f_dry = 1 − V_liq/V ;  T_fluid = f_dry·T_steam + (1−f_dry)·T_liquid ;  film v = f_dry
+     * `wallFilm(0, v)` then lands on Layer 2's FREE-convection floor — there is no forced flow
+     * in a pressurizer — so this introduces NO new coefficient. **DECLARED SIMPLIFICATION**: a
+     * real vessel has two walls at two temperatures, not one at their mixture; the mixture
+     * cannot represent a hot dry shell above a cold pool. The level is last step's (the house
+     * one-step-lag convention, as `h_fill` and the relief already use).
+     *
+     * WALL CONDENSATION IS STILL NOT MODELLED — the module header's other half. Steam touching
+     * cold metal condenses on it, which damps an insurge beyond what heat capacity alone does.
+     * This change is the capacity, and only the capacity. */
+    var Q_wall_kW = 0;
+    if (pz.wall && RD.core && RD.core.stepWall) {
+      /* ⚠⚠ THE SHELL DOES NOT TOUCH THE SATURATED POOL, and that is a REGIME rule rather than a
+       * geometry one. The pool region is saturated BY DEFINITION here — `addPool` and the
+       * flash/rain-out step both re-establish it — so heat taken out of it does not lower its
+       * temperature, it CONDENSES STEAM. That is wall condensation, which this change does not
+       * model. MEASURED with the pool coupled anyway: after an insurge the pool came out
+       * **subcooled by 40.7 kJ/kg** beside steam superheated by 43.2, and
+       * `run_pwr2_pressurizer`'s "every region is SINGLE-PHASE at the step boundary" check —
+       * which exists because that is formulation 1's killer — went red. A lumped wall that can
+       * subcool a saturated pool is not a simplification, it is a broken invariant.
+       *
+       * So the metal exchanges with the two regions that legitimately CARRY a temperature: the
+       * steam space, and the stratified bottom layer when there is one. Weights are VOLUME
+       * fractions, and the saturated pool's share of the shell is **inert** — declared, not
+       * hidden. At the design point that is 61.5 % of the area doing nothing, which is most of
+       * why this metal turns out to be nearly inert (§113).
+       *
+       * ⚠ AND THE FIRST VERSION HAD A SECOND DEFECT, same family: the liquid temperature took
+       * the HEATERS' priority (`m_sub` if present, else the pool). That is right for a heater
+       * sitting in the bottom layer and wrong for a shell. The wall read the stratified insurge
+       * layer at ~304 degC as the whole wetted wall, sat 33 K hotter than the fluid, and pushed
+       * 92 kW / 5.54 MJ INTO the vessel — 58 % more than the heaters — making the heater-driven
+       * rate FASTER (0.2093 -> 0.2594 psi/s). **A heat sink that heats is the sign the
+       * temperature it is differenced against is the wrong one.** */
+      var V_stm = pz.m_stm > 0 ? pz.m_stm / RHO(pz.h_stm, P) : 0;
+      var V_sub = pz.m_sub > 0 ? pz.m_sub / RHO(pz.h_sub, P) : 0;
+      var fStm = clip(V_stm / V, 0, 1), fSub = clip(V_sub / V, 0, 1);
+      var fAct = fStm + fSub;                       /* the participating area fraction */
+      if (fAct > 1) { fStm /= fAct; fSub /= fAct; fAct = 1; }
+      if (fAct > 1e-6) {
+        var T_stmW = pz.m_stm > 0 ? TFH(pz.h_stm, P) : W.T_sat(P);
+        var T_subW = pz.m_sub > 0 ? TFH(pz.h_sub, P) : W.T_sat(P);
+        var T_wallFluid = (fStm * T_stmW + fSub * T_subW) / fAct;
+        /* `flowFrac` 0 — there is no forced flow in a pressurizer, so Layer 2's film lands on
+         * its FREE-convection floor and this introduces no new coefficient. The void the film
+         * sees is the steam share OF THE PARTICIPATING AREA. */
+        Q_wall_kW = RD.core.stepWall(pz.wall, T_wallFluid, 0, fStm / fAct, dt) * fAct;
+        var dHw = Q_wall_kW * dt;
+        var dHwS = fAct > 0 ? dHw * (fStm / fAct) : 0, dHwB = dHw - dHwS;
+        if (pz.m_stm > 0) pz.h_stm += dHwS / pz.m_stm; else dHwB += dHwS;
+        if (pz.m_sub > STRATIFY.m_liq_floor_kg) pz.h_sub += dHwB / pz.m_sub;
+        else if (pz.m_stm > 0) pz.h_stm += dHwB / pz.m_stm;
+      }
+    }
     if (pz.m_sub > 0 && pz.h_sub >= hf) {
       addPool(pz, pz.m_sub, pz.h_sub); pz.m_sub = 0;
     }
@@ -834,11 +1140,34 @@
       m_pzr: pz.m_pzr,
       surge_kgs: surge_kgs,
       surge_heat_kW: surge_heat_kW,
+      /* DELIVERED into the water (energized x wetted) — the number the energy balance uses and
+       * the one `run_pwr2_engine`'s closed audit sums. NOT the gauge; see the split above. */
       heater_kW: Q_heat_kW,
+      /* THE SHELL (#587). Reported as the EFFECT — kW into the water, positive when the metal
+       * is giving heat back — plus the inner lump's temperature, because a wall that is not
+       * tracking its fluid is the failure mode a heat number alone cannot show. */
+      wall_kW: Q_wall_kW,
+      wall_T_inner_c: pz.wall ? pz.wall.T[0] : undefined,
+      wall_T_outer_c: pz.wall ? pz.wall.T[pz.wall.n - 1] : undefined,
+      /* THE BUS LOAD, un-derated — what an electrical kW indication reads, and what the shell
+       * publishes so #538's readback round trip stays an identity on an uncovered bank. */
+      heater_energized_kW: Q_energized_kW,
+      /* the fraction of the bank under water, for the gate and for the board's drawing (#473) */
+      heater_wetted_frac: wetted,
       heater_frac: heatFrac,
       backup_on: pz.backupOn,
       heaters_shed: pz.heatersShed,
       spray_frac: sprayFrac,
+      /* THE DEMAND, SEPARATE FROM THE DELIVERY (#564 item 1). What the operator (or, in AUTO,
+       * the controller) is ASKING FOR, before the physical gates below it — the stuck-valve
+       * override, water-solid, and the RCP head gate when it is enforced. The module has always
+       * kept the split internally; nothing published it, so the board read `spray_frac` twice —
+       * once as the operator's own demand box and once as the `asked` half of the SPRAY FLOW
+       * readout's "demanded and not arriving" amber, which made that amber an identity that is
+       * always zero. Deliberately NOT touched by `spray_stick`: writing an override into a
+       * demand is the #200 trap this file's own comment three lines up names. */
+      spray_demand_frac: drivers.spray_manual !== undefined
+                         ? clip(drivers.spray_manual, 0, 1) : sprayAuto,
       spray_stuck: pz.sprayStuck === true,
       spray_kgs: m_spray,
       spray_duty_kW: Q_spray_kW,

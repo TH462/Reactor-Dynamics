@@ -56,6 +56,8 @@ function runSuite(C, rec, quiet) {
     return C.stepCondenser(C.createCondenser(opts || {}), 0.02,
                            Object.assign({ duty_kW: REJECT_KW }, drv || {}));
   }
+  function f2c(f) { return (f - 32) * 5 / 9; }
+  function c2f(c) { return c * 9 / 5 + 32; }
 
   /* ---- CONSTRUCTION, WRITTEN FIRST (D1 §31) ---------------------------------------------- */
   head('CONSTRUCTION  [a caller argument that never arrives is invisible to a physics check]');
@@ -159,6 +161,55 @@ function runSuite(C, rec, quiet) {
       warm.duty_kW === REJECT_KW && warm.condenser_vacuum_kpa > 0,
       'this layer reports the interlock state; it does not act on it');
 
+  /* ---- THE OPERATOR'S BAND ---------------------------------------------------------------- */
+  /* #591 item 1. The band is not decoration: the RETIRED plant's 35-85 degF stopped BELOW the
+   * C-9 removal point, so a board clamped to it could never reach the turbine trip this layer
+   * exists to make reachable. Both crossings are checked against the INDEPENDENTLY RETYPED
+   * source numbers in DOC, not against COND's own copies. */
+  head('THE OPERATOR BAND  [#591 item 1 -- the sink is reachable, and it reaches the casualty]');
+  ckT('clampCwInlet holds the declared band at both ends', (function () {
+        var lo = C.clampCwInlet(f2c(-40)), hi = C.clampCwInlet(f2c(200));
+        return Math.abs(c2f(lo) - C.COND.cw_min_f) < 1e-9 &&
+               Math.abs(c2f(hi) - C.COND.cw_max_f) < 1e-9;
+      })(), C.COND.cw_min_f + '-' + C.COND.cw_max_f + ' degF');
+  ckT('...and refuses a null/non-finite rather than clamping it to a bound',
+      C.clampCwInlet(null) === null && C.clampCwInlet(NaN) === null &&
+      C.clampCwInlet(undefined) === null,
+      'a malformed command must not silently move the heat sink');
+  /* THE BAND'S REACH, and the assertion is deliberately NOT "it can reach the casualty". The
+   * ceiling is SOURCED (Ginna TS Bases B 3.7.8, service water OPERABLE at <= 85 degF) and a
+   * first draft of this row asserted the opposite — that the top must sit ABOVE the C-9 removal
+   * point so the player could lose the condenser by dialling lake temperature. That would have
+   * required widening a sourced bound to suit a lesson. What the band must do is reach the
+   * PERMISSIVE (which it does, at 77 degF) and stop short of the REMOVAL point, which is what
+   * `Manuals/03` §13.1 has said in prose since Rev 15: lake temperature alone cannot take the
+   * condenser away — that is an equipment casualty, and the pumps/fouling/air-binding levers
+   * above are how you stage it. */
+  ckT('the band reaches the C-9 PERMISSIVE — the design point is not its ceiling',
+      (function () {
+        var atTop = at({ cw_inlet_c: f2c(C.COND.cw_max_f) }, {});
+        var atBot = at({ cw_inlet_c: f2c(C.COND.cw_min_f) }, {});
+        return atBot.backpressure_in_hg < DOC.c9_in_hg &&
+               atTop.backpressure_in_hg > DOC.c9_in_hg;
+      })(),
+      'the bottom must sit under the permissive and the top above it, or the control moves ' +
+      'nothing the player can read');
+  ckT('...and STOPS SHORT of the C-9 removal point, because the ceiling is SOURCED at 85 degF',
+      at({ cw_inlet_c: f2c(C.COND.cw_max_f) }, {}).backpressure_in_hg < DOC.c9_out_in_hg &&
+      Math.abs(C.COND.cw_max_f - 85.0) < 1e-9,
+      'losing the condenser is an equipment casualty (pumps / fouling / air binding), not a ' +
+      'warm day — widening this bound to reach it would be fitting a source to a lesson');
+  ckT('backpressure is MONOTONE across the whole band (10 steps)', (function () {
+        var prev = -1, ok = true;
+        for (var i = 0; i <= 10; i++) {
+          var f = C.COND.cw_min_f + (C.COND.cw_max_f - C.COND.cw_min_f) * i / 10;
+          var bp = at({ cw_inlet_c: f2c(f) }, {}).backpressure_in_hg;
+          if (!(bp > prev)) ok = false;
+          prev = bp;
+        }
+        return ok;
+      })(), 'a non-monotone sink would make the control read as broken to a player');
+
   /* ---- REFUSAL ---------------------------------------------------------------------------- */
   head('REFUSAL  [the heat to reject belongs to the cycle, not to this layer]');
   ckT('omitting the duty throws rather than deriving it from a steam flow', (function () {
@@ -217,7 +268,12 @@ var MUTATIONS = [
    'cw_flow_kgs: opts.cw_flow_kgs === undefined ? null : opts.cw_flow_kgs,', 'cw_flow_kgs: null,'],
   ['the default lineup ships FOULED',
    'fouling: opts.fouling === undefined ? 0 : opts.fouling,',
-   'fouling: opts.fouling === undefined ? 0.5 : opts.fouling,']
+   'fouling: opts.fouling === undefined ? 0.5 : opts.fouling,'],
+  /* #591 item 1 -- the band and its clamp */
+  ['the operator band loses its SOURCED ceiling (85 degF, Ginna TS Bases B 3.7.8)',
+   'cw_max_f: 85.0,', 'cw_max_f: 95.0,'],
+  ['the clamp lets a non-finite through as a bound',
+   'if (c == null || !isFinite(c)) return null;', 'if (c == null) return null;']
 ];
 
 if (fail > 0) {

@@ -519,7 +519,52 @@
     { id: 'subcooling_low',    instrument: 'subcooling_margin', direction: 'low',    setpoint: 11.1,  priority: 'warning',  panel: 'A', category: 'coolant', label_learning: 'Low Subcooling Margin',           label_industry: 'LO SUBCOOL' },
     { id: 'subcooling_lost',   instrument: 'subcooling_margin', direction: 'low',    setpoint: 0.0,   priority: 'critical', panel: 'A', category: 'coolant', label_learning: 'Subcooling Lost — Coolant Boiling', label_industry: 'SUBCOOL LOST' },
     { id: 'pzr_level_high',    instrument: 'pzr_level',        direction: 'high',    setpoint: 75.0,  priority: 'caution',  panel: 'A', category: 'coolant', label_learning: 'Pressurizer Level High',          label_industry: 'PZR LVL HI' },
-    { id: 'pzr_level_low',     instrument: 'pzr_level',        direction: 'low',     setpoint: 25.0,  priority: 'warning',  panel: 'A', category: 'coolant', label_learning: 'Pressurizer Level Low',           label_industry: 'PZR LVL LO' },
+    // PROGRAM-RELATIVE SINCE 2026-08-29 (#500) *(OWNER RULING, 2026-08-28: "go with as
+    // recommended for all")*. It was a FIXED 25 % and that number IS this plant's own sourced
+    // no-load level program point (WTSM 10.3), so a healthy Mode 3, Hot Standby plant rode its
+    // indicated level right on the annunciator: measured this session, hot zero power settles
+    // at 23.6-26.4 % for an hour. The first fix moved the number (PWR2-only, 17 %); the ruling
+    // reversed the SHAPE, because a fixed setpoint on a PROGRAMMED level re-collides the moment
+    // the program moves.
+    //
+    // -20.0 POINTS OF DEVIATION, and the number is measured, not round. Healthy bands, hour-long
+    // samples on the settled plant: hot zero power +-1.37, 50 percent -2.56..+2.38, hot full
+    // power -2.77..+2.38. A 100 -> 90 MWe load change spans -2.71..+3.15 and ends at +0.34, the
+    // program tracking. So -20 is 7.2x the worst healthy excursion and 6.4x the worst load
+    // transient. Above it, every leak the shell can inject crosses it inside 30 min (1 cm2
+    // reaches -37, 5 cm2 and up peg the channel's -40 clip).
+    //
+    // WHY IT SITS BELOW `pzr_level_dev_low` RATHER THAN REPLACING IT. Two rungs on one channel,
+    // deeper deviation = higher priority: -10 caution says make-up is not holding, -20 warning
+    // says it has lost. And the 17 % HEATER CUTOFF that the retired fixed rung was standing in
+    // for is not lost with it — the cutoff is a fixed ELEVATION, not a program point, and it
+    // annunciates on its own through PZR HTRS SHED (pwr2_pressurizer sets `heatersShed` from
+    // `lowLevelCut`), which #577 raised to `caution` in the same change. A deviation alarm
+    // cannot express "17 % absolute" at both ends of a program that runs 25 -> 61.5 %, and it
+    // no longer has to.
+    { id: 'pzr_level_low',     instrument: 'pzr_level_dev',    direction: 'low',     setpoint: -20.0, priority: 'warning',  panel: 'A', category: 'coolant', label_learning: 'Pressurizer Level Far Below Program — make-up has lost it', label_industry: 'PZR LVL LO' },
+    // THE 17 % CUTOFF GETS A LAMP (#500 fallout, 2026-08-29) — and it should have had one long
+    // before this. `PWR_ACTUATIONS` already isolates BOTH letdown orifices at 17 % indicated
+    // level (latched, reset_below 20, no reset_action — the operator re-opens an orifice by
+    // hand), and PWR2 honours it: `pwr2_pressurizer.lowLevelCut` -> `letdown_isolated` ->
+    // `pwr2_engine:1160` zeroes `letdownOpen`. An automatic action the player cannot see is the
+    // DESIGN_CRITERIA Q4 observability failure, and this one takes away a flow path the player
+    // then has to restore by hand.
+    //
+    // IT IS ALSO WHAT `run_m7` WENT RED FOR, and the check was right. Its ladder rule is that
+    // every instrument-based trip has a LESS EXTREME alarm on the SAME instrument, so the player
+    // is annunciated before the scram. The 12 % pzr-level scram used to be covered by
+    // `pzr_level_low` at an absolute 25 %; that row became program-relative, and a DEVIATION
+    // setpoint cannot warn about an ABSOLUTE trip — there is no magnitude to compare. This row
+    // restores the relationship with a number that is sourced rather than invented: 17 sits
+    // above the 12 trip and 6.6 points below the measured Mode 3 no-load band (23.6-26.4 %),
+    // which is the collision that filed #500 in the first place.
+    //
+    // NOT a duplicate of PZR HTRS SHED, which fires at the same level on PWR2. That lamp says
+    // the HEATERS are off; this one says LETDOWN is isolated — different action, different
+    // recovery (a button versus re-opening an orifice), and on the retired engine the shed lamp
+    // is a safety-injection/blackout signal that does not fire here at all.
+    { id: 'pzr_level_cutoff',  instrument: 'pzr_level',        direction: 'low',     setpoint: 17.0,  priority: 'warning',  panel: 'A', category: 'coolant', label_learning: 'Pressurizer Level Low — Letdown Isolated, Heaters Cut', label_industry: 'PZR LTDN ISOL' },
     { id: 'pzr_level_lolo',    instrument: 'pzr_level',        direction: 'low',     setpoint: 12.0,  priority: 'critical', panel: 'A', category: 'coolant', label_learning: 'Pressurizer Level Very Low',      label_industry: 'PZR LVL LO LO' },
     // ---- the insertion-limit PAIR (#306) ---------------------------------------------
     // A real board carries two, and we shipped only the second, so the first thing a player
@@ -596,7 +641,19 @@
     // expected to ACT on (the heaters come back with one button), so an invisible one
     // would be an orphan action — the DESIGN_CRITERIA Q4 observability test. The other
     // three still have no indication; that is filed, not fixed here.
-    { id: 'pzr_heaters_shed', instrument: 'pzr_heaters_shed', direction: 'is_true', setpoint: null, priority: 'status', panel: 'B', category: 'coolant', label_learning: 'Pressurizer Heaters Shed (Safety Injection)', label_industry: 'PZR HTRS SHED' },
+    //
+    // AND IT SHIPPED AT `status`, WHICH IS THE ONE CLASS THAT CANNOT ASK FOR ANYTHING (#577,
+    // raised to `caution` 2026-08-29). A status row is acknowledged on the operator's behalf
+    // the moment it arrives *(OWNER RULING, 2026-07-28: "I want status-class alarms to spawn
+    // (and arrive) pre-acknowledged")* — control_kernel.js's status auto-ack — and the board
+    // sorts it last behind a grey dot. So the tile written to say "the player must act" was
+    // rendered as furniture: PWR2 really does shed on safety injection (pwr2_pressurizer's
+    // shedLatch), the player loses pressurizer pressure control until they press HEATER AUTO,
+    // and the only thing saying so arrived pre-acknowledged. `caution` is the rung that wants
+    // an ACK without claiming a casualty — the same call `accum_aligned` below carries, and
+    // for the same reason. Fleet-wide deliberately: the mechanism, the shed and the recovery
+    // are identical on both plants, so a PWR2-only override would fork a row for no physics.
+    { id: 'pzr_heaters_shed', instrument: 'pzr_heaters_shed', direction: 'is_true', setpoint: null, priority: 'caution', panel: 'B', category: 'coolant', label_learning: 'Pressurizer Heaters Shed (Safety Injection)', label_industry: 'PZR HTRS SHED' },
     // Containment (#386 stage 2). Pressure pair at the SOURCED actuation points
     // (3.5 psig SI backup / 30 psig hi-hi — WTSM 12.3), abs on this plant's ambient;
     // train-status pair on the DELIVERY booleans (AC-gated), not the demands.
@@ -806,8 +863,40 @@
     // like that.")* — 100 % = the complete shear of the primary loop pipe (the DEG).
     // leak_scale 0.04 is the #408 anchor: sev 1.0 empties the vessel in ~28 s against
     // the sourced 25-38 s blowdown (WCAP-16009 §12-4-3 / Ginna T15.6-15).
+    //
+    // ⚠ THE UNIT SAID "% OF A FULL PIPE SHEAR" AND THE PLANT THE SITE RUNS DELIVERS 0.75 % OF ONE
+    // (#580 stage 1, relabelled 2026-08-29) *(OWNER RULING, 2026-08-28: "go with as recommended
+    // for all")*. The wording above is true of the RETIRED engine's fitted leak_scale and of
+    // nothing else: PWR2 re-homes this row to an AREA (pwr2_shell REHOMED.primary_leak,
+    // severity 1.0 = 0.002 m2 = 20 cm2), and 20 cm2 measures against this plant's own cold leg
+    // — 0.13336 m2 of flow area, 16.22 in bore, so a double-ended guillotine is 0.26671 m2
+    // (2,667 cm2) — at 0.75 %. PWR2's own code calls 20 cm2 "the small break class".
+    //
+    // ⚠⚠ AND `max` IS NOT A DISPLAY SCALE. It reads like one — ui/app.js renders the slider's
+    // raw 0-100 through min/max purely as text — but pwr_engine.js:1623 computes the RETIRED
+    // plant's leak as `severity * (meta.max / 100) * leak_scale`, so `max` is a PHYSICS
+    // MULTIPLIER on that engine and run_e2e_controls reconstructs the same law. Rescaling the
+    // range to state an area in the number would have cut pwr1's design-basis LOCA by 16x
+    // across behavior_pwr, meltdown_pwr, run_m4, run_m5 and run_meltdown_stack, silently and
+    // in the right direction to look like a tuning result. So the AREA goes in the unit STRING
+    // and the range does not move.
+    //
+    // STAGE 2, THE RESCALE, WAS PUT TO THE OWNER AND DECLINED — THE RANGE STAYS AT 20 cm2
+    // *(OWNER RULING, 2026-08-29: "A" — selected from three options I costed, A being "leave the
+    // range at 20 cm2, now honestly labelled")*. It supersedes the rescale half of the
+    // 2026-08-28 ruling, which asked for 100 % to be a real double-ended shear against the
+    // sourced 25-38 s blowdown, because that target is not buildable and the reason is MEASURED:
+    // swept cold-leg break areas latch `beyond_model` before the blowdown completes above
+    // ~46 cm2 (46 cm2 rides 900 s clean, 47 cm2 latches at 60.7 s), and the 2,667 cm2 shear
+    // latches on step ONE with a 2.019 MPa root jump against pwr2_core's P_JUMP_MAX of 2.0.
+    //
+    // THE WALL IS THE PRESSURE SOLVE'S COMPLIANCE-COLLAPSE GUARD, NOT THIS SLIDER, and raising
+    // it was offered as its own piece of work and NOT taken. So do not "fix" this range: a top
+    // of 2,667 cm2 would be a button that freezes the plant on its first step, and anything
+    // between 47 cm2 and there latches mid-blowdown. If a design-basis LOCA is ever wanted, the
+    // work starts in pwr2_core, not here. Full measurements: PWR2_VALIDATION.md §119.
     large_loca:                  { type: 'physics_parameter', category: 'coolant', effect: 'primary_leak', severity_scales: 'leak_rate', leak_scale: 0.04,
-                                   severity_meta: { label: 'Break Size', unit: '% of a full pipe shear', min: 0, max: 100, default: 40 }, display: 'Large LOCA (Cold-Leg Break)' },
+                                   severity_meta: { label: 'Break Size', unit: '% (100 % = a 3.1 in² / 20 cm² hole)', min: 0, max: 100, default: 40 }, display: 'Large LOCA (Cold-Leg Break)' },
     continuous_rod_withdrawal:   { type: 'physics_parameter', category: 'reactivity', effect: 'rod_withdrawal_runaway', severity_scales: 'withdraw_rate',
                                    severity_meta: { label: 'Withdrawal Rate', unit: 'steps/s', min: 0, max: 24, default: 12 }, display: 'Continuous Rod Withdrawal' },
     stuck_rod_on_scram:          { type: 'physics_parameter', category: 'reactivity', effect: 'stuck_control_rod', severity_scales: 'worth_fraction_held',
@@ -1429,11 +1518,25 @@
       // check into the plant must not quietly turn that into a throw.
       pausedWhen: function (s) { return !!(s.control_state && s.control_state.charging_pump_running === false); },
       pausedNote: 'idle — charging pump OFF',
-      // rate: real-plant scale — max RCS makeup (~150 gpm into ~90 000 gal) changes
-      // concentration ~1.5 ppm/min ≈ 0.025 ppm/s; 0.05 is deliberately generous so a
-      // dose lands in game-time (~0.5 pcm/s of reactivity at 10 pcm/ppm worth, gentle
-      // enough for the MTC to ride). The old 0.5 was a firehose: ~5 pcm/s spiked
-      // power ~10 % per 10 ppm asked (TUNING_LOG S9). [tune]
+      // rate: 0.05 ppm/s. The old 0.5 was a firehose: ~5 pcm/s spiked power ~10 % per
+      // 10 ppm asked (TUNING_LOG S9). [tune]
+      //
+      // ⚠ ITS STATED PROVENANCE WAS ANOTHER PLANT'S AND ITS VERDICT WAS BACKWARDS (#579,
+      // corrected 2026-08-29). This comment read "real-plant scale — max RCS makeup
+      // (~150 gpm into ~90 000 gal) changes concentration ~1.5 ppm/min ≈ 0.025 ppm/s; 0.05 is
+      // deliberately generous". That benchmarks a full-size four-loop plant. The plant this
+      // channel actually runs on — PWR2 keeps `boron_conc` as one of only two automation
+      // channels it consumes — holds 6,418 gal and charges at 30.1 gpm plus 5 gpm of seal
+      // injection, so the denominator was 14x the plant and the numerator 4x its pumps.
+      //
+      // MEASURED on the shipping plant instead of scaled from someone else's (Hard Rule 12,
+      // hot full power, 600 s from a settled start): PWR2 has NO ppm/s constant at all — the
+      // achievable rate is the mass balance's own, `inFlow x (C_in - C) / M`, clamped by the
+      // 2,500 ppm boric-acid tank (pwr2_cvcs). Commanding a saturating +10 ppm/s from 626 ppm
+      // delivers 0.047 ppm/s; commanding a saturating dilution delivers -0.026 ppm/s; and
+      // THIS channel's 0.05 delivers 0.043. So 0.05 is not "deliberately generous" — it sits
+      // essentially ON the plant's physical ceiling, and the honest reading is that the
+      // channel asks for slightly more than the plant can give and the plant decides.
       // reAnchorPpm: a new target re-samples the analyzer for the dose books only
       // when they've drifted beyond this (e.g. ECCS boration) — beyond noise (±2σ≈4),
       // below any dose worth caring about.

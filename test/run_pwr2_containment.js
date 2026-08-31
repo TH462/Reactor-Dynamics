@@ -58,10 +58,16 @@ function runSuite(C, rec, quiet) {
     var ct = C.createContainment({}), r = null, cr = null;
     for (var i = 0; i < Math.round(secs / 0.02); i++) {
       r = B.stepBreak(br, sys, 0.02, { backpressure_mpa: cr ? cr.containment_pressure_mpa : undefined });
-      cr = C.stepContainment(ct, 0.02, { mdot_kgs: r.mdot_kgs, h_kJkg: r.source.h });
-      S.stepPlant(sys, 0.02, { sources: [r.source] });
+      /* #585 — the plant's acceptance books: ledger and containment intake both ride the core's
+       * verdict, so a held step can neither book nor deliver. (Order swap is inert: containment
+       * feeds back only through NEXT step's backpressure.) */
+      var p = S.stepPlant(sys, 0.02, { sources: [r.source] });
+      if (p.held !== true) {
+        B.book(br, r);
+        cr = C.stepContainment(ct, 0.02, { mdot_kgs: r.mdot_kgs, h_kJkg: r.source.h });
+      }
     }
-    return { cr: cr, br: br, sys: sys };
+    return { cr: cr, br: br, sys: sys, ct: ct };
   }
 
   /* ---- CONSTRUCTION ----------------------------------------------------------------------- */
@@ -107,6 +113,33 @@ function runSuite(C, rec, quiet) {
       (b60.cr.containment_temp_c * 9 / 5 + 32).toFixed(1) + ' degF at 60 s');
   ckT('...and the solver never reaches its bound during the event',
       b60.cr.solver_clamped === false, '');
+  /* ⚠ #544: THE LEDGER IS AIR-INCLUSIVE, checked as a CLOSURE — a full revert to the
+   * water-only build is self-consistent (its own seed matches its own residual), so the IC
+   * checks alone cannot see it. Recomputing the atmosphere's total internal energy at the
+   * REPORTED state and requiring it to equal the ledger fails the water-only build by the
+   * whole air term, ~1.4 GJ here. */
+  /* ⚠ THE 200 degC BOUND IS STILL LOAD-BEARING WITH THE AIR CARRIED (#544). The air term
+   * fixed the near-empty IC that used to expose an unbounded search, sending that mutation
+   * blind — but at post-blowdown water masses the residual still FALLS past the h_g peak
+   * (measured at 6,000 kg: U(190 degC) = 17.0 GJ > U(370) = 13.8 GJ), so an unbounded
+   * bisection reads residual(370) < 0 and parks on its own top. This state pins the branch. */
+  ckT('a hot unsaturated atmosphere solves on the PHYSICAL branch, not the far wall', (function () {
+        var hot = C.createContainment({});
+        var TK = 190 + 273.15, Ps = W.P_sat(190);
+        hot.m_water = 6000;
+        hot.U_total_kJ = 6000 * (W.h_g(Ps) - 0.4615 * TK) + hot.m_air * 0.718 * TK;
+        var out = C.stepContainment(hot, 0.02, {});
+        return Math.abs(out.containment_temp_c - 190) < 0.5 && out.solver_clamped === false;
+      })(), 'an unbounded search latches the falling branch and reports 370 degC for a 190 degC state');
+  ckT('the energy ledger closes AIR-INCLUSIVE at the reported state', (function () {
+        var TK = b60.cr.containment_temp_c + 273.15;
+        var Ps = W.P_sat(b60.cr.containment_temp_c);
+        var U = b60.cr.m_vapour_kg * (W.h_g(Ps) - 0.4615 * TK) +
+                b60.cr.m_sump_kg * W.h_f(Ps) +
+                b60.cr.m_air * 0.718 * TK;
+        return b60.ct.U_total_kJ !== undefined &&
+               Math.abs(U - b60.ct.U_total_kJ) < 0.01 * Math.abs(b60.ct.U_total_kJ);
+      })(), 'water-only ledger misses the air\'s ~1.4 GJ (and the field itself)');
   /* ⚠ AND THE CLAMP FLAG NEEDS A CASE THAT ACTUALLY CLAMPS. Both checks above assert it is FALSE,
    * so a version hardcoding `false` satisfies them and the flag stops meaning anything -- the
    * injection self-test found exactly that. Driving a deliberately undersized containment past the
@@ -168,7 +201,7 @@ var pass = rec.filter(function (r) { return r.ok; }).length, fail = rec.length -
 
 var MUTATIONS = [
   ['the flash solve is seeded with ENTHALPY instead of internal energy (the 392 degF defect)',
-   '                  (W.h_g(Pv0) - 0.4615 * (T + 273.15)),', '                  (W.h_g(Pv0)),'],
+   '                  (W.h_g(Pv0) - 0.4615 * (T + 273.15)) +', '                  (W.h_g(Pv0)) +'],
   ['the bisection is unbounded again, so it latches onto the non-monotone branch',
    '      var lo = 20, hi = 200;', '      var lo = 20, hi = 370;'],
   ['NOTHING EVER CONDENSES — the sump is removed and it becomes a heater',
@@ -176,14 +209,18 @@ var MUTATIONS = [
   ['the vapour is not capped at saturation, so the atmosphere holds unlimited steam',
    '      m_vapour = Math.min(ct.m_water, mvmax);', '      m_vapour = ct.m_water;'],
   ['incoming enthalpy stops reaching the energy balance',
-   '      ct.U_water_kJ += dm * drivers.h_kJkg;', ''],
+   '      ct.U_total_kJ += dm * drivers.h_kJkg;', ''],
   ['incoming mass stops reaching the water inventory', '      ct.m_water += dm;', ''],
   ['pressure drops the steam term', '      containment_pressure_mpa: P_a + P_v,',
    '      containment_pressure_mpa: P_a,'],
   ['pressure drops the air term', '      containment_pressure_mpa: P_a + P_v,',
    '      containment_pressure_mpa: P_v,'],
   ['the air mass is not derived from the sourced initial condition',
-   '      m_air: Pa0 * 1000 * V / (R_AIR * (T + 273.15)),', '      m_air: 4697,'],
+   '    var m_air = Pa0 * 1000 * V / (R_AIR * (T + 273.15));', '    var m_air = 4697;'],
+  ['the air heat capacity leaves the RESIDUAL (#544 — the solved T is handed to the air free)',
+   '              + ct.m_air * CV_AIR * TK;', '              ;'],
+  ['the air heat capacity leaves the SEED (#544 — the ledger starts water-only)',
+   '                  m_air * CV_AIR * (T + 273.15),', '                  0,'],
   ['the vapour partial pressure is ignored when deriving the air mass',
    '    var Pa0 = Math.max(0, P - Pv0);', '    var Pa0 = P;'],
   ['the sourced free volume moves', 'ginna_free_volume_ft3: 1.0e6,', 'ginna_free_volume_ft3: 2.0e6,'],

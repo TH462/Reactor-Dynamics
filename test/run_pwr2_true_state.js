@@ -318,9 +318,14 @@ function runSuite(TS, rec, quiet) {
 
   /* ---- THE NEWLY-WIRED SYSTEMS: break, containment, condenser, ECCS ---------------------- */
   head('BREAK / CONTAINMENT / CONDENSER / ECCS -- built earlier this session, wired NOW');
-  ck('leak_flow is the break\'s own discharge, not re-derived',
-     ts.leak_flow === B.brk.mdot_kgs && ts.leak_flow > 0,
-     ts.leak_flow.toFixed(4) + ' kg/s -- a small leak at full power, not a placeholder');
+  /* #550: the SHARED #408 currency (inventory-frac/s), same conversion as the CVCS flows —
+   * the raw-kg/s form this check used to PIN pegged the [0, 0.06] instrument at top of
+   * scale for every injectable break (27,000 gpm for a 2.4 gpm seal leak). Reds on it. */
+  ck('leak_flow is the break\'s own discharge in the SHARED currency (frac/s, not kg/s)',
+     Math.abs(ts.leak_flow - B.brk.mdot_kgs * (60 * 264.172 / 1000 / 450000)) < 1e-15 &&
+     ts.leak_flow > 0,
+     (ts.leak_flow * 450000).toFixed(1) + ' gpm from ' + B.brk.mdot_kgs.toFixed(3) +
+     ' kg/s -- a small leak at full power, on the instrument\'s own scale');
   ck('containment pressure is SUPPLIED and near its sourced initial condition',
      ts.containment_pressure_mpa !== undefined &&
      Math.abs(ts.containment_pressure_mpa - B.ctr.containment_pressure_mpa) < 1e-12 &&
@@ -501,9 +506,18 @@ function runSuite(TS, rec, quiet) {
   ck('core_superheat_c is 0 on a two-phase core — 0 through every normal evolution',
      tsWet.core_superheat_c === 0 && ts.core_superheat_c === 0,
      'two-phase ' + tsWet.core_superheat_c + ', at-power ' + ts.core_superheat_c);
-  ck('...and reads the measured plateau on a dry one',
-     Math.abs(tsDrier.core_superheat_c - 128) < 3,
-     tsDrier.core_superheat_c.toFixed(1) + ' degC at h = 3090, 226 psia (measured 128)');
+  /* RE-ANCHORED TO THE SOURCE, 2026-08-29 (#586), AND THAT IS THE POINT OF THE CHANGE. This
+   * asserted `128 +/- 3` — the model's OWN output when the check was written, which is the
+   * trap HR10 names: a check written from observed behaviour can only confirm that behaviour,
+   * including its error. The #586 vapour refit moved it to 123.3 and this check went red for
+   * being RIGHT. IAPWS-95 (NIST SRD 69, fetched 2026-08-29): h = 3090 kJ/kg at 1.5582 MPa is
+   * 324.07 degC, T_sat is 200.29, so the TRUE superheat is 123.78 degC. The old fit was 4.2
+   * degC out; the refit is 0.5. The band is now +/- 3 degC around the SOURCED value, so it
+   * fails if the library drifts away from IAPWS rather than away from its old self. */
+  ck('...and reads the SOURCED plateau on a dry one (IAPWS-95, not the model\'s own old output)',
+     Math.abs(tsDrier.core_superheat_c - 123.78) < 3,
+     tsDrier.core_superheat_c.toFixed(1) + ' degC at h = 3090, 226 psia — IAPWS-95 says 123.78 ' +
+     '(324.07 degC less T_sat 200.29); the pre-#586 fit read 128, 4.2 degC out');
   /* THE BLIND SPOT, ASSERTED DIRECTLY — void is identical at both dryness levels. Without this
    * the check above could pass against a field nothing needed. */
   ck('void_fraction is IDENTICAL at both, so superheat is the only discriminator',
@@ -534,6 +548,50 @@ function runSuite(TS, rec, quiet) {
   ck('...with the reason still present when the caller supplies none',
      TS.buildTrueState({ sys: B.sys, beyond_model: true }).model_held_why === 'none',
      'a held plant with no stated cause is still HELD — the flag never depends on the string');
+
+  /* ---- THE COLD LEG HAS A VOID TOO (#516 item 7) --------------------------------------------
+   * The hot leg published one and the cold leg did not, which left every consumer unable to tell
+   * the two apart once the loop saturated — and once it does, TEMPERATURE cannot: both legs sit
+   * at T_sat(P) by definition. Measured on a 20 cm2 break, `thot` and `tcold` are equal to the
+   * decimal for the whole ride while the legs differ by up to 0.35 in quality. */
+  head('THE COLD-LEG VOID  [once the loop saturates, temperature stops telling the legs apart]');
+  ck('the cold leg publishes its own void fraction, beside the hot leg it always had',
+     typeof ts.cold_leg_void_fraction === 'number' && isFinite(ts.cold_leg_void_fraction) &&
+     typeof ts.primary_void_fraction === 'number',
+     'cold ' + ts.cold_leg_void_fraction + ', hot ' + ts.primary_void_fraction);
+  /* THE DISCRIMINATOR: it must read the COLD leg's node, not echo the hot one. Built by voiding
+   * one leg and not the other, so a copy-paste that publishes the hot value twice reddens. */
+  var sysCV = JSON.parse(JSON.stringify(B.sys));
+  (function () {
+    var Wv = RD.water, P = sysCV.P;
+    for (var i = 0; i < sysCV.nodes.length; i++)
+      if (sysCV.nodes[i].id === 'hot_leg') sysCV.nodes[i].h = Wv.h_g(P);   /* hot leg all vapour */
+  })();
+  var tsCV = TS.buildTrueState({ sys: sysCV });
+  ck('...and it reads the COLD leg, not a second copy of the hot one',
+     tsCV.primary_void_fraction > 0.5 && tsCV.cold_leg_void_fraction < 0.5,
+     'hot leg voided to ' + tsCV.primary_void_fraction.toFixed(3) +
+     ' while the cold leg stays at ' + tsCV.cold_leg_void_fraction.toFixed(3));
+
+  /* ---- WHICH SIDE OF THE VALIDATED RANGE (#516 item 9) --------------------------------------
+   * Layer 0 carries a SOURCED ideal-gas branch above IAPWS-95's 1000 degC limit so the
+   * core-damage chain can run to its own end. That branch is DECLARED, not validated, and the
+   * difference has to reach the player — the same argument `model_held` above rests on, one step
+   * further out. Published rather than merely defined, because a `waterRegime()` with no consumer
+   * is `wallLumps` again. */
+  head('THE WATER REGIME  [an extension the player is not told about is a quiet softening]');
+  ck('a normal plant reports water_regime "ok" — every node inside the validated range',
+     ts.water_regime === 'ok', 'got "' + ts.water_regime + '"');
+  /* A node ON the extension: h above the validated ceiling but below the extended one. Built
+   * from Layer 0's own limits rather than a typed enthalpy, so it tracks a moved boundary. */
+  var Wq = RD.water, Pq = B.sys.P;
+  var hExt = 0.5 * (Wq.h_v(Wq.LIMITS.TV_MAX, Pq) + Wq.h_v(Wq.LIMITS.TV_EXT_MAX, Pq));
+  var sysExt = JSON.parse(JSON.stringify(B.sys));
+  sysExt.nodes[0].h = hExt;
+  ck('...and ONE node out on the sourced ideal-gas branch reports "extended"',
+     TS.buildTrueState({ sys: sysExt }).water_regime === 'extended',
+     'node 0 at ' + hExt.toFixed(0) + ' kJ/kg, between the validated ' +
+     Wq.LIMITS.TV_MAX + ' degC ceiling and the ' + Wq.LIMITS.TV_EXT_MAX + ' degC extension');
 
   /* ---- THE DECLARED SIMPLIFICATION IS VISIBLE ------------------------------------------ */
   head('THE ONE-PRESSURE SIMPLIFICATION IS VISIBLE, NOT HIDDEN');
@@ -604,6 +662,50 @@ function runSuite(TS, rec, quiet) {
      Math.abs(ts.ir_amps - 8.333e-3 * ts.power_pct / 100) < 1e-9,
      'SR protected above the P-6 class point; IR ' + ts.ir_amps.toExponential(2) + ' A tracks ' +
      ts.power_pct.toFixed(0) + ' % through the adopted k_ir');
+  /* ---- THE SOURCE-RANGE SCALE IS THIS PLANT'S, NOT THE RETIRED PLANT'S (#536) -------------
+   * k_sr was 5.0e8, inherited from `pwr_config`'s nis block where it had been sized against a
+   * subcritical level that engine produced with a 500x-inflated prompt generation time. PWR2
+   * runs the real Lambda, so its source-held level is ~500x lower and the SAME scale read the
+   * shutdown plant at 0.5 cps, pinned on a display floor. Re-anchored so hot standby reads the
+   * "~500 cps class at HZP source equilibrium" that `Manuals/09` §9.0 already documents.
+   * The two levels below are MEASURED off the engine (pwr2_engine, 2026-08-28), not invented. */
+  var HZP_FRAC = 1.9325e-9;      /* hot standby, -1137.2 pcm  */
+  var TRIP_FRAC = 3.4068e-10;    /* settled post-trip, -6450 pcm */
+  function atFlux(frac) {
+    return TS.buildTrueState(Object.assign({}, B.ctx, {
+      reactor: Object.assign({}, B.r, { power_pct: frac * 100 }) }));
+  }
+  var tsHZP = atFlux(HZP_FRAC), tsTripped = atFlux(TRIP_FRAC);
+  ck('the shutdown plant indicates in the hundreds of counts per second, as the manual says',
+     tsHZP.sr_energized === true && tsHZP.sr_counts_cps > 300 && tsHZP.sr_counts_cps < 1000,
+     tsHZP.sr_counts_cps.toFixed(0) + ' cps at the hot-standby source level — the retired ' +
+     'plant\'s k_sr read this plant 0.5 cps there');
+  /* A FLOOR IS INVISIBLE UNTIL SOMETHING SITS UNDER IT, which is why this compares two levels
+   * rather than checking one. Both channels carried Math.max(pFrac, 1e-9): under it every
+   * reading collapses to the same number and the gauge stops carrying information. */
+  ck('there is NO display floor — a deeper-subcritical plant reads LOWER, in exact proportion',
+     Math.abs((tsTripped.sr_counts_cps / tsHZP.sr_counts_cps) / (TRIP_FRAC / HZP_FRAC) - 1) < 1e-9 &&
+     Math.abs((tsTripped.ir_amps / tsHZP.ir_amps) / (TRIP_FRAC / HZP_FRAC) - 1) < 1e-9,
+     'settled post-trip reads ' + tsTripped.sr_counts_cps.toFixed(0) + ' cps / ' +
+     tsTripped.ir_amps.toExponential(2) + ' A against hot standby\'s ' +
+     tsHZP.sr_counts_cps.toFixed(0) + ' / ' + tsHZP.ir_amps.toExponential(2) +
+     ' — the floor pinned both at 0.5 cps and 8.3e-12 A');
+  /* THE TEST THAT PICKED THE SOURCE STRENGTH, asserted rather than left in a comment: the
+   * SOURCED P-6 permissive (5e-11 A, Ginna TS Bases; PWR2_VALIDATION §34) must be UNMET on a
+   * plant at hot standby and met partway up the approach — which is where a real startup meets
+   * it. A stronger installed source puts the plant over P-6 before the operator touches a rod. */
+  ck('the sourced P-6 permissive is UNMET at hot standby and comes in during the approach',
+     tsHZP.ir_amps < 5.0e-11 && atFlux(2.19e-8).ir_amps > 5.0e-11,
+     tsHZP.ir_amps.toExponential(2) + ' A at hot standby, ' +
+     atFlux(2.19e-8).ir_amps.toExponential(2) + ' A at -100 pcm, against P-6 at 5.0e-11 A');
+  /* THE SECURING CUE IS THE SETPOINT, NOT A POWER LITERAL. `Manuals/03` §4.3: "Secure SR during
+   * power rise BEFORE SR high-flux trip (1e5 cps)". Written against 1e5 the rule survives a
+   * scale change; written as `pFrac < 1e-3` — what it was — it silently became four decades
+   * past the gauge's own 1e6 range top the moment k_sr moved. */
+  ck('the SR de-energizes at its own 1e5 cps cue, so the rule cannot drift from the scale again',
+     atFlux(3.8e-7).sr_energized === true && atFlux(3.9e-7).sr_energized === false,
+     'live at ' + atFlux(3.8e-7).sr_counts_cps.toExponential(2) + ' cps, secured just ' +
+     'past 1e5 — a `pFrac < 1e-3` rule would have kept indicating to 2.6e8 cps');
   ck('the governor IS the steam demand and the stop valve is the trip',
      ts.governor_valve_pct > 90 && ts.stop_valve_pct === 100,
      'governor ' + ts.governor_valve_pct.toFixed(1) + ' %, stop 100 -- and a tripped turbine ' +
@@ -640,9 +742,36 @@ runSuite(TS, rec, false);
 var pass = rec.filter(function (r) { return r.ok; }).length, fail = rec.length - pass;
 
 var MUTATIONS = [
+  /* #516 item 7: the cold-leg void becomes a second copy of the hot leg's, so the two legs stop
+   * being distinguishable in the one quantity that still separates them once the loop is
+   * saturated and temperature no longer can. */
+  ['the cold-leg void echoes the HOT leg (the legs stop being distinguishable)',
+   "put('cold_leg_void_fraction', nodeAlpha(nd, sys.P, 'cold_leg'));",
+   "put('cold_leg_void_fraction', nodeAlpha(nd, sys.P, 'hot_leg'));"],
+  /* #516 item 9: the regime reporter goes back to scanning the KEYED lookup, whose `.length` is
+   * undefined — so the loop runs zero times and every plant reports 'ok'. This is the defect the
+   * check caught on its first outing, and it is the dangerous shape: a reporter that always says
+   * "fine" is indistinguishable from a plant that is. */
+  ['the water-regime scan iterates the keyed lookup (zero times) — every plant reads "ok"',
+   'for (var i = 0; i < sys.nodes.length; i++) {',
+   'for (var i = 0; i < nd.length; i++) {'],
+  /* ---- THE NIS GAUGE SCALES (#536) ---- */
+  ['k_sr reverts to the RETIRED plant\'s scale (the shutdown board reads half a count)',
+   '    var K_SR = 2.6e11;', '    var K_SR = 5.0e8;'],
+  ['the display floors come back (every deeply subcritical state reads the same number)',
+   "    put('sr_counts_cps', srOn ? K_SR * pFrac : 0);\n    put('ir_amps',       K_IR * pFrac);",
+   "    put('sr_counts_cps', srOn ? K_SR * Math.max(pFrac, 1e-9) : 0);\n" +
+   "    put('ir_amps',       K_IR * Math.max(pFrac, 1e-9));"],
+  ['the SR securing cue goes back to a power literal instead of its own setpoint',
+   '    var srOn = pFrac * K_SR < SR_SECURE_CPS;', '    var srOn = pFrac < 1e-3;'],
+  ['k_ir drifts, moving the SOURCED intermediate-range rod stop with it',
+   '    var K_IR = 8.333e-3;', '    var K_IR = 4.0e-3;'],
   ['the CVCS currency conversion is dropped (kg/s published as the #408 fraction again)',
    "    put('charging_flow_actual', cv.charging_kgs * FRAC_PER_KGS);",
    "    put('charging_flow_actual', cv.charging_kgs);"],
+  ['the LEAK currency conversion is dropped (#550 — the gauge pegs at 27,000 gpm for any break)',
+   "    put('leak_flow', (br.mdot_kgs || 0) * FRAC_PER_KGS);",
+   "    put('leak_flow', br.mdot_kgs || 0);"],
   /* RETARGETED at #511: the drift target used to be msiv_open, which is a LIVE field now —
    * the drift moves to a SURVIVING static (the single-SG imbalance constant). */
   ['a static drifts from its registered value (the registry lies about what is emitted)',

@@ -71,9 +71,11 @@
   var W = RD && RD.water, GEO = RD && RD.geometry;
   /* #514: hot-path water properties through the table — pwr2_core's idiom. The boron
    * ledger's 11-node mass sum on the DIRECT rho_from_h was 28 % of the whole engine step
-   * (~300 us of 1090). The sum itself stays: sys.M_total is nodes + the pressurizer
-   * (extraMass), and the ledger's mass is the NODES' — substituting the ledger total would
-   * quietly grow the boron dilution volume by the pressurizer. */
+   * (~300 us of 1090). ⚠ The sum is GONE at #583, and the reason it was kept has inverted:
+   * it stayed because `sys.M_total` was nodes + the pressurizer (extraMass) while the node sum
+   * was "the nodes'", so substituting would have grown the dilution volume by the pressurizer.
+   * #583 deleted the phantom pressurizer NODE, so the node sum now MISSES the pressurizer
+   * entirely and `M_total` is the honest mixing mass. The hot-path cost goes with it. */
   var VT = RD && RD.vtable;
   var RHO = VT ? VT.rho_from_h : (W && W.rho_from_h);
   var TFH = VT ? VT.T_from_h : (W && W.T_from_h);
@@ -86,11 +88,11 @@
    * the same rule the SG's ratedU() follows and the reason §24's provisional geometry does not
    * silently strand a constant here. */
   var GINNA_RCS_M3 = 5123 * FT3_TO_M3;          // [sourced] Ginna UFSAR ch.15
-  function rcsVolume() {
-    var V = 0;
-    GEO.NODES.forEach(function (n) { V += n.V; });
-    return V;
-  }
+  /* THE WHOLE RCS — nodes PLUS the Layer-5 pressurizer vessel (#583). This used to sum
+   * `GEO.NODES` alone, which was the whole plant only while the ring carried a PHANTOM
+   * pressurizer node; deleting that node without moving this would have cut charging 15 %
+   * on a plant that still has a pressurizer. Layer 1 owns the arithmetic now. */
+  function rcsVolume() { return GEO.rcsVolume(); }
   function volumeScale() { return rcsVolume() / GINNA_RCS_M3; }
 
   var CVCS = {
@@ -303,10 +305,15 @@
      * unchanged). */
     var si = drivers && drivers.si_kgs > 0 ? drivers.si_kgs : 0;
     var C_si = drivers && drivers.si_ppm !== undefined ? drivers.si_ppm : 0;
-    var M = 0;
-    for (var k = 0; k < sys.nodes.length; k++) {
-      M += sys.nodes[k].V * RHO(sys.nodes[k].h, sys.P);
-    }
+    /* THE BORON MIXING MASS IS THE WHOLE PLANT (#583). This was the NODE sum, and the header
+     * above records the deliberate refusal to substitute `sys.M_total` — "the ledger total
+     * includes the pressurizer via extraMass; substituting it would quietly grow the boron
+     * dilution volume by the pressurizer". THAT REASONING INVERTED when #583 deleted the
+     * phantom pressurizer NODE: the node sum no longer contains a pressurizer at all, so it is
+     * now the one that is wrong, and `M_total` (nodes + the Layer-5 seat) is the honest mixing
+     * mass. Measured at hot full power: 17,182 kg node-only before, 16,337 kg M_total after —
+     * boron moves ~5 % faster, not the ~17 % that leaving this line alone would have produced. */
+    var M = sys.M_total;
     var C_in;
     if (cv.boron_rate_cmd !== 0 && inFlow > 0 && M > 0) {
       /* THE BLENDER INVERSION. The balance below reduces to dC/dt = inFlow*(C_in - C)/M
@@ -370,9 +377,8 @@
   /* REPORTED, never asserted against a remembered band: how fast max charging with letdown
    * isolated moves inventory, as a fraction of RCS mass per minute. */
   function maxFillRateFracPerMin(sys) {
-    var M = 0;
-    for (var k = 0; k < sys.nodes.length; k++) M += sys.nodes[k].V * RHO(sys.nodes[k].h, sys.P);
-    return gpmToKgs(CVCS.charging_max_gpm(), 1000) * 60 / M;
+    /* the whole plant's mass, same basis as the boron ledger above (#583) */
+    return gpmToKgs(CVCS.charging_max_gpm(), 1000) * 60 / sys.M_total;
   }
 
   root.RD = root.RD || {};

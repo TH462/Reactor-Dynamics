@@ -329,11 +329,36 @@ function runSuite(P, rec, quiet) {
       rHH2.fwi === true && rHH2.fwi_cause === 'hi_hi_sg_level' &&
       rHH2.reactor_trip === false && rHH2.si === false,
       'a hi-hi is an actuation, not a scram; the turbine trip is the CALLER\'s half');
+  /* THE TURBINE-TRIP HALF (#562, 2026-08-27) [sourced] — WTSM 3.2 (ML11223A213): "a high-high
+   * steam generator level turbine trip to protect the turbine against excessive moisture
+   * carryover". This module's own header has called the function "P-14 class: feedwater
+   * regulator closure + TURBINE TRIP" since it was written and reported only the regulator
+   * half — the trip had no field on the report and no consumer in the engine, so a generator
+   * filling into its steam lines left the machine on the line. It matters now because #562
+   * gave the vessel a wet wall for it to protect against: measured full-stack, this trip
+   * fires at t+105 s of a steam-generator overfeed, on a running turbine at 100 MWe. */
+  ckT('...and the SAME latch carries the sourced TURBINE TRIP — one bistable, two consumers, ' +
+      'so the halves cannot drift apart',
+      rHH2.turbine_trip_hi_level === true && rHH1.turbine_trip_hi_level === false,
+      'WTSM 3.2: "to protect the turbine against excessive moisture carryover"; it must not ' +
+      'lead the fwi latch either — rHH1 is inside the delay');
   var rHH3 = ride(prHH, healthy(), 10);
-  ckT('the fwi LATCHES through recovery, and reset clears it',
-      rHH3.fwi === true &&
+  /* BOTH consumers must ride the LATCH, not the live signal. Asserting the turbine trip only
+   * while the level is still high cannot tell the two apart — the live signal and the latch
+   * agree there — and a `!!pr.fwi_live` mutation came back BLIND until this line named the
+   * recovery. It is also the behaviour that matters: a machine that re-latched itself the
+   * moment level dipped back would put the turbine on the line with water in the steam lines.
+   *
+   * A first draft also asserted `rHH3.fwi_live === false` — and `fwi_live` is INTERNAL state
+   * (`pr.fwi_live`), not a report field, so it read `undefined`. It failed loudly rather than
+   * vacuously, which is luck: `undefined === false` is false. The published surface is what a
+   * check may read, and the live-vs-latch claim needs no extra field — rHH3 rides a HEALTHY
+   * reading, so a trip wired to the live signal is already false here. */
+  ckT('the fwi LATCHES through recovery — and so does the turbine trip — and reset clears both',
+      rHH3.fwi === true && rHH3.turbine_trip_hi_level === true &&
       (function () { P.reset(prHH);
-                     return P.stepProtection(prHH, DT, healthy()).fwi === false; })(), '');
+                     var rR = P.stepProtection(prHH, DT, healthy());
+                     return rR.fwi === false && rR.turbine_trip_hi_level === false; })(), '');
 
   /* ---- THE HIGH-LEVEL TRIP AND P-7 (stage 2b, 2026-08-19) ---------------------------------
    * WTSM 10.3.4.3: an AT-POWER trip, "only active if either reactor power or turbine power is
@@ -362,6 +387,23 @@ function runSuite(P, rec, quiet) {
   ckT('a plant with NO level reading reports the function UNAVAILABLE, not untripped-forever',
       fn(rNoL, 'hi_pzr_level').available === false && rNoL.reactor_trip === false,
       'the optional-reading convention: absence is reported, never silently healthy');
+  /* ---- ARMED, and why it is not `asserted` (#556) ----------------------------------------
+   * The board's vital-parameter tiles draw the protection line, and the ONLY thing that told
+   * them where it was, was a static table belonging to the retired plant — which is how the
+   * pressurizer tile came to paint its red edge at 100 % on a plant that scrams at 87 %. It now
+   * reads these rows, so the report has to answer "would this setpoint actually catch me right
+   * now" separately from "am I past it". The two differ in exactly the case that matters: on a
+   * HEALTHY at-power plant the function is ARMED and NOT asserted, and a consumer keying on
+   * `asserted` would erase the line whenever the plant was safe — the whole indication. */
+  var rArm = ride(atPower(), healthy(), 5);
+  ckT('a healthy at-power plant reports the high-level function ARMED but NOT asserted',
+      fn(rArm, 'hi_pzr_level').armed === true && fn(rArm, 'hi_pzr_level').asserted === false,
+      'armed answers "is this line real", asserted answers "am I past it" — a tile needs the first');
+  ckT('below P-7 the SAME function reports NOT armed — there is no line to draw',
+      fn(rP7lo, 'hi_pzr_level').armed === false,
+      'the at-power gate, reported rather than re-derived by every consumer');
+  ckT('an UNAVAILABLE channel is never armed (no reading, no line)',
+      fn(rNoL, 'hi_pzr_level').armed === false, 'available false => armed false');
 
   /* ---- P-10, AND ITS ASYMMETRY IS THE POINT ---------------------------------------------
    * Ginna TS Bases B 3.3.1: the block is MANUAL and only PERMITTED above ~8 % RTP; the unblock
@@ -480,6 +522,58 @@ function runSuite(P, rec, quiet) {
       'restarted the pulse timer and the 1.5/30 duty cycle degenerated to continuous ramping');
   rA = ride(prA, dtDrivers(spA - 0.045, T_REF_C + 10), 1);
   ckT('...and at 4.5 % it CLEARS', rA.runback === false, '');
+
+  /* ---- THE TWO FLUX ROD STOPS (#572) ---------------------------------------------------------
+   * WTSM 8.1 §8.1.7.3 (ML11223A252) lists FOUR manual rod withdrawal stops and this module
+   * carried only the delta-T pair. #572 was filed as "the 1.5 DPM STARTUP-RATE block does not
+   * exist" — and the evidence pass found no startup-rate stop in the corpus at all, so what
+   * arrived is the two that are real. Sourced three ways; the anchor plant's own wording (Ginna
+   * UFSAR ch7, ML20339A027) is *"one-out-of-four high nuclear flux of 103%; one-out-of-two high
+   * flux at 20% current equivalent power"*. */
+  head('THE FLUX ROD STOPS  [103 % power range, 20 % intermediate range — WTSM 8.1 §8.1.7.3]');
+  ckT('the sourced setpoints are the constants, not literals in the logic',
+      P.ROD_STOP.pr_frac === 1.03 && P.ROD_STOP.ir_frac === 0.20 &&
+      P.ROD_STOP.kind === '[sourced]',
+      'pr ' + P.ROD_STOP.pr_frac + ', ir ' + P.ROD_STOP.ir_frac);
+  /* THE POWER RANGE STOP is not blockable — it is the overpower stop and there is no permissive
+   * for it in any source. It sits BELOW the 118 % high-flux trip, which is the point: the stop
+   * acts first and the trip is what happens if it does not hold. */
+  var prS = atPower();
+  var r103 = ride(prS, withReading('power_frac', 1.02), 1);
+  ckT('at 102 % neither flux stop is standing', r103.rod_stop_causes.pr_high_flux === false &&
+      r103.rod_stop === false, '');
+  r103 = ride(prS, withReading('power_frac', 1.04), 1);
+  ckT('at 104 % the POWER RANGE stop asserts, and the plant has NOT tripped (118 % is the trip)',
+      r103.rod_stop_causes.pr_high_flux === true && r103.rod_stop === true &&
+      r103.reactor_trip === false,
+      'the stop acts first; the trip is what happens if it does not hold');
+  ckT('...and it is NOT blockable — no source gives the overpower stop a permissive',
+      ride(P.createProtection({ blockLowFlux: true }), withReading('power_frac', 1.04), 1)
+        .rod_stop_causes.pr_high_flux === true, 'the P-10 block does not reach it');
+  /* THE INTERMEDIATE RANGE STOP rides the SAME operator block hi_flux_lo does [sourced, Ginna
+   * TS Bases B 3.3.1: the IR function "may be manually blocked by the operator when
+   * two-out-of-four power range channels are greater than approximately 8% RTP (P-10
+   * setpoint)"]. That is what makes it safe as well as right: an at-power plant has ascended
+   * through P-10 and has the block requested, so this asserts during an UNBLOCKED startup —
+   * where it is the lesson — and not at power, where ir_amps saturates its range by ~24 %. */
+  var irS = P.createProtection({});                 /* NOT blocked: a startup, pre-P-10 */
+  var r20 = ride(irS, withReading('power_frac', 0.18), 1);
+  ckT('below 20 % current equivalent the INTERMEDIATE RANGE stop is quiet',
+      r20.rod_stop_causes.ir_high_flux === false, '');
+  r20 = ride(irS, withReading('power_frac', 0.22), 1);
+  ckT('at 22 % it asserts on an UNBLOCKED plant — the startup regime it exists for',
+      r20.rod_stop_causes.ir_high_flux === true && r20.rod_stop === true, '');
+  var irB = ride(P.createProtection({ blockLowFlux: true }), withReading('power_frac', 0.22), 1);
+  ckT('...and the P-10 operator block clears it — one lever, the ascension step, and the ' +
+      'reason a plant at power is unaffected',
+      irB.rod_stop_causes.ir_high_flux === false && irB.rod_stop === false,
+      'the same block hi_flux_lo rides; measured, both shipped at-power ICs boot with it requested');
+  /* THE RUNBACK DOES NOT FOLLOW. No source gives a flux rod stop a turbine runback — that pair
+   * belongs to the delta-T functions alone (ch7 §7.2.2.4.1), and lumping them would have the
+   * turbine ramping on an overpower condition the operator is being told to fix with rods. */
+  ckT('a flux rod stop drives NO runback — that pair is the delta-T functions\' alone',
+      r103.runback === false && r20.runback === false,
+      'rod_stop true on both, runback false on both');
 
   head('P-10  [the block is permissive-gated and ALWAYS auto-reinstates -- never defeatable]');
   ck('the permissive setpoint is the sourced 8 % RTP', P.P10.frac, DOC.p10_frac, 1e-12, 'frac');
@@ -672,6 +766,25 @@ runSuite(P, rec, false);
 var pass = rec.filter(function (r) { return r.ok; }).length, fail = rec.length - pass;
 
 var MUTATIONS = [
+  /* #572, the two flux rod stops. Anchored separately because they fail separately, and the
+   * third one is the load-bearing pair: dropping the IR stop's `!blockEffective` is the
+   * mutation that would have shipped a stop standing for ever at power (ir_amps saturates its
+   * range by ~24 %), which is the failure mode that decided the design. */
+  ['the POWER RANGE flux rod stop never asserts (the 103 % stop is deleted)',
+   'var prHiFluxStop = drivers.power_frac >= ROD_STOP.pr_frac;',
+   'var prHiFluxStop = false;'],
+  ['the INTERMEDIATE RANGE flux rod stop never asserts (the 20 % stop is deleted)',
+   'var irHiFluxStop = drivers.power_frac >= ROD_STOP.ir_frac && !blockEffective;',
+   'var irHiFluxStop = false;'],
+  ['the IR stop stops honouring the P-10 operator block (it would stand for ever at power)',
+   'var irHiFluxStop = drivers.power_frac >= ROD_STOP.ir_frac && !blockEffective;',
+   'var irHiFluxStop = drivers.power_frac >= ROD_STOP.ir_frac;'],
+  ['the flux stops are reported but never reach the rod_stop signal the caller acts on',
+   'rod_stop: dtApproach || prHiFluxStop || irHiFluxStop,',
+   'rod_stop: dtApproach,'],
+  ['a flux rod stop leaks into the RUNBACK (the turbine ramps on an overpower condition)',
+   '      runback: dtApproach,',
+   '      runback: dtApproach || prHiFluxStop || irHiFluxStop,'],
   ['the OT setpoint temperature term is DROPPED (the setpoint never comes down to meet a hot plant)',
    "                        - OTDT.k3_per_f * ((d.tavg_c * 9 / 5 + 32) - OTDT.t_ref_f);",
    '                        - 0;'],
@@ -706,7 +819,7 @@ var MUTATIONS = [
    'drivers.turbine_tripped && !drivers.p9_defeated && drivers.power_frac >= p9frac',
    'drivers.turbine_tripped && !drivers.p9_defeated'],
   ['the P-7 at-power gate is deleted (the high-level trip fires during heatup)',
-   '        if (f.atPower && drivers.power_frac < P7.frac) asserted = false;',
+   '        if (f.atPower && drivers.power_frac < P7.frac) { asserted = false; gated = true; }',
    ''],
   ['the high-level setpoint drifts 87 -> 95 %',
    '    hi_pzr_level_frac:  0.87,',
@@ -746,8 +859,8 @@ var MUTATIONS = [
    '      var available = raw !== undefined && isFinite(raw);',
    '      var available = true;'],
   ['the low-flux BLOCK suppresses every function, not just the blockable one',
-   '        if (f.blockable && blockEffective) asserted = false;',
-   '        if (blockEffective) asserted = false;'],
+   '        if (f.blockable && blockEffective) { asserted = false; gated = true; }',
+   '        if (blockEffective) { asserted = false; gated = true; }'],
   ['the high-pressure setpoint moved off its sourced value',
    '    hi_pzr_press_psia:  2425,', '    hi_pzr_press_psia:  2600,'],
   ['the low-pressure setpoint moved off its sourced value',
@@ -806,10 +919,10 @@ var MUTATIONS = [
    '    if (!p11Below) {\n      if (pr.blockLoPress) pr.blockLoPress = false;\n      if (pr.blockSI) pr.blockSI = false;\n    }',
    ''],
   ['the SI block gates nothing (a "blocked" shutdown plant injects anyway)',
-   "        if (f.kind === 'esfas' && pr.blockSI) asserted = false;",
+   "        if (f.kind === 'esfas' && pr.blockSI) { asserted = false; gated = true; }",
    ''],
   ['the low-pressure trip block gates nothing',
-   "        if (f.id === 'lo_pzr_press' && pr.blockLoPress) asserted = false;",
+   "        if (f.id === 'lo_pzr_press' && pr.blockLoPress) { asserted = false; gated = true; }",
    ''],
   ['lo_flow loses its P-7 gate (a shutdown plant with secured RCPs reads as a loss-of-flow accident)',
    "        sp: RPS.lo_flow_frac, unit: 'frac', read: 'flow_frac', delay: DELAY.lo_flow,\n        atPower: true },",
@@ -817,6 +930,12 @@ var MUTATIONS = [
   /* THE FEED-TRAIN FUNCTIONS (2026-08-21) */
   ['the hi-hi setpoint moved off the adopted 90 %',
    '    hi_hi_frac: 0.90,', '    hi_hi_frac: 0.99,'],
+  ['the hi-hi TURBINE TRIP is dropped from the report (#562 — the machine stays on the line ' +
+   'while the steam lines carry water)',
+   '      turbine_trip_hi_level: !!pr.fwi,', '      turbine_trip_hi_level: false,'],
+  ['the hi-hi turbine trip is wired to the LIVE signal instead of the latch (it un-trips ' +
+   'itself the moment level recovers)',
+   '      turbine_trip_hi_level: !!pr.fwi,', '      turbine_trip_hi_level: !!pr.fwi_live,'],
   ['the hi-hi row is DELETED (nothing stops an overfeed)',
    "      { id: 'hi_hi_sg_level', name: 'High-high steam generator water level', kind: 'fwi', dir: +1,\n        sp: SGLL.hi_hi_frac, unit: 'frac', read: 'sg_level_frac', delay: DELAY.hi_hi_sg_level },",
    ''],

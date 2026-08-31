@@ -103,7 +103,7 @@
           "boolean": false,
           "alarms": [
             "pzr_level_high",
-            "pzr_level_low",
+            "pzr_level_cutoff",
             "pzr_level_lolo"
           ]
         },
@@ -620,6 +620,7 @@
           "derived": false,
           "boolean": false,
           "alarms": [
+            "pzr_level_low",
             "pzr_level_dev_low"
           ]
         },

@@ -207,6 +207,14 @@
                                                 : (RD.sg ? RD.sg.primaryTavg(sys) : undefined));
     put('core_void_fraction',    nodeAlpha(nd, sys.P, 'core'));
     put('primary_void_fraction', nodeAlpha(nd, sys.P, 'hot_leg'));
+    /* THE COLD LEG'S OWN VOID (#516 item 7, 2026-08-29). The hot leg had one and the cold leg
+     * did not, so nothing downstream could tell the two apart once the loop saturated — and
+     * once it does, TEMPERATURE cannot: both legs sit at T_sat(P) by definition, which is
+     * correct physics and is why `thot` and `tcold` read EXACTLY equal through a loss-of-coolant
+     * accident. Measured on a 20 cm2 break, the legs differ by up to 0.35 in QUALITY (hot 0.868
+     * against cold 0.516 at 600 s) while reading the same temperature to the decimal. The
+     * information moved out of temperature and into void, and only the hot leg published it. */
+    put('cold_leg_void_fraction', nodeAlpha(nd, sys.P, 'cold_leg'));
     /* #517 — HOW DRY. `core_void_fraction` clips at 1, so from the moment the core goes fully
      * void it is a constant and the board can no longer distinguish a core that has just dried
      * out from one 131 degC into superheat. Measured, 5 cm2 unmitigated break: void hits 1.0 at
@@ -236,6 +244,9 @@
     put('block_valve_open',  pz.block_valve_open);
     put('porv_tailpipe_temp_c', pz.tailpipe_temp_c);
     if (pz.spray_frac !== undefined) put('spray_flow_pct', 100 * pz.spray_frac);
+    /* the DEMAND beside the delivery (#564 item 1) — the gap between them is the whole reason
+     * the board's SPRAY FLOW readout has an amber state */
+    if (pz.spray_demand_frac !== undefined) put('spray_demand_pct', 100 * pz.spray_demand_frac);
     if (typeof sys.M_total === 'number' && typeof ctx.M_nominal === 'number' && ctx.M_nominal > 0) {
       put('core_inventory_pct', 100 * sys.M_total / ctx.M_nominal);
     }
@@ -270,6 +281,19 @@
     put('steam_pressure_mpa', sg.P_sec);
     put('t_sg_c',             sg.T_sec);
     put('sg_mass_frac',       sg.mass_frac);
+    /* THE WET WALL IS NOT PUBLISHED ON true_state, and the reason is a gate boundary worth
+     * knowing (#562). `sg_carryover_frac` — the liquid fraction of the steam leaving the
+     * generator — was written here and PULLED: `Blueprint/CONTEXT.md` §6.3 is checked by
+     * `run_contract.js` against the RETIRED `engines/pwr` engine ONLY, so a PWR2-only field
+     * cannot be documented there without the gate reporting it STALE, and publishing it
+     * UNdocumented breaks the §6.3 rule in the other direction. Making the retired engine emit
+     * a constant 0 to satisfy the gate would be exactly the fabricated-zero defect this file's
+     * header exists to forbid — a containment at 0 MPa reads like a containment that is fine.
+     * So carryover is reported on `stepSG`'s RETURN (`carryover_frac`, `solid`, `steam_out_h`)
+     * where the engine consumes it, and the player sees the wall through what it DOES: the
+     * high-high level turbine trip, the pegged level gauges and the primary's cooldown.
+     * THE REAL GAP IS THAT run_contract IS PWR1-ONLY WHILE PWR2 IS THE PLANT THE SITE RUNS —
+     * filed rather than worked around here. */
 
     /* --- turbine / generator --- */
     put('mwe_output',        tb.mwe_output);
@@ -321,7 +345,12 @@
     put('rhr_valve_open', rh.valve_open !== undefined ? rh.valve_open : rh.permissive_may_open);
 
     /* --- break / leak --- */
-    put('leak_flow', br.mdot_kgs !== undefined ? br.mdot_kgs : 0);   /* no break = zero leak, stated */
+    /* THE SAME #408 CURRENCY AS THE CVCS FLOWS ABOVE (#550): §6.3 defines leak_flow as
+     * NORMALIZED (inventory-fraction/s) and the instrument spec's whole range is [0, 0.06].
+     * Published raw kg/s it was 28,391x the currency — the board's break-flow gauge pegged
+     * at 0.0600 (27,000 gpm) for a 2.4 gpm seal leak and a 2,117 gpm guillotine alike, and
+     * sizing the leak is the seal-leak row's whole teaching point. */
+    put('leak_flow', (br.mdot_kgs || 0) * FRAC_PER_KGS);   /* no break = zero leak, stated */
 
     /* --- containment --- */
     put('containment_pressure_mpa', ct.containment_pressure_mpa);
@@ -414,6 +443,39 @@
      * plant is a field `run_contract` can never see — the same convention `destruction_cause`
      * already uses for exactly this reason. */
     put('model_held_why', ctx.held_why || 'none');
+    /* ---- WHICH SIDE OF THE VALIDATED RANGE IS THE FLUID ON (#516 item 9, 2026-08-29) --------
+     * Layer 0 now carries a SOURCED ideal-gas branch above IAPWS-95's 1000 degC upper limit, so
+     * the core-damage chain can run to its own end instead of stopping on a fitting boundary
+     * (WCAP-16009-NP-A; see pwr2_water's TV_EXT_MAX). That branch is DECLARED, not validated,
+     * and the difference has to reach the player or the extension is a quiet softening of what
+     * the model claims — the exact thing `model_held` above exists to prevent one step further
+     * out.
+     *
+     * PUBLISHED, NOT MERELY DEFINED. `waterRegime()` with no consumer would be `wallLumps` all
+     * over again: specified, shipped, and inert. The hottest node decides, because one node out
+     * on the extension is enough to make the whole step an extended-range answer.
+     *   'ok'        every node inside IAPWS-95's validated range
+     *   'extended'  at least one node on the sourced ideal-gas branch — usable, declared
+     *   'out'       past even that, which is what `model_held` then latches on */
+    put('water_regime', (function () {
+      /* ⚠ ENTHALPY DOMAIN, NOT TEMPERATURE, AND THAT IS A PERFORMANCE FACT MEASURED HERE. The
+       * first cut called `T_from_h` per node per step to ask `waterRegime(T, P)`. `T_from_h`
+       * inverts `h_v` by a 60-iteration bisection for any superheated state, so eleven nodes
+       * bought ~660 extra evaluations every step: `run_pwr2_perf` went from inside its 8x budget
+       * to **15.7x (316.8 us against 20.1)** — the ratio gate #513/#514 exists to hold. The
+       * question is identical in the enthalpy domain and the ceilings are TWO calls for the
+       * whole step, not one inversion per node. */
+      var W = RD.water;
+      var hVal = W.h_v(W.LIMITS.TV_MAX, sys.P);        /* top of the validated range */
+      var hExt = W.h_v(W.LIMITS.TV_EXT_MAX, sys.P);    /* top of the sourced extension */
+      var worst = 'ok';
+      for (var i = 0; i < sys.nodes.length; i++) {
+        var h = sys.nodes[i].h;
+        if (h > hExt) return 'out';
+        if (h > hVal) worst = 'extended';
+      }
+      return worst;
+    })());
 
     put('clad_temp_c',       rx.T_clad_c);
     put('fuel_damaged',      dg.fuel_damaged);
@@ -463,16 +525,47 @@
     put('ac_available',     ctx.ac_available !== false);
     put('station_blackout', ctx.station_blackout === true);
 
-    /* --- NIS display channels [adopted]: cps = k_sr*P, amps = k_ir*P with the current
-     * engine's k_sr 5.0e8 / k_ir 8.333e-3 (pwr_config.js nis block) — gauge scales, not
-     * physics; the flux behind them is this engine's own --- */
+    /* --- NIS display channels: cps = K_SR*P, amps = K_IR*P — gauge scales, not physics; the
+     * flux behind them is this engine's own. PWR2_VALIDATION §34 records the genuine zero
+     * behind both: no corpus document gives a full-scale calibration for turning a neutron
+     * population into counts or amps, so these are ADOPTED numbers and say so.
+     *
+     * ⚠ K_SR IS THIS PLANT'S, NOT THE RETIRED PLANT'S, SINCE #536. It was 5.0e8 — inherited
+     * from `pwr_config.js`'s nis block, where it had been sized against a subcritical level
+     * that engine produced with a 500x-inflated prompt generation time. PWR2 runs the real
+     * Lambda, so its source-held level is ~500x lower and the SAME scale read the shutdown
+     * plant at 0.5 counts per second, pinned on a display floor. Re-anchored (owner ruling,
+     * 2026-08-28, choosing "re-scale the gauges too" from three options put to him) so that
+     * HOT STANDBY READS ~500 cps — which is what `Manuals/09` §9.0 already documents, "~500 cps
+     * class at HZP source equilibrium", so this makes the plant match prose it already ships.
+     * Measured across the ladder: Mode 3 hot standby 502, P-6 point 1,560, SR->IR handoff
+     * caution 5.0e4, Mode 4 hot shutdown 101, settled post-trip 89.
+     *
+     * ⚠ K_IR DOES NOT MOVE, AND MUST NOT. `pwr2_protection.js` derives the SOURCED intermediate-
+     * range high-flux rod stop through it — WTSM 8.1 §8.1.7.3's "20 % current equivalent power"
+     * IS 1.667e-3 A only at 8.333e-3 — so re-scaling it would move a sourced setpoint. It also
+     * does not need to: at this scale the sourced P-6 permissive (5e-11 A, Ginna TS Bases) is
+     * UNMET at hot standby (1.61e-11 A) and comes in at -366 pcm, partway up the bank, which is
+     * where a real startup meets it. That is the test that picked the source strength. --- */
+    var K_SR = 2.6e11;      /* cps per unit rated fraction  [adopted] — anchor above */
+    var K_IR = 8.333e-3;    /* amps per unit rated fraction [adopted] — pwr_config nis block */
+    var SR_SECURE_CPS = 1.0e5;
     var pFrac = (ts.power_pct !== undefined ? ts.power_pct : 0) / 100;
-    /* the SR proportional counter is DE-ENERGIZED at power (protected — the P-6 class fact);
-     * this model has no operator lever, so energization derives from flux alone [derived] */
-    var srOn = pFrac < 1e-3;
+    /* The SR proportional counter is DE-ENERGIZED on the way up (protected — the P-6 class
+     * fact); this model has no operator lever, so energization derives from flux alone
+     * [derived]. THE CUE IS THE ONE THE MANUAL ALREADY GIVES — `Manuals/03` §4.3 and
+     * `Manuals/04`: "Secure SR during power rise BEFORE SR high-flux trip (1e5 cps)" — rather
+     * than the bare `pFrac < 1e-3` literal this carried, which was the same cue expressed on the
+     * OLD scale and at the new one would let the gauge indicate 2.6e8 cps, four decades past its
+     * own 1e6 range top. Written against the setpoint, so it cannot drift from k_sr again. */
+    var srOn = pFrac * K_SR < SR_SECURE_CPS;
     put('sr_energized', srOn);
-    put('sr_counts_cps', srOn ? 5.0e8 * Math.max(pFrac, 1e-9) : 0);
-    put('ir_amps',       8.333e-3 * Math.max(pFrac, 1e-9));
+    /* NO FLOOR. Both channels carried `Math.max(pFrac, 1e-9)`, which existed ONLY because a
+     * sourceless core decayed to zero and the gauges had to be stopped from reading it. With a
+     * source the level is genuinely non-zero at every plant state, and the floor now hides real
+     * physics: it pinned the post-trip plant at 0.5 cps against a true 89. */
+    put('sr_counts_cps', srOn ? K_SR * pFrac : 0);
+    put('ir_amps',       K_IR * pFrac);
 
     /* --- core uncovery: a DECLARED HEM PROXY (D4 sec 8 upheld). The homogeneous model has
      * no water level; sustained high core void is the nearest honest stand-in. Expect A/B
@@ -498,7 +591,14 @@
      * geometry [adopted: sg_mass_map, pwr_config.js — same Ginna 85,359 lbm nominal both
      * engines]. Wide % from the piecewise map; narrow is its 30-75 window (sg_wr_lo/hi). --- */
     if (ts.sg_mass_frac !== undefined) {
-      var MAP = [[0, 0], [0.38845, 30], [0.5484, 37.65], [1.0, 59.25], [1.32929, 75], [2.45, 100]];
+      /* THE MAP MOVED TO pwr2_sg.js's SG.LEVEL_MAP (#562, 2026-08-27) and this reads it. It
+       * is steam-generator GEOMETRY, and it was a local here while pwr2_sg held a hand-copied
+       * `dryout_mass_frac` off one of its points — two files to edit together, which is the
+       * second-copy shape #557/#556/#561 record. The wall needed two more points off the same
+       * curve, so it got one owner. Falls back to the literal only if Layer 5 is absent from
+       * the fixture, which the true-state gate does deliberately. */
+      var MAP = (RD.sg && RD.sg.SG && RD.sg.SG.LEVEL_MAP) ||
+                [[0, 0], [0.38845, 30], [0.5484, 37.65], [1.0, 59.25], [1.32929, 75], [2.45, 100]];
       var mf = ts.sg_mass_frac, wide = 100;
       for (var mi = 1; mi < MAP.length; mi++) {
         if (mf <= MAP[mi][0]) {

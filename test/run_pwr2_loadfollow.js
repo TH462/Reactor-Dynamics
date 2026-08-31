@@ -147,7 +147,11 @@ function runSuite(G, rec, quiet) {
     var B   = K.criticalBoron(rx.kin, TREF, P0, null, rx.kin.X / rx.kin.X_eq_full, rx.fuel.T_fuel_c);
     return { sys: sys, rx: rx, sg: sg, tb: tb, rl: rl, cd: cd, B: B, pz: pz,
              dc: DC.createDumpCtl({}),
-             rated_steam: TB.steamDemand(tb, sg.P, G.SG.h_feed) };
+             /* the DESIGN pressure, not this harness's own sg.P (#539) — rated_steam is
+              * frozen on both of steamDemand's axes in pwr2_engine, and a local harness that
+              * kept the old convention would go on certifying against a scale the plant no
+              * longer has. */
+             rated_steam: TB.steamDemand(tb, G.createSG({}).P, G.SG.h_feed) };
   }
   /* ⚠ THE DEMAND IS IN MEGAWATTS ELECTRICAL, and that is the whole point of this revision.
    *
@@ -559,9 +563,12 @@ var MUTATIONS = [
   ['the secondary temperature stops tracking its pressure (no back-pressure on the duty)',
    'var T_sec = W.T_sat(sg.P);', 'var T_sec = 272.11;'],
   /* anchors re-pointed #507 wave 5: the SG ledger grew the tube-leak stream */
+  /* RE-POINTED for #549/#562 (2026-08-27): the enthalpy sum moved out of `dH` into `E_in`
+   * (the energy limiter needs the same number) and the export enthalpy became `h_out`, so both
+   * anchors naming the old one-line `dH` went BLIND. The runner said ANCHOR MISS — read the
+   * self-test line, not just the checks tally. */
   ['steam draw no longer removes energy (demand cannot be felt)',
-   'var dH = Q + feed * SG.h_feed + afw * h_afw + leak * h_leak - steam_eff * h_g;   // kW',
-   'var dH = Q + feed * SG.h_feed + afw * h_afw + leak * h_leak - steam_eff * SG.h_feed;'],
+   'var dH = E_in - steam_eff * h_out;', 'var dH = E_in - steam_eff * SG.h_feed;'],
   ['steam draw no longer removes mass',
    'var dM = inflow - steam_eff;', 'var dM = 0;'],
   ['the secondary pressure never updates', '    updatePressure(sg);', ''],
@@ -575,8 +582,8 @@ var MUTATIONS = [
    'return 300000 / (SG.area_m2 * (T_prim - T_sec)); // kW/m2-K',
    'return 150000 / (SG.area_m2 * (T_prim - T_sec)); // kW/m2-K'],
   ['feedwater arrives at steam enthalpy (the secondary cannot be cooled by feed)',
-   'var dH = Q + feed * SG.h_feed + afw * h_afw + leak * h_leak - steam_eff * h_g;   // kW',
-   'var dH = Q + feed * h_g + afw * h_g + leak * h_leak - steam_eff * h_g;']
+   'var E_in = Q + feed * SG.h_feed + afw * h_afw + leak * h_leak;',
+   'var E_in = Q + feed * W.h_g(sg.P) + afw * W.h_g(sg.P) + leak * h_leak;']
 ];
 
 if (fail > 0) {

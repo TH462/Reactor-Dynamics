@@ -25,10 +25,13 @@ var E = path.join(__dirname, '..', 'engines', 'pwr2');
 var LIB = path.join(E, 'pwr2_kinetics.js');
 var SRC = fs.readFileSync(LIB, 'utf8').replace(/\r\n/g, '\n');
 ['pwr2_water', 'pwr2_vtable', 'pwr2_geometry', 'pwr2_core', 'pwr2_loop',
- 'pwr2_sources', 'pwr2_fuel'].forEach(function (f) { require(path.join(E, f + '.js')); });
-/* pwr2_fuel is loaded ONLY to cross-check the Doppler reference. The engine files stay independent
- * of each other; it is the GATE that ties them together, which is the right place for a consistency
- * claim spanning two modules. */
+ 'pwr2_sources', 'pwr2_fuel', 'pwr2_kinetics', 'pwr2_reactor'].forEach(function (f) { require(path.join(E, f + '.js')); });
+/* pwr2_fuel is loaded ONLY to cross-check the Doppler reference, and pwr2_reactor ONLY for its
+ * RATED_THERMAL_KW — the neutron source is derived from this plant's rated power and that number
+ * lives in the reactor module (#536). The engine files stay independent of each other; it is the
+ * GATE that ties them together, which is the right place for a consistency claim spanning two
+ * modules. The globals they install are NOT what the suite runs: `loadFrom` builds an isolated
+ * copy of the kinetics module, which is what makes the mutation replay meaningful. */
 var RD = globalThis.RD.pwr2, W = RD.water, S = RD.sources;
 
 function loadFrom(src) {
@@ -56,7 +59,13 @@ var DOC = {
   hzp_boron_ppm: 975.0, hzp_temp_c: 291.67, boron_worth_pcm_per_ppm: 10.0,
   /* pwr2_fuel.steadyFuelTemp at 300 MWt / 304.5 degC — cross-checked against the module below. */
   t_fuel_ref_c: 684.2,
-  rod_worth_control: 0.04068, rod_worth_shutdown: 0.03676
+  rod_worth_control: 0.04068, rod_worth_shutdown: 0.03676,
+  /* THE NEUTRON SOURCE's derivation inputs (#536), retyped from WTSM 2.1 (ML11223A207): nu = 2.43
+   * for U-235 (Table 2.1-2, :1653) and "roughly 200 MeV per fission" (:227). `installed_n_per_s`
+   * is the module's own OPEN value, read back rather than retyped — it is the one input that has
+   * NO source, so a "retyped" copy of it would be theatre; what this gate can check is that the
+   * published constant IS the derivation applied to it. */
+  nu: 2.43, mev_per_fission: 200.0, joules_per_mev: 1.602e-13
 };
 
 function runSuite(K, rec, quiet) {
@@ -161,13 +170,21 @@ function runSuite(K, rec, quiet) {
       eulerOneStep(-0.05, 0.02) === 0,
       'n = ' + eulerOneStep(-0.05, 0.02).toExponential(2) + ' — PWR2_PHYSICS §15 measured exactly ' +
       'this, and it is why the analytic form is ruled rather than preferred');
-  var critStep = K.advance(1, C0, 0, 0.02);
+  /* ⚠ EVERY CHECK IN THIS SECTION PASSES S = 0 EXPLICITLY, AND THAT IS THE POINT (#536).
+   * These are claims about the SOLVER — that the analytic form is stable where explicit Euler
+   * is not — and they must stay testable at 1e-9 now that the plant carries a neutron source.
+   * The source makes an exactly critical reactor CREEP, which is a claim about the PLANT and is
+   * asserted in its own section below. Widening this band to swallow the creep would have
+   * destroyed the integrator claim to make room for a different one; they are separate, and
+   * running the homogeneous case here also validates the 8x8 augmentation against the 7x7
+   * behaviour it replaced (HR10: passing on BOTH is what makes it a better test). */
+  var critStep = K.advance(1, C0, 0, 0.02, 0);
   ck('...while ANALYTIC holds a critical reactor critical, exactly', critStep.P, 1.0, 1e-9, '');
-  var scram = K.advance(1, C0, -0.05, 0.02);
+  var scram = K.advance(1, C0, -0.05, 0.02, 0);
   ckT('...and is stable scrammed, in ONE step', scram.P > 0.05 && scram.P < 0.5,
       'n = ' + scram.P.toFixed(6) + ' where explicit Euler returned zero');
   /* §15's own published figure, at the rho that reproduces it. */
-  var s15 = K.advance(1, C0, -0.001008, 0.02);
+  var s15 = K.advance(1, C0, -0.001008, 0.02, 0);
   ck('reproduces PWR2_PHYSICS §15\'s published n at -101 pcm', s15.P, 0.865167, 2e-5, '');
 
   /* THE INDEPENDENT WITNESS. beta/(beta-rho) appears NOWHERE in the engine. If the matrix
@@ -175,7 +192,7 @@ function runSuite(K, rec, quiet) {
   if (!quiet) console.log('\nPROMPT JUMP  [an independent witness -- this formula is not in the engine]');
   var pjBad = 0, pjWorst = 0;
   [-0.002, -0.005, -0.01, -0.025, -0.05].forEach(function (rho) {
-    var got = K.advance(1, C0, rho, 0.02).P, want = beta / (beta - rho);
+    var got = K.advance(1, C0, rho, 0.02, 0).P, want = beta / (beta - rho);
     var rel = Math.abs(got - want) / want;
     if (rel > pjWorst) pjWorst = rel;
     if (rel > 0.06) pjBad++;
@@ -183,6 +200,144 @@ function runSuite(K, rec, quiet) {
   ckT('the analytic advance reproduces beta/(beta-rho) across five insertions', pjBad === 0,
       'worst ' + (100 * pjWorst).toFixed(2) + ' % — the prompt-jump approximation emerges from the ' +
       'matrix exponential without being coded');
+
+  /* ---- 2a. THE NEUTRON SOURCE (#536) ---------------------------------------------------
+   * WHAT WAS WRONG. There was no source term, so a subcritical core was a pure decaying
+   * exponential: measured on the shipped shell at hot zero power, untouched for 300 s, power
+   * fell 3.6031e-5 % -> 6.3798e-8 % (a factor of 568) while the board read a steady -0.341 dpm
+   * and a -76 s period on a plant nobody was touching, and an hour after a scram it still read
+   * -0.322 dpm / -81 s. WTSM 2.1 §2.1.10 (ML11223A207:1464) is the authority these checks are
+   * written against: "the neutron population of a subcritical reactor does not decrease to 0; it
+   * reaches an equilibrium value which depends on the source neutron strength and the value of
+   * Keff" — N = S/(1 - Keff), which in this file's normalisation is P_eq = S·Lambda/(-rho).
+   *
+   * ⚠ NOT ONE OF THESE CHECKS IS THE ONE THE OLD GATE WOULD HAVE NEEDED. It scored 50/50 with
+   * 25/25 mutations while the direct boron term did not exist, and it would have done the same
+   * here: mutation testing perturbs code that EXISTS and is structurally blind to a term nobody
+   * wrote. Same lesson, same file, second time (HR10). */
+  if (!quiet) console.log('\nNEUTRON SOURCE  [a subcritical core LEVELS OFF -- it does not decay to nothing]');
+  var SRC_S = K.OPEN.source.value, Lam2 = K.DELAYED.Lambda;
+  /* 1. THE CONSTANT IS ITS OWN DERIVATION, and the rated power comes from the OTHER module —
+   *    the two cannot drift apart without this failing. */
+  var nRated = DOC.nu * (globalThis.RD.pwr2.reactor.RATED_THERMAL_KW * 1000 /
+                         (DOC.mev_per_fission * DOC.joules_per_mev)) * Lam2;
+  ck('the rated neutron population is nu x fission rate x Lambda, from pwr2_reactor\'s own rating',
+     K.OPEN.source.N_rated / nRated, 1.0, 2e-3, '');
+  ck('...and the source constant IS that derivation applied to the installed strength',
+     SRC_S, K.OPEN.source.installed_n_per_s / nRated, 1e-9, '/s');
+  ckT('the installed strength is FLAGGED as the one unsourced input, not buried in the number',
+      /installed source STRENGTH is not/.test(K.OPEN.source.why) &&
+      K.OPEN.source.installed_n_per_s > 0,
+      K.OPEN.source.installed_n_per_s.toExponential(1) + ' n/s — DOE-HDBK-1019 NP-02 gives Cf-252 ' +
+      'per GRAM and describes Sb-Be sources, but no corpus document gives an assembly total');
+  /* 2. THE AUGMENTED VARIABLE MUST COME BACK EXACTLY 1. It is the multiplier on the source; if it
+   *    drifts, the source silently scales with it and every equilibrium below moves together —
+   *    which would look like a consistent plant rather than a defect. */
+  ckT('the augmented constant propagates as EXACTLY 1, at every reactivity',
+      [-0.05, -0.01, 0, 0.001].every(function (r) { return K.advance(1, C0, r, 0.02).one === 1; }),
+      'the eighth state is the source multiplier — a drifting one rescales the source invisibly');
+  /* 3. sourceLevel IS the sourced relation, and REFUSES where there is no equilibrium. */
+  var slBad = 0;
+  [-0.05, -0.011372, -0.001, -0.0001].forEach(function (r) {
+    if (Math.abs(K.sourceLevel(r) - SRC_S * Lam2 / (-r)) > 1e-30) slBad++;
+  });
+  ckT('sourceLevel is N = S/(1-Keff) in this file\'s normalisation, S·Lambda/(-rho)', slBad === 0,
+      'four margins from -5000 to -10 pcm');
+  ckT('...and returns NaN at or above critical, where there is no equilibrium to report',
+      isNaN(K.sourceLevel(0)) && isNaN(K.sourceLevel(0.001)),
+      'a plausible number here would seed a critical plant from a meaningless one');
+  /* 4. THE DEFECT ITSELF: a subcritical core seeded at its equilibrium STAYS THERE. The old
+   *    engine fell 568x over this horizon. */
+  var HOLDSUB = quiet ? 2500 : 15000;        /* 50 s vs 300 s — the issue's own horizon */
+  (function () {
+    var rho = -0.011372;                     /* the hot-zero-power initial condition's margin */
+    var Peq = K.sourceLevel(rho), P = Peq, C = [];
+    for (var i = 0; i < 6; i++) C.push((K.DELAYED.beta_i[i] / K.DELAYED.lambda_i[i]) * P / Lam2);
+    for (var n = 0; n < HOLDSUB; n++) { var a = K.advance(P, C, rho, 0.02); P = a.P; C = a.C; }
+    ckT('a subcritical core HOLDS its source level instead of decaying to nothing',
+        Math.abs(P / Peq - 1) < 0.01,
+        'P/P_eq = ' + (P / Peq).toFixed(5) + ' after ' + (HOLDSUB * 0.02) + ' s at -1137 pcm — ' +
+        'the sourceless engine fell by a factor of 568 over 300 s here');
+  })();
+  /* 5. AND IT IS AN ATTRACTOR, NOT A FIXTURE. Seeding at equilibrium and finding it still there
+   *    is satisfied by a frozen number; the claim is that the plant CONVERGES on it. Approach
+   *    from both sides, because a one-sided approach is satisfied by a floor or a ceiling. */
+  (function () {
+    var rho = -0.011372, Peq = K.sourceLevel(rho), worst = 0;
+    [10, 0.1].forEach(function (f) {
+      var P = Peq * f, C = [];
+      for (var i = 0; i < 6; i++) C.push((K.DELAYED.beta_i[i] / K.DELAYED.lambda_i[i]) * P / Lam2);
+      for (var n = 0; n < HOLDSUB; n++) { var a = K.advance(P, C, rho, 0.02); P = a.P; C = a.C; }
+      var d = Math.abs(P / Peq - 1);
+      if (d > worst) worst = d;
+    });
+    ckT('...and it is an ATTRACTOR — the level converges on it from ABOVE and from BELOW',
+        worst < (quiet ? 0.45 : 0.02),
+        'worst departure ' + (100 * worst).toFixed(2) + ' % after ' + (HOLDSUB * 0.02) + ' s from ' +
+        '10x and 0.1x — a frozen number would pass the previous check and fail this one');
+  })();
+  /* 6. 1/M — THE INVERSE COUNT RATE, which is what makes an approach to criticality readable and
+   *    which was unrepresentable before this term existed. 1/P_eq = (-rho)/(S·Lambda) is a
+   *    STRAIGHT LINE THROUGH THE ORIGIN in reactivity; WTSM §2.1.10: "because the source range CR
+   *    gets infinitely large as Keff approaches 1.0 ... the inverse of CR is plotted. As
+   *    criticality is approached, 1/CR approaches zero." */
+  (function () {
+    var slope = null, bad = 0;
+    [-0.011372, -0.008, -0.004, -0.002, -0.001, -0.0005].forEach(function (r) {
+      var s = (1 / K.sourceLevel(r)) / (-r);
+      if (slope === null) slope = s;
+      else if (Math.abs(s / slope - 1) > 1e-12) bad++;
+    });
+    ckT('1/M is LINEAR in reactivity and extrapolates to zero at criticality', bad === 0,
+        'slope ' + slope.toExponential(4) + ' = 1/(S·Lambda) across six margins from -1137 to ' +
+        '-50 pcm — the inverse-count-rate technique the campaign teaches');
+  })();
+  /* 7. THE INDEPENDENT WITNESS, and it is a conservation identity that appears NOWHERE in the
+   *    engine. Summing the seven equations, d/dt(P + sum C) = rho/Lambda·P + S — so at exactly
+   *    critical the TOTAL neutron-plus-precursor inventory grows at precisely S, whatever the
+   *    split between them does. If the matrix exponential lands on that, the source is entering
+   *    the system correctly for a reason this suite did not supply.
+   *
+   *    IT IS ALSO WHY THE CRITICAL-HOLD CHECK ABOVE SURVIVES: the inventory is ~4,240x the power,
+   *    so the power's own creep is buffered by that factor — measured 1.6e-8 over 30 s, not the
+   *    S·t = 3.3e-5 a naive reading predicts. The plant creeps; it does not ramp. */
+  (function () {
+    var P = 1, C = [], t0 = 1, N2 = quiet ? 300 : 1500;
+    for (var i = 0; i < 6; i++) {
+      C.push((K.DELAYED.beta_i[i] / K.DELAYED.lambda_i[i]) / Lam2); t0 += C[i];
+    }
+    for (var n = 0; n < N2; n++) { var a = K.advance(P, C, 0, 0.02); P = a.P; C = a.C; }
+    var t1 = P; for (i = 0; i < 6; i++) t1 += C[i];
+    ck('at EXACTLY critical the neutron+precursor inventory grows at precisely S  [identity]',
+       (t1 - t0) / (SRC_S * N2 * 0.02), 1.0, 0.01, '');
+    ckT('...while POWER only creeps, buffered by that inventory — it does not ramp at S',
+        (P - 1) < SRC_S * N2 * 0.02 * 0.01 && P > 1,
+        'power +' + (P - 1).toExponential(3) + ' over ' + (N2 * 0.02) + ' s against S·t = ' +
+        (SRC_S * N2 * 0.02).toExponential(3) + ' — the source is inconsequential at criticality ' +
+        '(WTSM §2.1.10), which is exactly why a source sized to the RETIRED plant\'s level would ' +
+        'have been wrong: 5.7e-4 /s there would ramp this reactor at 0.05 %/s from nothing');
+  })();
+  /* 8. THE POST-TRIP SYMPTOM, which is the one a player sees. WTSM §2.1.10 describes both halves:
+   *    the level "begins to decrease exponentially with a startup rate of -1/3 decade per minute"
+   *    — which this plant already did — and then "the neutron population eventually levels off,
+   *    because at equilibrium the addition of source neutrons just makes up for the losses". It
+   *    was the LEVELLING that was missing: -0.322 dpm and -81 s for every hour of a 20 h ride,
+   *    until kin.P underflowed to exactly 0.0 at 16.62 h and the board read "steady" on a core
+   *    with an identically zero neutron population. */
+  (function () {
+    var rho = -0.0645, Peq = K.sourceLevel(rho);
+    var P = Peq * 100, C = [], sur = null;
+    for (var i = 0; i < 6; i++) C.push((K.DELAYED.beta_i[i] / K.DELAYED.lambda_i[i]) * P / Lam2);
+    var steps = quiet ? 5000 : 15000, prev = P;
+    for (var n = 0; n < steps; n++) { prev = P; var a = K.advance(P, C, rho, 0.02); P = a.P; C = a.C; }
+    var ratio = P / prev, per = (ratio > 0 && ratio !== 1) ? 0.02 / Math.log(ratio) : Infinity;
+    sur = isFinite(per) ? (60 / Math.LN10) / per : 0;
+    ckT('a scrammed core LEVELS OFF at source level — startup rate goes to zero, not -1/3 dpm ' +
+        'for ever', Math.abs(P / Peq - 1) < 0.02 && Math.abs(sur) < 0.02,
+        'P/P_eq = ' + (P / Peq).toFixed(4) + ', SUR = ' + sur.toFixed(5) + ' dpm after ' +
+        (steps * 0.02) + ' s from 100x equilibrium; the sourceless plant read -0.322 dpm and ' +
+        '-81 s at every sample of a 20 h ride and underflowed to 0.0 at 16.62 h');
+  })();
 
   /* ---- 2b. THE MIDPOINT RAMP CORRECTION, WHICH NOTHING GUARDED -----------------------
    * The first implementation of midpoint-rho was a NO-OP: it took a trial half-step and rebuilt a
@@ -225,7 +380,10 @@ function runSuite(K, rec, quiet) {
    * and carries NO MUTATION, deliberately: a mutation that reintroduces a non-terminating loop
    * would hang this suite rather than redden it, and a self-test that can hang is worse than one
    * blind spot. A HANG IS WORSE THAN A WRONG ANSWER — a wrong answer reaches a check. */
-  var bad = new Float64Array(49); bad[0] = Infinity;
+  /* 8x8 since #536 — and sizing this 49 would have "passed" for the WRONG REASON: indices past
+   * the array's end read undefined, the row sums go NaN, and the non-finite branch fires on the
+   * short buffer rather than on the Infinity this check is about. Sized off the module. */
+  var bad = new Float64Array(K.expm(new Float64Array(64)).length); bad[0] = Infinity;
   var t0 = Date.now(), badE = K.expm(bad), ms = Date.now() - t0;
   ckT('a non-finite matrix RETURNS rather than hanging', ms < 500 && !isFinite(badE[0]),
       'returned in ' + ms + ' ms as NaN; the first version never returned at all');
@@ -314,7 +472,9 @@ function runSuite(K, rec, quiet) {
       'both feedbacks are perturbative about the reference, not absolute');
 
   /* ---- THE TWO DEFECTS OF 2026-08-26 (#515 Build 3, D5 §87) ------------------------------- */
-  console.log('\nTHE VOIDED CORE IS SUBCRITICAL AT ANY BORON  [the reference is liquid; the boron factor is bounded]');
+  /* `if (!quiet)` like every other banner — without it this one printed once per MUTATION,
+   * interleaved through the injection self-test's own output. */
+  if (!quiet) console.log('\nTHE VOIDED CORE IS SUBCRITICAL AT ANY BORON  [the reference is liquid; the boron factor is bounded]');
   var cal = K.calibration();
   ckT('the calibration is STATE-INDEPENDENT: one coefficient, whatever pressure a caller passes ' +
       '(it used to cache the first caller\'s — 13.4x apart between 0.5 and 15.5 MPa)',
@@ -429,7 +589,7 @@ function runSuite(K, rec, quiet) {
       'a term that saturates or turns over would let a dry core come back critical');
   /* ⚠ THE FULLY-VOIDED CASE IS THE ONE THAT MATTERS AND THE ONE THE FIRST VERSION GOT WRONG.
    * Referencing "liquid at the node's own temperature" collapses at low pressure — T_from_h
-   * clamps a dry node to 800 degC, h_l clamps that back to 358, and the result is itself
+   * clamps a dry node to the vapour ceiling, h_l clamps that back to 358, and the result is itself
    * two-phase — so the term reported -7.6 pcm on a completely dry core at 0.1 MPa. A void
    * coefficient that switches itself off in a voided core is worse than not having one. */
   ckT('a DRY core at the bottom of a blowdown is held deeply subcritical, not released',
@@ -593,7 +753,10 @@ function runSuite(K, rec, quiet) {
   /* ---- 8. THE PORT IS KNOWINGLY INCOMPLETE, AND SAYS SO ------------------------------- */
   if (!quiet) console.log('\nOPEN CONSTANTS  [this gate goes green while the port is unfinished]');
   var openKeys = Object.keys(K.OPEN);
-  ckT('the open constants are STRUCTURALLY SEPARATE from the sourced ones', openKeys.length === 3,
+  /* 3 until #536 added the neutron source, whose DERIVATION is sourced and whose installed
+   * STRENGTH is not. The count going UP is honest — a newly declared gap, not a regression —
+   * and it is pinned so the entry cannot be quietly dropped or quietly promoted. */
+  ckT('the open constants are STRUCTURALLY SEPARATE from the sourced ones', openKeys.length === 4,
       openKeys.join(', ') + ' — carried as flagged placeholders, not mixed into the sourced set');
   ckT('...and every one states the evidence work it owes',
       openKeys.every(function (k) { return K.OPEN[k].why && K.OPEN[k].why.length > 40; }),
@@ -713,6 +876,34 @@ var MUTATIONS = [
    'kin.rho_last = rhoNow;', 'kin.rho_last = rhoMid;'],
   ['the missing-fuel-temperature guard removed (Doppler silently reads a default)',
    "if (drivers.fuelTemp_c === undefined) {", "if (false) {"],
+  /* ---- THE NEUTRON SOURCE (#536). Written knowing these mutations could not have caught the
+   * defect they guard — the term did not exist, and mutation testing perturbs code that does.
+   * They exist so that its REMOVAL, its mis-scaling and a broken augmentation are all visible,
+   * which is the only thing this technique can offer for a missing term. */
+  ['the source is dropped from the matrix (a subcritical core decays to nothing again)',
+   '    _A[0 * N + (N - 1)] = S;', '    _A[0 * N + (N - 1)] = 0;'],
+  ['the source is not scaled by dt with the rest of the matrix (wrong by 1/dt)',
+   '    _A[0 * N + (N - 1)] = S;      /* the source, into the power equation and nothing else */\n' +
+   '    for (q = 0; q < N * N; q++) _A[q] *= dt;',
+   '    for (q = 0; q < N * N; q++) _A[q] *= dt;\n' +
+   '    _A[0 * N + (N - 1)] = S;'],
+  ['the augmented constant is seeded 0 instead of 1 (the source multiplied by nothing)',
+   '    _v[N - 1] = 1;                /* the augmented constant */',
+   '    _v[N - 1] = 0;'],
+  ['the augmented row stops being zero, so the multiplier itself evolves',
+   '    _A[0 * N + (N - 1)] = S;',
+   '    _A[0 * N + (N - 1)] = S; _A[(N - 1) * N + (N - 1)] = 0.001;'],
+  ['the installed source strength moved off the value the P-6 test picked',
+   'installed_n_per_s: 5.0e8,', 'installed_n_per_s: 2.0e9,'],
+  ['the published source constant stops agreeing with its own derivation',
+   'value: 1.0988e-6,          // fraction of rated per second',
+   'value: 5.7e-4,             // fraction of rated per second'],
+  ['sourceLevel hands back a number at criticality instead of refusing',
+   '    if (!(rho < 0)) return NaN;', '    if (false) return NaN;'],
+  ['sourceLevel loses its Lambda (the level stops scaling with the generation time)',
+   '    return S * DELAYED.Lambda / (-rho);', '    return S / (-rho);'],
+  ['advance defaults to NO source, so only a caller that remembers gets one',
+   '    if (S === undefined) S = OPEN.source.value;', '    if (S === undefined) S = 0;'],
   /* THE OPEN SET */
   /* The first version of this mutation replaced only the PREFIX of the justification, leaving the
    * rest of the string in place — so the length check still passed and the mutation was blind. It

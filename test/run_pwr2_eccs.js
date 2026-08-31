@@ -275,6 +275,19 @@ function runSuite(C, rec, quiet) {
         var r = C.stepECCS(C.createECCS({}), plant(15.41), 0.02);
         return r.acc_pressure_mpa > 4 && r.acc_valve_open === true && r.acc_water_frac === 1;
       })(), '');
+  /* #585 — a HELD plant accepts no injection, and the TANK is the observable: an accumulator
+   * draining into a plant whose mass cannot move destroys the water it discharged. This lives
+   * HERE and not in run_pwr2_loca because that fixture's tank is empty by the time its ride
+   * latches — the joint gate structurally cannot see this guard. */
+  ckT('a beyond_model plant gets zero flow and the tank keeps its water (#585)', (function () {
+        var ec9 = C.createECCS({ hhsiRunning: true, lhsiRunning: true });
+        var sys9 = plant(0.5);                      /* both trains WOULD flow at this pressure */
+        sys9.beyond_model = true;
+        var w0 = ec9.acc.water_m3, i0 = ec9.injected_kg;
+        var r = C.stepECCS(ec9, sys9, 0.02);
+        return r.total_kgs === 0 && r.sources.length === 0 && r.held === true &&
+               ec9.acc.water_m3 === w0 && ec9.injected_kg === i0;
+      })(), 'pumps refused, tank untouched, no source handed to Layer 3');
 }
 
 console.log('\nPWR2 Layer 5 -- ECCS: sourced injection curves');
@@ -286,6 +299,8 @@ var MUTATIONS = [
   ['the SI power gate is severed (a blacked-out pump keeps injecting) -- #507 wave 4',
    'var powered = !drivers || drivers.ac_available !== false;',
    'var powered = true;'],
+  ['the held-plant guard is removed — ECCS drains its tank into a frozen plant (#585)',
+   '    if (sys.beyond_model === true) {', '    if (false) {'],
   /* THE SHUTOFF IS THE FALLTHROUGH, and it must be mutable on ONE line so an autocrlf checkout
    * cannot silently stop the anchor matching -- the trap CLAUDE.md records against multi-line
    * anchors, and one this file tripped while being written. */

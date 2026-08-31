@@ -74,7 +74,9 @@ function rampValue(points, f) {
 function runProcedure(prof, proc) {
   var P = PROFILES[prof];
   var e = new P.ctor(P.version ? { design_version: P.version } : {});
-  e.reset({ plant_id: P.plant, initial_state: proc.from, design_version: P.version });
+  /* the RETIRED engine's IC vocabulary — see RD.RETIRED_ENGINE_IC's note in ui/manual_procedures.js */
+  e.reset({ plant_id: P.plant, initial_state: RD.RETIRED_ENGINE_IC(proc.from),
+           design_version: P.version });
   var checks = [];
   var gNever = (proc.guard && proc.guard.never || []).map(function (c) { return { c: c, hit: false }; });
   var meltHit = false;

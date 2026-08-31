@@ -18,7 +18,7 @@ Campaign `teaches` and procedure titles now use the manuals' **Mode N, Name** co
 | Critical ≤ 5 % | **Mode 2, Startup** |
 | `hot_zero_power` | **Mode 3, Hot Standby** |
 | Heatup/cooldown transit | **Mode 4, Hot Shutdown** **[sim]** |
-| `cold_shutdown` | **Mode 5, Cold Shutdown** **[sim]** |
+| `hot_shutdown` | **Mode 4, Hot Shutdown** **[sim]** — there is no Mode 5 or cold-shutdown state on this plant (#524) |
 
 ---
 
@@ -93,7 +93,7 @@ authoritative order is `ui/campaign_data.js`; the round trip
 |-------|-----------------|
 | ESF AUTO/MAN re-arm | `05` PWR-T12; `03` Emergency card |
 | MSIV “bottle the boiler” | `03` MSIV; `07` related; below |
-| Rod AUTO T-ref capture | `03` §14 automation / T10 caution |
+| Holding Tavg by hand (no rod AUTO on this plant) | `03` §14.3 / §17.2 |
 | Feed three-element vs MANUAL | `03` / **PWR-N12** |
 | 1/M / NIS handoff | `03` NIS; N02; `05` T13 |
 | Mode 5 path | `05` T20/T21; N03/N15 |

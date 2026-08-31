@@ -62,11 +62,16 @@ function runSuite(RD, rec, quiet) {
   /* A stub plant at an exact pressure — stepPressurizer reads only P, node h and mdot_loop,
    * so the ladder can be exercised at the psi it actuates at rather than hoping a transient
    * passes through it. */
-  function stub(P_mpa, mdot) {
+  function stub(P_mpa, mdot, pumpTripped) {
+    /* pumpTripped is THIRD and explicit (#537): the spray gate's predicate is the pump
+     * BREAKER, and a fixture that leaves it undefined tests neither state on purpose.
+     * Absent means the breaker is CLOSED, matching createPlant's own `!!opts.pumpTripped`
+     * -- the mirror of the `ac_available === false` convention this module uses for power. */
     return { P: P_mpa,
              nodes: [{ id: 'hot_leg', h: W.h_l(310, P_mpa) },
                      { id: 'cold_leg', h: W.h_l(288, P_mpa) }],
-             mdot_loop: mdot === undefined ? 1630 : mdot };
+             mdot_loop: mdot === undefined ? 1630 : mdot,
+             pumpTripped: pumpTripped === true };
   }
   function at(err_psi) { return 15.41 + err_psi / PSI; }
   /* drive a constructed vessel WATER-SOLID by hand: no steam, one liquid pool of subcooled
@@ -107,8 +112,95 @@ function runSuite(RD, rec, quiet) {
      PZ.RELIEF.porv_kgs, 2 * 179000 / 7936.64 * 300 / 1520, 0.01, 'kg/s');
   ck('level program full-power point is WTSM 10.3\'s 61.5 %', PZ.GEOM.level_program_full, 0.615, 0, '-');
   ck('high-level trip is Ginna\'s 87 %', PZ.GEOM.hi_level_trip_frac, 0.87, 0, '-');
+  /* ---- ONE VESSEL, ONE NUMBER (#583) -------------------------------------------------------
+   * The plant's volume ledger and this module both name a pressurizer volume, in two files, and
+   * NOTHING asserted they agree. They did not: Layer 1 carried 125.2 ft3 (a design-basis
+   * PLACEHOLDER `PWR_DESIGN_BASIS.md` §6 explicitly said "must be checked against #472's own
+   * number, not adopted over it") while this module derived 147.5 ft3 from Ginna — an 18 % split
+   * between two live numbers for one vessel, on top of the ring ALSO carrying it as a node. This
+   * is the check that was missing, and it is a cross-LAYER one: Layer 1 is the ledger, Layer 5
+   * owns the vessel, and the ledger row must be the vessel. */
+  ckT('the volume ledger\'s pressurizer row IS this vessel, to the last bit (#583)',
+      RD.geometry.LEDGER.pressurizer.m3 === PZ.GEOM.V_pzr_m3,
+      'ledger ' + RD.geometry.LEDGER.pressurizer.m3 + ' m3 vs GEOM ' + PZ.GEOM.V_pzr_m3 + ' m3');
+  ckT('...and the pressurizer is NOT also a ring node — that was the double count',
+      !RD.geometry.NODES.some(function (n) { return n.id === 'pressurizer'; }) &&
+      RD.loop.OFF_LOOP.indexOf('pressurizer') === -1,
+      RD.geometry.NODES.length + ' nodes, off-loop = ' + RD.loop.OFF_LOOP.join(', '));
 
   /* ---- 2. CONSTRUCTION ROUND-TRIPS --------------------------------------------------------- */
+  /* ---- THE SHELL'S METAL (#587) ------------------------------------------------------------
+   * The vessel carried no wall from #515 until now; #574 gave the ring's PHANTOM pressurizer
+   * node one and #583 deleted it with the node. These assert the EFFECT and the INVARIANT, not
+   * that a field exists — a wall that is present and inert is the dark wire this repo keeps
+   * finding, and BOTH defects made building this one were in the coupling rather than the mass. */
+  head('THE SHELL (#587)  [the metal, its sign, and the regime rule it must not break]');
+  (function () {
+    var pzW = PZ.createPressurizer({ P: 15.41 });
+    /* 1. THE MASS, retyped from the vessel's own volume by hand — so a transcription slip in
+     *    the module cannot pass by equalling itself (run_pwr2_geometry's idiom for pipe walls). */
+    var GEOx = RD.geometry, V = PZ.GEOM.V_pzr_m3, LD = 5;
+    var D = Math.cbrt(4 * V / (LD * Math.PI)), L = LD * D, r = D / 2;
+    var t = GEOx.ASME.P_design_mpa * r / (GEOx.ASME.S_allow_mpa - 0.6 * GEOx.ASME.P_design_mpa);
+    var M = (Math.PI * L * t * (D + t) + 2 * Math.PI * r * r * t) * GEOx.WALL_MAT.cs.rho;
+    ckT('the shell is ASME on the vessel-s OWN volume, retyped independently',
+        !!pzW.wall && Math.abs(pzW.wall.M_kg / M - 1) < 1e-9 && pzW.wall.n === 2,
+        (pzW.wall ? pzW.wall.M_kg.toFixed(0) : '-') + ' kg (' +
+        (pzW.wall ? (pzW.wall.M_kg * 2.20462).toFixed(0) : '-') + ' lbm), ' +
+        (pzW.wall ? (pzW.wall.C * pzW.wall.n).toFixed(0) : '-') + ' kJ/K, ' +
+        (pzW.wall ? (pzW.wall.t_m * 1000).toFixed(1) : '-') + ' mm, ' +
+        (pzW.wall ? pzW.wall.n : '-') + ' lumps');
+    /* 2. THE SIGN, BOTH WAYS. This is the check that would have caught this change's first
+     *    defect: the wall read the stratified insurge layer as the whole wetted wall, sat 33 K
+     *    hot and pushed 92 kW INTO the vessel — a heat sink that heats. A one-sided check
+     *    ("the wall exchanges heat") passes on that. */
+    function ride(warm) {
+      var pz = PZ.createPressurizer({ P: 15.41 });
+      var sys = S.createPlant({ h: W.h_l(304.5, 15.41), P: 15.41, extraMass: PZ.extraMassFn(pz) });
+      var Q = 0, r = null;
+      for (var i = 0; i < 40 / DT; i++) {
+        S.stepPlant(sys, DT, {});
+        r = PZ.stepPressurizer(pz, sys, DT,
+              { heater_frac: warm ? 1 : 0, spray_frac: warm ? 0 : 1, block_open: false });
+        Q += (r.wall_kW || 0) * DT;
+      }
+      return Q;
+    }
+    var Qwarm = ride(true);
+    ckT('a warming vessel puts heat INTO the metal — the sink is a sink',
+        Qwarm <= 0, Qwarm.toFixed(1) + ' kJ net to the fluid over 40 s of full heaters ' +
+        '(negative = absorbed; +5,540 kJ was this change-s first defect)');
+    /* 3. THE REGIME INVARIANT the second defect broke: the saturated pool is saturated BY
+     *    DEFINITION, so the shell must not be able to subcool it. Measured with the pool
+     *    coupled: 40.7 kJ/kg subcooled after an insurge. */
+    /* ⚠ ASSERTED AS AN A/B, NOT AGAINST AN ABSOLUTE FLOOR — and the first version of this check
+     * was the absolute one, at "< 1 kJ/kg". It went red, and the baseline is why: the spray path
+     * already leaves the pool 1.49 kJ/kg subcooled at the step boundary in this fixture, WITH THE
+     * WALL AND WITHOUT IT ALIKE. The claim (the shell must not subcool the pool) was right and
+     * the threshold was invented — measured against the OLD behaviour, as HR10 requires, it says
+     * nothing about the wall at all. The A/B form cannot rot on a baseline change and pins the
+     * actual defect, which took this to 40.7 kJ/kg. */
+    (function () {
+      function worstSub(dry) {
+        var pz = PZ.createPressurizer({ P: 15.41, dryWall: dry });
+        var sys = S.createPlant({ h: W.h_l(304.5, 15.41), P: 15.41,
+                                  extraMass: PZ.extraMassFn(pz) });
+        var worst = 0;
+        for (var i = 0; i < 60 / DT; i++) {
+          S.stepPlant(sys, DT, {});
+          PZ.stepPressurizer(pz, sys, DT, { heater_frac: 0, spray_frac: 1, block_open: false });
+          if (pz.m_sat > 0) { var d = W.h_f(sys.P) - pz.h_sat; if (d > worst) worst = d; }
+        }
+        return worst;
+      }
+      var sw = worstSub(false), sd = worstSub(true);
+      ckT('the shell does not subcool the saturated pool — that is wall condensation, unmodelled',
+          sw - sd < 0.05,
+          'worst pool subcooling ' + sw.toFixed(2) + ' kJ/kg with the metal against ' +
+          sd.toFixed(2) + ' without it (this change-s second defect read 40.7)');
+    })();
+  })();
+
   head('CONSTRUCTION  [the state, the projection and the level must be ONE consistent object]');
   var pz0 = PZ.createPressurizer({});
   /* #514: the projection reads the vtable while construction uses the direct two-phase
@@ -180,17 +272,48 @@ function runSuite(RD, rec, quiet) {
   ckT('+75 psi: spray full; +100: PORV OPEN',
       once(75).spray_frac >= 1 - 1e-9 && once(100.5).porv_open === true &&
       once(100.5).relief_kgs > 0, '');
-  ckT('spray needs a running RCP -- stopped loop, no spray at any error',
-      PZ.stepPressurizer(PZ.createPressurizer({}), stub(at(60), 0), DT, {}).spray_frac === 0,
-      'the driving head is the pump\'s (WTSM 3.2, #472\'s measured lesson)');
+  /* ⚠ THIS CHECK WAS TURNED AROUND (#537, 2026-08-28) — it used to assert "stopped loop, no
+   * spray", which was NEVER what the plant did: the gate read loop flow against an untagged
+   * 100 kg/s literal, and this fixture handed it exactly 0, so it passed under any gate at
+   * all and could not tell the shipped flow proxy from the pump predicate it claimed to be
+   * testing. Measured on the shipped build: a station blackout with spray demanded delivered
+   * full flow and 639.7 psi (4.41 MPa) of free depressurization, because coastdown and
+   * natural circulation sit ABOVE the literal.
+   * The behaviour is now a DECLARED DEPARTURE, ruled and documented in the SPRAY block: with
+   * no auxiliary-spray control on the board, the one spray lever keeps working with the pumps
+   * stopped, standing in for it at roughly half the authority real aux spray would give. So
+   * the claim here is the DEPARTURE, stated out loud — and the flag that would restore the
+   * physics is pinned beside it, so flipping it cannot go unnoticed. */
+  ckT('spray still delivers with the loop STOPPED -- the declared aux-spray stand-in (#537)',
+      PZ.stepPressurizer(PZ.createPressurizer({}), stub(at(60), 0, true), DT, {}).spray_frac > 0 &&
+      PZ.SPRAY.needs_rcp === true && PZ.SPRAY.rcp_gate_enforced === false,
+      'physics says needs_rcp (Ginna TS Bases: "normal pressurizer spray is unavailable" on a ' +
+      'loss of offsite power); the sim declares the gate unenforced because the board has no ' +
+      'aux-spray control -- flip rcp_gate_enforced when it gets one');
+  ckT('...and the gate, when enforced, reads the BREAKER and not the flow -- natural ' +
+      'circulation is not a pump',
+      (function () {
+        var saved = PZ.SPRAY.rcp_gate_enforced;
+        PZ.SPRAY.rcp_gate_enforced = true;
+        /* 200 kg/s is inside this plant's own natural-circulation band (up to 244.5 kg/s):
+         * the retired flow proxy sprayed here at full authority, the breaker does not */
+        var stopped = PZ.stepPressurizer(PZ.createPressurizer({}), stub(at(60), 200, true), DT, {});
+        var running = PZ.stepPressurizer(PZ.createPressurizer({}), stub(at(60), 200, false), DT, {});
+        PZ.SPRAY.rcp_gate_enforced = saved;
+        return stopped.spray_frac === 0 && running.spray_frac > 0;
+      })(),
+      'breaker open at 441 lb/s (200 kg/s) of natural circulation -> no spray; breaker closed ' +
+      'at the same flow -> spray. The retired 100 kg/s literal could not tell these apart');
   /* AUXILIARY SPRAY (stage 2c): the CVCS path that works EXACTLY when main spray cannot --
    * "auxiliary spray to the vapor space ... during cool down if the reactor coolant pumps are
    * not operating" (WTSM 3.2). Operator-commanded, never automatic. */
-  var rAux = PZ.stepPressurizer(PZ.createPressurizer({}), stub(15.41, 0), DT, { aux_spray: 1.0 });
+  var rAux = PZ.stepPressurizer(PZ.createPressurizer({}), stub(15.41, 0, true), DT,
+                                { aux_spray: 1.0, spray_manual: 0 });
   ckT('AUX spray condenses with the RCPs STOPPED -- the capability #472 measured missing',
-      rAux.spray_frac === 0 && rAux.aux_spray_frac === 1 && rAux.aux_spray_duty_kW > 1000,
+      rAux.aux_spray_frac === 1 && rAux.aux_spray_duty_kW > 1000,
       rAux.aux_spray_duty_kW.toFixed(0) + ' kW of VCT-cold condensing duty on ' +
-      rAux.aux_spray_kgs.toFixed(2) + ' kg/s -- main spray dead at zero loop flow');
+      rAux.aux_spray_kgs.toFixed(2) + ' kg/s -- roughly TWICE main spray\'s duty on 53 % of ' +
+      'its flow, which is why the #537 stand-in uses the main path and not this one');
   /* THE DUPLICATED CONSTANT, PINNED (the protection-cadence / MDOT_RATED pattern): aux capacity
    * is the CVCS charging maximum written down twice; the gate owns the consistency claim. */
   var auxTie = CV.CVCS.charging_max_gpm() * 6.30902e-5 *
@@ -245,9 +368,16 @@ function runSuite(RD, rec, quiet) {
       rSS.spray_frac === 1 && rSS.spray_stuck === true && rSS.spray_kgs > 0,
       rSS.spray_kgs.toFixed(2) + ' kg/s with the operator demanding 0 — the demand moves, ' +
       'the valve does not');
-  ckT('...and the stick still obeys physics: no RCP head, no spray',
-      PZ.stepPressurizer(PZ.createPressurizer({}), stub(15.41, 0), DT,
-                         { spray_stick: true }).spray_frac === 0, '');
+  ckT('...and the stick obeys the ENFORCED gate: breaker open, no spray (#537)',
+      (function () {
+        var saved = PZ.SPRAY.rcp_gate_enforced;
+        PZ.SPRAY.rcp_gate_enforced = true;
+        var r = PZ.stepPressurizer(PZ.createPressurizer({}), stub(15.41, 0, true), DT,
+                                   { spray_stick: true });
+        PZ.SPRAY.rcp_gate_enforced = saved;
+        return r.spray_frac === 0;
+      })(), 'a latched-open valve with no head passes nothing -- the failure is the VALVE, ' +
+            'not the demand (#200), so it must still bow to the physics gate when that is on');
   ckT('safeties open at 2500 psia and reseat 5 % lower, not at the lift point',
       (function () {
         var p = PZ.createPressurizer({});
@@ -304,7 +434,51 @@ function runSuite(RD, rec, quiet) {
   ckT('...and CLAMPS beyond both ends — a cooldown below no-load does not program a vacuum',
       Math.abs(PZ.levelProgram(280) - 0.25) < 1e-12 &&
       Math.abs(PZ.levelProgram(320) - 0.615) < 1e-12, '');
-  ck('the low-level cut is the sourced 17 %', PZ.LEVEL.low_cut_pct, 17, 0, '%');
+  /* THE PROGRAM REFERENCE REJECTS INSTRUMENT NOISE (#516 item 10). The caller wires this to
+   * the INDICATED Tavg, correctly (HR1) — and the program's 2.845 %/degC slope amplifies that
+   * channel's noise straight onto the SETPOINT, where the level PI cannot reject it. Measured
+   * on the shipped plant at steady full power: TRUE Tavg spanned 0.022 degC, INDICATED 0.63,
+   * and the published program swung 1.77 % while charging hunted 0 to 17 gpm.
+   *
+   * DRIVEN WITH A SQUARE WAVE, not noise: a deterministic +-0.35 degC alternation about the
+   * full-power Tavg, which is the measured indicated span and needs no PRNG. */
+  var pzN = PZ.createPressurizer({ level_frac: 0.615 });
+  var progLo = null, progHi = null, tN = 0;
+  for (var iN = 0; iN < Math.round(600 / DT); iN++) {
+    var tavgN = 304.5 + (Math.floor(tN / 2) % 2 ? 0.35 : -0.35);   /* 2 s half-period */
+    var rN = PZ.stepPressurizer(pzN, stub(15.41), DT, { tavg_c: tavgN });
+    tN += DT;
+    if (tN > 300) {                       /* after the lag has settled */
+      if (progLo === null || rN.level_program_pct < progLo) progLo = rN.level_program_pct;
+      if (progHi === null || rN.level_program_pct > progHi) progHi = rN.level_program_pct;
+    }
+  }
+  var progSwing = progHi - progLo, inSwing = 0.70 * 2.845;   /* what an UNLAGGED program would do */
+  ckT('the program reference LAGS its Tavg input, so channel noise does not become setpoint ' +
+      'motion (unlagged, a +-0.35 degC channel swings the program ' + inSwing.toFixed(2) + ' %)',
+      progSwing < inSwing * 0.15,
+      'program swings ' + progSwing.toFixed(3) + ' % of an unlagged ' + inSwing.toFixed(2) + ' %');
+  /* THE DISCRIMINATOR: a lag long enough to kill the noise must still TRACK a real ramp, or it
+   * has traded one defect for a worse one. At the ruled 100 degF/hr cooldown limit the
+   * first-order lag's steady error is tau*rate, and the check names the number rather than
+   * asserting the constant — a retune of program_lag_s moves both sides together. */
+  var pzR = PZ.createPressurizer({ level_frac: 0.615 });
+  /* ⚠ 400 s, NOT 1800. The first draft ramped for 30 min, which at this rate leaves the
+   * program's 12.83 degC span entirely — both sides then clamp to the 25 % floor and the check
+   * reports a triumphant 0.000 % error while asserting nothing at all. 400 s covers 6.2 degC
+   * and stays inside the span, where the two sides can actually differ. */
+  var tavgR = 304.5, rateR = 55.556 / 3600;      /* 100 degF/hr in degC/s */
+  var rR = null;
+  for (var iR = 0; iR < Math.round(400 / DT); iR++) {
+    tavgR -= rateR * DT;
+    rR = PZ.stepPressurizer(pzR, stub(15.41), DT, { tavg_c: tavgR });
+  }
+  var trackErr = Math.abs(rR.level_program_pct - 100 * PZ.levelProgram(tavgR));
+  ckT('...and it still TRACKS a 100 degF/hr ramp to within 1.5 % of program (tau*rate, not drift)',
+      trackErr < 1.5 && trackErr > 0.2 &&
+      100 * PZ.levelProgram(tavgR) > 26 && 100 * PZ.levelProgram(tavgR) < 60,
+      'lags program by ' + trackErr.toFixed(3) + ' % at tau ' + PZ.LEVEL.program_lag_s + ' s');
+  ck('the low-level cut is the sourced 17 %', PZ.LEVEL.low_cut_pct, 17, 0, '%');  ck('the low-level cut is the sourced 17 %', PZ.LEVEL.low_cut_pct, 17, 0, '%');
   ck('the high-level alarm is the sourced 70 %', PZ.LEVEL.hi_alarm_pct, 70, 0, '%');
   ck('the anticipatory backup-heater band is the sourced +5 %',
      PZ.LEVEL.backup_above_program_pct, 5, 0, '%');
@@ -667,6 +841,89 @@ function runSuite(RD, rec, quiet) {
       pzL.lowLevelCut === true && rLvl.heater_kW === 0,
       'cut ' + pzL.lowLevelCut + ', heaters ' + rLvl.heater_kW + ' kW');
 
+  /* ---- HEATER ELEVATION (#573) — the ruled physics, and the one case it is FOR -------------
+   * *(OWNER RULING, 2026-08-12, answer 3 of five: "physical heater elevation with progressive
+   * authority loss", narrowed the same day by "2: keep both" — the bistable above survives ON
+   * TOP as protection.)* Catalog rows HE-1 / HE-2 / HE-3; HE-2 is the check immediately above.
+   *
+   * ⚠ THE FEATURE IS UNREACHABLE ON A HEALTHY PLANT, BY CONSTRUCTION. The band sits below the
+   * 17 % cut, so the bistable de-energizes the bank before the derate can do anything. Every
+   * check here therefore drives the level channel to LIE — which is not a contrivance, it is
+   * HE-3, the case the mechanism exists for. A probe run at a healthy indicated level would
+   * pass against a plant with no derate at all. */
+  head('HEATER ELEVATION  [progressive loss on TRUE level; the bistable is a different thing]');
+  var HEB = PZ.HEATERS.elev_bot_pct, HET = PZ.HEATERS.elev_top_pct;
+  /* THE ORDERING IS THE CLAIM, not the two literals. S1 exists to de-energize the bank BEFORE
+   * it uncovers; a band straddling the cut would make the protection fire in the middle of its
+   * own subject, and the two numbers could drift into that without any probe noticing. */
+  ckT('the band sits ENTIRELY below the sourced 17 % cut — the ordering S1 exists for',
+      HET < PZ.LEVEL.low_cut_pct && HEB < HET && HEB > 0,
+      HEB + ' .. ' + HET + ' % against a cut at ' + PZ.LEVEL.low_cut_pct + ' %');
+  /* the level channel STUCK HIGH at 55 %: the latch never fires, so the derate is the only
+   * thing left — HE-3's premise, built once and reused down the ramp */
+  function atTrueLevel(pct) {
+    var p = PZ.createPressurizer({ level_frac: pct / 100 });
+    var sy = S.createPlant({ h: W.h_l(304.5, 15.41), P: 15.41, extraMass: PZ.extraMassFn(p) });
+    return { r: PZ.stepPressurizer(p, sy, 0.02, { indicated_level_pct: 55, heaters_manual: 1 }),
+             pz: p };
+  }
+  var eBelow = atTrueLevel(HEB - 2), eMid = atTrueLevel((HEB + HET) / 2),
+      eAbove = atTrueLevel(HET + 5);
+  var TOTKW = PZ.HEATERS.prop_kW + PZ.HEATERS.backup_kW;
+  ckT('HE-1: the wetted fraction RAMPS across the bank — 0 below, 0.5 mid, 1 above',
+      eBelow.r.heater_wetted_frac === 0 &&
+      Math.abs(eMid.r.heater_wetted_frac - 0.5) < 1e-9 &&
+      eAbove.r.heater_wetted_frac === 1,
+      eBelow.r.heater_wetted_frac.toFixed(3) + ' / ' + eMid.r.heater_wetted_frac.toFixed(3) +
+      ' / ' + eAbove.r.heater_wetted_frac.toFixed(3) + ' — the 0-or-full cliff is what this ' +
+      'replaces as the PHYSICS (#348 and #447 are records of what a cliff does)');
+  ckT('...and DELIVERED power follows it, half a bank delivering half the kW',
+      Math.abs(eMid.r.heater_kW - 0.5 * TOTKW) < 1e-6 &&
+      eBelow.r.heater_kW === 0 && Math.abs(eAbove.r.heater_kW - TOTKW) < 1e-6,
+      eBelow.r.heater_kW.toFixed(2) + ' / ' + eMid.r.heater_kW.toFixed(2) + ' / ' +
+      eAbove.r.heater_kW.toFixed(2) + ' kW against an installed ' + TOTKW.toFixed(2));
+  /* THE SPLIT IS THE TRAP, so it gets its own check rather than riding on the one above.
+   * The bank is still ENERGIZED when it is dry — a heater kW indication is electrical — and
+   * publishing the derated number would walk the operator's demand down on every MANUAL press
+   * (#538 by a new road, since the board re-sends its readback as the new demand). */
+  ckT('the ENERGIZED bank is full at every level: the gauge is electrical, not thermal',
+      Math.abs(eBelow.r.heater_energized_kW - TOTKW) < 1e-6 &&
+      Math.abs(eMid.r.heater_energized_kW - TOTKW) < 1e-6,
+      'dry bank still drawing ' + eBelow.r.heater_energized_kW.toFixed(2) + ' kW while ' +
+      'delivering ' + eBelow.r.heater_kW.toFixed(2) + ' — that difference IS the HE-3 lesson');
+  /* HE-3, AS AN EFFECT AND NOT A FRACTION. The standing rule: a row's gate must assert the
+   * effect, never the write. Two identical plants, both with the level channel stuck at 55 %,
+   * one inside the band and one above it — the uncovered one must pressurize measurably more
+   * slowly, and the latch must be FOOLED in both (that is what makes it HE-3 rather than HE-2). */
+  /* ⚠ THE PLANT MUST BE STEPPED TOO, and the first version of this probe was not — it stepped
+   * the pressurizer alone and both legs read +0.00 psi, because pressure is solved by Layer 2
+   * from mass and energy with this vessel's extraMass in it, not returned by this module. A
+   * probe that measures 0 on BOTH sides passes any inequality you happen to write; it measured
+   * nothing. Core power and SG duty are held at zero so the ONLY thing moving pressure is the
+   * heater — the manual-before-auto order, applied to a single term. */
+  function riseRate(truePct) {
+    var p = PZ.createPressurizer({ level_frac: truePct / 100 });
+    var sy = S.createPlant({ h: W.h_l(304.5, 15.41), P: 15.41, extraMass: PZ.extraMassFn(p) });
+    var P0 = sy.P, pwk = 0;
+    for (var i = 0; i < 1500; i++) {
+      var sr = S.stepPlant(sy, 0.02, { corePower: 0, sgDuty: pwk });
+      pwk = sr.pumpWork_kW;
+      PZ.stepPressurizer(p, sy, 0.02, { indicated_level_pct: 55, heaters_manual: 1 });
+    }
+    return { dP_psi: (sy.P - P0) * PSI, cut: p.lowLevelCut, shed: p.heatersShed };
+  }
+  var hotDry = riseRate(HEB + 0.5), hotWet = riseRate(HET + 10);
+  ckT('HE-3: with the level channel STUCK at 55 % the 17 % latch is FOOLED — it never fires',
+      hotDry.cut === false && hotDry.shed === false && hotWet.cut === false,
+      'lowLevelCut ' + hotDry.cut + ' at a TRUE ' + (HEB + 0.5) + ' % — the operator and the ' +
+      'bistable are lied to by the same transmitter (the CA-10 leg)');
+  ckT('...and the PHYSICS is then the only thing bounding the deadhead — the dry bank ' +
+      'pressurizes far more slowly',
+      hotDry.dP_psi < 0.25 * hotWet.dP_psi && hotWet.dP_psi > 0.5,
+      '+' + hotDry.dP_psi.toFixed(2) + ' psi over 30 s uncovered against +' +
+      hotWet.dP_psi.toFixed(2) + ' covered — #334 ran full power into an uncovered bank to ' +
+      '2207 psia with the coolant 240 degC subcooled');
+
 }
 
 /* ---- run + injection self-test -------------------------------------------------------------- */
@@ -712,14 +969,45 @@ var MUTATIONS = [
   ['spray condenses nothing (an energy sink with no mass transfer)',
    'var dmS = Math.min(Q_spray_kW * dt / Math.max(pz.h_stm - hf, 1), pz.m_stm);',
    'var dmS = 0;'],
+  /* ⚠ RE-ANCHORED AT #587. This named `if (!pz || pz.m_stm !== undefined) return pz;`, which
+   * #587 split in two so the shell could be built BEFORE the early return. The mutation then
+   * silently stopped applying and the runner reported ANCHOR MISS — the standing trap ("a
+   * refactor moves the line its anchor names") arriving in this file. Anchored on the
+   * reconstruction's own first line now, which is what the check is actually about. */
   ['the migration returns an old save unreconstructed',
-   'if (!pz || pz.m_stm !== undefined) return pz;',
+   'if (pz.m_stm !== undefined) return pz;',
    'if (true) return pz;'],
-  ['spray ignores the RCP (a stopped loop sprays anyway)',
-   'if (SPRAY.needs_rcp && !(sys.mdot_loop > 100)) sprayFrac = 0;', ''],
+  /* #587 — and the wall must be built for a save that needs no OTHER migration, which is the
+   * path that looks like it needs nothing done to it. */
+  ['a restored save comes back with no shell metal (the path that needs no other migration)',
+   'if (!pz.wall) {', 'if (false) {'],
+  ['the spray gate reads FLOW again instead of the breaker (#537 -- natural circulation sprays)',
+   'if (SPRAY.needs_rcp && SPRAY.rcp_gate_enforced && sys.pumpTripped === true) sprayFrac = 0;',
+   'if (SPRAY.needs_rcp && SPRAY.rcp_gate_enforced && !(sys.mdot_loop > 100)) sprayFrac = 0;'],
+  ['the DECLARED departure is silently reversed (#537 -- the stand-in disappears)',
+   '    rcp_gate_enforced: false,', '    rcp_gate_enforced: true,'],
   ['the heater FAILURE seat is severed (a failed bank keeps heating) -- #507 wave 6',
-   'var Q_heat_kW = (pz.heatersShed || drivers.heaters_failed) ? 0',
-   'var Q_heat_kW = pz.heatersShed ? 0'],
+   /* RE-ANCHORED at #573: the variable split into energized/delivered, so this anchor moved
+    * with it. The mutation is the same one — the failure seat severed. */
+   'var Q_energized_kW = (pz.heatersShed || drivers.heaters_failed) ? 0',
+   'var Q_energized_kW = pz.heatersShed ? 0'],
+  /* ---- HEATER ELEVATION (#573) ---- */
+  ['the elevation derate is deleted (the 0-or-full cliff is the physics again)',
+   '    var Q_heat_kW = Q_energized_kW * wetted;', '    var Q_heat_kW = Q_energized_kW;'],
+  ['the wetted fraction reads the INSTRUMENT instead of the plant (HR1 inverted, HE-3 dead)',
+   '      ? clip((level_pct - HEATERS.elev_bot_pct) /',
+   '      ? clip((level_ctl - HEATERS.elev_bot_pct) /'],
+  ['the band straddles the sourced 17 % cut (protection fires inside its own subject)',
+   '    elev_top_pct: 15.0', '    elev_top_pct: 22.0'],
+  ['the band loses its floor, so a dry bank still delivers (the deadhead reopens)',
+   '    elev_bot_pct: 5.0,', '    elev_bot_pct: -50.0,'],
+  ['the wetted fraction is not clipped (an overfull vessel over-delivers)',
+   '      ? clip((level_pct - HEATERS.elev_bot_pct) /\n' +
+   '             (HEATERS.elev_top_pct - HEATERS.elev_bot_pct), 0, 1)',
+   '      ? (level_pct - HEATERS.elev_bot_pct) /\n' +
+   '             (HEATERS.elev_top_pct - HEATERS.elev_bot_pct)'],
+  ['the ENERGIZED reading is derated too (#538 by a new road: MANUAL walks the demand down)',
+   '      heater_energized_kW: Q_energized_kW,', '      heater_energized_kW: Q_heat_kW,'],
   ['the spray stick is severed (a stuck-open valve obeys the demand) -- #507 wave 6',
    '    if (pz.sprayStuck) sprayFrac = 1;',
    ''],
@@ -795,6 +1083,13 @@ var MUTATIONS = [
    'pz.T_tail_c += dt * (amb - pz.T_tail_c) / RELIEF.tail_tau_cool_s;',
    'pz.T_tail_c += dt * (amb - pz.T_tail_c) / RELIEF.tail_tau_heat_s;'],
   /* re-anchored #510 batch 2: auxFrac grew the vital-bus gate */
+  /* #516 item 10: the program reference goes back to reading the Tavg channel RAW — the
+   * shipped defect. The lag STATE is left in place and simply bypassed, so this is a mutation
+   * of the CAPABILITY rather than a spelling: with it, 0.63 degC of channel noise becomes
+   * 1.8 % of setpoint motion again and the charging controller chases it. */
+  ['the level program reads Tavg RAW again (channel noise becomes setpoint motion)',
+   'var program_pct = 100 * (drivers.tavg_c !== undefined ? levelProgram(pz.tavgProg_c)',
+   'var program_pct = 100 * (drivers.tavg_c !== undefined ? levelProgram(drivers.tavg_c)'],
   ['the aux-spray command is dead',
    'var auxFrac = (drivers.aux_spray === undefined || drivers.ac_available === false)\n                  ? 0 : clip(drivers.aux_spray, 0, 1);',
    'var auxFrac = 0;'],

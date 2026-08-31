@@ -102,6 +102,48 @@ function runSuite(A, rec, quiet) {
   ck('delivered_kg integrates the rated flow over the run', af3.delivered_kg,
      A.mdafwRatedKgs() * 2.0, 1e-6 * A.mdafwRatedKgs() * 2.0, 'kg');
 
+  /* ---- THE FLOW CONTROL VALVES (#562) ---------------------------------------------------
+   * The operator's continuous post-trip task, and until 2026-08-27 this layer had no lever at
+   * all: `rated x avail`, an on/off, with no level input and nothing upstream tapering it.
+   * Measured full-stack with the valves open, a loss of offsite power took the generator to
+   * 861.7 % of its own nominal inventory in five hours. SOURCED — WAT 05 Transients
+   * (ML11216A094): "It is necessary to throttle AFW flow to control RCS temperature at this
+   * point." ---- */
+  head('THE FLOW CONTROL VALVES  [#562 — throttling is DELIVERY, never demand]');
+  var afT = A.createAFW({ mdafwRunning: true, tdafwRunning: true });
+  var rated = A.mdafwRatedKgs() + A.tdafwRatedKgs();
+  [1, 0.75, 0.5, 0.25, 0].forEach(function (t) {
+    afT.throttle = t;
+    ck('throttle ' + (t * 100).toFixed(0) + ' % delivers that fraction of BOTH trains',
+       A.stepAFW(afT, 0.02).total_kgs, rated * t, 1e-9, 'kg/s');
+  });
+  afT.throttle = 0;
+  var rT0 = A.stepAFW(afT, 0.02);
+  ckT('...and a throttled-shut valve leaves both pumps RUNNING — the #200 demand/delivery ' +
+      'split, the same law the power gate and the discharge block already obey',
+      rT0.mdafw_running === true && rT0.tdafw_running === true && rT0.total_kgs === 0,
+      'a shut valve that secured the pumps would heal itself on the next START press');
+  ck('afw_flow_normalized follows the throttle, so the gauge and the valve agree',
+     (function () { afT.throttle = 0.4; return A.stepAFW(afT, 0.02).afw_flow_normalized; })(),
+     0.4, 1e-9, '');
+  /* MIGRATION, and it is load-bearing: pwr2_shell saves `aw` whole, so a pwr2-1.0 save taken
+   * before this change restores an AFW object with NO throttle key. Absent must read WIDE
+   * OPEN or every pre-2026-08-27 save silently loses auxiliary feedwater. */
+  ckT('an ABSENT throttle is WIDE OPEN — old saves and Layer-5 fixtures behave exactly as ' +
+      'they did before this field existed',
+      (function () {
+        var old = A.createAFW({ mdafwRunning: true });
+        delete old.throttle;
+        return Math.abs(A.stepAFW(old, 0.02).mdafw_kgs - A.mdafwRatedKgs()) < 1e-12;
+      })(), '');
+  ckT('the throttle is CLAMPED to 0..1 at construction — a pct above 100 cannot manufacture ' +
+      'flow above the sourced rating',
+      A.createAFW({ throttle: 3 }).throttle === 1 && A.createAFW({ throttle: -2 }).throttle === 0, '');
+  ckT('the discharge block still beats the throttle — a wide-open valve behind tagged-shut ' +
+      'valves delivers nothing (the TMI-2 lineup)',
+      A.stepAFW(A.createAFW({ mdafwRunning: true, tdafwRunning: true, blocked: true,
+                              throttle: 1 }), 0.02).total_kgs === 0, '');
+
   /* ---- REFUSAL / SANITY ------------------------------------------------------------------ */
   head('SANITY  [negative availability cannot manufacture negative flow]');
   ckT('negative availability clamps to zero, not a negative flow',
@@ -145,16 +187,20 @@ var MUTATIONS = [
    'mdafwRunning: opts.mdafwRunning === undefined ? true : !!opts.mdafwRunning,'],
   ['TDAFW train silently dropped from the total (a real train vanishes)',
    'var total = md + td;', 'var total = md;'],
+  /* THE THREE ANCHORS BELOW WERE RE-POINTED FOR #562 (2026-08-27): the throttle multiplies
+   * both trains, so every `... * Math.max(0, af.xAvail) : 0;` gained a ` * thr`. A mutation
+   * whose anchor a refactor moved goes BLIND, which the runner reports and which is easy to
+   * scroll past — read the self-test line, not just the checks tally. */
   ['availability ignored (a degraded pump reports full flow)',
-   'af.mdafwAvail) : 0;', 'af.mdafwAvail) : 0; md = af.mdafwRunning ? mdafwRatedKgs() : 0;'],
+   'af.mdafwAvail) * thr : 0;', 'af.mdafwAvail) * thr : 0; md = af.mdafwRunning ? mdafwRatedKgs() : 0;'],
   ['rated flow stops scaling with plant rating (a hardcoded gpm masquerading as derived)',
    'function mdafwRatedKgs() { return gpmToKgs(AFW.mdafw_ginna_gpm * AFW.POWER_SCALE, 1000); }',
    'function mdafwRatedKgs() { return gpmToKgs(28.7, 1000); }'],
   ['TDAFW ratio to MDAFW silently changed (breaks the sourced 200%/100% relationship)',
    'tdafw_ginna_gpm: 340,', 'tdafw_ginna_gpm: 300,'],
   ['negative availability produces negative flow instead of clamping',
-   '(open && af.mdafwRunning && mdPowered) ? mdafwRatedKgs() * Math.max(0, af.mdafwAvail) : 0;',
-   '(open && af.mdafwRunning && mdPowered) ? mdafwRatedKgs() * af.mdafwAvail : 0;'],
+   '(open && af.mdafwRunning && mdPowered) ? mdafwRatedKgs() * Math.max(0, af.mdafwAvail) * thr : 0;',
+   '(open && af.mdafwRunning && mdPowered) ? mdafwRatedKgs() * af.mdafwAvail * thr : 0;'],
   ['the MDAFW power gate is severed (a blacked-out motor pump keeps pumping)',
    'var mdPowered = !drivers || drivers.mdafw_power_ok !== false;',
    'var mdPowered = true;'],
@@ -162,8 +208,26 @@ var MUTATIONS = [
    'var open = !af.blocked;',
    'var open = true;'],
   ['the power gate lands on the TURBINE pump (the do-not-gate note violated)',
-   'var td = (open && af.tdafwRunning) ? tdafwRatedKgs() * Math.max(0, af.tdafwAvail) : 0;',
-   'var td = (open && af.tdafwRunning && mdPowered) ? tdafwRatedKgs() * Math.max(0, af.tdafwAvail) : 0;'],
+   'var td = (open && af.tdafwRunning) ? tdafwRatedKgs() * Math.max(0, af.tdafwAvail) * thr : 0;',
+   'var td = (open && af.tdafwRunning && mdPowered) ? tdafwRatedKgs() * Math.max(0, af.tdafwAvail) * thr : 0;'],
+
+  /* ---- #562: THE FLOW CONTROL VALVES ---------------------------------------------------- */
+  ['the throttle is ignored on the MOTOR-driven train (the operator valve does nothing)',
+   'mdafwRatedKgs() * Math.max(0, af.mdafwAvail) * thr : 0;',
+   'mdafwRatedKgs() * Math.max(0, af.mdafwAvail) : 0;'],
+  ['the throttle is ignored on the TURBINE-driven train (half the fill is un-throttleable)',
+   'tdafwRatedKgs() * Math.max(0, af.tdafwAvail) * thr : 0;',
+   'tdafwRatedKgs() * Math.max(0, af.tdafwAvail) : 0;'],
+  ['a throttled-shut valve SECURES the pumps instead of stopping the flow (the #200 split)',
+   'var thr = af.throttle === undefined ? 1 : Math.min(1, Math.max(0, af.throttle));',
+   'var thr = af.throttle === undefined ? 1 : Math.min(1, Math.max(0, af.throttle));' +
+   ' if (thr <= 0) { af.mdafwRunning = false; af.tdafwRunning = false; }'],
+  ['the throttle is not clamped (a pct > 100 manufactures flow above the sourced rating)',
+   'throttle: opts.throttle === undefined ? 1 : Math.min(1, Math.max(0, +opts.throttle)),',
+   'throttle: opts.throttle === undefined ? 1 : +opts.throttle,'],
+  ['an ABSENT throttle reads as SHUT (every old save and every Layer-5 fixture loses AFW)',
+   'var thr = af.throttle === undefined ? 1 : Math.min(1, Math.max(0, af.throttle));',
+   'var thr = af.throttle === undefined ? 0 : Math.min(1, Math.max(0, af.throttle));'],
   ['afw_flow_normalized divides by only the running trains instead of both rated',
    'var rated = mdafwRatedKgs() + tdafwRatedKgs();',
    'var rated = md + td;']

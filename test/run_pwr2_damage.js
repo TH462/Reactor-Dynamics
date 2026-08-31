@@ -20,7 +20,8 @@
  * WHAT IT CANNOT PROVE: that the clad reaches these temperatures at the right TIME. That depends
  * on `pwr2_fuel.js`'s low-flow film coefficient, which is unsourced, and on two declared
  * optimistic simplifications (no departure from nucleate boiling; a coolant clamped at the
- * property library's 800 degC ceiling). Timing claims belong to the scenario gate, not here.
+ * property library's vapour ceiling, 1000 degC since #586). Timing claims belong to the
+ * scenario gate, not here.
  *
  * Run: node test/run_pwr2_damage.js
  */
@@ -199,9 +200,14 @@ function runSuite(D, rec, quiet) {
       ' kW cold — the Arrhenius factor does it, not a threshold');
   /* SELF-LIMITING AT THE INVENTORY. There is only so much zirconium; a parabolic law integrated
    * forever would eventually claim more than the core contains. */
+  /* ⚠ 1800 degC, NOT 2000 (#516 item 9). The clad-melt cut-off freezes the reaction at 1850, so
+   * a fixture held at 2000 latches on step ONE and never grows any oxide at all — it went BLIND
+   * to its own mutation the moment the cut-off landed, and the injection harness said so. Held
+   * just under the melting point the parabolic law still saturates within this horizon, which
+   * is what the check is about. */
   var dmAll = D.createDamage({}), rAll = null;
   for (i = 0; i < 200000; i++) {
-    rAll = D.stepDamage(dmAll, 1.0, { cladTemp_c: 2000, fuelTemp_c: 300 });
+    rAll = D.stepDamage(dmAll, 1.0, { cladTemp_c: 1800, fuelTemp_c: 300 });
   }
   ckT('the reaction cannot consume more zirconium than the core contains',
       rAll.oxidation_frac <= 1.0000001 && rAll.zr_consumed_kg <= dmAll.geom.M_clad_kg * 1.0000001,
@@ -270,6 +276,55 @@ function runSuite(D, rec, quiet) {
       healthy.zirc_heat_pct * RATED_KW / 100 < 1.0,
       (healthy.zirc_heat_pct * RATED_KW / 100).toFixed(3) + ' kW at 650 degF clad, in a ' +
       (RATED_KW / 1000).toFixed(0) + ' MWt core');
+
+  /* ---- THE CLAD-MELT CUT-OFF (#516 item 9) ------------------------------------------------
+   * The reaction is a SURFACE reaction on intact cladding, and Appendix K's sourced
+   * *"shall be assumed not to be steam limited"* keeps the rate law running at full rate for
+   * ever — conservative for a calculation that stops at 2200 degF, meaningless past it.
+   * MEASURED without this cut-off, on the 20 cm2 unmitigated break once Layer 0's ceiling
+   * stopped ending the ride: the clad crosses its melting point at 645.3 s and reaches
+   * 16,311 degC at 648.3 s. GEND-061 settles it — Zircaloy melting and relocation give
+   * *"resulting reduced exposed-surface areas"*. */
+  head('CLAD MELT  [the oxidation surface stops existing, so the heat does too]');
+  var hotOx = hold(DOC.significant_f + 900, 60);        /* 2700 degF = 1482 degC, below the melt */
+  /* ⚠ TWO PHASES, and the first draft did not have them: holding at 3400 degF from step one
+   * latches the cut-off immediately, so no oxide ever grows and the "history is kept" check
+   * below reported w = 0.00 — a fixture that produced its own subject out of the very cut-off
+   * it was there to test. Grow oxide at 2700 degF first, THEN cross the melting point. */
+  var moltenOx = (function () {
+    var dm = D.createDamage({ rated_thermal_kW: RATED_KW }), r = null, i;
+    for (i = 0; i < Math.round(60 / 0.02); i++)
+      r = D.stepDamage(dm, 0.02, { cladTemp_c: fToC(2700), fuelTemp_c: 300 });
+    var wBefore = dm.w_mg_cm2;
+    for (i = 0; i < Math.round(60 / 0.02); i++)
+      r = D.stepDamage(dm, 0.02, { cladTemp_c: fToC(3400), fuelTemp_c: 300 });   /* 1871 degC */
+    return { dm: dm, r: r, wBefore: wBefore };
+  })();
+  ckT('below the cladding melting point the reaction still makes heat',
+      hotOx.r.Q_ox_kW > 0 && hotOx.r.clad_melted === false,
+      'Q_ox ' + hotOx.r.Q_ox_kW.toFixed(1) + ' kW at 2700 degF, clad_melted false');
+  ckT('past it the cut-off latches and the oxidation heat goes to ZERO — the surface the ' +
+      'rate law runs on has relocated somewhere this model cannot follow',
+      moltenOx.r.clad_melted === true && moltenOx.r.Q_ox_kW === 0,
+      'clad_melted ' + moltenOx.r.clad_melted + ', Q_ox ' + moltenOx.r.Q_ox_kW.toFixed(3) + ' kW');
+  /* THE DISCRIMINATOR: the oxide inventory is NOT rewound. The metal that reacted before the
+   * melt really did react, and its hydrogen really was made — a cut-off that also erased the
+   * history would be a different and wrong claim. */
+  ckT('...but the oxide already grown is KEPT — the cut-off stops the reaction, it does not ' +
+      'un-react what happened before',
+      moltenOx.r.w_mg_cm2 > 0 && moltenOx.r.h2_kg > 0,
+      'w ' + moltenOx.r.w_mg_cm2.toFixed(2) + ' mg/cm2, H2 ' + moltenOx.r.h2_kg.toFixed(2) + ' kg');
+  /* THE DISCRIMINATOR, and it exists because the cut-off is implemented TWICE — the reaction
+   * freeze on `w` and the heat gate on `Q_ox_kW`. Each is sufficient on its own, so a mutation
+   * of either is masked by the other and the injection harness reported BLIND: with `w` frozen
+   * the heat is zero anyway, and with the heat gated the frozen `w` is invisible. This asserts
+   * the half the heat gate cannot provide — that the OXIDE STOPS GROWING — so severing the
+   * freeze reddens here even though Q_ox stays zero. The #295 shape: plant the demand past the
+   * half you are not testing. */
+  ckT('...and the reaction itself STOPS — the oxide does not keep growing silently past the melt',
+      Math.abs(moltenOx.r.w_mg_cm2 - moltenOx.wBefore) < 1e-12 && moltenOx.wBefore > 0,
+      'w ' + moltenOx.wBefore.toFixed(4) + ' -> ' + moltenOx.r.w_mg_cm2.toFixed(4) +
+      ' mg/cm2 over 60 s past the melting point');
 
   /* ---- THE LATCHES ------------------------------------------------------------------------- */
   head('DAMAGE LATCHES  [latched, never cleared: a damaged core stays damaged]');
@@ -371,9 +426,10 @@ var MUTATIONS = [
    '    E_R:  45500 / 1.986,', '    E_R:  30000 / 1.986,'],
   ['the heat of reaction moved off its sourced value',
    '    heat_cal_per_g: 1510,', '    heat_cal_per_g: 800,'],
+  /* ⚠ ANCHOR RE-POINTED at #516 item 9, when the clad-melt freeze split this into a ternary. */
   ['integration reverts to LINEAR kinetics (no parabolic self-limiting)',
-   '    var w1 = Math.sqrt(w0 * w0 + rate(T_k) * (dt > 0 ? dt : 0));',
-   '    var w1 = w0 + rate(T_k) * (dt > 0 ? dt : 0);'],
+   '                            : Math.sqrt(w0 * w0 + rate(T_k) * (dt > 0 ? dt : 0));',
+   '                            : w0 + rate(T_k) * (dt > 0 ? dt : 0);'],
   ['the oxide is allowed to consume more zirconium than the core contains',
    '    if (w1 > w_max) w1 = w_max;                 /* cannot oxidise metal that is no longer there */',
    ''],
@@ -385,9 +441,24 @@ var MUTATIONS = [
   ['the hydrogen ratio is inverted (2 mol Zr per mol H2)',
    '  var H2_PER_ZR = 2 * M_H2 / M_ZR;   /* [derived] 1 mol Zr -> 2 mol H2, GEND-061 §4.3 */',
    '  var H2_PER_ZR = M_ZR / (2 * M_H2);'],
+  /* ⚠ ANCHOR RE-POINTED at #516 item 9 (2026-08-29), when the clad-melt cut-off was added to
+   * this line. It went ANCHOR-NOT-FOUND on the first run after that change and the gate said so
+   * — which is the mutation harness earning its keep: a blind mutation is a check that has
+   * silently stopped asking its question, and nothing else in the run would have told us. */
   ['the calorie conversion is dropped, so the heat is 4.184x too small',
-   '    var Q_ox_kW = dt > 0 ? dZr_kg * 1000 * BJ.heat_cal_per_g * CAL_J / 1000 / dt : 0;',
-   '    var Q_ox_kW = dt > 0 ? dZr_kg * 1000 * BJ.heat_cal_per_g / 1000 / dt : 0;'],
+   '                  ? dZr_kg * 1000 * BJ.heat_cal_per_g * CAL_J / 1000 / dt : 0;',
+   '                  ? dZr_kg * 1000 * BJ.heat_cal_per_g / 1000 / dt : 0;'],
+  /* #516 item 9: the cut-off is severed, so the parabolic rate law keeps generating surface
+   * reaction heat on cladding that has melted and relocated — the unbounded runaway measured
+   * at 16,311 degC three seconds past the melting point. */
+  /* #516 item 9: the cut-off is severed, so the parabolic rate law keeps running on cladding
+   * that has melted and relocated — the unbounded runaway measured at 16,311 degC three seconds
+   * past the melting point. THE FREEZE IS THE LOAD-BEARING HALF and so is what gets severed:
+   * mutating only the heat gate goes BLIND, because with `w` frozen `dZr_kg` is zero and the
+   * heat is zero anyway. Two spellings of the same guard, and only one of them is the guard. */
+  ['the clad-melt cut-off is severed (the rate law runs on cladding that no longer exists)',
+   '    var w1 = dm.clad_melted ? w0',
+   '    var w1 = false ? w0'],
   ['the DAMAGE latch reads the FUEL temperature instead of the clad',
    '    if (drivers.cladTemp_c >= pct_c) dm.fuel_damaged = true;',
    '    if (drivers.fuelTemp_c >= pct_c) dm.fuel_damaged = true;'],

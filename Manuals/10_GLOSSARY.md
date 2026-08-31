@@ -20,7 +20,7 @@ Terms used in the PWR manuals and on the simulator board. Acronym first, then pl
 | **5** | **Mode 5, Cold Shutdown** | Subcritical, RCS cold |
 | **6** | **Mode 6, Refueling** | Cold, vessel head not fully tensioned (out of scope here) |
 
-**Mode 5, Cold Shutdown → Mode 1, At Power** and **Mode 1, At Power → Mode 5, Cold Shutdown** master procedures: `05_MODE_TRANSITIONS.md` (**PWR-T20**, **PWR-T21**).
+**Mode 4, Hot Shutdown → Mode 1, At Power** and **Mode 1, At Power → Mode 4, Hot Shutdown** master procedures: `05_MODE_TRANSITIONS.md` (**PWR-T20**, **PWR-T21**). Both are written through **Mode 5**, which this plant does not have — its cold end is Mode 4 at 250 °F (121.1 °C), and the reason is the water-property floor rather than the plant model (**09 §11.0**, #524).
 
 **Not plant MODES:** turbine load modes Follow / Manual / Disconnected.
 
@@ -40,7 +40,7 @@ Terms used in the PWR manuals and on the simulator board. Acronym first, then pl
 | Term | Definition |
 |------|------------|
 | **Borate / Dilute** | Raise / lower dissolved boron concentration via CVCS (adds / removes negative reactivity) — done by setting the BORON CONTROL target ppm (batch dose), not a live meter seek. |
-| **CHEM SAMPLE / chemistry sample** | RCS grab sample analyzed by the lab; the result (posted after a compressed ~60 s turnaround) is the authoritative boron ppm — there is no online boron meter on the board. |
+| **CHEM SAMPLE / chemistry sample** | RCS grab sample analyzed by the lab; the result (posted after a real 30-minute lab turnaround) is the authoritative boron ppm — there is no online boron meter on the board. |
 | **BOP** | Balance of Plant — turbine, condenser, feedwater, and related secondary systems. |
 | **CVCS** | Chemical & Volume Control System — charging, letdown, boron adjust, inventory make-up. |
 | **Critical / Criticality** | Steady chain reaction: reactivity ≈ 0; power neither grows nor dies away on its own. |

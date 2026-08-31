@@ -73,6 +73,107 @@
    * answerable. */
   var VT = root.RD && root.RD.pwr2 && root.RD.pwr2.vtable;
   var RHO = VT ? VT.rho_from_h : W.rho_from_h;
+  var TFH = VT ? VT.T_from_h : W.T_from_h;      /* #574 — the wall talks to a TEMPERATURE */
+
+  /* ================================================================ METAL WALLS (#574)
+   * *(OWNER, 2026-08-12: "each node should carry the heat capacity of its own metal wall, not
+   * just the fluid it contains"; OWNER RULING, 2026-08-28: "All eleven nodes".)*
+   *
+   * Layer 1 owns the masses and areas, Layer 3 wires them onto the nodes, and THIS layer
+   * integrates them — the same division the rest of the stack uses. A node with no `wall` is
+   * untouched, so Layer 2's own fixtures stay rigid-and-dry exactly as they were.
+   *
+   * THE FILM COEFFICIENT is the one number here that is not geometry, and it follows the idiom
+   * `pwr2_fuel.filmCoefficient` already established rather than inventing a second one: a RATED
+   * value scaled by flowFrac^0.8 (Dittus-Boelter's Reynolds exponent, whose FORM is sourced —
+   * Ginna UFSAR ch15 names the correlation) with a natural-convection FLOOR so it cannot go to
+   * zero when the pumps stop. That floor is load-bearing: a stopped loop is exactly when stored
+   * wall heat matters, and a wall that decouples then would be worse than no wall at all.
+   *
+   * ⚠ AND ITS UNCERTAINTY IS MOSTLY NOT LOAD-BEARING, which is why one open number is tolerable
+   * here. Measured on the shipped geometry: for the vessel shell the CONDUCTION resistance of
+   * the first lump is ~7x the film resistance, so a 30 % error in `h_rated` moves that wall's
+   * time constant ~4 %. It matters for the steam-generator tubes, where the two are comparable —
+   * and there the SOURCED overall-U band (3,500-6,000 W/m2K, "set by tube wall + both films",
+   * D3 §1a-v) is the cross-check that the level is in the right decade. */
+  var WALL_FILM = {
+    h_rated_W_m2K:    15000,   /* [open] wall-side forced-convection film at rated flow */
+    h_stagnant_W_m2K: 500,     /* [open] natural convection to water — the LIQUID floor */
+    dittus_exp:       0.8,     /* [sourced-form] Dittus-Boelter's Reynolds exponent */
+    /* ⚠ THE PHASE TERM, AND LEAVING IT OUT WAS A MEASURED DEFECT IN THIS FEATURE'S FIRST CUT.
+     * `pwr2_fuel.filmCoefficient` takes BOTH halves — flow AND phase — and this took only the
+     * flow half while its own comment claimed to be following that idiom. The consequence is
+     * not small: on a 20 cm2 break the core goes 100 % void by 300 s and the steam superheats
+     * past the metal, so the walls become a heat sink for it — legitimately, but through a
+     * LIQUID film. MEASURED: the metal absorbed **1,100 MJ** by 600 s and held peak clad
+     * temperature at 1,698 degF against 1,910 dry, i.e. this feature was quietly rewriting
+     * every core-damage sequence through a coefficient that does not exist in steam.
+     * 0.5 is `pwr2_fuel.OPEN.vapor_ratio`, [derived] from the Dittus-Boelter property group on
+     * in-corpus properties (WCAP-16009-NP-A Table 10-3) — the same number, not a second one. */
+    vapor_ratio:      0.5,
+    /* ⚠ AND THE FLOOR NEEDS ITS OWN PHASE FACTOR, NOT THAT ONE — the second defect found in this
+     * feature, by the same red. `vapor_ratio` is a FORCED-convection ratio: the Dittus-Boelter
+     * group at the SAME MASS FLUX. The floor is a FREE-convection coefficient, and free
+     * convection scales with the fluid's own conductivity (h ~ k·(Gr·Pr)^n / L), where steam's k
+     * is about a tenth of water's at these conditions. Applying 0.5 to it left a stagnant, dry,
+     * superheated core coupled to 88 tonnes of metal at 250 W/m2K.
+     * MEASURED with that error standing: an unmitigated 20 cm2 break with no emergency cooling
+     * NEVER REACHED the 10 CFR 50.46 clad limit — 4,000 s, peak 2,172 degF, plateaued. A real
+     * one melts. That is the shape of a model being quietly rewritten by a coefficient, and it
+     * is why the core-damage gate going red was worth adjudicating rather than re-baselining. */
+    vapor_ratio_free: 0.10
+  };
+  function wallFilm(flowFrac, voidFrac) {
+    var f = flowFrac > 0 ? flowFrac : 0;
+    var v = voidFrac > 0 ? (voidFrac > 1 ? 1 : voidFrac) : 0;
+    var forced = WALL_FILM.h_rated_W_m2K * Math.pow(f, WALL_FILM.dittus_exp) *
+                 ((1 - v) + v * WALL_FILM.vapor_ratio);
+    var floor  = WALL_FILM.h_stagnant_W_m2K * ((1 - v) + v * WALL_FILM.vapor_ratio_free);
+    return forced > floor ? forced : floor;
+  }
+
+  /* buildWall(spec, T0) — the lump chain, precomputed once at construction.
+   *   spec: { M_kg, cp, k, A_m2, t_m, lumps }   (Layer 3 assembles this from Layer 1)
+   * EQUAL-MASS LUMPS in series, innermost first. Lump 0 sees the fluid; the outermost is
+   * ADIABATIC — no heat leaves the plant through the vessel wall, which is a declared
+   * simplification (real insulation is very good but not perfect) and the conservative one for
+   * a cooldown, since it keeps the stored heat inside where the operator has to remove it. */
+  function buildWall(spec, T0) {
+    var n = spec.lumps > 0 ? spec.lumps : 1;
+    var C = spec.M_kg * spec.cp / n;                       /* kJ/K per lump */
+    /* conduction between lump centres: k*A / (t/n), W/K -> kW/K */
+    var Gc = n > 1 ? spec.k * spec.A_m2 / (spec.t_m / n) / 1000 : 0;
+    /* film path: fluid -> lump 0 CENTRE, so it carries half a lump of metal conduction in
+     * series with the film. Omitting that half-lump is what makes a thick wall respond like a
+     * thin one, and the vessel is where this model's biggest capacity sits. */
+    var R_half = n > 0 ? (spec.t_m / n / 2) / (spec.k * spec.A_m2) : 0;   /* K/W */
+    var T = [];
+    for (var i = 0; i < n; i++) T.push(T0);
+    return { n: n, C: C, Gc: Gc, A_m2: spec.A_m2, R_half_KW: R_half * 1000,   /* K/kW */
+             M_kg: spec.M_kg, cp: spec.cp, k: spec.k, t_m: spec.t_m, T: T };
+  }
+
+  /* stepWall(w, T_fluid, flowFrac, dt) -> kW INTO THE FLUID. Explicit, once per plant step.
+   *
+   * ⚠ ONCE PER STEP, OUTSIDE THE PRESSURE SOLVE. `F(P)` is called ~10 times per step on the hot
+   * path D1 §26 already carries a performance stop condition against, and the wall does not
+   * depend on the candidate pressure — putting it inside would be paid ten times for nothing. */
+  function stepWall(w, T_fluid, flowFrac, voidFrac, dt) {
+    var i, hA = wallFilm(flowFrac, voidFrac) * w.A_m2 / 1000;   /* kW/K */
+    /* film and half a lump of metal in series */
+    var G0 = 1 / (1 / hA + w.R_half_KW);                   /* kW/K, fluid <-> lump 0 */
+    var Q = G0 * (w.T[0] - T_fluid);                       /* kW, positive = metal heats fluid */
+    var dT = new Array(w.n);
+    for (i = 0; i < w.n; i++) {
+      var net = 0;
+      if (i === 0) net -= Q;
+      if (i > 0) net += w.Gc * (w.T[i - 1] - w.T[i]);
+      if (i < w.n - 1) net += w.Gc * (w.T[i + 1] - w.T[i]);
+      dT[i] = net * dt / w.C;
+    }
+    for (i = 0; i < w.n; i++) w.T[i] += dT[i];
+    return Q;
+  }
 
   /* createSystem(spec) — spec.nodes: [{id, V, h}]  (V m3, h kJ/kg initial)
    *                      spec.P: initial pressure MPa
@@ -82,7 +183,12 @@
    *                      spec.iterCap: default 8 (the ruled value) */
   function createSystem(spec) {
     var nodes = spec.nodes.map(function (n) {
-      return { id: n.id, V: n.V, h: n.h };
+      var node = { id: n.id, V: n.V, h: n.h };
+      /* #574 — THE WALL IS CONSTRUCTED AT ITS FLUID'S TEMPERATURE (#502's settled construction).
+       * A wall seeded anywhere else makes every initial condition ring for minutes, which is the
+       * defect wearing a transient's face. Absent `wall`, the node is rigid and dry as before. */
+      if (n.wall) node.wall = buildWall(n.wall, TFH(n.h, spec.P));
+      return node;
     });
     var V_total = nodes.reduce(function (a, n) { return a + n.V; }, 0);
     var sys = {
@@ -110,6 +216,14 @@
     var H = 0;
     for (var i = 0; i < sys.nodes.length; i++) {
       H += sys.nodes[i].V * RHO(sys.nodes[i].h, sys.P) * sys.nodes[i].h;
+    }
+    /* #574 — THE WALL'S STORED ENERGY IS PART OF THE SYSTEM'S. Without this line the layer's
+     * own 3e-4 relative conservation budget silently absorbs every joule the metal takes up or
+     * gives back, and a budget that absorbs the thing being added has stopped measuring. */
+    for (i = 0; i < sys.nodes.length; i++) {
+      var w = sys.nodes[i].wall;
+      if (!w) continue;
+      for (var j = 0; j < w.n; j++) H += w.C * w.T[j];
     }
     return H - sys.P * 1000 * sys.V_total;      // MPa*m3 -> kJ
   }
@@ -167,6 +281,23 @@
     }
     var idx = {};
     for (i = 0; i < N; i++) idx[sys.nodes[i].id] = i;
+
+    /* ---- 1a. THE METAL WALLS (#574), before anything else touches dH. ----
+     * Evaluated at time-n temperatures and OUTSIDE the pressure solve — see stepWall's note.
+     * `drivers.flowFrac` is Layer 3's loop flow over rated; absent, the wall assumes rated
+     * (a Layer 2 fixture stepping a node by hand has no loop to be a fraction of). */
+    var flowFrac = drivers.flowFrac === undefined ? 1 : drivers.flowFrac;
+    var wallHeat = 0;
+    for (i = 0; i < N; i++) {
+      var wn = sys.nodes[i].wall;
+      if (!wn) continue;
+      /* THE NODE'S OWN VOID, not the loop's: a dry core and a full cold leg are the same
+       * plant, and the wall of each talks to the fluid it is actually in contact with. */
+      var Qw = stepWall(wn, TFH(sys.nodes[i].h, sys.P), flowFrac,
+                        W.quality(sys.nodes[i].h, sys.P), dt);
+      dH[i] += Qw;
+      wallHeat += Qw;
+    }
 
     /* ⚠ THE ENERGY BUDGET, MEASURED — AND THE DECLARED FIX DOES NOT WORK AS DECLARED.
      *
@@ -238,7 +369,19 @@
      * only as fast as pressure does, and `F` is called ~10 times per step on the hot path that
      * D1 §26 already recorded a performance stop condition against. Fixed bounds also make the
      * clamp a pure function of `a` and `P` within the step, which is what keeps `F` monotone. */
-    var hHi = W.h_v(W.LIMITS.TV_MAX, sys.P);     /* vapour at 800 degC — the envelope ceiling */
+    /* THE CEILING IS NOW THE EXTENSION'S (#516 item 9, owner ruling 2026-08-29). It was
+     * TV_MAX, the last VALIDATED temperature, and that is the wall the whole core-damage chain
+     * died against: every unmitigated break latched `beyond_model` on the ceiling-persistence
+     * arm with the core node pinned here, 1,609 degC short of the sourced uranium-dioxide melt
+     * point. Layer 0 now carries a sourced ideal-gas branch above TV_MAX (WCAP-16009-NP-A, see
+     * pwr2_water's TV_EXT_MAX) and this is the consumer that has to know about it, or the
+     * extension would exist and change nothing.
+     *
+     * THE PERSISTENCE LATCH IS UNTOUCHED and still guards the real failure it was built for:
+     * a node pinned at the ceiling for 60 continuous seconds is still held, only the ceiling
+     * moved. `rangeOK` still answers FALSE above TV_MAX and `true_state.water_regime` says
+     * which side the plant is on, so nothing here presents the extension as validated. */
+    var hHi = W.h_v(W.LIMITS.TV_EXT_MAX, sys.P);   /* vapour at the extension ceiling */
     var hLo = W.h_l(0, sys.P);                   /* liquid at 0 degC — the envelope floor */
     function hClamp(h) { return h > hHi ? hHi : (h < hLo ? hLo : h); }
 
@@ -267,7 +410,7 @@
      * the fuel temperature. The whole plant is NaN 62 s into a large break.
      *
      * WHAT MADE IT INVISIBLE is that every READER already clamps. `T_from_h`, `rho_from_h` and
-     * the vtable all saturate at the envelope, so a node at h = 1e+304 reports 800 degC and a
+     * the vtable all saturate at the envelope, so a node at h = 1e+304 reports TV_MAX and a
      * sane density — the state was absurd for tens of seconds while every gauge read plausibly.
      * That is why no gate caught it and why the clamp costs nothing: a node inside the envelope
      * is never touched, and a node outside it was ALREADY being read as clamped. The only
@@ -291,6 +434,19 @@
      * gate break peaks at 0.104, everything operational is < 0.001), the defect's jump was
      * 6.1 MPa. A solve landing further than P_JUMP_MAX from the previous step's root is the
      * compliance-collapse condition — hold THIS step (nothing adopted), latch beyond_model. */
+    var CEIL_HOLD_LATCH_S = 60;   /* s of CONTINUOUS active ceiling discard [derived] — 14x the
+     * longest healthy episode (4.26 s, 50 cm2 break flash), 16x under the loss-of-heat-sink
+     * hold it exists to latch (#535); rationale at the latch below.
+     *
+     * RE-MEASURED 2026-08-29 (#586) when TV_MAX moved 800 -> 1000 degC, because a margin sized
+     * against the OLD ceiling is a margin against a different plant. It got MORE conservative,
+     * not less: the 50 cm2 flash that produced the 4.26 s figure now touches the ceiling **not
+     * at all** (0 clamped steps in 400 s), so the benign case this constant was sized against
+     * has left the regime entirely. The defect signature sharpened at the same time — the
+     * unmitigated 20 cm2 and 5 cm2 rides go from no contact to a CONTINUOUS episode with no
+     * benign interruption, hitting the 60 s latch on their first sustained clamp (94.7 MJ and
+     * 69.4 MJ discarded). So the constant stands unchanged and is now separating cases that no
+     * longer overlap at all. */
     var P_JUMP_MAX = 2.0;   /* MPa per step [derived] — 3x above the worst measured legit move.
      * CAVEAT, measured: a PRESSURIZER-LESS rigid loop under a hand-pinned uniform h moves
      * 2.589 MPa/step at ~3,000 MW-equivalent forcing — a HARNESS idiom, not an engine
@@ -309,15 +465,23 @@
       };
     }
 
-    var clampedNodes = 0, discardedKJ = 0, wallHi = 0, wallLo = 0;
+    var clampedNodes = 0, discardedKJ = 0, wallHi = 0, wallLo = 0, ceilClamped = 0;
     var h_next = new Array(N);            /* #518 — staged; adopted only past the latches */
     for (i = 0; i < N; i++) {
       var h_raw = a[i] + v[i] * (sol.P - sys.P);
       var h_new = hClamp(h_raw);                 /* THE SAME function the solve used */
       if (h_new !== h_raw) { clampedNodes++; discardedKJ += (h_raw - h_new) * m_n[i]; }
+      /* ACTIVE ceiling clamp THIS step (#535) — distinct from the sitting-at-wall census
+       * below: a node parked exactly AT hHi with h_raw inside counts for wallHi but not
+       * here, and it is the active discard that means physics is being deleted right now */
+      if (h_new !== h_raw && h_raw > hHi) ceilClamped++;
       if (h_new === hHi) wallHi++; else if (h_new === hLo) wallLo++;
       h_next[i] = h_new;                                  /* #518 — STAGED, not written yet */
     }
+    /* #535: consecutive seconds of active ceiling discard. Rides `sys` into every save;
+     * absent on an old save reads 0, healthy. Reset by ANY step with no active ceiling
+     * clamp, so only a SUSTAINED discard can accumulate to the latch below. */
+    sys._ceilHold = ceilClamped > 0 ? (sys._ceilHold || 0) + dt : 0;
 
     /* ---- THE BLOWDOWN TERMINAL LATCHES, EVALUATED BEFORE ANYTHING IS ADOPTED (#487/#499/#518)
      * BOTH halves of the floor latch are required, because each alone fires on a plant that is
@@ -345,8 +509,21 @@
      * The root-jump guard above had this right from the start — "hold THIS step (nothing
      * adopted)" — and these two now do the same thing, which is the ONLY behaviour that makes the
      * held state mean what the dialog says it means: the last readings that were valid. The
-     * clamp counts are still REPORTED, because what was rejected is the diagnostic. */
-    if ((sol.flooredLow && clampedNodes > 0) || (wallHi > 0 && wallLo > 0)) {
+     * clamp counts are still REPORTED, because what was rejected is the diagnostic.
+     *
+     * THE THIRD ARM IS THE CEILING'S (#535), and it is a PERSISTENCE latch because the ceiling
+     * has a benign mode the floor does not: a 50 cm2 break flashes nodes onto hHi transiently
+     * during the blowdown — measured, 453 active-ceiling steps with the LONGEST run 4.26 s,
+     * finite and healthy throughout — so latching on first contact would kill a legitimate
+     * LOCA. What has no benign mode is a SUSTAINED discard: an unmitigated loss of heat sink
+     * pins core/upper-plenum/hot-leg on the ceiling and holds them there for ever (measured:
+     * first clamp 88.8 min, then a single 969 s-and-climbing run, 79 % of decay heat deleted,
+     * 55.4 GJ over 8 h, peak clad 1,616 degF FALLING against a 2,200 degF damage latch —
+     * an immortal plant with every health flag green). CEIL_HOLD_LATCH_S = 60 is 14x the
+     * longest measured healthy episode and 16x under the defect's hold; a minute of
+     * continuously deleting decay heat is not a state this property library can speak to. */
+    if ((sol.flooredLow && clampedNodes > 0) || (wallHi > 0 && wallLo > 0) ||
+        sys._ceilHold > CEIL_HOLD_LATCH_S) {
       sys.beyond_model = true;
       sys.simTime += dt;                                  // EXACTLY dt. Always.
       return {
@@ -385,7 +562,11 @@
       enthalpyDiscarded_kJ: discardedKJ,                   // energy the clamp threw away, kJ
       residual: F(sol.P),                                  // kg, after the solve
       junction: junction,
-      transfers: flows.length + sources.length             // vacuity guard, D5 §1
+      transfers: flows.length + sources.length,            // vacuity guard, D5 §1
+      /* #574 — net kW the METAL gave the fluid this step. REPORTED so a consumer can see
+       * the wall working rather than infer it from a temperature that moved: a dark wire is
+       * what this whole issue was about. */
+      wallHeat_kW: wallHeat
     };
   }
 
@@ -469,6 +650,10 @@
       return totalMass(sys, sys.P, sys.nodes.map(function (n) { return n.h; }));
     },
     internalEnergy: internalEnergy,
-    solveP: solveP
+    solveP: solveP,
+    /* #574 — exported so the gate can drive one wall in isolation. The lump chain is the
+     * part most likely to be built in PARALLEL by mistake, which behaves like one lump and
+     * looks perfectly reasonable from outside. */
+    buildWall: buildWall, stepWall: stepWall, wallFilm: wallFilm, WALL_FILM: WALL_FILM
   };
 })(typeof globalThis !== 'undefined' ? globalThis : this);

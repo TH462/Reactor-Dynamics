@@ -30,6 +30,10 @@
  *
  *   SAFETY POP     1085 psig — Ginna TS Bases (ML20339A221): "the MSSVs will maintain the
  *                  secondary system pressure at approximately 1085 psig"
+ *   SAFETY BANK    FOUR valves per steam line at STAGGERED setpoints — Ginna UFSAR ch10
+ *                  §10.3.2.4 (ML20339A040). One at 1085 psig, three at 1140 psig, each with
+ *                  +3 % accumulation. The full table and both of the source's own
+ *                  cross-checks are at safety_stage2_psig below (#542).
  *   SAFETY FLOW    0.84 x rated steam flow at full lift
  *   DUMP CAPACITY  28 % of rated steam flow — Ginna UFSAR ch10 §10.4 (ML20339A040): "eight steam
  *                  dump valves that are capable of passing up to approximately 28% rated steam
@@ -77,11 +81,46 @@
     adv_setpoint_mpa:    (1040.0 + 14.7) / PSI_PER_MPA,
     adv_band_mpa:        25.0 / PSI_PER_MPA,
     adv_kgs:             329000.0 / 7936.64 * (300.0 / 1520.0),
-    /* [derived] the pressure band from first lift to FULL lift. A real bank is several valves at
-     * staggered setpoints, which together look like a ramp; this lumps them into one. Declared,
-     * because a single valve popping to full flow at one pressure would be a step and would make
-     * the secondary ring. */
-    safety_full_lift_mpa: 0.35,
+    /* ---- THE STAGGERED BANK (#542, 2026-08-27) ---------------------------------------------
+     * This replaced a [derived] `safety_full_lift_mpa: 0.35` lumped band. The evidence pass the
+     * lump was standing in for found the arrangement in this plant's OWN anchor, so every figure
+     * below is now sourced and the lump is retired.
+     *
+     * [sourced] Ginna UFSAR ch10 §10.3.2.4 (ML20339A040), verbatim: "There are four main steam
+     * safety valves (MSSV) for each steam line. The first valve lifts at 1085 psig and the
+     * remaining three valves are set to lift at 1140 psig. The minimum total relieving capacity
+     * is 6.58 x 10^6 lbm/hr". The same chapter's equipment table gives the CAPACITIES and the
+     * accumulation: "Main steam safety valves ... Number 8 ... Type Crosby ... Capacity (each),
+     * lb/hr: 797,689: two valves at 1085 psig +3% accumulation / 837,600: six valves at
+     * 1140 psig +3% accumulation". Eight valves is FOUR PER LINE on Ginna's two-line plant;
+     * this single-loop plant models one line's worth, which is where the "two"/"six" become
+     * one and three.
+     *
+     * [sourced] WHY the stagger exists — Ginna TS Bases B 3.7.1 (ML20339A221), verbatim: "The
+     * MSSV design includes staggered setpoints so that only the needed valves will actuate.
+     * Staggered setpoints reduce the potential for valve chattering that is due to steam
+     * pressure insufficient to fully open all valves following a turbine/reactor trip."
+     *
+     * TWO CROSS-CHECKS FROM THE SOURCE ITSELF, both land:
+     *   2 lines x (797,689 + 3 x 837,600) = 6,620,978 lb/hr against §10.3.2.4's own stated
+     *     "minimum total relieving capacity is 6.58 x 10^6 lbm/hr" — 0.6 % apart.
+     *   Full bank lift at 1140 x 1.03 = 1174.2 psig is 98.4 % of 110 % of the 1085 psig first
+     *     lift (1193.5 psig), satisfying B 3.7.1's "limit the secondary system to <= 110% of
+     *     design pressure when passing 100% of design flow".
+     *
+     * ⚠ STAGE 1's SETPOINT IS `safety_pop_psig` ABOVE — deliberately not retyped here. A
+     * constant that is right for one plant is a second copy, and it goes wrong silently the day
+     * the plant changes; there is exactly one 1085.0 in this file. */
+    safety_stage2_psig:  1140.0,
+    /* [sourced] "+3% accumulation" — the pressure rise above a stage's own setpoint that takes
+     * it from first crack to full lift. Quoted on the SET pressure in psig, the convention the
+     * table itself uses. */
+    safety_accumulation: 0.03,
+    /* [sourced] per-stage capacity, one steam line's worth, from the table above. The SHARES
+     * are derived from these so the lb/hr figures stay the things a reader can check against
+     * the document. */
+    safety_stage1_lbhr:  797689.0,
+    safety_stage2_lbhr:  3 * 837600.0,
 
     /* [sourced] Ginna ch10 §10.4 — 28 % of rated steam flow, eight valves. */
     dump_capacity_frac:  0.28,
@@ -89,7 +128,45 @@
     src: 'Ginna TS Bases ML20339A221 (1085 psig MSSV) and Ginna UFSAR ch10 ML20339A040 (28 % dump)'
   };
 
-  function safetyReseatMpa() { return RELIEF.safety_pop_mpa * (1 - RELIEF.safety_blowdown); }
+  /* ONE definition of blowdown, used by every stage AND by the exported bank figure — a second
+   * copy is how a mutation goes blind on the half nobody re-anchored. */
+  function reseatOf(setMpa) { return setMpa * (1 - RELIEF.safety_blowdown); }
+  /* the BANK's reseat is stage 1's: the last valve to shut is the first to have opened. */
+  function safetyReseatMpa() { return reseatOf(RELIEF.safety_pop_mpa); }
+
+  /* The staggered bank, resolved once from the sourced table into the MPa/fraction form the
+   * step uses. Constants: the step runs at 50 Hz and must not rebuild this. */
+  var SAFETY_STAGES = (function () {
+    var psig  = [RELIEF.safety_pop_psig,   RELIEF.safety_stage2_psig];
+    var lbhr  = [RELIEF.safety_stage1_lbhr, RELIEF.safety_stage2_lbhr];
+    var tot = 0, out = [], i;
+    for (i = 0; i < lbhr.length; i++) tot += lbhr[i];
+    for (i = 0; i < psig.length; i++) {
+      var set = (psig[i] + 14.7) / PSI_PER_MPA;
+      out.push({
+        set_psig:   psig[i],
+        set_mpa:    set,
+        band_mpa:   RELIEF.safety_accumulation * psig[i] / PSI_PER_MPA,
+        reseat_mpa: reseatOf(set),
+        share:      lbhr[i] / tot
+      });
+    }
+    return out;
+  })();
+
+  /* THE SAVE MIGRATION (#542), the `msiv` pattern from pwr2_shell.js. The shell saves `rl`
+   * wholesale and restores it wholesale, so a save written before the staggered bank carries
+   * `safety_open` and no `stages`. Seed stage 1 OPEN AT FULL LIFT when that flag was set — the
+   * old model passed flow whenever it was set, and landing on a shut bank would silently drop a
+   * relief path mid-transient. A shut legacy flag lands on a shut bank, which is the pre-#542
+   * plant exactly. This is also the ONE path that seeds a bank constructed with safety_open. */
+  function seedStages(rl) {
+    var wasOpen = !!(rl && rl.safety_open), out = [];
+    for (var i = 0; i < SAFETY_STAGES.length; i++) {
+      out.push({ open: i === 0 && wasOpen, lift: (i === 0 && wasOpen) ? 1 : 0 });
+    }
+    return out;
+  }
 
   function createRelief(opts) {
     opts = opts || {};
@@ -97,6 +174,9 @@
       /* Safety valves LATCH. Once lifted they stay lifted until pressure falls to the reseat
        * point — that is what blowdown IS, and a stateless "open if P > pop" model chatters. */
       safety_open:  opts.safety_open === undefined ? false : !!opts.safety_open,
+      /* the per-stage latch and ratcheted lift (#542). Left null and seeded on the first step
+       * by seedStages, so construction and a pre-#542 restore travel the SAME path. */
+      stages:       null,
       relieved_kg:  opts.relieved_kg === undefined ? 0 : opts.relieved_kg
     };
   }
@@ -111,27 +191,57 @@
    */
   function stepRelief(rl, P_mpa, dt, drivers) {
     drivers = drivers || {};
-    if (drivers.rated_steam_kgs === undefined) {
-      throw new Error('pwr2_relief: drivers.rated_steam_kgs is REQUIRED — every capacity here is a ' +
-                      'FRACTION of rated flow, and this layer will not invent the plant it is a ' +
-                      'fraction of.');
+    /* `> 0`, not `!== undefined` (#539). The old guard refused to invent a MISSING plant and
+     * then silently accepted a ZERO one — the same fabrication with a different spelling, and
+     * it is what let Mode 4 ship with every capacity multiplied by nought: the safety-valve
+     * latch says OPEN (it keys on pressure alone) while safety_kgs is 0.84 * 0. This is the
+     * only hard refusal in the whole rated-scale chain and it did not fire on the case that
+     * actually shipped. PWR2_VALIDATION.md:1021 states the house rule: "Every PWR2 layer so
+     * far throws rather than fabricate a missing driver (fuelTemp_c, Q_core_kW,
+     * rated_steam_kgs)." */
+    if (!(drivers.rated_steam_kgs > 0)) {
+      throw new Error('pwr2_relief: drivers.rated_steam_kgs must be > 0 — every capacity here is ' +
+                      'a FRACTION of rated flow, and this layer will not invent the plant it is a ' +
+                      'fraction of. Got: ' + drivers.rated_steam_kgs);
     }
     var rated = drivers.rated_steam_kgs;
 
     /* ---- SAFETY VALVES. No controller, no instrument, no permissive: pressure against a spring.
-     * The latch is the point — lift at pop, hold until reseat. */
-    var reseat = safetyReseatMpa();
-    if (!rl.safety_open && P_mpa >= RELIEF.safety_pop_mpa) rl.safety_open = true;
-    else if (rl.safety_open && P_mpa <= reseat) rl.safety_open = false;
-
-    var safety = 0;
-    if (rl.safety_open) {
-      /* Lift fraction ramps from first lift to full lift, standing in for a staggered bank. */
-      var lift = (P_mpa - reseat) / RELIEF.safety_full_lift_mpa;
-      if (lift < 0) lift = 0;
-      if (lift > 1) lift = 1;
-      safety = lift * RELIEF.safety_flow_frac * rated;
+     * The latch is the point — lift at a setpoint, hold until that stage's own reseat.
+     *
+     * A STAGGERED BANK (#542), sourced — see safety_stage2_psig above. Each stage latches on its
+     * OWN setpoint, ramps over its OWN +3 % accumulation, and reseats on its OWN 3.3 % blowdown.
+     *
+     * ⚠ THE RATCHET IS THE LOAD-BEARING LINE. A pop-type safety valve snaps open and stays open
+     * until blowdown; it does not modulate back down as pressure falls. Holding the lift while
+     * latched makes the flow INDEPENDENT of pressure below the setpoint, and THAT is what makes
+     * a sub-setpoint equilibrium impossible.
+     *
+     * Before #542 the ramp was anchored at the RESEAT pressure, so 71.5 % of it lay below the
+     * pop. Measured on the shipped plant, hot full power stepped to 12.8 MWe: the bank went from
+     * shut to 98.93 kg/s = 60.2 % of rated in ONE 0.02 s step at first lift, then parked for an
+     * hour at 24.2 % of rated and 1063.3 psig — 21 psi BELOW its own 1085 psig setpoint, where
+     * no valve in a real bank has one — with 0 reseats and 750,078 lbm vented. Re-anchoring
+     * alone only MOVES that park; the ratchet is what abolishes it. */
+    if (!rl.stages || rl.stages.length !== SAFETY_STAGES.length) rl.stages = seedStages(rl);
+    var safetyFrac = 0, anyOpen = false;
+    for (var si = 0; si < SAFETY_STAGES.length; si++) {
+      var S = SAFETY_STAGES[si], st = rl.stages[si];
+      if (!st.open && P_mpa >= S.set_mpa) st.open = true;
+      else if (st.open && P_mpa <= S.reseat_mpa) { st.open = false; st.lift = 0; }
+      if (st.open) {
+        var lift = (P_mpa - S.set_mpa) / S.band_mpa;
+        if (lift < 0) lift = 0;
+        if (lift > 1) lift = 1;
+        if (lift > st.lift) st.lift = lift;          /* THE RATCHET */
+        safetyFrac += st.lift * S.share;
+        anyOpen = true;
+      }
     }
+    /* the published bank flag — pwr2_true_state's sg_safety_open and the board's "SG Safeties
+     * Lifting". ANY stage open, which is what an operator sees: metal off its seat. */
+    rl.safety_open = anyOpen;
+    var safety = safetyFrac * RELIEF.safety_flow_frac * rated;
 
     /* ---- THE ADV: auto overpressure relief below the safeties, PLUS the operator's cooldown
      * lever (drivers.adv_demand, 0..1 -- the pneumatic controller is the operator's per the
@@ -172,7 +282,10 @@
       dump_available: avail,
       dump_demand: demand,
       relieved_kg: rl.relieved_kg,
-      pop_mpa: RELIEF.safety_pop_mpa, reseat_mpa: reseat,
+      pop_mpa: RELIEF.safety_pop_mpa, reseat_mpa: safetyReseatMpa(),
+      /* which stage is off its seat and how far — the staircase a lumped flag cannot show
+       * (#542). Copies, not the live objects: a caller must not be able to move the bank. */
+      safety_stages: rl.stages.map(function (s) { return { open: s.open, lift: s.lift }; }),
       /* Fraction of rated flow going out through relief — the number that says how far the plant
        * is from balancing on the turbine alone. */
       total_frac: rated > 0 ? total / rated : 0
@@ -200,6 +313,7 @@
   root.RD.pwr2 = root.RD.pwr2 || {};
   root.RD.pwr2.relief = {
     RELIEF: RELIEF, PSI_PER_MPA: PSI_PER_MPA,
+    SAFETY_STAGES: SAFETY_STAGES,
     safetyReseatMpa: safetyReseatMpa,
     createRelief: createRelief, stepRelief: stepRelief
   };

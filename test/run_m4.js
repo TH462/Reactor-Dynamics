@@ -659,6 +659,33 @@ T.push(test('#287 — losing shutdown cooling annunciates; the permissive stays 
   ck('at power, RHR unaligned is NORMAL and stays quiet',
     'mode ' + hot.ins().plant_mode + ', rhr_active=' + hot.ts().rhr_active + ', ' + st(hot),
     hot.ts().rhr_active === false && st(hot) === 'clear', 'clear');
+  // ---- PZR HTRS SHED asks for an acknowledgement (#577) -----------------------------------
+  //
+  // The lamp shipped at `status`, which is the ONE class that cannot ask the operator for
+  // anything: a status row is acknowledged on the plant's behalf the moment it arrives *(OWNER
+  // RULING, 2026-07-28: "I want status-class alarms to spawn (and arrive) pre-acknowledged")*
+  // and the board sorts it last behind a grey dot. Its own authoring comment says the shed is
+  // "the one the player is expected to ACT on" — the heaters come back with one button — so it
+  // was written as a demand and rendered as furniture. Raised to `caution` at #577 *(OWNER
+  // RULING, 2026-08-28: "go with as recommended for all")*.
+  //
+  // THE EFFECT IS THE CLAIM, not the field. `priority === 'caution'` alone would pass on a
+  // kernel that auto-acked every class, so the second check is the one with teeth: the tile
+  // must actually arrive UNACKNOWLEDGED. Same pair, same reason, as the RHR block above.
+  var shedS = new Stack('hot_full_power');
+  shedS.run(3);
+  ck('PZR HTRS SHED is quiet on a healthy plant', shedS.alarm('pzr_heaters_shed').state,
+    shedS.alarm('pzr_heaters_shed').state === 'clear', 'clear');
+  shedS.cmd({ action: 'inject_failure', failure_id: 'large_loca', severity: 0.4 });
+  shedS.run(120);
+  var shedSt = shedS.alarm('pzr_heaters_shed').state;
+  ck('a safety injection sheds the heaters and ANNUNCIATES', shedSt, shedSt !== 'clear', 'active');
+  ck('it is a caution, not a status — losing pressure control is not a lineup report',
+    shedS.alarm('pzr_heaters_shed').priority,
+    shedS.alarm('pzr_heaters_shed').priority === 'caution', 'caution');
+  ck('and it is NOT auto-acknowledged — the operator owes the reload',
+    shedSt, shedSt === 'active_unacknowledged', 'active_unacknowledged');
+
   // THE STRUCTURAL CLAIM, strengthened at #453. This used to read the auto-entry row out of
   // config and pin the ABSENCE OF A RESET on it, so it could not quietly re-arm. There is now
   // no row at all, and "no actuation targets set_rhr" is both the stronger claim and one that

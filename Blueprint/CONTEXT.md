@@ -568,7 +568,18 @@ physical-quantity vocabulary.
     "afw_discharge_pressure_mpa": float,   // AFW discharge head: SG pressure + margin while delivering, pinned at
                                       //   SHUTOFF when demanded into a blocked discharge, 0 when not demanded.
                                       //   Deadheaded-at-shutoff is the tell that separates afw_blocked from afw_active=false.
-    "afw_flow_normalized": float,     // TRUE delivered AFW flow (capacity × throttle × level hold; 0 when blocked)
+    "afw_flow_normalized": float,     // TRUE delivered AFW flow (capacity × throttle; 0 when blocked or unpowered).
+                                      //   WHERE THE LEVEL HOLD LIVES DIFFERS BY ENGINE, and this line used to say
+                                      //   "capacity × throttle × level hold" for both, which was FALSE of PWR2 for
+                                      //   the whole time it was the plant the site runs (#562): PWR2 had neither
+                                      //   term, so a loss of offsite power reached 861.7 % of nominal inventory in
+                                      //   five hours. The retired engine holds level INSIDE the engine
+                                      //   (pwr_steam_generator, target pwr_config afw_level_target). PWR2 holds it
+                                      //   in the CONTROL LAYER, as the `afw_level` automation channel the operator
+                                      //   can take to MANUAL — because throttling auxiliary feed is the operator's
+                                      //   own post-trip task (WAT 05 Transients, ML11216A094). Either way the
+                                      //   number here is DELIVERED FLOW; the valve position is control_state's
+                                      //   afw_throttle_pct, and the two disagreeing is a diagnosis, not a bug.
     "condensate_flow_normalized": float,   // TRUE main-feed / condensate flow (main feed only — excludes AFW)
     "condensate_pump_running": bool,  // condensate pump state — operator-controlled, and it GATES main feed
     "porv_tailpipe_temp_c": number,   // PORV discharge/quench-tank line temperature — warm baseline (seat leakage), hot while relief flows; feeds instruments.porv_tailpipe_temp (the TMI-2 tell)

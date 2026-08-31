@@ -21,7 +21,7 @@ Describe every operator control and major indication on the PWR board, with purp
 | **Command path** | Controls issue commands; the next snapshot shows the result. Nothing “teleports.” |
 | **Instruments only** | You see lagged/noisy/failable readings, not true state (unless diagnostic overlay). |
 | **AUTO vs MAN** | Manual action on an automated control often forces MAN until re-engaged. |
-| **ESF arms** | Manual start/stop/throttle of HPI or AFW takes that system to MANUAL; press AUTO to re-arm. |
+| **ESF actuations LATCH** | Safety injection and aux feed start themselves and **stay started**. A manual stop is not a MANUAL selection — it is **refused**, out loud, until the actuation's reset permissive is satisfied (§17.4). |
 | **Two-press** | SCRAM, MSIV close, PORV block isolate, etc. require arm then confirm. |
 | **Tap vs. hold (rod drive)** | Control-bank Raise/Lower: a quick click steps one step; hold to drive continuously, release to stop. Shutdown-bank Withdraw/Insert: one click drives the whole way (fast speed) — no hold. |
 
@@ -52,7 +52,7 @@ Describe every operator control and major indication on the PWR board, with purp
 
 **CAUTION:** Target SUR ≤ **1 DPM** and reactor period ≥ **30 s** on approach to criticality. With the fine-step drive (one step ≈ 1.5 ¢ near the crossing), single-step nudges at **Slow** keep the crossing well inside 1 DPM — big held withdrawals are what push the rate up.
 
-**Interlock:** Rod **withdrawal** is blocked when SUR ≥ **1.5 DPM** until SUR < **0.8 DPM**. Insertion always remains available.
+**Interlock:** There is **no startup-rate rod stop** — SUR HI at 1 DPM is an *annunciator*, not an interlock, and the rate is yours to control. What does block withdrawal on a startup is the **intermediate range high flux rod stop at 20 % current equivalent power**, until you block the low-setting flux trips at P-10 (**05 §PWR-T14**). Three other rod stops exist; all four are in **09 §2.0**. **Insertion is never blocked by any of them**, and pressing WITHDRAW into one is refused with the stop named.
 
 ### 3.2 Rod Speed
 
@@ -102,6 +102,18 @@ re-closes the reactor trip breakers; it does **not** withdraw rods and it does *
 restart the reactor. The rods stay where they are until you deliberately withdraw them,
 under the startup net.
 
+> **While the trip is latched the rod drive has no power.** The reactor trip breakers sit in
+> the supply line from the rod drive motor-generator set to the control rod drive mechanisms,
+> so opening them removes power from the mechanisms — which is what lets the rods fall in by
+> gravity in the first place. Until you reset the RPS, **WITHDRAW and INSERT are both refused
+> on both banks**, and the refusal names the breakers. Pressing STOP still works: it is the
+> release of a button, not a demand for motion.
+>
+> This is why the reset comes **before** any rod motion in every recovery procedure, and it is
+> the reason a failure to scram cannot be walked back with the rod buttons — with the breakers
+> open there is nothing to drive the mechanisms with. The response to rods that did not insert
+> is **emergency boration** (**§7.5**, Borate), not the rod controls.
+
 The reset is **permissive-gated** — it will not take until both conditions hold:
 
 | Permissive | Why | Caption when it is holding |
@@ -112,10 +124,21 @@ The reset is **permissive-gated** — it will not take until both conditions hol
 The caption under **SCRAMMED** tells you which one is holding, so you do not have to press
 the control to find out. When both are satisfied it reads **PRESS TO RESET**.
 
+**When both are holding, the caption names the trip signal** — a breaker will not hold in
+against a live signal whatever the rods are doing, so that is the more fundamental refusal and
+it is reported first.
+
 Pressing while blocked is refused and the reason is annunciated — it costs nothing, and it
 names the condition. A trip you have not actually fixed keeps the plant latched: after a
 loss of feedwater, for example, the reset stays blocked on low steam generator level until
 the heat sink is restored. **Recovery is procedural, not a button.**
+
+> **A BLOCKED trip is not a standing one.** The permissive reads each channel the way the
+> protection system does, so a trip you have legitimately blocked no longer holds the reset —
+> which matters on a cooldown, where blocking the low-pressure reactor trip inside **P-11** is
+> a required step (**05 §4.0** step C1a). Without that, a cooldown would depressurize below the
+> low-pressure setpoint and then be unable to reset the trip it caused. Blocking a trip you have
+> *not* satisfied the permissive for is refused at the block control itself, not here.
 
 **Procedure — RPS reset**
 
@@ -221,13 +244,53 @@ The shed is the one that needs a deliberate decision: the heaters are healthy an
 is alive, they have just been dropped off it to make room for safety loads, and **securing
 injection does not put them back**.
 
+**And there is a fifth case where the reading is NOT zero and the heat is.** The bank sits low
+in the vessel — roughly **5 % to 15 % level** — and heat only enters water it is actually
+immersed in. As the level falls through that band the delivered heat falls with it: at 10 %
+the bank is half covered and delivers half its rating, and below 5 % it delivers nothing at all.
+
+The **HTR PWR indication does not fall with it**, because it reads electrical power and an
+uncovered element is still drawing full current. That is not a fault in the gauge — it is the
+only honest thing an ammeter can say. On a healthy plant you never meet this: the 17 % cutoff
+in the table above de-energizes the bank *before* it uncovers, which is exactly why that
+setpoint exists. **You meet it when the level channel is lying to you** — the same failed
+transmitter that fools you fools the cutoff, the heaters stay energized into steam, and the
+only symptom is that pressure will not come up no matter what you demand. Cross-check level
+against charging/letdown flow and subcooling margin before you conclude the heaters have
+failed.
+
 ### 5.3 PZR Spray
 
 | Mode | Effect |
 |------|--------|
 | **AUTO** | Spray when pressure above setpoint band |
 | **Manual open / %** | Condenses steam — **lowers** pressure |
-| **Requires** | RCP flow (no flow → no effective spray) |
+| **Requires** | Nothing on this simulator — see the note |
+
+**DECLARED DEPARTURE — spray keeps working with the Reactor Coolant Pumps (RCPs) stopped.**
+On a real unit the spray line is driven by the pumps' own differential head, so a loss of
+offsite power takes normal spray away and the operator depressurizes with the Power Operated
+Relief Valve (PORV) instead. A real unit answers that with **auxiliary spray** from the
+charging pumps. This departure was declared because the board had no auxiliary spray control,
+so the one spray control was left working without the pumps, standing in for it.
+
+**The engine models auxiliary spray, but it has no board control** — one was added 2026-08-30
+and removed the next day by owner direction, so on the board this departure is once again the
+only pump-less way down in pressure. The capability remains in the model for scenarios and the
+instructor. Retiring the departure — making normal spray lose its head with the pumps off,
+which is what the real plant does — is filed and will be its own change.
+
+The stand-in's old "conservative direction" note is **withdrawn**: it claimed about **half** the
+condensing duty of real auxiliary spray, and this plant measures the opposite. From Hot Standby
+at 2235 psi (15.41 MPa) with every RCP secured, 600 s at 100 %:
+
+| lever | pressure after 600 s |
+|---|---|
+| normal spray | **1212 psi (8.36 MPa)** |
+| auxiliary spray | **1353 psi (9.33 MPa)** |
+| neither | 2245 psi (15.48 MPa) |
+
+The stand-in is the **stronger** lever here, not the weaker one.
 
 **Use to LOWER pressure** carefully. Return to AUTO when on target.
 
@@ -251,7 +314,7 @@ injection does not put them back**.
 | Item | Detail |
 |------|--------|
 | **Purpose** | Power-Operated Relief Valve — rapid pressure relief |
-| **Auto** | Opens ~**2350 psi (16.20 MPa)**, reseats ~**2300 psi (15.86 MPa)** (control layer on pressure instrument) |
+| **Auto** | **It follows YOUR setpoint, it is not a fixed number.** The valve lifts at **Press SP + 100 psi (0.69 MPa)** and reseats at **+85 psi (0.586 MPa)** — a 15 psi (0.103 MPa) deadband, at the top of the same error ladder the heaters and spray sit on. At the normal **2235 psi (15.41 MPa)** setpoint that is **2335 psi (16.10 MPa)** open, **2320 psi (15.996 MPa)** shut. **Lower Press SP on a cooldown and the PORV lift point comes down with it** — which is the point, and also the trap: a setpoint dropped faster than the plant depressurizes puts the relief path under the pressure you are still sitting at |
 | **Indicator** | Shows **commanded** position — can disagree with actual (TMI) |
 | **Tailpipe temp** | Hot discharge (~302 °F (150 °C) class) can reveal steam passing while light says closed |
 
@@ -274,8 +337,11 @@ injection does not put them back**.
 
 ### 6.3 Safety valves (indication only)
 
-- Mechanical / control-actuated spring safeties.  
-- Open ≈ **2485 psi (17.13 MPa)**, reseat ≈ **2400 psi (16.55 MPa)**.  
+- Mechanical spring safeties, inside the engine — **not** a control-layer actuation, and nothing
+  on the board arms, blocks or isolates them.  
+- Open at **2500 psi (17.24 MPa)** — the 2485 psig nominal setpoint — and reseat **5 % below**,
+  at **2375 psi (16.375 MPa)**. Unlike the PORV these do **not** follow Press SP: they are a fixed
+  mechanical rating and they are the last line.  
 - No direct operator open/close command.  
 
 ---
@@ -299,7 +365,7 @@ injection does not put them back**.
 
 - Two fixed orifices, each independently **in** or **out** — four lineups: **off / A / B / A+B**.  
 - Removes coolant from the RCS (bleeds the cold leg to the letdown HX / VCT); lowers inventory / PZR level.  
-- Flow is **pressure-driven** (∝ √ΔP across the orifice, referenced to the 348 psi (2.4 MPa) letdown backpressure),
+- Flow is **pressure-driven** (∝ √ΔP across the orifice, referenced to the **300 psi (2.07 MPa)** letdown backpressure — the pressure-control valve downstream of the orifice, WTSM §4.1),
   so it **tails off as RCS pressure falls** on a cooldown — it is not a throttled setpoint.  
 - Nominal at NOP: **A ≈ 3 %**, **B ≈ 4 %**, **A+B ≈ 7 %** of rated (A+B is max letdown — a net drain,
   exceeding normal charging, for level reduction / depressurization).  
@@ -324,7 +390,7 @@ injection does not put them back**.
 | **Hold** | Leave the target where it is — a running dose finishes and stops itself |
 | **How** | **BORON CONTROL ON/OFF + target ppm** — you set a target and the batch dose delivers it: *borate* = raise the target, *dilute* = lower it |
 | **Requires** | Charging pump running |
-| **Rate** | Compressed for training (~ppm/s scale); real plants are slower |
+| **Rate** | Not a dial and not compressed — the mass balance sets it. About **0.047 ppm/s borating / 0.026 ppm/s diluting** at full charging (measured at 626 ppm); boration slows toward the 2,500 ppm boric-acid tank, dilution slows as boron falls |
 | **Indication** | Chemistry samples (CHEM) — there is **no live boron meter** on the panels |
 
 **How you know the concentration — chemistry, not a gauge.** There is no online boron
@@ -336,14 +402,17 @@ you ordered, and from the plant's response — rod position, Tavg drift.
 
 **BORON CONTROL (target ppm) — batch dose.** The board's BORON CONTROL ON/OFF + target
 works like a real makeup panel: entering a new target computes the change and **meters it
-as a batch** at ~0.05 ppm/s, stopped by the flow totalizer — a dose lands on the ppm
-asked without overshoot. Any target change executes, however small (1 ppm nudges work).
+as a batch**, stopped by the flow totalizer — a dose lands on the ppm asked without
+overshoot. The panel asks for 0.05 ppm/s and the plant delivers what the charging lineup
+and the boric-acid tank allow, which is about **0.043 ppm/s** at normal reactor coolant
+boron: there is no rate constant to dial, only a mass balance. Any target change executes, however small (1 ppm nudges work).
 The dose pauses if the charging pump stops and resumes with it. Boron driven directly
 (a procedure walkthrough issuing a borate/dilute rate) takes the channel to **MAN**.
 
 **CHEM SAMPLE — the authoritative number.** Chemistry confirms every completed dose
 automatically: an RCS grab sample is drawn and the lab posts the result (`sample N ppm`)
-after a compressed ~60 s turnaround — real labs take 30–60 min. Take a **manual sample**
+after a **30-minute** lab turnaround — real time, matching a real lab's 30–60 min. (Through
+Rev 16 this read “compressed ~60 s”, which was the retired engine's.) Take a **manual sample**
 (CHEM SAMPLE button) when the dose books may be stale: after ECCS/accumulator injection
 (which borates the core outside the makeup system) or after boron was driven directly in
 a procedure. A fresh result while no dose is running **re-baselines the panel** — the books and the
@@ -379,7 +448,7 @@ displayed target snap to the lab number, so the next dose is computed from reali
 
 | Item | Detail |
 |------|--------|
-| **Running** | Forced flow; spray works; coastdown on trip |
+| **Running** | Forced flow; coastdown on trip (spray works either way on this simulator — §5.3) |
 | **Trip** | Flow falls; low-flow protection SCRAMs; natural circulation for decay heat |
 | **Run / Stop** | **Run** starts the pumps (`set_rcp{running:true}`) and clears any RCP-trip failure; **Stop** secures them (`set_rcp{running:false}`). Starting the RCPs is the first step of the Mode 5→3 heatup and the Mode 5→1 startup. |
 | **Modeling note** | Single representative pump. (Blocked while the station is blacked out — no AC.) |
@@ -402,7 +471,7 @@ displayed target snap to the lab number, so the next dose is computed from reali
 | Indication | Normal |
 |------------|--------|
 | SG level | ≈ **65 %** |
-| Steam pressure | ≈ **819 psi (5.65 MPa)** at power |
+| Steam pressure | ≈ **808 psi (5.57 MPa)** at power |
 
 **Shrink and swell:** On rapid load/power change, indicated level can move the **wrong way** briefly. Do not chase with large feed swings.
 
@@ -525,19 +594,38 @@ heat that is a very small number.
 
 | Control | Effect |
 |---------|--------|
-| **Start / Stop** | Enable AFW delivery to SG |
-| **Throttle %** | 0–100 % of capacity |
-| **AUTO arm** | Auto-starts on low SG level (~**20 %** instrument) when armed |
-| **Manual action** | Puts AFW in MANUAL until AUTO re-armed |
-| **Delivery** | Capacity × throttle × level-hold taper near target |
+| **STOP** | Secures the aux feed pumps. **STOP secures BOTH** — the motor-driven and the turbine-driven pump are separate machines with a switch each, and this button works both. There is **no manual START:** the card is STOP and AUTO |
+| **AUTO** | A **lamp, not a defeat**. The actuation starts the pumps on **low-low SG level, 17 % of narrow range** — the same signal that trips the reactor — and also on a standing safety injection, loss of main feed, or loss of offsite power. **Nothing you can press disarms it**, so the lamp is lit whenever the pumps are not in your hands, and pressing AUTO cannot make it lit any harder. |
+| **Manual action** | Securing the pumps is the one manual action on this card. While an actuation is latched the pumps are held running and a stop is refused — see the securing note below |
+| **Delivery** | Capacity × throttle, and **the throttle is not yours.** Level control lives in the **`afw_level` automation channel**, which holds narrow-range level at **33 ± 5 %** — full flow below 28 %, tapering shut by 38 % |
+
+> **Aux feed throttling cuts both ways, and on this board the CHANNEL does it, not you.** Too
+> little and the generator boils down toward the low-low level that started the pumps. Too much
+> and you overcool the primary: aux feed arrives at about **70 °F (21.1 °C)** against a secondary
+> near **550 °F (287.8 °C)**, so an unthrottled pump drags reactor coolant temperature down with
+> it. **The symptom the procedures name is that all the steam dump valves shut** — if the dumps
+> are closed and temperature is still falling, there is too much aux feed. Left wide open long
+> enough the generator fills past the top of the narrow range and starts carrying water into the
+> steam lines; the **high-high level turbine trip at 90 % narrow range** exists to get the
+> machine off the line before that happens.
+>
+> **What you watch, since you no longer hold the valve:** the steam dumps and the level trend.
+> If the dumps are shut and temperature keeps falling, the channel is overfeeding — secure the
+> pumps with **STOP** and let level recover, then re-arm **AUTO**. That is the whole of the
+> operator's authority over aux feed on this plant.
 
 **Procedure — establish AFW (loss of main feed)**
 
 1. Confirm main feed lost / SG level falling.  
 2. SCRAM if not already tripped.  
-3. **AFW Start** (or verify auto-start).  
-4. Throttle to hold SG level without overcooling.  
-5. Re-arm AUTO when stable if desired.  
+3. **Verify the auto-start.** The pumps start themselves on low-low SG level, a standing safety injection, loss of main feed, or loss of offsite power — there is no manual start to press.  
+4. Verify the level recovers toward **33 % narrow range** and that the steam dumps are not all shut — the channel throttles, and shut dumps with falling temperature mean it is overfeeding.  
+5. When stable, secure the pumps with **STOP** if the procedure calls for it — the AUTO lamp needs no action from you, and the actuation is standing whether or not you touched the pumps.  
+
+**Securing note:** an aux feed stop is refused while a **safety injection** is standing, because
+the SI signal is itself an aux feed start — secure the injection at its own panel first. Inside
+the actuation reset time delay the stop refuses and says so; after it, one click resets the
+function and secures the pumps even with the signal still present.
 
 **Failure note:** `afw_failure` can show pumps “running” with **zero delivery** (shut valves) — verify level response, not just run lights.
 
@@ -550,8 +638,8 @@ heat that is a very small number.
 | Control | Effect |
 |---------|--------|
 | **On / Off** | Start/stop merged high/low pressure injection |
-| **AUTO arm** | Actuates on low primary pressure (~**1798 psi (12.4 MPa)**) when armed |
-| **Pump curve** | High-head trickle at operating pressure; high volume below ~**653 psi (4.5 MPa)** shutoff region |
+| **AUTO** | **A LAMP, NOT A CONTROL — it is disabled on this plant and pressing it does nothing.** The injection actuates on low primary pressure (~**1715 psi (11.824 MPa)**) unconditionally: there is no arm to set, and nothing on the board disarms it. What the button *does* do is **light while a safety injection is latched**, so read it as SI ACTUATED. It is left in place because the contrast is the lesson — a real plant gives the operator an ESF arm here, and this one does not; what it gives you instead is the reset permissive (§17.4). |
+| **Pump curve** | **Two pumps with two very different curves, merged into one control.** The high-head set shuts off at **1390 psi (9.58 MPa)** — above that it delivers nothing at all — and rises from a trickle there to full **300 gpm** only once you are below about **515 psi (3.55 MPa)**. The low-head set shuts off much lower, at **215 psi (1.48 MPa)**, and is where the volume is: **1200 gpm** near atmospheric. So injection that reads as barely moving the inventory at 1200 psi (8.27 MPa) is not broken — **it is the pressure**, and depressurizing is what turns the flow on |
 | **Indication** | `hpi_flow`, HPI ACTIVE alarm/status |
 
 **Procedure — HPI on small-break LOCA / stuck PORV**
@@ -562,6 +650,15 @@ heat that is a very small number.
 4. Isolate PORV path if stuck open.  
 5. Restore inventory and subcooling.  
 
+**Securing note — two conditions, and the clock is the one that surprises people.** Once safety
+injection has latched, **Off is refused** until *both*: the reset time-delay relay has run
+(**60 s** from the actuation), **and** the reactor is tripped — the P-4 permissive. The refusal
+message names whichever one you are waiting on and counts the seconds down. After both are
+satisfied, one click resets the function and secures the pumps, **signal present or not** — so
+securing injection on a live low-pressure signal is something the board will let you do, and
+owning that decision is the point of the delay. Aux feed cannot be secured underneath a standing
+injection at all (§10), because the SI signal is itself an aux feed start.
+
 ### 11.1 Accumulators (passive)
 
 - Embedded panel — status + flow when discharging.  
@@ -571,14 +668,14 @@ heat that is a very small number.
   Default **aligned (open)**. Isolate before depressurizing below the check-valve setpoint on a normal
   cooldown so the accumulators do **not** spuriously dump into the depressurized RCS; also used to isolate
   a leaking/mispositioned tank. A shut valve **blocks discharge at any pressure**.  
-- **Cold-water quench:** accumulator/ECCS water injects **cold** (RWST/SIT ~104 °F (40 °C)), so a large-break dump
+- **Cold-water quench:** accumulator/ECCS water injects **cold**, and the two sources are not the same temperature: the **RWST is 70 °F (21.1 °C)** — the usual Technical Specification floor, and what the injection pumps deliver — while the **accumulators sit at 120 °F (48.9 °C)**, the midpoint of their sourced 100–150 °F operating band, so a large-break dump
   **cools T-avg** as well as restoring inventory and boron.  
 
 ### 11.2 RHR
 
 | Control | Effect |
 |---------|--------|
-| **Suction valve Open / Shut** | The RHR hot-leg suction valve — the system's entry point, and **the only way RHR goes in service: nothing opens it for you** (#453). **Interlocked on two separate setpoints**: it will not **open** above **400 psi (2.76 MPa)**, and **autocloses** only once pressure rises back above **600 psi (4.14 MPa)** (protects the low-pressure piping). The ~200 psi (1.38 MPa) gap between them is deliberate — see **09 §RHR**. **Throttle the HX split first** — see the rate row below and **04 PWR-N15** step 5 |
+| **Suction valve Open / Shut** | The RHR hot-leg suction valve — the system's entry point, and **the only way RHR goes in service: nothing opens it for you** (#453). **Interlocked on two separate setpoints**: it will not **open** above **440 psi (3.03 MPa)** — the sourced 425 psig, and **autocloses** only once pressure rises back above **600 psi (4.14 MPa)** (protects the low-pressure piping). The ~200 psi (1.38 MPa) gap between them is deliberate — see **09 §RHR**. **Throttle the HX split first** — see the rate row below and **04 PWR-N15** step 5 |
 | **…and OPEN is refused while safety injection is running** *(added 2026-08-12, #458)* | A third refusal, and it is **not** one of the two interlocks above. The RHR pumps **are** the low-head injection pumps: with SI actuated they are lined up to the refueling water tank and their heat exchangers have no cooling water, so the trainer will not also put them on hot-leg suction. The refusal is labelled on the board — *"RHR ALIGN BLOCKED: RHR pumps in ECCS injection lineup (SI actuated)"*. **Shut is never refused**; taking a system out of service always works. Secure injection to clear it, and read **12** §12.20 before treating this as something a real plant does |
 | **Cooldown Rate (HX flow split)** | Throttles how much RHR flow passes through the heat exchanger vs the bypass — this sets the **cooldown RATE without disturbing inventory**. Walk it up slowly to hold the ~**122 °F (50 °C)/h** cooldown limit; full HX flow on a hot plant overshoots the limit |
 | **Indication** | `eccs_mode` shows **RHR** while the system is in service; primary temperature trend is the rate instrument |
@@ -590,19 +687,42 @@ heat that is a very small number.
 
 **Highlight id:** `turbine-generator`
 
-### 12.1 Load mode
+### 12.1 Latch, trip and offline
 
-The generator card carries a three-position selector: **FOLLOW / MAN / OFF**.
+The generator card carries three buttons: **LATCH / TRIP / OFF**.
 
-| Position | Operator action | Behavior |
+| Button | Operator action | Behavior |
 |------|-----------------|----------|
-| **FOLLOW** | Press **FOLLOW** (`connect_grid`) | Synchronises and loads; load tracks reactor power (lag ~45 s) |
-| **MAN** | Press **MAN**, or move the load slider | Synchronises and loads; operator sets the MWe target |
-| **OFF** | Press **OFF** (`disconnect_grid`) | Breaker open, **0 MWe** — a **planned offline** |
+| **LATCH** | Press **LATCH** (`latch_turbine`) | Latches the machine back up after a trip and puts it on the line. **Refuses, and says why, while anything is still holding the trip** |
+| **TRIP** | Press **TRIP** (`trip_turbine`) | Trips the turbine by hand — stop valves shut, load to zero |
+| **OFF** | Press **OFF** (`disconnect_grid`) | Breaker open, **0 MWe** — a **planned offline**, no trip |
+
+> **This card used to be a FOLLOW / MAN dispatch-mode selector, and it was replaced.** This
+> plant has one dispatch mode — you set a load target and the turbine holds it — so a mode
+> selector had nothing to select, and worse: **nothing in the whole command set could un-latch
+> the turbine**, so after any trip the generator was dead for the rest of the session and the
+> two buttons that looked like the way back could only refuse. *Latched* and *tripped* are the
+> real states of a turbine, and these are the two operator actions that move it between them.
+
+**What LATCH refuses on.** It will not latch a machine into a plant that is still tripping it,
+and the refusal names which of these is standing:
+
+| Holding the trip | Clear it by |
+|---|---|
+| The **reactor trip** is latched | Reset the protection system |
+| The **main steam isolation valve** is shut | Open it — the turbine has no steam supply |
+| **Both main feed pumps** are lost | Restore feed |
+| The **condenser** is unavailable | Restore circulating water / vacuum |
+| **High-high SG level** isolation is latched | Let level recover, then reset |
+| The trip is an **injected casualty** | The instructor clears it |
+
+**The order after a scram is: reset the protection, LATCH, then set a load target.** Latching
+does not by itself make power — the reactor has to be making steam, and after a scram it is
+subcritical.
 
 **A planned offline is NOT a turbine trip.** Pressing **OFF** opens the generator breaker:
 load goes to zero, but the **stop valves stay open**, no trip latches, and **P-9 is never
-armed** — so it does not scram the reactor and it is fully reversible with FOLLOW or MAN.
+armed** — so it does not scram the reactor and it is fully reversible by setting a load target.
 A real turbine trip arrives by its own routes: low vacuum, the P-14 high-high SG level
 actuation, a reactor trip, MSIV closure at load, or the injected `turbine_trip` failure.
 Overspeed is configured as a sixth route but **cannot occur here** — this plant has no turbine
@@ -611,10 +731,10 @@ roll model, so the rotor never exceeds the rated speed the grid holds it at (**1
 **WARNING:** a genuine **turbine trip above 50 % power (P-9) scrams the reactor** — see `09`
 §2.0 and **PWR-E03**. What this plant rides out is a *load rejection*, not a turbine trip.
 
-**NOTE — selecting a mode does not un-trip the machine.** FOLLOW and MAN go through
-`connect_grid`, which clears a prior trip and re-synchronises; a bare load-mode selection on a
-tripped turbine does nothing. If the machine is tripped and the card looks unresponsive, that
-is what you are seeing — press **FOLLOW** or **MAN**, not the load slider.
+**NOTE — the load slider does not un-trip the machine.** Typing a load target at a tripped
+turbine is accepted and reads back at the target you asked for while the governor sits at
+0.0 % and the machine makes nothing. If the card looks unresponsive, that is what you are
+seeing — press **LATCH**, not the load slider.
 
 The **OFF** lamp lights on either condition — breaker open *or* turbine tripped — so read
 **TURB TRIP** to tell a planned offline from a trip.
@@ -644,7 +764,7 @@ The **OFF** lamp lights on either condition — breaker open *or* turbine trippe
 |------|-----|
 | **AUTO** | Opens on high SG pressure / load rejection as configured |
 | **Manual % / Open** | Dump steam to condenser, bypass turbine |
-| **Dump SP** | No-load steam-dump **pressure setpoint** (MPa, live readout + numeric box; 29 – 1349 psi (0.2 – 9.3 MPa), engine clamps to the SG-safety band) the AUTO dump holds. **Lower** it on a cooldown to vent the SG and cool the primary through the steam generators; **raise** it back toward the no-load point on a heatup. |
+| **Dump SP** | No-load steam-dump **pressure setpoint** (MPa, live readout + numeric box; **29 – 1099 psi (0.2 – 7.58 MPa)** — the box refuses anything above the SG safeties' first lift, because the engine itself does **not** clamp it) the AUTO dump holds. **Lower** it on a cooldown to vent the SG and cool the primary through the steam generators; **raise** it back toward the no-load point on a heatup. |
 
 ### 12.4 Indications
 
@@ -677,32 +797,50 @@ penalty grows with load, because more heat is rejected across the tubes at high 
 
 | Property | Value |
 |----------|-------|
-| Command | `set_condenser_cw_temp` |
-| Range | **35 – 85 °F** (1.7 – 29.4 °C) — near-freezing lake water to the analyzed ceiling |
-| Reference | **60 °F** (15.6 °C) — the default; at the reference the plant makes exactly rated vacuum |
+| Command | `set_condenser_cw_temp` — **live** (#592). The box next to COND VAC sets the inlet temperature; the condenser computes the vacuum from it |
+| Range | **35 – 85 °F (1.7 – 29.4 °C)**. The **85 °F** ceiling is the real plant's own: Technical Specifications require the intake bay at or below 85 °F for the service-water system to be OPERABLE, and the accident analyses bound the supply there. The **35 °F** floor is an owner judgment about intake-transit warming — the analyses' own floor is a sub-freezing 30 °F |
+| Boots at | **50 °F (10 °C)** — the sourced design inlet, on every initial condition. Measured there: **100.0 MWe** and **27.52 inHg (93.2 kPa)** of vacuum at full power, i.e. the design point IS the rated point |
 
-The ceiling is the real plant's own limit for this lake water: Technical Specifications
-require the intake bay at or below **85 °F** for the service-water system to be OPERABLE (the
-accident analyses bound the supply at a deliberately sub-freezing 30 °F). The floor allows
-for the slight warm-up between a lake that can sit at freezing and the condenser inlet. The
-condenser itself is designed around a **50 °F** lake, so the 60 °F default is an ordinary day.
+> **⚠ THE BOX WAS DARK UNTIL 2026-08-31, AND THE REASON MATTERS.** The condenser has computed
+> vacuum from this temperature since it was built; the *command* sat in the engine's refused list
+> carrying the retired plant's reason ("pumps on/off only"), and the board darkened the box on the
+> strength of that refusal. Nothing was missing but the door. Filed as **#592** by the manual pass
+> that found the mismatch, and fixed with the owner's playtest item on the same card.
 
-**What it does:**
+**MEASURED ACROSS THE BAND** — hot full power, 600 s, and every figure re-taken on *this* plant:
 
-- **Warm circ water** → less vacuum → **less MWe at the same steam flow**. At the 85 °F
-  ceiling the full-power cost measures about **5 MWe**, with vacuum at
-  **27.2 inHg (92.0 kPa)** — a real summer derate.
-- **Cold circ water** → vacuum **above** the rated value: about **101 MWe** on a 50 °F
-  design day, and about **102 MWe** at the 35 °F floor, just under the condenser's
-  practical vacuum ceiling. The winter uprate is real too.
-- It also raises the floor an **RHR cooldown** can reach: the RHR heat exchanger rejects to
-  the same circulating water, so warm circ water both raises the achievable temperature and
-  slows the approach to it (§11.2, and `05` PWR-T21).
+| CW inlet | Vacuum | Backpressure | MWe |
+|----------|--------|--------------|-----|
+| 35 °F (floor) | 28.40 inHg (96.2 kPa) | 1.53 inHg | 100.0 |
+| **50 °F (design)** | **27.52 inHg (93.2 kPa)** | 2.40 inHg | 100.0 |
+| 60 °F | 26.72 inHg (90.5 kPa) | 3.20 inHg | 100.0 |
+| 77 °F | 24.85 inHg (84.1 kPa) | 5.08 inHg | 100.0 |
+| 85 °F (ceiling) | 23.68 inHg (80.2 kPa) | 6.24 inHg | 100.0 |
 
-**NOTE:** lake temperature alone cannot walk vacuum to the **COND VAC LO** alarm
-(25 inHg (84.7 kPa)) — even the 85 °F ceiling leaves ~2 inHg of margin at full power.
-Falling vacuum with normal circ-water temperature means equipment trouble (circulating-water
-pumps, condenser air removal), and the walk continues to **COND VAC TRIP** (22 inHg (74.5 kPa)).
+**What circulating-water temperature does on this plant:**
+
+- **Warm circ water** → the condenser can only pull down to a warmer saturation → **less vacuum**,
+  and the **22 inHg (74.5 kPa)** turbine trip gets closer.
+- **Cold circ water** → vacuum **above** the rated value.
+- **It does NOT move MWe here** — measured **100.0 MWe at every step from 35 °F to 85 °F**. This
+  turbine is dispatched to a **load target**, not floated on the backpressure, so warm water costs
+  you vacuum and margin rather than output. On a real machine it costs both; that is a declared
+  departure of this model, not a claim about plants.
+- **Nor does it move the RHR cooldown floor.** Shutdown cooling on this plant rejects to its own
+  component-cooling water at a fixed **95 °F (35 °C)**, which does not read this box. The old
+  coupling was the retired engine's.
+
+**⚠ CHANGED, AND IT IS A REAL ONE: lake temperature ALONE CAN NOW RING COND VAC LO.** The alarm is
+at **25 inHg (84.7 kPa)** and the band crosses it at about **76 °F** — measured, 24.85 inHg at
+77 °F and 23.68 inHg at the 85 °F ceiling, with the annunciator confirmed in through the full
+stack. The previous edition of this section said the opposite ("even the 85 °F ceiling leaves
+~2 inHg of margin"); that was measured on the retired engine and is false here by about 1.3 inHg
+the wrong way. **A hot summer day is now an alarm you have to answer.**
+
+The walk continues to **COND VAC TRIP (22 inHg / 74.5 kPa)**, but *not* from lake temperature: the
+ceiling stops 1.7 inHg short. Reaching the trip — and the **C-9** interlock removal that takes the
+steam dumps with it — needs an equipment casualty: the circulating-water pumps, condenser air
+removal, or tube fouling.
 
 ---
 
@@ -710,7 +848,7 @@ pumps, condenser air removal), and the walk continues to **COND VAC TRIP** (22 i
 
 ### 14.1 Engage a channel
 
-1. Find the channel's AUTO control on its board card — **STEAM GEN FEED → AUTO** (three-element SG level), **ROD AUTO** on the rod-control card (Tavg), **BORON → ON** (target ppm), **STEAM DUMP → AUTO**, **CHARGING → AUTO**.  
+1. Find the channel's AUTO control on its board card — **STEAM GEN FEED → AUTO** (three-element SG level), **BORON → ON** (target ppm), **STEAM DUMP → AUTO**, **CHARGING → AUTO**. (**ROD AUTO** is on the rod-control card but is **dark on this plant** — see §14.3.)  
 2. Where the card carries a setpoint box (boron target ppm, dump setpoint), set/verify it; the other channels capture the current reading on engage.  
 3. Press **AUTO** — the button stays lit while the channel is engaged.  
 
@@ -719,17 +857,32 @@ pumps, condenser air removal), and the walk continues to **COND VAC TRIP** (22 i
 1. Operate the underlying control (rods, feed %, etc.), **or** select **MAN**.  
 2. Channel disengages; operator owns the parameter.  
 
-### 14.3 Rod AUTO (Tavg)
+### 14.3 Rod control is MANUAL on this plant, and that is deliberate
 
-- **The shipped lineup has the rods in MANUAL.** The plant load-follows without them: on a 100 → 80 MWe cut, moderator feedback alone takes power to 81.8 % and parks it in about 3½ minutes. What it does *not* do is put Tavg back on program — it settles roughly 17 °F (9.4 °C) high. Trimming that off is the operator's job, in MAN or by engaging this channel.  
-- **Rods set temperature; the turbine sets power.** Inserting 60 fine steps at 80 MWe moves Tavg about 6 °F (3.3 °C) and generator load less than one point. Roughly 0.1 °F (0.06 °C) per fine step, linear over the useful range.  
-- **T-ref is PROGRAMMED on turbine load, not captured from Tavg** — a sliding line from 546.8 °F (286.0 °C) at no load to 580.1 °F (304.5 °C) at full power, re-derived from indicated steam flow every evaluation. Engaging does not freeze a target; as load moves, T-ref moves with it.  
-- Holds Tavg with variable rod speed and deadband (±1.5 °F / ±0.8 °C).  
-- **Rod gain is scheduled on bank position.** One rod step is worth several times more reactivity mid-bank than near either stop, so the controller de-rates itself as the bank comes in and returns to full gain while the load program is sliding. The operator sees nothing of this; it is what keeps the plant steady at part power.  
-- Manual rod motion → MAN.  
-- Drops out on scram.  
+**There is no automatic rod controller here.** The **ROD AUTO** pushbutton on the rod-control
+card is present and **dark**, and it will stay dark *(OWNER DIRECTIVE, 2026-08-30: "I want to keep
+rod control manual. This is a learning plant not an actual power plant and I think making the
+player move rods manually will help their learning.")*.
 
-**CAUTION:** If you engage **ROD AUTO** with Tavg well off program, rods will drive hard — toward the *program*, not toward where Tavg happens to sit. Check the Tavg/T-ref deviation before engaging, and if the plant is far off, trim in MAN first.
+A real plant hands the control bank to a controller that holds average coolant temperature on a
+reference programmed from turbine load, and the operator supervises it. Knowing that is the point
+of the button being visible: the contrast is the lesson.
+
+**What that leaves you holding:**
+
+- **The rods set temperature; the turbine sets power.** Inserting 60 fine steps at 80 MWe moves
+  Tavg about 6 °F (3.3 °C) and generator load less than one point — roughly **0.1 °F (0.06 °C) per
+  fine step**, linear over the useful range.
+- **The plant load-follows without the rods, but it does not put Tavg back.** On a 100 → 80 MWe
+  cut, moderator feedback alone takes power to 81.8 % and parks it in about 3½ minutes — and
+  settles Tavg roughly **17 °F (9.4 °C) above program**. Trimming that off is your job, in MAN.
+  A controller would have closed it for you and you would not have seen the coupling work.
+- **Reactivity per step is not constant.** One rod step is worth several times more mid-bank than
+  near either stop, so the same tap moves the plant differently depending on where the bank is.
+  With no controller de-rating itself on your behalf, this is yours to feel.
+
+> **NOTE:** every rod stop in this plant still acts — see **09 §**. The stops block *withdrawal*;
+> insertion is always available.
 
 ---
 
@@ -751,7 +904,7 @@ Not a plant control — **trainer control**.
 Every board instrument, with its indicating range, typical lag, and the annunciators it
 drives (see `06_ALARM_RESPONSE.md` for each alarm's response). A reading pegged at a range
 end may be **over-range, not truth** — the power range reads to 200 % precisely so a pegged
-meter can still cross the 120 % trip.
+meter can still cross the 118 % trip.
 
 | Instrument | Unit | Range | Typical lag | Primary use | Drives alarms |
 |------------|------|-------|-------------|-------------|---------------|
@@ -783,7 +936,7 @@ meter can still cross the 120 % trip.
 | mwe_output | MWe | 0 – 130 | 0.2 s | Grid | — |
 | turbine_rpm | RPM | 0 – 2000 | 0.5 s | Sync (overspeed unreachable — **12** §12.14) | — |
 | condenser_vacuum | inHg (kPa) | 0 – 30.1 (0 – 102) | 5 s | Turbine health | COND VAC LO / TRIP |
-| boron_sample (CHEM) | ppm | 0 – 2500 | ~60 s lab | Chemistry grab sample — the boron reference | — |
+| boron_sample (CHEM) | ppm | 0 – 2500 | 30 min lab | Chemistry grab sample — the boron reference | — |
 | charging_flow / letdown_flow | norm | 0 – 0.12 | 2 s | CVCS lineup | — |
 | hpi_flow | norm | 0 – 1.2 | 1 s | ECCS delivery | (HPI ACTIVE status) |
 | hpi_discharge_pressure | psi (MPa) | 0 – 2611 (0 – 18) | 0.5 s | Pump vs RCS head | — |
@@ -806,15 +959,20 @@ These topics appear as dedicated **campaign** missions; manuals cover them here 
 - When Intermediate Range ≥ **1e-10 A** (P-6), secure **SR detector** — see **PWR-T13** / **PWR-N03**.  
 - Campaign mission `pwr_startup` / `pwr_startup_challenge` grade this path; manuals do not auto-grade.
 
-### 17.2 Rod AUTO — T-ref capture trap (Mode 1)
+### 17.2 Holding Tavg by hand (Mode 1)
 
-1. Stabilize Tavg where you want it.  
-2. Engage **ROD AUTO** (rod-control card) — the reference **captures current indicated Tavg**.  
-3. If you engage with a large Tavg error vs desired plant, rods will drive hard.  
-4. Any manual rod motion → **MAN**.  
-5. Channel drops out on SCRAM.  
+There is no ROD AUTO on this plant (§14.3), so this is the drill that replaces the old
+engage-the-controller one.
 
-See **PWR-T10** / **T11**. Campaign: `pwr_rod_auto`.
+1. Note **Tavg** against **T-ref** on the rod-control card.
+2. Tap the bank in the direction that closes the deviation and **stop** — rod worth per step
+   changes with bank position, so the same tap does not always move the plant the same amount.
+3. Wait for the plant to answer before tapping again. The coupling is slow; chasing it is the
+   commonest mistake.
+4. Change generator load and watch T-ref slide. **The turbine set the power; you set the
+   temperature.**
+
+See **PWR-T10** / **T11**.
 
 ### 17.3 Feed specialist — three-element vs MANUAL (Mode 1)
 
@@ -829,18 +987,48 @@ pump holds the speed you set while steam flow falls away beneath it, so the mism
 even though you touched nothing. **STEAM FLOW is the indication that shows this happening** —
 level will not admit it for several minutes. Re-engage AUTO when done — **PWR-N12**.
 
-### 17.4 ESF AUTO / MAN arms (Mode 1)
+### 17.4 Getting an ESF actuation back — the reset permissive (Mode 1)
 
-- **AUTO:** AFW / HPI can start themselves on setpoints.  
-- **Any manual** Start/Stop/throttle → that system **MANUAL** until you press **AUTO** re-arm.  
-- Re-arm with a standing start condition may **fire immediately**.  
+**There is no ESF AUTO / MAN selector on this plant.** A real plant gives the operator an arm
+switch per engineered-safeguard system, and pressing MAN takes that system out of automatic. Here
+the actuations live inside the protection logic and **nothing on the board defeats them** — the
+HPI AUTO button is dark, and the AFW AUTO button is a lamp that is already lit. What you get
+instead is a **reset permissive**, and it is a better thing to learn, because it is what a real
+operator is actually fighting on a trip.
+
+**What an actuation does.** Safety injection and aux feed **latch**. While a latch stands the
+pumps are held running: the demand is re-asserted every step, so an Off click does not quietly
+lose to the plant a second later — it is **refused up front**, with the reason on the screen.
+
+**What clears it.**
+
+| To secure | You must have |
+|---|---|
+| **Safety injection** (HPI/LPI, §11) | the reset time-delay relay run out — **60 s** from actuation — **and** a tripped reactor (**P-4**) |
+| **Aux feed** (§10) | **no standing safety injection** (secure that first — it is itself an aux feed start), then the same **60 s** relay |
+
+Once satisfied, **one click both resets the function and secures the pumps** — you do not reset
+and then stop as two actions. And it works **with the actuating signal still present**: the
+circuit blocks automatic *re*-actuation on that same standing signal, so securing injection while
+pressure is still low is a thing the board will let you do. That is the decision the delay exists
+to make you own.
+
+**The trap.** The refusal counts down in seconds and reads like a malfunction the first time. It
+is not — it is the relay. Read the message: it names *which* permissive you are short of, and the
+two are cleared in different ways (one by waiting, one by tripping the reactor).
+
+*Sourced — the reset circuit's time-delay relay "produces an output (energizes) some time after
+it is started (usually 45–60 sec)", with SI reset additionally requiring the P-4 reactor-trip
+contact: Westinghouse Technical Systems Manual §12.3.2.3 (ADAMS ML11223A310). The top of the band
+is the installed value.*
 
 **PWR-T12**. Campaign: `pwr_esf`.
 
 ### 17.5 MSIV — “bottle the boiler” (Mode 1)
 
 1. **MSIV Close** (CONFIRM?) isolates main steam.  
-2. Turbine load rejects; SG pressure rises toward **SG safeties** (~1350 psi (9.31 MPa) open).  
+2. Turbine load rejects; SG pressure rises toward the **SG safeties** — a staggered bank, first
+   lift **1099 psi (7.58 MPa)**, the rest at **1155 psi (7.96 MPa)** (**09 §3.0**).  
 3. With feed lost or reduced, SG level can fall toward LO-LO trip on a short clock.  
 4. Establish **AFW** / trip reactor as required.  
 
@@ -872,7 +1060,7 @@ Listed for cross-reference — normal operation never requires typing a command.
 | CVCS inventory AUTO (§7.4) | `set_cvcs_auto` | `{active}` |
 | PZR heaters (§5.2) | `set_heater` | `{power_pct}` |
 | PZR spray (§5.3) | `set_spray` | `{open}` |
-| PORV open / close (§6.1) | `open_porv` / `close_porv` | — |
+| PORV open / close (§6.1) | `open_porv_manual` / `close_porv` | — |
 | PORV block valve (§6.2) | `open_block_valve` / `close_block_valve` | — |
 | RCP run / stop (§8.1) | `set_rcp` | `{running}` |
 | Feed pump speed (§9.2) | `set_feed_pump_speed` | `{pct}` |
@@ -880,22 +1068,31 @@ Listed for cross-reference — normal operation never requires typing a command.
 | AFW start / stop (§10) | `set_afw` | `{active}` |
 | AFW throttle (§10) | `set_afw_flow` | `{pct}` |
 | AFW block / discharge valve (§10) | `set_afw_block` | `{open}` |
-| ESF auto re-arm (§17.4) | `set_esf_auto` | `{system, auto}` |
+| ESF arm — **`afw` only**, and only `auto: true` (§17.4) | `set_esf_auto` | `{system: 'afw', auto}` |
 | Accumulator discharge isolation (§11.1) | `open_accumulator_valve` / `close_accumulator_valve` | — |
-| Generator **FOLLOW / MAN** (§12.1) | `connect_grid` (+ `set_load_mode`) | — / `{mode}` |
+| Generator **LATCH** (§12.1) | `latch_turbine` | — |
+| Generator **TRIP** (§12.1) | `trip_turbine` | — |
 | Generator **OFF** — planned offline (§12.1) | `disconnect_grid` | — |
-| Turbine load (§12.2) | `set_steam_demand` | `{mwe}` |
-| CW inlet temperature (§13.1) | `set_condenser_cw_temp` | `{c}` |
-| Steam dump / bypass (§12.3) | `set_steam_dump` | `{mode | pct}` |
+| Turbine load (§12.2) | `set_load_target` | `{mwe}` |
+| CW inlet temperature (§13.1) | **CW INLET TEMP** box on the CONDENSER COOLING card, 35 – 85 °F | `set_condenser_cw_temp` |
+| Steam dump / bypass (§12.3) | `set_steam_dump` | `{mode}` — **AUTO or CLOSED only**; there is no manual position lever |
 | Pressure setpoint box (§5) | `set_pressure_setpoint` | `{mpa}` |
 | Steam-dump setpoint box (§12.3) | `set_steam_dump_setpoint` | `{mpa}` |
 | HPI/LPI (§11.0) | `set_hpi` | `{active}` |
 | RHR suction valve (§11.2) | `set_rhr` | `{active}` |
 | RHR cooldown rate / HX split (§11.2) | `set_rhr_hx` | `{fraction | pct}` |
-| SR detector on/off (§4.3) | `set_sr_detector` | `{on}` |
+| SR detector on/off (§4.3) | *(no operator lever — the source-range channel energizes itself below the P-6 class point; the button reads dark)* | — |
 | Startup trip blocks (§4.4) | `set_trip_block` | `{trip_id, blocked}` |
 | MSIV open / close (§9.2) | `open_msiv` / `close_msiv` | — |
 | Automation AUTO/MAN (§14) | `set_auto_channel` / `set_auto_setpoint` | `{channel_id, engaged}` / `{channel_id, value}` |
+
+> **Four rows of this table documented actions the plant REFUSES**, found 2026-08-27 by the new
+> `test/run_manual_commands.js` gate and corrected above: `open_porv` (the operator path is
+> `open_porv_manual`), `set_steam_demand` (this turbine is dispatched by load target), and the
+> circulating-water temperature and source-range detector levers, neither of which this plant has.
+> A fifth documented `set_steam_dump {pct}`, which the shell silently swallowed. **A manual that
+> tells the operator to use a command they will be refused for is the same defect as a board button
+> that can only throw** — see §12.1's note on the generator card for the board half of it.
 
 ---
 

@@ -6,11 +6,23 @@
  *
  * Porting decision: the design derived water level from a `power` prop
  * (level = 58 + (p-1)*10, clamped 20-90). Here level is a DIRECT prop (0-100, the actual
- * pressurizer level %), mapped onto the vessel's FULL internal height — waterTop=106 (inner
+ * pressurizer level %), mapped onto the vessel's FULL internal cavity — waterTop=106 (inner
  * dome apex) -> 100%, waterBot=541 (inner dish floor) -> 0%. The design mapped it onto the
  * LVL strip's 160..470 span instead, which made the cutaway read as a copy of the gauge
  * rather than as the vessel (issue #192); the strip keeps 160..470 as its own instrument span.
- * update({ level, heaterPower, heaterOn, spray, temp, glow, showFlow })
+ *
+ * ⚠ THAT MAPPING IS BY VOLUME, NOT BY HEIGHT, SINCE #473 — and it was by height until then.
+ * `level %` is a fraction of the vessel's WATER VOLUME everywhere else in this project: the
+ * engine computes it as V_liq/V_pzr, and the sourced anchor it is calibrated against is a
+ * volume statement (Ginna TS Bases, "pressurizer water level is > 650 cubic feet, which is
+ * equivalent to 87%"). A linear height ramp across a vessel with a dished bottom and a domed
+ * top therefore drew the wrong surface — up to 18 px out, and worst exactly where the heater
+ * bank lives. `yForLevel()` below integrates the drawn cavity instead. See the note there.
+ *
+ * update({ level, heaterPower, heaterOn, spray, temp, glow, showFlow, heaterElevPct })
+ *   heaterElevPct: [bottomPct, topPct] — the elevation band of the heater bank, AS A LEVEL
+ *   PERCENTAGE, handed over by the plant (#473). The bank is DRAWN between them, so the drawn
+ *   elevation and the modelled one are one number and cannot drift.
  */
 (function () {
   'use strict';
@@ -24,7 +36,7 @@
     s.id = 'bd-pressurizer-styles';
     s.textContent =
       '@keyframes flowmove{to{stroke-dashoffset:-24}}' +
-      '.flow{stroke-dasharray:9 15;animation:flowmove 1.1s linear infinite}' +
+      '.flow{stroke-dasharray:9 15;animation:flowmove 1.1s steps(13) infinite}' +
       '@keyframes sprayFall{0%{transform:translateY(0);opacity:0}12%{opacity:1}100%{transform:translateY(72px);opacity:0}}' +
       // Per-bubble rise distance *(OWNER DIRECTIVE, 2026-08-04: "Pressurizer bubbles should
       // travel to the top of the water level. (but not into the steam above it)")*, #350
@@ -74,12 +86,68 @@
     var waterBot = shellBot - 1 + (botRy - 8);     // 541 — inner dish floor
     var HBROWN = [61, 38, 22], HORANGE = [255, 138, 58];
     var spx = cx, spyMouth = 147;
-    var hwR = 150, hL = 58;
-    // Heater bundle sits low in the straight shell. Authored against the design's
-    // 470 water floor; kept as absolute pixels so widening the water band (#192)
-    // does not drag the heaters down into the bottom dish.
-    var heaterBase = 470;
-    var hys = [heaterBase - 48, heaterBase - 36, heaterBase - 24, heaterBase - 12];
+
+    // ---- LEVEL -> DRAWN HEIGHT, BY VOLUME (#473) ------------------------------------------
+    // The inner cavity is three solids of revolution about x = cx, radius cavR = 50:
+    //   bottom dish   half-ellipsoid, semi-axes 50 x 62, floor y=541 up to y=479
+    //   straight shell cylinder r=50, y=479 up to y=151            (h = 328)
+    //   top dome      half-ellipsoid, semi-axes 50 x 45, y=151 up to y=106
+    // Their volume shares are 10.35 % / 82.14 % / 7.51 %, so the dish alone holds a tenth of
+    // the vessel — which is why a linear-in-height ramp misplaced the surface by up to 18 px
+    // down here and 10 px up at the high-level trip. The cap volume of a half-ellipsoid
+    // measured h above its pole is  pi*a^2*b * [s - s^3/3 + 2/3],  s = h/b - 1, inverted by
+    // bisection (30 iterations, sub-pixel; this runs once per level change, not per frame).
+    var cavR = 50, dishB = botRy - 8, domeB = domeRy - 10;
+    var shellBotIn = shellBot - 1, shellTopIn = shellTop + 1;   // 479, 151
+    var vDish = (2 / 3) * Math.PI * cavR * cavR * dishB;
+    var vCyl = Math.PI * cavR * cavR * (shellBotIn - shellTopIn);
+    var vDome = (2 / 3) * Math.PI * cavR * cavR * domeB;
+    var vTot = vDish + vCyl + vDome;
+    function capV(hh, b) { var s = hh / b - 1; return Math.PI * cavR * cavR * b * (s - s * s * s / 3 + 2 / 3); }
+    function yForLevel(pct) {
+      var V = clampN(pct, 0, 100) / 100 * vTot, lo, hi, i, m;
+      if (V <= vDish) {                                  // inside the bottom dish
+        lo = 0; hi = dishB;
+        for (i = 0; i < 30; i++) { m = (lo + hi) / 2; if (capV(m, dishB) < V) lo = m; else hi = m; }
+        return waterBot - (lo + hi) / 2;
+      }
+      if (V <= vDish + vCyl) return shellBotIn - (V - vDish) / (Math.PI * cavR * cavR);
+      lo = 0; hi = domeB;                                // inside the top dome
+      for (i = 0; i < 30; i++) {
+        m = (lo + hi) / 2;
+        if (vDish + vCyl + (vDome - capV(domeB - m, domeB)) < V) lo = m; else hi = m;
+      }
+      return shellTopIn - (lo + hi) / 2;
+    }
+    // the cavity's half-width at a given y — the rods must not poke through a curved wall
+    function cavHalfWidth(y) {
+      var u = y > shellBotIn ? (y - shellBotIn) / dishB
+            : y < shellTopIn ? (shellTopIn - y) / domeB : 0;
+      u = clampN(u, 0, 1);
+      return cavR * Math.sqrt(Math.max(0, 1 - u * u));
+    }
+
+    // ---- HEATER BANK ELEVATION -------------------------------------------------------------
+    // Drawn between the LEVEL PERCENTAGES the plant hands over (#473/#573), so the bank the
+    // player watches the level fall through IS the band the model loses authority across.
+    // The default is a BARE-MOUNT fallback only — the wired path passes the plant's own
+    // `HEATERS.elev_bot_pct/elev_top_pct`, and board_check asserts that it does.
+    //
+    // ⚠ THE DEFAULT IS THE PRE-#473 DRAWN ELEVATION, AND IT IS DELIBERATELY THE WRONG ONE.
+    // The authored pixels 422-458 are level 15.6-24.6 % on this mapping — straddling and above
+    // the 17 % heater cutoff, i.e. a bank the level can never fall through. It is kept as the
+    // bare-mount fallback ONLY so a component mounted with no plant still draws something
+    // recognisable, and kept WRONG on purpose: a default equal to the plant's band would make a
+    // dropped `heaterElevPct` prop indistinguishable from a wired one, and board_check's
+    // wired-path check would pass against no wiring at all.
+    var DEFAULT_ELEV = [15.6, 24.6];
+    var elevPct = DEFAULT_ELEV.slice();
+    var hys = [0, 0, 0, 0];
+    function layoutHeaters() {
+      var yBot = yForLevel(elevPct[0]), yTop = yForLevel(elevPct[1]);
+      for (var i = 0; i < 4; i++) hys[i] = yTop + (yBot - yTop) * (i + 1) / 5;
+    }
+    layoutHeaters();
 
     // ---- defs (dynamic stops kept as refs) ----
     var waterStops = [h('stop', { offset: '0' }), h('stop', { offset: '1' })];
@@ -97,20 +165,63 @@
 
     // ---- vessel contents (dynamic) ----
     var steamRect = h('rect', { x: 40, y: 96, width: 120, height: 0, fill: 'url(#' + ids.steam + ')', opacity: 0.5 });
-    var waterRect = h('rect', { x: 40, y: waterTop, width: 120, height: 0, fill: 'url(#' + ids.water + ')', opacity: 0.72,
+    /* `data-role` on the two elements a check has to find (#473). The vessel's water surface
+     * and the heater bank were untestable from outside — board_check asserted nothing about
+     * either, which is how a bank drawn ABOVE its own cutoff level survived. Selecting them by
+     * gradient id or draw order would be a check pinned to the art's spelling; a role is the
+     * contract. */
+    var waterRect = h('rect', { 'data-role': 'pzr-water',
+      x: 40, y: waterTop, width: 120, height: 0, fill: 'url(#' + ids.water + ')', opacity: 0.72,
       style: { transition: 'y 0.15s linear, height 0.15s linear' } });
     var surfLine = h('line', { x1: 52, y1: 0, x2: 148, y2: 0, stroke: '#bdf1ff', strokeWidth: 2, opacity: 0.5,
       strokeDasharray: '18 10', style: { transition: 'transform 0.15s linear' } });
 
     // ---- heater elements ----
-    var heatGlow = h('rect', { x: hL - 8, y: hys[0] - 9, width: (hwR - hL) + 14, height: (hys[3] - hys[0]) + 18, rx: 10,
+    // Each rod spans the CAVITY at its own y, inset by ROD_INSET — authored as a literal
+    // x 58..150 pair, which is 3 px wider than the cavity at the bottom of a 5 % band and
+    // would have drawn the rods through the dished wall. Derived, it cannot.
+    var ROD_INSET = 3.5;
+    function rodX(y) {
+      var w = Math.max(6, cavHalfWidth(y) - ROD_INSET);
+      return { x0: cx - w, x1: cx + w };
+    }
+    var heatGlow = h('rect', { x: 0, y: 0, width: 0, height: 0, rx: 10,
       filter: 'url(#' + ids.glow + ')', style: { display: 'none' } });
-    var heaterRods = hys.map(function (yy) {
+    /* the terminal block the rods land on — it rides the bank, so it is placed, not authored */
+    var heaterBlock = h('rect', { x: 0, y: 0, width: 6, height: 0, rx: 2,
+      fill: '#26333d', stroke: '#46596a', strokeWidth: 1 });
+    var heaterRods = hys.map(function () {
       return [
-        h('rect', { x: hL, y: yy - 2.4, width: hwR - hL, height: 4.8, rx: 2.4, fill: 'url(#' + ids.heat + ')' }),
-        h('circle', { cx: hL, cy: yy, r: 3, fill: '#26333d', stroke: '#46596a', strokeWidth: 1 })
+        h('rect', { 'data-role': 'pzr-rod',
+          x: 0, y: 0, width: 0, height: 4.8, rx: 2.4, fill: 'url(#' + ids.heat + ')' }),
+        h('circle', { cx: 0, cy: 0, r: 3, fill: '#26333d', stroke: '#46596a', strokeWidth: 1 })
       ];
     });
+    /* placeHeaters — the ONE writer of every heater pixel, called at build and again whenever
+     * the plant's published band changes. Nothing else may position these elements: two
+     * writers is how a drawn elevation drifts from the modelled one, which is the whole
+     * defect #473 exists to close. */
+    function placeHeaters() {
+      layoutHeaters();
+      for (var i = 0; i < hys.length; i++) {
+        var yy = hys[i], sp = rodX(yy), pair = heaterRods[i];
+        pair[0].setAttribute('x', String(sp.x0));
+        pair[0].setAttribute('y', String(yy - 2.4));
+        pair[0].setAttribute('width', String(sp.x1 - sp.x0));
+        pair[1].setAttribute('cx', String(sp.x0));
+        pair[1].setAttribute('cy', String(yy));
+      }
+      var last_ = hys.length - 1, wid = rodX(hys[last_]);
+      heatGlow.setAttribute('x', String(wid.x0 - 8));
+      heatGlow.setAttribute('y', String(hys[0] - 9));
+      heatGlow.setAttribute('width', String((wid.x1 - wid.x0) + 16));
+      heatGlow.setAttribute('height', String((hys[last_] - hys[0]) + 18));
+      /* the block sits just outboard of the WIDEST rod end, which is the topmost one */
+      heaterBlock.setAttribute('x', String(rodX(hys[0]).x1 - 4));
+      heaterBlock.setAttribute('y', String(hys[0] - 5));
+      heaterBlock.setAttribute('height', String((hys[last_] - hys[0]) + 10));
+    }
+    placeHeaters();
     var heaterBubbles = h('g', { clipPath: 'url(#' + ids.clip + ')' });
 
     // ---- spray header + nozzle (art is static; drops/fan/glow toggle with spray) ----
@@ -205,7 +316,7 @@
       h('path', { d: inner, fill: '#0b141d', stroke: '#1b2a36', strokeWidth: 1 }),
       h('g', { clipPath: 'url(#' + ids.clip + ')' }, steamRect, waterRect, surfLine),
       heatGlow,
-      h('rect', { x: 146, y: hys[0] - 5, width: 6, height: (hys[3] - hys[0]) + 10, rx: 2, fill: '#26333d', stroke: '#46596a', strokeWidth: 1 }),
+      heaterBlock,
       h('g', null, heaterRods),
       heaterBubbles,
       // spray boss / cap / nozzle (static art)
@@ -247,11 +358,13 @@
       // of ~35 animated circles is what the owner's "brief blank" looks like when the
       // compositor presents a frame mid-rebuild (ui/app.js's rAF note), and reused elements
       // keep their running animation instead of snapping back to phase 0.
-      var span = (hwR - hL) - 14;
+      /* bubbles rise off the TOP rod, so they span that rod — derived, like the rod itself */
+      var topSpan = rodX(hys[0]);
+      var span = Math.max(10, (topSpan.x1 - topSpan.x0) - 14);
       var want = hFrac <= 0.02 ? 0 : Math.round(3 + hFrac * 32);
       var kids = heaterBubbles.childNodes;
       for (var i = 0; i < want; i++) {
-        var x = hL + 8 + ((i * 19 + (i % 5) * 7) % span);
+        var x = topSpan.x0 + 8 + ((i * 19 + (i % 5) * 7) % span);
         var startY = hys[0] - 3 - ((i * 13) % 22);
         var dur = (2.2 - hFrac * 1.3 + (i % 4) * 0.28).toFixed(2);
         var delay = (i * 0.19).toFixed(2);
@@ -271,7 +384,7 @@
         if (el.getAttribute('r') !== r) el.setAttribute('r', r);
         if (el.getAttribute('opacity') !== String(op)) el.setAttribute('opacity', op);
         if (!el.__anim) {
-          el.style.animation = 'pzrBubbleRise ' + dur + 's linear infinite';
+          el.style.animation = 'pzrBubbleRise ' + dur + 's steps(' + Math.max(2, Math.round(dur * 12)) + ') infinite';
           el.style.animationDelay = delay + 's';
           el.__anim = true;
         } else if (el.style.animationDuration !== dur + 's') {
@@ -291,7 +404,7 @@
         var dur = (0.5 + (i % 3) * 0.1).toFixed(2);
         var r = 2 + (i % 3) * 0.6;
         sprayDrops.appendChild(h('circle', { cx: spx + dx * 0.75, cy: spyMouth, r: r, fill: '#5aa0e6', opacity: 0.95,
-          style: { animation: 'sprayFall ' + dur + 's linear infinite', animationDelay: delay + 's', transformBox: 'fill-box' } }));
+          style: { animation: 'sprayFall ' + dur + 's steps(' + Math.max(2, Math.round(dur * 12)) + ') infinite', animationDelay: delay + 's', transformBox: 'fill-box' } }));
       }
     }
 
@@ -306,6 +419,18 @@
       var heaterPower = heaterOn ? clampN(num(props.heaterPower, 35), 0, 100) : 0;
       var spray = !!props.spray;
       var temp = num(props.temp, 345);
+      /* THE PLANT'S OWN HEATER BAND (#473). Absent, the bare-mount default stands and the bank
+       * is drawn where it was authored; wired, it is the engine's `HEATERS.elev_*_pct`, so the
+       * drawn elevation and the modelled one are the same two numbers. A malformed pair is
+       * IGNORED rather than half-applied — a bank drawn from one good and one bad number would
+       * look like a working feature. */
+      var he = props.heaterElevPct;
+      if (he && he.length === 2 && isFinite(he[0]) && isFinite(he[1]) && he[1] > he[0] &&
+          (he[0] !== elevPct[0] || he[1] !== elevPct[1])) {
+        elevPct = [he[0], he[1]];
+        placeHeaters();
+        last.bubbleKey = null;          /* the bubbles hang off the top rod — re-seed them */
+      }
       var glowOn = props.glow !== false;
       var showFlow = props.showFlow !== false;
 
@@ -323,9 +448,11 @@
         last.temp = temp;
       }
 
-      // levelY = the water surface in the vessel (full-cavity span);
+      // levelY = the water surface in the vessel, placed BY VOLUME across the full cavity
+      // (#473 — see yForLevel; this was a linear height ramp and drew the surface up to 18 px
+      // out, worst exactly at the heater bank's elevation);
       // wlY(level) = the same reading on the LVL strip, which has its own span.
-      var levelY = waterBot - (level / 100) * (waterBot - waterTop);
+      var levelY = yForLevel(level);
       if (level !== last.level) {
         steamRect.setAttribute('height', String(Math.max(0, levelY - 96)));
         waterRect.setAttribute('y', String(levelY));

@@ -116,9 +116,11 @@
     var Pm = P_mpa === undefined ? P0 : P_mpa;
     var hH = W.h_l(Tm + dT / 2, Pm), hC = W.h_l(Tm - dT / 2, Pm),
         hA = W.h_l(Tm, Pm);
+    /* TEN nodes since #583 — there is no `pressurizer` key because there is no pressurizer
+     * NODE; the vessel is Layer 5's and seeds itself in createPressurizer. */
     return { downcomer: hC, lower_plenum: hC, core: hH, upper_plenum: hH, hot_leg: hH,
              sg_primary: hC, crossover: hC, rcp: hC, cold_leg: hC,
-             vessel_heads: hA, pressurizer: hA };
+             vessel_heads: hA };
   }
 
   /* THE INITIAL CONDITIONS (#507 §F, wave 7). Each is a SETTLED construction — the #502
@@ -136,8 +138,9 @@
    *   - hot_zero_power is SUBCRITICAL by the adopted 1000 pcm margin (+100 ppm at the
    *     10 pcm/ppm worth), control bank IN, shutdown bank OUT (WTSM 8.1.1: withdrawn
    *     prior to criticality) — pulling the control bank toward criticality IS the
-   *     startup. Fission power seeds at 1e-6 (the old engine's source-level convention;
-   *     point kinetics has no source term and an exact zero could never start). Decay
+   *     startup. Fission power seeds at THE SOURCE EQUILIBRIUM for the margin the trim
+   *     actually landed — S·Lambda/(-rho), 1.93e-9 at hot zero power (#536); it used to
+   *     seed the retired engine's 1e-6 literal, back when this plant had no source. Decay
    *     heat ~0: a CLEAN core, declared — this is the before-first-startup state, not
    *     post-trip (the post-trip plant is reached by tripping, #468's produced-vs-preset
    *     lesson).
@@ -196,17 +199,26 @@
     var hmap = designHmap(tavg0, dT0, icP);
     /* the shutdown IC boots with its RCPs SECURED and the loop still (natural circulation
      * on an isothermal loop is zero; the heatup's first act is the wave-9 rcp_start) */
+    /* `opts.dryWalls` builds the PRE-#574 plant — no metal anywhere — and exists so the metal
+     * walls can be A/B'd against their own absence on the real engine. It is a TEST SEAM and is
+     * declared as one: nothing in the shipped stack passes it, and zeroing the masses instead is
+     * not a substitute (measured 2026-08-28: M -> 1e-9 divides the lump temperature by ~nothing,
+     * the wall goes non-finite, and the "dry" plant then sits at a frozen Tavg through a scram —
+     * an A/B that looked like a result and was an arithmetic failure). */
     var sys = S.createPlant(ic.cold
-      ? { h: hmap, P: icP, extraMass: PZ.extraMassFn(pz), omega: 0, pumpTripped: true, mdot: 0 }
-      : { h: hmap, P: icP, extraMass: PZ.extraMassFn(pz) });
+      ? { h: hmap, P: icP, extraMass: PZ.extraMassFn(pz), omega: 0, pumpTripped: true, mdot: 0,
+          dryWalls: opts.dryWalls }
+      : { h: hmap, P: icP, extraMass: PZ.extraMassFn(pz), dryWalls: opts.dryWalls });
     /* completeness is structural: a node the map misses falls back to Layer 3's 1250 kJ/kg
      * silently — refuse to build a plant with a mis-seeded node instead */
     sys.nodes.forEach(function (n) {
       if (hmap[n.id] === undefined) throw new Error('pwr2_engine: designHmap has no entry for node "' + n.id + '"');
     });
     /* fission seeds at the IC's power (kinetics/xenon/decay at that power's own equilibrium
-     * — the createKinetics convention); 1e-6 is the subcritical source level (ICS header).
-     * The kinetics REFERENCES stay at their defaults — see the detonation note above. */
+     * — the createKinetics convention). A SUBCRITICAL IC gets a PROVISIONAL seed here and is
+     * re-seeded at its own source equilibrium below, once the boron trim and the rod lineup are
+     * settled and the reactivity is known — see the block after `if (ic.cold)`. The kinetics
+     * REFERENCES stay at their defaults — see the detonation note above. */
     var powf = ic.pf > 0 ? ic.pf : 1e-6;
     var rx = R.createReactor({ P: powf, coolTemp_c: tavg0 });
     /* TWO BANKS (#506.3, 2026-08-22): control + shutdown, worths from the kinetics module's
@@ -241,13 +253,59 @@
      * would make the solver pay the bank's 3676 pcm in boron and hand back a cold plant
      * with LESS boron than a hot one (#468's measured 671-vs-857 ppm inversion). */
     if (ic.cold) rodBank[1].steps = 0;
+    /* ---- THE SUBCRITICAL SEED IS THE SOURCE EQUILIBRIUM, NOT A LITERAL (#536) --------------
+     * `powf` above is 1e-6 — the RETIRED engine's source level, carried over with a comment
+     * that said point kinetics had no source term. It has one now, and a subcritical core does
+     * not sit wherever it was placed: it settles at P = S·Lambda/(-rho) (WTSM 2.1 §2.1.10,
+     * N = S/(1-Keff)). Seeding the literal would open free play with a five-minute ring down
+     * three decades — the exact symptom #536 is about, just transient — so the state is BUILT
+     * at its equilibrium instead, which is the ICS header's own settled-construction rule (#502).
+     *
+     * IT HAS TO RUN HERE and not beside `powf`, because the equilibrium depends on the plant's
+     * OWN reactivity, and that is not known until the boron trim (which reads `rx.kin`) and the
+     * #468 bank order above have both settled. Measured at the two subcritical initial
+     * conditions: hot zero power -1137.2 pcm -> 1.93e-9 (502 cps), Mode 4 hot shutdown
+     * -5634.9 pcm -> 3.90e-10 (101 cps). The rebuild also re-seeds the precursors, xenon and the
+     * decay-heat ladder at that power, which is why it is a construction rather than an
+     * assignment — a hand-set kin.P with the OLD precursor inventory jumps on the first step. */
+    if (ic.subcritical) {
+      var hCore0;
+      for (var hn = 0; hn < sys.nodes.length; hn++) {
+        if (sys.nodes[hn].id === 'core') { hCore0 = sys.nodes[hn].h; break; }
+      }
+      var rho0 = RD.kinetics.reactivity(rx.kin, tavg0, rx.fuel.T_fuel_c, boron0, rodBank,
+                                        icP, hCore0);
+      var pEq = RD.kinetics.sourceLevel(rho0);
+      /* NaN means the trim landed at or above critical, which a subcritical IC by definition is
+       * not — refuse rather than ship a plant seeded from a non-number (the designHmap rule two
+       * blocks up: a mis-seeded state is worse than a build that stops). */
+      if (!(pEq > 0)) {
+        throw new Error('pwr2_engine: subcritical IC "' + icName + '" trimmed to rho = ' +
+                        (rho0 * 1e5).toFixed(1) + ' pcm, which has no source equilibrium');
+      }
+      rx = R.createReactor({ P: pEq, coolTemp_c: tavg0 });
+    }
     /* the secondary lands where the primary's duty puts it: Tsec = Tavg − pf·(the design
      * split), P = Psat(Tsec). The full-power path keeps the module's own default literal
      * (byte-identical construction, the save-replay bar). */
-    var sg = ic.pf === 1 ? G.createSG({})
-           : G.createSG({ P: W.P_sat(tavg0 - ic.pf * (TREF - W.T_sat(G.createSG({}).P))) });
-    /* rated_steam is the RATED scale (every normalization's denominator) — computed at the
-     * rated dispatch whatever the IC's own load is, then the turbine takes the IC's */
+    var sgDesign = G.createSG({});            /* the DESIGN point: 825 psia, Ginna outlet class */
+    var sg = ic.pf === 1 ? sgDesign
+           : G.createSG({ P: W.P_sat(tavg0 - ic.pf * (TREF - W.T_sat(sgDesign.P))) });
+    /* rated_steam is the RATED scale — every secondary normalization's denominator (main feed
+     * is feed_frac × it, the dumps are 0.28 × it, the code safeties 0.84 × it, and the AFW
+     * fraction divides by it). It is FROZEN ON BOTH AXES steamDemand reads: the RATED dispatch
+     * (MWE_RATED, which is why `tb` is built with it below and only takes the IC's own dispatch
+     * afterwards) AND the DESIGN steam pressure. Neither the IC's own load nor the IC's own SG
+     * pressure may move this number — PWR2_VALIDATION.md:3808, "feed and turbine at the IC's own
+     * dispatch with rated_steam still frozen at the RATED scale".
+     *
+     * #539: it was frozen on NEITHER axis. This line used the IC's own `sg.P`, so 50 % Power and
+     * Hot Standby drifted +0.57 % / +0.88 %; and a second recompute in the cold branch below ran
+     * AFTER the dispatch had been zeroed, so Mode 4 booted at 0.0000 kg/s — an inert feed train
+     * behind a feed gauge reading back exactly what was dialled, and code safeties that indicated
+     * OPEN while passing nothing. That recompute is now GONE rather than reordered: a reorder
+     * leaves the same coupling for the next editor. (At Mode 4's own 0.2059 MPa this line alone
+     * would have read 171.9449 kg/s, so the design pressure is load-bearing, not tidiness.) */
     var tb = TB.createTurbine({ load_target_mwe: MWE_RATED });
     var eng = {
       sys: sys, pz: pz, rx: rx, sg: sg, tb: tb,
@@ -268,7 +326,7 @@
                                 blockLoPress: !!ic.cold, blockSI: !!ic.cold }),
       brk: null,
       ctm: CT.createContainment({}),
-      rated_steam: TB.steamDemand(tb, sg.P, G.SG.h_feed),
+      rated_steam: TB.steamDemand(tb, sgDesign.P, G.SG.h_feed),
       M_nominal: sys.M_total,
       simTime: 0,
       /* command state */
@@ -314,21 +372,25 @@
        * turbine-driven aux feed pump keep their steam. ~5 s stroke [derived, valve class];
        * `open` is the demanded position (the board lamp), `pos` the travel the flow sees. */
       msiv: { open: true, pos: 1 },
-      /* one-step-lag carriers */
+      /* one-step-lag carriers. _ctP starts UNDEFINED on purpose: pwr2_break falls to its
+       * sourced 1.0 psig pre-accident default until containment has stepped once (#543). */
       _Qox: 0, _pzRelief: 0, _pzReliefH: 0, _pzSurgeHeat: 0, _eccsKgs: 0, _sgtrKgs: 0, _sgtrH: 0,
+      _ctP: undefined,
       _pzr: null, _dcr: null, _lastTrip: false,
       _scramT: null, _manualTrip: false, _rodStopSig: false, _runbackSig: false,
       _rbT: 0, _rbActive: false,
       ins: IN.createInstruments(opts.instruments),
       rh: RD.rhr.createRHR({})
     };
-    /* the turbine takes the IC's own dispatch AFTER rated_steam froze the rated scale */
+    /* the turbine takes the IC's own dispatch — and NOTE that `eng.tb` IS `tb`, the same
+     * object the rated scale was read off above. That aliasing is what made #539: the cold
+     * branch used to re-read `tb` AFTER this line zeroed it. rated_steam is now computed once,
+     * in the literal above, and nothing below may touch it. */
     eng.tb.load_target_mwe = ic.load_mwe;
-    /* SHUTDOWN extras: rated_steam recomputed at the DESIGN steam pressure (a 30 psia cold
-     * SG would otherwise become every normalization's denominator), and RHR ALIGNED — the
-     * Mode 4 heat sink, openable because 350 psig sits under the 425 psig permissive */
+    /* SHUTDOWN extras: RHR ALIGNED — the Mode 4 heat sink, openable because 350 psig sits
+     * under the 425 psig permissive. (The rated_steam recompute that lived here is GONE — see
+     * the rated-scale note above; it was the #539 defect, not a shutdown extra.) */
     if (ic.cold) {
-      eng.rated_steam = TB.steamDemand(tb, G.createSG({}).P, G.SG.h_feed);
       /* RHR ALIGNED (suction open — 350 psig sits under the 425 psig permissive) with the
        * HX THROTTLED SHUT: a HOLD, not a cooldown. Measured with hx 0.5: the HX pulled the
        * heat-free plant down 26 degC in 300 s (−560 degF/hr class) and drained the
@@ -353,6 +415,65 @@
     return eng;
   }
 
+  /* THE ROD DRIVE'S DOOR (#545) — a bank command REFUSES BY NAME while the reactor trip is
+   * latched, because the trip breakers have taken the CRDMs' power away [sourced, Ginna TS
+   * Bases B 3.3.1 ML20339A221 — the quote is on the level hold in stepInner]. The step block
+   * would hold the rods anyway; this is the other half, and it is the half that matters:
+   * an ACCEPTED command the next step overwrites is worse than a missing one (#551/#559,
+   * §100), and the operator gets a reason on the screen instead of a dead button (#558).
+   *
+   * IT REFUSES MOTION, NOT THE PRESS. The board sends `rod_stop` on EVERY button release and
+   * the shell's mapper implements that as "target := current position" — a flat refusal would
+   * make letting go of the button an error. So the test is whether the command asks the bank
+   * to MOVE, which `rod_stop` and `rod_stop_all` never do. */
+  /* ROD STOP NAMES (#572) — one per contributor to `ptr.rod_stop_causes`, so the refusal below
+   * says WHICH stop is standing. A lumped "a rod stop is active" would make the intermediate-
+   * range one — the only stop a player meets during a startup — indistinguishable from the
+   * delta-T pair they meet at power. */
+  var ROD_STOP_WHY = {
+    ir_high_flux: 'the INTERMEDIATE RANGE high flux rod stop is standing (above 20 % current ' +
+      'equivalent power) [sourced, WTSM 8.1 §8.1.7.3 ML11223A252]. Block the low-setting flux ' +
+      'trips above P-10 to clear it, which is the power-ascension step',
+    pr_high_flux: 'the POWER RANGE high flux rod stop is standing (above 103 % power) ' +
+      '[sourced, WTSM 8.1 §8.1.7.3 ML11223A252]. Reduce power',
+    delta_t: 'an OVERTEMPERATURE / OVERPOWER delta-T rod stop is standing (within 3 % of the ' +
+      'trip setpoint) [sourced, Ginna UFSAR ch7 §7.2.3.2.1]. The turbine is running back; let ' +
+      'delta-T recover'
+  };
+
+  function rodDriveDoor(eng, value, steps) {
+    var target = Math.max(0, Math.min(200, value));
+    var moving = Math.abs(target - steps) > 1e-9;
+    if (eng.pt.reactor_trip) {
+      if (!moving) return;
+      throw new Error('ROD DRIVE BLOCKED: the reactor trip is LATCHED — the reactor trip ' +
+        'breakers are open and power to the control rod drive mechanisms is interrupted ' +
+        '[sourced, Ginna TS Bases B 3.3.1 ML20339A221]. Reset the RPS to restore rod drive ' +
+        'power; the rods stay where they are until you deliberately withdraw them.');
+    }
+    /* THE ROD STOPS REFUSE OUTWARD MOTION ONLY, which is the source's own scope: *"These
+     * interlocks or rod stops only prevent outward rod motion. The rods can always be inserted
+     * into the core using either manual or automatic rod control."* (WTSM 8.1 §8.1.7.3). So the
+     * test is direction, not motion — unlike the trip above, where the drive has no power at
+     * all and INSERT is refused too.
+     *
+     * WHY IT REFUSES AT ALL, rather than being clamped in the step block as it was: the
+     * integrator has zeroed outward `move` on `_rodStopSig` since the delta-T pair was built,
+     * silently. That is an ACCEPTED command the next step discards — the #551/#559 law, and
+     * exactly the dead-button class #545 fixed one system over. Shipping a NEW block with the
+     * same silence would have recreated it on arrival. The clamp stays as the belt: a stop that
+     * arrives mid-travel, with the demand already standing, is not a command and cannot be
+     * refused at a door. */
+    if (!(target > steps + 1e-9)) return;
+    var causes = eng.rpsReport && eng.rpsReport.rod_stop_causes;
+    if (!causes) return;
+    var why = causes.ir_high_flux ? ROD_STOP_WHY.ir_high_flux
+            : causes.pr_high_flux ? ROD_STOP_WHY.pr_high_flux
+            : causes.delta_t      ? ROD_STOP_WHY.delta_t : null;
+    if (!why) return;
+    throw new Error('ROD WITHDRAWAL BLOCKED: ' + why + '. Inward motion is still available.');
+  }
+
   /* ---- THE ONE DOOR ------------------------------------------------------------------------ */
   function command(eng, name, value) {
     switch (name) {
@@ -365,8 +486,11 @@
           throw new Error('pwr2_engine: rod command REFUSED — continuous withdrawal failure ' +
             'active; clear the failure first');
         }
+        rodDriveDoor(eng, +value, eng.rodSteps);
         eng.rodTarget = Math.max(0, Math.min(200, +value)); break;
-      case 'sd_target':      eng.sdTarget = Math.max(0, Math.min(200, +value)); break;
+      case 'sd_target':
+        rodDriveDoor(eng, +value, eng.sdSteps);
+        eng.sdTarget = Math.max(0, Math.min(200, +value)); break;
       case 'rod_speed':      eng.rodSpeedSel = (value in ROD_SPEEDS) ? value : 'normal'; break;
       /* THE P-11 PAIR (#507 wave 10) — the cooldown's "block SI" actions. ENGAGING is
        * refused above P-11 (the #295 F1 lesson: a block acceptable at power is a defeatable
@@ -450,6 +574,14 @@
        * set_afw/set_afw_flow route here); 'afw_tdafw' is the turbine-driven pump's own. */
       case 'afw':            eng.aw.mdafwRunning = !!value; break;
       case 'afw_tdafw':      eng.aw.tdafwRunning = !!value; break;
+      /* THE FLOW CONTROL VALVES (#562) — 0..1, ONE valve downstream of both pumps. It is
+       * the operator's continuous post-trip task on a real plant (WAT 05 Transients: "it is
+       * necessary to throttle AFW flow to control RCS temperature at this point"), and until
+       * this door existed the plant had no lever at all: `set_afw_flow` read only
+       * `c.normalized`, so the board's own `{pct: 0}` evaluated `undefined !== undefined ?
+       * ... : 1 > 0` = TRUE and RE-ASSERTED the pump. Throttling is DELIVERY, never demand —
+       * a shut valve leaves the run lamps lit, the #200 split. */
+      case 'afw_throttle':   eng.aw.throttle = Math.max(0, Math.min(1, +value)); break;
       /* THE FEED TRAIN (2026-08-21) */
       case 'feed_auto':      eng.fw.auto = !!value; break;
       /* the overfeed SEAT (#510 M-12) — the regulating valve failed open; see pwr2_feedwater */
@@ -468,6 +600,15 @@
         eng.fw.isolated = !!value;
         break;
       case 'cw_pumps':       eng.cwPumps = !!value; break;
+      /* CIRCULATING-WATER INLET TEMPERATURE, degC (#591 item 1). NOT a plant control — it is
+       * the heat sink the site is given, and the door exists so the coupling the condenser
+       * module was built around is reachable rather than asserted. `pwr2_condenser` owns the
+       * range; a null/non-finite value is ignored rather than clamped, so a malformed command
+       * cannot silently move the sink. */
+      case 'cw_inlet_temp':
+        var cwc = CD.clampCwInlet(value);
+        if (cwc !== null) eng.cd.cw_inlet_c = cwc;
+        break;
       case 'pump_trip':      eng.sys.pumpTripped = true; break;
       /* THE RCP START (#507 wave 9) — the one-way trip is RETIRED: the rotor the coastdown
        * decelerates can be motored back up (pwr2_sources' start branch). Gated on the
@@ -547,6 +688,15 @@
         /* ATWS: the trip LATCHES (annunciators, turbine trip, the record) — only the rod
          * drop is failed, which is what a failure-to-scram IS */
         eng.scramBlocked = !!value; break;
+      case 'turbine_trip_failed':
+        /* THE INJECTED TURBINE TRIP, as a SEAT (#551). The menu row has set `turbine_trip`
+         * since it was built, but a bare state cannot be reported or cleared — the Failures
+         * tab and clear_failure both read a detector, and a trip the plant reaches by itself
+         * is indistinguishable from an injected one. A seat says WHO tripped it. It also holds
+         * the latch: the operator cannot latch away the instructor's casualty. */
+        eng.tbTripFailed = !!value;
+        if (value) eng.tb.tripped = true;
+        break;
       case 'p9_defeat':
         /* #515: the P-9 turbine-trip channel failed — the anticipatory trip reports nothing
          * (pwr2_protection); a persistent physical state, cleared only by the clear */
@@ -616,7 +766,12 @@
   }
 
   function step(eng, dt) {
-    if (eng._dead) {
+    /* #585 — THE HOLD IS THE WHOLE PLANT (owner-ruled 2026-08-29). `beyond_model` used to stop
+     * only the primary's mass/energy solve while all 19 subsystems kept stepping around it — so
+     * the break went on booking discharge into containment at ~49 kg/s and every accumulator
+     * (AFW delivered_kg, CVCS, damage) kept its own clock against a frozen plant. Held means one
+     * thing: the same short-circuit the runaway screen (_dead) already takes. */
+    if (eng._dead || (eng.sys && eng.sys.beyond_model === true)) {
       eng.simTime += dt;
       if (eng._lastTs) { stampHeld(eng); return eng._lastTs; }
     }
@@ -661,6 +816,31 @@
     var acAvail = !eng.elec.blackout;                       /* vital (diesel-backed) buses */
     var offsiteOk = eng.elec.offsite && !eng.elec.blackout; /* nonvital buses */
 
+    /* THE REACTOR TRIP BREAKERS TAKE THE DRIVE'S POWER AWAY (#545) [sourced] — Ginna TS
+     * Bases B 3.3.1 (ML20339A221), Reactor Trip Switchgear: "The RTBs are in the electrical
+     * power supply line from the control rod drive motor generator set power supply to the
+     * control rod drive mechanisms (CRDMs). Opening of the RTBs interrupts power to the
+     * CRDMs, which allows the shutdown rods and control rods to fall into the core by
+     * gravity and shutdown the reactor."
+     *
+     * So a LATCHED reactor trip means no rod drive power AT ALL — neither bank, neither
+     * direction — until the RPS reset re-closes the breakers. LEVEL-HELD while the latch
+     * stands, which is the caller's-half law the turbine trip, the SI pumps, the AFW starts
+     * and the feedwater isolation below already follow; the rods were the one consumer wired
+     * to the latch's rising EDGE alone. MEASURED before this line existed: scram from
+     * hot_full_power, then hold WITHDRAW on both banks, and the plant went 0/0 -> 200/200 and
+     * 2.71 % -> 61.18 % true power with `scrammed` reading true on the true state, the
+     * instrument AND the kernel at once, while hi_flux_lo sat asserted at 0.6170 against its
+     * 0.350 setpoint, tripping, held 751.6 s, and could do nothing — the latch it would set
+     * was already set. One step old, the house lag convention.
+     *
+     * The ATWS is where the BOTH-DIRECTIONS half is observable (under a normal trip the rods
+     * are already at 0): with the drop failed the operator can no longer walk the rods back
+     * in by hand, and the response is emergency boration, which is the prototypical one
+     * *(OWNER RULING, 2026-08-28: selected "Refuse both directions" over allowing inward
+     * motion — a menu selection, cited in that form)*. */
+    var rodDrivePowered = !eng.pt.reactor_trip;
+
     /* rods: slew toward target; a scram overrides the slew. TWO BANKS since #506.3 —
      * both insert on a trip, shutdown slightly faster (the pwr1 2.5/2.0 pair). */
     if (eng._scramT !== null) {
@@ -671,6 +851,15 @@
       eng.rodSteps = Math.max(0, Math.min(eng.rodSteps, 200 * (1 - eng._scramT / SCRAM_S)));
       eng.sdSteps = Math.max(0, Math.min(eng.sdSteps, 200 * (1 - eng._scramT / SD_SCRAM_S)));
       if (eng.rodSteps === 0 && eng.rodTarget === 0) eng._scramT = null;
+    } else if (!rodDrivePowered) {
+      /* THE BREAKERS ARE OPEN — neither bank moves under drive. Ahead of the runaway branch
+       * on purpose: a continuous-withdrawal DRIVE fault is downstream of the same power
+       * supply, so it stops too. The scram edge below already clears `eng.runaway` ("gravity
+       * beats a drive"), but the ATWS path never reaches that edge, and this is the branch
+       * that catches it. The demands are NOT rewritten here — the demand-heals-itself trap
+       * (#200/#329/#332): take the delivered motion away, leave the operator's latched
+       * target where the operator put it. The RPS reset snaps them to position, which is the
+       * only place a demand may legitimately be cleared (pwr2_shell's reset_rps). */
     } else if (eng.runaway) {
       /* CONTINUOUS ROD WITHDRAWAL (#507 wave 6): the drive faults OUTWARD at the failure's
        * rate — target ignored, and the rod stop too (the stop inhibits the demand path; a
@@ -693,7 +882,7 @@
      * operator work, nothing auto-re-withdraws; the #468 lesson). The rod stop guards the
      * CONTROL bank's approach to the delta-T trip; the shutdown bank's outward motion is a
      * deliberate shutdown-margin evolution and is not guarded here. */
-    if (eng._scramT === null && eng.sdSteps !== eng.sdTarget) {
+    if (eng._scramT === null && rodDrivePowered && eng.sdSteps !== eng.sdTarget) {
       var dSd = ROD_SPEEDS[eng.rodSpeedSel] * dt;
       eng.sdSteps += Math.max(-dSd, Math.min(dSd, eng.sdTarget - eng.sdSteps));
     }
@@ -789,6 +978,14 @@
        * demand and delivered nothing for ~3 min while level walked down (#509 item 5;
        * the exact defect pwr1's feed channel fixed for itself — see the SOURCE comment
        * in pwr_instruments.js and pwr_control's feed_sg input) */
+      /* THE CHANNEL EXISTS SINCE #540 (2026-08-27) and this line finally takes its first
+       * branch. For six days it did not: `pwr2_instruments.js` had no `sg_steam_flow`, so
+       * the ternary took the `steam_flow` fallback on every step — the turbine-only channel
+       * the comment above says not to read — and #509 item 5 was recorded fixed while the
+       * pre-fix symptom stood. The FALLBACKS STAY: a Layer-5 fixture with no instrument
+       * layer is a harness, not a plant, and `out / eng.rated_steam` is the same quantity
+       * unlagged. Do not "simplify" them away; do not let this become an undefined read
+       * again — run_pwr2_instruments now asserts the channel by id. */
       steam_flow_frac: rdF.sg_steam_flow !== undefined ? rdF.sg_steam_flow
                        : (rdF.steam_flow !== undefined ? rdF.steam_flow : out / eng.rated_steam),
       fw_flow_frac: rdF.fw_flow !== undefined ? rdF.fw_flow : eng.fw.feed_frac,
@@ -801,6 +998,17 @@
      * level, not edge, same as the reactor-trip→turbine wiring; P-9 then decides whether
      * the reactor trips, which is the source's own ">50% of full power" clause. */
     if (fwr.main_feed_lost) eng.tb.tripped = true;
+    eng._mainFeedLost = fwr.main_feed_lost === true;   /* the latch permissive reads it (#551) */
+    /* THE DEMAND, kept apart from the DELIVERY (#516 item 1, 2026-08-29). `feed_frac` is what
+     * the pumps are actually putting into the SG, behind `pump_tau_s`; `demand_frac` is what
+     * the valve is calling for. Five board tiles legitimately read the delivered figure, but
+     * the SG FEED SETPOINT BOX was reading it too — so each up-arrow click re-anchored the
+     * operator's demand onto a value still lagging the previous click. Measured: eight clicks
+     * asking +1 gpm each moved the box +0.5 gpm total. A setpoint reads back the SETPOINT. */
+    eng._fwDemandFrac = fwr.demand_frac;
+    /* the injected trip level-holds like every other seat — an instructor's casualty does not
+     * heal because the operator pressed LATCH (#551) */
+    if (eng.tbTripFailed) eng.tb.tripped = true;
     /* AFW steps BEFORE the SG so its delivery lands in this step's balance — it is the SG's
      * second, COLD feed stream (stepAFW reads only its own state, so the hoist is free).
      * AFW is additive on top of main feed — the "merge, do not displace" rule the module's
@@ -847,12 +1055,26 @@
      * (same step — stepSG ran above), so the sourced EOP falls out of the ΔP: "reduce
      * reactor coolant system pressure to equilibrate with the ruptured steam generator
      * secondary side pressure to minimize the coolant discharge" (§15.6.3). Every other
-     * break keeps the containment backpressure default. */
+     * break discharges against LIVE containment pressure (#543) — LAST step's, since
+     * containment steps below this (one-step lag, the house convention; the retired engine's
+     * pwr_primary.js carried the same coupling the same way). Undefined on the first step
+     * (and on an old save) falls to the sourced 1.0 psig pre-accident default in pwr2_break.
+     * Without this a large break kept discharging against a frozen 1.0 psig after containment
+     * passed RCS pressure: measured, 12,857 kg moved UP a 19.6 psi adverse gradient and total
+     * discharge ran 15 % high at 1800 s. */
     var toSG = !!(eng.brk && eng.brk.node === 'sg_primary');
     var br = eng.brk ? BK.stepBreak(eng.brk, sys, dt,
-                                    toSG ? { backpressure_mpa: sr.P_sec } : {}) : null;
+                                    toSG ? { backpressure_mpa: sr.P_sec }
+                                         : { backpressure_mpa: eng._ctP }) : null;
     eng._sgtrKgs = toSG && br ? br.mdot_kgs : 0;
     eng._sgtrH = toSG && br && br.mdot_kgs > 0 ? br.source.h : 0;
+    /* THE BACKPRESSURE THE BREAK ACTUALLY USED, recovered from its own reported dP (#574). It
+     * is a DIAGNOSTIC, on the same `eng._*` shelf as the carriers above, and it exists because
+     * the wiring one line up was UNOBSERVABLE from outside: the mutation that freezes the
+     * backpressure at its default was caught for weeks only incidentally, by trajectory checks
+     * that happened to diverge, and went BLIND the moment #574's metal walls moved the ride.
+     * A wire nobody can see reads as a working feature — which is the whole subject of #574. */
+    eng._brkBackP = br ? sys.P - br.dP_mpa : undefined;
 
     var rrx = R.stepReactor(eng.rx, sys, dt,
       { boron_ppm: cvr.boron_ppm, rodGroups: eng.rodBank, Q_ox_kW: eng._Qox });
@@ -892,7 +1114,21 @@
     if (ecr.sources) srcs = srcs.concat(ecr.sources);
     if (br) srcs.push(br.source);
     if (eng._pzRelief > 0) {
-      srcs.push({ node: 'hot_leg', mdot: -eng._pzRelief, h: eng._pzReliefH });
+      /* THE LOOP-SIDE SINK IS AT THE HOT LEG'S OWN ENTHALPY, NOT THE DISCHARGE'S (#563 item
+       * 5). The pressurizer has ALREADY debited the discharged mass at its own enthalpy from
+       * its regions, and the vessel refills from the loop — so the loop loses mass at the hot
+       * leg's h (a source at the node's own h moves dM and zero dH, which is exactly "the
+       * vessel refills from the loop") while `_pzReliefH` rides the CONTAINMENT inflow below,
+       * the single correct debit. Booking this sink at `_pzReliefH` removed the discharge
+       * enthalpy TWICE: measured, a stuck-open PORV at hot standby destroyed 2,782.6 MJ that
+       * no mass carried out (control residual 0.3 MJ) and cooled 11.0 degF / 72 psi more in
+       * 10 min than conservation allows. */
+      for (var iHL = 0; iHL < sys.nodes.length; iHL++) {
+        if (sys.nodes[iHL].id === 'hot_leg') {
+          srcs.push({ node: 'hot_leg', mdot: -eng._pzRelief, h: sys.nodes[iHL].h });
+          break;
+        }
+      }
     }
     var heats = rrx.heats;
     if (rhrR.duty_kW > 0) {
@@ -906,6 +1142,13 @@
       heats.hot_leg = (heats.hot_leg || 0) + eng._pzSurgeHeat;
     }
     var pr = S.stepPlant(sys, dt, { heats: heats, sgDuty: sr.duty_kW, sources: srcs });
+
+    /* #585 — the break's ledger books only what the plant ACCEPTED. A mid-step latch integrates
+     * part of the step before refusing the rest (Courant sub-stepping), and `dt_accepted` is the
+     * plant's own report of that time; the ledger and containment's intake below both book
+     * exactly it — 0 on a refused step, dt on a healthy one, the adopted fraction at the latch. */
+    var dtAcc = pr.dt_accepted === undefined ? (pr.held === true ? 0 : dt) : pr.dt_accepted;
+    if (br && dtAcc > 0) BK.book(eng.brk, br, dtAcc / dt);
 
     var pzr = PZ.stepPressurizer(eng.pz, sys, dt, Object.assign({
       /* HR1 (2026-08-20): the heater/spray/PORV ladder, the level PI and the 17 % low-level
@@ -990,6 +1233,14 @@
      * turbine automatically trips following a reactor trip. Zero delay is assumed". Level,
      * not edge: while the trip is latched the operator cannot re-latch the turbine. */
     if (ptr.reactor_trip) eng.tb.tripped = true;
+    /* THE HIGH-HIGH LEVEL TURBINE TRIP IS NOT WIRED HERE — it rides the FWI line below, and
+     * it did so BEFORE #562. A duplicate consumer stood on this line for one commit
+     * (`if (ptr.turbine_trip_hi_level) eng.tb.tripped = true;`) because #562 read
+     * pwr2_protection's header — which says the function is "P-14 class: feedwater regulator
+     * closure + turbine trip" — and concluded the trip half had no consumer WITHOUT grepping
+     * this file for one. It had one: `if (ptr.fwi) { eng.fw.isolated = true; eng.tb.tripped =
+     * true; }`, carrying the WTSM 3.2 citation in its own comment. Inherited claims are the
+     * risky ones, and a module header is an inherited claim. */
     if (ptr.si) { eng.ec.hhsiRunning = true; eng.ec.lhsiRunning = true; }
     /* The AFW starts, same caller's-half law: level-held while the latch stands, so the
      * operator cannot secure an actuated pump until reset_protection clears the latch —
@@ -1005,11 +1256,24 @@
     /* containment receives the break AND the pressurizer relief (PORV/safety discharge ends
      * up there via the relief tank; the tank itself is unmodelled, declared). An SGTR is
      * EXCLUDED — the tube discharges into the SG, a closed receiver, and containment seeing
-     * nothing is the accident's containment-bypass signature (#507 wave 5). */
-    var ctIn = (br && !toSG ? br.mdot_kgs : 0) + (eng._pzRelief > 0 ? eng._pzRelief : 0);
-    var ctH = br && !toSG && br.mdot_kgs > 0 ? br.source.h : eng._pzReliefH;
-    var ctr = CT.stepContainment(eng.ctm, dt,
-      ctIn > 0 ? { mdot_kgs: ctIn, h_kJkg: ctH } : { mdot_kgs: 0 });
+     * nothing is the accident's containment-bypass signature (#507 wave 5).
+     * EACH STREAM CARRIES ITS OWN ENTHALPY (#566): the relief is pressurizer steam or hot
+     * saturated liquid, the break is its node's water, and picking one carrier for the pair
+     * under-booked containment energy 8.3 % on a compound casualty. The mdot-weighted mean
+     * is EXACT here, not an approximation — the containment ledger accumulates dm and dm*h
+     * linearly, so one blended call equals two single-stream calls to the last bit. */
+    /* #585: containment receives the streams over the time the primary actually LOST them —
+     * `dtAcc`, the plant's own report. Mass the plant did not lose cannot arrive anywhere, so a
+     * refused step delivers nothing and a mid-latch step delivers its accepted fraction. */
+    var mBr = br && !toSG && br.mdot_kgs > 0 ? br.mdot_kgs : 0;
+    var mPz = eng._pzRelief > 0 ? eng._pzRelief : 0;
+    var ctIn = mBr + mPz;
+    var ctr = CT.stepContainment(eng.ctm, dtAcc > 0 ? dtAcc : dt,
+      ctIn > 0 && dtAcc > 0
+        ? { mdot_kgs: ctIn,
+            h_kJkg: (mBr * (mBr > 0 ? br.source.h : 0) + mPz * eng._pzReliefH) / ctIn }
+        : { mdot_kgs: 0 });
+    eng._ctP = ctr.containment_pressure_mpa;   /* next step's break backpressure (#543) */
 
     eng.simTime += dt;
     eng._pzr = pzr; eng._dcr = dcr;
@@ -1066,7 +1330,19 @@
     ts.adv_flow_kgs = rr.adv_kgs;
     ts.sg_safety_kgs = rr.safety_kgs;
     ts.pzr_surge_kgs = pzr.surge_kgs;
-    ts.pzr_heater_kw = pzr.heater_kW;
+    /* THE ENERGIZED BANK, NOT THE DELIVERED HEAT (#573). A heater kW indication is ELECTRICAL:
+     * an uncovered bank is still drawing full current, it is simply not heating water. Two
+     * reasons this is the right field, not a nicety:
+     *   1. The shell derives `heater_power_pct` from here and the board's MANUAL button
+     *      re-sends that readback as the new demand — publishing the DERATED number would walk
+     *      the operator's demand down on every press over a partly-uncovered bank, which is
+     *      #538 arriving by a new road.
+     *   2. It is the HE-3 lesson: the gauge reads full, the level channel reads 55 %, and
+     *      pressure falls anyway. A "heaters 40 % submerged" readout would hand the player the
+     *      answer the failed-transmitter case exists to make them find.
+     * `pzr.heater_kW` (delivered) is what the vessel's energy balance and run_pwr2_engine's
+     * closed energy audit use — they read the module result directly, not this field. */
+    ts.pzr_heater_kw = pzr.heater_energized_kW;
     ts.oxidation_frac = dr.oxidation_frac;
     /* the instruments read THIS step's truth; every consumer sees them NEXT step.
      * The sg_level SHIFT is the downcomer shrink/swell — swell_factor × smoothed dPower/dt,
@@ -1082,10 +1358,56 @@
     return ts;
   }
 
+  /* turbineTripCauses(eng) -> [{ id, why }] — WHICH standing conditions are holding the turbine
+   * latch open right now, in the operator's words. Empty means the machine can be latched.
+   *
+   * WHY THIS EXISTS (#551/#559). Nothing in the shipped command surface un-latched the turbine —
+   * 896 command/payload combinations were fired at a tripped plant and none cleared `tb.tripped`,
+   * so ONE SCRAM ENDED ELECTRICAL GENERATION FOR THE SESSION. But a bare un-latch verb would have
+   * been WORSE THAN NOTHING, and the measurement says so: the facade lever restores 60.0 MWe
+   * within the step on a clean manual trip, and after a scram it is silently overwritten on the
+   * very next step, because `main_feed_lost` and `fwi` are both standing. An accepted-then-
+   * overwritten command is the #509 §79 defect one layer deeper — the operator presses, the plant
+   * agrees, and nothing happens.
+   *
+   * So the six sites that LEVEL-HOLD `eng.tb.tripped = true` are enumerated HERE, once, and the
+   * shell's `latch_turbine` refuses against them by name. The level-holds themselves are correct
+   * and are NOT weakened — a latch that could defeat a standing trip is #545's defect, which is
+   * still open on the reactor side and must not be imported here. What changes is that the reason
+   * is addressable instead of invisible.
+   *
+   * KEEP THIS IN STEP WITH THE SITES. Each entry names the line that holds it; adding a
+   * seventh level-hold without an entry here re-creates the silent-overwrite defect, and
+   * `run_pwr2_engine` counts the sites against this list so that cannot happen quietly. */
+  function turbineTripCauses(eng) {
+    var out = [];
+    var ptr = eng.rpsReport || {};
+    if (eng.msiv && eng.msiv.pos < 0.9)
+      out.push({ id: 'msiv', why: 'the main steam isolation valve is not open (' +
+        (eng.msiv.pos * 100).toFixed(0) + ' %) — the turbine has no steam supply' });
+    if (eng._cdAvail === false)
+      out.push({ id: 'condenser', why: 'the condenser is unavailable — there is nowhere for the ' +
+        'exhaust to go' });
+    if (eng._mainFeedLost === true)
+      out.push({ id: 'main_feed', why: 'both main feedwater pumps are lost [sourced, Ginna UFSAR ' +
+        'ch10: "if both main feedwater pumps fail, the turbine will be tripped"]' });
+    if (ptr.reactor_trip === true)
+      out.push({ id: 'reactor_trip', why: 'the reactor trip is LATCHED — reset the protection ' +
+        'system first' });
+    if (ptr.fwi === true)
+      out.push({ id: 'hi_hi_level', why: 'the high-high steam generator level isolation is ' +
+        'LATCHED — the steam lines may be carrying water [WTSM 3.2]' });
+    if (eng.tbTripFailed === true)
+      out.push({ id: 'injected', why: 'the turbine trip is an injected casualty and has not ' +
+        'been cleared' });
+    return out;
+  }
+
   root.RD.pwr2.engine = {
     createEngine: createEngine,
     command: command,
     step: step,
+    turbineTripCauses: turbineTripCauses,
     designHmap: designHmap,   /* exported so the equivalence fixture boots the SAME plant */
     ICS: ICS,                 /* the initial-condition registry — the shell/UI menu reads it */
     RIL: RIL, insertionLimitSteps: insertionLimitSteps,

@@ -25,6 +25,7 @@ var LIB = path.join(E, 'pwr2_loop.js');
 var SRC = fs.readFileSync(LIB, 'utf8').replace(/\r\n/g, '\n');
 ['pwr2_water', 'pwr2_vtable', 'pwr2_geometry', 'pwr2_core'].forEach(function (f) { require(path.join(E, f + '.js')); });
 var RD = globalThis.RD.pwr2, C = RD.core, GEO = RD.geometry;
+var VT = RD.vtable;                    /* #574 — the wall checks read a TEMPERATURE */
 
 function loadFrom(src) {
   var root = { RD: { pwr2: { water: RD.water, core: RD.core, geometry: RD.geometry } } };
@@ -33,9 +34,12 @@ function loadFrom(src) {
   return new Function('RD_ROOT', body)(root);
 }
 
+/* TEN nodes since #583 — no `pressurizer` key, because there is no pressurizer node. The
+ * 1600 kJ/kg this map used to give it was the fixture's way of proving an off-loop node keeps
+ * its boot value; `vessel_heads` at 1280 (off the ring's 1240-1300 band) still does that. */
 var H0 = { downcomer: 1240, lower_plenum: 1245, core: 1290, upper_plenum: 1300, hot_leg: 1300,
            sg_primary: 1270, crossover: 1245, rcp: 1245, cold_leg: 1240,
-           vessel_heads: 1280, pressurizer: 1600 };
+           vessel_heads: 1280 };
 
 function runSuite(L, rec, quiet) {
   function ck(name, got, want, tol, unit) {
@@ -74,9 +78,101 @@ function runSuite(L, rec, quiet) {
       mismatched.length ? mismatched.join(', ') : sys.nodes.length + ' nodes matched exactly');
   var ringV = 0, totV = 0;
   sys.nodes.forEach(function (n) { totV += n.V; if (L.RING.indexOf(n.id) !== -1) ringV += n.V; });
+  /* ONE off-loop node since #583, not two. The pressurizer left because it was never a volume
+   * this layer owned — Layer 5's vessel plugs into the extraMass seat and the ring node of the
+   * same name was a 3.5453 m3 double count. `vessel_heads` is the whole off-loop set now, and
+   * the check still has to see that it is CARRIED (in sys.nodes, in the mass ledger) and NOT
+   * transported (no junction names it) — which the flow-list scan below is what proves. */
   ckT('off-loop volumes are CARRIED but not transported',
-      totV > ringV && L.OFF_LOOP.length === 2,
-      'ring ' + (ringV * 35.3147).toFixed(1) + ' ft3 of ' + (totV * 35.3147).toFixed(1) + ' ft3 total');
+      totV > ringV && L.OFF_LOOP.length === 1 && L.OFF_LOOP[0] === 'vessel_heads' &&
+      L.OFF_LOOP.indexOf('pressurizer') === -1,
+      'ring ' + (ringV * 35.3147).toFixed(1) + ' ft3 of ' + (totV * 35.3147).toFixed(1) +
+      ' ft3 total; off-loop = ' + L.OFF_LOOP.join(', '));
+
+  /* ---- THE METAL WALLS ARE WIRED ON (#574) --------------------------------------------------
+   * This is the layer where the dark wire was. Layer 1 has shipped `wallLumps` on every
+   * nodes since it was written and NOTHING read it, so the table looked like a working feature.
+   * These checks are about the WIRING — Layer 2 owns the physics and has its own. */
+  if (!quiet) console.log('\nMETAL WALLS WIRED  [Layer 1 had them, nothing read them]');
+  var noW = sys.nodes.filter(function (n) { return !n.wall; }).map(function (n) { return n.id; });
+  var wrongM = sys.nodes.filter(function (n) {
+    return n.wall && Math.abs(n.wall.M_kg - GEO.WALLS[n.id].M_kg) > 1e-9;
+  }).map(function (n) { return n.id; });
+  ckT('EVERY node carries Layer 1\'s own metal mass — the whole point of the ruling',
+      noW.length === 0 && wrongM.length === 0,
+      noW.length ? 'no wall: ' + noW.join(', ')
+                 : (wrongM.length ? 'wrong mass: ' + wrongM.join(', ')
+                                  : sys.nodes.length + ' nodes wired'));
+  ckT('...and the lump COUNT is Layer 1\'s too — `wallLumps` finally has a consumer',
+      sys.nodes.every(function (n) {
+        var g = null; GEO.NODES.forEach(function (x) { if (x.id === n.id) g = x; });
+        return n.wall && n.wall.n === g.wallLumps;
+      }), 'downcomer ' + node(sys, 'downcomer').wall.n + ' lumps, sg_primary ' +
+          node(sys, 'sg_primary').wall.n);
+  /* THE ESCAPE HATCH IS REAL — Layer 2's own fixtures and any A/B against the pre-#574 plant
+   * need a dry loop, and a flag that silently did nothing would be worse than none. */
+  ckT('`dryWalls` builds the pre-#574 plant, with no wall anywhere',
+      L.createLoop({ h: H0, P: 15.41, dryWalls: true })
+       .nodes.every(function (n) { return n.wall === undefined; }), '');
+  /* A MISSING GEOMETRY WALL IS REFUSED, NOT DEFAULTED. A node quietly getting 1 kg of metal is
+   * the same dark wire in a new place, and it is the failure this whole issue is about. */
+  (function () {
+    var keep = GEO.WALLS.rcp;
+    delete GEO.WALLS.rcp;
+    var threw = false;
+    try { L.createLoop({ h: H0, P: 15.41 }); } catch (e) { threw = /no metal wall for node rcp/.test(e.message); }
+    GEO.WALLS.rcp = keep;
+    ckT('a node with no geometry wall is REFUSED at construction, not given a default',
+        threw, 'a silent default here is exactly the dark wire #574 exists to close');
+  })();
+  /* THE FILM SEES THE LOOP FLOW, and floors when the pumps stop — the regime stored wall heat
+   * matters in. Asserted as the EFFECT (heat delivered), not as the coefficient. */
+  (function () {
+    function heatAt(mdot) {
+      var s2 = L.createLoop({ h: H0, P: 15.41, mdot: mdot });
+      node(s2, 'hot_leg').wall.T[0] += 40;              /* a hot wall, one node */
+      return L.stepLoop(s2, 0.02, {}).wallHeat_kW;
+    }
+    var fast = heatAt(1630), slow = heatAt(30);
+    ckT('the wall film follows the loop flow — a stopped pump delivers LESS, but never nothing',
+        fast > slow && slow > 0,
+        fast.toFixed(1) + ' kW at rated against ' + slow.toFixed(1) +
+        ' kW at 2 % flow: the natural-convection floor is what keeps the metal coupled');
+  })();
+  /* ---- THE EFFECT, WHICH IS THE ONLY THING THAT MATTERS -------------------------------------
+   * *(OWNER, 2026-08-12: "...RPV wall stored heat during a cooldown.")* Assert the CONSEQUENCE,
+   * not the constant: at a FIXED duty out of the ring, a cooldown takes measurably longer with
+   * the metal in it, because the metal's stored heat has to come out too.
+   *
+   * ⚠ THE FIXTURE MUST BE DUTY-LIMITED, AND THE FIRST ONE WAS NOT. An engine-level cooldown
+   * driven by walking the steam-dump SETPOINT down measured a ratio of 1.000x — because the
+   * pace was set by the setpoint ramp, not by the thermal mass, and the dumps simply passed more
+   * steam. A probe whose pace is set by the operator cannot see thermal mass at all. Fixed duty
+   * is what makes this a measurement.
+   *
+   * MEASURED, 20 degC fall: at 3 MW **1.391x** (407 -> 567 s), at 10 MW **1.270x** — the slower
+   * the cooldown the more of the thick vessel wall has time to participate, approaching the
+   * 1.46 capacity ratio. Both directions of that trend are physics, and a single-point band
+   * would not have shown it. */
+  (function () {
+    function cool(dry, Q, dropC, cap) {
+      var s2 = L.createLoop({ h: H0, P: 15.41, dryWalls: dry });
+      var T0 = VT.T_from_h(s2.nodes[0].h, s2.P), t = 0;
+      for (var i = 0; i < cap / 0.02; i++) {
+        L.stepLoop(s2, 0.02, { heats: { sg_primary: -Q } });
+        t += 0.02;
+        if (VT.T_from_h(s2.nodes[0].h, s2.P) < T0 - dropC) return t;
+      }
+      return -1;
+    }
+    var drop = quiet ? 8 : 20, cap = quiet ? 200 : 400;
+    var dry = cool(true, 10000, drop, cap), wet = cool(false, 10000, drop, cap);
+    ckT('a fixed-duty cooldown takes LONGER with the metal in it — the stored heat comes out too',
+        dry > 0 && wet > 0 && wet / dry > 1.15,
+        'dry ' + dry.toFixed(1) + ' s against ' + wet.toFixed(1) + ' s with walls, ' +
+        (wet / dry).toFixed(3) + 'x for a ' + drop + ' degC fall at 10 MW — at 3 MW it is 1.391x, ' +
+        'because a slower cooldown reaches more of the vessel wall');
+  })();
 
   /* ---- 2. THE MEASUREMENT LAYER 2 LEFT OPEN ------------------------------------------ */
   if (!quiet) console.log('\nDERIVED vs SPECIFIED JUNCTION FLOWS  [the open question, measured]');
@@ -149,14 +245,38 @@ function runSuite(L, rec, quiet) {
       'envelopeExceeded first set at step ' + flagged);
   ckT('...and pressure is CLAMPED to the envelope, not run away', Pmax <= 18.0 + 1e-9,
       'max P ' + Pmax.toFixed(3) + ' MPa (before the guard this reached 2.8e+16)');
-  var sysOk = mk({ h: 1250 }), everFlagged = false;
+  /* ⚠ THIS NEGATIVE CONTROL WAS PINNING A NEAR-MISS, and #574 is what exposed it.
+   *
+   * It drove 300 MWt through a RIGID loop — no pressurizer, no free surface — and asserted the
+   * envelope flag never set. It passed, by **0.024 MPa** of an 18.0 MPa envelope: the fixture
+   * ran to 17.976 and stopped just short. "Balanced" was never true of it either; the heats sum
+   * to zero but a rigid ring redistributing enthalpy between a hot node and a cold one moves
+   * pressure, and this one moved it +2.57 MPa.
+   *
+   * A negative control standing 0.024 MPa from the thing it denies is not a control — it is the
+   * standing "a check can pin a BIFURCATION, not a claim" trap, and ANY change that pressurises
+   * this fixture slightly more reddens it while telling you nothing. #574's metal walls do
+   * exactly that, and correctly: the steam-generator tube metal resists the SG's cooling and
+   * feeds it back, so the ring's average temperature is higher at every instant.
+   *   MEASURED, 200 steps at 300 MWt:  dry 17.976 MPa (flag clear, 0.024 to spare) ·
+   *   with walls 18.000 (flagged, clamped).
+   *
+   * REPAIRED, not refitted: the same claim, at a duty this rigid fixture can actually hold, and
+   * asserting the MARGIN so a near-miss cannot come back silently. It passes on BOTH plants —
+   * dry 16.046 MPa, walls 16.785 — which is what makes it a better check rather than a
+   * re-fitted one (HR10). The 300 MWt runaway is still covered: the two checks above assert
+   * that going past the envelope IS flagged and IS clamped. */
+  var sysOk = mk({ h: 1250 }), everFlagged = false, PmaxOk = 0;
   for (var ko = 0; ko < 200; ko++) {
-    if (L.stepLoop(sysOk, 0.02, { heats: { core: 300000, sg_primary: -300000 } }).envelopeExceeded) {
+    if (L.stepLoop(sysOk, 0.02, { heats: { core: 150000, sg_primary: -150000 } }).envelopeExceeded) {
       everFlagged = true;
     }
+    PmaxOk = Math.max(PmaxOk, sysOk.P);
   }
-  ckT('a BALANCED plant at full power never trips the envelope flag', !everFlagged,
-      'P ' + sysOk.P.toFixed(3) + ' MPa at 300 MWt with the SG removing it');
+  ckT('a driven loop at a duty it can hold stays OFF the envelope flag, with margin',
+      !everFlagged && (18.0 - PmaxOk) > 0.5,
+      'peak ' + PmaxOk.toFixed(3) + ' MPa, ' + (18.0 - PmaxOk).toFixed(3) +
+      ' MPa of margin (the 300 MWt form this replaces passed by 0.024)');
   /* Heat removed at the SG must show up downstream of it, not upstream. */
   var sysS = mk({ h: 1250 });
   for (var ks = 0; ks < 60; ks++) L.stepLoop(sysS, 0.02, { heats: { core: 300000, sg_primary: -300000 } });
@@ -222,6 +342,10 @@ function runSuite(L, rec, quiet) {
   sysT.nodes.forEach(function (n) { Vall += n.V; if (L.RING.indexOf(n.id) !== -1) Vring += n.V; });
   var rho = RD.water.rho_from_h(sysT.nodes[0].h, sysT.P);
   ck('transit uses the RING volume, not the whole plant', tt, Vring / (1630 / rho), 1e-9, 's');
+  /* ⚠ MARGIN NOTE (#583): this ratio was 1.290 while the phantom pressurizer node was in the
+   * ledger and is 1.097 now that `vessel_heads` is the only off-loop volume. The check still
+   * bites, but on 4.7 points instead of 24 — if a future change ever makes the off-loop set
+   * small enough to pass this vacuously, the transit check above stops being able to fail. */
   ckT('...and the two genuinely differ, so that check can fail', Vall > Vring * 1.05,
       'ring ' + Vring.toFixed(2) + ' m3 vs plant ' + Vall.toFixed(2) + ' m3');
   ckT('loop transit is REPORTED, never banded', isFinite(tt) && tt > 0,
@@ -311,8 +435,11 @@ function runSuite(L, rec, quiet) {
       'dt = ' + (lim * 2).toFixed(3) + ' s -- the layer still STEPS; it just stops doing so silently');
   /* THE OFF-LOOP FILTER IS CORRECT AND CURRENTLY INERT, and that was measured rather than
    * assumed. Deleting `if (RING.indexOf(...) === -1) continue;` changes nothing today, because
-   * both off-loop nodes -- vessel heads 1.78 m3 and the pressurizer 3.55 m3 -- are LARGER than
-   * the cold leg at 0.99 m3, so the minimum does not move. It carries no mutation for the same
+   * the one off-loop node -- vessel heads at 1.78 m3 -- is LARGER than the cold leg at 0.99 m3,
+   * so the minimum does not move. (It read "both off-loop nodes ... and the pressurizer 3.55 m3"
+   * until #583 deleted that node; the conclusion is unchanged, the count is not.) The margin is
+   * now 1.8x rather than 3.6x, so this is closer to becoming live than it was. It carries no
+   * mutation for the same
    * reason NH and the boron floor carry none (D1 §31.1d): a mutation that cannot fail is noise in
    * a self-test that exists to prove things can. The filter STAYS because it is correct -- an
    * off-loop node is not on the transport path and its residence time is meaningless there -- not
@@ -326,8 +453,8 @@ function runSuite(L, rec, quiet) {
           if (m < mm) { mm = m; id = n.id; }
         });
         return id !== null && L.OFF_LOOP.indexOf(id) === -1;
-      })(), 'binds on a ring node; both off-loop volumes are larger, so excluding them is inert ' +
-      'TODAY and would not be if one ever shrank');
+      })(), 'binds on a ring node; the off-loop volume is larger, so excluding it is inert ' +
+      'TODAY and would not be if it ever shrank');
 
   ckT('the limit tightens when the loop runs faster', (function () {
         var slow = L.createLoop({ h: H0, P: 15.41, mdot: 400 });
@@ -486,7 +613,9 @@ var MUTATIONS = [
   ['the core dropped out of the ring',
    "'downcomer', 'lower_plenum', 'core', 'upper_plenum'", "'downcomer', 'lower_plenum', 'upper_plenum'"],
   ['node volumes invented instead of read from Layer 1',
-   'return { id: id, V: g.V,', 'return { id: id, V: 2.0,'],
+   /* RE-ANCHORED at #574: the node literal became a var so the metal wall could be attached to
+    * it. Same mutation — Layer 3 inventing volumes instead of reading Layer 1. */
+   'var node = { id: id, V: g.V,', 'var node = { id: id, V: 2.0,'],
   ['junction flows no longer derived (revert to specified)',
    'carry = carry - (dmdt[id] || 0);', 'carry = carry - 0;'],
   ['the driving flow stops being re-imposed at the head',
@@ -499,11 +628,23 @@ var MUTATIONS = [
   /* The four the adversarial pass found. Each is kept so the check that closed it cannot rot. */
   ['sys.ring ALIASES the module constant instead of copying it',
    'sys.ring = RING.slice();', 'sys.ring = RING;'],
+  /* RE-ANCHORED at #574: the bare 1630 became MDOT_RATED when the wall film needed a second
+   * reader of it. The mutation moves the CONSTANT now, which is strictly stronger — it moves the
+   * default AND the film's flow fraction together, which is what "one copy" is supposed to mean. */
   ['the shipped default loop flow is changed',
-   'sys.mdot_loop = opts.mdot === undefined ? 1630 : opts.mdot;',
-   'sys.mdot_loop = opts.mdot === undefined ? 1000 : opts.mdot;'],
+   '  var MDOT_RATED = 1630;', '  var MDOT_RATED = 1000;'],
   ['the shipped default node enthalpy is changed',
-   'h: h === undefined ? 1250 : h };', 'h: h === undefined ? 1400 : h };'],
+   'h: h === undefined ? 1250 : h }', 'h: h === undefined ? 1400 : h }'],
+  /* ---- THE METAL WALL WIRING (#574) ---- */
+  ['Layer 3 stops wiring the walls on (Layer 1\'s masses go back to being dead data)',
+   '      if (!opts.dryWalls) {', '      if (false) {'],
+  ['a node silently gets a DEFAULT wall instead of a refusal when geometry has none',
+   "        if (!gw) throw new Error(\x27Layer 3: no metal wall for node \x27 + id + \x27 — #574 puts one \x27 +\n" +
+   "                                 \x27on every node; a missing entry is a defect, not a default\x27);",
+   '        if (!gw) gw = { M_kg: 1, A_m2: 1, t_m: 0.01, mat: \'cs\' };'],
+  ['the wall film stops seeing the loop flow (it is pinned at rated for ever)',
+   '        flowFrac: Math.abs(sys.mdot_loop) / MDOT_RATED',
+   '        flowFrac: 1'],
   ['junction flows seeded at ZERO (heals in one step, corrupts the first)',
    'RING.forEach(function (id) { sys.junctionFlow[id] = sys.mdot_loop; });',
    'RING.forEach(function (id) { sys.junctionFlow[id] = 0; });']

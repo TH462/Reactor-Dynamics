@@ -16,9 +16,9 @@
     s.id = 'bd-coolingtower-styles';
     s.textContent =
       '@keyframes flowmove{to{stroke-dashoffset:-24}}' +
-      '.flow{stroke-dasharray:9 15;animation:flowmove 1.1s linear infinite}' +
+      '.flow{stroke-dasharray:9 15;animation:flowmove 1.1s steps(13) infinite}' +
       '@keyframes raindown{to{stroke-dashoffset:-26}}' +
-      '.rain{animation:raindown 1.6s linear infinite}' +
+      '.rain{animation:raindown 1.6s steps(19) infinite}' +
       '@keyframes plumerise{0%{opacity:0;transform:translateY(10px) scale(0.9)}30%{opacity:1}100%{opacity:0;transform:translateY(-18px) scale(1.25)}}';
     (document.head || document.documentElement).appendChild(s);
   }
