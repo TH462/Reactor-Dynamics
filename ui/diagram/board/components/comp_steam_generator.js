@@ -16,7 +16,7 @@
     s.id = 'bd-steamgenerator-styles';
     s.textContent =
       '@keyframes flowmove{to{stroke-dashoffset:-24}}' +
-      '.flow{stroke-dasharray:9 15;animation:flowmove 1.1s linear infinite}' +
+      '.flow{stroke-dasharray:9 15;animation:flowmove 1.1s steps(13) infinite}' +
       // The rise DISTANCE is per bubble *(OWNER DIRECTIVE, 2026-08-04: "SG bubbles should
       // travel to the top of the water level. (but not into the steam above it)")*, #350
       // item 24. It used to be a flat -150 px for every bubble whatever the level, so a bubble
@@ -312,7 +312,7 @@
         // restarts it, which is the whole thing this is avoiding — a reused circle keeps
         // the flight it was already on, and `dur` only re-times it.
         if (!el.__anim) {
-          el.style.animation = 'sgBubbleRise ' + dur + 's linear infinite';
+          el.style.animation = 'sgBubbleRise ' + dur + 's steps(' + Math.max(2, Math.round(dur * 12)) + ') infinite';
           el.style.animationDelay = delay + 's';
           el.__anim = true;
         } else if (el.style.animationDuration !== dur + 's') {

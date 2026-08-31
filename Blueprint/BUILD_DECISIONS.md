@@ -45,6 +45,23 @@ where the two differ or where judgment was exercised.
 
 ---
 
+## 2026-08-31-develop-b — #596: the in-sim report — AUX SPRAY box removed, render pass off the 60 Hz treadmill
+
+Two decisions of record; full continuity in `TUNING_LOG` 2026-08-31-develop-b.
+
+- **The AUX SPRAY board tile (#563 item 2) is REMOVED, one day after it shipped** *(OWNER
+  DIRECTIVE, 2026-08-31, in-sim report `mth3218c-fp42sbsl`: "remove aux spray box.")*. The
+  `set_aux_spray` engine door STAYS (scenarios/instructor, `run_pwr2_shell`); `Manuals/03`
+  §5.3a and its §18 row deleted, §5.3's declared departure reverts to being the board's one
+  pump-less depressurization path (pending Rev 17 (e)). Board decision, not a plant one (HR9).
+- **Board animation moved off per-element 60 Hz CSS onto a shared ~12 Hz JS clock** (pipe
+  dashes, `std_pipe.js`) **with the rest quantized to `steps()`** — measured against the
+  report's 4.7 fps render-bound verdict: chart redraw gate −59 % drawChart JS, raster
+  8.9 → 6.5 s / 15 s, paint events −39 %. Remaining animations join the shared clock under
+  #596 (open follow-up; measured floor 3.8 s raster).
+
+---
+
 ## 2026-08-31-develop-a — #591 + #564 + #578 + #592: the owner's playtest, and four controls that read as working
 
 Full record: `PWR2_VALIDATION.md` §125; continuity in `TUNING_LOG` 2026-08-31-develop-a.

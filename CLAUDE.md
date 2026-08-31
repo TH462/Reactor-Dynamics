@@ -425,6 +425,13 @@ FIRST** — ask what in it would still burn someone in a month, move that to the
 ONE line, drop the rest. **A bullet is ~80 words.** (Measured 2026-08-06: the list was running
 7 bullets averaging 500 words, two of them duplicating traps already rescued below.)
 
+- **A RENDER-BOUND FLICKER IS MEASURED IN THE BROWSER'S PIPELINE, NOT OUR JS — AND PER-ELEMENT
+  THROTTLING OF ANIMATIONS CUTS NOTHING** (2026-08-31, #596, the in-sim report:
+  4.7 fps). Two 60 Hz wastes behind a 10 Hz display: the chart rebuilt an IDENTICAL SVG every
+  paint, and ~100 dash strokes each ran their own CSS animation (`stroke-dashoffset` never
+  composites; A/B measured, animations were 6× of raster). Per-element `steps()` still commits
+  at 60 Hz; **only a SHARED clock (std_pipe.js, ~12 Hz batch) aligns the writes**. Follow-up
+  in #596; a Paint event's clip rect is the LAYER, not damage.
 - **A NUMBER THAT MATCHES THE RETIRED PLANT'S IS NOT THEREBY AN INHERITED CONSTANT — CHECK THE
   PROVENANCE BEFORE YOU CHANGE IT** (2026-08-31, #591/#592 §125, the owner's playtest again). The
   board's CW-temp bound came from `PWR_CONFIG` at script load, 35–85 °F: the exact signature of
@@ -455,13 +462,6 @@ ONE line, drop the rest. **A bullet is ~80 words.** (Measured 2026-08-06: the li
   out on cp** just past its range, and **every reference row the gate held stopped at the old
   bound**, so nothing could catch it. Extend a range only by refitting AND fetching reference
   data inside the extension.
-- **An all-or-nothing ledger over a SUB-STEPPED solver is wrong by the accepted fraction — and
-  only the solver can say what that fraction was** (2026-08-29, #585 §114). The latching step's
-  break booking was refused whole while the Courant sub-stepping had already integrated ONE of
-  its two substeps: 0.966 kg unaccounted, after two earlier arithmetic repairs had each failed
-  differently. `dt_accepted` is now the loop's own report and every boundary ledger books
-  exactly it. **Caller arithmetic about a partial step is a claim; the solver's report is a
-  measurement.**
 **Standing procedure — not part of the rotation above; these do not expire.** One trap per entry.
 **MAX 25 BULLETS** *(OWNER RULING, 2026-08-10: selected "Cap at 25, evict to TRAPS.md" from
 options I wrote — a selection, not verbatim words)*, gated by `test/run_doc_budget.js`. Adding

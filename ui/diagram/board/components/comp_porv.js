@@ -87,7 +87,7 @@
     ];
     for (var i = 0; i < 5; i++) {
       vent.push(h('circle', { key: 'pv' + i, cx: 51, cy: 124, r: 3 + (i % 3), fill: '#d7dde1', opacity: 0.78,
-        style: { animation: 'porvVent ' + (0.9 + (i % 3) * 0.25).toFixed(2) + 's linear infinite', animationDelay: (i * 0.16).toFixed(2) + 's', transformBox: 'fill-box' } }));
+        style: { animation: 'porvVent ' + (0.9 + (i % 3) * 0.25).toFixed(2) + 's steps(' + Math.max(2, Math.round((0.9 + (i % 3) * 0.25) * 12)) + ') infinite', animationDelay: (i * 0.16).toFixed(2) + 's', transformBox: 'fill-box' } }));
     }
     var ventG = h('g', { key: 'vent', style: { display: 'none' } }, vent);
 

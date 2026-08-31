@@ -189,7 +189,6 @@
     // reason: set_adv_setpoint clamps to [0.2, sg_safety_open_mpa], so the box
     // refuses what the engine would silently clamp. Read from config, never a literal.
     bdAdvSp:     [0.2, _SG.sg_safety_open_mpa || 7.58],
-    bdAuxSpray:  [0, 100],                                           // PZR auxiliary spray, % (#563 item 2)
     ims3xu86zm5: [0, 100],                                           // RHR HX flow split, %
     // Circulating-water inlet temperature — the modelled range (the engine clips to the same
     // band, so the box refuses what the engine would clamp). THE AUTHORED LITERALS ARE THE
@@ -929,58 +928,11 @@
      * instructor and the automation channel that drives it. Only the operator's tile goes, so
      * this is a board decision, not a plant one (HR9: content follows the plant, and the plant
      * is unchanged). The START button goes with it, in DOC_REMOVE below. */
-    // AUXILIARY SPRAY (#563 item 2). The capability was built at stage 2c, gated and
-    // mutation-tested, and NO CONTROL ANYWHERE REACHED IT — pwr2_shell.js had no MAPPED,
-    // REHOMED or REFUSED entry, so it was not even a declared gap. The shell door went in with
-    // this tile; neither half is any use alone.
-    //
-    // SOURCED, WTSM 3.2 (ML11223A213), quoted in pwr2_pressurizer.js:263: auxiliary spray
-    // exists to cool the pressurizer down "if the reactor coolant pumps are not operating".
-    // That is not a corner case on this plant any more — since #507 wave 10 the SHIPPED cold
-    // end is Mode 4, Hot Shutdown, with the pumps SECURED.
-    //
-    // ⚠ AND THE FIRST VERSION OF THIS COMMENT GOT THE REASON WRONG, from a comment three
-    // paragraphs up. It said normal spray "delivers 4.45 % with the pumps stopped", so aux
-    // spray was the only way down. That 4.45 is the PZR SPRAY flow note's number and it is the
-    // RETIRED ENGINE's. MEASURED on PWR2, hot zero power, 600 s from 2235 psia:
-    //
-    //   pumps ON,  normal spray 100 %   -> 1240 psia, delivered 100 %
-    //   pumps OFF, normal spray 100 %   -> 1212 psia, delivered 100 %   <- no head loss at all
-    //   pumps OFF, aux spray 100 %      -> 1353 psia
-    //   pumps OFF, neither              -> 2245 psia
-    //
-    // So on THIS plant normal spray does not lose its motive head, because Manuals/03 §5.3
-    // carries a DECLARED DEPARTURE that keeps it working pump-less precisely to stand in for
-    // the auxiliary spray the board did not have. Two consequences, and neither is this tile's
-    // to settle: the departure's own "about half the condensing duty" is inverted here (the
-    // stand-in is the STRONGER lever, 1212 against 1353), and with both levers live the plant
-    // now has two pump-less depressurization paths where the real one has one. Retiring the
-    // departure is a physics change and is owner's call — filed, not assumed.
-    //
-    // MEASURED through the shipped shell, hot zero power, every reactor coolant pump tripped,
-    // 600 s: 2235.0 -> 1352.9 psia (15.41 -> 9.33 MPa) at 100 %, against 2235.0 -> 2245.2 psia
-    // with it shut. 892 psi (6.15 MPa) of depressurization authority the board could not call
-    // for. (The #563 body's 864 psi is the same lever at the truth facade with the heaters
-    // forced to manual 0; this ride leaves them in their standing lineup, which is also why the
-    // shut leg drifts UP 10 psi rather than sitting still.)
-    //
-    // ONE CONTINUOUS LEVER, NOT A FOURTH MODE BUTTON — the same Q4 reasoning as AUX FEED
-    // THROTTLE above. The AUTO/MANUAL/OFF column beside it selects between modes of the NORMAL
-    // spray valve; a fourth button in that stack would read as a fourth mode of that one valve,
-    // when this is a different valve on a different supply. A demand box says "separate lever"
-    // without a word of explanation, and it gives the player the whole 0-100 % range the module
-    // models rather than a binary the physics does not have.
-    //
-    // GEOMETRY, measured not authored: the card grows to 840 (DOC_PATCHES ims1518jad4, which
-    // carries the argument for why this is not inside the SPRAY sub-card). A 90 px number
-    // renders 47 authored px tall, so 340,788 occupies 340..430 x 788..835 — clear of the
-    // deepest existing item in the card (a caption ending at 779) by 9 px and of the new card
-    // bottom by 5. x 430 abuts the HEATER sub-card's left edge, which ends at y 745 and so
-    // cannot clash.
-    { id: 'bdAuxSpray', kind: 'number',
-      name: 'PZR AUX SPRAY  ·  sim: set_aux_spray pct',
-      left: 340, top: 788, label: 'AUX SPRAY', width: 90, value: 0, step: 5, digits: 0,
-      unit: '%', editable: true, color: '#4fe3ff', fontSize: 12 },
+    // AUXILIARY SPRAY: the bdAuxSpray tile lived here for one day (#563 item 2, 2026-08-30)
+    // and was REMOVED BY OWNER DIRECTION (in-sim report, 2026-08-31: "remove aux spray box").
+    // The engine door (`set_aux_spray`, pwr2_shell) STAYS — a command-surface capability for
+    // scenarios and the instructor, same split as `set_afw_flow` above. The tile's physics
+    // measurements and the sourced rationale are preserved in git at the #563 commit.
     { id: 'bdAdvPct', kind: 'value', name: 'ADV position  ·  sim: instruments.adv_valve, % open',
       // rAnchor — `left` is the RIGHT edge for a value tile. Measured the hard way:
       // left-anchored at 1579 it rendered 12 px OUTSIDE the card's left border.
@@ -1086,7 +1038,7 @@
      * the water-solid gate — so the player's own setting vanished from the box they typed it
      * into the moment the plant stopped honouring it (measured: a standing 60 % demand read 0.0
      * once the pressurizer went solid), and a stuck valve read back as 100 % the player never
-     * asked for. Same law as AUX FEED THROTTLE and bdAuxSpray: the plant publishes the demand,
+     * asked for. Same law as AUX FEED THROTTLE: the plant publishes the demand,
      * the board offers it. Falls back to the delivered field for any engine that does not
      * publish a demand — the retired engine's `spray_valve_pct` IS its demand, so that path is
      * unchanged. */
@@ -1102,13 +1054,8 @@
     bdAdvSp:     { set: function (v) { cmd({ action: 'set_adv_setpoint', mpa: v }); },        get: function (s) { return CS(s).adv_setpoint || 0; } },
     // AUX FEED THROTTLE (#562). `pct` is the field control_kernel declares for this action,
     /* the AUX FEED THROTTLE setter went with its tile (#591 item 2) — see EXTRA_ITEMS */
-    /* PZR AUX SPRAY (#563 item 2) — the OPERATOR'S DEMAND both ways. `get` reads the standing
-     * demand the shell publishes, never delivered flow: the module gates delivery on
-     * ac_available, so a box reading delivery would snap back to 0 on a blacked-out plant
-     * while the operator's lever was still where they left it. Engine-agnostic like the
-     * throttle above — any engine publishing aux_spray_pct gets the box. */
-    bdAuxSpray: { set: function (v) { cmd({ action: 'set_aux_spray', pct: v }); },
-                  get: function (s) { var v = CS(s).aux_spray_pct; return v == null ? 0 : v; } },
+    /* the PZR AUX SPRAY setter went with its tile (owner direction 2026-08-31) — the
+     * `set_aux_spray` engine door stays, see the EXTRA_ITEMS note. */
     // RHR heat-exchanger flow split, % — the cooldown-RATE knob (Q_rhr scales with it,
     // pwr_thermal.js:90-93). Deliberately NOT an alignment command: the control layer
     // excludes set_rhr_hx from the 'rhr' ESF arm's disarming command list, so trimming
@@ -3060,32 +3007,9 @@
       // CVCS flow captions to 14 px — #350 item 27, see the note above DOC_PATCHES.
       // NIS caption authored "d TEMP AVG" — the builder text lost its Δ (#235).
       imrsho1qu6t: { props: { text: 'Δ TEMP AVG' } },
-      /* PRESSURIZER card grown 235 -> 290 (ends 785 -> 840) to carry the AUX SPRAY control
-       * (#563 item 2 — the EXTRA_ITEMS entry has the physics and the measurement). Nothing
-       * moves: the card gains a strip that was empty board.
-       *
-       * WHY IT IS NOT IN THE SPRAY SUB-CARD, which is where it belongs on the face of it.
-       * MEASURED IN THE BROWSER (playwright, 1400x900, the board_check harness), because the
-       * doc leaves a `number`'s height undefined and every authored-coordinate argument here
-       * has to be checked against a render: the SPRAY sub-card is 575..745, and its 0-100 %
-       * demand box is authored at top 690 and renders **47 authored px tall** — 690..737 — so
-       * the free band inside that sub-card is EIGHT pixels. It is full. The 26 px a reader
-       * would assume from the neighbouring buttons is wrong by 21, and this is the second
-       * time that exact assumption has been made here (see the PZR SPRAY flow readout's note
-       * in EXTRA_ITEMS, which overlapped this same box by 80x20 for the same reason).
-       *
-       * The strip below is genuinely clear, measured doc-wide over x 325..535, y 782..850:
-       * the deepest thing in the card is a caption ending at 779, and the nearest neighbour
-       * outside it is ACCUMULATORS at x 550. Growing DOWN therefore moves nothing, which is
-       * the difference between this and the AUX FEED THROTTLE patch below — that one had to
-       * push CONDENSER COOLING and its three children 40 px to make its room.
-       *
-       * Geometry goes under `props`, NOT at the top of the patch: applyDocPatches reads only
-       * `patch.props` and `patch.ports`, so a bare `height:` here is silently dropped and the
-       * card keeps its authored size while the patch reads as if it worked. Measured: the
-       * first attempt did exactly that — the tile rendered 50 px BELOW a card that had not
-       * grown, and only a browser measurement of the card's own bottom edge found it. */
-      ims1518jad4: { props: { height: 290 } },
+      /* (The PRESSURIZER card's 235 -> 290 growth patch went with the AUX SPRAY tile it
+       * carried — owner direction 2026-08-31; the card is back at its authored height. The
+       * geometry measurements are in git at the #563 commit.) */
       /* PERIOD readout and its caption (#516 item 4, re-laid out at #591 item 3). See the
        * bdReactivityCard note in EXTRA_ITEMS for the measurement: #516 item 4 right-aligned
        * this value at 750 to match the REACTIVITY value above it, and that alignment pushed
@@ -3658,12 +3582,6 @@
        * the #567 `condenser_cw_temp_fixed` flag, which was true only because the action was
        * refused for the RETIRED plant's reason). PWR2 publishes it and the box is live. */
       if (item.id === 'ims3v42jghn') return CS(s).cw_inlet_temp_c === undefined;
-      /* AUX SPRAY (#563 item 2): dark on any plant that does not publish the demand. The
-       * retired engine has no auxiliary spray at all and `set_aux_spray` is not in its command
-       * switch, so on `?engine=pwr` — still reachable on a dev or preview build — a live box
-       * here would be a control that throws. This is the numberDisabled half of the same law
-       * the AUX FEED THROTTLE comment names: the plant publishes, the board offers. */
-      if (item.id === 'bdAuxSpray') return CS(s).aux_spray_pct === undefined;
       return false;
     },
     // Control tiles to append to the board that aren't in the generated board_data.js.

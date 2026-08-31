@@ -2452,7 +2452,20 @@
     // evenly.
     var gridT = Math.floor(s.metadata.sim_time / CHART_SAMPLE_SEC) * CHART_SAMPLE_SEC;
     var lastT = chartBuf.length ? chartBuf[chartBuf.length - 1].t : null;
-    if (lastT != null && gridT - lastT < CHART_SAMPLE_SEC - 1e-9) { drawChart(); return; }
+    /* NO NEW ROW → REDRAW ONLY IF SOMETHING ELSE CHANGED (the 2026-08-31 bug report:
+     * 4.7 fps, render 29 ms avg, RENDER-BOUND). drawChart rebuilds the whole SVG via
+     * innerHTML, and this path used to call it on EVERY broadcast — at the 10 Hz normal
+     * cadence with a row landing only each 0.2 s of SIM time, most of those rebuilds were
+     * pixel-identical (all of them at 1× only re-plot the same buffer; profiled: drawChart
+     * was the largest JS consumer and ~40% of a core sat in native style/layout/parse).
+     * chartDrawKey() names every input that can change the picture WITHOUT a new row: the
+     * buffer identity, the window, a new event for the SOE ribbon. Everything else that
+     * moves the chart (cursor, resize, series/settings, rewind) already calls drawChart()
+     * itself, unconditionally — this gate exists on the broadcast path alone. */
+    if (lastT != null && gridT - lastT < CHART_SAMPLE_SEC - 1e-9) {
+      if (chartDrawKey() !== chartDrawnKey) drawChart();
+      return;
+    }
     var one = chartSample(rawIns, s.true_state, s.control_state);
     var sv = one.v, stv = one.tv;
     // NO SEEDED HISTORY. A fresh buffer starts EMPTY and fills from the right — the #237
@@ -4721,7 +4734,18 @@
     return { t0: t0, t1: t1, span: t1 - t0 };
   }
 
+  /* What the broadcast path's redraw gate compares (see the CHART_SAMPLE_SEC gate). Names
+   * every input that can change the drawn chart with NO new row landing: the buffer identity
+   * (a rewind pops rows without adding one), the window, and the event count (the SOE ribbon
+   * draws events the instant they arrive, between rows). Deliberately NOT here: cursor,
+   * resize, series/settings, rewind-pick — each of those paths calls drawChart() directly. */
+  var chartDrawnKey = '';
+  function chartDrawKey() {
+    return chartBuf.length + ':' + (chartBuf.length ? chartBuf[chartBuf.length - 1].t : -1) +
+           ':' + ui.window + ':' + (RD.Events ? RD.Events.count() : 0);
+  }
   function drawChart() {
+    chartDrawnKey = chartDrawKey();
     var svg = $('chartCanvas'), floats = $('chartFloats'), W = 400, H = 120;
     var active = prof().series.filter(function (s) { return ui.series[s.id]; });
     if (chartBuf.length < 2) {

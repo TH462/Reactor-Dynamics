@@ -787,12 +787,12 @@
     }
   }
 
-  // Stop/start a pipe's dashes with animation-PLAY-STATE, never by rewriting
-  // `style.animation`. The shorthand carries animation-delay, and StdPipe puts the run's
-  // world dash PHASE in that delay (#233) — reassigning the shorthand would drop it and the
-  // pipe would rejoin its fitting a fraction of a dash out of step. Pausing also leaves the
-  // dashes where they stopped instead of snapping them back to phase 0.
-  // The board-wide freeze (.bd-frozen) uses `!important`, so it still wins over this.
+  // Stop/start a pipe's dashes with animation-PLAY-STATE. Since 2026-08-31 there is no CSS
+  // animation behind it — StdPipe's shared ~12 Hz clock reads this inline style as the
+  // per-line hold flag (and pipeFlowState() below reads it back), so the property is still
+  // the one true switch. Pausing leaves the dashes where they stopped; resuming rejoins the
+  // SHARED clock, so a resumed line lands back on the #233 world grid rather than a private
+  // phase. The board-wide freeze (.bd-frozen) holds the whole clock instead.
   //
   // Since #350 a pipe can ALSO be stilled, re-timed or reversed by its own driver entry
   // (`pipeFlow`), independently of the components at its ends. The two gates are ANDed: a

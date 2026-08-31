@@ -29,6 +29,61 @@ and the user-visible summary in `CHANGELOG.md`. This file points at those and tr
 
 ---
 
+## Session log — 2026-08-31-develop-b (#596 — the in-sim report: AUX SPRAY box removed, and the render pass was doing 60 Hz work for a 10 Hz display)
+
+**Source**: in-sim bug report `2026-08-31_mth3218c-fp42sbsl` (saved in `RD_Ops/bug-reports/`),
+PWR2 hot full power, LOCA + SGTR. Note: *"1. remove aux spray box. 2. some indications and
+drawing boxes were flickering under high system load."* Bundle profiler: **4.7 fps, render
+40.9 ms p95, physics step 2.5 ms p95 — RENDER-BOUND.**
+
+**Item 1 — AUX SPRAY box removed** (owner directive via the report). The #563 item 2 tile
+lasted one day. Removed: EXTRA_ITEMS tile, VALUE_MAP setter, numberDisabled rule, BOARD_RANGES
+row, inspect entry, and the `ims1518jad4` 235→290 card-growth patch (pressurizer card back at
+authored height). `Manuals/03` §5.3a + its §18 row deleted; §5.3's declared departure reverts
+to being the board's one pump-less depressurization path; pending Rev 17 gains item (e). **The
+`set_aux_spray` engine door STAYS** (scenarios/instructor; `run_pwr2_shell` 145/145) — board
+decision, not a plant one (Hard Rule 9).
+
+**Item 2 — the flicker, measured.** Two independent 60 Hz wastes found by profiling the real
+page (Playwright + CPU profile + devtools.timeline, `?engine=pwr2&init=hot_full_power&run=1&inject=large_loca`):
+
+1. **`drawChart` ran a full innerHTML SVG rebuild on EVERY paint** while a chart row lands only
+   each 0.2 s of sim time — at 1× most rebuilds were pixel-identical. Fixed with a redraw gate
+   on the broadcast path only (`chartDrawKey`: buffer length + last row t + window + event
+   count; cursor/resize/series/rewind paths already call `drawChart()` directly and are
+   untouched). Measured: drawChart 1,052 → 435 ms per 25 s; DOM pass 7.1 → 5.4 ms avg.
+2. **~100 dash strokes each carried their own 60 Hz CSS animation** — `stroke-dashoffset` never
+   composites, so every stroke repainted every vsync. A/B over 15 s: animations on = 28,765
+   Paint events / 8.9 s raster; off = 9,429 / 3.8 s. Converted the pipe dashes to ONE shared
+   ~12 Hz JS clock in `std_pipe.js` (interval → rAF batch; elements carry
+   `data-dash-cyc/-t/-dir/-sign`; `style.animationPlayState === 'paused'` is still the
+   per-line hold flag `pipeFlowState()` reads; `.bd-frozen` holds the whole clock). The vessel's
+   circulation streaks joined the same contract. Remaining animations (bubbles, `flowmove`
+   component dashes, spins, puffs, rain) quantized to ~12 Hz `steps()`. Net: raster 8.9 → 6.5 s,
+   Paint 28.8 k → 17.5 k.
+
+**Traps for next time.**
+- **The paint-event clip rect is the LAYER bounds, not the damage rect** — my first read of
+  "893 × 1500x950 paints" as full-viewport damage was wrong; only the duration column and the
+  A/B are meaningful.
+- **A `steps()` quantization does NOT cut frame production** — per-element phases scatter the
+  step edges, so some element steps in nearly every vsync and the compositor still commits at
+  60 Hz (Layerize ×~895 per 15 s, unchanged through every partial fix). Only a SHARED clock
+  aligns the writes. That conversion for the remaining animations is the #596 follow-up; the
+  measured floor is 3.8 s raster / 15 s.
+- **Headless quirks that cost time**: `wrangler dev --remote` fails when the Analytics-read
+  `CLOUDFLARE_API_TOKEN` env var shadows the OAuth login (`env -u CLOUDFLARE_API_TOKEN` fixes
+  it — fetch_bug_reports.js could do this itself); and `?run=1` alone does not start the sim
+  under Playwright — a boot modal leaves a `pauseWhy` hold, so press `#playBtn` after closing
+  it.
+- **Per-element CSS pause/resume was silently breaking #233**: a paused-then-resumed flow line
+  kept its private elapsed time and rejoined the world dash grid out of phase, permanently. The
+  shared clock repairs this as a side effect — a resumed line lands back on the grid.
+
+**Gates**: run_pwr2_shell 145/145 · run_manual_rev 15/15 · run_manual_commands 8/8 ·
+run_manual_setpoints 13/13 · run_manual_units 0 failed · run_inspect 56/56 ·
+verify_board_check 237 checks PASS · full `run_all` at session end.
+
 ## Session log — 2026-08-31-develop-a (#591 + #564 + #578 + #592 — the owner's playtest, and four controls that read as working)
 
 **Seven items, four issues, one shape: a control surface on the plant the site runs that reads as

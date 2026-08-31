@@ -30,6 +30,36 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
 
 ## [Unreleased]
 
+### Fixed (in-sim report: the AUX SPRAY box goes, and the render pass stops repainting the world — 2026-08-31)
+
+In-sim bug report `2026-08-31_mth3218c-fp42sbsl` (#596), two items, both landed:
+
+- **The AUX SPRAY box is removed from the pressurizer card** *(OWNER DIRECTIVE, 2026-08-31,
+  in-sim report: "remove aux spray box.")* — one day after #563 item 2 added it. The tile, its
+  setter, its dark-state rule, its inspect entry and the pressurizer card's 235 → 290 growth
+  patch all go; `Manuals/03` §5.3a and its §18 command row go with them, and the §5.3 declared
+  departure (normal spray keeps its head with the pumps stopped) reverts to being the board's
+  one pump-less way down in pressure. **The engine keeps auxiliary spray** — `set_aux_spray`
+  stays a scriptable door for scenarios and the instructor (`run_pwr2_shell` 145/145) — so this
+  is a board decision, not a plant one (Hard Rule 9). Pending Rev 17 item (e).
+- **The render pass stops doing 60 Hz work for a ~10 Hz display** ("some indications and drawing
+  boxes were flickering under high system load" — the bundle's own profiler read **4.7 fps,
+  render 40.9 ms p95, physics 2.5 ms**: render-bound). Three changes, each measured in a
+  profiled browser run (hot full power + large LOCA):
+  - The strip chart no longer rebuilds its whole SVG on broadcasts that added no row —
+    `drawChart` JS fell **1,052 → 435 ms per 25 s** (−59 %), the whole DOM pass **7.1 → 5.4 ms**
+    per paint (−24 %).
+  - The board's pipe dashes moved off per-element CSS animation (60 Hz repaints —
+    `stroke-dashoffset` never composites) onto **one shared ~12 Hz JS clock** in `std_pipe.js`,
+    written as a single rAF-aligned batch. Also repairs a latent phase defect: per-element CSS
+    pause/resume left a resumed line permanently off the #233 world dash grid; the shared clock
+    cannot.
+  - The remaining board animations (bubbles, component flows, spins, puffs, rain) are quantized
+    to ~12 Hz `steps()` timing. Net over a 15 s trace: **raster 8.9 → 6.5 s (−27 %), paint
+    events 28,765 → 17,533 (−39 %)**. The rest of the gap (measured floor: 3.8 s raster with
+    animations off) needs the remaining animations on the shared clock — filed as the #596
+    follow-up.
+
 ### Fixed (the owner's playtest, and four controls that read as working — 2026-08-31)
 
 `#591` (owner playtest, 2026-08-30) + `#564` (the board third of the `#534` sweep) + `#578` +

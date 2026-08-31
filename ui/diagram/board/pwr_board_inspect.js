@@ -885,21 +885,6 @@
       'Steam pressure the automatic atmospheric dump holds, in the pressure unit shown.',
       'Same idiom as the Dump SP box and the same limits: it clamps to the code-safety band, and ' +
       'lowering it walks the secondary — and the primary with it — down the saturation curve.', CI, '12.3'),
-    bdAuxSpray: e('Pressurizer Auxiliary Spray',
-      'How far the auxiliary spray valve is open, in per cent.',
-      'The normal pressurizer spray is driven by the reactor coolant pumps: it taps the cold leg ' +
-      'and needs the pump\'s own head to push water up into the steam space. Stop the pumps and ' +
-      'the spray goes with them — commanded fully open it still delivers only a few per cent, ' +
-      'which is measured, not asserted. Auxiliary spray is the answer to that. It is fed from the ' +
-      'charging pumps instead, so it works on a plant with every reactor coolant pump secured, ' +
-      'which is exactly the shutdown and cooldown condition this plant now starts in. Without it ' +
-      'the only remaining way down in pressure with the pumps off is to lift the relief valve and ' +
-      'dump reactor coolant into containment, which is the thing the real system exists to avoid. ' +
-      'It is slow and it is deliberate. Measured on a plant at hot standby with every reactor ' +
-      'coolant pump secured, full open takes pressure down about 880 psi (6.07 MPa) over ten ' +
-      'minutes — a long steady walk, not a step. ' +
-      'There is no automatic mode: nothing opens this valve but you.',
-      CI, '12.3'),
     bdAdvPct: e('ADV Position',
       'How far the atmospheric dump valves are open, in per cent.',
       'Reads the valve position, not the demand. At zero the valves are seated and nothing is venting ' +

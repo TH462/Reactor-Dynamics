@@ -139,19 +139,63 @@
   var SIZES = { small: 4, medium: 8, large: 12 };
   var STUB_LEN = { small: 20, medium: 26, large: 32 };
 
-  // Dash period is fixed (10+15=25) so the shared keyframe loops seamlessly at every
+  // Dash period is fixed (10+15=25) so the shared clock loops seamlessly at every
   // diameter; only the flow-line THICKNESS scales with d.
+  //
+  // THE DASHES ARE DRIVEN BY ONE JS CLOCK AT ~12 Hz, NOT BY CSS ANIMATIONS (2026-08-31 bug
+  // report: "indications and drawing boxes were flickering under high system load", 4.7 fps).
+  // `stroke-dashoffset` is not compositable, so a CSS animation of it repaints the stroke at
+  // the display rate — MEASURED over 15 s of the shipped board: 28,765 Paint events and 8.9 s
+  // of raster with the animations on, 9,429 and 3.8 s with them off. ~100 strokes each
+  // invalidating at 60 Hz was most of the board's browser-side cost, and on a loaded machine
+  // it is what starved the app's own rAF down to 4.7 fps. One ticker that writes every
+  // stroke's offset in a single rAF-aligned batch cuts the invalidation rate 5× and keeps
+  // every element on the same instant of the shared clock — the #233 world-grid alignment
+  // this file exists to preserve (per-element CSS pause/resume actually BROKE that grid: a
+  // resumed element kept its private elapsed time and rejoined out of phase; the shared
+  // clock cannot).
+  //
+  // Element contract (set by pipe()/setFlowSpeed here and by comp_reactor_vessel's
+  // flowLine): `data-dash-cyc` seconds per period, `data-dash-t` the drawn world phase 0..1,
+  // `data-dash-dir` the drawn direction, `data-dash-sign` the EFFECTIVE direction (differs
+  // from drawn when setFlowSpeed reversed the line). `style.animationPlayState === 'paused'`
+  // still means "hold" — pwr_board writes it and pipeFlowState() reads it back — and the
+  // board-wide `.bd-frozen` freeze holds the whole clock.
+  var FLOW_FPS = 12;
+  var flowClockMs = 0, flowLastMs = 0, flowTimer = 0, flowRafPend = false;
+  function flowTick() {
+    flowRafPend = false;
+    var now = performance.now();
+    var frozen = !!document.querySelector('.pwr-board-stage.bd-frozen');
+    if (!flowLastMs) flowLastMs = now;
+    if (!frozen) flowClockMs += now - flowLastMs;
+    flowLastMs = now;
+    if (frozen) return;
+    var els = document.querySelectorAll('polyline[data-dash-cyc]');
+    if (!els.length) return;
+    var t = flowClockMs / 1000;
+    for (var i = 0; i < els.length; i++) {
+      var el = els[i];
+      if (el.style.animationPlayState === 'paused') continue;
+      var cyc = parseFloat(el.getAttribute('data-dash-cyc')) || DASH_CYCLE_S;
+      var ph = parseFloat(el.getAttribute('data-dash-t')) || 0;
+      var drawn = parseFloat(el.getAttribute('data-dash-dir')) || 1;
+      var signAttr = parseFloat(el.getAttribute('data-dash-sign'));
+      var sign = isFinite(signAttr) ? signAttr : drawn;
+      if (sign !== drawn) ph = (1 - ph) % 1;   // same complement setFlowSpeed's reverse used
+      var prog = (t / cyc + ph) % 1;
+      el.setAttribute('stroke-dashoffset', ((sign < 0 ? DASH_PERIOD : -DASH_PERIOD) * prog).toFixed(2));
+    }
+  }
   function ensureStyles() {
-    if (document.getElementById('std-pipe-styles')) return;
-    var s = document.createElement('style');
-    s.id = 'std-pipe-styles';
-    // ONE dash period per cycle (DASH_PERIOD = 25). `from` is anchored explicitly as well as
-    // `to` so the element's own stroke-dashoffset — which carries the POSITION phase — is not
-    // clobbered by the animation; the phase is applied as a negative animation-delay instead.
-    s.textContent =
-      '@keyframes stdPipeFlow{from{stroke-dashoffset:0}to{stroke-dashoffset:-25}}' +
-      '@keyframes stdPipeFlowRev{from{stroke-dashoffset:0}to{stroke-dashoffset:25}}';
-    (document.head || document.documentElement).appendChild(s);
+    if (flowTimer || typeof document === 'undefined') return;
+    flowTimer = setInterval(function () {
+      // Writes land inside a rAF so a frame never composites mid-batch (the 2026-08-06
+      // strobing lesson, ui/app.js render()).
+      if (flowRafPend) return;
+      flowRafPend = true;
+      (window.requestAnimationFrame || setTimeout)(flowTick);
+    }, Math.round(1000 / FLOW_FPS));
   }
 
   function pointsOf(o) {
@@ -217,17 +261,14 @@
   function setFlowSpeed(el, speed, reverse) {
     if (!el || !el.style) return;
     var cyc = DASH_CYCLE_S / clampSpeed(speed);
-    var t = parseFloat(el.getAttribute('data-dash-t'));
-    if (!isFinite(t)) t = 0;
     var dir0 = parseFloat(el.getAttribute('data-dash-dir'));
     if (!isFinite(dir0)) dir0 = 1;
     var dir = reverse ? -dir0 : dir0;
-    if (reverse) t = (1 - t) % 1;
-    el.style.animationName = dir < 0 ? 'stdPipeFlowRev' : 'stdPipeFlow';
-    el.style.animationDuration = cyc.toFixed(3) + 's';
-    el.style.animationDelay = (-(t * cyc)).toFixed(3) + 's';
-    el.style.animationTimingFunction = 'linear';
-    el.style.animationIterationCount = 'infinite';
+    // Re-time by rewriting the clock contract, not CSS longhands — the shared ticker
+    // (flowTick above) reads these on its next beat. `data-dash-t` stays the DRAWN phase;
+    // the reverse complement is applied by the ticker when sign differs from drawn.
+    el.setAttribute('data-dash-cyc', cyc.toFixed(4));
+    el.setAttribute('data-dash-sign', String(dir));
   }
 
   function dashPhase(pts, dir, cycleDur, ox, oy) {
@@ -281,10 +322,10 @@
           strokeWidth: Math.max(2, d * 0.42), strokeLinecap: 'round', strokeLinejoin: 'round',
           strokeDasharray: '10 15', strokeDashoffset: ph.offset, opacity: 0.92,
           'data-dash-t': ph.t.toFixed(6), 'data-dash-dir': String(ph.dir),
-          style: o.paused ? {} : {
-            animation: (ph.dir < 0 ? 'stdPipeFlowRev ' : 'stdPipeFlow ') + cyc.toFixed(3) + 's linear infinite',
-            animationDelay: ph.delay.toFixed(3) + 's'
-          }
+          // The shared clock (flowTick) animates every element carrying data-dash-cyc; a
+          // paused line holds via animationPlayState, same flag pwr_board always wrote.
+          'data-dash-cyc': cyc.toFixed(4), 'data-dash-sign': String(ph.dir),
+          style: o.paused ? { animationPlayState: 'paused' } : {}
         }));
       }
       return h('g', { key: o.key }, kids);
