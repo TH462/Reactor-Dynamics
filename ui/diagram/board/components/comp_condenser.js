@@ -20,7 +20,7 @@
     s.id = 'bd-condenser-styles';
     s.textContent =
       '@keyframes flowmove{to{stroke-dashoffset:-24}}' +
-      '.flow{stroke-dasharray:9 15;animation:flowmove 1.1s steps(13) infinite}';
+      '.flow{stroke-dasharray:9 15;animation:flowmove 1.1s steps(26) infinite}';
     (document.head || document.documentElement).appendChild(s);
   }
 

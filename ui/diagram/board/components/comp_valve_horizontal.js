@@ -22,7 +22,7 @@
     s.id = 'bd-valve-horizontal-styles';
     s.textContent =
       '@keyframes flowmove{to{stroke-dashoffset:-24}}' +
-      '.flow{stroke-dasharray:9 15;animation:flowmove 1.1s steps(13) infinite}' +
+      '.flow{stroke-dasharray:9 15;animation:flowmove 1.1s steps(26) infinite}' +
       '.vlv-hit:hover + .vlv-hoverring{opacity:0.75}' +
       '.vlv-hit:active + .vlv-hoverring{opacity:1}';
     (document.head || document.documentElement).appendChild(s);

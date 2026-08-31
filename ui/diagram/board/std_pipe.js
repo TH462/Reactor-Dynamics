@@ -142,14 +142,16 @@
   // Dash period is fixed (10+15=25) so the shared clock loops seamlessly at every
   // diameter; only the flow-line THICKNESS scales with d.
   //
-  // THE DASHES ARE DRIVEN BY ONE JS CLOCK AT ~12 Hz, NOT BY CSS ANIMATIONS (2026-08-31 bug
+  // THE DASHES ARE DRIVEN BY ONE JS CLOCK AT ~24 Hz, NOT BY CSS ANIMATIONS (2026-08-31 bug
   // report: "indications and drawing boxes were flickering under high system load", 4.7 fps).
   // `stroke-dashoffset` is not compositable, so a CSS animation of it repaints the stroke at
   // the display rate — MEASURED over 15 s of the shipped board: 28,765 Paint events and 8.9 s
   // of raster with the animations on, 9,429 and 3.8 s with them off. ~100 strokes each
   // invalidating at 60 Hz was most of the board's browser-side cost, and on a loaded machine
   // it is what starved the app's own rAF down to 4.7 fps. One ticker that writes every
-  // stroke's offset in a single rAF-aligned batch cuts the invalidation rate 5× and keeps
+  // stroke's offset in a single rAF-aligned batch cuts the invalidation rate (60 → 24 Hz;
+  // first shipped at 12 Hz and raised same day — OWNER, 2026-08-31: "The 12hz may be too
+  // slow. It looks choppy.") and keeps
   // every element on the same instant of the shared clock — the #233 world-grid alignment
   // this file exists to preserve (per-element CSS pause/resume actually BROKE that grid: a
   // resumed element kept its private elapsed time and rejoined out of phase; the shared
@@ -161,7 +163,7 @@
   // from drawn when setFlowSpeed reversed the line). `style.animationPlayState === 'paused'`
   // still means "hold" — pwr_board writes it and pipeFlowState() reads it back — and the
   // board-wide `.bd-frozen` freeze holds the whole clock.
-  var FLOW_FPS = 12;
+  var FLOW_FPS = 24;
   var flowClockMs = 0, flowLastMs = 0, flowTimer = 0, flowRafPend = false;
   function flowTick() {
     flowRafPend = false;

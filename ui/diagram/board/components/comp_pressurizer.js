@@ -36,7 +36,7 @@
     s.id = 'bd-pressurizer-styles';
     s.textContent =
       '@keyframes flowmove{to{stroke-dashoffset:-24}}' +
-      '.flow{stroke-dasharray:9 15;animation:flowmove 1.1s steps(13) infinite}' +
+      '.flow{stroke-dasharray:9 15;animation:flowmove 1.1s steps(26) infinite}' +
       '@keyframes sprayFall{0%{transform:translateY(0);opacity:0}12%{opacity:1}100%{transform:translateY(72px);opacity:0}}' +
       // Per-bubble rise distance *(OWNER DIRECTIVE, 2026-08-04: "Pressurizer bubbles should
       // travel to the top of the water level. (but not into the steam above it)")*, #350
@@ -384,7 +384,7 @@
         if (el.getAttribute('r') !== r) el.setAttribute('r', r);
         if (el.getAttribute('opacity') !== String(op)) el.setAttribute('opacity', op);
         if (!el.__anim) {
-          el.style.animation = 'pzrBubbleRise ' + dur + 's steps(' + Math.max(2, Math.round(dur * 12)) + ') infinite';
+          el.style.animation = 'pzrBubbleRise ' + dur + 's steps(' + Math.max(2, Math.round(dur * 24)) + ') infinite';
           el.style.animationDelay = delay + 's';
           el.__anim = true;
         } else if (el.style.animationDuration !== dur + 's') {
@@ -404,7 +404,7 @@
         var dur = (0.5 + (i % 3) * 0.1).toFixed(2);
         var r = 2 + (i % 3) * 0.6;
         sprayDrops.appendChild(h('circle', { cx: spx + dx * 0.75, cy: spyMouth, r: r, fill: '#5aa0e6', opacity: 0.95,
-          style: { animation: 'sprayFall ' + dur + 's steps(' + Math.max(2, Math.round(dur * 12)) + ') infinite', animationDelay: delay + 's', transformBox: 'fill-box' } }));
+          style: { animation: 'sprayFall ' + dur + 's steps(' + Math.max(2, Math.round(dur * 24)) + ') infinite', animationDelay: delay + 's', transformBox: 'fill-box' } }));
       }
     }
 

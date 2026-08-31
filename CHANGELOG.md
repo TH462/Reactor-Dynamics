@@ -30,6 +30,21 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
 
 ## [Unreleased]
 
+### Fixed (the 1.7.1 stress reports: 24 Hz animations, and the heater was chasing its own instrument — 2026-08-31)
+
+- **Board animation clock 12 → 24 Hz** *(OWNER, 2026-08-31: "The 12hz may be too slow. It
+  looks choppy.")* — the shared dash clock and every `steps()` quantization doubled. Measured:
+  raster returns to 8.4 s per 15 s (from 6.5 at 12 Hz, 8.9 pre-fix) because scattered step
+  phases still commit 60 Hz frames — the #596 shared-clock follow-up is what recovers it.
+- **The pressurizer heater no longer chatters** (owner stress report: "PZR heater cycling on
+  and off rapidly"). The proportional bank read the raw control-channel error each tick
+  (σ 2.9 psi on a 30 psi band, 0.125 s correlation): readback re-set on 859 of 1,200
+  broadcasts ±3 points, and the backup bank's 8 psi hysteresis was 2.8 σ of the noise —
+  cyclable when parked below setpoint. A 2 s first-order lag (`prop_filter_tau_s` [tune]) now
+  feeds the proportional bank and backup bistable; spray/PORV keep the raw error. Measured:
+  readback 7.2/s ±3 → 2.4/s ±0.5; backup transitions 0 in 300 s parked 21 psi low.
+  Fixtures re-validated against the pre-filter engine before moving (100/100 both ways).
+
 ## [Alpha 1.7.1] — 2026-08-31
 
 ### Fixed (in-sim report: the AUX SPRAY box goes, and the render pass stops repainting the world — 2026-08-31)

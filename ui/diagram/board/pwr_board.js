@@ -788,7 +788,7 @@
   }
 
   // Stop/start a pipe's dashes with animation-PLAY-STATE. Since 2026-08-31 there is no CSS
-  // animation behind it — StdPipe's shared ~12 Hz clock reads this inline style as the
+  // animation behind it — StdPipe's shared ~24 Hz clock reads this inline style as the
   // per-line hold flag (and pipeFlowState() below reads it back), so the property is still
   // the one true switch. Pausing leaves the dashes where they stopped; resuming rejoins the
   // SHARED clock, so a resumed line lands back on the #233 world grid rather than a private

@@ -168,7 +168,7 @@
       if (spd !== lastSpd) {
         lastSpd = spd;
         var spinDur = spd < 2 ? 0 : Math.max(0.35, 2.8 - (spd / 100) * 2.45);
-        var anim = spinDur > 0 ? 'rcpSpin ' + spinDur.toFixed(2) + 's steps(' + Math.max(4, Math.round(spinDur * 12)) + ') infinite' : '';
+        var anim = spinDur > 0 ? 'rcpSpin ' + spinDur.toFixed(2) + 's steps(' + Math.max(8, Math.round(spinDur * 24)) + ') infinite' : '';
         if (anim !== lastAnim) { lastAnim = anim; impellerG.style.animation = anim; }
         var on = spd > 2;
         if (on !== lastOn) {

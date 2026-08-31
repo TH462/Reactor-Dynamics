@@ -18,7 +18,7 @@
     s.id = 'bd-valve-styles';
     s.textContent =
       '@keyframes flowmove{to{stroke-dashoffset:-24}}' +
-      '.flow{stroke-dasharray:9 15;animation:flowmove 1.1s steps(13) infinite}' +
+      '.flow{stroke-dasharray:9 15;animation:flowmove 1.1s steps(26) infinite}' +
       '.cv-hit:hover + .cv-hoverring{opacity:0.75}' +
       '.cv-hit:active + .cv-hoverring{opacity:1}';
     (document.head || document.documentElement).appendChild(s);

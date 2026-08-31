@@ -29,6 +29,42 @@ and the user-visible summary in `CHANGELOG.md`. This file points at those and tr
 
 ---
 
+## Session log — 2026-08-31-develop-c (the 1.7.1 stress reports: 24 Hz, and the heater was chasing its own instrument)
+
+**Source**: the owner's two post-1.7.1 stress bundles (`mthfjoe1`, `mthfpr49`, saved in
+`RD_Ops/bug-reports/`) plus his direct note: *"The 12hz may be too slow. It looks choppy."*
+Both rides still read 4.6 fps / render ~40 ms p95 on his machine — RENDER-BOUND.
+
+**1. Animation clock 12 → 24 Hz** (owner's call). `FLOW_FPS` 24 in `std_pipe.js`, every
+`steps()` multiplier ×24, statics doubled (flowmove 26, rain 38, wideflow 36). MEASURED
+(same 15 s trace harness): raster 6.5 → **8.4 s** — most of the 12 Hz saving returns,
+because scattered `steps()` phases still commit frames at 60 Hz and only the shared-clock
+conversion (#596 follow-up) fixes that. Smoothness doubles; the chart-gate saving stands.
+
+**2. "PZR heater cycling on and off rapidly" — the #590 class, on the heater ladder.**
+The proportional bank read the raw control-channel error each tick: sigma 2.9 psi
+(0.02 MPa) on a 30 psi band with a 0.125 s noise correlation → the readback re-set on
+**859 of 1200 broadcasts, ±3 points at ~10 Hz**. And the backup bistable's 8 psi
+hysteresis is only 2.8 sigma of that noise — parked ~21 psi below setpoint (his ride's
+regime) the 1380 kW bank could latch and clear repeatedly. Fix: `prop_filter_tau_s: 2.0`
+`[tune]` — a first-order lag on the control error, read by the PROPORTIONAL bank and the
+BACKUP bistable; spray and the PORV auto-open deliberately keep the raw error (not
+reported, and a 2 s lag on a +100 psi control-open buys nothing). MEASURED: readback
+7.2/s ±3 → **2.4/s ±0.5**; backup transitions **0 in 300 s** parked 21 psi low.
+
+**Traps.**
+- **A fresh-instance single-step probe reads the SEED, not the mechanism** — the filter
+  seeds from the live error, so `once(-25)` style probes stayed green while the two
+  multi-step fixtures (hysteresis walk, HR1 lie) read one step after a change and went
+  red. Fixtures now HOLD each error 8 s (4τ) — validated on the PRE-filter engine first
+  (100/100), so the move is a better test, not a refit (HR10).
+- **The bistable rewrite orphaned its own mutation anchor** (the CLAUDE.md
+  refactor-moves-the-line case): `backup_off_psi` flattening reported ANCHOR MISS;
+  re-anchored to the `errFiltPsi` line, 49/49 caught again.
+
+**Gates**: run_pwr2_pressurizer 100/100 (49/49 mutations) · run_pwr2_engine 128/128 ·
+verify_board_check + verify_e2e_ui + full run_all at session end.
+
 ## Session log — 2026-08-31-develop-b (#596 — the in-sim report: AUX SPRAY box removed, and the render pass was doing 60 Hz work for a 10 Hz display)
 
 **Source**: in-sim bug report `2026-08-31_mth3218c-fp42sbsl` (saved in `RD_Ops/bug-reports/`),
