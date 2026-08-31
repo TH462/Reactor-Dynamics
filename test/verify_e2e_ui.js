@@ -1407,7 +1407,41 @@ async function testHeldPlantDialog(page) {
   }
   log.push('healthy plant: dialog hidden, clock unmarked');
 
-  await page.goto(base + '&inject=large_loca,station_blackout,afw_failure&ff=1500',
+  /* THE FIXTURE CARRIES failure_to_scram, AND THAT IS THE WHOLE FIX (#588/#589).
+   *
+   * The three-failure casualty this used to drive is MARGINAL, and marginal here does not mean
+   * "close to a threshold" — it means the blowdown endgame has sensitive dependence and ONE ULP
+   * picks the branch. Measured 2026-08-30 by nudging the initial pressure by single ulps (a
+   * relative perturbation of 1e-16, the smallest a double can carry) through the app's verbatim
+   * ff=1500 burst:
+   *
+   *   nudge   delivered   model_held      final
+   *   +0      1164 s      YES at 399 s    19.2 psia
+   *   +1      1092 s      NEVER           87.1 psia     <- and this IS the Linux branch
+   *   +2      1092 s      NEVER           87.1 psia
+   *   +8      1236 s      YES at 273 s    158.1 psia
+   *
+   * Three outcomes from four adjacent bit patterns. Windows and Linux were never disagreeing
+   * about physics — every Math primitive and all 3,600 water-table evaluations hash BIT-IDENTICAL
+   * across the two — they were landing on different branches of a chaotic trajectory, which is
+   * what #588 spent nine hypotheses hunting as a mechanism. There is no mechanism. There is a
+   * bifurcation, and this check was pinning it.
+   *
+   * That is the standing trap in CLAUDE.md, one level up from where #543 found it:
+   *   "A check can pin a BIFURCATION, not a claim ... one bit picks the branch (green here, red
+   *    on CI). Assert the invariant the defect violated."
+   *
+   * So the fixture moves off the cliff instead of the budget moving. Adding the ATWS drives the
+   * plant unambiguously outside the property library's range, and it holds on EVERY branch —
+   * measured at ulp +0/+1/+3/+8/+32 on BOTH platforms, ten runs, ten holds:
+   *
+   *   Windows   YES 243 / 228 / 411 / 273 / 273 s
+   *   Linux     YES 267 / 270 / 345 / 366 / 273 s
+   *
+   * ⚠ THE LATCH TIME IS NOT A CLAIM — it spans 228-411 s across those ten runs. Assert THAT it
+   * holds and that the dialog follows; never WHEN. A check that pins the second is this defect
+   * again wearing a number. */
+  await page.goto(base + '&inject=large_loca,station_blackout,afw_failure,failure_to_scram&ff=1500',
                   { waitUntil: 'networkidle', timeout: 180000 });
   /* TWO WAITS, NOT ONE (#589). This used to wait only for the overlay and then throw "the plant
    * HELD and the dialog stayed hidden" — a message that names a fact the check never measured.

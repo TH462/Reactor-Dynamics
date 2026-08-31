@@ -29,6 +29,88 @@ and the user-visible summary in `CHANGELOG.md`. This file points at those and tr
 
 ---
 
+## Session log — 2026-08-30-develop-c (#588 — the "divergence" was a bifurcation, and #563 items 1+2)
+
+**Alpha 1.7.0 is committed (`91dc2cf`) and NOT merged.** It was blocked on four consecutive red CI
+runs of `verify_e2e_ui`'s #520 halt-dialog check, green locally every time.
+
+### The #520 check was reporting a coin toss
+
+The first three CI runs said *"the plant HELD and the dialog stayed hidden"* — a message the check
+could not support, because it only waited on `haltOverlay.hidden` and never measured whether the
+plant held. **Split into two waits** (`3d62683`): the plant first, generously; the dialog second,
+tightly. The fourth run then said what was happening — *"THE PLANT NEVER HELD in 90 s — clock reads
+T+00:18:06"* — 1,086 s of plant time against a Node latch at 397.28 s. It sailed 2.7× past and kept
+going.
+
+### It was never browser-versus-Node, and there is no mechanism
+
+Reproduced in **plain Node**, Windows against `mcr.microsoft.com/playwright:v1.61.1-noble` (the
+build CI pins):
+
+| | Windows | Linux |
+|---|---|---|
+| sim delivered by the `ff=1500` burst | 1164 s | **1086 s** |
+| cadence flips | 16 | 24 |
+| `model_held` | **YES at 399 s** | **NEVER** |
+| final pressure | 19.2 psia | **83.9 psia** |
+
+1,086 s is CI's T+00:18:06 exactly, and 83.9 psia is the *"parks at 83 psia"* #588 had recorded
+against "the browser" since filing. **Both are the LINUX numbers.**
+
+The two runs are **bit-identical for 65 cycles** and part at t=204 s by 0.0016 MPa. And the
+arithmetic is innocent, measured not assumed: 12 Math primitives compared as raw IEEE-754 hex, and
+every water-table/vtable export swept across its range — **3,600+ evaluations, 13 hashes, all
+identical**. The one machine-speed-dependent input (`_maybeSandboxCheckpoint`'s `Date.now()` gate)
+fires exactly **once** on both, and pinning `_now` changes nothing.
+
+**The proof.** Nudging initial pressure by single ulps — 1e-16 relative — on Windows alone:
+
+| nudge | delivered | `model_held` | final |
+|---|---|---|---|
+| +0 | 1164 s | YES at 399 s | 19.2 psia |
+| **+1** | 1092 s | **NEVER** | **87.1 psia** — the Linux branch |
+| +2 | 1092 s | NEVER | 87.1 psia |
+| +8 | 1236 s | YES at 273 s | 158.1 psia |
+
+Three outcomes from four adjacent bit patterns. **The blowdown endgame is chaotic**; the platforms
+differ by an ulp somewhere and land on different branches. Chasing which ulp is chasing a rounding
+difference between two correct implementations.
+
+### The fix: move the fixture, never the budget
+
+`failure_to_scram` added to the casualty — the ATWS drives the plant unambiguously out of range
+instead of grazing it. Holds on **ulp +0/+1/+3/+8/+32, both platforms, ten runs, ten holds**
+(Windows 243/228/411/273/273 s; Linux 267/270/345/366/273 s). **The latch time spans 228–411 s and
+is therefore not a claim** — assert THAT it holds, never WHEN.
+
+**Proof by injection:** the OLD fixture fails in the same container with CI's message and CI's
+clock **byte-for-byte**. So the container reproduces CI, and the fixture is what fixes it.
+
+### Two mistakes of mine, and the habit behind both
+
+I closed #588 on *"does not reproduce"* having tested **only on Windows**. Then I re-tested "the
+browser" on the **three-failure** casualty, which `verify_e2e_ui`'s own header says holds on both.
+The through-line: **I kept varying what I had already thought of.** #588 comment 4's V8 check
+compared node against Chrome **on one machine**; my tick-jitter refutation drove
+`_stepsPerBroadcast` over a 25× range **in Node**. Both real, both sharing the blind spot the whole
+issue had — the environment held fixed while everything inside it varied.
+
+### Also this session
+
+- **#563 item 1** — the advanced instrument-failure panel refused **35 of its 50 rows** with a raw
+  module string. Measured: retired engine 85/85 accept, PWR2 16/86. A regression, not a gap; the
+  #507 wave-6 mirror-only path was hard-coded to one id instead of testing the condition.
+- **#563 item 2** — auxiliary spray was built, gated, mutation-tested and in **no registry at
+  all**. Shell action + board tile + inspect entry; 892 psi (6.15 MPa) of authority the board could
+  not call for. Measuring it retired the reason for a declared departure → **#594**.
+- **I deleted `node_modules`** by junctioning it into a bisect worktree and running
+  `git worktree remove --force`, then restored it **unpinned** — putting Playwright 1.62.1 where
+  1.61.1 belonged and silently violating `gates.yml:29`. Restored to 1.61.1. **Never junction into
+  a real tree from a worktree you will force-remove**, and pin the version when restoring.
+
+`run_pwr2_shell` 135 → 140 (46/46 mutations), `verify_board_check` 236, manuals Rev 17 (q).
+
 ## Session log — 2026-08-30-develop-b (#532 — the manual set was the retired plant's, in every chapter)
 
 **Where it ended.** All 13 chapters + `README`, `ISSUES_AND_FINDINGS` and the in-app checklist
