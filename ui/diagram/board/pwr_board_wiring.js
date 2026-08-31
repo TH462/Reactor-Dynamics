@@ -189,11 +189,12 @@
     // reason: set_adv_setpoint clamps to [0.2, sg_safety_open_mpa], so the box
     // refuses what the engine would silently clamp. Read from config, never a literal.
     bdAdvSp:     [0.2, _SG.sg_safety_open_mpa || 7.58],
-    bdAfwThrottle: [0, 100],                                         // AFW flow control valves, % (#562)
     bdAuxSpray:  [0, 100],                                           // PZR auxiliary spray, % (#563 item 2)
     ims3xu86zm5: [0, 100],                                           // RHR HX flow split, %
-    // Circulating-water inlet temperature — the modelled range (the engine clips to the
-    // same band, so the box refuses what the engine would clamp).
+    // Circulating-water inlet temperature — the modelled range (the engine clips to the same
+    // band, so the box refuses what the engine would clamp). THE AUTHORED LITERALS ARE THE
+    // RETIRED PLANT'S (35-85 degF): a running plant that publishes `cw_inlet_range_c` gets its
+    // own, via cwRangeC() below (#591 item 1).
     ims3v42jghn: [_TB.cw_inlet_min_c != null ? _TB.cw_inlet_min_c : 1.6667,
                   _TB.cw_inlet_max_c != null ? _TB.cw_inlet_max_c : 29.4444]
   };
@@ -414,13 +415,49 @@
   // Colour is keyed to the ROD STOP line, not the trip line — amber means "the plant is
   // about to stop taking rods out", which is the thing the player can still act on. Red is
   // reserved for margin actually gone.
+  /* THE ROD STOP AND THE TURBINE RUNBACK LIVE HERE (#578), on the tile whose number causes
+   * them, and they are READ FROM THE PLANT rather than re-derived.
+   *
+   * WHAT WAS WRONG. `engines/pwr2/pwr2_engine.js:1324-1325` publishes `ts.rod_stop` and
+   * `ts.runback_active`, and a tree-wide grep of `ui/diagram/board/` found NEITHER of them
+   * read anywhere. Lamps for them existed only on `test_pwr2.html`, the dev page players never
+   * see. The colour rule below was the closest thing the board had, and it is not the same
+   * claim: it goes amber when the MARGIN crosses a threshold this file reads out of
+   * `RD.PWR_CONFIG` — the RETIRED plant's config, captured at script load — and it is blind to
+   * the two FLUX rod stops (which have no delta-T margin at all) and to the runback entirely.
+   *
+   * WHY NOT A LAMP TILE, which is what #578 asks for: there is nowhere to put one. MEASURED
+   * over the whole doc, art components included, the only rectangles that will take a 130x32
+   * tile start at x 1650 — past the right-hand column — and adding one there extends the
+   * board's bounding box, which shrinks every other tile on the canvas (the reason
+   * `imrzmlyafa3` is in DOC_REMOVE). A first attempt put the pair under the PERIOD card and
+   * the browser showed why the free-space scan said no: the reactor-vessel art and a live steam
+   * run both cross that strip, so one lamp rendered behind the vessel and the other landed on a
+   * pipe. Growing the canvas for two words is an owner decision, not this change's.
+   *
+   * SO THE TILE'S AMBER READS THE PLANT. `rod_stop` (which carries the flux stops as well as the
+   * delta-T pair) and `runback_active` now light it directly, instead of the tile guessing from
+   * a margin against a constant belonging to another plant. A plant that publishes neither field
+   * keeps the old margin-only behaviour, byte-identical.
+   *
+   * ⚠ AND THE COLOUR IS ALL THIS TILE CAN CARRY — A WORD DOES NOT FIT, MEASURED. The tile is
+   * `rAnchor` at 780 and renders 79 px wide ("OTΔT 31.2 %", right edge 736); the NUC INSTR (NIS)
+   * card title sits on the same row and ends at 626. That is 110 px of room, so the suffix
+   * budget is ~4 characters — "  ROD STOP" measures 97 px and lands 9 px INSIDE the title.
+   * So the RUNBACK, which is a distinct signal the colour cannot separate from a rod stop, still
+   * has NO indication of its own. It needs a tile, the board has no free 130x32 rectangle inside
+   * its current bounding box (measured doc-wide, art included: the only free space starts at
+   * x 1650, and extending the canvas shrinks every tile on it — see `imrzmlyafa3` in DOC_REMOVE),
+   * and growing the board for it is the owner's call. #578 stays open carrying that. */
   function dtMargin(s) {
     var ot = IN(s).otdt_margin, op = IN(s).opdt_margin;
     if (ot == null || op == null || isNaN(ot) || isNaN(op)) return { text: '—', color: '#7f95a5' };
     var bindName = (op < ot) ? 'OPΔT' : 'OTΔT', bindVal = (op < ot) ? op : ot;
     var stop = ((RD.PWR_CONFIG && RD.PWR_CONFIG.otdt_opdt) || {}).rod_stop_offset_pct;
     if (stop == null) stop = 3.0;
-    var col = bindVal <= 0 ? '#ff6a4d' : (bindVal < stop ? BD_WARN : BD_OK);
+    var t = s.true_state || {};
+    var held = t.rod_stop === true || t.runback_active === true;
+    var col = bindVal <= 0 ? '#ff6a4d' : ((held || bindVal < stop) ? BD_WARN : BD_OK);
     return { text: bindName + ' ' + bindVal.toFixed(1), color: col };
   }
 
@@ -556,7 +593,11 @@
     ims3wg27iif: { press: function () { cmd({ action: 'set_rhr', active: true }); }, active: function (s) { return !!IN(s).rhr_valve_open; } },
     ims3xfeye1q: { press: function () { cmd({ action: 'set_rhr', active: false }); }, active: function (s) { return !IN(s).rhr_valve_open; } },
     // --- AFW ---
-    imrmsslj42u: { press: function () { cmd({ action: 'set_afw', active: true }); }, active: function (s) { return !esfAuto(s, 'afw') && (IN(s).afw_active || IN(s).afw_pump_running); } },
+    /* AFW START's press handler went with the button (#591 item 2, DOC_REMOVE below). A
+     * handler for an item the driver deletes at mount is dead code that reads as a wire —
+     * the same hygiene as `afw-flow-set` in ui/app.js, which #562 had to BUILD a tile for
+     * because it had been sitting here emitting into nothing. `set_afw {active:true}` is
+     * still a live command for scenarios and the instructor. */
     imrmssoa137: { press: function () { cmd({ action: 'set_afw', active: false }); }, active: function (s) { return !esfAuto(s, 'afw') && !(IN(s).afw_active || IN(s).afw_pump_running); } },
     imrmssr9ihq: { press: function () { cmd({ action: 'set_esf_auto', system: 'afw', auto: true }); }, active: function (s) { return esfAuto(s, 'afw'); } },
     // --- Charging panel: AUTO / MAN / OFF (this panel is the charging pump's control;
@@ -830,24 +871,36 @@
     // left is AUTO / SHUT, the setpoint box, and position.
     // AUTO must be #5aad7c — selfTest asserts every button captioned AUTO carries the
     // standard green, so one colour keeps one meaning across the board.
-    /* THE REACTIVITY / PERIOD CARD (#516 item 4, owner playtest 2026-08-29: "Move period
-     * indication up a little so it looks intentional and put a card behind it").
+    /* THE PERIOD CARD (#516 item 4, then RESIZED at #591 item 3, owner playtest 2026-08-30:
+     * "The period card looks terrible. Move the text up and shrink the card. make sure the
+     * text doesnt sit ontop of eachother").
      *
-     * MEASURED off the doc, not eyeballed. The NUC INSTR (NIS) card is 530,190 255x225, so it
-     * ENDS at y 415 — exactly where the REACTIVITY label begins. The reactivity and period
-     * readouts were therefore floating on bare canvas immediately under a card, which is what
-     * makes them read as unintentional. Its two inner boxes (535,345 and 660,345) are both
-     * 120x65, so a 120-wide box at left 660 aligns with the right-hand one directly above it.
+     * IT WAS SIZED FOR READOUTS THAT NO LONGER EXIST. #516 item 4 authored it 660,412 120x72
+     * to cover FOUR things — REACTIVITY (675,415), the reactivity value, PERIOD (690,450) and
+     * the period value — and the first two are both in DOC_REMOVE, deleted by owner directive
+     * on 2026-08-04. So 36 of its 72 px covered nothing, which is the "looks terrible": a card
+     * with its whole content jammed into the bottom corner.
      *
-     * 660,412 120x72 covers REACTIVITY (675,415), the reactivity value (right edge 750, top
-     * 430), PERIOD (690,450) and the period value. Clear of PZR TEMP (880,440), the t-hot
-     * value (745,505) and the surge component (830,520).
+     * AND THE TWO SURVIVORS GENUINELY OVERLAPPED, which is the owner's second sentence and is
+     * a MEASUREMENT, not an impression. In board coordinates, read off the rendered page: the
+     * PERIOD caption occupied 690..746 x 450..468 and the value 726..750 x 455..475 — 20 x 13 px
+     * of the value drawn ON TOP of the caption's last characters. The cause was #516 item 4's
+     * own right-alignment: the value is `rAnchor`, so moving its right edge to 750 to line it up
+     * with the reactivity value ABOVE it pushed its left edge back into a caption that runs to
+     * 746. Aligning with a tile that was already deleted.
+     *
+     * NOW A TWO-ROW STACK, which is what the neighbouring inner boxes do (SHUTDOWN ROD /
+     * POSITION / value, 660,345). Rows cannot overlap horizontally however long the number
+     * gets, so a four-digit period cannot re-create the defect. Caption 419..437, value
+     * 439..459, card 415..465. `board_check` asserts the OVERLAP and the containment rather
+     * than a position, so this cannot go stale the next time the pair is nudged — and both new
+     * checks were injection-verified by restoring the old geometry, which reds both.
      *
      * IT MUST BE A `box`: pwr_board.js lifts value/text/number/button to z-index 1 and leaves
      * boxes at 0, so an appended box lands BEHIND the readouts. Any lifted kind here would
      * cover them. */
     { id: 'bdReactivityCard', kind: 'box', name: '',
-      left: 660, top: 412, width: 120, height: 72,
+      left: 660, top: 415, width: 120, height: 50,
       bg: '#0b1119', border: '#25333e', radius: 8, title: '', fontSize: 10, ports: [], stick: false },
     { id: 'bdAdvAuto', kind: 'button', name: 'ADV auto  ·  sim: set_adv mode:auto',
       left: 1351, top: 458, label: 'AUTO', width: 44, height: 22, color: '#5aad7c', fontSize: 11 },
@@ -859,35 +912,23 @@
       // input 20 px it needed — measured, "1247" overflowed a 32 px field by 12 px.
       left: 1351, top: 488, label: 'ADV SP', width: 90, value: 1247, step: 1, digits: 0,
       editable: true, color: '#4fe3ff', fontSize: 12 },
-    // AUX FEED THROTTLE (#562) — the flow control valves, the operator's own continuous
-    // post-trip task. SOURCED, WAT 05 Transients (ML11216A094): "It is necessary to throttle
-    // AFW flow to control RCS temperature at this point. One symptom that AFW flow needs to be
-    // throttled is closure of all steam dump valves."
-    //
-    // THE BOARD HAD NO SURFACE FOR IT AT ALL, and the handler for one already existed:
-    // ui/app.js's 'afw-flow-set' emits `set_afw_flow {pct}` and NO DOM element emitted it. The
-    // plant had no throttle either, so the dead handler was matched by a dead command — measured
-    // full-stack, a loss of offsite power reached 861.7 % of nominal SG inventory with the
-    // player holding no lever at all.
-    //
-    // GEOMETRY, measured off the doc rather than authored: AUX FEED WATER (imrmssto6d) is
-    // 1455,650 195x60 with its button row at 680..705, so the card is FULL and this row does
-    // not fit in it. DOC_PATCHES below grows the card to h100 (ends 750) and moves CONDENSER
-    // COOLING and its three children down 40 px (715->755, ends 825); nothing else lives in
-    // that column below 785, measured. The row then mirrors the CONDENSER COOLING row exactly
-    // — caption at 1464, 90 px number at 1550 — so the two cards read as one family.
-    //
-    // ONE CONTROL, NOT THREE. The engine has a switch per pump [sourced, Ginna TS Bases
-    // B 3.3.2(a) "one switch for each pump"] and `set_afw {pump}` reaches either, but this
-    // plant has ONE steam generator and the board has ONE aux feed panel: two more pump
-    // buttons would be two controls the player cannot tell apart, which is the Q4 veto in
-    // DESIGN_CRITERIA. STOP already secures both pumps since #541, which is what that issue
-    // asked for. The per-pump discriminator stays a command-surface capability for the
-    // instructor and scenarios.
-    { id: 'bdAfwThrottle', kind: 'number',
-      name: 'AUX FEED THROTTLE  ·  sim: set_afw_flow pct',
-      left: 1550, top: 710, label: 'THROTTLE', width: 90, value: 100, step: 5, digits: 0,
-      unit: '%', editable: true, color: '#4fe3ff', fontSize: 12 },
+    /* AUX FEED THROTTLE — REMOVED FROM THE BOARD *(OWNER RULING, 2026-08-31: selected "Remove
+     * START and the THROTTLE box" from three options put to him, on his playtest item #591.2:
+     * "Im thinking of removing the manual mode for aux feed water and leaving only the
+     * automatic mode and off. I dont think giving a manual mode gives much to the player.
+     * leave just STOP and AUTO controls.")*.
+     *
+     * WHAT IS BEING GIVEN UP, stated rather than buried, because #562 built this tile on a
+     * SOURCE — WAT 05 Transients (ML11216A094): *"It is necessary to throttle AFW flow to
+     * control RCS temperature at this point. One symptom that AFW flow needs to be throttled
+     * is closure of all steam dump valves."* The player loses the manual lever over post-trip
+     * cooldown rate; the AUTO channel (`afw_level`, the three-element throttle in pwr_control)
+     * keeps doing it for them, which is the mode the owner is keeping.
+     *
+     * `set_afw_flow` IS NOT RETIRED — it stays a command-surface capability for scenarios, the
+     * instructor and the automation channel that drives it. Only the operator's tile goes, so
+     * this is a board decision, not a plant one (HR9: content follows the plant, and the plant
+     * is unchanged). The START button goes with it, in DOC_REMOVE below. */
     // AUXILIARY SPRAY (#563 item 2). The capability was built at stage 2c, gated and
     // mutation-tested, and NO CONTROL ANYWHERE REACHED IT — pwr2_shell.js had no MAPPED,
     // REHOMED or REFUSED entry, so it was not even a declared gap. The shell door went in with
@@ -1040,7 +1081,16 @@
      * +0.5 gpm. `feed_demand_pct` is the plant's own demand; the delivered channel stays where
      * it is for the five reader tiles, and is the fallback for anything not publishing it. */
     imro8xhy2me: { set: function (v) { cmd({ action: 'set_feed_pump_speed', pct: v / GPM_FEED_PER_PCT }); }, get: function (s) { var c = CS(s); var d = c.feed_demand_pct; return ((d != null && isFinite(d)) ? d : (c.feed_pump_speed_pct || 0)) * GPM_FEED_PER_PCT; } }, // SG Feed rate gpm
-    imro929i738: { set: function (v) { cmd({ action: 'set_spray', pct: v }); }, get: function (s) { return CS(s).spray_valve_pct; } },                    // spray %
+    /* PZR SPRAY: the box reads the operator's DEMAND, never the delivered flow (#564 item 1).
+     * It read `spray_valve_pct` — which on PWR2 is DELIVERY, after the stuck-valve override and
+     * the water-solid gate — so the player's own setting vanished from the box they typed it
+     * into the moment the plant stopped honouring it (measured: a standing 60 % demand read 0.0
+     * once the pressurizer went solid), and a stuck valve read back as 100 % the player never
+     * asked for. Same law as AUX FEED THROTTLE and bdAuxSpray: the plant publishes the demand,
+     * the board offers it. Falls back to the delivered field for any engine that does not
+     * publish a demand — the retired engine's `spray_valve_pct` IS its demand, so that path is
+     * unchanged. */
+    imro929i738: { set: function (v) { cmd({ action: 'set_spray', pct: v }); }, get: function (s) { return sprayDemandPct(s); } },  // spray % (DEMAND)
     imro96mj15p: { set: function (v) { cmd({ action: 'set_heater', power_pct: v }); }, get: function (s) { return CS(s).heater_power_pct; } },             // heater %
     imrpq29jo7t: { set: function (v) { cmd({ action: 'set_auto_setpoint', channel_id: 'boron_conc', value: v }); }, get: function (s) { var c = chan(s, 'boron_conc'); return c && c.setpoint != null ? c.setpoint : null; } }, // boron target ppm (control-layer channel setpoint)
     imrpq48hn3t: { set: function (v) { cmd({ action: 'set_charging_flow', normalized: v / GPM_CHARGING }); }, get: function (s) { return (CS(s).charging_flow_normalized || 0) * GPM_CHARGING; } }, // charging, gpm base (clamped to NUM_BOUNDS_BASE)
@@ -1051,14 +1101,7 @@
     ims31tq7mgc: { set: function (v) { cmd({ action: 'set_steam_dump_setpoint', mpa: v }); }, get: function (s) { return CS(s).steam_dump_setpoint || 0; } },
     bdAdvSp:     { set: function (v) { cmd({ action: 'set_adv_setpoint', mpa: v }); },        get: function (s) { return CS(s).adv_setpoint || 0; } },
     // AUX FEED THROTTLE (#562). `pct` is the field control_kernel declares for this action,
-    // CONTEXT.md names (afw_throttle_pct) and the manual documents — and until 2026-08-27
-    // pwr2_shell read only `c.normalized`, so `{pct: 0}` fell to its `: 1` default and
-    // RE-STARTED the pump. The readback is the VALVE POSITION, not the delivered flow: the
-    // AFW FLOW gauge on the other card is the delivery, and the two disagreeing is how the
-    // player sees a shut block valve or a dead motor. Engine-agnostic by construction — any
-    // engine publishing afw_throttle_pct gets the box, which is the buttonDisabled law.
-    bdAfwThrottle: { set: function (v) { cmd({ action: 'set_afw_flow', pct: v }); },
-                     get: function (s) { var v = CS(s).afw_throttle_pct; return v == null ? 100 : v; } },
+    /* the AUX FEED THROTTLE setter went with its tile (#591 item 2) — see EXTRA_ITEMS */
     /* PZR AUX SPRAY (#563 item 2) — the OPERATOR'S DEMAND both ways. `get` reads the standing
      * demand the shell publishes, never delivered flow: the module gates delivery on
      * ac_available, so a box reading delivery would snap back to 0 on a blacked-out plant
@@ -1072,11 +1115,20 @@
     // the rate does not drop the auto-alignment (pwr_control.js:556-558). numberAuto()
     // therefore leaves this box editable even while RHR AUTO is lit.
     ims3xu86zm5: { set: function (v) { cmd({ action: 'set_rhr_hx', pct: v }); }, get: function (s) { var f = CS(s).rhr_hx_fraction; return f == null ? 100 : f * 100; } },
-    // Circulating-water inlet temperature. Sits next to the COND VAC readout because
-    // vacuum is the variable it moves: raise the water temperature and the condenser can
-    // only pull down to a warmer saturation, so vacuum falls, output falls at the same
-    // steam flow, and the 74.5 kPa turbine trip gets closer. It also raises the RHR heat
-    // exchanger's sink, so a Mode 5 cooldown bottoms out warmer.
+    // Circulating-water inlet temperature. Sits next to the COND VAC readout because vacuum
+    // is the variable it moves: raise the water temperature and the condenser can only pull
+    // down to a warmer saturation, so the vacuum falls and the sourced C-9 ladder comes to
+    // meet you.
+    //
+    // THE OLD PROSE HERE WAS THE RETIRED PLANT'S AND WAS WRONG TWICE ON THIS ONE (#591 item 1).
+    // It promised that "output falls at the same steam flow" and that the RHR sink rises with
+    // it. MEASURED on PWR2, hot full power, 600 s: output holds 100.00 MWe from 35 degF to
+    // 92 degF, because this turbine is dispatched to a LOAD TARGET, not floated on the
+    // backpressure; and pwr2_rhr carries its own component-cooling temperature (95 degF) that
+    // does not read this at all, so no cooldown floor moves. What DOES happen is the ladder:
+    //   50 degF (design) 2.400 in Hg -> 77 degF C-9 PERMISSIVE LOST (5.0) -> 93 degF C-9
+    //   REMOVED (7.6) and the TURBINE TRIPS.
+    // Both crossings are the sourced Ginna numbers, and both are now reachable from this box.
     ims3v42jghn: {
       set: function (v) { cmd({ action: 'set_condenser_cw_temp', c: v }); },
       get: function (s) { var c = CS(s).cw_inlet_temp_c; return c == null ? null : c; }
@@ -1148,7 +1200,10 @@
     imsgt6qmdgx: function (s) {
       var v = IN(s).pzr_spray_flow;
       if (v == null || isNaN(v)) return { text: '—', color: '#7f95a5' };
-      var asked = (CS(s).spray_valve_pct || 0) > 2;
+      /* THE DEMAND, not the delivery (#564 item 1) — reading the delivered flow here made
+       * `asked && v < 20` an identity that can never be true, so the one state this readout
+       * exists for rendered as "nothing to see", in green. */
+      var asked = (sprayDemandPct(s) || 0) > 2;
       return { text: v.toFixed(0), color: (asked && v < 20) ? BD_WARN : BD_OK };
     },
     // SUR, DPM (#271). NOT a log channel and it has no trip. The `sur_high` ALARM at 1.0 is
@@ -2094,6 +2149,26 @@
     var g = CS(s || {}).charging_max_gpm;
     return (g != null && isFinite(g) && g > 0) ? g : CHARGING_MAX_GPM;
   }
+  /* THIS PLANT'S CIRCULATING-WATER BAND (#591 item 1) — the chargingMaxGpm shape again, and
+   * for the identical reason. `_TB` is `RD.PWR_CONFIG.turbine` captured at script load, i.e.
+   * the RETIRED engine's 35-85 degF, while PWR2's condenser clamps 35-95 degF. The ten degrees
+   * the authored bound would have refused are the ones that matter: C-9 is REMOVED at 93 degF
+   * and the turbine trips (measured; the sweep is in pwr2_condenser.js). A box that cannot
+   * reach the casualty it exists to teach is the #516 item 11 defect over again. Anything that
+   * does not publish the band — the retired engine, a partial mount, an old recording — falls
+   * back to the authored literals, byte-identical. */
+  function cwRangeC(s) {
+    var r = CS(s || {}).cw_inlet_range_c;
+    if (r && r.length === 2 && isFinite(r[0]) && isFinite(r[1]) && r[1] > r[0]) return [r[0], r[1]];
+    return NUM_BOUNDS_BASE.ims3v42jghn;
+  }
+  /* THE OPERATOR'S SPRAY DEMAND (#564 item 1), with the retired engine's fallback. That engine
+   * publishes `spray_valve_pct` AS the demand — its board box and this readout were both correct
+   * against it — so absent a published demand the old behaviour is byte-identical. */
+  function sprayDemandPct(s) {
+    var d = CS(s).spray_demand_pct;
+    return (d != null && isFinite(d)) ? d : CS(s).spray_valve_pct;
+  }
   function pressBandMpa(s) {
     var pb = CS(s).pressure_band_psi;
     if (pb && pb.length === 2 && isFinite(pb[0]) && isFinite(pb[1]))
@@ -2652,7 +2727,20 @@
     // §12.2.3.12 blocks ALL the loss-of-flow trips together below P-7.
     { id: 'rcp_breaker', label: 'RCP BREAKER', sub: 'REACTOR TRIP · PUMP BREAKER OPEN (P-7 PERMISSIVE)' },
     { id: 'ir_high', label: 'IR HIGH FLUX', sub: 'STARTUP TRIP · ~20% (P-10 PERMISSIVE)' },
-    { id: 'pr_low_setpoint', label: 'PR HIGH (LOW SETPT)', sub: 'STARTUP TRIP · 25% (P-10 PERMISSIVE)' }
+    { id: 'pr_low_setpoint', label: 'PR HIGH (LOW SETPT)', sub: 'STARTUP TRIP · 25% (P-10 PERMISSIVE)' },
+    /* SI BLOCK (#564 item 2, the half nobody had named). The panel drew five rows and the
+     * running plant publishes a block this panel had NO ROW FOR — so blocking safety injection,
+     * which is a real operator action on every cooldown, was unreachable from the board while
+     * three rows that do nothing were live. Both trips watch pressure DOWNWARD and neither
+     * auto-blocks on the way down; both need P-11, which is why the pressure setpoint comes
+     * down first. Its sub line reads the live setpoint, like lo_press above. */
+    { id: 'si_trip', label: 'SI ACTUATION',
+      sub: function (s) {
+        var st = (s && s.rps_state && s.rps_state.trip_block_status) || {};
+        var sp = st.si_trip && typeof st.si_trip.setpoint === 'number' ? st.si_trip.setpoint : null;
+        return 'SAFETY INJECTION · ' + (sp == null ? 'LOW PRESSURE' : dP(sp) + ' ' + uStr('press', 'psi')) +
+               ' (P-11 PERMISSIVE)';
+      } }
   ];
 
   function closePop() { if (pop && pop.parentNode) pop.parentNode.removeChild(pop); pop = null; }
@@ -2765,22 +2853,71 @@
   // The board item the maintenance tag hangs over (TMI-2 AFW discharge valve).
   var TAG_ITEM = 'imrpp2g2m8k';
 
+  /* Does the RUNNING plant carry this block at all? (#564 item 2)
+   *
+   * PRESENCE, exactly as the pressure tile reads it (#506.7): a snapshot with NO
+   * `trip_block_status` at all is the LEGACY shape — an old recording, a minimal fixture — and
+   * says nothing about capability, so every row stays live and the pre-#564 behaviour is
+   * byte-identical. A snapshot that DOES publish the map is a plant SPEAKING, and a row missing
+   * from it is a block that plant does not have.
+   *
+   * MEASURED on the shipped plant: PWR2 publishes exactly `pr_low_setpoint`, `lo_press` and
+   * `si_trip`. The panel drew five rows, so `lo_flow`, `rcp_breaker` and `ir_high` rendered
+   * ENABLED in every plant state and each press threw — `ts.can_block === false` is false when
+   * there is no `ts` — while two of them name reactor trips this protection table does not
+   * contain at all. This is the same law `buttonDisabled` applies to the boron panel, RHR and
+   * the steam-dump lever: the plant publishes, the board offers. */
+  function tripRowSupported(s, id) {
+    var st = s && s.rps_state && s.rps_state.trip_block_status;
+    if (!st || Object.keys(st).length === 0) return true;     /* legacy snapshot — say nothing */
+    return Object.prototype.hasOwnProperty.call(st, id);
+  }
+  /* THE ROW STATE AS A FUNCTION, not as DOM writes (#564 item 2). `refreshTripBlocks` used to
+   * compute the caption, the class and the disabled flag inline while writing them, so the only
+   * way to check any of it was to render a popover — which is why three permanently-inert BLOCK
+   * buttons shipped. A claim spelled into the DOM cannot be tested; a function can. */
+  function tripBlockRows(s) {
+    var st = (s && s.rps_state && s.rps_state.trip_block_status) || {};
+    return BLOCKABLE_TRIPS.map(function (t) {
+      if (!tripRowSupported(s, t.id)) {
+        return { id: t.id, label: t.label, supported: false, blocked: false, disabled: true,
+                 text: 'N/A',
+                 sub: 'NOT ON THIS PLANT · this protection has no operator block' };
+      }
+      var ts = st[t.id] || {};
+      var blocked = ts.blocked != null ? ts.blocked : isBlocked(s, t.id);
+      return {
+        id: t.id, label: t.label, supported: true, blocked: blocked,
+        text: blocked ? 'BLOCKED' : 'BLOCK',
+        // Manual rule (kernel-evaluated, see getRpsState): BLOCK is offered while the trip is
+        // not yet asserted, or inside its permissive. CLEAR is never withheld — `can_clear` is
+        // just "there is a block to clear", so this button will happily scram the plant when
+        // the block it removes was the only thing holding an asserted trip off. That is
+        // deliberate and prototypical; the earlier comment here claimed the reverse.
+        disabled: blocked ? (ts.can_clear === false) : (ts.can_block === false),
+        sub: null
+      };
+    });
+  }
   function refreshTripBlocks(s) {
     if (!pop || !s) return;
-    var st = (s.rps_state && s.rps_state.trip_block_status) || {};
+    var rows = tripBlockRows(s), byId = {};
+    rows.forEach(function (r) { byId[r.id] = r; });
     var btns = pop.querySelectorAll('button[data-trip]');
     for (var i = 0; i < btns.length; i++) {
-      var id = btns[i].getAttribute('data-trip');
-      var ts = st[id] || {};
-      var blocked = ts.blocked != null ? ts.blocked : isBlocked(s, id);
-      btns[i].textContent = blocked ? 'BLOCKED' : 'BLOCK';
-      btns[i].className = blocked ? 'bd-blocked' : '';
-      // Manual rule (kernel-evaluated, see getRpsState): BLOCK is offered while the trip is
-      // not yet asserted, or inside its permissive. CLEAR is never withheld — `can_clear` is
-      // just "there is a block to clear", so this button will happily scram the plant when
-      // the block it removes was the only thing holding an asserted trip off. That is
-      // deliberate and prototypical; the earlier comment here claimed the reverse.
-      btns[i].disabled = blocked ? (ts.can_clear === false) : (ts.can_block === false);
+      var r = byId[btns[i].getAttribute('data-trip')];
+      if (!r) continue;
+      btns[i].textContent = r.text;
+      btns[i].className = r.blocked ? 'bd-blocked' : '';
+      btns[i].disabled = r.disabled;
+      /* A row this plant does not carry goes DARK AND SAYS SO — an inert button with no reason
+       * is the dead-button class wearing a different coat, and the operator should not have to
+       * press it to find out (the same argument as the SCRAM reset caption). */
+      if (r.sub) {
+        var subEl = btns[i].previousSibling && btns[i].previousSibling.querySelector
+                    ? btns[i].previousSibling.querySelector('.sub') : null;
+        if (subEl) subEl.textContent = r.sub;
+      }
     }
   }
 
@@ -2854,7 +2991,16 @@
     // while placing its replacement on the schematic is as explicit as an export gets, so this
     // is a RETIREMENT, not a re-home: carrying both would put `steam_dump_valve` on the board
     // twice under two labels, which is the duplicate-authority shape the board rules forbid.
-    imrzmlyafa3: 1
+    imrzmlyafa3: 1,
+    /* THE AUX FEED WATER MANUAL START *(OWNER, #591 item 2, 2026-08-30: "leave just STOP and
+     * AUTO controls")*. STOP is kept because securing a running pump is an operator action the
+     * plant's own latch law depends on (#512 — the panel's securing click IS the reset), and
+     * AUTO is the mode the owner wants left. What goes is the manual START, which is the only
+     * one of the three that puts the system into MANUAL for no gain the owner could see.
+     * `set_afw {active:true}` stays a command for scenarios and the instructor.
+     * STOP and AUTO move left into the vacated slot via DOC_PATCHES rather than leaving a hole
+     * — the same treatment RHR ALIGN/ISOLATE got when its AUTO button went (#453). */
+    imrmsslj42u: 1
   };
 
   // The CVCS flow captions, enlarged *(OWNER DIRECTIVE, 2026-08-04: "Make the \"Charging\" and
@@ -2940,13 +3086,20 @@
        * first attempt did exactly that — the tile rendered 50 px BELOW a card that had not
        * grown, and only a browser measurement of the card's own bottom edge found it. */
       ims1518jad4: { props: { height: 290 } },
-      /* PERIOD readout: up 5 px and right-aligned with the reactivity value above it (#516
-       * item 4). Both are `rAnchor`, so `left` is the RIGHT edge — they were authored at 750
-       * and 735, a 15 px mismatch on two numbers stacked in the same card, which is half of
-       * why the pair looked accidental. The 5 px lift also evens the label-to-value gaps
-       * (REACTIVITY 415 -> 430 is 15; PERIOD was 450 -> 460, now 450 -> 455). Patched here
-       * rather than in pwr_board_data.js, which is GENERATED — a re-export would undo it. */
-      ims89mkaj2r: { props: { top: 455, left: 750 } },
+      /* PERIOD readout and its caption (#516 item 4, re-laid out at #591 item 3). See the
+       * bdReactivityCard note in EXTRA_ITEMS for the measurement: #516 item 4 right-aligned
+       * this value at 750 to match the REACTIVITY value above it, and that alignment pushed
+       * the value's LEFT edge back into the caption — 27x12 px of measured overlap, aligning
+       * to a tile that DOC_REMOVE had already deleted.
+       *
+       * Two rows now, and the caption moves with the value or the fix is half: the caption is
+       * left-anchored at 690 and the value is `rAnchor` (left IS the right edge), so they grow
+       * TOWARD each other and a long period would have re-created the overlap on one row. The
+       * caption also comes left to 672 so the pair sits inside the card's 8 px margin the way
+       * the SHUTDOWN ROD box above does. Patched here rather than in pwr_board_data.js, which
+       * is GENERATED — a re-export would undo an edit there. */
+      ims89mc0hl3: { props: { top: 419, left: 672 } },
+      ims89mkaj2r: { props: { top: 439, left: 772 } },
       // RHR ALIGN / ISOLATE move up 30 px each into the slot the removed AUTO button
       // vacated (#453) — authored 665/695 under AUTO at 635. The card is 175 tall from
       // top 605; with AUTO gone, leaving them where they were would put a 30 px hole under
@@ -2972,30 +3125,33 @@
       // an edit there, which is the whole reason DOC_PATCHES exists.
       // `board_check.html` asserts the policy over the rendered board, so a future re-export
       // that reintroduces title-case text reddens the gate instead of shipping quietly.
-      // AUX FEED WATER makes room for the THROTTLE row (#562, see bdAfwThrottle in
-      // EXTRA_ITEMS). The card grows 60 -> 115 and CONDENSER COOLING plus its three children
-      // drop 55 px. MEASURED off the doc before authoring: AUX FEED WATER 1455,650 195x60
-      // (buttons 680..705, so 705..710 is all the slack it had); CONDENSER COOLING 1455,715
-      // 195x70 with children at 738/740/755; NOTHING in the 1430..1700 column below 785.
-      //
-      // THE FIRST NUMBERS WERE WRONG AND ONLY THE BROWSER SAID SO — the same trap the PZR
-      // SPRAY readout above records. Authored at h100 / top 755 on the arithmetic that a
-      // number tile is ~25 px like the buttons beside it; MEASURED in Edge, a number box
-      // renders ~47 px because it carries the ▲▼ nudge arrows, so the box overran its own
-      // card by 12 px and lapped CONDENSER COOLING by 6. h115 with the box at 710 puts it at
-      // 710..757 inside a card ending 765, and the neighbour starts at 770.
-      // Patched here, never in pwr_board_data.js — that file is GENERATED and a re-export
-      // would silently undo an edit there.
+      // THE #562 AUX FEED WATER / CONDENSER COOLING PUSH IS GONE (#591 item 2) — see the note
+      // on the two button rows below. ONE THING FROM IT IS WORTH KEEPING, because it cost two
+      // wrong authorings: A `number` TILE RENDERS ~47 PX, NOT THE ~25 PX OF THE BUTTONS BESIDE
+      // IT, because it carries the ▲▼ nudge arrows — measured in a browser both times, after
+      // doc arithmetic said otherwise. Any future tile added to this column has to be measured,
+      // not computed.
       // The grid pair becomes the turbine LATCH / TRIP pair (#551/#559/#567). Labels patched
       // here because pwr_board_data.js is GENERATED — a re-export would silently restore
       // FOLLOW / MAN over controls that no longer do that.
       imro8ktzs3u: { props: { label: 'LATCH', name: 'Turbine latch  ·  sim: latch_turbine' } },
       imro8lddxi:  { props: { label: 'TRIP',  name: 'Turbine trip  ·  sim: trip_turbine' } },
-      imrmssto6d:  { props: { height: 115 } },
-      ims3v3lpw5v: { props: { top: 770 } },
-      ims3xoryten: { props: { top: 793 } },
-      ims3v42jghn: { props: { top: 795 } },
-      ims3xp168iy: { props: { top: 810 } },
+      /* THE #562 PUSH IS UNDONE *(OWNER, #591 item 2: "Adjust cards to move condenser cooling up
+       * to line up the bottom of that card with the bottom of the other cards.")*. That patch
+       * grew AUX FEED WATER 60 -> 115 and pushed CONDENSER COOLING and its three children down
+       * 55 px, PURELY to make room for the THROTTLE row — and with the row gone the reason is
+       * gone with it. MEASURED off the doc rather than reverted on faith: the neighbours in
+       * that row bottom out at 785 (the ECCS panel container 600..785, RHR and CHARGING at
+       * 780), CONDENSER COOLING is authored 715..785, and the patch had been holding it at
+       * 770..840 — 55 px below everything beside it, which is exactly what the owner saw. So
+       * the authored geometry IS the alignment he is asking for, and the correct edit is to
+       * stop overriding it. All five rows deleted rather than restated as no-ops: a patch that
+       * sets a property to its authored value is a patch that looks load-bearing.
+       *
+       * STOP and AUTO shift one slot left into the removed START's place (authored 1460 / 1525
+       * / 1590, a 65 px pitch), so the card does not carry a hole where a button was. */
+      imrmssoa137: { props: { left: 1460 } },
+      imrmssr9ihq: { props: { left: 1525 } },
       imrppvnburd: { props: { text: 'LOAD' } },
       imrppilyy52: { props: { text: 'OUTPUT' } },
       imrppim9gdg: { props: { text: 'GOVERNOR' } },
@@ -3294,6 +3450,12 @@
         b = [b[0], chargingMaxGpm(RD.PwrBoard && RD.PwrBoard.lastSnapshot
                                   ? RD.PwrBoard.lastSnapshot() : null)];
       }
+      /* Same law for the circulating-water box (#591 item 1) — the running plant's band, not
+       * the authored config's. */
+      if (item.id === 'ims3v42jghn') {
+        b = cwRangeC(RD.PwrBoard && RD.PwrBoard.lastSnapshot
+                     ? RD.PwrBoard.lastSnapshot() : null);
+      }
       var m = numFam(item);
       if (!m) return [b[0], b[1]];
       var p = Math.pow(10, m.d);
@@ -3359,6 +3521,10 @@
     // Caption under SCRAMMED: whether a reset will be accepted, and if not, why — read
     // from the kernel's permissive so the board never re-derives protection logic. The
     // operator should not have to press an inert button to discover the plant is not ready.
+    /* The TRIP BLOCKS panel's row state (#564 item 2) — exposed so a gate can assert what the
+     * popover will draw without rendering one. Three rows shipped permanently enabled and
+     * permanently throwing precisely because this was DOM-only. */
+    tripBlockRows: function (s) { return tripBlockRows(s); },
     scramResetNote: function (s) {
       var rps = (s && s.rps_state) || {};
       if (!rps.scrammed) return null;
@@ -3488,7 +3654,10 @@
       if (item.id === 'imrpq29jo7t') return !chan(s, 'boron_conc');          /* boron ppm */
       if (item.id === 'ims3xu86zm5') return CS(s).rhr_hx_fraction === undefined; /* RHR HX % */
       if (item.id === 'bdAdvSp') return CS(s).adv_setpoint_fixed === true;   /* sourced constant */
-      if (item.id === 'ims3v42jghn') return CS(s).condenser_cw_temp_fixed === true;  /* #567 */
+      /* CW INLET TEMP: dark on a plant that does not publish the sink (#591 item 1 replaced
+       * the #567 `condenser_cw_temp_fixed` flag, which was true only because the action was
+       * refused for the RETIRED plant's reason). PWR2 publishes it and the box is live. */
+      if (item.id === 'ims3v42jghn') return CS(s).cw_inlet_temp_c === undefined;
       /* AUX SPRAY (#563 item 2): dark on any plant that does not publish the demand. The
        * retired engine has no auxiliary spray at all and `set_aux_spray` is not in its command
        * switch, so on `?engine=pwr` — still reachable on a dev or preview build — a live box

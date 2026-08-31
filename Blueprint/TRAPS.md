@@ -22,6 +22,32 @@ the evidence to put it back** — say so in the session log rather than quietly 
 
 ---
 
+## Evicted 2026-08-31 (a THEMES-rotation eviction — the #516 Group A bullet, out for #591's)
+
+Not a standing-list eviction, and for the same reason as the 2026-08-24 entry below: the standing
+list was already **at its 25-bullet cap** and `CLAUDE.md` was sitting on **exactly** its 15,000
+words, so rescuing a line out of this would have cost a slot that is doing more work. Both halves
+of the bullet are carried elsewhere — the grep-every-surface half by the standing
+`THREE RUNNERS now gate the manual's NUMBERS` bullet ("grep the manual for the subject of every
+ruling and board change"), and the setpoint half by `Blueprint/PWR2_VALIDATION.md` §120, where the
+measurement lives. The mechanism itself is FIXED (the level program carries a 25 s reference lag),
+so it cannot recur in the place it was found.
+
+> **NOISE ON A SETPOINT IS NOISE NO CONTROLLER CAN REJECT — and a RULING that corrects a number
+> must be grepped for every SURFACE that states it** (2026-08-29, #516 Group A §120, the owner's
+> own playtest, 11 items filed and never worked). The pressurizer level program read its Tavg
+> channel RAW at **2.845 %/°C**: true Tavg spans 0.022 °C, indicated 0.63, program **1.77 %**,
+> charging hunting 0→17 gpm — the PI ignores noise on the MEASUREMENT, and this arrived on the
+> SETPOINT. And #579 derived charging at 30.1 gpm, fixed the MANUAL, and left the board bounded
+> at the retired plant's 60 — exactly 2×, so half the box was one value.
+
+**The half worth carrying, if you only read one line:** a proportional-integral controller's whole
+justification for ignoring measurement noise says nothing about noise arriving on its REFERENCE.
+When a program is a function of an instrument, ask what the instrument's noise does to the
+program before you ask what the controller does with it.
+
+---
+
 ## Evicted 2026-08-24 (a THEMES-rotation eviction — the #460 bullet, out for #509's)
 
 Not a standing-list eviction: the themes list turned over and this bullet's rescued trap —

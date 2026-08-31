@@ -244,6 +244,9 @@
     put('block_valve_open',  pz.block_valve_open);
     put('porv_tailpipe_temp_c', pz.tailpipe_temp_c);
     if (pz.spray_frac !== undefined) put('spray_flow_pct', 100 * pz.spray_frac);
+    /* the DEMAND beside the delivery (#564 item 1) — the gap between them is the whole reason
+     * the board's SPRAY FLOW readout has an amber state */
+    if (pz.spray_demand_frac !== undefined) put('spray_demand_pct', 100 * pz.spray_demand_frac);
     if (typeof sys.M_total === 'number' && typeof ctx.M_nominal === 'number' && ctx.M_nominal > 0) {
       put('core_inventory_pct', 100 * sys.M_total / ctx.M_nominal);
     }

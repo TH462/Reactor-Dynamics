@@ -112,7 +112,7 @@ lined up and coming, not to chase the trip.
 | 2 | **SCRAM** if not tripped |
 | 3 | Turbine load **0 / Disconnected** |
 | 4 | **AFW Start** (verify delivery by level response) |
-| 5 | Throttle AFW to hold level without severe overcooling |
+| 5 | Verify AFW holds level without severe overcooling — the `afw_level` channel throttles the valves; the board's levers are STOP and AUTO |
 | 6 | Stabilize PZR pressure |
 
 ### Recovery / acceptance

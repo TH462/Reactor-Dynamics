@@ -550,14 +550,27 @@ async function testRefusalReachesTheScanner(page) {
    * is bare page, `inspectResolve` returns null, and `inspectAt` returns early BY DESIGN —
    * "pointing at nothing keeps the last description on screen rather than blanking the block".
    * The check was asserting against the panel's own persistence rule, not against the guard. */
+  /* RE-POINTED at #591 item 2: this hovered AFW START (`imrmsslj42u`), and that button was
+   * REMOVED from the board by owner ruling. The check then reddened for a reason that had
+   * nothing to do with its claim — `querySelector` returned null, no mouseover was ever
+   * dispatched, and the refusal stayed on the Scanner because nothing asked it to move. It
+   * hovers AFW STOP now (same card, still hinted). AND IT SAYS SO WHEN THE FIXTURE GOES: the
+   * silent `if (other)` was the hollow half — a check that cannot tell "the guard broke" from
+   * "my fixture left the board" is the class the RHR fixture guard above already covers. */
   var after = await page.evaluate(function () {
-    var other = document.querySelector('[data-item="imrmsslj42u"]');   /* AFW START, hinted */
-    if (other) other.dispatchEvent(new MouseEvent('mouseover', { bubbles: true }));
+    var other = document.querySelector('[data-item="imrmssoa137"]');   /* AFW STOP, hinted */
+    if (!other) return { missing: true };
+    other.dispatchEvent(new MouseEvent('mouseover', { bubbles: true }));
     var p = document.querySelector('#scannerPanel');
-    return p ? p.innerText.replace(/\s+/g, ' ').trim() : '';
+    return { text: p ? p.innerText.replace(/\s+/g, ' ').trim() : '' };
   });
-  log.push('after hover: ' + after.slice(0, 100));
-  if (/Command error/i.test(after)) {
+  if (after.missing) {
+    console.error('FAIL: the hover fixture (AFW STOP) is gone from the board — re-point this check');
+    process.exitCode = 1;
+    after = { text: '' };
+  }
+  log.push('after hover: ' + after.text.slice(0, 100));
+  if (/Command error/i.test(after.text)) {
     console.error('FAIL: the refusal outlived a hover — the dispatch guard has become a timer (#558)');
     process.exitCode = 1;
   }
@@ -1633,6 +1646,78 @@ async function testSaveLoadRefusal(page) {
   return log.join('\n');
 }
 
+/* THE ADVANCED INSTRUMENT-FAILURE PANEL (#564 item 3) — the Hard Rule 1 teaching tool that
+ * physics.html sells: fail one gauge, watch the plant behind it stay real. On the plant the
+ * site runs it had lost BOTH halves of being usable, and only a browser can see either.
+ *
+ *   1. THE LABELS. `manualProfile()` was `(RD.MANUAL||{})[ui.engineKey]` with no `|| [ui.plant]`
+ *      fallback — the one `manualRef()` fifty lines away has always had. `RD.MANUAL` is keyed
+ *      pwr / rbmk_pre / rbmk_post / bwr and has no `pwr2`, so the lookup came back undefined and
+ *      the panel fell through to `Object.keys(latest.instruments)`: 85 rows of raw internal ids
+ *      (`power_range`, `thot`, `primary_pressure`) where the retired engine showed 50 named
+ *      indications.
+ *   2. THE PAINT. `advFailAction` ran `cmd(c)` and then recorded `advFailed[id] = mode`
+ *      UNCONDITIONALLY, so a REFUSED injection flashed a command error AND listed itself as
+ *      "Failed: <id>" — an error, a claim of success and a healthy gauge from one press.
+ *
+ * A SOURCE SCAN CANNOT SEE EITHER. Both are live-lookup fallbacks that read as working code,
+ * which is why this is a browser check and not a grep. */
+async function testAdvFailPanel(page) {
+  var log = [];
+  await page.goto('http://127.0.0.1:' + PORT + '/ui/shell.html?engine=pwr2&run=1',
+                  { waitUntil: 'networkidle', timeout: 90000 });
+  await dismissMission(page);
+  await waitBoardLive(page, 20000);
+
+  var r = await page.evaluate(function () {
+    var t = document.getElementById('advExpToggle');
+    if (t) t.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    var sel = document.getElementById('advInstr');
+    if (!sel) return { err: 'the advanced panel did not build' };
+    var rows = [];
+    for (var i = 0; i < sel.options.length; i++)
+      rows.push({ v: sel.options[i].value, t: sel.options[i].text });
+    function apply() {
+      var b = document.getElementById('advApply');
+      if (b) b.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    }
+    function active() {
+      var el = document.getElementById('advActive');
+      return el ? el.textContent.trim() : '';
+    }
+    sel.value = 'tavg'; apply();
+    var afterGood = active();
+    /* a channel this plant does not have — the refusal path, which no dropdown row can reach
+     * now that every offered row is injectable (#563 item 1 fixed that half) */
+    var o = document.createElement('option');
+    o.value = 'not_a_channel'; o.text = 'bogus';
+    sel.appendChild(o); sel.value = 'not_a_channel'; apply();
+    return { rows: rows.length,
+             named: rows.filter(function (x) { return x.t !== x.v; }).length,
+             raw: rows.filter(function (x) { return x.t === x.v; }).map(function (x) { return x.v; }).slice(0, 6),
+             afterGood: afterGood, afterRefused: active() };
+  });
+
+  if (r.err) throw new Error('#564 item 3: ' + r.err);
+  if (r.named !== r.rows || r.rows < 40) {
+    throw new Error('#564 item 3: the instrument dropdown must be HUMAN-NAMED — ' + r.named +
+      ' of ' + r.rows + ' named; raw ids still offered: ' + r.raw.join(', '));
+  }
+  log.push('dropdown: ' + r.rows + ' rows, all human-named (the defect offered 85 raw ids)');
+
+  if (!/tavg/.test(r.afterGood)) {
+    throw new Error('#564 item 3 control: an ACCEPTED injection must be listed — active read "' +
+                    r.afterGood + '"');
+  }
+  /* THE CASE. Without the guard the refused id is appended to the list beside the good one. */
+  if (r.afterRefused !== r.afterGood || /not_a_channel/.test(r.afterRefused)) {
+    throw new Error('#564 item 3: a REFUSED injection was listed as an active failure — ' +
+      'before "' + r.afterGood + '", after "' + r.afterRefused + '"');
+  }
+  log.push('refusal: the active list is unchanged by a refused injection ("' + r.afterRefused + '")');
+  return log.join('\n') + '\n';
+}
+
 async function main() {
   fs.mkdirSync(SCRATCH, { recursive: true });
   var fallback = path.join(SCRATCH, 'ui-screenshot-fallback.log');
@@ -1680,6 +1765,8 @@ async function main() {
     fs.writeFileSync(path.join(SCRATCH, 'held-plant-dialog.log'), hpLog);
     var slLog = await testSaveLoadRefusal(page);
     fs.writeFileSync(path.join(SCRATCH, 'save-load-refusal.log'), slLog);
+    var afLog = await testAdvFailPanel(page);
+    fs.writeFileSync(path.join(SCRATCH, 'adv-fail-panel.log'), afLog);
     fs.writeFileSync(path.join(SCRATCH, 'ui-screenshot-summary.log'), summary.join('\n') + '\n');
     console.log('E2E UI verification: PASS (' + (ENGINES.length * VIEWS.length) + ' screenshots)');
   } finally {

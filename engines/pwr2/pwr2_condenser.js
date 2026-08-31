@@ -85,6 +85,41 @@
      * indistinguishable from an error in the other — which is why the DESIGN POINT below is
      * checked rather than the coefficient. */
     U_w_m2k: 2800,
+    /* THE OPERATOR'S RANGE for the circulating-water inlet (#591 item 1 / #592). The heat sink
+     * the site is given, not a switch on the board — exposed so the coupling is demonstrable.
+     *
+     * ⚠ THESE ARE THE SAME TWO NUMBERS THE RETIRED ENGINE CLIPPED TO, AND THAT IS NOT AN
+     * INHERITED CONSTANT — it is a SOURCED ceiling under a standing owner directive, and a
+     * first draft of this change widened the ceiling to 95 degF before checking, on the
+     * argument that the player should be able to reach the C-9 removal point. Wrong: the
+     * source bounds the water, not the lesson.
+     *   CEILING 85 degF [sourced] — Ginna TS Bases B 3.7.8 (ML20339A221 Rev 101): service-water
+     *   OPERABILITY requires the screenhouse bay at "Temperature <= 85F", and the accident
+     *   analyses bound the supply verbatim at "maximum ... 85F".
+     *   FLOOR 35 degF *(OWNER DIRECTIVE, 2026-08-08: "lets make the floor 35F since its probably
+     *   warmed some by the time tit gets to the condenser")* — the analyses' own bound is 30 degF,
+     *   below freezing; the intake-transit warm-up is the owner's judgment and is UNVERIFIED.
+     *
+     * MEASURED across that band at hot full power, 600 s, DT 0.02 (backpressure in inches of
+     * mercury absolute, the form both sourced C-9 numbers are in):
+     *
+     *   35 degF (floor)   1.526 in Hg   96.16 kPa vacuum
+     *   50 degF (design)  2.400         93.20
+     *   76 degF           4.943         the last step with C-9 MET
+     *   77 degF           5.075         C-9 PERMISSIVE LOST (sourced, 5.0 in Hg)
+     *   85 degF (ceiling) 5.977         81.09
+     *
+     * SO THE BAND REACHES THE PERMISSIVE AND STOPS SHORT OF THE REMOVAL POINT (7.6 in Hg, which
+     * this model crosses at 93 degF). That is the correct answer and `Manuals/03` §13.1 already
+     * says so in prose: lake temperature ALONE cannot take the condenser away from you. Losing
+     * it is an equipment casualty — the circulating-water pumps, air binding, fouling — and all
+     * three are levers this module already carries.
+     *
+     * ⚠ ONE CONSUMER ONLY, unlike the retired plant. This raises the CONDENSER's sink and
+     * nothing else: pwr2_rhr carries its own component-cooling temperature (`ccw_temp_c`,
+     * 95 degF) and does not read this, so a cooldown floor does NOT move with it here. */
+    cw_min_f: 35.0,
+    cw_max_f: 85.0,
     src: 'Ginna UFSAR ch10 §10.4.3 (ML20339A040); C-9 from the same corpus'
   };
 
@@ -102,6 +137,14 @@
      * did not convert. eta_cycle is the turbine's, so rejection is (1 - eta). */
     var eta = RD.turbine ? RD.turbine.etaCycle() : (1 / 3);
     return rated_thermal_kW * (1 - eta) / (cp * dT);
+  }
+
+  /* THE ONE AUTHORITY for the operator range (#591 item 1). The engine's command door calls
+   * this rather than restating the bounds: a second copy of a clamp is how a control and its
+   * caption come to disagree, which is the defect class #516 item 11 was. */
+  function clampCwInlet(c) {
+    if (c == null || !isFinite(c)) return null;
+    return Math.max(f2c(COND.cw_min_f), Math.min(f2c(COND.cw_max_f), c));
   }
 
   function createCondenser(opts) {
@@ -210,7 +253,7 @@
   root.RD = root.RD || {};
   root.RD.pwr2 = root.RD.pwr2 || {};
   root.RD.pwr2.condenser = {
-    COND: COND, areaM2: areaM2, cwFlowKgs: cwFlowKgs,
+    COND: COND, areaM2: areaM2, cwFlowKgs: cwFlowKgs, clampCwInlet: clampCwInlet,
     createCondenser: createCondenser, stepCondenser: stepCondenser,
     P_ATM_KPA: P_ATM_KPA, IN_HG_PER_KPA: IN_HG_PER_KPA
   };

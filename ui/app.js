@@ -2173,7 +2173,10 @@
   function advFailAction(apply) {
     var id = $('advInstr') && $('advInstr').value; if (!id) return;
     if (!apply) {
-      cmd({ action: 'clear_instrument_failure', instrument_id: id });
+      /* the same law on the clear path: a REFUSED clear must not remove the row, or the panel
+       * would report an instrument healed that is still failed */
+      var rc = cmd({ action: 'clear_instrument_failure', instrument_id: id });
+      if (rc && (rc.type === 'error' || rc.type === 'blocked')) return;
       delete advFailed[id]; renderAdvActive(); return;
     }
     var mode = $('advMode').value, m = ADV_MODES[mode];
@@ -2183,7 +2186,15 @@
       if (!isNaN(v)) c.value = v;
       else if (mode !== 'stuck') c.value = m.def;   // stuck: blank = current reading
     }
-    cmd(c);
+    /* THE RESULT DECIDES WHETHER THE ROW IS PAINTED (#564 item 3). This ran `cmd(c)` and then
+     * recorded the failure UNCONDITIONALLY, so a refused injection flashed a command error AND
+     * listed itself as "⚠ Failed: <id> (<mode>)" in the same press — three mutually
+     * contradictory pieces of feedback (an error, a claim of success, and a healthy gauge) from
+     * one click. `cmd()` returns the service's own result shape and has since #505; nothing
+     * here read it. Only a command that was neither refused nor blocked has actually failed an
+     * instrument. */
+    var r = cmd(c);
+    if (r && (r.type === 'error' || r.type === 'blocked')) return;
     advFailed[id] = mode; renderAdvActive();
   }
 
@@ -5920,7 +5931,12 @@
     // never wired into a diagram, and set_esf_auto now lives on the board's re-arm
     // pushbuttons only — which disable themselves when the running engine declares no such
     // arm, #503. rhr-auto went with #453's RHR arm removal.)
-    'afw-flow-set': function () { cmd({ action: 'set_afw_flow', pct: inputVal('afwFlowSet') }); },
+    /* 'afw-flow-set' REMOVED at #591 item 2. It emitted `set_afw_flow` for an `afwFlowSet`
+     * input that no DOM anywhere contains — a dead handler, which is exactly what #562
+     * found here and answered by BUILDING the board tile that would emit it. The owner has
+     * now removed that tile, so the handler is dead again and goes rather than sitting here
+     * reading as a wire. `set_afw_flow` is still a live command: the `afw_level` automation
+     * channel issues it every evaluation, and scenarios and the instructor can send it. */
     // NIS: SR detector switch (P-6 interlocked) + startup-trip block toggles (P-10 gated)
     'sr-on': function () { cmd({ action: 'set_sr_detector', on: true }); },
     'sr-off': function () { cmd({ action: 'set_sr_detector', on: false }); },
@@ -7347,7 +7363,14 @@
     { id: 'failures', label: 'Failures' }, { id: 'glossary', label: 'Glossary' },
   ];
   function mesc(s) { return String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;'); }
-  function manualProfile() { return (RD.MANUAL || {})[ui.engineKey]; }
+  /* THE SAME KEY-THEN-PLANT LOOKUP `manualRef()` DOES (#564 item 3). This had only the engine
+   * key, so on the plant the site runs — `RD.MANUAL` is keyed pwr / rbmk_pre / rbmk_post / bwr
+   * and has no `pwr2` — it returned undefined and the Failures tab's advanced instrument panel
+   * fell through to `Object.keys(latest.instruments)`, offering the player a dropdown of raw
+   * internal ids (`power_range`, `thot`, `primary_pressure`…) in place of 50 human-named
+   * indications. `manualRef()` fifty lines up has carried the fallback since it was written;
+   * this one was the copy that did not. */
+  function manualProfile() { return (RD.MANUAL || {})[ui.engineKey] || (RD.MANUAL || {})[ui.plant] || null; }
   var OPSYM = { '>': '≥', '<': '≤', '>=': '≥', '<=': '≤', '~': '≈' };   // acceptance display
   // Dimension of a dimensioned instrument-id / true_state field so the manual
   // converts to the active unit setting (US/SI) like the board. Everything else

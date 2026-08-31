@@ -331,7 +331,7 @@ to read everything.
 > change. The dense, append-only version lives in `Blueprint/BUILD_DECISIONS.md`
 > (Status line + Open Flags table) — update both.
 
-_Last updated: **2026-08-30**._
+_Last updated: **2026-08-31**._
 
 **Where the PWR is.** Read `BASELINES` for the runner count, never a number written here. The PWR
 is the only active plant: engines, control, service, instructor and the board are built, and the
@@ -425,6 +425,13 @@ FIRST** — ask what in it would still burn someone in a month, move that to the
 ONE line, drop the rest. **A bullet is ~80 words.** (Measured 2026-08-06: the list was running
 7 bullets averaging 500 words, two of them duplicating traps already rescued below.)
 
+- **A NUMBER THAT MATCHES THE RETIRED PLANT'S IS NOT THEREBY AN INHERITED CONSTANT — CHECK THE
+  PROVENANCE BEFORE YOU CHANGE IT** (2026-08-31, #591/#592 §125, the owner's playtest again). The
+  board's CW-temp bound came from `PWR_CONFIG` at script load, 35–85 °F: the exact signature of
+  the #573/#579 pattern. I widened PWR2's ceiling to 95 °F so the C-9 removal point was reachable
+  — and **85 °F is SOURCED** (Ginna TS Bases B 3.7.8) under a standing owner directive, both
+  written in the revision row for the section I was editing. The board read the right value from
+  the wrong plant. **The fix was provenance, not arithmetic.**
 - **A GATE CAN BE POINTED AT TWO OF ITS SUBJECT'S THREE TABLES AND REPORT GREEN — AND THE BOARD
   KNEW BEFORE THE MANUAL DID, THREE TIMES** (2026-08-30, #532, Rev 17 (e)–(p)). `run_manual_setpoints`
   shipped in this same effort reading chapter 09's §2.0 and §4.0 and scored **9/9** over a §3.0 that
@@ -455,13 +462,6 @@ ONE line, drop the rest. **A bullet is ~80 words.** (Measured 2026-08-06: the li
   differently. `dt_accepted` is now the loop's own report and every boundary ledger books
   exactly it. **Caller arithmetic about a partial step is a claim; the solver's report is a
   measurement.**
-- **NOISE ON A SETPOINT IS NOISE NO CONTROLLER CAN REJECT — and a RULING that corrects a number
-  must be grepped for every SURFACE that states it** (2026-08-29, #516 Group A §120, the owner's
-  own playtest, 11 items filed and never worked). The pressurizer level program read its Tavg
-  channel RAW at **2.845 %/°C**: true Tavg spans 0.022 °C, indicated 0.63, program **1.77 %**,
-  charging hunting 0→17 gpm — the PI ignores noise on the MEASUREMENT, and this arrived on the
-  SETPOINT. And #579 derived charging at 30.1 gpm, fixed the MANUAL, and left the board bounded
-  at the retired plant's 60 — exactly 2×, so half the box was one value.
 **Standing procedure — not part of the rotation above; these do not expire.** One trap per entry.
 **MAX 25 BULLETS** *(OWNER RULING, 2026-08-10: selected "Cap at 25, evict to TRAPS.md" from
 options I wrote — a selection, not verbatim words)*, gated by `test/run_doc_budget.js`. Adding

@@ -980,9 +980,29 @@
         ck('item 5: the REACTIVITY readout is removed from the board',
            !document.querySelector('[data-item="imro6rdwwdn"]') &&
            !document.querySelector('[data-item="imrshokxy4u"]'));
-        var pl = tileRect('ims89mc0hl3');
-        ck('item 5: PERIOD moved up into the vacated slot (top ~455, was 490)',
-           !!pl && pl.t > 445 && pl.t < 470, pl && pl.t.toFixed(0));
+        // RE-POINTED at #591 item 3, and it now asserts the thing that actually went wrong.
+        // #350 item 5 pinned PERIOD's caption at "top ~455": a POSITION, not a claim, and a
+        // position moves the next time the owner asks it to — which he did on 2026-08-30
+        // ("The period card looks terrible. Move the text up and shrink the card. make sure
+        // the text doesnt sit ontop of eachother"). The defect he was reporting is measurable
+        // and permanent: rendered, the caption occupied x 650..703 y 424..441 and the value
+        // x 676..707 y 429..448 — 27x12 px of the value drawn ON TOP of the caption. So the
+        // check is now NO OVERLAP plus INSIDE THE CARD, which cannot be satisfied by a layout
+        // that merely moved, and cannot go stale the next time the pair is nudged.
+        var pl = tileRect('ims89mc0hl3'), pv = tileRect('ims89mkaj2r'), pc = tileRect('bdReactivityCard');
+        function box(r) {
+          return r ? (r.l.toFixed(0) + '..' + r.r.toFixed(0) + ' x ' +
+                      r.t.toFixed(0) + '..' + r.b.toFixed(0)) : 'missing';
+        }
+        ck('item 5 / #591.3: PERIOD and its value do not overlap',
+           !!pl && !!pv && !overlaps(pl, pv),
+           'caption ' + box(pl) + '  value ' + box(pv));
+        ck('#591.3: both sit INSIDE the period card, which hugs them',
+           !!pc && !!pl && !!pv &&
+           pl.t >= pc.t - 1 && pv.b <= pc.b + 1 &&
+           pl.l >= pc.l - 1 && pv.r <= pc.r + 1 &&
+           (pc.b - pc.t) < 60,
+           'card ' + box(pc));
       })();
 
       // ---- #350 items 14 + 18: the flow states the port gate could never express --------

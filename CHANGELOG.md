@@ -30,6 +30,58 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
 
 ## [Unreleased]
 
+### Fixed (the owner's playtest, and four controls that read as working — 2026-08-31)
+
+`#591` (owner playtest, 2026-08-30) + `#564` (the board third of the `#534` sweep) + `#578` +
+`#592`. One shape throughout: a control surface on the plant the site runs that reads as working
+and is not. Full write-up with every measurement: `Blueprint/PWR2_VALIDATION.md` §125.
+
+- **The CONDENSER COOLING temperature box is live** (#591 item 1 / #592). The owner: *"changing
+  condenser cooling temp didn't affect anything notably."* It could not — but the physics was
+  built: `pwr2_condenser` has computed the vacuum from that temperature since it was written, and
+  only the engine's command door was missing. The action sat in the shell's REFUSED registry
+  carrying the retired plant's reason ("CW pumps on/off only"), and the board darkened the box on
+  the strength of that refusal. Range **35–85 °F (1.7–29.4 °C)**, unchanged and now published by
+  the plant rather than read from the retired engine's config — 85 °F sourced (Ginna TS Bases
+  B 3.7.8), 35 °F the standing owner directive of 2026-08-08.
+  **Two behaviour claims in `Manuals/03` §13.1 were the retired engine's and are corrected as
+  measured-false:** output does *not* fall with vacuum here (**100.0 MWe from 35 °F to 85 °F** —
+  this turbine is dispatched to a load target), and **lake temperature CAN now ring COND VAC LO**,
+  crossing 25 inHg at about **76 °F** where the old note claimed ~2 inHg of margin at the ceiling.
+- **The aux feed card is STOP and AUTO** (#591 item 2) *(OWNER RULING, 2026-08-31: selected
+  "Remove START and the THROTTLE box" from three options put to him, against his playtest item
+  "Im thinking of removing the manual mode for aux feed water and leaving only the automatic mode
+  and off ... leave just STOP and AUTO controls")*. The manual
+  START button and the AUX FEED THROTTLE box are removed, which **withdraws the board half of
+  #562** — sourced work (WAT 05, ML11216A094). The `afw_level` automation channel keeps throttling
+  the valves; `set_afw_flow` stays a command for scenarios and the instructor. `Manuals/03` §10.0
+  and `07` step 5 follow it. CONDENSER COOLING returns to its authored place — bottom flush with
+  the ECCS panel at 740 px rendered, which is what the owner asked for.
+- **The period card is sized for what is on it** (#591 item 3). It was authored to cover four
+  readouts and two of them were deleted by owner directive in August, so half the card covered
+  nothing — and the survivors overlapped by a measured **20 × 13 px**, because #516 item 4 had
+  right-aligned the value to a tile that no longer exists.
+- **The pressurizer SPRAY box shows the operator's demand, not the delivered flow** (#564 item 1).
+  The board read one number twice — as the demand box and as the "called for and not arriving"
+  test of the SPRAY FLOW readout — so that amber was an identity that is always zero. Measured
+  both ways: a standing 60 % demand read **0.0** once the pressurizer went solid, and with the
+  operator demanding 0 a stuck valve read back **100 %** they never asked for.
+- **Three TRIP BLOCKS rows no longer offer a block this plant does not have** (#564 item 2).
+  `RCS LOW FLOW`, `RCP BREAKER` and `IR HIGH FLUX` rendered enabled in every plant state and every
+  press threw; two of them name reactor trips PWR2's protection table does not contain. They read
+  N/A and say why. **And `SI ACTUATION` — a block this plant DOES carry, and a real cooldown
+  action — now has a row**, which it never had.
+- **The Failures tab names its instruments again** (#564 item 3). The advanced instrument-failure
+  panel offered raw internal ids (`power_range`, `thot`, …) on PWR2 because its label lookup
+  lacked the plant fallback its neighbour has had all along; it is **50 named rows** again. And a
+  *refused* injection is no longer listed as an active failure while flashing an error.
+- **The delta-T margin tile reads the plant's own rod-stop and runback signals** (#578). Both have
+  been published by the engine since the delta-T pair was built and nothing on the board read
+  either; the tile's amber was derived from a margin against the retired plant's constant, and so
+  was blind to both flux rod stops and to the runback. *(The dedicated lamps #578 asks for are not
+  built — the board has no free space for them; the issue stays open carrying that.)*
+
+
 ## [Alpha 1.7.0] — 2026-08-30
 
 ### Changed (the public website describes the plant it is about to ship, 2026-08-30)

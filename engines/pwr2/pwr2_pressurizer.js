@@ -1158,6 +1158,16 @@
       backup_on: pz.backupOn,
       heaters_shed: pz.heatersShed,
       spray_frac: sprayFrac,
+      /* THE DEMAND, SEPARATE FROM THE DELIVERY (#564 item 1). What the operator (or, in AUTO,
+       * the controller) is ASKING FOR, before the physical gates below it — the stuck-valve
+       * override, water-solid, and the RCP head gate when it is enforced. The module has always
+       * kept the split internally; nothing published it, so the board read `spray_frac` twice —
+       * once as the operator's own demand box and once as the `asked` half of the SPRAY FLOW
+       * readout's "demanded and not arriving" amber, which made that amber an identity that is
+       * always zero. Deliberately NOT touched by `spray_stick`: writing an override into a
+       * demand is the #200 trap this file's own comment three lines up names. */
+      spray_demand_frac: drivers.spray_manual !== undefined
+                         ? clip(drivers.spray_manual, 0, 1) : sprayAuto,
       spray_stuck: pz.sprayStuck === true,
       spray_kgs: m_spray,
       spray_duty_kW: Q_spray_kW,

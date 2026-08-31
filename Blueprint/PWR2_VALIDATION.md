@@ -9405,3 +9405,245 @@ lives where the cause lives — `run_pwr2_instruments`' *"the noise correlation 
 `run_pwr2_instruments` 22 → **23**, mutations 14 → **15**. `run_pwr2_feedwater` 29/29 and
 `run_pwr2_loadfollow` 36/36 **unmoved** — the calmer loop did not buy a sluggish one, which was
 the standing risk.
+
+## 125. #591 + #564 + #578 + #592 — THE OWNER'S PLAYTEST, AND FOUR CONTROLS THAT READ AS WORKING — 2026-08-31
+
+**Seven items across four issues, one shape: a control surface on the plant the site runs that
+reads as working and is not.** #591 is the owner's playtest of 2026-08-30 — filed with no labels,
+no comments and nothing in `git log --grep`, which is the third time in this repo's history a
+playtest list has sat untouched. #564 is the board third of the #534 sweep, also untouched. #578
+is the rod stop and turbine runback, published by the engine and read by nothing.
+
+### 125.1 The circulating-water box was a DARK WIRE, and the manual had already filed it (#591.1, #592)
+
+The owner: *"changing condenser cooling temp didn't affect anything notably."*
+
+It could not. But nothing was missing from the physics:
+
+| where | what was there |
+|---|---|
+| `pwr2_condenser.js` | `cd.cw_inlet_c` is real state, and `T_cw_out = cw_in + Q/(ṁ·cp)` → `T_cond = T_cw_out + Q/UA` → `P_cond = P_sat(T_cond)`. The module header says it in as many words: *"handed warmer lake water, and the backpressure follows — which is what makes the C-9 permissive something the player can lose rather than something the scenario asserts."* |
+| `pwr2_shell.js:886` | `set_condenser_cw_temp: 'the condenser model has CW pumps on/off only'` — in **REFUSED**, with a reason that is **false for this engine** |
+| `pwr2_shell.js:1489` | published `condenser_cw_temp_fixed: true` |
+| `pwr_board_wiring.js` | the box emitted the command; `numberDisabled` drew it **dark** off that flag |
+
+Nothing wrote `cd.cw_inlet_c` after construction. The refusal justified the flag, the flag
+darkened the box, and the box was the only thing standing between the player and a coupling that
+had worked all along. **`Manuals/03` §13.1 had already found the mismatch and filed it as #592** —
+the manual pass documented "REFUSED ON THIS PLANT" and flagged that the board still drew the box.
+
+**A door in `pwr2_engine` (`cw_inlet_temp`), a MAPPED entry in the shell, the REFUSED row and the
+capability flag deleted, and the `numberDisabled` line re-pointed at the published value.**
+Measured through the shipped door, hot full power, 600 s, DT 0.02:
+
+| CW inlet | vacuum | backpressure | MWe |
+|---|---|---|---|
+| 35 °F (floor) | 28.40 inHg (96.16 kPa) | 1.53 inHg | 100.0 |
+| **50 °F (design)** | **27.52 inHg (93.20 kPa)** | 2.40 inHg | 100.0 |
+| 77 °F | 24.85 inHg (84.14 kPa) | 5.08 inHg | 100.0 |
+| 85 °F (ceiling) | 23.68 inHg (80.19 kPa) | 6.24 inHg | 100.0 |
+| *(92 °F)* | *(76.12 kPa)* | *7.44 inHg* | *100.0* |
+| *(93 °F)* | — | *C-9 REMOVED → TURBINE TRIP* | *0* |
+
+**THE TRAP IN THIS ONE IS MINE, AND IT IS WORTH THE SPACE.** The board's bound came from
+`RD.PWR_CONFIG.turbine.cw_inlet_min_c/max_c` — the RETIRED engine's config, captured at script
+load, 35–85 °F — and I read that as the standing inherited-by-reference pattern (#573, #579,
+#516.11) and widened PWR2's own ceiling to **95 °F**, so the player could reach the C-9 removal
+point and lose the condenser. That is a real educational argument and it was **wrong**:
+
+> **85 °F is SOURCED** — Ginna TS Bases B 3.7.8 (ML20339A221 Rev 101): service-water OPERABILITY
+> requires the screenhouse bay at *"Temperature ≤ 85ºF"*, and the analyses bound the supply
+> verbatim at *"maximum … 85ºF"*. **35 °F is a standing owner directive** *(2026-08-08: "lets make
+> the floor 35F since its probably warmed some by the time tit gets to the condenser")*.
+
+It was caught by reading the revision-history row for the manual section I was about to edit —
+Rev 15 (a) carries both the source and the directive. **The lesson: a number that MATCHES the
+retired plant's is not thereby an inherited constant.** The pattern the last four sessions have
+been about made the wrong reading the natural one, and only checking the provenance separated
+them. What the board was doing wrong was not the *value* — it was reading a value from the wrong
+plant, which happens to agree. So the fix is provenance, not arithmetic: PWR2 publishes
+`cw_inlet_range_c` from `pwr2_condenser.COND`, and the board reads it with the config literals as
+the fallback every other engine keeps (`chargingMaxGpm` / `pressBandMpa` shape).
+
+**And the band's reach is the right answer, not a compromise.** It crosses the C-9 permissive
+(5.0 in Hg, at ~77 °F) and stops short of the removal point (7.6 in Hg, at 93 °F). Losing the
+condenser is an equipment casualty — circulating-water pumps, fouling, air binding, all three
+already levers on this module — not a warm day.
+
+**A REAL BEHAVIOUR CHANGE FELL OUT OF IT, and it contradicts the manual.** `Manuals/03` §13.1's
+NOTE said lake temperature alone cannot walk vacuum to **COND VAC LO** (25 inHg / 84.7 kPa),
+"even the 85 °F ceiling leaves ~2 inHg of margin". Measured on PWR2: 24.85 inHg at 77 °F and
+23.68 inHg at the ceiling — the band crosses the alarm at about **76 °F**, and the annunciator
+was confirmed in through the full stack (`SimulationService`, `cond_vac_low` active at 85 °F).
+The old figure was the retired engine's and is wrong by ~1.3 inHg the other way. **A hot summer
+day is now an alarm the player has to answer.** Two more retired-plant claims in the same section
+are withdrawn: MWe does not fall with vacuum here (100.0 MWe at every step — this turbine is
+dispatched to a load target), and the RHR cooldown floor does not move with it (shutdown cooling
+rejects to its own 95 °F component-cooling water, which does not read this box).
+
+### 125.2 The AFW card goes to STOP and AUTO, and #562's board half is withdrawn (#591.2)
+
+*(OWNER RULING, 2026-08-31: selected "Remove START and the THROTTLE box" from three options I
+put, against his playtest item "Im thinking of removing the manual mode for aux feed water and
+leaving only the automatic mode and off … leave just STOP and AUTO controls".)*
+
+**What is given up, stated rather than buried:** #562 built the AUX FEED THROTTLE tile on a
+source — WAT 05 Transients (ML11216A094), *"It is necessary to throttle AFW flow to control RCS
+temperature at this point"* — and the player now has no lever over post-trip cooldown rate at
+all. There is no automation-channel panel on this board (the Automate tab went at #439), so
+`afw_level` holds the valves and the operator's whole authority over aux feed is STOP, then
+re-arm AUTO. `set_afw_flow` stays a command for scenarios, the instructor and the channel itself.
+I raised the cost before the ruling; the ruling stands and the manual now says so plainly.
+
+**The geometry was the owner's second sentence** — *"Adjust cards to move condenser cooling up to
+line up the bottom of that card with the bottom of the other cards."* MEASURED off the doc: the
+neighbours in that row bottom out at **785** (ECCS panel container 600..785, RHR and CHARGING at
+780), CONDENSER COOLING is *authored* 715..785, and #562's `DOC_PATCHES` had been holding it at
+770..840 — 55 px below everything beside it, purely to make room for the throttle row. **So the
+authored geometry IS the alignment he asked for**, and the correct edit was to delete five patch
+rows rather than write new numbers. Confirmed in the browser: AUX FEED WATER 613..670, CONDENSER
+COOLING 674..**740**, ECCS panel 566..**740**.
+
+STOP and AUTO shift one slot left into the removed START's place (authored pitch 65 px), the same
+treatment RHR ALIGN/ISOLATE got at #453.
+
+### 125.3 The period card was sized for readouts that were deleted (#591.3)
+
+*"The period card looks terrible. Move the text up and shrink the card. make sure the text doesnt
+sit ontop of eachother."* Both halves are measurements.
+
+#516 item 4 authored `bdReactivityCard` at 660,412 120×72 to cover **four** things — REACTIVITY,
+the reactivity value, PERIOD and the period value — and the first two are both in `DOC_REMOVE`,
+deleted by owner directive on 2026-08-04. **Half the card covered nothing.**
+
+And the survivors genuinely overlapped: caption **690..746 × 450..468**, value **726..750 ×
+455..475** — **20 × 13 px** of the value drawn on top of the caption's last characters. The cause
+is #516 item 4's own right-alignment: the value is `rAnchor`, so moving its right edge to 750 to
+line it up with the reactivity value **above** it pushed its left edge back into the caption.
+**It was aligned to a tile that had already been deleted.**
+
+Now a two-row stack inside a 120×50 card, which is what the neighbouring inner boxes do. Rows
+cannot overlap horizontally however long the number gets, so a four-digit period cannot recreate
+it.
+
+**`board_check`'s own check was the same class of fixture.** It pinned *"PERIOD moved up into the
+vacated slot (top ~455)"* — a POSITION, which moves the next time the owner asks. It is now NO
+OVERLAP plus INSIDE THE CARD: the defect he reported, asserted directly, and both halves
+injection-verified by restoring the old geometry (both red).
+
+### 125.4 The spray box erased the operator, in both directions (#564.1)
+
+`pwr2_shell.js` published `spray_valve_pct: ts.spray_flow_pct` — **delivered** flow, after the
+stuck-valve override and the water-solid gate — and the board read that one number **twice**: as
+the operator's demand box and as the `asked` half of the SPRAY FLOW readout's amber. So the
+readout's stated purpose, *"amber whenever spray is being CALLED FOR and is not arriving"*, was an
+identity that is **always zero**.
+
+The issue's own reproduction had aged — it used the RCP head gate, which is DECLARED OFF on this
+plant (`SPRAY.rcp_gate_enforced` false, the #594 stand-in). Re-measured against what still
+diverges, and **the second case is not in the issue at all**:
+
+| | operator demand | box read | delivered |
+|---|---|---|---|
+| 60 % spray, pressurizer goes SOLID | 60 % | **0.0** | 0.0 |
+| 0 % spray, `stuck_open_spray` injected | 0 % | **100.0** | 100.0 |
+
+The first is the player's own setting erased from the box they typed it into. **The second is the
+board attributing a failed valve to the player** — their control reading back a 100 % they never
+asked for. The module keeps the split correctly and always has; the collapse was at the shell
+seam. `spray_demand_frac` now comes out of `pwr2_pressurizer` (deliberately *excluding* the stuck
+override — writing a fault into a demand is the #200 trap that file's own comment names), through
+`spray_demand_pct` in true_state and control_state, and the board reads it with the delivered
+field as the fallback the retired engine needs.
+
+### 125.5 Three trip-block rows that could only throw, and one the plant had that the board did not (#564.2)
+
+`BLOCKABLE_TRIPS` drew five rows; PWR2 publishes three (`pr_low_setpoint`, `lo_press`,
+`si_trip`). `lo_flow`, `rcp_breaker` and `ir_high` had no `trip_block_status` entry, so
+`ts.can_block === false` was **false** and all three rendered ENABLED in every plant state, each
+press throwing — and two of them name reactor trips `pwr2_protection` does not contain at all.
+
+The gate is presence, the same law `buttonDisabled` applies to the boron panel, RHR and the
+steam-dump lever: a snapshot that publishes the map is a plant SPEAKING, and a row missing from it
+is a block that plant does not have; a snapshot with **no** map is the legacy shape and says
+nothing, so old recordings and minimal fixtures keep every row live.
+
+**And the inverse half, which nobody had named: `si_trip` is a block this plant DOES carry and
+had no row.** Blocking safety injection is a real operator action on every cooldown — the
+standing trap list has a whole bullet on it ("Block SI is THREE actions on a cooldown") — and it
+was unreachable from the board while three inert rows sat above it. It has a row now.
+
+**The row state came out of the DOM and became a function.** `refreshTripBlocks` computed the
+caption, the class and the disabled flag while writing them, so the only way to check any of it
+was to render a popover — which is exactly why three permanently-inert buttons shipped. It is
+`tripBlockRows(s)` now, on the driver, and four checks read it.
+
+### 125.6 The Failures tab: raw ids, and a refusal painted as a success (#564.3)
+
+Two independent halves, both live, both invisible to a source scan because each is a live-lookup
+fallback that reads as working code:
+
+- `manualProfile()` was `(RD.MANUAL||{})[ui.engineKey]` with **no `|| [ui.plant]` fallback** — the
+  one `manualRef()` fifty lines away has always had. `RD.MANUAL` has no `pwr2` key, so the
+  advanced instrument panel fell through to `Object.keys(latest.instruments)` and offered the
+  player **raw internal ids**. Measured in-browser after the fix: **50 rows, 50 human-named**,
+  matching the retired engine exactly.
+- `advFailAction()` ran `cmd(c)` and then recorded `advFailed[id] = mode` **unconditionally**, so
+  a refused injection flashed a command error AND listed itself as an active failure — an error,
+  a claim of success, and a healthy gauge from one press. `cmd()` has returned the service's
+  result shape since #505; nothing here read it. The clear path had the same hole and got the
+  same guard.
+
+The refusal *volume* the issue reported (70 of 85 channels) was fixed the day before by #563 item
+1 — re-measured before touching anything, per the inherited-claims rule.
+
+### 125.7 The rod stop was already refused; what was missing was the indication (#578)
+
+**The issue asks for two things and one of them was already built.** It says a rod-withdraw press
+during the stop is "accepted then silently zeroed" and asks for a refusal at the layer that
+re-asserts it. MEASURED on this tree — force a delta-T cause, drive one press through the shell:
+
+```
+withdraw → ROD WITHDRAWAL BLOCKED: an OVERTEMPERATURE / OVERPOWER delta-T rod stop is standing
+           (within 3 % of the trip setpoint) [sourced, Ginna UFSAR ch7 §7.2.3.2.1] …
+insert   → ACCEPTED
+```
+
+That is #572's `rodDriveDoor`, and outward-only is WTSM 8.1 §8.1.7.3's own scope. The issue was
+filed against a claim that had aged — the same "verify before you act on it" rule that has now
+caught four issue bodies in two weeks.
+
+**The indication half was real.** `ts.rod_stop` and `ts.runback_active` are published and a
+tree-wide grep of `ui/diagram/board/` found neither read; lamps existed only on `test_pwr2.html`.
+The closest thing the board had was the delta-T margin tile's amber, and that is a *different
+claim*: it compares the margin against `RD.PWR_CONFIG.otdt_opdt.rod_stop_offset_pct` — the retired
+plant's constant — and is blind to **both flux rod stops** (which have no delta-T margin at all)
+and to the runback outright. The tile now reads the plant's own signals.
+
+**⚠ THE LAMPS #578 ASKS FOR ARE NOT BUILT, AND THIS IS THE OPEN HALF.** There is nowhere to put
+them. Measured doc-wide with art components included, the only rectangles that will take a 130×32
+tile start at **x 1650** — past the right-hand column — and adding one there extends the board's
+bounding box, which shrinks every tile on the canvas (the reason `imrzmlyafa3` is in
+`DOC_REMOVE`). A first attempt put the pair under the PERIOD card and the browser showed why the
+scan said no: the reactor-vessel art and a live steam run both cross that strip, so one lamp
+rendered behind the vessel and the other landed on a pipe. The delta-T tile itself cannot carry a
+word either — it is `rAnchor` at 780, renders 79 px, and the NUC INSTR (NIS) card title ends
+9 px inside where "  ROD STOP" would start. **So the RUNBACK still has no indication the colour
+can separate from a rod stop.** Growing the canvas for two words is the owner's call; #578 stays
+open carrying it.
+
+### Gates
+
+`run_pwr2_condenser` 30 → **35** (mutations 19 → 21) · `run_pwr2_shell` 140 → **145** (46 → 48) ·
+`run_pwr2_board` 52 → **67** (17 → 22) · `verify_board_check` 236 → **237** ·
+`run_pwr2_kernel` 37 → **36**, a check correctly lost with the refusal it guarded ·
+`verify_e2e_ui` gains `testAdvFailPanel` (its score is a screenshot count, so the baseline holds) ·
+`run_inspect` and `run_manual_rev` returned to green after the orphans and the revision row.
+Every new check injection-verified.
+
+**`verify_e2e_ui` had a stale fixture and it was mine to find:** `testRefusalReachesTheScanner`
+hovers a "hinted element" to prove the Scanner's refusal clears, and the element it hovered was
+the AFW START button this change removes. It reddened for a reason unrelated to its claim —
+`querySelector` returned null, no mouseover was ever dispatched, and the refusal stayed put
+because nothing asked it to move. Re-pointed at AFW STOP, **and the silent `if (other)` is now a
+loud failure**, which is the half that let a missing fixture read as a broken guard.

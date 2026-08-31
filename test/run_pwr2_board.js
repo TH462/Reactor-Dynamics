@@ -352,6 +352,157 @@ function runSuite(quietRec) {
     fbStart != null && fbEnd != null && fbMoved > fbN * fbStep * 0.9,
     'per click ' + (fbMoved / fbN).toFixed(3) + ' gpm (shipped defect: 0.06)');
 
+  /* ---- 2b2. THE CIRCULATING-WATER BOX (#591 item 1) ---------------------------------------
+   * The owner: "changing condenser cooling temp didn't affect anything notably." It could not:
+   * the action sat in the shell's REFUSED registry carrying the RETIRED plant's reason, and the
+   * board drew the box dark off the capability flag that refusal justified — while
+   * pwr2_condenser has computed the vacuum from this temperature since it was written. Two
+   * halves, and the second is the one a fix to the first would have left behind: the box's
+   * BOUNDS came from `RD.PWR_CONFIG.turbine` (35-85 degF), which stops BELOW the C-9 removal
+   * point at 93 degF, so a live box would still have hidden the casualty. */
+  if (!rec) head('CW INLET TEMP BOX  [live, and bounded by THIS plant, #591 item 1]');
+  var cwItem = { id: 'ims3v42jghn', unit: 'F' };
+  var CDm = globalThis.RD.pwr2.condenser;
+  q('the box is LIVE on the plant the site runs (it was dark behind a refusal)',
+    D.numberDisabled(cwItem, w.snap()) === false, '');
+  var cwB = D.boundsFor(cwItem);
+  q('its bounds are the CONDENSER MODULE own band, not the retired config',
+    cwB && Math.abs(cwB[0] - CDm.COND.cw_min_f) < 0.6 &&
+    Math.abs(cwB[1] - CDm.COND.cw_max_f) < 0.6,
+    cwB ? (cwB[0] + '-' + cwB[1] + ' degF against the module ' +
+           CDm.COND.cw_min_f + '-' + CDm.COND.cw_max_f) : 'no bounds');
+  /* THE DISCRIMINATOR. The band happens to be the same 35-85 degF the retired config carries, so
+   * "the numbers match" proves nothing on its own — what is asserted is PROVENANCE: mutate what
+   * the plant publishes and the box must follow it, which a board reading `_TB` at script load
+   * cannot do. The ceiling itself is SOURCED (Ginna TS Bases B 3.7.8, service water OPERABLE at
+   * <= 85 degF) and must not be widened to put the C-9 removal point in reach. */
+  q('...and the bound FOLLOWS the plant, not a config captured at script load',
+    (function () {
+      var snap = w.snap();
+      var moved = { true_state: snap.true_state, instruments: snap.instruments,
+                    control_state: Object.assign({}, snap.control_state,
+                                                 { cw_inlet_range_c: [0, 40] }),
+                    rod_groups: [] };
+      var saved = RD.PwrBoard.lastSnapshot;
+      RD.PwrBoard.lastSnapshot = function () { return moved; };
+      var b2 = D.boundsFor(cwItem);
+      RD.PwrBoard.lastSnapshot = saved;
+      return b2 && Math.abs(b2[1] - 104) < 1.5;   /* 40 degC = 104 degF */
+    })(),
+    'a plant publishing 0-40 degC must move the box to 32-104 degF');
+  q('and the box READS BACK the running plant sink',
+    Math.abs(D.numberFor(cwItem, w.snap()) - 50) < 1.0,
+    'reads ' + D.numberFor(cwItem, w.snap()) + ' degF against the sourced 50 degF design inlet');
+
+  /* ---- 2b3. THE PZR SPRAY BOX READS THE DEMAND (#564 item 1) -------------------------------
+   * `control_state.spray_valve_pct` is DELIVERED flow on this plant, after the stuck-valve
+   * override and the water-solid gate — and the board read it TWICE: as the operator's own
+   * demand box and as the `asked` half of the SPRAY FLOW readout's "demanded and not arriving"
+   * amber, which made that amber an identity that is always zero. Both directions measured on
+   * the shipped plant: a standing 60 % demand read 0.0 in the box once the pressurizer went
+   * solid, and with the operator demanding 0 a stuck valve read back 100 %. */
+  if (!rec) head('PZR SPRAY BOX  [the operator DEMAND, never the delivery, #564 item 1]');
+  function sprayView(demandPct, deliveredPct) {
+    var snap = { true_state: {}, instruments: { pzr_spray_flow: deliveredPct }, control_state: {
+      spray_demand_pct: demandPct, spray_valve_pct: deliveredPct }, rod_groups: [] };
+    return { box: D.numberFor({ id: 'imro929i738', unit: '%' }, snap),
+             read: D.valueFor({ id: 'imsgt6qmdgx' }, snap) };
+  }
+  var svGap = sprayView(60, 0), svStuck = sprayView(0, 100);
+  q('a standing demand SURVIVES the plant refusing it (the box does not erase the player)',
+    Math.abs(svGap.box - 60) < 0.01,
+    'demand 60 %, delivery 0 % -> box reads ' + svGap.box);
+  /* THE STATE THE READOUT EXISTS FOR. Reading the delivery made `asked && v < 20` an identity
+   * that can never be true, so this rendered green — "nothing to see" — in the one case the
+   * indication was built to flag. */
+  q('...and SPRAY FLOW goes AMBER on demanded-and-not-arriving, which was unreachable',
+    svGap.read && svGap.read.color !== '#5aad7c' &&
+    svStuck.read && svGap.read.color !== svStuck.read.color,
+    'gap ' + (svGap.read && svGap.read.color) + ' against healthy ' +
+    (svStuck.read && svStuck.read.color) + ' — the colour constant itself lives in the ' +
+    'wiring; the claim here is that the two states RENDER DIFFERENTLY, which they could not');
+  /* THE OTHER DIRECTION, which the issue did not name: a stuck valve was attributed to the
+   * player, their own box reading a 100 % they never asked for. */
+  q('...and a STUCK valve is not attributed to the operator (box stays at their 0 %)',
+    Math.abs(svStuck.box - 0) < 0.01 &&
+    svStuck.read && svStuck.read.color === '#5aad7c',
+    'demand 0 %, delivery 100 % -> box ' + svStuck.box + ', readout ' +
+    (svStuck.read && svStuck.read.color));
+
+  /* ---- 2b4. THE TRIP BLOCKS PANEL (#564 item 2) --------------------------------------------
+   * Five rows were drawn and this plant publishes three blocks. `lo_flow`, `rcp_breaker` and
+   * `ir_high` had no `trip_block_status` entry, so `ts.can_block === false` was false and all
+   * three rendered ENABLED in every plant state — each press throwing — while two of them name
+   * reactor trips pwr2_protection does not contain at all. And the inverse: `si_trip`, a block
+   * this plant DOES carry and a real operator action on a cooldown, had no row. */
+  if (!rec) head('TRIP BLOCKS PANEL  [the plant publishes, the board offers, #564 item 2]');
+  var tbRows = D.tripBlockRows(w.snap()), tbById = {};
+  tbRows.forEach(function (r) { tbById[r.id] = r; });
+  var tbPub = (w.snap().rps_state && w.snap().rps_state.trip_block_status) || {};
+  q('every row the panel draws that this plant does NOT publish reads N/A and is disabled',
+    tbRows.filter(function (r) { return !r.supported; }).length > 0 &&
+    tbRows.every(function (r) {
+      return Object.prototype.hasOwnProperty.call(tbPub, r.id)
+             ? r.supported === true
+             : (r.supported === false && r.disabled === true && r.text === 'N/A');
+    }),
+    'published ' + Object.keys(tbPub).sort().join(',') + ' — rows ' +
+    tbRows.map(function (r) { return r.id + ':' + r.text; }).join(' '));
+  /* THE DISCRIMINATOR: naming the three by id, so a change that disabled the WHOLE panel — or
+   * one that left the panel alone and merely stopped drawing the rows — cannot pass this. */
+  q('...specifically lo_flow, rcp_breaker and ir_high, the three that could only throw',
+    ['lo_flow', 'rcp_breaker', 'ir_high'].every(function (id) {
+      return tbById[id] && tbById[id].disabled === true && tbById[id].supported === false;
+    }) && tbById.pr_low_setpoint && tbById.pr_low_setpoint.supported === true,
+    '');
+  q('and SI ACTUATION — a block this plant carries — now HAS a row, and it is live',
+    tbById.si_trip && tbById.si_trip.supported === true && tbById.si_trip.text !== 'N/A',
+    tbById.si_trip ? ('si_trip reads "' + tbById.si_trip.text + '", disabled ' +
+                      tbById.si_trip.disabled) : 'NO ROW');
+  /* A LEGACY snapshot — no trip_block_status at all — must say NOTHING about capability, or
+   * every old recording and minimal fixture would render the whole panel dead. */
+  q('a snapshot with no trip_block_status leaves every row live (the legacy shape)',
+    D.tripBlockRows({ true_state: {}, instruments: {}, control_state: {},
+                      rps_state: { trip_blocks: {} } })
+     .every(function (r) { return r.supported === true; }), '');
+
+  /* ---- 2b5. THE ROD STOP AND THE TURBINE RUNBACK ARE VISIBLE (#578) ------------------------
+   * `pwr2_engine.js:1324-1325` has published `ts.rod_stop` and `ts.runback_active` since the
+   * delta-T pair was built, and a tree-wide grep of `ui/diagram/board/` found NEITHER read —
+   * lamps existed only on the dev page. The delta-T margin tile's amber came from comparing the
+   * margin against `RD.PWR_CONFIG` (the RETIRED plant's constant) and was blind to both FLUX
+   * rod stops and to the runback outright. It now reads the plant's own signals.
+   *
+   * THE FIXTURES ARE HAND-BUILT SNAPSHOTS, deliberately: the flux stops are what the derived
+   * colour could never see, and holding the margin HEALTHY in every row is the only way to show
+   * that the word comes from the signal rather than from the arithmetic. */
+  if (!rec) head('ROD STOP / RUNBACK (#578)  [read from the plant, not re-derived]');
+  function dtTile(ts) {
+    return D.valueFor({ id: 'bdDtMargin' },
+      { true_state: ts || {}, instruments: { otdt_margin: 31.2, opdt_margin: 40.0 },
+        control_state: {}, rod_groups: [] });
+  }
+  var dtClear = dtTile({}), dtStop = dtTile({ rod_stop: true }),
+      dtRb = dtTile({ rod_stop: true, runback_active: true });
+  q('a healthy plant with a wide margin reads NORMAL',
+    dtClear && dtClear.color === '#5aad7c',
+    dtClear ? ('"' + dtClear.text + '" ' + dtClear.color) : 'no tile');
+  /* THE DISCRIMINATOR, and the whole point: the margin is 31.2 % — nowhere near the 3 % rod-stop
+   * line — in EVERY row here. A tile that still derives the state from the margin cannot tell
+   * these three snapshots apart, which is exactly how both FLUX rod stops (which have no
+   * delta-T margin at all) were invisible on this board. */
+  q('a standing ROD STOP lights it with the delta-T margin wide open (31.2 %)',
+    dtStop && dtStop.color !== dtClear.color,
+    dtStop ? ('"' + dtStop.text + '" ' + dtStop.color) : 'no tile');
+  q('...and so does a RUNBACK on its own signal',
+    dtRb && dtRb.color === dtStop.color,
+    dtRb ? ('"' + dtRb.text + '" ' + dtRb.color) : 'no tile');
+  /* The margin NUMBER is untouched: it is what the player acts on, and this change is a colour
+   * source, not a re-authoring of the readout. */
+  q('...and the margin number itself is unchanged in every state',
+    dtStop && /31\.2/.test(dtStop.text) && dtRb && /31\.2/.test(dtRb.text) &&
+    dtClear && /31\.2/.test(dtClear.text), '');
+
   /* ---- 2d. THE VESSEL DRAWS A LEVEL, NOT A MASS FRACTION (#516 item 6) ----------------------
    * `core_inventory_pct` is `M_total / M_nominal` RCS-wide, and early in a blowdown the mass
    * collapses because the water FLASHES while the column does not fall anything like as fast.
@@ -867,6 +1018,40 @@ var MUTS = [
   ['the securing click stops resetting (stop accepted, pump re-asserted next tick)', SHPATH, SHSRC,
    "      EN.command(e, 'reset_si', true);   /* permissive met: reset + secure, one click */",
    '']
+,
+  /* #591 item 1, the BOARD end: the box goes back to the retired config's 35-85 degF band.
+   * Deliberately NOT a severed publication — the box stays live and the sink still moves, so
+   * every other check here is happy; what is lost is the ten degrees containing the C-9
+   * removal point, which is exactly how a fix to the refusal alone would have shipped. */
+  ['the CW box takes the retired 35-85 degF band (the turbine trip falls outside it)',
+   WIRING_PATH, WSRC,
+   "    var r = CS(s || {}).cw_inlet_range_c;",
+   '    var r = null; if (0) r = CS(s || {}).cw_inlet_range_c;'],
+  /* #591 item 1, the DARKENING end: the board reverts to the #567 capability flag, which the
+   * shell no longer publishes — so `=== true` is false and the box would stay live. It must
+   * therefore be mutated to the shape that DOES darken it, or the mutation proves nothing. */
+  ['the CW box is darkened again (the control the owner found inert)', WIRING_PATH, WSRC,
+   "      if (item.id === 'ims3v42jghn') return CS(s).cw_inlet_temp_c === undefined;",
+   "      if (item.id === 'ims3v42jghn') return true;"],
+  /* #564 item 1: the spray box reads DELIVERED flow again. A swapped READ, not a severed
+   * publication — the same shape as the SG feed mutation above, and the reason the defect was
+   * invisible to a source scan: the fallback IS the old code. */
+  ['the PZR spray box reads DELIVERED flow again (the demand is erased from the player)',
+   WIRING_PATH, WSRC,
+   "    var d = CS(s).spray_demand_pct;\n    return (d != null && isFinite(d)) ? d : CS(s).spray_valve_pct;",
+   '    return CS(s).spray_valve_pct;'],
+  /* #564 item 2: presence stops gating the rows, so the three the plant does not publish go
+   * live again — the shipped defect, three BLOCK buttons that could only throw. */
+  ['the trip rows stop asking whether the plant carries them (three inert BLOCKs return)',
+   WIRING_PATH, WSRC,
+   "    return Object.prototype.hasOwnProperty.call(st, id);",
+   '    return true;'],
+  /* #578: the delta-T tile goes back to DERIVING the stop from the margin, so both flux rod
+   * stops and the runback are invisible again — the shipped state. */
+  ['the delta-T tile derives the rod stop from the margin again (the flux stops go dark)',
+   WIRING_PATH, WSRC,
+   "    var held = t.rod_stop === true || t.runback_active === true;",
+   '    var held = false;']
 ];
 /* Counted, not written down: the number went stale the first time a mutation was added. */
 console.log('\ninjection self-test (' + MUTS.length + ' mutations):');

@@ -29,6 +29,86 @@ and the user-visible summary in `CHANGELOG.md`. This file points at those and tr
 
 ---
 
+## Session log — 2026-08-31-develop-a (#591 + #564 + #578 + #592 — the owner's playtest, and four controls that read as working)
+
+**Seven items, four issues, one shape: a control surface on the plant the site runs that reads as
+working and is not.** #591 is the owner's playtest of 2026-08-30 — no labels, no comments, nothing
+in `git log --grep`. #564 (the board third of the #534 sweep) had never been touched either.
+
+**Full write-up with every measurement: `Blueprint/PWR2_VALIDATION.md` §125.** What is worth
+carrying forward is below.
+
+### The trap that nearly shipped, and it was the standing pattern misfiring
+
+The CW temp box's bound came from `RD.PWR_CONFIG.turbine` captured at script load — the RETIRED
+engine's 35–85 °F — which is the exact signature of the inherited-by-reference pattern the last
+four sessions have been about (#573, #579, #516.11). I widened PWR2's own ceiling to **95 °F** so
+the player could reach the C-9 removal point and lose the condenser, which is a real Q3 argument.
+
+**Wrong. 85 °F is SOURCED** — Ginna TS Bases B 3.7.8 (ML20339A221 Rev 101), service-water
+OPERABILITY requires the intake bay at *"Temperature ≤ 85ºF"* — **and 35 °F is a standing owner
+directive** (2026-08-08). Both are written down in `Manuals/00` Rev 15 (a), which I read only
+because I was about to edit the section it names.
+
+> **A NUMBER THAT MATCHES THE RETIRED PLANT'S IS NOT THEREBY AN INHERITED CONSTANT.** The pattern
+> made the wrong reading the natural one. What the board was doing wrong was not the *value* — it
+> was reading a value from the wrong plant, which happens to agree. **Check the provenance before
+> you change the number**, and `git log`/the revision history of the doc that states it is where
+> the provenance lives. The fix is therefore provenance-shaped: the plant publishes
+> `cw_inlet_range_c` and the board reads it, with the config literals as the fallback every other
+> engine keeps. Same numbers, different authority.
+
+### A gate can pin a POSITION when the defect is an OVERLAP
+
+`board_check`'s period check read *"PERIOD moved up into the vacated slot (top ~455)"* — #350
+item 5's own fixture. A position moves the next time the owner asks it to, and he did. What he
+actually reported is permanent and measurable: the value was drawn **20 × 13 px on top of** the
+caption. The check is now NO OVERLAP + INSIDE THE CARD, injection-verified by restoring the old
+geometry. Same family as #588 and #543: assert the invariant, not the fixture.
+
+### Removing a control breaks the checks that USE it as scenery
+
+Deleting the AFW START button reddened `verify_e2e_ui` for a reason unrelated to its own claim:
+`testRefusalReachesTheScanner` hovered that button to prove the Scanner's refusal clears, and
+`querySelector` returned null, so no mouseover fired and the refusal stayed put. It had a silent
+`if (other)` guard, so a missing fixture read as a broken feature. **Re-pointed and made loud.**
+`run_inspect` caught the two orphaned Scanner entries the same way — that gate exists for exactly
+this and it worked.
+
+### Two issue bodies had aged, and one asked for work already done
+
+- **#578** asks for a refusal when a rod-withdraw press meets a standing rod stop. Measured: the
+  engine door already **REFUSES** it with the sourced reason and still accepts insertion (#572's
+  `rodDriveDoor`). Only the indication half was real.
+- **#564 item 1**'s reproduction used the RCP head gate, which is DECLARED OFF on this plant. The
+  defect is real; the path is not. Re-measured against what still diverges — and found a second
+  direction the issue never named: a stuck spray valve read back as the operator's own 100 %.
+- **#564 item 3**'s "70 of 85 refused" was fixed the day before by #563 item 1.
+
+### Open out of this session
+
+**#578's LAMPS ARE NOT BUILT and that is the one thing left.** Measured doc-wide with art
+included, the board has no free 130 × 32 rectangle inside its bounding box — the only free space
+starts at x 1650, and going there extends the canvas, which shrinks every tile on it. A first
+attempt under the PERIOD card put one lamp behind the reactor-vessel art and the other on a live
+steam run. The delta-T tile cannot carry a word either (9 px short of the NIS card title). So the
+**turbine runback has no indication the tile's colour can separate from a rod stop.** Growing the
+canvas is the owner's call.
+
+Also noted and NOT acted on: `ui/diagram/board/pwr_board_inspect.js`'s aux-spray copy still
+carries the retired plant's "commanded fully open it still delivers only a few per cent" — #594
+measured 100 % on this plant and is deferred by ruling, so the copy waits for that fix.
+
+### Gates
+
+`run_pwr2_condenser` 30 → **35** (19 → 21 mutations) · `run_pwr2_shell` 140 → **145** (46 → 48) ·
+`run_pwr2_board` 52 → **67** (17 → 22) · `verify_board_check` 236 → **237** · `run_pwr2_kernel`
+37 → **36** (a check correctly lost with the refusal it guarded) · `verify_e2e_ui` gains
+`testAdvFailPanel`. Manuals to **Rev 17** (pending row extended), repacked. Every new check
+injection-verified.
+
+---
+
 ## Session log — 2026-08-30-develop-c (#588 — the "divergence" was a bifurcation, and #563 items 1+2)
 
 **Alpha 1.7.0 is committed (`91dc2cf`) and NOT merged.** It was blocked on four consecutive red CI
