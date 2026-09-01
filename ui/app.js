@@ -3037,7 +3037,7 @@
     if (ckb) {
       syncInstrNav('ckl');
       var prC = ((RD.MANUAL_PROCEDURES || {})[ui.engineKey] || []).filter(function (x) { return x.id === ckb.procedure_id; })[0];
-      setInstrRole(prC && prC.title ? ('Checklist · ' + prC.title) : 'Checklist');
+      setInstrRole(prC && prC.title ? ('Live Checklist: ' + prC.title) : 'Live Checklist');   /* #244 item 3 wording */
       renderChecklist(s, ckb);
       return;
     }
@@ -3268,13 +3268,99 @@
   // bubble; done steps carry the check, the active step shows its live
   // acceptance status and a manual override. Step text comes from the same
   // RD.MANUAL_PROCEDURES artifact the Instructor graded it from.
-  var cklState = { key: null };
+  // whyAll / whyOpen: the #244 item-2 explanation toggles (global + per-step); they
+  // survive re-renders via the render key and reset with the checklist itself.
+  var cklState = { key: null, whyAll: false, whyOpen: {} };
   function resetCkl() {
     if (!cklState.key) return;
-    cklState = { key: null };
+    cklState = { key: null, whyAll: false, whyOpen: {} };
+    clearCklStepGlow();
     var card = $('instructorCard'); if (card) card.classList.remove('chat-mode');
     var cur = $('instrCurrent'); if (cur) cur.textContent = '';
   }
+  /* -------------------------------------------------------- predicate display (#244)
+   * *(OWNER DIRECTIVE, #244 item 7 / M5→3 item 3: "Need to use natural language not
+   * internal nomenclature… 'when pressure_mpa ≥ 15' should say 'When pressure 15'.")*
+   * One map from predicate param → the player's name for it plus how its value renders.
+   * `dim` routes through conv()/unit() so the criteria line is US-first dual-unit like
+   * every other player-facing number (#244 M5→3 item 1); `u` is a fixed unit suffix;
+   * `bool` names a state (the line renders as the state, not as an inequality); `mode`
+   * renders the commercial mode ladder. A param missing here falls back to its raw name —
+   * and test/run_checklist_pwr2.js asserts every predicate the shipped chain uses has an
+   * entry, so the fallback is a net for NEW content, not a lifestyle. */
+  var PRED_DISPLAY = {
+    power_pct:              { label: 'Reactor power', u: '%' },
+    fuel_temp_c:            { label: 'Fuel temperature', dim: 'temp' },
+    tavg_c:                 { label: 'Tavg', dim: 'temp' },
+    thot_c:                 { label: 'T-hot', dim: 'temp' },
+    tcold_c:                { label: 'T-cold', dim: 'temp' },
+    pressure_mpa:           { label: 'Pressure', dim: 'pressure' },
+    steam_pressure_mpa:     { label: 'Steam pressure', dim: 'pressure' },
+    subcooling_c:           { label: 'Subcooling margin', dim: 'tempdiff' },
+    tavg_rate_c_per_hr:     { label: 'Heatup/cooldown rate', dim: 'tempdiff', suffix: '/hr' },
+    sr_counts_cps:          { label: 'Source Range counts', u: 'cps' },
+    startup_rate_dpm:       { label: 'Startup rate', u: 'DPM' },
+    reactivity_pcm:         { label: 'Net reactivity', u: 'pcm' },
+    boron_ppm:              { label: 'Boron', u: 'ppm' },
+    mwe_output:             { label: 'Generator output', u: 'MWe' },
+    core_inventory_pct:     { label: 'Core coolant inventory', u: '%' },
+    decay_heat_pct:         { label: 'Decay heat', u: '%' },
+    sg_level_pct:           { label: 'SG level', u: '%' },
+    pzr_level_pct:          { label: 'Pressurizer level', u: '%' },
+    pump_flow_pct:          { label: 'RCP flow', u: '%' },
+    accumulator_volume_pct: { label: 'Accumulator inventory', u: '%' },
+    steam_dump_valve_pct:   { label: 'Steam dump demand', u: '%' },
+    vessel_level_pct:       { label: 'Vessel level', u: '%' },
+    drum_level_pct:         { label: 'Drum level', u: '%' },
+    plant_mode:             { mode: true },
+    scrammed:               { bool: 'the reactor is tripped' },
+    melted:                 { bool: 'the core is damaged' },
+    turbine_tripped:        { bool: 'the turbine is tripped' },
+    hpi_active:             { bool: 'HPI is injecting' },
+    afw_active:             { bool: 'auxiliary feedwater is running' },
+    rhr_active:             { bool: 'RHR is in service' },
+    rhr_valve_open:         { bool: 'the RHR suction valve is open' },
+    accumulator_valve_open: { bool: 'the accumulator discharge valve is open' },
+    sr_energized:           { bool: 'the Source Range detector is energized' },
+    sg_safety_open:         { bool: 'an SG code safety is open' },
+    porv_open:              { bool: 'the PORV is open' },
+  };
+  var MODE_NAMES = { 1: 'Mode 1, At Power', 2: 'Mode 2, Startup', 3: 'Mode 3, Hot Standby',
+                     4: 'Mode 4, Hot Shutdown', 5: 'Mode 5, Cold Shutdown' };
+  // A predicate's VALUE in the player's units: US-first with SI in parentheses for the
+  // dimensioned families; plain number + unit otherwise.
+  function fmtPredValue(pd, v) {
+    if (v == null || isNaN(+v)) return String(v);
+    if (pd && pd.dim) {
+      var us = conv(+v, pd.dim), sfx = pd.suffix || '';
+      var siU = { pressure: 'MPa', temp: '°C', tempdiff: '°C', vacuum: 'kPa' }[pd.dim] || '';
+      var usTxt = (Math.abs(us) >= 100 ? Math.round(us) : Math.round(us * 10) / 10) + ' ' + unit(pd.dim) + sfx;
+      if (ui.units === 'SI') return usTxt;                        // already SI — one form
+      return usTxt + ' (' + (Math.abs(+v) >= 100 ? Math.round(+v) : Math.round(+v * 100) / 100) + ' ' + siU + sfx + ')';
+    }
+    var n = Math.abs(+v) >= 100 ? Math.round(+v) : Math.round(+v * 10) / 10;
+    return n + (pd && pd.u ? ' ' + pd.u : '');
+  }
+  // The whole criteria phrase for one {p,op,v[,tol]} — "Pressure ≥ 2235 psi (15.41 MPa)",
+  // "the reactor is tripped", "Plant in Mode 5, Cold Shutdown", "Boron within 20 ppm of 705".
+  function fmtPredicate(pred) {
+    var pd = PRED_DISPLAY[pred.p];
+    if (pd && pd.mode) return 'Plant in ' + (MODE_NAMES[Math.round(pred.v)] || ('Mode ' + pred.v));
+    if (pd && pd.bool) {
+      var wantsTrue = (pred.op === '>' || pred.op === '>=') ? pred.v <= 1
+                    : (pred.op === '~') ? pred.v >= 1 : false;
+      if (wantsTrue) return pd.bool;
+      return pd.bool.indexOf(' is ') !== -1 ? pd.bool.replace(' is ', ' is not ')
+                                            : 'not: ' + pd.bool;
+    }
+    var label = pd ? pd.label : pred.p;
+    if (pred.op === '~') {
+      var tol = pred.tol != null ? pred.tol : 1;
+      return label + ' within ' + fmtPredValue(pd, tol) + ' of ' + fmtPredValue(pd, pred.v);
+    }
+    return label + ' ' + (OPSYM[pred.op] || pred.op) + ' ' + fmtPredValue(pd, pred.v);
+  }
+
   function renderChecklist(s, ck) {
     var cur = $('instrCurrent'), card = $('instructorCard');
     var pr = ((RD.MANUAL_PROCEDURES || {})[ui.engineKey] || []).filter(function (x) { return x.id === ck.procedure_id; })[0];
@@ -3287,14 +3373,21 @@
       return (p.met ? 'y' : 'n') + (p.met ? '' : Math.round(p.obs != null ? p.obs : -1));
     }).join(',');
     var key = [ck.procedure_id, (ck.steps_done || []).map(function (d) { return d ? 1 : 0; }).join(''),
-      ck.step_index, ck.acc_met ? 1 : 0, ck.graded_by || '', ck.complete ? 1 : 0, pcKey, ui.register].join('|');
+      ck.step_index, ck.acc_met ? 1 : 0, ck.graded_by || '', ck.complete ? 1 : 0, pcKey, ui.register,
+      // #244 additions: per-entry check-off states, the why-toggle states, and the display
+      // units all change what the card shows, so they join the render key.
+      (ck.accs || []).map(function (a) { return a.met ? 1 : 0; }).join(''),
+      cklState.whyAll ? 1 : 0, Object.keys(cklState.whyOpen || {}).join(','), ui.units].join('|');
     if (key === cklState.key) return;
     var firstBuild = !cklState.key;
     cklState.key = key;
     card.classList.add('chat-mode');
     cur.classList.remove('instr-standby');
     var h = '<div class="ckl-log" id="cklLog">';
+    // Global explanations toggle (#244 item 2): expands/collapses every step's "why".
     h += '<div class="ckl-head"><b>' + mesc(pr.title) + '</b>' +
+      '<button class="btn ckl-why-all" data-ckl-why-all="1" title="Show or hide the deeper explanation on every step">' +
+      (cklState.whyAll ? 'Hide explanations' : 'Explain steps') + '</button>' +
       '<div class="m-note">Auto-checklist — steps check themselves off the instruments while you operate.</div></div>';
     // Precondition banner (#395) — WARN, NEVER BLOCK: unmet rows are listed with
     // measured-vs-expected and everything below still runs. Row text comes from
@@ -3318,27 +3411,56 @@
       var cls = done ? 'ckl-done' : active ? 'ckl-active' : 'ckl-pend';
       var hoverable = stepHlLabels(st) ? ' ckl-hoverable' : '';
       h += '<div class="ckl-step ' + cls + hoverable + '" data-ckl-step="' + i + '"><div class="ckl-ico">' + (done ? '✓' : active ? '▸' : '○') + '</div><div class="ckl-body">';
-      h += '<div class="ckl-txt">' + (i + 1) + '. ' + mesc(st.text) + '</div>';
-      if (done && ck.done_by && ck.done_by[i] === 'manual') h += '<div class="ckl-sub">checked by hand</div>';
       if (active) {
+        /* THE ACTIVE CARD, IN THE OWNER'S WORKFLOW ORDER *(#244 item 6: "The requirement
+         * to check off the step should come first and be obvious. then the control(s)
+         * used. then a short description.")*: (1) criteria, bold, own color class;
+         * (2) Control/Target; (3) the concise action; (4) collapsible "why". */
+        var via = ck.graded_by === 'instrument' ? 'graded off the instrument reading'
+                : ck.graded_by === 'true_state' ? 'graded off the true value (no instrument for this)' : null;
+        if (st.accs && st.accs.length) {
+          // Multi-check-off (#244 item 8): one line per requirement, each with its own tick.
+          for (var ai = 0; ai < st.accs.length; ai++) {
+            var en = st.accs[ai], av = (ck.accs && ck.accs[ai]) || {};
+            var enTxt = en.label ? en.label : (en.p ? fmtPredicate(en) : mesc(en.cmd || ''));
+            h += '<div class="ckl-crit' + (av.met ? ' ckl-crit-met' : '') + '">' +
+              (av.met ? '✓ ' : '○ ') + (en.label ? mesc(enTxt) : enTxt) +
+              (av.met ? '' : ' <span class="muted">…not yet</span>') + '</div>';
+          }
+        } else if (st.acc) {
+          h += '<div class="ckl-crit' + (ck.acc_met ? ' ckl-crit-met' : '') + '">' +
+            (ck.acc_met ? '✓ ' : '○ ') + 'When ' + fmtPredicate(st.acc) +
+            (ck.acc_met ? '' : ' <span class="muted">…not yet</span>') + '</div>';
+        }
         var bits = [];
         if (st.control) bits.push('Control: <b>' + mesc(st.control) + '</b>');
         if (st.target) bits.push('Target: ' + mesc(st.target));
         if (bits.length) h += '<div class="ckl-sub">' + bits.join(' &nbsp;·&nbsp; ') + '</div>';
-        if (st.acc) {
-          var via = ck.graded_by === 'instrument' ? 'reading the instrument' : ck.graded_by === 'true_state' ? 'no instrument twin — true value' : null;
-          h += '<div class="ckl-sub">✓ when ' + mesc(st.acc.p) + ' ' + (OPSYM[st.acc.op] || st.acc.op) + ' ' + mesc(st.acc.v) +
-            (ck.acc_met ? ' <span style="color:var(--running)">met</span>' : ' <span class="muted">…not yet</span>') +
-            (via ? ' <span class="muted">· ' + via + '</span>' : '') + '</div>';
-        }
+        h += '<div class="ckl-txt">' + (i + 1) + '. ' + mesc(st.text) + '</div>';
         if (st.note) h += '<div class="ckl-sub muted">' + mesc(st.note) + '</div>';
+        if (st.wait_hint) {
+          // #244 M5→3 item 5 — long waits suggest time acceleration rather than patience.
+          h += '<div class="ckl-sub ckl-wait">⏩ ' + mesc(st.wait_hint === true
+            ? 'This takes a while in plant time — use time acceleration (the speed control, top bar).'
+            : st.wait_hint) + '</div>';
+        }
+        if (st.why) {
+          var whyOpen = cklState.whyAll || (cklState.whyOpen && cklState.whyOpen[i]);
+          h += '<button class="btn ckl-why-btn" data-ckl-why="' + i + '">' +
+            (whyOpen ? 'Hide why' : 'Why?') + '</button>';
+          if (whyOpen) h += '<div class="ckl-why">' + mesc(st.why) + '</div>';
+        }
+        if (via) h += '<div class="ckl-sub muted" title="Which value the check reads">' + via + '</div>';
         // NO MANUAL TICK *(OWNER DIRECTIVE, 2026-08-11: "Checklists are supposed to be
         // automatically checked off by the sim when complete. Remove the user clickable
         // step complete button.")*. Every step now completes on evidence: an `acc`
-        // predicate, a `saw` latch, the step's own command, or — for a pure observation
-        // with none of those — a dwell, added in instructor_layer so omitting a predicate
-        // can never soft-lock a procedure. The `checklist_check` COMMAND survives; only
-        // its button is gone.
+        // predicate (or every `accs` entry, #244 item 8), a `saw` latch, the step's own
+        // command, or — for a pure observation with none of those — a dwell, added in
+        // instructor_layer so omitting a predicate can never soft-lock a procedure. The
+        // `checklist_check` COMMAND survives; only its button is gone.
+      } else {
+        h += '<div class="ckl-txt">' + (i + 1) + '. ' + mesc(st.text) + '</div>';
+        if (done && ck.done_by && ck.done_by[i] === 'manual') h += '<div class="ckl-sub">checked by hand</div>';
       }
       h += '</div></div>';
     }
@@ -3347,8 +3469,20 @@
         (pr.outcome ? '<div class="m-note">' + mesc(pr.outcome) + '</div>' : '') + '</div>';
     }
     h += '</div>';
-    h += '<div class="ckl-btns"><button class="btn" data-ckl-stop="1">' + (ck.complete ? 'Close' : 'End checklist') + '</button></div>';
+    // Chain handoff (#244, the Mode 5 → full power → Mode 5 round trip): a finished leg
+    // offers the next one by name, so the whole evolution is guided end to end.
+    var nextPr = ck.complete && pr.next
+      ? ((RD.MANUAL_PROCEDURES || {})[ui.engineKey] || []).filter(function (x) { return x.id === pr.next; })[0]
+      : null;
+    h += '<div class="ckl-btns">' +
+      (nextPr ? '<button class="btn ckl-next" data-ckl-start="' + mesc(nextPr.id) + '">Next: ' +
+                mesc(nextPr.title) + ' ▸</button>' : '') +
+      '<button class="btn" data-ckl-stop="1">' + (ck.complete ? 'Close' : 'End checklist') + '</button></div>';
     cur.innerHTML = h;
+    // Persistent highlight for the up-next step (#244 item 5) — applied on every key
+    // change so it survives step advances and hover churn; cleared when the run ends.
+    var actSt = !ck.complete && pr.steps[ck.step_index] ? pr.steps[ck.step_index] : null;
+    applyCklStepGlow(actSt ? stepHlLabels(actSt) : null);
     // Step hover → glow the controls/indications the step names (its `hl` list) on
     // the plant display, reusing the Instructor highlight vocabulary (revealControl).
     Array.prototype.forEach.call(cur.querySelectorAll('.ckl-step'), function (el) {
@@ -3397,6 +3531,24 @@
   }
   function clearHoverGlow() {
     document.querySelectorAll('.ckl-glow').forEach(function (el) { el.classList.remove('ckl-glow'); });
+  }
+  /* PERSISTENT step glow *(OWNER, #244 item 5: "when a step is up next, the buttons should
+   * stay highlighted even when not mousing over the step.")*. Its own class, distinct from
+   * the hover preview (.ckl-glow) and the Instructor beat glow (.instr-glow), so a hover or
+   * a beat can come and go without wiping the standing highlight. Applied on every
+   * checklist render-key change to the ACTIVE step's `hl` targets; cleared on step advance
+   * (the next apply clears first), on End checklist (resetCkl) and on plant rebuild. */
+  function applyCklStepGlow(labels) {
+    clearCklStepGlow();
+    if (!labels || !labels.length) return;
+    var board = (RD.PwrBoard && RD.PwrBoard.isMounted()) ? RD.PwrBoard : null;
+    labels.forEach(function (lab) {
+      var el = ui.plant === 'pwr' ? (board ? board.revealControl(lab) : null) : findPdControl(lab);
+      if (el) el.classList.add('ckl-step-glow');
+    });
+  }
+  function clearCklStepGlow() {
+    document.querySelectorAll('.ckl-step-glow').forEach(function (el) { el.classList.remove('ckl-step-glow'); });
   }
   // Picker menu (free-play instructor card): every non-narrative procedure for
   // the active plant can run as a checklist.
@@ -3874,7 +4026,11 @@
     }).join('') : '<div class="m-note">No scenarios for this plant yet.</div>');
   }
   function mpWalkthroughs() {
-    if (ENGINES[msel.engine].freePlayOnly) return freeOnlyPanel();
+    /* #244/#526 (owner-ruled 2026-08-31): walkthroughs run the validated procedure artifact
+     * itself, and the pwr2 pool is authored and gated ON this plant — so an engine with its
+     * own MANUAL_PROCEDURES pool is exempt from the freePlayOnly fence here. Campaign and
+     * scenarios keep the fence until the #525 compatibility pass. */
+    if (ENGINES[msel.engine].freePlayOnly && !(RD.MANUAL_PROCEDURES || {})[msel.engine]) return freeOnlyPanel();
     if (!flagOn('walkthroughs')) return soonPanel('walkthroughs');
     var p = progress();
     var all = procsFor(msel.engine);
@@ -6496,6 +6652,16 @@
     $('instructorCard').addEventListener('click', function (e) {
       var mk = e.target.closest('[data-ckl-check]');
       if (mk) { cmd({ action: 'checklist_check', index: +mk.getAttribute('data-ckl-check') }); return; }
+      // #244 item 2 — the explanation toggles re-render through the key (cklState fields
+      // are part of it), so flipping one repaints without touching the runtime.
+      var wa = e.target.closest('[data-ckl-why-all]');
+      if (wa) { cklState.whyAll = !cklState.whyAll; cklState.key = null; render(latest); return; }
+      var wy = e.target.closest('[data-ckl-why]');
+      if (wy) {
+        var wi = wy.getAttribute('data-ckl-why');
+        if (cklState.whyOpen[wi]) delete cklState.whyOpen[wi]; else cklState.whyOpen[wi] = 1;
+        cklState.key = null; render(latest); return;
+      }
       if (e.target.closest('[data-ckl-stop]')) cmd({ action: 'stop_checklist' });
     });
     // Plant & Mission window: plant / mode / start-condition picks re-render in

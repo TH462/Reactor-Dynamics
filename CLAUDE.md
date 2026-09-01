@@ -336,8 +336,9 @@ _Last updated: **2026-08-31**._
 **Where the PWR is.** Read `BASELINES` for the runner count, never a number written here. The PWR
 is the only active plant: engines, control, service, instructor and the board are built, and the
 #297 build wave and #221 audit slices are landed. **It is feature-complete Mode 5 ↔ Mode 1** —
-#524 landed 2026-08-31: the floor moved 0.1 → 0.002 MPa, `cold_shutdown` is the fifth IC
-(`PWR2_VALIDATION.md` §126). **What is open, in one line each:**
+#524 landed 2026-08-31 (floor → 0.002 MPa, `cold_shutdown` the fifth IC, §126), and the LIVE
+CHECKLISTS walk it: `RD.MANUAL_PROCEDURES.pwr2`, six chain-linked legs Mode 5 → full power →
+Mode 5, replayed end to end by `run_checklist_pwr2` (#244/#526; #254 stages 4/6 remain). **What is open, in one line each:**
 
 **Do not read the list below as the issue tracker** — `gh issue list --state open` is the authority
 and this summary ages. Measured twice (2026-08-10, 2026-08-28): whole bullets called issues open
@@ -425,6 +426,13 @@ FIRST** — ask what in it would still burn someone in a month, move that to the
 ONE line, drop the rest. **A bullet is ~80 words.** (Measured 2026-08-06: the list was running
 7 bullets averaging 500 words, two of them duplicating traps already rescued below.)
 
+- **A CHECKLIST'S REPLAY IS THE AUTHORITY ON WHETHER IT FITS THE PLANT — AND A STEP WHOSE
+  COMMAND NEEDS A MID-STEP STATE CANNOT BE ONE STEP** (2026-08-31, #244/#526). Aliasing the
+  retired pool onto pwr2 was refuted by riding it: the 912-currency rod bursts overrun the
+  200-step bank, four commands are REFUSED, and the cooldown's dialed depressurization parks
+  at the Pressure SP's 1700 psig floor. The harness issues a step's command at step START, so
+  the accumulator-window and align-under-spray steps split into ride-then-act pairs — also the
+  honest operator order (shutting spray first bounces pressure back over the RHR permissive).
 - **A FIXTURE BUILT AT AN ENVELOPE WALL EXPIRES WITH THE WALL** (2026-08-31, #524 §126).
   `P_MIN = 0.1` was `PLow=0.1` in the NIST URL — #586's `THigh=800` at the other wall; same
   discipline to move it (refit + fetch reference data INSIDE the extension; the old fit read
@@ -453,13 +461,6 @@ ONE line, drop the rest. **A bullet is ~80 words.** (Measured 2026-08-06: the li
   checks. **Ask what a gate READS, not only what it asserts.** Meanwhile ROD AUTO was dark, the HPI
   arm disabled and the picker offered *Hot Shutdown (Mode 4)* while seven chapters and the checklist
   a player runs named a `cold_shutdown` the engine **refuses by name**.
-- **A NUMBER THAT LOOKS COSMETIC CAN BE ANOTHER ENGINE'S PHYSICS — AND A GATE POINTED AT THE
-  WRONG PLANT DEFENDS THE ERROR** (2026-08-29, #579/#580 §119). `severity_meta.max` is display
-  text to `ui/app.js` and a leak COEFFICIENT to `pwr_engine.js:1623`; rescaling the Break Size
-  range to state an area would have cut the retired plant's design-basis LOCA **16x** across five
-  gates. Worse, `run_manual_units` matched `Manuals/12`'s flows against `pwr_config` — the
-  RETIRED plant — so the wrong manual passed and a CORRECTED one would have failed. **Ask which
-  plant a check defends.**
 **Standing procedure — not part of the rotation above; these do not expire.** One trap per entry.
 **MAX 25 BULLETS** *(OWNER RULING, 2026-08-10: selected "Cap at 25, evict to TRAPS.md" from
 options I wrote — a selection, not verbatim words)*, gated by `test/run_doc_budget.js`. Adding

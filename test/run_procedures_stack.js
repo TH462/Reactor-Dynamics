@@ -255,6 +255,9 @@ console.log(B + 'Full-stack procedure gate' + X + D + '  (lineup: ' + (BARE ? 'n
   ', ' + ACCEL + '× accel)' + X + '\n');
 
 Object.keys(RD.MANUAL_PROCEDURES).forEach(function (profKey) {
+  /* pwr2 replays in its own runner (run_checklist_pwr2.js) with the pwr2 module set —
+   * this runner loads only the retired trio, so selectPlant('pwr2') here would throw. */
+  if (profKey === 'pwr2') return;
   RD.MANUAL_PROCEDURES[profKey].forEach(function (proc) {
     if (ONLY && proc.id !== ONLY) { skipped++; return; }
     if (proc.narrative) {

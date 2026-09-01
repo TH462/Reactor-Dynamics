@@ -1212,7 +1212,7 @@ var BASELINES = {
   // this hand-maintained map has been broken that exact way; `manual_ui_map.js`'s own
   // header records the first two (`pwr_startup` i:3 and i:7). The map is why the gate
   // exists — measured 2026-07-31 it covered 17 of 45 controlled steps at a confident PASS.
-  'run_manual_controls.js': { code: 0, score: '176checks 0failed' },
+  'run_manual_controls.js': { code: 0, score: '266checks 0failed' },   // 176 -> 266 (#244/#254/#526, 2026-08-31): the gate discovered the new pwr2 pool and scored 52 FAILURES against it — no VIEW_CONTROLS row for pwr2 and STEP_UI keyed by bare procedure id while the two pools share ids with different steps. manual_ui_map gains a pwr2 vocabulary row (the same board's CONTROL_LABEL_MAP) and profile-PREFIXED 'pwr2:<id>' coverage rows; an OWN_POOL_PROFILES profile never falls back to another pool's rows, so a coincidental pill match cannot read as coverage. verify_manual_follow stays pwr-only; the pwr2 rows are the static gate's coverage.
   // New 2026-07-28 (#241) — the feature-flag registry that decides what the PUBLIC
   // website offers vs what is still being vetted on `develop`. Coverage half: every
   // scenario, procedure and campaign mission has an entry and every entry still points
@@ -1871,6 +1871,7 @@ var BASELINES = {
   // preserves — while all 16 authored Tier B rows were measured MET on their six
   // from: ICs before shipping (the false-positive guard).
   'run_checklist.js':      { code: 0, score: '38/38' },
+  'run_checklist_pwr2.js': { code: 0, score: '109passed 0failed 109checks', secs: 521 },   // NEW (#244/#254/#526, 2026-08-31): THE SHIPPED PLANT'S checklist gate — all six pwr2 chain checklists replayed END TO END through the full stack (the HR12 record that the chain's numbers are this plant's own; it caught the P-11/lo-steam-press SI heatup trap and the PARAM_INSTRUMENT.pwr2 map authored from the definition file instead of the live broadcast — boron_analyzer/rcs_flow, exactly what check 2a exists for), plus the live Path 3 runtime on a pwr2 service: instrument-first grading, per-entry accs latching with the blinded-entry injection, and the PRED_DISPLAY coverage seam. secs measured alone 2026-08-31 (521 s — the six rides are ~40 plant-hours at 10 ms/tick).
   // Green since 2026-07-25 (#150): both F12 reds were stale expectations, not
   // regressions. 30 -> 35 checks; the replacements are differential, so they
   // discriminate where the originals could not.

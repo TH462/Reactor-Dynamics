@@ -53,7 +53,8 @@ var covered = 0, controlled = 0;
 Object.keys(RD.MANUAL_PROCEDURES).forEach(function (prof) {
   RD.MANUAL_PROCEDURES[prof].forEach(function (proc) {
     if (proc.narrative) return;
-    var expects = map.STEP_UI[proc.id] || [];
+    var expects = map.STEP_UI[prof + ':' + proc.id] ||
+                  (map.OWN_POOL_PROFILES.indexOf(prof) >= 0 ? null : map.STEP_UI[proc.id]) || [];
     (proc.steps || []).forEach(function (st, idx) {
       if (!st.control || /^\(observe/.test(st.control)) return;
       controlled++;

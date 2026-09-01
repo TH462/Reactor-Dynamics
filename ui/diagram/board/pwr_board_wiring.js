@@ -2795,6 +2795,18 @@
     // The rods_tavg channel toggle (EXTRA_ITEMS, #237) — the control the old
     // "Automate → Reactor" directives now point at.
     'Rod AUTO': 'ims5glucngg',
+    /* BUTTON-LEVEL labels (#244 M5→3 item 2, M3→1 items 1/3/4 — owner: highlight "the SG
+     * Feed AUTO button not the card", "the withdraw button and the speed button instead of
+     * just the whole panel"). Every board button is its own item since the V2 export, so a
+     * label can point at ONE button; the checklist steps' `hl` lists name these. The
+     * wiring selfTest asserts each resolves, so a re-export that orphans one is loud. */
+    'Withdraw': 'imrpk6qzjq8', 'Insert': 'imrpk79mwng',
+    'Rod Speed — Slow': 'imrpk8169ds', 'Rod Speed — Normal': 'imrpk8grvcz',
+    'Rod Speed — Fast': 'imrpk8kjsjs',
+    'Shutdown Bank — Withdraw': 'imrpnyaxsb3', 'Shutdown Bank — Insert': 'imrpnyf37ju',
+    'SG Feed AUTO': 'imrsgjmrjfg', 'SG Feed MAN': 'imrsgjuh7l0',
+    'Plot point': 'bdOneOverM',
+    'Primary Pressure': 'ims2immsvn6',
     // #341 / #319 item 2 — the post-trip procedure's restore step points here.
     'MFW Restore': 'bdMfwRestore'
   };

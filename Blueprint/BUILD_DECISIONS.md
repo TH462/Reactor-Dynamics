@@ -45,6 +45,37 @@ where the two differ or where judgment was exercised.
 
 ---
 
+## 2026-08-31-develop-d — #244/#254/#526: the pwr2 checklist pool is AUTHORED, not aliased — and the replay is the authority
+
+**Claim:** `RD.MANUAL_PROCEDURES.pwr2` is a separate pool sharing ids with the pwr pool, every
+entry replayed end to end on PWR2 (`run_checklist_pwr2.js`); a one-line fallback alias (#526's
+cheap option) was refuted by measurement — the two plants disagree in the load-bearing places.
+
+- **Why a fork, with numbers**: the 1/M ladder's authored 912-currency bursts sum past the
+  200-step bank (138+90 > 200 — the second burst blew through criticality and scrammed);
+  `connect_grid`/`set_load_mode`/`set_steam_demand`/`set_sr_detector` are REFUSED;
+  `feed_sg` is not a kernel channel (`set_feed_coupled` is the lever); the Pressure SP floors
+  at 1700 psig so the retired cooldown's dialed depressurization reads 11.87 MPa for ever.
+- **Multi-check-off (#244 item 8)** is per-entry LATCHING (a ticked box stays ticked), shared
+  by checklist and follow, persisted as `accs_met` (a plotted point cannot re-earn after a
+  load). cmd-kind entries ride the existing `_cmdEvidence` family machinery.
+- **Replay-shape rule found twice**: a step whose command needs a mid-step plant state cannot
+  be one step (the harness issues cmd at step start) — the heatup's accumulator window and the
+  cooldown's RHR align both split into ride-then-act pairs, which is ALSO the honest operator
+  sequencing (the align-under-spray order is real: shutting spray first bounced pressure back
+  over the 425 psig permissive).
+- **Power legs**: boron is the commanded bulk reactivity (705 ppm up, 719 down — 705 measured
+  as the rod-less on-program point; 626 is the xenon-equilibrium value); rods stay prose trim,
+  so the checklist serves both the chain state and the presets.
+- **The heatup pressurization is STAGED around P-11** (1700 psig floor through the ride,
+  2235 psi only with the secondary hot). Full dial from cold crossed P-11 (1,972 psia) with
+  steam pressure below the 327.7 psia SI setpoint; the auto-reinstate exposed the standing
+  `si_lo_steam_press`, the NUREG-0737 shed latched (157.8 kW → 0) and the plant parked at
+  1,921 psia — while `hot_zero_power` holds 2,250 psia on ~1–3 kW, the measurement that
+  separated content-outran-the-secondary from a heater-authority defect. Plant behavior is
+  CORRECT; the procedure carries the coordination, and its why-prose teaches the trap.
+- Record: TUNING_LOG 2026-08-31-develop-g; the ride corpus is the session scratchpad.
+
 ## 2026-08-31-develop-c — #524: Mode 5 exists — the pressure floor was a fetch bound, and both directions of the claim were measured
 
 **Claim:** extending Layer 0's floor 0.1 → 0.002 MPa (owner-ruled) is sufficient for Mode 5 — no

@@ -30,6 +30,44 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
 
 ## [Unreleased]
 
+### Added (#244/#254/#526: interactive checklists walk the shipped plant — Mode 5 → full power → Mode 5 — 2026-08-31)
+
+- **The live checklists run on PWR2**, ending #526's empty pickers: a new
+  `RD.MANUAL_PROCEDURES.pwr2` pool of six chain-linked checklists (heatup N01 → startup T03 →
+  ascension N07 → rampdown N08 → shutdown N14 → cooldown N15), each authored AGAINST this
+  plant and **replayed end to end through the full stack** by the new gate
+  `test/run_checklist_pwr2.js`. The pools share ids; the retired pool stays for its gates.
+- **Every number measured on PWR2** (the ride record is TUNING_LOG 2026-08-31-develop-g):
+  the 1/M ladder re-derived for the 200-step bank (critical ~74.5 steps on 719 ppm,
+  ~31 pcm/step), the dilution seam at the head of the startup (owner-ruled), boron as the
+  commanded bulk reactivity for both power legs (705 ppm up / 719 down; rods stay the
+  minutes-scale trim), the grid connection as the real latch_turbine + set_load_target pair,
+  and a PWR2-native cooldown: dump-SP walk to 120 psi, spray depressurization below the
+  Pressure SP's 1700 psig floor (heaters MANUAL-0, level holds ~60 %), accumulators isolated
+  inside the 1600-psig band, RHR aligned UNDER the spray (shutting it first bounces pressure
+  back over the 425 psig permissive), Mode 5 in ~6.7 plant-h at −92 °F/hr on the RHR leg.
+- **The heatup's pressurization is STAGED, and the replay is what found the trap**: dialing
+  2235 psi from cold crosses the P-11 permissive (1,972 psia) while the secondary still sits
+  below the 327.7 psia low-steam-pressure SI setpoint — P-11's auto-reinstate then exposes
+  the STANDING signal, safety injection actuates on a healthy plant, the heaters shed
+  (157.8 kW → 0, the NUREG-0737 latch) and the pressurization dies at 1,921 psia forever.
+  The checklist holds the Pressure SP at its 1700 psig floor through the ride and completes
+  to 2235 only with the secondary bottled at 1,020 psi — the coordination a real heatup
+  curve enforces, and the step's "why" teaches the trap.
+- **The #244 checklist UX punch list, stages 1–3**: criteria-first bold cards in the ruled
+  cobalt, natural-language US-first predicates ("When Pressure ≥ 2235 psi (15.41 MPa)" — the
+  raw-internals leak is gone and the coverage is GATED), multi-check-off steps with per-entry
+  latching (the 1/M pull-then-plot pairs), a collapsible "why" on every teaching step plus a
+  global Explain toggle, fast-forward hints on the long legs, a PERSISTENT glow on the active
+  step's own buttons (button-level highlight labels: Withdraw, Insert, Rod Speed, SG Feed
+  AUTO, Plot point…), the "Live Checklist: <title>" header, and a "Next: <title> ▸" handoff
+  on the completion card so the round trip is one guided path.
+- Instrument-first grading restored on the shipped plant (`PARAM_INSTRUMENT.pwr2`, every id
+  asserted against a live broadcast), and the Walkthroughs tab opens for engines that carry
+  their own validated pool (campaign/scenarios keep the #525 fence). All content stays
+  `preview`-staged until played through and flipped, per the #241 vetting flow.
+
+
 ### Added (#485 reopened: nothing proved the telemetry Worker was ever deployed — 2026-08-31)
 
 - **`tools/verify_worker_deploy.js`** — compares the newest commit touching `worker/` against the

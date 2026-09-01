@@ -45,6 +45,14 @@ var VIEW_CONTROLS = {
     get board() { return pwrLabels(); },
     scram: 'SCRAM',
   },
+  pwr2: {
+    // The SHIPPED plant (#523) drives the same learning board as pwr — one vocabulary,
+    // the board's own CONTROL_LABEL_MAP, exactly as the header describes for pwr.
+    get primary() { return pwrLabels(); },
+    get secondary() { return pwrLabels(); },
+    get board() { return pwrLabels(); },
+    scram: 'SCRAM',
+  },
   rbmk_pre: {
     primary: ['Control Bank', 'Rod Speed', 'Shutdown Bank', 'MCP / Channel Flow', 'Emergency Core Cooling (ECCS)', 'EPS'],
     secondary: ['Feedwater', 'Turbine Load', 'Steam Dump'],
@@ -86,6 +94,71 @@ var VIEW_CONTROLS = {
  * fails until you do — it is in `run_all` as of #224, which is what stops this table
  * rotting a second time. */
 var STEP_UI = {
+  /* THE pwr2 POOL (#244/#254/#526, 2026-08-31) — profile-PREFIXED keys, because the two
+   * pools share procedure ids with different steps. `run_manual_controls` resolves
+   * `<prof>:<id>` first, and a profile listed in OWN_POOL_PROFILES never falls back to
+   * another pool's rows — a coincidental pill match is not coverage. Rows generated from
+   * the pool and then each control verified against the board vocabulary by the gate's own
+   * check 3 (the value here is the vocabulary resolution + drift detection, as for pwr).
+   * verify_manual_follow still walks the pwr profile only — these rows are the STATIC
+   * gate's coverage, not the browser gate's. */
+  'pwr2:pwr_heatup': [
+    { i: 1, view: 'board', control: 'RCP Run/Stop' },
+    { i: 2, view: 'board', control: 'Shutdown Bank' },
+    { i: 3, view: 'board', control: 'Turbine Load' },
+    { i: 4, view: 'board', control: 'Feed Pumps' },
+    { i: 5, view: 'board', control: 'Dump SP' },
+    { i: 6, view: 'board', control: 'Pressure SP' },
+    { i: 7, view: 'board', control: 'Accumulator valve' },
+    { i: 9, view: 'board', control: 'Pressure SP' },
+  ],
+  'pwr2:pwr_startup': [
+    { i: 1, view: 'board', control: 'Boron control' },
+    { i: 2, view: 'board', control: 'Feed Pumps' },
+    { i: 3, view: 'board', control: '1/M Plot' },
+    { i: 4, view: 'board', control: 'Control Bank' },
+    { i: 5, view: 'board', control: 'Control Bank' },
+    { i: 6, view: 'board', control: 'Control Bank' },
+    { i: 7, view: 'board', control: 'Control Bank' },
+    { i: 8, view: 'board', control: 'Control Bank' },
+    { i: 9, view: 'board', control: 'Control Bank' },
+    { i: 10, view: 'board', control: 'Control Bank' },
+    { i: 12, view: 'board', control: 'Control Bank' },
+    { i: 13, view: 'board', control: 'Control Bank' },
+    { i: 14, view: 'board', control: 'Turbine Load' },
+    { i: 15, view: 'board', control: 'Trip Blocks' },
+  ],
+  'pwr2:pwr_raise_power': [
+    { i: 1, view: 'board', control: 'Boron control' },
+    { i: 2, view: 'board', control: 'Control Bank' },
+    { i: 3, view: 'board', control: 'Control Bank' },
+    { i: 4, view: 'board', control: 'Control Bank' },
+    { i: 5, view: 'board', control: 'Control Bank' },
+    { i: 6, view: 'board', control: 'Control Bank' },
+  ],
+  'pwr2:pwr_lower_power': [
+    { i: 0, view: 'board', control: 'Boron control' },
+    { i: 1, view: 'board', control: 'Turbine Load' },
+    { i: 2, view: 'board', control: 'Turbine Load' },
+    { i: 3, view: 'board', control: 'Turbine Load' },
+    { i: 4, view: 'board', control: 'Turbine Load' },
+  ],
+  'pwr2:pwr_shutdown': [
+    { i: 0, view: 'board', control: 'Turbine Load' },
+    { i: 1, view: 'board', control: 'SCRAM' },
+  ],
+  'pwr2:pwr_cooldown': [
+    { i: 0, view: 'board', control: 'Boron control' },
+    { i: 1, view: 'board', control: 'Pressure SP' },
+    { i: 2, view: 'board', control: 'Trip Blocks' },
+    { i: 3, view: 'board', control: 'Dump SP' },
+    { i: 4, view: 'board', control: 'Pressure SP' },
+    { i: 5, view: 'board', control: 'Pressurizer Spray (PZR)' },
+    { i: 6, view: 'board', control: 'Accumulator valve' },
+    { i: 8, view: 'board', control: 'Residual Heat Removal (RHR)' },
+    { i: 9, view: 'board', control: 'RCP Run/Stop' },
+    { i: 10, view: 'board', control: 'Residual Heat Removal (RHR)' },
+  ],
   pwr_startup: [
     { i: 2,  view: 'board', control: 'Feed Pumps' },
     { i: 3,  view: 'board', control: '1/M Plot' },
@@ -206,4 +279,8 @@ function controlOnView(prof, view, control) {
   return (vc[view] || []).indexOf(control) >= 0;
 }
 
-module.exports = { VIEW_CONTROLS: VIEW_CONTROLS, STEP_UI: STEP_UI, controlOnView: controlOnView };
+/* Profiles that carry their OWN authored pool: no unprefixed STEP_UI fallback (#244). */
+var OWN_POOL_PROFILES = ['pwr2'];
+
+module.exports = { VIEW_CONTROLS: VIEW_CONTROLS, STEP_UI: STEP_UI, controlOnView: controlOnView,
+                   OWN_POOL_PROFILES: OWN_POOL_PROFILES };

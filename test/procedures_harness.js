@@ -21,6 +21,11 @@
 
   var PLANTS = {
     pwr: { plant: 'pwr', version: null },
+    /* THE SHIPPED PLANT (#244/#526, 2026-08-31). The runner that passes 'pwr2' must have
+     * loaded the pwr2 module set (run_checklist_pwr2.js is that runner); the pwr-only
+     * runners never name this key, so nothing changes for them. IC names pass through
+     * un-translated — RD.RETIRED_ENGINE_IC is the RETIRED engine's vocabulary shim. */
+    pwr2: { plant: 'pwr2', version: null },
     rbmk_pre: { plant: 'rbmk', version: 'pre_chernobyl' },
     rbmk_post: { plant: 'rbmk', version: 'post_chernobyl' },
     bwr: { plant: 'bwr', version: null },
@@ -102,9 +107,11 @@
     if (!svc) {
       var P = PLANTS[profKey];
       svc = new RD.SimulationService({ seed: opts.seed != null ? opts.seed : 42 });
-      /* the RETIRED engine's IC vocabulary — see RD.RETIRED_ENGINE_IC's note in ui/manual_procedures.js */
-      svc.selectPlant(P.plant, RD.RETIRED_ENGINE_IC(proc.from), P.version,
-                      opts.bare ? { noDefaults: true } : undefined);
+      /* the RETIRED engine's IC vocabulary — see RD.RETIRED_ENGINE_IC's note in
+       * ui/manual_procedures.js. pwr2 (and rbmk/bwr) take the authored name as-is. */
+      svc.selectPlant(P.plant,
+                      P.plant === 'pwr' ? RD.RETIRED_ENGINE_IC(proc.from) : proc.from,
+                      P.version, opts.bare ? { noDefaults: true } : undefined);
       svc.running = true;                       // gates drive tick() directly
       svc.timeAcceleration = ACCEL;
       // …and it has to STAY at ACCEL. `_attentionStop` drops fast-forward to 1× on the
@@ -147,7 +154,12 @@
     (proc.steps || []).forEach(function (st, idx) {
       curStep = idx + 1;
       function issue(cmd) {
-        var why = refusal(svc.handleCommand(cmd));
+        /* The pwr2 shell REFUSES BY THROWING (#505 made refusals visible; the retired
+         * engine returns {type:'error'} instead). Both are the same fact to a replay —
+         * the command did not land — so both record as a refusal string. */
+        var why;
+        try { why = refusal(svc.handleCommand(cmd)); }
+        catch (e) { why = String(e && e.message || e).slice(0, 140); }
         if (why) refusals.push('step ' + curStep + ' ' + cmd.action + ' → ' + why);
       }
       // A ramp step's `cmd` is the REPRESENTATIVE action (what the instructor watches
@@ -160,6 +172,14 @@
         if (cmd.group_id === 'control' || cmd.group_id === 'shutdown') cmd.group_id = groupId(svc, cmd.group_id);
         if (SCRAM_ACTIONS[cmd.action] && scramCmdStep === null) scramCmdStep = curStep;
         issue(cmd);
+      }
+      // cmd-kind multi-check-off entries (#244 item 8) are operator actions of this step
+      // — the replay performs them the way the player would (the 1/M "Plot point" case).
+      if (st.accs && st.accs.length) {
+        st.accs.forEach(function (en) {
+          if (en && en.cmd) issue(typeof en.cmd === 'string' ? { action: en.cmd }
+                                                            : JSON.parse(JSON.stringify(en.cmd)));
+        });
       }
       // `saw` may be ONE predicate or a LIST of them (#348) — see the note in
       // run_procedures.js. Kept identical here on purpose: this runner exists to assert the
@@ -194,6 +214,18 @@
       if (st.acc) {
         var ts = lastSnap.true_state;
         checks.push({ d: 'step ' + curStep + ' ' + st.acc.p + ' ' + st.acc.op + ' ' + st.acc.v, pass: pred(ts, st.acc), obs: ts[st.acc.p] });
+      }
+      /* MULTI-CHECK-OFF steps (#244 item 8): predicate entries are asserted at the step's
+       * end exactly like `acc`; cmd-kind entries were issued above as operator actions of
+       * this step, so their evidence is the acceptance-free issue itself (the live runtime
+       * latches them off the command watch — that half is run_checklist's subject). */
+      if (st.accs && st.accs.length) {
+        var tsA = lastSnap.true_state;
+        st.accs.forEach(function (en, k) {
+          if (en && en.p) checks.push({
+            d: 'step ' + curStep + ' accs[' + k + '] ' + en.p + ' ' + en.op + ' ' + en.v,
+            pass: pred(tsA, en), obs: tsA[en.p] });
+        });
       }
     });
     if (!lastSnap) lastSnap = svc._assembleWithInstructor();

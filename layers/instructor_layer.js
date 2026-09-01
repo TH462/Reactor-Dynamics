@@ -44,6 +44,18 @@
       pzr_level_pct: 'pzr_level', tavg_c: 'tavg', thot_c: 'thot', tcold_c: 'tcold',
       steam_pressure_mpa: 'steam_pressure', boron_ppm: 'boron_analyzer',
     },
+    /* THE SHIPPED PLANT (#526/#244, 2026-08-31). Authored against pwr2_instruments.js's
+     * own channel ids — NOT copied from pwr (its `boron_analyzer` is `boron` here, and
+     * PWR2 has no SR/IR channels, so sr_counts_cps grades true_state, the documented
+     * exception). Every id verified present in a live pwr2 broadcast by
+     * test/run_checklist_pwr2.js, which reddens if one goes missing. */
+    pwr2: {
+      power_pct: 'power_range', pressure_mpa: 'primary_pressure', sg_level_pct: 'sg_level',
+      pzr_level_pct: 'pzr_level', tavg_c: 'tavg', thot_c: 'thot', tcold_c: 'tcold',
+      steam_pressure_mpa: 'steam_pressure', boron_ppm: 'boron_analyzer',
+      startup_rate_dpm: 'startup_rate', pump_flow_pct: 'rcs_flow',
+      mwe_output: 'mwe_output', fw_flow_normalized: 'fw_flow',
+    },
     rbmk: {
       power_pct: 'power_range', steam_pressure_mpa: 'steam_pressure', drum_level_pct: 'drum_level',
       channel_flow_pct: 'channel_flow', void_fraction_avg: 'void_fraction', fuel_temp_c: 'fuel_temp',
@@ -503,7 +515,11 @@
 
     if (st.saw && !f.sawSeen && this._grade(snapshot, st.saw).met) f.sawSeen = true;
 
-    if (st.acc) {
+    var fHasAccs = !!(st.accs && st.accs.length);
+    if (fHasAccs) {                            // multi-check-off (#244 item 8)
+      f.gradedBy = null;
+      f.accMetNow = this._gradeAccs(f, st, snapshot);
+    } else if (st.acc) {
       var g = this._grade(snapshot, st.acc);
       f.gradedBy = g.graded_by;
       f.accStreak = g.met ? f.accStreak + 1 : 0;
@@ -513,11 +529,11 @@
       f.accMetNow = false;
     }
 
-    var hasObligation = !!(st.cmd || st.acc || st.saw);
+    var hasObligation = !!(st.cmd || st.acc || fHasAccs || st.saw);
     if (!hasObligation) return;   // observation step — manual Next only
     if (st.cmd && !f.cmdSeen) return;
     if (st.saw && !f.sawSeen) return;
-    if (st.acc && !f.accMetNow) return;
+    if ((st.acc || fHasAccs) && !f.accMetNow) return;
     this._advanceFollow(+1, true);
   };
 
@@ -529,6 +545,7 @@
     if (next >= f.proc.steps.length) { this._completeFollow(); return; }
     f.idx = next;
     f.cmdSeen = false; f.sawSeen = false; f.accStreak = 0; f.accMetNow = false; f.gradedBy = null;
+    f.accsState = null;           // per-entry multi-check-off latches (#244 item 8)
     this.pendingMessage = null;   // a new step retires the previous step's feedback
     if (autoAdvanced) this._checkpointRequested = true;   // rewind lands on step boundaries
   };
@@ -593,7 +610,10 @@
 
     if (st.saw && !c.sawSeen && this._grade(snapshot, st.saw).met) c.sawSeen = true;
 
-    if (st.acc) {
+    if (st.accs && st.accs.length) {          // multi-check-off (#244 item 8)
+      c.gradedBy = null;
+      c.accMetNow = this._gradeAccs(c, st, snapshot);
+    } else if (st.acc) {
       var g = this._grade(snapshot, st.acc);
       c.gradedBy = g.graded_by;
       c.accStreak = g.met ? c.accStreak + 1 : 0;
@@ -617,11 +637,12 @@
      * step should not be able to soft-lock a checklist just by omitting a predicate.
      * `checklist_check` survives as a command — save/restore and the tests still use it —
      * it simply has no button any more. */
-    var met = st.acc ? (c.accMetNow && (!st.saw || c.sawSeen))
+    var hasAccs = !!(st.accs && st.accs.length);
+    var met = (hasAccs || st.acc) ? (c.accMetNow && (!st.saw || c.sawSeen))
             : st.saw ? c.sawSeen
             : st.cmd ? c.cmdSeen
             : (simTime - (c.stepAt == null ? simTime : c.stepAt)) >= OBSERVE_DWELL_S;
-    if (met) this._checklistCheckOff(st.acc || st.saw || st.cmd ? 'auto' : 'observed');
+    if (met) this._checklistCheckOff(hasAccs || st.acc || st.saw || st.cmd ? 'auto' : 'observed');
   };
 
   InstructorLayer.prototype._checklistCheckOff = function (by) {
@@ -630,6 +651,7 @@
     c.doneBy[c.idx] = by;
     c.idx++;
     c.cmdSeen = false; c.sawSeen = false; c.accStreak = 0; c.accMetNow = false; c.gradedBy = null;
+    c.accsState = null;                 // per-entry multi-check-off latches (#244 item 8)
     c.stepAt = null;                    // re-stamped on the next tick — see the dwell above
     if (c.idx >= c.proc.steps.length) c.complete = true;
   };
@@ -688,6 +710,7 @@
     if (this.checklist && !this.checklist.complete && command && command.action) {
       var cst = this.checklist.proc.steps[this.checklist.idx];
       if (cst && this._cmdEvidence(cst.cmd, command)) this.checklist.cmdSeen = true;
+      if (cst) this._accsCmdWatch(this.checklist, cst, command);   // multi-check-off cmd entries
     }
 
     // 1/M plot point — an operator ACTION with no plant effect. Pressing "Plot
@@ -701,6 +724,7 @@
       if (this.mode === 'follow' && this.follow && !this.follow.done) {
         var fst1m = this.follow.proc.steps[this.follow.idx];
         if (fst1m && fst1m.cmd && fst1m.cmd.action === 'plot_1m_point') this.follow.cmdSeen = true;
+        if (fst1m) this._accsCmdWatch(this.follow, fst1m, command);  // "point plotted" check-off
       }
       return null;
     }
@@ -725,6 +749,7 @@
       var r = this.below.handleCommand(command);
       this.pendingMessage = null;   // compliance clears stale wrong-action feedback
       if (st && this._cmdEvidence(st.cmd, command)) this.follow.cmdSeen = true;
+      if (st) this._accsCmdWatch(this.follow, st, command);        // multi-check-off cmd entries
       return r;
     }
 
@@ -737,7 +762,8 @@
       case 'next':    this._advanceFollow(+1, false); break;
       case 'prev':    if (f.done) { f.done = false; this.levelComplete = null; } this._advanceFollow(-1, false); break;
       case 'restart': f.idx = 0; f.done = false; this.levelComplete = null;
-                      f.cmdSeen = false; f.sawSeen = false; f.accStreak = 0; f.accMetNow = false; break;
+                      f.cmdSeen = false; f.sawSeen = false; f.accStreak = 0; f.accMetNow = false;
+                      f.accsState = null; break;
       default: break;
     }
     return null;
@@ -746,6 +772,52 @@
   InstructorLayer.prototype._sameFamily = function (a, b) {
     if (a === b) return true;
     return ROD_FAMILY.indexOf(a) !== -1 && ROD_FAMILY.indexOf(b) !== -1;
+  };
+
+  /* ---------------------------------------------------------------- multi-check-off
+   * (#244 item 8, owner: "Each step can have more then one checkoff to complete.")
+   * A step may author `accs: [...]` instead of `acc`: each entry is either an
+   * acceptance predicate {p,op,v[,tol],label} (graded with the same ACC_STABLE_N
+   * debounce as `acc`) or a command observation {cmd,label} (family-matched like the
+   * step's own `cmd` — the 1/M "point plotted" case). Entries LATCH individually —
+   * a met check-off stays met, the way a ticked box behaves — and the step completes
+   * when every entry is latched. Shared by BOTH runtimes (Path 3 checklist and
+   * Path 2 follow), because the Walkthroughs tab and the 📋 checklist run the same
+   * artifact. `holder` is the runtime's own state object (this.checklist / this.follow). */
+  InstructorLayer.prototype._ensureAccsState = function (holder, st) {
+    if (!holder.accsState || holder.accsState.length !== st.accs.length) {
+      holder.accsState = st.accs.map(function () {
+        return { streak: 0, met: false, obs: null, graded_by: null };
+      });
+    }
+    return holder.accsState;
+  };
+  InstructorLayer.prototype._gradeAccs = function (holder, st, snapshot) {
+    var state = this._ensureAccsState(holder, st);
+    var all = true;
+    for (var i = 0; i < st.accs.length; i++) {
+      var en = st.accs[i], ax = state[i];
+      if (!ax.met && en && en.p) {
+        var g = this._grade(snapshot, en);
+        ax.obs = g.value; ax.graded_by = g.graded_by;
+        ax.streak = g.met ? ax.streak + 1 : 0;
+        if (ax.streak >= ACC_STABLE_N) ax.met = true;
+      }
+      if (!ax.met) all = false;               // cmd-kind entries latch in handleCommand
+    }
+    return all;
+  };
+  // The command half of the watch: latch any unmet cmd-kind entry the command satisfies.
+  InstructorLayer.prototype._accsCmdWatch = function (holder, st, command) {
+    if (!st || !st.accs || !st.accs.length) return;
+    var state = this._ensureAccsState(holder, st);
+    for (var i = 0; i < st.accs.length; i++) {
+      var en = st.accs[i];
+      if (en && en.cmd && !state[i].met &&
+          this._cmdEvidence(typeof en.cmd === 'string' ? { action: en.cmd } : en.cmd, command)) {
+        state[i].met = true;
+      }
+    }
   };
 
   // Does `command` count as having performed the step whose authored command is
@@ -839,6 +911,11 @@
         acc_met: f.accMetNow,
         graded_by: f.gradedBy,
         done: f.done,
+        // Multi-check-off verdicts for the ACTIVE step ({met, obs, graded_by} per
+        // entry, order-parallel to the step's `accs`), or null on single-acc steps.
+        accs: f.accsState ? f.accsState.map(function (a) {
+          return { met: a.met, obs: a.obs, graded_by: a.graded_by };
+        }) : null,
       } : null,
       level_complete: this.levelComplete ? {
         title: this.levelComplete.title,
@@ -865,6 +942,11 @@
         acc_met: this.checklist.accMetNow,
         graded_by: this.checklist.gradedBy,
         complete: this.checklist.complete,
+        // Multi-check-off verdicts for the ACTIVE step (#244 item 8) — {met, obs,
+        // graded_by} order-parallel to the step's `accs`; null on single-acc steps.
+        accs: this.checklist.accsState ? this.checklist.accsState.map(function (a) {
+          return { met: a.met, obs: a.obs, graded_by: a.graded_by };
+        }) : null,
         // Precondition verdicts (#395): {met, obs, graded_by} order-parallel to
         // the procedure's `precond` array; null until first graded or when the
         // procedure authors none. Row text is NOT duplicated (same rule as steps).
@@ -935,6 +1017,11 @@
         // 0 silently rewound a partly-earned step.
         acc_streak: this.follow.accStreak,
         done: this.follow.done,
+        // per-entry multi-check-off latches (#244 item 8): met flags only — obs/
+        // graded_by are derived and regrade on the first tick after restore. A
+        // cmd-kind latch (a plotted point) cannot re-earn itself after a load.
+        accs_met: this.follow.accsState
+          ? this.follow.accsState.map(function (a) { return !!a.met; }) : null,
       } : null,
       checklist: this.checklist ? {
         procedure_id: this.checklist.procedure_id,
@@ -945,6 +1032,8 @@
         cmdSeen: this.checklist.cmdSeen, sawSeen: this.checklist.sawSeen,
         acc_streak: this.checklist.accStreak,
         complete: this.checklist.complete,
+        accs_met: this.checklist.accsState
+          ? this.checklist.accsState.map(function (a) { return !!a.met; }) : null,
       } : null,
     };
   };
@@ -970,6 +1059,10 @@
           cmdSeen: !!cs.cmdSeen, sawSeen: !!cs.sawSeen,
           accStreak: cStreak, accMetNow: cStreak >= ACC_STABLE_N,
           gradedBy: null, complete: !!cs.complete,
+          // restore the per-entry latches; streaks/obs regrade live (#244 item 8)
+          accsState: cs.accs_met ? cs.accs_met.map(function (m) {
+            return { streak: 0, met: !!m, obs: null, graded_by: null };
+          }) : null,
           // Precondition verdicts are DERIVED state — never saved; the first
           // step() tick after a restore regrades them against the live plant
           // (and re-raises the comment if rows are still unmet, which is right:
@@ -1026,6 +1119,10 @@
         idx: fs.idx, cmdSeen: fs.cmdSeen, sawSeen: fs.sawSeen,
         accStreak: fStreak, accMetNow: fStreak >= ACC_STABLE_N,
         gradedBy: null, done: fs.done,
+        // restore the per-entry latches; streaks/obs regrade live (#244 item 8)
+        accsState: fs.accs_met ? fs.accs_met.map(function (m) {
+          return { streak: 0, met: !!m, obs: null, graded_by: null };
+        }) : null,
       };
       this.scenarioStartTime = state.scenario_start_time;
       this.lastBeatFireTime = state.last_beat_fire_time;
@@ -1058,6 +1155,16 @@
    */
   var COND_WORDS = { tavg_c: 'RCS temperature', pressure_mpa: 'RCS pressure',
                      power_pct: 'reactor power', boron_ppm: 'boron', mwe_output: 'generator output' };
+  /* The gate string's VALUE, in the player's units — US-first per the house convention
+   * (#244 item 7's sibling: 'near 286' told the owner nothing; 'near 547 °F' does). */
+  function condValue(p, v) {
+    if (p === 'tavg_c') return Math.round(v * 9 / 5 + 32) + ' °F';
+    if (p === 'pressure_mpa') return Math.round(v * 145.038) + ' psi';
+    if (p === 'power_pct') return v + ' %';
+    if (p === 'boron_ppm') return v + ' ppm';
+    if (p === 'mwe_output') return v + ' MWe';
+    return String(v);
+  }
   InstructorLayer.prototype.rankProcedures = function (snapshot, procs, activeId) {
     var self = this;
     var ts = (snapshot && snapshot.true_state) || {};
@@ -1104,7 +1211,7 @@
           var w = COND_WORDS[c.p] || c.p;
           var op = c.op === '<' ? 'below' : c.op === '>' ? 'above' : c.op === '~' ? 'near' :
                    c.op === '<=' ? 'at or below' : c.op === '>=' ? 'at or above' : c.op;
-          return 'Requires ' + w + ' ' + op + ' ' + c.v;
+          return 'Requires ' + w + ' ' + op + ' ' + condValue(c.p, c.v);
         }).join(' · ') : null
       };
     }).sort(function (a, b) {

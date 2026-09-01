@@ -29,6 +29,67 @@ and the user-visible summary in `CHANGELOG.md`. This file points at those and tr
 
 ---
 
+## Session log — 2026-08-31-develop-g (#244/#254/#526 — the live checklists walk the shipped plant, Mode 5 → full power → Mode 5)
+
+**The chain runs.** Six checklists in a new `RD.MANUAL_PROCEDURES.pwr2` pool, each `next`-linked
+and REPLAYED END TO END on PWR2 through the full stack (`procedures_harness` gained a pwr2 row;
+`test/run_checklist_pwr2.js` is the gate). Every number measured this session (HR12):
+
+- **Startup ladder re-derived for the 200-step bank**: critical at ~74.5 steps on 719 ppm HZP
+  (differential ~31 pcm/step — 4.6× the retired fine-step bank), 1/M bursts 30/20/10/6/4 with
+  settled SR 597/875/1,344/2,138/3,662 cps, creep +5 then +2 at Slow (SUR ≤ 0.8 DPM, lands
+  +83 pcm), rise to the point of adding heat in ~13 min. The SR hands off and de-energizes
+  ITSELF (no lever on this plant); grid connection is the real pair latch_turbine +
+  set_load_target. The dilution to the estimated critical concentration (918 → 719 ppm) is now
+  the checklist's own head — the #396 seam closed where the owner ruled it.
+- **The power legs are real now**: ascension 10 → 101 % rods-lead/turbine-follows in five legs
+  with Tavg landing ON program (578.1 °F measured = 578.1 program), boron to 705 ppm as the
+  commanded bulk-reactivity source (626, the equilibrium value, is xenon's business);
+  rampdown 100 → ~15 % turbine-leads with boration back to 719. Both replay green.
+- **The cooldown is PWR2-native**: the Pressure SP floors at the sourced 1700 psig span, so
+  the low-pressure leg is heaters-MANUAL-0 + NORMAL spray (recirculating — level holds ~60 %
+  where aux spray flooded to 100 %), accumulators isolated inside the 1600-psig-to-cover-gas
+  band, RHR aligned UNDER the spray (shutting it first bounces pressure back over the 425 psig
+  permissive — measured, the order is the lesson), Mode 5 at ~6.7 plant-h, RHR leg −92 °F/hr.
+- **#244 stages 1–3 shipped**: criteria-first bold cards (cobalt `.ckl-crit`), natural-language
+  US-first predicates (`PRED_DISPLAY`, coverage GATED), multi-check-off steps (`accs[]`,
+  per-entry latching in checklist AND follow, save/restore carries the latches), collapsible
+  `why` + global toggle, `wait_hint`s, persistent `.ckl-step-glow`, button-level highlight
+  labels (Withdraw/Insert/Rod Speed/SG Feed AUTO/Plot point…), "Live Checklist: <title>"
+  header, chain handoff on the completion card. Browser-verified headless: five entries in the
+  tab, zero raw params, zero page errors.
+- **Enablement**: `PARAM_INSTRUMENT.pwr2` (instrument-first grading restored; ids asserted
+  against a live broadcast), `start_checklist` resolves, the Walkthroughs tab exemption is
+  pool-gated (campaign/scenarios keep the #525 fence), rank-gate strings speak °F/psi.
+- **Two plant lessons found by replay**: the un-blocked 35 % low-flux setting carries a ROD
+  STOP that froze a 30 % ascension (the block step's ordering above P-10 is now taught), and
+  the accumulator 1600 psig power lock times BOTH directions' steps.
+- **THE HEATUP'S PRESSURIZATION IS STAGED, AND THE REPLAY IS WHAT FOUND THE TRAP.** Dialing
+  2235 psi from cold ran the primary past the P-11 permissive (1,972 psia) at t≈131 min while
+  the secondary was still below the 327.7 psia low-steam-pressure SI setpoint. P-11's
+  auto-reinstate revoked the cold lineup's SI blocks onto a STANDING signal:
+  `cause=si_lo_steam_press`, heaters 157.8 kW → 0 (the NUREG-0737 shed latch), and the plant
+  parked at 1,921 psia FOREVER — while the hot_zero_power preset holds 2,250 psia on ~1–3 kW,
+  which is the measurement that separated "heater authority defect" from "content outran the
+  secondary". The checklist now stages the setpoint: 1700 psig floor (below P-11) through the
+  ride, completion to 2235 only with the secondary bottled at 1,020 psia — the coordination a
+  real heatup curve enforces, and the why-prose teaches the trap verbatim.
+
+- **The gate discovered its own blind spots on arrival**: `run_manual_controls` scored 52
+  failures against the new pool (no `pwr2` vocabulary row; `STEP_UI` keyed by bare id while
+  the pools share ids) — fixed with profile-prefixed `pwr2:<id>` coverage rows and an
+  OWN_POOL_PROFILES no-fallback rule, 266/0. And `run_checklist_pwr2`'s own HR1 check caught
+  `PARAM_INSTRUMENT.pwr2` authored from the instrument DEFINITION file where the live
+  broadcast renames (`boron_analyzer`, `rcs_flow`) — exactly what the check exists for.
+- **Chapters 04/05 banners now carry the measured chain** (pending Rev 17 item (f)): the
+  staged pressurization + P-11 trap, ~11 plant-h ride, cooldown ~6.7 plant-h, the 918 → 719
+  dilution seam — each banner names the live checklists as the measured authority.
+
+**Still open**: chapter 04/05's TABLES are still retired-engine prose under their (now
+current) banners — the full re-authoring is its own pass; the #254 stage 6 casualty
+checklists; the 1/M panel's internal Plot button glow (board-level label lands on the
+opener).
+
 ## Session log — 2026-08-31-develop-f (#485 again — the fix was committed fifteen days ago and never deployed; a green gate over a stale Worker)
 
 **Ask:** owner, 2026-08-31 21:16 ET: *"why is the telemetry page showing only 2 days right now

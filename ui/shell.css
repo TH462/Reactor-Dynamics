@@ -1881,6 +1881,14 @@ select.num-input { width: auto; }
   0%, 100% { box-shadow: 0 0 0 1px rgba(120, 210, 150, 0.60), 0 0 10px 2px rgba(120, 210, 150, 0.28); }
   50%      { box-shadow: 0 0 0 2px rgba(120, 210, 150, 0.98), 0 0 18px 5px rgba(120, 210, 150, 0.50); }
 }
+/* PERSISTENT up-next glow *(OWNER, #244 item 5: the active step's controls stay lit with
+   no mouseover)*. STEADY, not animated — it stands for minutes at a time, and a standing
+   pulse would compete with every alarm on the board. Same green family as the hover
+   preview so the two read as one vocabulary; the hover's pulse still layers on top. */
+.ckl-step-glow {
+  box-shadow: 0 0 0 1.5px rgba(120, 210, 150, 0.70), 0 0 12px 3px rgba(120, 210, 150, 0.30);
+  border-radius: 6px; position: relative; z-index: 4;
+}
 /* ============================================ the highlight bus (#444, spec §7)
    A soft CYAN halo — an outer GLOW, never a fill, tint or recolor. Cyan is the only
    board colour that is not a plant state: green, amber and red all carry condition
@@ -2062,6 +2070,22 @@ select.num-input { width: auto; }
 .ckl-body { flex: 1; min-width: 0; }
 .ckl-txt { font-size: 12.5px; line-height: 1.4; color: var(--text); }
 .ckl-sub { font-size: 11px; color: var(--text-2); margin-top: 2px; }
+/* THE CHECK-OFF CRITERIA — first line of the active card, bold, its own color *(OWNER,
+   #244 M5→3 item 4: "cyan or cobalt or a blue grey. something that isnt too loud but
+   brings attention to it so people know this is the requirement the step is looking
+   for.")*. A muted cobalt-blue, brighter when the requirement is met. */
+.ckl-crit {
+  font-size: 12.5px; font-weight: 700; color: #7fa8dd; line-height: 1.45;
+  margin-bottom: 2px;
+}
+.ckl-crit-met { color: var(--running); }
+/* the collapsible "why" (#244 items 2/9) — teaching prose, visually quieter than the action */
+.ckl-why { font-size: 11.5px; color: var(--text-2); line-height: 1.45; margin-top: 4px;
+  border-left: 2px solid var(--border); padding-left: 8px; }
+.ckl-why-btn { font-size: 10px; padding: 1px 7px; margin-top: 4px; }
+.ckl-why-all { float: right; font-size: 10px; padding: 1px 7px; margin-left: 8px; }
+.ckl-wait { color: var(--caution); }
+.ckl-next { border-color: var(--running); font-weight: 700; }
 .ckl-done { opacity: 0.62; border-left: 3px solid var(--running); }
 .ckl-done .ckl-ico { color: var(--running); }
 .ckl-active { border-left: 3px solid var(--caution); }
