@@ -29,6 +29,78 @@ and the user-visible summary in `CHANGELOG.md`. This file points at those and tr
 
 ---
 
+## Session log — 2026-08-31-develop-f (#485 again — the fix was committed fifteen days ago and never deployed; a green gate over a stale Worker)
+
+**Ask:** owner, 2026-08-31 21:16 ET: *"why is the telemetry page showing only 2 days right now
+and its rounded numbers?"* — the same symptom he reported on 2026-08-16. **Gates:** no simulator
+code touched; `tools/verify_worker_deploy.js` added, **RED against the live Worker**, which is
+the defect and not a fixture. **Landed:** `tools/verify_worker_deploy.js`, a *Shipping a change*
+section in `worker/README.md`, `release-to-main` §5c + a checklist line. **The deploy itself is
+OUTSTANDING** — see the bottom of this entry.
+
+**Nothing regressed.** `dd4cefd` is correct and sits on `develop`, `workbench`, `backshop` **and**
+`main` (`git diff develop main -- worker/` is empty). It was never shipped.
+
+| | |
+|---|---|
+| Live Worker `reactor-dynamics-telemetry`, newest deployment | **2026-08-14T19:42:27Z** |
+| `dd4cefd` — the #485 clamp | **2026-08-17 06:04 ET** |
+| `worker/` commits since the live build | **exactly one — `dd4cefd`** |
+
+**Reproduced, same instant, only the window start changed.** At 01:16 UTC the full-resolution
+edge is `2026-08-25T00:00Z`:
+
+| window start | tier | ET day rows | pageloads |
+|---|---|---|---|
+| `2026-08-24T04:00Z` — Eastern midnight, unclamped, **deployed** | ±10 | **2** (Aug 24, Aug 27) | 30 |
+| `2026-08-25T00:00Z` — clamped to the edge, **committed** | exact | **6** | 26 |
+
+**The two-row table IS the rounding.** Quantising to 10 does not merely blur the counts, it
+DELETES DAYS: any day under about 5 pageloads rounds to zero and a zero row is never rendered.
+Four of the six real days vanished. True 7-day figures are **26 pageloads / 10 visits over 6
+days** (`node tools/site_report.js --days=7`, whose UTC-midnight start sits exactly on the edge
+at every hour and has always been exact). Only the Traffic half is affected — the in-sim tables
+run off a relative Analytics Engine window and were correct throughout. The symptom clears at
+midnight ET and returns at 8pm, which is why it reads as intermittent.
+
+**THE TRAP: A GREEN GATE PROVES THE SOURCE, AND THIS WORKER'S SOURCE IS NOT WHAT ANYONE READS.**
+`run_dashboard_time` went 12/12 → 14/14 with the fix and stayed green for fifteen days over a
+live Worker that did not contain it. Two entries in this very file — `:4103` and `:4505` — said
+**"NOT DEPLOYED … awaiting the owner's deploy"** the whole time, and #485 was closed
+`status-work-complete` on 2026-08-30 anyway. The Worker ships BY HAND and no part of the repo
+build touches it, so "committed" and "live" are two independent facts and only one had a check.
+The nearest existing guard, `tools/verify_release_deploy.js`, proves the **site** is live and is
+silent about this Worker. **Ask what a check can SEE, not only what it asserts** — the same shape
+as #532, where a runner scored 9/9 over two of its subject's three tables.
+
+**Second trap, smaller: the blocker recorded in this file had expired.** Both notes gave the
+reason as *"wrangler is not on this machine's PATH"*. Measured today: `npx wrangler whoami`
+answers with `workers_scripts (write)`, so the deploy has been one command away for some time.
+**A recorded blocker is a claim like any other and ages like one.**
+
+**`tools/verify_worker_deploy.js`** — newest commit touching `worker/` vs the newest deployment's
+`Created:` stamp; exit 2 names every commit that never shipped. It is **not** under `test/` and
+**not** in `BASELINES`: reading the deployment needs wrangler's OAuth, which CI does not have, and
+`run_all` discovers `test/verify_*.js` and would fail on a runner it cannot execute. It exits 2
+when it cannot read the deployment at all — **an unknown is not a pass**, which is the hollow-check
+rule. Two mechanical notes for whoever touches it: `CLOUDFLARE_API_TOKEN` must be deleted from the
+child environment or wrangler prefers it to its OAuth session and then has no Workers permission;
+and `shell: true` is mandatory on Windows because `npx` is a `.cmd` and Node ≥ 18.20 refuses to
+spawn one without it (`EINVAL`, the CVE-2024-27980 fix).
+
+**Also seen, not chased:** two RUM GraphQL calls returned an empty
+`rumPageloadEventsAdaptiveGroups` for windows that returned rows one call either side
+(`datetime_geq` 2026-08-28T00:00Z; and 2026-08-25T00:00Z grouped by `datetimeHour`). A controlled
+sweep immediately after could not reproduce it — 11 hourly buckets, 26 pageloads, sampleInterval
+1. Probably upstream flakiness or rate limiting under a rapid loop. It matters only because the
+dashboard renders an empty result as **"(none)"**, which is indistinguishable from a quiet week.
+
+**STILL OUTSTANDING: the deploy.** `cd worker && env -u CLOUDFLARE_API_TOKEN npx wrangler deploy`,
+then `node tools/verify_worker_deploy.js` must go green. The command was blocked by this session's
+permission classifier as an outward-facing production action.
+
+---
+
 ## Session log — 2026-08-31-develop-e (#524 — Mode 5 exists: the pressure floor was a fetch query's bound)
 
 **The full record is `Blueprint/PWR2_VALIDATION.md` §126**; this is the index entry.
@@ -4102,6 +4174,8 @@ fix: *"Approved."* **Gates:** `run_all` **49 runners at baseline**; `run_dashboa
 the partial-row note in `worker/src/analytics.js`, the corrected coarse warning, two new gate
 suites. **NOT DEPLOYED** — the Worker ships by hand (`cd worker && wrangler deploy`) and wrangler
 is not on this machine's PATH.
+STILL TRUE ON 2026-08-31, fifteen days later — it never shipped, the owner hit the identical
+symptom again, and this issue was closed `status-work-complete` in between. See 2026-08-31-develop-f.
 
 **The mechanism.** Cloudflare RUM holds full resolution behind a **fixed retention edge at 00:00
 UTC of (today − 7 days)**, and it is a cliff. Measured one second either side:
@@ -4506,6 +4580,8 @@ cannot walk past the display layer and shift the key space out from under every 
 this machine's PATH and the scoped `CLOUDFLARE_API_TOKEN` in the environment would shadow its
 OAuth login (`worker/README.md` §"If wrangler auths via a scoped token"). Committed and gated,
 awaiting the owner's deploy.
+IT WAS NEVER DEPLOYED, AND NOTHING NOTICED FOR FIFTEEN DAYS — 2026-08-31-develop-f. The PATH
+half of this note had also expired: `npx wrangler whoami` answers with `workers_scripts (write)`.
 
 ---
 

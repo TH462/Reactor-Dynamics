@@ -30,6 +30,23 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
 
 ## [Unreleased]
 
+### Added (#485 reopened: nothing proved the telemetry Worker was ever deployed — 2026-08-31)
+
+- **`tools/verify_worker_deploy.js`** — compares the newest commit touching `worker/` against the
+  live Worker's newest deployment stamp, and exits 2 naming every commit that never shipped. The
+  #485 clamp was committed 2026-08-17, closed `status-work-complete` on 2026-08-30, and was still
+  not deployed on 2026-08-31 when the owner reported the identical symptom a second time; the
+  live Worker's newest deployment was **2026-08-14T19:42:27Z**. `run_dashboard_time` was green for
+  all fifteen days because it gates the SOURCE, and the Worker ships by hand with no part of the
+  repo build touching it. **Not** a `run_all` gate and deliberately not under `test/` — reading the
+  deployment needs wrangler's OAuth, which CI does not have. It exits 2 when it cannot read the
+  deployment at all: an unknown is not a pass.
+- **`worker/README.md`** gains a *Shipping a change* section (the deploy command, why
+  `env -u CLOUDFLARE_API_TOKEN` is required, and that a green suite is not a shipped one), and
+  the `release-to-main` skill gains **§5c** plus a checklist line — §5b proves the *site* is live
+  and is silent about this Worker.
+- No simulator change: no `changelog.html` entry and no version bump.
+
 ### Added (#524: Mode 5, Cold Shutdown exists — the water-property floor extended below 0.1 MPa — 2026-08-31)
 
 - **Layer 0's pressure floor moved 0.1 → 0.002 MPa** (owner-ruled). The 0.1 was the NIST fetch

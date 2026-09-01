@@ -46,6 +46,28 @@ the safe state is the one that needs no action.
 
 ---
 
+## Shipping a change — and proving it shipped
+
+```bash
+cd worker
+env -u CLOUDFLARE_API_TOKEN npx wrangler deploy
+node ../tools/verify_worker_deploy.js          # exit 0 = live is at or ahead of worker/
+```
+
+`env -u` is not decoration. `CLOUDFLARE_API_TOKEN` is an Account-Analytics-Read token and
+wrangler prefers it to its OAuth session, then finds it has no Workers permission at all.
+
+**Nothing in the repo build deploys this Worker, and no gate could see that it was stale.**
+`test/run_dashboard_time.js` went green on 2026-08-17 and stayed green while the fix it covers
+sat undeployed for fifteen days — the live dashboard kept rounding every traffic figure to the
+nearest 10 for four hours a night, the issue was closed `status-work-complete`, and the owner
+reported the same symptom a second time on 2026-08-31. A green suite proves the source; only
+`tools/verify_worker_deploy.js` proves the deployment. **Run it after any `worker/` change, and
+before a release.** It exits 2 when it cannot read the deployment at all — an unknown is not a
+pass.
+
+---
+
 ## Checking it works
 
 The client is gated (`test/run_telemetry.js`, 103 checks — read the count off the runner,
