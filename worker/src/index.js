@@ -23,7 +23,10 @@
  *   - The IP address is used as the rate-limit key and NEVER written anywhere. It
  *     goes into env.LIMITER.limit({key}) and out of scope on the next line.
  *   - The User-Agent is not read, not stored, not passed on.
- *   - No cookies are set, no headers are echoed into storage.
+ *   - ONE exception: handleBundle stamps the CORS-checked Origin header into a bug report's
+ *     R2 customMetadata (one of the three values in ALLOWED_ORIGINS — not a full URL, no
+ *     path or query, nothing a visitor typed) so a report can be told apart by which site
+ *     sent it. No other header is echoed into storage.
  *   - Nothing is logged. console.log in a Worker goes to the tail/observability
  *     stream, which is a place data lives; if you add logging while debugging,
  *     take it out, and never log `body`.
@@ -298,11 +301,16 @@ async function handleBundle(request, env, origin) {
   const id = now.getTime().toString(36) + '-' + Math.random().toString(36).slice(2, 10);
   const key = 'bundles/' + day + '/' + id + (gzipped ? '.json.gz' : '.json');
 
+  // Origin is already checked against ALLOWED_ORIGINS above and then discarded — the only
+  // record left of which site sent this was whatever the client claimed inside the JSON body.
+  // Stamping it here too means the dashboard can show which build a report came from even if
+  // the client-side `build`/`channel` fields are absent (older sessions) or wrong.
   await env.BUNDLES.put(key, buf, {
     httpMetadata: {
       contentType: 'application/json',
       contentEncoding: gzipped ? 'gzip' : undefined,
     },
+    customMetadata: { origin: origin || '' },
   });
 
   // The id goes back so a reporter can quote it and it can be found in one command.
