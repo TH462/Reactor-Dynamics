@@ -353,7 +353,10 @@ node tools/verify_worker_deploy.js     # exit 0 = live is at or ahead of worker/
 older code than this tree.** That is not hypothetical: the #485 fix was committed 2026-08-17,
 never deployed, closed `status-work-complete` on 2026-08-30, and the owner reported the identical
 symptom again on 2026-08-31 — fifteen days of a green `run_dashboard_time` over a stale live
-Worker. Ship it with `cd worker && env -u CLOUDFLARE_API_TOKEN npx wrangler deploy`.
+Worker. Ship it with `env -u CLOUDFLARE_API_TOKEN npx wrangler deploy --config <repo>/worker/wrangler.toml`
+— by absolute path, because from the repo root `wrangler deploy` finds the **Pages** project,
+auto-answers its own confirmation `yes` non-interactively, and invents a Worker name from the
+directory (measured 2026-08-31: `eactor--ynamics`).
 
 It is a release step and not a gate because reading the live deployment needs wrangler's OAuth,
 which CI does not have — so nothing else will ever tell you.

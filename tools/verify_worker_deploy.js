@@ -50,7 +50,13 @@ const val = (f, d) => {
 };
 const NAME = val('--name', 'reactor-dynamics-telemetry');
 const REPO = path.resolve(__dirname, '..');
-const DIR = val('--dir', 'worker/');
+/* ONLY WHAT THE DEPLOY ACTUALLY CARRIES. `worker/` as a whole is the wrong pathspec: the first
+ * commit made after this file existed touched `worker/README.md`, and the check duly reported a
+ * deploy was owed for a documentation edit. A check that cries wolf on prose is a check people
+ * learn to ignore, which is worse than not having one. `main` is `src/index.js` and the bindings
+ * are in the toml, so those two paths are the bundle. */
+const PATHS = val('--paths', 'worker/src,worker/wrangler.toml').split(',').filter(Boolean);
+const DIR = PATHS.join(' ');
 
 const C = process.stdout.isTTY
   ? { b: '\x1b[1m', d: '\x1b[2m', g: '\x1b[32m', r: '\x1b[31m', x: '\x1b[0m' }
@@ -63,7 +69,7 @@ function fail(msg, detail) {
 }
 
 // ------------------------------------------------------------------- the tree side
-const log = spawnSync('git', ['log', '-1', '--format=%H %cI %s', '--', DIR],
+const log = spawnSync('git', ['log', '-1', '--format=%H %cI %s', '--', ...PATHS],
   { cwd: REPO, encoding: 'utf8' });
 if (log.status !== 0 || !String(log.stdout).trim()) {
   fail(`could not read git history for ${DIR}`, log.stderr);
@@ -115,9 +121,15 @@ if (committedMs <= liveMs) {
 }
 
 const behind = spawnSync('git',
-  ['log', `--since=${live}`, '--format=%h %cs %s', '--', DIR],
+  ['log', `--since=${live}`, '--format=%h %cs %s', '--', ...PATHS],
   { cwd: REPO, encoding: 'utf8' });
 
+/* The hint names the config by ABSOLUTE path rather than saying `cd worker` first. Run from the
+ * repo root, `wrangler deploy` finds the PAGES project instead, warns about it, AUTO-ANSWERS THE
+ * CONFIRMATION "yes" in a non-interactive shell, and invents a Worker name from the directory —
+ * measured 2026-08-31, "eactor--ynamics". Only the missing entry-point stopped it. A one-line
+ * command that cannot be run from the wrong directory is cheaper than the warning about it. */
 fail(`the live Worker is BEHIND this tree — ${DIR} has commits that were never deployed.`,
   `\n${String(behind.stdout || '').trimEnd()}\n\n`
-  + `${C.d}Ship them:  cd worker && env -u CLOUDFLARE_API_TOKEN npx wrangler deploy${C.x}`);
+  + `${C.d}Ship them:  env -u CLOUDFLARE_API_TOKEN npx wrangler deploy \\\n`
+  + `              --config ${path.join(REPO, 'worker', 'wrangler.toml').replace(/\\/g, '/')}${C.x}`);

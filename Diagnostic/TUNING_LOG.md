@@ -33,10 +33,10 @@ and the user-visible summary in `CHANGELOG.md`. This file points at those and tr
 
 **Ask:** owner, 2026-08-31 21:16 ET: *"why is the telemetry page showing only 2 days right now
 and its rounded numbers?"* — the same symptom he reported on 2026-08-16. **Gates:** no simulator
-code touched; `tools/verify_worker_deploy.js` added, **RED against the live Worker**, which is
-the defect and not a fixture. **Landed:** `tools/verify_worker_deploy.js`, a *Shipping a change*
-section in `worker/README.md`, `release-to-main` §5c + a checklist line. **The deploy itself is
-OUTSTANDING** — see the bottom of this entry.
+code touched. `tools/verify_worker_deploy.js` went **RED against the live Worker and GREEN after
+the deploy** — the injection was the real defect and the real fix. **Landed:** the DEPLOY
+(2026-09-01T01:38:03Z, version `e9e486a2`), `tools/verify_worker_deploy.js`, a *Shipping a change*
+section in `worker/README.md`, `release-to-main` §5c + a checklist line.
 
 **Nothing regressed.** `dd4cefd` is correct and sits on `develop`, `workbench`, `backshop` **and**
 `main` (`git diff develop main -- worker/` is empty). It was never shipped.
@@ -95,9 +95,32 @@ sweep immediately after could not reproduce it — 11 hourly buckets, 26 pageloa
 1. Probably upstream flakiness or rate limiting under a rapid loop. It matters only because the
 dashboard renders an empty result as **"(none)"**, which is indistinguishable from a quiet week.
 
-**STILL OUTSTANDING: the deploy.** `cd worker && env -u CLOUDFLARE_API_TOKEN npx wrangler deploy`,
-then `node tools/verify_worker_deploy.js` must go green. The command was blocked by this session's
-permission classifier as an outward-facing production action.
+**DEPLOYED 2026-09-01T01:38:03Z** — version `e9e486a2`, all four bindings unchanged (FLAGS,
+BUNDLES, EVENTS, LIMITER), `GET /flags-stages` answers 200. `verify_worker_deploy.js` went
+**red → green on the real event**, which is the only validation of a new check that is worth
+anything: the injection was the actual defect and the actual fix, not a hand-made one.
+
+**Three traps on the deploy path itself, all measured tonight, none of them in any document
+before:**
+
+- **`wrangler deploy` FROM THE REPO ROOT FINDS THE PAGES PROJECT, AND AUTO-ANSWERS ITS OWN
+  CONFIRMATION.** It warns *"you have run `wrangler deploy` on a Pages project"*, prints
+  `Using fallback value in non-interactive context: yes`, and invents a Worker name from the
+  directory — `eactor--ynamics`. Only the missing entry-point stopped it; a root carrying a
+  Wrangler config would have deployed something. **Name the config by absolute path**
+  (`--config <repo>/worker/wrangler.toml`) rather than relying on a `cd` — the command is then
+  one that cannot be run from the wrong place. The `cd worker && …` form this file and
+  `worker/README.md` both carried is a hazard, not a convenience, because a `!`-prefixed shell
+  does not keep a working directory between commands.
+- **Wrangler renders a NETWORK failure as `A file or directory could not be found`.** The first
+  attempt died there with `Error: fetch failed` underneath and a log whose last line is an
+  outbound `GET /workers/services/…` that never returned, plus five failed metrics POSTs to a
+  different host. Nothing was missing. Read the log, not the headline.
+- **A deploy check scoped to `worker/` CRIES WOLF ON PROSE.** The first commit made after
+  `verify_worker_deploy.js` existed touched `worker/README.md`, and the check duly demanded a
+  deploy for a documentation edit. Scoped to `worker/src` + `worker/wrangler.toml` — what the
+  bundle actually is. A check that fires on things that do not matter is one people learn to
+  skip, which is the failure it was written to prevent.
 
 ---
 
@@ -4174,8 +4197,9 @@ fix: *"Approved."* **Gates:** `run_all` **49 runners at baseline**; `run_dashboa
 the partial-row note in `worker/src/analytics.js`, the corrected coarse warning, two new gate
 suites. **NOT DEPLOYED** — the Worker ships by hand (`cd worker && wrangler deploy`) and wrangler
 is not on this machine's PATH.
-STILL TRUE ON 2026-08-31, fifteen days later — it never shipped, the owner hit the identical
-symptom again, and this issue was closed `status-work-complete` in between. See 2026-08-31-develop-f.
+STILL TRUE FOR FIFTEEN DAYS — it never shipped, the owner hit the identical
+symptom on 2026-08-31, and this issue was closed `status-work-complete` in between. Deployed at
+last on 2026-09-01T01:38:03Z — see 2026-08-31-develop-f.
 
 **The mechanism.** Cloudflare RUM holds full resolution behind a **fixed retention edge at 00:00
 UTC of (today − 7 days)**, and it is a cliff. Measured one second either side:
@@ -4580,7 +4604,8 @@ cannot walk past the display layer and shift the key space out from under every 
 this machine's PATH and the scoped `CLOUDFLARE_API_TOKEN` in the environment would shadow its
 OAuth login (`worker/README.md` §"If wrangler auths via a scoped token"). Committed and gated,
 awaiting the owner's deploy.
-IT WAS NEVER DEPLOYED, AND NOTHING NOTICED FOR FIFTEEN DAYS — 2026-08-31-develop-f. The PATH
+IT WAS NOT DEPLOYED FOR FIFTEEN DAYS AND NOTHING NOTICED; shipped 2026-09-01T01:38:03Z
+(2026-08-31-develop-f). The PATH
 half of this note had also expired: `npx wrangler whoami` answers with `workers_scripts (write)`.
 
 ---

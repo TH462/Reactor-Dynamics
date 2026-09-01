@@ -45,6 +45,10 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
   `env -u CLOUDFLARE_API_TOKEN` is required, and that a green suite is not a shipped one), and
   the `release-to-main` skill gains **§5c** plus a checklist line — §5b proves the *site* is live
   and is silent about this Worker.
+- **The Worker was deployed** — 2026-09-01T01:38:03Z, version `e9e486a2`, bindings unchanged. The
+  check went red → green on the real event. Three traps on the deploy path are recorded in
+  `Diagnostic/TUNING_LOG.md` 2026-08-31-develop-f, the sharpest being that `wrangler deploy` run
+  from the repo root targets the **Pages** project and auto-answers its own confirmation `yes`.
 - No simulator change: no `changelog.html` entry and no version bump.
 
 ### Added (#524: Mode 5, Cold Shutdown exists — the water-property floor extended below 0.1 MPa — 2026-08-31)

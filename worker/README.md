@@ -49,10 +49,16 @@ the safe state is the one that needs no action.
 ## Shipping a change — and proving it shipped
 
 ```bash
-cd worker
-env -u CLOUDFLARE_API_TOKEN npx wrangler deploy
-node ../tools/verify_worker_deploy.js          # exit 0 = live is at or ahead of worker/
+env -u CLOUDFLARE_API_TOKEN npx wrangler deploy \
+  --config C:/grok_build/Reactor_Dynamics/worker/wrangler.toml
+node tools/verify_worker_deploy.js             # exit 0 = live is at or ahead of worker/src
 ```
+
+**Name the config by absolute path; do not rely on being in this directory.** Run from the repo
+root, `wrangler deploy` finds the **Pages** project instead, warns that it has, **auto-answers the
+confirmation "yes"** in any non-interactive shell, and invents a Worker name from the directory —
+measured 2026-08-31, `eactor--ynamics`. Only the missing entry-point stopped it there; a root that
+happened to carry a Wrangler config would have deployed something.
 
 `env -u` is not decoration. `CLOUDFLARE_API_TOKEN` is an Account-Analytics-Read token and
 wrangler prefers it to its OAuth session, then finds it has no Workers permission at all.
