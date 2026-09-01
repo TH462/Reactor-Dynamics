@@ -2682,12 +2682,12 @@
      * three rows that do nothing were live. Both trips watch pressure DOWNWARD and neither
      * auto-blocks on the way down; both need P-11, which is why the pressure setpoint comes
      * down first. Its sub line reads the live setpoint, like lo_press above. */
-    { id: 'si_trip', label: 'SI ACTUATION',
+    { id: 'si_trip', label: 'SI REACTOR TRIP',
       sub: function (s) {
         var st = (s && s.rps_state && s.rps_state.trip_block_status) || {};
         var sp = st.si_trip && typeof st.si_trip.setpoint === 'number' ? st.si_trip.setpoint : null;
-        return 'SAFETY INJECTION · ' + (sp == null ? 'LOW PRESSURE' : dP(sp) + ' ' + uStr('press', 'psi')) +
-               ' (P-11 PERMISSIVE)';
+        return 'REACTOR TRIP · ' + (sp == null ? 'LOW PRESSURE' : dP(sp) + ' ' + uStr('press', 'psi')) +
+               ' (P-11 PERMISSIVE) · ALSO BLOCKS SI ACTUATION';
       } }
   ];
 
