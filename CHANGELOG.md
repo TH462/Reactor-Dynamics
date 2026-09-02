@@ -30,6 +30,247 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
 
 ## [Unreleased]
 
+### Added (#604: the dev analytics pages get a memory, four dimensions and a chart — 2026-09-02)
+
+Not a simulator change and gets no `changelog.html` entry — this is the ops dashboard.
+
+**The pages had no memory, and past a week not even accurate recent history.** Web Analytics
+holds **7 days** at full resolution; Analytics Engine is fixed at **3 months**. Nothing
+persisted a rollup. Measured live 2026-09-02: a 30-day country × referrer × day query returns
+12 rows and **every one carries `sampleInterval` 10** — every figure rounded to the nearest 10,
+against a real volume of 28 pageloads and 12 visits a week. A "10" may be one person.
+
+**The daily rollup** (`worker/src/rollup.js`, D1 + a cron trigger — the worker had neither).
+The whole trick is being on time: **the coarse tier only penalises queries made later**, so a
+job that snapshots yesterday while it is still inside the 7-day window keeps exact history for
+ever. Two tables keyed on the dimension tuple, so `INSERT OR REPLACE` makes a retry, a manual
+trigger or an overlapping schedule idempotent — a doubled day looks exactly like a good day.
+Every row carries its `sample_interval` and every run is recorded, so a late capture is visible
+rather than silently stored as exact, and a missing day is distinguishable from a quiet one.
+Retention **two years**, pruned by the job *(owner ruling)*.
+
+**"Where they came from" was answering a different question.** `reactordynamics.com` was the
+referrer on 6 of 12 rows over 30 days — our own pages linking to each other. Split into **how
+people arrive** and **internal navigation**, and the honest finding now shows on the page: over
+that window there was **no external referrer at all**.
+
+**The correlation the owner asked for**, country × referrer × day — grouped by hour and
+**re-bucketed into Eastern days**, not read off the API's own `date` dimension, which is UTC.
+The first cut used `date` and `run_dashboard_time.js` caught it on the label; that gate exists
+because relabelling a bucket without re-grouping its query is exactly this failure, and it has
+now caught it twice in two different views.
+
+**Four dimensions collected and never shown** — browser, OS, `navigationType` (the closest this
+data has to a returning visitor) and `requestHost` + `bot`. Bot measured **0** across the
+window: the tiles are real people, which the page was assuming silently and now keeps checking.
+
+**Web Vitals**, an entire unused dataset. #596 was the sim render-bound at 4.7 fps, found
+because the owner played it; INP is that measurement taken automatically, and the element
+column names what felt slow. ⚠ The first cut rendered "(none)" for all three sections against a
+query returning 70 and 60 — `rumRows` had the pageload dataset name hard-coded. An empty
+section and a dataset with no rows are the same page.
+
+**One chart**, inline SVG, no library and no script. Weekly buckets: at 12 visits a week a daily
+chart is four fifths zeros, and a chart that is mostly zeros is worse than the table above it.
+The palette was **computed, not chosen** — the pair picked by eye (this page's link blue against
+a violet) failed at ΔE 3.0 for deuteranopia and 12.2 for normal vision; the shipped blue/orange
+pair passes at 26.8 and 31.8. Bars say when they are rounded.
+
+**`privacy.html` gains the disclosure** — it said only that Cloudflare processes page views,
+which stops being the whole story the moment we keep our own copy. Nothing gates that: the
+existing check binds the page to the Analytics Engine *event schema* and says nothing about
+retention or Web Analytics.
+
+### Fixed (#603: safety injection actuates and the board finally says so — 2026-09-02)
+
+Filed out of #598 item 4. A cold plant whose Pressurizer Pressure Setpoint is dialled straight to
+2235 psi crosses the permissive-11 interlock (1972 psia) with the steam generator still cold, the
+safety-injection signals the cold lineup had blocked are auto-reinstated onto a condition that is
+**already satisfied**, and SI actuates on a healthy plant — shedding the heaters and parking
+pressure 314 psi short, permanently.
+
+**The protection was right and this is not a physics change.** Measured both heatup paths:
+staged, the SG is at 1040 psia when P-11 is crossed against a sourced 327.7 psia setpoint and
+nothing actuates; dialled straight to 2235 it is at 78 psia and SI fires. The auto-revoke of a
+block on leaving its own permissive is prototypical — a block that survived it would be the
+defeatable-trip shape #295 ruled against. **The defect was entirely that nothing said so.**
+
+**One root cause, three silent surfaces.** `eccs_mode` read `standby`, the Indications row "HPI
+Actuated" read no, and the one ECCS annunciator was `status` priority — all three key on
+*delivered pump flow*, and at 1966 psia the running pumps sit above their shutoff heads and
+deliver nothing. The only thing that fired was a consequence, `PZR HTRS SHED`. The player was
+told the symptom and never the event.
+
+**`hpi_active` is the safety-injection signal again, which is what it is RULED to be.**
+`pwr_engine.js` records it in those words — *"`hpi_active` IS the SI signal on this plant, and
+that is a ruling rather than a reading"* — and `pwr_control.js` repeats it above the RHR
+interlock that consumes it. PWR2 kept the field NAME and published delivered flow under it, so
+the two plants reported different facts through one name and nothing could notice: the #573
+pattern, exactly. Delivered flow was never lost — `hpi_flow_normalized` and `eccs_mode` both
+still carry it.
+
+**The tile stops being furniture.** `status` is the one class that cannot ask for anything: a
+status row is acknowledged on the operator's behalf the moment it arrives *(OWNER RULING,
+2026-07-28: "I want status-class alarms to spawn (and arrive) pre-acknowledged")*, so the largest
+actuation this plant has sorted last behind a grey dot. Raised to
+**critical** and renamed **SAFETY INJECTION** — the same argument that raised `PZR HTRS SHED` at
+#577, applied to the *cause* of that very tile. A consequence outranking its cause was the wrong
+shape.
+
+**The ECCS AUTO button is a lamp now** *(owner directive, 2026-09-02: "Do not add extra UI
+elements. To enunciate that it's flowing let's have the auto button change color and flash.")*.
+It already carried `si_actuated` and already rendered amber — and `.bd-btn:disabled { opacity:
+0.45 }` washed it out, because PWR2 declares no `hpi` ESF arm so the button is greyed. The sole
+safety-injection indication on the whole board was an amber tint on a control that looked
+switched off. It now beats `:disabled` and pulses on `opacity`, which composites (#596's lesson,
+though that was ~100 elements and this is one).
+
+**`eccs_mode` gains `armed`** — actuated, pumps running, nothing coming out. Without it the board
+would contradict itself: a flashing lamp and a critical tile beside a readout saying STANDBY.
+
+**And a latent defect fell out.** `hpi_discharge_pressure_mpa` computes a *dead-head* pressure
+gated on `hpi_active` — which meant flow > 0, so the branch its own comment describes was
+unreachable: anything satisfying the gate had flow, anything dead-heading failed it. It is
+reachable for the first time. The RHR align interlock also now blocks under a latched SI at
+pressure, where it previously let the align through because no water was moving.
+
+Manuals 06 (PWR-A20 rewritten around the signal, with the heatup case) and 09 §4.0.
+
+### Fixed (#598: the second playtest list — waves 1 and 2 of 16 items — 2026-09-01)
+
+Sixteen items from a live session on the shipped PWR2 plant. Ruled into three waves; this is the
+first two. Everything below is measured, and two of the sixteen turned out not to be defects at
+all — the measurement is the deliverable in those cases.
+
+**The 1/M startup plot was dead on the plant the site runs** (`ui/panels/one_over_m.js`). It gated
+itself on `plant_id !== 'pwr'` in two places and PWR2 publishes `pwr2`, so the tile opened the
+window and the next service broadcast hid it again; a player fast enough to press *Plot point*
+read **"PWR only"**. **Six steps of the startup checklist drive this tool** — the approach to
+criticality could not be performed on the shipped plant. Now gated on the CAPABILITY (a
+source-range count and a control group), which is also how a future plant earns it. **Nothing
+gated this panel at all**: new `test/run_oneoverm.js` (13 checks, injection-proven — the reverted
+guards redden 7).
+
+**The turbine was always spinning** (`engines/pwr2/pwr2_turbine.js`). `rpm` was
+`tripped ? 0 : 1800` — a synthesized two-state constant, flagged as one in `pwr2_true_state` and
+never fixed — and **no initial condition boots tripped**, so Mode 3, Mode 4 and Mode 5 drew
+full-speed blades and printed 1800 rpm on a cold reactor. Replaced with a shaft that is
+**synchronous while steam is admitted** (a machine on the grid runs at the grid's speed) and a
+**first-order coastdown** when it is not. Measured from a full-power trip: 95.9 % of rated at
+10 s, 77.9 % at 1 min, 28.6 % at 5 min, 8.2 % at 10 min, 0.7 % at 20 min. The 240 s constant is
+**[declared], not sourced** — `find_source.js` has no rotor inertia or rundown curve in any lane's
+corpus. A first-order SPIN-UP was tried first and thrown out: it drew 20.0 MWe from a shaft at
+510 rpm, which is not a lag, it is an impossibility. `turbine_tripped` had to move with it — it
+was derived from `rpm === 0`, exact while speed was two-state and **wrong** the moment it is
+continuous, because a tripped machine would have un-latched its own trip as the rotor slowed.
+
+**The pressurizer pressure setpoint could not be lowered — and the engine was right.** The
+1700 psig (11.72 MPa) floor is WTSM 10.2's operator span and the cold lineup's sub-floor setpoint
+is a constructor seed, not a dialled value. The defect was the BOX: it advertised
+`[0.1 MPa, pzr safety]` = **15..2484 psi, the retired engine's band**, so it accepted a Mode 5
+entry, the engine silently clamped, and the next snapshot snapped the box back saying nothing. It
+reads the running plant's span now (measured `[1700, 2500]` psi) — the `chargingMaxGpm` /
+`cwRangeC` shape a third time, and the convention the steam-dump and ADV boxes already state.
+
+**The checklist highlight landed on top of the board and got stuck, and it was two bugs.**
+`.ckl-step-glow` was never added to `pwr_board.css`'s z-index override list; board box tiles are
+opaque, so a lifted panel paints over its own buttons and the vessel, and **13** of the pwr2
+checklists' highlight labels resolve to opaque box panels (BORON among them, as reported). **This
+is the third recurrence of one omission** (#202, #509, now #244's class), so there is now a gate:
+`test/run_glow_stacking.js` (18 checks, injection-proven), which requires every glow class
+`shell.css` lifts to be one `pwr_board.css` pins back. Separately the CLEAR was unreachable —
+`resetCkl()` sat below three early returns and the instructor layer clears the checklist on
+exactly those transitions, so running a checklist then starting a walkthrough stranded the glow
+with nothing left in the UI able to remove it.
+
+**"CHARGING in AUTO doesn't hold a decent level" — the controller was right; the board was wrong.**
+Measured over 20 plant-minutes per initial condition, charging in AUTO tracks its setpoint to
+within **0.11 %** everywhere with **no hunting**: cold 24.9 against a 25.0 program, hot zero power
+25.0/25.0, 50 % 40.4/40.3, full power 57.6/57.6. The level program is scheduled on Tavg, so at
+Mode 5 AUTO correctly holds a quarter-full pressurizer — and the tile's NORMAL band was a
+hard-coded flat **40-70 %**, a full-power band drawn on every mode, painting that on-program level
+15 points *below normal*. The band is centred on the published program now (Mode 5 draws 20-30).
+
+**"The heaters wouldn't raise pressure all the way" — the heaters are innocent, and something
+worse was behind it.** Reproduced: dial 2235 psi from cold and pressure parks at 1957 psia,
+**278 psi short, permanently**. At 1966 psia the plant crosses P-11, the safety-injection signals
+the cold lineup had blocked are reinstated, the steam generator is still cold (77 psia against a
+327.7 psia setpoint) — so **SI actuates on a healthy plant** and sheds the heaters
+(`si_cause = si_lo_steam_press`). The proportional-only park and the backup group's bistable are
+refuted: those are tens of psi and the bank was at full 157.8 kW to the moment of the shed. **The
+defect measuring it found is #603**: nothing annunciates the safety injection. The 48-row alarm
+catalog has no SI tile, and `eccs_mode` reads `standby` because it is a flow word and nothing
+injects at 1966 psia. Only the consequence lights.
+
+**Two board controls that could never be pressed are gone.** **ROD AUTO** armed `rods_tavg`, which
+this engine does not carry — measured DISABLED in every initial condition — and rod control is
+owner-ruled MANUAL; **SR DET** was grey because the source-range channel already de-energizes on
+flux and the command is refused by name. Both deleted rather than drawn dark: a control that can
+never be pressed is a Q4 orphan whether it is grey or not, and the player had to ask what each was
+for. **1/M PLOT** moves into ROD AUTO's slot on the rod card and the NIS card closes up behind
+both. The teaching content the ROD AUTO card carried moves to the rod-control card.
+
+**The neutron ranges now say WHICH RANGE YOU SHOULD BE READING**, not how close they are to a trip.
+Green inside the range's own band, grey outside, source range alone amber before the handoff. The
+bands are the plant's own permissives, published rather than authored on the board: source range
+1 cps to its 1e5 cps de-energization point, intermediate range **P-6 to P-10**, with P-6 =
+**5e-11 A** [sourced: Ginna TS Bases Rev 101, ML20339A221, B 3.3.1] and P-10 = 8 % rated. The old
+colouring drew the intermediate range GREEN at cold shutdown on 1.0e-11 A — the bottom of its own
+scale — and full power's 2.0e-3 A, pegged at its range top, as an ordinary live indication. Red
+still wins. Two stale figures went with it: P-6 was documented at 1e-10 A (2x the sourced value)
+and the startup net's middle rung as "about 20 %", the retired plant's rod-stop number against
+this plant's 25 % and 35 %.
+
+**Releasing a trip block that scrams the plant now warns and asks twice** *(owner ruling: warn and
+confirm, keep it legal)*. It stays legal — clearing a block holding a trip off scrams in a real
+plant and `control_kernel.js` says so verbatim. What was wrong is that the panel could not tell
+that release from a harmless one: both P-11 rows shipped `asserted: false` **hard-coded**, so it
+offered both with the same single click. `pwr2_protection` now reports the UNGATED crossing, the
+row carries `will_trip` and a caption, and the press takes a confirming second click. Blocking is
+unchanged and still one click — asserted beside it, so "warn" cannot quietly become "warn on
+everything". A cold plant sits with both rows crossed, which is the owner's own example.
+
+**TRIP vs OFF on the turbine card.** TRIP latches the machine; OFF only walks load to zero and
+leaves it latched and rolling. **OFF's lamp was reporting TRIP's state** — its test was
+`turbine_tripped || load_mode === 'disconnected'`, and PWR2 publishes `manual` unconditionally with
+`set_load_mode` refused, so `disconnected` is unreachable and the whole test collapsed. Relabelled
+**UNLOAD**, lamp reads the demand it sets, and the card's hover copy stopped describing FOLLOW/MAN
+modes this plant does not have.
+
+**The live checklist step card is the instruction, plus which control to use** *(owner directive,
+then a ruling a day later)*. The note, the time-acceleration hint, the teaching prose and the
+grading line moved behind a **Details** button (was *Why?*). Control and target went with them in
+the first cut — and measuring the cost produced the ruling to bring them back: of the 46 pwr2
+steps carrying a control, **only 19 (41 %) name that control anywhere in their instruction text**,
+so 27 steps had no visible answer to "which knob". The line reads `Use **Pressure SP**: 2235 psi
+(15.41 MPa)` now — no field labels lifted off the data structure, a colon rather than a dash
+because 11 of the 46 targets contain a dash of their own, and observation steps read
+`Watch for: …` instead of printing the literal `Control: (observe)` they used to. The Details
+button is gated on "is there anything in there", not on `why`: only 24 of the 60 steps carry
+`why`. Asserted in the rendered DOM by `verify_flags_ui`, which starts a real checklist — a source
+scan cannot tell you a string is reachable (#485).
+
+**Four checklist instructions were walls of text, and one taught a wrong number.** With the card
+collapsed to the instruction, a 418-character step is the whole card. The heatup's pressurization,
+accumulator-window and ride steps and the cooldown's RHR align all now lead with the action and
+keep their rationale in Details — nothing was cut, it moved. The startup checklist also said the
+**P-10 permissive is at 10 % power**; this plant's is the sourced **8 %** (Ginna TS Bases B 3.3.1,
+the same figure the new neutron-range bands use). The retired engine's pool keeps 10 %, which is
+correct for *it*. The permissives are spelled out on first use rather than left as bare codes.
+
+**The Instructor tab's checklist list is one bar.** It duplicated the Checklists tab's own menu in
+a smaller space and ranked it differently — two authorities on one question.
+
+**Every step's `hl` highlight labels are checked against the board's vocabulary.** `st.control` has
+been validated this way since #304; `hl` — carried by all 60 pwr2 steps where `control` is carried
+by 47 — had no check anywhere, and an unknown label glows **nothing**, silently. Born red on twelve
+real sites: `ECCS` and `SG Pressure` were never in the map and are added; `Reactivity` is deleted
+from the two steps using it, because the board's reactivity readout was removed at #453.
+
+**SG FEED RESTORE stays** (asked, not changed). `fw.isolated` is tested *before* `fw.auto` and
+zeroes both valve and demand, so MAN/AUTO are structurally downstream of the latch and cannot clear
+it; only the RESTORE path can, and it carries a held-SI refusal and the 45-60 s reset relay that a
+mode button must never perform silently.
 ### Added (the pwr2 runners take arguments now — you can skip the mutation replay while iterating — 2026-09-01)
 
 *(OWNER, 2026-09-01: "Commit then add the flag".)*

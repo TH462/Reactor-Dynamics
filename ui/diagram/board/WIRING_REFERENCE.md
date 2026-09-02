@@ -52,7 +52,7 @@ charging_flow_normalized, letdown_orifice_a, letdown_orifice_b, letdown_flow_nor
 feed_pump_speed_pct, feedwater_flow_pct, feed_auto_coupled
 steam_demand_mwe, load_mode('follow'/'manual'), load_target_mwe
 steam_dump_pct, steam_dump_auto, steam_dump_setpoint, governor_valve_pct
-hpi_active, rhr_active, rhr_valve_open, rhr_hx_fraction, eccs_mode('off'/...)
+hpi_active, rhr_active, rhr_valve_open, rhr_hx_fraction, eccs_mode('standby'/'armed'/'hhsi'/'lhsi'/'both'/'rhr'; retired engine 'off'/'HPI'/'LPI'/'RHR')
 afw_throttle_pct, sr_energized, msiv_open
 pumps[]: [{id:'rcp', running, flow_pct}]
 

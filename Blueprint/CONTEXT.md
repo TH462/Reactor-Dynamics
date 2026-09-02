@@ -635,7 +635,7 @@ physical-quantity vocabulary.
                                       //   accumulator_trip_mpa setpoint, not on this. Falls as the tank empties
                                       //   (isothermal gas expansion), which is why real injection tails off.
     "accumulator_valve_open": bool,   // discharge isolation valve position (shut = the tank cannot inject at all)
-    "rhr_active": bool, "rhr_valve_open": bool, "eccs_mode": string,   // RHR (formerly DHR) aligned = hot-leg suction valve open; eccs_mode = "HPI"|"LPI"|"RHR"|"off" for the ECCS card
+    "rhr_active": bool, "rhr_valve_open": bool, "eccs_mode": string,   // RHR (formerly DHR) aligned = hot-leg suction valve open; eccs_mode = the ECCS card word. The RETIRED engine says "HPI"|"LPI"|"RHR"|"off"; PWR2 says "standby"|"armed"|"hhsi"|"lhsi"|"both"|"rhr" — "armed" is safety injection ACTUATED with the pumps above their shutoff heads and therefore delivering nothing (#603), which is a different state from the quiet "standby" and was reported as it until then
     "containment_pressure_mpa": float, // containment building pressure, ABSOLUTE (#386 stage 1 — the board's psig
                                       //   is a display conversion). Air partial at ambient + steam partial from
                                       //   break/relief discharge; the break and relief √Δp laws read it LIVE as
@@ -736,7 +736,7 @@ physical-quantity vocabulary.
     "feed_pump_speed_pct": float,        // PWR feed pump commanded speed (three-element channel / coupling / manual)
     "feedwater_flow_pct": float, "steam_demand_mwe": float,   // feedwater_flow_pct: deprecated PWR mirror of pump delivery
     "hpi_active": bool, "rhr_active": bool,   // operator-actuated ECCS / cooldown (set_hpi — the merged HPI/LPI — / set_rhr)
-    "rhr_valve_open": bool, "rhr_hx_fraction": float, "eccs_mode": string,   // RHR hot-leg valve state; HX flow split 0–1; ECCS card mode: "HPI"|"LPI"|"RHR"|"off"
+    "rhr_valve_open": bool, "rhr_hx_fraction": float, "eccs_mode": string,   // RHR hot-leg valve state; HX flow split 0–1; ECCS card mode — retired engine "HPI"|"LPI"|"RHR"|"off", PWR2 "standby"|"armed"|"hhsi"|"lhsi"|"both"|"rhr" (see the true_state block above for "armed")
     "afw_throttle_pct": float,                // AFW throttle position (set_afw_flow)
     "sr_energized": bool, "msiv_open": bool,  // SR detector switch; main steam isolation valve
     "governor_valve_pct": float,     // turbine admission valve % (engine-driven; read-only readout)

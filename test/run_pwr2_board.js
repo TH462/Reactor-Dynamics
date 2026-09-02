@@ -86,9 +86,9 @@ function ck(name, cond, note) {
 function head(s) { console.log('\n' + BOLD + s + RST); }
 
 /* ---- the live plant + the app-shaped cmd path -------------------------------------------- */
-function mkWorld() {
+function mkWorld(ic) {
   var svc = new RD.SimulationService({ seed: 0xB0A2D });
-  svc.selectPlant('pwr2', 'hot_full_power', null, undefined);
+  svc.selectPlant('pwr2', ic || 'hot_full_power', null, undefined);
   svc.running = true; svc.timeAcceleration = 10; svc.attentionStops = false;
   var snap = null;
   var log = [];                                   /* every command's fate, app-cmd()-shaped */
@@ -101,15 +101,24 @@ function mkWorld() {
   }
   function tick(n) { for (var i = 0; i < (n || 1); i++) snap = svc.tick(); return snap; }
   tick(10);                                       /* 10 s at 10x — the settled IC needs no more */
-  RD.PwrBoard = { lastSnapshot: function () { return snap; } };
+  var world = { svc: svc, cmd: cmd, tick: tick, log: log, snap: function () { return snap; } };
+  bindWorld(world);
+  return world;
+}
+
+/* POINT THE DRIVER AT A WORLD. Extracted so that a check needing a SECOND plant can put the
+ * first one back — the driver keeps ONE ctxRef, and the section-header note above records what
+ * leaving it pointed at the newcomer costs (five "silent" buttons in the no-orphan sweep,
+ * measured, twice: once when that note was written and again by #598 item 11's Mode 5 check). */
+function bindWorld(world) {
+  RD.PwrBoard = { lastSnapshot: world.snap };
   /* `protection` is the RUNNING plant's config (#556) — the same accessor ui/app.js passes at
    * mount. Without it the board falls back on RD.PWR_CONTROL.protection, the retired plant's
    * table captured at script load, and the pressurizer tile's alarm edges are 8 points out. */
   RD.PwrBoardDriver.onMount(global.document, {
-    cmd: cmd, units: function (u) { return u; },
-    protection: function () { return svc.layer && svc.layer.config; }
+    cmd: world.cmd, units: function (u) { return u; },
+    protection: function () { return world.svc.layer && world.svc.layer.config; }
   }, {});
-  return { svc: svc, cmd: cmd, tick: tick, log: log, snap: function () { return snap; } };
 }
 
 function runSuite(quietRec) {
@@ -260,6 +269,36 @@ function runSuite(quietRec) {
     Math.abs(pz.alarmLo - (progAtPower + lowSp.setpoint)) < 0.51,
     pz && ('alarmLo ' + pz.alarmLo + ' vs program ' +
       (progAtPower == null ? '?' : progAtPower.toFixed(1)) + ' + ' + lowSp.setpoint));
+  /* AND THE NORMAL BAND MOVES WITH THE PROGRAM TOO (#598 item 11). The authored band is a flat
+   * 40-70 %, a FULL-POWER band applied to every mode — so a Mode 3 or Mode 5 plant whose level
+   * program is 25 % drew its perfectly-on-program level 15 points BELOW "normal", and the owner
+   * read that as "CHARGING in AUTO doesn't try to hold a decent PZR level". Measured: charging
+   * in AUTO tracks the program to within 0.11 % in all four initial conditions.
+   *
+   * The claim is CENTRING, not width: asserted against the plant's published program, never a
+   * retyped 57.6 — a check that named the number would pass on the flat 40-70 band at full
+   * power, where the program happens to sit inside it. That is why the Mode 5 case below is the
+   * discriminator and this one alone would not be enough. */
+  q('the NORMAL band is centred on the running plant\'s level PROGRAM, not the authored 40-70',
+    pz && progAtPower != null &&
+    Math.abs((pz.normLo + pz.normHi) / 2 - progAtPower) < 0.51 && pz.normHi > pz.normLo,
+    pz && ('normLo/normHi ' + pz.normLo + '/' + pz.normHi + ' about a program of ' +
+      (progAtPower == null ? '?' : progAtPower.toFixed(1)) + ' %'));
+  /* THE DISCRIMINATOR, and the check that actually pins the defect. At full power the program
+   * (57.6 %) sits INSIDE the authored 40-70 band, so the check above would pass on the shipped
+   * bug. Mode 5 is where the two answers separate: program 25 %, authored band 40-70, and the
+   * plant holding 25 % drawn below "normal" on its own board. A cold world costs one boot. */
+  var wCold = mkWorld('cold_shutdown');
+  var pzC = D.compProps({ id: 'ims2immon9z' }, wCold.snap());
+  var progCold = wCold.svc.engine.getControlState().pzr_level_program_pct;
+  var lvlCold = wCold.snap().true_state.pzr_level_pct;
+  bindWorld(w);                    /* PUT THE DRIVER BACK — see bindWorld and the note above */
+  q('and at Mode 5 the band follows it DOWN — a plant holding 25 % does not read below normal',
+    pzC && progCold != null && Math.abs((pzC.normLo + pzC.normHi) / 2 - progCold) < 0.51 &&
+    lvlCold >= pzC.normLo && lvlCold <= pzC.normHi && pzC.normHi < 40,
+    pzC && ('Mode 5: level ' + (lvlCold == null ? '?' : lvlCold.toFixed(1)) + ' %, program ' +
+      (progCold == null ? '?' : progCold.toFixed(1)) + ' %, band ' + pzC.normLo + '..' +
+      pzC.normHi + ' (authored was 40..70)'));
 
   /* PRIMARY PRESSURE TILE (#576c). run_pwr2_board's only band assertion used to be the power
    * tile's, so nothing in the tree ever checked this one against a PWR2 plant — and the half
@@ -512,6 +551,55 @@ function runSuite(quietRec) {
     tbById.si_trip && tbById.si_trip.supported === true && tbById.si_trip.text !== 'N/A',
     tbById.si_trip ? ('si_trip reads "' + tbById.si_trip.text + '", disabled ' +
                       tbById.si_trip.disabled) : 'NO ROW');
+  /* ---- RELEASING A BLOCK THAT SCRAMS ON THE SPOT (#598 item 15) ------------------------------
+   * The owner: "I shouldn't be able to unblock a trip that will immediately cause a trip. SI
+   * reactor trip can do this for example." It stays LEGAL — clearing a block that is holding a
+   * trip off scrams in a real plant, control_kernel.js says so verbatim, and three gates pin it
+   * — but the panel could not TELL the two cases apart, because both P-11 rows shipped
+   * `asserted: false` HARD-CODED. So it offered a harmless release and a scram with the same
+   * single click. `would_assert` (pwr2_protection) is the ungated crossing; the row now carries
+   * `will_trip` and a caption, and the press takes a confirming second click.
+   *
+   * MODE 5 IS THE CASE, and it is the owner's own: a cold plant sits at 363 psia with both
+   * P-11 blocks taken, and BOTH lines are crossed — releasing either scrams. Asserted against
+   * the plant's published `asserted`, never a retyped pressure. */
+  var wCold15 = mkWorld('cold_shutdown');
+  var coldRows = {};
+  D.tripBlockRows(wCold15.snap()).forEach(function (r) { coldRows[r.id] = r; });
+  var coldPub = (wCold15.snap().rps_state || {}).trip_block_status || {};
+  bindWorld(w);                    /* PUT THE DRIVER BACK — see bindWorld */
+  q('the plant now says whether a blocked trip WOULD assert — it was hard-coded false (#598 item 15)',
+    coldPub.lo_press && coldPub.si_trip &&
+    coldPub.lo_press.blocked === true && coldPub.lo_press.asserted === true &&
+    coldPub.si_trip.blocked === true && coldPub.si_trip.asserted === true,
+    'Mode 5: lo_press blocked=' + (coldPub.lo_press && coldPub.lo_press.blocked) +
+    ' asserted=' + (coldPub.lo_press && coldPub.lo_press.asserted) +
+    ', si_trip blocked=' + (coldPub.si_trip && coldPub.si_trip.blocked) +
+    ' asserted=' + (coldPub.si_trip && coldPub.si_trip.asserted));
+  q('...and the ROW warns: will_trip set, the button reads RELEASE?, the caption says why',
+    coldRows.lo_press && coldRows.lo_press.will_trip === true &&
+    coldRows.lo_press.text === 'RELEASE?' && /WILL TRIP THE REACTOR NOW/.test(coldRows.lo_press.sub) &&
+    coldRows.si_trip && coldRows.si_trip.will_trip === true &&
+    coldRows.si_trip.text === 'RELEASE?' && /Press again to confirm/.test(coldRows.si_trip.sub),
+    coldRows.lo_press ? ('lo_press "' + coldRows.lo_press.text + '" — ' + coldRows.lo_press.sub)
+                      : 'NO ROW');
+  q('...and the release is still PERMITTED — the warning replaced the surprise, not the action',
+    coldRows.lo_press && coldRows.lo_press.disabled === false &&
+    coldRows.si_trip && coldRows.si_trip.disabled === false &&
+    coldPub.lo_press && coldPub.lo_press.can_clear === true &&
+    coldPub.si_trip && coldPub.si_trip.can_clear === true,
+    'can_clear lo_press=' + (coldPub.lo_press && coldPub.lo_press.can_clear) +
+    ' si_trip=' + (coldPub.si_trip && coldPub.si_trip.can_clear) +
+    ', row disabled=' + (coldRows.lo_press && coldRows.lo_press.disabled));
+  /* THE DISCRIMINATOR. A row that is blocked but NOT crossed must stay an ordinary one-click
+   * release — otherwise "warn" degenerates into "warn always", which trains the operator to
+   * click through it and is worse than no warning at all. At power the two flux rows are the
+   * unblocked case and the P-11 pair is revoked, so nothing on a healthy plant warns. */
+  q('...and NOTHING warns on a healthy at-power plant (a warning on every row is no warning)',
+    tbRows.every(function (r) { return r.will_trip !== true; }) &&
+    tbRows.every(function (r) { return !/WILL TRIP THE REACTOR NOW/.test(r.sub || ''); }),
+    'at power: ' + tbRows.map(function (r) { return r.id + ':' + r.text; }).join(' '));
+
   /* A LEGACY snapshot — no trip_block_status at all — must say NOTHING about capability, or
    * every old recording and minimal fixture would render the whole panel dead. */
   q('a snapshot with no trip_block_status leaves every row live (the legacy shape)',
@@ -991,6 +1079,32 @@ var MUTS = [
     * the CAPABILITY, not pick between two spellings of it. */
    '      pzr_level_program_pct: (e._pzr && e._pzr.level_program_pct !== undefined)\n                             ? e._pzr.level_program_pct : 100 * PZ.levelProgram(ts.tavg_c),',
    '      pzr_level_program_pct: undefined,'],
+  /* #598 item 15, the PLANT end: the two P-11 rows go back to hard-coding `asserted: false`, so
+   * the panel cannot tell a harmless release from one that scrams on the spot and offers both
+   * with the same single click — the shipped defect exactly. Mutating the SHELL rather than the
+   * board proves the warning is computed from what the plant says, not from the board agreeing
+   * with itself. */
+  ['the P-11 rows hard-code asserted:false again (the panel cannot see a release that scrams)',
+   SHPATH, SHSRC,
+   '        lo_press: { blocked: loB, asserted: loAsserted,',
+   '        lo_press: { blocked: loB, asserted: false,'],
+  /* #598 item 15, the BOARD end: the row stops deriving `will_trip`, so the plant is telling the
+   * truth and nothing renders it. Distinct from the mutation above for the reason every paired
+   * publish/consume mutation in this file is distinct — a board agreeing with a constant by luck
+   * still has to redden. */
+  ['the row stops deriving will_trip (the plant warns and the panel does not listen)',
+   WIRING_PATH, WSRC,
+   'var willTrip = blocked && ts.asserted === true;',
+   'var willTrip = false;'],
+  /* #598 item 11: the level tile's NORMAL band reverts to the authored flat 40-70, a full-power
+   * band on every mode. Distinct from the two program mutations around it — those kill the
+   * ANCHOR, this one keeps the program published and stops the band using it, which is exactly
+   * the shipped shape. The Mode 5 check is what must catch it: at full power the program sits
+   * inside 40-70 and the centring check alone would still pass. */
+  ['the level tile\'s normal band reverts to the authored flat 40-70 (a full-power band on every mode)',
+   WIRING_PATH, WSRC,
+   '    if (prog != null && isFinite(prog)) {\n      out.normLo = qz(prog - 5);\n      out.normHi = qz(prog + 5);\n    }',
+   ''],
   /* #576c: the plant stops publishing its pressure control band, so the primary-pressure tile
    * falls back on the RETIRED engine's -30/+50 psi against PWR2's sourced -25/+25 — the exact
    * shipped defect, and invisible to a source read because the fallback IS the old code. */

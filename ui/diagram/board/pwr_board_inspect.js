@@ -66,11 +66,22 @@
 
     // ------------------------------------------------------------ rod control
     ims14ylw4az: e('Reactor / Rod Control',
-      'The reactivity station: both rod banks, rod speed, the Tavg auto channel and the SCRAM.',
+      'The reactivity station: both rod banks, rod speed, the SCRAM — and no automatic rod control.',
       'Everything that moves neutrons by hand lives on this card. The control bank is the trim ' +
       'control, the shutdown bank is the protection group that is parked fully out at power, and ' +
       'SCRAM drives them all in. Reactivity you cannot see directly — you infer it from startup ' +
-      'rate, power and Tavg on the Nuclear Instrumentation System (NIS) card beside it.', CI, '3.0'),
+      'rate, power and Tavg on the Nuclear Instrumentation System (NIS) card beside it. ' +
+      'THERE IS NO AUTOMATIC ROD CONTROL ON THIS PLANT, deliberately. A real plant hands the ' +
+      'control bank to a controller that holds average coolant temperature on a programmed ' +
+      'reference while the operator watches; this simulator does not, and that is a teaching ' +
+      'decision rather than a missing feature *(OWNER DIRECTIVE, 2026-08-30: "I want to keep rod ' +
+      'control manual. This is a learning plant not an actual power plant and I think making the ' +
+      'player move rods manually will help their learning.")*. So the coupling stays yours: THE ' +
+      'RODS SET TEMPERATURE AND THE TURBINE SETS POWER. Drop load and the plant follows on ' +
+      'moderator feedback alone — power walks down and parks itself in about three and a half ' +
+      'minutes — but it settles with Tavg well above program, and closing that gap is the part a ' +
+      'controller would have hidden from you. Roughly 0.1 °F (0.06 °C) of Tavg per fine step, ' +
+      'linear over the useful range.', CI, '3.0'),
 
     imrpk3wvydp: e('Control Bank',
       'The operable rod group — the reactivity trim control. WITHDRAW adds reactivity, INSERT removes it.',
@@ -146,19 +157,6 @@
      * will. Player-facing copy promising a feature that does not exist is the trap this repo
      * keeps re-learning; the fix is not to delete the control but to let it carry the contrast,
      * which is the whole point of the ruling. */
-    ims5glucngg: e('ROD AUTO',
-      'Dark on this plant, deliberately — you hold Tavg with the rods yourself.',
-      'A real plant hands the control bank to an automatic controller that holds average coolant ' +
-      'temperature on a programmed reference, and the operator watches it. This simulator does ' +
-      'not, and that is a teaching decision rather than a missing feature *(OWNER DIRECTIVE, ' +
-      '2026-08-30: "I want to keep rod control manual. This is a learning plant not an actual ' +
-      'power plant and I think making the player move rods manually will help their learning.")*. ' +
-      'So the coupling stays yours: THE RODS SET TEMPERATURE AND THE TURBINE SETS POWER. Drop ' +
-      'load and the plant follows on moderator feedback alone — power walks down and parks ' +
-      'itself in about three and a half minutes — but it settles with Tavg well above program, ' +
-      'and closing that gap is the part a controller would have hidden from you. Roughly ' +
-      '0.1 °F (0.06 °C) of Tavg per fine step, linear over the useful range.', CI, '14.3'),
-
     imrqr8ecji6: e('SCRAM',
       'Manual reactor trip — drives every rod in. Arm, then confirm.',
       'Two-press by design: the first press arms, the second inserts all rods. Power collapses in ' +
@@ -196,35 +194,36 @@
     ims176nions: e('Source Range',
       'The lowest flux range — counts per second, the only instrument that reads a shutdown core.',
       'A proportional counter reading 1 to 1e6 cps. It is the instrument for approach to criticality ' +
-      'and the input to the 1/M plot. It is also the one you must secure on the way up: it trips the ' +
-      'reactor at 1e5 cps and turns amber at 5e4 cps to tell you the handoff is due.', CI, '4.3'),
+      'and the input to the 1/M plot. It hands over on the way up: it turns amber at 5e4 cps to tell ' +
+      'you the handoff to the intermediate range is due, trips the reactor at 1e5 cps, and the channel ' +
+      'de-energizes itself at that point — there is no detector switch on this plant.', CI, '4.3'),
     imro6qutiht: e('Source Range indication',
       'Neutron counts per second — the shutdown-core flux instrument. Amber at the source-range to intermediate-range handoff.',
       'Logarithmic, 1 to 1e6 cps. Watch it double as rods come out: the doubling rate IS the ' +
       'approach to criticality, which is what the 1/M plot formalises. The number itself carries ' +
       'the limits: amber at 5e4 cps is the cue to complete the handoff, RED at 1e5 cps is the ' +
-      'high-flux trip that ends the ascent, and once you secure the detector it goes grey — that ' +
+      'high-flux trip that ends the ascent, and once the channel de-energizes it goes grey — that ' +
       'trip is conditional on the detector being energized, so there is no live limit here ' +
-      'afterwards.', CI, '4.3'),
-    bdSrDetector: e('Source Range Detector (SR DET)',
-      'Energizes or secures the source-range detector. Interlocked both ways (P-6).',
-      'Lit means energized and counting. You cannot secure it until the intermediate range is on ' +
-      'scale (1e-10 A) — that would leave you blind at low power — and you cannot re-energize it ' +
-      'above 1e-6 A, which would damage the counter. Secure it during the power ascent, before its ' +
-      '1e5 cps high-flux trip reaches up and scrams you.', CI, '4.3'),
+      'afterwards. GREEN ON THIS CARD MEANS "read this one": the source range is the instrument ' +
+      'you are on from a shutdown core up to the handoff, and grey means another range has it.',
+      CI, '4.3'),
     ims176t4e8s: e('Intermediate Range',
       'The middle flux range — a compensated ion chamber reading in amps.',
       'Overlaps the source range at the bottom and the power range at the top, covering the gap ' +
-      'between counting individual neutrons and measuring a current. It is the instrument that ' +
-      'permits the source range to be secured (P-6, 1e-10 A).', CI, '4.3'),
+      'between counting individual neutrons and measuring a current. It is the range you read ' +
+      'between those two: it comes on scale at the P-6 permissive, 5e-11 A, and the power range ' +
+      'takes over at P-10, 8 % rated. The indication is green over exactly that span and grey ' +
+      'outside it.', CI, '4.3'),
     imro6rctcgm: e('Intermediate Range indication',
       'Intermediate-range detector current in amps — 1e-11 to 2e-3, logarithmic.',
       'Reads amps, not percent: the scale is logarithmic because flux is. Its high-flux trip is one ' +
       'of the two blocked deliberately during a startup, since a normal ascent walks straight ' +
-      'through the setpoint below P-10. The number goes amber within half a decade of that trip ' +
-      '(1.67e-3 A) and red at it — then grey once you block it above P-10, because a blocked trip ' +
-      'is not a limit you can run into. This is the middle rung of the startup net: P-10 at 10 %, ' +
-      'this at about 20 %, the power-range low setpoint at 25 %.', CI, '4.3'),
+      'through the setpoint below P-10. GREEN means this is the range to be reading — from P-6 ' +
+      '(5e-11 A) up to P-10 (8 % rated) — and grey means it is not: below P-6 the channel is not ' +
+      'yet on scale, and above P-10 the power range has it. Red still wins over both: an armed ' +
+      'trip you are standing on is the reason to look. This is the middle rung of the startup ' +
+      'net: P-10 at 8 %, this trip at 25 % current equivalent, the power-range low setpoint at ' +
+      '35 %.', CI, '4.3'),
     ims175yp3k8: e('Startup Rate',
       'How fast power is changing, in decades per minute — the rate instrument for a startup.',
       'Startup rate is the operator\'s real-time reactivity feedback. Target 1 DPM or less on ' +
@@ -310,8 +309,12 @@
       'The primary pressure the AUTO heaters and spray drive toward.',
       'Normal operating pressure is 2235 psi (15.41 MPa). Raise the setpoint during a heatup ' +
       'and the heaters pressurize toward it; lower it on a cooldown and spray brings pressure down. ' +
-      'The engine clamps the entry into the relief band, so you cannot set a target the safeties ' +
-      'would immediately fight.', CI, '5.1a'),
+      'THE DIAL BOTTOMS OUT AT 1700 psig (11.72 MPa) — that is the operator span of the pressure ' +
+      'control system, not the whole range the plant can sit at. Below it you do not wind the dial ' +
+      'down: you take the heaters off and hold spray open, which is how the cooldown checklist ' +
+      'depressurizes to the Mode 5 point near 363 psi (2.50 MPa). A cold plant boots holding a ' +
+      'setpoint under the span; once you dial the box, you are in the span and the floor applies.',
+      CI, '5.1a'),
 
     imro8ymb0jw: e('Pressurizer Spray',
       'Cold-leg water sprayed into the steam space — the way you LOWER primary pressure.',
@@ -926,10 +929,12 @@
       'the inlet line goes still even though the valve is not fully closed.', CI, '12.4'),
 
     imro8k5pzem: e('Turbine-Generator',
-      'The load station: FOLLOW, MAN or OFF, plus the MWe target the machine holds.',
-      'FOLLOW makes electrical load track reactor power with about a 45-second lag; MAN holds the MWe ' +
-      'you set; OFF disconnects from the grid. Both FOLLOW and MAN bring the machine online — they ' +
-      'clear a prior trip or disconnect if condenser vacuum permits.', CI, '12.1'),
+      'The load station: LATCH, TRIP and UNLOAD, plus the MWe target the machine holds.',
+      'LATCH and TRIP are the two states of the machine itself — tripped means the stop valves are ' +
+      'shut and it takes a deliberate LATCH, with every trip cause cleared, to get back. UNLOAD is ' +
+      'the third thing and is not a state at all: it walks the MWe target to zero and leaves the ' +
+      'machine latched and rolling, which is how you come off line on purpose. Load target is the ' +
+      'box below.', CI, '12.1'),
     imro8ktzs3u: e('LATCH (turbine)',
       'Latches the turbine back up after a trip — the way back onto the grid.',
       'Latched and tripped are the two states of the machine, and this is the operator action ' +
@@ -945,10 +950,15 @@
       'a shut main steam isolation valve, loss of both feed pumps, or high-high generator level. ' +
       'Above the P-9 power setpoint a turbine trip IS a reactor trip, so at power this scrams as ' +
       'well; below it the reactor rides out on the steam dumps.', CI, '12.2'),
-    imro8len0oi: e('OFF',
-      'Disconnects the turbine from the grid — a planned offline, not a trip.',
-      'Load goes to zero and the steam dump takes over the generator\'s output. The lamp reads the ' +
-      'actual offline state, so it lights for both a planned disconnect and a trip.', CI, '12.1'),
+    imro8len0oi: e('UNLOAD (generator)',
+      'Walks the load target to zero — a planned offline, NOT a trip.',
+      'This is the difference from TRIP beside it, and it is worth knowing before you need it. ' +
+      'UNLOAD sets the MWe target to zero: load goes to zero, the steam dump takes over the heat, ' +
+      'and the machine stays LATCHED and rolling — one entry in the load box and you are back. ' +
+      'TRIP shuts the stop valves, latches the machine, and above the P-9 power setpoint takes the ' +
+      'reactor with it; getting back needs LATCH and every trip cause cleared. Same place on the ' +
+      'board, minutes apart in consequence. The lamp lights while the load target is at zero.',
+      CI, '12.1'),
     imro8rmka2y: e('Generator Load',
       'Electrical load target in MWe, up to about 100 MWe rated. The plant will drive this number down itself if the core gets close to a ΔT limit.',
       'Setting a target forces MANUAL mode. Raise load before, or together with, adding reactivity — ' +

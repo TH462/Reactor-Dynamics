@@ -219,7 +219,7 @@ Inward motion still takes — that is the source's own scope, quoted at the end 
 | sg_level_low | SG LVL LO | sg_level | low | **30 %** | warning |
 | sg_level_lolo | SG LVL LO LO | sg_level | low | **17 %** | critical |
 | rcp_trip | RCP TRIP | rcp_running | false | — | critical ‡ |
-| hpi_active | HPI/LPI ACTIVE | hpi_active | true | — | status |
+| hpi_active | SAFETY INJECTION | hpi_active | true | — | critical |
 | sbo | SBO | station_blackout | true | — | critical |
 | turbine_trip | TURB TRIP | steam_demand_low | true | — | warning † |
 | load_imbalance | LOAD IMBAL | sg_imbalance_active | true | > **4 %** of rated (4 MWe) | caution |

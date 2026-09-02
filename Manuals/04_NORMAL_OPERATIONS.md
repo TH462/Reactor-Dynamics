@@ -377,7 +377,7 @@ P-9 interlock — is modelled properly; it is the roll and the synchroscope that
 | 5 | Match reactor power with rods (or Follow) so SG level stays controlled | Rods / Follow | No SG LO-LO / HI flood |
 | 6 | Confirm Feed AUTO holding | Feed | AUTO engaged |
 | 7 | When power > 5 %: declare **Mode 1, At Power** | (observe) | Mode 1 |
-| 8 | Trim Tavg onto program with the bank, in MAN — there is no ROD AUTO on this plant (**03 §14.3**) | Rods | Tavg on program, held by hand |
+| 8 | Trim Tavg onto program with the bank, in MAN — there is no automatic rod control on this plant (**03 §14.3**) | Rods | Tavg on program, held by hand |
 
 ### Outcome
 Generator carrying load; plant in **Mode 1, At Power**.

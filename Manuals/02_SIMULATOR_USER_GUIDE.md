@@ -271,7 +271,7 @@ Per-channel **AUTO / MAN** controllers that read **instruments** and issue plant
 commands. They live on the board's control cards (there is no separate tab):
 **STEAM GEN FEED → AUTO** (three-element SG level), **BORON → ON** (target ppm),
 **STEAM DUMP → AUTO**, **CHARGING → AUTO**. Rod control has no automatic channel on
-this plant — the **ROD AUTO** button is present and dark, deliberately (**03 §14.3**).
+this plant, and since Rev 17 there is no button for one either (**03 §14.3**).
 
 | Channel (label) | Holds / drives |
 |-----------------|----------------|

@@ -594,9 +594,21 @@ async function testEsfArmButtons(page) {
    * throw — the dump is controller-driven and has no manual full-open lever — and its refusal
    * is raised INSIDE the MAPPED `set_steam_dump` handler, so neither the #567 registry sweep
    * nor run_pwr2_kernel band 4 could see it. AUTO and CLOSED beside it stay live, which is why
-   * the label here is OPEN and not the whole dump panel. */
-  var expect = { pwr: 0, pwr2: 4 };
-  var mustInclude = ['AUTO', 'ROD AUTO', 'SR DET', 'OPEN'];
+   * the label here is OPEN and not the whole dump panel.
+   *
+   * 4 -> 2 WITH #598 items 7 and 9/10, AND THE DIRECTION IS THE POINT. SR DET and ROD AUTO both
+   * LEFT this set by being DELETED FROM THE BOARD, not by being made to work. A control that can
+   * never be pressed is a DESIGN_CRITERIA Q4 orphan whether it is grey or not — the owner had to
+   * ask what each of them was for, which is that test failing — and drawing it dark was only
+   * ever the second-best answer to "the plant has no lever here". The two that remain are
+   * different in kind: the HPI AUTO re-arm and STEAM DUMP OPEN are controls whose refusal is
+   * CONDITIONAL or whose neighbours are live, so the button has to stay and read dark.
+   *
+   * ⚠ IF THIS COUNT DROPS AGAIN, ASK WHICH WAY. A disabled button becoming ENABLED is a fix; a
+   * disabled button DISAPPEARING is a board change and wants the owner's eye. Both look like
+   * "expected N, found N-1" from here, which is what `mustInclude` is for. */
+  var expect = { pwr: 0, pwr2: 2 };
+  var mustInclude = ['AUTO', 'OPEN'];
   for (var i = 0; i < 2; i++) {
     var eng = ['pwr', 'pwr2'][i];
     await page.goto('http://127.0.0.1:' + PORT + '/ui/shell.html?engine=' + eng,

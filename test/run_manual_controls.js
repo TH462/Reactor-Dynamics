@@ -76,6 +76,45 @@ Object.keys(RD.MANUAL_PROCEDURES).forEach(function (prof) {
 });
 
 // ============================================================================
+// HIGHLIGHT-LABEL CHECK (#598 item 14) — every `hl` label must resolve to a board item.
+//
+// A step's `hl` is the list of controls the live checklist GLOWS on the board: app.js hands
+// each one to RD.PwrBoard.revealControl, which looks it up in CONTROL_LABEL_MAP and returns
+// null for anything it does not know. A null glows nothing, silently — the step renders, the
+// checklist advances, and the one affordance that says WHERE to look is simply absent.
+//
+// NOTHING IN test/ READ `st.hl` UNTIL THIS. `st.control` has been validated against the board
+// vocabulary since #304 (the block below), and `hl` — which is a strictly larger vocabulary,
+// carried by all 60 pwr2 steps where `control` is carried by 47 — had no check at all. The pass
+// that found it turned up three dead labels in the shipped pool.
+//
+// Resolved through the DRIVER's own map, not a hand-maintained list: a gate that iterates a copy
+// of the vocabulary tests the copy (the house trap), and this one has to fail when a label is
+// deleted from CONTROL_LABEL_MAP as much as when one is invented in a procedure.
+// ============================================================================
+(function highlightLabels() {
+  if (!globalThis.RD || !globalThis.RD.PwrBoardDriver) return;
+  var DRV = globalThis.RD.PwrBoardDriver;
+  if (!DRV.controlLabels) return;
+  var known = {};
+  DRV.controlLabels().forEach(function (l) { known[l] = true; });
+  /* The pwr board's vocabulary answers for the pwr pools only. A plant with its own board
+   * (rbmk/bwr use the process-diagram labels) is checked by run_campaign's own pool. */
+  ['pwr', 'pwr2'].forEach(function (prof) {
+    (RD.MANUAL_PROCEDURES[prof] || []).forEach(function (proc) {
+      (proc.steps || []).forEach(function (st, idx) {
+        if (!st.hl || !st.hl.length) return;
+        st.hl.forEach(function (lab) {
+          ck(prof + ' · ' + proc.id + ' step ' + (idx + 1) + ' hl',
+             known[lab] === true,
+             '"' + lab + '" is not in the board highlight vocabulary — this step glows nothing');
+        });
+      });
+    });
+  });
+})();
+
+// ============================================================================
 // INOPERABLE-CLAIM CHECK (#304) — a manual may not call a control read-only
 // while the board gives it a press handler.
 //

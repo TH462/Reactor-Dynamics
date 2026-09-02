@@ -328,7 +328,7 @@ var TS_LABELS = {
   accumulator_flow_normalized: 'Accumulator flow', accumulator_volume_pct: 'Accumulator volume',
   rhr_active: 'Residual Heat Removal (RHR) aligned (hot-leg suction valve open)',
   rhr_valve_open: 'RHR hot-leg suction valve open (interlocked < 400 psi)',
-  eccs_mode: 'ECCS mode — HPI, LPI, RHR, or off',
+  eccs_mode: 'ECCS mode — standby, armed (actuated, above the pump shutoff heads so no flow), HHSI, LHSI, both, or RHR',
   // RBMK
   void_fraction_avg: 'Core void fraction', drum_level_pct: 'Steam drum level', channel_flow_pct: 'Channel flow',
   graphite_temp_avg_c: 'Graphite temperature', orm_equiv_rods: 'Operational Reactivity Margin (ORM)',

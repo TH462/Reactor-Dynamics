@@ -403,6 +403,12 @@
      * branch used to re-read `tb` AFTER this line zeroed it. rated_steam is now computed once,
      * in the literal above, and nothing below may touch it. */
     eng.tb.load_target_mwe = ic.load_mwe;
+    /* AND THE SHAFT AT THE IC'S OWN SPEED (#598 item 1). A plant carrying load boots
+     * SYNCHRONIZED — settled construction, the same rule as the heat map and the feed train:
+     * a machine already making 100 MWe must not spend its first spin-up tau finding rated.
+     * A plant carrying NO load boots STOPPED, which is the whole point of the fix: Mode 3,
+     * Mode 4 and Mode 5 used to draw scrolling blades and print 1800 rpm on a cold reactor. */
+    eng.tb.rpm = ic.load_mwe > 0 ? TB.TURB.rpm_rated : 0;
     /* SHUTDOWN extras: RHR ALIGNED — the Mode 4 heat sink, openable because 350 psig sits
      * under the 425 psig permissive. (The rated_steam recompute that lived here is GONE — see
      * the rated-scale note above; it was the #539 defect, not a shutdown extra.) */

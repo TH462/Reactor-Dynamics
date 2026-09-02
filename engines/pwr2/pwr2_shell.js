@@ -1240,9 +1240,21 @@
     var loB = !!e.pt.blockLoPress, siB = !!e.pt.blockSI;
     var p11 = rp.p11_permit === true;
     var spLo = 12.24, spSi = 11.83;
+    /* WOULD THE LINE FIRE IF THE BLOCK CAME OFF? (#598 item 15) Both these rows shipped
+     * `asserted: false` HARD-CODED, which was not a placeholder anybody noticed: it is the
+     * literal answer to "is this function tripping", and a blocked function never is. The cost
+     * was that the panel could not tell a harmless release from one that scrams on the spot, so
+     * it offered both with the same single click. `would_assert` is the ungated crossing
+     * (pwr2_protection) and is the field this needs. The ESFAS row is the whole SI kind — the
+     * block disarms all three initiating rows together — so ANY of them crossing is the answer. */
+    var loAsserted = false, siAsserted = false;
     (rp.functions || []).forEach(function (f) {
-      if (f.id === 'lo_pzr_press' && typeof f.setpoint === 'number') spLo = f.setpoint;
+      if (f.id === 'lo_pzr_press') {
+        if (typeof f.setpoint === 'number') spLo = f.setpoint;
+        if (f.would_assert === true) loAsserted = true;
+      }
       if (f.id === 'si_lo_pzr_press' && typeof f.setpoint === 'number') spSi = f.setpoint;
+      if (f.kind === 'esfas' && f.would_assert === true) siAsserted = true;
     });
     /* THE INDICATION SETPOINTS (#556). `trip_block_status` above carries a setpoint only for a
      * BLOCKABLE trip, because that is what it was built for — so a surface that draws where the
@@ -1291,9 +1303,9 @@
           can_clear: irB,
           setpoint: spIr
         },
-        lo_press: { blocked: loB, asserted: false,
+        lo_press: { blocked: loB, asserted: loAsserted,
                     can_block: !loB && p11, can_clear: loB, setpoint: spLo },
-        si_trip:  { blocked: siB, asserted: false,
+        si_trip:  { blocked: siB, asserted: siAsserted,
                     can_block: !siB && p11, can_clear: siB, setpoint: spSi }
       }
     };
@@ -1426,9 +1438,31 @@
        * the band it is handed, so moving `HEATERS.elev_*_pct` moves the drawn bank with it and
        * the modelled and drawn elevations cannot drift apart. */
       heater_elev_pct: [PZ.HEATERS.elev_bot_pct, PZ.HEATERS.elev_top_pct],
+      /* WHICH NEUTRON RANGE THE OPERATOR SHOULD BE READING (#598 item 8) — forwarded, never
+       * recomputed. Both bands are derived in pwr2_true_state from the P-6/P-10 permissives and
+       * the gauge scales; the board colours the two indications green inside their band and
+       * grey outside it. Absent on a plant that does not publish them, and the board then keeps
+       * its old trip-proximity colouring, byte-identical. */
+      nis_sr_inuse_cps: ts.nis_sr_inuse_cps,
+      nis_ir_inuse_a:   ts.nis_ir_inuse_a,
       heater_auto: e.pzDrivers.heaters_manual === undefined,
       spray_auto: e.pzDrivers.spray_manual === undefined,
       pressure_setpoint: e.pz.setpoint_mpa,
+      /* THE DIAL'S OWN SPAN (#598 item 3), 1700-2500 psig. The board's setpoint box declared
+       * `[0.1 MPa, pzr safety]` — 15..2484 psi, the RETIRED engine's band captured at script
+       * load — so it ACCEPTED an entry this engine will not honour: the operator typed the
+       * Mode 5 pressure, `pzr_setpoint_mpa` clamped it to 1700 psig at pwr2_pressurizer.js:686,
+       * and the next snapshot snapped the box back with no explanation. The owner read that as
+       * "once pressure was set to normal operating pressure, it couldn't be lowered again".
+       *
+       * The CLAMP is right and stays: WTSM 10.2's operator span is the AT-POWER pressure-control
+       * dial, and the cold lineup's sub-floor setpoint is a constructor seed — a standing lineup,
+       * not a dialled value (pwr2_engine.js:197-204). Below permissive-11 this plant depressurizes
+       * the way the real one does, on spray with the heaters off, not by winding the dial down.
+       * What was wrong was a box advertising a span the engine refuses. The plant publishes, the
+       * board reads — the #557 shape, and the same law the steam-dump and ADV boxes already
+       * follow: "the box refuses anything the engine would silently clamp." */
+      pressure_setpoint_range_mpa: [PZ.CONTROL.setpoint_min_mpa, PZ.CONTROL.setpoint_max_mpa],
       /* THE PRESSURE CONTROL BAND'S HALF-WIDTHS, in psi about whatever setpoint the operator
        * has dialled (#576c). Same "the plant publishes, the board reads" shape as
        * `heater_elev_pct` above and for the same reason: `pwr_board_wiring` drew the primary
