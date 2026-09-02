@@ -28,6 +28,7 @@
  */
 'use strict';
 var path = require('path'), fs = require('fs');
+var MUT = require('./mut_flags.js');   /* --no-mutations / --mut= / --grp= (#602) */
 var SRC = path.join(__dirname, '..', 'engines', 'pwr2');
 var ORDER = ['pwr2_water', 'pwr2_vtable', 'pwr2_geometry', 'pwr2_core', 'pwr2_loop', 'pwr2_sources',
   'pwr2_kinetics', 'pwr2_fuel', 'pwr2_reactor', 'pwr2_sg', 'pwr2_turbine', 'pwr2_relief',
@@ -168,7 +169,7 @@ var MUTATIONS = [
 ];
 console.log('\ninjection self-test (' + MUTATIONS.length + ' mutations):');
 var blind = 0;
-MUTATIONS.forEach(function (m) {
+MUT.select(MUTATIONS).forEach(function (m) {
   var mutated = PZSRC.replace(m[1], m[2]);
   if (mutated === PZSRC) { console.log('  ANCHOR MISS ' + m[0] + '   <-- mutation did not apply'); blind++; return; }
   var rec2 = [];

@@ -17,6 +17,7 @@
  */
 'use strict';
 var path = require('path');
+var MUT = require('./mut_flags.js');   /* --no-mutations / --mut= / --grp= (#602) */
 var SRC = path.join(__dirname, '..', 'engines', 'pwr2');
 var fs = require('fs');
 
@@ -1113,7 +1114,7 @@ var MUTATIONS = [
 
 console.log('\ninjection self-test (' + MUTATIONS.length + ' mutations):');
 var blind = 0;
-MUTATIONS.forEach(function (m) {
+MUT.select(MUTATIONS).forEach(function (m) {
   var mutated = PZSRC.replace(m[1], m[2]);
   if (mutated === PZSRC) {
     console.log('  ANCHOR MISS ' + m[0] + '   <-- mutation did not apply');

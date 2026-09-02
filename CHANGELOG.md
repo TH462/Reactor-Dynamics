@@ -30,6 +30,34 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
 
 ## [Unreleased]
 
+### Added (the pwr2 runners take arguments now — you can skip the mutation replay while iterating — 2026-09-01)
+
+*(OWNER, 2026-09-01: "Commit then add the flag".)*
+
+The pwr2 gates re-run their whole suite once per mutation, so `run_pwr2_engine` is 75 replays at
+~420 s and `run_pwr2_shell` 50 at ~360 s. That cost is what buys the "this check cannot fail"
+detection and it has earned it — three hollow checks caught in one session (#602 phase 1). But the
+runners took **no arguments at all**, so fixing one assertion meant paying for every replay:
+measured, two wrong guesses at a sample point cost fourteen minutes to disprove.
+
+`test/mut_flags.js`, wired into **34** runners:
+
+- `--no-mutations` — skip the replay; the checks still run. `run_pwr2_protection` 115 s → **2.9 s**
+- `--mut=<substring>` — replay only mutations whose description matches
+- `--grp=<tag>` — replay only mutations carrying that `grp:` tag
+- `RD_NO_MUTATIONS` / `RD_MUT` / `RD_GRP` env equivalents, following the `MUTDBG` precedent
+
+**A filtered run can never pass, and that is the design.** `run_all` scores a runner by scraping
+its tally line, and a partial run prints a smaller mutation count but the *same* `N passed, 0
+failed`. Without a guard, `run_all --record` after a `--no-mutations` run would record a green
+baseline for a gate whose coverage was never measured — the hollow-gate failure mode operating on
+the gate itself. So any filter wraps `process.exit` to force non-zero and prints a banner last.
+Wrapping rather than setting `process.exitCode` is deliberate: every runner ends with an explicit
+`process.exit(fail > 0 ? 1 : 0)` that would overwrite a pre-set code. There is deliberately no flag
+to suppress the guard.
+
+Inert when unused — an unflagged run exits 0 with an identical score.
+
 ### Changed (#602 phase 1: the control bank scale is one constant instead of twenty-two literals — 2026-09-01)
 
 **No behaviour change.** `RODS.max_steps` is added beside the bank worths and set to **200**, the

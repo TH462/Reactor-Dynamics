@@ -51,6 +51,7 @@
  */
 'use strict';
 var fs = require('fs'), path = require('path');
+var MUT = require('./mut_flags.js');   /* --no-mutations / --mut= / --grp= (#602) */
 var LIB = path.join(__dirname, '..', 'engines', 'pwr2', 'pwr2_water.js');
 /* NORMALISE LINE ENDINGS BEFORE ANY MUTATION ANCHOR IS MATCHED. git's autocrlf rewrites this
  * file to CRLF on checkout, so every MULTI-LINE anchor below silently stopped matching and the
@@ -616,7 +617,7 @@ console.log('  INJECTION SELF-TEST -- every mutation MUST redden at least one ch
 console.log('  (a mutation that stays green is a hole in THIS FILE, not in the library)');
 console.log('='.repeat(70));
 var blind = 0;
-MUTATIONS.forEach(function (m) {
+MUT.select(MUTATIONS).forEach(function (m) {
   if (SRC.indexOf(m[1]) === -1) {
     console.log('  ERROR   anchor not found for: ' + m[0]);
     blind++; return;

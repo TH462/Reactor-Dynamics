@@ -11,6 +11,7 @@
  */
 'use strict';
 var path = require('path');
+var MUT = require('./mut_flags.js');   /* --no-mutations / --mut= / --grp= (#602) */
 var fs = require('fs');
 var SRC = path.join(__dirname, '..', 'engines', 'pwr2');
 
@@ -2188,7 +2189,7 @@ MUTATIONS.map(function (mt) { return mt[3] && mt[3].grp; })
 
 console.log('\ninjection self-test (' + MUTATIONS.length + ' mutations):');
 var blind = 0;
-MUTATIONS.forEach(function (mt) {
+MUT.select(MUTATIONS).forEach(function (mt) {
   var grpTag = (mt[3] && mt[3].grp) || undefined;
   var mutated = SHSRC.replace(mt[1], mt[2]);
   if (mutated === SHSRC) { console.log('  ANCHOR MISS ' + mt[0]); blind++; return; }

@@ -36,6 +36,7 @@
  */
 'use strict';
 var fs = require('fs'), path = require('path');
+var MUT = require('./mut_flags.js');   /* --no-mutations / --mut= / --grp= (#602) */
 var E = path.join(__dirname, '..', 'engines', 'pwr2');
 ['pwr2_water', 'pwr2_vtable', 'pwr2_geometry', 'pwr2_core', 'pwr2_loop',
  'pwr2_sources'].forEach(function (f) { require(path.join(E, f + '.js')); });
@@ -241,7 +242,7 @@ console.log('\n' + '='.repeat(70));
 console.log('  INJECTION SELF-TEST -- every mutation MUST redden at least one check');
 console.log('='.repeat(70));
 var blind = 0;
-MUTATIONS.forEach(function (m) {
+MUT.select(MUTATIONS).forEach(function (m) {
   if (SRC[m[0]].indexOf(m[2]) === -1) { console.log('  ERROR   anchor not found: ' + m[1]); blind++; return; }
   var texts = { core: SRC.core, loop: SRC.loop, sources: SRC.sources };
   texts[m[0]] = SRC[m[0]].split(m[2]).join(m[3]);
