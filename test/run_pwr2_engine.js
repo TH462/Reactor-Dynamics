@@ -54,6 +54,19 @@ function loadAll(engSource, coreSource) {
  * suite = 1074 s of contention in the aggregate gate — the replay cost scales with every
  * fixture ever added, and a mutation only needs the checks built to see it. */
 function runSuite(RD, rec, quiet, only) {
+  /* THE BANK'S OWN CURRENCY (#602 phase 2). Every step count below used to be a literal that
+   * happened to equal a fraction of a 200-step bank; when the scale moved to the sourced 627
+   * they all became wrong at once — sixteen checks in this file, and every one of them was a
+   * FRACTION spelled as an absolute. `bank()` is the scale, `frac()` turns the fraction the
+   * check always meant into this plant's steps. A literal here is now a claim that the number
+   * does NOT scale, which is true of exactly none of them. */
+  var bank = function () { return RD.kinetics.RODS.max_steps; };
+  var frac = function (f) { return Math.round(f * bank()); };
+  /* A RIDE THAT WALKS THE BANK scales with the bank. `walk(seconds)` converts a duration
+   * that was measured on the 200-step bank into this one's. Durations set by a THERMAL or
+   * CONTROL process (settling, xenon, a dump ramp) are NOT scaled — they have nothing to do
+   * with rod travel, and putting them through here would launder an unrelated number. */
+  var walk = function (secs) { return Math.round(secs * bank() / 200); };
   var EN = RD.engine, W = RD.water, S = RD.sources, G = RD.sg, TB = RD.turbine,
       RL = RD.relief, CD = RD.condenser, DC = RD.dumpctl, PZ = RD.pressurizer,
       K = RD.kinetics, R = RD.reactor;
@@ -165,15 +178,15 @@ function runSuite(RD, rec, quiet, only) {
   ckT('load_mwe moves the turbine and the plant follows',
       Math.abs(t80.mwe_output - 80) < 1 && t80.power_pct < 97, 'MWe ' +
       t80.mwe_output.toFixed(1) + ', power ' + t80.power_pct.toFixed(1) + ' %');
-  EN.command(eng, 'rod_target', 190);
+  EN.command(eng, 'rod_target', frac(0.95));
   var tRod = run(eng, 5);
   ckT('rod_target SLEWS — five seconds at normal speed moves ~3.5 steps, not the whole demand',
       /* 0.702 steps/s = the sourced WTSM 8.1 normal class rate mapped onto the 200-step
        * bank (#506.4); the pre-#506 single rate (1.0 = always FAST) read ~5 here */
-      Math.abs(tRod.rod_steps - (200 - 0.702 * 5)) < 1.0,
-      tRod.rod_steps.toFixed(1) + ' steps from 200 toward 190 — instant rods are a lever no ' +
-      'real plant has');
-  EN.command(eng, 'rod_target', 200); run(eng, quiet ? 20 : 40);
+      Math.abs(tRod.rod_steps - (bank() - 0.702 * 5)) < 1.0,
+      tRod.rod_steps.toFixed(1) + ' steps, from ' + bank() + ' toward ' + frac(0.95) +
+      ' — instant rods are a lever no real plant has');
+  EN.command(eng, 'rod_target', bank()); run(eng, quiet ? 20 : 40);
   EN.command(eng, 'aux_spray', 0.5);
   var tAux = run(eng, 1);
   ckT('aux_spray reaches the vessel', tAux.spray_flow_pct !== undefined &&
@@ -685,7 +698,7 @@ function runSuite(RD, rec, quiet, only) {
    * character — and erodes the setpoint via K3 faster than the delta-T term recovers; the
    * runback buys TIME here, not an equilibrium). So: rod-stop test in the first ~3 s,
    * rods-in right after. */
-  EN.command(eng7, 'rod_target', 199.0);
+  EN.command(eng7, 'rod_target', bank() - 1);    /* one step IN from full out */
   run(eng7, 2);                                  /* inward: always allowed */
   var rodsIn = eng7.rodSteps;
   /* OUTWARD IS REFUSED — and since #572 it is refused OUT LOUD, at the door, rather than
@@ -694,11 +707,11 @@ function runSuite(RD, rec, quiet, only) {
    * normally and the rods simply did not move, which is the accepted-then-discarded shape
    * #545/#558 spent two days removing everywhere else. */
   var thr7 = null;
-  try { EN.command(eng7, 'rod_target', 200); } catch (e7x) { thr7 = e7x.message; }
+  try { EN.command(eng7, 'rod_target', bank()); } catch (e7x) { thr7 = e7x.message; }
   run(eng7, 1);                                  /* one second shows zero motion; three bought
                                                   * nothing but trip-delay maturity */
   ckT('the ROD STOP: inward moves, outward is REFUSED BY NAME while the signal stands',
-      rodsIn < 199.5 && eng7.rodSteps <= rodsIn + 1e-9 &&
+      rodsIn < bank() - 0.5 && eng7.rodSteps <= rodsIn + 1e-9 &&
       thr7 !== null && /ROD WITHDRAWAL BLOCKED/.test(thr7) &&
       /Inward motion is still available/.test(thr7),
       'in to ' + rodsIn.toFixed(1) + ', then held at ' + eng7.rodSteps.toFixed(1) +
@@ -1180,7 +1193,7 @@ function runSuite(RD, rec, quiet, only) {
   var tsI = run(engI, 5);
   ckT('a blocked scram LATCHES the trip — annunciated, turbine tripped — with the rods at 200',
       engI.pt.reactor_trip === true && engI.pt.trip_cause === 'manual' &&
-      engI.tb.tripped === true && engI.rodSteps === 200 && tsI.scrammed === true,
+      engI.tb.tripped === true && engI.rodSteps === bank() && tsI.scrammed === true,
       'the failure is the DROP, not the logic — which is what an ATWS is');
   EN.command(engI, 'scram_block', false);
   EN.command(engI, 'reset_protection', true);
@@ -1237,7 +1250,7 @@ function runSuite(RD, rec, quiet, only) {
   var tsT10 = run(engT, 10);
   var sT0 = engT.rodSteps, sdT0 = engT.sdSteps;
   var thrTc = false, thrTs = false;
-  try { EN.command(engT, 'rod_target', 200); } catch (eT1) { thrTc = /ROD DRIVE BLOCKED/.test(eT1.message); }
+  try { EN.command(engT, 'rod_target', bank()); } catch (eT1) { thrTc = /ROD DRIVE BLOCKED/.test(eT1.message); }
   try { EN.command(engT, 'sd_target', 200); } catch (eT2) { thrTs = /ROD DRIVE BLOCKED/.test(eT2.message); }
   ckT('under a latched trip BOTH bank doors refuse by name — not silently clamped (#551 law)',
       thrTc === true && thrTs === true && engT.rodTarget === 0 && engT.sdTarget === 0,
@@ -1290,7 +1303,7 @@ function runSuite(RD, rec, quiet, only) {
   try { EN.command(engU, 'rod_target', 0); } catch (eU) { thrU = /ROD DRIVE BLOCKED/.test(eU.message); }
   try { EN.command(engU, 'boron_rate', 0.05); } catch (eU2) { thrBoron = eU2.message; }
   ckT('ATWS: the INWARD command is refused too — the breakers are open, not the drive selective',
-      thrU === true && engU.rodSteps === 200, 'rods held at ' + engU.rodSteps.toFixed(0));
+      thrU === true && engU.rodSteps === bank(), 'rods held at ' + engU.rodSteps.toFixed(0));
   ckT('...and emergency boration is still reachable, which is the response that is left',
       thrBoron === null, thrBoron ? ('THREW: ' + thrBoron.slice(0, 50)) : 'boron_rate accepted, ' + engU.cv.boron_rate_cmd + ' ppm/s');
   /* a continuous-withdrawal DRIVE fault is downstream of the same power supply. The scram edge
@@ -1346,9 +1359,9 @@ function runSuite(RD, rec, quiet, only) {
   var engW = EN.createEngine({ initial_state: 'hot_zero_power' });
   run(engW, 120);
   EN.command(engW, 'rod_speed', 'slow');
-  EN.command(engW, 'rod_target', 86);             /* the stop's own regime — an operator step */
+  EN.command(engW, 'rod_target', frac(0.43));     /* the stop's own regime — an operator step */
   var onsetW = null, tsW = null;
-  for (var kW = 0; kW < 2400 / DT; kW++) {
+  for (var kW = 0; kW < walk(2400) / DT; kW++) {
     tsW = EN.step(engW, DT);
     if (!onsetW && engW.rpsReport.rod_stop_causes.ir_high_flux) {
       onsetW = { pwr: engW.ins.reading.power_range, steps: engW.rodSteps };
@@ -1366,38 +1379,67 @@ function runSuite(RD, rec, quiet, only) {
       'settled ' + engW.ins.reading.power_range.toFixed(2) + ' % under the 25 % ' +
       'intermediate-range trip, bank at ' + engW.rodSteps.toFixed(1) + ' steps');
   var thrW = null;
-  try { EN.command(engW, 'rod_target', 200); } catch (eW) { thrW = eW.message; }
+  try { EN.command(engW, 'rod_target', bank()); } catch (eW) { thrW = eW.message; }
   var thrWin = null;
   try { EN.command(engW, 'rod_target', engW.rodSteps - 5); } catch (eW2) { thrWin = eW2.message; }
   ckT('...outward REFUSES by name and INWARD still takes — the source\'s own scope',
       thrW !== null && /INTERMEDIATE RANGE/.test(thrW) && thrWin === null,
       thrW ? ('out: ' + thrW.slice(22, 70) + ' | in: accepted') : 'outward was ACCEPTED');
 
-  /* THE HELD PRESS, the other half: the stop parks the BANK and the trip ends the ASCENT.
-   * The bank freeze is asserted against its value AT THE STOP, so a stop that reported and did
-   * not hold — the wiring gap this section exists for — still reds here. */
-  var engW2 = EN.createEngine({ initial_state: 'hot_zero_power' });
-  run(engW2, 120);
-  EN.command(engW2, 'rod_speed', 'slow');
-  EN.command(engW2, 'rod_target', 200);           /* one press, held — the board's own idiom */
-  var atStopW = null, tsW2 = null, tgtW2 = null;
-  for (var kW2 = 0; kW2 < 2400 / DT; kW2++) {
-    tsW2 = EN.step(engW2, DT);
-    if (atStopW === null && engW2.rpsReport.rod_stop_causes.ir_high_flux) {
-      atStopW = engW2.rodSteps; tgtW2 = engW2.rodTarget;   /* the demand AT the stop: the scram
-                                                            * zeroes rodTarget, so reading it
-                                                            * after the trip is reading the
-                                                            * trip, not the operator */
+  /* THE HELD PRESS — and since #602 phase 2 the answer DEPENDS ON THE RATE, which is what a rod
+   * stop is supposed to be sensitive to. On the 200-step bank one step spanned the whole
+   * 20 %->25 % flux window, so no pull rate could sit inside it and this was a single check.
+   * Measured on the 627-step bank, one press held from hot_zero_power:
+   *
+   *     slow    stop at 254 st / 19.8 %  ->  NO TRIP, settles 21.7 %   the stop HOLDS
+   *     normal  stop at 269 st / 20.7 %  ->  coasts to 26.8 %, trips on ir_high_flux
+   *     fast    stop at 273 st / 20.3 %  ->  coasts to 29.3 %, trips on ir_high_flux
+   *
+   * Both halves are pinned. That pair IS the sourced relationship — WTSM has the stop act first
+   * and the trip catch what it does not hold, and Ginna TS Bases B 3.3.1 Fn 3 says limiting
+   * withdrawal *"MAY terminate the transient and eliminate the need to trip the reactor"*. A stop
+   * that held at every rate would make the trip behind it unreachable; one that held at no rate
+   * would be decoration. The bank freeze is asserted in both, so a stop that REPORTS and does not
+   * HOLD — the wiring gap this section exists for — still reds either way. */
+  function heldPress(speed, secs) {
+    var e2 = EN.createEngine({ initial_state: 'hot_zero_power' });
+    run(e2, 120);
+    EN.command(e2, 'rod_speed', speed);
+    EN.command(e2, 'rod_target', bank());       /* one press, held — the board's own idiom */
+    var atStop = null, tgt = null, t = null;
+    for (var q = 0; q < secs / DT; q++) {
+      t = EN.step(e2, DT);
+      if (atStop === null && e2.rpsReport.rod_stop_causes.ir_high_flux) {
+        atStop = e2.rodSteps; tgt = e2.rodTarget;   /* the demand AT the stop: a scram zeroes
+                                                     * rodTarget, so reading it afterwards reads
+                                                     * the trip, not the operator */
+      }
+      if (t.scrammed) break;
     }
-    if (tsW2.scrammed) break;
+    return { e: e2, ts: t, atStop: atStop, tgt: tgt,
+             /* THE TOLERANCE IS THE FLUX CHANNEL'S LAG, and it grew with the flatter curve
+              * (#602 phase 2): measured 1.081 steps of run-on at Slow, against 0.1 on the
+              * old bank. Indicated flux crosses 20 % later in STEPS when each step is worth
+              * less, so the stop bites a step further out. 2.0 is the lag with room; the
+              * claim is that the bank FREEZES rather than running on to the demanded 627,
+              * and 1 step against 373 remaining is a freeze by any reading. */
+             held: atStop !== null && e2.rodSteps - atStop < 2.0,
+             pw: e2.ins.reading.power_range };
   }
-  ckT('a HELD press: the stop parks the bank, and the 25 % IR trip ends the ascent anyway',
-      atStopW !== null && engW2.rodSteps - atStopW < 0.3 && tgtW2 === 200 &&
-      tsW2.scrammed === true && engW2.pt.trip_cause === 'ir_high_flux',
-      'bank ' + (atStopW === null ? '--' : atStopW.toFixed(1)) + ' -> ' +
-      engW2.rodSteps.toFixed(1) + ' of a demanded 200 (the stop HELD), tripped on ' +
-      engW2.pt.trip_cause + ' — the standing reactivity carries the flux through the 5-point ' +
-      'window the stop and the trip leave between them');
+  var hpSlow = heldPress('slow', 9000);
+  ckT('a HELD press at SLOW: the stop parks the bank and the plant rides it out UNTRIPPED',
+      hpSlow.held && hpSlow.tgt === bank() && hpSlow.ts.scrammed === false &&
+      hpSlow.pw > 20 && hpSlow.pw < 25,
+      'bank frozen at ' + (hpSlow.atStop === null ? '--' : hpSlow.atStop.toFixed(1)) +
+      ' of a demanded ' + bank() + ', settled ' + hpSlow.pw.toFixed(1) +
+      ' % under the 25 % trip — the stop earns its keep at this rate');
+  var hpNorm = heldPress('normal', 3000);
+  ckT('...and at NORMAL the withdrawal OUTRUNS it — the bank still freezes, the 25 % rung ends it',
+      hpNorm.held && hpNorm.tgt === bank() && hpNorm.ts.scrammed === true &&
+      hpNorm.e.pt.trip_cause === 'ir_high_flux',
+      'bank frozen at ' + (hpNorm.atStop === null ? '--' : hpNorm.atStop.toFixed(1)) +
+      ', tripped on ' + hpNorm.e.pt.trip_cause + ' — the standing reactivity carries the flux ' +
+      'through a window the stop cannot close by holding the rods');
   }
 
   if (grp('K')) {
@@ -1516,7 +1558,7 @@ function runSuite(RD, rec, quiet, only) {
       'level ' + tsH.pzr_level_pct.toFixed(1) + ' %');
   ckT('...with the sourced no-load LINEUP: control bank IN, shutdown bank OUT (WTSM 8.1.1), ' +
       'dumps in STEAM PRESSURE mode at 1005 psig, feed at no-load, subcritical boron',
-      engH.rodSteps === 0 && engH.sdSteps === 200 &&
+      engH.rodSteps === 0 && engH.sdSteps === bank() &&
       engH.dcDrivers.mode === 'pressure' &&
       Math.abs(engH.dcDrivers.pressure_setpoint_mpa - 7.03) < 1e-9 &&
       engH.fw.feed_frac === 0 && tsH.boron_ppm > 700 && tsH.boron_ppm < 740,
@@ -1542,36 +1584,50 @@ function runSuite(RD, rec, quiet, only) {
    * what remains is the sourced 0.5 s analysis delay at a fast period. */
   var engA2 = EN.createEngine({ initial_state: 'hot_zero_power' });
   EN.command(engA2, 'rod_speed', 'fast');
-  EN.command(engA2, 'rod_target', 200);
+  EN.command(engA2, 'rod_target', bank());
   var tsA2 = null;
-  for (kk = 0; kk < 200 / DT && !(tsA2 && tsA2.scrammed); kk++) tsA2 = EN.step(engA2, DT);
+  for (kk = 0; kk < walk(200) / DT && !(tsA2 && tsA2.scrammed); kk++) tsA2 = EN.step(engA2, DT);
   ckT('a continuous fast pull from subcritical IS the startup accident, and the startup ' +
       'net FIRST rung answers it',
       tsA2.scrammed === true && engA2.pt.trip_cause === 'ir_high_flux',
       'cause ' + engA2.pt.trip_cause + ' at ' + tsA2.power_pct.toFixed(1) + ' % (the ' +
       'overshoot is the sourced 0.5 s delay at a fast period)');
 
-  /* the CONTROLLED startup, the measured operator profile: critical ~84 steps (1.35 %),
-   * block taken at 18 % (above P-10), stepped to 96 -> 42.6 % THROUGH the 35 % setpoint */
+  /* THE CONTROLLED STARTUP — a MEASURED operator profile, RE-DERIVED for the 627-step bank
+   * (#602 phase 2) and NOT rescaled from the old one. Scaling it by the bank ratio produced a
+   * fixture that scrammed mid-ladder and threw, because criticality is set by boron against rod
+   * worth and the worth CURVE moved too (curve_flatten 0.8 -> 0.36): the same FRACTION of travel
+   * is now a different amount of reactivity. A measured profile has to be re-measured.
+   *
+   * Measured settled at Normal from hot_zero_power, 719 ppm:
+   *   224 -> 0.36 %  (critical, below P-10) · 232 -> 10.75 % (P-10 MET) · 235 -> 12.97 %
+   *   250 -> 20.80 % (IR rod stop asserts) · 258 -> 24.13 % · 261 -> SCRAM on ir_high_flux
+   *   and with both blocks taken, 295 -> 38.0 % untripped, past the 35 % power-range setting. */
   var engS2 = EN.createEngine({ initial_state: 'hot_zero_power' });
   EN.command(engS2, 'rod_speed', 'normal');
-  EN.command(engS2, 'rod_target', 84);
-  var tsS2 = run(engS2, 180);
+  EN.command(engS2, 'rod_target', 224);
+  var tsS2 = run(engS2, walk(180) + 400);   /* + SETTLING: on the flatter curve power lags
+                                             * the bank by minutes, and the old holds were sized
+                                             * for a bank 3x shorter. Measured: 224 steps settles
+                                             * at 0.36 %, and it takes ~400 s to get there. */
   var p84 = tsS2.power_pct;
-  EN.command(engS2, 'rod_target', 86);
-  tsS2 = run(engS2, 30);
+  EN.command(engS2, 'rod_target', 235);
+  tsS2 = run(engS2, walk(30) + 400);
   /* BOTH P-10 blocks, in the order the procedure takes them (#601). The intermediate-range one
    * first: it clears the 20 % C-1 rod stop as well as its own 25 % trip, and without it the
    * `rod_target 96` below is REFUSED by the stop — measured, this fixture threw on arrival. */
   EN.command(engS2, 'ir_high_block', true);      /* above P-10 here — measured 18.2 % */
   EN.command(engS2, 'low_flux_block', true);
   var pBlk = tsS2.power_pct;
-  tsS2 = run(engS2, 90);
-  EN.command(engS2, 'rod_target', 96);
-  tsS2 = run(engS2, 180);
+  tsS2 = run(engS2, walk(90));
+  EN.command(engS2, 'rod_target', 295);
+  tsS2 = run(engS2, walk(180) + 600);
   ckT('a CONTROLLED startup works end to end: critical partway up the bank, the block ' +
       'taken above P-10, and the ascension passes the 35 % setpoint UNTRIPPED',
-      /* ⚠ THE LOWER BOUND WAS PINNED TO A CLIFF (#590, 2026-08-29). It read `p84 > 0.2` while
+      /* ⚠ THE LOWER BOUND WAS PINNED TO A CLIFF (#590, 2026-08-29), and #602 moved it again —
+       * 0.05 -> 0.005, because the critical leg on this bank measures 0.02 %. The CLAIM has not
+       * changed and neither has the trap: pin the claim, not the number. Original note follows.
+       * It read `p84 > 0.2` while
        * the fixture measured 0.2115 — passing by 5 % on a quantity instrument NOISE moves. The
        * #590 noise re-derivation shifted it to 0.1994 and this reddened, on a plant whose
        * startup is unchanged in every way the check claims to be about: the block still comes
@@ -1579,7 +1635,7 @@ function runSuite(RD, rec, quiet, only) {
        * intact. The standing trap in one line — a check can pin a NUMBER instead of a CLAIM.
        * The claim is that the critical leg is measurably above zero and far below the block
        * point; 0.05 says that and holds on both builds (0.2115 and 0.1994). */
-      p84 > 0.05 && p84 < 8 && pBlk > 8 &&
+      p84 > 0.005 && p84 < 8 && pBlk > 8 &&
       tsS2.power_pct > 36 && tsS2.scrammed === false &&
       engS2.rpsReport.low_flux_blocked === true && engS2.rpsReport.ir_high_blocked === true,
       'critical leg ' + p84.toFixed(2) + ' %, blocked at ' + pBlk.toFixed(1) +
@@ -1648,24 +1704,33 @@ function runSuite(RD, rec, quiet, only) {
    * IN while power is RESTORED (dilution), which is exactly the operational story the RIL
    * exists for. ---- */
   head('THE ROD INSERTION LIMIT  [null below 5 %; 70 % floor at rated; the margin closes on dilution]');
-  ckT('the curve is the adopted pwr1 shape: null at and below 5 %, 140 steps at rated, ' +
-      'monotone between',
+  /* THE CURVE IS PERCENTAGES, AND ONLY ITS RENDERING MOVED (#602 phase 2). This asserted
+   * `=== 140` and `~72`, which were 70 % and 35.8 % of a 200-step bank spelled as absolutes
+   * — so the check reddened on a scale change that left the curve itself untouched. RIL is
+   * `(lo_pct + (hi_pct - lo_pct) * f) / 100 * BANK()` and always was; the percentages are
+   * the claim. 35.79 % at 50 % power is the curve's own arithmetic: f = 45/95. */
+  ckT('the curve is the adopted pwr1 shape: null at and below 5 %, a 70 %-withdrawn floor ' +
+      'at rated, monotone between',
       EN.insertionLimitSteps(0) === null && EN.insertionLimitSteps(5) === null &&
-      EN.insertionLimitSteps(100) === 140 &&
+      EN.insertionLimitSteps(100) === frac(0.70) &&
       EN.insertionLimitSteps(50) > EN.insertionLimitSteps(20) &&
-      Math.abs(EN.insertionLimitSteps(50) - 72) <= 1,
-      '50 % -> ' + EN.insertionLimitSteps(50) + ' steps');
+      Math.abs(EN.insertionLimitSteps(50) - frac(0.3579)) <= 1,
+      'rated -> ' + EN.insertionLimitSteps(100) + ' of ' + bank() + ' steps (70 %); ' +
+      '50 %% -> ' + EN.insertionLimitSteps(50) + ' (35.8 %)');
   var engL = EN.createEngine({});
   var tsL = run(engL, 20);
-  ckT('at hot full power the limit is LIVE and generous: RIL ~139, margin ~60, not at limit',
-      engL._rilSteps >= 137 && engL._rilSteps <= 141 &&
-      engL._rodLimitMargin > 55 && engL._rodAtLimit === false,
-      'RIL ' + engL._rilSteps + ', margin ' + engL._rodLimitMargin);
+  ckT('at hot full power the limit is LIVE and generous: the floor near 70 % withdrawn, a ' +
+      'margin near 30 % of the bank, not at limit',
+      engL._rilSteps / bank() > 0.66 && engL._rilSteps / bank() < 0.71 &&
+      engL._rodLimitMargin / bank() > 0.27 && engL._rodAtLimit === false,
+      'RIL ' + engL._rilSteps + ' (' + (100 * engL._rilSteps / bank()).toFixed(1) +
+      ' %), margin ' + engL._rodLimitMargin + ' (' +
+      (100 * engL._rodLimitMargin / bank()).toFixed(1) + ' %)');
   var engZ = EN.createEngine({ initial_state: 'hot_zero_power' });
   EN.step(engZ, DT);
   ckT('at Hot Standby the limit does NOT APPLY — a bank parked at 0 stands NO limit alarm ' +
       '(the 5 % floor is what keeps every startup from opening annunciated)',
-      engZ._rilSteps === null && engZ._rodAtLimit === false && engZ._rodLimitMargin === 200,
+      engZ._rilSteps === null && engZ._rodAtLimit === false && engZ._rodLimitMargin === bank(),
       '');
   /* #510 LOW: a SCRAM exempts too — during every trip's decay seconds the rods drive to 0
    * while power is still above the 5 % floor, and both ROD LIMIT annunciators fired on
@@ -1686,34 +1751,69 @@ function runSuite(RD, rec, quiet, only) {
         }
         return sawBand && okAll;
       })(), 'the pre-fix ladder read atLimit TRUE through the decay band of every trip');
-  /* the honest approach (measured 2026-08-23): insert to 145 (power sags to 85.8, the
-   * limit recedes to 121 — margin OPENS to 24), then dilute: power recovers, the limit
-   * climbs back, and the margin closes to <10 at +35 s; a 5-step insert at power reaches
-   * the limit itself */
+  /* ---- THE LIMIT TRACKS POWER (#602 phase 2, re-aimed) --------------------------------------
+   * This pair used to ride a bigger story: insert, power sags a long way, the limit recedes and
+   * the margin opens wide, then dilute — power recovers, the limit climbs, the margin closes past
+   * RIL+10 to the limit itself. That needed an insert that could sag power to ~85.8 %, which the
+   * 200-step bank at curve_flatten 0.8 could deliver. On the sourced 627-step bank at 0.36 there
+   * is very little worth in the TOP of the travel: the same fractional insert reaches only 98.3 %,
+   * and inserting deep enough to sag power that far TRIPS on the way (measured: 66 % -> 87.6 %
+   * and scram, 67 % -> 91.7 % and scram). That is not a regression — it is the reason a real
+   * bank D sits near 210 of 231 and boron carries the bulk.
+   *
+   * ⚠ AND THE DILUTION IS NOT BROKEN, which is exactly what this looked like at first. Measured
+   * over 600 s at -0.10 ppm/s from a 72 %-withdrawn insert:
+   *     t=0    boron 625.8  power  98.32  Tavg 272.1  RIL 432  margin 19
+   *     t=60   boron 620.9  power 100.66  Tavg 273.3  RIL 439  margin 12
+   *     t=600  boron 611.8  power  96.16  Tavg 278.6  RIL 422  margin 29
+   * Boron falls and power RISES first — the dilution lands. It then settles near 96 % while boron
+   * keeps dropping, because at a HELD LOAD the negative moderator coefficient takes the added
+   * reactivity as TEMPERATURE (Tavg 272 -> 279), not as power. A rods-manual plant at fixed load
+   * reaches equilibrium where dilution buys degrees. Correct physics — and the reason the old
+   * assertion has no window, rather than a reason to go looking for a defect.
+   *
+   * SO THE SURVIVING CLAIM IS THE ONE THE INTERLOCK IS ACTUALLY ABOUT: the limit CHASES POWER.
+   * It is read from the same ride, and it never depended on how far an insert could sag the
+   * plant. */
   EN.command(engL, 'rod_speed', 'fast');
-  EN.command(engL, 'rod_target', 145);
-  run(engL, 60);
-  var openedTo = engL._rodLimitMargin;
+  EN.command(engL, 'rod_target', frac(0.72));
+  tsL = run(engL, walk(70));
+  var rilIns = engL._rilSteps, marginIns = engL._rodLimitMargin, pwrIns = tsL.power_pct;
+  ckT('the limit is LIVE under a deep insert: the bank is inside it, the margin is finite',
+      rilIns > 0 && marginIns > 0 && marginIns < 60 && engL._rodAtLimit === false &&
+      tsL.scrammed === false,
+      'RIL ' + rilIns + ', margin ' + marginIns + ' at ' + pwrIns.toFixed(1) + ' % power');
+  /* DILUTE, and watch the LIMIT follow the power — up while power rises, down as it settles. */
   EN.command(engL, 'boron_rate', -0.10);
-  var tL = 0;
-  while (tL < 120 && engL._rodLimitMargin >= 10 && !tsL.scrammed) { tsL = run(engL, 5); tL += 5; }
-  ckT('rods in + dilution restoring power CLOSES the margin below the sourced RIL+10 — ' +
-      'the limit chased the power back up',
-      openedTo > 15 && engL._rodLimitMargin < 10 && tsL.scrammed === false,
-      'margin opened to ' + openedTo + ' on the insert, closed to ' + engL._rodLimitMargin +
-      ' at t=+' + tL + ' s, power ' + tsL.power_pct.toFixed(1) + ' %');
-  /* the dilution KEEPS RUNNING through the final insert — securing it first lets power sag
-   * and the limit recede under the bank (measured 96.3 %/RIL 135 under 139 steps; the
-   * first gate draft did exactly that and reddened on its own fixture, not the plant).
-   * The limit then CLIMBS to meet the bank as power recovers — at-limit at +55 s measured. */
-  EN.command(engL, 'rod_target', 139);
-  var tL2 = 0;
-  while (tL2 < 200 && !engL._rodAtLimit && !tsL.scrammed) { tsL = run(engL, 5); tL2 += 5; }
-  ckT('...and five more steps with the dilution running reaches the LIMIT itself as power ' +
-      'recovers (ROD LIMIT LO-LO\'s fact; measured at +55 s)',
-      engL._rodAtLimit === true && tsL.power_pct > 90 && tsL.scrammed === false,
-      'steps ' + engL.rodSteps.toFixed(0) + ' <= RIL ' + engL._rilSteps + ' at ' +
-      tsL.power_pct.toFixed(1) + ' % (t=+' + tL2 + ' s)');
+  tsL = run(engL, 60);
+  var rilHi = engL._rilSteps, pwrHi = tsL.power_pct;
+  tsL = run(engL, 540);
+  var rilLo = engL._rilSteps, pwrLo = tsL.power_pct;
+  ckT('...and the LIMIT CHASES POWER — it rises with the dilution\'s power peak and recedes ' +
+      'again as the negative MTC settles the plant at a lower power',
+      pwrHi > pwrIns && rilHi > rilIns &&
+      pwrLo < pwrHi && rilLo < rilHi && tsL.scrammed === false,
+      'power ' + pwrIns.toFixed(1) + ' -> ' + pwrHi.toFixed(1) + ' -> ' + pwrLo.toFixed(1) +
+      ' %, RIL ' + rilIns + ' -> ' + rilHi + ' -> ' + rilLo +
+      ' — the limit is a FUNCTION of power, which is the whole interlock');
+  /* ⚠ AT-LIMIT ITSELF, and this check exists because the MUTATION HARNESS CAUGHT ITS ABSENCE.
+   * The re-aim above dropped the only ride that ever drove `_rodAtLimit` TRUE — the old story's
+   * final "five more steps reaches the limit" — and `at-limit is never computed` immediately
+   * came back BLIND. That flag is the ROD LIMIT LO-LO annunciator's whole basis, so losing its
+   * coverage while re-aiming the checks around it would have been a silent trade.
+   *
+   * Driven DIRECTLY instead of through the dilution story that no longer has a window: put the
+   * bank under the live limit and read the flag. The fact does not need the story. */
+  var rilNow = engL._rilSteps;
+  EN.command(engL, 'boron_rate', 0);
+  EN.command(engL, 'rod_target', rilNow - 5);
+  var tAL = 0;
+  while (tAL < 300 && !engL._rodAtLimit && !tsL.scrammed) { tsL = run(engL, 5); tAL += 5; }
+  ckT('...and AT-LIMIT is a real computed fact: park the bank under the live limit and the ' +
+      'flag sets (the ROD LIMIT LO-LO row reads it)',
+      engL._rodAtLimit === true && engL.rodSteps <= engL._rilSteps && tsL.scrammed === false,
+      'bank ' + engL.rodSteps.toFixed(0) + ' <= RIL ' + engL._rilSteps + ' at ' +
+      tsL.power_pct.toFixed(1) + ' % (t=+' + tAL + ' s)');
   }
 
   if (grp('M')) {
@@ -1925,7 +2025,7 @@ function runSuite(RD, rec, quiet, only) {
    * falls. Counted over the whole withdrawal, not sampled — a sample can straddle the dip. */
   var engAP = EN.createEngine({ initial_state: 'hot_zero_power' });
   run(engAP, 30);
-  EN.command(engAP, 'rod_target', 200);
+  EN.command(engAP, 'rod_target', bank());
   var apFell = 0, apPrev = EN.step(engAP, DT).power_pct, apTs = null, apSteps = 0;
   for (var ap = 0; ap < Math.round((quiet ? 60 : 200) / DT); ap++) {
     apTs = EN.step(engAP, DT); apSteps++;

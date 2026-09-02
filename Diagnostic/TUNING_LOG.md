@@ -29,6 +29,102 @@ and the user-visible summary in `CHANGELOG.md`. This file points at those and tr
 
 ---
 
+## Session log — 2026-09-01-develop-c (#602 phase 2 — the bank moves to the sourced 627 steps, and sixteen checks turn out to have been fractions spelled as absolutes)
+
+*(OWNER RULING, 2026-09-01: "its a go. yes on hoise as its own commit first".)*
+
+**`max_steps` 200 → 627, `curve_flatten` 0.8 → 0.36, worths untouched.** The derivation and the
+refutation of the alternative are §128.2–§128.5; the full phase-2 record is
+`Blueprint/PWR2_VALIDATION.md` §129. This entry carries what is worth carrying forward.
+
+### The plant now
+
+```
+DIFFERENTIAL  min 4.15  mean 6.49  peak 8.82 pcm/step   [sourced 4-12]  IN BAND
+insertion rate at FAST                     9.3 pcm/s    [Ginna ch15 analyses 5-75]
+full pull   slow 90 min · normal 14.9 · fast 9.9        [real 627-count at 72/min = 8.7]
+critical    226-238 steps (36-38 % withdrawn)           [bank D sits ~210/230 at power]
+trip reactivity                            7744 pcm     [unchanged]
+```
+
+### THE LESSON: a two-constant change reddened sixteen checks, and only TWO were arithmetic
+
+Every one was a **fraction of travel written as an absolute** — correct and indistinguishable while
+the bank happened to be 200 steps. Five kinds, and the kinds are the point:
+
+1. **Fractions as absolutes** (17 sites). `rod_target 86` was 43 % of travel; `sdSteps === 200` was
+   "fully out".
+2. **Percentages pinned as steps.** The rod-insertion-limit checks asserted `=== 140` for a curve
+   that has always been `(lo + (hi−lo)·f)/100 × BANK`. The percentages never moved.
+3. **Ride durations that walk the bank.** A 627-step pull takes 3.135× longer, so fixed
+   `run(eng, N)` calls expired before reaching their subject — which is why three checks reported
+   `0.0 %` and `cause null` rather than a wrong number. Scaled ONLY the durations rod travel sets;
+   thermal and control settling were left alone deliberately.
+4. **⚠ A DETECTION THRESHOLD, AND IT ACCUSES THE PLANT.** `run_pwr2_lossofload` captured the scram
+   with `rod_steps < 190` — "the rods have visibly started to move", 95 % of a 200-step bank. On
+   627 that is 30 % withdrawn, so it waited until the rods were nearly all the way IN and read the
+   drop **3.8 s late**, blowing a 2.6 s window. **The failure reads as a slow scram.** A stale
+   threshold does not announce itself as currency; it announces itself as a physics regression in
+   whatever it measures.
+5. **A MEASURED PROFILE, which cannot be scaled at all.** The controlled-startup ladder is an
+   operator profile, not a ratio — criticality is set by boron against rod worth, and the worth
+   CURVE moved too. Scaling it produced a fixture that scrammed mid-ladder and threw. Re-measured.
+
+### Three corrections I made to the owner, recorded rather than quietly fixed
+
+- **"At 627 the rod stop does its job"** was measured at **Slow only**. It is rate-dependent: slow
+  holds (no trip, 21.7 %), normal coasts to 26.8 % and trips, fast to 29.3 %. Both halves are now
+  pinned as a pair, which is the sourced relationship — Ginna TS Bases B 3.3.1 Fn 3 says limiting
+  withdrawal *"MAY terminate the transient"*. A stop that held at every rate would make the trip
+  behind it unreachable; one that held at none would be decoration. The old plant was the second.
+- **The dilution reported as a possible defect was fine.** Boron falls, power rises to 100.66 %,
+  then settles near 96 % while boron keeps dropping — at a held load the negative MTC takes the
+  reactivity as TEMPERATURE (Tavg 272 → 279 °C). Correct physics. The measurement retracted the
+  suspicion before anything was changed.
+- **"30 manual mentions across 13 chapters" was a bad grep**, and I had used it to justify
+  dispatching a parallel agent. `74.5` is **74.5 kPa** of vacuum; `912/319/456 steps` are the
+  RETIRED bank under a banner saying so; `~145` is **psi**. The real surface was **one word** in
+  05 §2.2. **An agent handed that list would have "corrected" a vacuum pressure into a rod
+  position** — the defect class this issue exists to remove, with more hands on it.
+
+### The mutation harness caught the re-aim dropping a fact
+
+Re-aiming the rod-insertion-limit pair removed the only ride that ever drove `_rodAtLimit` TRUE —
+the ROD LIMIT LO-LO annunciator's whole basis — and `at-limit is never computed` came straight back
+BLIND. **A check re-aimed around a fact can silently take the fact with it, and only an injection
+notices.** Driven directly now: park the bank under the live limit, read the flag.
+
+### The 1/M ladder is RE-SHAPED, not re-scaled
+
+Scaled directly, the fifth burst (70/200 → 219) lands past the SR→IR handoff — SR reads **0** —
+with SUR at **1.03 DPM**, over the ≤1 DPM the checklist itself teaches. Re-shaped to
+**94 / 157 / 188 / 202 / 211** → 791 / 1,571 / 3,542 / 8,090 / 24,119 cps, 1/M 0.634 → 0.021, every
+burst inside the rate target with the detector on scale. **This is the one place in #602 where a
+teaching sequence was chosen rather than a number derived**, and it is flagged to the owner as such.
+
+### AND THE ITERATION LOOP GOT 26× FASTER MID-EFFORT — by reading the runner
+
+`run_checklist_pwr2` already took a scope argument (`process.argv[2]`): one leg is **20 s** against
+**521 s** for the chain. It was there the whole time. That is the second time in this effort the
+cheapest available win was reading what a tool already accepted — the first was the mutation flag
+in §128, which did not exist and had to be built. **Check what the tool takes before you pay for
+the long path.** Asked about parallel agents, this was the honest answer: a 26× serial speedup beat
+the parallelism, and the work proposed for farming out turned out to be one word.
+
+### Ruled
+
+*(OWNER RULING, 2026-09-01: "1. A… 2. A." — on two options blocks: the 1/M burst spacing STANDS AS AUTHORED at 94/157/188/202/211, and the rate-dependent intermediate-range rod stop is ACCEPTED as the sourced behaviour. Both were the no-change path; recorded so neither is re-litigated as an unexamined default.)*
+
+### Gates
+
+`run_pwr2_engine` **140/140, 75/75 mutations** · `run_pwr2_shell` **149/149, 49/49** ·
+`run_pwr2_protection` 125/125 · `run_pwr2_board` 71/71 · `run_pwr2_kernel` 36/36 ·
+`run_pwr2_lossofload` 9/9 · **`run_checklist_pwr2` 109/109 — the full Mode 5 → full power → Mode 5
+chain, one continuous plant.** `run_manual_rev` 15/15. `run_all` 99/99.
+
+`run_hardrules` 446 → 450 across both phases: **+4 HR11 citation SITES, not assertions.** That
+baseline drifts when you write prose, not when you change code.
+
 ## Session log — 2026-09-01-develop-b (#602 phase 1 — the bank scale was 22 bare literals, and that is why it could not be moved)
 
 *(OWNER RULING, 2026-09-01: "its a go. yes on hoise as its own commit first" — on a recommendation

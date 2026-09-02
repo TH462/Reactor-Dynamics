@@ -366,8 +366,12 @@ function runSuite(rec, quiet, only) {
     ck('atws-pre-untripped', 'precondition: the plant was NOT tripped before the press', pre === false);
     ck('atws-latched', 'the trip LATCHES (a failure to scram is the DROP failing, not the logic)',
        eA.pt.reactor_trip === true, 'cause ' + eA.pt.trip_cause);
-    ck('atws-rods-held', 'the rods stay OUT at 200 steps — the drop is what failed',
-       Math.abs(eA.rodSteps - 200) < 0.5, eA.rodSteps.toFixed(1) + ' steps');
+    /* FULLY OUT, in the plant's own currency (#602 phase 2) — the bank is 627 steps now and
+     * `200` was 'fully withdrawn' written as an absolute. */
+    var bankK = RD.pwr2.kinetics.RODS.max_steps;
+    ck('atws-rods-held', 'the rods stay FULLY OUT — the drop is what failed',
+       Math.abs(eA.rodSteps - bankK) < 0.5,
+       eA.rodSteps.toFixed(1) + ' of ' + bankK + ' steps');
     ck('atws-annunciators', 'annunciators light (0 of them was the player-visible symptom)',
        annA >= 4, annA + ' lit');
     ck('atws-self-limits', 'power self-limits through moderator feedback instead of standing at 99 %',

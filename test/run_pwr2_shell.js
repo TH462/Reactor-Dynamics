@@ -54,6 +54,12 @@ var DT = 0.02;
  * (#582 — full channel runtime under the control kernel). The CLEAN pass runs everything;
  * each named group is preflighted ALONE on the clean build before the replays. */
 function runSuite(SH, rec, quiet, only) {
+  /* THE BANK'S OWN CURRENCY (#602 phase 2) — the same helpers the engine gate carries, for the
+   * same reason: every step count in this file was a FRACTION of a 200-step bank spelled as an
+   * absolute, and they all became wrong at once when the scale moved to the sourced 627. A
+   * literal here is now a claim that the number does NOT scale, which is true of none of them. */
+  var bank = function () { return globalThis.RD.pwr2.kinetics.RODS.max_steps; };
+  var frac = function (f) { return Math.round(f * bank()); };
   function grp(g) { return only === undefined || only === g; }
   function ck(name, cond, note) {
     rec.push({ name: name, ok: !!cond });
@@ -303,8 +309,11 @@ function runSuite(SH, rec, quiet, only) {
     for (i = 0; i < 50; i++) e2.step(0.02);                 /* 1.0 s into the ramps */
     var g = e2.getControlState().rod_groups;
     ck('mid-scram, BOTH banks are ramping — shutdown ahead of control, neither snapped',
-       g[0].steps > 80 && g[0].steps < 140 &&               /* 2.5 s ramp: ~120 at t+1.0 */
-       g[1].steps > 60 && g[1].steps < 120 &&               /* 2.0 s ramp: ~100 at t+1.0 */
+       /* FRACTIONS OF TRAVEL, not steps (#602): at t+1.0 s a 2.5 s ramp has 60 % left and a
+        * 2.0 s ramp 50 %. The old 80-140 / 60-120 windows were those fractions of a 200-step
+        * bank; the bands travel with the scale, the claim does not move. */
+       g[0].steps > frac(0.40) && g[0].steps < frac(0.70) &&
+       g[1].steps > frac(0.30) && g[1].steps < frac(0.60) &&
        g[1].steps < g[0].steps,
        'control ' + g[0].steps + ', shutdown ' + g[1].steps + ' at t+1.0 s (snap read 0)');
     for (i = 0; i < 150; i++) e2.step(0.02);
@@ -319,7 +328,7 @@ function runSuite(SH, rec, quiet, only) {
     for (i = 0; i < 500; i++) e3.step(0.02);
     var g3 = e3.getControlState().rod_groups;
     ck('a shutdown-group nudge moves the SHUTDOWN bank and leaves the control bank alone',
-       g3[1].steps < 200 && g3[0].steps === 200,
+       g3[1].steps < bank() && g3[0].steps === bank(),
        'control ' + g3[0].steps + ', shutdown ' + g3[1].steps);
   })();
   }
@@ -840,7 +849,7 @@ function runSuite(SH, rec, quiet, only) {
     catch (x5) { mIn = x5.message; }
     ck('ATWS: INSERT is refused too — with the breakers open the drive has no power either way ' +
        '(OWNER RULING 2026-08-28, "Refuse both directions")',
-       mIn !== null && /ROD DRIVE BLOCKED/.test(mIn) && eA2.eng.rodSteps === 200,
+       mIn !== null && /ROD DRIVE BLOCKED/.test(mIn) && eA2.eng.rodSteps === bank(),
        mIn ? ('rods held at ' + eA2.eng.rodSteps.toFixed(0)) : 'ACCEPTED!');
     var mRA = null;
     try { eA2.applyCommand({ action: 'reset_rps' }); } catch (x6) { mRA = x6.message; }
@@ -853,9 +862,9 @@ function runSuite(SH, rec, quiet, only) {
      * published as `true`. */
     eA2.eng.rodSteps = 0; eA2.eng.rodTarget = 0;
     eA2.step(0.02);
-    ck('#545: rods_fully_in is BOTH banks — 0/200 is not "rods in" (the retired engine\'s ' +
-       '`.every()`, lost in the second copy)',
-       eA2.getInstruments().rods_fully_in === false && eA2.eng.sdSteps === 200,
+    ck('#545: rods_fully_in is BOTH banks — a control bank at 0 with the shutdown bank OUT is ' +
+       'not "rods in" (the retired engine\'s `.every()`, lost in the second copy)',
+       eA2.getInstruments().rods_fully_in === false && eA2.eng.sdSteps === bank(),
        'control 0, shutdown ' + eA2.eng.sdSteps.toFixed(0) + ' -> rods_fully_in ' +
        eA2.getInstruments().rods_fully_in);
     eA2.applyCommand({ action: 'clear_failure', failure_id: 'failure_to_scram' });
@@ -1123,9 +1132,9 @@ function runSuite(SH, rec, quiet, only) {
     for (i = 0; i < 500; i++) eS.step(0.02);
     var tsS = eS.getTrueState();
     ck('failure_to_scram MECHANISM (10 s window — the long ride is run_pwr2_endurance\'s): ' +
-       'the trip LATCHES (turbine trips with it) while the rods stand at 200 and the core ' +
+       'the trip LATCHES (turbine trips with it) while the rods STAY FULLY OUT and the core ' +
        'keeps running — measured 76 % at 10 s, feedback-limited, unscripted',
-       eS.eng.pt.reactor_trip === true && eS.eng.rodSteps === 200 &&
+       eS.eng.pt.reactor_trip === true && eS.eng.rodSteps === bank() &&
        eS.eng.tb.tripped === true && tsS.power_pct > 50 &&
        eS.getActiveFailures().indexOf('failure_to_scram') !== -1,
        'power ' + tsS.power_pct.toFixed(1) + ' % with the trip annunciated — the ATWS');
@@ -1379,16 +1388,19 @@ function runSuite(SH, rec, quiet, only) {
      * "the LIVE limit, ~139 steps" was always meant to be about. A settled plant is the subject. */
     for (var i = 0; i < 3000; i++) eR.step(0.02);
     var gs = eR.getControlState().rod_groups;
-    ck('the control group carries the LIVE limit (~139 steps, not at limit) and the ' +
-       'shutdown group stays exempt (its evolutions are deliberate)',
-       gs[0].insertion_limit_steps >= 137 && gs[0].insertion_limit_steps <= 141 &&
+    ck('the control group carries the LIVE limit (a ~70 %-withdrawn floor, not at limit) and ' +
+       'the shutdown group stays exempt (its evolutions are deliberate)',
+       /* THE LIMIT IS A PERCENTAGE (#602) — RIL is (lo + (hi-lo)*f)/100 * BANK and always
+        * was. 137-141 was 69 % of a 200-step bank written as steps. */
+       gs[0].insertion_limit_steps >= frac(0.685) && gs[0].insertion_limit_steps <= frac(0.705) &&
        gs[0].at_insertion_limit === false &&
        gs[1].insertion_limit_steps === null && gs[1].at_insertion_limit === false,
-       'RIL ' + gs[0].insertion_limit_steps);
+       'RIL ' + gs[0].insertion_limit_steps + ' (' +
+       (100 * gs[0].insertion_limit_steps / bank()).toFixed(1) + ' % of ' + bank() + ')');
     ck('the board layer\'s rod_limit_margin channel tracks the engine (was pinned at its ' +
        '912 default)',
        Math.abs(eR.instruments.reading.rod_limit_margin - eR.eng._rodLimitMargin) < 1e-9 &&
-       eR.instruments.reading.rod_limit_margin < 100,
+       eR.instruments.reading.rod_limit_margin < frac(0.5),
        'margin ' + eR.instruments.reading.rod_limit_margin);
     var rowLO = (eR.getProtectionConfig().alarms || []).filter(function (a) {
       return a.id === 'rod_limit_approach';

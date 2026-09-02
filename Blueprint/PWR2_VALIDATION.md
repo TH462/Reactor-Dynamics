@@ -10135,3 +10135,165 @@ answered it first time.
 `run_pwr2_engine` **138/138, 75/75 mutations** (130/73 before). `run_pwr2_shell` **149/149, 49/49** (147/48). Aggregate `run_all` green
 before the commit. Phase 1 changes no behaviour: every other check in the tree is unmoved, which is
 the whole assertion this commit makes.
+
+## 129. #602 PHASE 2 — THE BANK IS 627 STEPS AND THE S-CURVE IS BANK OVERLAP; SIXTEEN CHECKS WERE FRACTIONS SPELLED AS ABSOLUTES — 2026-09-01
+
+*(OWNER RULING, 2026-09-01: "its a go. yes on hoise as its own commit first".)*
+
+Phase 1 (§128) hoisted the scale to one constant without moving it. This moves it:
+**`max_steps` 200 -> 627**, **`curve_flatten` 0.8 -> 0.36**, worths untouched. The derivation,
+the refutation of the alternative, and the ride table are all in §128.2-§128.5 and are not
+repeated here. What follows is what the change COST and what it TAUGHT.
+
+### 129.1 The plant, measured after the change
+
+```
+DIFFERENTIAL  min 4.15  mean 6.49  peak 8.82 pcm/step     [sourced band 4-12]  IN BAND
+insertion rate at FAST                       9.3 pcm/s    [Ginna ch15 analyses 5-75]
+full pull    slow 90 min - normal 14.9 - fast 9.9         [real 627-count at 72/min = 8.7]
+critical     226-238 steps (36-38 % withdrawn)            [bank D sits ~210/230 at power]
+trip reactivity                              7744 pcm     [unchanged; Ginna assumes >= 3500]
+```
+
+The whole profile is inside the sourced band with the total worth untouched, which was the goal.
+
+### 129.2 SIXTEEN CHECKS REDDENED AT ONCE, AND ONLY TWO WERE ARITHMETIC
+
+`run_pwr2_engine` went from green to 16 failures on a two-constant change. Every one was a
+FRACTION OF TRAVEL that had been written as an absolute — correct and indistinguishable while the
+bank happened to be 200 steps. They sorted into five kinds, and the kinds are the lesson:
+
+**(a) Fractions spelled as absolutes — 17 sites.** `rod_target 86` was 43 % of travel;
+`sdSteps === 200` was "fully out". Now `frac(0.43)` and `bank()`. A literal in these fixtures is
+now a claim that the number does NOT scale, which is true of none of them.
+
+**(b) Percentages pinned as steps.** The rod-insertion-limit checks asserted `=== 140` and `~72`
+for a curve that has always been `(lo_pct + (hi_pct - lo_pct) * f) / 100 * BANK()`. The
+percentages never moved; only their rendering did.
+
+**(c) Ride durations that walk the bank.** A 627-step pull takes 3.135x longer, so fixed
+`run(eng, N)` calls expired before reaching their subject — which is why three checks reported
+`0.0 %` and `cause null` rather than a wrong number. Added `walk(secs)`, and scaled ONLY the
+durations set by rod travel. Thermal and control settling times were deliberately left alone;
+pushing those through the same helper would launder an unrelated number.
+
+**(d) A DETECTION THRESHOLD, and this is the one that accuses the plant.**
+`run_pwr2_lossofload` captured the scram with `ts.rod_steps < 190` — "the rods have visibly
+started to move", 95 % of a 200-step bank. On 627 steps that is 30 % withdrawn, so it waited until
+the rods were nearly all the way IN and read the drop **3.8 s late** (10.1 s against a setpoint at
+6.3 s, blowing a 2.6 s window). **That failure reads as a slow scram.** A stale threshold does not
+announce itself as currency; it announces itself as a physics regression in the thing it measures.
+
+**(e) A MEASURED PROFILE, which cannot be scaled at all.** The controlled-startup ladder
+(84 -> 86 -> block -> 96 of 200) is an operator profile, not a ratio. Criticality is set by boron
+against rod worth and the worth CURVE moved too, so the same fraction of travel is a different
+amount of reactivity. Scaling it produced a fixture that scrammed mid-ladder and threw. Re-measured
+settled at Normal from hot_zero_power, 719 ppm:
+
+```
+  224 steps -> 0.36 %   critical, below P-10        250 -> 20.80 %  the IR rod stop asserts
+  232       -> 10.75 %  P-10 MET                    258 -> 24.13 %  still no trip
+  235       -> 12.97 %  where the blocks are taken  261 -> SCRAM on ir_high_flux
+  and with BOTH blocks taken, 295 -> 38.0 % untripped, past the 35 % power-range setting.
+```
+
+### 129.3 THE HELD-PRESS CHECK BECAME A PAIR, BECAUSE THE PLANT CHANGED
+
+The one failure that was not currency. It asserted "the stop parks the bank, and the 25 % IR trip
+ends the ascent anyway" — true on the 200-step bank at EVERY rate, because one step spanned the
+whole 20 %->25 % flux window and nothing could sit inside it. Measured on 627:
+
+```
+  slow    stop at 254 st / 19.8 %  ->  NO TRIP, settles 21.7 %   the stop HOLDS
+  normal  stop at 269 st / 20.7 %  ->  coasts to 26.8 %, trips on ir_high_flux
+  fast    stop at 273 st / 20.3 %  ->  coasts to 29.3 %, trips on ir_high_flux
+```
+
+Both halves are pinned now, and the pair IS the sourced relationship: WTSM has the stop act first
+and the trip catch what it does not hold, and Ginna TS Bases B 3.3.1 Fn 3 says limiting withdrawal
+*"MAY terminate the transient and eliminate the need to trip the reactor"* — MAY. A stop that held
+at every rate would make the trip behind it unreachable; one that held at no rate would be
+decoration. **The old plant was the second case.**
+
+⚠ AN EARLIER REPORT IN THIS EFFORT SAID "at 627 the rod stop does its job" WITHOUT QUALIFICATION.
+That was measured at Slow only. It is rate-dependent, and the correction is recorded here rather
+than quietly fixed, because the unqualified version was told to the owner.
+
+### 129.4 THE ROD-INSERTION-LIMIT STORY LOST ITS WINDOW, AND THE DILUTION WAS NOT THE DEFECT
+
+The RIL pair rode a story: insert, power sags a long way, the limit recedes and the margin opens
+wide, then dilute — power recovers, the limit climbs, the margin closes past RIL+10. It needed an
+insert that could sag power to ~85.8 %. On the flatter curve the same fractional insert reaches
+only 98.3 %, and inserting deep enough to sag power that far now TRIPS (measured: 66 % -> 87.6 %
+and scram; 67 % -> 91.7 % and scram). That is not a regression — it is why a real bank D sits near
+210 of 231 and boron carries the bulk.
+
+**AND THE DILUTION LOOKED BROKEN, WHICH IT IS NOT.** Measured over 600 s at -0.10 ppm/s:
+
+```
+  t=0    boron 625.8  power  98.32  Tavg 272.1  RIL 432  margin 19
+  t=60   boron 620.9  power 100.66  Tavg 273.3  RIL 439  margin 12
+  t=600  boron 611.8  power  96.16  Tavg 278.6  RIL 422  margin 29
+```
+
+Boron falls and power RISES first — the dilution lands. It settles near 96 % while boron keeps
+dropping, because at a HELD LOAD the negative moderator coefficient takes the added reactivity as
+TEMPERATURE (272 -> 279 degC), not as power. Correct physics. **This was reported to the owner as a
+possible defect before it was measured; the measurement retracted it.** The surviving claim — that
+the limit CHASES POWER (RIL 432 -> 439 -> 422 across that ride) — is what the interlock is about
+and never depended on how far an insert could sag the plant.
+
+### 129.5 THE MUTATION HARNESS CAUGHT THE RE-AIM DROPPING COVERAGE
+
+Re-aiming the RIL pair removed the only ride that ever drove `_rodAtLimit` TRUE — the ROD LIMIT
+LO-LO annunciator's whole basis — and `at-limit is never computed` came straight back BLIND. The
+fact is now driven directly (park the bank under the live limit, read the flag) instead of through
+a story that no longer has a window. **A check re-aimed around a fact can silently take the fact
+with it, and only an injection notices.**
+
+### 129.6 The 1/M ladder is RE-SHAPED, not re-scaled — and that is a teaching choice
+
+The checklist's bursts and their count-rate acceptance criteria are a measured #244 artifact.
+Scaled directly, the fifth burst (70/200 -> 219) lands PAST the source-range/intermediate-range
+handoff — SR reads **0** — with SUR at **1.03 DPM**, over the <=1 DPM the checklist itself teaches.
+Re-shaped so every burst keeps the detector on scale and the rate inside the target:
+
+```
+  burst   steps   settled SR    1/M     SUR peak        (baseline 501 cps at 0 steps)
+    1       94       791 cps   0.634      0.12
+    2      157     1,571       0.319      0.26
+    3      188     3,542       0.141      0.45
+    4      202     8,090       0.062      0.58
+    5      211    24,119       0.021      0.70
+```
+
+The 1/M convergence is better than the old five points. **This is the one place in #602 where a
+teaching sequence was chosen rather than a number derived**, and it is flagged as such to the owner.
+
+### 129.7 THE MANUAL SURFACE WAS ONE WORD, AND THE ESTIMATE THAT SAID THIRTY WAS A BAD GREP
+
+Reported to the owner as "30 mentions across 13 chapters" and used to justify dispatching a
+parallel agent. Checked before dispatching: `74.5` in chapters 03/06/09 is **74.5 kPa** of
+condenser vacuum; `912 / 319 / 456 steps` are the RETIRED engine's fine-step bank, under a banner
+in chapter 04 saying so; `~145` in chapter 12 is **psi**. The only place the manual set describes
+PWR2's bank in the old currency is **05 §2.2**, *"with a 200-step bank"*. One word.
+
+The insertion-limit prose in 09 §3.0 and 12 is written in PERCENTAGES and is scale-independent by
+construction. **An agent handed that list would have "corrected" a vacuum pressure into a rod
+position** — which is the defect class this whole issue exists to remove, with more hands on it.
+
+### 129.8 RULED
+
+*(OWNER RULING, 2026-09-01: "1. A… 2. A." — on two options blocks: the 1/M burst spacing STANDS AS AUTHORED at 94/157/188/202/211, and the rate-dependent intermediate-range rod stop is ACCEPTED as the sourced behaviour. Both were the no-change path; recorded so neither is re-litigated as an unexamined default.)*
+
+### 129.9 Gates
+
+`run_pwr2_engine` **140/140, 75/75 mutations** · `run_pwr2_shell` **149/149, 49/49** ·
+`run_pwr2_protection` 125/125 · `run_pwr2_board` 71/71 · `run_pwr2_kernel` 36/36 ·
+`run_pwr2_lossofload` 9/9 · **`run_checklist_pwr2` 109/109 — the full Mode 5 -> full power ->
+Mode 5 chain, one continuous plant, replayed on the 627-step bank.** `run_manual_rev` 15/15.
+
+**AND THE ITERATION LOOP GOT 26x FASTER MID-EFFORT.** `run_checklist_pwr2` already took a scope
+argument (`process.argv[2]`) — one leg is **20 s** against 521 s for the chain. It was there the
+whole time and went unchecked, exactly like the missing mutation flag in §128. Twice in one effort,
+the cheapest available win was reading what the tool already accepted.

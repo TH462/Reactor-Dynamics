@@ -58,6 +58,33 @@ to suppress the guard.
 
 Inert when unused — an unflagged run exits 0 with an identical score.
 
+### Changed (#602 phase 2: the control bank is the sourced 627 steps, and its S-curve is bank overlap — 2026-09-01)
+
+*(OWNER RULING, 2026-09-01: "its a go. yes on hoise as its own commit first".)*
+
+`max_steps` **200 → 627**, `curve_flatten` **0.8 → 0.36**, worths untouched. The peak differential
+goes **36.6 → 8.82 pcm/step**, inside the sourced **4–12** band (NRC HRTD WAT 05, ML11216A094), with
+trip reactivity unchanged at 7,744 pcm. 627 is WTSM 8.1 §8.1.5.4's four-bank / 231-step /
+131-overlap program walked out; 0.36 is the true overlapped curve's own peak/mean ratio of 1.36, so
+`curve_flatten` stops being the "feel adjustment" it was tagged as and becomes bank overlap.
+
+**What the player sees.** Criticality near 226–238 steps (36–38 % withdrawn). A full pull takes
+9.9 min at Fast against a real plant's 8.7. The startup checklist's 1/M ladder is re-shaped to
+94/157/188/202/211 — scaled directly, the fifth burst lands past the source-range handoff with the
+startup rate over the 1 DPM the checklist itself teaches. And the intermediate-range rod stop now
+*means* something: a held withdrawal at Slow parks the bank and rides out untripped, while Normal
+and Fast outrun it and the 25 % trip ends the ascent. On the old bank one step spanned the whole
+20→25 % window, so no rate could sit inside it.
+
+**Sixteen gate checks reddened on a two-constant change, and only two were arithmetic** — the rest
+were fractions of travel spelled as absolutes: `rod_target 86` meaning 43 % of travel, insertion-limit
+percentages pinned as steps, ride durations that walk the bank, and one **detection threshold**
+(`rod_steps < 190` = 95 % of the old bank) that read the scram 3.8 s late and failed looking like a
+slow scram rather than stale currency. The controlled-startup ladder had to be re-measured outright,
+because a measured operator profile cannot be scaled.
+
+Full working: `Blueprint/PWR2_VALIDATION.md` §129.
+
 ### Changed (#602 phase 1: the control bank scale is one constant instead of twenty-two literals — 2026-09-01)
 
 **No behaviour change.** `RODS.max_steps` is added beside the bank worths and set to **200**, the
