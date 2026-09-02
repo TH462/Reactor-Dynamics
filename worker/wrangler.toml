@@ -37,7 +37,11 @@ bucket_name = "reactor-dynamics-bundles"
 [[d1_databases]]
 binding = "STATS"
 database_name = "reactor-dynamics-stats"
-database_id = "PLACEHOLDER — run `wrangler d1 create reactor-dynamics-stats` and paste the id"
+database_id = "507aa1fb-b499-4851-8153-16b6b3b93793"   # created 2026-09-02, region ENAM
+# THE BINDING IS `STATS`, not the `reactor_dynamics_stats` wrangler prints on create.
+# src/rollup.js reads `env.STATS`, and getting this wrong is a SILENT no-write: the job
+# records "no STATS binding" in its own summary and returns, rather than throwing, so the
+# cron would run daily and store nothing with no error anywhere.
 
 # 05:10 UTC daily -- 00:10 EST / 01:10 EDT, i.e. shortly after the EASTERN day the job rolls
 # up has closed. Eastern and not UTC because the dashboard renders Eastern days *(OWNER

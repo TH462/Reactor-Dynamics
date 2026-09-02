@@ -72,3 +72,6 @@ pylibs/
 # so relying on .vercelignore to hold back test/, Blueprint/, Manuals/ and the dev
 # harness pages stops working the moment the host changes.
 dist-site/
+
+# wrangler local state/cache (dev sessions, remote-preview bundles) -- never committed
+worker/.wrangler/
