@@ -69,6 +69,10 @@
    * with the reason inside the window, and resets-then-executes after it, signal present
    * or not (the WTSM 12.3.2.3 circuit; the re-arm block stops automatic re-actuation). */
   function resetDelayS() { return root.RD.pwr2.protection.RESET.delay_s; }
+  /* THE BANK SCALE (#602 phase 1) — the same live read the engine uses, for the same reason.
+   * Twelve literal 200s lived in this file, four of them inside `(24 / 912) * 200` rate
+   * conversions where the number is doing real work and reads like arithmetic. */
+  function bankSteps() { return root.RD.pwr2.kinetics.RODS.max_steps; }
 
   /* MIRROR-ONLY: a NUMERIC board reading the reused pwr instrument layer publishes and this
    * engine has no internal twin for. Such a failure is landed by _mirrorInstr on the board
@@ -283,7 +287,7 @@
       if (e.pt.reactor_trip && !(e.rodSteps <= 0.5 && e.sdSteps <= 0.5)) {
         throw new Error('RPS RESET BLOCKED: the rods are not at the bottom of their travel ' +
           '(control ' + e.rodSteps.toFixed(0) + ', shutdown ' + e.sdSteps.toFixed(0) +
-          ' of 200 steps) — the reactor trip breakers reset with the rods in.');
+          ' of ' + bankSteps() + ' steps) — the reactor trip breakers reset with the rods in.');
       }
       EN.command(e, 'reset_protection', true);
       e.rodTarget = e.rodSteps; e.sdTarget = e.sdSteps;
@@ -300,7 +304,7 @@
     rod_start:        function (e, c) {
       if (c.speed) EN.command(e, 'rod_speed', c.speed);
       EN.command(e, c.group_id === 'shutdown_rods' ? 'sd_target' : 'rod_target',
-        c.direction > 0 ? 200 : 0);
+        c.direction > 0 ? bankSteps() : 0);
     },
     rod_stop:         function (e, c) {
       if (c.group_id === 'shutdown_rods') EN.command(e, 'sd_target', e.sdSteps);
@@ -743,7 +747,7 @@
     stuck_open_spray: function (e, c) { EN.command(e, 'spray_stick', c !== false); },
     rod_withdrawal_runaway: function (e, c) {
       EN.command(e, 'rod_runaway',
-                 (c && c.severity !== undefined ? c.severity : 0.5) * (24 / 912) * 200);
+                 (c && c.severity !== undefined ? c.severity : 0.5) * (24 / 912) * bankSteps());
     },
     /* the old command toggled a discrete pump; PWR2's actuator is charging DEMAND — OFF is
      * demand 0 in manual, ON restores nothing by itself (dial a flow or re-select AUTO).
@@ -816,7 +820,7 @@
          * parks the bank at 200/200, so the failure only has travel on a plant whose rods
          * are inserted — declared, not hidden. */
         EN.command(e, 'rod_runaway',
-                   (c.severity !== undefined ? c.severity : 0.5) * (24 / 912) * 200);
+                   (c.severity !== undefined ? c.severity : 0.5) * (24 / 912) * bankSteps());
       }
       else if (c.failure_id === 'sgtr') {
         /* A break AT the sg_primary node — the facade routes it into the SECONDARY with the
@@ -932,7 +936,7 @@
        * number, the #500 override pattern, copied so the shared table is untouched. */
       this.instruments.specs = Object.assign({}, this.instruments.specs, {
         rod_limit_margin: Object.assign({}, this.instruments.specs.rod_limit_margin,
-                                        { range: [0, 200] }),
+                                        { range: [0, bankSteps()] }),
         /* ONE NAME ADDED TO THE STATUS LIST (#571), the same copy-don't-touch pattern.
          * `_copyStatus` reads ONLY this array — `this.reading[st[i]] = ex[st[i]]` — so a key
          * `_instrExtras` publishes but the list does not name never reaches the reading at all.
@@ -991,7 +995,7 @@
      * rod_limit_margin feeds ROD LIMIT LO (in THIS bank's steps; the alarm row's setpoint
      * is overridden to the sourced RIL+10 in this currency — see getProtectionConfig) */
     ex.rod_at_limit = e._rodAtLimit === true;
-    ex.rod_limit_margin = e._rodLimitMargin === undefined ? 200 : e._rodLimitMargin;
+    ex.rod_limit_margin = e._rodLimitMargin === undefined ? bankSteps() : e._rodLimitMargin;
     /* BOTH BANKS (#545). The retired engine has had this right since #75 —
      * `this.rod_groups.every(g => g.position_pct <= RODS_IN_PCT)` — and this was a second
      * copy that lost the `every`, so the kernel's RODS_NOT_INSERTED reset permissive was
@@ -1367,8 +1371,8 @@
        * there by the board itself. */
       rod_groups: [
         { id: 'control_rods', name: 'Control Rods', function: 'control',
-          steps: Math.round(e.rodSteps), max_steps: 200,
-          position_pct: 100 * e.rodSteps / 200,
+          steps: Math.round(e.rodSteps), max_steps: bankSteps(),
+          position_pct: 100 * e.rodSteps / bankSteps(),
           moving: !ts.scrammed && e.rodSteps !== e.rodTarget,
           direction: e.rodTarget > e.rodSteps ? 1 : (e.rodTarget < e.rodSteps ? -1 : 0),
           speed: e.rodSpeedSel || 'normal', scrammed: !!ts.scrammed,
@@ -1377,8 +1381,8 @@
           insertion_limit_steps: e._rilSteps === undefined ? null : e._rilSteps,
           at_insertion_limit: e._rodAtLimit === true },
         { id: 'shutdown_rods', name: 'Shutdown Rods', function: 'shutdown',
-          steps: Math.round(e.sdSteps), max_steps: 200,
-          position_pct: 100 * e.sdSteps / 200,
+          steps: Math.round(e.sdSteps), max_steps: bankSteps(),
+          position_pct: 100 * e.sdSteps / bankSteps(),
           moving: !ts.scrammed && e.sdSteps !== e.sdTarget,
           direction: e.sdTarget > e.sdSteps ? 1 : (e.sdTarget < e.sdSteps ? -1 : 0),
           speed: e.rodSpeedSel || 'normal', scrammed: !!ts.scrammed,

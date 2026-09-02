@@ -30,6 +30,39 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
 
 ## [Unreleased]
 
+### Changed (#602 phase 1: the control bank scale is one constant instead of twenty-two literals — 2026-09-01)
+
+**No behaviour change.** `RODS.max_steps` is added beside the bank worths and set to **200**, the
+value all twenty-two literals already carried. Phase 2 moves it to the sourced **627** and
+`curve_flatten` to **0.36**.
+
+*(OWNER RULING, 2026-09-01: "its a go. yes on hoise as its own commit first".)*
+
+**Why the scale has to move.** PWR2's control bank is 4068 pcm over 200 steps — peak differential
+**36.6 pcm/step** against a sourced **4–12** (NRC HRTD WAT 05, ML11216A094; Ginna UFSAR ch15
+assumes 10). Surfaced by #601: the sourced 20 % rod stop and 25 % trip land on the **same step of
+bank**. Cutting the worth instead is refuted — it would take trip reactivity to 1839 pcm against
+Ginna's conservative 3500. The sourced combined scale is **627 BOU counts** (WTSM 8.1 §8.1.5.4's
+overlap program walked out), and `curve_flatten` turns out to be **bank overlap**, not feel: the
+true overlapped 4-bank curve has peak/mean **1.36**, which for this `scruve` names K = 0.36
+exactly. Full working in `Blueprint/PWR2_VALIDATION.md` §128.
+
+**Why the hoist is its own commit.** `200` appeared at 22 sites — the rod-insertion-limit percent
+map, the initial conditions, both target clamps, the scram profile per bank, the runaway cap, the
+margin default, the published rod groups, and two `(24 / 912) * 200` rate conversions. A harness
+that patched three and missed the target clamp held the bank at 200 of a demanded 627 and reported
+**"never critical" for three plants in a row**, silently.
+
+**The gate is functional, not a source scan** — it moves the constant to 313 and rides the plant,
+asserting every consumer follows, with three mutations restoring a stale 200 at the sites whose
+failure mode is silence. It caught three of its own checks being hollow while being written: a
+scram check sampled at 20 s where both builds converge to zero, the same check re-aimed at tick 1
+where both still read 313.0 (the divergence is tick 2 — 310.5 against 198.4), and a multi-line
+mutation anchor carrying a literal backslash-n where the source has a real newline.
+
+`run_pwr2_engine` 138/138 with 75/75 mutations (was 130/73); `run_pwr2_shell` 149/149 with 49/49
+(was 147/48); `run_pwr2_protection` and `run_pwr2_board` unmoved.
+
 ### Added / Fixed (#601/#600: the startup net gains its second rung, and TRIP BLOCKS stops offering two blocks no operator has — 2026-09-01)
 
 Filed from a player question about the three TRIP BLOCKS rows reading *NOT ON THIS PLANT*.

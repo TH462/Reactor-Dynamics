@@ -29,6 +29,107 @@ and the user-visible summary in `CHANGELOG.md`. This file points at those and tr
 
 ---
 
+## Session log — 2026-09-01-develop-b (#602 phase 1 — the bank scale was 22 bare literals, and that is why it could not be moved)
+
+*(OWNER RULING, 2026-09-01: "its a go. yes on hoise as its own commit first" — on a recommendation
+of 627 steps, `curve_flatten` 0.36, worths unchanged, hoist first as its own gated commit.)*
+
+**Behaviour does not move in this commit.** `RODS.max_steps` is added and set to **200**, the value
+all twenty-two literals already carried. Phase 2 moves it to 627 and `curve_flatten` to 0.36.
+
+### Why the scale had to move at all (the measurement, in one table)
+
+Entered from #601: the sourced 20 % intermediate-range rod stop and the sourced 25 % trip land **on
+the same step of bank** — 88.1 and 88.2, measured. The owner asked how many steps real plants have.
+
+| | ours | sourced |
+|---|---|---|
+| control bank differential, peak | **36.61 pcm/step** | **4–12 pcm/step**, NRC HRTD WAT 05 (ML11216A094); Ginna UFSAR ch15 assumes 10 |
+| control bank worth | 4068 pcm | 1000 pcm **per bank**, and a W plant has **four** |
+| trip reactivity | 7744 pcm | Ginna assumes **3500**, *"conservative with respect to the calculated trip reactivity worth available"* (ch15 §15.0.4) |
+| bank travel | 200 steps | **627 BOU counts** — WTSM 8.1 §8.1.5.4's 4-bank/231-step/131-overlap program walked out |
+
+**Cutting the worth is REFUTED by measurement**: to bring the differential into band by worth alone
+the control bank must fall to 966 pcm, taking trip reactivity to **1839 pcm**, about half the
+anchor plant's own conservative figure. The plant could not shut itself down. So the step count is
+the only lever, and it has a sourced value.
+
+**`curve_flatten` is not a feel adjustment — it is bank overlap.** Built the true overlapped
+4-bank curve and differentiated it: mean 6.49, **peak 8.81, peak/mean 1.36**. Overlap flattens the
+sum, because one bank's peak sits on its neighbour's toe. For this module's `scruve`,
+`peak/mean = 1 + K` exactly, so the overlapped set names its own constant: **K = 0.36**, against
+the 0.8 tagged in-source as *"NOT sourced and NOT physics"*. At 627/0.36 the whole profile
+(4.15–8.83) sits inside the sourced band and reproduces the real curve to 0.02 pcm/step.
+
+Ridden, one press held at Slow from Hot Zero Power: as built the stop and trip are the same step
+and the plant **trips**; at 627/0.36 the stop parks the bank at ~21 % and the plant **never trips**
+— which is what a rod stop is for. Criticality stays at 38–43 % withdrawn, so the ladder's shape
+survives and only the currency changes.
+
+### The hoist, and why it is its own commit
+
+**`200` was TWENTY-TWO bare literals** — ten in `pwr2_engine.js` (rod-insertion-limit percent map,
+the ICs, BOTH target clamps, the scram profile per bank, the runaway cap, the rod-limit margin
+default), twelve in `pwr2_shell.js` including two inside `(24 / 912) * 200` rate conversions where
+the number reads as arithmetic. Several are indistinguishable at a glance from `#200` the issue,
+`200 %/min` the runback, or `200 kg/s` of natural circulation.
+
+**MEASURED:** the harness written to ride the candidate scales patched three sites and missed the
+target clamp. The clamp held the bank at 200 of a demanded 627, so the plant sat at 32 % withdrawn,
+and **three cases in a row reported "never critical"** — clean, plausible, and entirely false. It
+looked like a finding about the physics. It was a finding about the constant.
+
+> **A number that appears as a bare literal at twenty-two sites is not a plant parameter. It is a
+> coincidence that twenty-two pieces of code have so far agreed on.**
+
+Now `RODS.max_steps`, **beside the worths**, because worth/travel/curve are one object:
+differential = worth × curve ÷ steps. Both consumers read it through a function (`BANK()`,
+`bankSteps()`) and never capture it.
+
+### The gate is FUNCTIONAL, and it caught three of its own checks being hollow
+
+A grep for `200` cannot tell a bank-scale literal from any other, and a check that counted them
+would be testing the grep. So the gate **moves the constant to 313 and rides the plant** — the IC,
+the rod groups, the target clamp, the scram ramp for both banks, the insertion-limit map, and in
+the shell the published `max_steps` **and** `position_pct`. Three mutations put a stale 200 back at
+the three sites whose failure mode is silence.
+
+**All three of the following were written this session, under comments quoting the hollow-check
+trap, and the harness caught every one:**
+
+1. *"the scram drives BOTH banks fully in"* sampled at **20 s** — the scram profile is a CEILING,
+   so a stale 200 makes the rods fall *faster*, not slower. Both builds read 0.00. `BLIND TO`.
+2. Re-aimed at **tick 1** — which reads **313.0 on BOTH builds**, the ramp not yet engaged.
+   `BLIND TO` again.
+3. A multi-line anchor in `run_pwr2_shell` written with a literal backslash-n where the source has
+   a real newline. `ANCHOR MISS`.
+
+A 12-tick trace found the real window: divergence at **tick 2**, clean **310.5** against stale
+**198.4**.
+
+> **PROBE THE WINDOW BEFORE YOU WRITE THE ASSERTION.** The trace takes ten seconds; each guess at
+> the sample point cost a seven-minute mutation replay to disprove. Two guesses, fourteen minutes,
+> and the trace would have answered it first time. This is the cheapest lesson in the session and
+> the one most likely to be re-learned.
+
+Four mutation anchors were also orphaned by the hoist (two per file) — named lines that the
+refactor rewrote. The gate reported them rather than passing, which is the standing trap working.
+
+### Gates
+
+`run_pwr2_engine` **138/138, 75/75 mutations** (was 130/73). `run_pwr2_shell` **149/149, 49/49**
+(was 147/48). `run_pwr2_protection` 125/125, `run_pwr2_board` 71/71 — unmoved, which is the whole
+assertion phase 1 makes.
+
+### On gate cost, since it came up
+
+No single gate takes 45 minutes. `run_pwr2_engine` is **420 s** and `run_pwr2_shell` **360 s**,
+dominated by the mutation self-test (75 and 50 full suite replays). The 45 minutes was five engine
+re-runs caused by the three hollow checks above. **The runners take no argv at all** — there is no
+way to skip the replay while iterating on one check, which is what made each guess cost seven
+minutes. A `--no-mutations` / `--grp=` flag follows in the next commit *(OWNER, 2026-09-01: "Commit
+then add the flag")*.
+
 ## Session log — 2026-09-01-develop-a (#600/#601 — the startup net gains its missing rung, and the TRIP BLOCKS panel loses two rows the sources never gave an operator)
 
 **Started from a player question:** *"why do some of the trip blocks say they are not in this

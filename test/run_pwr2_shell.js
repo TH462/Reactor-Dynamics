@@ -136,11 +136,35 @@ function runSuite(SH, rec, quiet, only) {
   ck('pzr_level_dev measures against PWR2\'s OWN program line, at the INDICATED tavg (HR1)',
      typeof rd.pzr_level_dev === 'number' && Math.abs(rd.pzr_level_dev - expDev) < 0.2,
      'dev ' + rd.pzr_level_dev.toFixed(2) + ' % vs own-program ' + expDev.toFixed(2) + ' %');
+  /* ---- THE BANK SCALE REACHES THE BOARD (#602 phase 1) -------------------------------------
+   * The engine half is in run_pwr2_engine; this is the surface half. `max_steps` and
+   * `position_pct` are what the board draws the rod readout from, and BOTH carried their own
+   * literal 200 — so a plant whose bank moved would have published a position percentage
+   * computed against a scale it no longer had, which is a wrong number that still renders.
+   * Functional, like the engine half: the constant is moved and the publication is read back. */
+  (function () {
+    var RODS = globalThis.RD.pwr2.kinetics.RODS, was = RODS.max_steps, PROBE = 313;
+    try {
+      RODS.max_steps = PROBE;
+      var eS = new SH.PWR2Engine({ initial_state: 'hot_full_power' });
+      eS.step(0.02);
+      var g = eS.getControlState().rod_groups;
+      ck('the published rod groups carry the plant bank scale, not a copy of it',
+         g[0].max_steps === PROBE && g[1].max_steps === PROBE,
+         'max_steps ' + g[0].max_steps + ' / ' + g[1].max_steps + ' at a scale of ' + PROBE);
+      ck('...and position_pct is computed against THAT scale — a stale divisor still renders',
+         Math.abs(g[0].position_pct - 100) < 0.5 && Math.abs(g[1].position_pct - 100) < 0.5,
+         'fully-withdrawn bank reads ' + g[0].position_pct.toFixed(1) + ' % / ' +
+         g[1].position_pct.toFixed(1) + ' % (a stale 200 divisor would say ' +
+         (100 * PROBE / 200).toFixed(1) + ' %)');
+    } finally { RODS.max_steps = was; }
+  })();
   var cs = eng.getControlState();
   ck('getControlState carries EVERY key the diagram reads (16 measured across ui/diagram)',
      cs.rod_groups.length === 2 &&
      cs.rod_groups[0].id === 'control_rods' && cs.rod_groups[1].id === 'shutdown_rods' &&
-     typeof cs.rod_groups[0].steps === 'number' && cs.rod_groups[0].max_steps === 200 &&
+     typeof cs.rod_groups[0].steps === 'number' &&
+     cs.rod_groups[0].max_steps === globalThis.RD.pwr2.kinetics.RODS.max_steps &&
      typeof cs.rod_groups[0].position_pct === 'number' &&
      typeof cs.pressure_setpoint === 'number' && typeof cs.steam_dump_pct === 'number' &&
      cs.steam_dump_setpoint > 6 && cs.steam_dump_setpoint < 8 &&
@@ -1930,6 +1954,7 @@ var pass = rec.filter(function (r) { return r.ok; }).length, fail = rec.length -
 var SHSRC = fs.readFileSync(path.join(SRC, 'pwr2_shell.js'), 'utf8').replace(/\r\n/g, '\n');
 /* Each entry's trailing { grp } names the section group that can SEE it (#513) — the replay
  * runs only that group, and the BLIND check still reds the runner if the tag is wrong. */
+var NL_ = '\n';   /* the two-char escape a multi-line anchor needs */
 var MUTATIONS = [
   /* #591 item 1 — the circulating-water sink. TWO anchors because the halves fail separately:
    * sever the door and the vacuum stops answering (the defect the owner actually found), while
@@ -2083,8 +2108,10 @@ var MUTATIONS = [
    "          return a.id === 'rod_limit_approach'\n            ? Object.assign({}, a, { setpoint: 10 })\n            : a;",
    "          return a.id === 'pzr_level_low'\n            ? Object.assign({}, a, { instrument: 'pzr_level', setpoint: 17.0 })\n            : a.id === 'rod_limit_approach'\n            ? Object.assign({}, a, { setpoint: 10 })\n            : a;", { grp: 'A' }],
   ['the shutdown group reverts to the pre-#506 snap (200 -> 0 in one frame on scram)',
-   "          steps: Math.round(e.sdSteps), max_steps: 200,\n          position_pct: 100 * e.sdSteps / 200,",
-   '          steps: ts.scrammed ? 0 : 200, max_steps: 200,\n          position_pct: ts.scrammed ? 0 : 100,', { grp: 'B' }],
+   "          steps: Math.round(e.sdSteps), max_steps: bankSteps()," + NL_ +
+   "          position_pct: 100 * e.sdSteps / bankSteps(),",
+   "          steps: ts.scrammed ? 0 : bankSteps(), max_steps: bankSteps()," + NL_ +
+   "          position_pct: ts.scrammed ? 0 : 100,", { grp: 'B' }],
   ['the rcp pump record loses flow_pct again (the board animation computes NaN and freezes)',
    "      pumps: [{ id: 'rcp', running: !e.sys.pumpTripped,\n                flow_pct: ts.pump_flow_pct !== undefined ? ts.pump_flow_pct\n                          : (e.sys.pumpTripped ? 0 : 100) }]",
    "      pumps: [{ id: 'rcp', running: !e.sys.pumpTripped }]", { grp: 'A' }],
@@ -2115,8 +2142,15 @@ var MUTATIONS = [
    '          insertion_limit_steps: e._rilSteps === undefined ? null : e._rilSteps,\n          at_insertion_limit: e._rodAtLimit === true },',
    '          insertion_limit_steps: null, at_insertion_limit: false },', { grp: 'I' }],
   ['the margin channel is severed (the board reads the healthy default for ever)',
-   '    ex.rod_limit_margin = e._rodLimitMargin === undefined ? 200 : e._rodLimitMargin;',
-   '    ex.rod_limit_margin = 200;', { grp: 'I' }],
+   '    ex.rod_limit_margin = e._rodLimitMargin === undefined ? bankSteps() : e._rodLimitMargin;',
+   '    ex.rod_limit_margin = bankSteps();', { grp: 'I' }],
+  /* THE HOIST ITSELF (#602 phase 1) — the surface half. A stale divisor does not throw and
+   * does not blank the readout: it renders a fully-withdrawn 313-step bank as 156.5 %
+   * withdrawn, a wrong number that still draws. That is why the check beside it reads
+   * position_pct and not only max_steps. */
+  ['position_pct keeps its own stale 200 divisor (a full bank renders over 100 %)',
+   '          position_pct: 100 * e.rodSteps / bankSteps(),',
+   '          position_pct: 100 * e.rodSteps / 200,', { grp: 'A' }],
   ['the ROD LIMIT LO override is dropped (the row fires at 40 of this bank\'s steps — 4x early)',
    /* anchor re-cut when #500's override left the map (2026-08-29) — it used to open with the
     * `: ` that chained off the pzr_level_low arm, and an anchor that no longer matches is a

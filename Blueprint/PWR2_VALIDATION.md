@@ -9940,3 +9940,198 @@ rather than passing** — the standing trap, working. Re-anchored, plus six new 
 deleted, the trip carried at the rod stop's 20 %, the request never revoked below P-10, the two
 levers collapsed back into one, the C-1 stop restored to the power-range lever, and an at-power
 initial condition booting without the intermediate-range block.
+
+## 128. #602 PHASE 1 — THE BANK SCALE WAS TWENTY-TWO BARE LITERALS, AND THAT IS WHY IT COULD NOT BE MOVED — 2026-09-01
+
+*(OWNER RULING, 2026-09-01: "its a go. yes on hoise as its own commit first" — on a recommendation
+of 627 steps, `curve_flatten` 0.36, worths unchanged, with the hoist as its own gated commit.)*
+
+**Phase 1 only.** Behaviour does not move here: `RODS.max_steps` is added and set to **200**, the
+value every one of the twenty-two literals already carried. Phase 2 moves it to 627 and
+`curve_flatten` to 0.36. The measurement that justifies both is §128.2–§128.5; the reason they are
+two commits is §128.6.
+
+### 128.1 How this was entered
+
+Out of #601. The sourced 20 % intermediate-range rod stop and the sourced 25 % trip landed **on the
+same step of bank** — measured, 88.1 and 88.2 — so the C-1 rod stop could not be a distinct
+operator experience at all. The owner asked how many steps real plants have. The answer turned out
+to settle a different question.
+
+### 128.2 The differential worth is 3.1x the sourced band
+
+`pwr2_kinetics` carries **4068 pcm of control bank over 200 steps**. Measured across the curve:
+
+```
+  min 4.07   mean 20.34   PEAK 36.61 pcm/step
+```
+
+**SOURCED — NRC HRTD WAT 05 Transients (ML11216A094)**, *Significant Parameters (Typical Values)*,
+Control Rod Worths, verbatim: *"Bank: 1000 pcm / Individual: 150 pcm / Differential worth: 4 to 12
+pcm/step"*. **Ginna UFSAR ch15 (ML20339A101)** independently: *"A constant rod worth of 10 pcm/step
+is assumed. This rod differential worth is conservative…"*.
+
+So the peak is **3.1x the top of the band** and **3.7x the analysis value**.
+
+### 128.3 CUTTING THE WORTH IS REFUTED, and the measurement is the reason
+
+The obvious cheap fix — leave the step count, shrink the bank — was measured and it fails:
+
+| | ours | sourced |
+|---|---|---|
+| Control bank | 4068 pcm | 1000 pcm **per bank**; a Westinghouse plant has **four** |
+| Shutdown bank | 3676 pcm | — |
+| **Trip reactivity, HFP to all-rods-in** | **7744 pcm** | Ginna assumes **3500 pcm**, *"conservative with respect to the calculated trip reactivity worth available"* (UFSAR ch15 §15.0.4) |
+
+Bringing the peak differential into band by worth alone needs the control bank at **966 pcm**,
+which takes trip reactivity to **1839 pcm** — roughly HALF the figure the anchor plant's own
+analyses call conservative. The plant would not be able to shut itself down. That is why the
+one-constant fix is not available, and it is worth recording as a refutation rather than as a road
+not taken: 4068 pcm is **4.07 banks** of sourced worth, which is exactly what a single lumped
+control bank standing in for four ought to carry.
+
+### 128.4 THE STEP COUNT HAS A SOURCED VALUE, AND IT IS 627
+
+**WTSM 8.1 §8.1.5.4 (ML11223A252)**, the Bank Overlap Unit, verbatim:
+
+> *"control bank A withdraws first until it reaches a preselected setpoint, for example 131 steps
+> on the control bank A step counters or 131 counts on the BOU. When control bank A takes its 132nd
+> step, control bank B takes its first step. Control banks A and B move in unison until control
+> bank A reaches the top of the core (231 steps on control bank A or 231 counts on the BOU) …
+> until it reaches the next preselected overlap point (131 steps on bank B or 262 counts on the
+> BOU) … This sequence and overlap continues until all control banks are withdrawn from the core."*
+
+and the BOU *"counts from 0 to 999"*. Corroborated on the anchor plant — **Ginna TS Bases B 3.1.7
+(ML20339A221)**: the MRPI *"does not display the actual shutdown rod positions between 0 and 230
+steps"*, and one step is *"approximately 5/8 inch"* (230 x 0.625 = 143.75 in, the 12 ft core, so
+the sourced set checks against itself). **NUREG-1431 Rev 4 STS Bases (ML12100A228)**: bank D
+*"inserted near its normal position (i.e., 210 steps withdrawn)"* at power.
+
+Walked out step by step for 4 banks x 231 steps at a 131-step overlap release: **full control-bank
+withdrawal = 627 BOU counts.** That is the scale the operator actually commands.
+
+> **The whole discrepancy in one line: our lumped bank carries the worth of 4.07 banks and the
+> travel of 0.87 of one.**
+
+### 128.5 `curve_flatten` IS NOT A FEEL ADJUSTMENT — IT IS BANK OVERLAP, AND IT SHOULD BE 0.36
+
+The constant is tagged in `pwr2_kinetics.js`: *"The S-curve flattening is NOT sourced and is NOT
+physics — it is a feel adjustment the owner made for low-power startup. [ruled] is the only honest
+tag"*. It is carried at **0.8**.
+
+I built the TRUE overlapped curve — four banks of 1017 pcm, 231 steps each, on the physical
+cosine-flux S-curve (K = 1), stepped through the 131-overlap program above — and differentiated it:
+
+```
+TRUE 4-bank overlapped set, 627 counts, the SAME 4068 pcm total:
+  min 0.00   mean 6.49   PEAK 8.81 pcm/step   peak/mean = 1.36
+```
+
+**Overlap FLATTENS the combined curve.** When one bank sits at its differential peak its neighbour
+is at its toe, so the sum is far flatter than any single S-curve — peak/mean **1.36**, not the
+**2.00** a lone bank gives. For this module's `scruve`, `peak/mean = 1 + K` exactly. So the
+overlapped set's own ratio names the constant: **K = 0.36**.
+
+The sweep, every row holding 4068 pcm:
+
+| steps | K | min | mean | PEAK | vs the sourced 4-12 band |
+|---|---|---|---|---|---|
+| 200 | 0.8 | 4.07 | 20.34 | 36.61 | PEAK OVER 12 — as built |
+| 627 | 0.8 | 1.30 | 6.49 | 11.68 | peak in, toe under 4 |
+| **627** | **0.36** | **4.15** | **6.49** | **8.83** | **ALL IN BAND** |
+| 627 | 0 | 6.49 | 6.49 | 6.49 | in band, but no S-curve at all |
+
+627 / 0.36 reproduces the true overlapped set to within **0.02 pcm/step**, with total worth
+untouched. `curve_flatten` stops being an unsourced feel knob and becomes a declared
+single-curve approximation of the overlap program.
+
+**RIDDEN**, one press held at Slow from Hot Zero Power — the startup checklist's own idiom:
+
+| case | steps | K | critical at | to critical | IR ROD STOP | IR TRIP |
+|---|---|---|---|---|---|---|
+| AS BUILT | 200 | 0.8 | 86 / 43 % | 12.3 min | 88.1 st / 20.1 % | **88.2 st / 24.9 % — trips** |
+| LONGER ONLY | 627 | 0.8 | 260 / 41 % | 37.0 min | 269.9 st / 20.1 % | no trip, ends 22.6 % |
+| **SOURCED** | **627** | **0.36** | **239 / 38 %** | **34.0 min** | **253.5 st / 19.8 %** | **no trip, ends 21.7 %** |
+| FLAT | 627 | 0 | 212 / 34 % | 30.2 min | 231.0 st / 19.9 % | no trip, ends 21.0 % |
+
+At 627 the rod stop **does its job**: the held press parks at ~21 % and the plant never trips,
+which is what WTSM says a rod stop is for and what #572's comment claimed while the plant could not
+deliver it. The ladder's SHAPE survives — criticality stays at 38-43 % withdrawn — so only the
+currency moves, not the procedure.
+
+Rod speeds need no change: 7 / 42 / 63 steps/min against WTSM 8.1's sourced **8-72, normal 48**. A
+full pull goes 3.2 min -> 9.9 min, against a real plant's 8.7 min at its maximum 72/min.
+
+**THE HONEST COST, stated rather than buried:** the differential swing the player feels drops from
+**9x** (4.07 -> 36.61) to **2.1x** (4.15 -> 8.83). The S-curve becomes much gentler. That is what a
+real overlapped bank does, and it is still a reduction in how dramatic the rod-worth lesson feels.
+
+### 128.6 PHASE 1 — WHY THE HOIST IS ITS OWN COMMIT
+
+**`200` was TWENTY-TWO bare literals.** Ten in `pwr2_engine.js` — the rod-insertion-limit
+percent-to-steps map, the initial conditions, BOTH target clamps, the scram insertion profile for
+each bank, the runaway cap, the rod-limit margin default — and twelve in `pwr2_shell.js`, including
+two inside `(24 / 912) * 200` rate conversions where the number is doing real work and reads as
+arithmetic. Several are indistinguishable at a glance from an unrelated 200 (`#200` the issue,
+`200 %/min` the runback, `200 kg/s` of natural circulation).
+
+**MEASURED, and it is the reason this section exists.** The harness written to ride the candidate
+scales patched three sites and missed the target clamp. The clamp held the bank at 200 of a
+demanded 627, so the plant sat at 32 % withdrawn, and **three cases in a row reported "never
+critical"** — a clean, plausible, entirely false result that looked like a finding about the
+physics. It was a finding about the constant.
+
+> **A number that appears as a bare literal at twenty-two sites is not a plant parameter. It is a
+> coincidence that twenty-two pieces of code have so far agreed on.** Same shape as
+> `PROTECTION_DT`, which is written down twice and already carries a standing trap in `CLAUDE.md`.
+
+The scale now lives in `RODS`, **beside the worths**, because worth / travel / curve are one object:
+differential = worth x curve / steps. Moving one without re-solving the other two is precisely how
+this plant reached 36.6 pcm/step. Same discipline the pressurizer's level triple already carries.
+Both consumers read it through a function (`BANK()` in the engine, `bankSteps()` in the shell) and
+never capture it, so a retune cannot leave a stale copy behind.
+
+### 128.7 THE GATE IS FUNCTIONAL, NOT A SOURCE SCAN
+
+This is the part worth carrying forward. A grep for `200` cannot tell a bank-scale literal from any
+other, and a check that counted occurrences would be testing the grep — the hand-maintained-map
+trap. So the gate **moves the constant and rides the plant**: `RODS.max_steps` is set to **313**
+(deliberately not 200, and not a round number), and every consumer that used to hold its own copy is
+asserted to follow —
+
+- the at-power initial condition, both banks;
+- the rod GROUPS the reactivity solve reads (`max_steps` on each);
+- the rod target clamp — *the site the harness missed*, and the one that fails silently;
+- the scram insertion profile for both banks (a stale 200 strands a 313-step bank 113 steps out,
+  which on the board reads as a stuck rod);
+- the rod insertion limit's percent-to-steps map;
+- and in `run_pwr2_shell`, the published `max_steps` **and** `position_pct` — a stale divisor still
+  renders, it just renders a wrong number (a fully-withdrawn 313-step bank would read 156.5 %).
+
+The constant is restored in a `finally`, so nothing downstream sees a moved plant even if an
+assertion throws, and a final check confirms the restore actually took.
+
+**AND THE GATE CAUGHT THREE OF ITS OWN CHECKS BEING HOLLOW, WHICH IS THE PART WORTH KEEPING.**
+Every one was written in this session, under a comment quoting the hollow-check trap:
+
+1. *"the scram drives BOTH banks fully in"*, sampled at **20 s** — the scram profile is a CEILING,
+   so a stale 200 does not strand the rods, it makes them fall faster. Both builds read 0.00 at
+   20 s. `BLIND TO`.
+2. Re-aimed at **tick 1** — and tick 1 reads **313.0 on BOTH builds**, because the ramp has not
+   engaged yet. `BLIND TO` again. Only a 12-tick trace found the window: the divergence is at
+   **tick 2**, clean **310.5** against stale **198.4**.
+3. A multi-line mutation anchor in `run_pwr2_shell` written with a literal backslash-n where the
+   source carries a real newline. `ANCHOR MISS` — the gate saying it could not find the line it
+   was pointed at.
+
+**The lesson is not "be careful". It is: PROBE THE WINDOW BEFORE YOU WRITE THE ASSERTION.** The
+12-tick trace that settled it takes ten seconds to run; each guess at the sample point cost a
+seven-minute mutation replay to disprove. Two guesses, fourteen minutes, and the trace would have
+answered it first time.
+
+### 128.8 Gates
+
+`run_pwr2_protection` 125/125, 68/68 mutations. `run_pwr2_board` 71/71, 22/22.
+`run_pwr2_engine` **138/138, 75/75 mutations** (130/73 before). `run_pwr2_shell` **149/149, 49/49** (147/48). Aggregate `run_all` green
+before the commit. Phase 1 changes no behaviour: every other check in the tree is unmoved, which is
+the whole assertion this commit makes.

@@ -1400,6 +1400,87 @@ function runSuite(RD, rec, quiet, only) {
   }
 
   if (grp('K')) {
+  /* ---- 8d. THE BANK SCALE IS ONE CONSTANT, AND EVERY CONSUMER FOLLOWS IT (#602 phase 1) ----
+   *
+   * ⚠ THIS IS A FUNCTIONAL CHECK, NOT A SOURCE SCAN, and the difference is the point.
+   * `200` was TWENTY-TWO bare literals across pwr2_engine.js and pwr2_shell.js — the
+   * rod-insertion-limit percent-to-steps map, the initial conditions, BOTH target clamps, the
+   * scram insertion profile for each bank, the runaway cap, the rod-limit margin default, the
+   * published rod_groups, and two `(24 / 912) * 200` rate conversions where the number reads
+   * as arithmetic. A grep cannot tell those from an unrelated 200, and a check that counted
+   * them would be testing the grep.
+   *
+   * So this MOVES THE CONSTANT and rides the plant. Every assertion below is a consumer that
+   * used to hold its own copy: leave one behind and its literal disagrees with the scale and
+   * this reds. Measured before the hoist — a harness that patched three sites and missed the
+   * target clamp held the bank at 200 of a demanded 627 and reported "never critical",
+   * silently, on three plants in a row. That is what an unhoisted scale buys.
+   *
+   * The scale is RESTORED in a `finally`, so nothing downstream in this file sees a moved
+   * plant even if an assertion throws. */
+  head('THE BANK SCALE  [one constant, and every consumer reads it — #602]');
+  (function () {
+    var RODS = RD.kinetics.RODS, was = RODS.max_steps, PROBE = 313;   /* deliberately not 200 */
+    ckT('the scale is declared ONCE, in RODS, beside the worths it has to be solved with',
+        typeof was === 'number' && was > 0,
+        'RODS.max_steps = ' + was + ' (worths ' + (RODS.worth_control * 1e5).toFixed(0) +
+        ' / ' + (RODS.worth_shutdown * 1e5).toFixed(0) + ' pcm)');
+    try {
+      RODS.max_steps = PROBE;
+      var eB = EN.createEngine({ initial_state: 'hot_full_power' });
+      EN.step(eB, DT);
+      ckT('...the at-power INITIAL CONDITION opens on the new scale, both banks',
+          eB.rodSteps === PROBE && eB.sdSteps === PROBE && eB.rodTarget === PROBE,
+          'control ' + eB.rodSteps + ', shutdown ' + eB.sdSteps + ', target ' + eB.rodTarget);
+      ckT('...and the rod GROUPS the reactivity solve reads carry it too',
+          eB.rodBank && eB.rodBank[0].max_steps === PROBE && eB.rodBank[1].max_steps === PROBE,
+          eB.rodBank ? ('max_steps ' + eB.rodBank[0].max_steps + ' / ' + eB.rodBank[1].max_steps)
+                     : 'NO rodBank');
+      /* THE TARGET CLAMP — the site the harness missed, and the one that fails silently. */
+      EN.command(eB, 'rod_target', 99999);
+      ckT('...the rod target CLAMPS at the new scale, not at a stale 200',
+          eB.rodTarget === PROBE,
+          'demanded 99999, clamped to ' + eB.rodTarget + ' (a stale literal would say 200)');
+      /* THE SCRAM PROFILE — a CEILING of `scale * (1 - t/T)` per bank, so what a stale copy
+       * breaks is the FIRST INSTANT, not the endpoint. Measured: with a literal 200 against a
+       * 313-step bank the ceiling already sits below the rods at t=0, so the bank TELEPORTS
+       * 113 steps on the first tick and then ramps normally to zero. Sampling at 20 s reads
+       * 0.00 either way — the first form of this check did exactly that, and the gate reported
+       * the mutation BLIND. That is the hollow-check trap catching itself. Sample tick one. */
+      EN.command(eB, 'scram');
+      /* TWO ticks, not one, and the difference is measured not assumed: tick 1 reads 313.0 on
+       * BOTH builds because the ramp has not engaged yet, and the divergence is at tick 2 —
+       * clean 310.5, stale-ceiling 198.4. The one-tick form of this check sampled the frame
+       * where the two are identical by construction and the gate reported the mutation BLIND. */
+      EN.step(eB, DT); EN.step(eB, DT);
+      var firstC = eB.rodSteps, firstS = eB.sdSteps;
+      for (var i = 0; i < 20 / DT; i++) EN.step(eB, DT);
+      ckT('...the scram RAMPS from the new scale rather than teleporting to a stale ceiling',
+          firstC > PROBE * 0.98 && firstS > PROBE * 0.97,
+          'two ticks after the trip: control ' + firstC.toFixed(1) + ', shutdown ' +
+          firstS.toFixed(1) + ' of ' + PROBE + ' — a stale 200 ceiling drops both to 200 at ' +
+          'once, ' + (PROBE - 200) + ' steps of free fall in a single tick');
+      ckT('...and still drives BOTH banks fully in',
+          eB.rodSteps < 0.5 && eB.sdSteps < 0.5,
+          'after 20 s: control ' + eB.rodSteps.toFixed(2) + ', shutdown ' + eB.sdSteps.toFixed(2));
+      /* THE ROD INSERTION LIMIT — a percent-of-withdrawn floor mapped onto steps. */
+      var eR = EN.createEngine({ initial_state: 'hot_full_power' });
+      EN.step(eR, DT);
+      ckT('...and the rod insertion limit maps its percent floor onto the new scale',
+          eR._rodLimitMargin !== undefined && eR._rodLimitMargin > 0 &&
+          eR._rodLimitMargin < PROBE,
+          'margin ' + eR._rodLimitMargin + ' steps of a ' + PROBE +
+          '-step bank (the limit is a percentage, so it must scale)');
+    } finally {
+      RODS.max_steps = was;
+    }
+    var eZ = EN.createEngine({ initial_state: 'hot_full_power' });
+    EN.step(eZ, DT);
+    ckT('...and restoring the constant restores the plant — nothing latched the probe value',
+        eZ.rodSteps === was && eZ.sdSteps === was,
+        'back to ' + eZ.rodSteps + '/' + eZ.sdSteps);
+  })();
+
   /* ---- 9. THE INITIAL CONDITIONS (#507 §F, wave 7) — each a SETTLED construction, each
    * ride measured 2026-08-22 before these checks were written. ---- */
   head('THE INITIAL CONDITIONS  [50 % and Hot Standby open settled; the startup is real]');
@@ -2242,7 +2323,7 @@ var MUTATIONS = [
    'if (ptr.reactor_trip && !eng._lastTrip) {\n      eng.rodTarget = 0; eng._scramT = 0; eng.runaway = null;\n    }',
    { grp: 'I' }],
   ['the runaway never drives (an injected withdrawal fault does nothing)',
-   '      eng.rodSteps = Math.min(200, eng.rodSteps + eng.runaway.rate * dt);',
+   '      eng.rodSteps = Math.min(BANK(), eng.rodSteps + eng.runaway.rate * dt);',
    '', { grp: 'I' }],
   ['the rod-command refusal is severed (a faulted drive quietly obeys the lever)',
    "        if (eng.runaway) {\n          throw new Error('pwr2_engine: rod command REFUSED — continuous withdrawal failure ' +\n            'active; clear the failure first');\n        }",
@@ -2292,8 +2373,19 @@ var MUTATIONS = [
    '    eng._rodAtLimit = ril !== null && eng.rodSteps <= ril;',
    '    eng._rodAtLimit = false;', { grp: 'L' }],
   ['the margin is pinned wide (the LO approach can never annunciate)',
-   "    eng._rodLimitMargin = ril === null ? 200 : Math.max(0, Math.round(eng.rodSteps - ril));",
-   '    eng._rodLimitMargin = 200;', { grp: 'L' }],
+   "    eng._rodLimitMargin = ril === null ? BANK() : Math.max(0, Math.round(eng.rodSteps - ril));",
+   '    eng._rodLimitMargin = BANK();', { grp: 'L' }],
+  /* THE HOIST ITSELF (#602 phase 1) — put a stale literal back at the site the ride harness
+   * actually missed, and see whether anything notices. This is the mutation that makes the
+   * bank-scale block above evidence rather than decoration: a clamp frozen at 200 does not
+   * throw, it silently holds a longer bank part-withdrawn and hands back a plausible plant. */
+  ['a bank-scale consumer keeps its own stale 200 (the clamp the ride harness missed)',
+   '        eng.rodTarget = Math.max(0, Math.min(BANK(), +value)); break;',
+   '        eng.rodTarget = Math.max(0, Math.min(200, +value)); break;', { grp: 'K' }],
+  ['the scram insertion profile keeps its own stale 200 (a long bank strands part-out)',
+   '      eng.rodSteps = Math.max(0, Math.min(eng.rodSteps, BANK() * (1 - eng._scramT / SCRAM_S)));',
+   '      eng.rodSteps = Math.max(0, Math.min(eng.rodSteps, 200 * (1 - eng._scramT / SCRAM_S)));',
+   { grp: 'K' }],
   /* THE RCP RESTART (#507 wave 9) */
   ['the start\'s electrical gate is severed (a blacked-out bus starts a 6,000 hp motor)',
    '        if (!(eng.elec.offsite && !eng.elec.blackout)) {',
