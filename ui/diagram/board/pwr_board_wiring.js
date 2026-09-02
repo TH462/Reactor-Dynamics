@@ -3166,7 +3166,7 @@
      * STOP and AUTO move left into the vacated slot via DOC_PATCHES rather than leaving a hole
      * — the same treatment RHR ALIGN/ISOLATE got when its AUTO button went (#453). */
     imrmsslj42u: 1,
-    /* THE SOURCE RANGE DETECTOR BUTTON *(OWNER DIRECTIVE, #598 item 7: "The SR DET button is
+    /* THE SOURCE RANGE DETECTOR BUTTON *(OWNER DIRECTIVE, 2026-09-01, #598 item 7: "The SR DET button is
      * greyed out. I think we should remove this button and have the SOURCE RANGE disable itself
      * automatically.")* — and the second half of that sentence is already true, which is exactly
      * why the button was grey. PWR2 derives source-range energization from flux
@@ -3188,7 +3188,7 @@
      * preview-channel player loses is the ability to perform it by hand. Not worth an
      * engine-conditional DOC_REMOVE for an engine #523 strips from every public build. */
     bdSrDetector: 1,
-    /* THE ROD AUTO BUTTON *(OWNER DIRECTIVE, #598 items 9/10: "Remove the ROD AUTO button. Move
+    /* THE ROD AUTO BUTTON *(OWNER DIRECTIVE, 2026-09-01, #598 items 9/10: "Remove the ROD AUTO button. Move
      * the 1/m button to where the ROD AUTO button used to be." / "Adjust the NIS card and
      * indications to fit nicely without the two buttons.")*. It armed `rods_tavg`, and PWR2's
      * snapshot carries exactly two automation channels — `boron_conc` and `afw_level` — so

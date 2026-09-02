@@ -864,7 +864,7 @@ removal, or tube fouling.
 and I think making the player move rods manually will help their learning.")*.
 
 Until Rev 17 a **ROD AUTO** pushbutton sat on the rod-control card, permanently dark, on the
-argument that the contrast was the lesson. It was removed *(OWNER DIRECTIVE, #598 items 9/10:
+argument that the contrast was the lesson. It was removed *(OWNER DIRECTIVE, 2026-09-01, #598 items 9/10:
 "Remove the ROD AUTO button. Move the 1/m button to where the ROD AUTO button used to be.")* —
 the player had to ask what it was for, which is a control failing the test a control is for. The
 **1/M PLOT** button now occupies that slot. The contrast is still worth teaching and this section

@@ -573,7 +573,7 @@
     put('sr_counts_cps', srOn ? K_SR * pFrac : 0);
     put('ir_amps',       K_IR * pFrac);
     /* ---- WHICH RANGE THE OPERATOR SHOULD BE READING (#598 item 8) --------------------------
-     * *(OWNER DIRECTIVE, #598 item 8: "Source Range and Intermediate Range should be green when
+     * *(OWNER DIRECTIVE, 2026-09-01, #598 item 8: "Source Range and Intermediate Range should be green when
      * we are in the region where we should be referencing each display, grey when otherwise.
      * Except for source range it should go amber before the handoff to intermediate.")*
      *

@@ -1133,7 +1133,7 @@
           cmd: { action: 'rod_nudge', group_id: 'shutdown_rods', steps: 200, speed: 'fast' }, hold: 300,
           acc: { p: 'reactivity_pcm', op: '>', v: -3000 },
           hl: ['Shutdown Bank — Withdraw'] },
-        { text: 'Confirm the generator is off line (Disconnect Grid if it is not). Leave the turbine off until the end of the startup path.',
+        { text: 'Confirm the generator is off line — press UNLOAD on the TURBINE-GENERATOR card if it is not. Leave the machine unloaded until the end of the startup path. UNLOAD is not TRIP: it walks the load target to zero and leaves the turbine latched.',
           why: 'A cold plant has no business carrying load — a governor cracked open on pump heat drains the very heatup you are trying to make.',
           control: 'Turbine Load', target: 'generator disconnected, 0 MWe',
           cmd: { action: 'disconnect_grid' }, hold: 10,

@@ -2960,7 +2960,7 @@
    * user wants a checklist to follow.
    *
    * IT USED TO BE A LIST — the top four ranked procedures as launch buttons, plus an "All
-   * checklists…" link *(OWNER DIRECTIVE, #598 item 16: "On the instructor tab, remove the list
+   * checklists…" link *(OWNER DIRECTIVE, 2026-09-01, #598 item 16: "On the instructor tab, remove the list
    * of checklists and add a bar that says 'Try the new interactive checklists'. pressing this
    * button takes the user to the checklists tab.")*. The list duplicated the Checklists tab's
    * own menu in a smaller space and ranked it differently, which is two authorities on the same
