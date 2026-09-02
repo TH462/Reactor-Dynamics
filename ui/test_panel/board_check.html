@@ -647,7 +647,17 @@
       function tripBtn() { return document.querySelector('[data-item="imrsk4xz2dm"] button'); }
       function tripBadge() { var b = tripBtn() && tripBtn().querySelector('.bd-badge'); return b && b.style.display !== 'none' ? b.textContent : null; }
       RD.PwrBoard.render(svc.assembleSnapshot());
-      var blk0 = Object.keys(rps().trip_blocks).filter(function (k) { return rps().trip_blocks[k]; }).length;
+      // COUNTED OVER THE ROWS THE PANEL DRAWS, not over every key in `trip_blocks` (#600).
+      // The badge is a statement about the panel, and the two sets stopped being the same when
+      // the automatic P-7 blocks left the panel: a plant that auto-blocks `lo_flow` at its IC
+      // would have made the raw-key count disagree with a correct badge. They coincide at
+      // hot_full_power, which is why this passed either way and is exactly why it is worth
+      // pinning to the right set rather than the convenient one.
+      function drawnBlockedIds() {
+        return RD.PwrBoardDriver.tripBlockRows(svc.assembleSnapshot())
+          .filter(function (r) { return r.blocked; }).map(function (r) { return r.id; });
+      }
+      var blk0 = drawnBlockedIds().length;
       ck('info: TRIP BLOCKS grey when trips blocked', tripBtn().classList.contains('bd-info') && !tripBtn().classList.contains('bd-warn'), blk0);
       ck('info: TRIP BLOCKS badge shows blocked count', tripBadge() === String(blk0), tripBadge() + ' vs ' + blk0);
       // TRIP BLOCKS popover + block a trip
@@ -677,7 +687,7 @@
       if (tb) tb.click();
       ck('func: block ir_high toggles trip_blocks', (!!rps().trip_blocks.ir_high) !== beforeBlk, 'was ' + beforeBlk);
       RD.PwrBoard.render(svc.assembleSnapshot());
-      var blk1 = Object.keys(rps().trip_blocks).filter(function (k) { return rps().trip_blocks[k]; }).length;
+      var blk1 = drawnBlockedIds().length;
       ck('warn: badge tracks count after toggle', tripBadge() === (blk1 > 0 ? String(blk1) : null), tripBadge() + ' vs ' + blk1);
       if (tb) tb.click();
       ck('func: ir_high block RESTORED before the plant is stepped',

@@ -326,12 +326,15 @@
       aw: AW.createAFW({}),
       fw: FWM.createFeedwater(ic.pf > 0 ? {} : { at_power: false }),
       dm: DG.createDamage({}),
-      /* a plant AT POWER has the low-flux block requested (#460); below P-10 the request
-       * would be revoked anyway, and HZP boots without it — blocking is the operator's
-       * startup action (low_flux_block / the board's block button). The shutdown IC boots
-       * with the P-11 pair TAKEN — the cooldown's own lineup ("Block SI is three actions",
-       * and the third was the pressure setpoint coming down, already done). */
-      pt: PT.createProtection({ blockLowFlux: ic.pf >= 0.1,
+      /* a plant AT POWER has BOTH startup-net blocks requested (#460, #601); below P-10 the
+       * requests would be revoked anyway, and HZP boots without them — blocking is the
+       * operator's startup action (ir_high_block then low_flux_block, the board's two block
+       * buttons). The two travel together HERE and only here: an IC states a lineup, and an
+       * at-power plant that had ascended through P-10 took both. During play they are
+       * separate levers. The shutdown IC boots with the P-11 pair TAKEN — the cooldown's own
+       * lineup ("Block SI is three actions", and the third was the pressure setpoint coming
+       * down, already done). */
+      pt: PT.createProtection({ blockLowFlux: ic.pf >= 0.1, blockIrHigh: ic.pf >= 0.1,
                                 blockLoPress: !!ic.cold, blockSI: !!ic.cold }),
       brk: null,
       ctm: CT.createContainment({}),
@@ -440,9 +443,13 @@
    * range one — the only stop a player meets during a startup — indistinguishable from the
    * delta-T pair they meet at power. */
   var ROD_STOP_WHY = {
+    /* #601: this named the WRONG BLOCK. It said "block the low-setting flux trips" because the
+     * stop rode `blockLowFlux` — the power-range lever — which is the mis-wiring #601 corrects.
+     * WTSM 12.2's P-10 list pairs this stop with the INTERMEDIATE RANGE trip's block, item 1. */
     ir_high_flux: 'the INTERMEDIATE RANGE high flux rod stop is standing (above 20 % current ' +
-      'equivalent power) [sourced, WTSM 8.1 §8.1.7.3 ML11223A252]. Block the low-setting flux ' +
-      'trips above P-10 to clear it, which is the power-ascension step',
+      'equivalent power) [sourced, WTSM 8.1 §8.1.7.3 ML11223A252]. Block the INTERMEDIATE ' +
+      'RANGE high flux trip above P-10 to clear it — one operator action takes the trip and ' +
+      'the stop together, and it is the power-ascension step',
     pr_high_flux: 'the POWER RANGE high flux rod stop is standing (above 103 % power) ' +
       '[sourced, WTSM 8.1 §8.1.7.3 ML11223A252]. Reduce power',
     delta_t: 'an OVERTEMPERATURE / OVERPOWER delta-T rod stop is standing (within 3 % of the ' +
@@ -531,6 +538,13 @@
          * startup's own action). A REQUEST, not a state: P-10 gates whether it takes
          * effect and auto-revokes it below 8 % (pwr2_protection owns that law). */
         eng.pt.blockLowFlux = !!value; break;
+      case 'ir_high_block':
+        /* THE OTHER P-10 REQUEST (#601) — the 25 % intermediate-range high flux trip AND the
+         * C-1 rod stop, which WTSM 12.2's P-10 list pairs on this one lever. Same law as
+         * above (request, P-10-gated, auto-revoked below 8 %); a SEPARATE lever because the
+         * source lists two operator actions and the ladder is taken in order — the IR trip at
+         * 25 % arrives before the power-range low setting at 35 %. */
+        eng.pt.blockIrHigh = !!value; break;
       case 'scram':
         /* The pushbutton is an RPS INPUT, not a rod command — the trip latches in
          * pwr2_protection ('manual') and the trip edge below inserts the rods, so a manual

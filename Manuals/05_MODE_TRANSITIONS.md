@@ -369,7 +369,7 @@ IR ≥ 1e-10 A (P-6) → SR Off. Required before Mode 2, Startup power rise trip
 
 ### PWR-T14 — Startup trip blocks (entering Mode 1, At Power)
 
-Above **P-10 (10 %)** — already Mode 1, At Power — block IR high / PR 25 % low-setpoint as needed. Auto-reinstate below P-10.
+Above **P-10 (10 %)** — already Mode 1, At Power — block **IR high (25 %)** first, then **PR low setpoint (35 %)**. Two separate presses; the IR one also clears the 20 % rod stop. Both auto-reinstate below P-10.
 
 ### PWR-T15 — Learning ↔ Realistic display
 

@@ -74,7 +74,18 @@ var DOC = {
   lead_s: 12.0, lag_s: 2.0,
   d_press: 2.0, d_flux: 0.5, d_flow: 1.0,
   psia_per_mpa: 145.0377,
-  p10_frac: 0.08
+  p10_frac: 0.08,
+  /* RETYPED from WTSM 12.2 §12.2.3.3 (ML11223A301), the intermediate-range trip (#601):
+   *   "This trip, Figure 12.2-3, occurs when the current output from at least one of the two
+   *    intermediate range channels indicates greater than the equivalent of 25% power. The
+   *    intermediate range trip ... can be manually blocked if at least two of the four power
+   *    range channels exceed 10% of full power (P-10). If at least three of four (3/4) power
+   *    range channels fall below the P-10 setpoint value, the trip function is automatically
+   *    reinstated."
+   * NOT the rod stop's 20 % (WTSM 8.1 §8.1.7.3) — same channel, two setpoints, and the retired
+   * plant conflated them. Ginna publishes no number for this Function ("a pre-selected,
+   * manually adjustable setpoint", UFSAR ch15 §B), so the generic figure is the sourced one. */
+  ir_trip_frac: 0.25
 };
 var DT = 0.02;
 
@@ -118,8 +129,15 @@ function runSuite(P, rec, quiet) {
     return null;
   }
   function withReading(k, v) { var s = healthy(); s[k] = v; return s; }
-  /* protection lined up as a plant AT POWER is: the low flux block requested. */
-  function atPower() { return P.createProtection({ blockLowFlux: true }); }
+  /* PROTECTION LINED UP AS A PLANT AT POWER IS: BOTH STARTUP-NET BLOCKS REQUESTED (#601).
+   * It was `blockLowFlux` alone, which was a complete lineup only while one trip was blockable.
+   * Adding the 25 % intermediate-range trip reddened 33 checks here in one go, every one of them
+   * a fixture riding at rated power on half a lineup — #460's trap exactly ("every probe that
+   * broke was inheriting a lineup instead of stating it"), and the reason this helper exists.
+   * The plant is right and the fixtures were wrong: a plant that reached 100 % with the IR trip
+   * unblocked would have scrammed at 25 % on the way up, so an at-power lineup carrying only one
+   * block is a state no operator can produce. */
+  function atPower() { return P.createProtection({ blockLowFlux: true, blockIrHigh: true }); }
 
   /* ---- CONSTRUCTION, WRITTEN FIRST (D1 §31) ----------------------------------------------- */
   head('CONSTRUCTION  [a caller argument that never arrives is invisible to a physics check]');
@@ -132,6 +150,15 @@ function runSuite(P, rec, quiet) {
       P.createProtection({}).blockLowFlux === false,
       'unblocked is the conservative default — a blocked-by-default trip is one nobody remembers ' +
       'is disabled');
+  ckT('the intermediate-range block is its OWN request, and also defaults to UNBLOCKED',
+      P.createProtection({ blockIrHigh: true }).blockIrHigh === true &&
+      P.createProtection({}).blockIrHigh === false &&
+      P.createProtection({ blockLowFlux: true }).blockIrHigh === false &&
+      P.createProtection({ blockIrHigh: true }).blockLowFlux === false,
+      'TWO LEVERS, NOT ONE (#601). The WTSM 12.2 P-10 list is two operator actions — "1. Allows ' +
+      'the operator to manually block the intermediate range high flux trip and the C-1 rod ' +
+      'stop, 2. Allows the operator to manually block the low setpoint power range high flux ' +
+      'trip". A single shared boolean is how the C-1 rod stop came to ride the wrong one.');
 
   /* ---- THE SETPOINTS ARE THE DOCUMENT'S ---------------------------------------------------- */
   head('SETPOINTS  [retyped from Ginna UFSAR ch15 Table 15.0-6, not imported]');
@@ -139,6 +166,7 @@ function runSuite(P, rec, quiet) {
   ck('low pressurizer pressure', P.RPS.lo_pzr_press_psia, DOC.lo_pzr_psia, 0, 'psia');
   ck('power-range high flux, low setting', P.RPS.hi_flux_lo_frac, DOC.flux_lo, 1e-12, 'frac');
   ck('power-range high flux, high setting', P.RPS.hi_flux_hi_frac, DOC.flux_hi, 1e-12, 'frac');
+  ck('intermediate-range high flux trip', P.IR_TRIP.frac, DOC.ir_trip_frac, 1e-12, 'frac');
   ck('low reactor coolant loop flow', P.RPS.lo_flow_frac, DOC.lo_flow, 1e-12, 'frac');
   ck('safety injection on low pressurizer pressure', P.ESFAS.si_lo_pzr_press_psia,
      DOC.si_pzr_psia, 0, 'psia');
@@ -175,16 +203,21 @@ function runSuite(P, rec, quiet) {
    * permanently past it and is protected by the HIGH setting instead — which is what the Bases
    * says in as many words: *"Above the P-10 setpoint, positive reactivity additions are mitigated
    * by the Power Range Neutron Flux-High trip Function."* */
-  ckT('every function EXCEPT the blocked low flux setting has positive margin',
+  ckT('every function EXCEPT the two blocked STARTUP trips has positive margin',
       rH.functions.every(function (f) {
-        return !f.available || f.id === 'hi_flux_lo' || f.margin > 0; }),
+        return !f.available || f.id === 'hi_flux_lo' || f.id === 'ir_high_flux' || f.margin > 0; }),
       'margins: ' + rH.functions.map(function (f) {
         return f.id + ' ' + (f.margin === undefined ? 'n/a' : f.margin.toFixed(2)); }).join(', '));
-  ckT('...and the low flux setting IS past its setpoint, and is blocked rather than ignored',
+  ckT('...and BOTH startup trips are past their setpoints, blocked rather than ignored',
       fn(rH, 'hi_flux_lo').margin < 0 && rH.low_flux_blocked === true &&
-      fn(rH, 'hi_flux_lo').asserted === false,
-      'margin ' + fn(rH, 'hi_flux_lo').margin.toFixed(2) + ' — a model that simply never ' +
-      'asserted it would look identical here and be wrong the moment power fell below P-10');
+      fn(rH, 'hi_flux_lo').asserted === false &&
+      fn(rH, 'ir_high_flux').margin < 0 && rH.ir_high_blocked === true &&
+      fn(rH, 'ir_high_flux').asserted === false,
+      'margins ' + fn(rH, 'hi_flux_lo').margin.toFixed(2) + ' / ' +
+      fn(rH, 'ir_high_flux').margin.toFixed(2) + ' — a model that simply never asserted them ' +
+      'would look identical here and be wrong the moment power fell below P-10. The IR row ' +
+      'is the one #601 added: at rated it sits 75 points past its 25 % setpoint, held off by ' +
+      'the operator request and nothing else.');
 
   /* ---- EVERY FUNCTION TRIPS, ONE AT A TIME ------------------------------------------------- */
   head('EVERY FUNCTION TRIPS  [and only the one perturbed — a trip nobody has seen fire is not one]');
@@ -217,15 +250,49 @@ function runSuite(P, rec, quiet) {
   ckT('the low flux setting asserts at 40 % power, where the high setting does not',
       fn(rLF, 'hi_flux_lo').asserted === true && fn(rLF, 'hi_flux_hi').asserted === false,
       'this is a STARTUP trip: 0.35 low against 1.18 high');
-  var prB = P.createProtection({ blockLowFlux: true });
+  var prB = P.createProtection({ blockLowFlux: true, blockIrHigh: true });
   var rB = ride(prB, withReading('power_frac', 0.40), 5);
   ckT('...and the block suppresses it WITHOUT touching the high setting',
       fn(rB, 'hi_flux_lo').asserted === false && rB.reactor_trip === false,
       'a block that suppressed both would disable the at-power flux trip and nothing would say so');
-  var rB2 = ride(P.createProtection({ blockLowFlux: true }), withReading('power_frac', 1.25), 5);
+  var rB2 = ride(P.createProtection({ blockLowFlux: true, blockIrHigh: true }),
+                 withReading('power_frac', 1.25), 5);
   ckT('...and with the block IN, the high setting still trips',
       rB2.reactor_trip === true && rB2.trip_cause === 'hi_flux_hi',
       'blocking the startup trip must not blind the plant at power');
+
+  /* ---- THE INTERMEDIATE-RANGE TRIP (#601) — the startup net's FIRST rung ------------------
+   * It was missing entirely: this table carried one startup trip where every source has two.
+   * The three claims that matter are the setpoint, the LADDER ORDER, and that the two blocks
+   * are independent levers. Each is ridden, not read. */
+  head('THE STARTUP NET  [two trips, two levers, taken in order — the IR one arrives first]');
+  var rIRu = ride(P.createProtection({}), withReading('power_frac', 0.27), 5);
+  ckT('an UNBLOCKED plant trips on the INTERMEDIATE RANGE at 27 %, before the 35 % setting',
+      rIRu.reactor_trip === true && rIRu.trip_cause === 'ir_high_flux' &&
+      fn(rIRu, 'hi_flux_lo').asserted === false,
+      'trip_cause=' + rIRu.trip_cause + ' — 25 % is the first rung; the power-range low ' +
+      'setting at 35 % is the backstop behind it');
+  var rIRq = ride(P.createProtection({}), withReading('power_frac', 0.22), 5);
+  ckT('...and at 22 % it is quiet — the ROD STOP is standing there instead, not the trip',
+      fn(rIRq, 'ir_high_flux').asserted === false && rIRq.reactor_trip === false &&
+      rIRq.rod_stop_causes.ir_high_flux === true,
+      'the 20 % stop acts first and the 25 % trip is what happens if it does not hold — the ' +
+      'same relationship the 103 % stop has with the 118 % trip. Conflating the two numbers ' +
+      'is what the retired plant did.');
+  var rIRb = ride(P.createProtection({ blockIrHigh: true }), withReading('power_frac', 0.27), 5);
+  ckT('...blocking IT alone rides past 27 % with the power-range low setting STILL ARMED',
+      rIRb.reactor_trip === false && fn(rIRb, 'ir_high_flux').armed === false &&
+      fn(rIRb, 'hi_flux_lo').armed === true,
+      'one lever moves one rung — if it moved both, the ascension would have no backstop and ' +
+      'nothing here would say so');
+  var rIRl = ride(P.createProtection({ blockIrHigh: true }), withReading('power_frac', 0.40), 5);
+  ckT('...and that backstop then catches the ascent at 35 %',
+      rIRl.reactor_trip === true && rIRl.trip_cause === 'hi_flux_lo',
+      'trip_cause=' + rIRl.trip_cause + ' — miss the second block and the net still trips you');
+  var rIRx = ride(P.createProtection({ blockLowFlux: true }), withReading('power_frac', 0.40), 5);
+  ckT('...while blocking only the POWER RANGE one leaves the IR trip to catch it',
+      rIRx.reactor_trip === true && rIRx.trip_cause === 'ir_high_flux',
+      'the mirror of the check above: neither block reaches the other function');
 
   /* ---- THE AFW STARTS (2026-08-20) — one bistable, two consumers --------------------------
    * TS Bases B 3.3.1 Function 13: the lo-lo trip Function "also performs the ESFAS function of
@@ -548,14 +615,21 @@ function runSuite(P, rec, quiet) {
       r103.reactor_trip === false,
       'the stop acts first; the trip is what happens if it does not hold');
   ckT('...and it is NOT blockable — no source gives the overpower stop a permissive',
-      ride(P.createProtection({ blockLowFlux: true }), withReading('power_frac', 1.04), 1)
-        .rod_stop_causes.pr_high_flux === true, 'the P-10 block does not reach it');
-  /* THE INTERMEDIATE RANGE STOP rides the SAME operator block hi_flux_lo does [sourced, Ginna
-   * TS Bases B 3.3.1: the IR function "may be manually blocked by the operator when
-   * two-out-of-four power range channels are greater than approximately 8% RTP (P-10
-   * setpoint)"]. That is what makes it safe as well as right: an at-power plant has ascended
-   * through P-10 and has the block requested, so this asserts during an UNBLOCKED startup —
-   * where it is the lesson — and not at power, where ir_amps saturates its range by ~24 %. */
+      ride(P.createProtection({ blockLowFlux: true, blockIrHigh: true }),
+           withReading('power_frac', 1.04), 1)
+        .rod_stop_causes.pr_high_flux === true, 'NEITHER P-10 block reaches it');
+  /* THE INTERMEDIATE RANGE STOP RIDES THE INTERMEDIATE RANGE TRIP'S LEVER — not the power
+   * range one (corrected #601). WTSM 12.2 (ML11223A301) lists P-10's functions as two separate
+   * operator actions and puts the stop in the FIRST: *"1. Allows the operator to manually block
+   * the intermediate range high flux trip AND THE C-1 ROD STOP, 2. Allows the operator to
+   * manually block the low setpoint power range high flux trip"*.
+   *
+   * #572 declared "one lever, the same block hi_flux_lo rides" and pinned it with a check that
+   * asserted exactly that. The check was not wrong about the code — it was wrong about the
+   * plant, and it could only pass because the IR block did not exist to ride. THE PAIR BELOW IS
+   * WHAT THE OLD CHECK COULD NOT DISTINGUISH: block one lever, block the other, and see which
+   * one moves the stop. Both at-power ICs still boot with both requests taken, so nothing about
+   * the shipped plant's behaviour moves — only what is TESTABLE about it. */
   var irS = P.createProtection({});                 /* NOT blocked: a startup, pre-P-10 */
   var r20 = ride(irS, withReading('power_frac', 0.18), 1);
   ckT('below 20 % current equivalent the INTERMEDIATE RANGE stop is quiet',
@@ -563,11 +637,16 @@ function runSuite(P, rec, quiet) {
   r20 = ride(irS, withReading('power_frac', 0.22), 1);
   ckT('at 22 % it asserts on an UNBLOCKED plant — the startup regime it exists for',
       r20.rod_stop_causes.ir_high_flux === true && r20.rod_stop === true, '');
-  var irB = ride(P.createProtection({ blockLowFlux: true }), withReading('power_frac', 0.22), 1);
-  ckT('...and the P-10 operator block clears it — one lever, the ascension step, and the ' +
-      'reason a plant at power is unaffected',
+  var irB = ride(P.createProtection({ blockIrHigh: true }), withReading('power_frac', 0.22), 1);
+  ckT('...and the INTERMEDIATE RANGE block clears it — WTSM 12.2 P-10 item 1 pairs the two',
       irB.rod_stop_causes.ir_high_flux === false && irB.rod_stop === false,
-      'the same block hi_flux_lo rides; measured, both shipped at-power ICs boot with it requested');
+      'one operator action takes the trip and the stop together');
+  var irW = ride(P.createProtection({ blockLowFlux: true }), withReading('power_frac', 0.22), 1);
+  ckT('...and the POWER RANGE block does NOT — the two levers do not reach each other',
+      irW.rod_stop_causes.ir_high_flux === true && irW.rod_stop === true,
+      'THE CHECK THIS REPLACES ASSERTED THE OPPOSITE (#572) and passed, because there was only ' +
+      'one lever to ride. A shared boolean makes a wrong wiring indistinguishable from a right ' +
+      'one — the reason `blockable` now NAMES its request.');
   /* THE RUNBACK DOES NOT FOLLOW. No source gives a flux rod stop a turbine runback — that pair
    * belongs to the delta-T functions alone (ch7 §7.2.2.4.1), and lumping them would have the
    * turbine ramping on an overpower condition the operator is being told to fix with rods. */
@@ -596,11 +675,34 @@ function runSuite(P, rec, quiet) {
   ckT('a block requested BELOW the permissive never takes effect at all',
       rLowOnly.low_flux_blocked === false && fn(rLowOnly, 'hi_flux_lo').asserted === false,
       'at 3 % power it is below the 35 % trip too, so the trip is not asserted for its own reason');
-  /* AND THE BLOCK MUST NOT REACH THE OTHER FUNCTIONS. Only the low flux setting is blockable. */
-  var prOnly = P.createProtection({ blockLowFlux: true });
+  /* THE SECOND REQUEST OBEYS THE SAME LAW, and is checked rather than assumed (#601). A block
+   * that revoked one request and not the other would leave the intermediate-range trip disarmed
+   * across a shutdown — the defeatable-trip shape, on the rung nearest the startup. */
+  var prIR = P.createProtection({ blockIrHigh: true });
+  var rIRa = ride(prIR, withReading('power_frac', 0.20), 1);
+  ckT('the INTERMEDIATE RANGE request takes effect above the permissive too',
+      rIRa.ir_high_blocked === true && fn(rIRa, 'ir_high_flux').armed === false, '');
+  var rIRd = ride(prIR, withReading('power_frac', DOC.p10_frac - 0.01), 1);
+  ckT('...and falling below P-10 revokes IT as well, request and all',
+      rIRd.ir_high_blocked === false && prIR.blockIrHigh === false &&
+      ride(prIR, withReading('power_frac', 0.20), 1).ir_high_blocked === false,
+      'the same auto-reinstate, on the lever the C-1 rod stop also rides');
+  ckT('...and revoking one does NOT revoke the other',
+      (function () {
+        var pr2 = P.createProtection({ blockLowFlux: true, blockIrHigh: true });
+        ride(pr2, withReading('power_frac', 0.40), 1);
+        pr2.blockIrHigh = false;                       /* operator clears ONE */
+        var rr = ride(pr2, withReading('power_frac', 0.40), 1);
+        return rr.low_flux_blocked === true && rr.ir_high_blocked === false;
+      })(),
+      'clearing the IR block must leave the power-range one standing, or a single press ' +
+      're-arms a trip the operator did not touch');
+
+  /* AND NEITHER BLOCK MUST REACH THE OTHER FUNCTIONS. Only the two flux settings are blockable. */
+  var prOnly = P.createProtection({ blockLowFlux: true, blockIrHigh: true });
   var rOnly = ride(prOnly, withReading('pressure_mpa',
                    DOC.hi_pzr_psia / DOC.psia_per_mpa + 0.5), 5);
-  ckT('the block reaches ONLY the low flux setting -- pressure still trips with it in',
+  ckT('the blocks reach ONLY the flux settings -- pressure still trips with them in',
       rOnly.reactor_trip === true && rOnly.trip_cause === 'hi_pzr_press', '');
 
   /* ---- THE DELAY IS REAL, AND IT RESTARTS -------------------------------------------------
@@ -774,11 +876,19 @@ var MUTATIONS = [
    'var prHiFluxStop = drivers.power_frac >= ROD_STOP.pr_frac;',
    'var prHiFluxStop = false;'],
   ['the INTERMEDIATE RANGE flux rod stop never asserts (the 20 % stop is deleted)',
-   'var irHiFluxStop = drivers.power_frac >= ROD_STOP.ir_frac && !blockEffective;',
+   'var irHiFluxStop = drivers.power_frac >= ROD_STOP.ir_frac && !pr.blockIrHigh;',
    'var irHiFluxStop = false;'],
   ['the IR stop stops honouring the P-10 operator block (it would stand for ever at power)',
-   'var irHiFluxStop = drivers.power_frac >= ROD_STOP.ir_frac && !blockEffective;',
+   'var irHiFluxStop = drivers.power_frac >= ROD_STOP.ir_frac && !pr.blockIrHigh;',
    'var irHiFluxStop = drivers.power_frac >= ROD_STOP.ir_frac;'],
+  /* THE LEVER ITSELF (#601). Both anchors above were ORPHANED by this change — they named a
+   * line that read `!blockEffective` — which is the "a refactor moves the line its anchor
+   * names" trap, and the reason the gate reports blind spots rather than silently passing.
+   * This one is the correction's own: put the stop back on the power-range lever, which is
+   * what shipped from #572 until now, and see whether anything notices. */
+  ['the C-1 rod stop rides the POWER RANGE block again (the #572 mis-wiring, restored)',
+   'var irHiFluxStop = drivers.power_frac >= ROD_STOP.ir_frac && !pr.blockIrHigh;',
+   'var irHiFluxStop = drivers.power_frac >= ROD_STOP.ir_frac && !pr.blockLowFlux;'],
   ['the flux stops are reported but never reach the rod_stop signal the caller acts on',
    'rod_stop: dtApproach || prHiFluxStop || irHiFluxStop,',
    'rod_stop: dtApproach,'],
@@ -858,9 +968,22 @@ var MUTATIONS = [
   ['a missing reading reads as NOT ASSERTED instead of UNAVAILABLE',
    '      var available = raw !== undefined && isFinite(raw);',
    '      var available = true;'],
-  ['the low-flux BLOCK suppresses every function, not just the blockable one',
-   '        if (f.blockable && blockEffective) { asserted = false; gated = true; }',
-   '        if (blockEffective) { asserted = false; gated = true; }'],
+  ['a startup-net BLOCK suppresses every function, not just the blockable one',
+   '        if (f.blockable && BLOCK_REQUEST[f.blockable] === true) { asserted = false; gated = true; }',
+   '        if (BLOCK_REQUEST.low_flux === true) { asserted = false; gated = true; }'],
+  /* THE TWO LEVERS ARE ONE AGAIN — the shape this whole change is undoing (#601). Every
+   * blockable row reads the power-range request, so blocking either clears both, and the
+   * ascension has no backstop. */
+  ['the two P-10 blocks collapse back into one lever',
+   '    var BLOCK_REQUEST = { low_flux: pr.blockLowFlux, ir_high: pr.blockIrHigh };',
+   '    var BLOCK_REQUEST = { low_flux: pr.blockLowFlux, ir_high: pr.blockLowFlux };'],
+  ['the INTERMEDIATE RANGE trip is deleted from the function table',
+   "        sp: IR_TRIP.frac, unit: 'frac', read: 'power_frac', delay: DELAY.ir_high_flux,",
+   "        sp: 9e9, unit: 'frac', read: 'power_frac', delay: DELAY.ir_high_flux,"],
+  ['the INTERMEDIATE RANGE trip is carried at the ROD STOP 20 % (the retired plant conflation)',
+   '    frac: 0.25,', '    frac: 0.20,'],
+  ['the INTERMEDIATE RANGE block request is never revoked below P-10',
+   '    if (!p10Met && pr.blockIrHigh) pr.blockIrHigh = false;', '    if (false) pr.blockIrHigh = false;'],
   ['the high-pressure setpoint moved off its sourced value',
    '    hi_pzr_press_psia:  2425,', '    hi_pzr_press_psia:  2600,'],
   ['the low-pressure setpoint moved off its sourced value',

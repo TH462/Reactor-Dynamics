@@ -2657,25 +2657,75 @@
   }
 
   // ================================================================ TRIP BLOCKS menu (task #5)
-  // Only the 4 blockable trips (owner ruling).
-  // `sub` may be a function (s) -> string where the caption carries a unit — it is rendered
-  // per popover open, so it follows the display mode like every other number on the board.
-  // The pressure one also stops the setpoint being a hand-copied literal: it read a flat
-  // "1800 psi" while the table said 12.41 MPa, which is 1799.9 and rounds there by luck.
+  // The trips an OPERATOR blocks — and only those (#600).
+  //
+  // ⚠ THIS LIST IS NOT "EVERY TRIP WITH A `blockable` FLAG". Two rows lived here for months
+  // that no source gives the operator at all: RCS LOW FLOW and RCP BREAKER. WTSM 12.2
+  // §12.2.3.12 (ML11223A301) is verbatim that their block is AUTOMATIC — *"All the reactor
+  // coolant low flow trips are automatically blocked below the P-7 setpoint (10% power)."* —
+  // and PWR2 implements exactly that, as the `atPower` gate on its `lo_flow` function. The
+  // retired plant modelled the automatic permissive as a pushbutton and this panel inherited
+  // the list by reference (the #534 pattern); the rows drew ENABLED on every plant state and
+  // each press threw, until #564 made them go dark instead. Dark was better than throwing and
+  // still wrong: a row for an action the plant does not have is a claim about the plant.
+  // A NEW ROW NEEDS A SOURCE SAYING AN OPERATOR TAKES IT, not a `blockable` flag.
+  //
+  // `sub` may be a function (s) -> string where the caption carries a unit or a setpoint — it
+  // is rendered per popover open, so it follows the display mode like every other number on
+  // the board.
+  //
+  // ⚠ AND EVERY SETPOINT IN A CAPTION COMES FROM THE SNAPSHOT, never from `_PROT` and never
+  // from a literal (#600, the #556/#557 class). `_PROT` is `RD.PWR_CONTROL.protection` frozen
+  // at script load — the RETIRED plant's table, whichever plant is actually running. Measured
+  // on the shipped plant: this list said "STARTUP TRIP · 25%" over a 35 % setting the power
+  // TILE was already drawing correctly from the same snapshot, and read the pressure trip at
+  // 1800 psi against a published 1775. `spPct`/`spPress` below read `trip_block_status`, which
+  // is the running plant SPEAKING, and fall back to the static table only for a snapshot that
+  // publishes nothing (an old recording, a minimal fixture) — the legacy shape, unchanged.
+  //
   // The captions are ALL CAPS *(OWNER DIRECTIVE, 2026-08-04: "All text should be in all caps
   // except units should follow standard unit conventions for capitalization.")*. Note the
-  // pressure one interpolates its unit through `uStr`, so the exemption is structural here —
+  // pressure ones interpolate their unit through `uStr`, so the exemption is structural here —
   // the caps live in the literal prose and the unit string is never touched by it.
+
+  /* The live setpoint a plant publishes for one blockable trip, or null when it publishes
+   * none. A FUNCTION, so the fallback is testable without rendering a popover (#564's lesson,
+   * applied to the caption this time and not only to the button state). */
+  function blockSp(s, id) {
+    var st = (s && s.rps_state && s.rps_state.trip_block_status) || {};
+    return (st[id] && typeof st[id].setpoint === 'number') ? st[id].setpoint : null;
+  }
+  /* A PERCENT-OF-RATED setpoint (the flux trips), and it prints NOTHING when the plant did not
+   * publish one — no fallback figure at all.
+   *
+   * ⚠ THE FALLBACK IS THE TRAP HERE, not the lookup. `_PROT`'s flux rows cannot supply it: the
+   * retired plant's intermediate-range trip is authored in AMPS on a different instrument, and
+   * its `power_range high` has TWO rows (the 120 % and the 25 % startup setting) which is the
+   * first-match trap `tripBackstop` exists for. Hard-coding this plant's 35/25 as the fallback
+   * would print PWR2's numbers over the retired engine the preview channel still boots — which
+   * is the #557 defect wearing the fix's clothes. A caption with no number is honest; a caption
+   * with the wrong plant's number is what #600 was filed about. */
+  function spPct(s, id) {
+    var v = blockSp(s, id);
+    return v == null ? '' : v.toFixed(0) + '% · ';
+  }
+  /* A PRESSURE setpoint, in the board's display unit. `fb` is in MPa, like the table. */
+  function spPress(s, id, fb) {
+    var v = blockSp(s, id);
+    return dP(v == null ? fb : v) + ' ' + uStr('press', 'psi');
+  }
+
   var BLOCKABLE_TRIPS = [
     { id: 'lo_press', label: 'PZR PRESS LO-LO',
-      sub: function () { return 'REACTOR TRIP · ' + dP(tripSp('primary_pressure', 'low', 12.41)) + ' ' + uStr('press', 'psi') + ' (P-11 PERMISSIVE)'; } },
-    { id: 'lo_flow', label: 'RCS LOW FLOW', sub: 'REACTOR TRIP · LOSS OF FLOW (P-7 PERMISSIVE)' },
-    // #314. Blockable, so it MUST be listed here or the player carries a reactor trip they
-    // cannot see or manage — and it shares lo_flow's P-7 permissive because WTSM 12.2
-    // §12.2.3.12 blocks ALL the loss-of-flow trips together below P-7.
-    { id: 'rcp_breaker', label: 'RCP BREAKER', sub: 'REACTOR TRIP · PUMP BREAKER OPEN (P-7 PERMISSIVE)' },
-    { id: 'ir_high', label: 'IR HIGH FLUX', sub: 'STARTUP TRIP · ~20% (P-10 PERMISSIVE)' },
-    { id: 'pr_low_setpoint', label: 'PR HIGH (LOW SETPT)', sub: 'STARTUP TRIP · 25% (P-10 PERMISSIVE)' },
+      sub: function (s) { return 'REACTOR TRIP · ' + spPress(s, 'lo_press', tripSp('primary_pressure', 'low', 12.41)) + ' (P-11 PERMISSIVE)'; } },
+    // The startup net, in the order the ascension takes it (#601): the intermediate-range trip
+    // arrives first, the power-range low setting second. Both are P-10 and both are the
+    // operator's — WTSM 12.2's P-10 list, items 1 and 2, are two separate operator actions,
+    // and item 1 also carries the C-1 high-flux rod stop.
+    { id: 'ir_high', label: 'IR HIGH FLUX',
+      sub: function (s) { return 'STARTUP TRIP · ' + spPct(s, 'ir_high') + '(P-10 PERMISSIVE) · ALSO BLOCKS THE ROD STOP'; } },
+    { id: 'pr_low_setpoint', label: 'PR HIGH (LOW SETPT)',
+      sub: function (s) { return 'STARTUP TRIP · ' + spPct(s, 'pr_low_setpoint') + '(P-10 PERMISSIVE)'; } },
     /* SI BLOCK (#564 item 2, the half nobody had named). The panel drew five rows and the
      * running plant publishes a block this panel had NO ROW FOR — so blocking safety injection,
      * which is a real operator action on every cooldown, was unreachable from the board while
@@ -2705,11 +2755,15 @@
     if (item) { pop.style.left = (item.left - 90) + 'px'; pop.style.top = (item.top - 250) + 'px'; }
     pop.appendChild(mk('h4', null, 'TRIP BLOCKS'));
     var snap = RD.PwrBoard.lastSnapshot ? RD.PwrBoard.lastSnapshot() : null;
+    var rowsAtOpen = {};
+    tripBlockRows(snap).forEach(function (r) { rowsAtOpen[r.id] = r; });
     BLOCKABLE_TRIPS.forEach(function (t) {
       var row = mk('div', 'bd-pop-row');
       var txt = mk('div', null);
       txt.appendChild(mk('div', 'lbl', t.label));
-      txt.appendChild(mk('div', 'sub', typeof t.sub === 'function' ? t.sub(snap) : t.sub));
+      /* THE ROW is the caption's only producer (#600) — see tripBlockRows. Rendering `t.sub`
+       * here as well would be a second copy that a gate cannot see. */
+      txt.appendChild(mk('div', 'sub', (rowsAtOpen[t.id] || {}).sub || ''));
       var b = mk('button', null, '');
       b.setAttribute('data-trip', t.id);
       b.addEventListener('click', function () {
@@ -2821,12 +2875,18 @@
    * byte-identical. A snapshot that DOES publish the map is a plant SPEAKING, and a row missing
    * from it is a block that plant does not have.
    *
-   * MEASURED on the shipped plant: PWR2 publishes exactly `pr_low_setpoint`, `lo_press` and
-   * `si_trip`. The panel drew five rows, so `lo_flow`, `rcp_breaker` and `ir_high` rendered
-   * ENABLED in every plant state and each press threw — `ts.can_block === false` is false when
-   * there is no `ts` — while two of them name reactor trips this protection table does not
-   * contain at all. This is the same law `buttonDisabled` applies to the boron panel, RHR and
-   * the steam-dump lever: the plant publishes, the board offers. */
+   * MEASURED on the shipped plant: PWR2 publishes exactly `pr_low_setpoint`, `ir_high`,
+   * `lo_press` and `si_trip` — which is now every row in the list, because #600 deleted the
+   * two the sources never gave an operator and #601 built the intermediate-range trip the
+   * fourth row had been drawing for a plant that did not carry it. This is the same law
+   * `buttonDisabled` applies to the boron panel, RHR and the steam-dump lever: the plant
+   * publishes, the board offers.
+   *
+   * ⚠ KEEP THE GUARD EVEN THOUGH NOTHING TRIPS IT TODAY. A list that happens to match the
+   * running plant is not a list that will: the preview channel still boots the retired engine,
+   * whose kernel publishes a DIFFERENT set, and this predicate is the only thing standing
+   * between a mismatch and a button that throws on press. Its own regression fixtures are in
+   * `run_pwr2_board` and they inject a row the plant does not publish on purpose. */
   function tripRowSupported(s, id) {
     var st = s && s.rps_state && s.rps_state.trip_block_status;
     if (!st || Object.keys(st).length === 0) return true;     /* legacy snapshot — say nothing */
@@ -2855,7 +2915,12 @@
         // the block it removes was the only thing holding an asserted trip off. That is
         // deliberate and prototypical; the earlier comment here claimed the reverse.
         disabled: blocked ? (ts.can_clear === false) : (ts.can_block === false),
-        sub: null
+        /* THE CAPTION IS PART OF THE ROW, not something the popover computes on the way to the
+         * DOM (#600). Two of these carried the retired plant's setpoints for months precisely
+         * because the only way to read one was to render a popover — the same argument #564
+         * made about the button state, applied to the line underneath it. It is recomputed on
+         * every refresh, so it follows the display-unit toggle and a live setpoint change. */
+        sub: typeof t.sub === 'function' ? t.sub(s) : t.sub
       };
     });
   }

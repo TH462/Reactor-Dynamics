@@ -97,6 +97,7 @@ var ROWS = [
   /* --- rod stops (§2.0). Already PWR2's since #572, and checked so they stay that way. --- */
   { m: /^\*\*Power range high flux\*\*/,     want: P.ROD_STOP.pr_frac * 100,      unit: '%',   tol: 0.5 },
   { m: /^\*\*Intermediate range high flux\*\*/, want: P.ROD_STOP.ir_frac * 100,  unit: '%',   tol: 0.5 },
+  { m: /^Intermediate range$/, dir: 'high',   want: P.IR_TRIP.frac * 100,          unit: '%',   tol: 0.5 },
   /* --- permissives --- */
   { m: /^\*\*P-7\*\*/,                       want: P.P7.frac * 100,               unit: '%',   tol: 0.5 },
   { m: /^\*\*P-10\*\*/,                      want: P.P10.frac * 100,              unit: '%',   tol: 0.5 },
@@ -105,7 +106,10 @@ var ROWS = [
    * coverage assertion stays meaningful — an entry here says "looked at", not "unchecked". */
   { m: /^\*\*Turbine trip \(P-9\)\*\*/,      narrative: true },
   { m: /^Source range/,                     narrative: true },
-  { m: /^Intermediate range$/,              narrative: true },
+  /* NO LONGER NARRATIVE (#601). It was listed here as "no single plant constant to check
+   * against", which was true only while the plant had no intermediate-range trip — and that is
+   * precisely how the row came to carry 1.67e-3 A, the ROD STOP's setpoint, for the trip. The
+   * constant exists now, so the row is checked like every other. */
   { m: /^\*\*Overtemperature/,              narrative: true },
   { m: /^\*\*Overpower/,                    narrative: true },
   { m: /^\*\*P-6\*\*/,                       narrative: true },

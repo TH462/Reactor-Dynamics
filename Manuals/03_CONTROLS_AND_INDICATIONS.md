@@ -52,7 +52,7 @@ Describe every operator control and major indication on the PWR board, with purp
 
 **CAUTION:** Target SUR ≤ **1 DPM** and reactor period ≥ **30 s** on approach to criticality. With the fine-step drive (one step ≈ 1.5 ¢ near the crossing), single-step nudges at **Slow** keep the crossing well inside 1 DPM — big held withdrawals are what push the rate up.
 
-**Interlock:** There is **no startup-rate rod stop** — SUR HI at 1 DPM is an *annunciator*, not an interlock, and the rate is yours to control. What does block withdrawal on a startup is the **intermediate range high flux rod stop at 20 % current equivalent power**, until you block the low-setting flux trips at P-10 (**05 §PWR-T14**). Three other rod stops exist; all four are in **09 §2.0**. **Insertion is never blocked by any of them**, and pressing WITHDRAW into one is refused with the stop named.
+**Interlock:** There is **no startup-rate rod stop** — SUR HI at 1 DPM is an *annunciator*, not an interlock, and the rate is yours to control. What does block withdrawal on a startup is the **intermediate range high flux rod stop at 20 % current equivalent power**, until you block the **intermediate range high flux trip** at P-10 — one press takes the trip and the stop together (**05 §PWR-T14**). Three other rod stops exist; all four are in **09 §2.0**. **Insertion is never blocked by any of them**, and pressing WITHDRAW into one is refused with the stop named.
 
 ### 3.2 Rod Speed
 
@@ -194,8 +194,8 @@ the heat sink is restored. **Recovery is procedural, not a button.**
 
 | Block | When allowed |
 |-------|----------------|
-| IR high-flux trip block | Power above **P-10** (10 %) |
-| PR low-setpoint (25 %) block | Power above **P-10** |
+| IR high-flux trip (25 %) block — also clears the 20 % rod stop | Power above **P-10** (10 %) |
+| PR low-setpoint (35 %) block | Power above **P-10** |
 
 Blocks **auto-reinstate** when power falls below P-10.
 

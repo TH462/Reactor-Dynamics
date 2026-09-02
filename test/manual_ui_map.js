@@ -126,7 +126,11 @@ var STEP_UI = {
     { i: 12, view: 'board', control: 'Control Bank' },
     { i: 13, view: 'board', control: 'Control Bank' },
     { i: 14, view: 'board', control: 'Turbine Load' },
+    /* TWO block steps since #601, taken in P-10's own order: the intermediate-range trip (which
+     * also clears the C-1 rod stop) then the power-range low setting. Both land on the same
+     * panel; they are separate rows because they are separate operator actions. */
     { i: 15, view: 'board', control: 'Trip Blocks' },
+    { i: 16, view: 'board', control: 'Trip Blocks' },
   ],
   'pwr2:pwr_raise_power': [
     { i: 1, view: 'board', control: 'Boron control' },

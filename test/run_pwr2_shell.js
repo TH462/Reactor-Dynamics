@@ -1316,9 +1316,26 @@ function runSuite(SH, rec, quiet, only) {
     ck('the kernel FORWARDS set_trip_block to the engine (empty trips list — the request ' +
        'lands) and P-10 revokes it below 8 % on the next step (the sourced asymmetric gate)',
        rF === null && reqNow === true && eB.eng.pt.blockLowFlux === false, '');
+    /* ⚠ THE EXAMPLE HAD TO MOVE (#601). This used `ir_high` as "a trip this RPS does not
+     * carry" — true when it was written, and false the moment the intermediate-range trip was
+     * built. `lo_flow` is the honest example now and a better one: the plant DOES carry that
+     * trip, it simply has no OPERATOR block for it, because WTSM 12.2 §12.2.3.12 makes the
+     * low-flow block automatic below P-7. A refusal must distinguish "no such trip" from "not
+     * yours to block", and the message names what IS blockable rather than what is not. */
+    var rNo = kl.handleCommand({ action: 'set_trip_block', trip_id: 'lo_flow', blocked: true });
+    ck('...and a block this RPS does not give the OPERATOR comes back as a REASONED error, ' +
+       'not a silence',
+       rNo && rNo.type === 'error' && /low-flux/.test(rNo.message) &&
+       /intermediate-range/.test(rNo.message), rNo ? rNo.message : 'no error at all');
+    /* AND THE ONE IT DOES CARRY NOW LANDS — the flip side, or the check above passes on a
+     * plant with no intermediate-range block at all (the absence-that-pins-a-non-event trap). */
     var rIr = kl.handleCommand({ action: 'set_trip_block', trip_id: 'ir_high', blocked: true });
-    ck('...and a trip this RPS does not carry comes back as a REASONED error, not a silence',
-       rIr && rIr.type === 'error' && /low-flux/.test(rIr.message), '');
+    var irReq = eB.eng.pt.blockIrHigh;
+    ck('...while the INTERMEDIATE RANGE block IS the operator action, and reaches the engine (#601)',
+       rIr === null && irReq === true &&
+       rps0.trip_block_status.ir_high && rps0.trip_block_status.ir_high.setpoint === 25,
+       'request ' + irReq + ', published setpoint ' +
+       (rps0.trip_block_status.ir_high ? rps0.trip_block_status.ir_high.setpoint : 'ABSENT'));
   })();
   }
 

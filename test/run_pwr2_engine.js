@@ -1317,15 +1317,35 @@ function runSuite(RD, rec, quiet, only) {
    * claim that matters: a rod stop that reports and does not hold is the wiring gap this file's
    * header exists to catch.
    *
-   * THE REGIME IS THE POINT. At FAST the excursion is steep enough that the 35 % low-setting
-   * flux trip terminates it anyway (measured: peak 90.30 % indicated, tripped) — which is
-   * correct and prototypical, and is exactly why a rod stop is not a substitute for a trip. The
-   * stop's own regime is a CONTROLLED withdrawal, and there it is the difference between a
-   * plant that trips and one that does not. */
+   * THE REGIME IS THE POINT. At FAST the excursion is steep enough that a flux trip terminates
+   * it anyway — which is correct and prototypical, and is exactly why a rod stop is not a
+   * substitute for a trip. The stop's own regime is a CONTROLLED withdrawal.
+   *
+   * ⚠ RE-AIMED FOR #601, AND THE RE-AIM IS ITSELF A MEASUREMENT. This block used to
+   * ride ONE PRESS HELD TO 200 and assert the stop parked the bank "short of the trip" for
+   * 900 s. That passed because the next trip above the 20 % stop was the 35 % low setting — a
+   * 15-point gap. The sourced intermediate-range trip sits at 25 %, so the gap is 5 points, and
+   * the standing reactivity already in the core when the stop asserts carries the flux straight
+   * through it.
+   *
+   * MEASURED, with the trip's own setpoint pushed aside so the STOP could be watched alone
+   * (blocking the request would have cleared the stop too — that is the #601 pairing):
+   *   the stop asserts at 20.08 % / 88.1 steps, the bank goes 88.1 -> 88.2 (the one-step lag)
+   *   and STAYS there for 1200 s — the hold is real — while the flux coasts up to a peak of
+   *   28.24 % and settles at 27.13 %.
+   * So on THIS core the stop holds the rods and does not hold the power, and the 25 % trip is
+   * what ends a held press. That is the sources' own framing rather than a defect — Ginna TS
+   * Bases B 3.3.1 Fn 3: limiting further withdrawal *"MAY terminate the transient and eliminate
+   * the need to trip the reactor"* — but it is tight: measured, an 86-step target settles at
+   * 22.59 % (peak 24.28) and does NOT trip, and 88 steps does. Two steps of bank is the whole
+   * margin, because this core's step worth is large against a 5-point window.
+   *
+   * Both halves are pinned below: the stop's OWN regime (it holds, and the plant survives), and
+   * the held press (it holds the bank, and the trip ends it anyway). */
   var engW = EN.createEngine({ initial_state: 'hot_zero_power' });
   run(engW, 120);
   EN.command(engW, 'rod_speed', 'slow');
-  EN.command(engW, 'rod_target', 200);            /* one press, held — the board's own idiom */
+  EN.command(engW, 'rod_target', 86);             /* the stop's own regime — an operator step */
   var onsetW = null, tsW = null;
   for (var kW = 0; kW < 2400 / DT; kW++) {
     tsW = EN.step(engW, DT);
@@ -1339,14 +1359,11 @@ function runSuite(RD, rec, quiet, only) {
       onsetW ? ('asserted at ' + onsetW.pwr.toFixed(2) + ' % indicated, ' +
                 onsetW.steps.toFixed(1) + ' steps — the gap is the one-step channel lag')
              : 'NEVER ASSERTED');
-  var restW = engW.rodSteps;
-  run(engW, 900);
-  ckT('...and it HOLDS the bank against a standing 200-step demand, short of the trip',
-      engW.rodSteps === restW && engW.rodTarget === 200 &&
-      tsW.scrammed === false && engW.pt.reactor_trip === false,
-      'rods parked at ' + engW.rodSteps.toFixed(1) + ' of a demanded 200 for 900 s, power ' +
-      engW.ins.reading.power_range.toFixed(1) + ' % against the 35 % low-setting trip — before ' +
-      'this the same withdrawal ran to that trip');
+  ckT('...and in its OWN regime the plant rides it out UNTRIPPED — the stop earns its keep',
+      tsW.scrammed === false && engW.pt.reactor_trip === false &&
+      engW.ins.reading.power_range > 20 && engW.ins.reading.power_range < 25,
+      'settled ' + engW.ins.reading.power_range.toFixed(2) + ' % under the 25 % ' +
+      'intermediate-range trip, bank at ' + engW.rodSteps.toFixed(1) + ' steps');
   var thrW = null;
   try { EN.command(engW, 'rod_target', 200); } catch (eW) { thrW = eW.message; }
   var thrWin = null;
@@ -1354,6 +1371,32 @@ function runSuite(RD, rec, quiet, only) {
   ckT('...outward REFUSES by name and INWARD still takes — the source\'s own scope',
       thrW !== null && /INTERMEDIATE RANGE/.test(thrW) && thrWin === null,
       thrW ? ('out: ' + thrW.slice(22, 70) + ' | in: accepted') : 'outward was ACCEPTED');
+
+  /* THE HELD PRESS, the other half: the stop parks the BANK and the trip ends the ASCENT.
+   * The bank freeze is asserted against its value AT THE STOP, so a stop that reported and did
+   * not hold — the wiring gap this section exists for — still reds here. */
+  var engW2 = EN.createEngine({ initial_state: 'hot_zero_power' });
+  run(engW2, 120);
+  EN.command(engW2, 'rod_speed', 'slow');
+  EN.command(engW2, 'rod_target', 200);           /* one press, held — the board's own idiom */
+  var atStopW = null, tsW2 = null, tgtW2 = null;
+  for (var kW2 = 0; kW2 < 2400 / DT; kW2++) {
+    tsW2 = EN.step(engW2, DT);
+    if (atStopW === null && engW2.rpsReport.rod_stop_causes.ir_high_flux) {
+      atStopW = engW2.rodSteps; tgtW2 = engW2.rodTarget;   /* the demand AT the stop: the scram
+                                                            * zeroes rodTarget, so reading it
+                                                            * after the trip is reading the
+                                                            * trip, not the operator */
+    }
+    if (tsW2.scrammed) break;
+  }
+  ckT('a HELD press: the stop parks the bank, and the 25 % IR trip ends the ascent anyway',
+      atStopW !== null && engW2.rodSteps - atStopW < 0.3 && tgtW2 === 200 &&
+      tsW2.scrammed === true && engW2.pt.trip_cause === 'ir_high_flux',
+      'bank ' + (atStopW === null ? '--' : atStopW.toFixed(1)) + ' -> ' +
+      engW2.rodSteps.toFixed(1) + ' of a demanded 200 (the stop HELD), tripped on ' +
+      engW2.pt.trip_cause + ' — the standing reactivity carries the flux through the 5-point ' +
+      'window the stop and the trip leave between them');
   }
 
   if (grp('K')) {
@@ -1407,17 +1450,22 @@ function runSuite(RD, rec, quiet, only) {
       driftH === 0 && tsH2.scrammed === false,
       'Tavg ' + tsH2.tavg_c.toFixed(2) + ', safeties ' + driftH);
 
-  /* the startup ACCIDENT: a continuous fast pull is uncontrolled withdrawal from
-   * subcritical, and the 35 % low-flux trip terminates it (UFSAR 15.4.1's credited trip;
-   * measured: 1 % -> 100.8 % inside the trip's own analysis delay — real and kept) */
+  /* the startup ACCIDENT: a continuous fast pull is uncontrolled withdrawal from subcritical,
+   * and the startup net's FIRST rung terminates it. Since #601 that is the 25 % INTERMEDIATE
+   * RANGE trip, not the 35 % power-range low setting — and it is the Function the sources
+   * credit for exactly this event (Ginna TS Bases B 3.3.1 Fn 3: *"ensures that protection is
+   * provided against an uncontrolled RCCA bank rod withdrawal accident from a subcritical
+   * condition"*). Measured: peak 91.9 % indicated at the trip, against 100.8 % when the 35 %
+   * setting was the first rung — the earlier setpoint buys back ~9 points of overshoot, and
+   * what remains is the sourced 0.5 s analysis delay at a fast period. */
   var engA2 = EN.createEngine({ initial_state: 'hot_zero_power' });
   EN.command(engA2, 'rod_speed', 'fast');
   EN.command(engA2, 'rod_target', 200);
   var tsA2 = null;
   for (kk = 0; kk < 200 / DT && !(tsA2 && tsA2.scrammed); kk++) tsA2 = EN.step(engA2, DT);
-  ckT('a continuous fast pull from subcritical IS the startup accident, and the low-flux ' +
-      'trip answers it',
-      tsA2.scrammed === true && engA2.pt.trip_cause === 'hi_flux_lo',
+  ckT('a continuous fast pull from subcritical IS the startup accident, and the startup ' +
+      'net FIRST rung answers it',
+      tsA2.scrammed === true && engA2.pt.trip_cause === 'ir_high_flux',
       'cause ' + engA2.pt.trip_cause + ' at ' + tsA2.power_pct.toFixed(1) + ' % (the ' +
       'overshoot is the sourced 0.5 s delay at a fast period)');
 
@@ -1430,7 +1478,11 @@ function runSuite(RD, rec, quiet, only) {
   var p84 = tsS2.power_pct;
   EN.command(engS2, 'rod_target', 86);
   tsS2 = run(engS2, 30);
-  EN.command(engS2, 'low_flux_block', true);      /* above P-10 here — measured 18.2 % */
+  /* BOTH P-10 blocks, in the order the procedure takes them (#601). The intermediate-range one
+   * first: it clears the 20 % C-1 rod stop as well as its own 25 % trip, and without it the
+   * `rod_target 96` below is REFUSED by the stop — measured, this fixture threw on arrival. */
+  EN.command(engS2, 'ir_high_block', true);      /* above P-10 here — measured 18.2 % */
+  EN.command(engS2, 'low_flux_block', true);
   var pBlk = tsS2.power_pct;
   tsS2 = run(engS2, 90);
   EN.command(engS2, 'rod_target', 96);
@@ -1447,7 +1499,7 @@ function runSuite(RD, rec, quiet, only) {
        * point; 0.05 says that and holds on both builds (0.2115 and 0.1994). */
       p84 > 0.05 && p84 < 8 && pBlk > 8 &&
       tsS2.power_pct > 36 && tsS2.scrammed === false &&
-      engS2.rpsReport.low_flux_blocked === true,
+      engS2.rpsReport.low_flux_blocked === true && engS2.rpsReport.ir_high_blocked === true,
       'critical leg ' + p84.toFixed(2) + ' %, blocked at ' + pBlk.toFixed(1) +
       ' %, now ' + tsS2.power_pct.toFixed(1) + ' % unscrammed');
 
@@ -2252,8 +2304,16 @@ var MUTATIONS = [
    '    if (ic.cold) rodBank[1].steps = 0;\n    var boron0 = RD.kinetics.criticalBoron(rx.kin, tavg0, icP, rodBank,',
    { grp: 'N' }],
   ['the cold boot forgets the P-11 blocks (the shutdown plant injects at construction)',
-   '      pt: PT.createProtection({ blockLowFlux: ic.pf >= 0.1,\n                                blockLoPress: !!ic.cold, blockSI: !!ic.cold }),',
-   '      pt: PT.createProtection({ blockLowFlux: ic.pf >= 0.1 }),', { grp: 'N' }],
+   '      pt: PT.createProtection({ blockLowFlux: ic.pf >= 0.1, blockIrHigh: ic.pf >= 0.1,\n                                blockLoPress: !!ic.cold, blockSI: !!ic.cold }),',
+   '      pt: PT.createProtection({ blockLowFlux: ic.pf >= 0.1, blockIrHigh: ic.pf >= 0.1 }),',
+   { grp: 'N' }],
+  /* #601: the at-power ICs must take the INTERMEDIATE RANGE block too, or a 50 %/100 %
+   * plant boots with the 25 % trip armed and scrams on arrival. The mutation drops that
+   * half only, so it cannot be caught by anything the P-11 anchor above covers. */
+  ['an at-power IC boots WITHOUT the intermediate-range block (it scrams on arrival)',
+   '      pt: PT.createProtection({ blockLowFlux: ic.pf >= 0.1, blockIrHigh: ic.pf >= 0.1,',
+   '      pt: PT.createProtection({ blockLowFlux: ic.pf >= 0.1, blockIrHigh: false,',
+   { grp: 'K' }],
   ['the RHR hold throttle is dropped (the "held" plant cools at 560 degF/hr and drains)',
    '      eng.rh.hx_fraction = 0;',
    '      eng.rh.hx_fraction = 0.5;', { grp: 'N' }],

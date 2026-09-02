@@ -426,6 +426,14 @@ FIRST** — ask what in it would still burn someone in a month, move that to the
 ONE line, drop the rest. **A bullet is ~80 words.** (Measured 2026-08-06: the list was running
 7 bullets averaging 500 words, two of them duplicating traps already rescued below.)
 
+- **A `blockable` FLAG IS NOT EVIDENCE AN OPERATOR BLOCKS IT — AND A SHARED BOOLEAN CANNOT BE
+  TESTED FOR WHICH CONSUMER IT BELONGS TO** (2026-09-01, #600/#601, from the owner's question about
+  the dark TRIP BLOCKS rows). Two rows offered a P-7 block WTSM 12.2 calls *automatic*; #564 made
+  them politely dark without asking what the source says the operator does. A third was dark because
+  the 25 % intermediate-range TRIP did not exist — the retired plant wrote the ROD STOP's 20 % into
+  the trip's row and `Manuals/09` shipped it. #572 then hung the C-1 stop on the power-range lever
+  and **its check asserted that and passed**: with one lever, both wirings look identical.
+
 - **A CHECKLIST'S REPLAY IS THE AUTHORITY ON WHETHER IT FITS THE PLANT — AND A STEP WHOSE
   COMMAND NEEDS A MID-STEP STATE CANNOT BE ONE STEP** (2026-08-31, #244/#526). Aliasing the
   retired pool onto pwr2 was refuted by riding it: the 912-currency rod bursts overrun the
@@ -453,14 +461,6 @@ ONE line, drop the rest. **A bullet is ~80 words.** (Measured 2026-08-06: the li
   — and **85 °F is SOURCED** (Ginna TS Bases B 3.7.8) under a standing owner directive, both
   written in the revision row for the section I was editing. The board read the right value from
   the wrong plant. **The fix was provenance, not arithmetic.**
-- **A GATE CAN BE POINTED AT TWO OF ITS SUBJECT'S THREE TABLES AND REPORT GREEN — AND THE BOARD
-  KNEW BEFORE THE MANUAL DID, THREE TIMES** (2026-08-30, #532, Rev 17 (e)–(p)). `run_manual_setpoints`
-  shipped in this same effort reading chapter 09's §2.0 and §4.0 and scored **9/9** over a §3.0 that
-  was entirely the retired plant's: the PORV fixed at 2350 psi when it rides **Press SP + 100**, seven
-  actuations that do not exist, **two of the three real ones missing**. Nothing was wrong with the
-  checks. **Ask what a gate READS, not only what it asserts.** Meanwhile ROD AUTO was dark, the HPI
-  arm disabled and the picker offered *Hot Shutdown (Mode 4)* while seven chapters and the checklist
-  a player runs named a `cold_shutdown` the engine **refuses by name**.
 **Standing procedure — not part of the rotation above; these do not expire.** One trap per entry.
 **MAX 25 BULLETS** *(OWNER RULING, 2026-08-10: selected "Cap at 25, evict to TRAPS.md" from
 options I wrote — a selection, not verbatim words)*, gated by `test/run_doc_budget.js`. Adding
@@ -525,7 +525,10 @@ thing left in the file and it grew about a bullet a session.
   check asserting an ABSENCE can be pinning a NON-EVENT (`run_reachability` exists for the
   instrument half). `h.range()` spans the WHOLE run, the wrong window for a loss on an event that
   recovers — take the ends and assert the SPAN. A gate that iterates a hand-maintained MAP tests
-  the map (`verify_manual_follow` covered 17 of 45 steps at a confident PASS). A SOURCE SCAN for a
+  the map (`verify_manual_follow` covered 17 of 45 steps at a confident PASS). **ASK WHAT A GATE
+  READS, not only what it asserts** — `run_manual_setpoints` scored 9/9 over a chapter-09 §3.0 it
+  never opened (#532), and marked a row `narrative` *because the plant lacked the constant*, which
+  is how a rod stop's setpoint lived in a trip's row (#601). A SOURCE SCAN for a
   rendered string cannot tell you the string is REACHABLE — `/\(partial\)/` passed green on
   `(false ? ' (partial)' : '')` (#485); make it a function and test the claim, don't spell it. And
   a term that is
@@ -659,8 +662,6 @@ not a changelog.**
 - Extend the **M8 UI / M4 control surface to RBMK + BWR**.
 - **ECCS card UI layout** (contract in `Blueprint/pwr_synoptic_prerequisites.md`), and two
   Mode-5 nice-to-haves: a `plant_mode` text indicator and an explicit `eccs_mode` readout.
-  (Campaign ↔ Mode-5 alignment and the Mode-5 controls themselves are **done** — they sat in
-  this list marked "done" for a week, which is what a list nobody prunes looks like.)
 
 **Current gate baselines — `BASELINES` in `test/run_all.js` IS the authority. Do not copy
 numbers here.** This section carried ~24,000 words of per-runner prose until 2026-08-06 and every

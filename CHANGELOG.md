@@ -30,6 +30,69 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
 
 ## [Unreleased]
 
+### Added / Fixed (#601/#600: the startup net gains its second rung, and TRIP BLOCKS stops offering two blocks no operator has — 2026-09-01)
+
+Filed from a player question about the three TRIP BLOCKS rows reading *NOT ON THIS PLANT*.
+Adjudicated one row at a time and the answer was different for each.
+
+**The Intermediate Range Neutron Flux reactor trip is BUILT** (`engines/pwr2/pwr2_protection.js`).
+PWR2's startup net was one rung — the 35 % power-range low setting — where the sources have two;
+the intermediate-range **rod stop** was built at #572 and the **trip** never was. Setpoint **25 %
+current equivalent**, blockable at P-10 on its own request, auto-revoked below it like the
+low-flux one. Sourced WTSM 12.2 §12.2.3.3 (ML11223A301) — Ginna publishes no number for the
+Function (*"a pre-selected, manually adjustable setpoint"*), so the generic Westinghouse figure is
+carried and declared. **Not the rod stop's 20 %**: the retired plant wrote `ROD_STOP.ir_frac` into
+the trip's row and `Manuals/09` shipped that conflation.
+
+Measured: an unblocked ascent scrams at **0.250** on `ir_high_flux`; with only that block taken it
+rides to **0.350** on the power-range backstop; with only the power-range block taken it still
+scrams at 0.250. The uncontrolled fast withdrawal from subcritical now peaks at **91.9 %**
+indicated against **100.8 %** before.
+
+**#572's C-1 rod stop was on the wrong lever.** It rode `blockLowFlux` — the power-range
+request — under a comment declaring "one lever". WTSM 12.2's P-10 list is two numbered operator
+actions and pairs the stop with the *intermediate-range* trip's block. `blockable` now names its
+request instead of being a bare `true`; an unrecognised name blocks nothing. The check that pinned
+the old wiring asserted the wrong thing and passed, because with one lever in existence a right
+and a wrong wiring are indistinguishable.
+
+**TRIP BLOCKS: RCS LOW FLOW and RCP BREAKER deleted.** WTSM 12.2 §12.2.3.12 is verbatim that
+*"all the reactor coolant low flow trips are automatically blocked below the P-7 setpoint (10%
+power)"* — neither was ever an operator action. PWR2 already implements the automatic gate
+(`atPower`). No content consumed either block.
+
+**Two working rows were printing the retired plant's setpoints** (the #556/#557 class, in the same
+popover). `PR HIGH (LOW SETPT)` was a literal `"25%"` against a plant at **35 %** — the power tile
+was already reading 35 from the same snapshot, so the popup contradicted the tile. `PZR PRESS
+LO-LO` read the static table's **1800 psi** against a published **1775 psia**. Both now read
+`trip_block_status`, extracted as functions so the caption is testable without rendering a popover.
+
+**The presence guard is kept and proven by injection.** Every drawn row is now a published row, so
+`tripRowSupported` has no live subject on the shipped plant — but the preview channel still boots
+the retired engine, which publishes a different set. The board gate deletes one row's status entry
+from a snapshot and asserts that row darks with its neighbours untouched.
+
+**The rod stop no longer saves a held press, and that is the plant.** The 20 % stop and the 25 %
+trip leave a 5-point window where the 35 % setting left 15. Measured with the trip's setpoint
+pushed aside: the stop asserts at **20.08 % / 88.1 steps**, the bank holds **88.1 → 88.2** for
+1200 s, and the flux coasts to **28.24 %** peak / **27.13 %** settled. An 86-step target settles at
+22.59 % and does not trip; 88 steps does. Two steps of bank is the whole margin. Both setpoints are
+sourced; flagged rather than tuned.
+
+**Content.** `Manuals/09` §2.0 IR trip row corrected and its rod-stop row re-homed;
+`03`/`04`/`05` rewritten to two presses in order, and the PR-low block written at its shipped 35 %
+where three chapters said 25 %. The PWR2 live checklist gains the IR block step ahead of the
+low-flux one — without it the ascension's `rod_target 96` is refused by the rod stop.
+`run_manual_setpoints` promotes the IR trip row from `narrative` to a real comparison; it was
+narrative *because the plant had no constant to check it against*, which is how the wrong number
+lived there.
+
+Gates: `run_pwr2_protection` **125/125, 68/68 mutations** (was 114). `run_pwr2_shell` 147/147,
+48/48. `run_pwr2_board` 71/71, 22/22. `run_pwr2_engine` 130/130. `run_manual_setpoints` 13/13.
+Three mutation anchors were orphaned by the refactor and the gate reported them as blind spots
+rather than passing; re-anchored, plus five new mutations covering the trip, its setpoint, its
+revoke, the collapsed levers and the mis-wired stop.
+
 ### Added (#244/#254/#526: interactive checklists walk the shipped plant — Mode 5 → full power → Mode 5 — 2026-08-31)
 
 - **The live checklists run on PWR2**, ending #526's empty pickers: a new

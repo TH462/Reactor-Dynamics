@@ -672,6 +672,9 @@
     set_trip_block: function (e, c) {
       if (c.trip_id === 'pr_low_setpoint' || c.trip_id === 'hi_flux_lo') {
         EN.command(e, 'low_flux_block', c.blocked !== false);
+      } else if (c.trip_id === 'ir_high' || c.trip_id === 'ir_high_flux') {
+        /* the other half of the startup net (#601) — the pwr1 board's id and this engine's own */
+        EN.command(e, 'ir_high_block', c.blocked !== false);
       } else if (c.trip_id === 'lo_press') {
         /* the P-11 pair (#507 wave 10) — the pwr1 board's own ids for the cooldown blocks */
         EN.command(e, 'lo_press_trip_block', c.blocked !== false);
@@ -679,8 +682,8 @@
         EN.command(e, 'si_block', c.blocked !== false);
       } else {
         throw new Error('pwr2_shell: trip block "' + c.trip_id + '" REFUSED — this RPS ' +
-          'blocks the 35 % low-flux setting (P-10), the low-pressure trip and the SI ' +
-          'actuation (both P-11); nothing else');
+          'blocks the 35 % low-flux setting and the 25 % intermediate-range trip (both P-10), ' +
+          'the low-pressure trip and the SI actuation (both P-11); nothing else');
       }
     }
   };
@@ -1216,10 +1219,16 @@
     var e = this.eng, rp = e.rpsReport || {};
     var blocked = !!e.pt.blockLowFlux;
     var asserted = false, sp = 35;
+    /* the SECOND P-10 request (#601) — the 25 % intermediate-range trip, its own lever */
+    var irB = !!e.pt.blockIrHigh, irAsserted = false, spIr = 25;
     (rp.functions || []).forEach(function (f) {
       if (f.id === 'hi_flux_lo') {
         asserted = f.asserted === true;
         if (typeof f.setpoint === 'number') sp = f.setpoint * 100;   /* frac -> % */
+      }
+      if (f.id === 'ir_high_flux') {
+        irAsserted = f.asserted === true;
+        if (typeof f.setpoint === 'number') spIr = f.setpoint * 100;
       }
     });
     /* the P-11 pair (#507 wave 10): same surface, the pwr1 board ids, the engine's own
@@ -1260,7 +1269,7 @@
     });
 
     return {
-      trip_blocks: { pr_low_setpoint: blocked, lo_press: loB, si_trip: siB },
+      trip_blocks: { pr_low_setpoint: blocked, ir_high: irB, lo_press: loB, si_trip: siB },
       trip_setpoints: tripSetpoints,
       trip_setpoint_instruments: ['pzr_level'],   /* what the list above SPEAKS FOR — see comment */
       trip_block_status: {
@@ -1269,6 +1278,14 @@
           can_block: !blocked && rp.p10_met === true,
           can_clear: blocked,
           setpoint: sp
+        },
+        /* the intermediate-range trip (#601) — SAME permissive as the row above, separate
+         * request. The board id is the pwr1 board's `ir_high`, like every other row here. */
+        ir_high: {
+          blocked: irB, asserted: irAsserted,
+          can_block: !irB && rp.p10_met === true,
+          can_clear: irB,
+          setpoint: spIr
         },
         lo_press: { blocked: loB, asserted: false,
                     can_block: !loB && p11, can_clear: loB, setpoint: spLo },

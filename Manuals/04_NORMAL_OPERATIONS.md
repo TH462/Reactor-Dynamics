@@ -226,7 +226,7 @@ Take the reactor from **Mode 3, Hot Standby** to **Mode 2, Startup** (critical, 
 
 | Type | Text |
 |------|------|
-| **CAUTION** | Target SUR ≤ **1 DPM** (SUR HI at 1 DPM). **Nothing blocks withdrawal on rate** — the alarm is the only rate cue and the rate is yours to control. Withdrawal blocks on **flux**: the intermediate range rod stop at **20 % current equivalent**, until the low-setting trips are blocked at P-10. Insertion is never blocked. |
+| **CAUTION** | Target SUR ≤ **1 DPM** (SUR HI at 1 DPM). **Nothing blocks withdrawal on rate** — the alarm is the only rate cue and the rate is yours to control. Withdrawal blocks on **flux**: the intermediate range rod stop at **20 % current equivalent**, until the **intermediate range trip** is blocked at P-10 — the same press. Insertion is never blocked. |
 | **CAUTION** | Plot **enough 1/M points**. Early predictions always read high (flat toe of the worth curve). Two points can predict ~711 vs true ~319; six points land within a handful of steps. **Never** withdraw straight to the first prediction. |
 | **CAUTION** | One fine step near the band is ~**1 ¢ (6.5–6.7 pcm)**. Final approach: **Slow**, single steps. |
 | **WARNING** | Secure **Source Range** before ~1e5 cps (SR high-flux trip). Handoff when **P-6** is met (IR ≥ **1e-10 A**). |
@@ -310,7 +310,7 @@ Reactor critical (Mode 2 or early Mode 1); condenser vacuum healthy; MSIV open.
 > **ROLL AT 10–15 % POWER, NOT AT 2–5 %.** *"To minimize primary plant transients, the turbine is
 > rolled with reactor power between 10 and 15 percent"* — WTSM §19.3 (ADAMS **ML11223A342**); its
 > App 19-1 sequences the same thing, raising power until the dumps pass 10–15 % of full-load steam
-> flow (step 17), blocking the IR-high and PR-low trips above P-10 (steps 18–19), and *then*
+> flow (step 17), blocking the IR-high (25 %) and then the PR-low (35 %) trips above P-10 (steps 18–19), and *then*
 > accelerating and synchronizing (step 21). The reason is the steam balance: at 10–15 % the dumps
 > are already passing that flow, so as the governor valves open the dumps modulate shut and
 > **total steam flow barely changes** — Tavg, SG heat transfer and feed flow all stay put.
@@ -370,7 +370,7 @@ P-9 interlock — is modelled properly; it is the roll and the synchroscope that
 |------|--------|---------|------------|
 | 1 | Verify condenser vacuum healthy | Condenser | Above trip region |
 | 2 | Verify MSIV **Open** | Steam | MSIV open |
-| 2a | **Raise reactor power to 10–15 % BEFORE synchronizing**, and block the startup trips on the way (IR HIGH, then PR 25 %, both available above P-10). Do not roll at 2–5 % | Control Bank · Trip Blocks | Power 10–15 %; both blocks in |
+| 2a | **Raise reactor power to 10–15 % BEFORE synchronizing**, and block the startup trips on the way (IR HIGH at 25 %, then PR LOW SETPOINT at 35 % — in that order, both available above P-10). Do not roll at 2–5 % | Control Bank · Trip Blocks | Power 10–15 %; both blocks in |
 | 3 | **Put the turbine on line: press FOLLOW** on the generator selector. It synchronizes and picks up load matched to reactor power — the reactor's heat now has somewhere to go besides the steam dump | Turbine — Connect Grid | Rotor 1800 rpm; MWe > 0; OFF lamp out |
 | 3a | Take load control: press **MAN**. The setpoint stays where FOLLOW left it, already matched to the power you are making | Turbine Load | MAN; setpoint matched |
 | 4 | Raise Turbine Load in steps toward a low MWe target consistent with reactor power | Turbine Load | MWe rises; steam flow rises |

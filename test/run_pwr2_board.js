@@ -429,32 +429,85 @@ function runSuite(quietRec) {
     'demand 0 %, delivery 100 % -> box ' + svStuck.box + ', readout ' +
     (svStuck.read && svStuck.read.color));
 
-  /* ---- 2b4. THE TRIP BLOCKS PANEL (#564 item 2) --------------------------------------------
-   * Five rows were drawn and this plant publishes three blocks. `lo_flow`, `rcp_breaker` and
+  /* ---- 2b4. THE TRIP BLOCKS PANEL (#564 item 2, closed out by #600/#601) --------------------
+   * The history, because it is the whole reason these checks are shaped the way they are.
+   * FIVE rows were drawn against a plant publishing THREE blocks. `lo_flow`, `rcp_breaker` and
    * `ir_high` had no `trip_block_status` entry, so `ts.can_block === false` was false and all
-   * three rendered ENABLED in every plant state — each press throwing — while two of them name
-   * reactor trips pwr2_protection does not contain at all. And the inverse: `si_trip`, a block
-   * this plant DOES carry and a real operator action on a cooldown, had no row. */
-  if (!rec) head('TRIP BLOCKS PANEL  [the plant publishes, the board offers, #564 item 2]');
+   * three rendered ENABLED in every plant state — each press throwing. #564 made them go dark
+   * and read N/A, which stopped the throw and left a different lie standing: a row offering an
+   * action the plant does not have is still a claim about the plant. #600/#601 adjudicated them
+   * one at a time and NONE of the three ends as a dark row:
+   *   lo_flow, rcp_breaker  DELETED — WTSM 12.2 §12.2.3.12 makes the low-flow block AUTOMATIC
+   *                         below P-7, so neither was ever an operator action anywhere.
+   *   ir_high               BUILT — the sourced 25 % intermediate-range trip the row had been
+   *                         drawing for a plant that did not carry it.
+   * So on the shipped plant every drawn row is now a published one, and the SUPPORTED predicate
+   * has no live subject. It is kept and PROVEN BY INJECTION below rather than deleted: the
+   * preview channel still boots the retired engine, which publishes a different set, and this
+   * predicate is the only thing between that mismatch and a button that throws on press. */
+  if (!rec) head('TRIP BLOCKS PANEL  [the plant publishes, the board offers, #564/#600/#601]');
   var tbRows = D.tripBlockRows(w.snap()), tbById = {};
   tbRows.forEach(function (r) { tbById[r.id] = r; });
   var tbPub = (w.snap().rps_state && w.snap().rps_state.trip_block_status) || {};
-  q('every row the panel draws that this plant does NOT publish reads N/A and is disabled',
-    tbRows.filter(function (r) { return !r.supported; }).length > 0 &&
+  q('every row the panel draws IS one this plant publishes — no dark rows left (#600)',
+    tbRows.length > 0 &&
     tbRows.every(function (r) {
-      return Object.prototype.hasOwnProperty.call(tbPub, r.id)
-             ? r.supported === true
-             : (r.supported === false && r.disabled === true && r.text === 'N/A');
-    }),
+      return Object.prototype.hasOwnProperty.call(tbPub, r.id) && r.supported === true;
+    }) &&
+    ['lo_flow', 'rcp_breaker'].every(function (id) { return !tbById[id]; }),
     'published ' + Object.keys(tbPub).sort().join(',') + ' — rows ' +
     tbRows.map(function (r) { return r.id + ':' + r.text; }).join(' '));
-  /* THE DISCRIMINATOR: naming the three by id, so a change that disabled the WHOLE panel — or
-   * one that left the panel alone and merely stopped drawing the rows — cannot pass this. */
-  q('...specifically lo_flow, rcp_breaker and ir_high, the three that could only throw',
-    ['lo_flow', 'rcp_breaker', 'ir_high'].every(function (id) {
-      return tbById[id] && tbById[id].disabled === true && tbById[id].supported === false;
-    }) && tbById.pr_low_setpoint && tbById.pr_low_setpoint.supported === true,
-    '');
+  /* THE PREDICATE STILL WORKS, and only an injection can say so now that nothing on the shipped
+   * plant exercises it. A snapshot with one row's entry REMOVED must dark that row and leave
+   * the others alone — the shape a preview-channel mismatch would produce. */
+  var snapMiss = JSON.parse(JSON.stringify(w.snap()));
+  delete snapMiss.rps_state.trip_block_status.ir_high;
+  var missRows = D.tripBlockRows(snapMiss), missById = {};
+  missRows.forEach(function (r) { missById[r.id] = r; });
+  q('...and a row the plant STOPS publishing goes dark and reads N/A, its neighbours untouched',
+    missById.ir_high && missById.ir_high.supported === false &&
+    missById.ir_high.disabled === true && missById.ir_high.text === 'N/A' &&
+    missById.pr_low_setpoint && missById.pr_low_setpoint.supported === true &&
+    missById.lo_press && missById.lo_press.supported === true,
+    'ir_high reads "' + (missById.ir_high ? missById.ir_high.text : 'NO ROW') +
+    '" with its status entry removed — the guard is live even though the shipped plant no ' +
+    'longer trips it');
+  /* ---- THE CAPTIONS (#600) — every setpoint in one comes from the SNAPSHOT ------------------
+   * `PR HIGH (LOW SETPT)` was the literal string "STARTUP TRIP · 25%" over a plant at 35 %, and
+   * `PZR PRESS LO-LO` read the static pwr1 table's 12.41 MPa (1800 psi) over a published 1775.
+   * The power TILE was already drawing 35 from this same snapshot, so the popover contradicted
+   * the tile on the same board. Neither could be caught because the caption existed only as a
+   * DOM write; it is a field on the row now, and these are the checks that were impossible. */
+  q('the flux captions carry the PLANT setpoints, not a literal (#600)',
+    / 35% · /.test(tbById.pr_low_setpoint.sub) && !/25%/.test(tbById.pr_low_setpoint.sub) &&
+    / 25% · /.test(tbById.ir_high.sub),
+    'PR "' + tbById.pr_low_setpoint.sub + '" | IR "' + tbById.ir_high.sub + '"');
+  q('...and the pressure caption reads the published setpoint, not the retired table',
+    /175[0-9]|17[0-8][0-9]/.test(tbById.lo_press.sub) && !/1800/.test(tbById.lo_press.sub),
+    'lo_press "' + tbById.lo_press.sub + '" — the static table would say 1800 psi');
+  /* AND A SNAPSHOT THAT PUBLISHES NO SETPOINT PRINTS NO NUMBER — never a hard-coded fallback.
+   * That path is live: the retired engine's kernel publishes trip_block_status entries with no
+   * `setpoint` field, and printing this plant's 35/25 there would be the #557 defect wearing
+   * the fix's clothes. */
+  var snapBare = JSON.parse(JSON.stringify(w.snap()));
+  Object.keys(snapBare.rps_state.trip_block_status).forEach(function (k) {
+    delete snapBare.rps_state.trip_block_status[k].setpoint;
+  });
+  var bareById = {};
+  D.tripBlockRows(snapBare).forEach(function (r) { bareById[r.id] = r; });
+  q('...and a plant that publishes NO setpoint gets no number at all, not a borrowed one',
+    !/[0-9]+%/.test(bareById.pr_low_setpoint.sub) && !/[0-9]+%/.test(bareById.ir_high.sub) &&
+    /P-10 PERMISSIVE/.test(bareById.ir_high.sub) && bareById.ir_high.supported === true,
+    'IR reads "' + bareById.ir_high.sub + '" with no published setpoint');
+
+  /* THE INTERMEDIATE RANGE ROW IS THE ONE #601 BUILT — supported, live, and carrying the
+   * plant's own 25 %, not the retired plant's 20 % rod-stop number. */
+  q('...and IR HIGH FLUX is a LIVE row now, at the plant\'s own 25 % (#601)',
+    tbById.ir_high && tbById.ir_high.supported === true && tbById.ir_high.text !== 'N/A' &&
+    tbPub.ir_high && tbPub.ir_high.setpoint === 25 &&
+    tbById.pr_low_setpoint && tbById.pr_low_setpoint.supported === true,
+    tbById.ir_high ? ('ir_high reads "' + tbById.ir_high.text + '", published setpoint ' +
+                      (tbPub.ir_high && tbPub.ir_high.setpoint)) : 'NO ROW');
   q('and SI ACTUATION — a block this plant carries — now HAS a row, and it is live',
     tbById.si_trip && tbById.si_trip.supported === true && tbById.si_trip.text !== 'N/A',
     tbById.si_trip ? ('si_trip reads "' + tbById.si_trip.text + '", disabled ' +
