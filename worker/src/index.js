@@ -129,6 +129,7 @@ const KEY_OF = {
 };
 
 import { handleDashboard } from './dashboard.js';
+import { runRollup } from './rollup.js';
 import { stagesEndpoint } from './features.js';
 
 // ---------------------------------------------------------------- helpers
@@ -183,6 +184,30 @@ function bool(v) { return v === true ? 1 : v === false ? 0 : -1; }
 
 // ---------------------------------------------------------------- the Worker
 export default {
+  /* THE DAILY ROLLUP (#604). Neither upstream keeps anything for long -- Web Analytics
+   * holds 7 days at full resolution and Analytics Engine a fixed 3 months -- so the
+   * dashboard could not answer "is this growing", and past a week could not answer "what
+   * happened on the 14th" either.
+   *
+   * The whole trick is being ON TIME: the coarse tier only penalises queries made LATER,
+   * so a job that snapshots yesterday while it is still inside the 7-day window keeps
+   * exact history for ever. That makes a MISSED run a permanent loss of that day's
+   * precision, not a delay -- which is why rollup.js stores `sample_interval` on every
+   * row and records each run, so a late or absent capture is visible instead of being
+   * read as a quiet day.
+   *
+   * ctx is deliberately unused: this must finish before the invocation ends, so it is
+   * awaited rather than handed to waitUntil. */
+  async scheduled(event, env) {
+    const summary = await runRollup(env);
+    /* Deliberately NOT console.log'd. Observability is off for this Worker on purpose
+     * (wrangler.toml) because Workers Logs capture request metadata and headers, which
+     * includes CF-Connecting-IP -- and src/index.js promises the IP is never written
+     * anywhere. The run's own record lives in the `rollup_runs` table, which the
+     * dashboard reads; that is the place to look, not a log stream. */
+    return summary;
+  },
+
   async fetch(request, env) {
     const url = new URL(request.url);
 

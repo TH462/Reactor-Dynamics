@@ -18,6 +18,38 @@ compatibility_date = "2026-08-07"
 binding = "BUNDLES"
 bucket_name = "reactor-dynamics-bundles"
 
+# THE LONG-TERM STORE (#604). Everything else here forgets: Web Analytics holds 7 days at
+# full resolution and the dataset below a fixed 3 months, so before this binding the
+# dashboard had no history at all and, past a week, not even accurate recent history --
+# measured 2026-09-02, a 30-day query came back with every figure rounded to the nearest 10
+# against a real volume of 12 visits a week.
+#
+# src/rollup.js writes one row per (day x dimension tuple) from the cron below. The trick is
+# ONLY that it is on time: the coarse tier penalises queries made later, so capturing
+# yesterday inside the 7-day window keeps it exact permanently.
+#
+# RETENTION IS TWO YEARS, pruned by the job itself *(OWNER RULING, 2026-09-02: "Cap it at 2
+# years, then roll off")*. The note on the R2 bucket above -- "an analytics store with no
+# expiry is a promise nobody made" -- was written about session recordings, which carry a
+# player's words; this store is aggregate counts with no identifier, and honours it anyway.
+# privacy.html discloses the two years, and NOTHING GATES THAT: run_telemetry binds the page
+# to the Analytics Engine event schema and says nothing about retention.
+[[d1_databases]]
+binding = "STATS"
+database_name = "reactor-dynamics-stats"
+database_id = "PLACEHOLDER — run `wrangler d1 create reactor-dynamics-stats` and paste the id"
+
+# 05:10 UTC daily -- 00:10 EST / 01:10 EDT, i.e. shortly after the EASTERN day the job rolls
+# up has closed. Eastern and not UTC because the dashboard renders Eastern days *(OWNER
+# DIRECTIVE, 2026-08-13)* and the stored history has to agree with the live view at the
+# edges. The 10-minute lag is slack for late-arriving beacons, not superstition.
+#
+# ONE run per day is all the precision requires, but a MISSED run is a permanent loss --
+# re-running later gets the coarse tier's rounded answer. rollup_runs records every run so a
+# gap is visible; re-running by hand is safe (INSERT OR REPLACE on the dimension tuple).
+[triggers]
+crons = ["10 5 * * *"]
+
 # Aggregate events. Retention is fixed at three months by Cloudflare and is not
 # configurable, which is a feature here: the data ages out on its own.
 [[analytics_engine_datasets]]

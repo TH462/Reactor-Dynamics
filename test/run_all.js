@@ -1130,6 +1130,7 @@ var BASELINES = {
    * the warning back to blaming the window size -> 86/87, the start re-derived inline ->
    * 85/87. The label check had to become BEHAVIOURAL to bite: as a source scan for
    * "(partial)" it passed green on `(false ? ' (partial)' : '')`. */
+  'run_rollup.js':         { code: 0, score: '24passed 0failed 24checks', secs: 1 },   // NEW (#604, 2026-09-02): THE DAILY ANALYTICS ROLLUP, and the first scheduled handler in this repo. Nothing in test/ executed worker code before this -- run_dashboard_time imports render.js helpers, run_telemetry parses the Worker as text -- so the job deciding what history we keep for two years had no coverage of any kind. Every failure it guards is SILENT: a retry appending instead of upserting doubles a day and a doubled day looks like a good day (the --inject case, 3 checks red); a UTC rollup mis-files 4-5 hours of every day into its neighbour while both surfaces still say (ET); a late capture stored unmarked puts rounded figures in the one place that is supposed to be exact. The two DST switch days are pinned here as they are for the display side -- spring gives a 23-hour day and autumn a 25-hour one, which is the only real proof the Eastern helper is being used rather than a fixed offset.
   'run_dashboard_time.js': { code: 0, score: '14/14 87/87' },
   // New 2026-07-29 (#253 phase 1) — the seam between the manual's 57 documented
   // procedures and the 10 executable checklists that run them. They referenced each

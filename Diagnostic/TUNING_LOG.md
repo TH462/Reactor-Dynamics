@@ -29,6 +29,82 @@ and the user-visible summary in `CHANGELOG.md`. This file points at those and tr
 
 ---
 
+## Session log — 2026-09-02-workbench-b (#604 — the analytics pages had no memory, and the one that mattered was being on time)
+
+**Ask:** the owner — review the dev analytics pages, make them more useful, add charts, store
+data for long-term trend, and correlate how different countries find their way here and on what
+days. Reviewed first, then he ruled *"Do all 5 in the order you suggest."*
+
+### What the review measured, live
+
+Not recalled — run against the account 2026-09-02:
+
+| | |
+|---|---|
+| Web Analytics retention | **7 days** at full resolution; older from a coarser tier |
+| Analytics Engine retention | **3 months**, fixed, not configurable |
+| Real volume | **28 pageloads / 12 visits per week** |
+| 30-day country × referrer × day | 12 rows, **every one `sampleInterval` 10** |
+| `bot` | **0** across the window |
+| External referrers over 30 days | **none** — all direct or our own pages |
+
+**The correlation already worked**: `rumGroup()` interpolates its dimension list, so it was a
+one-string change. What it revealed was worth more than the feature — every figure past a week
+is a multiple of 10, and at this volume a "10" may be one person.
+
+### The idea, and it is not clever
+
+**The coarse tier only penalises queries made LATER.** Capture yesterday while it is still
+inside the 7-day window and it is exact for ever. That is the whole design; everything else is
+bookkeeping. It also means a MISSED run is a permanent loss of that day's precision rather than
+a delay, which is why every row carries `sample_interval` and every run is recorded — a late
+capture has to be visible, and a day with no traffic has to be distinguishable from a day the
+job never ran.
+
+### Traps
+
+**A gate caught me walking into a trap I had written into my own plan.** The plan says in as
+many words: do NOT use the API's native `date` dimension, it is UTC and the dashboard reads
+Eastern. I then used it for the new correlation table and labelled the column "Date (UTC)".
+`run_dashboard_time.js` failed on the label — *"no view prints a UTC label to the reader"* — and
+that gate exists precisely because relabelling a bucket without re-grouping its query is this
+failure. It has now caught the same mistake in two different views. Writing a trap down is not
+the same as not falling into it.
+
+**AN EMPTY SECTION AND A DATASET WITH NO ROWS ARE THE SAME PAGE.** All three Web Vitals sections
+rendered "(none)". Running the query by hand returned 70 and 60. `rumRows` read
+`group.rumPageloadEventsAdaptiveGroups` — a hard-coded dataset name — so the vitals response
+fell through to an empty array. This is #485's lesson in a new place: a rendering that cannot
+fail loudly has to be checked against its source, and the only reason it was caught is that the
+"no data" answer was checked rather than believed.
+
+**A STUB THAT MODELS AN API LOOSELY FAILS WORKING CODE.** The first D1 stub had `bind()` mutate
+and return the same statement. D1's `bind()` returns a NEW statement — which is why
+`prepare(sql)` once and `stmt.bind(a)`, `stmt.bind(b)` into one batch is the documented idiom,
+and what rollup.js does. Every row in a batch therefore executed with the last row's arguments,
+and the gate reported a correct implementation as dropping rows. Two of the six "failures" on
+the first run were the stub; one was my own wrong expectation about which Eastern day the cron
+owns; none were the code.
+
+**THE PALETTE IS COMPUTABLE, SO IT WAS COMPUTED.** The obvious pair — this page's own link blue
+against a violet — measured **ΔE 3.0 for deuteranopia** (indistinguishable) and **12.2 for
+normal vision**. The shipped blue/orange pair measures 26.8 and 31.8. Eyeballing would have
+shipped the first.
+
+### Landed
+
+Five items in the ruled order: the D1 + cron rollup (new `worker/src/rollup.js`, new
+`test/run_rollup.js`, 24 checks, injection-proven by turning the upsert into an append —
+3 checks red); internal vs external referrers; Web Vitals; four unused dimensions; and one
+weekly bar chart. `privacy.html` gains the two-year disclosure, which no gate covers.
+
+**Not deployed.** The D1 database does not exist yet — `wrangler d1 create` needs wrangler's own
+OAuth (the analytics token shadows it) and `wrangler.toml` carries a PLACEHOLDER id that must be
+replaced first. Until then the cron has nothing to write to, and every day is a day of exact
+traffic lost to the ±10.
+
+---
+
 ## Session log — 2026-09-02-workbench-a (#603 — safety injection actuated and three surfaces went quiet together)
 
 **Ask:** the owner, on being shown #603: *"Should safety injection fire on startup?"* — which is

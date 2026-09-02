@@ -30,6 +30,57 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
 
 ## [Unreleased]
 
+### Added (#604: the dev analytics pages get a memory, four dimensions and a chart — 2026-09-02)
+
+Not a simulator change and gets no `changelog.html` entry — this is the ops dashboard.
+
+**The pages had no memory, and past a week not even accurate recent history.** Web Analytics
+holds **7 days** at full resolution; Analytics Engine is fixed at **3 months**. Nothing
+persisted a rollup. Measured live 2026-09-02: a 30-day country × referrer × day query returns
+12 rows and **every one carries `sampleInterval` 10** — every figure rounded to the nearest 10,
+against a real volume of 28 pageloads and 12 visits a week. A "10" may be one person.
+
+**The daily rollup** (`worker/src/rollup.js`, D1 + a cron trigger — the worker had neither).
+The whole trick is being on time: **the coarse tier only penalises queries made later**, so a
+job that snapshots yesterday while it is still inside the 7-day window keeps exact history for
+ever. Two tables keyed on the dimension tuple, so `INSERT OR REPLACE` makes a retry, a manual
+trigger or an overlapping schedule idempotent — a doubled day looks exactly like a good day.
+Every row carries its `sample_interval` and every run is recorded, so a late capture is visible
+rather than silently stored as exact, and a missing day is distinguishable from a quiet one.
+Retention **two years**, pruned by the job *(owner ruling)*.
+
+**"Where they came from" was answering a different question.** `reactordynamics.com` was the
+referrer on 6 of 12 rows over 30 days — our own pages linking to each other. Split into **how
+people arrive** and **internal navigation**, and the honest finding now shows on the page: over
+that window there was **no external referrer at all**.
+
+**The correlation the owner asked for**, country × referrer × day — grouped by hour and
+**re-bucketed into Eastern days**, not read off the API's own `date` dimension, which is UTC.
+The first cut used `date` and `run_dashboard_time.js` caught it on the label; that gate exists
+because relabelling a bucket without re-grouping its query is exactly this failure, and it has
+now caught it twice in two different views.
+
+**Four dimensions collected and never shown** — browser, OS, `navigationType` (the closest this
+data has to a returning visitor) and `requestHost` + `bot`. Bot measured **0** across the
+window: the tiles are real people, which the page was assuming silently and now keeps checking.
+
+**Web Vitals**, an entire unused dataset. #596 was the sim render-bound at 4.7 fps, found
+because the owner played it; INP is that measurement taken automatically, and the element
+column names what felt slow. ⚠ The first cut rendered "(none)" for all three sections against a
+query returning 70 and 60 — `rumRows` had the pageload dataset name hard-coded. An empty
+section and a dataset with no rows are the same page.
+
+**One chart**, inline SVG, no library and no script. Weekly buckets: at 12 visits a week a daily
+chart is four fifths zeros, and a chart that is mostly zeros is worse than the table above it.
+The palette was **computed, not chosen** — the pair picked by eye (this page's link blue against
+a violet) failed at ΔE 3.0 for deuteranopia and 12.2 for normal vision; the shipped blue/orange
+pair passes at 26.8 and 31.8. Bars say when they are rounded.
+
+**`privacy.html` gains the disclosure** — it said only that Cloudflare processes page views,
+which stops being the whole story the moment we keep our own copy. Nothing gates that: the
+existing check binds the page to the Analytics Engine *event schema* and says nothing about
+retention or Web Analytics.
+
 ### Fixed (#603: safety injection actuates and the board finally says so — 2026-09-02)
 
 Filed out of #598 item 4. A cold plant whose Pressurizer Pressure Setpoint is dialled straight to
