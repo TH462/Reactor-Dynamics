@@ -92,6 +92,36 @@
  * deliberately distinct from bd-warn's yellow (attention) and bd-active's selection color —
  * this one means "the plant did this and is holding it; your securing click is the reset". */
 .bd-btn.bd-actuated { background: #3d1c06; border-color: #ff9e57; color: #ff9e57; box-shadow: 0 0 6px rgba(255, 158, 87, 0.35); }
+/* ⚠ AND IT MUST BEAT :disabled, OR IT IS NOT AN INDICATION AT ALL (#603, owner directive
+ * 2026-09-02: "To enunciate that it's flowing let's have the auto button change color and
+ * flash."). The rule above sets background, border and colour and nothing else — so on PWR2,
+ * where `buttonDisabled` greys the HPI AUTO button because this plant declares no `hpi` ESF arm,
+ * `:disabled { opacity: 0.45 }` won and the SOLE safety-injection indication on the whole board
+ * was a 45 %-opacity amber tint on a control that looked switched off. The owner's playtest hit
+ * a real SI and saw nothing.
+ *
+ * A DISABLED BUTTON THAT FLASHES IS A LAMP, AND THAT IS DELIBERATE — do not "fix" it later into
+ * a pressable control. There is no `hpi` arm on this plant to toggle, `Manuals/03` already tells
+ * the player to read this tile as SI ACTUATED, and a lamp that happens to be shaped like a
+ * button is the honest reading of a board that has no spare space for a new element (which the
+ * same directive forbids: "Do not add extra UI elements").
+ *
+ * OPACITY, NOT background-color, IS WHAT PULSES. #596 measured this board as render-bound at
+ * 4.7 fps with ~100 elements each animating a property that never composites; `opacity` does
+ * composite, so this rides the compositor rather than the paint. It is also ONE element, which
+ * is the other half of why #596 does not transfer — but the property choice costs nothing and
+ * removes the question. */
+.pwr-board-stage .bd-btn.bd-actuated:disabled,
+.bd-btn.bd-actuated:disabled {
+  opacity: 1; color: #ff9e57; border-color: #ff9e57; cursor: default;
+}
+.bd-btn.bd-actuated { animation: bdActuatedFlash 1.1s ease-in-out infinite; }
+@keyframes bdActuatedFlash { 0%, 100% { opacity: 1; } 50% { opacity: 0.45; } }
+/* The board's reduced-motion answer, same as the highlight bus's: a standing cue rather than a
+   pulse. The colour still says everything the flash does; only the attention-grab is dropped. */
+@media (prefers-reduced-motion: reduce) {
+  .bd-btn.bd-actuated { animation: none; }
+}
 /* Informational/neutral state (grey) — a non-alarm condition the operator has deliberately
    set, e.g. reactor trips intentionally BLOCKED as part of a startup/shutdown lineup. Grey
    keeps it OFF the green(normal)/yellow(attention)/red(alarm) severity scale — it's a

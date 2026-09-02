@@ -30,6 +30,61 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
 
 ## [Unreleased]
 
+### Fixed (#603: safety injection actuates and the board finally says so — 2026-09-02)
+
+Filed out of #598 item 4. A cold plant whose Pressurizer Pressure Setpoint is dialled straight to
+2235 psi crosses the permissive-11 interlock (1972 psia) with the steam generator still cold, the
+safety-injection signals the cold lineup had blocked are auto-reinstated onto a condition that is
+**already satisfied**, and SI actuates on a healthy plant — shedding the heaters and parking
+pressure 314 psi short, permanently.
+
+**The protection was right and this is not a physics change.** Measured both heatup paths:
+staged, the SG is at 1040 psia when P-11 is crossed against a sourced 327.7 psia setpoint and
+nothing actuates; dialled straight to 2235 it is at 78 psia and SI fires. The auto-revoke of a
+block on leaving its own permissive is prototypical — a block that survived it would be the
+defeatable-trip shape #295 ruled against. **The defect was entirely that nothing said so.**
+
+**One root cause, three silent surfaces.** `eccs_mode` read `standby`, the Indications row "HPI
+Actuated" read no, and the one ECCS annunciator was `status` priority — all three key on
+*delivered pump flow*, and at 1966 psia the running pumps sit above their shutoff heads and
+deliver nothing. The only thing that fired was a consequence, `PZR HTRS SHED`. The player was
+told the symptom and never the event.
+
+**`hpi_active` is the safety-injection signal again, which is what it is RULED to be.**
+`pwr_engine.js` records it in those words — *"`hpi_active` IS the SI signal on this plant, and
+that is a ruling rather than a reading"* — and `pwr_control.js` repeats it above the RHR
+interlock that consumes it. PWR2 kept the field NAME and published delivered flow under it, so
+the two plants reported different facts through one name and nothing could notice: the #573
+pattern, exactly. Delivered flow was never lost — `hpi_flow_normalized` and `eccs_mode` both
+still carry it.
+
+**The tile stops being furniture.** `status` is the one class that cannot ask for anything: a
+status row is acknowledged on the operator's behalf the moment it arrives *(OWNER RULING,
+2026-07-28: "I want status-class alarms to spawn (and arrive) pre-acknowledged")*, so the largest
+actuation this plant has sorted last behind a grey dot. Raised to
+**critical** and renamed **SAFETY INJECTION** — the same argument that raised `PZR HTRS SHED` at
+#577, applied to the *cause* of that very tile. A consequence outranking its cause was the wrong
+shape.
+
+**The ECCS AUTO button is a lamp now** *(owner directive, 2026-09-02: "Do not add extra UI
+elements. To enunciate that it's flowing let's have the auto button change color and flash.")*.
+It already carried `si_actuated` and already rendered amber — and `.bd-btn:disabled { opacity:
+0.45 }` washed it out, because PWR2 declares no `hpi` ESF arm so the button is greyed. The sole
+safety-injection indication on the whole board was an amber tint on a control that looked
+switched off. It now beats `:disabled` and pulses on `opacity`, which composites (#596's lesson,
+though that was ~100 elements and this is one).
+
+**`eccs_mode` gains `armed`** — actuated, pumps running, nothing coming out. Without it the board
+would contradict itself: a flashing lamp and a critical tile beside a readout saying STANDBY.
+
+**And a latent defect fell out.** `hpi_discharge_pressure_mpa` computes a *dead-head* pressure
+gated on `hpi_active` — which meant flow > 0, so the branch its own comment describes was
+unreachable: anything satisfying the gate had flow, anything dead-heading failed it. It is
+reachable for the first time. The RHR align interlock also now blocks under a latched SI at
+pressure, where it previously let the align through because no water was moving.
+
+Manuals 06 (PWR-A20 rewritten around the signal, with the heatup case) and 09 §4.0.
+
 ### Fixed (#598: the second playtest list — waves 1 and 2 of 16 items — 2026-09-01)
 
 Sixteen items from a live session on the shipped PWR2 plant. Ruled into three waves; this is the

@@ -632,7 +632,28 @@
     { id: 'rcp_trip',       instrument: 'rcp_running',      direction: 'is_false', setpoint: null, priority: 'critical', panel: 'B', category: 'coolant', label_learning: 'Reactor Coolant Pump Trip',     label_industry: 'RCP TRIP',
       reclassify: [{ condition: 'rcp_secured', priority: 'status', label_learning: 'Reactor Coolant Pumps Secured', label_industry: 'RCP SECURED' }] },
     { id: 'rcp_cavitation', instrument: 'rcp_cavitating',   direction: 'is_true',  setpoint: null, priority: 'warning',  panel: 'B', category: 'coolant', label_learning: 'Reactor Coolant Pump Cavitation', label_industry: 'RCP CAVITATION' },
-    { id: 'hpi_active',     instrument: 'hpi_active',       direction: 'is_true',  setpoint: null, priority: 'status',   panel: 'B', category: 'safety_system', label_learning: 'Emergency Injection Active',     label_industry: 'HPI/LPI ACTIVE' },
+    // SAFETY INJECTION ACTUATED — and until #603 this tile could not say so twice over.
+    //
+    // IT WAS `status`, WHICH IS THE ONE CLASS THAT CANNOT ASK FOR ANYTHING. Same argument as
+    // `pzr_heaters_shed` twenty lines below, which was raised off `status` at #577 for exactly
+    // this: a status row is acknowledged on the operator's behalf the moment it arrives
+    // *(OWNER RULING, 2026-07-28: "I want status-class alarms to spawn (and arrive)
+    // pre-acknowledged")*, and the board sorts it last behind a grey dot. The single most
+    // significant actuation this plant has was rendered as furniture.
+    //
+    // AND IT READ THE WRONG SIGNAL. `hpi_active` is RULED to be the SI signal (pwr_engine.js
+    // step 4b, and the RHR interlock at the bottom of this file repeats it); PWR2 published it
+    // as delivered pump flow, so it was FALSE through a real injection whenever RCS pressure sat
+    // above the pump shutoff heads — which is every injection that is not a large break. Fixed
+    // in pwr2_true_state.js; this row needed no change for it, which is the point: the row was
+    // always asking the right question of a field that had stopped answering it.
+    //
+    // `critical`, not the `caution` its neighbour took *(my call, #603 — flagged for owner
+    // review)*. An ESF actuation is the class of `reactor_trip`, `sbo` and `subcooling_lost`:
+    // the plant has fired and put water in the core. `pzr_heaters_shed` is a CONSEQUENCE of this
+    // event and sits at `caution`; a consequence outranking its cause is the wrong shape.
+    // Fleet-wide deliberately — the signal and the meaning are identical on both plants.
+    { id: 'hpi_active',     instrument: 'hpi_active',       direction: 'is_true',  setpoint: null, priority: 'critical', panel: 'B', category: 'safety_system', label_learning: 'Safety Injection Actuated (emergency core cooling)', label_industry: 'SAFETY INJECTION' },
     // WHY THIS TILE EXISTS AT ALL (#447). Delivered heater power reads a flat 0 % for
     // FOUR different reasons now — a blackout, the 17 % low-level cutoff, the
     // `failed_pzr_heaters` casualty, and this load shed — and until this row the board

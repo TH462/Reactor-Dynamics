@@ -29,6 +29,97 @@ and the user-visible summary in `CHANGELOG.md`. This file points at those and tr
 
 ---
 
+## Session log — 2026-09-02-workbench-a (#603 — safety injection actuated and three surfaces went quiet together)
+
+**Ask:** the owner, on being shown #603: *"Should safety injection fire on startup?"* — which is
+the better question than the one the issue was filed as, and answering it first changed the shape
+of the work.
+
+### The answer, measured
+
+| | P-11 crossing | SG pressure there | Safety injection | Ends at |
+|---|---|---|---|---|
+| Dial straight to 2235 psi | t+123 min, Tavg 310 °F | **78 psia** | **YES** (`si_lo_steam_press`) | **1921 psia — 314 psi short, permanently** |
+| Staged (the checklist) | t+354 min, Tavg 550 °F | **1040 psia** | **no** | 2201 psia, completes |
+
+**No, not on a correct startup — and it doesn't.** The setpoint is sourced (327.7 psia, Ginna
+UFSAR ch15 Table 15.0-6) and the auto-revoke of the block on leaving P-11 is prototypical; a
+block that survived its own permissive is the defeatable-trip shape #295 ruled against. Staged,
+the secondary is three times clear of the setpoint by the time P-11 is crossed.
+
+⚠ **The deeper answer, and it is ruled out rather than missed.** A real plant cannot sit at
+1972 psia with the vessel near 310 °F at all — pressure-temperature (brittle-fracture) limits
+forbid it, and the corpus carries them (Ginna TS Bases LCO 3.4.3, *"margin to brittle failure of
+the reactor vessel"*). **This plant models none of it.** It models the RATE half of that family
+(`heatup_rate_high` / `cooldown_rate_high`, ±100 °F/hr) and not the pressure-temperature half, so
+the SI is the plant catching two plant-hours late, by an unrelated mechanism, a condition a real
+plant would have prevented upstream. Put to the owner; **ruled LEAVE ALONE ENTIRELY (2026-09-02),
+not built and NOT FILED.** Recorded here so the next reader knows it was decided.
+
+### The trap: three surfaces, one root cause, all silent together
+
+`eccs_mode` read `standby`; the Indications row "HPI Actuated" read no; the one ECCS annunciator
+was `status`, which arrives pre-acknowledged. All three key on **delivered pump flow**, and at
+1966 psia the running pumps are above their shutoff heads — 1389 psia (9.58 MPa) high-head,
+215 psia (1.48 MPa) low-head — so they deliver nothing. The only tile that fired was a
+*consequence* (`PZR HTRS SHED`).
+
+**And `hpi_active` is RULED to be the SI signal.** `pwr_engine.js` says so in those words and
+`pwr_control.js` repeats it above the RHR interlock that consumes it. PWR2 kept the NAME and
+published flow. That is #573 in its purest form — the two plants reporting different facts under
+one field, invisible to every gate because each plant was self-consistent.
+
+### Two things that fell out, neither of them the reported defect
+
+**A branch that could not be reached.** `hpi_discharge_pressure_mpa` computes a DEAD-HEAD
+pressure and was gated on `hpi_active` — i.e. on flow > 0. Dead-heading is the zero-flow case, so
+anything satisfying the gate had flow and anything dead-heading failed it. Its fixture only ever
+produced 9.58 MPa because it paired a 1.0 MPa ECCS step with a 15.41 MPa `sys`. Reachable for the
+first time.
+
+**The RHR align interlock was weaker than it reads.** It blocks shutdown cooling while injection
+is running — the low-head injection pumps ARE the RHR pumps — and it read the flow flag, so under
+a latched SI at pressure the align was permitted. Measured before and after: now refused, with
+the interlock's own message.
+
+### Traps
+
+**A gate's SPECIMEN is not its CLAIM.** `run_m4`'s #240 suite proves that an alarm authored
+`status` arrives pre-acknowledged, and used `hpi_active` as the specimen. Raising that row broke
+the suite without touching the mechanism. Re-pointed at `CTMT SPRAY ON` — a better specimen
+anyway, being genuinely indication-only — and the departed row gained a check for the new claim.
+Two fixtures in `run_pwr2_true_state` needed the same treatment: they call `buildTrueState` with
+no protection context, so a flag that now means "SI actuated" is correctly false. Both were
+validated against the OLD behaviour too (the low-pressure fixture injects, so `hpi_active` was
+true there under the flow reading as well) — passing on both sides is what makes it a
+strengthening rather than a refit.
+
+**A COMPUTED STYLE READ IN THE SAME TASK AS A CLASS CHANGE IS THE PRE-TRANSITION VALUE, and it
+reads exactly like CSS that does not apply.** `.bd-btn` carries
+`transition: color/border-color/background 0.12s`. Adding `bd-actuated` and reading immediately
+reported the amber as absent — grey text, grey border, base background — while `opacity` and
+`animation-name` read correctly, because those two are not transitioned. That half-right reading
+is what made it look like a specificity bug; the cascade was correct the whole time, and probing
+`btn.matches()` against every rule proved it before the settled read did. **Second trap on top:
+the board's render loop rewrites button classes from the driver every broadcast, so a hand-added
+class survives ~100 ms** — which is the wiring being authoritative, and means CSS cannot be
+hand-tested on a running board without holding the class across frames.
+
+### Landed
+
+`hpi_active` restored to the SI signal; the annunciator renamed **SAFETY INJECTION** and raised
+`status` → `critical`; the ECCS AUTO button beats `:disabled` and pulses on `opacity` (the
+compositing property — #596's lesson, though that was ~100 elements to this one); `eccs_mode`
+gains `armed`. Doc drift repaired in `CONTEXT.md` (both blocks), `gen_manual_reference.js` and
+`WIRING_REFERENCE.md` — all three still described the RETIRED engine's word set. Manuals 06
+(PWR-A20 rewritten around the signal, with the heatup case as its own note) and 09 §4.0, Rev 17
+(i).
+
+**No new UI element anywhere** *(owner directive)* — every change above is a word, a colour or a
+priority on something already drawn.
+
+---
+
 ## Session log — 2026-09-01-workbench-a (#598 — the second playtest list, all 16 items; two of them were not defects)
 
 **Ask:** owner, issue #598, sixteen numbered items from a live session on the shipped PWR2 plant.

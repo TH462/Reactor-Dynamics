@@ -374,12 +374,43 @@
       /* PUMP injection only (#511): the accumulator is passive and has its own fields below —
        * before the split an accumulator dump lit hpi_active and read as pump flow */
       var pumpKgs = (ec.hhsi_kgs || 0) + (ec.lhsi_kgs || 0);
-      put('hpi_active', pumpKgs > 0);
+      /* ⚠ `hpi_active` IS THE SAFETY-INJECTION SIGNAL, AND THAT IS A RULING — not a reading of
+       * delivered flow (#603). This line was `pumpKgs > 0`, and the divergence is the #573
+       * pattern in its purest form: PWR2 inherited the field NAME from the retired engine and
+       * gave it a different MEANING, so the two plants published different facts under one name
+       * and nothing could notice. The ruling is recorded twice, in both directions —
+       * `engines/pwr/pwr_engine.js`: "hpi_active IS the SI signal on this plant, and that is a
+       * ruling rather than a reading", and `layers/control/pwr_control.js` repeats it above the
+       * RHR interlock that consumes it.
+       *
+       * WHAT THE FLOW READING COST, measured 2026-09-02 on the #598 item 4 path (cold plant,
+       * Pressure SP dialled straight to 2235 psi): safety injection actuates at the P-11
+       * crossing on low steam pressure, both pumps start — and RCS is at 1966 psia, ABOVE the
+       * HHSI and LHSI shutoff heads, so `pumpKgs` is 0 and this published FALSE through a real
+       * injection. Three surfaces key on it and all three went quiet together: this flag, the
+       * `hpi_active` annunciator, and the Indications "HPI Actuated" row.
+       *
+       * DELIVERED FLOW IS NOT LOST and did not need this field: `hpi_flow_normalized` two lines
+       * below is the delivery, and `eccs_mode` is the lineup word. Those two answer "is water
+       * moving and from where"; this one answers "has the plant fired", which is a different
+       * question and the one the operator is asking. */
+      put('hpi_active', pt.si === true);
       if (RD.eccs) {
         var hpiRated = RD.eccs.hhsiFlow(0) + RD.eccs.lhsiFlow(0);     /* nameplate, both trains */
         if (hpiRated > 0) put('hpi_flow_normalized', pumpKgs / hpiRated);
       }
+      /* 'armed' — SAFETY INJECTION HAS ACTUATED AND THE PUMPS ARE MAKING NO FLOW (#603). Without
+       * this word the board contradicts itself the moment the fix above works: the AUTO lamp
+       * flashes SI ACTUATED and the annunciator demands an ack while the ECCS readout beside
+       * them reads STANDBY, because at 1966 psia the running pumps are above their shutoff heads
+       * and `pumpKgs` is 0. 'standby' means armed and quiet; the plant that has FIRED and is not
+       * yet delivering is a third state, and it was being reported as the first.
+       *
+       * The two consumers need nothing: `pwr_board_wiring` upper-cases whatever word it is given,
+       * and `ui/app.js`'s colour rule exempts 'standby' by name — so 'armed' correctly lights
+       * caution there rather than reading as an idle system. */
       var mode = 'standby';
+      if (pt.si === true) mode = 'armed';
       if (ec.hhsi_kgs > 0 && ec.lhsi_kgs > 0) mode = 'both';
       else if (ec.hhsi_kgs > 0) mode = 'hhsi';
       else if (ec.lhsi_kgs > 0) mode = 'lhsi';

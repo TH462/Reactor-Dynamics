@@ -348,14 +348,44 @@ function runSuite(TS, rec, quiet) {
    * that fixture stays internally consistent (build() is a full-power steady state). */
   var ecLow = RD.eccs.stepECCS(RD.eccs.createECCS({ hhsiRunning: true, lhsiRunning: true }),
                                 { P: 1.0 }, 0.02);
-  var tsLow = TS.buildTrueState({ sys: B.sys, eccs: ecLow });
+  /* ⚠ THE PROTECTION CONTEXT IS NOW PART OF THIS FIXTURE (#603). `hpi_active` is the SAFETY
+   * INJECTION SIGNAL — a ruling this plant had diverged from by publishing delivered flow — so a
+   * fixture that runs the pumps must also say what started them. Without it `pt` is `{}` and the
+   * flag is correctly false: pumps do not start themselves.
+   *
+   * This is a STRENGTHENING, not a refit, and the test for that is that it passes on the OLD
+   * code too: under `pumpKgs > 0` this fixture injects at P = 1.0 MPa, so hpi_active was true
+   * there as well. The claim the check makes is unchanged; what changed is that the fixture now
+   * states a precondition it was previously getting by accident. */
+  var siOn = { si: true };
+  var tsLow = TS.buildTrueState({ sys: B.sys, eccs: ecLow, protection: siOn });
   ck('below both shutoff heads, ECCS mode and normalized flow are DERIVED, not fabricated',
      tsLow.hpi_active === true && tsLow.eccs_mode === 'both' &&
      tsLow.hpi_flow_normalized > 0 && tsLow.hpi_flow_normalized <= 1,
      'mode=' + tsLow.eccs_mode + '  normalized=' + tsLow.hpi_flow_normalized.toFixed(3));
+  /* AND THE THIRD STATE THE WORD NOW CARRIES (#603): actuated, pumps running, nothing coming out
+   * because the plant is above both shutoff heads. Before this, that condition was published as
+   * 'standby' — the same word as a quiet armed plant — while the AUTO lamp and the annunciator
+   * said SI ACTUATED. The board contradicted itself; this is the check that stops it. */
+  var tsArmed = TS.buildTrueState({ sys: B.sys, eccs: RD.eccs.stepECCS(
+      RD.eccs.createECCS({ hhsiRunning: true, lhsiRunning: true }), { P: 15.41 }, 0.02),
+      protection: siOn });
+  ck('actuated but ABOVE both shutoff heads reads "armed", not the quiet plant\'s "standby"',
+     tsArmed.eccs_mode === 'armed' && tsArmed.hpi_active === true &&
+     tsArmed.hpi_flow_normalized === 0,
+     'mode=' + tsArmed.eccs_mode + ', flow=' + tsArmed.hpi_flow_normalized +
+     ' — the pumps run and deliver nothing at 15.41 MPa');
   /* TURNED AROUND (stage B1): discharge = min(dead-head, system P) while running — with flow
    * the discharge sits at the injection point; against a shut check valve it sits at the
    * sourced 9.58 MPa shutoff head. This fixture's sys is at 15.41, so the pump dead-heads. */
+  /* ⚠ AND THIS CHECK COULD NOT HAVE FAILED BEFORE #603, which is why it is worth reading twice.
+   * The value is gated on `hpi_active`, and that flag USED to mean flow > 0 — so the dead-head
+   * branch its own comment describes (running, shut check valve, therefore no flow) was
+   * unreachable: any state that satisfied the gate had flow, and any state that dead-headed
+   * failed it. The fixture only produced 9.58 because its `eccs` was stepped at 1.0 MPa while
+   * its `sys` sat at 15.41. With the flag meaning the SI SIGNAL the gate now says "the pumps are
+   * running", which is the condition a discharge pressure actually depends on, and the branch is
+   * reachable for the first time. */
   ck('hpi_discharge_pressure_mpa is SUPPLIED: dead-head against a shut check valve here',
      Math.abs(tsLow.hpi_discharge_pressure_mpa - 9.58) < 1e-9 &&
      ts.hpi_discharge_pressure_mpa === 0,
