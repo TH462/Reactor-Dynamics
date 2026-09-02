@@ -66,7 +66,14 @@
     switch (op) { case '>': return a > b; case '<': return a < b; case '>=': return a >= b; case '<=': return a <= b;
       case '~': return Math.abs(a - b) <= (tol || 0); } return false;
   }
-  function pred(ts, c) { return cmp(ts[c.p], c.op, c.v, c.tol); }
+  /* PREDICATES RESOLVE THROUGH THE INSTRUCTOR LAYER, NOT OFF `true_state` (#605). Some params a
+   * step may check are not flat true_state fields — rod bank position is in `control_state`, and
+   * a checklist that says "withdraw the bank to 627 / 627" should be graded on the bank. Reading
+   * true_state here would make this harness a SECOND sampler that cannot see them, which is the
+   * shape #432 was: the live runtime would check the step off and the gate would call it a fail.
+   * `paramValue` takes the whole snapshot; every call site below passes one. */
+  function pv(snap, p) { return RD.InstructorLayer.paramValue(snap, p); }
+  function pred(snap, c) { return cmp(pv(snap, c.p), c.op, c.v, c.tol); }
 
   function groupId(svc, which) {
     var gs = svc.engine.getControlState().rod_groups;
@@ -139,7 +146,7 @@
     function observe(snap) {
       var ts = snap.true_state;
       if (ts.melted) meltHit = true;
-      gNever.forEach(function (g) { if (pred(ts, g.c)) g.hit = true; });
+      gNever.forEach(function (g) { if (pred(snap, g.c)) g.hit = true; });
       if (scramStep === null && snap.rps_state && snap.rps_state.scrammed) {
         scramStep = curStep; scramReason = snap.rps_state.last_trip_reason || '(no reason given)';
       }
@@ -201,7 +208,7 @@
           slowTicks++;
         }
         observe(s);
-        sawList.forEach(function (sw, k) { if (pred(s.true_state, sw)) sawHits[k] = true; });
+        sawList.forEach(function (sw, k) { if (pred(s, sw)) sawHits[k] = true; });
       }
       // Land the ramp exactly on its last point: `f` never quite reaches 1 when
       // `ticks` is not a multiple of RAMP_EVERY, and a leg that stops a few tenths of
@@ -212,19 +219,17 @@
         checks.push({ d: 'step ' + curStep + ' saw ' + sw.p + ' ' + sw.op + ' ' + sw.v, pass: !!sawHits[k], obs: !!sawHits[k] });
       });
       if (st.acc) {
-        var ts = lastSnap.true_state;
-        checks.push({ d: 'step ' + curStep + ' ' + st.acc.p + ' ' + st.acc.op + ' ' + st.acc.v, pass: pred(ts, st.acc), obs: ts[st.acc.p] });
+        checks.push({ d: 'step ' + curStep + ' ' + st.acc.p + ' ' + st.acc.op + ' ' + st.acc.v, pass: pred(lastSnap, st.acc), obs: pv(lastSnap, st.acc.p) });
       }
       /* MULTI-CHECK-OFF steps (#244 item 8): predicate entries are asserted at the step's
        * end exactly like `acc`; cmd-kind entries were issued above as operator actions of
        * this step, so their evidence is the acceptance-free issue itself (the live runtime
        * latches them off the command watch — that half is run_checklist's subject). */
       if (st.accs && st.accs.length) {
-        var tsA = lastSnap.true_state;
         st.accs.forEach(function (en, k) {
           if (en && en.p) checks.push({
             d: 'step ' + curStep + ' accs[' + k + '] ' + en.p + ' ' + en.op + ' ' + en.v,
-            pass: pred(tsA, en), obs: tsA[en.p] });
+            pass: pred(lastSnap, en), obs: pv(lastSnap, en.p) });
         });
       }
     });

@@ -525,7 +525,8 @@ Level tells you what already happened; the flow mismatch tells you what is about
 |------|--------|
 | **Purpose** | Command main feed pump speed, shown as **0–1200 gpm** (= 0–120 % pump speed) |
 | **Manual effect** | Takes the three-element controller to **MANUAL** |
-| **▲▼ step** | ±20 gpm |
+| **▲▼ step** | ±20 gpm per click. **Press and hold** to run continuously; the step coarsens after about 1½ s so a box can be swept across its range without 60 clicks |
+| **Pumps** | **AUTO** and any non-zero **MAN** demand START the main feed pumps; **OFF** secures them. A demand of zero typed into the box is a demand, not a pump stop — only the **OFF** button secures. Mode 4, Hot Shutdown and Mode 5, Cold Shutdown boot with both pumps secured, so the first feed action of a heatup is AUTO or MAN |
 | **Character** | A **fixed-demand** device. It holds the speed you set — it has no level feedback of its own |
 | **NO FLOW marking** | The commanded gpm turns **amber** — and the SG FEED corner reads **NO FLOW** — when the plant is delivering none of it (dead feed train: blackout, isolation). The demand stays where you left it; the colour says the plant is not doing that number. FEED FLOW below has the truth |
 

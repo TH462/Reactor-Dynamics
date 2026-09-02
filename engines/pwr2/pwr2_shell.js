@@ -245,6 +245,32 @@
     EN.command(e, 'reset_afas', true);
   }
 
+  /* MAIN FEED PUMP START/STOP, driven off the selector (#605) — see set_feed_pump_speed.
+   * `startFeedPumps` is what AUTO and any non-zero MAN demand do; a MAN demand of exactly zero
+   * is the OFF position and secures them. The zero test is on the DEMAND, not on delivered flow:
+   * a pump train coasting down still reads flow for a while, and the operator's selector is the
+   * thing being obeyed here (#200 — take the delivered power away, leave the demand alone). */
+  function startFeedPumps(e) {
+    EN.command(e, 'feed_pump_a', true);
+    EN.command(e, 'feed_pump_b', true);
+  }
+  /* A ZERO DEMAND IS NOT A PUMP STOP — securing is its own act, and it needs `secure: true`.
+   * Two measured reasons, both regressions the first cut of this caused:
+   *   · the `feed_sg` automation channel emits set_feed_pump_speed every evaluation and its
+   *     computed demand passes through zero, so an inferred stop would secure the feed train
+   *     from inside AUTO;
+   *   · the operator's corrective command against an SG overfeed IS "demand 0" (#510 M-12,
+   *     run_pwr2_kernel 2d), and turning that into a pump stop both defeats the casualty and
+   *     takes an action bigger than the one asked for.
+   * The board's OFF button is what carries `secure` — see the FEED PUMPS wiring. */
+  function feedSelect(e, frac, secure) {
+    var f = +frac;
+    if (!isFinite(f)) f = 0;
+    if (f > 0) startFeedPumps(e);
+    else if (secure) { EN.command(e, 'feed_pump_a', false); EN.command(e, 'feed_pump_b', false); }
+    EN.command(e, 'feed_manual_frac', f);
+  }
+
   /* ---- the command registries (see header). value: a mapper fn or a reason string. ---- */
   var MAPPED = {
     /* THE #511 VALVES — real machinery behind the two diagram symbols #509 item 11 had to
@@ -551,12 +577,31 @@
     },
     /* THE FEED TRAIN (2026-08-21, pwr2_feedwater) — the old refusals retired. Payload shapes
      * are the current engine's: pct 0-120, delta_pct, {active}. */
-    set_feed_pump_speed: function (e, c) { EN.command(e, 'feed_manual_frac', (c.pct !== undefined ? c.pct : 100) / 100); },
-    set_feedwater_flow:  function (e, c) { EN.command(e, 'feed_manual_frac', (c.pct !== undefined ? c.pct : 100) / 100); },
+    /* THE FEED PUMPS ARE THE SELECTOR (#605). Mode 5 and Mode 4 now boot with the main feed
+     * pumps SECURED *(OWNER RULING, 2026-09-02, on the playtest note "In mode 5 it should start
+     * w/ turbine tripped, SG feed off": "Feed pumps secured")*, and before this the pumps had
+     * NO operator command at all — `feed_pump_a`/`feed_pump_b` were reachable only through the
+     * loss_of_feedwater failure and its clear. Booting them secured with no way to start them
+     * would have made the heatup unplayable, which is the half of the ruling that had to ship
+     * with it.
+     *
+     * The board's FEED PUMPS card already carries the three-position selector this needs, so it
+     * IS the control: OFF secures the pumps, AUTO and MAN start them. That reading is honest on
+     * this board — OFF has always meant "no feed" to the player — and it beats a fourth pair of
+     * buttons for a plant with no per-pump lineup to manage. `startPumps` is deliberately not
+     * conditional: a selector moved to a running position with a dead pump train underneath it
+     * is the dark-wire shape (#507 wave 6), and the FWI latch is untouched here — an isolated
+     * feed train still delivers nothing, which is its own state and its own reset. */
+    set_feed_pump_speed: function (e, c) { feedSelect(e, (c.pct !== undefined ? c.pct : 100) / 100, c.secure === true); },
+    set_feedwater_flow:  function (e, c) { feedSelect(e, (c.pct !== undefined ? c.pct : 100) / 100, c.secure === true); },
     feed_pump_nudge:     function (e, c) {
-      EN.command(e, 'feed_manual_frac', e.fw.feed_frac + (c.delta_pct || 0) / 100);
+      feedSelect(e, e.fw.feed_frac + (c.delta_pct || 0) / 100);
     },
-    set_feed_coupled:    function (e, c) { EN.command(e, 'feed_auto', c.active !== false); },
+    set_feed_coupled:    function (e, c) {
+      var on = c.active !== false;
+      if (on) startFeedPumps(e);
+      EN.command(e, 'feed_auto', on);
+    },
     isolate_feedwater:   function (e, c) {
       /* the RESTORE click is the FWI unlatch (#512, same per-system law as the stops
        * above). TWO drivers, both would re-isolate silently on the next step (#509 item
@@ -584,8 +629,12 @@
       }
       EN.command(e, 'isolate_feedwater', c.active !== false);
     },
+    /* THE PUMPS BECOME UNAVAILABLE, the selectors do not move (#605, #200). Writing the
+     * operator's selector meant the casualty healed itself the moment the player touched the
+     * FEED PUMPS card — and since #605 gave that card a real pump start, it would have healed
+     * on the first AUTO press. */
     loss_of_feedwater:   function (e, c) {
-      EN.command(e, 'feed_pump_a', false); EN.command(e, 'feed_pump_b', false);
+      EN.command(e, 'feed_pump_a_avail', 0); EN.command(e, 'feed_pump_b_avail', 0);
     },
     /* #510 M-12: the row is the SEAT now, not a rewrite of the operator's demand — the
      * selector and manual_frac stay put, and the clear releases the valve instead of
@@ -861,7 +910,7 @@
         EN.command(e, 'break_close', true);
       }
       else if (c.failure_id === 'loss_of_feedwater') {
-        EN.command(e, 'feed_pump_a', true); EN.command(e, 'feed_pump_b', true);
+        EN.command(e, 'feed_pump_a_avail', 1); EN.command(e, 'feed_pump_b_avail', 1);
       }
       else if (c.failure_id === 'sg_overfeed') EN.command(e, 'feed_overfeed', false);
       else if (c.failure_id === 'loss_of_condenser_vacuum') EN.command(e, 'cw_pumps', true);

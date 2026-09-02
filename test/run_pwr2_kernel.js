@@ -464,8 +464,20 @@ function runSuite(rec, quiet, only) {
     wF.cmd({ action: 'set_feedwater_flow', pct: 100 });
     wF.tick(60);
     var tsF = wF.svc.engine.getTrueState(), eF = wF.eng();
-    ck('lofw-precondition', 'precondition: both main feed pumps are stopped',
-       eF.fw.pumpA === false && eF.fw.pumpB === false);
+    /* THE CASUALTY TAKES THE PUMPS AWAY; IT DOES NOT MOVE THE OPERATOR'S SWITCHES (#605, #200).
+     * This check used to assert the opposite — `pumpA === false && pumpB === false` — because
+     * that is what loss_of_feedwater did: it wrote the operator's SELECTORS, which is the
+     * documented anti-pattern (a de-energization written into the demand heals itself on the
+     * next button press, and since #605 gave the FEED PUMPS card a real pump start, the first
+     * AUTO press would have cleared the casualty). The seat is availability now. The assertion
+     * below is strictly stronger than the one it replaces: it pins both halves — the capability
+     * is gone AND the switches are where the operator left them — and it would have FAILED on
+     * the old engine, correctly, on the second half. `lofw-holds` beneath it is unchanged and
+     * passes on both engines, which is what says the fix did not just move the goalposts. */
+    ck('lofw-precondition', 'precondition: the pumps are UNAVAILABLE and the selectors are untouched',
+       eF.fw.pumpAAvail === 0 && eF.fw.pumpBAvail === 0 &&
+       eF.fw.pumpA === true && eF.fw.pumpB === true,
+       'avail ' + eF.fw.pumpAAvail + '/' + eF.fw.pumpBAvail + ', selectors ' + eF.fw.pumpA + '/' + eF.fw.pumpB);
     ck('lofw-holds', 'a 100 % feed demand cannot restore flow — the STOPPED PUMPS hold it',
        tsF.fw_flow_normalized < 0.05, tsF.fw_flow_normalized.toFixed(4) + ' of rated');
 

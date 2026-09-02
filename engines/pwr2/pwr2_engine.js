@@ -420,12 +420,45 @@
        * opening it IS the operator's cooldown lever. */
       eng.rh.valve_open = true;
       eng.rh.hx_fraction = 0;
+      /* AND IT IS RUNNING FROM t=0, not from the first step (#605). `rh.running` is recomputed by
+       * stepRHR, but the loss-of-main-feed arming reads it ONE STEP OLD — so leaving it false here
+       * armed the casualty chain on step 1 of a settled, RHR-held plant and latched AFAS before
+       * stepRHR could say otherwise. Measured: AFAS `loss_of_main_feed` within 10 steps of boot on
+       * cold_shutdown. This IS the settled state's own value: valve open, buses alive. */
+      eng.rh.running = true;
       /* ACCUMULATOR ISOLATED (#511) [sourced — Ginna TS Bases B 3.5.1: "In MODE 3, with RCS
        * pressure <= 1600 psig, and in MODES 4, 5, and 6, the accumulator motor operated
        * isolation valves are closed ... This allows RCS cooldown and depressurization
        * without discharging the accumulators"] — the 364 psia shutdown boot sits far below
        * the 650 psig cover pressure, and an open valve would dump the tank at t=0. */
       eng.ec.acc.valve_open = false;
+      /* THE MACHINE IS TRIPPED AND THE MAIN FEED PUMPS ARE SECURED *(OWNER, 2026-09-02 playtest,
+       * M5->3 item 2: "In mode 5 it should start w/ turbine tripped, SG feed off"; the lineup
+       * detail RULED the same day: "Feed pumps secured")*.
+       *
+       * Both were the RETIRED-BY-REFERENCE shape (#534's standing trap): `createTurbine` defaults
+       * `tripped: false` and `createFeedwater({at_power:false})` defaults `auto: true` with both
+       * pumps running, because those defaults were written for the one initial condition this
+       * engine used to have — Hot Full Power. #598 item 1 fixed the visible half of the turbine
+       * one (the shaft no longer prints 1800 rpm on a cold reactor) and left the LATCH, so a
+       * Mode 5 plant sat with a latched machine that a load demand would have admitted steam to.
+       * The feed half was worse: the three-element controller booted ENGAGED, which made the
+       * heatup checklist's "put steam-generator level control in AUTO now" a step that changed
+       * nothing.
+       *
+       * `valve` / `valveI` / `feed_frac` are already 0 at `at_power: false`, so this adds the
+       * SELECTOR and the PUMPS, not the flow. The operator's route back is the FEED PUMPS card:
+       * AUTO or a non-zero MAN demand starts them (pwr2_shell's feedSelect/startFeedPumps).
+       *
+       * MODE 4 GETS IT TOO, because this branch is `ic.cold` and Hot Shutdown is the same
+       * lineup one step warmer — RHR is the heat sink there as well, main feed is secured, and
+       * aux feed (eng.afw, untouched here) is the feed path. Booting Mode 4 with a latched
+       * turbine and two running feed pumps would leave exactly the defect this fixes. */
+      eng.tb.tripped = true;
+      eng.fw.auto = false;
+      eng.fw.manual_frac = 0;
+      eng.fw.pumpA = false;
+      eng.fw.pumpB = false;
     }
     /* the feed train at the IC's own operating point (the module's constructor knows only
      * at-power/no-load; a mid-load IC sets the delivered point so the boot does not spend
@@ -627,6 +660,13 @@
         break;
       case 'feed_pump_a':    eng.fw.pumpA = !!value; break;
       case 'feed_pump_b':    eng.fw.pumpB = !!value; break;
+      /* PUMP AVAILABILITY, the casualty seat (#605) — 0..1 each, and NOT the operator's selector
+       * above (#200: take the delivered capability away, leave the switch where the operator put
+       * it). loss_of_feedwater drives these; `main_feed_lost` and its sourced turbine-trip/MDAFW
+       * chain read them, so an operator securing the pumps in Mode 4/5 is a lineup and both pumps
+       * failing is a casualty. Old saves carry no field and land at the constructor's 1. */
+      case 'feed_pump_a_avail': eng.fw.pumpAAvail = Math.max(0, Math.min(1, +value)); break;
+      case 'feed_pump_b_avail': eng.fw.pumpBAvail = Math.max(0, Math.min(1, +value)); break;
       case 'isolate_feedwater':
         /* operator isolation AND the operator's reset; the SI-driven latch re-asserts on
          * the next step if the sourced 32 s condition still stands */
@@ -1029,9 +1069,35 @@
     });
     /* [sourced ch10]: "If both main feedwater pumps fail, the turbine will be tripped" —
      * level, not edge, same as the reactor-trip→turbine wiring; P-9 then decides whether
-     * the reactor trips, which is the source's own ">50% of full power" clause. */
-    if (fwr.main_feed_lost) eng.tb.tripped = true;
-    eng._mainFeedLost = fwr.main_feed_lost === true;   /* the latch permissive reads it (#551) */
+     * the reactor trips, which is the source's own ">50% of full power" clause.
+     *
+     * THE LOSS ONLY MATTERS WHERE MAIN FEED IS THE HEAT SINK (#605) [DECLARED SIMPLIFICATION,
+     * UNVERIFIED — no source in any lane's corpus gives the mode conditions on this plant's
+     * loss-of-main-feed chain: `node tools/find_source.js "loss of main feed.*MODE|MDAFW.*MODE 4"`
+     * returns 0 hits across 39 documents in 3 lanes, 2026-09-02]. `main_feed_lost` itself
+     * reads CAPACITY, selector included, and that is right: securing both pumps at power loses
+     * the heat sink exactly as surely as a pump failure, and no real breaker-position signal can
+     * tell intent apart. But the sourced sentence is written about a plant AT POWER, where the
+     * steam generator IS the heat sink. In Mode 4 and Mode 5 the RCS is on RHR, main feed is
+     * secured as the NORMAL lineup and the generator is not boiling — firing a casualty response
+     * there starts aux feed into a generator nobody is using. MEASURED before this arming existed
+     * (#605): the cold initial conditions actuated AFAS at t=0 and pulled the settled Mode 4
+     * plant down 21 degF/hr. The first attempt made `main_feed_lost` availability-only instead,
+     * and `run_pwr2_engine` caught what that cost — securing both pumps at 100 % power stopped
+     * tripping the turbine. This is the same distinction made in the right place (HR5: the module
+     * reports, the caller decides).
+     *
+     * `rh.running` is `valve_open && powered` — RHR actually in service, not merely alignable, so
+     * a blackout that kills the RHR pumps re-arms the chain. It is read ONE STEP OLD here, the
+     * same convention as the CVCS letdown gate below; `createRHR` seeds it so the first step of a
+     * cold plant does not read `undefined` as "not on RHR".
+     *
+     * WHAT IS NOT GATED: lo-lo SG level, safety injection and loss of offsite power all stay
+     * armed in every mode. This conditions ONE input — the one whose premise is "the secondary
+     * is carrying the heat". */
+    var mfLost = fwr.main_feed_lost === true && !eng.rh.running;
+    if (mfLost) eng.tb.tripped = true;
+    eng._mainFeedLost = mfLost;                        /* the latch permissive reads it (#551) */
     /* THE DEMAND, kept apart from the DELIVERY (#516 item 1, 2026-08-29). `feed_frac` is what
      * the pumps are actually putting into the SG, behind `pump_tau_s`; `demand_frac` is what
      * the valve is calling for. Five board tiles legitimately read the delivered figure, but
@@ -1236,7 +1302,7 @@
       p9_defeated: eng.p9Defeated === true,           /* #515: the failed channel */
       /* [sourced ch10] the loss-of-both-feed-pumps MDAFW start's input — a STATE signal
        * (breaker positions), the turbine_tripped convention, not an analog channel */
-      main_feed_lost: fwr.main_feed_lost,
+      main_feed_lost: mfLost,        /* armed only off RHR — see the block above `var mfLost` */
       /* [sourced ch10] the loss-of-offsite-power AFW start's input — the same state-signal
        * class (#507 wave 4; the deferred start pwr2_protection.js recorded is now built) */
       loss_of_offsite: !offsiteOk,

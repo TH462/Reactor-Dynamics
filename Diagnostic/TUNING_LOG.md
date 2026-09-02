@@ -29,6 +29,198 @@ and the user-visible summary in `CHANGELOG.md`. This file points at those and tr
 
 ---
 
+## Session log — 2026-09-02-develop-a (#605 — the two typing blockers were one defect, and Mode 5 was booting a latched turbine)
+
+**Ask:** two pages of handwritten playtest notes on the `develop` build — a **BLOCKERS** page
+(3 items) and a **Modes 5-3** page (5 items, the `pwr_heatup` live checklist). Eight items.
+
+### The finding that ties three of them together
+
+**A click that misses a text field is not a no-op on this board — it is a keyboard shortcut.**
+Both BLOCKERS are the same defect in two surfaces, and neither is a text box that refuses typing.
+
+- **Pressure SP box.** Measured on `imrsg8b7b9o` (authored 100 px wide): the `<input>` renders
+  **42 px of an 85 px frame** at 1600×950, **30 × 17 px** at 1366×768. Beside it, inside the same
+  visible border, sit a 17 px `psi` unit span and a 13 px arrow column. **A click on the unit span
+  leaves `document.activeElement` on BODY** — measured. The player then types "2235" and
+  `ui/app.js`'s global shortcut handler takes the digits: **2/3/5 are time acceleration**, so the
+  session ends at 3600×. That is the whole report, including the fast-forwarding he mentions three
+  bullets later on the other page.
+- **Feedback form.** Same shape, worse ending. Measured: **32 characters typed, 0 characters in
+  the box**, focus on `#playBtn` — the first SPACE in the sentence hit play/pause. The endpoint
+  IS stamped on the preview build (checked live: `develop.reactor-dynamics.pages.dev` serves a
+  non-empty `RD_TELEMETRY_ENDPOINT`) and the textarea itself takes typing fine when focused.
+
+**The corollary is the general one: a global single-key shortcut turns every mis-click into a
+command.** The handler is correct — it skips INPUT/TEXTAREA/SELECT — so nothing about it looks
+wrong in a source read. The defect is entirely in what the click did *before* the keystroke.
+
+### The second half of the Pressure SP box, which no click could have shown
+
+Type 2235, press Enter, and the box **reads 363 again** — the previous setpoint. `commit()` sets
+`rec.editing = false` and then issues the command; the very next render reads `numberFor` off the
+snapshot still in hand, which still carries the old value. **Running, the next broadcast covers it
+inside one broadcast period. PAUSED, nothing ever covers it** — and paused is exactly the state a
+player is in when they stop to read a checklist step and retype a setpoint.
+
+**Tried and rejected: pinning by snapshot IDENTITY** (`s !== pinnedSnapshot`). The command path
+reassembles a fresh snapshot object on the way back, so the pin failed on its own first render.
+The working form pins on the pre-commit VALUE and releases the moment the plant reports anything
+else — accepted or clamped — bounded at 20 broadcasts so a REFUSED command still snaps back.
+
+### Mode 5 was booting a latched turbine and two running feed pumps
+
+*(OWNER, playtest: "In mode 5 it should start w/ turbine tripped, SG feed off"; the lineup detail
+RULED the same day: "Feed pumps secured".)*
+
+Both are **retired-by-reference** (#534's standing trap, and this is now its clearest instance):
+`createTurbine` defaults `tripped: false`, `createFeedwater({at_power:false})` defaults
+`auto: true` with both pumps running — defaults written for the one initial condition this engine
+used to have, Hot Full Power. #598 item 1 fixed the *visible* half of the turbine one (no more
+1800 rpm on a cold reactor) and left the LATCH, which is the half that matters. The feed half made
+the heatup checklist's step 5 — "put steam-generator level control in AUTO now" — a step that
+changed nothing at all.
+
+**Two engine defects fell out of doing it, and both are worth more than the change itself.**
+
+1. **There was no operator command to start the main feed pumps.** `feed_pump_a`/`feed_pump_b`
+   were reachable only through the `loss_of_feedwater` failure and its clear. Securing them at
+   boot with no way to start them would have made the heatup unplayable — so the ruling could not
+   ship alone. The board's three-position FEED PUMPS selector is the control now.
+   **The first cut of that was wrong and a gate caught it:** inferring "secure" from a zero
+   demand. Two independent reasons it cannot be inferred — the `feed_sg` automation channel emits
+   its computed demand every evaluation and that passes through zero, and the operator's
+   corrective command against an SG overfeed *is* "demand 0" (#510 M-12, `run_pwr2_kernel` 2d),
+   so inferring would defeat the casualty and take a bigger action than the one asked for.
+   Securing is now an explicit `secure: true` payload flag on the existing verb — a flag rather
+   than a new command so the retired engine, which knows only `pct`, is untouched.
+2. **The sourced loss-of-main-feed chain fired on a normal Mode 4/5 lineup.** `main_feed_lost` is
+   `capacity <= 0`, and capacity folds in the operator's selector. **Measured the moment the cold
+   ICs booted with the pumps secured: AFAS actuated at t=0 and pulled the settled Mode 4 plant
+   down 21 °F/hr** — `run_pwr2_endurance` caught it, exactly the class that runner exists for.
+
+   **MY FIRST FIX WAS WRONG, AND THE NEXT GATE CAUGHT IT.** I reasoned from the source's wording —
+   *"if both main feedwater pumps **fail**"* — to "a securing is not a failure", and made
+   `main_feed_lost` availability-only. `run_pwr2_engine` reddened on the check that drives the
+   SELECTORS at full power and expects the whole ch10 sentence. **It was right and I was wrong**:
+   an operator securing both main feed pumps at 100 % power has lost the heat sink exactly as
+   surely as a pump failure, and no real breaker-position signal can tell intent apart. Reasoning
+   from the source's *verb* smuggled in a discriminator the plant does not have.
+
+   The honest discriminator is not who did it but **whether main feed is the heat sink**, and it
+   belongs in the CALLER, which is where HR5 puts it — the module EVALUATES and REPORTS, the
+   caller decides. `pwr2_engine` arms the turbine trip and the MDAFW start only when
+   `!rh.running`. Mode 4 and Mode 5 are on RHR, so the chain is quiet; take RHR out of service on
+   that same standing loss and it re-arms. Marked a **declared simplification, UNVERIFIED**:
+   `node tools/find_source.js "loss of main feed.*MODE|MDAFW.*MODE 4"` returns **0 hits across 39
+   documents in 3 lanes**, so the mode conditions on this plant's input are not in the corpus and
+   this needs an evidence pass. Lo-lo level, SI and loss of offsite power stay armed in every mode
+   — this conditions ONE input.
+
+   **Then the arming defect that only existed for one step.** `rh.running` is recomputed by
+   stepRHR, which runs AFTER the arming reads it, so on step 1 of a cold plant the read was
+   `undefined` → `!undefined` → armed → AFAS latched before stepRHR could say otherwise. Measured:
+   AFAS `loss_of_main_feed` within 10 steps of boot on `cold_shutdown`, on the very fix meant to
+   prevent it. The cold branch seeds `rh.running = true` (its settled value) and `createRHR` seeds
+   it from the valve.
+
+   **Separately, `loss_of_feedwater` moved its seat to pump AVAILABILITY** — the #200 fix, and it
+   is independent of all of the above. Its old seat was the operator's selector, so once the FEED
+   PUMPS card gained a real pump start the first AUTO press would have cleared an injected
+   casualty. `pumpAAvail`/`pumpBAvail` had shipped in the constructor with **no command and no
+   consumer** beyond the capacity sum; they are the seat now.
+
+### Traps
+
+- **REASONING FROM A SOURCE'S VERB CAN SMUGGLE IN A DISCRIMINATOR THE PLANT DOES NOT HAVE.**
+  "If both main feedwater pumps **fail**" reads as excluding a securing — so I made the signal
+  availability-only, and broke the at-power case. A breaker-position signal senses position, not
+  intent. When a sourced sentence seems to carve out a case, ask what INSTRUMENT would make the
+  carve-out, and if there is none, the condition is somewhere else (here: is the secondary the
+  heat sink). And the check that caught it drove the SELECTORS deliberately — a fixture that looks
+  like it is testing the wrong thing may be the one holding the line.
+- **A gate can red on a COMMENT.** `run_events` scanned `CONTROL_LABEL_MAP` through a fixed
+  **4,000-byte window** off the literal's start. Adding a comment above `'Accumulator valve'`
+  pushed the label past the window and the runner reported it missing from a map it was still in.
+  A byte window is a hollow check: it silently stops covering whatever grows past it. Bounded on
+  the literal's own closing brace now (the `PRED_DISPLAY` idiom in `run_checklist_pwr2`).
+- **A test can pin the anti-pattern.** `run_pwr2_kernel`'s `lofw-precondition` asserted
+  `pumpA === false && pumpB === false` — i.e. it asserted that the casualty writes the operator's
+  selectors, which is the documented thing not to do. Replaced by the strictly stronger claim
+  (availability gone AND selectors untouched), which **would have failed on the old engine,
+  correctly**; its companion `lofw-holds` passes on both, which is what says the goalposts did not
+  move (Hard Rule 10).
+- **A harness reading `true_state` directly is a second sampler.** Step 3's acceptance moved to
+  rod position, which is not a flat `true_state` field — it lives in `control_state.rod_groups[]`.
+  `test/procedures_harness.js` read `true_state[p]`, so the live runtime checked the step off and
+  the gate called it a fail. Both go through one `InstructorLayer.paramValue` now. Minting a
+  `true_state` field instead would have wanted a §6.3 line and `run_contract` policing a field no
+  engine has any other reason to publish.
+- **A viewport fraction and a column fraction only agree by accident.** `.ckl-log` carried
+  `max-height: 48vh`; measured at 1600×900 that is **432 px inside a slot offering 604**, with a
+  second scrollbar around it. The taller the screen, the bigger the dead band.
+- **`innerHTML` rebuilds are invisible to a source read and obvious to a scrollbar.**
+  `renderChecklist` replaces the log element every render-key change, so scrollTop resets to 0 and
+  the tail's `scrollIntoView` pulls it back — "to the top then back down", once per render, which
+  under time acceleration is most broadcasts.
+- **`:hover` cannot answer "is the pointer in this element" microseconds after `innerHTML`** —
+  the browser does not re-run its hit test until the next mouse event or paint. Track the pointer
+  and hit-test on demand.
+
+### And then Mode 4 left the menu
+
+The owner, reading the C1 change: *"Should we bother to include a mode 4 preset if there isn't any
+difference from mode 5? Mode 4 and 2 are basically transition modes."* Measured rather than argued
+— both ICs booted, `true_state` diffed field by field:
+
+**105 of 122 fields identical.** Of the 17 that differ, **12 are one fact restated** (the plant is
+isothermal, so `thot`, `tcold`, `t_sg_c`, `t_core_exit_c`, `fuel_temp_c`, `clad_temp_c` all read
+Tavg). One independent difference — **temperature, 250 °F (121.1 °C) against 122 °F (50.0 °C)** —
+and everything else falls out of it: secondary pressure 29.9 vs 1.8 psia (saturation at Tavg),
+boron 894 vs 918 ppm (each IC trims at its own moderator temperature), subcooling 185 vs 313 °F
+(same pressure, different T), source range 101 vs 98 cps. Pressure 369 vs 368 psi, pressurizer
+level 25 % both, and the lineup identical.
+
+**The fact that decided it:** #507 wave 10's own comment says the preset exists *because Mode 5
+could not* — *"deliberately NOT Mode 5: Layer 0's property floor is 0.1 MPa, whose saturation
+temperature is 211 °F, so a secondary at or below Mode 5's 200 °F boundary is UNREPRESENTABLE."*
+#524 moved that floor on 2026-08-31. **Its reason had been spent for two days and it survived
+because nobody re-asked.** Two supports: no pwr2 checklist starts there (the six legs begin at
+`cold_shutdown` / `hot_zero_power` / `50_percent` / `hot_full_power`), and the RETIRED engine's own
+menu never carried it — four entries, the list pwr2 now matches.
+
+Ruled **A** *(OWNER, 2026-09-02)*: off the menu, initial condition kept. **Keeping the IC is not a
+compromise, it is the point** — it is the more sensitive of the two settled-state probes, and this
+session proved it: the safety-injection-at-t=0 defect read **−21 °F/hr at Mode 4 against −6 °F/hr
+at Mode 5**, because the hotter plant has more to lose. Deleting it would have deleted the probe
+that found the defect.
+
+**Trap:** the verification for a REMOVAL has to assert both directions. "The menu does not offer
+`hot_shutdown`" passes trivially on a panel that never rendered — so the check enumerates the IC
+ids the panel actually carries and asserts the other four ARE there (4 + 1 + 1, plus the IC still
+constructing). `run_manual_units` also caught the note's `250 °F` and `(121.1 °C)` landing on
+different LINES: the gate scans line by line, so a dual-unit pair split across a wrap reads as an
+orphaned SI value.
+
+### Landed
+
+`ui/diagram/board/pwr_board.js` (frame focus+select, the pending-entry pin, ▲▼ press-and-hold
+through `endMomentary`) · `pwr_board_wiring.js` (accumulator valve label, OFF secures) ·
+`ui/app.js` (checklist scroll, `cklScroller`, `pointerInside`, PRED_DISPLAY rod params, feedback
+focus + the no-endpoint note) · `ui/shell.css` (`.ckl-log` in chat-mode) · `ui/shell.html`
+(`#fbNoSend`) · `layers/instructor_layer.js` (`ROD_PARAMS`, `paramValue`) ·
+`test/procedures_harness.js` (predicates resolve through it) · `engines/pwr2/pwr2_engine.js` (the
+cold lineup, pump-availability commands) · `pwr2_shell.js` (`feedSelect`/`startFeedPumps`,
+loss_of_feedwater seat) · `pwr2_feedwater.js` (lost vs secured) · `ui/manual_procedures.js`
+(heatup steps 1/3/4/5, six `hl` lists) · `ui/app.js` again (the pwr2 `initStates` menu, Mode 4
+removed) · `Manuals/09` + `Manuals/03` (pending Rev 17 extended).
+
+**Gates:** `run_checklist_pwr2` 110/110 · `run_pwr2_kernel` 36/36 · `run_pwr2_endurance` 25/25 ·
+`run_pwr2_feedwater` 30/30 with 15/15 mutations · `run_events` 41/41 · `run_manual_setpoints`
+13/13 · `run_manual_rev` OK · `run_all` green against updated baselines.
+
+---
+
 ## Session log — 2026-09-02-workbench-b (#604 — the analytics pages had no memory, and the one that mattered was being on time)
 
 **Ask:** the owner — review the dev analytics pages, make them more useful, add charts, store

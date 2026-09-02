@@ -142,14 +142,23 @@
    *   power_ok           the NONVITAL bus (#507 wave 4) — the main feed pumps are non-vital
    *                      loads (they die with the grid, diesels or not); absent means
    *                      powered, the acAvailable(s) convention. The selectors stay where
-   *                      the operator put them (#200), so capacity <= 0 reads as
-   *                      main_feed_lost and the sourced turbine-trip/MDAFW chain fires.
+   *                      the operator put them (#200) — and see the LOST-vs-SECURED split below.
    */
   function stepFeedwater(fw, dt, drivers) {
     drivers = drivers || {};
     var capacity = drivers.power_ok === false ? 0 :
                    FW.pump_frac_each * ((fw.pumpA ? Math.max(0, fw.pumpAAvail) : 0) +
                                         (fw.pumpB ? Math.max(0, fw.pumpBAvail) : 0));
+    /* A LOST TRAIN IS A LOST TRAIN, HOWEVER IT GOT THAT WAY (#605, after getting this wrong once).
+     * `main_feed_lost` reads CAPACITY, selector included — an operator securing both pumps at
+     * power has lost the heat sink exactly as surely as a pump failure, and no real breaker-
+     * position signal can tell intent apart. The first cut of #605 made this availability-only so
+     * that the Mode 4/5 lineup would not fire the casualty chain; `run_pwr2_engine` caught the
+     * cost — securing both pumps at 100 % power stopped tripping the turbine.
+     * WHERE THE MODE DISTINCTION LIVES: in the CALLER, which is where HR5 puts it (this module
+     * EVALUATES and REPORTS, see the header). pwr2_engine arms the sourced turbine-trip/MDAFW
+     * chain only when the RCS is not on RHR — see the block around `_mainFeedLost` there. */
+    var lost = capacity <= 0;
 
     /* SI -> feedwater isolation, the sourced 32 s behind the LATCHED signal. Held-time, not
      * edge: a reset that clears si before the delay elapses cancels the isolation. */
@@ -225,7 +234,7 @@
       /* [sourced ch10] the loss-of-both-pumps fact the caller's turbine trip and the
        * protection layer's MDAFW start both consume — a STATE signal (breaker positions),
        * not an analog channel, the turbine_tripped convention */
-      main_feed_lost: capacity <= 0
+      main_feed_lost: lost
     };
   }
 

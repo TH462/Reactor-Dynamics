@@ -74,9 +74,24 @@ function runSuite(F, rec, quiet) {
      rC.main_feed_lost === false, '');
   fwC.pumpB = false;
   rC = F.stepFeedwater(fwC, DT, steady());
-  ck('both pumps lost: capacity 0 and main_feed_lost REPORTS (the caller trips the turbine, ' +
+  ck('both pumps SECURED: capacity 0 and main_feed_lost REPORTS (the caller trips the turbine, ' +
      'the protection starts the MDAFW — HR5, reported here, acted on there)',
      rC.capacity_frac === 0 && rC.main_feed_lost === true, '');
+  /* SECURED AND UNAVAILABLE REPORT THE SAME (#605) — and that is deliberate. A real
+   * breaker-position signal cannot tell the operator's intent from a pump failure, so this module
+   * does not either; securing both pumps at power loses the heat sink exactly as surely as losing
+   * them. WHERE THE MODE DISTINCTION LIVES: in the caller. pwr2_engine arms the sourced chain only
+   * when the RCS is not on RHR, so the Mode 4/5 lineup does not fire a casualty response —
+   * measured, run_pwr2_engine's "cold plant on RHR" check. The first cut of #605 put the split
+   * HERE, availability-only, and run_pwr2_engine caught the cost: securing both pumps at 100 %
+   * power stopped tripping the turbine. */
+  fwC.pumpA = true; fwC.pumpB = true;
+  fwC.pumpAAvail = 0; fwC.pumpBAvail = 0;
+  rC = F.stepFeedwater(fwC, DT, steady());
+  ck('both pumps UNAVAILABLE with the selectors still ON reports the same loss (the casualty ' +
+     'seat is availability, so an injected loss cannot be cleared by a button press — #200)',
+     rC.capacity_frac === 0 && rC.main_feed_lost === true &&
+     fwC.pumpA === true && fwC.pumpB === true, '');
   /* THE NONVITAL BUS (#507 wave 4): the main feed pumps die with the grid, diesels or not */
   var fwP = F.createFeedwater({});
   var rP = F.stepFeedwater(fwP, DT, Object.assign(steady(), { power_ok: false }));
@@ -242,7 +257,7 @@ var MUTATIONS = [
   ['the SI hold never cancels (an edge timer wearing a held-time\'s name)',
    '    } else fw._siHeld_s = 0;', '    }'],
   ['main_feed_lost never reports (the AFW start and the turbine trip lose their input)',
-   '      main_feed_lost: capacity <= 0', '      main_feed_lost: false'],
+   '      main_feed_lost: lost', '      main_feed_lost: false'],
   ['the pump lag is deleted (demand teleports)',
    '    if (dt > 0) fw.feed_frac += (demand - fw.feed_frac) * (dt / FW.pump_tau_s);',
    '    fw.feed_frac = demand;'],

@@ -978,6 +978,28 @@ function runSuite(RD, rec, quiet, only) {
       engC.pt.trip_cause === 'turbine_trip' &&
       engC.pt.afas_mdafw === true && engC.pt.afas_mdafw_cause === 'loss_of_main_feed',
       'the whole ch10 sentence, executed');
+  /* ...AND THE SAME LINEUP ON RHR IS NOT A CASUALTY (#605). The check above drives the operator's
+   * SELECTORS, deliberately: no real breaker-position signal can tell a securing from a failure,
+   * so at power both must fire the chain. What decides it is whether main feed is the heat sink.
+   * Mode 4 and Mode 5 boot with the pumps secured and the RCS on RHR — the NORMAL lineup — and
+   * the chain must stay quiet there. Measured before the arming existed: AFAS actuated at t=0 and
+   * pulled the settled Mode 4 plant down 21 degF/hr (run_pwr2_endurance saw it).
+   * BOTH DIRECTIONS ARE ASSERTED, here and above, because either one alone is satisfiable by a
+   * chain that never fires at all — the #605 first attempt passed this half and broke that one. */
+  var engC5 = EN.createEngine({ initial_state: 'cold_shutdown' });
+  var tsC5 = run(engC5, 60);
+  ckT('a cold plant on RHR with its main feed pumps secured does NOT fire the ch10 chain',
+      engC5.rh.running === true && engC5.fw.pumpA === false && engC5.fw.pumpB === false &&
+      engC5.pt.afas_mdafw === false && engC5.aw.mdafwRunning !== true,
+      'RHR running ' + engC5.rh.running + ', pumps ' + engC5.fw.pumpA + '/' + engC5.fw.pumpB +
+      ', AFAS ' + engC5.pt.afas_mdafw + ', Tavg ' + tsC5.tavg_c.toFixed(1) + ' degC');
+  /* And securing RHR re-arms it: the arming is the HEAT SINK, not the mode label. */
+  EN.command(engC5, 'rhr_align', false);
+  run(engC5, 5);
+  ckT('...and taking RHR out of service re-arms it on the same standing loss',
+      engC5.rh.running === false && engC5.pt.afas_mdafw === true &&
+      engC5.pt.afas_mdafw_cause === 'loss_of_main_feed',
+      'AFAS ' + engC5.pt.afas_mdafw + ' cause ' + engC5.pt.afas_mdafw_cause);
   /* HI-HI: an overfeed walks the level to the P-14 class function — main feed isolated AND
    * the turbine tripped (moisture carryover), while the AFW path stays open. */
   var engD = EN.createEngine({});
@@ -1937,6 +1959,11 @@ function runSuite(RD, rec, quiet, only) {
   var engF = EN.createEngine({ initial_state: 'hot_shutdown' });
   var mF0 = engF.sg.mass;
   EN.command(engF, 'feed_auto', false);
+  /* THE PUMPS ARE SECURED IN THIS INITIAL CONDITION SINCE #605, so start them — a demand with no
+   * pump running correctly delivers nothing, and asserting flow without this line would be
+   * asserting that a secured train feeds. (The shell's FEED PUMPS selector does this for the
+   * player: AUTO or a non-zero MAN demand starts them.) */
+  EN.command(engF, 'feed_pump_a', true); EN.command(engF, 'feed_pump_b', true);
   EN.command(engF, 'feed_manual_frac', 0.5);
   for (var ff = 0; ff < (quiet ? 60 : 120) / DT; ff++) EN.step(engF, DT);
   ckT('Mode 4 MAIN FEED DELIVERS: 50 % manual demand puts real mass in the steam generator ' +
@@ -2358,8 +2385,18 @@ var MUTATIONS = [
    'var sr = G.stepSG(eng.sg, tavg, dt, { feed: fwr.feed_frac * eng.rated_steam, steam: out,',
    'var sr = G.stepSG(eng.sg, tavg, dt, { feed: out, steam: out,', { grp: 'F' }],
   ['loss of both pumps no longer trips the turbine (half the ch10 sentence)',
-   '    if (fwr.main_feed_lost) eng.tb.tripped = true;',
+   '    if (mfLost) eng.tb.tripped = true;',
    '', { grp: 'F' }],
+  /* #605: the arming, both ways. Severing it re-ships the defect that started this — a normal
+   * Mode 4/5 lineup firing a casualty chain — and welding it ON re-ships the one the first fix
+   * caused: a securing at power that never trips the turbine. An anchor on the arming expression
+   * itself, so a refactor that moves the condition goes LOUD rather than blind. */
+  ['the loss-of-main-feed chain is armed in every mode (a Mode 4/5 lineup fires the casualty)',
+   '    var mfLost = fwr.main_feed_lost === true && !eng.rh.running;',
+   '    var mfLost = fwr.main_feed_lost === true;', { grp: 'F' }],
+  ['the loss-of-main-feed chain is never armed (securing both pumps at power does nothing)',
+   '    var mfLost = fwr.main_feed_lost === true && !eng.rh.running;',
+   '    var mfLost = false;', { grp: 'F' }],
   ['the fwi latch is never consumed (hi-hi reports into a void)',
    '    if (ptr.fwi) { eng.fw.isolated = true; eng.tb.tripped = true; }',
    '', { grp: 'F' }],

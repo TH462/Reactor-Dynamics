@@ -444,7 +444,15 @@ Commercial practice keeps boron sufficient for at least **1 % Δk/k** (WTSM 19.2
 Expected readings at each named engine initial condition, captured from the live engine after
 settling **70 s at 10x, the same for every column** — the low-power states are still walking their pressure up at 6 s, which is how the old table came to quote a hot-standby pressure 9 psi (0.06 MPa) light. **These five are the whole list** — the Free Play picker offers `hot_full_power`, `50_percent`, `hot_zero_power`, `hot_shutdown` and `cold_shutdown`, and the engine refuses any other name.
 
-> **MODE 5 EXISTS (#524, landed 2026-08-31).** The water-property floor moved from 14.5 psi (0.1 MPa) to **0.29 psi (0.002 MPa)**, so a steam generator can sit at ambient — the `cold_shutdown` column below is a real, loadable state whose secondary rides at **1.8 psi (0.0127 MPa)**, saturation at the plant's own 123 °F (50.6 °C). The cold end of the ladder is **Mode 5, Cold Shutdown** — 122 °F (50 °C), 363 psi (2.50 MPa) at boot, RHR in service, reactor coolant pumps secured, both banks in. `5_percent` remains the retired engine's and is **refused by name**.
+> **MODE 5 EXISTS (#524, landed 2026-08-31).** The water-property floor moved from 14.5 psi (0.1 MPa) to **0.29 psi (0.002 MPa)**, so a steam generator can sit at ambient — the `cold_shutdown` column below is a real, loadable state whose secondary rides at **1.8 psi (0.0127 MPa)**, saturation at the plant's own 123 °F (50.6 °C). The cold end of the ladder is **Mode 5, Cold Shutdown** — 122 °F (50 °C), 363 psi (2.50 MPa) at boot, RHR in service, reactor coolant pumps secured, **turbine tripped, both main feed pumps secured with level control in MANUAL**, both banks in. `5_percent` remains the retired engine's and is **refused by name**.
+> **`hot_shutdown` IS NOT ON THE FREE PLAY MENU** *(OWNER RULING, 2026-09-02: "A")*. The column
+> stays because the initial condition is real, is booted by three gates, and is the reference for
+> what a Mode 4 plant should read — but the player cannot select it. Measured when the question was
+> put: Mode 4 and Mode 5 differ in exactly **one** independent quantity — temperature.
+> 250 °F (121.1 °C) against 122 °F (50.0 °C); 105 of 122 true-state fields are identical
+> and the whole lineup is the same, so the two were one choice the player could not act on. Modes 2 and 4 are
+> transitions — you reach them by operating, which is why neither is a preset.
+
 healthy board after selecting an IC, and as the "what should this read?" reference during
 evolutions. At steady state the **indicated** values track these true values through each
 instrument's lag and noise (see `03_CONTROLS_AND_INDICATIONS.md` §16.0) — a mismatch that
@@ -452,7 +460,7 @@ persists is either a transient in progress or a failed instrument.
 
 | Parameter | `hot_full_power` | `50_percent` | `hot_zero_power` | `hot_shutdown` | `cold_shutdown` |
 |---|---|---|---|---|---|
-| Plant MODE | At Power (1) | At Power (1) | Hot Standby (3) | **Hot Shutdown (4)** | **Cold Shutdown (5)** |
+| Plant MODE | At Power (1) | At Power (1) | Hot Standby (3) | **Hot Shutdown (4)** — *engine only, not on the Free Play menu* | **Cold Shutdown (5)** |
 | Reactor power (%) | 99.6 | 49.6 | ~0 (source) | ~0 (source) | ~0 (source) |
 | Generator output (MWe) | 100.0 | 50.0 | 0 | 0 | 0 |
 | Tavg °F (°C) | 577.7 (303.2) | 566.7 (296.9) | 547.2 (286.2) | 250.4 (121.3) | 123.0 (50.6) |
@@ -472,7 +480,10 @@ persists is either a transient in progress or a failed instrument.
 | Intermediate range (A) | ≈ 8.3e-3 | ≈ 4.1e-3 | ≈ 1.6e-11 | ≈ 3.2e-12 | ≈ 3.2e-12 |
 | SR detector | OFF | OFF | Energized | Energized | Energized |
 | Condenser vacuum (kPa) | 93.2 | 98.0 | 100.1 | 100.1 | 100.1 |
-| Turbine speed (RPM) | 1800 | 1800 | 1800 | 1800 | 1800 |
+| Turbine | Latched, on line | Latched, on line | Latched, off line | **TRIPPED** | **TRIPPED** |
+| Turbine speed (RPM) | 1800 | 1800 | 0 | 0 | 0 |
+| Main feed pumps | Both running | Both running | Both running | **Both secured** | **Both secured** |
+| Feed control mode | AUTO (three-element) | AUTO (three-element) | AUTO (three-element) | **MANUAL, 0 %** | **MANUAL, 0 %** |
 | MSIV | Open | Open | Open | Open | Open |
 | RHR | Out of service | Out of service | Out of service | **In service** | **In service** |
 | ECCS mode indicator | standby | standby | standby | **RHR** | **RHR** |

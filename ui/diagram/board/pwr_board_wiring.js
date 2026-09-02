@@ -730,7 +730,13 @@
         else cmd({ action: 'set_auto_channel', channel_id: 'feed_sg', engaged: true });
       }, active: feedAutoOn },
     imrsgjuh7l0: { press: function (s) { cmd({ action: 'set_feed_pump_speed', pct: CS(s).feed_pump_speed_pct || 100 }); }, active: function (s) { return !feedAutoOn(s) && (CS(s).feed_pump_speed_pct || 0) > 0; } },
-    imrsgjwq1q0: { press: function () { cmd({ action: 'set_feed_pump_speed', pct: 0 }); }, active: function (s) { return !feedAutoOn(s) && (CS(s).feed_pump_speed_pct || 0) === 0; } },
+    /* OFF SECURES THE PUMPS (#605), which is what the OFF position of a three-position selector
+     * means — AUTO and MAN start them, OFF stops them. `secure` is a payload flag rather than a
+     * new verb so the retired engine, which knows only `pct`, is unchanged: it ignores the field
+     * and still reads this as a zero demand. PWR2 needs the distinction because a zero demand
+     * alone must NOT stop the pumps (the AUTO channel's demand passes through zero; see
+     * feedSelect in pwr2_shell.js). */
+    imrsgjwq1q0: { press: function () { cmd({ action: 'set_feed_pump_speed', pct: 0, secure: true }); }, active: function (s) { return !feedAutoOn(s) && (CS(s).feed_pump_speed_pct || 0) === 0; } },
     // MFW RESTORE (#341 / #319 item 2). Lights while main feed IS isolated — i.e. while it
     // is the control that has something to do — and is dark the rest of the time, which is
     // the whole board's idiom for "this is the live one".
@@ -2960,7 +2966,16 @@
     // The ATMOS DUMP card is AUTHORED now (#371) — the driver-injected box it replaced
     // is gone, and both names point at the authored box so a highlight lights the group.
     'ADV': 'imsgt1ebv1d', 'Atmospheric Dump': 'imsgt1ebv1d', 'ADV SP': 'imsgt1ebv1d',
-    'Pressure SP': 'imrsg8b7b9o', 'Accumulator valve': 'imrppx5n1ay',
+    'Pressure SP': 'imrsg8b7b9o',
+    /* THE VALVE, NOT THE TANK FARM *(OWNER, 2026-09-02 playtest, M5->3 item 5: "Step 8 should
+     * highlight the valve for the accumulator, not the accumulator box itself.")*. This label
+     * pointed at `imrppx5n1ay`, which is the ACCUMULATORS box (550,735 175x50) — the panel the
+     * tank readouts sit in, with no control in it. Six checklist steps across both pools name
+     * this label to say "open/shut the discharge valve", and every one of them lit the tank
+     * farm instead. `imrppxt2aqd` IS the accumulator shutoff valve (700,610, a clickable
+     * Valve Vertical carrying open/close_accumulator_valve) — the thing the step asks for.
+     * The box keeps its own name below, for anything that genuinely means the panel. */
+    'Accumulator valve': 'imrppxt2aqd', 'Accumulators': 'imrppx5n1ay',
     'Turbine — Connect Grid': 'imro8k5pzem',
     // The rods_tavg channel toggle (EXTRA_ITEMS, #237) — the control the old
     // "Automate → Reactor" directives now point at.

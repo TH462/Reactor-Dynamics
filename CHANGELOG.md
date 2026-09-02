@@ -30,6 +30,130 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
 
 ## [Unreleased]
 
+### Fixed (#605: the 2026-09-02 playtest — two typing blockers, the checklist scroll, and Mode 5's lineup)
+
+**Two BLOCKERS, and they are the same defect in two places: a click that misses a text field
+leaves focus on `document`, where the global keyboard shortcuts are waiting.**
+
+- **The Pressurizer Pressure Setpoint box would not take typing.** Measured on the Pressure SP
+  tile (`imrsg8b7b9o`, authored 100 px wide): the `<input>` renders **42 px of an 85 px frame**
+  at 1600×950 and **30 × 17 px** at 1366×768, with a `psi` unit span and the ▲▼ column beside it
+  inside the same visible border. A click on the unit span left `activeElement` on BODY; the
+  typed "2235" then went to the shortcut handler, where **2/3/5 are time acceleration** — so the
+  attempt ended with the plant at 3600×. A pointerdown anywhere in the frame now focuses and
+  SELECTS the input (a setpoint box is overtyped, not edited: a caret inside "1700" turns "2235"
+  into "17002235", which clamps to the dial maximum).
+- **And a committed entry snapped back to the old value.** Type 2235, Enter, box reads 363 again:
+  `rec.editing` goes false on commit and the next render reads the setpoint off the snapshot
+  still in hand. Running, the next broadcast hides it. **PAUSED — which is exactly when a player
+  retypes a setpoint — nothing ever hides it.** A commit now outranks a snapshot still reporting
+  the old value, bounded at 20 broadcasts so a REFUSED command still snaps back honestly.
+- **The in-sim feedback form had the same trap.** Measured: 32 characters typed, **0 in the box**,
+  focus on `#playBtn` — the first SPACE in the sentence hit play/pause. Opening the form now puts
+  the caret in the textarea. On a build with no telemetry endpoint the send block is hidden, which
+  is indistinguishable from a box that refuses typing; it now says so and points at the address.
+
+**The board's ▲▼ arrows repeat while held** — tap is still one step, then ~17/s after 400 ms,
+coarsening ×10 after 1.5 s. Without the acceleration the Pressure SP's 1 psi step needs a
+35-second hold to cross its own 800 psi dial. Teardown goes through `endMomentary`, the path every
+other held control already uses.
+
+**The live checklist stopped scrolling itself.** `cur.innerHTML = h` replaces the log, a new
+element starts at scrollTop 0, and the tail pulled the active step back into view — "to the top
+then back down", once per render, which under time acceleration is most broadcasts. Position is
+preserved across the rebuild; the active step is pulled into view only on a real step ADVANCE; and
+a pointer resting in the log suppresses even that. Verified at 3600× with the mouse on the log.
+
+**And the checklist log fills its column.** `.ckl-log` carried `max-height: 48vh` — measured 432 px
+inside a slot offering 604 at 1600×900, with a second scrollbar around it. A viewport fraction and
+a column fraction only agree by accident.
+
+**`hl` highlights point at the valve, not the tank farm.** `CONTROL_LABEL_MAP['Accumulator valve']`
+resolved to `imrppx5n1ay`, the ACCUMULATORS **box** — a panel with no control in it — across six
+checklist steps in both pools. It is the clickable valve `imrppxt2aqd` now, and `'ECCS'` (the
+enclosing ECCS panel, which does not contain the accumulator at all) left those steps' lists.
+
+### Changed (#605: Mode 5 and Mode 4 boot with the turbine tripped and main feed secured)
+
+*(OWNER, 2026-09-02 playtest: "In mode 5 it should start w/ turbine tripped, SG feed off"; lineup
+detail RULED the same day: "Feed pumps secured".)*
+
+Both were **retired-by-reference** (#534's standing trap): `createTurbine` defaults `tripped:
+false` and `createFeedwater({at_power:false})` defaults `auto: true` with both pumps running,
+because those defaults were written for the one initial condition this engine used to have — Hot
+Full Power. #598 fixed the visible half of the turbine one (no more 1800 rpm on a cold reactor)
+and left the LATCH. The feed half made the heatup checklist's "put level control in AUTO now" a
+step that changed nothing.
+
+Two engine defects came out with it:
+
+- **There was no operator command to start the main feed pumps** — `feed_pump_a`/`_b` were
+  reachable only through the `loss_of_feedwater` failure and its clear. The board's three-position
+  FEED PUMPS selector is the control now: AUTO and any non-zero MAN demand start them, **OFF**
+  secures them. A zero demand does NOT — the `feed_sg` channel's demand passes through zero, and
+  the operator's corrective command against an SG overfeed *is* "demand 0" (#510 M-12). OFF
+  carries a `secure` payload flag rather than a new verb, so the retired engine is unchanged.
+- **The sourced loss-of-main-feed chain fired on a normal Mode 4/5 lineup.** `main_feed_lost` is
+  `capacity <= 0` and capacity folds in the operator's selector, so securing the pumps read as the
+  casualty — **measured: AFAS at t=0, pulling the settled Mode 4 plant down 21 °F/hr**. The chain
+  is now **armed only when the RCS is not on RHR**, i.e. when main feed is actually the heat sink.
+  Lo-lo SG level, safety injection and loss of offsite power stay armed in every mode; this
+  conditions one input. *(Declared simplification, UNVERIFIED: `tools/find_source.js` returns 0
+  hits across 39 documents in 3 lanes for the mode conditions on this plant's input.)*
+  Separately, `loss_of_feedwater` now seats on pump **availability** rather than the operator's
+  selector — the #200 fix, without which pressing the FEED PUMPS button would have cleared an
+  injected casualty.
+
+**A checklist step is checked off on the bank, not on reactivity** *(OWNER: "Step 3 should be based
+on rod position not reactivity")*. Rod position is not a flat `true_state` field — it lives in
+`control_state.rod_groups[]`, which is what the board prints — so the instructor layer resolves
+`shutdown_bank_pct` / `control_bank_pct` from there rather than minting contract fields for the
+checklists alone. `test/procedures_harness.js` was reading `true_state` directly, a second sampler
+that could not see them, and resolves through the same function now.
+
+### Removed (#605: Mode 4, Hot Shutdown leaves the Free Play menu)
+
+*(OWNER RULING, 2026-09-02: "A", selecting "off the menu, initial condition kept for the gates"
+from three options, after asking "Should we bother to include a mode 4 preset if there isn't any
+difference from mode 5? Mode 4 and 2 are basically transition modes".)*
+
+**Measured, both booted and their `true_state` diffed: 105 of 122 fields identical.** Of the 17
+that differ, 12 are one fact restated — the plant is isothermal, so every node reads Tavg. There
+is exactly **one independent difference, temperature: 250 °F (121.1 °C) against 122 °F (50.0 °C)**.
+Secondary pressure (29.9 against 1.8 psia), boron (894 against 918 ppm), subcooling (185 against
+313 °F) and source range all fall out of it. Pressure (369 against 368 psi), pressurizer level
+(25 %) and the whole lineup are the same — RHR aligned with its heat exchanger shut, RCPs secured,
+accumulators isolated, P-11 blocks taken, both banks in, and since this release turbine tripped and
+main feed secured. **Nothing the player can do differs.**
+
+**The preset's reason was spent.** #507 wave 10 built it saying so verbatim — *"deliberately NOT
+Mode 5: Layer 0's property floor is 0.1 MPa, whose saturation temperature is 211 °F, so a secondary
+at or below Mode 5's 200 °F boundary is UNREPRESENTABLE"*. #524 moved that floor and Mode 5 landed
+2026-08-31; the Mode 4 entry survived because nobody re-asked.
+
+What is left is the HOLD states, which is what a preset is for — transitions are produced by
+operating (the #468 produced-vs-preset rule, and why there is no Mode 2 entry either). The list
+now matches the retired engine's own four-entry menu.
+
+**The initial condition itself stays**, in `pwr2_engine`'s registry and in three runners: it is the
+more sensitive of the two settled-state probes — #605's safety-injection-at-t=0 defect read
+**−21 °F/hr there against −6 °F/hr at Mode 5**, because the hotter plant has more to lose.
+`Manuals/09` keeps its column and says it is engine-only.
+
+### Fixed (#605: two gates that could not have caught the above)
+
+- **`run_events`** scanned `CONTROL_LABEL_MAP` through a fixed **4,000-byte window** off the
+  literal's start. A label past it read as missing — so ADDING A COMMENT could red the gate for a
+  label that never moved, which is what happened. Bounded on the literal's closing brace now.
+- **`run_pwr2_kernel`'s `lofw-precondition`** asserted `pumpA === false && pumpB === false` — it
+  pinned the anti-pattern itself. Replaced by the strictly stronger claim (availability gone AND
+  the selectors untouched), which would have FAILED on the old engine, correctly; its companion
+  `lofw-holds` passes on both, which is what says the goalposts did not move (Hard Rule 10).
+
+Manuals: pending Rev 17 extended — **09**'s initial-condition table gains Turbine / Main feed pumps
+/ Feed control mode rows and corrects a turbine-speed row reading **1800 RPM in all five columns**;
+**03 §9.2** records the selector's pump start and the ▲▼ hold.
+
 ### Added (#604: the dev analytics pages get a memory, four dimensions and a chart — 2026-09-02)
 
 Not a simulator change and gets no `changelog.html` entry — this is the ops dashboard.

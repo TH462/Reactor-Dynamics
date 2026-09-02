@@ -45,6 +45,76 @@ where the two differ or where judgment was exercised.
 
 ---
 
+## 2026-09-02-develop-a — #605: the playtest's two typing blockers were one defect, and Mode 5 was booting a latched turbine
+
+**A click that misses a text field is a keyboard shortcut on this board.** Both "can't type"
+blockers reduce to the same thing and neither is the text box. Measured on the Pressure SP tile
+(`imrsg8b7b9o`, authored 100 px): the `<input>` is **42 px of an 85 px frame** at 1600×950 and
+**30 × 17 px** at 1366×768, with a `psi` unit span and the ▲▼ column filling the rest **inside the
+same visible border**. A click on the span leaves `document.activeElement` on BODY, and `ui/app.js`'s
+global shortcut handler then takes the digits — 2/3/5 are time acceleration, so typing "2235" ends
+the session at 3600×. The feedback form is the same shape: 32 characters typed, **0 in the box**,
+focus on `#playBtn`, because the first SPACE is play/pause. Decision: **make the whole affordance
+the target** (frame pointerdown focuses + selects; the feedback modal focuses its textarea on open)
+rather than narrowing the shortcut handler, which reads correct in both worlds.
+
+**A committed setpoint must survive until the plant answers.** `commit()` clears `rec.editing`
+and the next render reads `numberFor` off the snapshot still in hand — the old value. Running, a
+broadcast hides it; PAUSED it never does, and paused is when a player retypes a setpoint. Pinning
+by snapshot IDENTITY was tried and fails (the command path reassembles a fresh snapshot object, so
+the pin dies on its own first render); the shipped form pins on the pre-commit VALUE, releases the
+moment the plant reports anything else — accepted **or clamped** — and is bounded at 20 broadcasts
+so a REFUSED command still snaps back honestly.
+
+**Mode 5 and Mode 4 boot with the turbine tripped and main feed secured** *(OWNER, 2026-09-02
+playtest: "In mode 5 it should start w/ turbine tripped, SG feed off"; lineup detail RULED the same
+day: "Feed pumps secured")*. Both were retired-by-reference — constructor defaults written for the
+one initial condition this engine used to have. Two consequences had to ship with the ruling:
+
+- **The FEED PUMPS selector became the pump control** (AUTO / non-zero MAN start, OFF secures),
+  because `feed_pump_a`/`_b` had no operator command at all. **Securing is explicit, not inferred
+  from a zero demand** — the `feed_sg` channel's demand passes through zero, and the operator's
+  answer to an SG overfeed *is* demand 0 (#510 M-12). It rides as a `secure: true` payload flag on
+  the existing verb so the retired engine, which knows only `pct`, is unchanged.
+- **The sourced loss-of-main-feed chain fired on a normal Mode 4/5 lineup.** `main_feed_lost` is
+  `capacity <= 0` and capacity folds in the operator's selector — **measured: AFAS at t=0, the
+  settled Mode 4 plant falling 21 °F/hr**, caught by `run_pwr2_endurance`.
+  **THE FIRST FIX WAS WRONG AND A GATE CAUGHT IT.** Making `main_feed_lost` availability-only put
+  the distinction in the module; `run_pwr2_engine` reddened, because securing both pumps at 100 %
+  power is a real loss of heat sink and no breaker-position signal can tell it from a failure.
+  The distinction belongs in the CALLER (HR5): the module reports the loss, `pwr2_engine` arms the
+  chain only when the RCS is **not on RHR** — when main feed is actually the heat sink. Both
+  directions are pinned now (a cold plant on RHR must not fire it; securing RHR must re-arm it on
+  the same standing loss), because either half alone is satisfiable by a chain that never fires.
+  Lo-lo level, SI and loss of offsite power stay armed in every mode. *(Declared simplification,
+  UNVERIFIED — `tools/find_source.js` returns 0 hits across 39 documents in 3 lanes for the mode
+  conditions on this input.)* `loss_of_feedwater` separately moved its seat to pump AVAILABILITY
+  (`pumpAAvail`/`pumpBAvail`, which had shipped with no command and no consumer) — the #200 fix,
+  without which the first AUTO press would have cleared an injected casualty.
+
+**Checklist acceptance can read `control_state`.** Step 3 grades on `shutdown_bank_pct` now, not
+on `reactivity_pcm` (a proxy that also answers to boron and moderator temperature). Rod position is
+not a flat `true_state` field, and rather than mint contract fields for the checklists alone the
+instructor layer resolves it from `control_state.rod_groups[]` — with `test/procedures_harness.js`
+routed through the SAME function, because it was reading `true_state` directly and would otherwise
+have been a second sampler that disagreed with the live runtime about what a step checked.
+
+**Two gates could not have caught any of this.** `run_events` scanned `CONTROL_LABEL_MAP` through a
+fixed 4,000-byte window, so adding a COMMENT reddened it for a label that never moved.
+`run_pwr2_kernel`'s `lofw-precondition` asserted `pumpA === false && pumpB === false` — it pinned
+the anti-pattern itself; the replacement (availability gone AND selectors untouched) would have
+failed on the old engine, correctly, while its companion `lofw-holds` passes on both.
+
+**Mode 4, Hot Shutdown is no longer a Free Play preset** *(OWNER RULING, 2026-09-02: "A")*.
+Measured, both ICs booted and diffed: **105 of 122 `true_state` fields identical**, and of the 17
+that differ 12 are one fact restated (isothermal plant, every node reads Tavg). One independent
+difference — temperature, **250 °F (121.1 °C) against 122 °F (50.0 °C)** — with the same pressure,
+the same pressurizer level and the same lineup. #507 wave 10 built the preset *because Mode 5 was
+unrepresentable at the old 0.1 MPa property floor*; #524 moved the floor and the entry outlived its
+reason. Presets are HOLD states; transitions are produced by operating (#468). **The IC stays in
+the engine and in three runners** — it is the more sensitive settled-state probe (#605's
+safety-injection defect read −21 °F/hr there against −6 °F/hr at Mode 5).
+
 ## 2026-08-31-develop-d — #244/#254/#526: the pwr2 checklist pool is AUTHORED, not aliased — and the replay is the authority
 
 **Claim:** `RD.MANUAL_PROCEDURES.pwr2` is a separate pool sharing ids with the pwr pool, every

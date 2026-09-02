@@ -692,6 +692,18 @@
                 about you or your device. Untick it to send just your message.</div>
               <button class="btn fb-send-btn" id="fbSend">Send report</button>
             </div>
+            <!-- SAY SO WHEN THE FORM IS NOT THERE (#605, owner playtest 2026-09-02: "Can't type
+                 into feedback block ... from develop site"). The block above is hidden on any
+                 build with no telemetry endpoint stamped — a local checkout, the offline
+                 single-file build, and any deploy whose environment did not set
+                 RD_TELEMETRY_ENDPOINT. Hidden, it is indistinguishable from a text box that
+                 refuses to take typing, which is what it was reported as. One line in its place
+                 turns "broken" into "not on this build, here is the route that works". -->
+            <div class="fb-field fb-nosend" id="fbNoSend" hidden>
+              <div class="fb-hint">Sending a report from inside the simulator is not available on
+                this build — use the address above, or the GitHub link. The diagnostics file below
+                attaches to either.</div>
+            </div>
             <div class="fb-field fb-diag">
               <button class="btn" id="fbDiag">Download session diagnostics ⭳</button>
               <div class="fb-hint">Optional, for a bug report — plant readings, alarms, and the

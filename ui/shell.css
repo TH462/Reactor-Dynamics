@@ -2064,6 +2064,18 @@ select.num-input { width: auto; }
 .ckl-menu button:hover { border-color: var(--stopped); }
 .ckl-cat { display: inline-block; min-width: 62px; margin-right: 6px; color: var(--muted); font-size: 10px; text-transform: uppercase; letter-spacing: .05em; }
 .ckl-log { display: flex; flex-direction: column; gap: 8px; max-height: 48vh; overflow-y: auto; padding-right: 4px; margin-bottom: 8px; }
+/* ...EXCEPT WHILE A CHECKLIST IS RUNNING, where it must reach the bottom of the column
+   *(OWNER, 2026-09-02 playtest, M5->3 item 4: "The scroll window for the tabs should go all the
+   way to the bottom of the column")*.
+   MEASURED at 1600x900: `.ckl-log` resolved to 432 px (48vh) inside an `#instrLog` offering 604,
+   so the steps scrolled in a box 172 px shorter than the space it sat in — with a second
+   scrollbar around it, because #instrLog scrolls too. The cap is a fraction of the VIEWPORT and
+   the slot is a fraction of the COLUMN, so the two only ever agree by accident; the taller the
+   screen, the bigger the dead band.
+   In chat-mode the log stops being a scroller and #instrLog — already `flex: 1 1 0` and filling
+   the card — is the only one. `.instr-prev` is display:none in chat-mode, so the log is
+   effectively alone in there. The 48vh cap stays for every other use of .ckl-log. */
+.instructor.chat-mode .ckl-log { max-height: none; overflow-y: visible; }
 .ckl-head { font-size: 13px; }
 .ckl-step { display: flex; gap: 8px; align-items: flex-start; border: 1px solid var(--border); border-radius: 8px; padding: 6px 9px; background: var(--bg-elevated); }
 .ckl-ico { font-weight: 700; width: 16px; text-align: center; flex: none; }

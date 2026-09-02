@@ -238,7 +238,15 @@ head('TR-7  the watch table names fields and labels that exist');
   // board), so read it as TEXT — the point is that a ref cannot be a typo nobody notices
   // until the highlight bus silently fails to light anything.
   var wiring = fs.readFileSync(path.join(ROOT, 'ui/diagram/board/pwr_board_wiring.js'), 'utf8');
-  var map = wiring.slice(wiring.indexOf('var CONTROL_LABEL_MAP'), wiring.indexOf('var CONTROL_LABEL_MAP') + 4000);
+  /* THE WHOLE MAP, NOT THE FIRST 4,000 BYTES OF IT (#605). This was a fixed byte window, so the
+   * check silently stopped covering every label that fell past it — and the map is commented
+   * heavily, so ADDING A COMMENT could red this gate for a label that never moved. That is what
+   * happened: a comment above 'Accumulator valve' pushed it past the window and the runner
+   * reported the label as missing from a map it was still in. Bound it on the literal's own
+   * closing brace instead, the PRED_DISPLAY idiom in run_checklist_pwr2.js. */
+  var mapM = /var CONTROL_LABEL_MAP = \{[\s\S]*?\n\s*\};/.exec(wiring);
+  ck('the CONTROL_LABEL_MAP literal is readable as text', !!mapM, mapM ? 'ok' : 'regex found no map');
+  var map = mapM ? mapM[0] : '';
   var refs = RD.Events.WATCH.pwr.map(function (w) { return w.ref; })
     .concat(Object.keys(RD.Events.CMD_REF).map(function (k) { return RD.Events.CMD_REF[k]; }))
     .filter(Boolean);

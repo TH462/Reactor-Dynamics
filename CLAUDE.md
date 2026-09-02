@@ -422,8 +422,14 @@ produce — Rev 13 shipped carrying thirteen lettered items from two lanes for e
 reading aid, not a record: the full entry is in `Diagnostic/TUNING_LOG.md`, and anything that is
 standing procedure rather than news belongs in the list below. **Evicting one: RESCUE THE TRAP
 FIRST** — ask what in it would still burn someone in a month, move that to the standing list as
-ONE line, drop the rest. **A bullet is ~80 words.** (Measured 2026-08-06: the list was running
-7 bullets averaging 500 words, two of them duplicating traps already rescued below.)
+ONE line, drop the rest. **A bullet is ~80 words.**
+
+- **A CLICK THAT MISSES A TEXT FIELD IS NOT A NO-OP — IT IS A KEYBOARD SHORTCUT** (2026-09-02,
+  #605). Both "can't type" blockers were this, and neither was the text box. The Pressure SP
+  `<input>` is **30 x 17 px of an 85 px frame** (a `psi` span and the arrows fill the rest, inside
+  the same border); a miss leaves focus on BODY and the global keys eat the digits — 2/3/5 are TIME
+  ACCELERATION, so "2235" ended at 3600x. Feedback form: 32 chars typed, **0 in the box**, focus on
+  `#playBtn`. **Make the whole affordance the target; the handler looks correct either way.**
 
 - **A `blockable` FLAG IS NOT EVIDENCE AN OPERATOR BLOCKS IT — AND A SHARED BOOLEAN CANNOT BE
   TESTED FOR WHICH CONSUMER IT BELONGS TO** (2026-09-01, #600/#601, from the owner's question about
@@ -440,12 +446,6 @@ ONE line, drop the rest. **A bullet is ~80 words.** (Measured 2026-08-06: the li
   at the Pressure SP's 1700 psig floor. The harness issues a step's command at step START, so
   the accumulator-window and align-under-spray steps split into ride-then-act pairs — also the
   honest operator order (shutting spray first bounces pressure back over the RHR permissive).
-- **A FIXTURE BUILT AT AN ENVELOPE WALL EXPIRES WITH THE WALL** (2026-08-31, #524 §126).
-  `P_MIN = 0.1` was `PLow=0.1` in the NIST URL — #586's `THigh=800` at the other wall; same
-  discipline to move it (refit + fetch reference data INSIDE the extension; the old fit read
-  1e27 % extrapolated). Then three SG fixtures and a LOCA hold check, each built AT the old
-  floor for "zero duty by construction", reddened on the fix itself — adjudicated per-probe,
-  the 107 s floor-arm latch was the floor masking a blowdown that now completes honestly.
 - **A RENDER-BOUND FLICKER IS MEASURED IN THE BROWSER'S PIPELINE, NOT OUR JS — AND PER-ELEMENT
   THROTTLING OF ANIMATIONS CUTS NOTHING** (2026-08-31, #596, the in-sim report:
   4.7 fps). Two 60 Hz wastes behind a 10 Hz display: the chart rebuilt an IDENTICAL SVG every
@@ -462,11 +462,10 @@ ONE line, drop the rest. **A bullet is ~80 words.** (Measured 2026-08-06: the li
   **nothing annunciates SI at all** (#603). Same shape as the #591 CW bound: right value, wrong
   plant. **Check the provenance of the BAND before you retune the thing inside it.**
 **Standing procedure — not part of the rotation above; these do not expire.** One trap per entry.
-**MAX 25 BULLETS** *(OWNER RULING, 2026-08-10: selected "Cap at 25, evict to TRAPS.md" from
-options I wrote — a selection, not verbatim words)*, gated by `test/run_doc_budget.js`. Adding
+**MAX 25 BULLETS** *(OWNER RULING, 2026-08-10: selected "Cap at 25, evict to TRAPS.md")*,
+gated by `test/run_doc_budget.js`. Adding
 one means evicting one to **`Blueprint/TRAPS.md`**, and the criterion is written there: **move
-what a GATE already catches**, keep what nothing can tell you. This list was the only unbounded
-thing left in the file and it grew about a bullet a session.
+what a GATE already catches**, keep what nothing can tell you.
 
 - **A check can pin a BIFURCATION, not a claim** (#543, 2026-08-28; #588, 2026-08-30). One bit
   picks the branch — green here, red on CI. **Assert the invariant the defect violated.**
@@ -475,7 +474,9 @@ thing left in the file and it grew about a bullet a session.
   before trusting a blowdown check**. `mcr.microsoft.com/playwright:v1.61.1-noble` reproduces CI.
 - **A pre-declared reject criterion can outlive its measurement** (rescued from the #394
   limit-cycle bullet on eviction, 2026-08-10): #378's was void the next day. Re-measure the
-  criterion, not just the result, before you let it reject anything.
+  criterion, not just the result, before you let it reject anything. **So does a FIXTURE BUILT AT
+  AN ENVELOPE WALL** (#524, rescued 2026-09-02): `P_MIN = 0.1` was `PLow=0.1` in a NIST fetch URL.
+  Move the wall and every probe standing on it reddens — adjudicate per-probe, refit inside it.
 - **A bracketed TEMPLATE placeholder cites like a number** (rescued from the #380 bullet on
   eviction, 2026-08-09): NUREG-1431's "~30–32 %" SG lo-lo survived two evidence passes because
   both verdicted the mechanism and inherited the figure. Ginna, the anchor plant, says 17 %.

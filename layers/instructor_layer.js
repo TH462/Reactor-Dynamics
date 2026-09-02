@@ -659,7 +659,54 @@
   // Grade one {p, op, v [,tol]} predicate. Instrument-first (HR1): if the param
   // has an instrument twin and the reading exists, grade what the operator sees;
   // otherwise the documented true_state fallback.
+  /* ROD POSITION IS A PREDICATE PARAM, AND IT IS NOT IN `true_state` (#605, owner playtest
+   * 2026-09-02, M5->3 item 1: "Step 3 should be based on rod position not reactivity").
+   *
+   * `_grade` reads FLAT fields — an instrument twin, else `true_state[p]` — and bank position is
+   * neither. It lives in `control_state.rod_groups[]`, one entry per bank, carrying `steps` /
+   * `max_steps` / `position_pct`: the same numbers the board's rod readouts print, which is what
+   * makes grading off them instrument-honest rather than a peek at truth. So resolve those few
+   * names here instead of minting `true_state` fields for them — a new contract field would want
+   * its §6.3 line and would exist for the checklists alone, and `run_contract` would then police
+   * a field no engine has any other reason to publish.
+   *
+   * A group the running plant does not carry resolves to undefined, which `_predMet` fails
+   * closed on — the same verdict a missing true_state field gets, so a step written against a
+   * two-bank plant simply never checks off on a one-bank one rather than checking off wrongly. */
+  var ROD_PARAMS = {
+    control_bank_pct:  { group: 'control_rods',  field: 'position_pct' },
+    control_bank_steps: { group: 'control_rods', field: 'steps' },
+    shutdown_bank_pct: { group: 'shutdown_rods', field: 'position_pct' },
+    shutdown_bank_steps: { group: 'shutdown_rods', field: 'steps' }
+  };
+  function rodParam(snapshot, p) {
+    var spec = ROD_PARAMS[p];
+    if (!spec) return undefined;
+    var groups = snapshot.control_state && snapshot.control_state.rod_groups;
+    if (!groups || !groups.length) return undefined;
+    for (var i = 0; i < groups.length; i++) {
+      if (groups[i] && groups[i].id === spec.group) {
+        var v = groups[i][spec.field];
+        return (v == null || isNaN(v)) ? undefined : v;
+      }
+    }
+    return undefined;
+  }
+
+  /* THE ONE RESOLVER (#605). `test/procedures_harness.js` asserts the same `acc` predicates
+   * this layer grades, and it used to read `snapshot.true_state[p]` directly — a second sampler
+   * of the same truth, and one that cannot see a param resolved anywhere else. It calls this
+   * now, so a param added here reaches the gate and the live runtime together. */
+  InstructorLayer.paramValue = function (snapshot, p) {
+    if (ROD_PARAMS[p]) return rodParam(snapshot, p);
+    return snapshot && snapshot.true_state ? snapshot.true_state[p] : undefined;
+  };
+
   InstructorLayer.prototype._grade = function (snapshot, pred) {
+    if (ROD_PARAMS[pred.p]) {
+      var rv = rodParam(snapshot, pred.p);
+      return { met: this._predMet(rv, pred), graded_by: 'control_state', value: rv };
+    }
     var plant = (snapshot.metadata && snapshot.metadata.plant_id) || null;
     var map = plant ? PARAM_INSTRUMENT[plant] : null;
     var iid = map ? map[pred.p] : null;

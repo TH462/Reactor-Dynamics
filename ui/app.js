@@ -363,9 +363,38 @@
     // 'pwr2' as well: it is the service plant_id, the save schema ('pwr2-1.0') and 37 gate
     // runners' name for this plant, and renaming it would buy a label and cost all of that.
     // initStates OVERRIDES the profile's list: this engine carries its OWN preset registry
-    // (pwr2_engine ICS — FIVE since #524 landed Cold Shutdown on the extended water-property
-    // floor, 2026-08-31; before that, four since #507 wave 10) and offering the pwr
-    // profile's presets the constructor refuses would be a menu that lies.
+    // (pwr2_engine ICS) and offering the pwr profile's presets the constructor refuses would be
+    // a menu that lies.
+    /* THE MENU IS FOUR OF THE FIVE ICs — Mode 4, Hot Shutdown IS NOT OFFERED *(OWNER RULING,
+     * 2026-09-02: "A" — selecting "off the menu, initial condition kept for the gates" from three
+     * options I put, after asking "Should we bother to include a mode 4 preset if there isn't any
+     * difference from mode 5? Mode 4 and 2 are basically transition modes")*.
+     *
+     * MEASURED, both ICs booted and their true_state diffed (2026-09-02): 105 of 122 fields are
+     * IDENTICAL, and of the 17 that differ, 12 are one fact restated — the plant is isothermal, so
+     * every node reads Tavg. There is exactly ONE independent difference, temperature: 250 degF
+     * (121.1 degC) against 122 degF (50.0 degC). Secondary pressure (29.9 vs 1.8 psia), boron (894
+     * vs 918 ppm), subcooling (185 vs 313 degF) and source range all fall out of it. Pressure (369
+     * vs 368 psi), pressurizer level (25 %) and the WHOLE LINEUP are the same — RHR aligned with
+     * the heat exchanger shut, RCPs secured, accumulators isolated, the P-11 blocks taken, both
+     * banks in, turbine tripped, main feed secured. Nothing the player can DO differs.
+     *
+     * AND THE PRESET'S REASON WAS SPENT. #507 wave 10 built it saying so verbatim: "deliberately
+     * NOT Mode 5: Layer 0's property floor is 0.1 MPa, whose saturation temperature is 211 degF,
+     * so a secondary at or below Mode 5's 200 degF boundary is UNREPRESENTABLE." #524 moved that
+     * floor and Mode 5 landed 2026-08-31; the Mode 4 entry survived because nobody re-asked.
+     *
+     * The list that remains is the HOLD states, which is what a preset is for — transitions are
+     * produced by operating (the #468 produced-vs-preset rule in the ICS header, and why there is
+     * no Mode 2 entry either). It now matches the retired engine's own four-entry menu below.
+     *
+     * `hot_shutdown` STAYS in pwr2_engine's ICS and in the gates. It is the MORE SENSITIVE of the
+     * two settled-state probes — #605's safety-injection-at-t=0 defect read -21 degF/hr there
+     * against -6 degF/hr at Mode 5, because the hotter plant has more to lose — and three runners
+     * boot it. Put the entry back if a cooldown leg is ever authored to START at Mode 4; today no
+     * checklist does (the six pwr2 legs begin at cold_shutdown / hot_zero_power / 50_percent /
+     * hot_full_power). Manuals/09's initial-condition table keeps its column and says it is
+     * engine-only. */
     // freePlayOnly: the campaign/scenario/walkthrough content is authored and validated
     // against the current engine; running it silently on different physics would grade the
     // player against the wrong plant. Lifts when the scenario-compat pass runs.
@@ -373,7 +402,6 @@
                  initStates: [['hot_full_power', 'Hot Full Power (Mode 1)'],
                               ['50_percent', '50 % Power (Mode 1)'],
                               ['hot_zero_power', 'Hot Standby (Mode 3)'],
-                              ['hot_shutdown', 'Hot Shutdown (Mode 4)'],
                               ['cold_shutdown', 'Cold Shutdown (Mode 5)']],
                  freePlayOnly: true,
                  label: 'PWR', sub: 'Pressurized Water Reactor',
@@ -3286,10 +3314,44 @@
   // RD.MANUAL_PROCEDURES artifact the Instructor graded it from.
   // whyAll / whyOpen: the #244 item-2 explanation toggles (global + per-step); they
   // survive re-renders via the render key and reset with the checklist itself.
-  var cklState = { key: null, whyAll: false, whyOpen: {} };
+  var cklState = { key: null, whyAll: false, whyOpen: {}, step: null };
+  /* IS THE POINTER IN THIS ELEMENT? (#605.) `:hover` cannot answer it here — the element is
+   * BRAND NEW, built microseconds ago by an innerHTML rebuild, and the browser does not
+   * re-run its hit test until the next mouse event or paint. So track the pointer ourselves
+   * and hit-test on demand. The listener attaches on first use (this file's top level runs at
+   * parse time, before the app wires anything) and `capture` so a stopped event still counts.
+   * A pointer that has never moved reads as "not inside", which is the safe default: the
+   * auto-scroll then behaves exactly as it did before. */
+  var lastPtr = null;
+  function pointerInside(el) {
+    if (!lastPtr) {
+      document.addEventListener('pointermove', function (e) { lastPtr = { x: e.clientX, y: e.clientY }; }, true);
+      lastPtr = { x: -1, y: -1 };
+      return false;
+    }
+    if (!el || lastPtr.x < 0) return false;
+    var r = el.getBoundingClientRect();
+    return lastPtr.x >= r.left && lastPtr.x <= r.right && lastPtr.y >= r.top && lastPtr.y <= r.bottom;
+  }
+  /* WHICH ELEMENT ACTUALLY SCROLLS THE CHECKLIST. Not always `#cklLog`: since #605 gave the log
+   * the full column height it is a plain block in chat-mode and `#instrLog` around it is the
+   * scroller. Resolve it rather than naming one, so the scroll-preservation above cannot be
+   * silently pointed at an element that never scrolls — which would read as "the fix works"
+   * while the panel jumped exactly as before. */
+  function cklScroller() {
+    var el = $('cklLog');
+    while (el && el !== document.body) {
+      if (el.scrollHeight > el.clientHeight + 1) {
+        var ov = getComputedStyle(el).overflowY;
+        if (ov === 'auto' || ov === 'scroll') return el;
+      }
+      el = el.parentElement;
+    }
+    return $('cklLog');
+  }
   function resetCkl() {
     if (!cklState.key) return;
-    cklState = { key: null, whyAll: false, whyOpen: {} };
+    cklState = { key: null, whyAll: false, whyOpen: {}, step: null };
     clearCklStepGlow();
     var card = $('instructorCard'); if (card) card.classList.remove('chat-mode');
     var cur = $('instrCurrent'); if (cur) cur.textContent = '';
@@ -3324,6 +3386,15 @@
     sg_level_pct:           { label: 'SG level', u: '%' },
     pzr_level_pct:          { label: 'Pressurizer level', u: '%' },
     pump_flow_pct:          { label: 'RCP flow', u: '%' },
+    /* ROD POSITION (#605). Resolved out of `control_state.rod_groups` by the instructor layer,
+     * not out of `true_state` — see ROD_PARAMS there. The `_pct` forms are what a step should
+     * normally check: "fully withdrawn" is 100 % on any bank scale, where a step count is only
+     * true for the bank length this plant happens to carry (627 on PWR2, 200 on the retired
+     * engine), and a step written in steps silently never checks off on the other one. */
+    control_bank_pct:       { label: 'Control bank position', u: '%' },
+    control_bank_steps:     { label: 'Control bank', u: 'steps' },
+    shutdown_bank_pct:      { label: 'Shutdown bank position', u: '%' },
+    shutdown_bank_steps:    { label: 'Shutdown bank', u: 'steps' },
     accumulator_volume_pct: { label: 'Accumulator inventory', u: '%' },
     steam_dump_valve_pct:   { label: 'Steam dump demand', u: '%' },
     vessel_level_pct:       { label: 'Vessel level', u: '%' },
@@ -3458,6 +3529,7 @@
          * and it would then be the wrong button on any step whose note or wait hint is the thing
          * worth expanding. */
         var via = ck.graded_by === 'instrument' ? 'graded off the instrument reading'
+                : ck.graded_by === 'control_state' ? 'graded off the rod position the board shows'
                 : ck.graded_by === 'true_state' ? 'graded off the true value (no instrument for this)' : null;
         if (st.accs && st.accs.length) {
           // Multi-check-off (#244 item 8): one line per requirement, each with its own tick.
@@ -3554,6 +3626,18 @@
       (nextPr ? '<button class="btn ckl-next" data-ckl-start="' + mesc(nextPr.id) + '">Next: ' +
                 mesc(nextPr.title) + ' ▸</button>' : '') +
       '<button class="btn" data-ckl-stop="1">' + (ck.complete ? 'Close' : 'End checklist') + '</button></div>';
+    /* KEEP THE READER'S PLACE ACROSS THE REBUILD (#605, owner playtest 2026-09-02: "The
+     * checklist keeps auto scrolling. Happens when fast forwarding. To the top then back down.
+     * When mouse over it, it keeps jumping up to the top making it unusable.").
+     *
+     * `cur.innerHTML = h` REPLACES the log element, and a new element starts at scrollTop 0.
+     * The tail below then pulled the active step back into view — which IS the reported
+     * "to the top then back down", once per render. Under time acceleration that is most
+     * broadcasts, because the render key carries `ck.acc_met`, the per-entry `accs` flags and
+     * the ROUNDED precondition observations, all of which move while the plant does.
+     * Read the position BEFORE the rebuild; it is restored immediately after. */
+    var prevLog = cklScroller();
+    var prevTop = prevLog ? prevLog.scrollTop : 0;
     cur.innerHTML = h;
     // Persistent highlight for the up-next step (#244 item 5) — applied on every key
     // change so it survives step advances and hover churn; cleared when the run ends.
@@ -3568,10 +3652,24 @@
       el.addEventListener('mouseenter', function () { glowLabels(labs); });
       el.addEventListener('mouseleave', clearHoverGlow);
     });
-    var log = $('cklLog');
+    var log = cklScroller();
     if (log) {
-      if (ck.complete) log.scrollTop = log.scrollHeight;
-      else if (!firstBuild) { var act = log.querySelector('.ckl-active'); if (act) act.scrollIntoView({ block: 'nearest' }); }
+      log.scrollTop = prevTop;                       /* the rebuild is invisible to the reader */
+      /* AND SCROLL ONLY ON AN EVENT, NEVER ON A REPAINT. The active step is pulled into view
+       * when the step ACTUALLY ADVANCES (or the run completes) — not every time a criteria
+       * line ticks. `cklState.step` is the last step index this function drew; it resets with
+       * the checklist (resetCkl). A hover suppresses even that: the pointer being in the log
+       * is the player reading it, and yanking the view out from under a reader is the half of
+       * the report that made the panel "unusable". */
+      var advanced = cklState.step !== ck.step_index;
+      cklState.step = ck.step_index;
+      if (!pointerInside(log)) {
+        if (ck.complete) log.scrollTop = log.scrollHeight;
+        else if (!firstBuild && advanced) {
+          var act = log.querySelector('.ckl-active');
+          if (act) act.scrollIntoView({ block: 'nearest' });
+        }
+      }
     }
     // SPLIT, not take-the-column: the Checklists tab has to stay visible while a checklist
     // runs (owner, 2026-08-11), and setFocus('instructor') collapses the tools card. This
@@ -6116,6 +6214,19 @@
         'or your device. Untick it to send just your message.');
     }
     openModal('feedbackOverlay');
+    /* PUT THE CARET IN THE BOX (#605, owner playtest 2026-09-02: "Cant type into feed back
+     * block ... from develop site"). The form is one textarea in a modal opened for exactly one
+     * purpose, so there is nothing to choose between — and the cost of NOT focusing it is not
+     * merely a wasted click. Keystrokes aimed at an unfocused form land on `document`, where
+     * this file's global shortcuts are waiting: the first SPACE in the sentence the player is
+     * typing hits the play/pause key, focus lands on the Play button, and the rest of the
+     * message goes to a button. Measured — 32 characters typed, 0 characters in the box,
+     * `document.activeElement` on `#playBtn`. From the player's side that is a text box that
+     * will not take typing, and it is the same near-miss trap as the board's number boxes.
+     * Guarded on the block being visible: on a build with no telemetry endpoint the send form
+     * is hidden and there is nothing to focus. */
+    var note = $('fbNote'), block = $('fbSendBlock');
+    if (note && block && !block.hidden) { try { note.focus(); } catch (e) { /* not focusable yet */ } }
   }
   function copyFeedbackEmail() {
     var status = $('fbStatus');
@@ -6833,8 +6944,13 @@
     // ---- send a bug report, with the session attached ------------------------
     (function () {
       var T = window.RD && RD.Telemetry;
-      var block = $('fbSendBlock'), btn = $('fbSend');
-      if (!block || !btn || !T || !T.enabled()) return;   // no endpoint: email route only
+      var block = $('fbSendBlock'), btn = $('fbSend'), nosend = $('fbNoSend');
+      if (!block || !btn || !T || !T.enabled()) {        // no endpoint: email route only
+        /* AND SAY SO (#605). A hidden send block reads as a text box that will not take typing —
+         * which is how it was reported from the develop site. See the markup comment. */
+        if (nosend) nosend.hidden = false;
+        return;
+      }
       block.hidden = false;
       btn.addEventListener('click', function () {
         var note = ($('fbNote').value || '').trim();
