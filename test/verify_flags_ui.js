@@ -147,13 +147,56 @@ function pinChannel(ch) {
   });
   if (cklStarted) {
     await b.page.waitForSelector('.ckl-step.ckl-active', { timeout: 20000 }).catch(function () {});
-    var useLine = await b.page.evaluate(function () {
-      var a = document.querySelector('.ckl-step.ckl-active .ckl-use');
-      return a ? (a.textContent || '').trim() : null;
+    /* ⚠ DATA-DRIVEN, NOT FIXTURE-DRIVEN, and the first cut of this check was the latter. It
+     * asserted a `.ckl-use` line simply EXISTS on the active step — and passed, because the
+     * picker happened to start one of the three checklists whose first step carries a control.
+     * The other three open on an obs() confirmation with no control and no target, and 13 of the
+     * 61 pwr2 steps are that shape, so the check was pinned to which procedure the menu listed
+     * first. Found by screenshotting the card and reading `use line: null` under a green gate.
+     *
+     * The claim is CONDITIONAL and that is what makes it honest: when the active step HAS a
+     * control the card must name it OUTSIDE the fold; when it has none there must be no line.
+     * Both halves are read from the step's own data via RD.MANUAL_PROCEDURES, so no content edit
+     * can turn this green or red for the wrong reason. */
+    var seen = await b.page.evaluate(function () {
+      var a = document.querySelector('.ckl-step.ckl-active');
+      if (!a) return { err: 'no active step card' };
+      var steps = Array.prototype.slice.call(document.querySelectorAll('.ckl-step'));
+      var idx = steps.indexOf(a);
+      var head = document.querySelector('.ckl-head b');
+      var title = head ? (head.textContent || '').trim() : null;
+      /* THE POOL IS THE RUNNING PLANT'S, read off the live snapshot — NOT a hard-coded
+       * 'pwr2'. The first cut hard-coded it and this check went red against a correctly
+       * rendered card: this build boots the retired engine, whose pwr_startup step 1 IS an
+       * observation with a target, while pwr2's step 1 has neither. The two pools share
+       * procedure TITLES, so a title lookup in the wrong pool silently answers about a
+       * different plant's step — the #557 family, in a test. */
+      var snap = (window.RD && RD.PwrBoard && RD.PwrBoard.lastSnapshot) ? RD.PwrBoard.lastSnapshot() : null;
+      var pid = (snap && snap.metadata && snap.metadata.plant_id) || null;
+      var all = (window.RD || {}).MANUAL_PROCEDURES || {};
+      var pool = (pid && all[pid]) || [];
+      var proc = null;
+      for (var i = 0; i < pool.length; i++) if ((pool[i].title || '').trim() === title) proc = pool[i];
+      var st = (proc && proc.steps) ? proc.steps[idx] : null;
+      var el = a.querySelector('.ckl-use');
+      return { idx: idx, title: title, found: !!proc, plant: pid,
+               control: st ? (st.control || null) : undefined,
+               target: st ? (st.target || null) : undefined,
+               line: el ? (el.textContent || '').trim() : null };
     });
-    ck('dev: the active checklist step says which control to use, outside the fold (#598 item 13)',
-      !!useLine && /^(Use\s+\S|Watch for:)/.test(useLine) && !/\(observe\)/.test(useLine),
-      useLine === null ? 'NO .ckl-use line on the active step' : useLine.slice(0, 90));
+    var obs = seen.control && /^\(observe/i.test(seen.control);
+    var wantLine = !!(seen.control || seen.target) && !(obs && !seen.target);
+    ck('dev: the active step names its control OUTSIDE the fold, and only when it has one (#598 item 13)',
+      seen.found === true && seen.control !== undefined &&
+      (wantLine
+        ? (!!seen.line && (obs ? /^Watch for:/.test(seen.line)
+                               : (seen.control ? seen.line.indexOf(seen.control) >= 0 : true)) &&
+           !/\(observe\)/.test(seen.line))
+        : seen.line === null),
+      seen.plant + ' step ' + (seen.idx + 1) + ' of "' + seen.title + '" control=' +
+      JSON.stringify(seen.control) + ' target=' + JSON.stringify(seen.target) +
+      ' — expected ' + (wantLine ? 'a line naming it' : 'NO line') +
+      ', got ' + (seen.line === null ? 'none' : '"' + seen.line.slice(0, 70) + '"'));
     var folded = await b.page.evaluate(function () {
       var d = document.querySelector('.ckl-step.ckl-active .ckl-why-btn');
       return d ? (d.textContent || '').trim() : null;
