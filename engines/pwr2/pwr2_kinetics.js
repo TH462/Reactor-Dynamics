@@ -273,6 +273,24 @@
   var RODS = {
     worth_control:  0.04068,
     worth_shutdown: 0.03676,
+    /* THE BANK SCALE — how many steps of travel the two banks have (#602 phase 1).
+     *
+     * ⚠ IT LIVES HERE BECAUSE IT IS ONE OBJECT WITH THE WORTHS. Total worth, travel and curve
+     * shape are not three independent numbers: the DIFFERENTIAL worth an operator feels is
+     * worth x curve / steps, and moving any one of them without re-solving the other two is
+     * how this plant came to carry 36.6 pcm/step against a sourced 4-12 band. Same discipline
+     * as the pressurizer's level triple — touch one, re-solve the set.
+     *
+     * ⚠ AND IT WAS 22 BARE LITERALS BEFORE THIS. `200` appeared ten times in pwr2_engine.js
+     * (the rod-insertion-limit percent-to-steps map, the initial conditions, BOTH target
+     * clamps, the scram insertion profile for each bank, the runaway cap, the rod-limit margin
+     * default) and twelve times in pwr2_shell.js, several of them indistinguishable at a glance
+     * from an unrelated 200. Measured: a harness that patched three of them and missed the
+     * target clamp held the bank at 200 of a demanded 627 and reported "never critical" for
+     * three plants in a row — a number that reads as a plant parameter but is really a
+     * coincidence twenty-two files-worth of code agree on. Read it through a function, never
+     * copy it: a consumer that captures it at load cannot follow a change. */
+    max_steps:      200,
     /* The S-curve flattening is NOT sourced and is NOT physics — it is a feel adjustment the owner
      * made for low-power startup. [ruled] is the only honest tag; K = 1 is the unflattened curve. */
     curve_flatten:  0.8

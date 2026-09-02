@@ -68,6 +68,10 @@
    * travel-per-second onto this plant's 200-step bank (0.0585 / 0.351 / 0.526 %/s). The old
    * single ROD_SLEW_SPS = 1.0 was ~pwr1's FAST, always. */
   var ROD_SPEEDS = { slow: 0.117, normal: 0.702, fast: 1.053 };   /* steps/s */
+  /* THE BANK SCALE, read LIVE from the one place it is defined (#602 phase 1). A function, not
+   * a captured local: `RODS` is the object a retune edits, and a consumer that snapshotted the
+   * value at module load would keep answering with the old scale. */
+  function BANK() { return RD.kinetics.RODS.max_steps; }
   /* THE ROD INSERTION LIMIT (#507 §B, wave 8) — [adopted tune] pwr1's power-dependent curve
    * on this bank: NO limit below 5 % power (a startup drives the bank deep; boron and the
    * shutdown bank hold the margin), then the %-withdrawn floor ramps linearly 5 → 70 % at
@@ -81,7 +85,7 @@
   function insertionLimitSteps(P_pct) {
     if (!(P_pct > RIL.min_power_pct)) return null;
     var f = Math.min((P_pct - RIL.min_power_pct) / (100 - RIL.min_power_pct), 1);
-    return Math.round((RIL.lo_pct + (RIL.hi_pct - RIL.lo_pct) * f) / 100 * 200);
+    return Math.round((RIL.lo_pct + (RIL.hi_pct - RIL.lo_pct) * f) / 100 * BANK());
   }
   var SCRAM_S = 2.5;             /* control bank full insertion on a trip — [tune], adopted
                                   * with SD_SCRAM_S from pwr1's 2.5/2.0 pair (#506.3): the
@@ -240,11 +244,11 @@
      * unverified — no corpus document publishes a step total (Ginna TS defers to the COLR).
      * Withdrawn banks contribute exactly 0 pcm, so passing them to criticalBoron below is
      * numerically identical to the old `null` — measured, not assumed (#502's lesson). */
-    var ctrlSteps = ic.subcritical ? 0 : 200;    /* HZP: control bank IN, the startup is
+    var ctrlSteps = ic.subcritical ? 0 : BANK();    /* HZP: control bank IN, the startup is
                                                   * pulling it; shutdown bank OUT (WTSM 8.1.1) */
     var rodBank = [
-      { steps: ctrlSteps, max_steps: 200, worth: RD.kinetics.RODS.worth_control },
-      { steps: 200, max_steps: 200, worth: RD.kinetics.RODS.worth_shutdown }
+      { steps: ctrlSteps, max_steps: BANK(), worth: RD.kinetics.RODS.worth_control },
+      { steps: BANK(), max_steps: BANK(), worth: RD.kinetics.RODS.worth_shutdown }
     ];
     /* boron trimmed AT the IC's own moderator temperature and rod lineup; the subcritical
      * margin is +100 ppm ON TOP of critical-with-rods-in, so criticality arrives partway up
@@ -343,7 +347,7 @@
       simTime: 0,
       /* command state */
       rodTarget: ctrlSteps, rodSteps: ctrlSteps,
-      sdTarget: ic.cold ? 0 : 200, sdSteps: ic.cold ? 0 : 200, rodBank: rodBank,
+      sdTarget: ic.cold ? 0 : BANK(), sdSteps: ic.cold ? 0 : BANK(), rodBank: rodBank,
       _rcpSecured: !!ic.cold,     /* the cooldown SECURED the pumps — the handswitch's word */
       rodSpeedSel: 'normal',
       /* failure levers (#507 wave 6) */
@@ -464,7 +468,7 @@
   };
 
   function rodDriveDoor(eng, value, steps) {
-    var target = Math.max(0, Math.min(200, value));
+    var target = Math.max(0, Math.min(BANK(), value));
     var moving = Math.abs(target - steps) > 1e-9;
     if (eng.pt.reactor_trip) {
       if (!moving) return;
@@ -509,10 +513,10 @@
             'active; clear the failure first');
         }
         rodDriveDoor(eng, +value, eng.rodSteps);
-        eng.rodTarget = Math.max(0, Math.min(200, +value)); break;
+        eng.rodTarget = Math.max(0, Math.min(BANK(), +value)); break;
       case 'sd_target':
         rodDriveDoor(eng, +value, eng.sdSteps);
-        eng.sdTarget = Math.max(0, Math.min(200, +value)); break;
+        eng.sdTarget = Math.max(0, Math.min(BANK(), +value)); break;
       case 'rod_speed':      eng.rodSpeedSel = (value in ROD_SPEEDS) ? value : 'normal'; break;
       /* THE P-11 PAIR (#507 wave 10) — the cooldown's "block SI" actions. ENGAGING is
        * refused above P-11 (the #295 F1 lesson: a block acceptable at power is a defeatable
@@ -877,8 +881,8 @@
       /* MONOTONE-DOWN: min() with the current position, so a second trip edge restarting
        * the ramp can never move the rods OUT (200*(1-t/2) evaluated fresh from t=0 would
        * teleport a partially-withdrawn bank back toward 200). */
-      eng.rodSteps = Math.max(0, Math.min(eng.rodSteps, 200 * (1 - eng._scramT / SCRAM_S)));
-      eng.sdSteps = Math.max(0, Math.min(eng.sdSteps, 200 * (1 - eng._scramT / SD_SCRAM_S)));
+      eng.rodSteps = Math.max(0, Math.min(eng.rodSteps, BANK() * (1 - eng._scramT / SCRAM_S)));
+      eng.sdSteps = Math.max(0, Math.min(eng.sdSteps, BANK() * (1 - eng._scramT / SD_SCRAM_S)));
       if (eng.rodSteps === 0 && eng.rodTarget === 0) eng._scramT = null;
     } else if (!rodDrivePowered) {
       /* THE BREAKERS ARE OPEN — neither bank moves under drive. Ahead of the runaway branch
@@ -896,7 +900,7 @@
        * above runs first, and gravity beats a drive. NOTE the shipped hot-full-power IC
        * parks the bank at 200/200 (boron-trimmed), so at that IC the failure has no travel
        * to take — it bites on any plant whose rods are inserted (load-follow, recovery). */
-      eng.rodSteps = Math.min(200, eng.rodSteps + eng.runaway.rate * dt);
+      eng.rodSteps = Math.min(BANK(), eng.rodSteps + eng.runaway.rate * dt);
       eng.rodTarget = eng.rodSteps;   /* the latched demand follows the fault, so clearing
                                        * the failure HOLDS position rather than snapping back */
     } else if (eng.rodSteps !== eng.rodTarget) {
@@ -1345,7 +1349,7 @@
     var ril = ts.scrammed === true ? null : insertionLimitSteps(ts.power_pct);
     eng._rilSteps = ril;
     eng._rodAtLimit = ril !== null && eng.rodSteps <= ril;
-    eng._rodLimitMargin = ril === null ? 200 : Math.max(0, Math.round(eng.rodSteps - ril));
+    eng._rodLimitMargin = ril === null ? BANK() : Math.max(0, Math.round(eng.rodSteps - ril));
     /* facade extras a page needs and the contract does not carry */
     ts.sim_time_s = eng.simTime;
     ts.rod_steps = eng.rodSteps;

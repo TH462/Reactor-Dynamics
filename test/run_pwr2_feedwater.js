@@ -10,6 +10,7 @@
  */
 'use strict';
 var fs = require('fs'), path = require('path');
+var MUT = require('./mut_flags.js');   /* --no-mutations / --mut= / --grp= (#602) */
 var LIB = path.join(__dirname, '..', 'engines', 'pwr2', 'pwr2_feedwater.js');
 var SRC = fs.readFileSync(LIB, 'utf8').replace(/\r\n/g, '\n');
 
@@ -264,7 +265,7 @@ console.log('\n' + '='.repeat(70));
 console.log('  INJECTION SELF-TEST -- every mutation MUST redden at least one check');
 console.log('='.repeat(70));
 var blind = 0;
-MUTATIONS.forEach(function (m) {
+MUT.select(MUTATIONS).forEach(function (m) {
   var mutated = SRC.replace(m[1], m[2]);
   if (mutated === SRC) { console.log('  ANCHOR MISS ' + m[0]); blind++; return; }
   var rec2 = [];

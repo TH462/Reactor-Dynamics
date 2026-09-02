@@ -664,10 +664,9 @@ not a changelog.**
   Mode-5 nice-to-haves: a `plant_mode` text indicator and an explicit `eccs_mode` readout.
 
 **Current gate baselines — `BASELINES` in `test/run_all.js` IS the authority. Do not copy
-numbers here.** This section carried ~24,000 words of per-runner prose until 2026-08-06 and every
-figure in it had rotted: `verify_flags_ui` said 48/48 against a gate that has always scored 42,
-`run_otdt` sat at 39 through three commits that took it to 46, `run_contract` appeared **twice
-with different numbers**. Run the gate; read the map. The per-change rationale lives in
+numbers here.** This section carried ~24,000 words of per-runner prose until 2026-08-06 and
+EVERY figure in it had rotted — three worked cases in `TUNING_LOG.md` 2026-08-06, including one
+runner listed **twice with different numbers**. Run the gate; read the map. Per-change rationale:
 `Diagnostic/TUNING_LOG.md` and `Blueprint/BUILD_DECISIONS.md`, newest first.
 
 ```
@@ -692,8 +691,7 @@ Four things about it that are procedure, not history:
   `run_*.js` is invisible to it: `board_check.html` sat at 1 FAILURE through a lane merge, a green
   CI run and a release before `verify_board_check.js` wrapped it.
 - **Per-runner times in a parallel run are CONTENTION times, not costs** (`run_pwr` reads 54 s
-  where it takes 22 s alone). The `secs:` hints in `BASELINES` are a longest-first scheduling
-  nudge and cannot affect a score or an exit code — do not maintain them like baselines.
+  where it takes 22 s alone). The `secs:` hints only nudge scheduling — never maintain them.
 - **CI runs the same command on every push and PR to `main`/`develop`**
   (`.github/workflows/gates.yml`; 3-way on 4 cores — 43m31s before #513's cuts, re-measure
   on the next push; this line read "~8 min" while CI stood at 43). **Check it after you push** —
@@ -759,6 +757,9 @@ node test/run_meltdown.js MD-5  # one path by id
 node test/run_procedures_stack.js          # the SAME procedures through M4+M5+M6 (see below)
 node test/run_procedures_stack.js pwr_startup   # one by id
 node test/run_procedures_stack.js --lineup=bare # the noDefaults/campaign lineup
+node test/run_pwr2_engine.js --no-mutations   # skip the replay while fixing a check (34 pwr2
+                                # runners; --mut=/--grp= too). FILTERED = FORCED NON-ZERO, never
+                                # a baseline. 115 s -> 2.9 s (#602)
 node tools/perturb_sweep.js            # WHICH CHECKS BREAK IF I RETUNE THIS? (see below)
 node tools/perturb_sweep.js --suite=behavior --nudge=thermal.h_sg*1.03
 node tools/perturb_sweep.js --self-test  # prove the harness can detect anything at all
@@ -768,9 +769,8 @@ node test/measure_stack.js --for=12h --every=1h --watch=tavg_c,pressure_mpa
 
 `test/ops_*.js` and `test/*_harness.js` are supporting harnesses. Ops-probe FAILs
 are tuning targets, tracked in `Diagnostic/OPS_TUNING_REPORT.md`.
-`run_e2e_controls.js` and `run_procedures.js`
-are PART OF THE GATE LIST — both drifted red unnoticed once because they weren't
-listed (2026-07-19 review). **`run_all.js` discovers `test/run_*.js` and
+`run_e2e_controls.js` and `run_procedures.js` are PART OF THE GATE LIST — both
+drifted red unnoticed once because they weren't listed (2026-07-19 review). **`run_all.js` discovers `test/run_*.js` and
 `test/verify_*.js` automatically and fails on any runner it has no baseline for**, so
 a new gate cannot go unlisted again — add it to `BASELINES` when you add the runner.
 

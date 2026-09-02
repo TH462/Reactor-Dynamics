@@ -165,6 +165,66 @@ from the two steps using it, because the board's reactivity readout was removed 
 zeroes both valve and demand, so MAN/AUTO are structurally downstream of the latch and cannot clear
 it; only the RESTORE path can, and it carries a held-SI refusal and the 45-60 s reset relay that a
 mode button must never perform silently.
+### Added (the pwr2 runners take arguments now — you can skip the mutation replay while iterating — 2026-09-01)
+
+*(OWNER, 2026-09-01: "Commit then add the flag".)*
+
+The pwr2 gates re-run their whole suite once per mutation, so `run_pwr2_engine` is 75 replays at
+~420 s and `run_pwr2_shell` 50 at ~360 s. That cost is what buys the "this check cannot fail"
+detection and it has earned it — three hollow checks caught in one session (#602 phase 1). But the
+runners took **no arguments at all**, so fixing one assertion meant paying for every replay:
+measured, two wrong guesses at a sample point cost fourteen minutes to disprove.
+
+`test/mut_flags.js`, wired into **34** runners:
+
+- `--no-mutations` — skip the replay; the checks still run. `run_pwr2_protection` 115 s → **2.9 s**
+- `--mut=<substring>` — replay only mutations whose description matches
+- `--grp=<tag>` — replay only mutations carrying that `grp:` tag
+- `RD_NO_MUTATIONS` / `RD_MUT` / `RD_GRP` env equivalents, following the `MUTDBG` precedent
+
+**A filtered run can never pass, and that is the design.** `run_all` scores a runner by scraping
+its tally line, and a partial run prints a smaller mutation count but the *same* `N passed, 0
+failed`. Without a guard, `run_all --record` after a `--no-mutations` run would record a green
+baseline for a gate whose coverage was never measured — the hollow-gate failure mode operating on
+the gate itself. So any filter wraps `process.exit` to force non-zero and prints a banner last.
+Wrapping rather than setting `process.exitCode` is deliberate: every runner ends with an explicit
+`process.exit(fail > 0 ? 1 : 0)` that would overwrite a pre-set code. There is deliberately no flag
+to suppress the guard.
+
+Inert when unused — an unflagged run exits 0 with an identical score.
+
+### Changed (#602 phase 1: the control bank scale is one constant instead of twenty-two literals — 2026-09-01)
+
+**No behaviour change.** `RODS.max_steps` is added beside the bank worths and set to **200**, the
+value all twenty-two literals already carried. Phase 2 moves it to the sourced **627** and
+`curve_flatten` to **0.36**.
+
+*(OWNER RULING, 2026-09-01: "its a go. yes on hoise as its own commit first".)*
+
+**Why the scale has to move.** PWR2's control bank is 4068 pcm over 200 steps — peak differential
+**36.6 pcm/step** against a sourced **4–12** (NRC HRTD WAT 05, ML11216A094; Ginna UFSAR ch15
+assumes 10). Surfaced by #601: the sourced 20 % rod stop and 25 % trip land on the **same step of
+bank**. Cutting the worth instead is refuted — it would take trip reactivity to 1839 pcm against
+Ginna's conservative 3500. The sourced combined scale is **627 BOU counts** (WTSM 8.1 §8.1.5.4's
+overlap program walked out), and `curve_flatten` turns out to be **bank overlap**, not feel: the
+true overlapped 4-bank curve has peak/mean **1.36**, which for this `scruve` names K = 0.36
+exactly. Full working in `Blueprint/PWR2_VALIDATION.md` §128.
+
+**Why the hoist is its own commit.** `200` appeared at 22 sites — the rod-insertion-limit percent
+map, the initial conditions, both target clamps, the scram profile per bank, the runaway cap, the
+margin default, the published rod groups, and two `(24 / 912) * 200` rate conversions. A harness
+that patched three and missed the target clamp held the bank at 200 of a demanded 627 and reported
+**"never critical" for three plants in a row**, silently.
+
+**The gate is functional, not a source scan** — it moves the constant to 313 and rides the plant,
+asserting every consumer follows, with three mutations restoring a stale 200 at the sites whose
+failure mode is silence. It caught three of its own checks being hollow while being written: a
+scram check sampled at 20 s where both builds converge to zero, the same check re-aimed at tick 1
+where both still read 313.0 (the divergence is tick 2 — 310.5 against 198.4), and a multi-line
+mutation anchor carrying a literal backslash-n where the source has a real newline.
+
+`run_pwr2_engine` 138/138 with 75/75 mutations (was 130/73); `run_pwr2_shell` 149/149 with 49/49
+(was 147/48); `run_pwr2_protection` and `run_pwr2_board` unmoved.
 
 ### Added / Fixed (#601/#600: the startup net gains its second rung, and TRIP BLOCKS stops offering two blocks no operator has — 2026-09-01)
 
