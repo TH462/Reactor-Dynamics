@@ -633,9 +633,17 @@
        * `armed` is its complement over an available channel, and it is the field to read —
        * `asserted` answers a different question (is the limit crossed RIGHT NOW). */
       var gated = false;
+      /* THE UNGATED CROSSING (#598 item 15). `asserted` below is zeroed by every block and
+       * permissive, which is correct — it answers "is this function tripping". It also destroys
+       * the one fact an operator needs before RELEASING a block: would the line fire the instant
+       * I let go? The panel could not know, so it offered every release identically and the
+       * player's next click scrammed the plant with no warning. Captured before the gates and
+       * reported alongside; nothing reads `asserted` differently. */
+      var crossing = false;
       if (available) {
         if (f.leadlag) value = leadLag(pr, raw, dt);
         asserted = f.dir > 0 ? (value >= sp) : (value <= sp);
+        crossing = asserted;
         if (f.blockable && BLOCK_REQUEST[f.blockable] === true) { asserted = false; gated = true; }
         /* P-11's two blocks (#507 wave 10): the low-pressure REACTOR trip and the whole
          * esfas kind (the SI actuation — all three initiating rows are the one disarm the
@@ -668,6 +676,11 @@
         armed: available && !gated,
         value: value, setpoint: sp, unit: f.unit,
         asserted: asserted, held_s: pr.held_s[f.id], delay_s: f.delay, tripping: tripping,
+        /* WOULD IT ASSERT WITH NOTHING HOLDING IT OFF? The setpoint comparison before any block
+         * or permissive touched it — see `crossing` above. For an UNGATED function this is
+         * identical to `asserted`; the two differ exactly when something is holding the line
+         * off, which is the case worth warning about. */
+        would_assert: crossing,
         /* SIGNED margin to the setpoint, in the function's own units: positive is safe.
          * A margin that floors at zero hides how far past a limit a plant went. */
         margin: available ? (f.dir > 0 ? sp - value : value - sp) : undefined

@@ -29,6 +29,130 @@ and the user-visible summary in `CHANGELOG.md`. This file points at those and tr
 
 ---
 
+## Session log — 2026-09-01-workbench-a (#598 — the second playtest list, waves 1 and 2 of 16; two of the sixteen were not defects)
+
+**Ask:** owner, issue #598, sixteen numbered items from a live session on the shipped PWR2 plant.
+Ruled into three waves. This entry covers waves 1 and 2 (items 1–13, 15, 16); wave 3 is item 14,
+the full checklist playthrough, which goes last because waves 1 and 2 change what it rides.
+
+### The two that were not defects, and why that took measuring
+
+**Item 11, "CHARGING in AUTO doesn't try to hold a decent PZR level."** Two candidates were on the
+table before any measurement: the Tavg-scheduled program clipping to 25 % below the no-load anchor,
+and the residual setpoint-noise hunt `pwr2_pressurizer.js` documents in its own comment (a ~7.8 gpm
+chase against a 60 gpm max, left over from #516's partial fix). Measured, 20 plant-minutes per
+initial condition with charging in AUTO:
+
+| IC | Tavg | level | program | deviation | charging hunt |
+|---|---|---|---|---|---|
+| cold_shutdown | 122 °F (50.7 °C) | 24.9 % | 25.0 % | −0.05 | none |
+| hot_zero_power | 547 °F (286.3 °C) | 25.0 % | 25.0 % | +0.02 | none |
+| 50_percent | 567 °F (297.1 °C) | 40.4 % | 40.3 % | +0.11 | none |
+| hot_full_power | 578 °F (303.2 °C) | 57.6 % | 57.6 % | −0.00 | none |
+
+**The hunt is not reproducible on a settled plant** and the controller holds to 0.11 %. So the
+first candidate is the explanation — AUTO *correctly* holds a quarter-full pressurizer at Mode 5 —
+and the thing that made it look broken was the TILE: `normLo: 40, normHi: 70`, hard-coded, a
+full-power band drawn on every mode. An on-program level painted 15 points below "normal". Fixed by
+centring the band on the plant's published `pzr_level_program_pct`, ±5 % [declared] — the deviation
+ALARM is already drawn at program −20 and a band tied to it would be 40 points wide and say nothing.
+
+**Item 4, "the PZR heater didn't want to increase pressure all the way."** Three candidates, and
+the ranking was wrong until it was ridden. Reproducing the owner's path — cold plant, RCPs started,
+Pressure SP dialled straight to 2235 psi:
+
+| plant time | pressure | heaters |
+|---|---|---|
+| t+5 min | 421 psia | 157.8 kW |
+| t+60 min | 914 psia | 157.8 kW |
+| t+120 min | 1941 psia | 157.8 kW |
+| **t+121.8 min** | **1966 psia** | **0.0 kW** |
+| t+200 min | 1957 psia | 0.0 kW — **278 psi short, permanently** |
+
+At 1966 psia the plant crosses P-11 (1972 psia); the SI signals the cold lineup had blocked are
+auto-reinstated; the SG is still cold (77 psia against a 327.7 psia low-steam-pressure setpoint);
+SI actuates on a healthy plant and sheds the heaters. `pt.si = true`, `pt.si_cause =
+si_lo_steam_press`, `pz.shedLatch = true`. **The proportional-only ±15 psi park and the backup
+group's latched bistable are refuted for this path** — both are tens of psi, and the bank was at
+the full 157.8 kW right up to the shed.
+
+⚠ **AND I MISREAD MY OWN FIRST MEASUREMENT, which is worth recording.** The snapshot at the shed
+showed `eccs_mode: "standby"`, `hpi_flow: 0` and — through a filter I wrote — "no annunciator lit",
+and I nearly concluded SI had *not* actuated. Two of those three were real and one was my error:
+the alarm states are `active_unacknowledged` / `active_acknowledged`, not `active`, so my filter
+saw nothing. `pzr_heaters_shed` **was** lit, and that whole indication chain is properly wired.
+What is genuinely missing is the headline: **the 48-row alarm catalog has no safety-injection
+tile** (the only match on `si|inject|eccs` is `ctmt_fans_si`, containment fans), and `eccs_mode` is
+a FLOW word, so it reads `standby` while an SI signal stands and nothing injects at 1966 psia. The
+player is told the symptom and never the event — which is exactly why this arrived as a heater
+complaint. Filed as **#603**; not fixed here, it is an alarm-catalog and ECCS-card change.
+
+### The traps
+
+**A board bound is a constant like any other, and three of them were the retired plant's.** Item 3
+(the Pressure SP box declaring `[0.1 MPa, pzr safety]` against an engine that clamps to
+1700–2500 psig), item 11 (the level tile's 40–70 band) and item 8 (the intermediate range coloured
+by a trip it could not see) are all the #573/#579/#591 signature. In all three the ENGINE was
+right. The fix each time was to have the plant publish its own band and the board read it — the
+`chargingMaxGpm` / `cwRangeC` shape, now used five times in that file.
+
+**A synthesized constant survives precisely because it is right in the state you test in.** Item 1:
+`rpm = tripped ? 0 : 1800` is exact at power, and no initial condition boots tripped, so the cold
+plant reported rated speed and the art scrolled at full tilt with zero steam. `pwr2_true_state`
+carried a ⚠ comment naming it as synthesized (audit #488 E16.4) and it shipped anyway.
+
+**Making a constant continuous breaks whatever was reading it as a bit.** `turbine_tripped` was
+`rpm === 0` — an identity while speed was two-state, and wrong the moment it is not: a tripped
+machine spends twenty minutes above zero on the way down, so the trip would have un-latched itself
+as the rotor slowed, taking C-8 on the steam dumps and P-9 with it. Grep every consumer before
+making a two-state field continuous.
+
+**A first-order lag can be less honest than a step.** The shaft's first draft had a 15 s spin-up.
+Measured, it drew **20.0 MWe from a shaft at 510 rpm** five seconds after loading. A generator on
+the grid is synchronous — its speed IS the grid's — so the spin-up constant was deleted and only
+the coastdown is a dynamic. The step is the synchronization.
+
+**The third recurrence of a one-line CSS omission.** `.ckl-step-glow` was never added to
+`pwr_board.css`'s z-index override list, after `.ckl-glow`/`.instr-glow` (#202) and
+`.hl-glow`/`.hl-pin` (#509). The list's own comment says to add new classes to it. That did not
+work twice, so `test/run_glow_stacking.js` now requires the two lists to agree. **The load-bearing
+part is the DECORATOR narrowing:** a floating window carrying its own z-index in its own className
+(`.oom-win`, `.app-toast`, `.tour-tip`) is a component, never applied to a tile — and the test must
+NOT be `classList.add('literal')`, because the highlight bus hoists its names and passes them down
+two call hops, which is exactly the pair #509 was about. My first draft used the literal scan and
+went blind on `hl-glow`/`hl-pin`.
+
+**A gate can be pointed at a vocabulary and not read the larger one beside it.** `st.control` has
+been checked against the board's highlight vocabulary since #304. `st.hl` — carried by all 60 pwr2
+steps where `control` is carried by 47, and the field that actually decides what glows — had **no
+check anywhere in `test/`**. Born red on twelve real sites.
+
+**The harness trap this file already records, hit again.** `run_pwr2_board`'s section note says a
+second `mkWorld()` rebinds the driver's single `ctxRef` and sends the first world's presses into
+the second world's log, reddening the no-orphan sweep with five "silent" buttons. Adding a Mode 5
+world for the level-band discriminator did exactly that, with the identical symptom. Extracted
+`bindWorld()` so the second world can be put back.
+
+### Landed
+
+Items 1, 2, 3, 5 (answered), 6, 7, 8, 9, 10, 11, 12, 13, 15, 16. Four new gates —
+`run_oneoverm` (13), `run_glow_stacking` (18), the `hl` block in `run_manual_controls`
+(268 → 538) and four `run_pwr2_board` checks (73 → 77, 25/25 mutations). `verify_board_check`
+237 → 236: ROD AUTO's three toggle checks retired with the button, replaced by two that prove the
+#598 item 15 release takes two presses in a real browser. `run_manual_units` taught `psia`/`psig`
+— its pair-detector listed the bare `psi` only, so the first correctly-formed pair with an explicit
+datum was called an orphan; narrowed as `psi[ag]?` and proved against six cases.
+
+### Still open on #598
+
+Item 14 (wave 3, the playthrough) and one measurement the owner should rule on: with the step card
+collapsed to the instruction (item 13, as directed), **only 41 % of the 46 pwr2 steps carrying a
+control pill name that control in their instruction text**, so the other 27 hide "which knob" behind
+Details. Recommendation is to promote the control pill back out of the fold — one line — rather
+than rewrite 27 step texts.
+
+---
+
 ## Session log — 2026-09-01-develop-a (#600/#601 — the startup net gains its missing rung, and the TRIP BLOCKS panel loses two rows the sources never gave an operator)
 
 **Started from a player question:** *"why do some of the trip blocks say they are not in this

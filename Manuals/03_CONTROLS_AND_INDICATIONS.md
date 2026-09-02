@@ -848,7 +848,7 @@ removal, or tube fouling.
 
 ### 14.1 Engage a channel
 
-1. Find the channel's AUTO control on its board card — **STEAM GEN FEED → AUTO** (three-element SG level), **BORON → ON** (target ppm), **STEAM DUMP → AUTO**, **CHARGING → AUTO**. (**ROD AUTO** is on the rod-control card but is **dark on this plant** — see §14.3.)  
+1. Find the channel's AUTO control on its board card — **STEAM GEN FEED → AUTO** (three-element SG level), **BORON → ON** (target ppm), **STEAM DUMP → AUTO**, **CHARGING → AUTO**. (There is no rod AUTO control on this plant — see §14.3.)  
 2. Where the card carries a setpoint box (boron target ppm, dump setpoint), set/verify it; the other channels capture the current reading on engage.  
 3. Press **AUTO** — the button stays lit while the channel is engaged.  
 
@@ -859,14 +859,18 @@ removal, or tube fouling.
 
 ### 14.3 Rod control is MANUAL on this plant, and that is deliberate
 
-**There is no automatic rod controller here.** The **ROD AUTO** pushbutton on the rod-control
-card is present and **dark**, and it will stay dark *(OWNER DIRECTIVE, 2026-08-30: "I want to keep
-rod control manual. This is a learning plant not an actual power plant and I think making the
-player move rods manually will help their learning.")*.
+**There is no automatic rod controller here, and there is no button for one** *(OWNER DIRECTIVE,
+2026-08-30: "I want to keep rod control manual. This is a learning plant not an actual power plant
+and I think making the player move rods manually will help their learning.")*.
 
-A real plant hands the control bank to a controller that holds average coolant temperature on a
-reference programmed from turbine load, and the operator supervises it. Knowing that is the point
-of the button being visible: the contrast is the lesson.
+Until Rev 17 a **ROD AUTO** pushbutton sat on the rod-control card, permanently dark, on the
+argument that the contrast was the lesson. It was removed *(OWNER DIRECTIVE, #598 items 9/10:
+"Remove the ROD AUTO button. Move the 1/m button to where the ROD AUTO button used to be.")* —
+the player had to ask what it was for, which is a control failing the test a control is for. The
+**1/M PLOT** button now occupies that slot. The contrast is still worth teaching and this section
+is where it is taught, which is the right place for it: a real plant hands the control bank to a
+controller that holds average coolant temperature on a reference programmed from turbine load,
+and the operator supervises it. Here the operator IS that controller.
 
 **What that leaves you holding:**
 
@@ -961,7 +965,7 @@ These topics appear as dedicated **campaign** missions; manuals cover them here 
 
 ### 17.2 Holding Tavg by hand (Mode 1)
 
-There is no ROD AUTO on this plant (§14.3), so this is the drill that replaces the old
+There is no automatic rod control on this plant (§14.3), so this is the drill that replaces the old
 engage-the-controller one.
 
 1. Note **Tavg** against **T-ref** on the rod-control card.

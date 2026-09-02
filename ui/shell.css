@@ -2217,14 +2217,23 @@ select.num-input { width: auto; }
 .ckl-later[open] > summary::before { content: '▾ '; }
 
 /* The free-play Instructor's launcher — it had static help copy in the shell's most
-   valuable slot; this gives it a job (#443, spec §9). */
+   valuable slot; this gives it a job (#443, spec §9). Since #598 item 16 it is ONE BAR that
+   opens the Checklists tab, not a second ranked list of the same procedures that tab already
+   lists (owner directive; and two menus answering one question is the duplicate-authority
+   case DESIGN_CRITERIA Q4 exists to veto). The .instr-launch-t / .instr-launch-more rules that
+   dressed the old list went with it. */
 .instr-launch { margin-bottom: 10px; }
-.instr-launch-t {
-  font-size: 10px; letter-spacing: .06em; text-transform: uppercase;
-  color: var(--text-2); margin-bottom: 4px;
-}
 .instr-launch .btn { display: block; width: 100%; text-align: left; margin-bottom: 3px; font-size: 12px; }
-.instr-launch-more { margin-top: 4px; }
+.instr-launch-bar {
+  text-align: center !important; font-size: 12.5px; font-weight: 600; padding: 9px 12px;
+  color: var(--accent, #7fd1c0);
+  border-color: color-mix(in srgb, var(--accent, #7fd1c0) 45%, transparent);
+  background: color-mix(in srgb, var(--accent, #7fd1c0) 10%, transparent);
+}
+.instr-launch-bar:hover {
+  background: color-mix(in srgb, var(--accent, #7fd1c0) 18%, transparent);
+  border-color: var(--accent, #7fd1c0);
+}
 
 .start-overlay { z-index: 215; }
 .start-modal { height: auto; max-height: min(84vh, 620px); width: min(720px, 96vw); }

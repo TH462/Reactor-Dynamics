@@ -30,6 +30,127 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
 
 ## [Unreleased]
 
+### Fixed (#598: the second playtest list — waves 1 and 2 of 16 items — 2026-09-01)
+
+Sixteen items from a live session on the shipped PWR2 plant. Ruled into three waves; this is the
+first two. Everything below is measured, and two of the sixteen turned out not to be defects at
+all — the measurement is the deliverable in those cases.
+
+**The 1/M startup plot was dead on the plant the site runs** (`ui/panels/one_over_m.js`). It gated
+itself on `plant_id !== 'pwr'` in two places and PWR2 publishes `pwr2`, so the tile opened the
+window and the next service broadcast hid it again; a player fast enough to press *Plot point*
+read **"PWR only"**. **Six steps of the startup checklist drive this tool** — the approach to
+criticality could not be performed on the shipped plant. Now gated on the CAPABILITY (a
+source-range count and a control group), which is also how a future plant earns it. **Nothing
+gated this panel at all**: new `test/run_oneoverm.js` (13 checks, injection-proven — the reverted
+guards redden 7).
+
+**The turbine was always spinning** (`engines/pwr2/pwr2_turbine.js`). `rpm` was
+`tripped ? 0 : 1800` — a synthesized two-state constant, flagged as one in `pwr2_true_state` and
+never fixed — and **no initial condition boots tripped**, so Mode 3, Mode 4 and Mode 5 drew
+full-speed blades and printed 1800 rpm on a cold reactor. Replaced with a shaft that is
+**synchronous while steam is admitted** (a machine on the grid runs at the grid's speed) and a
+**first-order coastdown** when it is not. Measured from a full-power trip: 95.9 % of rated at
+10 s, 77.9 % at 1 min, 28.6 % at 5 min, 8.2 % at 10 min, 0.7 % at 20 min. The 240 s constant is
+**[declared], not sourced** — `find_source.js` has no rotor inertia or rundown curve in any lane's
+corpus. A first-order SPIN-UP was tried first and thrown out: it drew 20.0 MWe from a shaft at
+510 rpm, which is not a lag, it is an impossibility. `turbine_tripped` had to move with it — it
+was derived from `rpm === 0`, exact while speed was two-state and **wrong** the moment it is
+continuous, because a tripped machine would have un-latched its own trip as the rotor slowed.
+
+**The pressurizer pressure setpoint could not be lowered — and the engine was right.** The
+1700 psig (11.72 MPa) floor is WTSM 10.2's operator span and the cold lineup's sub-floor setpoint
+is a constructor seed, not a dialled value. The defect was the BOX: it advertised
+`[0.1 MPa, pzr safety]` = **15..2484 psi, the retired engine's band**, so it accepted a Mode 5
+entry, the engine silently clamped, and the next snapshot snapped the box back saying nothing. It
+reads the running plant's span now (measured `[1700, 2500]` psi) — the `chargingMaxGpm` /
+`cwRangeC` shape a third time, and the convention the steam-dump and ADV boxes already state.
+
+**The checklist highlight landed on top of the board and got stuck, and it was two bugs.**
+`.ckl-step-glow` was never added to `pwr_board.css`'s z-index override list; board box tiles are
+opaque, so a lifted panel paints over its own buttons and the vessel, and **13** of the pwr2
+checklists' highlight labels resolve to opaque box panels (BORON among them, as reported). **This
+is the third recurrence of one omission** (#202, #509, now #244's class), so there is now a gate:
+`test/run_glow_stacking.js` (18 checks, injection-proven), which requires every glow class
+`shell.css` lifts to be one `pwr_board.css` pins back. Separately the CLEAR was unreachable —
+`resetCkl()` sat below three early returns and the instructor layer clears the checklist on
+exactly those transitions, so running a checklist then starting a walkthrough stranded the glow
+with nothing left in the UI able to remove it.
+
+**"CHARGING in AUTO doesn't hold a decent level" — the controller was right; the board was wrong.**
+Measured over 20 plant-minutes per initial condition, charging in AUTO tracks its setpoint to
+within **0.11 %** everywhere with **no hunting**: cold 24.9 against a 25.0 program, hot zero power
+25.0/25.0, 50 % 40.4/40.3, full power 57.6/57.6. The level program is scheduled on Tavg, so at
+Mode 5 AUTO correctly holds a quarter-full pressurizer — and the tile's NORMAL band was a
+hard-coded flat **40-70 %**, a full-power band drawn on every mode, painting that on-program level
+15 points *below normal*. The band is centred on the published program now (Mode 5 draws 20-30).
+
+**"The heaters wouldn't raise pressure all the way" — the heaters are innocent, and something
+worse was behind it.** Reproduced: dial 2235 psi from cold and pressure parks at 1957 psia,
+**278 psi short, permanently**. At 1966 psia the plant crosses P-11, the safety-injection signals
+the cold lineup had blocked are reinstated, the steam generator is still cold (77 psia against a
+327.7 psia setpoint) — so **SI actuates on a healthy plant** and sheds the heaters
+(`si_cause = si_lo_steam_press`). The proportional-only park and the backup group's bistable are
+refuted: those are tens of psi and the bank was at full 157.8 kW to the moment of the shed. **The
+defect measuring it found is #603**: nothing annunciates the safety injection. The 48-row alarm
+catalog has no SI tile, and `eccs_mode` reads `standby` because it is a flow word and nothing
+injects at 1966 psia. Only the consequence lights.
+
+**Two board controls that could never be pressed are gone.** **ROD AUTO** armed `rods_tavg`, which
+this engine does not carry — measured DISABLED in every initial condition — and rod control is
+owner-ruled MANUAL; **SR DET** was grey because the source-range channel already de-energizes on
+flux and the command is refused by name. Both deleted rather than drawn dark: a control that can
+never be pressed is a Q4 orphan whether it is grey or not, and the player had to ask what each was
+for. **1/M PLOT** moves into ROD AUTO's slot on the rod card and the NIS card closes up behind
+both. The teaching content the ROD AUTO card carried moves to the rod-control card.
+
+**The neutron ranges now say WHICH RANGE YOU SHOULD BE READING**, not how close they are to a trip.
+Green inside the range's own band, grey outside, source range alone amber before the handoff. The
+bands are the plant's own permissives, published rather than authored on the board: source range
+1 cps to its 1e5 cps de-energization point, intermediate range **P-6 to P-10**, with P-6 =
+**5e-11 A** [sourced: Ginna TS Bases Rev 101, ML20339A221, B 3.3.1] and P-10 = 8 % rated. The old
+colouring drew the intermediate range GREEN at cold shutdown on 1.0e-11 A — the bottom of its own
+scale — and full power's 2.0e-3 A, pegged at its range top, as an ordinary live indication. Red
+still wins. Two stale figures went with it: P-6 was documented at 1e-10 A (2x the sourced value)
+and the startup net's middle rung as "about 20 %", the retired plant's rod-stop number against
+this plant's 25 % and 35 %.
+
+**Releasing a trip block that scrams the plant now warns and asks twice** *(owner ruling: warn and
+confirm, keep it legal)*. It stays legal — clearing a block holding a trip off scrams in a real
+plant and `control_kernel.js` says so verbatim. What was wrong is that the panel could not tell
+that release from a harmless one: both P-11 rows shipped `asserted: false` **hard-coded**, so it
+offered both with the same single click. `pwr2_protection` now reports the UNGATED crossing, the
+row carries `will_trip` and a caption, and the press takes a confirming second click. Blocking is
+unchanged and still one click — asserted beside it, so "warn" cannot quietly become "warn on
+everything". A cold plant sits with both rows crossed, which is the owner's own example.
+
+**TRIP vs OFF on the turbine card.** TRIP latches the machine; OFF only walks load to zero and
+leaves it latched and rolling. **OFF's lamp was reporting TRIP's state** — its test was
+`turbine_tripped || load_mode === 'disconnected'`, and PWR2 publishes `manual` unconditionally with
+`set_load_mode` refused, so `disconnected` is unreachable and the whole test collapsed. Relabelled
+**UNLOAD**, lamp reads the demand it sets, and the card's hover copy stopped describing FOLLOW/MAN
+modes this plant does not have.
+
+**The live checklist step card is the instruction now** *(owner directive)* — control, target,
+note, the time-acceleration hint, the teaching prose and the grading line all move behind a
+**Details** button (was *Why?*). Gated on "is there anything in there", not on `why`: only 24 of
+the 60 pwr2 steps carry `why`, so a why-gated button would be absent on most steps with their
+Control/Target folded away and no way to open them.
+
+**The Instructor tab's checklist list is one bar.** It duplicated the Checklists tab's own menu in
+a smaller space and ranked it differently — two authorities on one question.
+
+**Every step's `hl` highlight labels are checked against the board's vocabulary.** `st.control` has
+been validated this way since #304; `hl` — carried by all 60 pwr2 steps where `control` is carried
+by 47 — had no check anywhere, and an unknown label glows **nothing**, silently. Born red on twelve
+real sites: `ECCS` and `SG Pressure` were never in the map and are added; `Reactivity` is deleted
+from the two steps using it, because the board's reactivity readout was removed at #453.
+
+**SG FEED RESTORE stays** (asked, not changed). `fw.isolated` is tested *before* `fw.auto` and
+zeroes both valve and demand, so MAN/AUTO are structurally downstream of the latch and cannot clear
+it; only the RESTORE path can, and it carries a held-SI refusal and the 45-60 s reset relay that a
+mode button must never perform silently.
+
 ### Added / Fixed (#601/#600: the startup net gains its second rung, and TRIP BLOCKS stops offering two blocks no operator has — 2026-09-01)
 
 Filed from a player question about the three TRIP BLOCKS rows reading *NOT ON THIS PLANT*.

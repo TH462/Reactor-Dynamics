@@ -71,6 +71,19 @@
     return null;
   }
 
+  /* WHICH PLANTS THIS TOOL WORKS ON (#598 item 2). It used to ask `plant_id === 'pwr'`,
+   * and PWR2 — the plant the site actually runs — publishes 'pwr2'. The window opened,
+   * the next broadcast hid it again, and `pwr_startup`'s six 1/M steps could not be done
+   * on the shipped plant. ui/app.js has a fold for exactly this seam (uiPlantOf), but the
+   * honest test is the CAPABILITY, not the name: 1/M needs a source-range count and a
+   * control group to plot it against, and any plant publishing both can use the tool.
+   * That also means a future plant gains it by publishing the instrument, not by being
+   * added to a list here. */
+  function supported(s) {
+    var ins = (s && s.instruments) || {};
+    return ins.source_range !== undefined && !!controlGroup(s || {});
+  }
+
   // Least squares over the TRAILING window (the points nearest criticality) →
   // { a, b, x0 } for y = a + b·x, where x0 is the leading point of the window.
   //
@@ -159,7 +172,7 @@
   function plotPoint() {
     var s = getSnap && getSnap();
     if (!s) return;
-    if (s.metadata.plant_id !== 'pwr') { setMsg('PWR only', true); return; }
+    if (!supported(s)) { setMsg('no source-range channel on this plant', true); return; }
     var ins = s.instruments || {};
     if (!ins.sr_energized) { setMsg('SR detector is de-energized — no counts to plot', true); return; }
     var counts = ins.source_range;
@@ -239,7 +252,7 @@
       if (plant !== lastPlant) {
         lastPlant = plant;
         if (points.length) clearAll('plant changed — plot cleared');
-        if (win && plant !== 'pwr') win.hidden = true;
+        if (win && !supported(s)) win.hidden = true;
         return;
       }
       if (lastCaptureT != null && s.metadata.sim_time < lastCaptureT - 1e-6) {

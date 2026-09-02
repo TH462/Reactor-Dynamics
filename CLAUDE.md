@@ -331,14 +331,13 @@ to read everything.
 > change. The dense, append-only version lives in `Blueprint/BUILD_DECISIONS.md`
 > (Status line + Open Flags table) — update both.
 
-_Last updated: **2026-08-31**._
+_Last updated: **2026-09-01**._
 
 **Where the PWR is.** Read `BASELINES` for the runner count, never a number written here. The PWR
-is the only active plant: engines, control, service, instructor and the board are built, and the
-#297 build wave and #221 audit slices are landed. **It is feature-complete Mode 5 ↔ Mode 1** —
-#524 landed 2026-08-31 (floor → 0.002 MPa, `cold_shutdown` the fifth IC, §126), and the LIVE
+is the only active plant: engines, control, service, instructor and the board are built.
+**It is feature-complete Mode 5 ↔ Mode 1** (#524), and the LIVE
 CHECKLISTS walk it: `RD.MANUAL_PROCEDURES.pwr2`, six chain-linked legs Mode 5 → full power →
-Mode 5, replayed end to end by `run_checklist_pwr2` (#244/#526; #254 stages 4/6 remain). **What is open, in one line each:**
+Mode 5, replayed by `run_checklist_pwr2` (#244/#526; #254 stages 4/6 remain). **What is open, in one line each:**
 
 **Do not read the list below as the issue tracker** — `gh issue list --state open` is the authority
 and this summary ages. Measured twice (2026-08-10, 2026-08-28): whole bullets called issues open
@@ -454,13 +453,14 @@ ONE line, drop the rest. **A bullet is ~80 words.** (Measured 2026-08-06: the li
   composites; A/B measured, animations were 6× of raster). Per-element `steps()` still commits
   at 60 Hz; **only a SHARED clock (std_pipe.js, ~12 Hz batch) aligns the writes**. Follow-up
   in #596; a Paint event's clip rect is the LAYER, not damage.
-- **A NUMBER THAT MATCHES THE RETIRED PLANT'S IS NOT THEREBY AN INHERITED CONSTANT — CHECK THE
-  PROVENANCE BEFORE YOU CHANGE IT** (2026-08-31, #591/#592 §125, the owner's playtest again). The
-  board's CW-temp bound came from `PWR_CONFIG` at script load, 35–85 °F: the exact signature of
-  the #573/#579 pattern. I widened PWR2's ceiling to 95 °F so the C-9 removal point was reachable
-  — and **85 °F is SOURCED** (Ginna TS Bases B 3.7.8) under a standing owner directive, both
-  written in the revision row for the section I was editing. The board read the right value from
-  the wrong plant. **The fix was provenance, not arithmetic.**
+- **WHEN A PLAYER SAYS A CONTROL MISBEHAVES, MEASURE THE CONTROLLER BEFORE YOU TOUCH IT — TWICE
+  IN ONE LIST IT WAS RIGHT AND THE BOARD WAS LYING ABOUT IT** (2026-09-01, #598, the owner's
+  playtest). "CHARGING in AUTO doesn't hold a decent level": AUTO tracks its program to **0.11 %**
+  in all four ICs with no hunt, and the tile's NORMAL band was a hard-coded **40–70 %** — a
+  full-power band on every mode, painting an on-program Mode 5 level 15 points *below normal*.
+  "The heaters wouldn't go all the way": they shed because SI actuated at the P-11 crossing, and
+  **nothing annunciates SI at all** (#603). Same shape as the #591 CW bound: right value, wrong
+  plant. **Check the provenance of the BAND before you retune the thing inside it.**
 **Standing procedure — not part of the rotation above; these do not expire.** One trap per entry.
 **MAX 25 BULLETS** *(OWNER RULING, 2026-08-10: selected "Cap at 25, evict to TRAPS.md" from
 options I wrote — a selection, not verbatim words)*, gated by `test/run_doc_budget.js`. Adding

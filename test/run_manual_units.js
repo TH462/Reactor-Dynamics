@@ -200,7 +200,14 @@ TARGETS.forEach(function (target) {
         // It IS the SI half of a pair: "<n> psi (" / "<n> °F / " / "<n> inHg (",
         // tolerating markdown emphasis after the unit (`**20 °F** (11.1 °C)`) and
         // a range or a second number already inside the parenthetical.
-        if (/(psi|°F|inHg)[*\s]*[(\/][^)]*$/.test(pre)) continue;
+        //
+        // `psia` and `psig` count (#598, 2026-09-01). They are US customary pressure units and
+        // this repo uses both — the alternation listed the bare `psi` only, so the FIRST time
+        // anyone wrote a correctly-formed pair with an explicit datum ("1700 psig (11.72 MPa)")
+        // the gate called it an SI value with no US partner. That is the gate being wrong about
+        // the units, not the prose being wrong about the order: the US half is right there and
+        // it is first. Narrow on purpose — `psi[ag]?`, not `psi\w*`.
+        if (/(psi[ag]?|°F|inHg)[*\s]*[(\/][^)]*$/.test(pre)) continue;
         orphans.push({ file: file, line: i + 1, text: m[0],
                        ctx: line.trim().slice(0, 100) });
       }

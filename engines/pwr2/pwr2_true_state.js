@@ -299,11 +299,17 @@
     put('mwe_output',        tb.mwe_output);
     put('load_target_mwe',   tb.load_target_mwe);
     put('steam_demand_mwe',  tb.load_target_mwe);
-    /* ⚠ a SYNTHESIZED two-state constant (1800 or 0) — pwr2_turbine declares "no shaft
-     * dynamics" and this forwards that caveat, which the field name alone cannot carry: a
-     * consumer cannot tell this 1800 from a measured one (audit #488 E16.4). */
+    /* Shaft speed. WAS a synthesized two-state constant (1800 or 0) flagged here as one — audit
+     * #488 E16.4, and the defect the owner filed as "turbine always spinning" (#598 item 1),
+     * because no initial condition boots tripped so a Mode 5 plant reported rated speed. It is
+     * now a first-order lag off steam admission with declared constants (pwr2_turbine TURB). */
     put('turbine_rpm',       tb.rpm);
-    if (tb.rpm !== undefined) put('turbine_tripped', tb.rpm === 0);
+    /* THE TRIP LATCH, FROM THE LATCH. This used to be `tb.rpm === 0`, an identity that held only
+     * while speed was two-state; with a real coastdown a tripped machine spends twenty minutes
+     * above zero, and deriving the flag from speed would have un-latched the trip as the rotor
+     * slowed. pwr2_turbine now reports `tripped` and this forwards it. */
+    if (tb.tripped !== undefined) put('turbine_tripped', !!tb.tripped);
+    else if (tb.rpm !== undefined) put('turbine_tripped', tb.rpm === 0);
     if (tb.steam_kgs !== undefined && ctx.rated_steam_kgs) {
       put('steam_flow_normalized', tb.steam_kgs / ctx.rated_steam_kgs);
     }
@@ -566,6 +572,42 @@
      * physics: it pinned the post-trip plant at 0.5 cps against a true 89. */
     put('sr_counts_cps', srOn ? K_SR * pFrac : 0);
     put('ir_amps',       K_IR * pFrac);
+    /* ---- WHICH RANGE THE OPERATOR SHOULD BE READING (#598 item 8) --------------------------
+     * *(OWNER DIRECTIVE, #598 item 8: "Source Range and Intermediate Range should be green when
+     * we are in the region where we should be referencing each display, grey when otherwise.
+     * Except for source range it should go amber before the handoff to intermediate.")*
+     *
+     * The board used to colour these two by TRIP PROXIMITY, which answers a different question
+     * and answered it badly: at hot full power the intermediate range reads 2.0e-3 A — pegged at
+     * its own range top, four decades past anything worth reading — and the tile drew it as an
+     * ordinary live indication. The question the operator actually asks on a startup is "which
+     * instrument am I on now", and the ladder that answers it is the permissive ladder.
+     *
+     * PUBLISHED BY THE PLANT, NOT AUTHORED ON THE BOARD, because the alternative is the defect
+     * this repo keeps re-shipping: a board literal that was some other plant's number (#573,
+     * #579, #591). Both edges are DERIVED here from constants that already exist and are
+     * already sourced — nothing new is invented and nothing is retyped:
+     *
+     *   SOURCE RANGE  [1 cps .. SR_SECURE_CPS]. Its top edge is the de-energization point the
+     *     model already uses for `sr_energized` two lines above, so the band and the channel
+     *     cannot disagree. The bottom is the instrument's own range floor.
+     *   INTERMEDIATE  [P-6 .. P-10]. Below P-6 the channel is not yet on scale and the source
+     *     range is the instrument; above P-10 the power range is. P-6 = 5e-11 A [sourced:
+     *     Ginna TS Bases Rev 101, ML20339A221, B 3.3.1 — "In MODE 2 when both intermediate
+     *     range channels are < 5E-11 amps (below the P-6 setpoint)"], the same anchor the K_IR
+     *     note above already cites. P-10 is pwr2_protection's own sourced 8 % of rated,
+     *     converted through K_IR rather than written as an amp figure, so re-scaling either one
+     *     moves the band with it.
+     *
+     * ⚠ A DECLARED DEPARTURE, recorded so nobody "fixes" it back. The same Ginna passage says
+     * the source-range detectors "are manually de-energized by the operator" above P-6 — a real
+     * plant HAS that lever. This plant does not, by owner directive (#598 item 7), and the
+     * channel de-energizes on flux alone. The band above is unaffected either way. */
+    var P6_A = 5e-11;
+    var p10Frac = (RD.protection && RD.protection.P10 && RD.protection.P10.frac !== undefined)
+                  ? RD.protection.P10.frac : 0.08;
+    put('nis_sr_inuse_cps', [1, SR_SECURE_CPS]);
+    put('nis_ir_inuse_a',   [P6_A, p10Frac * K_IR]);
 
     /* --- core uncovery: a DECLARED HEM PROXY (D4 sec 8 upheld). The homogeneous model has
      * no water level; sustained high core void is the nearest honest stand-in. Expect A/B

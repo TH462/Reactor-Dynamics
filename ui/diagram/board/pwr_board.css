@@ -42,8 +42,17 @@
  * and still reads where the tile is visible. The #444 highlight-bus classes
  * (.hl-glow/.hl-pin) carry the same z-index 5 lift and were never added to this
  * list — an indications-panel hover popped its board tile over the diagram
- * indication it was pointing at (#509 item 9). */
+ * indication it was pointing at (#509 item 9). The #244 persistent step glow
+ * (.ckl-step-glow) was the THIRD omission from this list, and the worst of them: it is
+ * not a hover, it stands for minutes, and 13 of the pwr2 checklists' highlight labels
+ * resolve to OPAQUE box panels (BORON among them), which at z-index 4 paint over their
+ * own buttons, the vessel and their neighbours until the step changes (#598 item 12).
+ *
+ * ADDING A GLOW CLASS? It goes in this list. `test/run_glow_stacking.js` now asserts
+ * that — every class in shell.css that carries both a glow box-shadow and a z-index
+ * must appear here — because a comment saying so did not stop it happening twice. */
 .pwr-board-stage .bd-tile.ckl-glow,
+.pwr-board-stage .bd-tile.ckl-step-glow,
 .pwr-board-stage .bd-tile.instr-glow,
 .pwr-board-stage .bd-tile.hl-glow,
 .pwr-board-stage .bd-tile.hl-pin { z-index: auto; }
@@ -193,6 +202,14 @@
   font-family: inherit; font-size: 10px; letter-spacing: 0.1em; padding: 3px 10px; cursor: pointer;
 }
 .bd-pop button.bd-blocked { background: #3a2408; border-color: #ffd166; color: #ffd166; }
+/* A RELEASE THAT SCRAMS THE PLANT NOW (#598 item 15). The block is the only thing holding an
+   asserted trip off, so letting go trips on the spot — legal and prototypical, and previously
+   offered with exactly the same single click as a harmless release. Red says which one this is;
+   the row's caption says why, and the button asks for a second press. */
+.bd-pop button.bd-willtrip { background: #3a1010; border-color: #ff6a4d; color: #ff6a4d; }
+.bd-pop button.bd-confirm {
+  background: #ff6a4d; border-color: #ff6a4d; color: #180a08; font-weight: 700;
+}
 .bd-pop button:disabled { opacity: 0.4; cursor: not-allowed; }
 
 /* ---- maintenance tag (scenario prop over the AFW valve, TMI-2) ----
