@@ -126,6 +126,44 @@ function pinChannel(ch) {
   // checked a pane that simply was not the one on screen.
   await b.page.click('#tabbar [data-tab="checklists"]');
   ck('dev: the checklist picker is offered', await b.page.isVisible('#instrCklRow'));
+  /* ---- THE ACTIVE STEP CARD SAYS WHICH CONTROL TO USE (#598 item 13) --------------------
+   * The card was collapsed to the instruction alone, and measuring the cost produced the
+   * owner's ruling to promote the control back out: only 41 % of the 46 pwr2 steps carrying a
+   * control name it in their instruction text, so 27 steps had no visible answer to "which
+   * knob". This asserts it IN THE RENDERED DOM and not by scanning app.js for the string —
+   * #485's lesson, where `/\(partial\)/` passed green against `(false ? ' (partial)' : '')`.
+   * A source scan cannot tell you a string is reachable; starting a real checklist can.
+   *
+   * Deliberately NOT pinned to a particular step's wording: the claim is that the active card
+   * carries a `.ckl-use` line naming a control, which survives any content edit and fails the
+   * moment the block is folded back into Details. */
+  await b.page.click('#tabbar [data-tab="checklists"]');
+  var cklStarted = await b.page.evaluate(function () {
+    var btn = document.querySelector('#cklMenu [data-ckl-start]') ||
+              document.querySelector('[data-ckl-start]');
+    if (!btn) return false;
+    btn.click();
+    return true;
+  });
+  if (cklStarted) {
+    await b.page.waitForSelector('.ckl-step.ckl-active', { timeout: 20000 }).catch(function () {});
+    var useLine = await b.page.evaluate(function () {
+      var a = document.querySelector('.ckl-step.ckl-active .ckl-use');
+      return a ? (a.textContent || '').trim() : null;
+    });
+    ck('dev: the active checklist step says which control to use, outside the fold (#598 item 13)',
+      !!useLine && /^(Use\s+\S|Watch for:)/.test(useLine) && !/\(observe\)/.test(useLine),
+      useLine === null ? 'NO .ckl-use line on the active step' : useLine.slice(0, 90));
+    var folded = await b.page.evaluate(function () {
+      var d = document.querySelector('.ckl-step.ckl-active .ckl-why-btn');
+      return d ? (d.textContent || '').trim() : null;
+    });
+    ck('dev: and the expander is labelled Details, not Why (#598 item 13)',
+      folded === null || /Details/i.test(folded), folded === null ? '(no expander on this step)' : folded);
+  } else {
+    ck('dev: a checklist could be started from the picker', false, 'no [data-ckl-start] button found');
+  }
+
   var camp = await openMission(b.page, 'campaign');
   ck('dev: campaign lists its missions', /Act I/.test(camp) && !/COMING SOON/.test(camp), camp.slice(0, 60));
   ck('dev: campaign missions are startable',

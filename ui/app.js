@@ -3441,17 +3441,22 @@
          * once. It grew: criteria, Control/Target, the instruction, a note, a time-acceleration
          * hint, a Why button and a "graded off…" line, seven blocks deep on one step.
          *
-         * SINCE #598 item 13 THE CARD IS THE INSTRUCTION *(OWNER DIRECTIVE: "For the checklists,
-         * only keep the main instruction (white numbered text) showing. keep a button to expand
-         * the step but relabel it from WHY to DETAILS. put the other information into the
-         * expanded DETAILS section.")*. The check-off criteria stay OUT of the fold — they are
-         * the one thing that changes while you work, they carry the ✓ the player is waiting for,
-         * and hiding a live tick behind a button would hide the feedback the whole Path 3 design
-         * is built on. Everything static goes in.
+         * SINCE #598 item 13 THE CARD IS THE INSTRUCTION *(OWNER DIRECTIVE, 2026-09-01, #598
+         * item 13: "For the checklists, only keep the main instruction (white numbered text)
+         * showing. keep a button to expand the step but relabel it from WHY to DETAILS. put the
+         * other information into the expanded DETAILS section.")*. Two things stay OUT of the
+         * fold, each for its own reason. The CHECK-OFF CRITERIA: they are the one thing that
+         * changes while you work, they carry the ✓ the player is waiting for, and hiding a live
+         * tick behind a button would hide the feedback the whole Path 3 design is built on. And
+         * the CONTROL AND TARGET, added back by ruling a day later — see the block below for the
+         * measurement that produced it. What is left in Details is genuinely background: the
+         * caution, the time-acceleration hint, the teaching prose, and which value the check is
+         * graded off.
          *
          * ⚠ THE BUTTON IS GATED ON "IS THERE ANYTHING IN THERE", NOT ON `st.why`. Of the 60 pwr2
-         * steps only 24 carry `why` — a why-gated button would be absent on ~60 % of steps while
-         * their Control/Target sat folded away with no way to open it. */
+         * steps only 24 carry `why`, so a why-gated button would be absent on ~60 % of steps —
+         * and it would then be the wrong button on any step whose note or wait hint is the thing
+         * worth expanding. */
         var via = ck.graded_by === 'instrument' ? 'graded off the instrument reading'
                 : ck.graded_by === 'true_state' ? 'graded off the true value (no instrument for this)' : null;
         if (st.accs && st.accs.length) {
@@ -3468,14 +3473,45 @@
             (ck.acc_met ? '✓ ' : '○ ') + 'When ' + fmtPredicate(st.acc) +
             (ck.acc_met ? '' : ' <span class="muted">…not yet</span>') + '</div>';
         }
-        /* THE INSTRUCTION — the white numbered line, and the only thing outside the fold. */
+        /* WHICH CONTROL, AND WHAT YOU ARE DRIVING IT TO — outside the fold, above the
+         * instruction *(OWNER RULING, 2026-09-02, #598 item 13: "promote the pull out of the why
+         * button but tweak the wording to make it cleaner and more natural language.")*.
+         *
+         * The first cut of item 13 folded this away with everything else, and MEASURING THE COST
+         * is what produced the ruling: of the 46 pwr2 steps carrying a control, only 19 (41 %)
+         * name that control anywhere in their instruction text — so 27 steps had no visible
+         * answer to "which knob" at all. The pill is not background. It is WHERE, and a checklist
+         * step that cannot say where is not doing the one job it has.
+         *
+         * THE WORDING. It was `Control: <b>X</b> · Target: Y` — two field labels lifted straight
+         * off the data structure, and on an observation step it printed the literal
+         * `Control: (observe)`, a placeholder leaking onto the card. Now:
+         *     an action step    Use <b>Pressure SP</b>: 2235 psi (15.41 MPa)
+         *     an observe step   Watch for: Tavg >= 541.4 degF (283 degC), still subcritical
+         * The separator is a COLON and not a dash, which is not a style preference: 11 of the 46
+         * targets already contain a dash of their own ("bank fully withdrawn, 200 / 200 — rho ~
+         * -2,130 pcm"), so a dash here reads as a third clause instead of a divider.
+         * No field labels, no placeholder, and the observation case reads as the instruction it
+         * actually is.
+         *
+         * The two shapes cover the data with nothing left over — measured across the pwr2 pool,
+         * 46 steps carry BOTH control and target, 2 are observe-with-target, and NONE carries
+         * only one of the pair. The one-sided fallbacks below exist so that an author adding a
+         * half-filled step gets something sensible instead of a stray dash, not because the
+         * shipped content needs them. */
+        var isObs = st.control && /^\(observe/i.test(st.control);
+        if (isObs) {
+          if (st.target) h += '<div class="ckl-sub ckl-use">Watch for: ' + mesc(st.target) + '</div>';
+        } else if (st.control || st.target) {
+          h += '<div class="ckl-sub ckl-use">' +
+            (st.control ? 'Use <b>' + mesc(st.control) + '</b>' : '') +
+            (st.control && st.target ? ': ' : '') +
+            (st.target ? mesc(st.target) : '') + '</div>';
+        }
+        /* THE INSTRUCTION — the white numbered line. */
         h += '<div class="ckl-txt">' + (i + 1) + '. ' + mesc(st.text) + '</div>';
-        /* ---- DETAILS: everything static about this step ------------------------------------ */
+        /* ---- DETAILS: the background, and nothing that answers "what do I do" --------------- */
         var det = '';
-        var bits = [];
-        if (st.control) bits.push('Control: <b>' + mesc(st.control) + '</b>');
-        if (st.target) bits.push('Target: ' + mesc(st.target));
-        if (bits.length) det += '<div class="ckl-sub">' + bits.join(' &nbsp;·&nbsp; ') + '</div>';
         if (st.note) det += '<div class="ckl-sub muted">' + mesc(st.note) + '</div>';
         if (st.wait_hint) {
           // #244 M5→3 item 5 — long waits suggest time acceleration rather than patience.

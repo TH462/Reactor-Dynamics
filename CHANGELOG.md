@@ -131,11 +131,26 @@ leaves it latched and rolling. **OFF's lamp was reporting TRIP's state** — its
 **UNLOAD**, lamp reads the demand it sets, and the card's hover copy stopped describing FOLLOW/MAN
 modes this plant does not have.
 
-**The live checklist step card is the instruction now** *(owner directive)* — control, target,
-note, the time-acceleration hint, the teaching prose and the grading line all move behind a
-**Details** button (was *Why?*). Gated on "is there anything in there", not on `why`: only 24 of
-the 60 pwr2 steps carry `why`, so a why-gated button would be absent on most steps with their
-Control/Target folded away and no way to open them.
+**The live checklist step card is the instruction, plus which control to use** *(owner directive,
+then a ruling a day later)*. The note, the time-acceleration hint, the teaching prose and the
+grading line moved behind a **Details** button (was *Why?*). Control and target went with them in
+the first cut — and measuring the cost produced the ruling to bring them back: of the 46 pwr2
+steps carrying a control, **only 19 (41 %) name that control anywhere in their instruction text**,
+so 27 steps had no visible answer to "which knob". The line reads `Use **Pressure SP**: 2235 psi
+(15.41 MPa)` now — no field labels lifted off the data structure, a colon rather than a dash
+because 11 of the 46 targets contain a dash of their own, and observation steps read
+`Watch for: …` instead of printing the literal `Control: (observe)` they used to. The Details
+button is gated on "is there anything in there", not on `why`: only 24 of the 60 steps carry
+`why`. Asserted in the rendered DOM by `verify_flags_ui`, which starts a real checklist — a source
+scan cannot tell you a string is reachable (#485).
+
+**Four checklist instructions were walls of text, and one taught a wrong number.** With the card
+collapsed to the instruction, a 418-character step is the whole card. The heatup's pressurization,
+accumulator-window and ride steps and the cooldown's RHR align all now lead with the action and
+keep their rationale in Details — nothing was cut, it moved. The startup checklist also said the
+**P-10 permissive is at 10 % power**; this plant's is the sourced **8 %** (Ginna TS Bases B 3.3.1,
+the same figure the new neutron-range bands use). The retired engine's pool keeps 10 %, which is
+correct for *it*. The permissives are spelled out on first use rather than left as bare codes.
 
 **The Instructor tab's checklist list is one bar.** It duplicated the Checklists tab's own menu in
 a smaller space and ranked it differently — two authorities on one question.

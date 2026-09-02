@@ -29,11 +29,11 @@ and the user-visible summary in `CHANGELOG.md`. This file points at those and tr
 
 ---
 
-## Session log — 2026-09-01-workbench-a (#598 — the second playtest list, waves 1 and 2 of 16; two of the sixteen were not defects)
+## Session log — 2026-09-01-workbench-a (#598 — the second playtest list, all 16 items; two of them were not defects)
 
 **Ask:** owner, issue #598, sixteen numbered items from a live session on the shipped PWR2 plant.
-Ruled into three waves. This entry covers waves 1 and 2 (items 1–13, 15, 16); wave 3 is item 14,
-the full checklist playthrough, which goes last because waves 1 and 2 change what it rides.
+Ruled into three waves and all three are done. Waves 1 and 2 are items 1–13, 15 and 16; wave 3 is
+item 14, the checklist playthrough, which went last because the first two changed what it rides.
 
 ### The two that were not defects, and why that took measuring
 
@@ -143,13 +143,65 @@ Items 1, 2, 3, 5 (answered), 6, 7, 8, 9, 10, 11, 12, 13, 15, 16. Four new gates 
 — its pair-detector listed the bare `psi` only, so the first correctly-formed pair with an explicit
 datum was called an orphan; narrowed as `psi[ag]?` and proved against six cases.
 
+### Wave 3 — item 13's ruling, and the item 14 read-through
+
+**The measurement changed the design.** Item 13 as written said "only keep the main instruction
+showing", and I built exactly that. Then: **of the 46 pwr2 steps carrying a control, only 19
+(41 %) name that control anywhere in their instruction text** — so 27 steps had no visible answer
+to "which knob". Put to the owner with that number *(OWNER RULING, 2026-09-02: "promote the pull
+out of the why button but tweak the wording to make it cleaner and more natural language.")*.
+
+The wording rewrite is the part worth recording, because two of the three fixes were only visible
+once the line was the card's own voice rather than a debug dump of the step object:
+
+- `Control: <b>X</b> · Target: Y` was **two field labels lifted straight off the data structure**.
+  Now `Use <b>Pressure SP</b>: 2235 psi (15.41 MPa)`.
+- Observation steps printed the literal **`Control: (observe)`** — a placeholder leaking onto a
+  player-facing card. They read `Watch for: …` now, which is the instruction they always were.
+- The separator is a COLON, and that is not taste: **11 of the 46 targets contain a dash of their
+  own** ("bank fully withdrawn, 200 / 200 — ρ ≈ −2,130 pcm"), so a dash divider read as a third
+  clause.
+
+**Gated in the rendered DOM, not by a source scan** — `verify_flags_ui` starts a real checklist and
+asserts the active card carries the line (42 → 44). That is #485's lesson applied: a source scan
+for a rendered string passed green there against `(false ? ' (partial)' : '')`. Injection-proven —
+suppressing the emission reds it with "NO .ckl-use line on the active step". It pins the SHAPE, not
+any step's wording, so content edits do not touch it.
+
+**Item 14, the read-through.** The replay gate already rides all six legs (109/109) and the
+structure is sound — every leg chains, every step has completion evidence, and the only steps with
+no highlight are the three final confirmations. Three mechanical passes over the prose found:
+
+- **Four instructions past 300 characters**, up to 418. With the card collapsed to the instruction
+  that is the whole card. All four now lead with the action and keep their rationale in Details;
+  nothing was cut, it moved (the staged-pressurization reasoning, the accumulator window timings
+  and LCO 3.5.1, the ride's watch-list, the cooldown's align-before-you-shut-spray order).
+- **A wrong sourced number in player-facing content**: the startup checklist said the P-10
+  permissive is at *"10 % power"*. This plant's is **8 %** [Ginna TS Bases B 3.3.1] — the same
+  figure the new intermediate-range band uses for its upper edge, so the two would have taught
+  different numbers for one permissive. The RETIRED engine's pool keeps 10 %, which is correct for
+  it (`pwr_control.js` `block_permissive` setpoint 10.0): the plants differ and the prose now
+  differs with them.
+- **Bare permissive codes** (P-6, P-10, P-11) spelled out on first use.
+
+### A contention flake worth knowing about
+
+`run_pwr2_vtable` and `run_pwr2_perf` both DRIFTED in one aggregate run and both pass standalone
+with room to spare — vtable **209×** against its 100× bound (the aggregate saw 85×), perf **4.7×**
+against its 8× bound (the aggregate saw 8.4×). Both assert on a TIMING RATIO measured inside the
+aggregate's own 10-way parallel run, and `run_pwr2_perf` already labels its own metric
+*"REPORTED (contention-sensitive, never asserted)"* — for the other half of the same runner.
+CLAUDE.md says per-runner TIMES in a parallel run are contention times; the trap here is that a
+RATIO is only immune to that if both halves are interleaved, which `run_pwr2_perf`'s own note says
+in as many words. Not chased — neither runner was touched by this work, and #519 records the same
+gate at 8.3× on CI — but re-run a timing gate alone before believing it.
+
 ### Still open on #598
 
-Item 14 (wave 3, the playthrough) and one measurement the owner should rule on: with the step card
-collapsed to the instruction (item 13, as directed), **only 41 % of the 46 pwr2 steps carrying a
-control pill name that control in their instruction text**, so the other 27 hide "which knob" behind
-Details. Recommendation is to promote the control pill back out of the fold — one line — rather
-than rewrite 27 step texts.
+Nothing. All sixteen items are done. Two produced no code change because the plant was right
+(items 4 and 11 — see above), one was answered rather than rebuilt (item 5), and item 4's real
+finding is filed separately as **#603**: safety injection actuates on a healthy plant during a
+heatup and nothing annunciates it.
 
 ---
 
