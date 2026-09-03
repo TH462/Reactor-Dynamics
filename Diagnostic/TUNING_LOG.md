@@ -29,6 +29,10 @@ and the user-visible summary in `CHANGELOG.md`. This file points at those and tr
 
 ---
 
+## Session log — 2026-09-03-workbench-a (#607 — checklist playtest)
+
+Seven playtest items on the live checklist. Running card now lives in the Checklists tab (progress survives leaving it; **← All checklists** does not stop). Click the step card to expand; current-step highlight pulses; RCP start lights the card not the pump graphic; shutdown-bank step keys on position not rho; catch-up at start walks forward; every pwr2 step has details.
+
 ## Session log — 2026-09-02-develop-a (#605 — the two typing blockers were one defect, and Mode 5 was booting a latched turbine)
 
 **Ask:** two pages of handwritten playtest notes on the `develop` build — a **BLOCKERS** page

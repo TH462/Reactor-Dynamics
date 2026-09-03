@@ -1870,23 +1870,22 @@ select.num-input { width: auto; }
   0%, 100% { box-shadow: 0 0 0 1px rgba(122, 176, 255, 0.55), 0 0 10px 2px rgba(122, 176, 255, 0.25); }
   50%      { box-shadow: 0 0 0 2px rgba(122, 176, 255, 0.95), 0 0 18px 5px rgba(122, 176, 255, 0.45); }
 }
-/* Checklist step-hover preview glow — greener tint, distinct from the directive
-   .instr-glow (blue). Points at the controls/indications a step names on hover. */
-.ckl-hoverable { cursor: help; }
+/* Checklist hover glow — greener tint, distinct from the directive .instr-glow (blue).
+   STEADY: hovering a NON-current step must not pulse (#607 item 3). */
+.ckl-hoverable { cursor: pointer; }
 .ckl-glow {
-  animation: cklGlow 1.2s ease-in-out infinite;
+  box-shadow: 0 0 0 1.5px rgba(120, 210, 150, 0.70), 0 0 12px 3px rgba(120, 210, 150, 0.30);
   border-radius: 6px; position: relative; z-index: 5;
 }
 @keyframes cklGlow {
   0%, 100% { box-shadow: 0 0 0 1px rgba(120, 210, 150, 0.60), 0 0 10px 2px rgba(120, 210, 150, 0.28); }
   50%      { box-shadow: 0 0 0 2px rgba(120, 210, 150, 0.98), 0 0 18px 5px rgba(120, 210, 150, 0.50); }
 }
-/* PERSISTENT up-next glow *(OWNER, #244 item 5: the active step's controls stay lit with
-   no mouseover)*. STEADY, not animated — it stands for minutes at a time, and a standing
-   pulse would compete with every alarm on the board. Same green family as the hover
-   preview so the two read as one vocabulary; the hover's pulse still layers on top. */
+/* PERSISTENT up-next glow *(#607 item 3 supersedes #244's "steady" call)*. The current
+   step's controls PULSE with no mouseover so they stay findable; hover of a non-current
+   step stays the steady halo above. */
 .ckl-step-glow {
-  box-shadow: 0 0 0 1.5px rgba(120, 210, 150, 0.70), 0 0 12px 3px rgba(120, 210, 150, 0.30);
+  animation: cklGlow 1.2s ease-in-out infinite;
   border-radius: 6px; position: relative; z-index: 4;
 }
 /* ============================================ the highlight bus (#444, spec §7)
@@ -2104,6 +2103,8 @@ select.num-input { width: auto; }
 .ckl-why { font-size: 11.5px; color: var(--text-2); line-height: 1.45; margin-top: 4px;
   border-left: 2px solid var(--border); padding-left: 8px; }
 .ckl-why-btn { font-size: 10px; padding: 1px 7px; margin-top: 4px; }
+.ckl-expand-hint { font-size: 10px; color: var(--muted); margin-top: 4px; }
+.ckl-back { font-size: 11px; padding: 2px 8px; margin-bottom: 6px; }
 .ckl-why-all { float: right; font-size: 10px; padding: 1px 7px; margin-left: 8px; }
 .ckl-wait { color: var(--caution); }
 .ckl-next { border-color: var(--running); font-weight: 700; }

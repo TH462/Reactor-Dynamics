@@ -171,6 +171,47 @@ if (!only) {
        Object.keys(mapKeys).length >= 20 && missing.length === 0,
        missing.length ? 'MISSING: ' + missing.join(', ') : Object.keys(used).length + ' params covered');
   })();
+
+  /* 2e. every pwr2 step has expandable details (#607 item 5) */
+  (function () {
+    var missing = [];
+    POOL.forEach(function (p) {
+      (p.steps || []).forEach(function (st, i) {
+        if (!st.why) missing.push(p.id + ' step ' + (i + 1));
+      });
+    });
+    ck('every pwr2 checklist step has a details paragraph (#607 item 5)',
+       missing.length === 0,
+       missing.length ? 'MISSING: ' + missing.join(', ') : POOL.reduce(function (n, p) { return n + (p.steps || []).length; }, 0) + ' steps');
+  })();
+
+  /* 2f. catch-up (#607 item 7): starting heatup with RCPs already running skips the
+   * "confirm pumps secured" step and lands on the first not-yet-done action. */
+  (function () {
+    var svc = mkSvc('cold_shutdown');
+    var s = null; for (var i = 0; i < 8; i++) s = svc.tick();
+    svc.handleCommand({ action: 'start_checklist', procedure_id: 'pwr_heatup' });
+    for (var j = 0; j < 3; j++) s = svc.tick();
+    var fresh = s.instructor && s.instructor.checklist;
+    ck('a fresh Mode 5 start does NOT skip the opening confirm (#607 catch-up must not eat the happy path)',
+       !!fresh && fresh.procedure_id === 'pwr_heatup' && fresh.step_index === 0,
+       fresh && ('step_index ' + fresh.step_index));
+    svc.handleCommand({ action: 'stop_checklist' });
+
+    svc = mkSvc('cold_shutdown');
+    for (var k = 0; k < 5; k++) s = svc.tick();
+    svc.handleCommand({ action: 'set_rcp', running: true });
+    for (var n = 0; n < 40; n++) {
+      s = svc.tick();
+      if (s.true_state && s.true_state.pump_flow_pct > 90) break;
+    }
+    svc.handleCommand({ action: 'start_checklist', procedure_id: 'pwr_heatup' });
+    for (var m = 0; m < 4; m++) s = svc.tick();
+    var mid = s.instructor && s.instructor.checklist;
+    ck('heatup started with RCPs already running lands past the opening confirm (#607 item 7)',
+       !!mid && mid.step_index >= 2 && mid.complete !== true,
+       mid && ('step_index ' + mid.step_index + ' flow ' + (s.true_state && s.true_state.pump_flow_pct)));
+  })();
 }
 
 console.log('\n' + '='.repeat(74));

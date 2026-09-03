@@ -2960,7 +2960,12 @@
     'SG Pressure': 'imrr1gwi93j', 'ECCS': 'ims3l6k3mb0',
     // Aliases for the `control` strings the checklist steps use (so the step-hover
     // fallback in ui/app.js resolves without authoring an explicit `hl` on each).
-    'Boron control': 'imrmtlyf64y', 'RCP Run/Stop': 'imrobpq4a70', 'Dump SP': 'imrop5ouw7h',
+    /* THE CARD, NOT THE PUMP GRAPHIC *(#607 item 1)*. Both names used to point at
+     * `imrobpq4a70`, the rotating RCP on the loop — so a "start the pumps" step lit the
+     * art and not the ON/OFF card the operator actually presses (`imrsjyqoq6t`, inspect
+     * name RCP Control). 'Reactor Coolant Pumps (RCP)' stays on the pump for watch-the-
+     * flow steps; this alias is the control. */
+    'Boron control': 'imrmtlyf64y', 'RCP Run/Stop': 'imrsjyqoq6t', 'Dump SP': 'imrop5ouw7h',
     // ADV (#371) — both names point at the card, so highlighting either lights the
     // whole group, the same way 'Dump SP' points at the STEAM DUMP card above.
     // The ATMOS DUMP card is AUTHORED now (#371) — the driver-injected box it replaced
