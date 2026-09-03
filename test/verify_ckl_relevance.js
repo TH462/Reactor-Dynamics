@@ -198,6 +198,87 @@ function sig(rows) {
     ck('and it names the mode the plant is actually in, at the top',
        !!banner.text && /Not applicable in Mode 5, Cold Shutdown/.test(banner.text),
        banner.text ? banner.text.slice(0, 80) : 'no caution banner');
+    /* ---- 3b. THE ENTRY BANNER NEVER RETURNS MID-CHECKLIST (#613) ----------------------- */
+    /* Owner playtest 2026-09-03: "the not applicable to this mode warning… erroneously appears
+     * in the middle of the mode 5-3 checklist when it gets to mode 4. This should only appear
+     * when first opening a checklist and should never appear in the middle of a checklist."
+     *
+     * THIS WAS THE SCROLL BOUNCE. `precond` are ENTRY conditions — the heatup's are `tavg_c < 95`
+     * and friends, true of the cold plant you start on and false the moment you heat it — so a
+     * banner rendered from LIVE verdicts vanished and reappeared as the plant crossed
+     * Mode 5 -> 4 -> 3, changing the panel's height under the reader every time.
+     *
+     * DRIVABLE, because the checklist advances itself: pwr_heatup's first step is an observation
+     * (`plant_mode ~ 5`) that is already true on a Mode 5 boot, so it checks off within a couple
+     * of broadcasts and `step_index` leaves 0 with no plant driving at all. That is what made
+     * this assertable when nothing else about a live advance was. */
+    await page.click('[data-ckl-stop]').catch(function () {});
+    await page.waitForTimeout(400);
+    await page.click('#cklMenu button[data-ckl-start="pwr_heatup"]');
+    await page.waitForTimeout(3500);
+    var run = await page.evaluate(function () {
+      var log = document.getElementById('cklLog');
+      return { banner: !!(log && log.querySelector('.m-caution')),
+               idx: (window.__lastCklIdx === undefined ? null : window.__lastCklIdx),
+               done: log ? log.querySelectorAll('.ckl-step').length : 0,
+               active: log ? !!log.querySelector('.ckl-active') : false };
+    });
+    ck('the heatup advanced off step 0 on its own (the fixture is not vacuous)',
+       run.active && run.done > 1, run.done + ' steps drawn, active step present');
+    /* A GUARD, NOT EVIDENCE — and the distinction cost a rewrite to see. The heatup's
+     * preconditions are MET at Mode 5, so "no banner" is true here on the pre-fix build too;
+     * this cannot fail on the defect it was written for. The discriminating test would need the
+     * plant driven ACROSS a mode boundary mid-checklist (Mode 5 -> 4 is where the owner saw it),
+     * which nothing in this harness can do — three attempts at driving a live advance failed.
+     * What it does catch is a future change that starts rendering the banner unconditionally. */
+    ck('GUARD: no entry banner mid-checklist (#613 — vacuous here; the heatup enters with its ' +
+       'preconditions met, so this passes pre-fix too)',
+       run.banner === false, run.banner ? 'a .m-caution banner is present mid-checklist' : 'none');
+
+    /* ---- 5. EVERY PIXEL OF A NUMBER TILE TYPES INTO ITS BOX (#614) --------------------- */
+    /* Owner playtest 2026-09-03: "I'm unable to type into any field (number boxes and the
+     * feedback form)". #605 made the FRAME focus the input; measured at 1366x768 the tiles are
+     * 48x28 around a 48x18 frame, so a ~10 px LABEL BAND across the top — up to 731 px2, better
+     * than a third of the tile — was outside every handler. A click there focuses nothing,
+     * activeElement stays on BODY, and the digits go to the GLOBAL shortcuts, where 2/3/5 are
+     * time acceleration. That is the "2235 ended at 3600x" the standing trap list records.
+     *
+     * It lives in this browser runner because one is already open here; a second Playwright
+     * gate costs ~16 s for a single assertion. Injection-verified: BODY / keystrokes lost
+     * before the fix, INPUT / "2235" after. */
+    await page.setViewportSize({ width: 1366, height: 768 });
+    await page.goto(url, { waitUntil: 'load' });
+    await page.waitForTimeout(1300);
+    await page.click('[data-mfree]');
+    await page.waitForTimeout(2400);
+    var band = await page.evaluate(function () {
+      var hit = null;
+      [].forEach.call(document.querySelectorAll('.bd-num-frame'), function (f) {
+        if (hit) return;
+        var tile = f.closest('.bd-tile') || f.parentElement;
+        var fb = f.getBoundingClientRect(), tb = tile.getBoundingClientRect();
+        var top = fb.top - tb.top, bot = tb.bottom - fb.bottom;
+        if (top > 6) hit = { x: Math.round(tb.left + tb.width / 2), y: Math.round(tb.top + top / 2), px: Math.round(top) };
+        else if (bot > 6) hit = { x: Math.round(tb.left + tb.width / 2), y: Math.round(fb.bottom + bot / 2), px: Math.round(bot) };
+      });
+      return hit;
+    });
+    if (!band) {
+      ck('a number tile has a band outside its frame (the fixture is not vacuous)', false,
+         'no tile has one — the geometry changed; re-derive this check');
+    } else {
+      await page.mouse.click(band.x, band.y);
+      await page.keyboard.type('2235');
+      var landed = await page.evaluate(function () {
+        var a = document.activeElement;
+        return { tag: a ? a.tagName : null, val: (a && a.value !== undefined) ? a.value : null };
+      });
+      ck('clicking a number tile OUTSIDE its frame still types into the box (#614)',
+         landed.tag === 'INPUT' && /2235/.test(String(landed.val || '')),
+         band.px + ' px band; focus landed on ' + landed.tag +
+         (landed.tag === 'INPUT' ? ' value ' + landed.val : ' — keystrokes lost to the global shortcuts'));
+    }
+
   } catch (err) {
     ck('the gate ran to completion', false, String((err && err.message) || err).slice(0, 160));
   }

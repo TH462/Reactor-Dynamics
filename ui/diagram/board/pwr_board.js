@@ -621,6 +621,26 @@
     }
     frame.appendChild(stepBox);
     el.appendChild(frame);
+    /* THE WHOLE TILE IS THE TARGET, NOT JUST THE FRAME (#614, owner playtest 2026-09-03: "I'm
+     * unable to type into any field (number boxes and the feedback form)").
+     *
+     * #605 made the FRAME focus the input, which was the right move and did not go far enough:
+     * measured at 1366x768, several number tiles are 48x28 around a 48x18 frame, so a 10 px band
+     * across the bottom — up to 731 px2, better than a third of the tile — is outside every
+     * handler. A click that lands there focuses nothing, leaves `document.activeElement` on BODY,
+     * and the digits you type next are read by the GLOBAL keyboard shortcuts: 2/3/5 are time
+     * acceleration, which is the "2235 ended at 3600x" the standing trap list records.
+     *
+     * Same guard as the frame's: a click ON the input keeps its caret, and the step buttons keep
+     * their own press-and-hold. Everything else in the tile now means "type in this box". */
+    el.addEventListener('pointerdown', function (e) {
+      if (!editable || input.disabled) return;
+      if (e.target === input || (stepBox && stepBox.contains(e.target))) return;
+      if (frame.contains(e.target)) return;          // the frame's own handler already has it
+      e.preventDefault();
+      input.focus();
+      input.select();
+    });
     return el;
   }
 

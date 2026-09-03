@@ -3304,7 +3304,7 @@
   // RD.MANUAL_PROCEDURES artifact the Instructor graded it from.
   // whyAll / whyOpen: the #244 item-2 explanation toggles (global + per-step); they
   // survive re-renders via the render key and reset with the checklist itself.
-  var cklState = { key: null, whyAll: false, whyOpen: {}, step: null, view: 'list', userScrolled: false };
+  var cklState = { key: null, whyAll: false, whyOpen: {}, step: null, view: 'list', userScrolled: false, preconHtml: null };
   var cklAutoScroll = false;   /* true while WE are writing scrollTop (#612) */
   /* IS THE POINTER IN THIS ELEMENT? (#605.) `:hover` cannot answer it here — the element is
    * BRAND NEW, built microseconds ago by an innerHTML rebuild, and the browser does not
@@ -3342,7 +3342,7 @@
   }
   function resetCkl() {
     if (!cklState.key) return;
-    cklState = { key: null, whyAll: false, whyOpen: {}, step: null, view: 'list', userScrolled: false };
+    cklState = { key: null, whyAll: false, whyOpen: {}, step: null, view: 'list', userScrolled: false, preconHtml: null };
     var run = $('cklRun'); if (run) { run.hidden = true; run.innerHTML = ''; }
     var row = $('instrCklRow'); if (row) row.hidden = !flagOn('checklists');
     clearCklStepGlow();
@@ -3461,9 +3461,11 @@
     // the key never repaints). Observed values are keyed ROUNDED so the banner
     // tracks a dilution at ~whole-unit granularity instead of rebuilding the DOM
     // every broadcast on analog noise.
-    var pcKey = (ck.preconditions || []).map(function (p) {
-      return (p.met ? 'y' : 'n') + (p.met ? '' : Math.round(p.obs != null ? p.obs : -1));
-    }).join(',');
+    /* pcKey RETIRED with the live banner (#613). It carried the rounded precondition
+     * observations, so it churned the key whenever the plant moved — and it now describes
+     * nothing the build renders, because the banner is latched at open. What replaces it is the
+     * one bit that still changes the output: whether the checklist is underway. */
+    var pcKey = (ck.step_index > 0 || (ck.steps_done || []).some(Boolean)) ? 'go' : 'entry';
     var key = [ck.procedure_id, (ck.steps_done || []).map(function (d) { return d ? 1 : 0; }).join(''),
       ck.step_index, ck.acc_met ? 1 : 0, ck.graded_by || '', ck.complete ? 1 : 0, pcKey, ui.register,
       // #244 additions: per-entry check-off states, the why-toggle states, and the display
@@ -3484,29 +3486,69 @@
     // Precondition banner (#395) — WARN, NEVER BLOCK: unmet rows are listed with
     // measured-vs-expected and everything below still runs. Row text comes from
     // the procedure artifact (`precond[i].text`); the snapshot ships verdicts only.
-    var pc = ck.preconditions;
-    if (pc && pr.precond && pc.some(function (p) { return !p.met; })) {
-      /* NAME THE MODE THE PLAYER IS ACTUALLY IN *(OWNER, 2026-09-02, #606: "you should still
-       * be able to click on the non relevant checklist but it should say its not applicable to
-       * the current mode at the top")*. The list demotes an inapplicable procedure and states
-       * its gate; opening one has to say the same thing in the same words, because a player who
-       * deliberately opened a greyed row is asking WHY. The mode comes from the snapshot's own
-       * `plant_mode`, so a plant that does not publish one (RBMK, BWR) keeps the plain wording
-       * rather than being told a mode it has no concept of. */
-      var pmNow = s && s.true_state ? s.true_state.plant_mode : null;
-      var pmTxt = (typeof pmNow === 'number' && MODE_NAMES[Math.round(pmNow)])
-        ? 'Not applicable in ' + MODE_NAMES[Math.round(pmNow)] + ' — nothing is blocked, but steps may not verify:'
-        : 'Prerequisites not met — nothing is blocked, but steps may not verify:';
-      h += '<div class="m-caution"><b>' + mesc(pmTxt) + '</b>';
-      for (var pj = 0; pj < pc.length && pj < pr.precond.length; pj++) {
-        if (pc[pj].met) continue;
-        var pd = pr.precond[pj];
-        h += '<div>✗ ' + mesc(pd.text || pd.p) + ' <span class="muted">— wants ' + mesc(pd.p) + ' ' +
-          (OPSYM[pd.op] || pd.op) + ' ' + mesc(pd.v) + ', reads ' + fmtPcObs(pc[pj].obs) +
-          (pc[pj].graded_by === 'true_state' ? ' (true value)' : '') + '</span></div>';
+    /* THE ENTRY BANNER IS LATCHED AT OPEN, AND NEVER RETURNS MID-RUN (#613, owner playtest
+     * 2026-09-03: "I found the checklist scroll bounce issue. It's caused by the not applicable
+     * to this mode warning at the top. This warning should not appear during a checklist. It
+     * erroneously appears in the middle of the mode 5-3 checklist when it gets to mode 4. This
+     * should only appear when first opening a checklist and should never appear in the middle
+     * of a checklist.").
+     *
+     * THIS IS THE SCROLL BOUNCE, and the owner found it — my three hypotheses at #612 were all
+     * wrong. `precond` are ENTRY conditions: the heatup's are `tavg_c < 95`, `pressure < 5`,
+     * `power < 1` — true of the cold plant you start on and FALSE the moment you start heating
+     * it. The banner was rendered from the LIVE verdicts every build, so it vanished and
+     * reappeared as the plant crossed Mode 5 -> 4 -> 3, and each flip changed the panel's height
+     * under a reader. That is the "bouncing to the top and back to the step".
+     *
+     * So the banner is captured ONCE, on the first build, and shown only while the checklist has
+     * not started moving. A precondition is a statement about whether it was sensible to OPEN
+     * this checklist; re-asserting it against a plant the checklist itself is deliberately
+     * changing is not a warning, it is the checklist complaining about its own progress.
+     *
+     * The verdicts also leave the RENDER KEY with it (pcKey). They were the noisiest term in it —
+     * rounded observations that move whenever the plant does — so suppressing the banner once the
+     * run is underway removes a rebuild-per-broadcast as well as the height flip. */
+    /* Shown ONLY before the checklist starts moving. Latching the text at `firstBuild` was the
+     * first attempt and it was wrong: the first broadcast after `start_checklist` does not carry
+     * the verdicts yet, so it captured an EMPTY banner and never recovered — measured, the #606
+     * check went red on it. What matters is not when the text is computed but whether it may be
+     * shown at all, and `underway` is that test: once a step is done, the entry question is
+     * settled and the answer is history. */
+    /* CAPTURED ONCE, AT ENTRY, AND NEVER RECOMPUTED. Two wrong versions came first and both are
+     * worth naming, because each looked right:
+     *
+     *   1. Latch on `firstBuild` — the first broadcast after `start_checklist` does not carry the
+     *      verdicts yet, so it captured an EMPTY banner and never recovered.
+     *   2. Suppress once `underway` — too aggressive. A checklist whose first step is already
+     *      satisfied advances on its own within a broadcast or two (the cooldown's does at
+     *      Mode 5), so the banner was gone before anyone could read it. Measured: the #606 check
+     *      went red on exactly that.
+     *
+     * The answer is to capture the FIRST build that actually has verdicts and then hold it. The
+     * banner answers "was it sensible to open this checklist", which is a question about ENTRY —
+     * so the answer cannot change while you run it, and a stable answer is also a stable panel
+     * height, which is what stops the scroll from being shoved. */
+    if (cklState.preconHtml === null && ck.preconditions && ck.preconditions.length) {
+      var pcH = '';
+      var pc = ck.preconditions;
+      if (pr.precond && pc.some(function (p) { return !p.met; })) {
+        var pmNow = s && s.true_state ? s.true_state.plant_mode : null;
+        var pmTxt = (typeof pmNow === 'number' && MODE_NAMES[Math.round(pmNow)])
+          ? 'Not applicable in ' + MODE_NAMES[Math.round(pmNow)] + ' — nothing is blocked, but steps may not verify:'
+          : 'Prerequisites not met — nothing is blocked, but steps may not verify:';
+        pcH += '<div class="m-caution"><b>' + mesc(pmTxt) + '</b>';
+        for (var pj = 0; pj < pc.length && pj < pr.precond.length; pj++) {
+          if (pc[pj].met) continue;
+          var pd = pr.precond[pj];
+          pcH += '<div>✗ ' + mesc(pd.text || pd.p) + ' <span class="muted">— wants ' + mesc(pd.p) + ' ' +
+            (OPSYM[pd.op] || pd.op) + ' ' + mesc(pd.v) + ', reads ' + fmtPcObs(pc[pj].obs) +
+            (pc[pj].graded_by === 'true_state' ? ' (true value)' : '') + '</span></div>';
+        }
+        pcH += '</div>';
       }
-      h += '</div>';
+      cklState.preconHtml = pcH;
     }
+    if (cklState.preconHtml) h += cklState.preconHtml;
     for (var i = 0; i < pr.steps.length; i++) {
       var st = pr.steps[i];
       var done = !!(ck.steps_done && ck.steps_done[i]);
