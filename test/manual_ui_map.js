@@ -107,7 +107,13 @@ var STEP_UI = {
     { i: 2, view: 'board', control: 'Shutdown Bank' },
     { i: 3, view: 'board', control: 'Turbine Load' },
     { i: 4, view: 'board', control: 'Feed Pumps' },
-    { i: 5, view: 'board', control: 'Dump SP' },
+    /* i:5 (Dump SP) DELETED, not renumbered (#608 item 1, 2026-09-02): that step became an
+     * observation — it commanded the setpoint the Mode 5 initial condition already boots at, and
+     * the setpoint is inert in this mode anyway. An obs step carries no `control`, so it owns no
+     * row here. The step keeps its ARRAY position, so i:6/i:7/i:9 below are unchanged: this map
+     * has been broken three times by INSERTING a step and re-deriving instead of renumbering
+     * (run_all.js records the six-mismatch cascade), and a deletion is the safe direction only if
+     * you resist the urge to close the gap. */
     { i: 6, view: 'board', control: 'Pressure SP' },
     { i: 7, view: 'board', control: 'Accumulator valve' },
     { i: 9, view: 'board', control: 'Pressure SP' },

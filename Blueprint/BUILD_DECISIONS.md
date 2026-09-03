@@ -45,6 +45,70 @@ where the two differ or where judgment was exercised.
 
 ---
 
+## 2026-09-02-develop-c — #608: the heatup checklist authored a TRANSIT as an arrival
+
+Owner playtest of the Mode 5 → Mode 3 live checklist, three items on steps 6/7/8, one a BLOCKER.
+All three are defects in the **checklist artifact** — the plant is correct in every case, which is
+what the ruling turns on.
+
+**Measured, the whole basis in one table.** Mode 5 boots `steam_dump_setpoint = 7.03` MPa (the
+value step 6 commanded) and `pressure_setpoint = 2.5` MPa = 363 psi (so step 7's "DOWN" is UP by
+1337 psi). On the authored ride the accumulator window OPENS at T+34.8 min (665 psia, the cover
+gas) and SHUTS at T+97.4 min (1615 psia, the 1600 psig power lock), and the plant then **parks at
+1713 psia — above the lock**. The dial floor is 1700 psia, **85 psi above the lock**, so no
+setpoint the player can dial parks the plant inside the window; the refusal's own instruction
+("Depressurize below 1600 psig first") named a control that refuses again. And across the entire
+climb **not one accumulator alarm fires** — the only alarm between 665 and 1615 psia is
+`rhr_not_aligned` at 591 psia, and `accum_aligned` is the opposite polarity.
+
+**RULED: keep both sourced numbers, fix content** *(owner, 2026-09-02, choosing "Keep both
+numbers; fix content" over raising the lock or lowering the dial floor)*. The 1600 psig lock is
+Ginna TS Bases B 3.5.1 verbatim; the 1700 psig floor is WTSM 10.2's operator span (ML11223A287),
+already carrying a ruling that it stays. **They are consistent in a real plant precisely because a
+real crew arms the accumulators DURING the climb** — the window is a transit, and the checklist
+had written it as something you do on arrival.
+
+**Both alternatives were costed and measured first, so they are not re-litigated.** Raising the
+lock to 1750 psig clears the blocker by 55 psi against a park point that moves with any
+pressurizer retune, breaks the cooldown's isolate-on-the-way-down window, and puts accumulator
+handling above the 1701 psig SI arming pressure. Lowering the dial floor genuinely works — floor
+1450 / stage 1500 parks at 1513 psia inside the window and still never crosses P-11 — at
+**16.8 °F of subcooling margin (72.9 → 56.1 °F)**, a sourced span, and the cooldown's Tier A
+lesson that the dial has a bottom. The minimal 1600 variant parks **1.7 psi** inside the lock and
+was rejected as a fixture on a cliff.
+
+**Built.** (1) Step 6 → an observation naming the **CLOSE** button, graded on
+`steam_dump_valve_pct`; the setpoint command is dropped because it is inert in Mode 5 (dump
+controller in `'off'`, setpoint read only in `'pressure'` mode, which no cold-start path selects).
+(2) Step 7 says **UP from 363 psi**, and states the clock. (3) Step 8 reads as a transit with the
+measured window, and the refusal now names the recovery that works — heaters MANUAL and off, spray
+held open. (4) `admin_lock_psig`, defined in `pwr2_eccs.js` beside the sourced quote and **read
+nowhere**, is now what the shell enforces; the literal `1600` and its two copies inside the message
+string are gone.
+
+**A fourth defect, not reported, found while measuring.** Step 7 accepted at 609 psia against a
+665 psia cover gas, so a player taking the tick as permission for step 8 opened the valve **below
+the cover gas** — accepted, no refusal, and measured: inventory **100 % → 97.2 %**, boron
+**918 → 940 ppm**. Acceptance raised to 4.7 MPa.
+
+**Gated.** `run_checklist_pwr2` 110 → 113, both new checks proven discriminating by reverting each
+defect. 2e is general (any pressure-threshold step immediately followed by the accumulator step
+must accept above the cover gas) and reads `ACC.p0_mpa` from the engine rather than retyping it;
+2f asserts the **live thrown** message. `run_manual_controls` 532 → 530 — one deletion (an obs step
+owns no `STEP_UI` row), tail indices deliberately left alone.
+
+**THE TRAP.** A step's tick is read as permission for the NEXT step, so an acceptance threshold is
+a safety statement about its **successor**, not only about itself. 609 psia was defensible about
+step 7 and wrong as the thing releasing the player into step 8 — and **the replay structurally
+cannot find it**, because a `hold:` long enough to be realistic always masks the acceptance
+underneath. That is why the check is static and about the artifact.
+
+**Left open — #609.** The manuals document the cover gas as 600 psi in eight places (04, 05, 12,
+including 12's trust-class table at trust High). That is `p_min_mpa`, read nowhere; the tank runs
+on `p0_mpa` at 665 psia. Both `[sourced]`, so it needs an evidence pass and one whole sweep — the
+edit was started and backed out rather than ship a manual set with two answers. The step quotes the
+measured figure and the gate reads the constant, so both follow the resolution.
+
 ## 2026-09-02-develop-b — #606: the checklist list was a cache keyed on everything except its subject
 
 **Reported** *(OWNER, playtest)*: "when I started up in mode 5 the mode 5 checklist was greyed out

@@ -1153,19 +1153,93 @@
           control: 'Feed Pumps', target: 'main feed pumps running, Feed AUTO engaged',
           cmd: { action: 'set_feed_coupled', active: true }, hold: 5,
           hl: ['SG Feed AUTO', 'SG Level'] },
-        { text: 'Set the Steam Dump Setpoint to the no-load anchor — 1020 psi (7.03 MPa) — so the secondary bottles up with the heatup instead of dumping it. Leave the dump shut.',
-          control: 'Dump SP', target: '1020 psi (7.03 MPa)',
-          cmd: { action: 'set_steam_dump_setpoint', mpa: 7.03 }, hold: 5,
+        /* A CONFIRMATION, NOT AN ACTION *(OWNER, 2026-09-02 playtest, #608 item 1: "doesnt make
+         * sense, dump setpoint starts in mode 5 at the setpoint the step asks for. the step then
+         * says to leave the dump shut. There is no 'dump shut' button so this is confusing. it
+         * should say the exact button to press (if any)")*.
+         *
+         * Both halves were already true at boot, and the step named neither of them by the words
+         * that are on the board. Measured on the Mode 5 initial condition: `steam_dump_setpoint`
+         * boots at 7.03 MPa — the exact value this step commanded — so the command was a no-op.
+         * And the shut affordance does exist: it is the CLOSE button on the STEAM DUMP card
+         * (imrppqxggbj), already the lit one, with the status readout beside it saying MANUAL.
+         * Three words on the board for one state, and the step used a fourth.
+         *
+         * THE SETPOINT IS ALSO INERT IN THIS MODE, which is why moving the initial condition to
+         * give the step something to do was DECLINED *(owner ruling, 2026-09-02, choosing
+         * "Rewrite as a confirmation" over "Change the Mode 5 dump setpoint")*: 7.03 MPa is the
+         * plant's sourced Ginna 1005 psig no-load anchor and content does not drive physics (HR9)
+         * — and the player would see no effect anyway. The cold plant boots `dump_mode: 'off'`
+         * (pwr2_engine.js dcDrivers), and the setpoint is read ONLY in 'pressure' mode
+         * (pwr2_dumpctl.js); nothing reachable from a cold start selects that mode, because the
+         * shell maps set_steam_dump auto->'tavg' and closed->'off' only. So the box changes
+         * nothing here whatever it is set to.
+         *
+         * Graded on `steam_dump_valve_pct`, the DEMAND the valve is actually carrying — not on
+         * the setpoint, which this step no longer touches and which would check off identically
+         * on a dumping plant. */
+        { text: 'Confirm the steam dump is SHUT — the CLOSE button on the STEAM DUMP card is already the selected one — and that the Steam Dump Setpoint reads the no-load anchor, 1020 psi (7.03 MPa).',
+          why: 'The anchor is where the secondary will bottle up to during the ride, and bottling it up is what sends the pumps\' heat into the plant instead of out through the condenser. Nothing needs pressing here: the cold lineup ships the dump in manual-closed. Note the reading beside the buttons says MANUAL — that is the dump in hand and shut, which is what you want. On this plant the setpoint box only reaches the valve once AUTO is selected, and that happens on the startup path, not this one.',
+          acc: { p: 'steam_dump_valve_pct', op: '<', v: 1 },
           hl: ['Dump SP', 'Steam Dump'] },
-        { text: 'Start the pressurization — dial the Pressurizer Pressure Setpoint DOWN to its 1700 psig floor, the bottom of the dial. NOT 2235 psi yet; that comes after the ride. Watch the residual heat removal (RHR) suction auto-isolate on the way past 585 psig.',
-          why: 'WHY IN TWO STAGES, AND WHY THIS ONE STOPS AT 1700 psig: the first stage stays below the P-11 permissive — the pressure interlock at 1972 psia that re-arms the safety-injection signals — and the last stretch waits for a hot secondary, which is the step after the ride. The accumulator window in the next step opens about 33 plant-minutes from this command.\n\nPressure is the subcooling guarantee — but completing it from cold is the trap on this plant. The cold lineup ships the safety-injection actuation signals BLOCKED (taken on the last cooldown, permitted only below P-11), and climbing past P-11 auto-reinstates them. Dial 2235 now and the primary crosses P-11 while the steam generator is still cold — below the 327.7 psia low-steam-pressure SI setpoint — so the reinstate exposes a STANDING safety-injection signal on a healthy plant: SI actuates, the heaters shed to the emergency-bus lineup, and the pressurization dies ~300 psi short (measured full-stack 2026-08-31: SI at the P-11 crossing, cause low steam pressure, heaters 157.8 kW → 0). Staging the setpoint below P-11 until the secondary is hot is exactly the coordination a real heatup curve enforces. Measured pace at full heaters: 600 psig at ~33 min, 1000 psig at ~72 min from this command.',
-          control: 'Pressure SP', target: '1700 psig (the dial floor); pressure climbing',
-          wait_hint: 'The climb to 600 psig takes ~33 plant-minutes — run at Fast time and come back for the accumulator window.',
+        /* "UP", NOT "DOWN" *(OWNER, 2026-09-02 playtest, #608 item 2: "Step 7 says to dial the
+         * pressurizer pressure setpoint DOWN to its 1700 psig floor. the problem is the mode 5
+         * pressure set point is 363 so you are actually driving it UP not down")*. Measured: the
+         * Mode 5 initial condition seeds `pressure_setpoint` at 2.5 MPa = 363 psi, so the dial
+         * goes UP by 1337 psi. The word was inherited from the COOLDOWN, where the plant genuinely
+         * comes down onto the same floor — and the floor is why the seed can sit under it at all:
+         * 363 psi is a constructor seed (a standing lineup), not a dialled value, so it never met
+         * the clamp. Touch the dial once and you are inside the 1700-2500 psig span for good.
+         *
+         * AND THE ACCEPTANCE MOVED, 4.2 -> 4.7 MPa (609 -> 682 psia). This step used to check off
+         * at 609 psia while the accumulator cover gas measures 665 psia, so a player who took the
+         * tick as permission to do the next step opened the valve BELOW the cover gas — accepted,
+         * no refusal, and measured over the following 5 plant-minutes: accumulator inventory
+         * 100 % -> 97.2 % and boron 918 -> 940 ppm. An unplanned boration and an accumulator under
+         * its inventory, by following the checklist. The replay never saw it because `hold: 2400`
+         * dominates the acceptance. 4.7 MPa clears the measured cover gas by 17 psi. */
+        { text: 'Start the pressurization — dial the Pressurizer Pressure Setpoint UP from its cold 363 psi seed to the 1700 psig floor, the BOTTOM of the dial\'s span. NOT 2235 psi yet; that comes after the ride. Watch the residual heat removal (RHR) suction auto-isolate on the way past 585 psig. A clock starts here: the accumulator window in the next step opens ~35 plant-minutes from this command and shuts ~63 minutes after that.',
+          why: 'WHY IN TWO STAGES, AND WHY THIS ONE STOPS AT 1700 psig: the first stage stays below the P-11 permissive — the pressure interlock at 1972 psia that re-arms the safety-injection signals — and the last stretch waits for a hot secondary, which is the step after the ride. The accumulator window in the next step opens about 35 plant-minutes from this command and shuts about 63 minutes later, when pressure passes the 1600 psig valve-power lock — arm them ON THE WAY PAST, which is what a real crew does and what makes the two sourced numbers coexist.\n\nPressure is the subcooling guarantee — but completing it from cold is the trap on this plant. The cold lineup ships the safety-injection actuation signals BLOCKED (taken on the last cooldown, permitted only below P-11), and climbing past P-11 auto-reinstates them. Dial 2235 now and the primary crosses P-11 while the steam generator is still cold — below the 327.7 psia low-steam-pressure SI setpoint — so the reinstate exposes a STANDING safety-injection signal on a healthy plant: SI actuates, the heaters shed to the emergency-bus lineup, and the pressurization dies ~300 psi short (measured full-stack 2026-08-31: SI at the P-11 crossing, cause low steam pressure, heaters 157.8 kW → 0). Staging the setpoint below P-11 until the secondary is hot is exactly the coordination a real heatup curve enforces. Measured pace at full heaters: 600 psig at ~33 min, 1000 psig at ~72 min from this command.',
+          control: 'Pressure SP', target: '1700 psig (the dial floor, dialled UP from 363 psi); pressure climbing',
+          wait_hint: 'The climb takes ~35 plant-minutes to reach the accumulator cover gas — run at Fast time and COME BACK, because the window shuts ~63 minutes after it opens and nothing annunciates it.',
           cmd: { action: 'set_pressure_setpoint', mpa: 11.72 }, hold: 2400,
-          acc: { p: 'pressure_mpa', op: '>', v: 4.2 },
+          acc: { p: 'pressure_mpa', op: '>', v: 4.7 },
           hl: ['Pressure SP', 'Primary Pressure'] },
-        { text: 'Re-align the Safety Injection accumulators NOW, inside the window: pressure is past their 600 psi cover gas and must still be below the 1600 psig valve-power lock. Nothing opens them for you.',
-          why: 'THE WINDOW, measured on this plant: about 33 to about 104 plant-minutes from the Pressure SP command, and the operating licence (LCO 3.5.1) wants them OPERABLE by 1000 psig — about 72 minutes.\n\nThe accumulators are the passive half of emergency injection — big tanks of borated water behind a check valve, pushed by nitrogen. Cold lineups isolate them (they would dump into a depressurized plant); at power they must be armed. Above 1600 psig the plant removes power from the valve operator (an administrative lock, TS Bases B 3.5.1), so miss the window and you cannot arm them until the next cooldown.',
+        /* THE WINDOW IS A TRANSIT, AND THE NUMBERS WERE STALE *(OWNER, 2026-09-02 playtest, #608
+         * item 3, filed as a BLOCKER: "I couldnt open the valve, something was blocking it and the
+         * step wasnt clear as to what i need to do")*.
+         *
+         * Two sourced numbers bound this window and BOTH STAY *(owner ruling, 2026-09-02, choosing
+         * "Keep both numbers; fix content" over raising the lock or lowering the dial floor)*: the
+         * 1600 psig power lock is Ginna TS Bases B 3.5.1 quoted verbatim in pwr2_shell.js, and the
+         * 1700 psig dial floor is WTSM 10.2's operator span (ML11223A287), which already carries a
+         * ruling that it stays. They are consistent in a real plant precisely BECAUSE a real crew
+         * arms the accumulators during the climb rather than at the park point.
+         *
+         * What was wrong is that this step read as something you do once you have arrived. Measured
+         * on the authored ride: the window opens at T+34.8 min (665 psia) and shuts at T+97.4 min
+         * (1615 psia), and the plant then PARKS at 1713 psia — above the lock, permanently. The
+         * step's own prose said "about 33 to about 104 plant-minutes", which is wrong at both ends,
+         * and quoted a "600 psi cover gas" that is `p_min_mpa` in pwr2_eccs.js — a constant that is
+         * READ NOWHERE. The tank's LIVE pressure comes from `p0_mpa` and measures 665 psia.
+         *
+         * The step now states the measured 665 psia rather than a nominal design figure, because
+         * the two disagree ACROSS THE MANUAL SET and that is not this issue's to settle: the
+         * manuals document a "600 psi cover gas" in eight places (04, 05, 12 — including 12's
+         * trust-class table, which lists it as a structural real-plant setpoint), while the engine
+         * carries BOTH numbers as sourced — p0_mpa at 650 psig normal cover pressure (WTSM T5.2-2,
+         * live) and p_min_mpa at 600 psig minimum (dead). Which is this plant's belongs to an
+         * evidence pass; filed separately. What is not in doubt is the measurement, so that is what
+         * the step quotes.
+         *
+         * And measured across the whole climb, not one accumulator alarm comes in: the only alarm
+         * between 665 and 1615 psia is rhr_not_aligned at 591 psia, and the existing accum_aligned
+         * row is the opposite polarity (it fires when the valve is OPEN below 1000 psi), so it can
+         * never say the window is closing. Until a board cue exists, the step's words are the only
+         * warning there is — which is why the clock is stated three times (here, in step 7's text,
+         * and in its wait_hint) rather than once. */
+        { text: 'Re-align the Safety Injection accumulators NOW, on the way past: pressure is above their cover gas — 665 psia on this plant — and must still be below the 1600 psig valve-power lock. Nothing opens them for you, and nothing warns you when the window shuts.',
+          why: 'THE WINDOW, measured on this plant: it OPENS at 34.8 plant-minutes from the Pressure SP command (665 psia, the cover gas) and SHUTS at 97.4 minutes (1615 psia, the power lock) — about 63 minutes wide. The operating licence (LCO 3.5.1) wants them OPERABLE by 1000 psig, about 72 minutes in.\n\nThis is a TRANSIT action, not an arrival one. The ride parks the plant at ~1695 psig, ABOVE the lock, so the window does not wait for you — and no setting of the Pressure SP dial would keep it open, because the dial bottoms out at 1700 psig, 85 psi above the lock. Miss it and the recovery is a manual depressurization: heaters to MANUAL and off, spray held open, back down through 1600 psig.\n\nThe accumulators are the passive half of emergency injection — big tanks of borated water behind a check valve, pushed by nitrogen. Cold lineups isolate them (they would dump into a depressurized plant); at power they must be armed. Above 1600 psig the plant removes power from the valve operator (an administrative lock, TS Bases B 3.5.1), so miss the window and you cannot arm them until the next cooldown.',
           control: 'Accumulator valve', target: 'accumulators armed',
           cmd: { action: 'open_accumulator_valve' }, hold: 10,
           acc: { p: 'accumulator_valve_open', op: '>', v: 0 },

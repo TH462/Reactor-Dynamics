@@ -171,6 +171,63 @@ if (!only) {
        Object.keys(mapKeys).length >= 20 && missing.length === 0,
        missing.length ? 'MISSING: ' + missing.join(', ') : Object.keys(used).length + ' params covered');
   })();
+
+  /* 2e. A STEP'S TICK IS PERMISSION FOR THE NEXT STEP (#608 item 4, 2026-09-02).
+   *
+   * Not reported by the owner — found while measuring item 3. The heatup's Pressure SP step
+   * accepted at 4.2 MPa (609 psia) while the accumulator cover gas measures 665 psia, so a player
+   * who took that tick as permission to do the NEXT step opened the valve below the cover gas.
+   * There is no refusal for that — it is accepted, and measured over the following 5 plant-minutes
+   * the tank backfeeds the primary: accumulator inventory 100 % -> 97.2 %, boron 918 -> 940 ppm.
+   * An unplanned boration and an accumulator under its inventory, by following the checklist.
+   *
+   * THE REPLAY CANNOT SEE THIS, which is why the check is here and static. The harness issues a
+   * step's command at step START and step 7 carries `hold: 2400` (40 min), so the dwell always
+   * dominates the acceptance and the ride never stands where the defect is. The claim is about the
+   * ARTIFACT — what the checklist tells the player is enough — so it is asserted against the
+   * artifact, with the threshold read from the ENGINE rather than retyped (the #557 class: a check
+   * that carries its own copy of a constant agrees with a stale board).
+   *
+   * It is written generally: any step whose acceptance is a primary-pressure threshold, and which
+   * is IMMEDIATELY followed by a step that opens the accumulators, must accept above the cover
+   * gas. That way re-authoring the pool cannot slide the pair apart unnoticed. */
+  (function () {
+    var ACC = RD.pwr2 && RD.pwr2.eccs && RD.pwr2.eccs.ACC;
+    var cover = ACC && ACC.p0_mpa;
+    var pairs = 0, bad = [];
+    POOL.forEach(function (proc) {
+      (proc.steps || []).forEach(function (st, i) {
+        var next = (proc.steps || [])[i + 1];
+        if (!next || !next.cmd || next.cmd.action !== 'open_accumulator_valve') return;
+        if (!st.acc || st.acc.p !== 'pressure_mpa') return;
+        pairs++;
+        if (!(st.acc.v > cover)) {
+          bad.push(proc.id + ' step ' + (i + 1) + ': accepts at ' + (st.acc.v * 145.038).toFixed(0) +
+                   ' psia, cover gas ' + (cover * 145.038).toFixed(0) + ' psia');
+        }
+      });
+    });
+    ck('a step whose tick leads straight into the accumulator step accepts ABOVE the cover gas (#608)',
+       !!cover && pairs >= 1 && bad.length === 0,
+       bad.length ? bad.join(' | ')
+                  : pairs + ' pair(s); cover gas ' + (cover * 145.038).toFixed(0) + ' psia (engine ACC.p0_mpa)');
+  })();
+
+  /* 2f. THE REFUSAL NAMES A TOOL THE PLAYER HAS (#608 item 3). The lock's message used to end
+   * "Depressurize below 1600 psig first" — which the Pressure SP dial cannot do, because its
+   * sourced floor is 1700 psig, 85 psi ABOVE the lock. A refusal that sends you to a control that
+   * refuses you again is the dead-end shape #509 is the record of. Asserted on the LIVE thrown
+   * message, not on the source: the point is what reaches the player. */
+  (function () {
+    var svc = mkSvc('hot_full_power');
+    for (var i = 0; i < 5; i++) svc.tick();
+    var msg = '';
+    try { svc.handleCommand({ action: 'open_accumulator_valve' }); }
+    catch (e) { msg = String((e && e.message) || e); }
+    ck('the accumulator lock refusal names the heaters/spray recovery, not just "depressurize" (#608)',
+       /power is removed/i.test(msg) && /heaters/i.test(msg) && /spray/i.test(msg),
+       msg ? msg.slice(0, 150) : 'NO REFUSAL THROWN at full power');
+  })();
 }
 
 console.log('\n' + '='.repeat(74));

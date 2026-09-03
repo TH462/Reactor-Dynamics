@@ -30,6 +30,27 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
 
 ## [Unreleased]
 
+### Fixed (#608: the Mode 5 heatup checklist's steps 6-8)
+
+- **The steam-dump step asked you to set a value the plant was already at, and named a button that
+  is not there.** Mode 5 boots with the dump setpoint already on the 1020 psi no-load anchor, and
+  the shut control is labelled **CLOSE** — already the selected one. It is now a confirmation that
+  names the actual button.
+- **"Dial the Pressurizer Pressure Setpoint DOWN to its 1700 psig floor" was backwards.** From Mode
+  5 the setpoint sits at 363 psi, so the dial goes **UP**, by 1337 psi.
+- **BLOCKER: the accumulator step could not be done where the checklist put it.** The window to arm
+  the safety-injection accumulators opens at 665 psia and shuts at the 1600 psig valve-power lock —
+  measured, 34.8 to 97.4 minutes from the pressurization command — and the ride then parks the
+  plant at 1695 psig, above the lock. Nothing annunciates the window, and the dial's own floor is
+  1700 psig, so the refusal's advice to "depressurize below 1600 psig first" named a control that
+  refuses you again. The steps now read as what a real crew does — arm them **on the way past** —
+  with the measured clock stated, and the refusal names the depressurization that actually works
+  (heaters to MANUAL and off, spray held open). Both real-plant setpoints are unchanged.
+- **The checklist told you to open the accumulators below their cover gas.** The pressurization step
+  checked off at 609 psia while the tanks sit at 665 psia, so following it literally discharged them
+  into the primary — measured, 100 % to 97.2 % inventory and 22 ppm of unplanned boration. The step
+  now checks off above the cover gas.
+
 ### Fixed (#606: the Checklists tab described the plant you BOOTED, not the one you are in)
 
 - **Starting in Cold Shutdown (Mode 5) greyed the Mode 5 heatup and left the at-power legs

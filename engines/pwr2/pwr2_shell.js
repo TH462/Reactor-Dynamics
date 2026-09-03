@@ -52,13 +52,32 @@
    * restored so that the valves can be closed"]. Power removed means the motor cannot move
    * the valve in EITHER direction — both commands refuse, out loud (#505), while INDICATED
    * pressurizer pressure (HR1, the M-2 lesson; absent means truth) is above the lock. */
+  /* THE LOCK READS ITS OWN NAMED CONSTANT (#608). `admin_lock_psig` was defined in pwr2_eccs.js
+   * beside the same sourced quote and read NOWHERE, while this function carried the literal 1600
+   * and the message string carried it twice more — three copies of one sourced number, which is
+   * the written-down-twice class the standing trap list names. One home now; the message builds
+   * its figures from it.
+   *
+   * THE REFUSAL NAMES A TOOL THE PLAYER HAS *(OWNER, 2026-09-02 playtest, #608 item 3: "I tried
+   * to lower the pressure to 1500 but it would not let me lower it below 1700psi. should we block
+   * the player from controlling this pressure at this point? why cant i lower it below 1700
+   * psi?")*. It used to end "Depressurize below 1600 psig first" — an instruction the Pressure SP
+   * dial CANNOT carry out, because its sourced WTSM 10.2 floor is 1700 psig, 85 psi above this
+   * lock. So the refusal sent the player to a control that refuses them again, silently. It now
+   * names the depressurization that actually works, the same one the Scanner card and the cooldown
+   * checklist already teach: heaters off, spray held open. */
+  var ACC_LOCK_PSIG = (RD.pwr2 && RD.pwr2.eccs && RD.pwr2.eccs.ACC
+                       && RD.pwr2.eccs.ACC.admin_lock_psig) || 1600;
   function accValve(e, open) {
     var psig = (e.ins.reading.primary_pressure !== undefined
                 ? e.ins.reading.primary_pressure : e.sys.P) * 145.038 - 14.7;
-    if (psig > 1600) {
+    if (psig > ACC_LOCK_PSIG) {
       throw new Error('ACCUMULATOR VALVE BLOCKED: power is removed from the valve operator ' +
-        'above 1600 psig pressurizer pressure (administrative lock, TS Bases B 3.5.1) — ' +
-        'indicated ' + psig.toFixed(0) + ' psig. Depressurize below 1600 psig first.');
+        'above ' + ACC_LOCK_PSIG + ' psig pressurizer pressure (administrative lock, ' +
+        'TS Bases B 3.5.1) — indicated ' + psig.toFixed(0) + ' psig. The Pressure SP dial ' +
+        'floors at 1700 psig and cannot take you back down: to get under the lock, put the ' +
+        'pressurizer heaters in MANUAL and off, then hold spray open until pressure is below ' +
+        ACC_LOCK_PSIG + ' psig.');
     }
     EN.command(e, 'accumulator_valve', open);
   }

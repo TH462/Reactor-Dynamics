@@ -22,6 +22,34 @@ the evidence to put it back** — say so in the session log rather than quietly 
 
 ---
 
+## Evicted 2026-09-02b (a THEMES-rotation eviction — the #244/#526 checklist-replay bullet, out for #608's)
+
+Not a standing-list eviction: the standing list is at its 25-bullet cap and `CLAUDE.md` sits one
+word inside its 15,000. **This one is a REPLACEMENT rather than a plain eviction** — #608's bullet
+is about the same subject and corrects a limit in this one, so keeping both would have said the
+replay is the authority twice and the exception once.
+
+> **A CHECKLIST'S REPLAY IS THE AUTHORITY ON WHETHER IT FITS THE PLANT — AND A STEP WHOSE COMMAND
+> NEEDS A MID-STEP STATE CANNOT BE ONE STEP** (2026-08-31, #244/#526). Aliasing the retired pool
+> onto pwr2 was refuted by riding it: the 912-currency rod bursts overrun the 200-step bank, four
+> commands are REFUSED, and the cooldown's dialed depressurization parks at the Pressure SP's
+> 1700 psig floor. The harness issues a step's command at step START, so the accumulator-window and
+> align-under-spray steps split into ride-then-act pairs — also the honest operator order (shutting
+> spray first bounces pressure back over the RHR permissive).
+
+**Both halves survive.** The ride-then-act idiom is now built into the shipped pool and gated by
+`run_checklist_pwr2`, which replays all six chain checklists end to end — get it wrong and a runner
+reds, which is the eviction criterion exactly. The "replay is the authority" half is carried
+forward in the #608 bullet **with its limit attached**: it is the authority on whether a checklist
+FITS the plant, and it is structurally blind to whether a step's tick is safe permission for the
+next step, because a `hold:` long enough to be realistic always masks the acceptance underneath it.
+
+**The half worth carrying, if you only read one line:** a harness that issues each step's command
+at step START can only ever test the commands, never the gaps between them — and the gaps are where
+a human operator actually lives.
+
+---
+
 ## Evicted 2026-09-02 (a THEMES-rotation eviction — the #596 flicker bullet, out for #606's)
 
 Not a standing-list eviction, and for the same reason as the two entries below: the standing list

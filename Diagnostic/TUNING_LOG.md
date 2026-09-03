@@ -29,6 +29,125 @@ and the user-visible summary in `CHANGELOG.md`. This file points at those and tr
 
 ---
 
+## Session log — 2026-09-02-develop-c (#608 — the heatup checklist's three steps, and the tick that was permission to dump the accumulators)
+
+**Ask** *(OWNER, playtest of the Mode 5 → Mode 3 live checklist)*: three items on steps 6/7/8, one
+filed as a BLOCKER. All three are defects in the **checklist artifact**; the plant is correct in
+every case.
+
+### Item 1 — step 6 commanded a value the plant already held
+
+Measured: the Mode 5 initial condition boots `steam_dump_setpoint = 7.03` MPa and the step
+commanded **7.03 MPa**. A no-op. The shut affordance exists and is labelled **CLOSE**, already the
+lit button, with the status readout beside it reading **MANUAL** — three words on the board for one
+state and the step used a fourth.
+
+**Why moving the initial condition was declined** *(owner ruling, choosing "Rewrite as a
+confirmation")*: the setpoint is **inert in Mode 5**. The cold plant boots `dump_mode: 'off'` and
+the setpoint is read only in `'pressure'` mode, which nothing reachable from a cold start selects
+(the shell maps `set_steam_dump` auto→'tavg' and closed→'off' only). The box changes nothing here
+whatever it holds — and 7.03 MPa is the sourced Ginna 1005 psig no-load anchor besides. Step 6 is
+now an observation graded on `steam_dump_valve_pct`, the demand the valve actually carries.
+
+### Item 2 — "DOWN" was wrong by 1337 psi
+
+Measured: Mode 5 seeds `pressure_setpoint` at 2.5 MPa = **363 psi**, so the dial goes **UP**. The
+word came from the cooldown, where the plant genuinely descends onto the same floor. The seed can
+sit under the floor because it is a constructor value — a standing lineup, not a dialled one — so
+it never met the clamp; touch the dial once and you are inside the 1700–2500 psig span for good.
+
+### Item 3 (BLOCKER) — the checklist parked the plant on the wrong side of a window it needed
+
+| event | when | pressure |
+|---|---|---|
+| Pressure SP commanded to the floor | T+0 | 363 psia |
+| crosses the cover gas — window OPENS | **T+34.8 min** | 665 psia |
+| crosses the 1600 psig lock — window SHUTS | **T+97.4 min** | 1615 psia |
+| plant parks | — | **1713 psia (1695 psig)** |
+
+The park point is above the lock, and the dial floor (1700 psia) is **85 psi above the lock**, so
+no setpoint the player can dial parks the plant inside the window. The refusal then said
+*"Depressurize below 1600 psig first"* — which that dial cannot do. The step's own figures were
+wrong at both ends ("about 33 to about 104 plant-minutes").
+
+**And nothing annunciates it.** Measured across the whole climb, the only alarm between 665 and
+1615 psia is `rhr_not_aligned` at 591 psia; the existing `accum_aligned` row is the opposite
+polarity (it fires when the valve is OPEN below 1000 psi).
+
+**Both sourced numbers stay** *(owner ruling, "Keep both numbers; fix content")*: the 1600 psig
+lock is Ginna TS Bases B 3.5.1 verbatim and the 1700 psig floor is WTSM 10.2 (ML11223A287). They
+coexist in a real plant **because a real crew arms the accumulators during the climb** — it is a
+transit action, and the checklist had authored it as an arrival one. Steps 7 and 8 now say so, the
+clock is stated three times, and the refusal names the tool that works (heaters MANUAL and off,
+spray held open).
+
+**Costed before the ruling, so it is not re-litigated.** Raising the lock to 1750 psig clears the
+blocker by only 55 psi against a park point that moves with any pressurizer retune, breaks the
+cooldown's isolate-on-the-way-down window, and puts accumulator handling above the 1701 psig SI
+arming pressure. Lowering the dial floor *does* work — measured, floor 1450 / stage 1500 parks at
+1513 psia, inside the window, still never crossing P-11 — but costs **16.8 °F of subcooling
+margin (72.9 → 56.1 °F)** and a sourced span. The 1600 variant parks **1.7 psi** inside the lock
+and was rejected as a cliff.
+
+### Item 4 — not reported: the tick was permission to dump the accumulators
+
+Step 7 accepted at **609 psia**; the cover gas is **665 psia**. A player taking that tick as
+permission for step 8 opened the valve below the cover gas — **accepted**, no refusal — and
+measured over the next 5 plant-minutes the tank backfeeds: inventory **100 % → 97.2 %**, boron
+**918 → 940 ppm**. Acceptance raised to 4.7 MPa (682 psia).
+
+### Gates
+
+`run_checklist_pwr2` **110 → 113**; both new checks proven discriminating by reverting each
+defect. **2e** is written generally (any pressure-threshold step immediately followed by the
+accumulator step must accept above the cover gas) and reads `ACC.p0_mpa` from the engine rather
+than retyping it. **2f** asserts the **live thrown** refusal, not the source.
+`run_manual_controls` **532 → 530** — one deletion, not two regressions: an obs step carries no
+`control`, so its `STEP_UI` row went with it (one mapping + one coverage check). Row deleted, tail
+indices left alone; that map has been broken three times by re-deriving instead.
+
+Also `admin_lock_psig` was defined in `pwr2_eccs.js` beside the sourced quote and **read nowhere**
+while the shell carried the literal `1600` and its message carried it twice more. One home now.
+
+### The trap
+
+**A step's tick is read as permission for the NEXT step, so an acceptance threshold is a safety
+statement about its successor, not only about itself.** 609 psia was perfectly defensible as a
+statement about step 7 — pressure climbing, RHR isolated. It was wrong as the thing that releases
+the player into step 8. Nothing in the artifact expresses that coupling, and **the replay
+structurally cannot find it**: a `hold:` long enough to be realistic always masks the acceptance
+underneath it, which is why the check had to be static and about the artifact.
+
+### A trap found by backing out: REVERTING A `Manuals/` EDIT DOES NOT REVERT THE PACKED COPY
+
+`tools/hook_repack_manuals.js` is a PostToolUse hook: edit any `Manuals/*.md` and it immediately
+repacks the set into `ui/manual_md.js`, the in-app copy the sim actually renders. **`git checkout`
+does not re-trigger it** — it is not a tool edit. So reverting the source left `ui/manual_md.js`
+carrying the abandoned change, 672 bytes of it, and `git status` showed a modified generated file
+with no modified source to explain it.
+
+Nothing would have caught it: `run_manual_rev` seals digests over `Manuals/`, not over the packed
+blob, and the reverted source hashes correctly. It was found only by asking why a generated file
+was dirty rather than reverting it on sight.
+
+**If you back out a `Manuals/` edit, revert `ui/manual_md.js` in the same breath** — or re-run
+`node tools/pack_manuals.js` after the checkout, which is the version that also fixes it if you
+have already committed.
+
+### Filed, not fixed — #609
+
+The manuals document the accumulator cover gas as **600 psi in eight places** (04, 05, 12 —
+including 12's trust-class table, listed as a *structural real-plant setpoint* at trust High).
+That is `p_min_mpa`, **read nowhere**; the tank runs on `p0_mpa` at 665 psia. Both are tagged
+`[sourced]`, so which is this plant's needs an evidence pass, and a partial sweep would leave one
+manual set carrying two answers — the edit was started and backed out. The heatup step therefore
+quotes the **measured** 665 psia rather than a nominal figure, and the gate reads the engine
+constant, so both follow whichever way #609 resolves. **Careful on that sweep: the RHR suction
+valve's autoclosure interlock is ALSO 600 psi and is correct** (`04:88`, `06:497/498`, `09:235`,
+`12:471`) — five correct hits for every accumulator one, so do not sweep on the string.
+
+---
+
 ## Session log — 2026-09-02-develop-b (#606 — the checklist list was frozen at the BOOT plant)
 
 **Ask** *(OWNER, playtest)*: "when I started up in mode 5 the mode 5 checklist was greyed out

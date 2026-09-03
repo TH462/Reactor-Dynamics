@@ -439,13 +439,13 @@ ONE line, drop the rest. **A bullet is ~80 words.**
   the trip's row and `Manuals/09` shipped it. #572 then hung the C-1 stop on the power-range lever
   and **its check asserted that and passed**: with one lever, both wirings look identical.
 
-- **A CHECKLIST'S REPLAY IS THE AUTHORITY ON WHETHER IT FITS THE PLANT — AND A STEP WHOSE
-  COMMAND NEEDS A MID-STEP STATE CANNOT BE ONE STEP** (2026-08-31, #244/#526). Aliasing the
-  retired pool onto pwr2 was refuted by riding it: the 912-currency rod bursts overrun the
-  200-step bank, four commands are REFUSED, and the cooldown's dialed depressurization parks
-  at the Pressure SP's 1700 psig floor. The harness issues a step's command at step START, so
-  the accumulator-window and align-under-spray steps split into ride-then-act pairs — also the
-  honest operator order (shutting spray first bounces pressure back over the RHR permissive).
+- **A STEP'S TICK IS PERMISSION FOR THE NEXT STEP — AN ACCEPTANCE THRESHOLD IS A SAFETY CLAIM
+  ABOUT ITS SUCCESSOR, AND THE REPLAY CANNOT CHECK IT** (2026-09-02, #608). The heatup's Pressure
+  SP step accepted at 609 psia against a 665 psia accumulator cover gas; opening there is ACCEPTED
+  and backfeeds the tank — 100 % to 97.2 %, boron +22 ppm. Defensible about step 7, wrong as what
+  releases you into step 8. A realistic `hold:` masks the acceptance beneath it, refining #244's
+  "the replay is the authority": it is, for whether a checklist FITS — never for whether a tick is
+  safe.
 - **A CACHE KEY THAT OMITS WHAT THE CACHE DESCRIBES READS AS A WORKING FEATURE — AND ITS
   CONTENT IS CORRECT, FOR A PLANT THE PLAYER HAS LEFT** (2026-09-02, #606). The Checklists tab
   greyed the Mode 5 heatup on a Mode 5 board. Ranker, CSS and gate sentences were all right;
