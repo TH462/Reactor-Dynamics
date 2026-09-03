@@ -158,6 +158,42 @@ function sig(rows) {
       var cau = log ? log.querySelector('.m-caution') : null;
       return { running: !!log, text: cau ? cau.textContent : null };
     });
+    /* ---- 4. the running checklist fills its column, and owns the only scroller ---------- */
+    /* #612, owner playtest 2026-09-03: "the right column scroll window should go to the bottom of
+     * the column. There is currently an unused black space below it." #607 moved the running
+     * checklist into the CHECKLISTS pane, which is a plain content-sized `.tabpane` — so it never
+     * got the height treatment `.tabpane.instructor` has had since the transcript needed it.
+     * Measured before the fix at 1600x950: the pane ended 189 px short of the viewport and the log
+     * was capped at 456 px by `.ckl-log { max-height: 48vh }`.
+     *
+     * The threshold is a BAND, not the measured number: the gap is padding plus the tools card's
+     * own chrome, so pinning 19 px would re-red on any spacing change. 60 px is comfortably below
+     * the 189 px defect and comfortably above the chrome. */
+    var lay = await page.evaluate(function () {
+      var log = document.getElementById('cklLog');
+      var pane = document.querySelector('.tabpane[data-pane="checklists"]');
+      var chain = [], el = log;
+      while (el && el !== document.documentElement) {
+        var ov = getComputedStyle(el).overflowY;
+        if ((ov === 'auto' || ov === 'scroll') && el.scrollHeight > el.clientHeight + 1) chain.push(el.id || el.className);
+        el = el.parentElement;
+      }
+      var r = pane ? pane.getBoundingClientRect() : null;
+      return { gap: r ? Math.round(window.innerHeight - r.bottom) : null,
+               logH: log ? log.clientHeight : 0, scrollers: chain };
+    });
+    ck('the running checklist reaches the bottom of its column (#612)',
+       lay.gap !== null && lay.gap < 60,
+       'gap below the pane: ' + lay.gap + ' px (was 189 before the fix); log ' + lay.logH + ' px');
+    /* A GUARD, NOT EVIDENCE. Measured: this passes on the PRE-FIX build too — `.tab-body`'s
+     * content happened to fit, so the second scroller the layout permits never materialised.
+     * It is kept because a nested scroller is what would make the log's saved scroll position
+     * meaningless (only the log's is restored), and nothing else would notice. It can only ever
+     * catch a FUTURE regression; it is not proof that anything was fixed. */
+    ck('GUARD: the log is the only scroller in the column (#612 — passes pre-fix too)',
+       lay.scrollers.length === 1,
+       lay.scrollers.length ? lay.scrollers.join(' > ') : 'none scrollable');
+
     ck('a greyed checklist still STARTS when clicked (warn, never block)', banner.running);
     ck('and it names the mode the plant is actually in, at the top',
        !!banner.text && /Not applicable in Mode 5, Cold Shutdown/.test(banner.text),

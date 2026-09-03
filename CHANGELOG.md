@@ -32,6 +32,17 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
 
 ## [Alpha 1.7.2-rc] — 2026-09-03
 
+### Fixed (#612: the running checklist's column and its auto-scroll)
+
+- **The checklist panel now fills its column.** It had been hosted in a content-sized pane since
+  #607 moved it there, leaving 189 px of dead space below it at 1600×950 and capping the log at
+  456 px; the pane now owns its height the way the Instructor transcript's already did.
+- **The auto-scroll yields to the reader.** It fired on every step advance and was suppressed only
+  while the pointer was over the log — but while operating, the mouse is on the board, so reading
+  ahead was interrupted every time a step checked off. Scrolling the panel yourself now stops it
+  moving until you return to the active step.
+
+
 ### Fixed (#609: the manuals' accumulator cover gas)
 
 - **The operator manuals said the safety-injection accumulators sit behind a 600 psi cover gas.

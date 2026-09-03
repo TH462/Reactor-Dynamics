@@ -3304,7 +3304,8 @@
   // RD.MANUAL_PROCEDURES artifact the Instructor graded it from.
   // whyAll / whyOpen: the #244 item-2 explanation toggles (global + per-step); they
   // survive re-renders via the render key and reset with the checklist itself.
-  var cklState = { key: null, whyAll: false, whyOpen: {}, step: null, view: 'list' };
+  var cklState = { key: null, whyAll: false, whyOpen: {}, step: null, view: 'list', userScrolled: false };
+  var cklAutoScroll = false;   /* true while WE are writing scrollTop (#612) */
   /* IS THE POINTER IN THIS ELEMENT? (#605.) `:hover` cannot answer it here — the element is
    * BRAND NEW, built microseconds ago by an innerHTML rebuild, and the browser does not
    * re-run its hit test until the next mouse event or paint. So track the pointer ourselves
@@ -3341,7 +3342,7 @@
   }
   function resetCkl() {
     if (!cklState.key) return;
-    cklState = { key: null, whyAll: false, whyOpen: {}, step: null, view: 'list' };
+    cklState = { key: null, whyAll: false, whyOpen: {}, step: null, view: 'list', userScrolled: false };
     var run = $('cklRun'); if (run) { run.hidden = true; run.innerHTML = ''; }
     var row = $('instrCklRow'); if (row) row.hidden = !flagOn('checklists');
     clearCklStepGlow();
@@ -3604,7 +3605,34 @@
     });
     var log = cklScroller();
     if (log) {
+      cklAutoScroll = true;                          /* our own writes must not arm userScrolled */
       log.scrollTop = prevTop;                       /* the rebuild is invisible to the reader */
+      /* THE AUTO-SCROLL YIELDS TO A READER WHO HAS SCROLLED AWAY (#612, owner playtest
+       * 2026-09-03: "the checklist scroll window keeps bouncing to the top and back to the step.
+       * This makes it impossible to read the steps").
+       *
+       * #605 stopped the scroll happening on every REPAINT and suppressed it while the pointer
+       * was inside the log. Both were right and neither covers the reported case: the scroll
+       * still fires on every step ADVANCE, and a player reading ahead has their mouse on the
+       * BOARD — that is where the controls are — so the hover guard never engages. Each time a
+       * step ticked off, the view was yanked from wherever they were reading back to the active
+       * step, which is near the top early in a checklist. That is the whole report.
+       *
+       * So the flag is what the reader DID, not where the pointer is: once they scroll the log
+       * themselves, the checklist stops moving it until they come back to the active step. */
+      if (!log.__cklScrollBound) {
+        log.__cklScrollBound = true;
+        log.addEventListener('scroll', function () {
+          if (cklAutoScroll) return;                 /* our write, not theirs */
+          var act = log.querySelector('.ckl-active');
+          if (!act) { cklState.userScrolled = true; return; }
+          /* Back at the active step = back in step with the checklist; let it drive again. */
+          var top = act.offsetTop - log.offsetTop;
+          var visible = top >= log.scrollTop - 4 &&
+                        top + act.offsetHeight <= log.scrollTop + log.clientHeight + 4;
+          cklState.userScrolled = !visible;
+        }, { passive: true });
+      }
       /* AND SCROLL ONLY ON AN EVENT, NEVER ON A REPAINT. The active step is pulled into view
        * when the step ACTUALLY ADVANCES (or the run completes) — not every time a criteria
        * line ticks. `cklState.step` is the last step index this function drew; it resets with
@@ -3615,11 +3643,24 @@
       cklState.step = ck.step_index;
       if (!pointerInside(log)) {
         if (ck.complete) log.scrollTop = log.scrollHeight;
-        else if (!firstBuild && advanced) {
+        else if (!firstBuild && advanced && !cklState.userScrolled) {
+          /* SCROLL THE LOG, NOTHING ELSE (#612). `scrollIntoView` walks up and scrolls EVERY
+           * scrollable ancestor, so with the checklist hosted in a content-sized pane it moved
+           * `.tab-body` as well — and only the log's position is preserved across the rebuild,
+           * so the outer container snapped to the top. The pane now owns its height (ckl-mode),
+           * which removes the outer scroller; this makes the step-advance scroll incapable of
+           * reaching an ancestor even if a future layout reintroduces one. */
           var act = log.querySelector('.ckl-active');
-          if (act) act.scrollIntoView({ block: 'nearest' });
+          if (act) {
+            var top = act.offsetTop - log.offsetTop;
+            var bot = top + act.offsetHeight;
+            if (top < log.scrollTop) log.scrollTop = top;
+            else if (bot > log.scrollTop + log.clientHeight) log.scrollTop = bot - log.clientHeight;
+          }
         }
       }
+      /* The scroll event is asynchronous, so the guard has to outlive this frame. */
+      setTimeout(function () { cklAutoScroll = false; }, 0);
     }
     /* Stay on the Checklists tab (#607 item 6). startChecklist selects it; this path
      * must not yank the player to Instructor the way applyFocus(true) used to. */
@@ -4605,8 +4646,27 @@
     if (name === 'instructor') clearInstrAttention();
     // The transcript scrolls itself; every other pane is scrolled by .tab-body. See the
     // .instr-mode rule in shell.css for what goes wrong without this.
+    /* THE CHECKLISTS PANE OWNS ITS HEIGHT TOO (#612, owner playtest 2026-09-03: "the checklist
+     * scroll window keeps bouncing to the top and back to the step… the right column scroll
+     * window should go to the bottom of the column. There is currently an unused black space
+     * below it.").
+     *
+     * BOTH REPORTS ARE ONE LAYOUT DEFECT, and it is the exact defect the .instr-mode rule below
+     * already fixed for the transcript — #607 moved the running checklist into the CHECKLISTS
+     * pane, which is a plain content-sized `.tabpane`, and inherited neither half. That leaves
+     * TWO NESTED SCROLLERS: `.tab-body` (overflow-y: auto) scrolling the whole pane, and
+     * `.ckl-log` (max-height: 48vh) scrolling inside it. `scrollIntoView` scrolls EVERY
+     * scrollable ancestor, so a step advance moved both — and #605's fix preserves the log's
+     * scrollTop only, so the outer one snapped to the top and the inner one pulled the step
+     * back. That is "to the top and back to the step", once per advance.
+     *
+     * Content-sized is also why the column stops short: measured at 1600x950, the pane ended
+     * at y=724 with 226 px of dead space beneath it and the log capped at 456 px (48vh). */
     var tb = document.querySelector('.tab-body');
-    if (tb) tb.classList.toggle('instr-mode', name === 'instructor');
+    if (tb) {
+      tb.classList.toggle('instr-mode', name === 'instructor');
+      tb.classList.toggle('ckl-mode', name === 'checklists');
+    }
     // A pane that skips its work while hidden shows whatever it last painted, and on a
     // PAUSED plant no broadcast is coming to correct it. Repaint on reveal.
     if (latest) { renderPhysics(latest); renderIndications(latest); renderAutomate(latest); }

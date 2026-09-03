@@ -29,6 +29,77 @@ and the user-visible summary in `CHANGELOG.md`. This file points at those and tr
 
 ---
 
+## Session log — 2026-09-03-develop-c (#612 — the checklist column, and an auto-scroll that fought the reader)
+
+**Reported** *(OWNER, playtest)*: "Two fixes were completed then lost in the merge. 1: the
+checklist scroll window keeps bouncing to the top and back to the step. This makes it impossible
+to read the steps and is a major blocker. 2: the right column scroll window should go to the bottom
+of the column. There is currently an unused black space below it."
+
+### The premise was wrong, and checking it first was worth it
+
+**Nothing was lost in the merge.** `git diff 31cafe2 HEAD -- ui/app.js ui/shell.css ui/shell.html`
+returns only my own #606 edits as deletions; every line workbench's #607 carried is present. #607's
+parent IS #605 (`4c89a35`), so it was built on top of the scroll fix rather than beside it, and the
+`KEEP THE READER'S PLACE` block is intact in HEAD. Both reports are live defects. Had I taken the
+diagnosis at face value I would have spent the session reverting a clean merge.
+
+### Item 2 — the pane never got the height treatment
+
+#607 moved the RUNNING checklist out of the instructor pane and into the **checklists** pane, which
+is a plain content-sized `.tabpane`. `.tabpane.instructor` has owned its height since the transcript
+needed it (`.instr-mode` on `.tab-body`, `flex: 1 1 auto`, `min-height: 0`); the checklists pane
+inherited **neither half**. Measured at 1600x950: pane bottom **y=724 against a 950 px viewport,
+189 px of dead space**, log capped at **456 px** by `.ckl-log { max-height: 48vh }`. After: gap
+**19 px** (card chrome), log **628 px**. At 1366x768, 128 -> 19 px.
+
+Fixed by giving the pane the same treatment — `.ckl-mode` set on `.tab-body` by `selectTab` exactly
+as `.instr-mode` is — and lifting the 48vh cap **inside the running host only**, since the cap is
+right everywhere `.ckl-log` is content-sized.
+
+### Item 1 — the auto-scroll was fighting the reader, and I could not prove it
+
+**Three hypotheses died to measurement before the right one.** Nested scrollers (`.tab-body` +
+`.ckl-log`) — refuted: the pre-fix build reports ONE scroller at both viewports, `.tab-body`'s
+content happened to fit. `revealControl` — reads tiles, never scrolls. The tour's smooth
+`scrollIntoView` — different subsystem.
+
+What fits the words is the auto-scroll itself. It fires on every step **ADVANCE**, and #605
+suppressed it only while `pointerInside(log)`. **When you are operating, the mouse is on the
+BOARD** — that is where the controls are — so the hover guard never engages. Each check-off yanked
+the view from wherever the player was reading back to the active step, which early in a checklist
+is near the top: "to the top and back to the step", once per advance.
+
+The auto-scroll now yields to the reader: a `userScrolled` latch, armed by any scroll of the log we
+did not perform ourselves (`cklAutoScroll` guards our own writes), disarmed when the player brings
+the active step back into view. `scrollIntoView` also replaced with an explicit log-scoped scroll,
+because it walks up and scrolls EVERY scrollable ancestor and only the log's position is restored.
+
+**NOT PROVEN, and said so at the time.** Three attempts to drive a live step advance in the
+headless harness failed — the RCP control would not start through `revealControl`, and the speed
+button did not hold time acceleration (the attention-stop dropout the memory records). The listener
+is confirmed bound and the mechanism fits, but no probe demonstrates the fix against a real advance.
+Shipped with that stated rather than claimed.
+
+### Gate
+
+`verify_ckl_relevance` 8 -> 10. The gap check is **discriminating** — 139 px red on the pre-fix CSS,
+19 px green after — and BANDS the number at 60 px rather than pinning 19, because the residue is
+card chrome and a pin would re-red on any spacing change. The second check is named
+**`GUARD:`** in its own title: it passes pre-fix too, and is kept only to catch a future layout that
+reintroduces a nested scroller, which would silently void the log-only scroll restore. Labelling it
+was the alternative to letting a hollow check read as evidence.
+
+### The trap
+
+**A harness that cannot drive the plant will report the invariant you asked for and tell you
+nothing.** The first scroll probe returned STABLE across 50 samples — with `rebuilds: 0`. Nothing
+had re-rendered, so a bounce was impossible by construction and the green meant only that. Checking
+the *precondition* (did the thing I am testing even happen?) is what turned a false pass into three
+refuted hypotheses. **Instrument the cause, not just the effect.**
+
+---
+
 ## Session log — 2026-09-03-develop-b (#611 — the release presentation moves to the develop push)
 
 **Directive** *(OWNER, 2026-09-03)*: "The version should be ticked up appropriately and change log

@@ -45,6 +45,46 @@ where the two differ or where judgment was exercised.
 
 ---
 
+## 2026-09-03-develop-c — #612: the checklist column, and an auto-scroll that fought the reader
+
+Owner playtest, reported as "two fixes… lost in the merge". **They were not lost.**
+`git diff 31cafe2 HEAD -- ui/app.js ui/shell.css ui/shell.html` returns only my own #606 edits as
+deletions, and #607's parent IS #605 — it was built on top of the scroll fix. Both are live defects.
+Checking the premise before acting on it is the whole reason this entry is short.
+
+**ITEM 2 — the pane never got the height treatment.** #607 moved the running checklist into the
+CHECKLISTS pane, a plain content-sized `.tabpane`. `.tabpane.instructor` has owned its height since
+the transcript needed it; this one inherited neither half. Measured at 1600x950: **189 px of dead
+space** below the pane, log capped at **456 px** by `.ckl-log { max-height: 48vh }`. After: gap
+19 px, log 628 px (1366x768: 128 -> 19). Fixed with the same mechanism — `.ckl-mode` on `.tab-body`
+from `selectTab`, mirroring `.instr-mode` — and the 48vh cap lifted **inside the running host only**.
+
+**ITEM 1 — the auto-scroll was fighting the reader.** Three hypotheses died to measurement first:
+nested scrollers (refuted — the pre-fix build has ONE scroller at both viewports), `revealControl`
+(never scrolls), the tour's `scrollIntoView` (different subsystem). What fits is the auto-scroll
+itself: it fires on every step ADVANCE, and #605 suppressed it only while the pointer is inside the
+log — **when you are operating, the mouse is on the BOARD**, so that guard never engages. Each
+check-off yanked the view back to the active step, near the top early in a checklist.
+
+Now a `userScrolled` latch (armed by any scroll we did not perform, disarmed when the player brings
+the active step back into view) plus an explicit log-scoped scroll replacing `scrollIntoView`, which
+walks up and scrolls every scrollable ancestor while only the log's position is restored.
+
+**SHIPPED UNPROVEN, AND SAID SO.** Three attempts to drive a live step advance headless failed (the
+RCP control would not start through `revealControl`; the speed button did not hold acceleration).
+The listener is confirmed bound and the mechanism fits the words exactly, but nothing demonstrates
+it against a real advance. Only the owner's playtest can close it.
+
+**Gated.** `verify_ckl_relevance` 8 -> 10. The gap check is discriminating (139 px red pre-fix,
+19 px green) and BANDS at 60 px rather than pinning 19, since the residue is card chrome. The
+scroller check is named `GUARD:` because it passes pre-fix too — kept for a future nested scroller,
+which would silently void the log-only restore, and labelled so it cannot read as evidence.
+
+**THE TRAP.** A harness that cannot drive the plant reports the invariant you asked for and tells
+you nothing: the first probe returned STABLE across 50 samples with **`rebuilds: 0`** — nothing had
+re-rendered, so a bounce was impossible by construction. Instrumenting the CAUSE, not just the
+effect, is what turned a false pass into three refuted hypotheses.
+
 ## 2026-09-03-develop-b — #611: the release presentation is assembled on develop, not at the merge
 
 **DIRECTIVE** *(OWNER, 2026-09-03)*: "The version should be ticked up appropriately and change log

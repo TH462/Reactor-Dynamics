@@ -2430,6 +2430,34 @@ select.num-input { width: auto; }
 .tabpane.instructor.on { display: flex; flex: 1 1 auto; min-height: 0; }
 .tabpane.instructor .instr-body { flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; }
 
+/* THE CHECKLISTS PANE, same treatment, same reason (#612, owner playtest 2026-09-03: "the
+   checklist scroll window keeps bouncing to the top and back to the step" and "the right column
+   scroll window should go to the bottom of the column. There is currently an unused black space
+   below it.").
+
+   #607 moved the RUNNING checklist out of the instructor pane and into this one, which is a
+   plain content-sized `.tabpane` — so it inherited neither half of the rule above. Two
+   consequences, and the owner reported both as separate bugs:
+
+     1. TWO NESTED SCROLLERS. `.tab-body` is `overflow-y: auto` and scrolled the whole pane while
+        `.ckl-log` scrolled inside it at its 48vh cap. `scrollIntoView` scrolls every scrollable
+        ancestor, so a step advance moved both, and #605's save/restore covers the log alone —
+        the outer one snapped to the top. Hence "to the top and back to the step".
+     2. DEAD SPACE. Content-sized means the pane stops where its content stops. Measured at
+        1600x950: pane bottom y=724 against a 950 px viewport, 226 px of unused black below it,
+        with the log capped at 456 px.
+
+   Giving the pane the height makes `.ckl-log` the ONLY scroller and lets it reach the bottom of
+   the column, which is one fix for both reports. `.ckl-mode` is set on .tab-body by selectTab,
+   exactly as `.instr-mode` is, so this does not depend on :has(). */
+.tab-body.ckl-mode { overflow: hidden; display: flex; flex-direction: column; }
+.tabpane[data-pane="checklists"] { flex-direction: column; min-height: 0; }
+.tabpane[data-pane="checklists"].on { display: flex; flex: 1 1 auto; min-height: 0; }
+.tabpane[data-pane="checklists"] #cklRun { flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; }
+/* The 48vh cap is right everywhere .ckl-log is content-sized; inside the running host it is
+   what stopped the log filling the column, so it is lifted HERE ONLY. */
+.tabpane[data-pane="checklists"] #cklRun .ckl-log { flex: 1 1 0; min-height: 0; max-height: none; }
+
 /* THE LOG. `flex: 1 1 0` with `min-height: 0` is what makes it the scrolling element
    rather than growing the pane — without the min-height a flex child refuses to shrink
    below its content and the scrollbar silently moves to an ancestor. */
