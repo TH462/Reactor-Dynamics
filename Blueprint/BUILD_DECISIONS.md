@@ -215,6 +215,9 @@ Injection-verified: the alphabetical tiebreak reds the cycle check.
 **Left open.** The banner's per-row detail still prints raw internals and SI-only values ("wants
 `tavg_c` ≈ 286, reads 50.2"), violating the spell-out rule and US-first units in player copy. It
 predates this change (#395's banner) and is noted on #606 for a separate issue.
+## 2026-09-03-workbench-a — #607: checklist playtest (host, pulse, catch-up, bank position)
+
+The running checklist is hosted in the Checklists tab (`#cklRun`). The 2026-08-11 "always show the list" directive is superseded by this issue: leaving the tab looked like a restart because the card was in the Instructor pane. Catch-up walks **forward** at start — skip an action whose `acc` is already true, or a confirm whose `past` is met; never walk backward from a later acc (those last confirms are `power_pct < 1` for the whole heatup). Shutdown-bank step grades `shutdown_bank_pct >= 98` (already a control_state param from #605); details dropped the pcm lecture. RCP Run/Stop highlights the card `imrsjyqoq6t`. Current-step glow pulses; non-current hover is steady.
 
 ## 2026-09-02-develop-a — #605: the playtest's two typing blockers were one defect, and Mode 5 was booting a latched turbine
 

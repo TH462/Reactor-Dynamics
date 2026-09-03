@@ -332,11 +332,10 @@
               <div class="phys-note">Follow a real procedure step by step. Each step checks
                 <b>itself</b> off the instruments while you operate, and hovering a step glows
                 the controls it names on the board.</div>
-              <div class="ckl-menu" id="cklMenu" data-scanner-hint="Checklists — pick a procedure and it runs as a checklist in the Instructor; each step checks itself off the instruments while you operate."
-                  data-scanner-detail="The checklist watches the plant rather than trusting you: a step marks itself complete when the instruments say the action took effect. Hovering a step glows the controls and indications it names on the board, which is the fastest way to find a control you have not used before. The list is always here and always in the same order, so a procedure is where you last saw it."></div>
+              <div class="ckl-menu" id="cklMenu" data-scanner-hint="Checklists — pick a procedure and it runs as a checklist in this tab; each step checks itself off the instruments while you operate."
+                  data-scanner-detail="The checklist watches the plant rather than trusting you: a step marks itself complete when the instruments say the action took effect. Hovering a step glows the controls and indications it names on the board, which is the fastest way to find a control you have not used before. The list is always in the same order, so a procedure is where you last saw it. A running checklist stays in this tab when you leave and come back."></div>
             </div>
-            <div class="phys-note ckl-busy" id="cklBusyNote" hidden>The Instructor is running
-              content below. Stop it to pick a checklist.</div>
+            <div id="cklRun" hidden></div>
           </div>
           <input type="file" id="loadFile" accept="application/json" style="display:none">
         </div>

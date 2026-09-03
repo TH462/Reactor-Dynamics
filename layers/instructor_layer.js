@@ -176,6 +176,7 @@
       // here: load has no snapshot. null = no `precond` authored or not yet graded.
       precond: null,
       precondMsg: false,   // an unmet-precondition instructor comment is standing
+      catchUp: true,       // first _stepChecklist tick walks past already-done steps (#607)
     };
   };
 
@@ -604,6 +605,23 @@
       }
     }
 
+    /* CATCH-UP AT START (#607 item 7). Sequential grading of the first unchecked step
+     * traps a player who already did the early actions: heatup step 1 wants pumps
+     * secured, and a plant whose pumps are running can never satisfy the prose even
+     * when later accs are already true. Walking BACKWARD from "a later acc is met"
+     * would skip the whole heatup — the last confirms are `power_pct < 1`, true the
+     * entire ride. So walk FORWARD once, and skip a step only when:
+     *   · an authored `past` predicate is met (the starting-state confirmation no
+     *     longer applies), or
+     *   · it is an ACTION (has `cmd`) whose `acc` is already true.
+     * A pure observation whose acc still describes this plant is left standing. */
+    if (c.catchUp) {
+      c.catchUp = false;
+      while (c.idx < c.proc.steps.length && this._stepAlreadyDone(snapshot, c.proc.steps[c.idx])) {
+        this._checklistCheckOff('caught_up');
+      }
+    }
+
     var st = c.proc.steps[c.idx];
     if (!st) { c.complete = true; return; }
     if (c.stepAt == null) c.stepAt = simTime;   // when this step came up — the dwell's clock
@@ -645,6 +663,38 @@
     if (met) this._checklistCheckOff(hasAccs || st.acc || st.saw || st.cmd ? 'auto' : 'observed');
   };
 
+  /* See the catch-up block in `_stepChecklist`. `past` is one predicate or an array (OR).
+   * Reads paramValue (true_state / control_state), not the instrument-first `_grade`:
+   * catch-up is "has the plant already done this", and a lagged channel would leave the
+   * player on a start-pumps step whose flow is already 110 % true. The ACTIVE step still
+   * grades instruments. */
+  InstructorLayer.prototype._stepAlreadyDone = function (snapshot, st) {
+    if (!st) return false;
+    var self = this;
+    function met(pred) {
+      return self._predMet(InstructorLayer.paramValue(snapshot, pred.p), pred);
+    }
+    var past = st.past ? (Array.isArray(st.past) ? st.past : [st.past]) : [];
+    for (var i = 0; i < past.length; i++) {
+      if (met(past[i])) return true;
+    }
+    if (!st.cmd) return false;
+    if (st.acc) return met(st.acc);
+    if (st.accs && st.accs.length) {
+      var anyPred = false;
+      for (var j = 0; j < st.accs.length; j++) {
+        var en = st.accs[j];
+        if (en && en.cmd && !en.p) return false;   // still owes a command this tick never saw
+        if (en && en.p) {
+          anyPred = true;
+          if (!met(en)) return false;
+        }
+      }
+      return anyPred;
+    }
+    return false;
+  };
+
   InstructorLayer.prototype._checklistCheckOff = function (by) {
     var c = this.checklist;
     c.done[c.idx] = true;
@@ -679,6 +729,10 @@
     shutdown_bank_pct: { group: 'shutdown_rods', field: 'position_pct' },
     shutdown_bank_steps: { group: 'shutdown_rods', field: 'steps' }
   };
+  /* Flat control_state fields a checklist acc may name (#607). Same reason as ROD_PARAMS:
+   * they are what the board shows, they are not in true_state, and minting contract
+   * fields for the checklists alone is the wrong shape. */
+  var CTL_PARAMS = { feed_coupled: 1, steam_dump_setpoint: 1 };
   function rodParam(snapshot, p) {
     var spec = ROD_PARAMS[p];
     if (!spec) return undefined;
@@ -699,6 +753,11 @@
    * now, so a param added here reaches the gate and the live runtime together. */
   InstructorLayer.paramValue = function (snapshot, p) {
     if (ROD_PARAMS[p]) return rodParam(snapshot, p);
+    if (CTL_PARAMS[p]) {
+      var cv = snapshot && snapshot.control_state ? snapshot.control_state[p] : undefined;
+      if (cv == null || (typeof cv === 'number' && isNaN(cv))) return undefined;
+      return (typeof cv === 'boolean') ? (cv ? 1 : 0) : cv;
+    }
     return snapshot && snapshot.true_state ? snapshot.true_state[p] : undefined;
   };
 
@@ -706,6 +765,11 @@
     if (ROD_PARAMS[pred.p]) {
       var rv = rodParam(snapshot, pred.p);
       return { met: this._predMet(rv, pred), graded_by: 'control_state', value: rv };
+    }
+    if (CTL_PARAMS[pred.p]) {
+      var cv = snapshot && snapshot.control_state ? snapshot.control_state[pred.p] : undefined;
+      if (typeof cv === 'boolean') cv = cv ? 1 : 0;
+      return { met: this._predMet(cv, pred), graded_by: 'control_state', value: cv };
     }
     var plant = (snapshot.metadata && snapshot.metadata.plant_id) || null;
     var map = plant ? PARAM_INSTRUMENT[plant] : null;

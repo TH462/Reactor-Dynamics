@@ -3036,23 +3036,20 @@
     // is just a synced mirror. This survives start_follow's internal plant reset,
     // save/load restores, and anything else that broadcasts mid-transition.
     // Checklist picker row: free play only — anything instructed owns the card.
-    /* THE TAB ALWAYS SHOWS THE LIST *(OWNER DIRECTIVE, 2026-08-11: "The checklist tab
-     * should always show the list of checklists... Currently when a checklist is running
-     * this tab is empty.")*. It used to hide the whole picker whenever the Instructor was
-     * busy — which is exactly when a player most wants to see what else there is, or to
-     * switch. Nothing about showing the list starts anything; picking one does, and that
-     * was always allowed. */
+    /* THE RUNNING CHECKLIST LIVES IN THE CHECKLISTS TAB (#607 item 6). The 2026-08-11
+     * "tab always shows the list" directive is superseded: leaving the tab used to look
+     * like a restart because the card was painted in the Instructor pane. The list is
+     * still there, behind "← All checklists". */
     var cklRow = $('instrCklRow');
+    var cklRun = $('cklRun');
+    var runningCkl = !!(s.instructor && s.instructor.checklist);
+    if (!runningCkl && cklState.view === 'run') cklState.view = 'list';
     if (cklRow) {
-      cklRow.hidden = !flagOn('checklists');
-      var running = !!(s.instructor && s.instructor.checklist);
-      var cklNote = $('cklBusyNote');
-      if (cklNote) {
-        cklNote.hidden = !running;
-        if (running) txt(cklNote, 'A checklist is running in the Instructor below. Pick another to switch.');
-      }
-      if (!cklRow.hidden) toggleCklMenu();      // keeps the list current; no-op when unchanged
+      var showList = flagOn('checklists') && (!runningCkl || cklState.view === 'list');
+      cklRow.hidden = !showList;
+      if (showList) toggleCklMenu();
     }
+    if (cklRun) cklRun.hidden = !(runningCkl && cklState.view === 'run');
     /* THE CHECKLIST TEARDOWN MUST HAPPEN BEFORE ANY EARLY RETURN (#598 item 12). This
      * used to sit ~25 lines below, under three of them — the follow branch, the chat
      * branch and the checklist branch. The instructor layer clears the checklist when a
@@ -3076,16 +3073,9 @@
     // replaces the single-slot commentary card. Level-complete renders inline.
     if (s.instructor && s.instructor.chat) { syncInstrNav('chat'); renderChat(s); return; }
     if (chatState.sid) resetChat();
-    // Auto-checklist (Path 3): chat-style bubble list, one bubble per step,
-    // checking itself off the instruments while the operator plays on.
+    // Auto-checklist (Path 3): painted in the Checklists tab, not this card.
     var ckb = s.instructor && s.instructor.checklist;
-    if (ckb) {
-      syncInstrNav('ckl');
-      var prC = ((RD.MANUAL_PROCEDURES || {})[ui.engineKey] || []).filter(function (x) { return x.id === ckb.procedure_id; })[0];
-      setInstrRole(prC && prC.title ? ('Live Checklist: ' + prC.title) : 'Live Checklist');   /* #244 item 3 wording */
-      renderChecklist(s, ckb);
-      return;
-    }
+    if (ckb) renderChecklist(s, ckb);
     var lc = s.instructor && s.instructor.level_complete;
     if (lc) { syncInstrNav('lc'); msgHold.queue = []; msgHold.shown = null; setInstrRole('Instructor'); renderLevelComplete(s, lc); return; }
     syncInstrNav(ui.scenario ? 'scenario' : 'idle');
@@ -3314,7 +3304,7 @@
   // RD.MANUAL_PROCEDURES artifact the Instructor graded it from.
   // whyAll / whyOpen: the #244 item-2 explanation toggles (global + per-step); they
   // survive re-renders via the render key and reset with the checklist itself.
-  var cklState = { key: null, whyAll: false, whyOpen: {}, step: null };
+  var cklState = { key: null, whyAll: false, whyOpen: {}, step: null, view: 'list' };
   /* IS THE POINTER IN THIS ELEMENT? (#605.) `:hover` cannot answer it here — the element is
    * BRAND NEW, built microseconds ago by an innerHTML rebuild, and the browser does not
    * re-run its hit test until the next mouse event or paint. So track the pointer ourselves
@@ -3351,7 +3341,9 @@
   }
   function resetCkl() {
     if (!cklState.key) return;
-    cklState = { key: null, whyAll: false, whyOpen: {}, step: null };
+    cklState = { key: null, whyAll: false, whyOpen: {}, step: null, view: 'list' };
+    var run = $('cklRun'); if (run) { run.hidden = true; run.innerHTML = ''; }
+    var row = $('instrCklRow'); if (row) row.hidden = !flagOn('checklists');
     clearCklStepGlow();
     var card = $('instructorCard'); if (card) card.classList.remove('chat-mode');
     var cur = $('instrCurrent'); if (cur) cur.textContent = '';
@@ -3395,6 +3387,8 @@
     control_bank_steps:     { label: 'Control bank', u: 'steps' },
     shutdown_bank_pct:      { label: 'Shutdown bank position', u: '%' },
     shutdown_bank_steps:    { label: 'Shutdown bank', u: 'steps' },
+    feed_coupled:           { bool: 'steam-generator feed is in AUTO' },
+    steam_dump_setpoint:    { label: 'Dump setpoint', dim: 'pressure' },
     accumulator_volume_pct: { label: 'Accumulator inventory', u: '%' },
     steam_dump_valve_pct:   { label: 'Steam dump demand', u: '%' },
     vessel_level_pct:       { label: 'Vessel level', u: '%' },
@@ -3449,7 +3443,8 @@
   }
 
   function renderChecklist(s, ck) {
-    var cur = $('instrCurrent'), card = $('instructorCard');
+    var cur = $('cklRun');
+    if (!cur) return;
     var pr = ((RD.MANUAL_PROCEDURES || {})[ui.engineKey] || []).filter(function (x) { return x.id === ck.procedure_id; })[0];
     if (!pr) {
       /* mid plant-restore mismatch. This returns BEFORE applyCklStepGlow, so a glow from
@@ -3457,9 +3452,10 @@
        * with no owner (#598 item 12). Clear it, and clear the render key with it — the
        * card we are about to draw is not the one the key describes. */
       if (cklState.key) resetCkl();          /* resetCkl blanks cur — set the text AFTER it */
-      cur.textContent = 'Checklist: ' + ck.procedure_id;
+      cur.hidden = false; cur.textContent = 'Checklist: ' + ck.procedure_id;
       return;
     }
+    cur.hidden = cklState.view !== 'run';
     // Precondition verdicts join the render key (#392's lesson: a banner outside
     // the key never repaints). Observed values are keyed ROUNDED so the banner
     // tracks a dilution at ~whole-unit granularity instead of rebuilding the DOM
@@ -3472,13 +3468,13 @@
       // #244 additions: per-entry check-off states, the why-toggle states, and the display
       // units all change what the card shows, so they join the render key.
       (ck.accs || []).map(function (a) { return a.met ? 1 : 0; }).join(''),
-      cklState.whyAll ? 1 : 0, Object.keys(cklState.whyOpen || {}).join(','), ui.units].join('|');
+      cklState.whyAll ? 1 : 0, Object.keys(cklState.whyOpen || {}).join(','), ui.units,
+      cklState.view].join('|');
     if (key === cklState.key) return;
     var firstBuild = !cklState.key;
     cklState.key = key;
-    card.classList.add('chat-mode');
-    cur.classList.remove('instr-standby');
-    var h = '<div class="ckl-log" id="cklLog">';
+    var h = '<button class="btn ckl-back" data-ckl-list="1">← All checklists</button>';
+    h += '<div class="ckl-log" id="cklLog">';
     // Global explanations toggle (#244 item 2): expands/collapses every step's "why".
     h += '<div class="ckl-head"><b>' + mesc(pr.title) + '</b>' +
       '<button class="btn ckl-why-all" data-ckl-why-all="1" title="Show or hide the details on every step">' +
@@ -3518,32 +3514,10 @@
       var hoverable = stepHlLabels(st) ? ' ckl-hoverable' : '';
       h += '<div class="ckl-step ' + cls + hoverable + '" data-ckl-step="' + i + '"><div class="ckl-ico">' + (done ? '✓' : active ? '▸' : '○') + '</div><div class="ckl-body">';
       if (active) {
-        /* THE ACTIVE CARD. #244 item 6 put the check-off criteria first, then the controls,
-         * then the action — the owner's stated workflow order — and every block was visible at
-         * once. It grew: criteria, Control/Target, the instruction, a note, a time-acceleration
-         * hint, a Why button and a "graded off…" line, seven blocks deep on one step.
-         *
-         * SINCE #598 item 13 THE CARD IS THE INSTRUCTION *(OWNER DIRECTIVE, 2026-09-01, #598
-         * item 13: "For the checklists, only keep the main instruction (white numbered text)
-         * showing. keep a button to expand the step but relabel it from WHY to DETAILS. put the
-         * other information into the expanded DETAILS section.")*. Two things stay OUT of the
-         * fold, each for its own reason. The CHECK-OFF CRITERIA: they are the one thing that
-         * changes while you work, they carry the ✓ the player is waiting for, and hiding a live
-         * tick behind a button would hide the feedback the whole Path 3 design is built on. And
-         * the CONTROL AND TARGET, added back by ruling a day later — see the block below for the
-         * measurement that produced it. What is left in Details is genuinely background: the
-         * caution, the time-acceleration hint, the teaching prose, and which value the check is
-         * graded off.
-         *
-         * ⚠ THE BUTTON IS GATED ON "IS THERE ANYTHING IN THERE", NOT ON `st.why`. Of the 60 pwr2
-         * steps only 24 carry `why`, so a why-gated button would be absent on ~60 % of steps —
-         * and it would then be the wrong button on any step whose note or wait hint is the thing
-         * worth expanding. */
         var via = ck.graded_by === 'instrument' ? 'graded off the instrument reading'
-                : ck.graded_by === 'control_state' ? 'graded off the rod position the board shows'
+                : ck.graded_by === 'control_state' ? 'graded off the board control'
                 : ck.graded_by === 'true_state' ? 'graded off the true value (no instrument for this)' : null;
         if (st.accs && st.accs.length) {
-          // Multi-check-off (#244 item 8): one line per requirement, each with its own tick.
           for (var ai = 0; ai < st.accs.length; ai++) {
             var en = st.accs[ai], av = (ck.accs && ck.accs[ai]) || {};
             var enTxt = en.label ? en.label : (en.p ? fmtPredicate(en) : mesc(en.cmd || ''));
@@ -3556,32 +3530,6 @@
             (ck.acc_met ? '✓ ' : '○ ') + 'When ' + fmtPredicate(st.acc) +
             (ck.acc_met ? '' : ' <span class="muted">…not yet</span>') + '</div>';
         }
-        /* WHICH CONTROL, AND WHAT YOU ARE DRIVING IT TO — outside the fold, above the
-         * instruction *(OWNER RULING, 2026-09-02, #598 item 13: "promote the pull out of the why
-         * button but tweak the wording to make it cleaner and more natural language.")*.
-         *
-         * The first cut of item 13 folded this away with everything else, and MEASURING THE COST
-         * is what produced the ruling: of the 46 pwr2 steps carrying a control, only 19 (41 %)
-         * name that control anywhere in their instruction text — so 27 steps had no visible
-         * answer to "which knob" at all. The pill is not background. It is WHERE, and a checklist
-         * step that cannot say where is not doing the one job it has.
-         *
-         * THE WORDING. It was `Control: <b>X</b> · Target: Y` — two field labels lifted straight
-         * off the data structure, and on an observation step it printed the literal
-         * `Control: (observe)`, a placeholder leaking onto the card. Now:
-         *     an action step    Use <b>Pressure SP</b>: 2235 psi (15.41 MPa)
-         *     an observe step   Watch for: Tavg >= 541.4 degF (283 degC), still subcritical
-         * The separator is a COLON and not a dash, which is not a style preference: 11 of the 46
-         * targets already contain a dash of their own ("bank fully withdrawn, 200 / 200 — rho ~
-         * -2,130 pcm"), so a dash here reads as a third clause instead of a divider.
-         * No field labels, no placeholder, and the observation case reads as the instruction it
-         * actually is.
-         *
-         * The two shapes cover the data with nothing left over — measured across the pwr2 pool,
-         * 46 steps carry BOTH control and target, 2 are observe-with-target, and NONE carries
-         * only one of the pair. The one-sided fallbacks below exist so that an author adding a
-         * half-filled step gets something sensible instead of a stray dash, not because the
-         * shipped content needs them. */
         var isObs = st.control && /^\(observe/i.test(st.control);
         if (isObs) {
           if (st.target) h += '<div class="ckl-sub ckl-use">Watch for: ' + mesc(st.target) + '</div>';
@@ -3591,35 +3539,22 @@
             (st.control && st.target ? ': ' : '') +
             (st.target ? mesc(st.target) : '') + '</div>';
         }
-        /* THE INSTRUCTION — the white numbered line. */
-        h += '<div class="ckl-txt">' + (i + 1) + '. ' + mesc(st.text) + '</div>';
-        /* ---- DETAILS: the background, and nothing that answers "what do I do" --------------- */
-        var det = '';
-        if (st.note) det += '<div class="ckl-sub muted">' + mesc(st.note) + '</div>';
-        if (st.wait_hint) {
-          // #244 M5→3 item 5 — long waits suggest time acceleration rather than patience.
-          det += '<div class="ckl-sub ckl-wait">⏩ ' + mesc(st.wait_hint === true
-            ? 'This takes a while in plant time — use time acceleration (the speed control, top bar).'
-            : st.wait_hint) + '</div>';
-        }
-        if (st.why) det += '<div class="ckl-why">' + mesc(st.why) + '</div>';
-        if (via) det += '<div class="ckl-sub muted" title="Which value the check reads">' + via + '</div>';
-        if (det) {
-          var detOpen = cklState.whyAll || (cklState.whyOpen && cklState.whyOpen[i]);
-          h += '<button class="btn ckl-why-btn" data-ckl-why="' + i + '">' +
-            (detOpen ? 'Hide details' : 'Details') + '</button>';
-          if (detOpen) h += det;
-        }
-        // NO MANUAL TICK *(OWNER DIRECTIVE, 2026-08-11: "Checklists are supposed to be
-        // automatically checked off by the sim when complete. Remove the user clickable
-        // step complete button.")*. Every step now completes on evidence: an `acc`
-        // predicate (or every `accs` entry, #244 item 8), a `saw` latch, the step's own
-        // command, or — for a pure observation with none of those — a dwell, added in
-        // instructor_layer so omitting a predicate can never soft-lock a procedure. The
-        // `checklist_check` COMMAND survives; only its button is gone.
-      } else {
-        h += '<div class="ckl-txt">' + (i + 1) + '. ' + mesc(st.text) + '</div>';
-        if (done && ck.done_by && ck.done_by[i] === 'manual') h += '<div class="ckl-sub">checked by hand</div>';
+      }
+      h += '<div class="ckl-txt">' + (i + 1) + '. ' + mesc(st.text) + '</div>';
+      if (done && ck.done_by && ck.done_by[i] === 'manual') h += '<div class="ckl-sub">checked by hand</div>';
+      var det = '';
+      if (st.note) det += '<div class="ckl-sub muted">' + mesc(st.note) + '</div>';
+      if (st.wait_hint) {
+        det += '<div class="ckl-sub ckl-wait">⏩ ' + mesc(st.wait_hint === true
+          ? 'This takes a while in plant time — use time acceleration (the speed control, top bar).'
+          : st.wait_hint) + '</div>';
+      }
+      if (st.why) det += '<div class="ckl-why">' + mesc(st.why) + '</div>';
+      if (active && via) det += '<div class="ckl-sub muted" title="Which value the check reads">' + via + '</div>';
+      if (det) {
+        var detOpen = cklState.whyAll || (cklState.whyOpen && cklState.whyOpen[i]);
+        if (active && !detOpen) h += '<div class="ckl-expand-hint">Click to expand</div>';
+        if (detOpen) h += det;
       }
       h += '</div></div>';
     }
@@ -3657,10 +3592,14 @@
     // Step hover → glow the controls/indications the step names (its `hl` list) on
     // the plant display, reusing the Instructor highlight vocabulary (revealControl).
     Array.prototype.forEach.call(cur.querySelectorAll('.ckl-step'), function (el) {
-      var st2 = pr.steps[+el.getAttribute('data-ckl-step')];
+      var idx2 = +el.getAttribute('data-ckl-step');
+      var st2 = pr.steps[idx2];
       var labs = st2 && stepHlLabels(st2);
       if (!labs) return;
-      el.addEventListener('mouseenter', function () { glowLabels(labs); });
+      /* Current step already pulses via .ckl-step-glow; hovering it must not add the
+       * hover class, and hovering a NON-current step must not pulse (#607 item 3). */
+      var isActive = !ck.complete && idx2 === ck.step_index;
+      el.addEventListener('mouseenter', function () { if (!isActive) glowLabels(labs); });
       el.addEventListener('mouseleave', clearHoverGlow);
     });
     var log = cklScroller();
@@ -3682,11 +3621,9 @@
         }
       }
     }
-    // SPLIT, not take-the-column: the Checklists tab has to stay visible while a checklist
-    // runs (owner, 2026-08-11), and setFocus('instructor') collapses the tools card. This
-    // is the second of the two places that did it — startChecklist was the obvious one and
-    // this render-path call is the one that put it back a frame later.
-    if (firstBuild) applyFocus(true, true);
+    /* Stay on the Checklists tab (#607 item 6). startChecklist selects it; this path
+     * must not yank the player to Instructor the way applyFocus(true) used to. */
+    if (firstBuild && currentTab() !== 'checklists') selectTab('checklists');
   }
   // Observed value for the precondition banner: whole units above 100 (ppm, °C
   // near operating point), one decimal below (fractions, small margins).
@@ -3871,13 +3808,17 @@
    * verdict is what keeps the rebuild rare without letting the list describe a plant the
    * player has since reset away from. */
   function startChecklist(id) {
+    var running = latest && latest.instructor && latest.instructor.checklist;
+    if (running && running.procedure_id === id) {
+      cklState.view = 'run';
+      cklState.key = null;
+      selectTab('checklists');
+      if (latest) render(latest);
+      return;
+    }
+    cklState.view = 'run';
     cmd({ action: 'start_checklist', procedure_id: id });
-    /* SPLIT, do not take the column *(OWNER DIRECTIVE, 2026-08-11: "The checklist tab
-     * should always show the list of checklists.")*. `setFocus('instructor')` collapses the
-     * tools card, which left the list present in the DOM and invisible on screen — the
-     * directive is about what the player can SEE, so rendering it is not enough. Both cards
-     * stay open: the running checklist in the Instructor, the list still above it. */
-    applyFocus(true, true);
+    selectTab('checklists');
   }
 
   // ---- Instructor highlight (Gameplay §5) — glow the control the current beat /
@@ -6896,24 +6837,29 @@
     // slot — and binding per host is how the second one would silently do nothing.
     document.body.addEventListener('click', function (e) {
       var st = e.target.closest('[data-ckl-start]');
-      if (!st) return;
-      toggleCklMenu(false);
-      startChecklist(st.getAttribute('data-ckl-start'));
-    });
-    $('instructorCard').addEventListener('click', function (e) {
+      if (st) {
+        toggleCklMenu(false);
+        startChecklist(st.getAttribute('data-ckl-start'));
+        return;
+      }
+      if (e.target.closest('[data-ckl-list]')) {
+        cklState.view = 'list';
+        cklState.key = null;
+        if (latest) render(latest);
+        return;
+      }
       var mk = e.target.closest('[data-ckl-check]');
       if (mk) { cmd({ action: 'checklist_check', index: +mk.getAttribute('data-ckl-check') }); return; }
-      // #244 item 2 — the explanation toggles re-render through the key (cklState fields
-      // are part of it), so flipping one repaints without touching the runtime.
       var wa = e.target.closest('[data-ckl-why-all]');
       if (wa) { cklState.whyAll = !cklState.whyAll; cklState.key = null; render(latest); return; }
-      var wy = e.target.closest('[data-ckl-why]');
-      if (wy) {
-        var wi = wy.getAttribute('data-ckl-why');
+      if (e.target.closest('[data-ckl-stop]')) { cmd({ action: 'stop_checklist' }); return; }
+      /* Click the step card to expand (#607 item 2). Skip clicks on inner buttons. */
+      var stepEl = e.target.closest('.ckl-step');
+      if (stepEl && !e.target.closest('button')) {
+        var wi = stepEl.getAttribute('data-ckl-step');
         if (cklState.whyOpen[wi]) delete cklState.whyOpen[wi]; else cklState.whyOpen[wi] = 1;
-        cklState.key = null; render(latest); return;
+        cklState.key = null; render(latest);
       }
-      if (e.target.closest('[data-ckl-stop]')) cmd({ action: 'stop_checklist' });
     });
     // Plant & Mission window: plant / mode / start-condition picks re-render in
     // place; the start buttons close the window and launch.

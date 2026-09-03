@@ -94,6 +94,16 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
   builds the list once, correctly, and passes on the defect — so it drives the player's own
   path. Injection-verified: 4 of the 6 red on the pre-fix build.
 
+### Fixed (#607: checklist playtest — host, highlight, catch-up, shutdown-bank check)
+
+- **The running checklist stays in the Checklists tab.** Leaving and coming back no longer looks like a restart. **← All checklists** shows the list without stopping; picking the same procedure resumes.
+- **Click the step card to expand it** (current and non-current). The active step shows “Click to expand”; other steps do not.
+- **The current step’s board highlight pulses with no mouseover.** Hovering a non-current step is a steady halo.
+- **Heatup “start the RCPs” highlights the pump card**, not the rotating pump graphic.
+- **Heatup “withdraw the shutdown bank” checks off on bank position (627 / 627),** not reactivity. Details explain why the bank exists, without pcm as the evidence.
+- **Starting a checklist mid-evolution catches up** — already-done actions are skipped; the opening confirm is not eaten on a fresh Mode 5 start.
+- **Every pwr2 checklist step has an expandable details paragraph.**
+
 ### Fixed (#605: the 2026-09-02 playtest — two typing blockers, the checklist scroll, and Mode 5's lineup)
 
 **Two BLOCKERS, and they are the same defect in two places: a click that misses a text field
