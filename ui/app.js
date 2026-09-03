@@ -3489,7 +3489,18 @@
     // the procedure artifact (`precond[i].text`); the snapshot ships verdicts only.
     var pc = ck.preconditions;
     if (pc && pr.precond && pc.some(function (p) { return !p.met; })) {
-      h += '<div class="m-caution"><b>Prerequisites not met — nothing is blocked, but steps may not verify:</b>';
+      /* NAME THE MODE THE PLAYER IS ACTUALLY IN *(OWNER, 2026-09-02, #606: "you should still
+       * be able to click on the non relevant checklist but it should say its not applicable to
+       * the current mode at the top")*. The list demotes an inapplicable procedure and states
+       * its gate; opening one has to say the same thing in the same words, because a player who
+       * deliberately opened a greyed row is asking WHY. The mode comes from the snapshot's own
+       * `plant_mode`, so a plant that does not publish one (RBMK, BWR) keeps the plain wording
+       * rather than being told a mode it has no concept of. */
+      var pmNow = s && s.true_state ? s.true_state.plant_mode : null;
+      var pmTxt = (typeof pmNow === 'number' && MODE_NAMES[Math.round(pmNow)])
+        ? 'Not applicable in ' + MODE_NAMES[Math.round(pmNow)] + ' — nothing is blocked, but steps may not verify:'
+        : 'Prerequisites not met — nothing is blocked, but steps may not verify:';
+      h += '<div class="m-caution"><b>' + mesc(pmTxt) + '</b>';
       for (var pj = 0; pj < pc.length && pj < pr.precond.length; pj++) {
         if (pc[pj].met) continue;
         var pd = pr.precond[pj];
@@ -3764,34 +3775,85 @@
    * Rebuilt on a KEY, not every broadcast: the order is stable now, so a per-frame
    * innerHTML would be pure cost on the densest list in the shell. */
   var cklMenuKey = null;
+  /* THE KEY CARRIES THE PLANT'S RELEVANCE VERDICT, NOT JUST THE ENGINE (#606, owner playtest
+   * 2026-09-02: "when I started up in mode 5 the mode 5 checklist was greyed out but some
+   * where white").
+   *
+   * The key used to be `engineKey | active procedure id`, and NEITHER changes when the player
+   * resets the plant to a different initial condition — the engine is the same engine and no
+   * checklist is running. So the list built at the default hot_full_power boot survived the
+   * reset to Cold Shutdown verbatim: the heatup greyed with "Requires RCS temperature below
+   * 203 degF" (it was at 547) and the at-power legs white. The greying was CORRECT for a plant
+   * that no longer existed.
+   *
+   * The freeze it inherited was written for the RELEVANCE SORT ("never reorder an open list",
+   * spec section 9). That sort is retired — the list is in the standard category order since
+   * the 2026-08-11 directive — so a rebuild can no longer move a row under the cursor; it can
+   * only repaint grey/white and the gate sentence. Keying on the verdict itself means the
+   * innerHTML is still written only when something the player can SEE has changed, which is
+   * what the freeze was actually protecting. */
   function toggleCklMenu(force) {
     var menu = $('cklMenu'); if (!menu) return;
     menu.hidden = false;
+    var ranked = rankedProcedures();
     var key = ui.engineKey + '|' + (latest && latest.instructor && latest.instructor.checklist
-      ? latest.instructor.checklist.procedure_id : '');
-    if (force === 'force' || key !== cklMenuKey) { cklMenuKey = key; menu.innerHTML = cklMenuHtml(); }
+      ? latest.instructor.checklist.procedure_id : '') + '|' +
+      ranked.map(function (r) { return r.id + (r.ready ? '+' : '-') + (r.gate || ''); }).join(';');
+    if (force === 'force' || key !== cklMenuKey) { cklMenuKey = key; menu.innerHTML = cklMenuHtml(ranked); }
   }
   /* A STANDARD ORDER *(OWNER DIRECTIVE, 2026-08-11: "They should stay in a standard
    * order.")*. This supersedes the relevance SORT: the list is now always in the same
    * order — category first, on the sequence an operator would name them (startup, power,
-   * control, shutdown, emergency, accident), then title. A list that rearranges itself is
-   * a list you have to re-read every time, and muscle memory is worth more here than
-   * putting the most likely item on top.
+   * control, shutdown, emergency, accident), then the POOL'S OWN ORDER. A list that
+   * rearranges itself is a list you have to re-read every time, and muscle memory is worth
+   * more here than putting the most likely item on top.
    *
    * The relevance SCORING is kept and still earns its place, because it is what produces
    * the gating labels ("Requires reactor power above 10") and what the free-play
    * Instructor's short launcher picks its four from. What is retired is the reordering,
-   * not the knowledge. */
+   * not the knowledge.
+   *
+   * THE WITHIN-CATEGORY TIEBREAK IS THE POOL'S DECLARATION ORDER, NOT THE TITLE (#606,
+   * OWNER, 2026-09-02: "the checklists should be in a logical order. ie, starting in mode 5
+   * it should start with mode 5 to mode 3 and end with mode 3 to mode 5").
+   *
+   * It was `title.localeCompare`, and alphabetical reversed two of the three pairs, because
+   * these titles begin with the mode they START FROM: "Mode 3, Hot Standby -> Mode 1" sorts
+   * above "Mode 5, Cold Shutdown -> Mode 3", so the STARTUP category listed the second leg
+   * first. Same in POWER, where "load rampdown" sorts above "power ascension". SHUTDOWN was
+   * right only by luck. Measured before the fix: startup, heatup, lower_power, raise_power,
+   * shutdown, cooldown — the operating cycle with two of its three pairs inverted.
+   *
+   * The pool is ALREADY authored in cycle order and says so structurally: every pwr2 entry
+   * names its successor in `next`, and test/run_checklist_pwr2.js asserts that chain matches
+   * the array order. So the declaration order is not an accident of authoring that could
+   * drift — it is the chain, gated, and reading the order off it means the list and the
+   * finished-card handoff can never disagree. It is still a STANDARD order (fixed, never
+   * recomputed from plant state), so the 2026-08-11 directive is untouched: what changed is
+   * which fixed order, not whether it is fixed.
+   *
+   * The CATEGORY grouping stays on top of it. Declaration order alone would give the same
+   * answer for every pool we ship today, but it would put the categories at the mercy of how
+   * a future pool happens to be typed, and the grouping is what the directive named. */
   var CKL_CAT_ORDER = ['startup', 'power', 'control', 'shutdown', 'emergency', 'accident'];
-  function cklMenuHtml() {
-    var ranked = rankedProcedures();
+  function cklMenuHtml(ranked) {
+    if (!ranked) ranked = rankedProcedures();
     if (!ranked.length) return '<div class="m-note">No procedures for this plant.</div>';
+    /* The pool as authored — the operating cycle. Built per render rather than cached
+     * because the engine can change under this function and a stale map would silently
+     * degrade to "everything ties", which is the failure this sort exists to fix. */
+    var poolIx = {};
+    ((RD.MANUAL_PROCEDURES || {})[ui.engineKey] || []).forEach(function (p, i) { poolIx[p.id] = i; });
     var stable = ranked.slice().sort(function (a, b) {
       var ai = CKL_CAT_ORDER.indexOf(a.category || ''), bi = CKL_CAT_ORDER.indexOf(b.category || '');
       if (ai < 0) ai = CKL_CAT_ORDER.length;
       if (bi < 0) bi = CKL_CAT_ORDER.length;
       if (ai !== bi) return ai - bi;
-      return (a.title || '').localeCompare(b.title || '');
+      var ap = poolIx[a.id], bp = poolIx[b.id];
+      if (ap == null) ap = Infinity;
+      if (bp == null) bp = Infinity;
+      if (ap !== bp) return ap - bp;
+      return (a.title || '').localeCompare(b.title || '');   // last resort; ids are unique so unreachable
     });
     return stable.map(function (r) {
       return '<button data-ckl-start="' + mesc(r.id) + '"' + (r.gate ? ' class="ckl-gated"' : '') + '>' +
@@ -3799,13 +3861,15 @@
              (r.gate ? '<span class="ckl-gate">' + mesc(r.gate) + '</span>' : '') + '</button>';
     }).join('');
   }
-  /* NEVER REORDER AN OPEN LIST (spec §9), and the way to guarantee that is to have no
-   * refresh path at all: the menu is rebuilt when it OPENS and not again. A first version
-   * of this had a `refreshCklRelevance` that recomputed on every event — with the guard
-   * inverted, so it fired only while the menu was open, which is exactly the case the spec
-   * forbids. The list reshuffling under the cursor during a heatup is the failure; a list
-   * that is stale-but-stable until the next time you open it is the specified behaviour,
-   * and it needs no state to achieve. */
+  /* NEVER REORDER AN OPEN LIST (spec §9) — and since 2026-08-11 the ORDER is the fixed
+   * category order, so nothing this file does can reorder it. That is what let the freeze go
+   * (#606): the menu now rebuilds whenever the relevance VERDICT changes, which repaints
+   * grey/white and the gate sentence in place and moves no row. A first version of this had a
+   * `refreshCklRelevance` that recomputed on every event with the guard inverted, so it fired
+   * only while the menu was open — under the old relevance sort that reshuffled the list
+   * under the cursor during a heatup, which is the failure the spec names. Keying on the
+   * verdict is what keeps the rebuild rare without letting the list describe a plant the
+   * player has since reset away from. */
   function startChecklist(id) {
     cmd({ action: 'start_checklist', procedure_id: id });
     /* SPLIT, do not take the column *(OWNER DIRECTIVE, 2026-08-11: "The checklist tab

@@ -446,13 +446,12 @@ ONE line, drop the rest. **A bullet is ~80 words.**
   at the Pressure SP's 1700 psig floor. The harness issues a step's command at step START, so
   the accumulator-window and align-under-spray steps split into ride-then-act pairs — also the
   honest operator order (shutting spray first bounces pressure back over the RHR permissive).
-- **A RENDER-BOUND FLICKER IS MEASURED IN THE BROWSER'S PIPELINE, NOT OUR JS — AND PER-ELEMENT
-  THROTTLING OF ANIMATIONS CUTS NOTHING** (2026-08-31, #596, the in-sim report:
-  4.7 fps). Two 60 Hz wastes behind a 10 Hz display: the chart rebuilt an IDENTICAL SVG every
-  paint, and ~100 dash strokes each ran their own CSS animation (`stroke-dashoffset` never
-  composites; A/B measured, animations were 6× of raster). Per-element `steps()` still commits
-  at 60 Hz; **only a SHARED clock (std_pipe.js, ~12 Hz batch) aligns the writes**. Follow-up
-  in #596; a Paint event's clip rect is the LAYER, not damage.
+- **A CACHE KEY THAT OMITS WHAT THE CACHE DESCRIBES READS AS A WORKING FEATURE — AND ITS
+  CONTENT IS CORRECT, FOR A PLANT THE PLAYER HAS LEFT** (2026-09-02, #606). The Checklists tab
+  greyed the Mode 5 heatup on a Mode 5 board. Ranker, CSS and gate sentences were all right;
+  `cklMenuKey` was `engine | running checklist`, and neither changes on an initial-condition
+  reset, so the Hot Full Power list survived **byte-identical**. No source read sees it, and no
+  Node harness calling the ranker — the ranker is not where the bug is.
 - **WHEN A PLAYER SAYS A CONTROL MISBEHAVES, MEASURE THE CONTROLLER BEFORE YOU TOUCH IT — TWICE
   IN ONE LIST IT WAS RIGHT AND THE BOARD WAS LYING ABOUT IT** (2026-09-01, #598, the owner's
   playtest). "CHARGING in AUTO doesn't hold a decent level": AUTO tracks its program to **0.11 %**

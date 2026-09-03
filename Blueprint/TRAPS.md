@@ -22,6 +22,29 @@ the evidence to put it back** — say so in the session log rather than quietly 
 
 ---
 
+## Evicted 2026-09-02 (a THEMES-rotation eviction — the #596 flicker bullet, out for #606's)
+
+Not a standing-list eviction, and for the same reason as the two entries below: the standing list
+is at its **25-bullet cap** and `CLAUDE.md` sits within a handful of words of its 15,000, so
+rescuing a line out of this would have cost a slot doing more work. The mechanism is FIXED and
+gated in the rendering path itself, the open follow-up is tracked on **#596**, and the full
+measurement — the A/B that put animations at 6x of raster — is in `Diagnostic/TUNING_LOG.md`
+2026-08-31.
+
+> **A RENDER-BOUND FLICKER IS MEASURED IN THE BROWSER'S PIPELINE, NOT OUR JS — AND PER-ELEMENT
+> THROTTLING OF ANIMATIONS CUTS NOTHING** (2026-08-31, #596, the in-sim report: 4.7 fps). Two
+> 60 Hz wastes behind a 10 Hz display: the chart rebuilt an IDENTICAL SVG every paint, and ~100
+> dash strokes each ran their own CSS animation (`stroke-dashoffset` never composites; A/B
+> measured, animations were 6x of raster). Per-element `steps()` still commits at 60 Hz; **only a
+> SHARED clock (std_pipe.js, ~12 Hz batch) aligns the writes**. Follow-up in #596; a Paint event's
+> clip rect is the LAYER, not damage.
+
+**The half worth carrying, if you only read one line:** you cannot throttle a compositing problem
+per element — the browser commits on ITS clock, so the only lever is one shared clock that batches
+every write. And profile the browser's pipeline, not our JavaScript: our JS was never the cost.
+
+---
+
 ## Evicted 2026-08-31 (a THEMES-rotation eviction — the #516 Group A bullet, out for #591's)
 
 Not a standing-list eviction, and for the same reason as the 2026-08-24 entry below: the standing

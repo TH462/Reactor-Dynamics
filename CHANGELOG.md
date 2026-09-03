@@ -30,6 +30,38 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
 
 ## [Unreleased]
 
+### Fixed (#606: the Checklists tab described the plant you BOOTED, not the one you are in)
+
+- **Starting in Cold Shutdown (Mode 5) greyed the Mode 5 heatup and left the at-power legs
+  white.** The tab greys a checklist whose entry conditions the live plant does not meet and
+  prints the gate underneath — and that verdict was never wrong: measured on a Mode 5 plant
+  (122 °F / 50.0 °C, 363 psi / 2.50 MPa, power ~0 %) only the heatup grades ready. What was
+  wrong is *when* it was taken. The list rebuilt only when the engine or the running checklist
+  changed, and **neither changes when you reset the plant to a different initial condition** —
+  so the list built at the default Hot Full Power boot survived the switch verbatim. Measured in
+  a headless browser on the old build, the Mode 5 list was byte-identical to the Mode 1 list:
+  the heatup greyed with *"Requires RCS temperature below 203 °F (95 °C)"* on a 122 °F plant.
+  The list now re-grades whenever its verdict changes; the order is untouched (it has been the
+  fixed category order since 2026-08-11, so a rebuild can no longer move a row under the
+  cursor — which is what the original freeze existed to prevent).
+- **Opening a greyed checklist now says which mode you are actually in.** It was always
+  startable (warn, never block) and always listed its unmet preconditions, but under the
+  headline "Prerequisites not met". It reads **"Not applicable in Mode 5, Cold Shutdown —
+  nothing is blocked, but steps may not verify"**, taken from the plant's own published mode; a
+  plant that publishes no mode keeps the plain wording.
+- **The checklists now run in the plant's operating cycle.** They were alphabetical within each
+  category, and these titles begin with the mode they *start from* — so "Mode 3, Hot Standby →
+  Mode 1" sorted above "Mode 5, Cold Shutdown → Mode 3" and the startup pair listed its second leg
+  first; the power pair inverted the same way. The order is the authored chain now: **plant heatup
+  (Mode 5 → Mode 3) → startup (Mode 3 → Mode 1) → power ascension → load rampdown → normal
+  shutdown (Mode 1 → Mode 3) → cooldown (Mode 3 → Mode 5)**. It is still a fixed order, the same
+  in every mode — nothing rearranges under you.
+- **New gate `test/verify_ckl_relevance.js`** (6 checks, browser, `slow`). It could not be a
+  Node check: the stale value was a closure variable Node cannot reach and both endpoints read
+  correct in isolation. The discriminator is the *flip* — booting straight to Cold Shutdown
+  builds the list once, correctly, and passes on the defect — so it drives the player's own
+  path. Injection-verified: 4 of the 6 red on the pre-fix build.
+
 ### Fixed (#605: the 2026-09-02 playtest — two typing blockers, the checklist scroll, and Mode 5's lineup)
 
 **Two BLOCKERS, and they are the same defect in two places: a click that misses a text field

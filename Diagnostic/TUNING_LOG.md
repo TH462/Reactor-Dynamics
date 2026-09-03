@@ -29,6 +29,103 @@ and the user-visible summary in `CHANGELOG.md`. This file points at those and tr
 
 ---
 
+## Session log — 2026-09-02-develop-b (#606 — the checklist list was frozen at the BOOT plant)
+
+**Ask** *(OWNER, playtest)*: "when I started up in mode 5 the mode 5 checklist was greyed out
+but some where white. the relevant list(s) should be white and the ones not relevant to the mode
+should be greyed. you should still be able to click on the non relevant checklist but it should
+say its not applicable to the current mode at the top."
+
+### The verdict was right. The clock was wrong.
+
+`rankProcedures` was never wrong. Measured on a live PWR2 at Cold Shutdown (Mode 5) — 122 °F
+(50.0 °C), 363 psi (2.50 MPa), power ~0 % — it grades exactly what the owner asked for: only
+`pwr_heatup` READY, the other five GATED with their conditions. The defect is **when** that
+verdict was taken.
+
+`toggleCklMenu` (`ui/app.js`) rebuilt the list only when `cklMenuKey` changed, and the key was
+`engineKey | active checklist procedure_id`. **Neither term changes when the player resets the
+plant to a different initial condition** — same engine, no checklist running. So the list built
+at the Plant & Mission window's default `hot_full_power` boot survived the switch to Cold
+Shutdown, and measured in a headless browser on the pre-fix build the Mode 5 list is
+**byte-identical** to the Mode 1 list: `pwr_heatup` greyed with *"Requires RCS temperature below
+203 °F (95 °C)"* on a 122 °F plant, and `pwr_raise_power` / `pwr_lower_power` / `pwr_shutdown`
+white.
+
+**The freeze outlived its reason.** It came from #443, where the list was sorted BY RELEVANCE and
+a live recompute reshuffled rows under the cursor during a heatup ("never reorder an open list",
+spec §9). That sort was retired by the 2026-08-11 standard-order directive — the order is
+category-then-title now — so a rebuild cannot move a row. Only the guard survived, protecting
+nothing and costing this.
+
+### The fix
+
+- **The key carries the verdict.** `toggleCklMenu` ranks once per render and keys on
+  `engineKey | active id | (id, ready, gate)` for every row. innerHTML is still written only when
+  something the player can SEE changed — what the freeze was actually protecting — and a plant
+  reset now repaints grey/white in place.
+- **The banner names the mode.** Opening a greyed checklist already worked (warn-never-block,
+  owner ruling 2026-08-06) and already listed its unmet preconditions, but the headline read
+  "Prerequisites not met". It reads **"Not applicable in Mode 5, Cold Shutdown — nothing is
+  blocked, but steps may not verify:"**, off the snapshot's own `plant_mode`. A plant that
+  publishes no mode (RBMK, BWR) keeps the plain wording rather than being told a mode it has no
+  concept of.
+
+### The gate — `test/verify_ckl_relevance.js` (NEW, 6 checks, `slow`)
+
+It needs a BROWSER and could not live in `run_checklist_pwr2`: the stale value was a closure
+variable Node cannot reach, and both endpoints read correct in isolation, so a source scan of
+either reads as working. **The discriminator is the FLIP, not the Mode 5 reading** — booting
+straight to `?init=cold_shutdown` builds the list once, correctly, and passes on the defect. So
+it drives the player's path: default Hot Full Power boot → read → pick Cold Shutdown in the
+Plant & Mission window → read again → click a greyed row and assert the banner.
+Injection-verified: **4 of 6 red on the pre-fix build**, and the row-naming reds reproduce the
+owner's report word for word.
+
+### The trap
+
+**A cache key that omits the thing the cache describes reads as a working feature, and its
+content is CORRECT — just for a plant the player has left.** Nothing here was miscomputed: the
+ranker, the CSS and the gate sentences were all right. Only the key could not change. That is
+invisible to every source read and to any Node harness that calls the ranker directly, because
+the ranker is not where the bug is. Sibling: the freeze's *justification* outlived its mechanism
+by three weeks.
+
+### The order, on the same ask
+
+**"the checklists should be in a logical order. ie, starting in mode 5 it should start with mode
+5 to mode 3 and end with mode 3 to mode 5"** *(OWNER, same session)*.
+
+The within-category tiebreak was `title.localeCompare`, and **these titles begin with the mode
+they START FROM** — *"Mode 3, Hot Standby -> Mode 1"* sorts above *"Mode 5, Cold Shutdown ->
+Mode 3"*, so the STARTUP category listed its second leg first. POWER inverted the same way
+(*"load rampdown"* above *"power ascension"*). SHUTDOWN was right by luck. Measured before the
+fix: **startup, heatup, lower_power, raise_power, shutdown, cooldown** — the operating cycle with
+two of its three pairs reversed.
+
+The tiebreak is now the **pool's declaration order**, which is not an accident of authoring: every
+PWR2 entry names its successor in `next`, and `run_checklist_pwr2` asserts that chain matches the
+array order. So the list reads off the same sequence the finished-card handoff walks, and the two
+cannot disagree. Rendered now: **heatup -> startup -> raise_power -> lower_power -> shutdown ->
+cooldown** — Mode 5 -> Mode 3 first, Mode 3 -> Mode 5 last, exactly as asked.
+
+**The category grouping stays on top of it** — declaration order alone gives the same answer for
+every pool shipped today, but it would put the grouping at the mercy of how a future pool is
+typed, and the grouping is what the 2026-08-11 directive named. **This is still a STANDARD order**
+(fixed, never recomputed from plant state), so that directive is untouched: what changed is which
+fixed order, not whether it is fixed. `verify_ckl_relevance` asserts both halves — the cycle at
+Mode 5, and the SAME order at Mode 1, because a sort that re-derived itself from the plant would
+satisfy the first alone. Injection-verified: restoring the alphabetical tiebreak reds the cycle
+check. Gate 6 -> 8 checks.
+
+### Adjacent, filed not fixed
+
+The banner's per-row detail under the new headline still prints raw internals and SI-only values
+— *"wants `tavg_c` ≈ 286, reads 50.2"* — violating both the spell-out rule and US-first units in
+player copy. It predates this change (#395's banner).
+
+---
+
 ## Session log — 2026-09-02-develop-a (#605 — the two typing blockers were one defect, and Mode 5 was booting a latched turbine)
 
 **Ask:** two pages of handwritten playtest notes on the `develop` build — a **BLOCKERS** page
