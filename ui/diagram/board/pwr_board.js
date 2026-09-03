@@ -621,7 +621,7 @@
     }
     frame.appendChild(stepBox);
     el.appendChild(frame);
-    /* THE WHOLE TILE IS THE TARGET, NOT JUST THE FRAME (#614, owner playtest 2026-09-03: "I'm
+    /* THE WHOLE TILE IS THE TARGET, NOT JUST THE FRAME (#615, owner playtest 2026-09-03: "I'm
      * unable to type into any field (number boxes and the feedback form)").
      *
      * #605 made the FRAME focus the input, which was the right move and did not go far enough:

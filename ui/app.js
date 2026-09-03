@@ -3461,7 +3461,7 @@
     // the key never repaints). Observed values are keyed ROUNDED so the banner
     // tracks a dilution at ~whole-unit granularity instead of rebuilding the DOM
     // every broadcast on analog noise.
-    /* pcKey RETIRED with the live banner (#613). It carried the rounded precondition
+    /* pcKey RETIRED with the live banner (#614). It carried the rounded precondition
      * observations, so it churned the key whenever the plant moved — and it now describes
      * nothing the build renders, because the banner is latched at open. What replaces it is the
      * one bit that still changes the output: whether the checklist is underway. */
@@ -3486,7 +3486,7 @@
     // Precondition banner (#395) — WARN, NEVER BLOCK: unmet rows are listed with
     // measured-vs-expected and everything below still runs. Row text comes from
     // the procedure artifact (`precond[i].text`); the snapshot ships verdicts only.
-    /* THE ENTRY BANNER IS LATCHED AT OPEN, AND NEVER RETURNS MID-RUN (#613, owner playtest
+    /* THE ENTRY BANNER IS LATCHED AT OPEN, AND NEVER RETURNS MID-RUN (#614, owner playtest
      * 2026-09-03: "I found the checklist scroll bounce issue. It's caused by the not applicable
      * to this mode warning at the top. This warning should not appear during a checklist. It
      * erroneously appears in the middle of the mode 5-3 checklist when it gets to mode 4. This

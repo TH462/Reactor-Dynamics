@@ -198,7 +198,7 @@ function sig(rows) {
     ck('and it names the mode the plant is actually in, at the top',
        !!banner.text && /Not applicable in Mode 5, Cold Shutdown/.test(banner.text),
        banner.text ? banner.text.slice(0, 80) : 'no caution banner');
-    /* ---- 3b. THE ENTRY BANNER NEVER RETURNS MID-CHECKLIST (#613) ----------------------- */
+    /* ---- 3b. THE ENTRY BANNER NEVER RETURNS MID-CHECKLIST (#614) ----------------------- */
     /* Owner playtest 2026-09-03: "the not applicable to this mode warning… erroneously appears
      * in the middle of the mode 5-3 checklist when it gets to mode 4. This should only appear
      * when first opening a checklist and should never appear in the middle of a checklist."
@@ -231,11 +231,11 @@ function sig(rows) {
      * plant driven ACROSS a mode boundary mid-checklist (Mode 5 -> 4 is where the owner saw it),
      * which nothing in this harness can do — three attempts at driving a live advance failed.
      * What it does catch is a future change that starts rendering the banner unconditionally. */
-    ck('GUARD: no entry banner mid-checklist (#613 — vacuous here; the heatup enters with its ' +
+    ck('GUARD: no entry banner mid-checklist (#614 — vacuous here; the heatup enters with its ' +
        'preconditions met, so this passes pre-fix too)',
        run.banner === false, run.banner ? 'a .m-caution banner is present mid-checklist' : 'none');
 
-    /* ---- 5. EVERY PIXEL OF A NUMBER TILE TYPES INTO ITS BOX (#614) --------------------- */
+    /* ---- 5. EVERY PIXEL OF A NUMBER TILE TYPES INTO ITS BOX (#615) --------------------- */
     /* Owner playtest 2026-09-03: "I'm unable to type into any field (number boxes and the
      * feedback form)". #605 made the FRAME focus the input; measured at 1366x768 the tiles are
      * 48x28 around a 48x18 frame, so a ~10 px LABEL BAND across the top — up to 731 px2, better
@@ -273,7 +273,7 @@ function sig(rows) {
         var a = document.activeElement;
         return { tag: a ? a.tagName : null, val: (a && a.value !== undefined) ? a.value : null };
       });
-      ck('clicking a number tile OUTSIDE its frame still types into the box (#614)',
+      ck('clicking a number tile OUTSIDE its frame still types into the box (#615)',
          landed.tag === 'INPUT' && /2235/.test(String(landed.val || '')),
          band.px + ' px band; focus landed on ' + landed.tag +
          (landed.tag === 'INPUT' ? ' value ' + landed.val : ' — keystrokes lost to the global shortcuts'));
