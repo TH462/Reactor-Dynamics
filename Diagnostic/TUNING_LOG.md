@@ -29,6 +29,68 @@ and the user-visible summary in `CHANGELOG.md`. This file points at those and tr
 
 ---
 
+## Session log — 2026-09-03-develop-d (#617 — the six live checklists, reviewed and rewritten: the text the player reads was the one field no gate compares)
+
+**The ask** *(OWNER, 2026-09-03: "Critically review then Rewrite the prose of the checklists.")*.
+Scope: `RD.MANUAL_PROCEDURES.pwr2`, all 61 steps of the six chain-linked checklists. Prose only:
+no id, `control`, `hl`, `cmd`, `hold`, acceptance, `guard` or step order moved, so the 532-check
+control-vocabulary map and the replay's fixture indices are untouched.
+
+**What the review found, ranked by what it would cost a player.**
+
+1. **The step TEXT carried the retired plant's rod scale while `cmd` and `target` carried this
+   plant's.** The four 1/M bursts said "withdraw to 30 / 50 / 60 / 66 steps"; the commands on the
+   same lines said 94 / 157 / 188 / 202, and the targets said "94 / 627". Same 15 % of travel, two
+   scales, one field the player reads. A player following the text stops at 30 of 627 and never
+   reaches the 700 cps count threshold the step is graded on. The full-power step's "bank near
+   114 of 200" is the same scale. The replay reads `cmd`, `run_manual_controls` reads `control`,
+   `run_style` reads banned words. **Nothing reads `text` against `cmd`.** This is the #534
+   inherited-by-reference trap in its purest form: the pool was rewritten for PWR2 field by
+   field, and the field with no consumer but the human kept the old plant.
+2. **Measured, the ascension replay ends with the control bank at 627 of 627** (the harness
+   issues no rod pulls) and Tavg at 567.5 °F (297.5 °C) against the 577.7 °F (303.2 °C) program
+   point; the rampdown ends at 27 % power and 569.8 °F (298.8 °C). Both pass, inside the 8 °C
+   acceptance band. So the purpose lines "Tavg landing exactly on program" and "within ~1 °F of
+   program at every leg" are claims about a ride with hand rod trims the gate does not replay.
+   Removed, not re-measured: the plant-dynamics claims that stay are the ones an acceptance
+   predicate verifies.
+3. **Stale after #609**: the cooldown's accumulator confirm still gave "600–1600 psig" as the
+   next heatup's window; the cover gas is 665 psia. **Wrong physics in a caution**: "the
+   burnable poisons move for hours" for xenon. **A garbled instruction**: the intermediate-range
+   block step had three dashes and two subjects in one sentence. **An instruction with no
+   button**: "take HPI and LPI to OFF" on a card whose only lever is STOP.
+4. **The voice.** 48 of 61 step texts over the style guide's 20-word cap, longest 73 (heatup
+   step 7, which stated the accumulator clock three times by design, in the text as well as the
+   `why` and `wait_hint`). Board names not the screen's ("Norm" for the MED button, "RCP → Run",
+   "STEAM GEN FEED → AUTO", "RHR card → ALIGN" spelled three ways). Cautions full of actions
+   (P14). Slash unit pairs beside parenthetical ones. Acronyms never expanded in the checklist
+   that first uses them (SI, P-11, SUR, DPM, HX, 1/M).
+
+**What changed.** Every `text` is the action and its band, in the board's words, ≤ 20 words
+(`run_style` backlog 48 → **0 of 61**, longest 73 → 20). The reasoning, the windows and the
+measured pace moved into `why`; the values into `target`. Prereqs expand RCP, RHR, SG, Tavg;
+each step's first acronym is spelled out. Cautions state a limit and a consequence, never an
+action. Every temperature and pressure the player reads carries its SI pair: `run_manual_units`
+**724 → 775 pairs, 0 failed** (rates and subcooling as differences, ×9/5). The four 1/M step
+texts now say 94 / 157 / 188 / 202; "114 of 200" is gone; the cooldown window reads 665 psi to
+1615 psi; the block step reads as one instruction.
+
+**Gates.** `run_style` 7/7 · `run_manual_units` 0 failed · `run_manual_controls` 532/532 ·
+`run_procdocs` 37/37 · `run_checklist_pwr2` **117/117** (all six rides replayed on the rewritten
+pool, at baseline) · `verify_ckl_relevance` 13/13 · `run_release` 27/27 at `1.7.2-rc3`.
+
+**Two things found and NOT fixed here.** `Manuals/10_GLOSSARY.md` gives P-10 as "~10 %"; this
+plant's sourced P-10 is 8 % (`pwr2_protection.js`, and every checklist site now says 8 %).
+And `Blueprint/STYLE_GUIDE.md` §5 N7 defined DPM as "disintegrations per minute" — it is decades
+per minute, as the glossary says; corrected in the same change, one line.
+
+**The trap, for the standing list if it earns a place.** A `text`/`cmd` pair is two copies of
+one instruction, and only one of them has a gate. When a pool is ported to a new plant, grep
+every numeric in `text` against the `cmd` and `target` beside it; the replay will be green
+either way.
+
+---
+
 ## Session log — 2026-09-03-workbench-b (the documentation style guide: a document about a plant it had never seen)
 
 A style guide for all player-facing text arrived as a finished version 1.0, written by an

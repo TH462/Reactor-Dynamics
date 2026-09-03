@@ -30,7 +30,30 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
 
 ## [Unreleased]
 
-## [Alpha 1.7.2-rc2] — 2026-09-03
+## [Alpha 1.7.2-rc3] — 2026-09-03
+
+### Changed (the six live PWR2 checklists: the prose rewritten against the style guide, and against the plant)
+
+- **Every step text is the action and its band; the reasoning moved into the details paragraph.**
+  Measured by `run_style`: step texts over the twenty-word cap **48 of 61 → 0 of 61** (longest
+  73 → 20). Controls are now named as the board paints them (`MED` not "Norm", `LATCH`, `UNLOAD`,
+  `SG FEED → AUTO`, `HX FLOW`, the four TRIP BLOCKS rows by their legends), acronyms are spelled
+  out at first use per checklist, and every quoted temperature and pressure carries its SI pair
+  (`run_manual_units` 724 → 775 pairs, 0 failed). Cautions carry no actions; the actions they
+  used to carry went into the step that does them.
+- **Four factual defects in the text, none of them in the commands.** The 1/M bursts told the
+  player to withdraw to **30 / 50 / 60 / 66 steps** while the same steps' commands and targets
+  said **94 / 157 / 188 / 202 of 627** — the retired plant's 200-step scale surviving in the one
+  field the player reads and no gate compares. The full-power step quoted a bank position "114
+  of 200" (same scale; the replay ends at a different position, so the number is dropped rather
+  than re-invented). The cooldown's accumulator confirm still gave the window as "600–1600 psig"
+  after #609 moved the cover gas to 665 psia. And the ascension caution called xenon a burnable
+  poison. The instructions the replay never sees — "take HPI and LPI to OFF" — now name the one
+  button the ECCS card has (STOP).
+- **Two claims removed because the replay does not reproduce them**: "Tavg landing exactly on
+  program" and "within ~1 °F of program at every leg" (the harness issues no rod trims; the
+  ascension replay ends 10 °F under program and the rampdown 19 °F over, both inside the
+  acceptance bands). What stays is what the acceptance predicates verify.
 
 ### Fixed (#613: the board's decorative motion now yields when the frame budget is gone)
 

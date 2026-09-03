@@ -276,8 +276,9 @@ anyway.
 - **W2** **P: 20 words maximum, and it applies to `step.text` only** — not to `why`,
   `note`, `wait_hint` or `precond.text`, which are R. R: 25 words as a target, not a cap;
   92 of 92 System Scanner `detail` strings exceed it by design. **[REPORTED]** — `run_style`
-  prints the count and does not score it. *Current state: **48 of 61** shipped step texts
-  exceed 20 words, longest 73. A backlog, not a claim that the corpus complies.*
+  prints the count and does not score it. *Current state: **0 of 61** shipped step texts
+  exceed 20 words after the 2026-09-03 rewrite of the PWR2 pool (it stood at 48 of 61,
+  longest 73, that morning). Read the runner's backlog line, not this sentence.*
 - **W3** One topic per paragraph. **[JUDGEMENT]**
 - **W4** Active voice in P. In R and C, active unless the actor is genuinely unknown.
   **[JUDGEMENT]**
@@ -638,8 +639,9 @@ restate the conversion table here or anywhere else — a second copy is how a nu
   and core thermal power are equal only at steady power, and seconds into a loss-of-coolant
   accident the split is what the board is showing you.
 - **N7** Unit families beyond pressure and temperature: condenser vacuum **inHg (kPa)**,
-  one decimal; boron **ppm**; reactivity **pcm**; startup rate **DPM** (disintegrations per
-  minute); counts **cps**; flow **gpm (m³/h)**. Reactivity, startup rate, counts and
+  one decimal; boron **ppm**; reactivity **pcm**; startup rate **DPM** (decades per
+  minute, as `Manuals/10_GLOSSARY.md` defines it, never disintegrations); counts **cps**;
+  flow **gpm (m³/h)**. Reactivity, startup rate, counts and
   currents have no US/SI distinction and are quoted once.
 - **N8** **Three flow ratings are computed, not authored** — charging maximum 30.1 gpm,
   letdown orifice A 12.7 gpm, auxiliary feedwater 86.2 gpm — and a gate compares the
