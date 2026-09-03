@@ -194,7 +194,7 @@ the heat sink is restored. **Recovery is procedural, not a button.**
 
 | Block | When allowed |
 |-------|----------------|
-| IR high-flux trip (25 %) block — also clears the 20 % rod stop | Power above **P-10** (10 %) |
+| IR high-flux trip (25 %) block — also clears the 20 % rod stop | Power above **P-10** (8 %) |
 | PR low-setpoint (35 %) block | Power above **P-10** |
 
 Blocks **auto-reinstate** when power falls below P-10.

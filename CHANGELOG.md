@@ -30,7 +30,15 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
 
 ## [Unreleased]
 
-## [Alpha 1.7.2-rc3] — 2026-09-03
+## [Alpha 1.7.2-rc4] — 2026-09-03
+
+### Fixed (manuals: P-10 is 8 % on this plant)
+
+- **Four chapters gave the at-power permissive P-10 as 10 %** (03 §trip-blocks table, 04 §NOTE,
+  05 §startup net, 10 §glossary) while chapter 09's permissive table said 8 % and warned that
+  8 % (P-10) and 10 % (P-7) are easy to conflate. All four now say 8 %, the value
+  `pwr2_protection.js` sources from Ginna TS Bases B 3.3.1 (ML20339A221, *"approximately 8%
+  RTP (P-10 setpoint)"*) and every live checklist site states. Rev 17 pending row, item (j).
 
 ### Changed (the six live PWR2 checklists: the prose rewritten against the style guide, and against the plant)
 

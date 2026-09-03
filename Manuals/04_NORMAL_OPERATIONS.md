@@ -281,7 +281,7 @@ After **PWR-N03**; before or during early turbine roll.
 | Type | Text |
 |------|------|
 | **CAUTION** | Controllers are soft at very low power — prefer manual attention to rods and feed until POAH. |
-| **NOTE** | IR/PR trip blocks are allowed only above **P-10 (10 %)** — by then you are already Mode 1 if power > 5 %. |
+| **NOTE** | IR/PR trip blocks are allowed only above **P-10 (8 %)** — by then you are already Mode 1 if power > 5 %. |
 | **NOTE** | Crossing **> 5 %** while critical enters **Mode 1, At Power**. |
 
 ### Procedure

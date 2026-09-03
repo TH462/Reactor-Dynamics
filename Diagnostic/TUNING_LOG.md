@@ -79,10 +79,16 @@ texts now say 94 / 157 / 188 / 202; "114 of 200" is gone; the cooldown window re
 `run_procdocs` 37/37 · `run_checklist_pwr2` **117/117** (all six rides replayed on the rewritten
 pool, at baseline) · `verify_ckl_relevance` 13/13 · `run_release` 27/27 at `1.7.2-rc3`.
 
-**Two things found and NOT fixed here.** `Manuals/10_GLOSSARY.md` gives P-10 as "~10 %"; this
-plant's sourced P-10 is 8 % (`pwr2_protection.js`, and every checklist site now says 8 %).
-And `Blueprint/STYLE_GUIDE.md` §5 N7 defined DPM as "disintegrations per minute" — it is decades
-per minute, as the glossary says; corrected in the same change, one line.
+**Two things found alongside.** `Blueprint/STYLE_GUIDE.md` §5 N7 defined DPM as "disintegrations
+per minute" — it is decades per minute, as the glossary says; corrected in the same change, one
+line. And `Manuals/10_GLOSSARY.md` gave P-10 as "~10 %" — **fixed in the follow-up push
+(rc4)**, and the grep found three more: **03 §trip-blocks table, 04 §NOTE, 05 §startup net** all
+said *P-10 (10 %)* while **09 §permissives** had 8 % and a warning that 8 % (P-10) and 10 % (P-7)
+are easy to conflate. Source: Ginna TS Bases B 3.3.1 (ML20339A221), *"approximately 8% RTP (P-10
+setpoint)"*, which `pwr2_protection.js` carries. Rev 17 pending row, item (j). **The trap is the
+one #532 named**: `run_manual_setpoints` scores chapter 09's tables and nothing scores a
+permissive quoted in prose three chapters away — chapter 09 was right for a month while the
+chapters a player actually reads for the startup were wrong.
 
 **The trap, for the standing list if it earns a place.** A `text`/`cmd` pair is two copies of
 one instruction, and only one of them has a gate. When a pool is ported to a new plant, grep
