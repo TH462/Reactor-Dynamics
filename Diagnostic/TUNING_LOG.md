@@ -29,6 +29,103 @@ and the user-visible summary in `CHANGELOG.md`. This file points at those and tr
 
 ---
 
+## Session log — 2026-09-03-workbench-b (the documentation style guide: a document about a plant it had never seen)
+
+A style guide for all player-facing text arrived as a finished version 1.0, written by an
+instance with no access to this repo. Reviewed by 17 agents — eight audit dimensions, each
+adversarially re-checked at the code, plus a completeness critic. **109 findings.** The
+procedural skeleton is sound; almost everything it asserts about *this* simulator is wrong.
+Rewritten as `Blueprint/STYLE_GUIDE.md` version 1.1, and the half of it a regex can decide is
+now `test/run_style.js`.
+
+### The trap worth carrying: a rule can HOLLOW a gate instead of breaking it
+
+The guide's most damaging rule read *"a conversion appears once, in that table, and nowhere
+else. Do not sprinkle parenthetical conversions through procedure text."* Sensible generic
+advice. Here it reverses a dated owner directive **and** guts the gate that catches this
+project's signature arithmetic error — without ever going red.
+
+`run_manual_units` does not check a conversion table. It **re-derives the US value from the SI
+value inside every parenthetical pair** — 728 pairs across 16 files, including
+`ui/manual_procedures.js` and `pwr_board_inspect.js`, i.e. live checklist and board copy. Its
+pair regex requires `<us> psi ( <si> MPa )` adjacency. **Strip the parentheticals and it matches
+nothing**: `fails = bad + orphans + unusedDiff + gpmBad` goes to zero on an unverified corpus,
+because the orphan check looks for SI *without* a US partner and finds none. The 83
+temperature-difference sites and the nine-entry per-site allow-list lose their guard entirely —
+and that runner's own header records the corpus-level version of itself letting a subcooling
+margin be "corrected" from 73.8 °F to 105.8 °F on a green run. Between 550 and 850 sites,
+depending how you count. **Executing the rule produces a green gate over nothing**, which is
+the failure class the standing traps list is built out of.
+
+### Five more, each a number
+
+- **An authored identifier column is a claim like any other.** The guide called its
+  Engine-identifier column *"the load-bearing one"* and filled it from recall: **5 of 11
+  identifiers have zero word-boundary hits in the tree** (`porv_command`, `porv_position`,
+  `set_block_valve`, `set_rod_bank`, `afw_valve`), and a sixth exists only as a display id. The
+  worked example in the prose (`set_block_valve`) contradicts the table two lines below it
+  (`block_valve`) and neither is the operator's command — those are `open_block_valve` /
+  `close_block_valve`. **The rule is right and the guide is the first thing it convicts.** In
+  1.1 the column is three columns (command / indication / true state, three disjoint namespaces
+  gated separately) and is generated from the shell registries.
+- **Before banning a synonym, grep for it.** Four of the guide's "do not use" entries are the
+  board's own vocabulary: `SCRAM` is the nameplate of the main safety control, lives in the
+  **generated** `pwr_board_data.js`, and is a required vocabulary key that `verify_e2e_ui`
+  resolves through `CONTROL_LABEL_MAP` (68 keys → 46 distinct items); `AUX FEED WATER` is a card
+  title and `Manuals/03` §1.0 makes on-screen labels mandatory; `SECURED` is a rendered
+  indication; and *isolation valve* names two **other** components (the main steam isolation
+  valve, the accumulator isolation valve). "Reactor trip" and "scram" both stay — they name
+  different things. What must never appear is bare **"trip"**: four senses in the shipped manual
+  (reactor 62, turbine 53, RCP 14, trip block 13), and the TRIP BLOCKS card is about permissives.
+- **A source grep for a style violation scores plants that are on hold.** Grepping
+  `ui/manual_procedures.js` for closed-up percents returns two hits — both `'power ≈ 80%'` in the
+  **BWR** pool. `run_style` reads the built `RD.MANUAL_PROCEDURES.pwr2` instead. Same shape as
+  the lane-corpus trap: the file is not the corpus.
+- **One decimal of MPa cannot represent 665 psi.** The units gate's pressure tolerance is
+  **0.6 psi**; `4.59 MPa` re-derives to 665.7 and fails, `4.58` to 664.3. The corpus already
+  solved this — `1000 psi (6.895 MPa)` — and the fix is three decimals: `665 psi (4.585 MPa)`
+  → 664.99. Worth knowing before authoring any new pair under about 1000 psi.
+- **Coverage: the guide claims "all player-facing text" and reaches about two thirds of it.**
+  Of 21 shipped text surfaces it addresses 3, names 7 wrongly and misses 11 — including ~9,550
+  words of website copy, the campaign syllabus, and the bug-report form's restricted-information
+  warning. Version 1.1 adds a fifth text class, **Chrome**, for exactly that third. Its four
+  classes were built for the plant and its procedures; a third of this sim's text is application
+  chrome.
+
+### The voice directive, and the two steps that demonstrate it
+
+*(OWNER DIRECTIVE, 2026-09-03: "The prose have to thread the needle between technical,
+accessible and concise.")* — now the guide's opening section, ahead of every numbered rule.
+
+**The operative half: the needle is threaded by SPLITTING, not compressing.** The sim already
+has the seams — `text`/`why`, `brief`/`detail`, Learning/Industry, chapter/glossary — so a
+length cap belongs to a *field*, never to a card. Measured: **48 of 61** shipped PWR2 step texts
+exceed 20 words, longest 73; and all 61 carry a `why`, median 45 words, which is where the
+overflow belongs.
+
+The two steps rewritten in this change were the only shall/should/must sites in the live pool
+and were also the perfect illustration. `pwr_heatup` step 8 was one 48-word sentence carrying
+*two pressure conventions* — "665 psia" and "1600 psig valve-power lock" — while its excellent
+`why` block sat one click away with the same facts stated properly. Both are now 20-word
+actions with the band in `target`. Nothing was deleted; it moved. `run_checklist_pwr2` 117/117,
+`run_manual_controls` 532/0, `run_manual_units` 724 → 728 pairs / 0 failed.
+
+### `test/run_style.js` — born green on purpose
+
+Seven checks, all at **zero** when written: vague quantifiers and reversal constructions and
+modals in checklist steps, percent spacing, bare `MW`, Industry alarm-label case, vague
+quantifiers in either alarm register. **A gate born red teaches the next person to read past
+it.** `--self-test` injects a violation next to each assertion and all seven go red, so none is
+inert. The over-cap and `Manuals/` backlog counts (48/61, and 49/13/31 modal/reversal/vague
+lines) are printed and deliberately **kept off the scraped tally** — the same split
+`run_manual_units` makes, for the same reason: a count that moves on every ordinary prose edit
+teaches people to update the number without reading it.
+
+**Still open:** the guide is ADVISORY. Nothing in it binds until the owner rules and a pointer
+reaches `CLAUDE.md`, which costs a matching cut against 24 words of doc-budget headroom.
+
+---
+
 ## Session log — 2026-09-03-develop-c (#612 — the checklist column, and an auto-scroll that fought the reader)
 
 **Reported** *(OWNER, playtest)*: "Two fixes were completed then lost in the merge. 1: the

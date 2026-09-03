@@ -309,6 +309,7 @@ to read everything.
 | **Argue a feature's EDUCATIONAL value (Q2)** | **`Blueprint/CURRICULUM.md`** — what each plant is meant to teach, in four tiers. PWR only. **All four tiers RULED 2026-08-03 and binding for the PWR.** A = 9 couplings; B = 8 evolutions (**list is a subset — a second pass is owed**); C = Core/Covered, Core owes a mission and Covered does not; D = adopt existing. |
 | **Apply a Hard Rule to a real decision** | `Blueprint/CONTEXT.md` §3 for the rule (binding, 10 rules, each names its guard), then **`Blueprint/SOP.md`** §1–4 for the worked cases and technique (advisory). |
 | **Put a decision to the owner** | `Blueprint/SOP.md` §5 — always bring your recommendation; see the block above. |
+| **Write or review any player-facing text** | **`Blueprint/STYLE_GUIDE.md`** — **ADVISORY, not binding.** The voice (technical, accessible, concise) and what to call a control: the screen's name, spelled out, acronym in parentheses. |
 | **Find a document that was deleted** | `Blueprint/RETIRED.md` — what was removed, why, and the command to read it again. |
 | **Work out which lane to use, or merge one** | **`Blueprint/LANES.md`** — the occupancy check's two blind spots, warn-and-ask, the merge-conflict list and the `Manuals/` silent-drop case. The block at the top of this file is only what binds. |
 | **Look up a trap that used to be in this file** | **`Blueprint/TRAPS.md`** — bullets evicted from the standing list under its 25-cap, plus the criterion for which ones go. |
@@ -343,10 +344,6 @@ Mode 5, replayed by `run_checklist_pwr2` (#244/#526; #254 stages 4/6 remain). **
 and this summary ages. Measured twice (2026-08-10, 2026-08-28): whole bullets called issues open
 that were closed. **Run the query.**
 
-- **#408** — the accident-inventory clock umbrella. Open: the SGTR/seal amendment rows (evidence
-  mini-pass; the declared ~7,500 gal makes absolute-size components ~5–6× fractionally bigger
-  than the power-scaled rows) and the wave-3 mission items, the tag+defend "quiet night" story
-  the beat graph cannot express (#416). Wave 1's re-clock and the relief sizing are landed.
 - **#436 — the control-room rework, BUILT to its content gates** (2026-08-10/11), children
   #437–#446 landed bar two. The chart is one lane per indication with a shared cursor and an
   event ribbon; `ui/test_panel/lane_reference.html` is the golden artifact and measures itself —

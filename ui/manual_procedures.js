@@ -1245,9 +1245,9 @@
          * never say the window is closing. Until a board cue exists, the step's words are the only
          * warning there is — which is why the clock is stated three times (here, in step 7's text,
          * and in its wait_hint) rather than once. */
-        { text: 'Re-align the Safety Injection accumulators NOW, on the way past: pressure is above their cover gas — 665 psia on this plant — and must still be below the 1600 psig valve-power lock. Nothing opens them for you, and nothing warns you when the window shuts.',
+        { text: 'Open the Accumulator valve NOW, on the way past. Nothing opens it for you, and nothing warns you.',
           why: 'THE WINDOW, measured on this plant: it OPENS at 34.8 plant-minutes from the Pressure SP command (665 psia, the cover gas) and SHUTS at 97.4 minutes (1615 psia, the power lock) — about 63 minutes wide. The operating licence (LCO 3.5.1) wants them OPERABLE by 1000 psig, about 72 minutes in.\n\nThis is a TRANSIT action, not an arrival one. The ride parks the plant at ~1695 psig, ABOVE the lock, so the window does not wait for you — and no setting of the Pressure SP dial would keep it open, because the dial bottoms out at 1700 psig, 85 psi above the lock. Miss it and the recovery is a manual depressurization: heaters to MANUAL and off, spray held open, back down through 1600 psig.\n\nThe accumulators are the passive half of emergency injection — big tanks of borated water behind a check valve, pushed by nitrogen. Cold lineups isolate them (they would dump into a depressurized plant); at power they must be armed. Above 1600 psig the plant removes power from the valve operator (an administrative lock, TS Bases B 3.5.1), so miss the window and you cannot arm them until the next cooldown.',
-          control: 'Accumulator valve', target: 'accumulators armed',
+          control: 'Accumulator valve', target: 'accumulators armed, between 665 psi (4.585 MPa) and 1615 psi (11.136 MPa)',
           cmd: { action: 'open_accumulator_valve' }, hold: 10,
           acc: { p: 'accumulator_valve_open', op: '>', v: 0 },
           hl: ['Accumulator valve'] },
@@ -1636,9 +1636,9 @@
           accs: [{ cmd: { action: 'set_heater', mode: 'manual', pct: 0 }, label: 'Heaters to MANUAL-0' },
                  { p: 'pressure_mpa', op: '<', v: 10.4, label: 'Pressure below 1500 psi and falling' }],
           hl: ['Pressurizer Spray (PZR)', 'Pressurizer Heaters (PZR)', 'Primary Pressure'] },
-        { text: 'Isolate the Safety Injection accumulators NOW, inside the band: below 1600 psig the valve operator has power again, and the tanks must be shut before pressure reaches their ~650 psig cover gas — or they discharge into the plant.',
+        { text: 'Close the Accumulator valve NOW, inside the band. Below it the nitrogen pushes the tanks into the plant.',
           why: 'The same window you opened on the way up, in reverse. Above 1600 psig the valve has no power (an administrative lock). Below ~650 psig the nitrogen would push the tanks into the primary. Isolate in between, and keep the inventory — you will want them full for the next heatup.',
-          control: 'Accumulator valve', target: 'accumulators isolated, 100 % inventory kept',
+          control: 'Accumulator valve', target: 'accumulators isolated between 1615 psi (11.136 MPa) and 665 psi (4.585 MPa), 100 % inventory kept',
           cmd: { action: 'close_accumulator_valve' }, hold: 30,
           acc: { p: 'accumulator_valve_open', op: '<', v: 0.5 },
           hl: ['Accumulator valve'] },
