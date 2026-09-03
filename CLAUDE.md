@@ -1019,15 +1019,18 @@ from the developer `CHANGELOG.md`. **Every release gets a version number and a
 
 - **When** — **at the first push to `develop` after a release, not at the merge to `main`**
   *(OWNER DIRECTIVE, 2026-09-03: "The version should be ticked up appropriately and change log
-  updated as if it was going to main except that we know the version will still have the tag…
-  so that I can review all of this stuff before it gets pushed to [main] and published.")*. The
-  pending version wears **`-rc`** in all three files or none — `run_release` has a `PENDING`
-  state for it; do not quieten a red by relaxing it (#611). One entry per release; **later
-  pushes EXTEND it**, like the manual's pending revision row. Review it on the tester site
+  updated as if it was going to main… so that I can review all of this stuff before it gets
+  pushed to [main] and published.")*. The
+  pending version wears **`-rc<N>`** in all three files or none, digits REQUIRED (`run_release`
+  has a `PENDING` state; do not quieten a red by relaxing it, #611). **Bump N on every push to
+  `develop` that changes the sim** *(OWNER, 2026-09-03: "add a release candidate version number
+  to the right of rc so I can keep track of the release candidate builds")* — bug reports carry
+  `RD_RELEASE`, so an unnumbered `-rc` cannot tie a symptom to a build. One changelog entry per
+  release; **later pushes EXTEND it**, like the manual's pending revision row, while N advances. Review it on the tester site
   (`develop.reactor-dynamics.pages.dev`); the release commit then only strips `-rc` and sets the
   date. **A flag-gated feature is not released and gets no `changelog.html` entry** — check
-  `site/flags.js` — but does belong in `CHANGELOG.md` *(OWNER RULING, 2026-09-03, on the live
-  checklists: "they're technically not released so don't put them in the change logs yet")*.
+  `site/flags.js` — but does belong in `CHANGELOG.md` *(OWNER RULING, 2026-09-03: "they're
+  technically not released so don't put them in the change logs yet")*.
 - **Version** — `Alpha X.Y.Z` = **Platform . Feature . Refinement**. Read the top entry
   and bump the highest-significance digit in the release:
   - **X** platform milestone (new reactor type, engine overhaul, alpha→beta). Rare.
@@ -1048,12 +1051,11 @@ from the developer `CHANGELOG.md`. **Every release gets a version number and a
   `site/release.js`, which must agree. `run_release.js` gates that agreement but **not** the
   digit choice: which digit fits is judgement and is not parseable.
 - **The entry** — a new `<details class="log-entry" open>` at the TOP (newest-first): version,
-  date (visible text *and* `datetime`), player-facing summary. One line per change, lead with the
-  change, no marketing. Copy the file's `ADDING AN ENTRY` template.
+  date (visible text *and* `datetime`), player-facing summary. One line per change, no marketing.
+  Copy the file's `ADDING AN ENTRY` template.
 - **FACTS ONLY, MINIMIZE PROSE** *(OWNER, 2026-08-04: "Just keep to facts in the changelog page.
-  Minimize prose.")*. Name the thing that changed and stop. No explaining an absence, no sentence
-  that would still read fine if deleted, no lead-in paragraphs. If a line carries no fact a player
-  can act on or verify, cut it. `CHANGELOG.md` stays dense; this page stays bare.
+  Minimize prose.")*. Name the thing that changed and stop. No sentence that would still read fine
+  if deleted, no lead-in paragraphs. `CHANGELOG.md` stays dense; this page stays bare.
 - **SIMULATOR CHANGES ONLY — website changes do not go in it** *(OWNER DIRECTIVE, 2026-08-06:
   "Also, don't include website changes in the changelog. The changelog is strictly for
   simulator changes.")*. The plant the player operates — physics, board, controls, procedures,

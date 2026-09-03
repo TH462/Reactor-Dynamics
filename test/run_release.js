@@ -82,9 +82,16 @@ var RELEASE = relM ? relM[1] : null;
  * SO `-rc` COUNTS AS RELEASED HERE. Every agreement rule below stays armed — all three files must
  * still name the same version, dates must still match, order must still descend. PENDING adds
  * information to the report; it removes no assertion. */
-var VER_RE = /^Alpha \d+\.\d+\.\d+(-rc)?$/;
+/* THE RELEASE CANDIDATE CARRIES A NUMBER *(OWNER, 2026-09-03: "Can we add a release candidate
+ * version number to the right of rc so I can keep track of the release candidate builds? Eg
+ * Alpha 1.8.2-rc3")*. Each push to `develop` that changes the sim is a new candidate build the
+ * owner may be testing, and without a number two of them are indistinguishable in a bug report —
+ * which matters because the bug reports carry RD_RELEASE and are how a symptom gets tied to a
+ * build. The DIGITS ARE REQUIRED, not optional: a bare `-rc` is exactly the ambiguity this
+ * removes, so the gate refuses it rather than trusting a note to remember. */
+var VER_RE = /^Alpha \d+\.\d+\.\d+(-rc\d+)?$/;
 var RELEASED = !!(RELEASE && VER_RE.test(RELEASE));
-var PENDING = !!(RELEASE && /-rc$/.test(RELEASE));
+var PENDING = !!(RELEASE && /-rc\d+$/.test(RELEASE));
 check('VERSION', 'site/release.js', 'RD_RELEASE = ' + JSON.stringify(RELEASE),
   PENDING ? 'PENDING on develop — the release presentation is assembled and reviewable; the release commit strips -rc and sets the date'
           : RELEASED ? 'a full Alpha X.Y.Z — the download names itself from this'
@@ -122,7 +129,7 @@ if (RELEASE && RELEASED) {
   var rcParts = [RELEASE,
                  siteEntries.length ? siteEntries[0].ver : null,
                  mdVers.length ? mdVers[0].raw : null].filter(function (v) { return v != null; });
-  var rcOn = rcParts.filter(function (v) { return /-rc$/.test(v); }).length;
+  var rcOn = rcParts.filter(function (v) { return /-rc\d+$/.test(v); }).length;
   check('VERSION', 'the three files', 'the -rc suffix is all-or-nothing (' + rcOn + '/' + rcParts.length + ')',
     (rcOn === 0 || rcOn === rcParts.length)
       ? (PENDING ? 'pending, consistently' : 'released, consistently') : null);

@@ -30,7 +30,7 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
 
 ## [Unreleased]
 
-## [Alpha 1.7.2-rc] — 2026-09-03
+## [Alpha 1.7.2-rc1] — 2026-09-03
 
 ### Fixed (#612: the running checklist's column and its auto-scroll)
 

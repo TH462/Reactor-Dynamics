@@ -216,14 +216,48 @@
     }
   }
 
+  /* THE DECORATIVE CLOCK YIELDS WHEN THE FRAME BUDGET IS GONE (#613, owner playtest
+   * 2026-09-03: "the sim has issues with large transients causing it to bog down and cause
+   * graphical issues like indications and objects disappearing and reappearing").
+   *
+   * MEASURED, profiled at 10x with a checklist running — the regime his report was in (his step
+   * p95 19.3 ms, mine 16.3): `tickAnimations` is the single largest cost in the whole UI, 454 ms
+   * of a 15 s profile, 32 % of all ui/ self time, with `drawChart` second at 280 ms. The work
+   * itself is ~0.64 ms to pause and re-seek 45 animations, and at FLOW_FPS = 24 that is
+   * 15-30 ms EVERY SECOND, spent forever, on bubbles, plumes, rain and pump spin.
+   *
+   * It is decoration, and it was the one thing on the board with no back-pressure: the ticker
+   * ran at a fixed 24 Hz whether the machine could afford it or not. On a loaded machine that is
+   * exactly the cost that starves the app's own rAF — which is #596's finding, and #596 fixed
+   * the RATE without making it adaptive.
+   *
+   * So: measure our own frame interval and skip ticks when it slips. The dash grid is unaffected
+   * (it is redrawn from the shared clock below, so a skipped tick simply advances further next
+   * time and the world alignment #233 protects is preserved by construction). What degrades is
+   * how smooth a bubble looks, which is the right thing to spend first.
+   *
+   * NOT A FIX FOR THE OWNER'S NUMBERS, and it must not be reported as one: his render p95 is
+   * 48.6 ms and the worst this harness reproduces is 22 ms, so the absolute cost is
+   * environmental and unreproduced here. This removes real, measured waste; whether it is
+   * enough is what his next report answers. */
+  var animSkip = 0, animEma = 0;
   function flowTick() {
     flowRafPend = false;
     var now = performance.now();
     var frozen = !!document.querySelector('.pwr-board-stage.bd-frozen');
     if (!flowLastMs) flowLastMs = now;
     if (!frozen) flowClockMs += now - flowLastMs;
+    var frameMs = flowLastMs ? now - flowLastMs : 0;
     flowLastMs = now;
-    tickAnimations(now);
+    /* An exponential mean of our own interval. Nominal is 1000/FLOW_FPS ms; when the page is
+     * healthy the timer lands near it, and when the main thread is contended it does not. */
+    if (frameMs > 0 && frameMs < 2000) animEma = animEma ? (animEma * 0.85 + frameMs * 0.15) : frameMs;
+    var nominal = 1000 / FLOW_FPS;
+    /* 0 skips while we are inside ~2x nominal, then progressively more, capped so the motion
+     * never stops outright — a frozen-looking board reads as a crashed sim. */
+    var want = animEma > nominal * 4 ? 3 : animEma > nominal * 2 ? 1 : 0;
+    if (animSkip > 0) { animSkip--; }
+    else { animSkip = want; tickAnimations(now); }
     if (frozen) return;
     var els = document.querySelectorAll('polyline[data-dash-cyc]');
     if (!els.length) return;
