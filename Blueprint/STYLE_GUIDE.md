@@ -67,6 +67,124 @@ name the real thing, and does it carry one idea? If a sentence fails one of the 
 usual fix is a seam, not a synonym. **[JUDGEMENT]** — not gateable, like Hard Rule 12 and
 the units rule; a green run says nothing about it.
 
+---
+
+## The name — what to call a thing
+
+> *(OWNER DIRECTIVE, 2026-09-03: "Make sure to be using the name of a control as seen on the
+> screen not the internal names. Also make sure it's spelled out enough to know what it means.
+> All acronyms should be spelled out with the acronym next to it in parentheses.")*
+
+Three rules. They apply to every text class, including Voice — a character may be wrong about
+the plant, never wrong about what a control is called.
+
+- **N-1 — The screen's name is the name.** Not the engine identifier, and **not a fuller name
+  you invented because the screen's felt too terse.** The sanctioned vocabulary is
+  `CONTROL_LABEL_MAP` in `ui/diagram/board/pwr_board_wiring.js` — 68 keys resolving to 46 board
+  items — and it is not a matter of taste: `Manuals/03_CONTROLS_AND_INDICATIONS.md` §1.0 states
+  *"Controls are named by on-screen label"*, and `run_manual_controls` fails if a checklist
+  step's `control` string is not in the map. **If the name you want is not in that map, the
+  answer is to change the board, not the prose.**
+- **N-2 — Spell it out enough to know what it means.** A name that matches the screen and still
+  tells the player nothing is a defect. `SP`, `ADV`, `IR`, `NIS` are all on this board and none
+  of them decodes on sight. Fix it at the surface with room — the nameplate if it fits, the
+  surrounding sentence if it does not.
+- **N-3 — Every acronym is spelled out with the acronym in parentheses at first use:**
+  *auxiliary feedwater (AFW)*. After that, the short form. Per document, and per panel for
+  interface copy.
+- **N-4 — A deleted control is not a name.** Before you write a control into player text,
+  confirm it is on the **mounted** board, not merely in the authored file. Controls are removed
+  from this board by owner directive and the prose that instructs them survives: the residual
+  heat removal AUTO button, the reactivity readout and its caption, the labelled steam dump
+  tile and the auxiliary feedwater manual START have all gone that way, and shipped scenario
+  prose still names some of them. **N-1 makes a wrong name findable; N-4 is what makes a name
+  exist at all.**
+
+### The failure this was written for
+
+`pwr_heatup` step 8 was rewritten on 2026-09-03 to read *"Open the **Safety Injection
+Accumulator valve** NOW…"*. The board card is titled **ACCUMULATORS** and the sanctioned
+control name is **Accumulator valve**. The invented name is longer, more descriptive, more
+technically accurate — and a player scanning the board for it finds nothing. **A plausible
+fuller name is still a wrong name.** N-1 exists because that failure is not sloppiness; it is
+what careful writing does when it is not anchored to the screen.
+
+### The tension N-1 and N-3 create, and how to settle it
+
+**The board itself sometimes shows a bare acronym**, so the two rules pull apart. Seven of the
+control map's keys already carry their expansion and roughly a dozen are bare:
+
+| | |
+|---|---|
+| **Already correct — copy the form** | `Reactor Coolant Pumps (RCP)` · `Pressurizer Heaters (PZR)` · `Pressurizer Spray (PZR)` · `Relief Valve (PORV)` · `Residual Heat Removal (RHR)` · `Charging Pump (CVCS)` · `Letdown Orifices (CVCS)` |
+| **Bare keys** | `HPI` · `HPI/LPI` · `AFW` · `AFW Throttle` · `MSIV` · `NIS` · `ECCS` · `ADV` · `ADV SP` · `Dump SP` · `Pressure SP` · `MFW Restore` · `SR detector` · `1/M Plot` · `Tavg` |
+
+> **Do not treat that second row as an inventory of nameplates — read the board yourself.** A
+> control-map key is a *highlight key*; it is not guaranteed to be the string painted on the
+> tile. Several are not: the `Tavg` key resolves to a tile reading **AVG COOLANT TEMPERATURE**,
+> and `Rod Speed — Normal` resolves to a button reading **MED**. A list of board labels written
+> into a document rots the way gate baselines do. **Read the mounted board at the time you
+> write.**
+
+> **THE TRAP, and it caught two agents and me on 2026-09-03.** `ui/diagram/board/pwr_board_data.js`
+> is the **authored** board, not the rendered one. The driver applies `DOC_PATCHES` (relabels),
+> `DOC_REMOVE` (deletes) and `EXTRA_ITEMS` (adds) at mount, so the file and the screen disagree.
+> Two proposals in the naming audit named controls the owner had already deleted; a third check
+> of my own read `DOC_REMOVE` as a list when it is an **object** and reported zero deletions from
+> a table that has many. **Apply all three overlays before you believe a name**, and when a name
+> matters, look at the running board.
+
+**Settle it in this order:**
+
+1. **Use the screen's name.** N-1 wins the reference — write `AFW Throttle` when you mean the
+   control, because that is what the player is looking at.
+2. **Expand it in the prose around it.** *"Set the auxiliary feedwater throttle (**AFW
+   Throttle** on the board) to 50 %."* The expansion is the writer's job even when the
+   nameplate cannot carry it.
+3. **Where the nameplate has room, fix the nameplate** — that is the permanent fix, and the
+   seven labels above prove it fits. Board strings are changed through the re-export-safe
+   override channel (`DOC_PATCHES` / `DOC_REMOVE` / `EXTRA_ITEMS`), **never by hand-editing the
+   generated `pwr_board_data.js`**, and a rename costs `CONTROL_LABEL_MAP`, the checklist
+   `control` strings, `Manuals/03`, and a re-run of `run_manual_controls` and `verify_e2e_ui` in
+   the same change. Three lines of the nameplate list are load-bearing elsewhere and are named
+   in §4.1.
+
+### Where the expansion goes when the field is capped
+
+The same seam rule as the voice section: **split, do not compress.** An expansion that will not
+fit the action goes in the field beside it.
+
+| Field | Cap | Where the expansion goes |
+|---|---|---|
+| checklist `text` | 20 words | `why`, or `target` if it is part of the value |
+| checklist `control` | must match the board | nowhere — this field **is** the screen's name, verbatim |
+| System Scanner `brief` | 140 characters | `detail` |
+| board nameplate | 2–11 characters on a button | the Scanner popover, or the manual |
+| alarm `label_industry` | terse annunciator legend | `label_learning`, which is what every player currently sees |
+
+### Three standing exceptions
+
+- **`Manuals/10_GLOSSARY.md` is acronym-first by design** — 74 rows headed `**RPS** | Reactor
+  Protection System…`. A glossary is looked up by its short form. N-3 does not apply to a
+  head-word.
+- **The Industry alarm register is a board legend, not prose.** `PZR PRESS LO LO` is correct as
+  it stands; expanding it destroys the form it exists to have. N-3 applies to the Learning
+  register, which is the one the player actually sees.
+- **Never coin an acronym.** If the industry does not use it, spell it out and stop.
+
+**[GATED, in part]** — `run_manual_controls` holds every checklist `control` string to the
+board's vocabulary (532 checks), and `run_inspect` enforces standalone-acronym expansion in the
+System Scanner copy, carrying its own owner directive. **[GATEABLE]** — first-use expansion in
+checklist step text, and whether a control named in step *text* resolves in the vocabulary at
+all; both would be born green only after the pending pass, so until then they are backlog lines,
+not checks. **[JUDGEMENT]** — N-2, whether a name decodes at all.
+
+**Note what none of these gates covers.** `run_manual_controls` reads the `control` FIELD. Every
+one of the verified defects listed under *Pending in 1.2* is in step **text**, which no gate
+reads — the same shape as this project's standing finding that three runners gate the manual's
+numbers and nothing gates its prose. **A green board-vocabulary gate is not evidence the prose
+uses the vocabulary.**
+
 **On the rule codes below.** They are numbered so this document can cite itself.
 *(OWNER DIRECTIVE, 2026-08-14: "I don't know what these letter number combos are (L0, D1).
 Always spell them out."; broadened the same day: "Not just those to, spell out all of
@@ -185,12 +303,11 @@ anyway.
 - **W13** Repeating a term is correct; varying it for effect is a defect. **[JUDGEMENT]**
 - **W14** No idiom, metaphor or humour in P or U. All three are available in V, R and C.
   **[JUDGEMENT]**
-- **W15** Expand every abbreviation on first use per document, then use the short form.
-  This is already project policy (`Blueprint/OPERATOR_MANUAL_PLAN.md`) and already the
-  board's convention — *Reactor Coolant Pumps (RCP)*, *Residual Heat Removal (RHR)*,
-  *Relief Valve (PORV)*. **Exception:** `Manuals/10_GLOSSARY.md` is deliberately headed
-  acronym-first. **[GATED]** — `run_inspect` enforces standalone-acronym expansion in the
-  System Scanner copy, carrying its owner directive in the runner.
+- **W15** **Acronyms — see *The name*, rule N-3, which is the owner's own words and governs.**
+  In short: spelled out with the acronym in parentheses at first use per document or panel,
+  short form after. Already project policy (`Blueprint/OPERATOR_MANUAL_PLAN.md`) and already
+  the board's convention in seven places. **[GATED]** in the System Scanner copy by
+  `run_inspect`, which carries its own owner directive; ungated everywhere else.
 - **W16** No "shall", "should" or "must" in P. A step is an imperative. **[GATED]** —
   `run_style`, checklist pool only. *The two live-pool sites were rewritten 2026-09-03 in
   the change that built the gate — the constraint they stated moved into `why`. 49 lines
@@ -402,8 +519,10 @@ from recall and five named strings that exist nowhere in the tree. The project m
   registry already carries a prose reason for each — e.g. *"the source-range channel
   auto-energizes below the P-6 class point; no operator lever."* Quote the reason; do not
   write "(pending)".
-- **T2** **Controls are named by their on-screen label** (`Manuals/03` §1.0). The board's
-  nameplate wins over any preferred term this document might prefer.
+- **T2** **Controls are named by their on-screen label — see *The name*, rule N-1**, which is
+  the owner's own words and governs. The board's nameplate beats any preferred term this
+  document, the manual, or your own judgement might prefer; if the name is wrong, change the
+  board. `run_manual_controls` holds every checklist `control` string to that vocabulary.
 - **T3** Before adding a "do not use" entry, grep for it. Version 1.0 banned four terms
   that are the board's own vocabulary or name different components entirely.
 
@@ -592,8 +711,10 @@ Lines marked **[G]** are already enforced by a gate — run it rather than eyeba
 
 **All classes**
 - [ ] Text class identified for every block.
+- [ ] **Every control is called what the screen calls it (N-1)** — checked against `CONTROL_LABEL_MAP`, not against what sounds right. No invented fuller names. **[G]** `run_manual_controls` (checklist `control` strings only)
+- [ ] **Every name decodes (N-2)** — a reader who has not met it can tell what it is.
+- [ ] **Every acronym spelled out with the acronym in parentheses at first use (N-3).** **[G]** (System Scanner copy only) `run_inspect`
 - [ ] Every command, indication and label named in the text resolves in the registries. **[G]** `run_manual_commands`, `run_manual_controls`
-- [ ] Acronyms expanded on first use. **[G]** (System Scanner copy only) `run_inspect`
 - [ ] US customary first, SI in parentheses; differences converted with no offset. **[G]** `run_manual_units`
 - [ ] Setpoints match the engine. **[G]** `run_manual_setpoints`
 - [ ] No RBMK or BWR text authored.
@@ -672,3 +793,21 @@ rule a grep cannot decide — a check that cannot fail is worse than no check.
 |---|---|
 | 1.1 | Rewritten against the as-built simulator after a 17-agent verification pass. Deleted the self-declared authority, the one-conversion-table rule, the closed-up percent, the player-clicked checkbox, the sequenced/unsequenced and continuous/reference-use distinctions, the scram ban, four wrong "do not use" entries and both RBMK term rows. Renamed the P/R/V/U axis to *text class* (the word "register" is taken) and added class C for chrome. Regenerated the seed term list from the shell registries — five of version 1.0's ten identifiers existed nowhere in the tree. Added §0 (the plant), §3.2 (acceptance criteria are safety claims), §3.4 (entry conditions), U9 (generated artifacts), the manual revision procedure, and a GATED/GATEABLE/JUDGEMENT mark on every rule. |
 | 1.0 | Initial issue, written without access to the simulator. |
+
+**Pending in 1.2 — the naming pass has NOT been run against the corpus.** A six-surface audit on
+2026-09-03 (checklist, board, alarms, System Scanner, manuals, chrome), every proposed edit
+adversarially re-checked at the code, found the defect is broader than acronyms and the worst of
+it is rule N-1, not N-3. Verified examples, none applied:
+
+- `pwr_heatup` step 8 and `pwr_cooldown` step 7 name a **Safety Injection Accumulator valve**;
+  the control is **Accumulator valve**. Authored 2026-09-03 — the day of the directive — by an
+  agent doing careful work. This is the failure the section above is written around.
+- Three steps say *"at Norm"* for a rod speed; the button reads **MED**.
+- One step says *"BORON card → AUTO"*; that card's buttons are **ON** and **OFF**.
+- One step says *"take HPI and LPI to OFF"*; the string **LPI appears nowhere on the board**,
+  and the one control is a **STOP** button on the **ECCS** card.
+- The Procedures tab prints the raw initial-condition key (`hot_full_power`) where the screen's
+  own label (**Hot Full Power (Mode 1)**) is one lookup away.
+
+**Do not apply this list from here.** Every entry needs re-checking against the mounted board at
+the time of the edit — see the trap above — and most of them are code, not documentation.
