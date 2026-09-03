@@ -30,6 +30,17 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
 
 ## [Unreleased]
 
+### Fixed (#609: the manuals' accumulator cover gas)
+
+- **The operator manuals said the safety-injection accumulators sit behind a 600 psi cover gas.
+  They sit at 665 psia.** Corrected in eleven places across chapters 04, 05 and 12. The old figure
+  is the accumulators' licence *minimum*, not the pressure in the tanks — and it is the number that
+  decides whether opening the discharge isolation valve backfeeds the tanks into the primary, so
+  following it discharged them (measured: 100 % to 97.2 % inventory, 22 ppm of unplanned boration).
+  Chapter 12 also gains the real-plant source for the figure it had been asserting without one.
+- The **RHR suction valve's autoclosure interlock is also 600 psi and is unchanged** — it is a
+  different setpoint that happens to share the number.
+
 ### Fixed (#608: the Mode 5 heatup checklist's steps 6-8)
 
 - **The steam-dump step asked you to set a value the plant was already at, and named a button that

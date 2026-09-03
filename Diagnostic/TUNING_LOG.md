@@ -29,6 +29,68 @@ and the user-visible summary in `CHANGELOG.md`. This file points at those and tr
 
 ---
 
+## Session log — 2026-09-03-develop-a (#609 — the accumulator cover gas was the DEAD constant, in eleven places)
+
+**Ruling** *(OWNER, 2026-09-03: "Change the manual to 665 psia")* — on the #609 filed at the end of
+the #608 session, where the edit was started and deliberately backed out pending this.
+
+**The defect.** The manual set documented the SI accumulator cover gas as **600 psi (4.14 MPa)** in
+eleven places across chapters 04, 05 and 12 — including **12's trust-class table**, where it sat in
+the *Structural — fixed physical constants and real-plant setpoints* row at trust **High**, the
+strongest claim the set makes about a number. That figure is `p_min_mpa` in
+`engines/pwr2/pwr2_eccs.js`: the accumulator's **LCO minimum**, a constant that is defined,
+`[sourced]`-tagged, and **read nowhere in the repo**. The tank actually runs on `p0_mpa`, the
+**650 psig normal cover pressure** (WTSM T5.2-2) — and this set prints absolute, so the same number
+reads **665 psia (4.58 MPa)**.
+
+**Why it was not cosmetic.** The number decides whether opening the discharge isolation valve
+backfeeds the tank into the primary. Measured on the shipped plant, opening at **609 psia** — a
+pressure the 600 psi figure endorses — discharges the tanks **100 % → 97.2 %** and drags boron
+**918 → 940 ppm**, an unplanned boration on a healthy plant, and the command is **accepted** with no
+refusal. That is the same measurement that produced #608 item 4.
+
+**The sweep, and why it was not a string replace.** `600 psi` appears **27 times** in the set and
+only eleven are the accumulator. **The RHR suction valve's autoclosure interlock is also 600 psi
+and is correct** (03 §RHR, 04 §NOTE, 06 §PWR-A32, 09 §RHR, 12 §RHR), as is the MSLI low-pressure
+leg (09 §MSLI, 12 §steam-line isolation) — roughly five correct sites for every one to change, and
+**two lines carry both** (04 §PWR-N01 step 6, whose RHR clause and accumulator trigger sit in one
+sentence; 12's trust-class row, which names the accumulator arming pressure and the RHR autoclose
+in the same cell). Each site was read and classified individually; a `sed` over the string would
+have corrupted twelve correct setpoints.
+
+**Two self-contradicting rows found by doing it.** 04 §PWR-N01's WARNING and 05 §A5 both restate
+the crossing in their #419 timing clause — *"600 psi is crossed at ~+9 min"* — so correcting the
+cover gas alone would have left each row naming two different numbers for one event. They now say
+*"the cover gas is crossed at ~+9 min"*: the ~+9 min figure was measured **at 600 psi on the
+RETIRED engine**, and re-clocking it is a separate job, so the number was removed rather than
+silently re-attached to a value nothing measured it at.
+
+**12 §accumulators gained its sourcing** while it was open — it had asserted "600 psi — the real
+core-flood-tank / SIT cover-gas setpoint" with no citation. It now names **650 psig, WTSM T5.2-2**,
+and says why the printed figure is 665: the set prints absolute.
+
+**Landed** under Rev **17**'s **pending** row (extended, not a new revision — the set revision only
+advances at a release), `stamp_manual_revision` + `pack_manuals` run. Manual gates green:
+`run_manual_rev` 15, `run_manual_setpoints` 13, `run_manual_units` 0 failed, `verify_manual_data`
+151, `run_manual_controls` 530, `run_portable` 145.
+
+**Left standing deliberately.** `p_min_mpa` is still a `[sourced]` constant nothing reads — the
+dark-wire class. The ruling was about the manual, so wiring or deleting it is a code change nobody
+asked for; it is named here and in #609 rather than done on the way past.
+
+### The trap
+
+**A DEAD constant reads exactly like a live one from the documentation side, and the docs will
+quote whichever one sounds more like a setpoint.** `p_min_mpa` had a `[sourced]` tag, a real
+citation and a plausible round value; `p0_mpa` sat two lines above it carrying the number the plant
+actually runs on. The manual quoted the dead one eleven times over months, in three chapters, and
+promoted it to trust **High**. Nothing could catch it: `run_manual_setpoints` reads chapter 09's
+tables and this figure is not in them, and any source scan for the string drowns in correct RHR
+hits. **The tell was not in the documents at all — it was that one constant has consumers and the
+other has none.** Grep for who READS a constant before trusting what a document says about it.
+
+---
+
 ## Session log — 2026-09-02-develop-c (#608 — the heatup checklist's three steps, and the tick that was permission to dump the accumulators)
 
 **Ask** *(OWNER, playtest of the Mode 5 → Mode 3 live checklist)*: three items on steps 6/7/8, one

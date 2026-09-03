@@ -45,6 +45,51 @@ where the two differ or where judgment was exercised.
 
 ---
 
+## 2026-09-03-develop-a — #609: the documented accumulator cover gas was the constant nothing reads
+
+**RULED** *(OWNER, 2026-09-03: "Change the manual to 665 psia")*, on the issue filed at the close of
+#608 with the edit deliberately backed out pending it.
+
+**The manual set documented the SI accumulator cover gas as 600 psi (4.14 MPa) in eleven places**
+across 04, 05 and 12 — including **12's trust-class table**, in the *Structural — fixed physical
+constants and real-plant setpoints* row at trust **High**. That figure is `p_min_mpa` in
+`pwr2_eccs.js`: the LCO **minimum**, `[sourced]`-tagged and **read nowhere**. The tank runs on
+`p0_mpa`, the sourced **650 psig normal cover pressure** (WTSM T5.2-2), which this set prints
+absolute as **665 psia (4.58 MPa)**.
+
+**Not cosmetic — the number decides whether opening the valve backfeeds the tank.** Measured:
+opening at 609 psia, a pressure the 600 psi figure endorses, discharges the tanks **100 % → 97.2 %**
+and drags boron **918 → 940 ppm**, accepted with no refusal. Same measurement as #608 item 4.
+
+**Swept by hand, not by string.** `600 psi` appears 27 times in the set; eleven are the accumulator.
+The **RHR autoclosure interlock is also 600 psi and is correct** (03, 04, 06, 09, 12), as is the
+MSLI low-pressure leg — about five correct sites per site changed, and **two lines carry both**
+(04 §PWR-N01 step 6; 12's trust-class cell). A `sed` would have corrupted twelve correct setpoints.
+
+**Two rows contradicted themselves once the cover gas moved** — 04 §PWR-N01's WARNING and 05 §A5
+restate the crossing in their #419 clause ("600 psi is crossed at ~+9 min"). They now say "the cover
+gas is crossed at ~+9 min": that timing was measured **at 600 psi on the retired engine**, so the
+number was removed rather than re-attached to a value nothing measured it at. Re-clocking is a
+separate job.
+
+**12 §accumulators gained sourcing** it never had — it asserted "the real core-flood-tank / SIT
+cover-gas setpoint" with no citation, and now names 650 psig, WTSM T5.2-2, and why the printed
+figure is absolute.
+
+Landed on Rev **17**'s **pending** row (extended, not opened — the set revision advances only at a
+release); `stamp_manual_revision` + `pack_manuals` run. Manual gates green.
+
+**Left standing, deliberately.** `p_min_mpa` remains a `[sourced]` constant with no consumers. The
+ruling was about the manual; wiring or deleting it is an unasked-for code change, so it is named
+rather than done.
+
+**THE TRAP.** A dead constant reads exactly like a live one from the documentation side, and the
+docs will quote whichever sounds more like a setpoint — `p_min_mpa` had the tag, the citation and
+the round value, while `p0_mpa` two lines above carried what the plant runs on. Nothing could catch
+it: `run_manual_setpoints` reads chapter 09's tables and this figure is not in them, and a source
+scan drowns in correct RHR hits. **The tell was never in the documents — it was that one constant
+has consumers and the other has none.**
+
 ## 2026-09-02-develop-c — #608: the heatup checklist authored a TRANSIT as an arrival
 
 Owner playtest of the Mode 5 → Mode 3 live checklist, three items on steps 6/7/8, one a BLOCKER.

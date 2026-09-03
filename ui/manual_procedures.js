@@ -1223,14 +1223,16 @@
          * and quoted a "600 psi cover gas" that is `p_min_mpa` in pwr2_eccs.js — a constant that is
          * READ NOWHERE. The tank's LIVE pressure comes from `p0_mpa` and measures 665 psia.
          *
-         * The step now states the measured 665 psia rather than a nominal design figure, because
-         * the two disagree ACROSS THE MANUAL SET and that is not this issue's to settle: the
-         * manuals document a "600 psi cover gas" in eight places (04, 05, 12 — including 12's
-         * trust-class table, which lists it as a structural real-plant setpoint), while the engine
-         * carries BOTH numbers as sourced — p0_mpa at 650 psig normal cover pressure (WTSM T5.2-2,
-         * live) and p_min_mpa at 600 psig minimum (dead). Which is this plant's belongs to an
-         * evidence pass; filed separately. What is not in doubt is the measurement, so that is what
-         * the step quotes.
+         * The step states the measured 665 psia, and SO DOES THE MANUAL SET NOW *(OWNER RULING,
+         * 2026-09-03, #609: "Change the manual to 665 psia")*. When this step was written the two
+         * disagreed — the manuals documented a "600 psi cover gas" in eleven places across 04, 05
+         * and 12, including 12's trust-class table where it was listed as a structural real-plant
+         * setpoint — because that figure is `p_min_mpa`, the LCO MINIMUM, a constant read nowhere.
+         * The tank runs on `p0_mpa`, the sourced 650 psig normal cover pressure (WTSM T5.2-2),
+         * which this set prints absolute as 665 psia. Swept under Rev 17's pending row.
+         *
+         * The RHR suction valve's autoclosure interlock is ALSO 600 psi and is UNCHANGED — five
+         * correct sites for every accumulator one, so do not sweep this number on the string.
          *
          * And measured across the whole climb, not one accumulator alarm comes in: the only alarm
          * between 665 and 1615 psia is rhr_not_aligned at 591 psia, and the existing accum_aligned
