@@ -30,7 +30,27 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
 
 ## [Unreleased]
 
-## [Alpha 1.7.2-rc1] — 2026-09-03
+## [Alpha 1.7.2-rc2] — 2026-09-03
+
+### Fixed (#613: the board's decorative motion now yields when the frame budget is gone)
+
+- **The flow animation clock has back-pressure.** Profiled at 10 x with a checklist running,
+  `tickAnimations` was the single largest cost in the whole UI — 454 ms of a 15 s CPU profile,
+  32 % of all `ui/` self time — pausing and re-seeking 45 decorative animations at a fixed 24 Hz
+  whether the machine could afford it or not, plus `stroke-dashoffset` written to ~67 polylines
+  at the same rate (~1,600 stroke invalidations a second, none of which composite). Both halves
+  now skip ticks as the frame interval slips. Measured under 8 x CPU throttle across the two
+  waves: **fps 1.53 → 2.04 (+33 %), render p95 188.6 → 150.1 ms.**
+- **The owner's own reports are the evidence the first wave worked**, and that it is not enough:
+  render p95 **48.6 → 21.7 ms**, step **19.3 → 2.3 ms**, budget **49 % → 17 %** — and fps
+  unchanged at 4.6, with the verdict flipping to *"PAINTS ARE BEING DROPPED: more broadcasts than
+  frames, with both stages inside budget."* The remaining cost is browser-side compositing, which
+  `render_ms` structurally cannot measure. **#613 stays open.**
+- **The feedback form retries its focus** across a few frames instead of once, and verifies the
+  caret landed rather than assuming `focus()` not throwing meant it worked. UNPROVEN: the failure
+  it guards against (focusing a not-yet-rendered textarea in the same tick the overlay unhides)
+  could not be reproduced even at 8 x CPU throttle, so this is hardening, not a demonstrated fix
+  for the blank reports.
 
 ### Fixed (#612: the running checklist's column and its auto-scroll)
 

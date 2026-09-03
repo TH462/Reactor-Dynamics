@@ -256,9 +256,29 @@
     /* 0 skips while we are inside ~2x nominal, then progressively more, capped so the motion
      * never stops outright — a frozen-looking board reads as a crashed sim. */
     var want = animEma > nominal * 4 ? 3 : animEma > nominal * 2 ? 1 : 0;
-    if (animSkip > 0) { animSkip--; }
-    else { animSkip = want; tickAnimations(now); }
-    if (frozen) return;
+    /* THE SKIP COVERS THE DASH WRITES TOO (#613 wave 2, and the first wave was half a fix).
+     *
+     * The owner's rc1 report is what says so. Wave 1 gated `tickAnimations` alone and it WORKED
+     * on the numbers it could reach: render p95 48.6 -> 21.7 ms, step 19.3 -> 2.3, budget
+     * 49 % -> 17 %. And the frame rate did not move — 4.7 -> 4.6 fps — with the tool's verdict
+     * flipping to "PAINTS ARE BEING DROPPED: more broadcasts than frames, with both stages
+     * inside budget."
+     *
+     * That is the whole diagnosis: with our JS comfortably inside budget, the remaining cost is
+     * the BROWSER's, and the loop below is what drives it — `stroke-dashoffset` written to ~67
+     * polylines at 24 Hz is ~1,600 stroke invalidations a second, every one of which the
+     * compositor must repaint. It is the same finding as #596 (dash strokes never composite;
+     * measured there at 6x the raster cost of everything else) and wave 1 simply left it out.
+     *
+     * So one skip gates BOTH halves. The phase is computed from `flowClockMs`, an absolute
+     * clock, so a skipped tick is not a dropped frame of motion — the next write lands where the
+     * dashes should be by then, and #233's world-grid alignment is preserved exactly as it is
+     * for the animation seeks above. */
+    var doTick = true;
+    if (animSkip > 0) { animSkip--; doTick = false; }
+    else { animSkip = want; }
+    if (doTick) tickAnimations(now);
+    if (frozen || !doTick) return;
     var els = document.querySelectorAll('polyline[data-dash-cyc]');
     if (!els.length) return;
     var t = flowClockMs / 1000;

@@ -6332,8 +6332,36 @@
      * will not take typing, and it is the same near-miss trap as the board's number boxes.
      * Guarded on the block being visible: on a build with no telemetry endpoint the send form
      * is hidden and there is nothing to focus. */
+    /* AND FOCUS IT ON A LATER FRAME, NOT THIS ONE (#613, owner 2026-09-03: "I sent a bug report
+     * I wasn't able to type in it so it's blank" — the THIRD blank report in a day).
+     *
+     * #605 added the focus above and it is right; what was wrong is WHEN. `openModal` unhides the
+     * overlay in this same synchronous tick, so at the moment `.focus()` is called the textarea
+     * has not been rendered yet — and focusing a non-rendered element is a silent NO-OP. The
+     * try/catch cannot see it either, because nothing throws. On a fast idle page the layout
+     * often lands in time and it works, which is exactly why one report carried the word
+     * "testing" and the next three were blank: it is a RACE, and this build is losing it because
+     * the page is busy (his rc1 report: "PAINTS ARE BEING DROPPED", 4.6 fps).
+     *
+     * So: try now, then again after a frame, and once more after a beat — and VERIFY rather than
+     * assume, because "focus() did not throw" was never evidence that focus landed. Each retry
+     * bails the moment the caret is where it belongs, and bails if the player has already clicked
+     * into something else, so this can never steal focus back from them. */
     var note = $('fbNote'), block = $('fbSendBlock');
-    if (note && block && !block.hidden) { try { note.focus(); } catch (e) { /* not focusable yet */ } }
+    if (note && block && !block.hidden) {
+      var tries = 0;
+      var putCaret = function () {
+        if (!note.isConnected || $('feedbackOverlay').hidden) return;      // form closed meanwhile
+        if (document.activeElement === note) return;                        // already there
+        var a = document.activeElement;
+        if (tries && a && a !== document.body && a.tagName !== 'BUTTON') return;  // player moved on
+        try { note.focus(); } catch (e) { /* still not focusable */ }
+        if (++tries < 3) (window.requestAnimationFrame || setTimeout)(function () {
+          setTimeout(putCaret, tries * 60);
+        });
+      };
+      putCaret();
+    }
   }
   function copyFeedbackEmail() {
     var status = $('fbStatus');
