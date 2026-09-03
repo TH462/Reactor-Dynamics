@@ -1644,6 +1644,18 @@ var BASELINES = {
   // a date cutoff: anything dated 2026-08-05 or later must be lane-form. Do not move that date
   // forward to clear a red — it retires the gate.
   'run_session_labels.js': { code: 0, score: '8checks 0failed' },
+
+  // The prose gate for player-facing text (2026-09-03) — the seven rules in
+  // Blueprint/STYLE_GUIDE.md that a regex can decide, over the live PWR2 checklist
+  // pool, the PWR alarm labels and Manuals/*.md. All seven were at ZERO when written,
+  // which is the design: a gate born red teaches the next person to read past it.
+  // Injection-verified — `node test/run_style.js --self-test` breaks each check with
+  // its own mutation and all seven go red. That mode FORCES a non-zero corpus and is
+  // NEVER a baseline. The runner also prints a BACKLOG (over-cap step texts, the
+  // Manuals banned-word tallies) which is deliberately kept off this tally line, the
+  // same split run_manual_units makes: a count that moves on every ordinary prose
+  // edit teaches people to update the number without reading it.
+  'run_style.js':          { code: 0, score: '7checks 0failed' },
   // 19/19 86passed → 23/23 117passed (2026-07-28, #240): four suites for
   // mode/lineup-dependent alarm classification.
   // 26 -> 28 on 2026-07-31 (#125): the PORV's operator switch is a SEPARATE command from

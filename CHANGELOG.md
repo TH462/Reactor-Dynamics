@@ -32,6 +32,29 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
 
 ## [Alpha 1.7.2-rc] — 2026-09-03
 
+### Added (the documentation style guide, and the prose gate under it)
+
+- **`Blueprint/STYLE_GUIDE.md`** — a style guide for every player-facing surface: text classes,
+  writing rules, procedure format, terminology, units and interface strings. It arrived as a
+  version 1.0 written without access to this repo and was rewritten against the as-built
+  simulator after a 17-agent verification pass; the rewrite deleted eleven rules that would have
+  broken something. **Advisory** — nothing in it binds until it is ruled on and reaches
+  `CLAUDE.md`.
+- **`test/run_style.js`** — the seven rules a regex can decide, over the live PWR2 checklist pool,
+  the PWR alarm labels and `Manuals/*.md`: vague quantifiers, shall/should/must, reversal
+  constructions, percent spacing, bare `MW`, and two Industry alarm-label shape rules. All seven
+  were at zero when written, deliberately. `--self-test` breaks each check with its own mutation
+  and all seven go red. Baselined at `7checks 0failed`; a backlog count is printed and
+  deliberately not scored.
+
+### Changed (checklist prose — not released, no site changelog entry)
+
+- **`pwr_heatup` step 8 and `pwr_cooldown` step 7** rewritten from 48 and 39 words to 20 each.
+  The accumulator window moved out of the step text and into `target`, in one pressure convention
+  with its SI partner — `between 665 psi (4.585 MPa) and 1615 psi (11.136 MPa)`. Nothing was
+  deleted; the `why` blocks already carried the reasoning. `run_manual_units` 724 → 728 pairs,
+  0 failed.
+
 ### Fixed (#612: the running checklist's column and its auto-scroll)
 
 - **The checklist panel now fills its column.** It had been hosted in a content-sized pane since
