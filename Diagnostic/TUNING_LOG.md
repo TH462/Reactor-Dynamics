@@ -29,6 +29,73 @@ and the user-visible summary in `CHANGELOG.md`. This file points at those and tr
 
 ---
 
+## Session log — 2026-09-03-develop-b (#611 — the release presentation moves to the develop push)
+
+**Directive** *(OWNER, 2026-09-03)*: "The version should be ticked up appropriately and change log
+updated as if it was going to main except that we know the version will still have the tag or
+whatever it is on it just so that I can review all of this stuff before it gets pushed to [main]
+and published… it'd be nice to be able to see how [it] will look [in] its final state in [main]
+before it gets pushed to the main branch."
+
+**What changed.** The version bump and both changelogs used to be composed **at** the merge to
+`main`. They are now composed at the **first push to `develop` after a release**, with the version
+wearing `-rc`, and later pushes EXTEND that entry rather than adding another — the same shape as
+the manual set's pending revision row, which the owner already ruled on. The release commit is then
+a four-token edit: strip `-rc` from three files, set the real date.
+
+**The venue already existed.** `develop` deploys to `develop.reactor-dynamics.pages.dev` on channel
+`preview` (RD_Ops `runbook.md` line 62), so the tester site now shows the version string and the
+entry exactly as `main` will.
+
+### The obstacle, and why it had to be a code change
+
+`run_release.js` had exactly TWO states and `-rc` landed in the wrong one. `RELEASED` was a strict
+`/^Alpha \d+\.\d+\.\d+$/` match on `RD_RELEASE`; failing it flips the file into PRE-LAUNCH mode,
+which **asserts changelog.html has ZERO entries**. Adopting the policy without touching the gate
+turns it red on the first push — and the obvious way to quieten that, relaxing the pre-launch
+assertion, would have **disarmed every cross-file consistency check** at exactly the moment they
+start doing the most work.
+
+So `-rc` counts as RELEASED: `VER_RE` accepts the optional suffix, every agreement rule stays armed,
+and `PENDING` adds information to the report without removing an assertion. One new check, the
+**`-rc` is all-or-nothing** across the three files — the agreement checks would catch a half-applied
+bump anyway, but they would report it as a disagreement about the version rather than as the
+half-finished bump it is. **It proved itself immediately**: a failed `CHANGELOG.md` edit left the
+suffix on two files of three and the gate named it on the spot. 25 → 27 checks.
+
+**This file is why that mattered.** `run_release` exists because a note in `CLAUDE.md` and a step in
+the release skill both failed to make the roll happen — Alpha 1.10.0 and 1.11.0 shipped with their
+work still under `[Unreleased]`. A policy that quietly switched the gate off would have been the
+same failure wearing a process's clothes.
+
+### The digit, and a correction I had to make
+
+Recommended **Z** on an incomplete premise: I characterised `v1.7.1..develop` as #598–#609,
+playtest fixes and checklist work. It also contains **#524 (Mode 5, Cold Shutdown exists)** and
+**#244/#526 (the live checklists)** — by the owner's own operative test, a new *mode* and a new
+system are both Y. Put the correction to him rather than let a wrong number ship.
+
+**RULED Z anyway, for a reason the test does not capture** *(OWNER, 2026-09-03: "I'm going to say Z
+and that is because I am not unlocking the checklist yet[;] they will be there in the code, but
+they will still be locked[,] the user won't be able to get them so they're technically not released
+so don't put them in the change logs yet[.] I still have play testing to do to make sure the
+checklists are correct")*. **Shipped in the repository is not shipped to the player.** Verified
+rather than assumed: `site/flags.js` has `checklists: { stage: 'preview' }`, so the flag is off on
+the public channel and live only on the tester site — his premise is exactly right, and the
+checklists are absent from `changelog.html` while staying in `CHANGELOG.md`, which is unrestricted.
+
+**Alpha 1.7.2-rc**, eight bullets, no checklists.
+
+### The trap
+
+**A feature flag makes "what shipped" and "what released" two different questions, and the
+changelog answers the second.** Every instinct here reads the git log — it is the record that is
+right in front of you — and the git log cannot tell you whether a player can reach the thing. The
+check is `site/flags.js`: `stage: 'preview'` or `'off'` means no entry. Same shape as the
+Y-versus-Z rule, which is also about what the *player* gets rather than what the work felt like.
+
+---
+
 ## Session log — 2026-09-03-develop-a (#609 — the accumulator cover gas was the DEAD constant, in eleven places)
 
 **Ruling** *(OWNER, 2026-09-03: "Change the manual to 665 psia")* — on the #609 filed at the end of

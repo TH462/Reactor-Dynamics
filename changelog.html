@@ -166,6 +166,24 @@
 
   <details class="log-entry" open>
     <summary class="log-head">
+      <h2>Cold shutdown, and the board stops lying about a correct plant</h2>
+      <span class="log-ver mono">Alpha 1.7.2-rc</span>
+      <time class="log-date mono" datetime="2026-09-03">3 September 2026</time>
+    </summary>
+    <ul>
+      <li><span class="log-tag added">Added</span><strong>Mode 5, Cold Shutdown is a Free Play starting condition.</strong> The plant boots cold (122&nbsp;&deg;F) and depressurized, and heats up to Hot Standby on reactor-coolant-pump work with the reactor never critical.</li>
+      <li><span class="log-tag fixed">Fixed</span><strong>Safety injection actuates and the board now says so.</strong> It could actuate on a healthy plant during a heatup with nothing annunciating it and <em>eccs_mode</em> still reading standby.</li>
+      <li><span class="log-tag added">Added</span><strong>The intermediate-range flux reactor trip is built</strong>, and TRIP BLOCKS no longer offers two blocks no operator has &mdash; the third row was drawing a rod stop's setpoint in a trip's place.</li>
+      <li><span class="log-tag changed">Changed</span><strong>The control bank is 627 steps</strong>, the sourced four-bank overlap program, and the flattening of its worth curve is bank overlap rather than a tuning constant.</li>
+      <li><span class="log-tag fixed">Fixed</span><strong>Two boxes would not accept typing</strong> &mdash; the Pressurizer Pressure Setpoint and the Report a Problem form. A click that missed the field left the keyboard driving time acceleration instead.</li>
+      <li><span class="log-tag changed">Changed</span><strong>Mode 5 and Mode 4 boot with the turbine tripped and main feed secured</strong>, which is the lineup those modes actually hold.</li>
+      <li><span class="log-tag fixed">Fixed</span><strong>Board bands read the running plant.</strong> The pressurizer level tile follows the live level program instead of a fixed full-power band, so an on-program Mode 5 level no longer paints 15&nbsp;points below normal.</li>
+      <li><span class="log-tag fixed">Fixed</span><strong>Operator manuals: the safety-injection accumulator cover gas is 665&nbsp;psia</strong> (was 600&nbsp;psi, the licence minimum), and the heatup and cooldown accumulator windows read correctly.</li>
+    </ul>
+  </details>
+
+  <details class="log-entry" open>
+    <summary class="log-head">
       <h2>Playtest fixes and a faster board</h2>
       <span class="log-ver mono">Alpha 1.7.1</span>
       <time class="log-date mono" datetime="2026-08-31">31 August 2026</time>

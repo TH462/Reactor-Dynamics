@@ -62,10 +62,34 @@ var RELEASE = relM ? relM[1] : null;
 //
 // The switch is the FORMAT, so nothing has to be remembered: set RD_RELEASE to
 // "Alpha 1.0.0" on launch day (#282) and every released-state rule below arms itself.
-var RELEASED = !!(RELEASE && /^Alpha \d+\.\d+\.\d+$/.test(RELEASE));
+/* THE THIRD STATE: PENDING (#611, OWNER DIRECTIVE 2026-09-03 — the develop-push policy).
+ *
+ * A push to `develop` now carries the release presentation ALREADY ASSEMBLED — version bumped,
+ * changelog.html entry written, CHANGELOG.md rolled — so the tester site shows exactly what main
+ * will show, and the owner reviews the finished article BEFORE it is published. The version wears
+ * an `-rc` suffix while it sits on develop; the release commit strips it and sets the real date.
+ *
+ * WHY THIS HAD TO BE A CODE CHANGE AND NOT A NOTE. The gate had exactly TWO states, and `-rc`
+ * landed in the wrong one: RELEASED was a strict `^Alpha X.Y.Z$` match, and failing it flips the
+ * file into PRE-LAUNCH mode, which asserts changelog.html has ZERO entries. Adopting the policy
+ * without touching this would have turned the gate RED on the first push and, worse, the obvious
+ * way to quieten it — relax the pre-launch assertion — would have DISARMED every cross-file
+ * consistency check at precisely the moment they start doing the most work. This file exists
+ * because a note in CLAUDE.md and a step in the release skill both failed to make the roll happen
+ * (Alpha 1.10.0 and 1.11.0 shipped unrolled); a policy that quietly switched it off would be the
+ * same failure wearing a process's clothes.
+ *
+ * SO `-rc` COUNTS AS RELEASED HERE. Every agreement rule below stays armed — all three files must
+ * still name the same version, dates must still match, order must still descend. PENDING adds
+ * information to the report; it removes no assertion. */
+var VER_RE = /^Alpha \d+\.\d+\.\d+(-rc)?$/;
+var RELEASED = !!(RELEASE && VER_RE.test(RELEASE));
+var PENDING = !!(RELEASE && /-rc$/.test(RELEASE));
 check('VERSION', 'site/release.js', 'RD_RELEASE = ' + JSON.stringify(RELEASE),
-  RELEASED ? 'a full Alpha X.Y.Z — the download names itself from this'
+  PENDING ? 'PENDING on develop — the release presentation is assembled and reviewable; the release commit strips -rc and sets the date'
+          : RELEASED ? 'a full Alpha X.Y.Z — the download names itself from this'
            : (RELEASE ? 'PRE-RELEASE: no version yet; the build is identified by SHA' : null));
+
 
 // -- changelog.html: the player-facing entries ----------------------------------
 // Comments are stripped FIRST. The file carries a fully-formed "Alpha 1.5.0" specimen entry
@@ -88,7 +112,21 @@ while ((mm = reMd.exec(mdSrc)) !== null) {
 var unreleased = mdHeads.filter(function (h) { return h.raw === 'Unreleased'; });
 // "Alpha 1.6.1 and earlier" is a deliberate catch-all for the pre-history and is not a
 // version heading — it has no single version and no single date.
-var mdVers = mdHeads.filter(function (h) { return /^Alpha \d+\.\d+\.\d+$/.test(h.raw); });
+var mdVers = mdHeads.filter(function (h) { return VER_RE.test(h.raw); });   /* VER_RE accepts the pending -rc form (#611) */
+
+/* THE -rc IS ALL-OR-NOTHING (#611). Half-applied is the state that ships a build calling itself
+ * 1.7.2-rc against a changelog headed 1.7.2. The agreement checks below compare the strings and
+ * would catch it, but they would report it as a disagreement about the VERSION; this names the
+ * actual mistake, which is a half-finished bump. */
+if (RELEASE && RELEASED) {
+  var rcParts = [RELEASE,
+                 siteEntries.length ? siteEntries[0].ver : null,
+                 mdVers.length ? mdVers[0].raw : null].filter(function (v) { return v != null; });
+  var rcOn = rcParts.filter(function (v) { return /-rc$/.test(v); }).length;
+  check('VERSION', 'the three files', 'the -rc suffix is all-or-nothing (' + rcOn + '/' + rcParts.length + ')',
+    (rcOn === 0 || rcOn === rcParts.length)
+      ? (PENDING ? 'pending, consistently' : 'released, consistently') : null);
+}
 
 // ---------------------------------------------------------------- A. changelog.html
 check('SITE', 'changelog.html', 'published entries found (' + siteEntries.length + ')',

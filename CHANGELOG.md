@@ -30,6 +30,8 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
 
 ## [Unreleased]
 
+## [Alpha 1.7.2-rc] — 2026-09-03
+
 ### Fixed (#609: the manuals' accumulator cover gas)
 
 - **The operator manuals said the safety-injection accumulators sit behind a 600 psi cover gas.

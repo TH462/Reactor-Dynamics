@@ -1008,18 +1008,26 @@ integration branch; `main` is stable/release. Do not commit straight to `main`.
 
 ### Website changelog & version numbers
 
-> **The page is LIVE** *(OWNER DIRECTIVE, 2026-08-04: "The next release will take the program
-> out of pre-Alpha and into Alpha and bring back the update tracking page. Update tracking
-> summaries/lists should be concise.")*. `Alpha 1.0.0` shipped 2026-08-04; every release since
-> is an ordinary bump by the digit rules below. `CHANGELOG.md`'s pre-public sections are
-> **`## [Pre-launch 1.x.y]`**, not `Alpha` — they were dev versions, and parsed as released ones
-> `1.0.0` sorts under `1.11.0` and `run_release` reddens on newest-first.
+> **The page is LIVE** *(OWNER DIRECTIVE, 2026-08-04: "…bring back the update tracking page.
+> Update tracking summaries/lists should be concise.")*. `Alpha 1.0.0` shipped 2026-08-04.
+> `CHANGELOG.md`'s pre-public sections are **`## [Pre-launch 1.x.y]`**, not `Alpha` — parsed as
+> released, `1.0.0` sorts under `1.11.0` and `run_release` reddens on newest-first.
 
 The public site has a **player-facing** changelog at **`changelog.html`** — separate
 from the developer `CHANGELOG.md`. **Every release gets a version number and a
 `changelog.html` entry — required, not optional; do it as part of the merge.**
 
-- **When** — immediately *before* merging `develop` → `main`. One entry per release.
+- **When** — **at the first push to `develop` after a release, not at the merge to `main`**
+  *(OWNER DIRECTIVE, 2026-09-03: "The version should be ticked up appropriately and change log
+  updated as if it was going to main except that we know the version will still have the tag…
+  so that I can review all of this stuff before it gets pushed to [main] and published.")*. The
+  pending version wears **`-rc`** in all three files or none — `run_release` has a `PENDING`
+  state for it; do not quieten a red by relaxing it (#611). One entry per release; **later
+  pushes EXTEND it**, like the manual's pending revision row. Review it on the tester site
+  (`develop.reactor-dynamics.pages.dev`); the release commit then only strips `-rc` and sets the
+  date. **A flag-gated feature is not released and gets no `changelog.html` entry** — check
+  `site/flags.js` — but does belong in `CHANGELOG.md` *(OWNER RULING, 2026-09-03, on the live
+  checklists: "they're technically not released so don't put them in the change logs yet")*.
 - **Version** — `Alpha X.Y.Z` = **Platform . Feature . Refinement**. Read the top entry
   and bump the highest-significance digit in the release:
   - **X** platform milestone (new reactor type, engine overhaul, alpha→beta). Rare.
@@ -1031,42 +1039,32 @@ from the developer `CHANGELOG.md`. **Every release gets a version number and a
   **Y IS FOR NEW THINGS, NOT FOR VISIBLE THINGS** *(OWNER DIRECTIVE, 2026-07-31: "I think we
   should have the y part of the change number be for major changes or feature additions in
   order to reduce the change number blowup. Z is for smaller changes and fixes even if they
-  are player facing.")*. The old wording, "a new player-facing feature", caught nearly every
-  release and took the version **1.2.0 → 1.11.0 in eight days** (`CHANGELOG.md` 2026-07-31).
+  are player facing.")* — the old wording took the version **1.2.0 → 1.11.0 in eight days**.
   **The operative test: could you add it to the Roadmap as a line item?** New system, scenario,
   mode or page → **Y**. Better/clearer/fixed version of something already there → **Z**, however
   visible it is.
 
-  **Do not trust a version written here** — read the top entry of `changelog.html` and
-  `site/release.js`, which must always agree with each other. (This line said `1.6.1` while
-  the site was on `1.8.2`.) `run_release.js` gates that agreement but explicitly **not** the
+  **Do not trust a version written here** — read `changelog.html`'s top entry and
+  `site/release.js`, which must agree. `run_release.js` gates that agreement but **not** the
   digit choice: which digit fits is judgement and is not parseable.
-- **The entry** — add a new `<article class="log-entry">` at the TOP (newest-first):
-  the **version** (`<span class="log-ver mono">Alpha X.Y.Z</span>`), the **date**
-  (visible text *and* `datetime="YYYY-MM-DD"`), and a brief **player-facing** summary.
-  **Style: concise and factual** — one line per change, lead with the change, no marketing
-  or filler. Copy the template in the file's `ADDING AN ENTRY` comment.
+- **The entry** — a new `<details class="log-entry" open>` at the TOP (newest-first): version,
+  date (visible text *and* `datetime`), player-facing summary. One line per change, lead with the
+  change, no marketing. Copy the file's `ADDING AN ENTRY` template.
 - **FACTS ONLY, MINIMIZE PROSE** *(OWNER, 2026-08-04: "Just keep to facts in the changelog page.
   Minimize prose.")*. Name the thing that changed and stop. No explaining an absence, no sentence
-  that would still read fine if deleted, and **no lead-in paragraphs** — the page's own
-  "This log begins with the public launch" line was cut for exactly that. If a line carries no
-  fact a player can act on or verify, cut it. `CHANGELOG.md` stays dense; this page stays bare.
+  that would still read fine if deleted, no lead-in paragraphs. If a line carries no fact a player
+  can act on or verify, cut it. `CHANGELOG.md` stays dense; this page stays bare.
 - **SIMULATOR CHANGES ONLY — website changes do not go in it** *(OWNER DIRECTIVE, 2026-08-06:
   "Also, don't include website changes in the changelog. The changelog is strictly for
-  simulator changes.")*. The page is the player's record of what changed **in the plant they
-  operate** — physics, board, controls, procedures, scenarios, and the in-app manuals, which
-  ship inside the sim. A change to the surrounding site (a page, its styling, navigation, the
-  download plumbing, the changelog page itself) is not a simulator change and gets no entry,
-  however visible it is. It still belongs in `CHANGELOG.md`, which is the engineering record
-  and unrestricted. **A website-only change ships with NO version bump** — `run_release` forbids
-  "bump, no entry" (measured; `TUNING_LOG` 2026-08-09-develop-a).
-- **BE CONCISE, and that is a CAP** *(OWNER DIRECTIVE, 2026-08-04: "Update tracking
-  summaries/lists should be concise.")*. **At most 8 bullets per entry, one line each**
-  *(the number is my operational reading, not the owner's — the directive is the brevity)*.
-  **Aggregate, do not enumerate**: one line for a system's worth of work, not one per commit.
-  The site entry is **not** derived one-to-one from `CHANGELOG.md`, which is dense on purpose
-  — a single `[Unreleased]` item there runs 30 lines, and copying that shape here is the
-  failure this bullet exists to stop. Over 8 lines' worth: group by system and summarise.
+  simulator changes.")*. The plant the player operates — physics, board, controls, procedures,
+  scenarios and the in-app manuals. The surrounding site (pages, styling, navigation, the
+  download plumbing) gets no entry however visible, but still belongs in `CHANGELOG.md`.
+  **A website-only change ships with NO version bump** — `run_release` forbids "bump, no entry".
+- **BE CONCISE, and that is a CAP** *(same 2026-08-04 directive)*. **At most 8 bullets per
+  entry, one line each**
+  *(the number is my reading; the directive is the brevity)*. **Aggregate, do not enumerate**:
+  one line per system's worth of work, not one per commit. The site entry is **not** derived
+  one-to-one from `CHANGELOG.md`, which is dense on purpose. Over 8: group and summarise.
 - **Not** the same as the `RD_VERSION` deploy stamp (`site/version.js` — git SHA Vercel
   stamps at build time).
 

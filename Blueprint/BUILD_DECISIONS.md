@@ -45,6 +45,42 @@ where the two differ or where judgment was exercised.
 
 ---
 
+## 2026-09-03-develop-b — #611: the release presentation is assembled on develop, not at the merge
+
+**DIRECTIVE** *(OWNER, 2026-09-03)*: "The version should be ticked up appropriately and change log
+updated as if it was going to main except that we know the version will still have the tag… so
+that I can review all of this stuff before it gets pushed to [main] and published."
+
+The version bump and both changelogs move from the `main` merge to the **first push to `develop`
+after a release**. The pending version wears `-rc`; later pushes EXTEND the entry rather than
+adding another (the manual's pending-revision shape). The release commit becomes a four-token
+edit — strip `-rc` from three files, set the date. `develop` already deploys to
+`develop.reactor-dynamics.pages.dev` on channel `preview`, so the review venue existed.
+
+**IT HAD TO BE A CODE CHANGE.** `run_release.js` had two states and `-rc` landed in the wrong one:
+`RELEASED` was a strict `Alpha X.Y.Z` match, and failing it flips the file to PRE-LAUNCH mode,
+which asserts changelog.html has **zero** entries. The policy would have gone red on the first
+push, and the obvious fix — relaxing that assertion — would have **disarmed every cross-file check**
+exactly when they matter most. So `-rc` counts as RELEASED (`VER_RE` takes the optional suffix),
+`PENDING` adds report information and removes no assertion, and one new check pins the **`-rc` is
+all-or-nothing** rule. 25 → 27 checks. It caught a half-applied bump within minutes of being
+written. That this file's own gate exists because a CLAUDE.md note and a skill step both failed
+(1.10.0 and 1.11.0 shipped unrolled) is the reason a policy must not quietly switch it off.
+
+**Alpha 1.7.2-rc, RULED Z** *(OWNER, 2026-09-03: "I'm going to say Z and that is because I am not
+unlocking the checklist yet… they're technically not released so don't put them in the change logs
+yet")*. I had recommended Z on an incomplete premise, found that the span also carries #524 (Mode 5
+exists) and #244/#526 (the live checklists) — both Y by the operative test — and put the correction
+up rather than ship a wrong number. The owner held Z on a ground the test does not model:
+**shipped in the repository is not shipped to the player.** Verified rather than assumed —
+`site/flags.js` carries `checklists: { stage: 'preview' }`, off on the public channel — so the
+checklists stay out of `changelog.html` and remain in `CHANGELOG.md`, which is unrestricted.
+
+**THE TRAP.** A feature flag makes "what shipped" and "what released" two different questions, and
+the changelog answers the second. Every instinct reads the git log, because it is the record in
+front of you, and the git log cannot say whether a player can reach the thing. The check is
+`site/flags.js`.
+
 ## 2026-09-03-develop-a — #609: the documented accumulator cover gas was the constant nothing reads
 
 **RULED** *(OWNER, 2026-09-03: "Change the manual to 665 psia")*, on the issue filed at the close of
