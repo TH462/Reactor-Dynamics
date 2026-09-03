@@ -175,8 +175,19 @@
   /* ---- THE ACCUMULATOR (#511) — constants per the header block ---------------------------- */
   var FT3_M3 = 0.0283168;
   var ACC = {
+    /* p_min_mpa (600 psig, the LCO minimum) WAS HERE AND IS DELETED *(OWNER, 2026-09-03: "Remove
+     * the extra constant.")*. It was `[sourced]`-tagged, carried a real citation and a round
+     * value, and was READ NOWHERE — and that is exactly why it did damage: the manual set quoted
+     * it as the cover gas ELEVEN times across chapters 04, 05 and 12, including 12's trust-class
+     * table at trust High, while `p0_mpa` one line above carried the pressure the tank actually
+     * sits at. Measured cost of believing it: opening the discharge isolation valve at 609 psia,
+     * which the 600 psi figure endorses, backfeeds the tanks 100 % -> 97.2 % and drags boron
+     * 918 -> 940 ppm, accepted with no refusal (#608 item 4, #609).
+     *
+     * DO NOT RE-ADD IT AS DOCUMENTATION. If the LCO minimum is ever needed it belongs where it is
+     * used, not in a constants block where the next reader cannot tell it from a live setpoint —
+     * that indistinguishability is the whole defect, and nothing gates it. */
     p0_mpa: (650 + 14.7) / PSI_PER_MPA,     // [sourced] 650 psig normal cover pressure (WTSM T5.2-2)
-    p_min_mpa: (600 + 14.7) / PSI_PER_MPA,  // [sourced] 600 psig minimum — the arming class the board's card quotes
     capacity_frac: 0.435,                   // [sourced] Ginna T15.6-15 via the #408 identity: water = 0.435 x RCS volume
     discharge_s: 36,                        // [sourced] same table — full dump in the ~36 s class
     water_temp_c: 48.9,                     // [sourced band] 100-150 degF operating, midpoint 120 degF
