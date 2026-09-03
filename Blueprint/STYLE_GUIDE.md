@@ -799,9 +799,12 @@ rule a grep cannot decide — a check that cannot fail is worse than no check.
 adversarially re-checked at the code, found the defect is broader than acronyms and the worst of
 it is rule N-1, not N-3. Verified examples, none applied:
 
-- `pwr_heatup` step 8 and `pwr_cooldown` step 7 name a **Safety Injection Accumulator valve**;
-  the control is **Accumulator valve**. Authored 2026-09-03 — the day of the directive — by an
-  agent doing careful work. This is the failure the section above is written around.
+- ~~`pwr_heatup` step 8 and `pwr_cooldown` step 7 name a **Safety Injection Accumulator valve**;
+  the control is **Accumulator valve**.~~ **FIXED 2026-09-03**, the same day it was authored, by
+  the agent that authored it. Kept here because it is the failure the section above is written
+  around: the invented name was longer, more descriptive and more technically accurate than the
+  board's, and a player scanning for it would have found nothing. Both steps now name the control
+  exactly as the `control` field does, which is the check a writer can run without a gate.
 - Three steps say *"at Norm"* for a rod speed; the button reads **MED**.
 - One step says *"BORON card → AUTO"*; that card's buttons are **ON** and **OFF**.
 - One step says *"take HPI and LPI to OFF"*; the string **LPI appears nowhere on the board**,
