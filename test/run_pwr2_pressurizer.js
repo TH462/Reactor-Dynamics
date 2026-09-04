@@ -534,7 +534,10 @@ function runSuite(RD, rec, quiet) {
       pwC = r.pumpWork_kW;
       prC = PZ.stepPressurizer(pzC, sysC, DT, { tavg_c: 304.5 });
       cvC.chargingDemand = prC.charging_demand;
-      cvC.letdownOpen = prC.letdown_isolated ? 0 : 1;
+      /* the wiring the FACADE uses since #624 item 14: the 17 % cut drives the protective
+       * isolate, not the operator's orifice lineup. A hand-wired loop that writes the cut into
+       * `letdownOpen` is testing a plant the shell no longer builds. */
+      cvC.letdownIsolated = prC.letdown_isolated;
     }
     return prC;
   }
@@ -574,7 +577,7 @@ function runSuite(RD, rec, quiet) {
       prT = PZ.stepPressurizer(pzT, sysT, DT, Object.assign({ tavg_c: 304.5 }, drv));
       reliefT = prT.relief_kgs;
       cvT.chargingDemand = prT.charging_demand;
-      cvT.letdownOpen = prT.letdown_isolated ? 0 : 1;
+      cvT.letdownIsolated = prT.letdown_isolated;   /* same wiring as rideC — #624 item 14 */
     }
     return prT;
   }

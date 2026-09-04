@@ -372,7 +372,23 @@ The stand-in is the **stronger** lever here, not the weaker one.
 - **Rate feel:** uncompensated (charging secured), orifice A walks PZR level down **≈ 2 %/min**;
   A+B ≈ 5 %/min; max charging with letdown isolated raises level ≈ 13 %/min. Minutes to act, not seconds —
   and the **17 % low-level letdown isolation** (see 09 §3.0) backstops an unattended drain.  
-- **Isolate** = both orifices out (letdown zero).  
+- **The cold lineup arrives with both orifices OUT.** **Mode 5, Cold Shutdown** and **Mode 4, Hot
+  Shutdown** both boot that way, because on shutdown cooling letdown does not run through these
+  orifices at all: it runs out of the **residual heat removal (RHR)** system through the
+  **HCV-128 cross-connect**, which is wide open in that regime, while the orifices pass almost
+  nothing against the **363 psi (2.50 MPa)** plant you start from (WTSM ch. 19, ML11223A342).
+  Putting an orifice in service before you pressurize is therefore a real step, not a formality —
+  the RHR suction autocloses at **585 psig (4.03 MPa)** on the way up and takes the cross-connect
+  with it (**04** PWR-N01 step 5a).  
+- **Isolate** = both orifices out — and that is **letdown zero only with RHR out of service**.
+  With RHR in service the cross-connect is still letting down whatever the selector reads; the
+  LETDOWN FLOW indication shows the flow the plant is actually passing, not the lineup you
+  selected, so the two can legitimately disagree on a cold plant.  
+- **The 17 % low-level isolation stops BOTH paths — and it does not move your selector.** At
+  **17 %** indicated pressurizer level the protective isolate shuts the orifice path *and* the
+  cross-connect (annunciated **PZR LTDN ISOL**, **09** §3.0); the A / B lamps stay exactly where
+  you put them. There is **no automatic restoration**: past **20 %** the latch clears, and letdown
+  stays shut until you re-select an orifice by hand — see **06** PWR-A13a.  
 
 ### 7.4 CVCS Inventory Control AUTO / MANUAL
 

@@ -32,6 +32,87 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
 
 ## [Alpha 1.7.2-rc6] — 2026-09-03
 
+### Fixed (#624 / #619 items 14/25 — one letdown field was three jobs)
+
+*(OWNER RULING, 2026-09-04: selected "Split the field: `letdownOpen` stays the orifice lineup, the
+RHR cross-connect gates only on `rhr_letdown_ok`, and the 17 % cut drives a separate
+`letdownIsolated` that stops both", from three options on #624)*
+
+**`cv.letdownOpen` carried three unrelated jobs**: the operator's orifice selection, the gate on
+the residual heat removal (RHR) to chemical and volume control system (CVCS) cross-connect, and
+the 17 % low-pressurizer-level protective isolate's scratchpad. Each of the other two corrupted
+the first.
+
+1. **The cross-connect was gated AND scaled by the orifice fraction.** Shutting the orifices shut
+   the path the source says carries cold letdown, so a cold plant went solid on its own seal
+   injection while the board showed a correct shut lineup — the Mode 4 water-solid path found as
+   #510 finding H-2. Measured on the pre-split CVCS with a shut lineup: pressurizer level
+   **25.02 → 35.27 %** (+10.2 points) and **363 → 385 psia (2.50 → 2.65 MPa)** in 20
+   plant-minutes. After the split, the same boot holds **25.00 → 25.02 %** and passes
+   **12.70 gpm (0.8015 kg/s)** — the normal letdown magnitude — through the cross-connect with
+   `letdownOpen` at **0**.
+2. **The protective cut was written into the operator's demand.** `letdownOpen = 0` on the 17 %
+   isolate destroyed the player's selection and never healed. That is the de-energization rule
+   this repo already has (#200, #329, #332): take away the flow, leave the selector where the
+   operator put it. Measured on a 2 cm² (0.0002 m²) cold-leg break from hot full power: the cut
+   reaches at **36.1 s**, letdown **0.00000 kg/s**, `letdownIsolated` true, and `letdownOpen`
+   **still 1**. A re-line while the cut stands is refused; the latch clears **121.1 s** after the
+   break is shut and letdown **stays shut**, and the operator's own re-line then restores
+   **0.71447 kg/s**.
+3. **Every initial condition booted `letdownOpen = 1`**, so `set_letdown_orifices` had never
+   changed anything a player could see — item 25's orphan control. Both cold initial conditions
+   (Mode 5, Cold Shutdown and Mode 4, Hot Shutdown) now boot with the orifices **out**.
+
+**Sources.** [sourced] Westinghouse Technology Systems Manual (WTSM) ch. 19 (ML11223A342):
+*"Coolant removal is accomplished by letdown, primarily from the residual heat removal system
+(RHR) … Letdown is via the RHR-to-CVCS cross-connect valve HCV-128"*, and *"While the plant is in
+this configuration, HCV-128 … is fully open … letdown flow via this piping is extremely low."*
+[sourced] NUREG-1431 Rev 4 Bases (ML12100A228): *"During LTOP MODES, the RHR System is operated for
+decay heat removal and low pressure letdown control."* [sourced] WTSM §4.1.3.1 (ML11223A214): *"The
+letdown orifice isolation valves automatically close on low pressurizer level"* — and nothing in
+that chapter re-opens them, which with `Manuals/06` PWR-A13a's existing *"no automatic
+restoration"* is why the clear is an operator act and not a latch follower.
+⚠ **Declared unverified**: whether the real 17 % interlock reaches HCV-128 or only the normal-line
+valves. The ruling says it stops both; that is what is built, and the code says so.
+
+**The board no longer reports the lineup as the flow.** `letdown_flow_normalized` was
+`letdownOpen × rated`, which is a lie on both sides of the split — 0 on a cold plant passing the
+full magnitude, and normal on a plant under the isolate passing nothing. It now reads the stepped
+result.
+
+**The heatup checklist gets the step, and the control gets a job.** `pwr_heatup` gains "Place both
+letdown orifices in service" before the pressurization, plus a confirmation after the ride that
+reads the plant rather than the button (RHR out **and** letdown still flowing). **Injection:
+deleting the step reddens two checks in `run_checklist_pwr2`** — step 7's `pressure_mpa > 4.7`
+reads **4.41 MPa (640 psia)**, under the **665 psia (4.58 MPa)** accumulator cover gas the next
+step needs (#608 item 4 re-opened), and the transfer step's `letdown_flow_actual > 0` reads exactly
+**0**. Parked pressure at step 7: pre-split HEAD **4.84 MPa (702 psia)**; with both orifices
+**4.89 MPa (709 psia)**; orifice A alone **4.33 MPa (628 psia)** — which is why the step lines up
+A+B and not A.
+
+**A fixture finding worth keeping.** Scaling the pressurizer masses toward 12 % never latches the
+cut: the loop refills the vessel to a true **58.28 %** before the channel lag moves. A sustained
+drain is required, which is why the check is built on a break.
+
+**Manuals.** `03` §7.3 (the cold lineup, and *Isolate = letdown zero* is true only with RHR out of
+service), `04` PWR-N01 (new steps **5a** and **8a**, and the RHR NOTE corrected from the retired
+plant's 600 / 400 psi to this plant's sourced **585 / 425 psig** pair), `09` §3.0 (the *Letdown
+isolation* row said the function did not exist while the engine had carried it all along —
+corrected to **17 %**, restore **20 %**, no automatic restoration, and now checked against
+`pwr2_pressurizer.LEVEL.low_cut_pct` instead of being asserted absent), `12` §6.3 (the
+cross-connect described for the first time).
+
+**Also fixed here: `09` §11.0 had no `low_power` column.** The item-28 build added a sixth engine
+initial condition and recorded that *"nothing enumerates ICS, so the entry costs no gate"* —
+`run_manual_setpoints` does enumerate them, off the engine's own refusal message, and had been red
+since that commit. The column is measured in (11.0 % power, 10.0 MWe, Tavg 558.7 °F (292.6 °C),
+2240 psi (15.447 MPa), 669 ppm, xenon 19 %) with a new **Control bank (steps of 627)** row, since
+**227 of 627** is the whole point of that state.
+
+Gates: `run_pwr2_cvcs` 45 → 49 (mutations 26 → 32, all caught), `run_pwr2_engine` 142 → 150
+(mutations 77 → 83), `run_pwr2_shell` 149 → 150, `run_checklist_pwr2` 123 → 127,
+`run_manual_controls` 538 → 543. No blind spots in any mutation set.
+
 ### Fixed (#624 / #619 item 1 — RCS flow was showing truth, and the truth pegged the gauge)
 
 *(OWNER, 2026-09-03: "RCP flowing over 100% seems odd."; ruling 2026-09-04: "1" — the engine

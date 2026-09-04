@@ -135,7 +135,12 @@ var ROWS = [
   { m: /^HPI start \(SI on low steam pressure\)/, want: P.ESFAS.si_lo_steam_press_psia, unit: 'psi', tol: 1 },
   { m: /^HPI start \(SI on high-high steam flow\)/, want: P.ESFAS.hi_hi_steam_flow_frac, unit: 'frac', tol: 0.01 },
   { m: /^HPI start \(SI on PZR level lo-lo\)/, absent: true, what: 'a safety injection on low pressurizer level' },
-  { m: /^Letdown isolation/,                absent: true, what: 'an automatic letdown isolation' },
+  /* NO LONGER ABSENT (#624 item 14). The row said NOT MODELLED while the engine had carried the
+   * cut all along — the same shape as #601's rod-stop row: the chapter contradicted itself two
+   * tables apart (§2.0's PZR-level row names "the 17 % letdown-isolation and heater cut" as the
+   * only low-level action) and the gate agreed with the wrong half, because an `absent: true`
+   * entry asserts the MARKER, never the plant. Now checked against the constant. */
+  { m: /^Letdown isolation/,                want: RD.pwr2.pressurizer.LEVEL.low_cut_pct, unit: '%', tol: 0.5 },
   { m: /^Feedwater isolation \(on SI\)/,     want: P.ESFAS.si_lo_pzr_press_psia,   unit: 'psi', tol: 1 },
   { m: /^\*\*Atmospheric dump \(ADV\)\*\*/,     want: RD.pwr2.relief.RELIEF.adv_setpoint_psig + 14.7, unit: 'psi', tol: 1 },
   { m: /^\*\*Main steam line isolation \(MSLI\)\*\*/, absent: true, what: 'any automatic main steam line isolation' },

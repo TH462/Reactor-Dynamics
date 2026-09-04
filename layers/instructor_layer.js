@@ -786,7 +786,13 @@
   /* Flat control_state fields a checklist acc may name (#607). Same reason as ROD_PARAMS:
    * they are what the board shows, they are not in true_state, and minting contract
    * fields for the checklists alone is the wrong shape. */
-  var CTL_PARAMS = { feed_coupled: 1, steam_dump_setpoint: 1 };
+  /* `letdown_orifice_a`/`_b` are the OPERATOR'S ORIFICE LINEUP and live only in control_state
+   * (#624 item 25): the heatup's letdown step is graded on the selector the player pressed,
+   * which no true_state field carries — the plant publishes the resulting FLOW
+   * (`letdown_flow_actual`), and a flow reads the same on a cold plant letting down through the
+   * RHR cross-connect with the orifices shut. */
+  var CTL_PARAMS = { feed_coupled: 1, steam_dump_setpoint: 1,
+                     letdown_orifice_a: 1, letdown_orifice_b: 1 };
   function rodParam(snapshot, p) {
     var spec = ROD_PARAMS[p];
     if (!spec) return undefined;

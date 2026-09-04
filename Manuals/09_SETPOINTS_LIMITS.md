@@ -140,7 +140,7 @@ Inward motion still takes — that is the source's own scope, quoted at the end 
 | HPI start (SI on low steam pressure) | steam_pressure | low | **328 psi (2.26 MPa)** | The secondary-side entry to the same SI latch — a steam-line depressurization actuates injection without the primary ever reaching 1715 psi (11.824 MPa). **This row was missing from the manual entirely until 2026-08-30** |
 | HPI start (SI on high-high steam flow) | sg_steam_flow | high | **1.55** of rated | Third entry to the SI latch |
 | HPI start (SI on PZR level lo-lo) | pzr_level | low | **NOT MODELLED** | A real plant carries an inventory-protecting SI path that fires on level even while the heaters hold pressure. **This plant's engineered-safeguards list has exactly three entries and this is not one of them**, so on a slow inventory loss nothing starts injection until pressure itself reaches 1715 psi (11.824 MPa). Kept because the coupling is real operator knowledge — level and pressure are not the same signal — and because knowing which of the two your plant actually watches is the point. Formerly documented as live at **12 %**, re-arming above **20 %**; rides the HPI arm |
-| Letdown isolation | pzr_level | low | **NOT MODELLED** | No automatic letdown isolation on this plant — the orifice lineup is yours alone, and letdown keeps discharging all the way down. Real plants isolate it to stop the leak-out path from making a low level worse; here that protection is the operator's. (In the model the bite would be on the volume control tank, which is itself not modelled — `pwr2_cvcs` header.) Formerly documented as live at **17 %** |
+| Letdown isolation | pzr_level | low | **17 %** indicated | **This row declared the function absent until 2026-09-04, and was wrong** — it contradicted §2.0's own PZR-level row and the engine, which has carried this isolation all along (`pwr2_pressurizer`, `LEVEL.low_cut_pct`). At **17 %** indicated pressurizer level the plant isolates letdown to stop the leak-out path making a low level worse, and it stops **both** letdown paths: the orifices *and* the RHR-to-CVCS cross-connect. Annunciated **PZR LTDN ISOL** (§4.0); the same 17 % also cuts the pressurizer heaters (§6.0). **It does not move your orifice selection and it does not restore itself.** The latch clears when level recovers past **20 %**, but letdown stays shut until you re-select an orifice by hand — the restoration is an operator act (WTSM §4.1.3.1, ML11223A214: *"The letdown orifice isolation valves automatically close on low pressurizer level"*, and nothing in that chapter re-opens them). Response: **06** PWR-A13a. ⚠ Whether the real interlock reaches HCV-128 (the cross-connect) or only the normal-line valves is **unverified**; this plant stops both, by ruling |
 | Feedwater isolation (on SI) | primary_pressure | low | **1715 psi (11.824 MPa)** | **Sourced 32 s delay behind the LATCHED SI signal** (Ginna Table 15.0-6, "Feedwater Isolation Delay from SI … 32.0"), and it is *held* time, not edge — a reset that clears SI inside the 32 s cancels the isolation. There is no HPI arm for it to ride |
 | **Atmospheric dump (ADV)** | steam_pressure | high | **1055 psi (7.272 MPa)** — the sourced 1040 psig | **SHIPS IN AUTO.** Vents to atmosphere, upstream of the MSIV and independent of the condenser: this is the cooldown path when the condenser is gone. In AUTO it holds a bottled generator at the setpoint instead of on the 1099 psi (7.58 MPa) code safeties — but capping pressure is not a cooldown; lower the setpoint or open the valve for that. Full open at 1078 psi (7.43 MPa); capacity 10 % of rated steam flow. Sourced twice over (#419 wave 3): the WTSM §7.1.3.3 placement rule — *"approximately half the difference between the no-load steam generator pressure and the lowest set pressure of the safety valves"*, which on the Ginna ladder (1020 → 1099 psi) is 1060 — and Ginna's own ARV solenoid band, 1005–1060 psig (UFSAR ch 10), which brackets it; capacity is the same section's *"approximately 10% of the rated steam flow … from each steam generator"*. Setpoint box clamps to the same 29–1099 psi band as the Dump SP. Cools well past the 100 °F/hr limit at full open — see `12` §12.18 |
 | **Main steam line isolation (MSLI)** | steam_pressure | low | **NOT MODELLED** | **The main steam isolation valve on this plant closes only when you close it.** There is no automatic isolation signal of any kind — not on low steam pressure, not on steam flow, not on containment pressure. The valve itself is real (**03 §17.5**), and so is the reasoning about *when* a steam line wants isolating; what is absent is anything that does it for you. Formerly documented as a rate-compensated **600 psi (4.14 MPa)** leg in coincidence with `sg_steam_flow` **> 1.25** of rated |
@@ -469,7 +469,9 @@ Commercial practice keeps boron sufficient for at least **1 % Δk/k** (WTSM 19.2
 ## 11.0 Normal values by initial condition
 
 Expected readings at each named engine initial condition, captured from the live engine after
-settling **70 s at 10x, the same for every column** — the low-power states are still walking their pressure up at 6 s, which is how the old table came to quote a hot-standby pressure 9 psi (0.06 MPa) light. **These five are the whole list** — the Free Play picker offers `hot_full_power`, `50_percent`, `hot_zero_power`, `hot_shutdown` and `cold_shutdown`, and the engine refuses any other name.
+settling **70 s at 10x, the same for every column** — the low-power states are still walking their pressure up at 6 s, which is how the old table came to quote a hot-standby pressure 9 psi (0.06 MPa) light. **These six are the whole list** and the engine refuses any other name, but only **four** are on the Free Play picker: `hot_full_power`, `50_percent`, `hot_zero_power` and `cold_shutdown`. `hot_shutdown` and `low_power` are **engine-only** — real, loadable by the gates and the checklists, not offered to the player.
+
+> **`low_power` is where the startup checklist hands you the plant** (added 2026-09-04, #624 item 28). It is the only initial condition whose control bank is **off its top stop** — **227 of 627 steps** — which is what an at-power plant actually looks like: Ginna UFSAR §15.4.5.1.1 (ML20339A101), *"the reactor is operated with the RCCAs inserted only far enough to permit load follow."* Every other at-power column boots on the stop, so a rod withdrawal in those states is a no-op.
 
 > **MODE 5 EXISTS (#524, landed 2026-08-31).** The water-property floor moved from 14.5 psi (0.1 MPa) to **0.29 psi (0.002 MPa)**, so a steam generator can sit at ambient — the `cold_shutdown` column below is a real, loadable state whose secondary rides at **1.8 psi (0.0127 MPa)**, saturation at the plant's own 123 °F (50.6 °C). The cold end of the ladder is **Mode 5, Cold Shutdown** — 122 °F (50 °C), 363 psi (2.50 MPa) at boot, RHR in service, reactor coolant pumps secured, **turbine tripped, both main feed pumps secured with level control in MANUAL**, both banks in. `5_percent` remains the retired engine's and is **refused by name**.
 > **`hot_shutdown` IS NOT ON THE FREE PLAY MENU** *(OWNER RULING, 2026-09-02: "A")*. The column
@@ -485,35 +487,36 @@ evolutions. At steady state the **indicated** values track these true values thr
 instrument's lag and noise (see `03_CONTROLS_AND_INDICATIONS.md` §16.0) — a mismatch that
 persists is either a transient in progress or a failed instrument.
 
-| Parameter | `hot_full_power` | `50_percent` | `hot_zero_power` | `hot_shutdown` | `cold_shutdown` |
-|---|---|---|---|---|---|
-| Plant MODE | At Power (1) | At Power (1) | Hot Standby (3) | **Hot Shutdown (4)** — *engine only, not on the Free Play menu* | **Cold Shutdown (5)** |
-| Reactor power (%) | 99.6 | 49.6 | ~0 (source) | ~0 (source) | ~0 (source) |
-| Generator output (MWe) | 100.0 | 50.0 | 0 | 0 | 0 |
-| Tavg °F (°C) | 577.7 (303.2) | 566.7 (296.9) | 547.2 (286.2) | 250.4 (121.3) | 123.0 (50.6) |
-| T-hot / T-cold °F (°C) | 607.2 / 548.2 (319.6 / 286.8) | 582.1 / 551.4 (305.6 / 288.6) | 547.2 / 547.2 (286.2 / 286.2) | 250.4 / 250.5 (121.3 / 121.4) | 123.0 / 123.0 (50.6 / 50.6) |
-| Primary pressure psi (MPa) | 2235 (15.41) | 2235 (15.41) | 2246 (15.482) | 369 (2.545) | 368 (2.537) |
-| Subcooling margin °F (°C) | 45 (25) | 70 (39) | 105 (58.5) | 186 (103.6) | 313 (174.2) |
-| PZR level (%) | 57 | 40 | 25 | 25 | 25 |
-| SG level (%) | 65 | 65 | 65 | 65 | 66 |
-| SG / steam pressure psi (MPa) | 808 (5.57) | 943 (6.50) | 1020 (7.03) | 30 (0.207) | 1.8 (0.0127) |
-| Steam / feed flow (norm.) | 1.00 | 0.50 | 0 | 0 | 0 |
-| Fuel average temp °F (°C) | 1292 (700) | 896 (480) | 547 (286.1) | 250 (121.1) | 123 (50.5) |
-| Decay heat (%) | 6.23 | 3.11 | ~0 | ~0 | ~0 |
-| Xenon (% of equilibrium) | 100 | 66 | 0 | 0 | 0 |
-| Boron (ppm) | 626 | 774 | 719 | 894 | 918 |
-| Net reactivity (pcm) | 0 | 0 | ≈ −1141 | ≈ −5635 | ≈ −5809 |
-| Source range (cps) | 0 (de-energized) | 0 (de-energized) | ≈ 501 | ≈ 101 | ≈ 98 |
-| Intermediate range (A) | ≈ 8.3e-3 | ≈ 4.1e-3 | ≈ 1.6e-11 | ≈ 3.2e-12 | ≈ 3.2e-12 |
-| SR detector | OFF | OFF | Energized | Energized | Energized |
-| Condenser vacuum (kPa) | 93.2 | 98.0 | 100.1 | 100.1 | 100.1 |
-| Turbine | Latched, on line | Latched, on line | Latched, off line | **TRIPPED** | **TRIPPED** |
-| Turbine speed (RPM) | 1800 | 1800 | 0 | 0 | 0 |
-| Main feed pumps | Both running | Both running | Both running | **Both secured** | **Both secured** |
-| Feed control mode | AUTO (three-element) | AUTO (three-element) | AUTO (three-element) | **MANUAL, 0 %** | **MANUAL, 0 %** |
-| MSIV | Open | Open | Open | Open | Open |
-| RHR | Out of service | Out of service | Out of service | **In service** | **In service** |
-| ECCS mode indicator | standby | standby | standby | **RHR** | **RHR** |
+| Parameter | `hot_full_power` | `50_percent` | `low_power` | `hot_zero_power` | `hot_shutdown` | `cold_shutdown` |
+|---|---|---|---|---|---|---|
+| Plant MODE | At Power (1) | At Power (1) | **At Power (1)** — *engine only, not on the Free Play menu* | Hot Standby (3) | **Hot Shutdown (4)** — *engine only, not on the Free Play menu* | **Cold Shutdown (5)** |
+| Reactor power (%) | 99.6 | 49.6 | 11.0 | ~0 (source) | ~0 (source) | ~0 (source) |
+| Generator output (MWe) | 100.0 | 50.0 | 10.0 | 0 | 0 | 0 |
+| Control bank (steps of 627) | 627 | 627 | **227** | 0 | 0 | 0 |
+| Tavg °F (°C) | 577.7 (303.2) | 566.7 (296.9) | 558.7 (292.6) | 547.2 (286.2) | 250.4 (121.3) | 123.0 (50.6) |
+| T-hot / T-cold °F (°C) | 607.2 / 548.2 (319.6 / 286.8) | 582.1 / 551.4 (305.6 / 288.6) | 562.2 / 555.2 (294.5 / 290.7) | 547.2 / 547.2 (286.2 / 286.2) | 250.4 / 250.5 (121.3 / 121.4) | 123.0 / 123.0 (50.6 / 50.6) |
+| Primary pressure psi (MPa) | 2235 (15.41) | 2235 (15.41) | 2240 (15.447) | 2246 (15.482) | 369 (2.545) | 368 (2.537) |
+| Subcooling margin °F (°C) | 45 (25) | 70 (39) | 90 (50) | 105 (58.5) | 186 (103.6) | 313 (174.2) |
+| PZR level (%) | 57 | 40 | 27 | 25 | 25 | 25 |
+| SG level (%) | 65 | 65 | 65 | 65 | 65 | 66 |
+| SG / steam pressure psi (MPa) | 808 (5.57) | 943 (6.50) | 1062 (7.32) | 1020 (7.03) | 30 (0.207) | 1.8 (0.0127) |
+| Steam / feed flow (norm.) | 1.00 | 0.50 | 0.10 | 0 | 0 | 0 |
+| Fuel average temp °F (°C) | 1292 (700) | 896 (480) | 628 (331.1) | 547 (286.1) | 250 (121.1) | 123 (50.5) |
+| Decay heat (%) | 6.23 | 3.11 | 0.68 | ~0 | ~0 | ~0 |
+| Xenon (% of equilibrium) | 100 | 66 | 19 | 0 | 0 | 0 |
+| Boron (ppm) | 626 | 774 | 669 | 719 | 894 | 918 |
+| Net reactivity (pcm) | 0 | 0 | 0 | ≈ −1141 | ≈ −5635 | ≈ −5809 |
+| Source range (cps) | 0 (de-energized) | 0 (de-energized) | 0 (de-energized) | ≈ 501 | ≈ 101 | ≈ 98 |
+| Intermediate range (A) | ≈ 8.3e-3 | ≈ 4.1e-3 | ≈ 9.2e-4 | ≈ 1.6e-11 | ≈ 3.2e-12 | ≈ 3.2e-12 |
+| SR detector | OFF | OFF | OFF | Energized | Energized | Energized |
+| Condenser vacuum (kPa) | 93.2 | 98.0 | 99.8 | 100.1 | 100.1 | 100.1 |
+| Turbine | Latched, on line | Latched, on line | Latched, on line | Latched, off line | **TRIPPED** | **TRIPPED** |
+| Turbine speed (RPM) | 1800 | 1800 | 1800 | 0 | 0 | 0 |
+| Main feed pumps | Both running | Both running | Both running | Both running | **Both secured** | **Both secured** |
+| Feed control mode | AUTO (three-element) | AUTO (three-element) | AUTO (three-element) | AUTO (three-element) | **MANUAL, 0 %** | **MANUAL, 0 %** |
+| MSIV | Open | Open | Open | Open | Open | Open |
+| RHR | Out of service | Out of service | Out of service | Out of service | **In service** | **In service** |
+| ECCS mode indicator | standby | standby | standby | standby | **RHR** | **RHR** |
 
 Notes:
 

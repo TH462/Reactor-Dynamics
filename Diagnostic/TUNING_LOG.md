@@ -29,6 +29,106 @@ and the user-visible summary in `CHANGELOG.md`. This file points at those and tr
 
 ---
 
+## Session log — 2026-09-04-develop-f (#624 items 14/25 — one letdown field was three jobs)
+
+**The ask.** #619 item 14 (the letdown isolate erases your selection) and item 25 (the LETDOWN
+selector is an orphan control). Ruled *(OWNER RULING, 2026-09-04: selected "Split the field:
+`letdownOpen` stays the orifice lineup, the RHR cross-connect gates only on `rhr_letdown_ok`, and
+the 17 % cut drives a separate `letdownIsolated` that stops both", from three options on #624)*.
+
+### The trap: a shared field, and every fixture standing where the split is a no-op
+
+`cv.letdownOpen` was the operator's orifice selection, the gate on the residual-heat-removal
+cross-connect (`pwr2_cvcs.js:286`, gated **and scaled** by it), and the 17 % protective isolate's
+scratchpad (`pwr2_engine.js:1322`, `if (pzr.letdown_isolated) eng.cv.letdownOpen = 0;`). **Every
+initial condition booted it at 1**, so the whole split is invisible to every existing fixture and
+would have landed green on judgement alone — the plan called this out before a line was written
+and it was right to. The checks below are the ones that FAIL without it; each was shown red on the
+pre-split code and the number recorded.
+
+| what fails without the split | pre-split number |
+|---|---|
+| cold boot holds its inventory (`letdownOpen 0`, RHR in service) | pressurizer level **25.02 → 35.27 %**, +10.2 points, and **363 → 385 psia (2.50 → 2.65 MPa)** in 20 plant-minutes — the #510 finding H-2 water-solid path, re-armed |
+| the 17 % cut leaves the selection alone | `letdownOpen` written to **0**; the player's lineup destroyed and never healed |
+| `run_checklist_pwr2` `pwr_heatup` step 7, `pressure_mpa > 4.7` | **4.41 MPa (640 psia)** — under the 665 psia (4.58 MPa) accumulator cover gas step 8 needs (#608 item 4, re-opened) |
+| `run_checklist_pwr2` the transfer step, `letdown_flow_actual > 0` | exactly **0** |
+
+Post-split the same cold boot holds **25.00 → 25.02 %** over 20 plant-minutes with the orifices
+out, passing **12.70 gpm (0.8015 kg/s)** — the normal letdown magnitude — through the
+cross-connect.
+
+### The judgement, and what it rests on
+
+**`letdownIsolated` is SET by the cut and CLEARED ONLY BY AN OPERATOR LETDOWN COMMAND**, and only
+once the latch (`pz.lowLevelCut`, restore at 20 %) has cleared. Not a latch follower.
+[sourced] WTSM §4.1.3.1 (ML11223A214): *"The letdown orifice isolation valves automatically close
+on low pressurizer level"* — nothing in that chapter re-opens them. `Manuals/06` PWR-A13a already
+documented exactly this (*"there is no automatic restoration"*), and the retired kernel's row
+(`layers/control/pwr_control.js:399-408`) was designed the same way. It is also the house
+de-energization rule (#200, #329, #332): take the flow away, leave the selector where the operator
+put it. The cross-connect is a **different valve** and the source has it wide open in this regime
+— [sourced] WTSM ch. 19 (ML11223A342), *"HCV-128 … is fully open … letdown flow via this piping
+is extremely low"* — so it is no longer scaled by the orifice fraction at all.
+⚠ **Declared unverified in the code**: whether the real interlock reaches HCV-128 or only the
+normal-line valves. The ruling says both; both is what is built.
+
+Measured on the isolate path, a 2 cm² (0.0002 m²) cold-leg break from hot full power: cut at
+**36.1 s**, letdown **0.00000 kg/s**, `letdownIsolated` true, `letdownOpen` **still 1**. A re-line
+while the cut stands is refused. The latch clears **121.1 s** after the break is shut, letdown
+**stays shut**, and the operator's re-line restores **0.71447 kg/s**.
+
+### The fixture finding: you cannot reach this cut by shrinking the pressurizer
+
+Scaling `pz.m_sub`/`pz.m_sat` toward 12 % **never latches**. The loop refills the vessel to a true
+**58.28 %** before the channel lag moves, so the indicated level never reaches 17 %. The check had
+to be built on a **sustained drain** — a break — which is the same trap recorded in the comment on
+probe HE-3 (the pressurizer heater/level behaviour row) for `V_liq`.
+
+### A+B, not A — the step's own measurement
+
+The heatup step lines up **both** orifices. Parked pressure at the step-7 acceptance: pre-split
+HEAD **4.84 MPa (702 psia)**; A+B **4.89 MPa (709 psia)**; **A alone 4.33 MPa (628 psia)** — below
+the 665 psia (4.58 MPa) cover gas, i.e. orifice A alone re-opens #608 item 4 by a different route.
+
+### The resolver gap the step exposed
+
+`InstructorLayer.paramValue` reads `control_state` only for names in `CTL_PARAMS`, which held
+exactly `feed_coupled` and `steam_dump_setpoint`; `letdown_orifice_a`/`_b` had to be added or the
+acceptance could not see the selector at all. And `letdown_flow_actual` is published in the
+#408 currency (gpm ÷ 450,000), so the criteria line printed **"0"** for every flow the plant can
+carry — 12.5 gpm is 2.8e-5 — until `PRED_DISPLAY` gained a declared `scale: 450000`. Both are the
+same shape: a checklist acceptance is only as good as the resolver behind its `p`.
+
+### Also fixed: `09` §11.0 had no `low_power` column
+
+Not part of the split. The item-28 commit (`2f430cf`) added a sixth engine initial condition and
+recorded that *"nothing enumerates ICS, so the entry costs no gate"* — `run_manual_setpoints`
+enumerates them off the engine's own refusal message, and the runner has been **red since that
+commit** at 11/13 against a 13/13 baseline. Column measured in and a **Control bank (steps of
+627)** row added, since 227 of 627 is what makes that state different from every other at-power
+column. **The claim "nothing enumerates X" is the class this repo keeps re-learning: prove it by
+injection, not by grep.**
+
+### Gates
+
+`run_pwr2_cvcs` 45 → **49** (mutations 26 → 32, all caught) · `run_pwr2_engine` 142 → **150**
+(mutations 77 → 83) · `run_pwr2_shell` 149 → **150** · `run_checklist_pwr2` 123 → **127** ·
+`run_manual_controls` 538 → **543** · `run_manual_setpoints` 13/13 (was red at 11/13 on arrival) ·
+`run_manual_units` 0 failed · `run_manual_rev` 15/15 · `run_manual_commands` 8/8 ·
+`run_procdocs` 37/37 · `run_hardrules` 477/477 (474 → 477, three ruling-citation sites) · `run_hr3` 31/31 · `run_inspect` 56/56 ·
+`run_ops` 59/70 (tracked red, unmoved) · `run_all` 104/104 at baseline on the settled tree.
+
+**A cost finding, not this change's.** `run_pwr2_engine` read **1708 s** under `run_all` contention
+against a `secs: 420` hint and was the aggregate wall. Suspecting group Q, measured: a Q replay costs
+**~1 s** (clean pass 223 s; clean + one Q replay 224 s), and the UNTOUCHED runner in the workbench
+tree takes **24 min 59 s** standalone against this tree's 24 min 4 s. The hint has been ~3.5× stale
+since the bank-scaled rides (#602 phase 2, 2026-09-01); the loud Q ride was trimmed 20 → 10
+plant-min anyway (tolerance 2.0 → 1.0 points, the split plant moves 0.02). The `secs:` hints only
+nudge scheduling and are not maintained by rule — but a runner that grew from 7 to 25 min without
+anyone noticing is worth its own line.
+
+---
+
 ## Session log — 2026-09-04-develop-e (#624 item 1 — the board was showing truth, and the truth pegged the gauge)
 
 **The ask.** #619 item 1: *"RCP flowing over 100% seems odd."* Ruled 2026-09-04, "1" — the engine

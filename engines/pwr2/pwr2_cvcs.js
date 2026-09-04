@@ -182,6 +182,13 @@
     return gpm / GAL_PER_M3 / 60 * (rho === undefined ? 1000 : rho);
   }
 
+  /* THE INVERSE, exported rather than retyped (#624 item 14). The shell has to turn a stepped
+   * kg/s back into the board's gpm currency; a literal 3.78541/60 over there is the #557 class
+   * — a second copy of a conversion that agrees with a stale one. */
+  function kgsToGpm(kgs, rho) {
+    return kgs / (rho === undefined ? 1000 : rho) * 60 * GAL_PER_M3;
+  }
+
   /* Normal letdown balances normal charging at steady state. With no seal injection and no VCT
    * modelled (see the omissions above) that balance is exactly one-to-one -- stated rather than
    * derived from a flow diagram this layer does not have. */
@@ -228,6 +235,18 @@
       sample_ppm: opts.boron_ppm === undefined ? 700 : Math.round(opts.boron_ppm),
       sample_seq: 1,
       K: opts.K === undefined ? orificeK(P_nop) : opts.K,
+      /* THE PROTECTIVE ISOLATE, SEPARATE FROM THE OPERATOR'S LINEUP (#624 items 14/25,
+       * owner-ruled 2026-09-04). The 17 % low-pressurizer-level cut used to be written into
+       * `letdownOpen` by the caller — a de-energization written into the operator's DEMAND,
+       * which the house rule forbids (#200/#329/#332): it destroyed the player's orifice
+       * selection and never healed. This flag stops BOTH letdown paths and leaves the
+       * selection alone. Its clear is an OPERATOR ACT, not a latch follower:
+       *   [sourced] WTSM §4.1.3.1 (ML11223A214): "The letdown orifice isolation valves
+       *   automatically close on low pressurizer level." Nothing in the chapter re-opens them.
+       * ⚠ [unverified] whether the real 17 % interlock reaches HCV-128 (the RHR cross-connect)
+       * or only LCV-459/460 on the normal letdown line. The ruling says the isolate stops
+       * both; that is what is built, and this is the declaration. */
+      letdownIsolated: !!opts.letdownIsolated,
       isolated: !!opts.isolated
     };
   }
@@ -263,10 +282,14 @@
     /* SEAL INJECTION runs with the charging pumps and is not commanded. Only isolation stops it. */
     var seal = (cv.isolated || !powered) ? 0 : gpmToKgs(sealInjectionGpm(), 1000);
 
+    /* THE PROTECTIVE ISOLATE (#624 items 14/25). One flag, both paths — see createCVCS. It is
+     * NOT the operator's lineup: `letdownOpen` stays exactly where the player put it. */
+    var iso = cv.letdownIsolated === true;
+
     /* THE ORIFICE. Negative dP means the sink is above the plant -- letdown cannot run backwards
      * through it, so it stops rather than reversing sign under a square root. */
     var dP = sys.P - CVCS.letdown_backpressure_mpa;
-    var orifice = (cv.letdownOpen <= 0 || dP <= 0) ? 0 : cv.letdownOpen * cv.K * Math.sqrt(dP);
+    var orifice = (iso || cv.letdownOpen <= 0 || dP <= 0) ? 0 : cv.letdownOpen * cv.K * Math.sqrt(dP);
     /* THE RHR LOW-PRESSURE LETDOWN PATH (#510 H-2, owner-ruled 2026-08-23). With the plant on
      * shutdown cooling the orifice's 300 psi backpressure strands every inflow — which is how
      * the shipped Mode 4 preset went water-solid on its own 5 gpm of seal injection. The real
@@ -278,13 +301,23 @@
      *   purification of the RCS while the plant is in cold shutdown."
      *   [sourced] NUREG-1431 Rev 4 Bases (ML12100A228): "During LTOP MODES, the RHR System is
      *   operated for decay heat removal and low pressure letdown control."
-     * Modelled as the NORMAL letdown magnitude behind the operator's own letdown fraction,
-     * available while the RHR suction is open (the driver; absent = shut, so every at-power
-     * fixture is untouched — the 585 psig autoclose keeps it false at power). The cross-connect
-     * pulls from RHR flow, not through the orifice, hence no sqrt(dP) — RHR pump head drives
-     * it. The orifice keeps whichever flow is larger; they are parallel paths to the same VCT. */
-    var rhrPath = (drivers && drivers.rhr_letdown_ok && cv.letdownOpen > 0)
-                  ? cv.letdownOpen * normalLetdownKgs() : 0;
+     * ⚠ NOT THE OPERATOR'S ORIFICE LINEUP, AND THAT WAS THE DEFECT (#624 item 14). This used to
+     * read "the NORMAL letdown magnitude behind the operator's own letdown fraction" and was
+     * GATED AND SCALED by `cv.letdownOpen` — so shutting the orifices shut the path the source
+     * says carries cold letdown, and a cold plant went solid on its own seal injection with the
+     * board showing a correct shut-orifice lineup. HCV-128 is a DIFFERENT VALVE and the source
+     * has it wide open in this regime:
+     *   [sourced] WTSM ch.19 (ML11223A342): "While the plant is in this configuration, HCV-128
+     *   (the letdown isolation valve from the RHR system) is fully open … Additional letdown
+     *   flow from the CVCS is available through letdown orifices 8149A, B, and C. Since the
+     *   pressure in the RCS is low at this time, letdown flow via this piping is extremely low."
+     * So: the NORMAL letdown magnitude while the RHR suction is open (the driver; absent = shut,
+     * so every at-power fixture is untouched — the 585 psig autoclose keeps it false at power),
+     * stopped only by the protective isolate. The cross-connect pulls from RHR flow, not through
+     * the orifice, hence no sqrt(dP) — RHR pump head drives it. The orifice keeps whichever flow
+     * is larger; they are parallel paths to the same VCT, which is the source's own picture
+     * ("additional letdown flow … through letdown orifices"). */
+    var rhrPath = (!iso && drivers && drivers.rhr_letdown_ok) ? normalLetdownKgs() : 0;
     var letdown = Math.max(orifice, rhrPath);
 
     /* ---- BORON, AS A MASS BALANCE ON THE WHOLE RCS -----------------------------------
@@ -361,6 +394,9 @@
       charging_kgs: charging,
       seal_kgs: seal,
       letdown_kgs: letdown,
+      /* observable, so a consumer never has to infer the isolate from a zero flow (a shut
+       * orifice lineup at low pressure produces the same zero) */
+      letdown_isolated: iso,
       net_kgs: charging + seal - letdown,
       boron_ppm: cv.boron_ppm,
       rho_coldleg: rho,
@@ -388,7 +424,7 @@
     requestBoronSample: requestBoronSample,
     sealInjectionGpm: sealInjectionGpm,
     volumeScale: volumeScale, rcsVolume: rcsVolume, orificeK: orificeK,
-    normalLetdownKgs: normalLetdownKgs, gpmToKgs: gpmToKgs,
+    normalLetdownKgs: normalLetdownKgs, gpmToKgs: gpmToKgs, kgsToGpm: kgsToGpm,
     maxFillRateFracPerMin: maxFillRateFracPerMin,
     GINNA_RCS_M3: GINNA_RCS_M3
   };

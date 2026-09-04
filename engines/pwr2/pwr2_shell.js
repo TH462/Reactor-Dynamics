@@ -1569,8 +1569,15 @@
        * plant's number. Read from CVCS, never retyped, so a re-derived volume basis moves the
        * box and its caption together. */
       charging_max_gpm: RD.cvcs.CVCS.charging_max_gpm(),
-      letdown_flow_normalized: e.cv.letdownOpen *
-                               (RD.cvcs.CVCS.charging_normal_gpm() + RD.cvcs.sealInjectionGpm()) / 450000,
+      /* THE FLOW THE PLANT IS ACTUALLY PASSING (#624 item 14), not `letdownOpen x rated`. The
+       * lineup-derived form was a board lie on both sides of the letdown split: a cold plant
+       * letting down through the RHR cross-connect with the orifices OUT would read 0 while
+       * passing the full normal magnitude, and a plant under the 17 % protective isolate would
+       * read normal while passing nothing. `_letdownKgs` is the stepped result. */
+      letdown_flow_normalized: RD.cvcs.kgsToGpm(e._letdownKgs || 0) / 450000,
+      /* the protective isolate, distinct from the orifice lamps below — a shut lineup and an
+       * isolated one look identical on those two booleans (#624 item 14) */
+      letdown_isolated: e.cv.letdownIsolated === true,
       /* the RHR lineup — real since #507 wave 2 (the valve, not the permissive; the split
        * re-enables the board's ALIGN/ISOLATE/HX controls, which key on hx_fraction) */
       rhr_active: e.rh.running === true,
@@ -1824,6 +1831,10 @@
         /* the outsurge-heat and SI-boron one-step carriers (#510 batches 1+3) — old saves
          * land on 0, healthy */
         _pzSurgeHeat: e._pzSurgeHeat, _eccsKgs: e._eccsKgs,
+        /* the stepped letdown flow the board reads back (#624 item 14) — an old save lands on
+         * the constructor's 0 and the first step overwrites it, so a restored plant shows a
+         * zero letdown for the length of one broadcast at worst */
+        _letdownKgs: e._letdownKgs,
         /* the SGTR stream's one-step carriers (#507 wave 5) — old saves land on 0, healthy */
         _sgtrKgs: e._sgtrKgs, _sgtrH: e._sgtrH,
         /* the break's live containment backpressure carrier (#543) — an old save lands on

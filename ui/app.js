@@ -3439,6 +3439,12 @@
     rhr_active:             { bool: 'RHR is in service' },
     rhr_valve_open:         { bool: 'the RHR suction valve is open' },
     accumulator_valve_open: { bool: 'the accumulator discharge valve is open' },
+    /* the letdown pair (#624 items 14/25): the SELECTOR is control_state, the FLOW is
+     * true_state, and the heatup's transfer step needs both — one is what you pressed, the
+     * other is what the plant did about it */
+    letdown_orifice_a:      { bool: 'letdown orifice A is in service' },
+    letdown_orifice_b:      { bool: 'letdown orifice B is in service' },
+    letdown_flow_actual:    { label: 'Letdown flow', u: 'gpm', scale: 450000 },
     sr_energized:           { bool: 'the Source Range detector is energized' },
     sg_safety_open:         { bool: 'an SG code safety is open' },
     porv_open:              { bool: 'the PORV is open' },
@@ -3456,7 +3462,13 @@
       if (ui.units === 'SI') return usTxt;                        // already SI — one form
       return usTxt + ' (' + (Math.abs(+v) >= 100 ? Math.round(+v) : Math.round(+v * 100) / 100) + ' ' + siU + sfx + ')';
     }
-    var n = Math.abs(+v) >= 100 ? Math.round(+v) : Math.round(+v * 10) / 10;
+    /* A DISPLAY SCALE, for the params published in the #408 currency (#624 item 25). The CVCS
+     * flows are gpm/450,000 on the wire, so a raw render prints "0" for every flow a plant ever
+     * carries — 12.5 gpm is 2.8e-5. The board multiplies by the same 450,000; this is that
+     * conversion for the checklist's own criteria line, declared on the entry rather than
+     * hidden in a branch. */
+    var vv = (pd && pd.scale) ? +v * pd.scale : +v;
+    var n = Math.abs(vv) >= 100 ? Math.round(vv) : Math.round(vv * 10) / 10;
     return n + (pd && pd.u ? ' ' + pd.u : '');
   }
   // The whole criteria phrase for one {p,op,v[,tol]} — "Pressure ≥ 2235 psi (15.41 MPa)",

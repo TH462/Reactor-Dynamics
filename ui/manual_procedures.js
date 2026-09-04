@@ -1201,6 +1201,27 @@
           why: 'Bottling the secondary sends the pumps\' heat into the plant instead of out through the condenser. The cold lineup ships the dump in hand and shut, so this is a check, not an action. The DUMP SETPOINT box reads the no-load anchor, 1020 psi (7.03 MPa), but it only reaches the valve once AUTO is selected — on the startup path, not this one.',
           acc: { p: 'steam_dump_valve_pct', op: '<', v: 1 },
           hl: ['Dump SP', 'Steam Dump'] },
+        /* THE LETDOWN TRANSFER (#624 items 14/25, 2026-09-04). The LETDOWN selector had never
+         * changed anything a player could see, because every initial condition booted with the
+         * orifices already in — an orphan control on a board whose plant was pre-lined-up. The
+         * cold ICs now boot with them OUT (the source's own shutdown lineup: letdown on the RHR
+         * cross-connect HCV-128), so this step is the control's job, and the leg has a real
+         * consequence if it is skipped: the RHR suction autocloses at 585 psig on the next
+         * step's climb, and from there a plant with the orifices shut has charging and seal
+         * injection in and nothing out.
+         *
+         * THE EFFECT IS ASSERTED, not just the write — see the confirmation step after the
+         * ride, which reads the flow AND the RHR lineup together. A `letdown_orifice_a` tick
+         * alone would pass on a plant whose cross-connect was still carrying everything. */
+        { text: 'Place both letdown orifices in service: press A+B 7 % on the LETDOWN card.',
+          why: 'On shutdown cooling, letdown runs out of the residual heat removal (RHR) system through the HCV-128 cross-connect, and the orifices pass almost nothing against the 363 psi (2.5 MPa) plant you start from. The next step\'s climb autocloses the RHR suction at 585 psig (4.03 MPa), and from there the orifices are the only way out — charging and seal injection keep coming in whatever you do. WTSM chapter 19: "Prior to reaching 350 °F (176.7 °C) in the RCS … Terminate residual heat removal letdown to the CVCS". Both, not one: measured, A alone parks the next step at 628 psi (4.33 MPa), under the 665 psi (4.585 MPa) accumulator cover gas.',
+          control: 'Letdown Orifices (CVCS)', target: 'both orifices in service — A+B 7 % lit on the LETDOWN card',
+          cmd: { action: 'set_letdown_orifices', a: true, b: true }, hold: 10,
+          accs: [
+            { p: 'letdown_orifice_a', op: '>', v: 0, label: 'Orifice A in service' },
+            { p: 'letdown_orifice_b', op: '>', v: 0, label: 'Orifice B in service' },
+          ],
+          hl: ['Letdown Orifices (CVCS)'] },
         /* "UP", NOT "DOWN" *(OWNER, 2026-09-02 playtest, #608 item 2: "Step 7 says to dial the
          * pressurizer pressure setpoint DOWN to its 1700 psig floor. the problem is the mode 5
          * pressure set point is 363 so you are actually driving it UP not down")*. Measured: the
@@ -1277,6 +1298,19 @@
           saw: { p: 'tavg_c', op: '>', v: 150 },
           acc: { p: 'tavg_c', op: '>', v: 283 },
           hl: ['Tavg', 'Primary Pressure', 'SG Pressure'] },
+        /* THE EFFECT ACCEPTANCE FOR THE LETDOWN STEP (#624 item 25). The orifice step's own tick
+         * reads the SELECTOR; this reads the PLANT, after the transfer has actually happened —
+         * RHR gone (the 585 psig autoclose fired during the ride) and letdown still flowing,
+         * which at this point can only be the orifices. Two entries, because either one alone
+         * passes on the wrong plant: flow > 0 is satisfied by a cross-connect still in service,
+         * and RHR out is satisfied by a plant with no letdown path at all. */
+        { text: 'Confirm the letdown transfer: RHR suction autoclosed, letdown now on the orifices.',
+          why: 'The RHR suction valve takes itself shut at 585 psig (4.03 MPa) — that is the interlock, not an action you take — and the cross-connect goes with it. What is left is the orifice lineup you put in service before the climb, and it now sees system pressure instead of the 363 psi (2.5 MPa) it started against: an orifice passes more the harder you push on it, 10.8 gpm here and 12.7 gpm once the plant reaches 2235 psi (15.41 MPa). If letdown reads zero, the orifices are shut and the plant is filling — put them in service before the second pressurization.',
+          accs: [
+            { p: 'rhr_active', op: '<', v: 1, label: 'RHR suction autoclosed' },
+            { p: 'letdown_flow_actual', op: '>', v: 0, label: 'Letdown flowing on the orifices' },
+          ],
+          hl: ['Letdown Orifices (CVCS)', 'Residual Heat Removal (RHR)'] },
         { text: 'Raise the Pressure SP to 2235 psi (15.41 MPa). The secondary is hot, so the P-11 crossing is safe.',
           why: 'The second half of the staged pressurization. Climbing past the 1972 psi (13.6 MPa) P-11 permissive re-arms the SI signals the cold lineup had blocked — and every one of them now reads clear, because the secondary is hot: steam pressure 1020 psi (7.03 MPa) against a 327.7 psi (2.26 MPa) setpoint. That is why this dial waited for the ride to finish. Full heaters take about an hour over the last 520 psi.',
           control: 'Pressure SP', target: '2235 psi (15.41 MPa), normal operating pressure',

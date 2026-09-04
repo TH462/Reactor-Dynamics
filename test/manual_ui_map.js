@@ -114,9 +114,14 @@ var STEP_UI = {
      * has been broken three times by INSERTING a step and re-deriving instead of renumbering
      * (run_all.js records the six-mismatch cascade), and a deletion is the safe direction only if
      * you resist the urge to close the gap. */
-    { i: 6, view: 'board', control: 'Pressure SP' },
-    { i: 7, view: 'board', control: 'Accumulator valve' },
-    { i: 9, view: 'board', control: 'Pressure SP' },
+    /* THE LETDOWN TRANSFER INSERTED AT i:6 (#624 items 14/25, 2026-09-04) — and the three rows
+     * below MOVED WITH THEIR STEPS rather than being re-derived: 6->7, 7->8, 9->11. The ride
+     * step is followed by a new letdown-transfer CONFIRMATION which carries no `control`, so it
+     * owns no row here and only shifts what comes after it. */
+    { i: 6, view: 'board', control: 'Letdown Orifices (CVCS)' },
+    { i: 7, view: 'board', control: 'Pressure SP' },
+    { i: 8, view: 'board', control: 'Accumulator valve' },
+    { i: 11, view: 'board', control: 'Pressure SP' },
   ],
   'pwr2:pwr_startup': [
     { i: 1, view: 'board', control: 'Boron control' },

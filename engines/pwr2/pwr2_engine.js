@@ -353,7 +353,18 @@
       rl: RL.createRelief({}),
       cd: CD.createCondenser({}),
       dc: DC.createDumpCtl({}),
-      cv: CV.createCVCS({ boron_ppm: boron0 }),
+      /* THE COLD LINEUP BOOTS WITH THE ORIFICES OUT (#624 item 25, 2026-09-04). Mode 4 and
+       * Mode 5 are the same RHR-held plant one step apart, and the source puts low-pressure
+       * letdown on the RHR cross-connect in that regime, not on the orifices:
+       *   [sourced] WTSM ch.19 (ML11223A342): "Coolant removal is accomplished by letdown,
+       *   primarily from the residual heat removal system (RHR) … Letdown is via the
+       *   RHR-to-CVCS cross-connect valve HCV-128."
+       *   [sourced] NUREG-1431 Rev 4 Bases (ML12100A228): "During LTOP MODES, the RHR System
+       *   is operated for decay heat removal and low pressure letdown control."
+       * Every initial condition used to boot `letdownOpen = 1`, which is why the LETDOWN
+       * selector had never changed anything a player could see — an orphan control on a board
+       * whose plant was already lined up. The heatup checklist now has a step for it. */
+      cv: CV.createCVCS({ boron_ppm: boron0, letdownOpen: ic.cold ? 0 : 1 }),
       ec: EC.createECCS({}),
       aw: AW.createAFW({}),
       fw: FWM.createFeedwater(ic.pf > 0 ? {} : { at_power: false }),
@@ -419,6 +430,7 @@
       /* one-step-lag carriers. _ctP starts UNDEFINED on purpose: pwr2_break falls to its
        * sourced 1.0 psig pre-accident default until containment has stepped once (#543). */
       _Qox: 0, _pzRelief: 0, _pzReliefH: 0, _pzSurgeHeat: 0, _eccsKgs: 0, _sgtrKgs: 0, _sgtrH: 0,
+      _letdownKgs: 0,
       _ctP: undefined,
       _pzr: null, _dcr: null, _lastTrip: false,
       _scramT: null, _manualTrip: false, _rodStopSig: false, _runbackSig: false,
@@ -663,7 +675,14 @@
                  < RD.rhr.RHR.permissive_open_psig) eng.rh.valve_open = true;
         break;
       case 'rhr_hx':         eng.rh.hx_fraction = Math.max(0, Math.min(1, +value)); break;
-      case 'letdown':        eng.cv.letdownOpen = Math.max(0, Math.min(1, +value)); break;
+      /* THE OPERATOR'S RE-LINE IS WHAT CLEARS THE PROTECTIVE ISOLATE (#624 item 14) — and it is
+       * REFUSED while the 17 % cut still stands, which is the interlock's own shape (WTSM
+       * §4.1.3.1: the isolation valves close on low level; the level has to come back before
+       * they will stay open). Above 20 % the latch has cleared and the re-line takes. */
+      case 'letdown':
+        eng.cv.letdownOpen = Math.max(0, Math.min(1, +value));
+        if (eng.pz.lowLevelCut !== true) eng.cv.letdownIsolated = false;
+        break;
       case 'pzr_setpoint_mpa':   eng.pzDrivers.setpoint_mpa = +value; break;
       case 'pzr_heaters_manual':
         eng.pzDrivers.heaters_manual = value === null ? undefined : +value;
@@ -1193,6 +1212,11 @@
     var cvr = CV.stepCVCS(eng.cv, sys, dt, { ac_available: acAvail, rhr_letdown_ok: eng.rh.running === true, si_kgs: eng._eccsKgs, si_ppm: EC.ECCS.rwst_boron_ppm });
     var ecr = EC.stepECCS(eng.ec, sys, dt, { ac_available: acAvail });
     eng._eccsKgs = ecr.total_kgs || 0;
+    /* THE STEPPED LETDOWN FLOW, for the board (#624 item 14). `letdownOpen x normal` is NOT
+     * this number on either side of the split: on a cold plant the cross-connect carries the
+     * full magnitude through a SHUT orifice lineup, and under the 17 % isolate the lineup still
+     * reads open while nothing flows. The shell's `letdown_flow_normalized` reads this. */
+    eng._letdownKgs = cvr.letdown_kgs;
 
     /* THE SGTR IS A BREAK WHOSE DESTINATION IS THE SG (#507 wave 5) — inferred from the
      * node: a break AT sg_primary is a ruptured tube, and a tube discharges into the
@@ -1319,7 +1343,17 @@
     if (eng.cv.chargingDemand === null || eng._plcsAuto !== false) {
       eng.cv.chargingDemand = pzr.charging_demand;
     }
-    if (pzr.letdown_isolated) eng.cv.letdownOpen = 0;
+    /* THE 17 % CUT ISOLATES; IT DOES NOT RE-LINE THE PLANT (#624 item 14, owner-ruled
+     * 2026-09-04). This line used to read `eng.cv.letdownOpen = 0` — the protective action
+     * written into the operator's own selection, which then never healed and destroyed what the
+     * player had picked. SET ONLY, never cleared here: restoration is an operator act, and the
+     * `letdown` command below is where it happens.
+     *   [sourced] WTSM §4.1.3.1 (ML11223A214): "The letdown orifice isolation valves
+     *   automatically close on low pressurizer level." — nothing in the chapter re-opens them.
+     *   `Manuals/06_ALARM_RESPONSE.md` PWR-A13a already documents exactly this: "there is no
+     *   automatic restoration — letdown stays shut until you re-open an orifice by hand."
+     * The retired kernel's row (layers/control/pwr_control.js) was designed the same way. */
+    if (pzr.letdown_isolated) eng.cv.letdownIsolated = true;
 
     /* HR1: THE RPS READS THE INSTRUMENTS, NOT THE PLANT. Every analog driver below comes
      * from ins.reading — one step old (the instruments step at the END of each step, on that
