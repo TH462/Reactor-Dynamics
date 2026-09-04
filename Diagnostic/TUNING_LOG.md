@@ -29,6 +29,152 @@ and the user-visible summary in `CHANGELOG.md`. This file points at those and tr
 
 ---
 
+## Session log — 2026-09-03-develop-e (#618 — the approach to criticality steered on the bank position; the sourced procedure steers on the instruments)
+
+**The ask** *(OWNER, 2026-09-03: "For the interactive checklists, I don't want the rod startup or
+shutdown to reference the rod positions (with possible exceptions). It should probably have the
+user reference the instruments. Do an evidence pass first.")*
+
+### The evidence pass — the split is stated outright in one document
+
+Ginna UFSAR Ch. 7 §7.7.3.1 (ML20339A027) settles it in two sentences: subcritical, *"the relative
+reactivity status (neutron source multiplication) is continuously monitored by two source range
+proportional counter detectors"*; critical, *"the best indications of the reactivity status in the
+core … is the control room display of the rod control group position."*
+
+WTSM 19.0 (ML11223A342) App. 19-1 step 10 is the whole withdrawal instruction: *"Withdraw the
+control bank rods in manual to take the reactor critical."* No step target. §19.3 gives the
+declaration — *"Supercriticality is indicated by a constant positive startup rate and steadily
+increasing source range count rate with no control rod withdrawal. Criticality is declared when
+these conditions are observed"* — and then *"The data recorded consists of the control rod
+positions, boron concentration, and RCS loop average temperatures."* Position is an **output**.
+
+WTSM 2.1 (ML11223A207) §2.1.10 has the burst discipline and the reason the holds lengthen near
+criticality; the corpus writes the plot **1/CR**, not 1/M (`find_source.js` genuine zero on
+"1/M plot", "inverse count rate", "ICRR"). The estimated critical position is a prediction:
+*"The ECC is normally computed using a desired critical rod position. The boron concentration is
+then adjusted so that the reactor will be critical at the desired rod position"* — you pick the
+position and move BORON, and NUREG-1431 Rev 4 Bases B 3.1.6 says it *"could be substantially in
+error"*.
+
+**Two exceptions kept, both sourced** (owner-ruled): the shutdown-bank full-withdrawal
+verification (App. 19-1 step 7, *"Verify all shutdown banks are fully withdrawn"* — no instrument
+tells you a bank is all the way out) and the rod insertion limit (LCO 3.1.6; App. 19-1 step 11's
+response is reinsert to the bottom, recompute, borate, restart — never a rod trim). The at-power
+trims in `pwr_raise_power` / `pwr_lower_power` were exempted on the Ginna quote above, so those
+legs were not touched.
+
+**Two gaps stated rather than papered over:** the corpus holds **no numbered shutdown procedure**
+(WTSM §19.5 is one sentence, *"essentially reversing the steps described for completing a plant
+startup"*) and **no procedural 1 DPM limit** — that is McGuire OP/1/A/6100/05, fetched off-corpus.
+The 94/157/188/202/211 ladder is authored, not sourced.
+
+### Measured on the shipped engine, 2026-09-03 (`RD.pwr2.kinetics`)
+
+`RODS = { worth_control 0.04068, worth_shutdown 0.03676, max_steps 627, curve_flatten 0.36 }`,
+β_eff **650.2 pcm**. Control-bank integral worth from fully inserted:
+
+| % withdrawn | 10 | 25 | 35 | 50 | 65 | 75 | 90 | ARO |
+|---|---|---|---|---|---|---|---|---|
+| steps | 63 | 157 | 219 | 314 | 408 | 470 | 564 | 627 |
+| pcm added | 271 | 786 | 1232 | 2038 | 2836 | 3282 | 3797 | 4068 |
+
+Differential: **min 4.15, mean 6.49, peak 8.82 pcm/step at step 314**, peak/mean 1.36 — the engine
+reproduces its own `pwr2_kinetics.js:294-318` comment to 0.01, so the documented curve is the
+running one.
+
+Critical control-bank position vs boron, hot zero power, shutdown bank out:
+
+| ppm | 683 | 705 | 719 | 750 | 800 | 857 | 918 |
+|---|---|---|---|---|---|---|---|
+| steps | 169 | 202 | **222** | 263 | 326 | 400 | 496 |
+| % withdrawn | 26.9 | 32.3 | **35.4** | 42.0 | 52.0 | 63.8 | 79.1 |
+
+±750 pcm acceptance band about the 719 ppm criticality: **111–310 steps** (the manual said
+159–421). Boron worth at hot zero power: **−10.98 pcm/ppm**.
+
+**222 is where ρ crosses zero; the full-stack replay declares criticality at 226–238.** That gap
+is not an error in either number — it is the distance between the physics and what a player
+watching the count rate and SUR can *see*, and it is precisely why the declaration is made on the
+instruments. Recorded in `04 §PWR-N03` in those terms.
+
+### THE TRAP — three quantities near 6.5, and four chapters picked the wrong one
+
+`09 §7.0` read *"one step ≈ 6.5 pcm ≈ 1 ¢ **in the startup critical band**"*. On this plant:
+
+- **6.50 pcm** = one cent (β_eff 650.2). A unit conversion, true at every rod position.
+- **6.49 pcm/step** = the differential worth averaged over the **whole bank**.
+- **8.09 pcm/step** = the differential **in the critical band** — which is what the sentence
+  claimed to be quoting. That is **1.24 ¢**, not 1 ¢.
+
+Two unrelated quantities coincide at 6.5 on this plant, and the sentence took either one of them
+for a third. `03 §rod indication` and `12 §14` had it as *9 pcm ≈ 1.5 ¢* and *9 pcm ≈ 1.4 ¢*; the
+live checklist said *about 8 pcm* and was the only one right. **Four documents, three values, one
+measurement — and no gate reads any of them.** Same shape as the P-10 8 %-vs-10 % find hours
+earlier (#617): a number restated in four places is not corroborated four times, it is copied
+three times.
+
+**And the rod tables were still the RETIRED plant's 912-step bank** — `04 §PWR-N03` (criticality
+at 319, a 138/90/44/22/12 burst table), `05 §Phase A/C`, `09 §7.0/§7.5`, `03`, `12 §14`. `05:107`
+carried a **third** scale in a parenthetical, *"~74.5 of 200 steps"*. Nothing in `test/` can see
+any of it: `run_procdocs.js` walks only the retired `pwr` pool. The standing #534 trap.
+
+### What changed
+
+- `ui/manual_procedures.js` `pwr_startup` steps 4–10: `text`/`target` cued on the settled count
+  rate the acceptance already checks; step 9's creep rewritten to WTSM §19.3's declaration (SUR
+  positive and counts climbing **with the rods stopped**); the step numbers demoted to the
+  collapsible `why`. A third caution added on reading the count rate rather than the bank.
+  `cmd`/`hold`/`acc`/`accs`/`saw`/`control`/`hl` and step order untouched — **`run_checklist_pwr2`
+  came back 117/117 with every replay check named identically**, which is the point: the
+  acceptances were already instrument-based, only the prose was not.
+- Both exceptions cited in place, in comments a later agent will hit before "fixing" them.
+- `Manuals/` 03, 04, 05, 09, 12 re-anchored to 627 steps; `09 §7.5`'s critical-boron table,
+  differential-boron-worth row and integral-worth table **re-measured**, not rescaled — the 25 %
+  and 75 % columns moved (831→849, 985→971) because this plant's worth curve is a different shape.
+
+### THE GATE WAS POINTED AT THE WRONG PLANT — and that is why none of it was caught
+
+`run_reactivity.js` parses `Manuals/09 §7.5` and compares **every cell to the plant within
+1 ppm**. A real check, a tight tolerance, and green throughout. It loads `engines/pwr/` — the
+RETIRED engine — and hard-coded `COLS = [0, 228, 456, 684, 912]`, the retired bank. **Both halves
+named the retired plant, so the arithmetic closed.** The manual described a plant no public build
+ships (#523) and the gate agreed with it, to 1 ppm, for months.
+
+The same fault ran through the block below it, which derives `pwr_startup`'s creep **by name**:
+`PLOTTED = 306, CREEP = 26` — the retired 138/90/44/22/12 ladder — against the retired engine. The
+live checklist has used 94/63/31/14/9 with a 15-step creep for a long time. Consistently retired on
+both sides, so it passed while certifying a derivation for a startup nobody can run.
+
+**A check can be real, tight, injection-tested AND pointed at the wrong plant, and that combination
+is indistinguishable from a working gate.** It is not in the hollow-check list in `CLAUDE.md`
+because it is not hollow — it would catch a genuine drift, in the plant it is looking at. Ask what
+plant a gate is reading, not only what it asserts.
+
+**Fixed (owner ruling 2026-09-03: "A").** Both blocks now read the shipped plant, and — the part
+that matters — **every input is derived rather than copied**: the ECC columns come from
+`R2.max_steps`, and the creep derivation reads its boron from the checklist's own dilution command,
+its bursts from the steps that plot a 1/CR point, and its creep from the withdrawal after them.
+A hard-coded copy of authored content is a second copy, and a gate holding one cannot tell you the
+first has moved. New checks: the plotted bursts must end **subcritical** (going critical on a
+plotted burst is the one thing the ladder exists to prevent), criticality must fall inside the
+creep, and **the checklist's caution must quote the worth the plant actually has** — that last one
+reproduces this session's headline defect exactly and reddens on it.
+
+Injection-tested, all three: caution 8.1 → 6.5 pcm reddens the caution check; a last burst of 40
+steps instead of 9 reddens three checks at once; a 3 ppm perturbation of one ECC cell reddens the
+table check. `run_reactivity` 27 → 30 checks; a guard that both engines stay distinct in-process
+was added, because if a load-order change ever let one clobber the other, both halves would
+silently grade the same plant again.
+
+### Still owed
+
+Nothing gates `04 §PWR-N03`'s burst table or the `09 §7.5` **integral-worth** table (the
+critical-boron table is now gated). Extending `run_manual_setpoints`, which already boots four
+initial conditions and compares 30 cells, is the obvious home and is not built.
+
+---
+
 ## Session log — 2026-09-03-develop-d (#617 — the six live checklists, reviewed and rewritten: the text the player reads was the one field no gate compares)
 
 **The ask** *(OWNER, 2026-09-03: "Critically review then Rewrite the prose of the checklists.")*.

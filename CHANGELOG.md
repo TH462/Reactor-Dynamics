@@ -30,7 +30,50 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
 
 ## [Unreleased]
 
-## [Alpha 1.7.2-rc4] — 2026-09-03
+## [Alpha 1.7.2-rc5] — 2026-09-03
+
+### Changed (#618 — the approach to criticality is cued on the instruments, and the rod tables were the retired plant's)
+
+- **`pwr_startup` steps 4–10 no longer name a rod position to withdraw to.** Each 1/CR burst is
+  cued on the settled source-range count rate its acceptance was *already* checking, and the creep
+  onto criticality is WTSM 19.3's declaration: startup rate positive and counts still climbing
+  **with the rods stopped**. The step numbers moved into the collapsible details. `cmd`, `hold`,
+  `acc`, `accs`, `saw`, `control`, `hl` and step order are untouched — `run_checklist_pwr2` is
+  **117/117 with every replay check named identically**, which is the finding: the acceptances
+  were instrument-based all along and only the prose was not.
+- **Evidence pass.** Ginna UFSAR §7.7.3.1 (ML20339A027) states the split outright — subcritical,
+  neutron source multiplication; critical, *"the control room display of the rod control group
+  position."* WTSM 19.0 (ML11223A342) App. 19-1 step 10 is *"Withdraw the control bank rods in
+  manual to take the reactor critical"*, and §19.3 records position *after* criticality with boron
+  and Tavg. Two exceptions kept and cited in place: the shutdown-bank full-withdrawal verification
+  (App. 19-1 step 7) and the rod insertion limit (LCO 3.1.6). The at-power trims in
+  `pwr_raise_power` / `pwr_lower_power` are untouched, on the same Ginna sentence.
+- **Manuals 03, 04, 05, 09 and 12 re-anchored from the retired 912-step bank to 627** — `05` also
+  carried a third scale, *"~74.5 of 200 steps"*. `09 §7.5`'s critical-boron table, its
+  differential-boron-worth row and the integral-worth table are **re-measured on the shipped
+  engine, not rescaled**: the 25 % and 75 % columns moved (831→849, 985→971) because this plant's
+  worth curve is a different shape.
+- **The per-step worth was wrong in four chapters at three values** — 09 said 6.5 pcm ≈ 1 ¢, 03
+  said 9 pcm ≈ 1.5 ¢, 12 said 9 pcm ≈ 1.4 ¢, the checklist said about 8 pcm. Measured in the
+  critical band: **8.1 pcm = 1.24 ¢**. 09's figure was the *bank average* (6.49 pcm/step), which on
+  this plant coincides with the *cent* (6.50 pcm, β_eff 650.2) — two unrelated quantities, neither
+  of them the one the sentence claimed.
+- **The gate that should have caught all of it was pointed at the retired plant.**
+  `run_reactivity.js` parses `Manuals/09 §7.5` and compares every cell to the plant within 1 ppm —
+  but loaded `engines/pwr/` and hard-coded `COLS = [0, 228, 456, 684, 912]`. Both halves named the
+  retired engine, so the arithmetic closed and it stayed green while the manual described a plant
+  no public build ships (#523). The block below it derived `pwr_startup`'s creep *by name* from
+  `PLOTTED = 306, CREEP = 26` — the retired ladder — while the live checklist has used
+  94/63/31/14/9 with a 15-step creep for a long time. **A check can be real, tight and pointed at
+  the wrong plant; that combination is indistinguishable from a working gate.**
+- **Both blocks repointed at the shipped plant, with every input derived rather than copied**
+  *(OWNER RULING, 2026-09-03: "A")*. ECC columns come from the shipped bank; the creep derivation
+  reads its boron, bursts and creep out of the live checklist, so it re-derives when the checklist
+  changes instead of going stale. Three new checks: the plotted bursts must end **subcritical**,
+  criticality must fall inside the creep, and **the checklist caution must quote the worth the
+  plant has** — the last reproduces this session's headline defect and reddens on it. Plus a guard
+  that both engines stay distinct in-process. All injection-tested. `run_reactivity` 27 → 30.
+  Still ungated: `04 §PWR-N03`'s burst table and `09 §7.5`'s integral-worth table.
 
 ### Fixed (manuals: P-10 is 8 % on this plant)
 

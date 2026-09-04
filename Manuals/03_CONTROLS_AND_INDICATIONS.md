@@ -40,7 +40,7 @@ Describe every operator control and major indication on the PWR board, with purp
 | **Direction** | Raise = withdraw = add reactivity; Lower = insert = remove reactivity |
 | **Quick click** | Steps the bank **one step** |
 | **Hold** | Drives continuously at the selected **Rod Speed**; release to halt |
-| **Indication** | Vertical bar + step count (0 = fully inserted, max 912 steps fully withdrawn — a fine-step drive: one step ≈ 9 pcm ≈ 1.5 ¢ near the startup critical band) |
+| **Indication** | Vertical bar + step count (0 = fully inserted, max **627** steps fully withdrawn — a fine-step drive: one step is **8.1 pcm ≈ 1.24 ¢** in the startup critical band, 4.15 off the bottom and 8.82 at mid-travel). **While the reactor is subcritical, read reactivity from the source range count rate, not from this bar** — bank position becomes the better reactivity indication once the reactor is critical (Ginna UFSAR §7.7.3.1, ML20339A027) |
 | **Operating position** | ≈ 92 % withdrawn at hot full power |
 
 **Procedure — move rods**

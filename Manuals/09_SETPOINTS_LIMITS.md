@@ -268,7 +268,7 @@ Inward motion still takes — that is the source's own scope, quoted at the end 
 
 | Parameter | Value |
 |-----------|-------|
-| Control bank max steps | **912** fully withdrawn (fine-step drive; one step ≈ 6.5 pcm ≈ 1 ¢ in the startup critical band) |
+| Control bank max steps | **627** fully withdrawn (fine-step drive). Differential worth is **4.15 pcm/step off the bottom, 8.82 peak at mid-travel, 6.49 averaged over the bank**; **in the startup critical band it is 8.1 pcm/step = 1.24 ¢**. ⚠ Do not quote the bank average as the critical-band figure: this plant's cent is **6.50 pcm** (β_eff 650.2) and its bank average is **6.49 pcm/step**, two unrelated quantities that happen to coincide, and neither is the value that applies during the approach to criticality |
 | Speed slow / normal / fast | **0.533 / 3.20 / 4.80 steps/s** (32 / 192 / 288 steps/min — same fraction-of-travel rates as the pre-fine-step drive) |
 | Scram insertion time (control) | **~2.5 s** full travel |
 | Scram insertion time (shutdown) | **~2.0 s** |
@@ -283,8 +283,16 @@ Inward motion still takes — that is the source's own scope, quoted at the end 
 ## 7.5 Estimated Critical Condition (ECC) — reference data
 
 <!-- ECC-BCRIT-TABLE: generated from the engine; test/run_reactivity.js verifies every
-     cell against pwr_engine's own reactivity model, so this table cannot go stale
-     without reddening a gate. Do not hand-edit the numbers. -->
+     cell against RD.pwr2.kinetics.criticalBoron at 2235 psi (15.41 MPa), so this cannot go
+     stale without reddening a gate. Do not hand-edit the numbers.
+
+     ⚠ IT WAS GATED AGAINST THE WRONG PLANT until 2026-09-03 (#618). This comment used to
+     say "pwr_engine's own reactivity model" — the RETIRED engine, which no public build
+     ships (#523) — and run_reactivity.js hard-coded COLS = [0, 228, 456, 684, 912], the
+     retired 912-step bank. So the table sat on the retired plant's scale for months with
+     a GREEN gate agreeing with it, which is exactly why nobody caught it: the check was
+     real, the tolerance was 1 ppm, and it was measuring the wrong plant. If you repoint a
+     manual table at a new engine, repoint its gate in the same change. -->
 
 > **What pins this curve.** Two independent anchors, and they constrain different
 > things. **Shape** — the boron dependence — is *measured*: the BEAVRS / Watts Bar U1
@@ -303,18 +311,31 @@ Inward motion still takes — that is the source's own scope, quoted at the end 
 **Critical boron concentration (ppm) by Tavg and control-bank position**, shutdown bank
 withdrawn, no xenon, zero power:
 
-| Tavg | bank IN (0) | 25 % (228) | 50 % (456) | 75 % (684) | ARO (912) |
+| Tavg | bank IN (0) | 25 % (157) | 50 % (314) | 75 % (470) | ARO (627) |
 |---|---|---|---|---|---|
-| 122 °F (50.0 °C) | 806 | 831 | 908 | 985 | 1010 |
-| 200 °F (93.3 °C) | 792 | 818 | 899 | 980 | 1006 |
-| 250 °F (121.1 °C) | 781 | 808 | 892 | 976 | 1003 |
-| 300 °F (148.9 °C) | 768 | 797 | 884 | 971 | 999 |
-| 350 °F (176.7 °C) | 752 | 782 | 874 | 966 | 996 |
-| 400 °F (204.4 °C) | 732 | 764 | 862 | 960 | 992 |
-| 450 °F (232.2 °C) | 705 | 740 | 846 | 953 | 988 |
-| 500 °F (260.0 °C) | 667 | 706 | 825 | 944 | 983 |
-| 545 °F (285.0 °C) | 619 | 663 | 798 | 933 | 977 |
-| 546.8 °F (286.0 °C) | 616 | 660 | 796 | 932 | 977 |
+| 122 °F (50.0 °C) | 811 | 849 | 910 | 971 | 1010 |
+| 200 °F (93.3 °C) | 797 | 837 | 901 | 965 | 1005 |
+| 250 °F (121.1 °C) | 786 | 827 | 894 | 961 | 1002 |
+| 300 °F (148.9 °C) | 772 | 816 | 886 | 955 | 999 |
+| 350 °F (176.7 °C) | 755 | 802 | 876 | 949 | 996 |
+| 400 °F (204.4 °C) | 734 | 784 | 863 | 942 | 992 |
+| 450 °F (232.2 °C) | 707 | 761 | 848 | 934 | 988 |
+| 500 °F (260.0 °C) | 670 | 730 | 827 | 922 | 983 |
+| 545 °F (285.0 °C) | 622 | 690 | 800 | 908 | 977 |
+| 546.8 °F (286.0 °C) | 619 | 688 | 798 | 908 | 977 |
+
+*(Re-measured 2026-09-03 on the **shipped** engine, `RD.pwr2.kinetics.criticalBoron`, against the
+627-step bank. It previously described the RETIRED engine's 912-step bank, and so did the gate that
+was supposed to catch the drift — see the note below. The bank-IN and ARO columns barely moved; the
+25 % and 75 % columns did, because this plant's worth curve is a different shape:
+`curve_flatten` 0.36, the four-bank overlap program of WTSM 8.1 §8.1.5.4.)*
+
+**Every cell is computed at normal operating pressure, 2235 psi (15.41 MPa)**, including the cold
+rows — which is a stated simplification, not a claim that a 122 °F plant is at 2235 psi. Boron is
+a density coupling, so pressure moves these numbers: the same 122 °F bank-IN cell reads **818 ppm**
+at a realistic cold-shutdown 363 psi (2.5 MPa) against **811 ppm** here, and the spread is largest
+in the bank-IN column and smallest at ARO. **Read the cold rows for the temperature lesson in
+§7.5.1, not as a dilution target for a depressurized plant.**
 
 **Differential boron worth (pcm/ppm).** It is **larger cold** — denser water carries more
 boron atoms per unit volume — so the same dilution buys more reactivity at 122 °F than at
@@ -322,15 +343,15 @@ power. Use the value for the temperature you are actually at.
 
 | Tavg | 122 °F | 250 °F | 350 °F | 450 °F | 545 °F | 566.6 °F |
 |---|---|---|---|---|---|---|
-| pcm/ppm | 19.86 | 18.32 | 16.65 | 14.33 | 11.32 | 10.51 |
+| pcm/ppm | 20.46 | 18.77 | 16.89 | 14.48 | 11.45 | 10.59 |
 
 **Control-bank integral worth** (pcm added, withdrawing from fully inserted). The curve is
 an S: least effective at either end, most effective mid-travel.
 
 | Position | 10 % | 25 % | 35 % | 50 % | 65 % | 75 % | 90 % | ARO |
 |---|---|---|---|---|---|---|---|---|
-| steps | 91 | 228 | 319 | 456 | 593 | 684 | 821 | 912 |
-| pcm added | 102 | 499 | 1003 | 2034 | 3065 | 3569 | 3966 | 4068 |
+| steps | 63 | 157 | 219 | 314 | 408 | 470 | 564 | 627 |
+| pcm added | 271 | 786 | 1232 | 2038 | 2836 | 3282 | 3797 | 4068 |
 
 ### 7.5.1 Reading the table — and the one rule that matters
 
@@ -350,9 +371,15 @@ an S: least effective at either end, most effective mid-travel.
 
 **The acceptance band.** Attachment 2.2-1 line Q brackets the prediction at **±750 pcm**
 around the estimated critical position, or the rod insertion limit, whichever is tighter. On
-this plant's lumped bank a mid-travel critical point near **318 steps** gives a band of
-roughly **159 to 421 steps**. Criticality outside that band means the estimate was wrong —
-stop and re-work it, do not keep pulling.
+this plant's lumped bank the **719 ppm reference startup goes critical at 223 steps**, and that
+gives a band of roughly **111 to 310 steps** (measured 2026-09-03). Criticality outside that band
+means the estimate was wrong — stop and re-work it, do not keep pulling.
+
+**The band is checked against, not steered to.** WTSM 19.0 (ML11223A342) Appendix 19-1 step 11
+gives the response, and it is not a rod adjustment: if the bank goes critical below the 0 %-power
+insertion limit, reinsert all control rods to the bottom, recompute the estimated critical boron,
+borate to it, and withdraw again. NUREG-1431 Rev 4 Bases B 3.1.6 is explicit that the estimate
+*"could be substantially in error"* — it is a prediction with an acceptance band, never a target.
 
 ### 7.5.2 The calculation
 
