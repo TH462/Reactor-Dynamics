@@ -32,6 +32,64 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
 
 ## [Alpha 1.7.2-rc6] — 2026-09-03
 
+### Fixed (#624 / #619 item 28 — the power ascension was replaying a plant no player ever gets)
+
+*(OWNER, 2026-09-04: "the power ascention checklist has boron level at 705. this places the rods
+about 2/3 up. is this the correct rod height for 100% power?"; then "50% power was an arbitrary
+choice. Why don't we start at the beginning of ascension instead."; then "Do 1" — settle the
+physics before the checklist.)*
+
+- **`pwr_raise_power` started from `50_percent`, which boots the control bank on its TOP STOP.**
+  So all five of the leg's "Withdraw N steps" instructions were **no-ops**, and **no acceptance
+  read the bank**, so the replay certified an ascension whose rods cannot move. Proved by
+  injection rather than by reading: wiring the withdrawals in as real `rod_nudge` commands left
+  the replay **byte-identical** at `power_pct 100.55`, because `rod_nudge` adds to `rod_target`
+  and the target clamps at `BANK()`. **The replay and the player were running different plants** —
+  a player arriving through the startup chain has the bank at **227 of 627**, which is the whole
+  of the owner's report.
+- **New `low_power` initial condition**, measured off what `pwr_startup` actually hands over:
+  10.54 %, 10.0 MWe, control bank 227/627, boron 718.8 ppm, turbine latched. With it,
+  **`ctrl_steps` in the ICS table** — the thing that did not exist, since every at-power IC could
+  previously only be built on its stop, which is also not prototypical: Ginna UFSAR §15.4.5.1.1
+  (ML20339A101), *"the reactor is operated with the RCCAs inserted only far enough to permit load
+  follow."* Not in the free-play picker, like `hot_shutdown`.
+- **The ascension's boron target: 705 → 660 ppm**, swept on the player's path rather than argued —
+  705 lands Tavg **19.0 °C** below its program point, 626 lands **15.6 °C** above, 660 lands
+  **0.6 °C** off. End state: 101.1 %, 100 MWe, Tavg 302.60 °C, bank 351/627, xenon 18.6 %.
+- **The bank ends BELOW its insertion limit and that is correct.** Xenon is worth **250 ppm** on
+  this plant; the bank walks OUT as xenon builds and boron dilutes 660 → 626, arriving at the Hot
+  Full Power design point (bank 627, boron 625.8, equilibrium xenon). Ginna TS Bases and
+  NUREG-1431 STS Bases, verbatim: *"The control banks must be maintained above designed insertion
+  limits and are typically near the fully withdrawn position during normal full power
+  operations."* Near-fully-withdrawn is the **equilibrium** state, not the state you arrive in. The
+  leg now ends with a step teaching that, which is the second half of the ruled two-step boron
+  program.
+- **A boration was tried first and refuted**, and it is recorded because it is the obvious move:
+  UFSAR §15.4.5.1.2 says *"operating instructions require boration at the low and low-low level
+  alarms"*, but at 800 ppm this plant scrams on SG lo-lo, and pushing rod withdrawal to compensate
+  trips overtemperature ΔT at +270 steps and then high pressurizer level once the boration's own
+  inventory is counted. The alarm here is a xenon-transient artefact, not a bank that needs
+  driving out.
+- **The acceptance the leg never had**, and the obvious half of it is useless:
+  `control_bank_steps > 300` (the bank moved off its starting 227) **and `< 600` (it is not pinned
+  on its top stop)**. `> 300` alone does NOT catch the defect — the old leg ended at 627, which
+  passes it. Injection-verified: with `from: '50_percent'` restored, `< 600` goes red at 627 while
+  every other check in the leg stays green.
+- Each climb leg now commands **both** actions its text describes: the rod withdrawal as the
+  step's own `cmd`, the load target as an `accs` command entry the player must also perform.
+
+**Two claims corrected in the course of this, both stale-claim failures worth naming.** **#602's
+phase 2 was already landed** — measured on the shipped constants, control-bank differential worth
+is **min 4.15 · mean 6.49 · peak 8.82 pcm/step**, entirely inside the sourced 4–12 band
+(ML11216A094), with the peak/mean 1.36 the issue predicted; its TITLE still says "3.1x … crammed
+into 200 steps" and predates its own fix. And **xenon is not building too fast** — `50_percent`
+*boots* at 66.2 % of equilibrium and the leg ends at 65.4 %, barely moving across 46
+plant-minutes, right for a 9.21 h half-life.
+
+Left open: the rod insertion limit is `[adopted tune]`, pwr1's 5 %→70 %-withdrawn curve carried
+onto this bank and never measured against it (`pwr2_engine.js:75-88`). Real limits live in a COLR,
+which is not in the corpus.
+
 ### Changed (#621 / #619 wave 1 — the playtest's prose and label findings)
 
 The owner played rc5 and filed 28 findings as #619. Sequencing ruled the same day: four waves,

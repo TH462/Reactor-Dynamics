@@ -29,6 +29,128 @@ and the user-visible summary in `CHANGELOG.md`. This file points at those and tr
 
 ---
 
+## Session log — 2026-09-04-develop-a (#624 — the power ascension was replaying a plant no player ever gets)
+
+**The ask.** #619 item 28: *"the power ascention checklist has boron level at 705. this places the
+rods about 2/3 up. is this the correct rod height for 100% power?"* Then, on the first attempt's
+blocker: *"50% power was an arbitrary choice. Why don't we start at the beginning of ascension
+instead."* Then, on the diagnosis: *"Do 1"* — settle the physics before the checklist.
+
+### THE ONE WORTH CARRYING: THE REPLAY AND THE PLAYER WERE RUNNING DIFFERENT PLANTS
+
+`pwr_raise_power` declared `from: '50_percent'`, and every at-power IC boots the control bank on
+its **top stop** (`ctrlSteps = BANK()`, `pwr2_engine.js:247`). So the leg began with 627 of 627
+already withdrawn, and all five of its **"Withdraw N steps" instructions were no-ops**.
+
+**Proved by injection, because a source read cannot see it.** I wired the withdrawals in as real
+`rod_nudge` commands and the replay came back **byte-identical** — `power_pct 100.55`, the same
+value to two decimals — because `rod_nudge` adds to `rod_target` and the target clamps at `BANK()`.
+Rods are not in AUTO either: PWR2 filters every automation channel except `boron_conc` and the AFW
+level hold (`pwr2_shell.js:1182`), and the shipped rod lineup is MANUAL by owner directive. There
+was simply no travel left.
+
+**And no acceptance read the bank.** The leg's checks are `mwe_output` and `power_pct` — arrival,
+not action — so the gate certified an ascension whose rods cannot move, indefinitely. The player,
+arriving through the startup chain with the bank at **227 of 627**, was operating a different
+plant from the one the gate blessed. That is the whole of item 28.
+
+Measured, the two:
+
+| | end of `pwr_startup` (what a player has) | `from: '50_percent'` (what the gate ran) |
+|---|---|---|
+| power | 10.54 % · 10.0 MWe | 50 % · 50 MWe |
+| control bank | **227 / 627** | **627 / 627 — top stop** |
+| boron | 718.8 ppm | 773.7 ppm |
+| rod travel available | **400 steps** | **none** |
+
+### TWO OF MY OWN DIAGNOSES WERE WRONG, AND BOTH WERE STALE-CLAIM FAILURES
+
+1. **I recommended settling #602 first. #602's phase 2 was already landed.** Measured on the
+   shipped constants (`max_steps: 627`, `curve_flatten: 0.36`): differential worth **min 4.15 ·
+   mean 6.49 · peak 8.82 pcm/step**, entirely inside the sourced 4–12 band (ML11216A094), with the
+   peak/mean 1.36 the issue itself predicted. The issue TITLE still says *"3.1x … crammed into 200
+   steps"* — it predates its own fix, and I read the title. The repo's own rule, and I tripped it:
+   *verify a claim before you act on it*, including an issue's own headline.
+2. **I suspected the xenon build was orders of magnitude too fast.** It is not. `50_percent`
+   **boots** at 66.2 % of full-power equilibrium xenon (correct for its power) and the ascension
+   ends at 65.4 % — barely moving across 46 plant-minutes, right for a 9.21 h half-life. I had
+   inferred a build from a start-vs-end difference that was actually a *seed*.
+
+### The fix, and the boron number is swept rather than argued
+
+A `low_power` IC matching the measured handover, plus `ctrl_steps` in the ICS table — the thing
+that did not exist, since an at-power IC could previously only be built on its stop, which is also
+not prototypical: Ginna UFSAR §15.4.5.1.1 (ML20339A101), *"the reactor is operated with the RCCAs
+inserted only far enough to permit load follow."*
+
+Then the boron target, swept on the player's path:
+
+| dilution target | Tavg at 100 % vs the 303.2 °C program |
+|---|---|
+| 705 ppm (as shipped) | 284.20 (−19.0) — red |
+| **660 ppm** | **302.60 (−0.6) — green** |
+| 626 ppm | 318.80 (+15.6) — red |
+
+End state: 101.1 %, 100 MWe, Tavg 302.60 °C, bank **351 / 627**, boron 660.2, xenon 18.6 %.
+
+### The bank ends BELOW its insertion limit and that is right, which is the counter-intuitive part
+
+351 of 627 is under the 439-step limit, and ROD LIMIT LO-LO lights — the owner's "2/3 up",
+reproduced. It is correct physics: xenon is worth **250 ppm** here, and the bank walks OUT as
+xenon builds and boron is diluted 660 → 626, arriving at the Hot Full Power design point
+(bank 627, boron 625.8, equilibrium xenon). Ginna TS Bases and NUREG-1431 STS Bases both, verbatim:
+*"The control banks must be maintained above designed insertion limits and are typically near the
+fully withdrawn position during normal full power operations."* **Near-fully-withdrawn is the
+EQUILIBRIUM state, not the state you arrive in** — which is why an ascension that ends there was
+the thing to be suspicious of, not the one that does not.
+
+A boration was tried first and refuted: at 800 ppm the plant scrams on SG lo-lo, and pushing rod
+withdrawal to compensate trips overtemperature ΔT at +270 steps, then high pressurizer level once
+the boration's own inventory is counted. Recorded because the sourced *"operating instructions
+require boration at the low and low-low level alarms"* (UFSAR §15.4.5.1.2) makes boration the
+obvious move and it is the wrong one HERE — the alarm is a xenon-transient artefact, not a bank
+that needs driving out.
+
+### The acceptance, and why the obvious half of it is useless
+
+```
+control_bank_steps > 300   — the bank moved off its starting 227
+control_bank_steps < 600   — the bank is not pinned on its top stop
+```
+
+**`> 300` alone does not catch the defect it was written for**: the old leg ended at 627, which
+passes it comfortably. Only the upper bound bites. Verified by injection — with
+`from: '50_percent'` restored, `< 600` goes RED at 627 **while every other check in the leg stays
+green**, which is exactly the signature the original defect had.
+
+### A trap I walked into while proving the check, worth the line
+
+The injection test flips `from: 'low_power'` back to `'50_percent'` and then restores it. The
+restore was a `replace(..., 1)` on `from: '50_percent'` — and **the RETIRED pwr pool declares the
+same string, earlier in the same file**. So the restore moved the retired pool's `pwr_raise_power`
+to `low_power` (an IC its engine does not have) and left PWR2 on `50_percent`. The next full gate
+then reported the new `< 600` check red at 627, which reads exactly like the fix not working.
+
+**The two pools share procedure ids, step shapes AND initial-condition names**, so any positional
+or first-match edit can silently move the wrong one — the same family as the id collision
+`run_manual_controls` already records in its baseline. Edit these by LINE, or by a match anchored
+to something only one pool carries.
+
+### Gates
+
+`run_checklist_pwr2` `pwr_raise_power` **20/20** (18 → 20) · `run_procedures` 29/29, 141/141 (the
+retired pool, after the restore above) · `run_procedures_chain` 50/50 ·
+`run_manual_controls` **535/535** (532 → 535) · `run_style` 8/8 · `run_manual_units` 0 failed ·
+`run_procdocs` 37/37 · `run_checklist` 38/38 · `verify_ckl_relevance` 13/13 · `run_contract`
+178/178 · `run_inspect` 56/56.
+
+**Left open, deliberately:** the rod insertion limit is `[adopted tune]` — pwr1's 5 %→70 %-withdrawn
+curve carried onto this bank and never measured against it (`pwr2_engine.js:75-88`). Real limits
+live in a COLR, which is not in the corpus (Ginna TS Bases only points at one). Not blocking, and
+re-deriving it is a physics job, not a checklist one.
+
+---
+
 ## Session log — 2026-09-03-develop-f (#619 — the rc5 playtest, 28 items: wave 1, and two evidence passes that changed the plan)
 
 **The ask.** The owner played `Alpha 1.7.2-rc5` — commit `2b4ef9e`, the #618 build, 21:16 the same

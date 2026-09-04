@@ -155,6 +155,26 @@
   var ICS = {
     hot_full_power: { pf: 1.0, load_mwe: 100 },
     '50_percent':   { pf: 0.5, load_mwe: 50 },
+    /* THE BEGINNING OF ASCENSION *(OWNER, 2026-09-04, #619 item 28 / #624: "50% power was an
+     * arbitrary choice. Why don't we start at the beginning of ascension instead.")*.
+     *
+     * `pwr_raise_power` used to declare `from: '50_percent'`, and every at-power IC boots the
+     * control bank FULLY OUT (see `ctrlSteps` below). So the leg began on the top stop and all
+     * five of its "Withdraw N steps" instructions were NO-OPS — measured by injection, because
+     * a source read cannot see it: wiring the withdrawals in as real rod_nudge commands left the
+     * replay BYTE-IDENTICAL at power_pct 100.55, since rod_nudge adds to rod_target and the
+     * target clamps at BANK(). No acceptance read the bank, so the replay certified an ascension
+     * whose rods cannot move — while a player, arriving through the startup chain with the bank
+     * at 227, was operating a different plant.
+     *
+     * These numbers are what `pwr_startup` actually hands over, measured through the same
+     * harness: power 10.54 %, 10.0 MWe, control bank 227 of 627, boron 718.8 ppm, turbine
+     * latched and on the grid. That start leaves 400 steps of travel for the leg to use.
+     *
+     * NOT IN THE FREE-PLAY PICKER, deliberately, like hot_shutdown (ui/app.js): it is the seam
+     * between two checklists, not a state a player picks. Nothing enumerates ICS except the
+     * unknown-name error message below, so adding an entry costs no gate. */
+    low_power:      { pf: 0.105, load_mwe: 10, ctrl_steps: 227 },
     hot_zero_power: { pf: 0,   load_mwe: 0, subcritical: true },
     /* THE SHUTDOWN IC (#507 wave 10) is MODE 4, HOT SHUTDOWN — 250 degF / 350 psig,
      * RHR-held, RCPs secured, both banks in, the P-11 blocks taken (the cooldown's own
@@ -244,8 +264,16 @@
      * unverified — no corpus document publishes a step total (Ginna TS defers to the COLR).
      * Withdrawn banks contribute exactly 0 pcm, so passing them to criticalBoron below is
      * numerically identical to the old `null` — measured, not assumed (#502's lesson). */
-    var ctrlSteps = ic.subcritical ? 0 : BANK();    /* HZP: control bank IN, the startup is
-                                                  * pulling it; shutdown bank OUT (WTSM 8.1.1) */
+    /* HZP: control bank IN, the startup is pulling it; shutdown bank OUT (WTSM 8.1.1).
+     *
+     * `ic.ctrl_steps` places the bank EXPLICITLY, and it is new (#624). Without it an at-power
+     * IC could only ever be built on its top stop, which is both what hid the ascension defect
+     * (see the low_power note in ICS) and not what a real plant looks like — Ginna UFSAR
+     * §15.4.5.1.1 (ML20339A101): "the reactor is operated with the RCCAs inserted only far
+     * enough to permit load follow." Boron is trimmed AT this bank position by the criticalBoron
+     * call below, so the pair stays self-consistent if either number moves. */
+    var ctrlSteps = ic.subcritical ? 0
+                  : (ic.ctrl_steps != null ? Math.min(ic.ctrl_steps, BANK()) : BANK());
     var rodBank = [
       { steps: ctrlSteps, max_steps: BANK(), worth: RD.kinetics.RODS.worth_control },
       { steps: BANK(), max_steps: BANK(), worth: RD.kinetics.RODS.worth_shutdown }

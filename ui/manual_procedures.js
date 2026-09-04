@@ -1463,8 +1463,8 @@
     {
       id: 'pwr_raise_power', category: 'power', manual_ref: 'PWR-N07', next: 'pwr_lower_power',
       title: 'Mode 1, At Power — power ascension to 100 %',
-      purpose: 'Take the plant from low power to full power in legs. Rods lead, turbine follows: withdraw 8 to 12 steps, raise the load target to match, then trim Tavg onto its program. Runnable.',
-      from: '50_percent',
+      purpose: 'Take the plant from low power to full power in legs. Rods lead, turbine follows: withdraw the bank, raise the load target to match, then trim Tavg onto its program. Runnable.',
+      from: 'low_power',
       prereq: ['Reactor critical and stable at power, above the P-10 permissive (8 % power).', 'Turbine on line.', 'Both startup-net blocks standing: IR HIGH FLUX and PR HIGH (LOW SETPT), the startup checklist\'s last two acts.'],
       precond: [
         { p: 'power_pct', op: '>', v: 10, text: 'Reactor critical and at power, clear of the P-10 permissive (8 %)' },
@@ -1481,11 +1481,11 @@
           null, ['Turbine Load', 'SG Feed AUTO', 'Trip Blocks'],
           'This is the plant the startup hands you: critical, on the grid, feed holding level. The two trip blocks (IR HIGH FLUX and PR HIGH (LOW SETPT)) must still be standing. Without them the climb trips at 25 %, then 35 %.',
           { p: 'power_pct', op: '>', v: 40 }),
-        { text: 'Set the BORON card to 705 ppm with the controller ON. The dilution runs under the whole ascension.',
+        { text: 'Set the BORON card to 660 ppm with the controller ON. The dilution runs under the whole ascension.',
           why: 'Every percent of power costs reactivity: the fuel heats and the moderator thins. Rods could pay for all of it, but they would end deep in the core distorting the power shape, so real plants dilute boron for the bulk and keep the bank in its manoeuvring band. The make-up panel dilutes at about 3 ppm/min; rods stay your minutes-scale trim. The equilibrium full-power boron, near 626 ppm, arrives later as xenon builds in.',
-          control: 'Boron control', target: 'dilution running toward 705 ppm',
+          control: 'Boron control', target: 'dilution running toward 660 ppm',
           wait_hint: 'The dilution runs a few plant-minutes at a time between legs. Start it now and let it work.',
-          cmd: { action: 'set_auto_setpoint', channel_id: 'boron_conc', value: 705 }, hold: 30,
+          cmd: { action: 'set_auto_setpoint', channel_id: 'boron_conc', value: 660 }, hold: 30,
           hl: ['Boron', 'Boron control'] },
         /* "TRIM TAVG TO PROGRAM" IS JARGON *(OWNER, 2026-09-03, #619 item 26: "what does 'then
          * trim Tavg to program'. most people will not know what this means… It could say to look
@@ -1495,47 +1495,88 @@
          * normal band already FOLLOWS the program (`trefProgram`, pwr_board_wiring.js:1965), so
          * "back inside the band" and "on program" are the same act — which is what makes the
          * plain-language version honest rather than a simplification. */
-        { text: 'Withdraw 8 steps at MED, then set the load target to 30 MWe. Trim rods until the Tavg tile sits back inside its normal band.',
+        { text: 'Withdraw 30 steps at MED, then set the load target to 30 MWe. Trim rods until the Tavg tile sits back inside its normal band.',
           why: '"On program" means the Tavg tile is inside its normal band — and that band is not fixed: it tracks the temperature the plant should hold at the power you are making, from 546.8 °F (286 °C) at no load to 577.7 °F (303.2 °C) at 100 %. Which way to trim: if Tavg reads below the band, withdraw a few more steps; if above, insert. You lead with rods going up so the program is approached from above rather than dragged from below.',
           control: 'Control Bank', target: '30 MWe, Tavg tile inside its normal band',
-          cmd: { action: 'set_load_target', mwe: 30 }, hold: 480,
-          accs: [{ p: 'mwe_output', op: '>', v: 28, label: 'Generator at 30 MWe' },
+          cmd: { action: 'rod_nudge', group_id: 'control', steps: 30, speed: 'normal' }, hold: 480,
+          accs: [{ cmd: { action: 'set_load_target', mwe: 30 }, label: 'Load target set to 30 MWe' },
+                 { p: 'mwe_output', op: '>', v: 28, label: 'Generator at 30 MWe' },
                  { p: 'power_pct', op: '>', v: 28, label: 'Reactor following, near 30 %' }],
           hl: ['Withdraw', 'Turbine Load', 'Tavg'] },
-        { text: 'Withdraw 10 steps, set the load target to 50 MWe, then trim rods until Tavg is back in its band.',
+        { text: 'Withdraw 32 steps, set the load target to 50 MWe, then trim rods until Tavg is back in its band.',
           why: 'Same discipline as the 30 MWe leg: rods first so Tavg is approached from above, then the load target, then a trim. Halfway up, xenon is starting to build. Boron is the long-term answer; rods are still the minutes-scale one.',
           control: 'Control Bank', target: '50 MWe, Tavg tile inside its normal band',
-          cmd: { action: 'set_load_target', mwe: 50 }, hold: 480,
-          accs: [{ p: 'mwe_output', op: '>', v: 48, label: 'Generator at 50 MWe' },
+          cmd: { action: 'rod_nudge', group_id: 'control', steps: 32, speed: 'normal' }, hold: 480,
+          accs: [{ cmd: { action: 'set_load_target', mwe: 50 }, label: 'Load target set to 50 MWe' },
+                 { p: 'mwe_output', op: '>', v: 48, label: 'Generator at 50 MWe' },
                  { p: 'power_pct', op: '>', v: 47, label: 'Reactor following, near 50 %' }],
           hl: ['Withdraw', 'Turbine Load', 'Tavg'] },
-        { text: 'Withdraw 12 steps, set the load target to 75 MWe, then trim rods until Tavg is back in its band.',
+        { text: 'Withdraw 35 steps, set the load target to 75 MWe, then trim rods until Tavg is back in its band.',
           why: 'Three-quarter power. The band has climbed with the load, toward 577.7 °F (303.2 °C) at 100 %. If Tavg reads below it, you led with load instead of rods: pull more steps before you add more megawatts.',
           control: 'Control Bank', target: '75 MWe, Tavg tile inside its normal band',
-          cmd: { action: 'set_load_target', mwe: 75 }, hold: 480,
-          accs: [{ p: 'mwe_output', op: '>', v: 72, label: 'Generator at 75 MWe' },
+          cmd: { action: 'rod_nudge', group_id: 'control', steps: 35, speed: 'normal' }, hold: 480,
+          accs: [{ cmd: { action: 'set_load_target', mwe: 75 }, label: 'Load target set to 75 MWe' },
+                 { p: 'mwe_output', op: '>', v: 72, label: 'Generator at 75 MWe' },
                  { p: 'power_pct', op: '>', v: 70, label: 'Reactor following, near 75 %' }],
           hl: ['Withdraw', 'Turbine Load', 'Tavg'] },
-        { text: 'Withdraw 12 steps, load target 90 MWe, then trim. Smaller pulls from here: the 103 % rod stop is close.',
+        { text: 'Withdraw 18 steps, load target 90 MWe, then trim. Smaller pulls from here: the 103 % rod stop is close.',
           why: 'The power range high-flux rod stop sits above 103 %, with the 118 % trip behind it. Overshoot is real on this plant: 100 MWe of load lands power near 101 %. Smaller pulls from here so you do not walk into the stop.',
           control: 'Control Bank', target: '90 MWe, Tavg on program',
-          cmd: { action: 'set_load_target', mwe: 90 }, hold: 480,
-          accs: [{ p: 'mwe_output', op: '>', v: 86, label: 'Generator at 90 MWe' }],
+          cmd: { action: 'rod_nudge', group_id: 'control', steps: 18, speed: 'normal' }, hold: 480,
+          accs: [{ cmd: { action: 'set_load_target', mwe: 90 }, label: 'Load target set to 90 MWe' },
+                 { p: 'mwe_output', op: '>', v: 86, label: 'Generator at 90 MWe' }],
           hl: ['Withdraw', 'Turbine Load', 'Tavg'] },
-        { text: 'Withdraw 8 steps, load target 100 MWe, then trim Tavg onto 577.7 °F (303.2 °C). Power settles near 101 %.',
+        { text: 'Withdraw 9 steps, load target 100 MWe, then trim Tavg onto 577.7 °F (303.2 °C). Power settles near 101 %.',
           why: 'Full power is a landing, not a lunge. A small pull, then the last 10 MWe of load, then trim Tavg onto its program point. The bank ends part-way out in its manoeuvring band, because boron carried the bulk of the reactivity the climb cost.',
           control: 'Control Bank', target: '100 MWe, Tavg 577.7 °F (303.2 °C)',
-          cmd: { action: 'set_load_target', mwe: 100 }, hold: 900,
-          accs: [{ p: 'mwe_output', op: '>', v: 97, label: 'Generator at 100 MWe' },
-                 { p: 'tavg_c', op: '~', v: 303.2, tol: 8, label: 'Tavg near the full-power program point (rod trims land it)' }],
+          cmd: { action: 'rod_nudge', group_id: 'control', steps: 9, speed: 'normal' }, hold: 900,
+          accs: [{ cmd: { action: 'set_load_target', mwe: 100 }, label: 'Load target set to 100 MWe' },
+                 { p: 'mwe_output', op: '>', v: 97, label: 'Generator at 100 MWe' },
+                 { p: 'tavg_c', op: '~', v: 303.2, tol: 8, label: 'Tavg near the full-power program point (rod trims land it)' },
+                 /* THE ROD CHECK THIS LEG NEVER HAD. Every "Withdraw N steps" line above was a
+                  * no-op for as long as the leg started from `50_percent`, which boots the bank
+                  * on its top stop — and no acceptance read the bank, so the replay certified an
+                  * ascension whose rods could not move. Asserted as a FLOOR, not a band: the end
+                  * position is a function of xenon (351 of 627 at the 18.6 % this leg reaches),
+                  * and pinning the arrival value would re-break the moment that moves. What must
+                  * never be true again is that the bank sat where it started.
+                  *
+                  * A BAND, and the upper half is the one that bites. `> 300` alone does NOT
+                  * catch the defect this exists for: the old leg ended at 627, which passes it.
+                  * `< 600` is the assertion that the bank is not pinned on its top stop —
+                  * verified by injection, not by reading: with `from: '50_percent'` restored
+                  * this check goes RED at 627 while every other check in the leg stays green. */
+                 { p: 'control_bank_steps', op: '>', v: 300, label: 'Control bank withdrawn well past its starting 227' },
+                 { p: 'control_bank_steps', op: '<', v: 600, label: 'Control bank not pinned on its top stop' }],
           hl: ['Withdraw', 'Turbine Load', 'Tavg'] },
-        obs('Confirm Hot Full Power: reactor power near 100 %, 100 MWe, Tavg on program.',
+        obs('Confirm full power: reactor near 100 %, 100 MWe, Tavg on program, bank part-way out.',
           { p: 'power_pct', op: '>', v: 96 },
           null, ['Tavg', 'Turbine Load', 'SG Level'],
-          'You are at the design point: near 100 % and 100 MWe, Tavg on the 577.7 °F (303.2 °C) program point. This is the plant the Hot Full Power preset hands you. The round trip back down starts with the load rampdown checklist.'),
+          'Near 100 % and 100 MWe with Tavg on the 577.7 °F (303.2 °C) program point. You are NOT yet at the Hot Full Power preset: that plant has equilibrium xenon, 626 ppm of boron and the bank near the top. You have almost no xenon, more boron and the bank part-way out. The next step is how you get from here to there.'),
+        /* STEP TWO OF THE BORON PROGRAM *(OWNER RULING, 2026-09-04: selected "A two-step boron
+         * program that follows xenon")*, and the measurement that makes it the right shape:
+         *
+         *   end of this leg   xenon  18.6 %   boron 660 ppm   bank 351/627   Tavg 302.6 °C
+         *   the design point  xenon 100 %     boron 626 ppm   bank 627/627   Tavg 304.5 °C
+         *
+         * The bank walks OUT as xenon builds and boron comes down — which is the prototypical
+         * shape, Ginna TS Bases and NUREG-1431 STS Bases both: "The control banks must be
+         * maintained above designed insertion limits and are typically near the fully withdrawn
+         * position during normal full power operations." Near-fully-withdrawn is the EQUILIBRIUM
+         * state, not the state you arrive in.
+         *
+         * NO `cmd`, deliberately: dialling 626 ppm the moment the climb ends would dilute into a
+         * core with no xenon in it and take Tavg straight past its program (measured: 318.8 °C,
+         * 15.6 °C high). The trim is the player's to make as xenon comes in. Completes on the
+         * observation dwell. */
+        obs('Xenon is building. Trim boron DOWN toward 626 ppm over the next hours to walk the bank out.',
+          null,
+          'ROD LIMIT LO-LO is lit and that is expected here: with no xenon yet the bank sits below its insertion limit. It walks out as xenon builds and you dilute.',
+          ['Boron control', 'Control Bank', 'Tavg'],
+          'Xenon is a neutron poison that builds after power comes up and settles over about two days. Measured on this plant it is worth 250 ppm, which is why full power wants 876 ppm with the bank fully out at zero xenon and 626 ppm at equilibrium. Dilute as it builds: the bank walks out and Tavg stays on program.'),
       ],
       guard: { never_melted: true, never: [{ p: 'fuel_temp_c', op: '>=', v: 1200 }] },
-      outcome: 'Hot Full Power: near 100 % and 100 MWe with Tavg on the program. The round trip back down starts with the load rampdown checklist.',
+      outcome: 'Full power on program with almost no xenon: 660 ppm and the bank part-way out. Xenon then builds over the next hours and boron trims down toward 626 ppm, walking the bank out to the Hot Full Power design point. The round trip back down starts with the load rampdown checklist.',
     },
     {
       id: 'pwr_lower_power', category: 'power', manual_ref: 'PWR-N08', next: 'pwr_shutdown',
