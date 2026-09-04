@@ -29,6 +29,85 @@ and the user-visible summary in `CHANGELOG.md`. This file points at those and tr
 
 ---
 
+## Session log — 2026-09-04-develop-d (#624 items 11/16/27 — two more instructions the plant had already carried out, and a blocker)
+
+**The ask.** #619's remaining plant items. Three landed; **14/25 is blocked** on a modelling
+defect that was not visible when it was ruled.
+
+### THE PATTERN, NOW FOUR DEEP: AN AUTHORED INSTRUCTION THE PLANT HAD ALREADY PERFORMED
+
+Item 11 is the ascension defect again, in a different system. `tb.tripped = true` sat inside the
+`ic.cold` branch, so **two routes to Mode 3 gave two different plants** — arriving by the heatup
+(whose own caution reads *"the turbine stays tripped for the whole heatup"*) left it tripped;
+BOOTING Hot Standby left it latched. And because the boot state was latched, **`pwr_startup` step
+15's LATCH press did nothing.**
+
+That is now four in this batch, all found the same way — by asking what a step actually CHANGES
+rather than whether it passes:
+
+| step | did nothing because |
+|---|---|
+| ascension "Withdraw N steps" ×5 | the leg booted from a bank on its top stop (#624) |
+| startup step 15 "press LATCH" | Mode 3 booted latched (this entry) |
+| startup step 3 "press AUTO on SG FEED" | both routes in arrive with feed already AUTO (item 16) |
+| — and the inverse — | no checklist ever drew a boron sample, so the board control had nothing pointing at it (item 27) |
+
+**None of these fail a gate**, because every acceptance asserts the ARRIVAL state and the arrival
+state was already correct. The check that catches this class is the one #624 added — assert that
+the thing MOVED, not that it ended up in the right place.
+
+Item 11 is keyed on `load_mwe`, not `subcritical` or `pf`: the new `low_power` IC is at 10 MWe on
+the grid, and a tripped turbine there would be a plant that cannot exist.
+
+### Item 27: the ruling was right and the complaint was still valid
+
+*"The boron sampling is boring and never addressed. im wondering if it would be best to just have
+a live indication inplace of the sampling."* The live-meter half is refused on source rather than
+on the standing ruling — Ginna UFSAR §7.7 (ML20339A027): *"There is no provision for a direct
+continuous visual display of primary coolant boron concentration."* But the other half of his
+sentence was the real finding: **"never addressed" was literally true.** No checklist in the pool
+had ever drawn a sample, so the control sat on the board with nothing pointing at it and the
+1800 s lab turnaround happened to nobody. Worth separating the two halves of a complaint before
+answering either.
+
+### BLOCKED: items 14/25, one field carrying three jobs
+
+The ruled change — boot Mode 5 with the letdown orifices SHUT — cannot be implemented as ruled.
+`pwr2_cvcs.js:266-288` gates the **RHR cross-connect**, which is the path the source says carries
+cold letdown, on `cv.letdownOpen`, the operator's **orifice** fraction. Its own comment admits it:
+*"Modelled as the NORMAL letdown magnitude behind the operator's own letdown fraction."*
+
+So `letdownOpen = 0` shuts both, and the RHR path is what closes the cold plant's inventory
+balance — #510 H-2's note records the consequence exactly: *"the shipped Mode 4 preset went
+water-solid on its own 5 gpm of seal injection."* The ruling would re-introduce the defect that
+note exists to record.
+
+There is a third consumer: `pwr2_engine.js:1303`, the 17 % low-level cut, isolates letdown by
+**zeroing the operator's own control** — which is also the inverse of the standing rule that a
+de-energization must not be written into the operator's demand, since it does not heal when the
+latch clears. So splitting the field means deciding what the protective isolate does, which is a
+judgement, not a refactor.
+
+**Third instance this week of one variable serving two consumers** — #600/#601's entry, and
+`attentionStops` in `2026-09-04-develop-b` yesterday. Put to the owner with three costed options
+rather than pushed through: every existing fixture runs at `letdownOpen = 1`, so decoupling is a
+**no-op today** and would land green on judgement alone, which is precisely when not to.
+
+### A hand-maintained map caught its own off-by-one
+
+Inserting the boron-sample step shifted every `STEP_UI` row after it, and `run_manual_controls`
+reported both symptoms of that — a pill/row mismatch at the insertion point and an UNVERIFIED
+tail step. Fixed by moving the rows that moved; the map's own baseline records that re-deriving
+the numbering wholesale is how it has been broken three times.
+
+### Gates
+
+`run_checklist_pwr2` 123/123 · `run_manual_controls` **538/538** (535 -> 538) · `run_style` 8/8 ·
+`run_procdocs` 37/37 · `run_manual_units` 0 failed · `run_contract` 178/178 ·
+`run_release` 27/27 at `Alpha 1.7.2-rc6`.
+
+---
+
 ## Session log — 2026-09-04-develop-c (#623 — Help on the 1/M plot, and a stub that cannot parse HTML)
 
 **The ask.** #619 item 23: *"Add a HELP button to the 1/M plot that explains it in a concise but

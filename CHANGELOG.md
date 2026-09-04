@@ -32,6 +32,30 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
 
 ## [Alpha 1.7.2-rc6] — 2026-09-03
 
+### Fixed (#624 / #619 items 11, 16, 27 — two more instructions the plant had already carried out)
+
+- **Mode 3, Hot Standby now boots with the turbine TRIPPED**, joining Mode 4 and Mode 5 *(OWNER,
+  2026-09-03: "Mode 3 start: Turbine should start tripped, right?")*. **Two routes to Mode 3 gave
+  two different plants**: `tb.tripped` was set inside the `ic.cold` branch, so arriving by the
+  heatup — whose own caution says *"the turbine stays tripped for the whole heatup"* — left it
+  tripped, while booting Hot Standby left it latched. **And it made an authored step a no-op**:
+  `pwr_startup` step 15 presses LATCH on the TURBINE-GENERATOR card, which does nothing to an
+  already-latched machine. Same shape as the ascension's rod withdrawals against a bank on its top
+  stop. Keyed on `load_mwe` rather than `subcritical`, so the new `low_power` IC stays latched on
+  the grid.
+- **The startup's SG feed step is a confirmation, not an act** *(OWNER: "mode 3 CL has me put SG
+  feed in AUTO but its already in AUTO when I get there")*. Both routes in arrive with it already
+  AUTO — the Hot Standby preset boots it there, and a player who came up the heatup selected it
+  themselves. The step stays as a verification, because feed in AUTO is a real prerequisite for
+  adding heat and a checklist that silently assumes it is worse than one that checks it.
+- **The boron sample has a job** *(OWNER: "The boron sampling is boring and never addressed.")*.
+  **Not replaced with a live meter** — Ginna UFSAR §7.7 (ML20339A027): *"There is no provision for
+  a direct continuous visual display of primary coolant boron concentration."* The board already
+  teaches that and the 2026-07-23 ruling stands. What was actually wrong is the other half of the
+  sentence: **no checklist in the pool had ever drawn a sample**, so the control sat on the board
+  with nothing pointing at it. The ascension now draws one right after the dilution, where the
+  ~30 plant-minute lab turnaround runs under the climb instead of stopping it.
+
 ### Added (#623 / #619 item 23 — Help on the 1/M startup plot)
 
 *(OWNER, 2026-09-03: "Add a HELP button to the 1/M plot that explains it in a concise but

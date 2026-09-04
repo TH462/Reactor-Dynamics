@@ -482,12 +482,31 @@
        * lineup one step warmer — RHR is the heat sink there as well, main feed is secured, and
        * aux feed (eng.afw, untouched here) is the feed path. Booting Mode 4 with a latched
        * turbine and two running feed pumps would leave exactly the defect this fixes. */
-      eng.tb.tripped = true;
       eng.fw.auto = false;
       eng.fw.manual_frac = 0;
       eng.fw.pumpA = false;
       eng.fw.pumpB = false;
     }
+    /* THE TURBINE IS TRIPPED IN EVERY MODE THAT CARRIES NO LOAD *(OWNER, 2026-09-03, #619
+     * item 11: "Mode 3 start: Turbine should start tripped, right?")* — so Mode 3, Hot Standby
+     * joins Mode 4 and Mode 5, and it is a WIDER guard than the cold lineup above because a hot
+     * subcritical plant is not a cold one in any other respect (its feed IS lined up, its dumps
+     * hold the no-load anchor).
+     *
+     * TWO ROUTES TO MODE 3 GAVE TWO DIFFERENT PLANTS, which is the actual defect. `tb.tripped`
+     * was set inside the `ic.cold` branch, so arriving by the heatup checklist — whose own
+     * caution says "the turbine stays tripped for the whole heatup" — left it tripped, while
+     * BOOTING Hot Standby left it latched.
+     *
+     * AND IT MADE AN AUTHORED STEP A NO-OP: `pwr_startup` step 15 presses LATCH on the
+     * TURBINE-GENERATOR card, which does nothing to an already-latched machine. Same shape as
+     * the ascension's rod withdrawals against a bank on its top stop (#624) — an instruction
+     * the player is told to perform that the plant had already performed for them.
+     *
+     * Keyed on `load_mwe`, not on `subcritical` or `pf`: the new `low_power` IC is subcritical
+     * by neither measure but IS on the grid at 10 MWe, and a tripped turbine there would be a
+     * plant that cannot exist. */
+    if (!(ic.load_mwe > 0)) eng.tb.tripped = true;
     /* the feed train at the IC's own operating point (the module's constructor knows only
      * at-power/no-load; a mid-load IC sets the delivered point so the boot does not spend
      * its first pump-tau finding it — the same settled-construction rule as the hmap) */

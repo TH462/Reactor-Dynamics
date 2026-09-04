@@ -138,13 +138,19 @@ var STEP_UI = {
     { i: 15, view: 'board', control: 'Trip Blocks' },
     { i: 16, view: 'board', control: 'Trip Blocks' },
   ],
+  /* #619 item 27 (2026-09-04) inserted the boron SAMPLE step at i:2, so every row below it
+   * shifted by one. Written out rather than re-derived: the indices are positional and this map
+   * has been broken three times by renumbering it wholesale instead of moving the rows that
+   * actually moved. The gate caught the shift immediately — both symptoms, a pill/row mismatch
+   * at the insertion point and an UNVERIFIED tail step, are what an off-by-one looks like here. */
   'pwr2:pwr_raise_power': [
     { i: 1, view: 'board', control: 'Boron control' },
-    { i: 2, view: 'board', control: 'Control Bank' },
+    { i: 2, view: 'board', control: 'Boron control' },   // draw a boron sample (#619 item 27)
     { i: 3, view: 'board', control: 'Control Bank' },
     { i: 4, view: 'board', control: 'Control Bank' },
     { i: 5, view: 'board', control: 'Control Bank' },
     { i: 6, view: 'board', control: 'Control Bank' },
+    { i: 7, view: 'board', control: 'Control Bank' },
   ],
   'pwr2:pwr_lower_power': [
     { i: 0, view: 'board', control: 'Boron control' },

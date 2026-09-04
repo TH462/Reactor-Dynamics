@@ -1339,9 +1339,20 @@
           cmd: { action: 'set_auto_setpoint', channel_id: 'boron_conc', value: 719 }, hold: 60,
           acc: { p: 'boron_ppm', op: '~', v: 719, tol: 40 },
           hl: ['Boron', 'Boron control'] },
-        { text: 'Press AUTO on the SG FEED card before you add any heat.',
-          why: 'Skip it and nothing happens until the point of adding heat. Then the generator boils down with no regulator, and auxiliary feedwater (AFW) parks the level in the low amber band. AFW is an emergency heat sink, not a level control system.',
-          control: 'Feed Pumps', target: 'SG FEED in AUTO, SG level near 65 %',
+        /* CONFIRM, NOT ACT *(OWNER, 2026-09-03, #619 item 16: "mode 3 CL has me put SG feed in
+         * AUTO but its already in AUTO when I get there")*. Both routes into this leg arrive
+         * with feed already in AUTO — the Hot Standby preset boots it there, and a player who
+         * came up the heatup did it themselves at PWR-N01 step 5. So the instruction was one the
+         * plant had already carried out, which teaches the player that checklist steps are
+         * decoration.
+         *
+         * The step STAYS, as a verification: SG feed in AUTO is a genuine prerequisite for
+         * adding heat and a checklist that silently assumes it is worse than one that checks it.
+         * `cmd` is kept so the replay still exercises the command path, and the text now says
+         * what to do in the one case where it is NOT already set. */
+        { text: 'Confirm SG FEED is in AUTO before you add any heat. If it is not, press AUTO.',
+          why: 'You will normally find this already done — the Hot Standby plant boots with feed in AUTO, and if you came up the heatup you selected it yourself. Verify it anyway: skip it and nothing happens until the point of adding heat, and then the generator boils down with no regulator while auxiliary feedwater (AFW) parks the level in the low amber band. AFW is an emergency heat sink, not a level control system.',
+          control: 'Feed Pumps', target: 'SG FEED reading AUTO, SG level near 65 %',
           cmd: { action: 'set_feed_coupled', active: true }, hold: 5,
           hl: ['SG Feed AUTO', 'SG Level'] },
         /* THE INDICATION IS NAMED, AND SO IS ITS NOTATION *(OWNER, 2026-09-03, #619 item 19:
@@ -1487,6 +1498,28 @@
           wait_hint: 'The dilution runs a few plant-minutes at a time between legs. Start it now and let it work.',
           cmd: { action: 'set_auto_setpoint', channel_id: 'boron_conc', value: 660 }, hold: 30,
           hl: ['Boron', 'Boron control'] },
+        /* DRAW A SAMPLE *(OWNER, 2026-09-03, #619 item 27: "The boron sampling is boring and
+         * never addressed. im wondering if it would be best to just have a live indication
+         * inplace of the sampling.")*.
+         *
+         * NOT REPLACED WITH A LIVE METER, and the source is the reason rather than the standing
+         * ruling. Ginna UFSAR §7.7 (ML20339A027): "There is no provision for a direct continuous
+         * visual display of primary coolant boron concentration." The board teaches exactly that
+         * already, and the 2026-07-23 ruling that removed the analyzer stands.
+         *
+         * What was actually wrong is the second half of his sentence — "never addressed". No
+         * checklist in the pool has ever drawn a sample, so the control sat on the board with
+         * nothing pointing at it and the lab turnaround happened to nobody. Giving it a job is
+         * the fix; the sampling was not the problem, the silence about it was.
+         *
+         * PLACED HERE so the ~30 plant-minute turnaround runs UNDER the climb rather than
+         * stopping it, and graded on the operator ACTION (a cmd-kind entry) rather than on the
+         * posted number: the result arrives when the lab is ready, not when the step wants it. */
+        { text: 'Draw a boron sample: press SAMPLE on the BORON card. The lab posts the number in about 30 plant-minutes.',
+          why: 'There is no live boron meter in this control room — a real one has none either. The number on the BORON card is the target you asked for; the SAMPLE is how you find out what is actually in the loop. Draw it now and the result lands while you are climbing, in time to check the dilution went where you sent it.',
+          control: 'Boron control', target: 'sample drawn, result pending',
+          accs: [{ cmd: 'take_boron_sample', label: 'Boron sample drawn' }],
+          hl: ['Boron control'] },
         /* "TRIM TAVG TO PROGRAM" IS JARGON *(OWNER, 2026-09-03, #619 item 26: "what does 'then
          * trim Tavg to program'. most people will not know what this means… It could say to look
          * at the vital gauge and move rods to move it in the green or something")*. The
