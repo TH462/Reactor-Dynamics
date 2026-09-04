@@ -2839,7 +2839,8 @@
    * each broadcast at ~225 of 720 steps, and a rule that painted THAT red would be red on every
    * machine at the top rung, which trains the player to ignore red. RED is the page itself
    * straining — the broadcast loop slipping past 1.6x its interval, or paints being dropped
-   * faster than they land (RD.Perf's own verdicts). The WARP buttons go dark while the
+   * faster than they land (RD.Perf's own verdicts) *(OWNER RULING, 2026-09-04: "2A" — red is
+   * the page straining, not the physics behind the request)*. The WARP buttons go dark while the
    * service would refuse them, so a click that would land at 60x is never offered as 3600x. */
   var _lastPacingKey = null;
   function syncPacingUI(s) {

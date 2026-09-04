@@ -77,7 +77,8 @@ var BAND = { pressure_mpa: 0.07, tavg_c: 0.10, pzr_level_pct: 0.70, power_pct: 0
 /* subcooling_c: 0.40 -> 1.00 on the first run. Modes 4 and 5 measured 0.50 / 0.49 degC — the SAME
  * 0.022 MPa (3 psi) pressure deviation as everywhere else, read through the saturation curve at
  * 2.5 MPa where dTsat/dP is ~15 degC/MPa (0.33 degC) plus the 0.07 degC of Tavg. 1.0 degC
- * (1.8 degF) against a Mode 4/5 margin of ~58 degC is what the band now says is harmless. */
+ * (1.8 degF) against a Mode 4/5 margin of ~58 degC is what the band now says is harmless.
+ * *(OWNER RULING, 2026-09-04: "1A" — keep 1.0 degC, over pressure-only or a Mode 4/5 exemption.)* */
 
 /* one leg: PLAY reference (60x) and WARP (3600x), sampled at every sim minute, worst |diff| */
 function leg(RD, ic, hours, scramAt, warpDt) {
