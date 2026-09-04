@@ -30,7 +30,67 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
 
 ## [Unreleased]
 
-## [Alpha 1.7.2-rc5] — 2026-09-03
+## [Alpha 1.7.2-rc6] — 2026-09-03
+
+### Changed (#621 / #619 wave 1 — the playtest's prose and label findings)
+
+The owner played rc5 and filed 28 findings as #619. Sequencing ruled the same day: four waves,
+each gated, filed as #621–#624. This is wave 1 — the player-facing text and labels, no mechanics
+and no physics.
+
+- **The step card stops narrating its own harness.** The `…not yet` suffix on every unmet
+  acceptance line is gone (the ○/✓ glyph already said it), and so is the `graded off the
+  instrument reading` line under each active step. That line named which channel the check reads,
+  which is a statement about the grader rather than about the plant, and the panel header already
+  says it once for the whole run. `ck.graded_by` is untouched in the snapshot and still asserted
+  by `run_checklist_pwr2`.
+- **The details paragraph is capped at four sentences, gated by `run_style`.** *(OWNER, 2026-09-03:
+  "the click to expand description is way to verbose. nobody is going to read all that… they
+  should be no more than 2 or 3 sentences.")* Worst block was **9 sentences / 246 words**
+  (`pwr_heatup` step 7); the pool mean fell **68 → 55 words** and the worst is now 3 sentences /
+  102 words. **The check counts SENTENCES, not words, and that is the finding**: a word cap was
+  tried first and it fights `run_manual_units` — a step carrying three US/SI pressure pairs runs
+  long inside three sentences, so the cheapest way to satisfy a word cap is to delete the SI pairs
+  the units gate requires. Word count went to the unscored backlog. `run_style` 7 → 8 checks,
+  injection-verified.
+- **Heatup step 3 said "hold WITHDRAW"; one click is enough.** Verified at the control, not from
+  the text: `toggleLatchRod` (`pwr_board_wiring.js:3585`) issues `rod_start` and latches, and
+  `clearLatchIfDone` issues `rod_stop` at the limit. "Hold" was the retired board's momentary
+  button.
+- **Heatup step 9 waited on a temperature its instruction never named.** 541.4 °F (283 °C) was in
+  `target` and in the acceptance line; it is now in the numbered line, which is what a player
+  reads first.
+- **The startup leg names its indication and its notation.** No step told the player the counts
+  come from SOURCE RANGE, and the meter prints `7.0e2` where the step said `700`. The meter is a
+  log channel and stays that way — prototypical — so the equivalence is stated once at the first
+  count target and every per-step `target` now carries both forms.
+- **The 1/M bursts have a size.** "A long first burst" is now "about 90 steps"; the five bursts
+  read 90 / 60 / 30 / 15 / 10, rounded from the replay's own `cmd.steps` (94 / 63 / 31 / 14 / 9)
+  so they cannot drift from what the harness drives. **This does not walk back #618**, landed
+  hours earlier: a burst MAGNITUDE is not a bank POSITION, the instrument cue is untouched and no
+  acceptance moved *(OWNER RULING, 2026-09-03: selected "Burst SIZE only, keep the cue", from
+  three written options that included naming the absolute position)*.
+- **The 1/M panel has been printing `predicted criticality ≈ step N` and nothing told the player
+  to read it** (`ui/panels/one_over_m.js:159-168`, with a marker on the plot since it was built).
+  Three startup steps now point at it.
+- **`SUR` is expanded at first use** and written "startup rate" elsewhere; **"trim Tavg to
+  program"** is now the gauge and the direction — the Tavg tile's normal band already *follows*
+  the program (`trefProgram`), so "back inside the band" and "on program" are the same act, which
+  is what makes the plain-language version honest rather than a simplification.
+- **Scanner button: `Full description` → `Click to expand`** (and `Summary only` →
+  `Click to collapse`), naming the action rather than the state it lands in, and matching the
+  checklist card's own affordance.
+
+Gates: `run_style` 8/8 (self-test 8/8) · `run_checklist_pwr2` 117/117 · `run_checklist` 38/38 ·
+`verify_ckl_relevance` 13/13 · `run_manual_controls` 532/532 · `run_manual_units` 0 failed ·
+`run_procdocs` 37/37.
+
+**Two things this wave found and did not fix** (both in #624): the ascension's **705 ppm** boron
+target is also the retired engine's hot-standby preset, and has never been measured on PWR2 —
+the startup leg is already on this plant's own 918/719 ppm. And `run_checklist_pwr2`'s own
+catch-up fixture reports **RCP flow 109.99 %**, which is correct-by-model (cold water is denser
+and the pump makes head, not pressure) but is the board showing *truth* where a real plant shows
+an elbow tap.
 
 ### Changed (#618 — the approach to criticality is cued on the instruments, and the rod tables were the retired plant's)
 

@@ -3557,21 +3557,23 @@
       var hoverable = stepHlLabels(st) ? ' ckl-hoverable' : '';
       h += '<div class="ckl-step ' + cls + hoverable + '" data-ckl-step="' + i + '"><div class="ckl-ico">' + (done ? '✓' : active ? '▸' : '○') + '</div><div class="ckl-body">';
       if (active) {
-        var via = ck.graded_by === 'instrument' ? 'graded off the instrument reading'
-                : ck.graded_by === 'control_state' ? 'graded off the board control'
-                : ck.graded_by === 'true_state' ? 'graded off the true value (no instrument for this)' : null;
+        /* THE "graded off the …" LINE IS GONE *(OWNER, 2026-09-03, #619 item 5: "remove the
+         * 'graded off the....' line from each step")*. It named which channel the check reads
+         * — instrument, board control, or true value — under every active step's details.
+         * That is a statement about the HARNESS, not about the plant, and the panel header
+         * already says it once for the whole run ("steps check themselves off the instruments").
+         * `ck.graded_by` is untouched in the snapshot and still asserted by
+         * run_checklist_pwr2 2a/2b, which read the snapshot rather than the DOM. */
         if (st.accs && st.accs.length) {
           for (var ai = 0; ai < st.accs.length; ai++) {
             var en = st.accs[ai], av = (ck.accs && ck.accs[ai]) || {};
             var enTxt = en.label ? en.label : (en.p ? fmtPredicate(en) : mesc(en.cmd || ''));
             h += '<div class="ckl-crit' + (av.met ? ' ckl-crit-met' : '') + '">' +
-              (av.met ? '✓ ' : '○ ') + (en.label ? mesc(enTxt) : enTxt) +
-              (av.met ? '' : ' <span class="muted">…not yet</span>') + '</div>';
+              (av.met ? '✓ ' : '○ ') + (en.label ? mesc(enTxt) : enTxt) + '</div>';
           }
         } else if (st.acc) {
           h += '<div class="ckl-crit' + (ck.acc_met ? ' ckl-crit-met' : '') + '">' +
-            (ck.acc_met ? '✓ ' : '○ ') + 'When ' + fmtPredicate(st.acc) +
-            (ck.acc_met ? '' : ' <span class="muted">…not yet</span>') + '</div>';
+            (ck.acc_met ? '✓ ' : '○ ') + 'When ' + fmtPredicate(st.acc) + '</div>';
         }
         var isObs = st.control && /^\(observe/i.test(st.control);
         if (isObs) {
@@ -3593,7 +3595,6 @@
           : st.wait_hint) + '</div>';
       }
       if (st.why) det += '<div class="ckl-why">' + mesc(st.why) + '</div>';
-      if (active && via) det += '<div class="ckl-sub muted" title="Which value the check reads">' + via + '</div>';
       if (det) {
         var detOpen = cklState.whyAll || (cklState.whyOpen && cklState.whyOpen[i]);
         if (active && !detOpen) h += '<div class="ckl-expand-hint">Click to expand</div>';
@@ -7560,7 +7561,12 @@
     var p = $('scannerPanel'); if (p) p.classList.toggle('expanded', ui.inspectExpanded);
     var b = $('scannerToggle');
     if (b) {
-      b.textContent = ui.inspectExpanded ? 'Summary only' : 'Full description';
+      /* "Click to expand" / "Click to collapse" *(OWNER, 2026-09-03, #619 item 10: "change
+       * scanner FULL DESCRIPTION button to CLICK TO EXPAND")*. The pair names the ACTION the
+       * button performs rather than the state it lands in, which is what "Full description" /
+       * "Summary only" got wrong — and it matches the checklist card's own expand affordance,
+       * which has read "Click to expand" since #607. */
+      b.textContent = ui.inspectExpanded ? 'Click to collapse' : 'Click to expand';
       b.setAttribute('aria-expanded', String(ui.inspectExpanded));
     }
     try { localStorage.setItem('rd_inspect_expanded', ui.inspectExpanded ? '1' : '0'); } catch (e) { /* private mode */ }
@@ -7716,7 +7722,7 @@
       place: 'top',
       title: 'System Scanner',
       body: '<p>The line under the board. Hover anything and it says what that is; ' +
-        '<b>Full description</b> opens the detail and a Manual link.</p>'
+        '<b>Click to expand</b> opens the detail and a Manual link.</p>'
     },
     {
       sel: '#playBtn',

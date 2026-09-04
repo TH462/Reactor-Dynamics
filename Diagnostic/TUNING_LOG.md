@@ -29,6 +29,153 @@ and the user-visible summary in `CHANGELOG.md`. This file points at those and tr
 
 ---
 
+## Session log — 2026-09-03-develop-f (#619 — the rc5 playtest, 28 items: wave 1, and two evidence passes that changed the plan)
+
+**The ask.** The owner played `Alpha 1.7.2-rc5` — commit `2b4ef9e`, the #618 build, 21:16 the same
+evening — and filed 28 numbered findings as #619. So every checklist complaint is against text
+#617 and #618 had rewritten hours earlier, not against stale text. Sequencing ruled the same day:
+four waves, each gated, filed as **#621** (prose), **#622** (mechanics), **#623** (1/M help),
+**#624** (the plant items). This entry is wave 1 plus the two evidence passes that reshaped the
+rest.
+
+### The one worth carrying: A BREVITY CAP COUNTED IN WORDS FIGHTS THE UNITS RULE
+
+Item 12 — *"the click to expand description is way to verbose. nobody is going to read all
+that… they should be no more than 2 or 3 sentences."* The worst `why` block was **9 sentences /
+246 words** (`pwr_heatup` step 7, the P-11 staging), against a pool mean of 68.
+
+A word cap was the obvious gate and it is the wrong one. The steps that run long are the ones
+carrying the most numbers, and every number carries a US/SI pair `run_manual_units` requires:
+*"the 1972 psi (13.6 MPa) P-11 permissive"* is 6 words of which 3 are the gate's own tax. So the
+cheapest way for a future author to satisfy a word cap is to **delete the SI pairs** — one green
+gate paid for by reddening another, and the units gate would have caught it only if the pair
+count happened to be scored, which it is not (it prints coverage, unscored, for exactly the
+reason `run_style` prints its backlog unscored).
+
+**So `checklist_why_length` counts SENTENCES.** Four, not three: three is the owner's guidance
+and four is where supplemental context becomes a chapter — the same one-rung slack every other
+cap in that runner has. Word count went to the backlog line beside it, which is now the honest
+report: *mean 55 · longest 102 · over 80 words: 6 of 61*. All six of those are **three
+sentences**, which is the corpus saying the two rules pull against each other rather than that
+the prose is bad.
+
+Result: mean **68 → 55 words**, worst **246 → 102**, `run_style` 7 → 8 checks, injection-verified
+(`--self-test` 8/8).
+
+### The gate caught a half-citation, which is the HR11 failure mode worth naming again
+
+`run_hardrules` went red on one line of my own CHANGELOG entry:
+
+```
+CHANGELOG.md:71   OWNER RUL<ING>, <a date>, on that exact distinction
+```
+
+(The example above is deliberately broken mid-token: written straight, the guard reads it as a
+real citation and reproduces the very red it describes — the trap already recorded against this
+runner's baseline, "it cannot tell PROSE ABOUT a citation from a citation".)
+
+A date with no verbatim words. HR11 wants both, and the form for a ruling given as a selection
+from written options is to **quote the option**: `selected "Burst SIZE only, keep the cue"`.
+Baseline 472 → 473, one new citation site. Worth recording because the failure is invisible to a
+reader — the sentence scans as a proper citation, and only the guard notices that the quotation
+marks are missing.
+
+### Item 20 was ruled AGAINST #618 rather than around it
+
+#618 had, that same evening and after an evidence pass, moved `pwr_startup` steps 4–10 off rod
+positions onto instrument cues. Item 20 then asked for step counts. Put to the owner as a
+conflict rather than resolved quietly; the ruling is that a burst **magnitude** is not a bank
+**position**, so the steps now read "withdraw about 90 steps" while every cue and every
+acceptance stays exactly as #618 left it. The magnitudes are the replay's own `cmd.steps`
+(94 / 63 / 31 / 14 / 9) rounded, so they cannot drift from what the harness drives.
+
+### Two claims verified rather than inherited
+
+**Item 9, "you dont need to hold withdraw."** Checked at the control, not in the text:
+`toggleLatchRod` (`pwr_board_wiring.js:3585`) issues `rod_start` and latches, and
+`clearLatchIfDone` (`:3598`) issues `rod_stop` at the limit. One click runs the bank to the stop.
+"Hold WITHDRAW" was the retired board's momentary button surviving in prose.
+
+**Item 28, the 705 ppm boron.** The first read of this — recorded in the plan and stated to the
+owner — was that 705 ppm is purely the retired engine's hot-standby preset
+(`engines/pwr/pwr_config.js:3059`) and therefore wrong by inheritance. Reading the pool disproved
+half of it: **the startup leg is already on this plant's own numbers** (918 ppm cold, 719 ppm as
+the estimated critical concentration, criticality near 230 of 627). Only the **ascension** target
+is 705. The coincidence with pwr1's preset is suggestive and is not evidence, and nothing has been
+measured on PWR2 at power. Left unfixed and written up in **#624** with the measurement it needs.
+Same shape as the trap the standing list names: the inherited-constant story is usually right,
+which is exactly why it has to be measured before it is acted on.
+
+### Evidence pass 1 — RCS flow over 100 % (item 1). The physics is right; the INDICATION is missing.
+
+**WTSM §3.2, ML11223A213, p. 3.2-5:**
+
+> "Elbow taps are used in the RCS to indicate the status of the reactor coolant flow… The
+> function of this device is to provide information as to **whether or not a reduction in flow
+> has occurred**… **The full-flow reference point P₀ is established during initial plant
+> startup.**"
+
+ΔP/ΔP₀ = (W/W₀)²; ±10 % absolute, ±1 % repeatability at the trip point, ±3 % assumed by the
+loss-of-flow analysis. So a real 100 % is a **ΔP frozen at hot full-flow conditions** and the
+instrument is a loss-of-flow detector that is not accurate above 100 %.
+
+Our truth channel is sound — the pump makes head, not pressure, so mass flow scales with density
+and cold water honestly moves more (`pwr2_sources.js:124-185`, `densityRatio` 1.306 at the Mode 4
+point). But `pwr2_instruments.js:137` adds only lag and noise, so **the board shows truth**. An
+uncompensated elbow tap reads `sqrt(ρ/ρ₀)` — about 114 % where truth reads about 130 %. The
+authored gauge range is `[0, 120]`: truth pegs it, an elbow-tap reading does not, which is itself
+evidence about what that range was drawn for.
+
+Observed in passing, from `run_checklist_pwr2`'s own catch-up fixture: **flow 109.99 %** on a
+heatup. Both computed figures above are predicted from the source law and a code constant and
+have **not** been stepped — the measurement is owed in #624 before anything moves.
+
+### Evidence pass 2 — the Mode 5 lineup (item 14), and a "measured false" note that does not say what it looks like
+
+**WTSM §19, ML11223A342, pp. 19-4/19-5** describes the cold lineup outright: the pressurizer is
+filled to **90 %** under a **nitrogen cover gas** vented to the PRT, and *"the transformation of
+the pressurizer void from nitrogen to steam is accomplished at the start of the plant heatup"*;
+*"prior to drawing a steam bubble, charging and letdown must be in service"*, letdown via the
+**RHR-to-CVCS cross-connect**, not the normal orifices; *"all groups of pressurizer heaters are
+energized"*; RCPs started only after the bubble is drawn at **320 psig**.
+
+The first answer given to the owner was that heaters should stay AUTO, on the strength of
+`pwr2_engine.js:365-374` — the note recording that a MANUAL-0 lineup was "measured false twice".
+**He challenged it and was right.** Both of those measurements were taken **against a steam
+bubble**, and a steam bubble with no heat input condenses — which is correct physics, and exactly
+why a real cold plant holds a *nitrogen* bubble. The note is not evidence that heaters must be
+AUTO; it is evidence that a cold *steam* bubble is the wrong state and that the AUTO ladder was
+propping up an inherited initial condition. The two numbers in it also say different things: the
+**364 → 29 psia in 75 min** collapse was a since-fixed configuration (seal-injection insurge, no
+letdown path below 300 psia), while the figure that still applies is the surge-line bleed,
+~16 kW / **−68 psi/hr** — about 1 psi/min, ~10 psi across a ten-minute alignment from 363 psia.
+
+Ruled changes, all in #624: **letdown orifices SHUT** (which also retires `set_letdown_orifices`
+as an orphan control — item 25), **heaters OFF**, **spray MANUAL**. Charging stays in service and
+boron stays idle, both because the source makes them the standing cold condition. Spray is the
+clean case: `SPRAY.needs_rcp: true` states the physics and `rcp_gate_enforced: false`
+(`pwr2_pressurizer.js:256-259`) is a declared deviation, so with the pumps stopped normal spray
+prototypically has **no authority at all** — "spray in AUTO" at Mode 5 is a control that cannot
+act. The nitrogen-cover-gas start is the deeper fix and is filed separately, not built.
+
+### A hollow guard, noted for #622
+
+`verify_ckl_relevance` already carries *"GUARD: no entry banner mid-checklist (#614)"* and prints
+its own verdict beside it: **"vacuous here; the heatup enters with its preconditions met, so this
+passes pre-fix too."** Item 3 is precisely that banner firing mid-run. Whatever lands in wave 2
+has to come with a check that can go red.
+
+### Gates
+
+`run_style` 8/8 (self-test 8/8) · `run_checklist_pwr2` 117/117 · `run_checklist` 38/38 ·
+`verify_ckl_relevance` 13/13 · `run_manual_controls` 532/532 · `run_manual_units` 0 failed ·
+`run_procdocs` 37/37 · `run_hardrules` 473/473 · `run_hr3` 31/31 · `run_release` 27/27 at
+`Alpha 1.7.2-rc6` · `run_doc_budget` 4/4 (**11 words of headroom left in `CLAUDE.md`**).
+
+Baselines moved: `run_style` 7 → 8 checks, `run_hardrules` 472 → 473.
+
+---
+
 ## Session log — 2026-09-03-develop-e (#618 — the approach to criticality steered on the bank position; the sourced procedure steers on the instruments)
 
 **The ask** *(OWNER, 2026-09-03: "For the interactive checklists, I don't want the rod startup or

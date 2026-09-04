@@ -421,6 +421,14 @@ standing procedure rather than news belongs in the list below. **Evicting one: R
 FIRST** — ask what in it would still burn someone in a month, move that to the standing list as
 ONE line, drop the rest. **A bullet is ~80 words.**
 
+- **A BREVITY CAP COUNTED IN WORDS PAYS FOR ITSELF BY REDDENING ANOTHER GATE** (2026-09-03,
+  #619/#621 item 12). The worst step description ran **9 sentences / 246 words**, so a word cap
+  was the obvious fix — but the long steps carry the most numbers, and every number owes the
+  US/SI pair `run_manual_units` requires: *"the 1972 psi (13.6 MPa) P-11 permissive"* is half
+  tax, so the cheapest way to satisfy a word cap is to **delete the pairs**.
+  `checklist_why_length` counts SENTENCES; words went to the unscored backlog, where all six
+  over-80-word blocks read as exactly three. **Ask what a cap makes cheap.**
+
 - **A CLICK THAT MISSES A TEXT FIELD IS NOT A NO-OP — IT IS A KEYBOARD SHORTCUT** (2026-09-02,
   #605). Both "can't type" blockers were this, and neither was the text box. The Pressure SP
   `<input>` is **30 x 17 px of an 85 px frame** (a `psi` span and the arrows fill the rest, inside
@@ -449,14 +457,6 @@ ONE line, drop the rest. **A bullet is ~80 words.**
   `cklMenuKey` was `engine | running checklist`, and neither changes on an initial-condition
   reset, so the Hot Full Power list survived **byte-identical**. No source read sees it, and no
   Node harness calling the ranker — the ranker is not where the bug is.
-- **WHEN A PLAYER SAYS A CONTROL MISBEHAVES, MEASURE THE CONTROLLER BEFORE YOU TOUCH IT — TWICE
-  IN ONE LIST IT WAS RIGHT AND THE BOARD WAS LYING ABOUT IT** (2026-09-01, #598, the owner's
-  playtest). "CHARGING in AUTO doesn't hold a decent level": AUTO tracks its program to **0.11 %**
-  in all four ICs with no hunt, and the tile's NORMAL band was a hard-coded **40–70 %** — a
-  full-power band on every mode, painting an on-program Mode 5 level 15 points *below normal*.
-  "The heaters wouldn't go all the way": they shed because SI actuated at the P-11 crossing, and
-  **nothing annunciates SI at all** (#603). Same shape as the #591 CW bound: right value, wrong
-  plant. **Check the provenance of the BAND before you retune the thing inside it.**
 **Standing procedure — not part of the rotation above; these do not expire.** One trap per entry.
 **MAX 25 BULLETS** *(OWNER RULING, 2026-08-10: selected "Cap at 25, evict to TRAPS.md")*,
 gated by `test/run_doc_budget.js`. Adding
@@ -555,7 +555,10 @@ what a GATE already catches**, keep what nothing can tell you.
   defect, then re-run the INJECTIONS — the whole file's, not just yours.
 - **A tolerance band is a claim that what it excludes is harmless — measure that** (rescued
   from the #348 themes bullet on eviction, 2026-08-07). CA-10's 1-point "coupling lag" band
-  hid an interlock with no reset differential chattering at 35 % duty.
+  hid an interlock with no reset differential chattering at 35 % duty. **And CHECK THE BAND'S
+  PROVENANCE before you retune what sits inside it** (#598, rescued 2026-09-03): AUTO charging
+  held its program to 0.11 % while the tile's hard-coded 40–70 % painted an on-program Mode 5
+  level 15 points below normal.
 - **Adjudicate a physics change's red probes ONE AT A TIME** (rescued from the #364/#365
   themes bullet on eviction, 2026-08-08). Batch-judging 11 reds as "the retune moved things"
   would have hidden two real defects — each red is the fix working, a stale fixture, or a new
