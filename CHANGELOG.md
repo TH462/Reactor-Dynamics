@@ -32,6 +32,23 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
 
 ## [Alpha 1.7.2-rc6] — 2026-09-03
 
+### Added (#623 / #619 item 23 — Help on the 1/M startup plot)
+
+*(OWNER, 2026-09-03: "Add a HELP button to the 1/M plot that explains it in a concise but
+approachable way.")* It grows the window in place rather than opening a modal — the Scanner's
+idiom, chosen by directive on 2026-08-11 for the reason that applies here too: a modal covers the
+plot the player is asking about.
+
+Four short blocks, scoped by what the steps now say. Wave 1 made the startup steps name the
+SOURCE RANGE indication, state that its `7.0e2` is 700 counts per second, size the bursts and
+point at the panel's predicted position — so the help carries only what a step cannot: what the
+ratio is, how to read the crossing, **why the prediction keeps moving**, and why you never
+withdraw straight to it. That third one is load-bearing: the fit is deliberately the trailing
+three points, and a player who does not know that reads a number that walks as a broken
+instrument rather than as the method working.
+
+`run_oneoverm` 13 → 19 checks.
+
 ### Changed (#622 / #619 wave 2 — the checklist and time-acceleration mechanics)
 
 Eight items from the rc5 playtest. The theme is that time acceleration and the checklist did not

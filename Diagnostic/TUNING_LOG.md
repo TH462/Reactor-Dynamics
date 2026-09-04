@@ -29,6 +29,61 @@ and the user-visible summary in `CHANGELOG.md`. This file points at those and tr
 
 ---
 
+## Session log — 2026-09-04-develop-c (#623 — Help on the 1/M plot, and a stub that cannot parse HTML)
+
+**The ask.** #619 item 23: *"Add a HELP button to the 1/M plot that explains it in a concise but
+approachable way."* Wave 3, one item.
+
+**In place, not a modal.** The Scanner already settled this shape by directive *(OWNER DIRECTIVE,
+2026-08-11: "The scanner full description should make the scanner larger so the full description
+is visible. It should not open another box or window.")*, and the reasoning transfers exactly: a
+modal would cover the plot the player is asking about. That is also why it did not go into the
+global Help modal.
+
+**What it says was scoped by what wave 1 already made the steps say.** The startup steps now name
+the SOURCE RANGE indication, state that its 7.0e2 is 700 counts per second, give the bursts a size
+and point at the panel's own predicted position — so the help carries only what a step cannot:
+what the ratio IS, how to read the crossing, why the prediction keeps moving, and why you never
+withdraw straight to it. The third is the load-bearing one: `FIT_WINDOW` is deliberately the
+trailing three points, and a player who does not know that reads a number that walks as a broken
+instrument rather than as the method working.
+
+### The trap: a DOM stub that does not parse HTML cannot tell you the initial state
+
+`run_oneoverm` drives the panel headless against a hand-written stub whose `querySelector` hands
+out **a fresh element with `hidden: false` for any selector**. The panel's help div is authored
+`hidden` in the innerHTML string — which the stub never parses. So the obvious check ("press Help,
+assert the panel opens") would have been **testing the stub's default**, and would have passed
+against a panel that starts open, or one whose markup was never written at all.
+
+Split into two claims that are each honest on their own:
+
+1. the BUILT MARKUP declares the button and a panel that starts hidden — a string assertion
+   against the innerHTML the browser will actually parse, which is what fixes the initial state;
+2. the CLICK HANDLER toggles it — driven through the panel's own delegation, with the starting
+   state set **explicitly in the test**, stated as a precondition rather than assumed.
+
+Neither is worth much alone; together they cover authored-and-wired. Injection-verified: deleting
+the one `panel.hidden = !open` line reddens the open check and nothing else.
+
+Same family as the two fixture failures in `2026-09-04-develop-b` — **a harness that models less
+than the real thing will happily certify the difference.**
+
+### Also: the site changelog was at 14 bullets against its cap of 8
+
+Not a code finding, but it is the rule the file states about itself and three sessions in a row
+had appended to the same pending entry. Aggregated by system per `CLAUDE.md`'s own instruction
+("one line per system's worth of work, not one per commit") — the checklist/manual/teaching work
+became one line, the protection and initial-condition changes another. 8 bullets, `run_release`
+green.
+
+### Gates
+
+`run_oneoverm` **19/19** (13 -> 19) · `run_release` 27/27 at `Alpha 1.7.2-rc6` ·
+`run_hardrules` 473/473.
+
+---
+
 ## Session log — 2026-09-04-develop-b (#622 — the clock and the checklist did not know about each other)
 
 **The ask.** #619 wave 2, eight items: 3, 4, 6, 7, 8, 13, 17, 18. All eight built.
