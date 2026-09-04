@@ -1100,6 +1100,8 @@ Read this before editing any source file — the wiring is deliberate and easy t
   and was unfindable.
 - **Snapshot / save compatibility is a contract.** New snapshot fields must migrate
   older saves — follow the migration-note pattern in `CHANGELOG.md`.
+- **Minimize tokens spent editing files.** All else being equal, surgically edit
+  rather than rewrite a whole file.
 
 ### Authoritative vs. scratch
 
