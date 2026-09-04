@@ -1131,6 +1131,16 @@
   };
 
   PWR2Engine.prototype.getTrueState = function () { return this._ts; };
+  /* The loop's numerical-stress report from the last step (#625): the Courant limit the ring
+   * measured BEFORE it stepped, how many sub-steps it took, whether it refused. Read by the
+   * service's WARP tier; optional on the engine interface (a plant without one is never warped
+   * on that ground). Not part of true_state on purpose — it describes the integrator, not the
+   * plant. */
+  PWR2Engine.prototype.getStepReport = function () {
+    var pr = this.eng && this.eng._lastPlant;
+    if (!pr) return null;
+    return { courant_limit_s: pr.courantLimit_s, sub_steps: pr.subSteps, held: pr.held === true };
+  };
   PWR2Engine.prototype.getInstruments = function () { return this.instruments.reading; };
   /* The kernel's engine-owned-RPS mirror (#509 items 1/5) asks the engine WHY it is
    * scrammed so rps_state.last_trip_reason is the plant's own cause, not a placeholder. */

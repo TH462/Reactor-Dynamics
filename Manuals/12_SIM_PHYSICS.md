@@ -39,7 +39,9 @@ The SLS-100 is a **lumped-parameter, real-time behavioural model**. It is not a 
 
 ### 2.1 Fixed time step, and what time acceleration really does
 
-The engine is stepped at **0.02 s and only 0.02 s**. Time acceleration does **not** hand the engine a bigger `dt` — it runs **more 0.02 s steps per wall-clock second**. Every plant behaviour is therefore identical at 1× and at 60×; only the wall-clock pacing changes.
+On the **PLAY** tier (1× to 60×) the engine is stepped at **0.02 s and only 0.02 s**. Time acceleration does **not** hand the engine a bigger `dt` — it runs **more 0.02 s steps per wall-clock second**. Every plant behaviour is therefore identical at 1× and at 60×; only the wall-clock pacing changes.
+
+The **WARP** tier (600× and 3600×) is the one declared exception: the **same physics stepped at 0.5 s**. It exists for the evolutions whose clock is hours — xenon, decay heat, boron, a heatup — and it is bounded by measurement. Over a sim hour in five regimes (steady full power; a scram then decay heat and xenon; hot zero power; hot shutdown; cold shutdown) every channel stays inside its own instrument noise of the 0.02 s plant: worst **5 psi (0.034 MPa)** of pressure, **0.07 °F (0.04 °C)** of Tavg, **0.3 %** of pressurizer level, **0.0003 %** of xenon. It works because the kinetics is solved exactly (a matrix exponential, not Euler), the fuel and the instrument lags are analytic, xenon's fastest constant is 4 × 10⁻⁵ /s, and the loop sub-steps itself to its own Courant limit. It stops working between 0.5 s and 1.0 s — at a 1.0 s step the quiet plant trips itself at 18 minutes — which is why WARP refuses a plant in a transient and lets go the moment one begins (see **02** §4.1).
 
 This matters in two places an operator can feel:
 
@@ -832,7 +834,7 @@ If you expect one of these and cannot find it, it is not hidden — it does not 
 
 **Everything else**
 - No multi-user operation, no accounts, no cloud state
-- No auto-detection of a developing transient to drop time acceleration — you set the speed and you reduce it
+- No protection-margin governor on time acceleration — fast-forward dropout (**02** §4.1) drops the clock on a trip, a new failure or a first alarm, and WARP lets go on a rate excursion, but nothing slows you for merely approaching a setpoint
 
 ---
 

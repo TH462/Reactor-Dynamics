@@ -29,7 +29,142 @@ and the user-visible summary in `CHANGELOG.md`. This file points at those and tr
 
 ---
 
-## Session log — 2026-09-03-develop-d (#617 — the six live checklists, reviewed and rewritten: the text the player reads was the one field no gate compares)
+## Session log — 2026-09-04-workbench-a (#625 — two pacing tiers: the "simplified physics" tier was the same physics at a coarser step, and the freeze was a missing cap)
+
+**The ask** *(OWNER, issue #625: "Create new FF system to alleviate the slowdown issues some people
+have… a two tier system. Lower speeds… for faster transients. Higher speeds go into a more simplified
+physics system or calculate fewer calculations per second… The sim won't let you use the higher tier
+of warp if the plant is in a large transient… add a physics slow down indication to the warp
+indicators with colors")*. Rulings, 2026-09-04, on the four decisions the plan put: declared, gated
+fidelity departure in WARP — *"Yes"*; keep five buttons, add 5×, style 600×/3600× as WARP — *"Yes"*;
+a rate-based drop lands at *"60x"*; fold #581 in, keep #409 for the protection-margin zone — *"Yes"*.
+
+### What the slowdown actually was (measured before designing anything)
+
+Full stack (control layer + service, PWR2), Node, the build machine. **There was no cap on physics
+steps per broadcast** — `_stepsPerBroadcast` had a floor of 1 and no ceiling:
+
+| requested | steps / broadcast | main thread blocked per broadcast | achieved |
+|---|---|---|---|
+| 60× quiet, full power | 300 | 43 ms mean, 54 worst (of 100) | 136× |
+| 60× large break + station blackout | 150 | 35 ms (of **50** — transient cadence) | 85× |
+| 600× quiet | 3,000 | **350 ms mean, 494 worst** (of 100) | 114× |
+| 600× large break + blackout | 1,500 | **374 ms** (of 50) | 89× |
+| 3600× | 18,000 | ~2.5 s | ~140× |
+
+600× and 3600× were the same speed and both froze the page — that is the "bogs down in large
+transients" #613 could not account for from the render side. A casualty costs **1.6× per step**
+(233 vs 144 µs; the ring sub-steps to its Courant limit) at the moment the cadence halves.
+
+**Second defect, found on the way.** `_isRapidChange` scaled its thresholds by the WALL broadcast
+interval (`broadcastMs / 500`). At 600× a broadcast covers 60 plant-seconds; ordinary drift crossed
+a threshold meant for half a second, and a **quiet full-power plant at 600× sat permanently on the
+50 ms cadence** (histogram: 101 of 101 broadcasts). Twenty paints a second scheduled when the step
+budget was scarcest. It is a rate per sim second now, identical at 1×.
+
+### The coarse-step scan — the cliff is between 0.5 s and 1.0 s
+
+`inbox/625/dt_scan.js` evals the service source with `PHYSICS_DT` patched, five steps, 2 sim hours,
+three regimes (steady full power; scram at t+60 s then decay heat and xenon; hot zero power), worst
+|deviation| from the 0.02 s reference at matched sim minutes:
+
+| step | achievable | pressure | Tavg | pzr level | power | decay heat | xenon |
+|---|---|---|---|---|---|---|---|
+| 0.05 s | 350× | 4.4 psi | 0.05 °F | 0.29 % | 0.07 % | 0.001 % | 0.0001 % |
+| 0.1 s | 660× | 4.2 psi | 0.07 °F | 0.28 % | 0.07 % | 0.001 % | 0.0000 % |
+| 0.2 s | 1,310× | 4.9 psi | 0.07 °F | 0.18 % | 0.07 % | 0.0005 % | 0.0001 % |
+| **0.5 s** | **2,700×** | 5.0 psi | 0.07 °F | 0.31 % | 0.07 % | 0.001 % | 0.0003 % |
+| 1.0 s | 4,200× | **150 psi** | **24.7 °F** | **33 %** | **spurious trip at 18 min** | 5 % | 9.6 % |
+| 2.0 s | (held) | 103 psi | 27 °F | 35 % | 89 % | 4.8 % | 9.2 % |
+
+To 0.5 s every deviation is inside the instrument noise band (pressure sigma 2.9 psi, level 0.3 %)
+and **does not grow with the step** — limit-cycle phase, not integration error. Why the same physics
+survives it: kinetics is an exact matrix exponential (`pwr2_kinetics.js expmInto`), fuel/clad is
+Sylvester-analytic, the reused instrument lags are backward-Euler (`alpha = dt/(lag+dt)`), xenon's
+fastest constant is 4e-5 /s, the loop sub-steps to its Courant limit (2 needed at rated flow, 16
+max), the pressure solve is bracketed. **No second model.** The issue's "simplified physics system"
+is the same physics at 0.5 s. **Not measured, and it was the trap I nearly shipped:** the plan's
+Manuals text claimed five regimes before the gate had run Modes 4 and 5. It ran; they pass — with one
+band moved (below).
+
+### What was built
+
+- **`layers/simulation_service.js`** — `configurePacing({ stepBudgetMs, warp, warpDt })`, OPT-IN
+  (every headless runner keeps the PLAY-only, full-count service). `_dt` per tier, the one writer
+  `_applyTier()`. The tick loop steps at the tier's dt, checks the wall budget every 25 steps on the
+  TIMER path only (`_reschedule` arms it; `advanceCycles` never sees it), and **credits `stepped ×
+  dt`, never the request** — `pwr2_kinetics.js:38` already warned that the unconditional credit is
+  how a clock runs ahead of its physics. `_warpWatch()` rides the protection cadence INSIDE the
+  loop: trip latch, new failure, first unacknowledged alarm on a quiet board (the attention-stop
+  terms — a heatup with latched low-pressure alarms is where WARP is wanted), power > 2 %/s,
+  pressure > 40 psi/s (0.276 MPa/s), a Courant limit needing > 8 sub-steps at 0.5 s, model held.
+  A drop = `break`, PLAY, `min(speed, 60)`, a 30 sim-s quiet timer, `speed_snap {reason:
+  'transient', detail}`. Entry is refused on the same terms (`_warpBlocked`) and reported as
+  `speed_snap {reason: 'warp_locked'}`; the request lands at 60×. Every attention stop also
+  starts the quiet timer. Authored beat speeds never warp. `metadata.pacing` publishes tier, dt,
+  achieved (an EMA of stepped-sim / wall between timer ticks), `warp_available`, `warp_lock`,
+  `steps_requested` / `steps_done`. `_perfNow()` is a seam and returns **null**, not 0, without a
+  clock — the first gate fixture's fake clock started at 0 and silently disarmed the budget.
+- **`engines/pwr2/pwr2_engine.js` + `pwr2_shell.js`** — the loop's Courant report had no reader
+  above Layer 3 (the Explore pass found it stranded); `eng._lastPlant` and
+  `PWR2Engine.getStepReport()` publish `{courant_limit_s, sub_steps, held}`. Rated flow reads
+  0.363 s, 2 sub-steps at 0.5 s.
+- **UI** — a 5× rung (#622 item 18; `SPEED_KEYS` is six digits, `CHART_WINDOWS` gains its row);
+  600×/3600× carry `.warp` and go `.locked` (dark, titled with the lock reason) off
+  `metadata.pacing`; `#ffRate` beside the segment shows the achieved rate (#581), green ≥ 90 % of
+  the request, amber below, red ONLY when `RD.Perf` sees the page straining (loop slipping or
+  paints dropped) — the first cut painted red below 50 % of the request, and the browser check
+  showed that is the ORDINARY state at 3600×, which would train the player to ignore red; the two
+  new toasts carry the plant's reason. `configurePacing({ stepBudgetMs: 40, warp: true })` at boot.
+  **Measured in headless Chromium** (`inbox/625/ui_check.js`, the gate running alongside): a
+  requested 3600× achieves **~630–680×** with the budget cutting each broadcast at **200–225 of
+  720 steps, 44 ms**; the digit-6 shortcut, the locked buttons with their reason, and the drop on a
+  large break all paint; no page errors.
+- **Docs** — `CONTEXT.md` §4 (the "never a larger dt" rule is the PLAY tier's now; the cadence
+  thresholds are rates), `DESIGN_COMPANION` §exclusions (superseded, #409 remains), M8 spec row,
+  `Manuals/02` §3.3/§4.1, `Manuals/12` §2.1/§13 (Rev 17 pending row item (k)), shell scanner copy
+  and help, `CHANGELOG.md`, `changelog.html` (the rc4 entry extended; two bullets merged to hold
+  the 8-bullet cap), the CLAUDE.md themes bullet (the #598 one evicted).
+
+### The gate — `test/run_warp_tier.js`, 17 checks, 6 mutations
+
+Fidelity: one sim hour on WARP vs PLAY at matched minutes, five regimes, band = 2× the scan's worst.
+First run: **three fixture defects and one real band finding.** (1) The scram leg commanded the scram
+on a broadcast boundary — 60 s into the PLAY hour, **360 s** into the WARP one — and compared a
+tripped plant to one at power (power_pct 99.5 "deviation"). Scrammed on PLAY 120 s BEFORE the hour
+now; xenon then reads 0.0050 against a 0.01 band, the tightest margin in the table. (2) The budget
+fixture's fake clock began at 0, which the code read as "no clock". (3) The LOCA re-request check
+was masked by the alarm attention stop on the same broadcast (stops off for that step). (4) Modes 4
+and 5 read **0.50 / 0.49 °C of subcooling** against a 0.40 band: the same 3 psi pressure deviation
+as every other leg, through the saturation curve at 365 psia where dTsat/dP is ~15 °C/MPa. Band
+0.40 → 1.00 °C (1.8 °F) against ~58 °C of margin, with the reason in the file. The cliff check holds:
+at 1.0 s four fields blow the band (power 2.96 %, subcooling 2.3 °C). Mechanics: a large break
+under WARP stops the loop at **step 1 of 720**, credits 0.500 s, lands at PLAY/0.02 s; the pure rate
+branch drops with "power moving 3.0 %/s"; authored 3600× stays PLAY; the 40 ms budget cuts 225 of
+3,000 steps (fake clock) and the plant is identical to the unbudgeted run at every shared instant;
+quiet at 600× on PLAY: 100 ms cadence throughout.
+
+`run_service_invariance`: the "fine-sample budget" mutation anchor re-pointed (`step(PHYSICS_DT)` →
+`step(dt)`); **SI-5's shared-instant bar 30 → 20** — with the rate-per-sim-second detector the 10×
+LOCA leg lays 220 instants instead of 300 (cadence histogram 201/99 → 39/181), fewer of which meet
+the 1× leg's 0.06 s transient grid (3 steps per 50 ms broadcast — a pre-existing quirk): shared
+51/58 → 28/22, still 0.000e+0 apart. 8/8, 4/4 mutations.
+
+### Not done, and named
+
+- The entry ring: a FRESH plant rings for ~20 s while its lineup engages (power 100 → 94 → 100.7 in
+  1.5 s at 0.5 s; −0.8 % at 0.02 s), so WARP requested in the first seconds of free play is refused
+  as "plant in transient" until it settles. Honest, and the probe (`inbox/625/probe.js`) says the
+  ring is the plant's, not the tier's.
+- No measurement on the OWNER's machine (his renders at 20+ ms and 4.6 fps, #613); the headless
+  ~650× is this machine's. "Days in seconds" is honest as "a day in about two minutes" at that
+  rate; hours are seconds.
+- A DRIVEN heatup (RCP start, heaters) at 0.5 s is not in the gate — Modes 4 and 5 hold there, the
+  transit between them was not ridden.
+- `verify_e2e_ui` clicks 600× and expects > 300 s of sim after a wait; with WARP available that is
+  more sim, not less — checked by `run_all` below.
+
+
 
 **The ask** *(OWNER, 2026-09-03: "Critically review then Rewrite the prose of the checklists.")*.
 Scope: `RD.MANUAL_PROCEDURES.pwr2`, all 61 steps of the six chain-linked checklists. Prose only:

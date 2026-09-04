@@ -45,6 +45,36 @@ where the two differ or where judgment was exercised.
 
 ---
 
+## 2026-09-04-workbench-a — #625: two pacing tiers — WARP is the same physics at 0.5 s, and the freeze was a missing cap
+
+**Decision** *(OWNER RULINGS, 2026-09-04: "Yes" / "Yes" / "60x" / "Yes" on the four decisions the
+plan put on #625)*. PLAY (1×/5×/10×/60×) steps at 0.02 s and stays bit-identical at every rung.
+WARP (600×/3600×) steps the same physics at **0.5 s** — a DECLARED fidelity departure, bounded by
+`test/run_warp_tier.js` (one sim hour in five regimes inside a band of 2× the measured worst; a
+1.0 s step must blow it). WARP is refused, or dropped to 60× inside the step loop, on a trip, a new
+failure, a first alarm on a quiet board, power > 2 %/s, pressure > 40 psi/s (0.276 MPa/s), a Courant
+limit needing > 8 of the ring's 16 sub-steps, or a model hold; 30 sim-s of quiet re-arms it; authored
+beat speeds never warp. Both tiers and a 40 ms per-broadcast wall budget (the loop stops early and
+credits only what it stepped) are opt-in from the control room via `configurePacing()`; headless
+runners keep the PLAY-only, full-count service.
+
+**Why this shape.** Measured first: there was NO cap on steps per broadcast, so 600× blocked the
+main thread 350 ms per 100 ms broadcast and 3600× ~2.5 s — both achieved ~140×, both froze the
+page. The transient detector was wall-scaled and read a quiet plant at 600× as a standing transient
+(now a rate per sim second). And PWR2 at 0.05–0.5 s stays inside instrument noise over 2 h in three
+regimes while 1.0 s trips the quiet plant — kinetics is an exact matrix exponential and the loop
+sub-steps, so the "simplified physics" tier of the ask needed no physics. The alternative — keep
+bit-identity everywhere — caps the plant at ~145× and makes the xenon swing (CURRICULUM A7,
+"neither of which any content demonstrates today") a twenty-minute wait.
+
+**Deliberately not done.** A Web Worker for the physics (the structural fix for render starvation:
+a dozen synchronous `assembleSnapshot()` sites and the chart's fine-sampler closure cross the
+thread boundary; the budget gets most of the benefit). The protection-margin governor zone stays
+#409. #581 (achieved-rate badge) is delivered here and closed into this.
+
+**Record:** `Diagnostic/TUNING_LOG.md` 2026-09-04-workbench-a (all measurements, the gate's first-run
+adjudication, the subcooling band).
+
 ## 2026-09-03-develop-c — #612: the checklist column, and an auto-scroll that fought the reader
 
 Owner playtest, reported as "two fixes… lost in the merge". **They were not lost.**

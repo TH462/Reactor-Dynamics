@@ -421,6 +421,13 @@ standing procedure rather than news belongs in the list below. **Evicting one: R
 FIRST** — ask what in it would still burn someone in a month, move that to the standing list as
 ONE line, drop the rest. **A bullet is ~80 words.**
 
+- **A SPEED BUTTON IS A REQUEST THE LOOP NEVER REFUSED — AND "THE SAME PHYSICS AT A COARSER STEP"
+  WAS THE WHOLE SECOND MODEL** (2026-09-04, #625). There was no cap on steps per broadcast: 600×
+  blocked the main thread **350 ms per 100 ms broadcast** (3600×: 2.5 s), the page froze, and the
+  transient detector — scaled by WALL cadence — read a quiet plant at 600× as a standing transient.
+  Measured before designing anything: PWR2 at a **0.5 s** step stays inside instrument noise over
+  2 h in three regimes (~2,700×); at **1.0 s** the quiet plant trips itself. Kinetics is exact and
+  the loop sub-steps, so the "simplified physics tier" needed no physics. `run_warp_tier`.
 - **A CLICK THAT MISSES A TEXT FIELD IS NOT A NO-OP — IT IS A KEYBOARD SHORTCUT** (2026-09-02,
   #605). Both "can't type" blockers were this, and neither was the text box. The Pressure SP
   `<input>` is **30 x 17 px of an 85 px frame** (a `psi` span and the arrows fill the rest, inside
@@ -449,14 +456,6 @@ ONE line, drop the rest. **A bullet is ~80 words.**
   `cklMenuKey` was `engine | running checklist`, and neither changes on an initial-condition
   reset, so the Hot Full Power list survived **byte-identical**. No source read sees it, and no
   Node harness calling the ranker — the ranker is not where the bug is.
-- **WHEN A PLAYER SAYS A CONTROL MISBEHAVES, MEASURE THE CONTROLLER BEFORE YOU TOUCH IT — TWICE
-  IN ONE LIST IT WAS RIGHT AND THE BOARD WAS LYING ABOUT IT** (2026-09-01, #598, the owner's
-  playtest). "CHARGING in AUTO doesn't hold a decent level": AUTO tracks its program to **0.11 %**
-  in all four ICs with no hunt, and the tile's NORMAL band was a hard-coded **40–70 %** — a
-  full-power band on every mode, painting an on-program Mode 5 level 15 points *below normal*.
-  "The heaters wouldn't go all the way": they shed because SI actuated at the P-11 crossing, and
-  **nothing annunciates SI at all** (#603). Same shape as the #591 CW bound: right value, wrong
-  plant. **Check the provenance of the BAND before you retune the thing inside it.**
 **Standing procedure — not part of the rotation above; these do not expire.** One trap per entry.
 **MAX 25 BULLETS** *(OWNER RULING, 2026-08-10: selected "Cap at 25, evict to TRAPS.md")*,
 gated by `test/run_doc_budget.js`. Adding
@@ -757,6 +756,8 @@ node test/run_procedures_stack.js --lineup=bare # the noDefaults/campaign lineup
 node test/run_pwr2_engine.js --no-mutations   # skip the replay while fixing a check (34 pwr2
                                 # runners; --mut=/--grp= too). FILTERED = FORCED NON-ZERO, never
                                 # a baseline. 115 s -> 2.9 s (#602)
+node test/run_warp_tier.js             # the two pacing tiers (#625): WARP's fidelity band, the
+                                # cliff at 1.0 s, the in-loop lockout, the step budget
 node tools/perturb_sweep.js            # WHICH CHECKS BREAK IF I RETUNE THIS? (see below)
 node tools/perturb_sweep.js --suite=behavior --nudge=thermal.h_sg*1.03
 node tools/perturb_sweep.js --self-test  # prove the harness can detect anything at all

@@ -104,7 +104,7 @@ on a card — click the component. `03_CONTROLS_AND_INDICATIONS.md` is the per-c
 
 | Region | Function |
 |--------|----------|
-| **Sim controls** | Play/Pause, speed 1× / 10× / 60× / 600× / 3600×, Manual, Help, Contact, and **Board focus (⛶)** — hides this column and enlarges the board |
+| **Sim controls** | Play/Pause, speed 1× / 5× / 10× / 60× and the two WARP rungs 600× / 3600× with the achieved-rate readout beside them, Manual, Help, Contact, and **Board focus (⛶)** — hides this column and enlarges the board |
 | **Plant & mission line** | Always visible under the sim controls: what is running now; click to change it (§5.0) |
 | **Instructor** | Scenario commentary, gates, walkthrough step grading |
 | **Tools** | **Operate · Inject Failure · Graph · Physics · Settings** (§7.0) |
@@ -141,10 +141,18 @@ something you did *not* choose to look at.
 | Control | Effect |
 |---------|--------|
 | **Play / Pause** | Start or freeze simulated time (diagram freezes when paused) |
-| **Speed** | Discrete acceleration: 1×, 10×, 60×, 600×, 3600× |
-| **NOTE** | Physics timestep stays 0.02 s; acceleration runs more steps per wall-clock second |
+| **Speed** | Two tiers. **PLAY: 1×, 5×, 10×, 60×** — the full physics at its 0.02 s step, identical at every rung. **WARP: 600×, 3600×** — the same physics at a coarser 0.5 s step, for the long quiet evolutions: xenon, decay heat, boron, a heatup or cooldown |
+| **Achieved rate** | The readout beside the buttons shows the plant-time actually passing per second of wall clock. Green: keeping up with the request. Amber: behind it — the physics cannot finish the request in its share of a broadcast, which at 3600× is the ordinary state of most machines. Red: the page itself is stalling |
+| **NOTE** | On PLAY the physics timestep stays 0.02 s and acceleration runs more steps per wall-clock second. On WARP the step is 0.5 s: over a sim hour every channel stays inside its own instrument noise of the 0.02 s plant (see **12** §2.1), and the buttons are **dark while the plant is in a transient** — WARP is refused then, and lets go on its own |
 
 **CAUTION:** High speed during approach to criticality or load rejection can leave you behind the plant. Use 1×–10× for startups and transients until proficient.
+
+**WARP lets go by itself.** The moment the plant moves fast — a reactor trip, a new equipment
+failure, a first alarm on a quiet board, power moving faster than 2 %/s or pressure faster than
+40 psi/s (0.276 MPa/s), or the loop asked for more sub-steps than it can give — WARP drops to
+**60×** and a toast names the reason. The two WARP buttons then stay dark for **30 plant-seconds
+of quiet**. Asking for WARP while it is unavailable lands you at 60× with the same toast. A
+mission's own fast-forward never uses WARP.
 
 **Fast-forward dropout.** Acceleration snaps back to **1×** when something arrives that you
 have to look at: a **reactor trip**, a **new equipment failure**, or the **first alarm on an

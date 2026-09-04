@@ -146,6 +146,7 @@
   // CSV export, not the plot.
   var CHART_WINDOWS = {
     1:    [60, 300, 600, 1800],
+    5:    [180, 900, 1800, 5400],
     10:   [300, 900, 3600, 10800],
     60:   [900, 3600, 10800, 43200],
     600:  [3600, 10800, 21600, 43200],
@@ -2823,7 +2824,56 @@
     scram: 'Dropped to real time — reactor trip',
     failure: 'Dropped to real time — equipment failure',
     alarm: 'Dropped to real time — new alarm',
+    // #625: the WARP tier let go (60x) or was refused; the service names the plant's reason.
+    transient: 'WARP dropped to 60× — ',
+    warp_locked: 'WARP unavailable — ',
   };
+  function speedSnapText(snap) {
+    var base = SPEED_SNAP_MSG[snap.reason] || 'Dropped to real time';
+    return /— $/.test(base) ? base + (snap.detail || 'plant in transient') : base;
+  }
+  /* The pacing readout (#625, and #581's achieved rate): runs every broadcast, cheap. The
+   * achieved figure is the service's own EMA off its timer path. AMBER means the physics is
+   * behind the request (under 90 % of it) — with the step budget that is the honest ceiling,
+   * not a fault: measured headless, a requested 3600x achieves ~650x with the budget cutting
+   * each broadcast at ~225 of 720 steps, and a rule that painted THAT red would be red on every
+   * machine at the top rung, which trains the player to ignore red. RED is the page itself
+   * straining — the broadcast loop slipping past 1.6x its interval, or paints being dropped
+   * faster than they land (RD.Perf's own verdicts). The WARP buttons go dark while the
+   * service would refuse them, so a click that would land at 60x is never offered as 3600x. */
+  var _lastPacingKey = null;
+  function syncPacingUI(s) {
+    var p = s && s.metadata ? s.metadata.pacing : null;
+    var el = $('ffRate');
+    if (!p || !el) return;
+    var req = s.metadata.time_acceleration || 1, ach = p.achieved;
+    var straining = false;
+    if (RD.Perf && req > 1) {
+      try {
+        var sm = RD.Perf.summary(), iv = sm.interval_ms;
+        straining = !!(iv && iv.p95 > sm.nominal_ms * 1.6) || (sm.fps !== null && sm.fps < 20 && sm.coalesced > sm.paints);
+      } catch (e) {}
+    }
+    var cls = '', text = '';
+    if (req > 1 && ach != null) {
+      var ratio = ach / req;
+      cls = straining ? 'bad' : ratio < 0.9 ? 'warn' : 'ok';
+      text = '→ ' + (ach >= 100 ? Math.round(ach / 10) * 10 : Math.round(ach)).toLocaleString() + '×';
+    }
+    var key = cls + '|' + text + '|' + (p.warp_available ? 1 : 0) + '|' + (p.warp_lock || '');
+    if (key === _lastPacingKey) return;
+    _lastPacingKey = key;
+    el.hidden = !text;
+    el.textContent = text;
+    el.className = 'ff-rate mono' + (cls ? ' ' + cls : '');
+    el.title = text ? 'Achieved rate: ' + text.slice(2) + ' of the requested ' + req + '× (' + p.tier + ' tier, ' + p.physics_dt + ' s step)' : '';
+    var seg = $('speed');
+    if (seg) seg.querySelectorAll('button.warp').forEach(function (b) {
+      b.classList.toggle('locked', !p.warp_available);
+      b.title = p.warp_available ? 'WARP — coarser physics step; long quiet evolutions only'
+                                 : 'WARP unavailable — ' + (p.warp_lock || 'plant in transient');
+    });
+  }
   // Settings → Fast-forward dropout. The service owns the policy (HR5: it arrives by
   // command like everything else); the UI just mirrors what the snapshot reports.
   var attnStops = true;
@@ -2833,7 +2883,7 @@
     // Attention stop (M5): a plant event snapped fast-forward back to real time.
     // Toast the reason so the operator knows why the clock changed under them.
     var snap = s && s.metadata ? s.metadata.speed_snap : null;
-    if (snap) showToast(SPEED_SNAP_MSG[snap.reason] || 'Dropped to real time', 'error');
+    if (snap) showToast(speedSnapText(snap), snap.reason === 'warp_locked' ? 'warn' : 'error');
     var as = s && s.metadata ? s.metadata.attention_stops : null;
     if (as != null && as !== attnStops) { attnStops = as; syncSeg('[data-attn]', as ? 'on' : 'off', 'attn'); }
     if (v == null || v === lastSpeedSync) return;
@@ -3029,6 +3079,7 @@
     var crw = $('chartRewindBtn');
     if (crw) crw.disabled = noCp;
     syncSpeedUI(s);
+    syncPacingUI(s);
     renderHighlight(s);
     updateSimSummary();   // status line follows scenario/walkthrough transitions (change-guarded)
     instrGateOpen(s);     // a step that blocks progress opens the card, once per beat (#439)
@@ -7261,7 +7312,9 @@
     // Global keyboard shortcuts (documented in Help). Skipped while typing
     // in a field or holding a modifier; Space is left alone when a button has
     // focus so native activation (incl. rod hold) still works.
-    var SPEED_KEYS = { '1': 1, '2': 10, '3': 60, '4': 600, '5': 3600 };
+    // Six rungs since #625 (5x added per #622 item 18, owner-ruled 2026-09-04). The map is the
+    // DOM ladder's order; a key with no matching button does nothing.
+    var SPEED_KEYS = { '1': 1, '2': 5, '3': 10, '4': 60, '5': 600, '6': 3600 };
     document.addEventListener('keydown', function (e) {
       if (e.key === 'Escape') {
         if (!$('manualOverlay').hidden) closeManual();
@@ -8766,6 +8819,11 @@
     if (service.setFineSampler) {
       service.setFineSampler(function (ins, truth, ctl) { return chartSample(ins, truth, ctl); });
     }
+    /* PACING (#625): the control room opts into the per-broadcast step budget and the WARP
+     * tier; every headless runner keeps the full-count, PLAY-only service it always had.
+     * 40 ms of a 100 ms broadcast leaves the rest for the DOM pass — without it a 600x request
+     * blocked the main thread 350 ms per broadcast (measured) and the page froze. */
+    if (service.configurePacing) service.configurePacing({ stepBudgetMs: 40, warp: true });
     service.subscribe(render);
     service.subscribe(diagTick);
     // renderAutomate and inspectLiveTick are called from renderNow instead, so every DOM

@@ -32,6 +32,42 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
 
 ## [Alpha 1.7.2-rc4] — 2026-09-03
 
+### Added (two pacing tiers and a step budget — #625, with #581 folded in and #622 item 18)
+
+- **WARP: 600× and 3600× step the same physics at 0.5 s.** Measured before the ruling, full
+  stack, 2 sim hours in three regimes (steady full power; a scram then decay heat and xenon; hot
+  zero power): every step from 0.05 s to 0.5 s lands inside the instrument noise band of the
+  0.02 s reference — worst **5.0 psi (0.034 MPa)**, **0.07 °F**, **0.31 %** of pressurizer level,
+  **0.0003 %** of xenon — and the deviation does not grow with the step. At **1.0 s** the quiet
+  plant trips itself at 18 min; at 2.0 s the model holds. 0.5 s buys **~2,700×** here against
+  ~145× at 0.02 s: an hour of plant in 1.3 s, a day in 32 s. Kinetics is an exact matrix
+  exponential, the fuel and instrument lags are analytic or backward-Euler, and the loop
+  sub-steps to its Courant limit, so no second model was needed. A DECLARED departure *(OWNER
+  RULING, 2026-09-04: "Yes")*, bounded by `test/run_warp_tier.js`.
+- **WARP refuses a plant in a transient and lets go inside the step loop** — on a trip, a new
+  failure, a first alarm on a quiet board, power moving faster than 2 %/s or pressure faster
+  than 40 psi/s (0.276 MPa/s), a Courant limit the ring would need more than eight sub-steps to
+  meet, or a model hold. The drop lands at **60×** *(OWNER RULING, 2026-09-04: "60x")*, credits
+  only the sim time actually stepped, toasts the reason, and the two buttons stay dark for 30
+  plant-seconds of quiet. Authored beat speeds never warp, so every scripted skip keeps the
+  bit-identical plant.
+- **A 40 ms wall budget per broadcast, both tiers.** There was no cap on steps per broadcast:
+  600× blocked the main thread **350 ms per 100 ms broadcast** (3600×: ~2.5 s) and the page
+  froze — the "bogs down in large transients" of #613, which no render work could touch. The
+  loop now stops when the budget is spent and credits what it stepped; the plant is bit-identical
+  with the budget on and off at every matched instant (gated). Opt-in from the control room;
+  headless runners keep the full count.
+- **The achieved rate is on the board** (#581, ruled in 2026-08-06): a readout beside the speed
+  buttons, green when keeping up, amber below 90 % of the request (the machine's honest
+  ceiling — measured headless, a requested 3600× achieves ~650× with the budget cutting each
+  broadcast at ~225 of 720 steps), red only when the page itself is straining (the broadcast
+  loop slipping or paints being dropped). A **5× rung** joins the ladder (#622 item 18); the digit shortcuts
+  are 1–6.
+- **The transient detector is a rate per sim second.** It scaled its thresholds by the WALL
+  broadcast interval, so a quiet full-power plant at 600× sat permanently on the 50 ms cadence
+  (measured) — twenty paints a second scheduled when the step budget was scarcest. Identical at
+  1×, honest above it.
+
 ### Fixed (manuals: P-10 is 8 % on this plant)
 
 - **Four chapters gave the at-power permissive P-10 as 10 %** (03 §trip-blocks table, 04 §NOTE,

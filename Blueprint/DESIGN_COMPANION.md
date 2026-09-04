@@ -318,8 +318,10 @@ scope.*
   (many transients, procedures, structured courses) is content work that grows over time — the
   structure supports it; the full library is not a v1 deliverable. Audio/voice/media production
   beyond what the core needs is likewise deferred.
-- **Fast-forward dropout logic.** The sim does not auto-detect a developing transient and drop back
-  to normal speed. The user sets time acceleration manually and reduces it when they want to watch.
+- **Fast-forward dropout logic.** *(SUPERSEDED in two steps: attention stops — scram, new failure,
+  first alarm on a quiet board — drop the clock to 1× since 2026-07-17, and the WARP tier of #625
+  (2026-09-04) drops itself to 60× on a rate excursion. What remains excluded is a
+  protection-margin zone, #409.)* The user still chooses the speed; the sim only takes it away.
   A UX refinement, not required for any scenario or lesson. Deferred.
 
 ---
@@ -416,7 +418,9 @@ A single place to see where v2 could go, drawn from the catalog above and the ex
 - Multi-bank PWR rod system with sequencing, the Bank Overlap Unit display, and a core-map view.
 - Pressurizer discharge tank and rupture disk (TMI fidelity).
 - Automatic control loops (auto rod/level/pressure control) for normal operation.
-- Fast-forward dropout: auto-detect a developing transient and drop to normal speed.
+- Fast-forward dropout: auto-detect a developing transient and drop to normal speed. *(Built:
+  attention stops 2026-07-17; the WARP tier's in-loop transient watch, #625, 2026-09-04. Open:
+  the protection-margin zone, #409.)*
 
 **Content**
 - A large scenario library: many transients, procedures, structured courses (the format already

@@ -1241,6 +1241,10 @@
       heats.hot_leg = (heats.hot_leg || 0) + eng._pzSurgeHeat;
     }
     var pr = S.stepPlant(sys, dt, { heats: heats, sgDuty: sr.duty_kW, sources: srcs });
+    /* #625 — the loop's Courant report (courantLimit_s / subSteps / held) had no reader above
+     * Layer 3; the shell publishes it through getStepReport() so the service's WARP tier can
+     * refuse a step the ring would have to lean on its sub-step ceiling to survive. */
+    eng._lastPlant = pr;
 
     /* #585 — the break's ledger books only what the plant ACCEPTED. A mid-step latch integrates
      * part of the step before refusing the rest (Courant sub-stepping), and `dt_accepted` is the
