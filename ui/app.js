@@ -3497,6 +3497,11 @@
      * other is what the plant did about it */
     letdown_orifice_a:      { bool: 'letdown orifice A is in service' },
     letdown_orifice_b:      { bool: 'letdown orifice B is in service' },
+    /* the two pressurizer AUTO lamps (#624 item 14) — the heatup grades the MODE the operator
+     * selected, which is control_state; the kW and the spray flow in true_state cannot tell an
+     * AUTO selection from a manual demand that happens to sit at the same output */
+    heater_auto:            { bool: 'the pressurizer heaters are in AUTO' },
+    spray_auto:             { bool: 'the pressurizer spray is in AUTO' },
     letdown_flow_actual:    { label: 'Letdown flow', u: 'gpm', scale: 450000 },
     sr_energized:           { bool: 'the Source Range detector is energized' },
     sg_safety_open:         { bool: 'an SG code safety is open' },

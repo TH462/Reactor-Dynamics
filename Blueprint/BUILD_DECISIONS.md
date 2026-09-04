@@ -45,6 +45,66 @@ where the two differ or where judgment was exercised.
 
 ---
 
+## 2026-09-04-develop-g — #624 item 14: BOTH cold states boot pressure control OUT OF SERVICE
+
+**DECIDED (scope), and DECIDED TWICE — the first answer is kept here because the way it was wrong
+is the lesson.** `pzDrivers` is `ic.cold ? { heaters_manual: 0, spray_manual: 0 } : {}`.
+
+**First it was `icName === 'cold_shutdown'`.** Mode 4, Hot Shutdown was deliberately left in AUTO,
+and the boundary was asserted from both sides in `run_pwr2_engine` group R and `run_pwr2_shell` so
+that a tidying pass "making the cold states consistent" would have to redden a gate. The reasoning:
+the owner's ruling names the **Mode 5** lineup; `pwr_cooldown` runs to Mode 5; Mode 4 is a state a
+player reaches by operating rather than one they are handed. **Every clause of that is about the
+WORDING of a ruling and none of it is a measurement**, which is why it lasted about an hour.
+
+**Then Mode 4 was measured, and it was extended** *(coordinator's call, 2026-09-04, on the measured
+Mode 4 numbers; the owner's ruling named the Mode 5 lineup because that was the question asked, and
+he reviews this on #624 under `status-owner-review`)*:
+
+| `hot_shutdown`, 60 plant-min untouched | 0 min | 60 min | drift |
+|---|---|---|---|
+| heaters AUTO | 364.04 psia (2.510 MPa) | 376.28 psia (2.594 MPa) | **+12.2 psi/hr** |
+| heaters off, spray shut | 364.04 psia (2.510 MPa) | 364.21 psia (2.511 MPa) | **+0.2 psi/hr** |
+
+The same defect at the same size as Mode 5's +11.7 psi/hr. Three things beyond the number:
+`hot_shutdown` is **engine-only**, not on the Free Play picker; `pwr_cooldown` turns the heaters off
+at its depressurization step **before** the RHR alignment that makes the plant Mode 4, so the "the
+cooldown's own lineup" argument that justified Mode 5 justifies Mode 4 too; and the sentence the
+first build put into `Manuals/04` — *"Mode 4 arrives with heaters and spray in AUTO, so its step 5b
+is a check rather than an action"* — is the authored-instruction-the-plant-has-already-carried-out
+trap this very issue has found four times (#619 items 11, 16, 27, 28). **A scope boundary that
+forces you to author a "this step is a check for you" sentence is the trap announcing itself.**
+
+The checks and the mutation were flipped with the predicate, not deleted: R1b asserts BOTH cold ICs
+against at-power, R2b rides Mode 4's own 15-minute window (separately, because 128 °F (71.1 °C) of
+temperature means two saturation points and therefore two measurements), and the mutation that was
+"the OFF lineup spreads to Mode 4" is now its inverse, "Mode 4 drops back to AUTO" — caught by both.
+
+**MEASURED FALSE, and retired: the surge-line bleed.** The `pzDrivers` comment justified the AUTO
+ladder with *"the surge-line exchange bleeds ~16 kW, −68 psi/hr"*. Measured 2026-09-04, 60
+plant-minutes from the cold boot with the heaters off: **362.59 → 362.85 psia (2.5000 → 2.5018 MPa),
++0.3 psi/hr**. `surge_heat_kW` is a mass-transport term and this model carries no standing conduction
+path out of the vessel, so a still isothermal plant has nothing to bleed. The claim is removed from
+the engine comments, `Manuals/03` §5.2 and the checklist prose; the step that replaced it is
+justified by the measured fact that the Pressure SP is **inert** without the heaters (0.048 psi in 10
+plant-minutes at 0 kW against +133.4 psi at 157.8 kW). Recorded here because a claim being deleted
+from a comment leaves no trace anywhere else.
+
+**TWO FIGURES RE-EXPRESSED, not a band widened.** `Manuals/09` §11.0's *Primary pressure* cells read
+**368 psi (2.537 MPa)** for `cold_shutdown` and **369 psi (2.545 MPa)** for `hot_shutdown`, and
+`run_manual_setpoints` went red on each in turn (362.6, then 364.0). Neither was its state's settled
+pressure — each was the AUTO ladder walking its own preset up during the gate's 70-second settle.
+The cells now read **363 psi (2.500 MPa)** and **364 psi (2.510 MPa)**, measured through
+`SimulationService` at the gate's own settle. The 3.0 psi tolerance is untouched.
+
+**ONE NUMBER SWEPT WHILE IN THE FILE.** `Manuals/04` PWR-N01 step 6 and its *Pressurized to NOP*
+milestone row quoted the retired plant's **600 psi (4.14 MPa)** RHR autoclosure interlock, three
+lines below a NOTE sourcing the same interlock at **585 psig (4.03 MPa)** (WTSM §5.1,
+ML11223A219). One interlock, two bases, one table — the #601 shape, and it survived because a
+citation can sit three lines from what it contradicts.
+
+---
+
 ## 2026-09-04-workbench-b — #627: the accumulator clock hold latches, the Pressure SP step ticks at the cover gas, and a held speed click stays on the checklist
 
 **Decision** *(owner playtest, 2026-09-04: "it holds the warp at 1x until pressure is over 682 … the
@@ -101,6 +161,9 @@ thread boundary; the budget gets most of the benefit). The protection-margin gov
 
 **Record:** `Diagnostic/TUNING_LOG.md` 2026-09-04-workbench-a (all measurements, the gate's first-run
 adjudication, the subcooling band).
+
+---
+
 ## 2026-09-04-develop-f — #624 items 14/25: the protective letdown isolate gets its own field
 
 **DECIDED, and it is a design decision rather than a fix.** The 17 % low-pressurizer-level letdown

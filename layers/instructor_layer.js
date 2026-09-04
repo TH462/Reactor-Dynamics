@@ -791,8 +791,14 @@
    * which no true_state field carries — the plant publishes the resulting FLOW
    * (`letdown_flow_actual`), and a flow reads the same on a cold plant letting down through the
    * RHR cross-connect with the orifices shut. */
+  /* `heater_auto`/`spray_auto` are the two AUTO LAMPS on the pressurizer cards (#624 item 14):
+   * the heatup's "place pressure control in service" step is graded on which mode the operator
+   * selected, and mode is control_state — true_state carries the heater's kW and the spray's
+   * delivered flow, both of which read the same in AUTO and in a MANUAL demand that happens to
+   * match. Grading on kW would tick the step for a player who never touched the card. */
   var CTL_PARAMS = { feed_coupled: 1, steam_dump_setpoint: 1,
-                     letdown_orifice_a: 1, letdown_orifice_b: 1 };
+                     letdown_orifice_a: 1, letdown_orifice_b: 1,
+                     heater_auto: 1, spray_auto: 1 };
   function rodParam(snapshot, p) {
     var spec = ROD_PARAMS[p];
     if (!spec) return undefined;

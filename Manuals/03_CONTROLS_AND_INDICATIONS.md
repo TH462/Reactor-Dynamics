@@ -229,6 +229,22 @@ Blocks **auto-reinstate** when power falls below P-10.
 
 **Use to RAISE pressure** (restore subcooling, recover after spray/overcooling).
 
+**In BOTH cold modes — Mode 5, Cold Shutdown and Mode 4, Hot Shutdown — the heaters boot OFF, and
+that is the correct lineup.** It is where PWR-N12 leaves them on the way down: it turns them off at
+the depressurization step, *before* the RHR alignment that makes the plant Mode 4, so either plant
+you are handed matches the plant you would have cooled down yourself. Putting them back in AUTO is
+an operator action, and it is **PWR-N01 step 5b**, from either start. Until you take it, the
+Pressure SP does nothing: measured on this engine, dialling **1700 psig (11.72 MPa)** with the
+heaters off moves the plant **0.05 psi in 10 plant-minutes**, against **+133 psi (0.92 MPa)** once
+AUTO is selected. Basis: WTSM ch. 19, *"All groups of pressurizer heaters are energized to raise the
+pressurizer water temperature to saturation"* — an operator act during the heatup, not a standing
+lineup.
+
+Neither cold plant bleeds off while they are off. Measured 2026-09-04, 60 plant-minutes untouched:
+Mode 5 **362.6 psia (2.500 MPa) → 362.9 psia (2.502 MPa)**, **+0.3 psi/hr**; Mode 4
+**364.0 psia (2.510 MPa) → 364.2 psia (2.511 MPa)**, **+0.2 psi/hr**. Pressurizer level moves
+25.00 → 25.03 % in both.
+
 **Four different things put heater power at 0 %, and only one of them is a mode above.**
 The selector stays exactly where you left it in all four, so the panel alone cannot tell
 them apart — read the annunciators:
@@ -291,6 +307,12 @@ at 2235 psi (15.41 MPa) with every RCP secured, 600 s at 100 %:
 | neither | 2245 psi (15.48 MPa) |
 
 The stand-in is the **stronger** lever here, not the weaker one.
+
+**In both cold modes the spray boots in hand and SHUT**, alongside the heaters (§5.2), and for the
+same two reasons: it is where PWR-N12 leaves it, and with every RCP secured — which they are at
+Mode 4 as well as Mode 5 — a real spray valve has no head behind it. On this board the departure above means the lever would still act —
+which is exactly why leaving it in AUTO on a cold plant was wrong, not harmless. It goes back to
+AUTO at **PWR-N01 step 5b**, after the pumps are started at step 2.
 
 **Use to LOWER pressure** carefully. Return to AUTO when on target.
 

@@ -118,10 +118,17 @@ var STEP_UI = {
      * below MOVED WITH THEIR STEPS rather than being re-derived: 6->7, 7->8, 9->11. The ride
      * step is followed by a new letdown-transfer CONFIRMATION which carries no `control`, so it
      * owns no row here and only shifts what comes after it. */
+    /* AND "PLACE PRESSURE CONTROL IN SERVICE" INSERTED AT i:7 (#624 / #619 item 14, hours
+     * later the same day) — the three rows below MOVED AGAIN, 7->8, 8->9, 11->12, by shifting
+     * the numbers rather than re-reading the array. The step carries
+     * `control: 'Pressurizer Heaters (PZR)'`; its second card (PZR SPRAY) is a `cmd`-kind accs
+     * entry, and a step owns exactly one row here, so the spray is covered by `hl` and the board
+     * vocabulary, not by a row of its own. */
     { i: 6, view: 'board', control: 'Letdown Orifices (CVCS)' },
-    { i: 7, view: 'board', control: 'Pressure SP' },
-    { i: 8, view: 'board', control: 'Accumulator valve' },
-    { i: 11, view: 'board', control: 'Pressure SP' },
+    { i: 7, view: 'board', control: 'Pressurizer Heaters (PZR)' },
+    { i: 8, view: 'board', control: 'Pressure SP' },
+    { i: 9, view: 'board', control: 'Accumulator valve' },
+    { i: 12, view: 'board', control: 'Pressure SP' },
   ],
   'pwr2:pwr_startup': [
     { i: 1, view: 'board', control: 'Boron control' },

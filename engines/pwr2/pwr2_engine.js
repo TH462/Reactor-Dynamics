@@ -184,7 +184,11 @@
      * a colder primary for ever (measured reasoning in PWR2_VALIDATION §74). Mode 5 waits
      * on a Layer-0 extension below the floor — a review call, recorded in #507.
      * The #468 order is STRUCTURAL here: boron trims with the shutdown bank OUT, the bank
-     * inserts AFTER, so its 3676 pcm is margin in RODS, not boron. */
+     * inserts AFTER, so its 3676 pcm is margin in RODS, not boron.
+     * SINCE #624 IT ALSO BOOTS HEATERS OFF AND SPRAY IN HAND, SHUT, like Mode 5 — the cooldown
+     * turns the heaters off at its depressurization step, BEFORE the RHR alignment that makes
+     * the plant Mode 4, so this is "the cooldown's own lineup" for the pressurizer too. See the
+     * pzDrivers note for the measurement that decided it. */
     /* pzr_level 0.25 (#510 H-2, owner-ruled 2026-08-23): the LEVEL PROGRAM's own value at
      * 250 degF (levelProgram clamps to 25 % there) — settled construction, every state at
      * its own equilibrium. The old 0.30 booted the controller 5 points above program, so
@@ -196,7 +200,8 @@
      * state the old floor pinned at 211 degF. 122 degF / 363 psia is the retired preset's
      * own point and what the manuals' cooldown procedures already print; construction is the
      * wave-10 Mode 4 lineup one step colder — RHR aligned HX-shut (the hold), RCPs SECURED,
-     * heaters AUTO about the boot setpoint, dumps OFF, P-11 blocks taken, accumulators
+     * heaters OFF and the spray in hand and shut (#624 — the lineup `pwr_cooldown` leaves, and
+     * the one Mode 4 shares; see the pzDrivers note), dumps OFF, P-11 blocks taken, accumulators
      * isolated, and the #468 order pays the shutdown bank's worth in RODS, not boron. */
     cold_shutdown:  { pf: 0, load_mwe: 0, subcritical: true, cold: true,
                       tavg_c: 50.0, P_mpa: 2.5, pzr_level: 0.25 }
@@ -224,8 +229,11 @@
      * span, WTSM 10.2 — that span is the at-power PCS dial, and this seed does not touch it).
      * Below P-11 the real plant holds pressure by PROCEDURE — the operator jogging heaters —
      * and a preset is that procedure already performed (the #460 rods-in-MANUAL argument).
-     * Without a hold the bubble bleeds down against the surge-line exchange (~16 kW measured)
-     * at ~68 psi/hr, untouched. [declared] */
+     * THE SETPOINT SEED IS NOT THE SAME THING AS THE HEATERS BEING IN AUTO, and since #624 BOTH
+     * cold lineups boot them OFF — the seed is what the ladder comes back to when the heatup
+     * step presses AUTO. This comment used to end "without a hold the bubble bleeds down against
+     * the surge-line exchange (~16 kW measured) at ~68 psi/hr": measured 2026-09-04, it does
+     * not — +0.3 psi/hr over 60 plant-minutes with the heaters off. See the pzDrivers note. */
     var pz = PZ.createPressurizer({ P: icP,
       setpoint_mpa: ic.cold ? ic.P_mpa : undefined,
       level_frac: ic.cold ? ic.pzr_level : PZ.levelProgram(tavg0) });
@@ -401,16 +409,69 @@
        * DECLARED. Which load hangs on which bus is each module's own wire, sourced at the
        * wire (WTSM 3.2/5.7, NUREG-0737 II.E.3.1). */
       elec: { offsite: true, blackout: false },
-      /* SHUTDOWN: heaters in AUTO about the boot setpoint (#510 H-2 — the constructor seeds
-       * the ladder at the shutdown pressure; see the createPressurizer note above). The old
-       * lineup was MANUAL-0 with "the bubble holds at its saturation, DECLARED" — measured
-       * false twice over: the seal-injection insurge with no letdown path below 300 psia
-       * condensed the bubble (364 → 29 psia in 75 min), and even with that loop closed the
-       * surge-line exchange bleeds ~16 kW, −68 psi/hr. The RHR low-pressure letdown path
-       * (pwr2_cvcs) closes the inventory balance; the AUTO ladder holds the bubble against
-       * the bleed. The heatup's own act is still the operator's pzr_heaters_manual, which
-       * overrides the ladder. */
-      pzDrivers: {},
+      /* BOTH COLD INITIAL CONDITIONS BOOT WITH THE HEATERS OFF AND THE SPRAY IN HAND, SHUT
+       * (#624 / #619 item 14) *(OWNER, 2026-09-04: "next", to the recommendation "measure the
+       * heaters-OFF drift from cold_shutdown and land item 14's remaining halves")*.
+       *
+       * MODE 5 WAS BUILT FIRST AND MODE 4 FOLLOWED THE SAME HOUR, on the measurement rather
+       * than on the wording *(coordinator's call, 2026-09-04, on the measured Mode 4 numbers;
+       * the owner's ruling named the Mode 5 lineup because that was the question asked, and he
+       * sees this on #624 under status-owner-review)*. The first build keyed on
+       * `icName === 'cold_shutdown'` and asserted Mode 4's AUTO lineup as a deliberate scope
+       * boundary. Then Mode 4 was measured and it is the SAME defect at the same size — the
+       * ladder walking an initial condition off its own construction point:
+       *     hot_shutdown, AUTO      364.04 psia (2.510 MPa) -> 373.10 -> 376.28 at 0/15/60 min
+       *                             = +12.2 psi/hr
+       *     hot_shutdown, heaters   364.04 psia (2.510 MPa) -> 364.05 -> 364.21 at 0/15/60 min
+       *     off, spray shut         = +0.2 psi/hr
+       * Three more reasons the boundary was not worth defending: `hot_shutdown` is ENGINE-ONLY
+       * and not on the Free Play picker, so nobody is handed it as a starting plant; the
+       * cooldown puts the heaters OFF at its depressurization step, BEFORE the RHR alignment
+       * that makes the plant Mode 4, so a Mode 4 reached BY THE BOOK already has them off; and
+       * the sentence the Mode-5-only build put in `Manuals/04` — "Mode 4 arrives with heaters
+       * and spray in AUTO, so its step 5b is a check rather than an action" — is exactly the
+       * authored-instruction-the-plant-has-already-carried-out trap #624 has now found four
+       * times (#619 items 11, 16, 27, 28). Mode 4's pumps are equally secured, so its spray was
+       * equally a control with no head behind it.
+       *
+       * THIS LINE USED TO BE `{}` FOR EVERY IC, i.e. heaters AUTO and spray AUTO at Mode 5,
+       * and the note beside it said the MANUAL-0 lineup had been "measured false twice over".
+       * Both of those counter-measurements were against a STEAM bubble, which condenses without
+       * heat — that is precisely why a real cold plant holds a NITROGEN bubble — so neither was
+       * evidence that the heaters must be AUTO; they were evidence that an AUTO ladder was
+       * propping up an inherited initial condition. And the first of the two (364 → 29 psia in
+       * 75 min) was a SINCE-FIXED CONFIGURATION: seal injection with no letdown path below
+       * 300 psia. The RHR-to-CVCS cross-connect (#624 item 25) closes that balance now.
+       *
+       * THE SECOND CLAIM — "the surge-line exchange bleeds ~16 kW, −68 psi/hr" — WAS NEVER
+       * MEASURED ON THIS ENGINE AND IS FALSE HERE. Measured 2026-09-04, cold_shutdown with
+       * `heaters_manual: 0` and `spray_manual: 0`, 60 plant-minutes at DT 0.02:
+       *     0 min  362.59 psia (2.5000 MPa)   15 min  362.61 psia   60 min  362.85 psia
+       *   = +0.26 psi (+0.0018 MPa) in an hour, +0.3 psi/hr, +0.004 psi/min — and the
+       *   pressurizer level moves 25.000 → 25.031 % over the same hour.
+       * The reason is structural, not a tuning accident: `surge_heat_kW` in pwr2_pressurizer is
+       * a MASS-TRANSPORT term (an outsurge debiting its donor enthalpy to the hot leg), and
+       * this model carries no standing conduction path out of the vessel at all. On a still,
+       * isothermal plant there is no net surge, so there is nothing to bleed. Assert it the
+       * other way and it becomes visible: the AUTO ladder does not HOLD 362.6 psia, it CREEPS
+       * OFF it — 362.59 → 371.62 → 374.32 psia at 0/15/60 min, +11.7 psi/hr, because the
+       * proportional bank delivers 18.2 kW at zero error. The OFF lineup is the one that
+       * actually sits still, which is what an initial condition is supposed to do.
+       *
+       * IT IS ALSO WHERE THE COOLDOWN LEAVES THE PLANT. `pwr_cooldown` (ui/manual_procedures.js,
+       * pwr2 pool) ends Mode 5 with `set_heater mode:'manual' pct:0` and `set_spray open:false`,
+       * so a player who cools this plant down by the book arrives at exactly this lineup. Before
+       * this change the boot IC and the player's own plant disagreed.
+       *   [sourced] WTSM ch.19 (ML11223A342): "All groups of pressurizer heaters are energized
+       *   to raise the pressurizer water temperature to saturation" — an operator ACT during
+       *   the heatup, with the RCPs started only after the bubble is drawn at 320 psig. The
+       *   heatup checklist now has that step (`pwr_heatup`, "Place pressurizer pressure control
+       *   in service").
+       * AND THE SPRAY IS A CONTROL THAT CANNOT PROTOTYPICALLY ACT HERE: `SPRAY.needs_rcp` is
+       * true and the pumps are secured at Mode 5. `rcp_gate_enforced: false` is a DECLARED
+       * deviation that lets the one lever stand in for auxiliary spray (pwr2_pressurizer ~256),
+       * so leaving it in AUTO armed a valve with no head behind it. */
+      pzDrivers: ic.cold ? { heaters_manual: 0, spray_manual: 0 } : {},
       /* HZP: the dumps boot in STEAM PRESSURE mode at the sourced 1005 psig no-load — the
        * prototypical no-load lineup, and what physically holds the plant there (in tavg
        * mode the pump-heated plant would ride the 1085 psig MSSVs instead — the ICS

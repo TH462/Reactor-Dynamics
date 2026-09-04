@@ -1343,6 +1343,29 @@ function runSuite(SH, rec, quiet, only) {
          'A ' + cs5.letdown_orifice_a + ' / B ' + cs5.letdown_orifice_b + ', flow ' +
          (cs5.letdown_flow_normalized * 450000).toFixed(2) + ' gpm — the lineup-derived form ' +
          'read 0.00 gpm here');
+      /* AND THE PZR HEATERS / PZR SPRAY CARDS OPEN IN HAND ON BOTH COLD BOARDS (#624 / #619
+       * item 14, 2026-09-04). This is the surface half of the cold lineup: the two AUTO lamps
+       * are DARK and the heater percent box reads 0, so the heatup checklist's "place pressure
+       * control in service" step has something to do and the player can see that it did it. On
+       * the old boot all three read the other way — AUTO lit, 11.53 % at Mode 5 and 11.56 % at
+       * Mode 4 (18.2 kW of a 157.8 kW installed bank) — on plants whose reactor coolant pumps
+       * are secured, so the spray in AUTO was a control with no head behind it.
+       *
+       * ⚠ MODE 4 IS ASSERTED THE SAME WAY, AND IT USED TO BE ASSERTED THE OPPOSITE WAY. For an
+       * hour on 2026-09-04 this check read `cs4h.heater_auto === true` as a deliberate scope
+       * boundary, because the ruling named the Mode 5 lineup. Then Mode 4 was measured — its
+       * AUTO ladder walks the initial condition 364.04 -> 376.28 psia in 60 min (+12.2 psi/hr)
+       * against +0.2 psi/hr off — and the boundary went (coordinator's call, 2026-09-04). */
+      var e4h = new SH.PWR2Engine({ initial_state: 'hot_shutdown' });
+      e4h.step(DT);
+      var cs4h = e4h.getControlState();
+      ck('BOTH cold boards open with PZR HEATERS off and PZR SPRAY in hand, 0 % on the bus',
+         cs5.heater_auto === false && cs5.spray_auto === false && cs5.heater_power_pct === 0 &&
+         cs4h.heater_auto === false && cs4h.spray_auto === false && cs4h.heater_power_pct === 0,
+         'Mode 5 ' + cs5.heater_auto + ' / ' + cs5.spray_auto + ' / ' +
+         cs5.heater_power_pct.toFixed(2) + ' %; Mode 4 ' + cs4h.heater_auto + ' / ' +
+         cs4h.spray_auto + ' / ' + cs4h.heater_power_pct.toFixed(2) +
+         ' % — the AUTO boots read true / true / 11.53 % and 11.56 %');
     })();
 
     /* the block button's whole path: board -> kernel (empty trips -> FORWARD) -> shell ->
@@ -1996,6 +2019,13 @@ var MUTATIONS = [
   ['control_state loses the protective isolate (a shut lineup and an isolated plant look ' +
    'identical on the two lamps)',
    '      letdown_isolated: e.cv.letdownIsolated === true,', '', { grp: 'A' }],
+  /* THE PZR HEATERS AUTO LAMP (#624 / #619 item 14). Pinned true, it is the board every gate
+   * saw before Mode 5 booted the heaters off — nothing but the typeof guard read this field, so
+   * a lamp that could not go dark was indistinguishable from one that never needed to.
+   * `spray_auto` is already covered from the other end (the set_spray round trip, ~line 1597). */
+  ['the AUTO lamp on PZR HEATERS can never go dark (the board that predates the Mode 5 lineup)',
+   '      heater_auto: e.pzDrivers.heaters_manual === undefined,',
+   '      heater_auto: true,', { grp: 'H' }],
   /* #591 item 1 — the circulating-water sink. TWO anchors because the halves fail separately:
    * sever the door and the vacuum stops answering (the defect the owner actually found), while
    * publishing the RETIRED plant's band leaves the sink working but puts the C-9 removal point

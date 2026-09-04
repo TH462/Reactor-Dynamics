@@ -1126,7 +1126,7 @@
         'Hot Standby is hot AND subcritical. The control bank stays fully inserted and boron stays at the cold-shutdown concentration. Only the shutdown bank moves, in its own step.',
       ],
       steps: [
-        obs('Confirm Mode 5: Tavg 122 °F (50 °C), 363 psi (2.5 MPa), pumps stopped, turbine tripped, both rod banks in.',
+        obs('Confirm Mode 5: Tavg 122 °F (50 °C), 363 psi (2.5 MPa), pumps stopped, turbine tripped, heaters off, both rod banks in.',
           { p: 'plant_mode', op: '~', v: 5, tol: 0.1 },
           null, ['Tavg', 'Plant Pressure', 'Residual Heat Removal (RHR)'],
           'This is a picture of the starting plant, not an action. In Cold Shutdown the coolant is far below boiling, pressure is down, the residual heat removal loop is the heat sink, and both rod banks are fully in. If the pumps are already running or the shutdown bank is already out, the plant has left this picture and the checklist skips it.',
@@ -1222,6 +1222,40 @@
             { p: 'letdown_orifice_b', op: '>', v: 0, label: 'Orifice B in service' },
           ],
           hl: ['Letdown Orifices (CVCS)'] },
+        /* PRESSURE CONTROL IN SERVICE (#624 / #619 item 14, 2026-09-04) *(OWNER, 2026-09-04:
+         * "next", to the recommendation "measure the heaters-OFF drift from cold_shutdown and
+         * land item 14's remaining halves")*. Mode 5 now boots with the heaters OFF and the
+         * spray in hand and shut — the lineup `pwr_cooldown` leaves behind, so the picker's
+         * plant and a player's own cooled-down plant finally agree.
+         *
+         * THE NEXT STEP IS INERT WITHOUT THIS ONE, and that is the whole justification —
+         * measured, not argued: from the cold boot, dialling the Pressure SP to 1700 psig with
+         * the heaters off moves the plant 0.048 psi in 10 plant-minutes at 0.0 kW, against
+         * +133.4 psi at 157.8 kW once AUTO is pressed. Deleting this step reds the Pressure SP
+         * step's own acceptance (see the injection number in the #624 write-up).
+         *
+         * ⚠ THE STEP IS NOT HERE BECAUSE THE BUBBLE BLEEDS. `pwr2_engine`'s old pzDrivers note
+         * claimed a surge-line bleed of ~16 kW / -68 psi/hr and the build plan for this change
+         * asked this paragraph to quote that rate. Measured 2026-09-04 it is FALSE on this
+         * engine: 60 plant-minutes with the heaters off run 362.59 -> 362.85 psia, +0.3 psi/hr.
+         * There is no standing conduction path out of the vessel in this model, so a still
+         * isothermal plant has nothing to bleed. The prose below says what is true instead.
+         *
+         * TWO CARDS, THREE CHECK-OFFS. The step's own `cmd` is the heaters; the spray is a
+         * `cmd`-kind accs entry so the replay presses it too (procedures_harness issues those),
+         * and each card then has a `p`-kind entry asserting the EFFECT on the board's own lamp.
+         * `set_heater` and `set_spray` are different command families, so the two cannot tick
+         * each other off. */
+        { text: 'Place pressurizer pressure control in service: press AUTO on PZR HEATERS, then AUTO on PZR SPRAY.',
+          why: 'The cold plant arrives with the heaters off and the spray in hand and shut, which is where the cooldown procedure leaves them — so nothing is holding pressure and nothing will raise it. The next step\'s setpoint does nothing at all until the heaters are in AUTO: measured from this point, dialling 1700 psig (11.72 MPa) with the heaters off moves the plant 0.05 psi in 10 plant-minutes, against +133 psi (0.92 MPa) with the ladder in service. The spray goes to AUTO in the same breath because the reactor coolant pumps are running now and it finally has head behind it — it is the only thing that will bring pressure back down if the heaters overshoot. WTSM chapter 19: "All groups of pressurizer heaters are energized to raise the pressurizer water temperature to saturation."',
+          control: 'Pressurizer Heaters (PZR)', target: 'AUTO lit on both PZR HEATERS and PZR SPRAY; heater output following the setpoint',
+          cmd: { action: 'set_heater', auto: true }, hold: 10,
+          accs: [
+            { p: 'heater_auto', op: '>', v: 0, label: 'Heaters in AUTO' },
+            { cmd: { action: 'set_spray', auto: true }, label: 'Spray placed in AUTO' },
+            { p: 'spray_auto', op: '>', v: 0, label: 'Spray control in AUTO' },
+          ],
+          hl: ['Pressurizer Heaters (PZR)', 'Pressurizer Spray (PZR)'] },
         /* "UP", NOT "DOWN" *(OWNER, 2026-09-02 playtest, #608 item 2: "Step 7 says to dial the
          * pressurizer pressure setpoint DOWN to its 1700 psig floor. the problem is the mode 5
          * pressure set point is 363 so you are actually driving it UP not down")*. Measured: the
