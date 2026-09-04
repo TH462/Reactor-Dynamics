@@ -6150,6 +6150,14 @@
     // as a dead button is exactly what the 2026-08-21 telemetry session was).
     if (r && r.type === 'blocked') {
       if (r.code === 'INTERLOCK' && r.message) inspectFlash('⛔ Blocked', r.message);
+      /* A HELD CLOCK IS A PLANT REFUSAL, NOT INSTRUCTOR FEEDBACK *(owner playtest, 2026-09-04:
+       * "when gated and i click on a warp button, it closes the checklist")*. SPEED_HELD comes
+       * back `blocked` and fell into the instructor branch below, whose setFocus('instructor')
+       * switches the side panel to the Instructor tab — and since #607 put the running
+       * checklist in the Checklists pane, that IS closing the checklist. No gate raised this
+       * and the instructor has nothing to add (the message is the plant's own reason), so it
+       * goes where an interlock refusal goes: the scanner bar under the board. */
+      else if (r.code === 'SPEED_HELD' && r.message) inspectFlash('⛔ Held', r.message);
       else { msgHold.bypass = true; setFocus('instructor'); }   // gate feedback jumps the dwell queue
       latest = service.assembleSnapshot(); render(latest);
     } else if (r && r.type === 'error' && r.message) {

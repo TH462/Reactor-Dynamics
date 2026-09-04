@@ -1744,6 +1744,89 @@ async function testAdvFailPanel(page) {
   return log.join('\n') + '\n';
 }
 
+/* A HELD-CLOCK REFUSAL STAYS ON THE CHECKLISTS TAB (#627, owner playtest 2026-09-04: "when gated
+ * and i click on a warp button, it closes the checklist"). `set_speed` under a plant-declared
+ * hold returns blocked/SPEED_HELD, and cmd() routed every non-interlock block to the Instructor
+ * tab — which, with the running checklist in the Checklists pane since #607, IS closing the
+ * checklist. Only a browser can see it: the routing is in cmd(), the tab is DOM.
+ *
+ * The hold is PLANTED at the service's edge state (`_prevSpeedHold`, the very field set_speed
+ * consults) through the ?dev=1 seam: reaching the real one is a 75-plant-minute heatup, and the
+ * click path is the same whichever plant reason stands. Positive control first: with no hold the
+ * same click LANDS and the tab is likewise untouched — so a page that ignored speed clicks
+ * altogether could not pass. Dropouts are switched off for the fixture so a checklist step
+ * settling cannot snap the control click back to 1x between click and read; the hold ignores
+ * that switch by design (#622). */
+async function testHeldSpeedClick(page) {
+  var log = [];
+  var base = 'http://127.0.0.1:' + PORT + '/ui/shell.html?engine=pwr2&run=1&dev=1';
+  await page.goto(base, { waitUntil: 'networkidle', timeout: 90000 });
+  await dismissMission(page);
+  await waitBoardLive(page, 20000);
+  var started = await page.evaluate(function () {
+    try {
+      var svc = globalThis.RD.__dev.service();
+      svc.attentionStops = false;
+      var r = svc.handleCommand({ action: 'start_checklist', procedure_id: 'pwr_heatup' });
+      return { ok: !(r && r.type === 'error'), msg: r && r.message };
+    } catch (e) { return { ok: false, msg: String(e) }; }
+  });
+  if (!started.ok) throw new Error('#627 fixture: start_checklist failed — ' + started.msg);
+  await page.waitForFunction(function () {
+    var b = document.querySelector('#tabbar button.on');
+    return !!b && b.getAttribute('data-tab') === 'checklists' && !!document.querySelector('.ckl-step');
+  }, { timeout: 15000, polling: 200 });
+  await page.waitForTimeout(1200);
+  async function read() {
+    return await page.evaluate(function () {
+      var b = document.querySelector('#tabbar button.on');
+      var svc = globalThis.RD.__dev.service();
+      return { tab: b ? b.getAttribute('data-tab') : null, accel: svc.timeAcceleration,
+               steps: document.querySelectorAll('.ckl-step').length,
+               scanner: ((document.getElementById('scanner') || {}).textContent || '').replace(/\s+/g, ' ').slice(0, 160) };
+    });
+  }
+  /* control: no hold — the click lands (600x, or 60x when WARP refuses a fresh plant) */
+  await page.click('#speed [data-speed="600"]');
+  await page.waitForTimeout(300);
+  var ctl = await read();
+  if (ctl.tab !== 'checklists' || !(ctl.accel > 1)) {
+    throw new Error('#627 control: an unheld 600x click must land above 1x with the Checklists tab kept — ' +
+                    'tab ' + ctl.tab + ', accel ' + ctl.accel);
+  }
+  log.push('control: 600x click landed at ' + ctl.accel + 'x, tab ' + ctl.tab);
+  /* PAUSE BEFORE PLANTING. `_prevSpeedHold` is edge state that every broadcast rewrites from
+   * the plant's own `true_state.speed_hold` (null here), so on a running service the planted
+   * value lived for at most one 100 ms broadcast and the click found it gone — measured: the
+   * first cut of this fixture reported "the held click was NOT refused, accel 600" on the
+   * FIXED tree. Paused, nothing rewrites it, and cmd() still assembles and renders a snapshot
+   * after every command, which is the path under test. */
+  await page.evaluate(function () {
+    var svc = globalThis.RD.__dev.service();
+    svc.handleCommand({ action: 'set_speed', value: 1 });
+    svc.handleCommand({ action: 'pause' });
+    svc._prevSpeedHold = 'accumulator window open — arm the accumulators before accelerating again';
+  });
+  await page.click('#speed [data-speed="600"]');
+  await page.waitForTimeout(300);
+  var held = await read();
+  await page.evaluate(function () { globalThis.RD.__dev.service()._prevSpeedHold = null; });
+  if (held.accel !== 1) {
+    throw new Error('#627: the held click was NOT refused — accel ' + held.accel +
+                    ' (the fixture plants the hold at _prevSpeedHold; check set_speed in the service)');
+  }
+  if (held.tab !== 'checklists' || held.steps === 0) {
+    throw new Error('#627: a refused speed click under a plant hold left the Checklists tab — tab ' +
+                    held.tab + ', ' + held.steps + ' steps visible (this is the "closes the checklist" report)');
+  }
+  if (!/Held/.test(held.scanner)) {
+    throw new Error('#627: the refusal did not reach the scanner bar — it read "' + held.scanner + '"');
+  }
+  log.push('held: click refused at 1x, tab ' + held.tab + ', scanner "' + held.scanner.slice(0, 90) + '"');
+  await page.evaluate(function () { globalThis.RD.__dev.service().handleCommand({ action: 'stop_checklist' }); });
+  return log.join('\n') + '\n';
+}
+
 async function main() {
   fs.mkdirSync(SCRATCH, { recursive: true });
   var fallback = path.join(SCRATCH, 'ui-screenshot-fallback.log');
@@ -1793,6 +1876,8 @@ async function main() {
     fs.writeFileSync(path.join(SCRATCH, 'save-load-refusal.log'), slLog);
     var afLog = await testAdvFailPanel(page);
     fs.writeFileSync(path.join(SCRATCH, 'adv-fail-panel.log'), afLog);
+    var hsLog = await testHeldSpeedClick(page);
+    fs.writeFileSync(path.join(SCRATCH, 'held-speed-click.log'), hsLog);
     fs.writeFileSync(path.join(SCRATCH, 'ui-screenshot-summary.log'), summary.join('\n') + '\n');
     console.log('E2E UI verification: PASS (' + (ENGINES.length * VIEWS.length) + ' screenshots)');
   } finally {
@@ -1811,7 +1896,7 @@ if (require.main !== module) {
   module.exports = { startServer: startServer, dismissMission: dismissMission,
                      testChartSettings: testChartSettings, testMonitorList: testMonitorList,
                      testMissionCloseResumes: testMissionCloseResumes, testRunStartMark: testRunStartMark,
-                     testHeldPlantDialog: testHeldPlantDialog,
+                     testHeldPlantDialog: testHeldPlantDialog, testHeldSpeedClick: testHeldSpeedClick,
                      testSaveLoadRefusal: testSaveLoadRefusal, port: function () { return PORT; } };
 } else {
   main().catch(function (e) {

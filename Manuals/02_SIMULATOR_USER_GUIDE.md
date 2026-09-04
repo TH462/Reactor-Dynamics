@@ -154,6 +154,13 @@ failure, a first alarm on a quiet board, power moving faster than 2 %/s or press
 of quiet**. Asking for WARP while it is unavailable lands you at 60× with the same toast. A
 mission's own fast-forward never uses WARP.
 
+**The plant can hold the clock.** Where the plant needs you and cannot let you skip past — today
+the accumulator arming window on a heatup, from the **665 psia (4.585 MPa)** cover gas until the
+accumulator valve is open — the clock drops to **1×** and every speed button above it is refused,
+with the reason in the scanner bar under the board. Opening the valve releases it. This hold
+ignores the fast-forward dropout setting, because the point of it is that the window cannot be
+recovered once passed.
+
 **Fast-forward dropout.** Acceleration snaps back to **1×** when something arrives that you
 have to look at: a **reactor trip**, a **new equipment failure**, or the **first alarm on an
 otherwise quiet board**. A toast names the reason. Alarms that follow while the board is

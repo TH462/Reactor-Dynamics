@@ -45,6 +45,33 @@ where the two differ or where judgment was exercised.
 
 ---
 
+## 2026-09-04-workbench-b — #627: the accumulator clock hold latches, the Pressure SP step ticks at the cover gas, and a held speed click stays on the checklist
+
+**Decision** *(owner playtest, 2026-09-04: "it holds the warp at 1x until pressure is over 682 … the
+warp hold should gate on the user setting the pressure … when gated and i click on a warp button, it
+closes the checklist")*. Three changes, all measured on the merged workbench tree
+(`Diagnostic/TUNING_LOG.md` 2026-09-04-workbench-b has the table):
+
+1. **`true_state.speed_hold` LATCHES** (`pwr2_engine.js`). "Rising" decides only the entry into the
+   665–1615 psia window; the hold then stands until the valve opens or the pressure leaves the band.
+   As shipped by #622 it was re-decided every 0.02 s step and chattered three times over 24 psi at 1×.
+2. **The Pressure SP step's acceptance moves from 4.7 MPa (682 psia) to the cover gas, 4.585 MPa,
+   as the second of two check-offs** — the first is the dialled setpoint, a command-kind entry. The
+   #608 margin was a safety claim about the NEXT step; the hold now rises at the cover gas, so the
+   tick lands there too and the accumulator step is the one active while the clock is held. At the
+   cover gas the tank and primary are at one pressure, so #608's concern (backfeed) needs no margin.
+3. **`SPEED_HELD` is routed like an interlock** (`app.js` `cmd()`): scanner flash, not
+   `setFocus('instructor')`, which was switching the panel off the Checklists tab.
+
+**Rejected:** ticking the setpoint step on the command alone (the owner's literal words). That
+releases "open the valve" from 370 psia, and opening below the cover gas backfeeds the tank — the
+exact trap #608 closed. The dialled-setpoint check-off gives the acknowledgement he asked for
+without re-opening it.
+
+**Gates:** `run_checklist_pwr2` 127 → 130 (2j, span-asserted, both halves injected red);
+`verify_e2e_ui` +1 browser check (injected red: "tab instructor"); `run_hardrules` 480 on the merged
+tree; manuals re-sealed at Rev 17 pending (item (v), 02 §4.1).
+
 ## 2026-09-04-workbench-a — #625: two pacing tiers — WARP is the same physics at 0.5 s, and the freeze was a missing cap
 
 **Decision** *(OWNER RULINGS, 2026-09-04: "Yes" / "Yes" / "60x" / "Yes" on the four decisions the

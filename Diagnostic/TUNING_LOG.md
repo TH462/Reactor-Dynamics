@@ -29,6 +29,99 @@ and the user-visible summary in `CHANGELOG.md`. This file points at those and tr
 
 ---
 
+## Session log — 2026-09-04-workbench-b (#627 — the accumulator clock hold chattered and read as a hold on the Pressure SP step; a held speed click closed the checklist)
+
+**The ask** *(OWNER, 2026-09-04, on the Mode 5 → Mode 3 checklist: "mode 5→3 checklist step 9. it
+holds the warp at 1x until pressure is over 682. it should not gate the warp hold on the pressure,
+the warp hold should gate on the user setting the pressure. thats the important part to wait for,
+not the pressure. also, when gated and i click on a warp button, it closes the checklist.")*.
+
+### First, the merge: develop → workbench, eleven conflicts
+
+The owner's build is develop's working copy, and the hold he hit is #622's (develop), while this
+lane carried #625's WARP tier. Merged before measuring anything (`08765a7`). Three decisions in the
+conflicts: `set_speed` keeps #622's `SPEED_HELD` refusal AHEAD of #625's tier logic (a held plant
+refuses every rung above 1×, WARP or PLAY); the 5× strip-chart ladder keeps #625's
+`[180, 900, 1800, 5400]` over develop's copy of the 1× ladder (the wall-clock rule in the comment
+above it); the speed toast keeps #625's detail text with #622's severity map and flash.
+`run_hardrules` measured **480** on the union (develop 477 + 3), not picked. The themes list came
+to six and the #606 bullet went to `TRAPS.md`; the doc budget then bound at **−46 words** and two
+status sentences were cut. Merged-tree gates before the fix: `run_warp_tier` 17/17,
+`run_checklist_pwr2` 127/127, `run_m5` 120.
+
+### What the sentence actually described (measured, not read)
+
+A player driver walking the heatup checklist with 600× requested on every broadcast the service
+would take it (`run_checklist_pwr2`'s `mkSvc`, dropouts ON — the player's default):
+
+| plant time | psia | event |
+|---|---|---|
+| 44.0 min | 369.4 | Pressure SP dialled; `set_speed 600` **accepted** on the same broadcast |
+| 75.5 min | 667.9 | `speed_hold` rises (cover gas 665); 600× refused `SPEED_HELD` |
+| 75.5 min | 668.0 | hold **clears** on the next physics step; 600× accepted |
+| 76.5 min | 675.6 | hold rises again; refused |
+| 76.7 min | 675.9 | clears; accepted |
+| 78.7 min | 691.6 | hold rises a third time; **the Pressure SP step ticks** (4.7 MPa); accumulator step active |
+| 78.7 min | 691.6 | valve opened; hold clears; 600× accepted |
+
+So nothing gated on the setpoint. **Two defects, each in code that was right on its own day.** (1)
+The hold was re-decided every 0.02 s step from `accP > prevAccP`, and at 1× that increment sits
+inside solver jitter: rose, cleared, re-rose three times over 24 psi, toasting each time and letting
+one 600× request through in each gap. `run_checklist_pwr2` 2i SAMPLED the first rise and passed —
+the #542 shape. (2) #608 moved the Pressure SP tick to 682 psia to clear the cover gas by 17 psi
+(a tick is permission for the next step); #622, two days later, held the clock AT the cover gas.
+For those 17 psi the checklist showed the setpoint step waiting on a number while the plant
+refused fast time and asked for the accumulators — the next step, greyed. That IS "holds the warp
+at 1x until pressure is over 682". (3) The click: `SPEED_HELD` comes back `blocked`, and `cmd()`
+routed every non-`INTERLOCK` block to `setFocus('instructor')`, which selects the Instructor tab —
+and since #607 the running checklist lives in the Checklists pane.
+
+### The fix, and why the tick moves to the cover gas rather than to the setpoint
+
+The owner's "gate on the user setting the pressure" is honoured as the step's FIRST check-off: a
+command-kind `accs` entry that ticks the moment the command is issued, so the action is
+acknowledged before the ride. The step's completion still waits on pressure, because #608's rule is
+right: the tick releases the player into "open the valve", and below the cover gas that backfeeds
+the tank (measured then: 100 → 97.2 %, +22 ppm from 609 psia). What changes is WHERE — the cover
+gas itself, 4.585 MPa (`RD.pwr2.eccs.ACC.p0_mpa`), the crossing the hold rises on, so the step
+active while the clock is held is the one that says open the valve. No margin is needed: at the
+cover gas the tank and the primary are at one pressure and opening on the tick moves nothing.
+Engine: the hold LATCHES on a rising entry and stands until the valve opens or the pressure leaves
+the band; a cooldown never latches. UI: `SPEED_HELD` flashes in the scanner like an interlock.
+
+Measured after: hold at **667.9 psia**, accumulator step active **one broadcast later at 668.0**,
+valve open → hold clears → 600× accepted at 668.1. The 2j check rides 60 s at 1× with the valve shut
+and counts clears (0) and accepted requests (0).
+
+### Injections
+
+- 2j-1 (latch removed on a scratch copy of the tree): **FAIL — "let go 53 times · 547 refusals,
+  53 accepted"** over the 60 s ride, and the active-step check reds with it. **A trap of its own,
+  worth the line:** the first attempt at this injection replaced a two-line pattern joined with
+  `\n` in a CRLF file, threw *"latch lines not found"* to stderr, and the grep that filtered the run
+  hid the throw — so the gate ran on the FIXED engine and the latch check "passed under injection".
+  Read as hollow, it cost a second probe run to find that the injection had never landed. Check the
+  injection landed (count the marker) before reading the gate.
+- 2j-2 (tick back at 4.7 MPa): **FAIL — accumulator step active `null` broadcasts later** (never
+  within the 60 s window; the setpoint step stayed active).
+- 2e, the #608 check, went RED on the fixed tree first — "0 pairs" — because it only read a step's
+  single `acc` and the setpoint step is now an `accs` step. Widened to read a `p`-kind entry of
+  `accs`; 1 pair, 4.585 MPa against the engine's 4.583 MPa (664.7 psia) cover gas, strictly above.
+- Browser: `verify_e2e_ui` `testHeldSpeedClick` with the `SPEED_HELD` line disabled reads
+  *"a refused speed click under a plant hold left the Checklists tab — tab instructor, 15 steps
+  visible"*; with the fix, *"click refused at 1x, tab checklists, scanner ⛔ Held — …"*. Its own trap:
+  the first fixture planted `_prevSpeedHold` on a RUNNING service and every broadcast rewrote it from
+  the plant's null, so the click found no hold — "NOT refused, accel 600" on the fixed tree. Paused,
+  nothing rewrites it.
+
+### The trap worth carrying
+
+Two mechanisms two days apart, each measured and each right, disagreed by 17 psi — and the gate for
+the newer one sampled its first rise. **When you add a plant cue, grep the checklist for the step
+that will be active when it fires; and assert a hold on the SPAN, never on the first rise.**
+
+---
+
 ## Session log — 2026-09-04-workbench-a (#625 — two pacing tiers: the "simplified physics" tier was the same physics at a coarser step, and the freeze was a missing cap)
 
 **The ask** *(OWNER, issue #625: "Create new FF system to alleviate the slowdown issues some people

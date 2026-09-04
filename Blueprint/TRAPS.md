@@ -22,6 +22,26 @@ the evidence to put it back** — say so in the session log rather than quietly 
 
 ---
 
+## Evicted 2026-09-04b (a THEMES-rotation eviction — the #600/#601 trip-blocks bullet, out for #627's)
+
+The oldest of five. **It meets the criterion in part**: the P-7 rows and the intermediate-range trip
+are now pinned by `run_manual_setpoints` and the TRIP BLOCKS checks, so a regression reds a runner.
+The second half — a shared boolean that two wirings satisfy identically — is the #295/#545 "plant
+the demand PAST the half you are not testing" idiom, which the standing list already carries.
+
+> **A `blockable` FLAG IS NOT EVIDENCE AN OPERATOR BLOCKS IT — AND A SHARED BOOLEAN CANNOT BE
+> TESTED FOR WHICH CONSUMER IT BELONGS TO** (2026-09-01, #600/#601, from the owner's question about
+> the dark TRIP BLOCKS rows). Two rows offered a P-7 block WTSM 12.2 calls *automatic*; #564 made
+> them politely dark without asking what the source says the operator does. A third was dark because
+> the 25 % intermediate-range TRIP did not exist — the retired plant wrote the ROD STOP's 20 % into
+> the trip's row and `Manuals/09` shipped it. #572 then hung the C-1 stop on the power-range lever
+> and **its check asserted that and passed**: with one lever, both wirings look identical.
+
+**The half worth carrying, if you only read one line:** a flag that says a thing CAN be done is not
+a source saying an operator DOES it — go and read what the source says the operator does.
+
+---
+
 ## Evicted 2026-09-04 (a THEMES-rotation eviction — the #606 cache-key bullet, out on the workbench<-develop merge)
 
 A rotation eviction, not a standing-list one: the merge brought the themes list to six (#625's

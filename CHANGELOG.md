@@ -32,6 +32,38 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
 
 ## [Alpha 1.7.2-rc6] — 2026-09-03
 
+### Fixed (#627 — the accumulator clock hold chattered and read as a hold on the Pressure SP step; a held speed click closed the checklist)
+
+*(Owner playtest, 2026-09-04: "it holds the warp at 1x until pressure is over 682. it should not
+gate the warp hold on the pressure, the warp hold should gate on the user setting the pressure.
+thats the important part to wait for, not the pressure. also, when gated and i click on a warp
+button, it closes the checklist.")*
+
+Measured as a player walking the Mode 5 → Mode 3 checklist at 600× (`run_checklist_pwr2`'s
+harness, dropouts on): fast time is accepted the moment the setpoint is dialled, so nothing gated
+on the setpoint. The hold that followed is #619 item 13's accumulator hold. It rose at
+**667.9 psia (4.605 MPa)**, cleared on the next physics step at 668.0, and re-rose at 675.6 and
+691.6 — three toasts, three refusals, and a 600× request accepted in each gap — while the Pressure
+SP step waited on **682 psia (4.7 MPa)**, #608's margin over the cover gas, with the accumulator
+step greyed beneath it. Read from the checklist, that is a hold on the setpoint step until 682.
+
+- **The hold LATCHES** (`pwr2_engine.js`). "Pressure rose since the last 0.02 s step" now decides
+  only the entry into the window; once latched the hold stands until the valve opens or the
+  pressure leaves the band, and a cooldown, entering from above, never latches.
+- **The Pressure SP step is two check-offs**: the dialled setpoint, a command-kind entry that ticks
+  the moment the command is issued, and pressure at the **665 psia (4.585 MPa)** cover gas — the
+  crossing the hold rises on. Measured after: hold at 667.9 psia, accumulator step active one
+  broadcast later at 668.0. #608's rule survives with no margin: at the cover gas the tank and the
+  primary are at one pressure, so opening on the tick moves nothing (609 psia was a 56 psi head).
+- **A `SPEED_HELD` refusal goes to the scanner bar** like an interlock (`app.js` `cmd()`). It fell
+  into the instructor-focus branch, and `setFocus('instructor')` switches the side panel off the
+  Checklists tab — which, since #607 put the running checklist there, closed the checklist.
+- Gates: `run_checklist_pwr2` **127 → 130** (2j: the hold stands for 60 s at 1× with the valve shut;
+  the accumulator step is active within 50 broadcasts of the hold rising; the setpoint box is ticked
+  on the broadcast after the command) — each half reproduced by injection on a scratch copy of the
+  tree. `verify_e2e_ui` gains the held-click check, which reads *"tab instructor, 15 steps visible"*
+  with the fix disabled. User guide **02 §4.1** gains the hold paragraph (Rev 17 pending, item (v)).
+
 ### Fixed (#624 / #619 items 14/25 — one letdown field was three jobs)
 
 *(OWNER RULING, 2026-09-04: selected "Split the field: `letdownOpen` stays the orifice lineup, the
