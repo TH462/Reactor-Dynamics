@@ -29,6 +29,142 @@ and the user-visible summary in `CHANGELOG.md`. This file points at those and tr
 
 ---
 
+## Session log — 2026-09-04-develop-g (#624 item 14 — both cold states boot with the heaters off, and the bubble does not bleed)
+
+**The ask.** The other two halves of #619 item 14: the cold plant boots with the pressurizer
+heaters OFF and the spray in hand and shut, and the heatup checklist gains the step that puts
+pressure control back in service. Authority *(OWNER, 2026-09-04: "next", to the recommendation
+"measure the heaters-OFF drift from cold_shutdown and land item 14's remaining halves")*, extended
+to Mode 4 the same hour *(coordinator's call, 2026-09-04, on the measured Mode 4 numbers; the
+owner's ruling named the Mode 5 lineup because that was the question asked, and he reviews the
+extension on #624 under `status-owner-review`)*. The letdown half landed the same day as `14d9f20`.
+
+### The measurement came first, and it refuted the reason the change was supposed to have
+
+`pwr2_engine`'s `pzDrivers` note said the MANUAL-0 lineup had been "measured false twice over" —
+once by a 364 → 29 psia collapse (a since-fixed configuration: seal injection with no letdown path
+below 300 psia, which the RHR cross-connect closed at `14d9f20`), and once by *"the surge-line
+exchange bleeds ~16 kW, −68 psi/hr"*. **The second was never measured on this engine and is false
+here.** 60 plant-minutes at DT 0.02 from `cold_shutdown` with `heaters_manual: 0` and
+`spray_manual: 0`, against the same ride left in AUTO:
+
+| plant-min | heaters OFF, spray shut | heaters AUTO (the old boot) |
+|---|---|---|
+| 0  | 362.59 psia (2.5000 MPa) · 25.000 % · 122.000 °F | 362.59 psia · 25.000 % · 122.000 °F |
+| 5  | 362.55 psia (2.4997 MPa) · 24.965 % · 122.034 °F | 368.20 psia (2.5387 MPa) · 24.963 % · 122.047 °F |
+| 10 | 362.64 psia (2.5003 MPa) · 25.020 % · 122.014 °F | 369.78 psia (2.5495 MPa) · 25.021 % · 122.056 °F |
+| 13 | 362.56 psia (2.4997 MPa) · 24.948 % · 122.037 °F | 370.43 psia (2.5540 MPa) · 24.948 % · 122.080 °F |
+| 15 | 362.61 psia (2.5001 MPa) · 24.974 % · 122.019 °F | 371.62 psia (2.5622 MPa) · 24.975 % · 122.065 °F |
+| 20 | 362.70 psia (2.5007 MPa) · 25.021 % · 122.019 °F | 371.62 psia (2.5622 MPa) · 25.021 % · 122.102 °F |
+| 30 | 362.77 psia (2.5012 MPa) · 25.039 % · 122.018 °F | 372.36 psia (2.5674 MPa) · 25.039 % · 122.128 °F |
+| 60 | 362.85 psia (2.5018 MPa) · 25.031 % · 122.018 °F | 374.32 psia (2.5809 MPa) · 25.030 % · 122.212 °F |
+
+Drift, heaters OFF: **+0.26 psi (+0.0018 MPa) in an hour = +0.3 psi/hr = +0.004 psi/min**, and
+`lowLevelCut` false throughout, letdown a flat 0.80147 kg/s. Every stop criterion in the plan
+(3 psi/min, 300 psia inside 15 min, 3 points of level, the 17 % cut) was clear by two orders.
+
+**Why there is no bleed, structurally.** `surge_heat_kW` in `pwr2_pressurizer.js:740` is a
+MASS-TRANSPORT term — an outsurge debiting its donor enthalpy to the hot leg — and this model has
+no standing conduction path out of the vessel at all (the only `ambient` in the file is the PORV
+tailpipe). A still, isothermal plant has nothing to bleed. The −68 psi/hr figure belongs to the
+retired engine or to the pre-cross-connect configuration; it is retired in the code, in `Manuals/03`
+and in the checklist prose, and the new group-R check says so in its own comment.
+
+**The AUTO ladder was not holding the initial condition; it was walking it off its own point.**
+362.59 → 371.62 → 374.32 psia at 0/15/60 min, **+11.7 psi/hr**, because the proportional bank
+delivers **18.2 kW at zero error** (`heater_power_pct` 11.53 % on the board). The OFF lineup is the
+one that actually sits still, which is what an initial condition is for.
+
+### What changed
+
+`pwr2_engine.js` — `pzDrivers: ic.cold ? { heaters_manual: 0, spray_manual: 0 } : {}`, and the note
+beside it rewritten around the measurements above. Three neighbouring comments carrying the same
+false claim or the retired scope were corrected: the `createPressurizer` seed note, the `ICS`
+`cold_shutdown` header ("heaters AUTO about the boot setpoint") and the `ICS` `hot_shutdown` header.
+
+`run_pwr2_engine.js` — a new **group R**, six checks, three mutations, all caught:
+
+| check | new boot | old heaters-AUTO boot |
+|---|---|---|
+| Mode 5 boots heaters OFF / spray shut, 0 kW | `heaters_manual` 0, `spray_manual` 0, 0.0 kW | both `undefined`, **18.2 kW** — FAILS |
+| **and so does Mode 4**; at-power does not | Mode 4 `{heaters_manual:0, spray_manual:0}` at **0.0 kW**, hot full power `{}` | Mode 4 both `undefined`, **18.2 kW** — FAILS |
+| the bubble survives 15 plant-min (< 3 psi, > 300 psia, < 3 points, no cut) | 362.59 → 362.61 psia, **+0.05 psi/hr**, level 25.00 → 24.97 | 362.59 → **371.62** psia, +9.02 psi — FAILS the 3 psi band |
+| **Mode 4's bubble survives its own window** | 364.04 → 364.05 psia, **+0.03 psi/hr**, level 25.00 → 24.98 | 364.04 → **373.10** psia, +9.06 psi — FAILS the same band |
+| the Pressure SP alone is INERT with the heaters off | **+0.048 psi in 10 plant-min at 0.0 kW** | +133.4 psi at 157.8 kW — FAILS |
+| pressing AUTO restores the ladder | `heaters_manual` → `undefined`, `shedLatch` false, **157.8 kW, +133.4 psi in 10 plant-min** (+63.9 at 5) | passes, but only because it was already in AUTO |
+
+Mode 4 is asserted **separately** rather than folded into the Mode 5 checks with a loop: the two
+states differ by 128 °F (71.1 °C) and their bubbles sit at different saturation points, so "cold
+plants hold" is two measurements, not one generalised from the colder.
+
+`run_pwr2_shell.js` — both cold boards' AUTO lamps and heater percent box in one check: Mode 5
+false / false / **0.00 %**, Mode 4 false / false / **0.00 %**. Old boots: true / true / **11.53 %**
+and true / true / **11.56 %**. One mutation added (the AUTO lamp pinned true); `spray_auto` was
+already covered from the `set_spray` round trip.
+
+**Verified out of tree, because a boot lineup is a claim about what the PLAYER gets:** the lineup
+survives the full stack (`SimulationService` + `engageDefaults()` + the startup lineup). At 700
+ticks, `cold_shutdown` reads `heater_auto` false / `spray_auto` false / 0.00 % at 362.62 psia
+(2.5002 MPa) and `hot_shutdown` the same at 364.05 psia (2.5100 MPa).
+
+`ui/manual_procedures.js` — `pwr_heatup` gains "Place pressurizer pressure control in service"
+between the letdown step and the pressurization, with `cmd: set_heater {auto:true}`, a `cmd`-kind
+`accs` entry for `set_spray {auto:true}` so the replay presses both cards, and a `p`-kind entry per
+card asserting the lamp. `heater_auto` / `spray_auto` needed `CTL_PARAMS` entries
+(`layers/instructor_layer.js`) and `PRED_DISPLAY` bool entries (`ui/app.js`) — the #624 letdown
+precedent exactly. Step 1's observation text gains "heaters off".
+
+**INJECTION.** Deleting the step reds `run_checklist_pwr2` — see the CHANGELOG entry for the number.
+
+### A red that was the fix working, adjudicated on its own
+
+`run_manual_setpoints` went 13/13 → 12/13 on **Primary pressure @ cold_shutdown: manual 368,
+plant 362.6**. That figure was never this state's settled pressure — it was the AUTO ladder walking
+the preset up during the gate's own 70-second settle at 10×. Corrected to **363 psi (2.500 MPa)**,
+which is the constructor's own point, with the reason recorded in the table's notes. Not a widened
+band: the tolerance is untouched at 3.0 psi and the cell now names the right number. When Mode 4
+followed, the identical red arrived on `hot_shutdown` (**manual 369, plant 364.0**) and was
+adjudicated the same way, to **364 psi (2.510 MPa)**. Two cells, one artefact.
+
+### The scope decision, and its reversal an hour later
+
+**Mode 5 was built first, with Mode 4 deliberately outside.** The reasoning at the time: the ruled
+lineup is the Mode 5 one, `pwr_cooldown` runs to Mode 5, and the boundary was asserted in both the
+engine gate and the shell gate so nothing could move it by accident. That was a boundary drawn from
+the WORDING of a ruling, not from a measurement, and it did not survive one.
+
+**Mode 4 was then measured, and it is the same defect at the same size.** `hot_shutdown`, 60
+plant-minutes, engine-direct:
+
+| | 0 min | 15 min | 60 min | drift |
+|---|---|---|---|---|
+| heaters AUTO (as it shipped) | 364.04 psia (2.510 MPa) | 373.10 psia (2.572 MPa) | **376.28 psia (2.594 MPa)** | **+12.2 psi/hr** |
+| heaters off, spray shut | 364.04 psia (2.510 MPa) | 364.05 psia (2.510 MPa) | **364.21 psia (2.511 MPa)** | **+0.2 psi/hr** |
+
+`lowLevelCut` false throughout both; level 25.00 → 25.03 %. Three more reasons the boundary was not
+worth defending: `hot_shutdown` is **engine-only**, not on the Free Play picker, so nobody is handed
+it as a starting plant; `pwr_cooldown` turns the heaters off at its **depressurization step, before
+the RHR alignment that makes the plant Mode 4**, so a Mode 4 reached by the book already has them
+off; and the sentence the Mode-5-only build wrote into `Manuals/04` — *"Mode 4 arrives with heaters
+and spray in AUTO, so its step 5b is a check rather than an action"* — is the
+authored-instruction-the-plant-has-already-carried-out trap #624 has now found four times (#619
+items 11, 16, 27, 28). **The predicate is now `ic.cold`**, and the checks and mutations were flipped
+with it — R1b asserts BOTH cold ICs against at-power, R2b rides Mode 4's own 15-minute window, and
+the mutation that used to be "the OFF lineup spreads to Mode 4" is now its inverse, "Mode 4 drops
+back to AUTO", which reds R1b and R2b.
+
+**A second manual figure fell out of it, the same shape as the first.** `run_manual_setpoints` went
+red on *Primary pressure @ hot_shutdown: manual 369, plant 364.0* — the identical artefact, the AUTO
+ladder walking the preset up during the gate's 70-second settle. Corrected to **364 psi
+(2.510 MPa)**, measured through `SimulationService` at 700 ticks / 10× exactly as the gate settles.
+
+**Swept while in the file:** `Manuals/04` PWR-N01 step 6 and its *Pressurized to NOP* milestone row
+both quoted the retired plant's **600 psi (4.14 MPa)** RHR autoclosure — three lines under a NOTE
+sourcing the same interlock at **585 psig (4.03 MPa)** from WTSM §5.1. One interlock, two bases, one
+table; now one number.
+
+---
+
 ## Session log — 2026-09-04-develop-f (#624 items 14/25 — one letdown field was three jobs)
 
 **The ask.** #619 item 14 (the letdown isolate erases your selection) and item 25 (the LETDOWN

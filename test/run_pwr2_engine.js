@@ -50,7 +50,8 @@ function loadAll(engSource, coreSource) {
  * SGTR (#507 wave 5), 'I' the failure levers (#507 wave 6), 'K' the initial conditions
  * (#507 §F, wave 7), 'L' the rod insertion limit (#507 §B, wave 8), 'M' the RCP restart
  * (#507 wave 9), 'N' the shutdown IC (#507 wave 10), 'O' the neutron-source construction
- * (#536), 'P' the heater-elevation seam (#573), 'Q' the letdown split (#624 items 14/25).
+ * (#536), 'P' the heater-elevation seam (#573), 'Q' the letdown split (#624 items 14/25),
+ * 'R' the Mode 5 pressure-control lineup (#624 / #619 item 14).
  * The CLEAN pass runs everything. Measured before this existed: 17 mutations x the whole
  * suite = 1074 s of contention in the aggregate gate — the replay cost scales with every
  * fixture ever added, and a mutation only needs the checks built to see it. */
@@ -2278,6 +2279,135 @@ function runSuite(RD, rec, quiet, only) {
       ' kg/s — restoration is an ACT, which is the ruling');
   }
 
+  if (grp('R')) {
+  /* ---- 16. THE COLD PRESSURE-CONTROL LINEUP (#624 / #619 item 14, 2026-09-04) ---------------
+   * *(OWNER, 2026-09-04: "next", to the recommendation "measure the heaters-OFF drift from
+   * cold_shutdown and land item 14's remaining halves"; Mode 4 followed the same hour —
+   * coordinator's call, 2026-09-04, on the measured Mode 4 numbers below.)*
+   *
+   * BOTH COLD INITIAL CONDITIONS boot with the pressurizer HEATERS OFF and the SPRAY IN HAND AND
+   * SHUT — the lineup `pwr_cooldown` leaves behind, so the boot IC and a player's own
+   * cooled-down plant now agree. Before this the engine set `pzDrivers: {}` for every initial
+   * condition, i.e. heaters AUTO and spray AUTO on a plant whose reactor coolant pumps are
+   * secured (the spray has no head: `SPRAY.needs_rcp` is true, and `rcp_gate_enforced: false` is
+   * a declared deviation that lets the one lever stand in for auxiliary spray).
+   *
+   * ⚠ THIS GROUP WAS BUILT WITH MODE 4 ON THE OTHER SIDE OF THE LINE, and the reversal is worth
+   * keeping in view: R1b asserted `hot_shutdown` in AUTO as a deliberate scope boundary, because
+   * the ruling named the Mode 5 lineup. Then Mode 4 was measured — +12.2 psi/hr in AUTO against
+   * +0.2 psi/hr off, the same defect at the same size — and the boundary went. A boundary drawn
+   * from the WORDING of a ruling rather than from a measurement is the thing to distrust here.
+   *
+   * ⚠ THE CLAIM THE OLD NOTE MADE IS FALSE ON THIS ENGINE AND THESE CHECKS SAY SO. It read
+   * "the surge-line exchange bleeds ~16 kW, -68 psi/hr", and the build plan for this change
+   * asked for a check that pressure FALLS. Measured 2026-09-04, 60 plant-minutes from the boot
+   * with the heaters off: 362.59 -> 362.85 psia, i.e. +0.3 psi/hr, RISING by a whisker. It is
+   * structural: `surge_heat_kW` in pwr2_pressurizer is a MASS-TRANSPORT term (an outsurge
+   * debiting its donor enthalpy to the hot leg) and this model carries no standing conduction
+   * path out of the vessel, so a still isothermal plant has nothing to bleed. The claim asserted
+   * below is therefore the one that is true and the one that matters — THE BUBBLE SURVIVES —
+   * not the direction somebody expected it to move. */
+  head('THE COLD PRESSURE-CONTROL LINEUP  [both cold ICs: heaters OFF, spray in hand; the ' +
+       'bubble survives; the setpoint is inert until AUTO]');
+
+  /* R1. THE BOOT LINEUP, AND THE SCOPE IN THE SAME BREATH: BOTH cold initial conditions follow,
+   * at-power does NOT. The `ic.cold` predicate is what makes that true, and it is asserted from
+   * both sides — a check on Mode 5 alone passes on the `icName === 'cold_shutdown'` form this
+   * group shipped with for an hour, and a check on at-power alone passes on a plant that boots
+   * every IC with the heaters off. */
+  var engR5 = EN.createEngine({ initial_state: 'cold_shutdown' });
+  var engR4 = EN.createEngine({ initial_state: 'hot_shutdown' });
+  var engR1 = EN.createEngine({});
+  var tsR5 = EN.step(engR5, DT);
+  var tsR4 = EN.step(engR4, DT);
+  ckT('Mode 5 boots HEATERS OFF and SPRAY IN HAND, SHUT — the lineup pwr_cooldown leaves',
+      engR5.pzDrivers.heaters_manual === 0 && engR5.pzDrivers.spray_manual === 0 &&
+      tsR5.pzr_heater_kw === 0,
+      'heaters_manual ' + engR5.pzDrivers.heaters_manual + ', spray_manual ' +
+      engR5.pzDrivers.spray_manual + ', ' + tsR5.pzr_heater_kw.toFixed(1) + ' kW on the bus — ' +
+      'the AUTO boot delivered 18.2 kW at zero error and crept the IC off its own point');
+  ckT('...and so does MODE 4 — both cold ICs follow, at-power does not (the cooldown turns the ' +
+      'heaters off BEFORE the RHR align that makes the plant Mode 4)',
+      engR4.pzDrivers.heaters_manual === 0 && engR4.pzDrivers.spray_manual === 0 &&
+      tsR4.pzr_heater_kw === 0 &&
+      engR1.pzDrivers.heaters_manual === undefined &&
+      engR1.pzDrivers.spray_manual === undefined,
+      'Mode 4 ' + JSON.stringify(engR4.pzDrivers) + ' at ' + tsR4.pzr_heater_kw.toFixed(1) +
+      ' kW, hot full power ' + JSON.stringify(engR1.pzDrivers) + ' — Mode 4 in AUTO walked ' +
+      '364.04 -> 376.28 psia in 60 min (+12.2 psi/hr), which is why the scope boundary went');
+
+  /* R2. THE BUBBLE SURVIVES THE ALIGNMENT WINDOW. 15 plant-minutes is roughly where the heatup
+   * checklist's heater step lands (pump start 30 s + the shutdown-bank withdrawal 660 s + the
+   * small holds), so this is the question a player's plant actually asks: is there still a
+   * pressurizer when I get there? Measured on the new boot: +0.012 psi over 15 min and
+   * -0.026 points of level. On the OLD heaters-AUTO boot the same window reads +9.02 psi
+   * (362.59 -> 371.62 psia), which the 3-psi band excludes — this check catches the revert. */
+  var pR0 = tsR5.pressure_mpa * 145.0377, lR0 = tsR5.pzr_level_pct;
+  var tsR15 = run(engR5, (quiet ? 300 : 900) - DT);
+  var pR15 = tsR15.pressure_mpa * 145.0377;
+  ckT('the bubble SURVIVES the alignment window: pressure holds, stays clear of the 300 psia ' +
+      'orifice backpressure, level sits still and the 17 % cut never comes near',
+      Math.abs(pR15 - pR0) < 3.0 && pR15 > 300 &&
+      Math.abs(tsR15.pzr_level_pct - lR0) < 3.0 && engR5.pz.lowLevelCut === false,
+      pR0.toFixed(2) + ' -> ' + pR15.toFixed(2) + ' psia over ' + (quiet ? 5 : 15) +
+      ' plant-min (' + ((pR15 - pR0) * 60 / (quiet ? 5 : 15)).toFixed(2) + ' psi/hr; 60-min ' +
+      'measurement 362.59 -> 362.85, +0.3 psi/hr), level ' + lR0.toFixed(2) + ' -> ' +
+      tsR15.pzr_level_pct.toFixed(2) + ' %');
+
+  /* R2b. AND SO DOES MODE 4's, WHICH IS THE CLAIM THAT MOVED THE SCOPE. Asserted separately
+   * rather than folded into R2 with a loop: the two states differ in temperature by 128 degF
+   * and their bubbles are at different saturation points, so "cold plants hold" is two
+   * measurements, not one generalised from the colder. Measured on the new boot: 364.04 ->
+   * 364.05 psia over 15 plant-min, 364.21 at 60 min (+0.2 psi/hr). On the AUTO boot the same
+   * window reads 373.10 psia, +9.06 psi — outside this band, so this check catches the revert
+   * from the Mode 4 side just as R2 does from the Mode 5 side. */
+  var engR4b = EN.createEngine({ initial_state: 'hot_shutdown' });
+  var ts4b0 = EN.step(engR4b, DT);
+  var p4b0 = ts4b0.pressure_mpa * 145.0377, l4b0 = ts4b0.pzr_level_pct;
+  var ts4b1 = run(engR4b, (quiet ? 300 : 900) - DT);
+  var p4b1 = ts4b1.pressure_mpa * 145.0377;
+  ckT('...and MODE 4\'s bubble survives its own window on the same lineup — the measurement ' +
+      'that took hot_shutdown across the scope line',
+      Math.abs(p4b1 - p4b0) < 3.0 && p4b1 > 300 &&
+      Math.abs(ts4b1.pzr_level_pct - l4b0) < 3.0 && engR4b.pz.lowLevelCut === false,
+      p4b0.toFixed(2) + ' -> ' + p4b1.toFixed(2) + ' psia over ' + (quiet ? 5 : 15) +
+      ' plant-min (' + ((p4b1 - p4b0) * 60 / (quiet ? 5 : 15)).toFixed(2) + ' psi/hr; 60-min ' +
+      'measurement 364.04 -> 364.21, +0.2 psi/hr, against +12.2 psi/hr in AUTO), level ' +
+      l4b0.toFixed(2) + ' -> ' + ts4b1.pzr_level_pct.toFixed(2) + ' %');
+
+  /* R3. THE NEXT CHECKLIST STEP IS INERT UNTIL THE HEATERS ARE IN AUTO — which is the whole
+   * reason the heatup gains a step, and the claim its deletion-injection proves at the replay
+   * level. Both arms, because either alone passes on the wrong plant: "the setpoint does
+   * nothing" is satisfied by a plant whose heaters are broken, and "AUTO pressurizes" is
+   * satisfied by the old boot, where the heaters were in AUTO all along. */
+  function spRide(pressAuto) {
+    var e = EN.createEngine({ initial_state: 'cold_shutdown' });
+    var a = EN.step(e, DT);
+    if (pressAuto) {
+      EN.command(e, 'pzr_heaters_manual', null);   /* the board's AUTO button on PZR HEATERS */
+      EN.command(e, 'pzr_spray_manual', null);     /* ...and on PZR SPRAY */
+    }
+    /* 11.72 MPa is 1700 psig, the floor of the dial's sourced span (WTSM 10.2) and exactly what
+     * the heatup's next step asks for. A lower entry clamps to it — see pwr2_shell's span note. */
+    EN.command(e, 'pzr_setpoint_mpa', 11.72);
+    var b = run(e, quiet ? 300 : 600);
+    return { d: (b.pressure_mpa - a.pressure_mpa) * 145.0377, kw: b.pzr_heater_kw,
+             hm: e.pzDrivers.heaters_manual, sm: e.pzDrivers.spray_manual, shed: e.pz.shedLatch };
+  }
+  var spOff = spRide(false), spOn = spRide(true);
+  ckT('the Pressure SP alone is INERT with the heaters off — dialling 1700 psig on the cold ' +
+      'board moves nothing, which is why the heatup needs a step and not a comment',
+      Math.abs(spOff.d) < 1.0 && spOff.kw === 0,
+      spOff.d.toFixed(3) + ' psi over ' + (quiet ? 5 : 10) + ' plant-min at ' +
+      spOff.kw.toFixed(1) + ' kW');
+  ckT('...and pressing AUTO puts the ladder back in service: full bank, and the plant climbs',
+      spOn.hm === undefined && spOn.sm === undefined && spOn.shed === false &&
+      spOn.kw > 150 && spOn.d > 40,
+      '+' + spOn.d.toFixed(1) + ' psi over ' + (quiet ? 5 : 10) + ' plant-min at ' +
+      spOn.kw.toFixed(1) + ' kW (measured +63.9 psi at 5 min, +133.4 at 10), heaters_manual ' +
+      spOn.hm + ' — the AUTO press clears the shed latch on its way through');
+  }
+
   /* ⚠ SKIPPED IN MUTATION REPLAY UNLESS TARGETED, and that is a COST decision with a number.
    * These are two 35-minute rides, ~20 s of wall. A mutation with no `grp` tag replays EVERY
    * group, so the untagged entries in this file were each paying for both rides: measured, the
@@ -2696,7 +2826,24 @@ var MUTATIONS = [
    'cv: CV.createCVCS({ boron_ppm: boron0, letdownOpen: 1 }),', { grp: 'Q' }],
   ['the stepped letdown flow is never stashed (the board reads a permanent zero)',
    '    eng._letdownKgs = cvr.letdown_kgs;',
-   '', { grp: 'Q' }]
+   '', { grp: 'Q' }],
+  /* THE COLD PRESSURE-CONTROL LINEUP (#624 / #619 item 14). The first is the SHIPPED form
+   * restored — heaters AUTO and spray AUTO on plants whose pumps are secured — and it is the
+   * one that matters, because it looks like a working plant: the ladder holds a pressure, it
+   * just holds it by doing the operator's job for him and creeping the IC off its own point
+   * (+11.7 psi/hr at Mode 5, +12.2 at Mode 4). The second is the SCOPE BOUNDARY this group
+   * shipped with for an hour — `icName === 'cold_shutdown'`, which drops Mode 4 back to AUTO
+   * and is invisible to any check that only looks at Mode 5. */
+  ['both cold ICs boot with the heaters in AUTO again (the ladder does the operator\'s job)',
+   '      pzDrivers: ic.cold ? { heaters_manual: 0, spray_manual: 0 } : {},',
+   '      pzDrivers: {},', { grp: 'R' }],
+  ['MODE 4 drops back to AUTO (the Mode-5-only scope this group shipped with for an hour)',
+   '      pzDrivers: ic.cold ? { heaters_manual: 0, spray_manual: 0 } : {},',
+   '      pzDrivers: icName === \'cold_shutdown\' ? { heaters_manual: 0, spray_manual: 0 } : {},',
+   { grp: 'R' }],
+  ['the spray is left in AUTO on the cold plants (a valve armed with no pump head behind it)',
+   '      pzDrivers: ic.cold ? { heaters_manual: 0, spray_manual: 0 } : {},',
+   '      pzDrivers: ic.cold ? { heaters_manual: 0 } : {},', { grp: 'R' }]
 ];
 var CORESRC = fs.readFileSync(path.join(SRC, 'pwr2_core.js'), 'utf8').replace(/\r\n/g, '\n');
 

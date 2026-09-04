@@ -473,7 +473,7 @@ settling **70 s at 10x, the same for every column** — the low-power states are
 
 > **`low_power` is where the startup checklist hands you the plant** (added 2026-09-04, #624 item 28). It is the only initial condition whose control bank is **off its top stop** — **227 of 627 steps** — which is what an at-power plant actually looks like: Ginna UFSAR §15.4.5.1.1 (ML20339A101), *"the reactor is operated with the RCCAs inserted only far enough to permit load follow."* Every other at-power column boots on the stop, so a rod withdrawal in those states is a no-op.
 
-> **MODE 5 EXISTS (#524, landed 2026-08-31).** The water-property floor moved from 14.5 psi (0.1 MPa) to **0.29 psi (0.002 MPa)**, so a steam generator can sit at ambient — the `cold_shutdown` column below is a real, loadable state whose secondary rides at **1.8 psi (0.0127 MPa)**, saturation at the plant's own 123 °F (50.6 °C). The cold end of the ladder is **Mode 5, Cold Shutdown** — 122 °F (50 °C), 363 psi (2.50 MPa) at boot, RHR in service, reactor coolant pumps secured, **turbine tripped, both main feed pumps secured with level control in MANUAL**, both banks in. `5_percent` remains the retired engine's and is **refused by name**.
+> **MODE 5 EXISTS (#524, landed 2026-08-31).** The water-property floor moved from 14.5 psi (0.1 MPa) to **0.29 psi (0.002 MPa)**, so a steam generator can sit at ambient — the `cold_shutdown` column below is a real, loadable state whose secondary rides at **1.8 psi (0.0127 MPa)**, saturation at the plant's own 123 °F (50.6 °C). The cold end of the ladder is **Mode 5, Cold Shutdown** — 122 °F (50 °C), 363 psi (2.50 MPa) at boot, RHR in service, reactor coolant pumps secured, **turbine tripped, both main feed pumps secured with level control in MANUAL**, **pressurizer heaters OFF and spray in hand and shut** (#624, 2026-09-04), both banks in. `5_percent` remains the retired engine's and is **refused by name**.
 > **`hot_shutdown` IS NOT ON THE FREE PLAY MENU** *(OWNER RULING, 2026-09-02: "A")*. The column
 > stays because the initial condition is real, is booted by three gates, and is the reference for
 > what a Mode 4 plant should read — but the player cannot select it. Measured when the question was
@@ -495,7 +495,7 @@ persists is either a transient in progress or a failed instrument.
 | Control bank (steps of 627) | 627 | 627 | **227** | 0 | 0 | 0 |
 | Tavg °F (°C) | 577.7 (303.2) | 566.7 (296.9) | 558.7 (292.6) | 547.2 (286.2) | 250.4 (121.3) | 123.0 (50.6) |
 | T-hot / T-cold °F (°C) | 607.2 / 548.2 (319.6 / 286.8) | 582.1 / 551.4 (305.6 / 288.6) | 562.2 / 555.2 (294.5 / 290.7) | 547.2 / 547.2 (286.2 / 286.2) | 250.4 / 250.5 (121.3 / 121.4) | 123.0 / 123.0 (50.6 / 50.6) |
-| Primary pressure psi (MPa) | 2235 (15.41) | 2235 (15.41) | 2240 (15.447) | 2246 (15.482) | 369 (2.545) | 368 (2.537) |
+| Primary pressure psi (MPa) | 2235 (15.41) | 2235 (15.41) | 2240 (15.447) | 2246 (15.482) | 364 (2.510) | 363 (2.500) |
 | Subcooling margin °F (°C) | 45 (25) | 70 (39) | 90 (50) | 105 (58.5) | 186 (103.6) | 313 (174.2) |
 | PZR level (%) | 57 | 40 | 27 | 25 | 25 | 25 |
 | SG level (%) | 65 | 65 | 65 | 65 | 65 | 66 |
@@ -514,6 +514,8 @@ persists is either a transient in progress or a failed instrument.
 | Turbine speed (RPM) | 1800 | 1800 | 1800 | 0 | 0 | 0 |
 | Main feed pumps | Both running | Both running | Both running | Both running | **Both secured** | **Both secured** |
 | Feed control mode | AUTO (three-element) | AUTO (three-element) | AUTO (three-element) | AUTO (three-element) | **MANUAL, 0 %** | **MANUAL, 0 %** |
+| Pressurizer heaters | AUTO | AUTO | AUTO | AUTO | **OFF** | **OFF** |
+| Pressurizer spray | AUTO | AUTO | AUTO | AUTO | **MANUAL, shut** | **MANUAL, shut** |
 | MSIV | Open | Open | Open | Open | Open | Open |
 | RHR | Out of service | Out of service | Out of service | Out of service | **In service** | **In service** |
 | ECCS mode indicator | standby | standby | standby | standby | **RHR** | **RHR** |
@@ -527,7 +529,23 @@ Notes:
 - **Boron differs per IC by design** (rod position and xenon differ); the `hot_zero_power`
   value is low because the control bank is fully inserted and xenon-free ≈ criticality is
   held down by rods, not boron.
-- `hot_shutdown` starts with RCPs secured, RHR aligned, both banks in and the SR detector energized — the cooldown's own lineup, with the P-11 blocks already taken. See `05_MODE_TRANSITIONS.md` PWR-T20 for the climb out, and read its Mode 5 steps against the note above.
+- `hot_shutdown` starts with RCPs secured, RHR aligned, both banks in, the SR detector energized and (since 2026-09-04, #624) the pressurizer heaters off with the spray in hand — the cooldown's own lineup throughout, with the P-11 blocks already taken. PWR-N12 turns the heaters off at its depressurization step, **before** the RHR alignment that makes the plant Mode 4, so a Mode 4 reached by the book already has them off. See `05_MODE_TRANSITIONS.md` PWR-T20 for the climb out, and read its Mode 5 steps against the note above.
+- **BOTH cold columns boot with pressurizer pressure control OUT OF SERVICE** (added 2026-09-04,
+  #624). Heaters **OFF**, spray **in hand and shut** — the lineup PWR-N12 leaves behind, so a preset
+  and a plant you cooled down yourself finally read the same. Neither is a degraded state; measured
+  untouched for 60 plant-minutes, `cold_shutdown` moves
+  **362.6 psia (2.500 MPa) → 362.9 psia (2.502 MPa)** (+0.3 psi/hr) and `hot_shutdown`
+  **364.0 psia (2.510 MPa) → 364.2 psia (2.511 MPa)** (+0.2 psi/hr). Putting it back in service is
+  **PWR-N01 step 5b**, from either start, and until you do the Pressure SP is inert — 0.05 psi in 10
+  plant-minutes against +133 psi (0.92 MPa) with the heaters in AUTO.
+- **Two Primary pressure cells moved with it, and both were reading the same artefact**:
+  `cold_shutdown` **368 → 363 psi (2.537 → 2.500 MPa)** and `hot_shutdown`
+  **369 → 364 psi (2.545 → 2.510 MPa)**. Neither old figure was that state's settled pressure — each
+  was the AUTO ladder walking its own preset off its construction point during this table's
+  70-second settle, at **+11.7 psi/hr** and **+12.2 psi/hr** respectively. With the heaters off both
+  columns read what the initial condition is actually built at. `hot_shutdown` was left in AUTO for
+  about an hour on the day of the change, on the reading that the ruling named the Mode 5 lineup;
+  the measurement above is what took it across.
 
 ---
 

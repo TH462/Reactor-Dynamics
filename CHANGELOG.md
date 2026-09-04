@@ -32,6 +32,97 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
 
 ## [Alpha 1.7.2-rc6] — 2026-09-03
 
+### Changed (#624 / #619 item 14 — both cold states boot with the heaters off and the spray in hand)
+
+*(OWNER, 2026-09-04: "next", to the recommendation "measure the heaters-OFF drift from
+cold_shutdown and land item 14's remaining halves"; Mode 4 followed the same hour — coordinator's
+call, 2026-09-04, on the measured Mode 4 numbers. The owner's ruling named the Mode 5 lineup
+because that was the question asked, and he reviews the extension on #624.)*
+
+**Mode 5, Cold Shutdown and Mode 4, Hot Shutdown now both boot with the pressurizer heaters OFF and
+the spray in MANUAL, shut** — the lineup `pwr_cooldown` leaves behind, so a preset and a plant the
+player cooled down themselves finally agree. Every initial condition used to boot `pzDrivers: {}`,
+i.e. heaters AUTO and spray AUTO on plants whose reactor coolant pumps are secured.
+
+**Mode 5 was built first and Mode 4 followed on the measurement, not on the wording.** The first
+build keyed on the initial-condition name and asserted Mode 4's AUTO lineup as a deliberate scope
+boundary. Then Mode 4 was measured and it is the same defect at the same size:
+
+| `hot_shutdown`, 60 plant-min | 0 min | 15 min | 60 min | drift |
+|---|---|---|---|---|
+| heaters AUTO (old boot) | 364.04 psia (2.510 MPa) | 373.10 psia (2.572 MPa) | **376.28 psia (2.594 MPa)** | **+12.2 psi/hr** |
+| heaters off, spray shut | 364.04 psia (2.510 MPa) | 364.05 psia (2.510 MPa) | **364.21 psia (2.511 MPa)** | **+0.2 psi/hr** |
+
+Three things settled it beyond the number. `hot_shutdown` is engine-only and not on the Free Play
+picker, so nobody is handed it as a starting plant. `pwr_cooldown` turns the heaters off at its
+depressurization step, **before** the RHR alignment that makes the plant Mode 4 — so a Mode 4
+reached by the book already has them off. And the sentence the Mode-5-only build put into `04`
+PWR-N01 — *"Mode 4 arrives with heaters and spray in AUTO, so its step 5b is a check rather than an
+action"* — is exactly the authored-instruction-the-plant-has-already-carried-out trap #624 has now
+found four times (#619 items 11, 16, 27, 28).
+
+**The reason the note gave for the old lineup was measured false.** `pwr2_engine`'s comment said
+the MANUAL-0 lineup had been "measured false twice over". The first counter-measurement (364 → 29
+psia in 75 min) was a **since-fixed configuration** — seal injection with no letdown path below 300
+psia, closed by the RHR cross-connect in the change above. The second — *"the surge-line exchange
+bleeds ~16 kW, −68 psi/hr"* — **was never measured on this engine and does not happen**. 60
+plant-minutes at DT 0.02 from the cold boot with the heaters off:
+
+| plant-min | heaters OFF (new boot) | heaters AUTO (old boot) |
+|---|---|---|
+| 0 | **362.59 psia (2.5000 MPa)**, level 25.000 %, Tavg 122.00 °F (50.00 °C) | 362.59 psia, 25.000 %, 122.00 °F |
+| 13 | 362.56 psia (2.4997 MPa), 24.948 % | 370.43 psia (2.5540 MPa), 24.948 % |
+| 15 | 362.61 psia (2.5001 MPa), 24.974 % | 371.62 psia (2.5622 MPa), 24.975 % |
+| 60 | **362.85 psia (2.5018 MPa)**, 25.031 % | **374.32 psia (2.5809 MPa)**, 25.030 % |
+
+That is **+0.3 psi/hr (+0.004 psi/min)** with the heaters off, against **+11.7 psi/hr** with them
+in AUTO. Both bubbles survive; only one of them sits still. The reason there is no bleed is
+structural — `surge_heat_kW` is a mass-transport term (an outsurge debiting its donor enthalpy to
+the hot leg) and this model has no standing conduction path out of the vessel — so a still,
+isothermal plant has nothing to bleed. **The −68 psi/hr claim is retired from the engine comments,
+the manuals and the checklist prose.** What the AUTO ladder was actually doing is delivering
+**18.2 kW at zero error** and walking the initial condition off its own construction point.
+
+**Spray.** `SPRAY.needs_rcp` is true and both cold states secure the pumps, so the spray in AUTO was a
+control that cannot prototypically act. (`rcp_gate_enforced: false` is a declared deviation that
+lets the one lever stand in for auxiliary spray, which is why leaving it armed on a cold plant was
+wrong rather than harmless.)
+
+**Source.** [sourced] WTSM ch. 19 (ML11223A342): *"All groups of pressurizer heaters are energized
+to raise the pressurizer water temperature to saturation"* — an operator **act** during the heatup,
+with the reactor coolant pumps started only after the bubble is drawn at 320 psig.
+
+**The heatup checklist gains the step that puts pressure control back in service.** `pwr_heatup`
+step 8, between the letdown step and the pressurization: AUTO on PZR HEATERS, then AUTO on PZR
+SPRAY. The spray is a `cmd`-kind acceptance entry so the replay presses both cards, with a lamp
+check on each. **Injection: deleting the step reds THREE checks in `run_checklist_pwr2`** — the
+Pressure SP step's `pressure_mpa > 4.7` reads **2.51 MPa (364 psia)**, i.e. the plant never leaves
+its Mode 5 pressure at all; the final pressurization's `> 15` reads **7.28 MPa (1056 psia)**, which
+is pump heat and thermal expansion alone; and the leg finishes with **`pzr_pressure_lolo` and
+`subcooling_lost` standing** — the checklist walking the player into a plant with no subcooling
+margin. Measured the other way: from the cold boot, dialling 1700 psig with the heaters off moves
+the plant **0.048 psi in 10 plant-minutes at 0.0 kW**, against **+133.4 psi at 157.8 kW** once AUTO
+is pressed.
+
+**Two gate reds were the fix working and are corrected, not banded.** `run_manual_setpoints` failed
+on *Primary pressure @ cold_shutdown: manual 368, plant 362.6*, and again on `hot_shutdown` when
+Mode 4 followed. Neither manual figure was that state's settled pressure — each was the AUTO ladder
+walking its own preset up during the gate's own 70-second settle, at +11.7 and +12.2 psi/hr. `09`
+§11.0 now reads **363 psi (2.500 MPa)** and **364 psi (2.510 MPa)**, both measured the way that
+table settles. The tolerance is untouched at 3.0 psi.
+
+**Manuals.** `09` §11.0 gains **Pressurizer heaters** and **Pressurizer spray** rows (AUTO at
+power, **OFF** / **MANUAL, shut** in both cold columns) plus the notes above; `04` PWR-N01 gains
+**step 5b**, an action from either start, and updates prerequisite 1 and step 6; `03` §5.2 and §5.3
+state the cold boot lineup for both modes and carry the measured drift. Swept in the same pass:
+`04` PWR-N01 step 6 and the *Pressurized to NOP* milestone row quoted the retired plant's
+**600 psi (4.14 MPa)** RHR autoclosure three lines under a NOTE sourcing it at **585 psig
+(4.03 MPa)** — one interlock, one number now.
+
+Gates: `run_pwr2_engine` 150 → 156 (mutations 83 → 86, all caught), `run_pwr2_shell` 150 → 151
+(mutations 51 → 52), `run_checklist_pwr2` 127 → 129, `run_manual_controls` 543 → 547,
+`run_manual_setpoints` 13/13.
+
 ### Fixed (#624 / #619 items 14/25 — one letdown field was three jobs)
 
 *(OWNER RULING, 2026-09-04: selected "Split the field: `letdownOpen` stays the orifice lineup, the
