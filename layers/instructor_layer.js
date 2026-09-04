@@ -590,7 +590,33 @@
         if (!pg.met) anyUnmet = true;
       }
       c.precond = pv;
-      if (anyUnmet && !c.precondMsg) {
+      /* ENTRY ONLY *(OWNER, 2026-09-03, #619 item 3: "The instructor block gets a 'before
+       * you...' in the middle of mode 5>3 checklist. it doesnt make sense. probably just
+       * remove it.")*.
+       *
+       * The latch is per EPISODE, not per run: it clears the moment every row recovers, so the
+       * next row to go unmet raises the message again — and a checklist that is CHANGING the
+       * plant walks its own preconditions in and out. The heatup's entry rows are "plant cold"
+       * and "depressurized", so heating up and pressurizing re-breaks them by design, and the
+       * player got told they were not ready for a checklist they were half way through.
+       *
+       * A precondition answers a question about ENTRY — "was it sensible to open this" — so the
+       * answer cannot change while you run it. Same reasoning the in-panel banner already
+       * follows (ui/app.js, #614), and the fix is the same shape: nothing may raise it once the
+       * run has started moving.
+       *
+       * SCOPED RATHER THAN DELETED, which is a departure from the owner's "probably just remove
+       * it": at entry it is the one thing that explains why a checklist's steps are not going to
+       * verify. Flagged on #622 for review — deleting the block is a two-line follow-up if he
+       * would rather have it gone.
+       *
+       * NOT the `underway` test #614 tried and rejected for the BANNER. That failed because a
+       * checklist whose first step is already satisfied advances within a broadcast or two, so
+       * the banner vanished before it could be read. This is the message channel, and it fires
+       * on the SAME tick the condition is first seen — before any advance — so the entry window
+       * is real rather than a race. */
+      var cklMoving = c.idx > 0;
+      if (anyUnmet && !c.precondMsg && !cklMoving) {
         // One register-aware comment per unmet episode — the checklist banner
         // carries the row-by-row detail, this just points the operator at it.
         c.precondMsg = true;
@@ -660,6 +686,33 @@
             : st.saw ? c.sawSeen
             : st.cmd ? c.cmdSeen
             : (simTime - (c.stepAt == null ? simTime : c.stepAt)) >= OBSERVE_DWELL_S;
+    /* A STEP THE PLAYER NEVER TOUCHES WAITS FOR AN ACKNOWLEDGEMENT *(OWNER, 2026-09-03, #619
+     * item 4: "When steps are auto completed with no user action, add an acknowledge button to
+     * the step., this button should flash green so the user knows thats the control that needs
+     * to be pressed to progres."; scoped by ruling 2026-09-03 to observation/ride steps only)*.
+     *
+     * These are the steps that satisfy themselves out of the plant — the opening confirms, and
+     * the long rides like "ride the heatup to Hot Standby". They used to tick and move on while
+     * the player was still reading, so a checklist could run several steps ahead of them.
+     *
+     * THE TEST IS "DOES THE STEP AUTHOR AN OPERATOR ACTION", not how it grades. `cmd` is the
+     * replay's command and every step the player actually operates carries one (the live
+     * checklist never issues it — the player presses the control and the acc grades what
+     * happened), and a `cmd`-kind accs entry is the same thing for multi-action steps. A step
+     * with neither is one nobody had to do anything for, which is exactly the owner's wording.
+     *
+     * NARROWED, NOT REVERSED. *(OWNER DIRECTIVE, 2026-08-11: "Checklists are supposed to be
+     * automatically checked off by the sim when complete. Remove the user clickable step
+     * complete button.")* still holds everywhere it was aimed: every step you operate still
+     * ticks itself off the instruments and grows no button.
+     *
+     * The gate is on the ADVANCE, not on the grading — `acc_met` and the per-entry verdicts
+     * keep updating underneath, so the card shows the step satisfied while it waits. `awaiting_ack`
+     * is what the UI draws the flashing button from; `checklistCheck` (the button, and the
+     * replay harness) clears it through the ordinary manual path. */
+    var needsAck = !st.cmd && !(st.accs || []).some(function (e) { return e && e.cmd; });
+    c.awaitingAck = !!(met && needsAck);
+    if (met && needsAck) return;
     if (met) this._checklistCheckOff(hasAccs || st.acc || st.saw || st.cmd ? 'auto' : 'observed');
   };
 
@@ -702,6 +755,7 @@
     c.idx++;
     c.cmdSeen = false; c.sawSeen = false; c.accStreak = 0; c.accMetNow = false; c.gradedBy = null;
     c.accsState = null;                 // per-entry multi-check-off latches (#244 item 8)
+    c.awaitingAck = false;              // #619 item 4 — cleared with the step it belonged to
     c.stepAt = null;                    // re-stamped on the next tick — see the dwell above
     if (c.idx >= c.proc.steps.length) c.complete = true;
   };
@@ -1053,6 +1107,8 @@
         acc_met: this.checklist.accMetNow,
         graded_by: this.checklist.gradedBy,
         complete: this.checklist.complete,
+        // #619 item 4 — the step is satisfied and is holding for the player to acknowledge.
+        awaiting_ack: !!this.checklist.awaitingAck,
         // Multi-check-off verdicts for the ACTIVE step (#244 item 8) — {met, obs,
         // graded_by} order-parallel to the step's `accs`; null on single-acc steps.
         accs: this.checklist.accsState ? this.checklist.accsState.map(function (a) {

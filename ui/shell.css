@@ -862,6 +862,25 @@ html[data-channel="dev"] .logo-test {
 /* selected speed: subtle cyan outline (not a saturated fill — the clock turns
    amber to warn that time is accelerated; the selector itself stays quiet). */
 .speed button.on { background: transparent; color: var(--text); font-weight: 700; box-shadow: inset 0 0 0 1px var(--normal); }
+/* DROPOUT FLASH *(OWNER, 2026-09-03, #619 item 7: "when dropping out of warp, flash the warp
+   buttons for a moment to make it more obvious.")*. Added by app.js for ~1.6 s whenever the
+   snapshot carries a `speed_snap`, so it marks every automatic dropout — a scram, a failure,
+   a first alarm, or a checklist step completing.
+
+   FINITE, not infinite like .play.attention: that one is a standing "you have not started yet"
+   cue, this one reports a thing that just happened and must stop on its own. Three pulses.
+
+   The glow goes on the CONTAINER, not the buttons: the buttons carry .on as an inset outline
+   and an outer box-shadow on a flex child inside an overflow:hidden strip is clipped. Same
+   colour family as the clock's accel warning, so the two read as one idea. */
+.speed.speed-snapped { animation: speedSnap 0.55s ease-out 3; }
+@keyframes speedSnap {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(255, 209, 102, 0); border-color: var(--border); }
+  40%      { box-shadow: 0 0 0 4px rgba(255, 209, 102, 0.45); border-color: var(--caution); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .speed.speed-snapped { animation: none; box-shadow: 0 0 0 2px rgba(255, 209, 102, 0.5); border-color: var(--caution); }
+}
 .text-btn { flex: 0 0 auto; padding: 4px 10px; font-size: 12px; font-weight: 600; }
 .demo-btn { flex: 0 0 auto; min-width: 28px; padding: 4px 8px; }
 
@@ -1876,6 +1895,25 @@ select.num-input { width: auto; }
 .ckl-glow {
   box-shadow: 0 0 0 1.5px rgba(120, 210, 150, 0.70), 0 0 12px 3px rgba(120, 210, 150, 0.30);
   border-radius: 6px; position: relative; z-index: 5;
+}
+/* ACKNOWLEDGE *(OWNER, 2026-09-03, #619 item 4: "this button should flash green so the user
+   knows thats the control that needs to be pressed to progres.")*. Green and pulsing, reusing
+   cklGlow below — the same glow the board's own up-next controls carry, so "the thing to press"
+   reads identically whether it is a board control or this button.
+
+   INFINITE, unlike the speed-dropout flash: this one is not reporting an event, it is the
+   control the checklist is waiting on, and it must stay findable until pressed. Reduced motion
+   drops the animation and keeps a static ring — the button still has to be obviously the one. */
+.ckl-ack-row { display: flex; align-items: center; gap: 8px; margin: 5px 0 2px; flex-wrap: wrap; }
+.ckl-ack {
+  border-color: var(--running); color: var(--running); font-weight: 700;
+  padding: 3px 12px; border-radius: 6px;
+  animation: cklGlow 1.2s ease-in-out infinite;
+}
+.ckl-ack:hover { background: rgba(120, 210, 150, 0.12); }
+.ckl-ack-note { font-size: 11px; color: var(--text-2); }
+@media (prefers-reduced-motion: reduce) {
+  .ckl-ack { animation: none; box-shadow: 0 0 0 2px rgba(120, 210, 150, 0.85); }
 }
 @keyframes cklGlow {
   0%, 100% { box-shadow: 0 0 0 1px rgba(120, 210, 150, 0.60), 0 0 10px 2px rgba(120, 210, 150, 0.28); }

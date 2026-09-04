@@ -569,14 +569,34 @@
           out1 === 0 && out2 === 0,
           out1 + ' vertices outside below-scale, ' + out2 + ' above-scale (0/0 required)');
 
-        // 4. NOT BLANK AT SPEED. sim-seconds per broadcast is accel x 0.1, so a fixed
-        //    180 s window held ONE sample at 3600x, the time-trim dropped the rest and the
-        //    polyline collapsed to a single vertex — the six vital gauges were BLANK.
+        // 4. NOT BLANK AT SPEED. sim-seconds per broadcast is accel x 0.1, so at 3600x a
+        //    broadcast covers 360 s of plant. On ONE sample per broadcast a fixed 180 s
+        //    window held a single vertex, the time-trim dropped the rest and the six vital
+        //    gauges were BLANK. That was answered for a while by widening the window with
+        //    the speed; since #619 item 17 the window is FIXED at 180 s at every speed
+        //    (OWNER: "Dont change the 6 vital indication strip chart time window when time
+        //    warping"), and what makes that safe is the service's fine sub-samples.
+        //
+        //    SO THE FIXTURE HAS TO DELIVER THEM. This harness never loads app.js, so nothing
+        //    sets RD.ChartFine and `props.fine` was absent — the tile fell back to one sample
+        //    per broadcast, which is not the plant any player runs. The check used to pass
+        //    only because the window widened, i.e. it was covering for its own fixture.
+        //    Fine cadence here is the service's own arithmetic: max(CHART_FINE_SEC,
+        //    simPerBroadcast / CHART_FINE_MAX) = max(0.2, 360/60) = 6 s, 60 rows a broadcast.
         fresh();
         t = 20000;
-        for (var i9 = 0; i9 < 12; i9++) { push(t, 2235 + i9 * 3, { speed: 3600 }); t += 360; }
-        ck('spark: the trace survives 3600x (window follows the speed setting)',
-          verts().length >= 2, verts().length + ' vertices after 12 broadcasts at 3600x');
+        for (var i9 = 0; i9 < 12; i9++) {
+          var fineRows = [];
+          for (var f9 = 1; f9 <= 60; f9++) {
+            fineRows.push({ t: t - 360 + f9 * 6, v: 2235 + i9 * 3 + f9 * 0.05 });
+          }
+          push(t, 2235 + i9 * 3, { speed: 3600, fine: fineRows });
+          t += 360;
+        }
+        // A fixed 180 s window at a 6 s fine cadence is ~30 rows, so this asserts the WINDOW
+        // holds a real trace — not merely that two points survived.
+        ck('spark: the trace survives 3600x on a FIXED 180 s window (#619 item 17)',
+          verts().length >= 20, verts().length + ' vertices after 12 broadcasts at 3600x (>= 20 wanted; ~30 rows fit the window)');
         fresh();
       })();
 

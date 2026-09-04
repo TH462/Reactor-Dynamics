@@ -32,6 +32,66 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
 
 ## [Alpha 1.7.2-rc6] — 2026-09-03
 
+### Changed (#622 / #619 wave 2 — the checklist and time-acceleration mechanics)
+
+Eight items from the rc5 playtest. The theme is that time acceleration and the checklist did not
+know about each other: the clock raced through the steps, and the one irreversible trap in the
+chain was reachable at 600×.
+
+- **Checking a step off drops the clock back to real time** *(OWNER, 2026-09-03: "when a step is
+  checked off, drop out of warp.")*. Done SERVICE-side, off the checklist's step INDEX rather
+  than the check-off command — most steps tick themselves off the instruments and never issue
+  one, so a command hook would have caught only the handful ticked by hand. It inherits the
+  existing `speed_snap` toast and `_authoredSpeed` reset. **The speed buttons now flash** on
+  every automatic dropout (item 7), with a `prefers-reduced-motion` branch.
+- **Steps that ask nothing of the player wait for an Acknowledge press** *(OWNER, 2026-09-03:
+  "…add an acknowledge button to the step., this button should flash green so the user knows
+  thats the control that needs to be pressed to progres.")*. The opening confirms and the long
+  rides used to tick and move on while the player was still reading. The test is whether a step
+  authors an operator action at all — `cmd`, or a `cmd`-kind acceptance entry — so **this
+  narrows the 2026-08-11 "remove the user clickable step complete button" directive rather than
+  reversing it**: every step you actually operate still checks itself off the instruments. The
+  button reuses the `checklist_check` command that outlived its control.
+- **The accumulator window can no longer be missed at speed** *(OWNER, 2026-09-03: "…maybe have
+  it kick out of warp at 665psi and refuse to go into warp again until the accumulator valve is
+  opened.")*. It is the one irreversible trap in the chain: it opens at the 665 psia cover gas,
+  shuts at the 1600 psig lock, nothing annunciates either edge, and the Pressure SP dial's floor
+  sits ABOVE the lock — so a player who rode past it had to restart the leg. Measured: the hold
+  raises at **666 psia**, `set_speed 600` is REFUSED with a reason, and opening the valve
+  releases it. Dropping out alone would not have been enough, because the next thing a player
+  does is press the speed button again. Implemented as a generic `true_state.speed_hold` seam —
+  a reason string the PLANT sets and the service honours without knowing what it means — so the
+  cover-gas constant stays in the module that owns it. That is also the shape #409's warp
+  governor will want.
+- **Waiting steps say how long they take, and the estimate is DERIVED** — from each step's own
+  replay dwell (`hold`), so it cannot drift from what the harness proves the step needs. 24 of
+  the 61 steps qualify, from 4 plant-minutes to 11 plant-hours, with no new authoring. Always
+  visible on the active step, because the point is to reach for the speed control before sitting
+  through a 90-minute ride at 1×.
+- **The vital tiles' trace window is fixed at three minutes at every speed** *(OWNER, 2026-09-03:
+  "Dont change the 6 vital indication strip chart time window when time warping.")*. **The
+  ladder it replaces was not decoration and its justification is what expired**: a tile once got
+  one sample per broadcast, and at 3600× a broadcast covers 360 s of plant, so a fixed window
+  held a single vertex and the six gauges went BLANK. Fine sub-samples retired that — computed
+  from the service's own constants, a fixed 180 s window now holds **30 samples at 3600×** and
+  900 at 60× and below. **This is not the strip chart**, which sizes its window from the speed on
+  purpose and is untouched.
+- **The instructor's "before you lean on this checklist" comment is entry-only.** Its latch is
+  per EPISODE, and a checklist that CHANGES the plant walks its own preconditions back out — the
+  heatup's entry rows are "plant cold" and "depressurized", which heating up and pressurizing
+  break by design. A precondition answers a question about entry, so the answer cannot change
+  while you run it. Scoped rather than deleted (the owner's "probably just remove it"): at entry
+  it is the only thing that explains why the steps are not going to verify.
+- **A 5× speed**, and the keyboard ladder is now 1–6.
+
+**Two gates were passing by covering for their own fixtures**, which is the part worth keeping.
+`board_check` never loads `app.js`, so it fed the tile no fine sub-samples and the "trace
+survives 3600×" check was really testing the window-widening it was written beside; it now
+delivers the rows the service does. And `run_checklist`'s precondition probe used bare
+observation steps, which complete on dwell — invisible at 1× across a few ticks, but one tick at
+600× covers 60 s and the step checked itself off, so the fixture was non-deterministic the moment
+anything ran it at speed. Both fixed; both fixes are what let the new checks discriminate.
+
 ### Fixed (#624 / #619 item 28 — the power ascension was replaying a plant no player ever gets)
 
 *(OWNER, 2026-09-04: "the power ascention checklist has boron level at 705. this places the rods

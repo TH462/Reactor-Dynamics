@@ -48,15 +48,34 @@
   // browser gives it (~10 Hz) while the sim can run at up to 3600x, so a per-render buffer
   // showed ~36 s of plant and called it three minutes. Position by TIME, not by index:
   // index positioning made the whole trace slide and compress while the buffer filled.
+  /* FIXED AT THREE MINUTES AT EVERY SPEED *(OWNER, 2026-09-03, #619 item 17: "Dont change the
+   * 6 vital indication strip chart time window when time warping.")*.
+   *
+   * It used to widen with time acceleration — a TILE_WINDOWS ladder running 180 s at 1x out to
+   * 3600 s at 600x — and that ladder existed for a real reason which HAS SINCE BEEN RETIRED. It
+   * was added when a tile got ONE sample per broadcast: at 3600x a broadcast covers 360 s of
+   * plant, so a fixed 180 s window held a single vertex and the six vital gauges were simply
+   * BLANK above ~600x (the note in pwr_board_wiring.js tile() records it).
+   *
+   * The tiles were LATER given the service's fine sub-samples (`props.fine`, drained below),
+   * and that is what makes a fixed window honest again. Computed from the service's own
+   * constants — CHART_FINE_SEC 0.2 s, CHART_FINE_MAX 60 per broadcast, PHYSICS_DT 0.02,
+   * broadcast 100 ms — the fine cadence is `max(0.2, simPerBroadcast / 60)`, so a fixed 180 s
+   * window holds:
+   *
+   *      1x-60x   a sample every 0.20 s   900 samples
+   *      600x     every 1.00 s            180
+   *      3600x    every 6.00 s             30      (60 at the 50 ms transient broadcast)
+   *
+   * Thirty samples across a ~100 px trace is about one per three pixels. The ladder is not
+   * needed and was costing the player the thing the tile is for: a window that means the same
+   * three minutes whatever the clock is doing.
+   *
+   * ⚠ THIS IS NOT THE STRIP CHART. The chart under the board sizes its own window from the
+   * speed on purpose *(OWNER, 2026-08-11: "Can you also extend the time window automatically
+   * when choosing faster time warps?")* — see CHART_WINDOWS in ui/app.js. Two independent
+   * mechanisms; only the tiles are pinned here. */
   var WINDOW_S = 180;
-  // Window vs time acceleration. See the `speed:` note in pwr_board_wiring.js tile().
-  // Keys are the shipped speed settings; anything else takes the nearest rung at or below.
-  var TILE_WINDOWS = [[1, 180], [10, 600], [60, 1800], [600, 3600], [3600, 3600]];
-  function windowFor(speed) {
-    var w = TILE_WINDOWS[0][1];
-    for (var i = 0; i < TILE_WINDOWS.length; i++) if (speed >= TILE_WINDOWS[i][0]) w = TILE_WINDOWS[i][1];
-    return w;
-  }
   // One bucket per plot pixel — the decimation unit. See paint().
   var NB = W - 2 * PAD;
   // Retention. Thin the older half rather than truncating the oldest rows: at the 20 Hz
@@ -106,7 +125,7 @@
     // Held vertical axis + its zoom-in dwell counter. Null means "re-fit on the next
     // paint" — which is also how a band change, a rewind and reset() invalidate it.
     var held = null, shrinkFor = 0;
-    var winS = WINDOW_S;   // current trace window, sized by time acceleration
+    var winS = WINDOW_S;   // the trace window — fixed at every speed, see WINDOW_S
     var unitKey = null;    // display unit the buffer was recorded in
 
     var padX = num(cfg.padX, 8), padY = num(cfg.padY, 7), gap = num(cfg.gap, 5);
@@ -530,10 +549,11 @@
       // right-hand fraction of the card until the plant fills it, which is DELIBERATE:
       // back-filling flat history for a stretch the tile watched and knows was not flat
       // would be fabricating instrument data (HR1, and departure 1 in the file header).
-      if (props.speed != null) {
-        var w2 = windowFor(+props.speed || 1);
-        if (w2 !== winS) { winS = w2; held = null; shrinkFor = 0; }
-      }
+      /* `props.speed` is no longer read — the window is fixed (see WINDOW_S). The prop is
+       * still delivered by pwr_board_wiring.js tile() and is deliberately left unused rather
+       * than removed: board_check and the lane_reference golden artifact both build these
+       * props, and dropping a key from that shape is a wider change than this item. It is
+       * inert, not dark: nothing downstream reads it, so nothing can silently depend on it. */
 
       // A missing/failed instrument must not push a fabricated sample onto the trace.
       if (props.value == null || !isFinite(+props.value)) { txt(valEl, '—'); return; }

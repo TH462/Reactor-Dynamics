@@ -1444,6 +1444,37 @@
     eng._rilSteps = ril;
     eng._rodAtLimit = ril !== null && eng.rodSteps <= ril;
     eng._rodLimitMargin = ril === null ? BANK() : Math.max(0, Math.round(eng.rodSteps - ril));
+    /* THE ACCUMULATOR WINDOW, AND A HOLD ON THE CLOCK WHILE IT IS OPEN *(OWNER, 2026-09-03,
+     * #619 item 13: "There is a point the user will get stuck between step 7 and 8 if they do
+     * not open the accumulator valve in the window. if they miss the window they have to
+     * restart, theers no way to go back. We need to find a way that the player cant get trapped
+     * here. maybe have it kick out of warp at 665psi and refuse to go into warp again until the
+     * accumulator valve is opened.")*.
+     *
+     * The window is real and it is the one irreversible trap in the heatup: it opens at the
+     * 665 psia cover gas and shuts at the 1600 psig administrative lock, nothing annunciates
+     * either edge, and the Pressure SP dial's own floor (1700 psig) sits ABOVE the lock — so a
+     * player who rides past it at 600x cannot dial their way back and must restart the leg.
+     *
+     * `speed_hold` IS A GENERIC SEAM, not an accumulator special case: it is a reason string
+     * the PLANT sets when it wants the clock held at 1x, and the service honours it without
+     * knowing what it means (see _attentionStop). That keeps the pwr2 constants — cover gas and
+     * lock — in the module that owns them instead of leaking into a plant-agnostic service, and
+     * it is the shape #409's state-aware warp governor will want.
+     *
+     * RISING ONLY. A cooldown walks back down through the same band with the valve deliberately
+     * shut (the cooldown checklist opens the accumulators at 1500 psi and isolates them later),
+     * and holding the clock there would fight a correct procedure. */
+    var accWinLo = EC.ACC.p0_mpa;                                  // EC = RD.eccs, this file's alias
+    var accWinHi = (EC.ACC.admin_lock_psig + 14.7) / 145.0377;
+    var accP = ts.pressure_mpa;
+    var accShut = ts.accumulator_valve_open !== true;
+    var accRising = eng._prevAccP != null && accP > eng._prevAccP;
+    eng._prevAccP = accP;
+    ts.speed_hold = (accShut && accRising && accP >= accWinLo && accP <= accWinHi)
+      ? 'accumulator window open — arm the accumulators before accelerating again'
+      : null;
+
     /* facade extras a page needs and the contract does not carry */
     ts.sim_time_s = eng.simTime;
     ts.rod_steps = eng.rodSteps;

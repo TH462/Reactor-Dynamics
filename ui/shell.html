@@ -156,9 +156,14 @@
         <div class="sim-row">
           <button class="play paused attention" id="playBtn" data-scanner-hint="Play / Pause — starts or stops the simulation. Separate from the speed selector."
               data-scanner-detail="Paused, the plant is frozen but the board stays live and controls still queue commands. Time acceleration is a separate control: pausing does not reset it, and a paused plant at 60x is still paused.">▶</button>
-          <div class="speed" id="speed" data-scanner-hint="Speed — time acceleration. 1× real-time up to 3600×. No automatic dropout."
+          <div class="speed" id="speed" data-scanner-hint="Speed — time acceleration. 1× real-time up to 3600×, keys 1 to 6."
               data-scanner-detail="Acceleration runs the same physics faster, not a coarser model. Fast-forward dropout (a Settings option) can drop the clock back to real time when something needs you — a scram, a new failure, or the first alarm on a quiet board.">
-            <button class="on" data-speed="1">1×</button><button data-speed="10">10×</button><button data-speed="60">60×</button><button data-speed="600">600×</button><button data-speed="3600">3600×</button>
+            <!-- 5x added #619 item 18 (OWNER, 2026-09-03: "Add a 5x sim speed."). The service
+                 accepts ANY value (simulation_service.js set_speed is unclamped), so this is a
+                 UI rung only. The buttons carry no whitespace between them on purpose — .speed
+                 lays them out edge to edge. Adding a rung is safe for verify_e2e_ui, which
+                 clicks by [data-speed="N"]; REORDERING or renaming is not. -->
+            <button class="on" data-speed="1">1×</button><button data-speed="5">5×</button><button data-speed="10">10×</button><button data-speed="60">60×</button><button data-speed="600">600×</button><button data-speed="3600">3600×</button>
           </div>
           <button class="btn" id="manualBtn" data-scanner-hint="Operator's Manual — reference (controls, indications, setpoints, normal values) and engine-validated procedures for the selected plant."
               data-scanner-detail="The manual set is written in commercial operator-manual format: general description, controls and indications, normal and emergency procedures, alarm response, setpoints and a glossary. Its procedures are replayed against the engine by the test suite, so the steps match the plant you are operating.">Manual</button>
@@ -582,7 +587,7 @@
             </div>
             <div class="help-sec">
               <h4>Keyboard</h4>
-              <p class="mono help-keys">Space — play / pause · 1–5 — speed · A — ack all alarms ·
+              <p class="mono help-keys">Space — play / pause · 1–6 — speed · A — ack all alarms ·
               M — manual · ? — this guide · Esc — close / cancel</p>
             </div>
             <div class="help-sec">

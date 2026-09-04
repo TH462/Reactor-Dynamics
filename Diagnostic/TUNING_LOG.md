@@ -29,6 +29,111 @@ and the user-visible summary in `CHANGELOG.md`. This file points at those and tr
 
 ---
 
+## Session log — 2026-09-04-develop-b (#622 — the clock and the checklist did not know about each other)
+
+**The ask.** #619 wave 2, eight items: 3, 4, 6, 7, 8, 13, 17, 18. All eight built.
+
+### THE ONE WORTH CARRYING: TWO GATES WERE PASSING BY COVERING FOR THEIR OWN FIXTURES
+
+Both surfaced the same way — a change made them go red, and the red was the fixture, not the code.
+
+**1. `board_check` never loads `app.js`.** Its "the trace survives 3600x" check drove the vital
+tile with ONE sample per broadcast, because `RD.ChartFine` is set by `app.js` and this harness
+does not load it. So the check was really asserting the *window-widening it was written beside*:
+widen the window and one sample still spans it. Pinning the window at 180 s (item 17) dropped it
+to **1 vertex** and the check went red — correctly, against a plant no player runs. The fixture
+now delivers what the service delivers, and the arithmetic is the service's own:
+`fineEvery = max(CHART_FINE_SEC, simPerBroadcast / CHART_FINE_MAX)`, so at 3600x a fine sample
+lands every 6 s and a fixed 180 s window holds **30 rows** (900 at 60x and below). *That* is what
+retired the ladder — not a judgement that the ladder was wrong when written.
+
+**2. `run_checklist`'s precondition probe was non-deterministic at speed.** Its steps were bare
+observations, and a step with no `acc`/`saw`/`cmd` completes on `OBSERVE_DWELL_S` of **sim** time.
+Invisible at 1x across a few ticks; at 600x a single tick covers 60 s and the step checked itself
+off. The item-6 warp checks were the first thing to run that probe fast, and they failed —
+looking exactly like the new dropout misfiring. It was the plant working and the fixture drifting.
+Steps now carry an unmeetable `acc`, so only `checklist_check` advances them.
+
+**The pattern in one line: a fixture that models an OLD version of the system will keep a check
+green long after the check has stopped meaning anything.** Neither was findable by reading.
+
+### And a third: MY OWN PROBE COULD NOT SEE ITS OWN HALF-FIX
+
+Item 13's hold has two halves — the clock DROPS when the window opens, and `set_speed` REFUSES
+to leave 1x while it stands. I verified it with a scratch probe and got all three expected lines:
+hold at 666 psia, refusal, release. Green.
+
+`run_checklist_pwr2` then failed it: **668 psia, accel 600** — the refusal firing (`SPEED_HELD`
+returned) while the clock sat at 600x. The drop had gone in BELOW the `attentionStops` early
+return and the refusal had not, so the two halves disagreed: the button that would have set 600x
+was blocked while the clock was already there. My probe ran with `attentionStops` at its default
+**true**; the gate's `mkSvc` sets it **false**, and only that configuration separates them.
+
+The hold now sits ABOVE that return, which is also the right answer on its own terms: an
+attention stop is the plant INTERRUPTING you and a player may switch those off, but this is the
+plant refusing to be accelerated past something unrecoverable — turn dropouts off and the trap
+comes back. **A multi-part fix whose parts are each independently reachable needs a fixture that
+varies the thing they disagree about**, which is the #295 lesson arriving from a new direction.
+
+**AND THE FIX FOR THAT WAS ALSO WRONG, one gate run later — for the reason already at the top of
+the standing traps list.** Hoisting the hold above `attentionStops` broke the HEATUP REPLAY:
+measured, it dropped to 1× at step 7 and spent **45,716 ticks** at a tenth of its declared rate,
+never reaching Mode 3. The replay drives past the cover gas with the valve shut because arming it
+is the NEXT authored step, so the hold fires between 7 and 8 — correct for a player, fatal for a
+harness with a fixed tick budget.
+
+`procedures_harness` sets `attentionStops = false` and its comment says exactly what it means by
+it: *"The dropout is a comfort feature for a HUMAN at the board — a headless gate has no one to
+protect — and `attentionStops` is the supported way to say so."* So that one boolean was carrying
+**two different claims**: a player's Settings preference, and a harness declaring headlessness.
+Honouring it would restore the trap for any player who turned dropouts off; ignoring it starves
+every replay. **A SHARED BOOLEAN CANNOT BE TESTED FOR WHICH CONSUMER IT BELONGS TO** — the
+standing list's own entry (#600/#601), and I walked into it while fixing something else.
+
+The answer is a second flag, `speedHolds`, with **no command that sets it**: not reachable from
+the board, so a player can never disarm the hold that stops them getting stuck, while a headless
+probe opts out in one line. Coverage does not move — `run_checklist_pwr2` 2i drives the window
+directly and asserts the drop, the refusal and the release.
+
+### The other thing a source read could not have told me
+
+**Item 3's existing guard was self-declaring its own vacuity** — `verify_ckl_relevance` prints
+*"vacuous here; the heatup enters with its preconditions met, so this passes pre-fix too"* — and
+`run_checklist`'s `re-breaking the condition re-raises the comment` check asserted the exact
+behaviour the owner asked to remove, passing before AND after the fix because the probe never
+advanced. Both had to be rewritten before the fix could be said to be tested at all.
+
+### Items, and the seams they landed on
+
+| # | seam |
+|---|---|
+| 6 | `_attentionStop` reads the checklist's step INDEX, not the check-off command — most steps tick themselves off the instruments and never issue one, so a command hook catches only the hand-ticked few. Inherits `speed_snap`, the toast and the `_authoredSpeed` reset. |
+| 4 | The gate is on the ADVANCE, not the grading: `awaiting_ack` holds a satisfied step while its verdicts keep updating. The test is whether the step authors an operator action (`cmd`, or a `cmd`-kind accs entry) — which is why this NARROWS the 2026-08-11 directive rather than reversing it. |
+| 13 | A generic `true_state.speed_hold` reason string the PLANT sets and the service honours blind, so the 665 psia cover gas stays in `pwr2_eccs`. Measured: hold at **666 psia**, `set_speed 600` REFUSED, released on `open_accumulator_valve`. |
+| 8 | Derived from each step's own `hold` — 24 of 61 steps qualify with no authoring, and the number cannot drift from the replay. An authored duration beside a `hold` would be the same fact written twice, which is how 705 ppm came to disagree with the plant. |
+| 17 / 18 / 7 | see above; 5x is a UI rung only (`set_speed` is unclamped in the service), and the flash copies `.play.attention` including its `prefers-reduced-motion` branch. |
+
+**Edge state has to advance above every early return.** Both new `_attentionStop` reasons track
+their previous value BEFORE the scram/failure/`attentionStops` returns. Written the obvious way
+first — beside the `return` that uses it — the index goes stale exactly when it matters: a scram
+returns early, dropouts-off never runs it at all, and the next time either changed it compared
+against a value minutes old and fired a phantom dropout.
+
+**Two scoping calls flagged for the owner on #622**, both one-liners to reverse: item 3 is
+scoped-to-entry rather than deleted (he said "probably just remove it"), and item 6's dropout sits
+INSIDE the `attentionStops` Settings toggle.
+
+### Gates
+
+`run_checklist` **46/46** (38 -> 46) · `verify_board_check` 236/236 · `run_contract` 178/178 ·
+`run_m5` 120 · `run_m6` 117 · `run_m7` OK · `run_autoctl` 30/30 · `run_hr3` 31/31 ·
+`run_style` 8/8 · `run_hardrules` 473/473 · `run_release` 27/27 at `Alpha 1.7.2-rc6` ·
+`verify_ckl_relevance` 13/13 · `run_checklist_pwr2` (see the entry's close-out).
+
+**A browser drive is still owed** — items 4, 7, 13 and 17 are visual and no Node gate sees them.
+
+---
+
 ## Session log — 2026-09-04-develop-a (#624 — the power ascension was replaying a plant no player ever gets)
 
 **The ask.** #619 item 28: *"the power ascention checklist has boron level at 705. this places the

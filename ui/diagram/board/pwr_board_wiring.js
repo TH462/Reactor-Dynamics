@@ -2378,17 +2378,19 @@
         decimals: tileDigits(id, b),
         // sim clock drives the tile's sampling window (see comp_indicator_panel)
         t: (s.metadata && s.metadata.sim_time != null) ? s.metadata.sim_time : null,
-        // …and the SPEED sizes that window. A fixed 3 minutes of SIM time is ~0.05 s of
-        // wall clock at 3600x: sim seconds per broadcast is accel x 0.1, so a 180 s window
-        // held 3 samples at 600x and ONE at 3600x — the time-trim then deleted everything
-        // but the newest and the trace collapsed to a single vertex. The six vital gauges
-        // were simply BLANK above ~600x.
+        // THE SPEED NO LONGER SIZES THAT WINDOW *(OWNER, 2026-09-03, #619 item 17: "Dont
+        // change the 6 vital indication strip chart time window when time warping.")* — the
+        // tile is pinned at 180 s at every acceleration; see WINDOW_S in comp_indicator_panel.
         //
-        // DISCRETE, not accel x 180, for the reason CHART_WINDOWS is already a table: the
-        // requested acceleration is a target the engine does not meet, so a window sized
-        // off the number never fills. Capped an order of magnitude below the strip chart's
-        // — the tile's job is "what has this been doing recently"; the history belongs to
-        // the chart underneath it.
+        // The ladder this fed was not decoration. A tile once got ONE sample per broadcast,
+        // and at 3600x a broadcast covers 360 s of plant, so a 180 s window held a single
+        // vertex and the six vital gauges were BLANK above ~600x. What retired it is `fine`
+        // on the next line: with the service's sub-samples the same fixed window holds ~30
+        // rows at 3600x (900 at 60x and below), which is the measurement the fix rests on.
+        //
+        // The prop is still passed and is now UNREAD by the component. Kept because
+        // board_check and the lane_reference golden artifact both build this props shape,
+        // and it is the natural input if a future tile wants to say what the clock is doing.
         speed: (s.metadata && s.metadata.time_acceleration) || 1,
         fine: fine,
         // Display unit, so the tile can drop a history recorded in the OTHER one. st.min /
