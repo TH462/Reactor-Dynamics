@@ -874,6 +874,25 @@ html[data-channel="dev"] .logo-test {
 .ff-rate.ok   { color: var(--running); border-color: rgba(34,197,94,.35); }
 .ff-rate.warn { color: var(--caution); border-color: rgba(245,158,11,.4); background: rgba(245,158,11,.08); }
 .ff-rate.bad  { color: var(--danger, #ef4444); border-color: rgba(239,68,68,.45); background: rgba(239,68,68,.08); }
+/* DROPOUT FLASH *(OWNER, 2026-09-03, #619 item 7: "when dropping out of warp, flash the warp
+   buttons for a moment to make it more obvious.")*. Added by app.js for ~1.6 s whenever the
+   snapshot carries a `speed_snap`, so it marks every automatic dropout — a scram, a failure,
+   a first alarm, or a checklist step completing.
+
+   FINITE, not infinite like .play.attention: that one is a standing "you have not started yet"
+   cue, this one reports a thing that just happened and must stop on its own. Three pulses.
+
+   The glow goes on the CONTAINER, not the buttons: the buttons carry .on as an inset outline
+   and an outer box-shadow on a flex child inside an overflow:hidden strip is clipped. Same
+   colour family as the clock's accel warning, so the two read as one idea. */
+.speed.speed-snapped { animation: speedSnap 0.55s ease-out 3; }
+@keyframes speedSnap {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(255, 209, 102, 0); border-color: var(--border); }
+  40%      { box-shadow: 0 0 0 4px rgba(255, 209, 102, 0.45); border-color: var(--caution); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .speed.speed-snapped { animation: none; box-shadow: 0 0 0 2px rgba(255, 209, 102, 0.5); border-color: var(--caution); }
+}
 .text-btn { flex: 0 0 auto; padding: 4px 10px; font-size: 12px; font-weight: 600; }
 .demo-btn { flex: 0 0 auto; min-width: 28px; padding: 4px 8px; }
 
@@ -1889,6 +1908,25 @@ select.num-input { width: auto; }
   box-shadow: 0 0 0 1.5px rgba(120, 210, 150, 0.70), 0 0 12px 3px rgba(120, 210, 150, 0.30);
   border-radius: 6px; position: relative; z-index: 5;
 }
+/* ACKNOWLEDGE *(OWNER, 2026-09-03, #619 item 4: "this button should flash green so the user
+   knows thats the control that needs to be pressed to progres.")*. Green and pulsing, reusing
+   cklGlow below — the same glow the board's own up-next controls carry, so "the thing to press"
+   reads identically whether it is a board control or this button.
+
+   INFINITE, unlike the speed-dropout flash: this one is not reporting an event, it is the
+   control the checklist is waiting on, and it must stay findable until pressed. Reduced motion
+   drops the animation and keeps a static ring — the button still has to be obviously the one. */
+.ckl-ack-row { display: flex; align-items: center; gap: 8px; margin: 5px 0 2px; flex-wrap: wrap; }
+.ckl-ack {
+  border-color: var(--running); color: var(--running); font-weight: 700;
+  padding: 3px 12px; border-radius: 6px;
+  animation: cklGlow 1.2s ease-in-out infinite;
+}
+.ckl-ack:hover { background: rgba(120, 210, 150, 0.12); }
+.ckl-ack-note { font-size: 11px; color: var(--text-2); }
+@media (prefers-reduced-motion: reduce) {
+  .ckl-ack { animation: none; box-shadow: 0 0 0 2px rgba(120, 210, 150, 0.85); }
+}
 @keyframes cklGlow {
   0%, 100% { box-shadow: 0 0 0 1px rgba(120, 210, 150, 0.60), 0 0 10px 2px rgba(120, 210, 150, 0.28); }
   50%      { box-shadow: 0 0 0 2px rgba(120, 210, 150, 0.98), 0 0 18px 5px rgba(120, 210, 150, 0.50); }
@@ -2402,6 +2440,21 @@ select.num-input { width: auto; }
 .oom-pred { color: var(--text-2); font-size: 11px; }
 .oom-msg { min-height: 16px; padding: 0 10px 8px; color: var(--muted); font-size: 11px; }
 .oom-msg.warn { color: var(--caution); }
+/* HELP, IN PLACE *(OWNER, 2026-09-03, #619 item 23)*. The window grows downward instead of
+   opening a modal — the Scanner's idiom, chosen by directive on 2026-08-11 for the same reason
+   that applies here: a modal covers the plot the player is asking about.
+
+   CAPPED AND SCROLLING, like the Scanner's expanded box. The window is draggable and lives at a
+   fixed top, so an uncapped panel could run off the bottom of a short viewport with the plot
+   stranded above it. `.on` marks the button while it is open so the toggle reads as a state. */
+.oom-help {
+  padding: 2px 10px 10px; max-height: 260px; overflow-y: auto;
+  border-top: 1px solid var(--border); color: var(--text-2); font-size: 11.5px; line-height: 1.45;
+}
+.oom-help p { margin: 8px 0 0; }
+.oom-help p:first-child { margin-top: 8px; }
+.oom-help b { color: var(--text); }
+.oom-help-btn.on { color: var(--text); box-shadow: inset 0 0 0 1px var(--normal); }
 .oom-frame { fill: none; stroke: var(--border); }
 .oom-grid { stroke: var(--border); stroke-dasharray: 2 3; }
 .oom-zero { stroke: var(--text-2); }

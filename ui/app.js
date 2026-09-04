@@ -146,6 +146,10 @@
   // CSV export, not the plot.
   var CHART_WINDOWS = {
     1:    [60, 300, 600, 1800],
+    /* 5x DECLARED, not left to the fallback (#619 item 18): `chartWindowsFor` returns the 1x
+     * ladder for any speed it does not know, and a fallback that happens to be correct is the
+     * shape that rots the first time someone changes the default. Rungs follow the rule above
+     * (wall-clock duration near the 1x ladder's), the #625 values. */
     5:    [180, 900, 1800, 5400],
     10:   [300, 900, 3600, 10800],
     60:   [900, 3600, 10800, 43200],
@@ -2827,6 +2831,12 @@
     // #625: the WARP tier let go (60x) or was refused; the service names the plant's reason.
     transient: 'WARP dropped to 60× — ',
     warp_locked: 'WARP unavailable — ',
+    // #619 item 6. Not an emergency, so it toasts 'info' rather than 'error' below — the
+    // other three are the plant interrupting you; this one is the checklist keeping pace.
+    step: 'Dropped to real time — checklist step complete',
+    // #619 item 13 — the plant is holding the clock down (the accumulator arming window).
+    // The service also REFUSES set_speed while it stands, so this is not merely advisory.
+    hold: 'Held at real time — the plant needs you here',
   };
   function speedSnapText(snap) {
     var base = SPEED_SNAP_MSG[snap.reason] || 'Dropped to real time';
@@ -2879,12 +2889,39 @@
   // command like everything else); the UI just mirrors what the snapshot reports.
   var attnStops = true;
   var lastSpeedSync = null;
+  var speedFlashT = null;   // #619 item 7 — the dropout flash timer
   function syncSpeedUI(s) {
     var v = s && s.metadata ? s.metadata.time_acceleration : null;
     // Attention stop (M5): a plant event snapped fast-forward back to real time.
     // Toast the reason so the operator knows why the clock changed under them.
     var snap = s && s.metadata ? s.metadata.speed_snap : null;
-    if (snap) showToast(speedSnapText(snap), snap.reason === 'warp_locked' ? 'warn' : 'error');
+    if (snap) {
+      /* Severity by kind: a checklist step completing is information (#619 item 6); a WARP
+       * refusal is a caution (#625); everything else is the plant interrupting you. */
+      showToast(speedSnapText(snap),
+        snap.reason === 'step' ? 'info' : snap.reason === 'warp_locked' ? 'warn' : 'error');
+      /* FLASH THE SPEED BUTTONS *(OWNER, 2026-09-03, #619 item 7: "when dropping out of warp,
+       * flash the warp buttons for a moment to make it more obvious.")*. The toast says what
+       * happened; the flash says WHERE, which is the control the player now has to touch to
+       * get moving again.
+       *
+       * Driven from here rather than from the `v !== lastSpeedSync` block below on purpose:
+       * that block short-circuits when the value has not changed, and a dropout that lands on
+       * a speed already showing 1x would flash nothing. `speed_snap` is stamped once per
+       * event by the service, so this fires exactly once per dropout.
+       *
+       * The class is removed on a timer AND before being re-added, so a second dropout inside
+       * the animation restarts it instead of being swallowed — a re-add without the removal is
+       * a no-op in CSS, which is the usual way this idiom fails silently. */
+      var spSeg = $('speed');
+      if (spSeg) {
+        spSeg.classList.remove('speed-snapped');
+        void spSeg.offsetWidth;                 // reflow: makes the re-add restart the animation
+        spSeg.classList.add('speed-snapped');
+        if (speedFlashT) clearTimeout(speedFlashT);
+        speedFlashT = setTimeout(function () { spSeg.classList.remove('speed-snapped'); }, 1600);
+      }
+    }
     var as = s && s.metadata ? s.metadata.attention_stops : null;
     if (as != null && as !== attnStops) { attnStops = as; syncSeg('[data-attn]', as ? 'on' : 'off', 'attn'); }
     if (v == null || v === lastSpeedSync) return;
@@ -3455,6 +3492,12 @@
     rhr_active:             { bool: 'RHR is in service' },
     rhr_valve_open:         { bool: 'the RHR suction valve is open' },
     accumulator_valve_open: { bool: 'the accumulator discharge valve is open' },
+    /* the letdown pair (#624 items 14/25): the SELECTOR is control_state, the FLOW is
+     * true_state, and the heatup's transfer step needs both — one is what you pressed, the
+     * other is what the plant did about it */
+    letdown_orifice_a:      { bool: 'letdown orifice A is in service' },
+    letdown_orifice_b:      { bool: 'letdown orifice B is in service' },
+    letdown_flow_actual:    { label: 'Letdown flow', u: 'gpm', scale: 450000 },
     sr_energized:           { bool: 'the Source Range detector is energized' },
     sg_safety_open:         { bool: 'an SG code safety is open' },
     porv_open:              { bool: 'the PORV is open' },
@@ -3472,7 +3515,13 @@
       if (ui.units === 'SI') return usTxt;                        // already SI — one form
       return usTxt + ' (' + (Math.abs(+v) >= 100 ? Math.round(+v) : Math.round(+v * 100) / 100) + ' ' + siU + sfx + ')';
     }
-    var n = Math.abs(+v) >= 100 ? Math.round(+v) : Math.round(+v * 10) / 10;
+    /* A DISPLAY SCALE, for the params published in the #408 currency (#624 item 25). The CVCS
+     * flows are gpm/450,000 on the wire, so a raw render prints "0" for every flow a plant ever
+     * carries — 12.5 gpm is 2.8e-5. The board multiplies by the same 450,000; this is that
+     * conversion for the checklist's own criteria line, declared on the entry rather than
+     * hidden in a branch. */
+    var vv = (pd && pd.scale) ? +v * pd.scale : +v;
+    var n = Math.abs(vv) >= 100 ? Math.round(vv) : Math.round(vv * 10) / 10;
     return n + (pd && pd.u ? ' ' + pd.u : '');
   }
   // The whole criteria phrase for one {p,op,v[,tol]} — "Pressure ≥ 2235 psi (15.41 MPa)",
@@ -3607,23 +3656,29 @@
       var active = !ck.complete && i === ck.step_index;
       var cls = done ? 'ckl-done' : active ? 'ckl-active' : 'ckl-pend';
       var hoverable = stepHlLabels(st) ? ' ckl-hoverable' : '';
+      /* Per-iteration, NOT hoisted by accident: `var` is function-scoped, so a flag set on one
+       * step would still read true on the next and silently suppress its wait line. Reset here,
+       * at the top of every step. */
+      var waitLineShown = false;
       h += '<div class="ckl-step ' + cls + hoverable + '" data-ckl-step="' + i + '"><div class="ckl-ico">' + (done ? '✓' : active ? '▸' : '○') + '</div><div class="ckl-body">';
       if (active) {
-        var via = ck.graded_by === 'instrument' ? 'graded off the instrument reading'
-                : ck.graded_by === 'control_state' ? 'graded off the board control'
-                : ck.graded_by === 'true_state' ? 'graded off the true value (no instrument for this)' : null;
+        /* THE "graded off the …" LINE IS GONE *(OWNER, 2026-09-03, #619 item 5: "remove the
+         * 'graded off the....' line from each step")*. It named which channel the check reads
+         * — instrument, board control, or true value — under every active step's details.
+         * That is a statement about the HARNESS, not about the plant, and the panel header
+         * already says it once for the whole run ("steps check themselves off the instruments").
+         * `ck.graded_by` is untouched in the snapshot and still asserted by
+         * run_checklist_pwr2 2a/2b, which read the snapshot rather than the DOM. */
         if (st.accs && st.accs.length) {
           for (var ai = 0; ai < st.accs.length; ai++) {
             var en = st.accs[ai], av = (ck.accs && ck.accs[ai]) || {};
             var enTxt = en.label ? en.label : (en.p ? fmtPredicate(en) : mesc(en.cmd || ''));
             h += '<div class="ckl-crit' + (av.met ? ' ckl-crit-met' : '') + '">' +
-              (av.met ? '✓ ' : '○ ') + (en.label ? mesc(enTxt) : enTxt) +
-              (av.met ? '' : ' <span class="muted">…not yet</span>') + '</div>';
+              (av.met ? '✓ ' : '○ ') + (en.label ? mesc(enTxt) : enTxt) + '</div>';
           }
         } else if (st.acc) {
           h += '<div class="ckl-crit' + (ck.acc_met ? ' ckl-crit-met' : '') + '">' +
-            (ck.acc_met ? '✓ ' : '○ ') + 'When ' + fmtPredicate(st.acc) +
-            (ck.acc_met ? '' : ' <span class="muted">…not yet</span>') + '</div>';
+            (ck.acc_met ? '✓ ' : '○ ') + 'When ' + fmtPredicate(st.acc) + '</div>';
         }
         var isObs = st.control && /^\(observe/i.test(st.control);
         if (isObs) {
@@ -3634,18 +3689,62 @@
             (st.control && st.target ? ': ' : '') +
             (st.target ? mesc(st.target) : '') + '</div>';
         }
+        /* HOW LONG THIS STEP TAKES, ON THE FACE OF THE CARD *(OWNER, 2026-09-03, #619 item 8:
+         * "Add estimated plant time to compeltion for steps with waiting that could take more
+         * than a few minutes at 1x. add suggestion to time warp for those steps.")*.
+         *
+         * DERIVED FROM `hold`, NOT AUTHORED. Every step already carries the dwell the replay
+         * gives it, so the estimate cannot drift from what the harness proves the step needs —
+         * and 24 of the 61 pwr2 steps qualify without a word of new authoring. An authored
+         * number beside a `hold` would be the same fact written twice, which is how the 705 ppm
+         * in the ascension came to disagree with the plant.
+         *
+         * ⚠ IT IS THE REPLAY'S DWELL, WHICH IS AN UPPER BOUND, NOT A PROMISE. The harness waits
+         * `hold` seconds; a player who drives the plant harder gets there sooner, and one who
+         * dawdles does not. Hence "about", and hence no attempt to count down.
+         *
+         * ALWAYS VISIBLE on the active step, unlike the rest of the detail block: the whole
+         * point is to tell someone to reach for the speed control BEFORE they sit and watch a
+         * 90-minute ride at 1x. The authored `wait_hint` rides with it when there is one (it
+         * carries the real warnings — the accumulator window is the one that matters), and is
+         * then suppressed from the collapsed detail so it is not printed twice. */
+        var holdS = +st.hold || 0;
+        if (holdS >= 180) {
+          var mins = holdS / 60;
+          var span = mins < 90 ? Math.round(mins) + ' plant-minutes'
+                   : (mins / 60).toFixed(mins / 60 < 10 ? 1 : 0) + ' plant-hours';
+          h += '<div class="ckl-sub ckl-wait">⏩ About ' + span + ' at 1× — use time acceleration' +
+            (holdS >= 1800 ? ' and come back' : '') + '.' +
+            (typeof st.wait_hint === 'string' ? ' ' + mesc(st.wait_hint) : '') + '</div>';
+          waitLineShown = true;
+        }
+        /* ACKNOWLEDGE *(OWNER, 2026-09-03, #619 item 4: "add an acknowledge button to the step.,
+         * this button should flash green so the user knows thats the control that needs to be
+         * pressed to progres.")*. Drawn only when the instructor says this step is satisfied and
+         * holding — `awaiting_ack`, which it sets only for steps that author no operator action.
+         *
+         * It reuses `data-ckl-check`, the handler that survived the button's removal in August
+         * (the command outlived the control), so nothing new is wired: the press is the same
+         * `checklist_check` the harness issues.
+         *
+         * It is the LAST thing in the active block on purpose — directly above the step text it
+         * belongs to, and below the acceptance lines that have just gone green, so the eye goes
+         * criterion → met → press. */
+        if (ck.awaiting_ack) {
+          h += '<div class="ckl-ack-row"><button class="btn ckl-ack" data-ckl-check="' + i +
+            '">Acknowledge ✓</button><span class="ckl-ack-note">This step is complete — acknowledge to continue.</span></div>';
+        }
       }
       h += '<div class="ckl-txt">' + (i + 1) + '. ' + mesc(st.text) + '</div>';
       if (done && ck.done_by && ck.done_by[i] === 'manual') h += '<div class="ckl-sub">checked by hand</div>';
       var det = '';
       if (st.note) det += '<div class="ckl-sub muted">' + mesc(st.note) + '</div>';
-      if (st.wait_hint) {
+      if (st.wait_hint && !waitLineShown) {
         det += '<div class="ckl-sub ckl-wait">⏩ ' + mesc(st.wait_hint === true
           ? 'This takes a while in plant time — use time acceleration (the speed control, top bar).'
           : st.wait_hint) + '</div>';
       }
       if (st.why) det += '<div class="ckl-why">' + mesc(st.why) + '</div>';
-      if (active && via) det += '<div class="ckl-sub muted" title="Which value the check reads">' + via + '</div>';
       if (det) {
         var detOpen = cklState.whyAll || (cklState.whyOpen && cklState.whyOpen[i]);
         if (active && !detOpen) h += '<div class="ckl-expand-hint">Click to expand</div>';
@@ -7313,8 +7412,11 @@
     // Global keyboard shortcuts (documented in Help). Skipped while typing
     // in a field or holding a modifier; Space is left alone when a button has
     // focus so native activation (incl. rod hold) still works.
-    // Six rungs since #625 (5x added per #622 item 18, owner-ruled 2026-09-04). The map is the
-    // DOM ladder's order; a key with no matching button does nothing.
+    /* KEYS ARE POSITIONS ON THE LADDER, NOT SPEEDS — and the 5x rung (#619 item 18, owner-ruled
+     * 2026-09-04; six rungs since #625) shifted every key above it. `2` was 10x and is now 5x;
+     * the ladder ends at `6`. Kept as a literal map rather than derived from the DOM because a
+     * missing button must not silently renumber the rest; a key with no matching button does
+     * nothing. The help string in shell.html says "1 to 6" and moves with this. */
     var SPEED_KEYS = { '1': 1, '2': 5, '3': 10, '4': 60, '5': 600, '6': 3600 };
     document.addEventListener('keydown', function (e) {
       if (e.key === 'Escape') {
@@ -7614,7 +7716,12 @@
     var p = $('scannerPanel'); if (p) p.classList.toggle('expanded', ui.inspectExpanded);
     var b = $('scannerToggle');
     if (b) {
-      b.textContent = ui.inspectExpanded ? 'Summary only' : 'Full description';
+      /* "Click to expand" / "Click to collapse" *(OWNER, 2026-09-03, #619 item 10: "change
+       * scanner FULL DESCRIPTION button to CLICK TO EXPAND")*. The pair names the ACTION the
+       * button performs rather than the state it lands in, which is what "Full description" /
+       * "Summary only" got wrong — and it matches the checklist card's own expand affordance,
+       * which has read "Click to expand" since #607. */
+      b.textContent = ui.inspectExpanded ? 'Click to collapse' : 'Click to expand';
       b.setAttribute('aria-expanded', String(ui.inspectExpanded));
     }
     try { localStorage.setItem('rd_inspect_expanded', ui.inspectExpanded ? '1' : '0'); } catch (e) { /* private mode */ }
@@ -7770,7 +7877,7 @@
       place: 'top',
       title: 'System Scanner',
       body: '<p>The line under the board. Hover anything and it says what that is; ' +
-        '<b>Full description</b> opens the detail and a Manual link.</p>'
+        '<b>Click to expand</b> opens the detail and a Manual link.</p>'
     },
     {
       sel: '#playBtn',

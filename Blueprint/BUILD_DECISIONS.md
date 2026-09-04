@@ -74,6 +74,32 @@ thread boundary; the budget gets most of the benefit). The protection-margin gov
 
 **Record:** `Diagnostic/TUNING_LOG.md` 2026-09-04-workbench-a (all measurements, the gate's first-run
 adjudication, the subcooling band).
+## 2026-09-04-develop-f — #624 items 14/25: the protective letdown isolate gets its own field
+
+**DECIDED, and it is a design decision rather than a fix.** The 17 % low-pressurizer-level letdown
+isolation now sets `cv.letdownIsolated` — a flag that stops **both** letdown paths (the orifices and
+the residual-heat-removal cross-connect) and **never touches `cv.letdownOpen`**, the operator's
+orifice selection. It is **cleared only by an operator letdown command**, and only once the latch
+(`pz.lowLevelCut`, restore at 20 %) has cleared; it does not follow the latch.
+
+*(OWNER RULING, 2026-09-04: selected "Split the field: `letdownOpen` stays the orifice lineup, the
+RHR cross-connect gates only on `rhr_letdown_ok`, and the 17 % cut drives a separate
+`letdownIsolated` that stops both", from three options on #624)*
+
+**Why not auto-restore at 20 %.** [sourced] WTSM §4.1.3.1 (ML11223A214): *"The letdown orifice
+isolation valves automatically close on low pressurizer level"* — nothing in that chapter re-opens
+them. `Manuals/06` PWR-A13a already documented no automatic restoration, and the retired kernel's
+row was designed the same way (`NO reset_action`). It is also the standing de-energization rule
+(#200, #329, #332): remove the delivered flow, leave the selector where the operator put it — which
+is precisely what writing the protective action into `letdownOpen` did not do.
+
+⚠ **DECLARED UNVERIFIED, in the code and in `09` §3.0**: whether the real 17 % interlock reaches
+HCV-128 (the cross-connect) or only the normal-line valves. The ruling says it stops both.
+
+**Consequence recorded, not incidental**: both cold initial conditions now boot with the orifices
+**out** (`letdownOpen: ic.cold ? 0 : 1`), because the source puts low-pressure letdown on the
+cross-connect in that regime. That is what turns `set_letdown_orifices` from an orphan control into
+a step with a consequence, and it is why the heatup checklist now has one.
 
 ## 2026-09-03-develop-c — #612: the checklist column, and an auto-scroll that fought the reader
 

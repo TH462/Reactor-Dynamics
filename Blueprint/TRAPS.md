@@ -22,6 +22,25 @@ the evidence to put it back** — say so in the session log rather than quietly 
 
 ---
 
+## Evicted 2026-09-04 (a THEMES-rotation eviction — the #606 cache-key bullet, out on the workbench<-develop merge)
+
+A rotation eviction, not a standing-list one: the merge brought the themes list to six (#625's
+bullet from the workbench lane and #619/#621's from develop), and the oldest is this one. **It
+meets the criterion** — the greyed-checklist case is pinned by the #606 browser check, so getting
+it wrong again reds a runner.
+
+> **A CACHE KEY THAT OMITS WHAT THE CACHE DESCRIBES READS AS A WORKING FEATURE — AND ITS
+> CONTENT IS CORRECT, FOR A PLANT THE PLAYER HAS LEFT** (2026-09-02, #606). The Checklists tab
+> greyed the Mode 5 heatup on a Mode 5 board. Ranker, CSS and gate sentences were all right;
+> `cklMenuKey` was `engine | running checklist`, and neither changes on an initial-condition
+> reset, so the Hot Full Power list survived **byte-identical**. No source read sees it, and no
+> Node harness calling the ranker — the ranker is not where the bug is.
+
+**The half worth carrying, if you only read one line:** when a memoized render is wrong, the
+defect is in the KEY, and no read of the renderer will find it.
+
+---
+
 ## Evicted 2026-09-02b (a THEMES-rotation eviction — the #244/#526 checklist-replay bullet, out for #608's)
 
 Not a standing-list eviction: the standing list is at its 25-bullet cap and `CLAUDE.md` sits one

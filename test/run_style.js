@@ -174,6 +174,42 @@ var CHECKS = [
     },
     inject: function (d) { d.manual[0].lines.push('The plant is rated 100 MW gross.'); },
   },
+  /* THE DETAILS PARAGRAPH IS SUPPLEMENTAL CONTEXT, NOT A CHAPTER *(OWNER, 2026-09-03, #619
+   * item 12: "the click to expand description is way to verbose. nobody is going to read all
+   * that… This text is a supplemental description to give a little context to the player about
+   * the step. they should be no more than 2 or 3 sentences.")*.
+   *
+   * SENTENCES, NOT WORDS, and the reason is the corpus. The owner's rule is stated in
+   * sentences; a word cap was tried first and it fought the units rule — the steps that must
+   * carry "1972 psi (13.6 MPa)" three times run long in three sentences and would have been
+   * "fixed" by deleting the SI pairs `run_manual_units` requires. So the scored check counts
+   * sentences and the word count goes to the backlog below, unscored, the same split this
+   * runner already makes for the twenty-word step cap.
+   *
+   * FOUR, not three, for the same reason every other cap here has a rung of slack: three is
+   * the owner's guidance and four is where prose stops being supplemental and starts being a
+   * chapter. When it binds, CUT — the reasoning belongs in the manual chapter the step cites.
+   * At authoring: 61 of 61 pass, worst 3 sentences / 102 words (pwr_heatup step 8, the
+   * accumulator window). Before this pass the worst was 9 sentences / 246 words. */
+  {
+    id: 'checklist_why_length',
+    rule: 'W-detail — a step\'s details paragraph is supplemental context: at most 4 sentences',
+    run: function (d) {
+      return d.steps.filter(function (s) { return typeof s.step.why === 'string'; })
+        .map(function (s) {
+          var n = s.step.why.replace(/\n+/g, ' ').split(/(?<=[.!?])\s+/)
+            .filter(function (x) { return x.trim().length > 1; }).length;
+          return { s: s, n: n };
+        })
+        .filter(function (r) { return r.n > 4; })
+        .map(function (r) {
+          return r.s.proc + ' step ' + r.s.n + ' — ' + r.n + ' sentences: ' + r.s.step.why.slice(0, 90);
+        });
+    },
+    inject: function (d) {
+      d.steps[0].step.why = 'One. Two. Three. Four. Five sentences is a chapter, not a note.';
+    },
+  },
   {
     id: 'industry_label_case',
     rule: 'U4 — an Industry alarm label is a terse board legend: upper case throughout',
@@ -262,6 +298,18 @@ console.log('\n' + D + '  backlog (reported, not scored — the guide states the
 console.log(D + '    step texts over the twenty-word cap (W2): ' + over.length + ' of ' +
   data.steps.filter(function (s) { return s.step.text; }).length +
   ' · longest ' + words(longest.step.text) + ' words (' + longest.proc + ' step ' + longest.n + ')' + X);
+/* The DETAILS paragraph's word count, unscored — the scored half counts sentences (see the
+ * `checklist_why_length` note). Reported because "3 sentences" and "short" are not the same
+ * claim: a step carrying three US/SI pressure pairs runs long inside the cap, and that is the
+ * corpus telling you the units rule and the brevity rule are pulling against each other. */
+var whys = data.steps.map(function (s) { return s.step.why; })
+  .filter(function (w) { return typeof w === 'string'; });
+var whyW = whys.map(function (w) { return words(w); });
+console.log(D + '    step details (why) word count: mean ' +
+  Math.round(whyW.reduce(function (a, b) { return a + b; }, 0) / (whyW.length || 1)) +
+  ' · longest ' + Math.max.apply(null, whyW.concat([0])) +
+  ' · over 80 words: ' + whyW.filter(function (w) { return w > 80; }).length +
+  ' of ' + whyW.length + X);
 console.log(D + '    Manuals/ lines carrying a modal (W16): ' + manualCount(MODAL) +
   ' · a reversal (W17): ' + manualCount(REVERSAL) +
   ' · a vague quantifier (W12): ' + manualCount(VAGUE) + X);

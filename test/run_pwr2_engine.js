@@ -49,7 +49,8 @@ function loadAll(engSource, coreSource) {
  * 'E' the AFW starts, 'F' the feed train, 'G' the electrical pair (#507 wave 4), 'H' the
  * SGTR (#507 wave 5), 'I' the failure levers (#507 wave 6), 'K' the initial conditions
  * (#507 §F, wave 7), 'L' the rod insertion limit (#507 §B, wave 8), 'M' the RCP restart
- * (#507 wave 9), 'N' the shutdown IC (#507 wave 10).
+ * (#507 wave 9), 'N' the shutdown IC (#507 wave 10), 'O' the neutron-source construction
+ * (#536), 'P' the heater-elevation seam (#573), 'Q' the letdown split (#624 items 14/25).
  * The CLEAN pass runs everything. Measured before this existed: 17 mutations x the whole
  * suite = 1074 s of contention in the aggregate gate — the replay cost scales with every
  * fixture ever added, and a mutation only needs the checks built to see it. */
@@ -2173,6 +2174,110 @@ function runSuite(RD, rec, quiet, only) {
       'shed ' + engHE.pz.heatersShed + ', published ' + tsShed.pzr_heater_kw + ' kW');
   }
 
+  if (grp('Q')) {
+  /* ---- 15. THE LETDOWN SPLIT (#624 items 14/25, owner-ruled 2026-09-04) --------------------
+   * THREE THINGS USED TO BE ONE FIELD, and every fixture in this tree booted `letdownOpen = 1`,
+   * so nothing could tell them apart:
+   *   · the OPERATOR'S ORIFICE LINEUP (`cv.letdownOpen`) — the board's four-button selector;
+   *   · the RHR-to-CVCS CROSS-CONNECT (HCV-128), which the source has FULLY OPEN whenever the
+   *     plant is on shutdown cooling and which is not an orifice at all;
+   *   · the 17 % low-pressurizer-level PROTECTIVE ISOLATE, which used to be written INTO the
+   *     operator's selection — a de-energization in the demand, which never heals (#200).
+   * The cold initial conditions now boot with the orifices OUT, which is what makes the
+   * selector a control the player has a reason to touch (item 25: it was an orphan).
+   *
+   * ⚠ THE 17 % CUT CANNOT BE REACHED BY SCALING THE VESSEL — measured, and it is the HE-3 trap
+   * one door along. Scaling `m_sub`/`m_sat` to a 12 % level at hot full power reddens nothing:
+   * the subcooled loop expands into the drained vessel and the TRUE level was back at 58.3 %
+   * before the instrument's lag had moved, so `lowLevelCut` never latched in 120 s. It takes a
+   * SUSTAINED DRAIN, so this group opens a 2 cm2 cold-leg break and advances until the latch
+   * arrives, bounded, failing loudly if it never does. */
+  head('THE LETDOWN SPLIT  [lineup, cross-connect and protective isolate are three things]');
+  var CVQ = RD.cvcs;
+
+  /* 1. THE COLD BOOT. Orifices OUT, and the inventory balance still closes — on the
+   * cross-connect, which is where the source puts low-pressure letdown. */
+  var engQ = EN.createEngine({ initial_state: 'cold_shutdown' });
+  var tsQ0 = run(engQ, 1);
+  ckT('Mode 5 boots with the letdown orifices OUT (item 25: the selector had no job before)',
+      engQ.cv.letdownOpen === 0 && engQ.cv.letdownIsolated === false,
+      'letdownOpen ' + engQ.cv.letdownOpen + ' — WTSM ch.19 puts shutdown letdown on the ' +
+      'RHR cross-connect HCV-128, not on the orifices');
+  ckT('...and letdown still flows, at the NORMAL magnitude, through the cross-connect',
+      Math.abs(engQ._letdownKgs - CVQ.normalLetdownKgs()) < 1e-12 && engQ.rh.running === true,
+      engQ._letdownKgs.toFixed(4) + ' kg/s against a normal ' +
+      CVQ.normalLetdownKgs().toFixed(4) + ' — a SHUT orifice lineup passing full letdown, ' +
+      'which is the whole of the split');
+  /* THE INVENTORY CLAIM, and the one that would have caught the shipped defect. On the
+   * pre-split engine this same lineup (letdownOpen 0) passes NOTHING and the plant fills on its
+   * own seal injection: measured 25.0 -> 35.3 % of pressurizer level in 20 plant-minutes, the
+   * #510 H-2 water-solid path. Here it must sit still. */
+  var lvlQ0 = tsQ0.pzr_level_pct;
+  /* 10 plant-min loud, 5 quiet — NOT 20: the 20-min loud ride put this runner at 1708 s under
+   * run_all contention (a 420 s hint) and made it the aggregate gate's tail. The fill is seal
+   * injection at a fixed rate, so the pre-split figure scales: +10.2 points in 20 min is ~+5 in
+   * 10 [extrapolated from the 20-min measurement, not re-measured] against a 1.0-point band,
+   * while the split plant moves 0.02. */
+  var tsQ1 = run(engQ, quiet ? 300 : 600);
+  ckT('the cold plant\'s inventory CLOSES — level sits where it booted, not climbing to solid',
+      Math.abs(tsQ1.pzr_level_pct - lvlQ0) < 1.0,
+      lvlQ0.toFixed(2) + ' -> ' + tsQ1.pzr_level_pct.toFixed(2) + ' % over ' +
+      (quiet ? 5 : 10) + ' plant-min (pre-split, same lineup: 25.0 -> 35.3 % in 20 min)');
+
+  /* 2. THE 17 % CUT ISOLATES AND LEAVES THE SELECTION ALONE. */
+  var engQ2 = EN.createEngine({});
+  run(engQ2, 20);
+  EN.command(engQ2, 'break_open', { area_m2: 0.0002, node: 'cold_leg' });
+  var cutAtQ = null;
+  for (var kQ = 0; kQ < Math.round(600 / DT) && cutAtQ === null; kQ++) {
+    EN.step(engQ2, DT);
+    if (engQ2.pz.lowLevelCut === true) cutAtQ = kQ * DT;
+  }
+  /* one more step: the CVCS steps BEFORE the pressurizer, so the flow on the latching step is
+   * still last step's — the isolate reaches the flow on the next one (the house lag) */
+  EN.step(engQ2, DT);
+  ckT('a sustained drain reaches the 17 % cut (the premise, MEASURED — a scaled vessel refills)',
+      cutAtQ !== null, cutAtQ === null ? 'NEVER REACHED in 600 s' :
+      'latched at ' + cutAtQ.toFixed(1) + ' s on a 2 cm2 cold-leg break');
+  ckT('the cut ISOLATES letdown and leaves the operator\'s orifice lineup exactly where it was',
+      cutAtQ !== null && engQ2._letdownKgs === 0 && engQ2.cv.letdownIsolated === true &&
+      engQ2.cv.letdownOpen === 1,
+      'flow ' + engQ2._letdownKgs.toFixed(5) + ' kg/s, isolated ' + engQ2.cv.letdownIsolated +
+      ', letdownOpen ' + engQ2.cv.letdownOpen + ' — the pre-split engine wrote 0 into the ' +
+      'selection here and the player\'s A+B lineup was gone for good');
+
+  /* 3. AND IT IS REFUSED WHILE THE CUT STANDS — the interlock's own shape. */
+  EN.command(engQ2, 'break_close');
+  EN.command(engQ2, 'letdown', 1);
+  EN.step(engQ2, DT);
+  ckT('an operator re-line while the cut still stands is REFUSED (WTSM §4.1.3.1 interlock)',
+      engQ2.pz.lowLevelCut === true && engQ2.cv.letdownIsolated === true &&
+      engQ2._letdownKgs === 0,
+      'cut ' + engQ2.pz.lowLevelCut + ', still isolated, flow ' + engQ2._letdownKgs.toFixed(5));
+
+  /* 4. NO AUTOMATIC RESTORATION. The latch clears at 20 %; letdown does not come back. */
+  var clearAtQ = null;
+  for (var jQ = 0; jQ < Math.round(900 / DT) && clearAtQ === null; jQ++) {
+    EN.step(engQ2, DT);
+    if (engQ2.pz.lowLevelCut === false) clearAtQ = jQ * DT;
+  }
+  EN.step(engQ2, DT);
+  ckT('the latch clears at 20 % and letdown STAYS SHUT — there is no automatic restoration',
+      clearAtQ !== null && engQ2.cv.letdownIsolated === true && engQ2._letdownKgs === 0,
+      clearAtQ === null ? 'the latch never cleared in 900 s' :
+      'cleared ' + clearAtQ.toFixed(1) + ' s after the break shut; still isolated, flow ' +
+      engQ2._letdownKgs.toFixed(5) + ' — `Manuals/06` PWR-A13a: "letdown stays shut until you ' +
+      're-open an orifice by hand"');
+
+  /* 5. THE OPERATOR'S RE-LINE IS WHAT RESTORES IT. */
+  EN.command(engQ2, 'letdown', 1);
+  EN.step(engQ2, DT); EN.step(engQ2, DT);
+  ckT('...and the operator\'s own re-line restores it, once the latch has gone',
+      engQ2.cv.letdownIsolated === false && engQ2._letdownKgs > 0,
+      'isolated ' + engQ2.cv.letdownIsolated + ', flow ' + engQ2._letdownKgs.toFixed(5) +
+      ' kg/s — restoration is an ACT, which is the ruling');
+  }
+
   /* ⚠ SKIPPED IN MUTATION REPLAY UNLESS TARGETED, and that is a COST decision with a number.
    * These are two 35-minute rides, ~20 s of wall. A mutation with no `grp` tag replays EVERY
    * group, so the untagged entries in this file were each paying for both rides: measured, the
@@ -2571,7 +2676,27 @@ var MUTATIONS = [
    '    ts.pzr_heater_kw = pzr.heater_kW;', { grp: 'P' }],
   ['the published heater power is pinned to the installed bank (the shed reads full)',
    '    ts.pzr_heater_kw = pzr.heater_energized_kW;',
-   '    ts.pzr_heater_kw = 157.8;', { grp: 'P' }]
+   '    ts.pzr_heater_kw = 157.8;', { grp: 'P' }],
+  /* THE LETDOWN SPLIT (#624 items 14/25). The first is the SHIPPED DEFECT restored, and it is
+   * the one that matters: a protective action written into the operator's own demand. */
+  ['the 17 % cut writes itself into the operator\'s lineup again (the demand-rewrite defect)',
+   '    if (pzr.letdown_isolated) eng.cv.letdownIsolated = true;',
+   '    if (pzr.letdown_isolated) eng.cv.letdownOpen = 0;', { grp: 'Q' }],
+  ['the cut never isolates anything (the 17 % protection reports into a void)',
+   '    if (pzr.letdown_isolated) eng.cv.letdownIsolated = true;',
+   '', { grp: 'Q' }],
+  ['the operator\'s re-line no longer clears the isolate (letdown can never come back)',
+   '        if (eng.pz.lowLevelCut !== true) eng.cv.letdownIsolated = false;',
+   '', { grp: 'Q' }],
+  ['the re-line ignores the standing latch (a bypass of the interlock that closed the valves)',
+   '        if (eng.pz.lowLevelCut !== true) eng.cv.letdownIsolated = false;',
+   '        eng.cv.letdownIsolated = false;', { grp: 'Q' }],
+  ['the cold boot opens the orifices again (item 25: the selector goes back to being an orphan)',
+   'cv: CV.createCVCS({ boron_ppm: boron0, letdownOpen: ic.cold ? 0 : 1 }),',
+   'cv: CV.createCVCS({ boron_ppm: boron0, letdownOpen: 1 }),', { grp: 'Q' }],
+  ['the stepped letdown flow is never stashed (the board reads a permanent zero)',
+   '    eng._letdownKgs = cvr.letdown_kgs;',
+   '', { grp: 'Q' }]
 ];
 var CORESRC = fs.readFileSync(path.join(SRC, 'pwr2_core.js'), 'utf8').replace(/\r\n/g, '\n');
 

@@ -131,7 +131,20 @@ RD.MANUAL_PROCEDURES.pwr.push({
     { p: 'power_pct', op: '>', v: 90, text: 'reactor at power' },
     { p: 'hpi_active', op: '~', v: 1, tol: 0.5, text: 'safety injection running (test row)' },
   ],
-  steps: [{ text: 'observe (never auto-checks; the section watches the banner, not the steps)' }],
+  // TWO steps, and the second exists for the #619 item 3 checks below: the section needs a
+  // state where the checklist is UNDERWAY but not complete, and a one-step probe cannot have
+  // one. Neither step auto-checks — the section watches the banner, not the steps — so the
+  // only thing that advances this is an explicit `checklist_check`.
+  /* Each step carries an acceptance that CANNOT be met, so the only thing that advances this
+   * probe is an explicit `checklist_check`. Without it these were bare observation steps, which
+   * complete on OBSERVE_DWELL_S of SIM time — invisible at 1x across a few ticks, but at 600x a
+   * single tick covers 60 s and the step checked itself off. That is the instructor working
+   * correctly and the FIXTURE being non-deterministic, and it surfaced only when the warp
+   * checks below started running this probe at speed. */
+  steps: [{ text: 'observe (advances only by checklist_check; the section watches the banner)',
+            acc: { p: 'power_pct', op: '>', v: 9e9 } },
+          { text: 'observe again (the underway state for the entry-only checks)',
+            acc: { p: 'power_pct', op: '>', v: 9e9 } }],
 });
 var svc3 = mkService();
 run(svc3, 3);
@@ -159,7 +172,68 @@ ck('fixing the plant clears the row live', pcv(c, 1).met === true, 'obs ' + pcv(
 ck('all rows met → the comment comes down', !(snap.instructor && snap.instructor.message), snap.instructor && String(snap.instructor.message));
 svc3.handleCommand({ action: 'set_hpi', active: false });
 snap = run(svc3, 2);
-ck('re-breaking the condition re-raises the comment (new episode)', !!(snap.instructor && snap.instructor.message), 'raised');
+ck('re-breaking the condition re-raises the comment AT ENTRY (new episode)', !!(snap.instructor && snap.instructor.message), 'raised');
+
+/* ENTRY ONLY, ONCE THE RUN IS MOVING (#619 item 3, owner: "The instructor block gets a 'before
+ * you...' in the middle of mode 5>3 checklist. it doesnt make sense.").
+ *
+ * The latch is per EPISODE, so a checklist that CHANGES the plant walks its own preconditions
+ * back out and re-raised the message mid-run — the heatup's entry rows are "plant cold" and
+ * "depressurized", which heating up and pressurizing break by design.
+ *
+ * ⚠ THE CHECK ABOVE COULD NOT SEE THIS, and that is why it is worth writing this way: this
+ * probe's steps never auto-check, so `idx` stayed 0 and the entry guard never engaged. It
+ * passed before the fix AND after it. The step below advances the checklist by hand first,
+ * which is the only state in which the two behaviours differ. Verified by injection: dropping
+ * the `!cklMoving` term in instructor_layer.js turns the last check here red and nothing else
+ * in this runner moves. */
+svc3.handleCommand({ action: 'set_hpi', active: true });
+snap = run(svc3, 2);
+ck('entry guard fixture: the comment is down again before advancing',
+  !(snap.instructor && snap.instructor.message), 'clear');
+svc3.handleCommand({ action: 'checklist_check', index: 0 });
+snap = run(svc3, 1);
+c = ckl(snap);
+ck('entry guard fixture: the checklist is UNDERWAY and not complete',
+  !!(c && c.step_index > 0 && !c.complete), c && ('step_index ' + c.step_index + ', complete ' + c.complete));
+svc3.handleCommand({ action: 'set_hpi', active: false });
+snap = run(svc3, 3);
+c = ckl(snap);
+ck('MID-RUN the broken row is still graded and shown in the panel',
+  pcv(c, 1).met === false, 'obs ' + pcv(c, 1).obs);
+ck('...but the instructor comment does NOT re-raise once the run is moving (#619 item 3)',
+  !(snap.instructor && snap.instructor.message), snap.instructor && String(snap.instructor.message).slice(0, 50));
+/* CHECKING A STEP OFF DROPS THE CLOCK BACK TO 1x (#619 item 6, owner: "when a step is checked
+ * off, drop out of warp."). Asserted here rather than on the command path because the service
+ * reads the checklist's step INDEX, not the check-off command — most steps tick themselves off
+ * the instruments and never issue one. The reason string matters as much as the speed: the UI
+ * toasts off it and flashes the speed buttons (item 7). */
+svc3.handleCommand({ action: 'stop_checklist' });
+run(svc3, 1);
+svc3.handleCommand({ action: 'start_checklist', procedure_id: 'zz_precond_probe' });
+svc3.handleCommand({ action: 'set_speed', value: 600 });
+snap = run(svc3, 2);
+ck('warp fixture: the clock is at 600x with a checklist running',
+  snap.metadata.time_acceleration === 600, 'accel ' + snap.metadata.time_acceleration);
+// A NON-FINAL step, so this covers the ordinary case rather than completion. (Completion
+// fires too — `idx` runs to steps.length — and gating it out made the last step of every
+// checklist the one that kept racing.)
+// `speed_snap` is stamped on the ONE snapshot where the drop happens, and handleCommand
+// assembles its own — so the reason rides back on the check-off's return value, not on the
+// next tick. Reading a later frame finds the speed at 1x and the reason already gone, which
+// is exactly the "sampled the wrong frame" shape, so both are read from the same snapshot.
+snap = svc3.handleCommand({ action: 'checklist_check', index: 0 });
+ck('a step checking off drops the clock to 1x (#619 item 6)',
+  snap.metadata.time_acceleration === 1, 'accel ' + snap.metadata.time_acceleration);
+ck('...and says WHY, so the UI can toast it and flash the speed buttons',
+  !!(snap.metadata.speed_snap && snap.metadata.speed_snap.reason === 'step'),
+  snap.metadata.speed_snap ? snap.metadata.speed_snap.reason : 'no speed_snap');
+// The clock must STAY down — a dropout that re-armed itself would be a phantom stop the next
+// time anything advanced. One more broadcast with no step movement, no new snap.
+snap = run(svc3, 2);
+ck('the dropout does not re-fire while the step index sits still',
+  !snap.metadata.speed_snap, snap.metadata.speed_snap ? snap.metadata.speed_snap.reason : 'none');
+
 snap = svc3.handleCommand({ action: 'stop_checklist' });
 snap = run(svc3, 1);
 ck('stop takes the standing comment down with the banner', !(snap.instructor && snap.instructor.message), snap.instructor && String(snap.instructor.message));

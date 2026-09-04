@@ -155,6 +155,26 @@
   var ICS = {
     hot_full_power: { pf: 1.0, load_mwe: 100 },
     '50_percent':   { pf: 0.5, load_mwe: 50 },
+    /* THE BEGINNING OF ASCENSION *(OWNER, 2026-09-04, #619 item 28 / #624: "50% power was an
+     * arbitrary choice. Why don't we start at the beginning of ascension instead.")*.
+     *
+     * `pwr_raise_power` used to declare `from: '50_percent'`, and every at-power IC boots the
+     * control bank FULLY OUT (see `ctrlSteps` below). So the leg began on the top stop and all
+     * five of its "Withdraw N steps" instructions were NO-OPS — measured by injection, because
+     * a source read cannot see it: wiring the withdrawals in as real rod_nudge commands left the
+     * replay BYTE-IDENTICAL at power_pct 100.55, since rod_nudge adds to rod_target and the
+     * target clamps at BANK(). No acceptance read the bank, so the replay certified an ascension
+     * whose rods cannot move — while a player, arriving through the startup chain with the bank
+     * at 227, was operating a different plant.
+     *
+     * These numbers are what `pwr_startup` actually hands over, measured through the same
+     * harness: power 10.54 %, 10.0 MWe, control bank 227 of 627, boron 718.8 ppm, turbine
+     * latched and on the grid. That start leaves 400 steps of travel for the leg to use.
+     *
+     * NOT IN THE FREE-PLAY PICKER, deliberately, like hot_shutdown (ui/app.js): it is the seam
+     * between two checklists, not a state a player picks. Nothing enumerates ICS except the
+     * unknown-name error message below, so adding an entry costs no gate. */
+    low_power:      { pf: 0.105, load_mwe: 10, ctrl_steps: 227 },
     hot_zero_power: { pf: 0,   load_mwe: 0, subcritical: true },
     /* THE SHUTDOWN IC (#507 wave 10) is MODE 4, HOT SHUTDOWN — 250 degF / 350 psig,
      * RHR-held, RCPs secured, both banks in, the P-11 blocks taken (the cooldown's own
@@ -244,8 +264,16 @@
      * unverified — no corpus document publishes a step total (Ginna TS defers to the COLR).
      * Withdrawn banks contribute exactly 0 pcm, so passing them to criticalBoron below is
      * numerically identical to the old `null` — measured, not assumed (#502's lesson). */
-    var ctrlSteps = ic.subcritical ? 0 : BANK();    /* HZP: control bank IN, the startup is
-                                                  * pulling it; shutdown bank OUT (WTSM 8.1.1) */
+    /* HZP: control bank IN, the startup is pulling it; shutdown bank OUT (WTSM 8.1.1).
+     *
+     * `ic.ctrl_steps` places the bank EXPLICITLY, and it is new (#624). Without it an at-power
+     * IC could only ever be built on its top stop, which is both what hid the ascension defect
+     * (see the low_power note in ICS) and not what a real plant looks like — Ginna UFSAR
+     * §15.4.5.1.1 (ML20339A101): "the reactor is operated with the RCCAs inserted only far
+     * enough to permit load follow." Boron is trimmed AT this bank position by the criticalBoron
+     * call below, so the pair stays self-consistent if either number moves. */
+    var ctrlSteps = ic.subcritical ? 0
+                  : (ic.ctrl_steps != null ? Math.min(ic.ctrl_steps, BANK()) : BANK());
     var rodBank = [
       { steps: ctrlSteps, max_steps: BANK(), worth: RD.kinetics.RODS.worth_control },
       { steps: BANK(), max_steps: BANK(), worth: RD.kinetics.RODS.worth_shutdown }
@@ -325,7 +353,18 @@
       rl: RL.createRelief({}),
       cd: CD.createCondenser({}),
       dc: DC.createDumpCtl({}),
-      cv: CV.createCVCS({ boron_ppm: boron0 }),
+      /* THE COLD LINEUP BOOTS WITH THE ORIFICES OUT (#624 item 25, 2026-09-04). Mode 4 and
+       * Mode 5 are the same RHR-held plant one step apart, and the source puts low-pressure
+       * letdown on the RHR cross-connect in that regime, not on the orifices:
+       *   [sourced] WTSM ch.19 (ML11223A342): "Coolant removal is accomplished by letdown,
+       *   primarily from the residual heat removal system (RHR) … Letdown is via the
+       *   RHR-to-CVCS cross-connect valve HCV-128."
+       *   [sourced] NUREG-1431 Rev 4 Bases (ML12100A228): "During LTOP MODES, the RHR System
+       *   is operated for decay heat removal and low pressure letdown control."
+       * Every initial condition used to boot `letdownOpen = 1`, which is why the LETDOWN
+       * selector had never changed anything a player could see — an orphan control on a board
+       * whose plant was already lined up. The heatup checklist now has a step for it. */
+      cv: CV.createCVCS({ boron_ppm: boron0, letdownOpen: ic.cold ? 0 : 1 }),
       ec: EC.createECCS({}),
       aw: AW.createAFW({}),
       fw: FWM.createFeedwater(ic.pf > 0 ? {} : { at_power: false }),
@@ -391,6 +430,7 @@
       /* one-step-lag carriers. _ctP starts UNDEFINED on purpose: pwr2_break falls to its
        * sourced 1.0 psig pre-accident default until containment has stepped once (#543). */
       _Qox: 0, _pzRelief: 0, _pzReliefH: 0, _pzSurgeHeat: 0, _eccsKgs: 0, _sgtrKgs: 0, _sgtrH: 0,
+      _letdownKgs: 0,
       _ctP: undefined,
       _pzr: null, _dcr: null, _lastTrip: false,
       _scramT: null, _manualTrip: false, _rodStopSig: false, _runbackSig: false,
@@ -454,12 +494,31 @@
        * lineup one step warmer — RHR is the heat sink there as well, main feed is secured, and
        * aux feed (eng.afw, untouched here) is the feed path. Booting Mode 4 with a latched
        * turbine and two running feed pumps would leave exactly the defect this fixes. */
-      eng.tb.tripped = true;
       eng.fw.auto = false;
       eng.fw.manual_frac = 0;
       eng.fw.pumpA = false;
       eng.fw.pumpB = false;
     }
+    /* THE TURBINE IS TRIPPED IN EVERY MODE THAT CARRIES NO LOAD *(OWNER, 2026-09-03, #619
+     * item 11: "Mode 3 start: Turbine should start tripped, right?")* — so Mode 3, Hot Standby
+     * joins Mode 4 and Mode 5, and it is a WIDER guard than the cold lineup above because a hot
+     * subcritical plant is not a cold one in any other respect (its feed IS lined up, its dumps
+     * hold the no-load anchor).
+     *
+     * TWO ROUTES TO MODE 3 GAVE TWO DIFFERENT PLANTS, which is the actual defect. `tb.tripped`
+     * was set inside the `ic.cold` branch, so arriving by the heatup checklist — whose own
+     * caution says "the turbine stays tripped for the whole heatup" — left it tripped, while
+     * BOOTING Hot Standby left it latched.
+     *
+     * AND IT MADE AN AUTHORED STEP A NO-OP: `pwr_startup` step 15 presses LATCH on the
+     * TURBINE-GENERATOR card, which does nothing to an already-latched machine. Same shape as
+     * the ascension's rod withdrawals against a bank on its top stop (#624) — an instruction
+     * the player is told to perform that the plant had already performed for them.
+     *
+     * Keyed on `load_mwe`, not on `subcritical` or `pf`: the new `low_power` IC is subcritical
+     * by neither measure but IS on the grid at 10 MWe, and a tripped turbine there would be a
+     * plant that cannot exist. */
+    if (!(ic.load_mwe > 0)) eng.tb.tripped = true;
     /* the feed train at the IC's own operating point (the module's constructor knows only
      * at-power/no-load; a mid-load IC sets the delivered point so the boot does not spend
      * its first pump-tau finding it — the same settled-construction rule as the hmap) */
@@ -616,7 +675,14 @@
                  < RD.rhr.RHR.permissive_open_psig) eng.rh.valve_open = true;
         break;
       case 'rhr_hx':         eng.rh.hx_fraction = Math.max(0, Math.min(1, +value)); break;
-      case 'letdown':        eng.cv.letdownOpen = Math.max(0, Math.min(1, +value)); break;
+      /* THE OPERATOR'S RE-LINE IS WHAT CLEARS THE PROTECTIVE ISOLATE (#624 item 14) — and it is
+       * REFUSED while the 17 % cut still stands, which is the interlock's own shape (WTSM
+       * §4.1.3.1: the isolation valves close on low level; the level has to come back before
+       * they will stay open). Above 20 % the latch has cleared and the re-line takes. */
+      case 'letdown':
+        eng.cv.letdownOpen = Math.max(0, Math.min(1, +value));
+        if (eng.pz.lowLevelCut !== true) eng.cv.letdownIsolated = false;
+        break;
       case 'pzr_setpoint_mpa':   eng.pzDrivers.setpoint_mpa = +value; break;
       case 'pzr_heaters_manual':
         eng.pzDrivers.heaters_manual = value === null ? undefined : +value;
@@ -1146,6 +1212,11 @@
     var cvr = CV.stepCVCS(eng.cv, sys, dt, { ac_available: acAvail, rhr_letdown_ok: eng.rh.running === true, si_kgs: eng._eccsKgs, si_ppm: EC.ECCS.rwst_boron_ppm });
     var ecr = EC.stepECCS(eng.ec, sys, dt, { ac_available: acAvail });
     eng._eccsKgs = ecr.total_kgs || 0;
+    /* THE STEPPED LETDOWN FLOW, for the board (#624 item 14). `letdownOpen x normal` is NOT
+     * this number on either side of the split: on a cold plant the cross-connect carries the
+     * full magnitude through a SHUT orifice lineup, and under the 17 % isolate the lineup still
+     * reads open while nothing flows. The shell's `letdown_flow_normalized` reads this. */
+    eng._letdownKgs = cvr.letdown_kgs;
 
     /* THE SGTR IS A BREAK WHOSE DESTINATION IS THE SG (#507 wave 5) — inferred from the
      * node: a break AT sg_primary is a ruptured tube, and a tube discharges into the
@@ -1276,7 +1347,17 @@
     if (eng.cv.chargingDemand === null || eng._plcsAuto !== false) {
       eng.cv.chargingDemand = pzr.charging_demand;
     }
-    if (pzr.letdown_isolated) eng.cv.letdownOpen = 0;
+    /* THE 17 % CUT ISOLATES; IT DOES NOT RE-LINE THE PLANT (#624 item 14, owner-ruled
+     * 2026-09-04). This line used to read `eng.cv.letdownOpen = 0` — the protective action
+     * written into the operator's own selection, which then never healed and destroyed what the
+     * player had picked. SET ONLY, never cleared here: restoration is an operator act, and the
+     * `letdown` command below is where it happens.
+     *   [sourced] WTSM §4.1.3.1 (ML11223A214): "The letdown orifice isolation valves
+     *   automatically close on low pressurizer level." — nothing in the chapter re-opens them.
+     *   `Manuals/06_ALARM_RESPONSE.md` PWR-A13a already documents exactly this: "there is no
+     *   automatic restoration — letdown stays shut until you re-open an orifice by hand."
+     * The retired kernel's row (layers/control/pwr_control.js) was designed the same way. */
+    if (pzr.letdown_isolated) eng.cv.letdownIsolated = true;
 
     /* HR1: THE RPS READS THE INSTRUMENTS, NOT THE PLANT. Every analog driver below comes
      * from ins.reading — one step old (the instruments step at the END of each step, on that
@@ -1420,6 +1501,68 @@
     eng._rilSteps = ril;
     eng._rodAtLimit = ril !== null && eng.rodSteps <= ril;
     eng._rodLimitMargin = ril === null ? BANK() : Math.max(0, Math.round(eng.rodSteps - ril));
+    /* THE ACCUMULATOR WINDOW, AND A HOLD ON THE CLOCK WHILE IT IS OPEN *(OWNER, 2026-09-03,
+     * #619 item 13: "There is a point the user will get stuck between step 7 and 8 if they do
+     * not open the accumulator valve in the window. if they miss the window they have to
+     * restart, theers no way to go back. We need to find a way that the player cant get trapped
+     * here. maybe have it kick out of warp at 665psi and refuse to go into warp again until the
+     * accumulator valve is opened.")*.
+     *
+     * The window is real and it is the one irreversible trap in the heatup: it opens at the
+     * 665 psia cover gas and shuts at the 1600 psig administrative lock, nothing annunciates
+     * either edge, and the Pressure SP dial's own floor (1700 psig) sits ABOVE the lock — so a
+     * player who rides past it at 600x cannot dial their way back and must restart the leg.
+     *
+     * `speed_hold` IS A GENERIC SEAM, not an accumulator special case: it is a reason string
+     * the PLANT sets when it wants the clock held at 1x, and the service honours it without
+     * knowing what it means (see _attentionStop). That keeps the pwr2 constants — cover gas and
+     * lock — in the module that owns them instead of leaking into a plant-agnostic service, and
+     * it is the shape #409's state-aware warp governor will want.
+     *
+     * RISING ONLY. A cooldown walks back down through the same band with the valve deliberately
+     * shut (the cooldown checklist opens the accumulators at 1500 psi and isolates them later),
+     * and holding the clock there would fight a correct procedure. */
+    var accWinLo = EC.ACC.p0_mpa;                                  // EC = RD.eccs, this file's alias
+    var accWinHi = (EC.ACC.admin_lock_psig + 14.7) / 145.0377;
+    var accP = ts.pressure_mpa;
+    var accShut = ts.accumulator_valve_open !== true;
+    var accRising = eng._prevAccP != null && accP > eng._prevAccP;
+    eng._prevAccP = accP;
+    ts.speed_hold = (accShut && accRising && accP >= accWinLo && accP <= accWinHi)
+      ? 'accumulator window open — arm the accumulators before accelerating again'
+      : null;
+
+    /* WHAT THE ELBOW TAP MEASURES *(OWNER RULING, 2026-09-04: selected "The engine publishes
+     * what the tap measures, and the channel reads that", from three options on #624 —
+     * #619 item 1, "RCP flowing over 100% seems odd.")*.
+     *
+     * [sourced] WTSM §3.2 (ML11223A213, p.3.2-5): RCS flow is an ELBOW TAP, a differential-
+     * pressure device on the intermediate-leg elbow. "The correlation between changes in flow
+     * and elbow tap indication ... dP/dP0 = (W/W0)^2", and "The full-flow reference point P0 is
+     * established during initial plant startup" — so the reference is a dP frozen at hot
+     * full-flow conditions, NOT a live mass-flow ratio. The chapter is explicit about what the
+     * device is for: "to provide information as to whether or not a REDUCTION in flow has
+     * occurred". It is a loss-of-flow detector and is not accurate above 100 %.
+     *
+     * THE ALGEBRA. An elbow tap sees dP = k·rho·V^2, and W = rho·A·V, so dP ∝ W^2/rho. An
+     * uncompensated meter reports sqrt(dP/dP0), which is (W/W0)·sqrt(rho0/rho). This pump holds
+     * roughly constant VOLUMETRIC flow (it makes head, not pressure — see pwr2_sources), so the
+     * true mass ratio is itself rho/rho0 and the indication collapses to sqrt(rho/rho0).
+     *
+     * MEASURED, cold shutdown with the pumps running: true mass flow 132.3 % of rated, which is
+     * CORRECT — 50 °C water is 1.31x the density of the design cold-leg reference. The board was
+     * publishing that truth straight through a lag-and-noise channel whose authored range is
+     * [0, 120], so it read a PEGGED 120.00 %: neither the truth nor an indication. The tap reads
+     * ~115 %, inside the range — which is evidence that range was drawn for a plant whose
+     * indication behaved this way.
+     *
+     * TRUE STATE, not an instrument value: the dP physically exists in the plant, and this is
+     * the flow it corresponds to. The instrument layer then does what it always does on top —
+     * lag, noise, failure (pwr_instruments' `rcs_flow`, which reads this field when a plant
+     * publishes one and falls back to raw mass flow for the retired engine, which does not). */
+    ts.rcs_flow_dp_pct = (ts.pump_flow_pct == null) ? null
+      : ts.pump_flow_pct / Math.sqrt(S.densityRatio(sys));
+
     /* facade extras a page needs and the contract does not carry */
     ts.sim_time_s = eng.simTime;
     ts.rod_steps = eng.rodSteps;

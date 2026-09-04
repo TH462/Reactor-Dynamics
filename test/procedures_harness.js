@@ -135,6 +135,16 @@
       // (scram/failure/alarm reasons, the on/off setting, and its survival across a
       // state restore), so turning it off here costs no coverage.
       svc.attentionStops = false;
+      /* …and the same for a PLANT-DECLARED speed hold (#619 item 13). Separate flag, same
+       * reasoning as the paragraph above: the accumulator window holds the clock at 1x until
+       * the tanks are armed, which is right for a human who would otherwise ride past an
+       * unrecoverable window at 600x, and wrong for a headless replay that issues the arming
+       * command on the NEXT authored step. Measured before this existed: the heatup replay
+       * dropped to 1x at step 7 and spent 45,716 ticks at a tenth of its declared rate, never
+       * reaching Mode 3. The mechanism is covered directly by run_checklist_pwr2 2i, which
+       * drives the window and asserts the drop, the refusal and the release — so turning it
+       * off here costs no coverage. */
+      svc.speedHolds = false;
     }
 
     var checks = [];

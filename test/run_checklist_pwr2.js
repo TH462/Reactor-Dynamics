@@ -109,11 +109,27 @@ if (!only) {
     svc.handleCommand({ action: 'set_load_target', mwe: 0 });
     for (var j = 0; j < 180; j++) s = svc.tick();
     svc.handleCommand({ action: 'scram' });
-    for (var k = 0; k < 120; k++) s = svc.tick();
+    /* ACKNOWLEDGE WHERE THE CHECKLIST ASKS FOR IT (#619 item 4). Steps that author no operator
+     * action — the opening confirms and the long rides — now satisfy themselves and then HOLD
+     * on `awaiting_ack` until the player presses Acknowledge, so a driver that only ticks can
+     * no longer walk a checklist to completion. This loop is the player: tick, and press the
+     * button whenever the step is holding for one. Everything else still self-checks. */
+    var acks = 0;
+    for (var k = 0; k < 120; k++) {
+      s = svc.tick();
+      var cs = s.instructor && s.instructor.checklist;
+      if (cs && cs.awaiting_ack && !cs.complete) {
+        svc.handleCommand({ action: 'checklist_check', index: cs.step_index });
+        acks++;
+      }
+    }
     ckst = s.instructor.checklist;
     ck('steps checked themselves off the live plant (unload → scram → observe)',
        !!ckst && ckst.complete === true,
-       ckst && ('done ' + ckst.steps_done.filter(Boolean).length + '/' + ckst.step_total));
+       ckst && ('done ' + ckst.steps_done.filter(Boolean).length + '/' + ckst.step_total +
+                ', ' + acks + ' acknowledged'));
+    ck('at least one step HELD for an acknowledgement (#619 item 4 — not a vacuous loop)',
+       acks > 0, acks + ' acks issued');
     ck('grading ran instrument-first on pwr2 (graded_by never fell back for mapped params)',
        true, 'asserted structurally by 2a; per-step graded_by is in the snapshot');
   })();
@@ -241,6 +257,55 @@ if (!only) {
     ck('every pwr2 checklist step has a details paragraph (#607 item 5)',
        missing.length === 0,
        missing.length ? 'MISSING: ' + missing.join(', ') : POOL.reduce(function (n, p) { return n + (p.steps || []).length; }, 0) + ' steps');
+  })();
+
+  /* 2i. THE ACCUMULATOR WINDOW HOLDS THE CLOCK (#619 item 13, owner: "There is a point the
+   * user will get stuck between step 7 and 8 if they do not open the accumulator valve in the
+   * window... maybe have it kick out of warp at 665psi and refuse to go into warp again until
+   * the accumulator valve is opened.").
+   *
+   * The window is the one IRREVERSIBLE trap in the chain: it opens at the 665 psia cover gas
+   * and shuts at the 1600 psig lock, nothing annunciates either edge, and the Pressure SP
+   * dial's floor sits ABOVE the lock — so a player who rides past it at 600x cannot dial back
+   * and must restart the leg. The plant now publishes `true_state.speed_hold` while the window
+   * stands open with the valve shut, and the service both drops the clock and REFUSES to leave
+   * 1x until the accumulators are armed.
+   *
+   * Three claims, and the middle one is the one that matters: dropping out is not enough on
+   * its own, because the player's next act is to press the speed button again. */
+  (function () {
+    var svc = mkSvc('cold_shutdown');
+    var s = null; for (var i = 0; i < 4; i++) s = svc.tick();
+    svc.handleCommand({ action: 'set_rcp', running: true });
+    svc.handleCommand({ action: 'set_pressure_setpoint', mpa: 11.72 });
+    svc.handleCommand({ action: 'set_speed', value: 600 });
+    var held = null, refusal = null, atP = null;
+    for (var j = 0; j < 4000 && !held; j++) {
+      s = svc.tick();
+      if (s.true_state.speed_hold) {
+        held = s;
+        atP = s.true_state.pressure_mpa * 145.038;
+        refusal = svc.handleCommand({ action: 'set_speed', value: 600 });
+      }
+    }
+    var lo = RD.pwr2.eccs.ACC.p0_mpa * 145.038;
+    ck('the accumulator window drops the clock, at the cover gas (#619 item 13)',
+       !!held && held.metadata.time_acceleration === 1 &&
+       held.metadata.speed_snap && held.metadata.speed_snap.reason === 'hold' &&
+       atP >= lo - 5 && atP <= lo + 40,
+       held ? (atP.toFixed(0) + ' psia against a ' + lo.toFixed(0) + ' psia cover gas, accel ' +
+               held.metadata.time_acceleration) : 'no hold raised in 4000 ticks');
+    ck('...and REFUSES to go back into warp while the valve is shut',
+       !!(refusal && refusal.type === 'blocked') && svc.timeAcceleration === 1,
+       refusal ? (refusal.code + ' · accel ' + svc.timeAcceleration) : 'no refusal');
+    svc.handleCommand({ action: 'open_accumulator_valve' });
+    s = svc.tick();
+    var freed = svc.handleCommand({ action: 'set_speed', value: 600 });
+    ck('...and releases the clock once the accumulators are armed',
+       s.true_state.accumulator_valve_open === true && !s.true_state.speed_hold &&
+       freed === null && svc.timeAcceleration === 600,
+       'valve ' + s.true_state.accumulator_valve_open + ' · hold ' +
+       JSON.stringify(s.true_state.speed_hold) + ' · accel ' + svc.timeAcceleration);
   })();
 
   /* 2h. catch-up (#607 item 7): starting heatup with RCPs already running skips the

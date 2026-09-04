@@ -128,7 +128,9 @@ function mkWorld(ic) {
 /* the panel's own click delegation, driven the way the browser would */
 function press(win, op) {
   var handlers = win._h.click || [];
-  var ev = { target: { closest: function (sel) { return sel === '[data-oom]' ? { getAttribute: function () { return op; } } : null; } } };
+  var btn = { getAttribute: function () { return op; }, setAttribute: function () {},
+              classList: { add: function () {}, remove: function () {}, toggle: function () {} } };
+  var ev = { target: { closest: function (sel) { return sel === '[data-oom]' ? btn : null; } } };
   handlers.forEach(function (fn) { fn(ev); });
 }
 function winOf() { return BODY.children[BODY.children.length - 1]; }
@@ -224,6 +226,39 @@ RD.OneOverM.open();
 RD.OneOverM.tick(noRods);
 ck('and on a plant with a source range but no control GROUP to plot it against',
    win.hidden === true);
+
+/* ============================================================ 5. the HELP panel (#619 item 23) */
+/* THE STUB DOES NOT PARSE HTML, so it cannot tell you the panel starts hidden — its
+ * querySelector hands out a fresh element with `hidden: false` for any selector. That is
+ * exactly the shape that turns a gate into a test of its own stub, so the two claims are
+ * asserted separately and honestly:
+ *
+ *   1. the BUILT MARKUP declares the button and a hidden panel — a string check on the
+ *      innerHTML the browser will actually parse, which is what fixes the initial state;
+ *   2. the CLICK HANDLER toggles it — driven through the panel's own delegation, with the
+ *      starting state set explicitly here because the stub cannot have read it from (1).
+ *
+ * Neither claim alone is worth much; together they cover authored-and-wired. */
+(function () {
+  var w = winOf();
+  var html = w.innerHTML || '';
+  ck('the 1/M panel authors a Help button (#619 item 23)',
+     html.indexOf('data-oom="help"') !== -1);
+  ck('...and a help panel that starts HIDDEN in the markup',
+     /class="oom-help" hidden/.test(html));
+  ck('...whose copy explains the ratio, not just the controls',
+     html.indexOf('shutdown count rate divided by the current count rate') !== -1);
+  ck('...and warns that the early prediction reads HIGH (the fit is the trailing 3 points)',
+     /reads HIGH/.test(html) && html.indexOf('Never withdraw straight to the predicted position') !== -1);
+
+  var panel = w.querySelector('.oom-help');
+  panel.hidden = true;                       // the state the markup above establishes
+  press(w, 'help');
+  ck('pressing Help opens the panel in place (no modal — the Scanner idiom)',
+     panel.hidden === false, 'hidden ' + panel.hidden);
+  press(w, 'help');
+  ck('...and pressing it again closes it', panel.hidden === true, 'hidden ' + panel.hidden);
+})();
 
 /* ============================================================ summary */
 var expectRed = INJECT;

@@ -114,9 +114,14 @@ var STEP_UI = {
      * has been broken three times by INSERTING a step and re-deriving instead of renumbering
      * (run_all.js records the six-mismatch cascade), and a deletion is the safe direction only if
      * you resist the urge to close the gap. */
-    { i: 6, view: 'board', control: 'Pressure SP' },
-    { i: 7, view: 'board', control: 'Accumulator valve' },
-    { i: 9, view: 'board', control: 'Pressure SP' },
+    /* THE LETDOWN TRANSFER INSERTED AT i:6 (#624 items 14/25, 2026-09-04) — and the three rows
+     * below MOVED WITH THEIR STEPS rather than being re-derived: 6->7, 7->8, 9->11. The ride
+     * step is followed by a new letdown-transfer CONFIRMATION which carries no `control`, so it
+     * owns no row here and only shifts what comes after it. */
+    { i: 6, view: 'board', control: 'Letdown Orifices (CVCS)' },
+    { i: 7, view: 'board', control: 'Pressure SP' },
+    { i: 8, view: 'board', control: 'Accumulator valve' },
+    { i: 11, view: 'board', control: 'Pressure SP' },
   ],
   'pwr2:pwr_startup': [
     { i: 1, view: 'board', control: 'Boron control' },
@@ -138,13 +143,19 @@ var STEP_UI = {
     { i: 15, view: 'board', control: 'Trip Blocks' },
     { i: 16, view: 'board', control: 'Trip Blocks' },
   ],
+  /* #619 item 27 (2026-09-04) inserted the boron SAMPLE step at i:2, so every row below it
+   * shifted by one. Written out rather than re-derived: the indices are positional and this map
+   * has been broken three times by renumbering it wholesale instead of moving the rows that
+   * actually moved. The gate caught the shift immediately — both symptoms, a pill/row mismatch
+   * at the insertion point and an UNVERIFIED tail step, are what an off-by-one looks like here. */
   'pwr2:pwr_raise_power': [
     { i: 1, view: 'board', control: 'Boron control' },
-    { i: 2, view: 'board', control: 'Control Bank' },
+    { i: 2, view: 'board', control: 'Boron control' },   // draw a boron sample (#619 item 27)
     { i: 3, view: 'board', control: 'Control Bank' },
     { i: 4, view: 'board', control: 'Control Bank' },
     { i: 5, view: 'board', control: 'Control Bank' },
     { i: 6, view: 'board', control: 'Control Bank' },
+    { i: 7, view: 'board', control: 'Control Bank' },
   ],
   'pwr2:pwr_lower_power': [
     { i: 0, view: 'board', control: 'Boron control' },

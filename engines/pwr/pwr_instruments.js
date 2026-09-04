@@ -346,6 +346,20 @@
       if (id === 'sg_level') {
         trueVal = trueVal + this.swell_factor * (extras.power_rate || 0);
       }
+      /* THE ELBOW TAP, when the plant publishes one *(OWNER RULING, 2026-09-04, #619 item 1)*.
+       * `SOURCE.rcs_flow` is `pump_flow_pct`, the true MASS flow, and reading that straight is
+       * the HR1 hole this closes: a real RCS flow channel is an elbow-tap dP referenced to a
+       * frozen hot full-flow point (WTSM §3.2, ML11223A213), so it under-reads cold dense water
+       * rather than tracking mass. PWR2 computes the tap's own flow in `rcs_flow_dp_pct`; this
+       * prefers it when present.
+       *
+       * A FALLBACK, NOT A REPLACEMENT: the retired engine never publishes the field and keeps
+       * the raw mass flow it has always shown. Written as a named case in this loop for the same
+       * reason `sg_level` above is — the alternative is a second SOURCE map that has to be kept
+       * in step with this one. */
+      if (id === 'rcs_flow' && trueState.rcs_flow_dp_pct != null) {
+        trueVal = trueState.rcs_flow_dp_pct;
+      }
 
       var val;
       if (spec.log) {

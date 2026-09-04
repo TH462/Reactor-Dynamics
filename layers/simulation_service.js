@@ -272,11 +272,23 @@
     // to keep running through a casualty turns this off; scram, failures and alarms
     // then annunciate as normal but never touch the acceleration.
     this.attentionStops = opts.attention_stops !== false;
+    /* A SEPARATE FLAG FROM `attentionStops`, and the separation is the point (#619 item 13).
+     * A plant-declared speed hold and an attention stop are different things with different
+     * owners: the toggle above is the player's Settings control, while this one says "I am a
+     * headless probe, do not slow me down". Both would have been served by the one boolean and
+     * that is precisely the shared-boolean trap — `procedures_harness` sets attentionStops false
+     * to claim its full sim-time budget, and reading that as "this player does not want the
+     * accumulator trap guarded" would restore the trap for anyone who turned dropouts off.
+     * No command sets this; it is not reachable from the board, so a player can never disarm
+     * the hold that stops them getting stuck. */
+    this.speedHolds = opts.speed_holds !== false;
     this.running = false;
     this.broadcastMs = NORMAL_MS;
     this._prevTrueState = null;
     this._prevAlarms = null;
     this._prevScrammed = false;        // attention-stop edge detection (auto-decelerate)
+    this._prevCklStep = null;          // checklist step index, for the #619 item 6 dropout
+    this._prevSpeedHold = null;        // plant-declared speed hold, #619 item 13
     this._prevFailureIds = null;
     this._timer = null;
     // Rewind ring (Gameplay §7.2): in-memory checkpoints pushed when the
@@ -336,6 +348,8 @@
     this._prevTrueState = null;
     this._prevAlarms = null;
     this._prevScrammed = false;
+    this._prevCklStep = null;
+    this._prevSpeedHold = null;
     this._prevFailureIds = null;
     this.broadcastMs = NORMAL_MS;
     this.checkpoints = [];             // a fresh plant invalidates the rewind ring
@@ -889,6 +903,37 @@
      precisely when a long fast-forward is the point. A scram or a new failure still
      gets through regardless. */
   SimulationService.prototype._attentionStop = function (snap) {
+    /* Checklist-step tracking is updated FIRST, above every early return. Put it beside the
+     * `return 'step'` below and it goes stale exactly when it matters: a scram returns before
+     * reaching it, and with dropouts switched off it never runs at all — so the next time
+     * either changed, the index it compared against was minutes old and fired a phantom
+     * dropout. Edge state has to advance on every broadcast, whatever the verdict. */
+    var ckl = this.instructor && this.instructor.checklist;
+    /* `complete` is NOT excluded: finishing the last step is the check-off that most deserves
+     * the clock back, and gating on it made the final step the one case that kept racing.
+     * `idx` runs to steps.length on completion, so the move fires once and then sits still. */
+    var cklStep = ckl ? ckl.idx : null;
+    var stepMoved = cklStep !== null && this._prevCklStep !== null && cklStep > this._prevCklStep;
+    this._prevCklStep = cklStep;
+    /* Same rule as the step index: the hold's edge state advances above every early return, or
+     * a scram (or dropouts switched off) leaves it stale and the next hold either never toasts
+     * or toasts long after the fact. */
+    var holdNow = (snap && snap.true_state && snap.true_state.speed_hold) || null;
+    var holdRose = !!holdNow && !this._prevSpeedHold;
+    this._prevSpeedHold = holdNow;
+
+    /* THE PLANT-DECLARED HOLD IGNORES THE DROPOUT TOGGLE, and this is above that return on
+     * purpose (#619 item 13). It is not an attention stop — those are the plant INTERRUPTING
+     * you, and a player may reasonably switch them off. This is the plant REFUSING to be
+     * accelerated past a point it cannot let you skip, and its whole reason for existing is
+     * that the window is unrecoverable: turn dropouts off and the trap comes back.
+     *
+     * The half that refuses `set_speed` never consulted the toggle either, so putting the drop
+     * below it left the two halves disagreeing — the clock stayed at 600x while the button that
+     * would have set it there was blocked. `run_checklist_pwr2` caught exactly that (its mkSvc
+     * runs with attentionStops false), which a scratch probe with the default on could not. */
+    if (holdRose && this.speedHolds) return 'hold';
+
     if (!this._prevTrueState) return null;
     if (!this.attentionStops) return null;          // operator turned dropouts off (Settings)
     if (this._snapScrammed(snap) && !this._prevScrammed) return 'scram';
@@ -900,6 +945,33 @@
     // cadence flip above is deliberately left alone: a shorter broadcast interval
     // costs the operator nothing.
     if (this._boardQuiet(this._prevAlarms) && this._anyAlarmNewlyFiring(snap.alarms, this._prevAlarms, true)) return 'alarm';
+    /* A CHECKLIST STEP CHECKING OFF *(OWNER, 2026-09-03, #619 item 6: "when a step is checked
+     * off, drop out of warp.")*. Walking a checklist at 600x, the step you were waiting for
+     * completes and the plant keeps racing while you read the next one — so the clock comes
+     * back to 1x the moment the step index moves.
+     *
+     * SERVICE-SIDE, NOT ON THE CHECK-OFF COMMAND, and that is the whole reason it works: most
+     * steps tick themselves off the instruments (instructor_layer `_stepChecklist`), never
+     * passing through `checklist_check`, so a hook on the command would catch only the handful
+     * a player ticks by hand. Reading the index here catches every path, and inherits
+     * `speed_snap`, its toast and the `_authoredSpeed` reset for free.
+     *
+     * Read off the LAYER rather than the snapshot because `snap.instructor` is assembled after
+     * this runs (see _assembleWithInstructor) — the same ordering that puts `speed_snap` on the
+     * snapshot that already reads 1x.
+     *
+     * INSIDE the `attentionStops` gate above, deliberately: a player who turned fast-forward
+     * dropout off has said they do not want the clock yanked. Flagged on #622 — if the owner
+     * wants this one unconditional it moves above that early return. */
+    if (stepMoved) return 'step';
+    /* A PLANT-DECLARED HOLD (#619 item 13). `true_state.speed_hold` is a reason string the
+     * ENGINE sets when the plant is somewhere the clock must not run away from — today the
+     * accumulator arming window on the heatup, which is the one irreversible trap in the chain.
+     * The service honours it without knowing what it means; the constants that decide it stay
+     * in the module that owns them. `set_speed` refuses to leave 1x while it stands, so this
+     * both drops the clock AND keeps it down, which is what "cannot get trapped" needs.
+     *
+     * Edge-detected on the reason so it toasts once per episode rather than every broadcast. */
     return null;
   };
 
@@ -963,7 +1035,21 @@
       case 'play':  this.start(); return null;
       case 'pause': this.stop(); return null;
       case 'reset': return this.selectPlant(command.plant_id, command.initial_state, command.design_version || null);
-      case 'set_speed': return this._setSpeed(command.value, false);   // #625: tiers + refusal
+      /* REFUSED WHILE THE PLANT HOLDS THE CLOCK (#619 item 13). Dropping out of warp is not
+       * enough on its own — the player's next act is to press the speed button again, and at
+       * 600x the accumulator window shuts in a few seconds of wall clock. So the hold also
+       * REFUSES the acceleration, and says why.
+       *
+       * A refusal rather than a silent clamp: a button that visibly does nothing is the defect
+       * the scanner's interlock channel exists for. Anything at or below 1x still goes through,
+       * so the player can always pause or run in real time. The hold is checked BEFORE the
+       * #625 tier logic: a held plant refuses every rung above 1x, WARP or PLAY alike. */
+      case 'set_speed':
+        if (this.speedHolds && this._prevSpeedHold && command.value > 1) {
+          return { type: 'blocked', code: 'SPEED_HELD',
+                   message: 'Time acceleration is held at real time: ' + this._prevSpeedHold + '.' };
+        }
+        return this._setSpeed(command.value, false);   // #625: tiers + refusal
       case 'set_attention_stops': this.attentionStops = !!command.value; return null;
       case 'save_state': return this.saveState();
       case 'load_state': return this.loadState(command.state);

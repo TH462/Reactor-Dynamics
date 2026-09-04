@@ -246,13 +246,13 @@ A standard iodine → xenon chain with burnout, normalised to equilibrium xenon 
 | Property | Value |
 |---|---|
 | Groups | **One control group, one shutdown group** |
-| Travel | **912 steps** (equivalent to 4 × 228 — a real bank's total travel) |
+| Travel | **627 steps** |
 | Speeds | slow ≈ 32 steps/min · normal ≈ 192 · fast ≈ 288 |
 | Overrun on release | ~1 s of continued travel, then the latch catches |
 | Scram insertion | control 2.5 s · shutdown 2.0 s, constant-rate (gravity) |
 | Insertion limit | **power-dependent**: none below 5 % power, ramping to 70 % withdrawn at 100 % |
 
-The fine 912-step drive exists so that one step near the critical band is worth about 9 pcm (≈ 1.4 ¢) — real bank-D differential worth — rather than the ~36 pcm lurch a coarse drive gave.
+The fine 627-step drive exists so that one step in the critical band is worth **8.1 pcm (1.24 ¢)** — measured 2026-09-03 — rather than the ~36 pcm lurch a coarse drive gave. The whole profile runs **4.15 to 8.82 pcm/step**, inside the sourced 4–12 band (NRC HRTD WAT 05, ML11216A094); the shape is the four-bank overlap program of WTSM 8.1 §8.1.5.4 collapsed onto one lumped bank.
 
 The **rod insertion limit is a curve, not a floor**, because the limit exists to protect shutdown margin *at power*. During a startup the bank is deliberately deep and boron holds the margin, so a fixed floor would annunciate continuously through every ascent and mean nothing.
 
@@ -454,6 +454,8 @@ An uncompensated orifice-A drain still walks pressurizer level down about 15 poi
 five minutes.
 
 **Letdown is pressure-driven, not commanded.** Two fixed orifices, each independently in or out; each passes flow proportional to √(cold-leg pressure − 300 psi (2.07 MPa) backpressure — the orifice discharges to the letdown heat exchanger and volume control tank, not to atmosphere). So letdown **tails off toward zero as the RCS depressurises on a cooldown** — it is not a constant you dial in.
+
+**On shutdown cooling the orifices are not the letdown path at all.** With the residual heat removal (RHR) system in service, letdown runs through the **HCV-128 RHR-to-CVCS cross-connect**, which the model carries at the normal letdown magnitude — **12.7 gpm (0.80 kg/s)** — independently of the orifice lineup, so a **Mode 5, Cold Shutdown** plant with both orifices out is still letting down. Sourced: WTSM ch. 19 (ML11223A342), *"Coolant removal is accomplished by letdown, primarily from the residual heat removal system (RHR) … Letdown is via the RHR-to-CVCS cross-connect valve HCV-128"*, and *"While the plant is in this configuration, HCV-128 … is fully open … letdown flow via this piping is extremely low"*; NUREG-1431 Rev 4 Bases (ML12100A228), *"During LTOP MODES, the RHR System is operated for decay heat removal and low pressure letdown control."* The path closes with the RHR suction at **585 psig (4.03 MPa)** on a heatup, and the **17 %** low-level protective isolate stops it and the orifices together (**09** §3.0). Until 2026-09-04 the cross-connect was gated on the operator's orifice fraction, so shutting the orifices shut it too — and the cold plant then went solid on its own seal injection with a correct-looking shut lineup on the board: measured, **+10.2 points of pressurizer level and 363 → 385 psi (2.50 → 2.65 MPa) in 20 plant-minutes**.
 
 **Charging in AUTO holds programmed pressurizer level**, reading the *indicated* level and the *indicated* Tavg through a 20-second damping filter. The level program and the physical thermal-expansion line are the **same line**, by construction — so a heat-up raises level and setpoint together, and thermal expansion can never read as a leak. A leak makes itself up because it lowers the level; no leak detection is involved.
 

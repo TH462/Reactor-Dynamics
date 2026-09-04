@@ -180,6 +180,9 @@ function runSuite(SH, rec, quiet, only) {
                                                               * missing field was NaN and froze
                                                               * the RCP impeller (#506.5) */
      typeof cs.letdown_orifice_a === 'boolean' && typeof cs.letdown_orifice_b === 'boolean' &&
+     /* the protective isolate is its OWN field (#624 item 14) — a shut orifice lineup and an
+      * isolated plant are indistinguishable on the two lamps above */
+     typeof cs.letdown_isolated === 'boolean' &&
      typeof cs.feed_pump_speed_pct === 'number' &&
      typeof cs.cvcs_auto === 'boolean' && typeof cs.heater_auto === 'boolean' &&
      typeof cs.porv_block_open === 'boolean' && typeof cs.spray_valve_pct === 'number' &&
@@ -1329,6 +1332,17 @@ function runSuite(SH, rec, quiet, only) {
          'is a state the plant actually loads',
          t5.plant_mode === 5 && Math.abs(t5.tavg_c - 50) < 2, 'mode ' + t5.plant_mode +
          ' at ' + (t5.tavg_c * 9 / 5 + 32).toFixed(1) + ' degF');
+      /* THE COLD BOARD SHOWS A SHUT ORIFICE LINEUP **AND** LETDOWN FLOWING (#624 items 14/25).
+       * That pair is the whole split at the surface: the orifices are OUT (the source's own
+       * shutdown lineup) while the RHR cross-connect carries the flow, so a board built on
+       * `letdownOpen x rated` painted 0 gpm on a plant passing the full normal magnitude. */
+      var cs5 = e5.getControlState();
+      ck('the cold board shows the orifices OUT and letdown STILL FLOWING (the cross-connect)',
+         cs5.letdown_orifice_a === false && cs5.letdown_orifice_b === false &&
+         cs5.letdown_flow_normalized > 0 && cs5.letdown_isolated === false,
+         'A ' + cs5.letdown_orifice_a + ' / B ' + cs5.letdown_orifice_b + ', flow ' +
+         (cs5.letdown_flow_normalized * 450000).toFixed(2) + ' gpm — the lineup-derived form ' +
+         'read 0.00 gpm here');
     })();
 
     /* the block button's whole path: board -> kernel (empty trips -> FORWARD) -> shell ->
@@ -1969,6 +1983,19 @@ var SHSRC = fs.readFileSync(path.join(SRC, 'pwr2_shell.js'), 'utf8').replace(/\r
  * runs only that group, and the BLIND check still reds the runner if the tag is wrong. */
 var NL_ = '\n';   /* the two-char escape a multi-line anchor needs */
 var MUTATIONS = [
+  /* THE LETDOWN SURFACE (#624 items 14/25). The first is the SHIPPED form restored: a board
+   * flow derived from the operator's LINEUP rather than from what the plant stepped. It reads
+   * 0 gpm on a cold plant passing the full normal magnitude through the RHR cross-connect, and
+   * it would read normal through a 17 % protective isolate — wrong in both directions, and
+   * invisible while every fixture booted with the orifices already in. */
+  ['the board derives letdown flow from the LINEUP again (a cold plant reads 0 gpm while ' +
+   'passing full letdown)',
+   '      letdown_flow_normalized: RD.cvcs.kgsToGpm(e._letdownKgs || 0) / 450000,',
+   '      letdown_flow_normalized: e.cv.letdownOpen *\n                               (RD.cvcs.CVCS.charging_normal_gpm() + RD.cvcs.sealInjectionGpm()) / 450000,',
+   { grp: 'H' }],
+  ['control_state loses the protective isolate (a shut lineup and an isolated plant look ' +
+   'identical on the two lamps)',
+   '      letdown_isolated: e.cv.letdownIsolated === true,', '', { grp: 'A' }],
   /* #591 item 1 — the circulating-water sink. TWO anchors because the halves fail separately:
    * sever the door and the vacuum stops answering (the defect the owner actually found), while
    * publishing the RETIRED plant's band leaves the sink working but puts the C-9 removal point
