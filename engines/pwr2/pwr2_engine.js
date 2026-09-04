@@ -1494,6 +1494,37 @@
       ? 'accumulator window open — arm the accumulators before accelerating again'
       : null;
 
+    /* WHAT THE ELBOW TAP MEASURES *(OWNER RULING, 2026-09-04: selected "The engine publishes
+     * what the tap measures, and the channel reads that", from three options on #624 —
+     * #619 item 1, "RCP flowing over 100% seems odd.")*.
+     *
+     * [sourced] WTSM §3.2 (ML11223A213, p.3.2-5): RCS flow is an ELBOW TAP, a differential-
+     * pressure device on the intermediate-leg elbow. "The correlation between changes in flow
+     * and elbow tap indication ... dP/dP0 = (W/W0)^2", and "The full-flow reference point P0 is
+     * established during initial plant startup" — so the reference is a dP frozen at hot
+     * full-flow conditions, NOT a live mass-flow ratio. The chapter is explicit about what the
+     * device is for: "to provide information as to whether or not a REDUCTION in flow has
+     * occurred". It is a loss-of-flow detector and is not accurate above 100 %.
+     *
+     * THE ALGEBRA. An elbow tap sees dP = k·rho·V^2, and W = rho·A·V, so dP ∝ W^2/rho. An
+     * uncompensated meter reports sqrt(dP/dP0), which is (W/W0)·sqrt(rho0/rho). This pump holds
+     * roughly constant VOLUMETRIC flow (it makes head, not pressure — see pwr2_sources), so the
+     * true mass ratio is itself rho/rho0 and the indication collapses to sqrt(rho/rho0).
+     *
+     * MEASURED, cold shutdown with the pumps running: true mass flow 132.3 % of rated, which is
+     * CORRECT — 50 °C water is 1.31x the density of the design cold-leg reference. The board was
+     * publishing that truth straight through a lag-and-noise channel whose authored range is
+     * [0, 120], so it read a PEGGED 120.00 %: neither the truth nor an indication. The tap reads
+     * ~115 %, inside the range — which is evidence that range was drawn for a plant whose
+     * indication behaved this way.
+     *
+     * TRUE STATE, not an instrument value: the dP physically exists in the plant, and this is
+     * the flow it corresponds to. The instrument layer then does what it always does on top —
+     * lag, noise, failure (pwr_instruments' `rcs_flow`, which reads this field when a plant
+     * publishes one and falls back to raw mass flow for the retired engine, which does not). */
+    ts.rcs_flow_dp_pct = (ts.pump_flow_pct == null) ? null
+      : ts.pump_flow_pct / Math.sqrt(S.densityRatio(sys));
+
     /* facade extras a page needs and the contract does not carry */
     ts.sim_time_s = eng.simTime;
     ts.rod_steps = eng.rodSteps;

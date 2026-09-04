@@ -29,6 +29,68 @@ and the user-visible summary in `CHANGELOG.md`. This file points at those and tr
 
 ---
 
+## Session log — 2026-09-04-develop-e (#624 item 1 — the board was showing truth, and the truth pegged the gauge)
+
+**The ask.** #619 item 1: *"RCP flowing over 100% seems odd."* Ruled 2026-09-04, "1" — the engine
+publishes what the tap measures and the channel reads that, from three options.
+
+### The finding is not what the report says, and it is not what I first said either
+
+The owner reported a number over 100 %. My first pass (recorded on #624) said the physics was
+right and only the explanation was missing. **Both were wrong about what is on the board.**
+
+| | true mass flow | board `rcs_flow` |
+|---|---|---|
+| Hot Full Power | 100.65 % | 100.59 % |
+| Cold shutdown, pumps running | **132.29 %** | **120.00 %** |
+
+120.00 is the exact top of the authored `[0, 120]` range: **the channel was PEGGED**. So the
+player was not seeing the 132 % the plant believes, nor a correct indication — a clipped number
+that is neither. Neither the bug report nor my first diagnosis had the number that mattered,
+because neither of us had read the BOARD's value alongside the truth.
+
+### The sourced instrument, and the algebra
+
+[sourced] WTSM §3.2 (ML11223A213, p.3.2-5): RCS flow is an **elbow tap** — `ΔP/ΔP₀ = (W/W₀)²`
+with `P₀` *"established during initial plant startup"*, i.e. a ΔP frozen at hot full-flow
+conditions. And the chapter states the device's purpose outright: *"to provide information as to
+whether or not a REDUCTION in flow has occurred"*. It is a loss-of-flow detector; it is not an
+accurate flowmeter above 100 %, and expecting it to track mass flow is expecting the wrong thing.
+
+`ΔP = k·ρ·V²` and `W = ρ·A·V`, so `ΔP ∝ W²/ρ` and an uncompensated meter reports
+`(W/W₀)·√(ρ₀/ρ)`. This pump makes head rather than pressure, so it holds roughly constant
+VOLUMETRIC flow and the true mass ratio is itself `ρ/ρ₀` — the indication collapses to `√(ρ/ρ₀)`.
+
+**Cross-checked two ways, which is the only reason to trust it**: the engine's own
+`densityRatio` route gives **115.02 %**; the closed form gives **114.6 %**. Hot full power is
+unchanged at 100.5 %, as it must be at the reference.
+
+**The corrected reading lands INSIDE `[0, 120]`.** That is evidence about the range rather than a
+coincidence: it was drawn for a plant whose indication behaved this way, and the pegging was a
+symptom of the missing model, not a second bug. Widening the gauge — the option I argued against
+— would have made the board articulate about a number it should not show.
+
+### The seam, and why it was a decision rather than an edit
+
+The board's flow channel does not come from PWR2's instrument spec. `pwr2_shell.js:999`
+constructs `RD.PWRInstruments(RD.PWR_CONFIG)` — the **retired** plant's layer and config — and
+`rcs_flow` is pwr1's alias to `pump_flow_pct`. `pwr2_instruments.js:137` defines a `loop_flow` the
+board never reads, tagged `[open] elbow-tap dP`: the gap was declared, what was missing was the
+measurement of what it cost.
+
+So the engine publishes `ts.rcs_flow_dp_pct` — TRUE STATE, because the ΔP physically exists and
+this is the flow it corresponds to — and the shared instrument layer prefers it **when a plant
+publishes one**, as a named case in its update loop beside the existing `sg_level` shrink-and-swell
+case. The retired engine never publishes the field and keeps the raw mass flow it has always
+shown; `run_ops` stays at its tracked 59/70.
+
+### Gates
+
+`run_contract` 178/178 · `run_hr3` 31/31 · `run_inspect` 56/56 · `verify_board_check` 236/236 ·
+`run_ops` 59/70 (tracked red, unmoved) · `run_release` 27/27 at `Alpha 1.7.2-rc6`.
+
+---
+
 ## Session log — 2026-09-04-develop-d (#624 items 11/16/27 — two more instructions the plant had already carried out, and a blocker)
 
 **The ask.** #619's remaining plant items. Three landed; **14/25 is blocked** on a modelling

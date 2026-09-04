@@ -32,6 +32,42 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
 
 ## [Alpha 1.7.2-rc6] — 2026-09-03
 
+### Fixed (#624 / #619 item 1 — RCS flow was showing truth, and the truth pegged the gauge)
+
+*(OWNER, 2026-09-03: "RCP flowing over 100% seems odd."; ruling 2026-09-04: "1" — the engine
+publishes what the tap measures, and the channel reads that.)*
+
+**The hydraulics were right and the indication did not exist.** [sourced] WTSM §3.2
+(ML11223A213, p.3.2-5): RCS flow is an **elbow tap**, a differential-pressure device, with
+`ΔP/ΔP₀ = (W/W₀)²` and a reference `P₀` *"established during initial plant startup"* — a ΔP frozen
+at hot full-flow conditions, not a live mass-flow ratio. The chapter says what it is for: *"to
+provide information as to whether or not a REDUCTION in flow has occurred."* It is a loss-of-flow
+detector and is not accurate above 100 %.
+
+Measured, cold shutdown with the pumps running:
+
+| | true mass flow | board `rcs_flow` |
+|---|---|---|
+| before | 132.29 % | **120.00 % — pegged at the top of the authored `[0, 120]` range** |
+| after | 132.29 % | **115.02 %** |
+
+Hot Full Power is unchanged at ~100.5 %, as it must be — that is the reference point.
+
+So the owner was not looking at the 132 % the plant believes; he was looking at a **clipped**
+number that was neither the truth nor an indication. An elbow tap sees `ΔP = k·ρ·V²` and
+`W = ρ·A·V`, so `ΔP ∝ W²/ρ` and an uncompensated meter reports `(W/W₀)·√(ρ₀/ρ)`. This pump holds
+roughly constant volumetric flow, so that collapses to `√(ρ/ρ₀)`. Cross-checked two ways: the
+engine's own `densityRatio` gives 115.02 %, the closed-form gives 114.6 %.
+
+That the corrected reading lands **inside** the `[0, 120]` range is itself evidence the range was
+drawn for a plant whose indication behaved this way — the pegging was a symptom of the missing
+model, not a separate bug.
+
+`ts.rcs_flow_dp_pct` is true state, not an instrument value: the ΔP physically exists and this is
+the flow it corresponds to. The instrument layer then does what it always does on top — lag,
+noise, failure. **The retired engine is untouched**: it never publishes the field and keeps the
+raw mass flow it has always shown (`run_ops` 59/70, its tracked red, unmoved).
+
 ### Fixed (#624 / #619 items 11, 16, 27 — two more instructions the plant had already carried out)
 
 - **Mode 3, Hot Standby now boots with the turbine TRIPPED**, joining Mode 4 and Mode 5 *(OWNER,
