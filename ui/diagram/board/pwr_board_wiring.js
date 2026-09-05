@@ -3344,8 +3344,9 @@
       // valve tile (ends 1414) and too narrow for its own label. 1416/72 clears the valve
       // and, with the .bd-ro-label letter-spacing fix, fits "STEAM DUMP" with room.
       // CVCS flow captions to 14 px — #350 item 27, see the note above DOC_PATCHES.
-      // NIS caption authored "d TEMP AVG" — the builder text lost its Δ (#235).
-      imrsho1qu6t: { props: { text: 'Δ TEMP AVG' } },
+      // (The NIS caption's "d TEMP AVG" → "Δ TEMP AVG" text patch (#235) lives in the NIS
+      //  re-layout block below with the caption's position — ONE key per id, see the
+      //  object-literal trap at bdOneOverM.)
       /* (The PRESSURIZER card's 235 -> 290 growth patch went with the AUX SPRAY tile it
        * carried — owner direction 2026-08-31; the card is back at its authored height. The
        * geometry measurements are in git at the #563 commit.) */
@@ -3477,13 +3478,58 @@
        * card's own selfTest requires the bottom row to be LEVEL. Taking ROD AUTO's slot
        * means taking the row it was levelled into. */
       bdOneOverM: { props: { left: 340, top: 388, width: 80, height: 30 } },
-      /* AND THE NIS CARD CLOSES UP BEHIND BOTH BUTTONS (#598 item 10). SOURCE RANGE was authored
-       * 70 px tall against INTER RANGE's 45 for one reason: the extra 25 px held SR DET at
-       * (550,315). With SR DET deleted (#598 item 7) that space is a ragged step between two
-       * boxes that show the same KIND of thing, so the box takes its neighbour's height and the
-       * two range readouts sit level. Both then end at y 315 with a uniform 30 px gutter down to
-       * the rod-position boxes at y 345 — where the 1/M button used to float. */
-      ims176nions: { props: { height: 45 } },
+      /* THE NIS CARD RE-LAID OUT WITHOUT ITS TWO BUTTONS (#598 items 7/9/10; owner, 2026-09-05:
+       * "adjust the indications in the NUC INSTR card to get rid of the gap where the 1/m plot
+       * and the source range on/off buttons used to be. make it look nice.").
+       *
+       * WHAT WAS THERE. The card is 530,190 255x225 and its content band runs y 220..410. As
+       * authored: row 1 (Δ TEMP AVG / STARTUP RATE) 220..265, row 2 (SOURCE RANGE / INTER
+       * RANGE) 270..315 — SOURCE RANGE 70 tall to hold SR DET at (550,315), 1/M PLOT floating at
+       * (680,317) — then a 30 px gutter to row 3 (rod positions) at 345..410. With both buttons
+       * gone (#598) the gutters read 5 / 30 / 5 and the middle one was the hole.
+       *
+       * THE CARD DOES NOT SHRINK: the PERIOD card (bdReactivityCard, EXTRA_ITEMS) sits flush
+       * under its bottom edge at y 415, so taking 25 px off the card moves the hole, not fills
+       * it. The three rows redistribute over the SAME 190 px band instead: 55 / 55 / 70 with
+       * 5 px gutters (220..275, 280..335, 340..410). Rows 1 and 2 hold the same shape (one
+       * caption + one value) and get the same height; row 3 carries a two-line caption and gets
+       * the extra 15. Inside each box the content is centred: caption top = box top + 5, value
+       * 20 below it (the authored pitch), which puts the 24 px value 6 px off the box bottom.
+       * Row 3: captions at +7/+22 (the authored 15 px pitch), value at +37, 8 px off the bottom.
+       *
+       * TWO AUTHORING SLIPS FIXED WHILE EVERY ITEM IS BEING PLACED ANYWAY. Row 1's values were
+       * NOT level (Δ TEMP AVG at 240, STARTUP RATE at 235), and the Δ TEMP AVG caption was the
+       * one 16 px caption on a card of 14s (it is the only reason that caption measured 110 px
+       * against 117 for a 12-letter neighbour). Captions are 14 px mono, ~9.75 px/char, and are
+       * placed so each is centred in its 120 px box (a 12-letter caption spans 117 and gets 1.5
+       * px a side; 11 letters, 6.5; POSITION, 20). The rAnchor value right edges are unchanged
+       * except Δ TEMP AVG, 620 → 615, so a two-digit value centres like its neighbours.
+       *
+       * Patched here, not in the builder, because pwr_board_data.js is REGENERATED. The rhythm
+       * is pinned by the `NIS card rows` selfTest check below, which reads these same items. */
+      // row 1 — 220..275
+      ims175ay22g: { props: { height: 55 } },
+      ims175yp3k8: { props: { height: 55 } },
+      imrsho1qu6t: { props: { text: 'Δ TEMP AVG', top: 225, left: 546, fontSize: 14 } },   // "d TEMP AVG" lost its Δ (#235)
+      imrshos9w20: { props: { top: 225, left: 662 } },
+      imro6qpci2d: { props: { top: 245, left: 615 } },
+      imro6qsncb9: { props: { top: 245 } },
+      // row 2 — 280..335
+      ims176nions: { props: { top: 280, height: 55 } },
+      ims176t4e8s: { props: { top: 280, height: 55 } },
+      imrshofh36b: { props: { top: 285, left: 537 } },
+      imrshosegml: { props: { top: 285, left: 667 } },
+      imro6qutiht: { props: { top: 305 } },
+      imro6rctcgm: { props: { top: 305 } },
+      // row 3 — 340..410
+      ims2hvqbvee: { props: { top: 340, height: 70 } },
+      ims2hvv0wgo: { props: { top: 340, height: 70 } },
+      ims15i4eyhf: { props: { top: 347, left: 542 } },
+      ims15i60dd8: { props: { top: 347, left: 662 } },
+      ims2hnpzc1t: { props: { top: 362 } },
+      ims2hnyt0jk: { props: { top: 362, left: 680 } },
+      imrpk4pjcpd: { props: { top: 377 } },
+      imrpnzfsfcx: { props: { top: 377 } },
       // (TRIP BLOCKS carried a top/height patch here until the 2026-07-28t re-export —
       // the builder now authors it at 425/30, so the patch was pinning what the diagram
       // already says. Dropped rather than kept: a patch that agrees with the doc is a
@@ -4255,6 +4301,39 @@
         var g3 = (card.top + card.height) - (aut[0].top + aut[0].height);
         var lo = Math.min(g1, g2, g3), hi = Math.max(g1, g2, g3);
         return (hi - lo) <= 1 ? true : 'gaps ' + g1 + '/' + g2 + '/' + g3;
+      })() === true);
+      /* THE NIS CARD ROWS (owner, 2026-09-05 — see the DOC_PATCHES block). Three row-pairs,
+       * each pair level, 5 px gutters throughout, filling the card's content band from its
+       * 220 top to 5 px above the card bottom. Reads the patched doc, so it fails on the shipped
+       * pwr_board_data.js without the patches (gutters 5/30/5) — INJECTION-VERIFIED 2026-09-05:
+       * moving row 3 to 345/65 (a 10 px gutter) reddened exactly this check, 1 of 242 — and it
+       * would fail again if a re-export or a neighbour's nudge reopened the hole. */
+      ck('driver: the NIS card rows are level pairs with uniform 5 px gutters and no hole', (function () {
+        function it(id) { return (window.RD_PWR_BOARD_DOC.items || []).filter(function (x) { return x.id === id; })[0]; }
+        var card = it('ims175lciah');
+        var rows = [['ims175ay22g', 'ims175yp3k8'], ['ims176nions', 'ims176t4e8s'], ['ims2hvqbvee', 'ims2hvv0wgo']].map(function (p) { return p.map(it); });
+        if (!card || rows.some(function (r) { return r.some(function (x) { return !x; }); })) return 'item missing';
+        for (var i = 0; i < rows.length; i++) {
+          if (rows[i][0].top !== rows[i][1].top || rows[i][0].height !== rows[i][1].height)
+            return 'row ' + (i + 1) + ' not level: ' + rows[i].map(function (r) { return r.top + '+' + r.height; }).join(' / ');
+        }
+        var gaps = [rows[1][0].top - (rows[0][0].top + rows[0][0].height),
+                    rows[2][0].top - (rows[1][0].top + rows[1][0].height),
+                    (card.top + card.height) - (rows[2][0].top + rows[2][0].height)];
+        if (gaps.some(function (g) { return g !== 5; })) return 'gutters ' + gaps.join('/');
+        // and every caption/value sits inside its own box (the re-layout moved all twelve)
+        var inside = [['ims175ay22g', 'imrsho1qu6t', 'imro6qpci2d'], ['ims175yp3k8', 'imrshos9w20', 'imro6qsncb9'],
+                      ['ims176nions', 'imrshofh36b', 'imro6qutiht'], ['ims176t4e8s', 'imrshosegml', 'imro6rctcgm'],
+                      ['ims2hvqbvee', 'ims15i4eyhf', 'ims2hnpzc1t', 'imrpk4pjcpd'], ['ims2hvv0wgo', 'ims15i60dd8', 'ims2hnyt0jk', 'imrpnzfsfcx']];
+        for (var j = 0; j < inside.length; j++) {
+          var box = it(inside[j][0]);
+          for (var k = 1; k < inside[j].length; k++) {
+            var el = it(inside[j][k]);
+            if (!el) return inside[j][k] + ' missing';
+            if (el.top < box.top || el.top > box.top + box.height - 15) return inside[j][k] + ' top ' + el.top + ' outside box ' + box.top + '..' + (box.top + box.height);
+          }
+        }
+        return true;
       })() === true);
       // ---- the board's AUTO colour convention (2026-08-01) --------------------------------
       // `buildButton` uses the authored item colour AS the lit colour, so an off-convention

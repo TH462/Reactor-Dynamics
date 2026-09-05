@@ -29,6 +29,44 @@ and the user-visible summary in `CHANGELOG.md`. This file points at those and tr
 
 ---
 
+## Session log — 2026-09-05-develop-d (the NUC INSTR card closed up behind its two deleted buttons — #598 items 7/9/10 follow-up)
+
+**The ask** (owner, 2026-09-05): *"adjust the indications in the NUC INSTR card to get rid of the
+gap where the 1/m plot and the source range on/off buttons used to be. make it look nice."*
+
+**What was there, measured off the rendered board** (headless Edge via playwright-core, authored
+units read back through `.bd-tile[data-item]` rects). Card `ims175lciah` 530,190 255×225; content
+band y 220..410. Row 1 (Δ TEMP AVG / STARTUP RATE) 220..265, row 2 (SOURCE RANGE / INTER RANGE)
+270..315 after #598 item 10's height patch, row 3 (rod positions) 345..410. Gutters **5 / 30 / 5**
+— the 30 was SR DET's and 1/M PLOT's row. Two things the item scan also turned up that the eye
+had not: row 1's two values were **not level** (Δ TEMP AVG at 240, STARTUP RATE at 235), and Δ TEMP
+AVG was the one **16 px** caption on a card of 14s (rendered 110 px for 10 characters against 117
+for a 12-character neighbour).
+
+**Why the card did not shrink.** The obvious fix — pull row 3 up 25 px and take 25 off the card —
+moves the hole rather than filling it: the PERIOD card (`bdReactivityCard`, EXTRA_ITEMS) is
+authored flush under the NIS card's bottom edge at y 415 (#591 item 3). So the rows redistribute
+over the same 190 px band: **55 / 55 / 70, 5 px gutters throughout** (220..275, 280..335,
+340..410). Rows 1 and 2 hold the same shape and get the same height; row 3 carries the two-line
+caption and takes the extra 15. Captions at box top + 5, values 20 below (the authored pitch);
+row 3 captions at +7/+22, value at +37. Captions centred by measured width (14 px mono ≈ 9.75
+px/char): 12-letter captions at box left + 2, 11-letter at + 7, POSITION at + 20. Δ TEMP AVG's
+value right edge 620 → 615 so a two-digit value centres like its neighbours. Twenty items, all in
+`DOC_PATCHES` — `pwr_board_data.js` is generated — and the #235 Δ text patch folded into the same
+key (one key per id; a second `imrsho1qu6t:` would silently replace the first).
+
+**Gated.** `board_check` gains *"the NIS card rows are level pairs with uniform 5 px gutters and
+no hole"* — pairs level, gutters exactly 5, every caption/value inside its own box. Injection:
+row 3 back to 345/65 (a 10 px gutter) reds exactly that check, 1 of 242. `verify_board_check`
+PASS 242, `run_release` 29 (Alpha 1.7.4-rc1 pending), `run_session_labels` OK.
+
+**A trap I paid for myself.** Reverting the injection with `git checkout -- <file>` reverted the
+whole uncommitted file — the fix went with the injection and had to be re-applied from context.
+Inject by editing back, or stash the fix first; never `checkout` a file that carries unstaged work
+you want.
+
+---
+
 ## Session log — 2026-09-05-develop-c (#637 — the CI gate was throughput-bound, not tail-bound, and two of my three diagnoses were wrong before the arithmetic)
 
 **The ask.** The Alpha 1.7.2 release merge ran red on `develop` AND `main`: the aggregate-gate step

@@ -30,6 +30,22 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
 
 ## [Unreleased]
 
+## [Alpha 1.7.4-rc1] — 2026-09-05
+
+### Changed (the NUC INSTR card re-laid out without its two buttons — #598 items 7/9/10 follow-up)
+
+*(OWNER, 2026-09-05: "adjust the indications in the NUC INSTR card to get rid of the gap where the
+1/m plot and the source range on/off buttons used to be. make it look nice.")*
+
+With SR DET deleted and 1/M PLOT moved to the rod card (#598), the card's three rows sat at
+gutters of **5 / 30 / 5 px** — the 30 was where the buttons had been. The card keeps its authored
+255×225 (the PERIOD card is flush under its bottom edge at y 415), and the rows redistribute
+over the same 190 px band: **55 / 55 / 70 px, 5 px gutters throughout**, captions centred in
+their 120 px boxes, values level per row. Two authoring slips went with it: row 1's values were
+5 px out of level (240 vs 235), and Δ TEMP AVG was the one 16 px caption among 14s. All in
+`DOC_PATCHES` (`pwr_board_data.js` is generated). `board_check` gains a row-rhythm check,
+injection-verified (a 10 px gutter reds it, 1 of 242).
+
 ## [Alpha 1.7.3] — 2026-09-05
 
 ### Fixed (#630 — the ECCS card's MODE caption and its word were authored on the SAME line)
