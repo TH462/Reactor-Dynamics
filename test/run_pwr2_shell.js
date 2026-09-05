@@ -50,7 +50,8 @@ var DT = 0.02;
  * partition + commands-land (three sections sharing one engine), 'B' the two banks, 'D' the
  * casualty rows, 'D3' the board rails, 'E' the electrical pair, 'F' the SGTR row, 'G' the
  * wave-6 levers, 'H' the ICs through the class, 'I' the rod limit, 'J' the RCP handswitch,
- * 'K' the shutdown preset, 'S' the save contract, 'T' the AFW throttle on a real drain
+ * 'K' the shutdown preset, 'L' the operator's rate-limited load dial (#624 item 24),
+ * 'S' the save contract, 'T' the AFW throttle on a real drain
  * (#582 — full channel runtime under the control kernel). The CLEAN pass runs everything;
  * each named group is preflighted ALONE on the clean build before the replays. */
 function runSuite(SH, rec, quiet, only) {
@@ -1504,6 +1505,212 @@ function runSuite(SH, rec, quiet, only) {
   })();
   }
 
+  if (grp('L')) {
+  /* ---- 1l. THE OPERATOR'S LOAD DIAL, RATE-LIMITED (#624 / #619 item 24) --------------------
+   * The owner: "During startup I always end up with the water level touching the heaters."
+   * MEASURED cause: `set_load_target` delivered the whole load change in ZERO time, and the
+   * pressurizer shrank through its 17 % low-level cut before the level controller had a
+   * disturbance it could answer. The fix is on THIS side of the engine door — see the long
+   * note over `stepLoadDial` in pwr2_shell.js for the source, the rate and the declarations.
+   *
+   * Every threshold below is COMPUTED from the module constants. A literal here would be a
+   * second copy of a sourced number, and would keep passing after the number moved. */
+  head('THE LOAD DIAL  [#624 item 24: a RAISE walks at the sourced 5 %/min, a reduction lands whole]');
+  var LVL = globalThis.RD.pwr2.pressurizer.LEVEL;
+  var ENV = globalThis.RD.pwr2.turbine.ENVELOPE;
+  var RATED = globalThis.RD.pwr2.turbine.TURB.mwe_rated;
+  var rampMweMin = function () { return (ENV.ramp_pct_per_min / 100) * RATED; };
+
+  /* CHECK 1 — THE DEFECT ITSELF. `low_power` is the state the startup checklist hands the
+   * player (10 MWe on the grid, rods where the checklist left them). Dial 30 MWe, touch
+   * nothing else, ride three plant-minutes. MEASURED on the pre-limiter build: indicated
+   * level 27.5 -> 16.11 %, THROUGH the 17 % cut, letdown isolated and the heaters shed at
+   * 0.78 min. INDICATED, not true, because the cut and the player both read the channel. */
+  (function () {
+    var e = new SH.PWR2Engine({ initial_state: 'low_power' });
+    run(e, 20);
+    e.applyCommand({ action: 'set_load_target', mwe: 30 });
+    var loInd = 1e9, loTrue = 1e9, loT = 0, iso = false, cut = false, t = 0;
+    while (t < 180) {
+      var ts = e.step(DT); t += DT;
+      var ind = e.getInstruments().pzr_level;
+      if (ind < loInd) { loInd = ind; loT = t / 60; }
+      if (ts.pzr_level_pct < loTrue) loTrue = ts.pzr_level_pct;
+      if (e.eng.cv.letdownIsolated) iso = true;
+      if (e.eng.pz.lowLevelCut) cut = true;
+    }
+    ck('a 20 MWe dial step from low_power no longer drains the pressurizer through its 17 % ' +
+       'low-level cut (the item-24 defect)',
+       loInd > LVL.low_cut_pct && iso === false && cut === false,
+       'min indicated ' + loInd.toFixed(2) + ' % (true ' + loTrue.toFixed(2) + ') @' +
+       loT.toFixed(2) + ' min, cut at ' + LVL.low_cut_pct + ' %, isolated ' + iso);
+  })();
+
+  /* CHECK 2 — THE DIAL AND THE REFERENCE ARE TWO NUMBERS, and the second one walks. Both
+   * halves matter: the board's MW box reads `load_cmd_mwe` and must show what the player
+   * typed IMMEDIATELY *(OWNER DIRECTIVE, 2026-08-11)*, while the machine walks. The arrival
+   * time is the rate, measured rather than asserted from the constant twice. */
+  (function () {
+    var e = new SH.PWR2Engine({ initial_state: 'low_power' });
+    run(e, 20);
+    var from = e.eng.tb.load_target_mwe;
+    e.applyCommand({ action: 'set_load_target', mwe: 30 });
+    e.step(DT);
+    var cs1 = e.getControlState();
+    var dialImmediate = Math.abs(cs1.load_cmd_mwe - 30) < 1e-9;
+    var refStillLow = cs1.load_target_mwe < from + 0.05;
+    var t = 0, arrive = null;
+    while (t < 900) {
+      e.step(DT); t += DT;
+      if (arrive === null && e.eng.tb.load_target_mwe >= 30 - 1e-9) arrive = t;
+    }
+    var want = (30 - from) / rampMweMin() * 60;          /* seconds, from the envelope */
+    ck('the dial lands INSTANTLY on the board (load_cmd_mwe) while the plant\'s reference ' +
+       '(load_target_mwe) walks there at the sourced ' + ENV.ramp_pct_per_min + ' %/min',
+       dialImmediate && refStillLow && arrive !== null && Math.abs(arrive - want) <= 2 * DT + 1e-9,
+       'cmd ' + cs1.load_cmd_mwe + ' MWe, reference ' + cs1.load_target_mwe.toFixed(3) +
+       ' MWe one step in, arrived at ' + (arrive === null ? 'never' : (arrive / 60).toFixed(3) +
+       ' min vs ' + (want / 60).toFixed(3) + ' expected'));
+  })();
+
+  /* CHECK 3 — RAISES ONLY: a REDUCTION lands whole, in one step. This is the retired plant's own
+   * design *(OWNER RULING, 2026-08-08: "Do the 30% increase.")* and it is the direction that
+   * does not need limiting — a load decrease SWELLS the pressurizer, away from the 17 % cut the
+   * raise drives it into. The source's "similar… reductions are possible" is a capability
+   * statement, not a limiter. The C-7 reason is check 5. */
+  (function () {
+    var e = new SH.PWR2Engine({ initial_state: '50_percent' });
+    run(e, 20);
+    var from = e.eng.tb.load_target_mwe;
+    e.applyCommand({ action: 'set_load_target', mwe: 30 });
+    e.step(DT);
+    var oneStep = e.eng.tb.load_target_mwe;
+    ck('a load REDUCTION is IMMEDIATE — the limiter is RAISES ONLY (the retired plant\'s design, ' +
+       'and the direction that swells the pressurizer rather than shrinking it)',
+       Math.abs(oneStep - 30) < 1e-9 && from > 45,
+       from.toFixed(1) + ' -> 30 MWe: reference reads ' + oneStep.toFixed(3) +
+       ' MWe one step later (a limited reduction would read ' +
+       (from - rampMweMin() * DT / 60).toFixed(3) + ')');
+  })();
+
+  /* CHECK 4 — PROVENANCE, not agreement. "The walk takes four minutes" is satisfied by a
+   * retyped 5.0 as happily as by reading the envelope, and a retyped constant is exactly the
+   * #534 trap this whole item is an instance of. So MOVE the sourced number and require the
+   * plant to move with it — the `boundsFor` idiom from run_pwr2_board. */
+  (function () {
+    var was = ENV.ramp_pct_per_min;
+    function arriveS(rate) {
+      ENV.ramp_pct_per_min = rate;
+      var e = new SH.PWR2Engine({ initial_state: 'low_power' });
+      run(e, 20);
+      e.applyCommand({ action: 'set_load_target', mwe: 30 });
+      var t = 0;
+      while (t < 1800) { e.step(DT); t += DT; if (e.eng.tb.load_target_mwe >= 30 - 1e-9) return t; }
+      return null;
+    }
+    var slow = arriveS(2.5), fast = arriveS(10);
+    ENV.ramp_pct_per_min = was;
+    ck('the rate is READ from RD.pwr2.turbine.ENVELOPE every step, not retyped — halve the ' +
+       'sourced number and the walk doubles',
+       slow !== null && fast !== null && Math.abs(slow / fast - 4.0) < 0.01,
+       'at 2.5 %/min ' + (slow / 60).toFixed(3) + ' min, at 10 %/min ' + (fast / 60).toFixed(3) +
+       ' min, ratio ' + (slow / fast).toFixed(4));
+  })();
+
+  /* CHECK 5 — BOTH ROUTES TO THE GRADED RIDE-OUT SURVIVE, and this is the check that decided
+   * the raises-only ruling rather than merely recording it. The steam dump's loss-of-load arm is
+   * "a ramp load decrease at a rate GREATER THAN 5 %/min" (pwr2_dumpctl, WTSM 11.2) — THE SAME
+   * SOURCED NUMBER as the load envelope. A symmetric limiter parks the dial's reduction rate
+   * exactly ON that threshold: built and measured that way first, 100 MWe to 0, the C-7 rate
+   * signal asymptoted to 4.999773 %/min against a strict `>` and NEVER armed, where the instant
+   * cut reaches 49.99 %/min. A 0.00023 %/min margin is a BIFURCATION, not a tolerance (#543,
+   * #588 — one ulp reproduced the other platform's branch), and it would have removed the dial
+   * as a way to produce the loss-of-load transient at all. Reductions are therefore instantaneous
+   * and BOTH routes are asserted here, so neither can be lost silently — the failure
+   * `engines/load_mode.js` records for the retired plant. */
+  (function () {
+    var e1 = new SH.PWR2Engine({});
+    run(e1, 60);
+    e1.applyCommand({ action: 'set_load_target', mwe: 0 });
+    var armDial = false, t = 0, rateMax = 0, dialT = null;
+    while (t < 10 * 60) {
+      e1.step(DT); t += DT;
+      if (e1.eng.dc.c7Armed) { if (!armDial) dialT = t; armDial = true; }
+      rateMax = Math.max(rateMax, -e1.eng.dc.loadRate * 6000);
+    }
+    var e2 = new SH.PWR2Engine({});
+    run(e2, 60);
+    e2.applyCommand({ action: 'disconnect_grid' });
+    e2.step(DT);
+    var immediate = e2.eng.tb.load_target_mwe === 0 && e2.getControlState().load_cmd_mwe === 0;
+    var armDisc = false;
+    for (var i = 0; i < 120 / DT; i++) { e2.step(DT); if (e2.eng.dc.c7Armed) armDisc = true; }
+    ck('BOTH free-play routes to the C-7 graded ride-out are live: a dial cut to 0 arms it (it ' +
+       'would NOT under a symmetric limiter), and UNLOAD arms it while zeroing both numbers in ' +
+       'the SAME step rather than the next one',
+       armDial === true && armDisc === true && immediate,
+       'dial cut: armed ' + armDial + (dialT === null ? '' : ' at ' + dialT.toFixed(2) + ' s') +
+       ', peak C-7 ramp signal ' + rateMax.toFixed(4) + ' %/min vs threshold > ' +
+       (globalThis.RD.pwr2.dumpctl.DUMP.c7_ramp_frac_per_min * 100).toFixed(4) +
+       ' | UNLOAD: armed ' + armDisc + ', both 0 in one step ' + immediate);
+  })();
+
+  /* CHECK 6 — AN AUTOMATIC CUT IS NOT LIMITED, AND IT MOVES THE ASK. The OTdT/OPdT runback
+   * (sourced 200 %/min) is the only path in the plant that lowers the reference on its own.
+   * Without `syncLoadDial` the limiter would spend the runback walking the load straight back
+   * up — the retired plant's `immediate` note: "it moves the ASK as well so the ramp has
+   * nothing to undo."  WHITE-BOX on the signal: `_runbackSig` is written from the protection
+   * report at the END of every engine step, so a persistent signal is held here by re-asserting
+   * it, which is what a standing delta-T approach does. The RELEASE half is the real assertion
+   * — after the signal clears the load must STAY DOWN. */
+  (function () {
+    var e = new SH.PWR2Engine({});
+    run(e, 60);
+    var from = e.eng.tb.load_target_mwe;
+    for (var i = 0; i < 1.5 / DT; i++) { e.eng._runbackSig = true; e.step(DT); }
+    var afterRb = e.eng.tb.load_target_mwe;
+    var dialFollowed = Math.abs(e.getControlState().load_cmd_mwe - afterRb) < 1e-9;
+    run(e, 60);
+    var later = e.eng.tb.load_target_mwe;
+    ck('the automatic runback is NOT rate-limited and the DIAL follows it down — the load ' +
+       'stays where the runback put it instead of walking back up',
+       afterRb < from - 4.0 && dialFollowed && Math.abs(later - afterRb) < 1e-9,
+       from.toFixed(2) + ' -> ' + afterRb.toFixed(2) + ' MWe in 1.5 s (dial followed ' +
+       dialFollowed + '), still ' + later.toFixed(2) + ' MWe a minute later');
+  })();
+
+  /* CHECK 7 — the dial ROUND-TRIPS through the save. A restore taken mid-walk must resume the
+   * same walk; the file's own bit-exactness bar. An old save carries no dial at all and lands
+   * with effective = dialled, which is the pre-limiter state exactly (asserted separately, by
+   * deleting the field from the saved blob). */
+  (function () {
+    var e = new SH.PWR2Engine({ initial_state: 'low_power' });
+    run(e, 20);
+    e.applyCommand({ action: 'set_load_target', mwe: 30 });
+    run(e, 60);                                            /* mid-walk: ~15 MWe */
+    var mid = e.eng.tb.load_target_mwe;
+    var blob = e.saveState();
+    var b = new SH.PWR2Engine({ initial_state: 'low_power' });
+    b.loadState(blob);
+    run(e, 120); run(b, 120);
+    var resumed = b.eng.tb.load_target_mwe === e.eng.tb.load_target_mwe &&
+                  b.getControlState().load_cmd_mwe === 30;
+    var old = JSON.parse(JSON.stringify(blob));
+    delete old.state.scalars._loadDialMwe;
+    var c = new SH.PWR2Engine({ initial_state: 'low_power' });
+    c.loadState(old);
+    c.step(DT); run(c, 60);
+    ck('the dialled target rides the save (a mid-walk restore resumes the walk), and a save ' +
+       'that predates it lands with effective = dialled',
+       mid > 12 && mid < 20 && resumed &&
+       Math.abs(c.eng.tb.load_target_mwe - c.getControlState().load_cmd_mwe) < 1e-9 &&
+       Math.abs(c.eng.tb.load_target_mwe - mid) < 1e-9,
+       'saved at ' + mid.toFixed(3) + ' MWe -> resumed ' + b.eng.tb.load_target_mwe.toFixed(3) +
+       ' vs ' + e.eng.tb.load_target_mwe.toFixed(3) + ' | old save parked at ' +
+       c.eng.tb.load_target_mwe.toFixed(3) + ' MWe');
+  })();
+  }
+
   if (grp('A')) {
   /* ---- THE HEATER CURRENCY (#538) — set and get must speak the same units ------------------
    * The board's percent box is ONE widget: `set` sends power_pct, `get` reads
@@ -1636,10 +1843,23 @@ function runSuite(SH, rec, quiet, only) {
 
   /* ---- 3. COMMANDS LAND THROUGH THE CLASS ---------------------------------------------------- */
   head('COMMANDS LAND  [the class is a real door, not a shape]');
+  /* THE RIDE IS DERIVED, and on this fixture it is the ORIGINAL ride (#624 / #619 item 24).
+   * The plant is at 100 MWe here, so `set_load_target 80` is a REDUCTION — and the limiter is
+   * raises only, so the reduction lands whole and this check is untouched by the change. It was
+   * briefly extended, when the first build limited both directions and the old 40/60 s ride
+   * ended MID-MANEUVER at 95 MWe (as did the gauge-lag check below, which compares against a
+   * `t80` that was no longer a settled point). The extension is DERIVED rather than typed so
+   * that it re-appears on its own if this fixture ever becomes a raise, or if reductions are
+   * ever limited: `walkS` is the walk the rate implies and is 0 in both cases here. */
   eng.applyCommand({ action: 'set_load_target', mwe: 80 });
-  var t80 = run(eng, quiet ? 40 : 60);
-  ck('set_load_target moves the plant', Math.abs(t80.mwe_output - 80) < 2,
-     t80.mwe_output.toFixed(1) + ' MWe');
+  var walk80 = Math.max(0, (80 - eng.eng.tb.load_target_mwe) /
+               ((globalThis.RD.pwr2.turbine.ENVELOPE.ramp_pct_per_min / 100) *
+                globalThis.RD.pwr2.turbine.TURB.mwe_rated) * 60);
+  var t80 = run(eng, walk80 + (quiet ? 40 : 60));
+  ck('set_load_target moves the plant',
+     Math.abs(t80.mwe_output - 80) < 2,
+     t80.mwe_output.toFixed(1) + ' MWe' +
+     (walk80 > 0 ? ' after a ' + (walk80 / 60).toFixed(1) + ' min ramp' : ' (a reduction: no ramp)'));
   /* THE FEED LEVERS (2026-08-21) — refusals retired; the wire proven with one round trip.
    * pct 50 = 0.5 of rated through the old payload shape; re-coupled after so the rest of
    * the suite inherits the AUTO lineup it states. */
@@ -2232,7 +2452,35 @@ var MUTATIONS = [
    '', { grp: 'J' }],
   ['the P-11 pair mapping is severed (the cooldown blocks are board-unreachable) -- #507 wave 10',
    "      } else if (c.trip_id === 'lo_press') {\n        /* the P-11 pair (#507 wave 10) — the pwr1 board's own ids for the cooldown blocks */\n        EN.command(e, 'lo_press_trip_block', c.blocked !== false);\n      } else if (c.trip_id === 'si_trip') {\n        EN.command(e, 'si_block', c.blocked !== false);\n      }",
-   '      }', { grp: 'K' }]
+   '      }', { grp: 'K' }],
+  /* ---- #624 / #619 item 24: the operator's rate-limited load dial ------------------------
+   * FOUR mutations, because the limiter has four separable claims and each of them was a real
+   * shipped state of this plant at some point: no limit at all (today), a retyped rate, raises
+   * only (the retired plant), and a limiter that eats the automatic paths. */
+  ['the load dial is not rate-limited at all (the shipped defect: a 20 MWe step drains the ' +
+   'pressurizer through its 17 % cut)',
+   '    EN.command(e, \'load_mwe\', gap <= stepMwe ? e._loadDialMwe\n                                             : e.tb.load_target_mwe + stepMwe);',
+   "    EN.command(e, 'load_mwe', e._loadDialMwe);", { grp: 'L' }],
+  /* the rate becomes a LITERAL. The walk still takes four minutes and check 2 stays green —
+   * only the provenance check can see this, which is why it exists (#534's standing trap: this
+   * engine inherited the old plant's constants by reference and each is wrong until measured). */
+  ['the ramp rate is RETYPED instead of read from the sourced envelope',
+   '    return (RD.turbine.ENVELOPE.ramp_pct_per_min / 100) * RD.turbine.TURB.mwe_rated / 60;',
+   '    return (5.0 / 100) * RD.turbine.TURB.mwe_rated / 60;', { grp: 'L' }],
+  /* THE SYMMETRIC BUILD — this item's own first draft, and the one the ruling rejected. It parks
+   * the dial's reduction rate exactly on the C-7 arming threshold (the same sourced 5 %/min) with
+   * a 0.00023 %/min structural margin, and the operator loses the loss-of-load transient. Caught
+   * twice, which is the point of keeping it: by the immediate-reduction check, and by the C-7
+   * arming half — a mutation that only the timing check could see would prove nothing about the
+   * interlock. */
+  ['reductions are rate-limited too (the symmetric build: the dial sits on C-7\'s own number)',
+   "    if (gap < 0) { EN.command(e, 'load_mwe', e._loadDialMwe); return; }",
+   "    if (gap < 0) { if (dt > 0) EN.command(e, 'load_mwe', Math.max(e._loadDialMwe, e.tb.load_target_mwe - loadRampMweS() * dt)); return; }", { grp: 'L' }],
+  /* the AUTOMATIC paths get eaten by the dial: the runback nibbles the load down and the
+   * limiter immediately walks it back up, so a protective action becomes a tug of war. */
+  ['an automatic load cut does NOT move the ask (the limiter undoes the runback)',
+   '    if (e.tb.load_target_mwe < wasMwe - 1e-9 && e.tb.load_target_mwe < e._loadDialMwe)\n      e._loadDialMwe = e.tb.load_target_mwe;',
+   '', { grp: 'L' }]
 ];
 
 /* ---- SCOPED-CLEAN-PASS PREFLIGHT (#513) ------------------------------------------------

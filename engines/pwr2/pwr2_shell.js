@@ -290,6 +290,139 @@
     EN.command(e, 'feed_manual_frac', f);
   }
 
+  /* ---- THE OPERATOR'S LOAD DIAL, RATE-LIMITED (#624 / #619 item 24, 2026-09-04) -------------
+   *
+   * WHAT IT IS. `set_load_target` was ONE ASSIGNMENT: whatever the player typed became the
+   * turbine's steam demand in the same instant. MEASURED from `low_power` (10 MWe on the grid,
+   * the state the startup checklist hands the player), dialling 30 MWe with no rod motion:
+   * indicated pressurizer level 27.5 % -> 16.11 % in 0.78 plant-min, THROUGH the 17 % low-level
+   * cut, which isolates letdown and sheds the heaters. The plant then fills on 5 gpm of seal
+   * injection to a high-level reactor trip at 67 min. Charging AUTO was saturated at its program
+   * and correct throughout; MANUAL charging did worse (15.86 %). The defect was not the level
+   * controller — it was that a real operator cannot make that disturbance at all.
+   *
+   * WHERE IT LIVES, AND WHY HERE. `pwr2_turbine`'s ENVELOPE is REPORTED, NOT ENFORCED (HR5) and
+   * says so in its own header: "Rate limiting is a control-layer actuation — the current engine
+   * puts its `load_rate_pct_per_min` in config and enforces it in `load_mode.js`, which is the
+   * control side, and that division is the house rule." This IS the control side. The engine's
+   * `load_mwe` door is untouched and still steps instantly, which is what the automatic paths
+   * need (see NOT LIMITED below); the operator's dial is the only thing that walks.
+   *
+   * THIS IS PARITY, NOT A NEW CONTROL. The retired plant carried `load_rate_pct_per_min: 30.0`
+   * (`engines/pwr/pwr_config.js`), enforced RAISES ONLY in `engines/load_mode.js`
+   * *(OWNER RULING, 2026-08-08: "Do the 30% increase.")*. PWR2 never inherited any of it —
+   * #534's standing trap, an engine that took the old plant's tables by reference and lost the
+   * ones it did not copy. No new board control, no new tile.
+   *
+   * THE RATE FOLLOWS THE SOURCE, NOT THE RETIRED TUNE *(coordinator's call, 2026-09-04, on the
+   * measurement; owner review requested on #624)*. [sourced] Ginna UFSAR chapter 10, section
+   * 10.1.2.1 (ML20339A040): "load changes up to generation step load increases of 10% of full
+   * power and ramp increases of 5% of full power per min within the load range of 12.8% to 100%
+   * of full power without reactor trip… Similar step and ramp load reductions are possible within
+   * the range of 100% to 12.8%." MEASURED at the same 10 -> 30 MWe, no rods: instant 16.92 % true
+   * (cut); 30 %/min still reaches the cut (a 20-point step arrives in 40 s and the shrink
+   * completes in 47 s); 10 %/min 18.29 %; 5 %/min 21.52 % and back on program by 90 min;
+   * 2.5 %/min 22.92 %. The sourced ramp keeps 4.5 points of margin over the cut; the retired tune
+   * keeps none.
+   *
+   * RAISES ONLY, NO STEP ALLOWANCE — both DECLARED, and the first one is a decision:
+   *  - RAISES ONLY. A dial ABOVE the effective target walks; a dial BELOW it lands AT ONCE, as it
+   *    did before this change. Three reasons, in order:
+   *      (1) THE DEFECT IS A RAISE. A load increase draws more steam, cools the loop, contracts
+   *          it, and the pressurizer SHRINKS — into the 17 % cut. A decrease does the opposite:
+   *          the loop expands and the pressurizer swells, toward the 87 % high-level trip, which
+   *          is decades of margin away from a dispatch move. Rate-limiting the safe direction
+   *          buys nothing.
+   *      (2) IT IS THE RETIRED PLANT'S OWN DESIGN under the ruling above, and `load_mode.js`
+   *          records at length why symmetry was measurably WRONG there — it turned this plant's
+   *          defining load-rejection ride-out into a leisurely ramp and took out five behaviour
+   *          probes, the `pwr_tour` greedy-ask branch and the SGTR EOP.
+   *      (3) A LIMITED REDUCTION WOULD SIT ON THE C-7 INTERLOCK'S OWN NUMBER. See below — that
+   *          is the reason specific to THIS plant, and it is the strongest of the three.
+   *    The source's second sentence, "similar step and ramp load reductions are possible", is a
+   *    CAPABILITY statement — what the machine can absorb without tripping — not a limiter, and
+   *    it is deliberately not modelled as one.
+   *  - THE 10 % STEP ALLOWANCE IS NOT MODELLED. A pure ramp is one rule the player can hold in
+   *    their head, and a step allowance is a second regime that would need its own measurement
+   *    (10 % of rated is 10 MWe — one third of the disturbance that caused this issue, delivered
+   *    instantly). Recorded as a deliberate simplification, not an oversight.
+   *  - THE RATE IS NEVER RETYPED. It is read from `RD.turbine.ENVELOPE.ramp_pct_per_min` every
+   *    step, so the enforced limit and the reported envelope cannot drift apart — the exact
+   *    written-down-twice class the standing trap list names.
+   *
+   * WHAT IS NOT LIMITED, and why each one:
+   *  - EVERY LOAD REDUCTION, per the ruling above.
+   *  - THE OTdT/OPdT TURBINE RUNBACK (`pwr2_engine`, sourced 200 %/min for 1.5 s every 30 s).
+   *    It is an automatic protective action on its own path and far faster than an operator can
+   *    drive the machine. `syncLoadDial` below then pulls the DIAL DOWN to follow it — the
+   *    retired plant's `immediate` law ("it moves the ASK as well so the ramp has nothing to
+   *    undo"). Without that the limiter would walk the load back up out of the runback.
+   *  - `disconnect_grid` — the board's UNLOAD button. A planned offline is the breaker opening,
+   *    not a dial change; it zeroes both numbers in the SAME step rather than the next one.
+   *  - A TURBINE TRIP, which stops the machine rather than moving its demand.
+   *
+   * WHY REDUCTIONS ARE NOT LIMITED — THE C-7 REASON, MEASURED. The steam dump's loss-of-load
+   * arming interlock is "a ramp load decrease at a rate GREATER THAN 5 %/min" (`pwr2_dumpctl`
+   * DUMP.c7_ramp_frac_per_min, WTSM 11.2) — THE SAME SOURCED NUMBER as the load envelope. A
+   * symmetric limiter would therefore park the dial's reduction rate exactly ON the interlock's
+   * threshold, against a strict `>`. It was built that way first and measured, from 100 MWe to 0:
+   *
+   *      instant dial cut   peak C-7 rate signal 49.99 %/min      -> ARMS
+   *      5 %/min walk       peak C-7 rate signal  4.999773 %/min  -> NEVER ARMS
+   *                         (peak step gap 0.83 % against a 10 % criterion)
+   *
+   * Two things are wrong with that, and neither is a tuning matter. First, the margin is
+   * 0.00023 %/min — the C-7 rate unit is a 120 s first-order lag whose fixed point IS the ramp
+   * rate, so it converges on the threshold from underneath and 5*(1-e^-10) is what the ride
+   * measures. One bit picks the branch: that is the BIFURCATION trap on CLAUDE.md's standing
+   * list (#543, #588 — a single ulp reproduced the other platform's branch), and a check standing
+   * on it pins a coin toss, not a claim. Second, and worse, it would have removed the operator's
+   * dial as a way to produce the loss-of-load transient AT ALL — a taught coupling, and the
+   * failure mode `engines/load_mode.js` records for the retired plant (its FG-4 note).
+   *
+   * With reductions instantaneous both routes to the graded ride-out are live and are pinned by
+   * one check: a DIAL CUT arms C-7 exactly as it did before this change, and the board's UNLOAD
+   * button (`disconnect_grid`, item imro8len0oi) arms it too. A turbine trip arms C-8 instead.
+   */
+  function loadRampMweS() {
+    /* MWe per SECOND, from the sourced envelope and the turbine's own rating. */
+    return (RD.turbine.ENVELOPE.ramp_pct_per_min / 100) * RD.turbine.TURB.mwe_rated / 60;
+  }
+  /* the operator's ASK. Clamped the same way the engine door clamps, so the dial cannot hold a
+   * number the plant would refuse and then walk toward it for ever. */
+  function dialLoad(e, mwe) {
+    var v = +mwe;
+    if (!isFinite(v)) v = 0;
+    e._loadDialMwe = Math.max(0, Math.min(RD.turbine.TURB.mwe_rated, v));
+  }
+  /* an AUTOMATIC path moved the load: the dial follows, instantly, in both numbers. */
+  function setLoadImmediate(e, mwe) { dialLoad(e, mwe); EN.command(e, 'load_mwe', mwe); }
+  /* THE WALK. Called once per shell step, BEFORE the engine steps. */
+  function stepLoadDial(e, dt) {
+    if (e._loadDialMwe === undefined || !isFinite(e._loadDialMwe)) {
+      /* a fresh plant, or a save taken before this existed: the dial IS where the machine is,
+       * which is the pre-limiter state exactly */
+      e._loadDialMwe = e.tb.load_target_mwe;
+      return;
+    }
+    var gap = e._loadDialMwe - e.tb.load_target_mwe;
+    if (gap === 0) return;
+    /* RAISES ONLY — a REDUCTION lands whole, which is what the dial did before this change and
+     * what keeps the C-7 loss-of-load route open. See the ruling and the three reasons above. */
+    if (gap < 0) { EN.command(e, 'load_mwe', e._loadDialMwe); return; }
+    if (!(dt > 0)) return;
+    var stepMwe = loadRampMweS() * dt;
+    EN.command(e, 'load_mwe', gap <= stepMwe ? e._loadDialMwe
+                                             : e.tb.load_target_mwe + stepMwe);
+  }
+  /* AFTER the engine steps: if the plant itself took the load DOWN past where the limiter put
+   * it — the runback is the only such path today — the ask follows it down. See the note above. */
+  function syncLoadDial(e, wasMwe) {
+    if (e._loadDialMwe === undefined) return;
+    if (e.tb.load_target_mwe < wasMwe - 1e-9 && e.tb.load_target_mwe < e._loadDialMwe)
+      e._loadDialMwe = e.tb.load_target_mwe;
+  }
+
   /* ---- the command registries (see header). value: a mapper fn or a reason string. ---- */
   var MAPPED = {
     /* THE #511 VALVES — real machinery behind the two diagram symbols #509 item 11 had to
@@ -359,7 +492,8 @@
       EN.command(e, 'rod_target', e.rodSteps);
       EN.command(e, 'sd_target', e.sdSteps);
     },
-    set_load_target:  function (e, c) { EN.command(e, 'load_mwe', c.mwe !== undefined ? c.mwe : c.value); },
+    /* THE DIAL, not the reference — the walk is in step() (see THE OPERATOR'S LOAD DIAL above). */
+    set_load_target:  function (e, c) { dialLoad(e, c.mwe !== undefined ? c.mwe : c.value); },
     trip_turbine:     function (e, c) { EN.command(e, 'turbine_trip', true); },
     turbine_trip:     function (e, c) { EN.command(e, 'turbine_trip', true); },
     /* LATCH THE TURBINE (#551/#559, 2026-08-27) — the verb the real plant uses, and the half
@@ -778,8 +912,10 @@
      * PORV remains open"); the block valve is the operator's isolation. */
     open_porv_manual: function (e, c) { EN.command(e, 'porv_manual', true); },
     close_porv:       function (e, c) { EN.command(e, 'porv_manual', false); },
-    /* grid disconnect is a load rejection: the actuator is the load target */
-    disconnect_grid:  function (e, c) { EN.command(e, 'load_mwe', 0); },
+    /* grid disconnect is a load rejection: the actuator is the load target. NOT rate-limited —
+     * the breaker opens, it is not a dial change — so it moves BOTH numbers in one step
+     * (#624 item 24), which is also what keeps the C-7 graded ride-out reachable in free play. */
+    disconnect_grid:  function (e, c) { setLoadImmediate(e, 0); },
     /* set_rcp: OFF secures the pump (the trip actuator + the SECURED display latch), ON is
      * a real motor start since #507 wave 9 (offsite-bus gated in the engine — the refusal
      * surfaces through #505's path when the grid is down) */
@@ -1028,7 +1164,14 @@
 
   PWR2Engine.prototype.step = function (dt) {
     var prevPwr = this._ts ? this._ts.power_pct : undefined;
+    /* THE OPERATOR'S LOAD DIAL WALKS HERE, on the control side of the engine door — see the
+     * long note over `stepLoadDial`. Before the step, so the turbine draws steam for the
+     * reference the operator's ramp has actually reached; after it, the dial follows any
+     * AUTOMATIC cut (the runback) down. */
+    stepLoadDial(this.eng, dt);
+    var loadWas = this.eng.tb.load_target_mwe;
     this._ts = EN.step(this.eng, dt);
+    syncLoadDial(this.eng, loadWas);
     /* smoothed %/s power rate for the SG-level shrink-and-swell term — the OLD engine's own
      * form (pwr_engine.js:582, tau 2 s), because the consumer is the old instrument model */
     if (prevPwr !== undefined && dt > 0) {
@@ -1618,10 +1761,19 @@
       /* the CAPABILITY list — one dispatch mode exists; the board disables FOLLOW off this
        * (absent list = the old engine, everything enabled) */
       load_modes: ['manual'],
+      /* THE EFFECTIVE REFERENCE — what the machine is being asked for RIGHT NOW, which since
+       * #624 item 24 WALKS toward the dial at the sourced 5 %/min. This is the plant's readback:
+       * the generator MW gauge follows it. */
       load_target_mwe: e.tb.load_target_mwe,
       /* the DEMANDED load, distinct from the ramping reference — the board's MW box reads
-       * this first so a press computes cur+1 from a number that is not itself moving */
-      load_cmd_mwe: e.tb.load_target_mwe,
+       * this first so a press computes cur+1 from a number that is not itself moving
+       * *(OWNER DIRECTIVE, 2026-08-11: "The generator load increase button doesn't let the user
+       * go up more than one press due to the rate increase limit. Let the user raise to the
+       * desired level before starting the climb/rate limit.")*. Until #624 item 24 the two
+       * fields were the SAME number on this engine, because nothing ramped; the owner's
+       * directive was written against the retired plant and is honoured here for the first
+       * time. Falls back to the reference for a plant that has not stepped yet. */
+      load_cmd_mwe: e._loadDialMwe !== undefined ? e._loadDialMwe : e.tb.load_target_mwe,
       steam_dump_pct: ts.steam_dump_valve_pct !== undefined ? ts.steam_dump_valve_pct : 0,
       /* real since #506: the dump-mode door is commanded from the board — the DRIVER is the
        * commanded selection (dcDrivers.mode, forwarded each step); the controller default
@@ -1825,6 +1977,11 @@
         sdTarget: e.sdTarget, sdSteps: e.sdSteps, rodSpeedSel: e.rodSpeedSel,
         _advMode: e._advMode, _chargingPumpOn: e._chargingPumpOn, _letdownAB: e._letdownAB,
         _rcpSecured: e._rcpSecured,   /* the handswitch's SECURED/LOST split (#507 wave 9) */
+        /* THE OPERATOR'S DIALLED LOAD TARGET (#624 item 24) — the ask, distinct from the
+         * ramping reference in `tb`. An old save without it lands on undefined and the first
+         * step seeds the dial from the restored reference, i.e. effective = dialled, which is
+         * the pre-limiter state exactly. */
+        _loadDialMwe: e._loadDialMwe,
         _scramT: e._scramT, _manualTrip: e._manualTrip, _lastTrip: e._lastTrip,
         _rodStopSig: e._rodStopSig, _runbackSig: e._runbackSig, _rbT: e._rbT,
         _rbActive: e._rbActive, _pzRelief: e._pzRelief, _pzReliefH: e._pzReliefH,

@@ -719,6 +719,57 @@ function runSuite(quietRec) {
   q('letdown orifice lamps latch the commanded pair (were absent — CLOSED lit forever)',
     csL.letdown_orifice_a === true && csL.letdown_orifice_b === false,
     'a=' + csL.letdown_orifice_a + ' b=' + csL.letdown_orifice_b);
+
+  /* ---- THE 17 % LETDOWN ISOLATE ON THE BOARD (#624 / #619 item 24) -------------------------
+   * `control_state.letdown_isolated` — the pressurizer low-level protective cut — had ZERO
+   * consumers in `ui/`. So while the cut stood, the four lineup lamps kept lighting the
+   * operator's last SELECTION over two shut valves, LETDOWN FLOW read 0 gpm, and the only cue
+   * on the whole board was the PZR LTDN ISOL annunciator. A dark wire in the direction nobody
+   * checks: the field was published correctly and nothing read it.
+   *
+   * WHITE-BOX ON THE LATCH, deliberately. The PLANT end — level reaching 17 %, the cut latching
+   * `cv.letdownIsolated`, the letdown flow going to zero, and an orifice press clearing it once
+   * level is back above the 20 % restore point — is pinned in run_pwr2_engine's group Q. What is
+   * unpinned, and what shipped wrong, is whether the BOARD reads the flag at all. Driving the
+   * plant to 17 % here would spend two plant-hours to establish a boolean that group Q already
+   * owns, and would test the drain rather than the lamps.
+   *
+   * The POSITIVE half is asserted too (a selected lineup still lights): a check that only ever
+   * demands darkness passes on a board whose lamps are all dead. */
+  var oriIds = ['imrmtin8wm3', 'imrmtimrch3', 'imrmtimhz4g', 'imrmtimyxef'];
+  var litNormal = oriIds.filter(function (id) { return D.buttonActive({ id: id }, w.snap()); });
+  var wordNormal = D.valueFor({ id: 'bdLetdownStatus' }, w.snap());
+  w.svc.engine.eng.cv.letdownIsolated = true;
+  w.tick(1);
+  var litIso = oriIds.filter(function (id) { return D.buttonActive({ id: id }, w.snap()); });
+  var warnIso = D.buttonWarn({ id: 'imrmtin8wm3' }, w.snap());
+  var wordIso = D.valueFor({ id: 'bdLetdownStatus' }, w.snap());
+  q('a standing 17 % letdown isolate DARKENS all four orifice lineup lamps — the valves are ' +
+    'shut whatever the operator last selected (the field had no consumer in ui/ at all)',
+    litNormal.length === 1 && litNormal[0] === 'imrmtimrch3' && litIso.length === 0,
+    'lit before: ' + (litNormal.join(',') || 'none') + ' -> lit while isolated: ' +
+    (litIso.join(',') || 'none'));
+  q('...CLOSED carries the amber "the plant did this" warn instead of the green "you selected ' +
+    'this" active, and the card\'s status word reads ISOLATED',
+    warnIso === true && !!wordIso && wordIso.text === 'ISOLATED' &&
+    !!wordNormal && wordNormal.text === 'NORMAL',
+    'CLOSED warn ' + warnIso + ', word "' + (wordIso && wordIso.text) + '" (was "' +
+    (wordNormal && wordNormal.text) + '")');
+  /* AND THE CONTROL IS STILL REACHABLE. Dark lamps must not read as a dead panel: pressing any
+   * orifice re-lines letdown, because the engine clears the isolate once the level latch itself
+   * is gone (`14d9f20`). Driven through the driver's own press handler, not the command. */
+  var preIso = w.svc.engine.eng.cv.letdownIsolated === true &&
+               w.svc.engine.eng.pz.lowLevelCut !== true;
+  D.onButton({ id: 'imrmtimyxef' }, {});
+  w.tick(2);
+  q('...and the dark lamps are not a dead panel: pressing an orifice re-lines letdown and the ' +
+    'lamp comes back',
+    preIso && w.svc.engine.eng.cv.letdownIsolated === false &&
+    D.buttonActive({ id: 'imrmtimyxef' }, w.snap()) === true &&
+    D.buttonWarn({ id: 'imrmtin8wm3' }, w.snap()) === false,
+    'pre ' + preIso + ' -> isolated ' + w.svc.engine.eng.cv.letdownIsolated + ', A+B lit ' +
+    D.buttonActive({ id: 'imrmtimyxef' }, w.snap()));
+  w.cmd({ action: 'set_letdown_orifices', a: true, b: false }); w.tick(1);
   w.cmd({ action: 'set_steam_dump', mode: 'closed' }); w.tick(1);
   var dumpOff = w.snap().control_state.steam_dump_auto === false;
   w.cmd({ action: 'set_steam_dump', mode: 'auto' }); w.tick(1);
@@ -1218,7 +1269,33 @@ var MUTS = [
   ['the delta-T tile derives the rod stop from the margin again (the flux stops go dark)',
    WIRING_PATH, WSRC,
    "    var held = t.rod_stop === true || t.runback_active === true;",
-   '    var held = false;']
+   '    var held = false;'],
+  /* #624 / #619 item 24: the four lineup lamps go back to reading the operator's SELECTION —
+   * the shipped state exactly, and one a source read cannot see, because every `active`
+   * function is individually correct about the pair it names. Only the isolate is missing. */
+  ['the orifice lamps read the SELECTION again (a lineup lamp over two shut valves)',
+   WIRING_PATH, WSRC,
+   /* ALL FOUR at once, because that is the shipped state and because reverting one is not
+    * enough to be seen: with only CLOSED reverted the standing selection is A, so CLOSED stays
+    * dark for the right reason by accident and the check passes on a mutated board. Measured —
+    * that first attempt came back BLIND. The `warn` goes with them; it did not exist either. */
+   "    imrmtin8wm3: { press: function () { cmd({ action: 'set_letdown_orifices', a: false, b: false }); },\n" +
+   "                   active: function (s) { return !ltdnIsolated(s) && !CS(s).letdown_orifice_a && !CS(s).letdown_orifice_b; },\n" +
+   "                   warn: function (s) { return ltdnIsolated(s); } },\n" +
+   "    imrmtimrch3: { press: function () { cmd({ action: 'set_letdown_orifices', a: true, b: false }); }, active: function (s) { return !ltdnIsolated(s) && CS(s).letdown_orifice_a && !CS(s).letdown_orifice_b; } },\n" +
+   "    imrmtimhz4g: { press: function () { cmd({ action: 'set_letdown_orifices', a: false, b: true }); }, active: function (s) { return !ltdnIsolated(s) && !CS(s).letdown_orifice_a && CS(s).letdown_orifice_b; } },\n" +
+   "    imrmtimyxef: { press: function () { cmd({ action: 'set_letdown_orifices', a: true, b: true }); }, active: function (s) { return !ltdnIsolated(s) && CS(s).letdown_orifice_a && CS(s).letdown_orifice_b; } },",
+   "    imrmtin8wm3: { press: function () { cmd({ action: 'set_letdown_orifices', a: false, b: false }); }, active: function (s) { return !CS(s).letdown_orifice_a && !CS(s).letdown_orifice_b; } },\n" +
+   "    imrmtimrch3: { press: function () { cmd({ action: 'set_letdown_orifices', a: true, b: false }); }, active: function (s) { return CS(s).letdown_orifice_a && !CS(s).letdown_orifice_b; } },\n" +
+   "    imrmtimhz4g: { press: function () { cmd({ action: 'set_letdown_orifices', a: false, b: true }); }, active: function (s) { return !CS(s).letdown_orifice_a && CS(s).letdown_orifice_b; } },\n" +
+   "    imrmtimyxef: { press: function () { cmd({ action: 'set_letdown_orifices', a: true, b: true }); }, active: function (s) { return CS(s).letdown_orifice_a && CS(s).letdown_orifice_b; } },"],
+  /* the WORD, mutated separately from the LAMPS, for the reason every paired mutation in this
+   * file is separate: the lamps can go dark correctly and leave the player with no way to know
+   * WHY, which is the state the PZR LTDN ISOL annunciator alone already produced. */
+  ['the status word stops reading the isolate (dark lamps with nothing saying why)',
+   WIRING_PATH, WSRC,
+   "    if (ltdnIsolated(s)) return { text: 'ISOLATED', color: BD_WARN };",
+   '']
 ];
 /* Counted, not written down: the number went stale the first time a mutation was added. */
 console.log('\ninjection self-test (' + MUTS.length + ' mutations):');

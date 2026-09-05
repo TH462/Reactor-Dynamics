@@ -45,6 +45,87 @@ where the two differ or where judgment was exercised.
 
 ---
 
+## 2026-09-04-develop-h — #624 item 24: the operator's load dial ramps at the SOURCED rate, not the retired tune
+
+**DECIDED (rate + direction + scope)** *(coordinator's call, 2026-09-04, on the item-24
+measurement; the retired plant's 30 %/min was ruled *(OWNER RULING, 2026-08-08: "Do the 30%
+increase.")* and this deliberately does not adopt that number — **owner review requested on #624**)*.
+
+**THE DECISION IS THE RATE, and it is a departure from an owner-ruled number.** The retired plant
+ran `load_rate_pct_per_min: 30.0`, raises only. Adopting 30 %/min here would have been the
+conservative, parity-shaped choice and it does **not fix the defect**: measured, a 20-point step at
+30 %/min arrives in 40 s and the pressurizer shrink completes in 47 s, so the plant still reaches
+the 17 % cut. The sourced envelope — Ginna UFSAR chapter 10, section 10.1.2.1 (ML20339A040),
+*"ramp increases of 5% of full power per min"* — bottoms indicated level at **20.36 %** against the
+cut's 17 %, 3.4 points of margin, and is a **sourced** number rather than a `[tune]`. The rate is
+read from `RD.pwr2.turbine.ENVELOPE.ramp_pct_per_min` at every step, so the enforced limit and the
+reported envelope are one number.
+
+**DECIDED (direction): RAISES ONLY, and this was DECIDED TWICE.** The first build limited both
+directions on the source's second sentence (*"Similar step and ramp load reductions are possible"*),
+passed 158/158 with four mutations caught, and was rejected on review. Three reasons, and the third
+is the one specific to this plant:
+
+1. **The defect is a raise.** A load increase cools the loop, contracts it, and shrinks the
+   pressurizer into the 17 % cut. A decrease expands the loop and *swells* level, toward an 87 %
+   high-level trip no dispatch move approaches. There is nothing for a limit on the cut to protect.
+2. **Raises-only is the retired plant's own ruled design**, and `engines/load_mode.js` records at
+   length why symmetry was measurably wrong there — it turned the defining load-rejection ride-out
+   into a leisurely ramp and took out five behaviour probes, the `pwr_tour` greedy-ask branch and
+   the SGTR emergency procedure.
+3. **A limited reduction lands exactly ON the C-7 interlock's threshold** — see below.
+
+The source's second sentence is a statement of what the machine can ABSORB without tripping, not a
+limiter, and reading it as one was the error the first build made. Recorded rather than quietly
+corrected because the argument for symmetry was *sound as far as it went*, which is what makes it
+worth writing down.
+
+**DECIDED (no step allowance).** The same source allows a 10 % of rated STEP. Not modelled, and
+declared as such in `Manuals/12` §12.21 and in the code. A step allowance is a second regime that
+needs its own measurement (10 % of rated is 10 MWe delivered instantly — a third of the disturbance
+that caused this issue), and one rule the player can hold in their head was preferred over two.
+
+**THE C-7 REASON, MEASURED — and why "accepted consequence" was the wrong answer.**
+`pwr2_dumpctl` arms the loss-of-load steam dump on *"a ramp load decrease at a rate greater than
+5 %/min"* — **the same sourced number as the load envelope**. Measured on the symmetric build, from
+100 MWe to 0: the 5 %/min walk asymptotes the C-7 rate signal to **4.999773 %/min** against a strict
+`>` and never arms, where an instant cut reaches **49.99 %/min** and arms at 0.02 s.
+
+The first draft ACCEPTED that, on three grounds that are each true: the equality is the design (the
+interlock arms exactly when the operator leaves the envelope); `pwr2_dumpctl`'s own header already
+claims the plant behaves this way (*"dispatch-rate load changes never satisfy the C-7 arming
+interlock, so the dumps stay shut"*), as does #479 §47's ruled criterion A; and the ride-out stayed
+reachable through UNLOAD. **Two things overrule all three.** The margin is **0.00023 %/min** and is
+structural — a 120 s lag converging on its own input from below — so one bit picks the branch, which
+is the BIFURCATION trap #543/#588 put on CLAUDE.md's standing list, and a check standing on it pins
+a coin toss rather than a claim. And it takes the loss-of-load transient out of the operator's reach
+entirely, which is a taught coupling and the FG-4 failure `load_mode.js` records.
+
+With reductions instantaneous, **both routes are live and both are asserted in one check** — a dial
+cut arms C-7, and UNLOAD arms it while zeroing both numbers in the same step. A turbine trip arms
+C-8.
+
+**DECIDED (layer).** The limiter is on the control side of the engine door — `pwr2_shell.js`, in
+`PWR2Engine.prototype.step` — per `pwr2_turbine`'s own division (*"REPORTED, NOT ENFORCED (HR5) …
+rate limiting is a control-layer actuation"*). `EN.command(e, 'load_mwe', …)` still steps
+instantly, so every automatic path is unaffected by construction rather than by exception lists.
+Consequence to know: `run_pwr2_engine` drives the engine directly and sees **no** limiter; the
+shell, board, roundtrip and checklist gates all do.
+
+**DECIDED (the dial follows an automatic cut).** `syncLoadDial` pulls the dialled target down
+whenever the plant lowers the effective target below what the limiter set — today only the
+OTΔT/OPΔT runback. Without it the limiter walks the load back up through the runback. It is the
+retired plant's `immediate` law, implemented without naming the path that did it.
+
+**NOT DECIDED HERE, and it is a live question for the owner:** `pwr_shutdown` declares
+`from: 'hot_full_power'` while its own purpose says *"from low power… Measured from 15 %"* and the
+leg before it hands over at 15 MWe. Same class as #619 item 28. Under the symmetric build this made
+its unload a 20-minute evolution and forced a hold change; with reductions instantaneous the hold is
+back at its original 120 s and nothing in the tree depends on the mismatch — but the checklist still
+replays a plant no player reaches. Left alone.
+
+---
+
 ## 2026-09-04-develop-g — #624 item 14: BOTH cold states boot pressure control OUT OF SERVICE
 
 **DECIDED (scope), and DECIDED TWICE — the first answer is kept here because the way it was wrong

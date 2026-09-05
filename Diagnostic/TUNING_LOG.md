@@ -29,6 +29,179 @@ and the user-visible summary in `CHANGELOG.md`. This file points at those and tr
 
 ---
 
+## Session log — 2026-09-04-develop-h (#624 item 24 — the level loop was fine; the operator could produce a disturbance no operator can produce)
+
+**The ask.** #619 item 24 *(OWNER: "The CHARGING AUTO logic does a poor job maintaining
+pressurizer level… During startup I always end up with the water level touching the heaters.")*.
+Diagnosed first (`inbox/624_item24_plan.md`), then built to `inbox/624_item24_build.md`. Authority
+for the RATE is a *coordinator's call, 2026-09-04, on the measurement* — the retired plant's
+30 %/min was ruled *(OWNER RULING, 2026-08-08: "Do the 30% increase.")* and this does not adopt
+that number. **Owner review requested.**
+
+### The verdict, and the three refutations that got there
+
+Four candidates were separable and three died on numbers:
+
+| Candidate | Measurement | Verdict |
+|---|---|---|
+| The **controller** | charging AUTO demand 0 gpm *before* the step (level above program, correct) and saturated after; the same ride with charging in MANUAL at the pre-step demand bottomed at **15.86 %** against AUTO's **16.92 %** | **REFUTED — and AUTO is the better of the two** |
+| The **instrument** | max abs(indicated − true) over the ride **1.03 points** | **REFUTED** |
+| The **picture** | at 25 % indicated the drawn water line sits **5.7 px above** the top of the drawn heater bank | **REFUTED** |
+| The **plant** | true level reaches **16.92 %**, under the 17 % cut | **CONFIRMED — but the cause is the DISTURBANCE** |
+
+**What the owner was seeing.** `set_load_target` on PWR2 was one assignment: `eng.tb
+.load_target_mwe = clamp(value)`. The whole load change arrives in zero time. From `low_power`
+(10 MWe, the state the startup checklist hands the player), dialling 30 MWe with the rods left
+alone: Tavg **558.06 → 542.81 °F (292.26 → 283.78 °C)**, a **15.3 °F (8.5 °C)** dip; the loop
+contracts; indicated pressurizer level **26.67 % → 16.11 % in 44 s**, through the 17 % cut, which
+isolates letdown and sheds the heaters and does not restore itself. The plant then fills on 5 gpm
+of seal injection to a high-level reactor trip at 67.3 min and goes solid at 73.7.
+
+### The build
+
+**Where.** `pwr2_shell.js`, on the control side of the engine door — `pwr2_turbine`'s own header
+already said so (*"REPORTED, NOT ENFORCED (HR5) … rate limiting is a control-layer actuation"*).
+Four functions: `loadRampMweS()` (reads `RD.turbine.ENVELOPE.ramp_pct_per_min` every call),
+`dialLoad`, `stepLoadDial` (called from `PWR2Engine.prototype.step` BEFORE `EN.step`) and
+`syncLoadDial` (after it). The engine's `load_mwe` door is untouched and still steps instantly,
+which is what the automatic paths need.
+
+**The rate follows the SOURCE, not the retired 30 %/min tune.** Measured, same 10 → 30 MWe:
+
+| delivery | min TRUE | min indicated | 17 % cut |
+|---|---|---|---|
+| instant | 16.92 % | 16.11 % | **latched** |
+| 30 %/min (the retired tune) | — | reaches the cut (20 points in 40 s; the shrink completes in 47 s) | **latched** |
+| 10 %/min | 18.29 % | — | clear |
+| **5 %/min** | **21.51 %** | **20.36 %** | clear, on program by 90 min |
+| 2.5 %/min | 22.92 % | — | clear |
+
+Three things are DECLARED in the code rather than left to be discovered: the limit is **RAISES
+ONLY** (the section below is why, and it was decided on a measurement, not on the source's
+wording); the sourced **10 % step allowance is not modelled** (`Manuals/12` §12.21); and the rate
+is never retyped.
+
+**`syncLoadDial` is the half that is easy to miss.** The runback lowers `tb.load_target_mwe` inside
+the engine step; without pulling the DIAL down to follow it, the limiter spends the runback walking
+the load back up — a protective action turned into a tug of war. It is the retired plant's own
+`immediate` law (`pwr_engine.js:1121`: *"it moves the ASK as well so the ramp has nothing to
+undo"*). Implemented without knowing which automatic path did it: compare the effective target
+after the step against what the limiter set before it.
+
+### THE SYMMETRIC BUILD WAS BUILT, MEASURED AND REJECTED — the record of why, and it was close
+
+**The first build limited both directions**, on the source's second sentence (*"Similar step and
+ramp load reductions are possible"*). It passed 158/158 with four mutations caught, and it was
+wrong. `engines/load_mode.js` records, at length, why the retired plant's limit is **raises only**:
+a ramped decrease caps the standing load gap and the C-7 loss-of-load steam dump can then never
+fast-open on an operator cut. **That reason transfers to PWR2 exactly, and harder.** `pwr2_dumpctl`
+arms C-7 on *"a ramp load decrease at a rate greater than 5 %/min"* (`DUMP.c7_ramp_frac_per_min`,
+WTSM 11.2) — **the same sourced number as the load envelope**. Measured, 100 MWe → 0:
+
+| delivery | peak C-7 rate signal | step gap | armed |
+|---|---|---|---|
+| instant dial cut (the shipped plant, and now) | **49.99 %/min** | 99.80 % | **YES**, at 0.02 s |
+| 5 %/min walk (the symmetric build) | **4.999773 %/min** | 0.83 % | **no** |
+| `disconnect_grid` (board UNLOAD, `imro8len0oi`) | — | — | **YES** |
+
+**The first draft accepted that**, arguing that the two numbers being equal is the design — the
+interlock arms when the operator leaves the envelope — and that `pwr2_dumpctl`'s header already
+claims the plant behaves this way (*"dispatch-rate load changes never satisfy the C-7 arming
+interlock"*), as does #479 §47's ruled criterion A. **That argument is true and it is not enough.**
+Two things kill it:
+
+1. **The margin is a BIFURCATION.** 4.999773 against 5.000000 is 0.00023 %/min, and it is
+   structural rather than tuned — the C-7 rate unit is a 120 s first-order lag whose fixed point
+   IS the ramp rate, so it converges from underneath and 5·(1−e⁻¹⁰) is what the ride measures.
+   One bit picks the branch. That is exactly the trap #543 and #588 put on CLAUDE.md's standing
+   list (a single ulp reproduced the other platform's branch on a blowdown check), and a green
+   check standing on it is pinning a coin toss.
+2. **It removes a taught coupling from the operator's reach.** The loss-of-load transient becomes
+   unreachable from the dial — the FG-4 failure `load_mode.js` records for the retired plant.
+
+**And the defect never needed it.** Item 24 is a RAISE: a load increase cools the loop, contracts
+it, and shrinks the pressurizer into the 17 % cut. A decrease does the opposite — the loop expands
+and level swells, toward an 87 % high-level trip no dispatch move approaches. The source's second
+sentence is a statement of what the machine can ABSORB without tripping, not a limit on the
+operator, and reading it as a limiter was the error. Raises only, per the retired plant's own
+design *(OWNER RULING, 2026-08-08: "Do the 30% increase.")*, and both C-7 routes are now asserted
+in one check so neither can be lost silently.
+
+**What it cost to find out: nothing but the measurement, and that is the point.** Every red the
+symmetric build produced — two `run_pwr2_shell` group-A checks at 95.0 MWe and
+`run_checklist_pwr2`'s `pwr_shutdown` step 1 at 90.21 MWe — was a load REDUCTION, i.e. the gates
+were reporting the departure the whole time. Raises-only puts all three back at their original
+values with their original fixtures: `ui/manual_procedures.js` ends byte-identical to HEAD, and the
+group-A ride is the original 40/60 s, now written as a derived expression that regrows on its own
+if the fixture ever becomes a raise.
+
+### The dark wire
+
+`control_state.letdown_isolated` had **zero consumers in `ui/`** — published correctly, read
+nowhere. Fixed in `pwr_board_wiring.js`: `ltdnIsolated(s)` guards all four orifice `active`
+functions, CLOSED gains a `warn` (the rod IN-OUT lamps' active/warn split — green means *you*
+selected it, yellow means something else did), and `letdownStatus(s)` drives a new
+`bdLetdownStatus` corner word. **The word reads the delivered FLOW, not the orifice pair**: since
+`14d9f20` the cold states let down on the RHR cross-connect with both orifices out, so a word keyed
+on the lamps would print SHUT over a plant letting down 30 gpm.
+
+**No geometry invented.** The corner idiom does not fit — the card is 90 px wide and its title is
+~50 px of that at fontSize 12, against 'ISOLATED' at ~58 px. The bottom band is free and costs
+25 px of height, which the card can afford because its own sibling on the same panel, CHARGING
+(`imrmslginf9`), is already 175 px against LETDOWN's 150; `DOC_PATCHES` makes the pair match. The
+strip 1345–1435 × 755–780 holds nothing, and `board_check` now measures that rather than asserting
+it — moving the word 25 px up reddens the overlap pin against the A+B button (verified by
+injection).
+
+### No fixture moved — and the three that briefly did are the record of the rejected build
+
+Under the symmetric limiter, three checks reddened: `run_pwr2_shell`'s *"set_load_target moves the
+plant"* and its gauge-lag partner (both ending mid-manoeuvre at **95.0 MWe**), and
+`run_checklist_pwr2`'s `pwr_shutdown` step 1 at **90.21 MWe** against `mwe_output < 5`. Every one
+of them is a load REDUCTION, so under raises-only all three sit at their original values with their
+original rides. `ui/manual_procedures.js` ends byte-identical to HEAD; the group-A ride is the
+original 40/60 s. **The gates were reporting the departure the whole time.**
+
+**The group-A ride is kept as a DERIVED expression rather than reverted to the literal.** `walk80`
+is the ramp the rate implies for that fixture and is 0 here, because the plant is at 100 MWe and
+the command is `set_load_target 80` — a cut, not a raise. Written that way it regrows on its own if
+the fixture ever becomes a raise, or if reductions are ever limited again, instead of reddening and
+needing this adjudication a second time. **HR10, both ways:** the extended form was validated
+against the pre-limiter behaviour (80.0 MWe, both checks green with the limiter reverted), and the
+derived form measures the walk as 0 on today's plant.
+
+**A finding worth carrying, NOT fixed here.** `pwr_shutdown` declares `from: 'hot_full_power'`
+while its own `purpose` says *"Shut the reactor down from low power… Measured from 15 %"* and the
+preceding leg, `pwr_lower_power`, hands over at **15 MWe**. That is #619 item 28's class exactly
+(the power ascension replaying a plant no player ever gets). It no longer bites — a full unload is
+instantaneous again — but it is still a checklist replaying a plant no player reaches. Correcting
+the initial condition is a separate call and is not made here.
+
+### Gates
+
+`run_pwr2_shell` **158/158, 56/56 mutations** (group L: 7 checks, 4 mutations — the limiter
+removed, the rate retyped, THE SYMMETRIC BUILD, and `syncLoadDial` dropped; all caught — the
+symmetric one is caught TWICE, by the immediate-reduction check and by the C-7 arming half,
+which is why both halves are in the suite). `run_pwr2_board`
+**80/80, 27/27** (the four-lamp mutation had to revert **all four** `active` functions: with only
+CLOSED reverted the standing selection was A, so CLOSED stayed dark for the right reason by
+accident and the replay came back **BLIND** — measured). `verify_board_check` **238 checks, 0
+failed**. `run_checklist_pwr2` back to baseline. `run_manual_rev` needed one correction of my own
+making: the revision row cited *"Ginna UFSAR ch. 10 §10.1.2.1"* and the chapter-qualified reference
+canary read it as **our** chapter 10 §10.1.2.1 — an external document's section number in the
+`NN §x.y` shape trips the parser. Written as *"chapter 10, section 10.1.2.1"* everywhere.
+
+### Scratch
+
+`i24_base.js` (the four baseline probes, at the shell layer the checks live at), `i24_tavg.js` (the
+Tavg half of the shrink, both deliveries), `hr10.js` (the lengthened group-A checks replayed against
+the limiter-reverted shell). The diagnosis agent's CSVs — `d_step_auto.csv`, `d_step_manual.csv`,
+`a_*`, `b_*`, `c_*`, `e_*.png` — are in the same session scratchpad. **`lib_boot.js` /
+`lib_replay.js` are the reusable pair**: a pwr2 full-stack replay harness with a per-tick sampler,
+which is the nearest thing this engine has to the measurement CLI it still lacks.
+
+---
+
 ## Session log — 2026-09-04-develop-g (#624 item 14 — both cold states boot with the heaters off, and the bubble does not bleed)
 
 **The ask.** The other two halves of #619 item 14: the cold plant boots with the pressurizer

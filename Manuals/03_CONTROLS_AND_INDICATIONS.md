@@ -406,11 +406,17 @@ AUTO at **PWR-N01 step 5b**, after the pumps are started at step 2.
   With RHR in service the cross-connect is still letting down whatever the selector reads; the
   LETDOWN FLOW indication shows the flow the plant is actually passing, not the lineup you
   selected, so the two can legitimately disagree on a cold plant.  
-- **The 17 % low-level isolation stops BOTH paths — and it does not move your selector.** At
-  **17 %** indicated pressurizer level the protective isolate shuts the orifice path *and* the
-  cross-connect (annunciated **PZR LTDN ISOL**, **09** §3.0); the A / B lamps stay exactly where
-  you put them. There is **no automatic restoration**: past **20 %** the latch clears, and letdown
-  stays shut until you re-select an orifice by hand — see **06** PWR-A13a.  
+- **The 17 % low-level isolation stops BOTH paths, and the card shows it.** At **17 %** indicated
+  pressurizer level the protective isolate shuts the orifice path *and* the cross-connect
+  (annunciated **PZR LTDN ISOL**, **09** §3.0). While it stands, **all four lineup lamps go dark**
+  — a lineup lamp reports where the valve *is*, and both orifices are shut whatever you last
+  selected — **CLOSED** lights amber to say the plant did that rather than you, and the card's
+  status word reads **ISOLATED**. There is **no automatic restoration**: past **20 %** the latch
+  clears, and letdown stays shut until you re-select an orifice by hand, which lights the lamp
+  again — see **06** PWR-A13a.  
+- **Status word (bottom of the card):** **NORMAL** while letdown is delivering (including on the
+  RHR cross-connect with both orifices out), **SHUT** when it is not and nothing is holding it
+  shut but your own lineup, **ISOLATED** on the 17 % cut.  
 
 ### 7.4 CVCS Inventory Control AUTO / MANUAL
 
@@ -784,16 +790,50 @@ The **OFF** lamp lights on either condition — breaker open *or* turbine trippe
 - Setting a target forces **Manual** mode.  
 - Raising load draws more steam → power follows (with feedback).  
 
+**RAISING LOAD RAMPS; LOWERING IT DOES NOT. Two numbers, and the box shows the first one.**
+
+- What you type is the **dialled target**, and the box reads it back the instant you type it, so
+  ten clicks of the arrow get you to 100 MWe without waiting for anything.
+- **Raising:** the **effective target** — what the turbine is actually being asked for — walks up
+  toward your dial at **5 % of rated per minute**, i.e. **5 MWe/min** on this plant, so 0 → 100
+  MWe is a **20-minute** ramp. Read it on the **MWe output** indication (§12.4), which follows the
+  machine and not your dial.
+- **Lowering: immediate.** A target below where the machine is takes effect at once, whatever the
+  size of the cut.
+- **Why the raise is ramped.** A load *increase* delivered in zero time shrinks the pressurizer
+  faster than charging can answer. Measured on this plant, from 10 MWe with the rods left alone:
+  an instant dial to 30 MWe pulled Tavg down **15.3 °F (8.5 °C)** and took indicated pressurizer
+  level from **26.7 % to 16.1 % in 44 seconds**, through the **17 %** low-level isolation
+  (**09** §3.0), which shuts letdown and sheds the heaters. The same change on the 5 %/min ramp
+  spreads the Tavg swing over four minutes — **12.9 °F (7.2 °C)**, level bottoming at **20.4 %** —
+  and is back on program inside 90 minutes.
+- **Why the reduction is not.** Lowering load does the opposite to the pressurizer — the loop
+  warms, expands, and level **swells**, away from the low-level cut — so the direction that needs
+  limiting is the raise. Ramping the cut as well would also make the operator's dial incapable of
+  arming the **C-7** loss-of-load steam dump, which arms on a decrease *faster than* 5 %/min: the
+  same number as the ramp. Losing the graded ride-out from the dial is not a trade worth making
+  (§12.3, and **09** §10.0).
+- The rate is the plant's sourced load-following envelope: *"ramp increases of 5% of full power
+  per min"* (Ginna UFSAR chapter 10, section 10.1.2.1, ML20339A040). The same sentence adds that
+  *"similar step and ramp load reductions are possible"* — a statement about what the machine can
+  absorb, not a limit on the operator, and it is not modelled as one. The document allows a
+  **10 % step** as well; that allowance is **not modelled here** — a raise ramps, always.
+- **Also not ramped:** the automatic **OTΔT/OPΔT runback** (200 %/min, its own protective path —
+  and it moves your dial down with it, so the load stays where the runback put it), a **turbine
+  trip**, and the **UNLOAD** button on the turbine card, which opens the breaker rather than
+  turning a dial.
+
 **Procedure — raise electrical load (with rods)**
 
 1. Withdraw rods slightly (or dilute) so reactor can support higher power.  
 2. Raise **Turbine Load** to new MWe.  
-3. Or use **Follow** and let load track after rod raise.  
+3. Wait out the ramp — the machine takes **one minute per 5 MWe**. Trim rods against the ramp,
+   not against the number you typed.  
 4. Verify SG level stable; re-engage feed AUTO if needed.  
 
 **Procedure — lower electrical load**
 
-1. Reduce **Turbine Load** first.  
+1. Reduce **Turbine Load** first. A reduction is **not** ramped and lands at once.  
 2. Insert rods (or borate) to match.  
 3. Watch SG swell / level high.  
 

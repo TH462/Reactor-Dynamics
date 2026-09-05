@@ -407,6 +407,25 @@
     if (c.saturated === 'lo') return { text: 'SAT LO', color: BD_WARN };
     return { text: 'HOLDING', color: BD_OK };
   }
+  /* ---- the LETDOWN card's status word (#624 / #619 item 24) -------------------------------
+   * The dark-lamp question answered in words, in the corner idiom this file already uses for
+   * SG FEED and the accumulator. `letdown_isolated` is the 17 % pressurizer low-level cut; it
+   * is PWR2's field and the retired engine publishes nothing, so that plant reads the lineup
+   * exactly as before and never the isolate. Kept as one function so the lamps, the word and
+   * the gate all ask the same question. */
+  function ltdnIsolated(s) { return CS(s).letdown_isolated === true; }
+  /* THE OTHER TWO WORDS READ THE DELIVERED FLOW, NOT THE ORIFICE PAIR. Since #624 item 14 the
+   * cold initial conditions let down through the RHR cross-connect with BOTH orifices out
+   * (`14d9f20`), so "no orifice selected" is not "no letdown" — a word keyed on the two lamps
+   * would have printed SHUT over a plant letting down 30 gpm. NORMAL/ISOLATED is the same
+   * vocabulary the steam-dump and accumulator status words already use. */
+  function letdownStatus(s) {
+    if (ltdnIsolated(s)) return { text: 'ISOLATED', color: BD_WARN };
+    var f = CS(s).letdown_flow_normalized;
+    if (f == null || !isFinite(f)) f = IN(s).letdown_flow;
+    return (f != null && isFinite(f) && f > 1e-6)
+      ? { text: 'NORMAL', color: BD_OK } : { text: 'SHUT', color: BD_WARN };
+  }
   // ---- core ΔT margin (#311 observability) -----------------------------------------
   // Reports the BINDING limit — whichever of OTΔT / OPΔT is closest to zero — and names it.
   // Both channels are DERIVED instruments and are computed whether or not the trips are
@@ -614,10 +633,27 @@
     imrsjy1m9g: { press: function () { cmd({ action: 'set_rcp', running: true }); }, active: function (s) { return IN(s).rcp_running; } },
     imrsjy59pnu: { press: function () { cmd({ action: 'set_rcp', running: false }); }, active: function (s) { return !IN(s).rcp_running; } },
     // --- Letdown orifices: CLOSED / A 3% / B 4% / A+B 7% ---
-    imrmtin8wm3: { press: function () { cmd({ action: 'set_letdown_orifices', a: false, b: false }); }, active: function (s) { return !CS(s).letdown_orifice_a && !CS(s).letdown_orifice_b; } },
-    imrmtimrch3: { press: function () { cmd({ action: 'set_letdown_orifices', a: true, b: false }); }, active: function (s) { return CS(s).letdown_orifice_a && !CS(s).letdown_orifice_b; } },
-    imrmtimhz4g: { press: function () { cmd({ action: 'set_letdown_orifices', a: false, b: true }); }, active: function (s) { return !CS(s).letdown_orifice_a && CS(s).letdown_orifice_b; } },
-    imrmtimyxef: { press: function () { cmd({ action: 'set_letdown_orifices', a: true, b: true }); }, active: function (s) { return CS(s).letdown_orifice_a && CS(s).letdown_orifice_b; } },
+    /* THE LINEUP LAMPS READ THE VALVES, NOT THE SELECTION (#624 / #619 item 24, 2026-09-04).
+     * `control_state.letdown_isolated` — the 17 % low-level protective cut, which shuts the
+     * letdown path and sheds the heaters — had ZERO consumers anywhere in `ui/`. So while the
+     * cut stood, the four buttons kept lighting whatever the operator had last selected while
+     * LETDOWN FLOW read 0 gpm: a lineup lamp saying A+B 7 % over two shut valves. A position
+     * lamp shows where the valve IS. The only cue was the PZR LTDN ISOL annunciator.
+     *
+     * WHILE THE ISOLATE STANDS, NO LINEUP LAMP IS LIT — and CLOSED carries the yellow
+     * "something else did this" warn instead of the green "you selected this" active, which is
+     * the same active/warn split the rod IN-OUT lamps use. The card's status word then says
+     * ISOLATED in words (`bdLetdownStatus` in EXTRA_ITEMS). Pressing any orifice re-lines: the
+     * engine clears the isolate once the level latch is gone (`14d9f20`).
+     *
+     * `letdown_isolated` is PWR2's field. The retired engine never published it, so on that
+     * plant every expression below is `undefined && ...` and the lamps behave exactly as before. */
+    imrmtin8wm3: { press: function () { cmd({ action: 'set_letdown_orifices', a: false, b: false }); },
+                   active: function (s) { return !ltdnIsolated(s) && !CS(s).letdown_orifice_a && !CS(s).letdown_orifice_b; },
+                   warn: function (s) { return ltdnIsolated(s); } },
+    imrmtimrch3: { press: function () { cmd({ action: 'set_letdown_orifices', a: true, b: false }); }, active: function (s) { return !ltdnIsolated(s) && CS(s).letdown_orifice_a && !CS(s).letdown_orifice_b; } },
+    imrmtimhz4g: { press: function () { cmd({ action: 'set_letdown_orifices', a: false, b: true }); }, active: function (s) { return !ltdnIsolated(s) && !CS(s).letdown_orifice_a && CS(s).letdown_orifice_b; } },
+    imrmtimyxef: { press: function () { cmd({ action: 'set_letdown_orifices', a: true, b: true }); }, active: function (s) { return !ltdnIsolated(s) && CS(s).letdown_orifice_a && CS(s).letdown_orifice_b; } },
     // --- Boron control ON / OFF: engages the control-layer 'boron_conc' channel ---
     // Rod control AUTO (rods_tavg channel) — single toggle, lit when engaged. The channel
     // captures the CURRENT indicated Tavg as its reference on engage (control layer), so
@@ -1031,7 +1067,27 @@
       // right 785 minus 5 = 780, card top 190 plus 10 = 200. MEASURED clear both ways — the
       // 'NUC INSTR (NIS)' title is 15 characters of 11 px mono ending near x 637, and the
       // SOURCE RANGE / STARTUP RATE boxes below start at y 220.
-      left: 780, top: 200, value: '—', unit: '%', color: '#5aad7c', fontSize: 13, rAnchor: true }
+      left: 780, top: 200, value: '—', unit: '%', color: '#5aad7c', fontSize: 13, rAnchor: true },
+    /* THE LETDOWN CARD'S STATUS WORD (#624 / #619 item 24, 2026-09-04) — the word behind the
+     * dark lamps. See `letdownStatus`: ISOLATED while the 17 % low-level cut stands, NORMAL
+     * while letdown is delivering, SHUT otherwise.
+     *
+     * WHY NOT THE TOP-RIGHT CORNER, which is this file's idiom for a status word. MEASURED:
+     * the LETDOWN card (`imrmslvu2c0`) is 90 px wide, and its title alone is ~50 px of that at
+     * fontSize 12 — 'ISOLATED' needs ~58 px and there is nowhere near that left of the right
+     * edge. The bottom band is free instead, and taking it costs 25 px of card height, which
+     * this card can afford for a reason that is not arbitrary: its own SIBLING on the same
+     * panel, CHARGING (`imrmslginf9`), is 175 px tall against LETDOWN's 150, so the patch below
+     * makes the pair MATCH rather than inventing a size. Both sit inside the 1055-1440 x
+     * 600-785 panel box, and the strip 1345-1435 x 755-780 holds nothing — items or pipes.
+     *
+     * A PATCH AND AN EXTRA ITEM, NOT A BUILDER EDIT, because `pwr_board_data.js` is REGENERATED
+     * — the same reason the SG FEED title patch exists. */
+    { id: 'bdLetdownStatus', kind: 'value',
+      name: 'Letdown status: ISOLATED on the 17 % pressurizer low-level cut  ·  sim: control_state.letdown_isolated',
+      // rAnchor, so `left` is the RIGHT edge: card right (1435) minus 5. `top` is the card's
+      // new bottom (780) minus 25, i.e. the band the height patch below adds.
+      left: 1430, top: 755, value: '—', color: '#5aad7c', fontSize: 12, rAnchor: true }
   ];
 
   // ================================================================ NUMBERS (editable)
@@ -1279,6 +1335,7 @@
     imrppej8ulo: function (s) { return r0(IN(s).governor_valve); },                                     // governor %
     imrppq5r7kw: function (s) { return CS(s).steam_dump_auto ? 'NORMAL' : ((CS(s).steam_dump_pct || 0) > 0 ? 'DUMPING' : 'MANUAL'); }, // steam dump status
     ims89lnqmip: function (s) { return feedStatus(s); },                                              // SG feed controller status (#214)
+    bdLetdownStatus: function (s) { return letdownStatus(s); },                                        // letdown status word (#624 item 24)
     bdDtMargin: function (s) { return dtMargin(s); },                                                  // core ΔT margin, OTΔT/OPΔT (#311)
     imrppyp0wfo: function (s) { return accN2Press(s); },   // accumulator N2 cover-gas pressure
     imrppztrng1: function (s) { return IN(s).accumulators_discharging ? 'INJECTING' : (accIsolated(s) ? 'ISOLATED' : 'ARMED'); }, // accumulator status
@@ -3413,6 +3470,14 @@
       // rather than a builder edit because pwr_board_data.js is REGENERATED — the same
       // change made in the builder is lost the next time anyone re-exports.
       imrqxsodu5j: { props: { title: 'SG FEED' } },
+      // LETDOWN card, 150 -> 175 px tall, to carry the status word `bdLetdownStatus` adds in
+      // its bottom band (#624 item 24). MEASURED: the card runs 1345-1435 x 605-755 and its
+      // four buttons end at y 750; its sibling on the same panel, CHARGING (imrmslginf9), is
+      // already 175 px (605-780), and the containing panel box (ims3l6k3mb0) runs to y 785, so
+      // the new bottom matches the neighbour and stays inside the panel. Nothing — item or
+      // pipe — occupies 1345-1435 x 755-780. A patch, not a builder edit: pwr_board_data.js is
+      // REGENERATED, so the same change made in the builder is lost at the next re-export.
+      imrmslvu2c0: { props: { height: 175 } },
       // REACTOR/ROD CONTROL card title, shortened. A patch and not a builder edit for the
       // same reason as the SG FEED one above — pwr_board_data.js is REGENERATED.
       //

@@ -528,6 +528,32 @@ is filled and drained **through the surge line**:
 The thermal and mass drivers are reconstructed from state each step, so level and inventory
 cannot silently drift apart — the no-integrator guarantee the old derived line made, kept.
 
+**RAISING LOAD IS A PRESSURIZER TRANSIENT, and that is why the load dial ramps UP (#624).**
+The thermal row above is the coupling: raise turbine load and the steam generators draw more heat,
+Tavg falls, the loop contracts, and the difference comes *out* of the pressurizer. Charging can
+answer it — at **30.1 gpm** against a **12.7 gpm** letdown lineup — but only at charging's rate,
+so what decides whether the plant stays on programme is how fast the disturbance arrives, not how
+good the level controller is. Measured from **10 MWe** with the rods left alone, dialling
+**30 MWe**: delivered instantly it pulls Tavg **15.3 °F (8.5 °C)** and indicated level from
+**26.7 % to 16.1 % in 44 seconds** — *through* the **17 %** low-level cut, which isolates letdown
+and sheds the heaters and does not restore itself. Delivered on the plant's sourced **5 %/min**
+load ramp (**09** §10.0) the same Tavg swing is spread over four minutes — **12.9 °F (7.2 °C)** —
+and level bottoms at **20.4 %**, three points clear of the cut and back on programme inside 90
+minutes. The lesson is the Tier A one and it is not about the controller: **an operator cannot
+step load up on a real machine, and a plant that let them made a first-order coupling look like a
+broken level loop.**
+
+**LOWERING load runs the same coupling backwards, which is why it is NOT ramped.** Less steam
+drawn, Tavg rises, the loop expands, and the pressurizer **swells** — toward the 87 % high-level
+trip, which no dispatch move approaches. There is nothing for a rate limit to protect, and there
+is something to lose: the **C-7** loss-of-load steam dump arms on a decrease *faster than 5 %/min*
+(**09** §3.0), the same number as the raise ramp, so a symmetric limiter would put the dial exactly
+on the interlock's threshold and the operator could never produce the loss-of-load transient at
+all. It was built symmetric first and measured, 100 MWe to 0: an instant cut takes the C-7 rate
+signal to **49.99 %/min** and arms; a 5 %/min walk converges on **4.999773 %/min** against a strict
+*greater-than* and never arms. Reductions are therefore instantaneous, and both routes to the
+graded ride-out — the dial and **UNLOAD** — stay live.
+
 The void row is **the TMI deception, and it is arithmetic**. Void fraction itself grows at
 three times the inventory deficit, so in a voided state the void term contributes about
 **+1126 % per inventory fraction lost** against the mass term's **−776 %** — a net **rise**
@@ -797,6 +823,7 @@ Each of these is intentional, acceptable for the educational purpose, and stated
 | 12.14 | **No turbine roll or no-load speed hold — and the overspeed trip therefore cannot fire** | The whole off-line half of a real startup: rolling off the turning gear, holding rated speed on no-load steam, and synchronising before the breaker closes. On a real EHC machine that is a *setpoint-and-rate* evolution (select 1800 RPM and an acceleration rate; SLOW takes ~30 min), not a hand-throttled one — see **04** PWR-N05. | **Yes, for one procedure and one trip.** PWR-N05's synchronisation is **one action**: the rotor goes from rest to 1800 RPM and picks up load in a single press of FOLLOW or MAN, and measured, the plant barely notices (Tavg moves 0.1 °F, steam pressure 1196 → 1194 psi). And the **1980 RPM overspeed trip in §09 is configured but unreachable** — the rotor is either pinned at rated by the grid or coasting down, so nothing can drive it there. Do not read "no overspeed trip occurred" as evidence about a real machine. |
 | 12.20 | **One `RHR` control stands for two alignments of one set of pumps — so the trainer REFUSES the align during injection, and that refusal is not a plant interlock** *(new 2026-08-12, #458 — before this, aligning RHR into a running loss-of-coolant accident gave the plant full shutdown cooling)* | A real plant runs the RHR pumps in two mutually exclusive lineups: **injection** (suction from the refueling water tank, discharge to the cold legs, heat exchangers **uncooled** — WTSM 5.2 §5.2.4.5, ML11223A220) and **shutdown cooling** (hot-leg suction through 8701/8702, heat exchangers on component cooling water — WTSM 5.1, ML11223A219, which calls the cooldown function *"independent of any engineered safety features function"*). It leaves the first for the second by hand, at the **sump swap-over on refueling-water-tank depletion**, and *"the cold-leg recirculation lineup is completed by opening the component cooling water supplies to the RHR heat exchangers"*. This trainer has **one** `rhr_active` flag for both lineups and **no refueling-water-tank inventory**, so it can never reach that swap-over — its accidents stay in the injection phase for ever. The refusal is therefore the model declining to be in two lineups at once. **It is not an interlock and is not presented as one**: no document in any lane's corpus gives 8701/8702 a safety-injection inhibit, only the pressure permissive and the autoclosure, both of which are modelled and unchanged | **Know exactly what it costs you.** What you lose is the *real* exit from a loss-of-coolant accident — long-term core cooling through the RHR heat exchangers after the swap to the containment sump — because the tank that triggers it does not exist here. What you gain is the honest half: **shutdown cooling is not available to you during an accident, and securing injection is the decision that opens it.** Measured before the fix, aligning RHR into a large break removed **8.8×** the plant's decay heat from heat exchangers that in that lineup have no cooling water, with the primary at **79 % void** — a centrifugal pump on steam. Do not read "secure injection and you get cooling" as the real plant's sequence; a real crew opens component cooling water to the heat exchangers, and securing injection is not what does it. |
 | 12.13 | **Cold-plant mass bookkeeping is normalised** | The real cold-plant mass surplus | Level in the cold modes rests on a program floor standing in for CVCS keeping the pressurizer on span. Visible only in Mode 5. |
+| 12.21 | **The load dial ramps on a RAISE only, and the sourced 10 % step allowance is not modelled** *(new 2026-09-04, #624 / #619 item 24 — before this the dial did not ramp at all, and a 20 MWe change arrived in zero time)* | Ginna UFSAR chapter 10, section 10.1.2.1 (ML20339A040) allows the machine *both* a **10 % of full power step** and a **5 % of full power per minute ramp**. This plant enforces the ramp on **increases only** (**09** §10.0): dial a higher target and the effective load walks up at **5 MWe/min**; dial a lower one and it lands at once. A step allowance would be a second regime needing its own measurement — 10 % of rated is 10 MWe delivered instantly, a third of the disturbance that caused this issue — and one rule the operator can hold in their head was preferred. The asymmetry is deliberate and is argued in §7.3: the raise is the direction that shrinks the pressurizer, and limiting the cut as well would put the dial on the C-7 interlock's own threshold. | **Know the one consequence.** Small load **increases** take longer here than on the real machine — a 10 MWe raise is two minutes rather than a step — so do not read this plant's ramp times as a dispatch limit. Reductions behave as they always did, so the C-7 graded ride-out is still reachable from the dial as well as from **UNLOAD** (**03** §12.2). |
 
 ---
 

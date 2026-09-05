@@ -1157,6 +1157,37 @@
               'readout ' + Math.round(me.left) + '-' + Math.round(me.right) + ' vs card ' + Math.round(c.left) + '-' + Math.round(c.right));
           }
         }
+        /* THE LETDOWN STATUS WORD (#624 / #619 item 24) — the same ruler, for the same reason.
+         * It sits in the BOTTOM band of a 90 px card that DOC_PATCHES grows from 150 to 175 px
+         * to make room, right-anchored to the card's inner edge, 5 px under the A+B 7 % button.
+         * Both numbers are arithmetic until something measures them, and the four orifice
+         * buttons are exactly the content items an authored-coordinate argument would miss. */
+        (function () {
+          var w = document.querySelector('[data-item="bdLetdownStatus"]');
+          var card = document.querySelector('[data-item="imrmslvu2c0"]');
+          if (!w || !card) { ck('geom: the LETDOWN status word renders', false, 'missing element'); return; }
+          var KIND = {};
+          (window.RD_PWR_BOARD_DOC.items || []).forEach(function (it) { KIND[it.id] = it.kind; });
+          var me = w.getBoundingClientRect(), hits = [];
+          document.querySelectorAll('[data-item]').forEach(function (o) {
+            var oid = o.getAttribute('data-item');
+            if (oid === 'bdLetdownStatus') return;
+            if (KIND[oid] === 'box' || KIND[oid] === 'component') return;
+            var r = o.getBoundingClientRect();
+            if (r.width === 0 || r.height === 0) return;
+            if (r.left < me.right && r.right > me.left && r.top < me.bottom && r.bottom > me.top)
+              hits.push(oid + '(' + (KIND[oid] || 'extra') + ')');
+          });
+          ck('geom: the LETDOWN status word overlaps no other board item', hits.length === 0, hits.join(','));
+          var c = card.getBoundingClientRect();
+          ck('geom: …and the grown LETDOWN card contains it (the height patch landed)',
+            me.left >= c.left - 2 && me.right <= c.right + 2 &&
+            me.top >= c.top - 2 && me.bottom <= c.bottom + 2,
+            'word ' + Math.round(me.left) + '-' + Math.round(me.right) + ' x ' +
+            Math.round(me.top) + '-' + Math.round(me.bottom) + ' vs card ' +
+            Math.round(c.left) + '-' + Math.round(c.right) + ' x ' +
+            Math.round(c.top) + '-' + Math.round(c.bottom));
+        })();
       })();
 
       // Cold Shutdown (Mode 5): RCPs secured, no steam, no feed — a dead plant must

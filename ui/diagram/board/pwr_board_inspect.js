@@ -503,11 +503,16 @@
       'Two fixed orifices, each independently in or out, giving four lineups: CLOSED, A at about 3 %, ' +
       'B at about 4 %, A+B at about 7 % of rated. Flow is pressure-driven, not a throttled setpoint, ' +
       'so it tails off as Reactor Coolant System (RCS) pressure falls during a cooldown. A+B uncompensated walks level down ' +
-      'about 5 % a minute.', CI, '7.3'),
+      'about 5 % a minute. The status word at the bottom of the card reads NORMAL while letdown is ' +
+      'flowing, SHUT when it is not, and ISOLATED when the automatic low-level cut has shut it for you.',
+      CI, '7.3'),
     imrmtin8wm3: e('CLOSED (letdown)',
       'Both orifices out — letdown isolated, no flow.',
       'The lineup for raising level quickly, and the automatic response to a low pressurizer level ' +
-      '(17 %), which isolates letdown to protect inventory.', CI, '7.3'),
+      '(17 %), which isolates letdown to protect inventory. When that cut is standing, all four ' +
+      'lineup lamps go dark — the valves are shut whatever you last selected — CLOSED lights amber ' +
+      'to say the plant did it rather than you, and the status word reads ISOLATED. Press any ' +
+      'orifice to line letdown back up once level is above 20 %.', CI, '7.3'),
     imrmtimrch3: e('A 3% (letdown)',
       'Orifice A only — the smallest letdown lineup.',
       'Roughly 3 % of rated flow. Uncompensated by charging it walks pressurizer level down about ' +
@@ -698,6 +703,16 @@
       'trap: the lamp still reads AUTO, but the pump is against a stop with no authority left to ' +
       'correct with, so level keeps going the way it is already going. Hover any feed control for ' +
       'the full sentence.', CI, '14.1'),
+    bdLetdownStatus: e('Letdown status',
+      'Whether letdown is flowing: NORMAL, SHUT, or ISOLATED by the automatic low-level cut.',
+      'NORMAL (green) means coolant is leaving the primary through the letdown path — which is not ' +
+      'the same as an orifice being selected, because on a cold plant letdown runs through the ' +
+      'residual heat removal cross-connect with both orifices out. SHUT means no flow and nothing ' +
+      'holding it shut but your own lineup. ISOLATED is the one to know: pressurizer level reached ' +
+      'the 17 % low-level cut, the plant shut letdown to stop the drain, and it also shed the ' +
+      'pressurizer heaters. While that stands the four lineup lamps are dark — the valves are shut ' +
+      'whatever you last selected — and CLOSED lights amber to say the plant did it. Press any ' +
+      'orifice to line back up once level is above 20 %.', CI, '7.3'),
     // (A `bdRodStatus` entry stood here for the #306 rod status word, removed 2026-08-03 as
     // redundant against the IN-OUT lamps. This file is a THIRD independent copy of the
     // board's meaning — an orphan entry here describes an item nobody can click, which is

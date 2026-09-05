@@ -459,10 +459,13 @@ Commercial practice keeps boron sufficient for at least **1 % Δk/k** (WTSM 19.2
 
 | Parameter | Value / behavior |
 |-----------|------------------|
-| Load follow time constant | ~**45 s** |
 | Rated MWe | **100** |
-| SCRAM → load mode | **Disconnected** |
-| Manual set target | Forces **manual** mode |
+| Dispatch modes | **One** — the operator's load target. There is no Follow or Disconnected selector; the machine is taken off line with **UNLOAD** (**03** §12.1) |
+| **Load-target ramp rate — RAISES ONLY** | **5 % of rated per minute = 5 MWe/min**, applied to a load **increase**. What you type is the dialled target and lands on the board at once; the effective target the turbine sees walks up toward it at this rate. 0 → 100 MWe is a **20-minute** ramp. [sourced] Ginna UFSAR chapter 10, section 10.1.2.1 (ML20339A040) |
+| **Load reductions** | **NOT RATE-LIMITED — a cut takes effect at once, any size.** Three reasons: a decrease *swells* the pressurizer rather than shrinking it into the 17 % cut, so it is the safe direction; it is the retired plant's own ruled design; and limiting it would put the dial's reduction rate exactly on C-7's arming threshold (row below), taking the graded steam-dump ride-out away from the operator. The source's *"similar step and ramp load reductions are possible"* is a statement of what the machine can absorb, not a limit on the operator |
+| **Step load change** | **NOT MODELLED.** The same source allows a **10 % of rated** step; a raise ramps in all cases, deliberately — one rule rather than two regimes (**12** §12.0) |
+| Ramp exemptions | Every reduction; the **OTΔT/OPΔT runback** (200 %/min, and it carries the dial down with it); a **turbine trip**; and **UNLOAD** |
+| C-7 loss-of-load dump arming | On a decrease **faster than 5 %/min** (§3.0) — the *same* sourced number as the raise ramp. Because reductions are not limited, **a dial cut still arms it**, as does **UNLOAD** |
 
 ---
 

@@ -30,7 +30,146 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
 
 ## [Unreleased]
 
-## [Alpha 1.7.2-rc6] — 2026-09-03
+## [Alpha 1.7.2-rc7] — 2026-09-04
+
+### Fixed (#624 / #619 item 24 — a load step with no rods moving drained the pressurizer onto the heaters)
+
+*(coordinator's call, 2026-09-04, on the item-24 measurement — the ramp RATE follows the source
+rather than the retired plant's tune; the retired plant's 30 %/min was ruled *(OWNER RULING,
+2026-08-08: "Do the 30% increase.")* and that number is deliberately not adopted. Owner review
+requested on #624.)*
+
+The owner, #619 item 24: *"The CHARGING AUTO logic does a poor job maintaining pressurizer level…
+During startup I always end up with the water level touching the heaters."*
+
+**IT WAS NOT THE LEVEL CONTROLLER.** Four candidates, three refuted with numbers:
+
+| Candidate | Verdict |
+|---|---|
+| The **controller** — a PI asleep or mis-tuned | **REFUTED.** Charging AUTO sat at 0 gpm *correctly* (level was above program until the step) and was saturated afterwards; **MANUAL charging did WORSE — 15.86 % against AUTO's 16.92 %** |
+| The **instrument** — a level channel reading low on a transitioning plant | **REFUTED.** Max abs(indicated − true) over the whole ride is **1.03 points** |
+| The **picture** — the vessel graphic drawing water inside the heater art | **REFUTED.** At a 25 % indicated level the water line sits **5.7 px above** the top of the drawn bank |
+| The **plant** — true level genuinely reaches the band | **CONFIRMED, and the cause is the DISTURBANCE, not the response** |
+
+**The measurement.** From `low_power` (10 MWe on the grid — the state the startup checklist hands
+the player), dialling **30 MWe** with the rods left alone: Tavg falls **15.3 °F (8.5 °C)**, the loop
+contracts, and indicated pressurizer level goes **26.7 % → 16.1 % in 44 seconds** — *through* the
+**17 %** low-level cut, which isolates letdown and sheds the heaters and does not restore itself.
+The plant then fills on 5 gpm of seal injection to a high-level reactor trip at **67.3 min** and
+goes water-solid at **73.7**. A real operator cannot make that disturbance: `set_load_target` on
+PWR2 was **one assignment**, so the whole load change arrived in zero time.
+
+**THE LIMITER — parity for an owner-ruled feature this engine lost by reference.** The retired
+plant carried `load_rate_pct_per_min: 30.0` in `engines/pwr/pwr_config.js` and enforced it in
+`engines/load_mode.js`, raises only, ruled 2026-08-08 ("Do the 30% increase."). PWR2
+never inherited it — #534's standing trap, and `pwr2_turbine`'s ENVELOPE said so in its own header
+(*"REPORTED, NOT ENFORCED … rate limiting is a control-layer actuation"*). It is built on the
+control side of the engine door, in `pwr2_shell.js`: the operator's **dialled** target is stored
+and published as `load_cmd_mwe` (the board's MW box reads it, so it lands the instant the player
+types it — the owner's 2026-08-11 directive, honoured on this engine for the first time), and on a
+**RAISE** the **effective** `tb.load_target_mwe` walks up toward it. **A REDUCTION LANDS WHOLE**,
+exactly as the dial always behaved.
+
+**The rate is the SOURCE's, not the retired tune's.** [sourced] Ginna UFSAR chapter 10, section
+10.1.2.1 (ML20339A040): *"load changes up to generation step load increases of 10% of full power and
+ramp increases of 5% of full power per min within the load range of 12.8% to 100% of full power
+without reactor trip… Similar step and ramp load reductions are possible."* Measured at the same
+10 → 30 MWe, no rods:
+
+| delivery | min TRUE level | min indicated | 17 % cut |
+|---|---|---|---|
+| instant (the shipped plant) | 16.92 % | **16.11 %** | **latched** |
+| 30 %/min (the retired tune) | — | still reaches the cut (20 points in 40 s; the shrink completes in 47 s) | **latched** |
+| 10 %/min | 18.29 % | — | clear |
+| **5 %/min (the envelope)** | **21.51 %** | **20.36 %** | **clear**, and back on program by 90 min |
+| 2.5 %/min | 22.92 % | — | clear |
+
+**Three declarations, all in the code:** the limit is **RAISES ONLY** (see below); the **10 % step
+allowance is NOT modelled** (a second regime would need its own measurement — one rule the player
+can hold in their head was preferred, `Manuals/12` §12.21); and the rate is **read from
+`RD.pwr2.turbine.ENVELOPE.ramp_pct_per_min` every step, never retyped**, so the enforced limit and
+the reported envelope cannot drift apart.
+
+**NOT limited, each for its own reason:** every load REDUCTION; the OTΔT/OPΔT runback (sourced
+200 %/min, and the dial now follows it DOWN — the retired plant's `immediate` law, *"it moves the
+ASK as well so the ramp has nothing to undo"*); a turbine trip; and `disconnect_grid` (the board's
+UNLOAD button — a breaker opening, not a dial, so it moves both numbers in the same step rather
+than the next one).
+
+**WHY REDUCTIONS ARE NOT LIMITED — it was built symmetric first, and the measurement rejected it.**
+The source's second sentence (*"Similar step and ramp load reductions are possible"*) is a
+statement of what the machine can absorb without tripping, not a limit on the operator, and three
+things say so:
+
+1. **The defect is a RAISE.** A load increase draws more steam, cools the loop, contracts it, and
+   the pressurizer shrinks — into the 17 % cut. A decrease does the opposite: the loop expands and
+   level *swells*, toward an 87 % high-level trip no dispatch move approaches.
+2. **Raises-only is the retired plant's own ruled design**, and `engines/load_mode.js` records at
+   length why symmetry was measurably wrong there — it turned this plant's defining load-rejection
+   ride-out into a leisurely ramp and took out five behaviour probes, the `pwr_tour` greedy-ask
+   branch and the SGTR emergency procedure.
+3. **A limited reduction sits on the C-7 interlock's own number.** The steam dump's loss-of-load
+   arm is *"a ramp load decrease at a rate greater than 5 %/min"* (`pwr2_dumpctl`, WTSM 11.2) —
+   **the same sourced figure as the envelope**. Measured on the symmetric build, 100 MWe → 0: an
+   instant cut drives the C-7 rate signal to **49.99 %/min** and arms; the 5 %/min walk converges
+   on **4.999773 %/min** against a strict `>` and **never** arms (peak step gap 0.83 % against a
+   10 % criterion). A **0.00023 %/min** margin is a *bifurcation*, not a tolerance — one bit picks
+   the branch, the trap #543/#588 put on the standing list — and the cost of landing on the wrong
+   side is that the operator's dial can no longer produce the loss-of-load transient at all.
+
+With reductions instantaneous, **both free-play routes to the graded ride-out are live and are
+asserted in one check**: a dial cut arms C-7 (measured, at 0.02 s), and UNLOAD arms it too. A
+turbine trip arms C-8. Losing the ride-out silently is the failure `engines/load_mode.js` records
+for the retired plant.
+
+**THE LETDOWN ISOLATE ON THE BOARD — a dark wire in the direction nobody checks.**
+`control_state.letdown_isolated` was published correctly and had **zero consumers anywhere in
+`ui/`**. While the 17 % cut stood, the four orifice buttons kept lighting the operator's last
+*selection* over two shut valves, LETDOWN FLOW read 0 gpm, and the only cue on the board was the
+PZR LTDN ISOL annunciator. Now: all four lineup lamps go dark (a position lamp shows where the
+valve is), **CLOSED** carries the yellow *"the plant did this"* warn instead of the green *"you
+selected this"* active — the same split the rod IN-OUT lamps use — and a new status word on the
+card reads **ISOLATED** / **NORMAL** / **SHUT**. The word reads the delivered FLOW, not the orifice
+pair, because since #624 item 14 the cold states let down through the RHR cross-connect with both
+orifices out and a word keyed on the lamps would have printed SHUT over a plant letting down
+30 gpm. Pressing any orifice re-lines and re-lights the lamp. No geometry invented: the LETDOWN
+card grows 150 → 175 px to match its own sibling CHARGING on the same panel, via `DOC_PATCHES`,
+because `pwr_board_data.js` is regenerated.
+
+**Checks that fail without it.** `run_pwr2_shell` gains **group L, seven checks and four
+mutations** (all caught): the pressurizer survives a 20 MWe dial step (**20.36 %** indicated
+against **16.11 %** and a latched isolate on the old code); the dial lands instantly while the
+reference arrives at **4.000 min** against the envelope's own 4.000 (**0.000 min** before); a
+reduction is **IMMEDIATE** (50 → 30 MWe reads 30.000 one step later, where a limited reduction
+would read 49.998); **provenance** — halve `ENVELOPE.ramp_pct_per_min` and the walk must double,
+measured **8.000 / 2.000 min, ratio 4.0000**, which is the only check that can see a retyped
+constant; **both** C-7 routes are live (a dial cut arms at 0.02 s on a 49.99 %/min signal, and
+UNLOAD arms while zeroing both numbers in the same step); the runback is unlimited and carries the
+dial with it (100.00 → 95.07 MWe in 1.5 s, and it stays there); and the dial round-trips the save
+mid-walk. The four mutations are the limiter removed, the rate retyped, **the symmetric build**
+(this item's own first draft — caught twice, by the immediate-reduction check *and* by the C-7
+arming half) and `syncLoadDial` dropped. `run_pwr2_board` gains **three checks and two mutations**,
+and `board_check` two rendered-geometry pins — the status word was measured onto the board, not
+argued onto it (moving it 25 px reddens the overlap pin against the A+B button, verified by
+injection).
+
+**No fixture was widened, moved or re-banded.** The symmetric build had reddened two
+`run_pwr2_shell` group-A checks (*"set_load_target moves the plant"* and its gauge-lag partner,
+both ending mid-manoeuvre at 95.0 MWe) and `run_checklist_pwr2`'s `pwr_shutdown` step 1 at
+**90.21 MWe**. All three are load *reductions*, so raises-only puts every one of them back at its
+original value and its original ride: `ui/manual_procedures.js` is byte-identical to before this
+change, and the group-A ride is the original 40/60 s — now written as a **derived** expression that
+would grow again on its own if this fixture ever became a raise or if reductions were ever limited.
+
+**Manuals** (Rev 17 item **(w)**, the pending row extended): `03` §12.2 gains the ramp, the
+raises-only rule with its reason, the measurements and the exemptions, and loses two lines that
+named the retired plant's Follow mode; `03` §7.3 and `06` PWR-A13a are **corrected** — *"the A / B
+lamps stay exactly where you put them"* was true of the shipped board and is now false; `09` §10.0
+is rewritten around the raises-only ramp rate, an explicit *reductions are not rate-limited* row,
+the un-modelled step allowance and the C-7 relation (the retired plant's *Load follow time
+constant* and *SCRAM → load mode Disconnected* rows struck — PWR2 has one dispatch mode); `12` §7.3
+gains the coupling paragraph and the reverse-coupling paragraph that argues the asymmetry, and `12`
+§12.21 the deliberate-simplification row; `04` PWR-N07 gains a precaution and PWR-N08 a NOTE.
 
 ### Changed (#624 / #619 item 14 — both cold states boot with the heaters off and the spray in hand)
 

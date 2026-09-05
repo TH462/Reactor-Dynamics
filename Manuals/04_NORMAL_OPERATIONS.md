@@ -449,13 +449,18 @@ Mode 1: critical, power > 5 %, turbine on line, stable.
 ### Precautions
 - Rods **lead** up; turbine **follows**.
 - Avoid SUR alarms; let Tavg and xenon follow.
+- **A load INCREASE ramps at 5 % of rated per minute — 5 MWe/min** (**09** §10.0). What you dial
+  lands on the board at once; the machine takes a minute for every 5 MWe. Trim rods against the
+  megawatts the generator is actually making, not against the number you typed, and expect a
+  20 MWe leg to be four minutes of walking. The ramp is there because a load increase delivered
+  instantly shrinks the pressurizer onto its **17 %** low-level isolation (**12** §7.3).
 
 ### Procedure
 
 | Step | Action | Control | Acceptance |
 |------|--------|---------|------------|
 | 1 | Withdraw Control Bank in short bursts | Rods | Small steady power rise |
-| 2 | Raise Turbine Load to new MWe | Turbine Load | Higher MWe settled |
+| 2 | Raise Turbine Load to new MWe — the target walks up at 5 MWe/min | Turbine Load | Higher MWe settled after the ramp |
 | 3 | Verify SG level and PZR P/level | SG / PZR | Normal bands |
 | 4 | Trim rods or dilute if xenon requires | Rods / Dilute | Power holds |
 
@@ -479,6 +484,7 @@ Mode 1 (or Mode 2) with turbine on line.
 | **CAUTION** | Turbine **leads** down; rods trim. |
 | **CAUTION** | SG level may **swell** on load drop — do not overfeed. |
 | **NOTE** | After a large down-power, xenon builds over hours. |
+| **NOTE** | A load **reduction is not ramped** — it takes effect at once, any size (**09** §10.0). Only increases walk. A large enough cut arms the C-7 loss-of-load steam dump, as does **UNLOAD**. |
 
 ### Procedure
 
