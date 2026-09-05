@@ -30,6 +30,61 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
 
 ## [Unreleased]
 
+## [Alpha 1.7.3-rc1] — 2026-09-05
+
+### Changed (#628 follow-up — the checklist's wait target is 30 s, not 60)
+
+*(OWNER, 2026-09-05: "Change it to 30s")* — superseding his own "60 s" ruling of the same day,
+which shipped in **Alpha 1.7.2** a few hours earlier and which **I had briefed on numbers I had
+not measured**.
+
+- **`WAIT_TARGET_WALL_S` 60 → 30.** The suggested speed rung is now the smallest that finishes
+  the wait in about half a minute of real time. Measured over the 24 pwr2 steps that qualify,
+  sits computed at the rate each rung really delivers (WARP caps at ~931× here, #631):
+
+  | target | 5× | 10× | 60× | 600× | 3600× | on PLAY | median sit | worst | total sitting |
+  |---|---|---|---|---|---|---|---|---|---|
+  | **30 s (now)** | 0 | 2 | 16 | 5 | 1 | **18/24** | **12 s** | **43 s** | **5.6 min** |
+  | 60 s (1.7.2) | 2 | 8 | 9 | 4 | 1 | 19/24 | 33 s | 60 s | 12.4 min |
+  | 120 s | 10 | 6 | 5 | 3 | 0 | 21/24 | 80 s | 120 s | 28.5 min |
+
+  30 s spends **one** more step on WARP's declared fidelity departure (#625) than 60 s — the
+  heatup's Pressure SP ramp, 2400 s, 60× → 600×, a quiet pressurization — and cuts the chain's
+  total dead time by more than half. The six waits it sends to WARP are those of about 40
+  plant-minutes and up.
+- **⚠ THE FIRST RULING WAS TAKEN ON A TABLE OF WHICH ONE ROW HAD BEEN MEASURED.** Three targets
+  went to the owner with a distribution for each; only the 60 s row — the one already built —
+  was measured, and the other two were written from arithmetic. Both were wrong, in the
+  direction that favoured what was already built: the claim was that 30 s moved EIGHT steps onto
+  WARP and left 15 of 24 on PLAY; it moves **one** and leaves **18**. He ruled 60 s on that
+  table, it was measured afterwards, and he re-ruled. HR12 binds plant dynamics; this is the
+  neighbouring class CLAUDE.md already names — *a claim about coverage or about what is built is
+  an unmeasured claim* — and asserting it inside a **decision brief** is worse than in prose,
+  because the reader cannot re-derive it and the wrongness is spent immediately. **The tell:** a
+  comparison table where one row is the thing you built and the rest are the alternatives.
+- **The target is written down TWICE, on purpose.** `WAIT_TARGET_WALL_S` in `ui/app.js` and a
+  literal `30` in the gate's own recomputation. That is the `PROTECTION_DT` shape and it is the
+  right call here: a check that imports the constant it is checking asserts only that the
+  constant equals itself. Injection-proven — code back at 60 s with the gate at 30 reddens it
+  (`pwr_heatup step 3 (240 s): wanted 10x, got 5x`).
+- `Manuals/02` §8.3 re-states the rule (half a minute; WARP from about 40 plant-minutes up).
+  **Manual set Rev 18** — Rev 17 shipped with 1.7.2, so this opens a new row rather than
+  extending it.
+- `ui/perf.js` records the #631 verdict-colour ruling in the code that implements it
+  *(OWNER RULING, 2026-09-05: selected "Green — as built" from two options put to him)*. No
+  behaviour change — the built colour was the ruled one.
+
+### Note on this entry's bookkeeping
+
+**Alpha 1.7.2 was released to `main` while this work was in progress** (PR #636, 08:50), taking
+`a8bbf1b` — #628 at 60 s — with it. The first draft of this change edited the `[Alpha 1.7.2]`
+section and the pending Rev 17 manual row in place, which would have rewritten the notes and the
+revision history of a release that had already shipped. **Neither `run_release` nor
+`run_manual_rev` can see that**: the first checks that the three version strings agree, the
+second that the digests are sealed at the newest row — and both were satisfied by editing a
+released artifact and re-sealing it. Corrected here by restoring both to their released text and
+opening this entry plus Rev 18.
+
 ## [Alpha 1.7.2] — 2026-09-05
 
 ### Fixed (#629 — the heatup's heat sink was the overpressure ADV, because steam-pressure dump mode was unreachable from a cold start)
@@ -256,29 +311,12 @@ goes below it. Add a suggested time warp value for the long term waiting steps."
   instruction (`.ckl-act`) instead of pushing it down.
 - **A waiting step names the speed rung to reach for, not just "use time acceleration".** #619
   item 8 put the plant-time estimate on the card; the player was still left to work out how much
-  acceleration that wants, and the answer spans four of the ladder's six rungs. `RD.CklSpeedHint`
-  picks the smallest rung that brings the wait under **30 s** of wall clock at that rung's
-  nominal rate *(OWNER, 2026-09-05: "Change it to 30s")*. Measured over the 24 pwr2 steps that
-  qualify, sits computed at the rate each rung really delivers (WARP caps at ~931× here, #631):
-
-  | target | 5× | 10× | 60× | 600× | 3600× | on PLAY | median sit | worst | total sitting |
-  |---|---|---|---|---|---|---|---|---|---|
-  | **30 s (shipped)** | 0 | 2 | 16 | 5 | 1 | 18/24 | **12 s** | **43 s** | **5.6 min** |
-  | 60 s | 2 | 8 | 9 | 4 | 1 | 19/24 | 33 s | 60 s | 12.4 min |
-  | 120 s | 10 | 6 | 5 | 3 | 0 | 21/24 | 80 s | 120 s | 28.5 min |
-
-  30 s spends **one** more step on WARP's declared fidelity departure (#625) than 60 s — the
-  heatup's Pressure SP ramp, 2400 s, 60× → 600× — and cuts the chain's total dead time by more
-  than half. The six waits it sends to WARP are those of 40 plant-minutes and up, quiet by
-  construction; a WARP suggestion says so on the card, because the plant refuses that tier on a
-  transient.
-- **⚠ THE FIRST RULING WAS 60 s AND IT WAS MADE ON NUMBERS I HAD NOT MEASURED.** Three targets
-  were put to the owner with a distribution table of which only the 60 s row was measured; the
-  other two were asserted. Measured afterwards, the cost priced into 30 s did not exist — the
-  claim was that it moved EIGHT steps onto WARP and left 15 of 24 on PLAY; it moves **one** and
-  leaves 18. He re-ruled on the corrected table. HR12 governs plant dynamics; this was the
-  neighbouring class — a claim about the ARTIFACT — and it reached a decision brief exactly the
-  way an unmeasured plant claim would.
+  acceleration that wants, and the answer spans five of the ladder's six rungs. `RD.CklSpeedHint`
+  picks the smallest rung that brings the wait under 60 s of wall clock at that rung's nominal
+  rate — **measured over the 24 pwr2 steps that qualify: 2 land on 5×, 8 on 10×, 9 on 60×, 4 on
+  600× and 1 on 3600×**, so 19 of 24 stay on the bit-identical PLAY tier and WARP's declared
+  fidelity departure (#625) is spent only on the five waits of 65 minutes and up. A WARP
+  suggestion says so, because the plant may refuse it on a transient.
 - **The ladder is READ, never re-listed.** The rungs already exist twice — the buttons in
   `shell.html` and `SPEED_KEYS` in `app.js`, the latter a deliberate literal so a missing button
   cannot renumber the keys. A third copy would be the `PROTECTION_DT` trap with a worse failure
@@ -287,10 +325,6 @@ goes below it. Add a suggested time warp value for the long term waiting steps."
   naming a button that is not there.
 - **⚠ NOMINAL, NOT ACHIEVED.** A rung is a *request* — the top one delivers ~931× here (#631) —
   so the card names the rung and never a number of seconds.
-- **The target lives in TWO files on purpose.** The gate recomputes the rule from the ladder with
-  its own literal `30`, rather than importing `WAIT_TARGET_WALL_S` — a check that imports the
-  constant it is checking asserts only that the constant equals itself. Moving the target is a
-  deliberate two-file change.
 - Gated by `test/verify_flags_ui.js` (44 → 47), three claims, each injection-proven: every
   `.ckl-body` leads with `.ckl-txt`; the rung is the smallest on the **live** ladder that clears
   the wait, recomputed in the test over every pool in `RD.MANUAL_PROCEDURES` rather than the one
