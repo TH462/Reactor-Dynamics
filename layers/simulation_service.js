@@ -298,8 +298,8 @@
     this.checkpoints = [];
     this._rewindCursor = null;         // last rewound-to index; walks consecutive beat rewinds back
     this._lastSandboxCpMs = null;      // wall clock of the last free-play checkpoint (#137)
-    // Pacing (#625). Both OFF by default — see configurePacing().
-    this.pacing = { stepBudgetMs: 0, warp: false, warpDt: WARP_DT };
+    // Pacing (#625, #631). All OFF by default — see configurePacing().
+    this.pacing = { stepBudgetMs: 0, warpStepBudgetMs: 0, warp: false, warpDt: WARP_DT };
     this._tier = 'play';
     this._dt = PHYSICS_DT;
     this._warpLockedUntil = 0;         // sim time before which WARP is refused
@@ -392,8 +392,12 @@
      * is spent and credits only what it stepped. Armed on the timer path only, so
      * advanceCycles() and every headless runner still get the full count. The plant is the
      * same plant either way — same dt, same order — only the broadcast instants move, and
-     * the protection, automation and sampling cadences are all in sim time already. */
-    var budgetMs = (this._budgetArmed && _perfT0 != null && this.pacing.stepBudgetMs > 0) ? this.pacing.stepBudgetMs : 0;
+     * the protection, automation and sampling cadences are all in sim time already.
+     *
+     * PER TIER SINCE #631 — see `_budgetForTier`. Read ONCE, before the loop: a tier that drops
+     * mid-broadcast (`_dropWarp`) breaks out of the loop on the same step, so re-reading it
+     * inside would only ever change the budget of a loop that is already ending. */
+    var budgetMs = (this._budgetArmed && _perfT0 != null) ? this._budgetForTier() : 0;
     var stepped = 0;
     this._warpDrop = null;
     /* THE PROTECTION CADENCE CARRIES ACROSS BROADCASTS (#588). This was `var sinceEval = 0;`
@@ -562,15 +566,39 @@
   // ------------------------------------------------------------ pacing (#625)
   // Opt-in from the control room. `stepBudgetMs` bounds the wall time one broadcast may spend
   // stepping physics (the loop stops early and credits only what it stepped — the plant is
-  // unchanged, only the broadcast instants move); `warp` enables the WARP tier; `warpDt` is a
-  // TEST SEAM for run_warp_tier's "the cliff is real" check and nothing else should set it.
+  // unchanged, only the broadcast instants move); `warpStepBudgetMs` is the same bound for the
+  // WARP tier (#631) and falls back to `stepBudgetMs` when unset, so nothing changes for a
+  // caller that never opts in; `warp` enables the WARP tier; `warpDt` is a TEST SEAM for
+  // run_warp_tier's "the cliff is real" check and nothing else should set it.
   SimulationService.prototype.configurePacing = function (opts) {
     opts = opts || {};
     if (opts.stepBudgetMs != null) this.pacing.stepBudgetMs = Math.max(0, +opts.stepBudgetMs || 0);
+    if (opts.warpStepBudgetMs != null) this.pacing.warpStepBudgetMs = Math.max(0, +opts.warpStepBudgetMs || 0);
     if (opts.warp != null) this.pacing.warp = !!opts.warp;
     if (opts.warpDt != null && opts.warpDt > 0) this.pacing.warpDt = +opts.warpDt;
     this._applyTier();
     return this.pacing;
+  };
+  /* WHICH BUDGET THIS TIER SPENDS (#631). PLAY holds back 60 of the 100 ms broadcast for input
+   * and paint, which is what a 1x..60x plant needs — a transient is exactly when the player is
+   * clicking. WARP is the opposite case by construction: it exists only on a quiet plant and
+   * DROPS to 60x on any transient (`_warpWatch`), so that headroom sits idle while the physics
+   * is the only thing with work to do. Holding it back capped WARP at what 40 ms buys (#631;
+   * the owner's machine read 800x against a requested 3600x).
+   *
+   * MEASURED IN THE BROWSER, 70 against 40, 20 s wall at a requested 3600x (Playwright
+   * Chromium, headless, shipped shell): hot full power 671x -> 931x, cold shutdown 765x ->
+   * 1,082x, i.e. +39 %. NOT the +75 % the budget ratio implies, and the difference is NOT in
+   * this function: `_reschedule` arms its setTimeout AFTER the tick returns, so the period is
+   * broadcastMs PLUS the tick's own cost — 225 steps per 145 ms before, 375 per 175 ms after.
+   * Every ms of budget therefore buys a step and lengthens the period it is spent in. 70 keeps
+   * 30 ms for a DOM pass that measures 8 ms on a board with nothing to animate.
+   *
+   * Unset (0) means "no separate WARP budget" and falls back to the PLAY one — a caller that
+   * never opts in gets exactly the service it had. */
+  SimulationService.prototype._budgetForTier = function () {
+    if (this._tier === 'warp' && this.pacing.warpStepBudgetMs > 0) return this.pacing.warpStepBudgetMs;
+    return this.pacing.stepBudgetMs;
   };
   SimulationService.prototype._resetPacing = function () {
     this._tier = 'play'; this._dt = PHYSICS_DT;
@@ -676,7 +704,12 @@
       achieved: this._achieved == null ? null : Math.round(this._achieved),
       warp_available: !why,
       warp_lock: why,
-      step_budget_ms: this.pacing.stepBudgetMs,
+      /* The EFFECTIVE budget — what THIS tier is spending, not what was configured (#631).
+       * A reader (ui/perf.js's verdict, a bug report) is asking "how much of the broadcast is
+       * the physics allowed", and on WARP that is the WARP number. The configured WARP value
+       * rides alongside so the pair is legible when the tier is PLAY. */
+      step_budget_ms: this._budgetForTier(),
+      warp_step_budget_ms: this.pacing.warpStepBudgetMs,
       steps_requested: this._perfStepsRequested || 0,
       steps_done: this._perfSteps || 0,
     };

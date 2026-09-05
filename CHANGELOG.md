@@ -30,7 +30,43 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
 
 ## [Unreleased]
 
-## [Alpha 1.7.2-rc8] — 2026-09-04
+## [Alpha 1.7.2-rc9] — 2026-09-04
+
+### Changed (#631 — WARP spends its own step budget, and the top rungs move)
+
+- **The per-broadcast step budget is per TIER: PLAY keeps 40 ms, WARP gets 70.** One
+  `stepBudgetMs` served both since #625, and 40 ms of a 100 ms broadcast is the right reserve for
+  PLAY — a transient at 1×–60× is exactly when the player is clicking — and the wrong one for
+  WARP, which by construction runs only on a quiet plant and drops itself to 60× the moment one
+  moves. That headroom sat idle while the physics was the only thing with work to do, and it
+  capped WARP at what 40 ms buys. Measured in the shipped shell (Playwright Chromium, headless,
+  20 s wall at a requested 3600×, cells back to back on a 7–18 % loaded machine):
+
+  | initial condition | 40 ms (before) | 70 ms (after) | Δ |
+  |---|---|---|---|
+  | Hot Full Power | **671×** | **931×** | +39 % |
+  | Mode 5, Cold Shutdown | **765×** | **1,082×** | +41 % |
+
+  Physics per broadcast 42.8 → 73.4 ms (median), broadcast interval 144.5 → 174.8 ms.
+- **The gain is +39 %, not the +75 % the budget ratio implies, and the reason is the timer.**
+  `_reschedule` arms `setTimeout(broadcastMs)` AFTER the tick returns, so the real period is
+  100 ms **plus** the tick's own cost: 225 steps per 145 ms before, 375 per 175 ms after. Filed
+  as **#632** and not taken here — moving the schedule to the tick's START changes pacing on both
+  tiers, including the 1× rung `run_service_invariance` pins bit-identical, and needs its own
+  measurement.
+- **Input is not slower.** A real mouse click on the 60× rung, timed in the page from
+  `pointerdown` to the snapshot carrying the new speed, 6 laps per cell: **median 115.4 ms /
+  max 126.3 at 40 ms, median 97.7 / max 103.3 at 70 ms** — the two overlap, and the larger
+  budget is if anything the lower of them. WARP drops to PLAY on the click either way.
+- **The performance verdict knows the tier.** At 70 ms the physics is *meant* to use ~75 % of
+  the interval, which tripped `ui/perf.js`'s COMPUTE-BOUND threshold and told the player to slow
+  down on a plant behaving exactly as designed. A WARP broadcast inside its own budget now reads
+  *"COMPUTE-BOUND — SPENDING THE WARP BUDGET"* and paints green; WARP past 1.4× what it was
+  allowed still falls through to the fault sentence, as does PLAY at the same cost.
+- **Unset means unchanged.** `warpStepBudgetMs` defaults to 0 and falls back to `stepBudgetMs`,
+  so every headless runner and any caller that does not opt in gets the service it had. Gated by
+  `test/run_warp_tier.js` (17 → 21 checks, 6 → 9 mutations) and `test/run_perf_summary.js`
+  (81 → 95, +2 mutations).
 
 ### Fixed (#613 wave 4 — the board's glows were computed every frame; they are drawn now)
 

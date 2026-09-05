@@ -58,6 +58,14 @@
   var lastBroadcast = 0, lastFrame = 0;
   var broadcasts = 0, paints = 0, coalesced = 0;
   var nominalMs = 100;              // the service's target; updated from the snapshot
+  /* PACING, from the snapshot's own block (#631). The verdict below needs to know which tier
+   * produced these samples and what the physics was ALLOWED to spend: on WARP the service is
+   * handed 70 of the 100 ms deliberately, so "the physics used 70 % of the interval" is the
+   * designed state there and a fault everywhere else. Last-known-good — a broadcast that
+   * carries no pacing block (an older snapshot, a service without the tier) leaves them as
+   * they were rather than silently reading as PLAY. */
+  var tier = null;                  // 'play' | 'warp' | null (never reported)
+  var stepBudgetMs = 0;             // the EFFECTIVE budget for that tier, 0 = none armed
 
   function now() {
     return (G.performance && G.performance.now) ? G.performance.now() : Date.now();
@@ -255,14 +263,19 @@
 
   var Perf = {
     /* Called by the app on every broadcast, before rendering. `stepsMs` is what the
-     * service measured for its own physics loop, or null if it did not report. */
-    broadcast: function (stepsMsValue, nominal) {
+     * service measured for its own physics loop, or null if it did not report. `pacing` is
+     * the snapshot's `metadata.pacing` block (#631) — optional; see `tier` above. */
+    broadcast: function (stepsMsValue, nominal, pacing) {
       var t = now();
       if (lastBroadcast) interval.push(t - lastBroadcast);
       lastBroadcast = t;
       broadcasts++;
       if (typeof stepsMsValue === 'number') stepMs.push(stepsMsValue);
       if (nominal > 0) nominalMs = nominal;
+      if (pacing) {
+        if (pacing.tier) tier = pacing.tier;
+        stepBudgetMs = pacing.step_budget_ms > 0 ? pacing.step_budget_ms : 0;
+      }
       if (!envCache) { try { collectEnv(); } catch (x) {} }
     },
     /* Called around the actual DOM pass. */
@@ -287,6 +300,7 @@
       var out = {
         broadcasts: broadcasts, paints: paints, coalesced: coalesced,
         nominal_ms: nominalMs,
+        tier: tier, step_budget_ms: stepBudgetMs,
         step_ms: st, render_ms: rn, interval_ms: iv,
         fps: (fr && fr.p50 > 0) ? (1000 / fr.p50) : null,
         budget_pct: budget,
@@ -325,6 +339,12 @@
   var LOAF_STYLE_LAYOUT_MS_WARN = 8;  // half of a 16.7 ms (60 Hz) rAF frame budget spent in
                                        // style+layout+paint-recording alone leaves less than half
                                        // for script+raster+composite
+  /* How far a broadcast may overshoot its step budget and still be READ as spending it (#631).
+   * Two honest sources of overshoot: the loop only reads its clock every 25 steps, so it can
+   * run up to 25 steps past the cut; and `_perfStepMs` spans a little more than the loop (the
+   * final protection evaluation). 1.4x of a 70 ms budget is 98 ms — past that the physics is
+   * not spending a budget, it is missing one, and the blunt verdict is the right one. */
+  var BUDGET_OVERSHOOT = 1.4;
   function verdict(s) {
     if (!s.step_ms || !s.render_ms) return 'not enough samples yet';
     var stepShare = s.step_ms.p95 / s.nominal_ms;
@@ -332,6 +352,17 @@
     var slipping = s.interval_ms && s.interval_ms.p95 > s.nominal_ms * 1.6;
 
     if (stepShare > 0.6 && stepShare >= renderShare) {
+      /* WARP IS SUPPOSED TO LOOK LIKE THIS (#631). The tier is handed 70 of the 100 ms on
+       * purpose — it runs only on a quiet plant and lets go the moment one moves — so a WARP
+       * broadcast sitting inside that budget is the feature working, not a machine falling
+       * behind, and painting it as a problem is how a warning colour stops being read. The
+       * discriminator is the BUDGET, not the tier alone: physics well past what it was
+       * allowed falls through to the sentence below, on WARP as anywhere else. */
+      if (s.tier === 'warp' && s.step_budget_ms > 0 && s.step_ms.p95 <= s.step_budget_ms * BUDGET_OVERSHOOT) {
+        return 'COMPUTE-BOUND — SPENDING THE WARP BUDGET — the physics is using ' +
+          Math.round(stepShare * 100) + '% of the broadcast interval, which is the ' +
+          s.step_budget_ms + ' ms WARP is given on a quiet plant. Expected; lower the speed setting for more headroom.';
+      }
       return 'COMPUTE-BOUND — the physics is using ' + Math.round(stepShare * 100) +
         '% of the broadcast budget. Lower the speed setting; this is expected at high acceleration.';
     }

@@ -29,6 +29,82 @@ and the user-visible summary in `CHANGELOG.md`. This file points at those and tr
 
 ---
 
+## Session log — 2026-09-04-workbench-e (#631 — one budget served two tiers, and the tier that needed the headroom least was the one holding it back)
+
+**The ask.** The owner's gaming PC reached 800× against a requested 3600× (#613 comment). #631
+measured the ceiling as the STEP BUDGET, not the board: `ui/app.js` armed one
+`configurePacing({ stepBudgetMs: 40 })` for both pacing tiers, and 40 ms ÷ 190 µs per WARP step
+× 0.5 s per broadcast is ~1,050×. *(OWNER, 2026-09-04: "Do as you recommend.")*
+
+**The change.** `configurePacing({ warpStepBudgetMs })`, read in `tick()` through
+`_budgetForTier()`; PLAY keeps 40 ms, WARP gets 70, unset falls back to `stepBudgetMs` so no
+headless runner and no caller that never opts in sees any difference. The snapshot's
+`metadata.pacing.step_budget_ms` publishes the EFFECTIVE budget — what THIS tier is spending —
+with the configured `warp_step_budget_ms` beside it so the pair is legible on PLAY. **Not part of
+any documented contract**: `CONTEXT.md` §6.3 is `true_state` only, and §6.2's metadata block has
+never listed `pacing`, `speed_snap` or `broadcast_ms`.
+
+**The argument for 70, which is a claim about the TIER and not about the machine.** The 60 ms
+PLAY holds back is for input and paint, and PLAY needs it — a transient at 1×–60× is exactly when
+the player is clicking. WARP is the opposite case *by construction*: it is refused on a plant in
+a transient and drops itself to 60× the moment one begins (#625), so the reserve is idle there
+while the physics is the only work on the thread.
+
+**MEASURED IN THE BROWSER, which is the deliverable** — the shipped shell over a local server in
+Playwright's Chromium, headless, `?engine=pwr2`, settled at 60× then a requested 3600× for a 20 s
+wall window; the achieved figure is the service's own EMA (`metadata.pacing.achieved`), the one
+the `→ 931×` readout paints. Cells run back to back at 7–18 % CPU. Harness:
+`inbox/631/warp_achieved.js`.
+
+| initial condition | 40 ms | 70 ms | Δ | physics p50 | broadcast interval p50 |
+|---|---|---|---|---|---|
+| hot_full_power | **671×** | **931×** | **+39 %** | 42.8 → 73.4 ms | 144.5 → 174.8 ms |
+| cold_shutdown | **765×** | **1,082×** | **+41 %** | 41.5 → 72.4 ms | 142.8 → 173.7 ms |
+
+**THE GAIN IS +39 %, NOT THE +75 % THE BUDGET RATIO PREDICTS, AND THE MISSING HALF IS THE
+TIMER.** `_reschedule` arms `setTimeout(broadcastMs)` **after** `tick()` returns, so the real
+period is 100 ms *plus* the tick's own cost — 225 steps per 145 ms before, 375 per 175 ms after.
+Every ms added to the budget therefore buys a step AND lengthens the period it is spent in. The
+issue's own arithmetic (40 ms → ~1,050×) assumed a fixed 100 ms period and is optimistic by that
+factor; the measured 671× at 40 ms is what the shipped loop actually does. **Filed as #632 and NOT taken here**: scheduling from the tick's start changes pacing on both tiers, and
+PLAY at 1× is the bit-identical rung `run_service_invariance` pins.
+
+**Input is not slower, and the intuition that it would be is wrong for a measurable reason.** A
+real `page.mouse.click` on the 60× rung, timed IN THE PAGE from the `pointerdown` handler to the
+snapshot carrying the new speed, 6 laps per cell: **median 115.4 ms / max 126.3 at 40 ms against
+median 97.7 / max 103.3 at 70 ms.** The two overlap and the larger budget is the lower of them —
+because the latency is dominated by the wait for the next broadcast, not by the step loop, and
+the click's own handling is synchronous once the thread is free.
+
+**The verdict had to learn the tier or it would have painted a healthy WARP as a fault.** At
+70 ms the physics uses ~75 % of the interval BY DESIGN, over `ui/perf.js`'s 60 % COMPUTE-BOUND
+threshold — the same "amber on every machine at the top rung" failure the achieved-rate ruling
+names (#625, OWNER 2026-09-04 "2A"). `RD.Perf.broadcast()` now takes the pacing block; a WARP
+broadcast inside its budget reads *"COMPUTE-BOUND — SPENDING THE WARP BUDGET"* and `renderPerf`
+colours it OK. **The branch keys on the BUDGET, not the tier alone** — WARP past 1.4× what it was
+allowed falls through to the fault sentence, which is what keeps the excuse from covering a
+genuinely overloaded machine.
+
+**THE TRAP: a discriminating fixture that discriminates for the wrong reason.** The first cut of
+the `run_perf_summary` PLAY check used the SHIPPED pacing block, `{tier:'play',
+step_budget_ms:40}`, against a 68 ms broadcast — so it fell through for the *second* reason (over
+its own budget) and the mutation that deletes the tier test entirely came back **BLIND**. The
+fixture now carries `{tier:'play', step_budget_ms:70}`, in which `tier` is the only differing
+field, and the mutation reddens. Same shape as the standing hollow-check list: the check was
+correct and was reading the wrong thing.
+
+**Gates.** `run_warp_tier` 17 → **21 passed, 0 failed**, mutations 6 → **9/9 caught** (WARP capped
+at PLAY's budget · PLAY handed WARP's · the snapshot publishing the configured budget instead of
+the effective one). `run_perf_summary` 81 → **95 passed, 0 failed**, mutations 3 → **5/5**.
+`BASELINES` updated for both. WT-4g is the one worth knowing: a WARP broadcast **cut** at 375 of
+720 steps is bit-identical to one that **requested** 375 — the two take different paths through
+the loop (a budget break at `i=374`, against a natural exit that routes the final protection
+evaluation post-loop), and the plant does not notice.
+
+**Manuals: nothing to change, and that was checked rather than assumed.** No chapter states the
+step budget in any unit, and none claims a rung is achieved. `02` §4.1's achieved-rate row says
+amber "at 3600× is the ordinary state of most machines" — still true at 931×.
+
 ## Session log — 2026-09-04-workbench-d (#613 wave 4 — a promoted layer cannot cache a blur whose input changes every broadcast)
 
 **The ask.** Build the two raster levers wave 3 deferred: the 33 blurred glows (`nofilter`,

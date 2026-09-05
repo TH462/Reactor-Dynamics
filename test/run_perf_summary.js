@@ -206,11 +206,12 @@ function scenario(overrides) {
 }
 
 // Drives n broadcast/render cycles with fixed timings, so the ring statistics land exactly
-// where a scenario needs them to.
+// where a scenario needs them to. `opts.pacing` is the snapshot's `metadata.pacing` block
+// (#631) — omitted, the broadcast carries none, which is what an older snapshot looks like.
 function feed(perf, opts, n) {
   for (var i = 0; i < n; i++) {
     clockState.t += opts.intervalMs;
-    perf.broadcast(opts.stepMs, opts.nominal || 100);
+    perf.broadcast(opts.stepMs, opts.nominal || 100, opts.pacing);
     var t0 = perf.renderStart();
     clockState.t += opts.renderMs;
     perf.renderEnd(t0);
@@ -400,6 +401,62 @@ head('verdict: the four ORIGINAL branches still fire under the old conditions');
   ck('healthy when everything is cheap and on time', /^healthy/.test(healthy.summary().verdict), healthy.summary().verdict);
 })();
 
+/* ============================================================== 4a2. verdict: WARP budget = */
+/* #631. The WARP tier is handed 70 of the 100 ms broadcast deliberately — it runs only on a
+ * quiet plant and drops to 60x the moment one moves — so a WARP broadcast sitting inside that
+ * budget is the feature working. The OLD verdict called it COMPUTE-BOUND and told the player to
+ * lower the speed, which is the "warn on every machine at the top rung" failure the achieved-rate
+ * ruling names. The DISCRIMINATOR is deliberate: the same numbers on PLAY must still read as the
+ * plain sentence, and WARP physics well PAST its budget must too. */
+var WARP_PACING = { tier: 'warp', step_budget_ms: 70 };
+var PLAY_PACING = { tier: 'play', step_budget_ms: 40 };
+/* PLAY configured with the WARP figure — not what ships, but the ONLY fixture in which `tier`
+ * is the single differing field. With the shipped 40 a PLAY broadcast costing 68 ms is already
+ * over its own budget, so it falls through for the SECOND reason and a mutation that deletes
+ * the tier test entirely stays green. That is the hollow-check shape, and it was: the first cut
+ * of this section used PLAY_PACING here and the mutation came back BLIND. */
+var PLAY_AT_WARP_BUDGET = { tier: 'play', step_budget_ms: 70 };
+head('verdict: WARP spending its own step budget is not a fault (#631)');
+(function () {
+  var warp = scenario({ t0: 0 }).perf;
+  feed(warp, { intervalMs: 100, stepMs: 68, renderMs: 2, nominal: 100, pacing: WARP_PACING }, 20);
+  var vWarp = warp.summary().verdict;
+  ck('WARP inside its budget says so', /^COMPUTE-BOUND — SPENDING THE WARP BUDGET/.test(vWarp), vWarp);
+  ck('…and keeps the COMPUTE-BOUND prefix (ui/app.js renderPerf regexes it)', /^COMPUTE-BOUND/.test(vWarp));
+  ck('…and names the budget it is spending', /70 ms WARP/.test(vWarp), vWarp);
+  var sw = warp.summary();
+  ck('summary carries the tier', sw.tier === 'warp', sw.tier);
+  ck('summary carries the effective step budget', sw.step_budget_ms === 70, sw.step_budget_ms);
+
+  // THE DISCRIMINATOR: identical timings AND an identical budget, PLAY tier. Only `tier` differs.
+  var play = scenario({ t0: 0 }).perf;
+  feed(play, { intervalMs: 100, stepMs: 68, renderMs: 2, nominal: 100, pacing: PLAY_AT_WARP_BUDGET }, 20);
+  var vPlay = play.summary().verdict;
+  ck('the same timings and the same budget on PLAY read as the plain COMPUTE-BOUND fault', /^COMPUTE-BOUND — the physics/.test(vPlay), vPlay);
+
+  // …and the SHIPPED PLAY budget (40 ms) over-run, which is a genuine fault on that tier.
+  var playShipped = scenario({ t0: 0 }).perf;
+  feed(playShipped, { intervalMs: 100, stepMs: 68, renderMs: 2, nominal: 100, pacing: PLAY_PACING }, 20);
+  ck('PLAY over its shipped 40 ms budget is the plain fault too', /^COMPUTE-BOUND — the physics/.test(playShipped.summary().verdict), playShipped.summary().step_budget_ms);
+
+  // WARP physics well past what it was allowed is not "spending a budget", it is missing one.
+  var over = scenario({ t0: 0 }).perf;
+  feed(over, { intervalMs: 100, stepMs: 140, renderMs: 2, nominal: 100, pacing: WARP_PACING }, 20);
+  var vOver = over.summary().verdict;
+  ck('WARP at 2x its budget falls through to the plain sentence', /^COMPUTE-BOUND — the physics/.test(vOver), vOver);
+
+  // An older snapshot carries no pacing block at all — the branch must not fire on a guess.
+  var bare = scenario({ t0: 0 }).perf;
+  feed(bare, { intervalMs: 100, stepMs: 68, renderMs: 2, nominal: 100 }, 20);
+  var vBare = bare.summary().verdict;
+  ck('no pacing block on the broadcast: the plain sentence, and tier null', /^COMPUTE-BOUND — the physics/.test(vBare) && bare.summary().tier === null, vBare);
+
+  // A WARP broadcast that is cheap is still healthy — the branch is inside the compute test.
+  var quiet = scenario({ t0: 0 }).perf;
+  feed(quiet, { intervalMs: 38, stepMs: 2, renderMs: 2, nominal: 100, pacing: WARP_PACING }, 20);
+  ck('a cheap WARP broadcast is still "healthy", not a budget sentence', /^healthy/.test(quiet.summary().verdict), quiet.summary().verdict);
+})();
+
 /* ============================================================== 4b. verdict: new branches = */
 head('verdict: PAINTS ARE BEING DROPPED splits into the causes the new data can tell apart');
 (function () {
@@ -483,7 +540,33 @@ function blurOnlyVerdict(src) {
   return sc.perf.summary().verdict;
 }
 
+// #631: the WARP-budget branch, run on the two cases that define its edges.
+function playAtWarpCostVerdict(src) {
+  var sc = scenario({ t0: 0, src: src });
+  feed(sc.perf, { intervalMs: 100, stepMs: 68, renderMs: 2, nominal: 100, pacing: PLAY_AT_WARP_BUDGET }, 20);
+  return sc.perf.summary().verdict;
+}
+function warpOverBudgetVerdict(src) {
+  var sc = scenario({ t0: 0, src: src });
+  feed(sc.perf, { intervalMs: 100, stepMs: 140, renderMs: 2, nominal: 100, pacing: WARP_PACING }, 20);
+  return sc.perf.summary().verdict;
+}
+
 var MUTATIONS = [
+  {
+    name: 'the WARP-budget branch stops checking the TIER (PLAY gets the excuse too)',
+    anchor: "if (s.tier === 'warp' && s.step_budget_ms > 0",
+    replace: 'if (s.step_budget_ms > 0',
+    run: playAtWarpCostVerdict,
+    picksIntended: function (v) { return /^COMPUTE-BOUND — the physics/.test(v); },
+  },
+  {
+    name: 'BUDGET_OVERSHOOT raised until no overrun can fall through (the branch excuses anything)',
+    anchor: 'var BUDGET_OVERSHOOT = 1.4;',
+    replace: 'var BUDGET_OVERSHOOT = 99;',
+    run: warpOverBudgetVerdict,
+    picksIntended: function (v) { return /^COMPUTE-BOUND — the physics/.test(v); },
+  },
   {
     name: 'HIDDEN_SHARE_WARN raised past 1.0 (unreachable — hiddenShare is a fraction <= 1)',
     anchor: 'var HIDDEN_SHARE_WARN = 0.3;',

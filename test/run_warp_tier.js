@@ -19,7 +19,9 @@
  *      drops it. An authored beat speed never enters WARP.
  *   4. THE STEP BUDGET.  Armed on the timer path, a wall budget stops the loop early and credits
  *      only what it stepped — and the plant is BIT-IDENTICAL with the budget on and off at every
- *      matched instant, because the budget moves broadcast instants and nothing else.
+ *      matched instant, because the budget moves broadcast instants and nothing else. Since #631
+ *      the budget is PER TIER: WARP spends `warpStepBudgetMs` (70 ms shipped) and PLAY spends
+ *      `stepBudgetMs` (40), with WARP falling back to the PLAY figure when none is configured.
  *   plus THE CADENCE FIX that came with it: `_isRapidChange` is a rate per SIM second, so a quiet
  *      plant at 600x sits on the 100 ms cadence (it sat on 50 ms before — measured).
  *
@@ -233,6 +235,71 @@ function runMechanics(RD, quiet) {
   ck2('WT-4c', 'the plant is BIT-IDENTICAL with the budget on and off at every shared instant',
       shared >= 10 && worst === 0, shared + ' shared instants, worst |diff| ' + worst.toExponential(2));
 
+  if (!quiet) head('THE WARP BUDGET  [#631 — the tier spends its own budget, not PLAY\'s]');
+  /* Same faked clock (5 ms per read, read every 25 steps), now on the WARP tier. A 70 ms budget
+   * must cut at the 15th read — 375 of the 720 steps a 3600x broadcast requests — while a 40 ms
+   * one cuts at the 9th, 225 steps. That difference IS the issue: at 40 ms the top rung was
+   * unreachable on every machine.
+   *
+   * The reference for the bit-identical claim is an UNBUDGETED WARP service asked for 1875x,
+   * whose broadcast is 375 steps by request. Its instants therefore coincide with the budgeted
+   * one's EXACTLY, so every instant is shared instead of one in n — and the two paths through
+   * the loop differ (a budget break at i=374 of 720, against a natural exit at i=374 of 375,
+   * which routes the final protection evaluation through the post-loop call instead of the
+   * in-loop one). Same plant, same order, same readings, or this is not "only the instants
+   * move". */
+  function warpRun(opts, speed, nBroadcasts, armBudget) {
+    var b = mk(RD, 'hot_full_power', opts);
+    settle(b, 120);
+    b.handleCommand({ action: 'set_speed', value: speed });
+    var calls = 0;
+    if (armBudget) b._perfNow = function () { return 5 * (calls++); };
+    var at = {}, first = null, n = 0;
+    b.running = true;
+    while (n++ < nBroadcasts && b._tier === 'warp') {
+      if (armBudget) b._budgetArmed = true;
+      var s3 = b.tick();
+      b._budgetArmed = false;
+      var pc = s3.metadata.pacing;
+      if (!first) first = { done: pc.steps_done, req: pc.steps_requested, tier: pc.tier,
+                            budget: pc.step_budget_ms, warpBudget: pc.warp_step_budget_ms };
+      at[b.simTime.toFixed(2)] = { P: s3.true_state.pressure_mpa, T: s3.true_state.tavg_c, L: s3.true_state.pzr_level_pct };
+    }
+    /* A plant that never entered WARP would make every check below a null dereference and the
+     * failure would name the wrong thing. Report it as what it is. */
+    return { first: first || { done: -1, req: -1, tier: b._tier, budget: -1, warpBudget: -1,
+                               why: 'never entered WARP: ' + (b._warpBlocked() || 'unknown') },
+             at: at, svc: b };
+  }
+  var wb = warpRun({ stepBudgetMs: 40, warpStepBudgetMs: 70 }, 3600, 12, true);
+  ck2('WT-4d', 'on WARP the loop spends the WARP budget (70 ms = 375 steps), not the PLAY one (40 ms = 225)',
+      wb.first.tier === 'warp' && wb.first.done === 375 && wb.first.req === 720 && wb.first.budget === 70,
+      wb.first.done + ' of ' + wb.first.req + ' steps on ' + wb.first.tier + ', budget ' + wb.first.budget + ' ms');
+  /* THE SAME SERVICE on PLAY. `set_speed` alone moves the tier, so nothing but the rung differs
+   * between this check and the one above — which is the claim: PLAY keeps its 40 ms. */
+  wb.svc.handleCommand({ action: 'set_speed', value: 60 });
+  wb.svc._budgetArmed = true;
+  var sPlay = wb.svc.tick();
+  wb.svc._budgetArmed = false;
+  ck2('WT-4e', 'the SAME service dropped to PLAY spends 40 ms again (225 of 300 steps)',
+      sPlay.metadata.pacing.tier === 'play' && sPlay.metadata.pacing.steps_done === 225 &&
+      sPlay.metadata.pacing.steps_requested === 300 && sPlay.metadata.pacing.step_budget_ms === 40,
+      sPlay.metadata.pacing.steps_done + ' of ' + sPlay.metadata.pacing.steps_requested + ' steps on ' +
+      sPlay.metadata.pacing.tier + ', budget ' + sPlay.metadata.pacing.step_budget_ms + ' ms');
+  var wf = warpRun({ stepBudgetMs: 40 }, 3600, 1, true);
+  ck2('WT-4f', 'with NO warpStepBudgetMs, WARP falls back to the PLAY budget — an unchanged service',
+      wf.first.tier === 'warp' && wf.first.done === 225 && wf.first.budget === 40 && wf.first.warpBudget === 0,
+      wf.first.done + ' of ' + wf.first.req + ' steps, budget ' + wf.first.budget +
+      ' ms, warp budget ' + wf.first.warpBudget);
+  var wref = warpRun(null, 1875, 12, false);
+  var wShared = 0, wWorst = 0;
+  Object.keys(wb.at).forEach(function (k) {
+    if (!wref.at[k]) return; wShared++;
+    ['P', 'T', 'L'].forEach(function (f) { var d = Math.abs(wb.at[k][f] - wref.at[k][f]); if (d > wWorst) wWorst = d; });
+  });
+  ck2('WT-4g', 'a WARP broadcast CUT at 375 steps is BIT-IDENTICAL to one that requested 375',
+      wShared >= 10 && wWorst === 0, wShared + ' shared instants, worst |diff| ' + wWorst.toExponential(2));
+
   if (!quiet) head('THE CADENCE  [a quiet plant at 600x on PLAY stays on the 100 ms broadcast]');
   /* 10 s of settle, not 60: the wall-scaled defect showed on the fresh plant's first minutes
    * (its lineup-engagement ring drifts ~10 psi per plant-minute, over the OLD 0.028 MPa per
@@ -274,6 +341,18 @@ var MUTATIONS = [
   ['the rate branch of the watch is gone',
    "if (Math.abs(power - prev.power) / spanS > RAPID_POWER_PCT_PER_S) return 'power moving '",
    "if (false) return 'power moving '"],
+  /* #631, the three ways the per-tier budget can be wrong: WARP capped at PLAY's figure (the
+   * shipped defect the issue is about), PLAY handed WARP's (the same mistake mirrored — 70 ms
+   * of a 100 ms broadcast leaves nothing for input on the tier where the player is clicking),
+   * and the snapshot reporting the configured PLAY number while the loop spends the WARP one. */
+  ['the WARP tier is capped by the PLAY budget',
+   "if (this._tier === 'warp' && this.pacing.warpStepBudgetMs > 0) return this.pacing.warpStepBudgetMs;",
+   'if (false) return this.pacing.warpStepBudgetMs;'],
+  ['PLAY is handed the WARP budget as well',
+   "if (this._tier === 'warp' && this.pacing.warpStepBudgetMs > 0) return this.pacing.warpStepBudgetMs;",
+   'if (this.pacing.warpStepBudgetMs > 0) return this.pacing.warpStepBudgetMs;'],
+  ['the snapshot publishes the CONFIGURED budget, not the effective one',
+   'step_budget_ms: this._budgetForTier(),', 'step_budget_ms: this.pacing.stepBudgetMs,'],
 ];
 console.log('\n' + '='.repeat(70));
 console.log('  INJECTION SELF-TEST — every mutation MUST redden a mechanics check');

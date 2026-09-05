@@ -45,6 +45,50 @@ where the two differ or where judgment was exercised.
 
 ---
 
+## 2026-09-04-workbench-e — #631: the step budget is a property of the TIER, not of the loop
+
+**Decision.** `SimulationService.configurePacing()` takes `warpStepBudgetMs`; `tick()` reads the
+budget through `_budgetForTier()` — WARP spends `warpStepBudgetMs` when one is configured, PLAY
+always spends `stepBudgetMs`, and an unset WARP budget falls back to the PLAY figure. The control
+room arms `{ stepBudgetMs: 40, warpStepBudgetMs: 70, warp: true }`. *(OWNER, 2026-09-04, on #631:
+"Do as you recommend.")*
+
+**Why a per-tier budget is the right shape and a bigger single budget is not.** The 60 ms held
+back from a 100 ms broadcast is for input and paint. PLAY needs it: 1×–60× is where a transient
+is worked, and a transient is when the player is clicking. WARP cannot be in a transient — it is
+refused on one and drops itself to 60× inside the step loop the moment one begins (#625) — so on
+that tier the reserve is idle while the physics is the only work on the thread. Raising the
+single budget would have taken PLAY's reserve away for a case that never happens on PLAY.
+
+**Measured, in the browser, because the number in the UI is the deliverable** (Playwright
+Chromium, headless, shipped shell, 20 s wall at a requested 3600×, back-to-back cells at 7–18 %
+CPU; harness `inbox/631/warp_achieved.js`, numbers in `Diagnostic/TUNING_LOG.md`
+2026-09-04-workbench-e): hot_full_power **671× → 931×**, cold_shutdown **765× → 1,082×**.
+
+**Deviation from the issue's own arithmetic, recorded because it will be re-derived otherwise.**
+#631 predicted the top rung would become reachable (3600× needs 360 steps = 68 ms). It does not,
+and the reason is not the budget: `_reschedule` arms `setTimeout(broadcastMs)` **after** `tick()`
+returns, so the period is 100 ms **plus** the tick cost — 145 ms before, 175 ms after. The budget
+therefore buys steps and lengthens the period they are spent in, and the gain is +39 %, not
++75 %. **Open lever, deliberately not taken — filed as #632**: scheduling from the tick's start. It changes
+pacing on both tiers, including the 1× rung `run_service_invariance` pins bit-identical, so it
+needs its own measurement and its own issue.
+
+**Consequence in `ui/perf.js`.** At 70 ms the physics uses ~75 % of the interval by design, over
+the 60 % COMPUTE-BOUND threshold, so the verdict would have called a healthy WARP a fault on every
+machine — the failure mode the achieved-rate colour ruling already names *(OWNER RULING,
+2026-09-04: "2A")*. `RD.Perf.broadcast()` takes the snapshot's pacing block; the branch keys on
+the BUDGET (WARP past 1.4× of it still reads as the fault), the sentence keeps its
+`COMPUTE-BOUND` prefix because `renderPerf` regexes it, and `renderPerf` tests the new phrase
+first and colours it OK. **Judgement call for review**: painting a budget-spending WARP green
+rather than amber.
+
+**Snapshot.** `metadata.pacing.step_budget_ms` is now the EFFECTIVE budget for the running tier,
+with `warp_step_budget_ms` beside it. Not a contract change: `CONTEXT.md` §6.3 covers `true_state`
+only, and §6.2's metadata listing has never carried `pacing`.
+
+**Gates.** `run_warp_tier` 17 → 21 checks, 6 → 9 mutations; `run_perf_summary` 81 → 95, 3 → 5.
+
 ## 2026-09-04-workbench-d — #613 wave 4: the board's halos are DRAWN, not computed
 
 **Decision** (coordinator's brief; no owner ruling sought — a rendering change with no

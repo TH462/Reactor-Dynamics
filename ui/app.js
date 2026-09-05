@@ -2092,8 +2092,13 @@
     var v = $('perfVerdict');
     if (v) {
       txt(v, p.verdict);
+      /* The WARP branch is tested FIRST and reads OK, not amber (#631): a WARP broadcast inside
+       * its own 70 ms budget is the tier doing exactly what it was built to do, and the same
+       * argument as the achieved-rate ruling applies — a colour that is warm on every machine
+       * at the top rung trains the player to ignore it. The prefixes below are unchanged. */
       v.className = 'perf-verdict' +
-        (/COMPUTE-BOUND/.test(p.verdict) ? ' warn' :
+        (/SPENDING THE WARP BUDGET/.test(p.verdict) ? ' ok' :
+         /COMPUTE-BOUND/.test(p.verdict) ? ' warn' :
          /RENDER-BOUND|SLIPPING|DROPPED/.test(p.verdict) ? ' bad' :
          /healthy/.test(p.verdict) ? ' ok' : '');
     }
@@ -2354,8 +2359,12 @@
     // which is the only way to answer "is the flicker compute or something else".
     if (RD.Perf) {
       try {
+        /* The PACING block rides along since #631. Without it the verdict cannot tell a WARP
+         * broadcast spending its 70 ms budget on purpose from a page that cannot keep up:
+         * both are "the physics used most of the interval", and only the tier says which. */
         RD.Perf.broadcast(service._perfStepMs,
-          (s.metadata && s.metadata.broadcast_ms) || service.broadcastMs);
+          (s.metadata && s.metadata.broadcast_ms) || service.broadcastMs,
+          (s.metadata && s.metadata.pacing) || null);
       } catch (e) { /* a profiler must never break the sim */ }
     }
     if (_renderRaf) {
@@ -8944,8 +8953,20 @@
     /* PACING (#625): the control room opts into the per-broadcast step budget and the WARP
      * tier; every headless runner keeps the full-count, PLAY-only service it always had.
      * 40 ms of a 100 ms broadcast leaves the rest for the DOM pass — without it a 600x request
-     * blocked the main thread 350 ms per broadcast (measured) and the page froze. */
-    if (service.configurePacing) service.configurePacing({ stepBudgetMs: 40, warp: true });
+     * blocked the main thread 350 ms per broadcast (measured) and the page froze.
+     *
+     * WARP GETS 70 (#631). The 60 ms held back is for input and paint, and PLAY needs it: a
+     * transient at 1x..60x is exactly when the player is clicking. WARP is the opposite case
+     * by construction — it runs only on a quiet plant and drops to 60x the moment one moves
+     * (#625) — so that headroom is mostly idle there while the physics is the only work, and
+     * holding it back capped the top rungs on every machine (the owner's read 800x).
+     * MEASURED here, 20 s wall at a requested 3600x: hot full power 671x -> 931x, cold
+     * shutdown 765x -> 1,082x. The DOM pass measures 8 ms p50 on a board with nothing to
+     * animate, so 30 ms is ample; a real mouse click on the 60x rung reaches the snapshot in
+     * 97.7 ms median at 70 against 115.4 at 40 — no input cost, because the wait is for the
+     * next broadcast and not for the step loop. See `_budgetForTier` for why the gain is
+     * +39 % and not the +75 % the ratio implies (the timer reschedules AFTER the tick). */
+    if (service.configurePacing) service.configurePacing({ stepBudgetMs: 40, warpStepBudgetMs: 70, warp: true });
     service.subscribe(render);
     service.subscribe(diagTick);
     // renderAutomate and inspectLiveTick are called from renderNow instead, so every DOM
