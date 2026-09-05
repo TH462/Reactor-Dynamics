@@ -55,6 +55,10 @@
       steam_pressure_mpa: 'steam_pressure', boron_ppm: 'boron_analyzer',
       startup_rate_dpm: 'startup_rate', pump_flow_pct: 'rcs_flow',
       mwe_output: 'mwe_output', fw_flow_normalized: 'fw_flow',
+      /* the atmospheric dump valve (#629) — the heatup's Mode 3 confirmation asserts it is
+       * SHUT, which is a claim about the heat sink the plant is riding on. Graded on the
+       * board's own channel, per HR1: the player sees `adv_valve`, not `adv_valve_pct`. */
+      adv_valve_pct: 'adv_valve',
     },
     rbmk: {
       power_pct: 'power_range', steam_pressure_mpa: 'steam_pressure', drum_level_pct: 'drum_level',
@@ -798,7 +802,11 @@
    * match. Grading on kW would tick the step for a player who never touched the card. */
   var CTL_PARAMS = { feed_coupled: 1, steam_dump_setpoint: 1,
                      letdown_orifice_a: 1, letdown_orifice_b: 1,
-                     heater_auto: 1, spray_auto: 1 };
+                     heater_auto: 1, spray_auto: 1,
+                     /* the operator's SELECTION, not the valve (#629) — a dump controller in
+                      * service at its setpoint carries 0 % on a plant already on programme,
+                      * so the valve position cannot tell AUTO from CLOSED */
+                     steam_dump_auto: 1 };
   function rodParam(snapshot, p) {
     var spec = ROD_PARAMS[p];
     if (!spec) return undefined;

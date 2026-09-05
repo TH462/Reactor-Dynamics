@@ -1333,7 +1333,17 @@
     imsgti0gnpf: function (s) { return dQ((IN(s).letdown_flow || 0) * GPM_LETDOWN); },
     imrppeh5hkb: function (s) { return r0(IN(s).mwe_output); },                                         // generator MW
     imrppej8ulo: function (s) { return r0(IN(s).governor_valve); },                                     // governor %
-    imrppq5r7kw: function (s) { return CS(s).steam_dump_auto ? 'NORMAL' : ((CS(s).steam_dump_pct || 0) > 0 ? 'DUMPING' : 'MANUAL'); }, // steam dump status
+    // Steam dump status. AUTO IS TWO CONTROLLERS on PWR2 (#629) and the word says which: TAVG
+    // ignores the DUMP SETPOINT box beside it, PRESS holds the secondary on it. `NORMAL` said
+    // neither, on a card whose setpoint box was an orphan on every plant a player heats up.
+    // The retired engine publishes no `steam_dump_mode`, so it keeps the old word.
+    imrppq5r7kw: function (s) {
+      var m = CS(s).steam_dump_mode;
+      if (m === 'pressure') return 'PRESS';
+      if (m === 'tavg') return 'TAVG';
+      if (CS(s).steam_dump_auto) return 'NORMAL';
+      return (CS(s).steam_dump_pct || 0) > 0 ? 'DUMPING' : 'MANUAL';
+    },
     ims89lnqmip: function (s) { return feedStatus(s); },                                              // SG feed controller status (#214)
     bdLetdownStatus: function (s) { return letdownStatus(s); },                                        // letdown status word (#624 item 24)
     bdDtMargin: function (s) { return dtMargin(s); },                                                  // core ΔT margin, OTΔT/OPΔT (#311)

@@ -1505,6 +1505,98 @@ function runSuite(SH, rec, quiet, only) {
   })();
   }
 
+  if (grp('M')) {
+  /* ---- 1m. WHICH CONTROLLER "AUTO" SELECTS (#629) ------------------------------------------
+   * ONE button, TWO modes, and the turbine decides which. Before this, `auto` mapped
+   * unconditionally to Tavg mode, so STEAM PRESSURE mode — the mode WTSM 11.2 assigns to
+   * heatup, cooldown and hot standby — was unreachable from the board on any plant not booted
+   * in it. Measured consequence (#629, the heatup checklist's own ride): pressing AUTO from
+   * Mode 5 changed NOTHING, because the Tavg-mode turbine-trip controller only opens above
+   * `tavg_noload_c` = 557 °F while the atmospheric dump valve is already relieving at 1040 psig
+   * below it — so the plant heated up on that valve and the DUMP SETPOINT box was an orphan.
+   *
+   * THE MODE IS THE CLAIM, not the boolean: `steam_dump_auto` is `mode !== 'off'` and reads
+   * TRUE in both branches, which is exactly why a check written on it would have passed on the
+   * defect. Read the published word and the controller's own field, and assert BOTH branches —
+   * a mutation that hard-coded either one would pass a single-branch check. */
+  head('THE DUMP MODE SELECTOR  [#629: AUTO is Tavg on line, steam pressure with the turbine tripped]');
+  (function () {
+    /* the turbine-tripped branch: the Mode 5 plant a player actually heats up (boots 'off') */
+    var eC = new SH.PWR2Engine({ initial_state: 'cold_shutdown' });
+    run(eC, 1);
+    var boot = eC.getControlState();
+    eC.applyCommand({ action: 'set_steam_dump', mode: 'auto' });
+    run(eC, 1);
+    var csC = eC.getControlState();
+    ck('from Mode 5 (turbine tripped, dumps booted OFF) AUTO selects STEAM PRESSURE mode at the ' +
+       'Dump SP — the sourced heatup/cooldown/hot-standby mode, and the only one that reads the ' +
+       'DUMP SETPOINT box at all',
+       eC.eng.tb.tripped === true && boot.steam_dump_mode === 'off' &&
+       boot.steam_dump_auto === false &&
+       csC.steam_dump_mode === 'pressure' && csC.steam_dump_auto === true &&
+       eC.eng.dc.mode === 'pressure' &&
+       Math.abs(eC.eng.dc.pressure_setpoint_mpa - csC.steam_dump_setpoint) < 1e-9,
+       'boot "' + boot.steam_dump_mode + '" -> "' + csC.steam_dump_mode + '" at ' +
+       (csC.steam_dump_setpoint * 145.038 - 14.7).toFixed(0) + ' psig; the boolean reads ' +
+       csC.steam_dump_auto + ' either way, which is why it is not the claim');
+
+    /* the on-line branch: unchanged, and the check says so rather than assuming it */
+    var eP = new SH.PWR2Engine({});
+    run(eP, quiet ? 30 : 60);
+    eP.applyCommand({ action: 'set_steam_dump', mode: 'auto' });
+    run(eP, 1);
+    var csP = eP.getControlState();
+    ck('...and with the turbine ON LINE the same button still selects TAVG mode — the at-power ' +
+       'mode, whose loss-of-load controller is what C-7 arms',
+       eP.eng.tb.tripped === false && csP.steam_dump_mode === 'tavg' &&
+       eP.eng.dc.mode === 'tavg' && csP.steam_dump_auto === true,
+       'mode "' + csP.steam_dump_mode + '" at ' + eP.getTrueState().power_pct.toFixed(0) + ' % power');
+
+    /* CLOSED still means OFF, and the explicit modes land — the API a checklist or a gate uses
+     * when it means ONE of them. `open` and a bare `pct` stay refused BY NAME (#570). */
+    var eX = new SH.PWR2Engine({ initial_state: 'hot_zero_power' });
+    run(eX, 2);
+    var bootHZP = eX.getControlState().steam_dump_mode;
+    eX.applyCommand({ action: 'set_steam_dump', mode: 'closed' });
+    run(eX, 1);
+    var offMode = eX.getControlState();
+    eX.applyCommand({ action: 'set_steam_dump', mode: 'tavg' });
+    run(eX, 1);
+    var explicitTavg = eX.getControlState().steam_dump_mode;
+    eX.applyCommand({ action: 'set_steam_dump', mode: 'pressure' });
+    run(eX, 1);
+    var explicitPress = eX.getControlState().steam_dump_mode;
+    var refusedOpen = false, refusedPct = false;
+    try { eX.applyCommand({ action: 'set_steam_dump', mode: 'open' }); } catch (e) { refusedOpen = true; }
+    try { eX.applyCommand({ action: 'set_steam_dump', pct: 40 }); } catch (e) { refusedPct = true; }
+    ck('the Hot Standby preset boots in PRESSURE mode, CLOSED still means OFF, the explicit ' +
+       'modes land, and `open`/`pct` stay refused by name',
+       bootHZP === 'pressure' &&
+       offMode.steam_dump_mode === 'off' && offMode.steam_dump_auto === false &&
+       explicitTavg === 'tavg' && explicitPress === 'pressure' &&
+       refusedOpen && refusedPct,
+       'HZP boots "' + bootHZP + '"; closed -> "' + offMode.steam_dump_mode + '"; explicit -> "' +
+       explicitTavg + '"/"' + explicitPress + '"; refusals ' + refusedOpen + '/' + refusedPct);
+
+    /* THE PUBLISHED WORD IS THE COMMANDED DRIVER, NOT THE CONTROLLER'S ONE-STEP-OLD COPY.
+     * Read WITHOUT stepping, which is the only frame where the two disagree — and it is a frame
+     * the board renders. Reading `dc.mode` here would light AUTO over a press of CLOSED and name
+     * a controller that is no longer in service: the lamps and the status word sourced from two
+     * samplers of one selection, which is #606's shape. */
+    var eF = new SH.PWR2Engine({});
+    run(eF, 2);
+    var before = eF.getControlState().steam_dump_mode;
+    eF.applyCommand({ action: 'set_steam_dump', mode: 'closed' });
+    var sameFrame = eF.getControlState();
+    ck('the published mode is the COMMANDED driver: a press of CLOSED darkens the lamp on the ' +
+       'SAME frame, with no step in between (the controller\'s own copy is one step behind)',
+       before === 'tavg' && eF.eng.dc.mode === 'tavg' &&
+       sameFrame.steam_dump_mode === 'off' && sameFrame.steam_dump_auto === false,
+       'published "' + sameFrame.steam_dump_mode + '" while the controller still holds "' +
+       eF.eng.dc.mode + '"');
+  })();
+  }
+
   if (grp('L')) {
   /* ---- 1l. THE OPERATOR'S LOAD DIAL, RATE-LIMITED (#624 / #619 item 24) --------------------
    * The owner: "During startup I always end up with the water level touching the heaters."
@@ -2480,7 +2572,26 @@ var MUTATIONS = [
    * limiter immediately walks it back up, so a protective action becomes a tug of war. */
   ['an automatic load cut does NOT move the ask (the limiter undoes the runback)',
    '    if (e.tb.load_target_mwe < wasMwe - 1e-9 && e.tb.load_target_mwe < e._loadDialMwe)\n      e._loadDialMwe = e.tb.load_target_mwe;',
-   '', { grp: 'L' }]
+   '', { grp: 'L' }],
+  /* ---- #629: which controller AUTO selects -------------------------------------------------
+   * THREE mutations, because the selector has three separable claims and the first of them was
+   * the shipped state of this plant: AUTO always Tavg (steam pressure mode board-unreachable,
+   * the heatup rides the atmospheric dump valve), AUTO always pressure (the mirror defect — the
+   * at-power plant loses the loss-of-load controller C-7 arms), and the published word going
+   * stale against the driver, which is the #606 shape: the lamps would be right and the status
+   * readout would name a controller that is not in service. */
+  ['AUTO is always Tavg mode again (the #629 defect: steam pressure mode is board-unreachable ' +
+   'and the heatup rides the atmospheric dump valve)',
+   "      if (c.mode === 'auto') EN.command(e, 'dump_mode', e.tb.tripped ? 'pressure' : 'tavg');",
+   "      if (c.mode === 'auto') EN.command(e, 'dump_mode', 'tavg');", { grp: 'M' }],
+  ['AUTO is always PRESSURE mode (the mirror defect: the at-power plant loses the loss-of-load ' +
+   'controller C-7 arms)',
+   "      if (c.mode === 'auto') EN.command(e, 'dump_mode', e.tb.tripped ? 'pressure' : 'tavg');",
+   "      if (c.mode === 'auto') EN.command(e, 'dump_mode', 'pressure');", { grp: 'M' }],
+  ['the published mode reads the CONTROLLER instead of the commanded driver (the status word ' +
+   'goes one selection stale)',
+   '    if (e.dcDrivers && e.dcDrivers.mode !== undefined) return e.dcDrivers.mode;\n    return e.dc ? e.dc.mode : \'tavg\';',
+   "    return e.dc ? e.dc.mode : 'tavg';", { grp: 'M' }]
 ];
 
 /* ---- SCOPED-CLEAN-PASS PREFLIGHT (#513) ------------------------------------------------

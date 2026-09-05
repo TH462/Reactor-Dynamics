@@ -3428,6 +3428,11 @@
     steam_dump_setpoint:    { label: 'Dump setpoint', dim: 'pressure' },
     accumulator_volume_pct: { label: 'Accumulator inventory', u: '%' },
     steam_dump_valve_pct:   { label: 'Steam dump demand', u: '%' },
+    /* the dump SELECTION and the atmospheric dump valve (#629) — the heatup's Mode 3
+     * confirmation reads both, because "the dumps are in service" and "the ADV is shut" are
+     * the two halves of the claim that the condenser, not the atmosphere, is the heat sink */
+    steam_dump_auto:        { bool: 'the steam dumps are in automatic control' },
+    adv_valve_pct:          { label: 'Atmospheric dump valve', u: '%' },
     vessel_level_pct:       { label: 'Vessel level', u: '%' },
     drum_level_pct:         { label: 'Drum level', u: '%' },
     plant_mode:             { mode: true },

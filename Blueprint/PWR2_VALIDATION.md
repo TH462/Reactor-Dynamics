@@ -10297,3 +10297,162 @@ Mode 5 chain, one continuous plant, replayed on the 627-step bank.** `run_manual
 argument (`process.argv[2]`) — one leg is **20 s** against 521 s for the chain. It was there the
 whole time and went unchecked, exactly like the missing mutation flag in §128. Twice in one effort,
 the cheapest available win was reading what the tool already accepted.
+
+---
+
+## 130. #629 — THE HEATUP'S HEAT SINK WAS THE OVERPRESSURE ADV, BECAUSE STEAM-PRESSURE DUMP MODE WAS UNREACHABLE FROM A COLD START — 2026-09-05
+
+*(MY CALL, 2026-09-05 — not an owner ruling. `set_steam_dump {mode:'auto'}` now selects steam-pressure
+mode when the turbine is tripped and Tavg mode when it is on line. #629 carries `status-owner-review`
+because it changes what a shipped button does. Sourced: WTSM 11.2 (ML11223A294) — "Tavg mode at
+power, steam pressure mode at hot standby / startup / cooldown", quoted verbatim in
+`pwr2_dumpctl.js`'s header since the layer was built.)*
+
+**Harness.** `scratchpad/m629.js` — full stack through `RD.SimulationService`, pwr2, `cold_shutdown`,
+the `pwr_heatup` checklist's own commands issued as each acceptance ticks, 600×. The `develop` and
+`workbench` trees and both the 0.02 s and the WARP 0.5 s step agree to the psi.
+
+### 130.1 The filed symptom did not reproduce
+
+The owner reported the Pressure SP dialled to 2235 psi at the second pressurization and primary
+pressure stalling near 1920 psia as the atmospheric dump valve (ADV) opened. Measured on the
+checklist route: **the ADV opens at 1042 psig header pressure when Tavg reaches 551.6 °F
+(288.7 °C), modulates at 7-9 %, and primary pressure keeps climbing at ~26 psi/min straight
+through 1920 psia to the 2176 psia acceptance** (T+371 min from the cold boot). Same result with the
+dial issued 10 min AFTER the ADV opened, and with the replay's fixed holds.
+
+**The SHAPE is real when the valve carries real load.** ADV forced to 100 % at the second
+pressurization: the RCS contracts, pressurizer level **25.0 → 14.2 % in 2.5 min** (10.4 % by
+9.5 min), the 17 % low-level cut sheds the heaters **158 → 0 kW**, and pressure falls
+**1687 → 1598 psia** and never reaches the setpoint while the valve is open. So "the ADV opens and
+pressure stalls" is what this plant does whenever that valve carries more than the pump heat. The
+change below removes the ADV from the heatup's heat-sink ROLE; it does not claim to have reproduced
+the owner's exact 1920 psia.
+
+### 130.2 The defect: AUTO was one mode, and it was the wrong one from cold
+
+`cold_shutdown` boots `dump_mode: 'off'` (`pwr2_engine.js` dcDrivers) and `pwr2_shell.js` mapped
+`{mode:'auto'}` to `'tavg'` unconditionally. In Tavg mode the turbine-trip controller opens only
+above `tavg_noload_c` = **557 °F (291.67 °C)** — *above* the 1040 psig ADV — so pressing STEAM
+DUMP AUTO on a heating plant **changed nothing**: measured, byte-identical trace, ADV 7.6 %, dumps
+0.0 %.
+
+| lineup | Tavg | steam header | ADV | condenser dumps | 2nd pressurization |
+|---|---|---|---|---|---|
+| as shipped (Tavg mode; pressure mode board-unreachable) | **551.6 °F (288.7 °C)** | **1042 psig** | **7-9 %** | 0.0 % | completes, 2176 psia |
+| steam-pressure mode at the Dump SP | **547.2 °F (286.2 °C)** | **1005 psig** | **0.0 %** | 0.4-2.9 % | completes, 2231 psia |
+| `hot_zero_power` preset (boots pressure mode at 1005 psig) | 547.2 °F (286.2 °C) | 1005 psig | 0 % | — | — |
+
+The produced plant parked **4.4 °F (2.4 °C) above the no-load band**, relieving steam to
+atmosphere for the whole heatup.
+
+**PRODUCED ≠ PRESET (#468's lesson).** The preset Mode 3 plant sits in pressure mode at the sourced
+Ginna 1005 psig no-load anchor; the plant a player produces by heating up could not get there. Two
+consequences nobody had measured:
+
+- **The DUMP SETPOINT box was an orphan on every plant a player heats up.** It is read ONLY in
+  pressure mode (`pwr2_dumpctl.js`). The #608 write-up had already recorded the fact — *"nothing
+  reachable from a cold start selects that mode"* — as an argument for making the heatup's step 6 a
+  confirmation, without asking whether the mode should be reachable at all.
+- **`pwr_cooldown` walks that setpoint down and could not run on a produced Mode 3 plant.**
+
+### 130.3 The change, and why the turbine latch is the discriminator
+
+C-8, the turbine trip relay, is the sourced signal that auto-selects the turbine-trip controller
+*inside* Tavg mode (`pwr2_dumpctl.js`, WTSM 11.2). Keying the operator's AUTO selection on the same
+latch therefore puts the mode selector where the source puts the plant, rather than inventing a
+criterion. On line → `'tavg'`, unchanged: every at-power initial condition lands exactly where it
+did, and PWR2's config carries no `steam_dump` automation channel (`getProtectionConfig().channels`
+is `boron_conc` + `afw_level`), so `engageDefaults` was never a route into this.
+
+`{mode:'pressure'}` and `{mode:'tavg'}` are accepted explicitly as the checklist/test API; `closed`
+→ `'off'` unchanged; `open` and a bare `pct` stay refused by name (#570).
+
+**`control_state.steam_dump_mode` is published, and the reason is HR10.** `steam_dump_auto` is
+`mode !== 'off'` and reads **TRUE in both modes**, so a check written on the boolean would have
+passed on the defect. One resolver (`dumpMode(e)`) feeds both fields — two samplers of one selection
+is how the lamps and the status word come to disagree (#606's shape) — and it reads the COMMANDED
+driver (`dcDrivers.mode`), not the controller's own copy, which is one step behind. The board's STEAM
+DUMP status word reads **PRESS / TAVG** instead of NORMAL. **No control was added**: DESIGN_CRITERIA
+Q4 is answered by there still being one AUTO button, which now selects the mode the plant conditions
+call for.
+
+### 130.4 The checklist, and where the step sits
+
+`pwr_heatup` gains one step, after the letdown-transfer confirmation and before the 2235 dial.
+**Graded on the SELECTION** (`steam_dump_auto`), because the dumps carry 0.4-2.9 % once they are
+holding the anchor and the valve position cannot tell an in-service controller from a shut one. **The
+EFFECT is asserted in the Mode 3 confirmation** — `adv_valve_pct < 1` and `steam_pressure_mpa ~ 7.03
+tol 0.15` — the letdown transfer's own shape (#624 item 25). Either acc alone passes on the wrong
+plant: a shut valve is satisfied by a plant that has not got hot yet, and 7.03 MPa is approached from
+below by any plant on its way up.
+
+**Why AFTER the ride, measured rather than argued.** In pressure mode the controller does nothing
+until the header reaches the setpoint, which happens at the END of the ride, so an earlier press has
+no observable effect for hours. It also costs overshoot: on `pwr2_dumpctl` directly
+(`scratchpad/windup.js`, a 2.0 → 7.6 MPa header ramp over 3 plant-hours), selecting pressure mode at
+275 psig winds `pErrInt` to its **−30** clip and the dumps then do not crack until **7.155 MPa
+(1023 psig)**, against **7.031 MPa (1005 psig)** when the mode is selected at the anchor — 18 psi of
+overshoot, still 17 psi under the ADV. The placement is a preference for an immediately observable
+press, not a safety necessity.
+
+**The replay still transits the ADV, and that is the fixed hold, not the instruction.** Step 11's
+`hold: 40000` (11.1 plant-hours) carries the plant to 288.69 °C before the dump step runs; its
+ACCEPTANCE releases at **283 °C (541.4 °F)**, **10.2 °F below** the 551.6 °F at which the ADV
+opens. A player who follows the checklist selects the dumps before that valve ever lifts. This is
+#608's lesson read the other way round: there a realistic `hold:` MASKED an unsafe acceptance; here
+an over-long `hold:` makes the replay a harder ride than the checklist asks for, and it still ends on
+the anchor.
+
+### 130.5 HR10 — the injection
+
+Shell's mode selection reverted to the unconditional `'tavg'`, nothing else changed, `pwr_heatup`
+replayed: **exactly the two new Mode 3 accs go red** and the other 30 checks stay green.
+
+| check | on the fix | with the shell reverted |
+|---|---|---|
+| step 15 `adv_valve_pct < 1` | **0.00 %** | **8.60 %** — RED |
+| step 15 `steam_pressure_mpa ~ 7.03 tol 0.15` | **7.03 MPa (1005 psig)** | **7.29 MPa (1042 psig)** — RED |
+| step 13 `steam_dump_auto > 0` (the new step's own tick) | 1.00 | **1.00 — still GREEN** |
+
+The last row is the point: **the selection ticks off on the defect too**, because the shell accepted
+the command and the plant went into a mode. Only the effect accs can tell the two plants apart, which
+is the same lesson the letdown transfer taught (#624 item 25) and the reason `steam_dump_mode` is
+published rather than the boolean being trusted.
+
+### 130.6 Prose corrected, because it described the plant that could not reach the mode
+
+Four sites in `pwr_heatup`: the caution that said the dump stays CLOSED "for the whole heatup";
+step 6's "it only reaches the valve once AUTO is selected — on the startup path, not this one"; the
+ride's "on its way to the 1020 psi no-load anchor" (now says which step hands it over); and the
+second pressurization's "about an hour over the last 520 psi", which measures **1714 → 2188 psia in
+21 plant-minutes**.
+
+### 130.7 Gates
+
+`run_pwr2_shell` **158 → 162** — group M, 4 checks and 3 mutations: AUTO always Tavg (the defect),
+AUTO always pressure (the mirror defect — the at-power plant loses the loss-of-load controller C-7
+arms), and the published word reading the controller's one-step-old copy. All three caught, 59/59, no
+blind spots, and the third has its own check reading the control state with **no step in between**,
+the only frame the two samplers disagree in.
+
+`run_checklist_pwr2` **129 → 132** (+1 the new step, +2 the Mode 3 effect accs). `run_pwr2_board`
+80/80 27/27 · `run_pwr2_kernel` 36/36 7/7 · `run_pwr2_roundtrip` 20/20 · `run_pwr2_dumpctl` 22/22
+8/8 · `run_manual_commands` 8/8 · `run_manual_units` 0 failed · `run_style` 8/0 · `run_release` 27/0
+at `Alpha 1.7.2-rc8` · `verify_board_check` 238 · `verify_manual_follow` 225.
+
+**ONE DRIFT, AND IT WAS THE GATE NOBODY EXPECTED: `run_manual_controls` 547 → 551 / 2 failed.**
+`test/manual_ui_map.js`'s `STEP_UI` is indexed by ARRAY POSITION, so a step inserted at `i:12` left
+the row below it pointing at the wrong step — *pill "Steam Dump" != STEP_UI "Pressure SP"* at step
+13, plus one UNMAPPED step at 14. **That two-line shape is the insertion signature**, and the file's
+own header records the same cascade three times before (#255, #624 twice) with the rule: *renumber,
+do not re-derive*. Renumbered 12 → 13, row added, **552/0**. CLAUDE.md's standing trap read
+literally — *a gate that iterates a hand-maintained MAP tests the map* — with the twist that this
+map is ALSO `verify_manual_follow`'s coverage list, so an unmapped step is a step no browser gate
+walks. **Inserting a checklist step obliges `run_manual_controls`**; none of the pwr2 checklist
+gates can see it, and it was not in this issue's gate list.
+
+**`Manuals/` is untouched and three sites are now stale**: chapter 03 §18's `set_steam_dump` row
+(`{mode|pct}`, silent on what AUTO selects), chapter 05's PWR-N01 (no steam-dump step), and any
+chapter prose saying the dump stays shut for the whole heatup. `run_manual_commands` cannot see this
+— it checks action NAMES, not payloads or prose.

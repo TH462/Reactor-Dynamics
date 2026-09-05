@@ -29,6 +29,146 @@ and the user-visible summary in `CHANGELOG.md`. This file points at those and tr
 
 ---
 
+## Session log — 2026-09-05-develop-a (#629 — the heatup's heat sink was the overpressure ADV, because the operator could not reach steam-pressure mode)
+
+**The ask.** #629, from the owner's Mode 5 → Mode 3 heatup: the Pressure SP dialled to 2235 psi at
+the second pressurization and pressure stalling near 1920 psia as the atmospheric dump valve (ADV)
+opened. **Authority for the change is MY CALL, 2026-09-05, not an owner ruling** — it changes what a
+shipped button does, so #629 carries `status-owner-review`. Sourced: WTSM 11.2 (ML11223A294), *"Tavg
+mode at power, steam pressure mode at hot standby / startup / cooldown"*, already quoted verbatim in
+`pwr2_dumpctl.js`'s own header.
+
+**Every number below is from `scratchpad/m629.js`** — full stack through `RD.SimulationService`,
+pwr2, `cold_shutdown`, the heatup checklist's own commands issued as each acceptance ticks, 600×.
+The `develop` and `workbench` trees and both the 0.02 s and the WARP 0.5 s step agree to the psi.
+
+### The filed symptom did not reproduce. The mechanism under it did.
+
+| claim | measurement | verdict |
+|---|---|---|
+| pressure STALLS at ~1920 psia when the ADV opens | ADV opens at **1042 psig** header / Tavg **551.6 °F (288.7 °C)**, modulates **7-9 %**, and primary pressure keeps climbing at **~26 psi/min** straight through 1920 to the **2176 psia** acceptance (T+371 min from the cold boot) | **NOT REPRODUCED** — same with the dial issued 10 min AFTER the ADV opened, and with the replay's fixed holds |
+| "the ADV opens and pressure stalls" is a real shape | ADV forced to 100 % at the second pressurization: the RCS contracts, pressurizer level **25.0 → 14.2 % in 2.5 min** (10.4 % by 9.5 min), the 17 % low-level cut sheds the heaters **158 → 0 kW**, pressure falls **1687 → 1598 psia** and never reaches setpoint while the valve is open | **CONFIRMED** — it is what this plant does whenever the ADV carries more than the pump heat |
+| the plant parks in the no-load band | it parks **4.4 °F (2.4 °C) HOT**, on the ADV | **CONFIRMED as a defect** |
+
+### The defect: AUTO was one mode, and it was the wrong one from cold
+
+`cold_shutdown` boots `dump_mode: 'off'` (`pwr2_engine.js` dcDrivers), and `pwr2_shell.js` mapped
+`set_steam_dump {mode:'auto'}` to `'tavg'` **unconditionally**. In Tavg mode the turbine-trip
+controller opens only above `tavg_noload_c` = **557 °F (291.67 °C)** (`pwr2_dumpctl.js`), which is
+*above* the 1040 psig ADV — so pressing STEAM DUMP AUTO on a heating plant **changed nothing**:
+measured, byte-identical trace, ADV 7.6 %, dumps 0.0 %.
+
+| lineup | Tavg | steam header | ADV | condenser dumps | second pressurization |
+|---|---|---|---|---|---|
+| as shipped | **551.6 °F (288.7 °C)** | **1042 psig** | **7-9 %** | 0.0 % | completes, 2176 psia |
+| pressure mode selected at the Dump SP | **547.2 °F (286.2 °C)** | **1005 psig** | **0.0 %** | 0.4-2.9 % | completes, 2231 psia |
+| `hot_zero_power` preset (boots pressure mode) | 547.2 °F (286.2 °C) | 1005 psig | 0 % | — | — |
+
+**PRODUCED ≠ PRESET, and that is the trap to carry** (#468's lesson again): the preset Mode 3 plant
+sits in pressure mode at the sourced Ginna 1005 psig no-load anchor, and the plant a *player*
+produces by heating up could not get there. Two consequences nobody had measured:
+
+- **The DUMP SETPOINT box was an orphan on every plant a player heats up.** It is read ONLY in
+  pressure mode (`pwr2_dumpctl.js`), and nothing reachable from the board selected that mode. The
+  #608 write-up had already recorded that fact — *"nothing reachable from a cold start selects that
+  mode"* — as an argument for making step 6 a confirmation, without asking whether the mode should
+  be reachable.
+- **`pwr_cooldown` walks the Dump SP down, and could not run on a produced Mode 3 plant** for the
+  same reason.
+
+### The change
+
+`pwr2_shell.js`: `{mode:'auto'}` now selects `'pressure'` when `e.tb.tripped`, `'tavg'` when the
+turbine is on line. **The turbine latch is the discriminator this plant already has** — C-8, the
+trip relay, is the sourced signal that auto-selects the turbine-trip controller *inside* Tavg mode,
+so keying the operator's selection on the same latch puts the selector where the source puts the
+plant. `{mode:'pressure'}` and `{mode:'tavg'}` are accepted explicitly as the checklist/test API;
+`closed` → `'off'` unchanged; `open` and a bare `pct` stay refused by name (#570).
+
+**`control_state.steam_dump_mode` is published beside `steam_dump_auto`**, and the reason is HR10:
+`steam_dump_auto` is `mode !== 'off'` and reads **TRUE in both modes**, so a check written on the
+boolean would have passed on the defect. One resolver (`dumpMode(e)`) feeds both, because two
+samplers of one selection is how the lamps and the status word come to disagree (#606's shape). The
+board's STEAM DUMP word now reads **PRESS / TAVG** instead of NORMAL; **no control was added**, and
+the retired engine publishes no mode and keeps its old word.
+
+`pwr_heatup` gains one step, after the letdown-transfer confirmation and before the 2235 dial.
+**Graded on the SELECTION** (`steam_dump_auto`), because the dumps carry 0.4-2.9 % once they are
+holding the anchor and the valve position cannot tell an in-service controller from a shut one. **The
+EFFECT is asserted in the Mode 3 confirmation** — `adv_valve_pct < 1` and `steam_pressure_mpa ~ 7.03
+tol 0.15` — which is the letdown transfer's own shape (#624 item 25).
+
+**Why the step sits AFTER the ride, and the alternative is not free.** In pressure mode the
+controller does nothing until the header reaches the setpoint, which happens at the *end* of the
+ride, so selecting it earlier is a press whose effect arrives hours later. It also costs overshoot:
+measured on `pwr2_dumpctl` directly (`scratchpad/windup.js`, a 2.0 → 7.6 MPa header ramp over 3
+plant-hours), selecting pressure mode at 275 psig winds `pErrInt` to its **−30** clip and the dumps
+then do not crack until **7.155 MPa (1023 psig)** against **7.031 MPa (1005 psig)** when the mode is
+selected at the anchor — 18 psi of overshoot, still 17 psi under the ADV. So the placement is a
+preference for an immediately observable press, not a safety necessity.
+
+**The replay still transits the ADV, and that is the fixed hold, not the instruction.** Step 11's
+`hold: 40000` (11.1 plant-hours) carries the plant to 288.69 °C, past the ADV, before the dump step
+runs; its *acceptance* releases at **283 °C (541.4 °F)**, which is **10.2 °F below** the 551.6 °F at
+which the ADV opens. A player who follows the checklist selects the dumps before that valve ever
+lifts; the replay's overshoot-and-recover is the harder ride and it ends on the anchor.
+
+### HR10 — the injection
+
+With the shell's mode selection reverted to the unconditional `'tavg'` and nothing else changed, the
+two new Mode 3 accs go RED and the rest of the leg stays green:
+
+| check | on the fix | with the shell reverted |
+|---|---|---|
+| step 15 `adv_valve_pct < 1` | **0.00 %** | **8.60 %** — RED |
+| step 15 `steam_pressure_mpa ~ 7.03 tol 0.15` | **7.03 MPa (1005 psig)** | **7.29 MPa (1042 psig)** — RED |
+| step 13 `steam_dump_auto > 0` | 1.00 | **1.00 — still GREEN**, which is the whole reason the effect accs exist |
+| every other check in the leg (30 of 32) | green | green |
+
+`run_pwr2_shell` group M carries the same claim at the unit layer with three mutations — AUTO always
+Tavg (the defect), AUTO always pressure (the mirror defect: the at-power plant loses the
+loss-of-load controller C-7 arms), and the published word reading the controller's one-step-old copy
+instead of the commanded driver. All three caught, and the third has its own check reading the
+control state with **no step in between**, which is the only frame the two samplers disagree in.
+
+### Gates
+
+`run_pwr2_shell` **162/162, 59/59 mutations** (158 → 162: group M is 4 checks).
+`run_checklist_pwr2` **129 → 132** (+1 the new step's acceptance, +2 the Mode 3 effect accs).
+`run_pwr2_board` 80/80 27/27 · `run_pwr2_kernel` 36/36 7/7 · `run_pwr2_roundtrip` 20/20 ·
+`run_pwr2_dumpctl` 22/22 8/8 · `run_manual_commands` 8/8 · `run_manual_units` 0 failed ·
+`run_style` 8/0 · `run_doc_budget` 4/0 (**headroom 1 word** — CLAUDE.md is at 14,999 of 15,000, so
+nothing was added to it) · `run_release` 27/0 at `Alpha 1.7.2-rc8` ·
+`verify_board_check` 238 · `verify_manual_follow` 225.
+
+**`run_all` came back with ONE drift and it was not in the work order's gate list:
+`run_manual_controls` 547 → 551 checks / 2 failed.** `test/manual_ui_map.js`'s `STEP_UI` is indexed
+by ARRAY POSITION, so inserting a step at `i:12` left the row below it pointing at the wrong step:
+*pill "Steam Dump" != STEP_UI "Pressure SP"* at step 13, plus one UNMAPPED step at 14. **That
+two-line shape is the insertion signature** — the file's own header records the same cascade three
+times before (#255, #624 twice) and says *renumber, do not re-derive*. Renumbered 12 → 13, new row
+added, **552/0**. This is the standing-trap case from CLAUDE.md exactly: *a gate that iterates a
+hand-maintained MAP tests the map* — and here the map is also `verify_manual_follow`'s coverage
+list, so an unmapped step is a step no browser gate walks. **Anyone inserting a checklist step must
+run `run_manual_controls`**; the pwr2 checklist gates cannot see this.
+
+### Out of scope, and still owed
+
+**`Manuals/` was NOT touched** (work order: a second agent does 03 §18 / 05 PWR-N01 / the revision
+row / stamp / pack). Three sites are now stale against the plant: chapter 03 §18's `set_steam_dump`
+row still says `{mode|pct}` with no mention of what AUTO selects, chapter 05's PWR-N01 has no
+steam-dump step, and any chapter prose that says the dump stays shut for the whole heatup.
+`run_manual_commands` cannot see this — it checks action NAMES, not payloads or prose.
+
+### Scratch
+
+`m629.js` (the full-stack heatup harness that produced every number above — `WARP= node m629.js
+<tree> asap 120`; `DUMP_PRESS=1` selects pressure mode at step 12 on the raw engine, `ADV_MAN=100`
+forces the valve open, `ACCEL=600`), `windup.js` (the PI integrator measurement), `probe629.js` (the
+one-shot mode round trip).
+
+---
+
 ## Session log — 2026-09-04-develop-h (#624 item 24 — the level loop was fine; the operator could produce a disturbance no operator can produce)
 
 **The ask.** #619 item 24 *(OWNER: "The CHARGING AUTO logic does a poor job maintaining

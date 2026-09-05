@@ -1122,7 +1122,7 @@
       ],
       cautions: [
         'Heatup rate limit: 100 °F/hr (55.6 °C/hr). Measured on this plant: 87 °F/hr (48.3 °C/hr) with the pressurization running, and up to 113.7 °F/hr (63.2 °C/hr) on pump heat alone. The RHR heat exchanger is the brake.',
-        'A steam dump valve open on pump heat removes heat faster than the pumps add it. The dump stays CLOSED and the turbine stays tripped for the whole heatup.',
+        'A steam dump valve open on pump heat removes heat faster than the pumps add it, so the dump stays CLOSED until the secondary is up at its 1020 psi (7.03 MPa) no-load anchor and needs holding there. The turbine stays tripped for the whole heatup.',
         'Hot Standby is hot AND subcritical. The control bank stays fully inserted and boron stays at the cold-shutdown concentration. Only the shutdown bank moves, in its own step.',
       ],
       steps: [
@@ -1198,7 +1198,7 @@
          * the setpoint, which this step no longer touches and which would check off identically
          * on a dumping plant. */
         { text: 'Confirm the steam dump is shut: CLOSE lit on the STEAM DUMP card, status reading MANUAL. Nothing to press.',
-          why: 'Bottling the secondary sends the pumps\' heat into the plant instead of out through the condenser. The cold lineup ships the dump in hand and shut, so this is a check, not an action. The DUMP SETPOINT box reads the no-load anchor, 1020 psi (7.03 MPa), but it only reaches the valve once AUTO is selected — on the startup path, not this one.',
+          why: 'Bottling the secondary sends the pumps\' heat into the plant instead of out through the condenser. The cold lineup ships the dump in hand and shut, so this is a check, not an action. The DUMP SETPOINT box reads the no-load anchor, 1020 psi (7.03 MPa), but it only reaches the valve once AUTO is selected — a later step in this leg does that, after the ride, when the secondary is finally hot enough to need holding.',
           acc: { p: 'steam_dump_valve_pct', op: '<', v: 1 },
           hl: ['Dump SP', 'Steam Dump'] },
         /* THE LETDOWN TRANSFER (#624 items 14/25, 2026-09-04). The LETDOWN selector had never
@@ -1325,7 +1325,7 @@
          * acceptance line, both of which render — but the numbered instruction, which is what a
          * player reads first, said only "watch Tavg". A step that waits on a number names it. */
         { text: 'Ride the heatup to Hot Standby: Tavg at or above 541.4 °F (283 °C) at 1700 psig. Do not pull rods or dilute.',
-          why: 'Watch Tavg and its rate, the pressurizer level swelling as the water expands, and the reactor staying exactly where you left it. If the rate crowds 100 °F/hr (55.6 °C/hr), raise HX FLOW on the RHR card to bleed heat. Meanwhile the secondary does the thing the final pressurization is waiting for: it bottles up past the 327.7 psi (2.26 MPa) low-steam-pressure SI setpoint on its way to the 1020 psi (7.03 MPa) no-load anchor.',
+          why: 'Watch Tavg and its rate, the pressurizer level swelling as the water expands, and the reactor staying exactly where you left it. If the rate crowds 100 °F/hr (55.6 °C/hr), raise HX FLOW on the RHR card to bleed heat. Meanwhile the secondary does the thing the final pressurization is waiting for: it bottles up past the 327.7 psi (2.26 MPa) low-steam-pressure SI setpoint on its way to the 1020 psi (7.03 MPa) no-load anchor, which the step after next hands to the steam dumps to hold.',
           control: '(observe)', target: 'Tavg at or above 541.4 °F (283 °C), reactor still subcritical',
           wait_hint: true,
           hold: 40000,
@@ -1345,16 +1345,67 @@
             { p: 'letdown_flow_actual', op: '>', v: 0, label: 'Letdown flowing on the orifices' },
           ],
           hl: ['Letdown Orifices (CVCS)', 'Residual Heat Removal (RHR)'] },
+        /* THE HEAT SINK (#629, 2026-09-05). Filed by the owner as "the plant rides onto the
+         * atmospheric dump valve and pressure stalls". The stall did not reproduce on this route
+         * — pressure kept climbing at 26 psi/min straight through 1920 psia to the acceptance —
+         * but the RIDE-ONTO-THE-ADV half is real and measured, and it was UNAVOIDABLE from the
+         * board: `cold_shutdown` boots `dump_mode: 'off'` and the shell mapped AUTO to Tavg mode
+         * unconditionally, whose turbine-trip controller only opens above 557 °F (291.67 °C) —
+         * ABOVE the 1040 psig atmospheric dump valve. So pressing AUTO changed nothing (measured:
+         * byte-identical trace, that valve at 7.6 %, dumps 0.0 %), and the DUMP SETPOINT box was
+         * an orphan on every plant a player heats up. The shell now selects steam-pressure mode
+         * when the turbine is tripped, which is WTSM 11.2's own mode assignment.
+         *
+         * WHY IT SITS HERE and not before the ride: in pressure mode the controller does nothing
+         * until the secondary reaches the 7.03 MPa setpoint, which it does at the END of the ride,
+         * so an earlier press has no observable effect for plant-hours. It also costs overshoot —
+         * measured on pwr2_dumpctl directly over a 2.0 -> 7.6 MPa header ramp, selecting the mode
+         * at 275 psig winds the PI integrator to its -30 clip and the dumps then do not crack
+         * until 7.155 MPa (1023 psig), against 7.031 MPa (1005 psig) when the mode is selected at
+         * the anchor. 18 psi of overshoot, still 17 psi under the atmospheric dump valve, so this
+         * placement is a preference for an immediately observable press, not a safety necessity.
+         *
+         * THE RIDE'S OWN `hold: 40000` STILL TRANSITS THE VALVE in the replay (11.1 plant-hours
+         * carries Tavg to 288.69 °C), but its ACCEPTANCE releases at 283 °C / 541.4 °F — 10.2 °F
+         * BELOW the 551.6 °F at which the valve opens. A player who follows the checklist gets
+         * here first. That is #608's lesson read backwards: there a realistic hold MASKED an
+         * unsafe acceptance; here an over-long one makes the replay the harder ride.
+         *
+         * Graded on the SELECTION (`steam_dump_auto`, control_state), because the dumps carry
+         * 0.4-2.9 % once they are holding the anchor and the valve position cannot tell an
+         * in-service controller from a shut one. The EFFECT is asserted in the Mode 3
+         * confirmation below, which reads the atmospheric dump valve and the header pressure. */
+        { text: 'Press AUTO on the STEAM DUMP card. The condenser dumps take over the heat sink.',
+          why: 'With the turbine tripped, AUTO selects steam-pressure control: the dumps modulate to hold the secondary on the DUMP SETPOINT box beside them, 1020 psi (7.03 MPa), which is this plant\'s no-load anchor (WTSM 11.2 — steam-pressure mode is the heatup, cooldown and hot-standby mode; Tavg mode is the at-power one). Skip it and the heat sink is the atmospheric dump valve instead, relieving to the sky for the rest of the heatup. Measured on this ride: without it the plant parks at 551.6 °F (288.7 °C) and 1042 psig with that valve modulating at 7-9 %; with it, 547.2 °F (286.2 °C) and 1005 psig, the valve shut and the condenser dumps carrying 0.4-2.9 %.',
+          control: 'Steam Dump', target: 'AUTO lit on the STEAM DUMP card, status reading PRESS',
+          cmd: { action: 'set_steam_dump', mode: 'auto' }, hold: 10,
+          acc: { p: 'steam_dump_auto', op: '>', v: 0 },
+          hl: ['Steam Dump', 'Dump SP'] },
         { text: 'Raise the Pressure SP to 2235 psi (15.41 MPa). The secondary is hot, so the P-11 crossing is safe.',
-          why: 'The second half of the staged pressurization. Climbing past the 1972 psi (13.6 MPa) P-11 permissive re-arms the SI signals the cold lineup had blocked — and every one of them now reads clear, because the secondary is hot: steam pressure 1020 psi (7.03 MPa) against a 327.7 psi (2.26 MPa) setpoint. That is why this dial waited for the ride to finish. Full heaters take about an hour over the last 520 psi.',
+          why: 'The second half of the staged pressurization. Climbing past the 1972 psi (13.6 MPa) P-11 permissive re-arms the SI signals the cold lineup had blocked — and every one of them now reads clear, because the secondary is hot: steam pressure 1020 psi (7.03 MPa) against a 327.7 psi (2.26 MPa) setpoint. That is why this dial waited for the ride to finish. Full heaters cover the last stretch fast — measured, 1714 to 2188 psia in 21 plant-minutes.',
           control: 'Pressure SP', target: '2235 psi (15.41 MPa), normal operating pressure',
-          wait_hint: 'The last 520 psi takes about an hour of plant time at full heaters. Run at Fast time.',
+          wait_hint: 'Measured: 1714 to 2188 psia in 21 plant-minutes at full heaters. Run at Fast time.',
           cmd: { action: 'set_pressure_setpoint', mpa: 15.41 }, hold: 5400,
           acc: { p: 'pressure_mpa', op: '>', v: 15.0 },
           hl: ['Pressure SP', 'Primary Pressure'] },
-        obs('Confirm Mode 3, Hot Standby: hot at the no-load band, pressurized, subcritical, control bank never moved.',
-          { p: 'plant_mode', op: '~', v: 3, tol: 0.1 }, null, ['Tavg', 'Primary Pressure'],
-          'Hot Standby is hot and pressurized with the reactor still shut down. The control bank is still on the bottom; this heatup never needed it. The next checklist is the approach to criticality, and it starts with a dilution: you are still at cold-shutdown boron.'),
+        /* THE EFFECT ACCEPTANCE FOR THE STEAM DUMP STEP (#629), same shape as the letdown
+         * transfer's. The dump step's own tick reads the SELECTION; these read the PLANT at the
+         * end of the leg — the atmospheric dump valve SHUT and the header sitting on the anchor,
+         * which together say the condenser is carrying the heat. Either alone passes on the wrong
+         * plant: a shut valve is satisfied by a plant that has not got hot yet, and 7.03 MPa is
+         * approached from below by any plant on its way up. INJECTION (HR10), measured with the
+         * shell's mode selection reverted to the unconditional 'tavg' and nothing else changed:
+         * the valve reads 8.60 % and the header 7.29 MPa (1042 psig), and EXACTLY these two go
+         * red — the other 30 checks in the leg stay green, INCLUDING the dump step's own
+         * `steam_dump_auto` tick, which is the whole reason these two exist. */
+        { text: 'Confirm Mode 3, Hot Standby: hot at the no-load band, pressurized, subcritical, control bank never moved.',
+          why: 'Hot Standby is hot and pressurized with the reactor still shut down. The control bank is still on the bottom; this heatup never needed it. Check the heat sink while you are here: the atmospheric dump valve should read shut, with steam pressure sitting on the 1020 psi (7.03 MPa) anchor the dumps are holding. The next checklist is the approach to criticality, and it starts with a dilution — you are still at cold-shutdown boron.',
+          acc: { p: 'plant_mode', op: '~', v: 3, tol: 0.1 },
+          accs: [
+            { p: 'adv_valve_pct', op: '<', v: 1, label: 'Atmospheric dump valve shut' },
+            { p: 'steam_pressure_mpa', op: '~', v: 7.03, tol: 0.15, label: 'Steam pressure on the no-load anchor' },
+          ],
+          hl: ['Tavg', 'Primary Pressure', 'Steam Dump'] },
         obs('Confirm the reactor stayed shut down: core deeply subcritical, power still in the source range.',
           { p: 'reactivity_pcm', op: '<', v: -300 }, null, ['Source Range'],
           'The shutdown bank is out and the control bank never moved, so the core is held subcritical on boron and the remaining control-bank worth. Source range counts are a steady background, not a climb.'),

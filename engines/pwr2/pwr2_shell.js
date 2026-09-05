@@ -116,6 +116,17 @@
     var sp = root.RD.PWR_CONFIG && root.RD.PWR_CONFIG.instruments;
     return !!(sp && typeof id === 'string' && sp[id]);
   }
+  /* THE STEAM DUMP MODE IN SERVICE (#629). One resolver, two readers: `steam_dump_auto` (the
+   * boolean the lamps have always read) and `steam_dump_mode` (the word the card's status
+   * readout renders). The commanded DRIVER wins — `dcDrivers.mode` is forwarded into the
+   * controller every step, so it is what the plant will act on next; the controller's own
+   * `dc.mode` is the fallback for an engine that has not stepped since a load, and 'tavg' the
+   * module default. Two samplers of one selection is how the lamps and the word would come to
+   * disagree, which is #606's shape. */
+  function dumpMode(e) {
+    if (e.dcDrivers && e.dcDrivers.mode !== undefined) return e.dcDrivers.mode;
+    return e.dc ? e.dc.mode : 'tavg';
+  }
   function eccsStop(e, pump, c) {
     var on = (c.active !== undefined ? c.active : c.running) !== false;
     if (!on && e.pt.si) {
@@ -808,9 +819,39 @@
     },
     /* the dump-mode door existed in the engine all along (dump_mode: tavg/pressure/off) —
      * the refusal predated it (#506.1). 'open' stays refused: the dump is controller-driven
-     * and no manual full-open lever is modeled. */
+     * and no manual full-open lever is modeled.
+     *
+     * ⚠ AUTO IS TWO MODES, AND WHICH ONE IS THE TURBINE'S QUESTION (#629, 2026-09-05). Until
+     * this change `auto` mapped unconditionally to 'tavg', and the consequence was that STEAM
+     * PRESSURE mode was UNREACHABLE from the board on any plant not booted in it. The Mode 5
+     * initial condition boots `dump_mode: 'off'`, so a player heating the plant up had no route
+     * to the mode the source calls the heatup/cooldown/hot-standby mode — and the DUMP SETPOINT
+     * box was an orphan on every plant a player produces. MEASURED on the heatup checklist's own
+     * ride (full stack, 600x): pressing AUTO changed NOTHING (byte-identical trace, ADV 7.6 %,
+     * dumps 0.0 %), because the tavg-mode turbine-trip controller only opens above
+     * `tavg_noload_c` = 557 °F (291.67 °C) and the ATMOSPHERIC DUMP VALVE is already relieving
+     * at 1040 psig / 551.6 °F below it. The plant therefore parked 4.4 °F (2.4 °C) ABOVE the
+     * no-load band with the ADV modulating at 7-9 % as its heat sink, where selecting pressure
+     * mode parks it at 547.2 °F / 1005 psig with the ADV shut and the condenser dumps carrying
+     * 0.4-2.9 %.
+     *
+     * SOURCED, not chosen for convenience: WTSM 11.2 (ML11223A294) — "Tavg mode at power, steam
+     * pressure mode at hot standby / startup / cooldown" (quoted in pwr2_dumpctl.js's header).
+     * The TURBINE is the discriminator this plant already has for "at power" vs "not": C-8 (the
+     * trip relay) is the sourced signal that auto-selects the turbine-trip controller inside
+     * tavg mode, so keying the operator's AUTO selection on the same latch puts the selector
+     * where the source puts the plant. On line -> 'tavg' (unchanged: every at-power initial
+     * condition and `engageDefaults`' `steam_dump` channel land here exactly as before).
+     *
+     * MY CALL, not an owner ruling (#629 work order, 2026-09-05) — declared as such because it
+     * changes what a shipped button does. What it does NOT do is add a control: there is one
+     * AUTO button and it now selects the mode the plant conditions call for, which is the Q4
+     * user-complexity veto answered rather than argued. */
     set_steam_dump:    function (e, c) {
-      if (c.mode === 'auto') EN.command(e, 'dump_mode', 'tavg');
+      if (c.mode === 'auto') EN.command(e, 'dump_mode', e.tb.tripped ? 'pressure' : 'tavg');
+      /* the explicit modes are the API for a checklist, a scenario or a gate that means ONE of
+       * them — the board never sends these, and they exist so a test can say which it asserts */
+      else if (c.mode === 'pressure' || c.mode === 'tavg') EN.command(e, 'dump_mode', c.mode);
       else if (c.mode === 'closed') EN.command(e, 'dump_mode', 'off');
       else if (c.mode === 'open') {
         throw new Error('pwr2_shell: set_steam_dump "open" REFUSED — the dump is controller-driven ' +
@@ -1778,8 +1819,13 @@
       /* real since #506: the dump-mode door is commanded from the board — the DRIVER is the
        * commanded selection (dcDrivers.mode, forwarded each step); the controller default
        * is tavg = auto */
-      steam_dump_auto: (e.dcDrivers.mode !== undefined ? e.dcDrivers.mode
-                        : (e.dc ? e.dc.mode : 'tavg')) !== 'off',
+      steam_dump_auto: dumpMode(e) !== 'off',
+      /* THE MODE ITSELF (#629): 'tavg' | 'pressure' | 'off'. `steam_dump_auto` is a boolean
+       * over three states, and the two it collapses are the two that behave differently —
+       * pressure mode holds the secondary at the DUMP SETPOINT, tavg mode ignores that box
+       * entirely. Published so the card's status word can say WHICH controller is in service;
+       * the retired engine publishes no such field and the board falls back to its old word. */
+      steam_dump_mode: dumpMode(e),
       adv_pct: ts.adv_valve_pct !== undefined ? ts.adv_valve_pct : 0,
       /* from the latched selection (AUTO vs SHUT command both zero demand); a manual %
        * demand clears the latch */

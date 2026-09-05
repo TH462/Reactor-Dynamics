@@ -124,11 +124,18 @@ var STEP_UI = {
      * `control: 'Pressurizer Heaters (PZR)'`; its second card (PZR SPRAY) is a `cmd`-kind accs
      * entry, and a step owns exactly one row here, so the spray is covered by `hl` and the board
      * vocabulary, not by a row of its own. */
+    /* AND "PRESS AUTO ON THE STEAM DUMP CARD" INSERTED AT i:12 (#629, 2026-09-05) — the ONE row
+     * below it moved 12->13 by shifting the number, not by re-reading the array. Fourth insertion
+     * into this table and the fourth time the cascade looked like independent errors: the gate
+     * reported *pill "Steam Dump" != STEP_UI "Pressure SP"* at step 13 plus one unmapped tail
+     * step at 14, which is the INSERTION signature run_all.js's note describes. RENUMBER, DO NOT
+     * RE-DERIVE. */
     { i: 6, view: 'board', control: 'Letdown Orifices (CVCS)' },
     { i: 7, view: 'board', control: 'Pressurizer Heaters (PZR)' },
     { i: 8, view: 'board', control: 'Pressure SP' },
     { i: 9, view: 'board', control: 'Accumulator valve' },
-    { i: 12, view: 'board', control: 'Pressure SP' },
+    { i: 12, view: 'board', control: 'Steam Dump' },
+    { i: 13, view: 'board', control: 'Pressure SP' },
   ],
   'pwr2:pwr_startup': [
     { i: 1, view: 'board', control: 'Boron control' },
