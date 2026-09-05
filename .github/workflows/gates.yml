@@ -89,6 +89,9 @@ env:
 jobs:
   aggregate-gate:
     runs-on: ubuntu-latest
+    # 45 -> 60 (#637, 2026-09-05): the step budget moves 40 -> 55 and the job still has to wrap
+    # it, or the JOB times out first and the failure stops naming the step — which is the exact
+    # signal the header note below says per-step budgets exist to preserve.
     # 80 -> 45 (#513, 2026-08-25): the cheaper mutation replays the note below asked for are
     # built — the aggregate step measured 17m16s on the first green #513 run (43m31s before).
     # 2x the known runner-class spread puts the honest slow end near ~35; the step budget is
@@ -98,7 +101,7 @@ jobs:
     # harnesses; the previous GREEN run took 43m31s, a 90-second margin nobody noticed
     # shrinking). The step budget moves to 70 and the job wraps it at 80. The #496 class;
     # the real long-term fix is cheaper mutation replays, not a bigger cap.
-    timeout-minutes: 45
+    timeout-minutes: 60
 
     steps:
       # ACTION MAJORS ARE ON THE NODE 24 RUNTIME (#389, 2026-08-06). All four were on `@v4`,
@@ -158,17 +161,34 @@ jobs:
           test ! -f package-lock.json || { echo "::error::a package-lock.json appeared in the repo root"; exit 1; }
           git status --porcelain
 
+      # HISTORY, not the current budget — the live numbers are on the step and the job below,
+      # and this block described a 45-minute step under a 55-minute job that had ALREADY been
+      # superseded twice when it was read as current (#637). Kept for its basis:
       # 45 MINUTES (was 20; re-budgeted 2026-08-21 when the backshop merge nearly doubled the
       # suite — 52 -> 86 runners, and the first push timed out at exactly 20:00). The old basis
       # was 7m42s-14m53s measured for ~52 runners with a ~2x runner-class spread; the merged
       # suite measures ~19 min locally at 10-way parallel, so the same 2x slow-end logic gives
-      # ~38 — 45 keeps the step failing on its OWN name before the job's 55 does.
+      # ~38 — the step must always fail on its OWN name before the job's budget does.
       - name: Aggregate gate (all runners)
+        # 40 -> 55 (#637, 2026-09-05): the Alpha 1.7.2 release merge timed out HERE, on both
+        # `develop` and `main`, at exactly 40:12 each — 34 of 106 runners done, no runner red.
+        # The suite did not grow into the cap; ONE runner's variance ate it. `run_pwr2_engine`
+        # is the wall (10-way parallel, so the step costs the slowest runner, not the sum) and
+        # it measured 1388.0s on the green #630 run and 2094.6s on the red release run — a
+        # 1.51x spread on the same commit-era suite, same runner image. Whole-step: 29.1 min
+        # green against 40.2 truncated. 29.1 x 1.51 = 44, so 55 with margin, job wraps at 60.
+        # DO NOT read the two reds as contention: the header note above already measured that
+        # premise and refuted it — each workflow run gets its own hosted runner. They were
+        # concurrent because a release merge always fires twice; they were slow because the
+        # runner class was slow.
+        # THE REAL FIX IS STILL CHEAPER MUTATION REPLAYS, not a bigger cap (#637) — one runner
+        # at 23-35 minutes is the whole budget, and every raise buys the same 90 seconds of
+        # margin nobody notices shrinking (#507 wave 8's words, twice over now).
         # 70 -> 40 (#513, 2026-08-25): measured 17m16s on the first green run after the
         # replay-scoping/split work; 2x the runner-class spread gives ~35 — see the job note
         # 45 -> 70 (#507 wave 8): timed out at 45 on the wave-7 push with every runner green
         # locally — see the job-level note
-        timeout-minutes: 40
+        timeout-minutes: 55
         run: node test/run_all.js
 
       - name: Upload diagnostic reports
