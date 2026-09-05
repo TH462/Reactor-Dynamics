@@ -441,6 +441,48 @@ Corrected, together with the new *Reading a step card* table. **Nothing could ha
 tables and unit pairs. A described BEHAVIOUR is the class none of them covers — the standing
 CLAUDE.md line, with a fresh instance.
 
+### The release shipped mid-session, and I rewrote it (#639)
+
+`Alpha 1.7.2` merged to `main` at **08:50**, taking `a8bbf1b` — this work at the 60 s target —
+with it. I did not notice. The 30 s follow-up then edited the `[Alpha 1.7.2]` section of
+`CHANGELOG.md` in place and edited the manual's **Rev 17** row, Rev 17 having shipped in that
+release, and re-sealed the chapter digests around it.
+
+**Both gates were green the whole time, and neither could have been otherwise:**
+
+| gate | the question it asks | why a rewrite satisfies it |
+|---|---|---|
+| `run_release` | do the three version strings AGREE? | They agree exactly as well after a released section is rewritten. |
+| `run_manual_rev` | are the digests sealed at the NEWEST row? | Re-sealing a RELEASED row satisfies that as completely as a pending one. |
+
+**A consistency check is satisfied by a coherent rewrite.** Neither gate held any record of what
+had shipped, so neither could ask the question that mattered. `test/released_seals.json` is that
+record and `run_released_frozen` is the gate; `tools/seal_released.js` seals at each release,
+wired into `release-to-main` §5b-bis and its checklist.
+
+**⚠ THE OBVIOUS IMPLEMENTATION WOULD HAVE BEEN VACUOUS ON CI, WHICH IS WHY IT IS DIGESTS.**
+`git show v1.7.2:CHANGELOG.md` works perfectly here and finds nothing on CI: `gates.yml` uses
+`actions/checkout@v7` with no `fetch-depth`/`fetch-tags`, so the runner has **one commit and no
+tags**. The gate would report green on every CI run — the silently-vacuous shape this repo has
+documented five times, and the one a brand-new gate has no excuse for. I checked the workflow
+before writing a line of it, rather than after.
+
+**The pending entry and the pending row are deliberately NOT frozen** — a `-rc` version is never
+sealed and `manual_sealed_rev` points below the newest row, so "the pending entry extends until
+the next release" is encoded rather than remembered. **Today is the argument for a stored number
+rather than "all rows but the newest": Rev 17 was the newest row AND already shipped**, so the
+lazy rule would have permitted the exact edit that started this.
+
+**Self-enforcing**, which is the property `run_manual_rev` has and `run_release` does not: a
+release cut without sealing leaves a published version with no digest and fails with *"PUBLISHED
+but never sealed"*. Six injections — the three released-artifact edits redden, the two
+pending-artifact edits do not, and stripping `-rc` without sealing reddens.
+
+**One floor was guessed and the gate caught me**: the not-empty check went in at "17 versions,
+17 rows" from memory and reddened on its own seal file. Measured: **16** published versions (the
+17th `run_release` reports is the pending `-rc`) and **18** rows (Rev 0 through 17). Small, and
+the same reflex as the table above.
+
 **The target is written down TWICE, deliberately.** `WAIT_TARGET_WALL_S` in `ui/app.js` and a
 literal `30` in the gate's own recomputation. That is the PROTECTION_DT shape and it is the right
 call here: a check that imports the constant it is checking asserts only that the constant equals

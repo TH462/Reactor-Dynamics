@@ -74,6 +74,35 @@ not measured**.
   *(OWNER RULING, 2026-09-05: selected "Green — as built" from two options put to him)*. No
   behaviour change — the built colour was the ruled one.
 
+### Added (#639 — a shipped release is history, not a draft)
+
+- **`test/run_released_frozen.js` + `tools/seal_released.js` + `test/released_seals.json`.** The
+  bookkeeping failure recorded below could not be caught by anything: `run_release` asks whether
+  the three version strings *agree* — they agree exactly as well after a released section is
+  rewritten in place — and `run_manual_rev` asks whether the chapter digests are sealed at the
+  *newest* revision row, which re-sealing a **released** row satisfies just as completely. Both
+  are consistency checks, and consistency survives a coherent rewrite. Neither held any record of
+  what had shipped; `released_seals.json` is that record.
+- **It is NOT git-based, and that is the design decision worth keeping.** `git show
+  v1.7.2:CHANGELOG.md` is the obvious implementation and works on any development tree.
+  `.github/workflows/gates.yml` checks out with `actions/checkout@v7` and no `fetch-depth` or
+  `fetch-tags`, so **CI has one commit and no tags** — a git-based gate would find nothing to
+  compare against and report green on every CI run. Digests in a tracked file work offline, on a
+  shallow checkout, and in a worktree that has never fetched a tag.
+- **The pending entry and the pending manual row are deliberately NOT frozen.** A `-rc` version is
+  never sealed, and `manual_sealed_rev` points *below* the newest row — so "the pending entry
+  extends until the next release" is encoded rather than remembered. Today is exactly why that is
+  a stored number and not "every row but the newest": Rev 17 was both the newest row **and**
+  already shipped.
+- **Self-enforcing.** A release cut without sealing leaves a published version with no digest,
+  which fails with *"PUBLISHED but never sealed"*. That is the property `run_manual_rev` has and
+  `run_release` does not, and it is why the sealing step cannot rot. `release-to-main` §5b-bis and
+  its final checklist carry the one command.
+- Six injections: rewriting the released `[Alpha 1.7.2]` section, its `changelog.html` entry, or
+  the released Rev 17 row each redden; extending the pending `-rc` entry or the pending Rev 18 row
+  does not; and stripping `-rc` without sealing reddens. `run_all` BASELINES gains
+  `run_released_frozen.js` at 5 checks.
+
 ### Note on this entry's bookkeeping
 
 **Alpha 1.7.2 was released to `main` while this work was in progress** (PR #636, 08:50), taking
