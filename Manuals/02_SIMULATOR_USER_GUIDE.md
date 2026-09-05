@@ -443,11 +443,13 @@ underneath it:
 | Click to expand | The step's reasoning, cautions and any extra notes. |
 
 The wait line appears on steps that hold three plant-minutes or longer. The suggested rung is
-the lowest one that finishes the wait in about a minute of real time, so most waits stay on the
-full-fidelity **1× to 60×** tier; the long ones — the heatup ride, the cooldown legs, the
-boration — call for **600×** or **3600×**, which are WARP and will be refused while the plant
-is in a transient (§4.1). The plant-time figure is an *upper bound* taken from the procedure's
-own dwell: drive the plant harder and you will get there sooner.
+the lowest one that finishes the wait in about **half a minute** of real time, so three quarters
+of the waits stay on the full-fidelity **1× to 60×** tier; the ones of about forty plant-minutes
+and up — the pressurization, the heatup ride, the cooldown legs, the boration — call for
+**600×** or **3600×**, which are WARP and will be refused while the plant is in a transient
+(§4.1). The plant-time figure is an *upper bound* taken from the procedure's own dwell: drive
+the plant harder and you will get there sooner. The rung is a *request*, not a rate — what your
+machine actually achieves is shown beside the speed buttons.
 
 ---
 

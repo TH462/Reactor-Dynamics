@@ -359,11 +359,41 @@ block, which now hangs below the instruction in a `.ckl-act` wrapper (whose only
 the block butts against the text).
 
 **Item 2 — the rung, and where the number comes from.** `RD.CklSpeedHint(holdS)` returns the
-smallest rung that brings the wait under **60 s of wall clock at that rung's nominal rate**, top
-rung if none does. Measured over the 24 pwr2 steps with `hold >= 180`: **2 → 5×, 8 → 10×, 9 →
-60×, 4 → 600×, 1 → 3600×** — 19 of 24 stay on the bit-identical PLAY tier, and WARP's declared
-fidelity departure (#625) is spent only on the five waits of 65 plant-minutes and up. A WARP
-suggestion says so on the card, because the plant refuses that tier in a transient.
+smallest rung that brings the wait under **30 s of wall clock at that rung's nominal rate**, top
+rung if none does *(OWNER, 2026-09-05: "Change it to 30s")*. Measured over the 24 pwr2 steps with
+`hold >= 180`, sits computed at the rate each rung really delivers (WARP caps at ~931×, #631):
+
+| target | 5× | 10× | 60× | 600× | 3600× | on PLAY | median sit | worst | total sitting |
+|---|---|---|---|---|---|---|---|---|---|
+| **30 s (shipped)** | 0 | 2 | 16 | 5 | 1 | **18/24** | **12 s** | **43 s** | **5.6 min** |
+| 60 s | 2 | 8 | 9 | 4 | 1 | 19/24 | 33 s | 60 s | 12.4 min |
+| 120 s | 10 | 6 | 5 | 3 | 0 | 21/24 | 80 s | 120 s | 28.5 min |
+
+30 s spends ONE more step on WARP than 60 s — the heatup's Pressure SP ramp, 2400 s, 60× → 600×,
+a quiet pressurization — and cuts the chain's total dead time by more than half. The six waits it
+sends to WARP are those of 40 plant-minutes and up. A WARP suggestion says so on the card,
+because the plant refuses that tier in a transient.
+
+### ⚠ I RULED-BRIEFED HIM ON A TABLE OF WHICH I HAD MEASURED ONE ROW
+
+**This is the entry's real lesson and it is about me, not the plant.** I put three targets to the
+owner with a distribution for each. I had measured the 60 s row. **The 30 s and 120 s rows I
+wrote from arithmetic in my head**, and both were wrong: I claimed 30 s moved EIGHT steps onto
+WARP and left 15 of 24 on PLAY — it moves **one** and leaves **18**. He ruled "60 s" on that
+table. Measured afterwards, the cost I had priced 30 s at did not exist, I said so, and he
+re-ruled to 30 s.
+
+**HR12 binds claims about plant dynamics. This was the neighbouring class — a claim about the
+ARTIFACT** (what the shipped procedure pool would do under a rule I was proposing) — and the
+standing CLAUDE.md line already names that class: *a claim about COVERAGE OR ABOUT WHAT IS BUILT
+is an unmeasured claim*. A distribution over 24 authored steps is a two-line script. There was no
+reason to assert it, and asserting it inside a **decision brief** is worse than asserting it in
+prose, because the owner cannot re-derive it and the wrongness is spent immediately.
+
+**The tell to look for:** a comparison table in which one row is the thing you built and the
+others are the alternatives. The built row is measured because you measured it while building;
+the alternatives are the ones you are tempted to fill in by reasoning. Those are exactly the rows
+the decision turns on.
 
 **THE LADDER IS READ OFF THE DOM, NOT LISTED A THIRD TIME.** The six rungs already exist twice —
 the buttons in `shell.html` and `SPEED_KEYS` in `app.js`, the latter a deliberate literal so a
@@ -410,6 +440,11 @@ Corrected, together with the new *Reading a step card* table. **Nothing could ha
 `run_manual_setpoints`, `run_manual_commands` and `run_manual_units` read numbers, command
 tables and unit pairs. A described BEHAVIOUR is the class none of them covers — the standing
 CLAUDE.md line, with a fresh instance.
+
+**The target is written down TWICE, deliberately.** `WAIT_TARGET_WALL_S` in `ui/app.js` and a
+literal `30` in the gate's own recomputation. That is the PROTECTION_DT shape and it is the right
+call here: a check that imports the constant it is checking asserts only that the constant equals
+itself. Moving the target is a two-file change on purpose, and the gate is the second file.
 
 **Gates.** `verify_flags_ui` 47/47, `run_manual_rev` 15/0, `run_manual_units` 0 failed,
 `run_all` at baseline. Manuals stamped + packed under the pending Rev 17 row, item **(y)**.
