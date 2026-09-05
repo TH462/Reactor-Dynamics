@@ -237,9 +237,13 @@ function pinChannel(ch) {
      * copy in the test would only prove the test and the code share an author's memory:
      *   1. every suggestion is one of the `#speed [data-speed]` buttons, so the card can never
      *      name a speed the board does not offer;
-     *   2. it is the SMALLEST rung that brings the wait under 60 s of wall clock at nominal
-     *      rate, recomputed here from the ladder — which pins the rule, not one worked value,
-     *      and keeps WARP off the waits that PLAY can carry.
+     *   2. it is the SMALLEST rung that brings the wait under 30 s of wall clock at nominal
+     *      rate *(OWNER, 2026-09-05: "Change it to 30s")*, recomputed here from the ladder —
+     *      which pins the rule, not one worked value, and keeps WARP off the waits that PLAY
+     *      can carry. The 30 is deliberately WRITTEN OUT here rather than read from app.js:
+     *      the check has to be able to disagree with the code, and a test that imports the
+     *      constant it is checking asserts only that the constant equals itself. Moving the
+     *      target is therefore a two-file change, on purpose — the second file is this one.
      *
      * Driven over EVERY pool in RD.MANUAL_PROCEDURES rather than the running plant's alone.
      * This build boots the retired engine (the `.ckl-use` check above found that out the hard
@@ -266,7 +270,7 @@ function pinChannel(ch) {
             out.n++; seen++;
             var got = RD.CklSpeedHint(h);
             var want = lad[lad.length - 1];
-            for (var k = 0; k < lad.length; k++) if (h / lad[k].speed <= 60) { want = lad[k]; break; }
+            for (var k = 0; k < lad.length; k++) if (h / lad[k].speed <= 30) { want = lad[k]; break; }
             if (!out.bad && (!got || got.speed !== want.speed || got.warp !== want.warp)) {
               out.bad = pid + ' ' + pool[p].id + ' step ' + (s + 1) + ' (' + h + ' s): wanted ' +
                         want.speed + 'x, got ' + (got ? got.speed + 'x' : 'nothing');
@@ -277,7 +281,7 @@ function pinChannel(ch) {
       });
       return out;
     });
-    ck('dev: every long wait suggests the smallest ladder rung that clears it in a minute (#628)',
+    ck('dev: every long wait suggests the smallest ladder rung that clears it in 30 s (#628)',
       hint.rungs >= 2 && hint.n >= 24 && hint.bad === null &&
       hint.pools.some(function (p) { return /^pwr2:[1-9]/.test(p); }),
       hint.bad || (hint.n + ' waiting steps [' + hint.pools.join(' ') + '], ' + hint.rungs + ' rungs'));

@@ -23,4 +23,4 @@
  * itself from this string, so rebuild it AFTER changing this, never before (#258).
  */
 
-window.RD_RELEASE = "Alpha 1.7.2";
+window.RD_RELEASE = "Alpha 1.7.3";

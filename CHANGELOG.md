@@ -30,6 +30,173 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
 
 ## [Unreleased]
 
+## [Alpha 1.7.3] — 2026-09-05
+
+### Fixed (#630 — the ECCS card's MODE caption and its word were authored on the SAME line)
+
+*(OWNER, 2026-09-05: "ECCS STANDBY text sits on top of MODE text. - Shift the elements in this
+card up so that the mode indication can sit below MODE.")*
+
+`ims3w5t6q2u` (the MODE caption) and `ims3w61jjbi` (the word) were both authored at top 755 —
+side by side, not stacked like the FLOW and DISCG pairs above them. That works only while the
+word is short, and it was short for as long as the RETIRED engine was the plant: its ECCS
+vocabulary is RHR / HPI / LPI / off. **PWR2 publishes `standby | armed | hhsi | lhsi | both |
+rhr`** (`pwr2_true_state.js`:412–420) and **`standby` is its quiescent word**, so the shipped
+plant overprints in its *normal* state.
+
+MEASURED headless at 1400×900, authored units — the caption occupies x 740..782.3, and the
+word is `rAnchor` with its right edge at 810, so its left edge is 810 − width:
+
+| word | width | left edge | vs the caption's 782.3 |
+|---|---|---|---|
+| `RHR` / `OFF` | 25.3 | 784.8 | clears by 2.5 px |
+| `BOTH`/`HHSI`/`LHSI` | 32.9 | 777.1 | **overlaps 5.2 px** |
+| `ARMED` | 40.5 | 769.5 | **overlaps 12.8 px** |
+| `STANDBY` | 55.7 | 754.3 | **overlaps 28.0 px** |
+
+The word cannot share the line at any authored x: the card is 90 px wide (735..825) and
+caption-end 782.3 + STANDBY 55.7 = 838. So MODE becomes a stacked pair like its two neighbours
+and the three rows come up to pay for the extra line — uniform 38 px group pitch, 15 px caption
+→ word, the word ending at 782 against the card's 785. Patched in `DOC_PATCHES`, not in
+`pwr_board_data.js`, which is GENERATED.
+
+`board_check` +3 (238 → 241 checks), all injection-verified. Two things about them:
+
+- **The checks PLANT the widest word themselves.** This harness drives the retired engine, so a
+  check reading whatever the plant publishes would have passed through the whole defect.
+- **The claim is the DROP, calibrated against the FLOW pair beside it — not "the boxes do not
+  touch".** A text tile's box carries leading, so *every* caption/value pair on this card
+  overlaps by ~4 px of it and renders clean; a no-overlap test reds on the FIXED layout too
+  (measured — that was the first cut of the check).
+
+### Changed (#637 — the CI gate is sharded, and the facade gate is three runners) — not a simulator change; no `changelog.html` entry, no rc bump
+
+*(OWNER RULING, 2026-09-05: "Do 1. Plan the fix then have opus agents perform the work." — after
+the measurement below refuted the split-first plan he had ruled "A" on hours earlier; the split is
+kept as the second half.)*
+
+**The diagnosis that replaced the first one.** The Alpha 1.7.2 release merge timed out at exactly
+40:12 on both `develop` and `main` with 34 of 106 runners done and none red. The first reading was
+"one runner's variance", the second was "two concurrent runs" — `gates.yml`'s own header had already
+measured and refuted the second. The third is arithmetic from the green #630 run's per-runner times:
+**106 runners = 5189 s of CPU; CI's 4-core runner gives `run_all` 3 lanes; 5189 / 3 = 28.8 min
+against an observed 29.1.** Throughput-bound to 1 %. On CI the wall is TOTAL CPU ÷ LANES, which is
+why three cap raises (45 → 70 → 40 → 55) each bought the same shrinking margin, and why splitting one
+runner — the plan ruled first — would have moved nothing there. The same suite ran 29.1, 38.4 and
+40.2 (cut off) minutes on three consecutive pushes of near-identical code: a 1.32–1.51× runner-class
+spread on top of a cap with ~2 min of headroom.
+
+**Phase S — the workflow is a 3-way matrix.** Each matrix job gets its own 4-core runner and the
+repo is public, so three shards are ~9 lanes for no money. `run_all --shard=i/N` partitions the
+DISCOVERED runner list (longest-processing-time greedy over the `secs` hint, 1 s floor, deterministic,
+disjoint-and-total self-check that refuses to run with exit 2); the no-baseline guard still evaluates
+over the FULL discovered set on every shard — proven by injection with a fake runner. **The trap the
+whole design bends around: `main`'s ruleset (id 20067220) requires a status check named exactly
+`aggregate-gate`, and a matrix job reports as `aggregate-gate (1)`…** — so the shards run as
+`gate-shard` and a fan-in job with that exact id (`needs`, `if: always()`, fails unless the shard
+result is `success`) reports the verdict. `test/run_ci_shards.js` (new, static, 34 checks) asserts
+all of it — matrix/`--shard=…/N` agreement, the fan-in's id/`needs`/`if`, per-shard artifact names
+(v4+ rejects duplicates), and the partition's exhaustiveness by driving `run_all --list` for real.
+Every check was reddened by injection.
+
+**Phase E — `run_pwr2_engine` is three runners** (325 / 330 / 835 s solo), on the `run_campaign`
+A/B/C precedent (#513). MEASURED per group with `MUTTIME=1`: the whole file is **1551 s, 1312 s of it
+REPLAYS (85 %)**, and **group I — the failure levers, 9 mutations × 85.4 s — is 863 s, 56 % of the
+runner.** Nothing balances that, so it is part C alone, where its cost stays visible in a baseline.
+`grp()` is set membership; `GROUPS` is derived from the file's own source so a new block lands in
+part A and moves its count; a mutation whose `grp` no part owns fails the run as a blind spot. HR10:
+the union of check names across the three parts equals the unsplit file's, 156 = 156 name for name;
+a hand-reverted anchor in `pwr2_engine.js` reddens part C (3 of 16) and leaves A and B green.
+**The ~700 s per-part target is UNMET at 830 s and cannot be met by re-partitioning** — it needs
+group I subdivided, which is coverage scoping, not scheduling, and a separate decision.
+
+Budgets: shard step 30 min (part C lands at ~10–15 min on this runner class; the shard wall is that
+tail), job 35. **MEASURED on the push itself (run 33987216824): wall 15.6 min against 29.1 / 38.4 /
+40.2 unsharded**, shards 14.5 / 15.1 / 15.1 — shard 1 tail-bound on `run_checklist_pwr2` (870 s),
+shard 2 tail-bound on `run_pwr2_engine_c` (905 s), shard 3 throughput-bound. Three causes at one
+floor: the next gain needs a 4th shard AND both ~900 s runners subdivided; any one alone buys nothing.
+### Changed (#628 follow-up — the checklist's wait target is 30 s, not 60)
+
+*(OWNER, 2026-09-05: "Change it to 30s")* — superseding his own "60 s" ruling of the same day,
+which shipped in **Alpha 1.7.2** a few hours earlier and which **I had briefed on numbers I had
+not measured**.
+
+- **`WAIT_TARGET_WALL_S` 60 → 30.** The suggested speed rung is now the smallest that finishes
+  the wait in about half a minute of real time. Measured over the 24 pwr2 steps that qualify,
+  sits computed at the rate each rung really delivers (WARP caps at ~931× here, #631):
+
+  | target | 5× | 10× | 60× | 600× | 3600× | on PLAY | median sit | worst | total sitting |
+  |---|---|---|---|---|---|---|---|---|---|
+  | **30 s (now)** | 0 | 2 | 16 | 5 | 1 | **18/24** | **12 s** | **43 s** | **5.6 min** |
+  | 60 s (1.7.2) | 2 | 8 | 9 | 4 | 1 | 19/24 | 33 s | 60 s | 12.4 min |
+  | 120 s | 10 | 6 | 5 | 3 | 0 | 21/24 | 80 s | 120 s | 28.5 min |
+
+  30 s spends **one** more step on WARP's declared fidelity departure (#625) than 60 s — the
+  heatup's Pressure SP ramp, 2400 s, 60× → 600×, a quiet pressurization — and cuts the chain's
+  total dead time by more than half. The six waits it sends to WARP are those of about 40
+  plant-minutes and up.
+- **⚠ THE FIRST RULING WAS TAKEN ON A TABLE OF WHICH ONE ROW HAD BEEN MEASURED.** Three targets
+  went to the owner with a distribution for each; only the 60 s row — the one already built —
+  was measured, and the other two were written from arithmetic. Both were wrong, in the
+  direction that favoured what was already built: the claim was that 30 s moved EIGHT steps onto
+  WARP and left 15 of 24 on PLAY; it moves **one** and leaves **18**. He ruled 60 s on that
+  table, it was measured afterwards, and he re-ruled. HR12 binds plant dynamics; this is the
+  neighbouring class CLAUDE.md already names — *a claim about coverage or about what is built is
+  an unmeasured claim* — and asserting it inside a **decision brief** is worse than in prose,
+  because the reader cannot re-derive it and the wrongness is spent immediately. **The tell:** a
+  comparison table where one row is the thing you built and the rest are the alternatives.
+- **The target is written down TWICE, on purpose.** `WAIT_TARGET_WALL_S` in `ui/app.js` and a
+  literal `30` in the gate's own recomputation. That is the `PROTECTION_DT` shape and it is the
+  right call here: a check that imports the constant it is checking asserts only that the
+  constant equals itself. Injection-proven — code back at 60 s with the gate at 30 reddens it
+  (`pwr_heatup step 3 (240 s): wanted 10x, got 5x`).
+- `Manuals/02` §8.3 re-states the rule (half a minute; WARP from about 40 plant-minutes up).
+  **Manual set Rev 18** — Rev 17 shipped with 1.7.2, so this opens a new row rather than
+  extending it.
+- `ui/perf.js` records the #631 verdict-colour ruling in the code that implements it
+  *(OWNER RULING, 2026-09-05: selected "Green — as built" from two options put to him)*. No
+  behaviour change — the built colour was the ruled one.
+
+### Added (#639 — a shipped release is history, not a draft)
+
+- **`test/run_released_frozen.js` + `tools/seal_released.js` + `test/released_seals.json`.** The
+  bookkeeping failure recorded below could not be caught by anything: `run_release` asks whether
+  the three version strings *agree* — they agree exactly as well after a released section is
+  rewritten in place — and `run_manual_rev` asks whether the chapter digests are sealed at the
+  *newest* revision row, which re-sealing a **released** row satisfies just as completely. Both
+  are consistency checks, and consistency survives a coherent rewrite. Neither held any record of
+  what had shipped; `released_seals.json` is that record.
+- **It is NOT git-based, and that is the design decision worth keeping.** `git show
+  v1.7.2:CHANGELOG.md` is the obvious implementation and works on any development tree.
+  `.github/workflows/gates.yml` checks out with `actions/checkout@v7` and no `fetch-depth` or
+  `fetch-tags`, so **CI has one commit and no tags** — a git-based gate would find nothing to
+  compare against and report green on every CI run. Digests in a tracked file work offline, on a
+  shallow checkout, and in a worktree that has never fetched a tag.
+- **The pending entry and the pending manual row are deliberately NOT frozen.** A `-rc` version is
+  never sealed, and `manual_sealed_rev` points *below* the newest row — so "the pending entry
+  extends until the next release" is encoded rather than remembered. Today is exactly why that is
+  a stored number and not "every row but the newest": Rev 17 was both the newest row **and**
+  already shipped.
+- **Self-enforcing.** A release cut without sealing leaves a published version with no digest,
+  which fails with *"PUBLISHED but never sealed"*. That is the property `run_manual_rev` has and
+  `run_release` does not, and it is why the sealing step cannot rot. `release-to-main` §5b-bis and
+  its final checklist carry the one command.
+- Six injections: rewriting the released `[Alpha 1.7.2]` section, its `changelog.html` entry, or
+  the released Rev 17 row each redden; extending the pending `-rc` entry or the pending Rev 18 row
+  does not; and stripping `-rc` without sealing reddens. `run_all` BASELINES gains
+  `run_released_frozen.js` at 5 checks.
+
+### Note on this entry's bookkeeping
+
+**Alpha 1.7.2 was released to `main` while this work was in progress** (PR #636, 08:50), taking
+`a8bbf1b` — #628 at 60 s — with it. The first draft of this change edited the `[Alpha 1.7.2]`
+section and the pending Rev 17 manual row in place, which would have rewritten the notes and the
+revision history of a release that had already shipped. **Neither `run_release` nor
+`run_manual_rev` can see that**: the first checks that the three version strings agree, the
+second that the digests are sealed at the newest row — and both were satisfied by editing a
+released artifact and re-sealing it. Corrected here by restoring both to their released text and
+opening this entry plus Rev 18.
+
 ## [Alpha 1.7.2] — 2026-09-05
 
 ### Fixed (#629 — the heatup's heat sink was the overpressure ADV, because steam-pressure dump mode was unreachable from a cold start)

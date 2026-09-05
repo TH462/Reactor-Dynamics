@@ -1,7 +1,9 @@
 /* mut_flags.js — a way to SKIP the mutation replay while you are still fixing a check.
  *
  * WHY THIS EXISTS. The pwr2 runners re-run their whole suite once per mutation, so
- * `run_pwr2_engine` is 75 replays and costs ~420 s; `run_pwr2_shell` is 50 and costs ~360 s.
+ * `run_pwr2_engine` is 86 replays and costs ~1551 s unsplit — 1312 s of it the replays — which is
+ * why #637 split it into three parts (325 / 330 / 835 s; the header said "75 replays, ~420 s"
+ * for a file that had grown past both numbers); `run_pwr2_shell` is 50 and costs ~360 s.
  * That cost is what buys the "this check cannot fail" detection, and it has earned it — three
  * hollow checks were caught by it in one session (#602 phase 1). But the runners took NO
  * arguments at all, so iterating on a single assertion meant paying for every replay. Measured
@@ -98,4 +100,15 @@ function select(list) {
 /* Is any filter in force? For a runner that wants to say so in its own tally line. */
 function partial() { return NO_MUT || !!ONLY || !!GRP; }
 
-module.exports = { select: select, partial: partial };
+/* The --grp= tag, for a runner that is PARTITIONED by group (#637, run_pwr2_engine's parts).
+ * There, filtering the mutation list is not enough on its own: a part that does not own the
+ * group would replay nothing at all, so `--grp=X` has to scope the part as well. Read, never
+ * written — the filter's own semantics stay in `select`. */
+function grpTag() { return GRP; }
+
+/* The --mut= substring, for the same reason: a PARTITIONED runner has to widen its own scope
+ * to the whole file when you name a mutation, or `--mut=<something in another part>` replays
+ * nothing and says so only in an arithmetic line nobody reads. */
+function mutTag() { return ONLY; }
+
+module.exports = { select: select, partial: partial, grpTag: grpTag, mutTag: mutTag };

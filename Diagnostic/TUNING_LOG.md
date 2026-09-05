@@ -29,6 +29,168 @@ and the user-visible summary in `CHANGELOG.md`. This file points at those and tr
 
 ---
 
+## Session log — 2026-09-05-develop-c (#637 — the CI gate was throughput-bound, not tail-bound, and two of my three diagnoses were wrong before the arithmetic)
+
+**The ask.** The Alpha 1.7.2 release merge ran red on `develop` AND `main`: the aggregate-gate step
+timed out at **40:12** in both, 34 of 106 runners done, none red. A release merged behind a gate
+that measured nothing. Owner rulings, in order: "A" (split `run_pwr2_engine`), then after the
+measurement below, "Do 1. Plan the fix then have opus agents perform the work." (shard CI).
+
+### Three diagnoses, two wrong — record the order, because each was plausible
+
+1. **"One runner's variance."** True as far as it went: `run_pwr2_engine` measured 1388 s on the
+   green #630 run and 2094.6 s on the red one, a 1.51× spread. I raised the cap 40 → 55 and
+   recommended splitting the runner (#513 precedent). *Wrong as a fix* — see 3.
+2. **"Two concurrent runs contended."** They were concurrent (a release merge fires the workflow
+   twice, 85 s apart). *Refuted before I wrote it down* — by `gates.yml`'s own header, which had
+   already measured two fully-overlapping runs at 14m53s and 12m36s: each run gets its own hosted
+   runner. The file stopped me; nothing else would have.
+3. **The arithmetic.** From the green run's per-runner timings: **106 runners = 5189 s of CPU.
+   `ubuntu-latest` has 4 cores, so `run_all` runs `min(10, cores−1)` = 3 lanes. 5189 / 3 = 28.8 min;
+   observed 29.1.** The CI gate is **throughput-bound to 1 %** — the wall is TOTAL CPU ÷ LANES, not
+   the longest runner. Splitting a runner re-partitions work that still flows through three lanes.
+   Locally (10 lanes on 12 cores) the longest runner IS the wall, which is why diagnosis 1 looked
+   right from this machine. **Measure the pool width before reasoning about a wall.**
+
+Three consecutive pushes of near-identical code then ran **29.1 / 38.4 / 40.2 (cut off) min**: the
+runner-class spread alone is 1.32–1.51×, on a cap with ~2 min of headroom. Every cap raise in the
+file's history (45 → 70 → 40 → 55) bought that same margin back and waited to lose it.
+
+### The fix has two halves because plentiful lanes make the longest runner the floor again
+
+    shards only (3 × 3 lanes):   wall = max(5189/9 = 577 s, run_pwr2_engine 1388..2094 s) = 23..35 min
+    shards + engine split:        wall ≈ max(577 s, part C ~600..900 s on CI)             ≈ 10..15 min
+
+**Phase S (Agent, Opus): `run_all --shard=i/N` + `gates.yml` matrix + `run_ci_shards.js`.**
+The partition is DERIVED from discovery (longest-processing-time greedy over the `secs` hint, 1 s
+floor, deterministic, disjoint/total self-check → exit 2), and the no-baseline guard evaluates over
+the FULL discovered set on every shard — injection: a fake `run_zzz_fake.js` reddened `--shard=2/3`.
+**The trap:** `main`'s ruleset (id 20067220) requires a status check whose context is exactly
+`aggregate-gate`; a matrix job reports as `aggregate-gate (1)`, so the required check would never
+report and every release PR would be blocked with three green checks on it. Shards run as
+`gate-shard`; a fan-in job with that exact id reports. `run_ci_shards.js` (static, 34 checks)
+asserts the matrix/flag agreement, the fan-in's id/`needs`/`if: always()`, per-shard artifact names,
+and exhaustiveness by driving `run_all --list` for real. All 34 reddened by injection. The agent's
+own injection harness had a bug (per-edit backups → a two-edit case restored the wrong file); it
+caught it, repaired, and re-ran from a clean tree with a `diff` — recorded because it is exactly the
+"a check written beside its fix isn't green until you've made it red" rule applied to the harness.
+
+**Phase E (Agent, Opus): `run_pwr2_engine` → three runners, on the `run_campaign` A/B/C precedent.**
+Measured per group (`--groups=`, `MUTTIME=1`):
+
+| | |
+|---|---|
+| whole file | **1551 s**, of which replays **1312 s (85 %)** |
+| group I (failure levers) | **863 s = 56 %** — 9 mutations × 85.4 s, each re-riding the whole group |
+| next: E 178 · K 152 · D 104 · F 52 | everything else ≤ 36 s |
+| parts | A (A E F G L M N O P) **325 s** · B (B C D H K Q R) **330 s** · C (I) **835 s** |
+
+Reconciliation: 218.9 s clean + 1312.4 s replays = 1531 s vs 1550.9 s summed per group, 1.3 % apart.
+The ~700 s per-part target is **UNMET at 830 s and cannot be met by re-partitioning** — group I is
+one block. Subdividing it is coverage scoping, a separate decision. HR10: check-name union across
+parts = unsplit file, 156 = 156; a hand-reverted anchor reddens part C (3/16), A and B stay green;
+four new guards (unowned mutation, unknown letter, letter in two parts, missing `grp` tag) each
+reddened. **The old single BASELINES entry carried `secs: 420` against a measured 1551 — 3.7× low**,
+which is part of why the tail was invisible to the scheduler's longest-first sort.
+
+### Found, not fixed (in #637's follow-up list)
+
+- **Group E's letter does double duty**: the AFW-starts block and the appended #590 steady-state
+  block both gate on `grp('E')`, so seven AFW mutations each also pay the steady-state block's two
+  35-minute rides — **21.9 s per replay against ~2 s, ≈ 140 s of the 1551 buying nothing** — while
+  the block's own comment says no mutation targets it. A letter of its own fixes cost and comment.
+- **Group I** is the remaining lever on the CI tail, worth ~400 s.
+- `run_all`'s `--fast` footer hard-codes two skipped runner names while three carry `slow: true`.
+- 29 of 109 baselines carry no `secs` hint (hints total 4831 s vs 5189 s measured), so the shard
+  balance is partly blind; `--record` emitting `secs` would keep it current.
+
+### Gates
+
+`run_ci_shards` NEW **34checks 0failed** · `run_pwr2_engine` 156 → **79** / `_b` **61** / `_c` **16**
+(156 total, unchanged) · full local `run_all` 109 runners at baseline.
+
+### The measurement (run 33987216824, commit `6aa5d08`, 2026-09-05)
+
+**Wall 15.6 min (19:28:37 → 19:44:14) against 29.1 / 38.4 / 40.2 unsharded — −46 % to −61 %.**
+Gate steps 14.5 / 15.1 / 15.1 min; the fan-in `aggregate-gate` reported green 3 s after the last shard.
+
+| shard | wall | what set it |
+|---|---|---|
+| 1 (35 runners) | 14.5 min | **tail**: `run_checklist_pwr2` 869.6 s, finished last [35/35] |
+| 2 (37 runners) | 15.1 min | **tail**: `run_pwr2_engine_c` 905.1 s, finished last [37/37] — exactly the predicted 600–900 s |
+| 3 (37 runners) | 15.1 min | **throughput**: heaviest runner `run_pwr2_shell` 603.5 s finished 3rd; the lanes stayed full |
+
+**The floor is now ~15 min from three different causes at once** — two tails and one throughput
+— which is as balanced as a 3-shard partition gets, and it changes the follow-up arithmetic: cutting
+group I alone (follow-up 1) shortens shard 2 and leaves the wall at 14.5–15.1. The next real step is a
+**4th shard plus subdividing the two ~900 s runners together**; any one of the three alone buys ~nothing
+on the wall. The step budget (30 min) is 2.0× the observed worst shard on this runner class.
+
+---
+
+## Session log — 2026-09-05-develop-b (#630 — the ECCS card's MODE word was authored on the caption's own line, and the retired plant's vocabulary hid it)
+
+**The ask.** #630, from the owner: *"ECCS STANDBY text sits on top of MODE text. - Shift the elements
+in this card up so that the mode indication can sit below MODE."* Reproduced first, then measured.
+
+**The mechanism is the standing trap, not a layout slip.** `ims3w5t6q2u` (the caption) and
+`ims3w61jjbi` (the word) are both authored `top: 755` — side by side, while FLOW and DISCG above
+them are stacked (label T, value T+15). Side by side is only viable while the word is short, and
+it was short for as long as the retired engine was the plant: its `eccs_mode` vocabulary is
+RHR / HPI / LPI / off. **PWR2 publishes `standby | armed | hhsi | lhsi | both | rhr`**
+(`engines/pwr2/pwr2_true_state.js`:412–420) and `standby` is the QUIESCENT word — so the shipped
+plant overprints in its *normal* state. Same shape as #557/#556/#561: the board calibrated to the
+engine that is no longer running.
+
+**Measured** (headless chromium 1400×900, `ui/test_panel/board_check.html`, authored units). The
+caption occupies x 740..782.3; the word is `rAnchor` with its right edge pinned at 810.
+
+| word | width | left edge | vs 782.3 |
+|---|---|---|---|
+| `RHR` / `OFF` | 25.3 | 784.8 | clears 2.5 px |
+| `BOTH` / `HHSI` / `LHSI` | 32.9 | 777.1 | overlaps 5.2 px |
+| `ARMED` | 40.5 | 769.5 | overlaps 12.8 px |
+| `STANDBY` | 55.7 | 754.3 | **overlaps 28.0 px** |
+
+The word cannot share the line at any x: the card is 90 wide (735..825) and 782.3 + 55.7 = 838.
+So the row stacks and the three rows come up to pay for the line — `DOC_PATCHES` (never
+`pwr_board_data.js`, which is generated): FLOW 675→672 / 690→687, DISCG 715→710 / 730→725, MODE
+755→748 with its word at 763. Uniform 38 px group pitch, 15 px caption→word, word bottom 782
+against the card's 785. **Screenshotted before and after at devicePixelRatio 4** — the item-vs-item
+scan cannot tell ink from line box, which is the next paragraph.
+
+### The first cut of the check reddened on the FIXED layout
+
+`board_check` +3 (238 → 241). Two traps paid for, both worth carrying:
+
+- **A no-overlap test is the wrong assertion on this card.** A text tile's box carries leading, so
+  *every* caption/value pair here overlaps by ~4 px of it and renders clean — measured: the fixed
+  MODE pair is caption 748..767 against word 763..782, and the first check called that a FAIL. The
+  claim that survives is the **drop**, calibrated against the FLOW pair beside it (`val.t - lab.t`
+  ≥ FLOW's, and > 10), which reads 0.0 px on the defect and 15.0 px fixed.
+- **The check has to PLANT the widest word itself.** This harness drives the retired engine, whose
+  vocabulary never produces a word long enough to collide — a check reading whatever the plant
+  published would have passed through the entire defect. It sets `STANDBY`, measures, restores.
+
+All three injection-verified: restore `top: 755` → drop 0.0, red; move the word onto the DISCG
+value → 2 red; push it past the card bottom → containment red.
+
+### A measured near-miss, NOT changed
+
+The same doc-level scan (text tile and value tile within 2 px of the same `top`) finds exactly one
+other pair: the PORV caption `imsgurhunn9` and its status word `ims2jf7fv7m`. Its vocabulary is
+open/closed only, and **CLOSED clears the caption by 0.28 px** (caption ends 894.97, word starts
+895.25). It is not broken today and is out of #630's scope, but the margin is a rounding error —
+any letter-spacing or font change collides. Reported on the issue; no code change.
+
+### Gates
+
+`verify_board_check` 238 → **241checks**, `run_release` 27 → **28checks** (one check per published
+entry — the Alpha 1.7.3-rc1 entry adds it, not a new assertion). `run_pwr2_board` 80/80,
+`verify_e2e_ui`, `verify_manual_follow`, `run_doc_budget` at baseline; full `run_all` green.
+
+---
+
 ## Session log — 2026-09-05-develop-a (#629 — the heatup's heat sink was the overpressure ADV, because the operator could not reach steam-pressure mode)
 
 **The ask.** #629, from the owner's Mode 5 → Mode 3 heatup: the Pressure SP dialled to 2235 psi at
@@ -359,11 +521,41 @@ block, which now hangs below the instruction in a `.ckl-act` wrapper (whose only
 the block butts against the text).
 
 **Item 2 — the rung, and where the number comes from.** `RD.CklSpeedHint(holdS)` returns the
-smallest rung that brings the wait under **60 s of wall clock at that rung's nominal rate**, top
-rung if none does. Measured over the 24 pwr2 steps with `hold >= 180`: **2 → 5×, 8 → 10×, 9 →
-60×, 4 → 600×, 1 → 3600×** — 19 of 24 stay on the bit-identical PLAY tier, and WARP's declared
-fidelity departure (#625) is spent only on the five waits of 65 plant-minutes and up. A WARP
-suggestion says so on the card, because the plant refuses that tier in a transient.
+smallest rung that brings the wait under **30 s of wall clock at that rung's nominal rate**, top
+rung if none does *(OWNER, 2026-09-05: "Change it to 30s")*. Measured over the 24 pwr2 steps with
+`hold >= 180`, sits computed at the rate each rung really delivers (WARP caps at ~931×, #631):
+
+| target | 5× | 10× | 60× | 600× | 3600× | on PLAY | median sit | worst | total sitting |
+|---|---|---|---|---|---|---|---|---|---|
+| **30 s (shipped)** | 0 | 2 | 16 | 5 | 1 | **18/24** | **12 s** | **43 s** | **5.6 min** |
+| 60 s | 2 | 8 | 9 | 4 | 1 | 19/24 | 33 s | 60 s | 12.4 min |
+| 120 s | 10 | 6 | 5 | 3 | 0 | 21/24 | 80 s | 120 s | 28.5 min |
+
+30 s spends ONE more step on WARP than 60 s — the heatup's Pressure SP ramp, 2400 s, 60× → 600×,
+a quiet pressurization — and cuts the chain's total dead time by more than half. The six waits it
+sends to WARP are those of 40 plant-minutes and up. A WARP suggestion says so on the card,
+because the plant refuses that tier in a transient.
+
+### ⚠ I RULED-BRIEFED HIM ON A TABLE OF WHICH I HAD MEASURED ONE ROW
+
+**This is the entry's real lesson and it is about me, not the plant.** I put three targets to the
+owner with a distribution for each. I had measured the 60 s row. **The 30 s and 120 s rows I
+wrote from arithmetic in my head**, and both were wrong: I claimed 30 s moved EIGHT steps onto
+WARP and left 15 of 24 on PLAY — it moves **one** and leaves **18**. He ruled "60 s" on that
+table. Measured afterwards, the cost I had priced 30 s at did not exist, I said so, and he
+re-ruled to 30 s.
+
+**HR12 binds claims about plant dynamics. This was the neighbouring class — a claim about the
+ARTIFACT** (what the shipped procedure pool would do under a rule I was proposing) — and the
+standing CLAUDE.md line already names that class: *a claim about COVERAGE OR ABOUT WHAT IS BUILT
+is an unmeasured claim*. A distribution over 24 authored steps is a two-line script. There was no
+reason to assert it, and asserting it inside a **decision brief** is worse than asserting it in
+prose, because the owner cannot re-derive it and the wrongness is spent immediately.
+
+**The tell to look for:** a comparison table in which one row is the thing you built and the
+others are the alternatives. The built row is measured because you measured it while building;
+the alternatives are the ones you are tempted to fill in by reasoning. Those are exactly the rows
+the decision turns on.
 
 **THE LADDER IS READ OFF THE DOM, NOT LISTED A THIRD TIME.** The six rungs already exist twice —
 the buttons in `shell.html` and `SPEED_KEYS` in `app.js`, the latter a deliberate literal so a
@@ -410,6 +602,53 @@ Corrected, together with the new *Reading a step card* table. **Nothing could ha
 `run_manual_setpoints`, `run_manual_commands` and `run_manual_units` read numbers, command
 tables and unit pairs. A described BEHAVIOUR is the class none of them covers — the standing
 CLAUDE.md line, with a fresh instance.
+
+### The release shipped mid-session, and I rewrote it (#639)
+
+`Alpha 1.7.2` merged to `main` at **08:50**, taking `a8bbf1b` — this work at the 60 s target —
+with it. I did not notice. The 30 s follow-up then edited the `[Alpha 1.7.2]` section of
+`CHANGELOG.md` in place and edited the manual's **Rev 17** row, Rev 17 having shipped in that
+release, and re-sealed the chapter digests around it.
+
+**Both gates were green the whole time, and neither could have been otherwise:**
+
+| gate | the question it asks | why a rewrite satisfies it |
+|---|---|---|
+| `run_release` | do the three version strings AGREE? | They agree exactly as well after a released section is rewritten. |
+| `run_manual_rev` | are the digests sealed at the NEWEST row? | Re-sealing a RELEASED row satisfies that as completely as a pending one. |
+
+**A consistency check is satisfied by a coherent rewrite.** Neither gate held any record of what
+had shipped, so neither could ask the question that mattered. `test/released_seals.json` is that
+record and `run_released_frozen` is the gate; `tools/seal_released.js` seals at each release,
+wired into `release-to-main` §5b-bis and its checklist.
+
+**⚠ THE OBVIOUS IMPLEMENTATION WOULD HAVE BEEN VACUOUS ON CI, WHICH IS WHY IT IS DIGESTS.**
+`git show v1.7.2:CHANGELOG.md` works perfectly here and finds nothing on CI: `gates.yml` uses
+`actions/checkout@v7` with no `fetch-depth`/`fetch-tags`, so the runner has **one commit and no
+tags**. The gate would report green on every CI run — the silently-vacuous shape this repo has
+documented five times, and the one a brand-new gate has no excuse for. I checked the workflow
+before writing a line of it, rather than after.
+
+**The pending entry and the pending row are deliberately NOT frozen** — a `-rc` version is never
+sealed and `manual_sealed_rev` points below the newest row, so "the pending entry extends until
+the next release" is encoded rather than remembered. **Today is the argument for a stored number
+rather than "all rows but the newest": Rev 17 was the newest row AND already shipped**, so the
+lazy rule would have permitted the exact edit that started this.
+
+**Self-enforcing**, which is the property `run_manual_rev` has and `run_release` does not: a
+release cut without sealing leaves a published version with no digest and fails with *"PUBLISHED
+but never sealed"*. Six injections — the three released-artifact edits redden, the two
+pending-artifact edits do not, and stripping `-rc` without sealing reddens.
+
+**One floor was guessed and the gate caught me**: the not-empty check went in at "17 versions,
+17 rows" from memory and reddened on its own seal file. Measured: **16** published versions (the
+17th `run_release` reports is the pending `-rc`) and **18** rows (Rev 0 through 17). Small, and
+the same reflex as the table above.
+
+**The target is written down TWICE, deliberately.** `WAIT_TARGET_WALL_S` in `ui/app.js` and a
+literal `30` in the gate's own recomputation. That is the PROTECTION_DT shape and it is the right
+call here: a check that imports the constant it is checking asserts only that the constant equals
+itself. Moving the target is a two-file change on purpose, and the gate is the second file.
 
 **Gates.** `verify_flags_ui` 47/47, `run_manual_rev` 15/0, `run_manual_units` 0 failed,
 `run_all` at baseline. Manuals stamped + packed under the pending Rev 17 row, item **(y)**.

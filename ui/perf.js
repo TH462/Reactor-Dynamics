@@ -352,7 +352,9 @@
     var slipping = s.interval_ms && s.interval_ms.p95 > s.nominal_ms * 1.6;
 
     if (stepShare > 0.6 && stepShare >= renderShare) {
-      /* WARP IS SUPPOSED TO LOOK LIKE THIS (#631). The tier is handed 70 of the 100 ms on
+      /* WARP IS SUPPOSED TO LOOK LIKE THIS (#631) — and it paints GREEN *(OWNER RULING,
+       * 2026-09-05: selected "Green — as built" from two options put to him, green or amber;
+       * a selection, not verbatim words)*. The tier is handed 70 of the 100 ms on
        * purpose — it runs only on a quiet plant and lets go the moment one moves — so a WARP
        * broadcast sitting inside that budget is the feature working, not a machine falling
        * behind, and painting it as a problem is how a warning colour stops being read. The
