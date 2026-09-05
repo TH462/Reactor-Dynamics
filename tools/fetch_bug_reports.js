@@ -300,6 +300,36 @@ function summarise(doc, label) {
     const budget = typeof perf.budget_pct === 'number' ? perf.budget_pct.toFixed(1) : perf.budget_pct;
     console.log(`  ${perf.fps != null ? perf.fps.toFixed(1) + ' fps' : '—'} · render ${p(perf.render_ms)} · step ${p(perf.step_ms)} · budget ${budget} %`);
     if (perf.verdict) console.log(`  ${/healthy/i.test(perf.verdict) ? C.g : C.y}${perf.verdict}${C.x}`);
+
+    // #613 wave 3: old bundles carry none of this — print nothing rather than "undefined"
+    // for every field an older recording never had a chance to fill in.
+    if (perf.env) {
+      const e = perf.env;
+      const gl = e.gl_renderer ? `${e.gl_renderer}${e.software_gl ? ` ${C.y}(software)${C.x}` : ''}` : '—';
+      console.log(`  ${C.d}env${C.x}  ${e.viewport ? `${e.viewport.w}x${e.viewport.h}` : '?'}` +
+        ` @${e.device_pixel_ratio ?? '?'}x · ${e.hardware_concurrency ?? '?'} cores` +
+        (e.device_memory != null ? ` · ${e.device_memory} GB` : '') + ` · gl: ${gl}`);
+      if (e.user_agent) console.log(`  ${C.d}${e.user_agent}${C.x}`);
+    }
+    if (perf.visibility) {
+      const v = perf.visibility;
+      const sessionS = v.session_ms > 0 ? v.session_ms / 1000 : 0;
+      const hiddenPct = sessionS ? (v.hidden_ms / 1000 / sessionS * 100) : 0;
+      const blurPct = sessionS ? (v.blurred_ms / 1000 / sessionS * 100) : 0;
+      console.log(`  ${C.d}visibility${C.x}  hidden ${(v.hidden_ms / 1000).toFixed(0)} s (${hiddenPct.toFixed(0)} %, ` +
+        `${v.hidden_count}x) · unfocused ${(v.blurred_ms / 1000).toFixed(0)} s (${blurPct.toFixed(0)} %, ${v.blurred_count}x)` +
+        (v.has_focus != null ? ` · focused now: ${v.has_focus}` : ''));
+    }
+    if (perf.raf && perf.raf.last) {
+      console.log(`  ${C.d}raf burst${C.x}  ${perf.raf.last.median_ms.toFixed(1)} ms median (${perf.raf.last.n} samples)` +
+        (perf.raf.paint_broadcast_ratio != null ? ` · ${(perf.raf.paint_broadcast_ratio * 100).toFixed(0)} % of broadcasts painted` : ''));
+    }
+    if (perf.loaf) {
+      const l = perf.loaf;
+      const fmt = (ms) => (typeof ms === 'number') ? `${ms.toFixed(1)} ms p95` : '—';
+      console.log(`  ${C.d}long-animation-frame${C.x}  n=${l.n} · duration ${fmt(l.duration_p95)}` +
+        ` · style+layout+paint recording ${fmt(l.style_layout_p95)}`);
+    }
   }
 
   // Commands are the player's side of the story and there are rarely many. Speed changes

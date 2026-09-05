@@ -42,6 +42,9 @@
     var scrollGroups = [];   // 5 blade scrolls (tgScrollBlade)
     var genScroll = null;    // winding scroll (tgScrollGen)
     var turbGlow, turbSteam, genGlow;
+    /* filter-free halos (#613 wave 4) — see RD.BoardH.softGlow. */
+    var gTurb = RD.BoardH.softGlow(gid + 'Glow', '#c7d0d6');
+    var gGen = RD.BoardH.softGlow(gid + 'GenGlow', '#4fe3ff');
 
     // a single rotor stage: the angled blade fins scroll top-to-bottom within a clipped
     // window, which reads as blades sweeping around the horizontal driveshaft — the vertical
@@ -75,7 +78,11 @@
         h('stop', { key: 0, offset: '0', stopColor: '#1c232a' }), h('stop', { key: 1, offset: '0.5', stopColor: '#7a8994' }), h('stop', { key: 2, offset: '1', stopColor: '#1c232a' })]),
       h('linearGradient', { key: 'steam', id: gid + 'SteamGrad', x1: '0', y1: '0', x2: '1', y2: '0' }, [
         h('stop', { key: 0, offset: '0', stopColor: '#c7d0d6' }), h('stop', { key: 1, offset: '0.5', stopColor: '#a4aeb4' }), h('stop', { key: 2, offset: '1', stopColor: '#7f8a91' })]),
-      h('filter', { key: 'glow', id: gid + 'Glow', x: '-60%', y: '-60%', width: '220%', height: '220%' }, [h('feGaussianBlur', { key: 0, stdDeviation: '10' })])
+      /* The turbine and generator halos shared one feGaussianBlur (stdDeviation 10) until #613
+       * wave 4; each holds its own radial gradient now (RD.BoardH.softGlow). The turbine's is
+       * an ELLIPSE over the casing's bbox, not a second copy of the casing path — a gradient
+       * fill stops at the shape's edge, so the trapezoid would have drawn a hard-edged halo. */
+      gTurb.def, gGen.def
     ]));
 
     // standardized medium steam-inlet port (the board draws the connecting stub to the TCV).
@@ -95,7 +102,7 @@
     // turbine casing (narrowed left/right; left edge stays put so the steam-inlet stub
     // doesn't have to move)
     var turbD = 'M330,40 L586,90 L586,210 L330,260 Z';
-    turbGlow = h('path', { key: 'turbGlow', d: turbD, fill: '#c7d0d6', opacity: 0.14, filter: 'url(#' + gid + 'Glow)', style: { display: 'none' } });
+    turbGlow = h('ellipse', { key: 'turbGlow', cx: 458, cy: 150, rx: 148, ry: 130, fill: gTurb.paint, opacity: 0.14, style: { display: 'none' } });
     C.push(turbGlow);
     C.push(h('path', { key: 'turbCasing', d: turbD, fill: 'url(#' + gid + 'SteelGrad)', stroke: '#46596a', strokeWidth: 2.4, strokeLinejoin: 'round' }));
     // steam filling the turbine interior -- only present when steam is flowing in;
@@ -106,7 +113,7 @@
     // generator casing
     var genX = 614, genY = 90, genW = 168, genH = 120;
     var CYAN = '#4fe3ff';
-    genGlow = h('rect', { key: 'genGlow', x: genX - 12, y: genY - 12, width: genW + 24, height: genH + 24, rx: 16, fill: CYAN, opacity: 0.2, filter: 'url(#' + gid + 'Glow)', style: { display: 'none' } });
+    genGlow = h('rect', { key: 'genGlow', x: genX - 32, y: genY - 32, width: genW + 64, height: genH + 64, rx: 40, fill: gGen.paint, opacity: 0.2, style: { display: 'none' } });
     C.push(genGlow);
     C.push(h('rect', { key: 'genBox', x: genX, y: genY, width: genW, height: genH, rx: 6, fill: 'url(#' + gid + 'SteelGrad)', stroke: '#46596a', strokeWidth: 2.4 }));
 

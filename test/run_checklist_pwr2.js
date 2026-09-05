@@ -215,10 +215,15 @@ if (!only) {
       (proc.steps || []).forEach(function (st, i) {
         var next = (proc.steps || [])[i + 1];
         if (!next || !next.cmd || next.cmd.action !== 'open_accumulator_valve') return;
-        if (!st.acc || st.acc.p !== 'pressure_mpa') return;
+        /* the threshold may be the step's single `acc` or a `p`-kind entry of its `accs` (#627
+         * made the Pressure SP step a two-box step; this check went to "0 pairs" and reddened —
+         * correctly, since 0 pairs is not "the pair is safe") */
+        var pp = (st.acc && st.acc.p === 'pressure_mpa') ? st.acc
+               : (st.accs || []).filter(function (e) { return e && e.p === 'pressure_mpa'; })[0];
+        if (!pp) return;
         pairs++;
-        if (!(st.acc.v > cover)) {
-          bad.push(proc.id + ' step ' + (i + 1) + ': accepts at ' + (st.acc.v * 145.038).toFixed(0) +
+        if (!(pp.v > cover)) {
+          bad.push(proc.id + ' step ' + (i + 1) + ': accepts at ' + (pp.v * 145.038).toFixed(0) +
                    ' psia, cover gas ' + (cover * 145.038).toFixed(0) + ' psia');
         }
       });
@@ -306,6 +311,74 @@ if (!only) {
        freed === null && svc.timeAcceleration === 600,
        'valve ' + s.true_state.accumulator_valve_open + ' · hold ' +
        JSON.stringify(s.true_state.speed_hold) + ' · accel ' + svc.timeAcceleration);
+  })();
+
+  /* 2j. THE HOLD IS LATCHED, AND THE CHECKLIST ASKS FOR THE VALVE WHILE IT STANDS (owner
+   * playtest, 2026-09-04: "it holds the warp at 1x until pressure is over 682 ... the warp hold
+   * should gate on the user setting the pressure, thats the important part to wait for").
+   *
+   * Two defects hid behind that sentence and 2i above could see neither, because it SAMPLES
+   * the first rise. (1) The hold was re-decided every physics step from "pressure rose since
+   * the last step", and at 1x that increment sits inside solver jitter: measured, it rose at
+   * 667.9 psia, cleared at 668.0, re-rose at 675.6 and 691.6 — three toasts, three refusals,
+   * and a 600x request accepted in each gap. (2) The Pressure SP step ticked at 682 psia while
+   * the hold rose at 665, so for 17 psi the checklist said "waiting for pressure" while the
+   * plant said "arm the accumulators" — read from the checklist, that is a hold on the setpoint
+   * step. The step now ticks at the cover gas, the same crossing the hold rises on, so the
+   * step that is active while the clock is held is the one that says open the valve, and the
+   * setpoint action itself shows as its own ticked box the moment it is dialled.
+   *
+   * Both halves are asserted on the SPAN, not a sample: the hold must stand on every tick of a
+   * 60 s 1x ride with the valve shut, and the accumulator step must be the active one within a
+   * bounded number of broadcasts of the hold rising. The player here never opens the valve. */
+  (function () {
+    var svc = mkSvc('cold_shutdown');
+    svc.attentionStops = true; svc.timeAcceleration = 1;     // the player's defaults
+    svc.handleCommand({ action: 'start_checklist', procedure_id: 'pwr_heatup' });
+    var proc = POOL.filter(function (p) { return p.id === 'pwr_heatup'; })[0];
+    var accIdx = -1, spIdx = -1;
+    proc.steps.forEach(function (st, k) {
+      if (/Open the Accumulator valve/.test(st.text)) accIdx = k;
+      if (/Raise the pressurizer pressure setpoint/.test(st.text)) spIdx = k;
+    });
+    var s = null, issued = {}, holdTick = null, stepAtHold = null, ticksToAcc = null;
+    var pAtHold = 0, pAtAcc = 0, chatter = 0, refused = 0, accepted = 0, spDialledBox = null;
+    for (var n = 0; n < 60000 && accIdx >= 0; n++) {
+      s = svc.tick();
+      var ck2 = s.instructor && s.instructor.checklist; if (!ck2 || ck2.complete) break;
+      var i = ck2.step_index, st = proc.steps[i];
+      if (i > accIdx) break;
+      if (ck2.awaiting_ack) svc.handleCommand({ action: 'checklist_check', index: i });
+      if (!issued[i] && i < accIdx) {
+        issued[i] = true;
+        if (st.cmd) svc.handleCommand(st.cmd);
+        (st.accs || []).forEach(function (e) { if (e.cmd) svc.handleCommand(e.cmd); });
+      }
+      /* the setpoint action is its own check-off, ticked the moment it is dialled */
+      if (i === spIdx && spDialledBox === null && ck2.accs && ck2.accs[0]) spDialledBox = ck2.accs[0].met;
+      if (holdTick === null) {
+        if (s.true_state.speed_hold) { holdTick = n; stepAtHold = i; pAtHold = s.true_state.pressure_mpa * 145.038; }
+        else if (svc.timeAcceleration < 600) svc.handleCommand({ action: 'set_speed', value: 600 });
+      } else {
+        if (!s.true_state.speed_hold) chatter++;
+        var rr = svc.handleCommand({ action: 'set_speed', value: 600 });
+        if (rr && rr.type === 'blocked') refused++;
+        else { accepted++; svc.handleCommand({ action: 'set_speed', value: 1 }); }   // do not let a leak run the ride away
+        if (ticksToAcc === null && i === accIdx) { ticksToAcc = n - holdTick; pAtAcc = s.true_state.pressure_mpa * 145.038; }
+        if (n - holdTick >= 600) break;
+      }
+    }
+    var lo = RD.pwr2.eccs.ACC.p0_mpa * 145.038;
+    ck('the accumulator hold LATCHES: 60 s at 1x with the valve shut and it never lets go (was: rose, cleared and re-rose three times over 24 psi)',
+       holdTick !== null && chatter === 0 && accepted === 0 && refused >= 500,
+       holdTick === null ? 'no hold in 60000 ticks' : 'hold at ' + pAtHold.toFixed(1) + ' psia (cover gas ' + lo.toFixed(1) +
+         ') · let go ' + chatter + ' times · ' + refused + ' refusals, ' + accepted + ' accepted');
+    ck('...and the step ACTIVE while the clock is held is the accumulator step, within 50 broadcasts of the hold rising (was: the Pressure SP step for 17 psi)',
+       holdTick !== null && ticksToAcc !== null && ticksToAcc <= 50 && (stepAtHold === spIdx || stepAtHold === accIdx),
+       'hold rose on step ' + (stepAtHold + 1) + ' at ' + pAtHold.toFixed(1) + ' psia; accumulator step active ' +
+         ticksToAcc + ' broadcasts later at ' + pAtAcc.toFixed(1) + ' psia');
+    ck('...and the Pressure SP step shows the DIALLED setpoint as its own ticked box before the pressure arrives',
+       spDialledBox === true, 'first check-off of step ' + (spIdx + 1) + ' read ' + spDialledBox + ' on the broadcast after the command');
   })();
 
   /* 2h. catch-up (#607 item 7): starting heatup with RCPs already running skips the

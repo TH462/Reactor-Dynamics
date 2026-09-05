@@ -369,10 +369,7 @@ that were closed. **Run the query.**
   only, true values declared, gated by `run_pwr2_engine` (14 checks / 8 mutations; it caught the
   scram-bypasses-RPS defect and filed #499 on arrival — `PWR2_VALIDATION.md` §49). P-9 (turbine trip
   = reactor trip above it, both sourced values), the #499 beyond-model guards and the
-  DELAYED-data sourcing are all LANDED (§50–52). **Everything since is recorded in `PWR2_VALIDATION.md` §53–§97 — read the sections, not this line**, which is why the roll-call that used to sit here is gone. Still open out of it: **#507**'s casualty menu stands at 22 honest rows (21 at wave 10, +`anticipatory_trip_failure` at #515) with Section F closed, and **#510** batches 1–4 landed leaving five LOW harness items. **#523 (owner rulings 2026-08-26 "Flip now, track the gaps" / "Strip it at build time"): PWR2 IS THE PLANT THE SITE RUNS (§94)** — every link and `/sim` carry `?engine=pwr2`, and a **public** build contains no retired engine at all (six tags + 544,663 bytes pruned by `site/build_site.js`; `make_portable` always). The strip is CHANNEL-GATED so the PREVIEW site keeps it, because the guided content is authored against it and `freePlayOnly` stays. `pwr_config.js`/`pwr_instruments.js` are NOT the old engine and ship everywhere. Two of the three pre-replacement gaps are now #531 (R8) and #525 (mission compatibility). Still owed: delta-T lead/lag + K5 (COLR), channel redundancy, the ESF arm display, stuck_rod_on_scram, the steam-line-break rows + auto isolation signal (the MSIV itself is BUILT, §80).
-  **#514/#513 (2026-08-25), both CLOSED.** Two facts outlive them: **shell.html no longer loads
-  RBMK/BWR** (dev routes `test_rbmk.html` / `test_bwr.html`, `verify_e2e_ui` PWR-only), and
-  mutation replay is `grp:`-scoped in 6 runners. Rest: `Diagnostic/TUNING_LOG.md` 2026-08-25.
+  DELAYED-data sourcing are all LANDED (§50–52). **Everything since is recorded in `PWR2_VALIDATION.md` §53–§97 — read the sections, not this line**, which is why the roll-call that used to sit here is gone. Still open out of it: **#507**'s casualty menu stands at 22 honest rows (21 at wave 10, +`anticipatory_trip_failure` at #515) with Section F closed, and **#510** batches 1–4 landed leaving five LOW harness items. **#523 (owner rulings 2026-08-26 "Flip now, track the gaps" / "Strip it at build time"): PWR2 IS THE PLANT THE SITE RUNS (§94)** — every link and `/sim` carry `?engine=pwr2`, and a **public** build contains no retired engine at all (six tags + 544,663 bytes pruned by `site/build_site.js`; `make_portable` always). The strip is CHANNEL-GATED so the PREVIEW site keeps it, because the guided content is authored against it and `freePlayOnly` stays. `pwr_config.js`/`pwr_instruments.js` are NOT the old engine and ship everywhere. Two of the three pre-replacement gaps are now #531 (R8) and #525 (mission compatibility). Still owed: delta-T lead/lag + K5 (COLR), channel redundancy, the ESF arm display, stuck_rod_on_scram, the steam-line-break rows + auto isolation signal (the MSIV itself is BUILT, §80). shell.html no longer loads RBMK/BWR (#514/#513, 2026-08-25).
 - **#534 — the PWR2 adversarial bug hunt umbrella: 47 confirmed defects** (28 high, 18 medium,
   1 low), filed 2026-08-27 as #535–#566. Report only; no simulator code was changed by the
   sweep. It named TWO systemic patterns, both now fixed and gated: the board was calibrated to
@@ -403,7 +400,6 @@ that were closed. **Run the query.**
   program point. **The break range STAYS at 20 cm²** *(OWNER RULING, 2026-08-29: "A")* —
   the model latches above **46 cm²**, a 2,667 cm² shear on step ONE: a design-basis LOCA needs
   `pwr2_core`'s solve, not a bigger slider.
-- **RBMK and BWR** — on hold, and the source of most remaining backlog. Do not touch.
 
 **The manual set's revision number does not advance until a RELEASE** *(OWNER DIRECTIVE,
 2026-08-06: "The revision number only matters during a release to the website. Revision numbers
@@ -421,6 +417,26 @@ standing procedure rather than news belongs in the list below. **Evicting one: R
 FIRST** — ask what in it would still burn someone in a month, move that to the standing list as
 ONE line, drop the rest. **A bullet is ~80 words.**
 
+- **THE PAUSE LOOP EXCLUDED ONE CLASS BY DESIGN AND THAT CLASS WAS THE FRAME PRODUCER**
+  (2026-09-04, #613). `tickAnimations` paused ~90 keyframe animations and skipped CSSTransition as
+  "short, one-shot" — but 150 ms transitions on level rects, restarted by every 100 ms broadcast,
+  never finish. Measured at 10×: ZERO keyframe animations running, 6–7 transitions running at every
+  sampled instant, 904 compositor draws per 15 s against 265 app paints. Removing them: −51 %.
+  Three waves throttled the class already stopped — the fps in the bundle is the APP’s own cadence.
+
+- **TWO CORRECT MECHANISMS TWO DAYS APART CAN DISAGREE BY 17 psi — AND A HOLD RE-DECIDED EVERY
+  STEP CHATTERS AT 1×** (2026-09-04, #627). #608 ticked the Pressure SP step at 682 psia to clear the
+  cover gas; #622 held the clock AT the 665 psia cover gas. Between them the checklist waited on a
+  number while the plant asked for the valve — and the hold, "pressure rose since the last 0.02 s
+  step", rose, cleared and re-rose **three times over 24 psi**; its gate SAMPLED the first rise and
+  passed. Assert the span, and grep the checklist for the step that is active when a cue fires.
+- **A SPEED BUTTON IS A REQUEST THE LOOP NEVER REFUSED — AND "THE SAME PHYSICS AT A COARSER STEP"
+  WAS THE WHOLE SECOND MODEL** (2026-09-04, #625). There was no cap on steps per broadcast: 600×
+  blocked the main thread **350 ms per 100 ms broadcast** (3600×: 2.5 s), the page froze, and the
+  transient detector — scaled by WALL cadence — read a quiet plant at 600× as a standing transient.
+  Measured before designing anything: PWR2 at a **0.5 s** step stays inside instrument noise over
+  2 h in three regimes (~2,700×); at **1.0 s** the quiet plant trips itself. Kinetics is exact and
+  the loop sub-steps, so the "simplified physics tier" needed no physics. `run_warp_tier`.
 - **A BREVITY CAP COUNTED IN WORDS PAYS FOR ITSELF BY REDDENING ANOTHER GATE** (2026-09-03,
   #619/#621 item 12). The worst step description ran **9 sentences / 246 words**, so a word cap
   was the obvious fix — but the long steps carry the most numbers, and every number owes the
@@ -436,27 +452,6 @@ ONE line, drop the rest. **A bullet is ~80 words.**
   ACCELERATION, so "2235" ended at 3600x. Feedback form: 32 chars typed, **0 in the box**, focus on
   `#playBtn`. **Make the whole affordance the target; the handler looks correct either way.**
 
-- **A `blockable` FLAG IS NOT EVIDENCE AN OPERATOR BLOCKS IT — AND A SHARED BOOLEAN CANNOT BE
-  TESTED FOR WHICH CONSUMER IT BELONGS TO** (2026-09-01, #600/#601, from the owner's question about
-  the dark TRIP BLOCKS rows). Two rows offered a P-7 block WTSM 12.2 calls *automatic*; #564 made
-  them politely dark without asking what the source says the operator does. A third was dark because
-  the 25 % intermediate-range TRIP did not exist — the retired plant wrote the ROD STOP's 20 % into
-  the trip's row and `Manuals/09` shipped it. #572 then hung the C-1 stop on the power-range lever
-  and **its check asserted that and passed**: with one lever, both wirings look identical.
-
-- **A STEP'S TICK IS PERMISSION FOR THE NEXT STEP — AN ACCEPTANCE THRESHOLD IS A SAFETY CLAIM
-  ABOUT ITS SUCCESSOR, AND THE REPLAY CANNOT CHECK IT** (2026-09-02, #608). The heatup's Pressure
-  SP step accepted at 609 psia against a 665 psia accumulator cover gas; opening there is ACCEPTED
-  and backfeeds the tank — 100 % to 97.2 %, boron +22 ppm. Defensible about step 7, wrong as what
-  releases you into step 8. A realistic `hold:` masks the acceptance beneath it, refining #244's
-  "the replay is the authority": it is, for whether a checklist FITS — never for whether a tick is
-  safe.
-- **A CACHE KEY THAT OMITS WHAT THE CACHE DESCRIBES READS AS A WORKING FEATURE — AND ITS
-  CONTENT IS CORRECT, FOR A PLANT THE PLAYER HAS LEFT** (2026-09-02, #606). The Checklists tab
-  greyed the Mode 5 heatup on a Mode 5 board. Ranker, CSS and gate sentences were all right;
-  `cklMenuKey` was `engine | running checklist`, and neither changes on an initial-condition
-  reset, so the Hot Full Power list survived **byte-identical**. No source read sees it, and no
-  Node harness calling the ranker — the ranker is not where the bug is.
 **Standing procedure — not part of the rotation above; these do not expire.** One trap per entry.
 **MAX 25 BULLETS** *(OWNER RULING, 2026-08-10: selected "Cap at 25, evict to TRAPS.md")*,
 gated by `test/run_doc_budget.js`. Adding
@@ -760,6 +755,8 @@ node test/run_procedures_stack.js --lineup=bare # the noDefaults/campaign lineup
 node test/run_pwr2_engine.js --no-mutations   # skip the replay while fixing a check (34 pwr2
                                 # runners; --mut=/--grp= too). FILTERED = FORCED NON-ZERO, never
                                 # a baseline. 115 s -> 2.9 s (#602)
+node test/run_warp_tier.js             # the two pacing tiers (#625): WARP's fidelity band, the
+                                # cliff at 1.0 s, the in-loop lockout, the step budget
 node tools/perturb_sweep.js            # WHICH CHECKS BREAK IF I RETUNE THIS? (see below)
 node tools/perturb_sweep.js --suite=behavior --nudge=thermal.h_sg*1.03
 node tools/perturb_sweep.js --self-test  # prove the harness can detect anything at all
@@ -1063,8 +1060,7 @@ from the developer `CHANGELOG.md`. **Every release gets a version number and a
   download plumbing) gets no entry however visible, but still belongs in `CHANGELOG.md`.
   **A website-only change ships with NO version bump** — `run_release` forbids "bump, no entry".
 - **BE CONCISE, and that is a CAP** *(same 2026-08-04 directive)*. **At most 8 bullets per
-  entry, one line each**
-  *(the number is my reading; the directive is the brevity)*. **Aggregate, do not enumerate**:
+  entry, one line each**. **Aggregate, do not enumerate**:
   one line per system's worth of work, not one per commit. The site entry is **not** derived
   one-to-one from `CHANGELOG.md`, which is dense on purpose. Over 8: group and summarise.
 - **Not** the same as the `RD_VERSION` deploy stamp (`site/version.js` — git SHA Vercel

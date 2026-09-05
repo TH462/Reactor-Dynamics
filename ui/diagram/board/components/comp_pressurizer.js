@@ -68,6 +68,9 @@
       steel: env.uid('pzrSteel'), water: env.uid('pzrWater'), steam: env.uid('pzrSteam'),
       heat: env.uid('pzrHeat'), clip: env.uid('pzrClip'), glow: env.uid('pzrGlow')
     };
+    /* filter-free halos (#613 wave 4) — see RD.BoardH.softGlow. */
+    var gHeat = RD.BoardH.softGlow(ids.glow, 'rgb(61,38,22)');
+    var gSpray = RD.BoardH.softGlow(env.uid('pzrSprayGlow'), '#3d82d8');
 
     // ---- geometry (verbatim from the design source) ----
     var cx = 100;
@@ -161,7 +164,10 @@
       steamGrad,
       h('linearGradient', { id: ids.heat, x1: '0', y1: '0', x2: '1', y2: '0' }, heatStops),
       h('clipPath', { id: ids.clip }, h('path', { d: inner })),
-      h('filter', { id: ids.glow, x: '-60%', y: '-60%', width: '220%', height: '220%' }, h('feGaussianBlur', { stdDeviation: '7' })));
+      /* The heater-bank halo and the spray-nozzle halo were solid shapes behind one shared
+       * feGaussianBlur (stdDeviation 7) until #613 wave 4. A gradient carries its own colour,
+       * so they hold one each now, both grown by ~2*stdDeviation — RD.BoardH.softGlow. */
+      gHeat.def, gSpray.def);
 
     // ---- vessel contents (dynamic) ----
     var steamRect = h('rect', { x: 40, y: 96, width: 120, height: 0, fill: 'url(#' + ids.steam + ')', opacity: 0.5 });
@@ -170,11 +176,13 @@
      * either, which is how a bank drawn ABOVE its own cutoff level survived. Selecting them by
      * gradient id or draw order would be a check pinned to the art's spelling; a role is the
      * contract. */
+    /* NO CSS TRANSITION on the water rect or the surface line (#613 wave 3): both are rewritten
+     * on every broadcast, and a 150 ms transition restarted every 100 ms never finishes, so the
+     * compositor draws 60 Hz for a board that paints ~17 Hz. See std_pipe.js's tickAnimations. */
     var waterRect = h('rect', { 'data-role': 'pzr-water',
-      x: 40, y: waterTop, width: 120, height: 0, fill: 'url(#' + ids.water + ')', opacity: 0.72,
-      style: { transition: 'y 0.15s linear, height 0.15s linear' } });
+      x: 40, y: waterTop, width: 120, height: 0, fill: 'url(#' + ids.water + ')', opacity: 0.72 });
     var surfLine = h('line', { x1: 52, y1: 0, x2: 148, y2: 0, stroke: '#bdf1ff', strokeWidth: 2, opacity: 0.5,
-      strokeDasharray: '18 10', style: { transition: 'transform 0.15s linear' } });
+      strokeDasharray: '18 10' });
 
     // ---- heater elements ----
     // Each rod spans the CAVITY at its own y, inset by ROD_INSET — authored as a literal
@@ -185,8 +193,8 @@
       var w = Math.max(6, cavHalfWidth(y) - ROD_INSET);
       return { x0: cx - w, x1: cx + w };
     }
-    var heatGlow = h('rect', { x: 0, y: 0, width: 0, height: 0, rx: 10,
-      filter: 'url(#' + ids.glow + ')', style: { display: 'none' } });
+    var heatGlow = h('rect', { x: 0, y: 0, width: 0, height: 0, rx: 24,
+      fill: gHeat.paint, style: { display: 'none' } });
     /* the terminal block the rods land on — it rides the bank, so it is placed, not authored */
     var heaterBlock = h('rect', { x: 0, y: 0, width: 6, height: 0, rx: 2,
       fill: '#26333d', stroke: '#46596a', strokeWidth: 1 });
@@ -212,10 +220,12 @@
         pair[1].setAttribute('cy', String(yy));
       }
       var last_ = hys.length - 1, wid = rodX(hys[last_]);
-      heatGlow.setAttribute('x', String(wid.x0 - 8));
-      heatGlow.setAttribute('y', String(hys[0] - 9));
-      heatGlow.setAttribute('width', String((wid.x1 - wid.x0) + 16));
-      heatGlow.setAttribute('height', String((hys[last_] - hys[0]) + 18));
+      /* +14 px on every side, i.e. 2*stdDeviation of the blur this replaced (#613 wave 4):
+       * a gradient stops at the shape's edge where the blur spread past it. */
+      heatGlow.setAttribute('x', String(wid.x0 - 22));
+      heatGlow.setAttribute('y', String(hys[0] - 23));
+      heatGlow.setAttribute('width', String((wid.x1 - wid.x0) + 44));
+      heatGlow.setAttribute('height', String((hys[last_] - hys[0]) + 46));
       /* the block sits just outboard of the WIDEST rod end, which is the topmost one */
       heaterBlock.setAttribute('x', String(rodX(hys[0]).x1 - 4));
       heaterBlock.setAttribute('y', String(hys[0] - 5));
@@ -226,7 +236,7 @@
 
     // ---- spray header + nozzle (art is static; drops/fan/glow toggle with spray) ----
     var sprayFan = h('polygon', { points: (spx - 4) + ',' + spyMouth + ' ' + (spx + 4) + ',' + spyMouth + ' ' + (spx + 30) + ',' + (spyMouth + 72) + ' ' + (spx - 30) + ',' + (spyMouth + 72), fill: '#5aa0e6', opacity: 0.1, style: { display: 'none' } });
-    var sprayNozGlow = h('circle', { cx: spx, cy: spyMouth - 6, r: 13, fill: '#3d82d8', opacity: 0.3, filter: 'url(#' + ids.glow + ')', style: { display: 'none' } });
+    var sprayNozGlow = h('circle', { cx: spx, cy: spyMouth - 6, r: 27, fill: gSpray.paint, opacity: 0.3, style: { display: 'none' } });
     var sprayDrops = h('g', { clipPath: 'url(#' + ids.clip + ')', style: { display: 'none' } });
 
     // ---- spray pipework (scale-compensated StdPipe, rebuilt on scale / spray change) ----
@@ -274,7 +284,7 @@
     [0, 50, 100].forEach(function (pct) {
       gEls.push(h('line', { x1: barX + barW, y1: wlY(pct), x2: barX + barW + 4, y2: wlY(pct), stroke: '#3b4f5e', strokeWidth: 1 }));
     });
-    var wlMarker = h('g', { style: { transition: 'transform 0.15s linear' } },
+    var wlMarker = h('g', null,   /* no transition — broadcast-cadence transform, #613 */
       h('polygon', { points: (barX - 3) + ',0 ' + (barX - 12) + ',-6 ' + (barX - 12) + ',6', fill: '#eaf4fb', stroke: '#0b1119', strokeWidth: 0.6 }),
       h('line', { x1: barX - 3, y1: 0, x2: barX + barW + 7, y2: 0, stroke: '#eaf4fb', strokeWidth: 1.4, strokeDasharray: '4 3' }));
     gEls.push(wlMarker);
@@ -474,7 +484,7 @@
         heatStops[0].setAttribute('stop-color', mix(HBROWN, HORANGE, hFrac * 0.6));
         heatStops[1].setAttribute('stop-color', mix(HBROWN, HORANGE, hFrac));
         heatStops[2].setAttribute('stop-color', mix(HBROWN, HORANGE, hFrac * 0.6));
-        heatGlow.setAttribute('fill', mix(HBROWN, HORANGE, hFrac));
+        gHeat.setColor(mix(HBROWN, HORANGE, hFrac));
         heatGlow.setAttribute('opacity', String(Math.min(0.42, 0.05 + hFrac * 0.42)));
         heatGlow.style.display = (glowOn && heaterPower > 4) ? '' : 'none';
         last.heaterPower = heaterPower; last.glowOn = glowOn;

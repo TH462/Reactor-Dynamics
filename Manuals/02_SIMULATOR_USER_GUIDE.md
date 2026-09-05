@@ -104,7 +104,7 @@ on a card — click the component. `03_CONTROLS_AND_INDICATIONS.md` is the per-c
 
 | Region | Function |
 |--------|----------|
-| **Sim controls** | Play/Pause, speed 1× / 10× / 60× / 600× / 3600×, Manual, Help, Contact, and **Board focus (⛶)** — hides this column and enlarges the board |
+| **Sim controls** | Play/Pause, speed 1× / 5× / 10× / 60× and the two WARP rungs 600× / 3600× with the achieved-rate readout beside them, Manual, Help, Contact, and **Board focus (⛶)** — hides this column and enlarges the board |
 | **Plant & mission line** | Always visible under the sim controls: what is running now; click to change it (§5.0) |
 | **Instructor** | Scenario commentary, gates, walkthrough step grading |
 | **Tools** | **Operate · Inject Failure · Graph · Physics · Settings** (§7.0) |
@@ -141,10 +141,25 @@ something you did *not* choose to look at.
 | Control | Effect |
 |---------|--------|
 | **Play / Pause** | Start or freeze simulated time (diagram freezes when paused) |
-| **Speed** | Discrete acceleration: 1×, 10×, 60×, 600×, 3600× |
-| **NOTE** | Physics timestep stays 0.02 s; acceleration runs more steps per wall-clock second |
+| **Speed** | Two tiers. **PLAY: 1×, 5×, 10×, 60×** — the full physics at its 0.02 s step, identical at every rung. **WARP: 600×, 3600×** — the same physics at a coarser 0.5 s step, for the long quiet evolutions: xenon, decay heat, boron, a heatup or cooldown |
+| **Achieved rate** | The readout beside the buttons shows the plant-time actually passing per second of wall clock. Green: keeping up with the request. Amber: behind it — the physics cannot finish the request in its share of a broadcast, which at 3600× is the ordinary state of most machines. Red: the page itself is stalling |
+| **NOTE** | On PLAY the physics timestep stays 0.02 s and acceleration runs more steps per wall-clock second. On WARP the step is 0.5 s: over a sim hour every channel stays inside its own instrument noise of the 0.02 s plant (see **12** §2.1), and the buttons are **dark while the plant is in a transient** — WARP is refused then, and lets go on its own |
 
 **CAUTION:** High speed during approach to criticality or load rejection can leave you behind the plant. Use 1×–10× for startups and transients until proficient.
+
+**WARP lets go by itself.** The moment the plant moves fast — a reactor trip, a new equipment
+failure, a first alarm on a quiet board, power moving faster than 2 %/s or pressure faster than
+40 psi/s (0.276 MPa/s), or the loop asked for more sub-steps than it can give — WARP drops to
+**60×** and a toast names the reason. The two WARP buttons then stay dark for **30 plant-seconds
+of quiet**. Asking for WARP while it is unavailable lands you at 60× with the same toast. A
+mission's own fast-forward never uses WARP.
+
+**The plant can hold the clock.** Where the plant needs you and cannot let you skip past — today
+the accumulator arming window on a heatup, from the **665 psia (4.585 MPa)** cover gas until the
+accumulator valve is open — the clock drops to **1×** and every speed button above it is refused,
+with the reason in the scanner bar under the board. Opening the valve releases it. This hold
+ignores the fast-forward dropout setting, because the point of it is that the window cannot be
+recovered once passed.
 
 **Fast-forward dropout.** Acceleration snaps back to **1×** when something arrives that you
 have to look at: a **reactor trip**, a **new equipment failure**, or the **first alarm on an
@@ -408,8 +423,31 @@ comment pointing you at it.
   not verify until you put it there — the classic case is starting the reactor startup
   after a pump-heat heatup without first diluting to the estimated critical boron
   (PWR-N02 step 15).
-- **It clears itself.** The grading is live: fix the condition and the row turns met, the
-  banner and the comment come down on their own.
+- **It is an ENTRY statement, and it does not come back.** The verdicts are taken once, as
+  the checklist opens, and the banner then stands until the run starts moving. Preconditions
+  ask whether it was sensible to *open* this checklist; re-asserting them against a plant the
+  checklist is deliberately changing would make the procedure complain about its own progress
+  — a Mode 5 → Mode 3 heatup crosses out of every one of its own entry conditions by design.
+
+#### Reading a step card
+
+Every step card leads with its **number and instruction**. The card you are on adds a block
+underneath it:
+
+| Line | What it is |
+|---|---|
+| Check-off criterion | The indication the step is graded on, in blue; it turns green when met. |
+| **Use …** | The board control this step drives, and the value to drive it to. |
+| ⏩ wait line | Roughly how long the step takes **in plant time**, and the speed-control rung to set. |
+| **Acknowledge ✓** | Only on steps that ask no operator action — press it to move on. |
+| Click to expand | The step's reasoning, cautions and any extra notes. |
+
+The wait line appears on steps that hold three plant-minutes or longer. The suggested rung is
+the lowest one that finishes the wait in about a minute of real time, so most waits stay on the
+full-fidelity **1× to 60×** tier; the long ones — the heatup ride, the cooldown legs, the
+boration — call for **600×** or **3600×**, which are WARP and will be refused while the plant
+is in a transient (§4.1). The plant-time figure is an *upper bound* taken from the procedure's
+own dwell: drive the plant harder and you will get there sooner.
 
 ---
 

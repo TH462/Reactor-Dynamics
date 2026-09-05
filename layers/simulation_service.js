@@ -31,11 +31,10 @@
   // Broadcast cadence. CONTEXT §4's stated cadence is 2 Hz / 5 Hz; we render
   // faster (10 Hz normal, 20 Hz transient) for a smoother live UI — cheap, since
   // the per-step work is tiny. The data is identical; only the frame rate changes.
-  // The transient thresholds (§7) are scaled by the interval so the *rate* that
-  // flips into transient mode is unchanged.
+  // The transient thresholds (§7) are rates per SIM second (see _isRapidChange), so the
+  // *rate* that flips into transient mode is the same at every cadence and acceleration.
   var NORMAL_MS = 100;             // 10 Hz broadcast
   var TRANSIENT_MS = 50;           // 20 Hz during an active transient (§7)
-  var CADENCE_REF_MS = 500;        // thresholds were defined against this interval
   var DEFAULT_SEED = 0x1A2B3C4D;
 
   // Longest SIM time protection may go un-evaluated (#153). Trips, actuations,
@@ -66,6 +65,50 @@
   // pays +1.4 ms, **+0.4 %**. Evaluating every step would be +42 % and buys nothing —
   // instrument lag is coarser than 0.1 s.
   var PROTECTION_DT = 0.1;
+
+  // ------------------------------------------------- TWO PACING TIERS (#625, 2026-09-04)
+  // PLAY (1x..60x) steps the plant at PHYSICS_DT and is bit-identical at every speed
+  // (run_service_invariance). WARP (600x and up) steps the SAME physics at WARP_DT — a
+  // DECLARED fidelity departure *(OWNER RULING, 2026-09-04: "Yes")*, bounded by
+  // test/run_warp_tier.js. MEASURED before the ruling (2 sim h, full stack, three regimes —
+  // steady full power, post-scram decay heat + xenon, hot zero power): every step from 0.05 s
+  // to 0.5 s lands inside the instrument noise band of the 0.02 s reference (worst 5.0 psi /
+  // 0.034 MPa, 0.07 degF, 0.31 % level, 0.0003 % xenon) and the deviation does NOT grow with
+  // the step — it is limit-cycle phase, not integration error. At 1.0 s the quiet plant trips
+  // itself at 18 min (150 psi, 25 degF, 33 % level); at 2.0 s the model holds. 0.5 s therefore
+  // carries ~2x margin to the cliff and buys ~2,700x here (an hour of plant in 1.3 s) against
+  // ~145x at PHYSICS_DT. Why the same physics survives it: kinetics is an exact matrix
+  // exponential, fuel/clad and the instrument lags are analytic or backward-Euler, xenon's
+  // fastest constant is 4e-5 /s, the loop sub-steps to its Courant limit (2 needed at 0.5 s at
+  // rated flow, 16 max) and the pressure solve is bracketed. Harness: inbox/625/dt_scan.js.
+  //
+  // WARP is for the long, quiet evolutions — xenon, decay heat, boron, a heatup — and is
+  // REFUSED or DROPPED the moment the plant is in a transient (`_warpWatch`, checked INSIDE the
+  // step loop on the protection cadence: a 3600x broadcast is six plant-minutes, so a
+  // transient that begins inside one must drop the tier within a step of sim, not at the next
+  // broadcast). A drop lands at WARP_DROP_SPEED *(OWNER RULING, 2026-09-04: "60x")*; the
+  // existing attention stops (scram / failure / first alarm) still take the clock to 1x on top.
+  // Authored beat speeds NEVER warp — a scenario's `speed:` is a scripted skip through a
+  // transient and stays on the bit-identical tier (the #409 exemption). Both tiers and the
+  // per-broadcast step budget are OPT-IN via configurePacing(), so every headless runner keeps
+  // the exact plant it had; the control room opts in (ui/app.js).
+  var WARP_DT = 0.5;              // [measured] see above; the cliff is between 0.5 and 1.0 s
+  var WARP_MIN_SPEED = 600;       // the ladder's two top rungs are the WARP tier
+  var WARP_DROP_SPEED = 60;       // OWNER RULING 2026-09-04: a rate-based drop lands here
+  var WARP_QUIET_S = 30;          // sim-s of quiet after any event before WARP re-arms
+  // Rate thresholds, per SIM second. These are `_isRapidChange`'s own numbers restated as
+  // rates: 1.0 % per 0.5 s and 0.14 MPa (20 psi) per 0.5 s.
+  var RAPID_POWER_PCT_PER_S = 2.0;
+  var RAPID_P_MPA_PER_S = 0.28;
+  // The loop's Courant report decides whether WARP_DT is even integrable: it sub-steps to
+  // NSUB_MAX = 16 (pwr2_loop.js), so a limit below WARP_DT / 8 means the tier would be leaning
+  // on more than half that ceiling — a blowdown, a stalled loop. Rated flow reads ~0.37 s.
+  var WARP_COURANT_MAX_SUB = 8;
+  // Budget check granularity inside the step loop (a clock read every step would cost more
+  // than the steps it guards at 1x). 25 steps is 0.5 s of PLAY sim, so a budget cut always
+  // lands on the half-second grid — which is what lets run_warp_tier compare a budgeted run
+  // against an unbudgeted one at matched instants.
+  var BUDGET_CHECK_EVERY = 25;
 
   // ---------------------------------------------------- FINE CHART SAMPLING (2026-08-05)
   // The strip chart used to see exactly ONE sample per broadcast, so its resolution in SIM
@@ -255,6 +298,20 @@
     this.checkpoints = [];
     this._rewindCursor = null;         // last rewound-to index; walks consecutive beat rewinds back
     this._lastSandboxCpMs = null;      // wall clock of the last free-play checkpoint (#137)
+    // Pacing (#625, #631). All OFF by default — see configurePacing().
+    this.pacing = { stepBudgetMs: 0, warpStepBudgetMs: 0, warp: false, warpDt: WARP_DT };
+    this._tier = 'play';
+    this._dt = PHYSICS_DT;
+    this._warpLockedUntil = 0;         // sim time before which WARP is refused
+    this._warpLockWhy = null;
+    this._warpPrev = null;             // the in-loop watch's last reading
+    this._warpDrop = null;             // reason the loop dropped the tier THIS tick
+    this._speedNote = null;            // a refusal to report on the next broadcast
+    this._lastRapid = false;
+    this._lastSpanS = 0;               // sim seconds the last tick actually stepped
+    this._budgetArmed = false;         // true only on the timer path (never for advanceCycles)
+    this._achieved = null;             // EMA of achieved acceleration, timer path only
+    this._lastTickWallMs = null;
 
     if (opts.plant_id) {
       this.selectPlant(opts.plant_id, opts.initial_state || 'hot_full_power', opts.design_version || null);
@@ -298,6 +355,7 @@
     this.checkpoints = [];             // a fresh plant invalidates the rewind ring
     this._rewindCursor = null;
     this._lastSandboxCpMs = null;
+    this._resetPacing();
     // Restore the selected register into the rebuilt layer/instructor.
     this.layer.handleCommand({ action: 'set_register', value: this.activeRegister });
     if (this.instructor.setRegister) this.instructor.setRegister(this.activeRegister);
@@ -327,8 +385,21 @@
     // number has no business in it. The UI reads `_perfStepMs` if it cares; nothing breaks
     // if it does not. Two clock reads per broadcast — see ui/perf.js on why this has to be
     // cheap enough not to appear in its own measurement.
-    var _perfT0 = (typeof performance !== 'undefined' && performance.now) ? performance.now() : 0;
+    var _perfT0 = this._perfNow();
+    var dt = this._dt;                 // the TIER's step (#625): PHYSICS_DT on PLAY, WARP_DT on WARP
     var steps = this._stepsPerBroadcast();
+    /* THE STEP BUDGET (#625). `steps` is a REQUEST; the loop below stops when the wall budget
+     * is spent and credits only what it stepped. Armed on the timer path only, so
+     * advanceCycles() and every headless runner still get the full count. The plant is the
+     * same plant either way — same dt, same order — only the broadcast instants move, and
+     * the protection, automation and sampling cadences are all in sim time already.
+     *
+     * PER TIER SINCE #631 — see `_budgetForTier`. Read ONCE, before the loop: a tier that drops
+     * mid-broadcast (`_dropWarp`) breaks out of the loop on the same step, so re-reading it
+     * inside would only ever change the budget of a loop that is already ending. */
+    var budgetMs = (this._budgetArmed && _perfT0 != null) ? this._budgetForTier() : 0;
+    var stepped = 0;
+    this._warpDrop = null;
     /* THE PROTECTION CADENCE CARRIES ACROSS BROADCASTS (#588). This was `var sinceEval = 0;`
      * — a per-tick LOCAL — so the accrued sim time since the last evaluation was thrown away
      * at every broadcast boundary and the post-loop call below (then unconditional) put a
@@ -347,9 +418,9 @@
     // path gave one sample per 360 s. Cost is bounded by CHART_FINE_MAX at any acceleration.
     var fineEvery = 0, subEvery = 0;
     if (this._fineSampler) {
-      var simPerBroadcast = steps * PHYSICS_DT;
+      var simPerBroadcast = steps * dt;
       fineEvery = Math.max(CHART_FINE_SEC, simPerBroadcast / CHART_FINE_MAX);
-      subEvery = Math.max(PHYSICS_DT, simPerBroadcast / CHART_SUB_MAX);
+      subEvery = Math.max(dt, simPerBroadcast / CHART_SUB_MAX);
       if (subEvery > fineEvery) subEvery = fineEvery;   // at least one sample per bucket
     }
     var sinceFine = 0, sinceSub = 0, acc = null;
@@ -357,8 +428,9 @@
       // Automation channels run in-stack at physics rate (fixed sim-time
       // cadence inside), reading the previous step's instruments — so
       // controllers behave identically at any time acceleration.
-      if (this.layer.stepAutomation) this.layer.stepAutomation(PHYSICS_DT);
-      this.engine.step(PHYSICS_DT);
+      if (this.layer.stepAutomation) this.layer.stepAutomation(dt);
+      this.engine.step(dt);
+      stepped = i + 1;
       // Protection is on a SIM-time cadence, not a per-broadcast one (#153): the
       // reactor gets the same protection at 3600× as at 1×. The last step is left
       // to the post-loop call below so the evaluation the snapshot is assembled
@@ -366,14 +438,14 @@
       // (5 steps, cap reached exactly at i = 4) identical to the old single call.
       // `getInstruments()` is a pure read of `instruments.reading`; the noise PRNG
       // advances inside `engine.step`, so evaluating more often perturbs no stream.
-      sinceEval += PHYSICS_DT;
+      sinceEval += dt;
       // Fine chart sample. Taken INSIDE the step loop, after the step, so it sees the plant
       // at that sim instant rather than only at broadcast boundaries. The sampler is the
       // UI's, and it returns whatever small object it needs — the service never learns what
       // a "series" is. Skipped on the last step: the post-loop broadcast carries that
       // instant anyway, and sampling it twice would double-weight it in the chart's buckets.
-      sinceFine += PHYSICS_DT;
-      sinceSub += PHYSICS_DT;
+      sinceFine += dt;
+      sinceSub += dt;
       if (subEvery && sinceSub >= subEvery - 1e-9) {
         acc = foldExtremes(acc, this._fineSampler(
           this.engine.getInstruments(), this.engine.getTrueState(),
@@ -381,7 +453,7 @@
         sinceSub = 0;
       }
       if (fineEvery && acc && sinceFine >= fineEvery - 1e-9 && i < steps - 1) {
-        acc.t = this.simTime + (i + 1) * PHYSICS_DT;
+        acc.t = this.simTime + (i + 1) * dt;
         this._fineBuf.push(acc);
         acc = null;
         sinceFine = 0;
@@ -392,8 +464,19 @@
         // makes the hold identical at 1x and at 3600x — the same property #153 established
         // for the protection cadence itself, and for the same reason.
         this.layer.evaluate(this.engine.getInstruments(), sinceEval);
+        var covered = sinceEval;
         sinceEval = 0;
+        /* THE WARP WATCH (#625) rides the protection cadence: on WARP every step is one
+         * evaluation, so a transient is caught within WARP_DT of sim. The loop STOPS here —
+         * the rest of this broadcast would have been stepped at a dt the plant has just
+         * shown it cannot take. `stepped` already holds the count credited below. */
+        if (this._tier === 'warp') {
+          var why = this._warpWatch(covered);
+          if (why) { this._dropWarp(why); break; }
+        }
       }
+      if (budgetMs && (i % BUDGET_CHECK_EVERY) === BUDGET_CHECK_EVERY - 1 && i < steps - 1 &&
+          this._perfNow() - _perfT0 > budgetMs) break;
     }
     /* The final evaluation covers whatever sim time has accrued since the last one — NOT
      * PROTECTION_DT, which would over-count at 1x where the loop above never fires.
@@ -407,18 +490,35 @@
      * 1e-17 shortfall must not silently double the protection interval. */
     if (sinceEval >= PROTECTION_DT - 1e-9) {
       this.layer.evaluate(this.engine.getInstruments(), sinceEval);   // trips/actuations/alarms on the new readings (HR1)
+      var coveredLast = sinceEval;
       sinceEval = 0;
+      if (this._tier === 'warp' && !this._warpDrop) {
+        var whyLast = this._warpWatch(coveredLast);
+        if (whyLast) this._dropWarp(whyLast);
+      }
     }
     this._sinceEval = sinceEval;
-    this.simTime += steps * PHYSICS_DT;
+    /* CREDIT WHAT WAS STEPPED, never the request (#625). `steps * PHYSICS_DT` unconditional
+     * is how a clock runs ahead of its physics silently (pwr2_kinetics.js:38). */
+    this.simTime += stepped * dt;
+    this._lastSpanS = stepped * dt;
 
     // Stop the clock BEFORE broadcasting: subscribers run synchronously inside _broadcast,
     // so timing past this point would fold the UI's render into the physics figure and
     // make every transient look compute-bound. Separating the two stages is the whole
     // reason the measurement exists.
-    if (_perfT0) {
-      this._perfStepMs = performance.now() - _perfT0;
-      this._perfSteps = steps;
+    if (_perfT0 != null) this._perfStepMs = this._perfNow() - _perfT0;
+    this._perfSteps = stepped;
+    this._perfStepsRequested = steps;
+    // Achieved acceleration (#581, folded into #625): sim stepped per wall second between
+    // consecutive TIMER ticks, smoothed. Meaningless off the timer path, so null there.
+    if (this._budgetArmed) {
+      var wallNow = this._now();
+      if (this._lastTickWallMs != null && wallNow > this._lastTickWallMs) {
+        var inst = (stepped * dt) / ((wallNow - this._lastTickWallMs) / 1000);
+        this._achieved = this._achieved == null ? inst : this._achieved + 0.3 * (inst - this._achieved);
+      }
+      this._lastTickWallMs = wallNow;
     }
 
     var snap = this._assembleWithInstructor();
@@ -458,8 +558,166 @@
   };
 
   SimulationService.prototype._stepsPerBroadcast = function () {
-    // Acceleration = more fixed-dt steps per broadcast (see deviation note).
-    return Math.max(1, Math.round(this.timeAcceleration * (this.broadcastMs / 1000) / PHYSICS_DT));
+    // Acceleration = more fixed-dt steps per broadcast (see deviation note). The dt is the
+    // TIER's (#625): PHYSICS_DT on PLAY, WARP_DT on WARP.
+    return Math.max(1, Math.round(this.timeAcceleration * (this.broadcastMs / 1000) / this._dt));
+  };
+
+  // ------------------------------------------------------------ pacing (#625)
+  // Opt-in from the control room. `stepBudgetMs` bounds the wall time one broadcast may spend
+  // stepping physics (the loop stops early and credits only what it stepped — the plant is
+  // unchanged, only the broadcast instants move); `warpStepBudgetMs` is the same bound for the
+  // WARP tier (#631) and falls back to `stepBudgetMs` when unset, so nothing changes for a
+  // caller that never opts in; `warp` enables the WARP tier; `warpDt` is a TEST SEAM for
+  // run_warp_tier's "the cliff is real" check and nothing else should set it.
+  SimulationService.prototype.configurePacing = function (opts) {
+    opts = opts || {};
+    if (opts.stepBudgetMs != null) this.pacing.stepBudgetMs = Math.max(0, +opts.stepBudgetMs || 0);
+    if (opts.warpStepBudgetMs != null) this.pacing.warpStepBudgetMs = Math.max(0, +opts.warpStepBudgetMs || 0);
+    if (opts.warp != null) this.pacing.warp = !!opts.warp;
+    if (opts.warpDt != null && opts.warpDt > 0) this.pacing.warpDt = +opts.warpDt;
+    this._applyTier();
+    return this.pacing;
+  };
+  /* WHICH BUDGET THIS TIER SPENDS (#631). PLAY holds back 60 of the 100 ms broadcast for input
+   * and paint, which is what a 1x..60x plant needs — a transient is exactly when the player is
+   * clicking. WARP is the opposite case by construction: it exists only on a quiet plant and
+   * DROPS to 60x on any transient (`_warpWatch`), so that headroom sits idle while the physics
+   * is the only thing with work to do. Holding it back capped WARP at what 40 ms buys (#631;
+   * the owner's machine read 800x against a requested 3600x).
+   *
+   * MEASURED IN THE BROWSER, 70 against 40, 20 s wall at a requested 3600x (Playwright
+   * Chromium, headless, shipped shell): hot full power 671x -> 931x, cold shutdown 765x ->
+   * 1,082x, i.e. +39 %. NOT the +75 % the budget ratio implies, and the difference is NOT in
+   * this function: `_reschedule` arms its setTimeout AFTER the tick returns, so the period is
+   * broadcastMs PLUS the tick's own cost — 225 steps per 145 ms before, 375 per 175 ms after.
+   * Every ms of budget therefore buys a step and lengthens the period it is spent in. 70 keeps
+   * 30 ms for a DOM pass that measures 8 ms on a board with nothing to animate.
+   *
+   * Unset (0) means "no separate WARP budget" and falls back to the PLAY one — a caller that
+   * never opts in gets exactly the service it had. */
+  SimulationService.prototype._budgetForTier = function () {
+    if (this._tier === 'warp' && this.pacing.warpStepBudgetMs > 0) return this.pacing.warpStepBudgetMs;
+    return this.pacing.stepBudgetMs;
+  };
+  SimulationService.prototype._resetPacing = function () {
+    this._tier = 'play'; this._dt = PHYSICS_DT;
+    this._warpLockedUntil = 0; this._warpLockWhy = null;
+    this._warpPrev = null; this._warpDrop = null; this._speedNote = null;
+    this._lastRapid = false; this._lastSpanS = 0;
+    this._achieved = null; this._lastTickWallMs = null;
+    this._applyTier();
+  };
+  // High-resolution wall clock seam (tests fake it to drive the budget deterministically).
+  // null, not 0, when there is no clock: a reading of 0 is a legitimate first sample.
+  SimulationService.prototype._perfNow = function () {
+    return (typeof performance !== 'undefined' && performance.now) ? performance.now() : null;
+  };
+  // Every speed change comes through here — the player's button, a beat's `speed:`, a restore.
+  // `authored` speeds never warp. A WARP request the plant cannot take is landed at
+  // WARP_DROP_SPEED and reported on the next broadcast as a speed_snap the UI toasts.
+  SimulationService.prototype._setSpeed = function (value, authored) {
+    var v = +value;
+    if (!(v > 0)) v = 1;
+    this._authoredSpeed = authored ? (v > 1) : false;
+    if (!authored && this.pacing.warp && v >= WARP_MIN_SPEED) {
+      var why = this._warpBlocked();
+      if (why) {
+        v = Math.min(v, WARP_DROP_SPEED);
+        this._speedNote = { reason: 'warp_locked', detail: why };
+      }
+    }
+    this.timeAcceleration = v;
+    this._applyTier();
+    return null;
+  };
+  // Derive the tier from the state — the ONE place `_dt` is written.
+  SimulationService.prototype._applyTier = function () {
+    var warp = this.pacing.warp && !this._authoredSpeed && this.timeAcceleration >= WARP_MIN_SPEED;
+    var tier = warp ? 'warp' : 'play';
+    if (tier !== this._tier) {
+      this._tier = tier;
+      this._warpPrev = null;           // the in-loop watch re-arms from the first WARP evaluation
+    }
+    this._dt = warp ? this.pacing.warpDt : PHYSICS_DT;
+  };
+  // Why WARP cannot be entered right now, or null. Reads what the last broadcast established:
+  // the quiet timer any event starts, the rate of change it measured, the loop's Courant
+  // report and the model's own hold.
+  SimulationService.prototype._warpBlocked = function () {
+    if (!this.engine) return 'no plant';
+    if (this.simTime < this._warpLockedUntil) return this._warpLockWhy || 'plant not settled';
+    if (this._lastRapid) return 'plant in transient';
+    var ts = this.engine.getTrueState ? this.engine.getTrueState() : null;
+    if (ts && (ts.beyond_model === true || ts.model_held === true)) return 'model held';
+    var rep = this.engine.getStepReport ? this.engine.getStepReport() : null;
+    if (rep && rep.courant_limit_s > 0 && this.pacing.warpDt / rep.courant_limit_s > WARP_COURANT_MAX_SUB) return 'loop transient';
+    return null;
+  };
+  SimulationService.prototype._lockWarp = function (why) {
+    this._warpLockedUntil = this.simTime + WARP_QUIET_S;
+    this._warpLockWhy = why;
+  };
+  // THE IN-LOOP WATCH. Called right after every protection evaluation while on WARP, with the
+  // sim seconds that evaluation covered. Returns a reason to drop the tier, or null. Reads the
+  // control layer (trip latch, failures, alarms — HR1: these are the plant's own instrumented
+  // conclusions) and the true rate of change of the two quantities `_isRapidChange` watches.
+  SimulationService.prototype._warpWatch = function (spanS) {
+    var ts = this.engine.getTrueState();
+    var rps = this.layer.getRpsState ? this.layer.getRpsState() : null;
+    var scrammed = !!(rps && rps.scrammed) || !!(ts && ts.scrammed);
+    var fails = this._failureIdSet(this.layer.getActiveFailures ? this.layer.getActiveFailures() : []);
+    var alarms = this.layer.getAlarms ? this.layer.getAlarms() : [];
+    var prev = this._warpPrev;
+    var P = primaryPressure(ts), power = ts ? ts.power_pct : NaN;
+    this._warpPrev = { scrammed: scrammed, fails: fails, alarms: alarms, P: P, power: power };
+    if (ts && (ts.beyond_model === true || ts.model_held === true)) return 'model held';
+    var rep = this.engine.getStepReport ? this.engine.getStepReport() : null;
+    if (rep && rep.courant_limit_s > 0 && this._dt / rep.courant_limit_s > WARP_COURANT_MAX_SUB) return 'loop transient';
+    if (!prev) return null;              // first evaluation on the tier: establish the baseline
+    if (scrammed && !prev.scrammed) return 'reactor trip';
+    if (this._anyNewFailureIn(fails, prev.fails)) return 'equipment failure';
+    // An alarm drops WARP on the same terms it drops fast-forward (`_attentionStop`): a NEW,
+    // unacknowledged arrival on a QUIET board. A heatup with low-pressure alarms latched in
+    // is exactly where WARP is wanted, and the rate checks below are what guard fidelity.
+    if (this._boardQuiet(prev.alarms) && this._anyAlarmNewlyFiring(alarms, prev.alarms, true)) return 'new alarm';
+    if (spanS > 0) {
+      if (Math.abs(power - prev.power) / spanS > RAPID_POWER_PCT_PER_S) return 'power moving ' + (Math.abs(power - prev.power) / spanS).toFixed(1) + ' %/s';
+      if (Math.abs(P - prev.P) / spanS > RAPID_P_MPA_PER_S) return 'pressure moving ' + (Math.abs(P - prev.P) / spanS * 145.038).toFixed(0) + ' psi/s';
+    }
+    return null;
+  };
+  // Leave WARP from inside the step loop: back to PHYSICS_DT, the clock to WARP_DROP_SPEED,
+  // the quiet timer started, the reason kept for this broadcast's speed_snap.
+  SimulationService.prototype._dropWarp = function (why) {
+    this._warpDrop = why;
+    this._lockWarp(why);
+    this.timeAcceleration = Math.min(this.timeAcceleration, WARP_DROP_SPEED);
+    this._applyTier();
+  };
+  // What the snapshot reports about pacing (display-only; never in the save).
+  SimulationService.prototype._pacingBlock = function () {
+    var why = this.pacing.warp ? this._warpBlocked() : 'warp not enabled';
+    return {
+      tier: this._tier,
+      physics_dt: this._dt,
+      achieved: this._achieved == null ? null : Math.round(this._achieved),
+      warp_available: !why,
+      warp_lock: why,
+      /* The EFFECTIVE budget — what THIS tier is spending, not what was configured (#631).
+       * A reader (ui/perf.js's verdict, a bug report) is asking "how much of the broadcast is
+       * the physics allowed", and on WARP that is the WARP number. The configured WARP value
+       * rides alongside so the pair is legible when the tier is PLAY. */
+      step_budget_ms: this._budgetForTier(),
+      warp_step_budget_ms: this.pacing.warpStepBudgetMs,
+      steps_requested: this._perfStepsRequested || 0,
+      steps_done: this._perfSteps || 0,
+    };
+  };
+  SimulationService.prototype._anyNewFailureIn = function (now, prev) {
+    if (!prev) return false;
+    for (var id in now) if (!prev[id]) return true;
+    return false;
   };
 
   // Assemble the snapshot, then let the Instructor evaluate it and fold its
@@ -482,13 +740,25 @@
     // each one drop the clock made authored skips stutter to a halt (issue #105).
     // A genuine scram or new failure still hard-stops even under an authored FF.
     if (stop === 'alarm' && this._authoredSpeed) stop = null;
+    // Any attention-stop event also starts WARP's quiet timer (#625), whether or not the
+    // clock was accelerated at the time.
+    if (stop) this._lockWarp(stop === 'scram' ? 'reactor trip' : stop === 'failure' ? 'equipment failure' : 'new alarm');
     if (stop && this.timeAcceleration > 1) {
       this.timeAcceleration = 1.0;
       this._authoredSpeed = false;
+      this._applyTier();
       snap.metadata.speed_snap = { reason: stop };
+    } else if (this._warpDrop) {
+      // The in-loop watch dropped WARP this tick (#625): 60x, with the plant's reason.
+      snap.metadata.speed_snap = { reason: 'transient', detail: this._warpDrop };
+    } else if (this._speedNote) {
+      snap.metadata.speed_snap = this._speedNote;   // a WARP request that was refused
     }
+    this._warpDrop = null;
+    this._speedNote = null;
     // A beat's speed request takes effect from THIS broadcast — keep it honest.
     snap.metadata.time_acceleration = this.timeAcceleration;
+    snap.metadata.pacing = this._pacingBlock();
     snap.instructor = this._instructorBlock();
     return snap;
   };
@@ -507,7 +777,7 @@
     // Speed applies AFTER a rewind so a beat's speed wins over the checkpoint's
     // stored acceleration (fast-forward in, snap back to real time at set points).
     var sp = i.consumeSpeedRequest ? i.consumeSpeedRequest() : null;
-    if (sp != null) { this.timeAcceleration = sp; this._authoredSpeed = (sp > 1); }
+    if (sp != null) this._setSpeed(sp, true);   // authored: never the WARP tier (#625)
     return rewound;
   };
 
@@ -618,16 +888,24 @@
     return this._anyAlarmNewlyFiring(snap.alarms, this._prevAlarms);
   };
 
-  // Rapid power/pressure excursion vs. the previous broadcast, thresholds scaled
-  // to the actual cadence so the *rate* that trips is frequency-independent (§7).
-  // Shared by the transient-cadence flip and the attention stop.
+  // Rapid power/pressure excursion vs. the previous broadcast, as a rate PER SIM SECOND
+  // (§7). Shared by the transient-cadence flip and WARP's entry check.
+  //
+  // It used to scale the thresholds by the WALL broadcast interval (`broadcastMs / 500`),
+  // which is the same thing only at 1x. At 600x one broadcast covers 60 plant-seconds and
+  // ordinary drift crossed a threshold meant for half a second — MEASURED 2026-09-04: a QUIET
+  // full-power plant at 600x sat permanently on the 50 ms transient cadence, twenty paints a
+  // second scheduled exactly when the step budget was scarcest (#625). Dividing by the sim
+  // span the tick actually stepped is identical at 1x (0.1 s span, 0.2 % and 0.028 MPa per
+  // broadcast, as before) and honest above it.
   SimulationService.prototype._isRapidChange = function (snap) {
     var prev = this._prevTrueState;
-    if (!prev) return false;
-    var k = this.broadcastMs / CADENCE_REF_MS;
-    if (Math.abs(snap.true_state.power_pct - prev.power_pct) > 1.0 * k) return true;
-    if (Math.abs(primaryPressure(snap.true_state) - primaryPressure(prev)) > 0.14 * k) return true;
-    return false;
+    if (!prev) { this._lastRapid = false; return false; }
+    var span = this._lastSpanS > 0 ? this._lastSpanS : this.timeAcceleration * this.broadcastMs / 1000;
+    var rapid = Math.abs(snap.true_state.power_pct - prev.power_pct) / span > RAPID_POWER_PCT_PER_S ||
+                Math.abs(primaryPressure(snap.true_state) - primaryPressure(prev)) / span > RAPID_P_MPA_PER_S;
+    this._lastRapid = rapid;
+    return rapid;
   };
 
   // Attention stop: return a reason string for the FIRST event on this
@@ -797,13 +1075,14 @@
        *
        * A refusal rather than a silent clamp: a button that visibly does nothing is the defect
        * the scanner's interlock channel exists for. Anything at or below 1x still goes through,
-       * so the player can always pause or run in real time. */
+       * so the player can always pause or run in real time. The hold is checked BEFORE the
+       * #625 tier logic: a held plant refuses every rung above 1x, WARP or PLAY alike. */
       case 'set_speed':
         if (this.speedHolds && this._prevSpeedHold && command.value > 1) {
           return { type: 'blocked', code: 'SPEED_HELD',
                    message: 'Time acceleration is held at real time: ' + this._prevSpeedHold + '.' };
         }
-        this.timeAcceleration = command.value; this._authoredSpeed = false; return null;
+        return this._setSpeed(command.value, false);   // #625: tiers + refusal
       case 'set_attention_stops': this.attentionStops = !!command.value; return null;
       case 'save_state': return this.saveState();
       case 'load_state': return this.loadState(command.state);
@@ -930,7 +1209,12 @@
     if (!this.running) return;
     if (this._timer != null) clearTimeout(this._timer);
     var self = this;
-    this._timer = setTimeout(function () { self.tick(); self._reschedule(); }, this.broadcastMs);
+    this._timer = setTimeout(function () {
+      // The step budget and the achieved-rate figure exist for THIS path only (#625).
+      self._budgetArmed = true;
+      try { self.tick(); } finally { self._budgetArmed = false; }
+      self._reschedule();
+    }, this.broadcastMs);
   };
 
   // ----------------------------------------------------------- broadcast (§10)
@@ -1052,6 +1336,7 @@
     this._prevScrammed = false;
     this._prevFailureIds = null;
     this.broadcastMs = NORMAL_MS;
+    this._resetPacing();   // the tier follows the restored speed; the quiet timer restarts (#625)
     if (skipInstructor && this.instructor.rebaseTime) this.instructor.rebaseTime(this.simTime);
 
     // silent (in-tick instructor rewind): do NOT step the Instructor or broadcast

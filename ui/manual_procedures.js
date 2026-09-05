@@ -1271,13 +1271,38 @@
          * no refusal, and measured over the following 5 plant-minutes: accumulator inventory
          * 100 % -> 97.2 % and boron 918 -> 940 ppm. An unplanned boration and an accumulator under
          * its inventory, by following the checklist. The replay never saw it because `hold: 2400`
-         * dominates the acceptance. 4.7 MPa clears the measured cover gas by 17 psi. */
+         * dominates the acceptance. 4.7 MPa clears the measured cover gas by 17 psi.
+         *
+         * AND THEN THE 17 psi MARGIN BECAME A HOLD NOBODY COULD READ (#627, owner playtest,
+         * 2026-09-04: "it holds the warp at 1x until pressure is over 682. it should not gate the
+         * warp hold on the pressure, the warp hold should gate on the user setting the pressure.
+         * thats the important part to wait for, not the pressure."). The #619 item 13 clock hold
+         * rises at the cover gas, 665 psia; this step ticked at 682. For the 17 psi between, the
+         * checklist showed THIS step waiting on a pressure while the plant refused fast time and
+         * asked for the accumulators — the next step, greyed. Measured as a player at 600x: hold at
+         * 667.9 psia, step tick at 691.6, and the hold chattered three times in between
+         * (pwr2_engine.js has that half).
+         *
+         * TWO CHECK-OFFS NOW, and the acceptance moves to the cover gas itself. The first box is
+         * the owner's "important part": the setpoint DIALLED, a cmd-kind entry that ticks the
+         * moment the command is issued — the action is acknowledged before the ride starts. The
+         * second is the pressure at 4.585 MPa — a hair above `RD.pwr2.eccs.ACC.p0_mpa` (4.583 MPa,
+         * 664.7 psia, the cover gas the manuals print as 665), so 2e's strict "accepts ABOVE the
+         * cover gas" still holds — the same crossing the hold rises on, so the step that is active while the clock is
+         * held is the one that says open the valve. #608's rule survives with no margin needed:
+         * at the cover gas the tank and the primary are at the same pressure, so opening on the
+         * tick moves nothing (the 609 psia case was a 56 psi head into the tank). The replay still
+         * dwells `hold: 2400`; `run_checklist_pwr2` 2j asserts the tick lands within 50 broadcasts
+         * of the hold rising. */
         { text: 'Raise the pressurizer pressure setpoint (Pressure SP) from 363 psi to 1700 psig, the dial floor. Not 2235 psi yet.',
-          why: 'Two stages, because the first must stop below P-11 — the 1972 psi (13.6 MPa) permissive that re-arms the safety injection (SI) signals the cold lineup had blocked. Dial 2235 psi (15.41 MPa) now and the primary crosses P-11 while the steam generator is still cold, below the 327.7 psi (2.26 MPa) low-steam-pressure setpoint: SI actuates on a healthy plant and the heaters shed. A clock also starts with this command — the accumulator window in the next step opens about 35 plant-minutes from here and shuts about 63 minutes after that.',
+          why: 'Two stages, because the first must stop below P-11 — the 1972 psi (13.6 MPa) permissive that re-arms the safety injection (SI) signals the cold lineup had blocked. Dial 2235 psi (15.41 MPa) now and the primary crosses P-11 while the steam generator is still cold, below the 327.7 psi (2.26 MPa) low-steam-pressure setpoint: SI actuates on a healthy plant and the heaters shed. A clock also starts with this command — the accumulator window in the next step opens about 35 plant-minutes from here at the 665 psi (4.585 MPa) cover gas, and the plant holds the clock at real time there until the valve is open.',
           control: 'Pressure SP', target: '1700 psig, the dial floor, dialled UP from 363 psi; pressure climbing',
-          wait_hint: 'About 35 plant-minutes to the accumulator cover gas. Run at Fast time and COME BACK: the window shuts about 63 minutes after it opens and nothing annunciates it.',
+          wait_hint: 'About 35 plant-minutes to the accumulator cover gas. Run at Fast time: the clock drops to real time by itself at 665 psi (4.585 MPa) and will not accelerate again until the accumulator valve is open.',
           cmd: { action: 'set_pressure_setpoint', mpa: 11.72 }, hold: 2400,
-          acc: { p: 'pressure_mpa', op: '>', v: 4.7 },
+          accs: [
+            { cmd: { action: 'set_pressure_setpoint', mpa: 11.72 }, label: 'Pressure SP dialled to 1700 psig' },
+            { p: 'pressure_mpa', op: '>', v: 4.585, label: 'Pressure at the 665 psi (4.585 MPa) accumulator cover gas' },
+          ],
           hl: ['Pressure SP', 'Primary Pressure'] },
         /* THE WINDOW IS A TRANSIT, AND THE NUMBERS WERE STALE *(OWNER, 2026-09-02 playtest, #608
          * item 3, filed as a BLOCKER: "I couldnt open the valve, something was blocking it and the
@@ -1311,11 +1336,13 @@
          * And measured across the whole climb, not one accumulator alarm comes in: the only alarm
          * between 665 and 1615 psia is rhr_not_aligned at 591 psia, and the existing accum_aligned
          * row is the opposite polarity (it fires when the valve is OPEN below 1000 psi), so it can
-         * never say the window is closing. Until a board cue exists, the step's words are the only
-         * warning there is — which is why the clock is stated three times (here, in step 7's why,
-         * and in its wait_hint) rather than once. */
-        { text: 'Open the Accumulator valve now, on the way past. Nothing opens it for you and nothing warns you.',
-          why: 'The accumulators are the passive half of emergency injection — borated water behind a check valve, pushed by nitrogen — and cold lineups isolate them because they would dump into a depressurized plant. The window opens at 665 psi (4.585 MPa), the cover gas, and shuts at 1615 psi (11.136 MPa), where the plant removes power from the valve operator (TS Bases B 3.5.1). This is a transit action: the ride parks the plant above that lock, so miss the window and the only way back is a manual depressurization — HEATER to OFF, SPRAY held open, back down through 1600 psig.',
+         * never say the window is closing. The board cue is the CLOCK (#619 item 13 / #627): the
+         * plant drops to real time at the cover gas and refuses to accelerate until the valve is
+         * open, and since #627 this step is the ACTIVE one while it does — the setpoint step
+         * ticks at the same crossing. The clock is still stated in the setpoint step's why and
+         * wait_hint, because a player reads those before the ride, not during it. */
+        { text: 'Open the Accumulator valve now, on the way past. The clock holds itself at real time here until you do.',
+          why: 'The accumulators are the passive half of emergency injection — borated water behind a check valve, pushed by nitrogen — and cold lineups isolate them because they would dump into a depressurized plant. The window opens at 665 psi (4.585 MPa), the cover gas, and shuts at 1615 psi (11.136 MPa), where the plant removes power from the valve operator (TS Bases B 3.5.1). This is a transit action: the ride parks the plant above that lock, so miss the window and the only way back is a manual depressurization — HEATER to OFF, SPRAY held open, back down through 1600 psig. The plant will not let fast time carry you past it: the clock drops to real time at the cover gas and every speed above 1× is refused until this valve is open.',
           control: 'Accumulator valve', target: 'valve open, between 665 psi (4.585 MPa) and 1615 psi (11.136 MPa)',
           cmd: { action: 'open_accumulator_valve' }, hold: 10,
           acc: { p: 'accumulator_valve_open', op: '>', v: 0 },

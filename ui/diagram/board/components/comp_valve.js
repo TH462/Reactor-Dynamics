@@ -19,6 +19,12 @@
     s.textContent =
       '@keyframes flowmove{to{stroke-dashoffset:-24}}' +
       '.flow{stroke-dasharray:9 15;animation:flowmove 1.1s linear infinite}' +
+      /* The ring keeps its feGaussianBlur — a ring's glow is a blurred STROKE and the radial
+       * gradient that replaced the board's other blurs (#613 wave 4) has no equivalent. It
+       * costs nothing idle: `visibility:hidden` until hovered was tried and MEASURED at
+       * 4014 ms vs 3993 ms of raster with the eight rings visible-but-transparent, i.e.
+       * nothing, so an opacity-0 filtered element is already skipped and the change was
+       * reverted rather than shipped for a reason that did not exist. */
       '.cv-hit:hover + .cv-hoverring{opacity:0.75}' +
       '.cv-hit:active + .cv-hoverring{opacity:1}';
     (document.head || document.documentElement).appendChild(s);
@@ -80,7 +86,10 @@
     // flow channel across the ball (dark seat), always visible so the bore reads
     sym.push(h('rect', { x: cx - Rb, y: cy - bore / 2, width: Rb * 2, height: bore, rx: bore / 2, fill: '#141d24', stroke: '#0c141c', strokeWidth: 0.8 }));
     // V-port fluid wedge — opening area proportional to openFrac (the variable signal)
-    vportEl = h('polygon', { points: '', fill: '#4a5866', stroke: 'none', style: { transition: 'all 0.35s ease' } });
+    /* `fill`, NOT `all` (#613 wave 3). A modulating valve rewrites `points` on every broadcast,
+     * and `all 0.35s ease` put every animatable property of that write under a 350 ms transition
+     * that the next broadcast restarted. Only the wet/dry fill swap is a discrete event. */
+    vportEl = h('polygon', { points: '', fill: '#4a5866', stroke: 'none', style: { transition: 'fill 0.35s ease' } });
     sym.push(vportEl);
     // flow streak scaled by opening
     streakEl = h('line', {
@@ -100,7 +109,9 @@
         stroke: '#8fa3b2', strokeWidth: i === 0 || i === 4 ? 1.4 : 0.9, opacity: 0.7
       }));
     }
-    needleEl = h('line', { x1: cx, y1: cy, x2: cx + rNeed, y2: cy, stroke: CYAN, strokeWidth: 2.2, strokeLinecap: 'round', style: { transition: 'all 0.35s ease' } });
+    /* `stroke`, NOT `all` (#613 wave 3) — the needle's x2/y2 sweep with openFrac every broadcast;
+     * only the open/closed colour is a discrete event. */
+    needleEl = h('line', { x1: cx, y1: cy, x2: cx + rNeed, y2: cy, stroke: CYAN, strokeWidth: 2.2, strokeLinecap: 'round', style: { transition: 'stroke 0.35s ease' } });
     gauge.push(needleEl);
     sym.push(h('g', null, gauge));
 

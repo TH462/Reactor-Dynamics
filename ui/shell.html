@@ -156,15 +156,16 @@
         <div class="sim-row">
           <button class="play paused attention" id="playBtn" data-scanner-hint="Play / Pause — starts or stops the simulation. Separate from the speed selector."
               data-scanner-detail="Paused, the plant is frozen but the board stays live and controls still queue commands. Time acceleration is a separate control: pausing does not reset it, and a paused plant at 60x is still paused.">▶</button>
-          <div class="speed" id="speed" data-scanner-hint="Speed — time acceleration. 1× real-time up to 3600×, keys 1 to 6."
-              data-scanner-detail="Acceleration runs the same physics faster, not a coarser model. Fast-forward dropout (a Settings option) can drop the clock back to real time when something needs you — a scram, a new failure, or the first alarm on a quiet board.">
+          <div class="speed" id="speed" data-scanner-hint="Speed — time acceleration in two tiers. PLAY (1× to 60×) runs the full physics; WARP (600× and 3600×) steps the same physics at a coarser 0.5 s step for the long, quiet evolutions — xenon, decay heat, boron, a heatup — and is unavailable while the plant is in a transient. Keys 1 to 6 select the rungs."
+              data-scanner-detail="WARP drops back to 60× on its own the moment the plant moves fast — a trip, a new failure, a new alarm on a quiet board, power or pressure running away — and the buttons stay dark for 30 plant-seconds of quiet afterwards. The readout to the right shows the rate actually achieved: amber when the physics cannot keep up with the request (the honest ceiling of this machine), red when the page itself is stalling. Fast-forward dropout (a Settings option) still drops the clock to real time on a scram, a new failure, or the first alarm on a quiet board.">
             <!-- 5x added #619 item 18 (OWNER, 2026-09-03: "Add a 5x sim speed."). The service
                  accepts ANY value (simulation_service.js set_speed is unclamped), so this is a
                  UI rung only. The buttons carry no whitespace between them on purpose — .speed
                  lays them out edge to edge. Adding a rung is safe for verify_e2e_ui, which
                  clicks by [data-speed="N"]; REORDERING or renaming is not. -->
-            <button class="on" data-speed="1">1×</button><button data-speed="5">5×</button><button data-speed="10">10×</button><button data-speed="60">60×</button><button data-speed="600">600×</button><button data-speed="3600">3600×</button>
+            <button class="on" data-speed="1">1×</button><button data-speed="5">5×</button><button data-speed="10">10×</button><button data-speed="60">60×</button><button class="warp" data-speed="600" title="WARP — coarser physics step; long quiet evolutions only">600×</button><button class="warp" data-speed="3600" title="WARP — coarser physics step; long quiet evolutions only">3600×</button>
           </div>
+          <span class="ff-rate mono" id="ffRate" hidden title="Achieved rate — the plant-time actually passing per second of wall clock"></span>
           <button class="btn" id="manualBtn" data-scanner-hint="Operator's Manual — reference (controls, indications, setpoints, normal values) and engine-validated procedures for the selected plant."
               data-scanner-detail="The manual set is written in commercial operator-manual format: general description, controls and indications, normal and emergency procedures, alarm response, setpoints and a glossary. Its procedures are replayed against the engine by the test suite, so the steps match the plant you are operating.">Manual</button>
           <button class="btn text-btn" id="helpBtn" title="How this control room works" data-scanner-hint="Help — a short guide to the board, the right-hand panels, and where to learn next.">Help</button>
@@ -582,8 +583,12 @@
             <div class="help-sec">
               <h4>Rewind &amp; speed</h4>
               <p><b>Rewind</b> (by the strip chart) restores an earlier plant state so you can try
-              again. <b>Speed</b> runs the same physics faster; optional fast-forward dropout drops
-              you back to 1× when something needs attention.</p>
+              again. <b>Speed</b> has two tiers: 1×–60× run the full physics; <b>600× and 3600×
+              are WARP</b> — the same physics at a coarser step, for xenon, decay heat and long
+              heatups. WARP drops to 60× by itself when the plant moves fast, and the readout
+              beside the buttons shows the rate actually achieved (amber or red when the physics
+              cannot keep up). Optional fast-forward dropout still drops you to 1× when
+              something needs attention.</p>
             </div>
             <div class="help-sec">
               <h4>Keyboard</h4>

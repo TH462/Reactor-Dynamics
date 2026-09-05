@@ -862,6 +862,18 @@ html[data-channel="dev"] .logo-test {
 /* selected speed: subtle cyan outline (not a saturated fill — the clock turns
    amber to warn that time is accelerated; the selector itself stays quiet). */
 .speed button.on { background: transparent; color: var(--text); font-weight: 700; box-shadow: inset 0 0 0 1px var(--normal); }
+/* The two WARP rungs (#625): a coarser physics step for long quiet evolutions. Visibly a
+   different tier, and DARK while the plant is in a transient — the service refuses them then,
+   so a lit button that did nothing would read as broken. */
+.speed button.warp { color: var(--caution); letter-spacing: .02em; }
+.speed button.warp.on { box-shadow: inset 0 0 0 1px var(--caution); }
+.speed button.warp.locked { color: var(--text-3, #6b7280); opacity: .45; cursor: not-allowed; }
+/* Achieved-rate readout (#581, folded into #625): what the plant actually does per wall
+   second. Green = keeping up, amber = behind the request, red = well behind or stalling. */
+.ff-rate { flex: 0 0 auto; font-size: 11px; padding: 3px 6px; border-radius: 4px; border: 1px solid var(--border); color: var(--text-2); }
+.ff-rate.ok   { color: var(--running); border-color: rgba(34,197,94,.35); }
+.ff-rate.warn { color: var(--caution); border-color: rgba(245,158,11,.4); background: rgba(245,158,11,.08); }
+.ff-rate.bad  { color: var(--danger, #ef4444); border-color: rgba(239,68,68,.45); background: rgba(239,68,68,.08); }
 /* DROPOUT FLASH *(OWNER, 2026-09-03, #619 item 7: "when dropping out of warp, flash the warp
    buttons for a moment to make it more obvious.")*. Added by app.js for ~1.6 s whenever the
    snapshot carries a `speed_snap`, so it marks every automatic dropout — a scram, a failure,
@@ -2118,6 +2130,12 @@ select.num-input { width: auto; }
 .ckl-ico { font-weight: 700; width: 16px; text-align: center; flex: none; }
 .ckl-body { flex: 1; min-width: 0; }
 .ckl-txt { font-size: 12.5px; line-height: 1.4; color: var(--text); }
+/* THE ACTIVE BLOCK, WHICH NOW HANGS BELOW THE INSTRUCTION (#628, owner 2026-09-04: "move the
+   numbered step to always be the first part of the stack. then the rest of the step that appears
+   when its active goes below it."). Its only job is the gap: the criteria line carries
+   margin-bottom and .ckl-use zeroes its margin-top, so without this the block butts straight
+   against the step text it belongs to. */
+.ckl-act { margin-top: 5px; }
 .ckl-sub { font-size: 11px; color: var(--text-2); margin-top: 2px; }
 /* THE CHECK-OFF CRITERIA — first line of the active card, bold, its own color *(OWNER,
    #244 M5→3 item 4: "cyan or cobalt or a blue grey. something that isnt too loud but
@@ -2131,8 +2149,9 @@ select.num-input { width: auto; }
 /* WHICH CONTROL, AND WHAT YOU ARE DRIVING IT TO (#598 item 13, owner ruling 2026-09-02).
    Promoted back out of the Details fold: measured, only 41 % of the steps carrying a control
    name it in their instruction text, so folding this away left 27 of them with no visible
-   answer to "which knob". It sits between the criteria and the instruction — the #244 item 6
-   workflow order, unchanged — and is deliberately a touch larger and lighter than a plain
+   answer to "which knob". It sits between the criteria and the wait line — the #244 item 6
+   workflow order, unchanged, though #628 moved the whole block BELOW the instruction rather
+   than above it — and is deliberately a touch larger and lighter than a plain
    .ckl-sub, because it is part of the action rather than a footnote to it. The control name
    itself is the brightest thing on the line; that is the word the eye is hunting for. */
 .ckl-use { font-size: 11.5px; color: var(--text-2); margin-bottom: 3px; margin-top: 0; }

@@ -146,11 +146,11 @@
   // CSV export, not the plot.
   var CHART_WINDOWS = {
     1:    [60, 300, 600, 1800],
-    /* 5x DECLARED, not left to the fallback (#619 item 18). `chartWindowsFor` returns the 1x
-     * ladder for any speed it does not know, which is the right ladder here — five minutes of
-     * plant is a minute of wall clock — but a fallback that happens to be correct is the shape
-     * that rots the first time someone changes the default. Same rungs as 1x, on purpose. */
-    5:    [60, 300, 600, 1800],
+    /* 5x DECLARED, not left to the fallback (#619 item 18): `chartWindowsFor` returns the 1x
+     * ladder for any speed it does not know, and a fallback that happens to be correct is the
+     * shape that rots the first time someone changes the default. Rungs follow the rule above
+     * (wall-clock duration near the 1x ladder's), the #625 values. */
+    5:    [180, 900, 1800, 5400],
     10:   [300, 900, 3600, 10800],
     60:   [900, 3600, 10800, 43200],
     600:  [3600, 10800, 21600, 43200],
@@ -2092,8 +2092,13 @@
     var v = $('perfVerdict');
     if (v) {
       txt(v, p.verdict);
+      /* The WARP branch is tested FIRST and reads OK, not amber (#631): a WARP broadcast inside
+       * its own 70 ms budget is the tier doing exactly what it was built to do, and the same
+       * argument as the achieved-rate ruling applies — a colour that is warm on every machine
+       * at the top rung trains the player to ignore it. The prefixes below are unchanged. */
       v.className = 'perf-verdict' +
-        (/COMPUTE-BOUND/.test(p.verdict) ? ' warn' :
+        (/SPENDING THE WARP BUDGET/.test(p.verdict) ? ' ok' :
+         /COMPUTE-BOUND/.test(p.verdict) ? ' warn' :
          /RENDER-BOUND|SLIPPING|DROPPED/.test(p.verdict) ? ' bad' :
          /healthy/.test(p.verdict) ? ' ok' : '');
     }
@@ -2354,8 +2359,12 @@
     // which is the only way to answer "is the flicker compute or something else".
     if (RD.Perf) {
       try {
+        /* The PACING block rides along since #631. Without it the verdict cannot tell a WARP
+         * broadcast spending its 70 ms budget on purpose from a page that cannot keep up:
+         * both are "the physics used most of the interval", and only the tier says which. */
         RD.Perf.broadcast(service._perfStepMs,
-          (s.metadata && s.metadata.broadcast_ms) || service.broadcastMs);
+          (s.metadata && s.metadata.broadcast_ms) || service.broadcastMs,
+          (s.metadata && s.metadata.pacing) || null);
       } catch (e) { /* a profiler must never break the sim */ }
     }
     if (_renderRaf) {
@@ -2828,6 +2837,9 @@
     scram: 'Dropped to real time — reactor trip',
     failure: 'Dropped to real time — equipment failure',
     alarm: 'Dropped to real time — new alarm',
+    // #625: the WARP tier let go (60x) or was refused; the service names the plant's reason.
+    transient: 'WARP dropped to 60× — ',
+    warp_locked: 'WARP unavailable — ',
     // #619 item 6. Not an emergency, so it toasts 'info' rather than 'error' below — the
     // other three are the plant interrupting you; this one is the checklist keeping pace.
     step: 'Dropped to real time — checklist step complete',
@@ -2835,6 +2847,53 @@
     // The service also REFUSES set_speed while it stands, so this is not merely advisory.
     hold: 'Held at real time — the plant needs you here',
   };
+  function speedSnapText(snap) {
+    var base = SPEED_SNAP_MSG[snap.reason] || 'Dropped to real time';
+    return /— $/.test(base) ? base + (snap.detail || 'plant in transient') : base;
+  }
+  /* The pacing readout (#625, and #581's achieved rate): runs every broadcast, cheap. The
+   * achieved figure is the service's own EMA off its timer path. AMBER means the physics is
+   * behind the request (under 90 % of it) — with the step budget that is the honest ceiling,
+   * not a fault: measured headless, a requested 3600x achieves ~650x with the budget cutting
+   * each broadcast at ~225 of 720 steps, and a rule that painted THAT red would be red on every
+   * machine at the top rung, which trains the player to ignore red. RED is the page itself
+   * straining — the broadcast loop slipping past 1.6x its interval, or paints being dropped
+   * faster than they land (RD.Perf's own verdicts) *(OWNER RULING, 2026-09-04: "2A" — red is
+   * the page straining, not the physics behind the request)*. The WARP buttons go dark while the
+   * service would refuse them, so a click that would land at 60x is never offered as 3600x. */
+  var _lastPacingKey = null;
+  function syncPacingUI(s) {
+    var p = s && s.metadata ? s.metadata.pacing : null;
+    var el = $('ffRate');
+    if (!p || !el) return;
+    var req = s.metadata.time_acceleration || 1, ach = p.achieved;
+    var straining = false;
+    if (RD.Perf && req > 1) {
+      try {
+        var sm = RD.Perf.summary(), iv = sm.interval_ms;
+        straining = !!(iv && iv.p95 > sm.nominal_ms * 1.6) || (sm.fps !== null && sm.fps < 20 && sm.coalesced > sm.paints);
+      } catch (e) {}
+    }
+    var cls = '', text = '';
+    if (req > 1 && ach != null) {
+      var ratio = ach / req;
+      cls = straining ? 'bad' : ratio < 0.9 ? 'warn' : 'ok';
+      text = '→ ' + (ach >= 100 ? Math.round(ach / 10) * 10 : Math.round(ach)).toLocaleString() + '×';
+    }
+    var key = cls + '|' + text + '|' + (p.warp_available ? 1 : 0) + '|' + (p.warp_lock || '');
+    if (key === _lastPacingKey) return;
+    _lastPacingKey = key;
+    el.hidden = !text;
+    el.textContent = text;
+    el.className = 'ff-rate mono' + (cls ? ' ' + cls : '');
+    el.title = text ? 'Achieved rate: ' + text.slice(2) + ' of the requested ' + req + '× (' + p.tier + ' tier, ' + p.physics_dt + ' s step)' : '';
+    var seg = $('speed');
+    if (seg) seg.querySelectorAll('button.warp').forEach(function (b) {
+      b.classList.toggle('locked', !p.warp_available);
+      b.title = p.warp_available ? 'WARP — coarser physics step; long quiet evolutions only'
+                                 : 'WARP unavailable — ' + (p.warp_lock || 'plant in transient');
+    });
+  }
   // Settings → Fast-forward dropout. The service owns the policy (HR5: it arrives by
   // command like everything else); the UI just mirrors what the snapshot reports.
   var attnStops = true;
@@ -2846,8 +2905,10 @@
     // Toast the reason so the operator knows why the clock changed under them.
     var snap = s && s.metadata ? s.metadata.speed_snap : null;
     if (snap) {
-      showToast(SPEED_SNAP_MSG[snap.reason] || 'Dropped to real time',
-        snap.reason === 'step' ? 'info' : 'error');
+      /* Severity by kind: a checklist step completing is information (#619 item 6); a WARP
+       * refusal is a caution (#625); everything else is the plant interrupting you. */
+      showToast(speedSnapText(snap),
+        snap.reason === 'step' ? 'info' : snap.reason === 'warp_locked' ? 'warn' : 'error');
       /* FLASH THE SPEED BUTTONS *(OWNER, 2026-09-03, #619 item 7: "when dropping out of warp,
        * flash the warp buttons for a moment to make it more obvious.")*. The toast says what
        * happened; the flash says WHERE, which is the control the player now has to touch to
@@ -3065,6 +3126,7 @@
     var crw = $('chartRewindBtn');
     if (crw) crw.disabled = noCp;
     syncSpeedUI(s);
+    syncPacingUI(s);
     renderHighlight(s);
     updateSimSummary();   // status line follows scenario/walkthrough transitions (change-guarded)
     instrGateOpen(s);     // a step that blocks progress opens the card, once per beat (#439)
@@ -3342,6 +3404,51 @@
   // survive re-renders via the render key and reset with the checklist itself.
   var cklState = { key: null, whyAll: false, whyOpen: {}, step: null, view: 'list', userScrolled: false, preconHtml: null };
   var cklAutoScroll = false;   /* true while WE are writing scrollTop (#612) */
+
+  /* ---- WHICH SPEED RUNG A LONG WAIT WANTS (#628) --------------------------------------------
+   * *(OWNER, 2026-09-04: "Add a suggested time warp value for the long term waiting steps.")*
+   *
+   * READ OFF THE LADDER ITSELF, never a literal list. There are already TWO copies of the six
+   * rungs — the buttons in shell.html and SPEED_KEYS below, the latter a deliberate literal so a
+   * missing button cannot silently renumber the keys — and a third would be the PROTECTION_DT
+   * trap: a suggestion naming a rung the player does not have is worse than no suggestion. The
+   * DOM read also carries the `warp` class, which is the only thing that distinguishes a rung the
+   * plant may REFUSE (the #625 tier drops to 60× on any transient) from one it always takes.
+   *
+   * The fallback list exists for the case where this is called before the bar is in the document;
+   * it is the ladder as authored, and if the two ever disagree the DOM wins by construction.
+   *
+   * THE RULE: the smallest rung that brings the wait under WAIT_TARGET_WALL_S of real time at
+   * that rung's NOMINAL rate — top rung if none does. 60 s is chosen so the PLAY tier (bit-
+   * identical physics, 1×–60×) is preferred wherever it will do: MEASURED across the 24 pwr2
+   * steps that qualify it lands 2 on 5×, 8 on 10×, 9 on 60×, 4 on 600× and 1 on 3600× — so 19
+   * of 24 stay on PLAY and WARP's declared fidelity departure is spent only on the five waits
+   * that genuinely need it (65 min and up).
+   *
+   * ⚠ NOMINAL, NOT ACHIEVED. A rung is a REQUEST — measured on the workbench machine the top
+   * rung delivers ~931× (#631) — so the wall time this implies is a floor, not a promise, and
+   * that is why the card names the rung and not a number of seconds. */
+  var SPEED_LADDER_FALLBACK = [
+    { speed: 1, warp: false }, { speed: 5, warp: false }, { speed: 10, warp: false },
+    { speed: 60, warp: false }, { speed: 600, warp: true }, { speed: 3600, warp: true },
+  ];
+  var WAIT_TARGET_WALL_S = 60;
+  function speedLadder() {
+    var btns = document.querySelectorAll('#speed [data-speed]');
+    var out = [];
+    for (var i = 0; i < btns.length; i++) {
+      var v = +btns[i].getAttribute('data-speed');
+      if (v > 0) out.push({ speed: v, warp: btns[i].classList.contains('warp') });
+    }
+    if (!out.length) return SPEED_LADDER_FALLBACK.slice();
+    out.sort(function (a, b) { return a.speed - b.speed; });
+    return out;
+  }
+  RD.CklSpeedHint = function (holdS) {
+    var lad = speedLadder();
+    for (var i = 0; i < lad.length; i++) if (holdS / lad[i].speed <= WAIT_TARGET_WALL_S) return lad[i];
+    return lad[lad.length - 1];
+  };
   /* IS THE POINTER IN THIS ELEMENT? (#605.) `:hover` cannot answer it here — the element is
    * BRAND NEW, built microseconds ago by an innerHTML rebuild, and the browser does not
    * re-run its hit test until the next mouse event or paint. So track the pointer ourselves
@@ -3618,7 +3725,24 @@
        * at the top of every step. */
       var waitLineShown = false;
       h += '<div class="ckl-step ' + cls + hoverable + '" data-ckl-step="' + i + '"><div class="ckl-ico">' + (done ? '✓' : active ? '▸' : '○') + '</div><div class="ckl-body">';
+      /* THE NUMBERED INSTRUCTION IS THE HEAD OF THE STACK, ON EVERY STEP *(OWNER, 2026-09-04,
+       * #628: "move the numbered step to always be the first part of the stack. then the rest of
+       * the step that appears when its active goes below it.")*.
+       *
+       * It used to sit UNDER the active block, which is the #244 item 6 workflow order
+       * (criteria → control → action). That order reads well on the one card you are working,
+       * and badly on the list: the active card is the only one whose number is not on its first
+       * line, so the step you are on is the step whose number moves — and it moves by a variable
+       * amount, because the block above it grows with the acceptance entries, the wait line and
+       * the Acknowledge row. Scanning "which step am I on" then costs a hunt down the card.
+       *
+       * The workflow order is preserved WITHIN the active block below (criteria → control →
+       * wait → acknowledge); what changed is that the whole block now hangs off the instruction
+       * instead of pushing it down. */
+      h += '<div class="ckl-txt">' + (i + 1) + '. ' + mesc(st.text) + '</div>';
+      if (done && ck.done_by && ck.done_by[i] === 'manual') h += '<div class="ckl-sub">checked by hand</div>';
       if (active) {
+        h += '<div class="ckl-act">';
         /* THE "graded off the …" LINE IS GONE *(OWNER, 2026-09-03, #619 item 5: "remove the
          * 'graded off the....' line from each step")*. It named which channel the check reads
          * — instrument, board control, or true value — under every active step's details.
@@ -3670,8 +3794,15 @@
           var mins = holdS / 60;
           var span = mins < 90 ? Math.round(mins) + ' plant-minutes'
                    : (mins / 60).toFixed(mins / 60 < 10 ? 1 : 0) + ' plant-hours';
-          h += '<div class="ckl-sub ckl-wait">⏩ About ' + span + ' at 1× — use time acceleration' +
-            (holdS >= 1800 ? ' and come back' : '') + '.' +
+          /* AND WHICH RUNG TO REACH FOR *(OWNER, 2026-09-04, #628: "Add a suggested time warp
+           * value for the long term waiting steps.")*. "Use time acceleration" left the player
+           * to work out how much, and the answer is not obvious: the ladder is 1/5/10/60/600/
+           * 3600 and the right rung spans five of those across the 24 pwr2 steps that qualify.
+           * RD.CklSpeedHint picks it off the ladder itself, so this can never name a button that
+           * is not there. */
+          var rung = RD.CklSpeedHint(holdS);
+          h += '<div class="ckl-sub ckl-wait">⏩ About ' + span + ' at 1× — set the speed control to <b>' +
+            rung.speed + '×</b>' + (rung.warp ? ' (WARP; the plant must be quiet to take it)' : '') + '.' +
             (typeof st.wait_hint === 'string' ? ' ' + mesc(st.wait_hint) : '') + '</div>';
           waitLineShown = true;
         }
@@ -3684,16 +3815,17 @@
          * (the command outlived the control), so nothing new is wired: the press is the same
          * `checklist_check` the harness issues.
          *
-         * It is the LAST thing in the active block on purpose — directly above the step text it
-         * belongs to, and below the acceptance lines that have just gone green, so the eye goes
-         * criterion → met → press. */
+         * It is the LAST thing in the active block on purpose — below the acceptance lines that
+         * have just gone green, so the eye goes criterion → met → press. (It used to be
+         * described as "directly above the step text it belongs to"; #628 moved the step text
+         * to the head of the card, so the button is now the foot of the block rather than the
+         * hinge between two. The reading order it was placed for is unchanged.) */
         if (ck.awaiting_ack) {
           h += '<div class="ckl-ack-row"><button class="btn ckl-ack" data-ckl-check="' + i +
             '">Acknowledge ✓</button><span class="ckl-ack-note">This step is complete — acknowledge to continue.</span></div>';
         }
+        h += '</div>';
       }
-      h += '<div class="ckl-txt">' + (i + 1) + '. ' + mesc(st.text) + '</div>';
-      if (done && ck.done_by && ck.done_by[i] === 'manual') h += '<div class="ckl-sub">checked by hand</div>';
       var det = '';
       if (st.note) det += '<div class="ckl-sub muted">' + mesc(st.note) + '</div>';
       if (st.wait_hint && !waitLineShown) {
@@ -6107,6 +6239,14 @@
     // as a dead button is exactly what the 2026-08-21 telemetry session was).
     if (r && r.type === 'blocked') {
       if (r.code === 'INTERLOCK' && r.message) inspectFlash('⛔ Blocked', r.message);
+      /* A HELD CLOCK IS A PLANT REFUSAL, NOT INSTRUCTOR FEEDBACK *(owner playtest, 2026-09-04:
+       * "when gated and i click on a warp button, it closes the checklist")*. SPEED_HELD comes
+       * back `blocked` and fell into the instructor branch below, whose setFocus('instructor')
+       * switches the side panel to the Instructor tab — and since #607 put the running
+       * checklist in the Checklists pane, that IS closing the checklist. No gate raised this
+       * and the instructor has nothing to add (the message is the plant's own reason), so it
+       * goes where an interlock refusal goes: the scanner bar under the board. */
+      else if (r.code === 'SPEED_HELD' && r.message) inspectFlash('⛔ Held', r.message);
       else { msgHold.bypass = true; setFocus('instructor'); }   // gate feedback jumps the dwell queue
       latest = service.assembleSnapshot(); render(latest);
     } else if (r && r.type === 'error' && r.message) {
@@ -6383,10 +6523,11 @@
       scenario_id: (s.instructor && s.instructor.scenario_id) || null,
       follow_procedure_id: (s.instructor && s.instructor.follow && s.instructor.follow.procedure_id) || null,
       seed: service.seed,
-      // PERFORMANCE RIDES ALONG (2026-08-08). "It flickers on some PCs" is unanswerable
-      // without it — compute-bound, render-bound and neither-of-those look identical to the
-      // person reporting, and the machine it happened on is the only place the numbers
-      // exist. Cheap to carry: one object of percentiles, not a trace.
+      // PERFORMANCE RIDES ALONG (2026-08-08; env/visibility/raf/loaf added #613 wave 3).
+      // "It flickers on some PCs" is unanswerable without it — compute-bound, render-bound,
+      // a backgrounded tab, a software GPU and "neither, and this timer can't see it" all
+      // look identical to the person reporting, and the machine it happened on is the only
+      // place the numbers exist. Cheap to carry: a handful of small objects, not a trace.
       performance: (function () { try { return RD.Perf ? RD.Perf.summary() : null; } catch (e) { return null; } }()),
       snapshot_end: service.saveState(),
       notes: notes || null
@@ -7369,10 +7510,11 @@
     // Global keyboard shortcuts (documented in Help). Skipped while typing
     // in a field or holding a modifier; Space is left alone when a button has
     // focus so native activation (incl. rod hold) still works.
-    /* KEYS ARE POSITIONS ON THE LADDER, NOT SPEEDS — and the 5x rung (#619 item 18) shifted
-     * every key above it. `2` was 10x and is now 5x; the ladder ends at `6`. Kept as a literal
-     * map rather than derived from the DOM because a missing button must not silently renumber
-     * the rest. The help string in shell.html says "1 to 6" and moves with this. */
+    /* KEYS ARE POSITIONS ON THE LADDER, NOT SPEEDS — and the 5x rung (#619 item 18, owner-ruled
+     * 2026-09-04; six rungs since #625) shifted every key above it. `2` was 10x and is now 5x;
+     * the ladder ends at `6`. Kept as a literal map rather than derived from the DOM because a
+     * missing button must not silently renumber the rest; a key with no matching button does
+     * nothing. The help string in shell.html says "1 to 6" and moves with this. */
     var SPEED_KEYS = { '1': 1, '2': 5, '3': 10, '4': 60, '5': 600, '6': 3600 };
     document.addEventListener('keydown', function (e) {
       if (e.key === 'Escape') {
@@ -8883,6 +9025,23 @@
     if (service.setFineSampler) {
       service.setFineSampler(function (ins, truth, ctl) { return chartSample(ins, truth, ctl); });
     }
+    /* PACING (#625): the control room opts into the per-broadcast step budget and the WARP
+     * tier; every headless runner keeps the full-count, PLAY-only service it always had.
+     * 40 ms of a 100 ms broadcast leaves the rest for the DOM pass — without it a 600x request
+     * blocked the main thread 350 ms per broadcast (measured) and the page froze.
+     *
+     * WARP GETS 70 (#631). The 60 ms held back is for input and paint, and PLAY needs it: a
+     * transient at 1x..60x is exactly when the player is clicking. WARP is the opposite case
+     * by construction — it runs only on a quiet plant and drops to 60x the moment one moves
+     * (#625) — so that headroom is mostly idle there while the physics is the only work, and
+     * holding it back capped the top rungs on every machine (the owner's read 800x).
+     * MEASURED here, 20 s wall at a requested 3600x: hot full power 671x -> 931x, cold
+     * shutdown 765x -> 1,082x. The DOM pass measures 8 ms p50 on a board with nothing to
+     * animate, so 30 ms is ample; a real mouse click on the 60x rung reaches the snapshot in
+     * 97.7 ms median at 70 against 115.4 at 40 — no input cost, because the wait is for the
+     * next broadcast and not for the step loop. See `_budgetForTier` for why the gain is
+     * +39 % and not the +75 % the ratio implies (the timer reschedules AFTER the tick). */
+    if (service.configurePacing) service.configurePacing({ stepBudgetMs: 40, warpStepBudgetMs: 70, warp: true });
     service.subscribe(render);
     service.subscribe(diagTick);
     // renderAutomate and inspectLiveTick are called from renderNow instead, so every DOM

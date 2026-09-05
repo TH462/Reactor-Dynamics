@@ -1373,6 +1373,10 @@
       heats.hot_leg = (heats.hot_leg || 0) + eng._pzSurgeHeat;
     }
     var pr = S.stepPlant(sys, dt, { heats: heats, sgDuty: sr.duty_kW, sources: srcs });
+    /* #625 — the loop's Courant report (courantLimit_s / subSteps / held) had no reader above
+     * Layer 3; the shell publishes it through getStepReport() so the service's WARP tier can
+     * refuse a step the ring would have to lean on its sub-step ceiling to survive. */
+    eng._lastPlant = pr;
 
     /* #585 — the break's ledger books only what the plant ACCEPTED. A mid-step latch integrates
      * part of the step before refusing the rest (Courant sub-stepping), and `dt_accepted` is the
@@ -1578,14 +1582,29 @@
      *
      * RISING ONLY. A cooldown walks back down through the same band with the valve deliberately
      * shut (the cooldown checklist opens the accumulators at 1500 psi and isolates them later),
-     * and holding the clock there would fight a correct procedure. */
+     * and holding the clock there would fight a correct procedure.
+     *
+     * LATCHED ON ENTRY, NOT RE-DECIDED EVERY STEP *(owner playtest, 2026-09-04: "it holds the
+     * warp at 1x until pressure is over 682")*. The first cut re-evaluated "rising" on every
+     * physics step, and at 1x the pressure increment between two 0.02 s steps sits inside the
+     * solver's own jitter. Measured on the heatup ride, driven as a player at 600x: the hold
+     * rose at 667.9 psia, CLEARED on the next step at 668.0, re-rose at 675.6 and again at
+     * 691.6 — three toasts, three refusals, and one 600x request accepted in each gap. Read from
+     * the checklist, whose Pressure SP step then ticked at 682 psia, that is "a hold until 682".
+     * So "rising" now decides only whether the band is being ENTERED from below: once latched
+     * the hold stands until the valve opens or the pressure leaves the band, and a cooldown,
+     * entering from above, never latches. The latch is per engine instance and is not saved —
+     * the same lifetime `_prevAccP` already had. */
     var accWinLo = EC.ACC.p0_mpa;                                  // EC = RD.eccs, this file's alias
     var accWinHi = (EC.ACC.admin_lock_psig + 14.7) / 145.0377;
     var accP = ts.pressure_mpa;
     var accShut = ts.accumulator_valve_open !== true;
+    var accInWin = accP >= accWinLo && accP <= accWinHi;
     var accRising = eng._prevAccP != null && accP > eng._prevAccP;
     eng._prevAccP = accP;
-    ts.speed_hold = (accShut && accRising && accP >= accWinLo && accP <= accWinHi)
+    if (!accShut || !accInWin) eng._accHold = false;
+    else if (accRising) eng._accHold = true;
+    ts.speed_hold = eng._accHold
       ? 'accumulator window open — arm the accumulators before accelerating again'
       : null;
 

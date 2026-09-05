@@ -126,6 +126,161 @@ replays a plant no player reaches. Left alone.
 
 ---
 
+## 2026-09-04-workbench-e — #631: the step budget is a property of the TIER, not of the loop
+
+**Decision.** `SimulationService.configurePacing()` takes `warpStepBudgetMs`; `tick()` reads the
+budget through `_budgetForTier()` — WARP spends `warpStepBudgetMs` when one is configured, PLAY
+always spends `stepBudgetMs`, and an unset WARP budget falls back to the PLAY figure. The control
+room arms `{ stepBudgetMs: 40, warpStepBudgetMs: 70, warp: true }`. *(OWNER, 2026-09-04, on #631:
+"Do as you recommend.")*
+
+**Why a per-tier budget is the right shape and a bigger single budget is not.** The 60 ms held
+back from a 100 ms broadcast is for input and paint. PLAY needs it: 1×–60× is where a transient
+is worked, and a transient is when the player is clicking. WARP cannot be in a transient — it is
+refused on one and drops itself to 60× inside the step loop the moment one begins (#625) — so on
+that tier the reserve is idle while the physics is the only work on the thread. Raising the
+single budget would have taken PLAY's reserve away for a case that never happens on PLAY.
+
+**Measured, in the browser, because the number in the UI is the deliverable** (Playwright
+Chromium, headless, shipped shell, 20 s wall at a requested 3600×, back-to-back cells at 7–18 %
+CPU; harness `inbox/631/warp_achieved.js`, numbers in `Diagnostic/TUNING_LOG.md`
+2026-09-04-workbench-e): hot_full_power **671× → 931×**, cold_shutdown **765× → 1,082×**.
+
+**Deviation from the issue's own arithmetic, recorded because it will be re-derived otherwise.**
+#631 predicted the top rung would become reachable (3600× needs 360 steps = 68 ms). It does not,
+and the reason is not the budget: `_reschedule` arms `setTimeout(broadcastMs)` **after** `tick()`
+returns, so the period is 100 ms **plus** the tick cost — 145 ms before, 175 ms after. The budget
+therefore buys steps and lengthens the period they are spent in, and the gain is +39 %, not
++75 %. **Open lever, deliberately not taken — filed as #632**: scheduling from the tick's start. It changes
+pacing on both tiers, including the 1× rung `run_service_invariance` pins bit-identical, so it
+needs its own measurement and its own issue.
+
+**Consequence in `ui/perf.js`.** At 70 ms the physics uses ~75 % of the interval by design, over
+the 60 % COMPUTE-BOUND threshold, so the verdict would have called a healthy WARP a fault on every
+machine — the failure mode the achieved-rate colour ruling already names *(OWNER RULING,
+2026-09-04: "2A")*. `RD.Perf.broadcast()` takes the snapshot's pacing block; the branch keys on
+the BUDGET (WARP past 1.4× of it still reads as the fault), the sentence keeps its
+`COMPUTE-BOUND` prefix because `renderPerf` regexes it, and `renderPerf` tests the new phrase
+first and colours it OK. **Judgement call for review**: painting a budget-spending WARP green
+rather than amber.
+
+**Snapshot.** `metadata.pacing.step_budget_ms` is now the EFFECTIVE budget for the running tier,
+with `warp_step_budget_ms` beside it. Not a contract change: `CONTEXT.md` §6.3 covers `true_state`
+only, and §6.2's metadata listing has never carried `pacing`.
+
+**Gates.** `run_warp_tier` 17 → 21 checks, 6 → 9 mutations; `run_perf_summary` 81 → 95, 3 → 5.
+
+## 2026-09-04-workbench-d — #613 wave 4: the board's halos are DRAWN, not computed
+
+**Decision** (coordinator's brief; no owner ruling sought — a rendering change with no
+plant-behaviour content, but the visual difference goes to the owner on the screenshots).
+**Every `feGaussianBlur` halo on the board becomes radial-gradient art, and the shared flow clock
+skips a polyline that is not drawn.** Measured branch, not a preference: promoting only the tiles
+that hold a visible filter (`filterlayer`) recovered **7.9 %** of raster against deleting the
+filters' **25.8 %**, and cost 5.2 % more GPU for twelve extra layers — under a third of the win,
+which was the pre-declared reject criterion.
+
+**The mechanism, and it is the reusable finding.** A compositor layer caches a *rasterised* blur,
+so promotion only pays while the blur's input is static. `inbox/613/probe_board_census.js`
+MutationObserved all 33 filtered elements for 5 s at 10×: **12 of them, all visible, have `fill`
+and `opacity` rewritten every broadcast** (45 writes in 5 s). Every one of those writes sits behind
+an `if (power !== last.power)` guard in its component, **and the guard never holds**, because the
+power reading moves every broadcast at power. Split by that measurement: driven 12 = −18.5 % of
+raster, static 21 = −8.9 %, additive against `nofilter`'s −25.8 %.
+
+**Built.** `RD.BoardH.softGlow(id, color)` — a radial gradient from the glow colour to fully
+transparent, plus `setColor()`; each halo's shape grown by ~2 × the old `stdDeviation`, and the
+driven ones recoloured through the gradient's stops rather than the element's `fill` (writing
+`fill` on a gradient-painted element now kills the glow silently, which is why the helper carries
+that warning). Twelve halos across eight components; every id and `data-role` unchanged. Two blur
+defs deleted as **dead** — `comp_pump`'s `Glow` and `comp_steam_generator`'s `steamblur`, declared,
+never referenced, shipping since the port. Kept: the eight hover rings (a blurred *stroke*, no
+gradient equivalent, transparent until hovered) and the atmospheric dump's plume cone (a slanted
+polygon, `display:none` unless the dump is lifted).
+
+**Result, built-tree A/B in one round, pre-fix side restored with `git show HEAD:<path>`:**
+raster **5244 → 4032 ms, −23.1 %** (90 % of the available ceiling); compositor, GPU, frames and
+main-thread `Paint` all flat. Filters are a raster term and only a raster term.
+
+**Three traps, all in `inbox/613/trace_results.md` Round 5 and in the code comments.**
+(1) **A knob that measured itself** — the invisible-polyline knob selecting on `getClientRects()`
+reported **+5.6 % raster** for a change that only removes work, because 69 forced layout flushes
+every 100 ms cost more than the writes removed. The shipped skip reads the inline `display`
+instead, which is free; in the product that layout query would have run 24 times a second.
+(2) **The specified cache would have been a bug** — the ten invisible polylines are the internal
+flow lines of a **dry valve**, so the set changes on every valve stroke, and a set cached at
+`layout()`/pipe re-authoring (neither of which fires when a valve wets) would have frozen a live
+pipe's dashes. (3) **`halfclock` written literally is `noclock`** — dropping a `flowTick` rAF
+request latches `flowRafPend` and stops the clock for ever.
+
+**Reverted after measuring:** making the hover rings `visibility: hidden` until hovered measured
+4014 vs 3993 ms — nothing. An `opacity: 0` filtered element is already skipped.
+
+**Not acted on, for the owner:** halving the flow clock's dash writes (`FLOW_FPS` 24 → 12, raised
+to 24 on #596 for feel) is worth **−7.8 %** of raster, under a third of what stopping them
+entirely is worth. Needs a ruling; the rate is unchanged.
+
+**Unmeasured:** whether any of this converts to frames on the owner's machine. This harness is not
+raster-bound — same caveat as waves 1–3.
+
+---
+
+## 2026-09-04-workbench-c — #613 wave 3: a CSS transition may not ride a broadcast-cadence value
+
+**Decision** (coordinator's brief on the round-2 measurement; no owner ruling sought — this is a
+rendering fix with no plant-behaviour content). **The CSS transitions are removed from every board
+element whose value is rewritten on each broadcast**, and the rule is gated:
+
+> A CSS transition may exist only on a property that changes on a **discrete event**. Never on a
+> value rewritten every broadcast.
+
+Sites: `comp_steam_generator.js` (steam rect `height`, water rect `y`+`height`, surface line
+`transform`, level marker group), `comp_pressurizer.js` (water rect, surface line, level marker),
+`comp_reactor_vessel.js` (`transform 0.3s linear` on the four rod groups), `comp_valve.js`
+(`all 0.35s ease` narrowed to `fill` on the V-port polygon and `stroke` on the position needle).
+One-shot transitions stay — valve rotation, stroke/fill colour, the PORV plug — measured free in
+round 2 (`nolevels` 339 frames against `notransition`'s 337).
+
+**Why it is a decision and not a tidy-up.** `std_pipe.js`'s `tickAnimations` pauses every
+decorative keyframe animation and its comment names `CSSTransition` as one of three classes it
+**deliberately does not touch** ("short, one-shot"). That excluded class was the entire frame
+producer: measured at 10× on a settled board, **zero** running keyframe animations at five sampled
+instants and **6–7** running transitions at every one of them. A 150 ms transition restarted by a
+~100 ms broadcast never finishes, so the compositor drew at the display rate for a board that
+paints ten times a second. Waves 1 and 2 had spent their effort on the class that was already
+stopped, which is why the owner's fps stayed at 4.6 while his render p95 more than halved.
+
+**Measured** (`tools/perf_trace.js`, two cells a side, same round; pre-fix = the four components
+restored to `HEAD`): compositor frames drawn **904 → 442, −51.2 %**; compositor busy −33.6 %; GPU
+busy −24.8 %; renderer main busy −17.6 %; raster only −9.5 %. Running transitions 6–7 → 0 at every
+instant. The saving lands on the compositor and GPU, which is the opposite profile from round 1's
+raster knobs — the two levers do not compete.
+
+**Gate:** `test/verify_e2e_ui.js` → `testCssTransitions` (10 samples ~200 ms apart at 10×; fails on
+a running transition targeting a `rect`/`line`/`g` in `.pwr-board-stage` on `height`/`y`/`transform`,
+or on more than 2 running). **Injected red** by restoring one declaration on the pressurizer water
+rect: samples `0,…,0` → `2,…,2`. At 2 running the count ceiling still passed and the TARGET rule
+caught it — the ceiling is a backstop, not the assertion. `verify_e2e_ui`'s score string is
+unchanged, so no `BASELINES` edit.
+
+**Rejected: touching `shell.css`.** `.g-band .needle` (`left .12s`) and `.rodbar > span`
+(`width .12s`) were probed rather than assumed — 6 needle elements, **0 visible**, never a running
+transition in 10 samples; `.rodbar` has **no markup producer anywhere in the tree**. Both rules are
+dead on this view, so removing them would have been an unmeasured change to a legacy surface.
+
+**Accepted cost, measured:** over a 12 s scram at 10× the pressurizer water rect covers the same
+~10 px either way — pre-fix in 640 sub-pixel steps at 53 Hz, fixed in 121 steps at 10.1 Hz with p90
+**0.17 px** and one **6.3 px** step at the sharpest point of the transient. Nine tenths of the
+motion is below a pixel; the single large step is the whole cost.
+
+**Open:** the residual. 442 frames against 249 app paints, and `--ab=notransition` on the FIXED tree
+buys only −2.7 % (inside the ±2.8 % noise floor), so the residual is **not** transitions and is not
+attributed. Round 2's 1.03 draws-per-paint was a different machine state and must not be quoted as
+this tree's floor. Still deferred: the blur filters (−25.9 % raster) and the dash writes (−24.9 %),
+because raster is not what produces frames on this harness and neither "mode" here ran on a
+hardware rasteriser — the owner's next enriched `RD.Perf` bundle is the instrument that decides.
+
+
 ## 2026-09-04-develop-g — #624 item 14: BOTH cold states boot pressure control OUT OF SERVICE
 
 **DECIDED (scope), and DECIDED TWICE — the first answer is kept here because the way it was wrong
@@ -183,6 +338,65 @@ milestone row quoted the retired plant's **600 psi (4.14 MPa)** RHR autoclosure 
 lines below a NOTE sourcing the same interlock at **585 psig (4.03 MPa)** (WTSM §5.1,
 ML11223A219). One interlock, two bases, one table — the #601 shape, and it survived because a
 citation can sit three lines from what it contradicts.
+
+---
+
+## 2026-09-04-workbench-b — #627: the accumulator clock hold latches, the Pressure SP step ticks at the cover gas, and a held speed click stays on the checklist
+
+**Decision** *(owner playtest, 2026-09-04: "it holds the warp at 1x until pressure is over 682 … the
+warp hold should gate on the user setting the pressure … when gated and i click on a warp button, it
+closes the checklist")*. Three changes, all measured on the merged workbench tree
+(`Diagnostic/TUNING_LOG.md` 2026-09-04-workbench-b has the table):
+
+1. **`true_state.speed_hold` LATCHES** (`pwr2_engine.js`). "Rising" decides only the entry into the
+   665–1615 psia window; the hold then stands until the valve opens or the pressure leaves the band.
+   As shipped by #622 it was re-decided every 0.02 s step and chattered three times over 24 psi at 1×.
+2. **The Pressure SP step's acceptance moves from 4.7 MPa (682 psia) to the cover gas, 4.585 MPa,
+   as the second of two check-offs** — the first is the dialled setpoint, a command-kind entry. The
+   #608 margin was a safety claim about the NEXT step; the hold now rises at the cover gas, so the
+   tick lands there too and the accumulator step is the one active while the clock is held. At the
+   cover gas the tank and primary are at one pressure, so #608's concern (backfeed) needs no margin.
+3. **`SPEED_HELD` is routed like an interlock** (`app.js` `cmd()`): scanner flash, not
+   `setFocus('instructor')`, which was switching the panel off the Checklists tab.
+
+**Rejected:** ticking the setpoint step on the command alone (the owner's literal words). That
+releases "open the valve" from 370 psia, and opening below the cover gas backfeeds the tank — the
+exact trap #608 closed. The dialled-setpoint check-off gives the acknowledgement he asked for
+without re-opening it.
+
+**Gates:** `run_checklist_pwr2` 127 → 130 (2j, span-asserted, both halves injected red);
+`verify_e2e_ui` +1 browser check (injected red: "tab instructor"); `run_hardrules` 480 on the merged
+tree; manuals re-sealed at Rev 17 pending (item (v), 02 §4.1).
+
+## 2026-09-04-workbench-a — #625: two pacing tiers — WARP is the same physics at 0.5 s, and the freeze was a missing cap
+
+**Decision** *(OWNER RULINGS, 2026-09-04: "Yes" / "Yes" / "60x" / "Yes" on the four decisions the
+plan put on #625)*. PLAY (1×/5×/10×/60×) steps at 0.02 s and stays bit-identical at every rung.
+WARP (600×/3600×) steps the same physics at **0.5 s** — a DECLARED fidelity departure, bounded by
+`test/run_warp_tier.js` (one sim hour in five regimes inside a band of 2× the measured worst; a
+1.0 s step must blow it). WARP is refused, or dropped to 60× inside the step loop, on a trip, a new
+failure, a first alarm on a quiet board, power > 2 %/s, pressure > 40 psi/s (0.276 MPa/s), a Courant
+limit needing > 8 of the ring's 16 sub-steps, or a model hold; 30 sim-s of quiet re-arms it; authored
+beat speeds never warp. Both tiers and a 40 ms per-broadcast wall budget (the loop stops early and
+credits only what it stepped) are opt-in from the control room via `configurePacing()`; headless
+runners keep the PLAY-only, full-count service.
+
+**Why this shape.** Measured first: there was NO cap on steps per broadcast, so 600× blocked the
+main thread 350 ms per 100 ms broadcast and 3600× ~2.5 s — both achieved ~140×, both froze the
+page. The transient detector was wall-scaled and read a quiet plant at 600× as a standing transient
+(now a rate per sim second). And PWR2 at 0.05–0.5 s stays inside instrument noise over 2 h in three
+regimes while 1.0 s trips the quiet plant — kinetics is an exact matrix exponential and the loop
+sub-steps, so the "simplified physics" tier of the ask needed no physics. The alternative — keep
+bit-identity everywhere — caps the plant at ~145× and makes the xenon swing (CURRICULUM A7,
+"neither of which any content demonstrates today") a twenty-minute wait.
+
+**Deliberately not done.** A Web Worker for the physics (the structural fix for render starvation:
+a dozen synchronous `assembleSnapshot()` sites and the chart's fine-sampler closure cross the
+thread boundary; the budget gets most of the benefit). The protection-margin governor zone stays
+#409. #581 (achieved-rate badge) is delivered here and closed into this.
+
+**Record:** `Diagnostic/TUNING_LOG.md` 2026-09-04-workbench-a (all measurements, the gate's first-run
+adjudication, the subcooling band).
 
 ---
 

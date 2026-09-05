@@ -62,6 +62,8 @@
     var glowOn = cfg.glow == null ? true : !!cfg.glow;
     var fl = K.FLUIDS[fluidKey] || K.FLUIDS.steam;
     var STEEL = env.uid('porvSteel'), GLOW = env.uid('porvGlow');
+    /* filter-free open-flow halo (#613 wave 4) — see RD.BoardH.softGlow. */
+    var gGlow = RD.BoardH.softGlow(env.uid('porvOGlow'), fl.bore);
 
     var openProp = false;   // last `open` received from update() — click emits its inverse
     var appliedOpen = null; // last disc-position value applied to the DOM
@@ -77,6 +79,11 @@
     var defs = h('defs', { key: 'defs' }, [
       h('linearGradient', { key: 'steel', id: STEEL, x1: '0', y1: '0', x2: '0', y2: '1' }, [
         h('stop', { key: 0, offset: '0', stopColor: '#3a4c58' }), h('stop', { key: 1, offset: '1', stopColor: '#0c141c' })]),
+      /* #613 wave 4: the open-flow halo is a radial-gradient fill now. The blur STAYS for the
+       * hover ring below — a ring's glow is a blurred STROKE and a gradient has no equivalent.
+       * Hiding it when not hovered was tried and measured at nothing (4014 vs 3993 ms of
+       * raster), so an opacity-0 filtered element is already skipped by the rasteriser. */
+      gGlow.def,
       h('filter', { key: 'glow', id: GLOW, x: '-80%', y: '-80%', width: '260%', height: '260%' }, [h('feGaussianBlur', { key: 0, stdDeviation: '6' })])
     ]);
 
@@ -92,7 +99,7 @@
     var ventG = h('g', { key: 'vent', style: { display: 'none' } }, vent);
 
     // status glow behind body when open
-    var glowC = h('circle', { key: 'oglow', cx: cx, cy: 124, r: 40, fill: fl.bore, opacity: 0.2, filter: 'url(#' + GLOW + ')', style: { display: 'none' } });
+    var glowC = h('circle', { key: 'oglow', cx: cx, cy: 124, r: 52, fill: gGlow.paint, opacity: 0.2, style: { display: 'none' } });
 
     // ---- angle valve body (bottom inlet, left outlet) ----
     var bodyRect = h('rect', { key: 'body', x: 58, y: 100, width: 54, height: 48, rx: 16, fill: 'url(#' + STEEL + ')', stroke: '#46596a', strokeWidth: 2.4, style: { transition: 'stroke 0.4s ease' } });
