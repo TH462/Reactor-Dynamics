@@ -3419,11 +3419,30 @@
    * it is the ladder as authored, and if the two ever disagree the DOM wins by construction.
    *
    * THE RULE: the smallest rung that brings the wait under WAIT_TARGET_WALL_S of real time at
-   * that rung's NOMINAL rate — top rung if none does. 60 s is chosen so the PLAY tier (bit-
-   * identical physics, 1×–60×) is preferred wherever it will do: MEASURED across the 24 pwr2
-   * steps that qualify it lands 2 on 5×, 8 on 10×, 9 on 60×, 4 on 600× and 1 on 3600× — so 19
-   * of 24 stay on PLAY and WARP's declared fidelity departure is spent only on the five waits
-   * that genuinely need it (65 min and up).
+   * that rung's NOMINAL rate — top rung if none does. **30 s is RULED** *(OWNER, 2026-09-05:
+   * "Change it to 30s")*.
+   *
+   * ⚠ THE FIRST RULING WAS 60 s AND IT WAS MADE ON NUMBERS I HAD NOT MEASURED. I put three
+   * targets to the owner with a distribution table, having measured only the 60 s row; the
+   * 30 s and 120 s rows were asserted. Measured afterwards, the cost I had priced 30 s at did
+   * not exist — I claimed it moved EIGHT steps onto WARP and left 15 of 24 on PLAY; it moves
+   * ONE (the heatup's Pressure SP ramp, 2400 s, 60× → 600×, a quiet pressurization) and leaves
+   * 18. He re-ruled on the corrected table. HR12 is about plant dynamics; this was the
+   * neighbouring class — a claim about the ARTIFACT — and it reached a decision brief the same
+   * way an unmeasured plant claim would.
+   *
+   * MEASURED over the 24 pwr2 steps that qualify, sits computed at the rate each rung really
+   * delivers (WARP caps at ~931× here, #631):
+   *
+   *   target   5×  10×  60×  600×  3600×   on PLAY   median sit   worst   total sitting
+   *     30 s    0    2   16     5      1     18/24         12 s    43 s         5.6 min
+   *     60 s    2    8    9     4      1     19/24         33 s    60 s        12.4 min
+   *    120 s   10    6    5     3      0     21/24         80 s   120 s        28.5 min
+   *
+   * So 30 s spends ONE more step on WARP's declared fidelity departure (#625) and cuts the
+   * chain's total dead time by more than half. The six waits it sends to WARP are the ones of
+   * 40 plant-minutes and up, all quiet by construction — WARP is refused on a transient
+   * anyway, so a suggestion the plant declines costs nothing but the click.
    *
    * ⚠ NOMINAL, NOT ACHIEVED. A rung is a REQUEST — measured on the workbench machine the top
    * rung delivers ~931× (#631) — so the wall time this implies is a floor, not a promise, and
@@ -3432,7 +3451,7 @@
     { speed: 1, warp: false }, { speed: 5, warp: false }, { speed: 10, warp: false },
     { speed: 60, warp: false }, { speed: 600, warp: true }, { speed: 3600, warp: true },
   ];
-  var WAIT_TARGET_WALL_S = 60;
+  var WAIT_TARGET_WALL_S = 30;   // RULED — see the table above before moving it
   function speedLadder() {
     var btns = document.querySelectorAll('#speed [data-speed]');
     var out = [];
@@ -3797,7 +3816,7 @@
           /* AND WHICH RUNG TO REACH FOR *(OWNER, 2026-09-04, #628: "Add a suggested time warp
            * value for the long term waiting steps.")*. "Use time acceleration" left the player
            * to work out how much, and the answer is not obvious: the ladder is 1/5/10/60/600/
-           * 3600 and the right rung spans five of those across the 24 pwr2 steps that qualify.
+           * 3600 and the right rung spans four of those across the 24 pwr2 steps that qualify.
            * RD.CklSpeedHint picks it off the ladder itself, so this can never name a button that
            * is not there. */
           var rung = RD.CklSpeedHint(holdS);
