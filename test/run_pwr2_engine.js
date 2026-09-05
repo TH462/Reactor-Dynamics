@@ -8,13 +8,141 @@
  * facade makes possible for the first time (drop the relief sink, unhook the level controller,
  * delete the scram-on-trip) each red.
  *
- * Run: node test/run_pwr2_engine.js
+ * Run: node test/run_pwr2_engine.js            part A (the default — see THE PARTITION below)
+ *      node test/run_pwr2_engine_b.js          part B
+ *      node test/run_pwr2_engine_c.js          part C
+ *      node test/run_pwr2_engine.js --all      the unsplit whole, for local debugging
  */
 'use strict';
 var path = require('path');
 var MUT = require('./mut_flags.js');   /* --no-mutations / --mut= / --grp= (#602) */
 var SRC = path.join(__dirname, '..', 'engines', 'pwr2');
 var fs = require('fs');
+
+/* ---- THE PARTITION (#637, on the run_campaign A/B/C precedent of #513) ----------------------
+ * SPLIT IN THREE 2026-09-05. This runner was the CI tail — #637 reads 1388 s from the green
+ * #630 run and 2094.6 s from a red one, a 1.51x runner-class spread on the same commit list.
+ * Measured here the same day: the whole file is 1550.9 s. Once `run_all` is sharded across
+ * matrix jobs (Phase S of #637) the wall stops being total-CPU-over-lanes and becomes the
+ * LONGEST RUNNER, so this file alone decided the gate's length. Measured after the split, each
+ * part alone on the shipped file: A 321.4 s · B 326.5 s · C 830.2 s (a second sample of the
+ * same three, taken an hour earlier, read 323.5 / 329.0 / 839.2 — within 1 %).
+ *
+ * A SCHEDULING CHANGE, NOT A TEST CHANGE: every check and every mutation still runs, in
+ * exactly one part. Proved rather than asserted — the union of the three parts' check NAMES
+ * was diffed against the unsplit run's and is identical, 156 for 156; the ownership audit at
+ * the bottom fails the run if any mutation falls between the parts; and the split was
+ * injection-tested by deleting the rod-stop line the group-I mutation anchors (part C reds 3
+ * checks, parts A and B stay green at 79 and 61).
+ *
+ * THE COST IS THE MUTATION REPLAY, NOT THE CHECKS — 1312.4 s of 1550.9 s. The whole clean
+ * pass is 218.9 s measured solo; the other 85 % is 86 scoped replays, and a replay costs
+ * whatever ITS OWN GROUP'S rides cost. So a group's true cost is (its clean pass) + (its
+ * mutations x that ride), which spans three orders of magnitude across the seventeen groups.
+ * That is why this is a MEASURED-COST list and not a count split, the same finding as #513's,
+ * where parity alternation landed 25 s / 229 s: a partition that cannot see cost cannot
+ * balance it. Measured 2026-09-05 with `--groups=<g>`, `MUTTIME=1`, two concurrent streams on
+ * a 12-core box at 12-34 % idle load (the I stream against the rest; group I's replays read
+ * 92 s under contention against a 91.0 s solo clean pass, so contention is inside the noise):
+ *
+ *     grp  checks muts   clean    replays  mean/replay   TOTAL s   part
+ *      I     16     9    94.8      768.6      85.4        863.4     C
+ *      E     11     7    24.2      153.6      21.9        177.8     A
+ *      K     19    10    18.5      133.7      13.4        152.2     B
+ *      D     12     7    15.6       88.6      12.7        104.2     B
+ *      F      9     6    13.7       37.8       6.3         51.5     A
+ *      A     20     7     7.7       28.3       4.0         36.0     A
+ *      R      6     3    16.2       18.6       6.2         34.8     B
+ *      L      7     4     5.9       20.3       5.1         26.2     A
+ *      Q      8     6     5.2       16.3       2.7         21.5     B
+ *      N      8     4     6.4       11.0       2.8         17.4     A
+ *      O      7     3    14.4        2.6       0.9         17.0     A
+ *      H      7     5     3.3       11.4       2.3         14.7     B
+ *      G     11     6     2.9       10.9       1.8         13.8     A
+ *      B      5     5     3.8        8.4       1.7         12.2     B
+ *      C      4     1     3.2        1.3       1.3          4.5     B
+ *      M      2     1     1.6        0.6       0.6          2.2     A
+ *      P      4     2     1.1        0.4       0.2          1.5     A
+ *                                                        ------
+ *   predicted from the cells:  A 343.4 s (79 checks, 40 mutations) · B 344.1 (61 / 37) ·
+ *   C 863.4 (16 / 9).  Measured as three whole runs: 321.4 · 326.5 · 830.2 — each 4-6 % under
+ *   its prediction, because a part pays ONE process start and one water/vtable build for all
+ *   of its groups where seventeen separate --groups= runs paid seventeen.
+ *
+ * ⚠ GROUP I IS 56 % OF THE RUNNER ON ITS OWN, so the 830 s part C measures is the FLOOR for
+ * any split that cuts on group boundaries, and #637's target of ~700 s per part — under
+ * run_checklist_pwr2's 681 s, so that this stops being the tail — is NOT reachable this way. It is
+ * in its own part rather than buried in a mixed one precisely so that stays visible in a
+ * baseline. The cheap next move is NOT another partition: it is that each of I's nine
+ * mutations re-rides the WHOLE group (85.4 s), so halving group I halves its replay bill.
+ * That is a coverage-scoping change, not a scheduling one — a mutation whose only red check
+ * lands in the other half goes BLIND, which this runner would say out loud — so it is filed
+ * work, not something to do while re-balancing.
+ *
+ * PART A KEEPS EVERYTHING UNLISTED. A new grp() block lands in part A by default and moves
+ * part A's check tally — so the partition cannot drift silently (the #513 property). GROUPS is
+ * DERIVED from this file's own source, so a group letter in PART_B/PART_C that no longer
+ * exists is an error, not a silence. */
+var SELF_SRC = fs.readFileSync(__filename, 'utf8');
+var GROUPS = (function () {
+  /* the `if (` is load-bearing: a bare /grp\('X'\)/ also matches the PROSE in this file (the
+   * note at the head of the audit below, and the group-order note inside group A), and a
+   * letter mentioned in a comment would become a group nothing runs */
+  var seen = {}, re = /if \(grp\('([A-Z])'\)/g, m;
+  while ((m = re.exec(SELF_SRC)) !== null) seen[m[1]] = true;
+  return Object.keys(seen).sort();
+})();
+/* PART_B / PART_C: the groups those parts OWN; part A is everything else. Longest-processing-
+ * time greedy over the table above, with I taken out first because nothing balances it.
+ * The rule for moving one: re-measure with --groups=, do not guess. */
+var PART_B = ['B', 'C', 'D', 'H', 'K', 'Q', 'R'];
+var PART_C = ['I'];
+var PART_NAMES = ['A', 'B', 'C'];
+function partOf(g) {
+  return PART_B.indexOf(g) >= 0 ? 1 : PART_C.indexOf(g) >= 0 ? 2 : 0;
+}
+/* the lists are hand-written, so they are CHECKED against the derived groups — a letter that
+ * names no block, or one claimed by both parts, would quietly move checks out of every part
+ * or run them twice, and either way `run_all` would go on scoring three green baselines. */
+PART_B.concat(PART_C).forEach(function (g) {
+  if (GROUPS.indexOf(g) < 0)
+    throw new Error('run_pwr2_engine: PART_B/PART_C names group ' + g +
+      ', which no `if (grp(...))` block in this file defines (groups: ' + GROUPS.join(' ') + ')');
+  if (PART_B.indexOf(g) >= 0 && PART_C.indexOf(g) >= 0)
+    throw new Error('run_pwr2_engine: group ' + g + ' is claimed by BOTH part B and part C');
+});
+var PART = globalThis.__PWR2_ENGINE_PART || 0;
+/* `--mut=<substring>` widens to the whole file, the same reasoning as --grp= below: the
+ * substring names a mutation the caller wants replayed, and in a part that does not own its
+ * group the answer would be "0 of 86" — a flag that silently does nothing. The run is forced
+ * non-zero by mut_flags either way, so scoping is a convenience question, not a correctness one. */
+var ALL = process.argv.indexOf('--all') >= 0 || process.env.RD_PWR2_ALL === '1' ||
+          (!!MUT.mutTag() && !MUT.grpTag());
+/* --groups=A,D  — the DEV flag that produced the cost table and is how the next re-balance
+ * re-measures it. It overrides the partition, so like every mut_flags filter it can never be
+ * a baseline: the exit is forced non-zero for the rest of the process.
+ * `--grp=X` (mut_flags, #602) implies it: that flag replays one group's mutations, and in a
+ * PART that does not own X it would otherwise replay nothing and silently look like a fast
+ * clean run. Scoping the clean pass to X as well is also what the flag is for — iterating. */
+var GROUPS_FLAG = process.argv.filter(function (s) { return s.indexOf('--groups=') === 0; });
+var GROUP_OVERRIDE = GROUPS_FLAG.length
+  ? GROUPS_FLAG[0].slice(9).split(',').map(function (s) { return s.trim(); })
+  : (MUT.grpTag() ? [MUT.grpTag()] : null);
+var MY = {};
+GROUPS.forEach(function (g) {
+  if (GROUP_OVERRIDE) { if (GROUP_OVERRIDE.indexOf(g) >= 0) MY[g] = true; }
+  else if (ALL || partOf(g) === PART) MY[g] = true;
+});
+if (GROUPS_FLAG.length) {   /* --grp= arms mut_flags' own guard already; do not banner twice */
+  var _realExit = process.exit.bind(process);
+  process.exit = function (c) { _realExit(c ? c : 1); };
+  process.on('exit', function () {
+    console.log('\n' + '!'.repeat(70));
+    console.log('  PARTIAL RUN — --groups= OVERRODE THE PARTITION. Forced non-zero; never a baseline.');
+    console.log('!'.repeat(70));
+  });
+}
+var MY_GROUPS = GROUPS.filter(function (g) { return MY[g]; });
 var ORDER = ['pwr2_water', 'pwr2_vtable', 'pwr2_geometry', 'pwr2_core', 'pwr2_loop',
   'pwr2_kinetics', 'pwr2_fuel', 'pwr2_reactor', 'pwr2_sources', 'pwr2_sg', 'pwr2_turbine',
   'pwr2_relief', 'pwr2_condenser', 'pwr2_cvcs', 'pwr2_eccs', 'pwr2_afw', 'pwr2_damage',
@@ -52,9 +180,11 @@ function loadAll(engSource, coreSource) {
  * (#507 wave 9), 'N' the shutdown IC (#507 wave 10), 'O' the neutron-source construction
  * (#536), 'P' the heater-elevation seam (#573), 'Q' the letdown split (#624 items 14/25),
  * 'R' the Mode 5 pressure-control lineup (#624 / #619 item 14).
- * The CLEAN pass runs everything. Measured before this existed: 17 mutations x the whole
- * suite = 1074 s of contention in the aggregate gate — the replay cost scales with every
- * fixture ever added, and a mutation only needs the checks built to see it. */
+ * The CLEAN pass runs THIS PART'S groups (#637 — it ran everything until the split; the
+ * union of the three parts is still every group, and `--all` still is one process). Measured
+ * before the `only` scoping existed: 17 mutations x the whole suite = 1074 s of contention in
+ * the aggregate gate — the replay cost scales with every fixture ever added, and a mutation
+ * only needs the checks built to see it. The same arithmetic is what the parts divide. */
 function runSuite(RD, rec, quiet, only) {
   /* THE BANK'S OWN CURRENCY (#602 phase 2). Every step count below used to be a literal that
    * happened to equal a fraction of a 200-step bank; when the scale moved to the sourced 627
@@ -86,7 +216,10 @@ function runSuite(RD, rec, quiet, only) {
     if (!quiet) console.log((cond ? '  PASS  ' : '  FAIL  ') + name + (note ? '  -- ' + note : ''));
   }
   function head(s) { if (!quiet) console.log('\n' + s); }
-  function grp(g) { return only === undefined || only === g; }
+  /* SET MEMBERSHIP, not a scalar compare (#637). The CLEAN pass runs the groups THIS PART
+   * owns; a mutation REPLAY still runs exactly the one group that can see it, and a part only
+   * ever replays mutations tagged with a group it owns — so `only` is always in MY here. */
+  function grp(g) { return only === undefined ? MY[g] === true : only === g; }
   function run(eng, secs) {
     var ts = null;
     for (var i = 0; i < secs / DT; i++) ts = EN.step(eng, DT);
@@ -2476,7 +2609,16 @@ function runSuite(RD, rec, quiet, only) {
   }
 }
 
+/* the tally line names the FILE that was run, because run_all scores each part against its own
+ * BASELINES entry and a human reading a red needs to know which one to re-run */
+var RUNNER_NAME = 'run_pwr2_engine' + (PART && !ALL && !GROUP_OVERRIDE ?
+  '_' + PART_NAMES[PART].toLowerCase() : '');
+var PART_LABEL = GROUP_OVERRIDE ? '--groups=' + MY_GROUPS.join(',')
+               : ALL ? 'the UNSPLIT whole (--all)'
+               : 'part ' + PART_NAMES[PART] + ' of 3 (#637)';
 console.log('\nPWR2 -- THE ENGINE FACADE: one door, the gates\' wiring written once');
+console.log('  ' + PART_LABEL + ' -- groups ' + MY_GROUPS.join(' ') +
+  ' of ' + GROUPS.join(' '));
 var rec = [];
 runSuite(loadAll(), rec, false);
 var pass = rec.filter(function (r) { return r.ok; }).length, fail = rec.length - pass;
@@ -2847,9 +2989,39 @@ var MUTATIONS = [
 ];
 var CORESRC = fs.readFileSync(path.join(SRC, 'pwr2_core.js'), 'utf8').replace(/\r\n/g, '\n');
 
-console.log('\ninjection self-test (' + MUTATIONS.length + ' mutations):');
+/* ---- THE OWNERSHIP AUDIT (#637) -------------------------------------------------------------
+ * The split's ONE new way to lose coverage: a mutation whose `grp` no part owns would simply
+ * never replay, in any process, and every part would still print a green "no blind spots".
+ * That is the #513 partition property applied to mutations, and it is asserted rather than
+ * trusted — EVERY part evaluates it over the FULL list (not its own subset) and fails on it,
+ * so the hole cannot hide in whichever part you did not run. Two ways to fall through: no
+ * `grp` tag at all (the pre-split default replayed EVERY group, which the split cannot do),
+ * and a tag naming a group that no `grp('X')` block in this file defines any more — the
+ * mirror of the ANCHOR MISS the replay already reports, one level up. */
+var unowned = [];
+MUTATIONS.forEach(function (m) {
+  var o = m[m.length - 1];
+  var t = (o && typeof o === 'object' && o.grp) || null;
+  if (!t) unowned.push(['NO grp TAG', m[0]]);
+  else if (GROUPS.indexOf(t) < 0) unowned.push(['grp ' + t + ' IS NOT A GROUP IN THIS FILE', m[0]]);
+});
+var mine = MUT.select(MUTATIONS).filter(function (m) {
+  var o = m[m.length - 1];
+  var t = (o && typeof o === 'object' && o.grp) || null;
+  return t !== null && MY[t] === true;
+});
+var ownedTotal = MUTATIONS.filter(function (m) {
+  var o = m[m.length - 1];
+  var t = (o && typeof o === 'object' && o.grp) || null;
+  return t !== null && GROUPS.indexOf(t) >= 0;
+}).length;
+
+console.log('\ninjection self-test (' + mine.length + ' of ' + MUTATIONS.length +
+  ' mutations — this part owns groups ' + MY_GROUPS.join(' ') + '):');
 var blind = 0;
-MUT.select(MUTATIONS).forEach(function (m) {
+var MUTTIME = !!process.env.MUTTIME;
+mine.forEach(function (m) {
+  var _t0 = Date.now();
   var isCore = m[3] === 'core';
   var opts = m[m.length - 1];
   var grpTag = (opts && opts.grp) || undefined;
@@ -2875,12 +3047,31 @@ MUT.select(MUTATIONS).forEach(function (m) {
     console.log('  caught    ' + m[0].padEnd(64) + 'CRASH only — no check red (coverage untested)');
   }
   else console.log('  caught    ' + m[0].padEnd(64) + f2 + ' checks red');
+  if (MUTTIME) console.log('            [MUTTIME] ' + ((Date.now() - _t0) / 1000).toFixed(1) +
+    ' s  grp ' + grpTag + '  ' + m[0].slice(0, 50));
 });
 loadAll();
 
+if (unowned.length) {
+  console.log('\n' + '!'.repeat(70));
+  unowned.forEach(function (u) { console.log('  UNOWNED MUTATION (' + u[0] + '): ' + u[1]); });
+  console.log('  A mutation no part owns NEVER REPLAYS — in this process or any other.');
+  console.log('!'.repeat(70));
+}
+
 console.log('\n' + '='.repeat(70));
-console.log('  injection self-test: ' + (MUTATIONS.length - blind) + '/' + MUTATIONS.length +
+console.log('  injection self-test: ' + (mine.length - blind) + '/' + mine.length +
   ' mutations caught' + (blind ? '  ** ' + blind + ' BLIND SPOTS -- GATE FAILS **' : ', no blind spots'));
-console.log('  run_pwr2_engine: ' + pass + ' passed, ' + fail + ' failed  (' + rec.length + ' checks)');
+/* the partition's own arithmetic, printed every run: this part's share + the other parts' =
+ * the whole list, with nothing unowned. `mine` is filtered by mut_flags too, so this line is
+ * about OWNERSHIP and reads off the unfiltered totals. */
+console.log('  partition: ' + ownedTotal + ' of ' + MUTATIONS.length +
+  ' mutations owned by a part' + (unowned.length ? '  ** ' + unowned.length +
+  ' UNOWNED -- GATE FAILS **' : '') + '; this part owns ' +
+  MUTATIONS.filter(function (m) {
+    var o = m[m.length - 1]; return o && o.grp && MY[o.grp] === true;
+  }).length);
+console.log('  ' + RUNNER_NAME + ': ' + pass + ' passed, ' + fail + ' failed  (' +
+  rec.length + ' checks)');
 console.log('='.repeat(70) + '\n');
-process.exit(fail > 0 || blind > 0 ? 1 : 0);
+process.exit(fail > 0 || blind > 0 || unowned.length > 0 ? 1 : 0);

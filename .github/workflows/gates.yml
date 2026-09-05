@@ -6,6 +6,25 @@
 # BETTER than its baseline fails too, so a red turning green has to be acknowledged rather
 # than silently absorbed.
 #
+# IT RUNS AS A 3-WAY MATRIX (#637, 2026-09-05), AND THE ARITHMETIC IS THE WHOLE ARGUMENT.
+# From the green #630 run's own per-runner timings: 106 runners cost 5189 s of CPU; this
+# runner class has FOUR cores, so run_all's pool is 3-way (min(10, cores - 1)); 5189 / 3 =
+# 1730 s = 28.8 min against an observed step of 29.1 min. Throughput-bound to 1 %. The wall
+# here is TOTAL CPU ÷ LANES, not the longest runner — which is why every timeout raise in
+# the history below bought the same shrinking margin and nothing else. Each matrix job gets
+# its OWN 4-core runner and the repo is public (standard runners are free), so three shards
+# are ~9 lanes for no money. The floor then becomes the longest single runner —
+# run_pwr2_engine, 1388 s green and 2094.6 s on the red release run — which is why splitting
+# THAT is the other half of #637 and why the step budget below is still generous.
+#
+# THE JOB IDS ARE LOAD-BEARING. `main`'s branch ruleset (id 20067220) requires a status check
+# whose context is exactly `aggregate-gate`; a matrix job reports as `aggregate-gate (1)`,
+# `(2)`, `(3)`, so if the SHARDS carried that id the required context would never be reported
+# and every release pull request would sit blocked for ever with three green checks on it.
+# Hence: shards run under `gate-shard`, and a fan-in job whose id is exactly `aggregate-gate`
+# reports the verdict. test/run_ci_shards.js asserts all of it statically, because a workflow
+# file can only otherwise be proven by pushing it (see the branches note below).
+#
 # NODE_COMPILE_CACHE (#513): run_all sets a shared V8 code-cache dir (os.tmpdir()) in every
 # child's env, so the 90 runners share compiles WITHIN a run. Deliberately NOT persisted
 # across CI runs via actions/cache — the cross-run win is a few seconds of first-compiles
@@ -87,21 +106,26 @@ env:
   PW_VERSION: 1.61.1
 
 jobs:
-  aggregate-gate:
+  # THE SHARDS. Any id EXCEPT `aggregate-gate` — see the header note; that name belongs to the
+  # fan-in job below and to nothing else.
+  gate-shard:
     runs-on: ubuntu-latest
-    # 45 -> 60 (#637, 2026-09-05): the step budget moves 40 -> 55 and the job still has to wrap
-    # it, or the JOB times out first and the failure stops naming the step — which is the exact
-    # signal the header note below says per-step budgets exist to preserve.
-    # 80 -> 45 (#513, 2026-08-25): the cheaper mutation replays the note below asked for are
-    # built — the aggregate step measured 17m16s on the first green #513 run (43m31s before).
-    # 2x the known runner-class spread puts the honest slow end near ~35; the step budget is
-    # 40 and the job wraps it at 45.
-    # 55 -> 80 (#507 wave 8, 2026-08-23): the aggregate step's 45-minute budget TIMED OUT on
-    # the wave-7 push — not a red runner, the suite genuinely grew (the pwr2 mutation
-    # harnesses; the previous GREEN run took 43m31s, a 90-second margin nobody noticed
-    # shrinking). The step budget moves to 70 and the job wraps it at 80. The #496 class;
-    # the real long-term fix is cheaper mutation replays, not a bigger cap.
-    timeout-minutes: 60
+    strategy:
+      # fail-fast: false, or the first shard to go red CANCELS the other two and the log stops
+      # saying whether the rest of the suite was green. A gate exists to report, and a cancelled
+      # shard also reports `cancelled` to the fan-in, which is indistinguishable from an
+      # infrastructure kill.
+      fail-fast: false
+      matrix:
+        # N lives HERE and in the --shard argument below, and nowhere else. run_ci_shards.js
+        # asserts the two agree; do not introduce a third copy.
+        shard: [1, 2, 3]
+    # 45 -> 35 (#637 Phase E, same day): the tail runner is split — see the step note.
+    # 60 -> 45 (#637, 2026-09-05): a shard is a third of the suite, but the un-split tail runner
+    # (run_pwr2_engine, 23-35 min depending on the runner class) can still land in one of them,
+    # so the budget is set for the TAIL and not for the third. Re-budget after #637 Phase E
+    # splits that runner: measured per-shard wall x the 1.51 runner-class spread + margin.
+    timeout-minutes: 35
 
     steps:
       # ACTION MAJORS ARE ON THE NODE 24 RUNTIME (#389, 2026-08-06). All four were on `@v4`,
@@ -169,7 +193,24 @@ jobs:
       # was 7m42s-14m53s measured for ~52 runners with a ~2x runner-class spread; the merged
       # suite measures ~19 min locally at 10-way parallel, so the same 2x slow-end logic gives
       # ~38 — the step must always fail on its OWN name before the job's budget does.
-      - name: Aggregate gate (all runners)
+      - name: Aggregate gate (shard ${{ matrix.shard }} of 3)
+        # 40 -> 30 (#637 Phase E, 2026-09-05, same day): run_pwr2_engine is now THREE runners
+        # (325 / 330 / 835 s solo, local) and the new tail is part C — group I, the failure
+        # levers, 9 mutations x 85 s of replay. On CI the old whole file ran at 0.71x (green,
+        # 1388 s) to 1.06x (red, 2094 s) of its local 1967 s, so part C lands at ~10-15 min on
+        # this runner class; a shard is ~1610 s of hint across 3 lanes (~9 min) and carries that
+        # runner in ONE lane, so the shard wall is the tail: ~15 min worst observed class. 30 is
+        # 2x that, 35 on the job keeps the step failing on its own name. The 5189 s CI total is
+        # unchanged by the split (1478 s vs 1551 s for the three parts — three process starts).
+        # 55 -> 40 (#637, 2026-09-05, the sharding change): a shard is a third of the suite by
+        # the `secs` hint (measured: 1611/1610/1610 s of hint across the three), so the honest
+        # expectation is ~10 min. It is budgeted at 40 anyway because the UN-SPLIT tail runner
+        # is still 23-35 min on its own and lands in exactly one shard. The integrator
+        # re-budgets this from the measured per-shard wall once #637 Phase E splits it — the
+        # step must always fail on its OWN name before the job's 45 does.
+        # SUPERSEDED BY THE SHARDING ABOVE, hours later and under the same issue number. Kept
+        # because its measurement is what motivated the split and its last paragraph is the
+        # ruling against ever raising this number again:
         # 40 -> 55 (#637, 2026-09-05): the Alpha 1.7.2 release merge timed out HERE, on both
         # `develop` and `main`, at exactly 40:12 each — 34 of 106 runners done, no runner red.
         # The suite did not grow into the cap; ONE runner's variance ate it. `run_pwr2_engine`
@@ -188,14 +229,42 @@ jobs:
         # replay-scoping/split work; 2x the runner-class spread gives ~35 — see the job note
         # 45 -> 70 (#507 wave 8): timed out at 45 on the wave-7 push with every runner green
         # locally — see the job-level note
-        timeout-minutes: 55
-        run: node test/run_all.js
+        timeout-minutes: 30
+        run: node test/run_all.js --shard=${{ matrix.shard }}/3
 
       - name: Upload diagnostic reports
         if: always()
         uses: actions/upload-artifact@v7
         with:
-          name: diagnostic-reports
+          # THE SHARD NUMBER IS REQUIRED IN THE NAME. upload-artifact v4+ rejects a duplicate
+          # artifact name across matrix jobs, and it fails the job AFTER the gate has already
+          # run green — a red build with nothing wrong in it, on the second shard to finish.
+          name: diagnostic-reports-${{ matrix.shard }}
           path: Diagnostic/
           if-no-files-found: ignore
           retention-days: 14
+
+  # THE FAN-IN, AND ITS ID IS THE ONLY CHECK NAME `main`'s ruleset KNOWS (id 20067220,
+  # required_status_checks, integration_id 15368 = GitHub Actions). The shards report as
+  # `gate-shard (1..3)`; nothing there can ever satisfy a required context of `aggregate-gate`,
+  # so without this job every release pull request would block for ever on a check that is
+  # never reported. Give it no `name:` — a display name would replace the id as the context.
+  aggregate-gate:
+    runs-on: ubuntu-latest
+    needs: gate-shard
+    # always(), so a failed or cancelled shard still produces a REPORTED red rather than a
+    # skipped check. A skipped required check blocks a pull request exactly as a missing one
+    # does, which is the failure this job exists to prevent, arriving by the other door.
+    if: always()
+    timeout-minutes: 5
+    steps:
+      - name: Every shard must have passed
+        # `needs.<job>.result` on a matrix job is the AGGREGATE: 'success' only when all three
+        # succeeded. Anything else — failure, cancelled, skipped — is a red here, named.
+        run: |
+          r="${{ needs.gate-shard.result }}"
+          if [ "$r" != "success" ]; then
+            echo "::error::gate-shard result is '$r', not 'success' — open the gate-shard (1..3) jobs; at least one shard failed, was cancelled, or never ran"
+            exit 1
+          fi
+          echo "all 3 shards: $r"

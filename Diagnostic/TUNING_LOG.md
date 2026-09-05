@@ -29,6 +29,89 @@ and the user-visible summary in `CHANGELOG.md`. This file points at those and tr
 
 ---
 
+## Session log — 2026-09-05-develop-c (#637 — the CI gate was throughput-bound, not tail-bound, and two of my three diagnoses were wrong before the arithmetic)
+
+**The ask.** The Alpha 1.7.2 release merge ran red on `develop` AND `main`: the aggregate-gate step
+timed out at **40:12** in both, 34 of 106 runners done, none red. A release merged behind a gate
+that measured nothing. Owner rulings, in order: "A" (split `run_pwr2_engine`), then after the
+measurement below, "Do 1. Plan the fix then have opus agents perform the work." (shard CI).
+
+### Three diagnoses, two wrong — record the order, because each was plausible
+
+1. **"One runner's variance."** True as far as it went: `run_pwr2_engine` measured 1388 s on the
+   green #630 run and 2094.6 s on the red one, a 1.51× spread. I raised the cap 40 → 55 and
+   recommended splitting the runner (#513 precedent). *Wrong as a fix* — see 3.
+2. **"Two concurrent runs contended."** They were concurrent (a release merge fires the workflow
+   twice, 85 s apart). *Refuted before I wrote it down* — by `gates.yml`'s own header, which had
+   already measured two fully-overlapping runs at 14m53s and 12m36s: each run gets its own hosted
+   runner. The file stopped me; nothing else would have.
+3. **The arithmetic.** From the green run's per-runner timings: **106 runners = 5189 s of CPU.
+   `ubuntu-latest` has 4 cores, so `run_all` runs `min(10, cores−1)` = 3 lanes. 5189 / 3 = 28.8 min;
+   observed 29.1.** The CI gate is **throughput-bound to 1 %** — the wall is TOTAL CPU ÷ LANES, not
+   the longest runner. Splitting a runner re-partitions work that still flows through three lanes.
+   Locally (10 lanes on 12 cores) the longest runner IS the wall, which is why diagnosis 1 looked
+   right from this machine. **Measure the pool width before reasoning about a wall.**
+
+Three consecutive pushes of near-identical code then ran **29.1 / 38.4 / 40.2 (cut off) min**: the
+runner-class spread alone is 1.32–1.51×, on a cap with ~2 min of headroom. Every cap raise in the
+file's history (45 → 70 → 40 → 55) bought that same margin back and waited to lose it.
+
+### The fix has two halves because plentiful lanes make the longest runner the floor again
+
+    shards only (3 × 3 lanes):   wall = max(5189/9 = 577 s, run_pwr2_engine 1388..2094 s) = 23..35 min
+    shards + engine split:        wall ≈ max(577 s, part C ~600..900 s on CI)             ≈ 10..15 min
+
+**Phase S (Agent, Opus): `run_all --shard=i/N` + `gates.yml` matrix + `run_ci_shards.js`.**
+The partition is DERIVED from discovery (longest-processing-time greedy over the `secs` hint, 1 s
+floor, deterministic, disjoint/total self-check → exit 2), and the no-baseline guard evaluates over
+the FULL discovered set on every shard — injection: a fake `run_zzz_fake.js` reddened `--shard=2/3`.
+**The trap:** `main`'s ruleset (id 20067220) requires a status check whose context is exactly
+`aggregate-gate`; a matrix job reports as `aggregate-gate (1)`, so the required check would never
+report and every release PR would be blocked with three green checks on it. Shards run as
+`gate-shard`; a fan-in job with that exact id reports. `run_ci_shards.js` (static, 34 checks)
+asserts the matrix/flag agreement, the fan-in's id/`needs`/`if: always()`, per-shard artifact names,
+and exhaustiveness by driving `run_all --list` for real. All 34 reddened by injection. The agent's
+own injection harness had a bug (per-edit backups → a two-edit case restored the wrong file); it
+caught it, repaired, and re-ran from a clean tree with a `diff` — recorded because it is exactly the
+"a check written beside its fix isn't green until you've made it red" rule applied to the harness.
+
+**Phase E (Agent, Opus): `run_pwr2_engine` → three runners, on the `run_campaign` A/B/C precedent.**
+Measured per group (`--groups=`, `MUTTIME=1`):
+
+| | |
+|---|---|
+| whole file | **1551 s**, of which replays **1312 s (85 %)** |
+| group I (failure levers) | **863 s = 56 %** — 9 mutations × 85.4 s, each re-riding the whole group |
+| next: E 178 · K 152 · D 104 · F 52 | everything else ≤ 36 s |
+| parts | A (A E F G L M N O P) **325 s** · B (B C D H K Q R) **330 s** · C (I) **835 s** |
+
+Reconciliation: 218.9 s clean + 1312.4 s replays = 1531 s vs 1550.9 s summed per group, 1.3 % apart.
+The ~700 s per-part target is **UNMET at 830 s and cannot be met by re-partitioning** — group I is
+one block. Subdividing it is coverage scoping, a separate decision. HR10: check-name union across
+parts = unsplit file, 156 = 156; a hand-reverted anchor reddens part C (3/16), A and B stay green;
+four new guards (unowned mutation, unknown letter, letter in two parts, missing `grp` tag) each
+reddened. **The old single BASELINES entry carried `secs: 420` against a measured 1551 — 3.7× low**,
+which is part of why the tail was invisible to the scheduler's longest-first sort.
+
+### Found, not fixed (in #637's follow-up list)
+
+- **Group E's letter does double duty**: the AFW-starts block and the appended #590 steady-state
+  block both gate on `grp('E')`, so seven AFW mutations each also pay the steady-state block's two
+  35-minute rides — **21.9 s per replay against ~2 s, ≈ 140 s of the 1551 buying nothing** — while
+  the block's own comment says no mutation targets it. A letter of its own fixes cost and comment.
+- **Group I** is the remaining lever on the CI tail, worth ~400 s.
+- `run_all`'s `--fast` footer hard-codes two skipped runner names while three carry `slow: true`.
+- 29 of 109 baselines carry no `secs` hint (hints total 4831 s vs 5189 s measured), so the shard
+  balance is partly blind; `--record` emitting `secs` would keep it current.
+
+### Gates
+
+`run_ci_shards` NEW **34checks 0failed** · `run_pwr2_engine` 156 → **79** / `_b` **61** / `_c` **16**
+(156 total, unchanged) · full `run_all` — see below · the CI wall on the next push is the measurement
+this whole entry is waiting on: baseline **29.1 / 38.4 / 40.2 min** unsharded.
+
+---
+
 ## Session log — 2026-09-05-develop-b (#630 — the ECCS card's MODE word was authored on the caption's own line, and the retired plant's vocabulary hid it)
 
 **The ask.** #630, from the owner: *"ECCS STANDBY text sits on top of MODE text. - Shift the elements

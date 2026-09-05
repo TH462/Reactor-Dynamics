@@ -355,10 +355,8 @@ that were closed. **Run the query.**
   (ruled 2026-08-18 "Option 1") — **MERGED INTO `develop` 2026-08-21** *(OWNER DIRECTIVE,
   2026-08-21: "Full merge and push. Don't publish to main yet.")* — merge `b4122a7`, 86 runners
   at baseline; the standing no-merge hold above is SPENT (its bar was the merge, which the owner
-  ordered). **SHIPPED as Alpha 1.7.0, 2026-08-30.** The owner's first live PWR2 session (telemetry, 2026-08-21) filed
-  and fixed #501–#504; the free-play IC quirk is CLOSED (#502, §65: the isothermal boot retired —
-  a settled start no longer rings 100→76.6 %). The #488 audit adjudicated and closed; #486/#487
-  resolved; **the plant settles at its
+  ordered). **SHIPPED as Alpha 1.7.0, 2026-08-30.** (#501–#504, #502, #488, #486/#487 — closed;
+  `PWR2_VALIDATION.md` §65.) **The plant settles at its
   design point** (2226–2238 psia, 45 °F core subcooling) and **the TMI level deception is
   emergent physics** (`PWR2_VALIDATION.md` §41–46: level control, stuck PORV + block valve +
   tailpipe, 87 % high-level trip via P-7, aux spray). The two-h stratification is DEFERRED
@@ -665,11 +663,9 @@ runner listed **twice with different numbers**. Run the gate; read the map. Per-
 `Diagnostic/TUNING_LOG.md` and `Blueprint/BUILD_DECISIONS.md`, newest first.
 
 ```
-node test/run_all.js            # every discovered runner vs BASELINES (~7.5 min, 10-way parallel;
-                                #   measured 439 s on 2026-08-25 after #513/#514 — the wall IS
-                                #   run_campaign under contention, not the sum)
-node test/run_all.js --fast     # skip the 2 slow Playwright gates (similar wall — the floor is
-                                #   run_campaign, not the Playwright pair)
+node test/run_all.js            # every discovered runner vs BASELINES (10-way parallel locally;
+                                #   the wall is the longest runner — run_pwr2_engine_c, ~14 min)
+node test/run_all.js --fast     # skip the 3 gates marked `slow` (same wall; they are not the floor)
 node test/run_all.js --jobs=1   # SEQUENTIAL (~35 min) — escape hatch if a runner is
                                 #   ever suspected of not being isolated
 node test/run_all.js --only run_pwr,run_ops
@@ -687,12 +683,14 @@ Four things about it that are procedure, not history:
   CI run and a release before `verify_board_check.js` wrapped it.
 - **Per-runner times in a parallel run are CONTENTION times, not costs** (`run_pwr` reads 54 s
   where it takes 22 s alone). The `secs:` hints only nudge scheduling — never maintain them.
-- **CI runs the same command on every push and PR to `main`/`develop`**
-  (`.github/workflows/gates.yml`; 3-way on 4 cores — 43m31s before #513's cuts, re-measure
-  on the next push; this line read "~8 min" while CI stood at 43). **Check it after you push** —
-  `gh run list --workflow=gates.yml --limit 3`. It once ran red for **32 consecutive runs** across
-  three days, including a release to `main`, because `--fast` still ran a Playwright gate that was
-  not marked `slow`. Nobody noticed, which is the argument for a required status check (#191).
+- **CI is a 3-WAY MATRIX of `run_all --shard=i/3`; the fan-in job is named exactly
+  `aggregate-gate`** because `main`'s ruleset requires that context and a matrix job's `(1)`
+  suffix would leave it unreported for ever (`run_ci_shards.js` gates the shape, #637). **On CI the
+  wall is TOTAL CPU ÷ LANES, not the longest runner** (4 cores → 3 lanes; 5189 s / 3 = 28.8 min vs
+  29.1 observed), so a runner split moved nothing there; locally (10 lanes) the longest runner IS
+  the wall. Unsharded baseline **29.1 / 38.4 / 40.2 min**. **Check it after you push** —
+  `gh run list --workflow=gates.yml --limit 3`: it ran red for **32 consecutive runs** through one
+  release, and 1.7.2 merged behind a timeout with none of 34 finished runners red.
 
 **One tracked red, carrying its `note` in `BASELINES`: `run_ops` 59/70** — ops probes are tuning
 targets by design. Of the reds, all but one are RBMK/BWR (on hold). The single PWR one is
@@ -755,6 +753,9 @@ node test/run_procedures_stack.js --lineup=bare # the noDefaults/campaign lineup
 node test/run_pwr2_engine.js --no-mutations   # skip the replay while fixing a check (34 pwr2
                                 # runners; --mut=/--grp= too). FILTERED = FORCED NON-ZERO, never
                                 # a baseline. 115 s -> 2.9 s (#602)
+                                # THREE PARTS (#637): bare = A, _b.js, _c.js (group I, 835 s,
+                                # the tail); --all = unsplit
+node test/run_all.js --shard=2/3 --list # what CI shard 2 runs (derived, never a hand list)
 node test/run_warp_tier.js             # the two pacing tiers (#625): WARP's fidelity band, the
                                 # cliff at 1.0 s, the in-loop lockout, the step budget
 node tools/perturb_sweep.js            # WHICH CHECKS BREAK IF I RETUNE THIS? (see below)

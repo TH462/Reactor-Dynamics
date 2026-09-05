@@ -69,6 +69,51 @@ and the three rows come up to pay for the extra line — uniform 38 px group pit
   overlaps by ~4 px of it and renders clean; a no-overlap test reds on the FIXED layout too
   (measured — that was the first cut of the check).
 
+### Changed (#637 — the CI gate is sharded, and the facade gate is three runners) — not a simulator change; no `changelog.html` entry, no rc bump
+
+*(OWNER RULING, 2026-09-05: "Do 1. Plan the fix then have opus agents perform the work." — after
+the measurement below refuted the split-first plan he had ruled "A" on hours earlier; the split is
+kept as the second half.)*
+
+**The diagnosis that replaced the first one.** The Alpha 1.7.2 release merge timed out at exactly
+40:12 on both `develop` and `main` with 34 of 106 runners done and none red. The first reading was
+"one runner's variance", the second was "two concurrent runs" — `gates.yml`'s own header had already
+measured and refuted the second. The third is arithmetic from the green #630 run's per-runner times:
+**106 runners = 5189 s of CPU; CI's 4-core runner gives `run_all` 3 lanes; 5189 / 3 = 28.8 min
+against an observed 29.1.** Throughput-bound to 1 %. On CI the wall is TOTAL CPU ÷ LANES, which is
+why three cap raises (45 → 70 → 40 → 55) each bought the same shrinking margin, and why splitting one
+runner — the plan ruled first — would have moved nothing there. The same suite ran 29.1, 38.4 and
+40.2 (cut off) minutes on three consecutive pushes of near-identical code: a 1.32–1.51× runner-class
+spread on top of a cap with ~2 min of headroom.
+
+**Phase S — the workflow is a 3-way matrix.** Each matrix job gets its own 4-core runner and the
+repo is public, so three shards are ~9 lanes for no money. `run_all --shard=i/N` partitions the
+DISCOVERED runner list (longest-processing-time greedy over the `secs` hint, 1 s floor, deterministic,
+disjoint-and-total self-check that refuses to run with exit 2); the no-baseline guard still evaluates
+over the FULL discovered set on every shard — proven by injection with a fake runner. **The trap the
+whole design bends around: `main`'s ruleset (id 20067220) requires a status check named exactly
+`aggregate-gate`, and a matrix job reports as `aggregate-gate (1)`…** — so the shards run as
+`gate-shard` and a fan-in job with that exact id (`needs`, `if: always()`, fails unless the shard
+result is `success`) reports the verdict. `test/run_ci_shards.js` (new, static, 34 checks) asserts
+all of it — matrix/`--shard=…/N` agreement, the fan-in's id/`needs`/`if`, per-shard artifact names
+(v4+ rejects duplicates), and the partition's exhaustiveness by driving `run_all --list` for real.
+Every check was reddened by injection.
+
+**Phase E — `run_pwr2_engine` is three runners** (325 / 330 / 835 s solo), on the `run_campaign`
+A/B/C precedent (#513). MEASURED per group with `MUTTIME=1`: the whole file is **1551 s, 1312 s of it
+REPLAYS (85 %)**, and **group I — the failure levers, 9 mutations × 85.4 s — is 863 s, 56 % of the
+runner.** Nothing balances that, so it is part C alone, where its cost stays visible in a baseline.
+`grp()` is set membership; `GROUPS` is derived from the file's own source so a new block lands in
+part A and moves its count; a mutation whose `grp` no part owns fails the run as a blind spot. HR10:
+the union of check names across the three parts equals the unsplit file's, 156 = 156 name for name;
+a hand-reverted anchor in `pwr2_engine.js` reddens part C (3 of 16) and leaves A and B green.
+**The ~700 s per-part target is UNMET at 830 s and cannot be met by re-partitioning** — it needs
+group I subdivided, which is coverage scoping, not scheduling, and a separate decision.
+
+Budgets: shard step 30 min (part C lands at ~10–15 min on this runner class; the shard wall is that
+tail), job 35. Expected CI wall: from 29–40 min to **~12–15 min + ~2 min setup** — to be measured on
+the next push and recorded on #637; the number here is the prediction, not the measurement.
+
 ## [Alpha 1.7.2] — 2026-09-05
 
 ### Fixed (#629 — the heatup's heat sink was the overpressure ADV, because steam-pressure dump mode was unreachable from a cold start)
