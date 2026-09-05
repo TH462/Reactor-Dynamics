@@ -614,8 +614,13 @@ Reverse heat transfer — a secondary hotter than the primary, e.g. starting pum
 
 | Mode | Behaviour |
 |---|---|
-| **Pressure mode** (always) | Opens proportionally above the 1194 psi (8.23 MPa) no-load setpoint |
-| **Fast Tavg-error mode** (**armed**) | On a turbine trip, or a load rejection past the arm, drives open on Tavg error immediately |
+| **Steam-pressure mode** | Modulates to hold the steam header on the **Dump SP** — this plant's no-load anchor, **1020 psi (7.03 MPa)** (**09** §3.0). This is the heatup / cooldown / hot-standby mode, and the only mode in which the setpoint box is read |
+| **Tavg mode** | The at-power program: the dumps are shut on programme and open on the Tavg error above the no-load reference, which is what catches a load rejection or a turbine trip (**armed**, below) |
+| **Fast Tavg-error mode** (**armed**, inside Tavg mode) | On a turbine trip, or a load rejection past the arm, drives open on Tavg error immediately |
+
+**The two modes are EXCLUSIVE, and the operator selects one — pressure mode is not "always".** One AUTO button does the selecting and **the turbine latch decides which mode it gives you**: tripped → steam-pressure, on line → Tavg. Sourced: WTSM §11.2 (ML11223A294), *"Tavg mode at power, steam pressure mode at hot standby / startup / cooldown"*; the trip relay (C-8) is the same signal the plant already uses to auto-select the turbine-trip controller *inside* Tavg mode, so the operator's selector rides the latch the source rides. **Why it matters, measured 2026-09-05 (#629):** Tavg mode's turbine-trip controller opens only above **557 °F (291.67 °C)**, which is *above* the atmospheric dump valve's 1042 psig / 551.6 °F relief point — so on a plant being heated up from cold, Tavg mode is a dump that never opens, and the heat sink becomes an overpressure relief venting to atmosphere. AUTO used to map to Tavg unconditionally; pressing it on a heating plant produced a **byte-identical trace** (that valve 7.6 %, dumps 0.0 %), and the DUMP SETPOINT box was an orphan on every plant a player produced rather than loaded. **PWR-N01** step 8b is where the selection now happens.
+
+> **⚠ THE CAPACITY AND REJECTION FIGURES IN THE REST OF THIS SECTION ARE THE RETIRED ENGINE'S AND HAVE NOT BEEN RE-MEASURED.** The shipped plant's dump capacity is **28 % of rated steam flow** — Ginna's own, sourced, and the number **09** §3.0 prints — not the 40 % below. Read the rejection ladder as the shape of the event, not as this plant's percentages. *(Noted 2026-09-05 while correcting the mode table above, #629; re-measuring the ladder is separate work.)*
 
 Capacity is **40 % of rated steam flow** — the prototypical Westinghouse value, sized for a **50 % loss of load**: 40 % into the condenser plus roughly a 10 % reduction from the reactor itself. Measured on this plant, a 100 → 50 MWe rejection saturates the dump at 40 % and runs the core back toward the 50 % the secondary is asking for, with no trip and nothing lifting. (An earlier revision said the core 'settles at 89.3 %' — that figure was taken with rod control in manual, a lineup the shipped plant does not use.)
 

@@ -841,9 +841,10 @@ The **OFF** lamp lights on either condition — breaker open *or* turbine trippe
 
 | Mode | Use |
 |------|-----|
-| **AUTO** | Opens on high SG pressure / load rejection as configured |
-| **Manual % / Open** | Dump steam to condenser, bypass turbine |
-| **Dump SP** | No-load steam-dump **pressure setpoint** (MPa, live readout + numeric box; **29 – 1099 psi (0.2 – 7.58 MPa)** — the box refuses anything above the SG safeties' first lift, because the engine itself does **not** clamp it) the AUTO dump holds. **Lower** it on a cooldown to vent the SG and cool the primary through the steam generators; **raise** it back toward the no-load point on a heatup. |
+| **AUTO** | Puts the dump controller in service. **AUTO is two control modes, and which one you get is the turbine's question.** With the turbine **tripped** — heatup, cooldown, hot standby — AUTO selects **steam-pressure mode**: the dumps modulate to hold the **Dump SP** box beside them, and that is the heat sink for the whole of a heatup or a cooldown. With the turbine **on line** it selects **Tavg mode**, the at-power program, which is also the mode that catches a load rejection or a turbine trip (**12** §8.3). The card's **status word tells you which — PRESS or TAVG.** Basis: Westinghouse Technical Manual (WTSM) §11.2 (ML11223A294), *"Tavg mode at power, steam pressure mode at hot standby / startup / cooldown."* |
+| **CLOSE** | Takes the controller out of service and shuts the dumps; status reads **MANUAL**. This is the cold lineup — **PWR-N01** step 5 verifies it, and step 8b is where AUTO goes in. |
+| **OPEN** | **Refused on this plant.** The dump is controller-driven and there is no manual position lever, so a full-open demand is rejected by name (measured 2026-09-05) — the modes are AUTO and CLOSE, and what you move is the setpoint. See the note that closes §18. |
+| **Dump SP** | No-load steam-dump **pressure setpoint** (MPa, live readout + numeric box; **29 – 1099 psi (0.2 – 7.58 MPa)** — the box refuses anything above the SG safeties' first lift, because the engine itself does **not** clamp it) the AUTO dump holds. **It is read only in steam-pressure mode**, so on a plant in Tavg mode the box does nothing until the turbine trips and AUTO is pressed again. **Lower** it on a cooldown to vent the SG and cool the primary through the steam generators; **raise** it back toward the no-load point on a heatup. |
 
 ### 12.4 Indications
 
@@ -1158,7 +1159,7 @@ Listed for cross-reference — normal operation never requires typing a command.
 | Generator **OFF** — planned offline (§12.1) | `disconnect_grid` | — |
 | Turbine load (§12.2) | `set_load_target` | `{mwe}` |
 | CW inlet temperature (§13.1) | **CW INLET TEMP** box on the CONDENSER COOLING card, 35 – 85 °F | `set_condenser_cw_temp` |
-| Steam dump / bypass (§12.3) | `set_steam_dump` | `{mode}` — **AUTO or CLOSED only**; there is no manual position lever |
+| Steam dump / bypass (§12.3) | `set_steam_dump` | `{mode}` — **`auto` or `closed` only** from the board; there is no manual position lever, and `open` and a bare `pct` are refused by name. **`auto` resolves to one of two control modes on the turbine latch**: steam-pressure mode when the turbine is tripped, Tavg mode when it is on line (§12.3). `pressure` and `tavg` are accepted explicitly as the checklist/scenario API for saying which one you mean |
 | Pressure setpoint box (§5) | `set_pressure_setpoint` | `{mpa}` |
 | Steam-dump setpoint box (§12.3) | `set_steam_dump_setpoint` | `{mpa}` |
 | HPI/LPI (§11.0) | `set_hpi` | `{active}` |
