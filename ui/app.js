@@ -6439,10 +6439,11 @@
       scenario_id: (s.instructor && s.instructor.scenario_id) || null,
       follow_procedure_id: (s.instructor && s.instructor.follow && s.instructor.follow.procedure_id) || null,
       seed: service.seed,
-      // PERFORMANCE RIDES ALONG (2026-08-08). "It flickers on some PCs" is unanswerable
-      // without it — compute-bound, render-bound and neither-of-those look identical to the
-      // person reporting, and the machine it happened on is the only place the numbers
-      // exist. Cheap to carry: one object of percentiles, not a trace.
+      // PERFORMANCE RIDES ALONG (2026-08-08; env/visibility/raf/loaf added #613 wave 3).
+      // "It flickers on some PCs" is unanswerable without it — compute-bound, render-bound,
+      // a backgrounded tab, a software GPU and "neither, and this timer can't see it" all
+      // look identical to the person reporting, and the machine it happened on is the only
+      // place the numbers exist. Cheap to carry: a handful of small objects, not a trace.
       performance: (function () { try { return RD.Perf ? RD.Perf.summary() : null; } catch (e) { return null; } }()),
       snapshot_end: service.saveState(),
       notes: notes || null
