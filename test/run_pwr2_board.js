@@ -86,9 +86,9 @@ function ck(name, cond, note) {
 function head(s) { console.log('\n' + BOLD + s + RST); }
 
 /* ---- the live plant + the app-shaped cmd path -------------------------------------------- */
-function mkWorld() {
+function mkWorld(ic) {
   var svc = new RD.SimulationService({ seed: 0xB0A2D });
-  svc.selectPlant('pwr2', 'hot_full_power', null, undefined);
+  svc.selectPlant('pwr2', ic || 'hot_full_power', null, undefined);
   svc.running = true; svc.timeAcceleration = 10; svc.attentionStops = false;
   var snap = null;
   var log = [];                                   /* every command's fate, app-cmd()-shaped */
@@ -101,15 +101,24 @@ function mkWorld() {
   }
   function tick(n) { for (var i = 0; i < (n || 1); i++) snap = svc.tick(); return snap; }
   tick(10);                                       /* 10 s at 10x — the settled IC needs no more */
-  RD.PwrBoard = { lastSnapshot: function () { return snap; } };
+  var world = { svc: svc, cmd: cmd, tick: tick, log: log, snap: function () { return snap; } };
+  bindWorld(world);
+  return world;
+}
+
+/* POINT THE DRIVER AT A WORLD. Extracted so that a check needing a SECOND plant can put the
+ * first one back — the driver keeps ONE ctxRef, and the section-header note above records what
+ * leaving it pointed at the newcomer costs (five "silent" buttons in the no-orphan sweep,
+ * measured, twice: once when that note was written and again by #598 item 11's Mode 5 check). */
+function bindWorld(world) {
+  RD.PwrBoard = { lastSnapshot: world.snap };
   /* `protection` is the RUNNING plant's config (#556) — the same accessor ui/app.js passes at
    * mount. Without it the board falls back on RD.PWR_CONTROL.protection, the retired plant's
    * table captured at script load, and the pressurizer tile's alarm edges are 8 points out. */
   RD.PwrBoardDriver.onMount(global.document, {
-    cmd: cmd, units: function (u) { return u; },
-    protection: function () { return svc.layer && svc.layer.config; }
+    cmd: world.cmd, units: function (u) { return u; },
+    protection: function () { return world.svc.layer && world.svc.layer.config; }
   }, {});
-  return { svc: svc, cmd: cmd, tick: tick, log: log, snap: function () { return snap; } };
 }
 
 function runSuite(quietRec) {
@@ -260,6 +269,36 @@ function runSuite(quietRec) {
     Math.abs(pz.alarmLo - (progAtPower + lowSp.setpoint)) < 0.51,
     pz && ('alarmLo ' + pz.alarmLo + ' vs program ' +
       (progAtPower == null ? '?' : progAtPower.toFixed(1)) + ' + ' + lowSp.setpoint));
+  /* AND THE NORMAL BAND MOVES WITH THE PROGRAM TOO (#598 item 11). The authored band is a flat
+   * 40-70 %, a FULL-POWER band applied to every mode — so a Mode 3 or Mode 5 plant whose level
+   * program is 25 % drew its perfectly-on-program level 15 points BELOW "normal", and the owner
+   * read that as "CHARGING in AUTO doesn't try to hold a decent PZR level". Measured: charging
+   * in AUTO tracks the program to within 0.11 % in all four initial conditions.
+   *
+   * The claim is CENTRING, not width: asserted against the plant's published program, never a
+   * retyped 57.6 — a check that named the number would pass on the flat 40-70 band at full
+   * power, where the program happens to sit inside it. That is why the Mode 5 case below is the
+   * discriminator and this one alone would not be enough. */
+  q('the NORMAL band is centred on the running plant\'s level PROGRAM, not the authored 40-70',
+    pz && progAtPower != null &&
+    Math.abs((pz.normLo + pz.normHi) / 2 - progAtPower) < 0.51 && pz.normHi > pz.normLo,
+    pz && ('normLo/normHi ' + pz.normLo + '/' + pz.normHi + ' about a program of ' +
+      (progAtPower == null ? '?' : progAtPower.toFixed(1)) + ' %'));
+  /* THE DISCRIMINATOR, and the check that actually pins the defect. At full power the program
+   * (57.6 %) sits INSIDE the authored 40-70 band, so the check above would pass on the shipped
+   * bug. Mode 5 is where the two answers separate: program 25 %, authored band 40-70, and the
+   * plant holding 25 % drawn below "normal" on its own board. A cold world costs one boot. */
+  var wCold = mkWorld('cold_shutdown');
+  var pzC = D.compProps({ id: 'ims2immon9z' }, wCold.snap());
+  var progCold = wCold.svc.engine.getControlState().pzr_level_program_pct;
+  var lvlCold = wCold.snap().true_state.pzr_level_pct;
+  bindWorld(w);                    /* PUT THE DRIVER BACK — see bindWorld and the note above */
+  q('and at Mode 5 the band follows it DOWN — a plant holding 25 % does not read below normal',
+    pzC && progCold != null && Math.abs((pzC.normLo + pzC.normHi) / 2 - progCold) < 0.51 &&
+    lvlCold >= pzC.normLo && lvlCold <= pzC.normHi && pzC.normHi < 40,
+    pzC && ('Mode 5: level ' + (lvlCold == null ? '?' : lvlCold.toFixed(1)) + ' %, program ' +
+      (progCold == null ? '?' : progCold.toFixed(1)) + ' %, band ' + pzC.normLo + '..' +
+      pzC.normHi + ' (authored was 40..70)'));
 
   /* PRIMARY PRESSURE TILE (#576c). run_pwr2_board's only band assertion used to be the power
    * tile's, so nothing in the tree ever checked this one against a PWR2 plant — and the half
@@ -429,36 +468,138 @@ function runSuite(quietRec) {
     'demand 0 %, delivery 100 % -> box ' + svStuck.box + ', readout ' +
     (svStuck.read && svStuck.read.color));
 
-  /* ---- 2b4. THE TRIP BLOCKS PANEL (#564 item 2) --------------------------------------------
-   * Five rows were drawn and this plant publishes three blocks. `lo_flow`, `rcp_breaker` and
+  /* ---- 2b4. THE TRIP BLOCKS PANEL (#564 item 2, closed out by #600/#601) --------------------
+   * The history, because it is the whole reason these checks are shaped the way they are.
+   * FIVE rows were drawn against a plant publishing THREE blocks. `lo_flow`, `rcp_breaker` and
    * `ir_high` had no `trip_block_status` entry, so `ts.can_block === false` was false and all
-   * three rendered ENABLED in every plant state — each press throwing — while two of them name
-   * reactor trips pwr2_protection does not contain at all. And the inverse: `si_trip`, a block
-   * this plant DOES carry and a real operator action on a cooldown, had no row. */
-  if (!rec) head('TRIP BLOCKS PANEL  [the plant publishes, the board offers, #564 item 2]');
+   * three rendered ENABLED in every plant state — each press throwing. #564 made them go dark
+   * and read N/A, which stopped the throw and left a different lie standing: a row offering an
+   * action the plant does not have is still a claim about the plant. #600/#601 adjudicated them
+   * one at a time and NONE of the three ends as a dark row:
+   *   lo_flow, rcp_breaker  DELETED — WTSM 12.2 §12.2.3.12 makes the low-flow block AUTOMATIC
+   *                         below P-7, so neither was ever an operator action anywhere.
+   *   ir_high               BUILT — the sourced 25 % intermediate-range trip the row had been
+   *                         drawing for a plant that did not carry it.
+   * So on the shipped plant every drawn row is now a published one, and the SUPPORTED predicate
+   * has no live subject. It is kept and PROVEN BY INJECTION below rather than deleted: the
+   * preview channel still boots the retired engine, which publishes a different set, and this
+   * predicate is the only thing between that mismatch and a button that throws on press. */
+  if (!rec) head('TRIP BLOCKS PANEL  [the plant publishes, the board offers, #564/#600/#601]');
   var tbRows = D.tripBlockRows(w.snap()), tbById = {};
   tbRows.forEach(function (r) { tbById[r.id] = r; });
   var tbPub = (w.snap().rps_state && w.snap().rps_state.trip_block_status) || {};
-  q('every row the panel draws that this plant does NOT publish reads N/A and is disabled',
-    tbRows.filter(function (r) { return !r.supported; }).length > 0 &&
+  q('every row the panel draws IS one this plant publishes — no dark rows left (#600)',
+    tbRows.length > 0 &&
     tbRows.every(function (r) {
-      return Object.prototype.hasOwnProperty.call(tbPub, r.id)
-             ? r.supported === true
-             : (r.supported === false && r.disabled === true && r.text === 'N/A');
-    }),
+      return Object.prototype.hasOwnProperty.call(tbPub, r.id) && r.supported === true;
+    }) &&
+    ['lo_flow', 'rcp_breaker'].every(function (id) { return !tbById[id]; }),
     'published ' + Object.keys(tbPub).sort().join(',') + ' — rows ' +
     tbRows.map(function (r) { return r.id + ':' + r.text; }).join(' '));
-  /* THE DISCRIMINATOR: naming the three by id, so a change that disabled the WHOLE panel — or
-   * one that left the panel alone and merely stopped drawing the rows — cannot pass this. */
-  q('...specifically lo_flow, rcp_breaker and ir_high, the three that could only throw',
-    ['lo_flow', 'rcp_breaker', 'ir_high'].every(function (id) {
-      return tbById[id] && tbById[id].disabled === true && tbById[id].supported === false;
-    }) && tbById.pr_low_setpoint && tbById.pr_low_setpoint.supported === true,
-    '');
+  /* THE PREDICATE STILL WORKS, and only an injection can say so now that nothing on the shipped
+   * plant exercises it. A snapshot with one row's entry REMOVED must dark that row and leave
+   * the others alone — the shape a preview-channel mismatch would produce. */
+  var snapMiss = JSON.parse(JSON.stringify(w.snap()));
+  delete snapMiss.rps_state.trip_block_status.ir_high;
+  var missRows = D.tripBlockRows(snapMiss), missById = {};
+  missRows.forEach(function (r) { missById[r.id] = r; });
+  q('...and a row the plant STOPS publishing goes dark and reads N/A, its neighbours untouched',
+    missById.ir_high && missById.ir_high.supported === false &&
+    missById.ir_high.disabled === true && missById.ir_high.text === 'N/A' &&
+    missById.pr_low_setpoint && missById.pr_low_setpoint.supported === true &&
+    missById.lo_press && missById.lo_press.supported === true,
+    'ir_high reads "' + (missById.ir_high ? missById.ir_high.text : 'NO ROW') +
+    '" with its status entry removed — the guard is live even though the shipped plant no ' +
+    'longer trips it');
+  /* ---- THE CAPTIONS (#600) — every setpoint in one comes from the SNAPSHOT ------------------
+   * `PR HIGH (LOW SETPT)` was the literal string "STARTUP TRIP · 25%" over a plant at 35 %, and
+   * `PZR PRESS LO-LO` read the static pwr1 table's 12.41 MPa (1800 psi) over a published 1775.
+   * The power TILE was already drawing 35 from this same snapshot, so the popover contradicted
+   * the tile on the same board. Neither could be caught because the caption existed only as a
+   * DOM write; it is a field on the row now, and these are the checks that were impossible. */
+  q('the flux captions carry the PLANT setpoints, not a literal (#600)',
+    / 35% · /.test(tbById.pr_low_setpoint.sub) && !/25%/.test(tbById.pr_low_setpoint.sub) &&
+    / 25% · /.test(tbById.ir_high.sub),
+    'PR "' + tbById.pr_low_setpoint.sub + '" | IR "' + tbById.ir_high.sub + '"');
+  q('...and the pressure caption reads the published setpoint, not the retired table',
+    /175[0-9]|17[0-8][0-9]/.test(tbById.lo_press.sub) && !/1800/.test(tbById.lo_press.sub),
+    'lo_press "' + tbById.lo_press.sub + '" — the static table would say 1800 psi');
+  /* AND A SNAPSHOT THAT PUBLISHES NO SETPOINT PRINTS NO NUMBER — never a hard-coded fallback.
+   * That path is live: the retired engine's kernel publishes trip_block_status entries with no
+   * `setpoint` field, and printing this plant's 35/25 there would be the #557 defect wearing
+   * the fix's clothes. */
+  var snapBare = JSON.parse(JSON.stringify(w.snap()));
+  Object.keys(snapBare.rps_state.trip_block_status).forEach(function (k) {
+    delete snapBare.rps_state.trip_block_status[k].setpoint;
+  });
+  var bareById = {};
+  D.tripBlockRows(snapBare).forEach(function (r) { bareById[r.id] = r; });
+  q('...and a plant that publishes NO setpoint gets no number at all, not a borrowed one',
+    !/[0-9]+%/.test(bareById.pr_low_setpoint.sub) && !/[0-9]+%/.test(bareById.ir_high.sub) &&
+    /P-10 PERMISSIVE/.test(bareById.ir_high.sub) && bareById.ir_high.supported === true,
+    'IR reads "' + bareById.ir_high.sub + '" with no published setpoint');
+
+  /* THE INTERMEDIATE RANGE ROW IS THE ONE #601 BUILT — supported, live, and carrying the
+   * plant's own 25 %, not the retired plant's 20 % rod-stop number. */
+  q('...and IR HIGH FLUX is a LIVE row now, at the plant\'s own 25 % (#601)',
+    tbById.ir_high && tbById.ir_high.supported === true && tbById.ir_high.text !== 'N/A' &&
+    tbPub.ir_high && tbPub.ir_high.setpoint === 25 &&
+    tbById.pr_low_setpoint && tbById.pr_low_setpoint.supported === true,
+    tbById.ir_high ? ('ir_high reads "' + tbById.ir_high.text + '", published setpoint ' +
+                      (tbPub.ir_high && tbPub.ir_high.setpoint)) : 'NO ROW');
   q('and SI ACTUATION — a block this plant carries — now HAS a row, and it is live',
     tbById.si_trip && tbById.si_trip.supported === true && tbById.si_trip.text !== 'N/A',
     tbById.si_trip ? ('si_trip reads "' + tbById.si_trip.text + '", disabled ' +
                       tbById.si_trip.disabled) : 'NO ROW');
+  /* ---- RELEASING A BLOCK THAT SCRAMS ON THE SPOT (#598 item 15) ------------------------------
+   * The owner: "I shouldn't be able to unblock a trip that will immediately cause a trip. SI
+   * reactor trip can do this for example." It stays LEGAL — clearing a block that is holding a
+   * trip off scrams in a real plant, control_kernel.js says so verbatim, and three gates pin it
+   * — but the panel could not TELL the two cases apart, because both P-11 rows shipped
+   * `asserted: false` HARD-CODED. So it offered a harmless release and a scram with the same
+   * single click. `would_assert` (pwr2_protection) is the ungated crossing; the row now carries
+   * `will_trip` and a caption, and the press takes a confirming second click.
+   *
+   * MODE 5 IS THE CASE, and it is the owner's own: a cold plant sits at 363 psia with both
+   * P-11 blocks taken, and BOTH lines are crossed — releasing either scrams. Asserted against
+   * the plant's published `asserted`, never a retyped pressure. */
+  var wCold15 = mkWorld('cold_shutdown');
+  var coldRows = {};
+  D.tripBlockRows(wCold15.snap()).forEach(function (r) { coldRows[r.id] = r; });
+  var coldPub = (wCold15.snap().rps_state || {}).trip_block_status || {};
+  bindWorld(w);                    /* PUT THE DRIVER BACK — see bindWorld */
+  q('the plant now says whether a blocked trip WOULD assert — it was hard-coded false (#598 item 15)',
+    coldPub.lo_press && coldPub.si_trip &&
+    coldPub.lo_press.blocked === true && coldPub.lo_press.asserted === true &&
+    coldPub.si_trip.blocked === true && coldPub.si_trip.asserted === true,
+    'Mode 5: lo_press blocked=' + (coldPub.lo_press && coldPub.lo_press.blocked) +
+    ' asserted=' + (coldPub.lo_press && coldPub.lo_press.asserted) +
+    ', si_trip blocked=' + (coldPub.si_trip && coldPub.si_trip.blocked) +
+    ' asserted=' + (coldPub.si_trip && coldPub.si_trip.asserted));
+  q('...and the ROW warns: will_trip set, the button reads RELEASE?, the caption says why',
+    coldRows.lo_press && coldRows.lo_press.will_trip === true &&
+    coldRows.lo_press.text === 'RELEASE?' && /WILL TRIP THE REACTOR NOW/.test(coldRows.lo_press.sub) &&
+    coldRows.si_trip && coldRows.si_trip.will_trip === true &&
+    coldRows.si_trip.text === 'RELEASE?' && /Press again to confirm/.test(coldRows.si_trip.sub),
+    coldRows.lo_press ? ('lo_press "' + coldRows.lo_press.text + '" — ' + coldRows.lo_press.sub)
+                      : 'NO ROW');
+  q('...and the release is still PERMITTED — the warning replaced the surprise, not the action',
+    coldRows.lo_press && coldRows.lo_press.disabled === false &&
+    coldRows.si_trip && coldRows.si_trip.disabled === false &&
+    coldPub.lo_press && coldPub.lo_press.can_clear === true &&
+    coldPub.si_trip && coldPub.si_trip.can_clear === true,
+    'can_clear lo_press=' + (coldPub.lo_press && coldPub.lo_press.can_clear) +
+    ' si_trip=' + (coldPub.si_trip && coldPub.si_trip.can_clear) +
+    ', row disabled=' + (coldRows.lo_press && coldRows.lo_press.disabled));
+  /* THE DISCRIMINATOR. A row that is blocked but NOT crossed must stay an ordinary one-click
+   * release — otherwise "warn" degenerates into "warn always", which trains the operator to
+   * click through it and is worse than no warning at all. At power the two flux rows are the
+   * unblocked case and the P-11 pair is revoked, so nothing on a healthy plant warns. */
+  q('...and NOTHING warns on a healthy at-power plant (a warning on every row is no warning)',
+    tbRows.every(function (r) { return r.will_trip !== true; }) &&
+    tbRows.every(function (r) { return !/WILL TRIP THE REACTOR NOW/.test(r.sub || ''); }),
+    'at power: ' + tbRows.map(function (r) { return r.id + ':' + r.text; }).join(' '));
+
   /* A LEGACY snapshot — no trip_block_status at all — must say NOTHING about capability, or
    * every old recording and minimal fixture would render the whole panel dead. */
   q('a snapshot with no trip_block_status leaves every row live (the legacy shape)',
@@ -578,6 +719,57 @@ function runSuite(quietRec) {
   q('letdown orifice lamps latch the commanded pair (were absent — CLOSED lit forever)',
     csL.letdown_orifice_a === true && csL.letdown_orifice_b === false,
     'a=' + csL.letdown_orifice_a + ' b=' + csL.letdown_orifice_b);
+
+  /* ---- THE 17 % LETDOWN ISOLATE ON THE BOARD (#624 / #619 item 24) -------------------------
+   * `control_state.letdown_isolated` — the pressurizer low-level protective cut — had ZERO
+   * consumers in `ui/`. So while the cut stood, the four lineup lamps kept lighting the
+   * operator's last SELECTION over two shut valves, LETDOWN FLOW read 0 gpm, and the only cue
+   * on the whole board was the PZR LTDN ISOL annunciator. A dark wire in the direction nobody
+   * checks: the field was published correctly and nothing read it.
+   *
+   * WHITE-BOX ON THE LATCH, deliberately. The PLANT end — level reaching 17 %, the cut latching
+   * `cv.letdownIsolated`, the letdown flow going to zero, and an orifice press clearing it once
+   * level is back above the 20 % restore point — is pinned in run_pwr2_engine's group Q. What is
+   * unpinned, and what shipped wrong, is whether the BOARD reads the flag at all. Driving the
+   * plant to 17 % here would spend two plant-hours to establish a boolean that group Q already
+   * owns, and would test the drain rather than the lamps.
+   *
+   * The POSITIVE half is asserted too (a selected lineup still lights): a check that only ever
+   * demands darkness passes on a board whose lamps are all dead. */
+  var oriIds = ['imrmtin8wm3', 'imrmtimrch3', 'imrmtimhz4g', 'imrmtimyxef'];
+  var litNormal = oriIds.filter(function (id) { return D.buttonActive({ id: id }, w.snap()); });
+  var wordNormal = D.valueFor({ id: 'bdLetdownStatus' }, w.snap());
+  w.svc.engine.eng.cv.letdownIsolated = true;
+  w.tick(1);
+  var litIso = oriIds.filter(function (id) { return D.buttonActive({ id: id }, w.snap()); });
+  var warnIso = D.buttonWarn({ id: 'imrmtin8wm3' }, w.snap());
+  var wordIso = D.valueFor({ id: 'bdLetdownStatus' }, w.snap());
+  q('a standing 17 % letdown isolate DARKENS all four orifice lineup lamps — the valves are ' +
+    'shut whatever the operator last selected (the field had no consumer in ui/ at all)',
+    litNormal.length === 1 && litNormal[0] === 'imrmtimrch3' && litIso.length === 0,
+    'lit before: ' + (litNormal.join(',') || 'none') + ' -> lit while isolated: ' +
+    (litIso.join(',') || 'none'));
+  q('...CLOSED carries the amber "the plant did this" warn instead of the green "you selected ' +
+    'this" active, and the card\'s status word reads ISOLATED',
+    warnIso === true && !!wordIso && wordIso.text === 'ISOLATED' &&
+    !!wordNormal && wordNormal.text === 'NORMAL',
+    'CLOSED warn ' + warnIso + ', word "' + (wordIso && wordIso.text) + '" (was "' +
+    (wordNormal && wordNormal.text) + '")');
+  /* AND THE CONTROL IS STILL REACHABLE. Dark lamps must not read as a dead panel: pressing any
+   * orifice re-lines letdown, because the engine clears the isolate once the level latch itself
+   * is gone (`14d9f20`). Driven through the driver's own press handler, not the command. */
+  var preIso = w.svc.engine.eng.cv.letdownIsolated === true &&
+               w.svc.engine.eng.pz.lowLevelCut !== true;
+  D.onButton({ id: 'imrmtimyxef' }, {});
+  w.tick(2);
+  q('...and the dark lamps are not a dead panel: pressing an orifice re-lines letdown and the ' +
+    'lamp comes back',
+    preIso && w.svc.engine.eng.cv.letdownIsolated === false &&
+    D.buttonActive({ id: 'imrmtimyxef' }, w.snap()) === true &&
+    D.buttonWarn({ id: 'imrmtin8wm3' }, w.snap()) === false,
+    'pre ' + preIso + ' -> isolated ' + w.svc.engine.eng.cv.letdownIsolated + ', A+B lit ' +
+    D.buttonActive({ id: 'imrmtimyxef' }, w.snap()));
+  w.cmd({ action: 'set_letdown_orifices', a: true, b: false }); w.tick(1);
   w.cmd({ action: 'set_steam_dump', mode: 'closed' }); w.tick(1);
   var dumpOff = w.snap().control_state.steam_dump_auto === false;
   w.cmd({ action: 'set_steam_dump', mode: 'auto' }); w.tick(1);
@@ -938,6 +1130,32 @@ var MUTS = [
     * the CAPABILITY, not pick between two spellings of it. */
    '      pzr_level_program_pct: (e._pzr && e._pzr.level_program_pct !== undefined)\n                             ? e._pzr.level_program_pct : 100 * PZ.levelProgram(ts.tavg_c),',
    '      pzr_level_program_pct: undefined,'],
+  /* #598 item 15, the PLANT end: the two P-11 rows go back to hard-coding `asserted: false`, so
+   * the panel cannot tell a harmless release from one that scrams on the spot and offers both
+   * with the same single click — the shipped defect exactly. Mutating the SHELL rather than the
+   * board proves the warning is computed from what the plant says, not from the board agreeing
+   * with itself. */
+  ['the P-11 rows hard-code asserted:false again (the panel cannot see a release that scrams)',
+   SHPATH, SHSRC,
+   '        lo_press: { blocked: loB, asserted: loAsserted,',
+   '        lo_press: { blocked: loB, asserted: false,'],
+  /* #598 item 15, the BOARD end: the row stops deriving `will_trip`, so the plant is telling the
+   * truth and nothing renders it. Distinct from the mutation above for the reason every paired
+   * publish/consume mutation in this file is distinct — a board agreeing with a constant by luck
+   * still has to redden. */
+  ['the row stops deriving will_trip (the plant warns and the panel does not listen)',
+   WIRING_PATH, WSRC,
+   'var willTrip = blocked && ts.asserted === true;',
+   'var willTrip = false;'],
+  /* #598 item 11: the level tile's NORMAL band reverts to the authored flat 40-70, a full-power
+   * band on every mode. Distinct from the two program mutations around it — those kill the
+   * ANCHOR, this one keeps the program published and stops the band using it, which is exactly
+   * the shipped shape. The Mode 5 check is what must catch it: at full power the program sits
+   * inside 40-70 and the centring check alone would still pass. */
+  ['the level tile\'s normal band reverts to the authored flat 40-70 (a full-power band on every mode)',
+   WIRING_PATH, WSRC,
+   '    if (prog != null && isFinite(prog)) {\n      out.normLo = qz(prog - 5);\n      out.normHi = qz(prog + 5);\n    }',
+   ''],
   /* #576c: the plant stops publishing its pressure control band, so the primary-pressure tile
    * falls back on the RETIRED engine's -30/+50 psi against PWR2's sourced -25/+25 — the exact
    * shipped defect, and invisible to a source read because the fallback IS the old code. */
@@ -1051,7 +1269,33 @@ var MUTS = [
   ['the delta-T tile derives the rod stop from the margin again (the flux stops go dark)',
    WIRING_PATH, WSRC,
    "    var held = t.rod_stop === true || t.runback_active === true;",
-   '    var held = false;']
+   '    var held = false;'],
+  /* #624 / #619 item 24: the four lineup lamps go back to reading the operator's SELECTION —
+   * the shipped state exactly, and one a source read cannot see, because every `active`
+   * function is individually correct about the pair it names. Only the isolate is missing. */
+  ['the orifice lamps read the SELECTION again (a lineup lamp over two shut valves)',
+   WIRING_PATH, WSRC,
+   /* ALL FOUR at once, because that is the shipped state and because reverting one is not
+    * enough to be seen: with only CLOSED reverted the standing selection is A, so CLOSED stays
+    * dark for the right reason by accident and the check passes on a mutated board. Measured —
+    * that first attempt came back BLIND. The `warn` goes with them; it did not exist either. */
+   "    imrmtin8wm3: { press: function () { cmd({ action: 'set_letdown_orifices', a: false, b: false }); },\n" +
+   "                   active: function (s) { return !ltdnIsolated(s) && !CS(s).letdown_orifice_a && !CS(s).letdown_orifice_b; },\n" +
+   "                   warn: function (s) { return ltdnIsolated(s); } },\n" +
+   "    imrmtimrch3: { press: function () { cmd({ action: 'set_letdown_orifices', a: true, b: false }); }, active: function (s) { return !ltdnIsolated(s) && CS(s).letdown_orifice_a && !CS(s).letdown_orifice_b; } },\n" +
+   "    imrmtimhz4g: { press: function () { cmd({ action: 'set_letdown_orifices', a: false, b: true }); }, active: function (s) { return !ltdnIsolated(s) && !CS(s).letdown_orifice_a && CS(s).letdown_orifice_b; } },\n" +
+   "    imrmtimyxef: { press: function () { cmd({ action: 'set_letdown_orifices', a: true, b: true }); }, active: function (s) { return !ltdnIsolated(s) && CS(s).letdown_orifice_a && CS(s).letdown_orifice_b; } },",
+   "    imrmtin8wm3: { press: function () { cmd({ action: 'set_letdown_orifices', a: false, b: false }); }, active: function (s) { return !CS(s).letdown_orifice_a && !CS(s).letdown_orifice_b; } },\n" +
+   "    imrmtimrch3: { press: function () { cmd({ action: 'set_letdown_orifices', a: true, b: false }); }, active: function (s) { return CS(s).letdown_orifice_a && !CS(s).letdown_orifice_b; } },\n" +
+   "    imrmtimhz4g: { press: function () { cmd({ action: 'set_letdown_orifices', a: false, b: true }); }, active: function (s) { return !CS(s).letdown_orifice_a && CS(s).letdown_orifice_b; } },\n" +
+   "    imrmtimyxef: { press: function () { cmd({ action: 'set_letdown_orifices', a: true, b: true }); }, active: function (s) { return CS(s).letdown_orifice_a && CS(s).letdown_orifice_b; } },"],
+  /* the WORD, mutated separately from the LAMPS, for the reason every paired mutation in this
+   * file is separate: the lamps can go dark correctly and leave the player with no way to know
+   * WHY, which is the state the PZR LTDN ISOL annunciator alone already produced. */
+  ['the status word stops reading the isolate (dark lamps with nothing saying why)',
+   WIRING_PATH, WSRC,
+   "    if (ltdnIsolated(s)) return { text: 'ISOLATED', color: BD_WARN };",
+   '']
 ];
 /* Counted, not written down: the number went stale the first time a mutation was added. */
 console.log('\ninjection self-test (' + MUTS.length + ' mutations):');

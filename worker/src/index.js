@@ -23,7 +23,10 @@
  *   - The IP address is used as the rate-limit key and NEVER written anywhere. It
  *     goes into env.LIMITER.limit({key}) and out of scope on the next line.
  *   - The User-Agent is not read, not stored, not passed on.
- *   - No cookies are set, no headers are echoed into storage.
+ *   - ONE exception: handleBundle stamps the CORS-checked Origin header into a bug report's
+ *     R2 customMetadata (one of the three values in ALLOWED_ORIGINS — not a full URL, no
+ *     path or query, nothing a visitor typed) so a report can be told apart by which site
+ *     sent it. No other header is echoed into storage.
  *   - Nothing is logged. console.log in a Worker goes to the tail/observability
  *     stream, which is a place data lives; if you add logging while debugging,
  *     take it out, and never log `body`.
@@ -126,6 +129,7 @@ const KEY_OF = {
 };
 
 import { handleDashboard } from './dashboard.js';
+import { runRollup } from './rollup.js';
 import { stagesEndpoint } from './features.js';
 
 // ---------------------------------------------------------------- helpers
@@ -180,6 +184,30 @@ function bool(v) { return v === true ? 1 : v === false ? 0 : -1; }
 
 // ---------------------------------------------------------------- the Worker
 export default {
+  /* THE DAILY ROLLUP (#604). Neither upstream keeps anything for long -- Web Analytics
+   * holds 7 days at full resolution and Analytics Engine a fixed 3 months -- so the
+   * dashboard could not answer "is this growing", and past a week could not answer "what
+   * happened on the 14th" either.
+   *
+   * The whole trick is being ON TIME: the coarse tier only penalises queries made LATER,
+   * so a job that snapshots yesterday while it is still inside the 7-day window keeps
+   * exact history for ever. That makes a MISSED run a permanent loss of that day's
+   * precision, not a delay -- which is why rollup.js stores `sample_interval` on every
+   * row and records each run, so a late or absent capture is visible instead of being
+   * read as a quiet day.
+   *
+   * ctx is deliberately unused: this must finish before the invocation ends, so it is
+   * awaited rather than handed to waitUntil. */
+  async scheduled(event, env) {
+    const summary = await runRollup(env);
+    /* Deliberately NOT console.log'd. Observability is off for this Worker on purpose
+     * (wrangler.toml) because Workers Logs capture request metadata and headers, which
+     * includes CF-Connecting-IP -- and src/index.js promises the IP is never written
+     * anywhere. The run's own record lives in the `rollup_runs` table, which the
+     * dashboard reads; that is the place to look, not a log stream. */
+    return summary;
+  },
+
   async fetch(request, env) {
     const url = new URL(request.url);
 
@@ -298,11 +326,16 @@ async function handleBundle(request, env, origin) {
   const id = now.getTime().toString(36) + '-' + Math.random().toString(36).slice(2, 10);
   const key = 'bundles/' + day + '/' + id + (gzipped ? '.json.gz' : '.json');
 
+  // Origin is already checked against ALLOWED_ORIGINS above and then discarded — the only
+  // record left of which site sent this was whatever the client claimed inside the JSON body.
+  // Stamping it here too means the dashboard can show which build a report came from even if
+  // the client-side `build`/`channel` fields are absent (older sessions) or wrong.
   await env.BUNDLES.put(key, buf, {
     httpMetadata: {
       contentType: 'application/json',
       contentEncoding: gzipped ? 'gzip' : undefined,
     },
+    customMetadata: { origin: origin || '' },
   });
 
   // The id goes back so a reporter can quote it and it can be found in one command.

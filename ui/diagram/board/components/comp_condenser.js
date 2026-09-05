@@ -20,7 +20,7 @@
     s.id = 'bd-condenser-styles';
     s.textContent =
       '@keyframes flowmove{to{stroke-dashoffset:-24}}' +
-      '.flow{stroke-dasharray:9 15;animation:flowmove 1.1s steps(13) infinite}';
+      '.flow{stroke-dasharray:9 15;animation:flowmove 1.1s linear infinite}';
     (document.head || document.documentElement).appendChild(s);
   }
 
@@ -51,6 +51,8 @@
     // dynamic element refs
     var waterStops = [], steamStops = [], steamGradEl, tubeStops = [];
     var shellGlowEl, steamRect, waterRect, surfLine, outcRect, incRect;
+    /* filter-free halo (#613 wave 4) — see RD.BoardH.softGlow. */
+    var gGlow = RD.BoardH.softGlow(gid + 'Glow', steamColor);
     var tubeFlowEls = [];
     var panelG = null, slInputs = {}, slVals = {}, roVals = {};
 
@@ -69,11 +71,13 @@
         h('stop', { key: 1, offset: '0.5', stopColor: '#4a90d9', ref: function (el) { tubeStops[1] = el; } }),
         h('stop', { key: 2, offset: '1', stopColor: '#1a3f72', ref: function (el) { tubeStops[2] = el; } })]),
       h('clipPath', { key: 'clip', id: gid + 'InnerClip' }, [h('rect', { key: 0, x: innerL, y: innerTop, width: innerR - innerL, height: innerBot - innerTop, rx: 6 })]),
-      h('filter', { key: 'glow', id: gid + 'Glow', x: '-60%', y: '-60%', width: '220%', height: '220%' }, [h('feGaussianBlur', { key: 0, stdDeviation: '9' })])
+      /* The shell halo was a solid rect behind an feGaussianBlur (stdDeviation 9) until #613
+       * wave 4 — a radial-gradient fill grown by 2*stdDeviation now (RD.BoardH.softGlow). */
+      gGlow.def
     ]));
 
     // shell
-    shellGlowEl = h('rect', { key: 'shellGlow', x: shellL - 10, y: shellTop - 10, width: shellR - shellL + 20, height: shellBot - shellTop + 20, rx: 16, fill: steamColor, opacity: 0.14, filter: 'url(#' + gid + 'Glow)', style: { display: 'none' } });
+    shellGlowEl = h('rect', { key: 'shellGlow', x: shellL - 28, y: shellTop - 28, width: shellR - shellL + 56, height: shellBot - shellTop + 56, rx: 34, fill: gGlow.paint, opacity: 0.14, style: { display: 'none' } });
     C.push(shellGlowEl);
     C.push(h('rect', { key: 'outer', x: shellL, y: shellTop, width: shellR - shellL, height: shellBot - shellTop, rx: 12, fill: 'url(#' + gid + 'SteelGrad)', stroke: '#46596a', strokeWidth: 2.4 }));
     C.push(h('rect', { key: 'inner', x: innerL, y: innerTop, width: innerR - innerL, height: innerBot - innerTop, rx: 6, fill: '#0b141d', stroke: '#1b2a36', strokeWidth: 1 }));

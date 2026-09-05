@@ -387,8 +387,24 @@
   // document (added in mount, removed in unmount), not on the button itself.
   function endMomentary() {
     Object.keys(buttonEls).forEach(function (k) { buttonEls[k].classList.remove('bd-pressed'); });
+    endNumHold();
     var d = driver();
     if (d && d.onButtonUp) d.onButtonUp();
+  }
+  /* Number-box ▲/▼ press-and-hold (#605) — see buildNumber. ONE hold at a time, board-wide:
+   * the state lives here so `endMomentary` (already wired to document pointerup/pointercancel
+   * and window blur, buildStage) ends it through the same path every other held control uses.
+   * A second set of listeners would be a second thing to forget. */
+  var NUM_HOLD_DELAY_MS = 400;    /* tap-vs-hold: below this a press is exactly one step */
+  var NUM_HOLD_TICK_MS = 60;      /* ~17 steps/s once repeating */
+  var NUM_HOLD_COARSE_MS = 1500;  /* after this long held, each repeat is worth more */
+  var NUM_HOLD_COARSE_MULT = 10;
+  var numHold = { delay: null, tick: null };
+  /* How many broadcasts a committed setpoint may outrank the snapshot — see commit(). */
+  var PENDING_MAX_FRAMES = 20;
+  function endNumHold() {
+    if (numHold.delay) { clearTimeout(numHold.delay); numHold.delay = null; }
+    if (numHold.tick) { clearInterval(numHold.tick); numHold.tick = null; }
   }
 
   function buildScram(it) {
@@ -485,17 +501,115 @@
       if (b) { if (v < b[0]) v = b[0]; else if (v > b[1]) v = b[1]; }
       rec.editing = false;
       input.value = v.toFixed(rec.digits);
+      /* THE ENTRY MUST SURVIVE UNTIL THE PLANT ANSWERS (#605, the other half of the owner's
+       * "I couldn't type into the PZR pressure set point box"). Measured: type 2235, press
+       * Enter, and the box reads 363 again — the OLD setpoint. The command descends fine, but
+       * `rec.editing` has just gone false and the very next render reads `numberFor` off the
+       * snapshot that is still in hand, which of course still carries the old value. While the
+       * sim is RUNNING the next broadcast covers it up within a broadcast period; PAUSED — a
+       * player stopped to read a checklist step, which is exactly when a setpoint gets
+       * retyped — nothing ever covers it and the box has visibly refused the entry.
+       *
+       * SO PIN THE ENTRY UNTIL THE PLANT SAYS SOMETHING NEW. `pendingPrev` is what the box was
+       * reading back BEFORE the command; while the snapshot keeps repeating that number the
+       * plant has not answered yet and the operator's demand stands. The moment it reports
+       * anything else — the accepted value OR an engine clamp — the pin clears and the box
+       * follows the plant again, which is the honest half: the operator sees what the plant
+       * did with the demand, not what they asked for.
+       *
+       * Snapshot IDENTITY cannot do this job (tried, 2026-09-02): the command path reassembles
+       * a fresh snapshot object on the way back, so `s !== pinnedSnapshot` on the very first
+       * render and the pin never survives its own commit.
+       *
+       * BOUNDED, because a REFUSED command reports the old value for ever and an unbounded pin
+       * would show a demand the plant never took — the dark-wire shape. `PENDING_MAX_FRAMES`
+       * broadcasts (~2 s at 1x) and the box snaps back to the truth. */
+      rec.pendingVal = v;
+      rec.pendingPrev = (d && d.numberFor) ? d.numberFor(it, lastSnap) : null;
+      rec.pendingAge = 0;
       if (d && d.onNumber) d.onNumber(it, v);
     }
     input.addEventListener('focus', function () { rec.editing = true; rec.preEdit = input.value; });
     input.addEventListener('blur', function () { commit(parseFloat(input.value)); });
     input.addEventListener('keydown', function (e) { if (e.key === 'Enter') input.blur(); });
 
-    var stepBox = h('div', { className: 'bd-num-steps' },
-      h('button', { type: 'button', onClick: function () { commit((parseFloat(input.value) || 0) + stepSize()); } }, '▲'),
-      h('button', { type: 'button', onClick: function () { commit((parseFloat(input.value) || 0) - stepSize()); } }, '▼'));
+    /* ▲/▼ ARE PRESS-AND-HOLD *(OWNER, 2026-09-02 playtest: "I should be able to hold the arrow
+     * on a number box to quickly scroll through values.")*. A tap is still exactly one step —
+     * these boxes are trimmed a psi at a time as often as they are swept — so the hold is a
+     * REPEAT on top of the tap, not a replacement for it: the first nudge fires on pointerdown,
+     * then after `NUM_HOLD_DELAY_MS` it repeats every `NUM_HOLD_TICK_MS`, and after
+     * `NUM_HOLD_COARSE_MS` of continuous hold each repeat is worth `NUM_HOLD_COARSE_MULT`
+     * steps. Without that acceleration the Pressure SP's 1-psi step needs a 35-second hold to
+     * cross its own 800 psi dial, which is not a fix.
+     *
+     * `stepSize()` IS RE-READ EVERY REPEAT, for the same reason the tap re-reads it (see the
+     * comment above): the display-unit layer can change the step under a mounted board.
+     *
+     * THE RELEASE IS NOT THE BUTTON'S TO HEAR. A pointer released outside a 20x14 px arrow, a
+     * drag the browser promotes to a gesture, and an alt-tab all end the press without the
+     * button seeing a pointerup — and each one left behind would be a setInterval driving a
+     * setpoint nobody is touching. So the hold ends through `endMomentary`, which buildStage
+     * already wires to document pointerup, document pointercancel and window blur for every
+     * other held control on this board. One teardown path, not a second one to forget. */
+    function makeStepBtn(dir, glyph) {
+      function nudge(mult) {
+        commit((parseFloat(input.value) || 0) + dir * stepSize() * (mult || 1));
+      }
+      function down(e) {
+        if (input.disabled || !editable) return;
+        if (e && e.preventDefault) e.preventDefault();      /* no text-selection drag off a hold */
+        endNumHold();
+        nudge(1);
+        numHold.delay = setTimeout(function () {
+          var t0 = 0;
+          numHold.tick = setInterval(function () {
+            t0 += NUM_HOLD_TICK_MS;
+            nudge(t0 >= (NUM_HOLD_COARSE_MS - NUM_HOLD_DELAY_MS) ? NUM_HOLD_COARSE_MULT : 1);
+          }, NUM_HOLD_TICK_MS);
+        }, NUM_HOLD_DELAY_MS);
+      }
+      return h('button', {
+        type: 'button',
+        onPointerdown: down,
+        /* KEYBOARD PATH. Space/Enter on a focused button fires `click` with no pointerdown, so
+         * the tap must still live here — but a pointer press has already nudged once and the click
+         * that follows it would double the step. `detail` tells them apart with no state to go
+         * stale: a pointer-driven click carries the click count (>= 1), a keyboard-activated one
+         * carries 0. A `held` boolean was tried first and leaks — a press released off the button
+         * fires no click at all, so the flag stays set and swallows the next keyboard activation. */
+        onClick: function (e) { if (e && e.detail !== 0) return; if (!input.disabled && editable) nudge(1); }
+      }, glyph);
+    }
+    var stepBox = h('div', { className: 'bd-num-steps' }, makeStepBtn(1, '▲'), makeStepBtn(-1, '▼'));
 
-    var frame = h('div', { className: 'bd-num-frame' }, input);
+    /* THE WHOLE BOX IS THE TYPING TARGET, NOT THE DIGITS *(OWNER, 2026-09-02 playtest, BLOCKER:
+     * "Step 10 I couldn't type into the PZR pressure set point box to raise the pressure.")*.
+     *
+     * MEASURED, headless Edge on the Pressure SP tile (`imrsg8b7b9o`, authored 100 px wide):
+     * at a 1600x950 viewport the `<input>` renders 42 px of an 85 px frame; at 1366x768 it is
+     * 30 px wide and 17 px tall, with a 17 px `psi` unit span and a 13 px arrow column beside
+     * it. So HALF of what reads as one text box was dead to a click, and a click on the unit
+     * span left `document.activeElement` on BODY — measured. What happens next is the report:
+     * the player types "2235", the box does not change, and ui/app.js's global shortcut keys
+     * take the digits instead — 2/3/5 are time acceleration, so the plant ends the attempt
+     * running at 3600x. Both halves of that were reproduced in one probe.
+     *
+     * The fix is the affordance, not the shortcut: a pointerdown anywhere in the frame that is
+     * not the input and not the ▲/▼ column focuses the input and selects it. preventDefault is
+     * what stops the browser moving focus to BODY first. SELECT, because a setpoint box is
+     * overtyped, not edited — a caret placed inside "1700" turns a typed "2235" into "17002235",
+     * which commit() then clamps to the dial maximum. A click on the input itself is left
+     * alone, so placing a caret deliberately still works. */
+    var frame = h('div', {
+      className: 'bd-num-frame',
+      onPointerdown: function (e) {
+        if (!editable || input.disabled) return;
+        if (e.target === input || (stepBox && stepBox.contains(e.target))) return;
+        e.preventDefault();
+        input.focus();
+        input.select();
+      }
+    }, input);
     // The unit span is built when the item declares one, and it is a LIVE text node from
     // #238 on: the render loop rewrites it from driver.numberUnit so a units change reaches
     // the setpoint boxes and not only the readouts.
@@ -507,6 +621,26 @@
     }
     frame.appendChild(stepBox);
     el.appendChild(frame);
+    /* THE WHOLE TILE IS THE TARGET, NOT JUST THE FRAME (#615, owner playtest 2026-09-03: "I'm
+     * unable to type into any field (number boxes and the feedback form)").
+     *
+     * #605 made the FRAME focus the input, which was the right move and did not go far enough:
+     * measured at 1366x768, several number tiles are 48x28 around a 48x18 frame, so a 10 px band
+     * across the bottom — up to 731 px2, better than a third of the tile — is outside every
+     * handler. A click that lands there focuses nothing, leaves `document.activeElement` on BODY,
+     * and the digits you type next are read by the GLOBAL keyboard shortcuts: 2/3/5 are time
+     * acceleration, which is the "2235 ended at 3600x" the standing trap list records.
+     *
+     * Same guard as the frame's: a click ON the input keeps its caret, and the step buttons keep
+     * their own press-and-hold. Everything else in the tile now means "type in this box". */
+    el.addEventListener('pointerdown', function (e) {
+      if (!editable || input.disabled) return;
+      if (e.target === input || (stepBox && stepBox.contains(e.target))) return;
+      if (frame.contains(e.target)) return;          // the frame's own handler already has it
+      e.preventDefault();
+      input.focus();
+      input.select();
+    });
     return el;
   }
 
@@ -788,7 +922,7 @@
   }
 
   // Stop/start a pipe's dashes with animation-PLAY-STATE. Since 2026-08-31 there is no CSS
-  // animation behind it — StdPipe's shared ~12 Hz clock reads this inline style as the
+  // animation behind it — StdPipe's shared ~24 Hz clock reads this inline style as the
   // per-line hold flag (and pipeFlowState() below reads it back), so the property is still
   // the one true switch. Pausing leaves the dashes where they stopped; resuming rejoins the
   // SHARED clock, so a resumed line lands back on the #233 world grid rather than a private
@@ -937,6 +1071,7 @@
       releaseHandler = null;
     }
     if (scanTimer) { clearTimeout(scanTimer); scanTimer = null; }
+    endNumHold();     /* a plant switch mid-hold would otherwise leave the repeat running */
     // The splitters are parented to .app, not to host, so host.innerHTML='' below does not
     // reach them — remove them explicitly or a plant switch leaves dead handles behind.
     [splitV, splitH].forEach(function (el) { if (el && el.parentNode) el.parentNode.removeChild(el); });
@@ -1021,6 +1156,12 @@
         if (rec.editing) return;
         var v = d.numberFor ? d.numberFor(rec.item, s) : null;
         if (v == null || isNaN(v)) return;
+        /* A just-committed entry outranks a snapshot still reporting the OLD value — see the
+         * block in commit() for why, and why it is bounded. */
+        if (rec.pendingVal != null) {
+          if (rec.pendingPrev != null && v === rec.pendingPrev && ++rec.pendingAge <= PENDING_MAX_FRAMES) return;
+          rec.pendingVal = null; rec.pendingPrev = null;
+        }
         var str = v.toFixed(rec.digits);
         if (rec.input.value !== str) rec.input.value = str;
       });

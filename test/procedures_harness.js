@@ -21,6 +21,11 @@
 
   var PLANTS = {
     pwr: { plant: 'pwr', version: null },
+    /* THE SHIPPED PLANT (#244/#526, 2026-08-31). The runner that passes 'pwr2' must have
+     * loaded the pwr2 module set (run_checklist_pwr2.js is that runner); the pwr-only
+     * runners never name this key, so nothing changes for them. IC names pass through
+     * un-translated — RD.RETIRED_ENGINE_IC is the RETIRED engine's vocabulary shim. */
+    pwr2: { plant: 'pwr2', version: null },
     rbmk_pre: { plant: 'rbmk', version: 'pre_chernobyl' },
     rbmk_post: { plant: 'rbmk', version: 'post_chernobyl' },
     bwr: { plant: 'bwr', version: null },
@@ -61,7 +66,14 @@
     switch (op) { case '>': return a > b; case '<': return a < b; case '>=': return a >= b; case '<=': return a <= b;
       case '~': return Math.abs(a - b) <= (tol || 0); } return false;
   }
-  function pred(ts, c) { return cmp(ts[c.p], c.op, c.v, c.tol); }
+  /* PREDICATES RESOLVE THROUGH THE INSTRUCTOR LAYER, NOT OFF `true_state` (#605). Some params a
+   * step may check are not flat true_state fields — rod bank position is in `control_state`, and
+   * a checklist that says "withdraw the bank to 627 / 627" should be graded on the bank. Reading
+   * true_state here would make this harness a SECOND sampler that cannot see them, which is the
+   * shape #432 was: the live runtime would check the step off and the gate would call it a fail.
+   * `paramValue` takes the whole snapshot; every call site below passes one. */
+  function pv(snap, p) { return RD.InstructorLayer.paramValue(snap, p); }
+  function pred(snap, c) { return cmp(pv(snap, c.p), c.op, c.v, c.tol); }
 
   function groupId(svc, which) {
     var gs = svc.engine.getControlState().rod_groups;
@@ -102,9 +114,11 @@
     if (!svc) {
       var P = PLANTS[profKey];
       svc = new RD.SimulationService({ seed: opts.seed != null ? opts.seed : 42 });
-      /* the RETIRED engine's IC vocabulary — see RD.RETIRED_ENGINE_IC's note in ui/manual_procedures.js */
-      svc.selectPlant(P.plant, RD.RETIRED_ENGINE_IC(proc.from), P.version,
-                      opts.bare ? { noDefaults: true } : undefined);
+      /* the RETIRED engine's IC vocabulary — see RD.RETIRED_ENGINE_IC's note in
+       * ui/manual_procedures.js. pwr2 (and rbmk/bwr) take the authored name as-is. */
+      svc.selectPlant(P.plant,
+                      P.plant === 'pwr' ? RD.RETIRED_ENGINE_IC(proc.from) : proc.from,
+                      P.version, opts.bare ? { noDefaults: true } : undefined);
       svc.running = true;                       // gates drive tick() directly
       svc.timeAcceleration = ACCEL;
       // …and it has to STAY at ACCEL. `_attentionStop` drops fast-forward to 1× on the
@@ -121,6 +135,16 @@
       // (scram/failure/alarm reasons, the on/off setting, and its survival across a
       // state restore), so turning it off here costs no coverage.
       svc.attentionStops = false;
+      /* …and the same for a PLANT-DECLARED speed hold (#619 item 13). Separate flag, same
+       * reasoning as the paragraph above: the accumulator window holds the clock at 1x until
+       * the tanks are armed, which is right for a human who would otherwise ride past an
+       * unrecoverable window at 600x, and wrong for a headless replay that issues the arming
+       * command on the NEXT authored step. Measured before this existed: the heatup replay
+       * dropped to 1x at step 7 and spent 45,716 ticks at a tenth of its declared rate, never
+       * reaching Mode 3. The mechanism is covered directly by run_checklist_pwr2 2i, which
+       * drives the window and asserts the drop, the refusal and the release — so turning it
+       * off here costs no coverage. */
+      svc.speedHolds = false;
     }
 
     var checks = [];
@@ -132,7 +156,7 @@
     function observe(snap) {
       var ts = snap.true_state;
       if (ts.melted) meltHit = true;
-      gNever.forEach(function (g) { if (pred(ts, g.c)) g.hit = true; });
+      gNever.forEach(function (g) { if (pred(snap, g.c)) g.hit = true; });
       if (scramStep === null && snap.rps_state && snap.rps_state.scrammed) {
         scramStep = curStep; scramReason = snap.rps_state.last_trip_reason || '(no reason given)';
       }
@@ -147,7 +171,12 @@
     (proc.steps || []).forEach(function (st, idx) {
       curStep = idx + 1;
       function issue(cmd) {
-        var why = refusal(svc.handleCommand(cmd));
+        /* The pwr2 shell REFUSES BY THROWING (#505 made refusals visible; the retired
+         * engine returns {type:'error'} instead). Both are the same fact to a replay —
+         * the command did not land — so both record as a refusal string. */
+        var why;
+        try { why = refusal(svc.handleCommand(cmd)); }
+        catch (e) { why = String(e && e.message || e).slice(0, 140); }
         if (why) refusals.push('step ' + curStep + ' ' + cmd.action + ' → ' + why);
       }
       // A ramp step's `cmd` is the REPRESENTATIVE action (what the instructor watches
@@ -160,6 +189,14 @@
         if (cmd.group_id === 'control' || cmd.group_id === 'shutdown') cmd.group_id = groupId(svc, cmd.group_id);
         if (SCRAM_ACTIONS[cmd.action] && scramCmdStep === null) scramCmdStep = curStep;
         issue(cmd);
+      }
+      // cmd-kind multi-check-off entries (#244 item 8) are operator actions of this step
+      // — the replay performs them the way the player would (the 1/M "Plot point" case).
+      if (st.accs && st.accs.length) {
+        st.accs.forEach(function (en) {
+          if (en && en.cmd) issue(typeof en.cmd === 'string' ? { action: en.cmd }
+                                                            : JSON.parse(JSON.stringify(en.cmd)));
+        });
       }
       // `saw` may be ONE predicate or a LIST of them (#348) — see the note in
       // run_procedures.js. Kept identical here on purpose: this runner exists to assert the
@@ -181,7 +218,7 @@
           slowTicks++;
         }
         observe(s);
-        sawList.forEach(function (sw, k) { if (pred(s.true_state, sw)) sawHits[k] = true; });
+        sawList.forEach(function (sw, k) { if (pred(s, sw)) sawHits[k] = true; });
       }
       // Land the ramp exactly on its last point: `f` never quite reaches 1 when
       // `ticks` is not a multiple of RAMP_EVERY, and a leg that stops a few tenths of
@@ -192,8 +229,18 @@
         checks.push({ d: 'step ' + curStep + ' saw ' + sw.p + ' ' + sw.op + ' ' + sw.v, pass: !!sawHits[k], obs: !!sawHits[k] });
       });
       if (st.acc) {
-        var ts = lastSnap.true_state;
-        checks.push({ d: 'step ' + curStep + ' ' + st.acc.p + ' ' + st.acc.op + ' ' + st.acc.v, pass: pred(ts, st.acc), obs: ts[st.acc.p] });
+        checks.push({ d: 'step ' + curStep + ' ' + st.acc.p + ' ' + st.acc.op + ' ' + st.acc.v, pass: pred(lastSnap, st.acc), obs: pv(lastSnap, st.acc.p) });
+      }
+      /* MULTI-CHECK-OFF steps (#244 item 8): predicate entries are asserted at the step's
+       * end exactly like `acc`; cmd-kind entries were issued above as operator actions of
+       * this step, so their evidence is the acceptance-free issue itself (the live runtime
+       * latches them off the command watch — that half is run_checklist's subject). */
+      if (st.accs && st.accs.length) {
+        st.accs.forEach(function (en, k) {
+          if (en && en.p) checks.push({
+            d: 'step ' + curStep + ' accs[' + k + '] ' + en.p + ' ' + en.op + ' ' + en.v,
+            pass: pred(lastSnap, en), obs: pv(lastSnap, en.p) });
+        });
       }
     });
     if (!lastSnap) lastSnap = svc._assembleWithInstructor();

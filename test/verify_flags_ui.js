@@ -126,6 +126,205 @@ function pinChannel(ch) {
   // checked a pane that simply was not the one on screen.
   await b.page.click('#tabbar [data-tab="checklists"]');
   ck('dev: the checklist picker is offered', await b.page.isVisible('#instrCklRow'));
+  /* ---- THE ACTIVE STEP CARD SAYS WHICH CONTROL TO USE (#598 item 13) --------------------
+   * The card was collapsed to the instruction alone, and measuring the cost produced the
+   * owner's ruling to promote the control back out: only 41 % of the 46 pwr2 steps carrying a
+   * control name it in their instruction text, so 27 steps had no visible answer to "which
+   * knob". This asserts it IN THE RENDERED DOM and not by scanning app.js for the string —
+   * #485's lesson, where `/\(partial\)/` passed green against `(false ? ' (partial)' : '')`.
+   * A source scan cannot tell you a string is reachable; starting a real checklist can.
+   *
+   * Deliberately NOT pinned to a particular step's wording: the claim is that the active card
+   * carries a `.ckl-use` line naming a control, which survives any content edit and fails the
+   * moment the block is folded back into Details. */
+  await b.page.click('#tabbar [data-tab="checklists"]');
+  var cklStarted = await b.page.evaluate(function () {
+    var btn = document.querySelector('#cklMenu [data-ckl-start]') ||
+              document.querySelector('[data-ckl-start]');
+    if (!btn) return false;
+    btn.click();
+    return true;
+  });
+  if (cklStarted) {
+    await b.page.waitForSelector('.ckl-step.ckl-active', { timeout: 20000 }).catch(function () {});
+    /* ⚠ DATA-DRIVEN, NOT FIXTURE-DRIVEN, and the first cut of this check was the latter. It
+     * asserted a `.ckl-use` line simply EXISTS on the active step — and passed, because the
+     * picker happened to start one of the three checklists whose first step carries a control.
+     * The other three open on an obs() confirmation with no control and no target, and 13 of the
+     * 61 pwr2 steps are that shape, so the check was pinned to which procedure the menu listed
+     * first. Found by screenshotting the card and reading `use line: null` under a green gate.
+     *
+     * The claim is CONDITIONAL and that is what makes it honest: when the active step HAS a
+     * control the card must name it OUTSIDE the fold; when it has none there must be no line.
+     * Both halves are read from the step's own data via RD.MANUAL_PROCEDURES, so no content edit
+     * can turn this green or red for the wrong reason. */
+    var seen = await b.page.evaluate(function () {
+      var a = document.querySelector('.ckl-step.ckl-active');
+      if (!a) return { err: 'no active step card' };
+      var steps = Array.prototype.slice.call(document.querySelectorAll('.ckl-step'));
+      var idx = steps.indexOf(a);
+      var head = document.querySelector('.ckl-head b');
+      var title = head ? (head.textContent || '').trim() : null;
+      /* THE POOL IS THE RUNNING PLANT'S, read off the live snapshot — NOT a hard-coded
+       * 'pwr2'. The first cut hard-coded it and this check went red against a correctly
+       * rendered card: this build boots the retired engine, whose pwr_startup step 1 IS an
+       * observation with a target, while pwr2's step 1 has neither. The two pools share
+       * procedure TITLES, so a title lookup in the wrong pool silently answers about a
+       * different plant's step — the #557 family, in a test. */
+      var snap = (window.RD && RD.PwrBoard && RD.PwrBoard.lastSnapshot) ? RD.PwrBoard.lastSnapshot() : null;
+      var pid = (snap && snap.metadata && snap.metadata.plant_id) || null;
+      var all = (window.RD || {}).MANUAL_PROCEDURES || {};
+      var pool = (pid && all[pid]) || [];
+      var proc = null;
+      for (var i = 0; i < pool.length; i++) if ((pool[i].title || '').trim() === title) proc = pool[i];
+      var st = (proc && proc.steps) ? proc.steps[idx] : null;
+      var el = a.querySelector('.ckl-use');
+      return { idx: idx, title: title, found: !!proc, plant: pid,
+               control: st ? (st.control || null) : undefined,
+               target: st ? (st.target || null) : undefined,
+               line: el ? (el.textContent || '').trim() : null };
+    });
+    var obs = seen.control && /^\(observe/i.test(seen.control);
+    var wantLine = !!(seen.control || seen.target) && !(obs && !seen.target);
+    ck('dev: the active step names its control OUTSIDE the fold, and only when it has one (#598 item 13)',
+      seen.found === true && seen.control !== undefined &&
+      (wantLine
+        ? (!!seen.line && (obs ? /^Watch for:/.test(seen.line)
+                               : (seen.control ? seen.line.indexOf(seen.control) >= 0 : true)) &&
+           !/\(observe\)/.test(seen.line))
+        : seen.line === null),
+      seen.plant + ' step ' + (seen.idx + 1) + ' of "' + seen.title + '" control=' +
+      JSON.stringify(seen.control) + ' target=' + JSON.stringify(seen.target) +
+      ' — expected ' + (wantLine ? 'a line naming it' : 'NO line') +
+      ', got ' + (seen.line === null ? 'none' : '"' + seen.line.slice(0, 70) + '"'));
+    var folded = await b.page.evaluate(function () {
+      var d = document.querySelector('.ckl-step.ckl-active .ckl-why-btn');
+      return d ? (d.textContent || '').trim() : null;
+    });
+    ck('dev: and the expander is labelled Details, not Why (#598 item 13)',
+      folded === null || /Details/i.test(folded), folded === null ? '(no expander on this step)' : folded);
+
+    /* ---- #628 item 1: THE NUMBERED INSTRUCTION IS THE HEAD OF EVERY CARD -------------------
+     * *(OWNER, 2026-09-04: "move the numbered step to always be the first part of the stack.
+     * then the rest of the step that appears when its active goes below it.")*
+     *
+     * Asserted over EVERY rendered card, not just the active one, because the whole point of
+     * the ruling is that the active card stops being the exception. Read as DOM ORDER —
+     * `.ckl-txt` is the first element child of `.ckl-body` — which is the claim itself and not
+     * a proxy for it: putting any block back above the instruction reddens this, and no content
+     * edit can touch it. Injection-proven: moving the `.ckl-txt` line back under the active
+     * block fails with "step 1 leads with ckl-act". */
+    var lead = await b.page.evaluate(function () {
+      var out = { n: 0, bad: null };
+      var cards = document.querySelectorAll('.ckl-step .ckl-body');
+      for (var i = 0; i < cards.length; i++) {
+        var f = cards[i].firstElementChild;
+        out.n++;
+        if (!f || !f.classList.contains('ckl-txt')) {
+          out.bad = 'step ' + (i + 1) + ' leads with ' + (f ? (f.className || f.tagName) : 'nothing');
+          break;
+        }
+      }
+      return out;
+    });
+    ck('dev: every checklist card leads with its numbered instruction (#628)',
+      lead.n > 0 && lead.bad === null, lead.bad || (lead.n + ' cards'));
+
+    /* ---- #628 item 2: THE SUGGESTED SPEED RUNG IS A RUNG THE PLAYER HAS --------------------
+     * *(OWNER, 2026-09-04: "Add a suggested time warp value for the long term waiting steps.")*
+     *
+     * Two claims, both read off the LIVE ladder rather than a list written here — a literal
+     * copy in the test would only prove the test and the code share an author's memory:
+     *   1. every suggestion is one of the `#speed [data-speed]` buttons, so the card can never
+     *      name a speed the board does not offer;
+     *   2. it is the SMALLEST rung that brings the wait under 60 s of wall clock at nominal
+     *      rate, recomputed here from the ladder — which pins the rule, not one worked value,
+     *      and keeps WARP off the waits that PLAY can carry.
+     *
+     * Driven over EVERY pool in RD.MANUAL_PROCEDURES rather than the running plant's alone.
+     * This build boots the retired engine (the `.ckl-use` check above found that out the hard
+     * way), and the pool that matters is pwr2's — 24 of its 66 steps carry a hold of 180 s or
+     * more, against 23 of the retired pool's 113 with different numbers. Both are shipped
+     * artifacts and the rule is plant-agnostic, so sweep every pool and the gate cannot be
+     * quietly aimed at the wrong plant (#579). The floor is a FLOOR, not a tally: authoring a
+     * procedure must not redden this, but dropping pwr2 out of the sweep must. */
+    var hint = await b.page.evaluate(function () {
+      var lad = [];
+      document.querySelectorAll('#speed [data-speed]').forEach(function (btn) {
+        lad.push({ speed: +btn.getAttribute('data-speed'), warp: btn.classList.contains('warp') });
+      });
+      lad.sort(function (a, b2) { return a.speed - b2.speed; });
+      var all = (window.RD || {}).MANUAL_PROCEDURES || {};
+      var out = { rungs: lad.length, n: 0, bad: null, pools: [] };
+      if (typeof RD.CklSpeedHint !== 'function') { out.bad = 'RD.CklSpeedHint is not exposed'; return out; }
+      Object.keys(all).forEach(function (pid) {
+        var pool = all[pid] || [], seen = 0;
+        for (var p = 0; p < pool.length; p++) {
+          for (var s = 0; s < (pool[p].steps || []).length; s++) {
+            var h = +pool[p].steps[s].hold || 0;
+            if (h < 180) continue;
+            out.n++; seen++;
+            var got = RD.CklSpeedHint(h);
+            var want = lad[lad.length - 1];
+            for (var k = 0; k < lad.length; k++) if (h / lad[k].speed <= 60) { want = lad[k]; break; }
+            if (!out.bad && (!got || got.speed !== want.speed || got.warp !== want.warp)) {
+              out.bad = pid + ' ' + pool[p].id + ' step ' + (s + 1) + ' (' + h + ' s): wanted ' +
+                        want.speed + 'x, got ' + (got ? got.speed + 'x' : 'nothing');
+            }
+          }
+        }
+        out.pools.push(pid + ':' + seen);
+      });
+      return out;
+    });
+    ck('dev: every long wait suggests the smallest ladder rung that clears it in a minute (#628)',
+      hint.rungs >= 2 && hint.n >= 24 && hint.bad === null &&
+      hint.pools.some(function (p) { return /^pwr2:[1-9]/.test(p); }),
+      hint.bad || (hint.n + ' waiting steps [' + hint.pools.join(' ') + '], ' + hint.rungs + ' rungs'));
+
+    /* And the rendered card actually SAYS it. THIS CHECK HAD TO START ITS OWN CHECKLIST, and
+     * the first cut did not — it read whatever the picker had opened, whose step 1 holds for
+     * 2 s, so it asserted the NEGATIVE half ("a short step has no wait line") and passed while
+     * the card printed a hard-coded 2×. Injection found it: rewriting `rung.speed` to a literal
+     * left the gate green. The hollow-check trap, in a check written beside its own fix.
+     *
+     * So: pick the first procedure in the LIVE pool whose step 1 carries a hold of 180 s or
+     * more and start THAT one — data-driven, so it is `pwr_stuck_porv` on the retired engine
+     * and `pwr_cooldown` on pwr2 without either id appearing here. Then the rendered line must
+     * name the rung RD.CklSpeedHint picks. Step 1 is asserted to be the active one, because an
+     * auto-advance would put us back on a step with no wait and re-hollow the check. */
+    var wait = await b.page.evaluate(function () {
+      var snap = (window.RD && RD.PwrBoard && RD.PwrBoard.lastSnapshot) ? RD.PwrBoard.lastSnapshot() : null;
+      var pid = (snap && snap.metadata && snap.metadata.plant_id) || null;
+      var pool = ((window.RD || {}).MANUAL_PROCEDURES || {})[pid] || [];
+      for (var i = 0; i < pool.length; i++) {
+        if ((+pool[i].steps[0].hold || 0) < 180) continue;
+        var btn = document.querySelector('[data-ckl-start="' + pool[i].id + '"]');
+        if (!btn) continue;
+        btn.click();
+        return { plant: pid, id: pool[i].id, hold: +pool[i].steps[0].hold };
+      }
+      return { plant: pid, id: null };
+    });
+    if (wait.id) await b.page.waitForSelector('.ckl-step.ckl-active .ckl-wait', { timeout: 20000 }).catch(function () {});
+    var waitLine = await b.page.evaluate(function () {
+      var a = document.querySelector('.ckl-step.ckl-active');
+      if (!a) return { idx: -1, line: null };
+      var steps = Array.prototype.slice.call(document.querySelectorAll('.ckl-step'));
+      var el = a.querySelector('.ckl-wait');
+      return { idx: steps.indexOf(a), line: el ? (el.textContent || '').trim() : null };
+    });
+    var wantRung = wait.id ? await b.page.evaluate(function (h) { return RD.CklSpeedHint(h).speed; }, wait.hold) : null;
+    ck('dev: and a waiting step\'s card names that rung (#628)',
+      !!wait.id && waitLine.idx === 0 && !!waitLine.line && waitLine.line.indexOf(wantRung + '×') >= 0,
+      wait.id ? (wait.plant + ' ' + wait.id + ' step ' + (waitLine.idx + 1) + ', hold=' + wait.hold +
+                 's, expected ' + wantRung + 'x, got ' +
+                 (waitLine.line === null ? 'no wait line' : '"' + String(waitLine.line).slice(0, 80) + '"'))
+              : 'no procedure in the ' + wait.plant + ' pool opens on a long wait');
+  } else {
+    ck('dev: a checklist could be started from the picker', false, 'no [data-ckl-start] button found');
+  }
+
   var camp = await openMission(b.page, 'campaign');
   ck('dev: campaign lists its missions', /Act I/.test(camp) && !/COMING SOON/.test(camp), camp.slice(0, 60));
   ck('dev: campaign missions are startable',

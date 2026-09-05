@@ -87,7 +87,7 @@ The board therefore **reclassifies** these alarms rather than removing them. The
 | PWR-A17 | SG LVL LO | warning | B |
 | PWR-A18 | SG LVL LO LO | critical | B |
 | PWR-A19 | RCP TRIP | critical | B |
-| PWR-A20 | HPI/LPI ACTIVE | status | B |
+| PWR-A20 | SAFETY INJECTION | critical | B |
 | PWR-A21 | SBO | critical | B |
 | PWR-A22 | TURB TRIP | warning | B |
 | PWR-A23 | MSIV SHUT | warning | B |
@@ -255,9 +255,9 @@ The board therefore **reclassifies** these alarms rather than removing them. The
 | Field | Content |
 |-------|---------|
 | **Setpoint** | Indicated pressurizer level ≤ **17 %** |
-| **Means** | The plant has just isolated **both letdown orifices** and cut the pressurizer heaters. Both are automatic and both are latched: the fire latch re-arms only above 20 %, and there is **no automatic restoration** — letdown stays shut until you re-open an orifice by hand. |
+| **Means** | The plant has just isolated **every letdown path** — both orifices *and* the RHR-to-CVCS cross-connect, if you were on shutdown cooling — and cut the pressurizer heaters. Both are automatic and both are latched: the fire latch re-arms only above 20 %, and there is **no automatic restoration** — letdown stays shut until you re-open an orifice by hand. **The card shows it**: all four lineup lamps go dark, **CLOSED** lights amber to say the plant shut the valves rather than you, and the status word reads **ISOLATED** (**03** §7.3). Your *selection* is remembered but not lit — a lamp reports where the valve is. |
 | **Why it exists** | The actions were always there; the lamp was not. An automatic action the operator cannot see is one they cannot undo, and this one takes away a flow path they then have to restore deliberately. It is also the **last annunciation before the 12 % reactor trip** — the alarm that used to sit above that trip was a fixed 25 %, which collided with this plant's own programmed no-load level and became program-relative at Rev 17. |
-| **Actions** | 1) Charging to maximum; letdown is already isolated for you. 2) Check for a leak — **A31/A13** will have come in first if make-up has lost it. 3) Expect **PZR HTRS SHED (A43)** with it: pressure control is gone until you reload the heaters. 4) Watch for **PZR LVL LO LO** and the trip at **12 %**. 5) On recovery, level past 20 % re-arms the latch — then **re-open an orifice yourself**. |
+| **Actions** | 1) Charging to maximum; letdown is already isolated for you. 2) Check for a leak — **A31/A13** will have come in first if make-up has lost it. 3) Expect **PZR HTRS SHED (A43)** with it: pressure control is gone until you reload the heaters. 4) Watch for **PZR LVL LO LO** and the trip at **12 %**. 5) On recovery, level past 20 % re-arms the latch — then **re-open an orifice yourself**; the lamp lights again when you do, which is how you know the isolate has cleared. |
 | **Not the same as A43** | A43 says the heaters are off the bus; this says letdown is shut. Different actions, different recoveries — a button versus an orifice. |
 
 ---
@@ -333,13 +333,14 @@ The board therefore **reclassifies** these alarms rather than removing them. The
 
 ---
 
-## PWR-A20 — Emergency Injection Active (HPI/LPI ACTIVE)
+## PWR-A20 — Safety Injection Actuated (SAFETY INJECTION)
 
 | Field | Content |
 |-------|---------|
-| **Logic** | `hpi_active` true |
-| **Means** | Emergency injection running (auto or manual). |
-| **Actions** | 1) If expected (low pressure / LOCA): leave running; monitor subcooling/inventory. 2) If unexpected: diagnose pressure instruments and ESF arm. 3) Do not secure early on rising PZR level alone during LOCA. |
+| **Logic** | `hpi_active` true — the SAFETY INJECTION SIGNAL, not delivered flow. The signal latches when any of the three actuation channels asserts: low pressurizer pressure (1715 psia), low steam-line pressure (327.7 psia), or high-high steam flow. It stays latched until you reset it. |
+| **Means** | The plant has fired its emergency core cooling. Both injection pumps are running. **You may see no flow**: above the pump shutoff heads — 1389 psia (9.58 MPa) high-head, 215 psia (1.48 MPa) low-head — the pumps run against shut check valves and deliver nothing. Zero flow is not "it did not happen". Read the ECCS mode: **ARMED** is actuated-and-not-delivering; HHSI / LHSI / BOTH is actuated and injecting. |
+| **Actions** | 1) Establish WHY — check pressurizer pressure, steam-line pressure and steam flow against the three setpoints above. 2) If expected (low pressure / LOCA): leave running; monitor subcooling and inventory. 3) If SPURIOUS — the commonest cause on this plant is crossing the P-11 permissive during a heatup with the steam generator still cold, which re-arms the blocked low-steam-pressure channel onto a standing condition — stabilise, then secure injection per PWR-E14. 4) The pressurizer heaters shed on this signal (**PWR-A43**) and will not come back on their own. 5) Do not secure early on rising PZR level alone during a LOCA. |
+| **Note** | Prevention for the heatup case: stage the pressurization. Hold the Pressure SP at its 1700 psig floor until the secondary is bottled up at the no-load anchor, then complete to 2235 psi — the P-11 crossing then happens onto a clear plant. Measured on this plant: staged, the steam generator is at 1040 psia when P-11 is crossed against a 327.7 psia setpoint; dialled straight to 2235 it is at 78 psia and safety injection actuates. |
 
 ---
 

@@ -16,7 +16,7 @@ This folder contains the **operator’s manuals** for the PWR unit of Reactor⚛
 They cover:
 
 1. How to **use the simulator** (HMI, plant MODES, missions, tools).
-2. How to **operate the plant** (every control, normal evolutions, **Mode 1, At Power** through **Mode 4, Hot Shutdown** transitions — this plant has no Mode 5 (#524)).
+2. How to **operate the plant** (every control, normal evolutions, **Mode 1, At Power** through **Mode 5, Cold Shutdown** transitions — Mode 5 restored 2026-08-31, #524).
 3. How to **respond** to alarms, upsets, and accidents (including Three Mile Island).
 
 **Primary operator paths:** take the plant **Mode 4, Hot Shutdown → Mode 1, At Power** and **Mode 1, At Power → Mode 5, Cold Shutdown** (power operation to cold shutdown). See `05_MODE_TRANSITIONS.md` procedures **PWR-T20** and **PWR-T21**.
@@ -34,7 +34,7 @@ These manuals are training documentation derived from `Blueprint/` design specs,
 | [`02_SIMULATOR_USER_GUIDE.md`](02_SIMULATOR_USER_GUIDE.md) | Simulator user guide | Starting the trainer, UI layout, free play vs missions |
 | [`03_CONTROLS_AND_INDICATIONS.md`](03_CONTROLS_AND_INDICATIONS.md) | Controls & indications | Operating any individual control or reading any gauge |
 | [`04_NORMAL_OPERATIONS.md`](04_NORMAL_OPERATIONS.md) | Normal operating procedures | Startup, power ops, shutdown, system control procedures |
-| [`05_MODE_TRANSITIONS.md`](05_MODE_TRANSITIONS.md) | MODE transition procedures | Mode 4, Hot Shutdown↔Mode 1, At Power, Mode 3, Hot Standby↔Mode 1, At Power, load/AUTO (the procedures are written through Mode 5; the plant stops at Mode 4, #524) |
+| [`05_MODE_TRANSITIONS.md`](05_MODE_TRANSITIONS.md) | MODE transition procedures | Mode 5, Cold Shutdown↔Mode 1, At Power, Mode 3, Hot Standby↔Mode 1, At Power, load/AUTO |
 | [`06_ALARM_RESPONSE.md`](06_ALARM_RESPONSE.md) | Alarm response procedures | Responding to each annunciator |
 | [`07_ABNORMAL_EMERGENCY.md`](07_ABNORMAL_EMERGENCY.md) | Abnormal & emergency procedures | Managing every modeled failure |
 | [`08_ACCIDENT_TMI.md`](08_ACCIDENT_TMI.md) | Accident study — TMI-2 | Studying the 1979 accident of information |
@@ -81,7 +81,7 @@ These manuals are training documentation derived from `Blueprint/` design specs,
 | **2** | **Mode 2, Startup** | Critical, power **≤ 5 %**, RCS hot | [sim] |
 | **3** | **Mode 3, Hot Standby** | Subcritical, RCS hot | [sim] |
 | **4** | **Mode 4, Hot Shutdown** | Subcritical, intermediate T | [sim] |
-| **5** | **Mode 5, Cold Shutdown** | Subcritical, cold | **NOT ON THIS PLANT** — the water-property floor saturates at 211 °F (99.4 °C), above the Mode 5 boundary; the cold end is Mode 4 (#524) |
+| **5** | **Mode 5, Cold Shutdown** | Subcritical, cold | [sim] — `cold_shutdown` (#524, restored 2026-08-31) |
 | **6** | **Mode 6, Refueling** | Head detensioned / refueling | Out of scope |
 
 Do **not** confuse plant MODES with **turbine load modes** (Follow / Manual / Disconnected).

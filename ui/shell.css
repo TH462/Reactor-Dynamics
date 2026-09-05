@@ -862,6 +862,37 @@ html[data-channel="dev"] .logo-test {
 /* selected speed: subtle cyan outline (not a saturated fill — the clock turns
    amber to warn that time is accelerated; the selector itself stays quiet). */
 .speed button.on { background: transparent; color: var(--text); font-weight: 700; box-shadow: inset 0 0 0 1px var(--normal); }
+/* The two WARP rungs (#625): a coarser physics step for long quiet evolutions. Visibly a
+   different tier, and DARK while the plant is in a transient — the service refuses them then,
+   so a lit button that did nothing would read as broken. */
+.speed button.warp { color: var(--caution); letter-spacing: .02em; }
+.speed button.warp.on { box-shadow: inset 0 0 0 1px var(--caution); }
+.speed button.warp.locked { color: var(--text-3, #6b7280); opacity: .45; cursor: not-allowed; }
+/* Achieved-rate readout (#581, folded into #625): what the plant actually does per wall
+   second. Green = keeping up, amber = behind the request, red = well behind or stalling. */
+.ff-rate { flex: 0 0 auto; font-size: 11px; padding: 3px 6px; border-radius: 4px; border: 1px solid var(--border); color: var(--text-2); }
+.ff-rate.ok   { color: var(--running); border-color: rgba(34,197,94,.35); }
+.ff-rate.warn { color: var(--caution); border-color: rgba(245,158,11,.4); background: rgba(245,158,11,.08); }
+.ff-rate.bad  { color: var(--danger, #ef4444); border-color: rgba(239,68,68,.45); background: rgba(239,68,68,.08); }
+/* DROPOUT FLASH *(OWNER, 2026-09-03, #619 item 7: "when dropping out of warp, flash the warp
+   buttons for a moment to make it more obvious.")*. Added by app.js for ~1.6 s whenever the
+   snapshot carries a `speed_snap`, so it marks every automatic dropout — a scram, a failure,
+   a first alarm, or a checklist step completing.
+
+   FINITE, not infinite like .play.attention: that one is a standing "you have not started yet"
+   cue, this one reports a thing that just happened and must stop on its own. Three pulses.
+
+   The glow goes on the CONTAINER, not the buttons: the buttons carry .on as an inset outline
+   and an outer box-shadow on a flex child inside an overflow:hidden strip is clipped. Same
+   colour family as the clock's accel warning, so the two read as one idea. */
+.speed.speed-snapped { animation: speedSnap 0.55s ease-out 3; }
+@keyframes speedSnap {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(255, 209, 102, 0); border-color: var(--border); }
+  40%      { box-shadow: 0 0 0 4px rgba(255, 209, 102, 0.45); border-color: var(--caution); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .speed.speed-snapped { animation: none; box-shadow: 0 0 0 2px rgba(255, 209, 102, 0.5); border-color: var(--caution); }
+}
 .text-btn { flex: 0 0 auto; padding: 4px 10px; font-size: 12px; font-weight: 600; }
 .demo-btn { flex: 0 0 auto; min-width: 28px; padding: 4px 8px; }
 
@@ -1870,16 +1901,42 @@ select.num-input { width: auto; }
   0%, 100% { box-shadow: 0 0 0 1px rgba(122, 176, 255, 0.55), 0 0 10px 2px rgba(122, 176, 255, 0.25); }
   50%      { box-shadow: 0 0 0 2px rgba(122, 176, 255, 0.95), 0 0 18px 5px rgba(122, 176, 255, 0.45); }
 }
-/* Checklist step-hover preview glow — greener tint, distinct from the directive
-   .instr-glow (blue). Points at the controls/indications a step names on hover. */
-.ckl-hoverable { cursor: help; }
+/* Checklist hover glow — greener tint, distinct from the directive .instr-glow (blue).
+   STEADY: hovering a NON-current step must not pulse (#607 item 3). */
+.ckl-hoverable { cursor: pointer; }
 .ckl-glow {
-  animation: cklGlow 1.2s ease-in-out infinite;
+  box-shadow: 0 0 0 1.5px rgba(120, 210, 150, 0.70), 0 0 12px 3px rgba(120, 210, 150, 0.30);
   border-radius: 6px; position: relative; z-index: 5;
+}
+/* ACKNOWLEDGE *(OWNER, 2026-09-03, #619 item 4: "this button should flash green so the user
+   knows thats the control that needs to be pressed to progres.")*. Green and pulsing, reusing
+   cklGlow below — the same glow the board's own up-next controls carry, so "the thing to press"
+   reads identically whether it is a board control or this button.
+
+   INFINITE, unlike the speed-dropout flash: this one is not reporting an event, it is the
+   control the checklist is waiting on, and it must stay findable until pressed. Reduced motion
+   drops the animation and keeps a static ring — the button still has to be obviously the one. */
+.ckl-ack-row { display: flex; align-items: center; gap: 8px; margin: 5px 0 2px; flex-wrap: wrap; }
+.ckl-ack {
+  border-color: var(--running); color: var(--running); font-weight: 700;
+  padding: 3px 12px; border-radius: 6px;
+  animation: cklGlow 1.2s ease-in-out infinite;
+}
+.ckl-ack:hover { background: rgba(120, 210, 150, 0.12); }
+.ckl-ack-note { font-size: 11px; color: var(--text-2); }
+@media (prefers-reduced-motion: reduce) {
+  .ckl-ack { animation: none; box-shadow: 0 0 0 2px rgba(120, 210, 150, 0.85); }
 }
 @keyframes cklGlow {
   0%, 100% { box-shadow: 0 0 0 1px rgba(120, 210, 150, 0.60), 0 0 10px 2px rgba(120, 210, 150, 0.28); }
   50%      { box-shadow: 0 0 0 2px rgba(120, 210, 150, 0.98), 0 0 18px 5px rgba(120, 210, 150, 0.50); }
+}
+/* PERSISTENT up-next glow *(#607 item 3 supersedes #244's "steady" call)*. The current
+   step's controls PULSE with no mouseover so they stay findable; hover of a non-current
+   step stays the steady halo above. */
+.ckl-step-glow {
+  animation: cklGlow 1.2s ease-in-out infinite;
+  border-radius: 6px; position: relative; z-index: 4;
 }
 /* ============================================ the highlight bus (#444, spec §7)
    A soft CYAN halo — an outer GLOW, never a fill, tint or recolor. Cyan is the only
@@ -2056,12 +2113,58 @@ select.num-input { width: auto; }
 .ckl-menu button:hover { border-color: var(--stopped); }
 .ckl-cat { display: inline-block; min-width: 62px; margin-right: 6px; color: var(--muted); font-size: 10px; text-transform: uppercase; letter-spacing: .05em; }
 .ckl-log { display: flex; flex-direction: column; gap: 8px; max-height: 48vh; overflow-y: auto; padding-right: 4px; margin-bottom: 8px; }
+/* ...EXCEPT WHILE A CHECKLIST IS RUNNING, where it must reach the bottom of the column
+   *(OWNER, 2026-09-02 playtest, M5->3 item 4: "The scroll window for the tabs should go all the
+   way to the bottom of the column")*.
+   MEASURED at 1600x900: `.ckl-log` resolved to 432 px (48vh) inside an `#instrLog` offering 604,
+   so the steps scrolled in a box 172 px shorter than the space it sat in — with a second
+   scrollbar around it, because #instrLog scrolls too. The cap is a fraction of the VIEWPORT and
+   the slot is a fraction of the COLUMN, so the two only ever agree by accident; the taller the
+   screen, the bigger the dead band.
+   In chat-mode the log stops being a scroller and #instrLog — already `flex: 1 1 0` and filling
+   the card — is the only one. `.instr-prev` is display:none in chat-mode, so the log is
+   effectively alone in there. The 48vh cap stays for every other use of .ckl-log. */
+.instructor.chat-mode .ckl-log { max-height: none; overflow-y: visible; }
 .ckl-head { font-size: 13px; }
 .ckl-step { display: flex; gap: 8px; align-items: flex-start; border: 1px solid var(--border); border-radius: 8px; padding: 6px 9px; background: var(--bg-elevated); }
 .ckl-ico { font-weight: 700; width: 16px; text-align: center; flex: none; }
 .ckl-body { flex: 1; min-width: 0; }
 .ckl-txt { font-size: 12.5px; line-height: 1.4; color: var(--text); }
+/* THE ACTIVE BLOCK, WHICH NOW HANGS BELOW THE INSTRUCTION (#628, owner 2026-09-04: "move the
+   numbered step to always be the first part of the stack. then the rest of the step that appears
+   when its active goes below it."). Its only job is the gap: the criteria line carries
+   margin-bottom and .ckl-use zeroes its margin-top, so without this the block butts straight
+   against the step text it belongs to. */
+.ckl-act { margin-top: 5px; }
 .ckl-sub { font-size: 11px; color: var(--text-2); margin-top: 2px; }
+/* THE CHECK-OFF CRITERIA — first line of the active card, bold, its own color *(OWNER,
+   #244 M5→3 item 4: "cyan or cobalt or a blue grey. something that isnt too loud but
+   brings attention to it so people know this is the requirement the step is looking
+   for.")*. A muted cobalt-blue, brighter when the requirement is met. */
+.ckl-crit {
+  font-size: 12.5px; font-weight: 700; color: #7fa8dd; line-height: 1.45;
+  margin-bottom: 2px;
+}
+.ckl-crit-met { color: var(--running); }
+/* WHICH CONTROL, AND WHAT YOU ARE DRIVING IT TO (#598 item 13, owner ruling 2026-09-02).
+   Promoted back out of the Details fold: measured, only 41 % of the steps carrying a control
+   name it in their instruction text, so folding this away left 27 of them with no visible
+   answer to "which knob". It sits between the criteria and the wait line — the #244 item 6
+   workflow order, unchanged, though #628 moved the whole block BELOW the instruction rather
+   than above it — and is deliberately a touch larger and lighter than a plain
+   .ckl-sub, because it is part of the action rather than a footnote to it. The control name
+   itself is the brightest thing on the line; that is the word the eye is hunting for. */
+.ckl-use { font-size: 11.5px; color: var(--text-2); margin-bottom: 3px; margin-top: 0; }
+.ckl-use b { color: var(--text); font-weight: 600; }
+/* the collapsible "why" (#244 items 2/9) — teaching prose, visually quieter than the action */
+.ckl-why { font-size: 11.5px; color: var(--text-2); line-height: 1.45; margin-top: 4px;
+  border-left: 2px solid var(--border); padding-left: 8px; }
+.ckl-why-btn { font-size: 10px; padding: 1px 7px; margin-top: 4px; }
+.ckl-expand-hint { font-size: 10px; color: var(--muted); margin-top: 4px; }
+.ckl-back { font-size: 11px; padding: 2px 8px; margin-bottom: 6px; }
+.ckl-why-all { float: right; font-size: 10px; padding: 1px 7px; margin-left: 8px; }
+.ckl-wait { color: var(--caution); }
+.ckl-next { border-color: var(--running); font-weight: 700; }
 .ckl-done { opacity: 0.62; border-left: 3px solid var(--running); }
 .ckl-done .ckl-ico { color: var(--running); }
 .ckl-active { border-left: 3px solid var(--caution); }
@@ -2193,14 +2296,23 @@ select.num-input { width: auto; }
 .ckl-later[open] > summary::before { content: '▾ '; }
 
 /* The free-play Instructor's launcher — it had static help copy in the shell's most
-   valuable slot; this gives it a job (#443, spec §9). */
+   valuable slot; this gives it a job (#443, spec §9). Since #598 item 16 it is ONE BAR that
+   opens the Checklists tab, not a second ranked list of the same procedures that tab already
+   lists (owner directive; and two menus answering one question is the duplicate-authority
+   case DESIGN_CRITERIA Q4 exists to veto). The .instr-launch-t / .instr-launch-more rules that
+   dressed the old list went with it. */
 .instr-launch { margin-bottom: 10px; }
-.instr-launch-t {
-  font-size: 10px; letter-spacing: .06em; text-transform: uppercase;
-  color: var(--text-2); margin-bottom: 4px;
-}
 .instr-launch .btn { display: block; width: 100%; text-align: left; margin-bottom: 3px; font-size: 12px; }
-.instr-launch-more { margin-top: 4px; }
+.instr-launch-bar {
+  text-align: center !important; font-size: 12.5px; font-weight: 600; padding: 9px 12px;
+  color: var(--accent, #7fd1c0);
+  border-color: color-mix(in srgb, var(--accent, #7fd1c0) 45%, transparent);
+  background: color-mix(in srgb, var(--accent, #7fd1c0) 10%, transparent);
+}
+.instr-launch-bar:hover {
+  background: color-mix(in srgb, var(--accent, #7fd1c0) 18%, transparent);
+  border-color: var(--accent, #7fd1c0);
+}
 
 .start-overlay { z-index: 215; }
 .start-modal { height: auto; max-height: min(84vh, 620px); width: min(720px, 96vw); }
@@ -2335,6 +2447,21 @@ select.num-input { width: auto; }
 .oom-pred { color: var(--text-2); font-size: 11px; }
 .oom-msg { min-height: 16px; padding: 0 10px 8px; color: var(--muted); font-size: 11px; }
 .oom-msg.warn { color: var(--caution); }
+/* HELP, IN PLACE *(OWNER, 2026-09-03, #619 item 23)*. The window grows downward instead of
+   opening a modal — the Scanner's idiom, chosen by directive on 2026-08-11 for the same reason
+   that applies here: a modal covers the plot the player is asking about.
+
+   CAPPED AND SCROLLING, like the Scanner's expanded box. The window is draggable and lives at a
+   fixed top, so an uncapped panel could run off the bottom of a short viewport with the plot
+   stranded above it. `.on` marks the button while it is open so the toggle reads as a state. */
+.oom-help {
+  padding: 2px 10px 10px; max-height: 260px; overflow-y: auto;
+  border-top: 1px solid var(--border); color: var(--text-2); font-size: 11.5px; line-height: 1.45;
+}
+.oom-help p { margin: 8px 0 0; }
+.oom-help p:first-child { margin-top: 8px; }
+.oom-help b { color: var(--text); }
+.oom-help-btn.on { color: var(--text); box-shadow: inset 0 0 0 1px var(--normal); }
 .oom-frame { fill: none; stroke: var(--border); }
 .oom-grid { stroke: var(--border); stroke-dasharray: 2 3; }
 .oom-zero { stroke: var(--text-2); }
@@ -2374,6 +2501,34 @@ select.num-input { width: auto; }
 .tabpane.instructor { display: none; flex-direction: column; min-height: 0; }
 .tabpane.instructor.on { display: flex; flex: 1 1 auto; min-height: 0; }
 .tabpane.instructor .instr-body { flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; }
+
+/* THE CHECKLISTS PANE, same treatment, same reason (#612, owner playtest 2026-09-03: "the
+   checklist scroll window keeps bouncing to the top and back to the step" and "the right column
+   scroll window should go to the bottom of the column. There is currently an unused black space
+   below it.").
+
+   #607 moved the RUNNING checklist out of the instructor pane and into this one, which is a
+   plain content-sized `.tabpane` — so it inherited neither half of the rule above. Two
+   consequences, and the owner reported both as separate bugs:
+
+     1. TWO NESTED SCROLLERS. `.tab-body` is `overflow-y: auto` and scrolled the whole pane while
+        `.ckl-log` scrolled inside it at its 48vh cap. `scrollIntoView` scrolls every scrollable
+        ancestor, so a step advance moved both, and #605's save/restore covers the log alone —
+        the outer one snapped to the top. Hence "to the top and back to the step".
+     2. DEAD SPACE. Content-sized means the pane stops where its content stops. Measured at
+        1600x950: pane bottom y=724 against a 950 px viewport, 226 px of unused black below it,
+        with the log capped at 456 px.
+
+   Giving the pane the height makes `.ckl-log` the ONLY scroller and lets it reach the bottom of
+   the column, which is one fix for both reports. `.ckl-mode` is set on .tab-body by selectTab,
+   exactly as `.instr-mode` is, so this does not depend on :has(). */
+.tab-body.ckl-mode { overflow: hidden; display: flex; flex-direction: column; }
+.tabpane[data-pane="checklists"] { flex-direction: column; min-height: 0; }
+.tabpane[data-pane="checklists"].on { display: flex; flex: 1 1 auto; min-height: 0; }
+.tabpane[data-pane="checklists"] #cklRun { flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; }
+/* The 48vh cap is right everywhere .ckl-log is content-sized; inside the running host it is
+   what stopped the log filling the column, so it is lifted HERE ONLY. */
+.tabpane[data-pane="checklists"] #cklRun .ckl-log { flex: 1 1 0; min-height: 0; max-height: none; }
 
 /* THE LOG. `flex: 1 1 0` with `min-height: 0` is what makes it the scrolling element
    rather than growing the pane — without the min-height a flex child refuses to shrink

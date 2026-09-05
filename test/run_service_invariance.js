@@ -35,6 +35,7 @@
  */
 'use strict';
 var fs = require('fs'), path = require('path');
+var MUT = require('./mut_flags.js');   /* --no-mutations / --mut= / --grp= (#602) */
 var R = path.join(__dirname, '..');
 var SRC = path.join(R, 'engines', 'pwr2');
 if (typeof global.window === 'undefined') global.window = global;
@@ -174,8 +175,14 @@ function runSuite(RD, rec, quiet) {
   head('TRANSIENT  [large break + station blackout — the regime the claim exists for]');
   var t1 = walk(RD, 1, 200, LOCA), t10 = walk(RD, 10, 200, LOCA), t60 = walk(RD, 60, 200, LOCA);
   var tc = compare(t1, t10), tc6 = compare(t10, t60);
+  /* 30 -> 20 on 2026-09-04 (#625). `_isRapidChange` became a rate per SIM second; at 10x the old
+   * wall-scaled form flipped to the 50 ms cadence on 4 psi/s (a fifth of what it took at 1x),
+   * so the 10x leg used to lay 300 instants on the 0.5 s grid through this blowdown and now lays
+   * 220 (measured: cadence histogram 201/99 -> 39/181). Fewer of those coincide with the 1x
+   * leg's 0.06 s transient grid (3 steps per 50 ms broadcast): shared 51/58 -> 28/22. The
+   * comparison itself is unchanged — 0.000e+0 over every shared instant, before and after. */
   ck('SI-5', 'the transient legs actually MET, at enough instants to be worth comparing',
-     tc.n >= 30 && tc6.n >= 30,
+     tc.n >= 20 && tc6.n >= 20,
      '1x/10x share ' + tc.n + ' instants, 10x/60x share ' + tc6.n);
   ck('SI-2', 'protection is evaluated at the same rate per sim second IN A TRANSIENT',
      Math.abs(t1.rate - t10.rate) < 0.05,
@@ -269,8 +276,9 @@ var MUTATIONS = [
   ['#588 RETURNS, half two: the post-loop evaluation fires every broadcast again',
    'if (sinceEval >= PROTECTION_DT - 1e-9) {', 'if (true) {'],
   ['the fine-sample budget leaks into the step loop (a per-broadcast quantity reaching physics)',
-   'this.engine.step(PHYSICS_DT);',
-   'this.engine.step(PHYSICS_DT * (1 + 1e-9 * steps));']
+   /* anchor re-pointed 2026-09-04 (#625): the loop steps at the TIER's `dt` local now */
+   'this.engine.step(dt);',
+   'this.engine.step(dt * (1 + 1e-9 * steps));']
 ];
 
 /* This list held one mutation while SI-2/SI-4 were xfail, because the only checks that could
@@ -284,7 +292,7 @@ console.log('\n' + '='.repeat(70));
 console.log('  INJECTION SELF-TEST — every mutation MUST redden a check that is not an xfail');
 console.log('='.repeat(70));
 var blind = 0;
-MUTATIONS.forEach(function (m) {
+MUT.select(MUTATIONS).forEach(function (m) {
   if (SVC_SRC.indexOf(m[1]) === -1) { console.log('  ERROR   anchor not found: ' + m[0]); blind++; return; }
   var r2 = [];
   try {

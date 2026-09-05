@@ -16,9 +16,9 @@
     s.id = 'bd-coolingtower-styles';
     s.textContent =
       '@keyframes flowmove{to{stroke-dashoffset:-24}}' +
-      '.flow{stroke-dasharray:9 15;animation:flowmove 1.1s steps(13) infinite}' +
+      '.flow{stroke-dasharray:9 15;animation:flowmove 1.1s linear infinite}' +
       '@keyframes raindown{to{stroke-dashoffset:-26}}' +
-      '.rain{animation:raindown 1.6s steps(19) infinite}' +
+      '.rain{animation:raindown 1.6s linear infinite}' +
       '@keyframes plumerise{0%{opacity:0;transform:translateY(10px) scale(0.9)}30%{opacity:1}100%{opacity:0;transform:translateY(-18px) scale(1.25)}}';
     (document.head || document.documentElement).appendChild(s);
   }
@@ -36,6 +36,9 @@
     var h = env.h;
     var ids = { shell: env.uid('ctShell'), shellx: env.uid('ctShellX'), water: env.uid('ctWater'), steel: env.uid('ctSteel'), clip: env.uid('ctClip'), glow: env.uid('ctGlow') };
     var COOL = [44, 88, 152], HOT = [176, 56, 34];
+    /* filter-free halos (#613 wave 4) — see RD.BoardH.softGlow. */
+    var gPuff = RD.BoardH.softGlow(ids.glow, '#cfe0ea');
+    var gShell = RD.BoardH.softGlow(env.uid('ctShellGlow'), 'rgb(176,56,34)');
 
     // ---- compact hyperbolic profile (verbatim geometry) ----
     var cx = 272, yTop = 70, yWaist = 129, yBase = 199;
@@ -60,16 +63,25 @@
       h('linearGradient', { id: ids.steel, x1: '0', y1: '0', x2: '0', y2: '1' },
         h('stop', { offset: '0', stopColor: '#3a4c58' }), h('stop', { offset: '1', stopColor: '#0c141c' })),
       h('clipPath', { id: ids.clip }, h('polygon', { points: shellPts })),
-      h('filter', { id: ids.glow, x: '-80%', y: '-80%', width: '260%', height: '260%' }, h('feGaussianBlur', { stdDeviation: '4' })));
+      /* The plume puffs and the shell halo shared one feGaussianBlur (stdDeviation 4) until
+       * #613 wave 4; both are radial-gradient fills now, grown by 2*stdDeviation, and the
+       * shell halo recolours through setColor() (RD.BoardH.softGlow). The five puffs were the
+       * board's most expensive static blur: each is re-blurred whenever anything invalidates
+       * the tile, and their CSS `style` is rewritten every broadcast. */
+      gPuff.def, gShell.def);
 
     // plume puffs (fixed geometry, CSS-animated; group toggles with evap)
     var puffs = [[cx - 10, 54, 13], [cx + 9, 46, 15], [cx, 38, 18], [cx - 7, 28, 17], [cx + 8, 26, 15]];
     var plumeGroup = h('g', { style: { display: 'none' } }, puffs.map(function (p, i) {
-      return h('ellipse', { cx: p[0], cy: p[1], rx: p[2], ry: p[2] * 0.72, fill: '#cfe0ea', filter: 'url(#' + ids.glow + ')',
+      return h('ellipse', { cx: p[0], cy: p[1], rx: p[2] + 8, ry: p[2] * 0.72 + 8, fill: gPuff.paint,
         style: { opacity: 0.2, animation: 'plumerise ' + (3.4 + i * 0.5).toFixed(1) + 's ease-in-out ' + (i * 0.6).toFixed(1) + 's infinite', transformBox: 'fill-box', transformOrigin: 'center' } });
     }));
 
-    var shellGlow = h('polygon', { points: shellPts, fill: HOT, opacity: 0, filter: 'url(#' + ids.glow + ')', style: { display: 'none' } });
+    /* The halo is an ELLIPSE over the tower's bbox now, not a second copy of the shell
+     * silhouette: a gradient fill stops dead at the shape's edge, so a polygon would have
+     * drawn a hard-edged tower where the blur drew a soft cloud around one. */
+    var shellGlow = h('ellipse', { cx: cx, cy: (yTop + yBase) / 2, rx: hwAt(yBase) + 14, ry: (yBase - yTop) / 2 + 14,
+      fill: gShell.paint, opacity: 0, style: { display: 'none' } });
     var shell = h('polygon', { points: shellPts, fill: 'url(#' + ids.shell + ')', stroke: '#5a6d7c', strokeWidth: 1.6, strokeLinejoin: 'round' });
 
     // structural ribs (static)
@@ -155,7 +167,7 @@
       var kids = plumeGroup.childNodes;
       for (var i = 0; i < kids.length; i++) kids[i].style.opacity = String(puffOpacity);
 
-      shellGlow.setAttribute('fill', hotColor);
+      gShell.setColor(hotColor);
       shellGlow.style.display = (glowOn && evap > 0.05) ? '' : 'none';
       shellGlow.setAttribute('opacity', String(0.10 + evap * 0.06));
 

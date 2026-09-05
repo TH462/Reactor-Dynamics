@@ -273,9 +273,49 @@
   var RODS = {
     worth_control:  0.04068,
     worth_shutdown: 0.03676,
-    /* The S-curve flattening is NOT sourced and is NOT physics — it is a feel adjustment the owner
-     * made for low-power startup. [ruled] is the only honest tag; K = 1 is the unflattened curve. */
-    curve_flatten:  0.8
+    /* THE BANK SCALE — how many steps of travel the two banks have (#602 phase 1).
+     *
+     * ⚠ IT LIVES HERE BECAUSE IT IS ONE OBJECT WITH THE WORTHS. Total worth, travel and curve
+     * shape are not three independent numbers: the DIFFERENTIAL worth an operator feels is
+     * worth x curve / steps, and moving any one of them without re-solving the other two is
+     * how this plant came to carry 36.6 pcm/step against a sourced 4-12 band. Same discipline
+     * as the pressurizer's level triple — touch one, re-solve the set.
+     *
+     * ⚠ AND IT WAS 22 BARE LITERALS BEFORE THIS. `200` appeared ten times in pwr2_engine.js
+     * (the rod-insertion-limit percent-to-steps map, the initial conditions, BOTH target
+     * clamps, the scram insertion profile for each bank, the runaway cap, the rod-limit margin
+     * default) and twelve times in pwr2_shell.js, several of them indistinguishable at a glance
+     * from an unrelated 200. Measured: a harness that patched three of them and missed the
+     * target clamp held the bank at 200 of a demanded 627 and reported "never critical" for
+     * three plants in a row — a number that reads as a plant parameter but is really a
+     * coincidence twenty-two files-worth of code agree on. Read it through a function, never
+     * copy it: a consumer that captures it at load cannot follow a change. */
+    max_steps:      627,
+    /* ---- THE S-CURVE FLATTENING IS BANK OVERLAP (#602 phase 2) [derived, from sourced] ----
+     *
+     * ⚠ THIS WAS TAGGED "NOT sourced and NOT physics — a feel adjustment the owner made for
+     * low-power startup", at 0.8. It is neither a feel knob nor unsourced: it is the shape a
+     * FOUR-BANK OVERLAP PROGRAM has, and the sources fix its value.
+     *
+     * A real Westinghouse plant does not withdraw one bank. WTSM 8.1 §8.1.5.4 (ML11223A252):
+     * bank A to 131 steps, B released, both in unison to *"231 steps on control bank A or 231
+     * counts on the BOU"*, B on to *"131 steps on bank B or 262 counts on the BOU"*, and so on.
+     * Built that curve — four banks of `worth_control / 4`, 231 steps each, each on the PHYSICAL
+     * cosine-flux S-curve (K = 1), stepped through that program — and differentiated it:
+     *
+     *     min 0.00   mean 6.49   PEAK 8.81 pcm/step   peak/mean = 1.36
+     *
+     * OVERLAP FLATTENS THE SUM, because one bank sits at its differential peak while its
+     * neighbour is at its toe. A lone bank gives peak/mean = 2.00; the overlapped set gives 1.36.
+     * For `scruve` below, peak/mean is exactly 1 + K. So the overlapped set NAMES this constant.
+     *
+     * At 0.36 over `max_steps` the whole profile is 4.15 - 8.83 pcm/step, inside the sourced
+     * 4-12 band (NRC HRTD WAT 05 ML11216A094), and it reproduces the true overlapped curve to
+     * within 0.02 pcm/step.
+     *
+     * DECLARED SIMPLIFICATION: the real overlapped curve is SCALLOPED — it dips at each bank
+     * handover — and one `scruve` is smooth. The envelope matches; the ripple does not. */
+    curve_flatten:  0.36
   };
 
   /* ================================================================ ⚠ OPEN CONSTANTS

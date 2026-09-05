@@ -569,14 +569,34 @@
           out1 === 0 && out2 === 0,
           out1 + ' vertices outside below-scale, ' + out2 + ' above-scale (0/0 required)');
 
-        // 4. NOT BLANK AT SPEED. sim-seconds per broadcast is accel x 0.1, so a fixed
-        //    180 s window held ONE sample at 3600x, the time-trim dropped the rest and the
-        //    polyline collapsed to a single vertex — the six vital gauges were BLANK.
+        // 4. NOT BLANK AT SPEED. sim-seconds per broadcast is accel x 0.1, so at 3600x a
+        //    broadcast covers 360 s of plant. On ONE sample per broadcast a fixed 180 s
+        //    window held a single vertex, the time-trim dropped the rest and the six vital
+        //    gauges were BLANK. That was answered for a while by widening the window with
+        //    the speed; since #619 item 17 the window is FIXED at 180 s at every speed
+        //    (OWNER: "Dont change the 6 vital indication strip chart time window when time
+        //    warping"), and what makes that safe is the service's fine sub-samples.
+        //
+        //    SO THE FIXTURE HAS TO DELIVER THEM. This harness never loads app.js, so nothing
+        //    sets RD.ChartFine and `props.fine` was absent — the tile fell back to one sample
+        //    per broadcast, which is not the plant any player runs. The check used to pass
+        //    only because the window widened, i.e. it was covering for its own fixture.
+        //    Fine cadence here is the service's own arithmetic: max(CHART_FINE_SEC,
+        //    simPerBroadcast / CHART_FINE_MAX) = max(0.2, 360/60) = 6 s, 60 rows a broadcast.
         fresh();
         t = 20000;
-        for (var i9 = 0; i9 < 12; i9++) { push(t, 2235 + i9 * 3, { speed: 3600 }); t += 360; }
-        ck('spark: the trace survives 3600x (window follows the speed setting)',
-          verts().length >= 2, verts().length + ' vertices after 12 broadcasts at 3600x');
+        for (var i9 = 0; i9 < 12; i9++) {
+          var fineRows = [];
+          for (var f9 = 1; f9 <= 60; f9++) {
+            fineRows.push({ t: t - 360 + f9 * 6, v: 2235 + i9 * 3 + f9 * 0.05 });
+          }
+          push(t, 2235 + i9 * 3, { speed: 3600, fine: fineRows });
+          t += 360;
+        }
+        // A fixed 180 s window at a 6 s fine cadence is ~30 rows, so this asserts the WINDOW
+        // holds a real trace — not merely that two points survived.
+        ck('spark: the trace survives 3600x on a FIXED 180 s window (#619 item 17)',
+          verts().length >= 20, verts().length + ' vertices after 12 broadcasts at 3600x (>= 20 wanted; ~30 rows fit the window)');
         fresh();
       })();
 
@@ -599,30 +619,26 @@
       ck('func: boron target 850 -> channel setpoint', Math.abs((chanOf('boron_conc') || {}).setpoint - 850) < 1);
       clickBtn('imrqp6avzkw'); ticks(2);
       ck('func: BORON OFF disengages the channel', !(chanOf('boron_conc') && chanOf('boron_conc').engaged));
-      // ROD AUTO toggle (EXTRA_ITEMS, #237) — the rods_tavg channel's board control.
-      // The toggle reads the channel state off the RENDERED snapshot (SR DET pattern),
-      // so re-render between clicks — in the app every broadcast does this.
+      // ROD AUTO's three toggle checks RETIRED WITH THE BUTTON (#598 items 9/10). It armed
+      // `rods_tavg`, PWR2 carries no such channel — measured disabled in every initial
+      // condition — and the owner had already ruled rod control stays MANUAL on this plant, so
+      // the button was deleted from the board (DOC_REMOVE) rather than left drawn and dark.
+      // These three clicked `ims5glucngg`, which no longer renders.
       //
-      // STARTS DISENGAGED since #460 *(OWNER DIRECTIVE, 2026-08-11: "lets start with rods in
-      // manual.")*, reversing #289's auto default — so the first click ENGAGES.
-      // The old pair asserted engage-then-disengage and inverted the moment the lineup
-      // changed — they were reading the shipped default, not the toggle. Pinned as three
-      // now: the default itself, then both directions from it. That structure is why this
-      // reversal cost a one-line edit per check instead of a re-diagnosis: the default has
-      // its OWN check, so a lineup change reddens the thing that actually moved and says so
-      // in its name, rather than silently inverting a direction assertion.
-      ck('func: ROD AUTO comes up DISENGAGED on a Mode 1 start (#460)',
+      // WHAT IS LOST AND WHAT IS NOT. The claim they made — that the rods_tavg channel engages
+      // and disengages — is still made, by `run_autoctl.js`, at the layer that owns the channel.
+      // What is genuinely gone is the BOARD half: nothing now asserts a board control for that
+      // channel, because there is no board control. That is the correct amount of coverage for
+      // a button that does not exist.
+      //
+      // The rest of the harness still needs the channel DISENGAGED: the physics-perturbing
+      // checks below were authored against a hand-controlled plant, and an active rod
+      // controller would quietly change what they are measuring. It comes up disengaged
+      // *(OWNER DIRECTIVE, 2026-08-11: "lets start with rods in manual.")* and nothing here
+      // engages it any more, so that precondition is now structural rather than a sequence
+      // this block has to land on.
+      ck('func: rods_tavg comes up DISENGAGED on a Mode 1 start (#460) — the harness below assumes it',
         !(chanOf('rods_tavg') && chanOf('rods_tavg').engaged));
-      clickBtn('ims5glucngg'); ticks(2);
-      ck('func: ROD AUTO engages rods_tavg', !!(chanOf('rods_tavg') && chanOf('rods_tavg').engaged));
-      RD.PwrBoard.render(svc.assembleSnapshot());
-      clickBtn('ims5glucngg'); ticks(2);
-      ck('func: ROD AUTO re-disengages rods_tavg', !(chanOf('rods_tavg') && chanOf('rods_tavg').engaged));
-      RD.PwrBoard.render(svc.assembleSnapshot());
-      // The rest of the harness needs it DISENGAGED: the physics-perturbing checks below were
-      // all authored against a hand-controlled plant, and an active rod controller would
-      // quietly change what they are measuring. The sequence above already ends there, so
-      // there is no trailing click — adding one back would ENGAGE it.
 
       // rods: the WITHDRAW/INSERT buttons are momentary (tap-or-hold). A quick TAP
       // (pointerdown then pointerup before the hold threshold) nudges EXACTLY ONE step;
@@ -647,7 +663,17 @@
       function tripBtn() { return document.querySelector('[data-item="imrsk4xz2dm"] button'); }
       function tripBadge() { var b = tripBtn() && tripBtn().querySelector('.bd-badge'); return b && b.style.display !== 'none' ? b.textContent : null; }
       RD.PwrBoard.render(svc.assembleSnapshot());
-      var blk0 = Object.keys(rps().trip_blocks).filter(function (k) { return rps().trip_blocks[k]; }).length;
+      // COUNTED OVER THE ROWS THE PANEL DRAWS, not over every key in `trip_blocks` (#600).
+      // The badge is a statement about the panel, and the two sets stopped being the same when
+      // the automatic P-7 blocks left the panel: a plant that auto-blocks `lo_flow` at its IC
+      // would have made the raw-key count disagree with a correct badge. They coincide at
+      // hot_full_power, which is why this passed either way and is exactly why it is worth
+      // pinning to the right set rather than the convenient one.
+      function drawnBlockedIds() {
+        return RD.PwrBoardDriver.tripBlockRows(svc.assembleSnapshot())
+          .filter(function (r) { return r.blocked; }).map(function (r) { return r.id; });
+      }
+      var blk0 = drawnBlockedIds().length;
       ck('info: TRIP BLOCKS grey when trips blocked', tripBtn().classList.contains('bd-info') && !tripBtn().classList.contains('bd-warn'), blk0);
       ck('info: TRIP BLOCKS badge shows blocked count', tripBadge() === String(blk0), tripBadge() + ' vs ' + blk0);
       // TRIP BLOCKS popover + block a trip
@@ -674,13 +700,32 @@
       // reset is then refused while the plant is at 0 % with a standing trip. So the block
       // state is asserted from the kernel (immediate, no stepping needed) and the block is
       // restored BEFORE protection ever gets a chance to look.
+      // ⚠ AND SINCE #598 item 15 THE RELEASE TAKES TWO CLICKS, which is what this block is now
+      // the end-to-end proof of. The paragraph above describes a release that scrams the plant
+      // on the spot — the trip condition standing, the block the only thing holding it off — and
+      // the panel used to offer exactly that with one click and no warning. It now warns on the
+      // row and arms: the FIRST press releases nothing, the SECOND confirms.
+      //
+      // Asserting the arm HERE is the only place the whole path is exercised: run_pwr2_board
+      // checks the row model, and this is the rendered popover, a real click, and the kernel's
+      // block state read back. The first press proving inert is also what keeps the rest of the
+      // harness alive — it is the same "do not scram the plant under the checks below" property
+      // the paragraph above is about, now provided by the plant instead of by click-counting.
       if (tb) tb.click();
-      ck('func: block ir_high toggles trip_blocks', (!!rps().trip_blocks.ir_high) !== beforeBlk, 'was ' + beforeBlk);
+      ck('func: the FIRST press on a release that would scram ARMS and releases nothing (#598 item 15)',
+        !!rps().trip_blocks.ir_high === beforeBlk, 'still ' + beforeBlk);
+      ck('feedback: …and the button asks for confirmation', /CONFIRM/i.test(tb ? tb.textContent : ''),
+        tb ? tb.textContent : 'NO BUTTON');
+      if (tb) tb.click();
+      ck('func: the SECOND press releases it — the action is warned, not forbidden',
+        (!!rps().trip_blocks.ir_high) !== beforeBlk, 'was ' + beforeBlk);
       RD.PwrBoard.render(svc.assembleSnapshot());
-      var blk1 = Object.keys(rps().trip_blocks).filter(function (k) { return rps().trip_blocks[k]; }).length;
+      var blk1 = drawnBlockedIds().length;
       ck('warn: badge tracks count after toggle', tripBadge() === (blk1 > 0 ? String(blk1) : null), tripBadge() + ' vs ' + blk1);
+      // Re-BLOCK. Blocking is not the dangerous direction and is unchanged — one click, no arm.
+      tb = document.querySelector('.bd-pop button[data-trip="ir_high"]');
       if (tb) tb.click();
-      ck('func: ir_high block RESTORED before the plant is stepped',
+      ck('func: ir_high block RESTORED before the plant is stepped (blocking is still one click)',
         !!rps().trip_blocks.ir_high === beforeBlk, 'back to ' + beforeBlk);
       ticks(2);
       ck('func: …and the plant is still LIVE — unblocking at power would have scrammed it',
@@ -1112,6 +1157,37 @@
               'readout ' + Math.round(me.left) + '-' + Math.round(me.right) + ' vs card ' + Math.round(c.left) + '-' + Math.round(c.right));
           }
         }
+        /* THE LETDOWN STATUS WORD (#624 / #619 item 24) — the same ruler, for the same reason.
+         * It sits in the BOTTOM band of a 90 px card that DOC_PATCHES grows from 150 to 175 px
+         * to make room, right-anchored to the card's inner edge, 5 px under the A+B 7 % button.
+         * Both numbers are arithmetic until something measures them, and the four orifice
+         * buttons are exactly the content items an authored-coordinate argument would miss. */
+        (function () {
+          var w = document.querySelector('[data-item="bdLetdownStatus"]');
+          var card = document.querySelector('[data-item="imrmslvu2c0"]');
+          if (!w || !card) { ck('geom: the LETDOWN status word renders', false, 'missing element'); return; }
+          var KIND = {};
+          (window.RD_PWR_BOARD_DOC.items || []).forEach(function (it) { KIND[it.id] = it.kind; });
+          var me = w.getBoundingClientRect(), hits = [];
+          document.querySelectorAll('[data-item]').forEach(function (o) {
+            var oid = o.getAttribute('data-item');
+            if (oid === 'bdLetdownStatus') return;
+            if (KIND[oid] === 'box' || KIND[oid] === 'component') return;
+            var r = o.getBoundingClientRect();
+            if (r.width === 0 || r.height === 0) return;
+            if (r.left < me.right && r.right > me.left && r.top < me.bottom && r.bottom > me.top)
+              hits.push(oid + '(' + (KIND[oid] || 'extra') + ')');
+          });
+          ck('geom: the LETDOWN status word overlaps no other board item', hits.length === 0, hits.join(','));
+          var c = card.getBoundingClientRect();
+          ck('geom: …and the grown LETDOWN card contains it (the height patch landed)',
+            me.left >= c.left - 2 && me.right <= c.right + 2 &&
+            me.top >= c.top - 2 && me.bottom <= c.bottom + 2,
+            'word ' + Math.round(me.left) + '-' + Math.round(me.right) + ' x ' +
+            Math.round(me.top) + '-' + Math.round(me.bottom) + ' vs card ' +
+            Math.round(c.left) + '-' + Math.round(c.right) + ' x ' +
+            Math.round(c.top) + '-' + Math.round(c.bottom));
+        })();
       })();
 
       // Cold Shutdown (Mode 5): RCPs secured, no steam, no feed — a dead plant must

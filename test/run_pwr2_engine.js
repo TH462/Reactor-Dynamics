@@ -12,6 +12,7 @@
  */
 'use strict';
 var path = require('path');
+var MUT = require('./mut_flags.js');   /* --no-mutations / --mut= / --grp= (#602) */
 var SRC = path.join(__dirname, '..', 'engines', 'pwr2');
 var fs = require('fs');
 var ORDER = ['pwr2_water', 'pwr2_vtable', 'pwr2_geometry', 'pwr2_core', 'pwr2_loop',
@@ -48,11 +49,26 @@ function loadAll(engSource, coreSource) {
  * 'E' the AFW starts, 'F' the feed train, 'G' the electrical pair (#507 wave 4), 'H' the
  * SGTR (#507 wave 5), 'I' the failure levers (#507 wave 6), 'K' the initial conditions
  * (#507 §F, wave 7), 'L' the rod insertion limit (#507 §B, wave 8), 'M' the RCP restart
- * (#507 wave 9), 'N' the shutdown IC (#507 wave 10).
+ * (#507 wave 9), 'N' the shutdown IC (#507 wave 10), 'O' the neutron-source construction
+ * (#536), 'P' the heater-elevation seam (#573), 'Q' the letdown split (#624 items 14/25),
+ * 'R' the Mode 5 pressure-control lineup (#624 / #619 item 14).
  * The CLEAN pass runs everything. Measured before this existed: 17 mutations x the whole
  * suite = 1074 s of contention in the aggregate gate — the replay cost scales with every
  * fixture ever added, and a mutation only needs the checks built to see it. */
 function runSuite(RD, rec, quiet, only) {
+  /* THE BANK'S OWN CURRENCY (#602 phase 2). Every step count below used to be a literal that
+   * happened to equal a fraction of a 200-step bank; when the scale moved to the sourced 627
+   * they all became wrong at once — sixteen checks in this file, and every one of them was a
+   * FRACTION spelled as an absolute. `bank()` is the scale, `frac()` turns the fraction the
+   * check always meant into this plant's steps. A literal here is now a claim that the number
+   * does NOT scale, which is true of exactly none of them. */
+  var bank = function () { return RD.kinetics.RODS.max_steps; };
+  var frac = function (f) { return Math.round(f * bank()); };
+  /* A RIDE THAT WALKS THE BANK scales with the bank. `walk(seconds)` converts a duration
+   * that was measured on the 200-step bank into this one's. Durations set by a THERMAL or
+   * CONTROL process (settling, xenon, a dump ramp) are NOT scaled — they have nothing to do
+   * with rod travel, and putting them through here would launder an unrelated number. */
+  var walk = function (secs) { return Math.round(secs * bank() / 200); };
   var EN = RD.engine, W = RD.water, S = RD.sources, G = RD.sg, TB = RD.turbine,
       RL = RD.relief, CD = RD.condenser, DC = RD.dumpctl, PZ = RD.pressurizer,
       K = RD.kinetics, R = RD.reactor;
@@ -164,15 +180,15 @@ function runSuite(RD, rec, quiet, only) {
   ckT('load_mwe moves the turbine and the plant follows',
       Math.abs(t80.mwe_output - 80) < 1 && t80.power_pct < 97, 'MWe ' +
       t80.mwe_output.toFixed(1) + ', power ' + t80.power_pct.toFixed(1) + ' %');
-  EN.command(eng, 'rod_target', 190);
+  EN.command(eng, 'rod_target', frac(0.95));
   var tRod = run(eng, 5);
   ckT('rod_target SLEWS — five seconds at normal speed moves ~3.5 steps, not the whole demand',
       /* 0.702 steps/s = the sourced WTSM 8.1 normal class rate mapped onto the 200-step
        * bank (#506.4); the pre-#506 single rate (1.0 = always FAST) read ~5 here */
-      Math.abs(tRod.rod_steps - (200 - 0.702 * 5)) < 1.0,
-      tRod.rod_steps.toFixed(1) + ' steps from 200 toward 190 — instant rods are a lever no ' +
-      'real plant has');
-  EN.command(eng, 'rod_target', 200); run(eng, quiet ? 20 : 40);
+      Math.abs(tRod.rod_steps - (bank() - 0.702 * 5)) < 1.0,
+      tRod.rod_steps.toFixed(1) + ' steps, from ' + bank() + ' toward ' + frac(0.95) +
+      ' — instant rods are a lever no real plant has');
+  EN.command(eng, 'rod_target', bank()); run(eng, quiet ? 20 : 40);
   EN.command(eng, 'aux_spray', 0.5);
   var tAux = run(eng, 1);
   ckT('aux_spray reaches the vessel', tAux.spray_flow_pct !== undefined &&
@@ -684,7 +700,7 @@ function runSuite(RD, rec, quiet, only) {
    * character — and erodes the setpoint via K3 faster than the delta-T term recovers; the
    * runback buys TIME here, not an equilibrium). So: rod-stop test in the first ~3 s,
    * rods-in right after. */
-  EN.command(eng7, 'rod_target', 199.0);
+  EN.command(eng7, 'rod_target', bank() - 1);    /* one step IN from full out */
   run(eng7, 2);                                  /* inward: always allowed */
   var rodsIn = eng7.rodSteps;
   /* OUTWARD IS REFUSED — and since #572 it is refused OUT LOUD, at the door, rather than
@@ -693,11 +709,11 @@ function runSuite(RD, rec, quiet, only) {
    * normally and the rods simply did not move, which is the accepted-then-discarded shape
    * #545/#558 spent two days removing everywhere else. */
   var thr7 = null;
-  try { EN.command(eng7, 'rod_target', 200); } catch (e7x) { thr7 = e7x.message; }
+  try { EN.command(eng7, 'rod_target', bank()); } catch (e7x) { thr7 = e7x.message; }
   run(eng7, 1);                                  /* one second shows zero motion; three bought
                                                   * nothing but trip-delay maturity */
   ckT('the ROD STOP: inward moves, outward is REFUSED BY NAME while the signal stands',
-      rodsIn < 199.5 && eng7.rodSteps <= rodsIn + 1e-9 &&
+      rodsIn < bank() - 0.5 && eng7.rodSteps <= rodsIn + 1e-9 &&
       thr7 !== null && /ROD WITHDRAWAL BLOCKED/.test(thr7) &&
       /Inward motion is still available/.test(thr7),
       'in to ' + rodsIn.toFixed(1) + ', then held at ' + eng7.rodSteps.toFixed(1) +
@@ -964,6 +980,28 @@ function runSuite(RD, rec, quiet, only) {
       engC.pt.trip_cause === 'turbine_trip' &&
       engC.pt.afas_mdafw === true && engC.pt.afas_mdafw_cause === 'loss_of_main_feed',
       'the whole ch10 sentence, executed');
+  /* ...AND THE SAME LINEUP ON RHR IS NOT A CASUALTY (#605). The check above drives the operator's
+   * SELECTORS, deliberately: no real breaker-position signal can tell a securing from a failure,
+   * so at power both must fire the chain. What decides it is whether main feed is the heat sink.
+   * Mode 4 and Mode 5 boot with the pumps secured and the RCS on RHR — the NORMAL lineup — and
+   * the chain must stay quiet there. Measured before the arming existed: AFAS actuated at t=0 and
+   * pulled the settled Mode 4 plant down 21 degF/hr (run_pwr2_endurance saw it).
+   * BOTH DIRECTIONS ARE ASSERTED, here and above, because either one alone is satisfiable by a
+   * chain that never fires at all — the #605 first attempt passed this half and broke that one. */
+  var engC5 = EN.createEngine({ initial_state: 'cold_shutdown' });
+  var tsC5 = run(engC5, 60);
+  ckT('a cold plant on RHR with its main feed pumps secured does NOT fire the ch10 chain',
+      engC5.rh.running === true && engC5.fw.pumpA === false && engC5.fw.pumpB === false &&
+      engC5.pt.afas_mdafw === false && engC5.aw.mdafwRunning !== true,
+      'RHR running ' + engC5.rh.running + ', pumps ' + engC5.fw.pumpA + '/' + engC5.fw.pumpB +
+      ', AFAS ' + engC5.pt.afas_mdafw + ', Tavg ' + tsC5.tavg_c.toFixed(1) + ' degC');
+  /* And securing RHR re-arms it: the arming is the HEAT SINK, not the mode label. */
+  EN.command(engC5, 'rhr_align', false);
+  run(engC5, 5);
+  ckT('...and taking RHR out of service re-arms it on the same standing loss',
+      engC5.rh.running === false && engC5.pt.afas_mdafw === true &&
+      engC5.pt.afas_mdafw_cause === 'loss_of_main_feed',
+      'AFAS ' + engC5.pt.afas_mdafw + ' cause ' + engC5.pt.afas_mdafw_cause);
   /* HI-HI: an overfeed walks the level to the P-14 class function — main feed isolated AND
    * the turbine tripped (moisture carryover), while the AFW path stays open. */
   var engD = EN.createEngine({});
@@ -1179,7 +1217,7 @@ function runSuite(RD, rec, quiet, only) {
   var tsI = run(engI, 5);
   ckT('a blocked scram LATCHES the trip — annunciated, turbine tripped — with the rods at 200',
       engI.pt.reactor_trip === true && engI.pt.trip_cause === 'manual' &&
-      engI.tb.tripped === true && engI.rodSteps === 200 && tsI.scrammed === true,
+      engI.tb.tripped === true && engI.rodSteps === bank() && tsI.scrammed === true,
       'the failure is the DROP, not the logic — which is what an ATWS is');
   EN.command(engI, 'scram_block', false);
   EN.command(engI, 'reset_protection', true);
@@ -1236,7 +1274,7 @@ function runSuite(RD, rec, quiet, only) {
   var tsT10 = run(engT, 10);
   var sT0 = engT.rodSteps, sdT0 = engT.sdSteps;
   var thrTc = false, thrTs = false;
-  try { EN.command(engT, 'rod_target', 200); } catch (eT1) { thrTc = /ROD DRIVE BLOCKED/.test(eT1.message); }
+  try { EN.command(engT, 'rod_target', bank()); } catch (eT1) { thrTc = /ROD DRIVE BLOCKED/.test(eT1.message); }
   try { EN.command(engT, 'sd_target', 200); } catch (eT2) { thrTs = /ROD DRIVE BLOCKED/.test(eT2.message); }
   ckT('under a latched trip BOTH bank doors refuse by name — not silently clamped (#551 law)',
       thrTc === true && thrTs === true && engT.rodTarget === 0 && engT.sdTarget === 0,
@@ -1289,7 +1327,7 @@ function runSuite(RD, rec, quiet, only) {
   try { EN.command(engU, 'rod_target', 0); } catch (eU) { thrU = /ROD DRIVE BLOCKED/.test(eU.message); }
   try { EN.command(engU, 'boron_rate', 0.05); } catch (eU2) { thrBoron = eU2.message; }
   ckT('ATWS: the INWARD command is refused too — the breakers are open, not the drive selective',
-      thrU === true && engU.rodSteps === 200, 'rods held at ' + engU.rodSteps.toFixed(0));
+      thrU === true && engU.rodSteps === bank(), 'rods held at ' + engU.rodSteps.toFixed(0));
   ckT('...and emergency boration is still reachable, which is the response that is left',
       thrBoron === null, thrBoron ? ('THREW: ' + thrBoron.slice(0, 50)) : 'boron_rate accepted, ' + engU.cv.boron_rate_cmd + ' ppm/s');
   /* a continuous-withdrawal DRIVE fault is downstream of the same power supply. The scram edge
@@ -1317,17 +1355,37 @@ function runSuite(RD, rec, quiet, only) {
    * claim that matters: a rod stop that reports and does not hold is the wiring gap this file's
    * header exists to catch.
    *
-   * THE REGIME IS THE POINT. At FAST the excursion is steep enough that the 35 % low-setting
-   * flux trip terminates it anyway (measured: peak 90.30 % indicated, tripped) — which is
-   * correct and prototypical, and is exactly why a rod stop is not a substitute for a trip. The
-   * stop's own regime is a CONTROLLED withdrawal, and there it is the difference between a
-   * plant that trips and one that does not. */
+   * THE REGIME IS THE POINT. At FAST the excursion is steep enough that a flux trip terminates
+   * it anyway — which is correct and prototypical, and is exactly why a rod stop is not a
+   * substitute for a trip. The stop's own regime is a CONTROLLED withdrawal.
+   *
+   * ⚠ RE-AIMED FOR #601, AND THE RE-AIM IS ITSELF A MEASUREMENT. This block used to
+   * ride ONE PRESS HELD TO 200 and assert the stop parked the bank "short of the trip" for
+   * 900 s. That passed because the next trip above the 20 % stop was the 35 % low setting — a
+   * 15-point gap. The sourced intermediate-range trip sits at 25 %, so the gap is 5 points, and
+   * the standing reactivity already in the core when the stop asserts carries the flux straight
+   * through it.
+   *
+   * MEASURED, with the trip's own setpoint pushed aside so the STOP could be watched alone
+   * (blocking the request would have cleared the stop too — that is the #601 pairing):
+   *   the stop asserts at 20.08 % / 88.1 steps, the bank goes 88.1 -> 88.2 (the one-step lag)
+   *   and STAYS there for 1200 s — the hold is real — while the flux coasts up to a peak of
+   *   28.24 % and settles at 27.13 %.
+   * So on THIS core the stop holds the rods and does not hold the power, and the 25 % trip is
+   * what ends a held press. That is the sources' own framing rather than a defect — Ginna TS
+   * Bases B 3.3.1 Fn 3: limiting further withdrawal *"MAY terminate the transient and eliminate
+   * the need to trip the reactor"* — but it is tight: measured, an 86-step target settles at
+   * 22.59 % (peak 24.28) and does NOT trip, and 88 steps does. Two steps of bank is the whole
+   * margin, because this core's step worth is large against a 5-point window.
+   *
+   * Both halves are pinned below: the stop's OWN regime (it holds, and the plant survives), and
+   * the held press (it holds the bank, and the trip ends it anyway). */
   var engW = EN.createEngine({ initial_state: 'hot_zero_power' });
   run(engW, 120);
   EN.command(engW, 'rod_speed', 'slow');
-  EN.command(engW, 'rod_target', 200);            /* one press, held — the board's own idiom */
+  EN.command(engW, 'rod_target', frac(0.43));     /* the stop's own regime — an operator step */
   var onsetW = null, tsW = null;
-  for (var kW = 0; kW < 2400 / DT; kW++) {
+  for (var kW = 0; kW < walk(2400) / DT; kW++) {
     tsW = EN.step(engW, DT);
     if (!onsetW && engW.rpsReport.rod_stop_causes.ir_high_flux) {
       onsetW = { pwr: engW.ins.reading.power_range, steps: engW.rodSteps };
@@ -1339,24 +1397,157 @@ function runSuite(RD, rec, quiet, only) {
       onsetW ? ('asserted at ' + onsetW.pwr.toFixed(2) + ' % indicated, ' +
                 onsetW.steps.toFixed(1) + ' steps — the gap is the one-step channel lag')
              : 'NEVER ASSERTED');
-  var restW = engW.rodSteps;
-  run(engW, 900);
-  ckT('...and it HOLDS the bank against a standing 200-step demand, short of the trip',
-      engW.rodSteps === restW && engW.rodTarget === 200 &&
-      tsW.scrammed === false && engW.pt.reactor_trip === false,
-      'rods parked at ' + engW.rodSteps.toFixed(1) + ' of a demanded 200 for 900 s, power ' +
-      engW.ins.reading.power_range.toFixed(1) + ' % against the 35 % low-setting trip — before ' +
-      'this the same withdrawal ran to that trip');
+  ckT('...and in its OWN regime the plant rides it out UNTRIPPED — the stop earns its keep',
+      tsW.scrammed === false && engW.pt.reactor_trip === false &&
+      engW.ins.reading.power_range > 20 && engW.ins.reading.power_range < 25,
+      'settled ' + engW.ins.reading.power_range.toFixed(2) + ' % under the 25 % ' +
+      'intermediate-range trip, bank at ' + engW.rodSteps.toFixed(1) + ' steps');
   var thrW = null;
-  try { EN.command(engW, 'rod_target', 200); } catch (eW) { thrW = eW.message; }
+  try { EN.command(engW, 'rod_target', bank()); } catch (eW) { thrW = eW.message; }
   var thrWin = null;
   try { EN.command(engW, 'rod_target', engW.rodSteps - 5); } catch (eW2) { thrWin = eW2.message; }
   ckT('...outward REFUSES by name and INWARD still takes — the source\'s own scope',
       thrW !== null && /INTERMEDIATE RANGE/.test(thrW) && thrWin === null,
       thrW ? ('out: ' + thrW.slice(22, 70) + ' | in: accepted') : 'outward was ACCEPTED');
+
+  /* THE HELD PRESS — and since #602 phase 2 the answer DEPENDS ON THE RATE, which is what a rod
+   * stop is supposed to be sensitive to. On the 200-step bank one step spanned the whole
+   * 20 %->25 % flux window, so no pull rate could sit inside it and this was a single check.
+   * Measured on the 627-step bank, one press held from hot_zero_power:
+   *
+   *     slow    stop at 254 st / 19.8 %  ->  NO TRIP, settles 21.7 %   the stop HOLDS
+   *     normal  stop at 269 st / 20.7 %  ->  coasts to 26.8 %, trips on ir_high_flux
+   *     fast    stop at 273 st / 20.3 %  ->  coasts to 29.3 %, trips on ir_high_flux
+   *
+   * Both halves are pinned. That pair IS the sourced relationship — WTSM has the stop act first
+   * and the trip catch what it does not hold, and Ginna TS Bases B 3.3.1 Fn 3 says limiting
+   * withdrawal *"MAY terminate the transient and eliminate the need to trip the reactor"*. A stop
+   * that held at every rate would make the trip behind it unreachable; one that held at no rate
+   * would be decoration. The bank freeze is asserted in both, so a stop that REPORTS and does not
+   * HOLD — the wiring gap this section exists for — still reds either way. */
+  function heldPress(speed, secs) {
+    var e2 = EN.createEngine({ initial_state: 'hot_zero_power' });
+    run(e2, 120);
+    EN.command(e2, 'rod_speed', speed);
+    EN.command(e2, 'rod_target', bank());       /* one press, held — the board's own idiom */
+    var atStop = null, tgt = null, t = null;
+    for (var q = 0; q < secs / DT; q++) {
+      t = EN.step(e2, DT);
+      if (atStop === null && e2.rpsReport.rod_stop_causes.ir_high_flux) {
+        atStop = e2.rodSteps; tgt = e2.rodTarget;   /* the demand AT the stop: a scram zeroes
+                                                     * rodTarget, so reading it afterwards reads
+                                                     * the trip, not the operator */
+      }
+      if (t.scrammed) break;
+    }
+    return { e: e2, ts: t, atStop: atStop, tgt: tgt,
+             /* THE TOLERANCE IS THE FLUX CHANNEL'S LAG, and it grew with the flatter curve
+              * (#602 phase 2): measured 1.081 steps of run-on at Slow, against 0.1 on the
+              * old bank. Indicated flux crosses 20 % later in STEPS when each step is worth
+              * less, so the stop bites a step further out. 2.0 is the lag with room; the
+              * claim is that the bank FREEZES rather than running on to the demanded 627,
+              * and 1 step against 373 remaining is a freeze by any reading. */
+             held: atStop !== null && e2.rodSteps - atStop < 2.0,
+             pw: e2.ins.reading.power_range };
+  }
+  var hpSlow = heldPress('slow', 9000);
+  ckT('a HELD press at SLOW: the stop parks the bank and the plant rides it out UNTRIPPED',
+      hpSlow.held && hpSlow.tgt === bank() && hpSlow.ts.scrammed === false &&
+      hpSlow.pw > 20 && hpSlow.pw < 25,
+      'bank frozen at ' + (hpSlow.atStop === null ? '--' : hpSlow.atStop.toFixed(1)) +
+      ' of a demanded ' + bank() + ', settled ' + hpSlow.pw.toFixed(1) +
+      ' % under the 25 % trip — the stop earns its keep at this rate');
+  var hpNorm = heldPress('normal', 3000);
+  ckT('...and at NORMAL the withdrawal OUTRUNS it — the bank still freezes, the 25 % rung ends it',
+      hpNorm.held && hpNorm.tgt === bank() && hpNorm.ts.scrammed === true &&
+      hpNorm.e.pt.trip_cause === 'ir_high_flux',
+      'bank frozen at ' + (hpNorm.atStop === null ? '--' : hpNorm.atStop.toFixed(1)) +
+      ', tripped on ' + hpNorm.e.pt.trip_cause + ' — the standing reactivity carries the flux ' +
+      'through a window the stop cannot close by holding the rods');
   }
 
   if (grp('K')) {
+  /* ---- 8d. THE BANK SCALE IS ONE CONSTANT, AND EVERY CONSUMER FOLLOWS IT (#602 phase 1) ----
+   *
+   * ⚠ THIS IS A FUNCTIONAL CHECK, NOT A SOURCE SCAN, and the difference is the point.
+   * `200` was TWENTY-TWO bare literals across pwr2_engine.js and pwr2_shell.js — the
+   * rod-insertion-limit percent-to-steps map, the initial conditions, BOTH target clamps, the
+   * scram insertion profile for each bank, the runaway cap, the rod-limit margin default, the
+   * published rod_groups, and two `(24 / 912) * 200` rate conversions where the number reads
+   * as arithmetic. A grep cannot tell those from an unrelated 200, and a check that counted
+   * them would be testing the grep.
+   *
+   * So this MOVES THE CONSTANT and rides the plant. Every assertion below is a consumer that
+   * used to hold its own copy: leave one behind and its literal disagrees with the scale and
+   * this reds. Measured before the hoist — a harness that patched three sites and missed the
+   * target clamp held the bank at 200 of a demanded 627 and reported "never critical",
+   * silently, on three plants in a row. That is what an unhoisted scale buys.
+   *
+   * The scale is RESTORED in a `finally`, so nothing downstream in this file sees a moved
+   * plant even if an assertion throws. */
+  head('THE BANK SCALE  [one constant, and every consumer reads it — #602]');
+  (function () {
+    var RODS = RD.kinetics.RODS, was = RODS.max_steps, PROBE = 313;   /* deliberately not 200 */
+    ckT('the scale is declared ONCE, in RODS, beside the worths it has to be solved with',
+        typeof was === 'number' && was > 0,
+        'RODS.max_steps = ' + was + ' (worths ' + (RODS.worth_control * 1e5).toFixed(0) +
+        ' / ' + (RODS.worth_shutdown * 1e5).toFixed(0) + ' pcm)');
+    try {
+      RODS.max_steps = PROBE;
+      var eB = EN.createEngine({ initial_state: 'hot_full_power' });
+      EN.step(eB, DT);
+      ckT('...the at-power INITIAL CONDITION opens on the new scale, both banks',
+          eB.rodSteps === PROBE && eB.sdSteps === PROBE && eB.rodTarget === PROBE,
+          'control ' + eB.rodSteps + ', shutdown ' + eB.sdSteps + ', target ' + eB.rodTarget);
+      ckT('...and the rod GROUPS the reactivity solve reads carry it too',
+          eB.rodBank && eB.rodBank[0].max_steps === PROBE && eB.rodBank[1].max_steps === PROBE,
+          eB.rodBank ? ('max_steps ' + eB.rodBank[0].max_steps + ' / ' + eB.rodBank[1].max_steps)
+                     : 'NO rodBank');
+      /* THE TARGET CLAMP — the site the harness missed, and the one that fails silently. */
+      EN.command(eB, 'rod_target', 99999);
+      ckT('...the rod target CLAMPS at the new scale, not at a stale 200',
+          eB.rodTarget === PROBE,
+          'demanded 99999, clamped to ' + eB.rodTarget + ' (a stale literal would say 200)');
+      /* THE SCRAM PROFILE — a CEILING of `scale * (1 - t/T)` per bank, so what a stale copy
+       * breaks is the FIRST INSTANT, not the endpoint. Measured: with a literal 200 against a
+       * 313-step bank the ceiling already sits below the rods at t=0, so the bank TELEPORTS
+       * 113 steps on the first tick and then ramps normally to zero. Sampling at 20 s reads
+       * 0.00 either way — the first form of this check did exactly that, and the gate reported
+       * the mutation BLIND. That is the hollow-check trap catching itself. Sample tick one. */
+      EN.command(eB, 'scram');
+      /* TWO ticks, not one, and the difference is measured not assumed: tick 1 reads 313.0 on
+       * BOTH builds because the ramp has not engaged yet, and the divergence is at tick 2 —
+       * clean 310.5, stale-ceiling 198.4. The one-tick form of this check sampled the frame
+       * where the two are identical by construction and the gate reported the mutation BLIND. */
+      EN.step(eB, DT); EN.step(eB, DT);
+      var firstC = eB.rodSteps, firstS = eB.sdSteps;
+      for (var i = 0; i < 20 / DT; i++) EN.step(eB, DT);
+      ckT('...the scram RAMPS from the new scale rather than teleporting to a stale ceiling',
+          firstC > PROBE * 0.98 && firstS > PROBE * 0.97,
+          'two ticks after the trip: control ' + firstC.toFixed(1) + ', shutdown ' +
+          firstS.toFixed(1) + ' of ' + PROBE + ' — a stale 200 ceiling drops both to 200 at ' +
+          'once, ' + (PROBE - 200) + ' steps of free fall in a single tick');
+      ckT('...and still drives BOTH banks fully in',
+          eB.rodSteps < 0.5 && eB.sdSteps < 0.5,
+          'after 20 s: control ' + eB.rodSteps.toFixed(2) + ', shutdown ' + eB.sdSteps.toFixed(2));
+      /* THE ROD INSERTION LIMIT — a percent-of-withdrawn floor mapped onto steps. */
+      var eR = EN.createEngine({ initial_state: 'hot_full_power' });
+      EN.step(eR, DT);
+      ckT('...and the rod insertion limit maps its percent floor onto the new scale',
+          eR._rodLimitMargin !== undefined && eR._rodLimitMargin > 0 &&
+          eR._rodLimitMargin < PROBE,
+          'margin ' + eR._rodLimitMargin + ' steps of a ' + PROBE +
+          '-step bank (the limit is a percentage, so it must scale)');
+    } finally {
+      RODS.max_steps = was;
+    }
+    var eZ = EN.createEngine({ initial_state: 'hot_full_power' });
+    EN.step(eZ, DT);
+    ckT('...and restoring the constant restores the plant — nothing latched the probe value',
+        eZ.rodSteps === was && eZ.sdSteps === was,
+        'back to ' + eZ.rodSteps + '/' + eZ.sdSteps);
+  })();
+
   /* ---- 9. THE INITIAL CONDITIONS (#507 §F, wave 7) — each a SETTLED construction, each
    * ride measured 2026-08-22 before these checks were written. ---- */
   head('THE INITIAL CONDITIONS  [50 % and Hot Standby open settled; the startup is real]');
@@ -1391,7 +1582,7 @@ function runSuite(RD, rec, quiet, only) {
       'level ' + tsH.pzr_level_pct.toFixed(1) + ' %');
   ckT('...with the sourced no-load LINEUP: control bank IN, shutdown bank OUT (WTSM 8.1.1), ' +
       'dumps in STEAM PRESSURE mode at 1005 psig, feed at no-load, subcritical boron',
-      engH.rodSteps === 0 && engH.sdSteps === 200 &&
+      engH.rodSteps === 0 && engH.sdSteps === bank() &&
       engH.dcDrivers.mode === 'pressure' &&
       Math.abs(engH.dcDrivers.pressure_setpoint_mpa - 7.03) < 1e-9 &&
       engH.fw.feed_frac === 0 && tsH.boron_ppm > 700 && tsH.boron_ppm < 740,
@@ -1407,37 +1598,60 @@ function runSuite(RD, rec, quiet, only) {
       driftH === 0 && tsH2.scrammed === false,
       'Tavg ' + tsH2.tavg_c.toFixed(2) + ', safeties ' + driftH);
 
-  /* the startup ACCIDENT: a continuous fast pull is uncontrolled withdrawal from
-   * subcritical, and the 35 % low-flux trip terminates it (UFSAR 15.4.1's credited trip;
-   * measured: 1 % -> 100.8 % inside the trip's own analysis delay — real and kept) */
+  /* the startup ACCIDENT: a continuous fast pull is uncontrolled withdrawal from subcritical,
+   * and the startup net's FIRST rung terminates it. Since #601 that is the 25 % INTERMEDIATE
+   * RANGE trip, not the 35 % power-range low setting — and it is the Function the sources
+   * credit for exactly this event (Ginna TS Bases B 3.3.1 Fn 3: *"ensures that protection is
+   * provided against an uncontrolled RCCA bank rod withdrawal accident from a subcritical
+   * condition"*). Measured: peak 91.9 % indicated at the trip, against 100.8 % when the 35 %
+   * setting was the first rung — the earlier setpoint buys back ~9 points of overshoot, and
+   * what remains is the sourced 0.5 s analysis delay at a fast period. */
   var engA2 = EN.createEngine({ initial_state: 'hot_zero_power' });
   EN.command(engA2, 'rod_speed', 'fast');
-  EN.command(engA2, 'rod_target', 200);
+  EN.command(engA2, 'rod_target', bank());
   var tsA2 = null;
-  for (kk = 0; kk < 200 / DT && !(tsA2 && tsA2.scrammed); kk++) tsA2 = EN.step(engA2, DT);
-  ckT('a continuous fast pull from subcritical IS the startup accident, and the low-flux ' +
-      'trip answers it',
-      tsA2.scrammed === true && engA2.pt.trip_cause === 'hi_flux_lo',
+  for (kk = 0; kk < walk(200) / DT && !(tsA2 && tsA2.scrammed); kk++) tsA2 = EN.step(engA2, DT);
+  ckT('a continuous fast pull from subcritical IS the startup accident, and the startup ' +
+      'net FIRST rung answers it',
+      tsA2.scrammed === true && engA2.pt.trip_cause === 'ir_high_flux',
       'cause ' + engA2.pt.trip_cause + ' at ' + tsA2.power_pct.toFixed(1) + ' % (the ' +
       'overshoot is the sourced 0.5 s delay at a fast period)');
 
-  /* the CONTROLLED startup, the measured operator profile: critical ~84 steps (1.35 %),
-   * block taken at 18 % (above P-10), stepped to 96 -> 42.6 % THROUGH the 35 % setpoint */
+  /* THE CONTROLLED STARTUP — a MEASURED operator profile, RE-DERIVED for the 627-step bank
+   * (#602 phase 2) and NOT rescaled from the old one. Scaling it by the bank ratio produced a
+   * fixture that scrammed mid-ladder and threw, because criticality is set by boron against rod
+   * worth and the worth CURVE moved too (curve_flatten 0.8 -> 0.36): the same FRACTION of travel
+   * is now a different amount of reactivity. A measured profile has to be re-measured.
+   *
+   * Measured settled at Normal from hot_zero_power, 719 ppm:
+   *   224 -> 0.36 %  (critical, below P-10) · 232 -> 10.75 % (P-10 MET) · 235 -> 12.97 %
+   *   250 -> 20.80 % (IR rod stop asserts) · 258 -> 24.13 % · 261 -> SCRAM on ir_high_flux
+   *   and with both blocks taken, 295 -> 38.0 % untripped, past the 35 % power-range setting. */
   var engS2 = EN.createEngine({ initial_state: 'hot_zero_power' });
   EN.command(engS2, 'rod_speed', 'normal');
-  EN.command(engS2, 'rod_target', 84);
-  var tsS2 = run(engS2, 180);
+  EN.command(engS2, 'rod_target', 224);
+  var tsS2 = run(engS2, walk(180) + 400);   /* + SETTLING: on the flatter curve power lags
+                                             * the bank by minutes, and the old holds were sized
+                                             * for a bank 3x shorter. Measured: 224 steps settles
+                                             * at 0.36 %, and it takes ~400 s to get there. */
   var p84 = tsS2.power_pct;
-  EN.command(engS2, 'rod_target', 86);
-  tsS2 = run(engS2, 30);
-  EN.command(engS2, 'low_flux_block', true);      /* above P-10 here — measured 18.2 % */
+  EN.command(engS2, 'rod_target', 235);
+  tsS2 = run(engS2, walk(30) + 400);
+  /* BOTH P-10 blocks, in the order the procedure takes them (#601). The intermediate-range one
+   * first: it clears the 20 % C-1 rod stop as well as its own 25 % trip, and without it the
+   * `rod_target 96` below is REFUSED by the stop — measured, this fixture threw on arrival. */
+  EN.command(engS2, 'ir_high_block', true);      /* above P-10 here — measured 18.2 % */
+  EN.command(engS2, 'low_flux_block', true);
   var pBlk = tsS2.power_pct;
-  tsS2 = run(engS2, 90);
-  EN.command(engS2, 'rod_target', 96);
-  tsS2 = run(engS2, 180);
+  tsS2 = run(engS2, walk(90));
+  EN.command(engS2, 'rod_target', 295);
+  tsS2 = run(engS2, walk(180) + 600);
   ckT('a CONTROLLED startup works end to end: critical partway up the bank, the block ' +
       'taken above P-10, and the ascension passes the 35 % setpoint UNTRIPPED',
-      /* ⚠ THE LOWER BOUND WAS PINNED TO A CLIFF (#590, 2026-08-29). It read `p84 > 0.2` while
+      /* ⚠ THE LOWER BOUND WAS PINNED TO A CLIFF (#590, 2026-08-29), and #602 moved it again —
+       * 0.05 -> 0.005, because the critical leg on this bank measures 0.02 %. The CLAIM has not
+       * changed and neither has the trap: pin the claim, not the number. Original note follows.
+       * It read `p84 > 0.2` while
        * the fixture measured 0.2115 — passing by 5 % on a quantity instrument NOISE moves. The
        * #590 noise re-derivation shifted it to 0.1994 and this reddened, on a plant whose
        * startup is unchanged in every way the check claims to be about: the block still comes
@@ -1445,9 +1659,9 @@ function runSuite(RD, rec, quiet, only) {
        * intact. The standing trap in one line — a check can pin a NUMBER instead of a CLAIM.
        * The claim is that the critical leg is measurably above zero and far below the block
        * point; 0.05 says that and holds on both builds (0.2115 and 0.1994). */
-      p84 > 0.05 && p84 < 8 && pBlk > 8 &&
+      p84 > 0.005 && p84 < 8 && pBlk > 8 &&
       tsS2.power_pct > 36 && tsS2.scrammed === false &&
-      engS2.rpsReport.low_flux_blocked === true,
+      engS2.rpsReport.low_flux_blocked === true && engS2.rpsReport.ir_high_blocked === true,
       'critical leg ' + p84.toFixed(2) + ' %, blocked at ' + pBlk.toFixed(1) +
       ' %, now ' + tsS2.power_pct.toFixed(1) + ' % unscrammed');
 
@@ -1460,12 +1674,24 @@ function runSuite(RD, rec, quiet, only) {
   ckT('below P-10 the block request is AUTO-REVOKED (the sourced asymmetric gate)',
       reqAt === true && engR2.pt.blockLowFlux === false, '');
 
+  /* RE-AIMED 2026-08-31 (#524): `cold_shutdown` EXISTS now — the old form of this check
+   * pinned the refusal to that name and flipped red the day the IC landed. The claim is the
+   * refusal MECHANISM (#502: an accepted-then-ignored preset is a menu that lies), so it is
+   * asserted with a name no registry will ever carry — and the flip side is asserted too:
+   * the five real names all construct. */
   var threwIC = null;
-  try { EN.createEngine({ initial_state: 'cold_shutdown' }); }
+  try { EN.createEngine({ initial_state: '5_percent' }); }
   catch (eIC) { threwIC = /unknown initial_state/.test(eIC.message); }
-  ckT('an IC this engine does not carry THROWS (cold shutdown waits on an RCP restart — ' +
-      'declared in the registry, not silently hot-full-power)',
+  ckT('an IC this engine does not carry THROWS (5_percent is the retired engine\'s — ' +
+      'declared refusal, not silently hot-full-power)',
       threwIC === true, '');
+  ckT('cold_shutdown CONSTRUCTS — Mode 5 exists (#524; it threw here until 2026-08-31)',
+      (function () {
+        var e5 = EN.createEngine({ initial_state: 'cold_shutdown' });
+        var t5 = EN.step(e5, DT);      /* step returns the true state directly */
+        return t5.plant_mode === 5 && /Cold Shutdown/.test(t5.plant_mode_name) &&
+               Math.abs(t5.tavg_c - 50) < 2;
+      })(), 'boots Mode 5 at ~122 degF');
 
   /* ---- THE RATED SCALE IS FROZEN (#539) --------------------------------------------------
    * `rated_steam` is every secondary normalization's denominator, and PWR2_VALIDATION.md:3808
@@ -1479,14 +1705,15 @@ function runSuite(RD, rec, quiet, only) {
    * preset, and a denominator that is wrong at every preset in a DIFFERENT way is invisible
    * that way. Four presets, one number, and the number is re-derived here from the rated
    * dispatch and the design pressure rather than read back off the engine. */
-  var RATED_ICS = ['hot_full_power', '50_percent', 'hot_zero_power', 'hot_shutdown'];
+  var RATED_ICS = ['hot_full_power', '50_percent', 'hot_zero_power', 'hot_shutdown',
+                   'cold_shutdown'];
   var ratedVals = RATED_ICS.map(function (n) {
     return EN.createEngine({ initial_state: n }).rated_steam;
   });
   var ratedRef = TB.steamDemand(TB.createTurbine({ load_target_mwe: TB.TURB.mwe_rated }),
                                 G.createSG({}).P, G.SG.h_feed);
   var ratedSpread = Math.max.apply(null, ratedVals) - Math.min.apply(null, ratedVals);
-  ckT('the RATED SCALE is FROZEN: all four presets carry one rated_steam, and it is ' +
+  ckT('the RATED SCALE is FROZEN: all five presets carry one rated_steam, and it is ' +
       'steamDemand at the rated dispatch and the DESIGN steam pressure',
       ratedSpread === 0 && ratedVals.every(function (v) { return v === ratedRef; }) &&
       ratedVals[0] > 0,
@@ -1501,24 +1728,33 @@ function runSuite(RD, rec, quiet, only) {
    * IN while power is RESTORED (dilution), which is exactly the operational story the RIL
    * exists for. ---- */
   head('THE ROD INSERTION LIMIT  [null below 5 %; 70 % floor at rated; the margin closes on dilution]');
-  ckT('the curve is the adopted pwr1 shape: null at and below 5 %, 140 steps at rated, ' +
-      'monotone between',
+  /* THE CURVE IS PERCENTAGES, AND ONLY ITS RENDERING MOVED (#602 phase 2). This asserted
+   * `=== 140` and `~72`, which were 70 % and 35.8 % of a 200-step bank spelled as absolutes
+   * — so the check reddened on a scale change that left the curve itself untouched. RIL is
+   * `(lo_pct + (hi_pct - lo_pct) * f) / 100 * BANK()` and always was; the percentages are
+   * the claim. 35.79 % at 50 % power is the curve's own arithmetic: f = 45/95. */
+  ckT('the curve is the adopted pwr1 shape: null at and below 5 %, a 70 %-withdrawn floor ' +
+      'at rated, monotone between',
       EN.insertionLimitSteps(0) === null && EN.insertionLimitSteps(5) === null &&
-      EN.insertionLimitSteps(100) === 140 &&
+      EN.insertionLimitSteps(100) === frac(0.70) &&
       EN.insertionLimitSteps(50) > EN.insertionLimitSteps(20) &&
-      Math.abs(EN.insertionLimitSteps(50) - 72) <= 1,
-      '50 % -> ' + EN.insertionLimitSteps(50) + ' steps');
+      Math.abs(EN.insertionLimitSteps(50) - frac(0.3579)) <= 1,
+      'rated -> ' + EN.insertionLimitSteps(100) + ' of ' + bank() + ' steps (70 %); ' +
+      '50 %% -> ' + EN.insertionLimitSteps(50) + ' (35.8 %)');
   var engL = EN.createEngine({});
   var tsL = run(engL, 20);
-  ckT('at hot full power the limit is LIVE and generous: RIL ~139, margin ~60, not at limit',
-      engL._rilSteps >= 137 && engL._rilSteps <= 141 &&
-      engL._rodLimitMargin > 55 && engL._rodAtLimit === false,
-      'RIL ' + engL._rilSteps + ', margin ' + engL._rodLimitMargin);
+  ckT('at hot full power the limit is LIVE and generous: the floor near 70 % withdrawn, a ' +
+      'margin near 30 % of the bank, not at limit',
+      engL._rilSteps / bank() > 0.66 && engL._rilSteps / bank() < 0.71 &&
+      engL._rodLimitMargin / bank() > 0.27 && engL._rodAtLimit === false,
+      'RIL ' + engL._rilSteps + ' (' + (100 * engL._rilSteps / bank()).toFixed(1) +
+      ' %), margin ' + engL._rodLimitMargin + ' (' +
+      (100 * engL._rodLimitMargin / bank()).toFixed(1) + ' %)');
   var engZ = EN.createEngine({ initial_state: 'hot_zero_power' });
   EN.step(engZ, DT);
   ckT('at Hot Standby the limit does NOT APPLY — a bank parked at 0 stands NO limit alarm ' +
       '(the 5 % floor is what keeps every startup from opening annunciated)',
-      engZ._rilSteps === null && engZ._rodAtLimit === false && engZ._rodLimitMargin === 200,
+      engZ._rilSteps === null && engZ._rodAtLimit === false && engZ._rodLimitMargin === bank(),
       '');
   /* #510 LOW: a SCRAM exempts too — during every trip's decay seconds the rods drive to 0
    * while power is still above the 5 % floor, and both ROD LIMIT annunciators fired on
@@ -1539,34 +1775,69 @@ function runSuite(RD, rec, quiet, only) {
         }
         return sawBand && okAll;
       })(), 'the pre-fix ladder read atLimit TRUE through the decay band of every trip');
-  /* the honest approach (measured 2026-08-23): insert to 145 (power sags to 85.8, the
-   * limit recedes to 121 — margin OPENS to 24), then dilute: power recovers, the limit
-   * climbs back, and the margin closes to <10 at +35 s; a 5-step insert at power reaches
-   * the limit itself */
+  /* ---- THE LIMIT TRACKS POWER (#602 phase 2, re-aimed) --------------------------------------
+   * This pair used to ride a bigger story: insert, power sags a long way, the limit recedes and
+   * the margin opens wide, then dilute — power recovers, the limit climbs, the margin closes past
+   * RIL+10 to the limit itself. That needed an insert that could sag power to ~85.8 %, which the
+   * 200-step bank at curve_flatten 0.8 could deliver. On the sourced 627-step bank at 0.36 there
+   * is very little worth in the TOP of the travel: the same fractional insert reaches only 98.3 %,
+   * and inserting deep enough to sag power that far TRIPS on the way (measured: 66 % -> 87.6 %
+   * and scram, 67 % -> 91.7 % and scram). That is not a regression — it is the reason a real
+   * bank D sits near 210 of 231 and boron carries the bulk.
+   *
+   * ⚠ AND THE DILUTION IS NOT BROKEN, which is exactly what this looked like at first. Measured
+   * over 600 s at -0.10 ppm/s from a 72 %-withdrawn insert:
+   *     t=0    boron 625.8  power  98.32  Tavg 272.1  RIL 432  margin 19
+   *     t=60   boron 620.9  power 100.66  Tavg 273.3  RIL 439  margin 12
+   *     t=600  boron 611.8  power  96.16  Tavg 278.6  RIL 422  margin 29
+   * Boron falls and power RISES first — the dilution lands. It then settles near 96 % while boron
+   * keeps dropping, because at a HELD LOAD the negative moderator coefficient takes the added
+   * reactivity as TEMPERATURE (Tavg 272 -> 279), not as power. A rods-manual plant at fixed load
+   * reaches equilibrium where dilution buys degrees. Correct physics — and the reason the old
+   * assertion has no window, rather than a reason to go looking for a defect.
+   *
+   * SO THE SURVIVING CLAIM IS THE ONE THE INTERLOCK IS ACTUALLY ABOUT: the limit CHASES POWER.
+   * It is read from the same ride, and it never depended on how far an insert could sag the
+   * plant. */
   EN.command(engL, 'rod_speed', 'fast');
-  EN.command(engL, 'rod_target', 145);
-  run(engL, 60);
-  var openedTo = engL._rodLimitMargin;
+  EN.command(engL, 'rod_target', frac(0.72));
+  tsL = run(engL, walk(70));
+  var rilIns = engL._rilSteps, marginIns = engL._rodLimitMargin, pwrIns = tsL.power_pct;
+  ckT('the limit is LIVE under a deep insert: the bank is inside it, the margin is finite',
+      rilIns > 0 && marginIns > 0 && marginIns < 60 && engL._rodAtLimit === false &&
+      tsL.scrammed === false,
+      'RIL ' + rilIns + ', margin ' + marginIns + ' at ' + pwrIns.toFixed(1) + ' % power');
+  /* DILUTE, and watch the LIMIT follow the power — up while power rises, down as it settles. */
   EN.command(engL, 'boron_rate', -0.10);
-  var tL = 0;
-  while (tL < 120 && engL._rodLimitMargin >= 10 && !tsL.scrammed) { tsL = run(engL, 5); tL += 5; }
-  ckT('rods in + dilution restoring power CLOSES the margin below the sourced RIL+10 — ' +
-      'the limit chased the power back up',
-      openedTo > 15 && engL._rodLimitMargin < 10 && tsL.scrammed === false,
-      'margin opened to ' + openedTo + ' on the insert, closed to ' + engL._rodLimitMargin +
-      ' at t=+' + tL + ' s, power ' + tsL.power_pct.toFixed(1) + ' %');
-  /* the dilution KEEPS RUNNING through the final insert — securing it first lets power sag
-   * and the limit recede under the bank (measured 96.3 %/RIL 135 under 139 steps; the
-   * first gate draft did exactly that and reddened on its own fixture, not the plant).
-   * The limit then CLIMBS to meet the bank as power recovers — at-limit at +55 s measured. */
-  EN.command(engL, 'rod_target', 139);
-  var tL2 = 0;
-  while (tL2 < 200 && !engL._rodAtLimit && !tsL.scrammed) { tsL = run(engL, 5); tL2 += 5; }
-  ckT('...and five more steps with the dilution running reaches the LIMIT itself as power ' +
-      'recovers (ROD LIMIT LO-LO\'s fact; measured at +55 s)',
-      engL._rodAtLimit === true && tsL.power_pct > 90 && tsL.scrammed === false,
-      'steps ' + engL.rodSteps.toFixed(0) + ' <= RIL ' + engL._rilSteps + ' at ' +
-      tsL.power_pct.toFixed(1) + ' % (t=+' + tL2 + ' s)');
+  tsL = run(engL, 60);
+  var rilHi = engL._rilSteps, pwrHi = tsL.power_pct;
+  tsL = run(engL, 540);
+  var rilLo = engL._rilSteps, pwrLo = tsL.power_pct;
+  ckT('...and the LIMIT CHASES POWER — it rises with the dilution\'s power peak and recedes ' +
+      'again as the negative MTC settles the plant at a lower power',
+      pwrHi > pwrIns && rilHi > rilIns &&
+      pwrLo < pwrHi && rilLo < rilHi && tsL.scrammed === false,
+      'power ' + pwrIns.toFixed(1) + ' -> ' + pwrHi.toFixed(1) + ' -> ' + pwrLo.toFixed(1) +
+      ' %, RIL ' + rilIns + ' -> ' + rilHi + ' -> ' + rilLo +
+      ' — the limit is a FUNCTION of power, which is the whole interlock');
+  /* ⚠ AT-LIMIT ITSELF, and this check exists because the MUTATION HARNESS CAUGHT ITS ABSENCE.
+   * The re-aim above dropped the only ride that ever drove `_rodAtLimit` TRUE — the old story's
+   * final "five more steps reaches the limit" — and `at-limit is never computed` immediately
+   * came back BLIND. That flag is the ROD LIMIT LO-LO annunciator's whole basis, so losing its
+   * coverage while re-aiming the checks around it would have been a silent trade.
+   *
+   * Driven DIRECTLY instead of through the dilution story that no longer has a window: put the
+   * bank under the live limit and read the flag. The fact does not need the story. */
+  var rilNow = engL._rilSteps;
+  EN.command(engL, 'boron_rate', 0);
+  EN.command(engL, 'rod_target', rilNow - 5);
+  var tAL = 0;
+  while (tAL < 300 && !engL._rodAtLimit && !tsL.scrammed) { tsL = run(engL, 5); tAL += 5; }
+  ckT('...and AT-LIMIT is a real computed fact: park the bank under the live limit and the ' +
+      'flag sets (the ROD LIMIT LO-LO row reads it)',
+      engL._rodAtLimit === true && engL.rodSteps <= engL._rilSteps && tsL.scrammed === false,
+      'bank ' + engL.rodSteps.toFixed(0) + ' <= RIL ' + engL._rilSteps + ' at ' +
+      tsL.power_pct.toFixed(1) + ' % (t=+' + tAL + ' s)');
   }
 
   if (grp('M')) {
@@ -1690,6 +1961,11 @@ function runSuite(RD, rec, quiet, only) {
   var engF = EN.createEngine({ initial_state: 'hot_shutdown' });
   var mF0 = engF.sg.mass;
   EN.command(engF, 'feed_auto', false);
+  /* THE PUMPS ARE SECURED IN THIS INITIAL CONDITION SINCE #605, so start them — a demand with no
+   * pump running correctly delivers nothing, and asserting flow without this line would be
+   * asserting that a secured train feeds. (The shell's FEED PUMPS selector does this for the
+   * player: AUTO or a non-zero MAN demand starts them.) */
+  EN.command(engF, 'feed_pump_a', true); EN.command(engF, 'feed_pump_b', true);
   EN.command(engF, 'feed_manual_frac', 0.5);
   for (var ff = 0; ff < (quiet ? 60 : 120) / DT; ff++) EN.step(engF, DT);
   ckT('Mode 4 MAIN FEED DELIVERS: 50 % manual demand puts real mass in the steam generator ' +
@@ -1778,7 +2054,7 @@ function runSuite(RD, rec, quiet, only) {
    * falls. Counted over the whole withdrawal, not sampled — a sample can straddle the dip. */
   var engAP = EN.createEngine({ initial_state: 'hot_zero_power' });
   run(engAP, 30);
-  EN.command(engAP, 'rod_target', 200);
+  EN.command(engAP, 'rod_target', bank());
   var apFell = 0, apPrev = EN.step(engAP, DT).power_pct, apTs = null, apSteps = 0;
   for (var ap = 0; ap < Math.round((quiet ? 60 : 200) / DT); ap++) {
     apTs = EN.step(engAP, DT); apSteps++;
@@ -1897,6 +2173,239 @@ function runSuite(RD, rec, quiet, only) {
       engHE.pz.heatersShed === true && tsShed.pzr_heater_kw === 0 &&
       engHE._pzr.heater_energized_kW === 0,
       'shed ' + engHE.pz.heatersShed + ', published ' + tsShed.pzr_heater_kw + ' kW');
+  }
+
+  if (grp('Q')) {
+  /* ---- 15. THE LETDOWN SPLIT (#624 items 14/25, owner-ruled 2026-09-04) --------------------
+   * THREE THINGS USED TO BE ONE FIELD, and every fixture in this tree booted `letdownOpen = 1`,
+   * so nothing could tell them apart:
+   *   · the OPERATOR'S ORIFICE LINEUP (`cv.letdownOpen`) — the board's four-button selector;
+   *   · the RHR-to-CVCS CROSS-CONNECT (HCV-128), which the source has FULLY OPEN whenever the
+   *     plant is on shutdown cooling and which is not an orifice at all;
+   *   · the 17 % low-pressurizer-level PROTECTIVE ISOLATE, which used to be written INTO the
+   *     operator's selection — a de-energization in the demand, which never heals (#200).
+   * The cold initial conditions now boot with the orifices OUT, which is what makes the
+   * selector a control the player has a reason to touch (item 25: it was an orphan).
+   *
+   * ⚠ THE 17 % CUT CANNOT BE REACHED BY SCALING THE VESSEL — measured, and it is the HE-3 trap
+   * one door along. Scaling `m_sub`/`m_sat` to a 12 % level at hot full power reddens nothing:
+   * the subcooled loop expands into the drained vessel and the TRUE level was back at 58.3 %
+   * before the instrument's lag had moved, so `lowLevelCut` never latched in 120 s. It takes a
+   * SUSTAINED DRAIN, so this group opens a 2 cm2 cold-leg break and advances until the latch
+   * arrives, bounded, failing loudly if it never does. */
+  head('THE LETDOWN SPLIT  [lineup, cross-connect and protective isolate are three things]');
+  var CVQ = RD.cvcs;
+
+  /* 1. THE COLD BOOT. Orifices OUT, and the inventory balance still closes — on the
+   * cross-connect, which is where the source puts low-pressure letdown. */
+  var engQ = EN.createEngine({ initial_state: 'cold_shutdown' });
+  var tsQ0 = run(engQ, 1);
+  ckT('Mode 5 boots with the letdown orifices OUT (item 25: the selector had no job before)',
+      engQ.cv.letdownOpen === 0 && engQ.cv.letdownIsolated === false,
+      'letdownOpen ' + engQ.cv.letdownOpen + ' — WTSM ch.19 puts shutdown letdown on the ' +
+      'RHR cross-connect HCV-128, not on the orifices');
+  ckT('...and letdown still flows, at the NORMAL magnitude, through the cross-connect',
+      Math.abs(engQ._letdownKgs - CVQ.normalLetdownKgs()) < 1e-12 && engQ.rh.running === true,
+      engQ._letdownKgs.toFixed(4) + ' kg/s against a normal ' +
+      CVQ.normalLetdownKgs().toFixed(4) + ' — a SHUT orifice lineup passing full letdown, ' +
+      'which is the whole of the split');
+  /* THE INVENTORY CLAIM, and the one that would have caught the shipped defect. On the
+   * pre-split engine this same lineup (letdownOpen 0) passes NOTHING and the plant fills on its
+   * own seal injection: measured 25.0 -> 35.3 % of pressurizer level in 20 plant-minutes, the
+   * #510 H-2 water-solid path. Here it must sit still. */
+  var lvlQ0 = tsQ0.pzr_level_pct;
+  /* 10 plant-min loud, 5 quiet — NOT 20: the 20-min loud ride put this runner at 1708 s under
+   * run_all contention (a 420 s hint) and made it the aggregate gate's tail. The fill is seal
+   * injection at a fixed rate, so the pre-split figure scales: +10.2 points in 20 min is ~+5 in
+   * 10 [extrapolated from the 20-min measurement, not re-measured] against a 1.0-point band,
+   * while the split plant moves 0.02. */
+  var tsQ1 = run(engQ, quiet ? 300 : 600);
+  ckT('the cold plant\'s inventory CLOSES — level sits where it booted, not climbing to solid',
+      Math.abs(tsQ1.pzr_level_pct - lvlQ0) < 1.0,
+      lvlQ0.toFixed(2) + ' -> ' + tsQ1.pzr_level_pct.toFixed(2) + ' % over ' +
+      (quiet ? 5 : 10) + ' plant-min (pre-split, same lineup: 25.0 -> 35.3 % in 20 min)');
+
+  /* 2. THE 17 % CUT ISOLATES AND LEAVES THE SELECTION ALONE. */
+  var engQ2 = EN.createEngine({});
+  run(engQ2, 20);
+  EN.command(engQ2, 'break_open', { area_m2: 0.0002, node: 'cold_leg' });
+  var cutAtQ = null;
+  for (var kQ = 0; kQ < Math.round(600 / DT) && cutAtQ === null; kQ++) {
+    EN.step(engQ2, DT);
+    if (engQ2.pz.lowLevelCut === true) cutAtQ = kQ * DT;
+  }
+  /* one more step: the CVCS steps BEFORE the pressurizer, so the flow on the latching step is
+   * still last step's — the isolate reaches the flow on the next one (the house lag) */
+  EN.step(engQ2, DT);
+  ckT('a sustained drain reaches the 17 % cut (the premise, MEASURED — a scaled vessel refills)',
+      cutAtQ !== null, cutAtQ === null ? 'NEVER REACHED in 600 s' :
+      'latched at ' + cutAtQ.toFixed(1) + ' s on a 2 cm2 cold-leg break');
+  ckT('the cut ISOLATES letdown and leaves the operator\'s orifice lineup exactly where it was',
+      cutAtQ !== null && engQ2._letdownKgs === 0 && engQ2.cv.letdownIsolated === true &&
+      engQ2.cv.letdownOpen === 1,
+      'flow ' + engQ2._letdownKgs.toFixed(5) + ' kg/s, isolated ' + engQ2.cv.letdownIsolated +
+      ', letdownOpen ' + engQ2.cv.letdownOpen + ' — the pre-split engine wrote 0 into the ' +
+      'selection here and the player\'s A+B lineup was gone for good');
+
+  /* 3. AND IT IS REFUSED WHILE THE CUT STANDS — the interlock's own shape. */
+  EN.command(engQ2, 'break_close');
+  EN.command(engQ2, 'letdown', 1);
+  EN.step(engQ2, DT);
+  ckT('an operator re-line while the cut still stands is REFUSED (WTSM §4.1.3.1 interlock)',
+      engQ2.pz.lowLevelCut === true && engQ2.cv.letdownIsolated === true &&
+      engQ2._letdownKgs === 0,
+      'cut ' + engQ2.pz.lowLevelCut + ', still isolated, flow ' + engQ2._letdownKgs.toFixed(5));
+
+  /* 4. NO AUTOMATIC RESTORATION. The latch clears at 20 %; letdown does not come back. */
+  var clearAtQ = null;
+  for (var jQ = 0; jQ < Math.round(900 / DT) && clearAtQ === null; jQ++) {
+    EN.step(engQ2, DT);
+    if (engQ2.pz.lowLevelCut === false) clearAtQ = jQ * DT;
+  }
+  EN.step(engQ2, DT);
+  ckT('the latch clears at 20 % and letdown STAYS SHUT — there is no automatic restoration',
+      clearAtQ !== null && engQ2.cv.letdownIsolated === true && engQ2._letdownKgs === 0,
+      clearAtQ === null ? 'the latch never cleared in 900 s' :
+      'cleared ' + clearAtQ.toFixed(1) + ' s after the break shut; still isolated, flow ' +
+      engQ2._letdownKgs.toFixed(5) + ' — `Manuals/06` PWR-A13a: "letdown stays shut until you ' +
+      're-open an orifice by hand"');
+
+  /* 5. THE OPERATOR'S RE-LINE IS WHAT RESTORES IT. */
+  EN.command(engQ2, 'letdown', 1);
+  EN.step(engQ2, DT); EN.step(engQ2, DT);
+  ckT('...and the operator\'s own re-line restores it, once the latch has gone',
+      engQ2.cv.letdownIsolated === false && engQ2._letdownKgs > 0,
+      'isolated ' + engQ2.cv.letdownIsolated + ', flow ' + engQ2._letdownKgs.toFixed(5) +
+      ' kg/s — restoration is an ACT, which is the ruling');
+  }
+
+  if (grp('R')) {
+  /* ---- 16. THE COLD PRESSURE-CONTROL LINEUP (#624 / #619 item 14, 2026-09-04) ---------------
+   * *(OWNER, 2026-09-04: "next", to the recommendation "measure the heaters-OFF drift from
+   * cold_shutdown and land item 14's remaining halves"; Mode 4 followed the same hour —
+   * coordinator's call, 2026-09-04, on the measured Mode 4 numbers below.)*
+   *
+   * BOTH COLD INITIAL CONDITIONS boot with the pressurizer HEATERS OFF and the SPRAY IN HAND AND
+   * SHUT — the lineup `pwr_cooldown` leaves behind, so the boot IC and a player's own
+   * cooled-down plant now agree. Before this the engine set `pzDrivers: {}` for every initial
+   * condition, i.e. heaters AUTO and spray AUTO on a plant whose reactor coolant pumps are
+   * secured (the spray has no head: `SPRAY.needs_rcp` is true, and `rcp_gate_enforced: false` is
+   * a declared deviation that lets the one lever stand in for auxiliary spray).
+   *
+   * ⚠ THIS GROUP WAS BUILT WITH MODE 4 ON THE OTHER SIDE OF THE LINE, and the reversal is worth
+   * keeping in view: R1b asserted `hot_shutdown` in AUTO as a deliberate scope boundary, because
+   * the ruling named the Mode 5 lineup. Then Mode 4 was measured — +12.2 psi/hr in AUTO against
+   * +0.2 psi/hr off, the same defect at the same size — and the boundary went. A boundary drawn
+   * from the WORDING of a ruling rather than from a measurement is the thing to distrust here.
+   *
+   * ⚠ THE CLAIM THE OLD NOTE MADE IS FALSE ON THIS ENGINE AND THESE CHECKS SAY SO. It read
+   * "the surge-line exchange bleeds ~16 kW, -68 psi/hr", and the build plan for this change
+   * asked for a check that pressure FALLS. Measured 2026-09-04, 60 plant-minutes from the boot
+   * with the heaters off: 362.59 -> 362.85 psia, i.e. +0.3 psi/hr, RISING by a whisker. It is
+   * structural: `surge_heat_kW` in pwr2_pressurizer is a MASS-TRANSPORT term (an outsurge
+   * debiting its donor enthalpy to the hot leg) and this model carries no standing conduction
+   * path out of the vessel, so a still isothermal plant has nothing to bleed. The claim asserted
+   * below is therefore the one that is true and the one that matters — THE BUBBLE SURVIVES —
+   * not the direction somebody expected it to move. */
+  head('THE COLD PRESSURE-CONTROL LINEUP  [both cold ICs: heaters OFF, spray in hand; the ' +
+       'bubble survives; the setpoint is inert until AUTO]');
+
+  /* R1. THE BOOT LINEUP, AND THE SCOPE IN THE SAME BREATH: BOTH cold initial conditions follow,
+   * at-power does NOT. The `ic.cold` predicate is what makes that true, and it is asserted from
+   * both sides — a check on Mode 5 alone passes on the `icName === 'cold_shutdown'` form this
+   * group shipped with for an hour, and a check on at-power alone passes on a plant that boots
+   * every IC with the heaters off. */
+  var engR5 = EN.createEngine({ initial_state: 'cold_shutdown' });
+  var engR4 = EN.createEngine({ initial_state: 'hot_shutdown' });
+  var engR1 = EN.createEngine({});
+  var tsR5 = EN.step(engR5, DT);
+  var tsR4 = EN.step(engR4, DT);
+  ckT('Mode 5 boots HEATERS OFF and SPRAY IN HAND, SHUT — the lineup pwr_cooldown leaves',
+      engR5.pzDrivers.heaters_manual === 0 && engR5.pzDrivers.spray_manual === 0 &&
+      tsR5.pzr_heater_kw === 0,
+      'heaters_manual ' + engR5.pzDrivers.heaters_manual + ', spray_manual ' +
+      engR5.pzDrivers.spray_manual + ', ' + tsR5.pzr_heater_kw.toFixed(1) + ' kW on the bus — ' +
+      'the AUTO boot delivered 18.2 kW at zero error and crept the IC off its own point');
+  ckT('...and so does MODE 4 — both cold ICs follow, at-power does not (the cooldown turns the ' +
+      'heaters off BEFORE the RHR align that makes the plant Mode 4)',
+      engR4.pzDrivers.heaters_manual === 0 && engR4.pzDrivers.spray_manual === 0 &&
+      tsR4.pzr_heater_kw === 0 &&
+      engR1.pzDrivers.heaters_manual === undefined &&
+      engR1.pzDrivers.spray_manual === undefined,
+      'Mode 4 ' + JSON.stringify(engR4.pzDrivers) + ' at ' + tsR4.pzr_heater_kw.toFixed(1) +
+      ' kW, hot full power ' + JSON.stringify(engR1.pzDrivers) + ' — Mode 4 in AUTO walked ' +
+      '364.04 -> 376.28 psia in 60 min (+12.2 psi/hr), which is why the scope boundary went');
+
+  /* R2. THE BUBBLE SURVIVES THE ALIGNMENT WINDOW. 15 plant-minutes is roughly where the heatup
+   * checklist's heater step lands (pump start 30 s + the shutdown-bank withdrawal 660 s + the
+   * small holds), so this is the question a player's plant actually asks: is there still a
+   * pressurizer when I get there? Measured on the new boot: +0.012 psi over 15 min and
+   * -0.026 points of level. On the OLD heaters-AUTO boot the same window reads +9.02 psi
+   * (362.59 -> 371.62 psia), which the 3-psi band excludes — this check catches the revert. */
+  var pR0 = tsR5.pressure_mpa * 145.0377, lR0 = tsR5.pzr_level_pct;
+  var tsR15 = run(engR5, (quiet ? 300 : 900) - DT);
+  var pR15 = tsR15.pressure_mpa * 145.0377;
+  ckT('the bubble SURVIVES the alignment window: pressure holds, stays clear of the 300 psia ' +
+      'orifice backpressure, level sits still and the 17 % cut never comes near',
+      Math.abs(pR15 - pR0) < 3.0 && pR15 > 300 &&
+      Math.abs(tsR15.pzr_level_pct - lR0) < 3.0 && engR5.pz.lowLevelCut === false,
+      pR0.toFixed(2) + ' -> ' + pR15.toFixed(2) + ' psia over ' + (quiet ? 5 : 15) +
+      ' plant-min (' + ((pR15 - pR0) * 60 / (quiet ? 5 : 15)).toFixed(2) + ' psi/hr; 60-min ' +
+      'measurement 362.59 -> 362.85, +0.3 psi/hr), level ' + lR0.toFixed(2) + ' -> ' +
+      tsR15.pzr_level_pct.toFixed(2) + ' %');
+
+  /* R2b. AND SO DOES MODE 4's, WHICH IS THE CLAIM THAT MOVED THE SCOPE. Asserted separately
+   * rather than folded into R2 with a loop: the two states differ in temperature by 128 degF
+   * and their bubbles are at different saturation points, so "cold plants hold" is two
+   * measurements, not one generalised from the colder. Measured on the new boot: 364.04 ->
+   * 364.05 psia over 15 plant-min, 364.21 at 60 min (+0.2 psi/hr). On the AUTO boot the same
+   * window reads 373.10 psia, +9.06 psi — outside this band, so this check catches the revert
+   * from the Mode 4 side just as R2 does from the Mode 5 side. */
+  var engR4b = EN.createEngine({ initial_state: 'hot_shutdown' });
+  var ts4b0 = EN.step(engR4b, DT);
+  var p4b0 = ts4b0.pressure_mpa * 145.0377, l4b0 = ts4b0.pzr_level_pct;
+  var ts4b1 = run(engR4b, (quiet ? 300 : 900) - DT);
+  var p4b1 = ts4b1.pressure_mpa * 145.0377;
+  ckT('...and MODE 4\'s bubble survives its own window on the same lineup — the measurement ' +
+      'that took hot_shutdown across the scope line',
+      Math.abs(p4b1 - p4b0) < 3.0 && p4b1 > 300 &&
+      Math.abs(ts4b1.pzr_level_pct - l4b0) < 3.0 && engR4b.pz.lowLevelCut === false,
+      p4b0.toFixed(2) + ' -> ' + p4b1.toFixed(2) + ' psia over ' + (quiet ? 5 : 15) +
+      ' plant-min (' + ((p4b1 - p4b0) * 60 / (quiet ? 5 : 15)).toFixed(2) + ' psi/hr; 60-min ' +
+      'measurement 364.04 -> 364.21, +0.2 psi/hr, against +12.2 psi/hr in AUTO), level ' +
+      l4b0.toFixed(2) + ' -> ' + ts4b1.pzr_level_pct.toFixed(2) + ' %');
+
+  /* R3. THE NEXT CHECKLIST STEP IS INERT UNTIL THE HEATERS ARE IN AUTO — which is the whole
+   * reason the heatup gains a step, and the claim its deletion-injection proves at the replay
+   * level. Both arms, because either alone passes on the wrong plant: "the setpoint does
+   * nothing" is satisfied by a plant whose heaters are broken, and "AUTO pressurizes" is
+   * satisfied by the old boot, where the heaters were in AUTO all along. */
+  function spRide(pressAuto) {
+    var e = EN.createEngine({ initial_state: 'cold_shutdown' });
+    var a = EN.step(e, DT);
+    if (pressAuto) {
+      EN.command(e, 'pzr_heaters_manual', null);   /* the board's AUTO button on PZR HEATERS */
+      EN.command(e, 'pzr_spray_manual', null);     /* ...and on PZR SPRAY */
+    }
+    /* 11.72 MPa is 1700 psig, the floor of the dial's sourced span (WTSM 10.2) and exactly what
+     * the heatup's next step asks for. A lower entry clamps to it — see pwr2_shell's span note. */
+    EN.command(e, 'pzr_setpoint_mpa', 11.72);
+    var b = run(e, quiet ? 300 : 600);
+    return { d: (b.pressure_mpa - a.pressure_mpa) * 145.0377, kw: b.pzr_heater_kw,
+             hm: e.pzDrivers.heaters_manual, sm: e.pzDrivers.spray_manual, shed: e.pz.shedLatch };
+  }
+  var spOff = spRide(false), spOn = spRide(true);
+  ckT('the Pressure SP alone is INERT with the heaters off — dialling 1700 psig on the cold ' +
+      'board moves nothing, which is why the heatup needs a step and not a comment',
+      Math.abs(spOff.d) < 1.0 && spOff.kw === 0,
+      spOff.d.toFixed(3) + ' psi over ' + (quiet ? 5 : 10) + ' plant-min at ' +
+      spOff.kw.toFixed(1) + ' kW');
+  ckT('...and pressing AUTO puts the ladder back in service: full bank, and the plant climbs',
+      spOn.hm === undefined && spOn.sm === undefined && spOn.shed === false &&
+      spOn.kw > 150 && spOn.d > 40,
+      '+' + spOn.d.toFixed(1) + ' psi over ' + (quiet ? 5 : 10) + ' plant-min at ' +
+      spOn.kw.toFixed(1) + ' kW (measured +63.9 psi at 5 min, +133.4 at 10), heaters_manual ' +
+      spOn.hm + ' — the AUTO press clears the shed latch on its way through');
   }
 
   /* ⚠ SKIPPED IN MUTATION REPLAY UNLESS TARGETED, and that is a COST decision with a number.
@@ -2111,8 +2620,18 @@ var MUTATIONS = [
    'var sr = G.stepSG(eng.sg, tavg, dt, { feed: fwr.feed_frac * eng.rated_steam, steam: out,',
    'var sr = G.stepSG(eng.sg, tavg, dt, { feed: out, steam: out,', { grp: 'F' }],
   ['loss of both pumps no longer trips the turbine (half the ch10 sentence)',
-   '    if (fwr.main_feed_lost) eng.tb.tripped = true;',
+   '    if (mfLost) eng.tb.tripped = true;',
    '', { grp: 'F' }],
+  /* #605: the arming, both ways. Severing it re-ships the defect that started this — a normal
+   * Mode 4/5 lineup firing a casualty chain — and welding it ON re-ships the one the first fix
+   * caused: a securing at power that never trips the turbine. An anchor on the arming expression
+   * itself, so a refactor that moves the condition goes LOUD rather than blind. */
+  ['the loss-of-main-feed chain is armed in every mode (a Mode 4/5 lineup fires the casualty)',
+   '    var mfLost = fwr.main_feed_lost === true && !eng.rh.running;',
+   '    var mfLost = fwr.main_feed_lost === true;', { grp: 'F' }],
+  ['the loss-of-main-feed chain is never armed (securing both pumps at power does nothing)',
+   '    var mfLost = fwr.main_feed_lost === true && !eng.rh.running;',
+   '    var mfLost = false;', { grp: 'F' }],
   ['the fwi latch is never consumed (hi-hi reports into a void)',
    '    if (ptr.fwi) { eng.fw.isolated = true; eng.tb.tripped = true; }',
    '', { grp: 'F' }],
@@ -2177,7 +2696,7 @@ var MUTATIONS = [
    'if (ptr.reactor_trip && !eng._lastTrip) {\n      eng.rodTarget = 0; eng._scramT = 0; eng.runaway = null;\n    }',
    { grp: 'I' }],
   ['the runaway never drives (an injected withdrawal fault does nothing)',
-   '      eng.rodSteps = Math.min(200, eng.rodSteps + eng.runaway.rate * dt);',
+   '      eng.rodSteps = Math.min(BANK(), eng.rodSteps + eng.runaway.rate * dt);',
    '', { grp: 'I' }],
   ['the rod-command refusal is severed (a faulted drive quietly obeys the lever)',
    "        if (eng.runaway) {\n          throw new Error('pwr2_engine: rod command REFUSED — continuous withdrawal failure ' +\n            'active; clear the failure first');\n        }",
@@ -2227,8 +2746,19 @@ var MUTATIONS = [
    '    eng._rodAtLimit = ril !== null && eng.rodSteps <= ril;',
    '    eng._rodAtLimit = false;', { grp: 'L' }],
   ['the margin is pinned wide (the LO approach can never annunciate)',
-   "    eng._rodLimitMargin = ril === null ? 200 : Math.max(0, Math.round(eng.rodSteps - ril));",
-   '    eng._rodLimitMargin = 200;', { grp: 'L' }],
+   "    eng._rodLimitMargin = ril === null ? BANK() : Math.max(0, Math.round(eng.rodSteps - ril));",
+   '    eng._rodLimitMargin = BANK();', { grp: 'L' }],
+  /* THE HOIST ITSELF (#602 phase 1) — put a stale literal back at the site the ride harness
+   * actually missed, and see whether anything notices. This is the mutation that makes the
+   * bank-scale block above evidence rather than decoration: a clamp frozen at 200 does not
+   * throw, it silently holds a longer bank part-withdrawn and hands back a plausible plant. */
+  ['a bank-scale consumer keeps its own stale 200 (the clamp the ride harness missed)',
+   '        eng.rodTarget = Math.max(0, Math.min(BANK(), +value)); break;',
+   '        eng.rodTarget = Math.max(0, Math.min(200, +value)); break;', { grp: 'K' }],
+  ['the scram insertion profile keeps its own stale 200 (a long bank strands part-out)',
+   '      eng.rodSteps = Math.max(0, Math.min(eng.rodSteps, BANK() * (1 - eng._scramT / SCRAM_S)));',
+   '      eng.rodSteps = Math.max(0, Math.min(eng.rodSteps, 200 * (1 - eng._scramT / SCRAM_S)));',
+   { grp: 'K' }],
   /* THE RCP RESTART (#507 wave 9) */
   ['the start\'s electrical gate is severed (a blacked-out bus starts a 6,000 hp motor)',
    '        if (!(eng.elec.offsite && !eng.elec.blackout)) {',
@@ -2239,8 +2769,16 @@ var MUTATIONS = [
    '    if (ic.cold) rodBank[1].steps = 0;\n    var boron0 = RD.kinetics.criticalBoron(rx.kin, tavg0, icP, rodBank,',
    { grp: 'N' }],
   ['the cold boot forgets the P-11 blocks (the shutdown plant injects at construction)',
-   '      pt: PT.createProtection({ blockLowFlux: ic.pf >= 0.1,\n                                blockLoPress: !!ic.cold, blockSI: !!ic.cold }),',
-   '      pt: PT.createProtection({ blockLowFlux: ic.pf >= 0.1 }),', { grp: 'N' }],
+   '      pt: PT.createProtection({ blockLowFlux: ic.pf >= 0.1, blockIrHigh: ic.pf >= 0.1,\n                                blockLoPress: !!ic.cold, blockSI: !!ic.cold }),',
+   '      pt: PT.createProtection({ blockLowFlux: ic.pf >= 0.1, blockIrHigh: ic.pf >= 0.1 }),',
+   { grp: 'N' }],
+  /* #601: the at-power ICs must take the INTERMEDIATE RANGE block too, or a 50 %/100 %
+   * plant boots with the 25 % trip armed and scrams on arrival. The mutation drops that
+   * half only, so it cannot be caught by anything the P-11 anchor above covers. */
+  ['an at-power IC boots WITHOUT the intermediate-range block (it scrams on arrival)',
+   '      pt: PT.createProtection({ blockLowFlux: ic.pf >= 0.1, blockIrHigh: ic.pf >= 0.1,',
+   '      pt: PT.createProtection({ blockLowFlux: ic.pf >= 0.1, blockIrHigh: false,',
+   { grp: 'K' }],
   ['the RHR hold throttle is dropped (the "held" plant cools at 560 degF/hr and drains)',
    '      eng.rh.hx_fraction = 0;',
    '      eng.rh.hx_fraction = 0.5;', { grp: 'N' }],
@@ -2268,13 +2806,50 @@ var MUTATIONS = [
    '    ts.pzr_heater_kw = pzr.heater_kW;', { grp: 'P' }],
   ['the published heater power is pinned to the installed bank (the shed reads full)',
    '    ts.pzr_heater_kw = pzr.heater_energized_kW;',
-   '    ts.pzr_heater_kw = 157.8;', { grp: 'P' }]
+   '    ts.pzr_heater_kw = 157.8;', { grp: 'P' }],
+  /* THE LETDOWN SPLIT (#624 items 14/25). The first is the SHIPPED DEFECT restored, and it is
+   * the one that matters: a protective action written into the operator's own demand. */
+  ['the 17 % cut writes itself into the operator\'s lineup again (the demand-rewrite defect)',
+   '    if (pzr.letdown_isolated) eng.cv.letdownIsolated = true;',
+   '    if (pzr.letdown_isolated) eng.cv.letdownOpen = 0;', { grp: 'Q' }],
+  ['the cut never isolates anything (the 17 % protection reports into a void)',
+   '    if (pzr.letdown_isolated) eng.cv.letdownIsolated = true;',
+   '', { grp: 'Q' }],
+  ['the operator\'s re-line no longer clears the isolate (letdown can never come back)',
+   '        if (eng.pz.lowLevelCut !== true) eng.cv.letdownIsolated = false;',
+   '', { grp: 'Q' }],
+  ['the re-line ignores the standing latch (a bypass of the interlock that closed the valves)',
+   '        if (eng.pz.lowLevelCut !== true) eng.cv.letdownIsolated = false;',
+   '        eng.cv.letdownIsolated = false;', { grp: 'Q' }],
+  ['the cold boot opens the orifices again (item 25: the selector goes back to being an orphan)',
+   'cv: CV.createCVCS({ boron_ppm: boron0, letdownOpen: ic.cold ? 0 : 1 }),',
+   'cv: CV.createCVCS({ boron_ppm: boron0, letdownOpen: 1 }),', { grp: 'Q' }],
+  ['the stepped letdown flow is never stashed (the board reads a permanent zero)',
+   '    eng._letdownKgs = cvr.letdown_kgs;',
+   '', { grp: 'Q' }],
+  /* THE COLD PRESSURE-CONTROL LINEUP (#624 / #619 item 14). The first is the SHIPPED form
+   * restored — heaters AUTO and spray AUTO on plants whose pumps are secured — and it is the
+   * one that matters, because it looks like a working plant: the ladder holds a pressure, it
+   * just holds it by doing the operator's job for him and creeping the IC off its own point
+   * (+11.7 psi/hr at Mode 5, +12.2 at Mode 4). The second is the SCOPE BOUNDARY this group
+   * shipped with for an hour — `icName === 'cold_shutdown'`, which drops Mode 4 back to AUTO
+   * and is invisible to any check that only looks at Mode 5. */
+  ['both cold ICs boot with the heaters in AUTO again (the ladder does the operator\'s job)',
+   '      pzDrivers: ic.cold ? { heaters_manual: 0, spray_manual: 0 } : {},',
+   '      pzDrivers: {},', { grp: 'R' }],
+  ['MODE 4 drops back to AUTO (the Mode-5-only scope this group shipped with for an hour)',
+   '      pzDrivers: ic.cold ? { heaters_manual: 0, spray_manual: 0 } : {},',
+   '      pzDrivers: icName === \'cold_shutdown\' ? { heaters_manual: 0, spray_manual: 0 } : {},',
+   { grp: 'R' }],
+  ['the spray is left in AUTO on the cold plants (a valve armed with no pump head behind it)',
+   '      pzDrivers: ic.cold ? { heaters_manual: 0, spray_manual: 0 } : {},',
+   '      pzDrivers: ic.cold ? { heaters_manual: 0 } : {},', { grp: 'R' }]
 ];
 var CORESRC = fs.readFileSync(path.join(SRC, 'pwr2_core.js'), 'utf8').replace(/\r\n/g, '\n');
 
 console.log('\ninjection self-test (' + MUTATIONS.length + ' mutations):');
 var blind = 0;
-MUTATIONS.forEach(function (m) {
+MUT.select(MUTATIONS).forEach(function (m) {
   var isCore = m[3] === 'core';
   var opts = m[m.length - 1];
   var grpTag = (opts && opts.grp) || undefined;

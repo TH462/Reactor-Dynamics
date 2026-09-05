@@ -46,13 +46,15 @@ function parseKey(key) {
   return { day, id, when };
 }
 
+// Returns the server-stamped Origin alongside the parsed body so a caller never needs a
+// second R2 request (a plain `.head()`) just to learn where a report came from.
 async function fetchBundle(env, key) {
   const obj = await env.BUNDLES.get(key);
   if (!obj) return null;
   const text = key.endsWith('.gz')
     ? await new Response(obj.body.pipeThrough(new DecompressionStream('gzip'))).text()
     : await obj.text();
-  return JSON.parse(text);
+  return { bundle: JSON.parse(text), origin: (obj.customMetadata && obj.customMetadata.origin) || '' };
 }
 
 async function reportList(env, token) {
@@ -66,12 +68,17 @@ async function reportList(env, token) {
 
   const rows = await Promise.all(shown.map(async (key) => {
     const { when } = parseKey(key);
-    let note = '', plant = '';
+    let note = '', plant = '', channel = '';
     try {
-      const bundle = await fetchBundle(env, key);
+      const fetched = await fetchBundle(env, key);
+      const bundle = fetched && fetched.bundle;
       note = (bundle && bundle.note) || '';
       const manifest = bundle && bundle.bundle && bundle.bundle.manifest;
       plant = (manifest && manifest.plant_id) || '';
+      // The client-declared channel is the readable one ("public"/"preview"/"dev") — fall
+      // back to the server-stamped Origin (a URL, harder to spoof) for older bundles that
+      // predate it, or if a caller ever ships a doctored `channel` field.
+      channel = (bundle && bundle.channel) || (fetched && fetched.origin) || '';
     } catch (e) {
       note = '(failed to read: ' + e.message + ')';
     }
@@ -81,7 +88,10 @@ async function reportList(env, token) {
     const preview = note.length > 400 ? note.slice(0, 400) + '…' : note;
     return {
       title: etWithDow(when),
-      meta: [{ k: 'Plant', v: plant || '—', mono: true }],
+      meta: [
+        { k: 'Plant', v: plant || '—', mono: true },
+        { k: 'Channel', v: channel || '—', mono: true },
+      ],
       body: preview || '(no note)',
       href: '?token=' + encodeURIComponent(token) + '&key=' + encodeURIComponent(key),
       hrefLabel: 'view report →',
@@ -98,10 +108,11 @@ async function reportList(env, token) {
 }
 
 async function reportDetail(env, key, token) {
-  let bundle;
-  try { bundle = await fetchBundle(env, key); }
+  let fetched;
+  try { fetched = await fetchBundle(env, key); }
   catch (e) { return html('failed to read report: ' + esc(e.message), 500); }
-  if (!bundle) return html('not found', 404);
+  if (!fetched) return html('not found', 404);
+  const bundle = fetched.bundle;
 
   const b = bundle.bundle || {};
   const manifest = b.manifest || {};
@@ -126,6 +137,9 @@ async function reportDetail(env, key, token) {
     + '<title>Report ' + esc(id) + '</title></head><body>' + nav(token, '')
     + '<a class="backlink" href="' + backHref + '">&larr; all reports</a>'
     + '<h1>' + esc(etFull(when)) + ' — <span class="mono">' + esc(id) + '</span></h1>'
+    + '<p class="muted">Channel: <span class="mono">' + esc(bundle.channel || '—')
+    + '</span> · Build: <span class="mono">' + esc(bundle.build || '—')
+    + '</span> · Origin: <span class="mono">' + esc(fetched.origin || '—') + '</span></p>'
     + '<section><h2>Note</h2><pre>' + esc(bundle.note || '(no note)') + '</pre></section>'
     + '<section><h2>Manifest</h2><pre>' + esc(JSON.stringify(manifest, null, 2)) + '</pre></section>'
     + '<section><h2>Events (' + events.length + ')</h2><table><tr><th>t</th><th>type</th><th>raw</th></tr>' + eventRows + '</table></section>'
@@ -157,11 +171,11 @@ export async function handleDashboard(env, url, request) {
   if (!key) return reportList(env, token);
 
   if (url.searchParams.get('raw') === '1') {
-    let bundle;
-    try { bundle = await fetchBundle(env, key); }
+    let fetched;
+    try { fetched = await fetchBundle(env, key); }
     catch (e) { return html('failed to read: ' + esc(e.message), 500); }
-    if (!bundle) return html('not found', 404);
-    return new Response(JSON.stringify(bundle, null, 2), {
+    if (!fetched) return html('not found', 404);
+    return new Response(JSON.stringify(fetched.bundle, null, 2), {
       headers: { 'Content-Type': 'application/json' },
     });
   }

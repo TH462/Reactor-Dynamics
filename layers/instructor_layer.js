@@ -44,6 +44,22 @@
       pzr_level_pct: 'pzr_level', tavg_c: 'tavg', thot_c: 'thot', tcold_c: 'tcold',
       steam_pressure_mpa: 'steam_pressure', boron_ppm: 'boron_analyzer',
     },
+    /* THE SHIPPED PLANT (#526/#244, 2026-08-31). Authored against pwr2_instruments.js's
+     * own channel ids — NOT copied from pwr (its `boron_analyzer` is `boron` here, and
+     * PWR2 has no SR/IR channels, so sr_counts_cps grades true_state, the documented
+     * exception). Every id verified present in a live pwr2 broadcast by
+     * test/run_checklist_pwr2.js, which reddens if one goes missing. */
+    pwr2: {
+      power_pct: 'power_range', pressure_mpa: 'primary_pressure', sg_level_pct: 'sg_level',
+      pzr_level_pct: 'pzr_level', tavg_c: 'tavg', thot_c: 'thot', tcold_c: 'tcold',
+      steam_pressure_mpa: 'steam_pressure', boron_ppm: 'boron_analyzer',
+      startup_rate_dpm: 'startup_rate', pump_flow_pct: 'rcs_flow',
+      mwe_output: 'mwe_output', fw_flow_normalized: 'fw_flow',
+      /* the atmospheric dump valve (#629) — the heatup's Mode 3 confirmation asserts it is
+       * SHUT, which is a claim about the heat sink the plant is riding on. Graded on the
+       * board's own channel, per HR1: the player sees `adv_valve`, not `adv_valve_pct`. */
+      adv_valve_pct: 'adv_valve',
+    },
     rbmk: {
       power_pct: 'power_range', steam_pressure_mpa: 'steam_pressure', drum_level_pct: 'drum_level',
       channel_flow_pct: 'channel_flow', void_fraction_avg: 'void_fraction', fuel_temp_c: 'fuel_temp',
@@ -164,6 +180,7 @@
       // here: load has no snapshot. null = no `precond` authored or not yet graded.
       precond: null,
       precondMsg: false,   // an unmet-precondition instructor comment is standing
+      catchUp: true,       // first _stepChecklist tick walks past already-done steps (#607)
     };
   };
 
@@ -503,7 +520,11 @@
 
     if (st.saw && !f.sawSeen && this._grade(snapshot, st.saw).met) f.sawSeen = true;
 
-    if (st.acc) {
+    var fHasAccs = !!(st.accs && st.accs.length);
+    if (fHasAccs) {                            // multi-check-off (#244 item 8)
+      f.gradedBy = null;
+      f.accMetNow = this._gradeAccs(f, st, snapshot);
+    } else if (st.acc) {
       var g = this._grade(snapshot, st.acc);
       f.gradedBy = g.graded_by;
       f.accStreak = g.met ? f.accStreak + 1 : 0;
@@ -513,11 +534,11 @@
       f.accMetNow = false;
     }
 
-    var hasObligation = !!(st.cmd || st.acc || st.saw);
+    var hasObligation = !!(st.cmd || st.acc || fHasAccs || st.saw);
     if (!hasObligation) return;   // observation step — manual Next only
     if (st.cmd && !f.cmdSeen) return;
     if (st.saw && !f.sawSeen) return;
-    if (st.acc && !f.accMetNow) return;
+    if ((st.acc || fHasAccs) && !f.accMetNow) return;
     this._advanceFollow(+1, true);
   };
 
@@ -529,6 +550,7 @@
     if (next >= f.proc.steps.length) { this._completeFollow(); return; }
     f.idx = next;
     f.cmdSeen = false; f.sawSeen = false; f.accStreak = 0; f.accMetNow = false; f.gradedBy = null;
+    f.accsState = null;           // per-entry multi-check-off latches (#244 item 8)
     this.pendingMessage = null;   // a new step retires the previous step's feedback
     if (autoAdvanced) this._checkpointRequested = true;   // rewind lands on step boundaries
   };
@@ -572,7 +594,33 @@
         if (!pg.met) anyUnmet = true;
       }
       c.precond = pv;
-      if (anyUnmet && !c.precondMsg) {
+      /* ENTRY ONLY *(OWNER, 2026-09-03, #619 item 3: "The instructor block gets a 'before
+       * you...' in the middle of mode 5>3 checklist. it doesnt make sense. probably just
+       * remove it.")*.
+       *
+       * The latch is per EPISODE, not per run: it clears the moment every row recovers, so the
+       * next row to go unmet raises the message again — and a checklist that is CHANGING the
+       * plant walks its own preconditions in and out. The heatup's entry rows are "plant cold"
+       * and "depressurized", so heating up and pressurizing re-breaks them by design, and the
+       * player got told they were not ready for a checklist they were half way through.
+       *
+       * A precondition answers a question about ENTRY — "was it sensible to open this" — so the
+       * answer cannot change while you run it. Same reasoning the in-panel banner already
+       * follows (ui/app.js, #614), and the fix is the same shape: nothing may raise it once the
+       * run has started moving.
+       *
+       * SCOPED RATHER THAN DELETED, which is a departure from the owner's "probably just remove
+       * it": at entry it is the one thing that explains why a checklist's steps are not going to
+       * verify. Flagged on #622 for review — deleting the block is a two-line follow-up if he
+       * would rather have it gone.
+       *
+       * NOT the `underway` test #614 tried and rejected for the BANNER. That failed because a
+       * checklist whose first step is already satisfied advances within a broadcast or two, so
+       * the banner vanished before it could be read. This is the message channel, and it fires
+       * on the SAME tick the condition is first seen — before any advance — so the entry window
+       * is real rather than a race. */
+      var cklMoving = c.idx > 0;
+      if (anyUnmet && !c.precondMsg && !cklMoving) {
         // One register-aware comment per unmet episode — the checklist banner
         // carries the row-by-row detail, this just points the operator at it.
         c.precondMsg = true;
@@ -587,13 +635,33 @@
       }
     }
 
+    /* CATCH-UP AT START (#607 item 7). Sequential grading of the first unchecked step
+     * traps a player who already did the early actions: heatup step 1 wants pumps
+     * secured, and a plant whose pumps are running can never satisfy the prose even
+     * when later accs are already true. Walking BACKWARD from "a later acc is met"
+     * would skip the whole heatup — the last confirms are `power_pct < 1`, true the
+     * entire ride. So walk FORWARD once, and skip a step only when:
+     *   · an authored `past` predicate is met (the starting-state confirmation no
+     *     longer applies), or
+     *   · it is an ACTION (has `cmd`) whose `acc` is already true.
+     * A pure observation whose acc still describes this plant is left standing. */
+    if (c.catchUp) {
+      c.catchUp = false;
+      while (c.idx < c.proc.steps.length && this._stepAlreadyDone(snapshot, c.proc.steps[c.idx])) {
+        this._checklistCheckOff('caught_up');
+      }
+    }
+
     var st = c.proc.steps[c.idx];
     if (!st) { c.complete = true; return; }
     if (c.stepAt == null) c.stepAt = simTime;   // when this step came up — the dwell's clock
 
     if (st.saw && !c.sawSeen && this._grade(snapshot, st.saw).met) c.sawSeen = true;
 
-    if (st.acc) {
+    if (st.accs && st.accs.length) {          // multi-check-off (#244 item 8)
+      c.gradedBy = null;
+      c.accMetNow = this._gradeAccs(c, st, snapshot);
+    } else if (st.acc) {
       var g = this._grade(snapshot, st.acc);
       c.gradedBy = g.graded_by;
       c.accStreak = g.met ? c.accStreak + 1 : 0;
@@ -617,11 +685,71 @@
      * step should not be able to soft-lock a checklist just by omitting a predicate.
      * `checklist_check` survives as a command — save/restore and the tests still use it —
      * it simply has no button any more. */
-    var met = st.acc ? (c.accMetNow && (!st.saw || c.sawSeen))
+    var hasAccs = !!(st.accs && st.accs.length);
+    var met = (hasAccs || st.acc) ? (c.accMetNow && (!st.saw || c.sawSeen))
             : st.saw ? c.sawSeen
             : st.cmd ? c.cmdSeen
             : (simTime - (c.stepAt == null ? simTime : c.stepAt)) >= OBSERVE_DWELL_S;
-    if (met) this._checklistCheckOff(st.acc || st.saw || st.cmd ? 'auto' : 'observed');
+    /* A STEP THE PLAYER NEVER TOUCHES WAITS FOR AN ACKNOWLEDGEMENT *(OWNER, 2026-09-03, #619
+     * item 4: "When steps are auto completed with no user action, add an acknowledge button to
+     * the step., this button should flash green so the user knows thats the control that needs
+     * to be pressed to progres."; scoped by ruling 2026-09-03 to observation/ride steps only)*.
+     *
+     * These are the steps that satisfy themselves out of the plant — the opening confirms, and
+     * the long rides like "ride the heatup to Hot Standby". They used to tick and move on while
+     * the player was still reading, so a checklist could run several steps ahead of them.
+     *
+     * THE TEST IS "DOES THE STEP AUTHOR AN OPERATOR ACTION", not how it grades. `cmd` is the
+     * replay's command and every step the player actually operates carries one (the live
+     * checklist never issues it — the player presses the control and the acc grades what
+     * happened), and a `cmd`-kind accs entry is the same thing for multi-action steps. A step
+     * with neither is one nobody had to do anything for, which is exactly the owner's wording.
+     *
+     * NARROWED, NOT REVERSED. *(OWNER DIRECTIVE, 2026-08-11: "Checklists are supposed to be
+     * automatically checked off by the sim when complete. Remove the user clickable step
+     * complete button.")* still holds everywhere it was aimed: every step you operate still
+     * ticks itself off the instruments and grows no button.
+     *
+     * The gate is on the ADVANCE, not on the grading — `acc_met` and the per-entry verdicts
+     * keep updating underneath, so the card shows the step satisfied while it waits. `awaiting_ack`
+     * is what the UI draws the flashing button from; `checklistCheck` (the button, and the
+     * replay harness) clears it through the ordinary manual path. */
+    var needsAck = !st.cmd && !(st.accs || []).some(function (e) { return e && e.cmd; });
+    c.awaitingAck = !!(met && needsAck);
+    if (met && needsAck) return;
+    if (met) this._checklistCheckOff(hasAccs || st.acc || st.saw || st.cmd ? 'auto' : 'observed');
+  };
+
+  /* See the catch-up block in `_stepChecklist`. `past` is one predicate or an array (OR).
+   * Reads paramValue (true_state / control_state), not the instrument-first `_grade`:
+   * catch-up is "has the plant already done this", and a lagged channel would leave the
+   * player on a start-pumps step whose flow is already 110 % true. The ACTIVE step still
+   * grades instruments. */
+  InstructorLayer.prototype._stepAlreadyDone = function (snapshot, st) {
+    if (!st) return false;
+    var self = this;
+    function met(pred) {
+      return self._predMet(InstructorLayer.paramValue(snapshot, pred.p), pred);
+    }
+    var past = st.past ? (Array.isArray(st.past) ? st.past : [st.past]) : [];
+    for (var i = 0; i < past.length; i++) {
+      if (met(past[i])) return true;
+    }
+    if (!st.cmd) return false;
+    if (st.acc) return met(st.acc);
+    if (st.accs && st.accs.length) {
+      var anyPred = false;
+      for (var j = 0; j < st.accs.length; j++) {
+        var en = st.accs[j];
+        if (en && en.cmd && !en.p) return false;   // still owes a command this tick never saw
+        if (en && en.p) {
+          anyPred = true;
+          if (!met(en)) return false;
+        }
+      }
+      return anyPred;
+    }
+    return false;
   };
 
   InstructorLayer.prototype._checklistCheckOff = function (by) {
@@ -630,6 +758,8 @@
     c.doneBy[c.idx] = by;
     c.idx++;
     c.cmdSeen = false; c.sawSeen = false; c.accStreak = 0; c.accMetNow = false; c.gradedBy = null;
+    c.accsState = null;                 // per-entry multi-check-off latches (#244 item 8)
+    c.awaitingAck = false;              // #619 item 4 — cleared with the step it belonged to
     c.stepAt = null;                    // re-stamped on the next tick — see the dwell above
     if (c.idx >= c.proc.steps.length) c.complete = true;
   };
@@ -637,7 +767,84 @@
   // Grade one {p, op, v [,tol]} predicate. Instrument-first (HR1): if the param
   // has an instrument twin and the reading exists, grade what the operator sees;
   // otherwise the documented true_state fallback.
+  /* ROD POSITION IS A PREDICATE PARAM, AND IT IS NOT IN `true_state` (#605, owner playtest
+   * 2026-09-02, M5->3 item 1: "Step 3 should be based on rod position not reactivity").
+   *
+   * `_grade` reads FLAT fields — an instrument twin, else `true_state[p]` — and bank position is
+   * neither. It lives in `control_state.rod_groups[]`, one entry per bank, carrying `steps` /
+   * `max_steps` / `position_pct`: the same numbers the board's rod readouts print, which is what
+   * makes grading off them instrument-honest rather than a peek at truth. So resolve those few
+   * names here instead of minting `true_state` fields for them — a new contract field would want
+   * its §6.3 line and would exist for the checklists alone, and `run_contract` would then police
+   * a field no engine has any other reason to publish.
+   *
+   * A group the running plant does not carry resolves to undefined, which `_predMet` fails
+   * closed on — the same verdict a missing true_state field gets, so a step written against a
+   * two-bank plant simply never checks off on a one-bank one rather than checking off wrongly. */
+  var ROD_PARAMS = {
+    control_bank_pct:  { group: 'control_rods',  field: 'position_pct' },
+    control_bank_steps: { group: 'control_rods', field: 'steps' },
+    shutdown_bank_pct: { group: 'shutdown_rods', field: 'position_pct' },
+    shutdown_bank_steps: { group: 'shutdown_rods', field: 'steps' }
+  };
+  /* Flat control_state fields a checklist acc may name (#607). Same reason as ROD_PARAMS:
+   * they are what the board shows, they are not in true_state, and minting contract
+   * fields for the checklists alone is the wrong shape. */
+  /* `letdown_orifice_a`/`_b` are the OPERATOR'S ORIFICE LINEUP and live only in control_state
+   * (#624 item 25): the heatup's letdown step is graded on the selector the player pressed,
+   * which no true_state field carries — the plant publishes the resulting FLOW
+   * (`letdown_flow_actual`), and a flow reads the same on a cold plant letting down through the
+   * RHR cross-connect with the orifices shut. */
+  /* `heater_auto`/`spray_auto` are the two AUTO LAMPS on the pressurizer cards (#624 item 14):
+   * the heatup's "place pressure control in service" step is graded on which mode the operator
+   * selected, and mode is control_state — true_state carries the heater's kW and the spray's
+   * delivered flow, both of which read the same in AUTO and in a MANUAL demand that happens to
+   * match. Grading on kW would tick the step for a player who never touched the card. */
+  var CTL_PARAMS = { feed_coupled: 1, steam_dump_setpoint: 1,
+                     letdown_orifice_a: 1, letdown_orifice_b: 1,
+                     heater_auto: 1, spray_auto: 1,
+                     /* the operator's SELECTION, not the valve (#629) — a dump controller in
+                      * service at its setpoint carries 0 % on a plant already on programme,
+                      * so the valve position cannot tell AUTO from CLOSED */
+                     steam_dump_auto: 1 };
+  function rodParam(snapshot, p) {
+    var spec = ROD_PARAMS[p];
+    if (!spec) return undefined;
+    var groups = snapshot.control_state && snapshot.control_state.rod_groups;
+    if (!groups || !groups.length) return undefined;
+    for (var i = 0; i < groups.length; i++) {
+      if (groups[i] && groups[i].id === spec.group) {
+        var v = groups[i][spec.field];
+        return (v == null || isNaN(v)) ? undefined : v;
+      }
+    }
+    return undefined;
+  }
+
+  /* THE ONE RESOLVER (#605). `test/procedures_harness.js` asserts the same `acc` predicates
+   * this layer grades, and it used to read `snapshot.true_state[p]` directly — a second sampler
+   * of the same truth, and one that cannot see a param resolved anywhere else. It calls this
+   * now, so a param added here reaches the gate and the live runtime together. */
+  InstructorLayer.paramValue = function (snapshot, p) {
+    if (ROD_PARAMS[p]) return rodParam(snapshot, p);
+    if (CTL_PARAMS[p]) {
+      var cv = snapshot && snapshot.control_state ? snapshot.control_state[p] : undefined;
+      if (cv == null || (typeof cv === 'number' && isNaN(cv))) return undefined;
+      return (typeof cv === 'boolean') ? (cv ? 1 : 0) : cv;
+    }
+    return snapshot && snapshot.true_state ? snapshot.true_state[p] : undefined;
+  };
+
   InstructorLayer.prototype._grade = function (snapshot, pred) {
+    if (ROD_PARAMS[pred.p]) {
+      var rv = rodParam(snapshot, pred.p);
+      return { met: this._predMet(rv, pred), graded_by: 'control_state', value: rv };
+    }
+    if (CTL_PARAMS[pred.p]) {
+      var cv = snapshot && snapshot.control_state ? snapshot.control_state[pred.p] : undefined;
+      if (typeof cv === 'boolean') cv = cv ? 1 : 0;
+      return { met: this._predMet(cv, pred), graded_by: 'control_state', value: cv };
+    }
     var plant = (snapshot.metadata && snapshot.metadata.plant_id) || null;
     var map = plant ? PARAM_INSTRUMENT[plant] : null;
     var iid = map ? map[pred.p] : null;
@@ -688,6 +895,7 @@
     if (this.checklist && !this.checklist.complete && command && command.action) {
       var cst = this.checklist.proc.steps[this.checklist.idx];
       if (cst && this._cmdEvidence(cst.cmd, command)) this.checklist.cmdSeen = true;
+      if (cst) this._accsCmdWatch(this.checklist, cst, command);   // multi-check-off cmd entries
     }
 
     // 1/M plot point — an operator ACTION with no plant effect. Pressing "Plot
@@ -701,6 +909,7 @@
       if (this.mode === 'follow' && this.follow && !this.follow.done) {
         var fst1m = this.follow.proc.steps[this.follow.idx];
         if (fst1m && fst1m.cmd && fst1m.cmd.action === 'plot_1m_point') this.follow.cmdSeen = true;
+        if (fst1m) this._accsCmdWatch(this.follow, fst1m, command);  // "point plotted" check-off
       }
       return null;
     }
@@ -725,6 +934,7 @@
       var r = this.below.handleCommand(command);
       this.pendingMessage = null;   // compliance clears stale wrong-action feedback
       if (st && this._cmdEvidence(st.cmd, command)) this.follow.cmdSeen = true;
+      if (st) this._accsCmdWatch(this.follow, st, command);        // multi-check-off cmd entries
       return r;
     }
 
@@ -737,7 +947,8 @@
       case 'next':    this._advanceFollow(+1, false); break;
       case 'prev':    if (f.done) { f.done = false; this.levelComplete = null; } this._advanceFollow(-1, false); break;
       case 'restart': f.idx = 0; f.done = false; this.levelComplete = null;
-                      f.cmdSeen = false; f.sawSeen = false; f.accStreak = 0; f.accMetNow = false; break;
+                      f.cmdSeen = false; f.sawSeen = false; f.accStreak = 0; f.accMetNow = false;
+                      f.accsState = null; break;
       default: break;
     }
     return null;
@@ -746,6 +957,52 @@
   InstructorLayer.prototype._sameFamily = function (a, b) {
     if (a === b) return true;
     return ROD_FAMILY.indexOf(a) !== -1 && ROD_FAMILY.indexOf(b) !== -1;
+  };
+
+  /* ---------------------------------------------------------------- multi-check-off
+   * (#244 item 8, owner: "Each step can have more then one checkoff to complete.")
+   * A step may author `accs: [...]` instead of `acc`: each entry is either an
+   * acceptance predicate {p,op,v[,tol],label} (graded with the same ACC_STABLE_N
+   * debounce as `acc`) or a command observation {cmd,label} (family-matched like the
+   * step's own `cmd` — the 1/M "point plotted" case). Entries LATCH individually —
+   * a met check-off stays met, the way a ticked box behaves — and the step completes
+   * when every entry is latched. Shared by BOTH runtimes (Path 3 checklist and
+   * Path 2 follow), because the Walkthroughs tab and the 📋 checklist run the same
+   * artifact. `holder` is the runtime's own state object (this.checklist / this.follow). */
+  InstructorLayer.prototype._ensureAccsState = function (holder, st) {
+    if (!holder.accsState || holder.accsState.length !== st.accs.length) {
+      holder.accsState = st.accs.map(function () {
+        return { streak: 0, met: false, obs: null, graded_by: null };
+      });
+    }
+    return holder.accsState;
+  };
+  InstructorLayer.prototype._gradeAccs = function (holder, st, snapshot) {
+    var state = this._ensureAccsState(holder, st);
+    var all = true;
+    for (var i = 0; i < st.accs.length; i++) {
+      var en = st.accs[i], ax = state[i];
+      if (!ax.met && en && en.p) {
+        var g = this._grade(snapshot, en);
+        ax.obs = g.value; ax.graded_by = g.graded_by;
+        ax.streak = g.met ? ax.streak + 1 : 0;
+        if (ax.streak >= ACC_STABLE_N) ax.met = true;
+      }
+      if (!ax.met) all = false;               // cmd-kind entries latch in handleCommand
+    }
+    return all;
+  };
+  // The command half of the watch: latch any unmet cmd-kind entry the command satisfies.
+  InstructorLayer.prototype._accsCmdWatch = function (holder, st, command) {
+    if (!st || !st.accs || !st.accs.length) return;
+    var state = this._ensureAccsState(holder, st);
+    for (var i = 0; i < st.accs.length; i++) {
+      var en = st.accs[i];
+      if (en && en.cmd && !state[i].met &&
+          this._cmdEvidence(typeof en.cmd === 'string' ? { action: en.cmd } : en.cmd, command)) {
+        state[i].met = true;
+      }
+    }
   };
 
   // Does `command` count as having performed the step whose authored command is
@@ -839,6 +1096,11 @@
         acc_met: f.accMetNow,
         graded_by: f.gradedBy,
         done: f.done,
+        // Multi-check-off verdicts for the ACTIVE step ({met, obs, graded_by} per
+        // entry, order-parallel to the step's `accs`), or null on single-acc steps.
+        accs: f.accsState ? f.accsState.map(function (a) {
+          return { met: a.met, obs: a.obs, graded_by: a.graded_by };
+        }) : null,
       } : null,
       level_complete: this.levelComplete ? {
         title: this.levelComplete.title,
@@ -865,6 +1127,13 @@
         acc_met: this.checklist.accMetNow,
         graded_by: this.checklist.gradedBy,
         complete: this.checklist.complete,
+        // #619 item 4 — the step is satisfied and is holding for the player to acknowledge.
+        awaiting_ack: !!this.checklist.awaitingAck,
+        // Multi-check-off verdicts for the ACTIVE step (#244 item 8) — {met, obs,
+        // graded_by} order-parallel to the step's `accs`; null on single-acc steps.
+        accs: this.checklist.accsState ? this.checklist.accsState.map(function (a) {
+          return { met: a.met, obs: a.obs, graded_by: a.graded_by };
+        }) : null,
         // Precondition verdicts (#395): {met, obs, graded_by} order-parallel to
         // the procedure's `precond` array; null until first graded or when the
         // procedure authors none. Row text is NOT duplicated (same rule as steps).
@@ -935,6 +1204,11 @@
         // 0 silently rewound a partly-earned step.
         acc_streak: this.follow.accStreak,
         done: this.follow.done,
+        // per-entry multi-check-off latches (#244 item 8): met flags only — obs/
+        // graded_by are derived and regrade on the first tick after restore. A
+        // cmd-kind latch (a plotted point) cannot re-earn itself after a load.
+        accs_met: this.follow.accsState
+          ? this.follow.accsState.map(function (a) { return !!a.met; }) : null,
       } : null,
       checklist: this.checklist ? {
         procedure_id: this.checklist.procedure_id,
@@ -945,6 +1219,8 @@
         cmdSeen: this.checklist.cmdSeen, sawSeen: this.checklist.sawSeen,
         acc_streak: this.checklist.accStreak,
         complete: this.checklist.complete,
+        accs_met: this.checklist.accsState
+          ? this.checklist.accsState.map(function (a) { return !!a.met; }) : null,
       } : null,
     };
   };
@@ -970,6 +1246,10 @@
           cmdSeen: !!cs.cmdSeen, sawSeen: !!cs.sawSeen,
           accStreak: cStreak, accMetNow: cStreak >= ACC_STABLE_N,
           gradedBy: null, complete: !!cs.complete,
+          // restore the per-entry latches; streaks/obs regrade live (#244 item 8)
+          accsState: cs.accs_met ? cs.accs_met.map(function (m) {
+            return { streak: 0, met: !!m, obs: null, graded_by: null };
+          }) : null,
           // Precondition verdicts are DERIVED state — never saved; the first
           // step() tick after a restore regrades them against the live plant
           // (and re-raises the comment if rows are still unmet, which is right:
@@ -1026,6 +1306,10 @@
         idx: fs.idx, cmdSeen: fs.cmdSeen, sawSeen: fs.sawSeen,
         accStreak: fStreak, accMetNow: fStreak >= ACC_STABLE_N,
         gradedBy: null, done: fs.done,
+        // restore the per-entry latches; streaks/obs regrade live (#244 item 8)
+        accsState: fs.accs_met ? fs.accs_met.map(function (m) {
+          return { streak: 0, met: !!m, obs: null, graded_by: null };
+        }) : null,
       };
       this.scenarioStartTime = state.scenario_start_time;
       this.lastBeatFireTime = state.last_beat_fire_time;
@@ -1058,6 +1342,16 @@
    */
   var COND_WORDS = { tavg_c: 'RCS temperature', pressure_mpa: 'RCS pressure',
                      power_pct: 'reactor power', boron_ppm: 'boron', mwe_output: 'generator output' };
+  /* The gate string's VALUE, in the player's units — US-first per the house convention
+   * (#244 item 7's sibling: 'near 286' told the owner nothing; 'near 547 °F' does). */
+  function condValue(p, v) {
+    if (p === 'tavg_c') return Math.round(v * 9 / 5 + 32) + ' °F';
+    if (p === 'pressure_mpa') return Math.round(v * 145.038) + ' psi';
+    if (p === 'power_pct') return v + ' %';
+    if (p === 'boron_ppm') return v + ' ppm';
+    if (p === 'mwe_output') return v + ' MWe';
+    return String(v);
+  }
   InstructorLayer.prototype.rankProcedures = function (snapshot, procs, activeId) {
     var self = this;
     var ts = (snapshot && snapshot.true_state) || {};
@@ -1104,7 +1398,7 @@
           var w = COND_WORDS[c.p] || c.p;
           var op = c.op === '<' ? 'below' : c.op === '>' ? 'above' : c.op === '~' ? 'near' :
                    c.op === '<=' ? 'at or below' : c.op === '>=' ? 'at or above' : c.op;
-          return 'Requires ' + w + ' ' + op + ' ' + c.v;
+          return 'Requires ' + w + ' ' + op + ' ' + condValue(c.p, c.v);
         }).join(' · ') : null
       };
     }).sort(function (a, b) {

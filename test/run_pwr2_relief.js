@@ -20,6 +20,7 @@
  */
 'use strict';
 var fs = require('fs'), path = require('path');
+var MUT = require('./mut_flags.js');   /* --no-mutations / --mut= / --grp= (#602) */
 /* pwr2_water is loaded ONLY for the ADV's 4%-of-RTP cross-check (h_fg at the setpoint) --
  * relief itself carries fractions and needs no properties, which the sandbox loader preserves. */
 require(path.join(__dirname, '..', 'engines', 'pwr2', 'pwr2_water.js'));
@@ -468,7 +469,7 @@ console.log('\n' + '='.repeat(70));
 console.log('  INJECTION SELF-TEST -- every mutation MUST redden at least one check');
 console.log('='.repeat(70));
 var blind = 0;
-MUTATIONS.forEach(function (m) {
+MUT.select(MUTATIONS).forEach(function (m) {
   if (SRC.indexOf(m[1]) === -1) { console.log('  ERROR   anchor not found: ' + m[0]); blind++; return; }
   var r2 = [];
   try { runSuite(loadFrom(SRC.split(m[1]).join(m[2])), r2, true); }

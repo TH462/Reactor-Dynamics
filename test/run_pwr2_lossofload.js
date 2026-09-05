@@ -28,6 +28,7 @@
  */
 'use strict';
 var path = require('path'), fs = require('fs');
+var MUT = require('./mut_flags.js');   /* --no-mutations / --mut= / --grp= (#602) */
 var SRC = path.join(__dirname, '..', 'engines', 'pwr2');
 var ORDER = ['pwr2_water', 'pwr2_vtable', 'pwr2_geometry', 'pwr2_core', 'pwr2_loop', 'pwr2_sources',
   'pwr2_kinetics', 'pwr2_fuel', 'pwr2_reactor', 'pwr2_sg', 'pwr2_turbine', 'pwr2_relief',
@@ -79,7 +80,12 @@ function ride(RD, opts) {
     var tt = t + DT, P = ts.pressure_mpa * PSI, Pi = e.eng.ins.reading.primary_pressure * PSI;
     if (r.t2425 === null && Pi >= 2425) r.t2425 = tt;
     if (r.tTrip === null && e.eng.pt.reactor_trip) { r.tTrip = tt; r.cause = e.eng.pt.trip_cause; }
-    if (r.tRods === null && ts.rod_steps < 190) r.tRods = tt;
+    /* 'THE RODS HAVE VISIBLY STARTED TO MOVE' is 95 % OF TRAVEL, not 190 steps (#602 phase 2).
+     * The literal was 95 % of a 200-step bank; on the sourced 627 it is 30 % withdrawn, so this
+     * waited until the rods were nearly all the way IN and read the drop 3.8 s late (10.1 s
+     * against a setpoint at 6.3 s, blowing a 2.6 s window). A detection THRESHOLD is as much a
+     * fraction-spelled-as-an-absolute as a command is. */
+    if (r.tRods === null && ts.rod_steps < 0.95 * RD.kinetics.RODS.max_steps) r.tRods = tt;
     if (r.tPSV === null && e.eng._pzr.safety_open) r.tPSV = tt;
     if (r.tPORV === null && ts.porv_open && e.eng._pzr.relief_kgs > 0) r.tPORV = tt;
     if (P > r.Pmax) { r.Pmax = P; r.tPmax = tt; }
@@ -168,7 +174,7 @@ var MUTATIONS = [
 ];
 console.log('\ninjection self-test (' + MUTATIONS.length + ' mutations):');
 var blind = 0;
-MUTATIONS.forEach(function (m) {
+MUT.select(MUTATIONS).forEach(function (m) {
   var mutated = PZSRC.replace(m[1], m[2]);
   if (mutated === PZSRC) { console.log('  ANCHOR MISS ' + m[0] + '   <-- mutation did not apply'); blind++; return; }
   var rec2 = [];

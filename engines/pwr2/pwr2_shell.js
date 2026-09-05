@@ -52,13 +52,32 @@
    * restored so that the valves can be closed"]. Power removed means the motor cannot move
    * the valve in EITHER direction — both commands refuse, out loud (#505), while INDICATED
    * pressurizer pressure (HR1, the M-2 lesson; absent means truth) is above the lock. */
+  /* THE LOCK READS ITS OWN NAMED CONSTANT (#608). `admin_lock_psig` was defined in pwr2_eccs.js
+   * beside the same sourced quote and read NOWHERE, while this function carried the literal 1600
+   * and the message string carried it twice more — three copies of one sourced number, which is
+   * the written-down-twice class the standing trap list names. One home now; the message builds
+   * its figures from it.
+   *
+   * THE REFUSAL NAMES A TOOL THE PLAYER HAS *(OWNER, 2026-09-02 playtest, #608 item 3: "I tried
+   * to lower the pressure to 1500 but it would not let me lower it below 1700psi. should we block
+   * the player from controlling this pressure at this point? why cant i lower it below 1700
+   * psi?")*. It used to end "Depressurize below 1600 psig first" — an instruction the Pressure SP
+   * dial CANNOT carry out, because its sourced WTSM 10.2 floor is 1700 psig, 85 psi above this
+   * lock. So the refusal sent the player to a control that refuses them again, silently. It now
+   * names the depressurization that actually works, the same one the Scanner card and the cooldown
+   * checklist already teach: heaters off, spray held open. */
+  var ACC_LOCK_PSIG = (RD.pwr2 && RD.pwr2.eccs && RD.pwr2.eccs.ACC
+                       && RD.pwr2.eccs.ACC.admin_lock_psig) || 1600;
   function accValve(e, open) {
     var psig = (e.ins.reading.primary_pressure !== undefined
                 ? e.ins.reading.primary_pressure : e.sys.P) * 145.038 - 14.7;
-    if (psig > 1600) {
+    if (psig > ACC_LOCK_PSIG) {
       throw new Error('ACCUMULATOR VALVE BLOCKED: power is removed from the valve operator ' +
-        'above 1600 psig pressurizer pressure (administrative lock, TS Bases B 3.5.1) — ' +
-        'indicated ' + psig.toFixed(0) + ' psig. Depressurize below 1600 psig first.');
+        'above ' + ACC_LOCK_PSIG + ' psig pressurizer pressure (administrative lock, ' +
+        'TS Bases B 3.5.1) — indicated ' + psig.toFixed(0) + ' psig. The Pressure SP dial ' +
+        'floors at 1700 psig and cannot take you back down: to get under the lock, put the ' +
+        'pressurizer heaters in MANUAL and off, then hold spray open until pressure is below ' +
+        ACC_LOCK_PSIG + ' psig.');
     }
     EN.command(e, 'accumulator_valve', open);
   }
@@ -69,6 +88,10 @@
    * with the reason inside the window, and resets-then-executes after it, signal present
    * or not (the WTSM 12.3.2.3 circuit; the re-arm block stops automatic re-actuation). */
   function resetDelayS() { return root.RD.pwr2.protection.RESET.delay_s; }
+  /* THE BANK SCALE (#602 phase 1) — the same live read the engine uses, for the same reason.
+   * Twelve literal 200s lived in this file, four of them inside `(24 / 912) * 200` rate
+   * conversions where the number is doing real work and reads like arithmetic. */
+  function bankSteps() { return root.RD.pwr2.kinetics.RODS.max_steps; }
 
   /* MIRROR-ONLY: a NUMERIC board reading the reused pwr instrument layer publishes and this
    * engine has no internal twin for. Such a failure is landed by _mirrorInstr on the board
@@ -92,6 +115,17 @@
   function boardNumericChannel(id) {
     var sp = root.RD.PWR_CONFIG && root.RD.PWR_CONFIG.instruments;
     return !!(sp && typeof id === 'string' && sp[id]);
+  }
+  /* THE STEAM DUMP MODE IN SERVICE (#629). One resolver, two readers: `steam_dump_auto` (the
+   * boolean the lamps have always read) and `steam_dump_mode` (the word the card's status
+   * readout renders). The commanded DRIVER wins — `dcDrivers.mode` is forwarded into the
+   * controller every step, so it is what the plant will act on next; the controller's own
+   * `dc.mode` is the fallback for an engine that has not stepped since a load, and 'tavg' the
+   * module default. Two samplers of one selection is how the lamps and the word would come to
+   * disagree, which is #606's shape. */
+  function dumpMode(e) {
+    if (e.dcDrivers && e.dcDrivers.mode !== undefined) return e.dcDrivers.mode;
+    return e.dc ? e.dc.mode : 'tavg';
   }
   function eccsStop(e, pump, c) {
     var on = (c.active !== undefined ? c.active : c.running) !== false;
@@ -241,6 +275,165 @@
     EN.command(e, 'reset_afas', true);
   }
 
+  /* MAIN FEED PUMP START/STOP, driven off the selector (#605) — see set_feed_pump_speed.
+   * `startFeedPumps` is what AUTO and any non-zero MAN demand do; a MAN demand of exactly zero
+   * is the OFF position and secures them. The zero test is on the DEMAND, not on delivered flow:
+   * a pump train coasting down still reads flow for a while, and the operator's selector is the
+   * thing being obeyed here (#200 — take the delivered power away, leave the demand alone). */
+  function startFeedPumps(e) {
+    EN.command(e, 'feed_pump_a', true);
+    EN.command(e, 'feed_pump_b', true);
+  }
+  /* A ZERO DEMAND IS NOT A PUMP STOP — securing is its own act, and it needs `secure: true`.
+   * Two measured reasons, both regressions the first cut of this caused:
+   *   · the `feed_sg` automation channel emits set_feed_pump_speed every evaluation and its
+   *     computed demand passes through zero, so an inferred stop would secure the feed train
+   *     from inside AUTO;
+   *   · the operator's corrective command against an SG overfeed IS "demand 0" (#510 M-12,
+   *     run_pwr2_kernel 2d), and turning that into a pump stop both defeats the casualty and
+   *     takes an action bigger than the one asked for.
+   * The board's OFF button is what carries `secure` — see the FEED PUMPS wiring. */
+  function feedSelect(e, frac, secure) {
+    var f = +frac;
+    if (!isFinite(f)) f = 0;
+    if (f > 0) startFeedPumps(e);
+    else if (secure) { EN.command(e, 'feed_pump_a', false); EN.command(e, 'feed_pump_b', false); }
+    EN.command(e, 'feed_manual_frac', f);
+  }
+
+  /* ---- THE OPERATOR'S LOAD DIAL, RATE-LIMITED (#624 / #619 item 24, 2026-09-04) -------------
+   *
+   * WHAT IT IS. `set_load_target` was ONE ASSIGNMENT: whatever the player typed became the
+   * turbine's steam demand in the same instant. MEASURED from `low_power` (10 MWe on the grid,
+   * the state the startup checklist hands the player), dialling 30 MWe with no rod motion:
+   * indicated pressurizer level 27.5 % -> 16.11 % in 0.78 plant-min, THROUGH the 17 % low-level
+   * cut, which isolates letdown and sheds the heaters. The plant then fills on 5 gpm of seal
+   * injection to a high-level reactor trip at 67 min. Charging AUTO was saturated at its program
+   * and correct throughout; MANUAL charging did worse (15.86 %). The defect was not the level
+   * controller — it was that a real operator cannot make that disturbance at all.
+   *
+   * WHERE IT LIVES, AND WHY HERE. `pwr2_turbine`'s ENVELOPE is REPORTED, NOT ENFORCED (HR5) and
+   * says so in its own header: "Rate limiting is a control-layer actuation — the current engine
+   * puts its `load_rate_pct_per_min` in config and enforces it in `load_mode.js`, which is the
+   * control side, and that division is the house rule." This IS the control side. The engine's
+   * `load_mwe` door is untouched and still steps instantly, which is what the automatic paths
+   * need (see NOT LIMITED below); the operator's dial is the only thing that walks.
+   *
+   * THIS IS PARITY, NOT A NEW CONTROL. The retired plant carried `load_rate_pct_per_min: 30.0`
+   * (`engines/pwr/pwr_config.js`), enforced RAISES ONLY in `engines/load_mode.js`
+   * *(OWNER RULING, 2026-08-08: "Do the 30% increase.")*. PWR2 never inherited any of it —
+   * #534's standing trap, an engine that took the old plant's tables by reference and lost the
+   * ones it did not copy. No new board control, no new tile.
+   *
+   * THE RATE FOLLOWS THE SOURCE, NOT THE RETIRED TUNE *(coordinator's call, 2026-09-04, on the
+   * measurement; owner review requested on #624)*. [sourced] Ginna UFSAR chapter 10, section
+   * 10.1.2.1 (ML20339A040): "load changes up to generation step load increases of 10% of full
+   * power and ramp increases of 5% of full power per min within the load range of 12.8% to 100%
+   * of full power without reactor trip… Similar step and ramp load reductions are possible within
+   * the range of 100% to 12.8%." MEASURED at the same 10 -> 30 MWe, no rods: instant 16.92 % true
+   * (cut); 30 %/min still reaches the cut (a 20-point step arrives in 40 s and the shrink
+   * completes in 47 s); 10 %/min 18.29 %; 5 %/min 21.52 % and back on program by 90 min;
+   * 2.5 %/min 22.92 %. The sourced ramp keeps 4.5 points of margin over the cut; the retired tune
+   * keeps none.
+   *
+   * RAISES ONLY, NO STEP ALLOWANCE — both DECLARED, and the first one is a decision:
+   *  - RAISES ONLY. A dial ABOVE the effective target walks; a dial BELOW it lands AT ONCE, as it
+   *    did before this change. Three reasons, in order:
+   *      (1) THE DEFECT IS A RAISE. A load increase draws more steam, cools the loop, contracts
+   *          it, and the pressurizer SHRINKS — into the 17 % cut. A decrease does the opposite:
+   *          the loop expands and the pressurizer swells, toward the 87 % high-level trip, which
+   *          is decades of margin away from a dispatch move. Rate-limiting the safe direction
+   *          buys nothing.
+   *      (2) IT IS THE RETIRED PLANT'S OWN DESIGN under the ruling above, and `load_mode.js`
+   *          records at length why symmetry was measurably WRONG there — it turned this plant's
+   *          defining load-rejection ride-out into a leisurely ramp and took out five behaviour
+   *          probes, the `pwr_tour` greedy-ask branch and the SGTR EOP.
+   *      (3) A LIMITED REDUCTION WOULD SIT ON THE C-7 INTERLOCK'S OWN NUMBER. See below — that
+   *          is the reason specific to THIS plant, and it is the strongest of the three.
+   *    The source's second sentence, "similar step and ramp load reductions are possible", is a
+   *    CAPABILITY statement — what the machine can absorb without tripping — not a limiter, and
+   *    it is deliberately not modelled as one.
+   *  - THE 10 % STEP ALLOWANCE IS NOT MODELLED. A pure ramp is one rule the player can hold in
+   *    their head, and a step allowance is a second regime that would need its own measurement
+   *    (10 % of rated is 10 MWe — one third of the disturbance that caused this issue, delivered
+   *    instantly). Recorded as a deliberate simplification, not an oversight.
+   *  - THE RATE IS NEVER RETYPED. It is read from `RD.turbine.ENVELOPE.ramp_pct_per_min` every
+   *    step, so the enforced limit and the reported envelope cannot drift apart — the exact
+   *    written-down-twice class the standing trap list names.
+   *
+   * WHAT IS NOT LIMITED, and why each one:
+   *  - EVERY LOAD REDUCTION, per the ruling above.
+   *  - THE OTdT/OPdT TURBINE RUNBACK (`pwr2_engine`, sourced 200 %/min for 1.5 s every 30 s).
+   *    It is an automatic protective action on its own path and far faster than an operator can
+   *    drive the machine. `syncLoadDial` below then pulls the DIAL DOWN to follow it — the
+   *    retired plant's `immediate` law ("it moves the ASK as well so the ramp has nothing to
+   *    undo"). Without that the limiter would walk the load back up out of the runback.
+   *  - `disconnect_grid` — the board's UNLOAD button. A planned offline is the breaker opening,
+   *    not a dial change; it zeroes both numbers in the SAME step rather than the next one.
+   *  - A TURBINE TRIP, which stops the machine rather than moving its demand.
+   *
+   * WHY REDUCTIONS ARE NOT LIMITED — THE C-7 REASON, MEASURED. The steam dump's loss-of-load
+   * arming interlock is "a ramp load decrease at a rate GREATER THAN 5 %/min" (`pwr2_dumpctl`
+   * DUMP.c7_ramp_frac_per_min, WTSM 11.2) — THE SAME SOURCED NUMBER as the load envelope. A
+   * symmetric limiter would therefore park the dial's reduction rate exactly ON the interlock's
+   * threshold, against a strict `>`. It was built that way first and measured, from 100 MWe to 0:
+   *
+   *      instant dial cut   peak C-7 rate signal 49.99 %/min      -> ARMS
+   *      5 %/min walk       peak C-7 rate signal  4.999773 %/min  -> NEVER ARMS
+   *                         (peak step gap 0.83 % against a 10 % criterion)
+   *
+   * Two things are wrong with that, and neither is a tuning matter. First, the margin is
+   * 0.00023 %/min — the C-7 rate unit is a 120 s first-order lag whose fixed point IS the ramp
+   * rate, so it converges on the threshold from underneath and 5*(1-e^-10) is what the ride
+   * measures. One bit picks the branch: that is the BIFURCATION trap on CLAUDE.md's standing
+   * list (#543, #588 — a single ulp reproduced the other platform's branch), and a check standing
+   * on it pins a coin toss, not a claim. Second, and worse, it would have removed the operator's
+   * dial as a way to produce the loss-of-load transient AT ALL — a taught coupling, and the
+   * failure mode `engines/load_mode.js` records for the retired plant (its FG-4 note).
+   *
+   * With reductions instantaneous both routes to the graded ride-out are live and are pinned by
+   * one check: a DIAL CUT arms C-7 exactly as it did before this change, and the board's UNLOAD
+   * button (`disconnect_grid`, item imro8len0oi) arms it too. A turbine trip arms C-8 instead.
+   */
+  function loadRampMweS() {
+    /* MWe per SECOND, from the sourced envelope and the turbine's own rating. */
+    return (RD.turbine.ENVELOPE.ramp_pct_per_min / 100) * RD.turbine.TURB.mwe_rated / 60;
+  }
+  /* the operator's ASK. Clamped the same way the engine door clamps, so the dial cannot hold a
+   * number the plant would refuse and then walk toward it for ever. */
+  function dialLoad(e, mwe) {
+    var v = +mwe;
+    if (!isFinite(v)) v = 0;
+    e._loadDialMwe = Math.max(0, Math.min(RD.turbine.TURB.mwe_rated, v));
+  }
+  /* an AUTOMATIC path moved the load: the dial follows, instantly, in both numbers. */
+  function setLoadImmediate(e, mwe) { dialLoad(e, mwe); EN.command(e, 'load_mwe', mwe); }
+  /* THE WALK. Called once per shell step, BEFORE the engine steps. */
+  function stepLoadDial(e, dt) {
+    if (e._loadDialMwe === undefined || !isFinite(e._loadDialMwe)) {
+      /* a fresh plant, or a save taken before this existed: the dial IS where the machine is,
+       * which is the pre-limiter state exactly */
+      e._loadDialMwe = e.tb.load_target_mwe;
+      return;
+    }
+    var gap = e._loadDialMwe - e.tb.load_target_mwe;
+    if (gap === 0) return;
+    /* RAISES ONLY — a REDUCTION lands whole, which is what the dial did before this change and
+     * what keeps the C-7 loss-of-load route open. See the ruling and the three reasons above. */
+    if (gap < 0) { EN.command(e, 'load_mwe', e._loadDialMwe); return; }
+    if (!(dt > 0)) return;
+    var stepMwe = loadRampMweS() * dt;
+    EN.command(e, 'load_mwe', gap <= stepMwe ? e._loadDialMwe
+                                             : e.tb.load_target_mwe + stepMwe);
+  }
+  /* AFTER the engine steps: if the plant itself took the load DOWN past where the limiter put
+   * it — the runback is the only such path today — the ask follows it down. See the note above. */
+  function syncLoadDial(e, wasMwe) {
+    if (e._loadDialMwe === undefined) return;
+    if (e.tb.load_target_mwe < wasMwe - 1e-9 && e.tb.load_target_mwe < e._loadDialMwe)
+      e._loadDialMwe = e.tb.load_target_mwe;
+  }
+
   /* ---- the command registries (see header). value: a mapper fn or a reason string. ---- */
   var MAPPED = {
     /* THE #511 VALVES — real machinery behind the two diagram symbols #509 item 11 had to
@@ -283,7 +476,7 @@
       if (e.pt.reactor_trip && !(e.rodSteps <= 0.5 && e.sdSteps <= 0.5)) {
         throw new Error('RPS RESET BLOCKED: the rods are not at the bottom of their travel ' +
           '(control ' + e.rodSteps.toFixed(0) + ', shutdown ' + e.sdSteps.toFixed(0) +
-          ' of 200 steps) — the reactor trip breakers reset with the rods in.');
+          ' of ' + bankSteps() + ' steps) — the reactor trip breakers reset with the rods in.');
       }
       EN.command(e, 'reset_protection', true);
       e.rodTarget = e.rodSteps; e.sdTarget = e.sdSteps;
@@ -300,7 +493,7 @@
     rod_start:        function (e, c) {
       if (c.speed) EN.command(e, 'rod_speed', c.speed);
       EN.command(e, c.group_id === 'shutdown_rods' ? 'sd_target' : 'rod_target',
-        c.direction > 0 ? 200 : 0);
+        c.direction > 0 ? bankSteps() : 0);
     },
     rod_stop:         function (e, c) {
       if (c.group_id === 'shutdown_rods') EN.command(e, 'sd_target', e.sdSteps);
@@ -310,7 +503,8 @@
       EN.command(e, 'rod_target', e.rodSteps);
       EN.command(e, 'sd_target', e.sdSteps);
     },
-    set_load_target:  function (e, c) { EN.command(e, 'load_mwe', c.mwe !== undefined ? c.mwe : c.value); },
+    /* THE DIAL, not the reference — the walk is in step() (see THE OPERATOR'S LOAD DIAL above). */
+    set_load_target:  function (e, c) { dialLoad(e, c.mwe !== undefined ? c.mwe : c.value); },
     trip_turbine:     function (e, c) { EN.command(e, 'turbine_trip', true); },
     turbine_trip:     function (e, c) { EN.command(e, 'turbine_trip', true); },
     /* LATCH THE TURBINE (#551/#559, 2026-08-27) — the verb the real plant uses, and the half
@@ -547,12 +741,31 @@
     },
     /* THE FEED TRAIN (2026-08-21, pwr2_feedwater) — the old refusals retired. Payload shapes
      * are the current engine's: pct 0-120, delta_pct, {active}. */
-    set_feed_pump_speed: function (e, c) { EN.command(e, 'feed_manual_frac', (c.pct !== undefined ? c.pct : 100) / 100); },
-    set_feedwater_flow:  function (e, c) { EN.command(e, 'feed_manual_frac', (c.pct !== undefined ? c.pct : 100) / 100); },
+    /* THE FEED PUMPS ARE THE SELECTOR (#605). Mode 5 and Mode 4 now boot with the main feed
+     * pumps SECURED *(OWNER RULING, 2026-09-02, on the playtest note "In mode 5 it should start
+     * w/ turbine tripped, SG feed off": "Feed pumps secured")*, and before this the pumps had
+     * NO operator command at all — `feed_pump_a`/`feed_pump_b` were reachable only through the
+     * loss_of_feedwater failure and its clear. Booting them secured with no way to start them
+     * would have made the heatup unplayable, which is the half of the ruling that had to ship
+     * with it.
+     *
+     * The board's FEED PUMPS card already carries the three-position selector this needs, so it
+     * IS the control: OFF secures the pumps, AUTO and MAN start them. That reading is honest on
+     * this board — OFF has always meant "no feed" to the player — and it beats a fourth pair of
+     * buttons for a plant with no per-pump lineup to manage. `startPumps` is deliberately not
+     * conditional: a selector moved to a running position with a dead pump train underneath it
+     * is the dark-wire shape (#507 wave 6), and the FWI latch is untouched here — an isolated
+     * feed train still delivers nothing, which is its own state and its own reset. */
+    set_feed_pump_speed: function (e, c) { feedSelect(e, (c.pct !== undefined ? c.pct : 100) / 100, c.secure === true); },
+    set_feedwater_flow:  function (e, c) { feedSelect(e, (c.pct !== undefined ? c.pct : 100) / 100, c.secure === true); },
     feed_pump_nudge:     function (e, c) {
-      EN.command(e, 'feed_manual_frac', e.fw.feed_frac + (c.delta_pct || 0) / 100);
+      feedSelect(e, e.fw.feed_frac + (c.delta_pct || 0) / 100);
     },
-    set_feed_coupled:    function (e, c) { EN.command(e, 'feed_auto', c.active !== false); },
+    set_feed_coupled:    function (e, c) {
+      var on = c.active !== false;
+      if (on) startFeedPumps(e);
+      EN.command(e, 'feed_auto', on);
+    },
     isolate_feedwater:   function (e, c) {
       /* the RESTORE click is the FWI unlatch (#512, same per-system law as the stops
        * above). TWO drivers, both would re-isolate silently on the next step (#509 item
@@ -580,8 +793,12 @@
       }
       EN.command(e, 'isolate_feedwater', c.active !== false);
     },
+    /* THE PUMPS BECOME UNAVAILABLE, the selectors do not move (#605, #200). Writing the
+     * operator's selector meant the casualty healed itself the moment the player touched the
+     * FEED PUMPS card — and since #605 gave that card a real pump start, it would have healed
+     * on the first AUTO press. */
     loss_of_feedwater:   function (e, c) {
-      EN.command(e, 'feed_pump_a', false); EN.command(e, 'feed_pump_b', false);
+      EN.command(e, 'feed_pump_a_avail', 0); EN.command(e, 'feed_pump_b_avail', 0);
     },
     /* #510 M-12: the row is the SEAT now, not a rewrite of the operator's demand — the
      * selector and manual_frac stay put, and the clear releases the valve instead of
@@ -602,9 +819,39 @@
     },
     /* the dump-mode door existed in the engine all along (dump_mode: tavg/pressure/off) —
      * the refusal predated it (#506.1). 'open' stays refused: the dump is controller-driven
-     * and no manual full-open lever is modeled. */
+     * and no manual full-open lever is modeled.
+     *
+     * ⚠ AUTO IS TWO MODES, AND WHICH ONE IS THE TURBINE'S QUESTION (#629, 2026-09-05). Until
+     * this change `auto` mapped unconditionally to 'tavg', and the consequence was that STEAM
+     * PRESSURE mode was UNREACHABLE from the board on any plant not booted in it. The Mode 5
+     * initial condition boots `dump_mode: 'off'`, so a player heating the plant up had no route
+     * to the mode the source calls the heatup/cooldown/hot-standby mode — and the DUMP SETPOINT
+     * box was an orphan on every plant a player produces. MEASURED on the heatup checklist's own
+     * ride (full stack, 600x): pressing AUTO changed NOTHING (byte-identical trace, ADV 7.6 %,
+     * dumps 0.0 %), because the tavg-mode turbine-trip controller only opens above
+     * `tavg_noload_c` = 557 °F (291.67 °C) and the ATMOSPHERIC DUMP VALVE is already relieving
+     * at 1040 psig / 551.6 °F below it. The plant therefore parked 4.4 °F (2.4 °C) ABOVE the
+     * no-load band with the ADV modulating at 7-9 % as its heat sink, where selecting pressure
+     * mode parks it at 547.2 °F / 1005 psig with the ADV shut and the condenser dumps carrying
+     * 0.4-2.9 %.
+     *
+     * SOURCED, not chosen for convenience: WTSM 11.2 (ML11223A294) — "Tavg mode at power, steam
+     * pressure mode at hot standby / startup / cooldown" (quoted in pwr2_dumpctl.js's header).
+     * The TURBINE is the discriminator this plant already has for "at power" vs "not": C-8 (the
+     * trip relay) is the sourced signal that auto-selects the turbine-trip controller inside
+     * tavg mode, so keying the operator's AUTO selection on the same latch puts the selector
+     * where the source puts the plant. On line -> 'tavg' (unchanged: every at-power initial
+     * condition and `engageDefaults`' `steam_dump` channel land here exactly as before).
+     *
+     * MY CALL, not an owner ruling (#629 work order, 2026-09-05) — declared as such because it
+     * changes what a shipped button does. What it does NOT do is add a control: there is one
+     * AUTO button and it now selects the mode the plant conditions call for, which is the Q4
+     * user-complexity veto answered rather than argued. */
     set_steam_dump:    function (e, c) {
-      if (c.mode === 'auto') EN.command(e, 'dump_mode', 'tavg');
+      if (c.mode === 'auto') EN.command(e, 'dump_mode', e.tb.tripped ? 'pressure' : 'tavg');
+      /* the explicit modes are the API for a checklist, a scenario or a gate that means ONE of
+       * them — the board never sends these, and they exist so a test can say which it asserts */
+      else if (c.mode === 'pressure' || c.mode === 'tavg') EN.command(e, 'dump_mode', c.mode);
       else if (c.mode === 'closed') EN.command(e, 'dump_mode', 'off');
       else if (c.mode === 'open') {
         throw new Error('pwr2_shell: set_steam_dump "open" REFUSED — the dump is controller-driven ' +
@@ -672,6 +919,9 @@
     set_trip_block: function (e, c) {
       if (c.trip_id === 'pr_low_setpoint' || c.trip_id === 'hi_flux_lo') {
         EN.command(e, 'low_flux_block', c.blocked !== false);
+      } else if (c.trip_id === 'ir_high' || c.trip_id === 'ir_high_flux') {
+        /* the other half of the startup net (#601) — the pwr1 board's id and this engine's own */
+        EN.command(e, 'ir_high_block', c.blocked !== false);
       } else if (c.trip_id === 'lo_press') {
         /* the P-11 pair (#507 wave 10) — the pwr1 board's own ids for the cooldown blocks */
         EN.command(e, 'lo_press_trip_block', c.blocked !== false);
@@ -679,8 +929,8 @@
         EN.command(e, 'si_block', c.blocked !== false);
       } else {
         throw new Error('pwr2_shell: trip block "' + c.trip_id + '" REFUSED — this RPS ' +
-          'blocks the 35 % low-flux setting (P-10), the low-pressure trip and the SI ' +
-          'actuation (both P-11); nothing else');
+          'blocks the 35 % low-flux setting and the 25 % intermediate-range trip (both P-10), ' +
+          'the low-pressure trip and the SI actuation (both P-11); nothing else');
       }
     }
   };
@@ -703,8 +953,10 @@
      * PORV remains open"); the block valve is the operator's isolation. */
     open_porv_manual: function (e, c) { EN.command(e, 'porv_manual', true); },
     close_porv:       function (e, c) { EN.command(e, 'porv_manual', false); },
-    /* grid disconnect is a load rejection: the actuator is the load target */
-    disconnect_grid:  function (e, c) { EN.command(e, 'load_mwe', 0); },
+    /* grid disconnect is a load rejection: the actuator is the load target. NOT rate-limited —
+     * the breaker opens, it is not a dial change — so it moves BOTH numbers in one step
+     * (#624 item 24), which is also what keeps the C-7 graded ride-out reachable in free play. */
+    disconnect_grid:  function (e, c) { setLoadImmediate(e, 0); },
     /* set_rcp: OFF secures the pump (the trip actuator + the SECURED display latch), ON is
      * a real motor start since #507 wave 9 (offsite-bus gated in the engine — the refusal
      * surfaces through #505's path when the grid is down) */
@@ -740,7 +992,7 @@
     stuck_open_spray: function (e, c) { EN.command(e, 'spray_stick', c !== false); },
     rod_withdrawal_runaway: function (e, c) {
       EN.command(e, 'rod_runaway',
-                 (c && c.severity !== undefined ? c.severity : 0.5) * (24 / 912) * 200);
+                 (c && c.severity !== undefined ? c.severity : 0.5) * (24 / 912) * bankSteps());
     },
     /* the old command toggled a discrete pump; PWR2's actuator is charging DEMAND — OFF is
      * demand 0 in manual, ON restores nothing by itself (dial a flow or re-select AUTO).
@@ -813,7 +1065,7 @@
          * parks the bank at 200/200, so the failure only has travel on a plant whose rods
          * are inserted — declared, not hidden. */
         EN.command(e, 'rod_runaway',
-                   (c.severity !== undefined ? c.severity : 0.5) * (24 / 912) * 200);
+                   (c.severity !== undefined ? c.severity : 0.5) * (24 / 912) * bankSteps());
       }
       else if (c.failure_id === 'sgtr') {
         /* A break AT the sg_primary node — the facade routes it into the SECONDARY with the
@@ -854,7 +1106,7 @@
         EN.command(e, 'break_close', true);
       }
       else if (c.failure_id === 'loss_of_feedwater') {
-        EN.command(e, 'feed_pump_a', true); EN.command(e, 'feed_pump_b', true);
+        EN.command(e, 'feed_pump_a_avail', 1); EN.command(e, 'feed_pump_b_avail', 1);
       }
       else if (c.failure_id === 'sg_overfeed') EN.command(e, 'feed_overfeed', false);
       else if (c.failure_id === 'loss_of_condenser_vacuum') EN.command(e, 'cw_pumps', true);
@@ -929,7 +1181,7 @@
        * number, the #500 override pattern, copied so the shared table is untouched. */
       this.instruments.specs = Object.assign({}, this.instruments.specs, {
         rod_limit_margin: Object.assign({}, this.instruments.specs.rod_limit_margin,
-                                        { range: [0, 200] }),
+                                        { range: [0, bankSteps()] }),
         /* ONE NAME ADDED TO THE STATUS LIST (#571), the same copy-don't-touch pattern.
          * `_copyStatus` reads ONLY this array — `this.reading[st[i]] = ex[st[i]]` — so a key
          * `_instrExtras` publishes but the list does not name never reaches the reading at all.
@@ -953,7 +1205,14 @@
 
   PWR2Engine.prototype.step = function (dt) {
     var prevPwr = this._ts ? this._ts.power_pct : undefined;
+    /* THE OPERATOR'S LOAD DIAL WALKS HERE, on the control side of the engine door — see the
+     * long note over `stepLoadDial`. Before the step, so the turbine draws steam for the
+     * reference the operator's ramp has actually reached; after it, the dial follows any
+     * AUTOMATIC cut (the runback) down. */
+    stepLoadDial(this.eng, dt);
+    var loadWas = this.eng.tb.load_target_mwe;
     this._ts = EN.step(this.eng, dt);
+    syncLoadDial(this.eng, loadWas);
     /* smoothed %/s power rate for the SG-level shrink-and-swell term — the OLD engine's own
      * form (pwr_engine.js:582, tau 2 s), because the consumer is the old instrument model */
     if (prevPwr !== undefined && dt > 0) {
@@ -988,7 +1247,7 @@
      * rod_limit_margin feeds ROD LIMIT LO (in THIS bank's steps; the alarm row's setpoint
      * is overridden to the sourced RIL+10 in this currency — see getProtectionConfig) */
     ex.rod_at_limit = e._rodAtLimit === true;
-    ex.rod_limit_margin = e._rodLimitMargin === undefined ? 200 : e._rodLimitMargin;
+    ex.rod_limit_margin = e._rodLimitMargin === undefined ? bankSteps() : e._rodLimitMargin;
     /* BOTH BANKS (#545). The retired engine has had this right since #75 —
      * `this.rod_groups.every(g => g.position_pct <= RODS_IN_PCT)` — and this was a second
      * copy that lost the `every`, so the kernel's RODS_NOT_INSERTED reset permissive was
@@ -1056,6 +1315,16 @@
   };
 
   PWR2Engine.prototype.getTrueState = function () { return this._ts; };
+  /* The loop's numerical-stress report from the last step (#625): the Courant limit the ring
+   * measured BEFORE it stepped, how many sub-steps it took, whether it refused. Read by the
+   * service's WARP tier; optional on the engine interface (a plant without one is never warped
+   * on that ground). Not part of true_state on purpose — it describes the integrator, not the
+   * plant. */
+  PWR2Engine.prototype.getStepReport = function () {
+    var pr = this.eng && this.eng._lastPlant;
+    if (!pr) return null;
+    return { courant_limit_s: pr.courantLimit_s, sub_steps: pr.subSteps, held: pr.held === true };
+  };
   PWR2Engine.prototype.getInstruments = function () { return this.instruments.reading; };
   /* The kernel's engine-owned-RPS mirror (#509 items 1/5) asks the engine WHY it is
    * scrammed so rps_state.last_trip_reason is the plant's own cause, not a placeholder. */
@@ -1216,10 +1485,16 @@
     var e = this.eng, rp = e.rpsReport || {};
     var blocked = !!e.pt.blockLowFlux;
     var asserted = false, sp = 35;
+    /* the SECOND P-10 request (#601) — the 25 % intermediate-range trip, its own lever */
+    var irB = !!e.pt.blockIrHigh, irAsserted = false, spIr = 25;
     (rp.functions || []).forEach(function (f) {
       if (f.id === 'hi_flux_lo') {
         asserted = f.asserted === true;
         if (typeof f.setpoint === 'number') sp = f.setpoint * 100;   /* frac -> % */
+      }
+      if (f.id === 'ir_high_flux') {
+        irAsserted = f.asserted === true;
+        if (typeof f.setpoint === 'number') spIr = f.setpoint * 100;
       }
     });
     /* the P-11 pair (#507 wave 10): same surface, the pwr1 board ids, the engine's own
@@ -1227,9 +1502,21 @@
     var loB = !!e.pt.blockLoPress, siB = !!e.pt.blockSI;
     var p11 = rp.p11_permit === true;
     var spLo = 12.24, spSi = 11.83;
+    /* WOULD THE LINE FIRE IF THE BLOCK CAME OFF? (#598 item 15) Both these rows shipped
+     * `asserted: false` HARD-CODED, which was not a placeholder anybody noticed: it is the
+     * literal answer to "is this function tripping", and a blocked function never is. The cost
+     * was that the panel could not tell a harmless release from one that scrams on the spot, so
+     * it offered both with the same single click. `would_assert` is the ungated crossing
+     * (pwr2_protection) and is the field this needs. The ESFAS row is the whole SI kind — the
+     * block disarms all three initiating rows together — so ANY of them crossing is the answer. */
+    var loAsserted = false, siAsserted = false;
     (rp.functions || []).forEach(function (f) {
-      if (f.id === 'lo_pzr_press' && typeof f.setpoint === 'number') spLo = f.setpoint;
+      if (f.id === 'lo_pzr_press') {
+        if (typeof f.setpoint === 'number') spLo = f.setpoint;
+        if (f.would_assert === true) loAsserted = true;
+      }
       if (f.id === 'si_lo_pzr_press' && typeof f.setpoint === 'number') spSi = f.setpoint;
+      if (f.kind === 'esfas' && f.would_assert === true) siAsserted = true;
     });
     /* THE INDICATION SETPOINTS (#556). `trip_block_status` above carries a setpoint only for a
      * BLOCKABLE trip, because that is what it was built for — so a surface that draws where the
@@ -1260,7 +1547,7 @@
     });
 
     return {
-      trip_blocks: { pr_low_setpoint: blocked, lo_press: loB, si_trip: siB },
+      trip_blocks: { pr_low_setpoint: blocked, ir_high: irB, lo_press: loB, si_trip: siB },
       trip_setpoints: tripSetpoints,
       trip_setpoint_instruments: ['pzr_level'],   /* what the list above SPEAKS FOR — see comment */
       trip_block_status: {
@@ -1270,9 +1557,17 @@
           can_clear: blocked,
           setpoint: sp
         },
-        lo_press: { blocked: loB, asserted: false,
+        /* the intermediate-range trip (#601) — SAME permissive as the row above, separate
+         * request. The board id is the pwr1 board's `ir_high`, like every other row here. */
+        ir_high: {
+          blocked: irB, asserted: irAsserted,
+          can_block: !irB && rp.p10_met === true,
+          can_clear: irB,
+          setpoint: spIr
+        },
+        lo_press: { blocked: loB, asserted: loAsserted,
                     can_block: !loB && p11, can_clear: loB, setpoint: spLo },
-        si_trip:  { blocked: siB, asserted: false,
+        si_trip:  { blocked: siB, asserted: siAsserted,
                     can_block: !siB && p11, can_clear: siB, setpoint: spSi }
       }
     };
@@ -1350,8 +1645,8 @@
        * there by the board itself. */
       rod_groups: [
         { id: 'control_rods', name: 'Control Rods', function: 'control',
-          steps: Math.round(e.rodSteps), max_steps: 200,
-          position_pct: 100 * e.rodSteps / 200,
+          steps: Math.round(e.rodSteps), max_steps: bankSteps(),
+          position_pct: 100 * e.rodSteps / bankSteps(),
           moving: !ts.scrammed && e.rodSteps !== e.rodTarget,
           direction: e.rodTarget > e.rodSteps ? 1 : (e.rodTarget < e.rodSteps ? -1 : 0),
           speed: e.rodSpeedSel || 'normal', scrammed: !!ts.scrammed,
@@ -1360,8 +1655,8 @@
           insertion_limit_steps: e._rilSteps === undefined ? null : e._rilSteps,
           at_insertion_limit: e._rodAtLimit === true },
         { id: 'shutdown_rods', name: 'Shutdown Rods', function: 'shutdown',
-          steps: Math.round(e.sdSteps), max_steps: 200,
-          position_pct: 100 * e.sdSteps / 200,
+          steps: Math.round(e.sdSteps), max_steps: bankSteps(),
+          position_pct: 100 * e.sdSteps / bankSteps(),
           moving: !ts.scrammed && e.sdSteps !== e.sdTarget,
           direction: e.sdTarget > e.sdSteps ? 1 : (e.sdTarget < e.sdSteps ? -1 : 0),
           speed: e.rodSpeedSel || 'normal', scrammed: !!ts.scrammed,
@@ -1405,9 +1700,31 @@
        * the band it is handed, so moving `HEATERS.elev_*_pct` moves the drawn bank with it and
        * the modelled and drawn elevations cannot drift apart. */
       heater_elev_pct: [PZ.HEATERS.elev_bot_pct, PZ.HEATERS.elev_top_pct],
+      /* WHICH NEUTRON RANGE THE OPERATOR SHOULD BE READING (#598 item 8) — forwarded, never
+       * recomputed. Both bands are derived in pwr2_true_state from the P-6/P-10 permissives and
+       * the gauge scales; the board colours the two indications green inside their band and
+       * grey outside it. Absent on a plant that does not publish them, and the board then keeps
+       * its old trip-proximity colouring, byte-identical. */
+      nis_sr_inuse_cps: ts.nis_sr_inuse_cps,
+      nis_ir_inuse_a:   ts.nis_ir_inuse_a,
       heater_auto: e.pzDrivers.heaters_manual === undefined,
       spray_auto: e.pzDrivers.spray_manual === undefined,
       pressure_setpoint: e.pz.setpoint_mpa,
+      /* THE DIAL'S OWN SPAN (#598 item 3), 1700-2500 psig. The board's setpoint box declared
+       * `[0.1 MPa, pzr safety]` — 15..2484 psi, the RETIRED engine's band captured at script
+       * load — so it ACCEPTED an entry this engine will not honour: the operator typed the
+       * Mode 5 pressure, `pzr_setpoint_mpa` clamped it to 1700 psig at pwr2_pressurizer.js:686,
+       * and the next snapshot snapped the box back with no explanation. The owner read that as
+       * "once pressure was set to normal operating pressure, it couldn't be lowered again".
+       *
+       * The CLAMP is right and stays: WTSM 10.2's operator span is the AT-POWER pressure-control
+       * dial, and the cold lineup's sub-floor setpoint is a constructor seed — a standing lineup,
+       * not a dialled value (pwr2_engine.js:197-204). Below permissive-11 this plant depressurizes
+       * the way the real one does, on spray with the heaters off, not by winding the dial down.
+       * What was wrong was a box advertising a span the engine refuses. The plant publishes, the
+       * board reads — the #557 shape, and the same law the steam-dump and ADV boxes already
+       * follow: "the box refuses anything the engine would silently clamp." */
+      pressure_setpoint_range_mpa: [PZ.CONTROL.setpoint_min_mpa, PZ.CONTROL.setpoint_max_mpa],
       /* THE PRESSURE CONTROL BAND'S HALF-WIDTHS, in psi about whatever setpoint the operator
        * has dialled (#576c). Same "the plant publishes, the board reads" shape as
        * `heater_elev_pct` above and for the same reason: `pwr_board_wiring` drew the primary
@@ -1446,8 +1763,15 @@
        * plant's number. Read from CVCS, never retyped, so a re-derived volume basis moves the
        * box and its caption together. */
       charging_max_gpm: RD.cvcs.CVCS.charging_max_gpm(),
-      letdown_flow_normalized: e.cv.letdownOpen *
-                               (RD.cvcs.CVCS.charging_normal_gpm() + RD.cvcs.sealInjectionGpm()) / 450000,
+      /* THE FLOW THE PLANT IS ACTUALLY PASSING (#624 item 14), not `letdownOpen x rated`. The
+       * lineup-derived form was a board lie on both sides of the letdown split: a cold plant
+       * letting down through the RHR cross-connect with the orifices OUT would read 0 while
+       * passing the full normal magnitude, and a plant under the 17 % protective isolate would
+       * read normal while passing nothing. `_letdownKgs` is the stepped result. */
+      letdown_flow_normalized: RD.cvcs.kgsToGpm(e._letdownKgs || 0) / 450000,
+      /* the protective isolate, distinct from the orifice lamps below — a shut lineup and an
+       * isolated one look identical on those two booleans (#624 item 14) */
+      letdown_isolated: e.cv.letdownIsolated === true,
       /* the RHR lineup — real since #507 wave 2 (the valve, not the permissive; the split
        * re-enables the board's ALIGN/ISOLATE/HX controls, which key on hx_fraction) */
       rhr_active: e.rh.running === true,
@@ -1488,16 +1812,30 @@
       /* the CAPABILITY list — one dispatch mode exists; the board disables FOLLOW off this
        * (absent list = the old engine, everything enabled) */
       load_modes: ['manual'],
+      /* THE EFFECTIVE REFERENCE — what the machine is being asked for RIGHT NOW, which since
+       * #624 item 24 WALKS toward the dial at the sourced 5 %/min. This is the plant's readback:
+       * the generator MW gauge follows it. */
       load_target_mwe: e.tb.load_target_mwe,
       /* the DEMANDED load, distinct from the ramping reference — the board's MW box reads
-       * this first so a press computes cur+1 from a number that is not itself moving */
-      load_cmd_mwe: e.tb.load_target_mwe,
+       * this first so a press computes cur+1 from a number that is not itself moving
+       * *(OWNER DIRECTIVE, 2026-08-11: "The generator load increase button doesn't let the user
+       * go up more than one press due to the rate increase limit. Let the user raise to the
+       * desired level before starting the climb/rate limit.")*. Until #624 item 24 the two
+       * fields were the SAME number on this engine, because nothing ramped; the owner's
+       * directive was written against the retired plant and is honoured here for the first
+       * time. Falls back to the reference for a plant that has not stepped yet. */
+      load_cmd_mwe: e._loadDialMwe !== undefined ? e._loadDialMwe : e.tb.load_target_mwe,
       steam_dump_pct: ts.steam_dump_valve_pct !== undefined ? ts.steam_dump_valve_pct : 0,
       /* real since #506: the dump-mode door is commanded from the board — the DRIVER is the
        * commanded selection (dcDrivers.mode, forwarded each step); the controller default
        * is tavg = auto */
-      steam_dump_auto: (e.dcDrivers.mode !== undefined ? e.dcDrivers.mode
-                        : (e.dc ? e.dc.mode : 'tavg')) !== 'off',
+      steam_dump_auto: dumpMode(e) !== 'off',
+      /* THE MODE ITSELF (#629): 'tavg' | 'pressure' | 'off'. `steam_dump_auto` is a boolean
+       * over three states, and the two it collapses are the two that behave differently —
+       * pressure mode holds the secondary at the DUMP SETPOINT, tavg mode ignores that box
+       * entirely. Published so the card's status word can say WHICH controller is in service;
+       * the retired engine publishes no such field and the board falls back to its old word. */
+      steam_dump_mode: dumpMode(e),
       adv_pct: ts.adv_valve_pct !== undefined ? ts.adv_valve_pct : 0,
       /* from the latched selection (AUTO vs SHUT command both zero demand); a manual %
        * demand clears the latch */
@@ -1695,12 +2033,21 @@
         sdTarget: e.sdTarget, sdSteps: e.sdSteps, rodSpeedSel: e.rodSpeedSel,
         _advMode: e._advMode, _chargingPumpOn: e._chargingPumpOn, _letdownAB: e._letdownAB,
         _rcpSecured: e._rcpSecured,   /* the handswitch's SECURED/LOST split (#507 wave 9) */
+        /* THE OPERATOR'S DIALLED LOAD TARGET (#624 item 24) — the ask, distinct from the
+         * ramping reference in `tb`. An old save without it lands on undefined and the first
+         * step seeds the dial from the restored reference, i.e. effective = dialled, which is
+         * the pre-limiter state exactly. */
+        _loadDialMwe: e._loadDialMwe,
         _scramT: e._scramT, _manualTrip: e._manualTrip, _lastTrip: e._lastTrip,
         _rodStopSig: e._rodStopSig, _runbackSig: e._runbackSig, _rbT: e._rbT,
         _rbActive: e._rbActive, _pzRelief: e._pzRelief, _pzReliefH: e._pzReliefH,
         /* the outsurge-heat and SI-boron one-step carriers (#510 batches 1+3) — old saves
          * land on 0, healthy */
         _pzSurgeHeat: e._pzSurgeHeat, _eccsKgs: e._eccsKgs,
+        /* the stepped letdown flow the board reads back (#624 item 14) — an old save lands on
+         * the constructor's 0 and the first step overwrites it, so a restored plant shows a
+         * zero letdown for the length of one broadcast at worst */
+        _letdownKgs: e._letdownKgs,
         /* the SGTR stream's one-step carriers (#507 wave 5) — old saves land on 0, healthy */
         _sgtrKgs: e._sgtrKgs, _sgtrH: e._sgtrH,
         /* the break's live containment backpressure carrier (#543) — an old save lands on

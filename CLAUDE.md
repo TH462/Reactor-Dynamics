@@ -309,6 +309,7 @@ to read everything.
 | **Argue a feature's EDUCATIONAL value (Q2)** | **`Blueprint/CURRICULUM.md`** — what each plant is meant to teach, in four tiers. PWR only. **All four tiers RULED 2026-08-03 and binding for the PWR.** A = 9 couplings; B = 8 evolutions (**list is a subset — a second pass is owed**); C = Core/Covered, Core owes a mission and Covered does not; D = adopt existing. |
 | **Apply a Hard Rule to a real decision** | `Blueprint/CONTEXT.md` §3 for the rule (binding, 10 rules, each names its guard), then **`Blueprint/SOP.md`** §1–4 for the worked cases and technique (advisory). |
 | **Put a decision to the owner** | `Blueprint/SOP.md` §5 — always bring your recommendation; see the block above. |
+| **Write or review any player-facing text** | **`Blueprint/STYLE_GUIDE.md`** — **ADVISORY, not binding.** The voice (technical, accessible, concise) and what to call a control: the screen's name, spelled out, acronym in parentheses. |
 | **Find a document that was deleted** | `Blueprint/RETIRED.md` — what was removed, why, and the command to read it again. |
 | **Work out which lane to use, or merge one** | **`Blueprint/LANES.md`** — the occupancy check's two blind spots, warn-and-ask, the merge-conflict list and the `Manuals/` silent-drop case. The block at the top of this file is only what binds. |
 | **Look up a trap that used to be in this file** | **`Blueprint/TRAPS.md`** — bullets evicted from the standing list under its 25-cap, plus the criterion for which ones go. |
@@ -331,22 +332,18 @@ to read everything.
 > change. The dense, append-only version lives in `Blueprint/BUILD_DECISIONS.md`
 > (Status line + Open Flags table) — update both.
 
-_Last updated: **2026-08-31**._
+_Last updated: **2026-09-01**._
 
 **Where the PWR is.** Read `BASELINES` for the runner count, never a number written here. The PWR
-is the only active plant: engines, control, service, instructor and the board are built, and the
-#297 build wave and #221 audit slices are landed. **It is feature-complete Mode 4 ↔ Mode 1, NOT
-Mode 5** — the water-property floor saturates at 211 °F (99.4 °C), above the Mode 5 boundary
-(#524; #532 corrected seven chapters that said otherwise). **What is open, in one line each:**
+is the only active plant: engines, control, service, instructor and the board are built.
+**It is feature-complete Mode 5 ↔ Mode 1** (#524), and the LIVE
+CHECKLISTS walk it: `RD.MANUAL_PROCEDURES.pwr2`, six chain-linked legs Mode 5 → full power →
+Mode 5, replayed by `run_checklist_pwr2` (#244/#526; #254 stages 4/6 remain). **What is open, in one line each:**
 
 **Do not read the list below as the issue tracker** — `gh issue list --state open` is the authority
 and this summary ages. Measured twice (2026-08-10, 2026-08-28): whole bullets called issues open
 that were closed. **Run the query.**
 
-- **#408** — the accident-inventory clock umbrella. Open: the SGTR/seal amendment rows (evidence
-  mini-pass; the declared ~7,500 gal makes absolute-size components ~5–6× fractionally bigger
-  than the power-scaled rows) and the wave-3 mission items, the tag+defend "quiet night" story
-  the beat graph cannot express (#416). Wave 1's re-clock and the relief sizing are landed.
 - **#436 — the control-room rework, BUILT to its content gates** (2026-08-10/11), children
   #437–#446 landed bar two. The chart is one lane per indication with a shared cursor and an
   event ribbon; `ui/test_panel/lane_reference.html` is the golden artifact and measures itself —
@@ -372,10 +369,7 @@ that were closed. **Run the query.**
   only, true values declared, gated by `run_pwr2_engine` (14 checks / 8 mutations; it caught the
   scram-bypasses-RPS defect and filed #499 on arrival — `PWR2_VALIDATION.md` §49). P-9 (turbine trip
   = reactor trip above it, both sourced values), the #499 beyond-model guards and the
-  DELAYED-data sourcing are all LANDED (§50–52). **Everything since is recorded in `PWR2_VALIDATION.md` §53–§97 — read the sections, not this line**, which is why the roll-call that used to sit here is gone. Still open out of it: **#507**'s casualty menu stands at 22 honest rows (21 at wave 10, +`anticipatory_trip_failure` at #515) with Section F closed, and **#510** batches 1–4 landed leaving five LOW harness items. **#523 (owner rulings 2026-08-26 "Flip now, track the gaps" / "Strip it at build time"): PWR2 IS THE PLANT THE SITE RUNS (§94)** — every link and `/sim` carry `?engine=pwr2`, and a **public** build contains no retired engine at all (six tags + 544,663 bytes pruned by `site/build_site.js`; `make_portable` always). The strip is CHANNEL-GATED so the PREVIEW site keeps it, because the guided content is authored against it and `freePlayOnly` stays. `pwr_config.js`/`pwr_instruments.js` are NOT the old engine and ship everywhere. Two of the three pre-replacement gaps are now #531 (R8) and #525 (mission compatibility). Still owed: delta-T lead/lag + K5 (COLR), channel redundancy, the ESF arm display, Mode 5 proper (#524), stuck_rod_on_scram, the steam-line-break rows + auto isolation signal (the MSIV itself is BUILT, §80).
-  **#514/#513 (2026-08-25), both CLOSED.** Two facts outlive them: **shell.html no longer loads
-  RBMK/BWR** (dev routes `test_rbmk.html` / `test_bwr.html`, `verify_e2e_ui` PWR-only), and
-  mutation replay is `grp:`-scoped in 6 runners. Rest: `Diagnostic/TUNING_LOG.md` 2026-08-25.
+  DELAYED-data sourcing are all LANDED (§50–52). **Everything since is recorded in `PWR2_VALIDATION.md` §53–§97 — read the sections, not this line**, which is why the roll-call that used to sit here is gone. Still open out of it: **#507**'s casualty menu stands at 22 honest rows (21 at wave 10, +`anticipatory_trip_failure` at #515) with Section F closed, and **#510** batches 1–4 landed leaving five LOW harness items. **#523 (owner rulings 2026-08-26 "Flip now, track the gaps" / "Strip it at build time"): PWR2 IS THE PLANT THE SITE RUNS (§94)** — every link and `/sim` carry `?engine=pwr2`, and a **public** build contains no retired engine at all (six tags + 544,663 bytes pruned by `site/build_site.js`; `make_portable` always). The strip is CHANNEL-GATED so the PREVIEW site keeps it, because the guided content is authored against it and `freePlayOnly` stays. `pwr_config.js`/`pwr_instruments.js` are NOT the old engine and ship everywhere. Two of the three pre-replacement gaps are now #531 (R8) and #525 (mission compatibility). Still owed: delta-T lead/lag + K5 (COLR), channel redundancy, the ESF arm display, stuck_rod_on_scram, the steam-line-break rows + auto isolation signal (the MSIV itself is BUILT, §80). shell.html no longer loads RBMK/BWR (#514/#513, 2026-08-25).
 - **#534 — the PWR2 adversarial bug hunt umbrella: 47 confirmed defects** (28 high, 18 medium,
   1 low), filed 2026-08-27 as #535–#566. Report only; no simulator code was changed by the
   sweep. It named TWO systemic patterns, both now fixed and gated: the board was calibrated to
@@ -406,7 +400,6 @@ that were closed. **Run the query.**
   program point. **The break range STAYS at 20 cm²** *(OWNER RULING, 2026-08-29: "A")* —
   the model latches above **46 cm²**, a 2,667 cm² shear on step ONE: a design-basis LOCA needs
   `pwr2_core`'s solve, not a bigger slider.
-- **RBMK and BWR** — on hold, and the source of most remaining backlog. Do not touch.
 
 **The manual set's revision number does not advance until a RELEASE** *(OWNER DIRECTIVE,
 2026-08-06: "The revision number only matters during a release to the website. Revision numbers
@@ -422,52 +415,48 @@ produce — Rev 13 shipped carrying thirteen lettered items from two lanes for e
 reading aid, not a record: the full entry is in `Diagnostic/TUNING_LOG.md`, and anything that is
 standing procedure rather than news belongs in the list below. **Evicting one: RESCUE THE TRAP
 FIRST** — ask what in it would still burn someone in a month, move that to the standing list as
-ONE line, drop the rest. **A bullet is ~80 words.** (Measured 2026-08-06: the list was running
-7 bullets averaging 500 words, two of them duplicating traps already rescued below.)
+ONE line, drop the rest. **A bullet is ~80 words.**
 
-- **A RENDER-BOUND FLICKER IS MEASURED IN THE BROWSER'S PIPELINE, NOT OUR JS — AND PER-ELEMENT
-  THROTTLING OF ANIMATIONS CUTS NOTHING** (2026-08-31, #596, the in-sim report:
-  4.7 fps). Two 60 Hz wastes behind a 10 Hz display: the chart rebuilt an IDENTICAL SVG every
-  paint, and ~100 dash strokes each ran their own CSS animation (`stroke-dashoffset` never
-  composites; A/B measured, animations were 6× of raster). Per-element `steps()` still commits
-  at 60 Hz; **only a SHARED clock (std_pipe.js, ~12 Hz batch) aligns the writes**. Follow-up
-  in #596; a Paint event's clip rect is the LAYER, not damage.
-- **A NUMBER THAT MATCHES THE RETIRED PLANT'S IS NOT THEREBY AN INHERITED CONSTANT — CHECK THE
-  PROVENANCE BEFORE YOU CHANGE IT** (2026-08-31, #591/#592 §125, the owner's playtest again). The
-  board's CW-temp bound came from `PWR_CONFIG` at script load, 35–85 °F: the exact signature of
-  the #573/#579 pattern. I widened PWR2's ceiling to 95 °F so the C-9 removal point was reachable
-  — and **85 °F is SOURCED** (Ginna TS Bases B 3.7.8) under a standing owner directive, both
-  written in the revision row for the section I was editing. The board read the right value from
-  the wrong plant. **The fix was provenance, not arithmetic.**
-- **A GATE CAN BE POINTED AT TWO OF ITS SUBJECT'S THREE TABLES AND REPORT GREEN — AND THE BOARD
-  KNEW BEFORE THE MANUAL DID, THREE TIMES** (2026-08-30, #532, Rev 17 (e)–(p)). `run_manual_setpoints`
-  shipped in this same effort reading chapter 09's §2.0 and §4.0 and scored **9/9** over a §3.0 that
-  was entirely the retired plant's: the PORV fixed at 2350 psi when it rides **Press SP + 100**, seven
-  actuations that do not exist, **two of the three real ones missing**. Nothing was wrong with the
-  checks. **Ask what a gate READS, not only what it asserts.** Meanwhile ROD AUTO was dark, the HPI
-  arm disabled and the picker offered *Hot Shutdown (Mode 4)* while seven chapters and the checklist
-  a player runs named a `cold_shutdown` the engine **refuses by name**.
-- **A NUMBER THAT LOOKS COSMETIC CAN BE ANOTHER ENGINE'S PHYSICS — AND A GATE POINTED AT THE
-  WRONG PLANT DEFENDS THE ERROR** (2026-08-29, #579/#580 §119). `severity_meta.max` is display
-  text to `ui/app.js` and a leak COEFFICIENT to `pwr_engine.js:1623`; rescaling the Break Size
-  range to state an area would have cut the retired plant's design-basis LOCA **16x** across five
-  gates. Worse, `run_manual_units` matched `Manuals/12`'s flows against `pwr_config` — the
-  RETIRED plant — so the wrong manual passed and a CORRECTED one would have failed. **Ask which
-  plant a check defends.**
-- **A CONSTANT WITH NO DERIVATION IS USUALLY A TOOL'S DEFAULT, AND A FIT THAT LOOKS LIKE IT
-  EXTRAPOLATES USUALLY DOES NOT** (2026-08-29, #586 §118). The 800 °C vapour ceiling the
-  core-damage chain died against was `THigh=800` in the fetch URL that built Layer 0 — three
-  lines from a *liquid* ceiling carrying a real argument. **Ask whether the neighbour has a
-  derivation and this one merely has a value.** Moving such a bound: the old fit ran **34.8 %
-  out on cp** just past its range, and **every reference row the gate held stopped at the old
-  bound**, so nothing could catch it. Extend a range only by refitting AND fetching reference
-  data inside the extension.
+- **THE PAUSE LOOP EXCLUDED ONE CLASS BY DESIGN AND THAT CLASS WAS THE FRAME PRODUCER**
+  (2026-09-04, #613). `tickAnimations` paused ~90 keyframe animations and skipped CSSTransition as
+  "short, one-shot" — but 150 ms transitions on level rects, restarted by every 100 ms broadcast,
+  never finish. Measured at 10×: ZERO keyframe animations running, 6–7 transitions running at every
+  sampled instant, 904 compositor draws per 15 s against 265 app paints. Removing them: −51 %.
+  Three waves throttled the class already stopped — the fps in the bundle is the APP’s own cadence.
+
+- **TWO CORRECT MECHANISMS TWO DAYS APART CAN DISAGREE BY 17 psi — AND A HOLD RE-DECIDED EVERY
+  STEP CHATTERS AT 1×** (2026-09-04, #627). #608 ticked the Pressure SP step at 682 psia to clear the
+  cover gas; #622 held the clock AT the 665 psia cover gas. Between them the checklist waited on a
+  number while the plant asked for the valve — and the hold, "pressure rose since the last 0.02 s
+  step", rose, cleared and re-rose **three times over 24 psi**; its gate SAMPLED the first rise and
+  passed. Assert the span, and grep the checklist for the step that is active when a cue fires.
+- **A SPEED BUTTON IS A REQUEST THE LOOP NEVER REFUSED — AND "THE SAME PHYSICS AT A COARSER STEP"
+  WAS THE WHOLE SECOND MODEL** (2026-09-04, #625). There was no cap on steps per broadcast: 600×
+  blocked the main thread **350 ms per 100 ms broadcast** (3600×: 2.5 s), the page froze, and the
+  transient detector — scaled by WALL cadence — read a quiet plant at 600× as a standing transient.
+  Measured before designing anything: PWR2 at a **0.5 s** step stays inside instrument noise over
+  2 h in three regimes (~2,700×); at **1.0 s** the quiet plant trips itself. Kinetics is exact and
+  the loop sub-steps, so the "simplified physics tier" needed no physics. `run_warp_tier`.
+- **A BREVITY CAP COUNTED IN WORDS PAYS FOR ITSELF BY REDDENING ANOTHER GATE** (2026-09-03,
+  #619/#621 item 12). The worst step description ran **9 sentences / 246 words**, so a word cap
+  was the obvious fix — but the long steps carry the most numbers, and every number owes the
+  US/SI pair `run_manual_units` requires: *"the 1972 psi (13.6 MPa) P-11 permissive"* is half
+  tax, so the cheapest way to satisfy a word cap is to **delete the pairs**.
+  `checklist_why_length` counts SENTENCES; words went to the unscored backlog, where all six
+  over-80-word blocks read as exactly three. **Ask what a cap makes cheap.**
+
+- **A CLICK THAT MISSES A TEXT FIELD IS NOT A NO-OP — IT IS A KEYBOARD SHORTCUT** (2026-09-02,
+  #605). Both "can't type" blockers were this, and neither was the text box. The Pressure SP
+  `<input>` is **30 x 17 px of an 85 px frame** (a `psi` span and the arrows fill the rest, inside
+  the same border); a miss leaves focus on BODY and the global keys eat the digits — 2/3/5 are TIME
+  ACCELERATION, so "2235" ended at 3600x. Feedback form: 32 chars typed, **0 in the box**, focus on
+  `#playBtn`. **Make the whole affordance the target; the handler looks correct either way.**
+
 **Standing procedure — not part of the rotation above; these do not expire.** One trap per entry.
-**MAX 25 BULLETS** *(OWNER RULING, 2026-08-10: selected "Cap at 25, evict to TRAPS.md" from
-options I wrote — a selection, not verbatim words)*, gated by `test/run_doc_budget.js`. Adding
+**MAX 25 BULLETS** *(OWNER RULING, 2026-08-10: selected "Cap at 25, evict to TRAPS.md")*,
+gated by `test/run_doc_budget.js`. Adding
 one means evicting one to **`Blueprint/TRAPS.md`**, and the criterion is written there: **move
-what a GATE already catches**, keep what nothing can tell you. This list was the only unbounded
-thing left in the file and it grew about a bullet a session.
+what a GATE already catches**, keep what nothing can tell you.
 
 - **A check can pin a BIFURCATION, not a claim** (#543, 2026-08-28; #588, 2026-08-30). One bit
   picks the branch — green here, red on CI. **Assert the invariant the defect violated.**
@@ -476,7 +465,9 @@ thing left in the file and it grew about a bullet a session.
   before trusting a blowdown check**. `mcr.microsoft.com/playwright:v1.61.1-noble` reproduces CI.
 - **A pre-declared reject criterion can outlive its measurement** (rescued from the #394
   limit-cycle bullet on eviction, 2026-08-10): #378's was void the next day. Re-measure the
-  criterion, not just the result, before you let it reject anything.
+  criterion, not just the result, before you let it reject anything. **So does a FIXTURE BUILT AT
+  AN ENVELOPE WALL** (#524, rescued 2026-09-02): `P_MIN = 0.1` was `PLow=0.1` in a NIST fetch URL.
+  Move the wall and every probe standing on it reddens — adjudicate per-probe, refit inside it.
 - **A bracketed TEMPLATE placeholder cites like a number** (rescued from the #380 bullet on
   eviction, 2026-08-09): NUREG-1431's "~30–32 %" SG lo-lo survived two evidence passes because
   both verdicted the mechanism and inherited the figure. Ginna, the anchor plant, says 17 %.
@@ -526,7 +517,10 @@ thing left in the file and it grew about a bullet a session.
   check asserting an ABSENCE can be pinning a NON-EVENT (`run_reachability` exists for the
   instrument half). `h.range()` spans the WHOLE run, the wrong window for a loss on an event that
   recovers — take the ends and assert the SPAN. A gate that iterates a hand-maintained MAP tests
-  the map (`verify_manual_follow` covered 17 of 45 steps at a confident PASS). A SOURCE SCAN for a
+  the map (`verify_manual_follow` covered 17 of 45 steps at a confident PASS). **ASK WHAT A GATE
+  READS, not only what it asserts** — `run_manual_setpoints` scored 9/9 over a chapter-09 §3.0 it
+  never opened (#532), and marked a row `narrative` *because the plant lacked the constant*, which
+  is how a rod stop's setpoint lived in a trip's row (#601). A SOURCE SCAN for a
   rendered string cannot tell you the string is REACHABLE — `/\(partial\)/` passed green on
   `(false ? ' (partial)' : '')` (#485); make it a function and test the claim, don't spell it. And
   a term that is
@@ -556,7 +550,10 @@ thing left in the file and it grew about a bullet a session.
   defect, then re-run the INJECTIONS — the whole file's, not just yours.
 - **A tolerance band is a claim that what it excludes is harmless — measure that** (rescued
   from the #348 themes bullet on eviction, 2026-08-07). CA-10's 1-point "coupling lag" band
-  hid an interlock with no reset differential chattering at 35 % duty.
+  hid an interlock with no reset differential chattering at 35 % duty. **And CHECK THE BAND'S
+  PROVENANCE before you retune what sits inside it** (#598, rescued 2026-09-03): AUTO charging
+  held its program to 0.11 % while the tile's hard-coded 40–70 % painted an on-program Mode 5
+  level 15 points below normal.
 - **Adjudicate a physics change's red probes ONE AT A TIME** (rescued from the #364/#365
   themes bullet on eviction, 2026-08-08). Batch-judging 11 reds as "the retune moved things"
   would have hidden two real defects — each red is the fix working, a stale fixture, or a new
@@ -660,14 +657,11 @@ not a changelog.**
 - Extend the **M8 UI / M4 control surface to RBMK + BWR**.
 - **ECCS card UI layout** (contract in `Blueprint/pwr_synoptic_prerequisites.md`), and two
   Mode-5 nice-to-haves: a `plant_mode` text indicator and an explicit `eccs_mode` readout.
-  (Campaign ↔ Mode-5 alignment and the Mode-5 controls themselves are **done** — they sat in
-  this list marked "done" for a week, which is what a list nobody prunes looks like.)
 
 **Current gate baselines — `BASELINES` in `test/run_all.js` IS the authority. Do not copy
-numbers here.** This section carried ~24,000 words of per-runner prose until 2026-08-06 and every
-figure in it had rotted: `verify_flags_ui` said 48/48 against a gate that has always scored 42,
-`run_otdt` sat at 39 through three commits that took it to 46, `run_contract` appeared **twice
-with different numbers**. Run the gate; read the map. The per-change rationale lives in
+numbers here.** This section carried ~24,000 words of per-runner prose until 2026-08-06 and
+EVERY figure in it had rotted — three worked cases in `TUNING_LOG.md` 2026-08-06, including one
+runner listed **twice with different numbers**. Run the gate; read the map. Per-change rationale:
 `Diagnostic/TUNING_LOG.md` and `Blueprint/BUILD_DECISIONS.md`, newest first.
 
 ```
@@ -692,8 +686,7 @@ Four things about it that are procedure, not history:
   `run_*.js` is invisible to it: `board_check.html` sat at 1 FAILURE through a lane merge, a green
   CI run and a release before `verify_board_check.js` wrapped it.
 - **Per-runner times in a parallel run are CONTENTION times, not costs** (`run_pwr` reads 54 s
-  where it takes 22 s alone). The `secs:` hints in `BASELINES` are a longest-first scheduling
-  nudge and cannot affect a score or an exit code — do not maintain them like baselines.
+  where it takes 22 s alone). The `secs:` hints only nudge scheduling — never maintain them.
 - **CI runs the same command on every push and PR to `main`/`develop`**
   (`.github/workflows/gates.yml`; 3-way on 4 cores — 43m31s before #513's cuts, re-measure
   on the next push; this line read "~8 min" while CI stood at 43). **Check it after you push** —
@@ -759,6 +752,11 @@ node test/run_meltdown.js MD-5  # one path by id
 node test/run_procedures_stack.js          # the SAME procedures through M4+M5+M6 (see below)
 node test/run_procedures_stack.js pwr_startup   # one by id
 node test/run_procedures_stack.js --lineup=bare # the noDefaults/campaign lineup
+node test/run_pwr2_engine.js --no-mutations   # skip the replay while fixing a check (34 pwr2
+                                # runners; --mut=/--grp= too). FILTERED = FORCED NON-ZERO, never
+                                # a baseline. 115 s -> 2.9 s (#602)
+node test/run_warp_tier.js             # the two pacing tiers (#625): WARP's fidelity band, the
+                                # cliff at 1.0 s, the in-loop lockout, the step budget
 node tools/perturb_sweep.js            # WHICH CHECKS BREAK IF I RETUNE THIS? (see below)
 node tools/perturb_sweep.js --suite=behavior --nudge=thermal.h_sg*1.03
 node tools/perturb_sweep.js --self-test  # prove the harness can detect anything at all
@@ -768,9 +766,8 @@ node test/measure_stack.js --for=12h --every=1h --watch=tavg_c,pressure_mpa
 
 `test/ops_*.js` and `test/*_harness.js` are supporting harnesses. Ops-probe FAILs
 are tuning targets, tracked in `Diagnostic/OPS_TUNING_REPORT.md`.
-`run_e2e_controls.js` and `run_procedures.js`
-are PART OF THE GATE LIST — both drifted red unnoticed once because they weren't
-listed (2026-07-19 review). **`run_all.js` discovers `test/run_*.js` and
+`run_e2e_controls.js` and `run_procedures.js` are PART OF THE GATE LIST — both
+drifted red unnoticed once because they weren't listed (2026-07-19 review). **`run_all.js` discovers `test/run_*.js` and
 `test/verify_*.js` automatically and fails on any runner it has no baseline for**, so
 a new gate cannot go unlisted again — add it to `BASELINES` when you add the runner.
 
@@ -1008,18 +1005,29 @@ integration branch; `main` is stable/release. Do not commit straight to `main`.
 
 ### Website changelog & version numbers
 
-> **The page is LIVE** *(OWNER DIRECTIVE, 2026-08-04: "The next release will take the program
-> out of pre-Alpha and into Alpha and bring back the update tracking page. Update tracking
-> summaries/lists should be concise.")*. `Alpha 1.0.0` shipped 2026-08-04; every release since
-> is an ordinary bump by the digit rules below. `CHANGELOG.md`'s pre-public sections are
-> **`## [Pre-launch 1.x.y]`**, not `Alpha` — they were dev versions, and parsed as released ones
-> `1.0.0` sorts under `1.11.0` and `run_release` reddens on newest-first.
+> **The page is LIVE** *(OWNER DIRECTIVE, 2026-08-04: "…bring back the update tracking page.
+> Update tracking summaries/lists should be concise.")*. `Alpha 1.0.0` shipped 2026-08-04.
+> `CHANGELOG.md`'s pre-public sections are **`## [Pre-launch 1.x.y]`**, not `Alpha` — parsed as
+> released, `1.0.0` sorts under `1.11.0` and `run_release` reddens on newest-first.
 
 The public site has a **player-facing** changelog at **`changelog.html`** — separate
 from the developer `CHANGELOG.md`. **Every release gets a version number and a
 `changelog.html` entry — required, not optional; do it as part of the merge.**
 
-- **When** — immediately *before* merging `develop` → `main`. One entry per release.
+- **When** — **at the first push to `develop` after a release, not at the merge to `main`**
+  *(OWNER DIRECTIVE, 2026-09-03: "The version should be ticked up appropriately and change log
+  updated as if it was going to main… so that I can review all of this stuff before it gets
+  pushed to [main] and published.")*. The
+  pending version wears **`-rc<N>`** in all three files or none, digits REQUIRED (`run_release`
+  has a `PENDING` state; do not quieten a red by relaxing it, #611). **Bump N on every push to
+  `develop` that changes the sim** *(OWNER, 2026-09-03: "add a release candidate version number
+  to the right of rc so I can keep track of the release candidate builds")* — bug reports carry
+  `RD_RELEASE`, so an unnumbered `-rc` cannot tie a symptom to a build. One changelog entry per
+  release; **later pushes EXTEND it**, like the manual's pending revision row, while N advances. Review it on the tester site
+  (`develop.reactor-dynamics.pages.dev`); the release commit then only strips `-rc` and sets the
+  date. **A flag-gated feature is not released and gets no `changelog.html` entry** — check
+  `site/flags.js` — but does belong in `CHANGELOG.md` *(OWNER RULING, 2026-09-03: "they're
+  technically not released so don't put them in the change logs yet")*.
 - **Version** — `Alpha X.Y.Z` = **Platform . Feature . Refinement**. Read the top entry
   and bump the highest-significance digit in the release:
   - **X** platform milestone (new reactor type, engine overhaul, alpha→beta). Rare.
@@ -1031,42 +1039,30 @@ from the developer `CHANGELOG.md`. **Every release gets a version number and a
   **Y IS FOR NEW THINGS, NOT FOR VISIBLE THINGS** *(OWNER DIRECTIVE, 2026-07-31: "I think we
   should have the y part of the change number be for major changes or feature additions in
   order to reduce the change number blowup. Z is for smaller changes and fixes even if they
-  are player facing.")*. The old wording, "a new player-facing feature", caught nearly every
-  release and took the version **1.2.0 → 1.11.0 in eight days** (`CHANGELOG.md` 2026-07-31).
+  are player facing.")* — the old wording took the version **1.2.0 → 1.11.0 in eight days**.
   **The operative test: could you add it to the Roadmap as a line item?** New system, scenario,
   mode or page → **Y**. Better/clearer/fixed version of something already there → **Z**, however
   visible it is.
 
-  **Do not trust a version written here** — read the top entry of `changelog.html` and
-  `site/release.js`, which must always agree with each other. (This line said `1.6.1` while
-  the site was on `1.8.2`.) `run_release.js` gates that agreement but explicitly **not** the
+  **Do not trust a version written here** — read `changelog.html`'s top entry and
+  `site/release.js`, which must agree. `run_release.js` gates that agreement but **not** the
   digit choice: which digit fits is judgement and is not parseable.
-- **The entry** — add a new `<article class="log-entry">` at the TOP (newest-first):
-  the **version** (`<span class="log-ver mono">Alpha X.Y.Z</span>`), the **date**
-  (visible text *and* `datetime="YYYY-MM-DD"`), and a brief **player-facing** summary.
-  **Style: concise and factual** — one line per change, lead with the change, no marketing
-  or filler. Copy the template in the file's `ADDING AN ENTRY` comment.
+- **The entry** — a new `<details class="log-entry" open>` at the TOP (newest-first): version,
+  date (visible text *and* `datetime`), player-facing summary. One line per change, no marketing.
+  Copy the file's `ADDING AN ENTRY` template.
 - **FACTS ONLY, MINIMIZE PROSE** *(OWNER, 2026-08-04: "Just keep to facts in the changelog page.
-  Minimize prose.")*. Name the thing that changed and stop. No explaining an absence, no sentence
-  that would still read fine if deleted, and **no lead-in paragraphs** — the page's own
-  "This log begins with the public launch" line was cut for exactly that. If a line carries no
-  fact a player can act on or verify, cut it. `CHANGELOG.md` stays dense; this page stays bare.
+  Minimize prose.")*. Name the thing that changed and stop. No sentence that would still read fine
+  if deleted, no lead-in paragraphs. `CHANGELOG.md` stays dense; this page stays bare.
 - **SIMULATOR CHANGES ONLY — website changes do not go in it** *(OWNER DIRECTIVE, 2026-08-06:
   "Also, don't include website changes in the changelog. The changelog is strictly for
-  simulator changes.")*. The page is the player's record of what changed **in the plant they
-  operate** — physics, board, controls, procedures, scenarios, and the in-app manuals, which
-  ship inside the sim. A change to the surrounding site (a page, its styling, navigation, the
-  download plumbing, the changelog page itself) is not a simulator change and gets no entry,
-  however visible it is. It still belongs in `CHANGELOG.md`, which is the engineering record
-  and unrestricted. **A website-only change ships with NO version bump** — `run_release` forbids
-  "bump, no entry" (measured; `TUNING_LOG` 2026-08-09-develop-a).
-- **BE CONCISE, and that is a CAP** *(OWNER DIRECTIVE, 2026-08-04: "Update tracking
-  summaries/lists should be concise.")*. **At most 8 bullets per entry, one line each**
-  *(the number is my operational reading, not the owner's — the directive is the brevity)*.
-  **Aggregate, do not enumerate**: one line for a system's worth of work, not one per commit.
-  The site entry is **not** derived one-to-one from `CHANGELOG.md`, which is dense on purpose
-  — a single `[Unreleased]` item there runs 30 lines, and copying that shape here is the
-  failure this bullet exists to stop. Over 8 lines' worth: group by system and summarise.
+  simulator changes.")*. The plant the player operates — physics, board, controls, procedures,
+  scenarios and the in-app manuals. The surrounding site (pages, styling, navigation, the
+  download plumbing) gets no entry however visible, but still belongs in `CHANGELOG.md`.
+  **A website-only change ships with NO version bump** — `run_release` forbids "bump, no entry".
+- **BE CONCISE, and that is a CAP** *(same 2026-08-04 directive)*. **At most 8 bullets per
+  entry, one line each**. **Aggregate, do not enumerate**:
+  one line per system's worth of work, not one per commit. The site entry is **not** derived
+  one-to-one from `CHANGELOG.md`, which is dense on purpose. Over 8: group and summarise.
 - **Not** the same as the `RD_VERSION` deploy stamp (`site/version.js` — git SHA Vercel
   stamps at build time).
 
@@ -1103,6 +1099,8 @@ Read this before editing any source file — the wiring is deliberate and easy t
   and was unfindable.
 - **Snapshot / save compatibility is a contract.** New snapshot fields must migrate
   older saves — follow the migration-note pattern in `CHANGELOG.md`.
+- **Minimize tokens spent editing files.** All else being equal, surgically edit
+  rather than rewrite a whole file.
 
 ### Authoritative vs. scratch
 

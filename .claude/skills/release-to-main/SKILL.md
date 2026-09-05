@@ -340,6 +340,27 @@ git tag -a v<X.Y.Z> -m "Alpha X.Y.Z — <headline>"
 git push origin --tags
 ```
 
+### 5c. The TELEMETRY WORKER is a second deployment, and the release does not carry it
+
+`§5b` proves the **site** is live. It says nothing about `worker/`, which is a Cloudflare
+**Worker**, ships by hand, and is touched by no part of the repo build:
+
+```bash
+node tools/verify_worker_deploy.js     # exit 0 = live is at or ahead of worker/
+```
+
+**Exit 2 means the ops dashboard you are about to read the release's numbers on is running
+older code than this tree.** That is not hypothetical: the #485 fix was committed 2026-08-17,
+never deployed, closed `status-work-complete` on 2026-08-30, and the owner reported the identical
+symptom again on 2026-08-31 — fifteen days of a green `run_dashboard_time` over a stale live
+Worker. Ship it with `env -u CLOUDFLARE_API_TOKEN npx wrangler deploy --config <repo>/worker/wrangler.toml`
+— by absolute path, because from the repo root `wrangler deploy` finds the **Pages** project,
+auto-answers its own confirmation `yes` non-interactively, and invents a Worker name from the
+directory (measured 2026-08-31: `eactor--ynamics`).
+
+It is a release step and not a gate because reading the live deployment needs wrangler's OAuth,
+which CI does not have — so nothing else will ever tell you.
+
 ## 6. Leave every lane on the released commit
 
 ```bash
@@ -378,6 +399,8 @@ git -C C:/grok_build/RD_backshop  merge --ff-only develop
       pushing it to the same SHA first is what cost Alpha 1.0.0 its production build
 - [ ] Annotated tag pushed separately (`git push origin --tags`) — a PR does not carry it
 - [ ] All three lanes fast-forwarded to the released commit
+- [ ] **`node tools/verify_worker_deploy.js` → exit 0 (§5c)** — the telemetry Worker is a
+      SECOND deployment the release does not carry, and no gate can see that it is stale
 - [ ] **After the deploy lands:** confirm the live `site/version.js` carries the released
       commit FIRST, then that `download/latest.zip` exists and unzips. A 404 before the
       stamp matches means “not deployed yet”, not “build broken”. **And if the stamp never

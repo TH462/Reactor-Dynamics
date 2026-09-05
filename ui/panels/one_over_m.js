@@ -71,6 +71,19 @@
     return null;
   }
 
+  /* WHICH PLANTS THIS TOOL WORKS ON (#598 item 2). It used to ask `plant_id === 'pwr'`,
+   * and PWR2 — the plant the site actually runs — publishes 'pwr2'. The window opened,
+   * the next broadcast hid it again, and `pwr_startup`'s six 1/M steps could not be done
+   * on the shipped plant. ui/app.js has a fold for exactly this seam (uiPlantOf), but the
+   * honest test is the CAPABILITY, not the name: 1/M needs a source-range count and a
+   * control group to plot it against, and any plant publishing both can use the tool.
+   * That also means a future plant gains it by publishing the instrument, not by being
+   * added to a list here. */
+  function supported(s) {
+    var ins = (s && s.instruments) || {};
+    return ins.source_range !== undefined && !!controlGroup(s || {});
+  }
+
   // Least squares over the TRAILING window (the points nearest criticality) →
   // { a, b, x0 } for y = a + b·x, where x0 is the leading point of the window.
   //
@@ -159,7 +172,7 @@
   function plotPoint() {
     var s = getSnap && getSnap();
     if (!s) return;
-    if (s.metadata.plant_id !== 'pwr') { setMsg('PWR only', true); return; }
+    if (!supported(s)) { setMsg('no source-range channel on this plant', true); return; }
     var ins = s.instruments || {};
     if (!ins.sr_energized) { setMsg('SR detector is de-energized — no counts to plot', true); return; }
     var counts = ins.source_range;
@@ -194,6 +207,42 @@
     render();
   }
 
+  /* THE HELP PANEL *(OWNER, 2026-09-03, #619 item 23: "Add a HELP button to the 1/M plot that
+   * explains it in a concise but approachable way.")*.
+   *
+   * IT GROWS THE WINDOW IN PLACE rather than opening a modal, which is the idiom the owner
+   * already chose once for the Scanner *(OWNER DIRECTIVE, 2026-08-11: "The scanner full
+   * description should make the scanner larger so the full description is visible. It should not
+   * open another box or window.")*. The reasoning transfers exactly: a modal would cover the plot
+   * the player is asking about. It is also why this is not routed into the global Help modal.
+   *
+   * WHAT IT SAYS IS SCOPED BY WHAT THE STEPS NOW SAY. #619 wave 1 made the startup steps name the
+   * SOURCE RANGE indication, state that its 7.0e2 is 700 counts per second, give the bursts a
+   * size, and point at the panel's own predicted position. So this does not repeat any of that —
+   * it carries the part a step cannot: what the ratio IS, why the early prediction reads high,
+   * and why you never withdraw straight to the number. Four short blocks, the same standard the
+   * step details are held to.
+   *
+   * The "reads high" paragraph is the load-bearing one: the fit is deliberately the trailing
+   * three points (FIT_WINDOW above), and a player who does not know that reads a number that
+   * keeps moving as a broken instrument rather than as the method working. */
+  var HELP_HTML =
+    '<div class="oom-help" hidden>' +
+    '<p><b>What it is.</b> 1/M is the shutdown count rate divided by the current count rate. ' +
+    'Subcritical, the core multiplies the source neutrons; the closer to critical, the bigger ' +
+    'that multiplication, so the count rate climbs and 1/M falls toward zero.</p>' +
+    '<p><b>How to read it.</b> Each point is one settled count rate at one rod position. Where ' +
+    'the line through them crosses zero is the rod position where the core would go critical. ' +
+    'That crossing is the number to work toward.</p>' +
+    '<p><b>Why it keeps moving.</b> The early prediction always reads HIGH — too far out. Low in ' +
+    'the bank the rods are worth little per step, so the line they draw is shallow and crosses ' +
+    'zero well past the truth. The fit uses the latest three points for that reason, and the ' +
+    'estimate walks in as you add more. A moving number is the method working, not a fault.</p>' +
+    '<p><b>The rule.</b> Never withdraw straight to the predicted position. Creep up on it in ' +
+    'small bursts, letting the count rate settle before each plot — a point taken mid-rise reads ' +
+    'low. Reading a little high is the safe side.</p>' +
+    '</div>';
+
   // ------------------------------------------------------------------ lifecycle
   function build() {
     win = document.createElement('div');
@@ -207,8 +256,10 @@
       '<div class="oom-foot">' +
       '<button class="btn" data-oom="plot" data-scanner-hint="Capture the current source-range count rate at the current rod position. First press = the shutdown baseline (plotted as 1.0).">Plot point</button>' +
       '<button class="btn" data-oom="clear" data-scanner-hint="Clear all plotted points (new baseline on the next plot).">Clear</button>' +
+      '<button class="btn oom-help-btn" data-oom="help" aria-expanded="false" ' +
+        'data-scanner-hint="What 1/M is and how to read this plot.">Help</button>' +
       '<span class="oom-pred" id="oomPred"></span></div>' +
-      '<div class="oom-msg" id="oomMsg"></div>';
+      '<div class="oom-msg" id="oomMsg"></div>' + HELP_HTML;
     document.body.appendChild(win);
     svg = win.querySelector('svg');
     msgEl = win.querySelector('#oomMsg');
@@ -220,6 +271,13 @@
       if (op === 'close') win.hidden = true;
       else if (op === 'plot') plotPoint();
       else if (op === 'clear') clearAll();
+      else if (op === 'help') {
+        var panel = win.querySelector('.oom-help');
+        var open = panel.hidden;
+        panel.hidden = !open;
+        b.setAttribute('aria-expanded', String(open));
+        b.classList.toggle('on', open);
+      }
     });
   }
 
@@ -239,7 +297,7 @@
       if (plant !== lastPlant) {
         lastPlant = plant;
         if (points.length) clearAll('plant changed — plot cleared');
-        if (win && plant !== 'pwr') win.hidden = true;
+        if (win && !supported(s)) win.hidden = true;
         return;
       }
       if (lastCaptureT != null && s.metadata.sim_time < lastCaptureT - 1e-6) {

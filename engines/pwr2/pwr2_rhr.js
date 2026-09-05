@@ -242,6 +242,14 @@
        * PERMISSIVE as `rhr_valve_open` — a valve that read open on any depressurized plant
        * with the system secured. */
       valve_open: opts.valve_open === undefined ? false : !!opts.valve_open,
+      /* `running` is recomputed every step (valve_open && powered) but must be a DEFINED
+       * boolean from t=0: since #605 a consumer reads it BEFORE stepRHR runs in the same
+       * step (the loss-of-main-feed arming in pwr2_engine, which is evaluated one step old
+       * like the CVCS letdown gate above it), and `!undefined` is true — which on the first
+       * step of a cold, RHR-held plant would read as "not on RHR" and arm the very casualty
+       * chain the gate exists to hold off. Seeded from the valve; the powered half lands on
+       * the first step. */
+      running: opts.valve_open === undefined ? false : !!opts.valve_open,
       /* the HX flow split, 0..1 — the cooldown-rate lever (#458: adjusting it is NOT an
        * alignment command and never was) */
       hx_fraction: opts.hx_fraction === undefined ? 1 : Math.max(0, Math.min(1, opts.hx_fraction)),

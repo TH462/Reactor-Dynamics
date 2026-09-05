@@ -177,8 +177,13 @@
     imro96mj15p: [0, 100],                                           // pzr heater, %
     imrpq29jo7t: [0, 2500],                                          // boron target, ppm (channel sp.max)
     imrpq48hn3t: [0, CHARGING_MAX_GPM],                              // charging, gpm (0-60)
-    imrsg8b7b9o: [0.1, _PZ.safety_open_mpa || 17.13],                // pressure setpoint: engine band
-                                                                     //   0.1 MPa .. pzr safety (15..2484 psi)
+    // Pressurizer pressure SETPOINT. THESE LITERALS ARE THE RETIRED PLANT'S (0.1 MPa to its
+    // pzr safety, 15..2484 psi) and are only the fallback: a running plant that publishes
+    // `pressure_setpoint_range_mpa` gets its own dial span through boundsFor() — PWR2's is the
+    // sourced 1700-2500 psig operator band (WTSM 10.2). Before #598 item 3 this WAS the bound,
+    // so the box accepted a Mode 5 entry the engine silently clamped to 1700 psig and then
+    // snapped back. Same shape as the charging and circulating-water boxes below.
+    imrsg8b7b9o: [0.1, _PZ.safety_open_mpa || 17.13],
     // Steam dump SETPOINT. The engine clips set_steam_dump_setpoint to
     // [0.2 MPa, sg_safety_open_mpa] — 30..1350 psi — so the box refuses anything the
     // engine would silently clamp. This is the secondary-cooldown control: lowering it
@@ -336,7 +341,6 @@
   // itself part of the defect: every note worth reading belongs to a channel that has
   // just stood DOWN. Disengaged channels are reported here deliberately.
   var ITEM_CHANNEL = {
-    ims5glucngg: 'rods_tavg',                                                  // ROD AUTO
     imrqp6com2b: 'boron_conc', imrqp6avzkw: 'boron_conc',                      // boron ON / OFF
     imrpq29jo7t: 'boron_conc',                                                 // boron target ppm
     imrsgjmrjfg: 'feed_sg', imrsgjuh7l0: 'feed_sg', imrsgjwq1q0: 'feed_sg',    // feed AUTO / MAN / OFF
@@ -402,6 +406,25 @@
     if (c.saturated === 'hi') return { text: 'SAT HI', color: BD_WARN };
     if (c.saturated === 'lo') return { text: 'SAT LO', color: BD_WARN };
     return { text: 'HOLDING', color: BD_OK };
+  }
+  /* ---- the LETDOWN card's status word (#624 / #619 item 24) -------------------------------
+   * The dark-lamp question answered in words, in the corner idiom this file already uses for
+   * SG FEED and the accumulator. `letdown_isolated` is the 17 % pressurizer low-level cut; it
+   * is PWR2's field and the retired engine publishes nothing, so that plant reads the lineup
+   * exactly as before and never the isolate. Kept as one function so the lamps, the word and
+   * the gate all ask the same question. */
+  function ltdnIsolated(s) { return CS(s).letdown_isolated === true; }
+  /* THE OTHER TWO WORDS READ THE DELIVERED FLOW, NOT THE ORIFICE PAIR. Since #624 item 14 the
+   * cold initial conditions let down through the RHR cross-connect with BOTH orifices out
+   * (`14d9f20`), so "no orifice selected" is not "no letdown" — a word keyed on the two lamps
+   * would have printed SHUT over a plant letting down 30 gpm. NORMAL/ISOLATED is the same
+   * vocabulary the steam-dump and accumulator status words already use. */
+  function letdownStatus(s) {
+    if (ltdnIsolated(s)) return { text: 'ISOLATED', color: BD_WARN };
+    var f = CS(s).letdown_flow_normalized;
+    if (f == null || !isFinite(f)) f = IN(s).letdown_flow;
+    return (f != null && isFinite(f) && f > 1e-6)
+      ? { text: 'NORMAL', color: BD_OK } : { text: 'SHUT', color: BD_WARN };
   }
   // ---- core ΔT margin (#311 observability) -----------------------------------------
   // Reports the BINDING limit — whichever of OTΔT / OPΔT is closest to zero — and names it.
@@ -559,7 +582,7 @@
   // kernel carries no such channel (#506: the boron panel and rod AUTO on PWR2, whose
   // channels list is empty). Keyed off the snapshot, like every disable here.
   var CHANNEL_BUTTONS = { imrqp6com2b: 'boron_conc', imrqp6avzkw: 'boron_conc',
-                          bdBoronSample: 'boron_conc', ims5glucngg: 'rods_tavg' };
+                          bdBoronSample: 'boron_conc' };
   // Controls whose machinery is declared by a control_state field's PRESENCE: absent field =
   // the running engine has no such system (pwr always publishes these; #506).
   var RHR_BUTTONS = { ims3wg27iif: 1, ims3xfeye1q: 1 };
@@ -572,13 +595,14 @@
     imrldz0wqds: { press: function () { cmd({ action: 'set_hpi', active: false }); }, active: function (s) { return !esfAuto(s, 'hpi') && !IN(s).hpi_active; } },
     imrle1mc0lk: { press: function () { cmd({ action: 'set_esf_auto', system: 'hpi', auto: true }); }, active: function (s) { return esfAuto(s, 'hpi'); } },
     // --- RHR (V2 board: its own card, separate from the ECCS pump triad) ---
-    // RHR has NO pump of its own — it is a suction ALIGNMENT on the shared ECCS train
-    // (rhr_active === rhr_valve_open, pwr_engine.js:319), which is why these are
-    // ALIGN/ISOLATE rather than START/STOP. The hot-leg suction valve has TWO interlock
-    // setpoints (#288): the engine REFUSES the open above emergency.rhr_valve_interlock_mpa
-    // (2.76 MPa / 400 psi) and force-closes a standing-open valve only above the separate
-    // emergency.rhr_autoclose_mpa (4.14 MPa / 600 psig). active() reads the true valve
-    // state — a refused press visibly fails to latch instead of lying about the lineup.
+    // RHR has NO pump of its own — it is a suction ALIGNMENT on the shared ECCS train,
+    // which is why these are ALIGN/ISOLATE rather than START/STOP. The hot-leg suction
+    // valve has TWO interlock setpoints (#288): the SHIPPED engine (pwr2_rhr.js, sourced
+    // WTSM 5.1) REFUSES the open above 425 psig and force-closes a standing-open valve only
+    // above the separate 585 psig autoclosure. (This comment used to cite the retired
+    // engine's emergency.rhr_valve_interlock_mpa 400/600 pair — the #557-class board-reads-
+    // the-retired-plant trap, corrected with #524.) active() reads the true valve state —
+    // a refused press visibly fails to latch instead of lying about the lineup.
     // NOT the HPI triad — RHR is ALIGN/ISOLATE ONLY, with no AUTO (#453). RHR used to carry
     // an ESF arm because an actuation opened the suction valve by itself once the plant was
     // scrammed and depressurized. No plant does that (WTSM 5.1 §5.1.3.3: the interlocks
@@ -609,15 +633,31 @@
     imrsjy1m9g: { press: function () { cmd({ action: 'set_rcp', running: true }); }, active: function (s) { return IN(s).rcp_running; } },
     imrsjy59pnu: { press: function () { cmd({ action: 'set_rcp', running: false }); }, active: function (s) { return !IN(s).rcp_running; } },
     // --- Letdown orifices: CLOSED / A 3% / B 4% / A+B 7% ---
-    imrmtin8wm3: { press: function () { cmd({ action: 'set_letdown_orifices', a: false, b: false }); }, active: function (s) { return !CS(s).letdown_orifice_a && !CS(s).letdown_orifice_b; } },
-    imrmtimrch3: { press: function () { cmd({ action: 'set_letdown_orifices', a: true, b: false }); }, active: function (s) { return CS(s).letdown_orifice_a && !CS(s).letdown_orifice_b; } },
-    imrmtimhz4g: { press: function () { cmd({ action: 'set_letdown_orifices', a: false, b: true }); }, active: function (s) { return !CS(s).letdown_orifice_a && CS(s).letdown_orifice_b; } },
-    imrmtimyxef: { press: function () { cmd({ action: 'set_letdown_orifices', a: true, b: true }); }, active: function (s) { return CS(s).letdown_orifice_a && CS(s).letdown_orifice_b; } },
+    /* THE LINEUP LAMPS READ THE VALVES, NOT THE SELECTION (#624 / #619 item 24, 2026-09-04).
+     * `control_state.letdown_isolated` — the 17 % low-level protective cut, which shuts the
+     * letdown path and sheds the heaters — had ZERO consumers anywhere in `ui/`. So while the
+     * cut stood, the four buttons kept lighting whatever the operator had last selected while
+     * LETDOWN FLOW read 0 gpm: a lineup lamp saying A+B 7 % over two shut valves. A position
+     * lamp shows where the valve IS. The only cue was the PZR LTDN ISOL annunciator.
+     *
+     * WHILE THE ISOLATE STANDS, NO LINEUP LAMP IS LIT — and CLOSED carries the yellow
+     * "something else did this" warn instead of the green "you selected this" active, which is
+     * the same active/warn split the rod IN-OUT lamps use. The card's status word then says
+     * ISOLATED in words (`bdLetdownStatus` in EXTRA_ITEMS). Pressing any orifice re-lines: the
+     * engine clears the isolate once the level latch is gone (`14d9f20`).
+     *
+     * `letdown_isolated` is PWR2's field. The retired engine never published it, so on that
+     * plant every expression below is `undefined && ...` and the lamps behave exactly as before. */
+    imrmtin8wm3: { press: function () { cmd({ action: 'set_letdown_orifices', a: false, b: false }); },
+                   active: function (s) { return !ltdnIsolated(s) && !CS(s).letdown_orifice_a && !CS(s).letdown_orifice_b; },
+                   warn: function (s) { return ltdnIsolated(s); } },
+    imrmtimrch3: { press: function () { cmd({ action: 'set_letdown_orifices', a: true, b: false }); }, active: function (s) { return !ltdnIsolated(s) && CS(s).letdown_orifice_a && !CS(s).letdown_orifice_b; } },
+    imrmtimhz4g: { press: function () { cmd({ action: 'set_letdown_orifices', a: false, b: true }); }, active: function (s) { return !ltdnIsolated(s) && !CS(s).letdown_orifice_a && CS(s).letdown_orifice_b; } },
+    imrmtimyxef: { press: function () { cmd({ action: 'set_letdown_orifices', a: true, b: true }); }, active: function (s) { return !ltdnIsolated(s) && CS(s).letdown_orifice_a && CS(s).letdown_orifice_b; } },
     // --- Boron control ON / OFF: engages the control-layer 'boron_conc' channel ---
     // Rod control AUTO (rods_tavg channel) — single toggle, lit when engaged. The channel
     // captures the CURRENT indicated Tavg as its reference on engage (control layer), so
     // the procedure guidance "engage it while Tavg is where you want it" is load-bearing.
-    ims5glucngg: { press: function (s) { var c = chan(s, 'rods_tavg'); cmd({ action: 'set_auto_channel', channel_id: 'rods_tavg', engaged: !(c && c.engaged) }); }, active: function (s) { var c = chan(s, 'rods_tavg'); return !!(c && c.engaged); } },
     imrqp6com2b: { press: function () { cmd({ action: 'set_auto_channel', channel_id: 'boron_conc', engaged: true }); }, active: function (s) { var c = chan(s, 'boron_conc'); return !!(c && c.engaged); } },
     imrqp6avzkw: { press: function () { cmd({ action: 'set_auto_channel', channel_id: 'boron_conc', engaged: false }); }, active: function (s) { var c = chan(s, 'boron_conc'); return !(c && c.engaged); } },
     // --- Pressurizer spray: AUTO / MANUAL / OFF ---
@@ -693,7 +733,25 @@
     // control gated on the same `load_modes` capability that used to darken this one.
     imro8ktzs3u: { press: function () { cmd({ action: 'latch_turbine' }); }, active: function (s) { return !IN(s).turbine_tripped; } },
     imro8lddxi: { press: function () { cmd({ action: 'trip_turbine' }); }, active: function (s) { return !!IN(s).turbine_tripped; } },
-    imro8len0oi: { press: function () { cmd({ action: 'disconnect_grid' }); }, active: function (s) { return !!IN(s).turbine_tripped || CS(s).load_mode === 'disconnected'; } },
+    /* UNLOAD — the planned way off line, as against TRIP beside it (#598 item 6, the owner
+     * asking "what's the difference between TRIP and OFF?"). The difference is real and it is
+     * the one worth teaching: TRIP latches the machine (steam demand 0, stop valve shut, and
+     * above permissive 9 it trips the reactor too) and needs LATCH plus six clear causes to get
+     * back; this walks the load demand to zero and leaves the machine latched and rolling.
+     *
+     * ITS LAMP WAS REPORTING THE OTHER BUTTON'S STATE. `active` was `turbine_tripped ||
+     * load_mode === 'disconnected'`, and PWR2 publishes `load_mode: 'manual'` unconditionally
+     * with `set_load_mode` REFUSED — so 'disconnected' is unreachable and the whole test
+     * collapsed to `turbine_tripped`. Measured: a planned offline from full power leaves
+     * turbine_tripped false, 0.0 MWe, and this lamp DARK, while a trip lit it. The lamp now
+     * reads the demand it actually sets, and keeps the load-mode clause for the retired engine,
+     * where 'disconnected' is a real mode. */
+    imro8len0oi: { press: function () { cmd({ action: 'disconnect_grid' }); },
+                   active: function (s) {
+                     if (CS(s).load_mode === 'disconnected') return true;
+                     var tgt = CS(s).load_target_mwe;
+                     return !IN(s).turbine_tripped && tgt != null && isFinite(tgt) && tgt <= 0;
+                   } },
     // --- SG feed pump: AUTO / MAN / OFF ---
     // AUTO = the three-element feedwater channel (feed_sg), which is the plant's real feed
     // automation and the free-play default. (The board used to read feed_auto_coupled, a
@@ -708,7 +766,13 @@
         else cmd({ action: 'set_auto_channel', channel_id: 'feed_sg', engaged: true });
       }, active: feedAutoOn },
     imrsgjuh7l0: { press: function (s) { cmd({ action: 'set_feed_pump_speed', pct: CS(s).feed_pump_speed_pct || 100 }); }, active: function (s) { return !feedAutoOn(s) && (CS(s).feed_pump_speed_pct || 0) > 0; } },
-    imrsgjwq1q0: { press: function () { cmd({ action: 'set_feed_pump_speed', pct: 0 }); }, active: function (s) { return !feedAutoOn(s) && (CS(s).feed_pump_speed_pct || 0) === 0; } },
+    /* OFF SECURES THE PUMPS (#605), which is what the OFF position of a three-position selector
+     * means — AUTO and MAN start them, OFF stops them. `secure` is a payload flag rather than a
+     * new verb so the retired engine, which knows only `pct`, is unchanged: it ignores the field
+     * and still reads this as a zero demand. PWR2 needs the distinction because a zero demand
+     * alone must NOT stop the pumps (the AUTO channel's demand passes through zero; see
+     * feedSelect in pwr2_shell.js). */
+    imrsgjwq1q0: { press: function () { cmd({ action: 'set_feed_pump_speed', pct: 0, secure: true }); }, active: function (s) { return !feedAutoOn(s) && (CS(s).feed_pump_speed_pct || 0) === 0; } },
     // MFW RESTORE (#341 / #319 item 2). Lights while main feed IS isolated — i.e. while it
     // is the control that has something to do — and is dark the rest of the time, which is
     // the whole board's idiom for "this is the live one".
@@ -741,7 +805,6 @@
     //     flux); the engine ignores a blocked switch, so active() reflects the true state
     //     either way. Lit = energized/monitoring. Secure it during the SR→IR handoff to
     //     clear the 1e5 cps high-flux trip (pwr_control 'sr_high') before it scrams the ascent. ---
-    bdSrDetector: { press: function (s) { cmd({ action: 'set_sr_detector', on: !IN(s).sr_energized }); }, active: function (s) { return !!IN(s).sr_energized; } },
     // --- Boron grab sample (batch-dose rework): draws an RCS sample; the lab posts the
     //     authoritative ppm after the turnaround (instruments.boron_sample/_pending).
     //     Lit while the lab is working. Doses auto-sample on completion; this button is
@@ -756,7 +819,10 @@
   // What moved, and why it was ever here — the V1 board was generated from a diagram that
   // predated these controls, so the driver grafted them on to survive a re-export:
   //   bdOneOverM / bdSrDetector / bdBoronSample  → authored (same ids kept, so their
-  //       BUTTONS entries above are unchanged; only the injection went away)
+  //       BUTTONS entries above are unchanged; only the injection went away). bdSrDetector
+  //       has since been REMOVED from the rendered board entirely — see DOC_REMOVE (#598
+  //       item 7); it is named here only because this note is the history of the ids.
+  
   //   bdBoronChem   → authored as ims2jva1ff5
   //   bdSteamFlow   → authored TWICE (ims31ngjkf8 at the SG head, ims3wm0d0bu on the feed
   //       card above FEED FLOW — the #206 three-element pairing, now authored rather than
@@ -1001,7 +1067,27 @@
       // right 785 minus 5 = 780, card top 190 plus 10 = 200. MEASURED clear both ways — the
       // 'NUC INSTR (NIS)' title is 15 characters of 11 px mono ending near x 637, and the
       // SOURCE RANGE / STARTUP RATE boxes below start at y 220.
-      left: 780, top: 200, value: '—', unit: '%', color: '#5aad7c', fontSize: 13, rAnchor: true }
+      left: 780, top: 200, value: '—', unit: '%', color: '#5aad7c', fontSize: 13, rAnchor: true },
+    /* THE LETDOWN CARD'S STATUS WORD (#624 / #619 item 24, 2026-09-04) — the word behind the
+     * dark lamps. See `letdownStatus`: ISOLATED while the 17 % low-level cut stands, NORMAL
+     * while letdown is delivering, SHUT otherwise.
+     *
+     * WHY NOT THE TOP-RIGHT CORNER, which is this file's idiom for a status word. MEASURED:
+     * the LETDOWN card (`imrmslvu2c0`) is 90 px wide, and its title alone is ~50 px of that at
+     * fontSize 12 — 'ISOLATED' needs ~58 px and there is nowhere near that left of the right
+     * edge. The bottom band is free instead, and taking it costs 25 px of card height, which
+     * this card can afford for a reason that is not arbitrary: its own SIBLING on the same
+     * panel, CHARGING (`imrmslginf9`), is 175 px tall against LETDOWN's 150, so the patch below
+     * makes the pair MATCH rather than inventing a size. Both sit inside the 1055-1440 x
+     * 600-785 panel box, and the strip 1345-1435 x 755-780 holds nothing — items or pipes.
+     *
+     * A PATCH AND AN EXTRA ITEM, NOT A BUILDER EDIT, because `pwr_board_data.js` is REGENERATED
+     * — the same reason the SG FEED title patch exists. */
+    { id: 'bdLetdownStatus', kind: 'value',
+      name: 'Letdown status: ISOLATED on the 17 % pressurizer low-level cut  ·  sim: control_state.letdown_isolated',
+      // rAnchor, so `left` is the RIGHT edge: card right (1435) minus 5. `top` is the card's
+      // new bottom (780) minus 25, i.e. the band the height patch below adds.
+      left: 1430, top: 755, value: '—', color: '#5aad7c', fontSize: 12, rAnchor: true }
   ];
 
   // ================================================================ NUMBERS (editable)
@@ -1177,21 +1263,42 @@
       // the ascent — which the readout never showed, so the caution and the scram looked alike.
       // Grey once the detector is secured: `sr_high` is `condition: 'sr_energized'`, so after
       // the handoff there is no live limit on this channel at all.
+      // AND SINCE #598 item 8, GREEN MEANS "this is the range you should be reading". The
+      // energized test above was already most of that for the source range — a secured detector
+      // is exactly a range you are no longer on — so the only thing added here is the band's
+      // lower edge, for a channel reading below its own scale. The amber is unchanged and is
+      // the owner's stated exception: the source range alone warns BEFORE its handoff.
       var live = !!IN(s).sr_energized;
       var trip = nisArmed('source_range', 'high', s);
-      var color = !live ? NIS_IDLE_COLOR
-                : (sr != null && isFinite(sr) && trip != null && sr >= trip) ? NIS_TRIP_COLOR
+      var inUse = live && nisInUse(sr, CS(s).nis_sr_inuse_cps);
+      var color = (sr != null && isFinite(sr) && trip != null && sr >= trip && live) ? NIS_TRIP_COLOR
+                : !inUse ? NIS_IDLE_COLOR
                 : (sr != null && isFinite(sr) && sr >= SR_HANDOFF_CPS) ? SR_HANDOFF_COLOR
                 : SR_NORMAL_COLOR;
       return { text: fmtExp(sr), color: color };
     },
     // IR amps (log scale, like SR). The `ir_high` trip at 1.67e-3 A is the middle rung of the
     // startup net and was completely invisible: the readout was a plain number, so the trip that
-    // catches a missed block gave no warning at all. Grey once blocked above P-10 (#271).
+    // catches a missed block gave no warning at all.
+    //
+    // GREEN NOW MEANS "READ THIS ONE" (#598 item 8), and for this channel it is the whole
+    // change rather than a refinement. Coloured by trip proximity, the intermediate range read
+    // GREEN at cold shutdown on 1.0e-11 A — the bottom of its own scale, an instrument not yet
+    // on line — and drew hot full power's 2.0e-3 A, PEGGED at its range top and four decades
+    // past anything worth reading, as an ordinary live indication. Both measured. The band is
+    // the plant's own P-6..P-10 pair (see pwr2_true_state); a plant that does not publish it
+    // keeps the old trip-proximity colouring exactly.
     imro6rctcgm: function (s) {
       var ir = IN(s).intermediate_range;
       var trip = nisArmed('intermediate_range', 'high', s);
-      return { text: fmtExp(ir), color: nisLogColor(ir, trip, trip != null) };
+      var band = CS(s).nis_ir_inuse_a;
+      if (!band) return { text: fmtExp(ir), color: nisLogColor(ir, trip, trip != null) };
+      // RED STILL WINS. An armed trip you are standing on is not a "wrong range to be reading"
+      // — it is the reason to look. Only the trip is allowed to outrank the band.
+      if (ir != null && isFinite(ir) && trip != null && ir >= trip) {
+        return { text: fmtExp(ir), color: NIS_TRIP_COLOR };
+      }
+      return { text: fmtExp(ir), color: nisInUse(ir, band) ? SR_NORMAL_COLOR : NIS_IDLE_COLOR };
     },
     // Reactor period (s) — teaching readout under REACTIVITY. ∞ when steady.
     ims89mkaj2r: function (s) {
@@ -1226,8 +1333,19 @@
     imsgti0gnpf: function (s) { return dQ((IN(s).letdown_flow || 0) * GPM_LETDOWN); },
     imrppeh5hkb: function (s) { return r0(IN(s).mwe_output); },                                         // generator MW
     imrppej8ulo: function (s) { return r0(IN(s).governor_valve); },                                     // governor %
-    imrppq5r7kw: function (s) { return CS(s).steam_dump_auto ? 'NORMAL' : ((CS(s).steam_dump_pct || 0) > 0 ? 'DUMPING' : 'MANUAL'); }, // steam dump status
+    // Steam dump status. AUTO IS TWO CONTROLLERS on PWR2 (#629) and the word says which: TAVG
+    // ignores the DUMP SETPOINT box beside it, PRESS holds the secondary on it. `NORMAL` said
+    // neither, on a card whose setpoint box was an orphan on every plant a player heats up.
+    // The retired engine publishes no `steam_dump_mode`, so it keeps the old word.
+    imrppq5r7kw: function (s) {
+      var m = CS(s).steam_dump_mode;
+      if (m === 'pressure') return 'PRESS';
+      if (m === 'tavg') return 'TAVG';
+      if (CS(s).steam_dump_auto) return 'NORMAL';
+      return (CS(s).steam_dump_pct || 0) > 0 ? 'DUMPING' : 'MANUAL';
+    },
     ims89lnqmip: function (s) { return feedStatus(s); },                                              // SG feed controller status (#214)
+    bdLetdownStatus: function (s) { return letdownStatus(s); },                                        // letdown status word (#624 item 24)
     bdDtMargin: function (s) { return dtMargin(s); },                                                  // core ΔT margin, OTΔT/OPΔT (#311)
     imrppyp0wfo: function (s) { return accN2Press(s); },   // accumulator N2 cover-gas pressure
     imrppztrng1: function (s) { return IN(s).accumulators_discharging ? 'INJECTING' : (accIsolated(s) ? 'ISOLATED' : 'ARMED'); }, // accumulator status
@@ -1347,6 +1465,16 @@
           il[i].setpoint != null && isFinite(il[i].setpoint)) return il[i].setpoint;
     }
     return null;
+  }
+  /* IS THIS THE RANGE THE OPERATOR SHOULD BE READING? (#598 item 8) The band is the PLANT'S —
+   * `nis_sr_inuse_cps` / `nis_ir_inuse_a`, derived in pwr2_true_state from the P-6 and P-10
+   * permissives and the gauge scales. Inclusive at the bottom, EXCLUSIVE at the top: the top
+   * edge is the point the next range takes over, and a reading sitting exactly on it belongs to
+   * that next range, not this one. Absent band => not answerable, and the caller keeps its old
+   * colouring rather than guessing. */
+  function nisInUse(v, band) {
+    if (!band || band.length !== 2 || v == null || !isFinite(v)) return true;
+    return v >= band[0] && v < band[1];
   }
   function nisArmed(instrument, direction, s) {
     var t = limitingArmedTrip(instrument, direction, s);
@@ -2037,9 +2165,29 @@
      * A plant that publishes no program (the retired engine, an old recording) keeps its
      * authored absolute edge untouched. */
     var lowRow = liveAlarmRow('pzr_level_low');
+    var prog = CS(s).pzr_level_program_pct;
     if (lowRow && lowRow.instrument === 'pzr_level_dev') {
-      var prog = CS(s).pzr_level_program_pct;
       out.alarmLo = (prog != null && isFinite(prog)) ? qz(prog + lowRow.setpoint) : b.min;
+    }
+    /* ⚠ AND THE NORMAL BAND IS PROGRAM-RELATIVE TOO (#598 item 11). The authored band is a flat
+     * 40-70 %, which is a FULL-POWER band applied to every mode — the same inherited-constant
+     * shape as #573/#579/#591, one tile further on. The level program is scheduled on Tavg
+     * (pwr2_pressurizer levelProgram: 25 % at the no-load anchor, 61.5 % at full power), so on a
+     * Mode 5 or Mode 3 plant the controller holds 25 % and the tile drew that 15 points BELOW
+     * "normal". MEASURED 2026-09-01, charging in AUTO, 20 plant-minutes per initial condition:
+     * level tracks the program to within 0.11 % in every one of them, with NO hunt — cold 24.9
+     * against 25.0, hot zero power 25.0 against 25.0, 50 % 40.4 against 40.3, full power 57.6
+     * against 57.6. The controller was right and the band was wrong, which is exactly what the
+     * owner reported as "CHARGING in AUTO doesn't try to hold a decent PZR level": AUTO was
+     * holding its setpoint and the board had no way to say what that setpoint was.
+     *
+     * +/-5 % is [declared], not sourced: it is a NORMAL band, and the plant's own deviation
+     * ALARM is already drawn at program -20 by the block above. A band tied to the alarm would
+     * be 40 points wide and say nothing. A plant that publishes no program keeps the authored
+     * 40-70 untouched, so the retired engine and old recordings are byte-identical. */
+    if (prog != null && isFinite(prog)) {
+      out.normLo = qz(prog - 5);
+      out.normHi = qz(prog + 5);
     }
     if (!s || !s.rps_state) return out;
     var rows = s.rps_state.trip_setpoints;
@@ -2108,6 +2256,20 @@
     var r = CS(s || {}).cw_inlet_range_c;
     if (r && r.length === 2 && isFinite(r[0]) && isFinite(r[1]) && r[1] > r[0]) return [r[0], r[1]];
     return NUM_BOUNDS_BASE.ims3v42jghn;
+  }
+  /* THE PRESSURE SETPOINT DIAL'S SPAN (#598 item 3) — the chargingMaxGpm / cwRangeC shape a
+   * third time, and the same defect underneath. The authored literals below are the RETIRED
+   * engine's: 0.1 MPa to the pressurizer safety, 15..2484 psi. PWR2's dial is the sourced
+   * 1700-2500 psig operator span (WTSM 10.2), so the box accepted a Mode 5 entry the engine
+   * clamps to 1700 psig, and the next snapshot snapped the box back saying nothing. Reading
+   * the RUNNING plant's band makes the box refuse it up front — the convention the steam-dump
+   * and ADV boxes twenty lines above already state in their own comments. Anything that does
+   * not publish the span (the retired engine, a partial mount, an old recording) falls back to
+   * the authored literals, byte-identical. */
+  function pressSpRangeMpa(s) {
+    var r = CS(s || {}).pressure_setpoint_range_mpa;
+    if (r && r.length === 2 && isFinite(r[0]) && isFinite(r[1]) && r[1] > r[0]) return [r[0], r[1]];
+    return NUM_BOUNDS_BASE.imrsg8b7b9o;
   }
   /* THE OPERATOR'S SPRAY DEMAND (#564 item 1), with the retired engine's fallback. That engine
    * publishes `spray_valve_pct` AS the demand — its board box and this readout were both correct
@@ -2283,17 +2445,19 @@
         decimals: tileDigits(id, b),
         // sim clock drives the tile's sampling window (see comp_indicator_panel)
         t: (s.metadata && s.metadata.sim_time != null) ? s.metadata.sim_time : null,
-        // …and the SPEED sizes that window. A fixed 3 minutes of SIM time is ~0.05 s of
-        // wall clock at 3600x: sim seconds per broadcast is accel x 0.1, so a 180 s window
-        // held 3 samples at 600x and ONE at 3600x — the time-trim then deleted everything
-        // but the newest and the trace collapsed to a single vertex. The six vital gauges
-        // were simply BLANK above ~600x.
+        // THE SPEED NO LONGER SIZES THAT WINDOW *(OWNER, 2026-09-03, #619 item 17: "Dont
+        // change the 6 vital indication strip chart time window when time warping.")* — the
+        // tile is pinned at 180 s at every acceleration; see WINDOW_S in comp_indicator_panel.
         //
-        // DISCRETE, not accel x 180, for the reason CHART_WINDOWS is already a table: the
-        // requested acceleration is a target the engine does not meet, so a window sized
-        // off the number never fills. Capped an order of magnitude below the strip chart's
-        // — the tile's job is "what has this been doing recently"; the history belongs to
-        // the chart underneath it.
+        // The ladder this fed was not decoration. A tile once got ONE sample per broadcast,
+        // and at 3600x a broadcast covers 360 s of plant, so a 180 s window held a single
+        // vertex and the six vital gauges were BLANK above ~600x. What retired it is `fine`
+        // on the next line: with the service's sub-samples the same fixed window holds ~30
+        // rows at 3600x (900 at 60x and below), which is the measurement the fix rests on.
+        //
+        // The prop is still passed and is now UNREAD by the component. Kept because
+        // board_check and the lane_reference golden artifact both build this props shape,
+        // and it is the natural input if a future tile wants to say what the clock is doing.
         speed: (s.metadata && s.metadata.time_acceleration) || 1,
         fine: fine,
         // Display unit, so the tile can drop a history recorded in the OTHER one. st.min /
@@ -2656,44 +2820,98 @@
   }
 
   // ================================================================ TRIP BLOCKS menu (task #5)
-  // Only the 4 blockable trips (owner ruling).
-  // `sub` may be a function (s) -> string where the caption carries a unit — it is rendered
-  // per popover open, so it follows the display mode like every other number on the board.
-  // The pressure one also stops the setpoint being a hand-copied literal: it read a flat
-  // "1800 psi" while the table said 12.41 MPa, which is 1799.9 and rounds there by luck.
+  // The trips an OPERATOR blocks — and only those (#600).
+  //
+  // ⚠ THIS LIST IS NOT "EVERY TRIP WITH A `blockable` FLAG". Two rows lived here for months
+  // that no source gives the operator at all: RCS LOW FLOW and RCP BREAKER. WTSM 12.2
+  // §12.2.3.12 (ML11223A301) is verbatim that their block is AUTOMATIC — *"All the reactor
+  // coolant low flow trips are automatically blocked below the P-7 setpoint (10% power)."* —
+  // and PWR2 implements exactly that, as the `atPower` gate on its `lo_flow` function. The
+  // retired plant modelled the automatic permissive as a pushbutton and this panel inherited
+  // the list by reference (the #534 pattern); the rows drew ENABLED on every plant state and
+  // each press threw, until #564 made them go dark instead. Dark was better than throwing and
+  // still wrong: a row for an action the plant does not have is a claim about the plant.
+  // A NEW ROW NEEDS A SOURCE SAYING AN OPERATOR TAKES IT, not a `blockable` flag.
+  //
+  // `sub` may be a function (s) -> string where the caption carries a unit or a setpoint — it
+  // is rendered per popover open, so it follows the display mode like every other number on
+  // the board.
+  //
+  // ⚠ AND EVERY SETPOINT IN A CAPTION COMES FROM THE SNAPSHOT, never from `_PROT` and never
+  // from a literal (#600, the #556/#557 class). `_PROT` is `RD.PWR_CONTROL.protection` frozen
+  // at script load — the RETIRED plant's table, whichever plant is actually running. Measured
+  // on the shipped plant: this list said "STARTUP TRIP · 25%" over a 35 % setting the power
+  // TILE was already drawing correctly from the same snapshot, and read the pressure trip at
+  // 1800 psi against a published 1775. `spPct`/`spPress` below read `trip_block_status`, which
+  // is the running plant SPEAKING, and fall back to the static table only for a snapshot that
+  // publishes nothing (an old recording, a minimal fixture) — the legacy shape, unchanged.
+  //
   // The captions are ALL CAPS *(OWNER DIRECTIVE, 2026-08-04: "All text should be in all caps
   // except units should follow standard unit conventions for capitalization.")*. Note the
-  // pressure one interpolates its unit through `uStr`, so the exemption is structural here —
+  // pressure ones interpolate their unit through `uStr`, so the exemption is structural here —
   // the caps live in the literal prose and the unit string is never touched by it.
+
+  /* The live setpoint a plant publishes for one blockable trip, or null when it publishes
+   * none. A FUNCTION, so the fallback is testable without rendering a popover (#564's lesson,
+   * applied to the caption this time and not only to the button state). */
+  function blockSp(s, id) {
+    var st = (s && s.rps_state && s.rps_state.trip_block_status) || {};
+    return (st[id] && typeof st[id].setpoint === 'number') ? st[id].setpoint : null;
+  }
+  /* A PERCENT-OF-RATED setpoint (the flux trips), and it prints NOTHING when the plant did not
+   * publish one — no fallback figure at all.
+   *
+   * ⚠ THE FALLBACK IS THE TRAP HERE, not the lookup. `_PROT`'s flux rows cannot supply it: the
+   * retired plant's intermediate-range trip is authored in AMPS on a different instrument, and
+   * its `power_range high` has TWO rows (the 120 % and the 25 % startup setting) which is the
+   * first-match trap `tripBackstop` exists for. Hard-coding this plant's 35/25 as the fallback
+   * would print PWR2's numbers over the retired engine the preview channel still boots — which
+   * is the #557 defect wearing the fix's clothes. A caption with no number is honest; a caption
+   * with the wrong plant's number is what #600 was filed about. */
+  function spPct(s, id) {
+    var v = blockSp(s, id);
+    return v == null ? '' : v.toFixed(0) + '% · ';
+  }
+  /* A PRESSURE setpoint, in the board's display unit. `fb` is in MPa, like the table. */
+  function spPress(s, id, fb) {
+    var v = blockSp(s, id);
+    return dP(v == null ? fb : v) + ' ' + uStr('press', 'psi');
+  }
+
   var BLOCKABLE_TRIPS = [
     { id: 'lo_press', label: 'PZR PRESS LO-LO',
-      sub: function () { return 'REACTOR TRIP · ' + dP(tripSp('primary_pressure', 'low', 12.41)) + ' ' + uStr('press', 'psi') + ' (P-11 PERMISSIVE)'; } },
-    { id: 'lo_flow', label: 'RCS LOW FLOW', sub: 'REACTOR TRIP · LOSS OF FLOW (P-7 PERMISSIVE)' },
-    // #314. Blockable, so it MUST be listed here or the player carries a reactor trip they
-    // cannot see or manage — and it shares lo_flow's P-7 permissive because WTSM 12.2
-    // §12.2.3.12 blocks ALL the loss-of-flow trips together below P-7.
-    { id: 'rcp_breaker', label: 'RCP BREAKER', sub: 'REACTOR TRIP · PUMP BREAKER OPEN (P-7 PERMISSIVE)' },
-    { id: 'ir_high', label: 'IR HIGH FLUX', sub: 'STARTUP TRIP · ~20% (P-10 PERMISSIVE)' },
-    { id: 'pr_low_setpoint', label: 'PR HIGH (LOW SETPT)', sub: 'STARTUP TRIP · 25% (P-10 PERMISSIVE)' },
+      sub: function (s) { return 'REACTOR TRIP · ' + spPress(s, 'lo_press', tripSp('primary_pressure', 'low', 12.41)) + ' (P-11 PERMISSIVE)'; } },
+    // The startup net, in the order the ascension takes it (#601): the intermediate-range trip
+    // arrives first, the power-range low setting second. Both are P-10 and both are the
+    // operator's — WTSM 12.2's P-10 list, items 1 and 2, are two separate operator actions,
+    // and item 1 also carries the C-1 high-flux rod stop.
+    { id: 'ir_high', label: 'IR HIGH FLUX',
+      sub: function (s) { return 'STARTUP TRIP · ' + spPct(s, 'ir_high') + '(P-10 PERMISSIVE) · ALSO BLOCKS THE ROD STOP'; } },
+    { id: 'pr_low_setpoint', label: 'PR HIGH (LOW SETPT)',
+      sub: function (s) { return 'STARTUP TRIP · ' + spPct(s, 'pr_low_setpoint') + '(P-10 PERMISSIVE)'; } },
     /* SI BLOCK (#564 item 2, the half nobody had named). The panel drew five rows and the
      * running plant publishes a block this panel had NO ROW FOR — so blocking safety injection,
      * which is a real operator action on every cooldown, was unreachable from the board while
      * three rows that do nothing were live. Both trips watch pressure DOWNWARD and neither
      * auto-blocks on the way down; both need P-11, which is why the pressure setpoint comes
      * down first. Its sub line reads the live setpoint, like lo_press above. */
-    { id: 'si_trip', label: 'SI ACTUATION',
+    { id: 'si_trip', label: 'SI REACTOR TRIP',
       sub: function (s) {
         var st = (s && s.rps_state && s.rps_state.trip_block_status) || {};
         var sp = st.si_trip && typeof st.si_trip.setpoint === 'number' ? st.si_trip.setpoint : null;
-        return 'SAFETY INJECTION · ' + (sp == null ? 'LOW PRESSURE' : dP(sp) + ' ' + uStr('press', 'psi')) +
-               ' (P-11 PERMISSIVE)';
+        return 'REACTOR TRIP · ' + (sp == null ? 'LOW PRESSURE' : dP(sp) + ' ' + uStr('press', 'psi')) +
+               ' (P-11 PERMISSIVE) · ALSO BLOCKS SI ACTUATION';
       } }
   ];
 
   function closePop() { if (pop && pop.parentNode) pop.parentNode.removeChild(pop); pop = null; }
 
+  /* The per-row "press again to confirm" arm (#598 item 15). Reset whenever the popover opens,
+   * so it cannot survive the operator looking away and coming back. */
+  var tripArm = {};
   function toggleTripBlocks(btn) {
     if (pop) { closePop(); return; }
+    tripArm = {};
     var stage = refs && refs.stage;
     if (!stage) return;
     pop = document.createElement('div');
@@ -2704,15 +2922,32 @@
     if (item) { pop.style.left = (item.left - 90) + 'px'; pop.style.top = (item.top - 250) + 'px'; }
     pop.appendChild(mk('h4', null, 'TRIP BLOCKS'));
     var snap = RD.PwrBoard.lastSnapshot ? RD.PwrBoard.lastSnapshot() : null;
+    var rowsAtOpen = {};
+    tripBlockRows(snap).forEach(function (r) { rowsAtOpen[r.id] = r; });
     BLOCKABLE_TRIPS.forEach(function (t) {
       var row = mk('div', 'bd-pop-row');
       var txt = mk('div', null);
       txt.appendChild(mk('div', 'lbl', t.label));
-      txt.appendChild(mk('div', 'sub', typeof t.sub === 'function' ? t.sub(snap) : t.sub));
+      /* THE ROW is the caption's only producer (#600) — see tripBlockRows. Rendering `t.sub`
+       * here as well would be a second copy that a gate cannot see. */
+      txt.appendChild(mk('div', 'sub', (rowsAtOpen[t.id] || {}).sub || ''));
       var b = mk('button', null, '');
       b.setAttribute('data-trip', t.id);
       b.addEventListener('click', function () {
-        var blocked = isBlocked(RD.PwrBoard.lastSnapshot(), t.id);
+        var snapNow = RD.PwrBoard.lastSnapshot();
+        var blocked = isBlocked(snapNow, t.id);
+        /* THE CONFIRMING SECOND PRESS (#598 item 15). Only ever on a release that trips NOW —
+         * every other press on this panel is unchanged and still one click. The arm is per-row
+         * and lives on the popover, so it dies with the popover: walking away and coming back
+         * is a fresh decision, which is the point of asking. */
+        var row = null;
+        tripBlockRows(snapNow).forEach(function (r) { if (r.id === t.id) row = r; });
+        if (row && row.will_trip && !tripArm[t.id]) {
+          tripArm[t.id] = true;
+          refreshTripBlocks(snapNow);
+          return;
+        }
+        tripArm[t.id] = false;
         cmd({ action: 'set_trip_block', trip_id: t.id, blocked: !blocked });
       });
       row.appendChild(txt);
@@ -2781,19 +3016,55 @@
     // highlight controls, so run_campaign never names these.)
     'Tavg': 'ims2immk7ks', 'Plant Pressure': 'ims2immsvn6', 'SG Level': 'ims2imn1nny',
     'Steam Flow': 'ims3wm0d0bu', 'Feed Flow': 'imrsgkz4lq0',
+    /* TWO LABELS THE CHECKLISTS HAVE ALWAYS USED AND THIS MAP NEVER CARRIED (#598 item 14).
+     * `revealControl` returns null for an unknown label and the step then glows NOTHING —
+     * silently, because a null highlight looks exactly like a step that asked for none. Twelve
+     * steps across both pools were doing that. Nothing in test/ read `st.hl` until the gate in
+     * run_manual_controls, which is how they survived; `st.control` has been checked against
+     * this same vocabulary since #304.
+     *   'SG Pressure' -> the SG pressure readout (imrr1gwi93j). The heatup rides secondary
+     *     pressure up to the 1020 psi no-load anchor and this is the number it watches.
+     *   'ECCS' -> the ECCS panel (ims3l6k3mb0), the enclosing box for RHR, the accumulator and
+     *     the injection lineup — which is what every step using this label is pointing at. */
+    'SG Pressure': 'imrr1gwi93j', 'ECCS': 'ims3l6k3mb0',
     // Aliases for the `control` strings the checklist steps use (so the step-hover
     // fallback in ui/app.js resolves without authoring an explicit `hl` on each).
-    'Boron control': 'imrmtlyf64y', 'RCP Run/Stop': 'imrobpq4a70', 'Dump SP': 'imrop5ouw7h',
+    /* THE CARD, NOT THE PUMP GRAPHIC *(#607 item 1)*. Both names used to point at
+     * `imrobpq4a70`, the rotating RCP on the loop — so a "start the pumps" step lit the
+     * art and not the ON/OFF card the operator actually presses (`imrsjyqoq6t`, inspect
+     * name RCP Control). 'Reactor Coolant Pumps (RCP)' stays on the pump for watch-the-
+     * flow steps; this alias is the control. */
+    'Boron control': 'imrmtlyf64y', 'RCP Run/Stop': 'imrsjyqoq6t', 'Dump SP': 'imrop5ouw7h',
     // ADV (#371) — both names point at the card, so highlighting either lights the
     // whole group, the same way 'Dump SP' points at the STEAM DUMP card above.
     // The ATMOS DUMP card is AUTHORED now (#371) — the driver-injected box it replaced
     // is gone, and both names point at the authored box so a highlight lights the group.
     'ADV': 'imsgt1ebv1d', 'Atmospheric Dump': 'imsgt1ebv1d', 'ADV SP': 'imsgt1ebv1d',
-    'Pressure SP': 'imrsg8b7b9o', 'Accumulator valve': 'imrppx5n1ay',
+    'Pressure SP': 'imrsg8b7b9o',
+    /* THE VALVE, NOT THE TANK FARM *(OWNER, 2026-09-02 playtest, M5->3 item 5: "Step 8 should
+     * highlight the valve for the accumulator, not the accumulator box itself.")*. This label
+     * pointed at `imrppx5n1ay`, which is the ACCUMULATORS box (550,735 175x50) — the panel the
+     * tank readouts sit in, with no control in it. Six checklist steps across both pools name
+     * this label to say "open/shut the discharge valve", and every one of them lit the tank
+     * farm instead. `imrppxt2aqd` IS the accumulator shutoff valve (700,610, a clickable
+     * Valve Vertical carrying open/close_accumulator_valve) — the thing the step asks for.
+     * The box keeps its own name below, for anything that genuinely means the panel. */
+    'Accumulator valve': 'imrppxt2aqd', 'Accumulators': 'imrppx5n1ay',
     'Turbine — Connect Grid': 'imro8k5pzem',
     // The rods_tavg channel toggle (EXTRA_ITEMS, #237) — the control the old
     // "Automate → Reactor" directives now point at.
-    'Rod AUTO': 'ims5glucngg',
+    /* BUTTON-LEVEL labels (#244 M5→3 item 2, M3→1 items 1/3/4 — owner: highlight "the SG
+     * Feed AUTO button not the card", "the withdraw button and the speed button instead of
+     * just the whole panel"). Every board button is its own item since the V2 export, so a
+     * label can point at ONE button; the checklist steps' `hl` lists name these. The
+     * wiring selfTest asserts each resolves, so a re-export that orphans one is loud. */
+    'Withdraw': 'imrpk6qzjq8', 'Insert': 'imrpk79mwng',
+    'Rod Speed — Slow': 'imrpk8169ds', 'Rod Speed — Normal': 'imrpk8grvcz',
+    'Rod Speed — Fast': 'imrpk8kjsjs',
+    'Shutdown Bank — Withdraw': 'imrpnyaxsb3', 'Shutdown Bank — Insert': 'imrpnyf37ju',
+    'SG Feed AUTO': 'imrsgjmrjfg', 'SG Feed MAN': 'imrsgjuh7l0',
+    'Plot point': 'bdOneOverM',
+    'Primary Pressure': 'ims2immsvn6',
     // #341 / #319 item 2 — the post-trip procedure's restore step points here.
     'MFW Restore': 'bdMfwRestore'
   };
@@ -2808,12 +3079,18 @@
    * byte-identical. A snapshot that DOES publish the map is a plant SPEAKING, and a row missing
    * from it is a block that plant does not have.
    *
-   * MEASURED on the shipped plant: PWR2 publishes exactly `pr_low_setpoint`, `lo_press` and
-   * `si_trip`. The panel drew five rows, so `lo_flow`, `rcp_breaker` and `ir_high` rendered
-   * ENABLED in every plant state and each press threw — `ts.can_block === false` is false when
-   * there is no `ts` — while two of them name reactor trips this protection table does not
-   * contain at all. This is the same law `buttonDisabled` applies to the boron panel, RHR and
-   * the steam-dump lever: the plant publishes, the board offers. */
+   * MEASURED on the shipped plant: PWR2 publishes exactly `pr_low_setpoint`, `ir_high`,
+   * `lo_press` and `si_trip` — which is now every row in the list, because #600 deleted the
+   * two the sources never gave an operator and #601 built the intermediate-range trip the
+   * fourth row had been drawing for a plant that did not carry it. This is the same law
+   * `buttonDisabled` applies to the boron panel, RHR and the steam-dump lever: the plant
+   * publishes, the board offers.
+   *
+   * ⚠ KEEP THE GUARD EVEN THOUGH NOTHING TRIPS IT TODAY. A list that happens to match the
+   * running plant is not a list that will: the preview channel still boots the retired engine,
+   * whose kernel publishes a DIFFERENT set, and this predicate is the only thing standing
+   * between a mismatch and a button that throws on press. Its own regression fixtures are in
+   * `run_pwr2_board` and they inject a row the plant does not publish on purpose. */
   function tripRowSupported(s, id) {
     var st = s && s.rps_state && s.rps_state.trip_block_status;
     if (!st || Object.keys(st).length === 0) return true;     /* legacy snapshot — say nothing */
@@ -2833,16 +3110,44 @@
       }
       var ts = st[t.id] || {};
       var blocked = ts.blocked != null ? ts.blocked : isBlocked(s, t.id);
+      /* ⚠ RELEASING THIS BLOCK WILL SCRAM THE PLANT (#598 item 15). `asserted` on a BLOCKED row
+       * is the ungated crossing — "the line is over its setpoint and this block is the only
+       * thing holding it off" — so `blocked && asserted` is exactly the release that trips on
+       * the spot. The owner's report was "I shouldn't be able to unblock a trip that will
+       * immediately cause a trip".
+       *
+       * IT IS STILL ALLOWED, and that is the ruling *(OWNER, #598 item 15, choosing "Warn +
+       * confirm, keep it legal" over refusing it)*. Clearing a block that is holding a trip off
+       * scrams on the spot in a real plant, and control_kernel.js says so in as many words —
+       * `can_clear` is only ever "is there a block to clear". Refusing the release would have
+       * made the panel lie about the protection, and reddened three gates written to pin the
+       * real behaviour. What was wrong was never the permission: it was that the panel could
+       * not tell this release from a harmless one, and offered both with the same single click.
+       * So the row WARNS and the press takes a confirming second click.
+       *
+       * Both flags live on the ROW, not in the popover, for the #600 reason: a caption that only
+       * exists as a DOM write is a caption no gate can read, and two rows carried the retired
+       * plant's setpoints for months on exactly that. */
+      var willTrip = blocked && ts.asserted === true;
       return {
         id: t.id, label: t.label, supported: true, blocked: blocked,
-        text: blocked ? 'BLOCKED' : 'BLOCK',
+        text: blocked ? (willTrip ? 'RELEASE?' : 'BLOCKED') : 'BLOCK',
+        will_trip: willTrip,
         // Manual rule (kernel-evaluated, see getRpsState): BLOCK is offered while the trip is
         // not yet asserted, or inside its permissive. CLEAR is never withheld — `can_clear` is
         // just "there is a block to clear", so this button will happily scram the plant when
         // the block it removes was the only thing holding an asserted trip off. That is
-        // deliberate and prototypical; the earlier comment here claimed the reverse.
+        // deliberate and prototypical; the earlier comment here claimed the reverse. Since #598
+        // item 15 it at least SAYS so first — see `willTrip` above.
         disabled: blocked ? (ts.can_clear === false) : (ts.can_block === false),
-        sub: null
+        /* THE CAPTION IS PART OF THE ROW, not something the popover computes on the way to the
+         * DOM (#600). Two of these carried the retired plant's setpoints for months precisely
+         * because the only way to read one was to render a popover — the same argument #564
+         * made about the button state, applied to the line underneath it. It is recomputed on
+         * every refresh, so it follows the display-unit toggle and a live setpoint change. */
+        sub: willTrip
+          ? 'RELEASING THIS WILL TRIP THE REACTOR NOW — the setpoint is crossed. Press again to confirm.'
+          : (typeof t.sub === 'function' ? t.sub(s) : t.sub)
       };
     });
   }
@@ -2854,8 +3159,10 @@
     for (var i = 0; i < btns.length; i++) {
       var r = byId[btns[i].getAttribute('data-trip')];
       if (!r) continue;
-      btns[i].textContent = r.text;
-      btns[i].className = r.blocked ? 'bd-blocked' : '';
+      var armed = tripArm[r.id] === true && r.will_trip;
+      btns[i].textContent = armed ? 'CONFIRM' : r.text;
+      btns[i].className = armed ? 'bd-blocked bd-confirm'
+                        : (r.will_trip ? 'bd-blocked bd-willtrip' : (r.blocked ? 'bd-blocked' : ''));
       btns[i].disabled = r.disabled;
       /* A row this plant does not carry goes DARK AND SAYS SO — an inert button with no reason
        * is the dead-button class wearing a different coat, and the operator should not have to
@@ -2947,7 +3254,39 @@
      * `set_afw {active:true}` stays a command for scenarios and the instructor.
      * STOP and AUTO move left into the vacated slot via DOC_PATCHES rather than leaving a hole
      * — the same treatment RHR ALIGN/ISOLATE got when its AUTO button went (#453). */
-    imrmsslj42u: 1
+    imrmsslj42u: 1,
+    /* THE SOURCE RANGE DETECTOR BUTTON *(OWNER DIRECTIVE, 2026-09-01, #598 item 7: "The SR DET button is
+     * greyed out. I think we should remove this button and have the SOURCE RANGE disable itself
+     * automatically.")* — and the second half of that sentence is already true, which is exactly
+     * why the button was grey. PWR2 derives source-range energization from flux
+     * (pwr2_true_state: srOn = pFrac * K_SR < SR_SECURE_CPS), publishes `sr_detector_fixed:
+     * true`, and REFUSES `set_sr_detector` by name: "the SR channel auto-energizes below the
+     * P-6 class point; no operator lever". Measured disabled in every initial condition.
+     *
+     * It was left on the board reading DARK because #567 needed the no-orphan sweep to have an
+     * answer for it. Deleting it is the better answer: a control that can never be pressed is
+     * a DESIGN_CRITERIA Q4 orphan whether it is grey or not, and the owner had to ask what it
+     * was for — which is the test failing. The pwr2 checklist pool does not use
+     * `set_sr_detector` (verified); only the retired `pwr` pool does, and its steps are not
+     * driven on this plant.
+     *
+     * ⚠ ACCEPTED CONSEQUENCE, named rather than discovered: DOC_REMOVE is engine-agnostic, so the
+     * button goes on the PREVIEW channel's retired engine too — where the command is real and the
+     * `pwr` pool's SR->IR handoff step issues it. That step's own `control` label points at the SR
+     * READOUT, not this button, so the highlight and run_manual_controls are unaffected; what a
+     * preview-channel player loses is the ability to perform it by hand. Not worth an
+     * engine-conditional DOC_REMOVE for an engine #523 strips from every public build. */
+    bdSrDetector: 1,
+    /* THE ROD AUTO BUTTON *(OWNER DIRECTIVE, 2026-09-01, #598 items 9/10: "Remove the ROD AUTO button. Move
+     * the 1/m button to where the ROD AUTO button used to be." / "Adjust the NIS card and
+     * indications to fit nicely without the two buttons.")*. It armed `rods_tavg`, and PWR2's
+     * snapshot carries exactly two automation channels — `boron_conc` and `afw_level` — so
+     * `buttonDisabled` measured it DISABLED in every initial condition: a permanently dead grey
+     * button. The owner had already ruled rod control stays MANUAL on this plant (2026-08-30,
+     * recorded in pwr_board_inspect), so there is nothing left for it to arm and no plan to give
+     * it something. 1/M PLOT takes the vacated slot via DOC_PATCHES rather than leaving a hole —
+     * the treatment RHR ALIGN/ISOLATE and AFW STOP/AUTO both got. */
+    ims5glucngg: 1
   };
 
   // The CVCS flow captions, enlarged *(OWNER DIRECTIVE, 2026-08-04: "Make the \"Charging\" and
@@ -3060,6 +3399,13 @@
       // FOLLOW / MAN over controls that no longer do that.
       imro8ktzs3u: { props: { label: 'LATCH', name: 'Turbine latch  ·  sim: latch_turbine' } },
       imro8lddxi:  { props: { label: 'TRIP',  name: 'Turbine trip  ·  sim: trip_turbine' } },
+      /* OFF -> UNLOAD (#598 item 6). "OFF" was the V1 label from when this row read FOLLOW /
+       * MAN / OFF, and it survived #551/#559/#567 turning its two neighbours into LATCH and
+       * TRIP — so the card offered TRIP and OFF with nothing on the board saying which one
+       * stops the machine and which one just puts the load down. The name field still carried
+       * "generator off button". UNLOAD says what the command does. */
+      imro8len0oi: { props: { label: 'UNLOAD',
+                              name: 'Unload the generator to zero (the machine stays latched and rolling)  ·  sim: disconnect_grid' } },
       /* THE #562 PUSH IS UNDONE *(OWNER, #591 item 2: "Adjust cards to move condenser cooling up
        * to line up the bottom of that card with the bottom of the other cards.")*. That patch
        * grew AUX FEED WATER 60 -> 115 and pushed CONDENSER COOLING and its three children down
@@ -3089,10 +3435,28 @@
       // made matter, since rods now come up engaged. #5aad7c is the same green as BD_OK above.
       // Fold it into the builder and delete this entry; selfTest pins the value meanwhile.
       // `top` is the 2026-08-02 re-spacing below — DO NOT split these into two entries: this
-      // is an object literal, so a second `ims5glucngg:` key silently REPLACES this one and
+      // is an object literal, so a second `bdOneOverM:` key silently REPLACES this one and
       // the colour patch disappears with no error. That is exactly what happened while writing
       // the re-spacing, and the two AUTO-green pins are what caught it.
-      ims5glucngg: { props: { color: '#5aad7c', top: 388 } },
+      /* 1/M PLOT MOVES ONTO THE ROD CARD (#598 items 9/10). It takes ROD AUTO's exact
+       * rectangle — 340,387 at 80x30 — so the bottom row stays the two-button shape the card
+       * was authored with and TRIP BLOCKS beside it does not move. As authored the button was
+       * 80x20 at (680,317), floating in the NIS card's 315..345 gutter and outside every box on
+       * it; on the rod card it is inside a card, aligned with its neighbour, and next to the rod
+       * bank it predicts the critical position OF. `pwr_board.css` records that ROD AUTO, 1/M
+       * PLOT and FOLLOW are the three labels sized to fit exactly, so the WIDTH is deliberately
+       * unchanged at 80 — this is a move, not a resize. */
+      /* top 388, NOT the authored 387: TRIP BLOCKS beside it is patched to 388, and the rod
+       * card's own selfTest requires the bottom row to be LEVEL. Taking ROD AUTO's slot
+       * means taking the row it was levelled into. */
+      bdOneOverM: { props: { left: 340, top: 388, width: 80, height: 30 } },
+      /* AND THE NIS CARD CLOSES UP BEHIND BOTH BUTTONS (#598 item 10). SOURCE RANGE was authored
+       * 70 px tall against INTER RANGE's 45 for one reason: the extra 25 px held SR DET at
+       * (550,315). With SR DET deleted (#598 item 7) that space is a ragged step between two
+       * boxes that show the same KIND of thing, so the box takes its neighbour's height and the
+       * two range readouts sit level. Both then end at y 315 with a uniform 30 px gutter down to
+       * the rod-position boxes at y 345 — where the 1/M button used to float. */
+      ims176nions: { props: { height: 45 } },
       // (TRIP BLOCKS carried a top/height patch here until the 2026-07-28t re-export —
       // the builder now authors it at 425/30, so the patch was pinning what the diagram
       // already says. Dropped rather than kept: a patch that agrees with the doc is a
@@ -3116,6 +3480,14 @@
       // rather than a builder edit because pwr_board_data.js is REGENERATED — the same
       // change made in the builder is lost the next time anyone re-exports.
       imrqxsodu5j: { props: { title: 'SG FEED' } },
+      // LETDOWN card, 150 -> 175 px tall, to carry the status word `bdLetdownStatus` adds in
+      // its bottom band (#624 item 24). MEASURED: the card runs 1345-1435 x 605-755 and its
+      // four buttons end at y 750; its sibling on the same panel, CHARGING (imrmslginf9), is
+      // already 175 px (605-780), and the containing panel box (ims3l6k3mb0) runs to y 785, so
+      // the new bottom matches the neighbour and stays inside the panel. Nothing — item or
+      // pipe — occupies 1345-1435 x 755-780. A patch, not a builder edit: pwr_board_data.js is
+      // REGENERATED, so the same change made in the builder is lost at the next re-export.
+      imrmslvu2c0: { props: { height: 175 } },
       // REACTOR/ROD CONTROL card title, shortened. A patch and not a builder edit for the
       // same reason as the SG FEED one above — pwr_board_data.js is REGENERATED.
       //
@@ -3380,6 +3752,11 @@
         b = cwRangeC(RD.PwrBoard && RD.PwrBoard.lastSnapshot
                      ? RD.PwrBoard.lastSnapshot() : null);
       }
+      /* And the pressurizer pressure setpoint (#598 item 3) — same law again. */
+      if (item.id === 'imrsg8b7b9o') {
+        b = pressSpRangeMpa(RD.PwrBoard && RD.PwrBoard.lastSnapshot
+                            ? RD.PwrBoard.lastSnapshot() : null);
+      }
       var m = numFam(item);
       if (!m) return [b[0], b[1]];
       var p = Math.pow(10, m.d);
@@ -3564,8 +3941,9 @@
       // (The grid FOLLOW dispatch gate retired with the tile — imro8ktzs3u is the turbine
       //  LATCH now, #567. When #529 builds load following its control gates on `load_modes`
       //  the same way; the pattern is kept here, not the stale id.)
-      // SR detector: the plant declares the channel has no operator lever (#567).
-      if (item.id === 'bdSrDetector') return CS(s).sr_detector_fixed === true;
+      // (SR DET's disable branch retired with the button itself — #598 item 7 DELETES it
+      //  rather than drawing a control that can never be pressed. The plant's
+      //  `sr_detector_fixed` flag is still published and still right; nothing reads it here.)
       // STEAM DUMP OPEN: no manual full-open lever on this plant (#570). Its refusal came from
       // INSIDE the MAPPED handler, not the REFUSED registry, which is why the #567 sweep missed
       // it — a live button that could only throw. AUTO and CLOSED beside it stay live.
@@ -3833,7 +4211,11 @@
         function it(id) { return (window.RD_PWR_BOARD_DOC.items || []).filter(function (x) { return x.id === id; })[0]; }
         var card = it('ims14ylw4az'), ins = it('imrpk79mwng');
         var spd = ['imrpk8169ds', 'imrpk8grvcz', 'imrpk8kjsjs'].map(it);
-        var aut = ['ims5glucngg', 'imrsk4xz2dm'].map(it);
+        /* 1/M PLOT sits where ROD AUTO used to (#598 items 9/10) — the row is still two
+         * buttons and this check still states the thing that was asked for, against the ids
+         * actually on the card. Naming the departed id here would have failed as "item
+         * missing" and read like a layout regression. */
+        var aut = ['bdOneOverM', 'imrsk4xz2dm'].map(it);
         if (!card || !ins || spd.concat(aut).some(function (r) { return !r; })) return 'item missing';
         function level(row, name) {
           return row.every(function (r) { return r.top === row[0].top; }) ? null
@@ -3847,16 +4229,13 @@
         var lo = Math.min(g1, g2, g3), hi = Math.max(g1, g2, g3);
         return (hi - lo) <= 1 ? true : 'gaps ' + g1 + '/' + g2 + '/' + g3;
       })() === true);
-      // ---- ROD AUTO obeys the board's AUTO colour convention (2026-08-01) -----------------
+      // ---- the board's AUTO colour convention (2026-08-01) --------------------------------
       // `buildButton` uses the authored item colour AS the lit colour, so an off-convention
-      // author value is invisible until the control is engaged — and since #289 the rods come
-      // up engaged, so it is lit on every free-play start. Pinned two ways: the patch applied,
-      // and the CONVENTION itself, so a re-export that re-authors ROD AUTO pale (or recolours
-      // any other AUTO) fails here instead of shipping a board with two meanings for "green".
-      ck('driver: ROD AUTO lights the standard AUTO green', (function () {
-        var it = (window.RD_PWR_BOARD_DOC.items || []).filter(function (x) { return x.id === 'ims5glucngg'; })[0];
-        return it ? it.color : 'ROD AUTO missing';
-      })() === '#5aad7c');
+      // author value is invisible until the control is engaged. The ROD AUTO half of this pair
+      // retired with the button (#598 items 9/10) — it pinned one item's colour, and the item
+      // is gone. THE CONVENTION CHECK BELOW IS THE ONE THAT MATTERED and is untouched: it
+      // quantifies over EVERY AUTO button, so a re-export that authors any of them pale still
+      // fails here instead of shipping a board with two meanings for "green".
       ck('driver: every AUTO button on the board shares that green', (function () {
         var bad = (window.RD_PWR_BOARD_DOC.items || []).filter(function (x) {
           return x.kind === 'button' && /\bAUTO\b/.test(String(x.label || '')) && x.color !== '#5aad7c';

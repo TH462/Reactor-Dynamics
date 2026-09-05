@@ -11,6 +11,7 @@
  */
 'use strict';
 var path = require('path');
+var MUT = require('./mut_flags.js');   /* --no-mutations / --mut= / --grp= (#602) */
 var fs = require('fs');
 var SRC = path.join(__dirname, '..', 'engines', 'pwr2');
 
@@ -49,10 +50,17 @@ var DT = 0.02;
  * partition + commands-land (three sections sharing one engine), 'B' the two banks, 'D' the
  * casualty rows, 'D3' the board rails, 'E' the electrical pair, 'F' the SGTR row, 'G' the
  * wave-6 levers, 'H' the ICs through the class, 'I' the rod limit, 'J' the RCP handswitch,
- * 'K' the shutdown preset, 'S' the save contract, 'T' the AFW throttle on a real drain
+ * 'K' the shutdown preset, 'L' the operator's rate-limited load dial (#624 item 24),
+ * 'S' the save contract, 'T' the AFW throttle on a real drain
  * (#582 — full channel runtime under the control kernel). The CLEAN pass runs everything;
  * each named group is preflighted ALONE on the clean build before the replays. */
 function runSuite(SH, rec, quiet, only) {
+  /* THE BANK'S OWN CURRENCY (#602 phase 2) — the same helpers the engine gate carries, for the
+   * same reason: every step count in this file was a FRACTION of a 200-step bank spelled as an
+   * absolute, and they all became wrong at once when the scale moved to the sourced 627. A
+   * literal here is now a claim that the number does NOT scale, which is true of none of them. */
+  var bank = function () { return globalThis.RD.pwr2.kinetics.RODS.max_steps; };
+  var frac = function (f) { return Math.round(f * bank()); };
   function grp(g) { return only === undefined || only === g; }
   function ck(name, cond, note) {
     rec.push({ name: name, ok: !!cond });
@@ -136,11 +144,35 @@ function runSuite(SH, rec, quiet, only) {
   ck('pzr_level_dev measures against PWR2\'s OWN program line, at the INDICATED tavg (HR1)',
      typeof rd.pzr_level_dev === 'number' && Math.abs(rd.pzr_level_dev - expDev) < 0.2,
      'dev ' + rd.pzr_level_dev.toFixed(2) + ' % vs own-program ' + expDev.toFixed(2) + ' %');
+  /* ---- THE BANK SCALE REACHES THE BOARD (#602 phase 1) -------------------------------------
+   * The engine half is in run_pwr2_engine; this is the surface half. `max_steps` and
+   * `position_pct` are what the board draws the rod readout from, and BOTH carried their own
+   * literal 200 — so a plant whose bank moved would have published a position percentage
+   * computed against a scale it no longer had, which is a wrong number that still renders.
+   * Functional, like the engine half: the constant is moved and the publication is read back. */
+  (function () {
+    var RODS = globalThis.RD.pwr2.kinetics.RODS, was = RODS.max_steps, PROBE = 313;
+    try {
+      RODS.max_steps = PROBE;
+      var eS = new SH.PWR2Engine({ initial_state: 'hot_full_power' });
+      eS.step(0.02);
+      var g = eS.getControlState().rod_groups;
+      ck('the published rod groups carry the plant bank scale, not a copy of it',
+         g[0].max_steps === PROBE && g[1].max_steps === PROBE,
+         'max_steps ' + g[0].max_steps + ' / ' + g[1].max_steps + ' at a scale of ' + PROBE);
+      ck('...and position_pct is computed against THAT scale — a stale divisor still renders',
+         Math.abs(g[0].position_pct - 100) < 0.5 && Math.abs(g[1].position_pct - 100) < 0.5,
+         'fully-withdrawn bank reads ' + g[0].position_pct.toFixed(1) + ' % / ' +
+         g[1].position_pct.toFixed(1) + ' % (a stale 200 divisor would say ' +
+         (100 * PROBE / 200).toFixed(1) + ' %)');
+    } finally { RODS.max_steps = was; }
+  })();
   var cs = eng.getControlState();
   ck('getControlState carries EVERY key the diagram reads (16 measured across ui/diagram)',
      cs.rod_groups.length === 2 &&
      cs.rod_groups[0].id === 'control_rods' && cs.rod_groups[1].id === 'shutdown_rods' &&
-     typeof cs.rod_groups[0].steps === 'number' && cs.rod_groups[0].max_steps === 200 &&
+     typeof cs.rod_groups[0].steps === 'number' &&
+     cs.rod_groups[0].max_steps === globalThis.RD.pwr2.kinetics.RODS.max_steps &&
      typeof cs.rod_groups[0].position_pct === 'number' &&
      typeof cs.pressure_setpoint === 'number' && typeof cs.steam_dump_pct === 'number' &&
      cs.steam_dump_setpoint > 6 && cs.steam_dump_setpoint < 8 &&
@@ -149,6 +181,9 @@ function runSuite(SH, rec, quiet, only) {
                                                               * missing field was NaN and froze
                                                               * the RCP impeller (#506.5) */
      typeof cs.letdown_orifice_a === 'boolean' && typeof cs.letdown_orifice_b === 'boolean' &&
+     /* the protective isolate is its OWN field (#624 item 14) — a shut orifice lineup and an
+      * isolated plant are indistinguishable on the two lamps above */
+     typeof cs.letdown_isolated === 'boolean' &&
      typeof cs.feed_pump_speed_pct === 'number' &&
      typeof cs.cvcs_auto === 'boolean' && typeof cs.heater_auto === 'boolean' &&
      typeof cs.porv_block_open === 'boolean' && typeof cs.spray_valve_pct === 'number' &&
@@ -278,8 +313,11 @@ function runSuite(SH, rec, quiet, only) {
     for (i = 0; i < 50; i++) e2.step(0.02);                 /* 1.0 s into the ramps */
     var g = e2.getControlState().rod_groups;
     ck('mid-scram, BOTH banks are ramping — shutdown ahead of control, neither snapped',
-       g[0].steps > 80 && g[0].steps < 140 &&               /* 2.5 s ramp: ~120 at t+1.0 */
-       g[1].steps > 60 && g[1].steps < 120 &&               /* 2.0 s ramp: ~100 at t+1.0 */
+       /* FRACTIONS OF TRAVEL, not steps (#602): at t+1.0 s a 2.5 s ramp has 60 % left and a
+        * 2.0 s ramp 50 %. The old 80-140 / 60-120 windows were those fractions of a 200-step
+        * bank; the bands travel with the scale, the claim does not move. */
+       g[0].steps > frac(0.40) && g[0].steps < frac(0.70) &&
+       g[1].steps > frac(0.30) && g[1].steps < frac(0.60) &&
        g[1].steps < g[0].steps,
        'control ' + g[0].steps + ', shutdown ' + g[1].steps + ' at t+1.0 s (snap read 0)');
     for (i = 0; i < 150; i++) e2.step(0.02);
@@ -294,7 +332,7 @@ function runSuite(SH, rec, quiet, only) {
     for (i = 0; i < 500; i++) e3.step(0.02);
     var g3 = e3.getControlState().rod_groups;
     ck('a shutdown-group nudge moves the SHUTDOWN bank and leaves the control bank alone',
-       g3[1].steps < 200 && g3[0].steps === 200,
+       g3[1].steps < bank() && g3[0].steps === bank(),
        'control ' + g3[0].steps + ', shutdown ' + g3[1].steps);
   })();
   }
@@ -815,7 +853,7 @@ function runSuite(SH, rec, quiet, only) {
     catch (x5) { mIn = x5.message; }
     ck('ATWS: INSERT is refused too — with the breakers open the drive has no power either way ' +
        '(OWNER RULING 2026-08-28, "Refuse both directions")',
-       mIn !== null && /ROD DRIVE BLOCKED/.test(mIn) && eA2.eng.rodSteps === 200,
+       mIn !== null && /ROD DRIVE BLOCKED/.test(mIn) && eA2.eng.rodSteps === bank(),
        mIn ? ('rods held at ' + eA2.eng.rodSteps.toFixed(0)) : 'ACCEPTED!');
     var mRA = null;
     try { eA2.applyCommand({ action: 'reset_rps' }); } catch (x6) { mRA = x6.message; }
@@ -828,9 +866,9 @@ function runSuite(SH, rec, quiet, only) {
      * published as `true`. */
     eA2.eng.rodSteps = 0; eA2.eng.rodTarget = 0;
     eA2.step(0.02);
-    ck('#545: rods_fully_in is BOTH banks — 0/200 is not "rods in" (the retired engine\'s ' +
-       '`.every()`, lost in the second copy)',
-       eA2.getInstruments().rods_fully_in === false && eA2.eng.sdSteps === 200,
+    ck('#545: rods_fully_in is BOTH banks — a control bank at 0 with the shutdown bank OUT is ' +
+       'not "rods in" (the retired engine\'s `.every()`, lost in the second copy)',
+       eA2.getInstruments().rods_fully_in === false && eA2.eng.sdSteps === bank(),
        'control 0, shutdown ' + eA2.eng.sdSteps.toFixed(0) + ' -> rods_fully_in ' +
        eA2.getInstruments().rods_fully_in);
     eA2.applyCommand({ action: 'clear_failure', failure_id: 'failure_to_scram' });
@@ -1098,9 +1136,9 @@ function runSuite(SH, rec, quiet, only) {
     for (i = 0; i < 500; i++) eS.step(0.02);
     var tsS = eS.getTrueState();
     ck('failure_to_scram MECHANISM (10 s window — the long ride is run_pwr2_endurance\'s): ' +
-       'the trip LATCHES (turbine trips with it) while the rods stand at 200 and the core ' +
+       'the trip LATCHES (turbine trips with it) while the rods STAY FULLY OUT and the core ' +
        'keeps running — measured 76 % at 10 s, feedback-limited, unscripted',
-       eS.eng.pt.reactor_trip === true && eS.eng.rodSteps === 200 &&
+       eS.eng.pt.reactor_trip === true && eS.eng.rodSteps === bank() &&
        eS.eng.tb.tripped === true && tsS.power_pct > 50 &&
        eS.getActiveFailures().indexOf('failure_to_scram') !== -1,
        'power ' + tsS.power_pct.toFixed(1) + ' % with the trip annunciated — the ATWS');
@@ -1281,11 +1319,55 @@ function runSuite(SH, rec, quiet, only) {
        'holds through the class (measured 49.2 % / 50.0 MWe at 30 s)',
        ts9.power_pct > 48 && ts9.power_pct < 51 && Math.abs(ts9.mwe_output - 50) < 1.5,
        ts9.power_pct.toFixed(1) + ' % / ' + ts9.mwe_output.toFixed(1) + ' MWe');
+    /* RE-AIMED 2026-08-31 (#524): cold_shutdown exists — the refusal claim keeps its
+     * mechanism on a name no registry carries, and the new preset's round trip is asserted. */
     var thrIC = false;
-    try { new SH.PWR2Engine({ initial_state: 'cold_shutdown' }); }
+    try { new SH.PWR2Engine({ initial_state: '5_percent' }); }
     catch (e2) { thrIC = /unknown initial_state/.test(e2.message); }
     ck('a preset the engine does not carry throws through the class too — the #502 rule ' +
        '(an accepted-then-ignored preset is a menu that lies)', thrIC === true, '');
+    (function () {
+      var e5 = new SH.PWR2Engine({ initial_state: 'cold_shutdown' });
+      var t5 = e5.step(DT);            /* the class step returns the true state directly */
+      ck('cold_shutdown boots THROUGH THE CLASS at Mode 5 (#524) — the picker\'s fifth row ' +
+         'is a state the plant actually loads',
+         t5.plant_mode === 5 && Math.abs(t5.tavg_c - 50) < 2, 'mode ' + t5.plant_mode +
+         ' at ' + (t5.tavg_c * 9 / 5 + 32).toFixed(1) + ' degF');
+      /* THE COLD BOARD SHOWS A SHUT ORIFICE LINEUP **AND** LETDOWN FLOWING (#624 items 14/25).
+       * That pair is the whole split at the surface: the orifices are OUT (the source's own
+       * shutdown lineup) while the RHR cross-connect carries the flow, so a board built on
+       * `letdownOpen x rated` painted 0 gpm on a plant passing the full normal magnitude. */
+      var cs5 = e5.getControlState();
+      ck('the cold board shows the orifices OUT and letdown STILL FLOWING (the cross-connect)',
+         cs5.letdown_orifice_a === false && cs5.letdown_orifice_b === false &&
+         cs5.letdown_flow_normalized > 0 && cs5.letdown_isolated === false,
+         'A ' + cs5.letdown_orifice_a + ' / B ' + cs5.letdown_orifice_b + ', flow ' +
+         (cs5.letdown_flow_normalized * 450000).toFixed(2) + ' gpm — the lineup-derived form ' +
+         'read 0.00 gpm here');
+      /* AND THE PZR HEATERS / PZR SPRAY CARDS OPEN IN HAND ON BOTH COLD BOARDS (#624 / #619
+       * item 14, 2026-09-04). This is the surface half of the cold lineup: the two AUTO lamps
+       * are DARK and the heater percent box reads 0, so the heatup checklist's "place pressure
+       * control in service" step has something to do and the player can see that it did it. On
+       * the old boot all three read the other way — AUTO lit, 11.53 % at Mode 5 and 11.56 % at
+       * Mode 4 (18.2 kW of a 157.8 kW installed bank) — on plants whose reactor coolant pumps
+       * are secured, so the spray in AUTO was a control with no head behind it.
+       *
+       * ⚠ MODE 4 IS ASSERTED THE SAME WAY, AND IT USED TO BE ASSERTED THE OPPOSITE WAY. For an
+       * hour on 2026-09-04 this check read `cs4h.heater_auto === true` as a deliberate scope
+       * boundary, because the ruling named the Mode 5 lineup. Then Mode 4 was measured — its
+       * AUTO ladder walks the initial condition 364.04 -> 376.28 psia in 60 min (+12.2 psi/hr)
+       * against +0.2 psi/hr off — and the boundary went (coordinator's call, 2026-09-04). */
+      var e4h = new SH.PWR2Engine({ initial_state: 'hot_shutdown' });
+      e4h.step(DT);
+      var cs4h = e4h.getControlState();
+      ck('BOTH cold boards open with PZR HEATERS off and PZR SPRAY in hand, 0 % on the bus',
+         cs5.heater_auto === false && cs5.spray_auto === false && cs5.heater_power_pct === 0 &&
+         cs4h.heater_auto === false && cs4h.spray_auto === false && cs4h.heater_power_pct === 0,
+         'Mode 5 ' + cs5.heater_auto + ' / ' + cs5.spray_auto + ' / ' +
+         cs5.heater_power_pct.toFixed(2) + ' %; Mode 4 ' + cs4h.heater_auto + ' / ' +
+         cs4h.spray_auto + ' / ' + cs4h.heater_power_pct.toFixed(2) +
+         ' % — the AUTO boots read true / true / 11.53 % and 11.56 %');
+    })();
 
     /* the block button's whole path: board -> kernel (empty trips -> FORWARD) -> shell ->
      * engine request; the kernel snapshot carries the ENGINE's own 35 % setpoint */
@@ -1306,9 +1388,26 @@ function runSuite(SH, rec, quiet, only) {
     ck('the kernel FORWARDS set_trip_block to the engine (empty trips list — the request ' +
        'lands) and P-10 revokes it below 8 % on the next step (the sourced asymmetric gate)',
        rF === null && reqNow === true && eB.eng.pt.blockLowFlux === false, '');
+    /* ⚠ THE EXAMPLE HAD TO MOVE (#601). This used `ir_high` as "a trip this RPS does not
+     * carry" — true when it was written, and false the moment the intermediate-range trip was
+     * built. `lo_flow` is the honest example now and a better one: the plant DOES carry that
+     * trip, it simply has no OPERATOR block for it, because WTSM 12.2 §12.2.3.12 makes the
+     * low-flow block automatic below P-7. A refusal must distinguish "no such trip" from "not
+     * yours to block", and the message names what IS blockable rather than what is not. */
+    var rNo = kl.handleCommand({ action: 'set_trip_block', trip_id: 'lo_flow', blocked: true });
+    ck('...and a block this RPS does not give the OPERATOR comes back as a REASONED error, ' +
+       'not a silence',
+       rNo && rNo.type === 'error' && /low-flux/.test(rNo.message) &&
+       /intermediate-range/.test(rNo.message), rNo ? rNo.message : 'no error at all');
+    /* AND THE ONE IT DOES CARRY NOW LANDS — the flip side, or the check above passes on a
+     * plant with no intermediate-range block at all (the absence-that-pins-a-non-event trap). */
     var rIr = kl.handleCommand({ action: 'set_trip_block', trip_id: 'ir_high', blocked: true });
-    ck('...and a trip this RPS does not carry comes back as a REASONED error, not a silence',
-       rIr && rIr.type === 'error' && /low-flux/.test(rIr.message), '');
+    var irReq = eB.eng.pt.blockIrHigh;
+    ck('...while the INTERMEDIATE RANGE block IS the operator action, and reaches the engine (#601)',
+       rIr === null && irReq === true &&
+       rps0.trip_block_status.ir_high && rps0.trip_block_status.ir_high.setpoint === 25,
+       'request ' + irReq + ', published setpoint ' +
+       (rps0.trip_block_status.ir_high ? rps0.trip_block_status.ir_high.setpoint : 'ABSENT'));
   })();
   }
 
@@ -1327,16 +1426,19 @@ function runSuite(SH, rec, quiet, only) {
      * "the LIVE limit, ~139 steps" was always meant to be about. A settled plant is the subject. */
     for (var i = 0; i < 3000; i++) eR.step(0.02);
     var gs = eR.getControlState().rod_groups;
-    ck('the control group carries the LIVE limit (~139 steps, not at limit) and the ' +
-       'shutdown group stays exempt (its evolutions are deliberate)',
-       gs[0].insertion_limit_steps >= 137 && gs[0].insertion_limit_steps <= 141 &&
+    ck('the control group carries the LIVE limit (a ~70 %-withdrawn floor, not at limit) and ' +
+       'the shutdown group stays exempt (its evolutions are deliberate)',
+       /* THE LIMIT IS A PERCENTAGE (#602) — RIL is (lo + (hi-lo)*f)/100 * BANK and always
+        * was. 137-141 was 69 % of a 200-step bank written as steps. */
+       gs[0].insertion_limit_steps >= frac(0.685) && gs[0].insertion_limit_steps <= frac(0.705) &&
        gs[0].at_insertion_limit === false &&
        gs[1].insertion_limit_steps === null && gs[1].at_insertion_limit === false,
-       'RIL ' + gs[0].insertion_limit_steps);
+       'RIL ' + gs[0].insertion_limit_steps + ' (' +
+       (100 * gs[0].insertion_limit_steps / bank()).toFixed(1) + ' % of ' + bank() + ')');
     ck('the board layer\'s rod_limit_margin channel tracks the engine (was pinned at its ' +
        '912 default)',
        Math.abs(eR.instruments.reading.rod_limit_margin - eR.eng._rodLimitMargin) < 1e-9 &&
-       eR.instruments.reading.rod_limit_margin < 100,
+       eR.instruments.reading.rod_limit_margin < frac(0.5),
        'margin ' + eR.instruments.reading.rod_limit_margin);
     var rowLO = (eR.getProtectionConfig().alarms || []).filter(function (a) {
       return a.id === 'rod_limit_approach';
@@ -1400,6 +1502,304 @@ function runSuite(SH, rec, quiet, only) {
     ck('the P-11 pair round-trips through the kernel forward: un-block clears the engine ' +
        'request, re-block below P-11 lands',
        (rSiB === null || rSiB === undefined) && cleared && eE.eng.pt.blockSI === true, '');
+  })();
+  }
+
+  if (grp('M')) {
+  /* ---- 1m. WHICH CONTROLLER "AUTO" SELECTS (#629) ------------------------------------------
+   * ONE button, TWO modes, and the turbine decides which. Before this, `auto` mapped
+   * unconditionally to Tavg mode, so STEAM PRESSURE mode — the mode WTSM 11.2 assigns to
+   * heatup, cooldown and hot standby — was unreachable from the board on any plant not booted
+   * in it. Measured consequence (#629, the heatup checklist's own ride): pressing AUTO from
+   * Mode 5 changed NOTHING, because the Tavg-mode turbine-trip controller only opens above
+   * `tavg_noload_c` = 557 °F while the atmospheric dump valve is already relieving at 1040 psig
+   * below it — so the plant heated up on that valve and the DUMP SETPOINT box was an orphan.
+   *
+   * THE MODE IS THE CLAIM, not the boolean: `steam_dump_auto` is `mode !== 'off'` and reads
+   * TRUE in both branches, which is exactly why a check written on it would have passed on the
+   * defect. Read the published word and the controller's own field, and assert BOTH branches —
+   * a mutation that hard-coded either one would pass a single-branch check. */
+  head('THE DUMP MODE SELECTOR  [#629: AUTO is Tavg on line, steam pressure with the turbine tripped]');
+  (function () {
+    /* the turbine-tripped branch: the Mode 5 plant a player actually heats up (boots 'off') */
+    var eC = new SH.PWR2Engine({ initial_state: 'cold_shutdown' });
+    run(eC, 1);
+    var boot = eC.getControlState();
+    eC.applyCommand({ action: 'set_steam_dump', mode: 'auto' });
+    run(eC, 1);
+    var csC = eC.getControlState();
+    ck('from Mode 5 (turbine tripped, dumps booted OFF) AUTO selects STEAM PRESSURE mode at the ' +
+       'Dump SP — the sourced heatup/cooldown/hot-standby mode, and the only one that reads the ' +
+       'DUMP SETPOINT box at all',
+       eC.eng.tb.tripped === true && boot.steam_dump_mode === 'off' &&
+       boot.steam_dump_auto === false &&
+       csC.steam_dump_mode === 'pressure' && csC.steam_dump_auto === true &&
+       eC.eng.dc.mode === 'pressure' &&
+       Math.abs(eC.eng.dc.pressure_setpoint_mpa - csC.steam_dump_setpoint) < 1e-9,
+       'boot "' + boot.steam_dump_mode + '" -> "' + csC.steam_dump_mode + '" at ' +
+       (csC.steam_dump_setpoint * 145.038 - 14.7).toFixed(0) + ' psig; the boolean reads ' +
+       csC.steam_dump_auto + ' either way, which is why it is not the claim');
+
+    /* the on-line branch: unchanged, and the check says so rather than assuming it */
+    var eP = new SH.PWR2Engine({});
+    run(eP, quiet ? 30 : 60);
+    eP.applyCommand({ action: 'set_steam_dump', mode: 'auto' });
+    run(eP, 1);
+    var csP = eP.getControlState();
+    ck('...and with the turbine ON LINE the same button still selects TAVG mode — the at-power ' +
+       'mode, whose loss-of-load controller is what C-7 arms',
+       eP.eng.tb.tripped === false && csP.steam_dump_mode === 'tavg' &&
+       eP.eng.dc.mode === 'tavg' && csP.steam_dump_auto === true,
+       'mode "' + csP.steam_dump_mode + '" at ' + eP.getTrueState().power_pct.toFixed(0) + ' % power');
+
+    /* CLOSED still means OFF, and the explicit modes land — the API a checklist or a gate uses
+     * when it means ONE of them. `open` and a bare `pct` stay refused BY NAME (#570). */
+    var eX = new SH.PWR2Engine({ initial_state: 'hot_zero_power' });
+    run(eX, 2);
+    var bootHZP = eX.getControlState().steam_dump_mode;
+    eX.applyCommand({ action: 'set_steam_dump', mode: 'closed' });
+    run(eX, 1);
+    var offMode = eX.getControlState();
+    eX.applyCommand({ action: 'set_steam_dump', mode: 'tavg' });
+    run(eX, 1);
+    var explicitTavg = eX.getControlState().steam_dump_mode;
+    eX.applyCommand({ action: 'set_steam_dump', mode: 'pressure' });
+    run(eX, 1);
+    var explicitPress = eX.getControlState().steam_dump_mode;
+    var refusedOpen = false, refusedPct = false;
+    try { eX.applyCommand({ action: 'set_steam_dump', mode: 'open' }); } catch (e) { refusedOpen = true; }
+    try { eX.applyCommand({ action: 'set_steam_dump', pct: 40 }); } catch (e) { refusedPct = true; }
+    ck('the Hot Standby preset boots in PRESSURE mode, CLOSED still means OFF, the explicit ' +
+       'modes land, and `open`/`pct` stay refused by name',
+       bootHZP === 'pressure' &&
+       offMode.steam_dump_mode === 'off' && offMode.steam_dump_auto === false &&
+       explicitTavg === 'tavg' && explicitPress === 'pressure' &&
+       refusedOpen && refusedPct,
+       'HZP boots "' + bootHZP + '"; closed -> "' + offMode.steam_dump_mode + '"; explicit -> "' +
+       explicitTavg + '"/"' + explicitPress + '"; refusals ' + refusedOpen + '/' + refusedPct);
+
+    /* THE PUBLISHED WORD IS THE COMMANDED DRIVER, NOT THE CONTROLLER'S ONE-STEP-OLD COPY.
+     * Read WITHOUT stepping, which is the only frame where the two disagree — and it is a frame
+     * the board renders. Reading `dc.mode` here would light AUTO over a press of CLOSED and name
+     * a controller that is no longer in service: the lamps and the status word sourced from two
+     * samplers of one selection, which is #606's shape. */
+    var eF = new SH.PWR2Engine({});
+    run(eF, 2);
+    var before = eF.getControlState().steam_dump_mode;
+    eF.applyCommand({ action: 'set_steam_dump', mode: 'closed' });
+    var sameFrame = eF.getControlState();
+    ck('the published mode is the COMMANDED driver: a press of CLOSED darkens the lamp on the ' +
+       'SAME frame, with no step in between (the controller\'s own copy is one step behind)',
+       before === 'tavg' && eF.eng.dc.mode === 'tavg' &&
+       sameFrame.steam_dump_mode === 'off' && sameFrame.steam_dump_auto === false,
+       'published "' + sameFrame.steam_dump_mode + '" while the controller still holds "' +
+       eF.eng.dc.mode + '"');
+  })();
+  }
+
+  if (grp('L')) {
+  /* ---- 1l. THE OPERATOR'S LOAD DIAL, RATE-LIMITED (#624 / #619 item 24) --------------------
+   * The owner: "During startup I always end up with the water level touching the heaters."
+   * MEASURED cause: `set_load_target` delivered the whole load change in ZERO time, and the
+   * pressurizer shrank through its 17 % low-level cut before the level controller had a
+   * disturbance it could answer. The fix is on THIS side of the engine door — see the long
+   * note over `stepLoadDial` in pwr2_shell.js for the source, the rate and the declarations.
+   *
+   * Every threshold below is COMPUTED from the module constants. A literal here would be a
+   * second copy of a sourced number, and would keep passing after the number moved. */
+  head('THE LOAD DIAL  [#624 item 24: a RAISE walks at the sourced 5 %/min, a reduction lands whole]');
+  var LVL = globalThis.RD.pwr2.pressurizer.LEVEL;
+  var ENV = globalThis.RD.pwr2.turbine.ENVELOPE;
+  var RATED = globalThis.RD.pwr2.turbine.TURB.mwe_rated;
+  var rampMweMin = function () { return (ENV.ramp_pct_per_min / 100) * RATED; };
+
+  /* CHECK 1 — THE DEFECT ITSELF. `low_power` is the state the startup checklist hands the
+   * player (10 MWe on the grid, rods where the checklist left them). Dial 30 MWe, touch
+   * nothing else, ride three plant-minutes. MEASURED on the pre-limiter build: indicated
+   * level 27.5 -> 16.11 %, THROUGH the 17 % cut, letdown isolated and the heaters shed at
+   * 0.78 min. INDICATED, not true, because the cut and the player both read the channel. */
+  (function () {
+    var e = new SH.PWR2Engine({ initial_state: 'low_power' });
+    run(e, 20);
+    e.applyCommand({ action: 'set_load_target', mwe: 30 });
+    var loInd = 1e9, loTrue = 1e9, loT = 0, iso = false, cut = false, t = 0;
+    while (t < 180) {
+      var ts = e.step(DT); t += DT;
+      var ind = e.getInstruments().pzr_level;
+      if (ind < loInd) { loInd = ind; loT = t / 60; }
+      if (ts.pzr_level_pct < loTrue) loTrue = ts.pzr_level_pct;
+      if (e.eng.cv.letdownIsolated) iso = true;
+      if (e.eng.pz.lowLevelCut) cut = true;
+    }
+    ck('a 20 MWe dial step from low_power no longer drains the pressurizer through its 17 % ' +
+       'low-level cut (the item-24 defect)',
+       loInd > LVL.low_cut_pct && iso === false && cut === false,
+       'min indicated ' + loInd.toFixed(2) + ' % (true ' + loTrue.toFixed(2) + ') @' +
+       loT.toFixed(2) + ' min, cut at ' + LVL.low_cut_pct + ' %, isolated ' + iso);
+  })();
+
+  /* CHECK 2 — THE DIAL AND THE REFERENCE ARE TWO NUMBERS, and the second one walks. Both
+   * halves matter: the board's MW box reads `load_cmd_mwe` and must show what the player
+   * typed IMMEDIATELY *(OWNER DIRECTIVE, 2026-08-11)*, while the machine walks. The arrival
+   * time is the rate, measured rather than asserted from the constant twice. */
+  (function () {
+    var e = new SH.PWR2Engine({ initial_state: 'low_power' });
+    run(e, 20);
+    var from = e.eng.tb.load_target_mwe;
+    e.applyCommand({ action: 'set_load_target', mwe: 30 });
+    e.step(DT);
+    var cs1 = e.getControlState();
+    var dialImmediate = Math.abs(cs1.load_cmd_mwe - 30) < 1e-9;
+    var refStillLow = cs1.load_target_mwe < from + 0.05;
+    var t = 0, arrive = null;
+    while (t < 900) {
+      e.step(DT); t += DT;
+      if (arrive === null && e.eng.tb.load_target_mwe >= 30 - 1e-9) arrive = t;
+    }
+    var want = (30 - from) / rampMweMin() * 60;          /* seconds, from the envelope */
+    ck('the dial lands INSTANTLY on the board (load_cmd_mwe) while the plant\'s reference ' +
+       '(load_target_mwe) walks there at the sourced ' + ENV.ramp_pct_per_min + ' %/min',
+       dialImmediate && refStillLow && arrive !== null && Math.abs(arrive - want) <= 2 * DT + 1e-9,
+       'cmd ' + cs1.load_cmd_mwe + ' MWe, reference ' + cs1.load_target_mwe.toFixed(3) +
+       ' MWe one step in, arrived at ' + (arrive === null ? 'never' : (arrive / 60).toFixed(3) +
+       ' min vs ' + (want / 60).toFixed(3) + ' expected'));
+  })();
+
+  /* CHECK 3 — RAISES ONLY: a REDUCTION lands whole, in one step. This is the retired plant's own
+   * design *(OWNER RULING, 2026-08-08: "Do the 30% increase.")* and it is the direction that
+   * does not need limiting — a load decrease SWELLS the pressurizer, away from the 17 % cut the
+   * raise drives it into. The source's "similar… reductions are possible" is a capability
+   * statement, not a limiter. The C-7 reason is check 5. */
+  (function () {
+    var e = new SH.PWR2Engine({ initial_state: '50_percent' });
+    run(e, 20);
+    var from = e.eng.tb.load_target_mwe;
+    e.applyCommand({ action: 'set_load_target', mwe: 30 });
+    e.step(DT);
+    var oneStep = e.eng.tb.load_target_mwe;
+    ck('a load REDUCTION is IMMEDIATE — the limiter is RAISES ONLY (the retired plant\'s design, ' +
+       'and the direction that swells the pressurizer rather than shrinking it)',
+       Math.abs(oneStep - 30) < 1e-9 && from > 45,
+       from.toFixed(1) + ' -> 30 MWe: reference reads ' + oneStep.toFixed(3) +
+       ' MWe one step later (a limited reduction would read ' +
+       (from - rampMweMin() * DT / 60).toFixed(3) + ')');
+  })();
+
+  /* CHECK 4 — PROVENANCE, not agreement. "The walk takes four minutes" is satisfied by a
+   * retyped 5.0 as happily as by reading the envelope, and a retyped constant is exactly the
+   * #534 trap this whole item is an instance of. So MOVE the sourced number and require the
+   * plant to move with it — the `boundsFor` idiom from run_pwr2_board. */
+  (function () {
+    var was = ENV.ramp_pct_per_min;
+    function arriveS(rate) {
+      ENV.ramp_pct_per_min = rate;
+      var e = new SH.PWR2Engine({ initial_state: 'low_power' });
+      run(e, 20);
+      e.applyCommand({ action: 'set_load_target', mwe: 30 });
+      var t = 0;
+      while (t < 1800) { e.step(DT); t += DT; if (e.eng.tb.load_target_mwe >= 30 - 1e-9) return t; }
+      return null;
+    }
+    var slow = arriveS(2.5), fast = arriveS(10);
+    ENV.ramp_pct_per_min = was;
+    ck('the rate is READ from RD.pwr2.turbine.ENVELOPE every step, not retyped — halve the ' +
+       'sourced number and the walk doubles',
+       slow !== null && fast !== null && Math.abs(slow / fast - 4.0) < 0.01,
+       'at 2.5 %/min ' + (slow / 60).toFixed(3) + ' min, at 10 %/min ' + (fast / 60).toFixed(3) +
+       ' min, ratio ' + (slow / fast).toFixed(4));
+  })();
+
+  /* CHECK 5 — BOTH ROUTES TO THE GRADED RIDE-OUT SURVIVE, and this is the check that decided
+   * the raises-only ruling rather than merely recording it. The steam dump's loss-of-load arm is
+   * "a ramp load decrease at a rate GREATER THAN 5 %/min" (pwr2_dumpctl, WTSM 11.2) — THE SAME
+   * SOURCED NUMBER as the load envelope. A symmetric limiter parks the dial's reduction rate
+   * exactly ON that threshold: built and measured that way first, 100 MWe to 0, the C-7 rate
+   * signal asymptoted to 4.999773 %/min against a strict `>` and NEVER armed, where the instant
+   * cut reaches 49.99 %/min. A 0.00023 %/min margin is a BIFURCATION, not a tolerance (#543,
+   * #588 — one ulp reproduced the other platform's branch), and it would have removed the dial
+   * as a way to produce the loss-of-load transient at all. Reductions are therefore instantaneous
+   * and BOTH routes are asserted here, so neither can be lost silently — the failure
+   * `engines/load_mode.js` records for the retired plant. */
+  (function () {
+    var e1 = new SH.PWR2Engine({});
+    run(e1, 60);
+    e1.applyCommand({ action: 'set_load_target', mwe: 0 });
+    var armDial = false, t = 0, rateMax = 0, dialT = null;
+    while (t < 10 * 60) {
+      e1.step(DT); t += DT;
+      if (e1.eng.dc.c7Armed) { if (!armDial) dialT = t; armDial = true; }
+      rateMax = Math.max(rateMax, -e1.eng.dc.loadRate * 6000);
+    }
+    var e2 = new SH.PWR2Engine({});
+    run(e2, 60);
+    e2.applyCommand({ action: 'disconnect_grid' });
+    e2.step(DT);
+    var immediate = e2.eng.tb.load_target_mwe === 0 && e2.getControlState().load_cmd_mwe === 0;
+    var armDisc = false;
+    for (var i = 0; i < 120 / DT; i++) { e2.step(DT); if (e2.eng.dc.c7Armed) armDisc = true; }
+    ck('BOTH free-play routes to the C-7 graded ride-out are live: a dial cut to 0 arms it (it ' +
+       'would NOT under a symmetric limiter), and UNLOAD arms it while zeroing both numbers in ' +
+       'the SAME step rather than the next one',
+       armDial === true && armDisc === true && immediate,
+       'dial cut: armed ' + armDial + (dialT === null ? '' : ' at ' + dialT.toFixed(2) + ' s') +
+       ', peak C-7 ramp signal ' + rateMax.toFixed(4) + ' %/min vs threshold > ' +
+       (globalThis.RD.pwr2.dumpctl.DUMP.c7_ramp_frac_per_min * 100).toFixed(4) +
+       ' | UNLOAD: armed ' + armDisc + ', both 0 in one step ' + immediate);
+  })();
+
+  /* CHECK 6 — AN AUTOMATIC CUT IS NOT LIMITED, AND IT MOVES THE ASK. The OTdT/OPdT runback
+   * (sourced 200 %/min) is the only path in the plant that lowers the reference on its own.
+   * Without `syncLoadDial` the limiter would spend the runback walking the load straight back
+   * up — the retired plant's `immediate` note: "it moves the ASK as well so the ramp has
+   * nothing to undo."  WHITE-BOX on the signal: `_runbackSig` is written from the protection
+   * report at the END of every engine step, so a persistent signal is held here by re-asserting
+   * it, which is what a standing delta-T approach does. The RELEASE half is the real assertion
+   * — after the signal clears the load must STAY DOWN. */
+  (function () {
+    var e = new SH.PWR2Engine({});
+    run(e, 60);
+    var from = e.eng.tb.load_target_mwe;
+    for (var i = 0; i < 1.5 / DT; i++) { e.eng._runbackSig = true; e.step(DT); }
+    var afterRb = e.eng.tb.load_target_mwe;
+    var dialFollowed = Math.abs(e.getControlState().load_cmd_mwe - afterRb) < 1e-9;
+    run(e, 60);
+    var later = e.eng.tb.load_target_mwe;
+    ck('the automatic runback is NOT rate-limited and the DIAL follows it down — the load ' +
+       'stays where the runback put it instead of walking back up',
+       afterRb < from - 4.0 && dialFollowed && Math.abs(later - afterRb) < 1e-9,
+       from.toFixed(2) + ' -> ' + afterRb.toFixed(2) + ' MWe in 1.5 s (dial followed ' +
+       dialFollowed + '), still ' + later.toFixed(2) + ' MWe a minute later');
+  })();
+
+  /* CHECK 7 — the dial ROUND-TRIPS through the save. A restore taken mid-walk must resume the
+   * same walk; the file's own bit-exactness bar. An old save carries no dial at all and lands
+   * with effective = dialled, which is the pre-limiter state exactly (asserted separately, by
+   * deleting the field from the saved blob). */
+  (function () {
+    var e = new SH.PWR2Engine({ initial_state: 'low_power' });
+    run(e, 20);
+    e.applyCommand({ action: 'set_load_target', mwe: 30 });
+    run(e, 60);                                            /* mid-walk: ~15 MWe */
+    var mid = e.eng.tb.load_target_mwe;
+    var blob = e.saveState();
+    var b = new SH.PWR2Engine({ initial_state: 'low_power' });
+    b.loadState(blob);
+    run(e, 120); run(b, 120);
+    var resumed = b.eng.tb.load_target_mwe === e.eng.tb.load_target_mwe &&
+                  b.getControlState().load_cmd_mwe === 30;
+    var old = JSON.parse(JSON.stringify(blob));
+    delete old.state.scalars._loadDialMwe;
+    var c = new SH.PWR2Engine({ initial_state: 'low_power' });
+    c.loadState(old);
+    c.step(DT); run(c, 60);
+    ck('the dialled target rides the save (a mid-walk restore resumes the walk), and a save ' +
+       'that predates it lands with effective = dialled',
+       mid > 12 && mid < 20 && resumed &&
+       Math.abs(c.eng.tb.load_target_mwe - c.getControlState().load_cmd_mwe) < 1e-9 &&
+       Math.abs(c.eng.tb.load_target_mwe - mid) < 1e-9,
+       'saved at ' + mid.toFixed(3) + ' MWe -> resumed ' + b.eng.tb.load_target_mwe.toFixed(3) +
+       ' vs ' + e.eng.tb.load_target_mwe.toFixed(3) + ' | old save parked at ' +
+       c.eng.tb.load_target_mwe.toFixed(3) + ' MWe');
   })();
   }
 
@@ -1535,10 +1935,23 @@ function runSuite(SH, rec, quiet, only) {
 
   /* ---- 3. COMMANDS LAND THROUGH THE CLASS ---------------------------------------------------- */
   head('COMMANDS LAND  [the class is a real door, not a shape]');
+  /* THE RIDE IS DERIVED, and on this fixture it is the ORIGINAL ride (#624 / #619 item 24).
+   * The plant is at 100 MWe here, so `set_load_target 80` is a REDUCTION — and the limiter is
+   * raises only, so the reduction lands whole and this check is untouched by the change. It was
+   * briefly extended, when the first build limited both directions and the old 40/60 s ride
+   * ended MID-MANEUVER at 95 MWe (as did the gauge-lag check below, which compares against a
+   * `t80` that was no longer a settled point). The extension is DERIVED rather than typed so
+   * that it re-appears on its own if this fixture ever becomes a raise, or if reductions are
+   * ever limited: `walkS` is the walk the rate implies and is 0 in both cases here. */
   eng.applyCommand({ action: 'set_load_target', mwe: 80 });
-  var t80 = run(eng, quiet ? 40 : 60);
-  ck('set_load_target moves the plant', Math.abs(t80.mwe_output - 80) < 2,
-     t80.mwe_output.toFixed(1) + ' MWe');
+  var walk80 = Math.max(0, (80 - eng.eng.tb.load_target_mwe) /
+               ((globalThis.RD.pwr2.turbine.ENVELOPE.ramp_pct_per_min / 100) *
+                globalThis.RD.pwr2.turbine.TURB.mwe_rated) * 60);
+  var t80 = run(eng, walk80 + (quiet ? 40 : 60));
+  ck('set_load_target moves the plant',
+     Math.abs(t80.mwe_output - 80) < 2,
+     t80.mwe_output.toFixed(1) + ' MWe' +
+     (walk80 > 0 ? ' after a ' + (walk80 / 60).toFixed(1) + ' min ramp' : ' (a reduction: no ramp)'));
   /* THE FEED LEVERS (2026-08-21) — refusals retired; the wire proven with one round trip.
    * pct 50 = 0.5 of rated through the old payload shape; re-coupled after so the rest of
    * the suite inherits the AUTO lineup it states. */
@@ -1903,7 +2316,28 @@ var pass = rec.filter(function (r) { return r.ok; }).length, fail = rec.length -
 var SHSRC = fs.readFileSync(path.join(SRC, 'pwr2_shell.js'), 'utf8').replace(/\r\n/g, '\n');
 /* Each entry's trailing { grp } names the section group that can SEE it (#513) — the replay
  * runs only that group, and the BLIND check still reds the runner if the tag is wrong. */
+var NL_ = '\n';   /* the two-char escape a multi-line anchor needs */
 var MUTATIONS = [
+  /* THE LETDOWN SURFACE (#624 items 14/25). The first is the SHIPPED form restored: a board
+   * flow derived from the operator's LINEUP rather than from what the plant stepped. It reads
+   * 0 gpm on a cold plant passing the full normal magnitude through the RHR cross-connect, and
+   * it would read normal through a 17 % protective isolate — wrong in both directions, and
+   * invisible while every fixture booted with the orifices already in. */
+  ['the board derives letdown flow from the LINEUP again (a cold plant reads 0 gpm while ' +
+   'passing full letdown)',
+   '      letdown_flow_normalized: RD.cvcs.kgsToGpm(e._letdownKgs || 0) / 450000,',
+   '      letdown_flow_normalized: e.cv.letdownOpen *\n                               (RD.cvcs.CVCS.charging_normal_gpm() + RD.cvcs.sealInjectionGpm()) / 450000,',
+   { grp: 'H' }],
+  ['control_state loses the protective isolate (a shut lineup and an isolated plant look ' +
+   'identical on the two lamps)',
+   '      letdown_isolated: e.cv.letdownIsolated === true,', '', { grp: 'A' }],
+  /* THE PZR HEATERS AUTO LAMP (#624 / #619 item 14). Pinned true, it is the board every gate
+   * saw before Mode 5 booted the heaters off — nothing but the typeof guard read this field, so
+   * a lamp that could not go dark was indistinguishable from one that never needed to.
+   * `spray_auto` is already covered from the other end (the set_spray round trip, ~line 1597). */
+  ['the AUTO lamp on PZR HEATERS can never go dark (the board that predates the Mode 5 lineup)',
+   '      heater_auto: e.pzDrivers.heaters_manual === undefined,',
+   '      heater_auto: true,', { grp: 'H' }],
   /* #591 item 1 — the circulating-water sink. TWO anchors because the halves fail separately:
    * sever the door and the vacuum stops answering (the defect the owner actually found), while
    * publishing the RETIRED plant's band leaves the sink working but puts the C-9 removal point
@@ -2056,8 +2490,10 @@ var MUTATIONS = [
    "          return a.id === 'rod_limit_approach'\n            ? Object.assign({}, a, { setpoint: 10 })\n            : a;",
    "          return a.id === 'pzr_level_low'\n            ? Object.assign({}, a, { instrument: 'pzr_level', setpoint: 17.0 })\n            : a.id === 'rod_limit_approach'\n            ? Object.assign({}, a, { setpoint: 10 })\n            : a;", { grp: 'A' }],
   ['the shutdown group reverts to the pre-#506 snap (200 -> 0 in one frame on scram)',
-   "          steps: Math.round(e.sdSteps), max_steps: 200,\n          position_pct: 100 * e.sdSteps / 200,",
-   '          steps: ts.scrammed ? 0 : 200, max_steps: 200,\n          position_pct: ts.scrammed ? 0 : 100,', { grp: 'B' }],
+   "          steps: Math.round(e.sdSteps), max_steps: bankSteps()," + NL_ +
+   "          position_pct: 100 * e.sdSteps / bankSteps(),",
+   "          steps: ts.scrammed ? 0 : bankSteps(), max_steps: bankSteps()," + NL_ +
+   "          position_pct: ts.scrammed ? 0 : 100,", { grp: 'B' }],
   ['the rcp pump record loses flow_pct again (the board animation computes NaN and freezes)',
    "      pumps: [{ id: 'rcp', running: !e.sys.pumpTripped,\n                flow_pct: ts.pump_flow_pct !== undefined ? ts.pump_flow_pct\n                          : (e.sys.pumpTripped ? 0 : 100) }]",
    "      pumps: [{ id: 'rcp', running: !e.sys.pumpTripped }]", { grp: 'A' }],
@@ -2088,8 +2524,15 @@ var MUTATIONS = [
    '          insertion_limit_steps: e._rilSteps === undefined ? null : e._rilSteps,\n          at_insertion_limit: e._rodAtLimit === true },',
    '          insertion_limit_steps: null, at_insertion_limit: false },', { grp: 'I' }],
   ['the margin channel is severed (the board reads the healthy default for ever)',
-   '    ex.rod_limit_margin = e._rodLimitMargin === undefined ? 200 : e._rodLimitMargin;',
-   '    ex.rod_limit_margin = 200;', { grp: 'I' }],
+   '    ex.rod_limit_margin = e._rodLimitMargin === undefined ? bankSteps() : e._rodLimitMargin;',
+   '    ex.rod_limit_margin = bankSteps();', { grp: 'I' }],
+  /* THE HOIST ITSELF (#602 phase 1) — the surface half. A stale divisor does not throw and
+   * does not blank the readout: it renders a fully-withdrawn 313-step bank as 156.5 %
+   * withdrawn, a wrong number that still draws. That is why the check beside it reads
+   * position_pct and not only max_steps. */
+  ['position_pct keeps its own stale 200 divisor (a full bank renders over 100 %)',
+   '          position_pct: 100 * e.rodSteps / bankSteps(),',
+   '          position_pct: 100 * e.rodSteps / 200,', { grp: 'A' }],
   ['the ROD LIMIT LO override is dropped (the row fires at 40 of this bank\'s steps — 4x early)',
    /* anchor re-cut when #500's override left the map (2026-08-29) — it used to open with the
     * `: ` that chained off the pzr_level_low arm, and an anchor that no longer matches is a
@@ -2101,7 +2544,54 @@ var MUTATIONS = [
    '', { grp: 'J' }],
   ['the P-11 pair mapping is severed (the cooldown blocks are board-unreachable) -- #507 wave 10',
    "      } else if (c.trip_id === 'lo_press') {\n        /* the P-11 pair (#507 wave 10) — the pwr1 board's own ids for the cooldown blocks */\n        EN.command(e, 'lo_press_trip_block', c.blocked !== false);\n      } else if (c.trip_id === 'si_trip') {\n        EN.command(e, 'si_block', c.blocked !== false);\n      }",
-   '      }', { grp: 'K' }]
+   '      }', { grp: 'K' }],
+  /* ---- #624 / #619 item 24: the operator's rate-limited load dial ------------------------
+   * FOUR mutations, because the limiter has four separable claims and each of them was a real
+   * shipped state of this plant at some point: no limit at all (today), a retyped rate, raises
+   * only (the retired plant), and a limiter that eats the automatic paths. */
+  ['the load dial is not rate-limited at all (the shipped defect: a 20 MWe step drains the ' +
+   'pressurizer through its 17 % cut)',
+   '    EN.command(e, \'load_mwe\', gap <= stepMwe ? e._loadDialMwe\n                                             : e.tb.load_target_mwe + stepMwe);',
+   "    EN.command(e, 'load_mwe', e._loadDialMwe);", { grp: 'L' }],
+  /* the rate becomes a LITERAL. The walk still takes four minutes and check 2 stays green —
+   * only the provenance check can see this, which is why it exists (#534's standing trap: this
+   * engine inherited the old plant's constants by reference and each is wrong until measured). */
+  ['the ramp rate is RETYPED instead of read from the sourced envelope',
+   '    return (RD.turbine.ENVELOPE.ramp_pct_per_min / 100) * RD.turbine.TURB.mwe_rated / 60;',
+   '    return (5.0 / 100) * RD.turbine.TURB.mwe_rated / 60;', { grp: 'L' }],
+  /* THE SYMMETRIC BUILD — this item's own first draft, and the one the ruling rejected. It parks
+   * the dial's reduction rate exactly on the C-7 arming threshold (the same sourced 5 %/min) with
+   * a 0.00023 %/min structural margin, and the operator loses the loss-of-load transient. Caught
+   * twice, which is the point of keeping it: by the immediate-reduction check, and by the C-7
+   * arming half — a mutation that only the timing check could see would prove nothing about the
+   * interlock. */
+  ['reductions are rate-limited too (the symmetric build: the dial sits on C-7\'s own number)',
+   "    if (gap < 0) { EN.command(e, 'load_mwe', e._loadDialMwe); return; }",
+   "    if (gap < 0) { if (dt > 0) EN.command(e, 'load_mwe', Math.max(e._loadDialMwe, e.tb.load_target_mwe - loadRampMweS() * dt)); return; }", { grp: 'L' }],
+  /* the AUTOMATIC paths get eaten by the dial: the runback nibbles the load down and the
+   * limiter immediately walks it back up, so a protective action becomes a tug of war. */
+  ['an automatic load cut does NOT move the ask (the limiter undoes the runback)',
+   '    if (e.tb.load_target_mwe < wasMwe - 1e-9 && e.tb.load_target_mwe < e._loadDialMwe)\n      e._loadDialMwe = e.tb.load_target_mwe;',
+   '', { grp: 'L' }],
+  /* ---- #629: which controller AUTO selects -------------------------------------------------
+   * THREE mutations, because the selector has three separable claims and the first of them was
+   * the shipped state of this plant: AUTO always Tavg (steam pressure mode board-unreachable,
+   * the heatup rides the atmospheric dump valve), AUTO always pressure (the mirror defect — the
+   * at-power plant loses the loss-of-load controller C-7 arms), and the published word going
+   * stale against the driver, which is the #606 shape: the lamps would be right and the status
+   * readout would name a controller that is not in service. */
+  ['AUTO is always Tavg mode again (the #629 defect: steam pressure mode is board-unreachable ' +
+   'and the heatup rides the atmospheric dump valve)',
+   "      if (c.mode === 'auto') EN.command(e, 'dump_mode', e.tb.tripped ? 'pressure' : 'tavg');",
+   "      if (c.mode === 'auto') EN.command(e, 'dump_mode', 'tavg');", { grp: 'M' }],
+  ['AUTO is always PRESSURE mode (the mirror defect: the at-power plant loses the loss-of-load ' +
+   'controller C-7 arms)',
+   "      if (c.mode === 'auto') EN.command(e, 'dump_mode', e.tb.tripped ? 'pressure' : 'tavg');",
+   "      if (c.mode === 'auto') EN.command(e, 'dump_mode', 'pressure');", { grp: 'M' }],
+  ['the published mode reads the CONTROLLER instead of the commanded driver (the status word ' +
+   'goes one selection stale)',
+   '    if (e.dcDrivers && e.dcDrivers.mode !== undefined) return e.dcDrivers.mode;\n    return e.dc ? e.dc.mode : \'tavg\';',
+   "    return e.dc ? e.dc.mode : 'tavg';", { grp: 'M' }]
 ];
 
 /* ---- SCOPED-CLEAN-PASS PREFLIGHT (#513) ------------------------------------------------
@@ -2127,7 +2617,7 @@ MUTATIONS.map(function (mt) { return mt[3] && mt[3].grp; })
 
 console.log('\ninjection self-test (' + MUTATIONS.length + ' mutations):');
 var blind = 0;
-MUTATIONS.forEach(function (mt) {
+MUT.select(MUTATIONS).forEach(function (mt) {
   var grpTag = (mt[3] && mt[3].grp) || undefined;
   var mutated = SHSRC.replace(mt[1], mt[2]);
   if (mutated === SHSRC) { console.log('  ANCHOR MISS ' + mt[0]); blind++; return; }

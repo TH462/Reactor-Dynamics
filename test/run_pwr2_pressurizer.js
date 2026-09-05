@@ -17,6 +17,7 @@
  */
 'use strict';
 var path = require('path');
+var MUT = require('./mut_flags.js');   /* --no-mutations / --mut= / --grp= (#602) */
 var SRC = path.join(__dirname, '..', 'engines', 'pwr2');
 var fs = require('fs');
 
@@ -260,11 +261,16 @@ function runSuite(RD, rec, quiet) {
   ckT('-25 psi: backup heaters LATCH', once(-25.05).backup_on === true,
       once(-25.05).heater_kW.toFixed(0) + ' kW with the backup bank in  (probed a hundredth ' +
       'below the threshold -- the stub\'s MPa round-trip cannot land EXACTLY on it)');
+  /* Each error is HELD for 8 s (4x CONTROL.prop_filter_tau_s) — the bistable answers the
+   * lagged control signal since the 2026-08-31 chatter fix, so a single-step probe reads
+   * the seed, not the held value. Valid against the pre-filter plant too: holding a
+   * constant error longer changes nothing there (checked before the fixture moved). */
   var pzHys = PZ.createPressurizer({});
-  PZ.stepPressurizer(pzHys, stub(at(-25.05)), DT, {});
-  PZ.stepPressurizer(pzHys, stub(at(-20)), DT, {});
+  function holdErr(p, psi) { for (var kZ = 0; kZ < 400; kZ++) PZ.stepPressurizer(p, stub(at(psi)), DT, {}); }
+  holdErr(pzHys, -25.05);
+  holdErr(pzHys, -20);
   var hysMid = pzHys.backupOn;
-  PZ.stepPressurizer(pzHys, stub(at(-16)), DT, {});
+  holdErr(pzHys, -16);
   ckT('...and clear at -17, not -25 -- the sourced hysteresis, not a mirrored threshold',
       hysMid === true && pzHys.backupOn === false,
       'still ON at -20 psi, OFF above -17 -- a symmetric band reds here');
@@ -528,7 +534,10 @@ function runSuite(RD, rec, quiet) {
       pwC = r.pumpWork_kW;
       prC = PZ.stepPressurizer(pzC, sysC, DT, { tavg_c: 304.5 });
       cvC.chargingDemand = prC.charging_demand;
-      cvC.letdownOpen = prC.letdown_isolated ? 0 : 1;
+      /* the wiring the FACADE uses since #624 item 14: the 17 % cut drives the protective
+       * isolate, not the operator's orifice lineup. A hand-wired loop that writes the cut into
+       * `letdownOpen` is testing a plant the shell no longer builds. */
+      cvC.letdownIsolated = prC.letdown_isolated;
     }
     return prC;
   }
@@ -568,7 +577,7 @@ function runSuite(RD, rec, quiet) {
       prT = PZ.stepPressurizer(pzT, sysT, DT, Object.assign({ tavg_c: 304.5 }, drv));
       reliefT = prT.relief_kgs;
       cvT.chargingDemand = prT.charging_demand;
-      cvT.letdownOpen = prT.letdown_isolated ? 0 : 1;
+      cvT.letdownIsolated = prT.letdown_isolated;   /* same wiring as rideC — #624 item 14 */
     }
     return prT;
   }
@@ -813,8 +822,13 @@ function runSuite(RD, rec, quiet) {
   var pzH = PZ.createPressurizer({});
   var sysH = S.createPlant({ h: W.h_l(304.5, 15.41), P: 15.41, extraMass: PZ.extraMassFn(pzH) });
   for (var kH = 0; kH < 200; kH++) PZ.stepPressurizer(pzH, sysH, 0.02, {});
-  var rLie = PZ.stepPressurizer(pzH, sysH, 0.02,
-    { indicated_pressure_mpa: pzH.setpoint_mpa - 30 / 145.03774 });
+  /* The lie is HELD 8 s — the ladder answers it through the 2 s control-channel lag
+   * (2026-08-31 chatter fix); a one-step read sees the lagged seed. Passes pre-filter too. */
+  var rLie = null;
+  for (kH = 0; kH < 400; kH++) {
+    rLie = PZ.stepPressurizer(pzH, sysH, 0.02,
+      { indicated_pressure_mpa: pzH.setpoint_mpa - 30 / 145.03774 });
+  }
   ckT('an indicated -30 psi lie drives the heaters FULL with true P at the setpoint',
       rLie.heater_frac === 1 && pzH.backupOn === true,
       'heater frac ' + rLie.heater_frac + ', backup ' + pzH.backupOn);
@@ -1022,8 +1036,8 @@ var MUTATIONS = [
    'if ((siSig && !pz._siPrev) || (loopSig && !pz._loopPrev)) pz.shedLatch = true;',
    'if ((siSig || loopSig) && !(pz._siPrev || pz._loopPrev)) pz.shedLatch = true;'],
   ['backup heaters clear at their own on-point (the sourced -17 hysteresis flattened)',
-   'else if (err_psi >= CONTROL.backup_off_psi && !backupOnLevel) pz.backupOn = false;',
-   'else if (err_psi >= CONTROL.backup_on_psi && !backupOnLevel) pz.backupOn = false;'],
+   'else if (pz.errFiltPsi >= CONTROL.backup_off_psi && !backupOnLevel) pz.backupOn = false;',
+   'else if (pz.errFiltPsi >= CONTROL.backup_on_psi && !backupOnLevel) pz.backupOn = false;'],
   ['the safeties reseat at the lift point (the sourced 5 % blowdown deleted)',
    'else if (pz.safetyOpen && P <= RELIEF.safety_open_mpa * RELIEF.safety_reseat_frac) {',
    'else if (pz.safetyOpen && P <= RELIEF.safety_open_mpa) {'],
@@ -1103,7 +1117,7 @@ var MUTATIONS = [
 
 console.log('\ninjection self-test (' + MUTATIONS.length + ' mutations):');
 var blind = 0;
-MUTATIONS.forEach(function (m) {
+MUT.select(MUTATIONS).forEach(function (m) {
   var mutated = PZSRC.replace(m[1], m[2]);
   if (mutated === PZSRC) {
     console.log('  ANCHOR MISS ' + m[0] + '   <-- mutation did not apply');

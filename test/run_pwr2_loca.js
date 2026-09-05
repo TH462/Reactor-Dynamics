@@ -52,7 +52,7 @@ function scenario(opts) {
   var ctm = RD.containment.createContainment({});
   var ecc = RD.eccs.createECCS({ hhsiRunning: !!opts.eccsLinedUp, lhsiRunning: !!opts.eccsLinedUp });
   var M0 = sys.M_total, courantBad = 0, eccsStartedAt = null, injected = 0;
-  var steps = opts.steps || 3000, t = 0, lastR = null, lastCt = null, lastEc = null;
+  var steps = opts.steps || 3000, t = 0, lastR = null, lastCt = null, lastEc = null, lastBr = null;
   /* THE HOLD, POST-#585: the loop deliberately keeps stepping PAST the latch, because the claim
    * worth a check is the one the defect violated — that a held plant and its books are FROZEN
    * TOGETHER. Before the fix this fixture created 69.4 kg out of nothing over 222 held steps
@@ -98,11 +98,11 @@ function scenario(opts) {
       heldSteps++;
     }
     t += DT;
-    lastR = r; lastEc = ec;
+    lastR = r; lastEc = ec; lastBr = br;
   }
   return { sys: sys, M0: M0, M1: sys.M_total, brk: brk, ctm: ctm, courantBad: courantBad,
            steps: steps, eccsStartedAt: eccsStartedAt, injected: injected,
-           lastR: lastR, lastCt: lastCt, lastEc: lastEc,
+           lastR: lastR, lastCt: lastCt, lastEc: lastEc, lastBr: lastBr,
            heldAt: heldAt, heldSteps: heldSteps, heldDrift: heldDrift };
 }
 
@@ -175,10 +175,11 @@ function runSuite(rec, quiet) {
   /* ---- 4. THE ACCUMULATOR IN THE JOINT RIDE (#511) — pumps OFF, a bigger break, and the
    * passive tank answers on its own once the blowdown crosses the ~650 psig cover pressure.
    * The closure identities must hold with the passive stream in them, and containment must
-   * stay blind to it (injection adds to the PRIMARY only). This is also the ride that reaches
-   * the beyond-model hold (~107 s), which is what section 5 stands on. ---- */
+   * stay blind to it (injection adds to the PRIMARY only). Pre-#524 this was also the ride
+   * that reached the beyond-model hold (~107 s, the floor arm); with the floor at 0.002 MPa
+   * it now COMPLETES instead — section 5a asserts that, so it runs to equalization. ---- */
   head('THE ACCUMULATOR  [#511: passive injection joins the closure; containment never sees it]');
-  var c = scenario({ steps: N * 2, area_m2: 0.004, eccsLinedUp: false });
+  var c = scenario({ steps: N * 5, area_m2: 0.004, eccsLinedUp: false });
   ckT('with NO pumps lined up the accumulator still injected (passive, below its cover pressure)',
       c.injected > 100 && c.lastEc.acc_water_frac < 1,
       c.injected.toFixed(0) + ' kg injected, tank at ' +
@@ -198,13 +199,67 @@ function runSuite(rec, quiet) {
    * the LATCHING step itself booked 1.9238 kg the plant refused. Now the plant's mass, the
    * break ledger, containment's receipt, the injection tally and the accumulator's water must
    * all sit EXACTLY where the latch left them — zero, not a tolerance. */
-  head('THE HOLD  [#585: a held plant and its books are frozen TOGETHER]');
-  ckT('the ride reaches the hold and rides through it (the fixture section 5 requires)',
-      c.heldAt !== null && c.heldSteps > 100,
-      'latched at t = ' + (c.heldAt === null ? 'never' : c.heldAt.toFixed(2) + ' s') + ', ' +
-      c.heldSteps + ' held steps ridden PAST the latch, none skipped');
+  /* RE-AIMED 2026-08-31 (#524). This section used to REQUIRE the ride to latch the hold at
+   * ~107 s — but that latch was the FLOOR arm (`flooredLow` + clamped nodes at 0.1 MPa), i.e.
+   * the property floor masking the end of blowdown. With the floor at 0.002 MPa the same ride
+   * COMPLETES: the plant drains, equalizes against the break's containment backpressure
+   * (15.7 psia), and the break flow stops — measured, M_total falls 16,091 -> ~11 kg with
+   * zero enthalpy clamps and no hold. 5a asserts that completion, which is #524's payoff.
+   * The #585 frozen-books contract is still load-bearing (the ceiling arm and the deep floor
+   * still latch — run_pwr2_core owns the arms), so 5b asserts it by LATCHING THE PLANT AT THE
+   * DOOR: set `beyond_model` mid-ride, exactly the flag every consumer checks, and require
+   * the joint books to freeze. That tests the contract the defect violated, independent of
+   * which physical arm latched. */
+  head('THE COMPLETION  [#524: the unmitigated blowdown now ENDS instead of latching the hold]');
+  ckT('the 40 cm2 unmitigated ride runs to the end of blowdown — no hold, flow stopped',
+      c.heldAt === null && c.lastR.held !== true && Math.abs(c.lastBr.mdot_kgs) < 0.05,
+      (c.heldAt === null ? 'never held' : 'HELD at ' + c.heldAt.toFixed(1) + ' s') +
+      ', final break flow ' + c.lastBr.mdot_kgs.toFixed(3) + ' kg/s (pre-#524: floor-arm hold at ~107 s)');
+  ck('...equalized at the break backpressure (15.7 psia), not at a property wall',
+     c.sys.P, (1.0 + 14.696) / 145.0377, 0.01, 'MPa');
+  ckT('...with a small POSITIVE inventory left — a drained plant, not a negative ledger',
+      c.M1 > 0 && c.M1 < 500,
+      c.M1.toFixed(1) + ' kg remains of ' + c.M0.toFixed(0));
+
+  head('THE HOLD  [#585: a held plant and its books are frozen TOGETHER — latched at the door]');
+  var hd = (function () {
+    var pz5 = PZ.createPressurizer({});
+    var sys5 = S.createPlant({ h: W.h_l(304.5, 15.41), P: 15.41, extraMass: PZ.extraMassFn(pz5) });
+    var brk5 = RD.break_.createBreak({ area_m2: 0.004, cd: 1.0, node: 'cold_leg', open: true });
+    var ctm5 = RD.containment.createContainment({});
+    var ecc5 = RD.eccs.createECCS({ hhsiRunning: true, lhsiRunning: true });
+    var drift = 0, held = 0, hM = 0, hDis = 0, hCtm = 0, hInj = 0, hAcc = 0, inj = 0;
+    for (var i5 = 0; i5 < 700; i5++) {
+      if (i5 === 500) sys5.beyond_model = true;          /* the latch, at the flag itself */
+      var br5 = RD.break_.stepBreak(brk5, sys5, DT, {});
+      var ec5 = RD.eccs.stepECCS(ecc5, sys5, DT);
+      var r5 = S.stepPlant(sys5, DT, { sources: S.mergeSources([br5.source], ec5.sources) });
+      if (r5.dt_accepted > 0) {
+        RD.break_.book(brk5, br5, r5.dt_accepted / DT);
+        RD.containment.stepContainment(ctm5, r5.dt_accepted,
+          br5.mdot_kgs > 0 ? { mdot_kgs: br5.mdot_kgs, h_kJkg: br5.source.h } : { mdot_kgs: 0 });
+        inj += ec5.total_kgs * r5.dt_accepted;
+      }
+      if (r5.held === true) {
+        if (held === 0) {
+          hM = sys5.M_total; hDis = brk5.discharged_kg; hCtm = ctm5.mass_in_kg; hInj = inj;
+          hAcc = ecc5.acc ? ecc5.acc.water_m3 : 0;
+        } else {
+          drift = Math.max(drift,
+            Math.abs(sys5.M_total - hM), Math.abs(brk5.discharged_kg - hDis),
+            Math.abs(ctm5.mass_in_kg - hCtm), Math.abs(inj - hInj),
+            Math.abs((ecc5.acc ? ecc5.acc.water_m3 : 0) - hAcc));
+        }
+        held++;
+      }
+    }
+    return { held: held, drift: drift, ranBefore: brk5.discharged_kg > 100 };
+  })();
+  ckT('the latched plant is HELD by every joint consumer, mid-blowdown',
+      hd.held === 200 && hd.ranBefore,
+      hd.held + ' of 200 post-latch steps held; the ride was live before the latch');
   ck('across every held step, NOTHING moved — plant, break, containment, ECCS, tank',
-     c.heldDrift, 0, 0, 'kg (largest departure from the latch state, exact zero required)');
+     hd.drift, 0, 0, 'kg (largest departure from the latch state, exact zero required)');
 
   /* ---- 6. THE COURANT LIMIT HOLDS AT THE HOUSE dt = 0.02 s ----------------------------------
    * The performance constraint: no substep machinery was added to guarantee this. A break moves

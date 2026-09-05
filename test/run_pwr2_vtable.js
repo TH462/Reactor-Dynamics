@@ -17,6 +17,7 @@
  */
 'use strict';
 var fs = require('fs'), path = require('path');
+var MUT = require('./mut_flags.js');   /* --no-mutations / --mut= / --grp= (#602) */
 var E = path.join(__dirname, '..', 'engines', 'pwr2');
 var LIB = path.join(E, 'pwr2_vtable.js');
 var SRC = fs.readFileSync(LIB, 'utf8').replace(/\r\n/g, '\n');
@@ -98,8 +99,13 @@ function runSuite(T, rec, quiet) {
    * there to protect. It is a check on the thing that DOES change, so a future inflation has to
    * justify itself in the same terms. This engine loads in a browser; 5x the array for no
    * measured gain is a cost with no counterpart. */
+  /* CAP RAISED 260 -> 320 kB with the #524 floor extension (2026-08-31), justified in the
+   * check's own terms — a measured gain, not generosity: the ln(P) span grew 5.19 -> 9.10
+   * (P_MIN 0.1 -> 0.002 MPa), and at the old NP=110 the superheat wing measured 0.136 %
+   * against its 0.12 % claim over the new span. NP 110 -> 150 and NP1 400 -> 700 restore the
+   * spacing: superheat 0.044 %, deep superheat 0.079 %, for 292.5 kB. */
   ckT('the table is held to its MEASURED size, not a generous one',
-      T.footprintBytes() < 260 * 1024,
+      T.footprintBytes() < 320 * 1024,
       (T.footprintBytes() / 1024).toFixed(1) + ' kB -- NH=400 on the measured asymptote; at ' +
       'NH=2000 this reads ' + ((T.footprintBytes() + 1600 * 6 * 8) / 1024).toFixed(1) +
       ' kB for a 4th-decimal accuracy change');
@@ -113,13 +119,13 @@ function runSuite(T, rec, quiet) {
   var op = worst(-1.2, 1.2, 5, 17, true);
   ckT('OPERATING envelope (5-17 MPa) meets the ruled 0.06 %', Math.abs(op.w) < 0.06,
       op.w.toFixed(4) + ' %');
-  var dome = worst(0, 1, 0.1, 18, false);
+  var dome = worst(0, 1, 0.002, 18, false);   // #524: swept to the new floor
   ckT('two-phase dome is near-exact', Math.abs(dome.w) < 0.02, dome.w.toFixed(4) + ' %');
-  var sub = worst(-2.0, -0.01, 0.1, 18, true);
+  var sub = worst(-2.0, -0.01, 0.01, 18, true);   // #524: from 0.01 — below it, x<0 means T under the 20 degC liquid corpus
   ckT('subcooled, inside the 20 degC liquid floor', Math.abs(sub.w) < 0.12, sub.w.toFixed(4) + ' %');
-  var sup = worst(1.01, 1.5, 0.1, 18, false);
+  var sup = worst(1.01, 1.5, 0.002, 18, false);   // #524: swept to the new floor
   ckT('superheat', Math.abs(sup.w) < 0.12, sup.w.toFixed(4) + ' %');
-  var deep = worst(1.5, 2.5, 0.1, 18, false);
+  var deep = worst(1.5, 2.5, 0.002, 18, false);   // #524: swept to the new floor
   ckT('deep superheat is the loosest region, and DECLARED', Math.abs(deep.w) < 1.0,
       deep.w.toFixed(4) + ' % at x > 1.5 -- very dry steam, severe-accident territory');
 
@@ -224,7 +230,7 @@ var MUTATIONS = [
    'if (x >= 0 && x <= 1) {', 'if (false) {'],
   ['the x = 1 normalisation boundary broken again',
    'var edge = Xg[j] >= 1 ? vg0 : vf0;', 'var edge = Xg[j] > 1 ? vg0 : vf0;'],
-  ['saturation line dropped back onto the coarse grid', 'var NP1 = 400;', 'var NP1 = 12;'],
+  ['saturation line dropped back onto the coarse grid', 'var NP1 = 700;', 'var NP1 = 12;'],
   ['wings stop normalising to their edge', 'Math.log(v / edge)', 'Math.log(v)'],
   ['pressure grid made linear instead of logarithmic',
    'Pg[i] = Math.exp(lnPmin + (lnPmax - lnPmin) * i / (NP - 1));',
@@ -282,7 +288,7 @@ console.log('\n' + '='.repeat(70));
 console.log('  INJECTION SELF-TEST -- every mutation MUST redden at least one check');
 console.log('='.repeat(70));
 var blind = 0;
-MUTATIONS.forEach(function (m) {
+MUT.select(MUTATIONS).forEach(function (m) {
   if (SRC.indexOf(m[1]) === -1) { console.log('  ERROR   anchor not found: ' + m[0]); blind++; return; }
   var r2 = [];
   try { runSuite(loadFrom(SRC.split(m[1]).join(m[2])), r2, true); }

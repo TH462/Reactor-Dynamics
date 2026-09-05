@@ -16,7 +16,7 @@
     s.id = 'bd-steamgenerator-styles';
     s.textContent =
       '@keyframes flowmove{to{stroke-dashoffset:-24}}' +
-      '.flow{stroke-dasharray:9 15;animation:flowmove 1.1s steps(13) infinite}' +
+      '.flow{stroke-dasharray:9 15;animation:flowmove 1.1s linear infinite}' +
       // The rise DISTANCE is per bubble *(OWNER DIRECTIVE, 2026-08-04: "SG bubbles should
       // travel to the top of the water level. (but not into the steam above it)")*, #350
       // item 24. It used to be a flat -150 px for every bubble whatever the level, so a bubble
@@ -46,8 +46,10 @@
     var ids = {
       steel: env.uid('sgSteel'), water: env.uid('sgWater'), steam: env.uid('sgSteam'),
       tube: env.uid('sgTube'), tubeDash: env.uid('sgTubeDash'), clip: env.uid('sgClip'), waterclip: env.uid('sgWClip'),
-      glow: env.uid('sgGlow'), steamblur: env.uid('sgSBlur')
+      glow: env.uid('sgGlow')
     };
+    /* filter-free tube-bundle halo (#613 wave 4) — see RD.BoardH.softGlow. */
+    var gGlow = RD.BoardH.softGlow(ids.glow, 'rgb(176,56,34)');
 
     // ---- geometry (verbatim from the design source) ----
     var cx = 210;
@@ -117,28 +119,36 @@
       h('linearGradient', { id: ids.tubeDash, x1: '0', y1: '0', x2: '1', y2: '0' }, tubeDashStops),
       h('clipPath', { id: ids.clip }, h('path', { d: inner })),
       h('clipPath', { id: ids.waterclip }, waterClipRect),
-      h('filter', { id: ids.glow, x: '-40%', y: '-40%', width: '180%', height: '180%' }, h('feGaussianBlur', { stdDeviation: '8' })),
-      h('filter', { id: ids.steamblur, x: '-60%', y: '-60%', width: '220%', height: '220%' }, h('feGaussianBlur', { stdDeviation: '4' })));
+      /* The tube-bundle halo was a solid rect behind an feGaussianBlur (stdDeviation 8) until
+       * #613 wave 4; it is a radial-gradient fill grown by 2*stdDeviation now, recoloured
+       * through setColor() rather than by writing the rect's `fill` (RD.BoardH.softGlow).
+       * `ids.steamblur`, a second blur def, went with it: it was DEAD — declared here, never
+       * referenced by any element, and it had been shipping since the port. */
+      gGlow.def);
 
     // ---- shell + secondary side ----
+    /* NO CSS TRANSITION on the three level elements below (#613 wave 3). These are rewritten on
+     * every broadcast, so a 150 ms transition restarts before the previous one finishes and the
+     * compositor never goes idle: measured 6-7 running CSSTransitions at EVERY sampled instant
+     * and 870 compositor draws per 15 s (60 Hz) against 298 app paints. Removing exactly this
+     * set took frames to 339, -61 %. The rule and the gate are in std_pipe.js's tickAnimations
+     * comment. */
     var steamRect = h('rect', {
-      x: 110, y: 20, width: 200, height: 0, fill: 'url(#' + ids.steam + ')', opacity: 0.5,
-      style: { transition: 'height 0.15s linear' }
+      x: 110, y: 20, width: 200, height: 0, fill: 'url(#' + ids.steam + ')', opacity: 0.5
     });
     var waterRect = h('rect', {
       x: 110, y: waterBot, width: 200, height: tubeSheetY - waterBot,   /* ends at the tube sheet (#509 item 8) */
-      fill: 'url(#' + ids.water + ')', opacity: 0.72,
-      style: { transition: 'y 0.15s linear, height 0.15s linear' }
+      fill: 'url(#' + ids.water + ')', opacity: 0.72
     });
     var surfLine = h('line', {
       x1: 124, y1: 0, x2: 296, y2: 0, stroke: '#bdf1ff', strokeWidth: 2, opacity: 0.5,
-      strokeDasharray: '22 12', style: { transition: 'transform 0.15s linear' }
+      strokeDasharray: '22 12'
     });
     var flowEls = [surfLine];
 
     var glowRect = h('rect', {
-      x: 138, y: bundleTopY, width: 144, height: bundleBoxH, rx: 48,
-      filter: 'url(#' + ids.glow + ')', style: { display: 'none' }
+      x: 122, y: bundleTopY - 16, width: 176, height: bundleBoxH + 32, rx: 60,
+      fill: gGlow.paint, style: { display: 'none' }
     });
     var hotcRect = h('rect', { x: 110, y: tubeSheetY + 10, width: 100, height: 90, opacity: 0.85 });
     var coldcRect = h('rect', { x: cx, y: tubeSheetY + 10, width: 100, height: 90, opacity: 0.85 });
@@ -191,7 +201,7 @@
     [0, 25, 50, 75, 100].forEach(function (pct) {
       gEls.push(h('line', { x1: gx + gw, y1: pctY(pct), x2: gx + gw + 4, y2: pctY(pct), stroke: '#3b4f5e', strokeWidth: 1 }));
     });
-    var markerGroup = h('g', { style: { transition: 'transform 0.15s linear' } },
+    var markerGroup = h('g', null,   /* no transition — broadcast-cadence transform, #613 */
       h('polygon', { points: (gx - 2) + ',0 ' + (gx - 9) + ',-5 ' + (gx - 9) + ',5', fill: '#eaf4fb', stroke: '#0b1119', strokeWidth: 0.6 }),
       h('line', { x1: gx, y1: 0, x2: gx + gw, y2: 0, stroke: '#eaf4fb', strokeWidth: 1.6 }));
     gEls.push(markerGroup);
@@ -312,7 +322,7 @@
         // restarts it, which is the whole thing this is avoiding — a reused circle keeps
         // the flight it was already on, and `dur` only re-times it.
         if (!el.__anim) {
-          el.style.animation = 'sgBubbleRise ' + dur + 's steps(' + Math.max(2, Math.round(dur * 12)) + ') infinite';
+          el.style.animation = 'sgBubbleRise ' + dur + 's linear infinite';
           el.style.animationDelay = delay + 's';
           el.__anim = true;
         } else if (el.style.animationDuration !== dur + 's') {
@@ -373,7 +383,7 @@
         coldcRect.setAttribute('fill', coldC);
         hotNoz.setAttribute('fill', hotC);
         coldNoz.setAttribute('fill', coldC);
-        glowRect.setAttribute('fill', hotC);
+        gGlow.setColor(hotC);
         last.thot = thot; last.tcold = tcold;
       }
       if (power !== last.power || glowOn !== last.glowOn) {

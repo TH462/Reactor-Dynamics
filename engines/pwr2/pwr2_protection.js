@@ -252,6 +252,45 @@
     frac: 0.08,
     src: 'Ginna TS Bases B 3.3.1 (ML20339A221), Power Range Neutron Flux-Low'
   };
+  /* ---- SOURCED: the INTERMEDIATE RANGE high flux reactor trip (#601) -------------------------
+   * The SECOND trip in the startup net, and it was missing: this table carried only the power
+   * range low setting, so the net was one trip where every source has two, and the P-10 ladder
+   * the manual teaches collapsed to a single button.
+   *
+   * THE SETPOINT IS NOT GINNA'S, and that is declared rather than papered over. The anchor plant
+   * does not publish a number — Ginna UFSAR ch15 (ML20339A101) §B gives only *"a flux above a
+   * pre-selected, manually adjustable setpoint"*, and the TS Bases entry (Function 3) carries no
+   * value either. WTSM 12.2 §12.2.3.3 (ML11223A301) does, and it is the generic Westinghouse
+   * figure this module already leans on for the rod stops:
+   *
+   *   *"This trip, Figure 12.2-3, occurs when the current output from at least one of the two
+   *    intermediate range channels indicates greater than the equivalent of 25% power. The
+   *    intermediate range trip, which provides protection against reactivity excursions and
+   *    startup accidents, can be manually blocked if at least two of the four power range
+   *    channels exceed 10% of full power (P-10). If at least three of four (3/4) power range
+   *    channels fall below the P-10 setpoint value, the trip function is automatically
+   *    reinstated."*
+   *
+   * ⚠ IT IS NOT THE ROD STOP'S 20 %, and the two are easy to conflate — the retired plant did,
+   * carrying its IR reactor trip at "~20 % (1.67e-3 A)", which is ROD_STOP.ir_frac's number.
+   * The rod stop is 20 % current equivalent (WTSM 8.1 §8.1.7.3); the TRIP is 25 % (WTSM 12.2
+   * §12.2.3.3). Same channel, two setpoints, and the stop is meant to arrive first.
+   *
+   * EXPRESSED IN power_frac, for the reason #572 already recorded for the rod stops: 25 %
+   * current-equivalent is 2.083e-3 A on this plant (`pwr2_true_state`: ir_amps = 8.333e-3 *
+   * power_frac), and re-deriving that mapping here would be a second copy of it — the #557
+   * class. The amps mapping stays in one file and this module reads the driver it has.
+   *
+   * THE RESULTING LADDER: P-10 at 8 % < IR trip at 25 % < power-range low at 35 %. Ascend
+   * through P-10, take both blocks, continue; miss either and the net trips you. Reading the
+   * SAME driver as `hi_flux_lo` is the sourced redundancy, not a duplicate row — Ginna TS
+   * Bases B 3.3.1: *"This trip Function provides redundant protection to the Power Range
+   * Neutron Flux-Low trip Function"*. Two comparisons on one lumped flux signal, declared. */
+  var IR_TRIP = {
+    kind: '[sourced]',
+    frac: 0.25,
+    src: 'WTSM 12.2 §12.2.3.3 (ML11223A301); blockable per Ginna TS Bases B 3.3.1 (ML20339A221) Fn 3'
+  };
   /* ---- SOURCED: the P-9 permissive, and it has TWO values by design --------------------------
    * Ginna TS Bases B 3.3.1 (ML20339A221), Power Range Neutron Flux, P-9 Permissive, verbatim:
    *
@@ -309,6 +348,12 @@
     kind: '[sourced]',
     hi_pzr_press: 2.0, lo_pzr_press: 2.0,
     hi_flux_lo:   0.5, hi_flux_hi:   0.5,
+    ir_high_flux: 0.5,         /* [derived] -- 15.0-6 has no intermediate-range row (the Function
+                                * "is not specifically modeled in the accident analysis", Ginna TS
+                                * Bases B 3.3.1 Fn 3, so it has no analysis delay to quote). The
+                                * power-range flux channels' 0.5 s is carried: same NIS family,
+                                * same trip breakers. Correct it if a plant response-time table
+                                * turns up -- the SETPOINT is sourced, this number is not. */
     lo_flow:      1.0,
     hi_pzr_level: 2.0,         /* [open] -- not in the 15.0-6 delay set; matches the pressure channels */
     ot_delta_t: 2.0, op_delta_t: 2.0,  /* [sourced] 15.0-6 footnote b: "a delay of 1.5 (or 2.0)
@@ -366,9 +411,18 @@
       { id: 'lo_pzr_press', name: 'Low pressurizer pressure', kind: 'rps', dir: -1,
         sp: RPS.lo_pzr_press_psia / PSIA_PER_MPA, unit: 'MPa', read: 'pressure_mpa',
         delay: DELAY.lo_pzr_press },
+      /* THE STARTUP NET, IN LADDER ORDER (#601). Two rows, two SEPARATE operator blocks, both
+       * permitted by P-10 — WTSM 12.2's P-10 list is explicit that they are two actions:
+       * *"1. Allows the operator to manually block the intermediate range high flux trip and
+       * the C-1 rod stop, 2. Allows the operator to manually block the low setpoint power
+       * range high flux trip"*. `blockable` NAMES its request rather than being a bare `true`,
+       * so a row cannot inherit the wrong lever the way the C-1 rod stop did. */
+      { id: 'ir_high_flux', name: 'Intermediate range high flux', kind: 'rps', dir: +1,
+        sp: IR_TRIP.frac, unit: 'frac', read: 'power_frac', delay: DELAY.ir_high_flux,
+        blockable: 'ir_high' },
       { id: 'hi_flux_lo', name: 'Power-range high flux (low setting)', kind: 'rps', dir: +1,
         sp: RPS.hi_flux_lo_frac, unit: 'frac', read: 'power_frac', delay: DELAY.hi_flux_lo,
-        blockable: true },
+        blockable: 'low_flux' },
       { id: 'hi_flux_hi', name: 'Power-range high flux (high setting)', kind: 'rps', dir: +1,
         sp: RPS.hi_flux_hi_frac, unit: 'frac', read: 'power_frac', delay: DELAY.hi_flux_hi },
       /* atPower (P-7) since #507 wave 10 [sourced — Ginna TS Bases B 3.3.1: the loss-of-flow
@@ -435,6 +489,11 @@
     return {
       held_s: held,                         /* how long each function has been asserted */
       blockLowFlux: !!opts.blockLowFlux,
+      /* THE INTERMEDIATE-RANGE BLOCK (#601) — its OWN request, not a share of the one above.
+       * Same P-10 law, same asymmetry; two levers because WTSM 12.2's P-10 list is two
+       * actions. It also carries the C-1 rod stop (that list's item 1), which is why
+       * `irHiFluxStop` below reads THIS and not `blockLowFlux`. */
+      blockIrHigh: !!opts.blockIrHigh,
       /* the P-11 pair (#507 wave 10) — a shutdown IC boots with the cooldown's blocks taken */
       blockLoPress: !!opts.blockLoPress,
       blockSI: !!opts.blockSI,
@@ -520,6 +579,7 @@
      * defeatable-trip shape the sources do not have. */
     var p10Met = drivers.power_frac >= P10.frac;
     if (!p10Met && pr.blockLowFlux) pr.blockLowFlux = false;
+    if (!p10Met && pr.blockIrHigh) pr.blockIrHigh = false;   /* the second request, same law (#601) */
     /* ---- P-11, THE SHUTDOWN PERMISSIVE (#507 wave 10) — the mirror of P-10's law in the
      * other direction: the low-pressure trip block and the SI block are OPERATOR REQUESTS
      * permitted only BELOW P-11, and climbing back above it REVOKES both requests
@@ -542,6 +602,12 @@
      * property: it is the REVOKE. Gating without revoking would leave a stale request
      * that re-arms by itself as power rises, and that is the defeatable-trip shape
      * (#295 F1/F2) the sources do not have. */
+    /* WHICH REQUEST HOLDS WHICH ROW (#601). Was a single `blockEffective = pr.blockLowFlux`
+     * consumed by every `blockable: true` row — fine while one row was blockable, and exactly
+     * how the C-1 rod stop came to ride the power-range lever instead of its own. A row now
+     * names its request and an unrecognised name blocks NOTHING, which is the conservative
+     * end: a typo cannot silently disarm a trip. */
+    var BLOCK_REQUEST = { low_flux: pr.blockLowFlux, ir_high: pr.blockIrHigh };
     var blockEffective = pr.blockLowFlux;
 
     var out = [], fns = functions(), anyRps = null, anyEsfas = null, sgLolo = false, anyFwi = null;
@@ -567,10 +633,18 @@
        * `armed` is its complement over an available channel, and it is the field to read —
        * `asserted` answers a different question (is the limit crossed RIGHT NOW). */
       var gated = false;
+      /* THE UNGATED CROSSING (#598 item 15). `asserted` below is zeroed by every block and
+       * permissive, which is correct — it answers "is this function tripping". It also destroys
+       * the one fact an operator needs before RELEASING a block: would the line fire the instant
+       * I let go? The panel could not know, so it offered every release identically and the
+       * player's next click scrammed the plant with no warning. Captured before the gates and
+       * reported alongside; nothing reads `asserted` differently. */
+      var crossing = false;
       if (available) {
         if (f.leadlag) value = leadLag(pr, raw, dt);
         asserted = f.dir > 0 ? (value >= sp) : (value <= sp);
-        if (f.blockable && blockEffective) { asserted = false; gated = true; }
+        crossing = asserted;
+        if (f.blockable && BLOCK_REQUEST[f.blockable] === true) { asserted = false; gated = true; }
         /* P-11's two blocks (#507 wave 10): the low-pressure REACTOR trip and the whole
          * esfas kind (the SI actuation — all three initiating rows are the one disarm the
          * sources describe). Assertion-gated like P-7, so no hold time accumulates. */
@@ -602,6 +676,11 @@
         armed: available && !gated,
         value: value, setpoint: sp, unit: f.unit,
         asserted: asserted, held_s: pr.held_s[f.id], delay_s: f.delay, tripping: tripping,
+        /* WOULD IT ASSERT WITH NOTHING HOLDING IT OFF? The setpoint comparison before any block
+         * or permissive touched it — see `crossing` above. For an UNGATED function this is
+         * identical to `asserted`; the two differ exactly when something is holding the line
+         * off, which is the case worth warning about. */
+        would_assert: crossing,
         /* SIGNED margin to the setpoint, in the function's own units: positive is safe.
          * A margin that floors at zero hides how far past a limit a plant went. */
         margin: available ? (f.dir > 0 ? sp - value : value - sp) : undefined
@@ -752,10 +831,19 @@
      * [sourced] Ginna TS Bases B 3.3.1 (ML20339A221) on the IR function: *"This Function may be
      * manually blocked by the operator when two-out-of-four power range channels are greater
      * than approximately 8% RTP (P-10 setpoint). Above the P-10 setpoint, the Power Range
-     * Neutron Flux-High trip provides core protection for a rod withdrawal accident."* So it
-     * rides the SAME operator block `hi_flux_lo` does — one lever, the one the power-ascension
-     * procedure already calls for — and a plant that ascended through P-10 has it requested.
-     * Measured: both shipped at-power ICs boot with `blockLowFlux` true, so this asserts during
+     * Neutron Flux-High trip provides core protection for a rod withdrawal accident."*
+     *
+     * ⚠ ON THE INTERMEDIATE-RANGE LEVER, NOT THE POWER-RANGE ONE (corrected #601). This read
+     * `!blockEffective` — `blockLowFlux`, the POWER RANGE low setting's request — under a note
+     * declaring "one lever". That was true only because the IR block did not exist to ride:
+     * WTSM 12.2 §12.2 (ML11223A301) lists P-10's functions as two separate operator actions,
+     * *"1. Allows the operator to manually block the intermediate range high flux trip AND THE
+     * C-1 ROD STOP, 2. Allows the operator to manually block the low setpoint power range high
+     * flux trip"*, so this stop belongs to item 1 and always did. Same P-10 permissive, so a
+     * plant that ascended through P-10 taking both blocks behaves identically; the difference
+     * is that taking ONE block no longer silently clears the other's interlock.
+     *
+     * Measured: both shipped at-power ICs boot with both requests taken, so this asserts during
      * an UNBLOCKED startup (where it is the lesson) and is gated at power (where it would
      * otherwise stand for ever, because ir_amps saturates its range top by ~24 % power).
      *
@@ -765,7 +853,7 @@
      * power_frac, which is the driver the rest of this module reads — the amps mapping is
      * linear and lives in one place, so a second copy of it here would be the #557 class. */
     var prHiFluxStop = drivers.power_frac >= ROD_STOP.pr_frac;
-    var irHiFluxStop = drivers.power_frac >= ROD_STOP.ir_frac && !blockEffective;
+    var irHiFluxStop = drivers.power_frac >= ROD_STOP.ir_frac && !pr.blockIrHigh;
 
     return {
       functions: out,
@@ -819,6 +907,9 @@
       p9_met: drivers.power_frac >= (drivers.steam_dumps_available === false
                                      ? P9.frac_no_dumps : P9.frac_dumps),
       low_flux_blocked: blockEffective,
+      /* the OTHER P-10 request (#601) — reported separately because the operator takes them
+       * separately and a surface must be able to say which one is standing */
+      ir_high_blocked: pr.blockIrHigh,
       trip_cause: pr.trip_cause,
       si_cause: pr.si_cause,
       /* ASSERTED-NOW is distinct from LATCHED, and both are reported. A consumer that only ever
@@ -841,7 +932,7 @@
     P11: P11, RESET: RESET,
     /* the board reads ROD_STOP.pr_frac / ir_frac so its rod-stop marks come from the PLANT and
      * not from a literal — the #572 defect was exactly a board band drawn from a fallback */
-    ROD_STOP: ROD_STOP,
+    ROD_STOP: ROD_STOP, IR_TRIP: IR_TRIP,
     PSIA_PER_MPA: PSIA_PER_MPA,
     functions: functions, leadLag: leadLag,
     createProtection: createProtection, stepProtection: stepProtection, reset: reset

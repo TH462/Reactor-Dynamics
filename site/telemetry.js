@@ -270,7 +270,14 @@
   function sendBundle(bundle, note, opts) {
     var url = (opts && opts.endpoint) || endpoint();
     if (!url || !bundle) return Promise.resolve({ ok: false, reason: 'no endpoint' });
-    var payload = { v: 1, kind: 'session_bundle', note: (note || '').slice(0, 4000), bundle: bundle };
+    // build/channel ride along so a report from develop's preview site is not
+    // indistinguishable from one off the production build — see worker/src/index.js
+    // handleBundle, which also stamps the Origin header server-side as the harder-to-spoof copy.
+    var payload = {
+      v: 1, kind: 'session_bundle', note: (note || '').slice(0, 4000), bundle: bundle,
+      build: (typeof G.RD_VERSION === 'string') ? G.RD_VERSION : null,
+      channel: (typeof G.RD_CHANNEL === 'string') ? G.RD_CHANNEL : null,
+    };
     var json = JSON.stringify(payload);
     // A 30-minute session is ~0.7 MB of JSON and ~63 KB gzipped (measured), so
     // compressing is the difference between a reasonable request and a rude one.

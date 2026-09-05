@@ -34,7 +34,7 @@ Provide step-by-step instructions to launch the simulator, navigate the human-ma
 | 1 | Click the mission/status line or open **Plant & Mission** |
 | 2 | Select **PWR** |
 | 3 | Choose **Free Play** or a training mission |
-| 4 | Select initial condition: **Hot Full Power**, **50 % Power**, **Hot Standby** (Mode 3), or **Cold Shutdown** (Mode 5) |
+| 4 | Select initial condition: **Hot Full Power**, **50 % Power**, **Hot Standby** (Mode 3), **Hot Shutdown** (Mode 4), or **Cold Shutdown** (Mode 5) |
 | 5 | Press **Play** if paused; set speed **1×** until familiar |
 
 ---
@@ -104,7 +104,7 @@ on a card — click the component. `03_CONTROLS_AND_INDICATIONS.md` is the per-c
 
 | Region | Function |
 |--------|----------|
-| **Sim controls** | Play/Pause, speed 1× / 10× / 60× / 600× / 3600×, Manual, Help, Contact, and **Board focus (⛶)** — hides this column and enlarges the board |
+| **Sim controls** | Play/Pause, speed 1× / 5× / 10× / 60× and the two WARP rungs 600× / 3600× with the achieved-rate readout beside them, Manual, Help, Contact, and **Board focus (⛶)** — hides this column and enlarges the board |
 | **Plant & mission line** | Always visible under the sim controls: what is running now; click to change it (§5.0) |
 | **Instructor** | Scenario commentary, gates, walkthrough step grading |
 | **Tools** | **Operate · Inject Failure · Graph · Physics · Settings** (§7.0) |
@@ -141,10 +141,25 @@ something you did *not* choose to look at.
 | Control | Effect |
 |---------|--------|
 | **Play / Pause** | Start or freeze simulated time (diagram freezes when paused) |
-| **Speed** | Discrete acceleration: 1×, 10×, 60×, 600×, 3600× |
-| **NOTE** | Physics timestep stays 0.02 s; acceleration runs more steps per wall-clock second |
+| **Speed** | Two tiers. **PLAY: 1×, 5×, 10×, 60×** — the full physics at its 0.02 s step, identical at every rung. **WARP: 600×, 3600×** — the same physics at a coarser 0.5 s step, for the long quiet evolutions: xenon, decay heat, boron, a heatup or cooldown |
+| **Achieved rate** | The readout beside the buttons shows the plant-time actually passing per second of wall clock. Green: keeping up with the request. Amber: behind it — the physics cannot finish the request in its share of a broadcast, which at 3600× is the ordinary state of most machines. Red: the page itself is stalling |
+| **NOTE** | On PLAY the physics timestep stays 0.02 s and acceleration runs more steps per wall-clock second. On WARP the step is 0.5 s: over a sim hour every channel stays inside its own instrument noise of the 0.02 s plant (see **12** §2.1), and the buttons are **dark while the plant is in a transient** — WARP is refused then, and lets go on its own |
 
 **CAUTION:** High speed during approach to criticality or load rejection can leave you behind the plant. Use 1×–10× for startups and transients until proficient.
+
+**WARP lets go by itself.** The moment the plant moves fast — a reactor trip, a new equipment
+failure, a first alarm on a quiet board, power moving faster than 2 %/s or pressure faster than
+40 psi/s (0.276 MPa/s), or the loop asked for more sub-steps than it can give — WARP drops to
+**60×** and a toast names the reason. The two WARP buttons then stay dark for **30 plant-seconds
+of quiet**. Asking for WARP while it is unavailable lands you at 60× with the same toast. A
+mission's own fast-forward never uses WARP.
+
+**The plant can hold the clock.** Where the plant needs you and cannot let you skip past — today
+the accumulator arming window on a heatup, from the **665 psia (4.585 MPa)** cover gas until the
+accumulator valve is open — the clock drops to **1×** and every speed button above it is refused,
+with the reason in the scanner bar under the board. Opening the valve releases it. This hold
+ignores the fast-forward dropout setting, because the point of it is that the window cannot be
+recovered once passed.
 
 **Fast-forward dropout.** Acceleration snaps back to **1×** when something arrives that you
 have to look at: a **reactor trip**, a **new equipment failure**, or the **first alarm on an
@@ -194,7 +209,7 @@ Entry: the plant & mission status line under the sim controls, or **Operate** ta
 
 1. **Plant** — PWR / RBMK (pre or post) / BWR  
 2. **Mode** — Free Play, campaign mission, or scenario  
-3. **Initial condition** — for Free Play: Hot Full Power, 50 % Power, Hot Standby (Mode 3), Cold Shutdown (Mode 5)  
+3. **Initial condition** — for Free Play: Hot Full Power, 50 % Power, Hot Standby (Mode 3), Hot Shutdown (Mode 4), Cold Shutdown (Mode 5)  
 
 ### 5.2 Free Play vs training
 
@@ -213,10 +228,11 @@ Entry: the plant & mission status line under the sim controls, or **Operate** ta
 | `50_percent` | 50 % Power | **Mode 1, At Power** | Critical mid-power (> 5 %) |
 | `hot_zero_power` | Hot Standby | **Mode 3, Hot Standby** | Subcritical, hot T/P, control bank in, SR on |
 | `hot_shutdown` | Hot Shutdown | **Mode 4, Hot Shutdown** | Subcritical, RCS **250 °F (121.1 °C) / 369 psi (2.545 MPa)** settled, **RCPs secured**, **RHR in service**, both banks in, the P-11 blocks taken, SR on, PZR level 30 % |
+| `cold_shutdown` | Cold Shutdown | **Mode 5, Cold Shutdown** | Subcritical, RCS **122 °F (50 °C) / 363 psi (2.50 MPa)**, **RCPs secured**, **RHR in service**, both banks in, the P-11 blocks taken, SR on, boron 918 ppm — the SG secondary rides at its own saturation, **1.8 psi (0.0127 MPa)** |
 
-> **THE COLD END IS MODE 4, NOT MODE 5.** There is no cold-shutdown initial condition on this plant and no Mode 5 at all: the water-property floor is **14.5 psi (0.1 MPa)**, whose saturation temperature is **211 °F (99.4 °C)**, so a steam generator at or below Mode 5's **200 °F (93.3 °C)** boundary cannot be represented. Load **`hot_shutdown`** and take the plant up with **PWR-T20**, or run **PWR-T21** down from power — both procedures are written through Mode 5 and the plant stops at 250 °F (121.1 °C). Tracked as **#524**.
+> **THE COLD END IS MODE 5 (#524, landed 2026-08-31).** The water-property floor moved from 14.5 psi (0.1 MPa) to **0.29 psi (0.002 MPa)**, so a steam generator at or below Mode 5's **200 °F (93.3 °C)** boundary is representable and `cold_shutdown` loads. Take the plant up with **PWR-T20**, or run **PWR-T21** down from power — both run end to end on integrated physics again.
 
-**NOTE:** `cold_shutdown` and `5_percent` are the retired engine's initial conditions. This engine **refuses both by name** — the picker's four states are the whole list.
+**NOTE:** `5_percent` is the retired engine's initial condition. This engine **refuses it by name** — the picker's five states are the whole list.
 
 ---
 
@@ -270,7 +286,7 @@ Per-channel **AUTO / MAN** controllers that read **instruments** and issue plant
 commands. They live on the board's control cards (there is no separate tab):
 **STEAM GEN FEED → AUTO** (three-element SG level), **BORON → ON** (target ppm),
 **STEAM DUMP → AUTO**, **CHARGING → AUTO**. Rod control has no automatic channel on
-this plant — the **ROD AUTO** button is present and dark, deliberately (**03 §14.3**).
+this plant, and since Rev 17 there is no button for one either (**03 §14.3**).
 
 | Channel (label) | Holds / drives |
 |-----------------|----------------|
@@ -407,8 +423,31 @@ comment pointing you at it.
   not verify until you put it there — the classic case is starting the reactor startup
   after a pump-heat heatup without first diluting to the estimated critical boron
   (PWR-N02 step 15).
-- **It clears itself.** The grading is live: fix the condition and the row turns met, the
-  banner and the comment come down on their own.
+- **It is an ENTRY statement, and it does not come back.** The verdicts are taken once, as
+  the checklist opens, and the banner then stands until the run starts moving. Preconditions
+  ask whether it was sensible to *open* this checklist; re-asserting them against a plant the
+  checklist is deliberately changing would make the procedure complain about its own progress
+  — a Mode 5 → Mode 3 heatup crosses out of every one of its own entry conditions by design.
+
+#### Reading a step card
+
+Every step card leads with its **number and instruction**. The card you are on adds a block
+underneath it:
+
+| Line | What it is |
+|---|---|
+| Check-off criterion | The indication the step is graded on, in blue; it turns green when met. |
+| **Use …** | The board control this step drives, and the value to drive it to. |
+| ⏩ wait line | Roughly how long the step takes **in plant time**, and the speed-control rung to set. |
+| **Acknowledge ✓** | Only on steps that ask no operator action — press it to move on. |
+| Click to expand | The step's reasoning, cautions and any extra notes. |
+
+The wait line appears on steps that hold three plant-minutes or longer. The suggested rung is
+the lowest one that finishes the wait in about a minute of real time, so most waits stay on the
+full-fidelity **1× to 60×** tier; the long ones — the heatup ride, the cooldown legs, the
+boration — call for **600×** or **3600×**, which are WARP and will be refused while the plant
+is in a transient (§4.1). The plant-time figure is an *upper bound* taken from the procedure's
+own dwell: drive the plant harder and you will get there sooner.
 
 ---
 

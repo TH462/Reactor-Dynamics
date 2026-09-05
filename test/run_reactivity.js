@@ -34,6 +34,15 @@ function load(p) { require(path.join(__dirname, '..', p)); }
  'engines/pwr/pwr_thermal.js', 'engines/pwr/pwr_pressurizer.js', 'engines/pwr/pwr_pressurizer2.js', 'engines/pwr/pwr_primary.js',
  'engines/pwr/pwr_steam_generator.js', 'engines/pwr/pwr_instruments.js',
  'engines/pwr/pwr_engine.js'].forEach(load);
+/* The SHIPPED plant's kinetics, for the Manuals/09 §7.5 block at the bottom only (#618).
+ * Measured safe to load alongside: pwr2 attaches under RD.pwr2 and leaves RD.PWREngine
+ * intact — asserted below so a future namespace collision reddens here rather than
+ * silently handing this runner the wrong plant a second time. */
+['pwr2_water', 'pwr2_vtable', 'pwr2_geometry', 'pwr2_core', 'pwr2_loop', 'pwr2_kinetics']
+  .forEach(function (f) { load('engines/pwr2/' + f + '.js'); });
+/* The LIVE checklists — the creep derivation at the bottom reads its inputs out of the
+ * authored procedure rather than keeping a second copy of them (#618). */
+load('ui/manual_procedures.js');
 
 var RD = globalThis.RD, RC = RD.PWR_CONFIG.reactivity;
 var GREEN = '\x1b[32m', RED = '\x1b[31m', DIM = '\x1b[2m', RST = '\x1b[0m', BOLD = '\x1b[1m';
@@ -245,7 +254,24 @@ ck('the Mode 5 IC boron is above cold critical boron, so the plant spawns subcri
 console.log('\n' + BOLD + 'Manuals/09 §7.5 — the published ECC curve vs the plant' + RST);
 var fs = require('fs');
 var md = fs.readFileSync(path.join(__dirname, '..', 'Manuals', '09_SETPOINTS_LIMITS.md'), 'utf8');
-var COLS = [0, 228, 456, 684, 912];          // the table's bank positions, in steps
+/* ⚠ THIS BLOCK CHECKS pwr2, THE SHIPPED PLANT — the rest of this runner pins the RETIRED
+ * engine's sourced anchors and is left alone (#618, 2026-09-03).
+ *
+ * It used to read `COLS = [0, 228, 456, 684, 912]` and compare against `pwr_engine`'s
+ * reactivity model. Both halves named the retired plant, which no public build ships
+ * (#523) — so `Manuals/09 §7.5` described a 912-step bank, and this gate agreed with it,
+ * to 1 ppm, for months. A check can be real, tight AND pointed at the wrong plant; that
+ * combination reads exactly like a working gate. The columns are now DERIVED from the
+ * shipped bank rather than written down, so the scale cannot drift out from under them
+ * again. */
+var K2 = globalThis.RD.pwr2.kinetics;
+var R2 = K2.RODS, kin2 = K2.createKinetics({ P: 1e-9 });
+var ECC_P_MPA = 15.41;                       // NOP — the table declares this; see the marker
+var COLS = [0, 0.25, 0.50, 0.75, 1.00].map(function (f) { return Math.round(R2.max_steps * f); });
+function eccGroups(steps) {
+  return [{ steps: R2.max_steps, max_steps: R2.max_steps, worth: R2.worth_shutdown },
+          { steps: steps,        max_steps: R2.max_steps, worth: R2.worth_control }];
+}
 var rows = [], bad = [], seenMarker = md.indexOf('ECC-BCRIT-TABLE') >= 0;
 md.split(/\r?\n/).forEach(function (line) {
   // | 122 °F (50.0 °C) | 834 | 870 | 982 | 1094 | 1130 |
@@ -258,17 +284,21 @@ md.split(/\r?\n/).forEach(function (line) {
 rows.forEach(function (r) {
   COLS.forEach(function (steps, i) {
     var Tc = F2C(r.Tf);
-    e.rod_groups[0].steps = steps;
-    e.rod_groups[1].steps = e.rod_groups[1].max_steps;
-    var dD = e._modDensity(Tc) - e._modDensity(TREF);
-    var live = (RC.rho_excess + e._rodReactivity() + RC.alpha_D * (Tc - TFREF)
-                + e._modCoeff() * dD) / e._boronWorth(Tc);
+    var live = K2.criticalBoron(kin2, Tc, ECC_P_MPA, eccGroups(steps), 0, Tc);
     if (Math.abs(live - r.cells[i]) > 1.0) {
       bad.push(r.Tf + ' °F / ' + steps + ' steps: table ' + r.cells[i]
                + ' vs plant ' + live.toFixed(1));
     }
   });
 });
+/* THE TWO PLANTS MUST STILL BE TELLABLE APART IN THIS PROCESS. If a future load-order
+ * change let pwr2 clobber RD.PWREngine (or vice versa) both halves of this runner would
+ * quietly grade the same plant — the failure that produced #618 in the first place, in a
+ * new costume. The retired bank is 912 steps and the shipped one is 627, so the banks
+ * differing is a cheap positive proof that each half is reading its own engine. */
+ck('the retired and shipped engines are both live and distinct in this process',
+   e.rod_groups[0].max_steps === 912 && R2.max_steps === 627,
+   'retired ' + e.rod_groups[0].max_steps + ' steps · shipped ' + R2.max_steps + ' steps');
 ck('the ECC table carries its do-not-hand-edit marker', seenMarker,
    seenMarker ? 'present' : 'MISSING — the table is no longer identifiable');
 ck('the ECC table was found and has all ten temperature rows', rows.length === 10,
@@ -277,44 +307,80 @@ ck('every published critical-boron cell matches the plant within 1 ppm', bad.len
    bad.length ? bad.slice(0, 3).join(' · ') : (rows.length * COLS.length) + ' cells verified');
 
 // ---------------------------------------------------------------------------------
-// THE TWO INPUTS `pwr_startup`'s CREEP STEP IS DERIVED FROM (#263 item 2).
+// THE DERIVATION BEHIND `pwr_startup`'s CREEP STEP (#263 item 2; repointed at the shipped
+// plant and the LIVE ladder, #618, 2026-09-03).
 //
-// That procedure withdraws 26 steps to take the reactor critical and leave a controlled
-// ascent behind it. 26 is not a swept number any more — it is
-//     (critical position − the 306 steps of plotted bursts) + (excess ρ / differential worth)
-// so if either quantity moves and the procedure does not, the derivation is silently wrong
-// and the ascent lands outside the authored 1–3 % band. `run_procedures_stack` would catch a
-// gross break; it would NOT tell you the reason, and a few steps of drift can sit inside its
-// acceptance while the published derivation quietly stops being true.
+// The approach to criticality plots 1/CR points on a series of decreasing bursts and then
+// creeps onto criticality. The creep is not a swept number — it is
+//     (critical position − the plotted bursts) + (the excess you want behind it)
+// so if the plant moves and the procedure does not, the derivation is silently wrong.
 //
-// ENGINE values, so this stays a static check — the engine is reset and read, never stepped.
-// Both were confirmed at the full-stack layer before being pinned (#266).
-console.log('\n' + BOLD + 'the derivation behind pwr_startup\'s 26-step creep' + RST);
+// ⚠ IT WAS PINNED TO A PROCEDURE THAT NO LONGER EXISTED, AND STAYED GREEN. This block read
+// `PLOTTED = 306, CREEP = 26` — the retired 138/90/44/22/12 ladder — and computed against
+// `RD.PWREngine`, the retired 912-step plant. The live checklist has used 94/63/31/14/9 with
+// a 15-step creep for a long time. Both halves were consistently retired, so the arithmetic
+// closed and the check passed while certifying a derivation for a startup nobody can run.
+// A hard-coded copy of authored content is a SECOND COPY, and the gate cannot tell you when
+// the first one moved. So every input below is now READ FROM THE LIVE PROCEDURE — the boron
+// from its own dilution command, the bursts from the steps that plot a point, the creep from
+// the withdrawal after them. Change the checklist and this re-derives; it cannot go stale
+// again without also going red.
+//
+// STATIC: the kinetics model is read, never stepped.
+console.log('\n' + BOLD + 'the derivation behind pwr_startup\'s creep onto criticality' + RST);
 (function () {
-  function fresh() { return new RD.PWREngine({ initial_state: 'hot_zero_power', seed: 7 }); }
-  function rhoAt(steps) { var y = fresh(); y.rod_groups[0].steps = steps; return y._totalReactivity() * 1e5; }
-  var ts = fresh().getTrueState();
+  var POOL = globalThis.RD.MANUAL_PROCEDURES && globalThis.RD.MANUAL_PROCEDURES.pwr2;
+  var proc = POOL && POOL.filter(function (p) { return p.id === 'pwr_startup'; })[0];
+  if (!proc) { ck('the live pwr_startup procedure was found', false, 'missing from RD.MANUAL_PROCEDURES.pwr2'); return; }
+
+  var B = null, PLOTTED = 0, CREEP = null, nBursts = 0;
+  proc.steps.forEach(function (s) {
+    if (s.cmd && s.cmd.action === 'set_auto_setpoint' && s.cmd.channel_id === 'boron_conc') B = s.cmd.value;
+    if (!s.cmd || s.cmd.action !== 'rod_nudge' || s.cmd.steps <= 0) return;
+    if ((s.accs || []).some(function (a) { return a.cmd === 'plot_1m_point'; })) { PLOTTED += s.cmd.steps; nBursts++; }
+    else if (CREEP === null && PLOTTED > 0) CREEP = s.cmd.steps;      // the first pull after the last plot
+  });
+
+  var HZP2 = K2.HZP;
+  function groups(st) {
+    return [{ steps: R2.max_steps, max_steps: R2.max_steps, worth: R2.worth_shutdown },
+            { steps: st,           max_steps: R2.max_steps, worth: R2.worth_control }];
+  }
+  function rhoAt(st) { return K2.reactivity(kin2, HZP2.temp_c, HZP2.temp_c, B, groups(st), HZP2.P_mpa) * 1e5; }
   var crit = null;
-  for (var s = 250; s <= 400 && crit == null; s++) if (rhoAt(s) >= 0) crit = s;
-  var PLOTTED = 306, CREEP = 26;   // the five authored 1/M bursts: 138+90+44+22+12
-  // 683 → 705 at #419 wave 3: the Ginna anchor (286.0 °C) + the decoupled rho_excess
-  // re-solve trim the HZP IC to ≈ 704.8 ppm — with criticality back at step 319 (checked
-  // next), so the 1/M story is unchanged; only the ppm label moved.
-  ck('the startup IC sits at ~705 ppm with the bank in', near(ts.boron_ppm, 705, 2),
-     ts.boron_ppm.toFixed(1) + ' ppm');
-  ck('criticality is at step 319, 13 past the last plotted 1/M burst', crit === 319,
-     'critical at ' + crit + ', bursts end at ' + PLOTTED);
+  for (var s = 0; s <= R2.max_steps && crit == null; s++) if (rhoAt(s) >= 0) crit = s;
+
+  ck('the live procedure still dilutes to the 719 ppm estimated critical concentration',
+     B === 719, B + ' ppm, read from the checklist\'s own boron command');
+  ck('the plotted 1/CR bursts are five and decreasing, ending SUBCRITICAL',
+     nBursts === 5 && rhoAt(PLOTTED) < 0,
+     nBursts + ' bursts summing ' + PLOTTED + ' steps, leaving ' + rhoAt(PLOTTED).toFixed(0) + ' pcm');
+  // THE SAFETY HALF: going critical on a plotted burst would mean the player takes a 1/CR
+  // point on a supercritical core, which is the one thing the whole ladder exists to avoid.
+  ck('criticality lies past the last plotted burst, inside the creep',
+     crit > PLOTTED && crit <= PLOTTED + CREEP,
+     'critical at ' + crit + '; bursts end at ' + PLOTTED + ', creep of ' + CREEP + ' reaches ' + (PLOTTED + CREEP));
   var dw = (rhoAt(crit + 15) - rhoAt(crit)) / 15;
-  // ±0.05 (0.7 %), not ±0.15: this is a deterministic static computation with no noise in it,
-  // and at ±0.15 a 3.2 % rod-worth retune still slid through at 6.82 while the other three
-  // checks here caught it. A guard the injection test walks past is not a guard.
-  ck('differential bank worth through the critical band is 6.70 pcm/step', near(dw, 6.70, 0.05),
-     dw.toFixed(2) + ' pcm/step (' + (dw / 6.5).toFixed(2) + ' ¢)');
-  // The point of the whole derivation: the creep must leave the excess that the 600 s hold
-  // needs to cover 3.20 decades at ~0.32 DPM. Measured, that is ~85 pcm.
+  // ±0.05 (0.6 %) — a deterministic static computation with no noise in it. Kept tight for the
+  // reason the retired version recorded: at ±0.15 a 3.2 % rod-worth retune slid straight through.
+  ck('differential bank worth through the critical band is 8.06 pcm/step', near(dw, 8.06, 0.05),
+     dw.toFixed(2) + ' pcm/step (' + (dw / (K2.DELAYED.beta * 1e5 / 100)).toFixed(2) + ' ¢)');
+  // AND THE CHECKLIST MUST SAY THE SAME NUMBER. This is the check that would have caught #618's
+  // headline defect: four documents quoted this worth at three different values (6.5 / 8 / 9
+  // pcm) and nothing compared any of them to the plant.
+  var quoted = null;
+  (proc.cautions || []).forEach(function (c) {
+    var m = /([\d.]+)\s*pcm/.exec(c);
+    if (m && quoted === null) quoted = parseFloat(m[1]);
+  });
+  ck('the checklist caution quotes the worth the plant actually has',
+     quoted !== null && Math.abs(quoted - dw) <= 0.1,
+     'caution says ' + quoted + ' pcm/step, plant is ' + dw.toFixed(2));
+  // The creep must land PAST critical but not far past: all the excess it leaves has to come
+  // back out by hand, because below the point of adding heat there is no temperature feedback.
   var excess = rhoAt(PLOTTED + CREEP) - rhoAt(crit);
-  ck('the authored 26-step creep leaves ~85 pcm of excess (the 0.32 DPM ascent)',
-     near(excess, 85, 12), excess.toFixed(0) + ' pcm above critical');
+  ck('the authored creep leaves a small positive excess for a controlled rise',
+     excess > 0 && excess < 60, excess.toFixed(0) + ' pcm above critical');
 })();
 
 console.log('\n' + BOLD + '──────────────────────────────────────────' + RST);

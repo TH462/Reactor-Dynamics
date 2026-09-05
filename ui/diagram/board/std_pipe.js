@@ -142,14 +142,16 @@
   // Dash period is fixed (10+15=25) so the shared clock loops seamlessly at every
   // diameter; only the flow-line THICKNESS scales with d.
   //
-  // THE DASHES ARE DRIVEN BY ONE JS CLOCK AT ~12 Hz, NOT BY CSS ANIMATIONS (2026-08-31 bug
+  // THE DASHES ARE DRIVEN BY ONE JS CLOCK AT ~24 Hz, NOT BY CSS ANIMATIONS (2026-08-31 bug
   // report: "indications and drawing boxes were flickering under high system load", 4.7 fps).
   // `stroke-dashoffset` is not compositable, so a CSS animation of it repaints the stroke at
   // the display rate — MEASURED over 15 s of the shipped board: 28,765 Paint events and 8.9 s
   // of raster with the animations on, 9,429 and 3.8 s with them off. ~100 strokes each
   // invalidating at 60 Hz was most of the board's browser-side cost, and on a loaded machine
   // it is what starved the app's own rAF down to 4.7 fps. One ticker that writes every
-  // stroke's offset in a single rAF-aligned batch cuts the invalidation rate 5× and keeps
+  // stroke's offset in a single rAF-aligned batch cuts the invalidation rate (60 → 24 Hz;
+  // first shipped at 12 Hz and raised same day — OWNER, 2026-08-31: "The 12hz may be too
+  // slow. It looks choppy.") and keeps
   // every element on the same instant of the shared clock — the #233 world-grid alignment
   // this file exists to preserve (per-element CSS pause/resume actually BROKE that grid: a
   // resumed element kept its private elapsed time and rejoined out of phase; the shared
@@ -161,22 +163,163 @@
   // from drawn when setFlowSpeed reversed the line). `style.animationPlayState === 'paused'`
   // still means "hold" — pwr_board writes it and pipeFlowState() reads it back — and the
   // board-wide `.bd-frozen` freeze holds the whole clock.
-  var FLOW_FPS = 12;
+  var FLOW_FPS = 24;
   var flowClockMs = 0, flowLastMs = 0, flowTimer = 0, flowRafPend = false;
+
+  /* ---- EVERY OTHER ANIMATION ON THE PAGE RIDES THE SAME CLOCK (2026-08-31) ----------------
+   * ONE RUNNING CSS ANIMATION ANYWHERE COSTS THE WHOLE 60 Hz FRAME LOOP, so converting the
+   * dashes alone bought almost nothing. MEASURED, 15 s traces, main-thread RunTask against a
+   * 21.0 s baseline: kill the bubbles 18.6, the spins 20.9, the sprays/puffs/plumes 19.5 —
+   * 4.0 s of savings between them — but kill ALL of them together and it is 12.6 s. The
+   * per-element cost is small; the fixed per-frame cost (style, layerize, commit) is what
+   * dominates, and it is paid at the display rate for as long as ANY animation runs.
+   *
+   * ALIGNING THE STEP EDGES DOES NOT WORK, and it was the cheaper idea: quantizing every
+   * animation's duration AND delay onto one 1/24 s grid so they all step together measured
+   * 20.7 s against 21.0 — nothing. Blink commits a frame for a running CSS animation whether
+   * or not the computed value changed. The animation has to actually STOP.
+   *
+   * SO: pause them and SEEK them. `document.getAnimations()` hands back the live CSSAnimation
+   * objects for the CSS this board already declares — pausing each one and advancing its
+   * `currentTime` here reproduces the motion exactly, at this clock's rate, with no keyframe
+   * rewritten and no component file touched. It also covers animations added later for free.
+   * (The steps() quantization this replaces was reverted to `linear` in the same change: the
+   * clock IS the sample rate now, and a second quantization at a near-but-not-equal rate
+   * beats against it.)
+   *
+   * THREE THINGS IT DELIBERATELY DOES NOT TOUCH: CSSTransition (short, one-shot, and
+   * pausing them would strand a half-finished level move), anything whose INLINE
+   * animation-play-state says paused (the house "hold" flag), and anything inside a frozen
+   * board stage — the board freezes, the alarm flash and the clock pulse do NOT, and they
+   * are page-level. Advancing by DELTA rather than to an absolute time is what lets a
+   * frozen element hold and then resume in its own phase.
+   *
+   * THE FIRST EXCLUSION WAS THE FRAME PRODUCER, AND THAT IS THE RULE THIS BLOCK NOW CARRIES
+   * (#613 wave 3, 2026-09-04):
+   *
+   *   A CSS TRANSITION MAY EXIST ONLY ON A PROPERTY THAT CHANGES ON A DISCRETE EVENT.
+   *   NEVER ON A VALUE REWRITTEN EVERY BROADCAST.
+   *
+   * "Short, one-shot" above was true of a valve rotating open. It was NOT true of the level
+   * rects, surface lines, level markers, rod groups and the valve needle, whose values are
+   * rewritten on EVERY broadcast: a 150 ms transition restarted every ~100 ms never finishes,
+   * so those elements were never idle and the compositor drew at the display rate for ever.
+   * MEASURED on a settled board at 10x, `tools/perf_trace.js`: 6-7 running CSSTransitions at
+   * every one of five sampled instants and ZERO running keyframe animations (this loop had
+   * paused all ~90 of them, exactly as designed) — 870 compositor draws per 15 s, i.e. 60 Hz,
+   * against ~300 app paints. Knob `notransition` (`* {transition:none !important}`) cut that to
+   * 337 frames (-61 %), compositor busy -32 %, GPU busy -25 %; knob `nolevels`, restricted to
+   * just the broadcast-rewritten set, got 339 — the level indicators were the WHOLE win, and
+   * the one-shot transitions that remain (valve rotation, stroke/fill colour, the PORV plug)
+   * cost nothing measurable. With them gone the compositor draws ~1.03 times per app paint.
+   *
+   * GATED by `test/verify_e2e_ui.js`'s "css transitions" check, which runs the plant at 10x and
+   * samples `document.getAnimations()` ten times: it fails if a running CSSTransition ever
+   * targets a rect/line/g inside `.pwr-board-stage` on height/y/transform. Restore one of those
+   * declarations and it goes red — so this rule is enforced, not just written down. */
+  var animPrevMs = 0;
+  function tickAnimations(now) {
+    if (!document.getAnimations) return;
+    var dt = animPrevMs ? now - animPrevMs : 0;
+    animPrevMs = now;
+    if (!(dt > 0)) return;
+    var frozen = document.querySelector('.pwr-board-stage.bd-frozen');
+    var list;
+    try { list = document.getAnimations(); } catch (e) { return; }
+    for (var i = 0; i < list.length; i++) {
+      var a = list[i];
+      var cn = a.constructor && a.constructor.name;
+      if (cn === 'CSSTransition') continue;
+      var st = a.playState;
+      if (st === 'finished' || st === 'idle') continue;
+      if (st === 'running') { try { a.pause(); } catch (e) { continue; } }
+      var el = a.effect && a.effect.target;
+      if (el && el.style && el.style.animationPlayState === 'paused') continue;
+      if (frozen && el && frozen.contains(el)) continue;
+      try { a.currentTime = (a.currentTime || 0) + dt; } catch (e) {}
+    }
+  }
+
+  /* THE DECORATIVE CLOCK YIELDS WHEN THE FRAME BUDGET IS GONE (#613, owner playtest
+   * 2026-09-03: "the sim has issues with large transients causing it to bog down and cause
+   * graphical issues like indications and objects disappearing and reappearing").
+   *
+   * MEASURED, profiled at 10x with a checklist running — the regime his report was in (his step
+   * p95 19.3 ms, mine 16.3): `tickAnimations` is the single largest cost in the whole UI, 454 ms
+   * of a 15 s profile, 32 % of all ui/ self time, with `drawChart` second at 280 ms. The work
+   * itself is ~0.64 ms to pause and re-seek 45 animations, and at FLOW_FPS = 24 that is
+   * 15-30 ms EVERY SECOND, spent forever, on bubbles, plumes, rain and pump spin.
+   *
+   * It is decoration, and it was the one thing on the board with no back-pressure: the ticker
+   * ran at a fixed 24 Hz whether the machine could afford it or not. On a loaded machine that is
+   * exactly the cost that starves the app's own rAF — which is #596's finding, and #596 fixed
+   * the RATE without making it adaptive.
+   *
+   * So: measure our own frame interval and skip ticks when it slips. The dash grid is unaffected
+   * (it is redrawn from the shared clock below, so a skipped tick simply advances further next
+   * time and the world alignment #233 protects is preserved by construction). What degrades is
+   * how smooth a bubble looks, which is the right thing to spend first.
+   *
+   * NOT A FIX FOR THE OWNER'S NUMBERS, and it must not be reported as one: his render p95 is
+   * 48.6 ms and the worst this harness reproduces is 22 ms, so the absolute cost is
+   * environmental and unreproduced here. This removes real, measured waste; whether it is
+   * enough is what his next report answers. */
+  var animSkip = 0, animEma = 0;
   function flowTick() {
     flowRafPend = false;
     var now = performance.now();
     var frozen = !!document.querySelector('.pwr-board-stage.bd-frozen');
     if (!flowLastMs) flowLastMs = now;
     if (!frozen) flowClockMs += now - flowLastMs;
+    var frameMs = flowLastMs ? now - flowLastMs : 0;
     flowLastMs = now;
-    if (frozen) return;
+    /* An exponential mean of our own interval. Nominal is 1000/FLOW_FPS ms; when the page is
+     * healthy the timer lands near it, and when the main thread is contended it does not. */
+    if (frameMs > 0 && frameMs < 2000) animEma = animEma ? (animEma * 0.85 + frameMs * 0.15) : frameMs;
+    var nominal = 1000 / FLOW_FPS;
+    /* 0 skips while we are inside ~2x nominal, then progressively more, capped so the motion
+     * never stops outright — a frozen-looking board reads as a crashed sim. */
+    var want = animEma > nominal * 4 ? 3 : animEma > nominal * 2 ? 1 : 0;
+    /* THE SKIP COVERS THE DASH WRITES TOO (#613 wave 2, and the first wave was half a fix).
+     *
+     * The owner's rc1 report is what says so. Wave 1 gated `tickAnimations` alone and it WORKED
+     * on the numbers it could reach: render p95 48.6 -> 21.7 ms, step 19.3 -> 2.3, budget
+     * 49 % -> 17 %. And the frame rate did not move — 4.7 -> 4.6 fps — with the tool's verdict
+     * flipping to "PAINTS ARE BEING DROPPED: more broadcasts than frames, with both stages
+     * inside budget."
+     *
+     * That is the whole diagnosis: with our JS comfortably inside budget, the remaining cost is
+     * the BROWSER's, and the loop below is what drives it — `stroke-dashoffset` written to ~67
+     * polylines at 24 Hz is ~1,600 stroke invalidations a second, every one of which the
+     * compositor must repaint. It is the same finding as #596 (dash strokes never composite;
+     * measured there at 6x the raster cost of everything else) and wave 1 simply left it out.
+     *
+     * So one skip gates BOTH halves. The phase is computed from `flowClockMs`, an absolute
+     * clock, so a skipped tick is not a dropped frame of motion — the next write lands where the
+     * dashes should be by then, and #233's world-grid alignment is preserved exactly as it is
+     * for the animation seeks above. */
+    var doTick = true;
+    if (animSkip > 0) { animSkip--; doTick = false; }
+    else { animSkip = want; }
+    if (doTick) tickAnimations(now);
+    if (frozen || !doTick) return;
     var els = document.querySelectorAll('polyline[data-dash-cyc]');
     if (!els.length) return;
     var t = flowClockMs / 1000;
     for (var i = 0; i < els.length; i++) {
       var el = els[i];
       if (el.style.animationPlayState === 'paused') continue;
+      /* DON'T ANIMATE WHAT IS NOT DRAWN (#613 wave 4). Ten of the sixty-nine dashed polylines
+       * have zero client rects on a settled board and were being written anyway. MEASURED with
+       * inbox/613/probe_board_census.js: every one of them is a DRY valve's pair of internal
+       * flow lines, hidden by `comp_valve.js:178`'s inline `display:none` — so the set changes
+       * whenever a valve wets or dries, and a visibility set cached at layout time (the shape
+       * this was first specified as) would have gone stale on the next valve stroke and left a
+       * live pipe frozen. Reading the INLINE display is exact, always current, and free: it is
+       * a style read, not a layout query, which is what `getClientRects()` here would have been
+       * — 69 forced layout flushes 24 times a second, more expensive than the writes it saves.
+       * The A/B knob that DID use getClientRects measured itself: +5.6 % raster. */
+      if (el.style.display === 'none') continue;
       var cyc = parseFloat(el.getAttribute('data-dash-cyc')) || DASH_CYCLE_S;
       var ph = parseFloat(el.getAttribute('data-dash-t')) || 0;
       var drawn = parseFloat(el.getAttribute('data-dash-dir')) || 1;

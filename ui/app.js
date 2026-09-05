@@ -146,6 +146,11 @@
   // CSV export, not the plot.
   var CHART_WINDOWS = {
     1:    [60, 300, 600, 1800],
+    /* 5x DECLARED, not left to the fallback (#619 item 18): `chartWindowsFor` returns the 1x
+     * ladder for any speed it does not know, and a fallback that happens to be correct is the
+     * shape that rots the first time someone changes the default. Rungs follow the rule above
+     * (wall-clock duration near the 1x ladder's), the #625 values. */
+    5:    [180, 900, 1800, 5400],
     10:   [300, 900, 3600, 10800],
     60:   [900, 3600, 10800, 43200],
     600:  [3600, 10800, 21600, 43200],
@@ -363,10 +368,38 @@
     // 'pwr2' as well: it is the service plant_id, the save schema ('pwr2-1.0') and 37 gate
     // runners' name for this plant, and renaming it would buy a label and cost all of that.
     // initStates OVERRIDES the profile's list: this engine carries its OWN preset registry
-    // (pwr2_engine ICS — the FOUR below since #507 wave 10 added Hot Shutdown; this comment
-    // said "three" while the list held four, #510 LOW. Mode 5 proper stays deferred on the
-    // Layer-0 floor) and offering the pwr profile's presets the constructor refuses would
-    // be a menu that lies.
+    // (pwr2_engine ICS) and offering the pwr profile's presets the constructor refuses would be
+    // a menu that lies.
+    /* THE MENU IS FOUR OF THE FIVE ICs — Mode 4, Hot Shutdown IS NOT OFFERED *(OWNER RULING,
+     * 2026-09-02: "A" — selecting "off the menu, initial condition kept for the gates" from three
+     * options I put, after asking "Should we bother to include a mode 4 preset if there isn't any
+     * difference from mode 5? Mode 4 and 2 are basically transition modes")*.
+     *
+     * MEASURED, both ICs booted and their true_state diffed (2026-09-02): 105 of 122 fields are
+     * IDENTICAL, and of the 17 that differ, 12 are one fact restated — the plant is isothermal, so
+     * every node reads Tavg. There is exactly ONE independent difference, temperature: 250 degF
+     * (121.1 degC) against 122 degF (50.0 degC). Secondary pressure (29.9 vs 1.8 psia), boron (894
+     * vs 918 ppm), subcooling (185 vs 313 degF) and source range all fall out of it. Pressure (369
+     * vs 368 psi), pressurizer level (25 %) and the WHOLE LINEUP are the same — RHR aligned with
+     * the heat exchanger shut, RCPs secured, accumulators isolated, the P-11 blocks taken, both
+     * banks in, turbine tripped, main feed secured. Nothing the player can DO differs.
+     *
+     * AND THE PRESET'S REASON WAS SPENT. #507 wave 10 built it saying so verbatim: "deliberately
+     * NOT Mode 5: Layer 0's property floor is 0.1 MPa, whose saturation temperature is 211 degF,
+     * so a secondary at or below Mode 5's 200 degF boundary is UNREPRESENTABLE." #524 moved that
+     * floor and Mode 5 landed 2026-08-31; the Mode 4 entry survived because nobody re-asked.
+     *
+     * The list that remains is the HOLD states, which is what a preset is for — transitions are
+     * produced by operating (the #468 produced-vs-preset rule in the ICS header, and why there is
+     * no Mode 2 entry either). It now matches the retired engine's own four-entry menu below.
+     *
+     * `hot_shutdown` STAYS in pwr2_engine's ICS and in the gates. It is the MORE SENSITIVE of the
+     * two settled-state probes — #605's safety-injection-at-t=0 defect read -21 degF/hr there
+     * against -6 degF/hr at Mode 5, because the hotter plant has more to lose — and three runners
+     * boot it. Put the entry back if a cooldown leg is ever authored to START at Mode 4; today no
+     * checklist does (the six pwr2 legs begin at cold_shutdown / hot_zero_power / 50_percent /
+     * hot_full_power). Manuals/09's initial-condition table keeps its column and says it is
+     * engine-only. */
     // freePlayOnly: the campaign/scenario/walkthrough content is authored and validated
     // against the current engine; running it silently on different physics would grade the
     // player against the wrong plant. Lifts when the scenario-compat pass runs.
@@ -374,13 +407,13 @@
                  initStates: [['hot_full_power', 'Hot Full Power (Mode 1)'],
                               ['50_percent', '50 % Power (Mode 1)'],
                               ['hot_zero_power', 'Hot Standby (Mode 3)'],
-                              ['hot_shutdown', 'Hot Shutdown (Mode 4)']],
+                              ['cold_shutdown', 'Cold Shutdown (Mode 5)']],
                  freePlayOnly: true,
                  label: 'PWR', sub: 'Pressurized Water Reactor',
                  desc: 'The SLS-100: real break locations, emergent natural circulation, the ' +
-                       'TMI level deception as physics rather than script. Starts at Hot ' +
-                       'Shutdown (Mode 4) or above. Free Play — the guided content is being ' +
-                       're-validated on this engine.' },
+                       'TMI level deception as physics rather than script. Cold Shutdown ' +
+                       '(Mode 5) to full power on integrated physics. Free Play — the guided ' +
+                       'content is being re-validated on this engine.' },
     rbmk_pre:  { plant: 'rbmk', dv: 'pre_chernobyl',   init: 'full_power', soon: true,
                  label: 'RBMK pre-1986', sub: 'Chernobyl-type · original design',
                  desc: 'Graphite-moderated, positive void coefficient, graphite-tipped rods — the design that failed at Chernobyl.' },
@@ -2059,8 +2092,13 @@
     var v = $('perfVerdict');
     if (v) {
       txt(v, p.verdict);
+      /* The WARP branch is tested FIRST and reads OK, not amber (#631): a WARP broadcast inside
+       * its own 70 ms budget is the tier doing exactly what it was built to do, and the same
+       * argument as the achieved-rate ruling applies — a colour that is warm on every machine
+       * at the top rung trains the player to ignore it. The prefixes below are unchanged. */
       v.className = 'perf-verdict' +
-        (/COMPUTE-BOUND/.test(p.verdict) ? ' warn' :
+        (/SPENDING THE WARP BUDGET/.test(p.verdict) ? ' ok' :
+         /COMPUTE-BOUND/.test(p.verdict) ? ' warn' :
          /RENDER-BOUND|SLIPPING|DROPPED/.test(p.verdict) ? ' bad' :
          /healthy/.test(p.verdict) ? ' ok' : '');
     }
@@ -2321,8 +2359,12 @@
     // which is the only way to answer "is the flicker compute or something else".
     if (RD.Perf) {
       try {
+        /* The PACING block rides along since #631. Without it the verdict cannot tell a WARP
+         * broadcast spending its 70 ms budget on purpose from a page that cannot keep up:
+         * both are "the physics used most of the interval", and only the tier says which. */
         RD.Perf.broadcast(service._perfStepMs,
-          (s.metadata && s.metadata.broadcast_ms) || service.broadcastMs);
+          (s.metadata && s.metadata.broadcast_ms) || service.broadcastMs,
+          (s.metadata && s.metadata.pacing) || null);
       } catch (e) { /* a profiler must never break the sim */ }
     }
     if (_renderRaf) {
@@ -2795,17 +2837,100 @@
     scram: 'Dropped to real time — reactor trip',
     failure: 'Dropped to real time — equipment failure',
     alarm: 'Dropped to real time — new alarm',
+    // #625: the WARP tier let go (60x) or was refused; the service names the plant's reason.
+    transient: 'WARP dropped to 60× — ',
+    warp_locked: 'WARP unavailable — ',
+    // #619 item 6. Not an emergency, so it toasts 'info' rather than 'error' below — the
+    // other three are the plant interrupting you; this one is the checklist keeping pace.
+    step: 'Dropped to real time — checklist step complete',
+    // #619 item 13 — the plant is holding the clock down (the accumulator arming window).
+    // The service also REFUSES set_speed while it stands, so this is not merely advisory.
+    hold: 'Held at real time — the plant needs you here',
   };
+  function speedSnapText(snap) {
+    var base = SPEED_SNAP_MSG[snap.reason] || 'Dropped to real time';
+    return /— $/.test(base) ? base + (snap.detail || 'plant in transient') : base;
+  }
+  /* The pacing readout (#625, and #581's achieved rate): runs every broadcast, cheap. The
+   * achieved figure is the service's own EMA off its timer path. AMBER means the physics is
+   * behind the request (under 90 % of it) — with the step budget that is the honest ceiling,
+   * not a fault: measured headless, a requested 3600x achieves ~650x with the budget cutting
+   * each broadcast at ~225 of 720 steps, and a rule that painted THAT red would be red on every
+   * machine at the top rung, which trains the player to ignore red. RED is the page itself
+   * straining — the broadcast loop slipping past 1.6x its interval, or paints being dropped
+   * faster than they land (RD.Perf's own verdicts) *(OWNER RULING, 2026-09-04: "2A" — red is
+   * the page straining, not the physics behind the request)*. The WARP buttons go dark while the
+   * service would refuse them, so a click that would land at 60x is never offered as 3600x. */
+  var _lastPacingKey = null;
+  function syncPacingUI(s) {
+    var p = s && s.metadata ? s.metadata.pacing : null;
+    var el = $('ffRate');
+    if (!p || !el) return;
+    var req = s.metadata.time_acceleration || 1, ach = p.achieved;
+    var straining = false;
+    if (RD.Perf && req > 1) {
+      try {
+        var sm = RD.Perf.summary(), iv = sm.interval_ms;
+        straining = !!(iv && iv.p95 > sm.nominal_ms * 1.6) || (sm.fps !== null && sm.fps < 20 && sm.coalesced > sm.paints);
+      } catch (e) {}
+    }
+    var cls = '', text = '';
+    if (req > 1 && ach != null) {
+      var ratio = ach / req;
+      cls = straining ? 'bad' : ratio < 0.9 ? 'warn' : 'ok';
+      text = '→ ' + (ach >= 100 ? Math.round(ach / 10) * 10 : Math.round(ach)).toLocaleString() + '×';
+    }
+    var key = cls + '|' + text + '|' + (p.warp_available ? 1 : 0) + '|' + (p.warp_lock || '');
+    if (key === _lastPacingKey) return;
+    _lastPacingKey = key;
+    el.hidden = !text;
+    el.textContent = text;
+    el.className = 'ff-rate mono' + (cls ? ' ' + cls : '');
+    el.title = text ? 'Achieved rate: ' + text.slice(2) + ' of the requested ' + req + '× (' + p.tier + ' tier, ' + p.physics_dt + ' s step)' : '';
+    var seg = $('speed');
+    if (seg) seg.querySelectorAll('button.warp').forEach(function (b) {
+      b.classList.toggle('locked', !p.warp_available);
+      b.title = p.warp_available ? 'WARP — coarser physics step; long quiet evolutions only'
+                                 : 'WARP unavailable — ' + (p.warp_lock || 'plant in transient');
+    });
+  }
   // Settings → Fast-forward dropout. The service owns the policy (HR5: it arrives by
   // command like everything else); the UI just mirrors what the snapshot reports.
   var attnStops = true;
   var lastSpeedSync = null;
+  var speedFlashT = null;   // #619 item 7 — the dropout flash timer
   function syncSpeedUI(s) {
     var v = s && s.metadata ? s.metadata.time_acceleration : null;
     // Attention stop (M5): a plant event snapped fast-forward back to real time.
     // Toast the reason so the operator knows why the clock changed under them.
     var snap = s && s.metadata ? s.metadata.speed_snap : null;
-    if (snap) showToast(SPEED_SNAP_MSG[snap.reason] || 'Dropped to real time', 'error');
+    if (snap) {
+      /* Severity by kind: a checklist step completing is information (#619 item 6); a WARP
+       * refusal is a caution (#625); everything else is the plant interrupting you. */
+      showToast(speedSnapText(snap),
+        snap.reason === 'step' ? 'info' : snap.reason === 'warp_locked' ? 'warn' : 'error');
+      /* FLASH THE SPEED BUTTONS *(OWNER, 2026-09-03, #619 item 7: "when dropping out of warp,
+       * flash the warp buttons for a moment to make it more obvious.")*. The toast says what
+       * happened; the flash says WHERE, which is the control the player now has to touch to
+       * get moving again.
+       *
+       * Driven from here rather than from the `v !== lastSpeedSync` block below on purpose:
+       * that block short-circuits when the value has not changed, and a dropout that lands on
+       * a speed already showing 1x would flash nothing. `speed_snap` is stamped once per
+       * event by the service, so this fires exactly once per dropout.
+       *
+       * The class is removed on a timer AND before being re-added, so a second dropout inside
+       * the animation restarts it instead of being swallowed — a re-add without the removal is
+       * a no-op in CSS, which is the usual way this idiom fails silently. */
+      var spSeg = $('speed');
+      if (spSeg) {
+        spSeg.classList.remove('speed-snapped');
+        void spSeg.offsetWidth;                 // reflow: makes the re-add restart the animation
+        spSeg.classList.add('speed-snapped');
+        if (speedFlashT) clearTimeout(speedFlashT);
+        speedFlashT = setTimeout(function () { spSeg.classList.remove('speed-snapped'); }, 1600);
+      }
+    }
     var as = s && s.metadata ? s.metadata.attention_stops : null;
     if (as != null && as !== attnStops) { attnStops = as; syncSeg('[data-attn]', as ? 'on' : 'off', 'attn'); }
     if (v == null || v === lastSpeedSync) return;
@@ -2943,7 +3068,7 @@
     '<li><b>F11</b> goes fullscreen — the plant diagram gets the extra room, and it plays better that way.</li>' +
     '<li><b>Play</b> starts the clock (the ▶ button flashes whenever the plant is stopped).</li>' +
     '<li><b>System Scanner</b> (the line under the board) — hover anything for what it is.</li>' +
-    '<li><b>Checklists</b> (second tab above) — interactive procedures that check themselves off the instruments.</li>' +
+    '<li><b>Checklists</b> — interactive procedures that check themselves off the instruments (the bar above opens them).</li>' +
     '<li><b>Manual</b> — full operator reference and written procedures.</li>' +
     '<li><b>Plant &amp; Mission</b> (the bar under the clock) — starting condition, courses and reset.</li>' +
     '</ol>' +
@@ -2951,23 +3076,31 @@
     '<button type="button" class="btn linkish" data-open-tour="1">Quick tour</button> · ' +
     'advanced failures under <b>Inject Failure</b>.</p>' +
     '</div>';
-  /* IN FREE PLAY THE INSTRUCTOR HOSTS THE CHECKLIST LAUNCHER (#443, spec §9).
+  /* IN FREE PLAY THE INSTRUCTOR POINTS AT THE CHECKLISTS TAB (#443 -> #598 item 16).
    *
    * It is the default open panel and it had nothing to say when no module is running, so it
    * showed static quick-tour text — help copy occupying the most valuable real estate in the
    * shell. Giving it a real job solves checklist discoverability without adding a surface,
    * and it matches the stated priority: the manual serves users who want depth, the average
-   * user wants a checklist to follow. */
+   * user wants a checklist to follow.
+   *
+   * IT USED TO BE A LIST — the top four ranked procedures as launch buttons, plus an "All
+   * checklists…" link *(OWNER DIRECTIVE, 2026-09-01, #598 item 16: "On the instructor tab, remove the list
+   * of checklists and add a bar that says 'Try the new interactive checklists'. pressing this
+   * button takes the user to the checklists tab.")*. The list duplicated the Checklists tab's
+   * own menu in a smaller space and ranked it differently, which is two authorities on the same
+   * question — DESIGN_CRITERIA Q4's duplicate-authority test. One bar, one destination.
+   *
+   * The bar reuses `data-open-ckl` VERBATIM, which is not laziness: that handler selects the
+   * tab by CLICKING its button rather than calling selectTab(), so the delegated listener also
+   * updates lastToolsTab and fires the panel telemetry. Calling selectTab() directly would
+   * switch the tab and silently drop both. */
   function idleLauncherHtml() {
     if (!flagOn('checklists')) return '';
-    var ranked = rankedProcedures().filter(function (r) { return r.score >= 100; }).slice(0, 4);
-    if (!ranked.length) return '';
-    return '<div class="instr-launch"><div class="instr-launch-t">Pick a procedure to follow</div>' +
-      ranked.map(function (r) {
-        return '<button class="btn" data-ckl-start="' + mesc(r.id) + '">' +
-               '<span class="ckl-cat">' + mesc(r.category || '') + '</span>' + mesc(r.title) + '</button>';
-      }).join('') +
-      '<div class="instr-launch-more"><button type="button" class="btn linkish" data-open-ckl="1">All checklists…</button></div></div>';
+    return '<div class="instr-launch"><button type="button" class="btn instr-launch-bar" ' +
+      'data-open-ckl="1" data-scanner-hint="Open the Checklists tab — interactive procedures ' +
+      'that check themselves off the instruments as you operate.">' +
+      'Try the new interactive checklists</button></div>';
   }
   function showIdleInstructor() {
     setInstrRole('Instructor');
@@ -2993,6 +3126,7 @@
     var crw = $('chartRewindBtn');
     if (crw) crw.disabled = noCp;
     syncSpeedUI(s);
+    syncPacingUI(s);
     renderHighlight(s);
     updateSimSummary();   // status line follows scenario/walkthrough transitions (change-guarded)
     instrGateOpen(s);     // a step that blocks progress opens the card, once per beat (#439)
@@ -3000,23 +3134,29 @@
     // is just a synced mirror. This survives start_follow's internal plant reset,
     // save/load restores, and anything else that broadcasts mid-transition.
     // Checklist picker row: free play only — anything instructed owns the card.
-    /* THE TAB ALWAYS SHOWS THE LIST *(OWNER DIRECTIVE, 2026-08-11: "The checklist tab
-     * should always show the list of checklists... Currently when a checklist is running
-     * this tab is empty.")*. It used to hide the whole picker whenever the Instructor was
-     * busy — which is exactly when a player most wants to see what else there is, or to
-     * switch. Nothing about showing the list starts anything; picking one does, and that
-     * was always allowed. */
+    /* THE RUNNING CHECKLIST LIVES IN THE CHECKLISTS TAB (#607 item 6). The 2026-08-11
+     * "tab always shows the list" directive is superseded: leaving the tab used to look
+     * like a restart because the card was painted in the Instructor pane. The list is
+     * still there, behind "← All checklists". */
     var cklRow = $('instrCklRow');
+    var cklRun = $('cklRun');
+    var runningCkl = !!(s.instructor && s.instructor.checklist);
+    if (!runningCkl && cklState.view === 'run') cklState.view = 'list';
     if (cklRow) {
-      cklRow.hidden = !flagOn('checklists');
-      var running = !!(s.instructor && s.instructor.checklist);
-      var cklNote = $('cklBusyNote');
-      if (cklNote) {
-        cklNote.hidden = !running;
-        if (running) txt(cklNote, 'A checklist is running in the Instructor below. Pick another to switch.');
-      }
-      if (!cklRow.hidden) toggleCklMenu();      // keeps the list current; no-op when unchanged
+      var showList = flagOn('checklists') && (!runningCkl || cklState.view === 'list');
+      cklRow.hidden = !showList;
+      if (showList) toggleCklMenu();
     }
+    if (cklRun) cklRun.hidden = !(runningCkl && cklState.view === 'run');
+    /* THE CHECKLIST TEARDOWN MUST HAPPEN BEFORE ANY EARLY RETURN (#598 item 12). This
+     * used to sit ~25 lines below, under three of them — the follow branch, the chat
+     * branch and the checklist branch. The instructor layer clears the checklist when a
+     * walkthrough or a scenario starts (instructor_layer.js _clear), so that transition
+     * returned at the follow/chat branch and resetCkl() never ran: the persistent green
+     * step glow was stranded on the board with nothing left in the UI able to clear it.
+     * The condition is the snapshot's, not the render path's — no checklist in the
+     * snapshot means the card and its glow are stale, whatever we are about to draw. */
+    if (cklState.key && !(s.instructor && s.instructor.checklist)) resetCkl();
     var fb = s.instructor && s.instructor.follow;
     if (fb) {
       ui.follow = { id: fb.procedure_id };
@@ -3031,17 +3171,9 @@
     // replaces the single-slot commentary card. Level-complete renders inline.
     if (s.instructor && s.instructor.chat) { syncInstrNav('chat'); renderChat(s); return; }
     if (chatState.sid) resetChat();
-    // Auto-checklist (Path 3): chat-style bubble list, one bubble per step,
-    // checking itself off the instruments while the operator plays on.
+    // Auto-checklist (Path 3): painted in the Checklists tab, not this card.
     var ckb = s.instructor && s.instructor.checklist;
-    if (ckb) {
-      syncInstrNav('ckl');
-      var prC = ((RD.MANUAL_PROCEDURES || {})[ui.engineKey] || []).filter(function (x) { return x.id === ckb.procedure_id; })[0];
-      setInstrRole(prC && prC.title ? ('Checklist · ' + prC.title) : 'Checklist');
-      renderChecklist(s, ckb);
-      return;
-    }
-    if (cklState.key) resetCkl();
+    if (ckb) renderChecklist(s, ckb);
     var lc = s.instructor && s.instructor.level_complete;
     if (lc) { syncInstrNav('lc'); msgHold.queue = []; msgHold.shown = null; setInstrRole('Instructor'); renderLevelComplete(s, lc); return; }
     syncInstrNav(ui.scenario ? 'scenario' : 'idle');
@@ -3268,77 +3400,444 @@
   // bubble; done steps carry the check, the active step shows its live
   // acceptance status and a manual override. Step text comes from the same
   // RD.MANUAL_PROCEDURES artifact the Instructor graded it from.
-  var cklState = { key: null };
+  // whyAll / whyOpen: the #244 item-2 explanation toggles (global + per-step); they
+  // survive re-renders via the render key and reset with the checklist itself.
+  var cklState = { key: null, whyAll: false, whyOpen: {}, step: null, view: 'list', userScrolled: false, preconHtml: null };
+  var cklAutoScroll = false;   /* true while WE are writing scrollTop (#612) */
+
+  /* ---- WHICH SPEED RUNG A LONG WAIT WANTS (#628) --------------------------------------------
+   * *(OWNER, 2026-09-04: "Add a suggested time warp value for the long term waiting steps.")*
+   *
+   * READ OFF THE LADDER ITSELF, never a literal list. There are already TWO copies of the six
+   * rungs — the buttons in shell.html and SPEED_KEYS below, the latter a deliberate literal so a
+   * missing button cannot silently renumber the keys — and a third would be the PROTECTION_DT
+   * trap: a suggestion naming a rung the player does not have is worse than no suggestion. The
+   * DOM read also carries the `warp` class, which is the only thing that distinguishes a rung the
+   * plant may REFUSE (the #625 tier drops to 60× on any transient) from one it always takes.
+   *
+   * The fallback list exists for the case where this is called before the bar is in the document;
+   * it is the ladder as authored, and if the two ever disagree the DOM wins by construction.
+   *
+   * THE RULE: the smallest rung that brings the wait under WAIT_TARGET_WALL_S of real time at
+   * that rung's NOMINAL rate — top rung if none does. 60 s is chosen so the PLAY tier (bit-
+   * identical physics, 1×–60×) is preferred wherever it will do: MEASURED across the 24 pwr2
+   * steps that qualify it lands 2 on 5×, 8 on 10×, 9 on 60×, 4 on 600× and 1 on 3600× — so 19
+   * of 24 stay on PLAY and WARP's declared fidelity departure is spent only on the five waits
+   * that genuinely need it (65 min and up).
+   *
+   * ⚠ NOMINAL, NOT ACHIEVED. A rung is a REQUEST — measured on the workbench machine the top
+   * rung delivers ~931× (#631) — so the wall time this implies is a floor, not a promise, and
+   * that is why the card names the rung and not a number of seconds. */
+  var SPEED_LADDER_FALLBACK = [
+    { speed: 1, warp: false }, { speed: 5, warp: false }, { speed: 10, warp: false },
+    { speed: 60, warp: false }, { speed: 600, warp: true }, { speed: 3600, warp: true },
+  ];
+  var WAIT_TARGET_WALL_S = 60;
+  function speedLadder() {
+    var btns = document.querySelectorAll('#speed [data-speed]');
+    var out = [];
+    for (var i = 0; i < btns.length; i++) {
+      var v = +btns[i].getAttribute('data-speed');
+      if (v > 0) out.push({ speed: v, warp: btns[i].classList.contains('warp') });
+    }
+    if (!out.length) return SPEED_LADDER_FALLBACK.slice();
+    out.sort(function (a, b) { return a.speed - b.speed; });
+    return out;
+  }
+  RD.CklSpeedHint = function (holdS) {
+    var lad = speedLadder();
+    for (var i = 0; i < lad.length; i++) if (holdS / lad[i].speed <= WAIT_TARGET_WALL_S) return lad[i];
+    return lad[lad.length - 1];
+  };
+  /* IS THE POINTER IN THIS ELEMENT? (#605.) `:hover` cannot answer it here — the element is
+   * BRAND NEW, built microseconds ago by an innerHTML rebuild, and the browser does not
+   * re-run its hit test until the next mouse event or paint. So track the pointer ourselves
+   * and hit-test on demand. The listener attaches on first use (this file's top level runs at
+   * parse time, before the app wires anything) and `capture` so a stopped event still counts.
+   * A pointer that has never moved reads as "not inside", which is the safe default: the
+   * auto-scroll then behaves exactly as it did before. */
+  var lastPtr = null;
+  function pointerInside(el) {
+    if (!lastPtr) {
+      document.addEventListener('pointermove', function (e) { lastPtr = { x: e.clientX, y: e.clientY }; }, true);
+      lastPtr = { x: -1, y: -1 };
+      return false;
+    }
+    if (!el || lastPtr.x < 0) return false;
+    var r = el.getBoundingClientRect();
+    return lastPtr.x >= r.left && lastPtr.x <= r.right && lastPtr.y >= r.top && lastPtr.y <= r.bottom;
+  }
+  /* WHICH ELEMENT ACTUALLY SCROLLS THE CHECKLIST. Not always `#cklLog`: since #605 gave the log
+   * the full column height it is a plain block in chat-mode and `#instrLog` around it is the
+   * scroller. Resolve it rather than naming one, so the scroll-preservation above cannot be
+   * silently pointed at an element that never scrolls — which would read as "the fix works"
+   * while the panel jumped exactly as before. */
+  function cklScroller() {
+    var el = $('cklLog');
+    while (el && el !== document.body) {
+      if (el.scrollHeight > el.clientHeight + 1) {
+        var ov = getComputedStyle(el).overflowY;
+        if (ov === 'auto' || ov === 'scroll') return el;
+      }
+      el = el.parentElement;
+    }
+    return $('cklLog');
+  }
   function resetCkl() {
     if (!cklState.key) return;
-    cklState = { key: null };
+    cklState = { key: null, whyAll: false, whyOpen: {}, step: null, view: 'list', userScrolled: false, preconHtml: null };
+    var run = $('cklRun'); if (run) { run.hidden = true; run.innerHTML = ''; }
+    var row = $('instrCklRow'); if (row) row.hidden = !flagOn('checklists');
+    clearCklStepGlow();
     var card = $('instructorCard'); if (card) card.classList.remove('chat-mode');
     var cur = $('instrCurrent'); if (cur) cur.textContent = '';
   }
+  /* -------------------------------------------------------- predicate display (#244)
+   * *(OWNER DIRECTIVE, #244 item 7 / M5→3 item 3: "Need to use natural language not
+   * internal nomenclature… 'when pressure_mpa ≥ 15' should say 'When pressure 15'.")*
+   * One map from predicate param → the player's name for it plus how its value renders.
+   * `dim` routes through conv()/unit() so the criteria line is US-first dual-unit like
+   * every other player-facing number (#244 M5→3 item 1); `u` is a fixed unit suffix;
+   * `bool` names a state (the line renders as the state, not as an inequality); `mode`
+   * renders the commercial mode ladder. A param missing here falls back to its raw name —
+   * and test/run_checklist_pwr2.js asserts every predicate the shipped chain uses has an
+   * entry, so the fallback is a net for NEW content, not a lifestyle. */
+  var PRED_DISPLAY = {
+    power_pct:              { label: 'Reactor power', u: '%' },
+    fuel_temp_c:            { label: 'Fuel temperature', dim: 'temp' },
+    tavg_c:                 { label: 'Tavg', dim: 'temp' },
+    thot_c:                 { label: 'T-hot', dim: 'temp' },
+    tcold_c:                { label: 'T-cold', dim: 'temp' },
+    pressure_mpa:           { label: 'Pressure', dim: 'pressure' },
+    steam_pressure_mpa:     { label: 'Steam pressure', dim: 'pressure' },
+    subcooling_c:           { label: 'Subcooling margin', dim: 'tempdiff' },
+    tavg_rate_c_per_hr:     { label: 'Heatup/cooldown rate', dim: 'tempdiff', suffix: '/hr' },
+    sr_counts_cps:          { label: 'Source Range counts', u: 'cps' },
+    startup_rate_dpm:       { label: 'Startup rate', u: 'DPM' },
+    reactivity_pcm:         { label: 'Net reactivity', u: 'pcm' },
+    boron_ppm:              { label: 'Boron', u: 'ppm' },
+    mwe_output:             { label: 'Generator output', u: 'MWe' },
+    core_inventory_pct:     { label: 'Core coolant inventory', u: '%' },
+    decay_heat_pct:         { label: 'Decay heat', u: '%' },
+    sg_level_pct:           { label: 'SG level', u: '%' },
+    pzr_level_pct:          { label: 'Pressurizer level', u: '%' },
+    pump_flow_pct:          { label: 'RCP flow', u: '%' },
+    /* ROD POSITION (#605). Resolved out of `control_state.rod_groups` by the instructor layer,
+     * not out of `true_state` — see ROD_PARAMS there. The `_pct` forms are what a step should
+     * normally check: "fully withdrawn" is 100 % on any bank scale, where a step count is only
+     * true for the bank length this plant happens to carry (627 on PWR2, 200 on the retired
+     * engine), and a step written in steps silently never checks off on the other one. */
+    control_bank_pct:       { label: 'Control bank position', u: '%' },
+    control_bank_steps:     { label: 'Control bank', u: 'steps' },
+    shutdown_bank_pct:      { label: 'Shutdown bank position', u: '%' },
+    shutdown_bank_steps:    { label: 'Shutdown bank', u: 'steps' },
+    feed_coupled:           { bool: 'steam-generator feed is in AUTO' },
+    steam_dump_setpoint:    { label: 'Dump setpoint', dim: 'pressure' },
+    accumulator_volume_pct: { label: 'Accumulator inventory', u: '%' },
+    steam_dump_valve_pct:   { label: 'Steam dump demand', u: '%' },
+    /* the dump SELECTION and the atmospheric dump valve (#629) — the heatup's Mode 3
+     * confirmation reads both, because "the dumps are in service" and "the ADV is shut" are
+     * the two halves of the claim that the condenser, not the atmosphere, is the heat sink */
+    steam_dump_auto:        { bool: 'the steam dumps are in automatic control' },
+    adv_valve_pct:          { label: 'Atmospheric dump valve', u: '%' },
+    vessel_level_pct:       { label: 'Vessel level', u: '%' },
+    drum_level_pct:         { label: 'Drum level', u: '%' },
+    plant_mode:             { mode: true },
+    scrammed:               { bool: 'the reactor is tripped' },
+    melted:                 { bool: 'the core is damaged' },
+    turbine_tripped:        { bool: 'the turbine is tripped' },
+    hpi_active:             { bool: 'HPI is injecting' },
+    afw_active:             { bool: 'auxiliary feedwater is running' },
+    rhr_active:             { bool: 'RHR is in service' },
+    rhr_valve_open:         { bool: 'the RHR suction valve is open' },
+    accumulator_valve_open: { bool: 'the accumulator discharge valve is open' },
+    /* the letdown pair (#624 items 14/25): the SELECTOR is control_state, the FLOW is
+     * true_state, and the heatup's transfer step needs both — one is what you pressed, the
+     * other is what the plant did about it */
+    letdown_orifice_a:      { bool: 'letdown orifice A is in service' },
+    letdown_orifice_b:      { bool: 'letdown orifice B is in service' },
+    /* the two pressurizer AUTO lamps (#624 item 14) — the heatup grades the MODE the operator
+     * selected, which is control_state; the kW and the spray flow in true_state cannot tell an
+     * AUTO selection from a manual demand that happens to sit at the same output */
+    heater_auto:            { bool: 'the pressurizer heaters are in AUTO' },
+    spray_auto:             { bool: 'the pressurizer spray is in AUTO' },
+    letdown_flow_actual:    { label: 'Letdown flow', u: 'gpm', scale: 450000 },
+    sr_energized:           { bool: 'the Source Range detector is energized' },
+    sg_safety_open:         { bool: 'an SG code safety is open' },
+    porv_open:              { bool: 'the PORV is open' },
+  };
+  var MODE_NAMES = { 1: 'Mode 1, At Power', 2: 'Mode 2, Startup', 3: 'Mode 3, Hot Standby',
+                     4: 'Mode 4, Hot Shutdown', 5: 'Mode 5, Cold Shutdown' };
+  // A predicate's VALUE in the player's units: US-first with SI in parentheses for the
+  // dimensioned families; plain number + unit otherwise.
+  function fmtPredValue(pd, v) {
+    if (v == null || isNaN(+v)) return String(v);
+    if (pd && pd.dim) {
+      var us = conv(+v, pd.dim), sfx = pd.suffix || '';
+      var siU = { pressure: 'MPa', temp: '°C', tempdiff: '°C', vacuum: 'kPa' }[pd.dim] || '';
+      var usTxt = (Math.abs(us) >= 100 ? Math.round(us) : Math.round(us * 10) / 10) + ' ' + unit(pd.dim) + sfx;
+      if (ui.units === 'SI') return usTxt;                        // already SI — one form
+      return usTxt + ' (' + (Math.abs(+v) >= 100 ? Math.round(+v) : Math.round(+v * 100) / 100) + ' ' + siU + sfx + ')';
+    }
+    /* A DISPLAY SCALE, for the params published in the #408 currency (#624 item 25). The CVCS
+     * flows are gpm/450,000 on the wire, so a raw render prints "0" for every flow a plant ever
+     * carries — 12.5 gpm is 2.8e-5. The board multiplies by the same 450,000; this is that
+     * conversion for the checklist's own criteria line, declared on the entry rather than
+     * hidden in a branch. */
+    var vv = (pd && pd.scale) ? +v * pd.scale : +v;
+    var n = Math.abs(vv) >= 100 ? Math.round(vv) : Math.round(vv * 10) / 10;
+    return n + (pd && pd.u ? ' ' + pd.u : '');
+  }
+  // The whole criteria phrase for one {p,op,v[,tol]} — "Pressure ≥ 2235 psi (15.41 MPa)",
+  // "the reactor is tripped", "Plant in Mode 5, Cold Shutdown", "Boron within 20 ppm of 705".
+  function fmtPredicate(pred) {
+    var pd = PRED_DISPLAY[pred.p];
+    if (pd && pd.mode) return 'Plant in ' + (MODE_NAMES[Math.round(pred.v)] || ('Mode ' + pred.v));
+    if (pd && pd.bool) {
+      var wantsTrue = (pred.op === '>' || pred.op === '>=') ? pred.v <= 1
+                    : (pred.op === '~') ? pred.v >= 1 : false;
+      if (wantsTrue) return pd.bool;
+      return pd.bool.indexOf(' is ') !== -1 ? pd.bool.replace(' is ', ' is not ')
+                                            : 'not: ' + pd.bool;
+    }
+    var label = pd ? pd.label : pred.p;
+    if (pred.op === '~') {
+      var tol = pred.tol != null ? pred.tol : 1;
+      return label + ' within ' + fmtPredValue(pd, tol) + ' of ' + fmtPredValue(pd, pred.v);
+    }
+    return label + ' ' + (OPSYM[pred.op] || pred.op) + ' ' + fmtPredValue(pd, pred.v);
+  }
+
   function renderChecklist(s, ck) {
-    var cur = $('instrCurrent'), card = $('instructorCard');
+    var cur = $('cklRun');
+    if (!cur) return;
     var pr = ((RD.MANUAL_PROCEDURES || {})[ui.engineKey] || []).filter(function (x) { return x.id === ck.procedure_id; })[0];
-    if (!pr) { cur.textContent = 'Checklist: ' + ck.procedure_id; return; }   // mid plant-restore mismatch
+    if (!pr) {
+      /* mid plant-restore mismatch. This returns BEFORE applyCklStepGlow, so a glow from
+       * the previous procedure would survive an engine swap or a save/restore mismatch
+       * with no owner (#598 item 12). Clear it, and clear the render key with it — the
+       * card we are about to draw is not the one the key describes. */
+      if (cklState.key) resetCkl();          /* resetCkl blanks cur — set the text AFTER it */
+      cur.hidden = false; cur.textContent = 'Checklist: ' + ck.procedure_id;
+      return;
+    }
+    cur.hidden = cklState.view !== 'run';
     // Precondition verdicts join the render key (#392's lesson: a banner outside
     // the key never repaints). Observed values are keyed ROUNDED so the banner
     // tracks a dilution at ~whole-unit granularity instead of rebuilding the DOM
     // every broadcast on analog noise.
-    var pcKey = (ck.preconditions || []).map(function (p) {
-      return (p.met ? 'y' : 'n') + (p.met ? '' : Math.round(p.obs != null ? p.obs : -1));
-    }).join(',');
+    /* pcKey RETIRED with the live banner (#614). It carried the rounded precondition
+     * observations, so it churned the key whenever the plant moved — and it now describes
+     * nothing the build renders, because the banner is latched at open. What replaces it is the
+     * one bit that still changes the output: whether the checklist is underway. */
+    var pcKey = (ck.step_index > 0 || (ck.steps_done || []).some(Boolean)) ? 'go' : 'entry';
     var key = [ck.procedure_id, (ck.steps_done || []).map(function (d) { return d ? 1 : 0; }).join(''),
-      ck.step_index, ck.acc_met ? 1 : 0, ck.graded_by || '', ck.complete ? 1 : 0, pcKey, ui.register].join('|');
+      ck.step_index, ck.acc_met ? 1 : 0, ck.graded_by || '', ck.complete ? 1 : 0, pcKey, ui.register,
+      // #244 additions: per-entry check-off states, the why-toggle states, and the display
+      // units all change what the card shows, so they join the render key.
+      (ck.accs || []).map(function (a) { return a.met ? 1 : 0; }).join(''),
+      cklState.whyAll ? 1 : 0, Object.keys(cklState.whyOpen || {}).join(','), ui.units,
+      cklState.view].join('|');
     if (key === cklState.key) return;
     var firstBuild = !cklState.key;
     cklState.key = key;
-    card.classList.add('chat-mode');
-    cur.classList.remove('instr-standby');
-    var h = '<div class="ckl-log" id="cklLog">';
+    var h = '<button class="btn ckl-back" data-ckl-list="1">← All checklists</button>';
+    h += '<div class="ckl-log" id="cklLog">';
+    // Global explanations toggle (#244 item 2): expands/collapses every step's "why".
     h += '<div class="ckl-head"><b>' + mesc(pr.title) + '</b>' +
+      '<button class="btn ckl-why-all" data-ckl-why-all="1" title="Show or hide the details on every step">' +
+      (cklState.whyAll ? 'Hide all details' : 'Show all details') + '</button>' +
       '<div class="m-note">Auto-checklist — steps check themselves off the instruments while you operate.</div></div>';
     // Precondition banner (#395) — WARN, NEVER BLOCK: unmet rows are listed with
     // measured-vs-expected and everything below still runs. Row text comes from
     // the procedure artifact (`precond[i].text`); the snapshot ships verdicts only.
-    var pc = ck.preconditions;
-    if (pc && pr.precond && pc.some(function (p) { return !p.met; })) {
-      h += '<div class="m-caution"><b>Prerequisites not met — nothing is blocked, but steps may not verify:</b>';
-      for (var pj = 0; pj < pc.length && pj < pr.precond.length; pj++) {
-        if (pc[pj].met) continue;
-        var pd = pr.precond[pj];
-        h += '<div>✗ ' + mesc(pd.text || pd.p) + ' <span class="muted">— wants ' + mesc(pd.p) + ' ' +
-          (OPSYM[pd.op] || pd.op) + ' ' + mesc(pd.v) + ', reads ' + fmtPcObs(pc[pj].obs) +
-          (pc[pj].graded_by === 'true_state' ? ' (true value)' : '') + '</span></div>';
+    /* THE ENTRY BANNER IS LATCHED AT OPEN, AND NEVER RETURNS MID-RUN (#614, owner playtest
+     * 2026-09-03: "I found the checklist scroll bounce issue. It's caused by the not applicable
+     * to this mode warning at the top. This warning should not appear during a checklist. It
+     * erroneously appears in the middle of the mode 5-3 checklist when it gets to mode 4. This
+     * should only appear when first opening a checklist and should never appear in the middle
+     * of a checklist.").
+     *
+     * THIS IS THE SCROLL BOUNCE, and the owner found it — my three hypotheses at #612 were all
+     * wrong. `precond` are ENTRY conditions: the heatup's are `tavg_c < 95`, `pressure < 5`,
+     * `power < 1` — true of the cold plant you start on and FALSE the moment you start heating
+     * it. The banner was rendered from the LIVE verdicts every build, so it vanished and
+     * reappeared as the plant crossed Mode 5 -> 4 -> 3, and each flip changed the panel's height
+     * under a reader. That is the "bouncing to the top and back to the step".
+     *
+     * So the banner is captured ONCE, on the first build, and shown only while the checklist has
+     * not started moving. A precondition is a statement about whether it was sensible to OPEN
+     * this checklist; re-asserting it against a plant the checklist itself is deliberately
+     * changing is not a warning, it is the checklist complaining about its own progress.
+     *
+     * The verdicts also leave the RENDER KEY with it (pcKey). They were the noisiest term in it —
+     * rounded observations that move whenever the plant does — so suppressing the banner once the
+     * run is underway removes a rebuild-per-broadcast as well as the height flip. */
+    /* Shown ONLY before the checklist starts moving. Latching the text at `firstBuild` was the
+     * first attempt and it was wrong: the first broadcast after `start_checklist` does not carry
+     * the verdicts yet, so it captured an EMPTY banner and never recovered — measured, the #606
+     * check went red on it. What matters is not when the text is computed but whether it may be
+     * shown at all, and `underway` is that test: once a step is done, the entry question is
+     * settled and the answer is history. */
+    /* CAPTURED ONCE, AT ENTRY, AND NEVER RECOMPUTED. Two wrong versions came first and both are
+     * worth naming, because each looked right:
+     *
+     *   1. Latch on `firstBuild` — the first broadcast after `start_checklist` does not carry the
+     *      verdicts yet, so it captured an EMPTY banner and never recovered.
+     *   2. Suppress once `underway` — too aggressive. A checklist whose first step is already
+     *      satisfied advances on its own within a broadcast or two (the cooldown's does at
+     *      Mode 5), so the banner was gone before anyone could read it. Measured: the #606 check
+     *      went red on exactly that.
+     *
+     * The answer is to capture the FIRST build that actually has verdicts and then hold it. The
+     * banner answers "was it sensible to open this checklist", which is a question about ENTRY —
+     * so the answer cannot change while you run it, and a stable answer is also a stable panel
+     * height, which is what stops the scroll from being shoved. */
+    if (cklState.preconHtml === null && ck.preconditions && ck.preconditions.length) {
+      var pcH = '';
+      var pc = ck.preconditions;
+      if (pr.precond && pc.some(function (p) { return !p.met; })) {
+        var pmNow = s && s.true_state ? s.true_state.plant_mode : null;
+        var pmTxt = (typeof pmNow === 'number' && MODE_NAMES[Math.round(pmNow)])
+          ? 'Not applicable in ' + MODE_NAMES[Math.round(pmNow)] + ' — nothing is blocked, but steps may not verify:'
+          : 'Prerequisites not met — nothing is blocked, but steps may not verify:';
+        pcH += '<div class="m-caution"><b>' + mesc(pmTxt) + '</b>';
+        for (var pj = 0; pj < pc.length && pj < pr.precond.length; pj++) {
+          if (pc[pj].met) continue;
+          var pd = pr.precond[pj];
+          pcH += '<div>✗ ' + mesc(pd.text || pd.p) + ' <span class="muted">— wants ' + mesc(pd.p) + ' ' +
+            (OPSYM[pd.op] || pd.op) + ' ' + mesc(pd.v) + ', reads ' + fmtPcObs(pc[pj].obs) +
+            (pc[pj].graded_by === 'true_state' ? ' (true value)' : '') + '</span></div>';
+        }
+        pcH += '</div>';
       }
-      h += '</div>';
+      cklState.preconHtml = pcH;
     }
+    if (cklState.preconHtml) h += cklState.preconHtml;
     for (var i = 0; i < pr.steps.length; i++) {
       var st = pr.steps[i];
       var done = !!(ck.steps_done && ck.steps_done[i]);
       var active = !ck.complete && i === ck.step_index;
       var cls = done ? 'ckl-done' : active ? 'ckl-active' : 'ckl-pend';
       var hoverable = stepHlLabels(st) ? ' ckl-hoverable' : '';
+      /* Per-iteration, NOT hoisted by accident: `var` is function-scoped, so a flag set on one
+       * step would still read true on the next and silently suppress its wait line. Reset here,
+       * at the top of every step. */
+      var waitLineShown = false;
       h += '<div class="ckl-step ' + cls + hoverable + '" data-ckl-step="' + i + '"><div class="ckl-ico">' + (done ? '✓' : active ? '▸' : '○') + '</div><div class="ckl-body">';
+      /* THE NUMBERED INSTRUCTION IS THE HEAD OF THE STACK, ON EVERY STEP *(OWNER, 2026-09-04,
+       * #628: "move the numbered step to always be the first part of the stack. then the rest of
+       * the step that appears when its active goes below it.")*.
+       *
+       * It used to sit UNDER the active block, which is the #244 item 6 workflow order
+       * (criteria → control → action). That order reads well on the one card you are working,
+       * and badly on the list: the active card is the only one whose number is not on its first
+       * line, so the step you are on is the step whose number moves — and it moves by a variable
+       * amount, because the block above it grows with the acceptance entries, the wait line and
+       * the Acknowledge row. Scanning "which step am I on" then costs a hunt down the card.
+       *
+       * The workflow order is preserved WITHIN the active block below (criteria → control →
+       * wait → acknowledge); what changed is that the whole block now hangs off the instruction
+       * instead of pushing it down. */
       h += '<div class="ckl-txt">' + (i + 1) + '. ' + mesc(st.text) + '</div>';
       if (done && ck.done_by && ck.done_by[i] === 'manual') h += '<div class="ckl-sub">checked by hand</div>';
       if (active) {
-        var bits = [];
-        if (st.control) bits.push('Control: <b>' + mesc(st.control) + '</b>');
-        if (st.target) bits.push('Target: ' + mesc(st.target));
-        if (bits.length) h += '<div class="ckl-sub">' + bits.join(' &nbsp;·&nbsp; ') + '</div>';
-        if (st.acc) {
-          var via = ck.graded_by === 'instrument' ? 'reading the instrument' : ck.graded_by === 'true_state' ? 'no instrument twin — true value' : null;
-          h += '<div class="ckl-sub">✓ when ' + mesc(st.acc.p) + ' ' + (OPSYM[st.acc.op] || st.acc.op) + ' ' + mesc(st.acc.v) +
-            (ck.acc_met ? ' <span style="color:var(--running)">met</span>' : ' <span class="muted">…not yet</span>') +
-            (via ? ' <span class="muted">· ' + via + '</span>' : '') + '</div>';
+        h += '<div class="ckl-act">';
+        /* THE "graded off the …" LINE IS GONE *(OWNER, 2026-09-03, #619 item 5: "remove the
+         * 'graded off the....' line from each step")*. It named which channel the check reads
+         * — instrument, board control, or true value — under every active step's details.
+         * That is a statement about the HARNESS, not about the plant, and the panel header
+         * already says it once for the whole run ("steps check themselves off the instruments").
+         * `ck.graded_by` is untouched in the snapshot and still asserted by
+         * run_checklist_pwr2 2a/2b, which read the snapshot rather than the DOM. */
+        if (st.accs && st.accs.length) {
+          for (var ai = 0; ai < st.accs.length; ai++) {
+            var en = st.accs[ai], av = (ck.accs && ck.accs[ai]) || {};
+            var enTxt = en.label ? en.label : (en.p ? fmtPredicate(en) : mesc(en.cmd || ''));
+            h += '<div class="ckl-crit' + (av.met ? ' ckl-crit-met' : '') + '">' +
+              (av.met ? '✓ ' : '○ ') + (en.label ? mesc(enTxt) : enTxt) + '</div>';
+          }
+        } else if (st.acc) {
+          h += '<div class="ckl-crit' + (ck.acc_met ? ' ckl-crit-met' : '') + '">' +
+            (ck.acc_met ? '✓ ' : '○ ') + 'When ' + fmtPredicate(st.acc) + '</div>';
         }
-        if (st.note) h += '<div class="ckl-sub muted">' + mesc(st.note) + '</div>';
-        // NO MANUAL TICK *(OWNER DIRECTIVE, 2026-08-11: "Checklists are supposed to be
-        // automatically checked off by the sim when complete. Remove the user clickable
-        // step complete button.")*. Every step now completes on evidence: an `acc`
-        // predicate, a `saw` latch, the step's own command, or — for a pure observation
-        // with none of those — a dwell, added in instructor_layer so omitting a predicate
-        // can never soft-lock a procedure. The `checklist_check` COMMAND survives; only
-        // its button is gone.
+        var isObs = st.control && /^\(observe/i.test(st.control);
+        if (isObs) {
+          if (st.target) h += '<div class="ckl-sub ckl-use">Watch for: ' + mesc(st.target) + '</div>';
+        } else if (st.control || st.target) {
+          h += '<div class="ckl-sub ckl-use">' +
+            (st.control ? 'Use <b>' + mesc(st.control) + '</b>' : '') +
+            (st.control && st.target ? ': ' : '') +
+            (st.target ? mesc(st.target) : '') + '</div>';
+        }
+        /* HOW LONG THIS STEP TAKES, ON THE FACE OF THE CARD *(OWNER, 2026-09-03, #619 item 8:
+         * "Add estimated plant time to compeltion for steps with waiting that could take more
+         * than a few minutes at 1x. add suggestion to time warp for those steps.")*.
+         *
+         * DERIVED FROM `hold`, NOT AUTHORED. Every step already carries the dwell the replay
+         * gives it, so the estimate cannot drift from what the harness proves the step needs —
+         * and 24 of the 61 pwr2 steps qualify without a word of new authoring. An authored
+         * number beside a `hold` would be the same fact written twice, which is how the 705 ppm
+         * in the ascension came to disagree with the plant.
+         *
+         * ⚠ IT IS THE REPLAY'S DWELL, WHICH IS AN UPPER BOUND, NOT A PROMISE. The harness waits
+         * `hold` seconds; a player who drives the plant harder gets there sooner, and one who
+         * dawdles does not. Hence "about", and hence no attempt to count down.
+         *
+         * ALWAYS VISIBLE on the active step, unlike the rest of the detail block: the whole
+         * point is to tell someone to reach for the speed control BEFORE they sit and watch a
+         * 90-minute ride at 1x. The authored `wait_hint` rides with it when there is one (it
+         * carries the real warnings — the accumulator window is the one that matters), and is
+         * then suppressed from the collapsed detail so it is not printed twice. */
+        var holdS = +st.hold || 0;
+        if (holdS >= 180) {
+          var mins = holdS / 60;
+          var span = mins < 90 ? Math.round(mins) + ' plant-minutes'
+                   : (mins / 60).toFixed(mins / 60 < 10 ? 1 : 0) + ' plant-hours';
+          /* AND WHICH RUNG TO REACH FOR *(OWNER, 2026-09-04, #628: "Add a suggested time warp
+           * value for the long term waiting steps.")*. "Use time acceleration" left the player
+           * to work out how much, and the answer is not obvious: the ladder is 1/5/10/60/600/
+           * 3600 and the right rung spans five of those across the 24 pwr2 steps that qualify.
+           * RD.CklSpeedHint picks it off the ladder itself, so this can never name a button that
+           * is not there. */
+          var rung = RD.CklSpeedHint(holdS);
+          h += '<div class="ckl-sub ckl-wait">⏩ About ' + span + ' at 1× — set the speed control to <b>' +
+            rung.speed + '×</b>' + (rung.warp ? ' (WARP; the plant must be quiet to take it)' : '') + '.' +
+            (typeof st.wait_hint === 'string' ? ' ' + mesc(st.wait_hint) : '') + '</div>';
+          waitLineShown = true;
+        }
+        /* ACKNOWLEDGE *(OWNER, 2026-09-03, #619 item 4: "add an acknowledge button to the step.,
+         * this button should flash green so the user knows thats the control that needs to be
+         * pressed to progres.")*. Drawn only when the instructor says this step is satisfied and
+         * holding — `awaiting_ack`, which it sets only for steps that author no operator action.
+         *
+         * It reuses `data-ckl-check`, the handler that survived the button's removal in August
+         * (the command outlived the control), so nothing new is wired: the press is the same
+         * `checklist_check` the harness issues.
+         *
+         * It is the LAST thing in the active block on purpose — below the acceptance lines that
+         * have just gone green, so the eye goes criterion → met → press. (It used to be
+         * described as "directly above the step text it belongs to"; #628 moved the step text
+         * to the head of the card, so the button is now the foot of the block rather than the
+         * hinge between two. The reading order it was placed for is unchanged.) */
+        if (ck.awaiting_ack) {
+          h += '<div class="ckl-ack-row"><button class="btn ckl-ack" data-ckl-check="' + i +
+            '">Acknowledge ✓</button><span class="ckl-ack-note">This step is complete — acknowledge to continue.</span></div>';
+        }
+        h += '</div>';
+      }
+      var det = '';
+      if (st.note) det += '<div class="ckl-sub muted">' + mesc(st.note) + '</div>';
+      if (st.wait_hint && !waitLineShown) {
+        det += '<div class="ckl-sub ckl-wait">⏩ ' + mesc(st.wait_hint === true
+          ? 'This takes a while in plant time — use time acceleration (the speed control, top bar).'
+          : st.wait_hint) + '</div>';
+      }
+      if (st.why) det += '<div class="ckl-why">' + mesc(st.why) + '</div>';
+      if (det) {
+        var detOpen = cklState.whyAll || (cklState.whyOpen && cklState.whyOpen[i]);
+        if (active && !detOpen) h += '<div class="ckl-expand-hint">Click to expand</div>';
+        if (detOpen) h += det;
       }
       h += '</div></div>';
     }
@@ -3347,27 +3846,107 @@
         (pr.outcome ? '<div class="m-note">' + mesc(pr.outcome) + '</div>' : '') + '</div>';
     }
     h += '</div>';
-    h += '<div class="ckl-btns"><button class="btn" data-ckl-stop="1">' + (ck.complete ? 'Close' : 'End checklist') + '</button></div>';
+    // Chain handoff (#244, the Mode 5 → full power → Mode 5 round trip): a finished leg
+    // offers the next one by name, so the whole evolution is guided end to end.
+    var nextPr = ck.complete && pr.next
+      ? ((RD.MANUAL_PROCEDURES || {})[ui.engineKey] || []).filter(function (x) { return x.id === pr.next; })[0]
+      : null;
+    h += '<div class="ckl-btns">' +
+      (nextPr ? '<button class="btn ckl-next" data-ckl-start="' + mesc(nextPr.id) + '">Next: ' +
+                mesc(nextPr.title) + ' ▸</button>' : '') +
+      '<button class="btn" data-ckl-stop="1">' + (ck.complete ? 'Close' : 'End checklist') + '</button></div>';
+    /* KEEP THE READER'S PLACE ACROSS THE REBUILD (#605, owner playtest 2026-09-02: "The
+     * checklist keeps auto scrolling. Happens when fast forwarding. To the top then back down.
+     * When mouse over it, it keeps jumping up to the top making it unusable.").
+     *
+     * `cur.innerHTML = h` REPLACES the log element, and a new element starts at scrollTop 0.
+     * The tail below then pulled the active step back into view — which IS the reported
+     * "to the top then back down", once per render. Under time acceleration that is most
+     * broadcasts, because the render key carries `ck.acc_met`, the per-entry `accs` flags and
+     * the ROUNDED precondition observations, all of which move while the plant does.
+     * Read the position BEFORE the rebuild; it is restored immediately after. */
+    var prevLog = cklScroller();
+    var prevTop = prevLog ? prevLog.scrollTop : 0;
     cur.innerHTML = h;
+    // Persistent highlight for the up-next step (#244 item 5) — applied on every key
+    // change so it survives step advances and hover churn; cleared when the run ends.
+    var actSt = !ck.complete && pr.steps[ck.step_index] ? pr.steps[ck.step_index] : null;
+    applyCklStepGlow(actSt ? stepHlLabels(actSt) : null);
     // Step hover → glow the controls/indications the step names (its `hl` list) on
     // the plant display, reusing the Instructor highlight vocabulary (revealControl).
     Array.prototype.forEach.call(cur.querySelectorAll('.ckl-step'), function (el) {
-      var st2 = pr.steps[+el.getAttribute('data-ckl-step')];
+      var idx2 = +el.getAttribute('data-ckl-step');
+      var st2 = pr.steps[idx2];
       var labs = st2 && stepHlLabels(st2);
       if (!labs) return;
-      el.addEventListener('mouseenter', function () { glowLabels(labs); });
+      /* Current step already pulses via .ckl-step-glow; hovering it must not add the
+       * hover class, and hovering a NON-current step must not pulse (#607 item 3). */
+      var isActive = !ck.complete && idx2 === ck.step_index;
+      el.addEventListener('mouseenter', function () { if (!isActive) glowLabels(labs); });
       el.addEventListener('mouseleave', clearHoverGlow);
     });
-    var log = $('cklLog');
+    var log = cklScroller();
     if (log) {
-      if (ck.complete) log.scrollTop = log.scrollHeight;
-      else if (!firstBuild) { var act = log.querySelector('.ckl-active'); if (act) act.scrollIntoView({ block: 'nearest' }); }
+      cklAutoScroll = true;                          /* our own writes must not arm userScrolled */
+      log.scrollTop = prevTop;                       /* the rebuild is invisible to the reader */
+      /* THE AUTO-SCROLL YIELDS TO A READER WHO HAS SCROLLED AWAY (#612, owner playtest
+       * 2026-09-03: "the checklist scroll window keeps bouncing to the top and back to the step.
+       * This makes it impossible to read the steps").
+       *
+       * #605 stopped the scroll happening on every REPAINT and suppressed it while the pointer
+       * was inside the log. Both were right and neither covers the reported case: the scroll
+       * still fires on every step ADVANCE, and a player reading ahead has their mouse on the
+       * BOARD — that is where the controls are — so the hover guard never engages. Each time a
+       * step ticked off, the view was yanked from wherever they were reading back to the active
+       * step, which is near the top early in a checklist. That is the whole report.
+       *
+       * So the flag is what the reader DID, not where the pointer is: once they scroll the log
+       * themselves, the checklist stops moving it until they come back to the active step. */
+      if (!log.__cklScrollBound) {
+        log.__cklScrollBound = true;
+        log.addEventListener('scroll', function () {
+          if (cklAutoScroll) return;                 /* our write, not theirs */
+          var act = log.querySelector('.ckl-active');
+          if (!act) { cklState.userScrolled = true; return; }
+          /* Back at the active step = back in step with the checklist; let it drive again. */
+          var top = act.offsetTop - log.offsetTop;
+          var visible = top >= log.scrollTop - 4 &&
+                        top + act.offsetHeight <= log.scrollTop + log.clientHeight + 4;
+          cklState.userScrolled = !visible;
+        }, { passive: true });
+      }
+      /* AND SCROLL ONLY ON AN EVENT, NEVER ON A REPAINT. The active step is pulled into view
+       * when the step ACTUALLY ADVANCES (or the run completes) — not every time a criteria
+       * line ticks. `cklState.step` is the last step index this function drew; it resets with
+       * the checklist (resetCkl). A hover suppresses even that: the pointer being in the log
+       * is the player reading it, and yanking the view out from under a reader is the half of
+       * the report that made the panel "unusable". */
+      var advanced = cklState.step !== ck.step_index;
+      cklState.step = ck.step_index;
+      if (!pointerInside(log)) {
+        if (ck.complete) log.scrollTop = log.scrollHeight;
+        else if (!firstBuild && advanced && !cklState.userScrolled) {
+          /* SCROLL THE LOG, NOTHING ELSE (#612). `scrollIntoView` walks up and scrolls EVERY
+           * scrollable ancestor, so with the checklist hosted in a content-sized pane it moved
+           * `.tab-body` as well — and only the log's position is preserved across the rebuild,
+           * so the outer container snapped to the top. The pane now owns its height (ckl-mode),
+           * which removes the outer scroller; this makes the step-advance scroll incapable of
+           * reaching an ancestor even if a future layout reintroduces one. */
+          var act = log.querySelector('.ckl-active');
+          if (act) {
+            var top = act.offsetTop - log.offsetTop;
+            var bot = top + act.offsetHeight;
+            if (top < log.scrollTop) log.scrollTop = top;
+            else if (bot > log.scrollTop + log.clientHeight) log.scrollTop = bot - log.clientHeight;
+          }
+        }
+      }
+      /* The scroll event is asynchronous, so the guard has to outlive this frame. */
+      setTimeout(function () { cklAutoScroll = false; }, 0);
     }
-    // SPLIT, not take-the-column: the Checklists tab has to stay visible while a checklist
-    // runs (owner, 2026-08-11), and setFocus('instructor') collapses the tools card. This
-    // is the second of the two places that did it — startChecklist was the obvious one and
-    // this render-path call is the one that put it back a frame later.
-    if (firstBuild) applyFocus(true, true);
+    /* Stay on the Checklists tab (#607 item 6). startChecklist selects it; this path
+     * must not yank the player to Instructor the way applyFocus(true) used to. */
+    if (firstBuild && currentTab() !== 'checklists') selectTab('checklists');
   }
   // Observed value for the precondition banner: whole units above 100 (ppm, °C
   // near operating point), one decimal below (fractions, small margins).
@@ -3397,6 +3976,24 @@
   }
   function clearHoverGlow() {
     document.querySelectorAll('.ckl-glow').forEach(function (el) { el.classList.remove('ckl-glow'); });
+  }
+  /* PERSISTENT step glow *(OWNER, #244 item 5: "when a step is up next, the buttons should
+   * stay highlighted even when not mousing over the step.")*. Its own class, distinct from
+   * the hover preview (.ckl-glow) and the Instructor beat glow (.instr-glow), so a hover or
+   * a beat can come and go without wiping the standing highlight. Applied on every
+   * checklist render-key change to the ACTIVE step's `hl` targets; cleared on step advance
+   * (the next apply clears first), on End checklist (resetCkl) and on plant rebuild. */
+  function applyCklStepGlow(labels) {
+    clearCklStepGlow();
+    if (!labels || !labels.length) return;
+    var board = (RD.PwrBoard && RD.PwrBoard.isMounted()) ? RD.PwrBoard : null;
+    labels.forEach(function (lab) {
+      var el = ui.plant === 'pwr' ? (board ? board.revealControl(lab) : null) : findPdControl(lab);
+      if (el) el.classList.add('ckl-step-glow');
+    });
+  }
+  function clearCklStepGlow() {
+    document.querySelectorAll('.ckl-step-glow').forEach(function (el) { el.classList.remove('ckl-step-glow'); });
   }
   // Picker menu (free-play instructor card): every non-narrative procedure for
   // the active plant can run as a checklist.
@@ -3438,34 +4035,85 @@
    * Rebuilt on a KEY, not every broadcast: the order is stable now, so a per-frame
    * innerHTML would be pure cost on the densest list in the shell. */
   var cklMenuKey = null;
+  /* THE KEY CARRIES THE PLANT'S RELEVANCE VERDICT, NOT JUST THE ENGINE (#606, owner playtest
+   * 2026-09-02: "when I started up in mode 5 the mode 5 checklist was greyed out but some
+   * where white").
+   *
+   * The key used to be `engineKey | active procedure id`, and NEITHER changes when the player
+   * resets the plant to a different initial condition — the engine is the same engine and no
+   * checklist is running. So the list built at the default hot_full_power boot survived the
+   * reset to Cold Shutdown verbatim: the heatup greyed with "Requires RCS temperature below
+   * 203 degF" (it was at 547) and the at-power legs white. The greying was CORRECT for a plant
+   * that no longer existed.
+   *
+   * The freeze it inherited was written for the RELEVANCE SORT ("never reorder an open list",
+   * spec section 9). That sort is retired — the list is in the standard category order since
+   * the 2026-08-11 directive — so a rebuild can no longer move a row under the cursor; it can
+   * only repaint grey/white and the gate sentence. Keying on the verdict itself means the
+   * innerHTML is still written only when something the player can SEE has changed, which is
+   * what the freeze was actually protecting. */
   function toggleCklMenu(force) {
     var menu = $('cklMenu'); if (!menu) return;
     menu.hidden = false;
+    var ranked = rankedProcedures();
     var key = ui.engineKey + '|' + (latest && latest.instructor && latest.instructor.checklist
-      ? latest.instructor.checklist.procedure_id : '');
-    if (force === 'force' || key !== cklMenuKey) { cklMenuKey = key; menu.innerHTML = cklMenuHtml(); }
+      ? latest.instructor.checklist.procedure_id : '') + '|' +
+      ranked.map(function (r) { return r.id + (r.ready ? '+' : '-') + (r.gate || ''); }).join(';');
+    if (force === 'force' || key !== cklMenuKey) { cklMenuKey = key; menu.innerHTML = cklMenuHtml(ranked); }
   }
   /* A STANDARD ORDER *(OWNER DIRECTIVE, 2026-08-11: "They should stay in a standard
    * order.")*. This supersedes the relevance SORT: the list is now always in the same
    * order — category first, on the sequence an operator would name them (startup, power,
-   * control, shutdown, emergency, accident), then title. A list that rearranges itself is
-   * a list you have to re-read every time, and muscle memory is worth more here than
-   * putting the most likely item on top.
+   * control, shutdown, emergency, accident), then the POOL'S OWN ORDER. A list that
+   * rearranges itself is a list you have to re-read every time, and muscle memory is worth
+   * more here than putting the most likely item on top.
    *
    * The relevance SCORING is kept and still earns its place, because it is what produces
    * the gating labels ("Requires reactor power above 10") and what the free-play
    * Instructor's short launcher picks its four from. What is retired is the reordering,
-   * not the knowledge. */
+   * not the knowledge.
+   *
+   * THE WITHIN-CATEGORY TIEBREAK IS THE POOL'S DECLARATION ORDER, NOT THE TITLE (#606,
+   * OWNER, 2026-09-02: "the checklists should be in a logical order. ie, starting in mode 5
+   * it should start with mode 5 to mode 3 and end with mode 3 to mode 5").
+   *
+   * It was `title.localeCompare`, and alphabetical reversed two of the three pairs, because
+   * these titles begin with the mode they START FROM: "Mode 3, Hot Standby -> Mode 1" sorts
+   * above "Mode 5, Cold Shutdown -> Mode 3", so the STARTUP category listed the second leg
+   * first. Same in POWER, where "load rampdown" sorts above "power ascension". SHUTDOWN was
+   * right only by luck. Measured before the fix: startup, heatup, lower_power, raise_power,
+   * shutdown, cooldown — the operating cycle with two of its three pairs inverted.
+   *
+   * The pool is ALREADY authored in cycle order and says so structurally: every pwr2 entry
+   * names its successor in `next`, and test/run_checklist_pwr2.js asserts that chain matches
+   * the array order. So the declaration order is not an accident of authoring that could
+   * drift — it is the chain, gated, and reading the order off it means the list and the
+   * finished-card handoff can never disagree. It is still a STANDARD order (fixed, never
+   * recomputed from plant state), so the 2026-08-11 directive is untouched: what changed is
+   * which fixed order, not whether it is fixed.
+   *
+   * The CATEGORY grouping stays on top of it. Declaration order alone would give the same
+   * answer for every pool we ship today, but it would put the categories at the mercy of how
+   * a future pool happens to be typed, and the grouping is what the directive named. */
   var CKL_CAT_ORDER = ['startup', 'power', 'control', 'shutdown', 'emergency', 'accident'];
-  function cklMenuHtml() {
-    var ranked = rankedProcedures();
+  function cklMenuHtml(ranked) {
+    if (!ranked) ranked = rankedProcedures();
     if (!ranked.length) return '<div class="m-note">No procedures for this plant.</div>';
+    /* The pool as authored — the operating cycle. Built per render rather than cached
+     * because the engine can change under this function and a stale map would silently
+     * degrade to "everything ties", which is the failure this sort exists to fix. */
+    var poolIx = {};
+    ((RD.MANUAL_PROCEDURES || {})[ui.engineKey] || []).forEach(function (p, i) { poolIx[p.id] = i; });
     var stable = ranked.slice().sort(function (a, b) {
       var ai = CKL_CAT_ORDER.indexOf(a.category || ''), bi = CKL_CAT_ORDER.indexOf(b.category || '');
       if (ai < 0) ai = CKL_CAT_ORDER.length;
       if (bi < 0) bi = CKL_CAT_ORDER.length;
       if (ai !== bi) return ai - bi;
-      return (a.title || '').localeCompare(b.title || '');
+      var ap = poolIx[a.id], bp = poolIx[b.id];
+      if (ap == null) ap = Infinity;
+      if (bp == null) bp = Infinity;
+      if (ap !== bp) return ap - bp;
+      return (a.title || '').localeCompare(b.title || '');   // last resort; ids are unique so unreachable
     });
     return stable.map(function (r) {
       return '<button data-ckl-start="' + mesc(r.id) + '"' + (r.gate ? ' class="ckl-gated"' : '') + '>' +
@@ -3473,21 +4121,27 @@
              (r.gate ? '<span class="ckl-gate">' + mesc(r.gate) + '</span>' : '') + '</button>';
     }).join('');
   }
-  /* NEVER REORDER AN OPEN LIST (spec §9), and the way to guarantee that is to have no
-   * refresh path at all: the menu is rebuilt when it OPENS and not again. A first version
-   * of this had a `refreshCklRelevance` that recomputed on every event — with the guard
-   * inverted, so it fired only while the menu was open, which is exactly the case the spec
-   * forbids. The list reshuffling under the cursor during a heatup is the failure; a list
-   * that is stale-but-stable until the next time you open it is the specified behaviour,
-   * and it needs no state to achieve. */
+  /* NEVER REORDER AN OPEN LIST (spec §9) — and since 2026-08-11 the ORDER is the fixed
+   * category order, so nothing this file does can reorder it. That is what let the freeze go
+   * (#606): the menu now rebuilds whenever the relevance VERDICT changes, which repaints
+   * grey/white and the gate sentence in place and moves no row. A first version of this had a
+   * `refreshCklRelevance` that recomputed on every event with the guard inverted, so it fired
+   * only while the menu was open — under the old relevance sort that reshuffled the list
+   * under the cursor during a heatup, which is the failure the spec names. Keying on the
+   * verdict is what keeps the rebuild rare without letting the list describe a plant the
+   * player has since reset away from. */
   function startChecklist(id) {
+    var running = latest && latest.instructor && latest.instructor.checklist;
+    if (running && running.procedure_id === id) {
+      cklState.view = 'run';
+      cklState.key = null;
+      selectTab('checklists');
+      if (latest) render(latest);
+      return;
+    }
+    cklState.view = 'run';
     cmd({ action: 'start_checklist', procedure_id: id });
-    /* SPLIT, do not take the column *(OWNER DIRECTIVE, 2026-08-11: "The checklist tab
-     * should always show the list of checklists.")*. `setFocus('instructor')` collapses the
-     * tools card, which left the list present in the DOM and invisible on screen — the
-     * directive is about what the player can SEE, so rendering it is not enough. Both cards
-     * stay open: the running checklist in the Instructor, the list still above it. */
-    applyFocus(true, true);
+    selectTab('checklists');
   }
 
   // ---- Instructor highlight (Gameplay §5) — glow the control the current beat /
@@ -3826,7 +4480,7 @@
   function mpFree() {
     if (!flagOn('free_play')) return soonPanel('free_play');
     var e = ENGINES[msel.engine];
-    var states = e.initStates || PROFILES[e.plant].initStates;   /* per-ENGINE override (PWR2: one IC) */
+    var states = e.initStates || PROFILES[e.plant].initStates;   /* per-ENGINE override (pwr2: its own five-IC registry) */
     if (!states.some(function (s) { return s[0] === msel.init; })) msel.init = e.init;
     var h = '<div class="m-note">Free Play — the plant is yours: no script, no grading, every control live. Pick the starting condition.</div>' +
       '<div class="g-section-title" style="margin-top:12px">Starting condition</div>';
@@ -3874,7 +4528,11 @@
     }).join('') : '<div class="m-note">No scenarios for this plant yet.</div>');
   }
   function mpWalkthroughs() {
-    if (ENGINES[msel.engine].freePlayOnly) return freeOnlyPanel();
+    /* #244/#526 (owner-ruled 2026-08-31): walkthroughs run the validated procedure artifact
+     * itself, and the pwr2 pool is authored and gated ON this plant — so an engine with its
+     * own MANUAL_PROCEDURES pool is exempt from the freePlayOnly fence here. Campaign and
+     * scenarios keep the fence until the #525 compatibility pass. */
+    if (ENGINES[msel.engine].freePlayOnly && !(RD.MANUAL_PROCEDURES || {})[msel.engine]) return freeOnlyPanel();
     if (!flagOn('walkthroughs')) return soonPanel('walkthroughs');
     var p = progress();
     var all = procsFor(msel.engine);
@@ -4270,8 +4928,27 @@
     if (name === 'instructor') clearInstrAttention();
     // The transcript scrolls itself; every other pane is scrolled by .tab-body. See the
     // .instr-mode rule in shell.css for what goes wrong without this.
+    /* THE CHECKLISTS PANE OWNS ITS HEIGHT TOO (#612, owner playtest 2026-09-03: "the checklist
+     * scroll window keeps bouncing to the top and back to the step… the right column scroll
+     * window should go to the bottom of the column. There is currently an unused black space
+     * below it.").
+     *
+     * BOTH REPORTS ARE ONE LAYOUT DEFECT, and it is the exact defect the .instr-mode rule below
+     * already fixed for the transcript — #607 moved the running checklist into the CHECKLISTS
+     * pane, which is a plain content-sized `.tabpane`, and inherited neither half. That leaves
+     * TWO NESTED SCROLLERS: `.tab-body` (overflow-y: auto) scrolling the whole pane, and
+     * `.ckl-log` (max-height: 48vh) scrolling inside it. `scrollIntoView` scrolls EVERY
+     * scrollable ancestor, so a step advance moved both — and #605's fix preserves the log's
+     * scrollTop only, so the outer one snapped to the top and the inner one pulled the step
+     * back. That is "to the top and back to the step", once per advance.
+     *
+     * Content-sized is also why the column stops short: measured at 1600x950, the pane ended
+     * at y=724 with 226 px of dead space beneath it and the log capped at 456 px (48vh). */
     var tb = document.querySelector('.tab-body');
-    if (tb) tb.classList.toggle('instr-mode', name === 'instructor');
+    if (tb) {
+      tb.classList.toggle('instr-mode', name === 'instructor');
+      tb.classList.toggle('ckl-mode', name === 'checklists');
+    }
     // A pane that skips its work while hidden shows whatever it last painted, and on a
     // PAUSED plant no broadcast is coming to correct it. Repaint on reveal.
     if (latest) { renderPhysics(latest); renderIndications(latest); renderAutomate(latest); }
@@ -5562,6 +6239,14 @@
     // as a dead button is exactly what the 2026-08-21 telemetry session was).
     if (r && r.type === 'blocked') {
       if (r.code === 'INTERLOCK' && r.message) inspectFlash('⛔ Blocked', r.message);
+      /* A HELD CLOCK IS A PLANT REFUSAL, NOT INSTRUCTOR FEEDBACK *(owner playtest, 2026-09-04:
+       * "when gated and i click on a warp button, it closes the checklist")*. SPEED_HELD comes
+       * back `blocked` and fell into the instructor branch below, whose setFocus('instructor')
+       * switches the side panel to the Instructor tab — and since #607 put the running
+       * checklist in the Checklists pane, that IS closing the checklist. No gate raised this
+       * and the instructor has nothing to add (the message is the plant's own reason), so it
+       * goes where an interlock refusal goes: the scanner bar under the board. */
+      else if (r.code === 'SPEED_HELD' && r.message) inspectFlash('⛔ Held', r.message);
       else { msgHold.bypass = true; setFocus('instructor'); }   // gate feedback jumps the dwell queue
       latest = service.assembleSnapshot(); render(latest);
     } else if (r && r.type === 'error' && r.message) {
@@ -5838,10 +6523,11 @@
       scenario_id: (s.instructor && s.instructor.scenario_id) || null,
       follow_procedure_id: (s.instructor && s.instructor.follow && s.instructor.follow.procedure_id) || null,
       seed: service.seed,
-      // PERFORMANCE RIDES ALONG (2026-08-08). "It flickers on some PCs" is unanswerable
-      // without it — compute-bound, render-bound and neither-of-those look identical to the
-      // person reporting, and the machine it happened on is the only place the numbers
-      // exist. Cheap to carry: one object of percentiles, not a trace.
+      // PERFORMANCE RIDES ALONG (2026-08-08; env/visibility/raf/loaf added #613 wave 3).
+      // "It flickers on some PCs" is unanswerable without it — compute-bound, render-bound,
+      // a backgrounded tab, a software GPU and "neither, and this timer can't see it" all
+      // look identical to the person reporting, and the machine it happened on is the only
+      // place the numbers exist. Cheap to carry: a handful of small objects, not a trace.
       performance: (function () { try { return RD.Perf ? RD.Perf.summary() : null; } catch (e) { return null; } }()),
       snapshot_end: service.saveState(),
       notes: notes || null
@@ -5884,6 +6570,47 @@
         'or your device. Untick it to send just your message.');
     }
     openModal('feedbackOverlay');
+    /* PUT THE CARET IN THE BOX (#605, owner playtest 2026-09-02: "Cant type into feed back
+     * block ... from develop site"). The form is one textarea in a modal opened for exactly one
+     * purpose, so there is nothing to choose between — and the cost of NOT focusing it is not
+     * merely a wasted click. Keystrokes aimed at an unfocused form land on `document`, where
+     * this file's global shortcuts are waiting: the first SPACE in the sentence the player is
+     * typing hits the play/pause key, focus lands on the Play button, and the rest of the
+     * message goes to a button. Measured — 32 characters typed, 0 characters in the box,
+     * `document.activeElement` on `#playBtn`. From the player's side that is a text box that
+     * will not take typing, and it is the same near-miss trap as the board's number boxes.
+     * Guarded on the block being visible: on a build with no telemetry endpoint the send form
+     * is hidden and there is nothing to focus. */
+    /* AND FOCUS IT ON A LATER FRAME, NOT THIS ONE (#613, owner 2026-09-03: "I sent a bug report
+     * I wasn't able to type in it so it's blank" — the THIRD blank report in a day).
+     *
+     * #605 added the focus above and it is right; what was wrong is WHEN. `openModal` unhides the
+     * overlay in this same synchronous tick, so at the moment `.focus()` is called the textarea
+     * has not been rendered yet — and focusing a non-rendered element is a silent NO-OP. The
+     * try/catch cannot see it either, because nothing throws. On a fast idle page the layout
+     * often lands in time and it works, which is exactly why one report carried the word
+     * "testing" and the next three were blank: it is a RACE, and this build is losing it because
+     * the page is busy (his rc1 report: "PAINTS ARE BEING DROPPED", 4.6 fps).
+     *
+     * So: try now, then again after a frame, and once more after a beat — and VERIFY rather than
+     * assume, because "focus() did not throw" was never evidence that focus landed. Each retry
+     * bails the moment the caret is where it belongs, and bails if the player has already clicked
+     * into something else, so this can never steal focus back from them. */
+    var note = $('fbNote'), block = $('fbSendBlock');
+    if (note && block && !block.hidden) {
+      var tries = 0;
+      var putCaret = function () {
+        if (!note.isConnected || $('feedbackOverlay').hidden) return;      // form closed meanwhile
+        if (document.activeElement === note) return;                        // already there
+        var a = document.activeElement;
+        if (tries && a && a !== document.body && a.tagName !== 'BUTTON') return;  // player moved on
+        try { note.focus(); } catch (e) { /* still not focusable */ }
+        if (++tries < 3) (window.requestAnimationFrame || setTimeout)(function () {
+          setTimeout(putCaret, tries * 60);
+        });
+      };
+      putCaret();
+    }
   }
   function copyFeedbackEmail() {
     var status = $('fbStatus');
@@ -6489,14 +7216,29 @@
     // slot — and binding per host is how the second one would silently do nothing.
     document.body.addEventListener('click', function (e) {
       var st = e.target.closest('[data-ckl-start]');
-      if (!st) return;
-      toggleCklMenu(false);
-      startChecklist(st.getAttribute('data-ckl-start'));
-    });
-    $('instructorCard').addEventListener('click', function (e) {
+      if (st) {
+        toggleCklMenu(false);
+        startChecklist(st.getAttribute('data-ckl-start'));
+        return;
+      }
+      if (e.target.closest('[data-ckl-list]')) {
+        cklState.view = 'list';
+        cklState.key = null;
+        if (latest) render(latest);
+        return;
+      }
       var mk = e.target.closest('[data-ckl-check]');
       if (mk) { cmd({ action: 'checklist_check', index: +mk.getAttribute('data-ckl-check') }); return; }
-      if (e.target.closest('[data-ckl-stop]')) cmd({ action: 'stop_checklist' });
+      var wa = e.target.closest('[data-ckl-why-all]');
+      if (wa) { cklState.whyAll = !cklState.whyAll; cklState.key = null; render(latest); return; }
+      if (e.target.closest('[data-ckl-stop]')) { cmd({ action: 'stop_checklist' }); return; }
+      /* Click the step card to expand (#607 item 2). Skip clicks on inner buttons. */
+      var stepEl = e.target.closest('.ckl-step');
+      if (stepEl && !e.target.closest('button')) {
+        var wi = stepEl.getAttribute('data-ckl-step');
+        if (cklState.whyOpen[wi]) delete cklState.whyOpen[wi]; else cklState.whyOpen[wi] = 1;
+        cklState.key = null; render(latest);
+      }
     });
     // Plant & Mission window: plant / mode / start-condition picks re-render in
     // place; the start buttons close the window and launch.
@@ -6591,8 +7333,13 @@
     // ---- send a bug report, with the session attached ------------------------
     (function () {
       var T = window.RD && RD.Telemetry;
-      var block = $('fbSendBlock'), btn = $('fbSend');
-      if (!block || !btn || !T || !T.enabled()) return;   // no endpoint: email route only
+      var block = $('fbSendBlock'), btn = $('fbSend'), nosend = $('fbNoSend');
+      if (!block || !btn || !T || !T.enabled()) {        // no endpoint: email route only
+        /* AND SAY SO (#605). A hidden send block reads as a text box that will not take typing —
+         * which is how it was reported from the develop site. See the markup comment. */
+        if (nosend) nosend.hidden = false;
+        return;
+      }
       block.hidden = false;
       btn.addEventListener('click', function () {
         var note = ($('fbNote').value || '').trim();
@@ -6763,7 +7510,12 @@
     // Global keyboard shortcuts (documented in Help). Skipped while typing
     // in a field or holding a modifier; Space is left alone when a button has
     // focus so native activation (incl. rod hold) still works.
-    var SPEED_KEYS = { '1': 1, '2': 10, '3': 60, '4': 600, '5': 3600 };
+    /* KEYS ARE POSITIONS ON THE LADDER, NOT SPEEDS — and the 5x rung (#619 item 18, owner-ruled
+     * 2026-09-04; six rungs since #625) shifted every key above it. `2` was 10x and is now 5x;
+     * the ladder ends at `6`. Kept as a literal map rather than derived from the DOM because a
+     * missing button must not silently renumber the rest; a key with no matching button does
+     * nothing. The help string in shell.html says "1 to 6" and moves with this. */
+    var SPEED_KEYS = { '1': 1, '2': 5, '3': 10, '4': 60, '5': 600, '6': 3600 };
     document.addEventListener('keydown', function (e) {
       if (e.key === 'Escape') {
         if (!$('manualOverlay').hidden) closeManual();
@@ -7062,7 +7814,12 @@
     var p = $('scannerPanel'); if (p) p.classList.toggle('expanded', ui.inspectExpanded);
     var b = $('scannerToggle');
     if (b) {
-      b.textContent = ui.inspectExpanded ? 'Summary only' : 'Full description';
+      /* "Click to expand" / "Click to collapse" *(OWNER, 2026-09-03, #619 item 10: "change
+       * scanner FULL DESCRIPTION button to CLICK TO EXPAND")*. The pair names the ACTION the
+       * button performs rather than the state it lands in, which is what "Full description" /
+       * "Summary only" got wrong — and it matches the checklist card's own expand affordance,
+       * which has read "Click to expand" since #607. */
+      b.textContent = ui.inspectExpanded ? 'Click to collapse' : 'Click to expand';
       b.setAttribute('aria-expanded', String(ui.inspectExpanded));
     }
     try { localStorage.setItem('rd_inspect_expanded', ui.inspectExpanded ? '1' : '0'); } catch (e) { /* private mode */ }
@@ -7218,7 +7975,7 @@
       place: 'top',
       title: 'System Scanner',
       body: '<p>The line under the board. Hover anything and it says what that is; ' +
-        '<b>Full description</b> opens the detail and a Manual link.</p>'
+        '<b>Click to expand</b> opens the detail and a Manual link.</p>'
     },
     {
       sel: '#playBtn',
@@ -8249,6 +9006,15 @@
     ui.series = Object.assign({}, PROFILES.pwr.defaultSeries);
     ui.seriesSide = {};                    // sides follow the selections they refine (#454)
     service = new RD.SimulationService({ seed: 0x1234 });
+    // DEV HOOK (?dev=1) — hands the harness the live service, nothing else. Exists for
+    // verify_e2e_ui's #520 held-dialog fixture (#524, 2026-08-31): the engine no longer
+    // reaches `beyond_model` on any menu-injectable casualty inside a testable window (the
+    // extended property envelope now CONTAINS the rides that used to latch), so the fixture
+    // latches the flag directly — the same manual-latch adjudication run_pwr2_loca's hold
+    // section made. A closure getter so it always reflects the current service.
+    if (/[?&]dev=1/.test(location.search || '')) {
+      RD.__dev = { service: function () { return service; } };
+    }
     // Fine strip-chart sampling. The service calls this on a fixed SIM-time interval inside
     // its step loop, so the chart sees the plant between broadcasts and its resolution stops
     // depending on time acceleration. It returns the same shape `chartSample` produces for
@@ -8259,6 +9025,23 @@
     if (service.setFineSampler) {
       service.setFineSampler(function (ins, truth, ctl) { return chartSample(ins, truth, ctl); });
     }
+    /* PACING (#625): the control room opts into the per-broadcast step budget and the WARP
+     * tier; every headless runner keeps the full-count, PLAY-only service it always had.
+     * 40 ms of a 100 ms broadcast leaves the rest for the DOM pass — without it a 600x request
+     * blocked the main thread 350 ms per broadcast (measured) and the page froze.
+     *
+     * WARP GETS 70 (#631). The 60 ms held back is for input and paint, and PLAY needs it: a
+     * transient at 1x..60x is exactly when the player is clicking. WARP is the opposite case
+     * by construction — it runs only on a quiet plant and drops to 60x the moment one moves
+     * (#625) — so that headroom is mostly idle there while the physics is the only work, and
+     * holding it back capped the top rungs on every machine (the owner's read 800x).
+     * MEASURED here, 20 s wall at a requested 3600x: hot full power 671x -> 931x, cold
+     * shutdown 765x -> 1,082x. The DOM pass measures 8 ms p50 on a board with nothing to
+     * animate, so 30 ms is ample; a real mouse click on the 60x rung reaches the snapshot in
+     * 97.7 ms median at 70 against 115.4 at 40 — no input cost, because the wait is for the
+     * next broadcast and not for the step loop. See `_budgetForTier` for why the gain is
+     * +39 % and not the +75 % the ratio implies (the timer reschedules AFTER the tick). */
+    if (service.configurePacing) service.configurePacing({ stepBudgetMs: 40, warpStepBudgetMs: 70, warp: true });
     service.subscribe(render);
     service.subscribe(diagTick);
     // renderAutomate and inspectLiveTick are called from renderNow instead, so every DOM
@@ -8283,10 +9066,10 @@
     var startEng = ENGINES[startKey];
     ui.engineKey = startKey; ui.plant = startEng.plant; ui.initState = startEng.init;
     // optional ?init=<state> override (dev convenience) — one of the ENGINE's presets. The
-    // engine's own initStates override (pwr2: its ICS registry, three presets since #507
-    // wave 7) wins over the plant profile's list, matching the Free Play picker —
-    // validating against prof() alone let ?engine=pwr2&init=cold_shutdown pass and then
-    // be silently ignored (#502).
+    // engine's own initStates override (pwr2: its ICS registry — five presets since #524)
+    // wins over the plant profile's list, matching the Free Play picker — validating
+    // against prof() alone let ?engine=pwr2&init=cold_shutdown pass and then be silently
+    // ignored back when the engine refused that name (#502).
     var initm = /[?&]init=([a-z0-9_]+)/.exec(location.search || '');
     var initList = startEng.initStates || prof().initStates || [];
     if (initm && initList.some(function (s) { return s[0] === initm[1]; })) ui.initState = initm[1];

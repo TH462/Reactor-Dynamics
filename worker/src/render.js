@@ -375,6 +375,112 @@ export function table(rows, cols) {
   return '<table><tr>' + head + '</tr>' + body + '</table>';
 }
 
+/* ---------------------------------------------------------------- the one chart (#604)
+ *
+ * A GROUPED COLUMN CHART, INLINE SVG, NO LIBRARY AND NO SCRIPT. The worker has no build
+ * step and the dashboard ships no JavaScript at all; keeping it that way is worth more
+ * than any charting library's features, and a bar chart is a hundred lines of arithmetic.
+ *
+ * WHY A CHART AT ALL, AND WHY WEEKLY. This site does 28 pageloads and 12 visits in a week
+ * (measured 2026-09-02). A daily line over a 30-day window is four fifths zeros, and a
+ * chart that is mostly zeros is worse than the table it sits above — it invites reading
+ * noise as shape. So the buckets are WEEKS once the window is longer than one, and the
+ * caller passes days when it is not. The exact numbers stay in the table directly below:
+ * this draws the shape, the table answers "how many".
+ *
+ * THE PALETTE IS COMPUTED, NOT CHOSEN. Two categorical slots for two series, validated
+ * against this page's dark surface — blue #3987e5 and orange #d95926, worst adjacent CVD
+ * separation ΔE 26.8 (protan) and 31.8 for normal vision. The first pair tried by eye
+ * (this page's own link blue against a violet) FAILED at ΔE 3.0 deutan: indistinguishable
+ * to a red-green colourblind reader, and only 12.2 to everyone else. Do not substitute
+ * hexes here without re-running that check.
+ *
+ * NOT the `.warn` / `.err` colours, deliberately: those are status, they mean something on
+ * this page already, and a series wearing a status colour claims a condition it does not
+ * have.
+ *
+ * IDENTITY IS NEVER COLOUR ALONE — each series is direct-labelled at its own last bar, and
+ * every bar carries a <title> so a hover gives the exact figure without a tooltip library.
+ */
+const SERIES = [
+  { key: 'a', color: '#3987e5' },
+  { key: 'b', color: '#d95926' },
+];
+
+export function barChart(rows, opts) {
+  opts = opts || {};
+  if (!rows || rows.length < 2) return '';          // one bar is a number, not a chart
+  const labelA = opts.labelA || 'A', labelB = opts.labelB || 'B';
+  const W = 720, H = 190, PADL = 34, PADR = 96, PADT = 12, PADB = 26;
+  const plotW = W - PADL - PADR, plotH = H - PADT - PADB;
+  const max = Math.max(1, ...rows.map((r) => Math.max(r.a || 0, r.b || 0)));
+  /* A ceiling on a "nice" number, so the gridline reads as a round figure rather than as
+   * whatever the tallest bar happened to be. */
+  const pow = Math.pow(10, Math.floor(Math.log10(max)));
+  const top = Math.ceil(max / pow) * pow;
+  const slot = plotW / rows.length;
+  const barW = Math.max(3, Math.min(18, slot / 2 - 3));   // 2px+ of surface between bars
+  const y = (v) => PADT + plotH - (v / top) * plotH;
+
+  let g = '';
+  // Recessive grid: two lines and their labels, in muted ink, behind everything.
+  [0, top].forEach((v) => {
+    g += '<line x1="' + PADL + '" y1="' + y(v) + '" x2="' + (PADL + plotW) + '" y2="' + y(v)
+      + '" stroke="#1c2531" stroke-width="1"/>'
+      + '<text x="' + (PADL - 6) + '" y="' + (y(v) + 4) + '" fill="#8fa2b3" font-size="10" '
+      + 'text-anchor="end">' + v + '</text>';
+  });
+  rows.forEach((r, i) => {
+    const x0 = PADL + i * slot + (slot - barW * 2 - 2) / 2;
+    SERIES.forEach((s, si) => {
+      const v = r[s.key] || 0;
+      const h = Math.max(v > 0 ? 2 : 0, (v / top) * plotH);
+      if (!h) return;
+      const x = x0 + si * (barW + 2);
+      g += '<rect x="' + x + '" y="' + (PADT + plotH - h) + '" width="' + barW + '" height="' + h
+        + '" rx="3" fill="' + s.color + '">'
+        + '<title>' + esc(r.label) + ' — ' + esc(si === 0 ? labelA : labelB) + ': ' + v + '</title>'
+        + '</rect>';
+    });
+    g += '<text x="' + (PADL + i * slot + slot / 2) + '" y="' + (H - 8) + '" fill="#8fa2b3" '
+      + 'font-size="10" text-anchor="middle">' + esc(r.label) + '</text>';
+  });
+  // Direct labels at the right, so identity survives a greyscale print or a CVD reader.
+  const last = rows[rows.length - 1] || {};
+  g += '<text x="' + (PADL + plotW + 8) + '" y="' + (y(last.a || 0) + 4) + '" fill="'
+    + SERIES[0].color + '" font-size="11">' + esc(labelA) + '</text>'
+    + '<text x="' + (PADL + plotW + 8) + '" y="' + (y(last.b || 0) + 4) + '" fill="'
+    + SERIES[1].color + '" font-size="11">' + esc(labelB) + '</text>';
+
+  return '<svg viewBox="0 0 ' + W + ' ' + H + '" width="100%" style="max-width:' + W
+    + 'px;display:block;margin:0 0 8px" role="img" aria-label="'
+    + esc(labelA + ' and ' + labelB + ' per ' + (opts.bucket || 'period')) + '">' + g + '</svg>';
+}
+
+/* Fold a list of {date,pageloads,visits} Eastern days into the chart's rows. Weekly once
+ * there is more than a week to show — see barChart's header for why. The oldest bucket is
+ * marked when it is short, for the same reason `dayLabel` marks a partial day: a short
+ * bucket and a quiet week are the same bar without it. */
+export function bucketDays(dayRows, days) {
+  if (!dayRows || !dayRows.length) return { rows: [], bucket: 'day' };
+  if (days <= 7) {
+    return { rows: dayRows.map((r) => ({ label: (r.date || '').slice(5),
+                                         a: r.pageloads, b: r.visits })), bucket: 'day' };
+  }
+  const out = [];
+  for (let end = dayRows.length; end > 0; end -= 7) {
+    const start = Math.max(0, end - 7);
+    const week = dayRows.slice(start, end);
+    out.unshift({
+      label: (week[0].date || '').slice(5) + (week.length < 7 ? '*' : ''),
+      a: week.reduce((s, r) => s + (r.pageloads || 0), 0),
+      b: week.reduce((s, r) => s + (r.visits || 0), 0),
+      short: week.length < 7,
+    });
+  }
+  return { rows: out, bucket: 'week' };
+}
+
 export function errBlock(message) {
   return '<p class="err">query failed: ' + esc(message) + '</p>';
 }

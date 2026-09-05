@@ -299,11 +299,17 @@
     put('mwe_output',        tb.mwe_output);
     put('load_target_mwe',   tb.load_target_mwe);
     put('steam_demand_mwe',  tb.load_target_mwe);
-    /* ⚠ a SYNTHESIZED two-state constant (1800 or 0) — pwr2_turbine declares "no shaft
-     * dynamics" and this forwards that caveat, which the field name alone cannot carry: a
-     * consumer cannot tell this 1800 from a measured one (audit #488 E16.4). */
+    /* Shaft speed. WAS a synthesized two-state constant (1800 or 0) flagged here as one — audit
+     * #488 E16.4, and the defect the owner filed as "turbine always spinning" (#598 item 1),
+     * because no initial condition boots tripped so a Mode 5 plant reported rated speed. It is
+     * now a first-order lag off steam admission with declared constants (pwr2_turbine TURB). */
     put('turbine_rpm',       tb.rpm);
-    if (tb.rpm !== undefined) put('turbine_tripped', tb.rpm === 0);
+    /* THE TRIP LATCH, FROM THE LATCH. This used to be `tb.rpm === 0`, an identity that held only
+     * while speed was two-state; with a real coastdown a tripped machine spends twenty minutes
+     * above zero, and deriving the flag from speed would have un-latched the trip as the rotor
+     * slowed. pwr2_turbine now reports `tripped` and this forwards it. */
+    if (tb.tripped !== undefined) put('turbine_tripped', !!tb.tripped);
+    else if (tb.rpm !== undefined) put('turbine_tripped', tb.rpm === 0);
     if (tb.steam_kgs !== undefined && ctx.rated_steam_kgs) {
       put('steam_flow_normalized', tb.steam_kgs / ctx.rated_steam_kgs);
     }
@@ -368,12 +374,43 @@
       /* PUMP injection only (#511): the accumulator is passive and has its own fields below —
        * before the split an accumulator dump lit hpi_active and read as pump flow */
       var pumpKgs = (ec.hhsi_kgs || 0) + (ec.lhsi_kgs || 0);
-      put('hpi_active', pumpKgs > 0);
+      /* ⚠ `hpi_active` IS THE SAFETY-INJECTION SIGNAL, AND THAT IS A RULING — not a reading of
+       * delivered flow (#603). This line was `pumpKgs > 0`, and the divergence is the #573
+       * pattern in its purest form: PWR2 inherited the field NAME from the retired engine and
+       * gave it a different MEANING, so the two plants published different facts under one name
+       * and nothing could notice. The ruling is recorded twice, in both directions —
+       * `engines/pwr/pwr_engine.js`: "hpi_active IS the SI signal on this plant, and that is a
+       * ruling rather than a reading", and `layers/control/pwr_control.js` repeats it above the
+       * RHR interlock that consumes it.
+       *
+       * WHAT THE FLOW READING COST, measured 2026-09-02 on the #598 item 4 path (cold plant,
+       * Pressure SP dialled straight to 2235 psi): safety injection actuates at the P-11
+       * crossing on low steam pressure, both pumps start — and RCS is at 1966 psia, ABOVE the
+       * HHSI and LHSI shutoff heads, so `pumpKgs` is 0 and this published FALSE through a real
+       * injection. Three surfaces key on it and all three went quiet together: this flag, the
+       * `hpi_active` annunciator, and the Indications "HPI Actuated" row.
+       *
+       * DELIVERED FLOW IS NOT LOST and did not need this field: `hpi_flow_normalized` two lines
+       * below is the delivery, and `eccs_mode` is the lineup word. Those two answer "is water
+       * moving and from where"; this one answers "has the plant fired", which is a different
+       * question and the one the operator is asking. */
+      put('hpi_active', pt.si === true);
       if (RD.eccs) {
         var hpiRated = RD.eccs.hhsiFlow(0) + RD.eccs.lhsiFlow(0);     /* nameplate, both trains */
         if (hpiRated > 0) put('hpi_flow_normalized', pumpKgs / hpiRated);
       }
+      /* 'armed' — SAFETY INJECTION HAS ACTUATED AND THE PUMPS ARE MAKING NO FLOW (#603). Without
+       * this word the board contradicts itself the moment the fix above works: the AUTO lamp
+       * flashes SI ACTUATED and the annunciator demands an ack while the ECCS readout beside
+       * them reads STANDBY, because at 1966 psia the running pumps are above their shutoff heads
+       * and `pumpKgs` is 0. 'standby' means armed and quiet; the plant that has FIRED and is not
+       * yet delivering is a third state, and it was being reported as the first.
+       *
+       * The two consumers need nothing: `pwr_board_wiring` upper-cases whatever word it is given,
+       * and `ui/app.js`'s colour rule exempts 'standby' by name — so 'armed' correctly lights
+       * caution there rather than reading as an idle system. */
       var mode = 'standby';
+      if (pt.si === true) mode = 'armed';
       if (ec.hhsi_kgs > 0 && ec.lhsi_kgs > 0) mode = 'both';
       else if (ec.hhsi_kgs > 0) mode = 'hhsi';
       else if (ec.lhsi_kgs > 0) mode = 'lhsi';
@@ -566,6 +603,42 @@
      * physics: it pinned the post-trip plant at 0.5 cps against a true 89. */
     put('sr_counts_cps', srOn ? K_SR * pFrac : 0);
     put('ir_amps',       K_IR * pFrac);
+    /* ---- WHICH RANGE THE OPERATOR SHOULD BE READING (#598 item 8) --------------------------
+     * *(OWNER DIRECTIVE, 2026-09-01, #598 item 8: "Source Range and Intermediate Range should be green when
+     * we are in the region where we should be referencing each display, grey when otherwise.
+     * Except for source range it should go amber before the handoff to intermediate.")*
+     *
+     * The board used to colour these two by TRIP PROXIMITY, which answers a different question
+     * and answered it badly: at hot full power the intermediate range reads 2.0e-3 A — pegged at
+     * its own range top, four decades past anything worth reading — and the tile drew it as an
+     * ordinary live indication. The question the operator actually asks on a startup is "which
+     * instrument am I on now", and the ladder that answers it is the permissive ladder.
+     *
+     * PUBLISHED BY THE PLANT, NOT AUTHORED ON THE BOARD, because the alternative is the defect
+     * this repo keeps re-shipping: a board literal that was some other plant's number (#573,
+     * #579, #591). Both edges are DERIVED here from constants that already exist and are
+     * already sourced — nothing new is invented and nothing is retyped:
+     *
+     *   SOURCE RANGE  [1 cps .. SR_SECURE_CPS]. Its top edge is the de-energization point the
+     *     model already uses for `sr_energized` two lines above, so the band and the channel
+     *     cannot disagree. The bottom is the instrument's own range floor.
+     *   INTERMEDIATE  [P-6 .. P-10]. Below P-6 the channel is not yet on scale and the source
+     *     range is the instrument; above P-10 the power range is. P-6 = 5e-11 A [sourced:
+     *     Ginna TS Bases Rev 101, ML20339A221, B 3.3.1 — "In MODE 2 when both intermediate
+     *     range channels are < 5E-11 amps (below the P-6 setpoint)"], the same anchor the K_IR
+     *     note above already cites. P-10 is pwr2_protection's own sourced 8 % of rated,
+     *     converted through K_IR rather than written as an amp figure, so re-scaling either one
+     *     moves the band with it.
+     *
+     * ⚠ A DECLARED DEPARTURE, recorded so nobody "fixes" it back. The same Ginna passage says
+     * the source-range detectors "are manually de-energized by the operator" above P-6 — a real
+     * plant HAS that lever. This plant does not, by owner directive (#598 item 7), and the
+     * channel de-energizes on flux alone. The band above is unaffected either way. */
+    var P6_A = 5e-11;
+    var p10Frac = (RD.protection && RD.protection.P10 && RD.protection.P10.frac !== undefined)
+                  ? RD.protection.P10.frac : 0.08;
+    put('nis_sr_inuse_cps', [1, SR_SECURE_CPS]);
+    put('nis_ir_inuse_a',   [P6_A, p10Frac * K_IR]);
 
     /* --- core uncovery: a DECLARED HEM PROXY (D4 sec 8 upheld). The homogeneous model has
      * no water level; sustained high core void is the nearest honest stand-in. Expect A/B

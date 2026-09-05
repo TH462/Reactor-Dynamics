@@ -594,9 +594,21 @@ async function testEsfArmButtons(page) {
    * throw — the dump is controller-driven and has no manual full-open lever — and its refusal
    * is raised INSIDE the MAPPED `set_steam_dump` handler, so neither the #567 registry sweep
    * nor run_pwr2_kernel band 4 could see it. AUTO and CLOSED beside it stay live, which is why
-   * the label here is OPEN and not the whole dump panel. */
-  var expect = { pwr: 0, pwr2: 4 };
-  var mustInclude = ['AUTO', 'ROD AUTO', 'SR DET', 'OPEN'];
+   * the label here is OPEN and not the whole dump panel.
+   *
+   * 4 -> 2 WITH #598 items 7 and 9/10, AND THE DIRECTION IS THE POINT. SR DET and ROD AUTO both
+   * LEFT this set by being DELETED FROM THE BOARD, not by being made to work. A control that can
+   * never be pressed is a DESIGN_CRITERIA Q4 orphan whether it is grey or not — the owner had to
+   * ask what each of them was for, which is that test failing — and drawing it dark was only
+   * ever the second-best answer to "the plant has no lever here". The two that remain are
+   * different in kind: the HPI AUTO re-arm and STEAM DUMP OPEN are controls whose refusal is
+   * CONDITIONAL or whose neighbours are live, so the button has to stay and read dark.
+   *
+   * ⚠ IF THIS COUNT DROPS AGAIN, ASK WHICH WAY. A disabled button becoming ENABLED is a fix; a
+   * disabled button DISAPPEARING is a board change and wants the owner's eye. Both look like
+   * "expected N, found N-1" from here, which is what `mustInclude` is for. */
+  var expect = { pwr: 0, pwr2: 2 };
+  var mustInclude = ['AUTO', 'OPEN'];
   for (var i = 0; i < 2; i++) {
     var eng = ['pwr', 'pwr2'][i];
     await page.goto('http://127.0.0.1:' + PORT + '/ui/shell.html?engine=' + eng,
@@ -1454,35 +1466,49 @@ async function testHeldPlantDialog(page) {
    * ⚠ THE LATCH TIME IS NOT A CLAIM — it spans 228-411 s across those ten runs. Assert THAT it
    * holds and that the dialog follows; never WHEN. A check that pins the second is this defect
    * again wearing a number. */
-  await page.goto(base + '&inject=large_loca,station_blackout,afw_failure,failure_to_scram&ff=1500',
+  /* ⚠ THE PHYSICAL LATCH IS RETIRED FROM THIS FIXTURE (#524, 2026-08-31). The ulp study above
+   * is history now in a second way: with the property floor at 0.002 MPa and the #586/#516
+   * ceiling work, the extended envelope CONTAINS this casualty — measured at the shell layer,
+   * the same four failures ride 8,000 s LIVE through clad damage at 1,667 degC with no hold on
+   * ANY branch, and no menu-injectable combo reaches `beyond_model` inside a testable window.
+   * That is the engine getting better, not the dialog losing its subject: the hold still
+   * exists (run_pwr2_core unit-tests the arms; run_pwr2_loca rides one manually), and #520's
+   * claim was always about the UI CONTRACT — a held plant must SHOW the dialog. So the fixture
+   * now latches the flag DIRECTLY through the ?dev=1 hook, at `sys.beyond_model` — the exact
+   * flag every consumer checks — mid-casualty, the same manual-latch adjudication
+   * run_pwr2_loca's hold section made. The ulp cliff goes with it: no branch to land on. */
+  await page.goto(base + '&dev=1&inject=large_loca,station_blackout,afw_failure,failure_to_scram&ff=120',
                   { waitUntil: 'networkidle', timeout: 180000 });
-  /* TWO WAITS, NOT ONE (#589). This used to wait only for the overlay and then throw "the plant
-   * HELD and the dialog stayed hidden" — a message that names a fact the check never measured.
-   * A plant that has simply not reached the envelope yet produces the identical error, so a slow
-   * machine and a broken dialog were indistinguishable in the log, and three red CI runs could
-   * not be told apart from one real defect. Measured on Windows 2026-08-30: the overlay appears
-   * 5.2 s after navigation against the old 40 s budget, and this runner takes 104 s locally
-   * against 120 s on CI — a 15 % spread, which is NOT enough to explain a 40 s timeout. So the
-   * budget was never the interesting variable; knowing WHICH half failed is.
-   *
-   * The plant first, generously, because that is the slow part and the part a loaded CI box
-   * delays. Then the dialog, tightly, because once the plant holds the overlay is a render away
-   * — and that is the claim #520 is actually about. */
+  await page.waitForTimeout(1500);
+  var latched = await page.evaluate(function () {
+    try {
+      var svc = globalThis.RD.__dev.service();
+      svc.engine.eng.sys.beyond_model = true;                /* the latch, at the flag itself */
+      /* the casualty's attention-stop PAUSES the service (measured: frozen at 66 s with no
+       * broadcasts, so the held state never rendered) — resume so a broadcast carries it */
+      svc.attentionStops = false;
+      if (!svc.running) svc.start();
+      return { ok: true, running: svc.running };
+    } catch (e) { return { ok: false, err: String(e) }; }
+  });
+  if (!latched.ok) {
+    throw new Error('#520 fixture: the ?dev=1 latch hook failed — ' + latched.err +
+      '. This is the harness door, not the dialog: check RD.__dev in ui/app.js.');
+  }
   var plantHeld = true;
   await page.waitForFunction(function () {
     var c = document.getElementById('clock');
     return !!c && c.classList.contains('clk-held');
-  }, { timeout: 90000, polling: 200 }).catch(function () { plantHeld = false; });
+  }, { timeout: 30000, polling: 200 }).catch(function () { plantHeld = false; });
   if (!plantHeld) {
     var never = await page.evaluate(function () {
       var c = document.getElementById('clock');
       return { clock: c ? c.textContent.replace(/\s+/g, ' ').trim() : '(no clock)',
                overlay: !!(document.getElementById('haltOverlay') || {}).hidden };
     });
-    throw new Error('#520 fixture: THE PLANT NEVER HELD in 90 s of wall clock — clock reads ' +
-      never.clock + '. This is the driver failing to reach the envelope, NOT the dialog: do not ' +
-      'touch the overlay, measure the casualty. (#589 — the old single wait reported this case as ' +
-      'a hidden dialog, which sent one investigation the wrong way.)');
+    throw new Error('#520: the plant was LATCHED at the flag and the clock never read HELD — ' +
+      'clock ' + never.clock + '. The latch was set, so this IS the display half failing (#589\'s ' +
+      'two-wait split still holds: this wait is the render, not the physics).');
   }
   await page.waitForFunction(function () {
     var o = document.getElementById('haltOverlay');
@@ -1718,6 +1744,182 @@ async function testAdvFailPanel(page) {
   return log.join('\n') + '\n';
 }
 
+/* A HELD-CLOCK REFUSAL STAYS ON THE CHECKLISTS TAB (#627, owner playtest 2026-09-04: "when gated
+ * and i click on a warp button, it closes the checklist"). `set_speed` under a plant-declared
+ * hold returns blocked/SPEED_HELD, and cmd() routed every non-interlock block to the Instructor
+ * tab — which, with the running checklist in the Checklists pane since #607, IS closing the
+ * checklist. Only a browser can see it: the routing is in cmd(), the tab is DOM.
+ *
+ * The hold is PLANTED at the service's edge state (`_prevSpeedHold`, the very field set_speed
+ * consults) through the ?dev=1 seam: reaching the real one is a 75-plant-minute heatup, and the
+ * click path is the same whichever plant reason stands. Positive control first: with no hold the
+ * same click LANDS and the tab is likewise untouched — so a page that ignored speed clicks
+ * altogether could not pass. Dropouts are switched off for the fixture so a checklist step
+ * settling cannot snap the control click back to 1x between click and read; the hold ignores
+ * that switch by design (#622). */
+async function testHeldSpeedClick(page) {
+  var log = [];
+  var base = 'http://127.0.0.1:' + PORT + '/ui/shell.html?engine=pwr2&run=1&dev=1';
+  await page.goto(base, { waitUntil: 'networkidle', timeout: 90000 });
+  await dismissMission(page);
+  await waitBoardLive(page, 20000);
+  var started = await page.evaluate(function () {
+    try {
+      var svc = globalThis.RD.__dev.service();
+      svc.attentionStops = false;
+      var r = svc.handleCommand({ action: 'start_checklist', procedure_id: 'pwr_heatup' });
+      return { ok: !(r && r.type === 'error'), msg: r && r.message };
+    } catch (e) { return { ok: false, msg: String(e) }; }
+  });
+  if (!started.ok) throw new Error('#627 fixture: start_checklist failed — ' + started.msg);
+  await page.waitForFunction(function () {
+    var b = document.querySelector('#tabbar button.on');
+    return !!b && b.getAttribute('data-tab') === 'checklists' && !!document.querySelector('.ckl-step');
+  }, { timeout: 15000, polling: 200 });
+  await page.waitForTimeout(1200);
+  async function read() {
+    return await page.evaluate(function () {
+      var b = document.querySelector('#tabbar button.on');
+      var svc = globalThis.RD.__dev.service();
+      return { tab: b ? b.getAttribute('data-tab') : null, accel: svc.timeAcceleration,
+               steps: document.querySelectorAll('.ckl-step').length,
+               scanner: ((document.getElementById('scanner') || {}).textContent || '').replace(/\s+/g, ' ').slice(0, 160) };
+    });
+  }
+  /* control: no hold — the click lands (600x, or 60x when WARP refuses a fresh plant) */
+  await page.click('#speed [data-speed="600"]');
+  await page.waitForTimeout(300);
+  var ctl = await read();
+  if (ctl.tab !== 'checklists' || !(ctl.accel > 1)) {
+    throw new Error('#627 control: an unheld 600x click must land above 1x with the Checklists tab kept — ' +
+                    'tab ' + ctl.tab + ', accel ' + ctl.accel);
+  }
+  log.push('control: 600x click landed at ' + ctl.accel + 'x, tab ' + ctl.tab);
+  /* PAUSE BEFORE PLANTING. `_prevSpeedHold` is edge state that every broadcast rewrites from
+   * the plant's own `true_state.speed_hold` (null here), so on a running service the planted
+   * value lived for at most one 100 ms broadcast and the click found it gone — measured: the
+   * first cut of this fixture reported "the held click was NOT refused, accel 600" on the
+   * FIXED tree. Paused, nothing rewrites it, and cmd() still assembles and renders a snapshot
+   * after every command, which is the path under test. */
+  await page.evaluate(function () {
+    var svc = globalThis.RD.__dev.service();
+    svc.handleCommand({ action: 'set_speed', value: 1 });
+    svc.handleCommand({ action: 'pause' });
+    svc._prevSpeedHold = 'accumulator window open — arm the accumulators before accelerating again';
+  });
+  await page.click('#speed [data-speed="600"]');
+  await page.waitForTimeout(300);
+  var held = await read();
+  await page.evaluate(function () { globalThis.RD.__dev.service()._prevSpeedHold = null; });
+  if (held.accel !== 1) {
+    throw new Error('#627: the held click was NOT refused — accel ' + held.accel +
+                    ' (the fixture plants the hold at _prevSpeedHold; check set_speed in the service)');
+  }
+  if (held.tab !== 'checklists' || held.steps === 0) {
+    throw new Error('#627: a refused speed click under a plant hold left the Checklists tab — tab ' +
+                    held.tab + ', ' + held.steps + ' steps visible (this is the "closes the checklist" report)');
+  }
+  if (!/Held/.test(held.scanner)) {
+    throw new Error('#627: the refusal did not reach the scanner bar — it read "' + held.scanner + '"');
+  }
+  log.push('held: click refused at 1x, tab ' + held.tab + ', scanner "' + held.scanner.slice(0, 90) + '"');
+  await page.evaluate(function () { globalThis.RD.__dev.service().handleCommand({ action: 'stop_checklist' }); });
+  return log.join('\n') + '\n';
+}
+
+/* NO CSS TRANSITION MAY RIDE A BROADCAST-CADENCE VALUE (#613 wave 3, 2026-09-04).
+ *
+ * THE INVARIANT: a CSS transition may exist only on a property that changes on a DISCRETE
+ * EVENT — a valve rotating open, a stroke turning red. Never on a value the board rewrites
+ * every broadcast (level rects, surface lines, level markers, rod groups, a modulating
+ * valve's needle). A 150 ms transition restarted every ~100 ms never finishes, so the
+ * element is never idle and the compositor draws at the DISPLAY rate for a board that
+ * paints ~10 times a second.
+ *
+ * WHY IT NEEDS A GATE RATHER THAN A COMMENT: the defect is invisible to a source read and to
+ * every Node runner. `std_pipe.js`'s `tickAnimations` pauses ~90 keyframe animations and
+ * deliberately SKIPS CSSTransition ("short, one-shot") — so the class it excluded by design
+ * was the entire frame producer, and three waves of animation throttling never touched it.
+ * MEASURED at 10x on a settled board (`tools/perf_trace.js`): 6-7 running CSSTransitions at
+ * every sampled instant, ZERO running keyframe animations, 870 compositor draws per 15 s
+ * (60 Hz) against ~300 app paints. Removing exactly the broadcast-cadence declarations took
+ * frames to 339, -61 %, compositor busy -32 %, GPU busy -25 %. After the fix the compositor
+ * draws ~1.03 times per app paint.
+ *
+ * WHAT IT ASSERTS, and why in this shape:
+ *  - TEN SAMPLES ~200 ms APART, not one. A transition is 150 ms long; a single sample can
+ *    fall in a gap and certify a board that is transitioning continuously. Round 2's
+ *    five-instant sweep is what proved the 6-7 were ALWAYS running.
+ *  - A COUNT CEILING of 2 catches a broadcast-cadence declaration anywhere, including one
+ *    added outside `.pwr-board-stage`.
+ *  - A TARGET RULE (no rect/line/g in `.pwr-board-stage` transitioning height/y/transform)
+ *    names the exact shape that was removed, so the red says WHAT, not just "too many".
+ *
+ * PROVED BY INJECTION, 2026-09-04 (`inbox/613/inject_css_transition.js`, which drives this one
+ * check through the module export). Temporarily restoring ONE declaration —
+ * `style: { transition: 'y 0.15s linear, height 0.15s linear' }` on the pressurizer's
+ * waterRect (`comp_pressurizer.js`, the `data-role: pzr-water` element) — took the samples from
+ * `0,0,0,0,0,0,0,0,0,0` to `2,2,2,2,2,2,2,2,2,2` (one declaration, two properties, running at
+ * EVERY sample) and the check failed with "a broadcast-cadence CSS transition is live on the
+ * board: height @ rect [board], y @ rect [board]". Removed again, green.
+ *
+ * NOTE WHICH HALF CAUGHT IT: at 2 running the COUNT ceiling was still satisfied — the TARGET
+ * rule is what went red. The ceiling is the backstop for a declaration outside the board or on
+ * a tag this rule does not name; it is not the primary assertion, and a future edit that
+ * loosens the target rule to "count only" would re-open exactly this defect. */
+async function testCssTransitions(page) {
+  var log = [];
+  var url = 'http://127.0.0.1:' + PORT + '/ui/shell.html?engine=pwr2&init=hot_full_power&run=1&dev=1';
+  await page.goto(url, { waitUntil: 'networkidle', timeout: 90000 });
+  await dismissMission(page);
+  await waitBoardLive(page, 20000);
+  /* 10x through the SHIPPED segment, so the cadence under test is a player's. */
+  if (await page.$('#speed [data-speed="10"]')) await page.click('#speed [data-speed="10"]');
+  await page.waitForTimeout(1500);
+
+  var counts = [], offenders = [], census = {};
+  for (var i = 0; i < 10; i++) {
+    var s = await page.evaluate(function () {
+      if (!document.getAnimations) return { unsupported: true, rows: [] };
+      var run = document.getAnimations().filter(function (a) {
+        return a.playState === 'running' && a.constructor && a.constructor.name === 'CSSTransition';
+      });
+      return { unsupported: false, rows: run.map(function (a) {
+        var el = a.effect && a.effect.target;
+        var tag = el ? String(el.tagName || '?').toLowerCase() : '?';
+        return { prop: String(a.transitionProperty || '?'), tag: tag,
+                 stage: !!(el && el.closest && el.closest('.pwr-board-stage')) };
+      }) };
+    });
+    if (s.unsupported) throw new Error('#613: document.getAnimations() is unavailable — this check cannot run');
+    counts.push(s.rows.length);
+    s.rows.forEach(function (r) {
+      var k = r.prop + ' @ ' + r.tag + (r.stage ? ' [board]' : '');
+      census[k] = (census[k] || 0) + 1;
+      if (r.stage && /^(rect|line|g)$/.test(r.tag) && /^(height|y|transform)$/.test(r.prop)) {
+        if (offenders.indexOf(k) < 0) offenders.push(k);
+      }
+    });
+    await page.waitForTimeout(200);
+  }
+  var top = Object.keys(census).sort(function (a, b) { return census[b] - census[a]; }).slice(0, 6);
+  log.push('running CSSTransitions across 10 samples: ' + counts.join(', '));
+  log.push(top.length ? 'targets: ' + top.map(function (k) { return census[k] + 'x ' + k; }).join(' | ') : 'targets: none');
+
+  if (offenders.length) {
+    throw new Error('#613: a broadcast-cadence CSS transition is live on the board: ' + offenders.join(', ') +
+      ' — a transition may only ride a property that changes on a DISCRETE event ' +
+      '(see std_pipe.js tickAnimations). Samples: ' + counts.join(','));
+  }
+  var worst = Math.max.apply(null, counts);
+  if (worst > 2) {
+    throw new Error('#613: ' + worst + ' CSS transitions were running at once (ceiling 2) — samples ' +
+      counts.join(',') + '; targets ' + top.join(' | ') +
+      '. Something is transitioning a value rewritten every broadcast.');
+  }
+  return log.join('\n') + '\n';
+}
+
 async function main() {
   fs.mkdirSync(SCRATCH, { recursive: true });
   var fallback = path.join(SCRATCH, 'ui-screenshot-fallback.log');
@@ -1767,6 +1969,10 @@ async function main() {
     fs.writeFileSync(path.join(SCRATCH, 'save-load-refusal.log'), slLog);
     var afLog = await testAdvFailPanel(page);
     fs.writeFileSync(path.join(SCRATCH, 'adv-fail-panel.log'), afLog);
+    var hsLog = await testHeldSpeedClick(page);
+    fs.writeFileSync(path.join(SCRATCH, 'held-speed-click.log'), hsLog);
+    var ctLog = await testCssTransitions(page);
+    fs.writeFileSync(path.join(SCRATCH, 'css-transitions.log'), ctLog);
     fs.writeFileSync(path.join(SCRATCH, 'ui-screenshot-summary.log'), summary.join('\n') + '\n');
     console.log('E2E UI verification: PASS (' + (ENGINES.length * VIEWS.length) + ' screenshots)');
   } finally {
@@ -1785,8 +1991,9 @@ if (require.main !== module) {
   module.exports = { startServer: startServer, dismissMission: dismissMission,
                      testChartSettings: testChartSettings, testMonitorList: testMonitorList,
                      testMissionCloseResumes: testMissionCloseResumes, testRunStartMark: testRunStartMark,
-                     testHeldPlantDialog: testHeldPlantDialog,
-                     testSaveLoadRefusal: testSaveLoadRefusal, port: function () { return PORT; } };
+                     testHeldPlantDialog: testHeldPlantDialog, testHeldSpeedClick: testHeldSpeedClick,
+                     testSaveLoadRefusal: testSaveLoadRefusal, testCssTransitions: testCssTransitions,
+                     port: function () { return PORT; } };
 } else {
   main().catch(function (e) {
     fs.mkdirSync(SCRATCH, { recursive: true });

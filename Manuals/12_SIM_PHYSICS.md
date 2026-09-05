@@ -39,7 +39,9 @@ The SLS-100 is a **lumped-parameter, real-time behavioural model**. It is not a 
 
 ### 2.1 Fixed time step, and what time acceleration really does
 
-The engine is stepped at **0.02 s and only 0.02 s**. Time acceleration does **not** hand the engine a bigger `dt` — it runs **more 0.02 s steps per wall-clock second**. Every plant behaviour is therefore identical at 1× and at 60×; only the wall-clock pacing changes.
+On the **PLAY** tier (1× to 60×) the engine is stepped at **0.02 s and only 0.02 s**. Time acceleration does **not** hand the engine a bigger `dt` — it runs **more 0.02 s steps per wall-clock second**. Every plant behaviour is therefore identical at 1× and at 60×; only the wall-clock pacing changes.
+
+The **WARP** tier (600× and 3600×) is the one declared exception: the **same physics stepped at 0.5 s**. It exists for the evolutions whose clock is hours — xenon, decay heat, boron, a heatup — and it is bounded by measurement. Over a sim hour in five regimes (steady full power; a scram then decay heat and xenon; hot zero power; hot shutdown; cold shutdown) every channel stays inside its own instrument noise of the 0.02 s plant: worst **5 psi (0.034 MPa)** of pressure, **0.07 °F (0.04 °C)** of Tavg, **0.3 %** of pressurizer level, **0.0003 %** of xenon. It works because the kinetics is solved exactly (a matrix exponential, not Euler), the fuel and the instrument lags are analytic, xenon's fastest constant is 4 × 10⁻⁵ /s, and the loop sub-steps itself to its own Courant limit. It stops working between 0.5 s and 1.0 s — at a 1.0 s step the quiet plant trips itself at 18 minutes — which is why WARP refuses a plant in a transient and lets go the moment one begins (see **02** §4.1).
 
 This matters in two places an operator can feel:
 
@@ -244,13 +246,13 @@ A standard iodine → xenon chain with burnout, normalised to equilibrium xenon 
 | Property | Value |
 |---|---|
 | Groups | **One control group, one shutdown group** |
-| Travel | **912 steps** (equivalent to 4 × 228 — a real bank's total travel) |
+| Travel | **627 steps** |
 | Speeds | slow ≈ 32 steps/min · normal ≈ 192 · fast ≈ 288 |
 | Overrun on release | ~1 s of continued travel, then the latch catches |
 | Scram insertion | control 2.5 s · shutdown 2.0 s, constant-rate (gravity) |
 | Insertion limit | **power-dependent**: none below 5 % power, ramping to 70 % withdrawn at 100 % |
 
-The fine 912-step drive exists so that one step near the critical band is worth about 9 pcm (≈ 1.4 ¢) — real bank-D differential worth — rather than the ~36 pcm lurch a coarse drive gave.
+The fine 627-step drive exists so that one step in the critical band is worth **8.1 pcm (1.24 ¢)** — measured 2026-09-03 — rather than the ~36 pcm lurch a coarse drive gave. The whole profile runs **4.15 to 8.82 pcm/step**, inside the sourced 4–12 band (NRC HRTD WAT 05, ML11216A094); the shape is the four-bank overlap program of WTSM 8.1 §8.1.5.4 collapsed onto one lumped bank.
 
 The **rod insertion limit is a curve, not a floor**, because the limit exists to protect shutdown margin *at power*. During a startup the bank is deliberately deep and boron holds the margin, so a fixed floor would annunciate continuously through every ascent and mean nothing.
 
@@ -453,6 +455,8 @@ five minutes.
 
 **Letdown is pressure-driven, not commanded.** Two fixed orifices, each independently in or out; each passes flow proportional to √(cold-leg pressure − 300 psi (2.07 MPa) backpressure — the orifice discharges to the letdown heat exchanger and volume control tank, not to atmosphere). So letdown **tails off toward zero as the RCS depressurises on a cooldown** — it is not a constant you dial in.
 
+**On shutdown cooling the orifices are not the letdown path at all.** With the residual heat removal (RHR) system in service, letdown runs through the **HCV-128 RHR-to-CVCS cross-connect**, which the model carries at the normal letdown magnitude — **12.7 gpm (0.80 kg/s)** — independently of the orifice lineup, so a **Mode 5, Cold Shutdown** plant with both orifices out is still letting down. Sourced: WTSM ch. 19 (ML11223A342), *"Coolant removal is accomplished by letdown, primarily from the residual heat removal system (RHR) … Letdown is via the RHR-to-CVCS cross-connect valve HCV-128"*, and *"While the plant is in this configuration, HCV-128 … is fully open … letdown flow via this piping is extremely low"*; NUREG-1431 Rev 4 Bases (ML12100A228), *"During LTOP MODES, the RHR System is operated for decay heat removal and low pressure letdown control."* The path closes with the RHR suction at **585 psig (4.03 MPa)** on a heatup, and the **17 %** low-level protective isolate stops it and the orifices together (**09** §3.0). Until 2026-09-04 the cross-connect was gated on the operator's orifice fraction, so shutting the orifices shut it too — and the cold plant then went solid on its own seal injection with a correct-looking shut lineup on the board: measured, **+10.2 points of pressurizer level and 363 → 385 psi (2.50 → 2.65 MPa) in 20 plant-minutes**.
+
 **Charging in AUTO holds programmed pressurizer level**, reading the *indicated* level and the *indicated* Tavg through a 20-second damping filter. The level program and the physical thermal-expansion line are the **same line**, by construction — so a heat-up raises level and setpoint together, and thermal expansion can never read as a leak. A leak makes itself up because it lowers the level; no leak detection is involved.
 
 ### 6.4 Emergency injection
@@ -464,7 +468,7 @@ five minutes.
 | High head | **1390 psi (9.58 MPa)** | Low flow, and it reaches its full **300 gpm** only below about **515 psi (3.55 MPa)**. **At the 2235 psi (15.41 MPa) operating point it delivers nothing at all** — its shutoff is 845 psi (5.83 MPa) below the plant it is meant to inject into, so a stuck-open PORV that holds pressure high keeps injection out |
 | Low head | **215 psi (1.48 MPa)** | High flow — **1200 gpm** near atmospheric; dominates in a large LOCA, and only there |
 
-**Accumulators** are passive, borated, and **finite**. They arm at **600 psi (4.14 MPa)** (600 psi — the real core-flood-tank / SIT cover-gas setpoint) through a check valve in series with a motor-operated isolation valve, and they deplete as they inject. Their nitrogen cover-gas pressure is computed and indicated as the tank empties — but it is **indication only**: injection is gated on cold-leg pressure against the fixed arming setpoint.
+**Accumulators** are passive, borated, and **finite**. They arm at **665 psia (4.58 MPa)** (the real core-flood-tank / SIT normal cover pressure, **650 psig** — WTSM T5.2-2; this manual set prints absolute, so the same number reads 665 psia) through a check valve in series with a motor-operated isolation valve, and they deplete as they inject. Their nitrogen cover-gas pressure is computed and indicated as the tank empties — but it is **indication only**: injection is gated on cold-leg pressure against the fixed arming setpoint.
 
 **All emergency injection water is borated to 2500 ppm** and mixes into the core concentration, so ECCS injection adds negative reactivity — the shutdown-margin role of borated safety injection. It also enters at **104 °F (40 °C)**, removing sensible heat as it mixes (§5.4).
 
@@ -526,6 +530,32 @@ is filled and drained **through the surge line**:
 The thermal and mass drivers are reconstructed from state each step, so level and inventory
 cannot silently drift apart — the no-integrator guarantee the old derived line made, kept.
 
+**RAISING LOAD IS A PRESSURIZER TRANSIENT, and that is why the load dial ramps UP (#624).**
+The thermal row above is the coupling: raise turbine load and the steam generators draw more heat,
+Tavg falls, the loop contracts, and the difference comes *out* of the pressurizer. Charging can
+answer it — at **30.1 gpm** against a **12.7 gpm** letdown lineup — but only at charging's rate,
+so what decides whether the plant stays on programme is how fast the disturbance arrives, not how
+good the level controller is. Measured from **10 MWe** with the rods left alone, dialling
+**30 MWe**: delivered instantly it pulls Tavg **15.3 °F (8.5 °C)** and indicated level from
+**26.7 % to 16.1 % in 44 seconds** — *through* the **17 %** low-level cut, which isolates letdown
+and sheds the heaters and does not restore itself. Delivered on the plant's sourced **5 %/min**
+load ramp (**09** §10.0) the same Tavg swing is spread over four minutes — **12.9 °F (7.2 °C)** —
+and level bottoms at **20.4 %**, three points clear of the cut and back on programme inside 90
+minutes. The lesson is the Tier A one and it is not about the controller: **an operator cannot
+step load up on a real machine, and a plant that let them made a first-order coupling look like a
+broken level loop.**
+
+**LOWERING load runs the same coupling backwards, which is why it is NOT ramped.** Less steam
+drawn, Tavg rises, the loop expands, and the pressurizer **swells** — toward the 87 % high-level
+trip, which no dispatch move approaches. There is nothing for a rate limit to protect, and there
+is something to lose: the **C-7** loss-of-load steam dump arms on a decrease *faster than 5 %/min*
+(**09** §3.0), the same number as the raise ramp, so a symmetric limiter would put the dial exactly
+on the interlock's threshold and the operator could never produce the loss-of-load transient at
+all. It was built symmetric first and measured, 100 MWe to 0: an instant cut takes the C-7 rate
+signal to **49.99 %/min** and arms; a 5 %/min walk converges on **4.999773 %/min** against a strict
+*greater-than* and never arms. Reductions are therefore instantaneous, and both routes to the
+graded ride-out — the dial and **UNLOAD** — stay live.
+
 The void row is **the TMI deception, and it is arithmetic**. Void fraction itself grows at
 three times the inventory deficit, so in a voided state the void term contributes about
 **+1126 % per inventory fraction lost** against the mass term's **−776 %** — a net **rise**
@@ -586,8 +616,13 @@ Reverse heat transfer — a secondary hotter than the primary, e.g. starting pum
 
 | Mode | Behaviour |
 |---|---|
-| **Pressure mode** (always) | Opens proportionally above the 1194 psi (8.23 MPa) no-load setpoint |
-| **Fast Tavg-error mode** (**armed**) | On a turbine trip, or a load rejection past the arm, drives open on Tavg error immediately |
+| **Steam-pressure mode** | Modulates to hold the steam header on the **Dump SP** — this plant's no-load anchor, **1020 psi (7.03 MPa)** (**09** §3.0). This is the heatup / cooldown / hot-standby mode, and the only mode in which the setpoint box is read |
+| **Tavg mode** | The at-power program: the dumps are shut on programme and open on the Tavg error above the no-load reference, which is what catches a load rejection or a turbine trip (**armed**, below) |
+| **Fast Tavg-error mode** (**armed**, inside Tavg mode) | On a turbine trip, or a load rejection past the arm, drives open on Tavg error immediately |
+
+**The two modes are EXCLUSIVE, and the operator selects one — pressure mode is not "always".** One AUTO button does the selecting and **the turbine latch decides which mode it gives you**: tripped → steam-pressure, on line → Tavg. Sourced: WTSM §11.2 (ML11223A294), *"Tavg mode at power, steam pressure mode at hot standby / startup / cooldown"*; the trip relay (C-8) is the same signal the plant already uses to auto-select the turbine-trip controller *inside* Tavg mode, so the operator's selector rides the latch the source rides. **Why it matters, measured 2026-09-05 (#629):** Tavg mode's turbine-trip controller opens only above **557 °F (291.67 °C)**, which is *above* the atmospheric dump valve's 1042 psig / 551.6 °F relief point — so on a plant being heated up from cold, Tavg mode is a dump that never opens, and the heat sink becomes an overpressure relief venting to atmosphere. AUTO used to map to Tavg unconditionally; pressing it on a heating plant produced a **byte-identical trace** (that valve 7.6 %, dumps 0.0 %), and the DUMP SETPOINT box was an orphan on every plant a player produced rather than loaded. **PWR-N01** step 8b is where the selection now happens.
+
+> **⚠ THE CAPACITY AND REJECTION FIGURES IN THE REST OF THIS SECTION ARE THE RETIRED ENGINE'S AND HAVE NOT BEEN RE-MEASURED.** The shipped plant's dump capacity is **28 % of rated steam flow** — Ginna's own, sourced, and the number **09** §3.0 prints — not the 40 % below. Read the rejection ladder as the shape of the event, not as this plant's percentages. *(Noted 2026-09-05 while correcting the mode table above, #629; re-measuring the ladder is separate work.)*
 
 Capacity is **40 % of rated steam flow** — the prototypical Westinghouse value, sized for a **50 % loss of load**: 40 % into the condenser plus roughly a 10 % reduction from the reactor itself. Measured on this plant, a 100 → 50 MWe rejection saturates the dump at 40 % and runs the core back toward the 50 % the secondary is asking for, with no trip and nothing lifting. (An earlier revision said the core 'settles at 89.3 %' — that figure was taken with rod control in manual, a lineup the shipped plant does not use.)
 
@@ -795,6 +830,7 @@ Each of these is intentional, acceptable for the educational purpose, and stated
 | 12.14 | **No turbine roll or no-load speed hold — and the overspeed trip therefore cannot fire** | The whole off-line half of a real startup: rolling off the turning gear, holding rated speed on no-load steam, and synchronising before the breaker closes. On a real EHC machine that is a *setpoint-and-rate* evolution (select 1800 RPM and an acceleration rate; SLOW takes ~30 min), not a hand-throttled one — see **04** PWR-N05. | **Yes, for one procedure and one trip.** PWR-N05's synchronisation is **one action**: the rotor goes from rest to 1800 RPM and picks up load in a single press of FOLLOW or MAN, and measured, the plant barely notices (Tavg moves 0.1 °F, steam pressure 1196 → 1194 psi). And the **1980 RPM overspeed trip in §09 is configured but unreachable** — the rotor is either pinned at rated by the grid or coasting down, so nothing can drive it there. Do not read "no overspeed trip occurred" as evidence about a real machine. |
 | 12.20 | **One `RHR` control stands for two alignments of one set of pumps — so the trainer REFUSES the align during injection, and that refusal is not a plant interlock** *(new 2026-08-12, #458 — before this, aligning RHR into a running loss-of-coolant accident gave the plant full shutdown cooling)* | A real plant runs the RHR pumps in two mutually exclusive lineups: **injection** (suction from the refueling water tank, discharge to the cold legs, heat exchangers **uncooled** — WTSM 5.2 §5.2.4.5, ML11223A220) and **shutdown cooling** (hot-leg suction through 8701/8702, heat exchangers on component cooling water — WTSM 5.1, ML11223A219, which calls the cooldown function *"independent of any engineered safety features function"*). It leaves the first for the second by hand, at the **sump swap-over on refueling-water-tank depletion**, and *"the cold-leg recirculation lineup is completed by opening the component cooling water supplies to the RHR heat exchangers"*. This trainer has **one** `rhr_active` flag for both lineups and **no refueling-water-tank inventory**, so it can never reach that swap-over — its accidents stay in the injection phase for ever. The refusal is therefore the model declining to be in two lineups at once. **It is not an interlock and is not presented as one**: no document in any lane's corpus gives 8701/8702 a safety-injection inhibit, only the pressure permissive and the autoclosure, both of which are modelled and unchanged | **Know exactly what it costs you.** What you lose is the *real* exit from a loss-of-coolant accident — long-term core cooling through the RHR heat exchangers after the swap to the containment sump — because the tank that triggers it does not exist here. What you gain is the honest half: **shutdown cooling is not available to you during an accident, and securing injection is the decision that opens it.** Measured before the fix, aligning RHR into a large break removed **8.8×** the plant's decay heat from heat exchangers that in that lineup have no cooling water, with the primary at **79 % void** — a centrifugal pump on steam. Do not read "secure injection and you get cooling" as the real plant's sequence; a real crew opens component cooling water to the heat exchangers, and securing injection is not what does it. |
 | 12.13 | **Cold-plant mass bookkeeping is normalised** | The real cold-plant mass surplus | Level in the cold modes rests on a program floor standing in for CVCS keeping the pressurizer on span. Visible only in Mode 5. |
+| 12.21 | **The load dial ramps on a RAISE only, and the sourced 10 % step allowance is not modelled** *(new 2026-09-04, #624 / #619 item 24 — before this the dial did not ramp at all, and a 20 MWe change arrived in zero time)* | Ginna UFSAR chapter 10, section 10.1.2.1 (ML20339A040) allows the machine *both* a **10 % of full power step** and a **5 % of full power per minute ramp**. This plant enforces the ramp on **increases only** (**09** §10.0): dial a higher target and the effective load walks up at **5 MWe/min**; dial a lower one and it lands at once. A step allowance would be a second regime needing its own measurement — 10 % of rated is 10 MWe delivered instantly, a third of the disturbance that caused this issue — and one rule the operator can hold in their head was preferred. The asymmetry is deliberate and is argued in §7.3: the raise is the direction that shrinks the pressurizer, and limiting the cut as well would put the dial on the C-7 interlock's own threshold. | **Know the one consequence.** Small load **increases** take longer here than on the real machine — a 10 MWe raise is two minutes rather than a step — so do not read this plant's ramp times as a dispatch limit. Reductions behave as they always did, so the C-7 graded ride-out is still reachable from the dial as well as from **UNLOAD** (**03** §12.2). |
 
 ---
 
@@ -832,7 +868,7 @@ If you expect one of these and cannot find it, it is not hidden — it does not 
 
 **Everything else**
 - No multi-user operation, no accounts, no cloud state
-- No auto-detection of a developing transient to drop time acceleration — you set the speed and you reduce it
+- No protection-margin governor on time acceleration — fast-forward dropout (**02** §4.1) drops the clock on a trip, a new failure or a first alarm, and WARP lets go on a rate excursion, but nothing slows you for merely approaching a setpoint
 
 ---
 
@@ -840,7 +876,7 @@ If you expect one of these and cannot find it, it is not hidden — it does not 
 
 | Class | Trust | Examples |
 |---|---|---|
-| **Structural** — fixed physical constants and real-plant setpoints | High | β and Λ, six-group delayed data, fuel damage/melt thresholds, PORV and safety setpoints, the 600 psi (4.14 MPa) accumulator arming pressure, the 400 psi (2.76 MPa) RHR block-open permissive and its 600 psi (4.14 MPa) autoclose |
+| **Structural** — fixed physical constants and real-plant setpoints | High | β and Λ, six-group delayed data, fuel damage/melt thresholds, PORV and safety setpoints, the 665 psia (4.58 MPa) accumulator arming pressure, the 400 psi (2.76 MPa) RHR block-open permissive and its 600 psi (4.14 MPa) autoclose |
 | **Calibrated** — arbitrated by the physics acceptance suites | Directionally right, magnitude roughly right | Heat-transfer coefficients, decay-heat constants, level coefficients, dump and AFW capacities |
 | **Compressed** — deliberately faster than reality for training | Right in behaviour, wrong in duration | **This class has largely emptied** (#408 put the accident-inventory family — ECCS injection included — on the real Ginna scale; #419 retired the Mode 5↔1 pacing: the pressurisation slew now runs the sourced 0.23 psi/s heater rate, the boron rate is a derived physical ceiling, and the grab-sample turnaround is a real 30-minute lab). What remains: the **cooldown depressurisation rate** — see §14.1 |
 | **Indicative** — display flavour derived from normalised internals | Illustrative | The RCS flow conversion (**≈ 34 500 gpm** at cold-leg conditions — see the note below). **The charging, letdown and auxiliary-feedwater ratings left this class** and are now *Derived*: §6.3 carries them (30.1 gpm charging, 12.7 gpm letdown, 86.2 gpm auxiliary feedwater), each computed from this plant's volume or power against a sourced Ginna rate rather than read off a display scale |
@@ -875,7 +911,7 @@ numbers from injection transients ARE plant numbers. The **Mode 5↔1 pacing fam
 pressurisation slew, boron rates, lab turnaround — was retired by #419: those now run sourced
 or derived real rates, ridden at time acceleration.)*
 
-**Cooldown depressurisation is compressed, and it narrows one cue.** A real plant takes a good part of an hour to walk from 1000 psi (6.895 MPa) to the accumulators' 600 psi (4.14 MPa) cover gas. Driven briskly here, that band is crossed in about **1 minute of plant time** — measured full-stack. That is the entire window between the **SI ACCUM ALIGNED** annunciator (**06 PWR-A32**) coming in and the first accumulator discharge. At 30× time acceleration it is a couple of seconds of wall clock. **What this means for you:** isolate the accumulators on schedule at 1000 psi as the procedure says (**PWR-N15** step 3, **05** Phase C step C3) rather than waiting for the annunciator to prompt you, and slow the acceleration through that band. The cue is a backstop, not a timer you can run against.
+**Cooldown depressurisation is compressed, and it narrows one cue.** A real plant takes a good part of an hour to walk from 1000 psi (6.895 MPa) to the accumulators' 665 psia (4.58 MPa) cover gas. Driven briskly here, that band is crossed in about **1 minute of plant time** — measured full-stack. That is the entire window between the **SI ACCUM ALIGNED** annunciator (**06 PWR-A32**) coming in and the first accumulator discharge. At 30× time acceleration it is a couple of seconds of wall clock. **What this means for you:** isolate the accumulators on schedule at 1000 psi as the procedure says (**PWR-N15** step 3, **05** Phase C step C3) rather than waiting for the annunciator to prompt you, and slow the acceleration through that band. The cue is a backstop, not a timer you can run against.
 
 ---
 

@@ -43,6 +43,7 @@
  */
 'use strict';
 var path = require('path');
+var MUT = require('./mut_flags.js');   /* --no-mutations / --mut= / --grp= (#602) */
 var SRC = path.join(__dirname, '..', 'engines', 'pwr2');
 require(path.join(__dirname, '..', 'engines', 'load_mode.js'));
 require(path.join(__dirname, '..', 'engines', 'pwr', 'pwr_config.js'));
@@ -192,7 +193,7 @@ var MUTATIONS = [
 ];
 console.log('\n' + BOLD + 'injection self-test (' + MUTATIONS.length + ' mutations)' + RST);
 var blind = 0;
-MUTATIONS.forEach(function (m) {
+MUT.select(MUTATIONS).forEach(function (m) {
   if (SHELL_SRC.indexOf(m[1]) === -1) { console.log('  ERROR   anchor not found: ' + m[0]); blind++; return; }
   REC = []; QUIET = true;
   try { SH = loadShell(SHELL_SRC.split(m[1]).join(m[2])); runSuite(); }

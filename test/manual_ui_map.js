@@ -45,6 +45,14 @@ var VIEW_CONTROLS = {
     get board() { return pwrLabels(); },
     scram: 'SCRAM',
   },
+  pwr2: {
+    // The SHIPPED plant (#523) drives the same learning board as pwr — one vocabulary,
+    // the board's own CONTROL_LABEL_MAP, exactly as the header describes for pwr.
+    get primary() { return pwrLabels(); },
+    get secondary() { return pwrLabels(); },
+    get board() { return pwrLabels(); },
+    scram: 'SCRAM',
+  },
   rbmk_pre: {
     primary: ['Control Bank', 'Rod Speed', 'Shutdown Bank', 'MCP / Channel Flow', 'Emergency Core Cooling (ECCS)', 'EPS'],
     secondary: ['Feedwater', 'Turbine Load', 'Steam Dump'],
@@ -86,6 +94,106 @@ var VIEW_CONTROLS = {
  * fails until you do — it is in `run_all` as of #224, which is what stops this table
  * rotting a second time. */
 var STEP_UI = {
+  /* THE pwr2 POOL (#244/#254/#526, 2026-08-31) — profile-PREFIXED keys, because the two
+   * pools share procedure ids with different steps. `run_manual_controls` resolves
+   * `<prof>:<id>` first, and a profile listed in OWN_POOL_PROFILES never falls back to
+   * another pool's rows — a coincidental pill match is not coverage. Rows generated from
+   * the pool and then each control verified against the board vocabulary by the gate's own
+   * check 3 (the value here is the vocabulary resolution + drift detection, as for pwr).
+   * verify_manual_follow still walks the pwr profile only — these rows are the STATIC
+   * gate's coverage, not the browser gate's. */
+  'pwr2:pwr_heatup': [
+    { i: 1, view: 'board', control: 'RCP Run/Stop' },
+    { i: 2, view: 'board', control: 'Shutdown Bank' },
+    { i: 3, view: 'board', control: 'Turbine Load' },
+    { i: 4, view: 'board', control: 'Feed Pumps' },
+    /* i:5 (Dump SP) DELETED, not renumbered (#608 item 1, 2026-09-02): that step became an
+     * observation — it commanded the setpoint the Mode 5 initial condition already boots at, and
+     * the setpoint is inert in this mode anyway. An obs step carries no `control`, so it owns no
+     * row here. The step keeps its ARRAY position, so i:6/i:7/i:9 below are unchanged: this map
+     * has been broken three times by INSERTING a step and re-deriving instead of renumbering
+     * (run_all.js records the six-mismatch cascade), and a deletion is the safe direction only if
+     * you resist the urge to close the gap. */
+    /* THE LETDOWN TRANSFER INSERTED AT i:6 (#624 items 14/25, 2026-09-04) — and the three rows
+     * below MOVED WITH THEIR STEPS rather than being re-derived: 6->7, 7->8, 9->11. The ride
+     * step is followed by a new letdown-transfer CONFIRMATION which carries no `control`, so it
+     * owns no row here and only shifts what comes after it. */
+    /* AND "PLACE PRESSURE CONTROL IN SERVICE" INSERTED AT i:7 (#624 / #619 item 14, hours
+     * later the same day) — the three rows below MOVED AGAIN, 7->8, 8->9, 11->12, by shifting
+     * the numbers rather than re-reading the array. The step carries
+     * `control: 'Pressurizer Heaters (PZR)'`; its second card (PZR SPRAY) is a `cmd`-kind accs
+     * entry, and a step owns exactly one row here, so the spray is covered by `hl` and the board
+     * vocabulary, not by a row of its own. */
+    /* AND "PRESS AUTO ON THE STEAM DUMP CARD" INSERTED AT i:12 (#629, 2026-09-05) — the ONE row
+     * below it moved 12->13 by shifting the number, not by re-reading the array. Fourth insertion
+     * into this table and the fourth time the cascade looked like independent errors: the gate
+     * reported *pill "Steam Dump" != STEP_UI "Pressure SP"* at step 13 plus one unmapped tail
+     * step at 14, which is the INSERTION signature run_all.js's note describes. RENUMBER, DO NOT
+     * RE-DERIVE. */
+    { i: 6, view: 'board', control: 'Letdown Orifices (CVCS)' },
+    { i: 7, view: 'board', control: 'Pressurizer Heaters (PZR)' },
+    { i: 8, view: 'board', control: 'Pressure SP' },
+    { i: 9, view: 'board', control: 'Accumulator valve' },
+    { i: 12, view: 'board', control: 'Steam Dump' },
+    { i: 13, view: 'board', control: 'Pressure SP' },
+  ],
+  'pwr2:pwr_startup': [
+    { i: 1, view: 'board', control: 'Boron control' },
+    { i: 2, view: 'board', control: 'Feed Pumps' },
+    { i: 3, view: 'board', control: '1/M Plot' },
+    { i: 4, view: 'board', control: 'Control Bank' },
+    { i: 5, view: 'board', control: 'Control Bank' },
+    { i: 6, view: 'board', control: 'Control Bank' },
+    { i: 7, view: 'board', control: 'Control Bank' },
+    { i: 8, view: 'board', control: 'Control Bank' },
+    { i: 9, view: 'board', control: 'Control Bank' },
+    { i: 10, view: 'board', control: 'Control Bank' },
+    { i: 12, view: 'board', control: 'Control Bank' },
+    { i: 13, view: 'board', control: 'Control Bank' },
+    { i: 14, view: 'board', control: 'Turbine Load' },
+    /* TWO block steps since #601, taken in P-10's own order: the intermediate-range trip (which
+     * also clears the C-1 rod stop) then the power-range low setting. Both land on the same
+     * panel; they are separate rows because they are separate operator actions. */
+    { i: 15, view: 'board', control: 'Trip Blocks' },
+    { i: 16, view: 'board', control: 'Trip Blocks' },
+  ],
+  /* #619 item 27 (2026-09-04) inserted the boron SAMPLE step at i:2, so every row below it
+   * shifted by one. Written out rather than re-derived: the indices are positional and this map
+   * has been broken three times by renumbering it wholesale instead of moving the rows that
+   * actually moved. The gate caught the shift immediately — both symptoms, a pill/row mismatch
+   * at the insertion point and an UNVERIFIED tail step, are what an off-by-one looks like here. */
+  'pwr2:pwr_raise_power': [
+    { i: 1, view: 'board', control: 'Boron control' },
+    { i: 2, view: 'board', control: 'Boron control' },   // draw a boron sample (#619 item 27)
+    { i: 3, view: 'board', control: 'Control Bank' },
+    { i: 4, view: 'board', control: 'Control Bank' },
+    { i: 5, view: 'board', control: 'Control Bank' },
+    { i: 6, view: 'board', control: 'Control Bank' },
+    { i: 7, view: 'board', control: 'Control Bank' },
+  ],
+  'pwr2:pwr_lower_power': [
+    { i: 0, view: 'board', control: 'Boron control' },
+    { i: 1, view: 'board', control: 'Turbine Load' },
+    { i: 2, view: 'board', control: 'Turbine Load' },
+    { i: 3, view: 'board', control: 'Turbine Load' },
+    { i: 4, view: 'board', control: 'Turbine Load' },
+  ],
+  'pwr2:pwr_shutdown': [
+    { i: 0, view: 'board', control: 'Turbine Load' },
+    { i: 1, view: 'board', control: 'SCRAM' },
+  ],
+  'pwr2:pwr_cooldown': [
+    { i: 0, view: 'board', control: 'Boron control' },
+    { i: 1, view: 'board', control: 'Pressure SP' },
+    { i: 2, view: 'board', control: 'Trip Blocks' },
+    { i: 3, view: 'board', control: 'Dump SP' },
+    { i: 4, view: 'board', control: 'Pressure SP' },
+    { i: 5, view: 'board', control: 'Pressurizer Spray (PZR)' },
+    { i: 6, view: 'board', control: 'Accumulator valve' },
+    { i: 8, view: 'board', control: 'Residual Heat Removal (RHR)' },
+    { i: 9, view: 'board', control: 'RCP Run/Stop' },
+    { i: 10, view: 'board', control: 'Residual Heat Removal (RHR)' },
+  ],
   pwr_startup: [
     { i: 2,  view: 'board', control: 'Feed Pumps' },
     { i: 3,  view: 'board', control: '1/M Plot' },
@@ -206,4 +314,8 @@ function controlOnView(prof, view, control) {
   return (vc[view] || []).indexOf(control) >= 0;
 }
 
-module.exports = { VIEW_CONTROLS: VIEW_CONTROLS, STEP_UI: STEP_UI, controlOnView: controlOnView };
+/* Profiles that carry their OWN authored pool: no unprefixed STEP_UI fallback (#244). */
+var OWN_POOL_PROFILES = ['pwr2'];
+
+module.exports = { VIEW_CONTROLS: VIEW_CONTROLS, STEP_UI: STEP_UI, controlOnView: controlOnView,
+                   OWN_POOL_PROFILES: OWN_POOL_PROFILES };

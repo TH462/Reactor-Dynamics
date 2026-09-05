@@ -40,7 +40,7 @@ Describe every operator control and major indication on the PWR board, with purp
 | **Direction** | Raise = withdraw = add reactivity; Lower = insert = remove reactivity |
 | **Quick click** | Steps the bank **one step** |
 | **Hold** | Drives continuously at the selected **Rod Speed**; release to halt |
-| **Indication** | Vertical bar + step count (0 = fully inserted, max 912 steps fully withdrawn — a fine-step drive: one step ≈ 9 pcm ≈ 1.5 ¢ near the startup critical band) |
+| **Indication** | Vertical bar + step count (0 = fully inserted, max **627** steps fully withdrawn — a fine-step drive: one step is **8.1 pcm ≈ 1.24 ¢** in the startup critical band, 4.15 off the bottom and 8.82 at mid-travel). **While the reactor is subcritical, read reactivity from the source range count rate, not from this bar** — bank position becomes the better reactivity indication once the reactor is critical (Ginna UFSAR §7.7.3.1, ML20339A027) |
 | **Operating position** | ≈ 92 % withdrawn at hot full power |
 
 **Procedure — move rods**
@@ -52,7 +52,7 @@ Describe every operator control and major indication on the PWR board, with purp
 
 **CAUTION:** Target SUR ≤ **1 DPM** and reactor period ≥ **30 s** on approach to criticality. With the fine-step drive (one step ≈ 1.5 ¢ near the crossing), single-step nudges at **Slow** keep the crossing well inside 1 DPM — big held withdrawals are what push the rate up.
 
-**Interlock:** There is **no startup-rate rod stop** — SUR HI at 1 DPM is an *annunciator*, not an interlock, and the rate is yours to control. What does block withdrawal on a startup is the **intermediate range high flux rod stop at 20 % current equivalent power**, until you block the low-setting flux trips at P-10 (**05 §PWR-T14**). Three other rod stops exist; all four are in **09 §2.0**. **Insertion is never blocked by any of them**, and pressing WITHDRAW into one is refused with the stop named.
+**Interlock:** There is **no startup-rate rod stop** — SUR HI at 1 DPM is an *annunciator*, not an interlock, and the rate is yours to control. What does block withdrawal on a startup is the **intermediate range high flux rod stop at 20 % current equivalent power**, until you block the **intermediate range high flux trip** at P-10 — one press takes the trip and the stop together (**05 §PWR-T14**). Three other rod stops exist; all four are in **09 §2.0**. **Insertion is never blocked by any of them**, and pressing WITHDRAW into one is refused with the stop named.
 
 ### 3.2 Rod Speed
 
@@ -194,8 +194,8 @@ the heat sink is restored. **Recovery is procedural, not a button.**
 
 | Block | When allowed |
 |-------|----------------|
-| IR high-flux trip block | Power above **P-10** (10 %) |
-| PR low-setpoint (25 %) block | Power above **P-10** |
+| IR high-flux trip (25 %) block — also clears the 20 % rod stop | Power above **P-10** (8 %) |
+| PR low-setpoint (35 %) block | Power above **P-10** |
 
 Blocks **auto-reinstate** when power falls below P-10.
 
@@ -228,6 +228,22 @@ Blocks **auto-reinstate** when power falls below P-10.
 | **OFF** | No heater power |
 
 **Use to RAISE pressure** (restore subcooling, recover after spray/overcooling).
+
+**In BOTH cold modes — Mode 5, Cold Shutdown and Mode 4, Hot Shutdown — the heaters boot OFF, and
+that is the correct lineup.** It is where PWR-N12 leaves them on the way down: it turns them off at
+the depressurization step, *before* the RHR alignment that makes the plant Mode 4, so either plant
+you are handed matches the plant you would have cooled down yourself. Putting them back in AUTO is
+an operator action, and it is **PWR-N01 step 5b**, from either start. Until you take it, the
+Pressure SP does nothing: measured on this engine, dialling **1700 psig (11.72 MPa)** with the
+heaters off moves the plant **0.05 psi in 10 plant-minutes**, against **+133 psi (0.92 MPa)** once
+AUTO is selected. Basis: WTSM ch. 19, *"All groups of pressurizer heaters are energized to raise the
+pressurizer water temperature to saturation"* — an operator act during the heatup, not a standing
+lineup.
+
+Neither cold plant bleeds off while they are off. Measured 2026-09-04, 60 plant-minutes untouched:
+Mode 5 **362.6 psia (2.500 MPa) → 362.9 psia (2.502 MPa)**, **+0.3 psi/hr**; Mode 4
+**364.0 psia (2.510 MPa) → 364.2 psia (2.511 MPa)**, **+0.2 psi/hr**. Pressurizer level moves
+25.00 → 25.03 % in both.
 
 **Four different things put heater power at 0 %, and only one of them is a mode above.**
 The selector stays exactly where you left it in all four, so the panel alone cannot tell
@@ -291,6 +307,12 @@ at 2235 psi (15.41 MPa) with every RCP secured, 600 s at 100 %:
 | neither | 2245 psi (15.48 MPa) |
 
 The stand-in is the **stronger** lever here, not the weaker one.
+
+**In both cold modes the spray boots in hand and SHUT**, alongside the heaters (§5.2), and for the
+same two reasons: it is where PWR-N12 leaves it, and with every RCP secured — which they are at
+Mode 4 as well as Mode 5 — a real spray valve has no head behind it. On this board the departure above means the lever would still act —
+which is exactly why leaving it in AUTO on a cold plant was wrong, not harmless. It goes back to
+AUTO at **PWR-N01 step 5b**, after the pumps are started at step 2.
 
 **Use to LOWER pressure** carefully. Return to AUTO when on target.
 
@@ -372,7 +394,29 @@ The stand-in is the **stronger** lever here, not the weaker one.
 - **Rate feel:** uncompensated (charging secured), orifice A walks PZR level down **≈ 2 %/min**;
   A+B ≈ 5 %/min; max charging with letdown isolated raises level ≈ 13 %/min. Minutes to act, not seconds —
   and the **17 % low-level letdown isolation** (see 09 §3.0) backstops an unattended drain.  
-- **Isolate** = both orifices out (letdown zero).  
+- **The cold lineup arrives with both orifices OUT.** **Mode 5, Cold Shutdown** and **Mode 4, Hot
+  Shutdown** both boot that way, because on shutdown cooling letdown does not run through these
+  orifices at all: it runs out of the **residual heat removal (RHR)** system through the
+  **HCV-128 cross-connect**, which is wide open in that regime, while the orifices pass almost
+  nothing against the **363 psi (2.50 MPa)** plant you start from (WTSM ch. 19, ML11223A342).
+  Putting an orifice in service before you pressurize is therefore a real step, not a formality —
+  the RHR suction autocloses at **585 psig (4.03 MPa)** on the way up and takes the cross-connect
+  with it (**04** PWR-N01 step 5a).  
+- **Isolate** = both orifices out — and that is **letdown zero only with RHR out of service**.
+  With RHR in service the cross-connect is still letting down whatever the selector reads; the
+  LETDOWN FLOW indication shows the flow the plant is actually passing, not the lineup you
+  selected, so the two can legitimately disagree on a cold plant.  
+- **The 17 % low-level isolation stops BOTH paths, and the card shows it.** At **17 %** indicated
+  pressurizer level the protective isolate shuts the orifice path *and* the cross-connect
+  (annunciated **PZR LTDN ISOL**, **09** §3.0). While it stands, **all four lineup lamps go dark**
+  — a lineup lamp reports where the valve *is*, and both orifices are shut whatever you last
+  selected — **CLOSED** lights amber to say the plant did that rather than you, and the card's
+  status word reads **ISOLATED**. There is **no automatic restoration**: past **20 %** the latch
+  clears, and letdown stays shut until you re-select an orifice by hand, which lights the lamp
+  again — see **06** PWR-A13a.  
+- **Status word (bottom of the card):** **NORMAL** while letdown is delivering (including on the
+  RHR cross-connect with both orifices out), **SHUT** when it is not and nothing is holding it
+  shut but your own lineup, **ISOLATED** on the 17 % cut.  
 
 ### 7.4 CVCS Inventory Control AUTO / MANUAL
 
@@ -525,7 +569,8 @@ Level tells you what already happened; the flow mismatch tells you what is about
 |------|--------|
 | **Purpose** | Command main feed pump speed, shown as **0–1200 gpm** (= 0–120 % pump speed) |
 | **Manual effect** | Takes the three-element controller to **MANUAL** |
-| **▲▼ step** | ±20 gpm |
+| **▲▼ step** | ±20 gpm per click. **Press and hold** to run continuously; the step coarsens after about 1½ s so a box can be swept across its range without 60 clicks |
+| **Pumps** | **AUTO** and any non-zero **MAN** demand START the main feed pumps; **OFF** secures them. A demand of zero typed into the box is a demand, not a pump stop — only the **OFF** button secures. Mode 4, Hot Shutdown and Mode 5, Cold Shutdown boot with both pumps secured, so the first feed action of a heatup is AUTO or MAN |
 | **Character** | A **fixed-demand** device. It holds the speed you set — it has no level feedback of its own |
 | **NO FLOW marking** | The commanded gpm turns **amber** — and the SG FEED corner reads **NO FLOW** — when the plant is delivering none of it (dead feed train: blackout, isolation). The demand stays where you left it; the colour says the plant is not doing that number. FEED FLOW below has the truth |
 
@@ -745,16 +790,50 @@ The **OFF** lamp lights on either condition — breaker open *or* turbine trippe
 - Setting a target forces **Manual** mode.  
 - Raising load draws more steam → power follows (with feedback).  
 
+**RAISING LOAD RAMPS; LOWERING IT DOES NOT. Two numbers, and the box shows the first one.**
+
+- What you type is the **dialled target**, and the box reads it back the instant you type it, so
+  ten clicks of the arrow get you to 100 MWe without waiting for anything.
+- **Raising:** the **effective target** — what the turbine is actually being asked for — walks up
+  toward your dial at **5 % of rated per minute**, i.e. **5 MWe/min** on this plant, so 0 → 100
+  MWe is a **20-minute** ramp. Read it on the **MWe output** indication (§12.4), which follows the
+  machine and not your dial.
+- **Lowering: immediate.** A target below where the machine is takes effect at once, whatever the
+  size of the cut.
+- **Why the raise is ramped.** A load *increase* delivered in zero time shrinks the pressurizer
+  faster than charging can answer. Measured on this plant, from 10 MWe with the rods left alone:
+  an instant dial to 30 MWe pulled Tavg down **15.3 °F (8.5 °C)** and took indicated pressurizer
+  level from **26.7 % to 16.1 % in 44 seconds**, through the **17 %** low-level isolation
+  (**09** §3.0), which shuts letdown and sheds the heaters. The same change on the 5 %/min ramp
+  spreads the Tavg swing over four minutes — **12.9 °F (7.2 °C)**, level bottoming at **20.4 %** —
+  and is back on program inside 90 minutes.
+- **Why the reduction is not.** Lowering load does the opposite to the pressurizer — the loop
+  warms, expands, and level **swells**, away from the low-level cut — so the direction that needs
+  limiting is the raise. Ramping the cut as well would also make the operator's dial incapable of
+  arming the **C-7** loss-of-load steam dump, which arms on a decrease *faster than* 5 %/min: the
+  same number as the ramp. Losing the graded ride-out from the dial is not a trade worth making
+  (§12.3, and **09** §10.0).
+- The rate is the plant's sourced load-following envelope: *"ramp increases of 5% of full power
+  per min"* (Ginna UFSAR chapter 10, section 10.1.2.1, ML20339A040). The same sentence adds that
+  *"similar step and ramp load reductions are possible"* — a statement about what the machine can
+  absorb, not a limit on the operator, and it is not modelled as one. The document allows a
+  **10 % step** as well; that allowance is **not modelled here** — a raise ramps, always.
+- **Also not ramped:** the automatic **OTΔT/OPΔT runback** (200 %/min, its own protective path —
+  and it moves your dial down with it, so the load stays where the runback put it), a **turbine
+  trip**, and the **UNLOAD** button on the turbine card, which opens the breaker rather than
+  turning a dial.
+
 **Procedure — raise electrical load (with rods)**
 
 1. Withdraw rods slightly (or dilute) so reactor can support higher power.  
 2. Raise **Turbine Load** to new MWe.  
-3. Or use **Follow** and let load track after rod raise.  
+3. Wait out the ramp — the machine takes **one minute per 5 MWe**. Trim rods against the ramp,
+   not against the number you typed.  
 4. Verify SG level stable; re-engage feed AUTO if needed.  
 
 **Procedure — lower electrical load**
 
-1. Reduce **Turbine Load** first.  
+1. Reduce **Turbine Load** first. A reduction is **not** ramped and lands at once.  
 2. Insert rods (or borate) to match.  
 3. Watch SG swell / level high.  
 
@@ -762,9 +841,10 @@ The **OFF** lamp lights on either condition — breaker open *or* turbine trippe
 
 | Mode | Use |
 |------|-----|
-| **AUTO** | Opens on high SG pressure / load rejection as configured |
-| **Manual % / Open** | Dump steam to condenser, bypass turbine |
-| **Dump SP** | No-load steam-dump **pressure setpoint** (MPa, live readout + numeric box; **29 – 1099 psi (0.2 – 7.58 MPa)** — the box refuses anything above the SG safeties' first lift, because the engine itself does **not** clamp it) the AUTO dump holds. **Lower** it on a cooldown to vent the SG and cool the primary through the steam generators; **raise** it back toward the no-load point on a heatup. |
+| **AUTO** | Puts the dump controller in service. **AUTO is two control modes, and which one you get is the turbine's question.** With the turbine **tripped** — heatup, cooldown, hot standby — AUTO selects **steam-pressure mode**: the dumps modulate to hold the **Dump SP** box beside them, and that is the heat sink for the whole of a heatup or a cooldown. With the turbine **on line** it selects **Tavg mode**, the at-power program, which is also the mode that catches a load rejection or a turbine trip (**12** §8.3). The card's **status word tells you which — PRESS or TAVG.** Basis: Westinghouse Technical Manual (WTSM) §11.2 (ML11223A294), *"Tavg mode at power, steam pressure mode at hot standby / startup / cooldown."* |
+| **CLOSE** | Takes the controller out of service and shuts the dumps; status reads **MANUAL**. This is the cold lineup — **PWR-N01** step 5 verifies it, and step 8b is where AUTO goes in. |
+| **OPEN** | **Refused on this plant.** The dump is controller-driven and there is no manual position lever, so a full-open demand is rejected by name (measured 2026-09-05) — the modes are AUTO and CLOSE, and what you move is the setpoint. See the note that closes §18. |
+| **Dump SP** | No-load steam-dump **pressure setpoint** (MPa, live readout + numeric box; **29 – 1099 psi (0.2 – 7.58 MPa)** — the box refuses anything above the SG safeties' first lift, because the engine itself does **not** clamp it) the AUTO dump holds. **The controller reads it in steam-pressure mode only**, so on a plant in Tavg mode the box does nothing until the turbine trips and AUTO is pressed again. **Lower** it on a cooldown to vent the SG and cool the primary through the steam generators; **raise** it back toward the no-load point on a heatup. |
 
 ### 12.4 Indications
 
@@ -848,7 +928,7 @@ removal, or tube fouling.
 
 ### 14.1 Engage a channel
 
-1. Find the channel's AUTO control on its board card — **STEAM GEN FEED → AUTO** (three-element SG level), **BORON → ON** (target ppm), **STEAM DUMP → AUTO**, **CHARGING → AUTO**. (**ROD AUTO** is on the rod-control card but is **dark on this plant** — see §14.3.)  
+1. Find the channel's AUTO control on its board card — **STEAM GEN FEED → AUTO** (three-element SG level), **BORON → ON** (target ppm), **STEAM DUMP → AUTO**, **CHARGING → AUTO**. (There is no rod AUTO control on this plant — see §14.3.)  
 2. Where the card carries a setpoint box (boron target ppm, dump setpoint), set/verify it; the other channels capture the current reading on engage.  
 3. Press **AUTO** — the button stays lit while the channel is engaged.  
 
@@ -859,14 +939,18 @@ removal, or tube fouling.
 
 ### 14.3 Rod control is MANUAL on this plant, and that is deliberate
 
-**There is no automatic rod controller here.** The **ROD AUTO** pushbutton on the rod-control
-card is present and **dark**, and it will stay dark *(OWNER DIRECTIVE, 2026-08-30: "I want to keep
-rod control manual. This is a learning plant not an actual power plant and I think making the
-player move rods manually will help their learning.")*.
+**There is no automatic rod controller here, and there is no button for one** *(OWNER DIRECTIVE,
+2026-08-30: "I want to keep rod control manual. This is a learning plant not an actual power plant
+and I think making the player move rods manually will help their learning.")*.
 
-A real plant hands the control bank to a controller that holds average coolant temperature on a
-reference programmed from turbine load, and the operator supervises it. Knowing that is the point
-of the button being visible: the contrast is the lesson.
+Until Rev 17 a **ROD AUTO** pushbutton sat on the rod-control card, permanently dark, on the
+argument that the contrast was the lesson. It was removed *(OWNER DIRECTIVE, 2026-09-01, #598 items 9/10:
+"Remove the ROD AUTO button. Move the 1/m button to where the ROD AUTO button used to be.")* —
+the player had to ask what it was for, which is a control failing the test a control is for. The
+**1/M PLOT** button now occupies that slot. The contrast is still worth teaching and this section
+is where it is taught, which is the right place for it: a real plant hands the control bank to a
+controller that holds average coolant temperature on a reference programmed from turbine load,
+and the operator supervises it. Here the operator IS that controller.
 
 **What that leaves you holding:**
 
@@ -961,7 +1045,7 @@ These topics appear as dedicated **campaign** missions; manuals cover them here 
 
 ### 17.2 Holding Tavg by hand (Mode 1)
 
-There is no ROD AUTO on this plant (§14.3), so this is the drill that replaces the old
+There is no automatic rod control on this plant (§14.3), so this is the drill that replaces the old
 engage-the-controller one.
 
 1. Note **Tavg** against **T-ref** on the rod-control card.
@@ -1075,7 +1159,7 @@ Listed for cross-reference — normal operation never requires typing a command.
 | Generator **OFF** — planned offline (§12.1) | `disconnect_grid` | — |
 | Turbine load (§12.2) | `set_load_target` | `{mwe}` |
 | CW inlet temperature (§13.1) | **CW INLET TEMP** box on the CONDENSER COOLING card, 35 – 85 °F | `set_condenser_cw_temp` |
-| Steam dump / bypass (§12.3) | `set_steam_dump` | `{mode}` — **AUTO or CLOSED only**; there is no manual position lever |
+| Steam dump / bypass (§12.3) | `set_steam_dump` | `{mode}` — **`auto` or `closed` only** from the board; there is no manual position lever, and `open` and a bare `pct` are refused by name. **`auto` resolves to one of two control modes on the turbine latch**: steam-pressure mode when the turbine is tripped, Tavg mode when it is on line (§12.3). `pressure` and `tavg` are accepted explicitly as the checklist/scenario API for saying which one you mean |
 | Pressure setpoint box (§5) | `set_pressure_setpoint` | `{mpa}` |
 | Steam-dump setpoint box (§12.3) | `set_steam_dump_setpoint` | `{mpa}` |
 | HPI/LPI (§11.0) | `set_hpi` | `{active}` |

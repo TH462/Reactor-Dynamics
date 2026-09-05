@@ -286,6 +286,21 @@
     spray_start_psi:   +25,
     spray_full_psi:    +75,              /* also the high-pressure alarm */
     porv_open_psi:    +100,
+    /* [tune] Control-channel lag on the PROPORTIONAL heater term only (owner report
+     * 2026-08-31, "PZR heater cycling on and off rapidly"). The channel's noise sigma is
+     * 0.02 MPa (2.9 psi) on this 30 psi proportional band with a 0.125 s correlation
+     * (pwr2_instruments: tau_s 0.5 x NOISE_TAU_FRAC 0.25), so the unfiltered bank re-set
+     * its output on 859 of 1200 broadcasts, +/-3 % of installed total at ~10 Hz — the
+     * same controller-chases-its-own-instrument class as #590's feed loop. A real
+     * proportional heater controller has electronics/actuation lag on this order; the
+     * backup bistable reads the same lagged signal (its 8 psi hysteresis is 2.8 sigma of
+     * the raw noise, 11 sigma of the lagged); spray and the PORV auto-open keep the RAW
+     * error — see the bistable comment. MEASURED at 2.0 s, hot full power, 300 s: the
+     * 0.1-resolution readback moves 7.2/s +/-3 points before, 2.4/s +/-0.5 after, and the
+     * backup bank makes 0 on/off transitions even parked 21 psi below setpoint (the
+     * chatter regime). The delay this buys on a real error is ~2 s against a bank whose
+     * thermal effect works over minutes. */
+    prop_filter_tau_s: 2.0,
     src: 'WTSM Fig 10.2-3 (ML11223A287); spray band corroborated by Ginna ch15 Model 1'
   };
 
@@ -809,10 +824,22 @@
                                                              : P;
     var err_psi = (P_ctl - pz.setpoint_mpa) * PSI;
 
-    var prop = clip((CONTROL.prop_off_psi - err_psi) /
+    /* The proportional bank reads the LAGGED error (CONTROL.prop_filter_tau_s — the
+     * derivation and the measured flip counts are on the constant). Old saves carry no
+     * filter state and seed from the live error, which is the pre-filter plant exactly. */
+    if (pz.errFiltPsi === undefined || !isFinite(pz.errFiltPsi)) pz.errFiltPsi = err_psi;
+    pz.errFiltPsi += (err_psi - pz.errFiltPsi) *
+                     clip(dt / Math.max(dt, CONTROL.prop_filter_tau_s), 0, 1);
+    var prop = clip((CONTROL.prop_off_psi - pz.errFiltPsi) /
                     (CONTROL.prop_off_psi - CONTROL.prop_full_on_psi), 0, 1);
-    if (err_psi <= CONTROL.backup_on_psi || backupOnLevel) pz.backupOn = true;
-    else if (err_psi >= CONTROL.backup_off_psi && !backupOnLevel) pz.backupOn = false;
+    /* The backup bistable reads the SAME lagged signal as the proportional bank: its 8 psi
+     * hysteresis is 2.8 sigma of the raw channel noise (2.9 psi) but 11 sigma of the lagged
+     * one, which is what lets a latched contactor near its threshold stay latched. Spray and
+     * the PORV auto-open below deliberately keep the RAW error — neither was reported
+     * cycling, and lagging the PORV's control-open would trade a noise fix for a 2 s delay
+     * on a +100 psi excursion. */
+    if (pz.errFiltPsi <= CONTROL.backup_on_psi || backupOnLevel) pz.backupOn = true;
+    else if (pz.errFiltPsi >= CONTROL.backup_off_psi && !backupOnLevel) pz.backupOn = false;
 
     /* Heater shed: SI / no AC (sourced), uncovered heaters (D2 §25.3's emptied regime), or
      * the 17 % low-level cut (WTSM 10.3 — a heater in a steam environment is a damaged one).

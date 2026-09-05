@@ -22,6 +22,96 @@ the evidence to put it back** — say so in the session log rather than quietly 
 
 ---
 
+## Evicted 2026-09-04b (a THEMES-rotation eviction — the #600/#601 trip-blocks bullet, out for #627's)
+
+The oldest of five. **It meets the criterion in part**: the P-7 rows and the intermediate-range trip
+are now pinned by `run_manual_setpoints` and the TRIP BLOCKS checks, so a regression reds a runner.
+The second half — a shared boolean that two wirings satisfy identically — is the #295/#545 "plant
+the demand PAST the half you are not testing" idiom, which the standing list already carries.
+
+> **A `blockable` FLAG IS NOT EVIDENCE AN OPERATOR BLOCKS IT — AND A SHARED BOOLEAN CANNOT BE
+> TESTED FOR WHICH CONSUMER IT BELONGS TO** (2026-09-01, #600/#601, from the owner's question about
+> the dark TRIP BLOCKS rows). Two rows offered a P-7 block WTSM 12.2 calls *automatic*; #564 made
+> them politely dark without asking what the source says the operator does. A third was dark because
+> the 25 % intermediate-range TRIP did not exist — the retired plant wrote the ROD STOP's 20 % into
+> the trip's row and `Manuals/09` shipped it. #572 then hung the C-1 stop on the power-range lever
+> and **its check asserted that and passed**: with one lever, both wirings look identical.
+
+**The half worth carrying, if you only read one line:** a flag that says a thing CAN be done is not
+a source saying an operator DOES it — go and read what the source says the operator does.
+
+---
+
+## Evicted 2026-09-04 (a THEMES-rotation eviction — the #606 cache-key bullet, out on the workbench<-develop merge)
+
+A rotation eviction, not a standing-list one: the merge brought the themes list to six (#625's
+bullet from the workbench lane and #619/#621's from develop), and the oldest is this one. **It
+meets the criterion** — the greyed-checklist case is pinned by the #606 browser check, so getting
+it wrong again reds a runner.
+
+> **A CACHE KEY THAT OMITS WHAT THE CACHE DESCRIBES READS AS A WORKING FEATURE — AND ITS
+> CONTENT IS CORRECT, FOR A PLANT THE PLAYER HAS LEFT** (2026-09-02, #606). The Checklists tab
+> greyed the Mode 5 heatup on a Mode 5 board. Ranker, CSS and gate sentences were all right;
+> `cklMenuKey` was `engine | running checklist`, and neither changes on an initial-condition
+> reset, so the Hot Full Power list survived **byte-identical**. No source read sees it, and no
+> Node harness calling the ranker — the ranker is not where the bug is.
+
+**The half worth carrying, if you only read one line:** when a memoized render is wrong, the
+defect is in the KEY, and no read of the renderer will find it.
+
+---
+
+## Evicted 2026-09-02b (a THEMES-rotation eviction — the #244/#526 checklist-replay bullet, out for #608's)
+
+Not a standing-list eviction: the standing list is at its 25-bullet cap and `CLAUDE.md` sits one
+word inside its 15,000. **This one is a REPLACEMENT rather than a plain eviction** — #608's bullet
+is about the same subject and corrects a limit in this one, so keeping both would have said the
+replay is the authority twice and the exception once.
+
+> **A CHECKLIST'S REPLAY IS THE AUTHORITY ON WHETHER IT FITS THE PLANT — AND A STEP WHOSE COMMAND
+> NEEDS A MID-STEP STATE CANNOT BE ONE STEP** (2026-08-31, #244/#526). Aliasing the retired pool
+> onto pwr2 was refuted by riding it: the 912-currency rod bursts overrun the 200-step bank, four
+> commands are REFUSED, and the cooldown's dialed depressurization parks at the Pressure SP's
+> 1700 psig floor. The harness issues a step's command at step START, so the accumulator-window and
+> align-under-spray steps split into ride-then-act pairs — also the honest operator order (shutting
+> spray first bounces pressure back over the RHR permissive).
+
+**Both halves survive.** The ride-then-act idiom is now built into the shipped pool and gated by
+`run_checklist_pwr2`, which replays all six chain checklists end to end — get it wrong and a runner
+reds, which is the eviction criterion exactly. The "replay is the authority" half is carried
+forward in the #608 bullet **with its limit attached**: it is the authority on whether a checklist
+FITS the plant, and it is structurally blind to whether a step's tick is safe permission for the
+next step, because a `hold:` long enough to be realistic always masks the acceptance underneath it.
+
+**The half worth carrying, if you only read one line:** a harness that issues each step's command
+at step START can only ever test the commands, never the gaps between them — and the gaps are where
+a human operator actually lives.
+
+---
+
+## Evicted 2026-09-02 (a THEMES-rotation eviction — the #596 flicker bullet, out for #606's)
+
+Not a standing-list eviction, and for the same reason as the two entries below: the standing list
+is at its **25-bullet cap** and `CLAUDE.md` sits within a handful of words of its 15,000, so
+rescuing a line out of this would have cost a slot doing more work. The mechanism is FIXED and
+gated in the rendering path itself, the open follow-up is tracked on **#596**, and the full
+measurement — the A/B that put animations at 6x of raster — is in `Diagnostic/TUNING_LOG.md`
+2026-08-31.
+
+> **A RENDER-BOUND FLICKER IS MEASURED IN THE BROWSER'S PIPELINE, NOT OUR JS — AND PER-ELEMENT
+> THROTTLING OF ANIMATIONS CUTS NOTHING** (2026-08-31, #596, the in-sim report: 4.7 fps). Two
+> 60 Hz wastes behind a 10 Hz display: the chart rebuilt an IDENTICAL SVG every paint, and ~100
+> dash strokes each ran their own CSS animation (`stroke-dashoffset` never composites; A/B
+> measured, animations were 6x of raster). Per-element `steps()` still commits at 60 Hz; **only a
+> SHARED clock (std_pipe.js, ~12 Hz batch) aligns the writes**. Follow-up in #596; a Paint event's
+> clip rect is the LAYER, not damage.
+
+**The half worth carrying, if you only read one line:** you cannot throttle a compositing problem
+per element — the browser commits on ITS clock, so the only lever is one shared clock that batches
+every write. And profile the browser's pipeline, not our JavaScript: our JS was never the cost.
+
+---
+
 ## Evicted 2026-08-31 (a THEMES-rotation eviction — the #516 Group A bullet, out for #591's)
 
 Not a standing-list eviction, and for the same reason as the 2026-08-24 entry below: the standing

@@ -9647,3 +9647,812 @@ the AFW START button this change removes. It reddened for a reason unrelated to 
 `querySelector` returned null, no mouseover was ever dispatched, and the refusal stayed put
 because nothing asked it to move. Re-pointed at AFW STOP, **and the silent `if (other)` is now a
 loud failure**, which is the half that let a missing fixture read as a broken guard.
+
+---
+
+## 126. #524 — MODE 5 EXISTS: THE PRESSURE FLOOR WAS A FETCH QUERY'S BOUND, AND EXTENDING IT LET THE BLOWDOWN FINISH — 2026-08-31
+
+**The ruling** *(owner, 2026-08-31, selections from written options: "0.002 MPa" and "Include
+checklists")*: extend the water-property floor to 0.002 MPa (T_sat 63.5 °F / 17.5 °C — an SG can
+sit at ambient) and make the heatup/cooldown checklists' Mode 5 legs live; scenarios/campaign
+stay #525's ruled work.
+
+### The floor was §74's wall, and it was `PLow=0.1` in a URL
+Layer 0's `P_MIN = 0.1` MPa came from the fetch query's own bound — the exact #586 `THigh=800`
+shape at the other wall, sitting three lines from constants with real derivations. Measured
+before refitting (the §118 rule): with the clip lifted, `rho_v_sat` read **1e27 %** wrong at
+0.002 MPa and `Z_sat` 2.6 against a true 0.9985 — the old coefficients did not extrapolate.
+`T_sat` needed nothing (already fitted 0.0017–22 MPa) and the liquid branch is T-domain.
+
+### The refits, measured over the whole new range (provenance: `PWR2_L0_REBUILD.md` §3b)
+`rho_v_sat` degree 6 → 9: **0.74 % on-grid / 0.52 % off-grid** over 0.002–18 MPa (old claim
+1.25 % over 0.1–18 — the range grew and the error fell). Superheated smoothing quartic →
+sextic over 33 isobars, per-isobar extraction refitted on the **h-form directly** (cp stays its
+exact derivative): **h_v max 21.4 kJ/kg (0.8 %)** over 3,133 points, 0.002–17 MPa,
+T_sat..1000 °C — against the shipped 32.8 over a range 50× narrower in pressure; five off-grid
+isobars read 8.6 kJ/kg max (no inter-isobar wiggle). `Z_sat` degree 4 → 6 with `tau_z` on the
+direct Z residual: composed `rho_v` **9.5 %** (old 8.1 % on the narrower range). Transport
+re-checked over the extension: k_v 4.0 %, mu_v 7.3 %, worst at the 20 °C corner. The vtable
+followed (NP 110 → 150, NP1 400 → 700, cap 260 → 320 kB — justified by the superheat wing
+measuring 0.136 % against its 0.12 % claim at the old NP over the 1.75× ln-span).
+
+### Three consumers, three verdicts (HR10, one at a time)
+- **`pwr2_sg`**: `h_lo` follows the floor, and the §99.6 residual is **RETIRED** — h_f(0.002)
+  ~ 73 kJ/kg sits below every physical inflow, so the 3,872-step subcooled-AFW clip binding is
+  now zero. What remained was the flag ticking on FLOAT ROUNDOFF when the #549 energy limiter
+  lands h exactly AT h_lo (3,966/30,000 ticks, 0.000 MJ moved) — the flag now reports material
+  corrections only, the mass floor's own idiom. Three gate fixtures had been built AT the old
+  floor to make "duty zero by construction" and read the fix as a defect; each moved with it.
+- **`pwr2_core`/the blowdown family**: §115's finding held — the damage chain latches on the
+  CEILING arm and did not move. But `run_pwr2_loca`'s 40 cm² no-ECCS fixture used to latch the
+  hold at **107.1 s on the FLOOR arm** — that was the floor masking the end of blowdown. **The
+  same ride now COMPLETES**: drains 16,091 → 11.7 kg, equalizes at the break's containment
+  backpressure (15.7 psia, comfortably above the new floor), flow → 0, zero clamps, no hold.
+  The gate's frozen-books claim (#585) moved to a manual-latch fixture (`beyond_model` set at
+  the flag every consumer checks); the completion is asserted as its own check.
+- **The mode ladder**: the rung built at wave 10 reads 5 below 93.3 °C — nothing to change.
+
+### The IC, and Mode 5 both ways (dt 0.02 s)
+`cold_shutdown`: the wave-10 construction one step colder — 122 °F / 363 psia (parity with the
+retired preset and what the manuals print), pzr level 25 % (the program's cold clamp), RCPs
+SECURED, RHR aligned HX-shut, heaters AUTO about the boot setpoint, dumps OFF, P-11 blocks
+taken, accumulators isolated, the #468 order paying the shutdown bank in RODS. Boot: **Mode 5,
+918 ppm, ρ = −5,809 pcm** both banks in (the bank's 3,676 pcm rides as margin in rods; the
+colder trim carries FEWER ppm than Mode 4's 999 because boron worth per ppm rises with
+density). **The SG secondary lands at 1.79 psia with T_sec 122 °F — tracking the primary**;
+§74's ~61 MW false gradient measures as the ~0 °F approach it should be. Untouched 90 min:
+Mode 5 throughout, level flat at 25 %, final-45-min rates 0.79 °F/hr / 2.1 psi/hr — NO
+fill-solid (the RHR letdown path closes the loop here as at Mode 4). Reached by OPERATING
+too: `hot_shutdown` through the RHR HX at 15 % crosses the boundary in **0.56 plant-h**
+(worst 1-min −159 °F/hr — over the 100 °F/hr limit, which is why the checklist ramp starts at
+7 %; compliance is the operator's throttle, §77's story). The heatup direction: pump heat
+alone warms the Mode 5 plant at **94.9 °F/hr** over the first half hour.
+
+### Gates and content
+`run_pwr2_water` 282 → **327** (36 mutations, +floor-restored), `run_pwr2_vtable` 24 (regions
+swept to 0.002), `run_pwr2_sg` 44 (residual-retired check), `run_pwr2_loca` 19 → **22**
+(completion + manual-latch hold), `run_pwr2_endurance` 22 → **25** (Mode 5 hold, settle,
+reach-by-cooldown), `run_pwr2_engine`/`run_pwr2_shell` refusal checks re-aimed at `5_percent`
+with the fifth IC boot asserted, `run_manual_setpoints` 13 (the §11.0 column captured live).
+Content: the picker's fifth row, PWR-N01 from `cold_shutdown`, PWR-N15 to the Mode 5 outcome,
+the RHR step's sourced 425/585 psig pair replacing the retired 400/600 (also in the board
+wiring comment — the #557 trap class), ~14 manual sites un-fenced (Rev 17 pending row), and
+the site copy's "cold shutdown to full power" restored per the issue.
+
+### §126 addendum — two more fixtures expired with the wall (found by the full gate)
+- **`run_pwr2_reactor`'s SUR settle sample**: the adversarial rated-sink scram ride "settled at
+  100 % by ~90 s" pre-#524 partly because the pressure solve PINNED at the 0.1 MPa floor at
+  ~130 s and froze the ring; with the floor at 0.002 the same ride boils toward vacuum and rings
+  ±600 dpm indefinitely — no settle exists under a standing rated sink. The settle leg now rides
+  a DUTY-MATCHED sink (heat out follows the core), which settles honestly on BOTH floors
+  (−0.75 dpm at 120 s) — validated against the old behaviour, not refit (HR10). 42/42.
+- **`verify_e2e_ui`'s #520 held-dialog fixture**: the four-failure combo (large LOCA + SBO +
+  AFW failure + ATWS) that used to latch `beyond_model` at 228–411 s now rides **8,000 s LIVE**
+  through clad damage at 3,033 °F (1,667 °C) — the extended envelope contains the casualty, and
+  no menu-injectable combo reaches the hold in a testable window. #520's claim is the UI
+  contract (a held plant must SHOW the dialog), so the fixture latches `sys.beyond_model`
+  directly through a new `?dev=1` hook in `ui/app.js` — the same manual-latch adjudication as
+  the LOCA gate's hold section. The #588 one-ulp branch cliff retires with it.
+
+## 127. #601 + #600 — THE STARTUP NET HAD ONE RUNG, THE ROD STOP WAS ON THE WRONG LEVER, AND TWO PANEL ROWS OFFERED A BLOCK NO OPERATOR HAS — 2026-09-01
+
+**Entered through a question, not a gate.** The owner asked why three rows in the TRIP BLOCKS
+popover read *NOT ON THIS PLANT*, and whether to add them or remove them. The answer is different
+for each of the three, and finding that out turned up two more defects on the rows that work.
+
+### 127.1 What the three rows were
+
+`BLOCKABLE_TRIPS` in `ui/diagram/board/pwr_board_wiring.js` was the retired plant's list, inherited
+by reference. #564 item 2 had already found that `lo_flow`, `rcp_breaker` and `ir_high` had no
+`trip_block_status` entry, so all three rendered ENABLED and each press threw; it made them go dark
+and read N/A. That stopped the throw. It did not ask whether the rows should exist.
+
+**RCS LOW FLOW and RCP BREAKER: no source gives the operator either block.** WTSM 12.2 §12.2.3.12
+(ML11223A301):
+
+> *"All the reactor coolant low flow trips are automatically blocked below the P-7 setpoint (10%
+> power)."*
+
+Automatic. PWR2 already implements exactly that as the `atPower` gate on its `lo_flow` function
+(built at #507 wave 10, and itself sourced to Ginna TS Bases B 3.3.1). The retired plant modelled
+the permissive as a pushbutton, `blockable: true`, and the board drew a button for it. **Both rows
+deleted.** Nothing in `ui/`, `scenarios/`, `test/` or `Manuals/` issued either block.
+
+**THE LESSON, and it generalises past this panel: a `blockable` flag is not evidence that an
+OPERATOR blocks it.** The flag says the code has a branch. A row on a control surface says a human
+takes that action. Those are different claims and only the second one needs a source.
+
+### 127.2 IR HIGH FLUX — the plant was missing the trip
+
+PWR2 carried the intermediate-range high flux **rod stop** (C-1, #572) and no intermediate-range
+**reactor trip**. The startup net was one rung — the 35 % power-range low setting — where every
+source has two.
+
+**Sourced.** Ginna TS Bases B 3.3.1 (ML20339A221) Function 3:
+
+> *"The Intermediate Range Neutron Flux trip Function ensures that protection is provided against
+> an uncontrolled RCCA bank rod withdrawal accident from a subcritical condition. This trip
+> Function provides redundant protection to the Power Range Neutron Flux-Low trip Function…"*
+> *"This Function may be manually blocked by the operator when two-out-of-four power range channels
+> are greater than approximately 8% RTP (P-10 setpoint)."*
+
+and P-10's own entry, which is the load-bearing half for §127.3:
+
+> *"on increasing power, the P-10 permissive allows the operator to manually block the Intermediate
+> Range Neutron Flux and Power Range Neutron Flux-low reactor trips"*
+> *"on decreasing power, the P-10 interlock automatically enables the Power Range Neutron Flux-Low
+> reactor trip and the Intermediate Range Neutron Flux reactor trip (and rod stop)."*
+
+**The setpoint is NOT the anchor plant's, and that is declared.** Ginna publishes no number for
+this Function — UFSAR ch15 (ML20339A101) §B gives only *"a flux above a pre-selected, manually
+adjustable setpoint"*. WTSM 12.2 §12.2.3.3 does:
+
+> *"This trip, Figure 12.2-3, occurs when the current output from at least one of the two
+> intermediate range channels indicates greater than the equivalent of 25% power."*
+
+**25 %, not the rod stop's 20 %.** The retired plant carried its IR trip at *"~20 % (1.67e-3 A)"* —
+which is `ROD_STOP.ir_frac`, the STOP's setpoint written into the TRIP's row — and `Manuals/09`
+§2.0 shipped that conflation to the public manual. Same channel, two setpoints, and the stop is
+meant to arrive first. Expressed in `power_frac` for #572's own reason: `pwr2_true_state` computes
+`ir_amps = 8.333e-3 * power_frac`, so the amps mapping stays in one file rather than being
+re-derived here (the #557 class).
+
+**Measured** (`pwr2_protection` direct, `dt` 0.1, healthy primary):
+
+| ride | result |
+|---|---|
+| unblocked ascent | scram at **power_frac 0.250**, `trip_cause: ir_high_flux` |
+| intermediate-range block only | rides through 25 %, scram at **0.350** on `hi_flux_lo` |
+| power-range block only | scram at **0.250** on `ir_high_flux` |
+| both blocked | clean to 1.00, `ir_high_flux` armed **false**, `rod_stop` false |
+| below P-10 | **both** requests revoked (request and all), `ir_high_blocked` false |
+
+**Full stack**, the uncontrolled fast withdrawal from subcritical — the event the source credits
+this Function for: peak **91.9 %** indicated at the trip, against **100.8 %** when the 35 % setting
+was the first rung. The earlier setpoint buys back ~9 points of overshoot; what remains is the
+sourced 0.5 s analysis delay at a fast period.
+
+**The delay is [derived], and says so.** Table 15.0-6 has no intermediate-range row — the Function
+*"is not specifically modeled in the accident analysis"* — so the power-range flux channels' 0.5 s
+is carried (same NIS family, same trip breakers) and marked for correction if a plant response-time
+table turns up. The SETPOINT is sourced; the delay is not.
+
+### 127.3 #572 put the C-1 rod stop on the wrong lever, and only building the second one could show it
+
+`irHiFluxStop` read `!blockEffective` — that is `pr.blockLowFlux`, the **power-range** request —
+under a comment declaring *"it rides the SAME operator block `hi_flux_lo` does — one lever"*. WTSM
+12.2's P-10 list contradicts it, in two numbered items:
+
+> *"1. Allows the operator to manually block the intermediate range high flux trip **and the C-1
+> rod stop**, 2. Allows the operator to manually block the low setpoint power range high flux
+> trip,"*
+
+Two operator actions, and the stop belongs to the first.
+
+**⚠ THE CHECK THAT PINNED THE OLD WIRING ASSERTED EXACTLY THE WRONG THING AND PASSED.**
+`run_pwr2_protection` had *"...and the P-10 operator block clears it — one lever, the ascension
+step"*, riding `blockLowFlux` and asserting the stop cleared. It could not have failed: with one
+lever in existence, a right wiring and a wrong wiring produce identical output. **A shared boolean
+consumed by several call sites cannot be tested for which consumer it belongs to.** The fix is
+structural, not a better assertion — `blockable` now NAMES its request (`'low_flux'` / `'ir_high'`)
+and an unrecognised name blocks nothing, which is the conservative end: a typo cannot silently
+disarm a trip. The replacement check rides both levers and sees which one moves the stop.
+
+Behaviour on the shipped plant is unchanged, because both at-power initial conditions boot with
+both requests taken. What changed is what is *testable* about it.
+
+### 127.4 The rod stop no longer saves a held press, and that is the plant
+
+The 8c fixture in `run_pwr2_engine` asserted the stop *"HOLDS the bank against a standing 200-step
+demand, short of the trip"* for 900 s. It passed because the next trip above the 20 % stop was the
+35 % setting — a **15-point gap**. The sourced intermediate-range trip sits at 25 %, so the gap is
+**5 points**, and the standing reactivity already in the core when the stop asserts carries the flux
+straight through it.
+
+**Measured with the trip's setpoint pushed aside so the STOP could be watched alone** — blocking
+the request would have cleared the stop too, which is the §127.3 pairing:
+
+- stop asserts at **20.08 % indicated / 88.1 steps**;
+- bank goes **88.1 → 88.2** (the one-step channel lag) and stays there for **1200 s** — the hold is
+  real, and a stop that reported without holding still reds the replacement check;
+- flux coasts to a peak of **28.24 %** and settles at **27.13 %**.
+
+So the stop holds the RODS and does not hold the POWER. That is the sources' own framing — Ginna TS
+Bases B 3.3.1 Fn 3 says limiting further withdrawal *"MAY terminate the transient and eliminate the
+need to trip the reactor"* — but the margin is tight on this core:
+
+| slow-speed target | settles | peak | outcome |
+|---|---|---|---|
+| 86 steps | 22.59 % | 24.28 % | no trip |
+| 88 steps | — | 26.13 % | trip, `ir_high_flux` |
+| 200 held | — | 26.09 % | trip, `ir_high_flux` |
+
+**Two steps of bank is the whole window**, because this core's step worth (~31 pcm/step on the
+200-step bank) is large against a 5-point band. Both setpoints are sourced and HR9 says content
+follows the plant, so nothing was tuned — **but this is the one judgement in the change worth the
+owner's eye**, and it is on #601 as an owner-review note. The alternatives if it reads wrong are
+(a) accept it, (b) re-examine the coastup itself, (c) revisit the 200-step bank's step worth. None
+of them is "move a sourced setpoint".
+
+### 127.5 #600 — and two rows that DO work were printing the retired plant's numbers
+
+Same #556/#557 class, in the same popover, missed because the row-presence question had all the
+attention:
+
+- `PR HIGH (LOW SETPT)` was the literal string `'STARTUP TRIP · 25% (P-10 PERMISSIVE)'`. The plant's
+  setting is **35 %**, and `trip_block_status.pr_low_setpoint.setpoint` has carried 35 since #507
+  wave 7 — the power TILE reads it. **The popover contradicted the tile, on the same board, from
+  the same snapshot.**
+- `PZR PRESS LO-LO` read `tripSp('primary_pressure','low',12.41)` off `_PROT` — the retired plant's
+  table, frozen at script load — giving **1800 psi** against a published **1775 psia**.
+  `SI REACTOR TRIP`, three rows down, already read the live value.
+
+Both now go through `spPct` / `spPress`, which read `trip_block_status`. **The caption is a FIELD ON
+THE ROW now, not something the popover computes on its way to the DOM** — #564's own reason, applied
+to the line underneath the button it was applied to. Three checks became possible that were not
+before, and all three are proven by injection.
+
+**⚠ AND THE FALLBACK WAS THE TRAP, not the lookup.** The first cut of this fix kept a hard-coded
+`25` behind the flux captions for the legacy shape. That is the #557 defect wearing the fix's
+clothes: the retired engine's kernel *does* publish `trip_block_status`, with no `setpoint` field on
+kernel-owned trips, so the fallback path is LIVE on the preview channel and would have printed
+PWR2's 35/25 over the retired plant. `_PROT` cannot supply an honest fallback either — the retired
+IR trip is authored in AMPS on a different instrument, and its `power_range high` has two rows,
+which is the first-match trap `tripBackstop` exists for. **A caption with no number is honest; a
+caption with the wrong plant's number is what this issue was filed about.** `spPct` now prints
+nothing when the plant published nothing, and a check pins that.
+
+### 127.6 The presence guard is kept, and only an injection can exercise it now
+
+Every drawn row is a published row on the shipped plant, so `tripRowSupported` has no live subject.
+It stays: the preview channel still boots the retired engine, which publishes a different set, and
+this predicate is all that stands between that mismatch and a button that throws on press.
+`run_pwr2_board` now proves it by deleting one row's status entry from a snapshot and asserting that
+row darks with its neighbours untouched — the shape a channel mismatch would produce.
+
+`board_check.html`'s badge check was also re-pointed: it compared the badge against **every key in
+`trip_blocks`**, which coincided with the panel's rows only by accident and stopped coinciding the
+moment the automatic P-7 blocks left the panel. It now counts the rows the panel draws, which is
+what the badge is a statement about.
+
+### 127.7 Content
+
+`Manuals/09` §2.0 IR trip row **1.67e-3 A → 25 % (2.08e-3 A)**, and its rod-stop row re-homed onto
+the intermediate-range control. `03`/`04`/`05` rewritten to two presses in order — three chapters
+were still writing the power-range low block at **25 %**, the retired plant's value. The PWR2 live
+checklist gains the intermediate-range block step ahead of the low-flux one; without it the
+ascension's `rod_target 96` is REFUSED by the rod stop, which is how the engine gate found the gap.
+The engine's own refusal message named the wrong block and now names the right one.
+
+`run_manual_setpoints` promotes the IR trip row from `narrative: true` to a real comparison. It was
+narrative *because the plant had no constant to check it against* — which is precisely how a rod
+stop's setpoint came to live in the trip's row and survive a gate written to catch that.
+
+### 127.8 Gates
+
+`run_pwr2_protection` **125/125, 68/68 mutations** (114/63 before). `run_pwr2_shell` **147/147,
+48/48**. `run_pwr2_board` **71/71, 22/22** (67 before). `run_pwr2_engine` **130/130**.
+`run_manual_setpoints` 13/13 — proven by injection (manual 20 % against plant 25.0 % reds it).
+`run_manual_rev` 15/15, `run_manual_units` 0 failed, `run_session_labels` 8/8, `run_doc_budget` 4/4.
+
+**Three mutation anchors were orphaned by the refactor and the gate reported them as blind spots
+rather than passing** — the standing trap, working. Re-anchored, plus six new mutations: the trip
+deleted, the trip carried at the rod stop's 20 %, the request never revoked below P-10, the two
+levers collapsed back into one, the C-1 stop restored to the power-range lever, and an at-power
+initial condition booting without the intermediate-range block.
+
+## 128. #602 PHASE 1 — THE BANK SCALE WAS TWENTY-TWO BARE LITERALS, AND THAT IS WHY IT COULD NOT BE MOVED — 2026-09-01
+
+*(OWNER RULING, 2026-09-01: "its a go. yes on hoise as its own commit first" — on a recommendation
+of 627 steps, `curve_flatten` 0.36, worths unchanged, with the hoist as its own gated commit.)*
+
+**Phase 1 only.** Behaviour does not move here: `RODS.max_steps` is added and set to **200**, the
+value every one of the twenty-two literals already carried. Phase 2 moves it to 627 and
+`curve_flatten` to 0.36. The measurement that justifies both is §128.2–§128.5; the reason they are
+two commits is §128.6.
+
+### 128.1 How this was entered
+
+Out of #601. The sourced 20 % intermediate-range rod stop and the sourced 25 % trip landed **on the
+same step of bank** — measured, 88.1 and 88.2 — so the C-1 rod stop could not be a distinct
+operator experience at all. The owner asked how many steps real plants have. The answer turned out
+to settle a different question.
+
+### 128.2 The differential worth is 3.1x the sourced band
+
+`pwr2_kinetics` carries **4068 pcm of control bank over 200 steps**. Measured across the curve:
+
+```
+  min 4.07   mean 20.34   PEAK 36.61 pcm/step
+```
+
+**SOURCED — NRC HRTD WAT 05 Transients (ML11216A094)**, *Significant Parameters (Typical Values)*,
+Control Rod Worths, verbatim: *"Bank: 1000 pcm / Individual: 150 pcm / Differential worth: 4 to 12
+pcm/step"*. **Ginna UFSAR ch15 (ML20339A101)** independently: *"A constant rod worth of 10 pcm/step
+is assumed. This rod differential worth is conservative…"*.
+
+So the peak is **3.1x the top of the band** and **3.7x the analysis value**.
+
+### 128.3 CUTTING THE WORTH IS REFUTED, and the measurement is the reason
+
+The obvious cheap fix — leave the step count, shrink the bank — was measured and it fails:
+
+| | ours | sourced |
+|---|---|---|
+| Control bank | 4068 pcm | 1000 pcm **per bank**; a Westinghouse plant has **four** |
+| Shutdown bank | 3676 pcm | — |
+| **Trip reactivity, HFP to all-rods-in** | **7744 pcm** | Ginna assumes **3500 pcm**, *"conservative with respect to the calculated trip reactivity worth available"* (UFSAR ch15 §15.0.4) |
+
+Bringing the peak differential into band by worth alone needs the control bank at **966 pcm**,
+which takes trip reactivity to **1839 pcm** — roughly HALF the figure the anchor plant's own
+analyses call conservative. The plant would not be able to shut itself down. That is why the
+one-constant fix is not available, and it is worth recording as a refutation rather than as a road
+not taken: 4068 pcm is **4.07 banks** of sourced worth, which is exactly what a single lumped
+control bank standing in for four ought to carry.
+
+### 128.4 THE STEP COUNT HAS A SOURCED VALUE, AND IT IS 627
+
+**WTSM 8.1 §8.1.5.4 (ML11223A252)**, the Bank Overlap Unit, verbatim:
+
+> *"control bank A withdraws first until it reaches a preselected setpoint, for example 131 steps
+> on the control bank A step counters or 131 counts on the BOU. When control bank A takes its 132nd
+> step, control bank B takes its first step. Control banks A and B move in unison until control
+> bank A reaches the top of the core (231 steps on control bank A or 231 counts on the BOU) …
+> until it reaches the next preselected overlap point (131 steps on bank B or 262 counts on the
+> BOU) … This sequence and overlap continues until all control banks are withdrawn from the core."*
+
+and the BOU *"counts from 0 to 999"*. Corroborated on the anchor plant — **Ginna TS Bases B 3.1.7
+(ML20339A221)**: the MRPI *"does not display the actual shutdown rod positions between 0 and 230
+steps"*, and one step is *"approximately 5/8 inch"* (230 x 0.625 = 143.75 in, the 12 ft core, so
+the sourced set checks against itself). **NUREG-1431 Rev 4 STS Bases (ML12100A228)**: bank D
+*"inserted near its normal position (i.e., 210 steps withdrawn)"* at power.
+
+Walked out step by step for 4 banks x 231 steps at a 131-step overlap release: **full control-bank
+withdrawal = 627 BOU counts.** That is the scale the operator actually commands.
+
+> **The whole discrepancy in one line: our lumped bank carries the worth of 4.07 banks and the
+> travel of 0.87 of one.**
+
+### 128.5 `curve_flatten` IS NOT A FEEL ADJUSTMENT — IT IS BANK OVERLAP, AND IT SHOULD BE 0.36
+
+The constant is tagged in `pwr2_kinetics.js`: *"The S-curve flattening is NOT sourced and is NOT
+physics — it is a feel adjustment the owner made for low-power startup. [ruled] is the only honest
+tag"*. It is carried at **0.8**.
+
+I built the TRUE overlapped curve — four banks of 1017 pcm, 231 steps each, on the physical
+cosine-flux S-curve (K = 1), stepped through the 131-overlap program above — and differentiated it:
+
+```
+TRUE 4-bank overlapped set, 627 counts, the SAME 4068 pcm total:
+  min 0.00   mean 6.49   PEAK 8.81 pcm/step   peak/mean = 1.36
+```
+
+**Overlap FLATTENS the combined curve.** When one bank sits at its differential peak its neighbour
+is at its toe, so the sum is far flatter than any single S-curve — peak/mean **1.36**, not the
+**2.00** a lone bank gives. For this module's `scruve`, `peak/mean = 1 + K` exactly. So the
+overlapped set's own ratio names the constant: **K = 0.36**.
+
+The sweep, every row holding 4068 pcm:
+
+| steps | K | min | mean | PEAK | vs the sourced 4-12 band |
+|---|---|---|---|---|---|
+| 200 | 0.8 | 4.07 | 20.34 | 36.61 | PEAK OVER 12 — as built |
+| 627 | 0.8 | 1.30 | 6.49 | 11.68 | peak in, toe under 4 |
+| **627** | **0.36** | **4.15** | **6.49** | **8.83** | **ALL IN BAND** |
+| 627 | 0 | 6.49 | 6.49 | 6.49 | in band, but no S-curve at all |
+
+627 / 0.36 reproduces the true overlapped set to within **0.02 pcm/step**, with total worth
+untouched. `curve_flatten` stops being an unsourced feel knob and becomes a declared
+single-curve approximation of the overlap program.
+
+**RIDDEN**, one press held at Slow from Hot Zero Power — the startup checklist's own idiom:
+
+| case | steps | K | critical at | to critical | IR ROD STOP | IR TRIP |
+|---|---|---|---|---|---|---|
+| AS BUILT | 200 | 0.8 | 86 / 43 % | 12.3 min | 88.1 st / 20.1 % | **88.2 st / 24.9 % — trips** |
+| LONGER ONLY | 627 | 0.8 | 260 / 41 % | 37.0 min | 269.9 st / 20.1 % | no trip, ends 22.6 % |
+| **SOURCED** | **627** | **0.36** | **239 / 38 %** | **34.0 min** | **253.5 st / 19.8 %** | **no trip, ends 21.7 %** |
+| FLAT | 627 | 0 | 212 / 34 % | 30.2 min | 231.0 st / 19.9 % | no trip, ends 21.0 % |
+
+At 627 the rod stop **does its job**: the held press parks at ~21 % and the plant never trips,
+which is what WTSM says a rod stop is for and what #572's comment claimed while the plant could not
+deliver it. The ladder's SHAPE survives — criticality stays at 38-43 % withdrawn — so only the
+currency moves, not the procedure.
+
+Rod speeds need no change: 7 / 42 / 63 steps/min against WTSM 8.1's sourced **8-72, normal 48**. A
+full pull goes 3.2 min -> 9.9 min, against a real plant's 8.7 min at its maximum 72/min.
+
+**THE HONEST COST, stated rather than buried:** the differential swing the player feels drops from
+**9x** (4.07 -> 36.61) to **2.1x** (4.15 -> 8.83). The S-curve becomes much gentler. That is what a
+real overlapped bank does, and it is still a reduction in how dramatic the rod-worth lesson feels.
+
+### 128.6 PHASE 1 — WHY THE HOIST IS ITS OWN COMMIT
+
+**`200` was TWENTY-TWO bare literals.** Ten in `pwr2_engine.js` — the rod-insertion-limit
+percent-to-steps map, the initial conditions, BOTH target clamps, the scram insertion profile for
+each bank, the runaway cap, the rod-limit margin default — and twelve in `pwr2_shell.js`, including
+two inside `(24 / 912) * 200` rate conversions where the number is doing real work and reads as
+arithmetic. Several are indistinguishable at a glance from an unrelated 200 (`#200` the issue,
+`200 %/min` the runback, `200 kg/s` of natural circulation).
+
+**MEASURED, and it is the reason this section exists.** The harness written to ride the candidate
+scales patched three sites and missed the target clamp. The clamp held the bank at 200 of a
+demanded 627, so the plant sat at 32 % withdrawn, and **three cases in a row reported "never
+critical"** — a clean, plausible, entirely false result that looked like a finding about the
+physics. It was a finding about the constant.
+
+> **A number that appears as a bare literal at twenty-two sites is not a plant parameter. It is a
+> coincidence that twenty-two pieces of code have so far agreed on.** Same shape as
+> `PROTECTION_DT`, which is written down twice and already carries a standing trap in `CLAUDE.md`.
+
+The scale now lives in `RODS`, **beside the worths**, because worth / travel / curve are one object:
+differential = worth x curve / steps. Moving one without re-solving the other two is precisely how
+this plant reached 36.6 pcm/step. Same discipline the pressurizer's level triple already carries.
+Both consumers read it through a function (`BANK()` in the engine, `bankSteps()` in the shell) and
+never capture it, so a retune cannot leave a stale copy behind.
+
+### 128.7 THE GATE IS FUNCTIONAL, NOT A SOURCE SCAN
+
+This is the part worth carrying forward. A grep for `200` cannot tell a bank-scale literal from any
+other, and a check that counted occurrences would be testing the grep — the hand-maintained-map
+trap. So the gate **moves the constant and rides the plant**: `RODS.max_steps` is set to **313**
+(deliberately not 200, and not a round number), and every consumer that used to hold its own copy is
+asserted to follow —
+
+- the at-power initial condition, both banks;
+- the rod GROUPS the reactivity solve reads (`max_steps` on each);
+- the rod target clamp — *the site the harness missed*, and the one that fails silently;
+- the scram insertion profile for both banks (a stale 200 strands a 313-step bank 113 steps out,
+  which on the board reads as a stuck rod);
+- the rod insertion limit's percent-to-steps map;
+- and in `run_pwr2_shell`, the published `max_steps` **and** `position_pct` — a stale divisor still
+  renders, it just renders a wrong number (a fully-withdrawn 313-step bank would read 156.5 %).
+
+The constant is restored in a `finally`, so nothing downstream sees a moved plant even if an
+assertion throws, and a final check confirms the restore actually took.
+
+**AND THE GATE CAUGHT THREE OF ITS OWN CHECKS BEING HOLLOW, WHICH IS THE PART WORTH KEEPING.**
+Every one was written in this session, under a comment quoting the hollow-check trap:
+
+1. *"the scram drives BOTH banks fully in"*, sampled at **20 s** — the scram profile is a CEILING,
+   so a stale 200 does not strand the rods, it makes them fall faster. Both builds read 0.00 at
+   20 s. `BLIND TO`.
+2. Re-aimed at **tick 1** — and tick 1 reads **313.0 on BOTH builds**, because the ramp has not
+   engaged yet. `BLIND TO` again. Only a 12-tick trace found the window: the divergence is at
+   **tick 2**, clean **310.5** against stale **198.4**.
+3. A multi-line mutation anchor in `run_pwr2_shell` written with a literal backslash-n where the
+   source carries a real newline. `ANCHOR MISS` — the gate saying it could not find the line it
+   was pointed at.
+
+**The lesson is not "be careful". It is: PROBE THE WINDOW BEFORE YOU WRITE THE ASSERTION.** The
+12-tick trace that settled it takes ten seconds to run; each guess at the sample point cost a
+seven-minute mutation replay to disprove. Two guesses, fourteen minutes, and the trace would have
+answered it first time.
+
+### 128.8 Gates
+
+`run_pwr2_protection` 125/125, 68/68 mutations. `run_pwr2_board` 71/71, 22/22.
+`run_pwr2_engine` **138/138, 75/75 mutations** (130/73 before). `run_pwr2_shell` **149/149, 49/49** (147/48). Aggregate `run_all` green
+before the commit. Phase 1 changes no behaviour: every other check in the tree is unmoved, which is
+the whole assertion this commit makes.
+
+## 129. #602 PHASE 2 — THE BANK IS 627 STEPS AND THE S-CURVE IS BANK OVERLAP; SIXTEEN CHECKS WERE FRACTIONS SPELLED AS ABSOLUTES — 2026-09-01
+
+*(OWNER RULING, 2026-09-01: "its a go. yes on hoise as its own commit first".)*
+
+Phase 1 (§128) hoisted the scale to one constant without moving it. This moves it:
+**`max_steps` 200 -> 627**, **`curve_flatten` 0.8 -> 0.36**, worths untouched. The derivation,
+the refutation of the alternative, and the ride table are all in §128.2-§128.5 and are not
+repeated here. What follows is what the change COST and what it TAUGHT.
+
+### 129.1 The plant, measured after the change
+
+```
+DIFFERENTIAL  min 4.15  mean 6.49  peak 8.82 pcm/step     [sourced band 4-12]  IN BAND
+insertion rate at FAST                       9.3 pcm/s    [Ginna ch15 analyses 5-75]
+full pull    slow 90 min - normal 14.9 - fast 9.9         [real 627-count at 72/min = 8.7]
+critical     226-238 steps (36-38 % withdrawn)            [bank D sits ~210/230 at power]
+trip reactivity                              7744 pcm     [unchanged; Ginna assumes >= 3500]
+```
+
+The whole profile is inside the sourced band with the total worth untouched, which was the goal.
+
+### 129.2 SIXTEEN CHECKS REDDENED AT ONCE, AND ONLY TWO WERE ARITHMETIC
+
+`run_pwr2_engine` went from green to 16 failures on a two-constant change. Every one was a
+FRACTION OF TRAVEL that had been written as an absolute — correct and indistinguishable while the
+bank happened to be 200 steps. They sorted into five kinds, and the kinds are the lesson:
+
+**(a) Fractions spelled as absolutes — 17 sites.** `rod_target 86` was 43 % of travel;
+`sdSteps === 200` was "fully out". Now `frac(0.43)` and `bank()`. A literal in these fixtures is
+now a claim that the number does NOT scale, which is true of none of them.
+
+**(b) Percentages pinned as steps.** The rod-insertion-limit checks asserted `=== 140` and `~72`
+for a curve that has always been `(lo_pct + (hi_pct - lo_pct) * f) / 100 * BANK()`. The
+percentages never moved; only their rendering did.
+
+**(c) Ride durations that walk the bank.** A 627-step pull takes 3.135x longer, so fixed
+`run(eng, N)` calls expired before reaching their subject — which is why three checks reported
+`0.0 %` and `cause null` rather than a wrong number. Added `walk(secs)`, and scaled ONLY the
+durations set by rod travel. Thermal and control settling times were deliberately left alone;
+pushing those through the same helper would launder an unrelated number.
+
+**(d) A DETECTION THRESHOLD, and this is the one that accuses the plant.**
+`run_pwr2_lossofload` captured the scram with `ts.rod_steps < 190` — "the rods have visibly
+started to move", 95 % of a 200-step bank. On 627 steps that is 30 % withdrawn, so it waited until
+the rods were nearly all the way IN and read the drop **3.8 s late** (10.1 s against a setpoint at
+6.3 s, blowing a 2.6 s window). **That failure reads as a slow scram.** A stale threshold does not
+announce itself as currency; it announces itself as a physics regression in the thing it measures.
+
+**(e) A MEASURED PROFILE, which cannot be scaled at all.** The controlled-startup ladder
+(84 -> 86 -> block -> 96 of 200) is an operator profile, not a ratio. Criticality is set by boron
+against rod worth and the worth CURVE moved too, so the same fraction of travel is a different
+amount of reactivity. Scaling it produced a fixture that scrammed mid-ladder and threw. Re-measured
+settled at Normal from hot_zero_power, 719 ppm:
+
+```
+  224 steps -> 0.36 %   critical, below P-10        250 -> 20.80 %  the IR rod stop asserts
+  232       -> 10.75 %  P-10 MET                    258 -> 24.13 %  still no trip
+  235       -> 12.97 %  where the blocks are taken  261 -> SCRAM on ir_high_flux
+  and with BOTH blocks taken, 295 -> 38.0 % untripped, past the 35 % power-range setting.
+```
+
+### 129.3 THE HELD-PRESS CHECK BECAME A PAIR, BECAUSE THE PLANT CHANGED
+
+The one failure that was not currency. It asserted "the stop parks the bank, and the 25 % IR trip
+ends the ascent anyway" — true on the 200-step bank at EVERY rate, because one step spanned the
+whole 20 %->25 % flux window and nothing could sit inside it. Measured on 627:
+
+```
+  slow    stop at 254 st / 19.8 %  ->  NO TRIP, settles 21.7 %   the stop HOLDS
+  normal  stop at 269 st / 20.7 %  ->  coasts to 26.8 %, trips on ir_high_flux
+  fast    stop at 273 st / 20.3 %  ->  coasts to 29.3 %, trips on ir_high_flux
+```
+
+Both halves are pinned now, and the pair IS the sourced relationship: WTSM has the stop act first
+and the trip catch what it does not hold, and Ginna TS Bases B 3.3.1 Fn 3 says limiting withdrawal
+*"MAY terminate the transient and eliminate the need to trip the reactor"* — MAY. A stop that held
+at every rate would make the trip behind it unreachable; one that held at no rate would be
+decoration. **The old plant was the second case.**
+
+⚠ AN EARLIER REPORT IN THIS EFFORT SAID "at 627 the rod stop does its job" WITHOUT QUALIFICATION.
+That was measured at Slow only. It is rate-dependent, and the correction is recorded here rather
+than quietly fixed, because the unqualified version was told to the owner.
+
+### 129.4 THE ROD-INSERTION-LIMIT STORY LOST ITS WINDOW, AND THE DILUTION WAS NOT THE DEFECT
+
+The RIL pair rode a story: insert, power sags a long way, the limit recedes and the margin opens
+wide, then dilute — power recovers, the limit climbs, the margin closes past RIL+10. It needed an
+insert that could sag power to ~85.8 %. On the flatter curve the same fractional insert reaches
+only 98.3 %, and inserting deep enough to sag power that far now TRIPS (measured: 66 % -> 87.6 %
+and scram; 67 % -> 91.7 % and scram). That is not a regression — it is why a real bank D sits near
+210 of 231 and boron carries the bulk.
+
+**AND THE DILUTION LOOKED BROKEN, WHICH IT IS NOT.** Measured over 600 s at -0.10 ppm/s:
+
+```
+  t=0    boron 625.8  power  98.32  Tavg 272.1  RIL 432  margin 19
+  t=60   boron 620.9  power 100.66  Tavg 273.3  RIL 439  margin 12
+  t=600  boron 611.8  power  96.16  Tavg 278.6  RIL 422  margin 29
+```
+
+Boron falls and power RISES first — the dilution lands. It settles near 96 % while boron keeps
+dropping, because at a HELD LOAD the negative moderator coefficient takes the added reactivity as
+TEMPERATURE (272 -> 279 degC), not as power. Correct physics. **This was reported to the owner as a
+possible defect before it was measured; the measurement retracted it.** The surviving claim — that
+the limit CHASES POWER (RIL 432 -> 439 -> 422 across that ride) — is what the interlock is about
+and never depended on how far an insert could sag the plant.
+
+### 129.5 THE MUTATION HARNESS CAUGHT THE RE-AIM DROPPING COVERAGE
+
+Re-aiming the RIL pair removed the only ride that ever drove `_rodAtLimit` TRUE — the ROD LIMIT
+LO-LO annunciator's whole basis — and `at-limit is never computed` came straight back BLIND. The
+fact is now driven directly (park the bank under the live limit, read the flag) instead of through
+a story that no longer has a window. **A check re-aimed around a fact can silently take the fact
+with it, and only an injection notices.**
+
+### 129.6 The 1/M ladder is RE-SHAPED, not re-scaled — and that is a teaching choice
+
+The checklist's bursts and their count-rate acceptance criteria are a measured #244 artifact.
+Scaled directly, the fifth burst (70/200 -> 219) lands PAST the source-range/intermediate-range
+handoff — SR reads **0** — with SUR at **1.03 DPM**, over the <=1 DPM the checklist itself teaches.
+Re-shaped so every burst keeps the detector on scale and the rate inside the target:
+
+```
+  burst   steps   settled SR    1/M     SUR peak        (baseline 501 cps at 0 steps)
+    1       94       791 cps   0.634      0.12
+    2      157     1,571       0.319      0.26
+    3      188     3,542       0.141      0.45
+    4      202     8,090       0.062      0.58
+    5      211    24,119       0.021      0.70
+```
+
+The 1/M convergence is better than the old five points. **This is the one place in #602 where a
+teaching sequence was chosen rather than a number derived**, and it is flagged as such to the owner.
+
+### 129.7 THE MANUAL SURFACE WAS ONE WORD, AND THE ESTIMATE THAT SAID THIRTY WAS A BAD GREP
+
+Reported to the owner as "30 mentions across 13 chapters" and used to justify dispatching a
+parallel agent. Checked before dispatching: `74.5` in chapters 03/06/09 is **74.5 kPa** of
+condenser vacuum; `912 / 319 / 456 steps` are the RETIRED engine's fine-step bank, under a banner
+in chapter 04 saying so; `~145` in chapter 12 is **psi**. The only place the manual set describes
+PWR2's bank in the old currency is **05 §2.2**, *"with a 200-step bank"*. One word.
+
+The insertion-limit prose in 09 §3.0 and 12 is written in PERCENTAGES and is scale-independent by
+construction. **An agent handed that list would have "corrected" a vacuum pressure into a rod
+position** — which is the defect class this whole issue exists to remove, with more hands on it.
+
+### 129.8 RULED
+
+*(OWNER RULING, 2026-09-01: "1. A… 2. A." — on two options blocks: the 1/M burst spacing STANDS AS AUTHORED at 94/157/188/202/211, and the rate-dependent intermediate-range rod stop is ACCEPTED as the sourced behaviour. Both were the no-change path; recorded so neither is re-litigated as an unexamined default.)*
+
+### 129.9 Gates
+
+`run_pwr2_engine` **140/140, 75/75 mutations** · `run_pwr2_shell` **149/149, 49/49** ·
+`run_pwr2_protection` 125/125 · `run_pwr2_board` 71/71 · `run_pwr2_kernel` 36/36 ·
+`run_pwr2_lossofload` 9/9 · **`run_checklist_pwr2` 109/109 — the full Mode 5 -> full power ->
+Mode 5 chain, one continuous plant, replayed on the 627-step bank.** `run_manual_rev` 15/15.
+
+**AND THE ITERATION LOOP GOT 26x FASTER MID-EFFORT.** `run_checklist_pwr2` already took a scope
+argument (`process.argv[2]`) — one leg is **20 s** against 521 s for the chain. It was there the
+whole time and went unchecked, exactly like the missing mutation flag in §128. Twice in one effort,
+the cheapest available win was reading what the tool already accepted.
+
+---
+
+## 130. #629 — THE HEATUP'S HEAT SINK WAS THE OVERPRESSURE ADV, BECAUSE STEAM-PRESSURE DUMP MODE WAS UNREACHABLE FROM A COLD START — 2026-09-05
+
+*(MY CALL, 2026-09-05 — not an owner ruling. `set_steam_dump {mode:'auto'}` now selects steam-pressure
+mode when the turbine is tripped and Tavg mode when it is on line. #629 carries `status-owner-review`
+because it changes what a shipped button does. Sourced: WTSM 11.2 (ML11223A294) — "Tavg mode at
+power, steam pressure mode at hot standby / startup / cooldown", quoted verbatim in
+`pwr2_dumpctl.js`'s header since the layer was built.)*
+
+**Harness.** `scratchpad/m629.js` — full stack through `RD.SimulationService`, pwr2, `cold_shutdown`,
+the `pwr_heatup` checklist's own commands issued as each acceptance ticks, 600×. The `develop` and
+`workbench` trees and both the 0.02 s and the WARP 0.5 s step agree to the psi.
+
+### 130.1 The filed symptom did not reproduce
+
+The owner reported the Pressure SP dialled to 2235 psi at the second pressurization and primary
+pressure stalling near 1920 psia as the atmospheric dump valve (ADV) opened. Measured on the
+checklist route: **the ADV opens at 1042 psig header pressure when Tavg reaches 551.6 °F
+(288.7 °C), modulates at 7-9 %, and primary pressure keeps climbing at ~26 psi/min straight
+through 1920 psia to the 2176 psia acceptance** (T+371 min from the cold boot). Same result with the
+dial issued 10 min AFTER the ADV opened, and with the replay's fixed holds.
+
+**The SHAPE is real when the valve carries real load.** ADV forced to 100 % at the second
+pressurization: the RCS contracts, pressurizer level **25.0 → 14.2 % in 2.5 min** (10.4 % by
+9.5 min), the 17 % low-level cut sheds the heaters **158 → 0 kW**, and pressure falls
+**1687 → 1598 psia** and never reaches the setpoint while the valve is open. So "the ADV opens and
+pressure stalls" is what this plant does whenever that valve carries more than the pump heat. The
+change below removes the ADV from the heatup's heat-sink ROLE; it does not claim to have reproduced
+the owner's exact 1920 psia.
+
+### 130.2 The defect: AUTO was one mode, and it was the wrong one from cold
+
+`cold_shutdown` boots `dump_mode: 'off'` (`pwr2_engine.js` dcDrivers) and `pwr2_shell.js` mapped
+`{mode:'auto'}` to `'tavg'` unconditionally. In Tavg mode the turbine-trip controller opens only
+above `tavg_noload_c` = **557 °F (291.67 °C)** — *above* the 1040 psig ADV — so pressing STEAM
+DUMP AUTO on a heating plant **changed nothing**: measured, byte-identical trace, ADV 7.6 %, dumps
+0.0 %.
+
+| lineup | Tavg | steam header | ADV | condenser dumps | 2nd pressurization |
+|---|---|---|---|---|---|
+| as shipped (Tavg mode; pressure mode board-unreachable) | **551.6 °F (288.7 °C)** | **1042 psig** | **7-9 %** | 0.0 % | completes, 2176 psia |
+| steam-pressure mode at the Dump SP | **547.2 °F (286.2 °C)** | **1005 psig** | **0.0 %** | 0.4-2.9 % | completes, 2231 psia |
+| `hot_zero_power` preset (boots pressure mode at 1005 psig) | 547.2 °F (286.2 °C) | 1005 psig | 0 % | — | — |
+
+The produced plant parked **4.4 °F (2.4 °C) above the no-load band**, relieving steam to
+atmosphere for the whole heatup.
+
+**PRODUCED ≠ PRESET (#468's lesson).** The preset Mode 3 plant sits in pressure mode at the sourced
+Ginna 1005 psig no-load anchor; the plant a player produces by heating up could not get there. Two
+consequences nobody had measured:
+
+- **The DUMP SETPOINT box was an orphan on every plant a player heats up.** It is read ONLY in
+  pressure mode (`pwr2_dumpctl.js`). The #608 write-up had already recorded the fact — *"nothing
+  reachable from a cold start selects that mode"* — as an argument for making the heatup's step 6 a
+  confirmation, without asking whether the mode should be reachable at all.
+- **`pwr_cooldown` walks that setpoint down and could not run on a produced Mode 3 plant.**
+
+### 130.3 The change, and why the turbine latch is the discriminator
+
+C-8, the turbine trip relay, is the sourced signal that auto-selects the turbine-trip controller
+*inside* Tavg mode (`pwr2_dumpctl.js`, WTSM 11.2). Keying the operator's AUTO selection on the same
+latch therefore puts the mode selector where the source puts the plant, rather than inventing a
+criterion. On line → `'tavg'`, unchanged: every at-power initial condition lands exactly where it
+did, and PWR2's config carries no `steam_dump` automation channel (`getProtectionConfig().channels`
+is `boron_conc` + `afw_level`), so `engageDefaults` was never a route into this.
+
+`{mode:'pressure'}` and `{mode:'tavg'}` are accepted explicitly as the checklist/test API; `closed`
+→ `'off'` unchanged; `open` and a bare `pct` stay refused by name (#570).
+
+**`control_state.steam_dump_mode` is published, and the reason is HR10.** `steam_dump_auto` is
+`mode !== 'off'` and reads **TRUE in both modes**, so a check written on the boolean would have
+passed on the defect. One resolver (`dumpMode(e)`) feeds both fields — two samplers of one selection
+is how the lamps and the status word come to disagree (#606's shape) — and it reads the COMMANDED
+driver (`dcDrivers.mode`), not the controller's own copy, which is one step behind. The board's STEAM
+DUMP status word reads **PRESS / TAVG** instead of NORMAL. **No control was added**: DESIGN_CRITERIA
+Q4 is answered by there still being one AUTO button, which now selects the mode the plant conditions
+call for.
+
+### 130.4 The checklist, and where the step sits
+
+`pwr_heatup` gains one step, after the letdown-transfer confirmation and before the 2235 dial.
+**Graded on the SELECTION** (`steam_dump_auto`), because the dumps carry 0.4-2.9 % once they are
+holding the anchor and the valve position cannot tell an in-service controller from a shut one. **The
+EFFECT is asserted in the Mode 3 confirmation** — `adv_valve_pct < 1` and `steam_pressure_mpa ~ 7.03
+tol 0.15` — the letdown transfer's own shape (#624 item 25). Either acc alone passes on the wrong
+plant: a shut valve is satisfied by a plant that has not got hot yet, and 7.03 MPa is approached from
+below by any plant on its way up.
+
+**Why AFTER the ride, measured rather than argued.** In pressure mode the controller does nothing
+until the header reaches the setpoint, which happens at the END of the ride, so an earlier press has
+no observable effect for hours. It also costs overshoot: on `pwr2_dumpctl` directly
+(`scratchpad/windup.js`, a 2.0 → 7.6 MPa header ramp over 3 plant-hours), selecting pressure mode at
+275 psig winds `pErrInt` to its **−30** clip and the dumps then do not crack until **7.155 MPa
+(1023 psig)**, against **7.031 MPa (1005 psig)** when the mode is selected at the anchor — 18 psi of
+overshoot, still 17 psi under the ADV. The placement is a preference for an immediately observable
+press, not a safety necessity.
+
+**The replay still transits the ADV, and that is the fixed hold, not the instruction.** Step 11's
+`hold: 40000` (11.1 plant-hours) carries the plant to 288.69 °C before the dump step runs; its
+ACCEPTANCE releases at **283 °C (541.4 °F)**, **10.2 °F below** the 551.6 °F at which the ADV
+opens. A player who follows the checklist selects the dumps before that valve ever lifts. This is
+#608's lesson read the other way round: there a realistic `hold:` MASKED an unsafe acceptance; here
+an over-long `hold:` makes the replay a harder ride than the checklist asks for, and it still ends on
+the anchor.
+
+### 130.5 HR10 — the injection
+
+Shell's mode selection reverted to the unconditional `'tavg'`, nothing else changed, `pwr_heatup`
+replayed: **exactly the two new Mode 3 accs go red** and the other 30 checks stay green.
+
+| check | on the fix | with the shell reverted |
+|---|---|---|
+| step 15 `adv_valve_pct < 1` | **0.00 %** | **8.60 %** — RED |
+| step 15 `steam_pressure_mpa ~ 7.03 tol 0.15` | **7.03 MPa (1005 psig)** | **7.29 MPa (1042 psig)** — RED |
+| step 13 `steam_dump_auto > 0` (the new step's own tick) | 1.00 | **1.00 — still GREEN** |
+
+The last row is the point: **the selection ticks off on the defect too**, because the shell accepted
+the command and the plant went into a mode. Only the effect accs can tell the two plants apart, which
+is the same lesson the letdown transfer taught (#624 item 25) and the reason `steam_dump_mode` is
+published rather than the boolean being trusted.
+
+### 130.6 Prose corrected, because it described the plant that could not reach the mode
+
+Four sites in `pwr_heatup`: the caution that said the dump stays CLOSED "for the whole heatup";
+step 6's "it only reaches the valve once AUTO is selected — on the startup path, not this one"; the
+ride's "on its way to the 1020 psi no-load anchor" (now says which step hands it over); and the
+second pressurization's "about an hour over the last 520 psi", which measures **1714 → 2188 psia in
+21 plant-minutes**.
+
+### 130.7 Gates
+
+`run_pwr2_shell` **158 → 162** — group M, 4 checks and 3 mutations: AUTO always Tavg (the defect),
+AUTO always pressure (the mirror defect — the at-power plant loses the loss-of-load controller C-7
+arms), and the published word reading the controller's one-step-old copy. All three caught, 59/59, no
+blind spots, and the third has its own check reading the control state with **no step in between**,
+the only frame the two samplers disagree in.
+
+`run_checklist_pwr2` **129 → 132** (+1 the new step, +2 the Mode 3 effect accs). `run_pwr2_board`
+80/80 27/27 · `run_pwr2_kernel` 36/36 7/7 · `run_pwr2_roundtrip` 20/20 · `run_pwr2_dumpctl` 22/22
+8/8 · `run_manual_commands` 8/8 · `run_manual_units` 0 failed · `run_style` 8/0 · `run_release` 27/0
+at `Alpha 1.7.2-rc8` · `verify_board_check` 238 · `verify_manual_follow` 225.
+
+**ONE DRIFT, AND IT WAS THE GATE NOBODY EXPECTED: `run_manual_controls` 547 → 551 / 2 failed.**
+`test/manual_ui_map.js`'s `STEP_UI` is indexed by ARRAY POSITION, so a step inserted at `i:12` left
+the row below it pointing at the wrong step — *pill "Steam Dump" != STEP_UI "Pressure SP"* at step
+13, plus one UNMAPPED step at 14. **That two-line shape is the insertion signature**, and the file's
+own header records the same cascade three times before (#255, #624 twice) with the rule: *renumber,
+do not re-derive*. Renumbered 12 → 13, row added, **552/0**. CLAUDE.md's standing trap read
+literally — *a gate that iterates a hand-maintained MAP tests the map* — with the twist that this
+map is ALSO `verify_manual_follow`'s coverage list, so an unmapped step is a step no browser gate
+walks. **Inserting a checklist step obliges `run_manual_controls`**; none of the pwr2 checklist
+gates can see it, and it was not in this issue's gate list.
+
+**`Manuals/` is untouched and three sites are now stale**: chapter 03 §18's `set_steam_dump` row
+(`{mode|pct}`, silent on what AUTO selects), chapter 05's PWR-N01 (no steam-dump step), and any
+chapter prose saying the dump stays shut for the whole heatup. `run_manual_commands` cannot see this
+— it checks action NAMES, not payloads or prose.

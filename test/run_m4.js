@@ -1278,14 +1278,30 @@ T.push(test('#240 — a status-class alarm arrives pre-acknowledged; a real one 
   // (b) AUTHORED status, with no reclassify rule anywhere near it.
   var h = new Stack('hot_full_power');
   h.run(1);
-  ck('HPI/LPI ACTIVE is authored `status`', h.alarm('hpi_active').priority,
-     h.alarm('hpi_active').priority === 'status', 'status');
-  ck('…with no rule involved', String(h.alarm('hpi_active').base_priority),
-     h.alarm('hpi_active').base_priority === undefined, 'undefined');
+  /* ⚠ THE SPECIMEN MOVED AT #603, AND THE CLAIM DID NOT. This block proves that an alarm
+   * authored `status` — as against one RECLASSIFIED to it by part (a) above — arrives
+   * pre-acknowledged. It used HPI/LPI ACTIVE, which is now `critical`: that row is the SAFETY
+   * INJECTION annunciator and an ESF actuation is not furniture. CTMT SPRAY ON is the
+   * replacement and is a better specimen anyway — it is genuinely indication-only (no board
+   * control, AUTO-only, reached by the actuation row and the instructor), which is the exact
+   * profile `status` exists to describe, and it carries no reclassify rule either. */
+  ck('CTMT SPRAY ON is authored `status`', h.alarm('ctmt_spray_on').priority,
+     h.alarm('ctmt_spray_on').priority === 'status', 'status');
+  ck('…with no rule involved', String(h.alarm('ctmt_spray_on').base_priority),
+     h.alarm('ctmt_spray_on').base_priority === undefined, 'undefined');
+  h.cmd({ action: 'set_containment_spray', active: true });
+  h.run(1);
+  ck('an authored status alarm arrives acknowledged too', h.alarm('ctmt_spray_on').state,
+     h.alarm('ctmt_spray_on').state === 'active_acknowledged', 'active_acknowledged');
+  /* AND THE ROW THAT LEFT: a safety injection now asks for the acknowledgment it never did.
+   * This is the #603 defect stated as a check — the plant fired, and the one tile that should
+   * have said so arrived pre-acknowledged behind a grey dot. */
   h.cmd({ action: 'set_hpi', active: true });
   h.run(1);
-  ck('an authored status alarm arrives acknowledged too', h.alarm('hpi_active').state,
-     h.alarm('hpi_active').state === 'active_acknowledged', 'active_acknowledged');
+  ck('SAFETY INJECTION is critical and arrives UNACKNOWLEDGED (#603)',
+     h.alarm('hpi_active').priority + '/' + h.alarm('hpi_active').state,
+     h.alarm('hpi_active').priority === 'critical' &&
+     h.alarm('hpi_active').state === 'active_unacknowledged', 'critical/active_unacknowledged');
 
   // (c) The regression that matters: a real alarm is untouched. Passes pre-ruling.
   h.cmd({ action: 'set_instrument_failure', instrument_id: 'tavg', mode: 'stuck', value: 320 });

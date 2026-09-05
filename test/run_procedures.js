@@ -150,6 +150,10 @@ function stackOnlyJustified(proc) {
 var suites = 0, suitesPass = 0, total = 0, passed = 0, narr = 0, xfails = 0, xpassBad = 0;
 var Y = '\x1b[33m';
 Object.keys(RD.MANUAL_PROCEDURES).forEach(function (prof) {
+  /* pwr2 is the SHIPPED plant's pool (#526) and replays full-stack in its own runner
+   * (run_checklist_pwr2.js) — this engine-direct runner drives the RETIRED constructors
+   * and has no pwr2 row in PROFILES, so it skips the key rather than crashing on it. */
+  if (!PROFILES[prof]) return;
   RD.MANUAL_PROCEDURES[prof].forEach(function (proc) {
     if (proc.narrative) { narr++; console.log(C + 'NARR' + X + '  ' + B + prof + ' · ' + proc.id + X + D + ' (' + proc.category + ' — narrative; engine flagship suite owns validation)' + X); return; }
     if (proc.stack_only) {

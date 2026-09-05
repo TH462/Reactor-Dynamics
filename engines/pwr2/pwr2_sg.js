@@ -141,7 +141,9 @@
      * warm-start-tight reasoning as pwr2_core's solveP. The cold full-range [0.1, 17]
      * bisection stays as the fallback and is byte-identical to the old behaviour when the
      * warm bracket fails (first call, load of an old save, a violent transient). */
-    var lo = 0.1, hi = 17.0, i, mid;
+    /* #524: the bracket floor follows Layer 0's P_MIN (0.1 -> 0.002), or a cold secondary
+     * pins at 0.1 MPa / 211 degF and pours false heat into a colder primary — §74's wall. */
+    var lo = W.LIMITS.P_MIN, hi = 17.0, i, mid;
     if (sg.P > lo && sg.P < hi) {
       var span = 0.01;
       var wlo = Math.max(lo, sg.P - span), whi = Math.min(hi, sg.P + span);
@@ -232,7 +234,10 @@
      * old clamp kept subtracting steam*h_g from a numerator whose mass had stopped falling,
      * and sg.h ran to −11,594 kJ/kg). Consumers get the delivered flow reported back. */
     var inflow = feed + afw + leak;
-    var h_lo = W.h_f(0.1), h_hi = W.h_f(17.0);
+    /* #524: h_lo follows the extended floor. AFW at 88.5 kJ/kg is now ABOVE h_f(P_MIN)
+     * (= h_f(0.002) ~ 73 kJ/kg), so the cold-AFW subcooled-lump condition that used to bind
+     * the backstop clip 3,872/60,000 steps (§99.6) is representable instead of clipped. */
+    var h_lo = W.h_f(W.LIMITS.P_MIN), h_hi = W.h_f(17.0);
     var E_in = Q + feed * SG.h_feed + afw * h_afw + leak * h_leak;   // kW delivered this step
     var s_mass = (sg.mass - SG.mass_floor_kg) / dt + inflow;
 
@@ -314,19 +319,23 @@
     /* BACKSTOP, expected never to bind (gated, not assumed): keep h inside the span the
      * pressure bisection inverts over, so updatePressure stays well-posed at both walls.
      *
-     * WHAT #549 LEFT, MEASURED — the honest version of "expected never to bind". On the
-     * fed transient that used to bind it 59,996 of 60,000 steps for 16,236 MJ (13.5 MW /
-     * 46.2 MMBtu/hr), it now binds 3,872 of 60,000 for 0.4 MJ — 0.0003 MW, a 40,000x cut.
-     * EVERY ONE of those steps is the SAME condition and it is not this limiter's: the
-     * vessel is already AT the 0.1 MPa property floor and cold auxiliary feedwater is
-     * arriving at 88.5 kJ/kg, below h_f(0.1 MPa) = 417.5. That makes the lump SUBCOOLED,
-     * which a model whose pressure is the inverse of the saturated-liquid line cannot
-     * represent, so the clip raises it to saturation. THAT IS THE PROPERTY FLOOR (#524 —
-     * extend the water tables below 0.1 MPa), not the energy balance, and widening the clip
-     * would not fix it. If the clip starts binding ABOVE the floor, the limiter is wrong. */
+     * WHAT #549 LEFT IS NOW RETIRED (#524, 2026-08-31). The residual this comment used to
+     * declare — 3,872 of 60,000 steps for 0.4 MJ, all of them cold AFW (88.5 kJ/kg) arriving
+     * below h_f at the OLD 0.1 MPa floor (417.5) — was the property floor's, not this
+     * ledger's, and it left with the floor: h_f(0.002 MPa) ~ 73 kJ/kg sits below every
+     * physical inflow this plant has, so the subcooled-inflow state is representable and the
+     * clip reports ZERO material bindings on the same transient (gated in run_pwr2_sg). If
+     * this clip ever reports binding again, it is a defect, not a declared residual. */
+    /* The flag reports MATERIAL corrections only. When the #549 energy limiter binds it
+     * lands the post-step h exactly AT h_lo by construction, and float roundoff puts the
+     * recomputed value a ulp either side — the restore then moves ~1e-12 kJ/kg and no
+     * energy. That is the mass floor's "float roundoff only" case one line up, not the
+     * ledger leaving the saturation span, so it does not raise h_clipped (#524 — measured:
+     * 3,966/30,000 flag ticks on the refill fixture, every one at h == h_lo exactly,
+     * 0.000 MJ moved). */
     var clipped = false;
-    if (sg.h < h_lo) { sg.h = h_lo; clipped = true; }
-    else if (sg.h > h_hi) { sg.h = h_hi; clipped = true; }
+    if (sg.h < h_lo) { clipped = sg.h < h_lo - 1e-9; sg.h = h_lo; }
+    else if (sg.h > h_hi) { clipped = sg.h > h_hi + 1e-9; sg.h = h_hi; }
     updatePressure(sg);
 
     return {

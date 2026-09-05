@@ -24,6 +24,7 @@
  */
 'use strict';
 var fs = require('fs'), path = require('path');
+var MUT = require('./mut_flags.js');   /* --no-mutations / --mut= / --grp= (#602) */
 var E = path.join(__dirname, '..', 'engines', 'pwr2');
 var LIB = path.join(E, 'pwr2_cvcs.js');
 var SRC = fs.readFileSync(LIB, 'utf8').replace(/\r\n/g, '\n');
@@ -159,10 +160,39 @@ function runSuite(C, rec, quiet, only) {
       C.stepCVCS(C.createCVCS({}), (function () { var s = plant(); s.P = 1.0; return s; })(),
                  0.02).letdown_kgs === 0,
       'same 145 psia plant, no rhr_letdown_ok: letdown 0 (the pre-#510 shape, kept at power)');
-  ckT('...and the operator\'s letdown fraction still owns the path',
-      C.stepCVCS(C.createCVCS({ letdownOpen: 0 }), sysRl, 0.02,
-                 { rhr_letdown_ok: true }).letdown_kgs === 0,
-      'letdownOpen 0 passes nothing through either path');
+  /* ⚠ THIS CHECK IS THE OLD ONE INVERTED, AND THAT IS DELIBERATE (#624 item 14, HR10). It used
+   * to read "…and the operator's letdown fraction still owns the path — letdownOpen 0 passes
+   * nothing through either path", and it PINNED THE DEFECT: the RHR cross-connect was gated and
+   * scaled by the orifice lineup, so shutting the orifices shut the path the source says carries
+   * cold letdown, and a Mode 4/5 plant with a correct shut-orifice board went solid on its own
+   * seal injection. HCV-128 is a different valve and the source has it wide open here (the
+   * quote is on the code). Refitting a test to a change is normally the sin; this one is
+   * refitted because the CLAIM was wrong, and the claim is what a check is for. */
+  ckT('the orifices are NOT the cross-connect: a SHUT orifice lineup still letdowns on RHR',
+      Math.abs(C.stepCVCS(C.createCVCS({ letdownOpen: 0 }), sysRl, 0.02,
+                          { rhr_letdown_ok: true }).letdown_kgs - C.normalLetdownKgs()) < 1e-12,
+      'letdownOpen 0 + RHR suction open at 145 psia -> ' +
+      GPM(C.stepCVCS(C.createCVCS({ letdownOpen: 0 }), sysRl, 0.02,
+                     { rhr_letdown_ok: true }).letdown_kgs).toFixed(2) +
+      ' gpm through HCV-128 (WTSM ch.19: "fully open")');
+  /* ---- THE PROTECTIVE ISOLATE (#624 item 14) — one flag, BOTH paths, and neither of them is
+   * the operator's lineup. A shut orifice lineup and an isolated plant both read zero flow, so
+   * the discriminator is that the isolate stops the path a shut lineup does NOT. */
+  var cvIso = C.createCVCS({ letdownIsolated: true });
+  ckT('the 17 % protective isolate stops the RHR cross-connect too',
+      C.stepCVCS(cvIso, sysRl, 0.02, { rhr_letdown_ok: true }).letdown_kgs === 0 &&
+      cvIso.letdownOpen === 1,
+      'isolated at 145 psia with RHR open: 0 kg/s — and letdownOpen still 1, the operator\'s ' +
+      'selection untouched (#200: take the flow, leave the selector)');
+  ckT('...and the orifice as well, at operating pressure with the lineup fully open',
+      C.stepCVCS(C.createCVCS({ letdownIsolated: true, letdownOpen: 1 }), plant(), 0.02)
+        .letdown_kgs === 0,
+      '2235 psia, letdownOpen 1, isolated: 0 gpm — a lineup that would otherwise pass ' +
+      GPM(C.stepCVCS(C.createCVCS({}), plant(), 0.02).letdown_kgs).toFixed(2) + ' gpm');
+  ckT('the isolate is REPORTED, not inferred from a zero flow',
+      C.stepCVCS(C.createCVCS({ letdownIsolated: true }), plant(), 0.02).letdown_isolated === true &&
+      C.stepCVCS(C.createCVCS({}), plant(), 0.02).letdown_isolated === false,
+      'a shut orifice lineup at low pressure gives the same zero — the flag says which');
   ckT('at power the two paths agree — the RHR driver moves NOTHING at 2235 psia',
       Math.abs(C.stepCVCS(C.createCVCS({}), plant(), 0.02, { rhr_letdown_ok: true }).letdown_kgs -
                C.stepCVCS(C.createCVCS({}), plant(), 0.02).letdown_kgs) < 1e-12,
@@ -454,6 +484,15 @@ function runSuite(C, rec, quiet, only) {
       C.stepCVCS(C.createCVCS({ chargingDemand: 1, isolated: true }), plant(), 0.02)
         .charging_kgs === 0,
       'isolated with full demand delivers 0 kg/s -- the flag is not cosmetic');
+  /* THE SECOND ISOLATE, and it is a DIFFERENT one (#624 item 14): `isolated` is the whole CVCS
+   * (charging, seal injection, letdown); `letdownIsolated` is the 17 % protective cut on the
+   * letdown side alone. A construction seam, because the engine's cold boot and every rewind
+   * pass it through the constructor. */
+  ckT('caller letdownIsolated reaches the plant, and is NOT the whole-CVCS isolate',
+      C.createCVCS({ letdownIsolated: true }).letdownIsolated === true &&
+      C.createCVCS({}).letdownIsolated === false &&
+      C.stepCVCS(C.createCVCS({ letdownIsolated: true }), plant(), 0.02).charging_kgs > 0,
+      'letdown-isolated still charges — the two flags are not the same valve');
   /* THE VITAL BUS (#507 wave 4): the charging pump is a motor load and asks ac_available;
    * letdown is an orifice against system pressure and keeps flowing -- DECLARED. */
   var rSbo = C.stepCVCS(C.createCVCS({ chargingDemand: 1, letdownOpen: 1 }), plant(), 0.02,
@@ -488,8 +527,29 @@ var pass = rec.filter(function (r) { return r.ok; }).length, fail = rec.length -
  * Each entry's trailing { grp } names the section group that can SEE it (#513) — the replay
  * runs only that group, and the BLIND check still reds the runner if the tag is wrong. */
 var MUTATIONS = [
+  /* anchor re-pointed #624 item 14: the path is no longer gated or scaled by letdownOpen */
   ['the RHR letdown path severed (#510 H-2 re-armed: Mode 4 seal injection has no exit)',
-   '? cv.letdownOpen * normalLetdownKgs() : 0;', '? 0 : 0;', { grp: 'B' }],
+   'var rhrPath = (!iso && drivers && drivers.rhr_letdown_ok) ? normalLetdownKgs() : 0;',
+   'var rhrPath = 0;', { grp: 'B' }],
+  /* THE SPLIT ITSELF (#624 item 14), one mutation per half of it. The first is the DEFECT
+   * restored — the cross-connect back behind the orifice lineup — and it is the one a
+   * reasonable editor re-introduces while "tidying" the two paths into one expression. */
+  ['the RHR path is scaled by the orifice lineup again (the shipped defect: shut orifices ' +
+   'shut the cross-connect)',
+   'var rhrPath = (!iso && drivers && drivers.rhr_letdown_ok) ? normalLetdownKgs() : 0;',
+   'var rhrPath = (!iso && drivers && drivers.rhr_letdown_ok && cv.letdownOpen > 0)\n                  ? cv.letdownOpen * normalLetdownKgs() : 0;',
+   { grp: 'B' }],
+  ['the protective isolate is ignored on the RHR path (a 17 % cut the cross-connect never sees)',
+   'var rhrPath = (!iso && drivers && drivers.rhr_letdown_ok) ? normalLetdownKgs() : 0;',
+   'var rhrPath = (drivers && drivers.rhr_letdown_ok) ? normalLetdownKgs() : 0;', { grp: 'B' }],
+  ['the protective isolate is ignored on the ORIFICE (the cut stops nothing at power)',
+   'var orifice = (iso || cv.letdownOpen <= 0 || dP <= 0) ? 0 : cv.letdownOpen * cv.K * Math.sqrt(dP);',
+   'var orifice = (cv.letdownOpen <= 0 || dP <= 0) ? 0 : cv.letdownOpen * cv.K * Math.sqrt(dP);',
+   { grp: 'B' }],
+  ['the isolate is never reported (a consumer must infer it from a zero flow)',
+   'letdown_isolated: iso,', 'letdown_isolated: false,', { grp: 'B' }],
+  ['caller letdownIsolated ignored at construction (a rewind loses the cut)',
+   'letdownIsolated: !!opts.letdownIsolated,', 'letdownIsolated: false,', { grp: 'E' }],
   ['the regen recovery deleted (the return arrives cold; the closed loop stands ~200 kW of ' +
    'parasitic cooling)',
    'h_in = h_charge + CVCS.regen_effectiveness', 'h_in = h_charge + 0 * CVCS.regen_effectiveness',
@@ -497,8 +557,10 @@ var MUTATIONS = [
   ['letdown becomes a constant flow (the coupling is destroyed)',
    'cv.letdownOpen * cv.K * Math.sqrt(dP)', 'cv.letdownOpen * cv.K * Math.sqrt(13.34)',
    { grp: 'B' }],
+  /* anchor re-pointed #624 item 14: the guard grew the protective isolate */
   ['the orifice runs backwards below its backpressure',
-   '(cv.letdownOpen <= 0 || dP <= 0) ? 0 :', '(cv.letdownOpen <= 0) ? 0 :', { grp: 'B' }],
+   '(iso || cv.letdownOpen <= 0 || dP <= 0) ? 0 :', '(iso || cv.letdownOpen <= 0) ? 0 :',
+   { grp: 'B' }],
   ['the SI boron term is dropped (#510 M-1 re-armed: injection dilutes instead of borating)',
    'var dC = (inFlow * C_in + si * C_si - letdown * cv.boron_ppm) / M;',
    'var dC = (inFlow * C_in - letdown * cv.boron_ppm) / M;', { grp: 'C' }],
@@ -619,7 +681,7 @@ console.log('\n' + '='.repeat(70));
 console.log('  INJECTION SELF-TEST -- every mutation MUST redden at least one check');
 console.log('='.repeat(70));
 var blind = 0;
-MUTATIONS.forEach(function (m) {
+MUT.select(MUTATIONS).forEach(function (m) {
   var grpTag = (m[3] && m[3].grp) || undefined;
   if (SRC.indexOf(m[1]) === -1) { console.log('  ERROR   anchor not found: ' + m[0]); blind++; return; }
   var r2 = [], crashed = false;
