@@ -107,8 +107,24 @@ which is part of why the tail was invisible to the scheduler's longest-first sor
 ### Gates
 
 `run_ci_shards` NEW **34checks 0failed** · `run_pwr2_engine` 156 → **79** / `_b` **61** / `_c` **16**
-(156 total, unchanged) · full `run_all` — see below · the CI wall on the next push is the measurement
-this whole entry is waiting on: baseline **29.1 / 38.4 / 40.2 min** unsharded.
+(156 total, unchanged) · full local `run_all` 109 runners at baseline.
+
+### The measurement (run 33987216824, commit `6aa5d08`, 2026-09-05)
+
+**Wall 15.6 min (19:28:37 → 19:44:14) against 29.1 / 38.4 / 40.2 unsharded — −46 % to −61 %.**
+Gate steps 14.5 / 15.1 / 15.1 min; the fan-in `aggregate-gate` reported green 3 s after the last shard.
+
+| shard | wall | what set it |
+|---|---|---|
+| 1 (35 runners) | 14.5 min | **tail**: `run_checklist_pwr2` 869.6 s, finished last [35/35] |
+| 2 (37 runners) | 15.1 min | **tail**: `run_pwr2_engine_c` 905.1 s, finished last [37/37] — exactly the predicted 600–900 s |
+| 3 (37 runners) | 15.1 min | **throughput**: heaviest runner `run_pwr2_shell` 603.5 s finished 3rd; the lanes stayed full |
+
+**The floor is now ~15 min from three different causes at once** — two tails and one throughput
+— which is as balanced as a 3-shard partition gets, and it changes the follow-up arithmetic: cutting
+group I alone (follow-up 1) shortens shard 2 and leaves the wall at 14.5–15.1. The next real step is a
+**4th shard plus subdividing the two ~900 s runners together**; any one of the three alone buys ~nothing
+on the wall. The step budget (30 min) is 2.0× the observed worst shard on this runner class.
 
 ---
 

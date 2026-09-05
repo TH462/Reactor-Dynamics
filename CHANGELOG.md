@@ -111,8 +111,10 @@ a hand-reverted anchor in `pwr2_engine.js` reddens part C (3 of 16) and leaves A
 group I subdivided, which is coverage scoping, not scheduling, and a separate decision.
 
 Budgets: shard step 30 min (part C lands at ~10–15 min on this runner class; the shard wall is that
-tail), job 35. Expected CI wall: from 29–40 min to **~12–15 min + ~2 min setup** — to be measured on
-the next push and recorded on #637; the number here is the prediction, not the measurement.
+tail), job 35. **MEASURED on the push itself (run 33987216824): wall 15.6 min against 29.1 / 38.4 /
+40.2 unsharded**, shards 14.5 / 15.1 / 15.1 — shard 1 tail-bound on `run_checklist_pwr2` (870 s),
+shard 2 tail-bound on `run_pwr2_engine_c` (905 s), shard 3 throughput-bound. Three causes at one
+floor: the next gain needs a 4th shard AND both ~900 s runners subdivided; any one alone buys nothing.
 
 ## [Alpha 1.7.2] — 2026-09-05
 
