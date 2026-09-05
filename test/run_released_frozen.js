@@ -108,17 +108,29 @@ if (fs.existsSync(SEALS)) {
      !pend || !(seals.versions || {})[pend[1]],
      pend ? pend[1] + ' is pending and unsealed' : 'no pending entry right now');
 
-  /* AND THE PENDING MANUAL ROW IS FREE, by the same argument: CLAUDE.md's rule is that a
-   * manual edit EXTENDS the pending row, so freezing the newest row would forbid every manual
-   * change between releases. `manual_sealed_rev` is the whole mechanism, and this asserts it
-   * points below the newest row rather than at it. */
+  /* AND THE SEAL NEVER RUNS AHEAD OF THE TABLE.
+   *
+   * ⚠ THIS CHECK WAS WRONG ON ITS FIRST REAL RELEASE, AND IT CAUGHT ITSELF. It was written as
+   * `manual_sealed_rev < newest` — "there is a pending row above the seal" — which is true
+   * BETWEEN releases and FALSE at the moment of one: cutting Alpha 1.7.3 sealed through Rev 18
+   * while Rev 18 was still the newest row, and this went red on a correct release. The only way
+   * to satisfy the strict form there is to open a dummy Rev 19 for nothing, which is the gate
+   * dictating the workflow — the failure this file's own header warns about two paragraphs up.
+   *
+   * So the invariant is `<=`: the seal may sit ON the newest row (just released, nothing pending
+   * yet) or BELOW it (a pending row is open and editable). What it may never do is run AHEAD of
+   * the table, which would freeze a row that does not exist and is the actual error worth
+   * catching. The claim that the pending row stays editable is carried by the sealer itself —
+   * it writes digests only for rows <= manual_sealed_rev — and by the -rc check above it. */
   var hist = fs.readFileSync(path.join(ROOT, 'Manuals', '00_REVISION_HISTORY.md'), 'utf8').replace(/\r\n/g, '\n');
   var revs = [];
   hist.split('\n').forEach(function (l) { var m = /^\|\s*(\d+)\s*\|/.exec(l); if (m) revs.push(+m[1]); });
   var newest = revs.length ? Math.max.apply(null, revs) : 0;
-  ck('the pending manual row is above the seal, not frozen by it',
-     seals.manual_sealed_rev < newest || revs.length === 0,
-     'newest row Rev ' + newest + ', sealed through Rev ' + seals.manual_sealed_rev);
+  ck('the seal does not run ahead of the revision table',
+     seals.manual_sealed_rev <= newest || revs.length === 0,
+     'newest row Rev ' + newest + ', sealed through Rev ' + seals.manual_sealed_rev +
+     (seals.manual_sealed_rev === newest ? ' — just released, nothing pending yet'
+                                         : ' — Rev ' + newest + ' is pending and editable'));
 }
 
 console.log(B + '\n──────────────────────────────────────────' + X);

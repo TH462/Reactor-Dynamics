@@ -162,6 +162,33 @@ reads that heading: the file parses, renders and reads plausibly either way. And
 by the third release the boundaries between versions can only be recovered by diffing the file
 at each tag, which is what it took to repair it.
 
+### …and SEAL what you are publishing, in the SAME change (#639)
+
+```bash
+node tools/seal_released.js --rev=<the manual set revision this release ships>
+```
+
+This freezes the version you are releasing — its `CHANGELOG.md` section, its `changelog.html`
+entry, and every manual revision row at or below `--rev` — so that editing any of them later
+reddens `run_released_frozen`.
+
+**IT BELONGS HERE, WITH THE BUMP, AND THE FIRST DRAFT PUT IT AFTER THE DEPLOY.** That was wrong
+and the gate caught it on its first real release: stripping `-rc` makes the version PUBLISHED,
+`run_released_frozen` immediately fails with *"PUBLISHED but never sealed"*, and §1's rule is
+that the gate must be green **on the exact commit being released**. Sealing afterwards ships a
+commit that is red on its own gate. The bump, the entry, the `CHANGELOG.md` roll and the seal
+are **one change** — the same rule this section already states for the first three.
+
+**Why the step exists.** On 2026-09-05 `Alpha 1.7.2` merged at 08:50 and a change made hours
+later rewrote its `CHANGELOG.md` section and its manual `Rev 17` row **in place**, describing
+behaviour that is not in 1.7.2 — with `run_release` and `run_manual_rev` both green. A
+consistency check is satisfied by a coherent rewrite; neither gate held any record of what had
+shipped. That record is now `test/released_seals.json`.
+
+**Forgetting it is a RED, not a silence** — the property `run_manual_rev` has and `run_release`
+does not. `--rev` matters: without it the seal keeps the previous revision number and the row
+you just shipped stays editable.
+
 `node test/run_release.js` now fails if you skip it (it also cross-checks the dates and the
 version across all three files). **Run it before the merge, not after** — after the merge it
 is a red gate on `main`.
@@ -340,27 +367,6 @@ git tag -a v<X.Y.Z> -m "Alpha X.Y.Z — <headline>"
 git push origin --tags
 ```
 
-### 5b-bis. SEAL what you just published (#639) — one command, and it is self-enforcing
-
-```bash
-node tools/seal_released.js --rev=<the manual set revision that just shipped>
-```
-
-Commit `test/released_seals.json` on `develop`. This freezes the version you just released:
-its `CHANGELOG.md` section, its `changelog.html` entry, and every manual revision row at or
-below `--rev`. From here on, editing any of them reddens `run_released_frozen`.
-
-**Why the step exists.** On 2026-09-05 `Alpha 1.7.2` merged at 08:50 and a change made hours
-later rewrote its `CHANGELOG.md` section and its manual `Rev 17` row **in place**, describing
-behaviour that is not in 1.7.2 — with `run_release` and `run_manual_rev` both green. A
-consistency check is satisfied by a coherent rewrite; neither gate held any record of what had
-shipped. That record is now `test/released_seals.json`.
-
-**Forgetting this step is a RED, not a silence** — an unsealed published version fails
-`run_released_frozen` with *"PUBLISHED but never sealed"*, which is the property `run_manual_rev`
-has and `run_release` does not. `--rev` matters: without it the seal keeps the previous
-revision number and the row you just shipped stays editable.
-
 ### 5c. The TELEMETRY WORKER is a second deployment, and the release does not carry it
 
 `§5b` proves the **site** is live. It says nothing about `worker/`, which is a Cloudflare
@@ -404,6 +410,7 @@ git -C C:/grok_build/RD_backshop  merge --ff-only develop
 - [ ] **Launch only:** the eight **pre-launch** `## [Alpha 1.7.0]`…`## [Alpha 1.11.0]` headings
       relabelled so they no longer parse as released versions, or `run_release` is RED on
       newest-first ordering — see the banner. Keep them as separate sections
+- [ ] **`node tools/seal_released.js --rev=<shipped manual revision>` run IN THE SAME CHANGE as the bump (#639)** — freezes what you are publishing; `run_released_frozen` is RED from the moment `-rc` comes off until you do
 - [ ] `node test/run_release.js` → **OK**, run BEFORE the merge — after it, it is a red gate on
       `main`. At launch it goes **8 → 11**; put that in `BASELINES` and CLAUDE.md
 - [ ] **Launch only:** manual set rewritten to a single **Rev 0** row, stamped and packed;
@@ -419,7 +426,6 @@ git -C C:/grok_build/RD_backshop  merge --ff-only develop
 - [ ] `develop` fast-forwarded and pushed **only after** that production deployment exists —
       pushing it to the same SHA first is what cost Alpha 1.0.0 its production build
 - [ ] Annotated tag pushed separately (`git push origin --tags`) — a PR does not carry it
-- [ ] **`node tools/seal_released.js --rev=<shipped manual revision>` run and committed (#639)** — freezes the notes and revision rows you just published; `run_released_frozen` is RED until you do
 - [ ] All three lanes fast-forwarded to the released commit
 - [ ] **`node tools/verify_worker_deploy.js` → exit 0 (§5c)** — the telemetry Worker is a
       SECOND deployment the release does not carry, and no gate can see that it is stale

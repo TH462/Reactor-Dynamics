@@ -30,7 +30,7 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
 
 ## [Unreleased]
 
-## [Alpha 1.7.3-rc1] — 2026-09-05
+## [Alpha 1.7.3] — 2026-09-05
 
 ### Fixed (#630 — the ECCS card's MODE caption and its word were authored on the SAME line)
 
