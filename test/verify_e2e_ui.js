@@ -1827,6 +1827,99 @@ async function testHeldSpeedClick(page) {
   return log.join('\n') + '\n';
 }
 
+/* NO CSS TRANSITION MAY RIDE A BROADCAST-CADENCE VALUE (#613 wave 3, 2026-09-04).
+ *
+ * THE INVARIANT: a CSS transition may exist only on a property that changes on a DISCRETE
+ * EVENT — a valve rotating open, a stroke turning red. Never on a value the board rewrites
+ * every broadcast (level rects, surface lines, level markers, rod groups, a modulating
+ * valve's needle). A 150 ms transition restarted every ~100 ms never finishes, so the
+ * element is never idle and the compositor draws at the DISPLAY rate for a board that
+ * paints ~10 times a second.
+ *
+ * WHY IT NEEDS A GATE RATHER THAN A COMMENT: the defect is invisible to a source read and to
+ * every Node runner. `std_pipe.js`'s `tickAnimations` pauses ~90 keyframe animations and
+ * deliberately SKIPS CSSTransition ("short, one-shot") — so the class it excluded by design
+ * was the entire frame producer, and three waves of animation throttling never touched it.
+ * MEASURED at 10x on a settled board (`tools/perf_trace.js`): 6-7 running CSSTransitions at
+ * every sampled instant, ZERO running keyframe animations, 870 compositor draws per 15 s
+ * (60 Hz) against ~300 app paints. Removing exactly the broadcast-cadence declarations took
+ * frames to 339, -61 %, compositor busy -32 %, GPU busy -25 %. After the fix the compositor
+ * draws ~1.03 times per app paint.
+ *
+ * WHAT IT ASSERTS, and why in this shape:
+ *  - TEN SAMPLES ~200 ms APART, not one. A transition is 150 ms long; a single sample can
+ *    fall in a gap and certify a board that is transitioning continuously. Round 2's
+ *    five-instant sweep is what proved the 6-7 were ALWAYS running.
+ *  - A COUNT CEILING of 2 catches a broadcast-cadence declaration anywhere, including one
+ *    added outside `.pwr-board-stage`.
+ *  - A TARGET RULE (no rect/line/g in `.pwr-board-stage` transitioning height/y/transform)
+ *    names the exact shape that was removed, so the red says WHAT, not just "too many".
+ *
+ * PROVED BY INJECTION, 2026-09-04 (`inbox/613/inject_css_transition.js`, which drives this one
+ * check through the module export). Temporarily restoring ONE declaration —
+ * `style: { transition: 'y 0.15s linear, height 0.15s linear' }` on the pressurizer's
+ * waterRect (`comp_pressurizer.js`, the `data-role: pzr-water` element) — took the samples from
+ * `0,0,0,0,0,0,0,0,0,0` to `2,2,2,2,2,2,2,2,2,2` (one declaration, two properties, running at
+ * EVERY sample) and the check failed with "a broadcast-cadence CSS transition is live on the
+ * board: height @ rect [board], y @ rect [board]". Removed again, green.
+ *
+ * NOTE WHICH HALF CAUGHT IT: at 2 running the COUNT ceiling was still satisfied — the TARGET
+ * rule is what went red. The ceiling is the backstop for a declaration outside the board or on
+ * a tag this rule does not name; it is not the primary assertion, and a future edit that
+ * loosens the target rule to "count only" would re-open exactly this defect. */
+async function testCssTransitions(page) {
+  var log = [];
+  var url = 'http://127.0.0.1:' + PORT + '/ui/shell.html?engine=pwr2&init=hot_full_power&run=1&dev=1';
+  await page.goto(url, { waitUntil: 'networkidle', timeout: 90000 });
+  await dismissMission(page);
+  await waitBoardLive(page, 20000);
+  /* 10x through the SHIPPED segment, so the cadence under test is a player's. */
+  if (await page.$('#speed [data-speed="10"]')) await page.click('#speed [data-speed="10"]');
+  await page.waitForTimeout(1500);
+
+  var counts = [], offenders = [], census = {};
+  for (var i = 0; i < 10; i++) {
+    var s = await page.evaluate(function () {
+      if (!document.getAnimations) return { unsupported: true, rows: [] };
+      var run = document.getAnimations().filter(function (a) {
+        return a.playState === 'running' && a.constructor && a.constructor.name === 'CSSTransition';
+      });
+      return { unsupported: false, rows: run.map(function (a) {
+        var el = a.effect && a.effect.target;
+        var tag = el ? String(el.tagName || '?').toLowerCase() : '?';
+        return { prop: String(a.transitionProperty || '?'), tag: tag,
+                 stage: !!(el && el.closest && el.closest('.pwr-board-stage')) };
+      }) };
+    });
+    if (s.unsupported) throw new Error('#613: document.getAnimations() is unavailable — this check cannot run');
+    counts.push(s.rows.length);
+    s.rows.forEach(function (r) {
+      var k = r.prop + ' @ ' + r.tag + (r.stage ? ' [board]' : '');
+      census[k] = (census[k] || 0) + 1;
+      if (r.stage && /^(rect|line|g)$/.test(r.tag) && /^(height|y|transform)$/.test(r.prop)) {
+        if (offenders.indexOf(k) < 0) offenders.push(k);
+      }
+    });
+    await page.waitForTimeout(200);
+  }
+  var top = Object.keys(census).sort(function (a, b) { return census[b] - census[a]; }).slice(0, 6);
+  log.push('running CSSTransitions across 10 samples: ' + counts.join(', '));
+  log.push(top.length ? 'targets: ' + top.map(function (k) { return census[k] + 'x ' + k; }).join(' | ') : 'targets: none');
+
+  if (offenders.length) {
+    throw new Error('#613: a broadcast-cadence CSS transition is live on the board: ' + offenders.join(', ') +
+      ' — a transition may only ride a property that changes on a DISCRETE event ' +
+      '(see std_pipe.js tickAnimations). Samples: ' + counts.join(','));
+  }
+  var worst = Math.max.apply(null, counts);
+  if (worst > 2) {
+    throw new Error('#613: ' + worst + ' CSS transitions were running at once (ceiling 2) — samples ' +
+      counts.join(',') + '; targets ' + top.join(' | ') +
+      '. Something is transitioning a value rewritten every broadcast.');
+  }
+  return log.join('\n') + '\n';
+}
+
 async function main() {
   fs.mkdirSync(SCRATCH, { recursive: true });
   var fallback = path.join(SCRATCH, 'ui-screenshot-fallback.log');
@@ -1878,6 +1971,8 @@ async function main() {
     fs.writeFileSync(path.join(SCRATCH, 'adv-fail-panel.log'), afLog);
     var hsLog = await testHeldSpeedClick(page);
     fs.writeFileSync(path.join(SCRATCH, 'held-speed-click.log'), hsLog);
+    var ctLog = await testCssTransitions(page);
+    fs.writeFileSync(path.join(SCRATCH, 'css-transitions.log'), ctLog);
     fs.writeFileSync(path.join(SCRATCH, 'ui-screenshot-summary.log'), summary.join('\n') + '\n');
     console.log('E2E UI verification: PASS (' + (ENGINES.length * VIEWS.length) + ' screenshots)');
   } finally {
@@ -1897,7 +1992,8 @@ if (require.main !== module) {
                      testChartSettings: testChartSettings, testMonitorList: testMonitorList,
                      testMissionCloseResumes: testMissionCloseResumes, testRunStartMark: testRunStartMark,
                      testHeldPlantDialog: testHeldPlantDialog, testHeldSpeedClick: testHeldSpeedClick,
-                     testSaveLoadRefusal: testSaveLoadRefusal, port: function () { return PORT; } };
+                     testSaveLoadRefusal: testSaveLoadRefusal, testCssTransitions: testCssTransitions,
+                     port: function () { return PORT; } };
 } else {
   main().catch(function (e) {
     fs.mkdirSync(SCRATCH, { recursive: true });

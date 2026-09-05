@@ -30,7 +30,62 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
 
 ## [Unreleased]
 
-## [Alpha 1.7.2-rc6] — 2026-09-03
+## [Alpha 1.7.2-rc7] — 2026-09-04
+
+### Fixed (#613 wave 3 — the board drew 60 frames a second for a plant that paints ten)
+
+- **The board's level indicators no longer carry a CSS transition, and the compositor frame rate
+  halves.** Measured with `tools/perf_trace.js` on a settled `hot_full_power` board at 10 ×, two
+  cells a side, 15 s windows:
+
+  | | pre-fix (mean of 2) | fixed (mean of 2) | Δ |
+  |---|---|---|---|
+  | compositor frames drawn | 904 | **442** | **−51.2 %** |
+  | compositor thread busy | 2352 ms | **1563 ms** | **−33.6 %** |
+  | GPU thread busy | 6162 ms | **4633 ms** | **−24.8 %** |
+  | renderer main busy | 12138 ms | 10005 ms | −17.6 % |
+  | raster work | 7009 ms | 6340 ms | −9.5 % |
+  | main-thread `Paint` events | 14877 | 13771 | −7.4 % |
+  | running `CSSTransition`s, 5 instants | 6, 7, 6, 6, 7 | **0, 0, 0, 0, 0** | — |
+  | app paints (`RD.Perf`) | 265 | 249 | −6.0 % |
+
+  Nothing the player asked for was drawn in those 462 frames. The board paints once per 100 ms
+  broadcast; it was compositing at the display rate.
+
+- **The mechanism, because it is the interesting part.** `std_pipe.js`'s `tickAnimations` pauses
+  and re-seeks every decorative keyframe animation on the board — and deliberately SKIPS
+  `CSSTransition`, on the grounds that a transition is "short, one-shot". That was true of a valve
+  rotating open. It was NOT true of the steam generator and pressurizer level rects, their surface
+  lines and level markers, the reactor vessel's rod groups, or a modulating valve's needle, whose
+  values are rewritten **every broadcast**: a 150 ms transition restarted every ~100 ms never
+  finishes, so those elements were never idle. Measured before the fix: **zero** running keyframe
+  animations at every sampled instant (the pause loop was working perfectly) and **6–7** running
+  transitions at every sampled instant. Three waves of animation throttling had been tuning the
+  one class that was already stopped.
+
+- **The rule this establishes, now gated.** A CSS transition may exist only on a property that
+  changes on a **discrete event** — never on a value rewritten every broadcast. The one-shot
+  transitions that remain (valve rotation, stroke/fill colour, the PORV plug) measured free and
+  stay; the two `all 0.35s ease` declarations on the modulating valve are narrowed to `fill` and
+  `stroke`. `test/verify_e2e_ui.js` samples `document.getAnimations()` ten times at 10 × and fails
+  if a running transition targets a `rect`/`line`/`g` inside `.pwr-board-stage` on
+  `height`/`y`/`transform`; restoring one declaration takes the samples from `0,…,0` to `2,…,2`
+  and the check red.
+
+- **What the smoothing was worth, measured rather than assumed.** Over a 12 s scram at 10 ×, the
+  pressurizer water rect covers the same ~10 px of travel either way: pre-fix in 640 sub-pixel
+  increments at 53 Hz (p90 0.03 px), fixed in 121 increments at 10.1 Hz — **p50 0.07 px, p90
+  0.17 px**, with a single 6.3 px step at the sharpest point of the transient. Below a pixel there
+  is nothing to see; the one large step is a real difference and is the whole cost.
+
+- **UNMEASURED, and it is the same caveat as waves 1 and 2:** this harness's compositor is not
+  starved — it drew every vsync happily before the fix — so a 51 % cut in frames DRAWN shows here
+  as a cut in compositor and GPU *work*, not as a frame rate. Whether it converts to frames on the
+  owner's machine is unmeasured; the argument that it should is that the removed frames are ones
+  nothing asked for. Also unmeasured: the residual. With the transitions gone the board still
+  draws 442 frames against 249 app paints, and re-running the `notransition` knob on the FIXED
+  tree moves that only to 426 (−2.7 %, inside noise) — so the residual is **not** transitions and
+  is not attributed.
 
 ### Changed (#624 / #619 item 14 — both cold states boot with the heaters off and the spray in hand)
 

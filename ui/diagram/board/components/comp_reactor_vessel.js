@@ -7,8 +7,11 @@
  * The internal rod-worth/power rAF loop is stripped — update() drives display:
  *   update({ regFrac, shutFrac, power, coreInv, boil, glow, showFlow })
  * Rod motion arrives at snapshot cadence, so rod position is applied as a CSS
- * transform (transition 0.3s linear) on moving groups instead of per-frame
- * geometry rebuilds; bubble rise / flow dashes are pausable CSS keyframes.
+ * transform on moving groups instead of per-frame geometry rebuilds; bubble
+ * rise / flow dashes are pausable CSS keyframes. The transform carried a
+ * `transition: transform 0.3s linear` "so snapshot-cadence updates glide" until
+ * #613 wave 3 measured what it cost — see the rodGroup comment and the rule in
+ * std_pipe.js's tickAnimations block.
  */
 (function () {
   'use strict';
@@ -117,11 +120,15 @@
 
     // ---- rod bank group (statics + CSS-transform moving parts) ----
     // The design resized the indicator fill / absorber rects per frame; here the
-    // dynamic parts live in translated groups with 'transition: transform 0.3s
-    // linear' so snapshot-cadence updates glide.
+    // dynamic parts live in translated groups, so a rod step is one `transform`
+    // write instead of a geometry rebuild.
+    // NO CSS TRANSITION on those groups (#613 wave 3). They carried
+    // 'transition: transform 0.3s linear' "so snapshot-cadence updates glide" — but rods move
+    // continuously during a startup and under automatic rod control, so the transition was
+    // restarted by every broadcast and never idle. See std_pipe.js's tickAnimations comment for
+    // the rule and the measurement.
     function rodGroup(rodXs, cxs) {
       var stripL = cxs - (tubeW / 2 - 1);
-      var trans = { transition: 'transform 0.3s linear' };
       var els = [];
       // penetration standpipe — grounds the drive tube onto the vessel head dome
       els.push(h('rect', { x: cxs - 15, y: 8, width: 30, height: 58, rx: 3, fill: '#141f29', stroke: '#2c3f4c', strokeWidth: 1 }));
@@ -148,10 +155,10 @@
       // position fill — full-travel rect anchored at the w=0 position, clipped to the
       // tube window; translating by -w*stripH reproduces the variable-height fill
       // with the bright leading edge always under the knob.
-      var mvFill = h('g', { style: trans },
+      var mvFill = h('g', null,
         h('rect', { x: stripL + 1.5, y: stripBottom, width: tubeW - 5, height: stripH, rx: 4, fill: 'url(#' + ids.strip + ')' }));
       els.push(h('g', { clipPath: 'url(#' + ids.stripClip + ')' }, mvFill));
-      var mvKnob = h('g', { style: trans },
+      var mvKnob = h('g', null,
         h('rect', { x: stripL - 5, y: stripBottom - 4, width: tubeW + 8, height: 8, rx: 3, fill: '#7deeff', stroke: '#2ab5cc', strokeWidth: 1 }));
       els.push(mvKnob);
       // absorbers — drawn at the fully-withdrawn reference (bottom edge at coreTop)
@@ -163,8 +170,8 @@
         abs.push(h('rect', { x: x - 7, y: coreTop - coreH, width: 14, height: coreH, rx: 3, fill: 'url(#' + ids.ctrl + ')', stroke: '#141a20', strokeWidth: 1 }));
         tips.push(h('circle', { cx: x, cy: coreTop, r: 6, fill: '#26333d', stroke: '#3ec7dd', strokeWidth: 1.2 }));
       });
-      var mvAbs = h('g', { style: trans }, abs);
-      var mvTips = h('g', { style: trans }, tips);
+      var mvAbs = h('g', null, abs);
+      var mvTips = h('g', null, tips);
       els.push(h('g', { clipPath: 'url(#' + ids.coreClip + ')' }, mvAbs));
       els.push(mvTips);
       var moveInd = [mvFill, mvKnob], moveCore = [mvAbs, mvTips];

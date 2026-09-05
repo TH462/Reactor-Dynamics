@@ -192,7 +192,31 @@
    * animation-play-state says paused (the house "hold" flag), and anything inside a frozen
    * board stage — the board freezes, the alarm flash and the clock pulse do NOT, and they
    * are page-level. Advancing by DELTA rather than to an absolute time is what lets a
-   * frozen element hold and then resume in its own phase. */
+   * frozen element hold and then resume in its own phase.
+   *
+   * THE FIRST EXCLUSION WAS THE FRAME PRODUCER, AND THAT IS THE RULE THIS BLOCK NOW CARRIES
+   * (#613 wave 3, 2026-09-04):
+   *
+   *   A CSS TRANSITION MAY EXIST ONLY ON A PROPERTY THAT CHANGES ON A DISCRETE EVENT.
+   *   NEVER ON A VALUE REWRITTEN EVERY BROADCAST.
+   *
+   * "Short, one-shot" above was true of a valve rotating open. It was NOT true of the level
+   * rects, surface lines, level markers, rod groups and the valve needle, whose values are
+   * rewritten on EVERY broadcast: a 150 ms transition restarted every ~100 ms never finishes,
+   * so those elements were never idle and the compositor drew at the display rate for ever.
+   * MEASURED on a settled board at 10x, `tools/perf_trace.js`: 6-7 running CSSTransitions at
+   * every one of five sampled instants and ZERO running keyframe animations (this loop had
+   * paused all ~90 of them, exactly as designed) — 870 compositor draws per 15 s, i.e. 60 Hz,
+   * against ~300 app paints. Knob `notransition` (`* {transition:none !important}`) cut that to
+   * 337 frames (-61 %), compositor busy -32 %, GPU busy -25 %; knob `nolevels`, restricted to
+   * just the broadcast-rewritten set, got 339 — the level indicators were the WHOLE win, and
+   * the one-shot transitions that remain (valve rotation, stroke/fill colour, the PORV plug)
+   * cost nothing measurable. With them gone the compositor draws ~1.03 times per app paint.
+   *
+   * GATED by `test/verify_e2e_ui.js`'s "css transitions" check, which runs the plant at 10x and
+   * samples `document.getAnimations()` ten times: it fails if a running CSSTransition ever
+   * targets a rect/line/g inside `.pwr-board-stage` on height/y/transform. Restore one of those
+   * declarations and it goes red — so this rule is enforced, not just written down. */
   var animPrevMs = 0;
   function tickAnimations(now) {
     if (!document.getAnimations) return;

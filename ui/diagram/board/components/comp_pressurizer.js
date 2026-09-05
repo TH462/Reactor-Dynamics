@@ -170,11 +170,13 @@
      * either, which is how a bank drawn ABOVE its own cutoff level survived. Selecting them by
      * gradient id or draw order would be a check pinned to the art's spelling; a role is the
      * contract. */
+    /* NO CSS TRANSITION on the water rect or the surface line (#613 wave 3): both are rewritten
+     * on every broadcast, and a 150 ms transition restarted every 100 ms never finishes, so the
+     * compositor draws 60 Hz for a board that paints ~17 Hz. See std_pipe.js's tickAnimations. */
     var waterRect = h('rect', { 'data-role': 'pzr-water',
-      x: 40, y: waterTop, width: 120, height: 0, fill: 'url(#' + ids.water + ')', opacity: 0.72,
-      style: { transition: 'y 0.15s linear, height 0.15s linear' } });
+      x: 40, y: waterTop, width: 120, height: 0, fill: 'url(#' + ids.water + ')', opacity: 0.72 });
     var surfLine = h('line', { x1: 52, y1: 0, x2: 148, y2: 0, stroke: '#bdf1ff', strokeWidth: 2, opacity: 0.5,
-      strokeDasharray: '18 10', style: { transition: 'transform 0.15s linear' } });
+      strokeDasharray: '18 10' });
 
     // ---- heater elements ----
     // Each rod spans the CAVITY at its own y, inset by ROD_INSET — authored as a literal
@@ -274,7 +276,7 @@
     [0, 50, 100].forEach(function (pct) {
       gEls.push(h('line', { x1: barX + barW, y1: wlY(pct), x2: barX + barW + 4, y2: wlY(pct), stroke: '#3b4f5e', strokeWidth: 1 }));
     });
-    var wlMarker = h('g', { style: { transition: 'transform 0.15s linear' } },
+    var wlMarker = h('g', null,   /* no transition — broadcast-cadence transform, #613 */
       h('polygon', { points: (barX - 3) + ',0 ' + (barX - 12) + ',-6 ' + (barX - 12) + ',6', fill: '#eaf4fb', stroke: '#0b1119', strokeWidth: 0.6 }),
       h('line', { x1: barX - 3, y1: 0, x2: barX + barW + 7, y2: 0, stroke: '#eaf4fb', strokeWidth: 1.4, strokeDasharray: '4 3' }));
     gEls.push(wlMarker);

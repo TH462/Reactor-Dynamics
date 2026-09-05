@@ -45,6 +45,62 @@ where the two differ or where judgment was exercised.
 
 ---
 
+## 2026-09-04-workbench-c — #613 wave 3: a CSS transition may not ride a broadcast-cadence value
+
+**Decision** (coordinator's brief on the round-2 measurement; no owner ruling sought — this is a
+rendering fix with no plant-behaviour content). **The CSS transitions are removed from every board
+element whose value is rewritten on each broadcast**, and the rule is gated:
+
+> A CSS transition may exist only on a property that changes on a **discrete event**. Never on a
+> value rewritten every broadcast.
+
+Sites: `comp_steam_generator.js` (steam rect `height`, water rect `y`+`height`, surface line
+`transform`, level marker group), `comp_pressurizer.js` (water rect, surface line, level marker),
+`comp_reactor_vessel.js` (`transform 0.3s linear` on the four rod groups), `comp_valve.js`
+(`all 0.35s ease` narrowed to `fill` on the V-port polygon and `stroke` on the position needle).
+One-shot transitions stay — valve rotation, stroke/fill colour, the PORV plug — measured free in
+round 2 (`nolevels` 339 frames against `notransition`'s 337).
+
+**Why it is a decision and not a tidy-up.** `std_pipe.js`'s `tickAnimations` pauses every
+decorative keyframe animation and its comment names `CSSTransition` as one of three classes it
+**deliberately does not touch** ("short, one-shot"). That excluded class was the entire frame
+producer: measured at 10× on a settled board, **zero** running keyframe animations at five sampled
+instants and **6–7** running transitions at every one of them. A 150 ms transition restarted by a
+~100 ms broadcast never finishes, so the compositor drew at the display rate for a board that
+paints ten times a second. Waves 1 and 2 had spent their effort on the class that was already
+stopped, which is why the owner's fps stayed at 4.6 while his render p95 more than halved.
+
+**Measured** (`tools/perf_trace.js`, two cells a side, same round; pre-fix = the four components
+restored to `HEAD`): compositor frames drawn **904 → 442, −51.2 %**; compositor busy −33.6 %; GPU
+busy −24.8 %; renderer main busy −17.6 %; raster only −9.5 %. Running transitions 6–7 → 0 at every
+instant. The saving lands on the compositor and GPU, which is the opposite profile from round 1's
+raster knobs — the two levers do not compete.
+
+**Gate:** `test/verify_e2e_ui.js` → `testCssTransitions` (10 samples ~200 ms apart at 10×; fails on
+a running transition targeting a `rect`/`line`/`g` in `.pwr-board-stage` on `height`/`y`/`transform`,
+or on more than 2 running). **Injected red** by restoring one declaration on the pressurizer water
+rect: samples `0,…,0` → `2,…,2`. At 2 running the count ceiling still passed and the TARGET rule
+caught it — the ceiling is a backstop, not the assertion. `verify_e2e_ui`'s score string is
+unchanged, so no `BASELINES` edit.
+
+**Rejected: touching `shell.css`.** `.g-band .needle` (`left .12s`) and `.rodbar > span`
+(`width .12s`) were probed rather than assumed — 6 needle elements, **0 visible**, never a running
+transition in 10 samples; `.rodbar` has **no markup producer anywhere in the tree**. Both rules are
+dead on this view, so removing them would have been an unmeasured change to a legacy surface.
+
+**Accepted cost, measured:** over a 12 s scram at 10× the pressurizer water rect covers the same
+~10 px either way — pre-fix in 640 sub-pixel steps at 53 Hz, fixed in 121 steps at 10.1 Hz with p90
+**0.17 px** and one **6.3 px** step at the sharpest point of the transient. Nine tenths of the
+motion is below a pixel; the single large step is the whole cost.
+
+**Open:** the residual. 442 frames against 249 app paints, and `--ab=notransition` on the FIXED tree
+buys only −2.7 % (inside the ±2.8 % noise floor), so the residual is **not** transitions and is not
+attributed. Round 2's 1.03 draws-per-paint was a different machine state and must not be quoted as
+this tree's floor. Still deferred: the blur filters (−25.9 % raster) and the dash writes (−24.9 %),
+because raster is not what produces frames on this harness and neither "mode" here ran on a
+hardware rasteriser — the owner's next enriched `RD.Perf` bundle is the instrument that decides.
+
+
 ## 2026-09-04-develop-g — #624 item 14: BOTH cold states boot pressure control OUT OF SERVICE
 
 **DECIDED (scope), and DECIDED TWICE — the first answer is kept here because the way it was wrong

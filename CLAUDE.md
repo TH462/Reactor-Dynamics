@@ -417,6 +417,13 @@ standing procedure rather than news belongs in the list below. **Evicting one: R
 FIRST** — ask what in it would still burn someone in a month, move that to the standing list as
 ONE line, drop the rest. **A bullet is ~80 words.**
 
+- **THE PAUSE LOOP EXCLUDED ONE CLASS BY DESIGN AND THAT CLASS WAS THE FRAME PRODUCER**
+  (2026-09-04, #613). `tickAnimations` paused ~90 keyframe animations and skipped CSSTransition as
+  "short, one-shot" — but 150 ms transitions on level rects, restarted by every 100 ms broadcast,
+  never finish. Measured at 10×: ZERO keyframe animations running, 6–7 transitions running at every
+  sampled instant, 904 compositor draws per 15 s against 265 app paints. Removing them: −51 %.
+  Three waves throttled the class already stopped — the fps in the bundle is the APP’s own cadence.
+
 - **TWO CORRECT MECHANISMS TWO DAYS APART CAN DISAGREE BY 17 psi — AND A HOLD RE-DECIDED EVERY
   STEP CHATTERS AT 1×** (2026-09-04, #627). #608 ticked the Pressure SP step at 682 psia to clear the
   cover gas; #622 held the clock AT the 665 psia cover gas. Between them the checklist waited on a
@@ -445,13 +452,6 @@ ONE line, drop the rest. **A bullet is ~80 words.**
   ACCELERATION, so "2235" ended at 3600x. Feedback form: 32 chars typed, **0 in the box**, focus on
   `#playBtn`. **Make the whole affordance the target; the handler looks correct either way.**
 
-- **A STEP'S TICK IS PERMISSION FOR THE NEXT STEP — AN ACCEPTANCE THRESHOLD IS A SAFETY CLAIM
-  ABOUT ITS SUCCESSOR, AND THE REPLAY CANNOT CHECK IT** (2026-09-02, #608). The heatup's Pressure
-  SP step accepted at 609 psia against a 665 psia accumulator cover gas; opening there is ACCEPTED
-  and backfeeds the tank — 100 % to 97.2 %, boron +22 ppm. Defensible about step 7, wrong as what
-  releases you into step 8. A realistic `hold:` masks the acceptance beneath it, refining #244's
-  "the replay is the authority": it is, for whether a checklist FITS — never for whether a tick is
-  safe.
 **Standing procedure — not part of the rotation above; these do not expire.** One trap per entry.
 **MAX 25 BULLETS** *(OWNER RULING, 2026-08-10: selected "Cap at 25, evict to TRAPS.md")*,
 gated by `test/run_doc_budget.js`. Adding

@@ -103,6 +103,12 @@
  *              it was asked for, but it is the WEAKER control: a sweep cannot catch a 150 ms
  *              transition that starts and ends between two sweeps, and it recovers only a third
  *              of the frames (584) that `notransition` does. Use it to measure the METHOD.
+ *   noclock    Drops the shared flow clock's own rAF request (std_pipe's `flowTick`, refused by
+ *              name). ALONE IT BACKFIRES — the clock is also what pauses every keyframe
+ *              animation the board re-authors, so frames went 450 -> 901 — use it WITH noanim:
+ *              `noclock,noanim` measured 136 frames against 155 app paints on the fixed tree,
+ *              which attributes the ~190-frame residual after #613 wave 3 to the clock's 24 Hz
+ *              request itself (a BeginMainFrame commits and draws even when nothing was written).
  *   nochart    `#chartCanvas { display: none }` — the strip chart's SVG, rebuilt via innerHTML.
  *              Verified by getClientRects; reported as a NO-OP if the chart was not on screen.
  *   pipelayer  `.pwr-board-stage > svg { will-change: transform }` — promotes the single
@@ -252,6 +258,41 @@ var KNOBS = {
         if (an && an !== 'none') still++;
       }
       return { still_animating: still, took: still === 0 };
+    },
+  },
+  /* THE RESIDUAL after the transitions were removed (#613 wave 3, round 4). On the fixed tree the
+   * compositor still drew 442 frames / 15 s against 249 app paints, and `noanim` (439) and
+   * `noflow` (442) moved nothing. The remaining requester is the shared flow clock ITSELF:
+   * std_pipe.js's setInterval asks for a rAF 24 times a second, and a BeginMainFrame commits
+   * and draws whether or not the callback wrote anything. This knob drops exactly that request:
+   * std_pipe reads `window.requestAnimationFrame` at call time and hands it a function NAMED
+   * flowTick, so a wrapper that refuses by name stops the clock and nothing else (its
+   * `flowRafPend` latch then stays set and the interval returns early for ever). A first draft
+   * swept clearInterval over every id and killed the simulation service's own timer with it —
+   * 0 broadcasts, 0 frames, a "result" about nothing. What is left is the app's own paints.
+   * Verify: the dashes stop moving and the paused animations stop seeking. */
+  noclock: {
+    apply: function () {
+      var orig = window.requestAnimationFrame.bind(window);
+      window.__noclockDropped = 0;
+      window.requestAnimationFrame = function (fn) {
+        if (fn && fn.name === 'flowTick') { window.__noclockDropped++; return 0; }
+        return orig(fn);
+      };
+      return { wrapped: true };
+    },
+    verify: function () {
+      var pl = document.querySelector('polyline[data-dash-cyc]');
+      var an = document.getAnimations ? document.getAnimations().filter(function (a) { return a.playState === 'paused'; })[0] : null;
+      var d0 = pl ? pl.getAttribute('stroke-dashoffset') : null;
+      var t0 = an ? an.currentTime : null;
+      return new Promise(function (res) {
+        setTimeout(function () {
+          var d1 = pl ? pl.getAttribute('stroke-dashoffset') : null;
+          var t1 = an ? an.currentTime : null;
+          res({ dash_moved: d0 !== d1, anim_seeked: t0 !== t1, took: d0 === d1 && t0 === t1 });
+        }, 1000);
+      });
     },
   },
   /* THE FRAME PRODUCER (#613 wave 3, 2026-09-04). Everything about this board says it should

@@ -121,18 +121,22 @@
       h('filter', { id: ids.steamblur, x: '-60%', y: '-60%', width: '220%', height: '220%' }, h('feGaussianBlur', { stdDeviation: '4' })));
 
     // ---- shell + secondary side ----
+    /* NO CSS TRANSITION on the three level elements below (#613 wave 3). These are rewritten on
+     * every broadcast, so a 150 ms transition restarts before the previous one finishes and the
+     * compositor never goes idle: measured 6-7 running CSSTransitions at EVERY sampled instant
+     * and 870 compositor draws per 15 s (60 Hz) against 298 app paints. Removing exactly this
+     * set took frames to 339, -61 %. The rule and the gate are in std_pipe.js's tickAnimations
+     * comment. */
     var steamRect = h('rect', {
-      x: 110, y: 20, width: 200, height: 0, fill: 'url(#' + ids.steam + ')', opacity: 0.5,
-      style: { transition: 'height 0.15s linear' }
+      x: 110, y: 20, width: 200, height: 0, fill: 'url(#' + ids.steam + ')', opacity: 0.5
     });
     var waterRect = h('rect', {
       x: 110, y: waterBot, width: 200, height: tubeSheetY - waterBot,   /* ends at the tube sheet (#509 item 8) */
-      fill: 'url(#' + ids.water + ')', opacity: 0.72,
-      style: { transition: 'y 0.15s linear, height 0.15s linear' }
+      fill: 'url(#' + ids.water + ')', opacity: 0.72
     });
     var surfLine = h('line', {
       x1: 124, y1: 0, x2: 296, y2: 0, stroke: '#bdf1ff', strokeWidth: 2, opacity: 0.5,
-      strokeDasharray: '22 12', style: { transition: 'transform 0.15s linear' }
+      strokeDasharray: '22 12'
     });
     var flowEls = [surfLine];
 
@@ -191,7 +195,7 @@
     [0, 25, 50, 75, 100].forEach(function (pct) {
       gEls.push(h('line', { x1: gx + gw, y1: pctY(pct), x2: gx + gw + 4, y2: pctY(pct), stroke: '#3b4f5e', strokeWidth: 1 }));
     });
-    var markerGroup = h('g', { style: { transition: 'transform 0.15s linear' } },
+    var markerGroup = h('g', null,   /* no transition — broadcast-cadence transform, #613 */
       h('polygon', { points: (gx - 2) + ',0 ' + (gx - 9) + ',-5 ' + (gx - 9) + ',5', fill: '#eaf4fb', stroke: '#0b1119', strokeWidth: 0.6 }),
       h('line', { x1: gx, y1: 0, x2: gx + gw, y2: 0, stroke: '#eaf4fb', strokeWidth: 1.6 }));
     gEls.push(markerGroup);

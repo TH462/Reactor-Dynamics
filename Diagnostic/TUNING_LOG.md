@@ -29,6 +29,159 @@ and the user-visible summary in `CHANGELOG.md`. This file points at those and tr
 
 ---
 
+## Session log — 2026-09-04-workbench-c (#613 wave 3 — the frame producer was the one class the pause loop excluded by design)
+
+**The ask.** Wave 3's fix, on the coordinator's round-2 measurement: remove the CSS transitions
+from the board elements that are rewritten on every broadcast, gate the invariant, and re-measure.
+Waves 1 and 2 had throttled the decorative animation clock and got the owner's render p95 from
+48.6 → 21.7 ms with **fps unchanged at 4.6** and the verdict flipped to *"PAINTS ARE BEING
+DROPPED"*, so the frame producer was still unidentified.
+
+### The trap, which is the whole entry
+
+`std_pipe.js`'s `tickAnimations` pauses and re-seeks every decorative keyframe animation on the
+board. Its own comment names **three things it deliberately does not touch**, and the first is
+`CSSTransition` — "short, one-shot, and pausing them would strand a half-finished level move".
+
+**That excluded class was the entire frame producer.** Measured on a settled `hot_full_power` board
+at 10×, five instants across a 15 s window: **zero** running keyframe animations at every instant
+(the pause loop was working perfectly — all ~90 of them paused) and **6–7** running `CSSTransition`s
+at every instant. They are 150 ms transitions on `height`/`y`/`transform` of board rects and lines,
+restarted by every ~100 ms broadcast, so they never finish and the element is never idle. The board
+was compositing at 60 Hz for a plant that paints ~10 times a second.
+
+Three waves had therefore been tuning the one class that was already stopped. Two second-order
+facts that made it invisible:
+
+- **The fps in the diagnostic bundle is the APP's own paint cadence, not the browser's frame
+  rate.** `RD.Perf` counts broadcasts painted, so it reads 8.7 in every cell of rounds 1 and 3
+  whether the compositor drew 904 frames or 442. Nothing in the product could see the term.
+- **Round 1's ten knobs — filters, dash writes, layer promotion, the strip chart, and
+  `animation: none` — moved the frame count by NOTHING.** 899–901 in all twenty unthrottled cells.
+  That uniformity should have been read as "none of these is the producer" a round earlier.
+
+### The change
+
+Transitions removed from exactly the broadcast-rewritten set: `comp_steam_generator.js` (steam
+rect `height`, water rect `y`+`height`, surface line, level marker group),
+`comp_pressurizer.js` (water rect, surface line, level marker), `comp_reactor_vessel.js`
+(`transform 0.3s linear` on the four rod groups — rods move continuously during a startup and under
+automatic rod control), and `comp_valve.js`, where `all 0.35s ease` on the V-port polygon and the
+position needle narrows to `fill` and `stroke`. One-shot transitions stay; round 2 measured them
+free (`nolevels` 339 frames against `notransition`'s 337).
+
+**`shell.css`'s two rules were MEASURED and left alone**, which the brief asked for rather than
+assumed: `.g-band .needle` has 6 elements, **0 visible**, and never appeared as a running transition
+in 10 samples; `.rodbar > span` has **0 elements** and `.rodbar` has no markup producer anywhere in
+the tree.
+
+### The A/B (`tools/perf_trace.js`, round 3 — two cells a side, same machine state)
+
+The pre-fix cells are the four component files restored to `HEAD`, verified content-identical by
+`git diff --numstat`. **A within-round comparison, because rounds 1/2/3 do not share machine state.**
+
+| term | pre-fix (mean) | fixed (mean) | Δ |
+|---|---|---|---|
+| **compositor frames drawn / 15 s** | 904 | **442** | **−51.2 %** |
+| compositor thread busy | 2352 ms | 1563 ms | **−33.6 %** |
+| GPU thread busy | 6162 ms | 4633 ms | **−24.8 %** |
+| renderer main busy | 12138 ms | 10005 ms | −17.6 % |
+| raster work | 7009 ms | 6340 ms | −9.5 % |
+| main-thread `Paint` events | 14877 | 13771 | −7.4 % |
+| app paints (`RD.Perf`) | 265 | 249 | −6.0 % |
+| running `CSSTransition`s, 5 instants | **6, 7, 6, 6, 7** | **0, 0, 0, 0, 0** | — |
+
+Round 2's profile, reproduced: the saving is **compositor and GPU work**, not raster — the opposite
+profile from round 1's `nofilter`/`noflow`, which took a quarter of raster each and left the
+compositor drawing 60 Hz regardless. The two levers do not compete.
+
+### The residual is NOT transitions, and it is not attributed
+
+442 frames against 249 app paints is 1.78 draws per paint, where round 2's `notransition` cell
+reported 1.03. Rather than quote the 1.03, two more cells were run **on the fixed tree**:
+
+| cell (fixed tree) | frames | app paints | raster ms |
+|---|---|---|---|
+| no knob | 438 | 251 | 6578 |
+| `--ab=notransition` | **426** | 247 | 6314 |
+| `--ab=noflow` | 442 | 250 | **4591** |
+
+`notransition` on the fixed tree buys **−2.7 %, inside the ±2.8 % noise floor** — there is no CSS
+transition left on this board worth removing, which is the strongest available statement that the
+fix is complete for its own class. `noflow` does not move the frame count either while taking 30 %
+of raster. Round 2's 1.03 was
+measured in a round whose baseline drew 858 frames to this round's 904 and whose app paints were
+~350 to this round's ~265; the two ratios are not comparable and 1.03 must not be quoted as this
+tree's floor.
+
+**Round 4 attributed the residual (coordinator, same day, under a 23–71 % background load from
+another lane's gate — read the frame COUNTS, not the ms).** A new knob `noclock` drops the shared
+flow clock's own rAF request by function name (`flowTick`). Alone it BACKFIRED and the backfire is
+the finding: frames went 450 → **901**, because the clock is also what pauses every keyframe
+animation the board re-authors, and with it stopped those ran on the compositor at 60 Hz — a knob
+that removes a term can re-admit a bigger one. Combined:
+
+| cell (fixed tree) | frames | app paints | BeginMainFrame |
+|---|---|---|---|
+| no knob | 450 | 243 | 838 |
+| `noanim` | 441 | 178 | 439 |
+| `noclock,noanim` | **136** | 155 | 136 |
+
+So the ~190 extra frames are **the flow clock's 24 Hz rAF request itself**: a BeginMainFrame
+commits and draws whether or not the callback writes anything. That is the decorative animation
+rate working as designed, and on a starved compositor the request coalesces into whatever frames
+are delivered (`flowRafPend`), so it adds no frames on the owner's machine — a possible refinement
+(decide the skip BEFORE requesting the rAF, not inside it) is noted, not built.
+
+### What the smoothing was worth — measured, because "it was built to make updates glide" is a claim
+
+12 s scram at 10×, the pressurizer water rect sampled every animation frame:
+
+| | frames where it moved | step px p50 | p90 | max | total travel |
+|---|---|---|---|---|---|
+| pre-fix | 640 of 695 (**53.3 Hz**) | 0.01 | 0.03 | 0.71 | 10.1 px |
+| fixed | 121 of 706 (**10.1 Hz**) | **0.07** | **0.17** | **6.34** | 9.9 px |
+
+The same ~10 px of travel: nine tenths of the fixed steps are under a fifth of a pixel and cannot be
+seen. **The honest cost is the single 6.3 px step** at the sharpest point of the transient, which
+used to be spread over 150 ms. The before/after stills (`inbox/613/level_before.png`,
+`level_after.png`) are indistinguishable, which is all a still can say — a still cannot show jitter,
+which is why the table exists.
+
+### The gate, and the injection
+
+`test/verify_e2e_ui.js` → `testCssTransitions`: plant at 10× through the shipped speed segment,
+`document.getAnimations()` sampled ten times ~200 ms apart, fails if a running `CSSTransition`
+targets a `rect`/`line`/`g` inside `.pwr-board-stage` on `height`/`y`/`transform`, or if more than
+2 run at any sample. **Ten samples, not one**: a transition is 150 ms and a single sample can fall
+in a gap and certify a board that never stops transitioning.
+
+**INJECTION** (`inbox/613/inject_css_transition.js`, which drives the one check through the gate's
+module export): restoring `transition: 'y 0.15s linear, height 0.15s linear'` on the pressurizer's
+`pzr-water` rect took the samples `0,…,0` → `2,…,2` and the check red. **Which half caught it
+matters** — at 2 running the COUNT ceiling was still satisfied; the TARGET rule went red. A future
+edit that loosens the target rule to a count re-opens exactly this defect, and the check's comment
+says so.
+
+### Gates
+
+`verify_board_check` 236 · `verify_e2e_ui` PASS (4 screenshots, score string unchanged so
+`BASELINES` needs no edit; the #111 strict xfail stays) · `run_pwr2_board` 77/0 (25/25 mutations) ·
+`run_pwr2_shell` 151/0 (52/52) · `run_hardrules` 480/0 · `run_portable` 145/0 · `run_diag_bundle`
+35/0 · `run_release` 27/0 · `run_doc_budget` 4/0 · `run_session_labels` 8/0.
+
+### Deferred, with the reason
+
+**The blur filters (−25.9 % raster) and the dash writes (−24.9 %, near-additive at −46.3 %
+together).** Both are RASTER terms, and round 3 has just shown raster is not what produces frames
+on this harness — on the throttled cell, removing 38 % of raster moved fps 4.0 → 4.1, inside noise.
+Whether they convert to frames on a genuinely raster-bound machine is **unmeasured**, and this box
+cannot answer it: both "modes" here ran on SwiftShader at devicePixelRatio 1. The enriched
+`RD.Perf` bundle in the owner's next report is the instrument that decides. Same reason holds the
+**10 dashed polylines with zero client rects** — invisible geometry paying the dash clock, and part
+of the same `noflow` term.
+
+
 ## Session log — 2026-09-04-develop-g (#624 item 14 — both cold states boot with the heaters off, and the bubble does not bleed)
 
 **The ask.** The other two halves of #619 item 14: the cold plant boots with the pressurizer
