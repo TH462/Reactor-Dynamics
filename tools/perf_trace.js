@@ -119,6 +119,23 @@
  *              RasterTask layerId count.
  *   tilelayer  pipelayer PLUS `.bd-tile { will-change: transform }` — every tile its own layer.
  *              Heavier on memory; isolates the filters completely. Same verification.
+ *   filterlayer  `will-change: transform` on ONLY the .bd-tiles holding a VISIBLE filtered
+ *              element (~13 of 217), found at apply time. The targeted form of tilelayer.
+ *              Read it beside the census in inbox/613/probe_board_census.js: 12 of the 33
+ *              filtered elements have their fill/opacity rewritten every broadcast, and a
+ *              promoted layer cannot cache a blur whose own input keeps changing.
+ *   noinvisible  Strips `data-dash-cyc` from only the polylines with zero client rects (10 of
+ *              69 — the two internal flow lines of each of five DRY valves, hidden with an
+ *              inline `display:none` by comp_valve.js:178). Same 100 ms repeat as noflow.
+ *   nofilterdriven / nofilterstatic
+ *              `nofilter` split by whether the element's own attributes are REWRITTEN. Both
+ *              observe the filtered set for 2 s before the window and neuter one side, so the
+ *              membership is measured rather than listed. This is what says which glows an art
+ *              change has to reach.
+ *   halfclock  The dash-write half of the shared clock at 12 Hz instead of 24, for the FLOW_FPS
+ *              question. NOT a literal rAF drop — see the knob: dropping the request latches
+ *              `flowRafPend` and turns this into `noclock`. INFORMATION ONLY; #596 raised the
+ *              rate to 24 for feel and lowering it needs an owner ruling.
  *   static     nofilter + noflow + noanim — the raster FLOOR of this board.
  *
  * OTHER OPTIONS
@@ -382,6 +399,209 @@ var KNOBS = {
       var trans = running.filter(function (a) { return a.constructor.name === 'CSSTransition'; });
       return { targeted_still_declared: left, cleared_over_window: window.__nolevelsCleared || 0,
                still_transitioning: trans.length, took: left === 0 };
+    },
+  },
+  /* THE TARGETED PROMOTION (#613 wave 4). `tilelayer` promoted all 217 tiles and was worse on
+   * every axis; `nofilter` took -25.9 % of raster by deleting the blurs outright. This is the
+   * middle: promote ONLY the tiles that contain a currently-visible filtered element, on the
+   * hypothesis that a dash write invalidates the layer the blurred art shares and forces it to
+   * be re-blurred. If it captures most of nofilter's win at a GPU cost inside noise, the board
+   * can keep its glows.
+   *
+   * MEASURE THE INPUT FIRST — a promoted tile caches a blurred raster only while the blur's own
+   * INPUT is static. `inbox/613/probe_board_census.js` MutationObserved all 33 filtered elements
+   * for 5 s at 10x: 12 of them (all visible) are written on EVERY broadcast — fill+opacity on the
+   * steam generator glow, two reactor-vessel halos, the cooling-tower shell and a valve ellipse,
+   * plus five cooling-tower plume ellipses rewriting `style` at 9 Hz. The components guard those
+   * writes with `if (power !== last.power)` and at hot_full_power the power reading moves every
+   * broadcast, so the guard never holds. Promotion cannot cache a blur whose input changes. */
+  filterlayer: {
+    apply: function () {
+      var els = document.querySelectorAll('[filter]');
+      var tiles = [], seen = [];
+      for (var i = 0; i < els.length; i++) {
+        var el = els[i];
+        if (el.getClientRects().length === 0) continue;
+        var f = getComputedStyle(el).filter;
+        if (!f || f === 'none') continue;
+        var tile = el.closest ? el.closest('.bd-tile') : null;
+        if (!tile || seen.indexOf(tile) >= 0) continue;
+        seen.push(tile);
+        tile.style.willChange = 'transform';
+        tiles.push(tile.getAttribute('data-item'));
+      }
+      window.__filterlayerTiles = tiles;
+      return { tiles_promoted: tiles.length, tiles: tiles };
+    },
+    verify: function () {
+      var want = window.__filterlayerTiles || [];
+      var all = document.querySelectorAll('.bd-tile'), promoted = 0;
+      for (var i = 0; i < all.length; i++) {
+        if (/transform/.test(getComputedStyle(all[i]).willChange || '')) promoted++;
+      }
+      return { targeted: want.length, promoted_now: promoted, total_tiles: all.length,
+               took: want.length > 0 && promoted === want.length };
+    },
+  },
+  /* The dash clock writes `stroke-dashoffset` to every `polyline[data-dash-cyc]` whether or not
+   * it is on screen; 10 of 69 have zero client rects. This knob strips the attribute from
+   * exactly those, on the same 100 ms repeat `noflow` needs. Expected small — it is a tenth of
+   * the noflow population — but "small" is a measurement, not a guess. */
+  noinvisible: {
+    /* THE FIRST FORM OF THIS KNOB MEASURED ITSELF. Selecting on `getClientRects()` means a
+     * forced layout flush per polyline, 69 of them every 100 ms — 150 flushes across a 15 s
+     * window — and the cell came back at +5.6 % raster, i.e. the instrument cost more than the
+     * ten dash writes it removed. It selects on the INLINE `display` instead, which is a style
+     * read and free; the census (inbox/613/probe_board_census.js) measured that the two
+     * populations are the same ten elements, and the verify below still uses getClientRects
+     * ONCE, after the window, so a polyline hidden some other way would show up as took:false. */
+    apply: function () {
+      function strip() {
+        var els = document.querySelectorAll('polyline[data-dash-cyc]'), n = 0;
+        for (var i = 0; i < els.length; i++) {
+          if (els[i].style.display !== 'none') continue;
+          els[i].setAttribute('data-dash-cyc-off', els[i].getAttribute('data-dash-cyc'));
+          els[i].removeAttribute('data-dash-cyc');
+          n++;
+        }
+        window.__noinvisStripped = (window.__noinvisStripped || 0) + n;
+        return n;
+      }
+      var n0 = strip();
+      window.__noinvisTimer = setInterval(strip, 100);
+      return { stripped_at_apply: n0 };
+    },
+    verify: function () {
+      var els = document.querySelectorAll('polyline[data-dash-cyc]'), hidden = 0;
+      for (var i = 0; i < els.length; i++) if (els[i].getClientRects().length === 0) hidden++;
+      return { live_dashed: els.length, still_hidden_and_dashed: hidden,
+               stripped_total: window.__noinvisStripped || 0,
+               took: (window.__noinvisStripped || 0) > 0 && hidden === 0 };
+    },
+  },
+  /* WHICH HALF OF `nofilter` IS THE COST? The census splits the 33 filtered elements into 12
+   * whose fill/opacity is rewritten every broadcast and 21 that are written to never (most of
+   * them `display:none` casualty art or an opacity-0 hover ring). These two knobs neuter one
+   * side each, so the art change that follows can be scoped to the elements that actually pay.
+   * Membership is MEASURED in the page, by observing writes for 2 s before the window opens,
+   * not by a list of ids that would rot the first time a component changed. */
+  nofilterdriven: {
+    apply: function () {
+      return new Promise(function (res) {
+        var els = document.querySelectorAll('[filter]'), recs = [];
+        for (var i = 0; i < els.length; i++) recs.push({ el: els[i], n: 0 });
+        var obs = new MutationObserver(function (m) {
+          for (var k = 0; k < m.length; k++) {
+            for (var j = 0; j < recs.length; j++) if (recs[j].el === m[k].target) recs[j].n++;
+          }
+        });
+        recs.forEach(function (r) { obs.observe(r.el, { attributes: true }); });
+        setTimeout(function () {
+          obs.disconnect();
+          var hit = 0;
+          recs.forEach(function (r) { if (r.n > 0) { r.el.style.filter = 'none'; hit++; } });
+          window.__splitDriven = hit; window.__splitTotal = recs.length;
+          res({ observed_ms: 2000, driven: hit, of: recs.length });
+        }, 2000);
+      });
+    },
+    verify: function () {
+      var els = document.querySelectorAll('[filter]'), off = 0;
+      for (var i = 0; i < els.length; i++) if (getComputedStyle(els[i]).filter === 'none') off++;
+      return { neutered: off, of: els.length, driven_found: window.__splitDriven,
+               took: off > 0 && off === window.__splitDriven };
+    },
+  },
+  nofilterstatic: {
+    apply: function () {
+      return new Promise(function (res) {
+        var els = document.querySelectorAll('[filter]'), recs = [];
+        for (var i = 0; i < els.length; i++) recs.push({ el: els[i], n: 0 });
+        var obs = new MutationObserver(function (m) {
+          for (var k = 0; k < m.length; k++) {
+            for (var j = 0; j < recs.length; j++) if (recs[j].el === m[k].target) recs[j].n++;
+          }
+        });
+        recs.forEach(function (r) { obs.observe(r.el, { attributes: true }); });
+        setTimeout(function () {
+          obs.disconnect();
+          var hit = 0;
+          recs.forEach(function (r) { if (r.n === 0) { r.el.style.filter = 'none'; hit++; } });
+          window.__splitStatic = hit; window.__splitTotal = recs.length;
+          res({ observed_ms: 2000, static_: hit, of: recs.length });
+        }, 2000);
+      });
+    },
+    verify: function () {
+      var els = document.querySelectorAll('[filter]'), off = 0;
+      for (var i = 0; i < els.length; i++) if (getComputedStyle(els[i]).filter === 'none') off++;
+      return { neutered: off, of: els.length, static_found: window.__splitStatic,
+               took: off > 0 && off === window.__splitStatic };
+    },
+  },
+  /* FLOW_FPS 24 -> 12 FOR THE DASH WRITES, measured without touching the product. INFORMATION
+   * ONLY: the rate was raised from 12 to 24 on #596 for feel and moving it needs an owner ruling.
+   *
+   * THE OBVIOUS IMPLEMENTATION IS A SILENT `noclock`. "Drop every second flowTick rAF request"
+   * stops the clock DEAD, not halves it: std_pipe sets `flowRafPend = true` before asking for the
+   * frame and only flowTick itself clears it, so the first dropped request latches the interval
+   * into its early return for ever. That is exactly what the `noclock` knob does deliberately,
+   * and a `halfclock` built that way would report noclock's numbers under another name.
+   *
+   * So flowTick still RUNS every time — it must, to clear the latch and to keep `tickAnimations`
+   * on its own cadence — and on alternate ticks its dash loop is handed an empty node list, by
+   * shimming `document.querySelectorAll` for exactly the one selector it uses, for exactly the
+   * duration of that call. What this measures is therefore the DASH-WRITE half at 12 Hz with the
+   * animation seeks left at 24 Hz: a LOWER BOUND on what FLOW_FPS = 12 would buy, not the whole
+   * of it. Verified on the write rate, which should land near half of noflow's ~1,650/s nominal. */
+  halfclock: {
+    apply: function () {
+      var orig = window.requestAnimationFrame.bind(window);
+      var qsa = document.querySelectorAll.bind(document);
+      window.__halfclockSkipped = 0;
+      window.__halfclockRan = 0;
+      var parity = 0;
+      window.requestAnimationFrame = function (fn) {
+        if (!fn || fn.name !== 'flowTick') return orig(fn);
+        var skip = (parity++ % 2) === 1;
+        if (!skip) { window.__halfclockRan++; return orig(fn); }
+        window.__halfclockSkipped++;
+        return orig(function (ts) {
+          document.querySelectorAll = function (sel) {
+            return sel === 'polyline[data-dash-cyc]' ? [] : qsa(sel);
+          };
+          try { fn(ts); } finally { document.querySelectorAll = qsa; }
+        });
+      };
+      return { wrapped: true };
+    },
+    verify: function () {
+      var ran = window.__halfclockRan || 0, skipped = window.__halfclockSkipped || 0;
+      return new Promise(function (res) {
+        var hits = 0;
+        var obs = new MutationObserver(function (recs) { hits += recs.length; });
+        var all = document.querySelectorAll('polyline[data-dash-cyc]');
+        for (var i = 0; i < all.length; i++) obs.observe(all[i], { attributes: true, attributeFilter: ['stroke-dashoffset'] });
+        setTimeout(function () {
+          obs.disconnect();
+          res({ ticks_run: ran, ticks_neutered: skipped, dashed_polylines: all.length,
+                dashoffset_writes_per_s: hits,
+                took: skipped > 0 && Math.abs(ran - skipped) <= 2 && hits > 0 });
+        }, 1000);
+      });
+    },
+  },
+  /* Does `visibility:hidden` actually take a blurred hover ring out of the raster, or does it
+   * only take it out of the picture? #613 wave 4 made the eight rings hidden-until-hovered on
+   * the reasoning that an opacity-0 element with a filter is still rastered; this knob puts
+   * them back to visible-but-transparent on the FIXED tree so the claim in comp_valve.js is a
+   * measurement rather than an argument. Run it against a fixed-tree baseline in the same round. */
+  ringsvisible: {
+    css: '.cv-hoverring, .vlv-hoverring, .porv-hoverring { visibility: visible !important; }',
+    verify: function () {
+      var rings = document.querySelectorAll('.cv-hoverring, .vlv-hoverring, .porv-hoverring'), vis = 0;
+      for (var i = 0; i < rings.length; i++) if (getComputedStyle(rings[i]).visibility === 'visible') vis++;
+      return { rings: rings.length, visible: vis, took: rings.length > 0 && vis === rings.length };
     },
   },
   nochart: {

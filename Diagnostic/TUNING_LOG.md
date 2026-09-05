@@ -29,6 +29,79 @@ and the user-visible summary in `CHANGELOG.md`. This file points at those and tr
 
 ---
 
+## Session log — 2026-09-04-workbench-d (#613 wave 4 — a promoted layer cannot cache a blur whose input changes every broadcast)
+
+**The ask.** Build the two raster levers wave 3 deferred: the 33 blurred glows (`nofilter`,
+−25.9 % raster) and the 10 dashed polylines with zero client rects. Measure the cheap forms
+first and let the numbers pick the branch. Full tables in `inbox/613/trace_results.md` Round 5;
+`tools/perf_trace.js` gained six knobs (`filterlayer`, `noinvisible`, `halfclock`,
+`nofilterdriven`, `nofilterstatic`, `ringsvisible`), each with its verify.
+
+**The branch, decided by measurement.** Promoting only the fifteen tiles that hold a visible
+filter (`filterlayer`) recovered **7.9 %** of raster against `nofilter`'s **25.8 %** — under a
+third — and cost **5.2 % more GPU** for twelve extra layers. **The reason is that the blurs do
+not hold still.** `inbox/613/probe_board_census.js` MutationObserved all 33 filtered elements for
+5 s at 10×: **12 of them, all visible, have `fill` and `opacity` rewritten 45 times in 5 s** —
+every broadcast. Each of those writes is guarded in its component by `if (power !== last.power)`,
+and at `hot_full_power` the power reading moves every broadcast, so **the guard never holds**.
+Split by that measurement, the twelve driven elements are **−18.5 %** of raster and the
+twenty-one static ones **−8.9 %** (additive: −27.4 against `nofilter`'s −25.8).
+
+**So the halos are drawn, not computed.** `RD.BoardH.softGlow(id, color)` returns a radial
+gradient (glow colour → transparent) plus `setColor()`; twelve halos across eight components
+moved over, each shape grown by ~2× the old `stdDeviation` because that is where the blur's light
+reached, and the driven ones recolour through the gradient's stops rather than the element's
+`fill`. Two blur defs were **dead** — `comp_pump`'s `Glow` and `comp_steam_generator`'s
+`steamblur`, declared, never referenced, shipping since the port. **Built-tree A/B, one round,
+pre-fix side restored with `git show HEAD:<path>`: raster 5244 → 4032 ms, −23.1 %**, i.e. 90 % of
+the available ceiling, with compositor, GPU and frames flat.
+
+**THE TRAP: A KNOB THAT MEASURED ITSELF.** The invisible-polyline knob written as specified —
+select on `getClientRects()`, re-strip every 100 ms — reported **+5.6 % raster**, worse than
+baseline, for a change that only removes work. 69 forced layout flushes every 100 ms is the
+instrument's own cost landing inside its own window. Re-selected on the inline `display` (a style
+read, free) it reads −0.2 %. **That is also why the shipped skip reads `el.style.display`**: in
+the product that `getClientRects()` would run 24 times a second, and the cheap version is exact
+here because the ten hidden polylines are all inline-`display:none`.
+
+**SECOND TRAP: the specified cache would have been a bug.** The ten invisible polylines are the
+two internal flow lines of a **dry valve** (`comp_valve.js:178`), so the set changes on every
+valve stroke. A visibility set cached at `layout()` and on pipe re-authoring — the shape the work
+order named — would have gone stale on the next stroke and frozen a live pipe's dashes:
+`buildPipes()` runs at mount and on a port rescan, `layout()` on a resize, and **neither fires
+when a valve wets**.
+
+**THIRD TRAP: `halfclock` written literally is `noclock` under another name.** "Drop every second
+`flowTick` rAF request" stops the clock dead — `std_pipe` sets `flowRafPend = true` before asking
+for the frame and only `flowTick` clears it, so the first drop latches the interval into its early
+return for ever. The knob lets `flowTick` run and hands its dash loop an empty node list on
+alternate ticks instead. Result, **for the owner's ruling and not acted on**: halving the dash
+writes is worth **−7.8 %** of raster, against −24.9…−30 % for stopping them, so half the rate buys
+under a third of what stopping buys. `FLOW_FPS` stays at 24 (#596 raised it there for feel).
+
+**One change measured NOTHING and was reverted.** Making the eight hover rings
+`visibility: hidden` until hovered — on the reasoning that a transparent filtered element is still
+rastered — measured **4014 vs 3993 ms**, i.e. nothing, in the wrong direction. An `opacity: 0`
+filtered element is already skipped by this rasteriser. Backed out rather than shipped for a
+reason that does not exist; the knob and the numbers stay so nobody re-derives it.
+
+**Visual.** `inbox/613/glow_before.png` / `glow_after.png` and the 2× side-by-sides
+(`cmp_vessel.png`, `cmp_sg.png`, `cmp_tower.png`). Whole-board per-pixel difference peaks at a
+32 px block mean of 8.1 of 255: indistinguishable at board scale; at 2× the cooling tower's plume
+puffs read slightly more defined and the vessel's flux halo is a touch tighter. **Owner review.**
+
+**Gates.** The whole aggregate, not the subset: `node test/run_all.js` → **AGGREGATE GATE: OK,
+106 runners at baseline**, exit 0, with the one tracked red (`run_ops` 59/70) unchanged. Of the
+named ones: `verify_board_check` 236 · `verify_e2e_ui` PASS (4 screenshots, wave 3's
+css-transitions check included) · `run_pwr2_board` 77/0 · `run_pwr2_shell` 151/0 ·
+`run_hardrules` 480/0 · `run_portable` 145/0 · `run_diag_bundle` 35/0 · `run_release` 27/0 ·
+`run_doc_budget` 4/0 · `run_session_labels` 8/0. **No board check pins the blur art or a polyline
+count** — nothing needed per-probe adjudication, which is itself worth noting: 33 filter elements
+went to 9 and 12 halos changed shape without a single gate noticing, so the board's art is
+covered by screenshots and the DOM census in `tools/perf_trace.js` and by nothing else.
+
+---
+
 ## Session log — 2026-09-04-workbench-c (#613 wave 3 — the frame producer was the one class the pause loop excluded by design)
 
 **The ask.** Wave 3's fix, on the coordinator's round-2 measurement: remove the CSS transitions

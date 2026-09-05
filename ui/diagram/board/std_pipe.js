@@ -309,6 +309,17 @@
     for (var i = 0; i < els.length; i++) {
       var el = els[i];
       if (el.style.animationPlayState === 'paused') continue;
+      /* DON'T ANIMATE WHAT IS NOT DRAWN (#613 wave 4). Ten of the sixty-nine dashed polylines
+       * have zero client rects on a settled board and were being written anyway. MEASURED with
+       * inbox/613/probe_board_census.js: every one of them is a DRY valve's pair of internal
+       * flow lines, hidden by `comp_valve.js:178`'s inline `display:none` — so the set changes
+       * whenever a valve wets or dries, and a visibility set cached at layout time (the shape
+       * this was first specified as) would have gone stale on the next valve stroke and left a
+       * live pipe frozen. Reading the INLINE display is exact, always current, and free: it is
+       * a style read, not a layout query, which is what `getClientRects()` here would have been
+       * — 69 forced layout flushes 24 times a second, more expensive than the writes it saves.
+       * The A/B knob that DID use getClientRects measured itself: +5.6 % raster. */
+      if (el.style.display === 'none') continue;
       var cyc = parseFloat(el.getAttribute('data-dash-cyc')) || DASH_CYCLE_S;
       var ph = parseFloat(el.getAttribute('data-dash-t')) || 0;
       var drawn = parseFloat(el.getAttribute('data-dash-dir')) || 1;

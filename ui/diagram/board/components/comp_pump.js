@@ -71,7 +71,7 @@
 
     // per-instance def ids (url(#id) resolves document-wide)
     var gid = env.uid('rcp');
-    var STEEL = gid + 'Steel', FLUIDG = gid + 'Fluid', METAL = gid + 'Metal', GLOW = gid + 'Glow';
+    var STEEL = gid + 'Steel', FLUIDG = gid + 'Fluid', METAL = gid + 'Metal';
     var stopLight = h('stop', { key: 0, offset: '0', stopColor: c0.light });
     var stopDark = h('stop', { key: 1, offset: '1', stopColor: c0.dark });
     var defs = h('defs', { key: 'defs' }, [
@@ -80,7 +80,9 @@
       h('radialGradient', { key: 'fluid', id: FLUIDG, cx: '0.38', cy: '0.32', r: '0.75' }, [stopLight, stopDark]),
       h('linearGradient', { key: 'metal', id: METAL, x1: '0', y1: '0', x2: '1', y2: '0' }, [
         h('stop', { key: 0, offset: '0', stopColor: '#1c232a' }), h('stop', { key: 1, offset: '0.5', stopColor: '#7a8994' }), h('stop', { key: 2, offset: '1', stopColor: '#1c232a' })]),
-      h('filter', { key: 'glow', id: GLOW, x: '-60%', y: '-60%', width: '220%', height: '220%' }, [h('feGaussianBlur', { key: 0, stdDeviation: '6' })])
+      /* the feGaussianBlur that stood here was DEAD — declared, never referenced by any
+       * element in this file, and shipping since the port. Removed with the board's other
+       * blurs in #613 wave 4. */
     ]);
 
     // standard flange at a port face, drawn at constant canvas px (scaled about the port)

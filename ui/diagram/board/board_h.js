@@ -112,10 +112,53 @@
     return el;
   }
 
+  /* SOFT HALO WITHOUT A FILTER (#613 wave 4).
+   *
+   * The board's component art drew every glow as a solid shape behind an `feGaussianBlur`.
+   * MEASURED with tools/perf_trace.js at hot_full_power, 10x, 15 s windows (round 5 in
+   * inbox/613/trace_results.md): killing every filter on the board (`nofilter`) takes 25.8 % off
+   * raster work, and the cost splits 18.5 % / 8.9 % between the twelve blurred elements whose
+   * own fill/opacity is REWRITTEN every broadcast and the twenty-one that are never written at
+   * all. Promoting just the tiles that hold a visible filter (`filterlayer`) recovered only
+   * 7.9 % — under a third — because a compositor layer cannot cache a blur whose input keeps
+   * changing, and it cost 5 % more GPU time for twelve extra layers.
+   *
+   * So the halo is drawn instead of computed: a radial gradient from the glow colour at full
+   * stop-opacity in the middle to fully transparent at the bbox edge. A gradient fill is one
+   * shader pass over the shape; a stdDeviation 9-11 Gaussian is a large separable convolution
+   * over a region 180-220 % of the bbox, re-run every time anything invalidates the tile.
+   *
+   * TWO THINGS THE CALLER MUST DO, and both are why this is a helper and not a copied literal:
+   *  1. GROW THE SHAPE by about 2*stdDeviation on every side. A blur spreads OUTSIDE its
+   *     source; a gradient cannot. Reuse the old geometry unchanged and the halo shrinks by
+   *     that much.
+   *  2. RECOLOUR THROUGH `setColor`, not through the element's `fill`. The element is now
+   *     painted with `url(#id)`, so a `setAttribute('fill', c)` on it silently does nothing —
+   *     the glow just stops responding, which looks like a plant bug, not an art bug.
+   * The element's own `opacity` and `display` still work exactly as before, so the update
+   * paths that drive intensity and visibility are unchanged. */
+  function softGlow(id, color) {
+    var stops = [
+      h('stop', { offset: '0', stopColor: color, stopOpacity: 1 }),
+      h('stop', { offset: '0.42', stopColor: color, stopOpacity: 0.82 }),
+      h('stop', { offset: '0.72', stopColor: color, stopOpacity: 0.3 }),
+      h('stop', { offset: '1', stopColor: color, stopOpacity: 0 })
+    ];
+    var def = h('radialGradient', { id: id }, stops);
+    return {
+      def: def,
+      paint: 'url(#' + id + ')',
+      setColor: function (c) {
+        for (var i = 0; i < stops.length; i++) stops[i].setAttribute('stop-color', c);
+      }
+    };
+  }
+
   var uidCounter = 0;
   RD.BoardH = {
     h: h,
     svgNS: SVG_NS,
+    softGlow: softGlow,
     uid: function (prefix) { return (prefix || 'bd') + (++uidCounter).toString(36); },
     clear: function (el) { while (el.firstChild) el.removeChild(el.firstChild); }
   };

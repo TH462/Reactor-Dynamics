@@ -69,6 +69,12 @@
     var st = { regFrac: 0.8333, shutFrac: 0.8333, power: 1, coreInv: 100, boil: 45, glow: true, showFlow: true, tcold: 290, thot: 320, cherenkov: 70 };
     var last = {};
     var lastBoil = -1;
+    /* filter-free halos (#613 wave 4) — see RD.BoardH.softGlow. `glow` used to be ONE blur
+     * shared by the thermal and fuel halos; a gradient carries its own colour, so the two
+     * now hold one gradient each and `fuelGlow` is a third id. */
+    var gFlux = RD.BoardH.softGlow(ids.glow2, '#22d8c4');
+    var gTherm = RD.BoardH.softGlow(ids.glow, 'rgb(44,88,152)');
+    var gFuel = RD.BoardH.softGlow(gid + 'FuelGlow', 'rgb(61,38,22)');
 
     // ---- defs (all ids per-instance unique) ----
     var defs = h('defs', null,
@@ -96,8 +102,12 @@
       h('clipPath', { id: ids.stripClip },
         h('rect', { x: 225, y: 0, width: tubeW, height: stripH }),
         h('rect', { x: 309, y: 0, width: tubeW, height: stripH })),
-      h('filter', { id: ids.glow, x: '-40%', y: '-40%', width: '180%', height: '180%' }, h('feGaussianBlur', { stdDeviation: '9' })),
-      h('filter', { id: ids.glow2, x: '-60%', y: '-60%', width: '220%', height: '220%' }, h('feGaussianBlur', { stdDeviation: '11' })),
+      /* The three halos below were solid rects behind an feGaussianBlur (stdDeviation 9 and 11)
+       * until #613 wave 4. They are now radial-gradient fills grown by ~2*stdDeviation, which
+       * is where the blur's light actually reached — RD.BoardH.softGlow carries the numbers.
+       * The thermal and fuel halos recolour through setColor(); writing `fill` on the rect
+       * would now paint over the gradient reference and kill the glow outright. */
+      gFlux.def, gTherm.def, gFuel.def,
       // CHERENKOV: electric-blue radiance from the core. Both gradients keep the default
       // objectBoundingBox units so they stretch with the ellipse they fill — that way the
       // falloff stays a true width-wise oval instead of a circle clipped to an oval.
@@ -200,10 +210,10 @@
       h('rect', { x: 405, y: 149, width: 27, height: 7, rx: 2, fill: '#384c58', stroke: '#1c2830', strokeWidth: 0.8 }),
       h('rect', { x: 405, y: 158, width: 27, height: 7, rx: 2, fill: '#2c3d48', stroke: '#1c2830', strokeWidth: 0.8 })));
     // neutron-flux glow, tightened to the barrel extent
-    svgKids.push(R.fluxglow = h('rect', { x: barrelL - 8, y: 142, width: (barrelR - barrelL) + 16, height: 331, rx: 22, fill: '#22d8c4', opacity: 0.04, filter: 'url(#' + ids.glow2 + ')' }));
+    svgKids.push(R.fluxglow = h('rect', { x: barrelL - 30, y: 120, width: (barrelR - barrelL) + 60, height: 375, rx: 44, fill: gFlux.paint, opacity: 0.04 }));
     svgKids.push(h('rect', { x: barrelL, y: 150, width: barrelR - barrelL, height: 315, rx: 14, fill: '#0a161f', stroke: '#223543', strokeWidth: 1.2 }));
     // thermal glow behind core
-    svgKids.push(R.glowr = h('rect', { x: coreL - 8, y: coreTop - 12, width: coreW + 16, height: coreH + 24, rx: 12, filter: 'url(#' + ids.glow + ')' }));
+    svgKids.push(R.glowr = h('rect', { x: coreL - 26, y: coreTop - 30, width: coreW + 52, height: coreH + 60, rx: 30, fill: gTherm.paint }));
     // hot reservoir above the core
     svgKids.push(R.hotresSteam = h('rect', { x: barrelL + 6, y: hotresFullTop, width: barrelR - barrelL - 12, height: hotresFullH, rx: 10, fill: '#d7e0e5', opacity: 0.16 }));
     svgKids.push(R.hotres = h('rect', { x: barrelL + 6, y: hotresFullTop, width: barrelR - barrelL - 12, height: hotresFullH, rx: 10, stroke: '#3a2320', strokeWidth: 1 }));
@@ -266,7 +276,7 @@
       R.wideflow));
     // fuel rods
     var fuelXs = [196, 238, 280, 322, 364];
-    svgKids.push(R.fuelglow = h('rect', { x: coreL - 6, y: coreTop - 8, width: coreW + 12, height: coreH + 16, rx: 10, filter: 'url(#' + ids.glow + ')' }));
+    svgKids.push(R.fuelglow = h('rect', { x: coreL - 24, y: coreTop - 26, width: coreW + 48, height: coreH + 52, rx: 28, fill: gFuel.paint }));
     R.fuelRods = fuelXs.map(function (x) {
       return h('rect', { x: x - 7, y: coreTop, width: 14, height: coreH, rx: 3, fill: 'url(#' + ids.fuel + ')', strokeWidth: 0.6 });
     });
@@ -343,10 +353,10 @@
       // fuel halos per the board's glow semantics.
       R.fluxglow.setAttribute('opacity', String(Math.min(0.58, 0.04 + p * 0.58)));
       show(R.fluxglow, glowOn);
-      R.glowr.setAttribute('fill', cTop);
+      gTherm.setColor(cTop);
       R.glowr.setAttribute('opacity', String(Math.min(0.42, p * 0.5)));
       show(R.glowr, glowOn && p > 0.02);
-      R.fuelglow.setAttribute('fill', fuelBase);
+      gFuel.setColor(fuelBase);
       R.fuelglow.setAttribute('opacity', String(fuelGlowOpacity * 0.28));
       show(R.fuelglow, glowOn && fuelGlowOpacity > 0.01);
       applyCherenkov(p, glowOn);

@@ -64,6 +64,9 @@
     var gid = env.uid('adv');
     var STEEL = 'advSteel' + gid, PLUME = 'advPlume' + gid,
         GLOW = 'advGlow' + gid, SOFT = 'advSoft' + gid;
+    /* filter-free halos (#613 wave 4) — see RD.BoardH.softGlow. */
+    var gMouth = RD.BoardH.softGlow(GLOW, '#ffffff');
+    var gPuff = RD.BoardH.softGlow('advPuff' + gid, '#dfe8ee');
 
     var defs = h('defs', null, [
       h('linearGradient', { id: STEEL, x1: '0', y1: '0', x2: '1', y2: '0' }, [
@@ -74,8 +77,12 @@
         h('stop', { offset: '0', stopColor: '#e8f2f8', stopOpacity: 0.30 }),
         h('stop', { offset: '0.55', stopColor: '#cfdce6', stopOpacity: 0.13 }),
         h('stop', { offset: '1', stopColor: '#cfdce6', stopOpacity: 0 })]),
-      h('filter', { id: GLOW, x: '-80%', y: '-80%', width: '260%', height: '260%' },
-        [h('feGaussianBlur', { stdDeviation: '5' })]),
+      /* #613 wave 4: the mouth halo and the seven puffs are radial-gradient fills now (grown
+       * by 2*stdDeviation), not blurred solids. `SOFT` SURVIVES, for the plume CONE alone —
+       * it is a slanted polygon carrying a linear gradient, and a radial gradient cannot give
+       * it a soft edge without changing its shape. It is the one feGaussianBlur left on the
+       * board, on art that is display:none unless the dump is lifted. */
+      gMouth.def, gPuff.def,
       h('filter', { id: SOFT, x: '-60%', y: '-60%', width: '220%', height: '220%' },
         [h('feGaussianBlur', { stdDeviation: '3.2' })])
     ]);
@@ -86,8 +93,8 @@
     for (var i = 0; i < NPUFF; i++) {
       puffEls.push(h('ellipse', {
         cx: cx + (i % 3 - 1) * 3.5, cy: MOUTH - 6,
-        rx: 8.5 + (i % 3) * 2.5, ry: 7 + (i % 2) * 2,
-        fill: '#dfe8ee', filter: 'url(#' + SOFT + ')',
+        rx: 8.5 + (i % 3) * 2.5 + 6, ry: 7 + (i % 2) * 2 + 6,
+        fill: gPuff.paint,
         style: { transformBox: 'fill-box', transformOrigin: '50% 100%', opacity: 0 }
       }));
     }
@@ -115,7 +122,7 @@
     hw.push(h('rect', { x: cx - 22, y: MOUTH - 6, width: 44, height: 9, rx: 2.5, fill: FLANGE, stroke: FLANGE_DK, strokeWidth: 1.2 }));
     var mouthEl = h('ellipse', { cx: cx, cy: MOUTH - 6, rx: 15, ry: 3.6, fill: '#0a1017', stroke: '#3d5162', strokeWidth: 1.6, style: { transition: 'stroke 0.4s ease' } });
     hw.push(mouthEl);
-    var mglowEl = h('ellipse', { cx: cx, cy: MOUTH - 6, rx: 20, ry: 8, fill: '#ffffff', opacity: 0, filter: 'url(#' + GLOW + ')', style: { pointerEvents: 'none' } });
+    var mglowEl = h('ellipse', { cx: cx, cy: MOUTH - 6, rx: 30, ry: 18, fill: gMouth.paint, opacity: 0, style: { pointerEvents: 'none' } });
     if (glowOn) hw.push(mglowEl);
     // open/shut pip on the riser
     var pipEl = h('circle', { cx: cx + 20, cy: 138, r: 3.4, fill: '#2a3a46', stroke: '#121b23', strokeWidth: 1 });
@@ -165,7 +172,7 @@
       riserBore.setAttribute('fill', open ? fl.bore : '#16222c');
       mouthEl.setAttribute('stroke', open ? CYAN : '#3d5162');
       pipEl.setAttribute('fill', open ? CYAN : '#2a3a46');
-      mglowEl.setAttribute('fill', fl.flow);
+      gMouth.setColor(fl.flow);
       mglowEl.setAttribute('opacity', String(open ? 0.16 * (0.4 + f) : 0));
 
       if (open) {

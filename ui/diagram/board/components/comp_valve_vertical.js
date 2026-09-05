@@ -23,6 +23,12 @@
     s.textContent =
       '@keyframes flowmove{to{stroke-dashoffset:-24}}' +
       '.flow{stroke-dasharray:9 15;animation:flowmove 1.1s linear infinite}' +
+      /* The ring keeps its feGaussianBlur — a ring's glow is a blurred STROKE and the radial
+       * gradient that replaced the board's other blurs (#613 wave 4) has no equivalent. It
+       * costs nothing idle: `visibility:hidden` until hovered was tried and MEASURED at
+       * 4014 ms vs 3993 ms of raster with the eight rings visible-but-transparent, i.e.
+       * nothing, so an opacity-0 filtered element is already skipped and the change was
+       * reverted rather than shipped for a reason that did not exist. */
       '.vlv-hit:hover + .vlv-hoverring{opacity:0.75}' +
       '.vlv-hit:active + .vlv-hoverring{opacity:1}';
     (document.head || document.documentElement).appendChild(s);

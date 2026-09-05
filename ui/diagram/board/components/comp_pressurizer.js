@@ -68,6 +68,9 @@
       steel: env.uid('pzrSteel'), water: env.uid('pzrWater'), steam: env.uid('pzrSteam'),
       heat: env.uid('pzrHeat'), clip: env.uid('pzrClip'), glow: env.uid('pzrGlow')
     };
+    /* filter-free halos (#613 wave 4) — see RD.BoardH.softGlow. */
+    var gHeat = RD.BoardH.softGlow(ids.glow, 'rgb(61,38,22)');
+    var gSpray = RD.BoardH.softGlow(env.uid('pzrSprayGlow'), '#3d82d8');
 
     // ---- geometry (verbatim from the design source) ----
     var cx = 100;
@@ -161,7 +164,10 @@
       steamGrad,
       h('linearGradient', { id: ids.heat, x1: '0', y1: '0', x2: '1', y2: '0' }, heatStops),
       h('clipPath', { id: ids.clip }, h('path', { d: inner })),
-      h('filter', { id: ids.glow, x: '-60%', y: '-60%', width: '220%', height: '220%' }, h('feGaussianBlur', { stdDeviation: '7' })));
+      /* The heater-bank halo and the spray-nozzle halo were solid shapes behind one shared
+       * feGaussianBlur (stdDeviation 7) until #613 wave 4. A gradient carries its own colour,
+       * so they hold one each now, both grown by ~2*stdDeviation — RD.BoardH.softGlow. */
+      gHeat.def, gSpray.def);
 
     // ---- vessel contents (dynamic) ----
     var steamRect = h('rect', { x: 40, y: 96, width: 120, height: 0, fill: 'url(#' + ids.steam + ')', opacity: 0.5 });
@@ -187,8 +193,8 @@
       var w = Math.max(6, cavHalfWidth(y) - ROD_INSET);
       return { x0: cx - w, x1: cx + w };
     }
-    var heatGlow = h('rect', { x: 0, y: 0, width: 0, height: 0, rx: 10,
-      filter: 'url(#' + ids.glow + ')', style: { display: 'none' } });
+    var heatGlow = h('rect', { x: 0, y: 0, width: 0, height: 0, rx: 24,
+      fill: gHeat.paint, style: { display: 'none' } });
     /* the terminal block the rods land on — it rides the bank, so it is placed, not authored */
     var heaterBlock = h('rect', { x: 0, y: 0, width: 6, height: 0, rx: 2,
       fill: '#26333d', stroke: '#46596a', strokeWidth: 1 });
@@ -214,10 +220,12 @@
         pair[1].setAttribute('cy', String(yy));
       }
       var last_ = hys.length - 1, wid = rodX(hys[last_]);
-      heatGlow.setAttribute('x', String(wid.x0 - 8));
-      heatGlow.setAttribute('y', String(hys[0] - 9));
-      heatGlow.setAttribute('width', String((wid.x1 - wid.x0) + 16));
-      heatGlow.setAttribute('height', String((hys[last_] - hys[0]) + 18));
+      /* +14 px on every side, i.e. 2*stdDeviation of the blur this replaced (#613 wave 4):
+       * a gradient stops at the shape's edge where the blur spread past it. */
+      heatGlow.setAttribute('x', String(wid.x0 - 22));
+      heatGlow.setAttribute('y', String(hys[0] - 23));
+      heatGlow.setAttribute('width', String((wid.x1 - wid.x0) + 44));
+      heatGlow.setAttribute('height', String((hys[last_] - hys[0]) + 46));
       /* the block sits just outboard of the WIDEST rod end, which is the topmost one */
       heaterBlock.setAttribute('x', String(rodX(hys[0]).x1 - 4));
       heaterBlock.setAttribute('y', String(hys[0] - 5));
@@ -228,7 +236,7 @@
 
     // ---- spray header + nozzle (art is static; drops/fan/glow toggle with spray) ----
     var sprayFan = h('polygon', { points: (spx - 4) + ',' + spyMouth + ' ' + (spx + 4) + ',' + spyMouth + ' ' + (spx + 30) + ',' + (spyMouth + 72) + ' ' + (spx - 30) + ',' + (spyMouth + 72), fill: '#5aa0e6', opacity: 0.1, style: { display: 'none' } });
-    var sprayNozGlow = h('circle', { cx: spx, cy: spyMouth - 6, r: 13, fill: '#3d82d8', opacity: 0.3, filter: 'url(#' + ids.glow + ')', style: { display: 'none' } });
+    var sprayNozGlow = h('circle', { cx: spx, cy: spyMouth - 6, r: 27, fill: gSpray.paint, opacity: 0.3, style: { display: 'none' } });
     var sprayDrops = h('g', { clipPath: 'url(#' + ids.clip + ')', style: { display: 'none' } });
 
     // ---- spray pipework (scale-compensated StdPipe, rebuilt on scale / spray change) ----
@@ -476,7 +484,7 @@
         heatStops[0].setAttribute('stop-color', mix(HBROWN, HORANGE, hFrac * 0.6));
         heatStops[1].setAttribute('stop-color', mix(HBROWN, HORANGE, hFrac));
         heatStops[2].setAttribute('stop-color', mix(HBROWN, HORANGE, hFrac * 0.6));
-        heatGlow.setAttribute('fill', mix(HBROWN, HORANGE, hFrac));
+        gHeat.setColor(mix(HBROWN, HORANGE, hFrac));
         heatGlow.setAttribute('opacity', String(Math.min(0.42, 0.05 + hFrac * 0.42)));
         heatGlow.style.display = (glowOn && heaterPower > 4) ? '' : 'none';
         last.heaterPower = heaterPower; last.glowOn = glowOn;

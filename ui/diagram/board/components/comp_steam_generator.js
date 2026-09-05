@@ -46,8 +46,10 @@
     var ids = {
       steel: env.uid('sgSteel'), water: env.uid('sgWater'), steam: env.uid('sgSteam'),
       tube: env.uid('sgTube'), tubeDash: env.uid('sgTubeDash'), clip: env.uid('sgClip'), waterclip: env.uid('sgWClip'),
-      glow: env.uid('sgGlow'), steamblur: env.uid('sgSBlur')
+      glow: env.uid('sgGlow')
     };
+    /* filter-free tube-bundle halo (#613 wave 4) — see RD.BoardH.softGlow. */
+    var gGlow = RD.BoardH.softGlow(ids.glow, 'rgb(176,56,34)');
 
     // ---- geometry (verbatim from the design source) ----
     var cx = 210;
@@ -117,8 +119,12 @@
       h('linearGradient', { id: ids.tubeDash, x1: '0', y1: '0', x2: '1', y2: '0' }, tubeDashStops),
       h('clipPath', { id: ids.clip }, h('path', { d: inner })),
       h('clipPath', { id: ids.waterclip }, waterClipRect),
-      h('filter', { id: ids.glow, x: '-40%', y: '-40%', width: '180%', height: '180%' }, h('feGaussianBlur', { stdDeviation: '8' })),
-      h('filter', { id: ids.steamblur, x: '-60%', y: '-60%', width: '220%', height: '220%' }, h('feGaussianBlur', { stdDeviation: '4' })));
+      /* The tube-bundle halo was a solid rect behind an feGaussianBlur (stdDeviation 8) until
+       * #613 wave 4; it is a radial-gradient fill grown by 2*stdDeviation now, recoloured
+       * through setColor() rather than by writing the rect's `fill` (RD.BoardH.softGlow).
+       * `ids.steamblur`, a second blur def, went with it: it was DEAD — declared here, never
+       * referenced by any element, and it had been shipping since the port. */
+      gGlow.def);
 
     // ---- shell + secondary side ----
     /* NO CSS TRANSITION on the three level elements below (#613 wave 3). These are rewritten on
@@ -141,8 +147,8 @@
     var flowEls = [surfLine];
 
     var glowRect = h('rect', {
-      x: 138, y: bundleTopY, width: 144, height: bundleBoxH, rx: 48,
-      filter: 'url(#' + ids.glow + ')', style: { display: 'none' }
+      x: 122, y: bundleTopY - 16, width: 176, height: bundleBoxH + 32, rx: 60,
+      fill: gGlow.paint, style: { display: 'none' }
     });
     var hotcRect = h('rect', { x: 110, y: tubeSheetY + 10, width: 100, height: 90, opacity: 0.85 });
     var coldcRect = h('rect', { x: cx, y: tubeSheetY + 10, width: 100, height: 90, opacity: 0.85 });
@@ -377,7 +383,7 @@
         coldcRect.setAttribute('fill', coldC);
         hotNoz.setAttribute('fill', hotC);
         coldNoz.setAttribute('fill', coldC);
-        glowRect.setAttribute('fill', hotC);
+        gGlow.setColor(hotC);
         last.thot = thot; last.tcold = tcold;
       }
       if (power !== last.power || glowOn !== last.glowOn) {

@@ -22,4 +22,4 @@
  * 1.0.0 sorts under 1.11.0 and the newest-first check fails). The offline download names
  * itself from this string, so rebuild it AFTER changing this, never before (#258).
  */
-window.RD_RELEASE = "Alpha 1.7.2-rc7";
+window.RD_RELEASE = "Alpha 1.7.2-rc8";

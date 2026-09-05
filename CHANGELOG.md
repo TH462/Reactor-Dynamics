@@ -30,7 +30,66 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
 
 ## [Unreleased]
 
-## [Alpha 1.7.2-rc7] — 2026-09-04
+## [Alpha 1.7.2-rc8] — 2026-09-04
+
+### Fixed (#613 wave 4 — the board's glows were computed every frame; they are drawn now)
+
+- **Every `feGaussianBlur` halo on the board is gradient art instead, and raster work falls
+  23.1 %.** Measured with `tools/perf_trace.js`, `hot_full_power` at 10 ×, two cells a side in one
+  round, the pre-fix side being the same tree with the fourteen `ui/` files restored from `HEAD`:
+
+  | | pre-fix (mean of 2) | fixed (mean of 2) | Δ |
+  |---|---|---|---|
+  | raster work | 5244 ms | **4032 ms** | **−23.1 %** |
+  | biggest raster layer | 2796 ms | 2271 ms | −18.8 % |
+  | elements carrying a `filter` | 33 | **9** | — |
+  | compositor busy / GPU busy / frames drawn | 1398 ms / 4129 ms / 460 | 1359 ms / 4082 ms / 459 | flat |
+
+  The ceiling — killing every filter outright — is −25.8 %, so this takes 90 % of what was there.
+  Nothing else moves: filters are a raster term and only a raster term, which is the same profile
+  wave 3's transitions had on the compositor.
+
+- **Why promotion was measured and rejected first.** Giving the fifteen tiles that hold a visible
+  filter their own compositor layer (`will-change: transform`) recovered only **7.9 %** — under a
+  third — and cost **5 % more GPU time**. A layer caches a rasterised blur, and these blurs do not
+  hold still: a `MutationObserver` over all 33 filtered elements says **12 of them have `fill` and
+  `opacity` rewritten every broadcast**, 45 writes in 5 s each. Every one of those writes sits
+  behind an `if (power !== last.power)` guard in its component, and at power the reading moves
+  every broadcast, so the guard never holds. Splitting the knob by that measurement: the twelve
+  driven elements are **−18.5 %** of raster and the twenty-one static ones **−8.9 %**.
+
+- **What changed in the art.** `RD.BoardH.softGlow()` builds a radial gradient from the glow
+  colour to fully transparent; each halo's shape is grown by ~2 × the old `stdDeviation`, which is
+  where the blur's light actually reached, and the ones whose colour is driven recolour through
+  the gradient's stops instead of the element's `fill`. Twelve halos across eight components moved
+  over — reactor vessel, steam generator, pressurizer, cooling tower, condenser, turbine and
+  generator, atmospheric dump, PORV — with every id and `data-role` unchanged. Two blur defs were
+  **dead** (`comp_pump`'s, `comp_steam_generator`'s `steamblur`: declared, never referenced, and
+  shipping since the port) and are gone. What survives: the eight hover rings, whose glow is a
+  blurred *stroke* a gradient cannot reproduce and which are transparent until hovered, and the
+  atmospheric dump's plume cone, a slanted polygon that is `display:none` unless the dump is
+  lifted. **At board scale the before/after screenshots are indistinguishable; at 2 × the cooling
+  tower's plume puffs read slightly more defined and the vessel's flux halo is a touch tighter.**
+
+- **The dash clock no longer writes to pipes that are not drawn.** Ten of the sixty-nine dashed
+  polylines have zero client rects on a settled board, and all ten are the internal flow lines of a
+  **dry valve**, hidden by an inline `display:none`. The skip reads that inline style — a free
+  style read — and not `getClientRects()`, which would be a forced layout flush 24 times a second:
+  the A/B knob written that way measured **+5.6 % raster**, worse than baseline, because the
+  instrument cost more than the work it removed. Verified by injection on the built tree: 0 writes
+  to the ten, 2,081 to the other fifty-nine over 2 s.
+
+- **One change was built, measured at nothing, and reverted.** Making the hover rings
+  `visibility: hidden` until hovered, so a transparent blurred ring is not rastered, measured
+  4014 ms against 3993 ms with them visible — nothing, in the wrong direction. An `opacity: 0`
+  filtered element is already skipped. It was backed out rather than shipped for a reason that
+  does not exist.
+
+- **UNMEASURED, and it is wave 3's caveat again:** this harness is not raster-bound, so removing
+  raster work here is a hypothesis about the owner's frame rate, not a measurement of it. Also
+  measured but deliberately NOT acted on: halving the flow clock's dash-write rate (`FLOW_FPS`
+  24 → 12, raised to 24 on #596 for feel) is worth **−7.8 %** of raster — under a third of what
+  stopping the writes entirely is worth. That needs an owner ruling and the rate is unchanged.
 
 ### Fixed (#613 wave 3 — the board drew 60 frames a second for a plant that paints ten)
 

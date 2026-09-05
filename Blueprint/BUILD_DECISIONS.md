@@ -45,6 +45,61 @@ where the two differ or where judgment was exercised.
 
 ---
 
+## 2026-09-04-workbench-d — #613 wave 4: the board's halos are DRAWN, not computed
+
+**Decision** (coordinator's brief; no owner ruling sought — a rendering change with no
+plant-behaviour content, but the visual difference goes to the owner on the screenshots).
+**Every `feGaussianBlur` halo on the board becomes radial-gradient art, and the shared flow clock
+skips a polyline that is not drawn.** Measured branch, not a preference: promoting only the tiles
+that hold a visible filter (`filterlayer`) recovered **7.9 %** of raster against deleting the
+filters' **25.8 %**, and cost 5.2 % more GPU for twelve extra layers — under a third of the win,
+which was the pre-declared reject criterion.
+
+**The mechanism, and it is the reusable finding.** A compositor layer caches a *rasterised* blur,
+so promotion only pays while the blur's input is static. `inbox/613/probe_board_census.js`
+MutationObserved all 33 filtered elements for 5 s at 10×: **12 of them, all visible, have `fill`
+and `opacity` rewritten every broadcast** (45 writes in 5 s). Every one of those writes sits behind
+an `if (power !== last.power)` guard in its component, **and the guard never holds**, because the
+power reading moves every broadcast at power. Split by that measurement: driven 12 = −18.5 % of
+raster, static 21 = −8.9 %, additive against `nofilter`'s −25.8 %.
+
+**Built.** `RD.BoardH.softGlow(id, color)` — a radial gradient from the glow colour to fully
+transparent, plus `setColor()`; each halo's shape grown by ~2 × the old `stdDeviation`, and the
+driven ones recoloured through the gradient's stops rather than the element's `fill` (writing
+`fill` on a gradient-painted element now kills the glow silently, which is why the helper carries
+that warning). Twelve halos across eight components; every id and `data-role` unchanged. Two blur
+defs deleted as **dead** — `comp_pump`'s `Glow` and `comp_steam_generator`'s `steamblur`, declared,
+never referenced, shipping since the port. Kept: the eight hover rings (a blurred *stroke*, no
+gradient equivalent, transparent until hovered) and the atmospheric dump's plume cone (a slanted
+polygon, `display:none` unless the dump is lifted).
+
+**Result, built-tree A/B in one round, pre-fix side restored with `git show HEAD:<path>`:**
+raster **5244 → 4032 ms, −23.1 %** (90 % of the available ceiling); compositor, GPU, frames and
+main-thread `Paint` all flat. Filters are a raster term and only a raster term.
+
+**Three traps, all in `inbox/613/trace_results.md` Round 5 and in the code comments.**
+(1) **A knob that measured itself** — the invisible-polyline knob selecting on `getClientRects()`
+reported **+5.6 % raster** for a change that only removes work, because 69 forced layout flushes
+every 100 ms cost more than the writes removed. The shipped skip reads the inline `display`
+instead, which is free; in the product that layout query would have run 24 times a second.
+(2) **The specified cache would have been a bug** — the ten invisible polylines are the internal
+flow lines of a **dry valve**, so the set changes on every valve stroke, and a set cached at
+`layout()`/pipe re-authoring (neither of which fires when a valve wets) would have frozen a live
+pipe's dashes. (3) **`halfclock` written literally is `noclock`** — dropping a `flowTick` rAF
+request latches `flowRafPend` and stops the clock for ever.
+
+**Reverted after measuring:** making the hover rings `visibility: hidden` until hovered measured
+4014 vs 3993 ms — nothing. An `opacity: 0` filtered element is already skipped.
+
+**Not acted on, for the owner:** halving the flow clock's dash writes (`FLOW_FPS` 24 → 12, raised
+to 24 on #596 for feel) is worth **−7.8 %** of raster, under a third of what stopping them
+entirely is worth. Needs a ruling; the rate is unchanged.
+
+**Unmeasured:** whether any of this converts to frames on the owner's machine. This harness is not
+raster-bound — same caveat as waves 1–3.
+
+---
+
 ## 2026-09-04-workbench-c — #613 wave 3: a CSS transition may not ride a broadcast-cadence value
 
 **Decision** (coordinator's brief on the round-2 measurement; no owner ruling sought — this is a
