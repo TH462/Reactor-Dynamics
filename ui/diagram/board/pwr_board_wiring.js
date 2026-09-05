@@ -3369,6 +3369,33 @@
       // the card title. 30 is the authored button pitch, so the spacing is unchanged.
       ims3wg27iif: { props: { top: 635 } },
       ims3xfeye1q: { props: { top: 665 } },
+      /* THE ECCS INDICATION CARD'S THREE ROWS MOVE UP SO THE MODE WORD GETS ITS OWN LINE
+       * *(#630, owner: "ECCS STANDBY text sits on top of MODE text. Shift the elements in this
+       * card up so that the mode indication can sit below MODE.")*.
+       *
+       * FLOW and DISCG are authored label-above-value (label top T, value top T+15). MODE was
+       * authored label and value on the SAME top (755), i.e. side by side — which only works
+       * while the word is short. MEASURED headless at 1400x900, authored units:
+       *   MODE label  x 740..782.3    value rAnchor right edge 810, so left = 810 - width
+       *   RHR / OFF     w 25.3 -> left 784.8   clears the label by 2.5 px
+       *   BOTH/HHSI/LHSI w 32.9 -> left 777.1  overlaps 5.2 px
+       *   ARMED         w 40.5 -> left 769.5   overlaps 12.8 px
+       *   STANDBY       w 55.7 -> left 754.3   overlaps 28.0 px
+       * The retired engine's vocabulary is RHR/HPI/LPI/off — every word short enough to clear,
+       * which is why the authored layout looked fine for as long as that was the plant. PWR2
+       * publishes standby | armed | hhsi | lhsi | both | rhr (pwr2_true_state.js:412-420), and
+       * STANDBY is its QUIESCENT word, so the shipped plant overprints in its normal state.
+       *
+       * The word cannot share the line at any authored x: the card is 90 wide (735..825) and
+       * label-end 782.3 + STANDBY 55.7 = 838. So MODE becomes a stacked pair like its two
+       * neighbours, and the rows come up to pay for the extra line. Uniform now: 38 px group
+       * pitch, 15 px label -> value, MODE value ends 782 against the card's 785. */
+      ims3w19984s: { props: { top: 672 } },   // FLOW  label   (was 675)
+      ims3w1cb6jc: { props: { top: 687 } },   // FLOW  value   (was 690)
+      ims3w1hf6n:  { props: { top: 710 } },   // DISCG label   (was 715)
+      ims3w1lj7n6: { props: { top: 725 } },   // DISCG value   (was 730)
+      ims3w5t6q2u: { props: { top: 748 } },   // MODE  label   (was 755)
+      ims3w61jjbi: { props: { top: 763 } },   // MODE  value   (was 755 — the collision)
       // SG FEED rate box: 1740 → 1750, the other half of the RESTORE widening (#357). With
       // RESTORE at 68 wide it ends at 1738, so the old 1740 left a 2 px gap; 1750 restores a
       // 12 px one, comparable to the 10 px between AUTO/MAN/OFF in the row above. It also

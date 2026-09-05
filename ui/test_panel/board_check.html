@@ -1204,6 +1204,56 @@
       function tileText(id) { var t = document.querySelector('[data-item="' + id + '"]'); return t ? t.textContent : ''; }
       ck('readout: Mode 5 ECCS MODE shows RHR (was dead "OFF", #235)',
         /RHR/.test(tileText('ims3w61jjbi')), tileText('ims3w61jjbi'));
+      /* #630: MODE and its word are a STACKED pair, and the check has to plant the widest word
+       * itself. This harness drives the RETIRED engine, whose ECCS vocabulary is RHR/HPI/LPI/off
+       * — all short enough to have cleared the old side-by-side layout, so a check that read
+       * whatever the plant happened to publish would have passed through the whole defect. The
+       * word the SHIPPED plant sits at is STANDBY (pwr2_true_state.js), 55.7 px against 25.3 for
+       * RHR, and it overprinted the caption by 28 px. Assert the invariant at the widest word:
+       * no overlap, and the pair stays inside the card. */
+      (function () {
+        function rect(id) {
+          var t = document.querySelector('[data-item="' + id + '"]');
+          if (!t) return null;
+          var st = document.querySelector('.pwr-board-stage');
+          var r = t.getBoundingClientRect(), sr = st.getBoundingClientRect();
+          var sc = sr.width / (st.offsetWidth || 1);
+          return { l: (r.left - sr.left) / sc, t: (r.top - sr.top) / sc,
+                   r: (r.right - sr.left) / sc, b: (r.bottom - sr.top) / sc };
+        }
+        function hit(a, b) {
+          return !!a && !!b && Math.min(a.r, b.r) - Math.max(a.l, b.l) > 0.5 &&
+                               Math.min(a.b, b.b) - Math.max(a.t, b.t) > 0.5;
+        }
+        function box(r) {
+          return r ? (r.l.toFixed(0) + '..' + r.r.toFixed(0) + ' x ' + r.t.toFixed(0) + '..' + r.b.toFixed(0)) : 'missing';
+        }
+        var vEl = document.querySelector('[data-item="ims3w61jjbi"]');
+        var save = vEl && vEl.firstChild ? vEl.firstChild.nodeValue : null;
+        if (vEl && vEl.firstChild) vEl.firstChild.nodeValue = 'STANDBY';
+        var lab = rect('ims3w5t6q2u'), val = rect('ims3w61jjbi'), card = rect('ims3vqox0fc');
+        /* THE ASSERTION IS "STACKED LIKE ITS NEIGHBOURS", NOT "THE BOXES DO NOT TOUCH". A text
+         * tile's box carries leading, so every label/value pair on this card overlaps by ~4 px
+         * of it and renders clean — a no-overlap test reddens on the FIXED layout too. What
+         * actually went wrong is that MODE and its word shared ONE line (both authored top 755,
+         * a 0 px drop), so the claim is the drop, calibrated against the two pairs beside it
+         * rather than pinned to a number that a future nudge would rot. */
+        var flow = rect('ims3w19984s'), flowV = rect('ims3w1cb6jc');
+        var drop = (val && lab) ? val.t - lab.t : 0;
+        var ref  = (flowV && flow) ? flowV.t - flow.t : 0;
+        ck('#630: the ECCS MODE word drops to its own line like FLOW/DISCG (widest word STANDBY)',
+          !!lab && !!val && drop >= ref - 2 && drop > 10,
+          'MODE drop ' + drop.toFixed(1) + ' px vs FLOW ' + ref.toFixed(1) +
+          '   caption ' + box(lab) + '  word ' + box(val));
+        ck('#630: no OTHER tile on the card lands on the MODE word',
+          !!val && !hit(val, rect('ims3w1lj7n6')) && !hit(val, flowV),
+          'word ' + box(val) + '  DISCG value ' + box(rect('ims3w1lj7n6')));
+        ck('#630: the whole ECCS indication stack stays inside its card',
+          !!card && !!val && rect('ims3w19984s') && rect('ims3w19984s').t >= card.t - 1 &&
+          val.b <= card.b - 1 && val.l >= card.l - 1 && val.r <= card.r + 1,
+          'card ' + box(card) + '  word ' + box(val));
+        if (vEl && vEl.firstChild && save != null) vEl.firstChild.nodeValue = save;
+      })();
       var rpmTxt = (tileText('imrppee04aj').match(/-?\d+/) || ['NaN'])[0];
       ck('readout: Mode 5 turbine rpm reads ~0 (was pinned 1800, #235)',
         Math.abs(parseInt(rpmTxt, 10)) < 100, tileText('imrppee04aj'));

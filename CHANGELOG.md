@@ -30,6 +30,45 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
 
 ## [Unreleased]
 
+## [Alpha 1.7.3-rc1] — 2026-09-05
+
+### Fixed (#630 — the ECCS card's MODE caption and its word were authored on the SAME line)
+
+*(OWNER, 2026-09-05: "ECCS STANDBY text sits on top of MODE text. - Shift the elements in this
+card up so that the mode indication can sit below MODE.")*
+
+`ims3w5t6q2u` (the MODE caption) and `ims3w61jjbi` (the word) were both authored at top 755 —
+side by side, not stacked like the FLOW and DISCG pairs above them. That works only while the
+word is short, and it was short for as long as the RETIRED engine was the plant: its ECCS
+vocabulary is RHR / HPI / LPI / off. **PWR2 publishes `standby | armed | hhsi | lhsi | both |
+rhr`** (`pwr2_true_state.js`:412–420) and **`standby` is its quiescent word**, so the shipped
+plant overprints in its *normal* state.
+
+MEASURED headless at 1400×900, authored units — the caption occupies x 740..782.3, and the
+word is `rAnchor` with its right edge at 810, so its left edge is 810 − width:
+
+| word | width | left edge | vs the caption's 782.3 |
+|---|---|---|---|
+| `RHR` / `OFF` | 25.3 | 784.8 | clears by 2.5 px |
+| `BOTH`/`HHSI`/`LHSI` | 32.9 | 777.1 | **overlaps 5.2 px** |
+| `ARMED` | 40.5 | 769.5 | **overlaps 12.8 px** |
+| `STANDBY` | 55.7 | 754.3 | **overlaps 28.0 px** |
+
+The word cannot share the line at any authored x: the card is 90 px wide (735..825) and
+caption-end 782.3 + STANDBY 55.7 = 838. So MODE becomes a stacked pair like its two neighbours
+and the three rows come up to pay for the extra line — uniform 38 px group pitch, 15 px caption
+→ word, the word ending at 782 against the card's 785. Patched in `DOC_PATCHES`, not in
+`pwr_board_data.js`, which is GENERATED.
+
+`board_check` +3 (238 → 241 checks), all injection-verified. Two things about them:
+
+- **The checks PLANT the widest word themselves.** This harness drives the retired engine, so a
+  check reading whatever the plant publishes would have passed through the whole defect.
+- **The claim is the DROP, calibrated against the FLOW pair beside it — not "the boxes do not
+  touch".** A text tile's box carries leading, so *every* caption/value pair on this card
+  overlaps by ~4 px of it and renders clean; a no-overlap test reds on the FIXED layout too
+  (measured — that was the first cut of the check).
+
 ## [Alpha 1.7.2] — 2026-09-05
 
 ### Fixed (#629 — the heatup's heat sink was the overpressure ADV, because steam-pressure dump mode was unreachable from a cold start)

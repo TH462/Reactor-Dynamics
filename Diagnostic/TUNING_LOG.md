@@ -29,6 +29,69 @@ and the user-visible summary in `CHANGELOG.md`. This file points at those and tr
 
 ---
 
+## Session log — 2026-09-05-develop-b (#630 — the ECCS card's MODE word was authored on the caption's own line, and the retired plant's vocabulary hid it)
+
+**The ask.** #630, from the owner: *"ECCS STANDBY text sits on top of MODE text. - Shift the elements
+in this card up so that the mode indication can sit below MODE."* Reproduced first, then measured.
+
+**The mechanism is the standing trap, not a layout slip.** `ims3w5t6q2u` (the caption) and
+`ims3w61jjbi` (the word) are both authored `top: 755` — side by side, while FLOW and DISCG above
+them are stacked (label T, value T+15). Side by side is only viable while the word is short, and
+it was short for as long as the retired engine was the plant: its `eccs_mode` vocabulary is
+RHR / HPI / LPI / off. **PWR2 publishes `standby | armed | hhsi | lhsi | both | rhr`**
+(`engines/pwr2/pwr2_true_state.js`:412–420) and `standby` is the QUIESCENT word — so the shipped
+plant overprints in its *normal* state. Same shape as #557/#556/#561: the board calibrated to the
+engine that is no longer running.
+
+**Measured** (headless chromium 1400×900, `ui/test_panel/board_check.html`, authored units). The
+caption occupies x 740..782.3; the word is `rAnchor` with its right edge pinned at 810.
+
+| word | width | left edge | vs 782.3 |
+|---|---|---|---|
+| `RHR` / `OFF` | 25.3 | 784.8 | clears 2.5 px |
+| `BOTH` / `HHSI` / `LHSI` | 32.9 | 777.1 | overlaps 5.2 px |
+| `ARMED` | 40.5 | 769.5 | overlaps 12.8 px |
+| `STANDBY` | 55.7 | 754.3 | **overlaps 28.0 px** |
+
+The word cannot share the line at any x: the card is 90 wide (735..825) and 782.3 + 55.7 = 838.
+So the row stacks and the three rows come up to pay for the line — `DOC_PATCHES` (never
+`pwr_board_data.js`, which is generated): FLOW 675→672 / 690→687, DISCG 715→710 / 730→725, MODE
+755→748 with its word at 763. Uniform 38 px group pitch, 15 px caption→word, word bottom 782
+against the card's 785. **Screenshotted before and after at devicePixelRatio 4** — the item-vs-item
+scan cannot tell ink from line box, which is the next paragraph.
+
+### The first cut of the check reddened on the FIXED layout
+
+`board_check` +3 (238 → 241). Two traps paid for, both worth carrying:
+
+- **A no-overlap test is the wrong assertion on this card.** A text tile's box carries leading, so
+  *every* caption/value pair here overlaps by ~4 px of it and renders clean — measured: the fixed
+  MODE pair is caption 748..767 against word 763..782, and the first check called that a FAIL. The
+  claim that survives is the **drop**, calibrated against the FLOW pair beside it (`val.t - lab.t`
+  ≥ FLOW's, and > 10), which reads 0.0 px on the defect and 15.0 px fixed.
+- **The check has to PLANT the widest word itself.** This harness drives the retired engine, whose
+  vocabulary never produces a word long enough to collide — a check reading whatever the plant
+  published would have passed through the entire defect. It sets `STANDBY`, measures, restores.
+
+All three injection-verified: restore `top: 755` → drop 0.0, red; move the word onto the DISCG
+value → 2 red; push it past the card bottom → containment red.
+
+### A measured near-miss, NOT changed
+
+The same doc-level scan (text tile and value tile within 2 px of the same `top`) finds exactly one
+other pair: the PORV caption `imsgurhunn9` and its status word `ims2jf7fv7m`. Its vocabulary is
+open/closed only, and **CLOSED clears the caption by 0.28 px** (caption ends 894.97, word starts
+895.25). It is not broken today and is out of #630's scope, but the margin is a rounding error —
+any letter-spacing or font change collides. Reported on the issue; no code change.
+
+### Gates
+
+`verify_board_check` 238 → **241checks**, `run_release` 27 → **28checks** (one check per published
+entry — the Alpha 1.7.3-rc1 entry adds it, not a new assertion). `run_pwr2_board` 80/80,
+`verify_e2e_ui`, `verify_manual_follow`, `run_doc_budget` at baseline; full `run_all` green.
+
+---
+
 ## Session log — 2026-09-05-develop-a (#629 — the heatup's heat sink was the overpressure ADV, because the operator could not reach steam-pressure mode)
 
 **The ask.** #629, from the owner's Mode 5 → Mode 3 heatup: the Pressure SP dialled to 2235 psi at
