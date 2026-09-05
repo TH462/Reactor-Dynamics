@@ -423,8 +423,31 @@ comment pointing you at it.
   not verify until you put it there — the classic case is starting the reactor startup
   after a pump-heat heatup without first diluting to the estimated critical boron
   (PWR-N02 step 15).
-- **It clears itself.** The grading is live: fix the condition and the row turns met, the
-  banner and the comment come down on their own.
+- **It is an ENTRY statement, and it does not come back.** The verdicts are taken once, as
+  the checklist opens, and the banner then stands until the run starts moving. Preconditions
+  ask whether it was sensible to *open* this checklist; re-asserting them against a plant the
+  checklist is deliberately changing would make the procedure complain about its own progress
+  — a Mode 5 → Mode 3 heatup crosses out of every one of its own entry conditions by design.
+
+#### Reading a step card
+
+Every step card leads with its **number and instruction**. The card you are on adds a block
+underneath it:
+
+| Line | What it is |
+|---|---|
+| Check-off criterion | The indication the step is graded on, in blue; it turns green when met. |
+| **Use …** | The board control this step drives, and the value to drive it to. |
+| ⏩ wait line | Roughly how long the step takes **in plant time**, and the speed-control rung to set. |
+| **Acknowledge ✓** | Only on steps that ask no operator action — press it to move on. |
+| Click to expand | The step's reasoning, cautions and any extra notes. |
+
+The wait line appears on steps that hold three plant-minutes or longer. The suggested rung is
+the lowest one that finishes the wait in about a minute of real time, so most waits stay on the
+full-fidelity **1× to 60×** tier; the long ones — the heatup ride, the cooldown legs, the
+boration — call for **600×** or **3600×**, which are WARP and will be refused while the plant
+is in a transient (§4.1). The plant-time figure is an *upper bound* taken from the procedure's
+own dwell: drive the plant harder and you will get there sooner.
 
 ---
 

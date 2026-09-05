@@ -3404,6 +3404,51 @@
   // survive re-renders via the render key and reset with the checklist itself.
   var cklState = { key: null, whyAll: false, whyOpen: {}, step: null, view: 'list', userScrolled: false, preconHtml: null };
   var cklAutoScroll = false;   /* true while WE are writing scrollTop (#612) */
+
+  /* ---- WHICH SPEED RUNG A LONG WAIT WANTS (#628) --------------------------------------------
+   * *(OWNER, 2026-09-04: "Add a suggested time warp value for the long term waiting steps.")*
+   *
+   * READ OFF THE LADDER ITSELF, never a literal list. There are already TWO copies of the six
+   * rungs — the buttons in shell.html and SPEED_KEYS below, the latter a deliberate literal so a
+   * missing button cannot silently renumber the keys — and a third would be the PROTECTION_DT
+   * trap: a suggestion naming a rung the player does not have is worse than no suggestion. The
+   * DOM read also carries the `warp` class, which is the only thing that distinguishes a rung the
+   * plant may REFUSE (the #625 tier drops to 60× on any transient) from one it always takes.
+   *
+   * The fallback list exists for the case where this is called before the bar is in the document;
+   * it is the ladder as authored, and if the two ever disagree the DOM wins by construction.
+   *
+   * THE RULE: the smallest rung that brings the wait under WAIT_TARGET_WALL_S of real time at
+   * that rung's NOMINAL rate — top rung if none does. 60 s is chosen so the PLAY tier (bit-
+   * identical physics, 1×–60×) is preferred wherever it will do: MEASURED across the 24 pwr2
+   * steps that qualify it lands 2 on 5×, 8 on 10×, 9 on 60×, 4 on 600× and 1 on 3600× — so 19
+   * of 24 stay on PLAY and WARP's declared fidelity departure is spent only on the five waits
+   * that genuinely need it (65 min and up).
+   *
+   * ⚠ NOMINAL, NOT ACHIEVED. A rung is a REQUEST — measured on the workbench machine the top
+   * rung delivers ~931× (#631) — so the wall time this implies is a floor, not a promise, and
+   * that is why the card names the rung and not a number of seconds. */
+  var SPEED_LADDER_FALLBACK = [
+    { speed: 1, warp: false }, { speed: 5, warp: false }, { speed: 10, warp: false },
+    { speed: 60, warp: false }, { speed: 600, warp: true }, { speed: 3600, warp: true },
+  ];
+  var WAIT_TARGET_WALL_S = 60;
+  function speedLadder() {
+    var btns = document.querySelectorAll('#speed [data-speed]');
+    var out = [];
+    for (var i = 0; i < btns.length; i++) {
+      var v = +btns[i].getAttribute('data-speed');
+      if (v > 0) out.push({ speed: v, warp: btns[i].classList.contains('warp') });
+    }
+    if (!out.length) return SPEED_LADDER_FALLBACK.slice();
+    out.sort(function (a, b) { return a.speed - b.speed; });
+    return out;
+  }
+  RD.CklSpeedHint = function (holdS) {
+    var lad = speedLadder();
+    for (var i = 0; i < lad.length; i++) if (holdS / lad[i].speed <= WAIT_TARGET_WALL_S) return lad[i];
+    return lad[lad.length - 1];
+  };
   /* IS THE POINTER IN THIS ELEMENT? (#605.) `:hover` cannot answer it here — the element is
    * BRAND NEW, built microseconds ago by an innerHTML rebuild, and the browser does not
    * re-run its hit test until the next mouse event or paint. So track the pointer ourselves
@@ -3675,7 +3720,24 @@
        * at the top of every step. */
       var waitLineShown = false;
       h += '<div class="ckl-step ' + cls + hoverable + '" data-ckl-step="' + i + '"><div class="ckl-ico">' + (done ? '✓' : active ? '▸' : '○') + '</div><div class="ckl-body">';
+      /* THE NUMBERED INSTRUCTION IS THE HEAD OF THE STACK, ON EVERY STEP *(OWNER, 2026-09-04,
+       * #628: "move the numbered step to always be the first part of the stack. then the rest of
+       * the step that appears when its active goes below it.")*.
+       *
+       * It used to sit UNDER the active block, which is the #244 item 6 workflow order
+       * (criteria → control → action). That order reads well on the one card you are working,
+       * and badly on the list: the active card is the only one whose number is not on its first
+       * line, so the step you are on is the step whose number moves — and it moves by a variable
+       * amount, because the block above it grows with the acceptance entries, the wait line and
+       * the Acknowledge row. Scanning "which step am I on" then costs a hunt down the card.
+       *
+       * The workflow order is preserved WITHIN the active block below (criteria → control →
+       * wait → acknowledge); what changed is that the whole block now hangs off the instruction
+       * instead of pushing it down. */
+      h += '<div class="ckl-txt">' + (i + 1) + '. ' + mesc(st.text) + '</div>';
+      if (done && ck.done_by && ck.done_by[i] === 'manual') h += '<div class="ckl-sub">checked by hand</div>';
       if (active) {
+        h += '<div class="ckl-act">';
         /* THE "graded off the …" LINE IS GONE *(OWNER, 2026-09-03, #619 item 5: "remove the
          * 'graded off the....' line from each step")*. It named which channel the check reads
          * — instrument, board control, or true value — under every active step's details.
@@ -3727,8 +3789,15 @@
           var mins = holdS / 60;
           var span = mins < 90 ? Math.round(mins) + ' plant-minutes'
                    : (mins / 60).toFixed(mins / 60 < 10 ? 1 : 0) + ' plant-hours';
-          h += '<div class="ckl-sub ckl-wait">⏩ About ' + span + ' at 1× — use time acceleration' +
-            (holdS >= 1800 ? ' and come back' : '') + '.' +
+          /* AND WHICH RUNG TO REACH FOR *(OWNER, 2026-09-04, #628: "Add a suggested time warp
+           * value for the long term waiting steps.")*. "Use time acceleration" left the player
+           * to work out how much, and the answer is not obvious: the ladder is 1/5/10/60/600/
+           * 3600 and the right rung spans five of those across the 24 pwr2 steps that qualify.
+           * RD.CklSpeedHint picks it off the ladder itself, so this can never name a button that
+           * is not there. */
+          var rung = RD.CklSpeedHint(holdS);
+          h += '<div class="ckl-sub ckl-wait">⏩ About ' + span + ' at 1× — set the speed control to <b>' +
+            rung.speed + '×</b>' + (rung.warp ? ' (WARP; the plant must be quiet to take it)' : '') + '.' +
             (typeof st.wait_hint === 'string' ? ' ' + mesc(st.wait_hint) : '') + '</div>';
           waitLineShown = true;
         }
@@ -3741,16 +3810,17 @@
          * (the command outlived the control), so nothing new is wired: the press is the same
          * `checklist_check` the harness issues.
          *
-         * It is the LAST thing in the active block on purpose — directly above the step text it
-         * belongs to, and below the acceptance lines that have just gone green, so the eye goes
-         * criterion → met → press. */
+         * It is the LAST thing in the active block on purpose — below the acceptance lines that
+         * have just gone green, so the eye goes criterion → met → press. (It used to be
+         * described as "directly above the step text it belongs to"; #628 moved the step text
+         * to the head of the card, so the button is now the foot of the block rather than the
+         * hinge between two. The reading order it was placed for is unchanged.) */
         if (ck.awaiting_ack) {
           h += '<div class="ckl-ack-row"><button class="btn ckl-ack" data-ckl-check="' + i +
             '">Acknowledge ✓</button><span class="ckl-ack-note">This step is complete — acknowledge to continue.</span></div>';
         }
+        h += '</div>';
       }
-      h += '<div class="ckl-txt">' + (i + 1) + '. ' + mesc(st.text) + '</div>';
-      if (done && ck.done_by && ck.done_by[i] === 'manual') h += '<div class="ckl-sub">checked by hand</div>';
       var det = '';
       if (st.note) det += '<div class="ckl-sub muted">' + mesc(st.note) + '</div>';
       if (st.wait_hint && !waitLineShown) {

@@ -29,6 +29,81 @@ and the user-visible summary in `CHANGELOG.md`. This file points at those and tr
 
 ---
 
+## Session log — 2026-09-05-workbench-a (#628 — the card's number moved to the top, and "use time acceleration" got a number)
+
+**The ask** *(OWNER, 2026-09-04, #628: "Adjust the order of the elements of each step. move the
+numbered step to always be the first part of the stack. then the rest of the step that appears
+when its active goes below it. Add a suggested time warp value for the long term waiting
+steps.")*. Two items, both in `ui/app.js`'s live-checklist render.
+
+**Item 1 — the order.** The active card's block (criteria → **Use …** → wait line →
+Acknowledge) was rendered ABOVE `.ckl-txt`. That is the #244 item 6 workflow order and it reads
+well on the one card you are working; it reads badly on the LIST, because the active card was
+then the only one whose number was not on its first line, and the number moved by a variable
+amount — the block above it grows with the number of acceptance entries and with whether the
+wait line and the Acknowledge row are drawn at all. The workflow order is preserved *inside* the
+block, which now hangs below the instruction in a `.ckl-act` wrapper (whose only job is the
+5 px gap: `.ckl-crit` carries margin-bottom and `.ckl-use` zeroes its margin-top, so without it
+the block butts against the text).
+
+**Item 2 — the rung, and where the number comes from.** `RD.CklSpeedHint(holdS)` returns the
+smallest rung that brings the wait under **60 s of wall clock at that rung's nominal rate**, top
+rung if none does. Measured over the 24 pwr2 steps with `hold >= 180`: **2 → 5×, 8 → 10×, 9 →
+60×, 4 → 600×, 1 → 3600×** — 19 of 24 stay on the bit-identical PLAY tier, and WARP's declared
+fidelity departure (#625) is spent only on the five waits of 65 plant-minutes and up. A WARP
+suggestion says so on the card, because the plant refuses that tier in a transient.
+
+**THE LADDER IS READ OFF THE DOM, NOT LISTED A THIRD TIME.** The six rungs already exist twice —
+the buttons in `shell.html` and `SPEED_KEYS` in `app.js`, the latter a deliberate literal so a
+missing button cannot silently renumber the keys. `speedLadder()` reads `#speed [data-speed]` and
+each button's `warp` class, so the suggestion is *structurally incapable* of naming a button the
+player does not have; the literal fallback is only for a call before the bar is in the document.
+Same reasoning as `PROTECTION_DT`, with a worse failure mode than a divergence — a card
+confidently naming a speed that does not exist.
+
+**⚠ NOMINAL, NOT ACHIEVED.** A rung is a request; the top one delivers ~931× on this machine
+(#631). Hence the card names the rung and never a number of seconds of real time.
+
+### The gate, and the hollow check inside it
+
+`verify_flags_ui` 44 → 47. Three claims, each proven by injection:
+
+| check | injection | what it printed |
+|---|---|---|
+| every `.ckl-body` leads with `.ckl-txt` | move the text back under the active block | `step 1 leads with ckl-act` |
+| the rung is the smallest that clears the wait | return the top rung always | `pwr_heatup step 3 (240 s): wanted 5x, got 3600x` |
+| the rendered card names it | hard-code `2×` in the wait line | `expected 5x, got "… set the speed control to 2×."` |
+
+**THE THIRD CHECK WAS HOLLOW WHEN FIRST WRITTEN, AND THE INJECTION IS THE ONLY REASON I KNOW
+IT.** It read whichever checklist the picker had opened — whose step 1 holds for 2 s — so the
+conditional it was written as (`hold >= 180 ? names the rung : no wait line`) only ever exercised
+the NEGATIVE half. It passed green against a hard-coded `2×`. It now picks the first procedure in
+the LIVE pool whose own step 1 carries `hold >= 180` and starts that: `pwr_stuck_porv` on the
+retired engine, `pwr_cooldown` on pwr2 — data-driven, neither id written in the test, and step 1
+is asserted to still be the active one so an auto-advance cannot re-hollow it.
+
+**The rule check sweeps EVERY pool in `RD.MANUAL_PROCEDURES`, not the running plant's.** The
+flags build boots the RETIRED engine — the `.ckl-use` check above it found that out the hard way
+in September 2026 — and the pool that matters is pwr2's (24 of 66 qualify, against 23 of the
+retired pool's 113, with different numbers). Both ship; the rule is plant-agnostic; sweeping both
+is what stops the gate being quietly aimed at the wrong plant (#579).
+
+### A stale manual sentence, found by grepping for the subject
+
+`02 §8.3` claimed the precondition banner *"clears itself … fix the condition and the row turns
+met, the banner and the comment come down on their own."* **That stopped being true at #614**,
+which latches the verdicts at entry and holds the banner until the run starts moving — the fix
+for the owner's scroll-bounce report. #614 changed the code and did not touch the chapter.
+Corrected, together with the new *Reading a step card* table. **Nothing could have caught it:**
+`run_manual_setpoints`, `run_manual_commands` and `run_manual_units` read numbers, command
+tables and unit pairs. A described BEHAVIOUR is the class none of them covers — the standing
+CLAUDE.md line, with a fresh instance.
+
+**Gates.** `verify_flags_ui` 47/47, `run_manual_rev` 15/0, `run_manual_units` 0 failed,
+`run_all` at baseline. Manuals stamped + packed under the pending Rev 17 row, item **(y)**.
+
+---
+
 ## Session log — 2026-09-04-workbench-e (#631 — one budget served two tiers, and the tier that needed the headroom least was the one holding it back)
 
 **The ask.** The owner's gaming PC reached 800× against a requested 3600× (#613 comment). #631

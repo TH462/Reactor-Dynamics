@@ -2130,6 +2130,12 @@ select.num-input { width: auto; }
 .ckl-ico { font-weight: 700; width: 16px; text-align: center; flex: none; }
 .ckl-body { flex: 1; min-width: 0; }
 .ckl-txt { font-size: 12.5px; line-height: 1.4; color: var(--text); }
+/* THE ACTIVE BLOCK, WHICH NOW HANGS BELOW THE INSTRUCTION (#628, owner 2026-09-04: "move the
+   numbered step to always be the first part of the stack. then the rest of the step that appears
+   when its active goes below it."). Its only job is the gap: the criteria line carries
+   margin-bottom and .ckl-use zeroes its margin-top, so without this the block butts straight
+   against the step text it belongs to. */
+.ckl-act { margin-top: 5px; }
 .ckl-sub { font-size: 11px; color: var(--text-2); margin-top: 2px; }
 /* THE CHECK-OFF CRITERIA — first line of the active card, bold, its own color *(OWNER,
    #244 M5→3 item 4: "cyan or cobalt or a blue grey. something that isnt too loud but
@@ -2143,8 +2149,9 @@ select.num-input { width: auto; }
 /* WHICH CONTROL, AND WHAT YOU ARE DRIVING IT TO (#598 item 13, owner ruling 2026-09-02).
    Promoted back out of the Details fold: measured, only 41 % of the steps carrying a control
    name it in their instruction text, so folding this away left 27 of them with no visible
-   answer to "which knob". It sits between the criteria and the instruction — the #244 item 6
-   workflow order, unchanged — and is deliberately a touch larger and lighter than a plain
+   answer to "which knob". It sits between the criteria and the wait line — the #244 item 6
+   workflow order, unchanged, though #628 moved the whole block BELOW the instruction rather
+   than above it — and is deliberately a touch larger and lighter than a plain
    .ckl-sub, because it is part of the action rather than a footnote to it. The control name
    itself is the brightest thing on the line; that is the word the eye is hunting for. */
 .ckl-use { font-size: 11.5px; color: var(--text-2); margin-bottom: 3px; margin-top: 0; }

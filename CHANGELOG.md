@@ -32,6 +32,46 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
 
 ## [Alpha 1.7.2-rc9] — 2026-09-04
 
+### Changed (#628 — the checklist card leads with its number, and a waiting step names its speed)
+
+*(OWNER, 2026-09-04: "Adjust the order of the elements of each step. move the numbered step to
+always be the first part of the stack. then the rest of the step that appears when its active
+goes below it. Add a suggested time warp value for the long term waiting steps.")*
+
+- **Every step card now leads with its numbered instruction.** The active card's block —
+  acceptance criteria, which control to use, the wait line, Acknowledge — used to sit *above* the
+  instruction (the #244 item 6 workflow order: criteria → control → action). That reads well on
+  the one card you are working and badly on the list: the active card was the only one whose
+  number was not on its first line, and it moved by a variable amount, because the block above it
+  grows with the number of acceptance entries and with whether the wait line and Acknowledge row
+  are drawn. The workflow order is preserved *within* the block, which now hangs below the
+  instruction (`.ckl-act`) instead of pushing it down.
+- **A waiting step names the speed rung to reach for, not just "use time acceleration".** #619
+  item 8 put the plant-time estimate on the card; the player was still left to work out how much
+  acceleration that wants, and the answer spans five of the ladder's six rungs. `RD.CklSpeedHint`
+  picks the smallest rung that brings the wait under 60 s of wall clock at that rung's nominal
+  rate — **measured over the 24 pwr2 steps that qualify: 2 land on 5×, 8 on 10×, 9 on 60×, 4 on
+  600× and 1 on 3600×**, so 19 of 24 stay on the bit-identical PLAY tier and WARP's declared
+  fidelity departure (#625) is spent only on the five waits of 65 minutes and up. A WARP
+  suggestion says so, because the plant may refuse it on a transient.
+- **The ladder is READ, never re-listed.** The rungs already exist twice — the buttons in
+  `shell.html` and `SPEED_KEYS` in `app.js`, the latter a deliberate literal so a missing button
+  cannot renumber the keys. A third copy would be the `PROTECTION_DT` trap with a worse failure
+  mode: a card naming a speed the board does not offer. `speedLadder()` reads
+  `#speed [data-speed]` and its `warp` class, so the suggestion is structurally incapable of
+  naming a button that is not there.
+- **⚠ NOMINAL, NOT ACHIEVED.** A rung is a *request* — the top one delivers ~931× here (#631) —
+  so the card names the rung and never a number of seconds.
+- Gated by `test/verify_flags_ui.js` (44 → 47), three claims, each injection-proven: every
+  `.ckl-body` leads with `.ckl-txt`; the rung is the smallest on the **live** ladder that clears
+  the wait, recomputed in the test over every pool in `RD.MANUAL_PROCEDURES` rather than the one
+  the build happens to boot; and the rendered card names it. **The third was hollow when first
+  written** — it read whichever checklist the picker had opened, whose step 1 holds for 2 s, so it
+  asserted only the negative half and stayed green against a hard-coded `2×`. It now starts the
+  first procedure whose own step 1 carries a hold ≥ 180 s, found from the live pool
+  (`pwr_stuck_porv` on the retired engine, `pwr_cooldown` on pwr2 — neither id written in the
+  test).
+
 ### Changed (#631 — WARP spends its own step budget, and the top rungs move)
 
 - **The per-broadcast step budget is per TIER: PLAY keeps 40 ms, WARP gets 70.** One
