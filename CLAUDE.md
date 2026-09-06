@@ -604,9 +604,11 @@ what a GATE already catches**, keep what nothing can tell you.
 - **A red probe can be the REFERENCE moving, not the plant — adjudicate at BOTH values** (#508,
   2026-09-06). Three of six pre-adjudicated probes had their filed reading inverted: a dump check
   read 18.5 °F against an 18.4 °F bound because **Tref fell 4.0 °F while Tavg fell 1.14 °F** — the
-  better-controlled plant read as the regression. A checklist step passed for months on a plant
-  venting through a **64 %-open** relief valve, because the acceptance was calibrated on the defect.
-  **Run the fixture at the old constant AND the new one and ask which quantity moved.**
+  better-controlled plant read as the regression.
+  **Run the fixture at the old constant AND the new one and ask which quantity moved.** And a fix
+  that reddens something DISTANT may have been **cancelling against it**: a 4.9 % ΔT head start and
+  an equal, opposite K3 credit read as a healthy plant for three weeks (#647/#650). Ask *"what was
+  this cancelling?"* before writing the red off as stale.
 - **An unmeasured claim in PLAYER-FACING COPY is still an unmeasured claim** (rescued from the
   Indications-tab bullet on eviction, 2026-08-17): a "pressurizer mass-only level" row promised
   a TMI divergence that measures 0.0 everywhere, because `pzr_level_pct` is `clip(that,0,100)`
