@@ -3154,15 +3154,15 @@ var MUTATIONS = [
    '    if (ic.cold) rodBank[1].steps = 0;\n    var boron0 = RD.kinetics.criticalBoron(rx.kin, tavg0, icP, rodBank,',
    { grp: 'N' }],
   ['the cold boot forgets the P-11 blocks (the shutdown plant injects at construction)',
-   '      pt: PT.createProtection({ blockLowFlux: ic.pf >= 0.1, blockIrHigh: ic.pf >= 0.1,\n                                blockLoPress: !!ic.cold, blockSI: !!ic.cold }),',
-   '      pt: PT.createProtection({ blockLowFlux: ic.pf >= 0.1, blockIrHigh: ic.pf >= 0.1 }),',
+   '      pt: PT.createProtection({ blockLowFlux: ic.load_mwe > 0, blockIrHigh: ic.load_mwe > 0,\n                                blockLoPress: !!ic.cold, blockSI: !!ic.cold }),',
+   '      pt: PT.createProtection({ blockLowFlux: ic.load_mwe > 0, blockIrHigh: ic.load_mwe > 0 }),',
    { grp: 'N' }],
   /* #601: the at-power ICs must take the INTERMEDIATE RANGE block too, or a 50 %/100 %
    * plant boots with the 25 % trip armed and scrams on arrival. The mutation drops that
    * half only, so it cannot be caught by anything the P-11 anchor above covers. */
   ['an at-power IC boots WITHOUT the intermediate-range block (it scrams on arrival)',
-   '      pt: PT.createProtection({ blockLowFlux: ic.pf >= 0.1, blockIrHigh: ic.pf >= 0.1,',
-   '      pt: PT.createProtection({ blockLowFlux: ic.pf >= 0.1, blockIrHigh: false,',
+   '      pt: PT.createProtection({ blockLowFlux: ic.load_mwe > 0, blockIrHigh: ic.load_mwe > 0,',
+   '      pt: PT.createProtection({ blockLowFlux: ic.load_mwe > 0, blockIrHigh: false,',
    { grp: 'K' }],
   ['the RHR hold throttle is dropped (the "held" plant cools at 560 degF/hr and drains)',
    '      eng.rh.hx_fraction = 0;',

@@ -436,8 +436,23 @@
        * at-power plant that had ascended through P-10 took both. During play they are
        * separate levers. The shutdown IC boots with the P-11 pair TAKEN — the cooldown's own
        * lineup ("Block SI is three actions", and the third was the pressure setpoint coming
-       * down, already done). */
-      pt: PT.createProtection({ blockLowFlux: ic.pf >= 0.1, blockIrHigh: ic.pf >= 0.1,
+       * down, already done).
+       *
+       * ⚠ THE DISCRIMINATOR IS `load_mwe`, NOT `pf`, AND THAT COST A CHECKLIST LEG (#650). It
+       * read `ic.pf >= 0.1`, which is a THRESHOLD ON A SEED. When `low_power.pf` was re-derived
+       * from its own dispatch — 0.105 to 0.09604, a 0.9-point correction to how much fission the
+       * state is BUILT with — it crossed that literal, `low_power` booted with neither startup
+       * block taken, and `pwr_raise_power` scrammed at step 4 on ir_high_flux: 14 red checks in
+       * `run_checklist_pwr2` from a change that moved no protection and no setpoint.
+       * "Has this plant ascended through P-10 and taken the operator's blocks?" is answered by
+       * whether it is ON THE GRID, which is exactly the reasoning `if (!(ic.load_mwe > 0))` below
+       * already uses for the turbine latch — *"Keyed on `load_mwe`, not on `subcritical` or `pf`:
+       * the new `low_power` IC is subcritical by neither measure but IS on the grid at 10 MWe"*.
+       * That comment was 180 lines away and this line did not learn from it.
+       * IDENTICAL ON ALL SIX ICs UNDER BOTH SETS OF `pf` VALUES (checked, HR10): the only one it
+       * moves is `low_power`, and only back to what it always meant. A seed can be re-derived;
+       * the dispatch is what the turbine enforces. */
+      pt: PT.createProtection({ blockLowFlux: ic.load_mwe > 0, blockIrHigh: ic.load_mwe > 0,
                                 blockLoPress: !!ic.cold, blockSI: !!ic.cold }),
       brk: null,
       ctm: CT.createContainment({}),
