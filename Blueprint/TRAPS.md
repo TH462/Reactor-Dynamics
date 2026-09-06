@@ -428,3 +428,16 @@ coefficient, and which convection regime that film is in — decides whether the
 all, and gets the sign of the error wrong in both directions if you guess. **Four of the five reds
 that change produced were not about the change**, which is the other half of the lesson: adjudicate
 a physics change's reds one at a time.
+
+## Evicted 2026-09-05 (a THEMES-rotation eviction — the #605 "a click that misses a text field is a keyboard shortcut" bullet, out for #641's)
+
+The oldest of five, and it **meets the criterion**: `verify_ckl_relevance` now clicks a number tile
+OUTSIDE its input's frame and asserts the digits land in the box (#615), so a regression reds a
+runner. The bullet, verbatim:
+
+- **A CLICK THAT MISSES A TEXT FIELD IS NOT A NO-OP — IT IS A KEYBOARD SHORTCUT** (2026-09-02,
+  #605). Both "can't type" blockers were this, and neither was the text box. The Pressure SP
+  `<input>` is **30 x 17 px of an 85 px frame** (a `psi` span and the arrows fill the rest, inside
+  the same border); a miss leaves focus on BODY and the global keys eat the digits — 2/3/5 are TIME
+  ACCELERATION, so "2235" ended at 3600x. Feedback form: 32 chars typed, **0 in the box**, focus on
+  `#playBtn`. **Make the whole affordance the target; the handler looks correct either way.**

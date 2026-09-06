@@ -415,6 +415,13 @@ standing procedure rather than news belongs in the list below. **Evicting one: R
 FIRST** — ask what in it would still burn someone in a month, move that to the standing list as
 ONE line, drop the rest. **A bullet is ~80 words.**
 
+- **A COMMAND-KIND CHECK-OFF IS ONLY SATISFIABLE WHILE THE PLANT STILL LETS THE PLAYER PRODUCE
+  THE COMMAND** (2026-09-05, #641). Six 1/M steps waited for `plot_1m_point`; the tool refuses the
+  press once the source range secures (1e5 cps, flux alone, no lever) and sends nothing, and the
+  manual tick was removed by directive — a soft lock **20 s** past the last step's 20,000 cps
+  target, the authored route peaking at 9.91e4. Steps now author `overtaken: {p,op,v,text}`, the
+  condition under which they no longer apply. **Grep every `{cmd:…}` acceptance for the plant state
+  that makes its control refuse.**
 - **THE PAUSE LOOP EXCLUDED ONE CLASS BY DESIGN AND THAT CLASS WAS THE FRAME PRODUCER**
   (2026-09-04, #613). `tickAnimations` paused ~90 keyframe animations and skipped CSSTransition as
   "short, one-shot" — but 150 ms transitions on level rects, restarted by every 100 ms broadcast,
@@ -443,12 +450,6 @@ ONE line, drop the rest. **A bullet is ~80 words.**
   `checklist_why_length` counts SENTENCES; words went to the unscored backlog, where all six
   over-80-word blocks read as exactly three. **Ask what a cap makes cheap.**
 
-- **A CLICK THAT MISSES A TEXT FIELD IS NOT A NO-OP — IT IS A KEYBOARD SHORTCUT** (2026-09-02,
-  #605). Both "can't type" blockers were this, and neither was the text box. The Pressure SP
-  `<input>` is **30 x 17 px of an 85 px frame** (a `psi` span and the arrows fill the rest, inside
-  the same border); a miss leaves focus on BODY and the global keys eat the digits — 2/3/5 are TIME
-  ACCELERATION, so "2235" ended at 3600x. Feedback form: 32 chars typed, **0 in the box**, focus on
-  `#playBtn`. **Make the whole affordance the target; the handler looks correct either way.**
 
 **Standing procedure — not part of the rotation above; these do not expire.** One trap per entry.
 **MAX 25 BULLETS** *(OWNER RULING, 2026-08-10: selected "Cap at 25, evict to TRAPS.md")*,

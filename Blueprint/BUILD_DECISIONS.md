@@ -45,6 +45,24 @@ where the two differ or where judgment was exercised.
 
 ---
 
+## 2026-09-05-develop-e — #641: a checklist step the plant has moved past is OVERTAKEN, not a soft lock
+
+**DECIDED (mechanism)** *(my call, 2026-09-05, on the owner's playtest report "mode 3>1 checklist
+step 9 the user can get stuck if they accidently go too high and the source range shuts off";
+`status-owner-review` on #641 for the wording and the choice of NOT adding a skip)*.
+
+A step may author `overtaken: {p, op, v, text[, industry, label]}` — the plant condition under which
+it no longer applies. Graded like `acc` (instrument-first, same debounce) while the step is active;
+when it holds the live checklist checks the step off `'overtaken'`, the card says so with the
+reason, the instructor posts `text`, and grading moves on. **Rejected: a skip/override button** —
+it would re-litigate the 2026-08-11 directive that removed the manual tick, and it hands the player
+a lever for every step when only the steps whose evidence the plant can make impossible need one.
+**Rejected: relaxing the plot step's acceptance** (e.g. "counts above target OR source range
+secured") — that certifies the step as DONE on a plant where it was not, and the 1/M teaching is the
+point of those six steps. Measured: the margin from the last plot target to the secure point is a
+factor of five in counts, 20 s on a hot burst, and the authored route peaks one tick under it.
+Record: `Diagnostic/TUNING_LOG.md` 2026-09-05-develop-e.
+
 ## 2026-09-04-develop-h — #624 item 24: the operator's load dial ramps at the SOURCED rate, not the retired tune
 
 **DECIDED (rate + direction + scope)** *(coordinator's call, 2026-09-04, on the item-24

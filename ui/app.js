@@ -3622,7 +3622,12 @@
     var label = pd ? pd.label : pred.p;
     if (pred.op === '~') {
       var tol = pred.tol != null ? pred.tol : 1;
-      return label + ' within ' + fmtPredValue(pd, tol) + ' of ' + fmtPredValue(pd, pred.v);
+      /* A TOLERANCE IS A DIFFERENCE (#606 adjacent, 2026-09-05): an 8 °C band on a temperature
+       * converts ×9/5 with no offset — 14 °F — and the `temp` family's converter adds the 32,
+       * so "within 46 °F of 547 °F" was what the Mode 3 confirmation printed. Same trap
+       * CLAUDE.md's units rule names; the band takes the `tempdiff` family. */
+      var tolPd = (pd && pd.dim === 'temp') ? { dim: 'tempdiff', suffix: pd.suffix } : pd;
+      return label + ' within ' + fmtPredValue(tolPd, tol) + ' of ' + fmtPredValue(pd, pred.v);
     }
     return label + ' ' + (OPSYM[pred.op] || pred.op) + ' ' + fmtPredValue(pd, pred.v);
   }
@@ -3724,8 +3729,13 @@
         for (var pj = 0; pj < pc.length && pj < pr.precond.length; pj++) {
           if (pc[pj].met) continue;
           var pd = pr.precond[pj];
-          pcH += '<div>✗ ' + mesc(pd.text || pd.p) + ' <span class="muted">— wants ' + mesc(pd.p) + ' ' +
-            (OPSYM[pd.op] || pd.op) + ' ' + mesc(pd.v) + ', reads ' + fmtPcObs(pc[pj].obs) +
+          /* the detail line speaks the criteria language (#606, adjacent): it printed the raw
+           * param and SI-only numbers — "wants tavg_c ≈ 286, reads 50.2" — under a headline that
+           * had just been made player-facing. Same formatter as the step criteria, so it reads
+           * "wants Tavg within 14 °F (8 °C) of 547 °F (286 °C), reads 122 °F (50 °C)". */
+          var pdd = PRED_DISPLAY[pd.p];
+          pcH += '<div>✗ ' + mesc(pd.text || pd.p) + ' <span class="muted">— wants ' + mesc(fmtPredicate(pd)) +
+            ', reads ' + mesc((pdd && (pdd.bool || pdd.mode)) ? fmtPcObs(pc[pj].obs) : fmtPredValue(pdd, pc[pj].obs)) +
             (pc[pj].graded_by === 'true_state' ? ' (true value)' : '') + '</span></div>';
         }
         pcH += '</div>';
@@ -3760,6 +3770,11 @@
        * instead of pushing it down. */
       h += '<div class="ckl-txt">' + (i + 1) + '. ' + mesc(st.text) + '</div>';
       if (done && ck.done_by && ck.done_by[i] === 'manual') h += '<div class="ckl-sub">checked by hand</div>';
+      /* a step the plant moved past (#641) says so on the card, with the authored reason, so a
+       * tick the player never earned is not read as one they did */
+      if (done && ck.done_by && ck.done_by[i] === 'overtaken') {
+        h += '<div class="ckl-sub">overtaken — ' + mesc((st.overtaken && st.overtaken.label) || 'the plant moved past this step') + '</div>';
+      }
       if (active) {
         h += '<div class="ckl-act">';
         /* THE "graded off the …" LINE IS GONE *(OWNER, 2026-09-03, #619 item 5: "remove the

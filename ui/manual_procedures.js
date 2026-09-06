@@ -28,6 +28,12 @@
  *           the other; `acc` remains the common single-check case).
  *   wait_hint OPTIONAL string — rendered as a time-acceleration suggestion on long
  *           steps (#244 M5→3 item 5). Prose only; harnesses ignore it.
+ *   overtaken OPTIONAL {p,op,v[,tol],text[,industry]} — the plant condition under which
+ *           this step NO LONGER APPLIES (#641): graded like `acc` while the step is active,
+ *           and when it holds the live checklist checks the step off as 'overtaken', posts
+ *           `text` as the instructor's comment and moves on. For a step whose evidence the
+ *           plant can make impossible — the 1/M plot once the source range de-energizes.
+ *           Replay-side it is ignored: the replay drives the step as authored.
  *   next    (procedure-level) OPTIONAL id of the chain's next checklist — the
  *           completion card offers "Next: <title> ▸ Start" (#244 the round trip).
  *   ramp    [{action, arg, points:[…]}] — a setpoint WALKED along a polyline across
@@ -56,6 +62,21 @@
   // glows when the step is hovered in the live checklist (ui/app.js glowLabels).
   // `why` is the expandable details paragraph (#607 item 5); `past` is the catch-up
   // predicate (#607 item 7) — skip this confirm when the plant has already left it.
+  /* THE 1/M STEPS ARE OVERTAKEN BY THE SOURCE RANGE SECURING (#641, owner playtest 2026-09-05).
+   * PWR2 de-energizes the channel on flux alone at 1e5 cps (pwr2_true_state.js SR_SECURE_CPS,
+   * no operator lever by #598 item 7); the plot tool refuses the press from that moment and
+   * sends nothing, so a `plot_1m_point` entry can never latch again. Measured: a 49-step burst
+   * at the last plot step crosses 20,000 cps and secures the channel 20 s later at 3 DPM, and
+   * even the authored route peaks at 9.91e4 cps on the criticality step. One object, shared by
+   * all six plot steps, so the wording cannot drift between them. `sr_energized` is a boolean
+   * on the wire and `false < 1` is the same test the leg's own confirmation step uses. */
+  var SR_OVERTAKEN = {
+    p: 'sr_energized', op: '<', v: 1,
+    label: 'the source range de-energized before this point could be plotted',
+    text: 'The source range de-energized before this point could be plotted: the count rate passed 100,000 counts per second, which is past the approach. The reactor is critical or about to be, and the 1/M plot has nothing left to read, so the remaining plot steps are marked overtaken. Stop withdrawing. Watch the startup rate and the intermediate range, and keep the startup rate under 1 decade per minute.',
+    industry: 'SOURCE RANGE DE-ENERGIZED ABOVE 1E5 CPS — 1/M APPROACH OVERTAKEN. Remaining plot steps skipped. Hold rods; monitor startup rate (SUR) and the intermediate range; SUR under 1 DPM.',
+  };
+
   function obs(text, acc, note, hl, why, past) {
     var s = { text: text, acc: acc || null, note: note || null, hl: hl || null };
     if (why) s.why = why;
@@ -1513,6 +1534,7 @@
           control: '1/M Plot', target: 'baseline captured (point 1), read off SOURCE RANGE',
           note: 'Every count target on this checklist is the SOURCE RANGE indication. It is a logarithmic meter and prints its exponent: 7.0e2 is 700 counts per second, 1.4e3 is 1,400, 2.0e4 is 20,000.',
           accs: [{ cmd: 'plot_1m_point', label: 'Baseline point plotted' }],
+          overtaken: SR_OVERTAKEN,
           hl: ['1/M Plot Tool', 'Source Range'] },
         /* BURST SIZE, NOT BANK POSITION *(OWNER RULING, 2026-09-03, #619 item 20: "The mode 3>1
          * CLs should tell the user about how many steps to pull the rods for startup instead of
@@ -1528,6 +1550,7 @@
           cmd: { action: 'rod_nudge', group_id: 'control', steps: 94, speed: 'normal' }, hold: 150,
           accs: [{ p: 'sr_counts_cps', op: '>', v: 700, label: 'Counts settled above 700 cps' },
                  { cmd: 'plot_1m_point', label: 'Point plotted' }],
+          overtaken: SR_OVERTAKEN,
           hl: ['Withdraw', '1/M Plot Tool', 'Source Range', 'Startup Rate'] },
         { text: 'Withdraw about 60 steps at MED. Settle, plot, then READ the predicted critical position on the 1/M panel. It reads high.',
           why: 'Each new point is taken closer to critical, where a step is worth more, so the fitted line steepens and the predicted crossing walks toward you. The panel prints its answer as "predicted criticality ≈ step N", with a marker on the plot — that number is what you are working toward. Still treat it as an over-estimate: never withdraw straight to it.',
@@ -1535,6 +1558,7 @@
           cmd: { action: 'rod_nudge', group_id: 'control', steps: 63, speed: 'normal' }, hold: 150,
           accs: [{ p: 'sr_counts_cps', op: '>', v: 1400, label: 'Counts settled above 1,400 cps' },
                  { cmd: 'plot_1m_point', label: 'Point plotted' }],
+          overtaken: SR_OVERTAKEN,
           hl: ['Withdraw', '1/M Plot Tool', 'Source Range', 'Startup Rate'] },
         { text: 'Withdraw about 30 steps at MED. Settle, plot, read the prediction again — the fit now lands within a dozen steps.',
           why: 'You are on the steep part of the rod-worth curve now: each step buys more reactivity than the last. The 1/M fit is starting to be useful. Keep the bursts small so the startup rate can settle before you plot.',
@@ -1542,6 +1566,7 @@
           cmd: { action: 'rod_nudge', group_id: 'control', steps: 31, speed: 'normal' }, hold: 150,
           accs: [{ p: 'sr_counts_cps', op: '>', v: 3000, label: 'Counts settled above 3,000 cps' },
                  { cmd: 'plot_1m_point', label: 'Point plotted' }],
+          overtaken: SR_OVERTAKEN,
           hl: ['Withdraw', '1/M Plot Tool', 'Source Range', 'Startup Rate'] },
         { text: 'Withdraw about 15 steps at MED. Settle, plot. Keep bursts small enough that the startup rate (SUR) stays under 1 DPM.',
           why: 'Startup rate is the speedometer for this approach. One decade per minute is a comfortable climb; above it you are outrunning the plot, and the temperature feedback has not started yet. Smaller bursts from here.',
@@ -1549,6 +1574,7 @@
           cmd: { action: 'rod_nudge', group_id: 'control', steps: 14, speed: 'normal' }, hold: 150,
           accs: [{ p: 'sr_counts_cps', op: '>', v: 7000, label: 'Counts settled above 7,000 cps' },
                  { cmd: 'plot_1m_point', label: 'Point plotted' }],
+          overtaken: SR_OVERTAKEN,
           hl: ['Withdraw', '1/M Plot Tool', 'Source Range', 'Startup Rate'] },
         { text: 'Withdraw about 10 steps at MED — the last and smallest burst. Settle, plot. Point 6 is your working prediction.',
           why: 'The last plotted point, on purpose: the remaining distance is short enough that creeping on the startup rate beats trusting one more fitted number. Write down the position the panel predicts — the next step creeps up on it in single steps, and criticality arrives a little before it. Measured, true criticality is between 226 and 238 of 627.',
@@ -1556,6 +1582,7 @@
           cmd: { action: 'rod_nudge', group_id: 'control', steps: 9, speed: 'normal' }, hold: 150,
           accs: [{ p: 'sr_counts_cps', op: '>', v: 20000, label: 'Counts settled above 20,000 cps' },
                  { cmd: 'plot_1m_point', label: 'Point plotted' }],
+          overtaken: SR_OVERTAKEN,
           hl: ['Withdraw', '1/M Plot Tool', 'Source Range', 'Startup Rate'] },
         /* SPELL IT OUT *(OWNER, 2026-09-03, #619 item 21: "uses acronym (SUR) without spelling
          * it out, ie. STARTUP RATE (SUR)")*. The pool now expands it at its first appearance in

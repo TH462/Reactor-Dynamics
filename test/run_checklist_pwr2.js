@@ -408,6 +408,72 @@ if (!only) {
        !!mid && mid.step_index >= 2 && mid.complete !== true,
        mid && ('step_index ' + mid.step_index + ' flow ' + (s.true_state && s.true_state.pump_flow_pct)));
   })();
+
+  /* 2k. A 1/M STEP THE PLANT HAS MOVED PAST IS OVERTAKEN, NOT A SOFT LOCK (#641, owner playtest
+   * 2026-09-05: "mode 3>1 checklist step 9 the user can get stuck if they accidently go too high
+   * and the source range shuts off. the user can not plot on the 1/m plot making it so they cant
+   * complete that step.").
+   *
+   * Reproduced on the live runtime before the fix: a 49-step burst at the last plot step crossed
+   * 20,000 cps and the source range secured itself 20 s later (1e5 cps, flux alone); the count
+   * box had latched at 26,710 cps and the plot box could never latch, because the tool refuses
+   * the press with the channel de-energized and sends nothing. 900 s later the checklist still
+   * sat on step 9. Here the player does the same thing earlier and harder — one long burst from
+   * the baseline step, never plotting — so every plot step is active in turn while the channel is
+   * dead, and each must leave as `overtaken`, with the instructor saying why.
+   *
+   * THE AUTHORED ROUTE IS COVERED BY THE REPLAY ABOVE, not here: every plot step's own acc is a
+   * count ABOVE its target, which reads 0 the moment the channel secures, so part 1 could not
+   * pass if the predicate could fire on the authored bursts. Injection-verified by stripping
+   * `overtaken` from the pool at runtime: the first check reds with all six steps unmet and the
+   * index pinned at the baseline step. */
+  (function () {
+    var svc = mkSvc('hot_zero_power');
+    svc.timeAcceleration = 10;
+    var s = null; for (var i = 0; i < 3; i++) s = svc.tick();
+    svc.handleCommand({ action: 'start_checklist', procedure_id: 'pwr_startup' });
+    var proc = POOL.filter(function (p) { return p.id === 'pwr_startup'; })[0];
+    var plotIdx = [];
+    proc.steps.forEach(function (st, k) {
+      if ((st.accs || []).some(function (e) { return e.cmd === 'plot_1m_point'; })) plotIdx.push(k);
+    });
+    var firstPlot = plotIdx[0], lastPlot = plotIdx[plotIdx.length - 1];
+    var burst = false, srOffT = null, doneT = null, msg = null, cs = null, pressed = {};
+    for (var n = 0; n < 3000; n++) {
+      s = svc.tick();
+      cs = s.instructor && s.instructor.checklist;
+      if (!cs || cs.complete) break;
+      if (cs.awaiting_ack) svc.handleCommand({ action: 'checklist_check', index: cs.step_index });
+      /* the player works the steps BEFORE the plot (dilute, feed AUTO) as authored */
+      if (cs.step_index < firstPlot && !pressed[cs.step_index]) {
+        pressed[cs.step_index] = true;
+        if (proc.steps[cs.step_index].cmd) svc.handleCommand(proc.steps[cs.step_index].cmd);
+      }
+      if (!burst && cs.step_index === firstPlot) {
+        burst = true;   // the player pulls straight through the approach and never plots
+        svc.handleCommand({ action: 'rod_nudge', group_id: 'control', steps: 300, speed: 'normal' });
+      }
+      if (burst && srOffT === null && s.true_state.sr_energized === false) srOffT = s.metadata.sim_time;
+      if (srOffT !== null && doneT === null && cs.step_index > lastPlot) {
+        doneT = s.metadata.sim_time;
+        msg = s.instructor.message;
+      }
+      if (doneT !== null || (srOffT !== null && s.metadata.sim_time - srOffT > 120)) break;
+    }
+    var by = plotIdx.map(function (k) { return cs && cs.done_by ? cs.done_by[k] : null; });
+    ck('every 1/M plot step checks off as OVERTAKEN once the source range secures (#641 — was a soft lock on the plot box)',
+       plotIdx.length === 6 && srOffT !== null && doneT !== null &&
+       by.every(function (b) { return b === 'overtaken'; }) && (doneT - srOffT) <= 60,
+       srOffT === null ? 'source range never secured in ' + n + ' ticks'
+                       : 'SR off at t=' + srOffT.toFixed(0) + ' s; ' + plotIdx.length + ' plot steps done_by [' + by.join(',') + ']' +
+                         (doneT !== null ? ', past the last one ' + (doneT - srOffT).toFixed(0) + ' s later' : ', index still ' + (cs && cs.step_index)));
+    ck('...and the checklist stands on the criticality step, not complete',
+       !!cs && cs.step_index === lastPlot + 1 && cs.complete !== true,
+       cs && ('step_index ' + cs.step_index + ' of ' + cs.step_total + ' complete ' + cs.complete));
+    ck('...and the instructor says why, naming the source range',
+       !!msg && /source range/i.test(msg) && /overtaken/i.test(msg),
+       msg ? msg.slice(0, 110) : 'no instructor message');
+  })();
 }
 
 console.log('\n' + '='.repeat(74));

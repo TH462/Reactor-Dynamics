@@ -173,7 +173,7 @@
       profile_key: (meta && meta.profile_key) || null,
       idx: 0,
       done: proc.steps.map(function () { return false; }),
-      doneBy: proc.steps.map(function () { return null; }),   // 'auto' | 'manual'
+      doneBy: proc.steps.map(function () { return null; }),   // 'auto' | 'manual' | 'observed' | 'caught_up' | 'overtaken' (#641)
       cmdSeen: false, sawSeen: false, accStreak: 0, accMetNow: false,
       gradedBy: null, complete: false,
       // Precondition verdicts (#395) — evaluated on the first step() tick, never
@@ -656,6 +656,35 @@
     if (!st) { c.complete = true; return; }
     if (c.stepAt == null) c.stepAt = simTime;   // when this step came up — the dwell's clock
 
+    /* A STEP THE PLANT HAS MOVED PAST CHECKS ITSELF OFF AS OVERTAKEN (#641, owner playtest
+     * 2026-09-05: "mode 3>1 checklist step 9 the user can get stuck if they accidently go too
+     * high and the source range shuts off. the user can not plot on the 1/m plot making it so
+     * they cant complete that step.").
+     *
+     * A `plot_1m_point` cmd-entry is evidence the player can only produce while the source
+     * range is energized — the tool refuses the press otherwise and sends nothing — and this
+     * plant secures the channel on flux alone at 1e5 cps, twenty seconds past the last plot
+     * step's 20,000 cps target on a hot burst (measured). Sequential grading then waits for a
+     * command that can never come: a soft lock with no skip, because the manual tick was
+     * removed by directive (2026-08-11). So a step may author `overtaken: {p, op, v, text}` —
+     * the plant condition under which the step no longer applies. Graded like `acc` (same
+     * debounce, instrument-first), and when it holds the step is checked off `'overtaken'`,
+     * the text goes out as the instructor's comment, and the checklist moves on. It is the
+     * plant checking the step off on a condition the plant publishes — not a skip button.
+     *
+     * Evaluated BEFORE the acceptance so a step whose count box has already latched still
+     * leaves; and never on a step already met, since `met` below returns first only when
+     * both are true on the same tick, which is the tie the acceptance should win. */
+    if (st.overtaken && st.overtaken.p) {
+      c.overtakenStreak = this._grade(snapshot, st.overtaken).met ? (c.overtakenStreak || 0) + 1 : 0;
+      if (c.overtakenStreak >= ACC_STABLE_N) {
+        var otText = st.overtaken.text || 'The plant has moved past this step.';
+        this.pendingMessage = { learning: otText, industry: st.overtaken.industry || otText };
+        this._checklistCheckOff('overtaken');
+        return;
+      }
+    }
+
     if (st.saw && !c.sawSeen && this._grade(snapshot, st.saw).met) c.sawSeen = true;
 
     if (st.accs && st.accs.length) {          // multi-check-off (#244 item 8)
@@ -761,6 +790,7 @@
     c.accsState = null;                 // per-entry multi-check-off latches (#244 item 8)
     c.awaitingAck = false;              // #619 item 4 — cleared with the step it belonged to
     c.stepAt = null;                    // re-stamped on the next tick — see the dwell above
+    c.overtakenStreak = 0;              // #641 — the next step's own predicate starts from zero
     if (c.idx >= c.proc.steps.length) c.complete = true;
   };
 

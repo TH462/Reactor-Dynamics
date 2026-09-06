@@ -166,12 +166,14 @@
 
   <details class="log-entry" open>
     <summary class="log-head">
-      <h2>Nuclear instrumentation card closed up</h2>
-      <span class="log-ver mono">Alpha 1.7.4-rc1</span>
+      <h2>Nuclear instrumentation card closed up, and a startup checklist that could not be finished</h2>
+      <span class="log-ver mono">Alpha 1.7.4-rc2</span>
       <time class="log-date mono" datetime="2026-09-05">5 September 2026</time>
     </summary>
     <ul>
       <li><span class="log-tag changed">Changed</span><strong>The NUC INSTR card no longer has a hole in it.</strong> The gap left by the removed SR DET and 1/M PLOT buttons is gone: the six readouts are re-spaced into three even rows, captions centred, values level.</li>
+      <li><span class="log-tag fixed">Fixed</span><strong>The Mode 3 → Mode 1 checklist no longer locks on a 1/M step if you overshoot.</strong> Once the source range de-energizes (above 100,000 cps) a point cannot be plotted; the remaining plot steps now check off as "overtaken", the instructor says why, and the checklist moves to the criticality step. The 1/M tool's refusal says the same.</li>
+      <li><span class="log-tag fixed">Fixed</span><strong>The "Not applicable in Mode N" banner's detail line reads in plain units.</strong> It printed internal names and Celsius-only values; it now reads like the step criteria, US-first.</li>
     </ul>
   </details>
 

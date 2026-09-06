@@ -198,6 +198,16 @@ function sig(rows) {
     ck('and it names the mode the plant is actually in, at the top',
        !!banner.text && /Not applicable in Mode 5, Cold Shutdown/.test(banner.text),
        banner.text ? banner.text.slice(0, 80) : 'no caution banner');
+    /* #606 adjacent (2026-09-05): the detail line under that headline printed the raw param and
+     * SI-only numbers — "wants tavg_c ≈ 286, reads 50.2" — and, once it went through the criteria
+     * formatter, the 8 °C band came out as 46 °F (the temp converter's +32 on a DIFFERENCE). The
+     * cooldown's entry row is Tavg near 547 °F on a 122 °F plant, so the line must read US-first,
+     * name no internal, and put the band at 14 °F. */
+    var detail = banner.text ? banner.text.replace(/\s+/g, ' ') : '';
+    ck('...and the detail line is player-facing: US-first, no raw param, a 14 °F band on the 8 °C tolerance',
+       /wants Tavg within 14(\.\d)? °F \(8 °C\) of 547(\.\d)? °F \(286 °C\), reads 12\d(\.\d)? °F/.test(detail) &&
+       !/tavg_c/.test(detail),
+       detail ? detail.replace(/^.*?—/, '').slice(0, 120) : 'no banner text');
     /* ---- 3b. THE ENTRY BANNER NEVER RETURNS MID-CHECKLIST (#614) ----------------------- */
     /* Owner playtest 2026-09-03: "the not applicable to this mode warning… erroneously appears
      * in the middle of the mode 5-3 checklist when it gets to mode 4. This should only appear

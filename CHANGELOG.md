@@ -30,7 +30,35 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
 
 ## [Unreleased]
 
-## [Alpha 1.7.4-rc1] — 2026-09-05
+## [Alpha 1.7.4-rc2] — 2026-09-05
+
+### Fixed (the Mode 3 → Mode 1 checklist soft-locked on a 1/M step once the source range secured — #641)
+
+*(OWNER, playtest 2026-09-05: "mode 3>1 checklist step 9 the user can get stuck if they accidently
+go too high and the source range shuts off. the user can not plot on the 1/m plot making it so they
+cant complete that step.")*
+
+Reproduced on the live runtime: a 49-step burst at the last plot step crossed 20,000 cps and the
+plant secured the source range **20 s later** (1e5 cps, flux alone — no operator lever, #598 item 7);
+the count box had latched at 26,710 cps and the plot box could never latch, because the 1/M tool
+refuses the press with the channel de-energized and sends nothing. 900 s later the checklist still
+sat on step 9. Even the authored route peaks at **9.91e4 cps** on the criticality step.
+
+A step may now author **`overtaken: {p, op, v, text}`** — the plant condition under which it no
+longer applies. Graded like `acc` while the step is active; when it holds the live checklist checks
+the step off as `'overtaken'` (the card says so, with the reason), posts `text` as the instructor's
+comment, and moves on. The six 1/M steps carry it on `sr_energized`. Not a skip button: the plant
+checks the step off on a condition the plant publishes. The tool's refusal now says what it means
+("the approach is past 1/M territory"). Gated: `run_checklist_pwr2` 2k (+3), injection-verified —
+with `overtaken` stripped the index pins at the baseline step with all six unmet.
+
+### Fixed (the entry banner's detail line — #606 adjacent)
+
+"wants `tavg_c` ≈ 286, reads 50.2" under a headline that had just been made player-facing. It now
+goes through the criteria formatter: *wants Tavg within 14 °F (8 °C) of 547 °F (286 °C), reads
+122 °F (50 °C)*. And that formatter converted a temperature **tolerance** through the `temp` family
+(+32 on a difference — 8 °C printed as 46 °F on every `~` criteria line); the band now takes the
+`tempdiff` family. `verify_ckl_relevance` +1.
 
 ### Changed (the NUC INSTR card re-laid out without its two buttons — #598 items 7/9/10 follow-up)
 

@@ -29,6 +29,51 @@ and the user-visible summary in `CHANGELOG.md`. This file points at those and tr
 
 ---
 
+## Session log — 2026-09-05-develop-e (#641 — a 1/M step the plant has moved past is OVERTAKEN, not a soft lock; #606 closed out)
+
+**The ask** (owner, 2026-09-05): *"mode 3>1 checklist step 9 the user can get stuck if they
+accidently go too high and the source range shuts off. the user can not plot on the 1/m plot making
+it so they cant complete that step."* — then *"fix this issue and issue 606 in develop"*.
+
+**Reproduced, on the live runtime, the player's route** (scratch `m1m.js`: advance on each
+acceptance, plot when the counts box ticks; at step 9 withdraw 49 steps instead of the authored 9,
+never plot). Counts crossed 20,000 cps at t=439 s; the source range secured **20 s later** at
+t=458 s (power 3.96e-5 %, startup rate 3.0 DPM); 900 s on, `step_index` still 9 with
+`accs = [{met:true, obs:26710}, {met:false}]`. The plot box cannot latch: `one_over_m.js` refuses
+the press while `sr_energized` is false and only sends `plot_1m_point` on a recorded point, so the
+instructor never sees the command, and the manual tick was removed by directive (2026-08-11).
+**The margin is a factor of five in counts** — `SR_SECURE_CPS = 1e5` against a 20,000 cps target —
+and the authored route itself peaks at **9.91e4 cps** on the criticality step. Every plot step
+(4–9) has the shape.
+
+**The fix — `overtaken: {p, op, v, text[, industry, label]}` on a step** (`instructor_layer.js`
+`_stepChecklist`, evaluated before the acceptance with the same `ACC_STABLE_N` debounce). When it
+holds, the step is checked off `done_by: 'overtaken'`, the card prints "overtaken — <label>", the
+instructor posts `text`, and the checklist moves on. The six 1/M steps share one `SR_OVERTAKEN`
+object on `sr_energized < 1` (the leg's own confirmation step's test). The tool's refusal now says
+what it means. Follow mode (Walkthroughs) is untouched — it has manual navigation.
+
+**Measured with the fix**: step 9 `overtaken` at t=462 s (4 s after the channel secured), step 10
+auto at 508 s, the leg running on. **Gate** `run_checklist_pwr2` 2k (+3 → 138): a 300-step burst
+from the baseline step, no plot — SR off at t=356 s, all six plot steps `overtaken` 29 s later
+(six steps × the 5-broadcast debounce), index on the criticality step, message names the source
+range. **Injection**: `overtaken` stripped from the pool at runtime → index pinned at the baseline
+step, all six unmet. The authored route is covered by the replay (each plot step's acc is a count
+ABOVE its target, which reads 0 once the channel secures).
+
+**#606 close-out.** The 2026-09-03 fix (`39c620e8`) is on develop and re-verified green
+(`verify_ckl_relevance` 13/13 before this session's +1). The one item its body left open — the
+banner's detail line printing *"wants tavg_c ≈ 286, reads 50.2"* — now goes through
+`fmtPredicate`/`fmtPredValue`. Doing so exposed that **`fmtPredicate` converted a `~` TOLERANCE
+through the `temp` family**: 8 °C printed as **46 °F** (the +32 on a difference — the units rule's
+own trap) on every temperature `~` criteria line, the Mode 3 confirmation included. The band now
+takes `tempdiff`; browser-measured line: *wants Tavg within 14 °F (8 °C) of 547 °F (286 °C), reads
+122 °F (50 °C)*. +1 check.
+
+**Trap.** A cmd-kind check-off is only satisfiable while the plant still lets the player produce the
+command. Grep every `{cmd: …}` acceptance for the plant condition that would make its control
+refuse, and give the step an `overtaken` predicate on that condition.
+
 ## Session log — 2026-09-05-develop-d (the NUC INSTR card closed up behind its two deleted buttons — #598 items 7/9/10 follow-up)
 
 **The ask** (owner, 2026-09-05): *"adjust the indications in the NUC INSTR card to get rid of the

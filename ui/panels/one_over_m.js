@@ -174,7 +174,11 @@
     if (!s) return;
     if (!supported(s)) { setMsg('no source-range channel on this plant', true); return; }
     var ins = s.instruments || {};
-    if (!ins.sr_energized) { setMsg('SR detector is de-energized — no counts to plot', true); return; }
+    /* The refusal says what it MEANS, not only what it is (#641): the source range secures
+     * itself above 1e5 cps on this plant, so a de-energized channel here is the player past
+     * the approach, not a switch to find. The live checklist marks its plot steps overtaken on
+     * the same condition. */
+    if (!ins.sr_energized) { setMsg('Source range de-energized — the approach is past 1/M territory; nothing to plot. Watch the startup rate and the intermediate range.', true); return; }
     var counts = ins.source_range;
     if (counts == null || !isFinite(counts) || counts < 1) { setMsg('no source-range reading', true); return; }
     if (counts > 9e5) { setMsg('SR pegged near full scale — past 1/M territory', true); return; }
