@@ -121,6 +121,24 @@ like a healthy plant.** The 4.9 % head start and #647's +0.045 K3 credit cancell
 a fix that reddens something distant deserves "what was this cancelling against?" before the check
 is adjudicated as stale.
 
+### The one regression, and it names a third trap
+
+**A threshold on a derived quantity is a coupling nothing declares.** `createEngine` gated the
+operator's two startup-net blocks on **`ic.pf >= 0.1`**. `pf` is a *seed*; re-deriving
+`low_power.pf` from 0.105 to 0.09604 crossed that literal, `low_power` booted with **neither block
+taken**, and `pwr_raise_power` scrammed at step 4 on `ir_high_flux` — **`run_checklist_pwr2`
+135/135 → 121/135 from a change that moved no protection, no setpoint and no equation**.
+
+The discriminator is now **`ic.load_mwe > 0`**: "has this plant ascended through P-10 and taken the
+blocks" is answered by whether it is on the grid, which is exactly what
+`if (!(ic.load_mwe > 0)) eng.tb.tripped = true;` **in the same function, 180 lines below** already
+does — and its comment says so in as many words. **Identical on all six initial conditions under
+both sets of `pf` values**, so it holds on the old plant too (HR10) and moves only `low_power`,
+only back to what it always meant. Two mutation anchors re-pointed, both still caught.
+
+**Grep every consumer before re-deriving a constant, including the ones that only COMPARE it** — a
+search for assignments does not show you a threshold.
+
 ### Also decided
 
 - **`low_power.pf` is DERIVED from `load_mwe`, not typed beside it.** The turbine enforces

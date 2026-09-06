@@ -245,6 +245,31 @@ asserted in the column direction for §11.0 and never in the table direction for
 Every OTΔT/OPΔT number on that page is a fraction of one constant and **the manual had never given
 it**, which is part of why a 5 % error in it went three weeks unnoticed.
 
+### The one thing that actually broke, and it was not the physics
+
+**`run_checklist_pwr2` went 135/135 → 121/135**, and the cause is worth more than the fix.
+`createEngine` took the operator's two startup-net blocks from **`ic.pf >= 0.1`** — a **threshold
+on a seed**. Re-deriving `low_power.pf` from 0.105 to 0.09604 crossed that literal, so the state
+booted with **neither block taken**, and `pwr_raise_power` scrammed at step 4 on `ir_high_flux`.
+Fourteen red checks from a change that moved no protection, no setpoint and no equation.
+
+`pf` reads as a pure seed at its other call sites (fission, decay/xenon equilibrium, `dT0`), and
+was a **lineup discriminator** at exactly one. **The question "has this plant ascended through
+P-10 and taken the blocks?" is answered by whether it is ON THE GRID** — which is precisely what
+`if (!(ic.load_mwe > 0)) eng.tb.tripped = true;` **180 lines below already does**, with a comment
+saying so: *"Keyed on `load_mwe`, not on `subcritical` or `pf`: the new `low_power` IC is
+subcritical by neither measure but IS on the grid at 10 MWe."* The two lines are in the same
+function and the second had learned the lesson the first needed.
+
+Now `ic.load_mwe > 0`, and it is **identical on all six initial conditions under both sets of `pf`
+values** — checked, because a new form must hold on the old plant too or it is a refit (HR10). The
+only IC it moves is `low_power`, and only back to what it always meant. Two mutation anchors
+quoted the old expression and were re-pointed; both still caught.
+
+**Trap: a threshold on a derived quantity is a coupling nothing declares.** Grep every consumer
+before re-deriving a constant — including the ones that only *compare* it, which a search for
+assignments will not show you.
+
 ### Traps worth carrying
 
 - **A constant measured once off the plant and then made a CONSTRUCTION input is a loop closed on

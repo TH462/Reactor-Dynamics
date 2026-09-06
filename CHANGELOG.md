@@ -92,6 +92,16 @@ measured on an older tree; on this plant 10.0 MWe costs **9.604 %** thermal, so 
 condition seeded 9.3 % high and rang 10.50 → 9.60 % over its first 600 s. At the derived value its
 residual against its own Tavg program knot falls from **+0.52 °F to −0.01 °F**.
 
+### Fixed (#650 — the startup blocks were gated on a threshold on a seed)
+
+The two startup-net blocks an at-power initial condition boots with were taken from
+`ic.pf >= 0.1`. `pf` is a *seed*, so re-deriving `low_power`'s from its dispatch (0.105 → 0.09604)
+crossed that literal: the state booted with **neither block taken** and the power-ascension
+checklist scrammed at step 4 on the intermediate-range high flux trip — 14 red checks from a
+change that moved no protection, no setpoint and no equation. The discriminator is now
+`ic.load_mwe > 0`, which is what the turbine latch in the same function already used, and it is
+**identical on all six initial conditions under both sets of `pf` values**.
+
 ### Added (#650 — the rated-point identity, the check whose absence let a 5 % offset ship)
 
 `run_pwr2_engine` now asserts that a settled rated plant reads `delta_t_frac` within 0.5 % of
