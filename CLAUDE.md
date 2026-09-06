@@ -309,7 +309,7 @@ to read everything.
 | **Argue a feature's EDUCATIONAL value (Q2)** | **`Blueprint/CURRICULUM.md`** — what each plant is meant to teach, in four tiers. PWR only. **All four tiers RULED 2026-08-03 and binding for the PWR.** A = 9 couplings; B = 8 evolutions (**list is a subset — a second pass is owed**); C = Core/Covered, Core owes a mission and Covered does not; D = adopt existing. |
 | **Apply a Hard Rule to a real decision** | `Blueprint/CONTEXT.md` §3 for the rule (binding, 10 rules, each names its guard), then **`Blueprint/SOP.md`** §1–4 for the worked cases and technique (advisory). |
 | **Put a decision to the owner** | `Blueprint/SOP.md` §5 — always bring your recommendation; see the block above. |
-| **Write or review any player-facing text** | **`Blueprint/STYLE_GUIDE.md`** — **ADVISORY, not binding.** The voice (technical, accessible, concise) and what to call a control: the screen's name, spelled out, acronym in parentheses. |
+| **Write or review any player-facing text** | **Checklist steps: `Blueprint/CHECKLIST_WRITING_GUIDE.md`** (2026-09-06, built from two fresh-reader reviews in `Diagnostic/CHECKLIST_REVIEW_2026-09-06_*.md`). Everything else: `Blueprint/STYLE_GUIDE.md`. Both ADVISORY. |
 | **Find a document that was deleted** | `Blueprint/RETIRED.md` — what was removed, why, and the command to read it again. |
 | **Work out which lane to use, or merge one** | **`Blueprint/LANES.md`** — the occupancy check's two blind spots, warn-and-ask, the merge-conflict list and the `Manuals/` silent-drop case. The block at the top of this file is only what binds. |
 | **Look up a trap that used to be in this file** | **`Blueprint/TRAPS.md`** — bullets evicted from the standing list under its 25-cap, plus the criterion for which ones go. |
