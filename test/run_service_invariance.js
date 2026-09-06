@@ -120,6 +120,51 @@ function walk(RD, speed, target, casualty) {
   return { at: at, evals: evals, simTime: svc.simTime, rate: evals / svc.simTime };
 }
 
+/* the recorded instants, as key strings, in time order */
+function order(w) {
+  return Object.keys(w.at).sort(function (x, y) { return Number(x) - Number(y); });
+}
+/* the first and last recorded instant, with their pressures */
+function ends(w) {
+  var ks = order(w);
+  if (!ks.length) return null;
+  return { t0: Number(ks[0]), t1: Number(ks[ks.length - 1]),
+           P0: w.at[ks[0]].P, P1: w.at[ks[ks.length - 1]].P };
+}
+/* WHEN THIS BLOWDOWN IS HALF DONE — measured off the trajectory, not typed. SI-5 uses it as
+ * the depth its comparison must reach, so the bar moves WITH the physics instead of against
+ * it: a faster blowdown pulls the bar earlier, exactly as it pulls the sampling earlier. */
+function halfExcursionTime(w) {
+  var e = ends(w); if (!e) return null;
+  var half = e.P0 + (e.P1 - e.P0) * 0.5, down = e.P1 < e.P0, ks = order(w);
+  for (var i = 0; i < ks.length; i++) {
+    var P = w.at[ks[i]].P;
+    if (down ? P <= half : P >= half) return Number(ks[i]);
+  }
+  return null;
+}
+/* the LAST instant both legs landed on (null if they never met) */
+function lastShared(a, b) {
+  var last = null;
+  Object.keys(a.at).forEach(function (k) {
+    if (b.at[k] !== undefined && (last === null || Number(k) > last)) last = Number(k);
+  });
+  return last;
+}
+/* a copy of a leg with a difference PLANTED in every field — SI-5's own sensitivity proof.
+ * `compare()` must see it, or the 0.000e+0 that SI-4 and SI-7 report means nothing. */
+function planted(w, rel) {
+  var at = {};
+  Object.keys(w.at).forEach(function (k) {
+    var s = w.at[k], d = {};
+    Object.keys(s).forEach(function (f) {
+      d[f] = (typeof s[f] === 'number') ? s[f] * (1 + rel) : s[f];
+    });
+    at[k] = d;
+  });
+  return { at: at };
+}
+
 /* worst relative difference over the instants BOTH legs actually landed on */
 function compare(a, b) {
   var n = 0, worst = 0, at = null;
@@ -138,6 +183,9 @@ function compare(a, b) {
 }
 
 var LOCA = ['large_loca', 'station_blackout'];
+/* the compared window, in sim seconds. NAMED because SI-5 asserts against it — "both legs
+ * actually ran the window" is only unnudgeable if the bar IS the window. */
+var T_WIN = 200;
 
 /* ---- THE SUITE ------------------------------------------------------------------------- */
 function runSuite(RD, rec, quiet) {
@@ -173,17 +221,92 @@ function runSuite(RD, rec, quiet) {
    * and a quiet plant turned out to be too insensitive to catch a cadence mutation at all
    * (the injection self-test below is what showed that, not a guess). */
   head('TRANSIENT  [large break + station blackout — the regime the claim exists for]');
-  var t1 = walk(RD, 1, 200, LOCA), t10 = walk(RD, 10, 200, LOCA), t60 = walk(RD, 60, 200, LOCA);
+  var t1 = walk(RD, 1, T_WIN, LOCA), t10 = walk(RD, 10, T_WIN, LOCA),
+      t60 = walk(RD, 60, T_WIN, LOCA);
   var tc = compare(t1, t10), tc6 = compare(t10, t60);
-  /* 30 -> 20 on 2026-09-04 (#625). `_isRapidChange` became a rate per SIM second; at 10x the old
-   * wall-scaled form flipped to the 50 ms cadence on 4 psi/s (a fifth of what it took at 1x),
-   * so the 10x leg used to lay 300 instants on the 0.5 s grid through this blowdown and now lays
-   * 220 (measured: cadence histogram 201/99 -> 39/181). Fewer of those coincide with the 1x
-   * leg's 0.06 s transient grid (3 steps per 50 ms broadcast): shared 51/58 -> 28/22. The
-   * comparison itself is unchanged — 0.000e+0 over every shared instant, before and after. */
-  ck('SI-5', 'the transient legs actually MET, at enough instants to be worth comparing',
-     tc.n >= 20 && tc6.n >= 20,
-     '1x/10x share ' + tc.n + ' instants, 10x/60x share ' + tc6.n);
+  /* ⚠⚠ SI-5 USED TO BE A SAMPLE-COUNT FLOOR, `tc.n >= 20 && tc6.n >= 20`, AND THAT NUMBER WAS A
+   * CLIFF. It was moved 30 -> 20 on 2026-09-04 (#625) when the legs landed at 28/22; on
+   * 2026-09-05 #633 (secondary relief flow made dependent on upstream steam pressure) took them
+   * to 20/16 and it went red again. Second nudge in three days. It is not being nudged a third
+   * time — the quantity itself is the defect, and the measurement below is why.
+   *
+   * MEASURED, four trees, this fixture, 200 s (`--- shared instants ---`):
+   *     HEAD, neither change          1x/10x 28   10x/60x 22   last shared 178.00 / 177.00 s
+   *     HEAD + #508 only              1x/10x 28   10x/60x 22   IDENTICAL — #508 moved NOTHING
+   *     HEAD + #633 only              1x/10x 20   10x/60x 16   last shared 135.00 / 135.00 s
+   *     HEAD + #633 + #508            1x/10x 20   10x/60x 16   identical to #633 alone
+   * So #633 alone moved it. #508's no-load Tavg re-anchor (291.67 -> 286.11 degC, 557 -> 547
+   * degF) changed not one instant in this fixture.
+   *
+   * AND IT IS GRID ALIGNMENT, NOT DIVERGENCE — the distinction the whole adjudication turns on:
+   *   - every leg still runs the full window (1x to 200.06/200.08 s, 10x to 200.50, 60x to
+   *     204.00 — unchanged by #633);
+   *   - the trajectories are 0.000e+0 at EVERY shared instant in every one of the four trees;
+   *   - the first 17 shared instants of the 1x/10x pair, and the first 15 of the 10x/60x pair,
+   *     are the SAME TIMES before and after #633 (2.00 3.50 5.00 6.00 ... 75.50). Only the
+   *     late ones differ.
+   * THE MECHANISM IS MODULAR ARITHMETIC ON THE TRANSIENT CADENCE. In a transient the broadcast
+   * halves: 0.100 -> 0.060 s at 1x, 1.000 -> 0.500 s at 10x, 6.000 -> 3.000 s at 60x. Each fine
+   * broadcast shifts a leg's grid off the round numbers, and the legs can only meet while the
+   * ACCUMULATED offset is back at zero mod the coarse step. #633 quiets the blowdown's tail —
+   * the plant settles at 2.225 MPa (323 psia) instead of still falling through 2.98 MPa
+   * (432 psia) — so the 1x leg takes 203 fine broadcasts where it took 391 (10x: 25 vs 39;
+   * 60x: 6 vs 12). 0.06 x 391 mod 0.1 = 0.06; 0.06 x 203 mod 0.1 = 0.08. NEITHER is zero, so
+   * in BOTH trees the legs stop meeting for good once the fine broadcasts stop, and which
+   * windows align in between is a lottery on a fine-broadcast COUNT. Any physics change
+   * reshuffles it. That is the #543/#588 shape exactly: one integer picks the branch.
+   *
+   * SO THE COUNT IS NOT ASSERTED ANY MORE. It is still REPORTED in the note, because the drift
+   * is worth seeing — it is just not worth failing on. What the guard asserts instead is the
+   * four ways this comparison could actually be worthless, none of them a lottery:
+   *   1. A LEG DID NOT RUN. Both legs must reach T_WIN. Derived from the window itself.
+   *   2. THE FIXTURE STOPPED BEING A CASUALTY. Pressure must at least HALVE across the run —
+   *      measured 15.310 -> 2.225 MPa (2221 -> 323 psia), an 85 % fall, so the bar has a 6x
+   *      margin and only reds if the break stops breaking.
+   *   3. THE LEGS ONLY MET IN THE PROLOGUE. Every run starts aligned and drifts apart, so an
+   *      intersection can be non-empty and still say nothing. The bar is the blowdown's OWN
+   *      half-excursion time, read off the 1x trajectory (8.92 s here, 8.02 s at HEAD) — no
+   *      typed constant, and it tracks the physics rather than fighting it. Last shared
+   *      instant 135.00 s against 8.92 s is a 15x margin (HEAD: 178.00 vs 8.02, 22x).
+   *   4. `compare()` CANNOT SEE A DIFFERENCE. A 1e-6 relative difference is PLANTED in every
+   *      field of the second leg and compare() must report it against SI-4's own 1e-9 test.
+   *      This is the conjunct that makes an EMPTY intersection fail, and the one that would
+   *      have caught the walk() field list being emptied — the trap this file's own walk()
+   *      comment records (sg_level and boron were added after a mutation came back blind).
+   * WHY THIS CANNOT BE NUDGED THE SAME WAY: there is no longer a number standing next to the
+   * measurement. 2's margin is 6x, 3's is 15x, and 1 and 4 are pass/fail with nothing to move.
+   * A future physics change that halves the sharing window again changes NONE of them.
+   *
+   * PROVEN ABLE TO FAIL, five injections, one per conjunct (2026-09-05 — a guard that cannot go
+   * red is worse than the cliff it replaced, so this is not optional):
+   *   1. the 60x leg walked to T_WIN/4          -> ran=false             SI-5 red
+   *   2. LOCA emptied, so nothing is injected   -> casualty=false        SI-5 red
+   *   3. 10x/60x instants past 5 s discarded    -> deep=false            SI-5 red
+   *   4. compare()'s field difference forced 0  -> sensitive=false       SI-5 red
+   *   5. 10x/60x instants ALL discarded         -> deep+sensitive false  SI-5 red
+   * ⚠ IN 3, 4 AND 5, SI-4 AND SI-7 STAYED GREEN — reporting "worst relative difference 0.000e+0
+   * over 0 instants" in 5, and over a comparison that could not subtract in 4. That is the
+   * vacuity this check exists to prevent, and it is the whole argument for the sensitivity
+   * conjunct: the count floor could never have caught 4 at all.
+   * ⚠ AND INJECTION 2 IS THE OLD FORM'S OWN INDICTMENT. With the casualty removed the legs
+   * share 200 and 33 instants — TEN TIMES the floor that was failing. `tc.n >= 20` would have
+   * passed, loudly, on a fixture that had stopped being a fixture. The count was not a weak
+   * guard on the right quantity; it was a guard on the wrong one. */
+  var half = halfExcursionTime(t1), e1 = ends(t1);
+  var ls = lastShared(t1, t10), ls6 = lastShared(t10, t60);
+  var ran = Math.min(t1.simTime, t10.simTime, t60.simTime) >= T_WIN;
+  var isCasualty = !!e1 && e1.P1 < e1.P0 * 0.5;
+  var deep = half !== null && ls !== null && ls6 !== null && ls > half && ls6 > half;
+  var sens = compare(t1, planted(t10, 1e-6)).worst >= 1e-9 &&
+             compare(t10, planted(t60, 1e-6)).worst >= 1e-9;
+  ck('SI-5', 'the transient comparison CAN fail — the legs ran, the casualty developed, they ' +
+             'met past the blowdown\'s half-point, and a planted difference is seen',
+     ran && isCasualty && deep && sens,
+     'ran=' + ran + ' casualty=' + isCasualty + ' (P ' + (e1 ? e1.P0.toFixed(3) + ' -> ' +
+     e1.P1.toFixed(3) : '?') + ' MPa) deep=' + deep + ' (last shared ' +
+     (ls === null ? 'never' : ls.toFixed(2)) + ' / ' + (ls6 === null ? 'never' : ls6.toFixed(2)) +
+     ' s vs half-excursion ' + (half === null ? '?' : half.toFixed(2)) + ' s) sensitive=' + sens +
+     ' -- counts, reported not asserted: 1x/10x ' + tc.n + ', 10x/60x ' + tc6.n);
   ck('SI-2', 'protection is evaluated at the same rate per sim second IN A TRANSIENT',
      Math.abs(t1.rate - t10.rate) < 0.05,
      t1.rate.toFixed(2) + ' vs ' + t10.rate.toFixed(2) + ' per sim-s — the broadcast cadence ' +

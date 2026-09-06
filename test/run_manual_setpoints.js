@@ -159,7 +159,13 @@ var ROWS = [
   { m: /^Turbine trip \(vacuum\)/,           narrative: true },
   { m: /^Turbine trip \(overspeed\)/,        narrative: true },
   { m: /^Turbine trip \(SG hi-hi/,           want: P.SGLL.hi_hi_frac * 100,        unit: '%',   tol: 0.5 },
-  { m: /^Steam dump \(pressure mode\)/,      narrative: true },
+  /* NO LONGER NARRATIVE (#635 item 2). The row was marked "no single plant constant to check
+   * against" — false: it prints the Ginna no-load anchor, `RD.pwr2.sg.SG.P_noload` (7.03 MPa),
+   * which is the pressure-mode dump's controller setpoint (`pwr2_shell`'s `steam_dump_setpoint`
+   * defaults to this same 7.03 when the operator has never touched the box). ABSOLUTE, no
+   * +14.7 psia offset: the manual quotes it as `Psat(546.8 °F)`, a saturation (absolute)
+   * pressure, unlike the two gauge-quoted relief rows above it. */
+  { m: /^Steam dump \(pressure mode\)/,      want: RD.pwr2.sg.SG.P_noload * PSI, unit: 'psi', tol: 1 },
   { m: /^Steam dump \(trip-open mode\)/,     narrative: true },
   { m: /^Spray flow cap/,                   narrative: true },
   { m: /^Main feedwater isolation \(P-14\)/, want: P.SGLL.hi_hi_frac * 100,        unit: '%',   tol: 0.5 }
