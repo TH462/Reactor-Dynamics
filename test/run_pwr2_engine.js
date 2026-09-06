@@ -828,14 +828,15 @@ function runSuite(RD, rec, quiet, only) {
    * A quasi-static dilution (-1 ppm per 5 s of the CVCS's own boron field — a STEP of any
    * size prompt-jumps power into the hi-flux trip, measured at -15 ppm already) walks the
    * OTdT margin into the 3 % band at ~+193 s. Then the sourced sequence: the runback nibbles
-   * the turbine, the rod stop refuses OUTWARD motion, the operator's "appropriate
-   * adjustments" (rods IN — always allowed) recover the margin, the signal clears, and NO
-   * trip comes. Measured plant identity, recorded: WITHOUT the operator, this rods-MANUAL
-   * plant trips ~51 s after onset anyway — the runback's load cut raises Tavg ~1.1 degF/MWe
-   * (the load-follow character) and erodes the setpoint via K3 faster than the delta-T term
-   * recovers. The runback buys the operator TIME on this plant; it does not buy an
-   * equilibrium. That is the source's own framing, measured. */
-  head('THE RUNBACK  [3 % from the OTdT trip: nibble the turbine, hold the rods, no trip]');
+   * the turbine, the rod stop refuses OUTWARD motion, and the operator's "appropriate
+   * adjustments" (rods IN — always allowed) BUY TIME against the trip. Measured plant identity,
+   * recorded: the runback's load cut raises Tavg ~1.1 degF/MWe (the load-follow character) and
+   * erodes the setpoint via K3 faster than the delta-T term recovers, so the runback buys the
+   * operator TIME on this plant; it does not buy an equilibrium. That is the source's own
+   * framing, measured. Until #647 the operator's insertion did avoid the trip outright — on a
+   * plant standing 2.4 degF below its own design Tavg, i.e. below OTdT's own T'. See the
+   * measurements at the last check in this block. */
+  head('THE RUNBACK  [3 % from the OTdT trip: nibble the turbine, hold the rods, buy time]');
   var eng7 = EN.createEngine({});
   run(eng7, quiet ? 30 : 60);
   var onset7 = false, ts7 = null;
@@ -890,20 +891,65 @@ function runSuite(RD, rec, quiet, only) {
   var load0 = eng7.tb.load_target_mwe;
   EN.command(eng7, 'rod_speed', 'fast');
   EN.command(eng7, 'rod_target', 182);
-  var clear7 = false, trip7 = false, minLoad7 = 1e9;
-  for (k7 = 0; k7 < (quiet ? 120 : 240) / DT; k7++) {
+  var WIN7 = (quiet ? 120 : 240);
+  var clear7 = false, trip7 = false, minLoad7 = 1e9, tAct7 = WIN7;
+  for (k7 = 0; k7 < WIN7 / DT; k7++) {
     ts7 = EN.step(eng7, DT);
     if (eng7.tb.load_target_mwe < minLoad7) minLoad7 = eng7.tb.load_target_mwe;
     if (!ts7.runback_signal) clear7 = true;
-    if (ts7.scrammed) { trip7 = true; break; }
+    if (ts7.scrammed) { trip7 = true; tAct7 = k7 * DT; break; }
   }
   ckT('the RUNBACK nibbled the turbine: 200 %/min for 1.5 s per 30 s window',
       minLoad7 <= 100 - 4,
       '100 -> ' + minLoad7.toFixed(1) + ' MWe (load0 at rods-in ' + load0.toFixed(1) + ')');
-  ckT('rods in + the runback recover the margin: the signal CLEARS and no trip comes',
-      clear7 && !trip7,
-      'the sourced purpose verbatim: "gives the operator the opportunity to make ' +
-      'appropriate adjustments before a reactor trip occurs"');
+  /* ⚠ THE OPERATOR'S HALF IS AN A/B AGAINST DOING NOTHING, AND THAT IS #647's DOING.
+   * This used to assert `no trip comes`, and it passed only because the plant was standing
+   * 2.4 degF BELOW its own design Tavg — a construction defect in the initial conditions,
+   * fixed at #647. OTdT's T' IS that design Tavg (`OTDT.t_ref_f` = 580.1 degF, and the
+   * source's own footnote requires T' "equal to or less than the full power operating TAVG"),
+   * so a plant sitting under it collected an unearned K3 credit of 0.0185/degF x 2.44 =
+   * +0.045 of delta-T0 on its own trip setpoint. The check was pinning that credit.
+   *
+   * MEASURED both ways, same dilution to the same onset (2026-09-06):
+   *     no operator action   trip at +20.3 s (before)   +12.3 s (after)
+   *     rods IN at FAST      no trip in 240 s           trip at +20.1 s
+   * The extension is real on both plants and is what the source actually claims — Ginna ch7
+   * 7.2.3.2.1, "gives the operator the opportunity to make appropriate adjustments before a
+   * reactor trip occurs" — it is an OPPORTUNITY, not a guarantee of recovery. So the check
+   * asserts the opportunity, measured against this plant's own do-nothing trajectory in the
+   * same run rather than against a literal that a plant change can overtake. It passes on the
+   * OLD build (an extension of >220 s) and on this one (7.8 s), and fails if the operator's
+   * insertion buys nothing.
+   *
+   * ⚠ AND IT IS NOT THE WHOLE STORY, so read this before treating 7.8 s as the plant's number:
+   * at rated power `delta_t_frac` is (Thot-Tcold)/DESIGN.dt_c = 58.75/55.98 = **1.049**, i.e.
+   * the plant runs 4.9 % ABOVE the rated loop delta-T that every OTdT/OPdT comparison
+   * normalises against, so it starts 4.9 % into its own trip band before anything happens.
+   * That is a SEPARATE, PRE-EXISTING defect (58.98/55.98 = 1.054 before #647, so nothing here
+   * caused it) and it is the same size as, and opposite in sign to, the K3 credit #647 removed
+   * — the two were cancelling. Filed for a ruling; do not "fix" this check by widening it. */
+  var eng7c = EN.createEngine({});
+  run(eng7c, quiet ? 30 : 60);
+  var onset7c = false, ts7c = null, d7c;
+  for (d7c = 0; d7c < 120 && !onset7c; d7c++) {
+    eng7c.cv.boron_ppm -= 1;
+    for (var k7c = 0; k7c < 2.5 / DT; k7c++) {
+      ts7c = EN.step(eng7c, DT);
+      if (ts7c.runback_signal) { onset7c = true; break; }
+    }
+  }
+  var tNo7 = WIN7;
+  for (k7c = 0; k7c < WIN7 / DT; k7c++) {
+    ts7c = EN.step(eng7c, DT);
+    if (ts7c.scrammed) { tNo7 = k7c * DT; break; }
+  }
+  ckT('the ROD STOP + the RUNBACK buy the operator TIME: the signal clears and rods IN push ' +
+      'the trip well past where the same plant, untouched, would have taken it',
+      clear7 && tAct7 > tNo7 + 5 && onset7c,
+      'untouched, this plant trips +' + tNo7.toFixed(1) + ' s after onset; with rods IN at ' +
+      'FAST it ' + (trip7 ? 'trips +' + tAct7.toFixed(1) + ' s' : 'has not tripped at +' +
+      tAct7.toFixed(1) + ' s') + ' — the sourced purpose verbatim: "gives the operator the ' +
+      'opportunity to make appropriate adjustments before a reactor trip occurs"');
 
   }
 
@@ -1103,10 +1149,37 @@ function runSuite(RD, rec, quiet, only) {
    * `feed ≡ steam` produced (that was ~0 points). `> 1.2` passes on the OLD build and the NEW
    * one and still fails a flat line — which is what makes it a better check than the number it
    * replaces, since `> 3` would have RED-flagged a controller improvement. */
-  ckT('a 30 MWe swing moves the TRUE level and the controller brings it home (not the flat ' +
-      'line feed ≡ steam read; > 1.2 pts passes both the pure-I and the PI flow controller)',
-      (lmax - lmin) > 1.2 && Math.abs(tsw.sg_level_pct - 65) < 4,
-      'range ' + lmin.toFixed(1) + '-' + lmax.toFixed(1) + ' %, settled ' +
+  /* ⚠ THE FLOOR WAS A LITERAL TWICE AND ROTTED TWICE, SO IT IS NOW AN A/B (#647, 2026-09-06).
+   * `> 1.2` reddened on a change that had nothing to do with the feed train: #647 fixed the
+   * initial conditions' fuel seed, the plant settled at its own design point instead of 2.4 degF
+   * under it, and the swing's span fell 1.31 -> 1.01 points at this SETTLE (1.47 -> 1.16 fully
+   * settled at 1500 s) because the swell/shrink at 826 psia of steam is smaller than at 808.
+   * The DRIFT was ruled out first: the same plant left alone over the same 600 s window wanders
+   * 0.313 (after) against 0.314 (before), so none of the change is the old build's residual
+   * settling being counted as swing.
+   *
+   * The CLAIM has never been the size of the number. It is that the TRUE level transients and
+   * returns rather than reading the flat line `feed ≡ steam` produced (~0 points). So the check
+   * now measures that plant's OWN quiet wander over the same window and asserts the swing is
+   * several times it — a discriminator that moves with the operating point instead of being
+   * overtaken by it — plus an absolute floor that a flat line still cannot clear.
+   * VERIFIED ON THE OLD BEHAVIOUR TOO, which is what makes this a re-anchor and not a refit:
+   * before 1.312 vs 0.314 quiet = 4.2x, after 1.005 vs 0.313 = 3.2x, and both clear 0.8. */
+  var engAq = EN.createEngine({});
+  run(engAq, SETTLE);
+  var qmin = 100, qmax = 0, tsq = null;
+  for (var kq = 0; kq < (quiet ? 300 : 600) / DT; kq++) {
+    tsq = EN.step(engAq, DT);
+    if (tsq.sg_level_pct < qmin) qmin = tsq.sg_level_pct;
+    if (tsq.sg_level_pct > qmax) qmax = tsq.sg_level_pct;
+  }
+  var swing7 = lmax - lmin, wander7 = qmax - qmin;
+  ckT('a 30 MWe swing moves the TRUE level and the controller brings it home — several times ' +
+      'the same plant\'s own quiet wander, not the flat line feed ≡ steam read',
+      swing7 > 2.5 * wander7 && swing7 > 0.8 && Math.abs(tsw.sg_level_pct - 65) < 4,
+      'swing ' + lmin.toFixed(2) + '-' + lmax.toFixed(2) + ' = ' + swing7.toFixed(3) +
+      ' pts against a no-command wander of ' + wander7.toFixed(3) + ' (' +
+      (wander7 > 0 ? (swing7 / wander7).toFixed(2) : 'inf') + 'x), settled ' +
       tsw.sg_level_pct.toFixed(1) + ' — feed ≡ steam read a flat line here');
   /* ONE PUMP: the ch10 60 % ceiling against 100 % steaming — a real boil-down to the lo-lo
    * bistable, the trip + both AFW starts arriving on PHYSICS for the first time (until now

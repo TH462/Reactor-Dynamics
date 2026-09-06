@@ -102,14 +102,20 @@
    * HOT node and `sg_primary` a COLD one — not midpoints. Off-loop nodes are stagnant and
    * keep whatever they boot with; TREF is what the settled plant carries there.
    *
-   * Derived from the config constants (TREF, DT0_C, P0), not from the measured settle
-   * (287.45/318.98 degC) — the constants stay the authority (Hard Rule 9) and the ~1.3 degC
-   * residual drift is bounded by the run_pwr2_engine no-command ride check.
+   * Derived from the config constants (TREF, DT0_C, P0), not from the measured settle — the
+   * constants stay the authority (Hard Rule 9). The residual drift used to be ~1.3 degC and
+   * the settle used to read 287.45/318.98 degC; #647 found that gap was the FUEL SEED reading
+   * the leg average where the ride reads the `core` node, and fixing it leaves +0.07 degC (see
+   * the createReactor call below). What is left is the RCP heat: the IC seeds fission at the
+   * IC's own power fraction, while the settled core runs ~0.44 % below it because pump heat
+   * makes up the balance to the turbine's 300 MWt draw. Bounded by the run_pwr2_engine
+   * no-command ride check.
    *
    * The kinetics REFERENCES stay at TREF: re-pointing createReactor's coolTemp_c and the
    * criticalBoron trim at the hot-leg temperature was measured (2026-08-21) to detonate —
    * power 928 % in one step, beyond-model latch — because TREF is the self-consistent
-   * reference the reactivity chain is normalized against, not a wiring afterthought. */
+   * reference the reactivity chain is normalized against, not a wiring afterthought. #647
+   * moves ONLY the fuel seed, and the trim still reads the leg average; measured stable. */
   function designHmap(tavg_c, dt_c, P_mpa) {
     /* Generalized for the ICs (#507 §F, wave 7): the same donor-cell map about ANY settled
      * operating point — Tavg from the Tref program, the loop split scaling with power.
@@ -261,7 +267,38 @@
      * settled and the reactivity is known — see the block after `if (ic.cold)`. The kinetics
      * REFERENCES stay at their defaults — see the detonation note above. */
     var powf = ic.pf > 0 ? ic.pf : 1e-6;
-    var rx = R.createReactor({ P: powf, coolTemp_c: tavg0 });
+    /* ⚠ THE FUEL IS SETTLED AGAINST THE `core` NODE, WHICH IS WHAT `stepFuel` WILL DRIVE IT
+     * WITH (#647, 2026-09-06). This passed `tavg0` — the LEG AVERAGE — while every step of
+     * the ride settles the fuel against `coreTemp(sys)`, the donor-cell OUTLET node, which is
+     * `tavg0 + dT0/2` by designHmap's own construction. So the at-power ICs did not open at
+     * their own equilibrium at all: the fuel booted 18.1 degC cold at hot full power, the
+     * criticalBoron trim below inherited that error through `rx.fuel.T_fuel_c`, and the plant
+     * then bought the missing Doppler back by cooling the moderator until it was critical
+     * again. That drift IS the 2.4 degF gap #647 was opened on — the plant settling 1.3 degC
+     * below its own design point and never reaching the pressurizer level program's 61.5 %
+     * knot. It is a CONSTRUCTION defect, not a plant characteristic: the ICS header's rule is
+     * that every state variable is placed at ITS OWN equilibrium, and this one was placed at a
+     * different node's.
+     *
+     * MEASURED, 3000 s from each at-power IC (before -> after, settled Tavg, degF):
+     *     hot_full_power  577.675 -> 580.228   (program knot 580.10)
+     *     50_percent      561.633 -> 563.707   (program knot 563.55)
+     *     low_power       550.551 -> 550.878   (program knot 550.31)
+     * and at hot full power the whole design point arrives with it: SG 807.88 -> 825.90 psia
+     * against a design 825, pressurizer level 58.85 -> 61.55 % against a program 61.50. THREE
+     * independent design constants landing inside 0.15 % is the evidence this is the defect
+     * and not a tuning — none of them was touched.
+     *
+     * NOT THE DETONATION THE designHmap NOTE WARNS ABOUT. That was re-pointing createReactor's
+     * coolTemp_c AND the criticalBoron trim at the hot-leg temperature (2026-08-21, 928 % in one
+     * step). Only the FUEL seed moves here; the trim below still reads `tavg0`, because the
+     * moderator temperature the reactivity chain is normalized against IS the leg average —
+     * `stepKinetics` derives exactly that when no override is passed. Measured stable: power
+     * settles 99.559 %, no latch.
+     *
+     * Read off the BUILT plant rather than recomputed, so designHmap's node map and this seed
+     * cannot drift apart. The no-load and cold ICs have dT0 = 0 and are byte-identical. */
+    var rx = R.createReactor({ P: powf, coolTemp_c: tLeg(sys, 'core') });
     /* TWO BANKS (#506.3, 2026-08-22): control + shutdown, worths from the kinetics module's
      * own gated pair (WTSM 2.2 Table 2.2-1: 4068 / 3676 pcm — the citation, ML11216A051, is
      * NOT in the corpus; the figures are cited-but-uncorroborated, recorded in
