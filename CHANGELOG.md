@@ -30,6 +30,68 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
 
 ## [Unreleased]
 
+### Fixed (#647 — the at-power initial conditions settled below their own Tavg program, because the fuel was seeded against the wrong node)
+
+*(OWNER RULING, 2026-09-06: "A" — the full-power end of the Tavg program stays at this plant's
+own design point, 580.1 °F (304.5 °C); the dependents are re-derived from this plant's span.)*
+
+**The precondition came first, and it changed what the fix was.** `pwr2_engine`'s
+`hot_full_power` settled at **577.7 °F (303.2 °C)**, 2.4 °F (1.3 °C) below its own design point,
+so the pressurizer level program never reached its sourced 61.5 % knot — it held 58.9 %. The gap
+was a **construction defect, not a plant characteristic**. `createReactor` seeded the fuel
+against `tavg0`, the LEG AVERAGE, while every step of the ride settles it against
+`coreTemp(sys)`, the donor-cell OUTLET node — 18.1 °C hotter at full power. The fuel booted cold,
+the `criticalBoron` trim inherited that error, and the plant bought the missing Doppler back by
+cooling the moderator until it was critical again. It is now seeded from the built plant's own
+`core` node, so the seed and the step read one number.
+
+Measured, 3,000 s from each at-power initial condition (settled Tavg, before → after, against
+the program's own knot):
+
+| initial condition | knot | before | after |
+|---|---|---|---|
+| `hot_full_power` | 580.10 °F (304.50 °C) | 577.68 (−2.43) | **580.23 (+0.13)** |
+| `50_percent` | 563.55 °F (295.31 °C) | 561.63 (−1.92) | **563.71 (+0.16)** |
+| `low_power` | 550.31 °F (288.06 °C) | 550.55 (+0.24) | **550.88 (+0.57)** |
+
+At full power the whole design point arrives with it, and none of it was touched: steam
+generator pressure **807.9 → 825.9 psia (5.57 → 5.70 MPa)** against a design 825, pressurizer
+level **58.9 → 61.6 %** against a program 61.5. The no-load and cold initial conditions have no
+loop ΔT and are byte-identical. The residual +0.13 °F is reactor coolant pump heat: the
+construction seeds fission at the initial condition's own power fraction while the settled core
+runs 0.44 % below it, because pump heat makes up the balance to the turbine's 300 MWt draw.
+
+### Changed (#647 — the turbine-trip steam dump band is this plant's own program span, derived)
+
+`DUMP.tt_full_c` was the typed **27.7 °F (15.4 °C)** from WAT 05 (ML11216A094) §5-18(E). In that
+source the band and the Tavg program are *one object* — that plant's program runs 557 → 584.7 °F
+and 584.7 − 557 = 27.7 — so importing the number alone imported the reference plant's SPAN as if
+it were a controller gain. This plant's span is 547 → 580.1 °F, and the band is now
+`tavg_full_c − tavg_noload_c` = **33.10 °F (18.39 °C)**, derived in code so that moving either
+knot re-solves it. Full demand now arrives AT full-power Tavg instead of 5.4 °F (3.0 °C) short.
+
+Turbine trip from `hot_full_power`, 1,800 s, decomposed (the fuel seed and the band are separable
+and both were measured alone):
+
+| | steam generator peak | margin to the 1085 psig pop | park Tavg | dumps max |
+|---|---|---|---|---|
+| before (old seed, 27.7 band) | 1036.3 psia | **63.4 psi** | 548.63 °F | 100 % |
+| band only | 1045.9 | 53.9 | 548.97 | 93.3 % |
+| seed only | 1037.2 | 62.5 | 548.64 | 100 % |
+| **after** | **1047.4 psia** | **52.3 psi** | **548.97 °F** | 100 % |
+
+A wider band is less demand per °F, so the margin to the main steam safety valve pop falls
+**11.1 psi**, 9.5 psi of it the band's. It is reported, not tuned away: the safeties still do not
+lift, the atmospheric dump valve stays at 0.0 % and nothing is vented to atmosphere — the
+properties #508 bought (it inherited a 7.7 psi margin and 18,813 lbm vented).
+
+`Manuals/09` §3.0's steam dump row printed the retired plant's "~14.4 °F (8 °C)" band and was
+marked `narrative` in `run_manual_setpoints`, so nothing checked it; it now carries the derived
+band and is gated against it. §11.0's three at-power columns are re-captured, and two notes under
+that table were corrected — the level program's slope (1.39 → **1.10 %/°F**, 55 → **61.5 %** at
+full-power Tavg) and the steam-pressure note's no-load point, which still quoted a 566.6 °F
+(297 °C) anchor two re-anchors out of date.
+
 ### Fixed (#633 — every relief path passed a flat mass flow, so the atmospheric dump valve had full authority at sub-atmospheric pressure)
 
 `pwr2_relief.js` computed each path as a fixed fraction of rated flow with no dependence on the

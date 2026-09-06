@@ -10456,3 +10456,201 @@ gates can see it, and it was not in this issue's gate list.
 (`{mode|pct}`, silent on what AUTO selects), chapter 05's PWR-N01 (no steam-dump step), and any
 chapter prose saying the dump stays shut for the whole heatup. `run_manual_commands` cannot see this
 — it checks action NAMES, not payloads or prose.
+
+---
+
+## 131. #647 — THE FUEL WAS SEEDED AGAINST THE LEG AVERAGE AND SETTLED AGAINST THE CORE NODE, SO EVERY AT-POWER INITIAL CONDITION OPENED BELOW ITS OWN PROGRAM — 2026-09-06
+
+**RULED FIRST, MEASURED FIRST ANYWAY** *(OWNER RULING, 2026-09-06: "A" — keep the full-power Tavg
+knot at this plant's own 580.1 °F (304.5 °C), a derived heat-balance quantity from #479 and this
+plant's identity rather than a citation, and re-derive the dependents from its span)*. The ruling
+carried a **mandatory precondition**: the plant settles 2.4 °F (1.3 °C) below that knot, the gap
+was unexplained, and if it turned out to be a real characteristic then the knot was standing in
+the wrong place and the ruling itself would have had to change. It is not a characteristic.
+
+### The narrowing, in the order it happened
+
+Settled 2,400 s from `hot_full_power`, DT 0.02 s, hand-wired from `run_pwr2_engine`'s load order:
+
+```
+    t    Thot_F  Tcold_F   Tavg_F   dT_F   Tref_F  loadfr  pow_pct  sgP_psia  Tsec_F  pzlvl   prog
+    0   608.08   552.11   580.094   55.98   580.10  1.0000  100.004   825.00   521.80  61.41  61.49
+  700   607.20   548.22   577.712   58.98   580.10  1.0000   99.542   808.23   519.42  58.53  58.87
+ 2400   607.21   548.21   577.710   59.01   580.10  1.0000   99.520   808.16   519.41  58.88  58.86
+```
+
+1. **Tref is not the carrier.** Load fraction is exactly 1.0000 and `tref(1.0)` is exactly 580.10.
+2. **The heat balance is not the carrier either.** The turbine's `steamDemand` is
+   `MWe*1000/(eta*(h_g(P) - h_feed))` with `eta = mwe_rated/mwt_rated`, so the secondary's energy
+   sink is exactly **300 MWt at any steam pressure**. Core heat settles at 99.53 % because reactor
+   coolant pump heat makes up the remaining ~1.4 MWt.
+3. **The steam pressure is.** Tavg = Tsat(P_steam) + Q/(U*A). Measured: U*A = 9262.28 kW/K,
+   Q/(UA) = 58.03 °F, Tsat(808.16 psia) = 519.41 °F. Design: Tsat(825) = 521.80 + 58.30 = **580.10
+   exactly**, which is how `ratedU()` derives U in the first place. The whole gap is the steam
+   generator sitting **16.8 psi below its design pressure**.
+4. **But that pressure is SLAVED, not free** — and this is the step that decided where to look.
+   The secondary's own energy balance closes at any pressure, so the obvious hypothesis is a
+   neutral integrator parked wherever the boot transient left it. Injected instead of argued:
+   boot the secondary at 825 ± 20 and ± 40 psi and settle 3,000 s.
+
+   | steam-generator boot bias | settled Tavg °F | settled psia | power % | boron ppm |
+   |---|---|---|---|---|
+   | −40 psi | 577.676 | 807.89 | 99.565 | 625.78 |
+   | 0 | 577.675 | 807.88 | 99.565 | 625.78 |
+   | +40 psi | 577.673 | 807.87 | 99.566 | 625.78 |
+
+   **0.003 °F across an 80 psi spread.** Something pins it, and with rods and boron fixed at boot
+   the only candidate is criticality: reactivity zero fixes the moderator temperature once the
+   fuel temperature is known.
+5. **The fuel temperature was wrong at boot.** `pwr2_engine` seeded
+   `R.createReactor({ P: powf, coolTemp_c: tavg0 })` — the **leg average**. `stepReactor` drives
+   `stepFuel` with `coreTemp(sys)`, the **`core` node**, which `designHmap` builds at
+   `h_l(tavg0 + dT0/2)`. At full power that is 18.1 °C hotter. Boot fuel **684.22 °C**, settled
+   **699.70 °C**: 15.5 °C of Doppler the `criticalBoron` trim never paid for, handed back as
+   1.3 °C of moderator cooling at the coefficient ratio.
+
+### The fix, and why it is not the change that detonated
+
+`coolTemp_c: tLeg(sys, 'core')` — read off the plant that was just built, so `designHmap`'s node
+map and the seed cannot drift apart. `designHmap`'s header warns that re-pointing
+`createReactor`'s `coolTemp_c` **and the `criticalBoron` trim** at the hot-leg temperature
+detonated on 2026-08-21 (928 % power in one step, beyond-model latch). Only the fuel seed moves
+here; the trim still reads `tavg0`, because the moderator temperature the reactivity chain is
+normalized against IS the leg average — `stepKinetics` derives exactly that when no override is
+passed. Measured stable: power settles 99.559 %, no latch, no ring.
+
+### What lands with it
+
+3,000 s from each at-power initial condition, before then after:
+
+| IC | f | Tref °F | Tavg °F before | after | program @ Tref | LEVEL % before | after | steam psia before | after |
+|---|---|---|---|---|---|---|---|---|---|
+| `hot_zero_power` | 0.00 | 547.00 | 547.214 | 547.214 | 25.00 | 25.18 | 25.18 | 1019.26 | 1019.26 |
+| `low_power` | 0.10 | 550.31 | 550.551 | 550.878 | 28.65 | 28.84 | 29.22 | 1000.68 | 1003.36 |
+| `50_percent` | 0.50 | 563.55 | 561.633 | 563.707 | 43.25 | 41.11 | 43.42 | 903.67 | 919.58 |
+| `hot_full_power` | 1.00 | 580.10 | 577.675 | **580.228** | 61.50 | 58.85 | **61.55** | 807.88 | **825.90** |
+
+**Three independent design constants land at once and none was touched** — Tavg 580.10, steam
+825 psia, level 61.5 % — which is the evidence that this is the defect rather than a tuning. The
+no-load and cold initial conditions have a zero loop delta-T and are byte-identical.
+
+**The residual is reactor coolant pump heat.** +0.13 °F at full power: the construction seeds
+fission at the initial condition's own power fraction while the settled core runs 0.44 % below
+it, because pump heat makes up the balance to the turbine's 300 MWt draw. `low_power` is the
+worst at +0.57 °F and has a second small inconsistency of its own — `pf: 0.105` against
+`load_mwe: 10`, so its thermal fraction and its dispatch fraction disagree by 5 %.
+
+### The ruling itself
+
+`DUMP.tt_full_c = DUMP.tavg_full_c - DUMP.tavg_noload_c` = **33.10 °F (18.39 °C)**, was the typed
+`27.7 / 1.8`. In WAT 05 (ML11216A094) §5-18(E) the band and the Tavg program are **one object** —
+that plant's program runs 557 to 584.7 °F and 584.7 − 557 = 27.7 — so importing 27.7 alone
+imported the reference plant's SPAN as if it were a controller gain. Held at 27.7 the controller
+saturated at 574.7 °F, **5.4 °F below its own full-power Tavg**; before #508 it was mismatched the
+other way (a 23.09 °F span against the same 27.7, so it could never reach 100 %). Derived, never
+typed: a typed 18.39 is the second-copy trap that produced the mismatch in the first place.
+
+Turbine-trip demand against Tavg, C-8 present:
+
+| Tavg °F | old band (27.7) | new band (33.10) |
+|---|---|---|
+| 552.0 | 18.1 % | 15.1 % |
+| 562.0 | 54.2 % | 45.3 % |
+| 572.0 | 90.3 % | 75.5 % |
+| 575.0 | **100.0 %** | 84.6 % |
+| 580.1 | 100.0 % | **100.0 %** |
+
+### What the wider band costs — decomposed 2x2, and reported rather than tuned
+
+Turbine trip from `hot_full_power` after a 300 s settle, 1,800 s:
+
+| case | steam generator peak | margin to the 1085 psig pop | park Tavg | park psig | dumps max | ADV max |
+|---|---|---|---|---|---|---|
+| BEFORE (old seed, 27.7) | 1036.31 psia | **63.38 psi** | 548.63 °F | 1008.0 | 100.0 % | 0.00 % |
+| band only | 1045.85 | 53.85 | 548.97 | 1010.8 | 93.3 % | 0.00 % |
+| seed only | 1037.18 | 62.52 | 548.64 | 1008.0 | 100.0 % | 0.00 % |
+| **AFTER** | **1047.38** | **52.31** | **548.97** | 1010.8 | 100.0 % | **0.00 %** |
+
+The margin falls **11.07 psi**, 9.53 of it the band's — a wider band is less demand per °F. It is
+a finding, not a tuning target: the main steam safety valves still do not lift, the atmospheric
+dump valve stays shut and nothing reaches atmosphere, which are the properties #508 bought (it
+inherited a 7.7 psi margin and 18,813 lbm vented in 30 minutes).
+
+### The manual, and a row that had been dead since before the retired engine left
+
+`Manuals/09` §3.0's *Steam dump (trip-open mode)* row printed **"~14.4 °F (8 °C)"** — the retired
+plant's band — and `run_manual_setpoints` mapped it `narrative: true`, so nothing ever compared
+it. It survived #508's re-anchor and would have survived this one. It now carries the derived
+33.1 °F and is checked against `DUMP.tt_full_c`; injection-verified by putting 14.4 back
+(1 red, the right one). The row's *"It cannot serve a heatup"* rationale is also now false as
+stated: the trip-open controller opens from the **547 °F** reference, **4.2 °F BELOW** the
+atmospheric dump valve's 1040 psig relief point (saturation 551.15 °F), an ordering that inverted
+when #508 moved the anchor. The row records the measurement; the behaviour question belongs to
+#629 and #646.
+
+§11.0's three at-power columns are re-captured on the booted plant (the section's own stated
+method, a 700 s settle), and two notes under the table were corrected: the level program's slope
+read **1.39 %/°F to 55 % at full-power Tavg** where it is now 1.10 %/°F to 61.5 %, and the
+steam-pressure note quoted a no-load point of **1194 psi at 566.6 °F** — a retired-plant anchor
+two re-anchors out of date.
+
+### The two reds, adjudicated one at a time
+
+Everything else held at baseline — 33 pwr2 runners plus the manual set. Two reddened, both in
+`run_pwr2_engine`, and neither is a regression.
+
+**RED 1 — `run_pwr2_engine` part A, group F: "a 30 MWe swing moves the TRUE level".**
+`(lmax − lmin) > 1.2` read 1.005. **Verdict: the fix working, against a literal floor that had
+already rotted once.** The DRIFT hypothesis was killed first, because the pre-#647 plant is still
+settling at this check's 300 s `SETTLE` and its residual wander could have been counted as swing:
+the same plant left alone over the same 600 s window wanders **0.314 before and 0.313 after**, so
+none of the change is drift. The swing genuinely shrinks — **1.312 → 1.005** at 300 s, **1.470 →
+1.164** fully settled at 1500 s — because swell/shrink at 826 psia of steam is smaller than at
+808. The check's own comment says the claim is that the level *transients and returns* rather than
+reading the flat line `feed ≡ steam` produced (~0 points), and `> 1.2` was chosen at #516 to pass
+both a pure-integral and a PI flow controller. It is now an **A/B against that plant's own quiet
+wander** (`swing > 2.5 × wander` and `> 0.8` absolute), which moves with the operating point:
+before 4.2×, after 3.2×, a flat line 0. Passes on the old build too.
+
+**RED 2 — `run_pwr2_engine` part B, group C: "rods in + the runback recover the margin".**
+**Verdict: the fix working — the check was pinning the defect — and it un-masks a separate,
+pre-existing one.** Overtemperature ΔT's T′ is `OTDT.t_ref_f` = **580.1 °F**, this plant's design
+Tavg, set there because the source's own footnote requires T′ *"equal to or less than the full
+power operating TAVG chosen"* (Ginna UFSAR ch15, ML20339A101, Table 15.0-7 footnote b). A plant
+standing 2.44 °F **below** T′ violates that footnote in the safe-for-the-test direction and
+collects an unearned K3 credit of `0.0185/°F × 2.44` = **+0.045 of ΔT₀** on its own trip setpoint.
+The check was standing on it.
+
+Measured, same dilution to the same onset:
+
+| | no operator action | rods IN at FAST |
+|---|---|---|
+| before | trip +20.3 s | no trip in 240 s |
+| after | trip **+12.3 s** | trip **+20.1 s** |
+
+Rod target makes no difference (182, 160 and 140 all end at the same 605 steps and the same
++20.1 s — at the sourced FAST rate only ~24 steps land inside the clock), and boration cannot
+help at this plant's 0.047 ppm/s. So the extension is real and finite. The source's claim is an
+**opportunity**, not a recovery — ch7 §7.2.3.2.1, *"gives the operator the opportunity to make
+appropriate adjustments before a reactor trip occurs"* — so the check now asserts that
+opportunity against **this plant's own do-nothing trajectory, measured in the same run**
+(`tAct > tNo + 5 s`): >220 s of extension on the old build, 7.8 s on this one, and zero if the
+insertion buys nothing.
+
+**⚠ THE SEPARATE DEFECT IT EXPOSES, and it is the reason 7.8 s should not be read as this plant's
+final number.** At rated power `delta_t_frac` is `(Thot − Tcold)/DESIGN.dt_c` =
+**58.75/55.98 = 1.049** — the plant runs **4.9 % above the rated loop ΔT that every
+overtemperature/overpower ΔT comparison normalises against**, so it begins 4.9 % into its own trip
+band before anything happens. It is **pre-existing** (58.98/55.98 = 1.054 before #647, so nothing
+here caused it) and it is **the same size as the K3 credit #647 removed, with the opposite sign**:
+the two were cancelling, which is why this check passed on a plant that was wrong twice. Filed as
+a finding, not fixed here — `DESIGN.dt_c` is Layer 1's design split and moving it moves
+`designHmap`, every initial condition and both ΔT trips at once.
+
+### Gate deltas
+
+`run_pwr2_dumpctl` **23 to 25** (the full-power knot as a bare literal, and the identity that
+makes the band that span), 9/9 mutations with a typed-copy injection added.
+`run_pwr2_pressurizer` **101 to 103** (the full-power knot literal and its cross-file equality —
+#645 gated the no-load half and nothing was watching this one), 49/49. `run_manual_setpoints`
+stays **13**, with the trip-open row moved off `narrative`.

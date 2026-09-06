@@ -70,7 +70,24 @@ function runSuite(RD, rec, quiet) {
   head('SOURCED CONSTANTS  [independent literals]');
   ck('the loss-of-load deadband is 5 degF', DC.DUMP.deadband_c * 1.8, 5, 1e-9, 'degF');
   ck('loss-of-load full output at 16.4 degF', DC.DUMP.lol_full_c * 1.8, 16.4, 1e-9, 'degF');
-  ck('turbine-trip full output at 27.7 degF, no deadband', DC.DUMP.tt_full_c * 1.8, 27.7, 1e-9, 'degF');
+  /* ⚠ THE TURBINE-TRIP BAND IS NO LONGER THE SOURCE'S 27.7 degF *(OWNER RULING, 2026-09-06:
+   * "A" — keep the full-power knot at this plant's own 580.1 degF and re-derive the dependents
+   * from its span)*, #647. In WAT 05 the band and the Tavg program are ONE object — that plant's
+   * program runs 557 - 584.7 degF and its turbine-trip controller reaches full output at
+   * 584.7 - 557 = 27.7 — so importing 27.7 alone imported the WAT plant's SPAN as if it were a
+   * gain. This plant's span is 547 -> 580.1 degF. The three checks below are the decision, in
+   * the order it was made: the full-power knot (a bare literal, and it must stay one — it is
+   * this plant's #479 heat-balance design point, not a citation), the IDENTITY that makes the
+   * band that span, and the number that falls out. */
+  ck('the full-power Tavg knot is this plant\'s own design point, 580.1 degF (#479 heat balance)',
+     DC.DUMP.tavg_full_c, 304.5, 1e-9, 'degC');
+  ckT('the turbine-trip band IS this plant\'s program span, DERIVED — not a typed copy of it ' +
+      '(the structure WAT 05 itself uses)',
+      DC.DUMP.tt_full_c === DC.DUMP.tavg_full_c - DC.DUMP.tavg_noload_c,
+      'band ' + (DC.DUMP.tt_full_c * 1.8).toFixed(3) + ' degF vs span ' +
+      ((DC.DUMP.tavg_full_c - DC.DUMP.tavg_noload_c) * 1.8).toFixed(3) + ' degF');
+  ck('...so full output arrives AT full-power Tavg, 33.10 degF above no load',
+     DC.DUMP.tt_full_c * 1.8, 33.102, 1e-9, 'degF');
   ck('C-7 ramp threshold is 5 %/min', DC.DUMP.c7_ramp_frac_per_min, 0.05, 0, '-');
   ck('C-7 step threshold is 10 %', DC.DUMP.c7_step_frac, 0.10, 0, '-');
   /* ⚠ THIS CHECK IS THE DECISION, WHICH IS WHY IT IS A BARE LITERAL AND MUST STAY ONE. It used
@@ -223,6 +240,12 @@ var MUTATIONS = [
   ['the rate unit\'s lag collapses to 30 s (a clean step reads as a 20 %/min ramp)',
    'rate_tau_s: 120',
    'rate_tau_s: 30'],
+  /* #647: the ruling is that the band is DERIVED. A typed copy is the failure mode it was
+   * ruled against — it is how the constant went out of step with the program in the first
+   * place — so the injection puts the old literal back. */
+  ['the turbine-trip band is TYPED again (the WAT plant\'s 27.7 degF span as a gain)',
+   'DUMP.tt_full_c = DUMP.tavg_full_c - DUMP.tavg_noload_c;',
+   'DUMP.tt_full_c = 27.7 / 1.8;'],
   ['the turbine-trip controller references Tref instead of the no-load Tavg',
    'demand = clip((tavg - DUMP.tavg_noload_c) / DUMP.tt_full_c, 0, 1);',
    'demand = clip((tavg - tref(load)) / DUMP.tt_full_c, 0, 1);'],

@@ -465,6 +465,21 @@ function runSuite(RD, rec, quiet) {
       PZ.LEVEL.tavg_noload_c === DC.DUMP.tavg_noload_c,
       'level program ' + PZ.LEVEL.tavg_noload_c + ' degC vs Tref program ' +
       DC.DUMP.tavg_noload_c + ' degC');
+  /* THE FULL-POWER KNOT IS THE OTHER HALF OF THE SAME OBJECT *(OWNER RULING, 2026-09-06: "A" —
+   * keep 580.1 degF and re-derive the dependents from this plant's span)*, #647. It is this
+   * plant's own #479 heat-balance design point, not a citation, which is why the literal is
+   * bare and must stay one. The equality is the point: pwr2_dumpctl's Tref program and this
+   * level program are linear between the SAME two knots, and pwr2_dumpctl's turbine-trip band
+   * is now DERIVED from their difference — so a drift in either copy would put three things out
+   * of step at once. #645 caught the no-load half of exactly this; nothing was watching this
+   * half. */
+  ck('the level program\'s full-power knot is this plant\'s design Tavg, 580.1 degF (#479)',
+     PZ.LEVEL.tavg_full_c, 304.5, 1e-9, 'degC');
+  ckT('...and it is the SAME full-power Tavg pwr2_dumpctl programs Tref to, and derives its ' +
+      'turbine-trip band from — one plant quantity, two files',
+      PZ.LEVEL.tavg_full_c === DC.DUMP.tavg_full_c,
+      'level program ' + PZ.LEVEL.tavg_full_c + ' degC vs Tref program ' +
+      DC.DUMP.tavg_full_c + ' degC');
   ck('the program runs 25 % at the no-load Tavg',
      100 * PZ.levelProgram(PZ.LEVEL.tavg_noload_c), 25, 1e-9, '%');
   ck('...to 61.5 % at the full-power Tavg', 100 * PZ.levelProgram(PZ.LEVEL.tavg_full_c), 61.5, 1e-9, '%');

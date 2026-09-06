@@ -29,6 +29,100 @@ and the user-visible summary in `CHANGELOG.md`. This file points at those and tr
 
 ---
 
+## Session log — 2026-09-06-workbench-b (#647 — the plant was 2.4 °F below its own design point because the FUEL was seeded against the wrong node, and the ruling's precondition is what found it)
+
+**THE PRECONDITION WAS THE WHOLE ISSUE.** #647 was ruled "A" — keep the full-power Tavg knot at
+this plant's own 580.1 °F (304.5 °C) and re-derive the dependents from its span — with a
+mandatory measurement first: the plant settles 2.4 °F (1.3 °C) below that knot and nobody knew
+why, so the knot might have been standing in the wrong place. It was not. **The initial
+conditions were.**
+
+**Where the 1.3 °C lived, in the order the measurement narrowed it.** At 2,400 s from
+`hot_full_power`: Tavg 577.71 °F against a Tref of 580.10, load fraction exactly 1.0000, core
+heat 99.53 %. So Tref was right and the plant was under it. Decomposing Tavg = Tsat(steam) +
+Q/(UA): the steam generator sat at **808.2 psia against its design 825**, worth −2.39 °F of Tsat,
+and that is the entire gap — U·A and the heat balance are exact by construction (the turbine's
+own `steamDemand` makes the secondary sink exactly `MWe/η` = 300 MWt at ANY pressure, so the
+secondary's equilibrium is set from the primary side, not its own).
+
+**The steam pressure is NOT a free variable, which is what made this findable.** Booting the
+secondary ±40 psi off 825 and settling 3,000 s lands within **0.003 °F** of the same Tavg every
+time (807.87–807.89 psia across a 80 psi spread of initial conditions) — so something pins it,
+and that something is the criticality condition: rods and boron fixed at boot, so ρ = 0 fixes the
+moderator temperature once the fuel temperature is known.
+
+**And the fuel temperature was wrong at boot.** `pwr2_engine` called
+`R.createReactor({ P: powf, coolTemp_c: tavg0 })` — the LEG AVERAGE — while `stepReactor` drives
+`stepFuel` with `coreTemp(sys)`, the `core` node, which designHmap builds at `tavg0 + dT0/2`.
+Measured: boot fuel 684.22 °C, settled 699.70 °C — 15.5 °C of Doppler the trim never paid for,
+handed back as 1.3 °C of moderator cooling at roughly the coefficient ratio you would expect.
+Fixed by seeding from the built plant's own node, `tLeg(sys, 'core')`.
+
+**THREE INDEPENDENT DESIGN CONSTANTS LAND AT ONCE, AND NONE WAS TOUCHED** — which is the evidence
+this is the defect and not a tuning. `hot_full_power` after: Tavg **580.23 °F** (design 580.10),
+steam generator **825.90 psia** (design 825), pressurizer level **61.55 %** (program 61.50).
+Before: 577.68 / 807.88 / 58.85.
+
+**The detonation note was about a DIFFERENT change.** `designHmap`'s header warns that
+re-pointing `createReactor`'s `coolTemp_c` *and the `criticalBoron` trim* at the hot-leg
+temperature detonated (928 % in one step, 2026-08-21). Only the fuel seed moves here; the trim
+still reads the leg average, because the moderator temperature the reactivity chain is normalized
+against IS the leg average (`stepKinetics` derives exactly that when no override is passed).
+Measured stable, power settles 99.559 %.
+
+**THEN the ruling, which is a one-line derivation.** `DUMP.tt_full_c` is no longer the typed
+27.7 °F: it is `tavg_full_c − tavg_noload_c` = **33.10 °F (18.39 °C)**. In WAT 05 the band and
+the program are one object (557 → 584.7 and 584.7 − 557 = 27.7), so the typed import was that
+plant's SPAN wearing a gain's clothes. **Derived, never typed** — a typed 18.39 is the
+second-copy trap that put the constant out of step in the first place.
+
+**What the wider band costs, decomposed 2×2 (turbine trip from `hot_full_power`, 1,800 s):**
+margin to the 1085 psig main steam safety valve pop **63.4 → 52.3 psi**, of which the band is
+9.5 psi and the fuel seed 0.9 alone (1.6 in combination). Reported, not tuned: the safeties do
+not lift, the atmospheric dump valve stays 0.0 % and 0 lbm reaches atmosphere — the properties
+#508 bought, which it inherited at 7.7 psi and 18,813 lbm.
+
+**Traps worth carrying.**
+- **A CONSTRUCTED initial condition can be self-inconsistent in a way no ride check sees.** The
+  `ICS` header's own rule is that every state variable is placed at its own equilibrium; this one
+  was placed at a *different node's*, and the resulting 2.4 °F drift had been written down as a
+  bounded "residual" in `designHmap`'s comment since #502 rather than read as a defect. **A
+  documented residual is an unexamined one.**
+- **A NEUTRAL-LOOKING VARIABLE MAY BE SLAVED, AND THE TEST IS CHEAP.** The steam pressure looked
+  like a free integrator (the secondary's energy balance closes at any pressure). Perturbing it
+  ±40 psi and settling took five minutes and killed the whole "it parks where the transient left
+  it" hypothesis, which would have sent the work at the secondary instead of the fuel.
+- **A `narrative: true` mapping is a place a number goes to die.** `Manuals/09` §3.0's steam dump
+  band read "~14.4 °F (8 °C)" — the retired plant's — through the #508 re-anchor and this ruling,
+  because the row was mapped as prose. It now checks against the derived band; injection-verified
+  by putting 14.4 back and watching it red.
+
+**TWO REDS, both in `run_pwr2_engine`, both adjudicated as the fix working.** (1) Group F's
+30 MWe level swing read 1.005 points against a `> 1.2` literal. Drift was ruled out first — the
+same plant left alone over the same window wanders 0.314 before and 0.313 after — and the swing
+genuinely shrinks (1.312 → 1.005; 1.470 → 1.164 fully settled) because swell/shrink at 826 psia
+is smaller than at 808. The floor is now an A/B against the plant's own quiet wander, which
+passes on the old build too. (2) Group C's runback: the operator's rods-in used to avoid the trip
+outright **because the plant stood 2.44 °F below overtemperature ΔT's own T′ (580.1 °F) and
+collected an unearned K3 credit of +0.045 of ΔT₀**. Measured: no action 20.3 → 12.3 s, rods in at
+FAST no-trip → +20.1 s. The check now asserts the sourced OPPORTUNITY against this plant's own
+do-nothing trajectory in the same run.
+
+**AND RED 2 UN-MASKS A PRE-EXISTING DEFECT WORTH ITS OWN ISSUE.** At rated power
+`delta_t_frac` = `(Thot − Tcold)/DESIGN.dt_c` = **58.75/55.98 = 1.049**: the plant runs 4.9 % above
+the rated loop ΔT that both ΔT trips normalise against, so it starts 4.9 % into its own trip band.
+It is pre-existing (1.054 before this work) and **the same size as the K3 credit #647 removed, with
+the opposite sign** — the two were cancelling, which is why the old check passed on a plant that
+was wrong twice.
+
+**Gate deltas.** `run_pwr2_dumpctl` 23 → **25** (the full-power knot as a bare literal; the
+band-IS-the-span identity), 9/9 mutations with the typed-copy injection added.
+`run_pwr2_pressurizer` 101 → **103** (the full-power knot literal and its cross-file equality —
+#645 gated the no-load half, nothing watched this one), 49/49.
+`run_manual_setpoints` stays 13, but the trip-open row moves off `narrative`.
+
+---
+
 ## Session log — 2026-09-06-workbench-a (#633 / #508 / #645 / #635 — the secondary steam side, and three probes whose filed reading the measurement inverted)
 
 **A bundle of five issues, one family: the relief ladder's hydraulics and the no-load temperature

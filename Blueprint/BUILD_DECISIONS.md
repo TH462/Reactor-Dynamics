@@ -45,6 +45,64 @@ where the two differ or where judgment was exercised.
 
 ---
 
+## 2026-09-06-workbench-b — #647: the full-power knot was right and the INITIAL CONDITIONS were wrong; the turbine-trip band is now the plant's own span
+
+**Ruled, with a precondition that could have overturned the ruling** *(OWNER RULING, 2026-09-06:
+"A" — keep the full-power Tavg knot at this plant's own 580.1 °F (304.5 °C) and re-derive the
+dependents from its span)*. The plant settled **2.4 °F (1.3 °C) below that knot** and the gap was
+unexplained; if it had been a real characteristic the knot would have had to follow the plant, per
+Hard Rule 9. The measurement was to come first and it did.
+
+**Verdict: DEFECT, in the initial-condition construction.** `pwr2_engine` seeded the fuel node
+against `tavg0` — the LEG AVERAGE — while `stepReactor` settles it against `coreTemp(sys)`, the
+donor-cell OUTLET node, 18.1 °C hotter at full power. The fuel booted cold, the `criticalBoron`
+trim inherited the error through `rx.fuel.T_fuel_c`, and the plant paid the missing Doppler back
+by cooling the moderator until it was critical again. The seed now reads the built plant's own
+`core` node.
+
+**The decisive step was an INJECTION, not a code read.** The steam generator's own energy balance
+closes at any pressure (the turbine's `steamDemand` makes the secondary sink exactly `MWe/eta` =
+300 MWt regardless of pressure), so "the pressure parks wherever the boot transient left it" is
+the natural hypothesis and would have sent the work at the secondary. Booting the secondary at
+825 ± 20 and ± 40 psi and settling 3,000 s lands within **0.003 °F of the same Tavg** every time —
+so it is pinned, and criticality is the only thing that can pin it.
+
+**Three design constants land together and none was touched**, which is the evidence this is the
+defect and not a tuning: at `hot_full_power`, Tavg **577.68 → 580.23 °F** (design 580.10), steam
+generator **807.88 → 825.90 psia** (design 825), pressurizer level **58.85 → 61.55 %** (program
+61.50). `50_percent` and `low_power` move with it; the no-load and cold states have a zero loop
+delta-T and are byte-identical.
+
+**Not the change that detonated.** `designHmap`'s header records that re-pointing
+`createReactor`'s `coolTemp_c` *and* the `criticalBoron` trim at the hot-leg temperature ran the
+plant to 928 % in one step (2026-08-21). Only the fuel seed moves; the trim still reads the leg
+average, which is what `stepKinetics` derives for the moderator when no override is passed.
+
+**Then the ruling, as a derivation.** `DUMP.tt_full_c` is `tavg_full_c - tavg_noload_c` =
+**33.10 °F (18.39 °C)**, was the typed `27.7 / 1.8`. In WAT 05 the band and the Tavg program are
+one object (that plant runs 557 to 584.7 °F, and 584.7 − 557 = 27.7), so importing the number
+alone imported the reference plant's SPAN as a controller gain. Derived in code, per the ruling —
+a typed 18.39 is the second-copy trap that produced the mismatch in the first place.
+
+**The cost, decomposed and reported rather than tuned.** Turbine trip from `hot_full_power`,
+1,800 s: margin to the 1085 psig main steam safety valve pop **63.4 → 52.3 psi**, of which the
+band is 9.5 psi and the fuel seed 0.9 alone. A wider band is less demand per °F. The safeties
+still do not lift, the atmospheric dump valve stays at 0.0 % and nothing reaches atmosphere — the
+properties #508 bought.
+
+**Two documentation defects fell out of the same row.** `Manuals/09` §3.0's steam dump band read
+the retired plant's "~14.4 °F (8 °C)" and was mapped `narrative: true` in `run_manual_setpoints`,
+so nothing had ever compared it — it survived #508 and would have survived this. And §11.0's two
+notes under the initial-condition table carried a level-program slope two re-anchors stale
+(1.39 %/°F to 55 %) and a no-load steam point from a **566.6 °F** anchor that no longer exists
+anywhere in the engine.
+
+**Gate deltas.** `run_pwr2_dumpctl` **23 → 25**, `run_pwr2_pressurizer` **101 → 103**,
+`run_manual_setpoints` **13** unchanged with one row moved off `narrative`. Full detail and every
+table: `Blueprint/PWR2_VALIDATION.md` §131.
+
+---
+
 ## 2026-09-06-workbench-a — #633/#508/#645/#635: the relief ladder had no pressure dependence, and its rungs opened against another plant's temperature
 
 **Five issues, one family.** Two owner rulings, eight issues filed out of it, `run_all` green.

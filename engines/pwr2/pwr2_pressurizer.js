@@ -349,9 +349,14 @@
      * SCOPE, ruled: this copy and dumpctl's. pwr2_kinetics.js's 291.67 is a DIFFERENT quantity —
      * the 975 ppm hot-zero-power boron anchor is BEAVRS / Watts Bar Unit 1 Cycle 1 (OSTI
      * 1991715), a real measurement quoted at WATTS BAR's 557 degF, and moving it would attach
-     * that measurement to a temperature it was not taken at. Re-deriving the FULL-POWER knot,
-     * the controller bands or the level endpoints from one source is the declared-and-open half
-     * of the question (#508's header says the same of tt_full_c); it is not done here.
+     * that measurement to a temperature it was not taken at.
+     *   THE FULL-POWER HALF IS NOW RULED TOO *(OWNER RULING, 2026-09-06: "A")*, #647: the knot
+     * STAYS at this plant's own 304.5 degC — a derived heat-balance quantity from #479, this
+     * plant's identity rather than a citation — the level endpoints STAY at the sourced
+     * 25 / 61.5 %, and it is the DEPENDENTS that are re-derived from this plant's span. So
+     * pwr2_dumpctl's tt_full_c is no longer the typed 27.7 degF but tavg_full_c - tavg_noload_c;
+     * see that file. #647 also fixed the reason the plant never REACHED this knot (a 2.4 degF
+     * shortfall that held the program at 58.9 %) — pwr2_engine's fuel seed, not the anchor.
      *   SOURCE — Ginna UFSAR ch15, ML20339A101, Table 15.0-3 note d, verbatim: "All analyses
      *   assumed a programmed no-load TAVG of 547F." */
     tavg_noload_c: 286.11,               /* 547 degF — Ginna's PROGRAMMED no-load Tavg */

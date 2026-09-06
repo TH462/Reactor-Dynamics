@@ -160,7 +160,7 @@ Inward motion still takes — that is the source's own scope, quoted at the end 
 | Turbine trip (overspeed) | turbine_rpm | high | **1980 RPM** | Reset below ~**1800 RPM**. **CONFIGURED BUT NOT REACHABLE in this simulator** — there is no turbine roll model, so the rotor is either pinned at rated by the grid or coasting down. Measured peak: **1800 RPM** on line in Follow, **1800** in Manual with a 2×-rated MWe demand, **1799** with the MSIVs shut and the breaker closed. Declared at **12** §12.14; pinned by `run_reachability` B3 |
 | Turbine trip (SG hi-hi / P-14) | sg_level | high | **90 %** | Re-arm below **85 %** |
 | Steam dump (pressure mode) | steam_pressure | high | **1020 psi (7.03 MPa)** | = Ginna's sourced 1005 psig no-load point (TS Bases B 3.3.2) = Psat(546.8 °F (286 °C)), the no-load Tavg anchor; capacity **28 %** of rated steam flow — Ginna's own (UFSAR ch 10; #419 D1, adopted after the full-rejection ride-out measured survivable at it). **This is the value in the Dump SP box, and the controller reads it in this mode only. The mode is SELECTED, not permanent**: pressing STEAM DUMP AUTO with the turbine **tripped** selects it — heatup, cooldown, hot standby (WTSM §11.2; `03` §12.3, #629). The cold plant boots with the controller out of service, so on a heatup the selection is an operator action |
-| Steam dump (trip-open mode) | tavg error | — | opens on the Tavg error above the no-load reference, full demand ~14.4 °F (8 °C) above it | Inside **Tavg mode**, which is what AUTO selects with the turbine **on line**. On turbine trip; needs the condenser (unavailable on lost vacuum / MSIV shut). **It cannot serve a heatup**: the controller opens only above the **557 °F (291.67 °C)** no-load reference, which is above the atmospheric dump valve's relief point below, so a plant left in Tavg mode while heating up rides that valve instead (#629) |
+| Steam dump (trip-open mode) | tavg error | — | opens on the Tavg error above the no-load reference; full demand **33.1 °F (18.4 °C)** above it | Inside **Tavg mode**, which is what AUTO selects with the turbine **on line**. On turbine trip; needs the condenser (unavailable on lost vacuum / MSIV shut). **The band is this plant's own Tavg program span** — 547 → 580.1 °F (286.1 → 304.5 °C) — so full demand arrives exactly at full-power Tavg, which is the structure the source itself uses *(OWNER RULING, 2026-09-06: "A")*, #647. It was the reference plant's **27.7 °F (15.4 °C)** span borrowed as a gain, and saturated 5.4 °F (3.0 °C) short of full power. ⚠ **It opens from the 547 °F (286.1 °C) reference, 4.2 °F (2.3 °C) BELOW the atmospheric dump valve's 1040 psig (7.17 MPa) relief point** (saturation 551.2 °F (288.4 °C)) — measured 2026-09-06. That ordering inverted when the no-load anchor moved to 547 °F (#508), so the earlier note here — that a plant left in Tavg mode while heating up rides the ADV instead (#629) — no longer follows from these two numbers |
 | Spray flow cap | — | — | **12 %** of full spray flow | Sized for step insurges; cannot suppress a loss-of-heat-sink repressurization |
 | Main feedwater isolation (P-14) | sg_level | high | **90 %** | Latches (manual restore); AFW unaffected. Re-arm below **85 %** |
 
@@ -514,21 +514,21 @@ persists is either a transient in progress or a failed instrument.
 | Parameter | `hot_full_power` | `50_percent` | `low_power` | `hot_zero_power` | `hot_shutdown` | `cold_shutdown` |
 |---|---|---|---|---|---|---|
 | Plant MODE | At Power (1) | At Power (1) | **At Power (1)** — *engine only, not on the Free Play menu* | Hot Standby (3) | **Hot Shutdown (4)** — *engine only, not on the Free Play menu* | **Cold Shutdown (5)** |
-| Reactor power (%) | 99.6 | 49.6 | 9.6 | ~0 (source) | ~0 (source) | ~0 (source) |
+| Reactor power (%) | 99.5 | 49.6 | 9.6 | ~0 (source) | ~0 (source) | ~0 (source) |
 | Generator output (MWe) | 100.0 | 50.0 | 10.0 | 0 | 0 | 0 |
 | Control bank (steps of 627) | 627 | 627 | **227** | 0 | 0 | 0 |
-| Tavg °F (°C) | 577.7 (303.2) | 561.7 (294.3) | 550.6 (288.1) | 547.2 (286.2) | 250.4 (121.3) | 123.0 (50.6) |
-| T-hot / T-cold °F (°C) | 607.2 / 548.2 (319.6 / 286.8) | 577.1 / 546.3 (302.8 / 285.7) | 553.6 / 547.5 (289.8 / 286.4) | 547.2 / 547.2 (286.2 / 286.2) | 250.4 / 250.5 (121.3 / 121.4) | 123.0 / 123.0 (50.6 / 50.6) |
-| Primary pressure psi (MPa) | 2235 (15.41) | 2235 (15.41) | 2245 (15.477) | 2246 (15.482) | 364 (2.510) | 363 (2.500) |
-| Subcooling margin °F (°C) | 45 (25) | 75 (41.7) | 99 (55.0) | 105 (58.5) | 186 (103.6) | 313 (174.2) |
-| PZR level (%) | 59 | 41 | 29 | 25 | 25 | 25 |
+| Tavg °F (°C) | 580.3 (304.6) | 563.8 (295.4) | 550.9 (288.3) | 547.2 (286.2) | 250.4 (121.3) | 123.0 (50.6) |
+| T-hot / T-cold °F (°C) | 609.6 / 550.9 (320.9 / 288.3) | 579.1 / 548.4 (304.0 / 286.9) | 553.9 / 547.8 (290.0 / 286.6) | 547.2 / 547.2 (286.2 / 286.2) | 250.4 / 250.5 (121.3 / 121.4) | 123.0 / 123.0 (50.6 / 50.6) |
+| Primary pressure psi (MPa) | 2243 (15.467) | 2239 (15.440) | 2250 (15.512) | 2246 (15.482) | 364 (2.510) | 363 (2.500) |
+| Subcooling margin °F (°C) | 43 (23.7) | 73 (40.5) | 99 (54.9) | 105 (58.5) | 186 (103.6) | 313 (174.2) |
+| PZR level (%) | 61 | 44 | 30 | 25 | 25 | 25 |
 | SG level (%) | 65 | 65 | 65 | 65 | 65 | 66 |
-| SG / steam pressure psi (MPa) | 808 (5.57) | 904 (6.235) | 1001 (6.902) | 1020 (7.03) | 30 (0.207) | 1.8 (0.0127) |
+| SG / steam pressure psi (MPa) | 826 (5.696) | 920 (6.344) | 1004 (6.919) | 1020 (7.03) | 30 (0.207) | 1.8 (0.0127) |
 | Steam / feed flow (norm.) | 1.00 | 0.50 | 0.10 | 0 | 0 | 0 |
-| Fuel average temp °F (°C) | 1292 (700) | 890 (476.7) | 611 (321.7) | 547 (286.1) | 250 (121.1) | 123 (50.5) |
+| Fuel average temp °F (°C) | 1294 (701.3) | 893 (478.2) | 611 (321.7) | 547 (286.1) | 250 (121.1) | 123 (50.5) |
 | Decay heat (%) | 6.23 | 3.11 | 0.62 | ~0 | ~0 | ~0 |
 | Xenon (% of equilibrium) | 100 | 66 | 19 | 0 | 0 | 0 |
-| Boron (ppm) | 626 | 779 | 680 | 719 | 894 | 918 |
+| Boron (ppm) | 621 | 777 | 680 | 719 | 894 | 918 |
 | Net reactivity (pcm) | 0 | 0 | 0 | ≈ −1141 | ≈ −5635 | ≈ −5809 |
 | Source range (cps) | 0 (de-energized) | 0 (de-energized) | 0 (de-energized) | ≈ 501 | ≈ 101 | ≈ 98 |
 | Intermediate range (A) | ≈ 8.3e-3 | ≈ 4.1e-3 | ≈ 8.0e-4 | ≈ 1.6e-11 | ≈ 3.2e-12 | ≈ 3.2e-12 |
@@ -546,10 +546,13 @@ persists is either a transient in progress or a failed instrument.
 
 Notes:
 
-- **PZR level rides the Tavg program** (1.39 %/°F, 2.5 %/°C, 55 % at full-power Tavg): the level column
-  IS the program — do not "correct" a 38 % level at low power, it is where the program wants it.
-- **Steam pressure rides the load**: full-power 819 psi (5.65 MPa) up to the 1194 psi (8.23 MPa) no-load point
-  (= Psat of the 566.6 °F (297 °C) no-load Tavg anchor).
+- **PZR level rides the Tavg program** (1.10 %/°F, 1.98 %/°C, **61.5 % at full-power Tavg**): the level column
+  IS the program — do not "correct" a 30 % level at low power, it is where the program wants it.
+  Both figures were re-measured 2026-09-06 (#645, #647); the slope followed the no-load knot down
+  to 547 °F (286.1 °C), and the plant now **reaches** the full-power end (it settled 2.4 °F (1.3 °C)
+  short of it, and held 59 %, until #647 fixed the initial conditions' fuel seed).
+- **Steam pressure rides the load**: full-power 826 psi (5.696 MPa) up to the 1020 psi (7.03 MPa) no-load point
+  (= Psat of the 547 °F (286.1 °C) no-load Tavg anchor).
 - **Boron differs per IC by design** (rod position and xenon differ); the `hot_zero_power`
   value is low because the control bank is fully inserted and xenon-free ≈ criticality is
   held down by rods, not boron.
