@@ -2,7 +2,7 @@
 
 **Document:** PWR-SP-01  
 **Title:** Operating Limits and Protection Setpoints — PWR  
-**Revision:** 18  
+**Revision:** 19  
 **Source:** As-built `pwr_control.js`, `pwr_config.js`; normal values captured from the live engine  
 
 **NOTE:** Values are trainer setpoints (SI). Real US plant Tech Specs differ.
@@ -20,7 +20,7 @@
 | Primary pressure | **2235 psi (15.41 MPa)** | Mode 1, At Power |
 | Tavg | **≈ 577.7 °F (303.2 °C)** | Mode 1, At Power |
 | Thot / Tcold | **≈ 607.2 / 548.2 °F** (319.6 / 286.8 °C) (ΔT ≈ 59.0 °F / 32.8 °C) | Mode 1, At Power |
-| Pressurizer level | **≈ 57 %** | Mode 1, At Power |
+| Pressurizer level | **≈ 59 %** | Mode 1, At Power |
 | Steam Generator level | **≈ 65 %** | Mode 1, At Power |
 | Secondary steam pressure | **≈ 808 psi (5.57 MPa)** — measured on a settled ride; Ginna's sourced 810 psig full-load outlet is the anchor it was tuned to (#419 wave 3) | Mode 1, At Power |
 | Subcooling margin | **≈ 45 °F** (25 °C) | Mode 1, At Power |
@@ -476,6 +476,27 @@ settling **70 s at 10x, the same for every column** — the low-power states are
 
 > **`low_power` is where the startup checklist hands you the plant** (added 2026-09-04, #624 item 28). It is the only initial condition whose control bank is **off its top stop** — **227 of 627 steps** — which is what an at-power plant actually looks like: Ginna UFSAR §15.4.5.1.1 (ML20339A101), *"the reactor is operated with the RCCAs inserted only far enough to permit load follow."* Every other at-power column boots on the stop, so a rod withdrawal in those states is a no-op.
 
+> **THE TWO PART-LOAD COLUMNS WERE RE-CAPTURED** (added 2026-09-06, #645 after #508). This
+> plant's programmed **no-load average coolant temperature (T-avg)** is Ginna's
+> **547 °F (286.1 °C)**, not the four-loop reference plant's **557 °F (291.7 °C)** — in the T-avg program
+> since #508, and in the **pressurizer level program** since #645. Every reading between no load
+> and full power moved with it, and `50_percent` and `low_power` are the two columns that live
+> there. T-avg falls **5.0 °F (2.8 °C)** and **8.1 °F (4.5 °C)** respectively. Subcooling margin is
+> saturation temperature at RCS pressure **minus T-hot**, and the pressurizer holds a **pressure**
+> setpoint — so saturation stays where it was and the margin gains what T-hot loses. That, and
+> nothing else, is the **+5 and +9 °F (+2.8 and +5.0 °C)** in that row: at `low_power` T-hot falls
+> **8.6 °F (4.8 °C)** while saturation rises **0.4 °F (0.2 °C)** on the 5 psi (0.034 MPa) of extra
+> pressure, for **+9.0 °F (+5.0 °C)** of margin against the **+8.8 °F (+4.9 °C)** measured.
+> Pressurizer level rises for a different reason: the level program is a straight line
+> between the no-load and full-power T-avg knots, and moving the lower knot **down** makes that
+> line **shallower** — **1.10 points of level per °F (1.98 per °C)** where it was 1.58 (2.84) — so
+> at any temperature below the full-power knot the programmed level is now higher. That is also
+> why `hot_full_power` moved two points while `hot_zero_power`, `hot_shutdown` and `cold_shutdown`
+> did not move at all: those three sit at the no-load knot or below it, where the program is
+> already sitting on its 25 % floor and reads the same under either anchor. **That floor is why
+> the error was invisible for two investigations** — the no-load point, which is the one anybody
+> checks first, was never wrong.
+>
 > **MODE 5 EXISTS (#524, landed 2026-08-31).** The water-property floor moved from 14.5 psi (0.1 MPa) to **0.29 psi (0.002 MPa)**, so a steam generator can sit at ambient — the `cold_shutdown` column below is a real, loadable state whose secondary rides at **1.8 psi (0.0127 MPa)**, saturation at the plant's own 123 °F (50.6 °C). The cold end of the ladder is **Mode 5, Cold Shutdown** — 122 °F (50 °C), 363 psi (2.50 MPa) at boot, RHR in service, reactor coolant pumps secured, **turbine tripped, both main feed pumps secured with level control in MANUAL**, **pressurizer heaters OFF and spray in hand and shut** (#624, 2026-09-04), both banks in. `5_percent` remains the retired engine's and is **refused by name**.
 > **`hot_shutdown` IS NOT ON THE FREE PLAY MENU** *(OWNER RULING, 2026-09-02: "A")*. The column
 > stays because the initial condition is real, is booted by three gates, and is the reference for
@@ -493,24 +514,24 @@ persists is either a transient in progress or a failed instrument.
 | Parameter | `hot_full_power` | `50_percent` | `low_power` | `hot_zero_power` | `hot_shutdown` | `cold_shutdown` |
 |---|---|---|---|---|---|---|
 | Plant MODE | At Power (1) | At Power (1) | **At Power (1)** — *engine only, not on the Free Play menu* | Hot Standby (3) | **Hot Shutdown (4)** — *engine only, not on the Free Play menu* | **Cold Shutdown (5)** |
-| Reactor power (%) | 99.6 | 49.6 | 11.0 | ~0 (source) | ~0 (source) | ~0 (source) |
+| Reactor power (%) | 99.6 | 49.6 | 9.6 | ~0 (source) | ~0 (source) | ~0 (source) |
 | Generator output (MWe) | 100.0 | 50.0 | 10.0 | 0 | 0 | 0 |
 | Control bank (steps of 627) | 627 | 627 | **227** | 0 | 0 | 0 |
-| Tavg °F (°C) | 577.7 (303.2) | 566.7 (296.9) | 558.7 (292.6) | 547.2 (286.2) | 250.4 (121.3) | 123.0 (50.6) |
-| T-hot / T-cold °F (°C) | 607.2 / 548.2 (319.6 / 286.8) | 582.1 / 551.4 (305.6 / 288.6) | 562.2 / 555.2 (294.5 / 290.7) | 547.2 / 547.2 (286.2 / 286.2) | 250.4 / 250.5 (121.3 / 121.4) | 123.0 / 123.0 (50.6 / 50.6) |
-| Primary pressure psi (MPa) | 2235 (15.41) | 2235 (15.41) | 2240 (15.447) | 2246 (15.482) | 364 (2.510) | 363 (2.500) |
-| Subcooling margin °F (°C) | 45 (25) | 70 (39) | 90 (50) | 105 (58.5) | 186 (103.6) | 313 (174.2) |
-| PZR level (%) | 57 | 40 | 27 | 25 | 25 | 25 |
+| Tavg °F (°C) | 577.7 (303.2) | 561.7 (294.3) | 550.6 (288.1) | 547.2 (286.2) | 250.4 (121.3) | 123.0 (50.6) |
+| T-hot / T-cold °F (°C) | 607.2 / 548.2 (319.6 / 286.8) | 577.1 / 546.3 (302.8 / 285.7) | 553.6 / 547.5 (289.8 / 286.4) | 547.2 / 547.2 (286.2 / 286.2) | 250.4 / 250.5 (121.3 / 121.4) | 123.0 / 123.0 (50.6 / 50.6) |
+| Primary pressure psi (MPa) | 2235 (15.41) | 2235 (15.41) | 2245 (15.477) | 2246 (15.482) | 364 (2.510) | 363 (2.500) |
+| Subcooling margin °F (°C) | 45 (25) | 75 (41.7) | 99 (55.0) | 105 (58.5) | 186 (103.6) | 313 (174.2) |
+| PZR level (%) | 59 | 41 | 29 | 25 | 25 | 25 |
 | SG level (%) | 65 | 65 | 65 | 65 | 65 | 66 |
-| SG / steam pressure psi (MPa) | 808 (5.57) | 943 (6.50) | 1062 (7.32) | 1020 (7.03) | 30 (0.207) | 1.8 (0.0127) |
+| SG / steam pressure psi (MPa) | 808 (5.57) | 904 (6.235) | 1001 (6.902) | 1020 (7.03) | 30 (0.207) | 1.8 (0.0127) |
 | Steam / feed flow (norm.) | 1.00 | 0.50 | 0.10 | 0 | 0 | 0 |
-| Fuel average temp °F (°C) | 1292 (700) | 896 (480) | 628 (331.1) | 547 (286.1) | 250 (121.1) | 123 (50.5) |
-| Decay heat (%) | 6.23 | 3.11 | 0.68 | ~0 | ~0 | ~0 |
+| Fuel average temp °F (°C) | 1292 (700) | 890 (476.7) | 611 (321.7) | 547 (286.1) | 250 (121.1) | 123 (50.5) |
+| Decay heat (%) | 6.23 | 3.11 | 0.62 | ~0 | ~0 | ~0 |
 | Xenon (% of equilibrium) | 100 | 66 | 19 | 0 | 0 | 0 |
-| Boron (ppm) | 626 | 774 | 669 | 719 | 894 | 918 |
+| Boron (ppm) | 626 | 779 | 680 | 719 | 894 | 918 |
 | Net reactivity (pcm) | 0 | 0 | 0 | ≈ −1141 | ≈ −5635 | ≈ −5809 |
 | Source range (cps) | 0 (de-energized) | 0 (de-energized) | 0 (de-energized) | ≈ 501 | ≈ 101 | ≈ 98 |
-| Intermediate range (A) | ≈ 8.3e-3 | ≈ 4.1e-3 | ≈ 9.2e-4 | ≈ 1.6e-11 | ≈ 3.2e-12 | ≈ 3.2e-12 |
+| Intermediate range (A) | ≈ 8.3e-3 | ≈ 4.1e-3 | ≈ 8.0e-4 | ≈ 1.6e-11 | ≈ 3.2e-12 | ≈ 3.2e-12 |
 | SR detector | OFF | OFF | OFF | Energized | Energized | Energized |
 | Condenser vacuum (kPa) | 93.2 | 98.0 | 99.8 | 100.1 | 100.1 | 100.1 |
 | Turbine | Latched, on line | Latched, on line | Latched, on line | Latched, off line | **TRIPPED** | **TRIPPED** |
