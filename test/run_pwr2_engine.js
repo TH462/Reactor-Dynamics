@@ -979,13 +979,19 @@ function runSuite(RD, rec, quiet, only) {
    * OLD build (an extension of >220 s) and on this one (7.8 s), and fails if the operator's
    * insertion buys nothing.
    *
-   * ⚠ AND IT IS NOT THE WHOLE STORY, so read this before treating 7.8 s as the plant's number:
-   * at rated power `delta_t_frac` is (Thot-Tcold)/DESIGN.dt_c = 58.75/55.98 = **1.049**, i.e.
-   * the plant runs 4.9 % ABOVE the rated loop delta-T that every OTdT/OPdT comparison
-   * normalises against, so it starts 4.9 % into its own trip band before anything happens.
-   * That is a SEPARATE, PRE-EXISTING defect (58.98/55.98 = 1.054 before #647, so nothing here
-   * caused it) and it is the same size as, and opposite in sign to, the K3 credit #647 removed
-   * — the two were cancelling. Filed for a ruling; do not "fix" this check by widening it. */
+   * ⚠ THE 7.8 s WAS NOT THE PLANT'S NUMBER, AND #650 IS WHY. When this paragraph was written
+   * `delta_t_frac` at rated was (Thot-Tcold)/DESIGN.dt_c = 58.75/55.98 = **1.049** — the plant
+   * standing 4.9 % inside both delta-T bands with nothing wrong with it, because the divisor was
+   * an unsourced 31.1 degC. It was flagged here as separate and pre-existing (58.98/55.98 =
+   * 1.054 before #647, so nothing in #647 caused it) and it was: the same size as, and opposite
+   * in sign to, the K3 credit #647 removed. THE TWO WERE CANCELLING, which is the only reason
+   * either survived. #650 removed the second half. On this build the same ride reads:
+   *     onset needs 40 ppm (was 34); untouched, the trip comes +22.4 s after onset (was +12.3);
+   *     rods IN at FAST, NO TRIP in 240 s (was a trip at +20.0 s)
+   * so the operator's extension is >217.6 s where it was 7.8 s, and the check — which asserts
+   * the extension against this plant's OWN do-nothing trajectory in the same run, not against a
+   * literal — passes unchanged on all three builds. That is the whole argument for writing it
+   * that way. Do not "fix" this check by widening it. */
   var eng7c = EN.createEngine({});
   run(eng7c, quiet ? 30 : 60);
   var onset7c = false, ts7c = null, d7c;

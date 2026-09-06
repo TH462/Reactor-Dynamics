@@ -1294,11 +1294,17 @@
     /* …and the OVERTEMPERATURE / OVERPOWER SETPOINT EQUATION (#561), for the same reason and by
      * the same route. The reused instrument layer drew its delta-T margin gauge from the retired
      * plant's fitted DNB surface on a 33.0 degC rated split, while THIS plant's trip is the
-     * sourced Ginna Table 15.0-7 form on a 31.1 degC split — so the tile went red with 13.70
-     * margin points still standing and the "OTdT ROD STOP" annunciator, which reads the same
-     * channel, latched 436 s before the trip. Same coefficients the trip uses, read from the
-     * protection module rather than retyped; the layer feeds them the INDICATED Tavg and
-     * pressure, so HR1 is untouched. */
+     * sourced Ginna Table 15.0-7 form on what was then a 31.1 degC split — so the tile went red
+     * with 13.70 margin points still standing and the "OTdT ROD STOP" annunciator, which reads
+     * the same channel, latched 436 s before the trip. Same coefficients the trip uses, read
+     * from the protection module rather than retyped; the layer feeds them the INDICATED Tavg
+     * and pressure, so HR1 is untouched.
+     *
+     * ⚠ THE SPLIT IS NOW 32.71 degC (#650) and this line needs no edit BECAUSE IT READS THE
+     * CONSTANT — the second-copy trap, avoided by construction. Worth noting what the 33.0 above
+     * actually was: the retired engine's `delta_T_rated`, and the number THIS engine's own
+     * `PUMP.mdot_rated` was derived from. The 31.1 was the outlier all along, and this comment
+     * had the two figures side by side for nine days without either of us seeing it. */
     var OT = root.RD.pwr2.protection.OTDT, PSIA = root.RD.pwr2.protection.PSIA_PER_MPA;
     ex.otdt_form = {
       delta_t_rated_c: root.RD.pwr2.sources.DESIGN.dt_c,

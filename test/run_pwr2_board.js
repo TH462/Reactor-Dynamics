@@ -184,8 +184,15 @@ function runSuite(quietRec) {
     opRow && ('board ' + sD.instruments.opdt_setpoint.toFixed(2) + ' vs trip ' +
       (opRow.setpoint * 100).toFixed(2)));
   /* And the DENOMINATOR, which is the half a setpoint check cannot see: loop delta-T is
-   * normalized on 31.1 degC here, not the retired 33.0, so the two channels agree in LEVEL too. */
-  q('loop delta-T is normalized on THIS plant\'s rated split (31.1 degC), not the retired 33.0',
+   * normalized on THIS plant's own rated split, not the retired plant's 33.0 degC, so the two
+   * channels agree in LEVEL too.
+   * ⚠ THE SPLIT IS READ, NOT TYPED (#650). This line and the comment above used to name it as
+   * "31.1 degC" — and that constant turned out to be sourced to nothing and 5 % below what the
+   * plant reads, so a check whose whole subject is the denominator was quoting the defect in its
+   * own title while its assertion, which compares two live channels, was correctly indifferent
+   * to it. The number now comes from the one place it is defined. */
+  q('loop delta-T is normalized on THIS plant\'s rated split (' +
+    RD.pwr2.sources.DESIGN.dt_c.toFixed(2) + ' degC), not the retired 33.0',
     otRow && Math.abs(sD.instruments.loop_delta_t - otRow.value * 100) < 2.0,
     otRow && ('board ' + sD.instruments.loop_delta_t.toFixed(2) + ' vs trip ' +
       (otRow.value * 100).toFixed(2)));
