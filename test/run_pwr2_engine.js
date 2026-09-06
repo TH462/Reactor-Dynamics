@@ -376,8 +376,11 @@ function runSuite(RD, rec, quiet, only) {
   tsS = run(eng, quiet ? 120 : 240);
   ckT('...and the tripped plant rides to no-load on the steam dumps, finite',
       isFinite(tsS.pressure_mpa) && tsS.power_pct < 1.0 &&
-      Math.abs((tsS.tavg_c * 1.8 + 32) - 557) < 6,
-      'Tavg ' + (tsS.tavg_c * 1.8 + 32).toFixed(1) + ' degF vs no-load 557, power ' +
+      /* #508: was the literal 557. The no-load anchor is DC.DUMP.tavg_noload_c and it moved to
+       * Ginna\'s 547 degF; the 6 degF band is expressed in degC so the constant is read once. */
+      Math.abs(tsS.tavg_c - DC.DUMP.tavg_noload_c) < 6 / 1.8,
+      'Tavg ' + (tsS.tavg_c * 1.8 + 32).toFixed(1) + ' degF vs no-load ' +
+      (DC.DUMP.tavg_noload_c * 1.8 + 32).toFixed(0) + ', power ' +
       tsS.power_pct.toFixed(2) + ' %, P ' + (tsS.pressure_mpa * 145.04).toFixed(0) + ' psia');
 
   /* ---- 1c. THE QUIET WIRES (#502 follow-through) --------------------------------------------
@@ -476,20 +479,45 @@ function runSuite(RD, rec, quiet, only) {
       (Math.abs(eaResid + eaA.reliefE) / 1000).toFixed(1) +
       ' MJ; fixed 145.1, double-debit 430.6), relief ' + eaA.reliefKg.toFixed(1) + ' kg');
   var engQ2 = EN.createEngine({});
-  run(engQ2, 30);
-  var cdQ0 = engQ2.cv.chargingDemand;
-  EN.command(engQ2, 'letdown', 1.0);
-  run(engQ2, 60);
+  var tsQ0 = run(engQ2, 30);
+  var cdQ0 = engQ2.cv.chargingDemand, chQ0 = tsQ0.charging_flow_actual;
+  /* ⚠ THIS PROBE WAS HOLLOW UNTIL #645 (2026-09-06), IN TWO WAYS AT ONCE, and only the level
+   * re-anchor exposed it. It used to command `letdown` to 1.0 and assert that charging demand
+   * MOVED by more than 0.03 in the next 60 s.
+   *   (1) THE COMMAND WAS A NO-OP. `cv.letdownOpen` defaults to 1 (pwr2_cvcs createCVCS), so
+   *       "drains the vessel" set 1 to 1 and changed nothing. Letdown ran at its normal 12.7 gpm
+   *       before and after, and the vessel did not drain: level went 59.46 to 59.21 %.
+   *   (2) WHAT IT ACTUALLY MEASURED was the level PI unwinding a CONSTRUCTION OFFSET. The engine
+   *       builds the vessel at levelProgram(tavg0) and the plant then settles a little off it;
+   *       under the old 291.67 degC knot that left level 0.79 points ABOVE program, and the
+   *       integral walking that out moved demand 0.361 to 0.219. Move the knot to 286.11 and the
+   *       vessel opens ON program (dev -0.03), the PI has nothing to unwind, and the same probe
+   *       reads 0.393 to 0.375 — 0.018, under its own threshold. The check went red on a change
+   *       that made the plant MORE correct, which is the signature of an artifact fixture.
+   * REPLACED with a stimulus the operator can actually make and a claim with a SIGN. Isolating
+   * letdown stops the only outflow; the vessel fills above program; the level controller must
+   * CUT charging. MEASURED at both knots (HR10 — the new form has to hold on the OLD plant too,
+   * or it is a refit): demand falls 0.361 -> 0.000 at 291.67 and 0.393 -> 0.000 at 286.11 over
+   * 120 s, with charging flow 11.0 -> 0.0 and 11.9 -> 0.0 gpm.
+   * BOTH HALVES ARE ASSERTED — the demand AND the delivered flow — because the demand alone is
+   * satisfied by a variable nothing reads (the dark-wire class). */
+  EN.command(engQ2, 'letdown', 0);
+  var tsQ1 = run(engQ2, 120);
   /* the note is NULL-SAFE on purpose: under the wire-cut mutation chargingDemand stays at
    * its construction value null, and a .toFixed on it THROWS — which aborts the replay with
    * every already-recorded check green, and the harness reads that as BLIND ("a crash counts
    * as caught" is only true when the crash lands before the first check records) */
   var cdFmt = function (v) { return v === null || v === undefined ? String(v) : v.toFixed(3); };
-  ckT('the level controller MOVES charging when letdown drains the vessel (the hook exists)',
+  ckT('the level controller CUTS charging when an isolated letdown fills the vessel above ' +
+      'program (the hook exists, and its sign is right)',
       engQ2.cv.chargingDemand !== null && cdQ0 !== null &&
-      Math.abs(engQ2.cv.chargingDemand - cdQ0) > 0.03,
-      'demand ' + cdFmt(cdQ0) + ' -> ' + cdFmt(engQ2.cv.chargingDemand) +
-      ' — the claim is the WIRE, not the control law (that is run_pwr2_pressurizer\'s)');
+      (cdQ0 - engQ2.cv.chargingDemand) > 0.25 &&
+      tsQ1.charging_flow_actual < 0.2 * chQ0,
+      'demand ' + cdFmt(cdQ0) + ' -> ' + cdFmt(engQ2.cv.chargingDemand) + ', charging ' +
+      (chQ0 * 450000).toFixed(1) + ' -> ' + (tsQ1.charging_flow_actual * 450000).toFixed(1) +
+      ' gpm, level ' + tsQ0.pzr_level_pct.toFixed(2) + ' -> ' + tsQ1.pzr_level_pct.toFixed(2) +
+      ' % — the claim is the WIRE and its SIGN, not the control law (that is ' +
+      'run_pwr2_pressurizer\'s)');
   var engQ3 = EN.createEngine({});
   run(engQ3, 30);
   EN.command(engQ3, 'turbine_trip', true);
@@ -1686,11 +1714,29 @@ function runSuite(RD, rec, quiet, only) {
   head('THE INITIAL CONDITIONS  [50 % and Hot Standby open settled; the startup is real]');
   var engK = EN.createEngine({ initial_state: '50_percent' });
   var tsK = EN.step(engK, DT);
-  ckT('50 % opens ON its point: power 50, Tavg at the program\'s own 298.08 degC, 50 MWe, ' +
+  /* THREE LITERALS HERE MOVED WITH THE #508 RE-ANCHOR, AND THEY ARE NOT ONE CLASS.
+   * Tavg: 298.08 was tref(0.5) at the 557 degF anchor. Re-pointed at DC.tref(0.5) so it cannot
+   *   go stale again -- a STALE FIXTURE, and the re-point holds on the OLD plant too (298.085).
+   * SG pressure 945-975 -> 903-933 psia (measured 918): a cooler primary at 50 % load makes a
+   *   cooler secondary. Downstream of the ruled change; correct new behaviour.
+   * Pressurizer level 43.2 -> 35.3 -> 43.2 %: THE SCOPE SPLIT OPENED IT AND #645 CLOSED IT.
+   *   #508 moved Tavg's knot to 286.11 and left pwr2_pressurizer's at 291.67, so at 50 % dispatch
+   *   the level program read only 28.3 % of its own span and this literal was re-valued to 35.3 --
+   *   pinning the DEFECT, deliberately and with a note saying so, because it was an owner call.
+   *   The owner then made it *(OWNER RULING, 2026-09-06: "Move the pressurizer copy too")*, #645,
+   *   and the level program is back on the same knot as Tavg. MEASURED across the dispatch range
+   *   against the intended program (25 + 36.5f), before -> after:
+   *     f 0.00  25.0 % (0.0 low) -> 25.0 % (0.0) | 0.30  25.0 % (11.0 low, the MAXIMUM) -> 36.0
+   *     (0.0) | 0.50  35.3 % (7.9 low) -> 43.2 (0.0) | 0.80  51.0 % (3.2 low) -> 54.2 (0.0) |
+   *     1.00  61.5 % (0.0 low) -> 61.5 (0.0)
+   *   43.2 % is levelProgram(tref(0.5)) and stays a LITERAL rather than a call to that function:
+   *   pwr2_engine constructs the vessel BY calling it (`level_frac: PZ.levelProgram(tavg0)`), so
+   *   asserting the two agree is a tautology, and the number is the claim. */
+  ckT('50 % opens ON its point: power 50, Tavg at the program\'s own tref(0.5), 50 MWe, ' +
       'the secondary landed where the duty puts it',
-      Math.abs(tsK.power_pct - 50) < 0.5 && Math.abs(tsK.tavg_c - 298.08) < 0.15 &&
+      Math.abs(tsK.power_pct - 50) < 0.5 && Math.abs(tsK.tavg_c - DC.tref(0.5)) < 0.15 &&
       Math.abs(tsK.mwe_output - 50) < 1 &&
-      engK.sg.P * 145.038 > 945 && engK.sg.P * 145.038 < 975 &&
+      engK.sg.P * 145.038 > 903 && engK.sg.P * 145.038 < 933 &&
       Math.abs(tsK.pzr_level_pct - 43.2) < 1.5,
       tsK.power_pct.toFixed(1) + ' %, ' + tsK.tavg_c.toFixed(2) + ' degC, SG ' +
       (engK.sg.P * 145.038).toFixed(0) + ' psia, level ' + tsK.pzr_level_pct.toFixed(1) + ' %');
@@ -1700,7 +1746,7 @@ function runSuite(RD, rec, quiet, only) {
     if (tsK.power_pct < minK) minK = tsK.power_pct;
   }
   ckT('...and rides untouched without a ring (measured 120 s: min 48.79 %, Tavg -0.9 degC)',
-      minK > 48 && Math.abs(tsK.tavg_c - 298.08) < 1.8 && tsK.scrammed === false,
+      minK > 48 && Math.abs(tsK.tavg_c - DC.tref(0.5)) < 1.8 && tsK.scrammed === false,   /* #508 */
       'min ' + minK.toFixed(2) + ' %, Tavg ' + tsK.tavg_c.toFixed(2));
 
   var engH = EN.createEngine({ initial_state: 'hot_zero_power' });
@@ -2132,13 +2178,34 @@ function runSuite(RD, rec, quiet, only) {
     return { peak: pk, open: op, rated: e.rated_steam };
   }
   var sfM4 = safetyPeak('hot_shutdown'), sfHZP = safetyPeak('hot_zero_power');
-  ckT('Mode 4 CODE SAFETIES PASS FLOW at the designed 0.84 x rated — the annunciator used to ' +
-      'light OPEN while 0.0000 kg/s left',
+  /* ⚠ THE EXPECTATION IS PRESSURE-SCALED SINCE #633, and the fixture is at 8.3 MPa, not at any
+   * stage's quoted condition. Each stage's capacity is quoted at its OWN set pressure + 3 %
+   * accumulation (Ginna UFSAR ch10's equipment table), so a bank at full lift passes exactly
+   * 0.84 x rated only if every stage happens to sit at its own reference — which staggered
+   * setpoints make impossible. At 8.3 MPa the sourced shares give 1.0247 x, i.e. 141.38 kg/s
+   * against the flat model's 137.97, and 141.38 is what a fixed opening at that pressure
+   * passes. Re-derived here from the sourced psig figures rather than read off the engine.
+   *
+   * NEITHER LOAD-BEARING ARM MOVED: the bank still OPENS in both modes, and the two peaks are
+   * still bit-identical — which is the #539 claim this check exists for (Mode 4 booting with
+   * rated_steam 0 made the annunciator light over 0.0000 kg/s). Only the magnitude anchor is
+   * new, and it is asserted on the same 0.5 kg/s tolerance. */
+  var bankAt83 = (function () {
+    var l1 = 797689.0, l2 = 3 * 837600.0, tot = l1 + l2, PSI = 145.0377, out = 0;
+    [[1085.0, l1], [1140.0, l2]].forEach(function (s) {
+      var ref = (s[0] * 1.03 + 14.7) / PSI;             /* set pressure + 3 % accumulation */
+      out += (s[1] / tot) * (8.3 / ref);                /* choked: W proportional to P1 */
+    });
+    return 0.84 * sfM4.rated * out;
+  })();
+  ckT('Mode 4 CODE SAFETIES PASS FLOW at the designed capacity, scaled to 8.3 MPa (#633) — ' +
+      'the annunciator used to light OPEN while 0.0000 kg/s left',
       sfM4.open && sfHZP.open &&
-      Math.abs(sfM4.peak - 0.84 * sfM4.rated) < 0.5 &&
+      Math.abs(sfM4.peak - bankAt83) < 0.5 &&
       Math.abs(sfM4.peak - sfHZP.peak) < 1e-6,
       'Mode 4 ' + sfM4.peak.toFixed(4) + ' kg/s vs Hot Standby ' + sfHZP.peak.toFixed(4) +
-      '; 0.84 x rated = ' + (0.84 * sfM4.rated).toFixed(2));
+      '; Napier-scaled expectation ' + bankAt83.toFixed(2) +
+      ' (flat 0.84 x rated would be ' + (0.84 * sfM4.rated).toFixed(2) + ')');
   }
 
   if (grp('O')) {
@@ -2870,9 +2937,21 @@ var MUTATIONS = [
    '    if (ic.subcritical) boron0 += 0.01 / RD.kinetics.BORON.worth_per_ppm;',
    '', { grp: 'K' }],
   /* anchor grew the cold branch in wave 10 */
-  ['the no-load anchor reverts to the program\'s 557 degF (saturates above the MSSV pop)',
+  /* RE-AIMED (#508, 2026-09-05). It used to replace the no-load boot with DC.tref(0), and that
+   * mutation is now BLIND -- VERIFIED BY RUN, not by arithmetic: re-anchored, DC.tref(0) =
+   * 286.110 degC against W.T_sat(7.03) = 286.113, 0.003 degC apart, and the replay scores
+   * 0 checks red. The claim it pinned -- the no-load IC boots on the STEAM SIDE, not on the
+   * program's zero -- stopped being distinguishable BECAUSE the fix made the two agree;
+   * run_pwr2_dumpctl now pins that agreement statically instead. Re-aimed at the branch
+   * SELECTION, which still is: caught, 3 Hot Standby checks red.
+   *
+   * AND IT REPORTED 'caught' WHILE BLIND, WHICH IS THE BIGGER FINDING. realReds below counts
+   * ABSOLUTE reds in the mutant run with no clean-run subtraction, so while ANY check is red in
+   * this part's replay, EVERY mutation in it reads as caught. run_pwr2_loadfollow guards this
+   * ('MUTATION SELF-TEST SKIPPED -- N check(s) failed in the CLEAN run'); this runner does not. */
+  ['the no-load IC boots at the AT-POWER end of the program instead of the no-load one',
    "    var tavg0 = ic.cold ? ic.tavg_c\n              : ic.pf > 0 ? DC.tref(ic.load_mwe / MWE_RATED) : W.T_sat(G.SG.P_noload);",
-   '    var tavg0 = ic.cold ? ic.tavg_c : DC.tref(ic.load_mwe / MWE_RATED);', { grp: 'K' }],
+   '    var tavg0 = ic.cold ? ic.tavg_c\n              : ic.pf > 0 ? DC.tref(ic.load_mwe / MWE_RATED) : DC.tref(1);', { grp: 'K' }],
   /* anchor grew the cold branch in wave 10 */
   ['the HZP dump lineup is dropped (nothing holds the no-load plant)',
    "      dcDrivers: ic.pf > 0 ? {}\n               : ic.cold ? { mode: 'off' }\n               : { mode: 'pressure', pressure_setpoint_mpa: G.SG.P_noload },",
