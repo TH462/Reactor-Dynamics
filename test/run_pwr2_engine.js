@@ -306,6 +306,55 @@ function runSuite(RD, rec, quiet, only) {
       ' psia, legs ' + (icTs.thot_c * 1.8 + 32).toFixed(1) + '/' +
       (icTs.tcold_c * 1.8 + 32).toFixed(1) + ' degF');
 
+  /* ---- 1c. THE RATED-POINT IDENTITY (#650) -------------------------------------------------
+   * ⚠ THIS IS THE CHECK WHOSE ABSENCE LET A 5 % OFFSET SHIP FOR THREE WEEKS.
+   *
+   * `DESIGN.dt_c` is BOTH the construction input (`designHmap`, and `rhoRated`'s cold-leg
+   * reference) AND the divisor of `delta_t_frac`, which is the ONLY quantity the
+   * overtemperature and overpower delta-T trips compare against. The sourced definition of
+   * that divisor is not a design figure — it is what the plant READS at rated ("ΔT0 =
+   * indicated ΔT at rated thermal power", WTSM 12.2 ML11223A301; NUREG-1431 Rev 4
+   * ML12100A222 "ΔT0 is the indicated ΔT at RTP"). So on a HEALTHY plant at rated the
+   * fraction must be 1.000, and until #650 it was **1.050**: the plant stood 5.0 % inside
+   * both trip bands with nothing wrong with it, invisible because it CANCELLED against an
+   * equal, opposite K3 credit that #647 removed.
+   *
+   * TWO CLAUSES, because they can fail apart — and the asymmetry is deliberate:
+   *   - clause 1 divides the TRUE loop split by `DESIGN.dt_c`, the SHARED constant, which is
+   *     the CONSTRUCTION being consistent with where the plant lands;
+   *   - clause 2 takes the fraction the RPS was actually HANDED, which is divided by the
+   *     engine's own `DT0_C`. They are the same object today; a SECOND COPY appearing between
+   *     them (the PROTECTION_DT trap class) makes exactly one of these two clauses red, which
+   *     is the whole reason they are not one comparison.
+   * The mean is not fussiness. `thot` and `tcold` carry the sourced RTD noise (sigma 0.2 and
+   * 0.15 degC) and this is their DIFFERENCE, so the instantaneous fraction ripples +/- 2.9 %
+   * about its mean — measured, min 0.97316 / max 1.03040 over 300 s. A single sample would be
+   * a check that SAMPLES THE NOISE and calls it the claim. Measured on this build: TRUE
+   * 0.99960, INDICATED mean 1.00012.
+   *
+   * WHEN THIS REDDENS, THE CONSTANT IS STALE, NOT THE CHECK. `dt_c` is a fixed point — it
+   * feeds the construction that feeds the settle — so re-derive it by booting candidates and
+   * riding them (32.7100 in gives 32.7101 settled), and do not widen the band. */
+  head('RATED-POINT IDENTITY  [a healthy rated plant reads delta_t_frac = 1.000]');
+  for (var idi = 0; idi < 240 / DT; idi++) EN.step(engIC, DT);   /* engIC is at t = 60 s */
+  var idSum = 0, idN = 0;
+  for (idi = 0; idi < 60 / DT; idi++) {
+    EN.step(engIC, DT);
+    var idF = engIC.rpsReport.functions.filter(function (f) { return f.id === 'ot_delta_t'; })[0];
+    idSum += idF.value; idN++;
+  }
+  var idMean = idSum / idN;
+  var idTh = RD.water.T_from_h(engIC.sys.nodes.filter(function (n) { return n.id === 'hot_leg'; })[0].h, engIC.sys.P),
+      idTc = RD.water.T_from_h(engIC.sys.nodes.filter(function (n) { return n.id === 'cold_leg'; })[0].h, engIC.sys.P);
+  var idSplit = idTh - idTc, idDt0 = RD.sources.DESIGN.dt_c;
+  ckT('the settled rated split IS the constant both delta-T trips normalise against — ' +
+      'true and indicated, within 0.5 %',
+      Math.abs(idSplit / idDt0 - 1) < 0.005 && Math.abs(idMean - 1) < 0.005,
+      'true split ' + (idSplit * 1.8).toFixed(3) + ' degF vs DESIGN.dt_c ' +
+      (idDt0 * 1.8).toFixed(3) + ' degF -> ' + (idSplit / idDt0).toFixed(5) +
+      '; indicated mean over 60 s ' + idMean.toFixed(5) +
+      ' — a plant that reads 1.05 here starts 5 % into both trip bands doing nothing');
+
   /* ---- 2. EVERY COMMAND REACHES ITS SYSTEM -------------------------------------------------- */
   head('THE ONE DOOR  [each command lands with an observable effect]');
   EN.command(eng, 'load_mwe', 80);
@@ -508,10 +557,19 @@ function runSuite(RD, rec, quiet, only) {
    * every already-recorded check green, and the harness reads that as BLIND ("a crash counts
    * as caught" is only true when the crash lands before the first check records) */
   var cdFmt = function (v) { return v === null || v === undefined ? String(v) : v.toFixed(3); };
+  /* ⚠ AND THE #645 REWRITE KEPT ONE FOOT IN THE ARTIFACT (#650, 2026-09-06). Its criterion was
+   * `(cdQ0 - demand) > 0.25` — a threshold on the SIZE OF THE DROP, and cdQ0 is the demand the
+   * PI happens to be carrying 30 s after construction, i.e. the very construction offset the
+   * paragraph above says this probe must stop measuring. Measured: cdQ0 was 0.393 when #645
+   * wrote it, 0.2631 one day later on the same constants, and 0.2198 once #650 made the
+   * construction consistent. The check was standing 5 % above its own threshold and went red on
+   * a change that moved the plant CLOSER to its program — the same signature, one rewrite on.
+   * ASSERT THE CUT, NOT ITS SIZE: demand goes to zero from a non-trivial start, and the flow
+   * follows. Holds at 0.393, at 0.2631 and at 0.2198, all three -> 0.0000. */
   ckT('the level controller CUTS charging when an isolated letdown fills the vessel above ' +
       'program (the hook exists, and its sign is right)',
       engQ2.cv.chargingDemand !== null && cdQ0 !== null &&
-      (cdQ0 - engQ2.cv.chargingDemand) > 0.25 &&
+      cdQ0 > 0.05 && engQ2.cv.chargingDemand < 0.02 &&
       tsQ1.charging_flow_actual < 0.2 * chQ0,
       'demand ' + cdFmt(cdQ0) + ' -> ' + cdFmt(engQ2.cv.chargingDemand) + ', charging ' +
       (chQ0 * 450000).toFixed(1) + ' -> ' + (tsQ1.charging_flow_actual * 450000).toFixed(1) +
@@ -2059,18 +2117,39 @@ function runSuite(RD, rec, quiet, only) {
       rilIns > 0 && marginIns > 0 && marginIns < 60 && engL._rodAtLimit === false &&
       tsL.scrammed === false,
       'RIL ' + rilIns + ', margin ' + marginIns + ' at ' + pwrIns.toFixed(1) + ' % power');
-  /* DILUTE, and watch the LIMIT follow the power — up while power rises, down as it settles. */
+  /* DILUTE, and watch the LIMIT follow the power — up while power rises, down as it settles.
+   *
+   * ⚠ THIS TOOK TWO INSTANTS OF A NON-MONOTONE TRAJECTORY AND CALLED THEM THE CLAIM (#650,
+   * 2026-09-06). The old form read the limit at t+60 and again at t+600 and required
+   * rilLo < rilHi. But the boration keeps running for the whole 540 s, so the tail is a V: power
+   * dips as the negative moderator coefficient banks the reactivity as temperature, then climbs
+   * again as the dilution keeps arriving. WHERE THE BOTTOM OF THAT V SITS is a plant property,
+   * and it moved when #650 made the construction consistent — measured on the same ride:
+   *     dt_c 31.10   98.01 -> 100.77 -> 97.20 -> 96.5 (flat 240-540 s) -> 96.83 at t+600
+   *     dt_c 32.71   98.01 -> 100.78 -> 100.38 -> 99.6 (flat 240-480 s) -> 100.24 at t+600
+   * Both trajectories are the SAME SHAPE and both show the limit chasing power exactly. The old
+   * plant's t+600 sample happened to land before the turn; the new plant's lands after it. The
+   * claim was never about t+600.
+   * ASSERT THE FUNCTION OVER THE WHOLE TAIL: sample it, and require the limit at the ride's
+   * LOWEST power to be below the limit at its HIGHEST. That is what "the limit is a function of
+   * power" means, it cannot be satisfied by a constant, and it holds on both plants (424 < 439
+   * at dt_c 31.1; 437 < 439 at 32.71). */
   EN.command(engL, 'boron_rate', -0.10);
   tsL = run(engL, 60);
   var rilHi = engL._rilSteps, pwrHi = tsL.power_pct;
-  tsL = run(engL, 540);
-  var rilLo = engL._rilSteps, pwrLo = tsL.power_pct;
-  ckT('...and the LIMIT CHASES POWER — it rises with the dilution\'s power peak and recedes ' +
-      'again as the negative MTC settles the plant at a lower power',
+  var lo = { p: pwrHi, r: rilHi }, hi = { p: pwrHi, r: rilHi };
+  for (var lk = 0; lk < 9; lk++) {
+    tsL = run(engL, 60);
+    if (tsL.power_pct < lo.p) lo = { p: tsL.power_pct, r: engL._rilSteps };
+    if (tsL.power_pct > hi.p) hi = { p: tsL.power_pct, r: engL._rilSteps };
+  }
+  ckT('...and the LIMIT CHASES POWER — across the whole dilution the limit stands lower at ' +
+      'the ride\'s lowest power than at its highest',
       pwrHi > pwrIns && rilHi > rilIns &&
-      pwrLo < pwrHi && rilLo < rilHi && tsL.scrammed === false,
-      'power ' + pwrIns.toFixed(1) + ' -> ' + pwrHi.toFixed(1) + ' -> ' + pwrLo.toFixed(1) +
-      ' %, RIL ' + rilIns + ' -> ' + rilHi + ' -> ' + rilLo +
+      lo.p < hi.p && lo.r < hi.r && tsL.scrammed === false,
+      'insert ' + pwrIns.toFixed(1) + ' % / RIL ' + rilIns + '; peak ' + pwrHi.toFixed(1) +
+      ' % / RIL ' + rilHi + '; over the 540 s tail power spans ' + lo.p.toFixed(1) + '-' +
+      hi.p.toFixed(1) + ' % and the limit spans ' + lo.r + '-' + hi.r +
       ' — the limit is a FUNCTION of power, which is the whole interlock');
   /* ⚠ AT-LIMIT ITSELF, and this check exists because the MUTATION HARNESS CAUGHT ITS ABSENCE.
    * The re-aim above dropped the only ride that ever drove `_rodAtLimit` TRUE — the old story's
@@ -2779,6 +2858,12 @@ var MUTATIONS = [
   ['the facade hold is unwired — every subsystem keeps stepping a held plant (#585)',
    'if (eng._dead || (eng.sys && eng.sys.beyond_model === true)) {',
    'if (eng._dead) {', { grp: 'D' }],
+  /* #650: the delta-T pair's DIVISOR. This is the shipped defect itself, restored — 31.1/32.71
+   * is 0.951, so the mutant plant reads delta_t_frac 1.050 at rated exactly as the pre-#650
+   * build did. It pins the RATED-POINT IDENTITY check to the thing it is about, and it is the
+   * one anchor in this file that reaches a `pwr2_sources` constant. */
+  ['the delta-T normalizer reverts to the unsourced 31.1 degC (#650 — a 5 % head start)',
+   'var DT0_C = S.DESIGN.dt_c;', 'var DT0_C = 31.1;', { grp: 'A' }],
   ['the pressurizer relief sink is dropped (mass relieves without leaving)',
    "srcs.push({ node: 'hot_leg', mdot: -eng._pzRelief, h: sys.nodes[iHL].h });",
    '', { grp: 'A' }],

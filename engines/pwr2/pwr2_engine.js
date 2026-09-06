@@ -59,9 +59,13 @@
     }
     return NaN;
   }
-  var DT0_C = S.DESIGN.dt_c;     /* full-power loop delta-T, [derived] — the settled design
-                                  * point's own split (606 - 550 degF = 56 degF = 31.1 degC),
-                                  * the delta-T pair's normalization */
+  var DT0_C = S.DESIGN.dt_c;     /* full-power loop delta-T, [derived] — the plant's OWN
+                                  * settled split at rated, which is the sourced definition
+                                  * of the delta-T pair's normalizer ("ΔT0 = indicated ΔT at
+                                  * rated thermal power", WTSM 12.2 / NUREG-1431). Re-derived
+                                  * at #650 from 31.1, which was sourced to nothing and left
+                                  * the healthy plant 5.0 % inside both bands — the whole
+                                  * argument is on DESIGN in pwr2_sources.js. */
   /* Manual rod motion by the operator's S/M/F selection (#506.4). The SPEEDS are the sourced
    * quantity (WTSM 8.1: 8-72 steps/min, normal 48 — the same class range pwr1's slow/normal/
    * fast descend from); these values are [derived] — pwr1's three rates mapped by fraction-of-
@@ -179,8 +183,19 @@
      *
      * NOT IN THE FREE-PLAY PICKER, deliberately, like hot_shutdown (ui/app.js): it is the seam
      * between two checklists, not a state a player picks. Nothing enumerates ICS except the
-     * unknown-name error message below, so adding an entry costs no gate. */
-    low_power:      { pf: 0.105, load_mwe: 10, ctrl_steps: 227 },
+     * unknown-name error message below, so adding an entry costs no gate.
+     *
+     * ⚠ `pf` IS DERIVED FROM `load_mwe`, NOT TYPED BESIDE IT (#650). The two are not
+     * independent: `load_mwe` is the turbine's draw and the plant honours it EXACTLY
+     * (measured: mwe_output 9.99999995 against a load_target 10, imbalance 4.7e-8 MWe),
+     * while `pf` only SEEDS the fission, the decay/xenon equilibrium and the leg split
+     * (`dT0 = DT0_C * ic.pf`). The declared 0.105 was the thermal fraction `pwr_startup`
+     * handed over on a 2026-09-04 tree; on this one, 10.0 MWe costs **9.604 %** thermal, so
+     * the seed was 9.3 % high and the IC — whose whole contract is to open SETTLED — rang
+     * 10.50 -> 9.60 % over its first 600 s. Measured at #650, on the same harness as every
+     * other figure here. `load_mwe` is the authority because the turbine enforces it; `pf`
+     * follows the plant's own heat rate at that draw and is re-measured when it moves. */
+    low_power:      { pf: 0.09604, load_mwe: 10, ctrl_steps: 227 },
     hot_zero_power: { pf: 0,   load_mwe: 0, subcritical: true },
     /* THE SHUTDOWN IC (#507 wave 10) is MODE 4, HOT SHUTDOWN — 250 degF / 350 psig,
      * RHR-held, RCPs secured, both banks in, the P-11 blocks taken (the cooldown's own
@@ -1498,9 +1513,10 @@
        * class (#507 wave 4; the deferred start pwr2_protection.js recorded is now built) */
       loss_of_offsite: !offsiteOk,
       /* the delta-T pair's inputs: loop delta-T normalized to full-power delta-T, and Tavg.
-       * DT0_C is [derived]: the plant's own measured full-power split at the design point
-       * (606/550 degF, PWR2_VALIDATION.md sec 43) — 31.1 degC. Protection converts to the
-       * source's units itself. */
+       * DT0_C is [derived]: the plant's own settled full-power split, 32.71 degC (58.88
+       * degF) — the sourced definition of ΔT0 is the INDICATED split at rated, so this
+       * fraction must read 1.000 on a healthy rated plant and `run_pwr2_protection` asserts
+       * it (#650). Protection converts to the source's units itself. */
       delta_t_frac: rd.thot !== undefined ? (rd.thot - rd.tcold) / DT0_C
                     : (tLeg(sys, 'hot_leg') - tLeg(sys, 'cold_leg')) / DT0_C,
       tavg_c: rd.tavg !== undefined ? rd.tavg : tavg   /* stepInner's own — #514, was a
