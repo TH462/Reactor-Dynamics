@@ -45,6 +45,95 @@ where the two differ or where judgment was exercised.
 
 ---
 
+## 2026-09-06-workbench-c — #650: the ΔT trips' normaliser was sourced to nothing, contradicted the flow it shares a design point with, and survived by cancelling against #647's error
+
+**The order was mandatory and it mattered** *(OWNER, 2026-09-06: "Next" — taken as the default the
+recommendation it answered had named: run the evidence pass, execute option A unless it points at
+B)*. Option **B** was "move the loop FLOW so the plant actually makes 56 °F", correct only if
+56 °F is sourced for this plant class and the flow is the unsourced one. **Reading the code first
+would have made B look reasonable**, because `PUMP.mdot_rated` carries a bare `[derived]` tag and
+`DESIGN.dt_c` carried a confident-looking `(606 − 550 degF = 56 degF)`. The evidence pass inverted
+which of the two was suspect, in three commands.
+
+### What the evidence pass settled
+
+- **`find_source.js '606'` → six hits across three lanes, not one a temperature.** Two RHR
+  throttle valves, decay-heat coefficient digits, an elevation.
+- **Ginna's rated split is 72.7 / 71.6 °F (40.4 / 39.8 °C)**, not 56 — UFSAR ch15 Table 15.0-1
+  (ML20339A101). The extracted table's labels are offset from its values by one row; the reading
+  adopted is the one where **both** columns reproduce their own stated vessel average to 0.05 °F
+  *and* put SG outlet 0.3 °F below vessel inlet, which is that plant's pump heat at 0.4 % of
+  1811 MWt. Two independent arithmetic checks agreeing is what makes an OCR'd table usable.
+- **The sourced quantity is the DEFINITION, and it is option A verbatim.** USNRC HRTD 12.2
+  (ML11223A301) and NUREG-1431 Rev 4 Table 3.3.1-1 Note 1 (ML12100A222): *"ΔT₀ = indicated ΔT at
+  rated thermal power"*. The normaliser is what the plant READS. This is also why K1 is a
+  *"manually adjusted preset bias"* on the real machine — the equation is calibrated against the
+  plant, not the other way round.
+- **The build has held two rated splits since PWR2's flow was derived.** `PWR2_DESIGN.md` §1
+  derives `mdot_rated` = 1630 kg/s from *"300 MWt, 321/288 °C"* — **33 °C** — and the retired
+  engine says the same in `pwr_config.js:410` (`delta_T_rated: 33.0`). 31.1 was the outlier and
+  had no provenance beyond a one-off measurement.
+
+### The decomposition, because "5 % out" has three different possible causes and only one was real
+
+`ΔT = Q/(ṁ·cp)` on the settled plant (3,000 s, dt 0.02 s, drift over the last 1,500 s
+**−8.6e-5 °C**). Solving for the split that carries a full 300 MWt at `mdot_rated` through the
+design point gives **32.9933 °C**, which is the 33 °C the flow came from to 0.02 %. So:
+
+| | | |
+|---|---|---|
+| construction inconsistency (31.1 vs its own 32.993) | **1.0609** | the defect — arithmetic |
+| RCP heat (core makes 99.56 % of 300 MWt) | 0.9956 | real |
+| settled flow 1637.7 vs `mdot_rated` 1630 | 0.9932 | real |
+| cp curvature | 1.0010 | real |
+| product | **1.0500** | matches the measured 1.04999 |
+
+**At 31.1 the design point built legs carrying 282.5 MWt through a 300 MWt plant.** The ring
+closes at the settle and confirms the two real terms: core +298.69 MW, SG −299.97 MW, `rcp` node
++1.379 MW.
+
+### The decision: the settled split, not the design intent, and it is a fixed point
+
+`DESIGN.dt_c` = **32.71 °C (58.88 °F)**. Both consumers want the settled value — the trips because
+that is what ΔT₀ *is*, `designHmap` because its job since #502 is to open the initial condition
+already settled — so one constant serves both and there is exactly one of it.
+
+**32.993, the self-consistent design point, was measured and rejected**: it leaves the trips at
+0.99171, an 0.83 % head start, which is the same defect one order smaller. The 0.86 % between the
+two is the pump heat and the flow the pump actually delivers, and those are real.
+
+It had to be **converged rather than read off**, because `dt_c` feeds `designHmap` *and*
+`rhoRated`'s design-cold-leg reference, so the settle depends on the candidate: 31.10 → 32.6547;
+32.9933 → 32.7196; 32.7200 → 32.7104; **32.7100 → 32.7101, fraction 1.00000**.
+
+### The trap this is an instance of, stated generally
+
+**A constant measured once off the plant and then made a construction input is a loop closed on a
+stale number.** `DT0_C = 31.1` was typed 2026-08-19 (`15dfb48d`) as an honest measurement of the
+plant as it then stood; #502 made it a `designHmap` input two days later; #573/#574/#583/#586/#647
+have moved the plant underneath it since, and nothing re-derived it because nothing knew it was
+derived. **If a config value comes from a settle, the gate that re-derives it belongs in the same
+change** — which is what `run_pwr2_engine`'s RATED-POINT IDENTITY now is.
+
+**Second, and it generalises further: two errors of the same size and opposite sign look exactly
+like a healthy plant.** The 4.9 % head start and #647's +0.045 K3 credit cancelled to within
+0.5 %, and every runner in the tree agreed with both. **Fixing one is what exposes the other** — so
+a fix that reddens something distant deserves "what was this cancelling against?" before the check
+is adjudicated as stale.
+
+### Also decided
+
+- **`low_power.pf` is DERIVED from `load_mwe`, not typed beside it.** The turbine enforces
+  `load_mwe` exactly (imbalance 4.7e-8 MWe); `pf` only seeds. On this plant 10.0 MWe costs 9.604 %
+  thermal, so the declared 10.5 % made the initial condition ring 0.90 points. Residual against its
+  own program knot: **+0.52 → −0.01 °F**.
+- **The indicated ΔT fraction is meaned, not sampled.** `thot`/`tcold` carry the sourced RTD noise
+  and this is their difference, so the instantaneous value ripples **±2.9 %** (0.97316–1.03040 over
+  300 s) — *larger than the bias that shipped*. Any future assertion on this channel must average.
+- **`Manuals/09` §1.0 has no gate and will not get one from `run_manual_setpoints`**, whose header
+  guard (a backticked initial-condition name) excludes it by construction. It was found stale in
+  six rows, re-captured, and the coverage gap filed on #650 rather than closed here.
+
 ## 2026-09-06-workbench-b — #647: the full-power knot was right and the INITIAL CONDITIONS were wrong; the turbine-trip band is now the plant's own span
 
 **Ruled, with a precondition that could have overturned the ruling** *(OWNER RULING, 2026-09-06:
