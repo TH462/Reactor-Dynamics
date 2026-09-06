@@ -30,6 +30,129 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
 
 ## [Unreleased]
 
+### Fixed (#633 — every relief path passed a flat mass flow, so the atmospheric dump valve had full authority at sub-atmospheric pressure)
+
+`pwr2_relief.js` computed each path as a fixed fraction of rated flow with no dependence on the
+upstream steam pressure: `adv = advFrac * RELIEF.adv_kgs`, safeties `safetyFrac * 0.84 * rated`,
+dumps `demand * 0.28 * rated`. For the safeties, which only open near their setpoint, that is
+nearly harmless. For the two paths the operator can command open at **any** steam pressure it is
+not: a 100 % atmospheric dump valve (ADV) drove the steam generator through atmospheric to
+**−14 psig (0.29 psia)** while still passing its full 8.18 kg/s (64,900 lb/hr), cooling the plant
+to 68 °F (20 °C) with pressurizer level at 100 % and steam generator level at 0 %.
+
+Flow is now `Y·√(x·P1·ρ1)` — IEC 60534-2-1 / ISA-75.01 compressible valve sizing, `x` clamped at
+the choked ratio, expansion factor `Y = 1 − x/(3·F_γ·x_T)`. Saturated steam has `ρ1 ∝ P1`
+(**measured against Layer 0**, not assumed: P/ρ is 191,000 at 7.27 MPa against 169,000 at
+0.1 MPa, within 12 % across the range), so it collapses to `Y·√x·P1` — which at choked flow **is
+Napier's equation**, and which goes to zero at zero differential. That last part is what the
+runaway was actually missing; the pure-Napier ratio would still pass 1.4 % at atmospheric.
+
+Marked `[derived]` to the standard: `find_source` returned **0 plant-specific hits** across 39
+documents in 3 lanes. But the evidence pass found better reference pressures than were proposed —
+**Ginna UFSAR ch10 (ML20339A040)'s equipment table quotes all three paths with their pressures**:
+*"329,000 at 1005 psig"*, *"302,500 at 695 psig"*, and the safeties at *"+3 % accumulation"*. Each
+path now normalises to exactly 1.0 at its own quoted condition.
+
+| ADV at 100 % demand | before | after |
+|---|---|---|
+| 1005 psig, its quoted condition | 100.0 % | 100.0 % |
+| 891 psig | 100.0 % | 88.8 % |
+| 106 psig | 100.0 % | 11.8 % |
+| atmospheric | 100.0 % | **0.0 %** |
+
+Minimum steam generator pressure on the 100 %-ADV ride: **−14.4 psig → 266 psig**. The plant now
+settles at 428 °F (220 °C) / 317 psig, decay heat balancing the ADV at a third of its rating,
+instead of venting itself cold.
+
+**The #542 ratchet survives, measured rather than asserted** — it is on *lift*, and the density now
+rides through it. The bottled-generator park sweep agrees before and after **to within 0.5 psi**
+with zero sub-setpoint parks either way. Downstream pressures now travel as drivers (the dumps take
+the condenser's `P_cond_mpa`; ADV and safeties discharge to atmosphere), and
+`adv_flow_normalized`'s hard-coded `8.18` divisor — a second copy of `RELIEF.adv_kgs` — is
+replaced by a published `adv_rated_kgs`, so the divisor travels with the flow it normalises.
+
+### Fixed (#508, #645 — the no-load temperature anchor was a second plant's, and both Tavg-mode dump controllers were dead at this plant's own no-load point)
+
+*(OWNER RULING, 2026-09-05: "547 °F — re-anchor to Ginna"; OWNER RULING, 2026-09-06: "Move the
+pressurizer copy too")*
+
+`tavg_noload_c` was **291.67 °C (557 °F)** in both `pwr2_dumpctl.js` and `pwr2_pressurizer.js`.
+Both are now **286.11 °C (547 °F)**. Both figures are sourced — to different plants. 557 °F is the
+Westinghouse 4-loop program's *span endpoint* (WAT 05, ML11216A094, Table 5-1: *"557 - 584.7 T avg
+program from 0% to 100% power"*); 547 °F is Ginna's *programmed no-load Tavg* in as many words
+(UFSAR ch15, ML20339A101, Table 15.0-3 note d: *"All analyses assumed a programmed no-load TAVG of
+547F."*). This plant's steam side is already entirely Ginna.
+
+The engine disagreed with itself by 10 °F: `pwr2_engine.js` boots every no-load initial condition
+at `T_sat(SG.P_noload)` = **547.00 °F**, while `tref(0)` read **557.01 °F**. At the plant's own hot
+standby point the loss-of-load error therefore sat permanently inside its own 5 °F deadband and
+turbine-trip demand was exactly zero — **selecting Tavg mode was indistinguishable from having no
+steam dumps at all**, measured: the dumps-off park and the Tavg-mode park agree to 0.03 °F and
+0.2 psi.
+
+| after an ordinary turbine trip | before | after |
+|---|---|---|
+| margin to the 1085 psig safety pop | **7.7 psi** | **63.1 psi** |
+| heat sink | atmospheric dump valve at 39.9 %, condenser dumps shut | ADV shut, dumps 8.75 % |
+| **steam vented to atmosphere in 30 min** | **18,813 lbm (8,533 kg)** | **0** |
+
+The pressurizer's copy moved with it (#645) because the two programs describe the same coolant
+expansion. Split, they disagreed by up to **10.95 points of indicated level at 0.30 dispatch** and
+were exact at both ends — invisible to two investigations, because the level program **clamps at
+25 % across the whole 547–557 °F band**, so the no-load point reads identically under either
+anchor. Their agreement is now itself a check.
+
+`Manuals/09` §11.0's `50_percent` and `low_power` columns were re-captured whole against the booted
+plant (Rev 19 item (aa)) — when Tavg moves, Thot/Tcold, steam pressure, decay heat and reactor
+power go stale with it, and a column whose Tavg contradicts its own Thot is worse than one that is
+merely old. Level tracks program to within **0.4 points in all six initial conditions**.
+
+Out of scope by the same rulings and deliberately untouched: `pwr2_kinetics.js`'s 975 ppm hot-zero-
+power boron anchor (Watts Bar's, at *Watts Bar's* 557 °F — BEAVRS, OSTI 1991715), and the
+full-power knot, which is the open half and is tracked at #647.
+
+### Fixed (#635 — a setpoint row marked "no constant to check against" beside its own constant)
+
+`run_manual_setpoints`'s *Steam dump (pressure mode)* row was `narrative: true` while
+`RD.pwr2.sg.SG.P_noload` (7.03 MPa = 1020 psia) is exactly the setpoint it prints. The #601 shape.
+Now checked, and proved non-hollow by driving it red with a wrong manual figure first. The issue's
+other half — the STEAM DUMP OPEN button that could only throw — was already fixed; verified by
+injection rather than source read (`buttonDisabled` returns true on both initial conditions).
+
+### Fixed (SI-5 in `run_service_invariance` — a guard on the wrong quantity)
+
+The transient legs' overlap guard was an absolute count of coincident sample instants
+(`tc.n >= 20`), which is modular arithmetic on the broadcast cadence rather than a statement about
+the plant. #633 quieted the blowdown's tail, so 1× took 203 fine broadcasts instead of 391 and the
+10×/60× overlap fell to 16. Bisected: **#633 alone moved it; #508 changed not one instant.** Grid
+alignment, not divergence — every leg still ran the full window, all four trees read `0.000e+0`,
+and the first 17 shared instants are literally the same times before and after.
+
+Replaced with four conjuncts — the leg ran, the fixture is still a casualty, the legs met past the
+excursion's own half-time (read off the trajectory, not typed), and `compare()` can see a planted
+1e-6 difference — each proved able to fail by its own injection. **The injection that condemns the
+old form: with the casualty removed entirely, the legs share 200 and 33 instants**, ten times the
+floor that was failing. It would have passed loudly on a fixture that had stopped being a fixture.
+The new form also passes on the pre-#633 tree, which is what makes it a better test rather than a
+refitted one.
+
+### Test coverage
+
+- `run_pwr2_relief` **56 → 71** (mutations 33 → 45). Ten of its twelve reds sampled at an
+  *arbitrary* pressure, so the gate could not have distinguished a pressure-honouring model from
+  the defect.
+- `run_pwr2_dumpctl` **22 → 23** — the anchor must agree with the temperature the engine boots
+  no-load initial conditions at. That 10 °F disagreement *was* the defect and nothing asserted it.
+- `run_pwr2_pressurizer` **100 → 101** (net +2 −1): the two copies' agreement is now a check, and a
+  duplicated check that appeared twice on one physical line was deleted.
+- `run_hardrules` **487 → 488** — one more HR11 ruling citation, declared with its date and words.
+- A check in `run_pwr2_engine` was found **hollow**: it set `cv.letdownOpen` 1 to 1 (it defaults to
+  1), drained nothing, and was really measuring the level controller unwinding a *construction
+  offset* that the re-anchor removed — so it went red on a change that made the plant more correct.
+  Replaced with an operator-reachable stimulus, asserted on demand **and** delivered flow, and
+  measured at both anchors so it passes on the old plant too.
+
+
 ## [Alpha 1.7.3] — 2026-09-05
 
 ### Fixed (#630 — the ECCS card's MODE caption and its word were authored on the SAME line)

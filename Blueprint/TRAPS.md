@@ -22,6 +22,40 @@ the evidence to put it back** — say so in the session log rather than quietly 
 
 ---
 
+## Evicted 2026-09-06a (a STANDING-LIST eviction — the board-data bullet, out for #633/#508's reference-vs-plant trap)
+
+**Why this one.** It is the clearest case the criterion above describes. The bullet's own
+load-bearing line was *"run `node test/verify_board_check.js` after any board change"* — and
+`run_all` now auto-discovers `verify_*` runners and fails on any it has no baseline for, so **the
+gate catches it whether or not anyone remembers the prose**. One sentence stayed in `CLAUDE.md`:
+never hand-edit the file, ask the owner to export. That half is a *process* instruction no runner
+can issue — the builder's live state is in the owner's browser localStorage, so no gate can
+produce the input.
+
+**⚠ If a board change goes wrong in a way `verify_board_check` does NOT catch, that is the
+evidence to put this back.** Say so in the session log rather than quietly re-adding it.
+
+### The evicted text, verbatim
+
+> **`pwr_board_data.js` is GENERATED** — never hand-edit it; the round trip is in
+> `tools/gen_board_data.js`'s header, and the builder's live state is in browser localStorage, so
+> **ask the owner to export**. **A re-export changes PIPE ids**, silently orphaning `PIPE_TEMP`
+> and undoing geometry fixes — **run `node test/verify_board_check.js` after any board change**
+> (this file twice claimed a green tally while the harness sat at 1 FAILURE). Editing traps: a
+> card TITLE is not an item; `DOC_PATCHES.items` is an object literal so a repeated id silently
+> replaces the first; `Pump`/`Valve`/`Tee` ports quantise to the 5 px grid; exclude
+> `kind: 'component'` tiles from a free-slot scan or the instrument column reads as full.
+> **Measure the board, don't eyeball it** — `RD.PwrBoard.ports()` makes an alignment claim a
+> subtraction. **Screenshot it** — art overlap is invisible to an item-vs-item scan.
+
+**The four editing traps are the part no gate reaches**, and they are why this section keeps the
+full text rather than a pointer: a repeated `DOC_PATCHES` id replacing the first *silently*, a card
+title mistaken for an item, port quantisation to the 5 px grid, and a free-slot scan that counts
+`kind: 'component'` tiles and reads the instrument column as full. Read them before authoring board
+data — `verify_board_check` will tell you the board is broken, not which of these four did it.
+
+---
+
 ## Evicted 2026-09-04b (a THEMES-rotation eviction — the #600/#601 trip-blocks bullet, out for #627's)
 
 The oldest of five. **It meets the criterion in part**: the P-7 rows and the intermediate-range trip

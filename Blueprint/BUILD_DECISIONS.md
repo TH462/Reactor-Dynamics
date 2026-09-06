@@ -45,6 +45,131 @@ where the two differ or where judgment was exercised.
 
 ---
 
+## 2026-09-06-workbench-a — #633/#508/#645/#635: the relief ladder had no pressure dependence, and its rungs opened against another plant's temperature
+
+**Five issues, one family.** Two owner rulings, eight issues filed out of it, `run_all` green.
+
+### #633 — flow through a valve is not a constant
+
+`pwr2_relief.js` computed each path as a fixed fraction of rated flow: `advFrac * RELIEF.adv_kgs`,
+`safetyFrac * 0.84 * rated`, `demand * 0.28 * rated`. Harmless for the safeties, which only open
+near their setpoint. Wrong for the two paths an operator can command open at any pressure — a 100 %
+atmospheric dump valve drove the steam generator through atmospheric to **−14 psig (0.29 psia)**
+still passing 8.18 kg/s (64,900 lb/hr), and cooled the plant to 68 °F (20 °C).
+
+**Model, `[derived]` to IEC 60534-2-1 / ISA-75.01**: `W ∝ Y·√(x·P1·ρ1)`, `x` clamped at the choked
+ratio, `Y = 1 − x/(3·F_γ·x_T)` floored at 2/3. `find_source` returned **0 plant-specific hits**
+across 39 documents in 3 lanes, so the law is derived to the standard and marked as such.
+`ρ1 ∝ P1` for saturated steam was **measured against Layer 0** rather than assumed — P/ρ is
+191,000 at 7.27 MPa against 169,000 at 0.1 MPa, within 12 % over the range — which collapses it to
+`Y·√x·P1`: **Napier at choke, zero at zero differential.** The second half is the one that
+mattered; pure Napier still passes 1.4 % at atmospheric, and the measured figure is **0.386 %**.
+
+**The evidence pass beat the design.** The reference pressures proposed in the issue (the ADV's
+1040 psig setpoint) were wrong: **Ginna UFSAR ch10 (ML20339A040)'s equipment table quotes all three
+paths with their pressures** — *"329,000 at 1005 psig"*, *"302,500 at 695 psig"*, safeties at
+*"+3 % accumulation"*. Each path normalises to 1.0 at its own quoted condition, so the sourced
+capacity figures still mean what their comments say.
+
+**The #542 ratchet survives, and this was measured not argued.** The ratchet is on *lift*; density
+now rides through it. Bottled-generator park sweep agrees before and after **to within 0.5 psi**,
+0 sub-setpoint parks either way. A check that conflated the two claims — *"a latched stage passes a
+CONSTANT flow"* — was split: lift held (#542's mechanism) and droop < 7 % across the band (#633's).
+
+Second copies removed: `adv_flow_normalized`'s literal `8.18` divisor now travels as a published
+`adv_rated_kgs`. `dump_ref_mpa` restates an `pwr2_sg` constant because the relief gate sandboxes
+that module — so **the gate closes the trap instead**, loading `pwr2_sg` for real and asserting
+equality, proven non-hollow by a mutation.
+
+### #508 / #645 — the no-load anchor, ruled twice
+
+*(OWNER RULING, 2026-09-05: "547 °F — re-anchor to Ginna")* · *(OWNER RULING, 2026-09-06: "Move the
+pressurizer copy too")*
+
+`tavg_noload_c` was **291.67 °C (557 °F)** in `pwr2_dumpctl.js` and again in `pwr2_pressurizer.js`.
+Both figures are sourced, **to different plants**: 557 °F is the Westinghouse 4-loop program's span
+endpoint (WAT 05, ML11216A094, Table 5-1 — *"557 - 584.7 T avg program from 0% to 100% power"*),
+547 °F is Ginna's programmed no-load Tavg (UFSAR ch15, ML20339A101, Table 15.0-3 note d — *"All
+analyses assumed a programmed no-load TAVG of 547F."*). This plant's steam side is already Ginna
+throughout.
+
+**The engine disagreed with itself by 10 °F.** `pwr2_engine.js:223` boots every no-load initial
+condition at `T_sat(SG.P_noload)` = 547.00 °F; `tref(0)` read 557.01 °F. So at hot standby the
+loss-of-load error sat permanently inside its own 5 °F deadband and turbine-trip demand was exactly
+0 — **both Tavg-mode controllers dead at the plant's own no-load point.** Measured: the Tavg-mode
+park and the dumps-*off* park agree to **0.03 °F and 0.2 psi**, which is the sharpest statement of
+the defect available.
+
+| ordinary turbine trip | as built | #508 | #508 + #633 |
+|---|---|---|---|
+| steam generator peak | 1092.0 psia | 1048.5 | 1036.6 |
+| margin to the 1085 psig safety pop | **7.7 psi** | 51.2 | **63.1** |
+| heat sink | ADV 39.9 %, dumps 0.00 % | ADV 0.0 %, dumps 8.75 % | ADV 0.0 %, dumps 7.21 % |
+| vented to atmosphere / 30 min | **18,813 lbm** | **0** | **0** |
+
+**The scope split's premise was measured at one point and was wrong away from it.** #508 left the
+pressurizer copy at 291.67 on the finding that the level program *"already reads 25 % at the
+no-load point under both anchors"* — true, and misleading: the program **clamps at 25 % across the
+whole 547–557 °F band**, so no-load is the one place the anchors cannot disagree. At part load they
+did, by up to **10.95 points of indicated level at 0.30 dispatch**, zero at both ends. #645 moved
+it. Their agreement is now itself a check, injection-discriminated so that reverting either copy
+reds the right one.
+
+Out of scope by both rulings, deliberately: `pwr2_kinetics.js:251`'s 975 ppm (Watts Bar's, at Watts
+Bar's 557 °F — BEAVRS, OSTI 1991715; moving it attaches a real measurement to the wrong temperature
+and blinds a mutation), and the full-power knot — the open half, now with a measured **1.3 °C
+(2.3 °F)** gap behind it, tracked at **#647**.
+
+### The adjudication lesson — three of six filed verdicts were backwards
+
+Every time, **the number that moved was the reference, not the plant**:
+
+1. *"the ARMED dump holds Tavg within its own authority"* — filed 18.5 °F against an 18.4 °F bound.
+   Tavg fell **1.14 °F**; Tref fell **4.0 °F**. The better-controlled plant read as the regression.
+   Its first replacement was **hollow** (both sides clipped to 1.0000 at the fixture; two injected
+   defects passed it) and became the A/B its own note always implied: armed vs unarmed, worth
+   9.4 °F and 12.0 °F, the difference between the safeties lifting and not.
+2. `pwr_lower_power` step 5 — the as-built plant sat at 15 MWe with **its ADV 64 % open** and the
+   acceptance passed on it. Calibrated on the defect.
+3. *"the level controller MOVES charging when letdown drains the vessel"* — **hollow twice over**:
+   `cv.letdownOpen` defaults to 1, so the command set 1 to 1 and nothing drained (level fell a
+   quarter point). It was measuring the level controller unwinding a **construction offset** that
+   the re-anchor removed. Replaced with an operator-reachable stimulus, asserted on demand *and*
+   delivered flow, and verified at both anchors so it passes on the old plant too.
+
+### Gate coverage
+
+`run_pwr2_relief` **56 → 71** (mutations 33 → 45; ten of its twelve reds sampled at an *arbitrary*
+6.0 MPa, so the gate could not distinguish a pressure-honouring model from the defect) ·
+`run_pwr2_dumpctl` **22 → 23** (the anchor must agree with the temperature the engine boots no-load
+at — that 10 °F disagreement *was* the defect and nothing asserted it) · `run_pwr2_pressurizer`
+**100 → 101** (+2 for the cross-file agreement and the decision literal, −1 for a check that
+appeared **twice on one physical line**) · `run_hardrules` **487 → 488** (one more HR11 citation) ·
+`run_service_invariance` SI-5 rebuilt, count unchanged · `run_manual_setpoints` one row moved off
+`narrative`, count unchanged.
+
+**SI-5 was a guard on the wrong quantity.** Bisected: #633 alone moved it, #508 changed not one
+instant; grid alignment, not divergence (all four trees `0.000e+0`, first 17 shared instants
+identical). The condemning injection: **with the casualty removed entirely the legs share 200 and
+33 instants**, ten times the floor that was failing — it would have passed loudly on a fixture that
+had stopped being one. Replaced with four injection-proved conjuncts.
+
+### Two process findings
+
+**#644 — the coverage instrument lies while you are mid-change.** `run_pwr2_engine.js:3041` scores
+its mutation replay on *absolute* reds with no clean-run subtraction, so while any check is red,
+**every mutation reports CAUGHT**. Caught because a mutation predicted blind by arithmetic
+(0.003 °C apart) reported CAUGHT on a red tree and BLIND on a green one. Every "no blind spots"
+claim on the three `run_pwr2_engine` parts made while anything was red is void.
+
+**The manual-revision trap, hit one iteration later and caught by a day-old gate.** Rev 18 had
+shipped in Alpha 1.7.3, so it was not pending; the §11.0 re-capture was written into it, and
+#639's `run_released_frozen` fired. Rev 18's *own row text* describes the same mistake at Rev 17.
+Rev 18 restored byte-for-byte, **Rev 19 opened**. **"Pending" is a fact about the last release, not
+a property of being newest.**
+
+---
+
 ## 2026-09-04-develop-h — #624 item 24: the operator's load dial ramps at the SOURCED rate, not the retired tune
 
 **DECIDED (rate + direction + scope)** *(coordinator's call, 2026-09-04, on the item-24

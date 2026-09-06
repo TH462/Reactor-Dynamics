@@ -29,6 +29,142 @@ and the user-visible summary in `CHANGELOG.md`. This file points at those and tr
 
 ---
 
+## Session log — 2026-09-06-workbench-a (#633 / #508 / #645 / #635 — the secondary steam side, and three probes whose filed reading the measurement inverted)
+
+**A bundle of five issues, one family: the relief ladder's hydraulics and the no-load temperature
+anchor that decides when its rungs open.** Two owner rulings, four new gates' worth of checks, and
+eight new issues filed. `run_all` green; `run_ops` 59/70 remains the one tracked red.
+
+### What was wrong, in one line each
+
+- **#633** — every relief path passed a **flat mass flow**. A 100 % atmospheric dump valve (ADV)
+  drove the steam generator through atmospheric to **−14 psig** still passing its full 8.18 kg/s.
+- **#508 / #634** (duplicates; #634 closed into #508) — the no-load Tavg anchor was **557 °F**, a
+  different plant's, while the engine boots every no-load initial condition at **547 °F**.
+- **#645** — the pressurizer's copy of that anchor, left behind by #508's ruled scope split.
+- **#635** — a setpoint row marked `narrative` beside its own constant.
+- **#478** — re-scoped: the retired engine only; PWR2 proved immune by A/B.
+
+### THE LESSON. Three of six adjudicated probes had their filed reading INVERTED by measurement, and every time the number that moved was the REFERENCE, not the plant.
+
+This is the entry's reason for existing. The #508 re-anchor reddened six probes that had been
+adjudicated in advance from a green tree. Three of the verdicts were backwards:
+
+1. *"the ARMED dump holds Tavg within its own control authority"* — filed as 18.5 °F against an
+   18.4 °F bound, i.e. the plant got worse by 0.1 °F. Measured: **Tavg fell 1.14 °F** (586.47 →
+   585.33) and **Tref fell 4.0 °F** (570.86 → 566.86). The better-controlled plant read as the
+   regression because the reference moved further than the plant did.
+2. *`pwr_lower_power` step 5*, `power_pct < 30`, got 33.94. Measured at 15 MWe: **the as-built plant
+   sat there with its ADV 64 % open, venting to the sky, and the acceptance passed on it.**
+   Re-anchored the valve is shut, the plant runs 6.0 °F cooler and moderator feedback holds power
+   6.2 points higher. The check was calibrated *on the defect*.
+3. *"the level controller MOVES charging when letdown drains the vessel"* — **hollow, two ways**.
+   `cv.letdownOpen` **defaults to 1**, so `command('letdown', 1.0)` set 1 to 1; nothing drained
+   (level 59.46 → 59.21 %, down a quarter point). What it measured was the level controller
+   unwinding a **construction offset**: under 291.67 the vessel opened 0.79 points above program;
+   under 286.11 it opens *on* program, so there is nothing to unwind. It went red on a change that
+   made the plant more correct.
+
+**All three would have been re-banded** by anyone adjudicating from the number alone. What caught
+them was running the fixture at **both** anchors and asking which quantity moved.
+
+### The other standing trap this session paid for: a gate written where the defect cannot be seen
+
+**#633's ten stale reds all sampled at an *arbitrary* pressure** — 6.0 MPa for every dump check,
+`s2Full + 0.5` for the bank. Those numbers were right *only because flow ignored pressure*. The
+whole gate could not distinguish a pressure-honouring model from the defect it was standing on.
+HR10 in its purest form: 56 green checks over a relief ladder with no pressure dependence at all.
+
+### #644 — the coverage instrument itself lies, and it lies exactly when you are mid-change
+
+`run_pwr2_engine.js:3041` scores its mutation self-test as `realReds = rec2.filter(!ok).length` —
+**absolute reds in the mutant run, with no clean-run subtraction.** So while *any* check is red in
+that part's replay, **every mutation reports CAUGHT**. `run_pwr2_loadfollow` guards this correctly
+and prints *"MUTATION SELF-TEST SKIPPED — N check(s) failed in the CLEAN run"*; this runner does not.
+
+It was caught because a mutation predicted blind by arithmetic (`DC.tref(0)` = 286.110 °C against
+`W.T_sat(7.03)` = 286.113 — 0.003 °C apart) **reported CAUGHT** on a tree that still had one red,
+and reported `BLIND TO … THIS GATE CANNOT SEE IT` when re-run green. Same mutation, same tree, two
+opposite verdicts, decided by an unrelated check.
+
+**Every "mutations N/N, no blind spots" claim made about the three `run_pwr2_engine` parts while
+anything was red is void.** Three of this session's own mutation figures had to be discarded and
+re-run for that reason.
+
+### Two fixtures found standing on cliffs, one of which had been nudged two days earlier
+
+- **SI-5** in `run_service_invariance`: an absolute count of coincident sample instants, moved
+  30 → 20 on 2026-09-04 for #625 and sitting on its own value when #633 reddened it at 16.
+  Bisected — **#633 alone; #508 changed not one instant**. Grid alignment, not divergence (all four
+  trees `0.000e+0`; the first 17 shared instants are the same times before and after). Replaced with
+  four conjuncts, each injection-proved. **The injection that condemns the old form: with the
+  casualty removed entirely, the legs share 200 and 33 instants** — ten times the floor that was
+  failing. It was not a weak guard on the right quantity; it was a guard on the wrong one.
+- **`run_pwr2_loadfollow`'s +15 % band**: #633 moved it 1.15 → 1.10 because the plant delivered
+  1.1534, a 0.3 % margin. #508 then landed 1.1049 — **0.5 % over the new band, straight back on the
+  cliff**. Set at 1.05 against four measured behaviours (1.1534 / 1.1317 / 1.1401 / 1.1049), and the
+  *sign* split out into its own unconditional assertion so the direction the check is named for is
+  no longer carried by the magnitude.
+
+### THE MANUAL REVISION TRAP, HIT AGAIN, ONE ITERATION LATER — and the day-old gate caught it
+
+Rev 18 had shipped in **Alpha 1.7.3**, so it was **not** a pending row. The §11.0 re-capture was
+written into it, which is precisely what #639's `run_released_frozen` was built for the day before.
+It fired: *"Rev 18: the revision row has been EDITED since it shipped"*.
+
+**Rev 18's own row text explains the same mistake at Rev 17** — it opened a new row rather than
+extending Rev 17 because Rev 17 had shipped hours earlier, and records that `run_manual_rev` cannot
+detect this, since re-sealing a *released* row satisfies the digest check exactly as well as a
+pending one does. That is the gap #639 closed, and it paid for itself inside a day.
+
+Rev 18 restored byte-for-byte against `HEAD`; **Rev 19 opened** as the new pending row. The repair's
+own first attempt dropped the row's author cell and `run_manual_rev` caught that too (4 red).
+**Read the top row's release status before extending it — "pending" is a fact about the last
+release, not a property of being newest.**
+
+### Numbers worth keeping
+
+| after an ordinary turbine trip | as built | #508 alone | #508 + #633 |
+|---|---|---|---|
+| steam generator peak | 1092.0 psia | 1048.5 | 1036.6 |
+| margin to the 1085 psig safety pop | **7.7 psi** | 51.2 | **63.1** |
+| heat sink | ADV 39.9 %, dumps 0.00 % | ADV 0.0 %, dumps 8.75 % | ADV 0.0 %, dumps 7.21 % |
+| **vented to atmosphere / 30 min** | **18,813 lbm** | **0** | **0** |
+
+ADV flow at 100 % demand, as a fraction of its rating: 1005 psig (its quoted condition) 100.0 %,
+891 psig 88.8 %, 106 psig 11.8 %, atmospheric **0.0 %**. The issue's filed *"~1.4 % at 15 psia"* is
+**refined, not confirmed — 0.386 %**: 1.4 % is the pure-Napier ratio, and the expansion factor takes
+over below choke. That is what the runaway was missing.
+
+Pressurizer level program error against intent, before #645: **0.0 points at no load, 10.95 low at
+0.30 dispatch, 8.3 at 0.50, 0.0 at full power.** The no-load point hid it through two
+investigations because the program **clamps at 25 % across the whole 547–557 °F band**.
+
+### Gate baselines moved
+
+`run_pwr2_relief` 56 → **71** · `run_pwr2_dumpctl` 22 → **23** · `run_pwr2_pressurizer` 100 → **101**
+(+2 −1; the −1 is a check that appeared **twice on one physical line**) · `run_hardrules` 487 →
+**488** (one more HR11 ruling citation) · `run_service_invariance` and `run_manual_setpoints`
+unchanged in count, both restored to green.
+
+### Filed, none worked
+
+**#642** the P-6 permissive is 5e-11 A in the engine (sourced) and 1e-10 A in both the manual and
+the control layer · **#643** `safety_flow_frac: 0.84` wears a `[sourced]` marker the source's own
+table gives 50.1 % or 100.2 % for — the safety bank may be 19 % undersized · **#644** the mutation
+self-test above · **#646** two manual chapters teach an ordering that #508 **inverted by 4.15 °F**,
+and it was #629's justification for a board change · **#647** re-derive the Tavg program set from
+one source (the declined option; the plant's full-power Tavg is **1.3 °C below** its own level
+program's knot, so it never reaches the sourced 61.5 %) · **#648** #633 changed the large-break end
+state and **no gate asserts it** · **#649** SI-0 is the same cliff one fixture-twitch away.
+
+### Rulings recorded
+
+*(OWNER RULING, 2026-09-05: "547 °F — re-anchor to Ginna")* — selected from three options, over
+keeping 557 °F and over moving both copies at once.
+*(OWNER RULING, 2026-09-06: "Move the pressurizer copy too")* — selected from three, over keeping
+the split and over re-deriving the whole program set, which is filed as #647.
+
 ## Session log — 2026-09-05-develop-c (#637 — the CI gate was throughput-bound, not tail-bound, and two of my three diagnoses were wrong before the arithmetic)
 
 **The ask.** The Alpha 1.7.2 release merge ran red on `develop` AND `main`: the aggregate-gate step

@@ -443,12 +443,13 @@ ONE line, drop the rest. **A bullet is ~80 words.**
   `checklist_why_length` counts SENTENCES; words went to the unscored backlog, where all six
   over-80-word blocks read as exactly three. **Ask what a cap makes cheap.**
 
-- **A CLICK THAT MISSES A TEXT FIELD IS NOT A NO-OP — IT IS A KEYBOARD SHORTCUT** (2026-09-02,
-  #605). Both "can't type" blockers were this, and neither was the text box. The Pressure SP
-  `<input>` is **30 x 17 px of an 85 px frame** (a `psi` span and the arrows fill the rest, inside
-  the same border); a miss leaves focus on BODY and the global keys eat the digits — 2/3/5 are TIME
-  ACCELERATION, so "2235" ended at 3600x. Feedback form: 32 chars typed, **0 in the box**, focus on
-  `#playBtn`. **Make the whole affordance the target; the handler looks correct either way.**
+- **A GATE WRITTEN WHERE THE DEFECT CANNOT BE SEEN IS 56 GREEN CHECKS OVER NOTHING** (2026-09-06,
+  #633/#508). Every relief path passed a FLAT mass flow, so a 100 % atmospheric dump valve drove the
+  steam generator to **−14 psig** still passing its full rating. Ten of the twelve reds sampled at an
+  ARBITRARY pressure (6.0 MPa) — right only BECAUSE flow ignored pressure. Sibling: the no-load Tavg
+  anchor was another plant's 557 °F while the engine boots no-load at 547 °F, so **both Tavg-mode dump
+  controllers were dead at this plant's own no-load point** and a routine trip vented **18,813 lbm**
+  to atmosphere. **Ask what pressure/state your fixture sits at, and whether the claim survives moving it.**
 
 **Standing procedure — not part of the rotation above; these do not expire.** One trap per entry.
 **MAX 25 BULLETS** *(OWNER RULING, 2026-08-10: selected "Cap at 25, evict to TRAPS.md")*,
@@ -600,16 +601,12 @@ what a GATE already catches**, keep what nothing can tell you.
   so the Pressure SP comes down first. **The live checklist NEVER issues `cmd`** — it draws text
   and the instructor grades off `acc`, so `cmd`/`hold`/`ramp` are replay-side only. **Only a rate
   guard can tell a ramp from a staircase.**
-- **`pwr_board_data.js` is GENERATED** — never hand-edit it; the round trip is in
-  `tools/gen_board_data.js`'s header, and the builder's live state is in browser localStorage, so
-  **ask the owner to export**. **A re-export changes PIPE ids**, silently orphaning `PIPE_TEMP`
-  and undoing geometry fixes — **run `node test/verify_board_check.js` after any board change**
-  (this file twice claimed a green tally while the harness sat at 1 FAILURE). Editing traps: a
-  card TITLE is not an item; `DOC_PATCHES.items` is an object literal so a repeated id silently
-  replaces the first; `Pump`/`Valve`/`Tee` ports quantise to the 5 px grid; exclude
-  `kind: 'component'` tiles from a free-slot scan or the instrument column reads as full.
-  **Measure the board, don't eyeball it** — `RD.PwrBoard.ports()` makes an alignment claim a
-  subtraction. **Screenshot it** — art overlap is invisible to an item-vs-item scan.
+- **A red probe can be the REFERENCE moving, not the plant — adjudicate at BOTH values** (#508,
+  2026-09-06). Three of six pre-adjudicated probes had their filed reading inverted: a dump check
+  read 18.5 °F against an 18.4 °F bound because **Tref fell 4.0 °F while Tavg fell 1.14 °F** — the
+  better-controlled plant read as the regression. A checklist step passed for months on a plant
+  venting through a **64 %-open** relief valve, because the acceptance was calibrated on the defect.
+  **Run the fixture at the old constant AND the new one and ask which quantity moved.**
 - **An unmeasured claim in PLAYER-FACING COPY is still an unmeasured claim** (rescued from the
   Indications-tab bullet on eviction, 2026-08-17): a "pressurizer mass-only level" row promised
   a TMI divergence that measures 0.0 everywhere, because `pzr_level_pct` is `clip(that,0,100)`
