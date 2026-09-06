@@ -1160,6 +1160,14 @@
       condenser_available: cr.available,
       adv_demand: eng.advDemand,
       adv_block: eng.advBlock,
+      /* THE DUMPS' DOWNSTREAM PRESSURE (#633). Every relief capacity is quoted at a stated
+       * upstream pressure and pwr2_relief now normalises to it, which makes the pressure the
+       * path discharges INTO a real driver. The dumps discharge to the condenser and
+       * pwr2_condenser has already published its saturation pressure this step; the ADV and
+       * the MSSVs vent to atmosphere and take the layer's own default. Absent, the dumps
+       * would discharge to atmosphere — the layer's declared default, which understates them
+       * at low steam pressure and can never overstate them. */
+      P_cond_mpa: cr.P_cond_mpa,
       /* the dumps are DOWNSTREAM of the MSIV (#511 — B 3.7.2); safeties/ADV are upstream */
       msiv_frac: eng.msiv.pos
     });

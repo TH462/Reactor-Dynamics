@@ -705,9 +705,22 @@
     put('governor_valve_pct', tripped ? 0 :
         clip((ts.steam_flow_normalized !== undefined ? ts.steam_flow_normalized : 0) * 100, 0, 110));
 
-    /* --- ADV (pwr2_relief.js, sec 48): direct reads, normalized to its own 8.18 kg/s --- */
+    /* --- ADV (pwr2_relief.js, sec 48): direct reads, normalized to the valve's own RATED
+     * CAPACITY — 1.0 is the sourced 329,000 lb/hr scaled to this plant, at the 1005 psig the
+     * source quotes it at. NOT a fraction of the plant's rated steam flow: this valve is ~4 %
+     * of RTP and a gauge that never left the bottom 4 % of its scale would be unreadable.
+     *
+     * ⚠ THE DIVISOR USED TO BE A LITERAL `8.18` — a hand-copied second copy of
+     * `RELIEF.adv_kgs`, exactly the trap #557/#556/#561 are the record of, and it went wrong
+     * the moment #633 made the flow pressure-dependent: the two would have had to be edited
+     * together for ever. `stepRelief` now publishes `adv_rated_kgs` alongside the flow, so the
+     * divisor travels with the number it normalises and this file still calls into no layer.
+     * Above the reference pressure the valve passes MORE than its quoted capacity (Napier), so
+     * values over 1.0 are real — the clip's 1.5 ceiling is a guard, not a normalisation. --- */
     if (rl.adv_frac !== undefined) put('adv_valve_pct', clip(rl.adv_frac * 100, 0, 100));
-    if (rl.adv_kgs !== undefined)  put('adv_flow_normalized', clip(rl.adv_kgs / 8.18, 0, 1.5));
+    if (rl.adv_kgs !== undefined && rl.adv_rated_kgs > 0) {
+      put('adv_flow_normalized', clip(rl.adv_kgs / rl.adv_rated_kgs, 0, 1.5));
+    }
 
     /* --- pump discharge pressures: min(dead-head, system P) while running — with flow the
      * discharge sits at the injection point; against a shut check valve it sits at dead-head.
