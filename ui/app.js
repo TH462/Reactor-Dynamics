@@ -3824,7 +3824,10 @@
          * carries the real warnings — the accumulator window is the one that matters), and is
          * then suppressed from the collapsed detail so it is not printed twice. */
         var holdS = +st.hold || 0;
-        if (holdS >= 180) {
+        /* `wait_hint: false` SUPPRESSES the generated line (#653 S9, layman playtest 2026-09-07):
+         * the startup's criticality steps carry 240-900 s dwells, so the hint offered 60x, and
+         * at 60x the reactor went 0 -> 12 % between two glances. A step may author the hint away. */
+        if (holdS >= 180 && st.wait_hint !== false) {
           var mins = holdS / 60;
           var span = mins < 90 ? Math.round(mins) + ' plant-minutes'
                    : (mins / 60).toFixed(mins / 60 < 10 ? 1 : 0) + ' plant-hours';
@@ -3836,7 +3839,7 @@
            * is not there. */
           var rung = RD.CklSpeedHint(holdS);
           h += '<div class="ckl-sub ckl-wait">⏩ About ' + span + ' at 1× — set the speed control to <b>' +
-            rung.speed + '×</b>' + (rung.warp ? ' (WARP; the plant must be quiet to take it)' : '') + '.' +
+            rung.speed + '×</b>' + (rung.warp ? ' (WARP; the plant must be quiet to take it — if it is refused, 60× works)' : '') + '.' +
             (typeof st.wait_hint === 'string' ? ' ' + mesc(st.wait_hint) : '') + '</div>';
           waitLineShown = true;
         }

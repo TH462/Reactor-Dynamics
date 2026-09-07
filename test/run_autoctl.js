@@ -348,6 +348,34 @@ test('PWR · boron_conc delivers a metered dose and STOPS (#154)', function (ck)
   ck('no scram', scrammed(r), !scrammed(r), 'false');
 });
 
+/* A SECOND ON PRESS MID-DOSE STOPS THE PANEL (#653, layman playtest 2026-09-07). The engage
+ * branch of `_toggleChannel` re-captured the target and zeroed the dose books but never sent
+ * `set_boron_adjust rate 0` — only the disengage branch did — so the last dilute demand stood
+ * in the engine under a channel reading idle. Measured on pwr2 from cold_shutdown: set 719
+ * then press ON -> boron 918 -> 565 in four plant-hours, "idle" throughout. The checklist had
+ * told the player to press exactly that ("set 719 and press ON") on a channel that boots ON.
+ * INJECTION: with the engage-branch stop removed, the last check reads a boron still moving. */
+test('PWR · boron_conc: a second ON press mid-dose STOPS the makeup panel (#653)', function (ck) {
+  var r = rig('pwr', 'cold_shutdown');
+  r.engage(['boron_conc']);
+  var b0 = ts(r).boron_ppm, target = Math.round(b0) - 120;
+  r.setSp('boron_conc', target);
+  r.run(300);
+  var b1 = ts(r).boron_ppm;
+  ck('the dose is running: boron fell in the first 5 min', (b0 - b1).toFixed(1) + ' ppm',
+    b0 - b1 > 2, '> 2 ppm');
+  r.engage(['boron_conc']);                      // the re-press, mid-dose
+  r.run(60);
+  var b2 = ts(r).boron_ppm;
+  var c = r.chan('boron_conc');
+  ck('the re-press re-captured the target and left no dose pending', String(c && c.dose_remaining),
+    !!c && Math.abs(c.dose_remaining || 0) < 1, '|dose_remaining| < 1');
+  r.run(1800);
+  ck('…and the panel STOPPED: boron holds for the next 30 min', (b2 - ts(r).boron_ppm).toFixed(1) + ' ppm moved',
+    Math.abs(b2 - ts(r).boron_ppm) < 1, '< 1 ppm (defect: kept diluting at the dose rate)');
+  ck('no scram', scrammed(r), !scrammed(r), 'false');
+});
+
 test('PWR · grid_follow walks turbine demand off the pinned full-load ask (#154)', function (ck) {
   var r = rig('pwr', 'hot_full_power');
   r.engage(['grid_follow']);

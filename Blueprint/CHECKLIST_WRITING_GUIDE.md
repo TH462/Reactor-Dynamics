@@ -308,7 +308,38 @@ instruction, no citation mid-sentence, no epigram.
 
 ---
 
-## 11. What is the renderer's job, not the writer's
+## 11. Learned from a layman playing the chain (2026-09-07)
+
+A fresh agent with no repo access played all six legs in the sim
+(`Diagnostic/CHECKLIST_PLAYTEST_2026-09-07_LAYMAN.md`). Three legs could not be finished. The
+rules the failures add:
+
+- **P1. Never tell the player to press a button that is already lit.** "Set 719 and press ON"
+  on a channel that boots ON re-engaged it mid-dose, and the kernel left the dilution running
+  with no target (fixed in the kernel; the text now says "press ON only if it is not lit"). A
+  press the plant does not need is a press the plant may misread.
+- **P2. A check step carries no `cmd`.** A step with a `cmd` and no predicate completes only when
+  the command is seen, so "Check SG FEED reads AUTO" could not tick without the press it forbade.
+  Grade a check on the lamp or the value.
+- **P3. State the seam a chained plant arrives on.** Each leg is replayed from its own preset,
+  which cannot see what the previous leg left behind: the steam dump was in TAVG mode after the
+  shutdown leg, so the cooldown's DUMP SETPOINT walk did nothing until AUTO was pressed again.
+  If a step depends on a mode or lineup the preset provides, the step says how to check it and
+  how to set it.
+- **P4. Say which preset a leg is not written for.** The ascension leg from a power preset finds
+  the control bank on its top stop, where every WITHDRAW is a no-op. A precondition that names
+  the tile and the value warns the player before the first dead press.
+- **P5. No speed hint where the reactor can get away.** At 60× the criticality step went from
+  0 to 12 % power between two glances. `wait_hint: false` suppresses the generated hint; say
+  "stay at 1×" instead.
+- **P6. A stop condition in the text is the same reading as the done-when.** "Hold INSERT until
+  STARTUP RATE reaches 0.00" was satisfied after one step while the done-when wanted power below
+  5 %. Name the reading the step actually ticks on.
+- **P7. Say what to do with a window that opens on top of the board.** The 1/M PLOT window
+  covers the TURBINE-GENERATOR card; nothing said to close it, and the LATCH press landed on
+  the plot.
+
+## 12. What is the renderer's job, not the writer's
 
 Found by the reviews, tracked as product defects in #653; a writer works around them per §2
 until they land:

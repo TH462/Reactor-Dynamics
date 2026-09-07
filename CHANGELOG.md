@@ -32,6 +32,27 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
 
 ## [Alpha 1.7.4-rc3] — 2026-09-06
 
+### Fixed (a layman played the six legs in the sim and three of them could not be finished — #653)
+
+A fresh agent with no repo access drove headless Edge through the chain reading only the panel and
+the board (`Diagnostic/CHECKLIST_PLAYTEST_2026-09-07_LAYMAN.md`): heatup, rampdown and shutdown
+completed; startup, ascension and cooldown did not. What was measured behind the three failures:
+**(1)** the checklist's *"set 719 and press ON"* re-engaged a boron channel that boots ON, and
+`_toggleChannel` re-captured the target and zeroed the books **without stopping the makeup panel**
+(only the disengage branch ever did) — boron 918 → 565 ppm in four plant-hours with the channel
+reading idle; the kernel now sends the stop on engage too (`control_kernel.js`), and the four boron
+steps say to press ON only if it is not lit. Behind it a second defect, filed as its own issue: the
+batch dose lands at 788 for a 719 target on a cold dilution and re-anchors the target to the
+analyzer. **(2)** after the shutdown leg the steam dump is in TAVG mode (AUTO maps to pressure mode
+only when pressed with the turbine tripped), so every DUMP SETPOINT stage of the cooldown was inert;
+the leg's own preset boots in PRESS, which is why the replay never saw it — step 4 now presses AUTO
+until the status reads PRESS, graded as a cmd-kind entry. **(3)** a check step with a `cmd` and no
+predicate completes only on `cmdSeen`, so *"Check SG FEED reads AUTO"* could not tick without the
+press it said not to make — graded on the lamp now. Also: the generated 60× hint on the criticality
+steps (power 0 → 12 % between two glances) is suppressed by `wait_hint: false`; a precondition warns
+when the ascension is started from a power preset with the bank on its top stop; "press BLOCK on the
+… row"; close the 1/M window before LATCH; the WARP hint names 60× as the fallback.
+
 ### Changed (the six live checklists rewritten to a new writing guide — #653)
 
 Two fresh-context reviews of the Mode 5 → 100 % → Mode 5 chain, one reading as a licensed

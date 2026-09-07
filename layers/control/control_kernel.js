@@ -1453,6 +1453,13 @@
       // conc: open the books at the captured target — no dose pending on engage;
       // sample seq re-latches on the first evaluation (a stale result must not fire).
       c.concBasis = c.sp; c.concLastSp = c.sp; c.concSampleSeq = null;
+      /* AND STOP THE PANEL (#653, layman playtest 2026-09-07). Re-engaging an ENGAGED conc
+       * channel mid-dose re-captured the target and zeroed the books above — but the last
+       * `set_boron_adjust` it had sent stayed standing in the engine, because only the
+       * disengage branch below ever sends the stop. Measured, cold_shutdown (918 ppm): set 719
+       * then press ON -> channel 'idle' at sp 919 while boron ran 918 -> 565 in four plant-hours
+       * and kept falling. "No dose pending on engage" has to mean the panel is stopped too. */
+      if (def.kind === 'conc' || def.kind === 'bang') this._sendInternal({ action: 'set_boron_adjust', rate: 0 });
       c.pvF = null; c.rate = null; c.trimSlow = null;
     } else {
       // Leave the plant exactly where automation had it — plus safe stand-down.

@@ -29,6 +29,47 @@ and the user-visible summary in `CHANGELOG.md`. This file points at those and tr
 
 ---
 
+## Session log — 2026-09-07-develop-a (#653 — a layman played the chain in the sim; a kernel defect behind "the dilution never stops", and the dump left in TAVG mode by the chain)
+
+**What was asked.** *"Could you have a layman agent run through the sim using the checklist to see
+if it can follow it?"* A fresh agent with no repo access drove headless Edge, reading only `#cklLog`
+and the board's text and screenshots. 3 of 6 legs completed (heatup, rampdown, shutdown). The report
+is `Diagnostic/CHECKLIST_PLAYTEST_2026-09-07_LAYMAN.md`.
+
+**The trap: the playtester's diagnosis was wrong and its observation was right.** It reported "a
+boron dilution that nothing ever stops" and recommended a "press OFF" step. Measured on the full stack
+from `cold_shutdown` (918 ppm), target 719, three press orders:
+
+| order | channel afterwards | boron at 4 h |
+|---|---|---|
+| set 719, then ON (the checklist's words) | target re-captured to 919, dose 0, "idle" | **565, still falling** |
+| set 719 only | dose delivered, then re-anchored | 788, holding |
+| ON, then set 719 | same | 787, holding |
+
+So the channel does stop; **re-pressing ON on an engaged channel** is what never stopped. The kernel's
+`_toggleChannel` engage branch re-captures the target and zeroes the conc books but never sent
+`set_boron_adjust rate 0` — only the disengage branch did — so the last dilute demand stood in the
+engine under a channel reading idle. One line; measured after: re-press ON ten minutes into the dose
+→ holds at 897. The 788-not-719 landing is a second defect (the totalizer counts injected
+ppm-equivalent, the plant moves two-thirds of it, and the target re-anchors to the analyzer) — filed
+with a ruling request, not tuned. The startup replay could never see either: `pwr_startup` starts at
+`hot_zero_power`, which boots at 719.
+
+**The dump seam.** Cooldown step 4 was inert for the playtester: `set_steam_dump auto` maps to
+'pressure' only with the turbine tripped (pwr2_shell), so a plant that was put in AUTO at power and
+then scrammed is still in 'tavg'. Measured (`hot_full_power` → load 0 → scram): mode 'tavg'; AUTO
+again → 'pressure'; 640 psi then cools 287.7 → 257.0 °C in 30 plant-minutes. The leg's own IC boots
+in 'pressure'. The per-leg replay cannot see a chain seam; `run_procedures_chain` is the shape that
+would, and there is no pwr2 chain runner.
+
+**Grading facts worth keeping.** A step with `cmd` and no predicate completes only on `cmdSeen`
+(instructor_layer `met = st.cmd ? c.cmdSeen`), so "Check X reads AUTO" with a `cmd` demands the press
+it forbids. And an `acc` beside an `accs` is IGNORED (`if (fHasAccs) … else if (st.acc)`) — heatup
+step 15 carries both, and its `plant_mode` acc has never been graded.
+
+**Still open.** The dose shortfall issue; S11/S12 (cooldown window missed, spray refusing MANUAL)
+observed only on a twice-tripped plant; S15 (the checklist ignores a reactor trip).
+
 ## Session log — 2026-09-06-develop-a (#653 — two fresh-reader reviews of the live checklists, a writing guide built from them alone, and the six-leg rewrite)
 
 **What was asked.** Spawn minimal-context agents to review the Mode 5 → 100 % → Mode 5 checklists
