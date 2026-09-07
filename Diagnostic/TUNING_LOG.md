@@ -81,8 +81,48 @@ tank is far away — so it was never short). Gates +3 in `run_pwr2_cvcs`, +2 in 
 the kernel branch reads ~788 re-anchored. A `run_autoctl` pwr2 rig was tried first and cannot exist
 as written: `rig()` hooks `service.layer`, which is null on pwr2.
 
-**Still open.** S11/S12 (cooldown window missed, spray refusing MANUAL) observed only on a
-twice-tripped plant; S15 (the checklist ignores a reactor trip).
+**Pass 2 (same day, after the fixes and #654): 4 of 6.** `Diagnostic/CHECKLIST_PLAYTEST_2026-09-07_LAYMAN_PASS2.md`.
+Pass 1's S11/S12 were NOT artefacts of a tripped plant — they reproduce on a clean chain, and both
+descend from two instructions the replay never obeys literally:
+
+| the step said | the player did | measured (full stack, hot_zero_power lineup) |
+|---|---|---|
+| "lower DUMP SETPOINT in stages: 640, then 400 …" | typed 640 | Tavg 547 → 497 °F in 60 s (≈3,000 °F/h), PRESSURIZER LEVEL 25 → 0 %, PRIMARY PRESSURE 1921 → 1343 psi; the replay's `ramp` interpolates the same points over 9,600 s |
+| — 50 psi every 5 min | — | 547 → 490 °F over 40 min (85 °F/h), level 27 % flat, pressure held |
+| "SPRAY … MANUAL … 100 %" | did, from level 48 % | solid in 3 min, spray shut itself off, pressure bounced back UP through the accumulator window — exactly what latches the #627 clock hold ("entering from below") — and the 1615 → 665 window had passed before the isolate step was active |
+
+**A trap inside the measurement:** my first spray probes ran the cooldown lineup by hand on the
+service and went SOLID at every spray rate (100 / 50 / 30 / 20 %, level 100 % by ~600 psi, 413 never
+reached, charging MAN 0 changing nothing) — while the gate's replay had passed the 100 % route at
+228 psi / 65 %. Replayed through `procedures_harness` itself (seed 42), the end of the wait step:
+100 % → 154 psi, level 69 %, window ~4.5 min; 50 % → 233 psi, level 66 %, window > 5 min; 20 % →
+465 psi (too slow: `RHR ALIGN BLOCKED … 455 psig`). Whatever my hand-rolled prep did differently
+(not found), the harness is the replay's authority and the numbers above are its. So: 50 psi at a
+time with the rate in the note; spray **50 %** accepted at 1615 psi (the window's own top); the
+wait step names PRESSURIZER LEVEL, hold 540 → 1200 s. The player's solid pressurizer stands on a
+48 % start (after the fast dump walk refilled it) — the fixed walk leaves it near 27 %.
+
+**The ascension trip.** The replay lands 569.7 / 575.8 / 579.0 / 578.8 °F at 30 / 50 / 75 / 90 MWe
+against a program of 556 / 562 / 570 / 575 — it never trims, and the stages ticked on load and power
+only. The player, pulling the same step counts, ran 581 → 600 °F and tripped on OTΔT at 93 %. Each
+stage now carries a Tavg ceiling the replay meets (bounds +3 °C over its own landings) and names the
+band value; the caution says the plant trips on temperature before power. The proper fix — a replay
+that trims — is not built; the ceilings are a floor under the defect, not the program band.
+
+**The dump seam moved to its cause.** Pass 1 put the STEAM DUMP AUTO press in cooldown step 4; the
+seam is made by the SHUTDOWN leg (AUTO at power = 'tavg', scram, dump 0 %), so its last step now
+presses AUTO and is graded on the valve carrying flow (~13 %). The old acceptance was
+`decay_heat_pct > 1`, a done-when with no readout on the board, under text claiming "REACTOR POWER
+near 2 %" against a tile reading 0.2 (fission).
+
+**Startup ladder margins.** Measured counts at the replay's cumulative bursts: 94 → 7.8e2, 157 →
+1.5e3, 188 → 3.6e3, 202 → 9.1e3, 211 → 3.6e4; at the player's 90: 7.6e2 — a 9 % margin on the first
+rung that the player's own plant fell under (5.5–6.4e2). The steps now state the count as the
+criterion and the position as a range.
+
+**Still open.** S15 (the checklist ignores a reactor trip); the #627 clock hold latches on a
+cooldown whose pressure bounces back up through the window (a symptom of the solid pressurizer,
+not reproduced with 20 % spray); a replay that trims Tavg.
 
 ## Session log — 2026-09-06-develop-a (#653 — two fresh-reader reviews of the live checklists, a writing guide built from them alone, and the six-leg rewrite)
 

@@ -339,6 +339,22 @@ rules the failures add:
   covers the TURBINE-GENERATOR card; nothing said to close it, and the LATCH press landed on
   the plot.
 
+The second playthrough (same day, after those fixes: 4 of 6 legs) added three more:
+
+- **P8. A number in a step is a number the player will type at once.** "Lower DUMP SETPOINT
+  in stages: 640, then 400 …" was replayed by the harness as a smooth ramp and typed by the
+  player as a 380 psi step: 50 °F in one plant-minute and an empty pressurizer. If the plant
+  needs a rate, the step gives the increment and the wait ("50 psi at a time, about 5
+  plant-minutes each"), and the note gives the number that proves it.
+- **P9. A stage ticks on the reading it tells the player to hold.** The ascension stages said
+  "adjust the rods until AVG COOLANT TEMPERATURE is inside its band" and ticked on load and
+  power only; the coolant ran 20 °F hot for four stages and tripped on temperature. If the
+  text names a reading, the acceptance carries it, even as a ceiling.
+- **P10. The replay's route is not the player's speed.** Spray at 100 % reached the wait
+  step's target before the pressurizer went solid on the replay, and not on a player who
+  took two minutes longer. Measure the slow route before authoring the fast one, and prefer
+  the setting that leaves a margin (50 %) to the one that only just works.
+
 ## 12. What is the renderer's job, not the writer's
 
 Found by the reviews, tracked as product defects in #653; a writer works around them per §2

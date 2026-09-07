@@ -114,10 +114,18 @@ if (!only) {
      * on `awaiting_ack` until the player presses Acknowledge, so a driver that only ticks can
      * no longer walk a checklist to completion. This loop is the player: tick, and press the
      * button whenever the step is holding for one. Everything else still self-checks. */
-    var acks = 0;
-    for (var k = 0; k < 120; k++) {
+    var acks = 0, dumpPressed = false;
+    for (var k = 0; k < 300; k++) {
       s = svc.tick();
       var cs = s.instructor && s.instructor.checklist;
+      /* THE LAST STEP IS NOW AN ACTION (#653 pass 2, S-11 / pass 1 S2): after the scram the dump
+       * is still in 'tavg' mode from power and carries nothing, so the leg's last step presses
+       * STEAM DUMP AUTO (a cmd-kind accs entry) and is graded on the valve carrying flow. The
+       * player presses it once the step is active — so does this driver. */
+      if (cs && cs.step_index === 2 && !cs.complete && !dumpPressed) {
+        svc.handleCommand({ action: 'set_steam_dump', mode: 'auto' });
+        dumpPressed = true;
+      }
       if (cs && cs.awaiting_ack && !cs.complete) {
         svc.handleCommand({ action: 'checklist_check', index: cs.step_index });
         acks++;
@@ -128,8 +136,32 @@ if (!only) {
        !!ckst && ckst.complete === true,
        ckst && ('done ' + ckst.steps_done.filter(Boolean).length + '/' + ckst.step_total +
                 ', ' + acks + ' acknowledged'));
-    ck('at least one step HELD for an acknowledgement (#619 item 4 — not a vacuous loop)',
-       acks > 0, acks + ' acks issued');
+    /* THE ACK PROOF MOVED (#653 pass 2). It used to ride on this leg's last step, an observation
+     * that satisfied itself after the scram and then HELD. That step is an action now (STEAM
+     * DUMP AUTO, graded on the valve carrying flow), so no step of the shutdown leg holds for an
+     * acknowledgement any more — and "0 acks" here says only that. The mechanism is proved on a
+     * step that still holds: the heatup's opening Mode 5 confirm, which satisfies itself on the
+     * cold plant at once and waits for the button. */
+    (function () {
+      var svc2 = mkSvc('cold_shutdown');
+      svc2.handleCommand({ action: 'start_checklist', procedure_id: 'pwr_heatup' });
+      var s2 = null, held = false, acked = false;
+      for (var k2 = 0; k2 < 80; k2++) {
+        s2 = svc2.tick();
+        var c2 = s2.instructor && s2.instructor.checklist;
+        if (c2 && c2.awaiting_ack && !c2.complete) {
+          held = true;
+          svc2.handleCommand({ action: 'checklist_check', index: c2.step_index });
+          acked = true;
+          break;
+        }
+      }
+      var after = s2 && s2.instructor && s2.instructor.checklist;
+      for (var k3 = 0; k3 < 5 && after && after.step_index === 0; k3++) { s2 = svc2.tick(); after = s2.instructor.checklist; }
+      ck('at least one step HELD for an acknowledgement (#619 item 4 — not a vacuous loop): the heatup\'s opening confirm',
+         held && acked && !!after && after.step_index >= 1,
+         held ? 'held; acknowledged; index now ' + (after && after.step_index) : 'never held in 80 ticks');
+    })();
     ck('grading ran instrument-first on pwr2 (graded_by never fell back for mapped params)',
        true, 'asserted structurally by 2a; per-step graded_by is in the snapshot');
   })();

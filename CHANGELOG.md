@@ -32,6 +32,32 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
 
 ## [Alpha 1.7.4-rc3] — 2026-09-06
 
+### Fixed (second layman playthrough: 4 of 6 legs, and the two failures measured — #653)
+
+The same fresh-context play-test re-run on the fixed tree (`Diagnostic/CHECKLIST_PLAYTEST_2026-09-07_LAYMAN_PASS2.md`):
+heatup, startup, rampdown and shutdown completed; the ascension tripped on OTΔT at 600 °F and the
+cooldown went solid. Measured on the full stack: **(1)** the cooldown step said "lower DUMP SETPOINT
+in stages: 640, then 400 …" — typing 640 takes AVG COOLANT TEMPERATURE 547 → 497 °F in one
+plant-minute (3,000 °F/h against the step's own 100) and PRESSURIZER LEVEL to 0 %; 50 psi every
+5 minutes runs at 85 °F/h with level steady — the step now says so. **(2)** SPRAY at 100 % filled the
+player's pressurizer solid (48 → 100 % in three plant-minutes), the spray then shut itself off and
+pressure bounced back UP through the accumulator window — which is what latched the clock hold —
+and the window had already been run through before the isolate step was reached. Through the gate's
+own harness, the end of the wait step: 100 % → 154 psi at level 69 %, window ~4.5 min; 50 % →
+233 psi at 66 %, window over 5 min; 20 % → 465 psi, too slow. The step now says 50 %, accepts at
+1615 psi (where the valve regains power), and the wait step names PRESSURIZER LEVEL.
+**(3)** the ascension replay itself lands 569.7 / 575.8 / 579.0 / 578.8 °F at 30 / 50 / 75 / 90 MWe
+untrimmed, and the stages ticked on load and power alone while the player's coolant ran 581 → 600
+and tripped on temperature; each stage now carries a temperature ceiling and names the band value,
+and the leg says the plant trips on temperature (OTΔT) before power. **(4)** the shutdown leg now
+presses STEAM DUMP AUTO after the scram (pass 1's TAVG-mode seam, moved to the leg that causes it),
+graded on the valve carrying flow — the old "REACTOR POWER near 2 %" was the decay heat the tile
+does not show. Also: the startup ladder states the count as the criterion with the position as a
+range (the replay reaches 7.8e2 at 94 steps, a 9 % margin the player fell under); the criticality
+done-when reads "≥ 0.1 %" instead of "≥ 0 %"; close the TRIP BLOCKS panel (it covers the rod
+buttons); the WARP hint names Ack All; "OFF lit on the RCP FLOW card" (the tile reads 3 %); the
+speed row is shared, not under SHUTDOWN.
+
 ### Fixed (the boron batch dose landed short and re-anchored its target — #654)
 
 *(OWNER RULING, 2026-09-07: "654 as recommended" — the totalizer counts delivered

@@ -3839,7 +3839,7 @@
            * is not there. */
           var rung = RD.CklSpeedHint(holdS);
           h += '<div class="ckl-sub ckl-wait">⏩ About ' + span + ' at 1× — set the speed control to <b>' +
-            rung.speed + '×</b>' + (rung.warp ? ' (WARP; the plant must be quiet to take it — if it is refused, 60× works)' : '') + '.' +
+            rung.speed + '×</b>' + (rung.warp ? ' (WARP; the plant must be quiet to take it — if it is refused, press Ack All on the ALARMS panel and try again, or use 60×)' : '') + '.' +
             (typeof st.wait_hint === 'string' ? ' ' + mesc(st.wait_hint) : '') + '</div>';
           waitLineShown = true;
         }
