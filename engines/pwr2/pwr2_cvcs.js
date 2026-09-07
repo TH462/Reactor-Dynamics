@@ -361,6 +361,17 @@
            : cv.makeupSource === 'dilute' ? CVCS.primary_water_ppm
            : cv.boron_ppm;                            /* 'match' -- inventory only, no shift */
     }
+    /* THE DELIVERED RATE, PUBLISHED (#654, owner-ruled 2026-09-07 "as recommended"). The
+     * balance reduces to dC/dt = inFlow*(C_in - C)/M for the makeup path, and when the clamp
+     * above binds that is LESS than the commanded rate: at hot zero power the charging lineup
+     * is ~13 gpm, pure water cannot dilute 719 ppm faster than -0.036 ppm/s, and the kernel's
+     * batch totalizer was counting the commanded -0.050 — so a 119 ppm dose landed 81 ppm
+     * later and the post-dose lab sample then re-anchored the target to the shortfall
+     * (measured: 719 -> 638 against 600 asked; 918 -> 788 against 719). The totalizer now
+     * counts this number, the makeup path's own contribution — NOT the whole dC/dt, so an
+     * ECCS boration during a dose is still not fought (the design's declared side effect).
+     * Zero when no rate is commanded: the 'match' lineup shifts nothing by construction. */
+    cv.boron_rate_delivered = (cv.boron_rate_cmd !== 0 && M > 0) ? inFlow * (C_in - cv.boron_ppm) / M : 0;
     if (M > 0) {
       var dC = (inFlow * C_in + si * C_si - letdown * cv.boron_ppm) / M;
       /* the inventory change itself re-concentrates what is left */

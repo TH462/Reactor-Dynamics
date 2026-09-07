@@ -1882,8 +1882,14 @@
     // Totalizer bookkeeping FIRST: the rate commanded at the previous evaluation
     // has been injecting for `step` sim-seconds (the engine applies the metered
     // rate only while the path is available — the same gate as `paused` here).
-    if (!paused && c.concBasis != null) {
-      if (c.concMode === 'borate') c.concBasis += def.rate * step;
+    if (!paused && c.concBasis != null && c.concMode !== 'hold') {
+      /* COUNT WHAT WAS DELIVERED, NOT WHAT WAS ASKED (#654, owner-ruled 2026-09-07). A plant
+       * that publishes its delivered makeup rate (def.deliveredRate -> ppm/s, signed) has its
+       * books advance by that; the blender's clamp means it can be well under `rate`. A plant
+       * that publishes nothing keeps the feedforward-by-command books this always had. */
+      var delivered = def.deliveredRate ? def.deliveredRate(ctx) : null;
+      if (delivered != null) c.concBasis += delivered * step;
+      else if (c.concMode === 'borate') c.concBasis += def.rate * step;
       else if (c.concMode === 'dilute') c.concBasis -= def.rate * step;
     }
     // A NEW target = a new dose computation. Re-anchor the books from the

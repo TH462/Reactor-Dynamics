@@ -67,8 +67,22 @@ would, and there is no pwr2 chain runner.
 it forbids. And an `acc` beside an `accs` is IGNORED (`if (fHasAccs) … else if (st.acc)`) — heatup
 step 15 carries both, and its `plant_mode` acc has never been graded.
 
-**Still open.** The dose shortfall issue; S11/S12 (cooldown window missed, spray refusing MANUAL)
-observed only on a twice-tripped plant; S15 (the checklist ignores a reactor trip).
+**#654, ruled "as recommended" the same day: the totalizer counts delivered concentration.** The
+mechanism was NOT the mass balance under-delivering: the blender inverts the balance exactly, so an
+unclamped command delivers its rate. It was the CLAMP — at hot zero power the charging lineup is
+~13 gpm, pure water cannot dilute 719 ppm faster than inFlow·C/M = −0.036 ppm/s, and the books
+counted the commanded −0.050 (measured together at 2 s resolution: command −0.050 flat, books
+−0.050/s, plant −0.0365/s). Fix: `pwr2_cvcs` publishes `boron_rate_delivered` = inFlow·(C_in − C)/M
+(the makeup path only — ECCS boration is still not fought), the shell carries it, `pwr_control`
+declares `deliveredRate` (HR3), the kernel integrates it with the command as fallback. After: 600.3
+for 600, 719.3 for 719 from cold in 2 h, 920.2 for 920 (boration is unclamped at 0.050 — the acid
+tank is far away — so it was never short). Gates +3 in `run_pwr2_cvcs`, +2 in `run_checklist_pwr2`
+(2l: the cold plant reaches the startup step's 719); injection via a `require` preload stripping
+the kernel branch reads ~788 re-anchored. A `run_autoctl` pwr2 rig was tried first and cannot exist
+as written: `rig()` hooks `service.layer`, which is null on pwr2.
+
+**Still open.** S11/S12 (cooldown window missed, spray refusing MANUAL) observed only on a
+twice-tripped plant; S15 (the checklist ignores a reactor trip).
 
 ## Session log — 2026-09-06-develop-a (#653 — two fresh-reader reviews of the live checklists, a writing guide built from them alone, and the six-leg rewrite)
 

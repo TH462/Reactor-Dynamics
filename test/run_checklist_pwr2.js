@@ -474,6 +474,31 @@ if (!only) {
        !!msg && /source range/i.test(msg) && /overtaken/i.test(msg),
        msg ? msg.slice(0, 110) : 'no instructor message');
   })();
+
+  /* 2l. THE STARTUP CHECKLIST'S OWN BORON NUMBER IS REACHABLE FROM THE HEATUP'S PLANT (#654,
+   * owner-ruled 2026-09-07 "as recommended"; found by the layman playtest, #653 S1/S14).
+   * `pwr_startup` replays from hot_zero_power, which boots AT 719 ppm — so nothing here ever
+   * drove the dilution the step actually asks for, from the 918 ppm the pump-heat heatup hands
+   * over. Measured before the fix: the batch totalizer counted the COMMANDED -0.05 ppm/s while
+   * the clamped blender delivered about -0.03, the dose stopped at 788, and the post-dose lab
+   * sample re-anchored the target to 788. The plant now publishes its delivered rate and the
+   * kernel integrates that. Full stack, the cold plant, the step's own command; INJECTION —
+   * the kernel's delivered branch removed — reads ~788 with the target re-anchored there. */
+  (function () {
+    var svc = mkSvc('cold_shutdown');
+    var s = null; for (var i = 0; i < 20; i++) s = svc.tick();
+    var b0 = s.true_state.boron_ppm;
+    svc.handleCommand({ action: 'set_auto_setpoint', channel_id: 'boron_conc', value: 719 });
+    var t0 = s.metadata.sim_time;
+    while (s.metadata.sim_time - t0 < 2.5 * 3600) s = svc.tick();
+    var ch = (s.automation && s.automation.channels || []).filter(function (c) { return c.id === 'boron_conc'; })[0];
+    ck('the heatup\'s 918 ppm plant dilutes to the startup step\'s 719 ppm and stops there',
+       Math.abs(s.true_state.boron_ppm - 719) <= 3,
+       b0.toFixed(0) + ' -> ' + s.true_state.boron_ppm.toFixed(1) + ' ppm after 2.5 plant-hours (books-by-command landed ~788)');
+    ck('...and the channel still reports the 719 the operator set, not a re-anchored shortfall',
+       !!ch && Math.abs(ch.setpoint - 719) <= 3 && /idle/.test(ch.note || ''),
+       ch ? 'setpoint ' + ch.setpoint.toFixed(0) + ' [' + ch.note + ']' : 'no boron_conc channel');
+  })();
 }
 
 console.log('\n' + '='.repeat(74));

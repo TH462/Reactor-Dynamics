@@ -1539,6 +1539,17 @@
       // check into the plant must not quietly turn that into a throw.
       pausedWhen: function (s) { return !!(s.control_state && s.control_state.charging_pump_running === false); },
       pausedNote: 'idle — charging pump OFF',
+      /* THE TOTALIZER COUNTS WHAT THE PLANT DELIVERS (#654, owner-ruled 2026-09-07). The
+       * blender clamps at pure water and at the acid tank, so the delivered rate is below
+       * `rate` whenever the charging lineup is small — measured at hot zero power, -0.036
+       * against the -0.050 commanded — and books that count the command land the dose short
+       * and then re-anchor the target to the shortfall. The plant publishes its own number
+       * (control_state.boron_rate_delivered, pwr2 only); absent, the kernel falls back to the
+       * command, which is the retired engine's flat-rate world and stays byte-identical. */
+      deliveredRate: function (s) {
+        var v = s.control_state ? s.control_state.boron_rate_delivered : null;
+        return (v != null && isFinite(v)) ? v : null;
+      },
       // rate: 0.05 ppm/s. The old 0.5 was a firehose: ~5 pcm/s spiked power ~10 % per
       // 10 ppm asked (TUNING_LOG S9). [tune]
       //

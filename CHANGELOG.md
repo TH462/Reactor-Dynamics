@@ -32,6 +32,25 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
 
 ## [Alpha 1.7.4-rc3] — 2026-09-06
 
+### Fixed (the boron batch dose landed short and re-anchored its target — #654)
+
+*(OWNER RULING, 2026-09-07: "654 as recommended" — the totalizer counts delivered
+concentration.)* The kernel's batch totalizer advanced its books by the COMMANDED rate (0.05 ppm/s)
+while PWR2's blender, clamped at pure water for the charging lineup in service (about 13 gpm at hot
+zero power), delivered −0.036; the dose stopped when the books said so, the post-dose lab sample
+then snapped the target to the shortfall, and the board reported it as the number the operator had
+set. Measured: 719 → 638 against 600 asked; from the pump-heat heatup's 918 ppm, the startup
+checklist's own 719 landed at 788 — never reachable by setting 719. `pwr2_cvcs` now publishes
+`boron_rate_delivered` (the makeup path's own inFlow × (C_in − C) / M, not the whole dC/dt, so an
+ECCS boration during a dose is still not fought), the shell carries it in `control_state`, the
+channel declares a `deliveredRate` hook (`pwr_control.js`, HR3 — the kernel reads no plant field),
+and `control_kernel._stepConc` integrates it, falling back to the command where a plant publishes
+nothing (the retired engine, byte-identical). After: 600.3 for 600, 719.3 for 719 from cold in
+2 h, 920.2 for 920. Gates: `run_pwr2_cvcs` +3 (the field is the realised d(ppm)/dt of the same
+steps, sits under the command where the clamp binds, reads 0 at 'match'), `run_checklist_pwr2` +2
+(the cold plant reaches 719 and the channel still reports 719; injection with the kernel branch
+removed reads ~788 re-anchored).
+
 ### Fixed (a layman played the six legs in the sim and three of them could not be finished — #653)
 
 A fresh agent with no repo access drove headless Edge through the chain reading only the panel and

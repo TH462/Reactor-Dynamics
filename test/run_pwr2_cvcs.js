@@ -303,6 +303,27 @@ function runSuite(C, rec, quiet, only) {
    * so the achievable rate is inFlow*(C_tank − C)/M and the proportional-to-C dilution
    * shape survives the actuator. */
   if (!quiet) console.log('\nRATE ACTUATOR  [a commanded ppm/s, blender-shaped, tank-clamped]');
+  /* THE DELIVERED RATE IS PUBLISHED, AND IT IS THE BALANCE'S OWN (#654, owner-ruled 2026-09-07).
+   * With a small charging lineup the pure-water clamp binds and the plant dilutes slower than
+   * the command; the kernel's batch totalizer used to count the command and landed every such
+   * dose short (719 -> 638 against 600 asked at hot zero power). `boron_rate_delivered` is what
+   * the makeup path actually moves concentration by, ppm/s — asserted against the realised
+   * d(ppm)/dt of the very same steps, and asserted to sit UNDER the command where the clamp
+   * binds. Both halves are needed: a field that echoed the command would pass the first only. */
+  (function () {
+    var s = plant(), cv = C.createCVCS({ boron_ppm: 719, boron_rate_cmd: -0.05, chargingDemand: 0.1 });
+    C.stepCVCS(cv, s, 0.02);                           /* one step to seed the field */
+    var b0 = cv.boron_ppm, sum = 0, n = 0;
+    for (var q = 0; q < 50; q++) { C.stepCVCS(cv, s, 0.02); sum += cv.boron_rate_delivered; n++; }
+    var realised = (cv.boron_ppm - b0) / (50 * 0.02);
+    ck('boron_rate_delivered IS the realised d(ppm)/dt of the makeup path', sum / n, realised, 2e-4, 'ppm/s');
+    ckT('...and sits UNDER the -0.05 command when the pure-water clamp binds (small charging lineup)',
+        sum / n < 0 && sum / n > -0.05 + 0.005,
+        'delivered ' + (sum / n).toFixed(4) + ' ppm/s against -0.0500 commanded');
+    var cvIdle = C.createCVCS({ boron_ppm: 719, boron_rate_cmd: 0 });
+    C.stepCVCS(cvIdle, plant(), 0.02);
+    ck('...and reads exactly 0 with no rate commanded (the match lineup shifts nothing)', cvIdle.boron_rate_delivered, 0, 0, 'ppm/s');
+  })();
   ckT('a rate command RETURNED to 0 is bit-identical to a never-commanded lineup from the ' +
       'same state (#510 LOW rebuild: the old form set 0 on a fresh object whose DEFAULT is ' +
       'already 0 — two constructor defaults compared, a check that could never fail)',

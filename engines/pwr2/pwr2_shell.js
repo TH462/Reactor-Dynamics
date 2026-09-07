@@ -1787,6 +1787,10 @@
       /* the commanded boron rate — the board's BORATING/DILUTING/HOLD word and the
        * boron_trim channel's read-back both key on this one field (#507 wave 1) */
       boron_adjust: e.cv.boron_rate_cmd || 0,
+      /* what the makeup path is actually DELIVERING, ppm/s signed (#654) — the batch
+       * totalizer counts this, not the command, because the blender clamps at pure water /
+       * the acid tank and the plant then delivers less than it was asked */
+      boron_rate_delivered: e.cv.boron_rate_delivered || 0,
       /* REAL since the feed train (2026-08-21): the delivered main-feed fraction — the
        * "speed" gauge presentation the board's five reader tiles expect (measured) */
       feed_pump_speed_pct: Math.min(120, e.fw.feed_frac * 100),
