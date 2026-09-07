@@ -126,6 +126,7 @@ than the one engraved on it has failed before the verb.
 | **PRESSURIZER (PZR)** card, **HEATER** / **SPRAY** columns | PZR HEATERS, the HEATER card, the ladder |
 | **RCP FLOW** card, **ON** / **OFF** | the RCP card, the pumps |
 | **ROD CONTROL** card, **CONTROL** / **SHUTDOWN** columns; **SLOW** / **MED** / **FAST**; **WITHDRAW** / **INSERT** | the SHUTDOWN card, the bank, the rods |
+| — under CONTROL the buttons are momentary: **tap** moves one step, **hold** drives at the selected speed (SLOW 7, MED 42, FAST 63 steps a minute). Under SHUTDOWN one **click** latches and the bank runs to its stop. Say which. | "withdraw about 60 steps", "click … again", "release" without saying which mechanic |
 | **CONTROL ROD POSITION** / **SHUTDOWN ROD POSITION** (0 /627) | bank position |
 | **SOURCE RANGE**, **INTER RANGE**, **STARTUP RATE** (NUC INSTR card) | SR, IR, SUR |
 | **BORON** card, **ON** / **OFF** / **SAMPLE** | the make-up panel, boron control |
@@ -215,13 +216,13 @@ term in it that a step uses without its one-line definition is a defect in that 
 - **U7. Every number names what it is of.** "1.9 %" of what; "8.1 pcm" is meaningless without
   a scale ("a very small nudge"); "1.4e3" needs "1,400 counts a second" the first time in the
   leg.
-- **U8. US customary units, SI pair — RULING NEEDED.** Both reviewers found the SI pair
-  doubles the densest lines in a 42-character column, and the board prints no SI anywhere.
-  The standing owner directive (2026-07-29) requires US first with SI in parentheses in the
-  manuals and in everything handed to the owner, and `run_manual_units` enforces it on this
-  file. **Recommendation:** the step line carries the US figure only, as the tile shows it; the
-  SI pair appears once, in the `why`, where the term is taught. Until ruled, pair every
-  dimensional quantity or none within a step — never some.
+- **U8. No SI anywhere in a checklist** *(OWNER RULING, 2026-09-06: "DO not include SI. There
+  will be an option to switch between imperial and SI but i dont think thats been implemented
+  yet.")*. The board prints °F, psi, %, gpm, MWe and cps, and the checklist prints the same.
+  When a display-unit toggle is built, the conversion is the renderer's job, not the author's.
+  **Gated:** `run_style` `checklist_no_si` scans every player-facing string of the pool,
+  including the generated done-when labels. (The manuals keep their US-first-with-SI rule; this
+  ruling is the checklist's.)
 
 ---
 

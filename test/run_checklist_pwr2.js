@@ -338,8 +338,8 @@ if (!only) {
     var proc = POOL.filter(function (p) { return p.id === 'pwr_heatup'; })[0];
     var accIdx = -1, spIdx = -1;
     proc.steps.forEach(function (st, k) {
-      if (/Open the Accumulator valve/.test(st.text)) accIdx = k;
-      if (/Raise the pressurizer pressure setpoint/.test(st.text)) spIdx = k;
+      if (/Open the accumulator valve/i.test(st.text)) accIdx = k;
+      if (/Raise SET PZR PRESSURE to 1700/.test(st.text)) spIdx = k;
     });
     var s = null, issued = {}, holdTick = null, stepAtHold = null, ticksToAcc = null;
     var pAtHold = 0, pAtAcc = 0, chatter = 0, refused = 0, accepted = 0, spDialledBox = null;

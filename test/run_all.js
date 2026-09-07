@@ -1772,7 +1772,7 @@ var BASELINES = {
   // sentences and would have been "fixed" by deleting the pairs run_manual_units
   // requires. The word count went to the backlog instead (mean 55, worst 102; before
   // the pass, worst 246).
-  'run_style.js':          { code: 0, score: '8checks 0failed' },
+  'run_style.js':          { code: 0, score: '9checks 0failed' },   // 8 -> 9 on 2026-09-06: checklist_no_si (owner ruling, #653)
   // 19/19 86passed → 23/23 117passed (2026-07-28, #240): four suites for
   // mode/lineup-dependent alarm classification.
   // 26 -> 28 on 2026-07-31 (#125): the PORV's operator switch is a SEPARATE command from

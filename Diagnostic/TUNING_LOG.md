@@ -29,6 +29,47 @@ and the user-visible summary in `CHANGELOG.md`. This file points at those and tr
 
 ---
 
+## Session log — 2026-09-06-develop-a (#653 — two fresh-reader reviews of the live checklists, a writing guide built from them alone, and the six-leg rewrite)
+
+**What was asked.** Spawn minimal-context agents to review the Mode 5 → 100 % → Mode 5 checklists
+as a reactor operator and as a layman; suggestions per step; a writing guide — *"Do not taint it
+with the old guide"*. Then *"DO not include SI… then do the rewrite."*
+
+**How the reviews were run, and the trap in it.** The pool was dumped to plain markdown (67 steps,
+8,798 words) and the panel screenshotted in 1000 px slices at 2× with every "Why?" open, so each
+reviewer saw the container, not the source. **My extract omitted the `accs`/`saw` predicate forms**,
+so both reviewers reported "30 of 67 steps have no acceptance / Leg 4 checks nothing". Measured on
+the built pool: **6 of 67** lack a predicate (startup 3, 16, 17; ascension 2, 10; rampdown 1). What
+they had actually seen is real and is the renderer's: the done-when line is drawn on the ACTIVE step
+only, and leg `purpose`/`prereq`/`cautions` are never drawn during a run (`ui/app.js:8321` is the
+browse card). Both corrections are in the Diagnostic headers. Second trap: the layman read the
+shutdown-bank note ("one click latches") and applied it to the control bank; the CONTROL buttons
+are momentary (tap = 1 step, hold = drive; `pwr_board_wiring.js:671`), so "insert in one drive and
+release" was correct and the *note* was in the wrong leg.
+
+**Numbers the rewrite standardised, and where each comes from.** The tile prints psia labelled
+`psi` (2.5 MPa → "363 psi"), so every figure is what the tile shows: accumulator lock **1615 psi**
+(`admin_lock_psig` 1600 + 14.7), window **665 psi** (`p0_mpa`), setpoint floor **1700 psi**
+(`setpoint_min_mpa` 11.72), permissive **1972 psi** (13.6 MPa), RHR ALIGN accepted below **440 psi**
+(`permissive_open_psig` 425 + 14.7; the step's own acceptance is 2.85 MPa = 413 psi and the text
+gives both), RHR autoclose **600 psi** (585 + 14.7). Rod rates from `ROD_SPEEDS`: SLOW 7, MED 42,
+FAST 63 steps/min. Before: "363 psi to 1700 psig" in one clause; "1700 psig floor" beside a target
+of "1716 psi"; "1615 psi" beside "1600 psig".
+
+**Gates.** `run_style` 9/9 (+`checklist_no_si`, self-test CAN FAIL), `run_manual_units` OK (a pool
+with no SI has no orphans — that gate cannot hold the ruling, which is why the new check exists),
+`run_manual_controls` 552/552 (`control`/`hl` untouched), `run_procdocs` 37/37, `run_reactivity`
+30/30 after the 8.1 pcm figure went back into the startup caution in defined form (the check parses
+`cautions` for `N pcm`), `run_checklist_pwr2` (two text anchors retargeted — they locate steps, they
+do not assert prose). Backlog moved: step texts over 20 words **8 → 46 of 67**, because
+"AVG COOLANT TEMPERATURE" is three words where "Tavg" was one; `why` over 80 words **11 → 0**, longest
+137 → 73.
+
+**Still open.** The four renderer defects in #653 (cautions not rendered; done-when only on the
+active step; tolerance-not-band wording; note/why contrast). Twenty step lines still exceed 150
+characters at panel width; the guide's three-line ceiling is aspirational until the board names
+are shorter or the panel is wider.
+
 ## Session log — 2026-09-05-develop-e (#641 — a 1/M step the plant has moved past is OVERTAKEN, not a soft lock; #606 closed out)
 
 **The ask** (owner, 2026-09-05): *"mode 3>1 checklist step 9 the user can get stuck if they

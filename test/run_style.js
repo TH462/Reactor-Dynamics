@@ -210,6 +210,36 @@ var CHECKS = [
       d.steps[0].step.why = 'One. Two. Three. Four. Five sentences is a chapter, not a note.';
     },
   },
+  /* NO SI IN THE LIVE CHECKLIST *(OWNER RULING, 2026-09-06: "DO not include SI. There will be
+   * an option to switch between imperial and SI but i dont think thats been implemented yet.")*.
+   * The board prints no SI anywhere, and both readability reviews found the "(15.41 MPa)" pair
+   * doubling the densest lines in a 42-character column (Blueprint/CHECKLIST_WRITING_GUIDE.md
+   * §6). Every player-facing string of the pwr2 pool, including the generated done-when labels
+   * and the leg-level prose the picker draws. `run_manual_units` cannot gate this: it only
+   * asks that an SI value HAVE a US partner, so a pool with no SI passes it trivially. */
+  {
+    id: 'checklist_no_si',
+    rule: 'U-ruling — no SI unit in any player-facing checklist string (board is US; SI toggle not built)',
+    run: function (d) {
+      var SI = /\b(MPa|kPa)\b|°C\b/;
+      var hits = [];
+      function chk(where, s) { if (typeof s === 'string' && SI.test(s)) hits.push(where + ' — "' + s.match(SI)[0] + '" in: ' + s.slice(0, 80)); }
+      var pool = (globalThis.RD.MANUAL_PROCEDURES || {}).pwr2 || [];
+      pool.forEach(function (p) {
+        ['title', 'purpose', 'outcome'].forEach(function (k) { chk(p.id + '.' + k, p[k]); });
+        (p.prereq || []).forEach(function (s, i) { chk(p.id + '.prereq' + i, s); });
+        (p.cautions || []).forEach(function (s, i) { chk(p.id + '.caution' + i, s); });
+        (p.precond || []).forEach(function (c, i) { chk(p.id + '.precond' + i, c.text); });
+      });
+      d.steps.forEach(function (s) {
+        ['text', 'note', 'why', 'target', 'wait_hint'].forEach(function (k) { chk(s.proc + ' step ' + s.n + '.' + k, s.step[k]); });
+        (s.step.accs || []).forEach(function (a, j) { chk(s.proc + ' step ' + s.n + '.accs' + j, a.label); });
+        if (s.step.overtaken) { chk(s.proc + ' step ' + s.n + '.overtaken', s.step.overtaken.text); chk(s.proc + ' step ' + s.n + '.overtaken', s.step.overtaken.label); }
+      });
+      return hits;
+    },
+    inject: function (d) { d.steps[0].step.target = 'PRIMARY PRESSURE 2235 psi (15.41 MPa)'; },
+  },
   {
     id: 'industry_label_case',
     rule: 'U4 — an Industry alarm label is a terse board legend: upper case throughout',

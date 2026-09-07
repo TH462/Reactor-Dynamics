@@ -30,7 +30,30 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
 
 ## [Unreleased]
 
-## [Alpha 1.7.4-rc2] — 2026-09-05
+## [Alpha 1.7.4-rc3] — 2026-09-06
+
+### Changed (the six live checklists rewritten to a new writing guide — #653)
+
+Two fresh-context reviews of the Mode 5 → 100 % → Mode 5 chain, one reading as a licensed
+operator and one as a layman, both from the rendered panel (`Diagnostic/CHECKLIST_REVIEW_2026-09-06_*.md`,
+all 67 per-step rewrites). The guide built from them, and from nothing else *(OWNER, 2026-09-06:
+"Do not taint it with the old guide")*, is `Blueprint/CHECKLIST_WRITING_GUIDE.md`. What the rewrite
+changed, in the player's words: every control and tile is named as engraved ("Tavg" appeared 34
+times and is not on the board; the tile is AVG COOLANT TEMPERATURE; "Pressure SP" is SET PZR
+PRESSURE; the SHUTDOWN and RCP "cards" are a column and the RCP FLOW card); every step opens with
+the action or with "Nothing to press"; the done-when names a tile and a value; terms are defined at
+first visible use; citations, tag numbers, development A/B numbers and epigrams are gone from
+player text; one pressure figure per interlock (1615 psi lock, 665 psi window, 1700 psi setpoint
+floor, 1972 psi permissive, 440 psi ALIGN permissive — the value the PRIMARY PRESSURE tile shows);
+the rod mechanic is stated where it is needed (CONTROL: tap one step, hold to drive at SLOW 7 /
+MED 42 / FAST 63 steps a minute; SHUTDOWN: one click latches); the scram is written as its two
+presses. **No SI anywhere in a checklist** *(OWNER RULING, 2026-09-06: "DO not include SI. There
+will be an option to switch between imperial and SI but i dont think thats been implemented yet.")*
+— gated by `run_style` `checklist_no_si` (9 checks now; injection-verified). Predicates, commands
+and holds are untouched; `control`/`hl` strings are untouched (board vocabulary gate). Corrected
+against the reviews: only 6 of 67 steps lack a predicate (the "30" both readers saw is the
+renderer drawing the done-when line on the active step only), and the CONTROL rods are momentary,
+not click-latched. The four renderer defects the reviews found are in #653.
 
 ### Fixed (the Mode 3 → Mode 1 checklist soft-locked on a 1/M step once the source range secured — #641)
 

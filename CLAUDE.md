@@ -442,13 +442,13 @@ ONE line, drop the rest. **A bullet is ~80 words.**
   Measured before designing anything: PWR2 at a **0.5 s** step stays inside instrument noise over
   2 h in three regimes (~2,700×); at **1.0 s** the quiet plant trips itself. Kinetics is exact and
   the loop sub-steps, so the "simplified physics tier" needed no physics. `run_warp_tier`.
-- **A BREVITY CAP COUNTED IN WORDS PAYS FOR ITSELF BY REDDENING ANOTHER GATE** (2026-09-03,
-  #619/#621 item 12). The worst step description ran **9 sentences / 246 words**, so a word cap
-  was the obvious fix — but the long steps carry the most numbers, and every number owes the
-  US/SI pair `run_manual_units` requires: *"the 1972 psi (13.6 MPa) P-11 permissive"* is half
-  tax, so the cheapest way to satisfy a word cap is to **delete the pairs**.
-  `checklist_why_length` counts SENTENCES; words went to the unscored backlog, where all six
-  over-80-word blocks read as exactly three. **Ask what a cap makes cheap.**
+- **A FRESH-READER REVIEW REPORTS WHAT THE RENDERER SHOWS, AND WHAT YOUR EXTRACT LEFT OUT**
+  (2026-09-06, #653). Two minimal-context reviewers, one an operator and one a layman, both
+  reported "30 of 67 steps have no acceptance": the panel draws the done-when on the ACTIVE step
+  only, and my extract had dropped the `accs`/`saw` forms — measured on the built pool, **6**. The
+  same reviews found the real defects nothing else had: "Tavg" 34 times and not on the board,
+  three units for one gauge, cautions that never render. **Verify every count on the built object
+  before it reaches an issue, and read the layman's "I could not find it" as a board fact.**
 
 
 **Standing procedure — not part of the rotation above; these do not expire.** One trap per entry.
