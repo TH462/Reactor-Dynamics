@@ -2318,9 +2318,16 @@ function runSuite(RD, rec, quiet, only) {
       ((engF.sg.mass - mF0) * 2.20462).toFixed(0) + ' lbm), steam_flow reading ' +
       engF.ins.reading.steam_flow);
 
-  /* the code safeties, with the ADV isolated so it cannot mask them. Hot Standby is the
-   * CONTROL arm: it always lifted to 0.84 x rated, so a Mode 4 that now matches it is the
-   * scale being right rather than the valve being re-tuned. */
+  /* the code safeties. Hot Standby is the CONTROL arm: it always lifted to the shipped bank
+   * scale, so a Mode 4 that matches it is the scale being right rather than the valve being
+   * re-tuned.
+   *
+   * ⚠ THIS COMMENT USED TO SAY "with the ADV isolated so it cannot mask them" and then set
+   * `e.advBlock = true`, which in pwr2_relief means the block valve is OPEN — the opposite
+   * (#643's evidence pass). The check is unaffected either way because it reads `sg_safety_kgs`
+   * and nothing else, but a false statement about a fixture is inherited by whoever reads it
+   * next, which is this issue's own subject. What the line actually does is leave the ADV in its
+   * normal lineup; the bank is held at 8.3 MPa regardless, so the ADV cannot suppress it. */
   function safetyPeak(icName) {
     var e = EN.createEngine({ initial_state: icName });
     EN.step(e, DT);
@@ -2332,8 +2339,8 @@ function runSuite(RD, rec, quiet, only) {
        * accumulation). It was 8.2 MPa = 1174.6 psig, which clears that point by 0.4 psi —
        * measured green, but a fixture standing 0.4 psi from the thing it asserts is a fixture
        * waiting to go red on a rounding change. Measured on BOTH the pre-#542 lumped ramp and
-       * the staggered bank, 8.3 MPa reads 0.84 x rated, so this is a better fixture rather than
-       * one refitted to the change (HR10). */
+       * the staggered bank, 8.3 MPa read the shipped scale x rated, so this is a better fixture
+       * rather than one refitted to the change (HR10). */
       e.sg.P = 8.3;
       t = EN.step(e, DT);
       if (t.sg_safety_open) op = true;
@@ -2345,22 +2352,31 @@ function runSuite(RD, rec, quiet, only) {
   /* ⚠ THE EXPECTATION IS PRESSURE-SCALED SINCE #633, and the fixture is at 8.3 MPa, not at any
    * stage's quoted condition. Each stage's capacity is quoted at its OWN set pressure + 3 %
    * accumulation (Ginna UFSAR ch10's equipment table), so a bank at full lift passes exactly
-   * 0.84 x rated only if every stage happens to sit at its own reference — which staggered
-   * setpoints make impossible. At 8.3 MPa the sourced shares give 1.0247 x, i.e. 141.38 kg/s
-   * against the flat model's 137.97, and 141.38 is what a fixed opening at that pressure
-   * passes. Re-derived here from the sourced psig figures rather than read off the engine.
+   * `scale` x rated only if every stage happens to sit at its own reference — which staggered
+   * setpoints make impossible. At 8.3 MPa the sourced shares give 1.0247 x the scale.
    *
-   * NEITHER LOAD-BEARING ARM MOVED: the bank still OPENS in both modes, and the two peaks are
-   * still bit-identical — which is the #539 claim this check exists for (Mode 4 booting with
-   * rated_steam 0 made the annunciator light over 0.0000 kg/s). Only the magnitude anchor is
-   * new, and it is asserted on the same 0.5 kg/s tolerance. */
+   * ⚠ THE SCALE IS NOW DIVIDED FOR, NOT TYPED (#643, OWNER RULING 2026-09-08: "A — 1.0062 x
+   * rated, the sourced design basis"). This line carried a hard `0.84` — the retired figure,
+   * which was Ginna's ratio after its 1775 MWt uprate and had no document behind it at all. The
+   * bank's own sourced per-line capacity over the source's own per-line DESIGN steam flow is the
+   * design basis B 3.7.1 states in words ("passing 100% of design steam flow"): Ginna UFSAR ch10
+   * (ML20339A040) equipment table, main steam line row, verbatim "Flow design capacity, lb/hr
+   * 3.29 x 106 at 770 psia". Every figure below is retyped from the documents, NOT read off the
+   * engine — this check's whole value is that it is a second, independent derivation, and a
+   * check that imports the constant it is testing can only prove it equals itself (HR10).
+   *
+   * NEITHER LOAD-BEARING ARM MOVED across either change: the bank still OPENS in both modes, and
+   * the two peaks are still bit-identical — which is the #539 claim this check exists for (Mode 4
+   * booting with rated_steam 0 made the annunciator light over 0.0000 kg/s). Only the magnitude
+   * anchor moved, and it is asserted on the same 0.5 kg/s tolerance. */
   var bankAt83 = (function () {
     var l1 = 797689.0, l2 = 3 * 837600.0, tot = l1 + l2, PSI = 145.0377, out = 0;
+    var scale = tot / 3.29e6;                           /* the sourced design-basis ratio, #643 */
     [[1085.0, l1], [1140.0, l2]].forEach(function (s) {
       var ref = (s[0] * 1.03 + 14.7) / PSI;             /* set pressure + 3 % accumulation */
       out += (s[1] / tot) * (8.3 / ref);                /* choked: W proportional to P1 */
     });
-    return 0.84 * sfM4.rated * out;
+    return scale * sfM4.rated * out;
   })();
   ckT('Mode 4 CODE SAFETIES PASS FLOW at the designed capacity, scaled to 8.3 MPa (#633) — ' +
       'the annunciator used to light OPEN while 0.0000 kg/s left',
@@ -2369,7 +2385,8 @@ function runSuite(RD, rec, quiet, only) {
       Math.abs(sfM4.peak - sfHZP.peak) < 1e-6,
       'Mode 4 ' + sfM4.peak.toFixed(4) + ' kg/s vs Hot Standby ' + sfHZP.peak.toFixed(4) +
       '; Napier-scaled expectation ' + bankAt83.toFixed(2) +
-      ' (flat 0.84 x rated would be ' + (0.84 * sfM4.rated).toFixed(2) + ')');
+      ' (a flat sourced-scale x rated would be ' +
+      ((797689.0 + 3 * 837600.0) / 3.29e6 * sfM4.rated).toFixed(2) + ')');
   }
 
   if (grp('O')) {

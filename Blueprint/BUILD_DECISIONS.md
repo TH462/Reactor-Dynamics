@@ -45,6 +45,48 @@ where the two differ or where judgment was exercised.
 
 ---
 
+## 2026-09-08-workbench-f — #643 RULED: the bank is sized to its sourced design basis, and the constant is a DIVISION rather than a digit
+
+**The ruling** *(OWNER RULING, 2026-09-08: "A — 1.0062 × rated, the sourced design basis")* —
+selected over (B) keeping 0.84 as a declared departure and (C) WTSM §7.1.3.4's fleet 109 %,
+rejected as the wrong plant class. This supersedes the `-c` entry below, which stands as the
+evidence pass and is not restated here.
+
+**The decision inside the decision, which is the durable part.** The ruling did not say *"set it
+to 1.0062"*; it said **derive it, and type the quotient nowhere**. `safety_flow_frac` is now
+
+```
+(STAGE1_LBHR + STAGE2_LBHR) / DESIGN_LINE_LBHR      /* 3,310,489 / 3,290,000 = 1.00622766 */
+```
+
+with the denominator a **new `[sourced]` constant** carrying Ginna UFSAR ch10's equipment table
+verbatim — *"Flow design capacity, lb/hr 3.29 × 10⁶ at 770 psia"* — and the numerator the bank's
+own already-sourced per-line capacity. That shape is the answer to **how the old number survived
+two evidence passes**: a typed quotient has no visible provenance, so a pass can verdict the
+arrangement around it (which #542 did) and inherit the figure untouched. A division cannot be
+inherited without inheriting both documents with it.
+
+**The same discipline had to reach the GATE, and that is the finding.** `run_pwr2_relief`'s check
+on this constant compared the engine's `0.84` against a **`0.84` retyped in the gate's own `DOC`
+block** — the number agreeing with itself, incapable of failing. `DOC` now performs the division
+too, from its own independently retyped lb/hr figures, so the identity check is *two separate
+readings of two documents* agreeing on a quotient. **A constant is only as sourced as the thing
+that checks it**, and a fixture block that retypes a quotient rather than its inputs is a
+template-placeholder (#380) waiting to happen.
+
+**Cost, measured, US customary first** (turbine trip from hot full power, condenser dumps shut,
+ADV block valve closed): peak steam-generator pressure **1105.3 → 1102.9 psig (7.72 → 7.70 MPa)**,
+margin to the 1193.5 psig (8.23 MPa) ceiling **88.2 → 90.6 psi**, **first lift 10.46 s unchanged**,
+stage 2 never lifts at either scale, bottled-generator peak **1160.0 → 1155.1 psig (8.10 → 8.07
+MPa)**. Bank flow at full lift **137.97 → 165.27 kg/s**. The full table, the nine adjudicated reds
+and the injection matrix are in `Diagnostic/TUNING_LOG.md` `2026-09-08-workbench-f`.
+
+**Gates unchanged in count**: `run_pwr2_relief` 73/73 with mutations 45 → 46; `BASELINES` does not
+move for it. `run_pwr2_engine` A 80/80 (group N's magnitude anchor 141.3823 → 169.3605 kg/s, both
+load-bearing arms unmoved).
+
+---
+
 ## 2026-09-08-workbench-c — #643: the safety bank's scale is an UPRATE ARTIFACT wearing a `[sourced]` marker; the marker is fixed, the constant is not, and a check now pins the gap
 
 **The decision, and it is two decisions.** (1) `safety_flow_frac: 0.84` is re-marked

@@ -52,7 +52,37 @@ it). `Primary pressure` is checked against the pressurizer's control-setpoint co
 design (§3.0's psi-vs-psig note), and the row documents the setpoint, so it needed no change. The
 other ten rows, including #650's recaptures, agree with the booted plant.
 
+### Changed (the steam safety bank is sized to its sourced design basis — #643)
+
+**RULED AND DONE** *(OWNER RULING, 2026-09-08: "A — 1.0062 × rated, the sourced design basis")*.
+`safety_flow_frac` moves **0.84 → 1.0062 × rated steam flow (+19.8 %)** and is now **DERIVED IN
+CODE, never typed**: the bank's own sourced per-line capacity (797,689 + 3 × 837,600 =
+**3,310,489 lb/hr**) over Ginna's stated per-line **design** steam flow — UFSAR ch10's equipment
+table (ML20339A040), verbatim *"Flow design capacity, lb/hr 3.29 × 10⁶ at 770 psia"*, now a
+`[sourced]` constant of its own. Two sourced numbers and a division, so the marker reads
+`[sourced]` honestly and a retyped quotient cannot drift. Declined: keeping 0.84 as a declared
+departure, and WTSM §7.1.3.4's fleet figure of 109 % (a four-loop plant class this Ginna-anchored
+plant does not follow — the same reasoning that put the steam dumps at Ginna's 28 % and not 40 %).
+
+- **Measured before and after** (30 min, condenser dumps shut and the atmospheric dump valve's
+  block valve closed, so the bank is the only steam path out). Turbine trip from full power: peak
+  steam-generator pressure **1105.3 → 1102.9 psig (7.72 → 7.70 MPa)**, margin to B 3.7.1's
+  1193.5 psig (8.23 MPa) ceiling **88.2 → 90.6 psi (0.61 → 0.62 MPa)**; **first lift is 10.46 s at
+  both** — first lift is a setpoint, not a capacity — and stage 2 never lifts at either. Bottled
+  generator: peak **1160.0 → 1155.1 psig (8.10 → 8.07 MPa)**. Bank flow at full lift at the stage-2
+  reference **137.97 → 165.27 kg/s (1,094,900 → 1,311,500 lb/hr)**.
+- **`run_pwr2_relief` now pins the division, not the digit.** The fixture that stood there compared
+  the engine's 0.84 against a **0.84 retyped in the gate** — the number agreeing with itself, the
+  #380 template-placeholder trap. It is replaced by the sourced-ratio identity plus an independent
+  cross-check: the whole bank power-scaled against this plant's own rated steam flow gives
+  **1.0025**, required to agree with the design route's **1.0062** within 0.01 (they land 0.0037
+  apart, 2.7× margin). A 0.3 % drift in either denominator now reddens.
+
+---
+
 ### Fixed (the steam safety bank's capacity was never sourced, and the manual said it was — #643)
+
+*(Superseded above by the 2026-09-08 ruling — kept because it records how the number got there.)*
 
 `engines/pwr2/pwr2_relief.js`'s `safety_flow_frac: 0.84` — the main steam safety valve bank's
 full-lift capacity as a fraction of rated steam flow — carried a `[sourced]` marker. **No document
@@ -75,9 +105,10 @@ genuinely sourced and are unaffected.
   decay heat and even half a bank passes ten times what it must. At **0.50** the bottled-generator
   fixture peaks at **1197.7 psig (8.36 MPa)**, above B 3.7.1's **1193.5 psig (8.23 MPa)** ceiling,
   which is the plant's own vote against the low reading.
-- **The constant is unchanged pending a ruling**; the marker, the derivation and the measured gap
-  are now written at it, and `run_pwr2_relief` gains two checks that pin both halves (the second
-  reddens the day the constant is corrected, by design). `Manuals/09` §3.0's *Open SG safety* row
+- **The constant was left unchanged pending the ruling** (which arrived the same day, above); the
+  marker, the derivation and the measured gap were written at it, and `run_pwr2_relief` gained two
+  checks pinning both halves — the second reddening the day the constant was corrected, by design,
+  which is what happened. `Manuals/09` §3.0's *Open SG safety* row
   no longer calls the figure sourced, and gains the **staggered bank** the plant has modelled since
   #542 in place of a *"single modeled valve"* description that predates it.
 

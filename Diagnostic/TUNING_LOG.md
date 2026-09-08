@@ -29,6 +29,121 @@ and the user-visible summary in `CHANGELOG.md`. This file points at those and tr
 
 ---
 
+## Session log — 2026-09-08-workbench-f (#643 RULED — the bank's scale is a DIVISION now, and the check that used to guard it could not have failed)
+
+**The ruling.** *(OWNER RULING, 2026-09-08: "A — 1.0062 × rated, the sourced design basis")* —
+selected over keeping 0.84 as a declared departure, and over WTSM §7.1.3.4's fleet 109 %, rejected
+as the wrong plant class. The evidence pass is `2026-09-08-workbench-c` above; this entry is the
+execution and only what that entry does not already say.
+
+**The constant, as now written.** `engines/pwr2/pwr2_relief.js`:
+
+```
+safety_flow_frac:    (STAGE1_LBHR + STAGE2_LBHR) / DESIGN_LINE_LBHR,   /* [sourced] */
+```
+
+`1.0062` **is typed nowhere in the tree.** Numerator: the bank's own sourced per-line capacity,
+797,689 + 3 × 837,600 = **3,310,489 lb/hr**. Denominator: a NEW `[sourced]` constant,
+`safety_design_line_lbhr = 3.29e6`, carrying Ginna UFSAR ch10's equipment table verbatim — *"Flow
+design capacity, lb/hr 3.29 × 10⁶ at 770 psia"*. Quotient **1.00622766**. The three lb/hr figures
+moved to module-level `var`s for a JavaScript reason worth writing down: **an object literal cannot
+read its own siblings**, so a property derived from two others in the same literal is impossible,
+and the choice is module vars or a post-literal assignment. Vars keep the constant visible where a
+reader looks for it. Both lb/hr figures are still exported as `RELIEF.*` properties, so there is
+one definition of each number.
+
+**THE TRAP, and it is not the number.** The old fixture compared the engine's `0.84` against a
+`0.84` **retyped in the gate's own `DOC` block** — a check that could not fail. That is the #380
+template-placeholder trap and it is the second instance in this one file (#542's pass verdicted the
+bank's *arrangement* and inherited its *figure*). **The antidote is not a better constant, it is a
+gate that divides too**: `DOC.safety_flow_frac` is now derived from `DOC`'s own independently
+retyped lb/hr figures, so the identity check is two separate retypings of two documents agreeing on
+a quotient. **Ask what a check reads, not only what it asserts** — this one read itself.
+
+**MEASURED, before and after, on the evidence pass's own fixtures** (DT 0.02 s; condenser dumps
+SHUT and the ADV block valve CLOSED, so the bank is the only steam path out of the generator). The
+"after" row is the **shipped** plant loaded unpatched, not the text-patched `1.0062` the pass swept
+— they agree to every reported digit bar 1 lbm of vented mass, from the 2.8 × 10⁻⁵ between the
+typed sweep value and the true quotient.
+
+| | 0.84 (before) | shipped 1.00622766 | Δ |
+|---|---|---|---|
+| bank at full lift, stage-2 reference | 137.97 kg/s (1,094,900 lb/hr) | **165.27 kg/s** (1,311,500 lb/hr) | +19.8 % |
+| turbine trip — first lift | 10.46 s | **10.46 s** | **0.00 s** |
+| turbine trip — peak SG pressure | 1105.3 psig (7.72 MPa) | **1102.9 psig** (7.70 MPa) | −2.4 psi |
+| turbine trip — margin to 1193.5 psig | 88.2 psi (0.61 MPa) | **90.6 psi** (0.62 MPa) | +2.4 psi |
+| turbine trip — lifts / reseats in 30 min | 5 / 4 | **4 / 4** | −1 lift |
+| turbine trip — stage 2 lift | no | **no** | — |
+| turbine trip — vented | 19,890 lbm (9,022 kg) | **20,216 lbm** (9,170 kg) | +1.6 % |
+| bottled generator — peak | 1160.0 psig (8.10 MPa) | **1155.1 psig** (8.07 MPa) | −4.9 psi |
+| bottled generator — park | 1146.3 psig (8.00 MPa) | **1136.8 psig** (7.94 MPa) | −9.5 psi |
+
+**Every number landed on the pass's prediction.** Nothing was tuned toward it.
+**First lift did not move by one hundredth of a second at a +19.8 % capacity change** — first lift
+is a *setpoint*, and a capacity constant has no vote in it. The one row worth reading twice is
+**lifts 5 → 4**: a bigger bank vents harder per cycle, so it takes one fewer cycle to bleed the
+same decay heat, which is the direction a bigger valve should move a cycle count.
+
+**The nine reds, one at a time (HR10), and the injection that validates each.** A per-check
+adjudication harness (`inbox/643/hr10.js`) patches engine and gate independently and reports
+*which* check reddens, because the mutation table reports only a *count*.
+
+| # | check | verdict | what validates the new form |
+|---|---|---|---|
+| 1 | gate's retyped `DOC.safety_flow_frac` | **stale fixture** → now a division of `DOC`'s own lb/hr figures | injection G: engine denominator 3.29e6 → 3.30e6 reddens it while the tolerance-band check stays green |
+| 2–6 | five checks computing through `bankFlow()` | **stale fixtures**, all following (1) | **injection F**: engine AND gate set back to 0.84 together — all five PASS. Scale-independent re-expressions, not refits |
+| 7 | `run_pwr2_engine` group N `bankAt83` | **stale literal** — one `0.84` | the scale is now `tot / 3.29e6`, still retyped from the documents and never read off the engine. 141.3823 → **169.3605 kg/s**; both load-bearing arms unmoved (bank opens in both modes, two peaks bit-identical) |
+| 8–9 | the two provenance checks | **reddening by design** — rewritten to the new claim | see below |
+
+**Injection F is the HR10 test that matters.** With the engine at 0.84 *and* the gate's fixture at
+0.84, checks 1–6 **all pass**. So they assert a relationship, not a magnitude, and moving them was
+re-expression. Checks 8–9 fail on that plant — and they must: they are magnitude anchors whose
+whole content is *"the constant IS the design-basis ratio"*. A magnitude anchor that passed at both
+magnitudes would be asserting nothing.
+
+**The two rewritten provenance checks, and why BOTH are needed.**
+- **(8) the sourced-ratio identity** — shipped == numerator/denominator to 1e-12, *plus* a
+  falsifier arm: it is NOT the post-uprate 0.836, by > 0.10. The falsifier is what catches
+  **injection E** — engine *and* gate re-derived off the *same wrong* denominator, where the
+  identity alone passes happily.
+- **(9) the two-route agreement**, the cross-check the ruling asked to be asserted rather than left
+  as prose. Route 2 (whole bank × 300/1520 against this plant's own Layer-0 rated steam flow) gives
+  **1.0025** and never touches Ginna's stated flow. Required within **0.01**; they land **0.0037**
+  apart, 2.7× margin. **Injection D** (gate's plant power 300 → 400 MWt) reddens *only* this one.
+- **They are not interchangeable and the harness proves it**: (8) alone passes when both sides are
+  re-derived off one wrong number; (9) alone passes at any scale inside its band — injection G's
+  0.3 % denominator drift is invisible to (9) and caught by (8).
+
+**Mutation re-aims — two, and one addition.** `safety_flow_frac:    0.84,` no longer exists as
+text, so its mutation was blind on arrival; re-aimed to replace the **division with a typed 0.50**,
+which is now a strictly better probe (it injects the very thing the ruling forbids). The two lb/hr
+figures moved to module vars, orphaning that anchor too — re-aimed, and its replacement values
+changed to **preserve the total** (each half becomes half the sourced sum): with `1000000/1000000`
+it would now *also* re-scale the bank through `safety_flow_frac`, and **a mutation that moves two
+things cannot tell you which one the gate saw**. Added one on the new denominator (3.29e6 → the
+retired 3.96e6). **45 → 46 mutations, no blind spots.**
+
+**A harness that reported 0 FAIL on injections that must fail.** The first run of `hr10.js` returned
+0 FAIL for all seven cases including the baseline — the child processes were dying on an unresolved
+`require('./mut_flags.js')` from the temp directory and the FAIL-line scan of empty output is
+honestly zero. **This is the hollow-check trap in the instrument built to detect it.** It now throws
+unless the child prints its own tally. Two lessons, both old: a harness needs the same
+"make it go red" proof as the checks it audits, and **an absence of failures is only evidence if
+something was there to fail**.
+
+**Gates.** `run_pwr2_relief` **73/73, 46/46 mutations** (checks unchanged, so the `BASELINES` entry
+does not move) · `run_pwr2_engine` A **80/80, 41/41** and group N 8/8 · `run_pwr2_sg` 44/44 ·
+`run_pwr2_dumpctl` 25/25 · `run_pwr2_shell` 162/162 · `run_pwr2_protection` 125/125 ·
+`run_hardrules` 499/499 · `run_doc_budget` 4/4.
+
+**One finding, measured not filed.** `run_pwr2_engine`'s `safetyPeak()` comment said *"with the ADV
+isolated so it cannot mask them"* and then set `e.advBlock = true`, which in `pwr2_relief` means the
+block valve is **OPEN** — the opposite. The check is unaffected (it reads `sg_safety_kgs` only), but
+it is a false statement about a fixture sitting in the lines this change edits, and a false fixture
+description is exactly what this issue is a record of. Comment corrected; no code touched.
+
+---
+
 ## Session log — 2026-09-08-workbench-e (#651 — `run_manual_setpoints` could not see §1.0 by construction)
 
 **The §11.0 guard was correct and permanently excluded a different table.** `run_manual_setpoints`
