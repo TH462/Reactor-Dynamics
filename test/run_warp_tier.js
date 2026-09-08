@@ -190,6 +190,35 @@ function runMechanics(RD, quiet) {
       r._tier === 'play' && s.metadata.speed_snap && s.metadata.speed_snap.reason === 'transient' && /power moving/.test(s.metadata.speed_snap.detail || ''),
       'tier ' + r._tier + ', snap ' + JSON.stringify(s.metadata.speed_snap || null));
 
+  /* WHICH ALARMS DROP WARP (#655, 2026-09-08): by PRIORITY, on a quiet board. A synthetic alarm is
+   * appended to the layer's own list so nothing else in the plant moves — the same isolation
+   * WT-3f uses for the rate branch. INJECTION: with ALARM_DROP_PRIORITIES emptied, 3i stays on
+   * WARP; with the old quiet-board rule restored, 3h drops (a caution was "any new alarm"). */
+  function alarmProbe(prio) {
+    var q = mk(RD, 'hot_full_power');
+    settle(q, 120);
+    q.handleCommand({ action: 'set_attention_stops', value: false });
+    q.handleCommand({ action: 'set_speed', value: 3600 });
+    q.advanceCycles(2);                                   // on WARP with a baseline established
+    var realGet = q.layer.getAlarms.bind(q.layer), fired = false;
+    q.layer.getAlarms = function () {
+      var list = realGet().slice();
+      if (fired) list.push({ id: 'probe_' + prio, state: 'active_unacknowledged', priority: prio, label: 'Probe ' + prio });
+      return list;
+    };
+    fired = true;
+    var sp = q.advanceCycles(1);
+    return { tier: q._tier, speed: q.timeAcceleration, snap: sp.metadata.speed_snap || null };
+  }
+  var pc = alarmProbe('caution');
+  ck2('WT-3h', 'a new CAUTION alarm does NOT drop WARP (the accumulators-lined-up caution the heatup checklist causes)',
+      pc.tier === 'warp' && pc.speed === 3600 && !pc.snap,
+      'tier ' + pc.tier + ', ' + pc.speed + 'x, snap ' + JSON.stringify(pc.snap));
+  var pw = alarmProbe('warning');
+  ck2('WT-3i', 'a new WARNING alarm drops WARP to 60x and NAMES the alarm',
+      pw.tier === 'play' && pw.speed === 60 && !!pw.snap && pw.snap.reason === 'transient' && /new alarm: Probe warning/.test(pw.snap.detail || ''),
+      'tier ' + pw.tier + ', ' + pw.speed + 'x, snap ' + JSON.stringify(pw.snap));
+
   /* authored speed never warps */
   var a = mk(RD, 'hot_full_power');
   settle(a, 60);

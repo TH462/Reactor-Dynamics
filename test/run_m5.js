@@ -237,6 +237,34 @@ T.push(test('Attention stop — a plant event snaps fast-forward back to real ti
   ck('further alarms did fire during the run', sawNewAlarm, sawNewAlarm, 'true');
   ck('a new alarm on an ALREADY-LIT board does NOT snap fast-forward', alarmSnapped, !alarmSnapped, 'false');
 
+  /* …AND BY PRIORITY (#655, 2026-09-08): on a quiet board a new CAUTION or STATUS arrival never
+   * drops the clock — the accumulators-lined-up caution the heatup checklist tells the player to
+   * cause was yanking a startup to 1x — while a WARNING or CRITICAL still does, and the snap
+   * NAMES the alarm. A synthetic alarm is appended to the layer's own list so nothing else in
+   * the plant moves. INJECTION: with ALARM_DROP_PRIORITIES emptied the warning check fails;
+   * with the priority filter removed the caution check fails. */
+  function prioProbe(prio) {
+    var q = svc({ initial_state: 'hot_full_power' });
+    q.advanceCycles(3);
+    q.handleCommand({ action: 'set_speed', value: 60 });
+    q.advanceCycles(2);
+    var realGet = q.layer.getAlarms.bind(q.layer), on = false;
+    q.layer.getAlarms = function () {
+      var list = realGet().slice();
+      if (on) list.push({ id: 'probe_' + prio, state: 'active_unacknowledged', priority: prio, label: 'Probe ' + prio });
+      return list;
+    };
+    on = true;
+    var ps = q.advanceCycles(1);
+    return { speed: ps.metadata.time_acceleration, snap: ps.metadata.speed_snap || null };
+  }
+  var pcau = prioProbe('caution');
+  ck('a new CAUTION on a quiet board does NOT snap fast-forward (#655)', pcau.speed + '/' + JSON.stringify(pcau.snap),
+     pcau.speed === 60 && !pcau.snap, '60/null');
+  var pwar = prioProbe('warning');
+  ck('a new WARNING on a quiet board snaps to 1x and names the alarm (#655)', pwar.speed + '/' + JSON.stringify(pwar.snap),
+     pwar.speed === 1 && !!pwar.snap && pwar.snap.reason === 'alarm' && /Probe warning/.test(pwar.snap.detail || ''), '1/alarm: Probe warning');
+
   // Settings → Fast-forward dropout = Off: nothing touches the clock, not even a scram.
   var off = svc();
   off.advanceCycles(3);

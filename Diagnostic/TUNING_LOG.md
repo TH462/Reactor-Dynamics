@@ -29,6 +29,41 @@ and the user-visible summary in `CHANGELOG.md`. This file points at those and tr
 
 ---
 
+## Session log — 2026-09-08-develop-a (#655 — the speed bar's WARP row and info line; the clock drops by alarm PRIORITY; the freeze did not reproduce)
+
+**What was asked.** Fix #655; WARP buttons on their own row with the others beneath and a space
+between for WARP info text; and should WARP drop for every alarm, or are there alarms it should
+not drop for.
+
+**What the playtester saw, re-measured.** Three claims, three verdicts: (1) "pressing a lit speed
+button puts you back to 1×" — FALSE, 60× stays 60× on a second press by button and by key
+(Playwright, `RD.__dev.service().timeAcceleration`); (2) "the clock reverts to 1× mid-step" — TRUE
+but not an alarm: the checklist-step dropout (#619 item 6, owner-directed, kept) whose toast was
+missed three times; (3) "3600× froze the page for 25 minutes" — NOT REPRODUCED: driven through the
+service (`?dev=1`) to the exact step-11 state (pumps, bank, feed AUTO, letdown A+B, heaters/spray
+AUTO, SP 1700, accumulators armed at 665 psi), Ack All, 3600× → 88 plant-hours at an achieved
+~1,180× with every `page.evaluate` under 50 ms. Scripts: `scratchpad/probe_warp_freeze*.js`.
+
+**The alarm rule, and why the old one could never have dropped WARP on a heatup.** It was "a NEW
+unacknowledged alarm on a QUIET board", and `_boardQuiet` counts every non-clear alarm — including
+the `status`-priority "expected, plant is cold" tiles that stand through the whole heatup — so on
+a heatup no alarm ever dropped WARP, and on a quiet startup a `caution` (the accumulators lined up
+below 1000 psi, which step 10 tells the player to cause) dropped fast-forward to 1×. Now
+`ALARM_DROP_PRIORITIES = {critical, warning}`, read off the alarm's own priority after the kernel's
+mode reclassification (no list to maintain), and `_boardQuiet` counts only those priorities as lit.
+Both drops keep the quiet-board rule. **A first cut dropped it for WARP** ("at 3600× a warning earns
+the drop whatever is standing") and `run_warp_tier` WT-1b went red: the post-scram decay-heat hour
+left WARP on each cascading warning and drifted out of its fidelity band — the exact casualty case
+the quiet-board rationale in `run_m5` names. Restored; the priority filter alone is the change. The
+snap carries the label. `run_warp_tier` WT-3h/3i and `run_m5` +2 append a synthetic alarm to
+`layer.getAlarms` (the WT-3f isolation idiom); injection (priorities emptied) reddens three checks.
+
+**The bar.** `.speed` is a 4-column grid: WARP rungs span two, `#warpInfo` spans four, PLAY rungs
+one each. `syncWarpInfo` prints, in priority: the last `speed_snap` (until the player's next speed
+click), a lock with `pacing.warp_lock_remaining_s` (new; at 1× the 30 plant-second quiet timer is
+30 wall-seconds and read as "the button does nothing"), the tier and achieved rate, or "ready".
+`speedLadder()` sorts and the keys look up by value, so DOM order warp-first is free.
+
 ## Session log — 2026-09-07-develop-a (#653 — a layman played the chain in the sim; a kernel defect behind "the dilution never stops", and the dump left in TAVG mode by the chain)
 
 **What was asked.** *"Could you have a layman agent run through the sim using the checklist to see

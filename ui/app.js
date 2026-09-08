@@ -2836,7 +2836,9 @@
   var SPEED_SNAP_MSG = {
     scram: 'Dropped to real time — reactor trip',
     failure: 'Dropped to real time — equipment failure',
-    alarm: 'Dropped to real time — new alarm',
+    // #655: the service names the alarm ("new alarm: Heatup Rate High"); a bare 'new alarm'
+    // is the fallback for a snap without a detail.
+    alarm: 'Dropped to real time — ',
     // #625: the WARP tier let go (60x) or was refused; the service names the plant's reason.
     transient: 'WARP dropped to 60× — ',
     warp_locked: 'WARP unavailable — ',
@@ -2849,7 +2851,34 @@
   };
   function speedSnapText(snap) {
     var base = SPEED_SNAP_MSG[snap.reason] || 'Dropped to real time';
-    return /— $/.test(base) ? base + (snap.detail || 'plant in transient') : base;
+    return /— $/.test(base) ? base + (snap.detail || (snap.reason === 'alarm' ? 'new alarm' : 'plant in transient')) : base;
+  }
+  /* THE LINE UNDER THE SPEED BUTTONS (#655, owner 2026-09-08: "Leave a space between them for
+   * warp info text"). Persistent where the toast is momentary: the third layman playthrough
+   * missed three dropout toasts and concluded the clock "reverts on its own". What it says, in
+   * priority order: the last automatic drop and its reason (until the player next changes speed),
+   * a WARP lock with its countdown, what WARP is achieving while it runs, or that WARP is ready. */
+  var warpNote = null;          // { text, at } — the last speed_snap, cleared on the next player speed change
+  function syncWarpInfo(s, p) {
+    var el = $('warpInfo');
+    if (!el || !p) return;
+    var req = s.metadata.time_acceleration || 1;
+    var cls = '', text = '';
+    var left = (!p.warp_available && p.warp_lock_remaining_s > 0) ? ' · WARP re-arms in ' + p.warp_lock_remaining_s + ' s' : '';
+    if (warpNote) {
+      cls = 'dropped'; text = warpNote.text + left;
+    } else if (!p.warp_available && p.warp_lock) {
+      cls = 'locked';
+      text = 'WARP locked — ' + p.warp_lock + (p.warp_lock_remaining_s > 0 ? ' · re-arms in ' + p.warp_lock_remaining_s + ' s' : '');
+    } else if (p.tier === 'warp') {
+      cls = 'on';
+      text = 'WARP ' + req + '× · achieving ' + (p.achieved != null ? (Math.round(p.achieved / 10) * 10).toLocaleString() + '×' : '…') + ' · ' + p.physics_dt + ' s physics step';
+    } else {
+      text = 'WARP ready — 600× or 3600× for a long quiet ride; a warning or critical alarm drops it to 60×';
+    }
+    if (el.textContent !== text) el.textContent = text;
+    var want = 'warp-info mono' + (cls ? ' ' + cls : '');
+    if (el.className !== want) el.className = want;
   }
   /* The pacing readout (#625, and #581's achieved rate): runs every broadcast, cheap. The
    * achieved figure is the service's own EMA off its timer path. AMBER means the physics is
@@ -2866,6 +2895,7 @@
     var p = s && s.metadata ? s.metadata.pacing : null;
     var el = $('ffRate');
     if (!p || !el) return;
+    syncWarpInfo(s, p);
     var req = s.metadata.time_acceleration || 1, ach = p.achieved;
     var straining = false;
     if (RD.Perf && req > 1) {
@@ -2881,7 +2911,7 @@
       text = '→ ' + (ach >= 100 ? Math.round(ach / 10) * 10 : Math.round(ach)).toLocaleString() + '×';
     }
     var key = cls + '|' + text + '|' + (p.warp_available ? 1 : 0) + '|' + (p.warp_lock || '');
-    if (key === _lastPacingKey) return;
+    if (key === _lastPacingKey) return;   // (syncWarpInfo above has its own change guard)
     _lastPacingKey = key;
     el.hidden = !text;
     el.textContent = text;
@@ -2909,6 +2939,8 @@
        * refusal is a caution (#625); everything else is the plant interrupting you. */
       showToast(speedSnapText(snap),
         snap.reason === 'step' ? 'info' : snap.reason === 'warp_locked' ? 'warn' : 'error');
+      // …and it stays written under the speed buttons until the player next changes speed (#655)
+      warpNote = { text: speedSnapText(snap), at: Date.now() };
       /* FLASH THE SPEED BUTTONS *(OWNER, 2026-09-03, #619 item 7: "when dropping out of warp,
        * flash the warp buttons for a moment to make it more obvious.")*. The toast says what
        * happened; the flash says WHERE, which is the control the player now has to touch to
@@ -7015,6 +7047,7 @@
       // The ⚡ badge is syncSpeedUI's job (it runs off the snapshot and null-guards
       // the element). This handler used to set it too, unguarded — and the PWR shell
       // has no #ffBadge, so every speed click threw before the segment could repaint.
+      warpNote = null;   // the player has acted on the last drop (#655); the info line moves on
       cmd({ action: 'set_speed', value: +b.getAttribute('data-speed') });
     });
     // Settings: Units only under Display (#277 removed Values / Terminology /

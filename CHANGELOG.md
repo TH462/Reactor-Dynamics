@@ -32,6 +32,36 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
 
 ## [Alpha 1.7.4-rc3] — 2026-09-06
 
+### Changed (the speed bar: WARP on its own row with an info line, and which alarms drop the clock — #655)
+
+*(OWNER, 2026-09-08: "put the warp buttons on their own line with the other buttons underneath
+it. Leave a space between them for warp info text. Should we maybe have it only drop out of warp
+for not every alarm? Maybe there are specific alarms it doesn't drop out of warp for?")* The
+speed strip is a 4-column grid: 600× / 3600× on top, an info line, 1× / 5× / 10× / 60× below.
+The line is persistent where the toast was momentary — the third playthrough missed three dropout
+toasts and concluded the clock "reverts on its own": it prints the last automatic drop and its
+reason (until the player next changes speed), a WARP lock with its reason and a countdown of the
+30-plant-second quiet timer (`pacing.warp_lock_remaining_s`, new), what WARP is achieving while it
+runs, or that WARP is ready. **The alarm rule is by priority now.** A new unacknowledged
+**critical or warning** alarm arriving on a quiet board drops WARP to 60× and fast-forward to 1×;
+a **caution** (the accumulators lined up below 1000 psi, which the heatup checklist tells the
+player to cause) or a **status** tile never does — and neither counts as "lit" when deciding
+whether the board is quiet. The priority is the alarm's own after the kernel's mode
+reclassification, so no list to maintain. Before: "any new alarm on a quiet board", where quiet
+counted every tile — so on a heatup, with its expected-cold status tiles standing for twelve
+plant-hours, no alarm ever dropped WARP, and on a quiet startup a caution yanked the clock to 1×.
+A first cut dropped the quiet-board test for WARP altogether; the fidelity leg after a scram
+(WT-1b) then left WARP on every post-scram warning and drifted out of its band, which is the
+casualty-cascade case the quiet-board rule exists for — kept. The snap carries the alarm's name ("Dropped to real time — new alarm:
+Heatup Rate High"). **Measured, not the playtester's diagnosis:** a lit speed button pressed again
+does NOT drop to 1× (60× stays 60× by button and by key); its mid-hold drops were checklist steps
+checking off (#619 item 6, kept) — the line now says so. **The 25-minute freeze at 3600× did not
+reproduce**: driven headless through the accumulator arming and 88 plant-hours of the heatup at an
+achieved ~1,180×, the page answered in under 50 ms throughout; scripts in the session scratchpad,
+the freeze stays open on the issue. Gates: `run_warp_tier` +2 (a caution does not drop WARP; a
+warning drops it and names the alarm), `run_m5` +2 (the same on the PLAY dropout), each
+injection-described in the check.
+
 ### Fixed (third layman playthrough: all six legs — the board and the clock, not the words — #653)
 
 Same fresh-context play-test on the pass-2 tree (`Diagnostic/CHECKLIST_PLAYTEST_2026-09-07_LAYMAN_PASS3.md`):

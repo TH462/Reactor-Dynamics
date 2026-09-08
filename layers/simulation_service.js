@@ -96,6 +96,16 @@
   var WARP_MIN_SPEED = 600;       // the ladder's two top rungs are the WARP tier
   var WARP_DROP_SPEED = 60;       // OWNER RULING 2026-09-04: a rate-based drop lands here
   var WARP_QUIET_S = 30;          // sim-s of quiet after any event before WARP re-arms
+  /* WHICH ALARMS DROP THE CLOCK (#655, 2026-09-08). A new, unacknowledged alarm of these
+   * priorities, arriving on a QUIET board (none of these priorities already standing), drops
+   * WARP to 60x and fast-forward to 1x. A `caution`
+   * (the accumulators lined up below 1000 psi, which the heatup checklist tells the player to
+   * do) or a `status` tile (an "expected, plant is cold" reclassification, which arrives
+   * acknowledged) never does: measured on the third layman playthrough, those were the drops
+   * that read as the clock "reverting on its own". The priority is the alarm's OWN, after the
+   * mode reclassification the kernel applies, so the same alarm can be a drop in Mode 1 and
+   * a non-event in Mode 5 without a list here to maintain. */
+  var ALARM_DROP_PRIORITIES = { critical: true, warning: true };
   // Rate thresholds, per SIM second. These are `_isRapidChange`'s own numbers restated as
   // rates: 1.0 % per 0.5 s and 0.14 MPa (20 psi) per 0.5 s.
   var RAPID_POWER_PCT_PER_S = 2.0;
@@ -678,9 +688,14 @@
     if (scrammed && !prev.scrammed) return 'reactor trip';
     if (this._anyNewFailureIn(fails, prev.fails)) return 'equipment failure';
     // An alarm drops WARP on the same terms it drops fast-forward (`_attentionStop`): a NEW,
-    // unacknowledged arrival on a QUIET board. A heatup with low-pressure alarms latched in
-    // is exactly where WARP is wanted, and the rate checks below are what guard fidelity.
-    if (this._boardQuiet(prev.alarms) && this._anyAlarmNewlyFiring(alarms, prev.alarms, true)) return 'new alarm';
+    // unacknowledged arrival of critical or warning PRIORITY on a QUIET board (#655). Quiet
+    // means no warning or critical standing: a heatup's expected-cold status tiles do not
+    // make the board lit (before #655 they did, so no alarm ever dropped WARP on a heatup),
+    // while a board already carrying a casualty's warnings stays lit and the consequences
+    // that follow do not drop the tier one by one — the fidelity leg after a scram runs its
+    // decay-heat hour on WARP for exactly that reason (WT-1b).
+    var na = this._boardQuiet(prev.alarms) ? this._newAlarmOfPriority(alarms, prev.alarms) : null;
+    if (na) return 'new alarm: ' + (na.label || na.id);
     if (spanS > 0) {
       if (Math.abs(power - prev.power) / spanS > RAPID_POWER_PCT_PER_S) return 'power moving ' + (Math.abs(power - prev.power) / spanS).toFixed(1) + ' %/s';
       if (Math.abs(P - prev.P) / spanS > RAPID_P_MPA_PER_S) return 'pressure moving ' + (Math.abs(P - prev.P) / spanS * 145.038).toFixed(0) + ' psi/s';
@@ -704,6 +719,10 @@
       achieved: this._achieved == null ? null : Math.round(this._achieved),
       warp_available: !why,
       warp_lock: why,
+      /* how much of the quiet timer is left, in plant seconds (#655) — the UI counts it down
+       * under the speed buttons, so a refusal at 1x (where 30 plant-seconds is 30 wall-seconds)
+       * reads as a wait with an end, not a button that does nothing */
+      warp_lock_remaining_s: this.simTime < this._warpLockedUntil ? Math.ceil(this._warpLockedUntil - this.simTime) : 0,
       /* The EFFECTIVE budget — what THIS tier is spending, not what was configured (#631).
        * A reader (ui/perf.js's verdict, a bug report) is asking "how much of the broadcast is
        * the physics allowed", and on WARP that is the WARP number. The configured WARP value
@@ -742,12 +761,16 @@
     if (stop === 'alarm' && this._authoredSpeed) stop = null;
     // Any attention-stop event also starts WARP's quiet timer (#625), whether or not the
     // clock was accelerated at the time.
-    if (stop) this._lockWarp(stop === 'scram' ? 'reactor trip' : stop === 'failure' ? 'equipment failure' : 'new alarm');
+    var stopDetail = stop === 'scram' ? 'reactor trip' : stop === 'failure' ? 'equipment failure'
+                   : stop === 'alarm' ? 'new alarm: ' + (this._attnAlarmLabel || '') : null;
+    if (stop) this._lockWarp(stopDetail || stop);
     if (stop && this.timeAcceleration > 1) {
       this.timeAcceleration = 1.0;
       this._authoredSpeed = false;
       this._applyTier();
-      snap.metadata.speed_snap = { reason: stop };
+      // the reason travels with the snap (#655): the UI prints it under the speed buttons
+      // and keeps it there, where a toast alone was missed three times in one playthrough
+      snap.metadata.speed_snap = stopDetail ? { reason: stop, detail: stopDetail } : { reason: stop };
     } else if (this._warpDrop) {
       // The in-loop watch dropped WARP this tick (#625): 60x, with the plant's reason.
       snap.metadata.speed_snap = { reason: 'transient', detail: this._warpDrop };
@@ -977,7 +1000,11 @@
     // "new alarm" for one would contradict the tile it just drew. The transient
     // cadence flip above is deliberately left alone: a shorter broadcast interval
     // costs the operator nothing.
-    if (this._boardQuiet(this._prevAlarms) && this._anyAlarmNewlyFiring(snap.alarms, this._prevAlarms, true)) return 'alarm';
+    /* …and, since #655, one whose PRIORITY asks for it: critical or warning. A caution or a
+     * status tile arriving on a quiet board used to yank the clock to 1x for a lineup the
+     * checklist had just told the player to make. The quiet-board rule above it stays. */
+    var newAlarm = this._boardQuiet(this._prevAlarms) ? this._newAlarmOfPriority(snap.alarms, this._prevAlarms) : null;
+    if (newAlarm) { this._attnAlarmLabel = newAlarm.label || newAlarm.id; return 'alarm'; }
     /* A CHECKLIST STEP CHECKING OFF *(OWNER, 2026-09-03, #619 item 6: "when a step is checked
      * off, drop out of warp.")*. Walking a checklist at 600x, the step you were waiting for
      * completes and the plant keeps racing while you read the next one — so the clock comes
@@ -1009,9 +1036,14 @@
   };
 
   // No alarm annunciating (acknowledged or not) as of the previous broadcast.
+  // …where "annunciating" means a WARNING or CRITICAL (#655). A status tile ("expected, plant
+  // is cold") or a caution standing does not make the board lit: on a heatup those stand for
+  // twelve plant-hours, and counting them meant no new alarm could ever drop the clock there.
   SimulationService.prototype._boardQuiet = function (alarms) {
     if (!alarms) return true;
-    for (var i = 0; i < alarms.length; i++) if (alarms[i].state !== 'clear') return false;
+    for (var i = 0; i < alarms.length; i++) {
+      if (alarms[i].state !== 'clear' && ALARM_DROP_PRIORITIES[alarms[i].priority]) return false;
+    }
     return true;
   };
 
@@ -1047,6 +1079,23 @@
   // Nothing but the control layer can produce a clear→acknowledged transition in
   // one broadcast (an operator ack takes a cycle of its own), so that is exactly
   // the set of alarms the plant answered on the operator's behalf.
+  // The first alarm that was clear last broadcast and is now annunciating UNACKNOWLEDGED with a
+  // priority in ALARM_DROP_PRIORITIES (#655) — or null. The priority read is the alarm's own
+  // as the kernel reports it, after any mode reclassification.
+  SimulationService.prototype._newAlarmOfPriority = function (now, prev) {
+    if (!prev || !now) return null;
+    var prevState = {};
+    for (var i = 0; i < prev.length; i++) prevState[prev[i].id] = prev[i].state;
+    for (var j = 0; j < now.length; j++) {
+      var a = now[j];
+      var wasClear = !prevState[a.id] || prevState[a.id] === 'clear';
+      if (!wasClear || a.state !== 'active_unacknowledged') continue;
+      if (!ALARM_DROP_PRIORITIES[a.priority]) continue;
+      return a;
+    }
+    return null;
+  };
+
   SimulationService.prototype._anyAlarmNewlyFiring = function (now, prev, requireUnacked) {
     if (!prev) return false;
     var prevState = {};

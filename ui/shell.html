@@ -163,7 +163,12 @@
                  UI rung only. The buttons carry no whitespace between them on purpose — .speed
                  lays them out edge to edge. Adding a rung is safe for verify_e2e_ui, which
                  clicks by [data-speed="N"]; REORDERING or renaming is not. -->
-            <button class="on" data-speed="1">1×</button><button data-speed="5">5×</button><button data-speed="10">10×</button><button data-speed="60">60×</button><button class="warp" data-speed="600" title="WARP — coarser physics step; long quiet evolutions only">600×</button><button class="warp" data-speed="3600" title="WARP — coarser physics step; long quiet evolutions only">3600×</button>
+<!-- TWO ROWS SINCE #655 (OWNER, 2026-09-08: "put the warp buttons on their own line with the
+                 other buttons underneath it. Leave a space between them for warp info text"). WARP
+                 on top, the info line between (why WARP is locked and for how long, what it is
+                 achieving, why the clock last dropped), PLAY underneath. DOM order is warp-first;
+                 every reader of [data-speed] sorts or looks up by value, so the order is free. -->
+            <button class="warp" data-speed="600" title="WARP — coarser physics step; long quiet evolutions only">600×</button><button class="warp" data-speed="3600" title="WARP — coarser physics step; long quiet evolutions only">3600×</button><div class="warp-info mono" id="warpInfo" aria-live="polite"></div><button class="on" data-speed="1">1×</button><button data-speed="5">5×</button><button data-speed="10">10×</button><button data-speed="60">60×</button>
           </div>
           <span class="ff-rate mono" id="ffRate" hidden title="Achieved rate — the plant-time actually passing per second of wall clock"></span>
           <button class="btn" id="manualBtn" data-scanner-hint="Operator's Manual — reference (controls, indications, setpoints, normal values) and engine-validated procedures for the selected plant."

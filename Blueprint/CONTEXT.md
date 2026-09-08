@@ -337,7 +337,10 @@ it up.
   *declared* fidelity departure *(OWNER RULING, 2026-09-04: "Yes")* bounded by
   `test/run_warp_tier.js` (measured inside instrument noise over a sim hour in five regimes; a
   1.0 s step trips the quiet plant, which the gate proves). WARP is refused or dropped to 60×
-  inside the step loop on a trip, a new failure, a first alarm on a quiet board, a power or
+  inside the step loop on a trip, a new failure, a new unacknowledged alarm of **critical or
+  warning** priority arriving on a quiet board — quiet meaning no warning or critical already
+  standing; a caution or a status tile neither drops the clock nor makes the board lit (#655,
+  2026-09-08; the PLAY-tier dropout to 1× uses the same rule), a power or
   pressure rate above the transient thresholds, a Courant limit the ring would have to
   sub-step past half its ceiling to meet, or a model hold. Authored beat speeds never warp.
   Both tiers and the per-broadcast wall budget (40 ms; the loop stops early and credits only
