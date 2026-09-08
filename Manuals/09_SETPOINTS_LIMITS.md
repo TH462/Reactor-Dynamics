@@ -26,7 +26,7 @@
 | Subcooling margin | **≈ 43 °F** (23.9 °C) | Mode 1, At Power |
 | Control bank position | **100 %** withdrawn (627 of 627 steps) | Mode 1, At Power |
 | Core inventory | **100 %** | Mode 1, At Power |
-| Decay heat (after long power run) | **≈ 7 %** at scram instant | — |
+| Decay heat (after long power run) | **≈ 6.2 %** at scram instant | — |
 
 ### Mode 3, Hot Standby — Hot Standby (typical)
 

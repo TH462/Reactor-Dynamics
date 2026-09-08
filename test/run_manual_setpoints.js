@@ -447,6 +447,103 @@ ck('every figure matches what that initial condition actually settles at',
    icWrong.length === 0,
    icWrong.length ? icWrong.join('  |  ') : 'all ' + icChecked + ' cells agree with the booted plant');
 
+/* ---- §1.0, NORMAL OPERATING POINT vs THE SAME BOOTED PLANT (#651) --------------------------
+ * §11.0's own guard (`icHeader`, above) requires a backticked IC name in the header, because
+ * picking the WRONG `| Parameter |` table once made the coverage check vacuous. That guard is
+ * correct for §11.0 and it PERMANENTLY EXCLUDES §1.0 — §1.0's table has no IC column, because it
+ * describes exactly one point (Hot Full Power), not a column per initial condition. So this
+ * section is located by SECTION HEADING instead, leaving the §11.0 guard untouched, and reuses
+ * the SAME booted `hot_full_power` plant §11.0 already settled 700 ticks ago — no second boot.
+ *
+ * ⚠ COVERAGE IS ASSERTED HERE TOO, same reasoning as the file header: all twelve rows of this
+ * table turned out to have exactly one number a booted plant or a named plant constant can be
+ * checked against, so none is `narrative` — an unclaimed row FAILS rather than going unchecked.
+ * Two rows carry more than one figure per cell (the loop split, the control-bank percent/steps)
+ * and are matched by label before the generic single-number lookup runs. */
+var s1Lines = md.split('\n');
+var s1Start = s1Lines.findIndex(function (l) { return /^## 1\.0 Normal operating point/.test(l); });
+var s1End = s1Lines.findIndex(function (l, i) { return i > s1Start && /^#{2,3}\s/.test(l); });
+var s1Rows = [];
+s1Lines.slice(s1Start, s1End === -1 ? s1Lines.length : s1End).forEach(function (line) {
+  if (line.charAt(0) !== '|') return;
+  if (/^\|[\s:-]+\|/.test(line)) return;                        /* the --- rule row */
+  var cells = line.split('|').slice(1, -1).map(function (c) { return c.trim(); });
+  if (cells.length < 2 || cells[0] === 'Parameter') return;      /* the header row */
+  s1Rows.push({ label: cells[0], cell: cells[1] || '' });
+});
+
+console.log('\n' + BOLD + 'THE NORMAL OPERATING POINT vs THE SAME BOOTED PLANT  (Manuals/09 §1.0)' + RST);
+
+var hfp = booted['hot_full_power'];
+var PZR_SP_PSI = RD.pwr2.pressurizer.CONTROL.setpoint_default_mpa * PSI;   /* the pressure ANCHOR
+  — a config constant, not a settled reading; the plant runs a few psi off it by design (§3.0's
+  psi-vs-psig note), so this row is checked against the constant it actually documents. */
+var DECAY_H0 = RD.pwr2.kinetics.DECAY.H0;
+var DECAY_PCT = (DECAY_H0[0] + DECAY_H0[1] + DECAY_H0[2] + DECAY_H0[3]) * 100;   /* the decay-heat
+  groups are seeded AT EQUILIBRIUM with the initial power (pwr2_kinetics createKinetics), so this
+  sum IS "decay heat after a long power run" — not merely close to it. */
+var BANK_STEPS = RD.pwr2.kinetics.RODS.max_steps;
+
+function s1Nums(text) { return (text.match(/-?\d+(?:\.\d+)?/g) || []).map(Number); }
+
+var S1_ROWS = [
+  { p: 'Reactor power',              tol: 1.0, want: function () { return hfp.power_pct; } },
+  { p: 'Electrical output',          tol: 1.5, want: function () { return hfp.mwe_output; } },
+  { p: 'Primary pressure',           tol: 3.0, want: function () { return PZR_SP_PSI; } },
+  { p: 'Tavg',                       tol: 1.0, want: function () { return hfp.tavg_c * 9 / 5 + 32; } },
+  { p: 'Pressurizer level',          tol: 1.5, want: function () { return hfp.pzr_level_pct; } },
+  { p: 'Steam Generator level',      tol: 1.5, want: function () { return hfp.sg_level_pct; } },
+  { p: 'Secondary steam pressure',   tol: 3.0, want: function () { return hfp.steam_pressure_mpa * PSI; } },
+  { p: 'Subcooling margin',          tol: 2.0, want: function () { return hfp.subcooling_c * 9 / 5; } },
+  { p: 'Core inventory',             tol: 1.5, want: function () { return hfp.core_inventory_pct; } },
+  { p: 'Decay heat',                 tol: 0.5, want: function () { return DECAY_PCT; } }
+];
+
+var s1Wrong = [], s1Unclaimed = [];
+s1Rows.forEach(function (row) {
+  if (!hfp) { s1Unclaimed.push(row.label + '  (no booted hot_full_power plant)'); return; }
+  if (row.label.indexOf('Thot / Tcold') === 0) {
+    var n = s1Nums(row.cell);
+    var wantThot = hfp.thot_c * 9 / 5 + 32, wantTcold = hfp.tcold_c * 9 / 5 + 32,
+        wantDT = (hfp.thot_c - hfp.tcold_c) * 9 / 5;   /* a DIFFERENCE: x9/5, no +32 offset */
+    if (n.length < 5) { s1Wrong.push(row.label + ': could not parse Thot / Tcold / split'); return; }
+    if (Math.abs(n[0] - wantThot) > 1.0)
+      s1Wrong.push('Thot: manual ' + n[0] + ' degF, plant ' + wantThot.toFixed(1));
+    if (Math.abs(n[1] - wantTcold) > 1.0)
+      s1Wrong.push('Tcold: manual ' + n[1] + ' degF, plant ' + wantTcold.toFixed(1));
+    if (Math.abs(n[4] - wantDT) > 1.0)
+      s1Wrong.push('loop split: manual ' + n[4] + ' degF, plant ' + wantDT.toFixed(1));
+    return;
+  }
+  if (row.label.indexOf('Control bank position') === 0) {
+    var n2 = s1Nums(row.cell);
+    var wantPct = 100 * hfp.rod_steps / BANK_STEPS;
+    if (n2.length < 3) { s1Wrong.push(row.label + ': could not parse percent / steps'); return; }
+    if (Math.abs(n2[0] - wantPct) > 1.0)
+      s1Wrong.push('control bank %: manual ' + n2[0] + ', plant ' + wantPct.toFixed(1));
+    if (Math.abs(n2[1] - hfp.rod_steps) > 1)
+      s1Wrong.push('control bank steps: manual ' + n2[1] + ', plant ' + hfp.rod_steps.toFixed(0));
+    if (Math.abs(n2[2] - BANK_STEPS) > 1)
+      s1Wrong.push('control bank max steps: manual ' + n2[2] + ', plant ' + BANK_STEPS);
+    return;
+  }
+  var spec = S1_ROWS.filter(function (r) { return row.label.indexOf(r.p) === 0; })[0];
+  if (!spec) { s1Unclaimed.push(row.label); return; }
+  var n3 = s1Nums(row.cell);
+  if (!n3.length) { s1Wrong.push(row.label + ': no figure found in the row'); return; }
+  var want = spec.want();
+  if (Math.abs(n3[0] - want) > spec.tol)
+    s1Wrong.push(row.label + ': manual ' + n3[0] + ', plant ' + want.toFixed(1));
+});
+
+ck('every §1.0 row is claimed by a field or a named plant constant — an unmapped row would go ' +
+   'unchecked',
+   s1Unclaimed.length === 0,
+   s1Unclaimed.length ? s1Unclaimed.join(' | ') : s1Rows.length + ' rows, all claimed');
+ck('every §1.0 figure matches the same booted hot_full_power plant',
+   s1Wrong.length === 0,
+   s1Wrong.length ? s1Wrong.join('  |  ') : 'all ' + s1Rows.length + ' rows agree with the booted plant');
+
 console.log(DIM + '  (numbers and existence only — the Notes prose and the chapter narrative are ' +
             'not machine-checkable; that is the rest of #532)' + RST);
 

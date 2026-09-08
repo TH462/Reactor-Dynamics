@@ -29,6 +29,70 @@ and the user-visible summary in `CHANGELOG.md`. This file points at those and tr
 
 ---
 
+## Session log — 2026-09-08-workbench-e (#651 — `run_manual_setpoints` could not see §1.0 by construction)
+
+**The §11.0 guard was correct and permanently excluded a different table.** `run_manual_setpoints`
+finds §11.0's initial-condition table by requiring a backticked IC name in the header — added
+after the parser once picked the wrong `| Parameter |` table and went vacuous. §1.0, the
+twelve-row "Normal operating point" table, opens with the same header text but describes ONE
+point (Hot Full Power), so it carries no IC column and no backticked name — the guard that
+protects §11.0 excludes it by construction. #650 re-captured §1.0 by hand two days earlier
+(`cfd96f27`); nothing gated the next drift.
+
+**Fix.** Located §1.0 by SECTION HEADING (`/^## 1\.0 Normal operating point/`) instead of a
+header pattern, leaving the §11.0 guard untouched. Reused the SAME booted `hot_full_power` state
+§11.0 already settles at 700 ticks / 10x / seed 1 — no second boot. All twelve rows turned out to
+map to a single true_state field or a named plant constant (none needed `narrative: true`):
+
+| §1.0 row | plant source | tol |
+|---|---|---|
+| Reactor power | `power_pct` | 1.0 % |
+| Electrical output | `mwe_output` | 1.5 MWe |
+| Primary pressure | `pwr2.pressurizer.CONTROL.setpoint_default_mpa` (constant, not the settled reading — see below) | 3.0 psi |
+| Tavg | `tavg_c` ×9/5+32 | 1.0 °F |
+| Thot / Tcold (+ split) | `thot_c`, `tcold_c` ×9/5+32; split ×9/5 no offset | 1.0 °F each |
+| Pressurizer level | `pzr_level_pct` | 1.5 % |
+| Steam Generator level | `sg_level_pct` | 1.5 % |
+| Secondary steam pressure | `steam_pressure_mpa` × PSI | 3.0 psi |
+| Subcooling margin | `subcooling_c` ×9/5, no offset | 2.0 °F |
+| Control bank position | `rod_steps` / `pwr2.kinetics.RODS.max_steps` | 1.0 % / 1 step |
+| Core inventory | `core_inventory_pct` | 1.5 % |
+| Decay heat (after long power run) | sum(`pwr2.kinetics.DECAY.H0`) × 100 (constant) | 0.5 % |
+
+Coverage is asserted the same way §2.0/§3.0/§4.0 already do — an unmapped row FAILS. Verified by
+injection (HR10): editing Tavg to a wrong figure reds naming the row; adding an unmapped row reds
+the coverage check; both restored byte-for-byte (`git diff --stat Manuals/` confirmed clean before
+and after).
+
+**One cell was genuinely stale, measured (HR12), not inherited from #650's list**: Decay heat
+read **≈ 7 %**; `pwr2_kinetics`'s four decay-heat groups are seeded AT equilibrium with the
+initial power (`createKinetics`: `H.push(DECAY.H0[j] * P0)`), so `sum(DECAY.H0) × 100 = 6.248 %`
+IS "decay heat after a long power run", not an approximation of it — corrected to **≈ 6.2 %**.
+`Primary pressure` was NOT stale despite reading "2235 psi" against a measured settled 2247 psi
+(15.49 MPa): 2235 psi (15.41 MPa) is `CONTROL.setpoint_default_mpa`, the pressurizer's control
+ANCHOR (§3.0's own psi-vs-psig note: *"That number is the pressure anchor of the whole plant"*),
+a different quantity from what the plant settles at a few psi off — the row documents the
+setpoint and needed no change. The other nine rows (including #650's Thot/Tcold, PZR level,
+steam pressure, subcooling, control bank recaptures) agreed with the booted plant to within
+tolerance.
+
+**No engine code touched (HR9) — a config constant was READ, never moved.**
+
+**Gates:** `run_manual_setpoints` **15/15** (was 13/13 — two new checks; `test/run_all.js`
+reports this as DRIFT, better than the recorded baseline of `13passed 0failed 13checks` — per the
+lane's instructions `test/run_all.js` was not edited, so `BASELINES` there and the gate-baseline
+line in `CLAUDE.md` both still need updating by whoever next touches that file). `run_manual_rev`
+15/15, `run_manual_units` 0 failed, `run_released_frozen` 5/5, `run_hardrules` 499/499 (1 declared
+Hard Rule 1 debt, pre-existing), `run_doc_budget` 4/4 (14,979 words, 21 headroom — `CLAUDE.md` not
+touched), `run_session_labels` 8/8.
+
+**Still outstanding:** the `BASELINES` entry in `test/run_all.js` (owned by another lane per this
+session's constraints) and the gate-baseline line in `CLAUDE.md` need `run_manual_setpoints`
+bumped from 13 to 15 checks. Recommend: whoever next edits `test/run_all.js` picks this up rather
+than filing a separate issue for a one-line baseline bump.
+
+---
+
 ## Session log — 2026-09-08-workbench-d (#649 — SI-0 was the same coincidence-count cliff SI-5 was rebuilt out of)
 
 **The defect.** `test/run_service_invariance.js`'s SI-0 asserted `qc.n >= 100` of 200 shared sim

@@ -30,6 +30,28 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
 
 ## [Unreleased]
 
+### Test coverage (`run_manual_setpoints` could not see the normal-operating-point table — #651)
+
+`Manuals/09` §1.0, the twelve-row "Normal operating point" table, had no gate reading it. §11.0's
+own guard (a backticked initial-condition name required in the header) is correct for that
+table and permanently excluded §1.0's, whose one-point layout carries no IC column at all — so
+nothing had compared it to a booted plant beyond #650's by-hand recapture two days earlier.
+`run_manual_setpoints` now locates §1.0 by its SECTION HEADING (the §11.0 guard is untouched),
+reuses the same booted `hot_full_power` state §11.0 already settles, and asserts coverage the same
+way the §2.0/§3.0/§4.0 tables do — an unmapped row FAILS rather than going unchecked. Verified by
+injection: a wrong Tavg figure reds naming the row; an added, unmapped row reds the coverage check;
+both restored byte-for-byte. `run_manual_setpoints` **15/15** (was 13/13 — two new checks).
+
+### Fixed (`Manuals/09` §1.0's decay-heat row was still the old figure — #651)
+
+One of the twelve cells the new §1.0 check reads was stale: **Decay heat (after long power run)**
+read **≈ 7 %**, corrected to **≈ 6.2 %** — the decay-heat groups' own equilibrium constant
+(`pwr2_kinetics` `DECAY.H0`, seeded AT equilibrium with the initial power, not merely close to
+it). `Primary pressure` is checked against the pressurizer's control-setpoint constant (2235 psi
+/ 15.41 MPa), not the settled reading (2247 psi / 15.49 MPa) — the two are different quantities by
+design (§3.0's psi-vs-psig note), and the row documents the setpoint, so it needed no change. The
+other ten rows, including #650's recaptures, agree with the booted plant.
+
 ### Fixed (the steam safety bank's capacity was never sourced, and the manual said it was — #643)
 
 `engines/pwr2/pwr2_relief.js`'s `safety_flow_frac: 0.84` — the main steam safety valve bank's
