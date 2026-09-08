@@ -410,7 +410,8 @@
     /* `> 0`, not `!== undefined` (#539). The old guard refused to invent a MISSING plant and
      * then silently accepted a ZERO one — the same fabrication with a different spelling, and
      * it is what let Mode 4 ship with every capacity multiplied by nought: the safety-valve
-     * latch says OPEN (it keys on pressure alone) while safety_kgs is 0.84 * 0. This is the
+     * latch says OPEN (it keys on pressure alone) while safety_kgs is safety_flow_frac * 0 —
+     * named rather than spelled, because the constant it spelled has since moved (#643). This is the
      * only hard refusal in the whole rated-scale chain and it did not fire on the case that
      * actually shipped. PWR2_VALIDATION.md:1021 states the house rule: "Every PWR2 layer so
      * far throws rather than fabricate a missing driver (fuelTemp_c, Q_core_kW,
