@@ -201,8 +201,14 @@ Before this was corrected, a single constant of −11.1 pcm/°F was applied from
 It integrated to a **−4944 pcm** moderator defect over the heatup — 494 ppm of dilution to buy
 back, a third of it charged below 274 °F — and it collapsed critical boron from 819 ppm cold to
 263 ppm hot. The practical consequence, and how it was found: **600 ppm, a value that looks safe
-next to the hot end, was critical at 274 °F**, and diluting toward it in a Mode 5 → Mode 1 run
-took the reactor critical cold and tripped it on source-range high flux.
+next to the hot end, was critical at 274 °F (134.4 °C)**, and diluting toward it in a Mode 5 →
+Mode 1 run took the reactor critical cold. **On the retired engine that ended in a source-range
+high-flux trip; this plant has no such trip** (**09** §2.0, NOT MODELLED — 1e5 cps is this
+plant's source-range *de-energization* point, and it sits 1.5 decades above the P-6 permissive
+that would block the trip anyway). The same defect today would announce itself on the
+annunciators — **SUR HI** at 1 DPM, then **SR HI FLUX** at 5e4 cps — and be arrested by the
+intermediate-range high-flux **rod stop at 20 % current equivalent**, with nothing scramming
+until the intermediate-range **trip at 25 %**.
 
 **Rod worth follows an S-curve** — least effective near fully in or fully out, most effective mid-core — with the peak deliberately flattened to about 90 % of the textbook curve. The reason is a teaching one: the single lumped bank carries the **full control worth that a real plant spreads over four banks**, so an unflattened curve made one step near the critical band worth far more than a real bank-D step.
 
@@ -212,7 +218,7 @@ took the reactor critical cold and tripped it on source-range high flux.
 
 ### 4.4 Startup rate and period are derived, not measured
 
-`SUR (dpm) = 26.06 · (Ṗ/P)` and `period (s) = P/Ṗ`, both computed from the **smoothed** power rate. They are well defined only above a very small power floor. The plant carries a *separate* startup-rate **instrument** — a lagged, noisy twin of that proxy — and it is that instrument, not the proxy, which feeds the rod-withdrawal interlock.
+`SUR (dpm) = 26.06 · (Ṗ/P)` and `period (s) = P/Ṗ`, both computed from the **smoothed** power rate. They are well defined only above a very small power floor. The plant carries a *separate* startup-rate **instrument** — a lagged, noisy twin of that proxy, 2-second lag — and it is that instrument, not the proxy, that the **SUR HI** annunciator reads at **1 DPM**. **It feeds no interlock.** The retired engine blocked rod withdrawal on it at 1.5 DPM; this plant does not, and no document in the corpus describes a startup-rate rod stop (#572). Measured on a runaway withdrawal from hot zero power (2026-09-08, #661): SUR HI comes in at **367 s** — 1.82 s behind the true rate, which is the meter's own lag and nothing else — and withdrawal then continues uninterrupted to the intermediate-range flux rod stop at **442 s**.
 
 ### 4.5 Decay heat
 

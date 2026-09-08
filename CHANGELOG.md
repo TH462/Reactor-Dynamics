@@ -30,6 +30,53 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
 
 ## [Unreleased]
 
+### Fixed (four manual sentences promised a source-range reactor trip this plant does not have — #661)
+
+`Manuals/09`'s setpoint table has marked the source-range high-flux trip **NOT MODELLED** since
+#601, and #661 measured why it cannot be built in its sourced shape: on this plant's flux scale
+1e5 counts per second sits 1.5 decades **above** the P-6 permissive at which a real operator
+blocks that trip, so it could never fire. The prose had not followed the table. `09` §7.5.1 still
+called that trip *"the backstop, and it is the last one"*; `09` §7.5.3 said an unattended
+dilution with the shutdown bank out *"trips the source range inside the hour"*; `12` §4.3.1 told
+a historical cold-dilution defect as ending in a source-range trip (true on the **retired**
+engine, which still carries that trip, and the rewrite says so rather than deleting the history);
+and `12` §4.4 — the sentence the issue did not list, found by grep — said the startup-rate
+instrument *"feeds the rod-withdrawal interlock"*, which is the retired engine's 1.5 decades per
+minute block that this plant has never had (#572). All four now state what the plant does, quoted
+from one ride (the shell under the control kernel, 0.02 s step, hot zero power, 60 s settle,
+normal-speed runaway rod withdrawal): **SUR HI at 1 decade per minute annunciates at 367 s** —
+1.82 s behind the true rate, which is the meter's own 2-second lag and nothing else — **SR HI
+FLUX at 5e4 counts per second at 397 s**, the **intermediate-range high-flux rod stop at 20 %
+current equivalent at 442 s**, and the **intermediate-range high-flux trip at 25 % at 444 s**.
+Below the 8 %-power permissive P-10 the annunciator is the whole of the early warning, and
+nothing acts for the operator before the rod stop. Every other source-range passage in the manual
+set was already correct. `sr_high_flux`'s 5e4 counts per second is marked `[UNVERIFIED]` in its
+row and **not retuned**: the alarm itself is sourced (Ginna UFSAR chapter 7 and chapter 15, and
+the startup procedure's *"Block the alarm for source range high flux level at shutdown"*), but
+`find_source` returns zero hits for the number across 39 documents in 3 lanes — it is almost
+certainly half the retired plant's trip setpoint.
+
+### Test coverage (nothing asserted that the startup-rate annunciator reaches PWR2 at all — #661)
+
+The 1 decade per minute startup-rate caution `sur_high` already existed and already fired on this
+plant, but the whole pwr annunciator table rides onto PWR2 **by reference** through one mapper in
+the shell's `getProtectionConfig`, and no check had ever exercised a single row of it here. So a
+measurement pass that logged the engine's own protection flags and never read the control layer's
+annunciators reported the alarm as **absent** — and an owner ruling was issued to build what was
+already built. CLAUDE.md's standing trap says a claim about what is BUILT is an unmeasured claim;
+this is the same trap read backwards, and prove-by-injection catches both directions.
+`run_pwr2_shell` gains group N: the row reaches PWR2 on a channel this plant really publishes, it
+is a `caution` (so per #655 it never drops the clock out of WARP — promote it and every startup
+at 600x stops dead at 367 s), it is clear on a settled hot-zero-power plant, and it goes active
+within 5 s of the published startup rate crossing **the row's own setpoint**, read off the table
+rather than typed. Made to red twice before landing: repointing the row's `instrument` at a
+channel PWR2 does not publish (the dark-wire case — 2 of 3 red, the alarm never arriving against
+a crossing at 365.24 s), and emptying the annunciator table in the shell (3 of 3 red). The first
+draft of that second mutation was **blind** — it added `alarms: []` earlier in the same object
+literal than the real `alarms:` key, and a later duplicate key wins, so the mutant was
+byte-equivalent to the clean build. An anchor that parses is not an anchor that bites.
+`run_pwr2_shell` 162/162 -> **165/165**, 59/59 -> **60/60** mutations caught.
+
 ### Test coverage (the SETTLED-IC fixture was pinned to a plant three changes gone — #652)
 
 `run_pwr2_engine`'s no-command settle check compared `thot_c`/`tcold_c` to typed centres

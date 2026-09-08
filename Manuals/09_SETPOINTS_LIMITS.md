@@ -376,8 +376,17 @@ an S: least effective at either end, most effective mid-travel.
 > Calculations* (ML11216A051), Attachment 2.2-1, note on line O: *"Since T avg is required to
 > be >541°F, the reactivity change from moderator temperature is considered negligible."* A
 > real ECC is only ever computed **hot**, which is why a real operator never faces this
-> question. Our plant will let you drive it cold and dilute anyway; the source-range
-> high-flux trip at 1e5 cps is the backstop, and it is the last one.
+> question. Our plant will let you drive it cold and dilute anyway, **and there is no
+> source-range trip to catch you.** §2.0 marks it NOT MODELLED, and the reason is arithmetic on
+> this plant's own flux scale: **1e5 cps is 1.5 decades ABOVE the P-6 permissive** that a real
+> operator blocks that trip at, so the sourced shape could never fire here. What stands below
+> **P-10 (8 % power)** is one caution and then two flux functions, in this order: **SUR HI at
+> 1 DPM** — an annunciator, not an interlock — then the **intermediate-range high-flux rod stop
+> at 20 % current equivalent**, then the **intermediate-range high-flux trip at 25 %**. Measured
+> on a runaway withdrawal from hot zero power (2026-09-08, #661; engine under the control kernel,
+> 0.02 s step, normal drive speed): SUR HI at **367 s**, the rod stop at **442 s**, the trip at
+> **444 s**. **The annunciator is the whole of your early warning** — nothing acts for you before
+> the rod stop.
 
 **The acceptance band.** Attachment 2.2-1 line Q brackets the prediction at **±750 pcm**
 around the estimated critical position, or the rod insertion limit, whichever is tighter. On
@@ -437,7 +446,11 @@ longer is (**04** PWR-N01 step 2a). Measured on this plant at cold shutdown, 857
 **The operational point.** Withdrawing the shutdown bank does not make the plant unsafe — it is
 still 1000 pcm subcritical — but it spends the margin that was buying you *time*. Measured: an
 unattended dilution at the plant's make-up rate takes **79 minutes** to reach criticality with the
-bank in, and trips the source range **inside the hour** with it out. That is what a shutdown
+bank in; with the bank out it starts from **−1000 pcm** instead of **−4676**, so the same dilution
+gets there far sooner. **And nothing stops it.** This manual said that case "trips the source
+range inside the hour" until 2026-09-08 (#661) — **there is no source-range trip on this plant**
+(§2.0), so what the dilution buys you is **indication only**: the count rate climbing, **SR HI
+FLUX** at 5e4 cps, and **SUR HI** at 1 DPM once the rate is real. That is what a shutdown
 margin is for, and it is why the real procedure verifies it before the bank moves
 (**ML11223A342** App 19-1 A.12 / C.8).
 

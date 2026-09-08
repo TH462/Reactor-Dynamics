@@ -548,6 +548,27 @@
     // admin startup-rate limit the checklist teaches, and lands one step below
     // the 1.5 DPM rod-withdrawal block — caution first, then the physical stop.
     { id: 'sur_high',          instrument: 'startup_rate',     direction: 'high',    setpoint: 1.0,   priority: 'caution',  panel: 'A', category: 'reactivity', label_learning: 'Startup Rate High',               label_industry: 'SUR HI' },
+    // THE ALARM IS SOURCED; THE NUMBER IS NOT [UNVERIFIED] (#661, evidence pass 2026-09-08).
+    // The ALARM's existence is real and prototypical — Ginna UFSAR ch7 (ML20339A027): the source
+    // range channels "provide high flux level reactor trip AND ALARM signals"; UFSAR ch15
+    // (ML20339A101) §15.4.4.3.1.2 lists "High flux at shutdown alarm" as one of three source-range
+    // indications in Modes 3-6; and the startup procedure ML11223A342 has "Block the alarm for
+    // source range high flux level at shutdown at both source range drawers" (an operator action
+    // at the drawers — NOT modelled here, and this row is therefore unblockable).
+    //
+    // ITS SETPOINT IS NOT SOURCED. `find_source` over 39 documents in 3 lanes returns ZERO hits
+    // for 5e4 / 50,000 cps; no source in the corpus publishes a source-range ALARM setpoint at
+    // all. What the corpus does publish is the TRIP at 1e5 cps (Ginna UFSAR ch7), so 5.0e4 is
+    // almost certainly "half the retired plant's trip" — and that trip is itself declared
+    // UNSOURCED and NOT MODELLED on PWR2 (`Manuals/09` §2.0; #661 measured why: 1e5 cps is
+    // 1.5 decades ABOVE the P-6 permissive that blocks it, so it could never fire).
+    //
+    // NOT RETUNED, deliberately. Moving it would need a derivation on THIS plant's flux scale,
+    // which is the A3 option the owner declined at #661; and the row is doing honest work where
+    // it stands — measured on the runaway withdrawal from hot zero power, it annunciates at
+    // 396.8 s, 30 s after SUR HI and 46 s before the intermediate-range rod stop, which is the
+    // "the handoff is about to happen by itself" cue `Manuals/06` PWR-A09 teaches. The number is
+    // marked, not defended: re-derive it if a source-range alarm setpoint ever turns up.
     { id: 'sr_high_flux',      instrument: 'source_range',     direction: 'high',    setpoint: 5.0e4, priority: 'caution',  panel: 'A', category: 'reactivity', label_learning: 'Source Range Count Rate High',    label_industry: 'SR HI FLUX' },
     { id: 'subcooling_low',    instrument: 'subcooling_margin', direction: 'low',    setpoint: 11.1,  priority: 'warning',  panel: 'A', category: 'coolant', label_learning: 'Low Subcooling Margin',           label_industry: 'LO SUBCOOL' },
     { id: 'subcooling_lost',   instrument: 'subcooling_margin', direction: 'low',    setpoint: 0.0,   priority: 'critical', panel: 'A', category: 'coolant', label_learning: 'Subcooling Lost — Coolant Boiling', label_industry: 'SUBCOOL LOST' },

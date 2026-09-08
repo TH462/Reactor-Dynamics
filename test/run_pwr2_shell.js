@@ -2260,6 +2260,99 @@ function runSuite(SH, rec, quiet, only) {
      (cgT1 * 9 / 5 + 32).toFixed(1) + ' degF (air term dropped: ~+90 degF)');
   }
 
+  if (grp('N')) {
+  /* ---- 4n. THE STARTUP-RATE ANNUNCIATOR REACHES PWR2 (#661) ----------------------------------
+   * *(OWNER RULING, 2026-09-08: "B — leave the trip declared absent; build a 1 DPM startup-rate
+   * ALARM")* — and the ruling's "build" half was ruled on a FALSE PREMISE. `sur_high` (SUR HI,
+   * 1.0 DPM, caution — `pwr_control.js`, moved 2.0 -> 1.0 at #134) already existed and already
+   * fired on this plant. The #661 measurement pass that produced the premise logged the ENGINE's
+   * protection, permissive and rod-stop flags and never once read the control layer's
+   * annunciators, so it reported an "81-second unwarned window" that the plant does not have.
+   *
+   * WHY THAT WAS POSSIBLE, and what this block fixes: NOTHING ASSERTED IT. The row rides onto
+   * PWR2 BY REFERENCE — `getProtectionConfig` does `Object.assign({}, base, …)` and never names
+   * `alarms` — so the whole pwr annunciator table is on this plant by a convention that no check
+   * had ever exercised. That is the #644 audit shape and the standing trap in CLAUDE.md: a claim
+   * about what is BUILT is an unmeasured claim, and here the claim went wrong in the OTHER
+   * direction — a working feature reported as absent, with an owner ruling issued on top of it.
+   *
+   * MEASURED FIRST (2026-09-08, this exact fixture — shell + kernel, DT 0.02, `hot_zero_power`,
+   * 60 s settle, `rod_start` normal speed). ONE internally-consistent ride, one layer:
+   *
+   *     365.24 s   true startup rate reaches 1.0 decades per minute
+   *     367.06 s   INDICATED startup rate reaches 1.0 (the channel's own tau = 2 s lag)
+   *     367.06 s   `sur_high` clear -> active_unacknowledged   <-- the SAME sample
+   *     396.80 s   `sr_high_flux` (5e4 counts per second) annunciates
+   *     442.48 s   intermediate-range high-flux ROD STOP, 20 % current equivalent
+   *     444.32 s   reactor trip, intermediate-range high flux, 25 %
+   *
+   * The annunciator is 1.82 s behind TRUTH and 0.00 s behind its own INSTRUMENT, which is HR1
+   * working exactly as written: the alarm reads the indicated channel, so its whole delay is the
+   * meter's. (The #661 comment's 366.0 / 368.0 s are the same events measured full-stack through
+   * the service at 10x; the two harnesses differ by ~1 s and the issue's earlier engine-flag ride
+   * differs by ~55 s at the rod stop. Unreconciled, and deliberately not papered over — this
+   * block quotes ITS OWN layer's ride and nothing else.)
+   *
+   * THE SETPOINT IS READ OFF THE ROW, NEVER TYPED. A hard 1.0 here would silently desynchronise
+   * from a retuned table and then assert a timing relationship between two different numbers.
+   * The sourced value (1.0 decades per minute, Westinghouse Technology Systems Manual sec 2.1,
+   * ML11223A207, via #220 claim 7) is pinned where setpoint values belong — the manual's own
+   * table, gated by `run_manual_setpoints`.
+   *
+   * IT IS A `caution` AND THAT IS A CLAIM, not a label: since #655 only `critical` and `warning`
+   * arrivals drop the clock (`simulation_service.js` ALARM_DROP_PRIORITIES), so this alarm
+   * warns a player walking a startup at speed WITHOUT yanking them out of WARP for a rate they
+   * were deliberately building. Promote it and every startup at 600x stops dead at 367 s. */
+  head('SUR HI ON PWR2  [#661: the 1 DPM caution the ruling asked to be BUILT was already here]');
+  (function () {
+    var eN = new SH.PWR2Engine({ initial_state: 'hot_zero_power' });
+    var pcN = eN.getProtectionConfig();
+    var layN = new (globalThis.RD.ControlLayer)(eN, pcN);
+    var rowN = (pcN.alarms || []).filter(function (a) { return a.id === 'sur_high'; })[0] || null;
+    function stN(id) {
+      var a = layN.getAlarms().filter(function (x) { return x.id === id; })[0];
+      return a ? a.state : 'MISSING';
+    }
+    var tN = 0;
+    function tickN() { var o = eN.step(DT); layN.evaluate(eN.getInstruments(), DT); tN += DT; return o; }
+    for (var i = 0; i < Math.round(60 / DT); i++) tickN();          /* settle */
+    /* THE DARK-WIRE TEST (the #540 class). A row whose `instrument` names a channel this plant
+     * never publishes reads `undefined > setpoint` — false for ever — and is indistinguishable
+     * from a healthy quiet annunciator. `typeof` first because `isFinite(null)` is TRUE (#555). */
+    var vN = rowN ? eN.getInstruments()[rowN.instrument] : undefined;
+    ck('the SUR HI row reaches PWR2 on a channel this plant really publishes, and it is a ' +
+       'CAUTION — so it warns without dropping the clock out of WARP (#655: only critical and ' +
+       'warning arrivals do)',
+       !!rowN && rowN.direction === 'high' && typeof rowN.setpoint === 'number' &&
+       rowN.priority === 'caution' && typeof vN === 'number' && isFinite(vN),
+       rowN ? rowN.instrument + ' = ' + (typeof vN === 'number' ? vN.toFixed(3) : String(vN)) +
+              ' DPM at settle, setpoint ' + rowN.setpoint + ', ' + rowN.priority
+            : 'NO sur_high ROW — the pwr alarm table did not reach this plant');
+    ck('a settled hot zero power plant does NOT sit on its own startup-rate caution',
+       stN('sur_high') === 'clear', 'sur_high = ' + stN('sur_high'));
+    /* Drive the bank out and STOP 10 s past the arrival. The trip is 77 s further on and is a
+     * different claim (`pwr2_protection`'s own gates own it) — riding to it would triple the
+     * cost of this block to assert nothing it asserts. */
+    eN.applyCommand({ action: 'rod_start', direction: 1, speed: 'normal' });
+    var tCrossN = null, tAlarmN = null, surAtN = null;
+    while (tN < 460 && tAlarmN === null) {
+      var tsN = tickN();
+      if (tCrossN === null && rowN && tsN.startup_rate_dpm >= rowN.setpoint) tCrossN = tN;
+      if (stN('sur_high') !== 'clear') { tAlarmN = tN; surAtN = tsN.startup_rate_dpm; }
+    }
+    for (i = 0; i < Math.round(10 / DT); i++) tickN();
+    ck('SUR HI ANNUNCIATES on the runaway withdrawal — active_unacknowledged within 5 s of the ' +
+       'published startup rate crossing the ROW\'S OWN setpoint (measured 1.82 s: the meter\'s ' +
+       'tau, nothing else)',
+       tCrossN !== null && tAlarmN !== null && tAlarmN >= tCrossN &&
+       (tAlarmN - tCrossN) <= 5.0 && stN('sur_high') === 'active_unacknowledged',
+       (tCrossN === null ? 'the published rate NEVER crossed the setpoint' :
+        'crossed ' + rowN.setpoint + ' DPM at ' + tCrossN.toFixed(2) + ' s, alarm ' +
+        (tAlarmN === null ? 'NEVER (dark wire)' : 'at ' + tAlarmN.toFixed(2) + ' s (+' +
+         (tAlarmN - tCrossN).toFixed(2) + ' s, SUR ' + surAtN.toFixed(2) + ' DPM)')));
+  })();
+  }
+
   if (grp('T')) {
   /* ---- 5. THE AFW THROTTLE ON A REAL POST-TRIP DRAIN (#582 item 2) ---------------------------
    * #562 landed the flow control valves and the afw_level channel SHIPS ENGAGED; #391's question
@@ -2617,7 +2710,24 @@ var MUTATIONS = [
   ['the published mode reads the CONTROLLER instead of the commanded driver (the status word ' +
    'goes one selection stale)',
    '    if (e.dcDrivers && e.dcDrivers.mode !== undefined) return e.dcDrivers.mode;\n    return e.dc ? e.dc.mode : \'tavg\';',
-   "    return e.dc ? e.dc.mode : 'tavg';", { grp: 'M' }]
+   "    return e.dc ? e.dc.mode : 'tavg';", { grp: 'M' }],
+  /* ---- #661: the annunciator table's ride onto PWR2 -----------------------------------------
+   * The whole pwr alarm table reaches this plant through ONE mapper in getProtectionConfig, and
+   * until #661 nothing exercised any row of it on PWR2 — which is precisely why the #661
+   * measurement pass could report the 1 DPM startup-rate caution as not existing here, and get
+   * an owner ruling issued to build a thing that was already built. Empty the table and every
+   * annunciator on the board goes dark while the config still passes every OTHER shape claim
+   * (trips/actuations/channels/ESF/failures untouched).
+   *
+   * FIRST DRAFT OF THIS ENTRY WAS BLIND AND THAT IS THE LESSON: it added `alarms: []` to the
+   * `trips: [], actuations: [] …` line, which is EARLIER in the same object literal than the
+   * real `alarms:` key below it — a later duplicate key wins, so the mutant was byte-equivalent
+   * to the clean build and the harness dutifully reported BLIND TO. An anchor that parses is not
+   * an anchor that bites. */
+  ['PWR2 stops carrying the pwr annunciator table (SUR HI and every other alarm go dark, and ' +
+   'the config still looks correct in every other respect)',
+   '        alarms: (base.alarms || []).map(function (a) {',
+   '        alarms: [], _alarmsRetired: (base.alarms || []).map(function (a) {', { grp: 'N' }]
 ];
 
 /* ---- SCOPED-CLEAN-PASS PREFLIGHT (#513) ------------------------------------------------

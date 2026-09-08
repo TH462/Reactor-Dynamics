@@ -29,6 +29,116 @@ and the user-visible summary in `CHANGELOG.md`. This file points at those and tr
 
 ---
 
+## Session log — 2026-09-08-workbench-j (#661 — the alarm the ruling ordered BUILT was already firing; nothing had ever asserted it reaches this plant)
+
+**The correction that set the work.** #661's measurement pass logged the engine's protection,
+permissive and rod-stop flags on a runaway withdrawal and never read the control layer's
+annunciators. It concluded there was an **81-second unwarned window** above the sourced 1 decade
+per minute (DPM) startup-rate limit, and the owner ruled *(OWNER RULING, 2026-09-08: "B — leave
+the trip declared absent; build a 1 DPM startup-rate ALARM")*. The premise was false: `sur_high`
+(SUR HI, 1.0 DPM, caution — `pwr_control.js:550`, moved 2.0 -> 1.0 at #134) already existed on
+PWR2 and already fired. **The ruling's intent was already met; what was missing was the assertion.**
+
+**Why the pass could get it wrong — the #644 audit shape, in the direction nobody watches.** The
+whole pwr annunciator table reaches PWR2 through ONE mapper in `pwr2_shell.js`'s
+`getProtectionConfig`, by reference, and **no check had ever exercised a single row of it on this
+plant**. CLAUDE.md's standing trap says a claim about what is BUILT is an unmeasured claim and must
+be proved by injection; this is the same trap read backwards — **a working feature reported as
+ABSENT, with an owner ruling issued on top of it.** Prove-by-injection catches both directions and
+only one of them was being watched.
+
+**Measured (2026-09-08).** One ride, one layer — the shell under the control kernel, 0.02 s step,
+`hot_zero_power`, 60 s settle, `rod_start` at normal drive speed, alarms read off
+`ControlLayer.getAlarms()` each step:
+
+| t | event |
+|---|---|
+| 365.24 s | TRUE startup rate reaches 1.0 DPM |
+| 367.06 s | INDICATED startup rate reaches 1.0 DPM (the channel's own tau = 2 s) |
+| **367.06 s** | **`sur_high` clear -> active_unacknowledged — the SAME sample** |
+| 396.80 s | `sr_high_flux` (5e4 counts per second) annunciates |
+| 442.48 s | intermediate-range high-flux ROD STOP, 20 % current equivalent |
+| 444.32 s | reactor trip, intermediate-range high flux, 25 % |
+
+The annunciator is **1.82 s behind truth and 0.00 s behind its own instrument** — HR1 working
+exactly as written: the alarm reads the indicated channel, so its whole delay is the meter's.
+
+**Three unreconciled harnesses, and the divergence is left visible on purpose.** The 1 DPM crossing
+reads 306 s on #661's engine-flag ride, 366 s full-stack through the service at 10x, and 365.24 s
+here; the rod stop reads 387 s there against 442.48 s here. Nothing in this pass papers that over —
+the manual and the gate quote **this** ride and name its layer. Reconciling the three is a
+follow-up, not a claim.
+
+**The gate — `run_pwr2_shell` group N (three checks).** (1) the SUR HI row reaches PWR2 on a
+channel this plant really publishes (`typeof` first: `isFinite(null)` is TRUE, #555) and is a
+`caution`, so per #655 it never drops the clock out of WARP — promote it and every startup at 600x
+stops dead at 367 s; (2) a settled hot-zero-power plant does not sit on its own caution; (3) it
+goes `active_unacknowledged` within 5 s of the published rate crossing **the row's own setpoint**,
+read off the table rather than typed — a hard 1.0 would desynchronise from a retune and then assert
+a timing relationship between two different numbers. The sourced 1.0 DPM (Westinghouse Technology
+Systems Manual section 2.1, ML11223A207, via #220 claim 7) stays pinned in the manual, where
+`run_manual_setpoints` owns it. The ride stops 10 s past the arrival; the trip 77 s later is a
+different claim with its own gates.
+
+**Made to red twice (HR10).** Dark wire — repointed the row's `instrument` at a channel PWR2 does
+not publish: 2 of 3 red, the note printing *"crossed 1 DPM at 365.24 s, alarm NEVER (dark wire)"*;
+reverted, green. Table severed — the new MUTATIONS entry empties the annunciator table in the
+shell: 3 of 3 red. **The first draft of that mutation was BLIND and that is the lesson**: it added
+`alarms: []` to the `trips: [], actuations: [] ...` line, which is EARLIER in the same object
+literal than the real `alarms:` key below it. A later duplicate key wins, the mutant was
+byte-equivalent to the clean build, and the harness reported BLIND TO. **An anchor that parses is
+not an anchor that bites.**
+
+**Content follows the plant (HR9) — four stale sentences, not the three the issue listed.** The
+source-range row in chapter 09's setpoint table has read NOT MODELLED since #601; the prose had
+not followed. `09` §7.5.1 called the trip at 1e5 counts per second *"the backstop, and it is the
+last one"*. `09` §7.5.3 said an unattended dilution with the shutdown bank out *"trips the source
+range inside the hour"* — and the replacement does NOT invent a substitute number: it states the
+arithmetic already in the table above it (-1000 pcm instead of -4676) and says what the operator
+actually gets, which is indication only. `12` §4.3.1 told the historical cold-dilution defect as
+ending in a source-range trip (true on the RETIRED engine — `pwr_control.js:139` still carries
+that trip at 1e5 — and the rewrite says so rather than deleting the history). **`12` §4.4 was the
+one the issue did not list**, found by grep: *"it is that instrument, not the proxy, which feeds
+the rod-withdrawal interlock"* — the retired engine's 1.5 DPM block (`pwr_control.js:1011`), which
+this plant has never had (#572). Every other source-range mention in `Manuals/` (03 lines 189-191,
+05 line 368, 06 PWR-A08/A09, 09 §2.0 and §9.0) was ALREADY correct.
+
+**`sr_high_flux` at 5e4 counts per second — the alarm is sourced, the NUMBER is not.** Evidence
+pass, `tools/find_source.js` over 39 documents in 3 lanes:
+
+- **The alarm exists and is prototypical.** Ginna UFSAR chapter 7 (ML20339A027): the source-range
+  channels *"provide high flux level reactor trip and alarm signals"*. UFSAR chapter 15
+  (ML20339A101) section 15.4.4.3.1.2 lists *"High flux at shutdown alarm"* as one of three
+  source-range indications in Modes 3-6. Startup procedure ML11223A342: *"Block the alarm for
+  source range high flux level at shutdown at both source range drawers"* — an operator action at
+  the drawers, NOT modelled here, so our row is unblockable.
+- **Its setpoint is not.** ZERO hits for 5e4 / 50,000 cps (exit 1). No source in the corpus
+  publishes a source-range ALARM setpoint at all. What the corpus does publish is the TRIP at
+  1e5 cps, so **5.0e4 is almost certainly "half the retired plant's trip"** — and that trip is
+  itself unsourced and NOT MODELLED here.
+- **Marked `[UNVERIFIED]` in the row's comment, NOT retuned.** Moving it needs a derivation on this
+  plant's flux scale, which is the A3 option the owner declined. Where it stands it does honest
+  work: 396.8 s on the ride, 30 s after SUR HI and 46 s before the rod stop — the *"the handoff is
+  about to happen by itself"* cue `Manuals/06` PWR-A09 teaches.
+
+**Board tile and alarm-response row: both PRESENT, nothing to build.** The ALARMS panel renders
+`snapshot.alarms` generically (`ui/app.js:2765`), so the *Startup Rate High* tile follows the row
+onto PWR2; the Startup Rate meter draws its amber band off the live setpoint
+(`ui/diagram/board/pwr_board_wiring.js:1441`, `alarmSp('sur_high', 1.0)`) and
+`pwr_board_inspect.js:236` documents it. `Manuals/06` carries **PWR-A08** (SUR HI) at line 191 and
+**PWR-A09** (SR HI FLUX) at 203, both already HR9-correct — A08 even says *"do not expect an
+interlock to stop you"*.
+
+**Gates.** `run_pwr2_shell` **165/165, 60/60 mutations** (was 162/162, 59/59 — three checks and one
+mutation added). `run_manual_rev` 15/15. `run_manual_units` 0 failed (one bad conversion caught and
+fixed on the way: 274 degF paired with 134 degC, corrected to 134.4 degC). `run_manual_setpoints`
+18/18. `run_released_frozen` 5/5. `run_doc_budget` 4/4. `run_session_labels` 8/8. `run_hardrules`
+503/503. `run_m4` and `run_autoctl` at baseline (`pwr_control.js` took a comment only).
+
+**Left open, measured not filed.** The three harnesses' 55-second disagreement at the rod stop; and
+the operator's source-range-drawer alarm block (sourced, ML11223A342) which this plant does not
+model, so `sr_high_flux` cannot be silenced at shutdown the way a real board's can.
+
 ## Session log — 2026-09-08-workbench-i (#652 — the SETTLED-IC fixture was pinned to a plant three changes gone; re-centred on `S.DESIGN`)
 
 **The fix.** `run_pwr2_engine.js`'s SETTLED-IC check (§1b, `:302`) asserted `|thot_c - 319.0| < 2.5`
