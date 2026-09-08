@@ -289,8 +289,28 @@ function runSuite(RD, rec, quiet, only) {
   /* A FRESH engine, NO commands, 60 s. Before the design-point enthalpy map this red at
    * power min 76.6 % (t = 2.9 s) with Thot 580 -> 622 degF and a 64 psi sag — the isothermal
    * boot developing its own loop split on every free-play start. The bounds are the ring's
-   * absence, not the design point itself (the settle drifts ~1.3 degC below the constants —
-   * declared in designHmap's header). */
+   * absence, not a pin on today's numbers — RE-CENTRED 2026-09-08 (#652) on `S.DESIGN`
+   * (tavg_c +/- dt_c/2) instead of typed 319.0/287.6, which described the pre-#583 plant and
+   * had drifted to 80 % of its own 2.5 degC band by #650 without either change touching it.
+   *
+   * The old comment here claimed "the settle drifts ~1.3 degC below the constants" — #647
+   * FALSIFIED that: the drift was a fuel-seed defect (createReactor seeded the fuel from the
+   * leg average, 18.1 degC cooler than the `core` node stepFuel actually drives; fixed, the
+   * plant now LANDS on the design point). Measured here, a 60 s no-command ride off
+   * `hot_full_power` settles at Thot 321.00 degC / 609.8 degF (centre 320.86 / 609.5, residual
+   * +0.14 degC / +0.25 degF) and Tcold 288.30 degC / 550.9 degF (centre 288.15 / 550.7,
+   * residual +0.16 degC / +0.29 degF) — stable (+/-0.02 degC) from t = 60 s through t = 360 s,
+   * so this is the settled reading, not one still converging.
+   *
+   * `icLegTol` is that residual with ~6x margin: loose enough to absorb the pump-heat residual
+   * every future DESIGN retune carries (#647 measured a different, smaller +0.13 degF on this
+   * same shape pre-#650), tight enough that the pre-designHmap ring (tens of degrees) or a
+   * fuel-seed-class defect still red — replayed against this tree with the pre-#647 seed
+   * reverted (source-substitution, not a checked-out tree): settles at Thot 319.55 degC /
+   * 607.2 degF, Tcold 286.75 degC / 548.2 degF, residual 1.30 / 1.39 degC against TODAY's
+   * centre — over `icLegTol` where the OLD typed band (319.0/287.6 +/- 2.5) passed it clean.
+   * The rated-point identity check below (1c) is the tight (0.5 %) pin on the leg SPLIT; this
+   * one only has to prove the ride does not ring or wander off the point. */
   head('SETTLED IC  [a no-command ride from construction does not ring]');
   var engIC = EN.createEngine({});
   var icMin = 1e9, icPMin = 1e9, icTs = null;
@@ -299,12 +319,16 @@ function runSuite(RD, rec, quiet, only) {
     if (icTs.power_pct < icMin) icMin = icTs.power_pct;
     if (icTs.pressure_mpa < icPMin) icPMin = icTs.pressure_mpa;
   }
+  var icThotDesign = S.DESIGN.tavg_c + S.DESIGN.dt_c / 2,
+      icTcoldDesign = S.DESIGN.tavg_c - S.DESIGN.dt_c / 2, icLegTol = 1.0;   /* degC, see above */
   ckT('60 s untouched: power holds, legs near settled, pressure inside the park',
       icMin >= 97.0 && icPMin > 15.17 &&
-      Math.abs(icTs.thot_c - 319.0) < 2.5 && Math.abs(icTs.tcold_c - 287.6) < 2.5,
+      Math.abs(icTs.thot_c - icThotDesign) < icLegTol &&
+      Math.abs(icTs.tcold_c - icTcoldDesign) < icLegTol,
       'power min ' + icMin.toFixed(1) + ' %, P min ' + (icPMin * 145.04).toFixed(0) +
       ' psia, legs ' + (icTs.thot_c * 1.8 + 32).toFixed(1) + '/' +
-      (icTs.tcold_c * 1.8 + 32).toFixed(1) + ' degF');
+      (icTs.tcold_c * 1.8 + 32).toFixed(1) + ' degF vs design ' +
+      (icThotDesign * 1.8 + 32).toFixed(1) + '/' + (icTcoldDesign * 1.8 + 32).toFixed(1) + ' degF');
 
   /* ---- 1c. THE RATED-POINT IDENTITY (#650) -------------------------------------------------
    * ⚠ THIS IS THE CHECK WHOSE ABSENCE LET A 5 % OFFSET SHIP FOR THREE WEEKS.

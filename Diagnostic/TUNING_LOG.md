@@ -29,6 +29,51 @@ and the user-visible summary in `CHANGELOG.md`. This file points at those and tr
 
 ---
 
+## Session log — 2026-09-08-workbench-i (#652 — the SETTLED-IC fixture was pinned to a plant three changes gone; re-centred on `S.DESIGN`)
+
+**The fix.** `run_pwr2_engine.js`'s SETTLED-IC check (§1b, `:302`) asserted `|thot_c - 319.0| < 2.5`
+and `|tcold_c - 287.6| < 2.5` against typed centres describing the pre-#583 plant, and its own
+comment claimed the settle "drifts ~1.3 degC below the constants" — a claim #647 falsified (a
+fuel-seed defect, fixed: the plant now lands ON the design point) and #650 outdated further
+(`DESIGN.dt_c` 31.1 -> 32.71). Measured before the fix: Thot settles at 321.00 degC (609.8 degF),
+a residual of 2.00 against the 2.5 degC band — 80 % consumed for reasons unrelated to the ring the
+check exists to catch.
+
+**Re-centred on the constants.** `icThotDesign`/`icTcoldDesign` now read `S.DESIGN.tavg_c +/-
+dt_c/2`, tolerance `icLegTol = 1.0` degC (1.8 degF). Measured (60 s, `hot_full_power`, fresh
+engine): Thot 320.996 degC / 609.79 degF vs centre 320.855 / 609.54 (residual +0.141 degC /
++0.254 degF); Tcold 288.304 degC / 550.95 degF vs centre 288.145 / 550.66 (residual +0.159 degC /
++0.286 degF) — stable +/-0.02 degC from t=60 s through t=360 s (six samples), so this is the
+settled reading. `icLegTol` = that residual x ~6.3, well clear of a #650-class construction
+mismatch (~0.8 degC/leg) and the pre-designHmap ring (tens of degrees).
+
+**Validated on the OLD behaviour (HR10), by replay rather than a checked-out tree** (source
+substitution — no repo file touched, per the file's own mutation-harness idiom):
+- **pre-#650 (dt_c=31.1), post-#647 fix — healthy plant.** Booted with `S.DESIGN.dt_c=31.1`
+  before `pwr2_engine.js` loads (bakes the old `DT0_C`), settled 3000 s: Tavg 580.228 degF
+  (matches the #647 TUNING_LOG table exactly — validates the replay), Thot 320.899 degC / 609.62
+  degF, Tcold 288.243 degC / 550.84 degF. Residual against TODAY's centre: 0.044 / 0.098 degC —
+  **PASSES** the new check comfortably.
+- **pre-#647 (fuel seeded from the leg average, not the `core` node) — the defective plant.**
+  Reproduced by substituting `pwr2_engine.js:318`'s `coolTemp_c: tLeg(sys, 'core')` back to
+  `coolTemp_c: tavg0` (eval'd source, matching the file's own `loadAll(engSource)` pattern) with
+  `dt_c=31.1`. Settled 3000 s: Tavg 577.675 degF (exact match to #647's own "before" figure — same
+  validation), Thot 319.552 degC / 607.19 degF, Tcold 286.754 degC / 548.16 degF. Residual against
+  TODAY's centre: **1.30 / 1.39 degC — REDS** the new check, correctly (that plant was defective).
+  The OLD typed band (319.0/287.6 +/- 2.5) **passed this defect clean** — confirms the issue's
+  claim that the fixture was blind to it.
+- Injection: mutating `S.DESIGN.dt_c` (+2.5 degC) or `tavg_c` (+1.5 degC) after module load (so
+  the already-baked `DT0_C`/physics is unaffected but the check's dynamic centre moves) reds the
+  check both ways; reverting greens it.
+
+**Gate.** `node test/run_pwr2_engine.js` — 80 passed, 0 failed, 80 checks (baseline unchanged, one
+check re-expressed). Mutation self-test: 41/41 this part's mutations still caught, no blind spots
+(none was anchored on the old `319.0`/`287.6` text).
+
+**`safetyPeak()`'s comment** (~:2355, the issue's second stale-fixture pointer) — already fixed by
+#643 (`f52e44c0`): it correctly documents `e.advBlock = true` as OPEN, not isolated. No change
+needed; confirmed by grep.
+
 ## Session log — 2026-09-08-workbench-h (#659 RULED — the ADV's 10 % was Ginna's PER-GENERATOR figure, and this plant has one generator)
 
 **The ruling.** *(OWNER RULING, 2026-09-08: "Keep 4.98 % — scale by thermal power; fix the

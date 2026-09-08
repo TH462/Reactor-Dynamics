@@ -30,6 +30,19 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
 
 ## [Unreleased]
 
+### Test coverage (the SETTLED-IC fixture was pinned to a plant three changes gone — #652)
+
+`run_pwr2_engine`'s no-command settle check compared `thot_c`/`tcold_c` to typed centres
+(319.0/287.6 degC) describing the pre-#583 plant, at 80 % of its own 2.5 degC band, and its
+comment still claimed a ~1.3 degC drift #647 (a fuel-seed defect) and #650 (the rated-split
+retune) had both since removed. Re-centred on `S.DESIGN.tavg_c +/- dt_c/2` — the constant the
+settle exists to confirm the plant lands on — with a 1.0 degC tolerance (the measured settled
+residual, +0.14/+0.16 degC, x ~6). Validated against the old behaviour by source-substitution
+replay (no checked-out tree): passes clean on the pre-#650, post-#647 plant; correctly reds on
+the pre-#647 fuel-seed defect (1.3 degC low), which the old typed band passed clean. `80/80`
+checks, baseline unchanged. `safetyPeak()`'s comment (the issue's second stale-fixture pointer)
+was already corrected by #643 — confirmed by grep, no change needed.
+
 ### Fixed (`Manuals/09` quoted the atmospheric dump valve's PER-GENERATOR capacity directly onto a one-generator plant — #659)
 
 Ginna's atmospheric relief valve is sized *"approximately 10% of the rated steam flow … from
