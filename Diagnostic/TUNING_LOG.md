@@ -29,6 +29,40 @@ and the user-visible summary in `CHANGELOG.md`. This file points at those and tr
 
 ---
 
+## Session log — 2026-09-08-workbench-d (#649 — SI-0 was the same coincidence-count cliff SI-5 was rebuilt out of)
+
+**The defect.** `test/run_service_invariance.js`'s SI-0 asserted `qc.n >= 100` of 200 shared sim
+instants between the 1x/10x quiet legs — the identical shape #633 reddened in SI-5 two days
+earlier and that check was rebuilt out of (2026-09-05). SI-0 was safe only by accident: a quiet
+plant never enters the fine-cadence branch, so the legs always shared 200 of 200. The day
+anything makes the quiet fixture twitch into fine cadence, it becomes the same modular-arithmetic
+lottery on the broadcast cadence (#543/#588 shape).
+
+**The fix.** Ported SI-5's four-conjunct form: (1) both legs reach `T_WIN` — the bar is the
+window; (2) the fixture is still steady — core thermal power (`core_heat_pct`) stays
+99.549-99.997 % (band +/-5 points of rated, 11x margin) and pressure wobbles <= 0.030 MPa / 4.3 psi
+peak-to-peak (bound 0.2 MPa / 29 psi, 6.7x margin); (3) the legs met within one coarse broadcast
+(1.0 s) of the window end (measured: exactly at 200.00 of 200 s); (4) a planted 1e-6 relative
+difference is seen by `compare()` against SI-3's own 1e-9 test. The shared-instant count is
+still reported in the note, never asserted.
+
+**Injection proof (2026-09-08, against HEAD).** Four injections, one per conjunct:
+1. 10x leg walked to T_WIN/4 (50 s) -> `ran=false` (entails `deep=false` too — a leg that stops
+   at 50 s cannot land near T_WIN=200 s; conjunct 3's own clean failure is proven by #3 below).
+2. `large_loca`+`station_blackout` injected into the "steady" legs -> `steady=false` (also
+   entails `deep=false` — a casualty IS the #543/#588 cadence-shift mechanism, so two conjuncts
+   catch it; core power 76.9 -> 3.1 %, pressure 15.326 -> 2.359 MPa / 2223 -> 342 psia).
+3. 10x leg's instants past T_WIN/2 discarded -> `deep=false` alone, cleanly isolated.
+4. planted difference forced to 0 -> `sensitive=false` alone, cleanly isolated.
+No injection reddened any check other than SI-0.
+
+**Gate.** `node test/run_service_invariance.js` — clean run 8 passed, 0 xfail, 0 failed, 0 XPASS
+(8 checks); injection self-test 4/4 mutations caught, no blind spots. Baseline in
+`test/run_all.js` (`8passed 0xfail 0failed 8checks`) unchanged — one check replaced by one, exit
+code 0. Only file touched: `test/run_service_invariance.js`.
+
+---
+
 ## Session log — 2026-09-08-workbench-b (#646 — two chapters taught an ordering #508 inverted, and it was #629's stated reason; the ride that re-measured it also found the check pair hollow)
 
 **The claim, and why it could not be fixed from arithmetic.** `Manuals/09` §3.0 and `Manuals/12`

@@ -92,6 +92,16 @@ the same tree once that check was green.
 - `run_pwr2_engine`'s ownership audit now prints **before** the guard: it is a static property of
   the mutation table and must survive a refusal.
 
+### Test coverage (SI-0 was the same coincidence-count cliff SI-5 was rebuilt out of — #649)
+
+*Not a simulator change.* `run_service_invariance.js`'s SI-0 asserted `qc.n >= 100` of 200 shared
+sim instants on the quiet legs — safe only because a quiet plant never enters the fine-cadence
+branch; the day it does, the count becomes the same modular-arithmetic lottery #633 exposed in
+SI-5 two days earlier. Ported SI-5's four-conjunct form: both legs reach the window, the plant
+stays steady (power within 5 points of rated, pressure drift under 0.2 MPa / 29 psi), the legs
+meet within one broadcast of the window end, and a planted 1e-6 difference is seen by `compare()`.
+Four injections, one per conjunct, each proven to redden SI-0 alone. No baseline moves (8 checks).
+
 ## [Alpha 1.7.4-rc4] — 2026-09-08
 
 ### Changed (the speed bar: WARP on its own row with an info line, and which alarms drop the clock — #655)
