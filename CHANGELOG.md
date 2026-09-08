@@ -32,6 +32,17 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
 
 ## [Alpha 1.7.4-rc4] — 2026-09-08
 
+### Added (process: the layman playthrough is a skill — #653/#660)
+
+`.claude/skills/layman-playthrough/` packages the workflow run by hand three times on
+2026-09-07: a fresh-context agent with no repo access plays the six walkthrough legs in
+headless Edge through a persistent Playwright command-file driver (`driver.js` + `go.sh`,
+generalized to take their working directory as an argument), reading only the panel and the
+board, and writes a ranked stuck-points report — then the coordinating session **re-measures
+every claim before filing any of it**, because all three passes over-claimed ("30 of 67 steps
+have no acceptance" measured 6; the "speed reverts on its own" was steps checking off; the
+25-minute freeze at 3600× did not reproduce). No simulator code.
+
 ### Changed (owner playtest 2026-09-08, sections A and B — #660)
 
 The owner's handwritten notes, transcribed verbatim on #660. **Speed bar:** back to one row (1×

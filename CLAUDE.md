@@ -310,6 +310,7 @@ to read everything.
 | **Apply a Hard Rule to a real decision** | `Blueprint/CONTEXT.md` §3 for the rule (binding, 10 rules, each names its guard), then **`Blueprint/SOP.md`** §1–4 for the worked cases and technique (advisory). |
 | **Put a decision to the owner** | `Blueprint/SOP.md` §5 — always bring your recommendation; see the block above. |
 | **Write or review any player-facing text** | **Checklist steps: `Blueprint/CHECKLIST_WRITING_GUIDE.md`** (2026-09-06, built from two fresh-reader reviews in `Diagnostic/CHECKLIST_REVIEW_2026-09-06_*.md`). Everything else: `Blueprint/STYLE_GUIDE.md`. Both ADVISORY. |
+| **Play the walkthroughs as a fresh-context layman / operator** | `.claude/skills/layman-playthrough/` — no repo access, panel and board only; every claim re-measured before filing. |
 | **Find a document that was deleted** | `Blueprint/RETIRED.md` — what was removed, why, and the command to read it again. |
 | **Work out which lane to use, or merge one** | **`Blueprint/LANES.md`** — the occupancy check's two blind spots, warn-and-ask, the merge-conflict list and the `Manuals/` silent-drop case. The block at the top of this file is only what binds. |
 | **Look up a trap that used to be in this file** | **`Blueprint/TRAPS.md`** — bullets evicted from the standing list under its 25-cap, plus the criterion for which ones go. |
@@ -381,8 +382,7 @@ that were closed. **Run the query.**
   a board band drawn off one (#572) and a reset permissive iterating one (#571) both read as
   working features. **Grep every consumer.**
   **The work is in `PWR2_VALIDATION.md` §95–§107 — read the sections, not this line.** Measured
-  2026-08-28: eight of the issues it called CLOSED were still open. **Run `gh issue list`; it is
-  the authority, and this line is not.**
+  2026-08-28: eight of the issues it called CLOSED were still open.
 - **#573/#473, #574 and #583 (2026-08-28, §108–§110).** The heaters lose authority over a 5–15 %
   TRUE level band; every ring node carries its own metal wall (**39,128 kJ/K, 49 % of the fluid**)
   — `wallLumps` had shipped with zero consumers. And the pressurizer is **no longer in the ledger
