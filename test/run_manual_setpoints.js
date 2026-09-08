@@ -104,18 +104,44 @@ var ROWS = [
   { m: /^\*\*P-11\*\*/,                      want: P.P11.mpa * PSI,               unit: 'psi', tol: 2 },
   /* Rows with no single plant constant to check against. CLAIMED rather than omitted, so the
    * coverage assertion stays meaningful — an entry here says "looked at", not "unchecked". */
+  /* Its own setpoint cell is "—" by design: the trip has no threshold of its own, it has a
+   * PERMISSIVE, and that permissive's number is checked on the **P-9** row below. Narrative
+   * here means "the figure lives one table down", not "nothing to check against". */
   { m: /^\*\*Turbine trip \(P-9\)\*\*/,      narrative: true },
-  { m: /^Source range/,                     narrative: true },
+  /* THE PLANT HAS NO SOURCE-RANGE REACTOR TRIP, and the row documented one at 1e5 cps (#642).
+   * Nothing could catch it: 1e5 cps IS a real constant here — `pwr2_true_state`'s SR_SECURE_CPS,
+   * where the channel DE-ENERGIZES — so the figure was right and the function was absent. The
+   * de-energization is also what hid it, because a count rate that stops at 1e5 can never reach
+   * a trip above it. Measured by removing the hiding place: with SR_SECURE_CPS forced to 1e12 the
+   * channel stays live and publishes 1.285e11 cps at 50 % power, and the plant does not scram.
+   * `pwr2_protection` has fourteen functions and none of them is source range; the RETIRED plant's
+   * `sr_high` trip at 1.0e5 is in `pwr_control.js` and reaches PWR2 through a `trips: []`. */
+  { m: /^Source range/,   absent: true, what: 'a source-range high-flux reactor trip' },
   /* NO LONGER NARRATIVE (#601). It was listed here as "no single plant constant to check
    * against", which was true only while the plant had no intermediate-range trip — and that is
    * precisely how the row came to carry 1.67e-3 A, the ROD STOP's setpoint, for the trip. The
    * constant exists now, so the row is checked like every other. */
   { m: /^\*\*Overtemperature/,              narrative: true },
   { m: /^\*\*Overpower/,                    narrative: true },
-  { m: /^\*\*P-6\*\*/,                       narrative: true },
-  { m: /^\*\*P-9\*\*/,                       narrative: true },
+  /* NO LONGER NARRATIVE (#642). Both were listed as having "no single plant constant to check
+   * against", and for both that was a statement about the ENGINE'S FILE LAYOUT, not about the
+   * plant: P-6 was a local `var P6_A` inside `pwr2_true_state` and P-9 a local inside
+   * `pwr2_protection`, so neither could be pointed at. That is exactly how the P-6 row came to
+   * disagree with the engine by a factor of two, in the direction nobody expected — the row was
+   * RIGHT and the engine's `[sourced]` marker was on the wrong sentence of the right document.
+   * Both are exported now and both are checked. P-9's second value (8 % without steam dumps) is
+   * prose in the row's Effect cell, not a figure, so `claimedNumber` takes the 50 %. */
+  { m: /^\*\*P-6\*\*/,                       want: P.P6.amps,                      unit: 'A',   tol: 1e-12 },
+  { m: /^\*\*P-9\*\*/,                       want: P.P9.frac_dumps * 100,          unit: '%',   tol: 0.5 },
+  /* Ginna's numeric P-12 is in its TS proper, which is not in the corpus — the 532.4 °F here is
+   * the plant's LO TAVG annunciator, and that alarm IS checked, by the §4.0 tables below. */
   { m: /^\*\*P-12\*\*/,                      narrative: true },
-  { m: /^SR re-energize block/,             narrative: true },
+  /* ABSENT, same finding as the source-range trip row (#642): the block protects the counter
+   * against being switched back on at high flux, and this plant has no switch — `set_sr_detector`
+   * is REFUSED by the shell by name and the board button was deleted at #598 item 7. The 1e-6 A
+   * is the retired plant's interlock, live there and dead here (measured: PWR2's kernel gets
+   * `interlocks: []`, so ZERO rows block that command). */
+  { m: /^SR re-energize block/,  absent: true, what: 'an SR re-energize interlock (there is no SR switch)' },
 
   /* ---- §3.0, ENGINEERED SAFETY & AUTOMATIC ACTUATIONS (added 2026-08-30, #532 phase 3b) -----
    * ⚠ THIS SECTION WAS OUTSIDE THE GATE UNTIL NOW, AND THAT IS THE WHOLE POINT. The runner
@@ -245,8 +271,14 @@ rows.forEach(function (row) {
   var got = claimedNumber(row);
   if (got === null) { wrong.push(row.label + '  — no figure found in the row'); return; }
   if (Math.abs(got - spec.want) > spec.tol) {
+    /* AMPS BROKE THE DIAGNOSTIC (#642): `toFixed(1)` renders 1e-10 as "0.0", so the one row
+     * whose units are exponential would have reported "manual 5e-11 A, plant 0.0 A". A message
+     * that cannot show the disagreement it found is the check going half-blind. */
+    var fmt = Math.abs(spec.want) < 0.01 && spec.want !== 0
+                ? spec.want.toExponential(2)
+                : spec.want.toFixed(spec.unit === 'psi' ? 0 : 1);
     wrong.push(row.label + ': manual ' + got + ' ' + spec.unit +
-               ', plant ' + spec.want.toFixed(spec.unit === 'psi' ? 0 : 1) + ' ' + spec.unit);
+               ', plant ' + fmt + ' ' + spec.unit);
   }
 });
 

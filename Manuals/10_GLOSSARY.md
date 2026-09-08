@@ -100,7 +100,7 @@ Terms used in the PWR manuals and on the simulator board. Acronym first, then pl
 
 | Term | Definition |
 |------|------------|
-| **P-6** | Permissive: IR on scale (≥ 1e-10 A) — allows securing the Source Range detector. |
+| **P-6** | Permissive: intermediate range on scale (≥ 1e-10 A). On a real plant it allows the source-range trip to be blocked and the detector secured; **this plant has neither**, so here it marks where the INTER RANGE display comes into use. See `09` §2.0. |
 | **P-10** | Nuclear at-power permissive (8 % on this plant; not P-7, which is 10 %) — allows blocking the intermediate-range and power-range low-setpoint trips. |
 | **pcm** | Percent millirho — unit of reactivity (1 pcm = 10⁻⁵ Δk/k). |
 | **POAH** | Point of Adding Heat — power level where fission heat exceeds system losses. |

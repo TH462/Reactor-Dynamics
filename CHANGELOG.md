@@ -30,6 +30,59 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
 
 ## [Unreleased]
 
+### Fixed (the P-6 permissive was sourced to the wrong sentence, and it permits nothing on this plant — #642)
+
+The P-6 permissive — the intermediate-range flux permissive — stood at **5e-11 A** in
+`pwr2_true_state.js` carrying a `[sourced]` marker, and at **1e-10 A** in `Manuals/09` and
+`layers/control/pwr_control.js` carrying nothing. **The marked copy was the wrong one.** Ginna
+Technical Specification Bases B 3.3.1 (ML20339A221): *"actuated when any NIS intermediate range
+channel goes approximately one decade (1 E-10 amps) above the minimum channel reading"*. The
+5E-11 A in the same passage is the source-range re-energize point on decreasing power, and the
+quote the engine cited said so itself — *"< 5E-11 amps (below the P-6 setpoint)"*.
+
+**The board figure does not move; the provenance and the meaning do.** P-6 now lives once, in
+`pwr2_protection.js` (`P6.amps`, exported alongside `P9`), and `pwr2_true_state` reads it for the
+intermediate range's in-use band. `pwr_control.js` keeps its own copy — a pwr-only harness never
+loads pwr2 — but holds it in one constant that the operator message renders rather than spells,
+and cites the source.
+
+**Measured, full stack, before anything was changed:** the control layer's P-6 block is **dead
+for PWR2**. Riding the intermediate range from 1.61e-11 A to 1.15e-10 A and issuing
+`set_sr_detector {on:false}` at six points across both values, the kernel sees **zero** rows
+blocking it (`interlocks: []`, `actuations: []`) and the shell refuses the command by name —
+this plant has no source-range switch at all (#598 item 7). Mutating the control-layer setpoint
+seven decades changed nothing; the same mutation on the retired engine flips the command from
+accepted to blocked, which is what proves the probe can see a live block.
+
+### Fixed (`Manuals/09` documented a reactor trip and an interlock this plant does not have — #642)
+
+Six chapters taught the player to secure the source-range detector when P-6 is met. There is no
+such control: the channel de-energizes on flux alone at 1e5 counts a second — **IR ≈ 3.2e-9 A,
+32× above P-6** — so the handoff happens well past the permissive and without an operator action.
+`03` §4.3 and §17.1, `04` PWR-N03, `05` PWR-T13, `06` PWR-A09 and `10`'s glossary now say what
+the plant does; `03` §5 had already said it, in the same chapter.
+
+Two §2.0 rows are now marked **NOT MODELLED**. The **source-range high-flux reactor trip** does
+not exist here — `pwr2_protection` has fourteen functions and none is source range — and the
+de-energization was what hid it, because a count rate that stops at 1e5 can never reach a setpoint
+above it. Measured by removing the hiding place: with the channel forced to stay energized the
+plant publishes **1.285e11 cps at 50 % power** and does not trip. The **SR re-energize block**
+(1e-6 A) guards a switch that does not exist.
+
+### Test coverage (four `Manuals/09` rows were `narrative` because their constants were locals — #642)
+
+`run_manual_setpoints` carried P-6, P-9, the source-range trip and the SR re-energize block as
+"no single plant constant to check against". For P-6 and P-9 that was a fact about the engine's
+file layout, not about the plant — both were `var`s inside a module, so the gate could not point
+at them, which is exactly how the P-6 row came to disagree with the engine by a factor of two.
+Both are exported and checked; the other two are declared absent under the ruled NOT MODELLED
+convention, which the gate already asserts in both directions. Each of the four was made to red
+once and restored byte-for-byte. A formatting fix came with it: the failure message rendered a
+plant value of 1e-10 as `0.0`, so the one row with exponential units could not have shown the
+disagreement it found. `run_manual_setpoints` **15/15**; `run_pwr2_true_state` **81/81, 31/31
+mutations** (was 80/80, 30/30) — the added check asserts the board band's bottom edge IS the
+plant's permissive, and the added mutation restores the shipped defect.
+
 ### Test coverage (`run_manual_setpoints` could not see the normal-operating-point table — #651)
 
 `Manuals/09` §1.0, the twelve-row "Normal operating point" table, had no gate reading it. §11.0's

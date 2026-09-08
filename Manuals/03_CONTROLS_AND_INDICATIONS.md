@@ -182,13 +182,13 @@ the heat sink is restored. **Recovery is procedural, not a button.**
 
 | Control | Purpose |
 |---------|---------|
-| **SR detector On/Off** | Energize / secure source-range counter |
+| *(none)* | **There is no source-range On/Off switch on this plant.** The channel energizes and de-energizes itself on flux alone — see §5 and the handoff below |
 
-**Handoff rules (P-6):**
+**Handoff rules (P-6) — what the plant does, and what it does not:**
 
-1. Do **not** switch SR **OFF** until Intermediate Range ≥ **1e-10 A** (on scale).  
-2. Do **not** switch SR **ON** at high flux (IR ≥ **1e-6 A**) — detector protection.  
-3. Secure SR during power rise **before** SR high-flux trip (**1e5 cps**).  
+1. **The source range secures itself at 1e5 cps.** That is the de-energization point, not a trip: the counter switches off and reads zero above it. Nothing for the operator to press, and nothing to press it too early.  
+2. **P-6 — Intermediate Range ≥ 1e-10 A — is the point the INTER RANGE display comes into use**, and the NIS card marks it. Below it, read the source range. On a real plant P-6 is also the permissive that lets the operator block the source-range trip and secure the detector; **this plant has neither the trip nor the switch**, so P-6 here is an indication cue.  
+3. The handoff the plant actually performs is therefore at **1e5 cps**, which is IR ≈ **3.2e-9 A** — about **32×** above P-6. Expect the intermediate range to be well on scale before the source range goes dark.  
 
 ### 4.4 Startup trip blocks
 
@@ -1040,7 +1040,7 @@ These topics appear as dedicated **campaign** missions; manuals cover them here 
 ### 17.1 1/M and NIS handoff (Mode 3 → Mode 2)
 
 - Source Range counts show subcritical multiplication as rods withdraw (1/M idea: counts rise as you approach criticality).  
-- When Intermediate Range ≥ **1e-10 A** (P-6), secure **SR detector** — see **PWR-T13** / **PWR-N03**.  
+- When Intermediate Range ≥ **1e-10 A** (P-6) the intermediate range is on scale and is the instrument to read. **You do not secure the SR detector — there is no switch**; it de-energizes itself at 1e5 cps, further up. See **PWR-T13** / **PWR-N03**.  
 - Campaign mission `pwr_startup` / `pwr_startup_challenge` grade this path; manuals do not auto-grade.
 
 ### 17.2 Holding Tavg by hand (Mode 1)

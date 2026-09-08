@@ -202,9 +202,9 @@ The board therefore **reclassifies** these alarms rather than removing them. The
 
 | Field | Content |
 |-------|---------|
-| **Setpoint** | Alarm **5e4 cps**; trip **1e5 cps** when SR energized |
-| **Means** | SR counts high — handoff overdue. |
-| **Actions** | 1) If IR on scale (P-6), **SR Off**. 2) If not on scale, stop power rise and diagnose. |
+| **Setpoint** | Alarm **5e4 cps**. The channel **de-energizes itself at 1e5 cps** — that is not a trip, and this plant has no source-range reactor trip |
+| **Means** | SR counts high — the handoff is about to happen by itself. |
+| **Actions** | 1) Check **INTER RANGE is on scale** (P-6, IR ≥ 1e-10 A). If it is, nothing to do: the source range will go dark on its own just above this alarm. 2) If it is **not** on scale, stop the power rise and diagnose — you are about to lose the only indication you have. |
 
 ---
 

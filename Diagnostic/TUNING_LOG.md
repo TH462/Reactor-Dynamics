@@ -29,6 +29,98 @@ and the user-visible summary in `CHANGELOG.md`. This file points at those and tr
 
 ---
 
+## Session log — 2026-09-08-workbench-g (#642 — the marked copy was the wrong one, and the permissive it named permits nothing here)
+
+**The filed shape, and why it was backwards.** Three sites carried the P-6 permissive (the
+intermediate-range flux permissive): `pwr2_true_state.js` at **5e-11 A** with a `[sourced]`
+marker and a verbatim Ginna quote, and `Manuals/09` plus `pwr_control.js` at **1e-10 A** with
+nothing. Two unsourced copies agreeing with each other against one marked figure reads as a
+retyped constant propagating outward from the control surface — and it is the opposite. The
+Ginna Technical Specification Bases (ML20339A221, B 3.3.1) gives the setpoint six hundred lines
+below the quote the engine cited: *"The Intermediate Range Neutron Flux, P-6 permissive is
+actuated when any NIS intermediate range channel goes approximately one decade (1 E-10 amps)
+above the minimum channel reading."* **5E-11 A is a different point in the same passage** —
+*"on decreasing power, the P-6 interlock automatically energizes the NIS source range detectors
+and enables the Source Range Neutron Flux reactor trip at 5E-11 amps"* — and the engine's own
+quote said so in its parenthesis: *"< 5E-11 amps (below the P-6 setpoint)"*. **A sourced number
+that is not the whole source, third instance** (#643's uprate artifact, the "(Rate sensitive)"
+cell). The marker is not the evidence; the sentence is.
+
+**The injection, which is what separated two defects.** Full stack (`RD.SimulationService`,
+engine `pwr2`, `hot_zero_power`, `tick()` driven, 1×), riding the intermediate range from
+**1.61e-11 A up to 1.15e-10 A** — six samples, two below 5e-11 A, two between, two above
+1e-10 A — issuing `set_sr_detector {on:false}` at every one:
+
+```
+interlocks in config: 0   actuations: 0   rows blocking set_sr_detector: 0
+IR 1.579e-11 A .. 1.169e-10 A  ->  THREW: pwr2_shell: "set_sr_detector" REFUSED —
+                                   the SR channel auto-energizes below the P-6 class point;
+                                   no operator lever
+```
+
+**Verdict (b): the control-layer block is DEAD for PWR2** — the standing empty-protection-list
+trap (#571/#572) again, and this time the list is `interlocks: []` *and* `actuations: []`.
+**Proved by mutation**: `P6_AMPS` 1.0e-10 → 1.0e-3, seven decades, changed **nothing** — same
+six refusals, same message. The same mutation on the retired engine (6 interlocks, 2 blocking)
+flips the command from accepted (`sr_energized` true → false) to `"blocked"`, which is what says
+the probe can see a live block at all. And PWR2 does not merely lack the interlock, it lacks the
+**lever**: `set_sr_detector` is in the shell's REFUSED registry and the board button was deleted
+at #598 item 7.
+
+**So the number was right and the EFFECT was wrong, in six chapters.** The manual taught
+"secure the SR detector when P-6 is met" at `03` §4.3 and §17.1, `04` PWR-N03, `05` PWR-T13,
+`06` PWR-A09 and `10`'s glossary — while `03` §5 already said, three hundred lines further
+down the same chapter, that there is no such button. This plant de-energizes the source range
+on flux alone at 1e5 cps, which is **IR 3.21e-9 A — 32× above P-6**, so the handoff the player
+watches is not at P-6 at all. What P-6 does here is real and visible: it is the bottom of the
+INTER RANGE in-use band on the NIS card.
+
+**Two neighbouring rows turned out to be absent functions, not stale numbers.**
+`Manuals/09` §2.0 documented a **source-range high-flux reactor trip at 1e5 cps**. There is
+none: `pwr2_protection` has fourteen functions and no source-range channel, and the retired
+plant's `sr_high` trip reaches PWR2 through a `trips: []`. **The de-energization was the hiding
+place** — a count rate that stops at 1e5 can never reach a setpoint above it, so no probe could
+stand where the trip was missing. Removing the hiding place (SR_SECURE_CPS 1e5 → 1e12) the
+channel stays live and publishes **1.285e11 cps at 50 % power** and **1.3e11 at full power**, and
+the plant does not scram. The **SR re-energize block** (1e-6 A) is the same class: it guards a
+switch that does not exist. Both rows are now marked NOT MODELLED under the ruled convention.
+
+**Where it lives now.** One copy: `pwr2_protection.js` `P6 = { kind: '[sourced]', amps: 1.0e-10 }`,
+beside P-7/P-9/P-10/P-11, exported along with **P9** (also a local, also unpinnable, also
+`narrative` in the setpoint gate for that reason). `pwr2_true_state` reads it for the band;
+`pwr_control.js` keeps its own — deliberately, because a pwr-only harness never loads pwr2 and
+reaching across is the cross-plant coupling HR3 forbids — but now cites the source, records the
+measurement, and holds the value in ONE `P6_AMPS`, which the operator message renders instead of
+spelling (`'SR DE-ENERGIZE BLOCKED: IR < ' + P6_TXT + ' A'`, byte-identical output).
+
+**Re-measured what the old value was load-bearing for.** The installed source strength was
+picked so P-6 is unmet at hot standby and met partway up the approach. At the corrected value
+that still holds with more room: hot standby **1.61e-11 A**, P-6 met at bank **184/627**,
+**ρ = −171 pcm**, **3,121 cps** — against bank 157/627 and −355 pcm at the old 5e-11 A. Margin
+under P-6 at hot standby goes from 3.1× to **6.2×**, so the correction widens the test rather
+than threatening it. The `run_pwr2_true_state` check that asserted this now READS the constant
+instead of spelling `5.0e-11` twice — being spelled is precisely why a check about P-6 could not
+notice P-6 had the wrong value.
+
+**Gates.** `run_manual_setpoints` **15/15** with four rows moved off `narrative` (P-6, P-9 to
+checked; source-range trip, SR re-energize block to `absent`), each **made to red once** and
+restored byte-for-byte — the P-6 red printed *"manual 5e-11 A, plant 1.00e-10 A"*, which needed a
+formatting fix of its own: `toFixed(1)` renders 1e-10 as `0.0`, so the one row with exponential
+units would have reported a disagreement it could not display. `run_pwr2_true_state` **81/81,
+31/31 mutations** (was 80/80, 30/30) — +1 check asserting the band's bottom edge IS the plant's
+permissive rather than a literal that agrees with it today, +1 mutation restoring the shipped
+defect. **`run_all.js` was NOT edited this session** (lane instruction); the one baseline that
+moves is `run_pwr2_true_state.js` → `81passed 0failed 81checks`.
+
+**The trap to carry.** *A `[sourced]` marker names a document, not a sentence.* Both unsourced
+copies were right, the marked one was wrong, and the quote sitting three lines above the wrong
+constant contained the word that refuted it. And the second one: *a de-energization can hide a
+missing trip* — an absent protection is invisible wherever another mechanism guarantees the
+signal never reaches its setpoint, so to prove a trip exists you must remove what stops the
+channel, not step the plant harder.
+
+---
+
 ## Session log — 2026-09-08-workbench-f (#643 RULED — the bank's scale is a DIVISION now, and the check that used to guard it could not have failed)
 
 **The ruling.** *(OWNER RULING, 2026-09-08: "A — 1.0062 × rated, the sourced design basis")* —

@@ -249,7 +249,7 @@ Take the reactor from **Mode 3, Hot Standby** to **Mode 2, Startup** (critical, 
 | **CAUTION** | Plot **enough 1/M points**. Early predictions always read high (flat toe of the worth curve), and the first two land far past the true critical position; six points close on it. **Never** withdraw straight to the first prediction. |
 | **CAUTION** | One fine step near the band is **8.1 pcm — 1.24 ¢** (measured 2026-09-03; 7.97 pcm/step at 226, 8.18 at 238). **This is not the bank average**, which is 6.49 pcm/step, and it is not the cent, which is 6.50 pcm on this plant (β_eff 650.2 pcm). All three are near 6.5–8 and only the first applies here. Final approach: **Slow**, single steps. |
 | **CAUTION** | **Criticality is declared on the instruments, not on the bank position.** Stop the rods; if the count rate keeps rising and SUR stays positive with nothing moving, the core is critical. WTSM 19.3 (ML11223A342): *"Supercriticality is indicated by a constant positive startup rate and steadily increasing source range count rate with no control rod withdrawal."* Record the rod position, boron and Tavg **after**. |
-| **WARNING** | Secure **Source Range** before ~1e5 cps (SR high-flux trip). Handoff when **P-6** is met (IR ≥ **1e-10 A**). |
+| **NOTE** | **Source Range secures itself at 1e5 cps** — no switch, and no source-range trip on this plant. **P-6** (IR ≥ **1e-10 A**) is where the intermediate range comes into use, roughly 32× lower; watch it come on scale well before the source range goes dark. If it has not, stop the rise and diagnose. |
 | **NOTE** | Below the point of adding heat there is almost no temperature feedback — excess reactivity keeps driving power until you take it out. |
 
 ### Procedure
