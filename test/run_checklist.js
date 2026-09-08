@@ -65,16 +65,23 @@ ck('step 1 waits for its command', c.step_index === 0, 'idx ' + c.step_index);
 svc.handleCommand({ action: 'set_steam_demand', mwe: 60 });
 snap = run(svc, 2);
 c = ckl(snap);
-ck('step 1 checked off by the command', c.steps_done[0] === true && c.step_index === 1, 'done_by ' + c.done_by[0]);
-ck('checked automatically, not by hand', c.done_by[0] === 'auto', c.done_by[0]);
+/* EVERY STEP WAITS FOR CONTINUE *(OWNER, 2026-09-08, #660 item 16)*: the command satisfies the
+ * step (awaiting_ack) and the player's Continue advances it; the record stays 'auto'. */
+ck('step 1 satisfied by the command, waiting for Continue', c.awaiting_ack === true && c.step_index === 0 && !c.steps_done[0], 'ack ' + c.awaiting_ack + ' idx ' + c.step_index);
+snap = svc.handleCommand({ action: 'checklist_check', index: 0 });
+c = ckl(snap);
+ck('Continue checks it off', c.steps_done[0] === true && c.step_index === 1, 'done_by ' + c.done_by[0]);
+ck('recorded as instrument-graded, not by hand', c.done_by[0] === 'auto', c.done_by[0]);
 
 // ------------------------------------------------- 3. acc auto-check (debounced)
 head('3. Auto-check — acceptance predicate, instrument-first, debounced');
 svc.handleCommand({ action: 'rod_nudge', group_id: ctlGroup(svc), steps: -40, speed: 'normal' });
 var lim = 0;
-do { snap = run(svc, 1); c = ckl(snap); lim++; } while (c && !c.complete && lim < 400);
-ck('step 2 auto-checks when power_pct < 98', c && c.steps_done[1] === true, 'after ' + lim + ' ticks');
-ck('checklist complete', c && c.complete === true, c && c.complete);
+do { snap = run(svc, 1); c = ckl(snap); lim++; } while (c && !c.awaiting_ack && lim < 400);
+ck('step 2 satisfied when power_pct < 98, waiting for Continue', c && c.awaiting_ack === true && !c.steps_done[1], 'after ' + lim + ' ticks');
+snap = svc.handleCommand({ action: 'checklist_check', index: 1 });
+c = ckl(snap);
+ck('checklist complete on Continue', c && c.complete === true && c.steps_done[1] === true, c && c.complete);
 ck('graded off the instrument (HR1)', c && c.done_by[1] === 'auto', c && (c.graded_by || 'auto'));
 
 // while complete, plant commands still descend

@@ -481,7 +481,10 @@
        * unlabelled pair were not in a mode at all. MEASURED, not assumed — the engine
        * reports plant_mode 1 for both at 100.0 % and 50.0 % power (Mode 1 is At Power,
        * i.e. above the low-power threshold, which is why two different powers share it). */
-      initStates: [['hot_full_power', 'Hot Full Power (Mode 1)'], ['50_percent', '50 % Power (Mode 1)'], ['hot_zero_power', 'Hot Standby (Mode 3)'], ['cold_shutdown', 'Cold Shutdown (Mode 5)']],
+      /* `low_power` — the state the startup walkthrough hands over (bank 227/627, ~10 %) and the
+       * one the power ascension is authored from (OWNER, 2026-09-08, #660 item 22: "Add an at
+       * power – power ascension starting condition."). */
+      initStates: [['hot_full_power', 'Hot Full Power (Mode 1)'], ['50_percent', '50 % Power (Mode 1)'], ['low_power', 'At Power — power ascension (Mode 1)'], ['hot_zero_power', 'Hot Standby (Mode 3)'], ['cold_shutdown', 'Cold Shutdown (Mode 5)']],
       /* THE DEFAULT SET TEACHES A COUPLING (#440, spec §8). It was Power / Tavg / Pressure /
        * SG Level — four independent state variables that demonstrate nothing between them
        * and duplicate the vital gauge row above the board.
@@ -3100,7 +3103,7 @@
     '<li><b>F11</b> goes fullscreen — the plant diagram gets the extra room, and it plays better that way.</li>' +
     '<li><b>Play</b> starts the clock (the ▶ button flashes whenever the plant is stopped).</li>' +
     '<li><b>System Scanner</b> (the line under the board) — hover anything for what it is.</li>' +
-    '<li><b>Checklists</b> — interactive procedures that check themselves off the instruments (the bar above opens them).</li>' +
+    '<li><b>Walkthroughs</b> — guided procedures, one step at a time, that check themselves off the instruments (the bar above opens them).</li>' +
     '<li><b>Manual</b> — full operator reference and written procedures.</li>' +
     '<li><b>Plant &amp; Mission</b> (the bar under the clock) — starting condition, courses and reset.</li>' +
     '</ol>' +
@@ -3130,9 +3133,9 @@
   function idleLauncherHtml() {
     if (!flagOn('checklists')) return '';
     return '<div class="instr-launch"><button type="button" class="btn instr-launch-bar" ' +
-      'data-open-ckl="1" data-scanner-hint="Open the Checklists tab — interactive procedures ' +
+      'data-open-ckl="1" data-scanner-hint="Open the Walkthroughs tab — guided procedures ' +
       'that check themselves off the instruments as you operate.">' +
-      'Try the new interactive checklists</button></div>';
+      'Try the walkthroughs</button></div>';
   }
   function showIdleInstructor() {
     setInstrRole('Instructor');
@@ -3154,9 +3157,11 @@
   function renderInstructorInner(s) {
     // Rewind is live whenever a checkpoint exists (beats / follow steps / sandbox).
     var noCp = !(service && service.checkpoints && service.checkpoints.length);
-    document.querySelectorAll('[data-fnav="rewind"]').forEach(function (rw) { rw.disabled = noCp; });
+    /* while a walkthrough runs, the only rewind is its own step rewind (#660 item 17) */
+    var wtRunning = !!(s && s.instructor && s.instructor.checklist);
+    document.querySelectorAll('[data-fnav="rewind"]').forEach(function (rw) { rw.disabled = noCp || wtRunning; });
     var crw = $('chartRewindBtn');
-    if (crw) crw.disabled = noCp;
+    if (crw) crw.disabled = noCp || wtRunning;
     syncSpeedUI(s);
     syncPacingUI(s);
     renderHighlight(s);
@@ -3179,7 +3184,7 @@
       cklRow.hidden = !showList;
       if (showList) toggleCklMenu();
     }
-    if (cklRun) cklRun.hidden = !(runningCkl && cklState.view === 'run');
+    if (cklRun) cklRun.hidden = !runningCkl;   // in the Instructor pane, up whenever a walkthrough runs
     /* THE CHECKLIST TEARDOWN MUST HAPPEN BEFORE ANY EARLY RETURN (#598 item 12). This
      * used to sit ~25 lines below, under three of them — the follow branch, the chat
      * branch and the checklist branch. The instructor layer clears the checklist when a
@@ -3205,7 +3210,20 @@
     if (chatState.sid) resetChat();
     // Auto-checklist (Path 3): painted in the Checklists tab, not this card.
     var ckb = s.instructor && s.instructor.checklist;
-    if (ckb) renderChecklist(s, ckb);
+    if (ckb) {
+      /* The walkthrough IS the Instructor's card (#660 item 15): the step card above, the
+       * instructor's own line (check-offs, overtaken notes) as plain text beneath it. */
+      renderChecklist(s, ckb);
+      syncInstrNav('idle');
+      setInstrRole('Walkthrough');
+      var curW = $('instrCurrent');
+      if (curW) {
+        curW.classList.remove('instr-standby');
+        var wmsg = s.instructor.message || '';
+        if (curW.textContent !== wmsg) curW.textContent = wmsg;
+      }
+      return;
+    }
     var lc = s.instructor && s.instructor.level_complete;
     if (lc) { syncInstrNav('lc'); msgHold.queue = []; msgHold.shown = null; setInstrRole('Instructor'); renderLevelComplete(s, lc); return; }
     syncInstrNav(ui.scenario ? 'scenario' : 'idle');
@@ -3701,13 +3719,12 @@
     if (key === cklState.key) return;
     var firstBuild = !cklState.key;
     cklState.key = key;
-    var h = '<button class="btn ckl-back" data-ckl-list="1">← All checklists</button>';
+    /* ONE STEP AT A TIME *(OWNER, 2026-09-08, #660 items 15-16)*: the card is the current step
+     * only, its why always open, headed "Step X of N". The Walkthroughs tab keeps the list. */
+    var h = '<button class="btn ckl-back" data-ckl-list="1">← All walkthroughs</button>';
     h += '<div class="ckl-log" id="cklLog">';
-    // Global explanations toggle (#244 item 2): expands/collapses every step's "why".
     h += '<div class="ckl-head"><b>' + mesc(pr.title) + '</b>' +
-      '<button class="btn ckl-why-all" data-ckl-why-all="1" title="Show or hide the details on every step">' +
-      (cklState.whyAll ? 'Hide all details' : 'Show all details') + '</button>' +
-      '<div class="m-note">Auto-checklist — steps check themselves off the instruments while you operate.</div></div>';
+      '<span class="ckl-stepno">' + (ck.complete ? 'Complete' : ('Step ' + (ck.step_index + 1) + ' of ' + pr.steps.length)) + '</span></div>';
     // Precondition banner (#395) — WARN, NEVER BLOCK: unmet rows are listed with
     // measured-vs-expected and everything below still runs. Row text comes from
     // the procedure artifact (`precond[i].text`); the snapshot ships verdicts only.
@@ -3783,6 +3800,7 @@
       var st = pr.steps[i];
       var done = !!(ck.steps_done && ck.steps_done[i]);
       var active = !ck.complete && i === ck.step_index;
+      if (!active) continue;   // ONE STEP AT A TIME (#660 item 15): done and pending steps are not drawn
       var cls = done ? 'ckl-done' : active ? 'ckl-active' : 'ckl-pend';
       var hoverable = stepHlLabels(st) ? ' ckl-hoverable' : '';
       /* Per-iteration, NOT hoisted by accident: `var` is function-scoped, so a flag set on one
@@ -3897,10 +3915,17 @@
          * described as "directly above the step text it belongs to"; #628 moved the step text
          * to the head of the card, so the button is now the foot of the block rather than the
          * hinge between two. The reading order it was placed for is unchanged.) */
-        if (ck.awaiting_ack) {
-          h += '<div class="ckl-ack-row"><button class="btn ckl-ack" data-ckl-check="' + i +
-            '">Acknowledge ✓</button><span class="ckl-ack-note">This step is complete — acknowledge to continue.</span></div>';
-        }
+        /* REWIND + CONTINUE, ON EVERY STEP *(OWNER, 2026-09-08, #660 items 17-18)*. Continue is
+         * always drawn and lights (`ready`) when the instructor reports the step satisfied —
+         * every step waits for it now, not only the observations. Rewind takes plant and
+         * walkthrough back one step: two checkpoints back, because the newest is the start of
+         * THIS step (laid on the last Continue). Disabled on the first step. */
+        h += '<div class="ckl-ack-row">' +
+          '<button class="btn wt-rewind" data-wt-rewind="1"' + (ck.step_index > 0 ? '' : ' disabled') +
+            ' title="Back one step — the plant and the walkthrough return to the start of the previous step">⏪ Rewind step</button>' +
+          '<button class="btn ckl-ack wt-continue' + (ck.awaiting_ack ? ' ready' : '') + '" data-ckl-check="' + i + '"' +
+            (ck.awaiting_ack ? '' : ' disabled') + '>Continue ▶</button>' +
+          (ck.awaiting_ack ? '<span class="ckl-ack-note">Step done — press Continue.</span>' : '') + '</div>';
         h += '</div>';
       }
       var det = '';
@@ -3920,7 +3945,7 @@
       h += '</div></div>';
     }
     if (ck.complete) {
-      h += '<div class="ckl-complete"><b>Checklist complete</b>' +
+      h += '<div class="ckl-complete"><b>Walkthrough complete</b>' +
         (pr.outcome ? '<div class="m-note">' + mesc(pr.outcome) + '</div>' : '') + '</div>';
     }
     h += '</div>';
@@ -3932,7 +3957,7 @@
     h += '<div class="ckl-btns">' +
       (nextPr ? '<button class="btn ckl-next" data-ckl-start="' + mesc(nextPr.id) + '">Next: ' +
                 mesc(nextPr.title) + ' ▸</button>' : '') +
-      '<button class="btn" data-ckl-stop="1">' + (ck.complete ? 'Close' : 'End checklist') + '</button></div>';
+      '<button class="btn" data-ckl-stop="1">' + (ck.complete ? 'Close' : 'End walkthrough') + '</button></div>';
     /* KEEP THE READER'S PLACE ACROSS THE REBUILD (#605, owner playtest 2026-09-02: "The
      * checklist keeps auto scrolling. Happens when fast forwarding. To the top then back down.
      * When mouse over it, it keeps jumping up to the top making it unusable.").
@@ -4024,7 +4049,7 @@
     }
     /* Stay on the Checklists tab (#607 item 6). startChecklist selects it; this path
      * must not yank the player to Instructor the way applyFocus(true) used to. */
-    if (firstBuild && currentTab() !== 'checklists') selectTab('checklists');
+    if (firstBuild && currentTab() !== 'instructor') selectTab('instructor');
   }
   // Observed value for the precondition banner: whole units above 100 (ppm, °C
   // near operating point), one decimal below (fractions, small margins).
@@ -4213,13 +4238,13 @@
     if (running && running.procedure_id === id) {
       cklState.view = 'run';
       cklState.key = null;
-      selectTab('checklists');
+      selectTab('instructor');
       if (latest) render(latest);
       return;
     }
     cklState.view = 'run';
     cmd({ action: 'start_checklist', procedure_id: id });
-    selectTab('checklists');
+    selectTab('instructor');   // the walkthrough runs in the Instructor tab (#660 item 15)
   }
 
   // ---- Instructor highlight (Gameplay §5) — glow the control the current beat /
@@ -4535,7 +4560,13 @@
         (e.soon ? '<div class="mplant-soon">COMING SOON</div>' : '') + '</div>';
     }).join('');
     // Step 2 — the mode tabs
-    var modes = [['free', 'Free Play'], ['campaign', 'Campaign'], ['scenarios', 'Scenarios'], ['walkthroughs', 'Walkthroughs']];
+    /* TWO TABS *(OWNER, 2026-09-08, #660 item 19: "In the opening plant and missions screen get rid
+     * of the Campaign and Scenarios tabs.")*. The campaign and scenario content and their gates
+     * are untouched; the tabs are simply not offered. `?mmode=campaign|scenarios` still routes
+     * for screenshots and the flags gate. */
+    var modes = [['free', 'Free Play'], ['walkthroughs', 'Walkthroughs']];
+    if (/[?&]mmode=/.test(location.search || '')) modes.push(['campaign', 'Campaign'], ['scenarios', 'Scenarios']);
+    else if (msel.mode === 'campaign' || msel.mode === 'scenarios') msel.mode = 'free';
     $('mpModes').innerHTML = modes.map(function (m) {
       return '<button class="' + (msel.mode === m[0] ? 'on' : '') + '" data-mmode="' + m[0] + '">' + m[1] + '</button>';
     }).join('');
@@ -4560,8 +4591,8 @@
     var e = ENGINES[msel.engine];
     var states = e.initStates || PROFILES[e.plant].initStates;   /* per-ENGINE override (pwr2: its own five-IC registry) */
     if (!states.some(function (s) { return s[0] === msel.init; })) msel.init = e.init;
-    var h = '<div class="m-note">Free Play — the plant is yours: no script, no grading, every control live. Pick the starting condition.</div>' +
-      '<div class="g-section-title" style="margin-top:12px">Starting condition</div>';
+    /* the "The plant is yours…" line is gone (OWNER, 2026-09-08, #660 item 23) */
+    var h = '<div class="g-section-title" style="margin-top:4px">Starting condition</div>';
     h += states.map(function (s) {
       return '<div class="init-row' + (s[0] === msel.init ? ' on' : '') + '" data-minit="' + s[0] + '">' +
         '<span class="init-dot">' + (s[0] === msel.init ? '◉' : '○') + '</span><span>' + mesc(s[1]) + '</span></div>';
@@ -4617,12 +4648,17 @@
     var procs = all.filter(function (x) { return flagOn('procedure:' + x.id); });
     if (all.length && !procs.length) return soonPanel('walkthroughs');
     var doneP = p.completed_procedures || [];
-    var h = '<div class="m-note">Follow a real procedure step by step — the Instructor checks each step off the instruments.</div>';
+    /* WALKTHROUGHS *(OWNER, 2026-09-08, #660 items 21-22)*: the list is the plant's checklist
+     * pool; picking one loads its starting condition (`from`) and starts it in the Instructor
+     * tab. The old Follow-in-Instructor buttons are gone. */
+    var ics = {}; (ENGINES[msel.engine].initStates || []).forEach(function (r) { ics[r[0]] = r[1]; });
+    var h = '<div class="m-note">Pick a walkthrough. The plant loads at its starting condition and the walkthrough runs in the Instructor tab, one step at a time.</div>';
     return h + (procs.map(function (x) {
-      return '<div class="tr-row"><span class="tr-ptitle">' + (doneP.indexOf(x.id) !== -1 ? '✓ ' : '') + mesc(x.title) + '</span>' +
-        (flagOn('checklists') ? '<button class="btn" data-checklist="' + x.id + '" title="Run as a passive checklist against the live plant">📋</button>' : '') +
-        '<button class="btn" data-follow="' + x.id + '">▶ Follow</button></div>';
-    }).join('') || '<div class="m-note">No procedures for this plant.</div>');
+      var from = x.from && ics[x.from] ? ics[x.from] : null;
+      return '<div class="tr-row"><span class="tr-ptitle">' + (doneP.indexOf(x.id) !== -1 ? '✓ ' : '') + mesc(x.title) +
+        (from ? '<span class="m-note"> · starts at ' + mesc(from) + '</span>' : '') + '</span>' +
+        '<button class="btn" data-wtstart="' + mesc(x.id) + '">▶ Start</button></div>';
+    }).join('') || '<div class="m-note">No walkthroughs for this plant.</div>');
   }
 
   // THE SELECTION SCREEN IS GONE *(OWNER DIRECTIVE, 2026-08-11: "The plant and mission menu
@@ -7300,14 +7336,14 @@
         startChecklist(st.getAttribute('data-ckl-start'));
         return;
       }
-      if (e.target.closest('[data-ckl-list]')) {
-        cklState.view = 'list';
-        cklState.key = null;
-        if (latest) render(latest);
-        return;
-      }
+      if (e.target.closest('[data-ckl-list]')) { selectTab('checklists'); return; }   // the list tab; the run stays live
       var mk = e.target.closest('[data-ckl-check]');
-      if (mk) { cmd({ action: 'checklist_check', index: +mk.getAttribute('data-ckl-check') }); return; }
+      if (mk) { if (!mk.disabled) cmd({ action: 'checklist_check', index: +mk.getAttribute('data-ckl-check') }); return; }
+      /* the walkthrough's own rewind (#660 item 17): exact, two checkpoints back — the newest is the
+       * start of the current step — scope 'full' so the walkthrough's progress comes back with the
+       * plant. The chart's rewind is disabled while a walkthrough runs. */
+      var rw = e.target.closest('[data-wt-rewind]');
+      if (rw) { if (!rw.disabled) cmd({ action: 'rewind', steps: 2, scope: 'full', exact: true }); return; }
       var wa = e.target.closest('[data-ckl-why-all]');
       if (wa) { cklState.whyAll = !cklState.whyAll; cklState.key = null; render(latest); return; }
       if (e.target.closest('[data-ckl-stop]')) { cmd({ action: 'stop_checklist' }); return; }
@@ -7561,6 +7597,17 @@
       if (ir) { msel.init = ir.getAttribute('data-minit'); renderMissionSelect(); return; }
       if (e.target.closest('[data-mfree]')) {
         closeMissionSelect(); switchEngine(msel.engine, msel.init); return;
+      }
+      var wt = e.target.closest('[data-wtstart]');
+      if (wt) {
+        /* a walkthrough starts from ITS starting condition (#660 item 22): load the plant
+         * there, then start the checklist — the reset is synchronous through the service. */
+        var wid = wt.getAttribute('data-wtstart');
+        var wpr = procsFor(msel.engine).filter(function (x) { return x.id === wid; })[0];
+        closeMissionSelect();
+        switchEngine(msel.engine, (wpr && wpr.from) || msel.init);
+        startChecklist(wid);
+        return;
       }
       var cc = e.target.closest('[data-camp-continue]');
       if (cc) {
@@ -8009,7 +8056,7 @@
       sel: '#toolsCard',
       place: 'left',
       title: 'The reference tabs',
-      body: '<p><b>Checklists</b> to follow a procedure. <b>Indications</b> and ' +
+      body: '<p><b>Walkthroughs</b> to follow a procedure. <b>Indications</b> and ' +
         '<b>Physics</b> for every reading the plant produces and the true state behind ' +
         'them. <b>Inject Failure</b> when you are ready for casualties. None of them ' +
         'stops the plant.</p>',
@@ -8360,8 +8407,8 @@
     // A gated procedure therefore reads normally here — it just cannot be driven.
     var item = 'procedure:' + pr.id;
     var h = '<div class="m-card"><div class="m-h">' + mesc(pr.title) + ' <span class="m-pill">' + mesc(pr.category) + '</span>' +
-      (flagOn('walkthroughs') && flagOn(item) ? '<button class="btn m-follow" data-follow="' + mesc(pr.id) + '">▶ Follow in Instructor</button>' : '') +
-      (flagOn('checklists') && flagOn(item) ? '<button class="btn m-follow" data-checklist="' + mesc(pr.id) + '" title="Run as a passive checklist against the live plant — no reset, steps auto-check off the instruments">📋 Checklist</button>' : '') + '</div>';
+      /* the old Follow-in-Instructor walkthrough is gone from the player's menus (#660 item 14) */
+      (flagOn('checklists') && flagOn(item) ? '<button class="btn m-follow" data-checklist="' + mesc(pr.id) + '" title="Run as a walkthrough — one step at a time in the Instructor tab; no reset, steps auto-check off the instruments">📋 Checklist</button>' : '') + '</div>';
     h += '<div class="m-sub">Start from: ' + mesc(pr.from) + '</div>';
     if (pr.purpose) h += '<p style="margin:8px 0">' + mesc(pr.purpose) + '</p>';
     if (pr.prereq && pr.prereq.length) h += '<div class="m-sub2">Prerequisites</div><ul class="m-ul">' + pr.prereq.map(function (x) { return '<li>' + mesc(x) + '</li>'; }).join('') + '</ul>';

@@ -52,6 +52,30 @@ directive (item 5) reverses it and the guide's R4 now says so with its provenanc
 step's details are open unconditionally (item 3); the walkthrough rework (items 14–18) will make
 that the only state.
 
+**Sections C and D — the checklists became WALKTHROUGHS (items 14–23).** The design posted to #660
+before building: the Walkthroughs tab is the list, the run lives in the Instructor tab one step at
+a time ("Step X of N", why always open), every step waits for Continue (lit only when the
+instruments say the step is met), and Rewind is the walkthrough's own — one step back for the
+plant and the walkthrough together. **The rewind is checkpoints, not a new mechanism**: the
+instructor sets `_checkpointRequested` at checklist start and in `_checklistCheckOff`, the service
+skips its 20 s sandbox checkpoint while `instructor.checklist` stands, so the ring holds one
+checkpoint per step and "back one step" is `rewind {steps: 2, exact: true, scope: 'full'}` (the
+newest checkpoint is the start of the step you are on). Measured in headless Chromium: Step 2 →
+Rewind → Step 1, ring 2 → 1, sim time 2.1 → 1.0 s, Continue lit again; at Step 1 the button is
+disabled. **One trap while retargeting the gates**: `run_checklist` asserted "checked off by the
+command … done_by 'auto'" — with every step now waiting, a Continue on a met step must keep the
+record `auto` (HR1, graded off the instrument), so `checklistCheck` writes `'manual'` only when
+the step was NOT met (the board's Continue is dark then; only a harness can do it). The Campaign
+and Scenarios tabs are gone from the player's window but their gates walk in through `?mmode=`
+in the URL, so `verify_flags_ui` carries `&mmode=free` and one new check that the plain window
+offers exactly Free Play and Walkthroughs. **Item 13, the 1/M plot docked right of the alarm
+panel**: `RD.OneOverM.open()` appends the window into the PWR board's bottom row as its last
+flex child (`oom-docked`; the chart and the alarm panel are `flex: 1 1 0` and give up the width),
+drag is off while docked, and the floating window survives for any other layout. Measured
+headless at 1600 × 900: chart 534 → 380 px, alarms shrink to 364 px, plot 300 × 230 px; close
+returns the chart to 534 px — after one trap: `display: flex` on the docked class beat the UA's
+`[hidden]` rule, so the closed plot still held its 300 px until `.oom-docked[hidden]` was written.
+
 ## Session log — 2026-09-08-develop-a (#655 — the speed bar's WARP row and info line; the clock drops by alarm PRIORITY; the freeze did not reproduce)
 
 **What was asked.** Fix #655; WARP buttons on their own row with the others beneath and a space

@@ -561,6 +561,9 @@
   SimulationService.prototype._now = function () { return Date.now(); };
   SimulationService.prototype._maybeSandboxCheckpoint = function () {
     if (this.instructor && this.instructor.mode) return;
+    /* a running walkthrough lays its own checkpoint on every step boundary (#660 item 17), and a
+     * 20 s sandbox mark in between would make "back one step" land mid-step */
+    if (this.instructor && this.instructor.checklist) return;
     var now = this._now();
     if (this._lastSandboxCpMs != null && now - this._lastSandboxCpMs < SANDBOX_CP_SPACING_MS) return;
     this._lastSandboxCpMs = now;

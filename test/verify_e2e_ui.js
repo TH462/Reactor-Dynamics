@@ -1774,7 +1774,7 @@ async function testHeldSpeedClick(page) {
   if (!started.ok) throw new Error('#627 fixture: start_checklist failed — ' + started.msg);
   await page.waitForFunction(function () {
     var b = document.querySelector('#tabbar button.on');
-    return !!b && b.getAttribute('data-tab') === 'checklists' && !!document.querySelector('.ckl-step');
+    return !!b && b.getAttribute('data-tab') === 'instructor' && !!document.querySelector('.ckl-step');
   }, { timeout: 15000, polling: 200 });
   await page.waitForTimeout(1200);
   async function read() {
@@ -1790,8 +1790,8 @@ async function testHeldSpeedClick(page) {
   await page.click('#speed [data-speed="600"]');
   await page.waitForTimeout(300);
   var ctl = await read();
-  if (ctl.tab !== 'checklists' || !(ctl.accel > 1)) {
-    throw new Error('#627 control: an unheld 600x click must land above 1x with the Checklists tab kept — ' +
+  if (ctl.tab !== 'instructor' || !(ctl.accel > 1)) {
+    throw new Error('#627 control: an unheld 600x click must land above 1x with the Instructor tab kept — ' +
                     'tab ' + ctl.tab + ', accel ' + ctl.accel);
   }
   log.push('control: 600x click landed at ' + ctl.accel + 'x, tab ' + ctl.tab);
@@ -1815,8 +1815,8 @@ async function testHeldSpeedClick(page) {
     throw new Error('#627: the held click was NOT refused — accel ' + held.accel +
                     ' (the fixture plants the hold at _prevSpeedHold; check set_speed in the service)');
   }
-  if (held.tab !== 'checklists' || held.steps === 0) {
-    throw new Error('#627: a refused speed click under a plant hold left the Checklists tab — tab ' +
+  if (held.tab !== 'instructor' || held.steps === 0) {
+    throw new Error('#627: a refused speed click under a plant hold left the Instructor tab — tab ' +
                     held.tab + ', ' + held.steps + ' steps visible (this is the "closes the checklist" report)');
   }
   if (!/Held/.test(held.scanner)) {

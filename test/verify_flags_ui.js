@@ -37,7 +37,9 @@ var ROOT = path.join(__dirname, '..');
  *
  * This moves to pwr2 when the scenario-compatibility pass lifts freePlayOnly, and not before.
  * The engine still loads from the repo tree; only PUBLISHED builds drop it. */
-var SHELL = 'file:///' + path.join(ROOT, 'ui', 'shell.html').replace(/\\/g, '/') + '?engine=pwr';
+var SHELL = 'file:///' + path.join(ROOT, 'ui', 'shell.html').replace(/\\/g, '/') + '?engine=pwr&mmode=free';
+// `&mmode=` is the dev/screenshot door that keeps the Campaign and Scenarios tabs drawn (#660 item 19
+// removed them from the player's window); this gate probes those areas through it.
 var LANDING = 'file:///' + path.join(ROOT, 'index.html').replace(/\\/g, '/');
 
 var pass = 0, fail = 0;
@@ -335,8 +337,17 @@ function pinChannel(ch) {
     (await b.page.$$('#mpContent [data-camp-start]')).length > 20);
   ck('dev: scenarios are listed', /Welcome to the Control Room/.test(await openMission(b.page, 'scenarios')));
   var walk = await openMission(b.page, 'walkthroughs');
-  ck('dev: walkthroughs listed with checklist buttons',
-    /Follow/.test(walk) && (await b.page.$$('#mpContent [data-checklist]')).length > 0);
+  ck('dev: walkthroughs listed with Start buttons',
+    /Start/.test(walk) && (await b.page.$$('#mpContent [data-wtstart]')).length > 0);
+  ck('dev: no Follow-in-Instructor buttons remain (#660 item 14)',
+    (await b.page.$$('#mpContent [data-follow]')).length === 0 && !/Follow/.test(walk));
+  await b.ctx.close();
+  // The player's window (no `mmode` in the URL) offers exactly Free Play and Walkthroughs
+  // (#660 item 19); the campaign and scenario areas are reachable only through the door.
+  b = await build('dev', SHELL.replace('&mmode=free', ''));
+  await b.page.click('#simStatus');
+  var tabsPlain = await b.page.$$eval('#mpModes [data-mmode]', function (els) { return els.map(function (e) { return e.getAttribute('data-mmode'); }); });
+  ck('player window: only Free Play and Walkthroughs tabs', tabsPlain.join(',') === 'free,walkthroughs', tabsPlain.join(','));
   await b.ctx.close();
 
   // ------------------------------------ the public build (what `main` deploys)
@@ -402,14 +413,12 @@ function pinChannel(ch) {
       /COMING SOON/.test(await openMission(b.page, AREAS[a].tab)));
     await b.ctx.close();
   }
-  // checklists is not a tab: with it off, walkthroughs still list and still
-  // Follow — only the 📋 buttons and the instructor picker go.
+  // checklists is not a tab: with it off, walkthroughs still list with their Start
+  // buttons — only the instructor picker goes.
   b = await build('public', SHELL + '&flags=all,-checklists');
   var wt = await openMission(b.page, 'walkthroughs');
-  ck('only checklists off: walkthroughs still list and still Follow',
-    /Follow/.test(wt) && !/COMING SOON/.test(wt));
-  ck('only checklists off: no 📋 buttons on them',
-    (await b.page.$$('#mpContent [data-checklist]')).length === 0);
+  ck('only checklists off: walkthroughs still list with Start buttons',
+    /Start/.test(wt) && !/COMING SOON/.test(wt) && (await b.page.$$('#mpContent [data-wtstart]')).length > 0);
   await b.page.click('#missionClose');
   ck('only checklists off: the instructor picker is gone', !(await b.page.isVisible('#instrCklRow')));
   await b.ctx.close();

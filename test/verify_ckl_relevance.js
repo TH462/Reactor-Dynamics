@@ -178,7 +178,8 @@ function sig(rows) {
      * the 189 px defect and comfortably above the chrome. */
     var lay = await page.evaluate(function () {
       var log = document.getElementById('cklLog');
-      var pane = document.querySelector('.tabpane[data-pane="checklists"]');
+      /* the run lives in the INSTRUCTOR pane since #660 item 15 — measure the pane that holds it */
+      var pane = log ? log.closest('.tabpane') : null;
       var chain = [], el = log;
       while (el && el !== document.documentElement) {
         var ov = getComputedStyle(el).overflowY;
@@ -197,8 +198,8 @@ function sig(rows) {
      * It is kept because a nested scroller is what would make the log's saved scroll position
      * meaningless (only the log's is restored), and nothing else would notice. It can only ever
      * catch a FUTURE regression; it is not proof that anything was fixed. */
-    ck('GUARD: the log is the only scroller in the column (#612 — passes pre-fix too)',
-       lay.scrollers.length === 1,
+    ck('GUARD: the log is the only scroller in the column (#612 — passes pre-fix too; one step drawn may need none, #660)',
+       lay.scrollers.length <= 1,
        lay.scrollers.length ? lay.scrollers.join(' > ') : 'none scrollable');
 
     ck('a greyed checklist still STARTS when clicked (warn, never block)', banner.running);
@@ -232,17 +233,25 @@ function sig(rows) {
      * this assertable when nothing else about a live advance was. */
     await page.click('[data-ckl-stop]').catch(function () {});
     await page.waitForTimeout(400);
+    await page.click('#tabbar [data-tab="checklists"]');   // the list is its own tab now (#660 item 15)
+    await page.waitForTimeout(300);
     await page.click('#cklMenu button[data-ckl-start="pwr_heatup"]');
     await page.waitForTimeout(3500);
+    /* EVERY STEP WAITS FOR CONTINUE since #660 item 16: the opening confirm satisfies itself on
+     * the cold plant and lights the button; the player's press is part of this fixture now. */
+    await page.click('.wt-continue:not([disabled])').catch(function () {});
+    await page.waitForTimeout(800);
     var run = await page.evaluate(function () {
       var log = document.getElementById('cklLog');
       return { banner: !!(log && log.querySelector('.m-caution')),
                idx: (window.__lastCklIdx === undefined ? null : window.__lastCklIdx),
-               done: log ? log.querySelectorAll('.ckl-step').length : 0,
+               /* one step is drawn at a time (#660 item 15): the header carries the index */
+               stepno: log ? ((log.querySelector('.ckl-stepno') || {}).textContent || '') : '',
                active: log ? !!log.querySelector('.ckl-active') : false };
     });
+    var stepNo = +(/Step (\d+)/.exec(run.stepno) || [0, 0])[1];
     ck('the heatup advanced off step 0 on its own (the fixture is not vacuous)',
-       run.active && run.done > 1, run.done + ' steps drawn, active step present');
+       run.active && stepNo > 1, '"' + run.stepno + '", active step present');
     /* A GUARD, NOT EVIDENCE — and the distinction cost a rewrite to see. The heatup's
      * preconditions are MET at Mode 5, so "no banner" is true here on the pre-fix build too;
      * this cannot fail on the defect it was written for. The discriminating test would need the

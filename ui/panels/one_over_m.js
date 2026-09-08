@@ -31,6 +31,7 @@
     handle.style.cursor = 'move';
     handle.addEventListener('pointerdown', function (e) {
       if (e.target.closest('button')) return;   // titlebar buttons still click
+      if (win.classList.contains('oom-docked')) return;   // docked in the bottom row: not a floating window
       dragging = true;
       var r = win.getBoundingClientRect();
       ox = r.left; oy = r.top; sx = e.clientX; sy = e.clientY;
@@ -254,7 +255,7 @@
     win.className = 'oom-win';
     win.hidden = true;
     win.innerHTML =
-      '<div class="oom-head" data-scanner-hint="1/M startup plot — drag to move. Plot inverse count-rate points against rod position; the line’s zero crossing predicts the critical rod position.">' +
+      '<div class="oom-head" data-scanner-hint="1/M startup plot, docked beside the alarms. Plot inverse count-rate points against rod position; the line’s zero crossing predicts the critical rod position.">' +
       '<span>1/M Startup Plot</span><button class="btn oom-x" data-oom="close" title="Close">✕</button></div>' +
       '<svg viewBox="0 0 ' + W + ' ' + H + '" class="oom-svg"></svg>' +
       '<div class="oom-foot">' +
@@ -289,6 +290,12 @@
     init: function (opts) { getSnap = opts.getSnap; sendCmd = opts.cmd || null; if (!win) build(); },
     open: function () {
       if (!win) build();
+      /* DOCKED, NOT FLOATING *(OWNER playtest notes, 2026-09-08, #660 item 13: "1/M plot docked
+       * right of alarm panel shrinking alarm/chart panels")*. On the PWR board the plot joins
+       * the bottom row as its last flex child; the strip chart and the alarm panel (flex 1 1 0)
+       * give up the width. Any other layout keeps the floating window. */
+      var row = document.querySelector('.app.pwr-synoptic .plant-area > .bottom-row');
+      if (row && win.parentNode !== row) { row.appendChild(win); win.classList.add('oom-docked'); }
       win.hidden = false;
       render();
     },

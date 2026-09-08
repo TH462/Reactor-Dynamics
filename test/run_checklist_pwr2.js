@@ -190,9 +190,15 @@ if (!only) {
     svc.handleCommand({ action: 'acknowledge_all_alarms' });
     for (var j = 0; j < 30; j++) s = svc.tick();
     var c2 = s.instructor.checklist;
-    ck('the cmd-kind entry latches on the command and the step advances',
-       !!c2 && (c2.step_index >= 1 || c2.complete),
-       c2 && ('step_index ' + c2.step_index + ' complete ' + c2.complete));
+    ck('the cmd-kind entry latches on the command and the step holds for Continue (#660 item 16)',
+       !!c2 && c2.awaiting_ack === true && c2.step_index === 0 && c2.accs && c2.accs[1].met === true,
+       c2 && ('step_index ' + c2.step_index + ' awaiting_ack ' + c2.awaiting_ack + ' ' + JSON.stringify(c2.accs)));
+    svc.handleCommand({ action: 'checklist_check', index: 0 });
+    for (var j2 = 0; j2 < 5; j2++) s = svc.tick();
+    var c3 = s.instructor.checklist;
+    ck('...and Continue advances it',
+       !!c3 && (c3.step_index >= 1 || c3.complete),
+       c3 && ('step_index ' + c3.step_index + ' complete ' + c3.complete));
     RD.MANUAL_PROCEDURES.pwr2.pop();
   })();
 
@@ -373,7 +379,7 @@ if (!only) {
       if (/Open the accumulator valve/i.test(st.text)) accIdx = k;
       if (/Raise SET PZR PRESSURE to 1700/.test(st.text)) spIdx = k;
     });
-    var s = null, issued = {}, holdTick = null, stepAtHold = null, ticksToAcc = null;
+    var s = null, issued = {}, issuedAt = {}, holdTick = null, stepAtHold = null, ticksToAcc = null;
     var pAtHold = 0, pAtAcc = 0, chatter = 0, refused = 0, accepted = 0, spDialledBox = null;
     for (var n = 0; n < 60000 && accIdx >= 0; n++) {
       s = svc.tick();
@@ -382,12 +388,16 @@ if (!only) {
       if (i > accIdx) break;
       if (ck2.awaiting_ack) svc.handleCommand({ action: 'checklist_check', index: i });
       if (!issued[i] && i < accIdx) {
-        issued[i] = true;
+        issued[i] = true; issuedAt[i] = n;
         if (st.cmd) svc.handleCommand(st.cmd);
         (st.accs || []).forEach(function (e) { if (e.cmd) svc.handleCommand(e.cmd); });
       }
-      /* the setpoint action is its own check-off, ticked the moment it is dialled */
-      if (i === spIdx && spDialledBox === null && ck2.accs && ck2.accs[0]) spDialledBox = ck2.accs[0].met;
+      /* the setpoint action is its own check-off, ticked the moment it is dialled. Read it on a
+       * LATER tick than the one that issued the command (#660 item 16: every step now waits for
+       * Continue, so the step's first snapshot already carries `accs` and arrives BEFORE the
+       * command — sampling it there would grade the box on a setpoint nobody had dialled yet). */
+      if (i === spIdx && spDialledBox === null && ck2.accs && ck2.accs[0] &&
+          issuedAt[spIdx] !== undefined && n > issuedAt[spIdx]) spDialledBox = ck2.accs[0].met;
       if (holdTick === null) {
         if (s.true_state.speed_hold) { holdTick = n; stepAtHold = i; pAtHold = s.true_state.pressure_mpa * 145.038; }
         else if (svc.timeAcceleration < 600) svc.handleCommand({ action: 'set_speed', value: 600 });

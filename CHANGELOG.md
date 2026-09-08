@@ -54,6 +54,41 @@ RANGE handover and closes the 1/M window (items 10, 12); step 11 is instrument-b
 climb, add a step only when STARTUP RATE has come back to zero (item 11). Items 13–23 (the docked
 1/M panel, the walkthrough rework, the Plant & Mission screen) follow.
 
+### Changed (owner playtest 2026-09-08, sections C and D — the live checklists are WALKTHROUGHS, #660 items 14–23)
+
+**Rename and place** (items 14–15): the Checklists tab is **Walkthroughs** and is the LIST; a
+running walkthrough is drawn in the **Instructor** tab, whose role line reads "Walkthrough". The
+old Follow-in-Instructor walkthrough is gone from the Plant & Mission window and the manual's
+procedure cards (its runtime and `?follow=` gate stay — `verify_manual_follow` finds a card by its
+walkthrough button now). **One step at a time** (items 15–16): the card is the current step only,
+headed "Step X of N", its details always open — no "Show all details", no "checked by hand"
+line. **Continue and Rewind on every step** (items 16–18): every step, action or observation, now
+waits for **Continue**, which is drawn dark until the instruments satisfy the step and lit when
+they do (`awaitingAck` on every met step; a Continue on a met step keeps the record `auto`, HR1);
+**Rewind step** takes the plant AND the walkthrough back to the start of the previous step — the
+instructor requests a full-scope checkpoint at start (checkpoint 0) and on every check-off, the
+20-second sandbox checkpoint is suspended while a walkthrough runs so the ring holds exactly one
+checkpoint per step, and the button issues `rewind {steps: 2, scope: 'full', exact: true}` (the
+newest checkpoint is the start of the current step). The chart's Rewind and the instructor nav's
+rewind are disabled while a walkthrough runs. Measured in the browser: Step 2 → Rewind → Step 1,
+checkpoints 2 → 1, sim time 2.1 s → 1.0 s, Continue lit again. **Plant & Mission** (items 19–23):
+the Campaign and Scenarios tabs are not offered (content and gates untouched; `?mmode=` in the
+URL still draws them for screenshots and `verify_flags_ui`); the Walkthroughs tab lists the pwr2
+pool with a **Start** button that loads the walkthrough's own starting condition (`from`) and
+starts it; **At Power — power ascension (Mode 1)** (`low_power`) is a starting condition; the Free
+Play blurb is gone. Gates: `run_checklist` 46 → **47** (the command-family and acceptance checks
+now assert satisfied-then-Continue), `verify_flags_ui` (+2: Start buttons, the player's window
+offers exactly two tabs), `verify_e2e_ui`/`verify_ckl_relevance` retargeted to the Instructor tab
+and the step header.
+
+### Changed (the 1/M plot is docked beside the alarm panel — #660 item 13)
+
+*(OWNER playtest notes, 2026-09-08: "1/M plot docked right of alarm panel shrinking alarm/chart
+panels")*. On the PWR board, 1/M PLOT now opens the plot as the last panel of the bottom row —
+strip chart, alarms, plot — and the chart and alarm panel shrink to make room (measured at
+1600 × 900: chart 534 → 380 px, plot 300 px); ✕ closes it and the width comes back. It is no
+longer a draggable window on that board; other layouts keep the floating window.
+
 ### Changed (the speed bar: WARP on its own row with an info line, and which alarms drop the clock — #655)
 
 *(OWNER, 2026-09-08: "put the warp buttons on their own line with the other buttons underneath

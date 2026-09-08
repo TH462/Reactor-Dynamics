@@ -167,6 +167,7 @@
   // it lives in free play; loading a scenario/walkthrough clears it (_clear).
   InstructorLayer.prototype.loadChecklist = function (proc, meta) {
     if (!proc || !proc.steps || !proc.steps.length) return;
+    this._checkpointRequested = true;   // checkpoint 0 for the walkthrough's step rewind (#660 item 17)
     this.checklist = {
       proc: proc,
       procedure_id: (meta && meta.procedure_id) || proc.id,
@@ -198,7 +199,10 @@
     var c = this.checklist;
     if (!c || c.complete) return;
     if (index != null && index !== c.idx) return;
-    this._checklistCheckOff('manual');
+    /* Continue on a step the instruments already satisfied is a confirmation, not a hand
+     * tick: the record keeps 'auto' (HR1 — graded off the instrument). 'manual' is only a
+     * step ticked before its acceptance was met (harnesses; the board's Continue is dark). */
+    this._checklistCheckOff(c.awaitingAck ? 'auto' : 'manual');
   };
 
   // Back to free-play. M5 calls this on stop_scenario/stop_follow and on every
@@ -743,10 +747,14 @@
      * keep updating underneath, so the card shows the step satisfied while it waits. `awaiting_ack`
      * is what the UI draws the flashing button from; `checklistCheck` (the button, and the
      * replay harness) clears it through the ordinary manual path. */
-    var needsAck = !st.cmd && !(st.accs || []).some(function (e) { return e && e.cmd; });
-    c.awaitingAck = !!(met && needsAck);
-    if (met && needsAck) return;
-    if (met) this._checklistCheckOff(hasAccs || st.acc || st.saw || st.cmd ? 'auto' : 'observed');
+    /* EVERY STEP WAITS FOR CONTINUE *(OWNER, 2026-09-08, #660 items 16-18: "Only show one step at
+     * a time … Add a continue button that only lights up when the conditions of the step are
+     * met.")*. The grading is unchanged — `met` is what lights the button — but no step advances
+     * itself any more; the press (`checklist_check`) does. Before this, action steps ticked and
+     * moved on the instant their predicate held and only observation steps held for the
+     * acknowledgement (#619 item 4). The overtaken path (#641) still advances by itself: it is
+     * the plant moving past a step, not the player finishing one. */
+    c.awaitingAck = !!met;
   };
 
   /* See the catch-up block in `_stepChecklist`. `past` is one predicate or an array (OR).
@@ -792,6 +800,11 @@
     c.stepAt = null;                    // re-stamped on the next tick — see the dwell above
     c.overtakenStreak = 0;              // #641 — the next step's own predicate starts from zero
     if (c.idx >= c.proc.steps.length) c.complete = true;
+    /* A CHECKPOINT ON EVERY STEP BOUNDARY (#660 item 17: "Rewind takes the walkthrough and plant
+     * back one step. So it will need to save each step."). M5 consumes this on its next tick and
+     * lays the checkpoint at the START of the step just entered; the walkthrough state rides in
+     * it, so a rewind restores plant and progress together. */
+    this._checkpointRequested = true;
   };
 
   // Grade one {p, op, v [,tol]} predicate. Instrument-first (HR1): if the param
