@@ -214,7 +214,10 @@ are read against each other:
 - **Build, player model, screenshots, wall time** under the title.
 - **§1 Outcome table** — one row per leg.
 - **§2 Stuck points** ranked, numbered `S-n`, each with a severity word, the step text quoted
-  verbatim, *What I did*, *What would have unstuck me*.
+  verbatim, *What I did*, *What would have unstuck me*. **The coordinator then adds the
+  `**Measured:**` and `**Verdict:**` lines of section 9 to every `S-n` in place**, so the
+  report and the issue comment carry the same two lines for the same finding. An `S-n` with no
+  Measured line has not been through the verification pass.
 - **§3 per-step log**, **§4 words not on the board**, **§5 what worked**.
 
 ## 9. The coordinator's verification pass
@@ -245,8 +248,27 @@ reporting a screen. Do it claim by claim.
    at an achieved ~1,180×, the page answering in under 50 ms throughout"*. A refuted claim
    stays in the report body — the record is what the player experienced.
 5. **File what survives** as a comment on the umbrella issue (walkthrough text and runtime:
-   **#653**; the owner playtest rework: **#660**), with the `Claude` label, each finding
-   carrying its measurement. Open a new issue only for something outside the umbrella.
+   **#653**; the owner playtest rework: **#660**), with the `Claude` label. **Every finding is
+   filed in this shape, and the two bold lines are mandatory:**
+
+   ```
+   ### <S-n> — <one-line title>  ·  <severity>
+   **Saw:** <what the reviewer reported, its words>
+   **Measured:** <what was re-measured, with which harness or script, and the NUMBER>
+   **Verdict:** confirmed | refuted | narrowed — <what the number changed about the claim>
+   ```
+
+   **A finding with no `Measured:` line is not filed.** It goes back for measurement, or it is
+   dropped with a one-line note saying it was not measured — never softened into prose and
+   posted anyway. The three over-claims at the top of this skill are why: *"30 of 67 steps have
+   no acceptance"* measured **6**, the 1× drop was **a step checking off**, and the 3600 ×
+   freeze **did not reproduce**. All three were filable-looking, all three would have been
+   filed, and all three would have sent someone to fix a plant that was working.
+
+   `narrowed` is the common verdict and is not a soft `confirmed`: it means the observation
+   stands and the cause the reviewer attached to it does not. Say both.
+
+   Open a new issue only for something outside the umbrella.
 6. **Fix, then run a FRESH pass.** A new scratch dir and a new agent, because the old one now
    knows the answers. Repeat until 6 of 6 legs complete with no stuck point above MEDIUM.
 7. **Gates for anything you changed**: `run_checklist_pwr2`, `run_checklist`, `run_style`,
