@@ -29,6 +29,79 @@ and the user-visible summary in `CHANGELOG.md`. This file points at those and tr
 
 ---
 
+## Session log — 2026-09-08-workbench-b (#646 — two chapters taught an ordering #508 inverted, and it was #629's stated reason; the ride that re-measured it also found the check pair hollow)
+
+**The claim, and why it could not be fixed from arithmetic.** `Manuals/09` §3.0 and `Manuals/12`
+§8.3 both said, in substance, *"Tavg mode cannot serve a heatup: its turbine-trip controller opens
+only above the 557 °F (291.67 °C) no-load reference, which is above the atmospheric dump valve's
+relief point, so a plant left in Tavg mode while heating up rides that valve instead."* #508 (and
+#645, for the pressurizer's copy of the same knot) moved the anchor to **547 °F (286.11 °C)**, which
+is **4.2 °F (2.3 °C) BELOW** the valve's 1040 psig (7.17 MPa) saturation of **551.2 °F (288.4 °C)**.
+The ordering the sentence rests on runs backwards. That makes the whole sentence a plant-dynamics
+claim to be RE-MEASURED (Hard Rule 12), not re-derived from the two numbers.
+
+**The ride.** Full stack, `cold_shutdown`, the PWR-N01 heatup driven through the checklist's own
+commands at the **player's** pace (advance on each acceptance, not the replay's 40,000 s holds),
+600×, then two plant-hours of hands-off park. Three dump lineups, one harness
+(`inbox/646/heatup.js`, `MODE=pressure|tavg|none`):
+
+| dump lineup on the heatup | parks at | steam header | ATMOS DUMP | condenser dumps | vented, 2 h |
+|---|---|---|---|---|---|
+| steam-pressure mode (what **AUTO** gives a tripped turbine) | 547.2 °F (286.24 °C) | 1005 psig (7.029 MPa) | **shut** | 0–3.4 % | **0 lbm** |
+| Tavg mode (what AUTO gave before #629) | 547.4 °F (286.37 °C) | 1006 psig (7.044 MPa) | **shut** | 0.1–2.5 % | **0 lbm** |
+| never selected (the Mode 5 IC's own `dump_mode: 'off'`) | 551.6 °F (288.69 °C) | 1042 psig (7.286 MPa) | **8.1 %** | 0 % | **11,005 lbm (4,992 kg)** |
+
+**The claim is refuted and the plant says which half was true.** Tavg mode does NOT ride the valve —
+it parks **0.2 °F (0.1 °C)** from where pressure mode parks it, valve shut, nothing vented. What
+rides the valve is a dump **left out of service**, which is exactly what the cold IC boots and what
+the pre-#629 unconditional AUTO → Tavg mapping was *indistinguishable from* (below 557 °F that
+controller had no output at all). #629 measured a byte-identical trace and attributed it to the
+mode; the attribution was the part that has expired.
+
+**#629's board change stands; its argument does not.** Pressing AUTO is no longer a no-op —
+**−4.4 °F (−2.4 °C), −37 psi and 11,005 lbm not vented** against not pressing it — but that is the
+value of *pressing it*, not of *which mode it picks*. The reason pressure mode is still right is the
+sourced one, now written into both chapters: WTSM §11.2 assigns it to heatup / cooldown / hot
+standby, and it is the **only** mode that reads the DUMP SETPOINT box, so walking that setpoint down
+is how a cooldown is driven. Tavg mode has no setpoint to walk.
+
+**THE TRAP, and it is the reusable one: a change that makes two lineups AGREE retires every check
+that was reading their difference.** `ui/manual_procedures.js` recorded #629's own injection —
+revert the shell to the unconditional `'tavg'` and `adv_valve_pct` 8.60 % / 7.29 MPa go red — as the
+evidence that the heatup leg's two Mode-3 checks were live. Re-run on this tree that injection reds
+**neither**: 32/32 green, valve 0.00 %, header 7.04 MPa. The checks were never reading the mode;
+they were reading its *consequence*, and #508 deleted the consequence. Re-aimed by recording an
+injection that still discriminates — **delete the step's own `cmd`** (the AUTO press never issued):
+valve 8.43 %, header 7.29 MPa, **exactly those two red, the other 30 green**. That is the defect
+this leg owns. The mode selection is gated where it belongs and was proved so under the same
+revert: `run_pwr2_shell` group M reds **161/162**, naming `boot "off" -> "tavg"`.
+
+**Not re-aimed at `steam_dump_mode`, and the reason is measured, not stylistic.** The predicate
+vocabulary shared by the instructor layer, `procedures_harness` and `run_procedures` is `> < >= <= ~`
+— there is **no equality operator**, so a string param cannot be asserted at all without a schema
+change across four files; and the numeric alternative, tightening the 7.03 MPa band until the two
+modes separate, needs a tolerance of **0.015 MPa (2.2 psi)**, which is a fixture balanced on a
+bifurcation (#543/#588). The claim is already gated at the layer that owns it.
+
+**The gate row was already fixed and was verified rather than inherited.** `run_manual_setpoints`'s
+*Steam dump (trip-open mode)* row is no longer `narrative` — #647 pointed it at
+`DUMP.tt_full_c * 1.8`. Proved by injection: put the retired plant's `14.4 °F` back in the manual
+and it reds with `manual 14.4 °F, plant 33.1 °F`; restored byte-for-byte, 13/13.
+
+**Sites rewritten** (grep, not either filed list — #650 had already fixed three in
+`pwr2_dumpctl.js` / `pwr2_pressurizer.js`): `Manuals/12` §8.3 (the rationale paragraph, now a
+three-row measured table), `Manuals/09` §3.0 (the trip-open row's tail), `engines/pwr2/pwr2_shell.js`
+(the `set_steam_dump` block), `engines/pwr2/pwr2_engine.js` (the IC note still called 557 °F "the
+plant's `tavg_noload_c` anchor"), `ui/manual_procedures.js` ×3 (the heat-sink block, the transit
+note's 551.6 → the setpoint's own 551.2 °F saturation, the injection record),
+`test/run_pwr2_shell.js` group M's header, `test/run_pwr2_engine.js` ×2 (a literal `557` in a note —
+now reads `DC.DUMP.tavg_noload_c` — and the Hot Standby check's parenthesis).
+**Still stale and deliberately untouched: `test/run_all.js:1088`**, the `run_pwr2_shell` BASELINES
+comment, which repeats the refuted rationale verbatim. That file is the guaranteed lane-merge
+conflict; a comment fix there belongs to whoever moves the baseline next.
+
+---
+
 ## Session log — 2026-09-08-workbench-a (#644 — the coverage instrument lied exactly when you were mid-change; eight runners had no clean-run guard)
 
 **The defect, in one line.** `run_pwr2_engine` scored a mutation as `rec2.filter(!ok).length` —

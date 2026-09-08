@@ -142,11 +142,13 @@
    * so free play opens without a ring.
    *   - Tavg comes from the plant's own Tref program at the IC's dispatch (at power), or
    *     from the SG side at no load — Tsat of the sourced 1005 psig no-load pressure
-   *     (Ginna's own 547 degF / 1005 psig pair; the plant's tavg_noload_c program anchor,
-   *     557 degF, is the WTSM 4-loop figure and its saturation pressure, 1106 psia, sits
-   *     ABOVE this plant's 1085 psig MSSV pop — MEASURED, which is why the no-load plant
-   *     is anchored to its own steam side, and why the HZP dumps boot in PRESSURE mode at
-   *     1005 psig: the sourced no-load lineup, and the thing that holds the plant there).
+   *     (Ginna's own 547 degF / 1005 psig pair, which since #508/#645 is ALSO the Tavg
+   *     program's `tavg_noload_c` anchor — the two AGREE now, and this note said otherwise
+   *     until #646. The anchor USED to be the WTSM 4-loop 557 degF, whose saturation pressure
+   *     of 1106 psia sits ABOVE this plant's 1085 psig MSSV pop — MEASURED, and the reason the
+   *     no-load plant was anchored to its own steam side in the first place. The HZP dumps
+   *     still boot in PRESSURE mode at 1005 psig: the sourced no-load lineup, and the thing
+   *     that holds the plant there).
    *   - Kinetics/xenon/decay-heat seed at the IC's own power equilibrium (createKinetics'
    *     convention); boron is trimmed AT the IC's own moderator temperature.
    *   - hot_zero_power is SUBCRITICAL by the adopted 1000 pcm margin (+100 ppm at the

@@ -30,6 +30,43 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
 
 ## [Unreleased]
 
+### Fixed (the manuals taught a steam-dump ordering the plant inverted — #646)
+
+`Manuals/09` §3.0 and `Manuals/12` §8.3 both explained that Tavg mode *"cannot serve a heatup"*
+because its turbine-trip controller opens only above the **557 °F (291.67 °C)** no-load reference,
+*above* the atmospheric dump valve's relief point — so a plant left in Tavg mode rides that valve.
+#508/#645 re-anchored the no-load average coolant temperature to Ginna's programmed **547 °F
+(286.11 °C)**, which is **4.2 °F (2.3 °C) below** the valve's 1040 psig (7.17 MPa) saturation of
+551.2 °F (288.4 °C). The ordering inverted, so the explanation ran backwards — and it was the
+argument #629 used to justify making STEAM DUMP AUTO select pressure mode on a tripped turbine.
+
+- **Re-measured on the PWR-N01 heatup itself** (full stack, cold plant to Mode 3 at the player's own
+  pace, plus two plant-hours of park). Left in **Tavg** mode the plant parks at **547.4 °F
+  (286.3 °C) / 1006 psig (7.04 MPa)** with the atmospheric valve **shut** and **0 lbm** vented; in
+  **steam-pressure** mode at **547.2 °F (286.2 °C) / 1005 psig (7.03 MPa)**, also shut, also 0 lbm.
+  The two modes park **0.2 °F (0.1 °C)** apart. What rides the valve is a dump **never selected at
+  all** — the cold plant's own boot lineup: **551.6 °F (288.7 °C) / 1042 psig (7.29 MPa)**, valve at
+  **8.1 %**, **11,005 lbm (4,992 kg)** vented in two hours.
+- Both chapters now carry the measured parks and the **sourced** reason pressure mode is still the
+  heatup/cooldown selection: WTSM §11.2's mode assignment, and the fact that it is the only mode
+  that reads the **Dump SP** box — walking that setpoint down is how a cooldown is driven. #629's
+  board change is unchanged; only its stated justification was wrong.
+- The same refuted sentence is rewritten in six code sites: `pwr2_shell.js`, `pwr2_engine.js`,
+  `ui/manual_procedures.js` (×3) and the `run_pwr2_shell` / `run_pwr2_engine` comments.
+  Manual set stays at the pending **Rev 19**, item (ff).
+
+### Test coverage (a check pair went hollow when the plant stopped distinguishing the lineups — #646)
+
+*Not a simulator change.* `ui/manual_procedures.js` recorded #629's injection — revert the shell to
+the unconditional Tavg mapping and the heatup leg's `adv_valve_pct` / `steam_pressure_mpa` checks go
+red at 8.60 % and 7.29 MPa — as proof the pair was live. **Re-run, it reds neither** (32/32 green,
+valve 0.00 %, header 7.04 MPa): the pair read the mode's *consequence*, and the re-anchor removed
+it. Re-recorded with an injection that still discriminates — delete the step's own AUTO press, and
+**exactly those two** go red (8.43 %, 7.29 MPa) with the other 30 green. The mode selection itself
+stays gated in `run_pwr2_shell` group M, which reds 161/162 under the old revert; not duplicated in
+the checklist, because the predicate vocabulary has no equality operator and the numeric alternative
+needs a 0.015 MPa (2.2 psi) band. No baselines move.
+
 ### Test coverage (the mutation self-test refuses to score on a red clean run — #644)
 
 *Not a simulator change — no version bump, no `changelog.html` entry.* The pwr2 runners score a

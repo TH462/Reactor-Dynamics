@@ -875,7 +875,9 @@ function runSuite(RD, rec, quiet, only) {
   var ts6 = run(eng6, quiet ? 180 : 240);
   ckT('a STUCK Tavg channel makes the dumps OVERCOOL the true plant far past the program',
       (ts6.tavg_c * 1.8 + 32) < 500 && ts6.steam_dump_valve_pct > 30,
-      'true Tavg ' + (ts6.tavg_c * 1.8 + 32).toFixed(1) + ' degF vs the 557 program, dumps ' +
+      /* #646: the note used to name a literal 557 program. Read the constant — #508 moved it. */
+      'true Tavg ' + (ts6.tavg_c * 1.8 + 32).toFixed(1) + ' degF vs the ' +
+      (DC.DUMP.tavg_noload_c * 1.8 + 32).toFixed(0) + ' program, dumps ' +
       ts6.steam_dump_valve_pct.toFixed(0) + ' % chasing a reading stuck at ' +
       (eng6.ins.reading.tavg * 1.8 + 32).toFixed(1));
 
@@ -1889,8 +1891,12 @@ function runSuite(RD, rec, quiet, only) {
   var engH = EN.createEngine({ initial_state: 'hot_zero_power' });
   var tsH = EN.step(engH, DT);
   ckT('Hot Standby opens at the plant\'s OWN no-load point — Tsat of the sourced 1005 psig ' +
-      '(547.9 degF, the Ginna pair; the 557 degF program anchor saturates ABOVE the 1085 ' +
-      'psig MSSV pop, measured — the ICS header), level at the 25 % no-load program',
+      /* #646: "the 557 degF program anchor" was the LIVE anchor when this was written and is
+       * not since #508/#645 — the program now sits on this same Ginna pair. Kept as the reason
+       * the anchor moved, in the past tense. */
+      '(547.9 degF, the Ginna pair, and since #508/#645 the Tavg program\'s anchor too; the ' +
+      '557 degF anchor it replaced saturates ABOVE the 1085 psig MSSV pop, measured — the ' +
+      'ICS header), level at the 25 % no-load program',
       tsH.power_pct < 1e-3 && Math.abs(tsH.tavg_c - 286.11) < 0.15 &&
       engH.sg.P * 145.038 > 1012 && engH.sg.P * 145.038 < 1028 &&
       Math.abs(tsH.pzr_level_pct - 25) < 1.0,

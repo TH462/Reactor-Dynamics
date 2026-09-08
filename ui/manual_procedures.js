@@ -1400,11 +1400,23 @@
          * — pressure kept climbing at 26 psi/min straight through 1920 psia to the acceptance —
          * but the RIDE-ONTO-THE-ADV half is real and measured, and it was UNAVOIDABLE from the
          * board: `cold_shutdown` boots `dump_mode: 'off'` and the shell mapped AUTO to Tavg mode
-         * unconditionally, whose turbine-trip controller only opens above 557 °F (291.67 °C) —
-         * ABOVE the 1040 psig atmospheric dump valve. So pressing AUTO changed nothing (measured:
-         * byte-identical trace, that valve at 7.6 %, dumps 0.0 %), and the DUMP SETPOINT box was
-         * an orphan on every plant a player heats up. The shell now selects steam-pressure mode
-         * when the turbine is tripped, which is WTSM 11.2's own mode assignment.
+         * unconditionally, so pressing AUTO changed nothing (measured: byte-identical trace, that
+         * valve at 7.6 %, dumps 0.0 %) and the DUMP SETPOINT box was an orphan on every plant a
+         * player heats up. The shell now selects steam-pressure mode when the turbine is tripped,
+         * which is WTSM 11.2's own mode assignment.
+         *
+         * ⚠ #629's EXPLANATION FOR THE NO-OP IS REFUTED, re-measured 2026-09-08 (#646). It was
+         * "the Tavg turbine-trip controller only opens above 557 °F (291.67 °C), ABOVE the
+         * 1040 psig atmospheric dump valve". #508/#645 moved the anchor to 547 °F (286.11 °C),
+         * 4.2 °F (2.3 °C) BELOW that valve's 551.2 °F (288.4 °C) saturation, and the ordering
+         * inverted. The same heatup ride, three lineups, cold to Mode 3 + 2 plant-hours of park:
+         *     pressure mode   547.2 °F / 1005 psig · valve SHUT  ·      0 lbm vented
+         *     tavg mode       547.4 °F / 1006 psig · valve SHUT  ·      0 lbm vented
+         *     never selected  551.6 °F / 1042 psig · valve 8.1 % · 11,005 lbm vented
+         * So the press is NOT a no-op any more — it is worth 4.4 °F (2.4 °C), 37 psi and those
+         * 11,005 lbm — but the mode it selects is no longer what buys that; PRESSING IT AT ALL is.
+         * The step stays exactly where it is and for the SOURCED reason: pressure mode is the only
+         * mode that reads the DUMP SETPOINT box, which is what the cooldown leg later walks down.
          *
          * WHY IT SITS HERE and not before the ride: in pressure mode the controller does nothing
          * until the secondary reaches the 7.03 MPa setpoint, which it does at the END of the ride,
@@ -1416,8 +1428,9 @@
          * placement is a preference for an immediately observable press, not a safety necessity.
          *
          * THE RIDE'S OWN `hold: 40000` STILL TRANSITS THE VALVE in the replay (11.1 plant-hours
-         * carries Tavg to 288.69 °C), but its ACCEPTANCE releases at 283 °C / 541.4 °F — 10.2 °F
-         * BELOW the 551.6 °F at which the valve opens. A player who follows the checklist gets
+         * carries Tavg to 288.69 °C — re-measured 2026-09-08, unchanged), but its ACCEPTANCE
+         * releases at 283 °C / 541.4 °F — 9.8 °F (5.4 °C) BELOW the 551.2 °F (288.4 °C)
+         * saturation of the valve's 1040 psig setpoint. A player who follows the checklist gets
          * here first. That is #608's lesson read backwards: there a realistic hold MASKED an
          * unsafe acceptance; here an over-long one makes the replay the harder ride.
          *
@@ -1443,11 +1456,23 @@
          * end of the leg — the atmospheric dump valve SHUT and the header sitting on the anchor,
          * which together say the condenser is carrying the heat. Either alone passes on the wrong
          * plant: a shut valve is satisfied by a plant that has not got hot yet, and 7.03 MPa is
-         * approached from below by any plant on its way up. INJECTION (HR10), measured with the
-         * shell's mode selection reverted to the unconditional 'tavg' and nothing else changed:
-         * the valve reads 8.60 % and the header 7.29 MPa (1042 psig), and EXACTLY these two go
-         * red — the other 30 checks in the leg stay green, INCLUDING the dump step's own
-         * `steam_dump_auto` tick, which is the whole reason these two exist. */
+         * approached from below by any plant on its way up.
+         *
+         * ⚠ THE INJECTION THAT PROVED THEM LIVE HAS GONE HOLLOW, AND THE NEW ONE IS BELOW (#646,
+         * 2026-09-08). The recorded one was "revert the shell's mode selection to the
+         * unconditional 'tavg'": that used to read the valve at 8.60 % and the header at
+         * 7.29 MPa (1042 psig) and redden EXACTLY these two. RE-RUN on this tree it reddens
+         * NEITHER — 32/32 green — because after the #508/#645 re-anchor Tavg mode holds the plant
+         * itself (valve 0.00 %, header 7.04 MPa). These two checks can no longer see WHICH mode
+         * AUTO selected; they never could see it directly, they saw its consequence, and the
+         * consequence is gone. That claim is gated where it belongs — `run_pwr2_shell` group M
+         * asserts the published mode on BOTH branches and reds 161/162 under that same revert.
+         *
+         * INJECTION, CURRENT (HR10), measured 2026-09-08: DELETE this step's own `cmd` (the AUTO
+         * press never issued, everything else untouched) and the valve reads 8.43 % with the
+         * header at 7.29 MPa — EXACTLY these two go red, the other 30 stay green. That is the
+         * defect this leg owns: whether the press reaches the plant and the plant answers over a
+         * full heatup. The mode it selects is the shell's to prove. */
         { text: 'Nothing to press. Check Hot Standby: AVG COOLANT TEMPERATURE near 547 °F, PRIMARY PRESSURE 2235 psi, STEAM PRESS near 1020 psi, CONTROL ROD POSITION still 0.',
           why: 'Hot Standby (Mode 3) is hot and at pressure with the reactor still shut down. The control bank never moved: the pumps did all the heating. STEAM PRESS holding near 1020 psi with the ATMOS DUMP shut says the steam dump is carrying the heat, not the sky.',
           acc: { p: 'plant_mode', op: '~', v: 3, tol: 0.1 },

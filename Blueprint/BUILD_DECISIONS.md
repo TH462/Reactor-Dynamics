@@ -45,6 +45,44 @@ where the two differ or where judgment was exercised.
 
 ---
 
+## 2026-09-08-workbench-b — #646: a re-anchor that made two lineups AGREE retired the checks reading their difference; the claim moves to the layer that owns it
+
+**The decision.** The heatup checklist's two Mode-3 checks (`adv_valve_pct < 1`,
+`steam_pressure_mpa ~ 7.03`) went hollow against the defect they were written for. They are **kept
+and re-injected**, not re-aimed at the steam-dump *mode*; the mode selection stays gated in
+`run_pwr2_shell` group M alone.
+
+**Why, measured.** #629 wrote those checks with a recorded injection — revert the shell's AUTO
+mapping to the unconditional `'tavg'` and they red at 8.60 % / 7.29 MPa. Since the #508/#645
+re-anchor of the no-load average coolant temperature (557 → **547 °F**, 291.67 → 286.11 °C), Tavg
+mode holds the heatup on its own: measured on the full-stack PWR-N01 ride, Tavg mode parks at
+**547.4 °F (286.3 °C) / 1006 psig (7.04 MPa)** and pressure mode at **547.2 °F (286.2 °C) /
+1005 psig (7.03 MPa)** — **0.2 °F (0.1 °C)** apart, both with the atmospheric dump valve shut and
+0 lbm vented. The old injection now reds **nothing** (32/32). The checks never read the mode; they
+read a *consequence* the plant no longer has.
+
+**The two alternatives, and why each was declined.**
+- *Assert the mode in the checklist.* The predicate vocabulary shared by `instructor_layer`,
+  `procedures_harness` and `run_procedures` is `> < >= <= ~` — **no equality operator** — so a
+  string param needs a schema change across four files (plus `PRED_DISPLAY` in `ui/app.js`) to
+  duplicate a claim `run_pwr2_shell` group M already asserts on **both** branches with mutations.
+  Verified rather than assumed: under the same revert that leaves the checklist 32/32, group M reds
+  **161/162**, naming `boot "off" -> "tavg"`.
+- *Tighten the 7.03 MPa tolerance until the modes separate.* Needs **0.015 MPa (2.2 psi)** — a
+  fixture standing on a bifurcation, the #543/#588 shape, and inside instrument noise.
+
+**What the leg does own,** and the injection now recorded against it: whether the AUTO press reaches
+the plant and the plant answers over a full heatup. Delete the step's own `cmd` and **exactly those
+two** red — valve **8.43 %**, header **7.29 MPa** — with the other 30 green.
+
+**Generalised.** *A change that makes two lineups AGREE retires every check that was reading their
+difference, and it does so silently — the checks stay green.* Neighbouring traps already in the
+standing list cover a fix blinding a mutation and a term that is an identity in the tested regime;
+this is the third face of the same thing, and the only way to find it is to re-run the recorded
+injection after any change to the mechanism it exercises.
+
+---
+
 ## 2026-09-08-workbench-a — #644: a mutation self-test REFUSES to score on a red clean run; it does not subtract
 
 **The decision.** When any check is red in a runner's CLEAN pass, the mutation replay is **skipped

@@ -1511,9 +1511,23 @@ function runSuite(SH, rec, quiet, only) {
    * unconditionally to Tavg mode, so STEAM PRESSURE mode — the mode WTSM 11.2 assigns to
    * heatup, cooldown and hot standby — was unreachable from the board on any plant not booted
    * in it. Measured consequence (#629, the heatup checklist's own ride): pressing AUTO from
-   * Mode 5 changed NOTHING, because the Tavg-mode turbine-trip controller only opens above
-   * `tavg_noload_c` = 557 °F while the atmospheric dump valve is already relieving at 1040 psig
-   * below it — so the plant heated up on that valve and the DUMP SETPOINT box was an orphan.
+   * Mode 5 changed NOTHING, and the plant heated up on the atmospheric dump valve with the DUMP
+   * SETPOINT box an orphan.
+   *
+   * ⚠ #629's REASON for that no-op was "the Tavg-mode turbine-trip controller only opens above
+   * `tavg_noload_c` = 557 °F, ABOVE the atmospheric dump valve relieving at 1040 psig". THAT
+   * ORDERING INVERTED at #508/#645 (anchor now 547 °F, 4.2 °F BELOW the valve's 551.2 °F
+   * saturation) and the claim is REFUTED — re-measured on the heatup itself, 2026-09-08, #646:
+   * Tavg mode parks at 547.4 °F / 1006 psig with the valve SHUT and 0 lbm vented, 0.2 °F from
+   * where pressure mode parks it. What rides the valve is a dump left OUT of service (551.6 °F /
+   * 1042 psig, valve 8.1 %, 11,005 lbm in two hours) — which is what the Mode 5 IC boots.
+   * THE SELECTION IS STILL THE CLAIM, for the SOURCED reason and not that one: WTSM 11.2 assigns
+   * pressure mode to heatup/cooldown/hot standby, and it is the only mode that reads the DUMP
+   * SETPOINT box, so walking that setpoint down is how a cooldown is driven.
+   *
+   * THIS BLOCK IS WHERE THE SELECTION IS GATED, and it is the ONLY place: `run_checklist_pwr2`'s
+   * heatup leg cannot see it any more (the two modes park within instrument noise of each other),
+   * measured under the same revert — 32/32 green there, 161/162 here (#646).
    *
    * THE MODE IS THE CLAIM, not the boolean: `steam_dump_auto` is `mode !== 'off'` and reads
    * TRUE in both branches, which is exactly why a check written on it would have passed on the

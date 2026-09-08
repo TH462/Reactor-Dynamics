@@ -827,13 +827,30 @@
      * initial condition boots `dump_mode: 'off'`, so a player heating the plant up had no route
      * to the mode the source calls the heatup/cooldown/hot-standby mode — and the DUMP SETPOINT
      * box was an orphan on every plant a player produces. MEASURED on the heatup checklist's own
-     * ride (full stack, 600x): pressing AUTO changed NOTHING (byte-identical trace, ADV 7.6 %,
-     * dumps 0.0 %), because the tavg-mode turbine-trip controller only opens above
-     * `tavg_noload_c` = 557 °F (291.67 °C) and the ATMOSPHERIC DUMP VALVE is already relieving
-     * at 1040 psig / 551.6 °F below it. The plant therefore parked 4.4 °F (2.4 °C) ABOVE the
-     * no-load band with the ADV modulating at 7-9 % as its heat sink, where selecting pressure
-     * mode parks it at 547.2 °F / 1005 psig with the ADV shut and the condenser dumps carrying
-     * 0.4-2.9 %.
+     * ride (full stack, 600x): pressing AUTO changed NOTHING — a byte-identical trace, ADV 7.6 %,
+     * dumps 0.0 %.
+     *
+     * ⚠ THE REASON #629 GAVE FOR THAT NO-OP IS REFUTED — RE-MEASURED 2026-09-08 (#646). It read:
+     * the tavg-mode turbine-trip controller only opens above `tavg_noload_c` = 557 °F (291.67 °C),
+     * which is ABOVE the ATMOSPHERIC DUMP VALVE already relieving at 1040 psig / 551.6 °F, so Tavg
+     * mode is a dump that never opens on a heating plant. #508 and #645 moved that anchor to
+     * 547 °F (286.11 °C) — 4.2 °F (2.3 °C) BELOW the valve's 551.2 °F saturation — and the
+     * ORDERING INVERTED. Same heatup ride, three lineups, cold plant to Mode 3 plus two
+     * plant-hours of hands-off park (`inbox/646/heatup.js`):
+     *
+     *     pressure mode    547.2 °F / 1005 psig · ADV SHUT   · dumps 0.0-3.4 % ·      0 lbm vented
+     *     tavg mode        547.4 °F / 1006 psig · ADV SHUT   · dumps 0.1-2.5 % ·      0 lbm vented
+     *     never selected   551.6 °F / 1042 psig · ADV 8.1 %  · dumps 0.0 %     · 11,005 lbm vented
+     *
+     * The two modes now park 0.2 °F (0.1 °C) apart and NEITHER rides the valve. What rides it is a
+     * dump left OUT OF SERVICE — which is what the Mode 5 IC boots, and what the old unconditional
+     * mapping was indistinguishable from, because below 557 °F that controller had no output. So
+     * the mapping below is still right and the argument it shipped with is not.
+     *
+     * WHAT KEEPS IT RIGHT is the source plus one thing the park cannot show: pressure mode is the
+     * ONLY mode that reads the DUMP SETPOINT box, so walking that setpoint down is how a cooldown
+     * is driven. Tavg mode has no setpoint to walk — it would hold the plant on the no-load knot
+     * and nothing else.
      *
      * SOURCED, not chosen for convenience: WTSM 11.2 (ML11223A294) — "Tavg mode at power, steam
      * pressure mode at hot standby / startup / cooldown" (quoted in pwr2_dumpctl.js's header).
