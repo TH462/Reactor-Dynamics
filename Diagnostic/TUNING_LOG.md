@@ -29,6 +29,65 @@ and the user-visible summary in `CHANGELOG.md`. This file points at those and tr
 
 ---
 
+## Session log — 2026-09-08-workbench-k (#664 — one command appeared ONCE in the whole checklist pool, and the leg that needed it opened with a step nobody could act on)
+
+**The defect, and it needs no skipped step.** `latch_turbine` occurred exactly once in
+`RD.MANUAL_PROCEDURES.pwr2` — the startup leg's 8 % step. **The shipped pool has no post-trip leg
+at all**: six legs, heatup → startup → raise power → lower power → shutdown → cooldown, and
+`pwr_post_trip` belongs to the RETIRED plant's pool, which no player on `?engine=pwr2` ever sees.
+So a turbine trip during the ascension left the player with no procedure anywhere that puts the
+turbine back, and P-9 — the power-range permissive at 50 % that arms the reactor trip on turbine
+trip — scrammed them on the way up. Ruled on #663 *(OWNER RULING, 2026-09-08: "C — leave the logic
+as sourced; fix the checklist gap")*; the trip is a LEVEL on the turbine's tripped flag and the
+source says so (Ginna Technical Specifications Bases Rev 101, ML20339A221, §B 3.3.1 Function 14).
+
+**Measured, full stack from `low_power`, rods lead / load follows to 40.16 % and then the turbine
+tripped.** The trip is BELOW P-9, so the reactor stays up — that is the whole trap:
+
+| | |
+|---|---|
+| turbine left tripped | power settles **24.2 %** on the dumps; the player keeps pulling; `reactor_trip` cause **`turbine_trip`** at a peak of **49.19 %** (t = 2662 s) |
+| LATCH + LOAD 10 MWe | the same climb runs through 50 % to **70.9 %**, no trip |
+| **LATCH alone** | **identical** — 40.14 % and 40.0 MWe are back 240 s after the press |
+
+**LATCH alone is the whole action**, and that is the house idiom working correctly: the trip takes
+the DELIVERED power away and leaves the operator's latched demand where he put it. LOAD stays in
+the step's text only for the player who arrives with the target already at zero, which is what a
+shutdown leg's UNLOAD leaves behind.
+
+**The second half, which is the part a source scan cannot see.** The ascension leg's opening
+confirm accepted on `mwe_output > 5` — a **dead end for exactly the player this leg most needs to
+help**. An observation step cannot be acted on, so a turbine-tripped plant parked the checklist on
+step 1 for ever with nothing to press. The turbine is now the next step's subject, where it is an
+action; the opening confirm grades on `power_pct > 10`, the leg's other declared prerequisite.
+
+**Sourcing the placement.** The corpus carries **no post-trip recovery procedure** —
+`find_source 'post-?trip recovery|recovery from a reactor trip|restart after a trip'` returns
+**0 hits across 39 documents in 3 lanes**. So the step sits where the startup sequence puts the
+act: Westinghouse Technology Systems Manual section 19.0, Plant Operations (ML11223A342),
+Appendix 19-1 step **21**, *"Accelerate the main turbine to 1800 rpm, and then synchronize the
+generator and connect it to the grid"*, immediately before step 22's *"Increase generator load at
+the desired rate"* and long before the 50 % calorimetric at steps 28–29; §19.3 puts the roll at
+**10–15 percent** reactor power, and §19.5 says a shutdown reverses the startup's steps.
+
+**Both acceptances are the EFFECT, and neither is a cmd-kind entry — on purpose.** A cmd-kind
+`accs` entry latches only on the command (`_accsCmdWatch`), so on a plant whose turbine is already
+on line — every ordinary run of this leg — the player would have no reason to press LATCH and the
+step would **soft-lock**, the #641 shape. Graded on `turbine_tripped` and `mwe_output`, it checks
+itself off instantly when there is nothing to do and waits for the presses when there is.
+
+**The gate — `run_checklist_pwr2` 2m, four checks.** The step is found **by its action, never by
+index** (an index is what the STEP_UI map's three historical off-by-ones were made of), and the
+ride issues **only what the artifact carries** — `st.cmd` plus its cmd-kind `accs` entries, the way
+`procedures_harness` does. Nothing hand-codes `latch_turbine`. INJECTION, both directions run:
+delete the step, or blank its `cmd`, and the driver issues nothing, the turbine stays tripped and
+the ride reds **`TRIPPED turbine_trip at t=2903 s, peak 49.12 %`** — the defect itself, not a
+tautology. `run_manual_controls` caught the insertion the way it always does: STEP_UI is positional
+and the rows below i:1 were **moved**, not re-derived.
+
+**Owed and not done here:** `Manuals/04` PWR-N07 *Precautions* has no P-9 row (its Prerequisites say
+"turbine on line" and stop). Not edited — another lane owns `Manuals/` this session.
+
 ## Session log — 2026-09-08-workbench-j (#661 — the alarm the ruling ordered BUILT was already firing; nothing had ever asserted it reaches this plant)
 
 **The correction that set the work.** #661's measurement pass logged the engine's protection,

@@ -30,6 +30,48 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
 
 ## [Unreleased]
 
+### Fixed (no checklist put the turbine back on line, so a turbine trip during the climb scrammed the plant at 50 % — #664)
+
+`latch_turbine` appeared **exactly once** in the whole PWR2 checklist pool — the startup leg's 8 %
+step — and the pool has **no post-trip leg at all** (six legs, heatup → cooldown; `pwr_post_trip`
+belongs to the retired plant's pool, which nobody on the shipped engine ever sees). A turbine trip
+during the power ascension therefore left the player with no procedure anywhere that re-latches it,
+and P-9 — the power-range permissive at 50 % that arms the reactor trip on turbine trip — scrammed
+them on the way up. Ruled on #663 *(OWNER RULING, 2026-09-08: "C — leave the logic as sourced; fix
+the checklist gap")*: the trip is prototypical (Ginna Technical Specifications Bases Rev 101,
+ML20339A221, §B 3.3.1 Function 14 describes limit and pressure switches — a level), so this is
+content. **Two changes to `pwr_raise_power`.** (1) A step that puts the turbine back on line,
+placed where the source puts the act — Westinghouse Technology Systems Manual section 19.0, Plant
+Operations (ML11223A342), Appendix 19-1 step 21, *"Accelerate the main turbine to 1800 rpm, and
+then synchronize the generator and connect it to the grid"*, immediately before step 22's load
+increase and long before the 50 % calorimetric — plus a leg caution naming P-9 and the 8 % case
+with the condenser gone. Both acceptances grade the **plant** (`turbine_tripped`, `mwe_output`),
+not the presses: a command-kind entry would soft-lock the ordinary run of this leg, where the
+turbine is already on line and nobody has a reason to touch LATCH. (2) The leg's opening confirm
+no longer accepts on `mwe_output > 5` — a **dead end for the one player it most needs to help**,
+because an observation step cannot be acted on and a tripped turbine parked the checklist on step 1
+with nothing to press; it grades on `power_pct > 10` now, the leg's other declared prerequisite.
+Measured full stack from `low_power`, climbing to 40.16 % and then tripping the turbine (below
+P-9, so the reactor stays up — the trap): **left tripped, the reactor trips `turbine_trip` at a
+peak of 49.19 %; with the step taken, the same climb runs through 50 % to 70.9 % with no trip.**
+LATCH alone is the whole action — the trip removes the delivered power and leaves the operator's
+latched demand alone, so 40.0 MWe is back 240 s after the press; LOAD stays in the text for the
+player who arrives with the target at zero.
+
+### Test coverage (nothing could tell you the pool had lost the only step that re-latches the turbine — #664)
+
+`run_checklist_pwr2` gains group **2m**: the ascension leg carries a step whose action is
+`latch_turbine`, ahead of its first rod pull, and taking that step is what lets a plant that took a
+turbine trip at 40 % cross 50 % without a reactor trip. The step is found **by its action, never by
+index** — an index is what the STEP_UI map's three historical off-by-ones were made of — and the
+ride issues **only what the artifact carries** (`st.cmd` plus its command-kind acceptance entries,
+exactly as `procedures_harness` does), so nothing in the check hand-codes the command it is
+asserting the presence of. Injection-verified in both directions: delete the step, or blank its
+`cmd`, and the driver issues nothing, the turbine stays tripped, and the ride reds on
+**`turbine_trip` at t = 2903 s, peak 49.12 %** — the defect itself rather than a tautology.
+`run_manual_controls` caught the insertion the way it always does (STEP_UI is positional; the rows
+below i:1 were moved, not re-derived).
+
 ### Fixed (four manual sentences promised a source-range reactor trip this plant does not have — #661)
 
 `Manuals/09`'s setpoint table has marked the source-range high-flux trip **NOT MODELLED** since

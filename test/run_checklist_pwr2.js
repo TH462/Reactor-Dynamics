@@ -531,6 +531,108 @@ if (!only) {
        !!ch && Math.abs(ch.setpoint - 719) <= 3 && /idle/.test(ch.note || ''),
        ch ? 'setpoint ' + ch.setpoint.toFixed(0) + ' [' + ch.note + ']' : 'no boron_conc channel');
   })();
+
+  /* 2m. A PLAYER WHO TAKES A TURBINE TRIP AT POWER CAN STILL CLIMB THROUGH P-9 (#664, filed off
+   * #663's measurement; OWNER RULING, 2026-09-08 on #663: "C — leave the logic as sourced; fix
+   * the checklist gap").
+   *
+   * P-9 is the power-range permissive at 50 % that arms the reactor trip on turbine trip, and
+   * the trip is a LEVEL on the turbine's tripped flag — sourced and unchanged (Ginna TS Bases
+   * B 3.3.1 Function 14). So a turbine trip BELOW 50 % does not trip the reactor; the plant
+   * settles on the steam dumps and the player keeps climbing, and the reactor trips the instant
+   * power reaches 50 %. `latch_turbine` occurred exactly ONCE in the whole pwr2 pool — the
+   * startup leg's 8 % step — and there is no pwr2 post-trip leg, so no procedure put it back.
+   *
+   * THE CLAIM THIS ASSERTS is the pool's, not the plant's: the ascension leg carries a step
+   * that puts the turbine back on line, and taking that step — driven ONLY from the artifact,
+   * `st.cmd` plus its cmd-kind accs entries, exactly as procedures_harness issues them — is what
+   * lets the same climb cross 50 %. Nothing here hand-codes `latch_turbine`: delete the step, or
+   * blank its `cmd`, and the driver issues nothing, the turbine stays tripped and the ride reds
+   * on the trip it is asserting the absence of. Measured both ways at authoring (#664 write-up):
+   * left tripped, `reactor_trip` cause `turbine_trip` at a peak of 49.19 %; step taken, the climb
+   * runs to 70.9 % with no trip.
+   *
+   * THE STEP IS LOOKED UP BY ITS ACTION, never by index: an index is what the STEP_UI map's
+   * three historical off-by-ones were made of. */
+  (function () {
+    var proc = POOL.filter(function (p) { return p.id === 'pwr_raise_power'; })[0];
+    var idx = -1;
+    (proc ? proc.steps : []).forEach(function (st, k) {
+      if (idx < 0 && st.cmd && st.cmd.action === 'latch_turbine') idx = k;
+    });
+    var firstRod = -1;
+    (proc ? proc.steps : []).forEach(function (st, k) {
+      if (firstRod < 0 && st.cmd && st.cmd.action === 'rod_nudge') firstRod = k;
+    });
+    ck('the ascension leg carries a step that re-latches the turbine, ahead of its first rod pull (#664)',
+       idx >= 0 && firstRod >= 0 && idx < firstRod,
+       proc ? ('latch step ' + (idx + 1) + ', first rod pull step ' + (firstRod + 1) + ' of ' + proc.steps.length)
+            : 'pwr_raise_power missing from the pool');
+
+    var svc = mkSvc('low_power');
+    var s = null, trip = null, peak = 0;
+    function ride(sec) {
+      var end = (s ? s.metadata.sim_time : 0) + sec;
+      while (!s || s.metadata.sim_time < end) {
+        s = svc.tick();
+        if (s.true_state.power_pct > peak) peak = s.true_state.power_pct;
+        if (!trip && s.true_state.scrammed) {
+          var e = svc.engine && svc.engine.eng;
+          trip = { t: s.metadata.sim_time, cause: (e && e.pt && e.pt.trip_cause) || '?', peak: peak };
+          return;
+        }
+      }
+    }
+    ride(60);
+    /* the ascension, the leg's own shape: rods lead, load follows — up to ~40 %, under P-9 */
+    [{ steps: 30, mwe: 30 }, { steps: 12, mwe: 40 }].forEach(function (stg) {
+      if (trip) return;
+      svc.handleCommand({ action: 'rod_nudge', group_id: 'control', steps: stg.steps, speed: 'normal' });
+      ride(120);
+      svc.handleCommand({ action: 'set_load_target', mwe: stg.mwe });
+      ride(480);
+    });
+    var pAtEvent = s.true_state.power_pct;
+    /* THE EVENT: the turbine trips below P-9. The reactor stays up — that is the trap. */
+    try { svc.handleCommand({ action: 'trip_turbine' }); } catch (e) { /* recorded by the ride */ }
+    ride(180);
+    var mweAfterEvent = s.true_state.mwe_output;
+
+    /* THE STEP, taken from the artifact and nowhere else */
+    var st = idx >= 0 ? proc.steps[idx] : null;
+    var issued = [];
+    function issue(c) {
+      issued.push(c.action);
+      try { svc.handleCommand(c); } catch (e) { issued[issued.length - 1] += '(refused)'; }
+    }
+    if (st && st.cmd) issue(JSON.parse(JSON.stringify(st.cmd)));
+    (st && st.accs || []).forEach(function (en) {
+      if (en && en.cmd) issue(typeof en.cmd === 'string' ? { action: en.cmd } : JSON.parse(JSON.stringify(en.cmd)));
+    });
+    ride(240);
+    var mweOnLine = s.true_state.mwe_output, trippedOnLine = s.true_state.turbine_tripped;
+    var onLine = !trippedOnLine && mweOnLine > 8;
+
+    /* and the climb the player was making all along, on through P-9 */
+    [50, 60, 70].forEach(function (mwe) {
+      if (trip) return;
+      svc.handleCommand({ action: 'rod_nudge', group_id: 'control', steps: 20, speed: 'normal' });
+      ride(120);
+      svc.handleCommand({ action: 'set_load_target', mwe: mwe });
+      ride(480);
+    });
+
+    ck('...the trip is below P-9, so the reactor stays up and the player keeps climbing (the trap)',
+       pAtEvent > 35 && pAtEvent < 50 && mweAfterEvent < 1 && (!trip || trip.t > 0),
+       'turbine tripped at ' + pAtEvent.toFixed(2) + ' % true, OUTPUT then ' + mweAfterEvent.toFixed(1) + ' MWe');
+    ck('...and taking the step puts the generator back on line',
+       onLine, 'issued [' + issued.join(', ') + '] -> ' + mweOnLine.toFixed(1) +
+         ' MWe 240 s later, TRIP ' + trippedOnLine);
+    ck('...so the same climb crosses 50 % with no reactor trip (was: turbine_trip at 49.19 %)',
+       !trip && peak > 50,
+       trip ? ('TRIPPED ' + trip.cause + ' at t=' + trip.t.toFixed(0) + ' s, peak ' + trip.peak.toFixed(2) + ' %')
+            : 'peak ' + peak.toFixed(2) + ' % true, no trip');
+  })();
 }
 
 console.log('\n' + '='.repeat(74));

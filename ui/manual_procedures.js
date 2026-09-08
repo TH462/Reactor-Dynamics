@@ -1711,17 +1711,78 @@
         { p: 'control_bank_steps', op: '<', v: 600, text: 'CONTROL ROD POSITION below 600 of 627: this checklist follows the startup checklist, not a power preset' },
       ],
       cautions: [
+        'Keep the turbine on line for the whole climb. A tripped turbine trips the reactor the moment REACTOR POWER passes 50 %, and at 8 % if the condenser is gone as well. If the TURBINE-GENERATOR card reads TRIP, press LATCH and set LOAD again before pulling more rods.',
         'Pull rods before you raise LOAD, on every stage. Raising LOAD first drags AVG COOLANT TEMPERATURE below its band.',
         'Make the last pulls small. Above 103 % power the plant stops the rods, and at 118 % it trips the reactor. 100 MWe of LOAD lands REACTOR POWER near 101 %.',
         'The plant trips on TEMPERATURE before it trips on power (the OTΔT trip). If AVG COOLANT TEMPERATURE climbs past 590 °F, hold INSERT before you add more LOAD.',
         'Xenon, a neutron-absorbing gas, builds in the fuel for hours after each stage. Boron handles that; rods handle the next few minutes.',
       ],
       steps: [
-        obs('Nothing to press. Check: REACTOR POWER above 10 %, OUTPUT above 5 MWe, SG FEED AUTO, IR HIGH FLUX and PR HIGH (LOW SETPT) both lit on the TRIP BLOCKS panel.',
-          { p: 'mwe_output', op: '>', v: 5 },
+        obs('Nothing to press. Check Mode 1, At Power: REACTOR POWER near 10 %, SG FEED AUTO, IR HIGH FLUX and PR HIGH (LOW SETPT) both lit on the TRIP BLOCKS panel.',
+          /* THE OPENING CONFIRM NO LONGER GRADES ON THE TURBINE (#664, 2026-09-08). It used to
+           * accept on `mwe_output > 5`, which is a dead end for the one player this leg most
+           * needs to help: a turbine trip anywhere in the ascension leaves OUTPUT at 0.0 MWe and
+           * an observation step cannot be acted on, so the checklist parked here for ever with
+           * nothing to press. The turbine is now the NEXT step's subject, where it is an action.
+           *
+           * MODE 1, not `power_pct > 10`, and the difference is a MEASUREMENT: this step carries
+           * no hold, so the replay grades it on the boot sample, and `low_power` boots at
+           * 9.58 % — it settles through 10 % about 25 s later. A 10 % acceptance here reds the
+           * gate on a plant that is doing nothing wrong. Mode 1, At Power is what "the plant the
+           * startup hands over" actually means, it is true from the first broadcast, and the
+           * 10 % row is already the leg's own precondition banner. */
+          { p: 'plant_mode', op: '~', v: 1, tol: 0.1 },
           null, ['Turbine Load', 'SG Feed AUTO', 'Trip Blocks'],
           'This is the plant the startup hands over: critical, on the grid, feed holding level. Both startup shutdowns have to be switched off. With them on, the climb trips at 25 %, then 35 %.',
           { p: 'power_pct', op: '>', v: 40 }),
+        /* THE TURBINE IS THE THING THAT IS MISSING AFTER A TRIP (#664, filed off #663's
+         * measurement; OWNER RULING, 2026-09-08, on #663: "C — leave the logic as sourced; fix
+         * the checklist gap").
+         *
+         * `latch_turbine` occurred EXACTLY ONCE in the whole pwr2 pool — the startup leg's 8 %
+         * step — and the pwr2 pool has no post-trip leg at all (six legs: heatup, startup,
+         * raise power, lower power, shutdown, cooldown; `pwr_post_trip` is the RETIRED plant's
+         * pool only). So a player whose turbine trips during the ascension had no procedure
+         * anywhere that puts it back, and the plant scrams them at 50 % on P-9, the reactor
+         * trip on turbine trip (`Manuals/09` §3.0: "Above P-9 a turbine trip scrams the reactor
+         * immediately"). MEASURED, full stack from `low_power`, rods lead / load follows to
+         * 40.16 % and then the turbine tripped:
+         *   left tripped  — power settles 24.2 % on the dumps, the player keeps pulling, and
+         *                   the reactor trips `turbine_trip` at a peak of 49.19 % (t=2662 s)
+         *   LATCH + LOAD  — the same climb runs through 50 % to 70.9 %, no trip
+         *   LATCH ALONE   — identical: 40.14 % and 40.0 MWe are back 240 s after the press, and
+         *                   the climb reaches 70.9 %. The trip takes the DELIVERED power away
+         *                   and leaves the operator's latched demand where he put it (the house
+         *                   idiom), so the step's whole action is the press. LOAD is in the text
+         *                   for the player who arrives with it already at zero — a shutdown leg
+         *                   UNLOADs before it scrams.
+         *
+         * WHY HERE AND NOT IN A POST-TRIP LEG. There is no pwr2 post-trip leg to put it in, and
+         * building one is a larger job than this defect (it owes a manual chapter). This IS the
+         * leg the recovering player opens — its own prerequisite already names "Turbine on line",
+         * as a banner that blocks nothing — and it is where the source puts the act: WTSM 19.0
+         * Plant Operations (ML11223A342) Appendix 19-1 step 21, "Accelerate the main turbine to
+         * 1800 rpm, and then synchronize the generator and connect it to the grid", immediately
+         * before step 22's "Increase generator load at the desired rate" and long before the
+         * 50 % calorimetric at step 28/29. The corpus carries no post-trip recovery procedure at
+         * all (`find_source 'post-?trip recovery|recovery from a reactor trip|restart after a
+         * trip'` → 0 hits across 39 documents in 3 lanes), so the placement rests on the startup
+         * sequence, which §19.5 says a shutdown reverses.
+         *
+         * BOTH ACCEPTANCES ARE THE EFFECT, not the write, and neither is a cmd-kind entry on
+         * purpose: a cmd-kind entry latches only on the command (`_accsCmdWatch`), so on a plant
+         * whose turbine is already on line — every ordinary run of this leg — the player would
+         * have no reason to press LATCH and the step would soft-lock. Graded on the plant, it
+         * checks itself off instantly when there is nothing to do and waits for the two presses
+         * when there is. */
+        { text: 'Check the TURBINE-GENERATOR card is on line: LATCH lit and OUTPUT above 8 MWe. If it reads TRIP, press LATCH — OUTPUT returns to the LOAD you last set. If OUTPUT stays at 0.0 MWe, set LOAD to 10 MWe.',
+          note: 'A turbine trip at any point in this climb leaves the card reading TRIP and OUTPUT at 0.0 MWe. LATCH is refused while whatever tripped the turbine is still there, and the card names the reason.',
+          why: 'A tripped turbine takes no steam, so LOAD does nothing and the heat you make goes to the steam dumps instead. The plant trips the reactor on a tripped turbine the moment REACTOR POWER passes 50 %, and at 8 % if the condenser is gone as well. Measured from 40 %: left tripped, the climb scrams at 49.2 %; put back on line, the same climb runs to 71 %.',
+          control: 'Turbine Load', target: 'OUTPUT above 8 MWe',
+          cmd: { action: 'latch_turbine' }, hold: 240,
+          accs: [{ p: 'turbine_tripped', op: '<', v: 1, label: 'Turbine latched, TRIP not lit' },
+                 { p: 'mwe_output', op: '>', v: 8, label: 'Generator above 8 MWe' }],
+          hl: ['Turbine Load', 'Main Breaker'] },
         { text: 'On the BORON card set 660 and press Enter; press ON only if it is not already lit. The dilution runs in the background for the whole climb.',
           why: 'Every percent of power costs reactivity: the fuel heats up and the water thins out. Rods could pay for all of it but would end up deep in the core, so real plants dilute boron for the bulk and use rods for the fine trim. Dilution runs at about 3 ppm a minute, so it needs the whole climb to work.',
           control: 'Boron control', target: 'BORON reads 660 ppm, ON lit',
