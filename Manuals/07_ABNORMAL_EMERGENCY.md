@@ -53,7 +53,7 @@ is the failure's physical size — the response procedures below apply at any se
 | SG Tube Rupture (E06) | Rupture Severity | 0 – 100 % of full rupture | 40 % |
 | Degraded HPI (E11) | HPI Capacity | 100 → 0 % of rated | 50 % |
 | Large LOCA (E09) | Break Size | 0 – 100 % — 100 % is a 3.1 in² (20 cm²) hole | 40 % |
-| Continuous Rod Withdrawal (E17) | Withdrawal Rate | 0 – 24 steps/s | 12 |
+| Continuous Rod Withdrawal (E17) | Withdrawal Rate | 7 – 63 steps/min — the drive's own slow-to-fast band | 35 |
 | Rod Stuck on Scram (E18) | Rod Worth Held | 0 – 40 % of total | 20 % |
 | Main Steam Line Break, downstream (E19) | Break Size | 0 – 100 % effective area | 30 % |
 | Main Steam Line Break, upstream (E19u) | Break Size | 0 – 100 % effective area | 30 % |
@@ -539,12 +539,28 @@ Level returned to band; primary temperature controlled; no trip if recoverable, 
 ## PWR-E17 — Continuous Rod Withdrawal
 
 ### Failure
-`continuous_rod_withdrawal` — runaway outward motion; severity steps/s.
+`continuous_rod_withdrawal` — a rod control unit failure holds the drive in outward motion.
+The slider is the speed the failed controller is demanding, and it runs across the drive's
+**own** band: **7 steps/min** at the bottom to **63 steps/min** at the top, 35 by default.
+Severity 1.0 is the real accident's own initiating event — *"Rod control system controller
+failure withdraws bank D rods at 72 steps/min"* (NRC HRTD Advanced Transients, Transients 5.22
+and 5.23), 72 steps/min being the rod speed programmer's mechanical maximum. This plant's fast
+drive is 63 steps/min, so the top of the slider is the fastest withdrawal this plant's drive
+can produce.
+
+> **The rod stop will not save you here, by design.** The intermediate-range high-flux rod stop
+> inhibits the *demand* path; a drive fault is downstream of it. The stop asserts and the bank
+> keeps coming — what ends it is the reactor trip a second or so later, or your scram.
 
 ### Symptoms
 - Rods withdrawing uncommanded  
 - SUR high; power rising  
 - Possible HI FLUX / trip  
+
+From hot zero power at the top of the slider, measured: the rod stop asserts at **259 s** after
+injection and the **intermediate-range high-flux trip** follows at **260 s**, peaking at 32 %
+power and 26 decades per minute. At the bottom of the slider the same sequence takes about
+**36 minutes**. It is a rising transient you have time to act on — that is the point of it.
 
 ### Immediate actions
 

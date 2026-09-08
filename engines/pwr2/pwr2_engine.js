@@ -66,12 +66,67 @@
                                   * at #650 from 31.1, which was sourced to nothing and left
                                   * the healthy plant 5.0 % inside both bands — the whole
                                   * argument is on DESIGN in pwr2_sources.js. */
-  /* Manual rod motion by the operator's S/M/F selection (#506.4). The SPEEDS are the sourced
-   * quantity (WTSM 8.1: 8-72 steps/min, normal 48 — the same class range pwr1's slow/normal/
-   * fast descend from); these values are [derived] — pwr1's three rates mapped by fraction-of-
-   * travel-per-second onto this plant's 200-step bank (0.0585 / 0.351 / 0.526 %/s). The old
-   * single ROD_SLEW_SPS = 1.0 was ~pwr1's FAST, always. */
+  /* Manual rod motion by the operator's S/M/F selection (#506.4).
+   *
+   * THE SOURCED QUANTITY IS steps/min, and it is a BAND, not three points — WTSM 8.1
+   * (ML11223A252) §8.1.4: *"the reactor control unit produces an output demanding a minimum
+   * speed of eight steps per minute"*, then *"a proportional speed region… 32 steps/min/°F"*,
+   * then *"With an error of 5°F or greater, the rod speed programmer of the reactor control
+   * unit generates a maximum rod speed of 72 steps/min. The maximum rod speed is based upon a
+   * maximum response to a large error signal and upon the physical limitations of the rod
+   * drive mechanism, with the latter being the limiting factor."* §8.1.8 adds the shutdown-bank
+   * pulser potentiometer *"normally set at 72 steps per minute"*.
+   *
+   * THESE THREE VALUES ARE NOT THOSE NUMBERS. They are [derived]: pwr1's 8 / 48 / 72 steps/min
+   * on its 228-step drive, re-expressed as a FRACTION OF TRAVEL per second onto what was then a
+   * 200-step bank — which multiplies the whole set by 200/228 = 0.8775 and lands at
+   * **7.02 / 42.12 / 63.18 steps/min**, every one of them 12.25 % under its pwr1 original. The
+   * #602 bank hoist correctly preserved the STEPS/S (so steps/min held); what rotted was the
+   * old note's "%/s", which is now 0.0187 / 0.112 / 0.168 on 627 steps and means nothing.
+   * ⚠ So the plant's own fast drive is 12.25 % below the sourced mechanical maximum, and its
+   * slow drive is below the sourced minimum. NOT fixed here (#662 is the runaway's rate, not
+   * the drive's) — filed as #668, because every manual rod evolution and live-checklist
+   * timing in the tree is authored against these three numbers. pwr1's "normal 48" is itself
+   * [UNVERIFIED]: `find_source` finds 8 and 72 in WTSM 8.1 and no 48 anywhere in the corpus.
+   * The old single ROD_SLEW_SPS = 1.0 was ~pwr1's FAST, always. */
   var ROD_SPEEDS = { slow: 0.117, normal: 0.702, fast: 1.053 };   /* steps/s */
+  /* THE CONTINUOUS-WITHDRAWAL CASUALTY'S RATE (#662) — a rod-control-unit failure runs the
+   * drive at a speed THE DRIVE CAN RUN AT, never at a rate of the casualty's own.
+   *
+   * SOURCED, and the source states the rate twice: NRC HRTD "Westinghouse Technology Advanced
+   * Transients" (ML11216A094) Transient 5.22, *Fast Rod Withdrawal, 45% Load* —
+   * *"Initiating Event: Rod control system controller failure withdraws bank D rods at 72
+   * steps/min"* — and Transient 5.23, *Fast Rod Withdrawal From Source Range*, initiating event
+   * word-for-word the same. That is this casualty, at the mechanism's MAXIMUM speed, and it is
+   * a speed off the rod speed program above, not a separate quantity.
+   *
+   * ⚠ The ACCIDENT ANALYSIS's rate is a different thing and must NOT be used here. Ginna UFSAR
+   * ch15 (ML20339A101) §15.4.1.3.3(D) assumes *"The maximum positive reactivity insertion rate
+   * is (75 pcm/sec) which is greater than that for the simultaneous withdrawal of the
+   * combination of the two control banks having the greatest combined worth at maximum speed"*
+   * — the source says in its own sentence that its number EXCEEDS what the mechanism can
+   * deliver, because it is a bounding conservatism. §15.4.2.3 spans 1–100 pcm/sec for the same
+   * reason. A licensing bound is not a drive speed.
+   *
+   * SO: severity runs the drive linearly across the plant's OWN band, slow → fast, read off
+   * ROD_SPEEDS and never retyped. The band is continuous because the real speed programmer is
+   * (8 → 32/°F → 72 steps/min): a failed controller can sit anywhere on that program, so a
+   * three-position quantisation would be the OPERATOR's selector, which is not what fails here.
+   * Severity 1.0 is the sourced accident's "maximum speed"; severity 0 is the drive's own
+   * minimum and is still a runaway (it is not a clear — an injected casualty that reports
+   * nothing is the silent-swallow defect, not a feature).
+   *
+   * WHAT THIS REPLACES (#507 wave 6, measured on #661): `severity x (24/912) x max_steps` —
+   * the retired engine's 24 fine-steps/s ceiling read as a fraction of travel and re-expressed
+   * on this bank. At severity 0.5 that is 8.25 steps/s = **495 steps/min**, 6.9x the sourced
+   * 72 and 7.8x this plant's own fast drive; at 1.0 it is 990 steps/min. It made the row a step
+   * reactivity insertion (power 3.1e-2 % -> 211 % in 0.6 s, tripping on P-9 turbine trip because
+   * the flux channels' 0.5 s analysis delays had not elapsed), not a withdrawal accident. */
+  function runawayRodSpeed(severity) {
+    var sev = (severity === undefined || severity === null || !isFinite(+severity))
+      ? 0.5 : Math.max(0, Math.min(1, +severity));
+    return ROD_SPEEDS.slow + sev * (ROD_SPEEDS.fast - ROD_SPEEDS.slow);
+  }
   /* THE BANK SCALE, read LIVE from the one place it is defined (#602 phase 1). A function, not
    * a captured local: `RODS` is the object a retune edits, and a consumer that snapshotted the
    * value at module load would keep answering with the old scale. */
@@ -975,9 +1030,10 @@
       case 'spray_stick':
         eng.pzDrivers.spray_stick = !!value; break;
       case 'rod_runaway':
-        /* value: steps/s outward, 0/false clears. Scale note: the old engine's 24 fine
-         * steps/s ceiling is a fraction-of-travel rate (24/912); this bank's 200 steps make
-         * the same fraction 5.26 steps/s [adopted]. The caller (shell) does that scaling. */
+        /* value: steps/s outward, 0/false clears. THE SCALE IS THE DRIVE'S OWN (#662): the
+         * caller passes `runawayRodSpeed(severity)`, a point on ROD_SPEEDS' slow→fast band —
+         * see that function for the two sources and for the fraction-of-travel rate it
+         * replaced. This door stays a bare steps/s so a probe can plant any rate it likes. */
         eng.runaway = value && +value > 0 ? { rate: +value } : null; break;
       case 'reset_protection':
         /* NARROWED at #512 (owner design — per-system latches unlatch at their own panels):
@@ -1811,6 +1867,12 @@
     designHmap: designHmap,   /* exported so the equivalence fixture boots the SAME plant */
     ICS: ICS,                 /* the initial-condition registry — the shell/UI menu reads it */
     RIL: RIL, insertionLimitSteps: insertionLimitSteps,
+    /* EXPORTED because two other files must not retype them (#662): the shell derives the
+     * continuous-withdrawal casualty's rate AND its slider label from this table, and the gate
+     * asserts membership of the band rather than a literal. Same argument as P-6/P-9 at #642 —
+     * a constant only a gate reads is still worth exporting, because the alternative is a
+     * consumer nothing can contradict. */
+    ROD_SPEEDS: ROD_SPEEDS, runawayRodSpeed: runawayRodSpeed,
     MWE_RATED: MWE_RATED
   };
 })(typeof globalThis !== 'undefined' ? globalThis : this);

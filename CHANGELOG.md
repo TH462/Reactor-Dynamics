@@ -7,6 +7,43 @@ For the dense engineering rationale behind each change (spec deviations, tuning,
 tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summary.
 
 > **Releasing:** at each `develop` → `main` merge, rename the `## [Unreleased]` heading
+
+### Fixed (the continuous rod withdrawal casualty was a step insertion, not a withdrawal accident — #662)
+
+The `continuous_rod_withdrawal` failure drove the control bank at **495 steps/min at the default
+slider setting** and 990 at the top — **6.9× the sourced 72 steps/min** maximum rod speed and 7.8×
+this plant's own fast drive. The rate was the retired engine's 24 fine-steps/s ceiling read as a
+fraction of its 912-step bank and re-expressed on this 627-step one (#507 wave 6); on this drive
+that arithmetic lands nowhere near a mechanism. Measured from hot zero power: power **3.1e-2 % →
+211 % in 0.6 s**, and the reactor tripped on **P-9, the turbine trip** — both flux trips asserted at
+the same instant but their 0.5 s analysis delays had not elapsed. The casualty could not demonstrate
+the one thing it exists for.
+
+The rate is now a point on the **drive's own** slow-to-fast band, read off the rod-speed table
+rather than typed, sourced to the accident's own initiating event — *"Rod control system controller
+failure withdraws bank D rods at 72 steps/min"* (NRC HRTD *Westinghouse Technology Advanced
+Transients*, ML11216A094, Transients 5.22 and 5.23), 72 steps/min being the rod speed programmer's
+mechanical maximum (Westinghouse Technology Systems Manual §8.1, ML11223A252: minimum 8, maximum
+72). ⚠ The accident *analysis*'s 75 pcm/sec (Ginna UFSAR ch. 15, ML20339A101 §15.4.1.3.3) is
+deliberately **not** used: the document says in its own sentence that the figure exceeds what the
+mechanism can deliver, because it is a licensing bound.
+
+Every severity now produces the startup net's response — the intermediate-range high-flux **rod
+stop**, then the **intermediate-range high-flux trip** — at 25–32 % peak power: 259 s / 260 s at the
+top of the slider, about 36 minutes at the bottom. Severity 1.0 reproduces a plain fast-speed rod
+withdrawal to the sample, which is the check that the casualty really is the drive.
+
+Two things followed the plant. The **Failures-tab slider** was labelled *"Withdrawal Rate, 0–24
+steps/s, default 12"* — the retired plant's fine-step currency, promising 12 steps/s where the
+engine drove 8.25, against a drive whose entire maximum is 1.053 — and now reads **7–63 steps/min,
+default 35**, with both ends read off the drive table so the label and the plant agree by
+construction. **`Manuals/07` PWR-E17** takes the same band, the measured sequence, and a note that
+the rod stop cannot arrest this: the stop inhibits the *demand* path and a drive fault is downstream
+of it, so the stop asserts and the bank keeps coming until the trip.
+
+`run_pwr2_shell` 165 → 169 checks, 60 → 62 mutations, no blind spots. Filed out of it: **#668** —
+the plant's own three rod drive settings are pwr1's 8/48/72 steps/min scaled by fraction-of-travel
+and land 12.25 % under a sourced 8–72 band.
 > below to the version being shipped (`## [Alpha X.Y.Z] — YYYY-MM-DD`) and open a fresh
 > empty `## [Unreleased]` above it. The version must match the top entry of
 > `changelog.html` and the string in `site/release.js`.

@@ -51,6 +51,7 @@ var DT = 0.02;
  * casualty rows, 'D3' the board rails, 'E' the electrical pair, 'F' the SGTR row, 'G' the
  * wave-6 levers, 'H' the ICs through the class, 'I' the rod limit, 'J' the RCP handswitch,
  * 'K' the shutdown preset, 'L' the operator's rate-limited load dial (#624 item 24),
+ * 'N' the SUR HI annunciator (#661), 'O' the continuous-withdrawal casualty's RATE (#662),
  * 'S' the save contract, 'T' the AFW throttle on a real drain
  * (#582 — full channel runtime under the control kernel). The CLEAN pass runs everything;
  * each named group is preflighted ALONE on the clean build before the replays. */
@@ -1191,8 +1192,16 @@ function runSuite(SH, rec, quiet, only) {
     for (i = 0; i < 50; i++) eP.step(0.02);
     ck('...and the cleared valve obeys its controller again', eP.eng._pzr.spray_frac < 1, '');
 
-    /* continuous_rod_withdrawal — needs inserted rods (the shipped IC parks the bank at
-     * 200/200, declared); the drive faults outward and the rod levers are REFUSED */
+    /* continuous_rod_withdrawal — needs inserted rods (the shipped IC parks the bank fully
+     * out, declared); the drive faults outward and the rod levers are REFUSED.
+     *
+     * ⚠ THIS FIXTURE CANNOT SEE THE RATE, and that is why #662's defect lived under it for
+     * three weeks. The nudge is 25 steps off a railed bank, so the OLD 8.25 steps/s reached
+     * `max_steps` in 3.0 s of a 10 s ride and the check sampled a RAILED bank — a saturated
+     * observable reads the same at 8.25 steps/s as at 495. The claims below are the
+     * rate-INDEPENDENT ones (it drives OUT, power rises, the levers refuse, the row is listed)
+     * and they pass on the old plant and the new one alike; the rate itself is asserted in
+     * group O, on a fixture with travel left in it. */
     var eR = new SH.PWR2Engine({});
     for (i = 0; i < 100; i++) eR.step(0.02);
     eR.applyCommand({ action: 'set_load_target', mwe: 60 });
@@ -1204,10 +1213,10 @@ function runSuite(SH, rec, quiet, only) {
     for (i = 0; i < 500; i++) eR.step(0.02);
     var thrR = false;
     try { eR.applyCommand({ action: 'rod_nudge', steps: -10 }); } catch (e2) { thrR = /REFUSED/.test(e2.message); }
-    ck('continuous_rod_withdrawal: the bank drives OUT at the adopted fraction-of-travel ' +
-       'rate, power rises, and the rod levers are REFUSED out loud (measured 175->200, ' +
-       '78.1->83.7 %)',
-       eR.eng.rodSteps > st0 + 10 && eR.getTrueState().power_pct > pw0 + 1 && thrR === true &&
+    ck('continuous_rod_withdrawal: the bank drives OUT, power rises, and the rod levers are ' +
+       'REFUSED out loud (measured 602->607.9 steps, 86.8->88.7 %; the pre-#662 plant railed ' +
+       'at 627 in the same ride)',
+       eR.eng.rodSteps > st0 + 1 && eR.getTrueState().power_pct > pw0 + 1 && thrR === true &&
        eR.getActiveFailures().indexOf('continuous_rod_withdrawal') !== -1,
        st0.toFixed(0) + ' -> ' + eR.eng.rodSteps.toFixed(1) + ' steps');
     eR.applyCommand({ action: 'clear_failure', failure_id: 'continuous_rod_withdrawal' });
@@ -2353,6 +2362,117 @@ function runSuite(SH, rec, quiet, only) {
   })();
   }
 
+  if (grp('O')) {
+  /* ---- 4o. THE CONTINUOUS-WITHDRAWAL CASUALTY RUNS AT A SPEED THE DRIVE HAS (#662) -----------
+   * The row shipped at #507 wave 6 driving `severity x (24/912) x max_steps` — the retired
+   * engine's 24 fine-steps/s ceiling read as a FRACTION OF TRAVEL and re-expressed on this bank.
+   * On 627 steps that is 8.25 steps/s at severity 0.5: **495 steps/min, 6.9x the sourced 72 and
+   * 7.8x this plant's own fast drive**, and 990 steps/min at severity 1.0.
+   *
+   * SOURCED, and the source states the casualty's rate in its own initiating-event line. NRC
+   * HRTD "Westinghouse Technology Advanced Transients" (ML11216A094) Transient 5.22, *Fast Rod
+   * Withdrawal, 45% Load*: *"Initiating Event: Rod control system controller failure withdraws
+   * bank D rods at 72 steps/min"* — and Transient 5.23, *Fast Rod Withdrawal From Source Range*,
+   * word for word the same. 72 steps/min is the rod speed program's MAXIMUM (Westinghouse
+   * Technology Systems Manual section 8.1, ML11223A252: minimum 8 steps/min, proportional
+   * 32 steps/min/degF, *"a maximum rod speed of 72 steps/min… based upon… the physical
+   * limitations of the rod drive mechanism, with the latter being the limiting factor"*).
+   *
+   * ⚠ NOT the accident analysis's rate. Ginna UFSAR chapter 15 (ML20339A101) section 15.4.1.3.3
+   * item D assumes 75 pcm/sec and says in the same sentence that it is *"greater than that for
+   * the simultaneous withdrawal of the combination of the two control banks having the greatest
+   * combined worth at maximum speed"*. A bounding conservatism is not a drive speed.
+   *
+   * WHAT THE OLD RATE DID TO THE RIDE, measured on this fixture (severity 1.0, hot zero power,
+   * 60 s settle): power 368 %, peak startup rate 897 decades per minute, and the reactor tripped
+   * on **P-9, the turbine trip** — both flux trips asserted at the same instant but their 0.5 s
+   * analysis delays had not elapsed. That is a step reactivity insertion. AFTER: the
+   * intermediate-range high-flux ROD STOP at 259 s, the intermediate-range high-flux TRIP at
+   * 260 s, peak 32.5 % and 26.0 decades per minute — the startup net catching a runaway, which
+   * is the thing this casualty exists to demonstrate.
+   *
+   * THE BAND IS READ OFF `ROD_SPEEDS`, NEVER TYPED, in the code and here: severity runs the
+   * drive linearly slow -> fast, so severity 1.0 IS the plant's own maximum. Continuous rather
+   * than three-position because the real speed programmer is continuous (8 -> 32/degF -> 72) and
+   * a failed controller can sit anywhere on it; the three-position selector is the OPERATOR's,
+   * and it is not what fails here. */
+  head('THE RUNAWAY\'S RATE  [#662: a drive fault runs at a speed the drive has]');
+  (function () {
+    var RS = globalThis.RD.pwr2.engine.ROD_SPEEDS;
+    var eO = new SH.PWR2Engine({ initial_state: 'hot_zero_power' });
+    var i, tO = 0;
+    for (i = 0; i < Math.round(60 / DT); i++) { eO.step(DT); tO += DT; }
+    /* the rate the SHELL plants on the engine, per severity. Not a tautology against
+     * runawayRodSpeed: the shell is free to plant anything, and for three weeks it did. */
+    function rateAt(sev) {
+      eO.applyCommand({ action: 'inject_failure', failure_id: 'continuous_rod_withdrawal',
+                        severity: sev });
+      var r = eO.eng.runaway ? eO.eng.runaway.rate : null;
+      eO.applyCommand({ action: 'clear_failure', failure_id: 'continuous_rod_withdrawal' });
+      return r;
+    }
+    var r0 = rateAt(0), rH = rateAt(0.5), r1 = rateAt(1);
+    ck('the injected rate is a speed on the plant\'s OWN drive band — severity 0 is the slow ' +
+       'drive, 1.0 is the fast drive (the sourced accident\'s "maximum speed"), and nothing ' +
+       'lands outside it (was 8.25 steps/s at severity 0.5, 7.8x the fast drive)',
+       r0 !== null && r1 !== null && rH !== null &&
+       Math.abs(r0 - RS.slow) < 1e-9 && Math.abs(r1 - RS.fast) < 1e-9 &&
+       rH > RS.slow && rH < RS.fast,
+       'sev 0 / 0.5 / 1.0 = ' + (r0 * 60).toFixed(2) + ' / ' + (rH * 60).toFixed(2) + ' / ' +
+       (r1 * 60).toFixed(2) + ' steps/min, against a drive band of ' +
+       (RS.slow * 60).toFixed(2) + '-' + (RS.fast * 60).toFixed(2));
+    /* THE SLIDER LABEL IS A CLAIM (the #580 Break Size trap). The shared row's meta is the
+     * RETIRED plant's fine-step currency — "Withdrawal Rate, steps/s, 0-24, default 12" — so
+     * the Failures tab promised 12 steps/s at the default slider while the engine drove 8.25,
+     * against a drive whose whole maximum is 1.053. The UI renders `min + severity x (max-min)`
+     * (app.js:6972), which must BE the delivered rate, and both ends are read off ROD_SPEEDS. */
+    var mO = eO.getProtectionConfig().failures.continuous_rod_withdrawal.severity_meta;
+    var labelAt = function (sev) { return mO.min + sev * (mO.max - mO.min); };
+    ck('the Failures-tab slider is labelled in the DRIVE\'S units and its arithmetic lands on ' +
+       'the delivered rate at every severity (was "0-24 steps/s", the retired plant\'s ' +
+       '912-fine-step currency, promising 12 steps/s where the plant drove 8.25)',
+       !!mO && mO.unit === 'steps/min' &&
+       Math.abs(mO.min - RS.slow * 60) < 0.05 && Math.abs(mO.max - RS.fast * 60) < 0.05 &&
+       Math.abs(labelAt(0) - r0 * 60) < 0.1 && Math.abs(labelAt(0.5) - rH * 60) < 0.1 &&
+       Math.abs(labelAt(1) - r1 * 60) < 0.1,
+       mO ? '"' + mO.label + '" ' + mO.min + '-' + mO.max + ' ' + mO.unit + ', default ' +
+            mO.default + '; label(0.5) = ' + labelAt(0.5).toFixed(2) + ' vs delivered ' +
+            (rH * 60).toFixed(2) : 'NO severity_meta');
+    /* THE RIDE — severity 1.0, the sourced accident's maximum speed. The first 20 s is the
+     * DARK-WIRE half: a rate can be planted and not delivered (#540's class), so the travel is
+     * measured against the DERIVATION rather than against whatever was planted. */
+    var stO = eO.eng.rodSteps;
+    eO.applyCommand({ action: 'inject_failure', failure_id: 'continuous_rod_withdrawal',
+                      severity: 1.0 });
+    for (i = 0; i < Math.round(20 / DT); i++) { eO.step(DT); tO += DT; }
+    var travO = eO.eng.rodSteps - stO;
+    ck('...and the bank really travels at it — 20 s of drive fault against the derived rate, ' +
+       'on a fixture with travel left in it (the group-G fixture rails and cannot see this)',
+       Math.abs(travO - RS.fast * 20) < 0.2 * RS.fast,
+       travO.toFixed(2) + ' steps in 20 s, expected ' + (RS.fast * 20).toFixed(2));
+    /* ...continued to the trip. The claim is the TRIP CAUSE and the peak, not a timestamp:
+     * this is the difference between a withdrawal accident and a step insertion. */
+    var peakPO = 0, peakSO = 0, stopO = null, tripO = null, causeO = null;
+    while (tO < 900 && tripO === null) {
+      var tsO = eO.step(DT); tO += DT;
+      if (tsO.power_pct > peakPO) peakPO = tsO.power_pct;
+      if ((tsO.startup_rate_dpm || 0) > peakSO) peakSO = tsO.startup_rate_dpm;
+      if (stopO === null && eO.eng._rodStopSig) stopO = tO;
+      if (eO.eng.pt.reactor_trip) { tripO = tO; causeO = eO.eng.pt.trip_cause; }
+    }
+    ck('THE STARTUP NET CATCHES IT: the rod stop asserts, then a FLUX channel trips the ' +
+       'reactor at a plant power the net can hold (measured on this clock, which counts the ' +
+       '60 s settle: rod stop 319.3 s, intermediate-range high-flux trip 320.3 s, peak 32.5 %, ' +
+       'peak 26.0 DPM). The pre-#662 rate tripped on P-9 TURBINE TRIP at 368 % — the flux ' +
+       'trips asserted but their 0.5 s analysis delays had not elapsed',
+       stopO !== null && tripO !== null && causeO === 'ir_high_flux' &&
+       stopO < tripO && peakPO < 50,
+       'rod stop ' + (stopO === null ? 'NEVER' : stopO.toFixed(1) + ' s') + ', trip ' +
+       (tripO === null ? 'NEVER in 900 s' : tripO.toFixed(1) + ' s on ' + causeO) +
+       ', peak ' + peakPO.toFixed(1) + ' %, peak startup rate ' + peakSO.toFixed(1) + ' DPM');
+  })();
+  }
+
   if (grp('T')) {
   /* ---- 5. THE AFW THROTTLE ON A REAL POST-TRIP DRAIN (#582 item 2) ---------------------------
    * #562 landed the flow control valves and the afw_level channel SHIPS ENGAGED; #391's question
@@ -2727,7 +2847,25 @@ var MUTATIONS = [
   ['PWR2 stops carrying the pwr annunciator table (SUR HI and every other alarm go dark, and ' +
    'the config still looks correct in every other respect)',
    '        alarms: (base.alarms || []).map(function (a) {',
-   '        alarms: [], _alarmsRetired: (base.alarms || []).map(function (a) {', { grp: 'N' }]
+   '        alarms: [], _alarmsRetired: (base.alarms || []).map(function (a) {', { grp: 'N' }],
+  /* #662 — THE SHIPPED RATE RESTORED, exactly as it stood: the retired engine's 24 fine-steps/s
+   * ceiling read as a fraction of travel and re-expressed on this bank. It is the whole defect
+   * in one expression, and it reds three of group O's four (the band, the measured travel, and
+   * the ride's trip cause) while the group-G row — which samples a RAILED bank — stays green,
+   * which is the point of splitting them. */
+  ['the continuous-withdrawal casualty goes back to the fraction-of-travel rate (495 steps/min ' +
+   'at severity 0.5, 7.8x the plant\'s own fast drive)',
+   "        EN.command(e, 'rod_runaway', EN.runawayRodSpeed(c.severity));",
+   "        EN.command(e, 'rod_runaway', (c.severity !== undefined ? c.severity : 0.5) * " +
+   '(24 / 912) * bankSteps());', { grp: 'O' }],
+  /* ...and the LABEL half, which fails separately and silently: the plant drives correctly and
+   * the Failures tab still quotes the retired plant's 0-24 steps/s. A player reading the slider
+   * is told 12 steps/s where the drive's whole maximum is 1.053 — the #580 Break Size trap, and
+   * nothing but this check stands between it and the board. */
+  ['the slider label falls back to the shared pwr row (0-24 steps/s, the retired plant\'s ' +
+   'fine-step currency) while the plant drives correctly',
+   '          if (out.continuous_rod_withdrawal) {',
+   '          if (false && out.continuous_rod_withdrawal) {', { grp: 'O' }]
 ];
 
 /* ---- SCOPED-CLEAN-PASS PREFLIGHT (#513) ------------------------------------------------

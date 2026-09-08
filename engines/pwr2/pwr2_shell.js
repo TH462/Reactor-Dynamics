@@ -1008,8 +1008,11 @@
     failure_to_scram: function (e, c) { EN.command(e, 'scram_block', c !== false); },
     stuck_open_spray: function (e, c) { EN.command(e, 'spray_stick', c !== false); },
     rod_withdrawal_runaway: function (e, c) {
+      /* #662: the drive's own band, not a fraction of travel — EN.runawayRodSpeed carries the
+       * two sources. One derivation, two callers (this REHOMED effect name and the casualty
+       * row below); they used to be two copies of the same arithmetic. */
       EN.command(e, 'rod_runaway',
-                 (c && c.severity !== undefined ? c.severity : 0.5) * (24 / 912) * bankSteps());
+                 EN.runawayRodSpeed(c && c.severity !== undefined ? c.severity : 0.5));
     },
     /* the old command toggled a discrete pump; PWR2's actuator is charging DEMAND — OFF is
      * demand 0 in manual, ON restores nothing by itself (dial a flow or re-select AUTO).
@@ -1077,12 +1080,14 @@
       else if (c.failure_id === 'failed_pzr_heaters') EN.command(e, 'pzr_heaters_failed', true);
       else if (c.failure_id === 'stuck_open_spray') EN.command(e, 'spray_stick', true);
       else if (c.failure_id === 'continuous_rod_withdrawal') {
-        /* sev × the old ceiling as a FRACTION OF TRAVEL: 24/912 of the old fine bank =
-         * 5.26 steps/s on this 200-step bank [adopted]. NOTE: the shipped hot-full-power IC
-         * parks the bank at 200/200, so the failure only has travel on a plant whose rods
-         * are inserted — declared, not hidden. */
-        EN.command(e, 'rod_runaway',
-                   (c.severity !== undefined ? c.severity : 0.5) * (24 / 912) * bankSteps());
+        /* THE RATE IS A SPEED THE DRIVE CAN RUN AT (#662) — severity across ROD_SPEEDS'
+         * slow→fast band, sourced in EN.runawayRodSpeed (NRC HRTD ML11216A094 Transients
+         * 5.22/5.23: *"Rod control system controller failure withdraws bank D rods at 72
+         * steps/min"*). It replaces a fraction-of-travel scaling of the retired engine's
+         * fine-step ceiling that ran 495 steps/min at severity 0.5. NOTE: the shipped
+         * hot-full-power IC parks the bank fully out, so the failure only has travel on a
+         * plant whose rods are inserted — declared, not hidden. */
+        EN.command(e, 'rod_runaway', EN.runawayRodSpeed(c.severity));
       }
       else if (c.failure_id === 'sgtr') {
         /* A break AT the sg_primary node — the facade routes it into the SECONDARY with the
@@ -1490,6 +1495,30 @@
                   severity_meta: def.severity_meta }
               : def;
           });
+          /* THE ONE SEVERITY_META OVERRIDE (#662) — copied-with-one-override, the same idiom
+           * the alarm table uses at #500. The shared row's slider says *"Withdrawal Rate,
+           * steps/s, 0–24, default 12"*: that is the RETIRED plant's 912-fine-step currency and
+           * it is correct THERE, so the shared table is not touched. On this plant it was the
+           * #580 Break Size trap exactly — the label promised 12 steps/s at the default slider
+           * and the engine drove 8.25, and both numbers were nonsense against a drive whose own
+           * maximum is 1.053 steps/s. The band is READ OFF ROD_SPEEDS, so a drive retune moves
+           * the label with the plant; the UI renders `min + severity x (max - min)`, which is
+           * runawayRodSpeed's own map in steps/min, so the label and the plant agree by
+           * construction rather than by maintenance. Rounded to 0.1 for display only. */
+          if (out.continuous_rod_withdrawal) {
+            var rs = EN.ROD_SPEEDS;
+            out.continuous_rod_withdrawal = {
+              type: out.continuous_rod_withdrawal.type,
+              category: out.continuous_rod_withdrawal.category,
+              effect: out.continuous_rod_withdrawal.effect,
+              severity_scales: out.continuous_rod_withdrawal.severity_scales,
+              display: out.continuous_rod_withdrawal.display,
+              severity_meta: { label: 'Withdrawal Rate', unit: 'steps/min',
+                               min: +(rs.slow * 60).toFixed(1),
+                               max: +(rs.fast * 60).toFixed(1),
+                               default: +((rs.slow + rs.fast) * 30).toFixed(1) }
+            };
+          }
           return out;
         })()
       });

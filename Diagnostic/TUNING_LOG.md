@@ -29,6 +29,155 @@ and the user-visible summary in `CHANGELOG.md`. This file points at those and tr
 
 ---
 
+## Session log — 2026-09-08-workbench-l (#662 — the withdrawal casualty ran at 495 steps/min, because it inherited the retired engine's fine-step ceiling as a FRACTION OF TRAVEL)
+
+**The defect, as filed off #661's measurement pass.** `continuous_rod_withdrawal` drove the control
+bank at **8.25 steps/s = 495 steps/min** at severity 0.5 and **990 steps/min** at 1.0. The plant's
+own drives are 7.0 / 42.1 / 63.2 steps/min. The rate was `severity × (24/912) × max_steps` — the
+retired engine's 24 fine-steps/s ceiling read as a fraction of its 912-step bank and re-expressed on
+this 627-step one (#507 wave 6). It is the standing #534 trap exactly: **this engine inherited the
+old plant's tables, scales and constants by reference, and each is wrong until measured against
+THIS plant.**
+
+What it did to the plant was not a withdrawal accident. Measured on the shell class at 0.02 s,
+`hot_zero_power`, 60 s settle, severity 0.5: startup rate to **471 decades per minute**, power
+**3.1e-2 % → 211 % in 0.6 s**, and the reactor tripped on **P-9, the turbine trip** — both flux
+trips asserted at the same instant, but their 0.5 s analysis delays had not elapsed. A step
+reactivity insertion wearing a rod-withdrawal casualty's name.
+
+### The evidence pass — and the source that must NOT be used
+
+`node tools/find_source.js` over 39 documents in 3 lanes.
+
+1. **The casualty's own rate is stated, twice, in its own initiating-event line.** NRC HRTD
+   *Westinghouse Technology Advanced Transients* (ML11216A094), Transient 5.22 *Fast Rod Withdrawal,
+   45% Load*: *"Initiating Event: Rod control system controller failure withdraws bank D rods at 72
+   steps/min"*. Transient 5.23 *Fast Rod Withdrawal From Source Range*: the same sentence, word for
+   word. That is this casualty, and the source runs it at the mechanism's maximum.
+2. **72 steps/min is a point on the rod speed PROGRAM, and the program is a band.** Westinghouse
+   Technology Systems Manual §8.1 (ML11223A252): *"a minimum speed of eight steps per minute"* for
+   small errors, then *"a proportional speed region… 32 steps/min/°F"*, then *"With an error of 5°F
+   or greater… a maximum rod speed of 72 steps/min. The maximum rod speed is based upon a maximum
+   response to a large error signal and upon **the physical limitations of the rod drive mechanism,
+   with the latter being the limiting factor.**"* §8.1.8 adds the shutdown-bank pulser potentiometer
+   *"normally set at 72 steps per minute"*.
+3. ⚠ **The accident ANALYSIS's rate is a different quantity and would have been the wrong answer.**
+   Ginna UFSAR ch. 15 (ML20339A101) §15.4.1.3.3(D): *"The maximum positive reactivity insertion rate
+   is (75 pcm/sec) **which is greater than that for the simultaneous withdrawal of the combination
+   of the two control banks having the greatest combined worth at maximum speed**"* — the document
+   says in its own sentence that its number exceeds what the mechanism can deliver, because it is a
+   licensing bound. §15.4.2.3 spans 1 – 100 pcm/sec for the same reason. **A bounding conservatism
+   is not a drive speed**, and a casualty built on one would have reproduced the defect with a
+   citation attached.
+
+### As built
+
+`runawayRodSpeed(severity)` in `pwr2_engine.js`, beside `ROD_SPEEDS`: **linear from
+`ROD_SPEEDS.slow` to `ROD_SPEEDS.fast`**, clamped, nothing retyped. Severity 1.0 *is* the plant's
+fast drive — the sourced accident's "maximum speed"; severity 0 is the slow drive and is still a
+runaway, not a clear (an injected casualty that reports nothing is the silent-swallow defect).
+**Continuous, not three-position**, because the real speed programmer is continuous and a failed
+controller can sit anywhere on it — the three-position selector is the OPERATOR's, and it is not
+what fails here. Both shell call sites (the casualty row and the REHOMED `rod_withdrawal_runaway`
+effect name) now share the one derivation; they used to be two copies of the same arithmetic.
+
+### The ride, before and after — shell class, 0.02 s, `hot_zero_power`, 60 s settle, t = 0 at injection
+
+| severity | rate | P-6 | startup rate > 1 DPM | rod stop | trip | peak rate | peak power |
+|---|---|---|---|---|---|---|---|
+| **BEFORE** 0.25 | 247.5 steps/min | 51.7 s | 35.0 s | 69.1 s | **69.3 s, P-9 turbine trip** | 188.7 DPM | **93.4 %** |
+| **BEFORE** 0.5 | 495 steps/min | 26.8 s | 10.0 s | 35.1 s | **35.1 s, P-9 turbine trip** | 470.8 DPM | **211.1 %** |
+| **BEFORE** 1.0 | 990 steps/min | 13.9 s | 0.02 s | 17.8 s | **17.8 s, P-9 turbine trip** | 896.8 DPM | **368.8 %** |
+| **AFTER** 0 | 7.02 steps/min | 1591.8 s | 1934.8 s | 2158.6 s | **2229.9 s, IR high flux** | 2.74 DPM | 25.2 % |
+| **AFTER** 0.25 | 21.06 steps/min | 544.3 s | 632.8 s | 742.8 s | **763.6 s, IR high flux** | 7.60 DPM | 25.4 % |
+| **AFTER** 0.5 | 35.10 steps/min | 332.2 s | 370.7 s | 455.4 s | **457.4 s, IR high flux** | 12.99 DPM | 26.1 % |
+| **AFTER** 0.75 | 49.14 steps/min | 240.5 s | 258.3 s | 330.0 s | **331.2 s, IR high flux** | 19.10 DPM | 28.8 % |
+| **AFTER** 1.0 | 63.18 steps/min | 189.1 s | 195.9 s | 259.3 s | **260.3 s, IR high flux** | 26.02 DPM | 32.5 % |
+
+Every severity now produces the startup net's own response — **rod stop, then intermediate-range
+high-flux trip** — at a peak the net holds, which is the thing a continuous-withdrawal casualty
+exists to demonstrate. Severity 1.0 reproduces a plain `rod_start` at the FAST selector to the
+sample (189.08 / 259.34 / 260.28 s), which is the check that the casualty really is the drive.
+
+**The rod stop does NOT arrest it, and that is correct.** #661's slow-drive ride reported *"none in
+2.5 plant-h — the rod stop ARRESTS it"*; that ride was a `rod_start`, which the stop inhibits. A
+drive fault is **downstream** of the demand path the stop inhibits (declared in `pwr2_engine`'s
+runaway branch since #507 wave 6), so at the bottom of the slider the stop asserts at 2158.6 s and
+the bank keeps coming until the trip 71 s later. Two different mechanisms, and only one of them is
+this casualty. `Manuals/07` now says so.
+
+### The slider was the #580 Break Size trap, again
+
+The shared `pwr_control.js` row's `severity_meta` is *"Withdrawal Rate, steps/s, 0–24, default 12"*
+— **correct on the retired plant**, whose bank is 912 fine steps. On PWR2 the Failures tab therefore
+promised **12 steps/s at the default slider while the engine drove 8.25**, and both numbers are
+nonsense against a drive whose entire maximum is 1.053 steps/s. The shared table is not touched;
+the shell now carries **one `severity_meta` override**, copied-with-one-override the way the alarm
+table is at #500, with `min`/`max` **read off `ROD_SPEEDS`**. The UI renders
+`min + severity × (max − min)` (`app.js:6972`), which is `runawayRodSpeed`'s own map in steps/min,
+so the label and the plant agree **by construction rather than by maintenance** — retune the drive
+and the label follows.
+
+### Adjudication, one red at a time (HR10)
+
+**One red.** `run_pwr2_shell`'s wave-6 row: *"the bank drives OUT at the adopted fraction-of-travel
+rate…"*, condition `rodSteps > st0 + 10` over a 10 s ride. At the new rate 10 s buys 5.85 steps.
+
+**And the fixture is why the defect survived three weeks.** The row nudges 25 steps off a **railed**
+bank, so the old 8.25 steps/s reached `max_steps` in 3.0 s of that 10 s ride and the check sampled a
+**saturated** observable — which reads identically at 8.25 steps/s and at 495. The claim was split:
+the rate-independent half (it drives OUT, power rises, the levers refuse by name, the row is listed)
+stays in group G with a `+1` threshold and **passes on the old plant and the new one alike**; the
+rate itself moved to a new **group O** on a fixture with travel left in it.
+
+**Group O, four checks, and the two injections that red them.**
+
+- *the injected rate is a speed on the plant's OWN drive band* — severity 0 / 0.5 / 1.0 read
+  7.02 / 35.10 / 63.18 steps/min against a drive band of 7.02 – 63.18, read off `ROD_SPEEDS`. Not a
+  tautology against `runawayRodSpeed`: the shell is free to plant anything, and for three weeks it did.
+- *the slider is labelled in the DRIVE'S units and its arithmetic lands on the delivered rate*.
+- *the bank really travels at it* — 21.06 steps in 20 s against a derived 21.06 (the dark-wire half,
+  measured against the DERIVATION rather than against whatever was planted).
+- *THE STARTUP NET CATCHES IT* — rod stop 319.3 s, intermediate-range high-flux trip 320.3 s on that
+  block's own clock, peak 32.5 %, peak 26.0 DPM. This is the issue's claim, and it is the check that
+  distinguishes a withdrawal accident from a step insertion.
+
+Injections: **the shipped rate restored** reds **4 of 4** (the band, the label — because the label
+check compares against the DELIVERED rate, so either side breaking reds it — the travel and the trip
+cause) while group G stays green, which is the whole argument for splitting them. **The
+`severity_meta` override dropped** reds **1** — the plant drives correctly and the tab quotes the
+retired plant's numbers, which is the failure mode nothing else in the tree can see.
+
+### The finding I did not fix: the plant's own drive speeds are the same category error
+
+`ROD_SPEEDS = { slow: 0.117, normal: 0.702, fast: 1.053 }` steps/s are **[derived]** — pwr1's
+8 / 48 / 72 steps/min on its 228-step drive, re-expressed as a **fraction of travel per second**
+onto what was then a 200-step bank, which multiplies the whole set by 200/228 = 0.8775. They land
+at **7.02 / 42.12 / 63.18 steps/min: every one 12.25 % under its pwr1 original**, so this plant's
+fast drive is 12.25 % below the sourced mechanical maximum of 72 and its slow drive is below the
+sourced minimum of 8. (pwr1's "normal 48" is itself **[UNVERIFIED]** — `find_source` finds 8 and 72
+in WTSM 8.1 and no 48 anywhere in the corpus.) **Not fixed here**: #662 is the runaway's rate, not
+the drive's, and every manual rod evolution and live-checklist timing in the tree is authored
+against these three numbers. Filed separately. The comment block on `ROD_SPEEDS` now carries the
+whole derivation and the gap, so the next reader does not re-derive it — and the `%/s` figures the
+old comment quoted were dead, having rotted at the #602 bank hoist.
+
+### Gates
+
+`run_pwr2_shell` **165 → 169, 0 failed; 62/62 mutations caught, no blind spots** (60 → 62).
+`run_hardrules` **504 → 506** checks, 0 failed — upward drift, acknowledged rather than absorbed
+(two more sourced-citation sites in the new comment blocks). At baseline: `run_pwr2_reactor` 42/42,
+`run_pwr2_kinetics` 94/94, `run_pwr2_protection` 125/125, `run_manual_setpoints` 18/18,
+`run_manual_rev` 15/15, `run_manual_units` 0 failed, `run_released_frozen` 5/5, `run_doc_budget`
+4/4, `run_session_labels` 8/8, `run_contract`, `run_pwr2_roundtrip`, `verify_manual_follow`.
+`run_all` was NOT run — the orchestrator owns the combined gate and `test/run_all.js` carries an
+uncommitted edit that is not mine.
+
+`Manuals/07` §5.0's slider row and PWR-E17 follow the plant; Rev 19's pending row extends with item
+**(ll)**; `stamp_manual_revision.js` and `pack_manuals.js` run.
+
+---
+
 ## Session log — 2026-09-08-workbench-k (#664 — one command appeared ONCE in the whole checklist pool, and the leg that needed it opened with a step nobody could act on)
 
 **The defect, and it needs no skipped step.** `latch_turbine` occurred exactly once in
