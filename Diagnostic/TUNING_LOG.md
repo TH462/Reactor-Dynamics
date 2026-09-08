@@ -29,6 +29,59 @@ and the user-visible summary in `CHANGELOG.md`. This file points at those and tr
 
 ---
 
+## Session log — 2026-09-08-workbench-h (#659 RULED — the ADV's 10 % was Ginna's PER-GENERATOR figure, and this plant has one generator)
+
+**The ruling.** *(OWNER RULING, 2026-09-08: "Keep 4.98 % — scale by thermal power; fix the
+manual".)* The engine's atmospheric dump valve (ADV) does not move — `RELIEF.adv_kgs` stays
+**8.18 kg/s** (Ginna's 329,000 lbm/hr per valve, scaled 300/1520 MWt). `Manuals/09`'s row was
+wrong: it quoted Ginna's own *"approximately 10% of the rated steam flow … from each steam
+generator"* directly as this plant's capacity, on a plant that has **one** generator, not two.
+Corrected to the measured **4.98 %** — which the same Ginna Technical Specification Bases
+section already cross-checks against, independently, as *"approximately 4% of RTP"* for the
+valve's sourced function (decay-heat removal once the condenser is gone, which scales with
+thermal power, not generator count).
+
+**Measured, not assumed.** `pwr2_engine` freezes rated steam flow at construction —
+`TB.steamDemand` at the RATED dispatch and the DESIGN steam pressure, same expression
+regardless of initial condition (the comment beside it says so; this session confirmed it by
+booting `hot_full_power`, `cold_shutdown` and `low_power` and reading `eng.rated_steam` off
+each — all three land on **164.25 kg/s**, byte-identical). `RELIEF.adv_kgs / rated_steam × 100`
+= 8.182 / 164.25 = **4.981 %**, which is what the row now quotes.
+
+**Manual row (`Manuals/09` §3.0, Atmospheric dump).** *"capacity 10 % of rated steam flow"* →
+*"capacity ≈5 % of rated steam flow (4.98 %, measured — 8.18 kg/s of this plant's 164.2 kg/s
+rated flow)"*, with the existing sourcing sentence kept and a new sentence explaining the two
+figures — the Ginna per-generator 10 % and the Technical Specification Bases 4 %-of-RTP
+cross-check — are two descriptions of the **same** 329,000 lbm/hr valve, and this plant's 4.98 %
+sits between them.
+
+**Gate.** `run_manual_setpoints` had no check on the ADV's capacity figure at all — only its
+pressure setpoint. New check: parses *"N % of rated steam flow"* out of the row, boots a cheap
+`hot_full_power` engine (no ticking needed — `rated_steam` is frozen at construction) and
+compares against `RELIEF.adv_kgs / eng.rated_steam × 100`, tolerance **0.3 points** (covers the
+row's round-to-nearest-percent with margin, nowhere near loose enough to also pass the old 10 %,
+a 5-point miss). **Made to red once**: put `10 %` back — *"manual 10 %, plant 4.98 %"* — restored
+byte-for-byte (`git diff --stat Manuals/` showed the single edited line, before and after).
+**`run_manual_setpoints` 15/15 → 18/18** (three new checks: rated-steam sanity, the row prints a
+percentage, the percentage matches).
+
+**Rev 19 pending row extended** (item `(jj)`, chapter-qualified `09 §3.0`), stamped, packed —
+`run_manual_rev` 15/15, `run_manual_units` clean (803 pairs, 0 failed — no new US/SI pair was
+introduced; `kg/s` isn't a unit that gate checks). `run_released_frozen`, `run_hardrules`,
+`run_doc_budget`, `run_session_labels` all green, unmodified by this session.
+
+**No physics moved.** `RELIEF.adv_kgs`, its setpoint, its band — none of it changed. This was a
+manual-content correction plus a gate that did not exist before.
+
+**The trap to carry.** *A source's own hardware count is not this plant's hardware count.*
+Ginna has two steam generators; this plant has one. A "per-X" figure from the source needs
+re-deriving against the quantity the component's sourced FUNCTION actually depends on (here,
+thermal power), not divided or multiplied by a generator-count ratio that happens to look like
+a scaling factor. Same shape as #643 (bank scale) and #642 (P-6): the source is right and the
+transcription silently changed what it was a fraction OF.
+
+---
+
 ## Session log — 2026-09-08-workbench-g (#642 — the marked copy was the wrong one, and the permissive it named permits nothing here)
 
 **The filed shape, and why it was backwards.** Three sites carried the P-6 permissive (the

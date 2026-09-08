@@ -30,6 +30,21 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
 
 ## [Unreleased]
 
+### Fixed (`Manuals/09` quoted the atmospheric dump valve's PER-GENERATOR capacity directly onto a one-generator plant — #659)
+
+Ginna's atmospheric relief valve is sized *"approximately 10% of the rated steam flow … from
+each steam generator"* — a two-generator figure. This plant has one generator, and `Manuals/09`
+had carried the 10 % straight across. The engine's own valve (`RELIEF.adv_kgs`, 8.18 kg/s —
+329,000 lbm/hr scaled 300/1520 MWt) does not move: it was already sized against thermal power,
+which is the quantity the valve's sourced function (decay-heat removal once the condenser is
+gone) actually depends on, not generator count. Measured against `pwr2_engine`'s own rated
+steam flow (164.25 kg/s, frozen at construction, confirmed identical across three initial
+conditions): **4.98 %**, which the same Ginna Technical Specification Bases section already
+cross-checks independently as *"approximately 4% of RTP"*. The manual row now quotes the
+measured figure and reconciles both source sentences as descriptions of the same valve.
+`run_manual_setpoints` gains a check comparing the row's printed percentage against
+`RELIEF.adv_kgs / rated_steam`; made to red once against the old 10 % before landing.
+
 ### Fixed (the P-6 permissive was sourced to the wrong sentence, and it permits nothing on this plant — #642)
 
 The P-6 permissive — the intermediate-range flux permissive — stood at **5e-11 A** in

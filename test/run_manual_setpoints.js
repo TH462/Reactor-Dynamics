@@ -576,6 +576,50 @@ ck('every §1.0 figure matches the same booted hot_full_power plant',
    s1Wrong.length === 0,
    s1Wrong.length ? s1Wrong.join('  |  ') : 'all ' + s1Rows.length + ' rows agree with the booted plant');
 
+/* ---- §3.0, ADV CAPACITY vs THIS PLANT'S RATED STEAM FLOW (#659) ----------------------------
+ * The Atmospheric dump (ADV) row's SETPOINT is already checked above (the `^\*\*Atmospheric
+ * dump \(ADV\)\*\*` entry in ROWS); its CAPACITY percentage was not — the row used to quote
+ * Ginna's PER-GENERATOR figure (10 %) directly onto this plant's single generator, and nothing
+ * read it. `RD.pwr2.relief.RELIEF.adv_kgs` is 8.18 kg/s (329,000 lbm/hr per valve, scaled
+ * 300/1520) — checked here against THIS plant's rated steam flow, which `pwr2_engine` freezes
+ * at construction as `eng.rated_steam` (`TB.steamDemand` at the RATED dispatch and the DESIGN
+ * steam pressure — the same expression regardless of which initial condition boots, confirmed
+ * by measurement across all six rather than assumed from the comment that says so). 8.18 /
+ * 164.25 kg/s = 4.98 %, the figure the row now quotes (OWNER RULING, 2026-09-08: "Keep 4.98 % —
+ * scale by thermal power; fix the manual").
+ *
+ * A cheap boot suffices: `rated_steam` is frozen on both axes at construction (see the comment
+ * beside it in `pwr2_engine.js`), so no ticking is needed — unlike the §1.0/§11.0 checks above,
+ * which need a SETTLED plant to answer a different question. */
+console.log('\n' + BOLD + 'THE ADV CAPACITY FIGURE vs THE SHIPPED VALVE  (Manuals/09 §3.0)' + RST);
+
+var advEng = new RD.pwr2.shell.PWR2Engine({ initial_state: 'hot_full_power' });
+var RATED_STEAM_KGS = advEng.eng.rated_steam;
+var ADV_PCT = RD.pwr2.relief.RELIEF.adv_kgs / RATED_STEAM_KGS * 100;
+
+ck('the rated steam flow used for the reconciliation was actually computed, not assumed',
+   RATED_STEAM_KGS > 100 && RATED_STEAM_KGS < 300,
+   RATED_STEAM_KGS.toFixed(2) + ' kg/s');
+
+var advRow = md.split('\n').filter(function (l) {
+  return /^\|\s*\*\*Atmospheric dump \(ADV\)\*\*/.test(l);
+})[0] || '';
+var advM = advRow.match(/capacity\s*(?:~|≈)?\s*(\d+(?:\.\d+)?)\s*%\s*of rated steam flow/i);
+ck('the ADV row prints a capacity figure as "N % of rated steam flow"',
+   !!advM, advM ? advM[1] + ' %' : 'no such phrase found in the row');
+if (advM) {
+  var advClaimed = parseFloat(advM[1]);
+  /* 0.3 points: the row rounds to the nearest whole percent (4.98 -> "5"), so 0.3 comfortably
+   * covers that rounding with margin to spare — and is nowhere near loose enough to also accept
+   * the old 10 % figure it replaced (a 5-point miss), so a reversion still reds. */
+  var ADV_TOL = 0.3;
+  ck('...and it matches RELIEF.adv_kgs over this plant\'s rated steam flow',
+     Math.abs(advClaimed - ADV_PCT) <= ADV_TOL,
+     'manual ' + advClaimed + ' %, plant ' + ADV_PCT.toFixed(2) + ' %  (RELIEF.adv_kgs=' +
+     RD.pwr2.relief.RELIEF.adv_kgs.toFixed(3) + ' kg/s / rated_steam=' +
+     RATED_STEAM_KGS.toFixed(2) + ' kg/s)');
+}
+
 console.log(DIM + '  (numbers and existence only — the Notes prose and the chapter narrative are ' +
             'not machine-checkable; that is the rest of #532)' + RST);
 
