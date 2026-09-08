@@ -37,6 +37,7 @@
 'use strict';
 var fs = require('fs');
 var path = require('path');
+var MUT = require('./mut_flags.js');   /* requireCleanRun (#644); this runner takes no --mut flags */
 var SRC = path.join(__dirname, '..', 'engines', 'pwr2');
 
 global.window = global;
@@ -1304,6 +1305,16 @@ var MUTS = [
    "    if (ltdnIsolated(s)) return { text: 'ISOLATED', color: BD_WARN };",
    '']
 ];
+/* ---- THE CLEAN-RUN GUARD (#644) -------------------------------------------------------------
+ * REFUSE TO SCORE on a red clean run. The replay below counts ABSOLUTE reds in the mutant, so an
+ * already-red check is red in every mutant too and EVERY mutation reads as caught — the coverage
+ * instrument reporting full coverage exactly when the runner is not green. This runner keeps
+ * COUNTERS rather than a record for its clean pass, so the guard gets the count and the banner
+ * names no checks; the FAIL lines are already on screen above it. Rationale, the measured case
+ * and the refuse-vs-subtract ruling: mut_flags.requireCleanRun's header. */
+MUT.requireCleanRun(nFail, '  run_pwr2_board: ' + nPass + ' passed, ' + nFail +
+  ' failed  (' + (nPass + nFail) + ' checks)');
+
 /* Counted, not written down: the number went stale the first time a mutation was added. */
 console.log('\ninjection self-test (' + MUTS.length + ' mutations):');
 var blind = 0;

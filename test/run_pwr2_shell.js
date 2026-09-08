@@ -2313,6 +2313,18 @@ var rec = [];
 runSuite(loadAll(), rec, false);
 var pass = rec.filter(function (r) { return r.ok; }).length, fail = rec.length - pass;
 
+/* ---- THE CLEAN-RUN GUARD (#644) -------------------------------------------------------------
+ * REFUSE TO SCORE on a red clean run. The replay below counts ABSOLUTE reds in the mutant, so an
+ * already-red check is red in every mutant too and EVERY mutation reads as caught — the coverage
+ * instrument reporting full coverage exactly when the runner is not green. Placed BEFORE the
+ * scope preflight as well: that preflight re-rides every group, and on a red clean build every
+ * group reports RED for a reason that has nothing to do with scope. Rationale, the measured case
+ * and the refuse-vs-subtract ruling: mut_flags.requireCleanRun's header. */
+MUT.requireCleanRun(rec, '  run_pwr2_shell: ' + pass + ' passed, ' + fail +
+  ' failed  (' + rec.length + ' checks)',
+  { hint: 'To measure one group while another is red, scope both passes: --grp=<tag>. ' +
+          'Forced non-zero, never a baseline.' });
+
 var SHSRC = fs.readFileSync(path.join(SRC, 'pwr2_shell.js'), 'utf8').replace(/\r\n/g, '\n');
 /* Each entry's trailing { grp } names the section group that can SEE it (#513) — the replay
  * runs only that group, and the BLIND check still reds the runner if the tag is wrong. */

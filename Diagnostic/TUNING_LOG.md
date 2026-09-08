@@ -29,7 +29,67 @@ and the user-visible summary in `CHANGELOG.md`. This file points at those and tr
 
 ---
 
-## Session log — 2026-09-08-develop-a (#655 — the speed bar's WARP row and info line; the clock drops by alarm PRIORITY; the freeze did not reproduce)
+## Session log — 2026-09-08-workbench-a (#644 — the coverage instrument lied exactly when you were mid-change; eight runners had no clean-run guard)
+
+**The defect, in one line.** `run_pwr2_engine` scored a mutation as `rec2.filter(!ok).length` —
+**absolute** reds in the mutant run, with no subtraction of the clean run's reds. A check already
+red in the CLEAN run is red in every mutant too, so **while any check was red, every mutation in
+that part reported CAUGHT**. The instrument whose entire job is to prove a check *can* fail
+returned a false green under exactly the condition of active work.
+
+**Reproduced, not inherited.** I did not trust the filed symptom. The historical case is the
+no-load-boot mutation: re-anchored, `DC.tref(0)` = 286.110 °C (547.00 °F) against
+`W.T_sat(7.03 MPa)` = 286.113 °C (547.00 °F) — **0.003 °C (0.005 °F) apart, arithmetically a
+no-op**. I restored that exact mutation as a temporary group-K entry, reddened one unrelated
+group-K check by hand (`false &&` on the `cold_shutdown CONSTRUCTS` condition), and ran the
+**pre-fix file taken from `git show HEAD:`** with both temporary edits ported into it:
+
+```
+  FAIL  TEMP644-RED cold_shutdown CONSTRUCTS — Mode 5 exists (#524)
+  caught    TEMP644 the no-load IC boots at DC.tref(0) (the DOCUMENTED NO-OP, 0.003 degC)1 checks red
+  injection self-test: 1/1 mutations caught, no blind spots
+```
+
+A provably blind mutation, certified as caught, with the runner printing **"no blind spots"**.
+
+**The fix: REFUSE TO SCORE, not subtract** — new `MUT.requireCleanRun()` in `test/mut_flags.js`,
+one definition for every runner, printing the red check *names* so the reader knows which coverage
+claim is void. The ruling and its reasoning are in `BUILD_DECISIONS.md` 2026-09-08-workbench-a.
+Nothing is lost: `--grp=` / `--groups=` already scope the **clean pass as well as** the replay, so
+a group that is green can still be measured while another is red, and mut_flags forces such a run
+non-zero so it can never become a baseline.
+
+**Proven by injection, three runs, same tree** (HR10 — the standard is doubled here because this
+*is* the instrument that enforces HR10):
+
+| clean run | mutation | verdict |
+|---|---|---|
+| GREEN | the `DC.tref(0)` no-op (known blind) | `BLIND TO … <-- THIS GATE CANNOT SEE IT` · `0/1 caught ** 1 BLIND SPOTS -- GATE FAILS **` |
+| RED (1 check) | the same no-op | `MUTATION SELF-TEST SKIPPED -- 1 check(s) failed in the CLEAN run` + the red check named; exit 1 |
+| GREEN | the shipped `DC.tref(1)` at-power form (known caught) | `caught … 1 checks red` · `1/1 caught, no blind spots` |
+
+**Eight runners had no guard at all** and now share the one: `run_pwr2_engine` (+ `_b` / `_c`),
+`run_pwr2_shell`, `run_pwr2_pressurizer`, `run_pwr2_board`, `run_pwr2_instruments`,
+`run_pwr2_dumpctl`, `run_pwr2_lossofload`, `run_pwr2_roundtrip`. Twenty-two were already honest
+(`run_pwr2_loadfollow`'s hand-written form, plus `run_pwr2_kernel`'s, which also preflights each
+scope group alone). The guard is inert on a green tree, so **no baseline moves**.
+
+**Trap worth carrying: THE GUARD WAS COPIED, NOT SHARED.** Thirty runners each carry a
+hand-written copy of the same twelve-line replay loop. Twenty-two copies had the guard and eight
+did not, and nothing could tell you which — the copies are prose-identical apart from the missing
+paragraph. `run_pwr2_engine`, the largest gate in the tree, was one of the eight. **A convention
+that lives in thirty copies is not a convention; it is thirty chances to omit it.**
+
+**Second finding, NOT fixed — filed for a ruling (see the backlog row).** The clean pass runs with
+`quiet=false` and `SETTLE = 300`; every replay runs with `quiet=true` and `SETTLE = 120`. So the
+clean run proves the checks are green at a 300 s settle and **nothing proves they are green at
+120 s unmutated** — a "caught" verdict can in principle be an artifact of the shorter ride rather
+than of the mutation. Measured here for group K only, and it is clean: the temporary `DC.tref(0)`
+no-op *is* a null replay, and it reported 0 checks red. A **null mutation per group** would assert
+this for every group at the cost of one extra scoped ride each; whether that is worth ~220 s
+across the three parts is a cost call, not mine.
+
+
 
 **What was asked.** Fix #655; WARP buttons on their own row with the others beneath and a space
 between for WARP info text; and should WARP drop for every alarm, or are there alarms it should
@@ -27216,6 +27276,7 @@ when it's fixed. RBMK/BWR items are the bulk of the remaining ops-suite reds.
 |---|---|---|---|---|
 | **F12** — **RESOLVED 2026-07-25** (#150) | `run_e2e_controls` 28/30 -> 35/35: (a) PZR spray manual set reaches engine only 12 (want ≥45); (b) "CVCS auto make-up holds inventory vs leak ≥98 %" | (a) spray-demand reach drifted; (b) stale expectation — severity-1.0 SGTR is now 0.03 frac/s (~40× CVCS make-up), so "auto holds ≥98 %" isn't physical | **Neither was a regression.** (a) spray has an owner-ruled flow cap (`spray_flow_max` 0.12, CC-5) applied to the operator override too, so 12 IS the cap — now asserts below-cap passthrough + at-cap clamping, read from config. (b) rebuilt as differential checks (OFF stops charging / ON commands it / auto measurably slows the loss). A third check that was PASSING was also meaningless: it compared `charging_flow` to `leak_flow` directly, which are different scales (`cvcs_inventory_gain` 0.012 vs 1:1). | **RESOLVED 2026-07-25 (#150)** — 35/35. Raised #194: in mass terms CVCS covers a constant ~24 % of any leak, so none is ever held — **that last claim is RETRACTED (2026-07-29m, #194): the ~24 % was a 40 s reading of an 83 s control loop, measured in CYCLES mistaken for seconds. CVCS holds every leak inside its authority at ~100 % coverage. Now 39/39.** |
 | **UI-1** | `verify_e2e_ui` FAIL — pwr/primary board controls "not found" by the harness | **This suspected cause was WRONG** — the file never referenced `RD.PwrSynoptic`. Real causes: (a) `REQUIRED_ACTS` demanded 14 `data-act` buttons the board path deliberately never emits (`ui/app.js:3413`, `:3459-3460` return before `populateControlBar`); (b) the manual-units block clicked `[data-msec="setpoints"]`, renamed `09_setpoints_limits` by the manual-md unification | Probe 21 board labels via `RD.PwrBoard.revealControl()` (same path Instructor highlights use); re-point the manual section | **RESOLVED 2026-07-25 (#148)** — PASS (16 screenshots). Surfaced #111: the packed manual ignores the units toggle entirely, now a strict xfail here |
+| **F13** (#644 follow-up, 2026-09-08) | **A mutation replay is a DIFFERENT ride from the clean pass, and nothing proves the replay's ride is green unmutated.** In `run_pwr2_engine`/`run_pwr2_shell` the clean pass runs `quiet=false` → `SETTLE = 300`; every replay runs `quiet=true` → `SETTLE = 120`. A check that is green at 300 s and red at 120 s would make **every** mutation in its group report "caught" for a reason that is not the mutation — the #644 shape surviving the #644 fix, because the clean-run guard only certifies the 300 s ride | The two settle values were a cost decision (`run_pwr2_engine.js:229`), taken before the replay loop existed as a coverage instrument | Add a **NULL MUTATION per group** — a semantically identical substitution, which forces one unmutated replay at the replay's own settle and must report BLIND. Cost: one extra scoped ride per group (~220 s over the three parts, from the header's measured group table) | **OPEN — measured for group K only, and it is CLEAN there.** The temporary `DC.tref(0)` no-op used to injection-test #644 *is* a null replay and reported 0 checks red. Whether the other sixteen groups are worth ~220 s of gate time is a cost call for the owner |
 | **UI-2** | `verify_manual_follow` 30 PWR bar-checks fail | Retired-`PwrSynoptic`-probe — correct for THIS file: it probed `RD.PwrSynoptic.isMounted()`, and the retired module still loads (global exists) but never mounts, so every PWR bar-check was a false negative | Swap to `RD.PwrBoard` (identical `isMounted`/`revealControl` API) | **RESOLVED 2026-07-25 (#149)** — one line; FAILED (30) → PASS (84 checks), delta verified against the pre-fix file |
 
 ### 3.3 Suspected / oddities (not hard failures — watch or investigate)

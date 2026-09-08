@@ -220,6 +220,14 @@ var rec = [];
 runSuite(loadAll(), rec, false);
 var pass = rec.filter(function (r) { return r.ok; }).length, fail = rec.length - pass;
 
+/* ---- THE CLEAN-RUN GUARD (#644) -------------------------------------------------------------
+ * REFUSE TO SCORE on a red clean run. The replay below counts ABSOLUTE reds in the mutant, so an
+ * already-red check is red in every mutant too and EVERY mutation reads as caught — the coverage
+ * instrument reporting full coverage exactly when the runner is not green. Rationale, the
+ * measured case and the refuse-vs-subtract ruling: mut_flags.requireCleanRun's header. */
+MUT.requireCleanRun(rec, '  run_pwr2_dumpctl: ' + pass + ' passed, ' + fail +
+  ' failed  (' + rec.length + ' checks)');
+
 var DCSRC = fs.readFileSync(path.join(SRC, 'pwr2_dumpctl.js'), 'utf8').replace(/\r\n/g, '\n');
 var MUTATIONS = [
   ['C-7 always armed (the dumps become the old engine\'s hidden parallel sink)',

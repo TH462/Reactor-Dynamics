@@ -30,6 +30,31 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
 
 ## [Unreleased]
 
+### Test coverage (the mutation self-test refuses to score on a red clean run — #644)
+
+*Not a simulator change — no version bump, no `changelog.html` entry.* The pwr2 runners score a
+mutation by counting **absolute** reds in the mutant run. A check already red in the CLEAN run is
+red in every mutant too, so while any check was red **every mutation reported as CAUGHT** — the
+coverage instrument reporting full coverage exactly when the runner is not green, which is when a
+reader leans on it. Measured (#644): the no-load-boot mutation `DC.tref(0)` = 286.110 °C
+(547.00 °F) against `W.T_sat(7.03 MPa)` = 286.113 °C (547.00 °F) — 0.003 °C (0.005 °F) apart, a
+no-op — reported CAUGHT on a replay taken while one unrelated group-K check was red, and BLIND on
+the same tree once that check was green.
+
+- New `MUT.requireCleanRun()` in `test/mut_flags.js`: prints the red check **names**, refuses to
+  score, exits 1. **Refuse, not subtract** — a mutation whose only reds are already-red checks
+  stays ambiguous under subtraction, and in a group-scoped replay subtraction has to assume every
+  check is attributable to its group, an assumption one `ck()` outside a `grp()` block breaks
+  silently. The scoped escape hatch already existed: `--grp=` / `--groups=` scope the clean pass
+  too, and are forced non-zero.
+- Adopted by the eight runners that had **no** clean-run guard: `run_pwr2_engine` (+ `_b` / `_c`),
+  `run_pwr2_shell`, `run_pwr2_pressurizer`, `run_pwr2_board`, `run_pwr2_instruments`,
+  `run_pwr2_dumpctl`, `run_pwr2_lossofload`, `run_pwr2_roundtrip`. Twenty-two runners already
+  guarded it (`run_pwr2_loadfollow`'s form, and `run_pwr2_kernel`'s). No baseline moves — the
+  guard is inert on a green tree.
+- `run_pwr2_engine`'s ownership audit now prints **before** the guard: it is a static property of
+  the mutation table and must survive a refusal.
+
 ## [Alpha 1.7.4-rc4] — 2026-09-08
 
 ### Changed (the speed bar: WARP on its own row with an info line, and which alarms drop the clock — #655)

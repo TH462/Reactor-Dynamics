@@ -3109,10 +3109,13 @@ var MUTATIONS = [
    * run_pwr2_dumpctl now pins that agreement statically instead. Re-aimed at the branch
    * SELECTION, which still is: caught, 3 Hot Standby checks red.
    *
-   * AND IT REPORTED 'caught' WHILE BLIND, WHICH IS THE BIGGER FINDING. realReds below counts
-   * ABSOLUTE reds in the mutant run with no clean-run subtraction, so while ANY check is red in
-   * this part's replay, EVERY mutation in it reads as caught. run_pwr2_loadfollow guards this
-   * ('MUTATION SELF-TEST SKIPPED -- N check(s) failed in the CLEAN run'); this runner does not. */
+   * AND IT REPORTED 'caught' WHILE BLIND, WHICH WAS THE BIGGER FINDING (#644, FIXED 2026-09-08).
+   * realReds below counts ABSOLUTE reds in the mutant run with no clean-run subtraction, so while
+   * ANY check is red in this part's replay, EVERY mutation in it read as caught. The runner now
+   * REFUSES TO SCORE on a red clean run (MUT.requireCleanRun, below) — proven by injection: with
+   * this very mutation restored to its DC.tref(0) form and one group-K check deliberately red,
+   * the old code printed 'caught 1 checks red' and the guarded code prints
+   * 'MUTATION SELF-TEST SKIPPED'. */
   ['the no-load IC boots at the AT-POWER end of the program instead of the no-load one',
    "    var tavg0 = ic.cold ? ic.tavg_c\n              : ic.pf > 0 ? DC.tref(ic.load_mwe / MWE_RATED) : W.T_sat(G.SG.P_noload);",
    '    var tavg0 = ic.cold ? ic.tavg_c\n              : ic.pf > 0 ? DC.tref(ic.load_mwe / MWE_RATED) : DC.tref(1);', { grp: 'K' }],
@@ -3259,6 +3262,28 @@ var ownedTotal = MUTATIONS.filter(function (m) {
   return t !== null && GROUPS.indexOf(t) >= 0;
 }).length;
 
+/* THE OWNERSHIP AUDIT IS PRINTED FIRST (#644) — it is a STATIC property of the MUTATIONS table
+ * and has nothing to do with whether the plant checks passed, so it must survive the clean-run
+ * refusal below. It used to print after the replay loop, which the refusal skips. */
+if (unowned.length) {
+  console.log('\n' + '!'.repeat(70));
+  unowned.forEach(function (u) { console.log('  UNOWNED MUTATION (' + u[0] + '): ' + u[1]); });
+  console.log('  A mutation no part owns NEVER REPLAYS — in this process or any other.');
+  console.log('!'.repeat(70));
+}
+
+/* ---- THE CLEAN-RUN GUARD (#644) -------------------------------------------------------------
+ * REFUSE TO SCORE if any check is red. `realReds` below counts ABSOLUTE reds in the mutant run
+ * with no clean-run subtraction, so while ANY check this part's replay can see is red, EVERY
+ * mutation in it reads as caught — the coverage instrument reporting full coverage exactly when
+ * the runner is not green. The full rationale, the measured case and the refuse-vs-subtract
+ * ruling are in mut_flags.requireCleanRun's header. This also SAVES the replay bill (321 / 327 /
+ * 830 s per part) in the one case where it could only buy a lie. */
+MUT.requireCleanRun(rec, '  ' + RUNNER_NAME + ': ' + pass + ' passed, ' + fail +
+  ' failed  (' + rec.length + ' checks)',
+  { hint: 'To measure a group that is GREEN while another is red, scope BOTH passes: ' +
+          '--groups=' + MY_GROUPS.join(',') + ' (or --grp=<one tag>). Forced non-zero, never a baseline.' });
+
 console.log('\ninjection self-test (' + mine.length + ' of ' + MUTATIONS.length +
   ' mutations — this part owns groups ' + MY_GROUPS.join(' ') + '):');
 var blind = 0;
@@ -3294,13 +3319,6 @@ mine.forEach(function (m) {
     ' s  grp ' + grpTag + '  ' + m[0].slice(0, 50));
 });
 loadAll();
-
-if (unowned.length) {
-  console.log('\n' + '!'.repeat(70));
-  unowned.forEach(function (u) { console.log('  UNOWNED MUTATION (' + u[0] + '): ' + u[1]); });
-  console.log('  A mutation no part owns NEVER REPLAYS — in this process or any other.');
-  console.log('!'.repeat(70));
-}
 
 console.log('\n' + '='.repeat(70));
 console.log('  injection self-test: ' + (mine.length - blind) + '/' + mine.length +

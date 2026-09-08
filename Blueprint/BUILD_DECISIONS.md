@@ -45,6 +45,57 @@ where the two differ or where judgment was exercised.
 
 ---
 
+## 2026-09-08-workbench-a — #644: a mutation self-test REFUSES to score on a red clean run; it does not subtract
+
+**The decision.** When any check is red in a runner's CLEAN pass, the mutation replay is **skipped
+entirely** and the runner exits 1, naming the red checks. It does **not** run the replay and
+subtract the clean run's reds. One implementation for every runner:
+`MUT.requireCleanRun()` in `test/mut_flags.js`.
+
+**Why there was a decision.** Every replay loop here scores a mutation by counting *absolute* reds
+in the mutant. A check already red in the clean run is red in every mutant too, so the count is
+non-zero for reasons that have nothing to do with the mutation, and **every** mutation reads as
+caught. Two honest repairs exist; they are not equivalent.
+
+**Rejected — subtract the clean run by name.** It scores more mutations, and on paper it is the
+more informative instrument. Two reasons it loses:
+
+1. **Overlap stays ambiguous.** A mutation whose only reds are checks that were *already* red has
+   demonstrated nothing, and subtraction has to invent a verdict for it. Calling it blind is a
+   false alarm; calling it caught is the defect again.
+2. **It needs an attribution assumption that nothing enforces.** `run_pwr2_engine` and
+   `run_pwr2_shell` scope a replay to one group (`grp('X')`), so subtraction must assume every
+   check the clean run recorded is attributable to the group whose replay could see it. A single
+   `ck()` written *outside* every `grp()` block breaks that silently — it would run in every
+   replay, and the gate would go on printing green. That is the same class of hole as the one
+   being fixed, one level down, and nothing in the tree would catch it.
+
+Refusing needs no assumption about attribution, about overlap, or about what a group contains.
+
+**And nothing is lost.** The objection to refusing is that you cannot measure coverage while
+iterating. You can: `--grp=<tag>` and `--groups=<tags>` scope the **clean pass as well as** the
+replay (`run_pwr2_engine.js:127-135`), so a group that is green is measurable while another is
+red — and `mut_flags` forces any such run non-zero, so it can never be recorded as a baseline.
+Refusing also *saves* the replay bill (321 / 327 / 830 s across the three engine parts) in the one
+case where paying it could only buy a lie.
+
+**Proven by injection, not by argument** (HR10, and doubled here because this is the instrument
+that enforces HR10). On one tree, with the historical no-op mutation restored — `DC.tref(0)` =
+286.110 °C (547.00 °F) against `W.T_sat(7.03 MPa)` = 286.113 °C (547.00 °F), 0.003 °C (0.005 °F)
+apart: the **pre-fix** file with one unrelated check reddened printed
+`caught … 1 checks red` / `1/1 mutations caught, no blind spots`; the guarded file on the same red
+tree printed `MUTATION SELF-TEST SKIPPED -- 1 check(s) failed in the CLEAN run`; on a green tree
+the same mutation printed `BLIND TO …`, and the shipped `DC.tref(1)` form still printed `caught`.
+
+**Scope.** Eight runners had no guard (`run_pwr2_engine` + `_b`/`_c`, `run_pwr2_shell`,
+`run_pwr2_pressurizer`, `run_pwr2_board`, `run_pwr2_instruments`, `run_pwr2_dumpctl`,
+`run_pwr2_lossofload`, `run_pwr2_roundtrip`); twenty-two already had `run_pwr2_loadfollow`'s
+hand-written form. The twenty-two are **left alone** — they are already honest, and converting
+them would be churn against a live merge queue. The new helper is where a thirty-first runner
+should get it.
+
+---
+
 ## 2026-09-05-develop-e — #641: a checklist step the plant has moved past is OVERTAKEN, not a soft lock
 
 **DECIDED (mechanism)** *(my call, 2026-09-05, on the owner's playtest report "mode 3>1 checklist

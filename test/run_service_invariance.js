@@ -411,6 +411,17 @@ var MUTATIONS = [
  * named gap creates is a fact about the gap, and it must be named rather than scored. */
 var MUTATIONS_BLOCKED = [];
 
+/* ---- THE CLEAN-RUN GUARD (#644) -------------------------------------------------------------
+ * REFUSE TO SCORE on a red clean run. The replay below counts ABSOLUTE non-xfail reds in the
+ * mutant, so an already-red check is red in every mutant too and EVERY mutation reads as caught —
+ * the coverage instrument reporting full coverage exactly when the runner is not green. The xfails
+ * are a side MAP here rather than a `verdict` field, so they are filtered out on the way in: a
+ * KNOWN gap must not refuse the scoring, only an unexpected red. Ruling and the measured case:
+ * mut_flags.requireCleanRun's header. */
+MUT.requireCleanRun(rec.filter(function (r) { return !r.ok && !XFAIL[r.id]; }),
+  '  run_service_invariance: ' + nPass + ' passed, ' + nXfail + ' xfail, ' + nFail +
+  ' failed, ' + nXpass + ' unexpected-pass  (' + rec.length + ' checks)');
+
 console.log('\n' + '='.repeat(70));
 console.log('  INJECTION SELF-TEST — every mutation MUST redden a check that is not an xfail');
 console.log('='.repeat(70));
