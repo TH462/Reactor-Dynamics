@@ -50,6 +50,24 @@ var DOC = { safety_pop_psig: 1085.0, dump_frac: 0.28, safety_flow_frac: 0.84, bl
             stage1_lbhr: 797689.0, stage2_lbhr: 3 * 837600.0,
             /* §10.3.2.4's own total, for BOTH steam lines */
             bank_total_lbhr: 6.58e6,
+            /* (#643) THE TWO DENOMINATORS THAT SAY WHAT `safety_flow_frac` IS AND IS NOT.
+             * Retyped independently of the engine, like everything else in this block.
+             *   UFSAR ch15 Table 15.0-1 note b, verbatim: "If a high steam pressure is more
+             *     limiting for analysis purposes, a greater steam pressure of 855 psia, steam
+             *     temperature of 525.9F, and steam flow of 7.92 x 106 lb/hr total should be
+             *     assumed. This envelopes the possibility that the steam generator could
+             *     perform better than expected." — Ginna's POST-UPRATE (1775 MWt) flow, and an
+             *     envelope of it. This is the denominator 0.84 came from.
+             *   UFSAR ch10 equipment table, MSIV row, verbatim: "Flow design capacity, lb/hr
+             *     3.29 x 106 at 770 psia" — ONE steam line's design flow. Twice it is
+             *     §10.3.2.4's own 6.58e6 bank total, which that section calls "equal to the
+             *     full load steam flow for the original 1520 MWt licensed power level". This
+             *     is the denominator the DESIGN BASIS uses. */
+            ginna_uprate_total_lbhr: 7.92e6,
+            ginna_design_line_lbhr:  3.29e6,
+            ginna_mwt: 1520.0,             /* §10.3.2.4's "original 1520 MWt licensed power" */
+            plant_mwt: 300.0,              /* this plant's rated thermal power (D4 §21.2) */
+            lbhr_per_kgs: 3600 * 2.2046226,
             /* THE QUOTED-AT PRESSURES (#633), from the SAME ch10 equipment table, verbatim:
              *   "Atmospheric steam dump valves ... Capacity (each), lb/hr  329,000 at 1005 psig
              *    (normal)"
@@ -111,21 +129,63 @@ function runSuite(R, rec, quiet) {
       'a default of lifted would make every probe that omits it relieve a plant nobody overpressured');
 
   /* ---- SOURCED CONSTANTS ------------------------------------------------------------------ */
-  head('SOURCED  [Ginna, this plant\'s own anchor -- nothing needed re-anchoring]');
+  head('SOURCED  [Ginna, this plant\'s own anchor -- except the safety SCALE, see #643 below]');
   ck('the safety pop setpoint matches the source', R.RELIEF.safety_pop_psig, DOC.safety_pop_psig,
      1e-12, 'psig');
   ck('...and its MPa form is DERIVED from the psig figure, not typed beside it',
      R.RELIEF.safety_pop_mpa, (DOC.safety_pop_psig + 14.7) / R.PSI_PER_MPA, 1e-12, 'MPa');
   ck('the dump capacity matches the source', R.RELIEF.dump_capacity_frac, DOC.dump_frac,
      1e-12, 'frac');
-  ck('the safety full-lift capacity matches the source', R.RELIEF.safety_flow_frac,
-     DOC.safety_flow_frac, 1e-12, 'frac');
+  ck('the safety full-lift SCALE is the one this plant ships (see #643 PROVENANCE below)',
+     R.RELIEF.safety_flow_frac, DOC.safety_flow_frac, 1e-12, 'frac');
   ck('the blowdown fraction is the derived valve-class figure', R.RELIEF.safety_blowdown,
      DOC.blowdown, 1e-12, '');
   ckT('the pop setpoint is ABOVE this plant\'s no-load secondary pressure',
       R.RELIEF.safety_pop_mpa > 7.03,
       R.RELIEF.safety_pop_mpa.toFixed(3) + ' MPa against Ginna no-load 7.03 — a safety that lifted ' +
       'below no-load would be open at every hot shutdown');
+
+  /* ---- #643 PROVENANCE --------------------------------------------------------------------
+   * `safety_flow_frac` wore a [sourced] marker until 2026-09-08 and NO DOCUMENT CARRIES IT:
+   * `node tools/find_source.js '0\.84|84 ?%'` returns 3 hits across 39 documents in 3 lanes,
+   * all digits inside unrelated tables. The check that used to stand here was called "the
+   * safety full-lift capacity matches the source" and compared the engine's 0.84 against a
+   * 0.84 retyped in DOC — the number agreeing with itself. It could never name WHICH source,
+   * and it is why #542's evidence pass verdicted the ARRANGEMENT and inherited the FIGURE:
+   * the #380 template-placeholder trap, second instance.
+   *
+   * These two make both halves of the engine comment FALSIFIABLE — what the number is, and
+   * what the source's own rule gives instead.
+   *
+   * ⚠ THE SECOND CHECK REDDENS THE DAY THE CONSTANT IS CORRECTED, AND THAT IS ITS JOB. It
+   * pins a KNOWN, MEASURED GAP, the way a strict xfail does. Whoever moves the constant
+   * rewrites these two checks AND the comment above the constant in the same change — which
+   * is the only arrangement that stops a fourth pass inheriting the figure again. */
+  head('#643 PROVENANCE  [what the number IS, and what the source says it is NOT]');
+  var lineBank = DOC.stage1_lbhr + DOC.stage2_lbhr;         /* 3,310,489 lb/hr, one steam line */
+  ck('the shipped scale is GINNA POST-UPRATE arithmetic, not a design-basis figure',
+     R.RELIEF.safety_flow_frac, lineBank / (DOC.ginna_uprate_total_lbhr / 2), 0.005, 'frac');
+  ckT("...and the SOURCE'S OWN sizing rule gives ~100 % of design flow, which this plant does " +
+      'NOT carry — the tracked gap (#643)', (function () {
+        /* ROUTE 1 — one line's bank over one line's DESIGN flow (ch10's MSIV row). */
+        var routeDesign = lineBank / DOC.ginna_design_line_lbhr;
+        /* ROUTE 2 — the whole bank power-scaled to this plant, over this plant's own rated
+         * steam flow. INDEPENDENT of route 1: it uses this plant's Layer-0 enthalpy rise and
+         * the power ratio, not Ginna's stated flow at all. Two routes landing together is
+         * evidence; the whole-bank-over-6.58e6 route is NOT used here because 2 x 3.29e6 IS
+         * 6.58e6, so it would be route 1 wearing a different name. */
+        var routePower = 2 * lineBank * (DOC.plant_mwt / DOC.ginna_mwt) /
+                         (RATED * DOC.lbhr_per_kgs);
+        return Math.abs(routeDesign - routePower) < 0.01 &&
+               routeDesign > 1.0 && routeDesign < 1.02 &&
+               R.RELIEF.safety_flow_frac < routeDesign - 0.10;
+      })(),
+      'the design-flow route gives ' + (lineBank / DOC.ginna_design_line_lbhr).toFixed(4) +
+      ' and the power-scaled route ' +
+      (2 * lineBank * (DOC.plant_mwt / DOC.ginna_mwt) / (RATED * DOC.lbhr_per_kgs)).toFixed(4) +
+      ', against the shipped ' + R.RELIEF.safety_flow_frac.toFixed(4) +
+      ' — B 3.7.1: "limit the secondary system pressure to <= 110% of design pressure when ' +
+      'passing 100% of design steam flow"');
 
   /* ---- THE LATCH. The load-bearing check in this file. ------------------------------------- */
   head('THE LATCH  [a stateless valve chatters, and chattering looks like noisy physics]');

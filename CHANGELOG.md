@@ -30,6 +30,35 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
 
 ## [Unreleased]
 
+### Fixed (the steam safety bank's capacity was never sourced, and the manual said it was — #643)
+
+`engines/pwr2/pwr2_relief.js`'s `safety_flow_frac: 0.84` — the main steam safety valve bank's
+full-lift capacity as a fraction of rated steam flow — carried a `[sourced]` marker. **No document
+in the corpus contains it** (`tools/find_source.js`, 3 incidental hits across 39 documents in 3
+lanes). It was inherited by reference from the retired engine (`pwr_config.js`
+`sg_safety_flow_max`, #418): Ginna's bank over Ginna's steam flow **after its 1775 MWt uprate**,
+using a chapter-15 figure the source itself calls an envelope. The per-valve **shares** are
+genuinely sourced and are unaffected.
+
+- **The source states its own design basis and it is ~100 %.** Ginna UFSAR ch10 §10.3.2.4: the
+  bank's capacity *"is equal to the full load steam flow for the original 1520 MWt licensed power
+  level"*, and *"these safety valves do not relief 100% steam capacity at 1775 MWt"* — an uprate
+  artifact, which this plant is not in. TS Bases B 3.7.1 sizes the bank to pass *"100% of design
+  steam flow"*; the Westinghouse fleet reference is 109 %. Three consistent routes give **1.0025 –
+  1.0062** for this single-loop plant. #643's own alternative reading of 50.1 % is an off-by-two.
+- **Measured, so the open question has a size** (30 min, condenser dumps shut and the atmospheric
+  dump valve blocked, so the bank is the only path). Peak steam-generator pressure on a turbine
+  trip from full power: **1113.6 / 1105.3 / 1102.9 psig (7.78 / 7.72 / 7.70 MPa)** at 0.50 / 0.84 /
+  1.0062. **The capacity is not the overpressure response** — after the trip the heat source is
+  decay heat and even half a bank passes ten times what it must. At **0.50** the bottled-generator
+  fixture peaks at **1197.7 psig (8.36 MPa)**, above B 3.7.1's **1193.5 psig (8.23 MPa)** ceiling,
+  which is the plant's own vote against the low reading.
+- **The constant is unchanged pending a ruling**; the marker, the derivation and the measured gap
+  are now written at it, and `run_pwr2_relief` gains two checks that pin both halves (the second
+  reddens the day the constant is corrected, by design). `Manuals/09` §3.0's *Open SG safety* row
+  no longer calls the figure sourced, and gains the **staggered bank** the plant has modelled since
+  #542 in place of a *"single modeled valve"* description that predates it.
+
 ### Fixed (the manuals taught a steam-dump ordering the plant inverted — #646)
 
 `Manuals/09` §3.0 and `Manuals/12` §8.3 both explained that Tavg mode *"cannot serve a heatup"*

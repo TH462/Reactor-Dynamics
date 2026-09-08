@@ -63,6 +63,144 @@ code 0. Only file touched: `test/run_service_invariance.js`.
 
 ---
 
+## Session log — 2026-09-08-workbench-c (#643 — the safety bank's scale is Ginna's POST-UPRATE ratio; the source states its own design basis and it is ~100 %, and the plant barely notices which)
+
+**The finding, and the marker is the defect.** `engines/pwr2/pwr2_relief.js`'s
+`safety_flow_frac: 0.84` — the main steam safety valve bank's full-lift capacity as a fraction
+of rated steam flow — wore a `[sourced]` marker. **No document carries it:**
+`node tools/find_source.js '0\.84|84 ?%'` returns **3 hits across 39 documents in 3 lanes**, all
+digits inside unrelated tables (a decay-heat coefficient, a WCOBRA row, a metric conversion).
+
+**Where it came from.** `git log -S` gives two commits, neither of which derived it: it was
+inherited by reference from the RETIRED engine — `engines/pwr/pwr_config.js`
+`sg_safety_flow_max`, #418 wave A3 (2026-08-07), whose own comment states the arithmetic:
+*"3.31e6 lbm/hr per SG ... against ~3.95e6 lb/hr rated steam flow = 0.84x rated"*. Reproduced:
+one steam line's bank, 797,689 + 3 x 837,600 = **3,310,489 lb/hr**, over **half of 7.92e6** =
+3.96e6, is **0.8360**. That denominator is Ginna UFSAR ch15 Table 15.0-1 **note b**, verbatim:
+*"a greater steam pressure of 855 psia, steam temperature of 525.9F, and steam flow of
+7.92 x 106 lb/hr total should be assumed. **This envelopes** the possibility that the steam
+generator could perform better than expected."* So 0.84 is Ginna's ratio at its **UPRATED
+1775 MWt**, against a flow the source itself calls an **envelope** — two conservatisms stacked
+in the denominator, both of which shrink the bank. **This is the "inherited by reference from
+the old plant's tables" trap (#534) with an evidence-pass marker on top.**
+
+**What the source says the bank is sized for — 100 % of design flow, in words, twice.**
+- Ginna UFSAR ch10 §10.3.2.4 (ML20339A040), verbatim: *"The minimum total relieving capacity is
+  6.58 x 106 lbm/hr which is **equal to the full load steam flow for the original 1520 MWt
+  licensed power level**. Although these safety valves **do not relief 100% steam capacity at
+  1775 MWt**, the UFSAR Chapter 15 analyses demonstrates that sufficient relief capacity is
+  available"* — the source states its own departure from 100 % **and names it an uprate
+  artifact**. This plant is at its design power, not 17 % above it.
+- Ginna TS Bases B 3.7.1 (ML20339A221), verbatim: *"The design basis for the MSSVs is to limit
+  the secondary system pressure to <= 110% of design pressure when passing **100% of design
+  steam flow**."*
+- The fleet reference agrees and is higher: WTSM §7.1.3.4 (ML11223A244), verbatim: *"The
+  combined capacity of the 20 safety valves is 16,467,380 lbm/hr, which is **109% of full-power
+  steam flow**."*
+
+**Three consistent routes for this single-loop plant, all ~1.00.**
+
+| route | arithmetic | result |
+|---|---|---|
+| one line's bank / one line's DESIGN flow — ch10 equipment table, MSIV row, *"Flow design capacity, lb/hr 3.29 x 106 at 770 psia"* | 3,310,489 / 3.29e6 | **1.0062** |
+| whole bank / §10.3.2.4's own stated total | 6,620,978 / 6.58e6 | **1.0062** |
+| whole bank power-scaled / this plant's own rated flow | 6,620,978 x 300/1520 = 1,306,772 lb/hr vs 1,303,570 | **1.0025** |
+
+The third is genuinely independent — it uses this plant's Layer-0 enthalpy rise and the power
+ratio, never Ginna's stated flow — and it lands 0.4 % from the first. **A fourth cross-check
+falls out of it:** our own 1826.5 kJ/kg rise applied to Ginna's 1520 MWt gives 6,605,000 lb/hr
+against Ginna's stated 6.58e6, **0.4 % apart**.
+
+**#643's own "50.1 %" reading is an OFF-BY-TWO.** It scales ONE of Ginna's two steam lines by
+the WHOLE-plant power ratio 300/1520, which sizes a line for 150 MWt; this plant's single line
+carries all 300. So **0.84 is not bracketed by two defensible readings — it is below every
+consistent one.** The issue's framing that the two "bracket it, which is the shape of a number
+chosen to sit between two readings" is withdrawn.
+
+**MEASURED consequences (HR12), three scales, DT 0.02 s, harness `inbox/643/measure.js`.**
+Both fixtures run with the condenser dumps SHUT and the ADV block valve CLOSED, so the bank is
+the only steam path out of the generator.
+
+| `safety_flow_frac` | bank at ref | turbine trip: 1st lift / peak / margin to 1193.5 psig / lifts / stage 2 / vented | bottled generator: peak / park |
+|---|---|---|---|
+| **0.50** | 82.12 kg/s | 10.46 s · **1113.6 psig (7.78 MPa)** · 79.9 psi · 4 · no · 20,116 lbm | **1197.7 psig (8.36 MPa)** · 1150.4 |
+| **0.84** (as built) | 137.97 kg/s | 10.46 s · **1105.3 psig (7.72 MPa)** · 88.2 psi · 5 · no · 19,890 lbm | **1160.0 psig (8.10 MPa)** · 1146.3 |
+| **1.0062** (sourced) | 165.27 kg/s | 10.46 s · **1102.9 psig (7.70 MPa)** · 90.6 psi · 4 · no · 20,216 lbm | **1155.1 psig (8.07 MPa)** · 1136.8 |
+
+**THE ISSUE'S PREMISE IS HALF WRONG AND THIS IS THE ENTRY'S POINT.** *"`safety_flow_frac` sets
+the entire overpressure response"* — it does not. Doubling the bank from 0.50 to 1.0062 moves
+the turbine-trip peak **10.7 psi (0.074 MPa)**, and the correction on the table (0.84 -> 1.0062)
+moves it **2.4 psi (0.017 MPa)**. First lift is identical at all three, because first lift is a
+setpoint, not a capacity. Stage 2 never lifts on a plain turbine trip at any scale. The reason
+is structural: after the trip the heat source is decay heat, and even **half** a bank passes ten
+times what it has to. **What the plant DOES vote on is the low end** — at 0.50 the bottled
+fixture peaks at **1197.7 psig, ABOVE B 3.7.1's 1193.5 psig ceiling** (110 % of the 1085 psig
+first-lift class). So the plant independently rejects the 50 % reading and is indifferent
+between 0.84 and 1.0062 to within 5 psi.
+
+**Committed: the provenance, not the constant.** The marker is now
+`[UNVERIFIED — #643]` with the whole derivation, the three routes, the two verbatim design-basis
+quotes and the measured table beside it; the file header no longer lists SAFETY FLOW as sourced.
+**The constant is UNCHANGED at 0.84** — +19.8 % is a design-basis re-derivation on a plant under
+a standing owner hold, and #643 carries the decision.
+
+**Two checks pin the two halves, and the old one could never have.** The check that stood there
+was named *"the safety full-lift capacity matches the source"* and compared the engine's 0.84
+against a **0.84 retyped in the gate's own `DOC` block** — the number agreeing with itself. It
+could not name which source, and there is none; that is precisely how #542's evidence pass
+verdicted the ARRANGEMENT and inherited the FIGURE (the #380 template-placeholder shape, second
+instance in this file). Replaced by a pair in `run_pwr2_relief`: **(1)** the shipped scale IS
+Ginna post-uprate arithmetic (0.84 vs 0.8360, tolerance 0.005 = the half-ulp of two decimals);
+**(2)** the source's own sizing rule gives ~100 %, from two independent routes required to agree
+within 0.01, and the shipped constant is materially below it. **(2) reddens the day the constant
+is corrected, and that is its job** — it pins a known measured gap the way a strict xfail does,
+so whoever moves the constant must rewrite the checks and the comment in the same change.
+
+**Injection proof (HR10, `inbox/643/inject.js`, four injections one at a time).**
+
+| injection | check 1 | check 2 |
+|---|---|---|
+| baseline | PASS | PASS |
+| engine constant -> 1.0062 (the correction) | **FAIL** | **FAIL** |
+| gate's uprate denominator -> the nominal 7.7e6, not ch15's envelope | **FAIL** | PASS |
+| gate's design-line flow -> the post-uprate 3.96e6 | PASS | **FAIL** |
+| gate's plant power -> 400 MWt (breaks the route-agreement arm) | PASS | **FAIL** |
+
+Each arm is independently live, and neither check is satisfiable by the other's evidence.
+
+**The false claim had reached the manual.** `Manuals/09` §3.0's *Open SG safety* row said *"the
+single modeled valve carries the **sourced** bank capacity (0.84x rated)"* — an unsourced number
+wearing the word `sourced` in player-facing copy, and `run_manual_setpoints` gates only the
+**pop pressure** in that row, so nothing could see it (the standing "nothing gates manual prose"
+trap). The row now says the figure is not sourced and names the ~100 % design basis. It also
+described a *"single modeled valve"*, which is the RETIRED engine — PWR2 has carried §10.3.2.4's
+**staggered bank** since #542 — so the row gains the bank. Revision Rev 19's pending row extended
+with item **(gg)**; stamped and repacked.
+
+**Trap for the next reader: `run_manual_rev`'s content canary parses `ch 10 §10.3.2.4` inside a
+revision row as a claim about the MANUAL's chapter 10 §10.3.2.4.** Citing an external document's
+section in that `<chapter> §<section>` shape reddens the gate with *"Rev 19 names 10 §10.3.2.4"*.
+Spell the external section out in words instead.
+
+**Gates.** `run_pwr2_relief` **73/73, 45/45 mutations** (baseline 71 — **+2, the new pair;
+`test/run_all.js` NOT edited by instruction, so the aggregate reports drift on this runner
+until the `BASELINES` entry is moved to `71passed`->`73passed 0failed 73checks`**);
+`run_pwr2_sg` 44/44 (27/27 mut); `run_pwr2_dumpctl` 25/25 (9/9 mut); `run_pwr2_engine` group A
+21/21 and group N 8/8, the Mode 4 code-safety check green and unmoved at **141.3823 kg/s**
+against its Napier-scaled 141.38; `run_manual_setpoints` 13/13; `run_manual_units` 0 failed;
+`run_manual_rev` 15/15; `run_hardrules` 499/499; `run_doc_budget` 4/4.
+
+**Two measured findings NOT filed here, for the orchestrator.** (1) `test/run_pwr2_engine.js`'s
+`safetyPeak()` comment says *"with the ADV isolated so it cannot mask them"* and then sets
+`e.advBlock = true`, which in `pwr2_relief` means the block valve is **OPEN**; the check is
+unaffected because it reads `sg_safety_kgs` only, but the comment states the opposite of the
+code. (2) `Manuals/09` §3.0's **Atmospheric dump (ADV)** row states *"capacity 10 % of rated
+steam flow"*, sourced to WTSM §7.1.3.3 — PWR2's ADV is `329,000 x 300/1520 = 8.18 kg/s` =
+**4.98 %** of this plant's 164.25 kg/s, and the Ginna TS Bases figure it is actually built from
+is *"approximately 4% of RTP"*. The row is calibrated to the retired engine.
+
+---
+
 ## Session log — 2026-09-08-workbench-b (#646 — two chapters taught an ordering #508 inverted, and it was #629's stated reason; the ride that re-measured it also found the check pair hollow)
 
 **The claim, and why it could not be fixed from arithmetic.** `Manuals/09` §3.0 and `Manuals/12`

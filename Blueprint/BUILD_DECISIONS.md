@@ -45,6 +45,48 @@ where the two differ or where judgment was exercised.
 
 ---
 
+## 2026-09-08-workbench-c — #643: the safety bank's scale is an UPRATE ARTIFACT wearing a `[sourced]` marker; the marker is fixed, the constant is not, and a check now pins the gap
+
+**The decision, and it is two decisions.** (1) `safety_flow_frac: 0.84` is re-marked
+**`[UNVERIFIED]`** with its real derivation written out; it is **not moved**. (2) The design
+basis this plant should use is established as **~100 % of rated steam flow**, sourced, and the
++19.8 % correction is put to the owner rather than taken.
+
+**Why 0.84 is not a design-basis figure.** It is Ginna's bank over Ginna's steam flow at the
+**uprated 1775 MWt**, against a chapter-15 figure the source calls an envelope: one line's
+3,310,489 lb/hr over half of 7.92e6 = **0.8360**. Inherited by reference from the retired engine
+(`pwr_config.js` `sg_safety_flow_max`, #418 wave A3) — the #534 pattern. Ginna UFSAR ch10
+§10.3.2.4 states the bank *"is equal to the full load steam flow for the original 1520 MWt
+licensed power level"* and that it *"do[es] not relief 100% steam capacity at 1775 MWt"*; TS
+Bases B 3.7.1 sizes it to pass *"100% of design steam flow"*; WTSM §7.1.3.4's fleet plant is
+109 %. Three routes give **1.0025–1.0062** for this single-loop plant at ITS design power.
+
+**Why it is not moved here, and why that is the conservative call rather than the timid one.**
+The correction is +19.8 %, at the boundary of the brief's stop condition, and it re-derives a
+design-basis constant on a plant under a standing owner hold. The cost of waiting is measured
+and small: **2.4 psi (0.017 MPa)** of peak steam-generator pressure on a turbine trip, with
+**88.2 psi** of margin to B 3.7.1's ceiling either way. The cost of taking it unreviewed is a
+silent design-basis change nobody ruled on.
+
+**What the measurement actually overturned.** #643 asserted that this constant *"sets the entire
+overpressure response"*. It does not: doubling the bank 0.50 -> 1.0062 moves the turbine-trip
+peak **10.7 psi**, first lift is 10.46 s at every scale (it is a setpoint, not a capacity), and
+stage 2 never lifts on a plain trip at any scale. After a trip the heat source is decay heat,
+which even half a bank over-serves tenfold. **The one place the plant does have an opinion is the
+low end**: at 0.50 the bottled-generator fixture peaks **1197.7 psig**, above the **1193.5 psig**
+ceiling. So the plant rejects the 50 % reading on its own and is indifferent across the rest.
+
+**The check design, and it is deliberately a red-in-waiting.** The old check compared the
+engine's 0.84 against a 0.84 retyped in the gate — the ECCS retyping discipline applied to a
+number with no document, which makes it a tautology, and it is how #542 verdicted the
+arrangement and inherited the figure (#380's shape). The replacement is a pair: what the number
+IS (post-uprate arithmetic) and what the source's rule GIVES (~100 %, from two routes required
+to agree). **The second reddens the moment the constant is corrected** — that is intended, the
+strict-xfail convention, and it forces the comment and the checks to move together. Proven by
+four one-at-a-time injections; each arm reddens alone.
+
+---
+
 ## 2026-09-08-workbench-b — #646: a re-anchor that made two lineups AGREE retired the checks reading their difference; the claim moves to the layer that owns it
 
 **The decision.** The heatup checklist's two Mode-3 checks (`adv_valve_pct < 1`,
