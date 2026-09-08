@@ -337,7 +337,9 @@
    * ⚠ A DECLARED DEPARTURE, and it is why this permissive PERMITS NOTHING on this plant. The
    * Bases' P-6 function is *"allows the manual block of the NIS Source Range, Neutron Flux
    * reactor trip by use of two defeat push buttons"* — a real plant has that lever. This one
-   * does not *(OWNER DIRECTIVE, #598 item 7)*: the source range de-energizes on flux alone at
+   * does not *(OWNER DIRECTIVE, 2026-09-01, #598 item 7: "The SR DET button is greyed out. I
+   * think we should remove this button and have the SOURCE RANGE disable itself
+   * automatically.")*: the source range de-energizes on flux alone at
    * SR_SECURE_CPS, `set_sr_detector` is REFUSED by the shell by name, and the board button was
    * deleted. That cue sits at IR 3.21e-9 A, 32x above P-6, so the handoff this plant performs is
    * NOT at P-6 and the manual must not say it is. What P-6 does do here is real and visible:

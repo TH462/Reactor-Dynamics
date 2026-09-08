@@ -45,6 +45,42 @@ where the two differ or where judgment was exercised.
 
 ---
 
+## 2026-09-08-workbench-g — #642: a `[sourced]` marker names a DOCUMENT, not a sentence — and a de-energization can hide a missing trip
+
+**⚠ THIS SUPERSEDES the source-strength paragraph in the `pwr2_kinetics` entry below (search
+"picked by a prototypicality test"), which cites P-6 at 5e-11 A.** The number is wrong there and
+the argument is not: re-measured at the corrected 1.0e-10 A, the prototypicality test still picks
+5.0e8 n/s, with **more** margin (hot standby is 6.2× under P-6 rather than 3.1×; P-6 comes in at
+**−171 pcm, bank 184/627**, against −355 pcm / 157). Left in place as record, annotated here.
+
+**The defect.** Three sites carried the P-6 permissive: `pwr2_true_state.js` at **5e-11 A** with a
+`[sourced]` marker and a verbatim quote, `Manuals/09` and `pwr_control.js` at **1e-10 A** with
+nothing. The marked one was wrong. Ginna Technical Specification Bases B 3.3.1 (ML20339A221)
+gives the setpoint six hundred lines below the sentence the engine quoted: *"actuated when any NIS
+intermediate range channel goes approximately one decade (1 E-10 amps) above the minimum channel
+reading"*. The 5E-11 A in the same passage is the source-range re-energize point on decreasing
+power — and the quoted sentence said so itself, *"< 5E-11 amps (below the P-6 setpoint)"*.
+
+**The decision: P-6 lives in `pwr2_protection`, once, and `pwr_control.js` keeps its own copy.**
+The alternative — the control layer reading `RD.pwr2.protection` — is a cross-plant dependency
+(HR3) that would break every pwr-only harness, which never loads pwr2. Two plants, one source,
+cited at both, and the control layer's three rows plus its operator message now derive from a
+single `P6_AMPS`. Both `P6` and `P9` are exported because a constant a gate cannot point at is a
+manual row nothing can contradict — that is what `narrative: true` was standing in for.
+
+**Two rows declared NOT MODELLED, both proved by injection.** The control layer's P-6 block is
+**dead for PWR2** (`interlocks: []`, `actuations: []`, and the shell refuses `set_sr_detector` by
+name — no operator lever, #598 item 7): mutating its setpoint seven decades changed nothing across
+six samples spanning both values, while the same mutation on the retired engine flips the command
+accepted → blocked. And the **source-range high-flux reactor trip does not exist here**. That one
+was invisible because the de-energization at 1e5 cps guarantees the channel can never reach a
+setpoint above it; removing the hiding place (SR_SECURE_CPS → 1e12) the plant publishes
+**1.285e11 cps at 50 % power** and does not scram. **The general form is worth keeping: an absent
+protection is undetectable wherever another mechanism caps the signal below its setpoint. To prove
+a trip exists, remove the cap — do not step the plant harder.**
+
+---
+
 ## 2026-09-08-workbench-f — #643 RULED: the bank is sized to its sourced design basis, and the constant is a DIVISION rather than a digit
 
 **The ruling** *(OWNER RULING, 2026-09-08: "A — 1.0062 × rated, the sourced design basis")* —
