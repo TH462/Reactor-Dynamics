@@ -70,11 +70,41 @@ function runSuite(RD, rec, quiet) {
   head('SOURCED CONSTANTS  [independent literals]');
   ck('the loss-of-load deadband is 5 degF', DC.DUMP.deadband_c * 1.8, 5, 1e-9, 'degF');
   ck('loss-of-load full output at 16.4 degF', DC.DUMP.lol_full_c * 1.8, 16.4, 1e-9, 'degF');
-  ck('turbine-trip full output at 27.7 degF, no deadband', DC.DUMP.tt_full_c * 1.8, 27.7, 1e-9, 'degF');
+  /* ⚠ THE TURBINE-TRIP BAND IS NO LONGER THE SOURCE'S 27.7 degF *(OWNER RULING, 2026-09-06:
+   * "A" — keep the full-power knot at this plant's own 580.1 degF and re-derive the dependents
+   * from its span)*, #647. In WAT 05 the band and the Tavg program are ONE object — that plant's
+   * program runs 557 - 584.7 degF and its turbine-trip controller reaches full output at
+   * 584.7 - 557 = 27.7 — so importing 27.7 alone imported the WAT plant's SPAN as if it were a
+   * gain. This plant's span is 547 -> 580.1 degF. The three checks below are the decision, in
+   * the order it was made: the full-power knot (a bare literal, and it must stay one — it is
+   * this plant's #479 heat-balance design point, not a citation), the IDENTITY that makes the
+   * band that span, and the number that falls out. */
+  ck('the full-power Tavg knot is this plant\'s own design point, 580.1 degF (#479 heat balance)',
+     DC.DUMP.tavg_full_c, 304.5, 1e-9, 'degC');
+  ckT('the turbine-trip band IS this plant\'s program span, DERIVED — not a typed copy of it ' +
+      '(the structure WAT 05 itself uses)',
+      DC.DUMP.tt_full_c === DC.DUMP.tavg_full_c - DC.DUMP.tavg_noload_c,
+      'band ' + (DC.DUMP.tt_full_c * 1.8).toFixed(3) + ' degF vs span ' +
+      ((DC.DUMP.tavg_full_c - DC.DUMP.tavg_noload_c) * 1.8).toFixed(3) + ' degF');
+  ck('...so full output arrives AT full-power Tavg, 33.10 degF above no load',
+     DC.DUMP.tt_full_c * 1.8, 33.102, 1e-9, 'degF');
   ck('C-7 ramp threshold is 5 %/min', DC.DUMP.c7_ramp_frac_per_min, 0.05, 0, '-');
   ck('C-7 step threshold is 10 %', DC.DUMP.c7_step_frac, 0.10, 0, '-');
-  ck('the no-load Tavg is 557 degF -- the sources\' own number AND the HZP anchor',
-     DC.DUMP.tavg_noload_c, 291.67, 1e-9, 'degC');
+  /* ⚠ THIS CHECK IS THE DECISION, WHICH IS WHY IT IS A BARE LITERAL AND MUST STAY ONE. It used
+   * to read 291.67 degC (557 degF), the WTSM/WAT 4-loop plant's figure. RE-ANCHORED to GINNA's
+   * 547 degF *(OWNER RULING, 2026-09-05: "547 °F — re-anchor to Ginna")*, #508/#634 — Ginna
+   * UFSAR ch15 (ML20339A101) Table 15.0-3 note d: "All analyses assumed a programmed no-load
+   * TAVG of 547F." The module header carries the measurements the ruling was made on. */
+  ck('the no-load Tavg is Ginna\'s PROGRAMMED 547 degF (ML20339A101 Tbl 15.0-3 note d)',
+     DC.DUMP.tavg_noload_c, 286.11, 1e-9, 'degC');
+  /* ...AND IT IS THE PLANT'S OWN NO-LOAD STEAM SIDE, which is the defect #508 fixed: every
+   * no-load initial condition boots at Tsat(1005 psig) and the program used to start 10.01 degF
+   * above it, leaving BOTH Tavg-mode controllers dead at Hot Standby. Asserting the constant
+   * alone cannot see that; asserting the AGREEMENT can. Band 0.2 degC, not equality: 547 degF
+   * is a rounded programmed value and Tsat is solved. */
+  ck('...and it AGREES with the no-load steam side the engine boots every no-load IC at',
+     DC.DUMP.tavg_noload_c,
+     RD.water.T_sat(DC.createDumpCtl({}).pressure_setpoint_mpa), 0.2, 'degC');
   /* THE DERIVED LAG: 0.10 step / 120 s = exactly the 5 %/min ramp threshold, so the two sourced
    * criteria stay DISTINCT. A shorter lag reads a clean step as a ramp (measured: 30 s read a
    * 10 % step as 20 %/min and armed on the first dispatch move). */
@@ -84,7 +114,13 @@ function runSuite(RD, rec, quiet) {
       DC.C7DET.rate_tau_s + ' s -- derived from the thresholds\' mutual consistency, not chosen');
 
   head('THE TREF PROGRAM  [turbine load -> desired Tavg, the plant\'s own span]');
-  ck('Tref at zero load is the no-load Tavg', DC.tref(0), 291.67, 1e-12, 'degC');
+  /* ⚠ RE-POINTED AT THE CONSTANT, NOT RE-BANDED (#508, 2026-09-05). This read `291.67` — a
+   * SECOND copy of the anchor, in the check that exists to say the program STARTS at the anchor.
+   * The claim was never stale; only the duplicate literal was, and it went red on the re-anchor
+   * for a reason that had nothing to do with what it asserts. Reading DUMP.tavg_noload_c makes
+   * the check say what its name says and makes it impossible to go stale again; the LITERAL
+   * lives once, in the check above, which is where the decision belongs. */
+  ck('Tref at zero load is the no-load Tavg', DC.tref(0), DC.DUMP.tavg_noload_c, 1e-12, 'degC');
   ck('Tref at full load is the design Tavg', DC.tref(1), 304.5, 1e-12, 'degC');
   ckT('...and clamps beyond both ends', DC.tref(-0.2) === DC.tref(0) && DC.tref(1.3) === DC.tref(1), '');
 
@@ -140,8 +176,18 @@ function runSuite(RD, rec, quiet) {
         turbine_tripped: false, condenser_available: true }).controller_output === 0, '');
   /* load_frac 0.8, not 0: at zero load Tref IS the no-load Tavg and a controller wired to the
    * wrong reference would read identically. The lagging-impulse instant is where they differ. */
+  /* ⚠ THE FIXTURE WAS BUILT AT THE LITERAL ANCHOR — `291.67 + 27.7/2/1.8` — so it was standing
+   * ON the very constant it was probing (#508, 2026-09-05). Re-anchored to 547 degF the fixture
+   * stayed at the old temperature while the controller's zero moved, and the check read a demand
+   * of 0.861 against an expected 0.5 and looked like a controller defect. It was not: the
+   * controller is exactly right and the FIXTURE moved out from under it. This is the
+   * fixture-built-at-an-envelope-wall trap (#524's P_MIN, #588's blowdown ulp). Re-expressed
+   * RELATIVE to the constant, the check asserts what it always meant — half the sourced 27.7 degF
+   * band above the controller's own zero gives half demand — and it cannot be moved by an anchor
+   * change again. Verified BOTH ways: 0.500 at 291.67 and 0.500 at 286.11. */
   var dcB = DC.createDumpCtl({});
-  var tt = DC.stepDumpCtl(dcB, DT, { tavg_c: 291.67 + 27.7 / 2 / 1.8, load_frac: 0.8,
+  var tt = DC.stepDumpCtl(dcB, DT, {
+    tavg_c: DC.DUMP.tavg_noload_c + DC.DUMP.tt_full_c / 2, load_frac: 0.8,
     turbine_tripped: true, condenser_available: true });
   ckT('C-8 auto-selects the turbine-trip controller AND arms -- half of 27.7 degF, half demand',
       tt.controller === 'turbine_trip' && tt.armed === true &&
@@ -194,6 +240,12 @@ var MUTATIONS = [
   ['the rate unit\'s lag collapses to 30 s (a clean step reads as a 20 %/min ramp)',
    'rate_tau_s: 120',
    'rate_tau_s: 30'],
+  /* #647: the ruling is that the band is DERIVED. A typed copy is the failure mode it was
+   * ruled against — it is how the constant went out of step with the program in the first
+   * place — so the injection puts the old literal back. */
+  ['the turbine-trip band is TYPED again (the WAT plant\'s 27.7 degF span as a gain)',
+   'DUMP.tt_full_c = DUMP.tavg_full_c - DUMP.tavg_noload_c;',
+   'DUMP.tt_full_c = 27.7 / 1.8;'],
   ['the turbine-trip controller references Tref instead of the no-load Tavg',
    'demand = clip((tavg - DUMP.tavg_noload_c) / DUMP.tt_full_c, 0, 1);',
    'demand = clip((tavg - tref(load)) / DUMP.tt_full_c, 0, 1);'],

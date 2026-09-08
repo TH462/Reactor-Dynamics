@@ -295,6 +295,497 @@ you want.
 
 ---
 
+## Session log — 2026-09-06-workbench-c (#650 — both ΔT trips normalised against a rated split the plant never had, sourced to nothing, and it survived by cancelling against the error #647 removed)
+
+**THE EVIDENCE PASS SETTLED IT BEFORE ANY CODE WAS READ, AND IT DID NOT SAY WHAT THE ISSUE
+EXPECTED.** `DESIGN.dt_c` was **31.1 °C (55.98 °F)**, annotated *"the full-power loop split
+(606 − 550 degF = 56 degF)"*, and it divides `delta_t_frac` — the only quantity the
+overtemperature and overpower ΔT trips compare against. The option set was **A** (the trips
+normalise against this plant's own rated split) or **B** (move the loop FLOW so the plant makes
+56 °F, right only if 56 °F is sourced and the flow is not). **B is dead three ways over:**
+
+- **`node tools/find_source.js '606'` returns six hits across all three lanes and not one is a
+  temperature** — two RHR throttle valves in WTSM 5.1, decay-heat coefficient digits, an
+  elevation in a ROSA geometry table.
+- **Ginna, this plant's anchor, is not it.** UFSAR ch15 Table 15.0-1 (ML20339A101), the uprate
+  PCWG parameters: vessel outlet **601.0 / 611.8 °F**, vessel inlet **528.3 / 540.2 °F**, vessel
+  average **564.6 / 576.0 °F** for the low- and high-Tavg columns. **A rated split of 72.7 and
+  71.6 °F (40.4 and 39.8 °C)** — not 56, and not close. *(The OCR'd table's labels are offset
+  from its values by one row; the reading above is the one where **both** columns reproduce their
+  own stated vessel average to 0.05 °F, and where SG outlet sits 0.3 °F below vessel inlet, which
+  is the pump heat at 0.4 % of 1811 MWt. Two independent arithmetic checks on the same reading.)*
+- **The comment did not reproduce its own constant.** `tavg_c ± 31.1/2` is **608.1 / 552.1 °F**.
+  606/550 described neither the number it annotated nor the plant.
+
+**WHAT *IS* SOURCED IS THE DEFINITION, AND IT IS OPTION A VERBATIM.** USNRC HRTD 12.2
+(ML11223A301) §12.2.3, and NUREG-1431 Rev 4 Table 3.3.1-1 Note 1 (ML12100A222), independently:
+*"ΔT₀ = indicated ΔT at rated thermal power"* / *"ΔT₀ is the indicated ΔT at RTP, °F."* The
+normaliser is **what the plant reads**, not a design figure — which is also why K1 is a
+*"manually adjusted preset bias"* on the real machine. So the sourced answer to "which of the
+two is authoritative" is neither the split nor the flow: it is **the plant's own reading**.
+
+**AND THE FLOW WAS NEVER THE 56 °F's PARTNER.** `PUMP.mdot_rated` = 1630 kg/s is marked
+*[derived] from the energy balance*, and `PWR2_DESIGN.md` §1 gives the derivation: *"the plant's
+own ruled identity (300 MWt, **321/288 °C** at 15.41 MPa) gives Δh = 184.1 kJ/kg … → ṁ = 1630
+kg/s"*. **321 − 288 = 33 °C = 59.4 °F.** The retired engine says the same thing in a constant:
+`pwr_config.js:410`, `delta_T_rated: 33.0`. The build has held **two different rated splits since
+the day PWR2's flow was derived**, and 31.1 was the one with no provenance.
+
+### The decomposition — one factor carries all of it, and it is arithmetic, not physics
+
+Settled `hot_full_power`, DT 0.02 s, 3,000 s; settling proved rather than assumed (drift over the
+last 1,500 s: ΔT **−8.6e-5 °C**, flow +0.076 kg/s).
+
+| | value | |
+|---|---|---|
+| constructed split (`DESIGN.dt_c`) | **31.100 °C** (55.98 °F) | |
+| settled split | **32.655 °C** (58.76 °F) | |
+| ratio | **1.04999** | every ΔT comparison starts 5.0 % into its band |
+
+`ΔT = Q / (ṁ·cp)`. Taking the construction's own implied numbers:
+
+| factor | value | what it is |
+|---|---|---|
+| Q: construction carries 282.46 MWt, plant carries 298.69 | **1.05746** | |
+| 1/ṁ: `mdot_rated` 1630 vs settled 1641.15 | 0.99321 | |
+| 1/cp: 5.5720 vs 5.5735 kJ/kg·K | 0.99973 | |
+| **product** | **1.04999** | exact |
+
+**The Q factor is the whole of it, and it decomposes further into one error and two real terms.**
+Solve for the split that carries a full 300 MWt at `mdot_rated` through `tavg_c`/`P_mpa`:
+Δh = 300000/1630 = **184.049 kJ/kg** → **dt = 32.9933 °C (59.39 °F)**, which is the 33 °C the flow
+was derived from, to 0.02 %. So:
+
+| | | |
+|---|---|---|
+| **construction inconsistency — 31.1 against its own 32.993** | **1.0609** | **the defect** |
+| RCP heat: the core makes 99.56 % of 300 MWt, the pumps 1.38 MWt at the `rcp` node | 0.9956 | real |
+| settled flow 1637.7 kg/s against `mdot_rated` 1630 | 0.9932 | real |
+| cp curvature over the wider interval | 1.0010 | real |
+| product | **1.0500** | |
+
+**At 31.1 the design point was 5.75 % short of its own nameplate** — it built legs that carry
+282.5 MWt through a plant rated 300. The ring closes exactly at the settle and confirms the two
+real terms: core 1457.34 − 1275.33 = 182.01 kJ/kg × 1641.15 = **298.69 MW** (= 99.56 % × 300 ✓);
+SG removes **299.97 MW**; the `rcp` node adds 1275.40 − 1274.56 = 0.84 kJ/kg = **1.379 MW**.
+
+**Provenance of the 31.1, since the question "how did this happen" has a clean answer.** Typed
+2026-08-19 (`15dfb48d`) as a one-off measurement of the plant as it then stood — the commit says
+so: *"DT0_C 31.1 °C, [derived] from the §43 design point"*. **Two days later #502's `designHmap`
+made it a CONSTRUCTION input**, closing a loop on a stale measurement, and #573/#574/#583/#586/#647
+have all moved the plant underneath it since.
+
+### The fix, and why it is a fixed point rather than a number
+
+**`dt_c` = 32.71 °C (58.88 °F)** — the plant's own settled split. Both consumers want that value
+and the source agrees with both: the trips because ΔT₀ *is* the indicated split at rated, and
+`designHmap` because its whole job since #502 is to open the initial condition already settled.
+
+It cannot be read off once, because `dt_c` feeds the construction (`designHmap`) **and** the
+pump's rated-density reference (`rhoRated`, which takes `tavg_c − dt_c/2` as the design cold leg),
+so a candidate has to be booted and ridden. Converged by measurement:
+
+| `dt_c` in | settled | frac | settled flow |
+|---|---|---|---|
+| 31.1000 | 32.6547 | 1.04999 | 1641.15 |
+| 32.9933 (the self-consistent design point) | 32.7196 | 0.99171 | 1637.14 |
+| 32.7200 | 32.7104 | 0.99971 | 1637.72 |
+| **32.7100** | **32.7101** | **1.00000** | 1637.74 |
+
+The residual **0.86 %** between the design intent (32.993) and where the plant lands is the two
+real terms above, and it is why 32.993 was **measured and rejected**: it leaves an 0.83 % head
+start, the same defect one order smaller.
+
+### Blast radius — small, and toward where the plant already sat
+
+The construction moved 5 % toward the settle, so settled states barely move. Every initial
+condition, engine-direct, 600 s (US first):
+
+| IC | Tavg °F | Thot °F | Tcold °F | split °F | PZR % | steam psia | pzr psia |
+|---|---|---|---|---|---|---|---|
+| `hot_full_power` | 580.255 → **580.370** | 609.633 → **609.801** | 550.876 → **550.939** | 58.757 → **58.862** | 61.64 → **61.44** | 826.12 → **826.94** | 2244.4 → **2245.4** |
+| `50_percent` | 563.746 → **563.840** | 579.110 → **579.234** | 548.381 → **548.446** | 30.729 → **30.788** | 43.74 → **43.76** | 919.88 → **920.62** | 2241.8 → **2241.9** |
+| `low_power` | 550.817 → **550.299** | 553.885 → **553.363** | 547.748 → **547.235** | 6.137 → **6.128** | 29.50 → **28.84** | 1002.85 → **998.59** | 2248.8 → **2240.0** |
+| `hot_zero_power` / `hot_shutdown` / `cold_shutdown` | **unmoved to 3 dp on every field** | | | | | | |
+
+*(`low_power` moves most because of the second change below, not because of `dt_c`.)*
+
+**The margins GREW, which is the head start coming off:**
+
+| | before | after | in °F of loop split |
+|---|---|---|---|
+| OTΔT setpoint / reading / margin | 1.29440 / 1.04685 / **0.24755** | 1.29320 / 0.99710 / **0.29610** | 13.86 → **17.43 °F** |
+| OPΔT setpoint / reading / margin | 1.15000 / 1.04685 / **0.10315** | 1.15000 / 0.99710 / **0.15290** | 5.77 → **9.00 °F** |
+
+**The OPΔT number is the one to notice: the healthy rated plant was standing 10.3 % from a flat
+1.15 trip and half of that gap was the defect.**
+
+**The dilution** (`run_pwr2_engine` §7's fixture, −1 ppm per 2.5 s):
+
+| | before | after |
+|---|---|---|
+| boron removed to reach runback onset | 34 ppm | **40 ppm** |
+| untouched, OTΔT trip after onset | +12.3 s | **+22.4 s** |
+| rods IN at FAST | trip at +20.0 s | **no trip in 240 s** |
+
+#647's check asserts the operator's extension against **this plant's own do-nothing trajectory in
+the same run**, not against a literal — so it passes unchanged on the pre-#647 build (>220 s), on
+#647's (7.8 s) and on this one (>217.6 s). That is the entire argument for writing an acceptance
+that way, and it is now demonstrated across three plants.
+
+### The second change: `low_power`'s power fraction is derived, not typed
+
+`low_power` declared `pf: 0.105` beside `load_mwe: 10`. They are not independent and only one is
+enforced: **the turbine honours `load_mwe` exactly** (measured `mwe_output` 9.99999995 against a
+`load_target` 10, imbalance **4.7e-8 MWe**), while `pf` only seeds the fission, the decay/xenon
+equilibrium and the leg split (`dT0 = DT0_C * ic.pf`). The 10.54 % in the ICS note was a
+`pwr_startup` handover measured on a 2026-09-04 tree; **on this one, 10.0 MWe costs 9.604 %
+thermal**, so the initial condition — whose whole contract is to open settled — seeded 9.3 % high
+and rang **10.50 → 9.60 %** over its first 600 s.
+
+At `pf: 0.09604` the ring falls to 0.013 points and **the residual against its own Tavg program
+knot goes from +0.522 °F to −0.009 °F (+0.290 → −0.005 °C)** — a 58× reduction, and the reason
+`low_power` was the worst column against program after #647.
+
+### The invariant that did not exist, and why it needs a mean
+
+`run_pwr2_engine`'s **RATED-POINT IDENTITY**: a settled rated plant reads `delta_t_frac` within
+0.5 % of 1.000, **true and indicated**, the two clauses divided by different objects on purpose so
+that a second copy appearing between them reddens exactly one. Measured: true **0.99960**,
+indicated mean **1.00012**.
+
+**The indicated half is meaned over 60 s and that is not fussiness.** `thot` and `tcold` carry the
+sourced RTD noise (σ 0.2 and 0.15 °C) and this quantity is their **difference**, so the
+instantaneous fraction the trips actually compare ripples **±2.9 %** about its mean — measured min
+**0.97316**, max **1.03040** over 300 s. A single-sample check would have been a check that samples
+the noise and calls it the claim. **The ripple is larger than the bias that shipped**, and it is
+correct, designed, sourced behaviour — worth knowing before anyone reads a one-off ΔT margin off
+the board and believes it to three figures.
+
+New mutation restores the 31.1 and reds it. Part A: **80/80, 41/41 mutations, no blind spots, on a
+fully green clean run** (which is what makes that mutation figure trustworthy under #644).
+
+### Two stale fixtures, adjudicated one at a time, each re-measured on the OLD constant
+
+**Neither was a defect and neither was widened.** Both are the same disease in different clothes:
+a criterion attached to something other than the claim.
+
+1. **"the level controller CUTS charging"** (#645 rewrote this probe *for this exact reason* and
+   left one foot in it). Its criterion was `(cdQ0 − demand) > 0.25` — a threshold on the SIZE of
+   the drop, where `cdQ0` is the demand the level PI happens to be carrying 30 s after
+   construction, i.e. **the construction offset the rewrite exists to stop measuring**. Measured:
+   **0.393** when #645 wrote it, **0.2631** one day later on the same constants, **0.2198** once
+   the construction was made consistent. It was standing 5 % above its own threshold and went red
+   on a change that moved the plant *closer* to its program — the signature the probe's own header
+   names. Now asserts the **cut**: a non-trivial start, demand to zero, flow follows. Holds at all
+   three values, all three → 0.0000.
+2. **"the LIMIT CHASES POWER"** took two instants of a **non-monotone** trajectory. The boration
+   runs for the whole 540 s tail, so the tail is a V — power dips as the negative moderator
+   coefficient banks the reactivity as temperature, then climbs as dilution keeps arriving:
+   ```
+   dt_c 31.10   98.01 → 100.77 → 97.20 → 96.5 (flat 240–540 s) → 96.83 at t+600
+   dt_c 32.71   98.01 → 100.78 → 100.38 → 99.6 (flat 240–480 s) → 100.24 at t+600
+   ```
+   **Same shape on both plants.** The old plant's t+600 sample landed before the turn and the new
+   one's after it; the claim was never about t+600. Now asserts the **function over the whole
+   tail** — the limit at the ride's lowest power is below the limit at its highest (424 < 439 at
+   31.1; 437 < 439 at 32.71), which a constant cannot satisfy.
+
+### The manual, and a table nothing gates
+
+`run_manual_setpoints` went 12/13 on two §11.0 primary-pressure cells (hot_full_power 2243 vs
+2247, low_power 2250 vs 2239.5, tolerance 3 psi) — the only two of 36 that crossed tolerance,
+confirmed by running the same boot on a detached worktree at the pre-change commit. **§11.0 is
+re-captured; §1.0 was re-captured too and it was stale by far more than #650 moved it**: Tavg
+577.7 → 580.4 °F, legs 607.2/548.2 → 609.8/550.9, pressurizer level 59 → 62 %, steam 808 → 827
+psi, control bank *"≈ 92 %"* → **100 % withdrawn (627 of 627)**. It predates #508's no-load
+re-anchor.
+
+**Nothing gates §1.0**, and the reason is in `run_manual_setpoints`'s own comment: *two* tables in
+that chapter open with `| Parameter |`, the runner picked the wrong one once and now requires a
+backticked initial-condition name in the header — which excludes §1.0 permanently. Coverage was
+asserted in the column direction for §11.0 and never in the table direction for the chapter.
+**Filed rather than fixed here** (widening that runner is its own change, and #532's remit).
+
+**§3.0 now PRINTS the rated ΔT figure** — 58.9 °F (32.7 °C) — and what the 3 % rod stop is in °F.
+Every OTΔT/OPΔT number on that page is a fraction of one constant and **the manual had never given
+it**, which is part of why a 5 % error in it went three weeks unnoticed.
+
+### The one thing that actually broke, and it was not the physics
+
+**`run_checklist_pwr2` went 135/135 → 121/135**, and the cause is worth more than the fix.
+`createEngine` took the operator's two startup-net blocks from **`ic.pf >= 0.1`** — a **threshold
+on a seed**. Re-deriving `low_power.pf` from 0.105 to 0.09604 crossed that literal, so the state
+booted with **neither block taken**, and `pwr_raise_power` scrammed at step 4 on `ir_high_flux`.
+Fourteen red checks from a change that moved no protection, no setpoint and no equation.
+
+`pf` reads as a pure seed at its other call sites (fission, decay/xenon equilibrium, `dT0`), and
+was a **lineup discriminator** at exactly one. **The question "has this plant ascended through
+P-10 and taken the blocks?" is answered by whether it is ON THE GRID** — which is precisely what
+`if (!(ic.load_mwe > 0)) eng.tb.tripped = true;` **180 lines below already does**, with a comment
+saying so: *"Keyed on `load_mwe`, not on `subcritical` or `pf`: the new `low_power` IC is
+subcritical by neither measure but IS on the grid at 10 MWe."* The two lines are in the same
+function and the second had learned the lesson the first needed.
+
+Now `ic.load_mwe > 0`, and it is **identical on all six initial conditions under both sets of `pf`
+values** — checked, because a new form must hold on the old plant too or it is a refit (HR10). The
+only IC it moves is `low_power`, and only back to what it always meant. Two mutation anchors
+quoted the old expression and were re-pointed; both still caught.
+
+**Trap: a threshold on a derived quantity is a coupling nothing declares.** Grep every consumer
+before re-deriving a constant — including the ones that only *compare* it, which a search for
+assignments will not show you.
+
+### Traps worth carrying
+
+- **A constant measured once off the plant and then made a CONSTRUCTION input is a loop closed on
+  a stale number.** That is the whole mechanism here: 31.1 was honest on 2026-08-19 and a defect
+  by 2026-08-21, without anyone touching it. If a config value is derived from a settle, the gate
+  that re-derives it must exist in the same change.
+- **Two errors of the same size and opposite sign look like a healthy plant.** The 4.9 % ΔT₀ head
+  start and #647's +0.045 K3 credit cancelled to within 0.5 %, and 47 runners agreed with both.
+  **Fixing one is what exposes the other** — which means a fix that suddenly reddens something far
+  away deserves the question "what was it cancelling against?" before the check is adjudicated.
+- **`run_manual_units` is LINE-BASED.** A US/SI pair that wraps across a line break reads as *"SI
+  value with no US partner"*. Its tolerance on a temperature DIFFERENCE is under 0.10 °F, so
+  `43 °F (23.8 °C)` fails at a 0.16 gap and needs 23.9.
+- **A check can quote the defect in its own title and still pass**: `run_pwr2_board`'s denominator
+  check was named *"normalized on THIS plant's rated split (31.1 degC)"* while its assertion
+  compared two live channels and was correctly indifferent. Titles rot silently; the assertion did
+  not. Both now read the constant.
+
+---
+
+## Session log — 2026-09-06-workbench-b (#647 — the plant was 2.4 °F below its own design point because the FUEL was seeded against the wrong node, and the ruling's precondition is what found it)
+
+**THE PRECONDITION WAS THE WHOLE ISSUE.** #647 was ruled "A" — keep the full-power Tavg knot at
+this plant's own 580.1 °F (304.5 °C) and re-derive the dependents from its span — with a
+mandatory measurement first: the plant settles 2.4 °F (1.3 °C) below that knot and nobody knew
+why, so the knot might have been standing in the wrong place. It was not. **The initial
+conditions were.**
+
+**Where the 1.3 °C lived, in the order the measurement narrowed it.** At 2,400 s from
+`hot_full_power`: Tavg 577.71 °F against a Tref of 580.10, load fraction exactly 1.0000, core
+heat 99.53 %. So Tref was right and the plant was under it. Decomposing Tavg = Tsat(steam) +
+Q/(UA): the steam generator sat at **808.2 psia against its design 825**, worth −2.39 °F of Tsat,
+and that is the entire gap — U·A and the heat balance are exact by construction (the turbine's
+own `steamDemand` makes the secondary sink exactly `MWe/η` = 300 MWt at ANY pressure, so the
+secondary's equilibrium is set from the primary side, not its own).
+
+**The steam pressure is NOT a free variable, which is what made this findable.** Booting the
+secondary ±40 psi off 825 and settling 3,000 s lands within **0.003 °F** of the same Tavg every
+time (807.87–807.89 psia across a 80 psi spread of initial conditions) — so something pins it,
+and that something is the criticality condition: rods and boron fixed at boot, so ρ = 0 fixes the
+moderator temperature once the fuel temperature is known.
+
+**And the fuel temperature was wrong at boot.** `pwr2_engine` called
+`R.createReactor({ P: powf, coolTemp_c: tavg0 })` — the LEG AVERAGE — while `stepReactor` drives
+`stepFuel` with `coreTemp(sys)`, the `core` node, which designHmap builds at `tavg0 + dT0/2`.
+Measured: boot fuel 684.22 °C, settled 699.70 °C — 15.5 °C of Doppler the trim never paid for,
+handed back as 1.3 °C of moderator cooling at roughly the coefficient ratio you would expect.
+Fixed by seeding from the built plant's own node, `tLeg(sys, 'core')`.
+
+**THREE INDEPENDENT DESIGN CONSTANTS LAND AT ONCE, AND NONE WAS TOUCHED** — which is the evidence
+this is the defect and not a tuning. `hot_full_power` after: Tavg **580.23 °F** (design 580.10),
+steam generator **825.90 psia** (design 825), pressurizer level **61.55 %** (program 61.50).
+Before: 577.68 / 807.88 / 58.85.
+
+**The detonation note was about a DIFFERENT change.** `designHmap`'s header warns that
+re-pointing `createReactor`'s `coolTemp_c` *and the `criticalBoron` trim* at the hot-leg
+temperature detonated (928 % in one step, 2026-08-21). Only the fuel seed moves here; the trim
+still reads the leg average, because the moderator temperature the reactivity chain is normalized
+against IS the leg average (`stepKinetics` derives exactly that when no override is passed).
+Measured stable, power settles 99.559 %.
+
+**THEN the ruling, which is a one-line derivation.** `DUMP.tt_full_c` is no longer the typed
+27.7 °F: it is `tavg_full_c − tavg_noload_c` = **33.10 °F (18.39 °C)**. In WAT 05 the band and
+the program are one object (557 → 584.7 and 584.7 − 557 = 27.7), so the typed import was that
+plant's SPAN wearing a gain's clothes. **Derived, never typed** — a typed 18.39 is the
+second-copy trap that put the constant out of step in the first place.
+
+**What the wider band costs, decomposed 2×2 (turbine trip from `hot_full_power`, 1,800 s):**
+margin to the 1085 psig main steam safety valve pop **63.4 → 52.3 psi**, of which the band is
+9.5 psi and the fuel seed 0.9 alone (1.6 in combination). Reported, not tuned: the safeties do
+not lift, the atmospheric dump valve stays 0.0 % and 0 lbm reaches atmosphere — the properties
+#508 bought, which it inherited at 7.7 psi and 18,813 lbm.
+
+**Traps worth carrying.**
+- **A CONSTRUCTED initial condition can be self-inconsistent in a way no ride check sees.** The
+  `ICS` header's own rule is that every state variable is placed at its own equilibrium; this one
+  was placed at a *different node's*, and the resulting 2.4 °F drift had been written down as a
+  bounded "residual" in `designHmap`'s comment since #502 rather than read as a defect. **A
+  documented residual is an unexamined one.**
+- **A NEUTRAL-LOOKING VARIABLE MAY BE SLAVED, AND THE TEST IS CHEAP.** The steam pressure looked
+  like a free integrator (the secondary's energy balance closes at any pressure). Perturbing it
+  ±40 psi and settling took five minutes and killed the whole "it parks where the transient left
+  it" hypothesis, which would have sent the work at the secondary instead of the fuel.
+- **A `narrative: true` mapping is a place a number goes to die.** `Manuals/09` §3.0's steam dump
+  band read "~14.4 °F (8 °C)" — the retired plant's — through the #508 re-anchor and this ruling,
+  because the row was mapped as prose. It now checks against the derived band; injection-verified
+  by putting 14.4 back and watching it red.
+
+**TWO REDS, both in `run_pwr2_engine`, both adjudicated as the fix working.** (1) Group F's
+30 MWe level swing read 1.005 points against a `> 1.2` literal. Drift was ruled out first — the
+same plant left alone over the same window wanders 0.314 before and 0.313 after — and the swing
+genuinely shrinks (1.312 → 1.005; 1.470 → 1.164 fully settled) because swell/shrink at 826 psia
+is smaller than at 808. The floor is now an A/B against the plant's own quiet wander, which
+passes on the old build too. (2) Group C's runback: the operator's rods-in used to avoid the trip
+outright **because the plant stood 2.44 °F below overtemperature ΔT's own T′ (580.1 °F) and
+collected an unearned K3 credit of +0.045 of ΔT₀**. Measured: no action 20.3 → 12.3 s, rods in at
+FAST no-trip → +20.1 s. The check now asserts the sourced OPPORTUNITY against this plant's own
+do-nothing trajectory in the same run.
+
+**AND RED 2 UN-MASKS A PRE-EXISTING DEFECT WORTH ITS OWN ISSUE.** At rated power
+`delta_t_frac` = `(Thot − Tcold)/DESIGN.dt_c` = **58.75/55.98 = 1.049**: the plant runs 4.9 % above
+the rated loop ΔT that both ΔT trips normalise against, so it starts 4.9 % into its own trip band.
+It is pre-existing (1.054 before this work) and **the same size as the K3 credit #647 removed, with
+the opposite sign** — the two were cancelling, which is why the old check passed on a plant that
+was wrong twice.
+
+**Gate deltas.** `run_pwr2_dumpctl` 23 → **25** (the full-power knot as a bare literal; the
+band-IS-the-span identity), 9/9 mutations with the typed-copy injection added.
+`run_pwr2_pressurizer` 101 → **103** (the full-power knot literal and its cross-file equality —
+#645 gated the no-load half, nothing watched this one), 49/49.
+`run_manual_setpoints` stays 13, but the trip-open row moves off `narrative`.
+
+---
+
+## Session log — 2026-09-06-workbench-a (#633 / #508 / #645 / #635 — the secondary steam side, and three probes whose filed reading the measurement inverted)
+
+**A bundle of five issues, one family: the relief ladder's hydraulics and the no-load temperature
+anchor that decides when its rungs open.** Two owner rulings, four new gates' worth of checks, and
+eight new issues filed. `run_all` green; `run_ops` 59/70 remains the one tracked red.
+
+### What was wrong, in one line each
+
+- **#633** — every relief path passed a **flat mass flow**. A 100 % atmospheric dump valve (ADV)
+  drove the steam generator through atmospheric to **−14 psig** still passing its full 8.18 kg/s.
+- **#508 / #634** (duplicates; #634 closed into #508) — the no-load Tavg anchor was **557 °F**, a
+  different plant's, while the engine boots every no-load initial condition at **547 °F**.
+- **#645** — the pressurizer's copy of that anchor, left behind by #508's ruled scope split.
+- **#635** — a setpoint row marked `narrative` beside its own constant.
+- **#478** — re-scoped: the retired engine only; PWR2 proved immune by A/B.
+
+### THE LESSON. Three of six adjudicated probes had their filed reading INVERTED by measurement, and every time the number that moved was the REFERENCE, not the plant.
+
+This is the entry's reason for existing. The #508 re-anchor reddened six probes that had been
+adjudicated in advance from a green tree. Three of the verdicts were backwards:
+
+1. *"the ARMED dump holds Tavg within its own control authority"* — filed as 18.5 °F against an
+   18.4 °F bound, i.e. the plant got worse by 0.1 °F. Measured: **Tavg fell 1.14 °F** (586.47 →
+   585.33) and **Tref fell 4.0 °F** (570.86 → 566.86). The better-controlled plant read as the
+   regression because the reference moved further than the plant did.
+2. *`pwr_lower_power` step 5*, `power_pct < 30`, got 33.94. Measured at 15 MWe: **the as-built plant
+   sat there with its ADV 64 % open, venting to the sky, and the acceptance passed on it.**
+   Re-anchored the valve is shut, the plant runs 6.0 °F cooler and moderator feedback holds power
+   6.2 points higher. The check was calibrated *on the defect*.
+3. *"the level controller MOVES charging when letdown drains the vessel"* — **hollow, two ways**.
+   `cv.letdownOpen` **defaults to 1**, so `command('letdown', 1.0)` set 1 to 1; nothing drained
+   (level 59.46 → 59.21 %, down a quarter point). What it measured was the level controller
+   unwinding a **construction offset**: under 291.67 the vessel opened 0.79 points above program;
+   under 286.11 it opens *on* program, so there is nothing to unwind. It went red on a change that
+   made the plant more correct.
+
+**All three would have been re-banded** by anyone adjudicating from the number alone. What caught
+them was running the fixture at **both** anchors and asking which quantity moved.
+
+### The other standing trap this session paid for: a gate written where the defect cannot be seen
+
+**#633's ten stale reds all sampled at an *arbitrary* pressure** — 6.0 MPa for every dump check,
+`s2Full + 0.5` for the bank. Those numbers were right *only because flow ignored pressure*. The
+whole gate could not distinguish a pressure-honouring model from the defect it was standing on.
+HR10 in its purest form: 56 green checks over a relief ladder with no pressure dependence at all.
+
+### #644 — the coverage instrument itself lies, and it lies exactly when you are mid-change
+
+`run_pwr2_engine.js:3041` scores its mutation self-test as `realReds = rec2.filter(!ok).length` —
+**absolute reds in the mutant run, with no clean-run subtraction.** So while *any* check is red in
+that part's replay, **every mutation reports CAUGHT**. `run_pwr2_loadfollow` guards this correctly
+and prints *"MUTATION SELF-TEST SKIPPED — N check(s) failed in the CLEAN run"*; this runner does not.
+
+It was caught because a mutation predicted blind by arithmetic (`DC.tref(0)` = 286.110 °C against
+`W.T_sat(7.03)` = 286.113 — 0.003 °C apart) **reported CAUGHT** on a tree that still had one red,
+and reported `BLIND TO … THIS GATE CANNOT SEE IT` when re-run green. Same mutation, same tree, two
+opposite verdicts, decided by an unrelated check.
+
+**Every "mutations N/N, no blind spots" claim made about the three `run_pwr2_engine` parts while
+anything was red is void.** Three of this session's own mutation figures had to be discarded and
+re-run for that reason.
+
+### Two fixtures found standing on cliffs, one of which had been nudged two days earlier
+
+- **SI-5** in `run_service_invariance`: an absolute count of coincident sample instants, moved
+  30 → 20 on 2026-09-04 for #625 and sitting on its own value when #633 reddened it at 16.
+  Bisected — **#633 alone; #508 changed not one instant**. Grid alignment, not divergence (all four
+  trees `0.000e+0`; the first 17 shared instants are the same times before and after). Replaced with
+  four conjuncts, each injection-proved. **The injection that condemns the old form: with the
+  casualty removed entirely, the legs share 200 and 33 instants** — ten times the floor that was
+  failing. It was not a weak guard on the right quantity; it was a guard on the wrong one.
+- **`run_pwr2_loadfollow`'s +15 % band**: #633 moved it 1.15 → 1.10 because the plant delivered
+  1.1534, a 0.3 % margin. #508 then landed 1.1049 — **0.5 % over the new band, straight back on the
+  cliff**. Set at 1.05 against four measured behaviours (1.1534 / 1.1317 / 1.1401 / 1.1049), and the
+  *sign* split out into its own unconditional assertion so the direction the check is named for is
+  no longer carried by the magnitude.
+
+### THE MANUAL REVISION TRAP, HIT AGAIN, ONE ITERATION LATER — and the day-old gate caught it
+
+Rev 18 had shipped in **Alpha 1.7.3**, so it was **not** a pending row. The §11.0 re-capture was
+written into it, which is precisely what #639's `run_released_frozen` was built for the day before.
+It fired: *"Rev 18: the revision row has been EDITED since it shipped"*.
+
+**Rev 18's own row text explains the same mistake at Rev 17** — it opened a new row rather than
+extending Rev 17 because Rev 17 had shipped hours earlier, and records that `run_manual_rev` cannot
+detect this, since re-sealing a *released* row satisfies the digest check exactly as well as a
+pending one does. That is the gap #639 closed, and it paid for itself inside a day.
+
+Rev 18 restored byte-for-byte against `HEAD`; **Rev 19 opened** as the new pending row. The repair's
+own first attempt dropped the row's author cell and `run_manual_rev` caught that too (4 red).
+**Read the top row's release status before extending it — "pending" is a fact about the last
+release, not a property of being newest.**
+
+### Numbers worth keeping
+
+| after an ordinary turbine trip | as built | #508 alone | #508 + #633 |
+|---|---|---|---|
+| steam generator peak | 1092.0 psia | 1048.5 | 1036.6 |
+| margin to the 1085 psig safety pop | **7.7 psi** | 51.2 | **63.1** |
+| heat sink | ADV 39.9 %, dumps 0.00 % | ADV 0.0 %, dumps 8.75 % | ADV 0.0 %, dumps 7.21 % |
+| **vented to atmosphere / 30 min** | **18,813 lbm** | **0** | **0** |
+
+ADV flow at 100 % demand, as a fraction of its rating: 1005 psig (its quoted condition) 100.0 %,
+891 psig 88.8 %, 106 psig 11.8 %, atmospheric **0.0 %**. The issue's filed *"~1.4 % at 15 psia"* is
+**refined, not confirmed — 0.386 %**: 1.4 % is the pure-Napier ratio, and the expansion factor takes
+over below choke. That is what the runaway was missing.
+
+Pressurizer level program error against intent, before #645: **0.0 points at no load, 10.95 low at
+0.30 dispatch, 8.3 at 0.50, 0.0 at full power.** The no-load point hid it through two
+investigations because the program **clamps at 25 % across the whole 547–557 °F band**.
+
+### Gate baselines moved
+
+`run_pwr2_relief` 56 → **71** · `run_pwr2_dumpctl` 22 → **23** · `run_pwr2_pressurizer` 100 → **101**
+(+2 −1; the −1 is a check that appeared **twice on one physical line**) · `run_hardrules` 487 →
+**488** (one more HR11 ruling citation) · `run_service_invariance` and `run_manual_setpoints`
+unchanged in count, both restored to green.
+
+### Filed, none worked
+
+**#642** the P-6 permissive is 5e-11 A in the engine (sourced) and 1e-10 A in both the manual and
+the control layer · **#643** `safety_flow_frac: 0.84` wears a `[sourced]` marker the source's own
+table gives 50.1 % or 100.2 % for — the safety bank may be 19 % undersized · **#644** the mutation
+self-test above · **#646** two manual chapters teach an ordering that #508 **inverted by 4.15 °F**,
+and it was #629's justification for a board change · **#647** re-derive the Tavg program set from
+one source (the declined option; the plant's full-power Tavg is **1.3 °C below** its own level
+program's knot, so it never reaches the sourced 61.5 %) · **#648** #633 changed the large-break end
+state and **no gate asserts it** · **#649** SI-0 is the same cliff one fixture-twitch away.
+
+### Rulings recorded
+
+*(OWNER RULING, 2026-09-05: "547 °F — re-anchor to Ginna")* — selected from three options, over
+keeping 557 °F and over moving both copies at once.
+*(OWNER RULING, 2026-09-06: "Move the pressurizer copy too")* — selected from three, over keeping
+the split and over re-deriving the whole program set, which is filed as #647.
+
 ## Session log — 2026-09-05-develop-c (#637 — the CI gate was throughput-bound, not tail-bound, and two of my three diagnoses were wrong before the arithmetic)
 
 **The ask.** The Alpha 1.7.2 release merge ran red on `develop` AND `main`: the aggregate-gate step

@@ -159,8 +159,21 @@ var ROWS = [
   { m: /^Turbine trip \(vacuum\)/,           narrative: true },
   { m: /^Turbine trip \(overspeed\)/,        narrative: true },
   { m: /^Turbine trip \(SG hi-hi/,           want: P.SGLL.hi_hi_frac * 100,        unit: '%',   tol: 0.5 },
-  { m: /^Steam dump \(pressure mode\)/,      narrative: true },
-  { m: /^Steam dump \(trip-open mode\)/,     narrative: true },
+  /* NO LONGER NARRATIVE (#635 item 2). The row was marked "no single plant constant to check
+   * against" — false: it prints the Ginna no-load anchor, `RD.pwr2.sg.SG.P_noload` (7.03 MPa),
+   * which is the pressure-mode dump's controller setpoint (`pwr2_shell`'s `steam_dump_setpoint`
+   * defaults to this same 7.03 when the operator has never touched the box). ABSOLUTE, no
+   * +14.7 psia offset: the manual quotes it as `Psat(546.8 °F)`, a saturation (absolute)
+   * pressure, unlike the two gauge-quoted relief rows above it. */
+  { m: /^Steam dump \(pressure mode\)/,      want: RD.pwr2.sg.SG.P_noload * PSI, unit: 'psi', tol: 1 },
+  /* NO LONGER NARRATIVE (#647, 2026-09-06). The row printed a band — "full demand ~14.4 °F
+   * above it" — and was marked narrative, so the figure was never checked against anything. It
+   * was the RETIRED plant's, and it survived both the #508 re-anchor and the ruling that made
+   * the band a derived quantity. It is now the derivation itself: `tt_full_c` is
+   * `tavg_full_c - tavg_noload_c`, so this row goes red if either program knot moves and the
+   * manual does not. Injection-verified: put the old 14.4 back and the row reds. */
+  { m: /^Steam dump \(trip-open mode\)/,     want: RD.pwr2.dumpctl.DUMP.tt_full_c * 1.8,
+                                            unit: '°F', tol: 0.1 },
   { m: /^Spray flow cap/,                   narrative: true },
   { m: /^Main feedwater isolation \(P-14\)/, want: P.SGLL.hi_hi_frac * 100,        unit: '%',   tol: 0.5 }
 ];

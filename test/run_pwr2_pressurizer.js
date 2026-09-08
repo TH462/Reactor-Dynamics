@@ -45,6 +45,11 @@ function loadAll(pzSource) {
 
 function runSuite(RD, rec, quiet) {
   var W = RD.water, S = RD.sources, PZ = RD.pressurizer, CV = RD.cvcs;
+  /* THE OTHER COPY OF THE NO-LOAD Tavg (#645). Loaded here, NOT in loadAll: it is never this
+   * gate's mutation target and it holds only literals, so it must not be re-executed per replay.
+   * Reading it is the whole point — retyping 286.11 a third time is the defect, not the check. */
+  require(path.join(SRC, 'pwr2_dumpctl.js'));
+  var DC = globalThis.RD.pwr2.dumpctl;
   var DT = 0.02, PSI = 145.037738;
 
   function ck(name, got, want, tol, unit) {
@@ -435,13 +440,55 @@ function runSuite(RD, rec, quiet) {
 
   /* ---- 5b. THE LEVEL CONTROL SYSTEM (stage 2a — WTSM 10.3) --------------------------------- */
   head('LEVEL CONTROL  [PI on charging; the program follows Tavg; two sourced protections]');
-  ck('the program runs 25 % at the no-load Tavg', 100 * PZ.levelProgram(291.67), 25, 1e-9, '%');
-  ck('...to 61.5 % at the full-power Tavg', 100 * PZ.levelProgram(304.5), 61.5, 1e-9, '%');
+  /* ⚠ THIS CHECK IS THE DECISION, WHICH IS WHY IT IS A BARE LITERAL AND MUST STAY ONE. It is
+   * the same ruling, on the same quantity, that run_pwr2_dumpctl pins for the Tavg program's
+   * copy. It used to be 291.67 degC (557 degF), the WTSM 4-loop plant's own no-load point,
+   * adopted with the sourced 25/61.5 % endpoints. RE-ANCHORED to GINNA's 547 degF *(OWNER
+   * RULING, 2026-09-06: "Move the pressurizer copy too")*, #645, following #508 — Ginna UFSAR
+   * ch15 (ML20339A101) Table 15.0-3 note d: "All analyses assumed a programmed no-load TAVG of
+   * 547F." The module header carries the measurements. */
+  ck('the level program\'s no-load knot is Ginna\'s PROGRAMMED 547 degF (ML20339A101 Tbl 15.0-3 note d)',
+     PZ.LEVEL.tavg_noload_c, 286.11, 1e-9, 'degC');
+  /* ...AND IT IS THE SAME NO-LOAD Tavg THE Tavg PROGRAM ITSELF USES, which is the defect #645
+   * fixed and the reason the bare literal above is not enough on its own. The level program is
+   * linear in Tavg between a no-load and a full-power knot; pwr2_dumpctl's Tref program is
+   * linear in load between the SAME two. They are one plant quantity held in two files — the
+   * #557 second-copy class — and while they disagreed the two described different coolant
+   * expansions: 0.00 points low at no load but 10.95 low at 0.30 dispatch, 7.91 at 0.50.
+   * ⚠ IT HID BECAUSE THE PROGRAM CLAMPS. Below the knot levelProgram returns its 25 % floor,
+   * and 547-557 degF lay entirely inside that clamp, so the no-load point — the one anybody
+   * checks, and the one the check above and every initial condition stand on — read an identical
+   * 25.00 % under EITHER anchor. Only the agreement can see it. Exact equality: this is one
+   * number in two places, not two roundings of one measurement. */
+  ckT('...and it is the SAME no-load Tavg pwr2_dumpctl programs Tref from — one plant quantity, ' +
+      'two files (the part-load half of the program is invisible at the no-load knot)',
+      PZ.LEVEL.tavg_noload_c === DC.DUMP.tavg_noload_c,
+      'level program ' + PZ.LEVEL.tavg_noload_c + ' degC vs Tref program ' +
+      DC.DUMP.tavg_noload_c + ' degC');
+  /* THE FULL-POWER KNOT IS THE OTHER HALF OF THE SAME OBJECT *(OWNER RULING, 2026-09-06: "A" —
+   * keep 580.1 degF and re-derive the dependents from this plant's span)*, #647. It is this
+   * plant's own #479 heat-balance design point, not a citation, which is why the literal is
+   * bare and must stay one. The equality is the point: pwr2_dumpctl's Tref program and this
+   * level program are linear between the SAME two knots, and pwr2_dumpctl's turbine-trip band
+   * is now DERIVED from their difference — so a drift in either copy would put three things out
+   * of step at once. #645 caught the no-load half of exactly this; nothing was watching this
+   * half. */
+  ck('the level program\'s full-power knot is this plant\'s design Tavg, 580.1 degF (#479)',
+     PZ.LEVEL.tavg_full_c, 304.5, 1e-9, 'degC');
+  ckT('...and it is the SAME full-power Tavg pwr2_dumpctl programs Tref to, and derives its ' +
+      'turbine-trip band from — one plant quantity, two files',
+      PZ.LEVEL.tavg_full_c === DC.DUMP.tavg_full_c,
+      'level program ' + PZ.LEVEL.tavg_full_c + ' degC vs Tref program ' +
+      DC.DUMP.tavg_full_c + ' degC');
+  ck('the program runs 25 % at the no-load Tavg',
+     100 * PZ.levelProgram(PZ.LEVEL.tavg_noload_c), 25, 1e-9, '%');
+  ck('...to 61.5 % at the full-power Tavg', 100 * PZ.levelProgram(PZ.LEVEL.tavg_full_c), 61.5, 1e-9, '%');
   ckT('...and CLAMPS beyond both ends — a cooldown below no-load does not program a vacuum',
       Math.abs(PZ.levelProgram(280) - 0.25) < 1e-12 &&
       Math.abs(PZ.levelProgram(320) - 0.615) < 1e-12, '');
   /* THE PROGRAM REFERENCE REJECTS INSTRUMENT NOISE (#516 item 10). The caller wires this to
-   * the INDICATED Tavg, correctly (HR1) — and the program's 2.845 %/degC slope amplifies that
+   * the INDICATED Tavg, correctly (HR1) — and the program's slope (1.985 %/degC since #645, and
+   * 2.845 when the numbers below were taken) amplifies that
    * channel's noise straight onto the SETPOINT, where the level PI cannot reject it. Measured
    * on the shipped plant at steady full power: TRUE Tavg spanned 0.022 degC, INDICATED 0.63,
    * and the published program swung 1.77 % while charging hunted 0 to 17 gpm.
@@ -459,7 +506,15 @@ function runSuite(RD, rec, quiet) {
       if (progHi === null || rN.level_program_pct > progHi) progHi = rN.level_program_pct;
     }
   }
-  var progSwing = progHi - progLo, inSwing = 0.70 * 2.845;   /* what an UNLAGGED program would do */
+  /* ⚠ THE UNLAGGED REFERENCE IS DERIVED FROM THE PROGRAM, NOT RETYPED (#645, 2026-09-06). This
+   * read a literal `2.845` %/degC — a THIRD copy of the program's slope, in the check whose whole
+   * claim is a ratio to that slope. The re-anchor moved the slope to 1.985 and the literal did
+   * not go red (the lagged swing shrinks by the same factor, so the check stayed comfortably
+   * inside its 15 % band) — it would simply have gone on reporting the wrong denominator for
+   * ever, which is the failure mode a bare number in a threshold always has. */
+  var slopePctPerC = 100 * (PZ.GEOM.level_program_full - PZ.GEOM.level_program_noload) /
+                     (PZ.LEVEL.tavg_full_c - PZ.LEVEL.tavg_noload_c);
+  var progSwing = progHi - progLo, inSwing = 0.70 * slopePctPerC;   /* what an UNLAGGED program would do */
   ckT('the program reference LAGS its Tavg input, so channel noise does not become setpoint ' +
       'motion (unlagged, a +-0.35 degC channel swings the program ' + inSwing.toFixed(2) + ' %)',
       progSwing < inSwing * 0.15,
@@ -484,7 +539,11 @@ function runSuite(RD, rec, quiet) {
       trackErr < 1.5 && trackErr > 0.2 &&
       100 * PZ.levelProgram(tavgR) > 26 && 100 * PZ.levelProgram(tavgR) < 60,
       'lags program by ' + trackErr.toFixed(3) + ' % at tau ' + PZ.LEVEL.program_lag_s + ' s');
-  ck('the low-level cut is the sourced 17 %', PZ.LEVEL.low_cut_pct, 17, 0, '%');  ck('the low-level cut is the sourced 17 %', PZ.LEVEL.low_cut_pct, 17, 0, '%');
+  /* ⚠ THIS LINE CARRIED THE SAME CHECK TWICE (#645, 2026-09-06) — two identical `ck(...)` calls on
+   * one physical line, so the tally read one higher than the coverage. A duplicate is not merely
+   * cosmetic: it inflates the number a reader uses to judge how well-covered this module is, and
+   * a check counted twice can never disagree with itself. Deleted the second copy. */
+  ck('the low-level cut is the sourced 17 %', PZ.LEVEL.low_cut_pct, 17, 0, '%');
   ck('the high-level alarm is the sourced 70 %', PZ.LEVEL.hi_alarm_pct, 70, 0, '%');
   ck('the anticipatory backup-heater band is the sourced +5 %',
      PZ.LEVEL.backup_above_program_pct, 5, 0, '%');

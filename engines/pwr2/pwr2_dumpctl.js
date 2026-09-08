@@ -43,10 +43,19 @@
  *   layer reports it so a demand-with-no-path is visible.
  *
  * Tref: "generated from turbine impulse pressure" — modelled as the plant's own Tavg program,
- * linear in load fraction from the no-load Tavg (291.67 degC = 557 degF — the WTSM/WAT plants'
- * own number AND this plant's HZP anchor) to the full-power design Tavg (304.5 degC). The
- * same two endpoints the pressurizer's level program rides, which is not a coincidence: both
- * programs exist to follow the same coolant expansion.
+ * linear in load fraction from the no-load Tavg (286.11 degC = 547 degF — GINNA's programmed
+ * no-load, and this plant's own no-load steam side; see tavg_noload_c below for the #508
+ * re-anchor and its measurements) to the full-power design Tavg (304.5 degC), which is this
+ * plant's own heat-balance design point from #479 and NOT a citation. Since #645 the
+ * pressurizer's level program rides the SAME two knots — one plant quantity, two files, with an
+ * equality check in each file's gate.
+ *
+ * ⚠ THE TURBINE-TRIP BAND IS THAT SPAN, DERIVED — see tt_full_c below *(OWNER RULING,
+ * 2026-09-06: "A")*, #647. It was the typed 27.7 degF until then, which is the WAT plant's own
+ * span borrowed as if it were a gain. Closing that also closed the question this header used to
+ * leave open ("the full-power anchor is the open half"): #647's precondition measured the plant
+ * settling 2.4 degF BELOW its own full-power knot and found the cause in the initial
+ * conditions' fuel seed, not in the anchor — pwr2_engine's createReactor call carries it.
  *
  * [open] pieces, declared: the C-7 step-reference lowpass (~10 s; the rate unit's 120 s lag is
  * DERIVED — see C7DET); C-7's disarm (latched until the loss-of-load demand has returned to
@@ -65,13 +74,55 @@
     kind: '[sourced]',
     deadband_c: 5 / 1.8,                 /* 5 degF, WTSM 11.2 verbatim (rationale included) */
     lol_full_c: 16.4 / 1.8,              /* WAT 05: 5 - 16.4 degF -> 0 - 100 % */
-    tt_full_c: 27.7 / 1.8,               /* WAT 05: 0 - 27.7 degF -> 0 - 100 %, no deadband */
-    tavg_noload_c: 291.67,               /* 557 degF — the sources' own no-load AND the HZP anchor */
+    /* tt_full_c is DERIVED from the two program knots below — assigned after this literal,
+     * because it is this plant's own span and not a number to type. See the block there. */
+    /* ⚠ 547 degF, GINNA'S — RE-ANCHORED 2026-09-05 *(OWNER RULING, 2026-09-05: "547 °F —
+     * re-anchor to Ginna")*, #508/#634. It used to be 291.67 degC (557 degF), the WTSM/WAT
+     * 4-loop plant's figure, and this plant is not that plant: `pwr2_engine` boots EVERY
+     * no-load initial condition at Tsat of the sourced 1005 psig no-load steam pressure =
+     * 286.113 degC (547.0 degF), so the engine disagreed with its own Tref program by
+     * 10.01 degF. At the plant's own Hot Standby point the loss-of-load error sat permanently
+     * inside its own 5 degF deadband and turbine-trip demand was 0 — BOTH Tavg-mode dump
+     * controllers dead at the point the mode exists to hold. Measured, 1800 s turbine trip
+     * from hot_full_power: SG peak 1092.0 -> 1048.5 psia (margin to the 1085 psig main steam
+     * safety valve pop 7.7 -> 51.2 psi), park 553.61 -> 549.13 degF, and the heat sink moves
+     * off the ATMOSPHERIC DUMP VALVE (42.9 % -> 0.0 %, condenser dumps 0.00 -> 8.75 %):
+     * 18,813 lbm (8,533 kg) vented to atmosphere in 30 min after an ordinary turbine trip
+     * becomes 0 lbm. (On the tree that also carries #633's pressure-dependent relief the same
+     * ride reads a 63.1 psi margin, a 548.71 degF / 1008.8 psig park and 0 lbm vented.)
+     *   SOURCE — Ginna UFSAR ch15, ML20339A101, Table 15.0-3 note d, verbatim: "All analyses
+     *   assumed a programmed no-load TAVG of 547F." Corroborated by Ginna UFSAR ch10
+     *   (ML20339A040): "When the unit is in the MODE 3 (Hot Shutdown) mode, the main steam
+     *   system operates to maintain no-load TAVG (547F)."
+     * SCOPE, ruled: this copy first, and pwr2_pressurizer.js's level-program copy FOLLOWED it
+     * *(OWNER RULING, 2026-09-06: "Move the pressurizer copy too")*, #645 — the two are one
+     * plant quantity and each file's gate now asserts the equality. pwr2_kinetics.js's 291.67 is a
+     * DIFFERENT quantity — the 975 ppm hot-zero-power boron anchor is BEAVRS / Watts Bar Unit 1
+     * Cycle 1 (OSTI 1991715), quoted at WATTS BAR's 557 degF. */
+    tavg_noload_c: 286.11,               /* 547 degF — Ginna's PROGRAMMED no-load Tavg */
     tavg_full_c: 304.5,                  /* this plant's design Tavg */
     c7_ramp_frac_per_min: 0.05,          /* C-7: "ramp load decrease at a rate greater than 5%/min" */
     c7_step_frac: 0.10,                  /* C-7: "step load decrease of greater than 10%" */
     src: 'WTSM 11.2 (ML11223A294); bands WAT 05 (ML11216A094) 5-18(E)'
   };
+  /* ⚠ THE TURBINE-TRIP BAND IS THIS PLANT'S OWN PROGRAM SPAN — DERIVED, NEVER TYPED *(OWNER
+   * RULING, 2026-09-06: "A" — keep the full-power knot at this plant's own 580.1 degF and
+   * re-derive the dependents from its span, over adopting Ginna's full-power Tavg wholesale and
+   * over leaving it)*, #647.
+   *
+   * IN THE SOURCE THE BAND AND THE PROGRAM ARE ONE OBJECT. WAT 05's Tavg program runs
+   * 557 -> 584.7 degF, and its turbine-trip controller reaches full output at 584.7 - 557 =
+   * 27.7 degF: the band IS the span, so the controller saturates exactly at full-power Tavg.
+   * Typing 27.7 here adopted the WAT plant's SPAN as if it were a controller gain, and this
+   * plant's span is not that plant's — 547 -> 580.1 degF = 33.10 degF (18.39 degC). Held at
+   * 27.7 the controller saturated 5.4 degF BELOW its own full-power Tavg; before the #508
+   * re-anchor it was mismatched the other way (a 23.09 degF span against the same 27.7, so
+   * the controller could never reach 100 %).
+   *
+   * DERIVED FROM THE KNOTS, so that moving either anchor re-solves the band instead of leaving
+   * a typed 18.39 to go stale — the second-copy trap that put this constant out of step in the
+   * first place, and the same reasoning as etaCycle() in pwr2_turbine. */
+  DUMP.tt_full_c = DUMP.tavg_full_c - DUMP.tavg_noload_c;
   var PI_PRESS = {
     kind: '[open]',                      /* the source says PI; the gains are this plant's */
     kp_per_mpa: 2.0,

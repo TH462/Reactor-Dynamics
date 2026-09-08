@@ -1872,7 +1872,28 @@
           why: 'Scramming from full power is a thermal shock to the plant. About 15 % is low enough that the trip is gentle and high enough that the steam generator still has steam to dump afterwards.',
           control: 'Turbine Load', target: 'OUTPUT 15 MWe; REACTOR POWER near 15 %',
           cmd: { action: 'set_load_target', mwe: 15 }, hold: 900,
-          accs: [{ p: 'power_pct', op: '<', v: 30, label: 'Reactor below 30 % and falling as the boration finishes (rod trims take it to about 15 %)' }],
+          /* BAND RE-DERIVED (#508, 2026-09-06). It read v: 30 and the 547 degF re-anchor puts the
+           * plant at 33.94 %. NOT a regression -- the old number was calibrated on the plant #508
+           * fixed. MEASURED at the end of this step, one fixture, three trees:
+           *                        557/flat    557/#633    547/#633 (shipping)
+           *   condenser dumps       41.55 %     33.15 %      62.66 %
+           *   ATMOSPHERIC DUMP      64.00 %     35.30 %       0.00 %   <- the defect itself
+           *   Tavg                 569.84 degF 569.35 degF  563.85 degF
+           *   steam pressure       1055 psig   1048 psig     974 psig
+           *   reactor power         27.38 %     27.75 %      33.94 %
+           * At 15 MWe the AS-BUILT plant sat with its ATMOSPHERIC DUMP VALVE 64 % OPEN, venting to
+           * the sky, and this acceptance PASSED on it. Re-anchored, that valve is SHUT and the
+           * condenser carries the heat; the plant runs 6.0 degF cooler, so moderator feedback holds
+           * power 6.2 points higher. The rest of the ladder is `load_pct + 15`, and that 15 is
+           * really the dump's capacity headroom (28 % of rated) -- so 40 sits inside the derived
+           * form (load + 28 = 43) and clears all THREE measured behaviours by at least 6 points,
+           * while a plant that failed to ramp down still reds near 100 %.
+           *   SEPARATE, OWNER-VISIBLE, NOT FIXED HERE: Tavg ends this step 11.9 degF ABOVE the new
+           *   program (it was 9.4 degF above the old one), so 'about 6 steps' of rod trim does not
+           *   put Tavg on program and the dumps hold 62.66 % indefinitely. The trim sizing predates
+           *   #508 and was ALREADY short; the re-anchor widened the gap by 2.5 degF. Re-deriving
+           *   the trims is content work, not a threshold edit. */
+          accs: [{ p: 'power_pct', op: '<', v: 40, label: 'Reactor below 40 % and falling as the boration finishes (rod trims take it to about 15 %)' }],
           hl: ['Turbine Load', 'Insert', 'Tavg'] },
       ],
       guard: { never_melted: true, never: [{ p: 'fuel_temp_c', op: '>=', v: 1200 }] },

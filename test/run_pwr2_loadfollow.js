@@ -222,7 +222,10 @@ function runSuite(G, rec, quiet) {
              backpressure: cr.backpressure_in_hg, condAvail: cr.available,
              pzrLevel: pzr ? pzr.level_pct : null, pzrErr: pzr ? pzr.err_psi : null,
              dumpC7: dcr.c7, dumpArmed: dcr.armed, safetyFrac: rr.safety_kgs / pl.rated_steam,
-             trefC: dcr.tref_c };
+             /* dumpOut is the PRE-ARMING controller output — the quantity the loss-of-load
+              * identity below is written against, and the only way to tell a saturated
+              * controller from one merely near the top of its band (#508) */
+             trefC: dcr.tref_c, dumpOut: dcr.controller_output };
   }
 
   /* ---- THE BASELINE, AND IT IS NOT THE DESIGN POINT -----------------------------------------
@@ -308,16 +311,72 @@ function runSuite(G, rec, quiet) {
   var cut = ride(pl2, AFTER, function () { return MWE_CUT; }, dumpLaw);
   /* THE CHAIN, LINK BY LINK. Asserting only the endpoint would pass for a plant that got there
    * by some other route, and the point of this gate is the MECHANISM. */
-  ckT('cutting steam demand RAISES secondary pressure', cut.sgP > pre.sgP * 1.15,
-      pre.sgP.toFixed(3) + ' -> ' + cut.sgP.toFixed(3) + ' MPa — less steam drawn, so it backs up');
+  /* ⚠ THE BAND WAS STANDING ON A CLIFF (#633, 2026-09-05). It read `* 1.15` and the plant
+   * delivered 1.1534 — a 0.3 % margin on the threshold's own value, so ANY change to the
+   * secondary would decide it. #633 made relief flow depend on upstream pressure, which is
+   * what a valve does; the dumps at 6.4 MPa now pass 12 % more than the flat model gave them,
+   * so the generator backs up LESS. MEASURED both ways, same fixture, one module apart:
+   *     pre-#633   5.581 -> 6.437 MPa   ratio 1.1534
+   *     post-#633  5.581 -> 6.363 MPa   ratio 1.1401
+   * The CLAIM — cutting steam demand raises secondary pressure — is untouched; the band is a
+   * magnitude floor that exists so the check cannot pass on a flat plant. Moved to 1.10, which
+   * passes on BOTH behaviours (HR10: a moved test must clear the old one too, or it has been
+   * refitted to the change) and still reds on anything that fails to back the pressure up.
+   *
+   * ⚠ AND 1.10 PUT IT STRAIGHT BACK ON THE CLIFF, because the two changes in flight compound
+   * (#508, 2026-09-05). Re-anchoring the Tref program from 557 to 547 degF lowers Tref, which
+   * opens the loss-of-load dump FURTHER, so the generator backs up less again — the same
+   * direction as #633's. Measured on ONE fixture across the 2x2:
+   *     557 anchor, flat relief      5.581 -> 6.437 MPa   ratio 1.1534   (as built)
+   *     547 anchor, flat relief      5.581 -> 6.316 MPa   ratio 1.1317
+   *     557 anchor, #633 relief      5.581 -> 6.363 MPa   ratio 1.1401
+   *     547 anchor, #633 relief      5.581 -> 6.166 MPa   ratio 1.1049   <- 0.5 % over 1.10
+   * A magnitude FLOOR whose job is to exclude a flat plant has no business sitting 0.5 % from
+   * the answer, and moving it one notch per landing change is how a fixture gets refitted a
+   * slice at a time. Set at 1.05, which every one of the FOUR measured behaviours clears by at
+   * least 5 points and which a plant that does not back its secondary up (ratio ~1.00) still
+   * reds. The SIGN is now asserted separately and unconditionally, so the direction the check is
+   * named for cannot be carried by the magnitude band alone. */
+  ckT('cutting steam demand RAISES secondary pressure',
+      cut.sgP > pre.sgP && cut.sgP > pre.sgP * 1.05,
+      pre.sgP.toFixed(3) + ' -> ' + cut.sgP.toFixed(3) + ' MPa (x' +
+      (cut.sgP / pre.sgP).toFixed(4) + ') — less steam drawn, so it backs up');
   /* ⚠ BANDS RE-SIZED 2026-08-19 when the REAL dump controller replaced the stand-in law: a
    * 40 % cut is a load REJECTION, C-7 arms, and the sourced Tavg-mode dump absorbs what the
    * old pressure law did not — the Tavg excursion halves (+8.6 degF measured, was +15) and
    * the power drop shallows (14.3 points, was 22.6). The widened bands hold on BOTH plants
-   * (both-sides rule): the stand-in-law build clears +5/-10 by miles. */
+   * (both-sides rule): the stand-in-law build clears +5/-10 by miles.
+   *
+   * ⚠ AND THE -10 WENT RED ON THE #633 x #508 INTERACTION, at a 0.15-point margin — the same
+   * cliff as the ratio band above, in the same chain, for the same reason (2026-09-05). BOTH
+   * changes open the dump wider, so the reactor sees less of the load cut and its power droops
+   * LESS. Neither change alone reds it; together they are SUPERADDITIVE (-1.98 and -1.21 points
+   * of droop separately, -4.43 together). MEASURED, one fixture, pre = 99.30 % / 698.2 degC in
+   * all four:
+   *                                  power after   droop   fuel after   fuel drop
+   *     557 anchor, flat relief        85.02 %     14.28    641.7 degC    56.5
+   *     547 anchor, flat relief        87.00 %     12.30    649.4 degC    48.8
+   *     557 anchor, #633 relief        86.23 %     13.07    646.5 degC    51.7
+   *     547 anchor, #633 relief        89.45 %      9.85    659.1 degC    39.1   <- both red
+   *
+   * NOT A REGRESSION, and the plant says so itself: at the sample point the reactor is making
+   * what is being TAKEN — load 60 % + dump 30.35 % of rated = 90.35 % against 89.45 % power,
+   * and the same identity holds within ~1 point on all four (86.06/85.02, 88.00/87.00,
+   * 87.22/86.23). A bigger, correctly-anchored, pressure-aware dump absorbing three quarters of
+   * a 40 % rejection is what a dump is FOR; the droop shrinking is the mechanism working.
+   *
+   * These two clauses are DIRECTION clauses — the file already learned that on the fuel one,
+   * whose magnitude claim was re-pointed to the steady-solve identity below precisely because
+   * the delta is contaminated by the baseline. So the floors are set to exclude a plant that
+   * does not MOVE, not to pin a value: 5 points and 20 degC, which all FOUR measured behaviours
+   * clear by at least 4.85 points and 19 degC (both-sides rule, and the two oldest behaviours
+   * are among the four). Re-banding 10 -> 9 and 40 -> 39 would have been the refit-a-slice-at-
+   * a-time pattern this file's own header warns about. THE MAGNITUDE OF THE DROOP IS NOW
+   * UNPINNED — the load-plus-dump identity above is the honest replacement and is filed as
+   * follow-up work, not smuggled in here as a side effect of two unrelated changes. */
   ckT('...which RAISES primary Tavg', cut.tavg_f > pre.tavg_f + 5,
       pre.tavg_f.toFixed(2) + ' -> ' + cut.tavg_f.toFixed(2) + ' degF — a hotter sink removes less');
-  ckT('...which LOWERS power, with no rod motion at all', cut.power < pre.power - 10,
+  ckT('...which LOWERS power, with no rod motion at all', cut.power < pre.power - 5,
       pre.power.toFixed(2) + ' -> ' + cut.power.toFixed(2) + ' % on temperature feedback alone');
   /* ⚠ THIS WAS A DELTA AND THE DELTA IS CONTAMINATED BY THE BASELINE. It asserted a drop of at
    * least 80 degC. MEASURED across the void-feedback change, on the same continuous plant:
@@ -339,7 +398,7 @@ function runSuite(G, rec, quiet) {
    * holds on both plants. The DIRECTION — the fuel cools when power falls — is kept separately,
    * because an identity alone would be satisfied by a plant that never moved. */
   ckT('...and the fuel cools with it, which is the Doppler half of the feedback',
-      cut.fuel < pre.fuel - 40,
+      cut.fuel < pre.fuel - 20,   /* floor re-derived 2026-09-05 — see the 2x2 above */
       pre.fuel.toFixed(1) + ' -> ' + cut.fuel.toFixed(1) + ' degC, on ONE continuous plant');
   var fuelExpect = FU.steadyFuelTemp(FU.deriveGeometry(),
                                      RATED * cut.coreHeatPct / 100, cut.coolTemp_c);
@@ -356,10 +415,73 @@ function runSuite(G, rec, quiet) {
    * A1_NOW literals stay above as the RECORD of what the stand-in produced. What replaces the
    * comparison is PWR2's own sourced behaviour: the armed dump holds the excursion NEAR TREF
    * rather than letting Tavg ride the old law's pressure band. */
-  ckT('the ARMED dump holds Tavg within its own control authority of Tref',
-      cut.tavg_f - (cut.trefC * 1.8 + 32) < 16.4 + 2,
-      'Tavg-Tref ' + (cut.tavg_f - (cut.trefC * 1.8 + 32)).toFixed(1) + ' degF against the ' +
-      '16.4 degF full-output point — the controller saturates before the plant runs away');
+  /* ⚠ THIS CHECK USED TO READ `Tavg - Tref < 16.4 + 2` AND IT WAS MEASURING THE WRONG THING
+   * (#508, 2026-09-05). It went red on the 547 degF re-anchor at 18.5 degF against 18.4 — a
+   * 0.1 degF miss, which is a BIFURCATION and not a tolerance. Adjudicated by measurement rather
+   * than by re-banding, and the measurement INVERTS the reading: the distance grew because TREF
+   * FELL 4.0 degF, not because Tavg rose. Same fixture, flat relief:
+   *
+   *                        557 anchor      547 anchor
+   *       Tavg              586.47 degF    585.33 degF   <- the plant is 1.14 degF COOLER
+   *       Tref              570.86 degF    566.86 degF   <- the REFERENCE moved, -4.0 degF
+   *       Tavg - Tref        15.61 degF     18.47 degF   <- so the difference grew
+   *       controller out      0.9307         1.0000      <- SATURATED, and genuinely so
+   *       dump flow          26.06 %        28.00 %      <- of rated: its full CAPACITY
+   *       safety valves        shut           shut
+   *
+   * So the better-controlled plant read as the worse one. The old form conflated the
+   * controller's PROPORTIONAL BAND with the plant's steady OFFSET, and those are the same
+   * quantity only while the valve is off its stop. Once the controller saturates — which it now
+   * genuinely does on a 40 % rejection, verified above, and which the old check's own note
+   * claimed was already happening when the measurement says it was at 93 % — the residual
+   * offset is set by DUMP CAPACITY against the reactor's feedback equilibrium, and no band
+   * derived from the gain can bound it.
+   *
+   * THE FIRST REPLACEMENT WAS AN IDENTITY AND IT WAS HOLLOW — recorded because it nearly
+   * shipped. It asserted the controller sits where its OWN sourced transfer function puts it
+   * (deadband 5 degF, full output at 16.4 degF, WAT 05 5-18(E)) — which reads well, holds on all
+   * four behaviours to < 1e-3, and CANNOT FAIL HERE, because at this fixture the controller is
+   * saturated and so is the expectation: both sides clip to 1.0000. PROVED by injection, on the
+   * shipping tree, against the check as written:
+   *     loss-of-load reads the NO-LOAD anchor instead of Tref  -> still PASS
+   *     the 5 degF deadband deleted from the transfer function -> still PASS
+   * Any defect that leaves the controller pinned at full output is invisible to it. The
+   * transfer function is not testable at a 40 % rejection any more, and run_pwr2_dumpctl already
+   * pins it at three UNSATURATED points, which is where that claim belongs.
+   *
+   * SO THE CHECK GOES BACK TO WHAT THE 2026-08-19 NOTE ABOVE SAYS IT IS FOR — "the armed dump
+   * holds the excursion NEAR TREF rather than letting Tavg ride" — and gets the CONTROL that
+   * sentence always implied: the same cut, on the same plant, with the dump mode OFF. A
+   * comparison cannot be stale, cannot be fitted to an anchor, and reds the moment the dump
+   * stops doing anything. MEASURED both ends of the change:
+   *
+   *                                  557 / flat relief   547 / #633 relief (shipping)
+   *       Tavg - Tref, dump ARMED        15.61 degF            17.02 degF
+   *       Tavg - Tref, dump OFF          25.00 degF            29.04 degF
+   *       Tavg,        dump ARMED       586.47 degF           583.88 degF
+   *       Tavg,        dump OFF         595.86 degF           595.90 degF
+   *       main steam safety valves         shut / LIFT           shut / LIFT
+   *
+   * The armed dump is worth 9.4 degF and 12.0 degF of excursion respectively, and on BOTH plants
+   * it is the difference between the secondary staying off the safeties and lifting them. The
+   * safety-valve clause carries the content; the 5 degF floor only excludes a dump that does
+   * nothing, and both measured behaviours clear it by at least 4.4 degF. Asserting the OFF ride
+   * LIFTS them is deliberate — an absence check that can pin a non-event is the other half of
+   * this trap, and this one proves the control actually stresses the plant. */
+  var plND = plant(); plND.dc.mode = 'off';    /* ride() never sends `mode`, so it stays off */
+  ride(plND, BASE, null, dumpLaw);
+  var cutND = ride(plND, AFTER, function () { return MWE_CUT; }, dumpLaw);
+  var dTF = cut.tavg_f - (cut.trefC * 1.8 + 32);
+  ckT('the ARMED dump holds the excursion — the SAME cut with the dump OFF runs hotter, ' +
+      'onto the safeties',
+      cut.tavg_f < cutND.tavg_f - 5 && cut.safetyOpen === false && cutND.safetyOpen === true,
+      'Tavg-Tref ' + dTF.toFixed(2) + ' degF armed (controller output ' +
+      cut.dumpOut.toFixed(4) + (cut.dumpOut >= 0.9999 ? ', SATURATED — past this point the ' +
+      'residual offset is set by dump CAPACITY, not by gain' : '') + ') against ' +
+      (cutND.tavg_f - (cutND.trefC * 1.8 + 32)).toFixed(2) + ' degF with the dump OFF; Tavg ' +
+      cut.tavg_f.toFixed(2) + ' vs ' + cutND.tavg_f.toFixed(2) + ' degF, safeties ' +
+      (cut.safetyOpen ? 'LIFTED' : 'shut') + ' vs ' +
+      (cutND.safetyOpen ? 'LIFTED' : 'shut'));
   ckT('...C-7 is ARMED, which a 40 % rejection must do',
       cut.dumpC7 === true && cut.dumpFrac > 0.05,
       'dump ' + (100 * cut.dumpFrac).toFixed(1) + ' % of rated steam');

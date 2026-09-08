@@ -435,13 +435,6 @@ ONE line, drop the rest. **A bullet is ~80 words.**
   number while the plant asked for the valve — and the hold, "pressure rose since the last 0.02 s
   step", rose, cleared and re-rose **three times over 24 psi**; its gate SAMPLED the first rise and
   passed. Assert the span, and grep the checklist for the step that is active when a cue fires.
-- **A SPEED BUTTON IS A REQUEST THE LOOP NEVER REFUSED — AND "THE SAME PHYSICS AT A COARSER STEP"
-  WAS THE WHOLE SECOND MODEL** (2026-09-04, #625). There was no cap on steps per broadcast: 600×
-  blocked the main thread **350 ms per 100 ms broadcast** (3600×: 2.5 s), the page froze, and the
-  transient detector — scaled by WALL cadence — read a quiet plant at 600× as a standing transient.
-  Measured before designing anything: PWR2 at a **0.5 s** step stays inside instrument noise over
-  2 h in three regimes (~2,700×); at **1.0 s** the quiet plant trips itself. Kinetics is exact and
-  the loop sub-steps, so the "simplified physics tier" needed no physics. `run_warp_tier`.
 - **A FRESH-READER REVIEW REPORTS WHAT THE RENDERER SHOWS, AND WHAT YOUR EXTRACT LEFT OUT**
   (2026-09-06, #653). Two minimal-context reviewers, one an operator and one a layman, both
   reported "30 of 67 steps have no acceptance": the panel draws the done-when on the ACTIVE step
@@ -450,6 +443,13 @@ ONE line, drop the rest. **A bullet is ~80 words.**
   three units for one gauge, cautions that never render. **Verify every count on the built object
   before it reaches an issue, and read the layman's "I could not find it" as a board fact.**
 
+- **A GATE WRITTEN WHERE THE DEFECT CANNOT BE SEEN IS 56 GREEN CHECKS OVER NOTHING** (2026-09-06,
+  #633/#508). Every relief path passed a FLAT mass flow, so a 100 % atmospheric dump valve drove the
+  steam generator to **−14 psig** still passing its full rating. Ten of the twelve reds sampled at an
+  ARBITRARY pressure (6.0 MPa) — right only BECAUSE flow ignored pressure. Sibling: the no-load Tavg
+  anchor was another plant's 557 °F while the engine boots no-load at 547 °F, so **both Tavg-mode dump
+  controllers were dead at this plant's own no-load point** and a routine trip vented **18,813 lbm**
+  to atmosphere. **Ask what pressure/state your fixture sits at, and whether the claim survives moving it.**
 
 **Standing procedure — not part of the rotation above; these do not expire.** One trap per entry.
 **MAX 25 BULLETS** *(OWNER RULING, 2026-08-10: selected "Cap at 25, evict to TRAPS.md")*,
@@ -601,16 +601,14 @@ what a GATE already catches**, keep what nothing can tell you.
   so the Pressure SP comes down first. **The live checklist NEVER issues `cmd`** — it draws text
   and the instructor grades off `acc`, so `cmd`/`hold`/`ramp` are replay-side only. **Only a rate
   guard can tell a ramp from a staircase.**
-- **`pwr_board_data.js` is GENERATED** — never hand-edit it; the round trip is in
-  `tools/gen_board_data.js`'s header, and the builder's live state is in browser localStorage, so
-  **ask the owner to export**. **A re-export changes PIPE ids**, silently orphaning `PIPE_TEMP`
-  and undoing geometry fixes — **run `node test/verify_board_check.js` after any board change**
-  (this file twice claimed a green tally while the harness sat at 1 FAILURE). Editing traps: a
-  card TITLE is not an item; `DOC_PATCHES.items` is an object literal so a repeated id silently
-  replaces the first; `Pump`/`Valve`/`Tee` ports quantise to the 5 px grid; exclude
-  `kind: 'component'` tiles from a free-slot scan or the instrument column reads as full.
-  **Measure the board, don't eyeball it** — `RD.PwrBoard.ports()` makes an alignment claim a
-  subtraction. **Screenshot it** — art overlap is invisible to an item-vs-item scan.
+- **A red probe can be the REFERENCE moving, not the plant — adjudicate at BOTH values** (#508,
+  2026-09-06). Three of six pre-adjudicated probes had their filed reading inverted: a dump check
+  read 18.5 °F against an 18.4 °F bound because **Tref fell 4.0 °F while Tavg fell 1.14 °F** — the
+  better-controlled plant read as the regression.
+  **Run the fixture at the old constant AND the new one and ask which quantity moved.** And a fix
+  that reddens something DISTANT may have been **cancelling against it**: a 4.9 % ΔT head start and
+  an equal, opposite K3 credit read as a healthy plant for three weeks (#647/#650). Ask *"what was
+  this cancelling?"* before writing the red off as stale.
 - **An unmeasured claim in PLAYER-FACING COPY is still an unmeasured claim** (rescued from the
   Indications-tab bullet on eviction, 2026-08-17): a "pressurizer mass-only level" row promised
   a TMI divergence that measures 0.0 everywhere, because `pzr_level_pct` is `clip(that,0,100)`

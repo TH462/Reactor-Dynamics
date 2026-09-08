@@ -59,9 +59,13 @@
     }
     return NaN;
   }
-  var DT0_C = S.DESIGN.dt_c;     /* full-power loop delta-T, [derived] — the settled design
-                                  * point's own split (606 - 550 degF = 56 degF = 31.1 degC),
-                                  * the delta-T pair's normalization */
+  var DT0_C = S.DESIGN.dt_c;     /* full-power loop delta-T, [derived] — the plant's OWN
+                                  * settled split at rated, which is the sourced definition
+                                  * of the delta-T pair's normalizer ("ΔT0 = indicated ΔT at
+                                  * rated thermal power", WTSM 12.2 / NUREG-1431). Re-derived
+                                  * at #650 from 31.1, which was sourced to nothing and left
+                                  * the healthy plant 5.0 % inside both bands — the whole
+                                  * argument is on DESIGN in pwr2_sources.js. */
   /* Manual rod motion by the operator's S/M/F selection (#506.4). The SPEEDS are the sourced
    * quantity (WTSM 8.1: 8-72 steps/min, normal 48 — the same class range pwr1's slow/normal/
    * fast descend from); these values are [derived] — pwr1's three rates mapped by fraction-of-
@@ -102,14 +106,20 @@
    * HOT node and `sg_primary` a COLD one — not midpoints. Off-loop nodes are stagnant and
    * keep whatever they boot with; TREF is what the settled plant carries there.
    *
-   * Derived from the config constants (TREF, DT0_C, P0), not from the measured settle
-   * (287.45/318.98 degC) — the constants stay the authority (Hard Rule 9) and the ~1.3 degC
-   * residual drift is bounded by the run_pwr2_engine no-command ride check.
+   * Derived from the config constants (TREF, DT0_C, P0), not from the measured settle — the
+   * constants stay the authority (Hard Rule 9). The residual drift used to be ~1.3 degC and
+   * the settle used to read 287.45/318.98 degC; #647 found that gap was the FUEL SEED reading
+   * the leg average where the ride reads the `core` node, and fixing it leaves +0.07 degC (see
+   * the createReactor call below). What is left is the RCP heat: the IC seeds fission at the
+   * IC's own power fraction, while the settled core runs ~0.44 % below it because pump heat
+   * makes up the balance to the turbine's 300 MWt draw. Bounded by the run_pwr2_engine
+   * no-command ride check.
    *
    * The kinetics REFERENCES stay at TREF: re-pointing createReactor's coolTemp_c and the
    * criticalBoron trim at the hot-leg temperature was measured (2026-08-21) to detonate —
    * power 928 % in one step, beyond-model latch — because TREF is the self-consistent
-   * reference the reactivity chain is normalized against, not a wiring afterthought. */
+   * reference the reactivity chain is normalized against, not a wiring afterthought. #647
+   * moves ONLY the fuel seed, and the trim still reads the leg average; measured stable. */
   function designHmap(tavg_c, dt_c, P_mpa) {
     /* Generalized for the ICs (#507 §F, wave 7): the same donor-cell map about ANY settled
      * operating point — Tavg from the Tref program, the loop split scaling with power.
@@ -173,8 +183,19 @@
      *
      * NOT IN THE FREE-PLAY PICKER, deliberately, like hot_shutdown (ui/app.js): it is the seam
      * between two checklists, not a state a player picks. Nothing enumerates ICS except the
-     * unknown-name error message below, so adding an entry costs no gate. */
-    low_power:      { pf: 0.105, load_mwe: 10, ctrl_steps: 227 },
+     * unknown-name error message below, so adding an entry costs no gate.
+     *
+     * ⚠ `pf` IS DERIVED FROM `load_mwe`, NOT TYPED BESIDE IT (#650). The two are not
+     * independent: `load_mwe` is the turbine's draw and the plant honours it EXACTLY
+     * (measured: mwe_output 9.99999995 against a load_target 10, imbalance 4.7e-8 MWe),
+     * while `pf` only SEEDS the fission, the decay/xenon equilibrium and the leg split
+     * (`dT0 = DT0_C * ic.pf`). The declared 0.105 was the thermal fraction `pwr_startup`
+     * handed over on a 2026-09-04 tree; on this one, 10.0 MWe costs **9.604 %** thermal, so
+     * the seed was 9.3 % high and the IC — whose whole contract is to open SETTLED — rang
+     * 10.50 -> 9.60 % over its first 600 s. Measured at #650, on the same harness as every
+     * other figure here. `load_mwe` is the authority because the turbine enforces it; `pf`
+     * follows the plant's own heat rate at that draw and is re-measured when it moves. */
+    low_power:      { pf: 0.09604, load_mwe: 10, ctrl_steps: 227 },
     hot_zero_power: { pf: 0,   load_mwe: 0, subcritical: true },
     /* THE SHUTDOWN IC (#507 wave 10) is MODE 4, HOT SHUTDOWN — 250 degF / 350 psig,
      * RHR-held, RCPs secured, both banks in, the P-11 blocks taken (the cooldown's own
@@ -261,7 +282,38 @@
      * settled and the reactivity is known — see the block after `if (ic.cold)`. The kinetics
      * REFERENCES stay at their defaults — see the detonation note above. */
     var powf = ic.pf > 0 ? ic.pf : 1e-6;
-    var rx = R.createReactor({ P: powf, coolTemp_c: tavg0 });
+    /* ⚠ THE FUEL IS SETTLED AGAINST THE `core` NODE, WHICH IS WHAT `stepFuel` WILL DRIVE IT
+     * WITH (#647, 2026-09-06). This passed `tavg0` — the LEG AVERAGE — while every step of
+     * the ride settles the fuel against `coreTemp(sys)`, the donor-cell OUTLET node, which is
+     * `tavg0 + dT0/2` by designHmap's own construction. So the at-power ICs did not open at
+     * their own equilibrium at all: the fuel booted 18.1 degC cold at hot full power, the
+     * criticalBoron trim below inherited that error through `rx.fuel.T_fuel_c`, and the plant
+     * then bought the missing Doppler back by cooling the moderator until it was critical
+     * again. That drift IS the 2.4 degF gap #647 was opened on — the plant settling 1.3 degC
+     * below its own design point and never reaching the pressurizer level program's 61.5 %
+     * knot. It is a CONSTRUCTION defect, not a plant characteristic: the ICS header's rule is
+     * that every state variable is placed at ITS OWN equilibrium, and this one was placed at a
+     * different node's.
+     *
+     * MEASURED, 3000 s from each at-power IC (before -> after, settled Tavg, degF):
+     *     hot_full_power  577.675 -> 580.228   (program knot 580.10)
+     *     50_percent      561.633 -> 563.707   (program knot 563.55)
+     *     low_power       550.551 -> 550.878   (program knot 550.31)
+     * and at hot full power the whole design point arrives with it: SG 807.88 -> 825.90 psia
+     * against a design 825, pressurizer level 58.85 -> 61.55 % against a program 61.50. THREE
+     * independent design constants landing inside 0.15 % is the evidence this is the defect
+     * and not a tuning — none of them was touched.
+     *
+     * NOT THE DETONATION THE designHmap NOTE WARNS ABOUT. That was re-pointing createReactor's
+     * coolTemp_c AND the criticalBoron trim at the hot-leg temperature (2026-08-21, 928 % in one
+     * step). Only the FUEL seed moves here; the trim below still reads `tavg0`, because the
+     * moderator temperature the reactivity chain is normalized against IS the leg average —
+     * `stepKinetics` derives exactly that when no override is passed. Measured stable: power
+     * settles 99.559 %, no latch.
+     *
+     * Read off the BUILT plant rather than recomputed, so designHmap's node map and this seed
+     * cannot drift apart. The no-load and cold ICs have dT0 = 0 and are byte-identical. */
+    var rx = R.createReactor({ P: powf, coolTemp_c: tLeg(sys, 'core') });
     /* TWO BANKS (#506.3, 2026-08-22): control + shutdown, worths from the kinetics module's
      * own gated pair (WTSM 2.2 Table 2.2-1: 4068 / 3676 pcm — the citation, ML11216A051, is
      * NOT in the corpus; the figures are cited-but-uncorroborated, recorded in
@@ -384,8 +436,23 @@
        * at-power plant that had ascended through P-10 took both. During play they are
        * separate levers. The shutdown IC boots with the P-11 pair TAKEN — the cooldown's own
        * lineup ("Block SI is three actions", and the third was the pressure setpoint coming
-       * down, already done). */
-      pt: PT.createProtection({ blockLowFlux: ic.pf >= 0.1, blockIrHigh: ic.pf >= 0.1,
+       * down, already done).
+       *
+       * ⚠ THE DISCRIMINATOR IS `load_mwe`, NOT `pf`, AND THAT COST A CHECKLIST LEG (#650). It
+       * read `ic.pf >= 0.1`, which is a THRESHOLD ON A SEED. When `low_power.pf` was re-derived
+       * from its own dispatch — 0.105 to 0.09604, a 0.9-point correction to how much fission the
+       * state is BUILT with — it crossed that literal, `low_power` booted with neither startup
+       * block taken, and `pwr_raise_power` scrammed at step 4 on ir_high_flux: 14 red checks in
+       * `run_checklist_pwr2` from a change that moved no protection and no setpoint.
+       * "Has this plant ascended through P-10 and taken the operator's blocks?" is answered by
+       * whether it is ON THE GRID, which is exactly the reasoning `if (!(ic.load_mwe > 0))` below
+       * already uses for the turbine latch — *"Keyed on `load_mwe`, not on `subcritical` or `pf`:
+       * the new `low_power` IC is subcritical by neither measure but IS on the grid at 10 MWe"*.
+       * That comment was 180 lines away and this line did not learn from it.
+       * IDENTICAL ON ALL SIX ICs UNDER BOTH SETS OF `pf` VALUES (checked, HR10): the only one it
+       * moves is `low_power`, and only back to what it always meant. A seed can be re-derived;
+       * the dispatch is what the turbine enforces. */
+      pt: PT.createProtection({ blockLowFlux: ic.load_mwe > 0, blockIrHigh: ic.load_mwe > 0,
                                 blockLoPress: !!ic.cold, blockSI: !!ic.cold }),
       brk: null,
       ctm: CT.createContainment({}),
@@ -1160,6 +1227,14 @@
       condenser_available: cr.available,
       adv_demand: eng.advDemand,
       adv_block: eng.advBlock,
+      /* THE DUMPS' DOWNSTREAM PRESSURE (#633). Every relief capacity is quoted at a stated
+       * upstream pressure and pwr2_relief now normalises to it, which makes the pressure the
+       * path discharges INTO a real driver. The dumps discharge to the condenser and
+       * pwr2_condenser has already published its saturation pressure this step; the ADV and
+       * the MSSVs vent to atmosphere and take the layer's own default. Absent, the dumps
+       * would discharge to atmosphere — the layer's declared default, which understates them
+       * at low steam pressure and can never overstate them. */
+      P_cond_mpa: cr.P_cond_mpa,
       /* the dumps are DOWNSTREAM of the MSIV (#511 — B 3.7.2); safeties/ADV are upstream */
       msiv_frac: eng.msiv.pos
     });
@@ -1453,9 +1528,10 @@
        * class (#507 wave 4; the deferred start pwr2_protection.js recorded is now built) */
       loss_of_offsite: !offsiteOk,
       /* the delta-T pair's inputs: loop delta-T normalized to full-power delta-T, and Tavg.
-       * DT0_C is [derived]: the plant's own measured full-power split at the design point
-       * (606/550 degF, PWR2_VALIDATION.md sec 43) — 31.1 degC. Protection converts to the
-       * source's units itself. */
+       * DT0_C is [derived]: the plant's own settled full-power split, 32.71 degC (58.88
+       * degF) — the sourced definition of ΔT0 is the INDICATED split at rated, so this
+       * fraction must read 1.000 on a healthy rated plant and `run_pwr2_protection` asserts
+       * it (#650). Protection converts to the source's units itself. */
       delta_t_frac: rd.thot !== undefined ? (rd.thot - rd.tcold) / DT0_C
                     : (tLeg(sys, 'hot_leg') - tLeg(sys, 'cold_leg')) / DT0_C,
       tavg_c: rd.tavg !== undefined ? rd.tavg : tavg   /* stepInner's own — #514, was a
