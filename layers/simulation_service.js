@@ -656,7 +656,11 @@
   // report and the model's own hold.
   SimulationService.prototype._warpBlocked = function () {
     if (!this.engine) return 'no plant';
-    if (this.simTime < this._warpLockedUntil) return this._warpLockWhy || 'plant not settled';
+    /* NO QUIET TIMER *(OWNER, 2026-09-08, #660: "Warp lock should not have a time out, it should
+     * either be locked or not.")*. The 30-plant-second `_warpLockedUntil` that every event used to
+     * start is gone: a drop still happens on the event, and afterwards WARP is refused only while
+     * a LIVE condition stands — the rate detector, a model hold, the loop's Courant limit. At 1x
+     * the timer had been 30 wall-seconds of a button that did nothing (#655). */
     if (this._lastRapid) return 'plant in transient';
     var ts = this.engine.getTrueState ? this.engine.getTrueState() : null;
     if (ts && (ts.beyond_model === true || ts.model_held === true)) return 'model held';
@@ -664,8 +668,9 @@
     if (rep && rep.courant_limit_s > 0 && this.pacing.warpDt / rep.courant_limit_s > WARP_COURANT_MAX_SUB) return 'loop transient';
     return null;
   };
+  // Kept as the one place an event's reason is recorded (the info line prints it); it no longer
+  // starts a timer (#660 — "either locked or not").
   SimulationService.prototype._lockWarp = function (why) {
-    this._warpLockedUntil = this.simTime + WARP_QUIET_S;
     this._warpLockWhy = why;
   };
   // THE IN-LOOP WATCH. Called right after every protection evaluation while on WARP, with the
@@ -719,10 +724,8 @@
       achieved: this._achieved == null ? null : Math.round(this._achieved),
       warp_available: !why,
       warp_lock: why,
-      /* how much of the quiet timer is left, in plant seconds (#655) — the UI counts it down
-       * under the speed buttons, so a refusal at 1x (where 30 plant-seconds is 30 wall-seconds)
-       * reads as a wait with an end, not a button that does nothing */
-      warp_lock_remaining_s: this.simTime < this._warpLockedUntil ? Math.ceil(this._warpLockedUntil - this.simTime) : 0,
+      /* no quiet timer since #660 — the field stays 0 so a reader that learned it (#655) is unchanged */
+      warp_lock_remaining_s: 0,
       /* The EFFECTIVE budget — what THIS tier is spending, not what was configured (#631).
        * A reader (ui/perf.js's verdict, a bug report) is asking "how much of the broadcast is
        * the physics allowed", and on WARP that is the WARP number. The configured WARP value

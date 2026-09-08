@@ -29,6 +29,29 @@ and the user-visible summary in `CHANGELOG.md`. This file points at those and tr
 
 ---
 
+## Session log — 2026-09-08-develop-b (#660 — the owner's playtest notes, sections A and B: the bar back to one row, the WARP timer gone, and the 1/M plot finally used)
+
+**The notes are the directive**; transcribed on #660. Two things measured before writing:
+
+**The 1/M prediction, on the panel's own fit.** `ui/panels/one_over_m.js` fits the LAST THREE
+points of C₀/C against fraction withdrawn and extrapolates to zero. On the replay's counts (0 →
+502, 94 → 780, 157 → 1,500, 188 → 3,600, 202 → 9,100, 211 → 36,000 cps) it predicts **264 → 241 →
+217 → 211 → 213** over points 2..6; true critical is 223 (`run_reactivity`). High early, about ten
+steps LOW at the end — the convexity of 1/M near critical. So "withdraw to the predicted position"
+(item 8) leaves the core just subcritical, which makes it a safe instruction, and the creep on
+STARTUP RATE finishes it. This supersedes the 2026-09-03 no-rod-target ruling (#618); the replay's
+commands and acceptances are untouched.
+
+**The lock timer.** Removed outright (item 2); `_warpBlocked` now reads only live conditions.
+`run_warp_tier` WT-3e ("a WARP re-request while locked lands at 60x and says why") still passes,
+because a large break IS a live condition — the rate detector, not the timer, was ever the thing
+refusing it there.
+
+Also: the "Nothing to press" rule the layman review produced lasted two days; the owner's
+directive (item 5) reverses it and the guide's R4 now says so with its provenance. The active
+step's details are open unconditionally (item 3); the walkthrough rework (items 14–18) will make
+that the only state.
+
 ## Session log — 2026-09-08-develop-a (#655 — the speed bar's WARP row and info line; the clock drops by alarm PRIORITY; the freeze did not reproduce)
 
 **What was asked.** Fix #655; WARP buttons on their own row with the others beneath and a space

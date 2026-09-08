@@ -3823,6 +3823,10 @@
         if (st.accs && st.accs.length) {
           for (var ai = 0; ai < st.accs.length; ai++) {
             var en = st.accs[ai], av = (ck.accs && ck.accs[ai]) || {};
+            /* `hidden: true` — a cmd-kind entry the replay needs (it is how the harness presses
+             * the button) whose twin predicate entry already draws the lamp; drawing both put
+             * "spray" on the card twice (#660 item 6). Still graded; just not printed. */
+            if (en.hidden) continue;
             var enTxt = en.label ? en.label : (en.p ? fmtPredicate(en) : mesc(en.cmd || ''));
             h += '<div class="ckl-crit' + (av.met ? ' ckl-crit-met' : '') + '">' +
               (av.met ? '✓ ' : '○ ') + (en.label ? mesc(enTxt) : enTxt) + '</div>';
@@ -3908,8 +3912,9 @@
       }
       if (st.why) det += '<div class="ckl-why">' + mesc(st.why) + '</div>';
       if (det) {
-        var detOpen = cklState.whyAll || (cklState.whyOpen && cklState.whyOpen[i]);
-        if (active && !detOpen) h += '<div class="ckl-expand-hint">Click to expand</div>';
+        /* THE ACTIVE STEP'S DETAILS ARE ALWAYS OPEN *(OWNER, 2026-09-08, #660: "The current step
+         * should have the why section automatically open.")*. Other steps keep the toggle. */
+        var detOpen = active || cklState.whyAll || (cklState.whyOpen && cklState.whyOpen[i]);
         if (detOpen) h += det;
       }
       h += '</div></div>';

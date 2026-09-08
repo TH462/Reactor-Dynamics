@@ -32,6 +32,28 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
 
 ## [Alpha 1.7.4-rc4] — 2026-09-08
 
+### Changed (owner playtest 2026-09-08, sections A and B — #660)
+
+The owner's handwritten notes, transcribed verbatim on #660. **Speed bar:** back to one row (1×
+… 3600×) with the status strip as its own full-width line below and Manual / Help / Feedback /
+Settings on a row above (item 1). **WARP lock has no timer** (item 2): the 30-plant-second quiet
+timer from #625 is gone; a drop still happens on the event and WARP is refused only while a live
+condition stands (rate detector, model hold, Courant). **The active step's details are always
+open** (item 3). **Heatup:** step 4 lost its `cmd` so it holds for the acknowledgement instead of
+ticking itself on the already-tripped turbine (item 4); "Nothing to press" is gone from all 14
+verification steps, which now start with "Verify" and name the lamp (item 5 — the guide's R4
+reversed, the layman review's wording withdrawn); step 8's spray no longer prints twice — the
+cmd-kind entry the replay needs is `hidden: true` and only the lamp entry draws (item 6).
+**Startup:** step 2's details cut to two sentences (item 7); step 10 tells the player to withdraw
+to the position the 1/M panel predicts and creep from there (item 8) — measured with the panel's
+own last-three fit on the replay's counts, the prediction runs 264 → 241 → 217 → 211 → 213 against
+a true critical of 223, high early and about ten steps low at the end, so the predicted position
+is safe to go to; this supersedes the 2026-09-03 no-rod-target ruling; the STARTUP RATE details
+say a positive reading means reactivity above zero (item 9); step 12 names the SOURCE RANGE → INTER
+RANGE handover and closes the 1/M window (items 10, 12); step 11 is instrument-based — let power
+climb, add a step only when STARTUP RATE has come back to zero (item 11). Items 13–23 (the docked
+1/M panel, the walkthrough rework, the Plant & Mission screen) follow.
+
 ### Changed (the speed bar: WARP on its own row with an info line, and which alarms drop the clock — #655)
 
 *(OWNER, 2026-09-08: "put the warp buttons on their own line with the other buttons underneath
@@ -40,9 +62,11 @@ for not every alarm? Maybe there are specific alarms it doesn't drop out of warp
 speed strip is a 4-column grid: 600× / 3600× on top, an info line, 1× / 5× / 10× / 60× below.
 The line is persistent where the toast was momentary — the third playthrough missed three dropout
 toasts and concluded the clock "reverts on its own": it prints the last automatic drop and its
-reason (until the player next changes speed), a WARP lock with its reason and a countdown of the
-30-plant-second quiet timer (`pacing.warp_lock_remaining_s`, new), what WARP is achieving while it
-runs, or that WARP is ready. **The alarm rule is by priority now.** A new unacknowledged
+reason (until the player next changes speed), a WARP lock with its reason, what WARP is achieving
+while it runs, or that WARP is ready. *(The 30-plant-second quiet timer and its countdown lasted
+one day: OWNER, 2026-09-08, #660 — "Warp lock should not have a time out, it should either be
+locked or not." A drop still happens on the event; afterwards WARP is refused only while a live
+condition stands — the rate detector, a model hold, the loop's Courant limit.)* **The alarm rule is by priority now.** A new unacknowledged
 **critical or warning** alarm arriving on a quiet board drops WARP to 60× and fast-forward to 1×;
 a **caution** (the accumulators lined up below 1000 psi, which the heatup checklist tells the
 player to cause) or a **status** tile never does — and neither counts as "lit" when deciding

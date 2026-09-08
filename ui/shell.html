@@ -153,6 +153,19 @@
           </div>
           <div class="clock mono" id="clock">T+00:00:00</div>
         </div>
+        <!-- TOOLS ABOVE THE SPEED CONTROLS, SPEED ON ONE LINE, STATUS STRIP BELOW (OWNER, 2026-09-08, #660: "Keep speed controls on one line, put status strip below it. Manual, Help, Feedback, settings should be on one line above the speed controls.") -->
+        <div class="sim-row sim-tools">
+          <button class="btn" id="manualBtn" data-scanner-hint="Operator's Manual — reference (controls, indications, setpoints, normal values) and engine-validated procedures for the selected plant."
+              data-scanner-detail="The manual set is written in commercial operator-manual format: general description, controls and indications, normal and emergency procedures, alarm response, setpoints and a glossary. Its procedures are replayed against the engine by the test suite, so the steps match the plant you are operating.">Manual</button>
+          <button class="btn text-btn" id="helpBtn" title="How this control room works" data-scanner-hint="Help — a short guide to the board, the right-hand panels, and where to learn next.">Help</button>
+          <!-- Feedback in one action (#438, spec §10). The moment someone wants to report is
+               the moment the board does something unexpected — they will not go hunting
+               through Settings, which is where the only entry point used to be. -->
+          <button class="btn text-btn" id="fbHeaderBtn" title="Report a problem or send feedback" data-scanner-hint="Feedback — report a bug or send a suggestion. A recording of this session can be attached so what you saw can be replayed.">Feedback</button>
+          <button class="btn text-btn" id="settingsBtn" title="Settings — units, fast-forward dropout, save/load" data-scanner-hint="Settings — units, fast-forward dropout, save and load. It pauses the plant while it is open, because none of it is operating."
+              data-scanner-detail="The chart's own controls are NOT here — they have a window of their own, behind the ⚙ on the strip chart, which lists every channel you can plot with its current reading. This one covers the things that are true of the whole simulator: units, the fast-forward dropout, and saving or loading a run.">Settings</button>
+          <button class="btn demo-btn" id="demoBtn" title="Board focus — hide the side panel and enlarge the plant diagram" data-scanner-hint="Board focus — hides the simulator panel on the right and moves the time controls atop the alarms/graph column, giving the plant diagram more room. Click again to bring the panel back.">⛶</button>
+        </div>
         <div class="sim-row">
           <button class="play paused attention" id="playBtn" data-scanner-hint="Play / Pause — starts or stops the simulation. Separate from the speed selector."
               data-scanner-detail="Paused, the plant is frozen but the board stays live and controls still queue commands. Time acceleration is a separate control: pausing does not reset it, and a paused plant at 60x is still paused.">▶</button>
@@ -168,20 +181,12 @@
                  on top, the info line between (why WARP is locked and for how long, what it is
                  achieving, why the clock last dropped), PLAY underneath. DOM order is warp-first;
                  every reader of [data-speed] sorts or looks up by value, so the order is free. -->
-            <button class="warp" data-speed="600" title="WARP — coarser physics step; long quiet evolutions only">600×</button><button class="warp" data-speed="3600" title="WARP — coarser physics step; long quiet evolutions only">3600×</button><div class="warp-info mono" id="warpInfo" aria-live="polite"></div><button class="on" data-speed="1">1×</button><button data-speed="5">5×</button><button data-speed="10">10×</button><button data-speed="60">60×</button>
+            <button class="on" data-speed="1">1×</button><button data-speed="5">5×</button><button data-speed="10">10×</button><button data-speed="60">60×</button><button class="warp" data-speed="600" title="WARP — coarser physics step; long quiet evolutions only">600×</button><button class="warp" data-speed="3600" title="WARP — coarser physics step; long quiet evolutions only">3600×</button>
           </div>
           <span class="ff-rate mono" id="ffRate" hidden title="Achieved rate — the plant-time actually passing per second of wall clock"></span>
-          <button class="btn" id="manualBtn" data-scanner-hint="Operator's Manual — reference (controls, indications, setpoints, normal values) and engine-validated procedures for the selected plant."
-              data-scanner-detail="The manual set is written in commercial operator-manual format: general description, controls and indications, normal and emergency procedures, alarm response, setpoints and a glossary. Its procedures are replayed against the engine by the test suite, so the steps match the plant you are operating.">Manual</button>
-          <button class="btn text-btn" id="helpBtn" title="How this control room works" data-scanner-hint="Help — a short guide to the board, the right-hand panels, and where to learn next.">Help</button>
-          <!-- Feedback in one action (#438, spec §10). The moment someone wants to report is
-               the moment the board does something unexpected — they will not go hunting
-               through Settings, which is where the only entry point used to be. -->
-          <button class="btn text-btn" id="fbHeaderBtn" title="Report a problem or send feedback" data-scanner-hint="Feedback — report a bug or send a suggestion. A recording of this session can be attached so what you saw can be replayed.">Feedback</button>
-          <button class="btn text-btn" id="settingsBtn" title="Settings — units, fast-forward dropout, save/load" data-scanner-hint="Settings — units, fast-forward dropout, save and load. It pauses the plant while it is open, because none of it is operating."
-              data-scanner-detail="The chart's own controls are NOT here — they have a window of their own, behind the ⚙ on the strip chart, which lists every channel you can plot with its current reading. This one covers the things that are true of the whole simulator: units, the fast-forward dropout, and saving or loading a run.">Settings</button>
-          <button class="btn demo-btn" id="demoBtn" title="Board focus — hide the side panel and enlarge the plant diagram" data-scanner-hint="Board focus — hides the simulator panel on the right and moves the time controls atop the alarms/graph column, giving the plant diagram more room. Click again to bring the panel back.">⛶</button>
+
         </div>
+        <div class="warp-info mono" id="warpInfo" aria-live="polite"></div>
         <!-- What's running now — the always-visible mission entry point -->
         <button class="sim-status" id="simStatus" data-scanner-hint="Select Plant, Mission &amp; Reset — click to switch reactors, change what you are running, or restart the plant from a clean initial condition."
               data-scanner-detail="One window covers both choices: which reactor, and whether you are in free play (with a starting plant condition) or running guided content. Switching either one restarts the simulation from a fresh initial condition.">

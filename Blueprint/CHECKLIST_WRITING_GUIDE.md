@@ -82,11 +82,13 @@ Rules that follow:
   its own IF sentence, and the check is still a check.
   *Before:* "Confirm SG FEED is in AUTO before you add any heat. If it is not, press AUTO."
   *After:* "Check SG FEED reads AUTO. If it does not, press AUTO."
-- **R4. Say "Nothing to press" on every CHECK and WAIT step.** It is two words, it is the best
-  two words in the shipped set, and it answers "am I stuck or am I finished?" — the commonest
-  layman question.
-  *Before:* "Confirm the letdown transfer: RHR suction autoclosed, letdown now on the orifices."
-  *After:* "Nothing to press. The RHR suction valve shut itself at 585 psi, so letdown is now on the orifices you opened in step 7. Check LETDOWN is not reading 0 gpm."
+- **R4. A CHECK step starts with "Verify" and names the lamp or value; never "Nothing to
+  press"** *(OWNER, 2026-09-08, #660: "No step should say that. They should just say what to
+  check or say something like Close or verify Closed STEAM DUMP.")*. The layman review had
+  asked for "Nothing to press" as the answer to "am I stuck or finished?"; the directive is
+  that the verification wording carries that itself.
+  *Before:* "Nothing to press. Check the STEAM DUMP card: CLOSE lit and the status reading MANUAL."
+  *After:* "Verify the STEAM DUMP is closed: CLOSE lit on the STEAM DUMP card, status reading MANUAL."
 - **R5. Never narrate the outcome in the step line. Make it the done-when.**
   *Before:* "Press SCRAM. Both banks drop and power collapses into the source range."
   *After:* "Arm the trip, then press SCRAM." · done when: "CONTROL and SHUTDOWN ROD POSITION 0 of 627, REACTOR POWER below 5 % and falling."
