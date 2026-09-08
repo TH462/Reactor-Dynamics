@@ -90,10 +90,17 @@ function sig(rows) {
     var atPower = await readMenu(page);
     var heatM1 = atPower.filter(function (r) { return r.id === 'pwr_heatup'; })[0];
     var raiseM1 = atPower.filter(function (r) { return r.id === 'pwr_raise_power'; })[0];
-    ck('Mode 1 boot: the list is populated and the Mode 5 heatup is the greyed one',
-       atPower.length >= 5 && heatM1 && heatM1.gated && raiseM1 && !raiseM1.gated,
+    var lowerM1 = atPower.filter(function (r) { return r.id === 'pwr_lower_power'; })[0];
+    /* SINCE #653 (2026-09-07) THE ASCENSION IS GREY HERE TOO, on purpose: the Hot Full Power
+     * preset boots the control bank on its top stop (627), where every WITHDRAW in that leg is
+     * a no-op, so the leg carries a `control_bank_steps < 600` precondition ("this checklist
+     * follows the startup checklist, not a power preset"). Warns, never blocks — the click test
+     * below still proves that. The rampdown is the leg that must read WHITE at power. */
+    ck('Mode 1 boot: the list is populated; the Mode 5 heatup and the ascension (bank on its top stop) are greyed, the rampdown is white',
+       atPower.length >= 5 && heatM1 && heatM1.gated && raiseM1 && raiseM1.gated && lowerM1 && !lowerM1.gated,
        atPower.length + ' rows; heatup ' + (heatM1 && heatM1.gated ? 'grey' : 'WHITE') +
-       ', raise_power ' + (raiseM1 && raiseM1.gated ? 'GREY' : 'white'));
+       ', raise_power ' + (raiseM1 && raiseM1.gated ? 'grey' : 'WHITE') +
+       ', lower_power ' + (lowerM1 && lowerM1.gated ? 'GREY' : 'white'));
 
     /* ---- 2. the player switches to Cold Shutdown (Mode 5) ------------------------------ */
     /* Through the Plant & Mission window, which is the only path a player has to a different
@@ -205,7 +212,8 @@ function sig(rows) {
      * name no internal, and put the band at 14 °F. */
     var detail = banner.text ? banner.text.replace(/\s+/g, ' ') : '';
     ck('...and the detail line is player-facing: US-first, no raw param, a 14 °F band on the 8 °C tolerance',
-       /wants Tavg within 14(\.\d)? °F \(8 °C\) of 547(\.\d)? °F \(286 °C\), reads 12\d(\.\d)? °F/.test(detail) &&
+       /* the label is the TILE's word since #653 pass 3 (PRED_DISPLAY: AVG COOLANT TEMPERATURE, not Tavg) */
+       /wants AVG COOLANT TEMPERATURE within 14(\.\d)? °F \(8 °C\) of 547(\.\d)? °F \(286 °C\), reads 12\d(\.\d)? °F/.test(detail) &&
        !/tavg_c/.test(detail),
        detail ? detail.replace(/^.*?—/, '').slice(0, 120) : 'no banner text');
     /* ---- 3b. THE ENTRY BANNER NEVER RETURNS MID-CHECKLIST (#614) ----------------------- */
