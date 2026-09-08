@@ -76,6 +76,39 @@ headless at 1600 × 900: chart 534 → 380 px, alarms shrink to 364 px, plot 300
 returns the chart to 534 px — after one trap: `display: flex` on the docked class beat the UA's
 `[hidden]` rule, so the closed plot still held its 300 px until `.oom-docked[hidden]` was written.
 
+**Items 17–18 follow-up — the two rewind edge cases, measured; one of them does not exist.**
+(A) *Rewind pressed within one broadcast of Continue.* **There is no gap.** `checklist_check` calls
+`_assembleWithInstructor`, which services the instructor's consume-flags in that same call, so the
+check-off's own snapshot already carries the new checkpoint: on pwr2 from `cold_shutdown` running
+`pwr_heatup`, checking off step 2 took the ring 3 → 4 with no tick at all, and a
+`rewind {steps:2, exact:true, scope:'full'}` issued immediately after landed at **step_index 2,
+sim time 2.00 s** — byte-for-byte what the same rewind produced with a tick in between (step_index
+2, sim time 2.00 s, ring 3). The auto-advance path is the same call, so it has no gap either.
+(B) *Rewind after loading a save mid-walkthrough.* **This is the real one.** Saving at step 2 and
+loading into another service restored `instructor.checklist.idx = 2` and `checkpoints.length = 0`
+(`loadState` clears the ring by design), and the rewind returned `type: 'error', "no checkpoint to
+rewind to"` with step_index and the ring untouched — a clean refusal under a button drawn lit,
+because it was drawn on `ck.step_index > 0` alone. **The guard is on the button, not the command:**
+the service derives `_checklistRewindReady()` from the ring itself — the newest checkpoint's own
+`instructor.checklist.{procedure_id, idx}` must equal the step now showing, the ring must hold at
+least two, and the walkthrough must be past step 0 — writes it into the instructor before each
+assemble, and it ships as `instructor.checklist.rewind_ready`; `ui/app.js` disables `.wt-rewind`
+unless it is true. **Derived, never book-kept**, because `_rewind` truncates the ring: a remembered
+"laid at step N" would go stale on the first press and the second would be dark. The step-0 clause
+is not redundant — free play's own sandbox checkpoint is already on the ring when the player
+presses Start (ring 1 → 2), so "the ring has two entries" would offer a rewind to *before* the
+walkthrough. **A second defect fell out of it, and only a browser could see it**: the checklist
+card is key-cached and neither button's lit state was in the key, so at step 1 with the ring
+emptied the snapshot read `rewind_ready` false while the button on the board stayed **enabled** —
+#606's shape, one card over. `awaiting_ack`, which lights Continue, was missing from the key too;
+both join it now, and `verify_ckl_relevance` 14 → 16 gates the button against the ring in the DOM
+(two injections, the pre-fix `step_index > 0` condition and the key line removed, each red the
+post-load check). `run_checklist` 47 → 60, and one of the new probes was hollow on arrival:
+"loadState clears the ring" passed unchanged with that line deleted, because the loading service
+was freshly constructed and its ring was empty anyway — it now ticks three times in free play
+first. Separately, `verify_flags_ui` measured **48/48** against a `BASELINES` of 47/47 with the
+runner untouched: pre-existing drift from 166ea25f, corrected here.
+
 ## Session log — 2026-09-08-develop-a (#655 — the speed bar's WARP row and info line; the clock drops by alarm PRIORITY; the freeze did not reproduce)
 
 **What was asked.** Fix #655; WARP buttons on their own row with the others beneath and a space

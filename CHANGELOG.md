@@ -82,7 +82,14 @@ instructor requests a full-scope checkpoint at start (checkpoint 0) and on every
 checkpoint per step, and the button issues `rewind {steps: 2, scope: 'full', exact: true}` (the
 newest checkpoint is the start of the current step). The chart's Rewind and the instructor nav's
 rewind are disabled while a walkthrough runs. Measured in the browser: Step 2 → Rewind → Step 1,
-checkpoints 2 → 1, sim time 2.1 s → 1.0 s, Continue lit again. **Plant & Mission** (items 19–23):
+checkpoints 2 → 1, sim time 2.1 s → 1.0 s, Continue lit again. **Rewind step is now lit only when
+this step's own checkpoint is actually on the ring** (`instructor.checklist.rewind_ready`, derived
+from the newest checkpoint's stored walkthrough index): loading a saved game restores the
+walkthrough's progress and clears the rewind ring, so the button used to sit lit at step 2 over a
+command the service refuses ("no checkpoint to rewind to", nothing moved) — measured, along with
+the one-broadcast case, which does not exist (`checklist_check` lays the checkpoint in its own
+broadcast: ring 3 → 4 with no tick, and the immediate rewind landed identically at step_index 2 /
+sim time 2.00 s). **Plant & Mission** (items 19–23):
 the Campaign and Scenarios tabs are not offered (content and gates untouched; `?mmode=` in the
 URL still draws them for screenshots and `verify_flags_ui`); the Walkthroughs tab lists the pwr2
 pool with a **Start** button that loads the walkthrough's own starting condition (`from`) and
@@ -90,7 +97,9 @@ starts it; **At Power — power ascension (Mode 1)** (`low_power`) is a starting
 Play blurb is gone. Gates: `run_checklist` 46 → **47** (the command-family and acceptance checks
 now assert satisfied-then-Continue), `verify_flags_ui` (+2: Start buttons, the player's window
 offers exactly two tabs), `verify_e2e_ui`/`verify_ckl_relevance` retargeted to the Instructor tab
-and the step header.
+and the step header, `run_checklist` **47 → 60** (section 9, the rewind ring — injection-verified
+four ways, including one probe that was hollow on arrival because the loading service's ring was
+empty anyway).
 
 ### Changed (the 1/M plot is docked beside the alarm panel — #660 item 13)
 

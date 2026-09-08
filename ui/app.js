@@ -3714,6 +3714,14 @@
       // #244 additions: per-entry check-off states, the why-toggle states, and the display
       // units all change what the card shows, so they join the render key.
       (ck.accs || []).map(function (a) { return a.met ? 1 : 0; }).join(''),
+      /* #660 items 17-18: BOTH BUTTONS' LIT STATES BELONG IN THE KEY. `awaiting_ack` is what
+       * lights Continue and draws its note, and `rewind_ready` is what enables Rewind — neither
+       * was here, and neither is implied by the rest of the key: `rewind_ready` can flip while
+       * the step index and every acceptance sit still (emptying the ring, which is what loading
+       * a save does). MEASURED in headless Chromium before this line existed: step 1 with the
+       * ring cleared reported rewind_ready false in the snapshot while the button on the board
+       * stayed enabled, because nothing in the key had moved. */
+      ck.awaiting_ack ? 1 : 0, ck.rewind_ready ? 1 : 0,
       cklState.whyAll ? 1 : 0, Object.keys(cklState.whyOpen || {}).join(','), ui.units,
       cklState.view].join('|');
     if (key === cklState.key) return;
@@ -3919,10 +3927,19 @@
          * always drawn and lights (`ready`) when the instructor reports the step satisfied —
          * every step waits for it now, not only the observations. Rewind takes plant and
          * walkthrough back one step: two checkpoints back, because the newest is the start of
-         * THIS step (laid on the last Continue). Disabled on the first step. */
+         * THIS step (laid on the last Continue). Disabled on the first step — and disabled
+         * whenever the step's start checkpoint is NOT on the rewind ring (`rewind_ready`, #660
+         * items 17-18): a loaded save restores the walkthrough's progress but clears the ring,
+         * which used to leave the button lit over a command the service refuses. */
+        var wtRw = ck.step_index > 0 && ck.rewind_ready;
         h += '<div class="ckl-ack-row">' +
-          '<button class="btn wt-rewind" data-wt-rewind="1"' + (ck.step_index > 0 ? '' : ' disabled') +
-            ' title="Back one step — the plant and the walkthrough return to the start of the previous step">⏪ Rewind step</button>' +
+          '<button class="btn wt-rewind" data-wt-rewind="1"' + (wtRw ? '' : ' disabled') +
+            ' title="' + (wtRw
+              ? 'Back one step — the plant and the walkthrough return to the start of the previous step'
+              : ck.step_index > 0
+                ? 'Rewind is not available here — this step\'s saved plant state is not in memory (loading a saved game clears it)'
+                : 'This is the first step — there is nothing to go back to') +
+            '">⏪ Rewind step</button>' +
           '<button class="btn ckl-ack wt-continue' + (ck.awaiting_ack ? ' ready' : '') + '" data-ckl-check="' + i + '"' +
             (ck.awaiting_ack ? '' : ' disabled') + '>Continue ▶</button>' +
           (ck.awaiting_ack ? '<span class="ckl-ack-note">Step done — press Continue.</span>' : '') + '</div>';

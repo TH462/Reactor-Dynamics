@@ -792,6 +792,35 @@
     return snap;
   };
 
+  /* IS THE CURRENT WALKTHROUGH STEP'S OWN START CHECKPOINT STILL ON THE RING? (#660 items 17-18)
+   *
+   * DERIVED FROM THE RING, NEVER BOOK-KEPT. The obvious implementation — remember the step index
+   * at the moment we lay a checklist checkpoint — goes stale the instant `_rewind` truncates the
+   * ring, so a second press would read "not ready" on a ring that is perfectly intact. Every
+   * checkpoint IS a saveState(), and a saveState carries `instructor.checklist.idx`, so the
+   * newest checkpoint can simply be asked which step it was laid at.
+   *
+   * TWO conditions, and they fail in different places:
+   *   - the newest checkpoint was laid at the START of the step now showing (procedure and index
+   *     both) — false for ever after a file load, which clears the ring and keeps the progress.
+   *     NOT true of the broadcast right after a Continue: `checklist_check` runs
+   *     _assembleWithInstructor, which services the checkpoint request in that same call, so
+   *     the check-off's own snapshot already has it (measured 2026-09-08, ring 3 → 4 with no
+   *     tick). No measured path produces a lag here; the index comparison is the guard that
+   *     would catch one if a future path ever laid the checkpoint a broadcast late;
+   *   - there is at least one EARLIER checkpoint to land on, and the walkthrough is past step 0,
+   *     so "back one step" has a step to go back to. The second half is not redundant: stopping a
+   *     walkthrough leaves its checkpoints on the ring, so a restart at step 0 finds ring >= 2
+   *     with the OLD run's checkpoints underneath it. */
+  SimulationService.prototype._checklistRewindReady = function () {
+    var ck = this.instructor && this.instructor.checklist;
+    if (!ck || !(ck.idx > 0)) return false;
+    if (this.checkpoints.length < 2) return false;
+    var top = this.checkpoints[this.checkpoints.length - 1];
+    var cs = top && top.instructor && top.instructor.checklist;
+    return !!cs && cs.procedure_id === ck.procedure_id && cs.idx === ck.idx;
+  };
+
   SimulationService.prototype._serviceInstructorRequests = function () {
     var i = this.instructor;
     if (i.consumeCheckpointRequest && i.consumeCheckpointRequest()) this._pushCheckpoint();
@@ -867,6 +896,11 @@
   // ui_policy/highlight/follow/level_complete) when the occupant provides it,
   // else the classic message-only block (placeholder / DefaultInstructor / mocks).
   SimulationService.prototype._instructorBlock = function () {
+    /* The walkthrough's Rewind button is a claim about THIS ring, which is M5's (#660 items
+     * 17-18). Answered HERE rather than at the one call site that matters, because
+     * assembleSnapshot() builds an instructor block of its own and is called standalone —
+     * a value written once per tick would ride out of those calls stale. */
+    if (this.instructor.setRewindReady) this.instructor.setRewindReady(this._checklistRewindReady());
     return this.instructor.getSnapshotBlock
       ? this.instructor.getSnapshotBlock()
       : this.instructor.getMessage();
@@ -1237,6 +1271,11 @@
       // Rewind (Gameplay §7.2): pop back to an in-memory checkpoint. Distinct
       // from file save/load — this is the constructive-failure loop.
       case 'rewind': {
+        /* A ring SHORTER than `steps` already refuses cleanly and changes nothing — measured
+         * 2026-09-08 on both shapes that produce it (#660 items 17-18): a walkthrough one
+         * checkpoint in, and a walkthrough restored from a file (ring 0, step_index 2). Both
+         * returned this error with step_index and the ring untouched, so the guard belongs on
+         * the BUTTON (instructor.checklist.rewind_ready), not here. */
         var rsnap = this._rewind(command.steps || 1, command.scope || 'full', !!command.exact);
         if (!rsnap) return { type: 'error', code: 'COMMAND_ERROR', message: 'no checkpoint to rewind to', received: command };
         return rsnap;

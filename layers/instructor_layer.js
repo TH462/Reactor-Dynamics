@@ -119,6 +119,10 @@
     // Checklist mode (Path 3): a procedure run as a PASSIVE checklist against the
     // live plant — no reset, no gating; steps auto-check off the instruments.
     this.checklist = null;
+    // Can the walkthrough's "Rewind step" actually land? DERIVED, not owned: M5 writes
+    // it before every snapshot assemble because only M5 can see the rewind ring (#660
+    // items 17-18). Never trust a stale value — it is rewritten every broadcast.
+    this._rewindReady = false;
   };
 
   // Re-point at the (possibly rebuilt) layer below. Deliberately does NOT clear
@@ -1172,6 +1176,13 @@
         complete: this.checklist.complete,
         // #619 item 4 — the step is satisfied and is holding for the player to acknowledge.
         awaiting_ack: !!this.checklist.awaitingAck,
+        /* CAN "REWIND STEP" LAND? (#660 items 17-18). The button used to be drawn on
+         * `step_index > 0` alone, which is a claim about the WALKTHROUGH when the thing it
+         * depends on is the rewind RING — and the two come apart on a loaded save, which
+         * clears the ring while the walkthrough's progress survives (measured 2026-09-08:
+         * step_index 2 restored, checkpoints.length 0, the rewind refused with "no checkpoint
+         * to rewind to" while the button sat lit). M5 fills this in from the ring itself. */
+        rewind_ready: !!this._rewindReady,
         // Multi-check-off verdicts for the ACTIVE step (#244 item 8) — {met, obs,
         // graded_by} order-parallel to the step's `accs`; null on single-acc steps.
         accs: this.checklist.accsState ? this.checklist.accsState.map(function (a) {
@@ -1188,6 +1199,9 @@
   };
 
   InstructorLayer.prototype.setRegister = function (value) { this.register = value; };
+  // M5 → M6, written just before each snapshot assemble (#660 items 17-18). The rewind ring
+  // is M5's; whether the walkthrough may offer "back one step" is a fact about that ring.
+  InstructorLayer.prototype.setRewindReady = function (v) { this._rewindReady = !!v; };
 
   // ---------------------------------------------------- M5 consume-flags (no upward calls)
   // M5 polls these right after step(): layering stays snapshots-up/commands-down.

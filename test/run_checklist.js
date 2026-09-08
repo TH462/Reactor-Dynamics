@@ -262,6 +262,97 @@ ck('the temperature row reads UNMET on a cold plant', pcv(c, 0).met === false, '
 ck('instructor comment raised for the seam', !!(snap.instructor && snap.instructor.message), 'raised');
 svc4.handleCommand({ action: 'stop_checklist' });
 
+// ------------------------------------- 9. rewind readiness (#660 items 17-18)
+head('9. "Rewind step" — lit only when this step\'s own checkpoint is on the ring');
+/* The walkthrough lays a checkpoint at every step boundary and the board's Rewind sends
+ * `rewind steps:2 exact`, so the button is a claim about the RING, not about step_index —
+ * and the two come apart on a loaded save. Both gaps were measured on pwr2, 2026-09-08:
+ *
+ *   (A) the one-broadcast gap does NOT exist. `checklist_check` runs _assembleWithInstructor,
+ *       which services the instructor's checkpoint request in the SAME call, so the snapshot
+ *       the check-off returns already carries the new checkpoint: ring 3 → 4 with no tick, and
+ *       a rewind issued immediately after landed at step_index 2 / simTime 2.00 — identical to
+ *       the same rewind with a tick in between. Nothing to guard, so this section PINS that.
+ *   (B) after a save/load the walkthrough survives and the ring does not: step_index 2 restored,
+ *       checkpoints.length 0, the rewind refused "no checkpoint to rewind to" with step_index
+ *       unmoved — under a button drawn lit on `step_index > 0`.
+ *
+ * A synthetic procedure, like section 7: four steps whose acceptance can never be met, so the
+ * only thing that moves the index is an explicit `checklist_check` and the ring arithmetic is
+ * exact rather than at the mercy of a step grading itself off a live plant. */
+RD.MANUAL_PROCEDURES.pwr.push({
+  id: 'zz_rewind_probe', category: 'control', title: 'rewind-ring mechanism probe',
+  from: 'hot_full_power', prereq: ['test'],
+  steps: [0, 1, 2, 3].map(function (i) {
+    return { text: 'rewind probe step ' + i + ' (advances only by checklist_check)',
+             acc: { p: 'power_pct', op: '>', v: 9e9 } };
+  }),
+});
+var svc5 = mkService();
+run(svc5, 3);
+/* The player was in FREE PLAY before pressing Start, so the ring already holds the sandbox
+ * cadence's own checkpoint — measured 1 here. It sits UNDER the walkthrough's checkpoint 0,
+ * which is why `rewind_ready` cannot be "the ring has two entries": at step 0 that is true and
+ * a rewind would land the player BEFORE the walkthrough began. */
+var ringFree = svc5.checkpoints.length;
+var s5 = svc5.handleCommand({ action: 'start_checklist', procedure_id: 'zz_rewind_probe' });
+var c5 = ckl(s5);
+var ring0 = svc5.checkpoints.length;
+ck('start lays the walkthrough\'s checkpoint 0 on top of free play\'s',
+   ring0 === ringFree + 1 && ringFree >= 1, 'ring ' + ringFree + ' → ' + ring0);
+ck('step 0 is NOT rewind-ready even with an earlier checkpoint on the ring',
+   c5.rewind_ready === false && c5.step_index === 0, 'ready ' + c5.rewind_ready + ', idx ' + c5.step_index + ', ring ' + ring0);
+// --- step 0 → 1. The check-off's OWN snapshot must already be rewind-ready (measurement A).
+s5 = svc5.handleCommand({ action: 'checklist_check', index: 0 });
+c5 = ckl(s5);
+var tStep1 = svc5.simTime;                    // the start of step 1 — where a later rewind lands
+ck('the check-off lays its checkpoint in the SAME broadcast (no one-tick gap)',
+   svc5.checkpoints.length === ring0 + 1, 'ring ' + ring0 + ' → ' + svc5.checkpoints.length);
+ck('rewind_ready true on the snapshot the check-off returns',
+   c5.rewind_ready === true && c5.step_index === 1, 'ready ' + c5.rewind_ready + ', idx ' + c5.step_index);
+s5 = run(svc5, 2);
+c5 = ckl(s5);
+ck('...and still true after the next broadcast, ring unchanged',
+   c5.rewind_ready === true && svc5.checkpoints.length === ring0 + 1, 'ready ' + c5.rewind_ready + ', ring ' + svc5.checkpoints.length);
+// --- step 1 → 2, then rewind: exactly one step back, to the start of step 1.
+s5 = svc5.handleCommand({ action: 'checklist_check', index: 1 });
+run(svc5, 3);
+ck('at step 2 with a checkpoint per boundary', ckl(s5).step_index === 2 && svc5.checkpoints.length === ring0 + 2,
+   'idx ' + ckl(s5).step_index + ', ring ' + svc5.checkpoints.length + ' (expected ' + (ring0 + 2) + ')');
+var rw5 = svc5.handleCommand({ action: 'rewind', steps: 2, scope: 'full', exact: true });
+var cr5 = ckl(rw5);
+ck('rewind steps:2 exact lands exactly ONE step back',
+   rw5.type === 'state' && cr5 && cr5.step_index === 1 && cr5.steps_done[1] === false,
+   'idx ' + (cr5 && cr5.step_index) + ', step1 done ' + (cr5 && cr5.steps_done[1]));
+ck('...and the plant comes back with it, at the start of that step',
+   Math.abs(svc5.simTime - tStep1) < 1e-9, svc5.simTime.toFixed(2) + ' vs ' + tStep1.toFixed(2));
+/* Derived from the ring, not book-kept: _rewind TRUNCATES to the target, so a remembered
+ * "checkpoint laid at step N" would now read stale and a second press would be dark. */
+ck('the rewound-to step is itself rewind-ready (a second press works)',
+   cr5.rewind_ready === true && svc5.checkpoints.length === ring0 + 1,
+   'ready ' + cr5.rewind_ready + ', ring ' + svc5.checkpoints.length + ' (expected ' + (ring0 + 1) + ')');
+// --- save/load mid-walkthrough: progress survives, the ring does not (measurement B).
+var saved5 = JSON.parse(JSON.stringify(svc5.saveState()));
+var svc6 = mkService();
+/* THE LOADING SERVICE MUST HAVE A RING OF ITS OWN, or "loadState clears the ring" is pinned on
+ * a NON-EVENT: a freshly constructed service starts with checkpoints [] anyway, and the probe
+ * below passed unchanged with loadState's `this.checkpoints = []` deleted. Three free-play ticks
+ * put a sandbox checkpoint on it first, which is also the player's real path (load from a game
+ * already in progress). */
+run(svc6, 3);
+var ringPre6 = svc6.checkpoints.length;
+var ld5 = svc6.loadState(saved5);
+var c6 = ckl(ld5) || ckl(svc6.tick());
+ck('a loaded save keeps the walkthrough\'s progress', !!c6 && c6.step_index === 1 && c6.procedure_id === 'zz_rewind_probe',
+   c6 && ('idx ' + c6.step_index));
+ck('...and clears the rewind ring', ringPre6 >= 1 && svc6.checkpoints.length === 0, 'ring ' + ringPre6 + ' → ' + svc6.checkpoints.length);
+ck('so rewind_ready is FALSE — the button that used to sit lit here', c6.rewind_ready === false, 'ready ' + c6.rewind_ready);
+var rw6 = svc6.handleCommand({ action: 'rewind', steps: 2, scope: 'full', exact: true });
+ck('the rewind command refuses cleanly and moves nothing',
+   rw6 && rw6.type === 'error' && svc6.instructor.checklist.idx === 1 && svc6.checkpoints.length === 0,
+   (rw6 && rw6.message) + '; idx ' + svc6.instructor.checklist.idx);
+svc5.handleCommand({ action: 'stop_checklist' });
+
 // ---------------------------------------------------------------- summary
 console.log('\n' + B + '──────────' + X);
 var ok = passed === total;

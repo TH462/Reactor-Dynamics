@@ -306,6 +306,54 @@ function sig(rows) {
          (landed.tag === 'INPUT' ? ' value ' + landed.val : ' — keystrokes lost to the global shortcuts'));
     }
 
+    /* ---- 6. THE REWIND BUTTON FOLLOWS THE RING, ON THE BOARD (#660 items 17-18) -------- */
+    /* `rewind_ready` is computed in M5 and gated in Node by run_checklist — but whether the
+     * BUTTON follows it is a render question, and the checklist card is key-cached. Measured
+     * here before `rewind_ready` joined that key: the snapshot read false and the button stayed
+     * ENABLED, because nothing else in the key had moved. Exactly #606's shape, one card over.
+     *
+     * The ring is emptied directly rather than by loading a save file: what the button reads is
+     * `checkpoints.length`, and a file dialog is not reachable from here. `?dev=1` is what
+     * hands a harness the live service (ui/app.js) — the button is still read off the DOM. */
+    await page.goto(url + '&dev=1', { waitUntil: 'load' });
+    await page.waitForTimeout(1300);
+    await page.click('[data-mmode="free"]');
+    await page.waitForTimeout(200);
+    await page.click('[data-minit="hot_full_power"]');
+    await page.waitForTimeout(200);
+    await page.click('[data-mfree]');
+    await page.waitForTimeout(2600);
+    await page.click('#tabbar [data-tab="checklists"]');
+    await page.waitForTimeout(700);
+    await page.click('button[data-ckl-start="pwr_lower_power"]');
+    await page.waitForTimeout(2200);
+    function readRw(pg) {
+      return pg.evaluate(function () {
+        var b = document.querySelector('.wt-rewind');
+        var svc = window.RD && RD.__dev && RD.__dev.service ? RD.__dev.service() : null;
+        var c = (svc && svc.instructor && svc.instructor.getSnapshotBlock)
+          ? (svc.instructor.getSnapshotBlock().checklist || {}) : {};
+        return { present: !!b, disabled: b ? !!b.disabled : null,
+                 idx: c.step_index, ready: !!c.rewind_ready, ring: svc ? svc.checkpoints.length : null };
+      });
+    }
+    var rw0 = await readRw(page);
+    await page.evaluate(function () { RD.__dev.service().handleCommand({ action: 'checklist_check', index: 0 }); });
+    await page.waitForTimeout(1200);
+    var rw1 = await readRw(page);
+    ck('Rewind is dark on step 0 and lights on step 1, with the ring behind it (#660 items 17-18)',
+       rw0.present && rw0.disabled === true && rw0.ready === false &&
+       rw1.disabled === false && rw1.ready === true && rw1.ring === rw0.ring + 1,
+       'step 0: ' + (rw0.disabled ? 'dark' : 'LIT') + ' ready ' + rw0.ready + ' ring ' + rw0.ring +
+       ' → step 1: ' + (rw1.disabled ? 'DARK' : 'lit') + ' ready ' + rw1.ready + ' ring ' + rw1.ring);
+    await page.evaluate(function () { var s = RD.__dev.service(); s.checkpoints = []; s.tick(); });
+    await page.waitForTimeout(900);
+    var rw2 = await readRw(page);
+    ck('...and goes dark again the moment the ring is gone, which is what loading a save does',
+       rw2.idx === 1 && rw2.ring === 0 && rw2.ready === false && rw2.disabled === true,
+       'step ' + rw2.idx + ', ring ' + rw2.ring + ', ready ' + rw2.ready + ', button ' +
+       (rw2.disabled ? 'dark' : 'STILL LIT — the render key does not carry rewind_ready'));
+
   } catch (err) {
     ck('the gate ran to completion', false, String((err && err.message) || err).slice(0, 160));
   }
