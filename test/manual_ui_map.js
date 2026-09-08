@@ -188,11 +188,14 @@ var STEP_UI = {
     { i: 2, view: 'board', control: 'Trip Blocks' },
     { i: 3, view: 'board', control: 'Dump SP' },
     { i: 4, view: 'board', control: 'Pressure SP' },
-    { i: 5, view: 'board', control: 'Pressurizer Spray (PZR)' },
-    { i: 6, view: 'board', control: 'Accumulator valve' },
-    { i: 8, view: 'board', control: 'Residual Heat Removal (RHR)' },
-    { i: 9, view: 'board', control: 'RCP Run/Stop' },
-    { i: 10, view: 'board', control: 'Residual Heat Removal (RHR)' },
+    /* the heater-off is its own step since #653 pass 3 (graded on the lamp, not on a press
+     * the player may have made before the step was active); everything after it shifts +1 */
+    { i: 5, view: 'board', control: 'Pressurizer Heaters (PZR)' },
+    { i: 6, view: 'board', control: 'Pressurizer Spray (PZR)' },
+    { i: 7, view: 'board', control: 'Accumulator valve' },
+    { i: 9, view: 'board', control: 'Residual Heat Removal (RHR)' },
+    { i: 10, view: 'board', control: 'RCP Run/Stop' },
+    { i: 11, view: 'board', control: 'Residual Heat Removal (RHR)' },
   ],
   pwr_startup: [
     { i: 2,  view: 'board', control: 'Feed Pumps' },

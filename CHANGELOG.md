@@ -32,6 +32,26 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
 
 ## [Alpha 1.7.4-rc3] — 2026-09-06
 
+### Fixed (third layman playthrough: all six legs — the board and the clock, not the words — #653)
+
+Same fresh-context play-test on the pass-2 tree (`Diagnostic/CHECKLIST_PLAYTEST_2026-09-07_LAYMAN_PASS3.md`):
+**cold shutdown → full power → cold shutdown, 67 steps.** What cost it time was not wording:
+**(1)** 3600× froze the page for 25 minutes of wall time and was later refused twice with no
+message; the fast-forward dropout returned the clock to 1× on every new alarm with no line saying
+so (a 12 s rod hold moved 76 steps, the next 4) — filed as #655; **(2)** the LOAD box moved 90 → 53
+by itself — the turbine runback on the hot coolant, the plant protecting itself, and "adjust the
+rods" could not clear it; the stage now says what a LOAD that changes by itself means; **(3)** a
+HEATER OFF pressed before its step was active never registered as evidence (the matcher latches
+per active step), so the cooldown's heater-and-spray step is two one-action steps graded on the
+lamp; **(4)** the observation step at the end of the ascension drew no Acknowledge until an
+unrelated re-render — filed as #656. And the done-when lines used engine names — `Tavg`, `Steam
+dump demand`, `RHR suction` — beside tiles engraved AVG COOLANT TEMPERATURE and STEAM DUMP; the
+`PRED_DISPLAY` labels now print the tiles' own words, the accs labels likewise, and the stage
+ceilings say what the band is ("below 583 °F (the band is near 562)"). Also: where the accumulator
+valve symbol actually is (above and right of the tile, beside ECCS FLOW, ringed green by the step);
+the rod-pull note says 10× is fine and that an alarm drops the clock; the two alarms the heatup and
+the dump walk raise on purpose are named.
+
 ### Fixed (second layman playthrough: 4 of 6 legs, and the two failures measured — #653)
 
 The same fresh-context play-test re-run on the fixed tree (`Diagnostic/CHECKLIST_PLAYTEST_2026-09-07_LAYMAN_PASS2.md`):

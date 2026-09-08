@@ -3522,43 +3522,47 @@
    * and test/run_checklist_pwr2.js asserts every predicate the shipped chain uses has an
    * entry, so the fallback is a net for NEW content, not a lifestyle. */
   var PRED_DISPLAY = {
-    power_pct:              { label: 'Reactor power', u: '%' },
+    /* THE LABELS ARE THE TILES' OWN WORDS (#653 pass 3, S-12): a done-when that read "When
+     * Tavg ≥ 541 °F" beside a tile engraved AVG COOLANT TEMPERATURE sent the layman looking
+     * for a gauge that does not exist; "Steam dump demand" is a number no card shows. Where
+     * the board prints a name, the line prints the same name. */
+    power_pct:              { label: 'REACTOR POWER', u: '%' },
     fuel_temp_c:            { label: 'Fuel temperature', dim: 'temp' },
-    tavg_c:                 { label: 'Tavg', dim: 'temp' },
+    tavg_c:                 { label: 'AVG COOLANT TEMPERATURE', dim: 'temp' },
     thot_c:                 { label: 'T-hot', dim: 'temp' },
     tcold_c:                { label: 'T-cold', dim: 'temp' },
-    pressure_mpa:           { label: 'Pressure', dim: 'pressure' },
-    steam_pressure_mpa:     { label: 'Steam pressure', dim: 'pressure' },
-    subcooling_c:           { label: 'Subcooling margin', dim: 'tempdiff' },
+    pressure_mpa:           { label: 'PRIMARY PRESSURE', dim: 'pressure' },
+    steam_pressure_mpa:     { label: 'STEAM PRESS', dim: 'pressure' },
+    subcooling_c:           { label: 'SUBCOOLING MARGIN', dim: 'tempdiff' },
     tavg_rate_c_per_hr:     { label: 'Heatup/cooldown rate', dim: 'tempdiff', suffix: '/hr' },
-    sr_counts_cps:          { label: 'Source Range counts', u: 'cps' },
-    startup_rate_dpm:       { label: 'Startup rate', u: 'DPM' },
+    sr_counts_cps:          { label: 'SOURCE RANGE', u: 'cps' },
+    startup_rate_dpm:       { label: 'STARTUP RATE', u: 'DPM' },
     reactivity_pcm:         { label: 'Net reactivity', u: 'pcm' },
-    boron_ppm:              { label: 'Boron', u: 'ppm' },
-    mwe_output:             { label: 'Generator output', u: 'MWe' },
+    boron_ppm:              { label: 'Boron in the loop (BORON CHEM after a sample)', u: 'ppm' },
+    mwe_output:             { label: 'OUTPUT', u: 'MWe' },
     core_inventory_pct:     { label: 'Core coolant inventory', u: '%' },
     decay_heat_pct:         { label: 'Decay heat', u: '%' },
-    sg_level_pct:           { label: 'SG level', u: '%' },
-    pzr_level_pct:          { label: 'Pressurizer level', u: '%' },
-    pump_flow_pct:          { label: 'RCP flow', u: '%' },
+    sg_level_pct:           { label: 'STEAM GENERATOR LEVEL', u: '%' },
+    pzr_level_pct:          { label: 'PRESSURIZER LEVEL', u: '%' },
+    pump_flow_pct:          { label: 'RCP FLOW', u: '%' },
     /* ROD POSITION (#605). Resolved out of `control_state.rod_groups` by the instructor layer,
      * not out of `true_state` — see ROD_PARAMS there. The `_pct` forms are what a step should
      * normally check: "fully withdrawn" is 100 % on any bank scale, where a step count is only
      * true for the bank length this plant happens to carry (627 on PWR2, 200 on the retired
      * engine), and a step written in steps silently never checks off on the other one. */
-    control_bank_pct:       { label: 'Control bank position', u: '%' },
-    control_bank_steps:     { label: 'Control bank', u: 'steps' },
-    shutdown_bank_pct:      { label: 'Shutdown bank position', u: '%' },
-    shutdown_bank_steps:    { label: 'Shutdown bank', u: 'steps' },
-    feed_coupled:           { bool: 'steam-generator feed is in AUTO' },
-    steam_dump_setpoint:    { label: 'Dump setpoint', dim: 'pressure' },
-    accumulator_volume_pct: { label: 'Accumulator inventory', u: '%' },
-    steam_dump_valve_pct:   { label: 'Steam dump demand', u: '%' },
+    control_bank_pct:       { label: 'CONTROL ROD POSITION', u: '%' },
+    control_bank_steps:     { label: 'CONTROL ROD POSITION', u: 'steps' },
+    shutdown_bank_pct:      { label: 'SHUTDOWN ROD POSITION', u: '%' },
+    shutdown_bank_steps:    { label: 'SHUTDOWN ROD POSITION', u: 'steps' },
+    feed_coupled:           { bool: 'SG FEED is in AUTO' },
+    steam_dump_setpoint:    { label: 'DUMP SETPOINT', dim: 'pressure' },
+    accumulator_volume_pct: { label: 'ACCUMULATORS', u: '%' },
+    steam_dump_valve_pct:   { label: 'STEAM DUMP opening', u: '%' },
     /* the dump SELECTION and the atmospheric dump valve (#629) — the heatup's Mode 3
      * confirmation reads both, because "the dumps are in service" and "the ADV is shut" are
      * the two halves of the claim that the condenser, not the atmosphere, is the heat sink */
-    steam_dump_auto:        { bool: 'the steam dumps are in automatic control' },
-    adv_valve_pct:          { label: 'Atmospheric dump valve', u: '%' },
+    steam_dump_auto:        { bool: 'AUTO is lit on the STEAM DUMP card' },
+    adv_valve_pct:          { label: 'ATMOS DUMP opening', u: '%' },
     vessel_level_pct:       { label: 'Vessel level', u: '%' },
     drum_level_pct:         { label: 'Drum level', u: '%' },
     plant_mode:             { mode: true },
@@ -3567,9 +3571,9 @@
     turbine_tripped:        { bool: 'the turbine is tripped' },
     hpi_active:             { bool: 'HPI is injecting' },
     afw_active:             { bool: 'auxiliary feedwater is running' },
-    rhr_active:             { bool: 'RHR is in service' },
-    rhr_valve_open:         { bool: 'the RHR suction valve is open' },
-    accumulator_valve_open: { bool: 'the accumulator discharge valve is open' },
+    rhr_active:             { bool: 'ALIGN is lit on the RHR card' },
+    rhr_valve_open:         { bool: 'ALIGN is lit on the RHR card' },
+    accumulator_valve_open: { bool: 'the accumulator valve is open (the ACCUMULATORS tile no longer reads ISOLATED)' },
     /* the letdown pair (#624 items 14/25): the SELECTOR is control_state, the FLOW is
      * true_state, and the heatup's transfer step needs both — one is what you pressed, the
      * other is what the plant did about it */
@@ -3578,10 +3582,10 @@
     /* the two pressurizer AUTO lamps (#624 item 14) — the heatup grades the MODE the operator
      * selected, which is control_state; the kW and the spray flow in true_state cannot tell an
      * AUTO selection from a manual demand that happens to sit at the same output */
-    heater_auto:            { bool: 'the pressurizer heaters are in AUTO' },
-    spray_auto:             { bool: 'the pressurizer spray is in AUTO' },
-    letdown_flow_actual:    { label: 'Letdown flow', u: 'gpm', scale: 450000 },
-    sr_energized:           { bool: 'the Source Range detector is energized' },
+    heater_auto:            { bool: 'AUTO is lit under HEATER' },
+    spray_auto:             { bool: 'AUTO is lit under SPRAY' },
+    letdown_flow_actual:    { label: 'LETDOWN', u: 'gpm', scale: 450000 },
+    sr_energized:           { bool: 'SOURCE RANGE is switched on' },
     sg_safety_open:         { bool: 'an SG code safety is open' },
     porv_open:              { bool: 'the PORV is open' },
   };

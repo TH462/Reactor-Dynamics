@@ -120,9 +120,21 @@ near 2 %" against a tile reading 0.2 (fission).
 rung that the player's own plant fell under (5.5–6.4e2). The steps now state the count as the
 criterion and the position as a range.
 
-**Still open.** S15 (the checklist ignores a reactor trip); the #627 clock hold latches on a
-cooldown whose pressure bounces back up through the window (a symptom of the solid pressurizer,
-not reproduced with 20 % spray); a replay that trims Tavg.
+**Pass 3 (same day, after pass 2): all six legs.** `Diagnostic/CHECKLIST_PLAYTEST_2026-09-07_LAYMAN_PASS3.md`.
+The stuck points are the board's and the clock's: a 3600× freeze of 25 wall-minutes (#655); the
+attention-stop dropout returning the clock to 1× on every new alarm, unannounced (a 12 s MED hold
+moved 76 steps, the next 7 s hold moved 4); a turbine RUNBACK moving LOAD 90 → 53 on the hot
+coolant, which "adjust the rods" cannot clear (the plant protecting itself — the stage now names
+it); a cmd-graded HEATER OFF that had been pressed before its step was active (`_cmdEvidence`
+matches by family, but the latch only takes evidence while the step is active — so the step is
+split and graded on the lamp); the Acknowledge row absent on a collapsed observation step (#656).
+And the done-when lines printed engine names beside the tiles (`Tavg`, `Steam dump demand`,
+`RHR suction`): `PRED_DISPLAY` now prints the tiles' words. Nothing in this pass needed a plant
+measurement; the two plant facts it exposed (the runback, the accumulator caution on arming below
+1000 psi) are the plant behaving as built and are now named in the steps.
+
+**Still open.** S15 (the checklist ignores a reactor trip); the #627 clock hold latching on a
+cooldown whose pressure bounces back up through the window; a replay that trims Tavg; #655, #656.
 
 ## Session log — 2026-09-06-develop-a (#653 — two fresh-reader reviews of the live checklists, a writing guide built from them alone, and the six-leg rewrite)
 

@@ -171,6 +171,7 @@
       <time class="log-date mono" datetime="2026-09-06">6 September 2026</time>
     </summary>
     <ul>
+      <li><span class="log-tag changed">Changed</span><strong>Checklist "done when" lines use the board's own names.</strong> AVG COOLANT TEMPERATURE, PRIMARY PRESSURE, STEAM DUMP and the rest, instead of Tavg, Pressure and "Steam dump demand". The cooldown's heater-off is its own step, graded on the lamp.</li>
       <li><span class="log-tag fixed">Fixed</span><strong>The cooldown checklist could not be finished as written.</strong> Its dump-setpoint step now walks 50 psi at a time (typing 640 straight in cooled the plant 50 &deg;F in a minute and emptied the pressurizer), and the spray step asks for 50&nbsp;% (100&nbsp;% could fill the pressurizer solid and shut the spray off). The ascension stages now check coolant temperature, not only load, and warn about the temperature trip.</li>
       <li><span class="log-tag fixed">Fixed</span><strong>A boron dose stopped short of the number you set, then showed the shortfall as your target.</strong> The makeup panel counted what it was asked for, not what the plant could deliver at the charging flow in service. It now counts the delivered change: 719 asked from the cold plant lands at 719.</li>
       <li><span class="log-tag fixed">Fixed</span><strong>Pressing BORON ON while a dose was running left the dilution going with no target.</strong> The makeup panel is now stopped on every ON press, as it already was on OFF. The checklists no longer ask for the press when ON is already lit.</li>
