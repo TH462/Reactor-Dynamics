@@ -73,6 +73,32 @@ ck('the incident legs come after the cycle and chain to nothing (#670)',
    INCIDENT.every(function (p) { return !p.next; }),
    INCIDENT.length ? INCIDENT.map(function (p) { return p.id + (p.next ? ' → ' + p.next : ' (no next)'); }).join(', ')
                    : 'no incident legs in the pool');
+/* THE STORY CLOCK NEVER RUNS BACKWARDS (#670 Phase 3, layman pass S-7). An incident leg heads
+ * every step with `story.clock`, and the TMI-2 leg went 04:10:37 → 04:08:37 between steps 9 and
+ * 10 — each clock correct for the event it names (the first pump vibration alarm at 10 minutes,
+ * the auxiliary-feed discovery at 8), and the pair in the wrong order once the steps were
+ * sequenced for teaching. The reviewer noticed, assumed it had mis-read, and said it lost
+ * confidence in the clock for the rest of the run. Nothing else could catch it: the clock is
+ * decoration to the replay, so all sixteen steps passed their acceptances with it inverted.
+ * Non-decreasing, not strictly increasing — two verifications of the same instant may share a
+ * clock, which is what steps 8 and 9 now do. */
+INCIDENT.forEach(function (p) {
+  var clocks = (p.steps || []).map(function (st) { return st.story && st.story.clock; });
+  var secs = clocks.map(function (c) {
+    if (!c) return null;
+    var m = /^(\d+):(\d+)(?::(\d+))?$/.exec(c);
+    return m ? (+m[1]) * 3600 + (+m[2]) * 60 + (+(m[3] || 0)) : null;
+  });
+  var back = [];
+  for (var i = 1; i < secs.length; i++) {
+    if (secs[i] == null || secs[i - 1] == null) continue;
+    if (secs[i] < secs[i - 1]) back.push('step ' + i + ' ' + clocks[i - 1] + ' → step ' + (i + 1) + ' ' + clocks[i]);
+  }
+  ck(p.id + ': every step carries a story clock and the clock never runs backwards (#670)',
+     secs.every(function (s) { return s != null; }) && back.length === 0,
+     back.length ? back.join('; ') : clocks[0] + ' … ' + clocks[clocks.length - 1] +
+       ' over ' + clocks.length + ' steps');
+});
 
 POOL.forEach(function (proc) {
   if (only && proc.id !== only) return;

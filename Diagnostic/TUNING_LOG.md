@@ -121,6 +121,82 @@ first (77/78), a `crew` tag on the incident's verification step 12 reds the seco
 `run_hardrules` 511/511 · `verify_ckl_relevance` 16 → **17** · `verify_flags_ui` 48 → **50** ·
 `run_release` unchanged (preview-only content gets no `changelog.html` entry).
 
+### #670 Phase 3 — the first layman playthrough, verified: 8 confirmed, 2 refuted, 1 nobody claimed
+
+A fresh-context agent with no repo access played the leg end to end in headless Edge and finished
+**16 of 16 steps** in 55 minutes. Its report is `Diagnostic/CHECKLIST_PLAYTEST_2026-09-09_LAYMAN_TMI.md`,
+with a `**Measured:**` / `**Verdict:**` pair added to every stuck point. Ten stuck points, one
+blocking. **Nothing was fixed before it was re-measured on this tree**, and the pass is the reason
+this entry is not three fixes long.
+
+**The blocking one, and its diagnosis was wrong in the useful direction.** Step 14 read *"click the
+block valve symbol above the relief valve, then confirm"*, and the reviewer pressed it about ten
+times over five minutes with nothing visible happening; it then characterised the control in eight
+trials and concluded a press only registers once the pointer has re-entered the symbol. **Measured
+headless with the shell's `handleCommand` wrapped: ten clicks 0.4 s apart with the pointer never
+moving produce TEN commands — `close_block_valve`, `open_block_valve`, `close`, `open`… — and the
+valve reads SHUT OPEN SHUT OPEN SHUT OPEN SHUT OPEN SHUT OPEN.** The same two presses with a move
+away and back are identical. `comp_valve_vertical`'s hit circle emits
+`onControl('toggle', openFrac < 0.5 ? 1 : 0)` and nothing else; the only two-press confirms on this
+board are SCRAM and a TRIP BLOCKS release that trips the plant (#598 item 15). So **"then confirm"
+was an instruction to undo the fix**, and the reviewer only ever got the valve shut on an odd press
+count. The sentence that made the instruction look corroborated — *"Two-press confirm on isolate."*
+— was in the symbol's own inspect card, i.e. **the board asserted a confirm it does not implement**,
+and that is the shape to carry: a scanner card is authored prose about a control, and nothing gated
+it against the control. Geometry was wrong too: the block valve is at (825, 230) and the PORV at
+(905, 185) — left of it and **below**, not above.
+
+**The number nobody claimed.** The completion card said *"the core was 94 % uncovered and the fuel
+reached 1297 °F"*. The uncovery is right (measured **94.3 %**, coolant inventory bottoming at
+**7.4 %**). The fuel temperature is the **full-power** value: it was taken as a whole-ride maximum of
+`fuel_temp_c` on a walkthrough that **starts at 100 % power**, so the maximum it found was t = 0 —
+**1298 °F on line**, against a post-trip peak of **1130 °F** (clad 1126 °F) at t = 13,772 s during the
+reflood. Uncovering 94 % of this core never gets the fuel as hot as running it, which is a sharper
+statement of the declared model gap than the sentence it replaces. **A whole-ride extremum on a leg
+that begins at power is the plant's normal operating value, not the accident's.**
+
+**Two claims refuted with numbers.** *"WARP was refused every time"* — replayed with
+`configurePacing({warp:true})` and one 600× press per window: step 10 held WARP **3350 of 3900
+sim-seconds (85.9 %)** with **one** drop; **step 14 held it 3720 of 3720 s (100 %) with zero drops**,
+achieved 2217×; step 15 held 948 of 3600 s. The drop reasons quoted ("pressure moving 42 psi/s",
+"48 psi/s") are real against `RAPID_P_MPA_PER_S = 0.28` (40.6 psi/s) and fired **once per window**.
+Step 14 is the step the reviewer spent 6.5 real minutes on at 60× after reading the first drop as a
+standing refusal — so the hints stay and gain a clause saying a drop is expected. *"The vessel is
+drawn full for the whole accident"* — the graphic has read a level since #516 item 6
+(`50·(1−core_uncovered_frac) + 50·(1−primary_void_fraction)`) and falls to **2.9** by step 12; at the
+step it screenshotted, uncovery is **exactly 0.0 %**, so a full vessel was the correct picture.
+
+**Confirmed and fixed, with the measurement each rests on.** PRESSURIZER LEVEL is **43.1 % and
+falling** at step 5's first tick (minimum 40.0 % at +16 s, 71.3 % at +90 s, pegged at t = 200 s)
+while the story says it was "climbing fast" — a note now gives the three numbers. ECCS FLOW is
+**exactly 0 for 23 s** after `hpi_active` latches at 1658 psia, and first moves at **1393 psia**,
+the pump's own 1389 psi head that the card prints as DISCG — deadheaded, physical, and unstated.
+PRIMARY PRESSURE peaks **2339 psia at t = 5.5 s** and reads **2095 psia** where step 2 grades, so
+"watched pressure climb" arrives 30 s after the spike. The TRIP BLOCKS row prints **1715 psia**,
+the safety-injection trip's own setpoint, where the step quotes **1972 psi**, the P-11 permissive —
+both right, different quantities, and the step never said so. The seated tailpipe reads **122 °F**,
+not the 180 °F the step and the inspect card both claimed. "HPI" is in no player string in the pool
+— it comes from `PRED_DISPLAY.hpi_active`, now `ECCS injection is running`.
+
+**The clock ran backwards** 04:10:37 → 04:08:37 between steps 9 and 10, each correct for its own
+sourced event (the pump vibration alarm at 10 min, the auxiliary-feed discovery at 8) and the pair
+inverted once the steps were sequenced for teaching. **The steps are NOT reordered**:
+`test/manual_ui_map.js`'s STEP_UI table is positional, and moving the saturation reveal to after a
+65-minute ride wrecks the teaching order. Step 9 takes the saturation cue's own clock instead.
+**A gate now asserts it** — an incident leg's clocks never decrease, in `run_checklist_pwr2`,
+injection-verified. Nothing else could have caught it: the clock is decoration to the replay, and
+all sixteen acceptances passed with it inverted.
+
+**And a red that was already standing.** `run_inspect` measured **55/56 on HEAD** against a 56/56
+baseline — the ECCS STOP button cited `08_accident_tmi §5.5`, a section the Phase 2 rewrite of that
+chapter deleted. The gate had been saying so and nothing read it. Repointed to §3.2.
+
+**Gates.** `run_style` 10/10 · `run_inspect` 55 → **56/56** (the pre-existing red) ·
+`run_manual_controls` 590/590 · `run_manual_units` 0 failed · `run_checklist` 78/78 ·
+`run_checklist_pwr2` 177 → **178** (the clock check) · `verify_board_check` 242 → **245**
+(three block-valve checks) · `verify_ckl_relevance` 17/17 · `verify_flags_ui` 50/50 ·
+`verify_manual_follow` 225 · `verify_e2e_ui` PASS.
+
 ---
 
 ## Session log — 2026-09-08-develop-b (#660 — the owner's playtest notes, sections A and B: the bar back to one row, the WARP timer gone, and the 1/M plot finally used)

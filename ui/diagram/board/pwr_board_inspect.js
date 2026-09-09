@@ -375,7 +375,11 @@
       'climbing. Indications and protection read instruments, not truth (HR1).', TMI, '4.0'),
     imrsgch20pv: e('Power-Operated Relief Valve (PORV) Tailpipe Temperature',
       'Discharge-line temperature downstream of the PORV — the tell that the valve is passing.',
-      'A seated valve leaves the tailpipe at a leaky-seat baseline around 180 °F (82.2 °C); a passing ' +
+      /* 120 °F, NOT 180 (#670 Phase 3). Measured on the shipped plant at 100 % power with the
+       * valve seated: 122 °F. The 180 °F was the retired engine's baseline and it reached the
+       * walkthrough's step 4 as well, where the layman pass caught it against a board reading
+       * 122 °F on the same screen. */
+      'A seated valve leaves the tailpipe at a leaky-seat baseline around 120 °F (48.9 °C); a passing ' +
       'valve cooks it toward 300 °F (148.9 °C) and it turns amber as it climbs. The Three Mile Island Unit 2 (TMI-2) crew had this reading and ' +
       'read it as normal residual heat. Compare it against the PORV light, never in isolation.', TMI, '4.0'),
     imrppb3kuav: e('Power-Operated Relief Valve (PORV) Block Valve',
@@ -383,7 +387,12 @@
       'The recovery action when the PORV will not reseat: closing this stops all flow through the ' +
       'relief line even with the PORV stuck open. Closing it also removes the relief path, so ' +
       'pressure control falls to spray and the spring safeties — which this valve does NOT isolate. ' +
-      'Two-press confirm on isolate.', CI, '6.2'),
+      /* THERE IS NO TWO-PRESS CONFIRM ON THIS VALVE (#670 Phase 3, layman pass S-1). This card
+       * said "Two-press confirm on isolate." and it was the ONLY place a player could read that,
+       * so the walkthrough's "then confirm" appeared corroborated. Measured headless with the
+       * shell's handleCommand instrumented: ten clicks on the symbol emit ten commands,
+       * close/open/close/open — `comp_valve_vertical`'s hit circle is a plain toggle. */
+      'One click shuts it; a second click opens it again.', CI, '6.2'),
     imrsi2svtgn: e('Power-Operated Relief Valve (PORV) Discharge',
       'Where the relief line goes — the pressurizer relief path downstream of the valves.',
       'The plant models the relief path, not a relief tank: there is no tank level or rupture disc ' +
@@ -580,7 +589,12 @@
     imrldz0wqds: e('STOP (Emergency Core Cooling System (ECCS))',
       'Stops emergency injection by hand.',
       'Also takes the system to MANUAL. Stopping injection with subcooling eroding is the Three Mile Island Unit 2 (TMI-2) error ' +
-      'in one button — the crew throttled injection on a rising level while the core was uncovering.', TMI, '5.5'),
+      /* §3.2, NOT §5.5 (#670 Phase 3). Phase 2 rewrote Manuals/08 against PWR2 and renumbered it;
+       * this citation kept pointing at a section that stopped existing, and `run_inspect` has been
+       * red at 55/56 ever since against a 56/56 baseline. §3.2 "What they did" is the throttling
+       * this card describes. Found by the verification pass, not by the gate — the gate DID say
+       * so, and nothing read it. */
+      'in one button — the crew throttled injection on a rising level while the core was uncovering.', TMI, '3.2'),
     imrle1mc0lk: e('AUTO (Emergency Core Cooling System (ECCS))',
       'Arms automatic actuation on low primary pressure.',
       'Lit means armed and waiting. This is the standing lineup at power: the system does nothing ' +

@@ -2264,7 +2264,7 @@
      * treat the incident category separately. */
     {
       id: 'pwr_tmi2_incident', category: 'incident', manual_ref: 'PWR-E08',
-      title: 'TMI-2, 28 March 1979 — the first four hours, as the crew lived them',
+      title: 'Three Mile Island Unit 2, 28 March 1979 — the first four hours, as the crew lived them',
       purpose: 'Walk the first four hours of the Three Mile Island Unit 2 accident as the crew lived them: what their board showed, what they concluded, and what they then did. The failures arrive on their own. About four and a half plant-hours.',
       from: 'hot_full_power',
       prereq: [
@@ -2297,6 +2297,11 @@
          * Manuals/08 §2. */
         { text: 'Verify the turbine has tripped and the steam generators are drying out: TURBINE TRIP lit, STEAM GENERATOR LEVEL falling below 55 %.',
           why: 'Main feedwater has stopped, and with nothing carrying heat out of the steam generators the primary has nowhere to put it. The auxiliary feed pumps start by themselves, and on this plant their discharge valves are shut. Pressure now has one way out, the relief valve on top of the pressurizer.',
+          /* THE SPIKE IS ALREADY OVER WHEN THIS STEP CHECKS OFF (#670 Phase 3, layman pass S-6).
+           * Measured full-stack: PRIMARY PRESSURE peaks 2339 psi at t+5.5 s and reads 2095 psi
+           * with a down arrow at t+35 s, where the acceptance is graded. The reviewer read
+           * "watched pressure climb" against a falling gauge and a LOW PRESSURE alarm. */
+          note: 'The spike is already over by the time this step checks off. Pressure peaks near 2340 psi about 6 seconds in and is back near 2095 psi and falling by 35 seconds — you have missed it, and missing it is what the next two steps are about.',
           story: { clock: '04:00:37',
             saw: 'The condensate pump tripped a second earlier and the main feed pumps followed. The turbine tripped with them and the alarms came in a wall.',
             knew: 'A feedwater transient, which they had drilled. The board said the auxiliary feed pumps had started.',
@@ -2329,7 +2334,7 @@
          * MEASURED: 122 °F seated; crosses 240 °F at t+22 s, 300 °F at t+28 s, saturates 482 °F
          * and NEVER reaches the hot leg (trap 2 in the header). Manuals/08 §3. */
         { text: 'Verify the relief valve reading: the PORV light beside the pressurizer reads CLOSED, and the temperature under it is above 240 °F and climbing.',
-          why: 'A seated relief valve leaves that pipe near 180 °F; a valve passing steam cooks it toward 480 °F, which is where it is heading. The light shows what the valve was told to do, not what the disc did, and this valve carries no position indicator. That one reading is the whole accident, and it was on the board the entire time.',
+          why: 'A seated relief valve leaves that pipe near 120 °F on this plant; a valve passing steam cooks it toward 480 °F, which is where it is heading. The light shows what the valve was told to do, not what the disc did, and this valve carries no position indicator. That one reading is the whole accident, and it was on the board the entire time.',
           story: { clock: '04:01:07',
             saw: 'The relief valve light went out at 13 seconds, which means the solenoid lost power. Thirty seconds in, the discharge line alarmed at 239 degrees.',
             knew: '"Light off indicates solenoid deenergized. There is no actual position indicator."',
@@ -2341,6 +2346,17 @@
          * MEASURED: hpi_active true at t+63 s. Manuals/08 §3. */
         { text: 'Verify safety injection has started by itself: the ECCS card shows the high-pressure pump running.',
           why: 'Primary pressure has fallen through the injection setpoint and the plant started the high-pressure pumps without being asked. Nothing is wrong with that: the plant is losing water through a valve nobody knows is open, and injection is the right answer to it. What comes next is the crew taking it away.',
+          /* TWO BOARD READINGS THAT CONTRADICT THE STORY BLOCK AT THIS INSTANT (#670 Phase 3,
+           * layman pass S-2 and S-3). Measured full-stack at the step's first tick:
+           *   PRESSURIZER LEVEL 43.1 % and FALLING — 80.1 % at step 2's end, 75.4 % at step 3's,
+           *   a minimum of 40.0 % 16 s into this step, back through 43 % at +29 s, 71.3 % at
+           *   +90 s and pegged (>= 99 %) at t = 200 s. The crew's "climbing fast" is history and
+           *   is four minutes early on this plant.
+           *   ECCS FLOW 0 GPM while the pump reads running: `hpi_active` latches at t = 63.5 s at
+           *   1658 psi, and the flow instrument stays EXACTLY zero for 23 s until pressure falls
+           *   to 1393 psi at t = 86.5 s — the pump is deadheaded against its own 1389 psi
+           *   discharge head, which the ECCS card prints as DISCG. Physical, and nothing said so. */
+          note: 'Two things on the board will look wrong here and are not. PRESSURIZER LEVEL is still falling — about 43 % now, bottoming near 40 %, and it does not start its climb to the top of the scale for another minute. And ECCS FLOW reads 0 GPM with the pump running: it is pushing against a plant still above its own discharge pressure, and flow does not start until PRIMARY PRESSURE falls below about 1390 psi. Compare it with DISCG on the same card.',
           story: { clock: '04:02:39',
             saw: 'Pressure dropped through 1600 psi and the emergency injection started on its own.',
             knew: 'Pressurizer level was climbing fast at the same time, which their training said meant the system was filling.',
@@ -2356,8 +2372,8 @@
         { text: 'Press TRIP BLOCKS on the ROD CONTROL card, then BLOCK on the SI REACTOR TRIP row.',
           crew: true,
           control: 'Trip Blocks', target: 'SI REACTOR TRIP lit on the TRIP BLOCKS panel',
-          why: 'The block is a permissive: the plant allows it only below 1972 psi and takes it straight back if pressure returns above that. Blocking it stops the plant restarting injection by itself, which is the point of the press and the reason the next step works at all. Nothing on the board says the core has just been put on the operator alone.',
-          note: 'The block is a request, not a switch. If pressure climbs back above 1972 psi the plant takes it away again.',
+          why: 'SI is safety injection, and the block is a permissive: the plant allows it only below 1972 psi — the pressure permissive the row calls P-11 — and takes it straight back if pressure returns above that. The row itself prints 1715 psi, which is a different number and not a mistake: that is where the safety-injection reactor trip fires, while 1972 psi is where the plant will let you block it. Blocking it stops the plant restarting injection by itself, which is the point of the press and the reason the next step works at all. Nothing on the board says the core has just been put on the operator alone.',
+          note: 'The block is a request, not a switch. If pressure climbs back above 1972 psi the plant takes it away again. The TRIP BLOCKS panel stays open over the board until you press TRIP BLOCKS again.',
           story: { clock: '04:03:50',
             saw: 'Pressurizer level climbing hard while pressure fell.',
             knew: 'Level and pressure were saying opposite things, and level was the gauge they trusted.',
@@ -2391,6 +2407,13 @@
          * Manuals/08 §3. */
         { text: 'Verify PRESSURIZER LEVEL has gone to the top of its scale and is sitting there.',
           why: 'The one gauge the crew had for how much water was in the plant now reads full while the plant empties. Level is not inventory: steam forming in the hot legs drives water up the surge line, so the pressurizer fills as the core loses water. This is the coupling the walkthrough exists to teach and it is on the board now.',
+          /* THE VESSEL IS DRAWN FULL HERE AND THAT IS CORRECT (#670 Phase 3, layman pass S-8).
+           * The reviewer read "the plant empties" against a vessel graphic full of water and
+           * called it a defect. Measured at this step: core coolant inventory 95.7 % -> 93.9 %
+           * and `core_uncovered_frac` exactly 0.0, so the graphic (which since #516 item 6 reads
+           * core uncovery + hot-leg void, NOT the mass fraction) is right. It drains later:
+           * 50 % uncovered at 35 plant-minutes, 94.3 % at 103. */
+          note: 'The reactor vessel on the diagram is still drawn full, and that is right: the plant has lost about 6 % of its coolant here and none of the core is uncovered yet. The vessel empties later — half the core is uncovered near 35 plant-minutes and 94 % of it by the second hour.',
           story: { clock: '04:06:28',
             saw: 'The level indicator went off the top of its scale, past 400 inches.',
             knew: 'Their training said the only credible check on how much coolant was in the system was the pressurizer level.',
@@ -2404,9 +2427,19 @@
          * STAND FROM 2.6 MINUTES, which is the 71-minute wait the `why` has to carry rather
          * than presenting them as fresh. Manuals/08 §4. */
         { text: 'Verify SUBCOOLING MARGIN has reached zero and the pump cavitation alarm is in.',
-          why: 'Subcooling margin is how far the water is from boiling, and at zero it is not a margin any more. The pumps are pushing a froth of steam and water, which is what the vibration is. Both cues stand from about two and a half minutes into the accident and they stay up for the next hour.',
-          story: { clock: '04:10:37',
-            saw: 'The first reactor coolant pump high-vibration alarm, ten minutes in.',
+          why: 'Subcooling margin is how far the water is from boiling, and at zero it is not a margin any more. The pumps are pushing a froth of steam and water, which is what the vibration is; this board alarms it as Reactor Coolant Pump Cavitation. Both cues stand from about two and a half minutes into the accident and they stay up for the next hour.',
+          /* THE CLOCK RUNS FORWARD (#670 Phase 3, layman pass S-7). This step was dated 04:10:37
+           * on App. II.1 E56, the first pump high-vibration alarm, and the NEXT step is dated
+           * 04:08:37 on the sourced auxiliary-feed discovery at 8 minutes — so the story clock
+           * went BACKWARDS two minutes between steps 9 and 10 and the reviewer lost confidence in
+           * it for the rest of the run. The steps are not reordered (`test/manual_ui_map.js`'s
+           * STEP_UI table is positional, and putting the saturation reveal after a 65-minute ride
+           * would wreck the teaching order); instead this step takes the SATURATION cue's own
+           * clock, E42 at 04:06:27, rounded to step 8's 04:06:28 because the two are one second
+           * apart in the source and are two readings of the same instant. E56 is now named in the
+           * `saw` as arriving four minutes later, which is what it did. */
+          story: { clock: '04:06:28',
+            saw: 'The coolant reached saturation — nothing left between it and boiling — and four minutes later, ten minutes in, the first reactor coolant pump high-vibration alarm came in.',
             knew: '"Indication of voids in system. Apparently not recognized."',
             did: 'They left the pumps running.' },
           hold: 130,
@@ -2426,11 +2459,11 @@
          * step's end is a coin toss. THE HOLD IS THE 65-MINUTE RIDE to step 11's clock — a
          * step's `cmd` is issued at step START, so the wait belongs to the step BEFORE the one
          * that acts. Manuals/08 §4. */
-        { text: 'Open the auxiliary feedwater block valves: click the valve symbol on the AFW line.',
+        { text: 'Open the auxiliary feedwater block valves: click the valve symbol directly above the AFW card.',
           control: 'AFW', target: 'STEAM GENERATOR LEVEL back above 5 %, climbing off zero',
           why: 'The auxiliary pumps have been running eight minutes into shut valves, delivering nothing. Opening them puts the heat sink back: flow reaches its rated value within 30 seconds and the dry generators take about 9 plant-minutes to show level again. The report on this accident concluded the eight-minute delay did not change the outcome, and that what it did cost was the operators\' attention.',
-          note: 'Level takes about 9 plant-minutes to come off zero, because both generators are dry. A new alarm, or a step checking off, drops the clock back to real time.',
-          wait_hint: 'The next step is more than an hour of plant time away. The relief valve is still open the whole way.',
+          note: 'One symbol here, two valves: this board carries a single auxiliary-feed discharge valve and one click opens both of the crew\'s. Level takes about 9 plant-minutes to come off zero, because both generators are dry. A new alarm, or a step checking off, drops the clock back to real time.',
+          wait_hint: 'The relief valve is still open the whole way. The plant takes 600× here and holds it for most of the hour; if it drops back to 60× on a pressure swing, press 600× again.',
           story: { clock: '04:08:37',
             saw: 'Low generator level, low steam pressure and high auxiliary feed discharge pressure — three cues to a blocked line.',
             knew: 'The auxiliary pumps were running. Nobody had checked whether the water was getting past the valves.',
@@ -2491,11 +2524,33 @@
          * and the subcooling margin leaves its floor at 140.9 min. THE HOLD RUNS TO STEP 15's
          * CLOCK (62 plant-min). The reopen/reclose cycles through 07:56 are NARRATED, per the
          * plan's recommendation — one closing, at 2 h 18 min. Manuals/08 §5. */
-        { text: 'Close the PORV block valve: click the block valve symbol above the relief valve, then confirm.',
+        /* ONE CLICK, AND THE SYMBOL IS LEFT OF THE PORV, NOT ABOVE IT (#670 Phase 3, layman pass
+         * S-1 — the pass's one BLOCKING stuck point, ~11 of its 55 minutes). This step used to
+         * read "click the block valve symbol above the relief valve, then confirm", and BOTH
+         * halves were wrong:
+         *   1. THERE IS NO CONFIRM. `comp_valve_vertical`'s hit circle emits a plain
+         *      `onControl('toggle', st.openFrac < 0.5 ? 1 : 0)`; the only two-press confirms on
+         *      this board are SCRAM (`pwr_board.js` paintScram) and a TRIP BLOCKS row that would
+         *      trip the plant on release (#598 item 15). Measured headless on the real page, with
+         *      the shell's `handleCommand` instrumented: one click emits `close_block_valve` and
+         *      the valve SHUTS; a second click emits `open_block_valve` and it OPENS AGAIN. Ten
+         *      clicks 0.4 s apart with the pointer never leaving the symbol gave ten commands,
+         *      SHUT OPEN SHUT OPEN … — so a player who does what "then confirm" says undoes the
+         *      only correct move of the morning. The reviewer's own re-measure (that a press is
+         *      swallowed unless the pointer re-enters the symbol) is REFUTED: with a move away
+         *      and back between the presses the result is identical.
+         *   2. "ABOVE" IS THE WRONG DIRECTION. `pwr_board_data.js`: the block valve is at
+         *      (825, 230) 40x40, the PORV at (905, 185) 30x65 — left of it and slightly below.
+         *      It is upstream in the flow, which is presumably what "above" was reaching for. */
+        { text: 'Close the PORV block valve: one click on the small valve symbol just left of the PORV.',
           control: 'PORV Block Valve', target: 'PRIMARY PRESSURE rising above 750 psi and the tailpipe temperature falling',
           why: 'This is the first correct move of the morning and it takes 2 hours 18 minutes to arrive. Closing the block valve isolates the relief line whether or not the relief valve is shut, and the loss stops: pressure turns upward within 2 plant-minutes and the discharge pipe starts cooling. The man who did it had just walked in and asked why the relief line was hotter than the safety valve lines.',
-          note: 'The crew reopened this valve at 3 hours 12 minutes and shut it again three more times through 07:56. This walkthrough closes it once and tells the rest.',
-          wait_hint: 'The next step is about an hour of plant time away. Watch the tailpipe temperature come down.',
+          /* THE REOPEN/RECLOSE RECORD, CORRECTED (#670 Phase 3). This note said the crew "shut it
+           * again three more times through 07:56", which the sourced sequence does not support:
+           * shut 06:18, reopened 07:12, shut near 07:27-07:30, reopened 07:41 — and 07:56 is a
+           * SAFETY INJECTION ACTUATION, not a closure. */
+          note: 'One click shuts this valve and a second click opens it again, so click once. The crew reopened it at 3 hours 12 minutes, shut it again near 3 hours 27 minutes and reopened it at 3 hours 41 minutes; the 07:56 event was a safety injection actuation, not another closure. This walkthrough closes it once and tells the rest.',
+          wait_hint: 'Watch the tailpipe temperature come down. This hour is the quietest of the run and the plant holds 600× right through it.',
           story: { clock: '06:18:37',
             saw: 'The relief line discharge running about 30 degrees hotter than the safety valve discharge lines.',
             knew: 'A relieving shift supervisor set the pressurizer level aside and read the temperatures instead. His conclusion was that the relief valve was leaking.',
@@ -2512,7 +2567,7 @@
         { text: 'Press START on the ECCS card to put high-pressure injection back in.',
           control: 'ECCS', target: 'SUBCOOLING MARGIN back above 10 °F',
           why: 'Injection is the only thing that puts water back, and the margin is what says whether it is working: it leaves its floor within minutes and climbs back through zero about 22 plant-minutes later. The crew did not sustain it — the borated water tank alarmed low, so they rationed injection and stopped the pump again 17 minutes after starting it. Here it stays in, and the coolant becomes water again.',
-          wait_hint: 'The margin takes about 22 plant-minutes to climb back through zero. Watch SUBCOOLING MARGIN, not the pressure.',
+          wait_hint: 'The margin takes about 22 plant-minutes to climb back through zero. Watch SUBCOOLING MARGIN, not the pressure. Refilling a hot plant swings pressure hard, so 600× will drop back to 60× partway through — press it again when it does.',
           story: { clock: '07:20:37',
             saw: 'Pressure low enough to justify starting the emergency systems by hand.',
             knew: 'The tank the injection water comes from had alarmed low, so injection felt like something to spend carefully.',
@@ -2528,7 +2583,7 @@
          * 94 % uncovered without the cladding heating as a real one did. Manuals/08 §6. */
         { text: 'Press ON for the reactor coolant pumps to restore forced circulation.',
           control: 'RCP Run/Stop', target: 'RCP FLOW back above 80 %',
-          why: 'Forced flow returns within 40 seconds and the margin and the inventory recover with it, which is where this plant ends the story. What it cannot show is the rest: fuel damage, the radiation alarms at 2 hours 45 minutes and the hydrogen burn at 9 hours 50 minutes are outside this model and are told here rather than run. This core peaks near 1297 °F where the real one went far past 2500 °F.',
+          why: 'Forced flow returns within 40 seconds and the margin and the inventory recover with it, which is where this plant ends the story. What it cannot show is the rest: fuel damage, the radiation alarms at 2 hours 45 minutes and the hydrogen burn at 9 hours 50 minutes are outside this model and are told here rather than run. The size of that gap is on the fuel temperature: uncovering 94 % of this core never gets the fuel hotter than it runs at full power — 1130 °F at its worst, against 1298 °F before the trip — where the real one went far past 2500 °F.',
           note: 'Core damage, containment radiation and the hydrogen burn are not modelled on this plant. Everything up to this step was.',
           story: { clock: '19:50:37',
             saw: 'Nearly sixteen hours in, a pump started and ran satisfactorily. Core cooling was established.',
@@ -2539,7 +2594,13 @@
           hl: ['RCP Run/Stop'] },
       ],
       guard: { never_melted: true },
-      outcome: 'Injection restored, forced circulation back and the relief line isolated. At its worst the core was 94 % uncovered and the fuel reached 1297 °F; the real one went far past that, and this plant stops short of it by design.',
+      /* THE 1297 °F WAS THE FULL-POWER FUEL TEMPERATURE, NOT AN ACCIDENT PEAK (#670 Phase 3).
+       * The figure came from a whole-ride maximum of `fuel_temp_c`, and this walkthrough STARTS at
+       * 100 % power — so the peak it found was t = 0. Measured full-stack: 1298 °F at t = 0 with
+       * the plant on line, and a post-trip maximum of 1130 °F (clad 1126 °F) at t = 13,772 s,
+       * while injection refloods the core. Core uncovery peaks at 94.3 % and coolant inventory
+       * bottoms at 7.4 %, so the uncovery half of the sentence stands. */
+      outcome: 'Injection restored, forced circulation back and the relief line isolated. At its worst 94 % of the core was uncovered — and the fuel still never got hotter than it runs at full power, 1130 °F against 1298 °F on line before the trip. The real one went far past 2500 °F, and this plant stops short of it by design.',
     },
   ];
 

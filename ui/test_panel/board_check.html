@@ -877,6 +877,43 @@
       ticks(3);
       ck('func: SCRAM two-step trips the reactor', svc.assembleSnapshot().instruments.rps_scrammed === true);
 
+      // --- the PORV block valve is a PLAIN TOGGLE, not a two-press confirm (#670 Phase 3) ---
+      // The TMI-2 walkthrough told the player to "click the block valve symbol … then confirm",
+      // and the symbol's own inspect card said "Two-press confirm on isolate." Neither was true:
+      // `comp_valve_vertical`'s hit circle emits onControl('toggle', openFrac < 0.5 ? 1 : 0), so
+      // the second press REOPENS the valve the first one shut — the layman playtest spent 11 of
+      // its 55 minutes on that one step and only got the valve shut on an odd press count.
+      //
+      // Pinned here rather than in the pool, because the CLAIM is about the built control: if a
+      // confirm is ever added to this valve, this check reddens and the walkthrough's wording
+      // and the inspect card have to move with it. Two directions asserted, not one — a probe
+      // that only checked "one click shuts it" would have passed on a confirm-armed valve too.
+      RD.PwrBoard.render(svc.assembleSnapshot());
+      function bvHit() {
+        var t = document.querySelector('[data-item="imrppb3kuav"]');
+        return t && t.querySelector('.vlv-hit');
+      }
+      function bvOpen() {
+        var cs = svc.assembleSnapshot().control_state || {};
+        return cs.porv_block_open !== false;
+      }
+      // `.click()` is an HTMLElement method — the hit target is an SVG <circle>, so the press has
+      // to be dispatched. (Measured: `bvEl.click is not a function` in the harness's Chromium.)
+      function bvPress(el) { if (el) el.dispatchEvent(new MouseEvent('click', { bubbles: true })); }
+      var bvWas = bvOpen(), bvEl = bvHit();
+      ck('geom: the PORV block valve symbol carries a click target', !!bvEl);
+      if (bvEl && bvWas) {
+        bvPress(bvEl); ticks(2);
+        ck('func: ONE click on the PORV block valve shuts it — there is no confirm press',
+          bvOpen() === false, 'porv_block_open ' + bvOpen());
+        RD.PwrBoard.render(svc.assembleSnapshot());
+        bvPress(bvHit() || bvEl); ticks(2);
+        ck('func: a SECOND click OPENS it again — the symbol is a toggle (#670: the walkthrough must not say "then confirm")',
+          bvOpen() === true, 'porv_block_open ' + bvOpen());
+      }
+      // hand it back the way it was found
+      svc.handleCommand({ action: bvWas ? 'open_block_valve' : 'close_block_valve' }); ticks(2);
+
       // hand the plant back tripped and off line, the way this block found it
       svc.handleCommand({ action: 'trip_turbine' }); ticks(4);
 

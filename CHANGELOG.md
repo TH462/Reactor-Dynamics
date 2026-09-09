@@ -30,6 +30,36 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
 
 ## [Unreleased]
 
+### Fixed (the TMI-2 walkthrough's first layman playthrough, verified — #670 Phase 3)
+
+A fresh-context reviewer with no repo access played the incident leg end to end in headless Edge
+and finished **16 of 16 steps**; every claim it made was re-measured on this tree before anything
+was changed (`Diagnostic/CHECKLIST_PLAYTEST_2026-09-09_LAYMAN_TMI.md`, with a **Measured** and a
+**Verdict** line under each stuck point). Eight confirmed, two refuted, and one defect nobody
+claimed. **Step 14 told the player to press the block valve "then confirm", and there is no
+confirm** — the symbol is a plain toggle, so the second press reopened the valve the first one
+shut: measured with the shell's commands recorded, ten clicks with the pointer never moving give
+ten commands, SHUT OPEN SHUT OPEN…, with or without a mouse move between them. The reviewer's own
+diagnosis (that a press needs the pointer to re-enter) is refuted, and the sentence that seemed to
+corroborate it — "Two-press confirm on isolate." on the valve's own scanner card — was the board
+asserting a confirm it does not implement. Both now say one click, and `board_check` gained three
+checks pinning the toggle in both directions. **The completion card's "the fuel reached 1297 °F"
+was the full-power fuel temperature**, a whole-ride maximum taken on a walkthrough that starts at
+100 % power: measured 1298 °F on line before the trip against a post-trip peak of 1130 °F, so
+uncovering 94 % of this core never gets the fuel as hot as running it. Also fixed: step 5 now says
+the pressurizer level is still falling (43 % at that instant, bottoming at 40 %) and that ECCS FLOW
+reads 0 GPM because the pump is deadheaded until pressure falls below its 1389 psi head; step 2
+says the pressure spike is 30 seconds gone; step 6 reconciles the 1972 psi permissive against the
+1715 psi the panel row prints, and says the panel stays open until pressed again; step 4's seated
+tailpipe is 120 °F, not 180; the done-whens say "ECCS injection" rather than "HPI", which is on no
+tile; the story clock no longer runs backwards between steps 9 and 10, and a new gate check
+asserts an incident leg's clocks never decrease. **Refuted with numbers, and left alone:** the
+600× hints — the plant granted WARP on all three windows and held it for 100 % of step 14's hour
+(achieved 2217×), dropping once per busy window rather than continuously; and the reactor vessel
+graphic, which does draw core uncovery (down to 2.9 of 100 by step 12) and is correctly full at
+the step the report screenshotted, where uncovery is 0.0 %. Separately, `run_inspect` had been red
+at 55/56 since the Phase 2 manual rewrite deleted the section the ECCS STOP card cited.
+
 ### Added (the TMI-2 incident walkthrough — #670 Phase 2)
 
 The first incident walkthrough: **"TMI-2, 28 March 1979 — the first four hours, as the crew lived
@@ -60,8 +90,9 @@ scale near 65 plant-minutes, which is what makes the wait real.
 
 The declared divergences are in the steps: this plant trips on over-temperature difference near
 53 seconds where TMI-2 tripped on pressure at 8 seconds, and the fuel damage, the radiation alarms
-and the hydrogen burn are outside the model and are told rather than run (peak fuel 1297 °F / 703 °C here,
-94 % of the core uncovered, against a real one far past 2500 °F / 1371 °C).
+and the hydrogen burn are outside the model and are told rather than run (94 % of the core
+uncovered against a real one far past 2500 °F / 1371 °C — and see Phase 3 above for the fuel
+temperature, which was mis-taken here as 1297 °F / 703 °C and is the plant's FULL-POWER value).
 
 ### Added (the runtime for incident walkthroughs — #670 Phase 1)
 
@@ -496,7 +527,7 @@ stays steady (power within 5 points of rated, pressure drift under 0.2 MPa / 29 
 meet within one broadcast of the window end, and a planted 1e-6 difference is seen by `compare()`.
 Four injections, one per conjunct, each proven to redden SI-0 alone. No baseline moves (8 checks).
 
-## [Alpha 1.7.4-rc5] — 2026-09-08
+## [Alpha 1.7.4-rc6] — 2026-09-08
 
 ### Added (process: the layman playthrough is a skill — #653/#660)
 

@@ -3619,7 +3619,13 @@
     scrammed:               { bool: 'the reactor is tripped' },
     melted:                 { bool: 'the core is damaged' },
     turbine_tripped:        { bool: 'the turbine is tripped' },
-    hpi_active:             { bool: 'HPI is injecting' },
+    /* "HPI" IS NOT A WORD ON THIS BOARD (#670 Phase 3, layman pass S-4). The done-when read
+     * "When HPI is injecting" and the player searched the board for it: the card is engraved
+     * ECCS, its mode reads HHSI, the alarm says "Safety Injection Actuated" and the inspect card
+     * says "Emergency Core Cooling System (ECCS)" — four names, none of them this one. The label
+     * keeps a " is " so the negative form ("ECCS injection is not running", step 7's done-when)
+     * still comes out of fmtPredicate's replace rather than its "not: " fallback. */
+    hpi_active:             { bool: 'ECCS injection is running' },
     afw_active:             { bool: 'auxiliary feedwater is running' },
     rhr_active:             { bool: 'ALIGN is lit on the RHR card' },
     rhr_valve_open:         { bool: 'ALIGN is lit on the RHR card' },
