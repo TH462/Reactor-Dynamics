@@ -22,6 +22,29 @@ the evidence to put it back** — say so in the session log rather than quietly 
 
 ---
 
+## Evicted 2026-09-09 (a THEMES-rotation eviction — the #633/#508 relief-flow bullet, out for #670's arming-window trap)
+
+A rotation eviction, not a standing-list one: the themes list is capped at five and this was the
+oldest of them. **It meets the criterion in part.** The relief half is now pinned — the flow law
+is pressure-dependent and its checks sample across the range, so a flat-flow regression reds a
+runner — and the no-load Tavg half is pinned by the dump controllers' own probes at 547 °F
+(559.3 K). What no gate reaches is the *habit*: choosing the state a fixture sits at. That one
+line was rescued into the standing list, onto the #508 "reference moving, not the plant" bullet.
+
+> **A GATE WRITTEN WHERE THE DEFECT CANNOT BE SEEN IS 56 GREEN CHECKS OVER NOTHING** (2026-09-06,
+> #633/#508). Every relief path passed a FLAT mass flow, so a 100 % atmospheric dump valve drove the
+> steam generator to **−14 psig** still passing its full rating. Ten of the twelve reds sampled at an
+> ARBITRARY pressure (6.0 MPa) — right only BECAUSE flow ignored pressure. Sibling: the no-load Tavg
+> anchor was another plant's 557 °F while the engine boots no-load at 547 °F, so **both Tavg-mode dump
+> controllers were dead at this plant's own no-load point** and a routine trip vented **18,813 lbm**
+> to atmosphere. **Ask what pressure/state your fixture sits at, and whether the claim survives moving it.**
+
+**The half worth carrying, if you only read one line:** ask what pressure or state your fixture
+sits at, and whether the claim survives moving it — a check can be right only because the model
+ignores the very quantity the check is about.
+
+---
+
 ## Evicted 2026-09-06a (a STANDING-LIST eviction — the board-data bullet, out for #633/#508's reference-vs-plant trap)
 
 **Why this one.** It is the clearest case the criterion above describes. The bullet's own

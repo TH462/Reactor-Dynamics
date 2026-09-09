@@ -333,7 +333,7 @@ to read everything.
 > change. The dense, append-only version lives in `Blueprint/BUILD_DECISIONS.md`
 > (Status line + Open Flags table) — update both.
 
-_Last updated: **2026-09-01**._
+_Last updated: **2026-09-09**._
 
 **Where the PWR is.** Read `BASELINES` for the runner count, never a number written here. The PWR
 is the only active plant: engines, control, service, instructor and the board are built.
@@ -415,6 +415,11 @@ standing procedure rather than news belongs in the list below. **Evicting one: R
 FIRST** — ask what in it would still burn someone in a month, move that to the standing list as
 ONE line, drop the rest. **A bullet is ~80 words.**
 
+- **A LATCHING FAILURE ARMED AFTER THE EVENT IT LATCHES ON IS A NO-OP THAT READS AS A WORKING
+  INJECTION** (2026-09-09, #670 Phase 2): `stuck_porv_open` latches on the first lift; the lift is
+  at 5.5 s and the reseat near 25 s, so armed at 0–20 s the accident follows, at 30–60 s the valve
+  reseats at 1985 psia (13.69 MPa) and nothing happens. A step's `inject` must fire before the
+  event its failure waits for — **measure the window.**
 - **A COMMAND-KIND CHECK-OFF IS ONLY SATISFIABLE WHILE THE PLANT STILL LETS THE PLAYER PRODUCE
   THE COMMAND** (2026-09-05, #641). Six 1/M steps waited for `plot_1m_point`; the tool refuses the
   press once the source range secures (1e5 cps, flux alone, no lever) and sends nothing, and the
@@ -442,14 +447,6 @@ ONE line, drop the rest. **A bullet is ~80 words.**
   same reviews found the real defects nothing else had: "Tavg" 34 times and not on the board,
   three units for one gauge, cautions that never render. **Verify every count on the built object
   before it reaches an issue, and read the layman's "I could not find it" as a board fact.**
-
-- **A GATE WRITTEN WHERE THE DEFECT CANNOT BE SEEN IS 56 GREEN CHECKS OVER NOTHING** (2026-09-06,
-  #633/#508). Every relief path passed a FLAT mass flow, so a 100 % atmospheric dump valve drove the
-  steam generator to **−14 psig** still passing its full rating. Ten of the twelve reds sampled at an
-  ARBITRARY pressure (6.0 MPa) — right only BECAUSE flow ignored pressure. Sibling: the no-load Tavg
-  anchor was another plant's 557 °F while the engine boots no-load at 547 °F, so **both Tavg-mode dump
-  controllers were dead at this plant's own no-load point** and a routine trip vented **18,813 lbm**
-  to atmosphere. **Ask what pressure/state your fixture sits at, and whether the claim survives moving it.**
 
 **Standing procedure — not part of the rotation above; these do not expire.** One trap per entry.
 **MAX 25 BULLETS** *(OWNER RULING, 2026-08-10: selected "Cap at 25, evict to TRAPS.md")*,
@@ -608,7 +605,9 @@ what a GATE already catches**, keep what nothing can tell you.
   **Run the fixture at the old constant AND the new one and ask which quantity moved.** And a fix
   that reddens something DISTANT may have been **cancelling against it**: a 4.9 % ΔT head start and
   an equal, opposite K3 credit read as a healthy plant for three weeks (#647/#650). Ask *"what was
-  this cancelling?"* before writing the red off as stale.
+  this cancelling?"* before writing the red off as stale. **And a fixture pinned at an ARBITRARY
+  state can be right only because the model IGNORES that state** (rescued on eviction, 2026-09-09):
+  56 relief checks green over a FLAT mass flow, ten sampled at 6.0 MPa (#633).
 - **An unmeasured claim in PLAYER-FACING COPY is still an unmeasured claim** (rescued from the
   Indications-tab bullet on eviction, 2026-08-17): a "pressurizer mass-only level" row promised
   a TMI divergence that measures 0.0 everywhere, because `pzr_level_pct` is `clip(that,0,100)`
