@@ -95,7 +95,7 @@ Heat and pressurize the RCS from **Mode 5, Cold Shutdown** through **Mode 4, Hot
 |------|------|--------|---------|------------|
 | 1 | Mode 5 | Confirm cold plant: Tavg ~122 °F (50 °C), P ~363 psi (2.5 MPa), subcritical, RHR in service, RCPs secured | (observe) | Tavg < 203 °F (95 °C); Mode 5 |
 | 2 | 5 → 4 | **Start RCPs** (RCP → Run). Forced flow is the heat source and couples the SG | RCP Run/Stop | Pump flow ~100 % |
-| 2a | 5 / 4 | **WITHDRAW THE SHUTDOWN BANK to fully out.** Drive it in manual bank control; full travel is 627 steps and takes about **10 plant-minutes** at Fast. It stays out for every mode above this one and only ever moves again on a trip | Shutdown Bank | Bank at **627 / 627** |
+| 2a | 5 / 4 | **WITHDRAW THE SHUTDOWN BANK to fully out.** Drive it in manual bank control; full travel is 627 steps and takes about **9 plant-minutes** at Fast (8.7, measured). It stays out for every mode above this one and only ever moves again on a trip | Shutdown Bank | Bank at **627 / 627** |
 | 3 | 5 / 4 | Confirm generator **disconnected** (Disconnect Grid if needed). Do not reconnect | Turbine Load | Load mode disconnected; 0 MWe |
 | 4 | 5 / 4 | Engage **Feed AUTO** — three-element regulates to the programmed 65 % level (it walks there from wherever level stands) | Feed Pumps | Feed AUTO engaged |
 | 5 | 5 / 4 | Set **Dump SP** to no-load anchor **1020 psi (7.03 MPa)** — Ginna's sourced 1005 psig no-load point (#419); leave dump **shut** (CLOSE lit, status **MANUAL**). The setpoint is where the dumps will hold the secondary, but **nothing reaches the valves until AUTO is pressed at step 8b** — the controller reads the box in steam-pressure mode only (**03** §12.3) | Dump SP | SP set; dump demand ~0 |

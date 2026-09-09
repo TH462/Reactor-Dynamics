@@ -7,6 +7,79 @@ For the dense engineering rationale behind each change (spec deviations, tuning,
 tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summary.
 
 > **Releasing:** at each `develop` → `main` merge, rename the `## [Unreleased]` heading
+> below to the version being shipped (`## [Alpha X.Y.Z] — YYYY-MM-DD`) and open a fresh
+> empty `## [Unreleased]` above it. The version must match the top entry of
+> `changelog.html` and the string in `site/release.js`.
+>
+> **`node test/run_release.js` enforces that** (2026-07-31). This paragraph on its own did not:
+> the roll was skipped for **Alpha 1.10.0 and again for 1.11.0**, and 434 lines covering two
+> shipped releases sat below as unreleased while the newest version heading here read 1.9.0.
+> It survives being skipped because nothing downstream reads these headings — the file renders
+> and reads plausibly either way — and it compounds, because once two releases are merged into
+> one block the boundaries can only be recovered by diffing this file at each tag. Which is
+> what it took.
+>
+> **`## [Pre-launch 1.x.y]` headings are DEVELOPMENT versions, not releases** (2026-08-04). The
+> project versioned itself `Alpha 1.2.0` → `1.11.0` before it was ever public, then dropped the
+> number entirely for `Pre Alpha`, and the first *real* release is **`Alpha 1.0.0`** below. Those
+> older sections keep their content and dates and are simply relabelled, because `1.0.0` sorting
+> above `1.11.0` fails the gate's newest-first check — measured, **10 checks / 1 failed** before
+> the relabel and **11 / 0** after. They are relabelled INDIVIDUALLY rather than merged into one
+> catch-all, for the reason the paragraph above gives: merged boundaries cost a tag diff to
+> recover. Nothing below `Alpha 1.0.0` was ever downloadable.
+
+## [Unreleased]
+
+### Fixed (the operator's three rod speeds were all 12.25 % slow — #668)
+
+The rod drive's Slow / Normal / Fast selections ran at **7.02 / 42.12 / 63.18 steps/min**. Those
+are the retired plant's own **8 / 48 / 72** on its 228-step drive, re-expressed as a *fraction of
+travel per second* onto what was then a 200-step bank — ×200/228 — which put **every one of the
+three 12.25 % under its own original**. Same category error as #662, one level up, found while
+fixing it. They are now **8 / 48 / 72 steps/min**, written in the sourced unit so the number in the
+code is the number in the document *(OWNER RULING, 2026-09-08: "A — adopt the sourced 8 and 72;
+keep 48 as normal, marked [UNVERIFIED]")*. Verified on the engine: **8.00 / 48.00 / 71.99
+steps/min**.
+
+Slow and fast are the two ends of the real rod speed program — Westinghouse Technology Systems
+Manual §8.1 (ML11223A252): *"a minimum speed of eight steps per minute"*, and *"a maximum rod speed
+of 72 steps/min. The maximum rod speed is based upon a maximum response to a large error signal and
+upon the physical limitations of the rod drive mechanism, with the latter being the limiting
+factor"*; §8.1.8's shutdown-bank pulser is *"normally set at 72 steps per minute"*. **Normal (48)
+is marked `[UNVERIFIED]`** — no document in any lane's corpus carries it.
+
+**⚠ The trap, and it is the one to carry forward: a UNIFORM scale error is invisible to every
+structural check.** The three were ordered, the ratios were exact, the drive slewed rather than
+teleporting, the casualty rode its own band, and the failure slider's label agreed with the
+delivered rate — because every consumer in the tree reads the constant. That is what made #662
+cheap and it is also what made this undetectable for a year. The only thing that can catch it is a
+check that **types** the sourced number, and there is now exactly one: `run_pwr2_engine_b` group K.
+**And grep for the UNIT, not the value** — two manual chapters were worse than 12.25 % out and
+neither would have surfaced in a search for 7.02 / 42.12 / 63.18.
+
+**Content followed the plant, re-timed from measured rides rather than scaled by the ratio.** The
+shutdown bank's one-click full withdrawal is **8.7 minutes**, not 9.9, so the live checklist and
+`Manuals/04` PWR-N01 say "about 9 plant-minutes"; the startup leg's note reads **MED 48 steps a
+minute, SLOW 8, FAST 72**. No authored hold moved — each already had slack for the shorter motion.
+**`Manuals/09` §7.0 and `Manuals/12` §4.7 were worse than the 12.25 %**: both describe this plant's
+627-step drive and both quoted the *retired* plant's **32 / 192 / 288 steps/min**, four times the
+speeds it ran. Nothing gates either row. **`Manuals/03` §3.2** now gives the three rates, which the
+manual had never stated at all, plus full travel at Fast and Normal (8.7 and 13.1 minutes).
+
+**`Manuals/07` PWR-E17** loses the sentence explaining that the top of the withdrawal slider was 63
+*because this plant's fast drive is 63*, written three lines after quoting the sourced accident's
+72: the two are the same number now. The slider reads **8 – 72 steps/min, default 40** and followed
+the constant with no edit. Re-measured at both ends, from hot zero power: at the top, SUR HI at
+**169 s**, intermediate-range high-flux rod stop at **229 s**, trip at **230 s**, peak **35 %**
+power and **31 decades per minute** (was 259 / 260 s, 32 %, 26 DPM); at the default setting the trip
+comes at **6.7 minutes**; at the bottom, **33 minutes** (was about 36). The trip cause and the shape
+are unchanged — it is still the startup net catching a withdrawal accident.
+
+Two checks reddened, both **stale fixtures** — each had typed a speed while asserting something
+speed-independent (that the board's WITHDRAW reaches the drive after a breaker reclose; that the
+drive slews rather than teleporting). Both now read the travel off the drive table.
+`run_pwr2_engine_b` gains 5 checks and 2 mutations, including one that puts back **the fast end
+alone**, the half a player reads.
 
 ### Fixed (the continuous rod withdrawal casualty was a step insertion, not a withdrawal accident — #662)
 
@@ -44,28 +117,6 @@ of it, so the stop asserts and the bank keeps coming until the trip.
 `run_pwr2_shell` 165 → 169 checks, 60 → 62 mutations, no blind spots. Filed out of it: **#668** —
 the plant's own three rod drive settings are pwr1's 8/48/72 steps/min scaled by fraction-of-travel
 and land 12.25 % under a sourced 8–72 band.
-> below to the version being shipped (`## [Alpha X.Y.Z] — YYYY-MM-DD`) and open a fresh
-> empty `## [Unreleased]` above it. The version must match the top entry of
-> `changelog.html` and the string in `site/release.js`.
->
-> **`node test/run_release.js` enforces that** (2026-07-31). This paragraph on its own did not:
-> the roll was skipped for **Alpha 1.10.0 and again for 1.11.0**, and 434 lines covering two
-> shipped releases sat below as unreleased while the newest version heading here read 1.9.0.
-> It survives being skipped because nothing downstream reads these headings — the file renders
-> and reads plausibly either way — and it compounds, because once two releases are merged into
-> one block the boundaries can only be recovered by diffing this file at each tag. Which is
-> what it took.
->
-> **`## [Pre-launch 1.x.y]` headings are DEVELOPMENT versions, not releases** (2026-08-04). The
-> project versioned itself `Alpha 1.2.0` → `1.11.0` before it was ever public, then dropped the
-> number entirely for `Pre Alpha`, and the first *real* release is **`Alpha 1.0.0`** below. Those
-> older sections keep their content and dates and are simply relabelled, because `1.0.0` sorting
-> above `1.11.0` fails the gate's newest-first check — measured, **10 checks / 1 failed** before
-> the relabel and **11 / 0** after. They are relabelled INDIVIDUALLY rather than merged into one
-> catch-all, for the reason the paragraph above gives: merged boundaries cost a tag diff to
-> recover. Nothing below `Alpha 1.0.0` was ever downloadable.
-
-## [Unreleased]
 
 ### Fixed (no checklist put the turbine back on line, so a turbine trip during the climb scrammed the plant at 50 % — #664)
 

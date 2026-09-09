@@ -1164,7 +1164,10 @@
          * `clearLatchIfDone` (:3598) issues `rod_stop` when the bank reaches its limit. The
          * text said "hold WITHDRAW", which is the retired board's momentary button. */
         { text: 'On the ROD CONTROL card press FAST on the speed row, then click WITHDRAW under SHUTDOWN once. The bank runs out to 627 of 627 on its own.',
-          note: 'One click starts the shutdown bank and it runs to the top by itself, about 10 plant-minutes. Clicking WITHDRAW again stops it early. Watch SHUTDOWN ROD POSITION count up.',
+          /* "about 9 plant-minutes" is MEASURED, not scaled (#668): 627 steps at the sourced
+           * fast drive of 72 steps/min is 522.5 s = 8.7 min, verified on the engine at 71.99
+           * steps/min. It read "about 10" against the pre-#668 drive's 595.4 s. */
+          note: 'One click starts the shutdown bank and it runs to the top by itself, about 9 plant-minutes. Clicking WITHDRAW again stops it early. Watch SHUTDOWN ROD POSITION count up.',
           why: 'The shutdown bank is the emergency brake: the rods that drop on a scram and hold the core shut down. A scram only works if they have somewhere to fall, so they are parked fully out before anything else happens. Pulling them out does not start the reactor; the control bank, which stays in, is what does that.',
           control: 'Shutdown Bank', target: 'SHUTDOWN ROD POSITION 627 of 627',
           cmd: { action: 'rod_nudge', group_id: 'shutdown_rods', steps: 627, speed: 'fast' }, hold: 660,
@@ -1583,7 +1586,7 @@
          * is unchanged. The numbers are the replay's own `cmd.steps` — 94 / 63 / 31 / 14 / 9,
          * rounded — so they cannot drift from what the harness drives. */
         { text: 'On the ROD CONTROL card press MED, then hold WITHDRAW under CONTROL until SOURCE RANGE settles above 7.0e2, about 90 to 110 steps. Wait for STARTUP RATE to stop falling, then press Plot point.',
-          note: 'Holding WITHDRAW drives the bank at the selected speed and releasing it stops; a single tap moves one step. MED moves about 42 steps a minute at 1×, SLOW about 7, FAST about 63. The rods move with the clock, so 10× is fine for these pulls; check the speed before each one, because a step checking off, or a new warning or critical alarm, drops the clock back to 1× — the line under the speed buttons says why (Settings can switch the dropout off). A point plotted while STARTUP RATE is still positive reads low.',
+          note: 'Holding WITHDRAW drives the bank at the selected speed and releasing it stops; a single tap moves one step. MED moves 48 steps a minute at 1×, SLOW 8, FAST 72. The rods move with the clock, so 10× is fine for these pulls; check the speed before each one, because a step checking off, or a new warning or critical alarm, drops the clock back to 1× — the line under the speed buttons says why (Settings can switch the dropout off). A point plotted while STARTUP RATE is still positive reads low.',
           why: 'The first two points always predict too high: near the bottom the rods are worth little per step, so the line they draw crosses zero far past the real critical position. That is expected. While the reactor is shut down, SOURCE RANGE counts are the only thing that tells you how close you are; the rod position does not.',
           control: 'Control Bank', target: 'SOURCE RANGE above 7.0e2 (700 counts a second); point 2 plotted',
           cmd: { action: 'rod_nudge', group_id: 'control', steps: 94, speed: 'normal' }, hold: 150,

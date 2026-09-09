@@ -29,6 +29,100 @@ and the user-visible summary in `CHANGELOG.md`. This file points at those and tr
 
 ---
 
+## Session log — 2026-09-08-workbench-m (#668 — all three operator rod speeds were the sourced 8/48/72 scaled by fraction of travel, so every one sat 12.25 % under)
+
+**RULED and executed** *(OWNER RULING, 2026-09-08: "A — adopt the sourced 8 and 72; keep 48 as
+normal, marked [UNVERIFIED]")*. Declined with it: leaving the three as `[derived]`, and re-deriving
+them to preserve the authored timings — Hard Rule 9, the plant is ground truth, backwards.
+
+**The defect.** `ROD_SPEEDS` in `engines/pwr2/pwr2_engine.js` was
+`{ slow: 0.117, normal: 0.702, fast: 1.053 }` steps/s = **7.02 / 42.12 / 63.18 steps/min**. Those
+are the retired plant's own `8 / 48 / 72` on its 228-step drive, re-expressed as a **fraction of
+travel per second** onto what was then a 200-step bank — ×200/228 = 0.8775, which puts **all three
+12.25 % under their own originals**. Same category error as #662 one level up, found while fixing
+it, and the #534 pattern again: this engine inherited the retired plant's constants by reference.
+
+**Now** `{ slow: 8 / 60, normal: 48 / 60, fast: 72 / 60 }` — written in the **sourced unit**, so the
+literal in the code is the figure in the document. Verified on the engine (40 steps from a settled
+hot zero power plant): **8.00 / 48.00 / 71.99 steps/min**.
+
+**The source, both ends.** Westinghouse Technology Systems Manual §8.1 (ML11223A252), the rod speed
+program: *"the reactor control unit produces an output demanding a minimum speed of eight steps per
+minute"*; *"With an error of 5°F or greater, the rod speed programmer of the reactor control unit
+generates a maximum rod speed of 72 steps/min. The maximum rod speed is based upon a maximum
+response to a large error signal and upon the physical limitations of the rod drive mechanism, with
+the latter being the limiting factor."* §8.1.8, the shutdown-bank pulser potentiometer: *"normally
+set at 72 steps per minute"*. **Normal (48) has no source** — `find_source` over three lanes finds
+8 and 72 and no 48 — and stays `[UNVERIFIED]` at the constant.
+
+**⚠ THE TRAP, AND IT IS THE ONE TO CARRY: A UNIFORM SCALE ERROR IS INVISIBLE TO EVERY STRUCTURAL
+CHECK.** The three were ordered, the ratios were exact, the drive slewed rather than teleporting,
+the casualty rode its own band, and the slider label agreed with the delivered rate — because every
+consumer in the tree reads `ROD_SPEEDS`. Reading the constant is what made #662 cheap and it is also
+what made this undetectable. **The only thing that can catch it is a check that TYPES the sourced
+number**, and there must be exactly one. `run_pwr2_engine_b` group K is now it.
+
+**⚠ AND GREP FOR THE UNIT, NOT THE VALUE.** Two manual chapters were worse than 12.25 % out and
+neither would have turned up in a search for 7.02 / 42.12 / 63.18: `Manuals/09` §7.0 and
+`Manuals/12` §4.7 both describe the **627-step PWR2 drive** and both quoted the **retired plant's
+32 / 192 / 288 steps/min** — four times the speeds the plant ran. Nothing gates either row
+(`run_manual_setpoints` reads chapter 09 §1.0/§2.0/§3.0/§4.0/§11.0 only). They were found by
+grepping `steps/min`.
+
+**Re-timed from rides, never by the 72/63 ratio (Hard Rule 9).**
+
+| evolution | before | after |
+|---|---|---|
+| leg 1, shutdown bank 0 → 627 at FAST | 595.4 s (9.9 min) | **522.5 s (8.7 min)** |
+| leg 3, first 1/M burst, 94 steps at MED | 133.9 s | **117.5 s** |
+| leg 3, creep to critical, 15 steps at SLOW | 128.2 s | **112.5 s** |
+| leg 4, ascension stage 3, 35 steps at MED | 49.9 s | **43.8 s** |
+| full travel, 627 steps at NORMAL | 893.2 s (14.9 min) | **783.8 s (13.1 min)** |
+
+**No authored `hold` moved** — every one already carried enough slack for the shorter motion, the
+tightest being leg 3's first burst at 117.5 s of drive inside a 150 s hold. What moved is the prose
+that quoted a time: the shutdown bank's one-click withdrawal is **about 9 plant-minutes** (was 10)
+in the checklist and in `Manuals/04` PWR-N01 step 2a, and the startup leg's note reads **MED 48
+steps a minute, SLOW 8, FAST 72** (was "about 42 / 7 / 63").
+
+**PWR-E17 re-measured at both ends** (shell fixture, hot zero power, 60 s settle, clock from
+injection):
+
+| severity | rate | SUR HI | IR rod stop | trip | peak power / SUR |
+|---|---|---|---|---|---|
+| 1.0 | 72 steps/min | 169.3 s | 228.8 s | **229.5 s** ir_high_flux | 34.9 % / 30.8 DPM |
+| 0.5 (default) | 40 | 322.8 s | 401.8 s | **403.5 s** ir_high_flux | 27.4 % / 15.0 DPM |
+| 0 | 8 | 1695.6 s | 1903.1 s | **1963.7 s (32.7 min)** ir_high_flux | 25.2 % / 3.1 DPM |
+
+Before, at the top: rod stop 259 s, trip 260 s, peak 32.5 % / 26.0 DPM; the bottom was "about 36
+minutes". **The trip cause and the shape are unchanged** — still the startup net catching a
+withdrawal accident — it arrives 30 s sooner. And `Manuals/07` PWR-E17 loses the paragraph that had
+to explain why the top of the slider was 63 *because this plant's fast drive is 63*, three lines
+after quoting the sourced accident's 72. The slider reads **8 – 72 steps/min, default 40** (was
+7 – 63, default 35) and followed the constant without an edit, because #662 made it read the band.
+
+**Two reds, adjudicated one at a time (Hard Rule 10), both STALE FIXTURES.** Each had typed a speed
+and each makes a claim that is speed-independent: `run_pwr2_shell`'s *"30 s at fast is ~31.6
+steps"* (the claim is that the board's WITHDRAW reaches the drive after a breaker reclose) and
+`run_pwr2_engine`'s *"five seconds at normal moves ~3.5 steps"* (the claim is that the drive SLEWS).
+Both now read the expected travel off `ROD_SPEEDS`. Nothing else reddened.
+
+**The new check, and the two injections.** `run_pwr2_engine_b` group K, **THE DRIVE BAND**:
+`ROD_SPEEDS.slow * 60` and `.fast * 60` against the bare literals **8** and **72**, the casualty's
+severity-1.0 rate against the same 72, normal asserted only for ORDER and for staying inside the
+band, plus a documentation guard that `[UNVERIFIED]` is still written at the constant. Mutations:
+the whole object back to `0.117 / 0.702 / 1.053` (3 checks red), and **the fast end alone** back to
+`1.053` (2 red) — the half a player reads, which leaves the band's shape and ordering intact and is
+therefore invisible to any structural check.
+
+**Where it is written up:** `Blueprint/PWR2_VALIDATION.md` §132. Two superseded verdicts now say so
+in place: §128.5 ("Rod speeds need no change: 7 / 42 / 63 against WTSM 8.1's sourced 8-72") is the
+near-miss — it put the two side by side, noticed a full pull took 9.9 min against a real plant's
+8.7, and concluded no change anyway; and §101's Finding 4, which recorded the fraction-of-travel
+derivation as the provenance without noticing it was the defect.
+
+---
+
 ## Session log — 2026-09-08-workbench-l (#662 — the withdrawal casualty ran at 495 steps/min, because it inherited the retired engine's fine-step ceiling as a FRACTION OF TRAVEL)
 
 **The defect, as filed off #661's measurement pass.** `continuous_rod_withdrawal` drove the control

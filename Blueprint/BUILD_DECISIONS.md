@@ -45,6 +45,77 @@ where the two differ or where judgment was exercised.
 
 ---
 
+## 2026-09-08-workbench-m — #668 RULED: a UNIFORM scale error passes every structural check, so exactly one check may type the sourced number
+
+*(OWNER RULING, 2026-09-08: "A — adopt the sourced 8 and 72; keep 48 as normal, marked
+[UNVERIFIED]".)* Declined with it: leaving the three `[derived]` with the gap written down (zero
+churn, and where it already sat); and re-deriving all three to preserve the authored timings —
+rejected on sight as Hard Rule 9, the plant is ground truth, backwards.
+
+**The constant.** `ROD_SPEEDS` in `engines/pwr2/pwr2_engine.js`, the operator's Slow / Normal /
+Fast selector, was `{ slow: 0.117, normal: 0.702, fast: 1.053 }` steps/s — **7.02 / 42.12 / 63.18
+steps/min**. It is now `{ slow: 8 / 60, normal: 48 / 60, fast: 72 / 60 }`, written in the sourced
+unit so the literal in the code is the figure in the document. Measured on the engine: **8.00 /
+48.00 / 71.99 steps/min**.
+
+Slow and fast are `[sourced]` to Westinghouse Technology Systems Manual §8.1 (ML11223A252) — *"a
+minimum speed of eight steps per minute"*, and *"a maximum rod speed of 72 steps/min. The maximum
+rod speed is based upon a maximum response to a large error signal and upon the physical
+limitations of the rod drive mechanism, with the latter being the limiting factor"*, plus §8.1.8's
+shutdown-bank pulser *"normally set at 72 steps per minute"*. **Normal (48) stays `[UNVERIFIED]`**:
+`find_source` over three lanes finds 8 and 72 and no 48. It is kept rather than re-derived because
+it is the value the plant has behaved as a scaled copy of since it was built, so adopting it moves
+only the scale factor and leaves exactly one number owing a source — the choice with the smallest
+unexplained residue, not the tidiest one.
+
+### The decision that generalises: how many checks may type a sourced number
+
+**One. And there must be one.**
+
+The defect was a *uniform* scale error — all three settings ×0.8775, the fraction-of-travel
+conversion of pwr1's identical 8/48/72 onto a then-200-step bank. Every property a check can
+assert about a speed table survived it: the three stayed ordered, the ratios stayed exact, the
+drive still slewed rather than teleporting, the continuous-withdrawal casualty still rode its own
+band end to end, and the Failures-tab slider label still agreed with the delivered rate to the
+sample. **All of that is true because every consumer reads `ROD_SPEEDS`** — which is exactly the
+discipline #662 landed and exactly what made this invisible. Reading the constant makes a retune
+cheap and makes the constant itself unfalsifiable.
+
+So `run_pwr2_engine_b` group K gains **THE DRIVE BAND**, and its comment says in as many words that
+it is the one check in the tree allowed to type 8 and 72, because a second one would be testing the
+first. What it may *not* do is type 48: normal is asserted only for ordering and for staying inside
+the band, plus a documentation guard that the `[UNVERIFIED]` marking is still at the constant —
+an unverified number gets a *shape* assertion, never a value one, or the gate launders the gap into
+a fact.
+
+**The second mutation is the load-bearing one.** Putting the whole object back reds 3 checks; putting
+back **the fast end alone** reds 2 — and that is the half a player reads (the withdrawal slider's
+top, the sourced accident's own rate). It leaves the band's shape, ordering and every ratio-based
+property intact, so it is precisely the mutation a structural check cannot see.
+
+### The corollary, which cost two manual chapters
+
+**Grep for the UNIT, not the value.** `Manuals/09` §7.0 and `Manuals/12` §4.7 both describe this
+plant's 627-step drive and both quoted the *retired* plant's **32 / 192 / 288 steps/min** — four
+times the speeds the plant ran, not 12.25 % off — and neither would have appeared in a search for
+7.02 / 42.12 / 63.18. They turned up under `steps/min`. Nothing gates either row:
+`run_manual_setpoints` reads chapter 09 §1.0 / §2.0 / §3.0 / §4.0 / §11.0 and no more, so a rod
+drive table in §7.0 has never been compared to anything.
+
+### Content followed, from rides (Hard Rule 9)
+
+Every affected evolution was re-timed by riding it, never by the 72/63 ratio: the shutdown bank's
+one-click full withdrawal is **522.5 s (8.7 min)** against 595.4, so the checklist and `Manuals/04`
+PWR-N01 read "about 9 plant-minutes"; the startup leg's note reads MED 48 / SLOW 8 / FAST 72. **No
+authored `hold` moved** — every one already carried slack for the shorter motion (tightest: 117.5 s
+of drive inside a 150 s hold). PWR-E17 was re-measured at all three slider settings and its trip
+cause and shape are unchanged; it arrives 30 s sooner at the top. `Manuals/03` §3.2 now states the
+three rates, which the manual had never done — both 2026-09-06 checklist reviews filed that gap.
+
+Full write-up and the measured tables: `Blueprint/PWR2_VALIDATION.md` §132.
+
+---
+
 ## 2026-09-08-workbench-g — #642: a `[sourced]` marker names a DOCUMENT, not a sentence — and a de-energization can hide a missing trip
 
 **⚠ THIS SUPERSEDES the source-strength paragraph in the `pwr2_kinetics` entry below (search

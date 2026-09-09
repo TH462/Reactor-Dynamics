@@ -77,19 +77,34 @@
    * drive mechanism, with the latter being the limiting factor."* §8.1.8 adds the shutdown-bank
    * pulser potentiometer *"normally set at 72 steps per minute"*.
    *
-   * THESE THREE VALUES ARE NOT THOSE NUMBERS. They are [derived]: pwr1's 8 / 48 / 72 steps/min
-   * on its 228-step drive, re-expressed as a FRACTION OF TRAVEL per second onto what was then a
-   * 200-step bank — which multiplies the whole set by 200/228 = 0.8775 and lands at
-   * **7.02 / 42.12 / 63.18 steps/min**, every one of them 12.25 % under its pwr1 original. The
-   * #602 bank hoist correctly preserved the STEPS/S (so steps/min held); what rotted was the
-   * old note's "%/s", which is now 0.0187 / 0.112 / 0.168 on 627 steps and means nothing.
-   * ⚠ So the plant's own fast drive is 12.25 % below the sourced mechanical maximum, and its
-   * slow drive is below the sourced minimum. NOT fixed here (#662 is the runaway's rate, not
-   * the drive's) — filed as #668, because every manual rod evolution and live-checklist
-   * timing in the tree is authored against these three numbers. pwr1's "normal 48" is itself
-   * [UNVERIFIED]: `find_source` finds 8 and 72 in WTSM 8.1 and no 48 anywhere in the corpus.
-   * The old single ROD_SLEW_SPS = 1.0 was ~pwr1's FAST, always. */
-  var ROD_SPEEDS = { slow: 0.117, normal: 0.702, fast: 1.053 };   /* steps/s */
+   * SLOW AND FAST ARE THOSE TWO SOURCED NUMBERS, AS OF #668 *(OWNER RULING, 2026-09-08:
+   * "A — adopt the sourced 8 and 72; keep 48 as normal, marked [UNVERIFIED]")*. They are
+   * written here in the SOURCED UNIT — steps per minute over 60 — so the literal in the code
+   * IS the figure in the document, and `run_pwr2_engine_b` group K asserts that pair against
+   * the bare numbers 8 and 72. NORMAL IS [UNVERIFIED]: 48 is pwr1's inherited middle setting
+   * and `find_source` finds 8 and 72 in WTSM 8.1 and NO 48 anywhere in the three lanes'
+   * corpus. It is kept because it is the value this plant has behaved as a scaled copy of
+   * since it was built, so adopting it changes only the scale factor and leaves exactly one
+   * number owing a source. (The real programmer is CONTINUOUS between the two limits — 8, then
+   * 32 steps/min/°F, then 72 — and this plant's three-position selector is a simplification of
+   * the operator's IN-HOLD-OUT switch, not of the program.)
+   *
+   * WHAT THIS REPLACES (#668, and it is the #534 pattern): { slow: 0.117, normal: 0.702,
+   * fast: 1.053 } steps/s = **7.02 / 42.12 / 63.18 steps/min** — pwr1's same 8 / 48 / 72 on its
+   * 228-step drive, re-expressed as a FRACTION OF TRAVEL per second onto what was then a
+   * 200-step bank, which multiplies the whole set by 200/228 = 0.8775 and lands every one of
+   * them 12.25 % under its own original. So the plant's own fast drive sat 12.25 % below the
+   * sourced mechanical maximum and its slow drive below the sourced minimum, and `Manuals/07`
+   * had to explain to a player why the top of the withdrawal slider was 63 immediately after
+   * quoting the real accident's 72. The #602 bank hoist correctly preserved the STEPS/S (so
+   * steps/min held); what rotted was the old note's "%/s". The single pre-#506 ROD_SLEW_SPS =
+   * 1.0 was ~pwr1's FAST, always.
+   *
+   * ⚠ EVERY AUTHORED ROD EVOLUTION IS TIMED AGAINST THIS OBJECT. Move one of these and the
+   * checklist pool's holds, `Manuals/04`'s and `Manuals/07`'s figures and the shutdown-bank
+   * "about N plant-minutes" prose are all stale — re-time them from MEASURED rides, never by
+   * ratio (HR9). The #668 rides are in `Diagnostic/TUNING_LOG.md` 2026-09-08-workbench-m. */
+  var ROD_SPEEDS = { slow: 8 / 60, normal: 48 / 60, fast: 72 / 60 };   /* steps/s */
   /* THE CONTINUOUS-WITHDRAWAL CASUALTY'S RATE (#662) — a rod-control-unit failure runs the
    * drive at a speed THE DRIVE CAN RUN AT, never at a rate of the casualty's own.
    *

@@ -1083,7 +1083,10 @@
         /* THE RATE IS A SPEED THE DRIVE CAN RUN AT (#662) — severity across ROD_SPEEDS'
          * slow→fast band, sourced in EN.runawayRodSpeed (NRC HRTD ML11216A094 Transients
          * 5.22/5.23: *"Rod control system controller failure withdraws bank D rods at 72
-         * steps/min"*). It replaces a fraction-of-travel scaling of the retired engine's
+         * steps/min"*). Since #668 severity 1.0 lands EXACTLY on that sourced 72, because the
+         * drive's own fast setting is now the sourced maximum rather than 12.25 % under it —
+         * no edit here, which is what reading the band off ROD_SPEEDS bought.
+         * It replaces a fraction-of-travel scaling of the retired engine's
          * fine-step ceiling that ran 495 steps/min at severity 0.5. NOTE: the shipped
          * hot-full-power IC parks the bank fully out, so the failure only has travel on a
          * plant whose rods are inserted — declared, not hidden. */
@@ -1501,7 +1504,9 @@
            * it is correct THERE, so the shared table is not touched. On this plant it was the
            * #580 Break Size trap exactly — the label promised 12 steps/s at the default slider
            * and the engine drove 8.25, and both numbers were nonsense against a drive whose own
-           * maximum is 1.053 steps/s. The band is READ OFF ROD_SPEEDS, so a drive retune moves
+           * maximum was then 1.053 steps/s (the sourced 1.2 since #668). The band is READ OFF
+           * ROD_SPEEDS — which is why #668's move to 8–72 steps/min needed no edit here — so a
+           * drive retune moves
            * the label with the plant; the UI renders `min + severity x (max - min)`, which is
            * runawayRodSpeed's own map in steps/min, so the label and the plant agree by
            * construction rather than by maintenance. Rounded to 0.1 for display only. */

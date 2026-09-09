@@ -792,10 +792,10 @@ function runSuite(quietRec) {
 
   /* rod speed reaches the engine: S/F selections give measurably different slew */
   w.cmd({ action: 'rod_nudge', group_id: 'control_rods', steps: -30, speed: 'slow' });
-  w.tick(5);                                     /* 5 s at slow 0.117: ~0.6 steps */
+  w.tick(5);                                     /* 5 s at slow (8 steps/min): ~0.7 steps */
   var slowPos = w.snap().control_state.rod_groups[0].steps;
   w.cmd({ action: 'rod_start', group_id: 'control_rods', direction: -1, speed: 'fast' });
-  w.tick(5);                                     /* 5 s at fast 1.053: ~5 steps */
+  w.tick(5);                                     /* 5 s at fast (72 steps/min): ~6 steps */
   var fastPos = w.snap().control_state.rod_groups[0].steps;
   w.cmd({ action: 'rod_stop', group_id: 'control_rods' });
   q('rod S/F speeds are DIFFERENT rates through the stack (selection was discarded)',

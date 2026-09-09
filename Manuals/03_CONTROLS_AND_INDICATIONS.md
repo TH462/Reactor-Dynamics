@@ -56,11 +56,17 @@ Describe every operator control and major indication on the PWR board, with purp
 
 ### 3.2 Rod Speed
 
-| Speed | Use |
-|-------|-----|
-| **Slow** | Final approach to criticality; fine power trim |
-| **Normal** | Routine power maneuvering |
-| **Fast** | Large intentional moves (watch SUR) |
+| Speed | Rate | Use |
+|-------|------|-----|
+| **Slow** | **8 steps/min** | Final approach to criticality; fine power trim |
+| **Normal** | **48 steps/min** | Routine power maneuvering |
+| **Fast** | **72 steps/min** | Large intentional moves (watch SUR) |
+
+Slow and fast are the two ends of the real rod speed program (WTSM 8.1, ML11223A252 — a minimum
+of eight steps per minute, and a maximum of 72 that the source calls a physical limit of the
+drive mechanism); normal is this simulator's own middle setting. On the real plant the automatic
+controller runs continuously between those limits; the three-position selector here is the
+operator's switch. Full travel — 627 steps — is **8.7 minutes at Fast**, 13 at Normal.
 
 ### 3.3 Shutdown Bank — Withdraw / Insert
 

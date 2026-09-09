@@ -388,10 +388,13 @@ function runSuite(RD, rec, quiet, only) {
       t80.mwe_output.toFixed(1) + ', power ' + t80.power_pct.toFixed(1) + ' %');
   EN.command(eng, 'rod_target', frac(0.95));
   var tRod = run(eng, 5);
-  ckT('rod_target SLEWS — five seconds at normal speed moves ~3.5 steps, not the whole demand',
-      /* 0.702 steps/s = the sourced WTSM 8.1 normal class rate mapped onto the 200-step
-       * bank (#506.4); the pre-#506 single rate (1.0 = always FAST) read ~5 here */
-      Math.abs(tRod.rod_steps - (bank() - 0.702 * 5)) < 1.0,
+  /* THE EXPECTED TRAVEL IS READ OFF `ROD_SPEEDS` (#668), not typed. It shipped as a literal
+   * 0.702 and reddened when the drive moved to the sourced band — a stale fixture: the claim
+   * is that the drive SLEWS rather than teleporting, which is speed-independent. */
+  var nrmT = EN.ROD_SPEEDS.normal;
+  ckT('rod_target SLEWS — five seconds at normal speed moves the drive\'s own ' +
+      (nrmT * 5).toFixed(1) + ' steps, not the whole demand',
+      Math.abs(tRod.rod_steps - (bank() - nrmT * 5)) < 1.0,
       tRod.rod_steps.toFixed(1) + ' steps, from ' + bank() + ' toward ' + frac(0.95) +
       ' — instant rods are a lever no real plant has');
   EN.command(eng, 'rod_target', bank()); run(eng, quiet ? 20 : 40);
@@ -1635,7 +1638,8 @@ function runSuite(RD, rec, quiet, only) {
   run(engT, 60);
   ckT('...and after the reset the drive works again — 60 s at normal speed is ~40 steps out',
       engT.rodSteps > 35 && engT.rodSteps <= 42 && engT.pt.reactor_trip === false,
-      engT.rodSteps.toFixed(1) + ' steps (0.702/s x 60 s, capped by the 40-step demand)');
+      engT.rodSteps.toFixed(1) + ' steps (' + EN.ROD_SPEEDS.normal.toFixed(3) +
+      '/s x 60 s, capped by the 40-step demand)');
 
   /* THE ATWS IS WHERE THE BOTH-DIRECTIONS HALF IS OBSERVABLE — under a normal trip the rods
    * are already at 0, so in/out cannot be told apart. With the drop failed the operator can no
@@ -1809,6 +1813,67 @@ function runSuite(RD, rec, quiet, only) {
    *
    * The scale is RESTORED in a `finally`, so nothing downstream in this file sees a moved
    * plant even if an assertion throws. */
+  /* ---- 8c-bis. THE DRIVE'S TWO ENDS ARE THE SOURCED ONES (#668) ------------------------------
+   *
+   * *(OWNER RULING, 2026-09-08: "A — adopt the sourced 8 and 72; keep 48 as normal, marked
+   * [UNVERIFIED]".)* Westinghouse Technology Systems Manual §8.1 (ML11223A252), the rod speed
+   * program: *"the reactor control unit produces an output demanding a minimum speed of eight
+   * steps per minute"*; *"With an error of 5°F or greater… a maximum rod speed of 72 steps/min.
+   * The maximum rod speed is based upon a maximum response to a large error signal and upon the
+   * physical limitations of the rod drive mechanism, with the latter being the limiting
+   * factor."* §8.1.8 adds the shutdown-bank pulser potentiometer *"normally set at 72 steps per
+   * minute"*.
+   *
+   * ⚠ THE LITERALS 8 AND 72 HERE ARE THE DECISION, NOT A COPY OF THE CODE. This is the one
+   * check in the tree that may type them: every other consumer reads `ROD_SPEEDS`, so nothing
+   * else can tell the sourced band from a plausible one. It shipped for a year as pwr1's same
+   * 8/48/72 re-expressed as a FRACTION OF TRAVEL onto a 200-step bank — 7.02 / 42.12 / 63.18,
+   * every one 12.25 % under its own original, and green everywhere.
+   *
+   * NORMAL IS NOT ASSERTED AGAINST A SOURCE because it has none: `find_source` over 39
+   * documents in three lanes finds 8 and 72 and no 48. What is asserted is that it stays
+   * strictly INSIDE the sourced band and that the three are ordered — the shape a three-position
+   * selector must have — plus the [UNVERIFIED] marking at the constant, so the gap cannot be
+   * quietly re-sourced by editing a number. */
+  head('THE DRIVE BAND  [#668: slow and fast are the sourced 8 and 72 steps/min]');
+  (function () {
+    var RSK = EN.ROD_SPEEDS;
+    ckT('SLOW is the sourced minimum — WTSM 8.1 "a minimum speed of eight steps per minute"',
+        Math.abs(RSK.slow * 60 - 8) < 1e-9,
+        (RSK.slow * 60).toFixed(3) + ' steps/min (was 7.02 — pwr1\'s 8 scaled by 200/228)');
+    ckT('FAST is the sourced maximum, and the source calls it a limit of the MECHANISM — ' +
+        '"a maximum rod speed of 72 steps/min… the physical limitations of the rod drive ' +
+        'mechanism, with the latter being the limiting factor"',
+        Math.abs(RSK.fast * 60 - 72) < 1e-9,
+        (RSK.fast * 60).toFixed(3) + ' steps/min (was 63.18 — pwr1\'s 72 scaled by 200/228)');
+    ckT('NORMAL is [UNVERIFIED] and stays strictly inside the sourced band, ordered ' +
+        'slow < normal < fast — no source in three lanes\' corpus carries a 48',
+        RSK.normal > RSK.slow && RSK.normal < RSK.fast,
+        (RSK.normal * 60).toFixed(3) + ' steps/min, band ' + (RSK.slow * 60).toFixed(0) + '-' +
+        (RSK.fast * 60).toFixed(0));
+    /* A DOCUMENTATION GUARD, and it says so: it reads the file off DISK, so a mutation replay
+     * cannot red it and it is not evidence about the plant. What it does catch is the one
+     * thing no numeric check can — the marking going quietly missing while 48 stays. */
+    var srcK = fs.readFileSync(path.join(SRC, 'pwr2_engine.js'), 'utf8');
+    ckT('...and the constant still SAYS normal is unverified, so the gap cannot be lost to an ' +
+        'edit (a documentation guard on the file, not a claim about the plant)',
+        /\[UNVERIFIED\]/.test(srcK.slice(srcK.indexOf('THE SOURCED QUANTITY IS'),
+                                         srcK.indexOf('var ROD_SPEEDS'))),
+        '[UNVERIFIED] present in the ROD_SPEEDS comment block');
+    /* THE CASUALTY FOLLOWS BY CONSTRUCTION (#662): severity 1.0 IS the drive's maximum, which
+     * is the rate the sourced accident states in its own initiating-event line (NRC HRTD
+     * "Westinghouse Technology Advanced Transients" ML11216A094, Transients 5.22 and 5.23:
+     * *"Rod control system controller failure withdraws bank D rods at 72 steps/min"*). Asserted
+     * against the LITERAL 72 here, and against ROD_SPEEDS in run_pwr2_shell group O — so the
+     * two agree only while the drive really carries the sourced maximum. */
+    ckT('the continuous-withdrawal casualty\'s severity 1.0 IS the sourced accident\'s own ' +
+        '72 steps/min, because it is a point on this band and not a rate of its own',
+        Math.abs(EN.runawayRodSpeed(1) * 60 - 72) < 1e-9 &&
+        Math.abs(EN.runawayRodSpeed(0) * 60 - 8) < 1e-9,
+        'severity 0 / 1.0 = ' + (EN.runawayRodSpeed(0) * 60).toFixed(2) + ' / ' +
+        (EN.runawayRodSpeed(1) * 60).toFixed(2) + ' steps/min');
+  })();
+
   head('THE BANK SCALE  [one constant, and every consumer reads it — #602]');
   (function () {
     var RODS = RD.kinetics.RODS, was = RODS.max_steps, PROBE = 313;   /* deliberately not 200 */
@@ -3183,6 +3248,21 @@ var MUTATIONS = [
   ['the margin is pinned wide (the LO approach can never annunciate)',
    "    eng._rodLimitMargin = ril === null ? BANK() : Math.max(0, Math.round(eng.rodSteps - ril));",
    '    eng._rodLimitMargin = BANK();', { grp: 'L' }],
+  /* #668 — THE SHIPPED DRIVE RESTORED, exactly as it stood: pwr1's sourced 8 / 48 / 72 steps/min
+   * re-expressed as a fraction of travel onto a 200-step bank, every one 12.25 % under its own
+   * original. It is a plausible plant in every respect — the three are ordered, the ratios are
+   * right, the drive slews, the casualty rides its band — which is why it stood for a year and
+   * why the only thing that can catch it is a check that types the sourced numbers. */
+  ['the rod drive goes back to the fraction-of-travel speeds (7.02 / 42.12 / 63.18 steps/min, ' +
+   'the sourced 8 / 48 / 72 scaled by 200/228)',
+   '  var ROD_SPEEDS = { slow: 8 / 60, normal: 48 / 60, fast: 72 / 60 };',
+   '  var ROD_SPEEDS = { slow: 0.117, normal: 0.702, fast: 1.053 };', { grp: 'K' }],
+  /* ...and the FAST END ALONE, which is the half a player reads: the withdrawal slider's top
+   * and the sourced accident's own 72 steps/min. It leaves slow and normal correct, so nothing
+   * that checks the band's SHAPE or its ordering can see it. */
+  ['only the FAST end falls back to 63.18 steps/min (the slider top #662 had to explain away)',
+   'fast: 72 / 60 };',
+   'fast: 1.053 };', { grp: 'K' }],
   /* THE HOIST ITSELF (#602 phase 1) — put a stale literal back at the site the ride harness
    * actually missed, and see whether anything notices. This is the mutation that makes the
    * bank-scale block above evidence rather than decoration: a clamp frozen at 200 does not

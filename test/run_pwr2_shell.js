@@ -835,10 +835,16 @@ function runSuite(SH, rec, quiet, only) {
        eD.eng.rodSteps.toFixed(1) + '/' + eD.eng.sdSteps.toFixed(1) + ' after 30 s idle');
     eD.applyCommand({ action: 'rod_start', group_id: 'control_rods', direction: 1, speed: 'fast' });
     for (i = 0; i < 1500; i++) eD.step(0.02);
-    ck('...and the board\'s WITHDRAW works again once the breakers are shut — 30 s at fast ' +
-       'is ~31.6 steps',
-       eD.eng.rodSteps > 28 && eD.eng.rodSteps < 35,
-       eD.eng.rodSteps.toFixed(1) + ' steps (1.053/s x 30 s)');
+    /* THE EXPECTED TRAVEL IS READ OFF `ROD_SPEEDS`, NOT TYPED (#668). This check shipped as
+     * "~31.6 steps" with the band 28-35 around it, and reddened the moment the drive moved to
+     * the sourced 72 steps/min — a stale fixture, not a defect: the claim is that the board's
+     * WITHDRAW reaches the drive after a breaker reclose, which is speed-independent. */
+    var fastD = globalThis.RD.pwr2.engine.ROD_SPEEDS.fast, expD = fastD * 30;
+    ck('...and the board\'s WITHDRAW works again once the breakers are shut — 30 s at fast is ' +
+       'the drive\'s own travel (' + expD.toFixed(1) + ' steps at ' + (fastD * 60).toFixed(0) +
+       ' steps/min)',
+       Math.abs(eD.eng.rodSteps - expD) < 0.1 * expD,
+       eD.eng.rodSteps.toFixed(1) + ' steps (' + fastD.toFixed(3) + '/s x 30 s)');
 
     /* THE ATWS PAIR — the shutdown bank stuck OUT is the one state where `rods_fully_in`
      * being control-bank-only was observable, and where the facade reset had no guard at
@@ -2424,7 +2430,7 @@ function runSuite(SH, rec, quiet, only) {
     /* THE SLIDER LABEL IS A CLAIM (the #580 Break Size trap). The shared row's meta is the
      * RETIRED plant's fine-step currency — "Withdrawal Rate, steps/s, 0-24, default 12" — so
      * the Failures tab promised 12 steps/s at the default slider while the engine drove 8.25,
-     * against a drive whose whole maximum is 1.053. The UI renders `min + severity x (max-min)`
+     * against a drive whose whole maximum was then 1.053 (1.2 since #668). The UI renders `min + severity x (max-min)`
      * (app.js:6972), which must BE the delivered rate, and both ends are read off ROD_SPEEDS. */
     var mO = eO.getProtectionConfig().failures.continuous_rod_withdrawal.severity_meta;
     var labelAt = function (sev) { return mO.min + sev * (mO.max - mO.min); };
@@ -2461,9 +2467,11 @@ function runSuite(SH, rec, quiet, only) {
       if (eO.eng.pt.reactor_trip) { tripO = tO; causeO = eO.eng.pt.trip_cause; }
     }
     ck('THE STARTUP NET CATCHES IT: the rod stop asserts, then a FLUX channel trips the ' +
-       'reactor at a plant power the net can hold (measured on this clock, which counts the ' +
-       '60 s settle: rod stop 319.3 s, intermediate-range high-flux trip 320.3 s, peak 32.5 %, ' +
-       'peak 26.0 DPM). The pre-#662 rate tripped on P-9 TURBINE TRIP at 368 % — the flux ' +
+       'reactor at a plant power the net can hold (re-measured at #668 on the sourced 72 ' +
+       'steps/min, on this clock, which counts the 60 s settle: rod stop 288.8 s, ' +
+       'intermediate-range high-flux trip 289.5 s, peak 34.9 %, peak 30.8 DPM — it was ' +
+       '319.3 / 320.3 s, 32.5 %, 26.0 DPM at the pre-#668 63.18 steps/min). The pre-#662 rate ' +
+       'tripped on P-9 TURBINE TRIP at 368 % — the flux ' +
        'trips asserted but their 0.5 s analysis delays had not elapsed',
        stopO !== null && tripO !== null && causeO === 'ir_high_flux' &&
        stopO < tripO && peakPO < 50,
@@ -2860,7 +2868,7 @@ var MUTATIONS = [
    '(24 / 912) * bankSteps());', { grp: 'O' }],
   /* ...and the LABEL half, which fails separately and silently: the plant drives correctly and
    * the Failures tab still quotes the retired plant's 0-24 steps/s. A player reading the slider
-   * is told 12 steps/s where the drive's whole maximum is 1.053 — the #580 Break Size trap, and
+   * is told 12 steps/s where the drive's whole maximum was then 1.053 — the #580 Break Size trap, and
    * nothing but this check stands between it and the board. */
   ['the slider label falls back to the shared pwr row (0-24 steps/s, the retired plant\'s ' +
    'fine-step currency) while the plant drives correctly',

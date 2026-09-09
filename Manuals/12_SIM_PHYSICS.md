@@ -253,7 +253,7 @@ A standard iodine → xenon chain with burnout, normalised to equilibrium xenon 
 |---|---|
 | Groups | **One control group, one shutdown group** |
 | Travel | **627 steps** |
-| Speeds | slow ≈ 32 steps/min · normal ≈ 192 · fast ≈ 288 |
+| Speeds | slow **8** steps/min · normal **48** · fast **72** — slow and fast sourced to WTSM 8.1's rod speed program (its minimum, and its mechanical maximum); normal unverified |
 | Overrun on release | ~1 s of continued travel, then the latch catches |
 | Scram insertion | control 2.5 s · shutdown 2.0 s, constant-rate (gravity) |
 | Insertion limit | **power-dependent**: none below 5 % power, ramping to 70 % withdrawn at 100 % |
