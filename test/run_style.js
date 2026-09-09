@@ -120,8 +120,27 @@ function loadManualText() {
 // is written next to the assertion it is meant to break, so a check that can no
 // longer fail is visible here rather than in a green run six months from now.
 
+/* `story` (#670) EXPANDS TO ITS FOUR STRINGS. Named as one field at the call sites, so the
+ * expansion lives here rather than in four checks.
+ *
+ * IT JOINS THE PROSE CHECKS AND NOT THE IMPERATIVE ONES, and the split is deliberate. Vague
+ * quantifiers, closed-up percents, bare megawatts and SI units are wrong in any player-facing
+ * string, so `story` joins all four. `checklist_modal` (W16) and `checklist_reversal` (W17) scan
+ * `['text']` only and state a rule about the STEP BEING AN IMPERATIVE — a narrative field is
+ * past-tense reporting, where "the crew believed the valve should have shut" is correct and
+ * forbidding it would be a category error. `why` is treated the same way for the same reason. */
+var STORY_KEYS = ['clock', 'saw', 'knew', 'did'];
 function stepFields(s, fields) {
-  return fields.map(function (f) { return s.step[f]; }).filter(function (v) { return typeof v === 'string'; });
+  var out = [];
+  fields.forEach(function (f) {
+    if (f === 'story') {
+      var sy = s.step.story;
+      if (sy) STORY_KEYS.forEach(function (k) { if (typeof sy[k] === 'string') out.push(sy[k]); });
+      return;
+    }
+    if (typeof s.step[f] === 'string') out.push(s.step[f]);
+  });
+  return out;
 }
 
 function scanSteps(data, fields, re) {
@@ -139,7 +158,7 @@ var CHECKS = [
   {
     id: 'checklist_vague',
     rule: 'W12 — no vague quantifier in a checklist step',
-    run: function (d) { return scanSteps(d, ['text', 'target', 'control', 'note'], VAGUE); },
+    run: function (d) { return scanSteps(d, ['text', 'target', 'control', 'note', 'story'], VAGUE); },
     inject: function (d) { d.steps[0].step.text = 'Raise pressure slowly to the program point.'; },
   },
   {
@@ -157,14 +176,14 @@ var CHECKS = [
   {
     id: 'checklist_percent',
     rule: 'N4 — a space before the percent sign (house style is 629 spaced to 12)',
-    run: function (d) { return scanSteps(d, ['text', 'target', 'note'], TIGHT_PCT); },
+    run: function (d) { return scanSteps(d, ['text', 'target', 'note', 'story'], TIGHT_PCT); },
     inject: function (d) { d.steps[0].step.target = 'level 40%'; },
   },
   {
     id: 'bare_megawatt',
     rule: 'N6 — never a bare MW; MWe for electrical output, MWt for thermal',
     run: function (d) {
-      var hits = scanSteps(d, ['text', 'target', 'note', 'why'], BARE_MW);
+      var hits = scanSteps(d, ['text', 'target', 'note', 'why', 'story'], BARE_MW);
       d.manual.forEach(function (f) {
         f.lines.forEach(function (l, i) {
           if (BARE_MW.test(l)) hits.push(f.file + ':' + (i + 1) + ' — ' + l.trim().slice(0, 90));
@@ -233,12 +252,55 @@ var CHECKS = [
       });
       d.steps.forEach(function (s) {
         ['text', 'note', 'why', 'target', 'wait_hint'].forEach(function (k) { chk(s.proc + ' step ' + s.n + '.' + k, s.step[k]); });
+        // the incident walkthrough's narrative block (#670) — four strings on the card, bound by
+        // the ruling exactly as `why` is. It is prose ABOUT a plant, which is where an "(11 MPa)"
+        // is most likely to be written without thinking.
+        if (s.step.story) STORY_KEYS.forEach(function (k) { chk(s.proc + ' step ' + s.n + '.story.' + k, s.step.story[k]); });
         (s.step.accs || []).forEach(function (a, j) { chk(s.proc + ' step ' + s.n + '.accs' + j, a.label); });
         if (s.step.overtaken) { chk(s.proc + ' step ' + s.n + '.overtaken', s.step.overtaken.text); chk(s.proc + ' step ' + s.n + '.overtaken', s.step.overtaken.label); }
       });
       return hits;
     },
     inject: function (d) { d.steps[0].step.target = 'PRIMARY PRESSURE 2235 psi (15.41 MPa)'; },
+  },
+  /* THE NARRATIVE BLOCK IS FOUR LINES, NOT FOUR PARAGRAPHS (#670 Phase 1).
+   *
+   * `checklist_why_length` does not reach `story` and should not: the two answer different
+   * questions (the plant lesson vs. what happened that morning) and share no budget. But the
+   * story block sits ABOVE the numbered instruction and is ALWAYS drawn — it is not behind the
+   * details fold — so its length is paid on every step of an incident walkthrough, which is the
+   * same argument that made F2 load-bearing at #660 item 3. TWO sentences per field, half the
+   * `why` cap, because there are four of them: a step whose four narrative fields each ran to
+   * the `why` cap would put eight sentences over the instruction.
+   *
+   * PER FIELD, not per block, so the cap cannot be gamed by moving prose from `did` into `knew`
+   * — each line has its own job and a long one means the wrong material is in it. `clock` is
+   * counted like the rest even though it is a timestamp: a `clock` long enough to trip this is
+   * carrying narrative that belongs in `saw`.
+   *
+   * When it binds, CUT. The long-form account lives in `Manuals/08_ACCIDENT_TMI.md` and the step
+   * cites it. */
+  {
+    id: 'checklist_story_length',
+    rule: 'W-story — an incident step\'s narrative field is at most 2 sentences (it is drawn above the instruction, always)',
+    run: function (d) {
+      var hits = [];
+      d.steps.forEach(function (s) {
+        if (!s.step.story) return;
+        STORY_KEYS.forEach(function (k) {
+          var v = s.step.story[k];
+          if (typeof v !== 'string') return;
+          var n = v.replace(/\n+/g, ' ').split(/(?<=[.!?])\s+/)
+            .filter(function (x) { return x.trim().length > 1; }).length;
+          if (n > 2) hits.push(s.proc + ' step ' + s.n + '.story.' + k + ' — ' + n + ' sentences: ' + v.slice(0, 90));
+        });
+      });
+      return hits;
+    },
+    inject: function (d) {
+      d.steps[0].step.story = { clock: '04:00', saw: 'One. Two. Three sentences is a paragraph.',
+                                knew: 'Short.', did: 'Short.' };
+    },
   },
   {
     id: 'industry_label_case',

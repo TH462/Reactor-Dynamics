@@ -30,6 +30,27 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
 
 ## [Unreleased]
 
+### Added (the runtime for incident walkthroughs — #670 Phase 1)
+
+A walkthrough step may now **fire failures behind the scenes** and **carry the history of the
+incident it is walking through**. Four new step fields, no authored content yet, and nothing
+changes for the six shipped legs — they author none of them *(OWNER, 2026-09-08: "these ones
+will automatically trigger failures behind the scenes")*. `inject: [{failure, severity?, when?}]`
+and `clear: [...]` descend as `inject_failure` / `clear_failure` through the control layer, on the
+same path the scenario beat engine has always used, so the plant breaks on the step that needs it
+with the player never opening the Failures tab; without a `when` the entry fires one broadcast into
+the step, with one it waits for that predicate, graded instrument-first exactly as an acceptance
+is. Each fires **once per step entry**, and **⏪ Rewind step un-does the failure and fires it again**
+— which is why the fire is deliberately not on the step's first tick: the step-boundary checkpoint
+is laid in that same broadcast, so an injection fired there would be inside the state Rewind
+restores. `story: {clock, saw, knew, did}` and `crew: true` draw a narrative block above the
+numbered instruction (the historical clock also joins the "Step X of N" header) and tag a step as
+the crew's action *as taken, not a recommendation* — the thing that lets a walkthrough ask the
+player to repeat a decision that made an accident without appearing to endorse it. The
+**subcooling margin** is now gradable: a step's acceptance can read the board's own SUBCOOLING
+MARGIN tile. Preview only, and there is nothing to play yet — the TMI-2 walkthrough itself is the
+next phase.
+
 ### Fixed (the operator's three rod speeds were all 12.25 % slow — #668)
 
 The rod drive's Slow / Normal / Fast selections ran at **7.02 / 42.12 / 63.18 steps/min**. Those

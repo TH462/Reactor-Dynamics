@@ -2142,6 +2142,31 @@ select.num-input { width: auto; }
 .ckl-ico { font-weight: 700; width: 16px; text-align: center; flex: none; }
 .ckl-body { flex: 1; min-width: 0; }
 .ckl-txt { font-size: 12.5px; line-height: 1.4; color: var(--text); }
+/* THE INCIDENT WALKTHROUGH'S NARRATIVE BLOCK (#670 Phase 1) — clock, what the crew saw, what
+   they knew, what they did — ABOVE the numbered instruction. Quieter than the instruction and
+   louder than a .ckl-sub: it is the reason the step exists, but the step is still the thing to
+   do. The left rule borrows .ckl-why's idiom so the two read as the same kind of writing (one
+   history, one plant lesson) rather than as two competing headlines. Every color is a token, so
+   it follows the board's theme; nothing here is authored per-walkthrough. */
+.ckl-story {
+  margin-bottom: 6px; padding: 5px 0 5px 8px;
+  border-left: 2px solid var(--border);
+  font-size: 11.5px; line-height: 1.45; color: var(--text-2);
+}
+.ckl-story-l { margin-bottom: 2px; }
+.ckl-story-l:last-child { margin-bottom: 0; }
+/* the label column: small caps-ish legend, so four lines scan as a table without being one */
+.ckl-story-l > span {
+  display: inline-block; min-width: 86px; color: var(--muted);
+  font-size: 10px; letter-spacing: 0.04em; text-transform: uppercase;
+}
+/* `crew: true` — the step is history, not advice, and the tag says so beside the instruction
+   rather than under it, where the details fold could hide it. Caution-coloured on purpose: the
+   steps that carry it are the ones that made the accident. */
+.ckl-crew {
+  font-size: 10px; color: var(--caution); white-space: nowrap;
+  border: 1px solid var(--caution); border-radius: 3px; padding: 0 4px; margin-left: 4px;
+}
 /* THE ACTIVE BLOCK, WHICH NOW HANGS BELOW THE INSTRUCTION (#628, owner 2026-09-04: "move the
    numbered step to always be the first part of the stack. then the rest of the step that appears
    when its active goes below it."). Its only job is the gap: the criteria line carries

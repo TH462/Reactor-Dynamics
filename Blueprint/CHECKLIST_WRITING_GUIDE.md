@@ -316,6 +316,10 @@ term in it that a step uses without its one-line definition is a defect in that 
 | `overtaken` | `{p, op, v[, tol], label, text[, industry]}` — the plant condition under which this step **no longer applies** (#641). Graded like `acc` while the step is active; when it holds, the step checks off as `overtaken`, the card says so, `text` is posted as the instructor's comment, and the walkthrough moves on. **Required wherever the acceptance is a command the plant can stop accepting** | a condition that merely makes the step *harder* — `overtaken` says the step is moot, not that the player is late |
 | `overtaken.text` | one sentence: what happened, and the step to go to | a mini-procedure repeated on six steps |
 | `wait_hint` | the one time-critical fact of the step, phrased as the plant consequence, not as a speed-control tip. **`wait_hint: false` suppresses the generated speed line entirely** — for a step where the offered rung is dangerous (the criticality steps: at 60× power went 0 → 12 % between two glances) | anything the player needs that is not about time |
+| `inject` *(incident)* | `[{failure, severity?, when?: {p,op,v[,tol]}}]` — failures the step fires **behind the scenes** (#670). No `when`: one broadcast into the step. With one: the first tick that predicate holds, graded instrument-first like `acc`. Fires once per step entry; a Rewind un-does it and re-fires on re-entry | a failure the player is supposed to cause — that is a `cmd`; a trigger on a channel this plant does not publish (it would never fire, silently) |
+| `clear` *(incident)* | the same shapes, descending as `clear_failure` — the recovery half of a sequence, so a leg can put the plant back without the player opening the Failures tab | a tidy-up at the end of a leg — a failure that is still true when the walkthrough ends is the walkthrough's outcome, not a leak |
+| `story` *(incident)* | `{clock, saw, knew, did}` — the historical clock, what was on the crew's board, what they concluded, what they then did. Drawn **above** the numbered instruction and never folded away; **2 sentences per field** (`checklist_story_length`) | the plant lesson — that is `why`; an instruction; the long-form account, which lives in the manual chapter the step cites |
+| `crew` *(incident)* | `true` — draws *"the crew's action, as taken — not a recommendation"* beside the instruction. **Required on any step that asks the player to repeat an action that made the accident** | a step the player is meant to get right — the tag would then teach the opposite of what the step wants |
 | `cautions` (leg) | *(not rendered during a run — see §2)* | anything the player must read |
 
 Two rules the table implies, both broken repeatedly in the shipped set:
@@ -591,3 +595,10 @@ rules — how a narrative beat relates to a step, when a failure may be injected
 acceptance, and what a `why` may say about an instrument that is lying — will be a separate
 section of this guide once that design lands (see #670). Nothing in §1–13 is
 suspended for them; they add to it.
+
+**The RUNTIME for them is built as of 2026-09-08 (#670 Phase 1) and the four fields it added —
+`inject`, `clear`, `story`, `crew` — are in the §7 table with what each may carry; no walkthrough
+authors any of them yet.** The authoring rules above are what is still missing, and the one that
+will not be obvious is that a `story` block competes with the `why` for the same reader on the same
+card: both are prose, both are always open on the active step, and the four narrative lines are
+capped at two sentences each for exactly the reason F2 caps the `why`.

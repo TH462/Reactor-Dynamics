@@ -198,6 +198,37 @@
                                                             : JSON.parse(JSON.stringify(en.cmd)));
         });
       }
+      /* BEHIND-THE-SCENES FAILURES (#670 Phase 1). An incident walkthrough's step may author
+       * `inject` / `clear`; the live runtime fires them out of the instructor
+       * (`_checklistFire`), and the replay must issue them too or the leg is driven against a
+       * plant the player never gets — the same reason `cmd` and the cmd-kind `accs` entries are
+       * issued here. Issued AFTER the step's command, which is the live order: the instructor
+       * fires one broadcast into the step, by which time the player has usually acted.
+       *
+       * ⚠ KNOWN DIVERGENCE, and it is the harness's existing one rather than a new one: `when`
+       * is graded here through `pred` → `paramValue` (true_state / control_state), where the
+       * live runtime grades it INSTRUMENT-FIRST through `_grade`. A trigger authored on a lagged
+       * or failed channel therefore fires a beat earlier here than on the board. Same split this
+       * harness already carries for `acc`/`saw`; if a walkthrough ever turns on the difference,
+       * the fix is to grade through `_grade` in both places, not to widen a tolerance. */
+      var pendingFail = [];
+      function failCmd(spec, kind) {
+        if (kind !== 'i') return { action: 'clear_failure', failure_id: spec.failure };
+        var fc = { action: 'inject_failure', failure_id: spec.failure };
+        if (spec.severity != null) fc.severity = spec.severity;
+        return fc;
+      }
+      function queueFailures(list, kind) {
+        (list || []).forEach(function (e) {
+          var spec = (typeof e === 'string') ? { failure: e } : e;
+          if (!spec || !spec.failure) return;
+          if (spec.when && spec.when.p) pendingFail.push({ spec: spec, kind: kind });
+          else issue(failCmd(spec, kind));
+        });
+      }
+      queueFailures(st.inject, 'i');
+      queueFailures(st.clear, 'c');
+
       // `saw` may be ONE predicate or a LIST of them (#348) — see the note in
       // run_procedures.js. Kept identical here on purpose: this runner exists to assert the
       // SAME predicates through the stack, so a schema the two disagree on is worse than none.
@@ -218,6 +249,13 @@
           slowTicks++;
         }
         observe(s);
+        // a `when`-gated inject/clear fires on the first tick its predicate holds (#670)
+        for (var pf = pendingFail.length - 1; pf >= 0; pf--) {
+          if (pred(s, pendingFail[pf].spec.when)) {
+            issue(failCmd(pendingFail[pf].spec, pendingFail[pf].kind));
+            pendingFail.splice(pf, 1);
+          }
+        }
         sawList.forEach(function (sw, k) { if (pred(s, sw)) sawHits[k] = true; });
       }
       // Land the ramp exactly on its last point: `f` never quite reaches 1 when

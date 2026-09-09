@@ -131,6 +131,10 @@ if (!only) {
         acks++;
       }
     }
+    /* NOTE (#670): this driver issues no `inject`/`clear` of its own — it does not need to. On
+     * the LIVE runtime the instructor fires them itself (`_checklistFire`); the replay half of
+     * this runner is where the harness has to do it by hand, because there the instructor is not
+     * driving the checklist at all. The pwr_shutdown leg authors none either way. */
     ckst = s.instructor.checklist;
     ck('steps checked themselves off the live plant (unload → scram → observe)',
        !!ckst && ckst.complete === true,
@@ -391,6 +395,7 @@ if (!only) {
         issued[i] = true; issuedAt[i] = n;
         if (st.cmd) svc.handleCommand(st.cmd);
         (st.accs || []).forEach(function (e) { if (e.cmd) svc.handleCommand(e.cmd); });
+        // no `inject`/`clear` here — the LIVE instructor fires those itself (#670; see 2b).
       }
       /* the setpoint action is its own check-off, ticked the moment it is dialled. Read it on a
        * LATER tick than the one that issued the command (#660 item 16: every step now waits for

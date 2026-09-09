@@ -353,6 +353,183 @@ ck('the rewind command refuses cleanly and moves nothing',
    (rw6 && rw6.message) + '; idx ' + svc6.instructor.checklist.idx);
 svc5.handleCommand({ action: 'stop_checklist' });
 
+// ------------------------- 10. behind-the-scenes failures + narrative (#670 Phase 1)
+head('10. Incident walkthroughs — a step fires its own failures, and carries the history');
+/* *(OWNER, 2026-09-08: "these ones will automatically trigger failures behind the scenes.")*
+ *
+ * A synthetic procedure, for the same reason sections 7 and 9 use one: every step's acceptance
+ * is unmeetable, so nothing but an explicit `checklist_check` moves the index and the ring
+ * arithmetic below is exact rather than at the mercy of a plant grading itself.
+ *
+ * `porv_indicator_stuck_closed` is the when-gated and cleared id on purpose — it is an INSTRUMENT
+ * failure, so the plant stays quiet while the probe drives it, and a mechanism check does not turn
+ * into a transient. `stuck_porv_open` is the one that actually does something, which is what makes
+ * the rewind check below a claim about the PLANT and not only about a bookkeeping flag. */
+RD.MANUAL_PROCEDURES.pwr.push({
+  id: 'zz_inject_probe', category: 'control', title: 'behind-the-scenes failure mechanism probe',
+  from: 'hot_full_power', prereq: ['test'],
+  steps: [
+    { text: 'step 0 — the PORV sticks open behind the scenes',
+      inject: [{ failure: 'stuck_porv_open', severity: 1.0 }],
+      acc: { p: 'power_pct', op: '>', v: 9e9 } },
+    { text: 'step 1 — the indicator fails, but only once safety injection is running',
+      inject: [{ failure: 'porv_indicator_stuck_closed', when: { p: 'hpi_active', op: '>', v: 0.5 } }],
+      acc: { p: 'power_pct', op: '>', v: 9e9 } },
+    { text: 'step 2 — both are cleared',
+      clear: ['stuck_porv_open', 'porv_indicator_stuck_closed'],
+      acc: { p: 'power_pct', op: '>', v: 9e9 } },
+    { text: 'step 3 — a narrative step', crew: true,
+      story: { clock: '04:00:37', saw: 'Every alarm on the board.', knew: 'Feedwater had been lost.',
+               did: 'They read the turbine trip and looked for the reason.' },
+      acc: { p: 'power_pct', op: '>', v: 9e9 } },
+  ],
+});
+var svc7 = mkService();
+run(svc7, 3);
+function failIds(snap) { return (snap && snap.active_failures || []).map(function (f) { return f.id || f; }); }
+function inj(snap) { var cc = ckl(snap); return (cc && cc.injected) || []; }
+
+/* COUNT WHAT DESCENDS, not what the plant ends up with. "Fires once" is a claim about the
+ * commands the instructor issues, and an idempotent failure table would hide a re-injection
+ * completely — the plant looks identical either way. */
+/* ⚠ AND RE-ARM IT AFTER A REWIND. `scope:'full'` REBUILDS THE PLANT and M5 re-points
+ * `instructor.below` at the new ControlFailureLayer, so a wrapper installed once is silently
+ * gone the moment the thing it exists to measure happens — measured here: the re-entry check
+ * read "0 new inject_failure" beside a plant that plainly had the failure back. A counter that
+ * cannot count during the event it is watching is the #286 shape, one layer down. */
+var injCount = 0, wrappedBelow = null;
+function armInjectCounter() {
+  var b = svc7.instructor.below;
+  if (!b || b === wrappedBelow) return;
+  wrappedBelow = b;
+  var real = b.handleCommand.bind(b);
+  b.handleCommand = function (cmd) {
+    if (cmd && cmd.action === 'inject_failure') injCount++;
+    return real(cmd);
+  };
+}
+armInjectCounter();
+
+var s7 = svc7.handleCommand({ action: 'start_checklist', procedure_id: 'zz_inject_probe' });
+/* THE ENTRY TICK IS DELIBERATELY NOT THE FIRING TICK — see `_checklistFire`. The step's start
+ * checkpoint is laid in this very assemble, AFTER the instructor steps, so firing on entry would
+ * bake the failure into the checkpoint Rewind restores. This check pins that ordering. */
+ck('nothing fires on the step\'s ENTRY tick (the checkpoint is laid in this same broadcast)',
+   failIds(s7).indexOf('stuck_porv_open') === -1 && inj(s7).length === 0,
+   'active [' + failIds(s7).join(',') + '], injected [' + inj(s7).join(',') + ']');
+s7 = run(svc7, 3);
+ck('(a) the step\'s `inject` fires behind the scenes — the failure is active on the plant',
+   failIds(s7).indexOf('stuck_porv_open') >= 0, 'active_failures [' + failIds(s7).join(',') + ']');
+ck('(a) ...and the checklist snapshot reports what THIS step injected',
+   inj(s7).length === 1 && inj(s7)[0] === 'stuck_porv_open', 'injected [' + inj(s7).join(',') + ']');
+// (c) once per step entry, not once per tick.
+var countAfterFirst = injCount;
+s7 = run(svc7, 50);
+ck('(c) it fires ONCE — 50 further broadcasts issue no second inject_failure',
+   injCount === countAfterFirst && countAfterFirst === 1, injCount + ' inject_failure commands in all');
+
+/* (g) A SAVE TAKEN MID-STEP CARRIES THE FIRED-SET. This is the check that makes the two
+ * `getState`/`loadState` lines load-bearing rather than decorative — and it exists because the
+ * REWIND probe below could not see them: a rewind in this probe lands on the checklist's own
+ * step-boundary checkpoints, and those are laid immediately AFTER `_checklistCheckOff` clears
+ * the set, so they are empty either way. Measured: deleting `fired`/`injected` from `getState`
+ * reddened nothing at all until this check existed.
+ *
+ * The consequence it pins is a player's, not a harness's: load a saved game in the middle of an
+ * incident walkthrough and the step must not break the plant a second time. With an idempotent
+ * failure table the PLANT looks identical, which is exactly why the command count is what is
+ * asserted here — the #542 shape, where the reading that could tell the two apart was the one
+ * nobody took. */
+var saved7 = JSON.parse(JSON.stringify(svc7.saveState()));
+(function () {
+  var svc8 = mkService();
+  run(svc8, 3);
+  var ld = svc8.loadState(saved7);
+  var b8 = svc8.instructor.below, n8 = 0;
+  var real8 = b8.handleCommand.bind(b8);
+  b8.handleCommand = function (cmd) { if (cmd && cmd.action === 'inject_failure') n8++; return real8(cmd); };
+  var s8 = run(svc8, 6);
+  var c8 = ckl(s8);
+  ck('(g) a save restored mid-step does NOT fire the step\'s injection a second time',
+     n8 === 0, n8 + ' inject_failure commands after the restore');
+  ck('(g) ...and the restored card still reports what the step injected',
+     !!c8 && (c8.injected || []).indexOf('stuck_porv_open') >= 0 && c8.step_index === 0,
+     c8 ? 'injected [' + (c8.injected || []).join(',') + '] at idx ' + c8.step_index : 'no checklist');
+  ck('(g) ...on a plant that still carries it (the failure survived the save, so a re-fire would be a duplicate)',
+     failIds(s8).indexOf('stuck_porv_open') >= 0, 'active [' + failIds(s8).join(',') + ']');
+  b8.handleCommand = real8;
+})();
+
+// (b) a `when`-gated entry waits for its predicate, not for the step.
+svc7.handleCommand({ action: 'checklist_check', index: 0 });
+s7 = run(svc7, 6);
+ck('(b) a `when`-gated inject does NOT fire on step entry',
+   failIds(s7).indexOf('porv_indicator_stuck_closed') === -1 && inj(s7).length === 0,
+   'active [' + failIds(s7).join(',') + ']');
+svc7.handleCommand({ action: 'set_hpi', active: true });
+s7 = run(svc7, 3);
+ck('(b) ...and fires on the first tick the predicate holds',
+   failIds(s7).indexOf('porv_indicator_stuck_closed') >= 0 && inj(s7).indexOf('porv_indicator_stuck_closed') >= 0,
+   'active [' + failIds(s7).join(',') + '], injected [' + inj(s7).join(',') + ']');
+
+/* (d) REWIND. The whole reason the fired-set rides in the checkpoint: the plant comes back to the
+ * start of the step, so the step has to be able to break it again. A fired-set kept outside the
+ * checkpoint would leave the player looking at a walkthrough that says the PORV stuck open beside
+ * a PORV that is shut. `steps: 2, exact` is what the board's Rewind button sends. */
+var rw7 = svc7.handleCommand({ action: 'rewind', steps: 2, scope: 'full', exact: true });
+var cr7 = ckl(rw7);
+ck('(d) Rewind lands back at the start of step 0',
+   rw7.type === 'state' && cr7 && cr7.step_index === 0, 'idx ' + (cr7 && cr7.step_index));
+ck('(d) ...the plant comes back WITHOUT the injected failure, and the fired-set with it',
+   failIds(rw7).indexOf('stuck_porv_open') === -1 && (cr7.injected || []).length === 0,
+   'active [' + failIds(rw7).join(',') + '], injected [' + (cr7.injected || []).join(',') + ']');
+armInjectCounter();     // the rewind rebuilt the plant — see the note on the counter
+var beforeRe = injCount;
+s7 = run(svc7, 3);
+ck('(d) ...and re-entering the step fires it again',
+   failIds(s7).indexOf('stuck_porv_open') >= 0 && injCount === beforeRe + 1,
+   'active [' + failIds(s7).join(',') + '], ' + (injCount - beforeRe) + ' new inject_failure');
+
+// (e) `clear` takes it back off. Walk to step 2 — the rewind put us back at step 0.
+svc7.handleCommand({ action: 'checklist_check', index: 0 });
+run(svc7, 2);
+svc7.handleCommand({ action: 'checklist_check', index: 1 });
+s7 = run(svc7, 4);
+ck('(e) a step\'s `clear` removes the failures it names',
+   failIds(s7).indexOf('stuck_porv_open') === -1 && failIds(s7).indexOf('porv_indicator_stuck_closed') === -1,
+   'active [' + failIds(s7).join(',') + ']');
+ck('(e) ...and a cleared id is NOT reported as injected by this step',
+   inj(s7).length === 0, 'injected [' + inj(s7).join(',') + ']');
+
+// (f) the narrative block reaches the snapshot.
+svc7.handleCommand({ action: 'checklist_check', index: 2 });
+s7 = run(svc7, 2);
+var c7 = ckl(s7);
+ck('(f) a `story` step ships clock/saw/knew/did in the checklist snapshot',
+   !!(c7 && c7.story) && c7.story.clock === '04:00:37' &&
+   /alarm/i.test(c7.story.saw || '') && !!c7.story.knew && !!c7.story.did,
+   c7 && c7.story ? JSON.stringify(c7.story).slice(0, 80) : String(c7 && c7.story));
+ck('(f) ...and `crew: true`, the tag that says the step is history rather than advice',
+   c7 && c7.crew === true, c7 && String(c7.crew));
+/* THE SIX SHIPPED LEGS AUTHOR NONE OF THIS, and that claim is worth a check rather than a
+ * sentence: it is what makes "nothing changes for the existing walkthroughs" measurable instead
+ * of inherited. Read off the built pool, both plants. */
+(function () {
+  var n = 0, withStory = 0;
+  ['pwr', 'pwr2'].forEach(function (k) {
+    (RD.MANUAL_PROCEDURES[k] || []).forEach(function (p) {
+      if (/^zz_|^__/.test(p.id)) return;
+      (p.steps || []).forEach(function (st) {
+        if (st.inject || st.clear) n++;
+        if (st.story || st.crew) withStory++;
+      });
+    });
+  });
+  ck('the shipped pools author no inject/clear/story yet — Phase 1 is runtime only',
+     n === 0 && withStory === 0, n + ' steps with inject/clear, ' + withStory + ' with story/crew');
+})();
+svc7.handleCommand({ action: 'stop_checklist' });
+
 // ---------------------------------------------------------------- summary
 console.log('\n' + B + '──────────' + X);
 var ok = passed === total;

@@ -59,6 +59,15 @@
        * SHUT, which is a claim about the heat sink the plant is riding on. Graded on the
        * board's own channel, per HR1: the player sees `adv_valve`, not `adv_valve_pct`. */
       adv_valve_pct: 'adv_valve',
+      /* SUBCOOLING MARGIN (#670 Phase 1) — the tile the TMI-2 walkthrough is graded against,
+       * and the one number that says whether the coolant is water or is about to be steam.
+       * `subcooling_margin` is a DERIVED channel of the reused pwr instrument layer
+       * (`pwr_instruments.js`: Tsat(primary_pressure) − tavg, both of them instrument
+       * readings), which is exactly why grading on it is HR1-honest: the operator's margin is
+       * built out of the two gauges they can see, and it diverges from `true_state.subcooling_c`
+       * — which is Tsat(TRUE P) − TRUE T-hot — under precisely the conditions an incident
+       * walkthrough is about. */
+      subcooling_c: 'subcooling_margin',
     },
     rbmk: {
       power_pct: 'power_range', steam_pressure_mpa: 'steam_pressure', drum_level_pct: 'drum_level',
@@ -186,6 +195,9 @@
       precond: null,
       precondMsg: false,   // an unmet-precondition instructor comment is standing
       catchUp: true,       // first _stepChecklist tick walks past already-done steps (#607)
+      // Behind-the-scenes failures fired on the CURRENT step (#670): `fired` is the once-per-
+      // entry keys, `injected` the failure ids the snapshot publishes. Both reset per step.
+      fired: [], injected: [],
     };
   };
 
@@ -662,7 +674,14 @@
 
     var st = c.proc.steps[c.idx];
     if (!st) { c.complete = true; return; }
-    if (c.stepAt == null) c.stepAt = simTime;   // when this step came up — the dwell's clock
+    var stepEntryTick = (c.stepAt == null);
+    if (stepEntryTick) c.stepAt = simTime;   // when this step came up — the dwell's clock
+
+    /* FAILURES THE STEP FIRES BEHIND THE SCENES (#670 Phase 1, incident walkthroughs). See
+     * `_checklistFire`. NOT on the entry tick, and that is not a detail — see the ordering
+     * note there: firing here would put the failure INSIDE the step's own start checkpoint,
+     * and Rewind would then hand the player back a plant that is already broken. */
+    if (!stepEntryTick && (st.inject || st.clear)) this._checklistFire(snapshot, st);
 
     /* A STEP THE PLANT HAS MOVED PAST CHECKS ITSELF OFF AS OVERTAKEN (#641, owner playtest
      * 2026-09-05: "mode 3>1 checklist step 9 the user can get stuck if they accidently go too
@@ -761,6 +780,82 @@
     c.awaitingAck = !!met;
   };
 
+  /* A STEP MAY FIRE FAILURES BEHIND THE SCENES (#670 Phase 1, incident walkthroughs).
+   *
+   * *(OWNER, 2026-09-08: "These walkthroughs will include another element the last walkthroughs
+   * don't have, these ones will automatically trigger failures behind the scenes.")* — the plant
+   * breaks on the step that needs it, with the player never opening the Failures tab.
+   *
+   *   inject: [{ failure: 'stuck_porv_open', severity: 1.0 }, { failure: 'afw_failure',
+   *              when: { p: 'turbine_tripped', op: '>', v: 0 } }]
+   *   clear:  ['porv_indicator_stuck_closed', { failure: 'x', when: {...} }]
+   *
+   * Both descend through `this.below.handleCommand` — the SAME path the beat engine's
+   * `beat.inject_failures` takes (`_fireBeat` above) — so the control layer places the failure
+   * (Hard Rule 7) and command interception applies. Nothing here reaches into an engine.
+   *
+   * WITHOUT `when` it fires on the step's first tick AFTER the entry tick; WITH `when` on the
+   * first tick that predicate holds, graded by `_grade` — instrument-first, the same evaluator
+   * the acceptance uses, so a walkthrough's trigger reads the board the player reads. NO
+   * DEBOUNCE, unlike `acc`: an acceptance that flickers advances a checklist wrongly and can be
+   * re-earned, where a failure that fires one tick early is simply the failure firing.
+   *
+   * ⚠ THE ORDERING, which is the whole reason this is not on the entry tick. `_checklistCheckOff`
+   * requests the step-boundary checkpoint and M5 services that request in
+   * `_serviceInstructorRequests` — AFTER `instructor.step()` in the same `_assembleWithInstructor`
+   * call (measured at #660: the ring goes 3 → 4 with no tick in between). So an injection fired on
+   * the entry tick lands INSIDE the checkpoint that Rewind restores, and "⏪ Rewind step" would
+   * hand the player back a plant that is already broken with the fired-set saying it had already
+   * happened. One broadcast later (0.1 s of plant time) the checkpoint is on the ring holding the
+   * clean plant, and a rewind genuinely un-does the failure. MEASURED BY INJECTION: firing on the
+   * entry tick reddens three checks of `run_checklist` section 10, one of them the plant reading
+   * ("the plant comes back WITHOUT the injected failure" → active [stuck_porv_open]).
+   *
+   * FIRES ONCE PER STEP ENTRY. `fired` is keyed by kind+index+id — not by id alone, so the same
+   * failure may be cleared and re-injected by two entries of one step — and it is reset in
+   * `_checklistCheckOff` BEFORE the checkpoint request, so a restored checkpoint carries an empty
+   * set and re-entry after a Rewind fires again against the plant it was restored beside.
+   *
+   * A REFUSAL IS SWALLOWED WITH A WARNING, unlike the beat engine, which is scenario content run
+   * by a gate. This runs under a player in free play, and the pwr2 shell refuses by THROWING
+   * (#505): an unknown or beyond-model failure id would otherwise take `tick()` down mid-session.
+   * The id is authored content and `run_style`/the replay are where a bad one should be caught. */
+  InstructorLayer.prototype._checklistFire = function (snapshot, st) {
+    var c = this.checklist, self = this;
+    if (!c.fired) c.fired = [];
+    if (!c.injected) c.injected = [];
+    if (!this.below) return;
+    function fire(list, kind) {
+      for (var i = 0; i < (list || []).length; i++) {
+        var e = list[i];
+        var spec = (typeof e === 'string') ? { failure: e } : e;
+        if (!spec || !spec.failure) continue;
+        var key = kind + i + ':' + spec.failure;
+        if (c.fired.indexOf(key) >= 0) continue;
+        if (spec.when && spec.when.p && !self._grade(snapshot, spec.when).met) continue;
+        c.fired.push(key);
+        var cmd;
+        if (kind === 'i') {
+          cmd = { action: 'inject_failure', failure_id: spec.failure };
+          if (spec.severity != null) cmd.severity = spec.severity;
+        } else {
+          cmd = { action: 'clear_failure', failure_id: spec.failure };
+        }
+        try {
+          self.below.handleCommand(cmd);
+          if (kind === 'i' && c.injected.indexOf(spec.failure) < 0) c.injected.push(spec.failure);
+        } catch (err) {
+          if (typeof console !== 'undefined') {
+            console.warn('InstructorLayer: checklist ' + (kind === 'i' ? 'inject' : 'clear') +
+              ' "' + spec.failure + '" refused — ' + (err && err.message || err));
+          }
+        }
+      }
+    }
+    fire(st.inject, 'i');
+    fire(st.clear, 'c');
+  };
+
   /* See the catch-up block in `_stepChecklist`. `past` is one predicate or an array (OR).
    * Reads paramValue (true_state / control_state), not the instrument-first `_grade`:
    * catch-up is "has the plant already done this", and a lagged channel would leave the
@@ -803,6 +898,11 @@
     c.awaitingAck = false;              // #619 item 4 — cleared with the step it belonged to
     c.stepAt = null;                    // re-stamped on the next tick — see the dwell above
     c.overtakenStreak = 0;              // #641 — the next step's own predicate starts from zero
+    /* #670 — the fired-set is PER STEP ENTRY, and it is cleared HERE, before the checkpoint
+     * request below, so the checkpoint M5 lays at the start of the step just entered carries an
+     * empty set. A Rewind back onto it therefore re-enters a step that has not fired yet, beside
+     * a plant that has not been broken yet. See `_checklistFire`. */
+    c.fired = []; c.injected = [];
     if (c.idx >= c.proc.steps.length) c.complete = true;
     /* A CHECKPOINT ON EVERY STEP BOUNDARY (#660 item 17: "Rewind takes the walkthrough and plant
      * back one step. So it will need to save each step."). M5 consumes this on its next tick and
@@ -1120,6 +1220,10 @@
     var base = this.getMessage();
     var f = this.follow;
     var st = (f && !f.done) ? f.proc.steps[f.idx] : null;
+    // The ACTIVE checklist step, for the narrative block below (#670).
+    var cklStep = (this.checklist && !this.checklist.complete)
+      ? this.checklist.proc.steps[this.checklist.idx] : null;
+    var cklStory = (cklStep && cklStep.story) ? cklStep.story : null;
     return {
       message: base.message,
       message_register: base.message_register,
@@ -1194,6 +1298,18 @@
         preconditions: this.checklist.precond
           ? this.checklist.precond.map(function (p) { return { met: p.met, obs: p.obs, graded_by: p.graded_by }; })
           : null,
+        // Failure ids this step has fired behind the scenes (#670) — reset on every step
+        // boundary, so it answers "what did THIS step break", not "what is broken".
+        // `active_failures` remains the plant's own answer to the second question.
+        injected: (this.checklist.injected || []).slice(),
+        /* THE NARRATIVE BLOCK (#670) — the one place step CONTENT is duplicated into the
+         * snapshot, and it is a deliberate exception to the rule two comments up. The renderer
+         * reads `story` off the pool exactly as it reads `text`/`why`; this copy exists so a
+         * gate, a headless probe or any non-pool consumer can see what the card is showing
+         * without re-resolving the procedure artifact. ACTIVE STEP ONLY. */
+        story: cklStory ? { clock: cklStory.clock || null, saw: cklStory.saw || null,
+                            knew: cklStory.knew || null, did: cklStory.did || null } : null,
+        crew: !!(cklStep && cklStep.crew),
       } : null,
     };
   };
@@ -1278,6 +1394,11 @@
         complete: this.checklist.complete,
         accs_met: this.checklist.accsState
           ? this.checklist.accsState.map(function (a) { return !!a.met; }) : null,
+        /* #670 — the per-step-entry fired-set RIDES IN THE CHECKPOINT. A `scope:'full'` rewind
+         * is a loadState of a saved checkpoint, so this is what makes "Rewind un-does the
+         * injection and the step fires it again" true rather than an assumption. */
+        fired: (this.checklist.fired || []).slice(),
+        injected: (this.checklist.injected || []).slice(),
       } : null,
     };
   };
@@ -1312,6 +1433,9 @@
           // (and re-raises the comment if rows are still unmet, which is right:
           // a fresh session deserves the warning again).
           precond: null, precondMsg: false,
+          // #670 — restored, not re-derived: a save written before this field is an empty set,
+          // which is exactly what it used to behave as.
+          fired: (cs.fired || []).slice(), injected: (cs.injected || []).slice(),
         };
       } else if (typeof console !== 'undefined') {
         console.warn('InstructorLayer.loadState: checklist procedure "' + cs.procedure_id + '" not found — dropped.');

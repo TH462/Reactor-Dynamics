@@ -3731,8 +3731,15 @@
      * only, its why always open, headed "Step X of N". The Walkthroughs tab keeps the list. */
     var h = '<button class="btn ckl-back" data-ckl-list="1">← All walkthroughs</button>';
     h += '<div class="ckl-log" id="cklLog">';
+    /* THE HISTORICAL CLOCK RIDES ON THE STEP COUNTER (#670): "Step 6 of 15 · 04:05". An
+     * incident walkthrough's steps are a timeline, and the elapsed time is the one fact that
+     * turns a list of actions into an account of a morning. Read off the pool, like the step
+     * text — `story` is content, not state. Ordinary legs author no `story` and are untouched. */
+    var headSt = (!ck.complete && pr.steps[ck.step_index]) || null;
+    var headClock = (headSt && headSt.story && headSt.story.clock) ? headSt.story.clock : null;
     h += '<div class="ckl-head"><b>' + mesc(pr.title) + '</b>' +
-      '<span class="ckl-stepno">' + (ck.complete ? 'Complete' : ('Step ' + (ck.step_index + 1) + ' of ' + pr.steps.length)) + '</span></div>';
+      '<span class="ckl-stepno">' + (ck.complete ? 'Complete' : ('Step ' + (ck.step_index + 1) + ' of ' + pr.steps.length)) +
+      (headClock ? ' · ' + mesc(headClock) : '') + '</span></div>';
     // Precondition banner (#395) — WARN, NEVER BLOCK: unmet rows are listed with
     // measured-vs-expected and everything below still runs. Row text comes from
     // the procedure artifact (`precond[i].text`); the snapshot ships verdicts only.
@@ -3830,7 +3837,34 @@
        * The workflow order is preserved WITHIN the active block below (criteria → control →
        * wait → acknowledge); what changed is that the whole block now hangs off the instruction
        * instead of pushing it down. */
-      h += '<div class="ckl-txt">' + (i + 1) + '. ' + mesc(st.text) + '</div>';
+      /* THE NARRATIVE BLOCK, ABOVE THE INSTRUCTION (#670 Phase 1) *(OWNER, 2026-09-08: "This
+       * walkthrough should have enough context in it so the user learns what happened during the
+       * incident. It should include things like the operators actions and their reasoning behind
+       * them and what they knew.")*.
+       *
+       * ABOVE the numbered step, not in the details fold, and that is the point: on an incident
+       * walkthrough the history is not supplemental context, it is what the player is here for —
+       * and #628 put the instruction at the head of the stack precisely because everything under
+       * it is optional reading. Four labelled lines in a fixed order (clock · saw · knew · did),
+       * because the sequence IS the lesson: what was on the board, what they concluded from it,
+       * what they then did. `why` keeps its own job below — the plant lesson of the step.
+       *
+       * Read off the pool, exactly like `st.text` and `st.why`. The snapshot carries a copy for
+       * gates and headless probes (instructor_layer's checklist block); the card never uses it. */
+      if (st.story) {
+        var sy = st.story, syH = '';
+        if (sy.clock) syH += '<div class="ckl-story-l"><span>Clock</span>' + mesc(sy.clock) + '</div>';
+        if (sy.saw)   syH += '<div class="ckl-story-l"><span>The crew saw</span>' + mesc(sy.saw) + '</div>';
+        if (sy.knew)  syH += '<div class="ckl-story-l"><span>They knew</span>' + mesc(sy.knew) + '</div>';
+        if (sy.did)   syH += '<div class="ckl-story-l"><span>They did</span>' + mesc(sy.did) + '</div>';
+        if (syH) h += '<div class="ckl-story">' + syH + '</div>';
+      }
+      /* `crew: true` — THE STEP IS HISTORY, NOT ADVICE. It is what lets a walkthrough tell the
+       * player to stop the safety injection pumps, as the TMI-2 crew did, without the sim
+       * appearing to recommend it. Never suppressed by register: the disclaimer is the same
+       * sentence to a student and to an operator. */
+      h += '<div class="ckl-txt">' + (i + 1) + '. ' + mesc(st.text) +
+        (st.crew ? ' <span class="ckl-crew">the crew\'s action, as taken — not a recommendation</span>' : '') + '</div>';
       if (done && ck.done_by && ck.done_by[i] === 'manual') h += '<div class="ckl-sub">checked by hand</div>';
       /* a step the plant moved past (#641) says so on the card, with the authored reason, so a
        * tick the player never earned is not read as one they did */

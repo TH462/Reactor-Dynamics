@@ -109,6 +109,56 @@ was freshly constructed and its ring was empty anyway — it now ticks three tim
 first. Separately, `verify_flags_ui` measured **48/48** against a `BASELINES` of 47/47 with the
 runner untouched: pre-existing drift from 166ea25f, corrected here.
 
+**#670 Phase 1 — the RUNTIME for incident walkthroughs, no authoring** *(OWNER, 2026-09-08:
+"these ones will automatically trigger failures behind the scenes")*. Four step fields:
+`inject: [{failure, severity?, when?: {p,op,v}}]` and `clear: [...]` descend through
+`this.below.handleCommand` as `inject_failure`/`clear_failure` — the beat engine's own path
+(`instructor_layer.js:294-304`), so the control layer places the failure and interception applies —
+plus `story: {clock, saw, knew, did}` and `crew: true`, drawn above the numbered instruction with
+the clock on the "Step X of N" header (`ui/app.js` `renderChecklist`, `.ckl-story` /`.ckl-crew` in
+`shell.css`). `PARAM_INSTRUMENT.pwr2` gains `subcooling_c → subcooling_margin`, the derived channel
+of the reused pwr instrument layer, so a step can be graded on the board's own SUBCOOLING MARGIN
+tile. `run_checklist` 60 → 77 (section 10, a synthetic `zz_inject_probe` in the pwr pool — the
+runner boots the pwr engine, not pwr2), `run_style` 9 → 10.
+
+**TWO THINGS THE BRIEF ASSUMED THAT MEASURED OTHERWISE, and both are the same shape — a thing
+that happens in the same broadcast as the thing that is supposed to precede it.**
+
+1. **The injection cannot fire on the step's ENTRY tick.** `_checklistCheckOff` requests the
+   step-boundary checkpoint and M5 services that request in `_serviceInstructorRequests` — *after*
+   `instructor.step()`, in the same `_assembleWithInstructor` call (the fact #660 measured as
+   "ring 3 → 4 with no tick"). So a failure fired on the entry tick is baked into the checkpoint
+   Rewind restores, and "⏪ Rewind step" would hand the player back a plant that is already broken
+   with the fired-set saying it had already happened. It fires one broadcast later. Injection-
+   measured, three reds, one of them the plant itself reading `active [stuck_porv_open]` where the
+   probe wants it gone.
+2. **`fired` in the checkpoint was a DARK WIRE for an hour.** Deleting `fired`/`injected` from
+   `getState` reddened **nothing** — because every rewind in the probe lands on a *step-boundary*
+   checkpoint, and those are laid immediately after `_checklistCheckOff` clears the set, so they
+   are empty either way. The consumer that can see them is a **save taken mid-step**: load a saved
+   game inside a walkthrough and the step must not break the plant a second time. Asserted on the
+   `inject_failure` **command count**, not on the plant, because an idempotent failure table makes
+   the plant look identical whether it was injected once or twice (#542's shape). That is probe
+   (g), and INJ7 now reddens it.
+
+**A third trap, in the harness rather than the runtime: a wrapper installed on
+`instructor.below` is gone the moment a `scope:'full'` rewind runs**, because the rewind rebuilds
+the plant and M5 re-points `below` at a new `ControlFailureLayer`. The "re-entry fires it again"
+check read *0 new inject_failure* beside a plant that plainly had the failure back — a counter
+that cannot count during the event it exists to watch (#286's shape, one layer down). It re-arms
+after the rewind.
+
+Seven injections, every new probe red under at least one: entry-tick fire (3 red), fired-set guard
+dropped (3), `when` ignored (1), per-step reset dropped (2), story/crew dropped from the snapshot
+(2), the fire call removed (7), `getState` fields dropped (1). **The two live-runtime drivers in
+`run_checklist_pwr2` deliberately issue nothing** — they start a real checklist, so the instructor
+fires for them; only `procedures_harness.js`, which never loads a checklist, has to issue by hand,
+and there `when` is graded through `paramValue` rather than instrument-first (the harness's
+existing split, noted at the call site). `run_checklist_pwr2` **154/154 unchanged** (the brief said
+148 — that is a stale number; `BASELINES` has read 154 since the #664 merge, which is the reason
+this file keeps saying "read the map, not the prose"), and that is the measurement "nothing changes
+for the six shipped legs" rests on.
+
 ## Session log — 2026-09-08-develop-a (#655 — the speed bar's WARP row and info line; the clock drops by alarm PRIORITY; the freeze did not reproduce)
 ## Session log — 2026-09-08-workbench-m (#668 — all three operator rod speeds were the sourced 8/48/72 scaled by fraction of travel, so every one sat 12.25 % under)
 
