@@ -577,6 +577,99 @@ async function testRefusalReachesTheScanner(page) {
   return log.join(String.fromCharCode(10)) + String.fromCharCode(10);
 }
 
+/* THE TRIP BLOCKS POPOVER MUST NEVER REACH THE BOARD (#670 operator pass, S-1).
+ *
+ * The popover is shrink-to-fit and one of its captions is 90 characters: a blocked trip whose
+ * setpoint is crossed prints "RELEASING THIS WILL TRIP THE REACTOR NOW - the setpoint is
+ * crossed. Press again to confirm." (pwr_board_wiring.js `tripBlockRows`). MEASURED at
+ * 1600x1000 before the fix: the panel went 393.9 -> 519.0 rendered px on that one caption and
+ * covered the PORV block valve's hit circle, so `document.elementFromPoint` at the valve centre
+ * returned the panel's row and the click was SWALLOWED - while the System Scanner still hovered
+ * the valve THROUGH the overlay, so the board said "this is the thing you want" and the press
+ * did nothing. The RELEASE? button landed x 488-555 against the valve's x 466.7-506.9, i.e.
+ * OVER it: a player hunting for the valve was one slip from a press that trips the reactor.
+ *
+ * THE CHECK ASSERTS THE EFFECT, NOT THE DECLARATION. A static "`.bd-pop` has a max-width" test
+ * pins a CSS write and would pass on any number, including one that puts the panel back on the
+ * board (CLAUDE.md's standing trap: assert the effect, never the write). This opens the real
+ * popover, applies exactly the two DOM writes `refreshTripBlocks` makes on an armed row, and
+ * hit-tests the valve. INJECTION-VERIFIED: with `max-width` removed from `.bd-pop` it reports
+ * the panel at 519.0 px and elementFromPoint returning `bd-pop-row`, and fails.
+ *
+ * The step-6 -> step-14 gap in the TMI-2 walkthrough is what found it, but the defect is free
+ * play's too - nothing about it needs a walkthrough. */
+async function testTripBlockPopoverStaysOffTheBoard(page) {
+  var log = [];
+  await page.goto('http://127.0.0.1:' + PORT + '/ui/shell.html?engine=pwr2',
+    { waitUntil: 'networkidle', timeout: 90000 });
+  await dismissMission(page);
+  await waitBoardLive(page);
+  var r = await page.evaluate(function () {
+    var btn = null, w = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT), n;
+    while ((n = w.nextNode())) {
+      if ((n.nodeValue || '').trim() === 'TRIP BLOCKS' && n.parentElement.matches('button')) {
+        btn = n.parentElement; break;
+      }
+    }
+    if (!btn) return { missing: 'the TRIP BLOCKS button' };
+    btn.click();
+    var pop = document.querySelector('.bd-pop');
+    if (!pop) return { missing: 'the popover it opens' };
+    var row = pop.querySelector('button[data-trip="si_trip"]');
+    if (!row) return { missing: 'the SI REACTOR TRIP row' };
+    var vlvs = [].slice.call(document.querySelectorAll('circle.vlv-hit')).map(function (c) {
+      return c.getBoundingClientRect();
+    }).filter(function (b) { return b.x > 400 && b.x < 600 && b.y < 300; });
+    if (!vlvs.length) return { missing: 'the PORV block valve hit circle' };
+    var v = vlvs[0];
+    function probe() {
+      var b = pop.getBoundingClientRect(), rb = row.getBoundingClientRect();
+      var el = document.elementFromPoint(Math.round(v.x + v.width / 2), Math.round(v.y + v.height / 2));
+      return { w: +b.width.toFixed(1), right: +b.right.toFixed(1),
+               overlaps: b.right > v.x && b.x < v.right && b.bottom > v.y && b.y < v.bottom,
+               btnOverValve: rb.right > v.x && rb.x < v.right && rb.bottom > v.y && rb.y < v.bottom,
+               hitIsValve: !!(el && el.classList && el.classList.contains('vlv-hit')),
+               hitTag: el ? (el.tagName + '.' + String(el.getAttribute('class') || '')) : 'null' };
+    }
+    var before = probe();
+    // exactly what refreshTripBlocks writes when `will_trip` is true
+    row.textContent = 'RELEASE?';
+    row.className = 'bd-blocked bd-willtrip';
+    var sub = row.previousSibling && row.previousSibling.querySelector
+            ? row.previousSibling.querySelector('.sub') : null;
+    if (!sub) return { missing: 'the row caption element' };
+    sub.textContent = 'RELEASING THIS WILL TRIP THE REACTOR NOW — the setpoint is crossed. Press again to confirm.';
+    return { valve: { x: +v.x.toFixed(1), right: +v.right.toFixed(1) }, before: before, after: probe() };
+  });
+  if (r.missing) {
+    console.error('FAIL: the trip-block overlay fixture is gone (' + r.missing + ') — re-point this check');
+    process.exitCode = 1;
+    return 'trip-block-overlay: FIXTURE MISSING — ' + r.missing + String.fromCharCode(10);
+  }
+  log.push('valve hit circle x ' + r.valve.x + '–' + r.valve.right);
+  log.push('normal captions: panel ' + r.before.w + ' px, right ' + r.before.right +
+           ', hit ' + r.before.hitTag);
+  log.push('armed caption:   panel ' + r.after.w + ' px, right ' + r.after.right +
+           ', hit ' + r.after.hitTag);
+  if (!r.before.hitIsValve) {
+    console.error('FAIL: the PORV block valve is not clickable with the trip-block panel open ' +
+      'and NO row armed — hit ' + r.before.hitTag + ' (#670 S-1)');
+    process.exitCode = 1;
+  }
+  if (!r.after.hitIsValve || r.after.overlaps || r.after.btnOverValve) {
+    console.error('FAIL: the trip-block popover grew onto the board when a row armed for ' +
+      'release — panel ' + r.before.w + ' → ' + r.after.w + ' px, right edge ' + r.after.right +
+      ' against the valve at ' + r.valve.x + '; elementFromPoint at the valve returns ' +
+      r.after.hitTag + '. The click is swallowed while the Scanner still names the valve ' +
+      'through the overlay (#670 S-1). Cap `.bd-pop` max-width — do not raise it.');
+    process.exitCode = 1;
+  } else {
+    console.log('  trip-block popover stays off the board when armed: ' + r.before.w + ' → ' +
+      r.after.w + ' px, valve still hit-tests (#670 S-1)');
+  }
+  return log.join(String.fromCharCode(10)) + String.fromCharCode(10);
+}
+
 async function testEsfArmButtons(page) {
   var log = [];
   /* pwr disables NOTHING; pwr2 disables the DELIBERATE set: the HPI AUTO re-arm (#503),
@@ -1961,6 +2054,8 @@ async function main() {
     fs.writeFileSync(path.join(SCRATCH, 'esf-arm-buttons.log'), ebLog);
     var rfLog = await testRefusalReachesTheScanner(page);
     fs.writeFileSync(path.join(SCRATCH, 'refusal-scanner.log'), rfLog);
+    var tbLog = await testTripBlockPopoverStaysOffTheBoard(page);
+    fs.writeFileSync(path.join(SCRATCH, 'trip-block-overlay.log'), tbLog);
     var dbLog = await testDiagBundle(page);
     fs.writeFileSync(path.join(SCRATCH, 'diag-bundle.log'), dbLog);
     var hpLog = await testHeldPlantDialog(page);

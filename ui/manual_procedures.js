@@ -118,7 +118,7 @@
       steps: [
         obs('Confirm Mode 5, Cold Shutdown: Tavg ≈ 122 °F (50 °C), pressure ≈ 363 psi (2.5 MPa), reactivity well below zero, RHR aligned.', { p: 'tavg_c', op: '<', v: 95 }),
         { text: 'Start the Reactor Coolant Pumps (RCP card → Run). That is your heat source, and the steam generator needs the flow to see it. RHR auto-isolates as pressure rises past its 600 psi (4.14 MPa) AUTOCLOSURE interlock — a different setpoint from the 400 psi (2.76 MPa) block-open permissive that governs putting RHR in service (#288).',
-          control: 'RCP Run/Stop', target: 'flow ~100 %',
+          control: 'RCP ON/OFF', target: 'flow ~100 %',
           cmd: { action: 'set_rcp', running: true }, hold: 30,
           acc: { p: 'pump_flow_pct', op: '>', v: 90 },
           hl: ['Reactor Coolant Pumps (RCP)', 'RCP Run/Stop'] },
@@ -570,7 +570,7 @@
           acc: { p: 'rhr_active', op: '>', v: 0 },
           hl: ['Residual Heat Removal (RHR)', 'ECCS'] },
         { text: 'SECURE THE REACTOR COOLANT PUMPS. RHR provides the circulation from here, and with the pumps stopped the steam generator decouples (flow → 0) so it stops feeding heat back into the loop. Losing the pump heat helps too. Note the board reads this as a planned securing, not a casualty — RCP TRIP annunciates as a status, not a critical (#240).',
-          control: 'RCP Run/Stop', target: 'pumps stopped, coasting down',
+          control: 'RCP ON/OFF', target: 'pumps stopped, coasting down',
           cmd: { action: 'set_rcp', running: false }, hold: 20,
           acc: { p: 'pump_flow_pct', op: '<', v: 50 },
           hl: ['RCP Run/Stop', 'Reactor Coolant Pumps (RCP)'] },
@@ -1154,7 +1154,7 @@
           [{ p: 'pump_flow_pct', op: '>', v: 90 }, { p: 'shutdown_bank_pct', op: '>=', v: 98 }, { p: 'plant_mode', op: '<', v: 5 }]),
         { text: 'Start the reactor coolant pumps: press ON on the RCP FLOW card.',
           why: 'A shut-down reactor makes almost no heat, but the running pumps put about half a percent of full power into the water as friction. That is enough to warm the whole plant. Real crews heat up exactly this way, with the reactor never critical.',
-          control: 'RCP Run/Stop', target: 'RCP FLOW above 90 %',
+          control: 'RCP ON/OFF', target: 'RCP FLOW above 90 %',
           cmd: { action: 'set_rcp', running: true }, hold: 30,
           acc: { p: 'pump_flow_pct', op: '>', v: 90 },
           hl: ['RCP Run/Stop'] },
@@ -2169,7 +2169,7 @@
           hl: ['Residual Heat Removal (RHR)', 'Primary Pressure'] },
         { text: 'Press OFF on the RCP FLOW card. Then, on the PRESSURIZER (PZR) card, press OFF under SPRAY.',
           why: 'With RHR circulating, the reactor coolant pumps are only adding heat now. The spray is driven by the pumps, so it does nothing once they stop; switching it off afterwards just tidies the lineup. With the pumps stopped the steam generator drops out of the picture.',
-          control: 'RCP Run/Stop', target: 'RCP FLOW falling; SPRAY OFF lit',
+          control: 'RCP ON/OFF', target: 'RCP FLOW falling; SPRAY OFF lit',
           cmd: { action: 'set_rcp', running: false }, hold: 60,
           accs: [{ p: 'pump_flow_pct', op: '<', v: 50, label: 'Pumps coasting down' },
                  { cmd: { action: 'set_spray', open: false }, label: 'Spray shut' }],
@@ -2295,7 +2295,7 @@
          * see trap 1 in the header. Measured: turbine_tripped at t+1 s, STEAM GENERATOR LEVEL
          * 65 % -> 52.2 % by t+32.5 s and 29.1 % by t+53 s, dry (1.5 %) at t+165 s.
          * Manuals/08 §2. */
-        { text: 'Verify the turbine has tripped and the steam generators are drying out: TURBINE TRIP lit, STEAM GENERATOR LEVEL falling below 55 %.',
+        { text: 'Verify the turbine has tripped and the steam generators are drying out: the TRIP button lit on the TURBINE-GENERATOR card, STEAM GENERATOR LEVEL falling below 55 %.',
           why: 'Main feedwater has stopped, and with nothing carrying heat out of the steam generators the primary has nowhere to put it. The auxiliary feed pumps start by themselves, and on this plant their discharge valves are shut. Pressure now has one way out, the relief valve on top of the pressurizer.',
           /* THE SPIKE IS ALREADY OVER WHEN THIS STEP CHECKS OFF (#670 Phase 3, layman pass S-6).
            * Measured full-stack: PRIMARY PRESSURE peaks 2339 psi at t+5.5 s and reads 2095 psi
@@ -2313,7 +2313,7 @@
            * measurement ride did, which is a second and a half of a 65 %-to-dry slide. Measured
            * at 45 s: 38 %. */
           hold: 45,
-          accs: [{ p: 'turbine_tripped', op: '>', v: 0, label: 'TURBINE TRIP lit' },
+          accs: [{ p: 'turbine_tripped', op: '>', v: 0, label: 'the TURBINE-GENERATOR TRIP button lit' },
                  { p: 'sg_level_pct', op: '<', v: 55, label: 'STEAM GENERATOR LEVEL below 55 %' }],
           hl: ['Turbine Load', 'SG Level'] },
         /* 3 — 04:00:40 / 04:00:45. App. II.1 E6 (PORV, 3 s, 2255 psig) and E7 (trip, 8 s,
@@ -2356,7 +2356,7 @@
            *   1658 psi, and the flow instrument stays EXACTLY zero for 23 s until pressure falls
            *   to 1393 psi at t = 86.5 s — the pump is deadheaded against its own 1389 psi
            *   discharge head, which the ECCS card prints as DISCG. Physical, and nothing said so. */
-          note: 'Two things on the board will look wrong here and are not. PRESSURIZER LEVEL is still falling — about 43 % now, bottoming near 40 %, and it does not start its climb to the top of the scale for another minute. And ECCS FLOW reads 0 GPM with the pump running: it is pushing against a plant still above its own discharge pressure, and flow does not start until PRIMARY PRESSURE falls below about 1390 psi. Compare it with DISCG on the same card.',
+          note: 'Two things on the board will look wrong here and are not. PRESSURIZER LEVEL is FALLING, not climbing — it bottoms near 40 % and only then starts up the scale, so what it reads when you look depends on how long you have been reading. The direction is the point, not the number. And ECCS FLOW reads 0 GPM with the pump running: it is pushing against a plant still above its own discharge pressure, and flow does not start until PRIMARY PRESSURE falls below about 1390 psi. Compare it with DISCG on the same card.',
           story: { clock: '04:02:39',
             saw: 'Pressure dropped through 1600 psi and the emergency injection started on its own.',
             knew: 'Pressurizer level was climbing fast at the same time, which their training said meant the system was filling.',
@@ -2479,7 +2479,7 @@
          * the player wait rather than securing the pumps at ten minutes. Manuals/08 §4. */
         { text: 'Press OFF on the reactor coolant pumps to secure them.',
           crew: true,
-          control: 'RCP Run/Stop', target: 'the pump cavitation alarm clears',
+          control: 'RCP ON/OFF', target: 'the pump cavitation alarm clears',
           why: 'The pumps have been shaking for over an hour because they are pumping steam as much as water, and the loss of suction head is what the vibration is telling them. Securing them is the right answer to a cavitating pump and it also removes the only thing stirring the core. Circulation falls away almost completely afterwards, because the steam in the loops blocks natural circulation.',
           note: 'This board carries one handswitch for the reactor coolant pumps. The crew stopped the loop B pumps at 1 hour 13 minutes and the loop A pumps 28 minutes later; one press here does both.',
           wait_hint: 'PRESSURIZER LEVEL comes off the top of its scale near 65 plant-minutes. That is the reading to wait for before securing the pumps.',
@@ -2502,6 +2502,12 @@
             saw: 'All four pumps off, and the loops going quiet.',
             knew: 'They believed the system was full, because the pressurizer had said so for the better part of an hour.',
             did: 'They kept feeding the steam generators and waited for a picture that made sense.' },
+          /* THE ⏩ LINE IS THE REPLAY'S DWELL, NOT A TIME TO THE CRITERION (#670 operator pass,
+           * S-6). Measured: the replay satisfies this step 1 s in and dwells 1,800 s anyway for
+           * the narrative clock; a player who advanced on the criteria reaches it 756 s in. The
+           * generated "About 30 plant-minutes" is therefore an upper bound on one route and
+           * wrong by 40 × on the other, so the hint says to read the tile before waiting. */
+          wait_hint: 'Read PRESSURIZER LEVEL before you wait — on a plant you have driven yourself it may already be below 50 %.',
           hold: 1800,
           acc: { p: 'pzr_level_pct', op: '<', v: 50 } },
         /* 13 — 06:11:37. App. II.1 E119, "Loop A hot-leg temperature offscale high… TAVE will
@@ -2511,7 +2517,12 @@
          * 140.7 min, 504 of 1,558 samples. Manuals/08 §4. */
         { text: 'Verify SUBCOOLING MARGIN is pegged on the bottom of its scale at -50 °F.',
           why: 'This tile stops at -50 °F: the coolant is further past boiling than the instrument can show. At Three Mile Island the same fact arrived as the loop A hot leg going off the top of its own scale, which this plant cannot reproduce, because its detector reads to 752 °F and the hot leg peaks 120 degrees below that. The pegged number carries the same message — the instrument has run out of scale and the core is uncovering.',
-          note: 'The margin reaches this floor near 57 plant-minutes and sits on it until the relief line is isolated.',
+          note: 'The margin reaches this floor near 57 plant-minutes and sits on it until the relief line is isolated — so it is almost certainly already there when you arrive.',
+          /* NO GENERATED WAIT LINE (#670 operator pass, S-6). `hold` is the REPLAY's dwell, and
+           * this step's acceptance is met on arrival on BOTH routes (measured: satisfied 1 s in,
+           * replay and player alike), so "About 7 plant-minutes at 1×" sent the operator to the
+           * speed bar for a step that was already done. */
+          wait_hint: false,
           story: { clock: '06:11:37',
             saw: 'The loop A hot leg read off the top of its scale, so the average coolant temperature could not be shown correctly.',
             knew: 'Instruments were reading past their limits and the printer was hours behind.',
@@ -2550,7 +2561,7 @@
            * shut 06:18, reopened 07:12, shut near 07:27-07:30, reopened 07:41 — and 07:56 is a
            * SAFETY INJECTION ACTUATION, not a closure. */
           note: 'One click shuts this valve and a second click opens it again, so click once. The crew reopened it at 3 hours 12 minutes, shut it again near 3 hours 27 minutes and reopened it at 3 hours 41 minutes; the 07:56 event was a safety injection actuation, not another closure. This walkthrough closes it once and tells the rest.',
-          wait_hint: 'Watch the tailpipe temperature come down. This hour is the quietest of the run and the plant holds 600× right through it.',
+          wait_hint: 'Watch the tailpipe temperature come down. Shutting this valve is what turns pressure round, so this is the fastest pressure moves all run and WARP will refuse it or drop out of it — the line under the speed bar names the rate. Use 60×.',
           story: { clock: '06:18:37',
             saw: 'The relief line discharge running about 30 degrees hotter than the safety valve discharge lines.',
             knew: 'A relieving shift supervisor set the pressurizer level aside and read the temperatures instead. His conclusion was that the relief valve was leaking.',
@@ -2567,7 +2578,7 @@
         { text: 'Press START on the ECCS card to put high-pressure injection back in.',
           control: 'ECCS', target: 'SUBCOOLING MARGIN back above 10 °F',
           why: 'Injection is the only thing that puts water back, and the margin is what says whether it is working: it leaves its floor within minutes and climbs back through zero about 22 plant-minutes later. The crew did not sustain it — the borated water tank alarmed low, so they rationed injection and stopped the pump again 17 minutes after starting it. Here it stays in, and the coolant becomes water again.',
-          wait_hint: 'The margin takes about 22 plant-minutes to climb back through zero. Watch SUBCOOLING MARGIN, not the pressure. Refilling a hot plant swings pressure hard, so 600× will drop back to 60× partway through — press it again when it does.',
+          wait_hint: 'Watch SUBCOOLING MARGIN, not the pressure. It leaves the floor within minutes; how long it then takes to reach +10 °F depends on how much water is left when you start — measured between 30 plant-minutes and 70. If 600× drops back to 60× on a pressure swing, press it again.',
           story: { clock: '07:20:37',
             saw: 'Pressure low enough to justify starting the emergency systems by hand.',
             knew: 'The tank the injection water comes from had alarmed low, so injection felt like something to spend carefully.',
@@ -2582,7 +2593,7 @@
          * in the `why`: measured peak fuel temperature this ride is 1297 °F and the core reaches
          * 94 % uncovered without the cladding heating as a real one did. Manuals/08 §6. */
         { text: 'Press ON for the reactor coolant pumps to restore forced circulation.',
-          control: 'RCP Run/Stop', target: 'RCP FLOW back above 80 %',
+          control: 'RCP ON/OFF', target: 'RCP FLOW back above 80 %',
           why: 'Forced flow returns within 40 seconds and the margin and the inventory recover with it, which is where this plant ends the story. What it cannot show is the rest: fuel damage, the radiation alarms at 2 hours 45 minutes and the hydrogen burn at 9 hours 50 minutes are outside this model and are told here rather than run. The size of that gap is on the fuel temperature: uncovering 94 % of this core never gets the fuel hotter than it runs at full power — 1130 °F at its worst, against 1298 °F before the trip — where the real one went far past 2500 °F.',
           note: 'Core damage, containment radiation and the hydrogen burn are not modelled on this plant. Everything up to this step was.',
           story: { clock: '19:50:37',

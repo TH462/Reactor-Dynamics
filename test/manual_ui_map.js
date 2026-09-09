@@ -5,7 +5,9 @@
  * hand copy of `ui/app.js` PD[].controls, and by 2026-07-31 they were a copy of a display
  * that no longer exists: the PWR plant display is the learning BOARD, with no view bar, and
  * app.js resolves a control through `RD.PwrBoard.revealControl`. Nine labels the authored
- * procedures use — `RCP Run/Stop`, `Dump SP`, `Pressure SP`, `Accumulator valve`,
+ * procedures use — `RCP ON/OFF` (renamed from `RCP Run/Stop` at #670's operator pass: the
+ * board engraves ON and OFF and prints "Run/Stop" nowhere), `Dump SP`, `Pressure SP`,
+ * `Accumulator valve`,
  * `Trip Blocks`, `Boron control`, `1/M Plot`, `Turbine — Connect Grid`, `Rod AUTO` — were
  * absent from the copy while being perfectly reachable on the board, so the copy could only
  * ever produce false failures. `pwrLabels()` reads the board's own `CONTROL_LABEL_MAP`
@@ -103,7 +105,7 @@ var STEP_UI = {
    * verify_manual_follow still walks the pwr profile only — these rows are the STATIC
    * gate's coverage, not the browser gate's. */
   'pwr2:pwr_heatup': [
-    { i: 1, view: 'board', control: 'RCP Run/Stop' },
+    { i: 1, view: 'board', control: 'RCP ON/OFF' },
     { i: 2, view: 'board', control: 'Shutdown Bank' },
     { i: 3, view: 'board', control: 'Turbine Load' },
     { i: 4, view: 'board', control: 'Feed Pumps' },
@@ -197,7 +199,7 @@ var STEP_UI = {
     { i: 6, view: 'board', control: 'Pressurizer Spray (PZR)' },
     { i: 7, view: 'board', control: 'Accumulator valve' },
     { i: 9, view: 'board', control: 'Residual Heat Removal (RHR)' },
-    { i: 10, view: 'board', control: 'RCP Run/Stop' },
+    { i: 10, view: 'board', control: 'RCP ON/OFF' },
     { i: 11, view: 'board', control: 'Residual Heat Removal (RHR)' },
   ],
   /* THE TMI-2 INCIDENT WALKTHROUGH (#670 Phase 2). Its own block, appended — the six cycle
@@ -208,10 +210,10 @@ var STEP_UI = {
     { i: 5, view: 'board', control: 'Trip Blocks' },        // 04:03:50 — bypass the SI signal
     { i: 6, view: 'board', control: 'ECCS' },               // 04:05:07 — throttle injection
     { i: 9, view: 'board', control: 'AFW' },                // 04:08:37 — the found block valves
-    { i: 10, view: 'board', control: 'RCP Run/Stop' },      // 05:13:37 — secure the pumps
+    { i: 10, view: 'board', control: 'RCP ON/OFF' },        // 05:13:37 — secure the pumps
     { i: 13, view: 'board', control: 'PORV Block Valve' },  // 06:18:37 — the first correct move
     { i: 14, view: 'board', control: 'ECCS' },              // 07:20:37 — injection restored
-    { i: 15, view: 'board', control: 'RCP Run/Stop' },      // 19:50:37 — the epilogue restart
+    { i: 15, view: 'board', control: 'RCP ON/OFF' },        // 19:50:37 — the epilogue restart
   ],
   pwr_startup: [
     { i: 2,  view: 'board', control: 'Feed Pumps' },
@@ -238,7 +240,7 @@ var STEP_UI = {
   // "pill X != STEP_UI Y" mismatches plus one unmapped tail step; a cascade shaped like
   // that is an INSERTION, not six independent errors. Renumber, do not re-derive.
   pwr_heatup: [
-    { i: 1,  view: 'board', control: 'RCP Run/Stop' },
+    { i: 1,  view: 'board', control: 'RCP ON/OFF' },
     { i: 2,  view: 'board', control: 'Shutdown Bank' },
     { i: 3,  view: 'board', control: 'Turbine Load' },
     { i: 4,  view: 'board', control: 'Feed Pumps' },
@@ -263,7 +265,7 @@ var STEP_UI = {
     { i: 10, view: 'board', control: 'Dump SP' },
     { i: 11, view: 'board', control: 'Residual Heat Removal (RHR)' },
     { i: 12, view: 'board', control: 'Residual Heat Removal (RHR)' },
-    { i: 13, view: 'board', control: 'RCP Run/Stop' },
+    { i: 13, view: 'board', control: 'RCP ON/OFF' },
     { i: 14, view: 'board', control: 'Residual Heat Removal (RHR)' },
   ],
   pwr_raise_power: [{ i: 0, view: 'primary', control: 'Rod Speed' }, { i: 1, view: 'secondary', control: 'Turbine Load' }],

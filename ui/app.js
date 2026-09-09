@@ -3903,11 +3903,14 @@
             if (en.hidden) continue;
             var enTxt = en.label ? en.label : (en.p ? fmtPredicate(en) : mesc(en.cmd || ''));
             h += '<div class="ckl-crit' + (av.met ? ' ckl-crit-met' : '') + '">' +
-              (av.met ? '✓ ' : '○ ') + (en.label ? mesc(enTxt) : enTxt) + '</div>';
+              /* mesc UNCONDITIONALLY (#670 operator pass, S-5): since OPSYM prints a strict
+               * '<' / '>' rather than ≤ / ≥, fmtPredicate's output carries MARKUP characters
+               * and an unescaped insert would swallow the rest of the line as a tag. */
+              (av.met ? '✓ ' : '○ ') + mesc(enTxt) + '</div>';
           }
         } else if (st.acc) {
           h += '<div class="ckl-crit' + (ck.acc_met ? ' ckl-crit-met' : '') + '">' +
-            (ck.acc_met ? '✓ ' : '○ ') + 'When ' + fmtPredicate(st.acc) + '</div>';
+            (ck.acc_met ? '✓ ' : '○ ') + 'When ' + mesc(fmtPredicate(st.acc)) + '</div>';
         }
         var isObs = st.control && /^\(observe/i.test(st.control);
         if (isObs) {
@@ -3953,7 +3956,7 @@
            * is not there. */
           var rung = RD.CklSpeedHint(holdS);
           h += '<div class="ckl-sub ckl-wait">⏩ About ' + span + ' at 1× — set the speed control to <b>' +
-            rung.speed + '×</b>' + (rung.warp ? ' (WARP; the plant must be quiet to take it — if it is refused, press Ack All on the ALARMS panel and try again, or use 60×)' : '') + '.' +
+            rung.speed + '×</b>' + (rung.warp ? ' (WARP; the plant must be quiet to take it. The line under the speed bar says why it was refused or dropped — a new alarm clears with Ack All, but pressure or power moving is a rate and only settles with time, so use 60×)' : '') + '.' +
             (typeof st.wait_hint === 'string' ? ' ' + mesc(st.wait_hint) : '') + '</div>';
           waitLineShown = true;
         }
@@ -5062,7 +5065,7 @@
     if (st.acc) {
       var met = !!f.acc_met;   // graded by the Instructor — instruments first (HR1)
       var via = f.graded_by === 'instrument' ? 'reading the instrument' : f.graded_by === 'true_state' ? 'no instrument twin — true value' : null;
-      acc = '<div class="m-note">✓ when ' + mesc(st.acc.p) + ' ' + (OPSYM[st.acc.op] || st.acc.op) + ' ' + mesc(st.acc.v) +
+      acc = '<div class="m-note">✓ when ' + mesc(st.acc.p) + ' ' + mesc(OPSYM[st.acc.op] || st.acc.op) + ' ' + mesc(st.acc.v) +
         (met ? ' <span style="color:var(--running)">✓ met</span>' : ' <span class="muted">…not yet</span>') +
         (via ? ' <span class="muted">· ' + via + '</span>' : '') + '</div>';
     }
@@ -8447,7 +8450,13 @@
    * indications. `manualRef()` fifty lines up has carried the fallback since it was written;
    * this one was the copy that did not. */
   function manualProfile() { return (RD.MANUAL || {})[ui.engineKey] || (RD.MANUAL || {})[ui.plant] || null; }
-  var OPSYM = { '>': '≥', '<': '≤', '>=': '≥', '<=': '≤', '~': '≈' };   // acceptance display
+  /* STRICT IS PRINTED STRICT (#670 operator pass, S-5). '>' and '<' used to print ≥ and ≤,
+   * which is an epsilon's difference everywhere except on the boundary — and the tiles round to
+   * whole units, so the boundary is exactly where a player looks. Measured on the TMI leg: step
+   * 12's acceptance is `pzr_level_pct < 50`, PRESSURIZER LEVEL read 50 on the tile, the printed
+   * criterion said "≤ 50 %", and the check correctly stayed open. The reviewer read that as a
+   * broken check. The comparison in the instructor is strict; the line now says so. */
+  var OPSYM = { '>': '>', '<': '<', '>=': '≥', '<=': '≤', '~': '≈' };   // acceptance display
   // Dimension of a dimensioned instrument-id / true_state field so the manual
   // converts to the active unit setting (US/SI) like the board. Everything else
   // (%, normalized, rods, MWe, RPM, cal/g/s) is unit-neutral and shown as-is.
@@ -8556,8 +8565,8 @@
     var meta = [];
     if (st.control) meta.push('<span class="m-pill">' + mesc(st.control) + '</span>');
     if (st.target) meta.push('<span class="m-target">Target: ' + mesc(st.target) + '</span>');
-    if (st.acc) meta.push('<span class="m-acc">✓ when ' + mesc(st.acc.p) + ' ' + (OPSYM[st.acc.op] || st.acc.op) + ' ' + mesc(st.acc.v) + '</span>');
-    if (st.saw) meta.push('<span class="m-acc">✓ observe ' + mesc(st.saw.p) + ' ' + (OPSYM[st.saw.op] || st.saw.op) + ' ' + mesc(st.saw.v) + '</span>');
+    if (st.acc) meta.push('<span class="m-acc">✓ when ' + mesc(st.acc.p) + ' ' + mesc(OPSYM[st.acc.op] || st.acc.op) + ' ' + mesc(st.acc.v) + '</span>');
+    if (st.saw) meta.push('<span class="m-acc">✓ observe ' + mesc(st.saw.p) + ' ' + mesc(OPSYM[st.saw.op] || st.saw.op) + ' ' + mesc(st.saw.v) + '</span>');
     if (meta.length) h += '<div class="m-meta">' + meta.join(' ') + '</div>';
     if (st.note) h += '<div class="m-note">' + mesc(st.note) + '</div>';
     return h + '</div></div>';

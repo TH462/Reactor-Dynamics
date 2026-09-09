@@ -3034,7 +3034,14 @@
      * art and not the ON/OFF card the operator actually presses (`imrsjyqoq6t`, inspect
      * name RCP Control). 'Reactor Coolant Pumps (RCP)' stays on the pump for watch-the-
      * flow steps; this alias is the control. */
-    'Boron control': 'imrmtlyf64y', 'RCP Run/Stop': 'imrsjyqoq6t', 'Dump SP': 'imrop5ouw7h',
+    /* 'RCP ON/OFF' IS THE PLAYER-FACING NAME (#670 operator pass, S-8). The card's buttons are
+     * engraved ON and OFF and its inspect name is "RCP Control"; "Run/Stop" is on no label on
+     * this board in any state (measured: 0 occurrences of "Run/Stop" in the page's text). It
+     * stayed a highlight alias because six steps' `hl` arrays name it, and `st.control` is
+     * PRINTED to the player as "Use <control>" (ui/app.js), which is how an internal vocabulary
+     * key became an instruction. Both keys point at the card; only the printed one changed. */
+    'Boron control': 'imrmtlyf64y', 'RCP Run/Stop': 'imrsjyqoq6t', 'RCP ON/OFF': 'imrsjyqoq6t',
+    'Dump SP': 'imrop5ouw7h',
     // ADV (#371) — both names point at the card, so highlighting either lights the
     // whole group, the same way 'Dump SP' points at the STEAM DUMP card above.
     // The ATMOS DUMP card is AUTHORED now (#371) — the driver-injected box it replaced

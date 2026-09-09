@@ -167,8 +167,8 @@
   <details class="log-entry" open>
     <summary class="log-head">
       <h2>Checklists rewritten to the board's own words, nuclear instrumentation card closed up, and a startup checklist that could not be finished</h2>
-      <span class="log-ver mono">Alpha 1.7.4-rc6</span>
-      <time class="log-date mono" datetime="2026-09-08">8 September 2026</time>
+      <span class="log-ver mono">Alpha 1.7.4-rc7</span>
+      <time class="log-date mono" datetime="2026-09-09">9 September 2026</time>
     </summary>
     <ul>
       <li><span class="log-tag fixed">Fixed</span><strong>Two System Scanner cards described the plant wrongly.</strong> The PORV block valve&rsquo;s card claimed a two-press confirm; the symbol is a plain toggle, so a second click reopens what the first one shut. The relief line&rsquo;s card put a seated valve near 180&nbsp;&deg;F; on this plant it sits at 122&nbsp;&deg;F, which is what makes a hot tailpipe worth reading.</li>
@@ -188,6 +188,8 @@
       <li><span class="log-tag changed">Changed</span><strong>The NUC INSTR card no longer has a hole in it.</strong> The gap left by the removed SR DET and 1/M PLOT buttons is gone: the six readouts are re-spaced into three even rows, captions centred, values level.</li>
       <li><span class="log-tag fixed">Fixed</span><strong>The Mode 3 → Mode 1 checklist no longer locks on a 1/M step if you overshoot.</strong> Once the source range de-energizes (above 100,000 cps) a point cannot be plotted; the remaining plot steps now check off as "overtaken", the instructor says why, and the checklist moves to the criticality step. The 1/M tool's refusal says the same.</li>
       <li><span class="log-tag fixed">Fixed</span><strong>The "Not applicable in Mode N" banner's detail line reads in plain units.</strong> It printed internal names and Celsius-only values; it now reads like the step criteria, US-first.</li>
+      <li><span class="log-tag fixed">Fixed</span><strong>The trip-block panel could swallow a click meant for the board.</strong> When a blocked trip&rsquo;s setpoint is crossed its row prints a long warning, and the panel grew 125&nbsp;px wider onto the diagram &mdash; far enough to cover the relief line&rsquo;s block valve, with the RELEASE button landing on top of it. The panel no longer grows past its own corner of the board.</li>
+      <li><span class="log-tag fixed">Fixed</span><strong>Walkthrough &ldquo;done when&rdquo; lines and speed hints say what the plant does.</strong> A criterion that means <em>below</em> printed &ldquo;&le;&rdquo;, so a tile reading exactly the limit looked satisfied while the check correctly held. The TMI-2 walkthrough&rsquo;s speed advice was written from the replay&rsquo;s pace and had the two long steps the wrong way round; its step&nbsp;5 note now describes which way the pressurizer is moving rather than a number that is true for one instant. Steps name the TRIP button and the reactor coolant pumps&rsquo; ON/OFF as the board engraves them.</li>
     </ul>
   </details>
 

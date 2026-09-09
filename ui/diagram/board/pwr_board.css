@@ -213,8 +213,22 @@
 .bd-readout .bd-unit { color: #7f96a8; margin-left: -0.18em; }
 
 /* ---- popover menus (TRIP BLOCKS etc.) ---- */
+/* MAX-WIDTH IS LOAD-BEARING, NOT COSMETIC (#670 operator pass, S-1). The popover is
+   shrink-to-fit, and one row's caption is 90 characters when a blocked trip arms for release
+   ("RELEASING THIS WILL TRIP THE REACTOR NOW - the setpoint is crossed. Press again to
+   confirm.", pwr_board_wiring.js tripBlockRows). MEASURED at 1600x1000: the panel goes
+   393.9 -> 519.0 rendered px on that one caption, its right edge 440.0 -> 565.0, and it then
+   covers the PORV block valve's own hit circle (rendered x 466.7-506.9, y 183.2-223.3) -
+   `document.elementFromPoint` at the valve centre returns the panel's row, so the click is
+   swallowed while the System Scanner still hovers the valve THROUGH the overlay. The RELEASE?
+   button lands at x 488-555, y 220-237 and OVERLAPS the valve, so a player hunting for the
+   valve is one slip from a press that trips the reactor. AFTER: the armed panel measures
+   405.5 rendered px, right edge 451.5, 15.2 px clear, and elementFromPoint at the valve centre
+   returns `circle.vlv-hit` in BOTH states. The unarmed panel is 447 CSS px and is UNCHANGED
+   (393.9 rendered) - only the armed caption wraps, which it can because `.sub` is already
+   white-space: normal. Raising this number puts the panel back on the board. */
 .bd-pop {
-  position: absolute; z-index: 40; min-width: 240px;
+  position: absolute; z-index: 40; min-width: 240px; max-width: 460px;
   background: #0e1620; border: 1px solid #3a4c58; border-radius: 8px;
   box-shadow: 0 6px 24px rgba(0, 0, 0, 0.6); padding: 10px;
   font-family: "IBM Plex Mono", ui-monospace, "Cascadia Mono", Consolas, monospace;

@@ -29,6 +29,111 @@ and the user-visible summary in `CHANGELOG.md`. This file points at those and tr
 
 ---
 
+## Session log — 2026-09-09-develop-c (#670 Phase 3, the OPERATOR playthrough of the TMI-2 walkthrough — verified, and two of the layman wave's own numbers were the replay's route)
+
+### #670 Phase 3 (operator pass) — the same leg, a licensed-operator persona: 6 confirmed, 2 narrowed, 0 refuted — and TWO of the layman wave's own fixes were measuring the wrong route
+
+A second fresh-context agent, no repo access, played `pwr_tmi2_incident` end to end in headless
+Edge as an operator who knows Tavg, subcooling and 1/M and does not know this board. **16 of 16
+steps.** Report: `Diagnostic/CHECKLIST_PLAYTEST_2026-09-09_OPERATOR_TMI.md`, with a
+`Measured:` / `Verdict:` pair under every stuck point. **Nothing was fixed before it was
+re-measured**, and the pass's value is concentrated in one trap.
+
+**THE TRAP, and it is the one to carry: A REPLAY'S FIXED HOLDS PUT THE PLANT SOMEWHERE THE PLAYER
+NEVER STANDS, SO A NUMBER MEASURED THROUGH `run_checklist_pwr2` IS NOT A NUMBER ABOUT THE STEP.**
+The replay ticks each step's `hold`; a player presses Continue the instant the acceptance is met.
+Driven full-stack from one initial condition on both routes, they arrive at step 14 **3,998
+sim-seconds apart** — replay **t = 8,279 s with the pressurizer at 25.0 % and 647 psi**, player
+**t = 4,281 s at 44.8 % and 636 psi**, i.e. 66 plant-minutes of decay heat and 20 points of
+inventory apart. Closing the block valve then recovers the same ~350 psi in **188 s on the
+player's plant and 3,720 s on the replay's**, peak |dP/dt| over one-second spans **0.236 against
+0.015 MPa/s (34 against 2 psi/s), 16×**, the player's sitting at **84 % of
+`RAPID_P_MPA_PER_S = 0.28` (40.6 psi/s)**. Phase 3 measured step 14 holding WARP *"3720 of 3720
+sim-seconds, zero drops, achieved 2217×"* and **kept the 600× hint on that basis**; the operator
+read `#warpInfo` saying "pressure moving 44/53/55/56 psi/s" for the whole step. Both are correct
+measurements of different plants. Step 15 is the same trap with the sign flipped: **81 of 3,669
+samples over the lockout on the REPLAY's route (peak 0.580 MPa/s / 84 psi/s) against 2 of 4,203
+on the player's**, and its hint warns of a drop the player never gets. **Steps 14 and 15 are one
+defect with two faces, and the face you see depends on which route you measured.**
+
+**The same trap under S-4, one layer down.** Phase 3 *added* step 5's note from a measurement of
+"43.1 % falling, flow 0 for 23 s" — that is the **replay's** step-5 entry (re-measured here at
+**40.5 % at t = 95.5 s**). The player enters at **t = 69 s at 56.1 % and falling**; flow first
+moves at **t ≈ 108 s / 1,266 psi**; and a player who reads the step before looking at the tile is
+at **t ≈ 150 s, where the board reads ≈ 55 % and RISING with ~41 GPM at 1,088 psi** — which is
+exactly what the operator reported and filed as the note being wrong. It is not wrong about the
+physics; it names an **instantaneous value on a step whose arrival instant moves by 80
+plant-seconds** depending on how fast the player reads. Written to the direction of travel now.
+**Corollary for authoring: a note that quotes a number is a note pinned to one instant of one
+route. Quote the DIRECTION, or quote the number the acceptance grades.**
+
+**The blocking one, and its cause was wrong in the useful direction — the panel does not sit over
+the valve, it GROWS onto it.** The layman pass had reported the TRIP BLOCKS panel "sitting over
+the board until pressed again" and Phase 3 answered it by adding *text* saying so. The operator
+says the overlay **swallows the click**, and it does — conditionally. Measured at 1600×1000 with
+`document.elementFromPoint` over the block valve's own hit circle (`circle.vlv-hit`, rendered
+x 466.7–506.9, y 183.2–223.3): **unarmed the panel is 393.9 px wide, right edge 440.0, 26.7 px
+clear, and the hit test returns `circle.vlv-hit`** — free play is fine and always was. The
+popover is shrink-to-fit, and when a blocked row arms for release its caption becomes the
+90-character *"RELEASING THIS WILL TRIP THE REACTOR NOW — the setpoint is crossed. Press again to
+confirm."*; the panel then measures **519.0 px, right edge 565.0**, and the hit test returns
+**`DIV.bd-pop-row`**. The `RELEASE?` button lands **x 488–555, y 220–237 and OVERLAPS the valve's
+hit circle** — the operator's "about 17 px away" is generous. `.bd-pop` capped at
+`max-width: 460px`: armed panel **519.0 → 405.5 px**, 15.2 px clear, `circle.vlv-hit` in both
+states. **Gated by `testTripBlockPopoverStaysOffTheBoard` in `verify_e2e_ui`, asserting the
+EFFECT** (a hit test at the valve) rather than the CSS declaration — a "`.bd-pop` has a
+max-width" check would pass on any number, including one that puts the panel back on the board.
+Injection-verified: with the cap removed it reports 475.6 px and `bd-pop-row`, and reds.
+
+**A strict acceptance had been printing as an inclusive one, everywhere, for as long as there
+have been checklists.** `OPSYM` mapped `'<'` → `≤` and `'>'` → `≥`. Step 12's acceptance is
+`pzr_level_pct < 50` and the line drew "PRESSURIZER LEVEL ≤ 50 %"; the tile rounds to whole
+percent, so the operator watched it read exactly **50** with the criterion still `○` and
+concluded the check was broken. **An epsilon's difference everywhere except on the boundary — and
+the rounding puts the player on the boundary.** Now prints `<` and `>`, which are markup: three
+insertion sites that had been writing `fmtPredicate`'s output raw are escaped, or the `<` would
+have swallowed the rest of the line as a tag. Verified rendered: `✓ When REACTOR POWER > 90 %`.
+
+**Two more, both wording, both the same shape — an internal string reaching the player.** The
+⏩ line's WARP remedy said *"press Ack All on the ALARMS panel and try again"*; `_warpBlocked()`
+refuses on a power/pressure RATE, `model_held`, or the Courant limit and **has no alarm term at
+all**, so Ack All cannot lift a refusal (an alarm only *drops* WARP, and only on a board that was
+quiet). And `'RCP Run/Stop'` is a key in the board's **highlight vocabulary**, whose card is
+engraved `ON` and `OFF` — measured, "Run/Stop" occurs **0 times** in the board's text in any
+state, as does "TURBINE TRIP" — while `st.control` is *printed* to the player as
+"Use ‹control›". Six steps across four legs said it. Renamed to `RCP ON/OFF` with the old key
+kept as an alias so nothing stops glowing; `run_manual_controls` caught the `STEP_UI` half on the
+first run (6 reds) and is back to 590/590.
+
+**And the ⏩ estimate itself is a dwell, not a wait.** Step 12 holds 1,800 s and the **replay
+satisfies its acceptance 1 s in**, dwelling the rest for the narrative clock; a player reached it
+in 756 s. Step 13 holds 420 s and is met 1 s in on both routes — so "About 7 plant-minutes at 1×"
+sent an operator to the speed bar for a step already done. Step 13's generated line is suppressed
+(`wait_hint: false`); step 12 says to read the tile before waiting. **Narrowed, not confirmed**:
+the reviewer called it "wrong by two orders of magnitude", and it is not a magnitude error at all
+— the number is a different quantity from the one the line implies.
+
+**One claim NOT settled, and left that way.** The reviewer reported that a declined 600× press
+gives no acknowledgement because the refusal and the drop share one past-tense string. They do
+not: `SPEED_SNAP_MSG` maps `warp_locked` → "WARP unavailable — " and `transient` → "WARP dropped
+to 60× — ", and the speed handler clears the previous note before dispatching. The string the
+operator saw is the DROP one, which would mean the press was accepted and the in-loop watch threw
+WARP out again — but **the headless harness does not reproduce it**: driven to the player's
+step-14 state and pressed 40 times across the step, `_warpBlocked()` returned null every time,
+every press landed at 600×, and there were **0 refusals and 0 drops**, the whole 636 → 973 psi
+recovery falling inside a single WARP tick. Whatever the browser is doing lives in its broadcast
+pacing, which this harness has not got. **No `Measured:` line settles it, so no fix was made** —
+the alternative was to ship a plausible diagnosis, which is the failure this whole skill exists
+to prevent.
+
+**Gates.** `run_style` 10/10 · `run_manual_controls` 590/590 · `run_manual_units` 0 failed ·
+`run_checklist` 78/78 · `run_checklist_pwr2` 178/178 · `run_inspect` 56/56 ·
+`verify_board_check` 245 · `verify_ckl_relevance` 17/17 · `verify_e2e_ui` PASS (one new check,
+injection-verified) · `run_release` 29/29. No baseline moved: the new `verify_e2e_ui` check
+rides inside a PASS/FAIL runner scored on screenshots.
+
+---
+
 ## Session log — 2026-09-09-develop-b (#674 merged into develop — and the check that was green in one working tree and red in another)
 
 **The merge itself was uneventful:** `workbench` 646878d1 into `develop` c3065869, one

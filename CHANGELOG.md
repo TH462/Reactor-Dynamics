@@ -616,7 +616,69 @@ stays steady (power within 5 points of rated, pressure drift under 0.2 MPa / 29 
 meet within one broadcast of the window end, and a planted 1e-6 difference is seen by `compare()`.
 Four injections, one per conjunct, each proven to redden SI-0 alone. No baseline moves (8 checks).
 
-## [Alpha 1.7.4-rc6] — 2026-09-08
+## [Alpha 1.7.4-rc7] — 2026-09-09
+
+### Fixed (#670 Phase 3 — the OPERATOR playthrough of the TMI-2 walkthrough, verified)
+
+A second fresh-context pass over `pwr_tmi2_incident`, this one as a licensed operator on a board
+it had never seen. **16 of 16 steps, eight stuck points, all eight re-measured before anything
+was touched: six confirmed, two narrowed, none refuted.** Report and the per-finding
+`Measured:` / `Verdict:` pairs: `Diagnostic/CHECKLIST_PLAYTEST_2026-09-09_OPERATOR_TMI.md`.
+
+- **The TRIP BLOCKS popover grew onto the board and swallowed the step-14 click.** It is
+  shrink-to-fit, and one caption is 90 characters — *"RELEASING THIS WILL TRIP THE REACTOR NOW
+  — the setpoint is crossed. Press again to confirm."*, printed once a blocked trip's setpoint is
+  crossed. Measured at 1600×1000: **393.9 → 519.0 rendered px, right edge 440.0 → 565.0**, and
+  `elementFromPoint` at the PORV block valve's own hit circle (x 466.7–506.9) then returns the
+  panel's row — while the System Scanner still names the valve *through* the overlay. The
+  `RELEASE?` button landed x 488–555, **overlapping the valve**, so a player hunting for it was
+  one slip from a press that trips the reactor. `.bd-pop` capped at `max-width: 460px`: armed
+  panel **405.5 px**, 15.2 px clear, valve hit-tests in both states, unarmed panel unchanged.
+  Gated in `verify_e2e_ui` (`testTripBlockPopoverStaysOffTheBoard`) and injection-verified —
+  without the cap it reports 475.6 px and `bd-pop-row`, and reds.
+- **Both of the TMI leg's long-step speed hints were written from the REPLAY's route, and on the
+  player's route each is the opposite of what happens.** The replay ticks fixed `hold` dwells;
+  a player advances the instant the acceptance is met, and the two plants are not the same at
+  step 14: replay **t = 8,279 s, pressurizer 25.0 %**; player **t = 4,281 s, 44.8 %** — 66
+  plant-minutes and 20 points of inventory apart. Closing the block valve then recovers the same
+  350 psi in **188 s (player) against 3,720 s (replay)**, peak |dP/dt| **0.236 against 0.015
+  MPa/s (34 against 2 psi/s)**, the player's being 84 % of `RAPID_P_MPA_PER_S = 0.28`. Step 15 is
+  the mirror: **81 of 3,669 samples over the lockout on the replay's route (peak 0.580 MPa/s /
+  84 psi/s) against 2 of 4,203 on the player's.** So step 14 promised a quiet hour and gives the
+  run's fastest pressure, and step 15 warned of a swing that a player does not get. **This
+  refutes the basis of #670 Phase 3's own decision to keep the 600× hint** — its "3720 of 3720
+  sim-seconds, zero drops, 2217×" is a correct measurement of the replay.
+- **Step 5's note named an instantaneous value on a step whose arrival instant moves 80
+  plant-seconds.** Phase 3 wrote "about 43 % now" from the replay's step-5 entry (measured
+  **40.5 % at t = 95.5 s**); a player enters at **t = 69 s at 56.1 % falling**, and one who reads
+  the step first looks at **t ≈ 150 s, where the board is back through 55 % and RISING with
+  ~41 GPM**. The note now gives the direction of travel.
+- **A strict acceptance printed as an inclusive one.** `OPSYM` mapped `'<'`→`≤` and `'>'`→`≥`,
+  so step 12's `pzr_level_pct < 50` drew "PRESSURIZER LEVEL ≤ 50 %" while the instructor held
+  strictly — and the tile rounds to whole percent, so the boundary is exactly where the player
+  looks. Now prints `<` and `>`; every previously-unescaped insertion of the criteria line is
+  escaped, or the `<` would swallow the rest of the line as a tag.
+- **The ⏩ line's WARP remedy named the one control that cannot help.** `_warpBlocked()` refuses
+  on a power/pressure RATE, `model_held`, or the loop's Courant limit — **it has no alarm term at
+  all** — so Ack All cannot lift a refusal; an alarm only ever *drops* WARP, on a board that was
+  quiet. The line now names both branches.
+- **The ⏩ estimate is the replay's DWELL, not a time to the criterion.** Step 12 holds 1,800 s
+  and the replay satisfies it **1 s in**, dwelling the other 1,799 s for the narrative clock; a
+  player reached it in 756 s. Step 13 holds 420 s and is met 1 s in on both routes — its
+  generated line is suppressed (`wait_hint: false`), and step 12 now says to read the tile first.
+- **Two words the board does not print.** "TURBINE TRIP" occurs **0 times** in the board's text
+  and "Run/Stop" **0 times** in any state: `'RCP Run/Stop'` is a key in the highlight vocabulary
+  whose card is engraved `ON` / `OFF`, and `st.control` is *printed* to the player as
+  "Use ‹control›". Step 2 names the TRIP button on the TURBINE-GENERATOR card; the printed
+  control is `RCP ON/OFF` in all six steps that used it (old key kept as a highlight alias).
+  `run_manual_controls` caught the `STEP_UI` half on the first run and is back to 590/590.
+- **NOT settled, deliberately:** the reviewer's report that a *declined* 600× press gives no
+  acknowledgement. The two paths do carry different strings (`warp_locked` → "WARP unavailable",
+  `transient` → "WARP dropped to 60×") and the button handler clears the previous note before
+  dispatching — but the headless harness does not reproduce the drop at all: 40 presses across
+  the player's step 14 gave **0 refusals and 0 drops**, the whole recovery falling inside one
+  WARP tick. Filed as an observation with no diagnosis attached.
+
 
 ### Added (process: the layman playthrough is a skill — #653/#660)
 
