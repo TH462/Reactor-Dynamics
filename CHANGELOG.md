@@ -30,6 +30,86 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
 
 ## [Unreleased]
 
+### Added (walkthrough usage telemetry, and a Feature usage page on the ops dashboard — #674)
+
+*(OWNER, 2026-09-09: "I need to update my telemetry site for tracking usage of the walk-throughs.
+I'd like to be able to figure out if people get stuck on one or how far they go and get bored. Can
+you create a page to track usage of these features and move some of the feature tracking from the
+statistics page on the tracking site to this new feature tracking page.")* Depth and scope were
+ruled with the request: FULL — step funnel, time-on-step and rewinds — and the whole *In the
+simulator* block moves.
+
+**The walkthroughs emitted nothing at all.** `startChecklist(id)` issued `start_checklist` to the
+service and no event followed it, and the `mission_*` events fire only on the old `start_scenario`
+path — so a leg nobody finishes and a leg everybody finishes were the same page. Four events now
+report a run, emitted from the existing `TEL.tick(s)` off `s.instructor.checklist`, which is the
+only complete account of one: `walkthrough_start` (id, steps), `walkthrough_step` (id, step,
+seconds, by), `walkthrough_rewind` (id, step) and `walkthrough_end` (id, step, steps, seconds,
+reason: complete/stopped/switched/left). `by` is the instructor's OWN verdict rather than an
+inference — `overtaken` (the plant moved past a step the player could no longer satisfy) and
+`caught_up` (the step was already true on arrival) are the direct stuck-signals, and neither is
+visible in a count.
+
+**The retention constraint is what shaped the design, not a detail.** Analytics Engine keeps three
+months; the daily rollup is what survives, and `usage_daily` keys on
+`[day, channel, release, event, key_str, plant]` with **no numeric columns**. So anything that must
+outlive retention has to ride in the key string — hence `pwr_tmi2_incident:07:overtaken` and
+`pwr_tmi2_incident:complete`, which buys the drop-off funnel, the by-verdict mix and the completion
+rate a permanent home for free. **Time-on-step cannot follow**: it is a double, it is
+Analytics-Engine-only, and the page says so under the table rather than letting a reader draw a
+trend off a window that silently truncates. A numeric part of a key is zero-padded to two digits
+because the rollup stores it as TEXT — step 9 sorting after step 10 would put the funnel in the
+wrong order in the one store that outlives everything else.
+
+**New view `&view=usage`** (`worker/src/usage.js`), nav label **Usage** — `&view=features` is the
+feature FLAGS page and keeps its name, since renaming it would break every bookmark the owner
+holds. Five walkthrough sections (started/finished/abandoned with the completion rate; drop-off by
+step; time on step as median, p90 and the spread between them; how steps checked off; rewinds by
+step), then the six sections moved verbatim off Analytics. The drop-off bar's denominator is
+**everyone who STARTED**, not the first step — normalising on step 0 would make a walkthrough
+people open and abandon before checking anything off read as 100 % by definition, which is the one
+finding the owner asked for.
+
+`privacy.html` discloses all thirteen new `event.prop` pairs in the same commit; `run_telemetry`
+asserts both directions and went red until it did. **Nothing here is deployed** — the Worker needs
+`wrangler deploy` and the owner's word.
+
+### Changed
+
+- `worker/src/analytics.js` is now a single-source page: Web Analytics RUM only. Every Analytics
+  Engine query in the tree lives in `usage.js`, which is worth keeping clean — the two APIs'
+  sampling conventions are OPPOSITE (`count()` is an undercount on one and already sample-adjusted
+  on the other) and mixing them on one page is what made that trap easy to fall into.
+- `render.js` gains `section()` (lifted out of analytics.js rather than copied), `pctBar()` and a
+  `raw` column flag on `table()` for a cell this file BUILT. `nav()` gains the Usage tab.
+- Worker column map, append-only: `blobs[7]` the event's `id` on its own, `doubles[8]` step,
+  `doubles[9]` steps. The new doubles need **no `COLUMNS_SINCE` guard** and the reason is specific
+  rather than an exemption — 0 is a valid step index, so the -1 sentinel could not tell a
+  pre-column row from step 0, but the only events that populate them did not exist before the
+  columns did. If a later change ever writes those columns from an event that already existed,
+  that reasoning dies with it.
+
+### Testing
+
+- **New gate `run_usage_page` (47 checks)** — nothing in the tree looked at a dashboard NUMBER:
+  `run_telemetry` reads the ingest as text, `run_rollup` drives the scheduled job,
+  `run_dashboard_time` covers render.js's clock. It renders the real page against a stubbed
+  `cfapi.js` (no network) and pins the funnel's denominator, the p90 index, the composite-key
+  parse, the empty-dataset probe guard and escaping. `--inject` flips the three defects it exists
+  for and reds 6 checks; two more defects found by injection AFTER it was written — a
+  swallowed query failure and a key split on the wrong separator — added 7 checks and are
+  why the count is not 40.
+- `run_telemetry` **104 → 136**; the composer is now EXECUTED rather than parsed, because a
+  `keyOf` that ignored its array branch would leave every name check green while the whole funnel
+  arrived as one key.
+- `run_dashboard_time` **87 → 88**: "the SQL window is still relative and zone-free" followed the
+  code to `usage.js` — left pointed at `analytics.js` it would have gone green over a page with
+  nothing to assert about. The +1 is the usage page's own tripwire: it is exempt from the
+  ET-import sweep because it renders no instant, so what is pinned is that it still renders none.
+- **No `changelog.html` entry and no version bump.** This is telemetry plumbing plus a private ops
+  dashboard, and website changes are excluded from the player-facing page by owner directive
+  (2026-08-06). Nothing a player can see changed.
+
 ### Fixed (the TMI-2 walkthrough's first layman playthrough, verified — #670 Phase 3)
 
 A fresh-context reviewer with no repo access played the incident leg end to end in headless Edge

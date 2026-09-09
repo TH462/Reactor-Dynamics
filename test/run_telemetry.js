@@ -247,10 +247,21 @@ function sentDelta(a, fn) { var n = a.sent.length; fn(); a.T.flush(); return a.s
   ck('the Worker declares a KEY_OF column map', !!m);
   if (!m) return;
 
+  /* Three value shapes, and the third is not decoration: `null` (no key string),
+   * `'field'` (that prop verbatim), and `['a','b']` — several props joined, which is how
+   * a walkthrough's STEP survives the daily rollup. `usage_daily` keys on
+   * [day, channel, release, event, key_str, plant] and carries no numeric columns, so a
+   * step number that is only a `double` is gone at three months (#674). */
   var map = {};
   m[1].split('\n').forEach(function (line) {
-    var r = /^\s*([a-z_]+)\s*:\s*(null|'([^']*)')\s*,?\s*$/.exec(line);
-    if (r) map[r[1]] = r[3] === undefined ? null : r[3];
+    var r = /^\s*([a-z_]+)\s*:\s*(null|'([^']*)'|\[([^\]]*)\])\s*,?\s*$/.exec(line);
+    if (!r) return;
+    if (r[4] !== undefined) {
+      map[r[1]] = r[4].split(',').map(function (s) { return s.trim().replace(/^'|'$/g, ''); })
+        .filter(function (s) { return s; });
+    } else {
+      map[r[1]] = r[3] === undefined ? null : r[3];
+    }
   });
 
   var declared = Object.keys(globalThis.RD.Telemetry.EVENTS);
@@ -270,10 +281,55 @@ function sentDelta(a, fn) { var n = a.sent.length; fn(); a.T.flush(); return a.s
     var field = map[name];
     if (field === null) return;                       // plant_mode carries no key string
     var spec = globalThis.RD.Telemetry.EVENTS[name];
-    ck('"' + name + '" really carries the property "' + field + '"',
-      !!(spec && Object.prototype.hasOwnProperty.call(spec.props, field)),
-      spec ? 'props are ' + Object.keys(spec.props).join(', ') : 'no such event');
+    [].concat(field).forEach(function (f) {
+      ck('"' + name + '" really carries the property "' + f + '"',
+        !!(spec && Object.prototype.hasOwnProperty.call(spec.props, f)),
+        spec ? 'props are ' + Object.keys(spec.props).join(', ') : 'no such event');
+    });
   });
+
+  /* AND THE COMPOSER IS RUN, not read. Parsing the map above proves the two sides agree
+   * on the NAMES; it says nothing about what actually lands in blob5. A `keyOf` that
+   * ignored its array branch, or dropped the zero-padding, would leave every check above
+   * green while the whole step funnel arrived as one undifferentiated key — the same
+   * shape as #485, where a source scan certified a string that could never render.
+   *
+   * So the three declarations are lifted out of the Worker source and EXECUTED. They are
+   * pure and depend on nothing else in that file, which is the only reason this is
+   * possible at all; if `keyOf` ever needs an import, this becomes a source scan again
+   * and is worth less. */
+  var fn = /function keyPart\([\s\S]*?\n\}\n[\s\S]*?function keyOf\([\s\S]*?\n\}/.exec(wsrc);
+  ck('the Worker key composer was found', !!fn);
+  if (fn) {
+    var keyOf;
+    try {
+      keyOf = new Function('KEY_OF', fn[0] + '; return keyOf;')(map);
+    } catch (e) { ck('the Worker key composer runs', false, String(e)); }
+    if (keyOf) {
+      ck('a single-prop key is the value itself',
+        keyOf('command', { action: 'set_rods' }) === 'set_rods', keyOf('command', { action: 'set_rods' }));
+      ck('an event with no key string composes to empty',
+        keyOf('plant_mode', { mode: 3 }) === '', keyOf('plant_mode', { mode: 3 }));
+      ck('a composite key joins its props with a colon',
+        keyOf('walkthrough_end', { id: 'pwr_heatup', reason: 'complete' }) === 'pwr_heatup:complete',
+        keyOf('walkthrough_end', { id: 'pwr_heatup', reason: 'complete' }));
+      ck('a numeric key part is zero-padded',
+        keyOf('walkthrough_step', { id: 'pwr_heatup', step: 7, by: 'auto' }) === 'pwr_heatup:07:auto',
+        keyOf('walkthrough_step', { id: 'pwr_heatup', step: 7, by: 'auto' }));
+      /* THE PADDING IS THE POINT, not a formatting preference: the rollup stores this as
+       * TEXT, so step 9 sorting after step 10 would put the funnel in the wrong order in
+       * the one store that outlives Analytics Engine's three months. */
+      ck('…so steps sort in step order, not lexically',
+        keyOf('walkthrough_step', { id: 'x', step: 9, by: 'auto' }) < keyOf('walkthrough_step', { id: 'x', step: 10, by: 'auto' }),
+        keyOf('walkthrough_step', { id: 'x', step: 9, by: 'auto' }) + ' vs ' + keyOf('walkthrough_step', { id: 'x', step: 10, by: 'auto' }));
+      /* A verdict clean() refused (an `by` outside the closed enum) leaves an EMPTY part,
+       * never the string "undefined" — which would land in the rollup as a real category
+       * and be indistinguishable from a verdict named that. */
+      ck('a missing key prop composes to empty rather than "undefined"',
+        keyOf('walkthrough_step', { id: 'x', step: 3 }) === 'x:03:',
+        keyOf('walkthrough_step', { id: 'x', step: 3 }));
+    }
+  }
 }());
 
 // ================================================ every declared prop type is a KIND

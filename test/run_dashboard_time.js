@@ -73,10 +73,16 @@ function literals(src) {
     .match(/'(?:[^'\\\n]|\\.)*'|"(?:[^"\\\n]|\\.)*"|`(?:[^`\\]|\\.)*`/g) || []);
 }
 
+/* VIEWS = the pages that RENDER AN INSTANT, which is what the Eastern sweep below is
+ * about. `usage.js` (#674) is deliberately NOT one: every figure on it is a count, a
+ * percentage or a duration, so it has no instant to convert and an ET import there would
+ * be an unused symbol added to satisfy a gate. It is read anyway — it now owns the
+ * Analytics Engine queries — and carries its own tripwire further down. */
 var VIEWS = ['worker/src/dashboard.js', 'worker/src/analytics.js',
              'worker/src/sessions.js', 'worker/src/features.js'];
 var SRC = {};
-['worker/src/render.js'].concat(VIEWS).forEach(function (p) { SRC[p] = read(p); });
+['worker/src/render.js', 'worker/src/usage.js'].concat(VIEWS)
+  .forEach(function (p) { SRC[p] = read(p); });
 var CODE = {};
 Object.keys(SRC).forEach(function (p) { CODE[p] = stripComments(SRC[p]); });
 
@@ -347,6 +353,16 @@ test('every view routes its instants through the Eastern helpers', function (ck)
   ck('reports: the list is converted', /etWithDow\(when\)/.test(d));
   ck('reports: the detail heading is converted', /etFull\(when\)/.test(d));
   ck('features: the KV stamp is converted', /etFull\(updated\)/.test(CODE['worker/src/features.js']));
+  /* THE USAGE PAGE'S TRIPWIRE. It is exempt from the import sweep above because it prints
+   * no instant — so the thing worth pinning is that it still does not. An Analytics Engine
+   * timestamp is already shaped "YYYY-MM-DD HH:MM:SS", so the first one rendered there
+   * would look like a perfectly good time and be four hours out, with no ET helper in the
+   * file to have been forgotten. The day a column below is legitimately wanted, import
+   * `etWithDow` and wrap it — do not delete this check. */
+  var u = CODE['worker/src/usage.js'];
+  var stamps = /\{\s*key:\s*'(timestamp|first_seen|last_seen|when|day|date|ran_at)'/.exec(u);
+  ck('usage: no raw Analytics Engine timestamp is rendered', !stamps,
+    stamps ? 'column ' + stamps[1] + ' needs an ET helper' : '');
 });
 
 test('storage and queries stay UTC — deliberately', function (ck) {
@@ -358,8 +374,12 @@ test('storage and queries stay UTC — deliberately', function (ck) {
     /toISOString\(\)\.slice\(0, 10\)/.test(CODE['worker/src/index.js'] = stripComments(read('worker/src/index.js'))));
   ck('the KV stamp is still written in UTC',
     /updated: new Date\(\)\.toISOString\(\)/.test(CODE['worker/src/features.js']));
+  /* MOVED TO usage.js (#674) — the in-sim block left the analytics page, and with it every
+   * Analytics Engine query in the tree. This check followed the CODE rather than staying
+   * pointed at a file that no longer runs one; left where it was it would have gone green
+   * over a page with nothing to assert about. */
   ck('the SQL window is still relative and zone-free',
-    /NOW\(\) - INTERVAL/.test(CODE['worker/src/analytics.js']));
+    /NOW\(\) - INTERVAL/.test(CODE['worker/src/usage.js']));
   ck('the GraphQL filter is still sent as UTC ISO',
     /toISOString\(\)/.test(CODE['worker/src/analytics.js']));
 });

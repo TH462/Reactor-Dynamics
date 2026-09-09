@@ -94,6 +94,14 @@ const MAX_EVENTS_PER_BATCH = 250;   // Analytics Engine caps writes per invocati
  *   blobs[5]    plant               pwr | rbmk | bwr, when the event carries it
  *   blobs[6]    block_code          why a command was refused: INTERLOCK | SEAL_IN |
  *                                   GATED_BY_INSTRUCTOR | COMMAND_ERROR. '' = none.
+ *   blobs[7]    id                  the event's `id` prop on its own — walkthroughs and
+ *                                   missions; '' where the event has none. Redundant with
+ *                                   the first part of blobs[4] ON PURPOSE: this SQL has no
+ *                                   string-splitting worth relying on, so an exact
+ *                                   `count(DISTINCT session) GROUP BY blob8, double9`
+ *                                   needs the id in a column of its own. blobs[4] stays
+ *                                   the COMPOSITE because that is the part which survives
+ *                                   the daily rollup; this column does not.
  *   doubles[0]  seconds
  *   doubles[1]  sim_seconds
  *   doubles[2]  mode                plant_mode only
@@ -102,6 +110,8 @@ const MAX_EVENTS_PER_BATCH = 250;   // Analytics Engine caps writes per invocati
  *   doubles[5]  t_session           seconds since the session id was minted (`e.st`)
  *   doubles[6]  blocked             1 the plant refused it, 0 it went through
  *   doubles[7]  errored             1 the command errored, 0 it did not
+ *   doubles[8]  step                walkthrough_* only — the 0-based step index
+ *   doubles[9]  steps               walkthrough_start / _end only — the leg's length
  *
  * ALL FOUR NEW DOUBLES AND THE NEW BLOB ARE WRITTEN ON EVERY ROW FROM THE COMMIT
  * THAT ADDED THEM, even where nothing produces the value yet. A short row reads
@@ -115,7 +125,31 @@ const MAX_EVENTS_PER_BATCH = 250;   // Analytics Engine caps writes per invocati
  * already SUM those columns, and a -1 in them would quietly subtract. Append-only
  * governs meaning, not just position. Every query over a new column must exclude
  * the sentinel explicitly (`AND double7 >= 0`) or old rows count as a real 0.
+ *
+ * doubles[8]/[9] (2026-09-09, #674) NEED NO `COLUMNS_SINCE` GUARD, and the reason is
+ * specific rather than an exemption: 0 is a VALID step index, so the -1 sentinel could
+ * not tell a pre-column row from step 0 — but the only events that populate them are
+ * `walkthrough_*`, which did not exist before the columns did. Every row carrying that
+ * event name necessarily carries the columns. **If a LATER change ever writes double9
+ * or double10 from an event that already existed, that reasoning dies with it** and the
+ * query needs a since-guard of its own.
  */
+
+/* THE PRINCIPAL STRING for each event — `blobs[4]`, and the ONLY place a walkthrough's
+ * step number survives long-term storage.
+ *
+ * A string value names one prop. An ARRAY names several, joined with ':'. That is not
+ * decoration: the daily rollup (rollup.js) keys `usage_daily` on
+ * [day, channel, release, event, key_str, plant] and carries NO NUMERIC COLUMNS, while
+ * Analytics Engine retention is a fixed three months. So anything that must outlive
+ * retention has to ride in this string — which is why a step check-off is keyed
+ * `pwr_tmi2_incident:07:overtaken` and the completion rate `pwr_tmi2_incident:complete`, and why
+ * time-on-step (a double) is Analytics-Engine-only and says so on the dashboard.
+ *
+ * A NUMERIC part is zero-padded to two digits so the key sorts in step order rather
+ * than lexically (`:09` before `:10`). The longest authored procedure is 18 steps; a
+ * 100-step procedure would sort its tail wrong and is the thing to notice, not to
+ * pre-solve. */
 const KEY_OF = {
   session_start: 'initial_state',
   session_end: 'last_panel',
@@ -126,7 +160,28 @@ const KEY_OF = {
   mission_abandon: 'id',
   plant_mode: null,
   milestone: 'name',
+  walkthrough_start: 'id',
+  /* `by` RIDES IN THE KEY, and it is here rather than in a column for the reason the whole
+   * scheme exists: the instructor's verdict is the direct stuck-signal — `overtaken` means
+   * the plant moved past a step the player could no longer satisfy — and a signal that
+   * evaporates at the three-month retention edge cannot answer "is this step still doing
+   * that". Costs one more `:` part and no extra column. */
+  walkthrough_step: ['id', 'step', 'by'],
+  walkthrough_rewind: ['id', 'step'],
+  walkthrough_end: ['id', 'reason'],
 };
+
+function keyPart(v) {
+  if (v == null) return '';
+  if (typeof v === 'number' && isFinite(v)) return (v < 0 || v > 99) ? String(v) : ('0' + v).slice(-2);
+  return String(v);
+}
+function keyOf(name, p) {
+  const spec = KEY_OF[name];
+  if (!spec) return '';
+  if (Array.isArray(spec)) return spec.map((f) => keyPart(p[f])).join(':');
+  return keyPart(p[spec]);
+}
 
 import { handleDashboard } from './dashboard.js';
 import { runRollup } from './rollup.js';
@@ -267,7 +322,6 @@ async function handleEvents(request, env, origin) {
     const name = String((e && e.e) || '');
     if (!Object.prototype.hasOwnProperty.call(KEY_OF, name)) continue;   // unknown = dropped
     const p = (e && e.p) || {};
-    const keyField = KEY_OF[name];
 
     env.EVENTS.writeDataPoint({
       indexes: [name],
@@ -276,7 +330,7 @@ async function handleEvents(request, env, origin) {
         channel,
         release,
         session,
-        keyField ? String(p[keyField] == null ? '' : p[keyField]) : '',
+        keyOf(name, p),
         String(p.plant || ''),
         // block_code: SLOT RESERVED, nothing populates it yet. Written as a literal
         // rather than read from `p` so that the schema, this receiver and privacy.html
@@ -284,6 +338,9 @@ async function handleEvents(request, env, origin) {
         // event declares is the same drift `blocked` already demonstrated. The slot is
         // claimed here because claiming it later is what risks a collision.
         '',
+        // The `id` prop ALONE (#674) — see the column map for why it is duplicated out of
+        // blob5. Events with no `id` write '', which is not a value any query groups on.
+        String(p.id || ''),
       ],
       doubles: [
         Number(p.seconds || 0),
@@ -299,6 +356,11 @@ async function handleEvents(request, env, origin) {
         // `blocked` has likewise been collected and dropped since it was added.
         bool(p.blocked),
         -1,                 // errored: SLOT RESERVED — see block_code above
+        // The walkthrough columns (#674). They are also encoded in blob5 so the funnel
+        // survives the rollup; these exist so a query can GROUP BY a NUMBER instead of
+        // parsing a string in a SQL dialect with no subqueries (cfapi.js).
+        num(p.step),
+        num(p.steps),
       ],
     });
     written++;
