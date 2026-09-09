@@ -29,6 +29,96 @@ and the user-visible summary in `CHANGELOG.md`. This file points at those and tr
 
 ---
 
+## Session log — 2026-09-09-workbench-a (#674 — walkthrough usage telemetry, and the Feature usage page)
+
+**The starting fact, measured before anything was written: the walkthroughs emit NOTHING.**
+`startChecklist(id)` in `ui/app.js` issues `cmd({action:'start_checklist', procedure_id:id})` and
+no event follows it; `mission_start`/`mission_complete`/`mission_abandon` fire only on the old
+`start_scenario` path. So "do people get stuck on one, and how far do they go before they get
+bored" had no data behind it of any kind — a leg nobody finishes and a leg everybody finishes were
+the same page. All four events, the emit points, the ingest columns and the dashboard page are new.
+
+**THE RETENTION CONSTRAINT DECIDED THE SCHEMA, and it is the thing to carry forward.** Analytics
+Engine retention is a fixed three months. The daily rollup (`worker/src/rollup.js`) is the only
+thing that outlives it, and `usage_daily` keys on `[day, channel, release, event, key_str, plant]`
+with **no numeric columns at all**. So a fact that must survive has to ride in the KEY STRING —
+which is why `blob5` for a step is `pwr_tmi2_incident:07:overtaken` and for an ending
+`pwr_tmi2_incident:complete`. That buys the drop-off funnel, the completion rate and the
+by-verdict mix a permanent home for nothing. **Time-on-step cannot follow**: it is `double1`, and
+three months from any given day it is gone. The page states that under the table rather than
+letting a reader draw a trend off a window that silently truncates — the same honesty the
+coarse-tier warnings carry on the analytics page.
+
+The numeric part of a key is **zero-padded to two digits**, and that is not formatting: the rollup
+stores the key as TEXT, so step 9 sorting after step 10 would put the funnel in the wrong order in
+the one store that outlives everything else. The longest authored procedure is 18 steps.
+
+**`by` rides in the key too, and that was a deliberate change to the specified schema.** The
+instructor's `doneBy` verdict is the *direct* stuck-signal — `overtaken` means the plant moved past
+a step the player could no longer satisfy (#641), `caught_up` means it was already true on arrival
+— and a signal that evaporates at the retention edge cannot answer "is this step still doing
+that". Cost: one more `:` part, no extra column.
+
+**Three traps, none of which a source read would have caught.**
+
+- **THE FUNNEL AND THE `by` MIX CANNOT COME OFF THE SAME GROUP BY.** With `by` in the key,
+  `count(DISTINCT session) GROUP BY blob5` double-counts any session that checked one step off
+  twice under two different verdicts — which is exactly what a rewind-and-redo produces, i.e. the
+  case the page exists to find. Analytics Engine SQL has no string splitting worth relying on, so
+  the id was added as a column of its OWN (`blob8`) and the funnel groups on `(blob8, double9)`.
+  Two queries, both exact, rather than one query and a caveat.
+- **ANALYTICS ENGINE TYPES COLUMNS PER RESULT SET.** Naming `double9` in a query no row matches is
+  a 422 ("unable to find type of column"), not an empty table — and before the client release that
+  emits these events, NO row matches. Without a probe that names no doubles, the page would have
+  shipped as five identical error blocks on day one. `run_usage_page` pins that the guard issues
+  **zero** walkthrough queries against an empty dataset.
+- **`import()` CACHES BY URL, AND A `data:` URL IS ITS OWN CONTENT.** The new gate renders the page
+  three times with three different fake datasets. Two renders built from identical stub source got
+  the SAME module instance, and `sql` is captured at module evaluation — so renders 2 and 3 were
+  silently re-rendering render 1's data. It did not error: two checks failed for a reason that had
+  nothing to do with the page, and had the fixtures been less distinctive they would have PASSED on
+  the wrong output. The stub now carries a nonce. `run_rollup`'s loader idiom has the same exposure
+  the moment it renders twice.
+
+**Adjudicating the one red that was not mine.** `run_dashboard_time` fell to 13/14 86/87 on "the
+SQL window is still relative and zone-free", which reads `worker/src/analytics.js` — and every
+Analytics Engine query had just left that file. The check was pinning a *file*, not a claim, so it
+was re-pointed at `usage.js`; left where it was it would have gone green for ever over a page with
+nothing to assert about (HR10). `usage.js` is deliberately NOT added to the ET-import sweep — it
+renders no instant, and an unused import added to satisfy a gate is a refit — so it gets a tripwire
+instead: no column keyed on a timestamp alias. An AE timestamp is already shaped
+`YYYY-MM-DD HH:MM:SS`, so the first one printed there would look like a perfectly good time and be
+four hours out, with no ET helper in the file to have been forgotten.
+
+**TWO MORE DEFECTS THE GATE FOUND AFTER IT WAS WRITTEN, both mine, both invisible to a
+read.** `errRows()` returned `[]` on a failed walkthrough query, so a 422 would have rendered
+as an EMPTY SECTION — the "a silent zero is indistinguishable from nothing happened"
+anti-pattern this very file's header warns about, written three hours after I quoted it. And a
+map-key separator I wrote as a space landed in the file as a literal **NUL byte**: functionally
+symmetric (join and split agree), invisible in the source, and it made `usage.js` read as
+BINARY to grep. Fixing the second exposed a third: splitting that key on the wrong character
+left every duration figure CORRECT — one group is still one group — while labelling the row
+`pwr_heatup|2` / NaN, and it passed all three time-on-step checks. **A CHECK ON AN AGGREGATE
+DOES NOT COVER THE ROW'S IDENTITY.** The page is now asserted to render no `NaN` anywhere and
+never to leak the separator.
+
+**Verified by injection, six of them, each restored after.** Padding dropped → 2 red · `keyOf`
+ignoring its array branch → 4 red · the `step` double dropped from `writeDataPoint` → 1 red ·
+`walkthrough_step.by` undisclosed in `privacy.html` → 1 red · a timestamp column added to the usage
+page → 1 red · the AE window broken in `usage.js` → 1 red. And `run_usage_page --inject` flips the
+three defects it exists for (funnel normalised on itself, p90 quietly a median, the key parsed as
+if it had two parts) → 6 red.
+
+**Gates.** `run_telemetry` 104 → **136/136** · `run_dashboard_time` 14/14 87 → **88/88** ·
+`run_usage_page` **NEW, 47/47** · `run_rollup` 24/24 unchanged. No `changelog.html` entry and no
+version bump: telemetry plumbing plus a private ops dashboard, and website changes are excluded
+from the player-facing page by owner directive (2026-08-06).
+
+**NOT DEPLOYED.** The Worker change is outward-facing and needs `cd worker && env -u
+CLOUDFLARE_API_TOKEN npx wrangler deploy`. Until then `&view=usage` does not exist on the live
+dashboard, and `RD_Ops/runbook.md` — which says the dashboard has "Three views" — should gain its
+line at the deploy, not before, or it documents a page that is not there.
+
 ## Session log — 2026-09-09-develop-a (#670 Phase 2 — the TMI-2 incident walkthrough authored on the sourced clocks)
 
 Phase 1 built the runtime (`inject`/`clear`/`story`/`crew`) and shipped no content. This authors

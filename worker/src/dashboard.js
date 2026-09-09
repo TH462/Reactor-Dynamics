@@ -6,7 +6,8 @@
  *   GET /dashboard?token=T                    bug reports, newest first
  *   GET /dashboard?token=T&key=<r2 key>        one report
  *   GET /dashboard?token=T&key=<r2 key>&raw=1  the decompressed JSON, as-is
- *   GET /dashboard?token=T&view=analytics      traffic + in-sim usage (analytics.js)
+ *   GET /dashboard?token=T&view=analytics      traffic + page performance (analytics.js)
+ *   GET /dashboard?token=T&view=usage          walkthroughs + in-sim feature usage (usage.js)
  *   GET /dashboard?token=T&view=sessions       per-session drill-down (sessions.js)
  *   GET /dashboard?token=T&view=session&sid=…  one session's trace
  *
@@ -21,6 +22,7 @@
 
 import { esc, html, PAGE_HEAD, nav, cards, etWithDow, etFull } from './render.js';
 import { analyticsPage } from './analytics.js';
+import { usagePage } from './usage.js';
 import { sessionList, sessionDetail } from './sessions.js';
 import { featuresPage, featuresAction } from './features.js';
 
@@ -163,6 +165,7 @@ export async function handleDashboard(env, url, request) {
 
   const view = url.searchParams.get('view');
   if (view === 'analytics') return analyticsPage(env, url, token);
+  if (view === 'usage') return usagePage(env, url, token);
   if (view === 'sessions') return sessionList(env, url, token);
   if (view === 'features') return featuresPage(env, url, token);
   if (view === 'session') return sessionDetail(env, url, token, url.searchParams.get('sid') || '');

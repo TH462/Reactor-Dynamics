@@ -6544,6 +6544,21 @@
     var lastMode = (function () { var v = ssGet(MODE_KEY); return v === null ? null : Number(v); }());
     var lastPanel = null;
     var startedAt = 0, mission = null, ended = false;
+    /* THE WALKTHROUGH RUN IN FLIGHT (#674): { id, steps, step, at, stepAt, ended }.
+     *
+     * A PLAIN VARIABLE, NOT A sessionStorage LATCH, and that is the deliberate call.
+     * `seen` above is latched because a reload re-fires a MILESTONE under an unchanged
+     * session id, which would double-count "sessions that reached the grid". A
+     * walkthrough cannot do that: it lives in the service's memory and a reload does
+     * not restore it, so the next tick sees no checklist and the run simply ends.
+     *
+     * AND A REDO AFTER A REWIND IS DELIBERATELY A SECOND `walkthrough_step` ROW. A step
+     * done twice is precisely the stuck-signal this exists to find, so de-duplicating it
+     * would delete the answer. `sum(_sample_interval)` on that step therefore counts
+     * check-offs, not people — which is why the drop-off funnel counts DISTINCT SESSIONS
+     * and the by-step mix counts events. The two columns mean different things on the
+     * dashboard and are labelled so. */
+    var wt = null;
     // session_start fires during BOOT, which on a first visit is before the consent
     // prompt has been answered — so it would be dropped, and first visits are exactly
     // the sessions worth having. Hold the facts locally (the app knows them anyway)
@@ -6642,6 +6657,80 @@
           ev('mission_complete', { id: mission.id, seconds: since(mission.at) });
           mission = null;
         }
+
+        this.walkthrough(s.instructor && s.instructor.checklist);
+      },
+
+      /* THE WALKTHROUGHS (#674). Driven off the snapshot, from inside tick, because
+       * `s.instructor.checklist` is the ONLY complete account of a run: the UI already
+       * draws the card from it, the instructor's `done_by` verdicts are in it, and
+       * hooking `start_checklist` at the button instead would see the start and none of
+       * the steps. One reader, one place, same argument as `plant_mode` above.
+       *
+       * `ck` is null whenever no walkthrough is loaded — which is also how a plant reset,
+       * a scenario load and a page reload all present themselves here. */
+      walkthrough: function (ck) {
+        var id = ck && ck.procedure_id;
+
+        // Gone, or replaced. A live run always ends with a row, and the reason is the
+        // difference between "they closed it" and "they went to another one".
+        if (wt && !wt.ended && (!id || id !== wt.id)) this.walkthroughEnd(id ? 'switched' : 'stopped');
+        if (!id) { wt = null; return; }
+
+        if (!wt || wt.id !== id) {
+          /* A COMPLETE checklist that we were not watching is NOT a start — that is a
+           * finished run still sitting on screen (the card stays until it is closed), and
+           * treating it as new would file a start for something already over. */
+          if (ck.complete) { wt = null; return; }
+          wt = { id: id, steps: ck.step_total || 0,
+                 /* NOT 0 — `step_index`. A restored save can bring a walkthrough back
+                  * mid-leg, and counting from zero there would file every step before it
+                  * as though this session had walked them. */
+                 step: ck.step_index || 0,
+                 at: Date.now(), stepAt: Date.now(), ended: false };
+          ev('walkthrough_start', { id: id, steps: wt.steps });
+          return;                                  // the entry tick checks nothing off
+        }
+        if (wt.ended) return;
+
+        var idx = ck.step_index || 0;
+        // Backwards is a rewind (or a restored checkpoint): re-arm on the step we landed
+        // on and emit nothing. The press itself is reported by `walkthroughRewind`, which
+        // knows which step was ABANDONED — this only sees where it came to rest.
+        if (idx < wt.step) { wt.step = idx; wt.stepAt = Date.now(); return; }
+
+        /* ONE ROW PER STEP CROSSED, because `step_index` can jump: the catch-up pass
+         * walks past every step that was already true, and an `overtaken` step is skipped
+         * in the same broadcast as the one after it. A single row for the jump would hide
+         * exactly the steps worth seeing.
+         *
+         * THE DWELL GOES TO THE FIRST STEP CROSSED and the rest report 0 — which is what
+         * happened: the player sat on the step they were on, and everything after it
+         * resolved in the same 100 ms broadcast. */
+        var by = ck.done_by || [];
+        for (var i = wt.step; i < idx; i++) {
+          var p = { id: wt.id, step: i, seconds: (i === wt.step) ? since(wt.stepAt) : 0 };
+          if (by[i]) p.by = by[i];                 // an unrecognised verdict is dropped by clean()
+          ev('walkthrough_step', p);
+        }
+        if (idx !== wt.step) { wt.step = idx; wt.stepAt = Date.now(); }
+
+        if (ck.complete) this.walkthroughEnd('complete');
+      },
+
+      // The walkthrough's own Rewind button, not the checkpoint picker: a general rewind
+      // is a decision about the plant. `wt.step` is the step being abandoned, which is
+      // the one that reads as "they got this wrong".
+      walkthroughRewind: function () {
+        if (!wt || wt.ended) return;
+        ev('walkthrough_rewind', { id: wt.id, step: wt.step });
+      },
+
+      walkthroughEnd: function (reason) {
+        if (!wt || wt.ended) return;
+        wt.ended = true;
+        ev('walkthrough_end', { id: wt.id, step: wt.step, steps: wt.steps,
+                                seconds: since(wt.at), reason: reason });
       },
 
       // Called once, from pagehide. sendBeacon is the only transport that survives
@@ -6650,6 +6739,9 @@
         if (ended) return;
         ended = true;
         if (mission) ev('mission_abandon', { id: mission.id, seconds: since(mission.at), beat: 0 });
+        // A walkthrough still running when the tab goes away never sees another tick, so
+        // without this the most interesting runs — the abandoned ones — end in silence.
+        this.walkthroughEnd('left');
         // sim_seconds > 0 IS "they pressed play" — the clock only advances while
         // running, so no separate flag is needed (and the one that was here read
         // false on a session that had obviously run: play is not a dispatched command).
@@ -7413,7 +7505,10 @@
        * start of the current step — scope 'full' so the walkthrough's progress comes back with the
        * plant. The chart's rewind is disabled while a walkthrough runs. */
       var rw = e.target.closest('[data-wt-rewind]');
-      if (rw) { if (!rw.disabled) cmd({ action: 'rewind', steps: 2, scope: 'full', exact: true }); return; }
+      if (rw) {
+        if (!rw.disabled) { TEL.walkthroughRewind(); cmd({ action: 'rewind', steps: 2, scope: 'full', exact: true }); }
+        return;
+      }
       var wa = e.target.closest('[data-ckl-why-all]');
       if (wa) { cklState.whyAll = !cklState.whyAll; cklState.key = null; render(latest); return; }
       if (e.target.closest('[data-ckl-stop]')) { cmd({ action: 'stop_checklist' }); return; }

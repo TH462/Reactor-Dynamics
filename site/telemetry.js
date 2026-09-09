@@ -102,6 +102,40 @@
     mission_complete: { props: { id: 'enum', seconds: 'num' } },
     mission_abandon:  { props: { id: 'enum', seconds: 'num', beat: 'num' } },
 
+    /* --- the walkthroughs (#674) --------------------------------------------
+     * WHERE PEOPLE GET STUCK, AND HOW FAR THEY GET BEFORE THEY STOP. The
+     * walkthroughs are the guided content and until now they reported NOTHING —
+     * `start_checklist` went to the service and no event followed it, so a leg
+     * nobody finishes and a leg everybody finishes looked identical from here.
+     *
+     * `id` is the PROCEDURE id (`pwr_heatup`, `pwr_tmi2_incident`) and not the
+     * plant: the same id exists in both the retired-PWR and the PWR2 procedure
+     * sets, so which engine ran it is recovered by joining on the session's own
+     * `session_start.plant` row rather than by duplicating the plant here.
+     */
+    walkthrough_start: { props: { id: 'enum', steps: 'num' } },
+    /* ONE ROW PER CHECK-OFF, which is what makes a drop-off funnel possible at
+     * all: the highest `step` a session reaches IS how far they got. `seconds` is
+     * WALL time on that one step — getting stuck is a wall-clock experience, not a
+     * sim one, and a step can burn 20 s of a player's life and an hour of plant
+     * time at 600x. `by` is the instructor's own verdict rather than an inference
+     * made here: `overtaken` means the plant moved past a step the player could no
+     * longer satisfy, `caught_up` means it was already true when they arrived.
+     * Those two are the direct stuck-signal and neither is visible in a count. */
+    walkthrough_step:  { props: { id: 'enum', step: 'num', seconds: 'num',
+                                  by: ['auto', 'manual', 'observed', 'caught_up', 'overtaken'] } },
+    // A step someone backs INTO is a step they got wrong. The WALKTHROUGH's own
+    // Rewind button only, not the checkpoint picker — a general rewind is a
+    // decision about the plant and says nothing about the guidance.
+    walkthrough_rewind: { props: { id: 'enum', step: 'num' } },
+    /* HOW IT ENDED, and the four ways are four different facts: `complete` is the
+     * whole leg walked, `stopped` is the player closing it, `switched` is them
+     * leaving for another one, `left` is the tab going away mid-leg. `step` is
+     * where they were when it ended, so the completion rate and the depth people
+     * abandon at both come out of this one row. */
+    walkthrough_end:   { props: { id: 'enum', step: 'num', steps: 'num', seconds: 'num',
+                                  reason: ['complete', 'stopped', 'switched', 'left'] } },
+
     // --- the funnel ---------------------------------------------------------
     // THE MODE IS THE FUNNEL, and it is the engine's own answer rather than a
     // threshold invented here. `true_state.plant_mode` is the DERIVED commercial
