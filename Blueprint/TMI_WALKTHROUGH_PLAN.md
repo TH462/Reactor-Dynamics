@@ -1,9 +1,13 @@
 # TMI-2 incident walkthrough — the plan
 
-**Status: PLAN — rulings R1–R4 given 2026-09-08 ("Do as recommended, start phase 0"); Phase 2 done
-(commit `c6601740`, 2026-09-09), Phase 3 (playthroughs) in progress; Phases 0 and 1 done
-2026-09-08. Phase 4 open — issue #670. Not binding
+**Status: PLAN — rulings R1–R4 given 2026-09-08 ("Do as recommended, start phase 0"); Phases 0 and 1
+done 2026-09-08, Phase 2 done 2026-09-09 (commit `c6601740`), Phase 3 done 2026-09-09 (commit
+`a3cb27f9`, continuous integration green). PHASE 4 IS HELD, NOT OPEN — issue #670. Not binding
 until executed; expires when done (CLAUDE.md "plans expire when executed").**
+**Phase 4 does not proceed on any agent's judgement — it is gated on the owner's own playtest**
+*(OWNER RULING, 2026-09-09: "TMI does not go open until I can playtest it.")*. Until then the
+walkthrough stays behind its flag at `site/flags.js:150`,
+`'procedure:pwr_tmi2_incident': 'preview'` — preview channel only, no `changelog.html` entry.
 **§2's post-30-minute "re-measure in Phase 2" flags are DISCHARGED** — the numbers were re-taken
 full-stack on the crew's own clocks and are in `inbox/tmi_phase2/MEASURED.md`; where they disagree
 with §2, the measurement wins and §10's Phase 2 row lists the five that changed a step.
@@ -332,8 +336,8 @@ both complete it; (b) public with the release that carries it. **Recommend (a)**
 | 0 | **DONE 2026-09-08** — evidence pass (§7) + the six measurements (§8) filed on the issue with numbers | none (report) |
 | 1 | runtime: `inject`/`clear`/`story`/`crew` fields, instructor hook, harness `issue()`, renderer block + clock in header; **map subcooling margin into `PARAM_INSTRUMENT.pwr2`** (`subcooling_c: 'subcooling_margin'` — §5 step 13's acceptance); **raise `run_checklist_pwr2`'s `secs` hint to 1600 when the leg lands** | run_checklist (+probes made red by injection), run_checklist_pwr2 unchanged, run_m6, verify_e2e_ui |
 | 2 | **DONE 2026-09-09, commit `c6601740`** — `pwr_tmi2_incident` authored, 16 steps, `hot_full_power` → 4 h 20 min of plant time; the §8b re-measurements taken full-stack on the crew's own clocks (`inbox/tmi_phase2/MEASURED.md`); `manual_ui_map.js` block (7 mapped steps); `procedure:pwr_tmi2_incident: 'preview'`. **NO CLOCK MOVED** — all seven crew commands accepted at their sourced second, `beyond_model` 0 of 1,558 samples. Five plan assumptions measured otherwise, listed below. `Manuals/08_ACCIDENT_TMI.md` is a **concurrent lane's** work and is not this phase's. | run_style 10/10 · run_checklist 78/78 · run_manual_controls 590 · run_checklist_pwr2 **177/177** (secs 1180 → 1600) · run_flags 342 -> 345 · run_hardrules 511 · verify_ckl_relevance 17 · verify_flags_ui 50 |
-| 3 | **IN PROGRESS 2026-09-09** — playthroughs: `/layman-playthrough` on the leg, then the operator persona; every finding re-measured; fixes | the same, plus verify_ckl_relevance (ordering: the incident lists after the six legs) |
-| 4 | ship: changelog, TUNING_LOG, #660-style comment, owner review on the tester site | run_all |
+| 3 | **DONE 2026-09-09, commit `a3cb27f9`** — the leg's first `/layman-playthrough`, every claim re-measured before it was filed: 8 confirmed, 2 refuted, 1 nobody claimed; fixes landed. Findings and their numbers are on issue #670 — do not restate them here. No operator-persona playthrough is recorded. | run_all **110 runners at baseline**, continuous integration green · verify_board_check 242 -> 245 · run_checklist_pwr2 177 -> 178 · run_inspect 56/56 (baseline unchanged) · release candidate `Alpha 1.7.4-rc5` -> `rc6` |
+| 4 | **HELD — the owner's own playtest is a PRECONDITION for this phase, not an item inside it** *(OWNER RULING, 2026-09-09: "TMI does not go open until I can playtest it.")*. No agent starts Phase 4 on green gates. The next action belongs to the owner: play the leg on the tester site, `develop.reactor-dynamics.pages.dev`. Only then: changelog, TUNING_LOG, #660-style comment, and the flag flip at `site/flags.js:150` (`'procedure:pwr_tmi2_incident': 'preview'`). | run_all |
 
 **What Phase 2 measured that this plan had wrong** (full detail and the tables:
 `inbox/tmi_phase2/MEASURED.md`; the authoring rules that came out of it: `CHECKLIST_WRITING_GUIDE`
