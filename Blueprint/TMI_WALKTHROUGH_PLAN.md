@@ -1,9 +1,13 @@
 # TMI-2 incident walkthrough — the plan
 
-**Status: PLAN, awaiting four owner rulings (§9) — issue #670. Not binding until executed; expires when done
-(CLAUDE.md "plans expire when executed").** Written 2026-09-08 by the coordinating session from
-`inbox/tmi_walkthrough_inventory.md` (1,064 lines of file:line facts; local, not tracked — the
-numbers it cites are in `Blueprint/PWR2_VALIDATION.md` §86 and the files named below).
+**Status: PLAN — rulings R1–R4 given 2026-09-08 ("Do as recommended, start phase 0"); Phase 0 done;
+Phase 1 in progress — issue #670. Not binding until executed; expires when done (CLAUDE.md "plans
+expire when executed").** Written 2026-09-08 by the coordinating session from
+`inbox/tmi_walkthrough_inventory.md` (1,064 lines of file:line facts; local, not tracked). Revised
+2026-09-08 against Phase 0: every clock now comes from `inbox/tmi_timeline_sourced.md`
+(NUREG/CR-1250 Vol. II Pt 2, Appendix II.1) and every plant number from the full-stack ride in
+`inbox/tmi_phase0/RESULTS.md`. `Blueprint/PWR2_VALIDATION.md` §86 is no longer the plant authority
+for anything past 30 minutes — see §2.
 
 **The ask** *(OWNER, 2026-09-08: "plan the building of a three mile island incident walkthrough.
 This walkthrough should have enough context in it so the user learns what happened during the
@@ -34,30 +38,79 @@ narrative in those 66 beats is good and gets **reused as text**; the beat engine
 
 ## 2. What the plant can and cannot show — the honest envelope
 
-Measured, on PWR2, from Hot Full Power (`PWR2_VALIDATION.md` §86, re-run §87 within 14 psi):
+Two authorities side by side, and neither is recall any more.
 
-| clock (elapsed) | historical | PWR2, measured |
-|---|---|---|
-| 0:00 | condensate polisher trips → main feed lost → turbine trips | `loss_of_feedwater` (no polisher model; the initiator is told, not injected) |
-| 0:00:03–06 | pressure spikes, PORV lifts | lifts at **5 s, 2346 psia** — only with the P-9 anticipatory trip defeated (§9 R3) |
-| 0:00:08 | reactor trips on high pressure | trips at **43 s on over-temperature ΔT** — this plant's PORV is 3.6× TMI-2's per MWt and turns the pressure first |
-| 0:00:13 | PORV fails to reseat; lamp says closed | `stuck_porv_open` (latches on the lift) + `porv_indicator_stuck_closed` |
-| 0:02 | HPI starts automatically | SI on low pressurizer pressure |
-| 0:04:30 | level climbs to the top; crew throttles HPI ("never let it go solid") | **level 100 % on 96.6 % mass at 4.5 min, 1077 psia** — the deception is emergent |
-| 0:08 | AFW block valves found shut | `afw_failure`: pumps running, delivery dead |
-| 0:30–1:40 | saturation; RCPs cavitate; crew secures B then A loop | cavitation is **indication only** (no damage, no auto-trip); securing is a real handswitch |
-| 1:40–2:20 | core uncovers, cladding heats, oxidation, hydrogen | **core uncovery is a void proxy; the cladding does NOT heat** (555 °F at 66 % uncovered). No hydrogen on this ride |
-| 2:22 | block valve closed | the loss ends at 142 min, 64 % mass |
-| 3:20 | HPI restored | refill to 121 % of boot mass; **1666 psia at 260 min, alive** |
-| ~0:55 | — | **accumulators dump** — a divergence from history, declared plant identity |
-| 9:50 | hydrogen burn in containment | **not modelled** (`ctmt_h2_burned` is a static 0) |
+**Historical** — NUREG/CR-1250 Vol. II Part 2, Appendix II.1 (Rogovin), extracted into
+`inbox/tmi_timeline_sourced.md` with a verbatim quote per row. The appendix quotes a **wall clock
+for events 1 and 2 only** (04:00:36, 04:00:37) and gives *elapsed after initiation* for everything
+else, so **every other wall clock below is DERIVED** by adding elapsed to 04:00:37 — arithmetic on
+the source, not a quote from it.
 
-So the walkthrough can **simulate** the initiator, the stuck valve and its lamp, the deception,
-the throttled HPI, the found AFW valves, the saturation and the pump securing, the block valve and
-the recovery — everything the crew did in the control room — and must **narrate** the fuel damage
-and the burn. It says so to the player, in one step, in the plant's own words (§5 step 15). This
-is the declared departure Design Criteria Q3 requires; the physics gap is #515 gap 1 and is not
-this plan's to close (§9 R2).
+**PWR2, full-stack, measured** — the Phase 0 ride of 2026-09-08 on `edaf8154`
+(`inbox/tmi_phase0/RESULTS.md`, filed at
+<https://github.com/TH462/Reactor-Dynamics/issues/670#issuecomment-5595332218>): service → control
+layer → engine, from `hot_full_power`, driven exactly as `run_checklist_pwr2` drives a leg. All
+nine scheduled commands were accepted, and the ride never latched `beyond_model` / `model_held`
+(0 of 1,557 samples), so every step of §5 is reachable on one continuous plant.
+
+| elapsed | clock | historical (sourced) | PWR2, full-stack, measured |
+|---|---|---|---|
+| −1 s | **04:00:36** *(quoted)* | condensate pump trips — the polisher | no polisher model; the initiator is **told**, not injected |
+| 0 s | **04:00:37** *(quoted)* | main feed pumps trip; turbine trips; AFW pumps start into block valves already shut | `loss_of_feedwater` + `afw_failure` (hidden) |
+| 3 s | 04:00:40 | PORV opens (setpoint 2255 psig / 15.55 MPa) | lifts at **5 s, 2346 psia (16.18 MPa)** — only with the anticipatory trip defeated (§9 R3, ruled). *(The digits coincide with the historical reactimeter peak below; different plants, different units — not a copy error.)* |
+| 8 s | 04:00:45 | reactor trips on high pressure (setpoint 2355 psig; reactimeter peak 2346 psig) | trips at **43 s on over-temperature ΔT** — this plant's PORV is 3.6× TMI-2's per MWt and turns the pressure first. A **declared divergence**, carried in §5 step 3's `why` |
+| 13 s | 04:00:50 | PORV fails to close; the lamp shows the solenoid de-energised — *"There is no actual position indicator."* | `stuck_porv_open` (latches on the lift) + `porv_indicator_stuck_closed` |
+| 15 s | 04:00:52 | pressurizer level peaks at 255 in; *"RCS parameters are normal."* | — |
+| 30 s | 04:01:07 | PORV tailpipe high-temperature alarm (239 °F / 115 °C) — dismissed | tailpipe temperature above hot-leg temperature; the §5 step 4 cue |
+| 1 min 18 s | 04:01:55 | both steam generators dry out | at 1 min: **1705 psia (11.76 MPa), level 67 %, 98.5 % mass** |
+| 2 min 2 s | 04:02:39 | HPI starts automatically on low RCS pressure (1600 psig / 11.03 MPa) | SI actuates at **65.5 s** on low pressurizer pressure |
+| 3 min 13 s | 04:03:50 | **operator bypasses the safety-injection actuation signal** | the trip-block **BLOCK** row for `si_trip` (`pwr2_shell.js` `set_trip_block` → `si_block`), permissive **P-11**, ~1970 psig (13.6 MPa). **Acceptance at this clock: re-measure full-stack in Phase 2** |
+| 4 min 30 s | 04:05:07 | HPI throttled — on a level still *rising*, not pegged | **ECCS STOP first accepted at 2.09 min** and accepted on the ride itself at **4.50 min**; plant at 4.5 min **1045 psia (7.21 MPa), level 100 %, 97.2 % mass** — the deception is emergent |
+| 4 min 52 s – 4 min 58 s | 04:05:29 | letdown raised to its high limit, part of the *same* action; alarms above 160 gpm | — |
+| 5 min 0 s | 04:05:37 | pressurizer level peaks at 377 in | level is already pegged at 100 % here |
+| 5 min 50 s | 04:06:27 | RCS reaches saturation | board subcooling margin **0.0 at 5 min**; hot leg first reads above saturation at **2.7 min** |
+| 5 min 51 s | 04:06:28 | level goes **off scale high** (> 400 in) | — |
+| 8 min | 04:08:37 | AFW block valves found shut and opened | the player's own `set_afw_block` takes flow 0.000 → **1.000 within 30 s**; plant **1049 psia (7.23 MPa), 90.8 % mass** |
+| 10 min | 04:10:37 | first RCP high-vibration alarm — *"Indication of voids in system. Apparently not recognized."* | `rcp_cavitating` TRUE from **2.6 min** — indication only, no damage, no auto-trip |
+| 30 min | 04:30:37 | RCS near saturation, and stays there | **967 psia (6.67 MPa), 53.8 % mass** — the **last row that agrees with §86** (3.4 % on pressure, 4.2 points on mass) |
+| 57 min | 04:57 | — | **subcooling margin pegs on its −50.4 °F (−28 °C) floor** and stays there to ~150 min (526 of 1,557 samples) |
+| 1 h 13 min | 05:13:37 | loop B reactor coolant pumps secured | a real handswitch. **Re-measure full-stack in Phase 2** |
+| 1 h 41 min | 05:41:37 | loop A pumps secured — all forced flow stops | a real handswitch. **Re-measure full-stack in Phase 2** |
+| 2 h 11 min | 06:11:37 | loop A hot leg **off the top of the scale** — *"TAVE will not be correctly shown."* | **the hot leg never pegs on PWR2** (see below); the pegged instrument here is the **subcooling margin**. **Re-measure full-stack in Phase 2** |
+| 2 h 18 min | 06:18:37 | PORV block valve closed — then reopened 3 h 12 min, shut ~3 h 30 min, reopened 3 h 41 min, closed 3 h 56 min | the loss ends when the player shuts it. **Re-measure full-stack in Phase 2** |
+| 2 h 45 min | 06:45:37 | radiation alarms — *"indicative of extensive fuel damage"* | **not modelled.** Core uncovery is a void proxy and the cladding does not heat (555 °F / 291 °C at 66 % uncovered) |
+| 3 h 20 min | 07:20:37 | HPI restored manually — **not sustained**; injection rationed from the BWST low-level alarm | at 260 min the plant is **1505 psia (10.38 MPa), 78.0 % mass, alive**. **Re-measure full-stack in Phase 2** |
+| 9 h 50 min | 13:50:37 | hydrogen burn in containment, 28 psig (1.93 barg) peak | **not modelled** (`ctmt_h2_burned` is a static 0) |
+| 15 h 50 min | 19:50:37 | RCP restarted; forced circulation restored | a real handswitch |
+
+**Everything past 30 minutes is provisional and must be re-measured in Phase 2.** To 15 minutes the
+full stack, today's engine-direct ride and §86 agree within 3 %; at 30 minutes within 3.4 %. **From
+50 minutes the shipped stack leaves both engine-direct rides, and the cause is measured, not
+inferred: the auxiliary-feed level-hold channel** — a control-layer automation channel that only
+`simulation_service.js` ever ticks. It throttles auxiliary feed to 0.18 of rated at 30 min and 0.15
+at 50 min (engine-direct it runs wide open for ever and floods the steam generator to 231 % of
+nominal), so on the shipped plant the primary **holds ~1020 psia (7.03 MPa)** instead of falling to
+649 psia (4.48 MPa).
+
+**The "accumulators dump at ~0:55" row is DELETED as false for the shipped stack.** Measured on the
+full stack the accumulators are **100 % full at 60 min** and have bled only to 86 % by 120 min; they
+never dump. That row was inherited from §86, which is engine-direct — the house trap, an inherited
+number that is wrong until measured against the plant the player actually gets.
+
+**The hot leg never reads off scale on PWR2.** Its detector spans 32–752 °F (0–400 °C) and the whole
+ride's peak reading is **632.0 °F (333.3 °C)** at 232 min, 120 °F (67 °C) below the top of scale.
+TMI-2's hot legs pegging their meters cannot be shown by this instrument. What **can** peg is the
+**subcooling margin**: derived, clipped to −50.4…+149.4 °F (−28…+83 °C), datumed on the hotter of
+bulk Tavg and the core-exit thermocouple (NUREG-0737 II.F.2), and sitting hard on its −50.4 °F
+(−28 °C) floor **from 57 min**. That is this plant's "the instrument has run out of scale", and it
+is what §5 step 13 is graded on.
+
+So the walkthrough can **simulate** the initiator, the stuck valve and its lamp, the safety-injection
+bypass, the deception, the throttled HPI and the letdown, the found AFW valves, the saturation and
+the pump securing, the block valve and the recovery — everything the crew did in the control room —
+and must **narrate** the fuel damage and the burn. It says so to the player, in one step, in the
+plant's own words (§5 step 16). This is the declared departure Design Criteria Q3 requires; the
+physics gap is #515 gap 1 and is not this plan's to close (§9 R2, ruled).
 
 ## 3. Two schema additions
 
@@ -99,33 +152,46 @@ STOP without the walkthrough endorsing it.
 
 One addition to `renderChecklist` in `ui/app.js`: the `story` block above the instruction, and
 the `crew` tag. The "Step X of N" header prints the historical clock beside it
-(`Step 6 of 15 · 04:05`). Nothing else; Continue/Rewind/status line are as built.
+(`Step 7 of 16 · 04:05`). Nothing else; Continue/Rewind/status line are as built.
 
-## 5. The steps (draft — the authoring pass will re-measure every number)
+## 5. The steps (draft — the authoring pass re-measures every plant number)
 
-Historical clocks from the sourced timeline (§7). "DO" steps are graded on the **effect**, never
-on the press (guide R7, P15). The player's actions marked **crew** are the historical mistakes.
+**Every clock is now sourced** to NUREG/CR-1250 Vol. II Pt 2 Appendix II.1 via
+`inbox/tmi_timeline_sourced.md`; 04:00:36 and 04:00:37 are quoted from the appendix and the rest are
+derived from its elapsed times. "DO" steps are graded on the **effect**, never on the press (guide
+R7, P15). The player's actions marked **crew** are the historical mistakes. Quote fragments in the
+one-line cells are the appendix's or Volume I's own words, for the authoring pass to start from.
 
 | # | clock | kind | the step, in one line | acceptance (draft) | inject |
 |---|---|---|---|---|---|
-| 1 | 04:00 | VERIFY | At 97 % power, a routine night. The setup: this plant's anticipatory trip is taken out of service so the valve can lift as TMI-2's did — say so. | power > 90 % | `anticipatory_trip_failure` |
-| 2 | 04:00:37 | VERIFY | Main feed stops (the polisher, told). Verify FEED FLOW 0, TURBINE TRIP lit. | feed flow ≈ 0, turbine tripped | `loss_of_feedwater`, `afw_failure` (hidden) |
-| 3 | 04:00:40 | VERIFY | Pressure spikes; the PORV lifts; the reactor trips. Verify SCRAM, PRIMARY PRESSURE falling. | scrammed | `stuck_porv_open` (armed before the lift), `porv_indicator_stuck_closed` |
-| 4 | 04:01 | VERIFY | The PORV lamp reads CLOSED. The crew believed it. Verify PZR TAILPIPE temperature rising while the lamp says closed. | tailpipe temp > hot-leg temp | — |
-| 5 | 04:02 | VERIFY | HPI starts on its own. Verify ECCS running. | hhsi running | — |
-| 6 | 04:04:30 | **DO, crew** | Level reaches the top of the scale. The rule they were trained on: never let the pressurizer go solid. Press ECCS STOP. | hhsi not running | — |
-| 7 | 04:08 | DO | AFW pumps have run for eight minutes delivering nothing: the discharge valves were tagged shut after a test. Open them. | AFW flow > 0 | — (the step CLEARS `afw_failure` via the player's action) |
-| 8 | 04:10 | **DO, crew** | Level still high: the crew opens letdown to maximum to "drain" a full pressurizer that is not full. | letdown flow at max | — |
-| 9 | 04:30 | VERIFY | Pressure is down near 1000 psi at 550 °F: the water is boiling in the loops. Verify SUBCOOLING MARGIN 0 and RCP vibration (cavitation) indicated. | subcooling ≤ 0, rcp_cavitating | — |
-| 10 | 05:14 | **DO, crew** | Loop B pumps shaking: secure them to save the pumps. | RCP B secured | — |
-| 11 | 05:41 | **DO, crew** | Loop A the same. Now nothing moves the water but its own heat. | all RCPs secured | — |
-| 12 | 06:00 | VERIFY | The hot legs read off the top of the scale; the level says the vessel is fine. There is no vessel level instrument. Verify hot-leg temperature above the saturation line. | hot-leg T > Tsat(P) *(UNMEASURED on PWR2 — see §8)* | — |
-| 13 | 06:22 | DO | A new shift supervisor asks the one question nobody had: what if the PORV is open? Close the block valve. | PORV flow 0, pressure rising | — |
-| 14 | 07:20 | DO | Restore HPI. Watch the vessel refill and pressure recover. | hhsi running, pressure > 1500 psi | — |
-| 15 | 19:50 / epilogue | VERIFY | Restart one RCP; forced flow returns. Then the part this plant cannot show: the cladding, the hydrogen, the 13:50 burn, the core found molten five years later. | RCP flow > 80 % | — |
+| 1 | 04:00 | VERIFY | 97 % power, a routine night. The setup, said out loud: this plant's anticipatory trip is taken out of service so the relief valve can lift as TMI-2's did (§9 R3, ruled). | power > 90 % | `anticipatory_trip_failure` |
+| 2 | 04:00:37 | VERIFY | The condensate pump trips one second earlier (04:00:36, told); main feed and the turbine follow. Verify FEED FLOW 0, TURBINE TRIP lit. | feed flow ≈ 0, turbine tripped | `loss_of_feedwater`, `afw_failure` (hidden) |
+| 3 | 04:00:40–45 | VERIFY | The relief valve lifts at 3 s; the reactor trips at 8 s on high pressure. **On this plant the trip comes at 43 s on over-temperature ΔT** — the declared divergence, and it lives in this step's `why`. | scrammed | `stuck_porv_open` (armed before the lift), `porv_indicator_stuck_closed` |
+| 4 | 04:00:50 / 04:01:07 | VERIFY | The lamp says closed and the tailpipe is hot: *"Light 'off' indicates solenoid deenergized. There is no actual position indicator."* | tailpipe temp > hot-leg temp | — |
+| 5 | 04:02:39 | VERIFY | Safety injection starts on its own, on low pressure. Verify ECCS running. *(PWR2 actuates at 65 s.)* | hhsi running | — |
+| 6 | 04:03:50 | **DO, crew** | Before touching a valve, the crew **bypasses the safety-injection actuation signal**. | the BLOCK row for `si_trip` requested (`set_trip_block` → `si_block`), permissive P-11 — **measure in Phase 2: is the block accepted at the pressure of 04:03?** | — |
+| 7 | 04:05:07 – 04:05:29 | **DO, crew** | Level is *rising fast*, not pegged: throttle injection and open letdown to its high limit in one action — *"the condition to avoid at all costs is 'going solid'"*. | ECCS STOP accepted (measured accepted at 4.50 min; window opens 2.09 min) **and** letdown at max | — |
+| 8 | 04:06:28 | VERIFY | A minute and a half later the level goes off the top of the scale — *"the only credible check on the amount of coolant… is the pressurizer level"*. The deception. | pzr level pegged high | — |
+| 9 | 04:06:27 / 04:10:37 | VERIFY | The RCS reaches saturation; the first pump high-vibration alarm follows — *"Indication of voids in system. Apparently not recognized."* | subcooling ≤ 0, `rcp_cavitating` | — |
+| 10 | 04:08:37 | DO | The AFW pumps have run eight minutes delivering nothing — *"low OTSG level, low steam pressure, high emergency feedwater discharge pressure"*. Open the block valves. | AFW flow > 0 *(the player's own valve restores flow — measured; no `clear` needed, one cosmetic `clear: ['afw_failure']` optional)* | — |
+| 11 | 05:13:37 | **DO, crew** | Loop B pumps shaking — *"The pump has been operating without adequate suction head."* Secure them. | loop B RCPs secured | — |
+| 12 | 05:41:37 | **DO, crew** | Loop A the same, and now — *"circulation of coolant decreased drastically, because natural circulation was blocked by steam"*. | all RCPs secured | — |
+| 13 | 06:11:37 | VERIFY | The loop A hot leg goes off the top of its scale — *"TAVE will not be correctly shown."* **This board's version is the SUBCOOLING MARGIN hard on its floor.** | subcooling margin at its −50.4 °F (−28 °C) floor *(needs `subcooling_c` mapped in `PARAM_INSTRUMENT.pwr2` — Phase 1; floor timing **re-measure in Phase 2**)* | — |
+| 14 | 06:18:37 | DO | A relieving shift supervisor asks the question nobody had — *"Mehler dismisses the pressurizer level reading and moves to a fresh conclusion"*. Close the block valve. Narrate that the crew reopened and reclosed it three more times through 07:56. | PORV flow 0, pressure rising | — |
+| 15 | 07:20:37 | DO | Restore injection by hand. It was **not sustained** historically — *"There was thus an inclination to use ES as little as possible."* | hhsi running, pressure rising **(re-measure in Phase 2)** | — |
+| 16 | 13:50:37 / 19:50:37 | VERIFY | Epilogue, narrated: the 13:50 hydrogen burn heard as a thump, the 19:50 pump restart that re-established core cooling, and the core found damaged — *"all will grope in bewilderment for another whole day before the truth strikes."* | read-and-continue; the model's **declared gap** (§2) | — |
 
-Fifteen steps, ~260 minutes of plant time plus the epilogue. Each step's `story` names what the
-crew could see on THEIR board, so the player learns the deception from the same instruments.
+Sixteen steps, ~260 minutes of plant time plus the epilogue. Steps 9 and 10 straddle each other on
+the clock (04:06/04:10 against 04:08:37) because the cue and the discovery interleaved; the
+authoring pass places 10's action after 9's observation and says so. Each step's `story` names what
+the crew could see on THEIR board, so the player learns the deception from the same instruments.
+
+Three things Phase 0 settled about this table, so the authoring pass does not re-litigate them:
+**step 7's ECCS STOP is accepted** at its clock (the window opens at 2.09 min; pressing it before
+1.09 min is accepted and does nothing, because injection has not started) · **step 10 needs no
+`clear`** — the player's own valve takes AFW flow to rated inside 30 s · **step 9's cues stand from
+2.6 min**, so its `why` must carry the 71-minute wait rather than present them as fresh, which is
+the better lesson anyway: why a crew watches a shaking pump for an hour.
 
 ## 6. Time and the clock
 
@@ -134,33 +200,104 @@ An incident walkthrough spends its life in alarm, which the clock rules were wri
   the cascade does not drop the tier alarm by alarm.
 - Every **injection** drops the clock to 1× (`'failure'`), and every **step check-off** drops it
   (`'step'`). Both are the step's own event — the player is meant to look. Accepted as built.
-- WARP (600×/3600×) is refused while the plant is in transient. The long waits (steps 9–12,
-  ~90 min of saturation and boiling) are the only places WARP is wanted; whether they are
-  WARP-eligible is **UNMEASURED** and is Phase 0's first number. If not, 60× makes 90 plant-minutes
-  a 90-second wait, which is acceptable; `wait_hint` says so.
+- **WARP is available everywhere on this ride — measured, not assumed.** `_warpBlocked()` sampled
+  every 10 plant-seconds across 1,557 samples: **≥ 99 % eligible in every window** and **100 % from
+  5 min to 200 min**; the only refusals are `plant in transient`, ×1 in 0–5 min and ×3 in
+  200–260 min. **60× is never refused** — `_setSpeed` refuses only the WARP rungs (≥ 600×) and
+  anything above 1× while the plant declares `speed_hold`, and `speed_hold` was **null at all 1,557
+  samples**. So `wait_hint` can promise the fast clock through the long waits.
+- **The clock dropped to 1× exactly twice in four hours**, both by design: the injection at 2 s
+  (`equipment failure`) and the reactor trip at 55 s. Nothing else — the standing alarmed board
+  suppresses the rest, as this section predicted. Phase 0 fired all four initiators in one broadcast
+  and paid one drop between them; the authored walkthrough fires them on three steps and will pay
+  one drop each.
+- **3600× holds, with two honest caveats.** Forked at six phase midpoints with WARP enabled, 3600×
+  was **accepted every time** and held **12 plant-minutes** at four of the six. It self-dropped at
+  **105 min** (after 3 s, `pressure moving 122 psi/s`) and at **230 min** (after 100 s, `pressure
+  moving 55 psi/s`) on its own pressure-rate watch, landing at 60×. That is the in-loop watch doing
+  its job during the pumps-off boiling and the injection recovery; the text should say so rather
+  than promise a tier the plant will take back.
 
 ## 7. Sources — an evidence pass BEFORE authoring (CLAUDE.md, HR11)
 
-In the corpus today: GEND-061 (core damage), NUREG-0737, IE Bulletins 79-06A and 79-06C (`.html`,
-invisible to `find_source.js` — grep `inbox/sources` by name). **Not in the corpus: the Kemeny
-Commission report, NUREG/CR-1250 (Rogovin), NUREG-0600, NSAC-80-1.** The minute-by-minute
-timeline every `story.clock` needs is nowhere sourced in this repo. Phase 0 fetches one primary
-timeline (NUREG-0600 or NSAC-80-1 via the nrc.gov workaround in the `pwr-prototypicality-sources`
-memory) and cites it per step; until then every clock in §5 is `[recalled]`.
+**DONE 2026-09-08 — the timeline is sourced and on disk.** `inbox/sources/` now carries
+**NUREG/CR-1250 Vol. II Part 2** (Rogovin, §II.A + Appendix II.1, the minute-by-minute event table)
+and **Volume I** (the narrative, which is where the report states what the operators believed).
+Both fetched from OSTI by `servlets/purl/6881334` and `.../5395798` — the nrc.gov workaround was not
+needed — and both indexed by `node tools/find_source.js`. `inbox/tmi_timeline_sourced.md` is the
+extraction: 42 rows, each with its event number, page and verbatim quote, plus a "what the crew knew
+and did not know" section quoting the report on each decision. **No clock in §5 is `[recalled]` any
+more.** Appendix II.1 is a *reconciliation of* NUREG-0600 and NSAC-1 and cites both as its
+references, so it supersedes them for this purpose; neither is obtainable (OSTI 404s NUREG-0600's
+full text, EPRI's report is not open-access) and the Kemeny report was not reached.
 
-## 8. Phase 0 measurements (Design Criteria Q1 — no number, no step)
+Also in the corpus: GEND-061 (core damage — its "almost 30 lb/in² gage" burn pressure is
+corroborated by Appendix II.1's 28 psig), NUREG-0737, IE Bulletins 79-06A and 79-06C (`.html`,
+invisible to `find_source.js` — grep `inbox/sources` by name).
 
-1. The §86 ride replayed through the walkthrough harness from `hot_full_power`: wall-clock cost at
-   `SEC_PER_TICK`, so the gate budget is known before the leg exists.
-2. WARP-eligible fraction of the ride, per phase (`_warpBlocked` reasons sampled every 10 s).
-3. Hot-leg indicated temperature versus saturation through the ride (step 12's acceptance).
-4. The ECCS STOP reset-delay window (45–60 s) against the 4.5-min throttle: is the press accepted
-   when the story needs it? If refused, step 6 moves to when it is accepted, and says so.
-5. Cavitation indication timing versus the 1:14 / 1:40 securing clocks.
-6. Whether `afw_failure` can be cleared by the player's own AFW valve action (step 7) or needs the
-   step's `clear`.
+**A trap for the authoring pass:** `pdftotext -layout` mis-assigns Appendix II.1's Event column by
+one row and prints *"Reactor trips on high pressure"* against the 3 s event instead of the 8 s one —
+exactly the distinction step 3 turns on. The `.txt` in the corpus was rendered from PyMuPDF word
+coordinates instead. Both documents are column-laid-out, so **grepping the `.txt` for a quote
+returns zero even when the quote is right**; read down the column, with the x-offsets recorded in
+`inbox/tmi_timeline_sourced.md`.
 
-## 9. Rulings needed — the decision, the options, my recommendation
+## 8. Phase 0 measurements — DONE 2026-09-08
+
+All six taken full-stack on `edaf8154` from `hot_full_power`; scripts and tables in
+`inbox/tmi_phase0/RESULTS.md`, filed at
+<https://github.com/TH462/Reactor-Dynamics/issues/670#issuecomment-5595332218>.
+
+1. **Replay cost.** 15,696 broadcast ticks / 780,000 physics steps to 260 plant-minutes;
+   **248.5 s / 321.7 s / 437.4 s** of wall across three runs (36×–63× real time; shared machine).
+   That is **+21 % to +37 %** on `run_checklist_pwr2`'s `secs: 1180` — **budget 1,600 s** and replay
+   the whole four hours, because a leg the gate cannot drive to the end is a menu that lies.
+2. **WARP eligibility.** ≥ 99 % of samples in every window, 100 % from 5 to 200 min; **60× never
+   refused**; the clock drops to 1× exactly twice in four hours (the injection at 2 s, the trip at
+   55 s); 3600× held 12 plant-minutes at four of six midpoints and self-dropped at 105 min and
+   230 min on a pressure rate. Full numbers in §6.
+3. **Hot leg versus saturation.** The hot leg reads above saturation in **1,098 of 1,557 samples**,
+   first at **2.7 min**, peak exceedance **114 °F (63.3 °C)** at 122 min — so the old step-12
+   acceptance *is* satisfiable. But **the hot-leg detector never goes off scale** (peak 632.0 °F /
+   333.3 °C against a 32–752 °F / 0–400 °C range), and what pegs instead is the **subcooling
+   margin**, on its −50.4 °F (−28 °C) floor from **57.0 min** for 526 samples. Step 13 is rewritten
+   around that.
+4. **ECCS STOP window.** SI actuates at **65.5 s**; the stop is refused from 69 s to 120.5 s by the
+   reset time-delay relay (`RESET.delay_s = 60`) and **first accepted at 125.5 s (2.09 min)**. The
+   story's 4.5-minute press was **accepted on the ride itself**, so step 7 stands where the sourced
+   clock puts it.
+5. **Cavitation timing.** `rcp_cavitating` goes TRUE at **2.58 min** — a step, not a ramp, crossing
+   its 0.5 threshold 20 s after the margin reaches zero and saturating 20 s later. History secured
+   loop B at 74 min, so **the cue has stood for 71 minutes** by the time the crew acts.
+6. **The AFW clear path.** The player's own `set_afw_block {open:true}` takes flow 0.000 → **1.000
+   within 30 s** and `true_state.afw_blocked` to false, same engine lever as `clear_failure`, so
+   **step 10 needs no `clear` field**. The only wart is cosmetic: the kernel's `activeFailures` list
+   is emptied only by `clear_failure`, so the Failures tab keeps showing a row that is no longer
+   acting.
+
+### 8b. Phase 2 must re-measure
+
+Phase 0 measured the plant; it did not measure the authored leg, and three classes of number in this
+plan are still provisional.
+
+- **Every plant number past 30 minutes, full-stack.** The §2 table's post-30-minute rows carry a
+  "re-measure" flag for exactly this reason: §86 is engine-direct, the shipped stack's auxiliary-feed
+  level hold changes the ride from 50 min on, and the accumulator row was already false. Re-take the
+  pressures, levels, inventories and the block-valve/recovery clocks **on the authored leg**, not on
+  Phase 0's scripted ride — the player's route is not the replay's fixed holds.
+- **The safety-injection block acceptance at 04:03:50** (§5 step 6). P-11 is a pressure permissive
+  at ~1970 psig (13.6 MPa) and the block is an operator *request* that the plant revokes on the way
+  back up. Whether `set_trip_block {trip_id:'si_trip'}` is accepted at the plant state of 3 min 13 s
+  is unmeasured; if it is refused, the step moves to when it is accepted and says so.
+- **Step 13's subcooling floor timing on the full stack.** The −50.4 °F (−28 °C) floor from 57.0 min
+  is Phase 0's scripted ride. On the authored leg the player's own clocks differ, so the step's
+  acceptance window has to be re-taken there — and the instrument must be mapped first (Phase 1).
+
+## 9. Rulings — all four given 2026-09-08
+
+*(OWNER RULING, 2026-09-08: "Do as recommended, start phase 0.")* — every recommendation below is
+ruled as written. Kept for the reasoning, not as an open question; record at
+<https://github.com/TH462/Reactor-Dynamics/issues/670#issuecomment-5595163199>.
 
 **R1 — Does the player perform the crew's mistakes, or watch them?** *Options:* (a) the player
 presses ECCS STOP, opens letdown, secures the pumps, tagged *crew's action*; (b) the walkthrough
@@ -187,9 +324,9 @@ both complete it; (b) public with the release that carries it. **Recommend (a)**
 
 | phase | deliverable | gates |
 |---|---|---|
-| 0 | evidence pass (§7) + the six measurements (§8) filed on the issue with numbers | none (report) |
-| 1 | runtime: `inject`/`clear`/`story`/`crew` fields, instructor hook, harness `issue()`, renderer block + clock in header | run_checklist (+probes made red by injection), run_checklist_pwr2 unchanged, run_m6, verify_e2e_ui |
-| 2 | authoring: the 15 steps; `Manuals/08_ACCIDENT_TMI.md` rewritten for PWR2 with the timeline cited; `manual_ui_map.js` rows; flags row (preview) | run_style, run_manual_units, run_manual_rev, run_manual_controls, run_checklist_pwr2 (+1 leg, budget from Phase 0) |
+| 0 | **DONE 2026-09-08** — evidence pass (§7) + the six measurements (§8) filed on the issue with numbers | none (report) |
+| 1 | runtime: `inject`/`clear`/`story`/`crew` fields, instructor hook, harness `issue()`, renderer block + clock in header; **map subcooling margin into `PARAM_INSTRUMENT.pwr2`** (`subcooling_c: 'subcooling_margin'` — §5 step 13's acceptance); **raise `run_checklist_pwr2`'s `secs` hint to 1600 when the leg lands** | run_checklist (+probes made red by injection), run_checklist_pwr2 unchanged, run_m6, verify_e2e_ui |
+| 2 | authoring: the 16 steps; the §8b re-measurements; `Manuals/08_ACCIDENT_TMI.md` rewritten for PWR2 with the timeline cited; `manual_ui_map.js` rows; flags row (preview) | run_style, run_manual_units, run_manual_rev, run_manual_controls, run_checklist_pwr2 (+1 leg, budget 1600 s from Phase 0) |
 | 3 | playthroughs: `/layman-playthrough` on the leg, then the operator persona; every finding re-measured; fixes | the same, plus verify_ckl_relevance (ordering: the incident lists after the six legs) |
 | 4 | ship: changelog, TUNING_LOG, #660-style comment, owner review on the tester site | run_all |
 
