@@ -236,6 +236,20 @@ tile behind it. Both halves are deliberate and correct in isolation — the pane
 asked for, and the grader reading the transmitter is HR1. **Filed for the owner rather than
 fixed**: closing it means either grading on the drawn value or accepting the disagreement.
 
+**Ruling — ACCEPTED, not a defect** *(OWNER RULING, 2026-09-09: "A." — in reply to three options:
+**A** accept it silently and file it as known, **B** accept it and say so in the step text, **C**
+grade the acceptance on the drawn (damped) value; given on the recommendation of A.)*
+**Walkthrough acceptances continue to grade on the undamped transmitter value, not the drawn
+one.** The disagreement between a damped tile and an acceptance is a known, accepted and now
+attributed behaviour rather than a defect to fix: it is the two mechanisms the owner asked for —
+**#234 indicator damping, time constant 1.5 seconds** and **Hard Rule 1, instruments versus
+truth** — meeting during a fast transient, and **the measured gap in this instance was 1
+percentage point**. **The 58 acceptances across all seven walkthroughs that grade on a
+display-damped channel are covered by this ruling** and need no individual review; because the
+gap is rate × time constant, only a fast transient can show it, which is why the TMI-2 leg is the
+first content where it appears. Nothing changes in the grader, the thresholds or the step text.
+Recorded on #670.
+
 ---
 
 ### S-5 — Step 16's closing text describes a recovery the board does not show

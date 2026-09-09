@@ -105,6 +105,13 @@ acceptances across all seven walkthroughs grade on a damped channel**; only a fa
 shows it, which is why no heatup or cooldown step ever has. Both halves are deliberate and right
 in isolation and no threshold choice fixes it — the lag is rate×tau, so any limit crossed on a
 ramp is crossed with the tile behind. Left for the owner's ruling rather than patched.
+**RULED, and the answer is that nothing changes** *(OWNER RULING, 2026-09-09: "A." — in reply to
+**A** accept it silently and file it as known, **B** accept it and say so in the step text, **C**
+grade on the drawn value; on the recommendation of A)*: **a walkthrough acceptance grades the
+undamped transmitter, not the tile**, and a damped tile disagreeing with an acceptance is a
+known, accepted, attributed behaviour rather than a defect — the gap measured here was **1
+percentage point**. **All 58 damped-channel acceptances are covered**; no grader change, no
+threshold retune, no step text. Recorded on #670 and beside S-4 in the report.
 
 **Also measured and fixed.** The step-8 green outline really was on PRIMARY PRESSURE (the sole
 `.ckl-step-glow` element read "PRIMARY PRESSURE 1046 psi" with PRESSURIZER LEVEL at 100 %) — its
