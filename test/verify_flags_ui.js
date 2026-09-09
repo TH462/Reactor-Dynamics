@@ -342,6 +342,25 @@ function pinChannel(ch) {
   ck('dev: no Follow-in-Instructor buttons remain (#660 item 14)',
     (await b.page.$$('#mpContent [data-follow]')).length === 0 && !/Follow/.test(walk));
   await b.ctx.close();
+
+  /* THE TMI-2 INCIDENT WALKTHROUGH IS PREVIEW-ONLY (#670, plan R4 ruled 2026-09-08). Asserted
+   * on BOTH channels and on the rendered list, not on the registry: `mpWalkthroughs` filters the
+   * pool by `flagOn('procedure:' + id)`, so the Start button's presence is the only thing that
+   * says what a visitor is offered.
+   *
+   * ⚠ ON `?engine=pwr2`, AND THAT IS THE WHOLE CHECK. `SHELL` boots the RETIRED engine, whose
+   * pool has no incident leg at all — so run against it the dev half FAILS for the wrong reason
+   * and, worse, the public half PASSES for the wrong reason. Measured both ways at authoring:
+   * on `engine=pwr` the public assertion is green over a list that could never have contained
+   * the row. The shipped plant is pwr2 (#523) and it is the only pool this claim is about. */
+  var WT2 = SHELL.replace('engine=pwr&', 'engine=pwr2&');
+  b = await build('dev', WT2);
+  var walk2 = await openMission(b.page, 'walkthroughs');
+  ck('dev (pwr2): the TMI-2 incident walkthrough is offered (#670)',
+    (await b.page.$$('[data-wtstart="pwr_tmi2_incident"]')).length === 1,
+    (await b.page.$$eval('#mpContent [data-wtstart]', function (n) { return n.map(function (x) { return x.getAttribute('data-wtstart'); }); })).join(',') ||
+    walk2.slice(0, 60));
+  await b.ctx.close();
   // The player's window (no `mmode` in the URL) offers exactly Free Play and Walkthroughs
   // (#660 item 19); the campaign and scenario areas are reachable only through the door.
   b = await build('dev', SHELL.replace('&mmode=free', ''));
@@ -381,6 +400,17 @@ function pinChannel(ch) {
   await openSettings(b.page);
   ck('public + ?flags=1: the Features panel is reachable', await b.page.isVisible('#featureRow'));
   await closeSettings(b.page);
+  await b.ctx.close();
+
+  /* …and the same page on the public channel with the walkthroughs AREA forced on, so the
+   * absence cannot be the whole tab saying COMING SOON. Non-vacuous by construction: the dev
+   * check above lists the row off this identical URL. */
+  b = await build('public', WT2 + '&flags=%2Bwalkthroughs');
+  var pubWalk = await openMission(b.page, 'walkthroughs');
+  ck('public + ?flags=+walkthroughs: the incident walkthrough is still NOT offered (#670 preview-only)',
+    (await b.page.$$('[data-wtstart="pwr_tmi2_incident"]')).length === 0 &&
+    (await b.page.evaluate(function () { return RD.Flags.on('procedure:pwr_tmi2_incident'); })) === false,
+    pubWalk.slice(0, 70));
   await b.ctx.close();
 
   b = await build('public', SHELL + '&flags=%2Bcampaign');

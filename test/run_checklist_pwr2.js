@@ -54,11 +54,25 @@ var only = process.argv[2] || null;
 
 /* ================================ 1. THE REPLAY ======================================== */
 console.log(B + '\nPWR2 LIVE CHECKLISTS — the chain, replayed on the plant it ships with' + X);
-ck('the pwr2 pool exists and chains end to end (#526)',
-   POOL.length >= 5 && POOL.every(function (p, i) {
-     return i === POOL.length - 1 ? true : p.next === POOL[i + 1].id;
+/* THE CHAIN IS THE OPERATING CYCLE, AND THE INCIDENT LEG IS NOT PART OF IT (#670 Phase 2).
+ * The six cycle legs still chain Mode 5 → full power → Mode 5 through `next`, and that chain is
+ * what `ui/app.js`'s menu sort and the finished-card handoff read. An incident walkthrough is a
+ * historical reconstruction with no successor, so it names no `next` and must come AFTER the
+ * cycle in the pool's declaration order — which is also what puts it last in the player's list
+ * (`verify_ckl_relevance` asserts the rendered order independently). Asserted as three claims
+ * rather than one, so a broken chain and a misplaced incident leg do not look alike. */
+var CYCLE = POOL.filter(function (p) { return p.category !== 'incident'; });
+var INCIDENT = POOL.filter(function (p) { return p.category === 'incident'; });
+ck('the pwr2 pool exists and its operating cycle chains end to end (#526)',
+   CYCLE.length >= 5 && CYCLE.every(function (p, i) {
+     return i === CYCLE.length - 1 ? true : p.next === CYCLE[i + 1].id;
    }),
-   POOL.map(function (p) { return p.id; }).join(' → '));
+   CYCLE.map(function (p) { return p.id; }).join(' → '));
+ck('the incident legs come after the cycle and chain to nothing (#670)',
+   POOL.slice(0, CYCLE.length).every(function (p) { return p.category !== 'incident'; }) &&
+   INCIDENT.every(function (p) { return !p.next; }),
+   INCIDENT.length ? INCIDENT.map(function (p) { return p.id + (p.next ? ' → ' + p.next : ' (no next)'); }).join(', ')
+                   : 'no incident legs in the pool');
 
 POOL.forEach(function (proc) {
   if (only && proc.id !== only) return;

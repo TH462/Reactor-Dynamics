@@ -511,22 +511,45 @@ ck('(f) a `story` step ships clock/saw/knew/did in the checklist snapshot',
    c7 && c7.story ? JSON.stringify(c7.story).slice(0, 80) : String(c7 && c7.story));
 ck('(f) ...and `crew: true`, the tag that says the step is history rather than advice',
    c7 && c7.crew === true, c7 && String(c7.crew));
-/* THE SIX SHIPPED LEGS AUTHOR NONE OF THIS, and that claim is worth a check rather than a
- * sentence: it is what makes "nothing changes for the existing walkthroughs" measurable instead
- * of inherited. Read off the built pool, both plants. */
+/* THE NARRATIVE FIELDS BELONG TO THE INCIDENT CATEGORY AND TO NOTHING ELSE (#670 Phase 2).
+ *
+ * At Phase 1 this asserted that NO shipped leg authored `inject`/`clear`/`story`/`crew` — the
+ * runtime landed with no content, and the check made "nothing changes for the existing
+ * walkthroughs" measurable instead of inherited. Phase 2 authored the first one, so the claim
+ * moves rather than being deleted: the six operating-cycle legs still carry none of it, and
+ * every step that fires a failure or draws a narrative block is in a leg whose category is
+ * `incident`. That keeps the original guarantee — a cycle leg cannot quietly grow a behind-the-
+ * scenes failure — and adds the one Phase 2 owes, which is that the new fields did not leak.
+ *
+ * `crew` is checked harder than the rest: it is only ever correct on a step that ASKS the player
+ * to do something (guide §7 — a tag on a verification would teach the opposite of what the step
+ * wants), so it must sit beside a `cmd` or a cmd-kind `accs` entry. Read off the built pool,
+ * both plants. */
 (function () {
-  var n = 0, withStory = 0;
+  var leaked = [], crewNoAction = [], incidentSteps = 0, incidentLegs = 0;
   ['pwr', 'pwr2'].forEach(function (k) {
     (RD.MANUAL_PROCEDURES[k] || []).forEach(function (p) {
       if (/^zz_|^__/.test(p.id)) return;
-      (p.steps || []).forEach(function (st) {
-        if (st.inject || st.clear) n++;
-        if (st.story || st.crew) withStory++;
+      var isIncident = p.category === 'incident';
+      if (isIncident) incidentLegs++;
+      (p.steps || []).forEach(function (st, i) {
+        var uses = !!(st.inject || st.clear || st.story || st.crew);
+        if (!uses) return;
+        if (!isIncident) { leaked.push(k + ':' + p.id + ' step ' + (i + 1)); return; }
+        incidentSteps++;
+        if (st.crew && !st.cmd && !(st.accs || []).some(function (e) { return e && e.cmd; })) {
+          crewNoAction.push(k + ':' + p.id + ' step ' + (i + 1));
+        }
       });
     });
   });
-  ck('the shipped pools author no inject/clear/story yet — Phase 1 is runtime only',
-     n === 0 && withStory === 0, n + ' steps with inject/clear, ' + withStory + ' with story/crew');
+  ck('inject/clear/story/crew appear ONLY in an `incident` leg — the six cycle legs are untouched',
+     leaked.length === 0,
+     leaked.length ? 'LEAKED into: ' + leaked.join(', ')
+                   : incidentLegs + ' incident leg(s), ' + incidentSteps + ' steps carrying the fields');
+  ck('...and every `crew` tag sits on a step that asks the player to act (guide §7)',
+     crewNoAction.length === 0,
+     crewNoAction.length ? 'tagged with no action: ' + crewNoAction.join(', ') : 'all crew steps carry a command');
 })();
 svc7.handleCommand({ action: 'stop_checklist' });
 

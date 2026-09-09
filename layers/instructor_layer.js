@@ -68,6 +68,14 @@
        * — which is Tsat(TRUE P) − TRUE T-hot — under precisely the conditions an incident
        * walkthrough is about. */
       subcooling_c: 'subcooling_margin',
+      /* THE PORV TAILPIPE (#670 Phase 2) — the one honest tell in the TMI-2 sequence, and the
+       * reading the incident walkthrough's step 4 is graded on. Instrument-first per HR1 and
+       * that is the whole point of the step: the operator's tailpipe reading is a lagged,
+       * noisy pipe-clamp thermocouple (`pwr2_instruments.js`, tau 5 s), and it is the ONLY
+       * channel that disagrees with the PORV lamp — which the same walkthrough has failed
+       * stuck-closed. Grading on `true_state.porv_open` instead would tick the step off a
+       * truth the player cannot see. */
+      porv_tailpipe_temp_c: 'porv_tailpipe_temp',
     },
     rbmk: {
       power_pct: 'power_range', steam_pressure_mpa: 'steam_pressure', drum_level_pct: 'drum_level',

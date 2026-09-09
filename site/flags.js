@@ -142,6 +142,12 @@
     'procedure:pwr_sgtr': 'preview',
     'procedure:pwr_seal_leak': 'preview',
     'procedure:pwr_tmi': 'preview',
+    /* THE TMI-2 INCIDENT WALKTHROUGH (#670, plan R4 ruled 2026-09-08: preview-only "until a
+     * layman playthrough and an operator playthrough both complete it"). An unregistered id is
+     * already off in public — this row exists so the entry is VISIBLE in the Features panel and
+     * so flipping it to 'public' is the deliberate act the ruling asks for, not a side effect
+     * of someone registering ids in bulk. */
+    'procedure:pwr_tmi2_incident': 'preview',
     // ---- RBMK (plant on hold; its control room is not built) ----
     'scenario:rbmk_tour': 'preview',
     'scenario:rbmk_void': 'preview',

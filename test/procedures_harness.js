@@ -33,7 +33,13 @@
 
   // Categories where a scram / standing critical alarm is the intended outcome,
   // not a failure of the procedure.
-  var CASUALTY_CATEGORIES = { emergency: true, accident: true };
+  /* `incident` joins them at #670 Phase 2. An incident walkthrough reconstructs an accident:
+   * the reactor trips on the second step, and REACTOR TRIP plus a shelf of critical alarms
+   * stand for the whole four hours by construction. Without this the two non-casualty
+   * assertions below ("no unexpected scram", "no critical alarm standing at end") would red on
+   * the leg doing exactly what it is authored to do — and the guard checks, which are the ones
+   * that matter here, run either way. */
+  var CASUALTY_CATEGORIES = { emergency: true, accident: true, incident: true };
 
   // Commands that deliberately trip the reactor. A shutdown procedure scrams ON
   // PURPOSE, so a scram at or after one of these is expected and REACTOR TRIP

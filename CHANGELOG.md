@@ -30,6 +30,39 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
 
 ## [Unreleased]
 
+### Added (the TMI-2 incident walkthrough — #670 Phase 2)
+
+The first incident walkthrough: **"TMI-2, 28 March 1979 — the first four hours, as the crew lived
+them"**, sixteen steps on the sourced clocks, from Hot Full Power to a recovered plant at 4 h 20 min
+of plant time. **Preview only** *(plan R4, ruled 2026-09-08)* — `procedure:pwr_tmi2_incident` is
+registered `preview` in `site/flags.js` until a layman and an operator playthrough both complete
+it, so it gets no `changelog.html` entry. Every `story.clock` is NUREG/CR-1250 Vol. II Pt 2
+Appendix II.1; only 04:00:36 and 04:00:37 are wall clocks the appendix states and the rest are that
+arithmetic. Failures arrive behind the scenes on the step that needs them, and three steps carry
+the `crew` tag — the safety-injection bypass at 04:03:50, the injection throttled at 04:05:07 on a
+level that is *rising* rather than pegged, and the pumps secured at 05:13:37.
+
+**Every plant number in it was re-measured full-stack on the crew's own clocks** (plan §8b), not on
+the retired validation §86's minutes: all seven crew commands were **accepted at their sourced
+second**, so no step had to move, `beyond_model` latched in **0 of 1,558 samples**, and the plant
+reaches 260 plant-minutes alive. Five things the plan assumed measured otherwise, each carried in
+the step it belongs to. **The stuck relief valve has a 20-second arming window** — measured by
+arming at nine different seconds, at 30 s the valve has already reseated and the plant sits at
+1985 psia (13.69 MPa) with no accident at all — so it is armed on the feed-loss step rather than on the step
+whose story it is. **The tailpipe never exceeds the hot leg** on this plant (0 of 1,558 samples; it
+saturates at 482 °F / 250 °C), so the stuck valve is graded on the sourced 240 °F (115.6 °C) alarm point instead, which
+it crosses at 22 s against the report's 30 s. **Letdown is already at its high limit** at power, so
+the crew's second action of 04:05 is narrated rather than faked. **This board has one reactor
+coolant pump handswitch**, so the crew's two securings are one press. And **RCP FLOW does not move
+when the pumps are secured** — 16.4 % to 16.3 %, the void had already taken it — so the step is
+graded on the cavitation alarm clearing and on PRESSURIZER LEVEL finally leaving the top of the
+scale near 65 plant-minutes, which is what makes the wait real.
+
+The declared divergences are in the steps: this plant trips on over-temperature difference near
+53 seconds where TMI-2 tripped on pressure at 8 seconds, and the fuel damage, the radiation alarms
+and the hydrogen burn are outside the model and are told rather than run (peak fuel 1297 °F / 703 °C here,
+94 % of the core uncovered, against a real one far past 2500 °F / 1371 °C).
+
 ### Added (the runtime for incident walkthroughs — #670 Phase 1)
 
 A walkthrough step may now **fire failures behind the scenes** and **carry the history of the

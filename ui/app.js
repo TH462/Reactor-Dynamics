@@ -3638,6 +3638,14 @@
     sr_energized:           { bool: 'SOURCE RANGE is switched on' },
     sg_safety_open:         { bool: 'an SG code safety is open' },
     porv_open:              { bool: 'the PORV is open' },
+    /* THE INCIDENT WALKTHROUGH'S TWO (#670 Phase 2). The tailpipe temperature has no engraved
+     * label on the board — it is the bare °F number under the PORV status light, and the
+     * inspect card names it "Power-Operated Relief Valve (PORV) Tailpipe Temperature" — so the
+     * done-when line uses the inspect card's own words rather than inventing a tile name.
+     * `rcp_cavitating` reaches the player as the RCP CAVITATION alarm, which is what the phrase
+     * names; with `op:'<'` it renders "the pump cavitation alarm is not standing". */
+    porv_tailpipe_temp_c:   { label: 'PORV tailpipe temperature', dim: 'temp' },
+    rcp_cavitating:         { bool: 'the pump cavitation alarm is standing' },
   };
   var MODE_NAMES = { 1: 'Mode 1, At Power', 2: 'Mode 2, Startup', 3: 'Mode 3, Hot Standby',
                      4: 'Mode 4, Hot Shutdown', 5: 'Mode 5, Cold Shutdown' };
@@ -4249,7 +4257,12 @@
    * The CATEGORY grouping stays on top of it. Declaration order alone would give the same
    * answer for every pool we ship today, but it would put the categories at the mercy of how
    * a future pool happens to be typed, and the grouping is what the directive named. */
-  var CKL_CAT_ORDER = ['startup', 'power', 'control', 'shutdown', 'emergency', 'accident'];
+  /* `incident` is LAST and that is the requirement, not a preference (#670 Phase 2): the six
+   * operating-cycle legs are the list a player works through, and the TMI-2 walkthrough is a
+   * historical reconstruction that starts at full power and ends with a damaged core. An
+   * unknown category already sorts last here, so this entry only makes the position explicit
+   * and stops a future category landing between the cycle and the incident by accident. */
+  var CKL_CAT_ORDER = ['startup', 'power', 'control', 'shutdown', 'emergency', 'accident', 'incident'];
   function cklMenuHtml(ranked) {
     if (!ranked) ranked = rankedProcedures();
     if (!ranked.length) return '<div class="m-note">No procedures for this plant.</div>';

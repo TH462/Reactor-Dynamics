@@ -102,6 +102,19 @@ function sig(rows) {
        ', raise_power ' + (raiseM1 && raiseM1.gated ? 'grey' : 'WHITE') +
        ', lower_power ' + (lowerM1 && lowerM1.gated ? 'GREY' : 'white'));
 
+    /* THE INCIDENT WALKTHROUGH IS THE ROW THAT MUST BE WHITE AT FULL POWER (#670 Phase 2).
+     * It starts from Hot Full Power and its only entry condition is REACTOR POWER above 90 %,
+     * so at the Mode 1 boot it is offered and at Mode 5 it is greyed (asserted by the "every
+     * other leg is greyed" check below, which counts exactly one white row). It is also the
+     * LAST row, by category rather than by luck — see the CYCLE literal. */
+    var tmiM1 = atPower.filter(function (r) { return r.id === 'pwr_tmi2_incident'; })[0];
+    ck('Mode 1 boot: the TMI-2 incident walkthrough is listed, LAST, and white (#670)',
+       !!tmiM1 && !tmiM1.gated && atPower[atPower.length - 1].id === 'pwr_tmi2_incident',
+       tmiM1 ? (tmiM1.gated ? 'GREYED: ' + tmiM1.gate : 'white') + ', position ' +
+               (atPower.map(function (r) { return r.id; }).indexOf('pwr_tmi2_incident') + 1) +
+               ' of ' + atPower.length
+             : 'row missing from the list');
+
     /* ---- 2. the player switches to Cold Shutdown (Mode 5) ------------------------------ */
     /* Through the Plant & Mission window, which is the only path a player has to a different
      * initial condition. A fresh load lands on that window, so reloading IS the player's
@@ -136,10 +149,14 @@ function sig(rows) {
      * because reading it off the same array the renderer sorts by would assert nothing. It is
      * the pool's declaration order, which run_checklist_pwr2 independently gates against the
      * `next` chain — so if this list and that chain ever disagree, one of the two reddens. */
+    /* THE TMI-2 INCIDENT WALKTHROUGH LISTS AFTER ALL SIX (#670 Phase 2). Its category is
+     * `incident`, which is last in `CKL_CAT_ORDER`, so it cannot land between two cycle legs
+     * however the pool is later re-typed. Written into the literal for the reason the paragraph
+     * above gives — reading the expected order off the pool would assert nothing. */
     var CYCLE = ['pwr_heatup', 'pwr_startup', 'pwr_raise_power', 'pwr_lower_power',
-                 'pwr_shutdown', 'pwr_cooldown'];
+                 'pwr_shutdown', 'pwr_cooldown', 'pwr_tmi2_incident'];
     var order = mode5.map(function (r) { return r.id; });
-    ck('the list runs the plant operating cycle: Mode 5 -> Mode 3 first, Mode 3 -> Mode 5 last',
+    ck('the list runs the plant operating cycle: Mode 5 -> Mode 3 first, Mode 3 -> Mode 5 last, the incident after all six',
        order.join(',') === CYCLE.join(','), order.join(' -> '));
     ck('and the same order at Mode 1 — it is a STANDARD order, not one recomputed from the plant',
        atPower.map(function (r) { return r.id; }).join(',') === order.join(','),

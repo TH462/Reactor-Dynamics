@@ -29,6 +29,100 @@ and the user-visible summary in `CHANGELOG.md`. This file points at those and tr
 
 ---
 
+## Session log — 2026-09-09-develop-a (#670 Phase 2 — the TMI-2 incident walkthrough authored on the sourced clocks)
+
+Phase 1 built the runtime (`inject`/`clear`/`story`/`crew`) and shipped no content. This authors
+the content: `pwr_tmi2_incident`, sixteen steps, `hot_full_power` to a recovered plant at
+4 h 20 min of plant time, `category: 'incident'`, preview-only per plan R4. Plan:
+`Blueprint/TMI_WALKTHROUGH_PLAN.md`. Clocks: `inbox/tmi_timeline_sourced.md` (NUREG/CR-1250
+Vol. II Pt 2, Appendix II.1). Measurements: `inbox/tmi_phase2/MEASURED.md`, 1,558 samples plus
+three probes, all local.
+
+**THE §8b RE-MEASUREMENT: NOT ONE CLOCK MOVED.** Every crew action was accepted at its sourced
+second, full-stack on the authored ride — the safety-injection block at 3 min 13 s (P-11 wants
+pressure under 1972 psig; the plant is at 1044 psia (7.20 MPa)), the ECCS STOP at 4 min 30 s (the reset window
+opens at 2.09 min), the auxiliary-feed valves at 8 min, the pumps at 1 h 13 min, the block valve at
+2 h 18 min, injection restored at 3 h 20 min, and the epilogue pump restart. `beyond_model` /
+`model_held` latched in **0 of 1,558 samples**; the core never melted; the ride ends alive at
+1406 psia (9.69 MPa) with 81.1 % inventory.
+
+**The measured spine, at the authored step boundaries.** PORV opens **5.5 s / 2340 psia (16.13 MPa)** · reactor
+trips **52.5 s on over-temperature ΔT** (TMI-2: 8 s on pressure — the declared divergence, and it is
+in step 3's `why`) · tailpipe 122 °F (50 °C) seated, past **240 °F (115.6 °C) at 22 s**, past 300 °F at 28 s,
+saturating **482 °F (250 °C)** · SI actuates **63 s** · PRESSURIZER LEVEL pegged 100 % from **3.4 min to
+51.3 min** · `rcp_cavitating` TRUE at **2.58 min** · board margin ≤ 0 at **2.75 min** and on its
+**−50.4 °F (−28 °C) floor from 56.8 min to 140.7 min** (504 samples) · level below 80 % near **65 min**,
+below 50 % at **94.9 min** · after the block valve, pressure past 750 psia (5.17 MPa) at **139.8 min** and the
+margin off its floor at **140.9 min** · after injection, margin back through 10 °F (5.6 °C) at **222 min**
+and inventory 19.6 % → **81.1 %** · accumulators **never discharge** (100 % to 73 min, 86.1 %
+after) · inventory minimum **7.4 %**, core **94.2 % uncovered**, peak fuel **1297 °F (703 °C)**.
+
+**FIVE THINGS THE PLAN ASSUMED THAT MEASURED OTHERWISE.** Each is carried in the step it belongs to
+and each is a plant fact, not a wording choice.
+
+1. **THE STUCK RELIEF VALVE HAS A 20-SECOND ARMING WINDOW, and the plan put the injection outside
+   it.** The valve lifts at 5.5 s and reseats near 25 s, so `stuck_porv_open` armed on step 3 — the
+   step whose *story* it is — can arrive after the plant has already recovered. Measured by arming
+   at nine different seconds and reading the plant at t+300 s: **0/2/5/10/15/20 s → valve open,
+   1045 psia (7.21 MPa), level 100 %, the accident**; **30/45/60 s → valve shut, 1985 psia (13.69 MPa), level 41 %, no
+   accident at all.** A live player takes an unbounded time to press Continue, so the arm is
+   authored on step 2 with the feed loss and step 3 fires nothing. **This is the general rule and it
+   is now guide §14 I4: an injection has a window, the window is a plant fact, measure it.**
+2. **The tailpipe never exceeds the hot leg** — the plan's step-4 acceptance is satisfied in **0 of
+   1,558 samples**. It saturates at 482 °F (250 °C) against a hot leg at 550–632 °F (288–333 °C). Graded on the sourced
+   alarm point instead (240 °F / 115.6 °C, App. II.1 E20's 239.2 °F), crossed at 22 s against the report's 30 s.
+3. **Letdown is already at its high limit.** `hot_full_power` boots with both orifices in service
+   and the LETDOWN card offers nothing above A+B 7 %, so `set_letdown_orifices {a,b}` moves the flow
+   **12.7 gpm → 12.7 gpm**. The crew's second action of 04:05 cannot be performed here; narrated in
+   step 7 rather than faked (guide P1).
+4. **This board has ONE reactor-coolant-pump handswitch** (`sys.pumpTripped`, a single boolean), so
+   the crew's loop B (1 h 13 min) and loop A (1 h 41 min) securings are one press. Step 11 is that
+   press at loop B's clock; step 12 is the consequence at loop A's clock and carries **no `crew`
+   tag**, because the tag is for a step that asks the player to repeat the crew's action.
+5. **RCP FLOW IS USELESS AS THE SECURING'S ACCEPTANCE** — 16.4 % the tick before the press, 16.3 %
+   the tick after, and it only falls under 10 % at 209 min, because the void had already taken the
+   flow. What moves is the cavitation alarm, on the next broadcast. The step grades that **plus**
+   PRESSURIZER LEVEL below 80 %, which is the entry that makes the 65-minute wait real instead of
+   letting a player secure the pumps at ten minutes.
+
+**Two acceptances widened, both for the same reason and neither by rounding.** Step 2's SG-level
+entry read **56.51 %** at a 35 s hold — the harness lands the injections a broadcast earlier than
+the measurement ride did, 1.5 s of a 65 %-to-dry slide — so the hold is 45 s, where it reads 38 %.
+Step 9's margin entry was `<= 0` on a plant that sits **AT** saturation for fifty minutes: true
+subcooling reads exactly 0.00 and the board's derived margin hovers −0.2 to +0.3 °F, so it passes or
+fails on the last bit, and worse, the replay grades the true value where the runtime grades the
+instrument. It is `<= 1 °F` (0.56 °C) now. **Step 13's `<= −50 °F` was NOT widened** and does not need to be:
+`pwr_instruments.js` applies the clip after the noise, so the instrument reads exactly −28.0 °C on
+its floor.
+
+**One authoring defect the gate caught immediately and worth recording, because it is the shape a
+`control` field hides.** Step 7 was authored with `control: 'ECCS'`, `target`, a `crew` tag and an
+`acc` on `hpi_active` — and **no `cmd`**. The replay issues `st.cmd`; a `control` string is prose. So
+the ECCS STOP never happened, injection stayed in, and steps 11/12/13 all reddened on a plant that
+never entered the transient — three failures with one cause, forty minutes of plant time downstream
+of it. **A step's `control` says what to press; only `cmd` presses it.**
+
+**Runtime and gate changes.** `PARAM_INSTRUMENT.pwr2` gains `porv_tailpipe_temp_c →
+porv_tailpipe_temp` (instrument-first, and the point of it: the PORV lamp is failed stuck-closed in
+the same walkthrough, so grading on `true_state.porv_open` would tick the step off a fact the player
+cannot see). `PRED_DISPLAY` gains `porv_tailpipe_temp_c` and `rcp_cavitating`. `CKL_CAT_ORDER` gains
+`incident`, last. `procedures_harness` treats `incident` as a casualty category — the reactor trips
+on step 2 by design, so "no unexpected scram" and "no critical alarm standing at end" do not apply;
+the `guard` block still does. `run_checklist_pwr2`'s chain check splits: the six cycle legs chain
+through `next`, incident legs come after them and chain to nothing. `run_checklist`'s Phase-1 check
+("the shipped pools author none of this") **moves rather than being deleted** — it now asserts the
+four fields appear ONLY in an `incident` leg and that every `crew` tag sits on a step with a
+command. Both halves proven red by injection: a `story` block moved onto `pwr_shutdown` reds the
+first (77/78), a `crew` tag on the incident's verification step 12 reds the second (77/78).
+
+**Gates.** `run_style` 10/10 · `run_checklist` 77 → **78/78** · `run_manual_controls` 559 →
+**590 checks, 0 failed** (the new leg's seven mapped steps, plus the reverse checks) ·
+`run_checklist_pwr2` 154 → **177/177**, `secs` hint 1180 → 1600 · `run_flags` 342 -> 345/345 ·
+`run_hardrules` 511/511 · `verify_ckl_relevance` 16 → **17** · `verify_flags_ui` 48 → **50** ·
+`run_release` unchanged (preview-only content gets no `changelog.html` entry).
+
+---
+
 ## Session log — 2026-09-08-develop-b (#660 — the owner's playtest notes, sections A and B: the bar back to one row, the WARP timer gone, and the 1/M plot finally used)
 
 **The notes are the directive**; transcribed on #660. Two things measured before writing:

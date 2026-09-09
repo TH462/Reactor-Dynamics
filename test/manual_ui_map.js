@@ -200,6 +200,19 @@ var STEP_UI = {
     { i: 10, view: 'board', control: 'RCP Run/Stop' },
     { i: 11, view: 'board', control: 'Residual Heat Removal (RHR)' },
   ],
+  /* THE TMI-2 INCIDENT WALKTHROUGH (#670 Phase 2). Its own block, appended — the six cycle
+   * legs above are untouched, because this table is POSITIONAL and the four historical
+   * breakages were all somebody re-deriving instead of leaving existing rows alone. Seven of
+   * its sixteen steps carry a `control`; the other nine are verifications and own no row. */
+  'pwr2:pwr_tmi2_incident': [
+    { i: 5, view: 'board', control: 'Trip Blocks' },        // 04:03:50 — bypass the SI signal
+    { i: 6, view: 'board', control: 'ECCS' },               // 04:05:07 — throttle injection
+    { i: 9, view: 'board', control: 'AFW' },                // 04:08:37 — the found block valves
+    { i: 10, view: 'board', control: 'RCP Run/Stop' },      // 05:13:37 — secure the pumps
+    { i: 13, view: 'board', control: 'PORV Block Valve' },  // 06:18:37 — the first correct move
+    { i: 14, view: 'board', control: 'ECCS' },              // 07:20:37 — injection restored
+    { i: 15, view: 'board', control: 'RCP Run/Stop' },      // 19:50:37 — the epilogue restart
+  ],
   pwr_startup: [
     { i: 2,  view: 'board', control: 'Feed Pumps' },
     { i: 3,  view: 'board', control: '1/M Plot' },

@@ -586,19 +586,73 @@ The pattern, generalised:
 
 ---
 
-## 14. Incident walkthroughs — not covered here
+## 14. Incident walkthroughs
 
-Incident walkthroughs (the TMI-2 flagship and the ones that follow) add narrative fields and
-background failure injection on top of the schema above, and their steps are graded against a
-plant that is deliberately misbehaving rather than one the player is driving. Their authoring
-rules — how a narrative beat relates to a step, when a failure may be injected relative to an
-acceptance, and what a `why` may say about an instrument that is lying — will be a separate
-section of this guide once that design lands (see #670). Nothing in §1–13 is
-suspended for them; they add to it.
+An incident walkthrough reconstructs a real accident: the failures arrive behind the scenes on the
+step that needs them, some steps ask the player to repeat the mistakes that made it, and the plant
+is deliberately misbehaving rather than being driven. **Nothing in §1–13 is suspended** — the
+rules below are additions. The runtime is #670 Phase 1 (`inject`, `clear`, `story`, `crew`, all in
+the §7 table); these rules are what the first one, `pwr_tmi2_incident`, actually needed
+(#670 Phase 2, 2026-09-09; measurements in `inbox/tmi_phase2/MEASURED.md`).
 
-**The RUNTIME for them is built as of 2026-09-08 (#670 Phase 1) and the four fields it added —
-`inject`, `clear`, `story`, `crew` — are in the §7 table with what each may carry; no walkthrough
-authors any of them yet.** The authoring rules above are what is still missing, and the one that
-will not be obvious is that a `story` block competes with the `why` for the same reader on the same
-card: both are prose, both are always open on the active step, and the four narrative lines are
-capped at two sentences each for exactly the reason F2 caps the `why`.
+**The `story` block competes with the `why` for the same reader on the same card.** Both are
+prose, both are always open on the active step, and there are four narrative lines to one `why`.
+That is why `checklist_story_length` caps each field at two sentences — the same argument that
+made F2 load-bearing. `story` is what happened; `why` is the plant lesson; the long-form account
+lives in the manual chapter the step cites.
+
+- **I1. Every `story.clock` comes from a primary source, and derived clocks are marked as
+  derived where the source is quoted.** The TMI-2 leg's clocks are NUREG/CR-1250 Vol. II Pt 2
+  Appendix II.1, extracted with a verbatim quote per row into `inbox/tmi_timeline_sourced.md`;
+  only 04:00:36 and 04:00:37 are wall clocks the appendix states, and every other one is that
+  arithmetic. A clock nobody can check is an unsourced claim in player-facing copy (HR11, and
+  the standing rule that an unmeasured claim in player copy is still an unmeasured claim).
+- **I2. `story.knew` quotes the crew, or the report on the crew — never a paraphrase that gives
+  them confidence they did not have.** "Light off indicates solenoid deenergized. There is no
+  actual position indicator." is the step. "They did not realise the valve was open" is a verdict
+  the player is supposed to reach for themselves. W4 forbids document citations in player text and
+  this is the exception that proves it: the quote is the content, the *citation* stays in a source
+  comment beside the step.
+- **I3. `crew: true` goes only on a step that ASKS the player to act** — a step with a `cmd` or a
+  cmd-kind `accs` entry. On a verification the tag teaches the opposite of what the step wants,
+  because there is nothing for the player to have done. Gated: `run_checklist` fails a `crew` tag
+  with no command behind it, and fails any of the four fields appearing in a leg whose category is
+  not `incident`.
+- **I4. AN INJECTION HAS A WINDOW, AND THE WINDOW IS A PLANT FACT YOU MUST MEASURE.** This is the
+  rule that will bite. The step that fires a failure is not always the step the narrative puts it
+  on: TMI-2's stuck relief valve is step 3's story, and arming it on step 3 does not work, because
+  the valve lifts at 5.5 s and reseats near 25 s and the stick has to be in before that. Measured
+  by arming at nine different seconds: at 0/2/5/10/15/20 s the plant runs the accident; at
+  30/45/60 s the valve had already reseated and the plant sits at 1985 psia with level 41 %, no
+  accident at all. **A live player takes an unbounded time to press Continue**, so a failure whose
+  window is shorter than a human pause belongs on the EARLIER step, with a source comment saying
+  which measurement put it there.
+- **I5. A step's `cmd` is issued at step START, so a long wait belongs to the step BEFORE the one
+  that acts.** The replay drives `hold` seconds after issuing; the live player presses Continue
+  when the acceptance lights. Getting this backwards puts the crew's 1 h 13 min action on the
+  board at 10 minutes.
+- **I6. Make the wait real with an acceptance the plant cannot satisfy early.** A step whose only
+  criterion is "press the button" ticks the moment the player presses it, however wrong the clock
+  is. Pair the action's effect with a reading that arrives on the historical schedule — the pump
+  securing is graded on the cavitation alarm clearing AND on PRESSURIZER LEVEL finally coming off
+  the top of the scale near 65 plant-minutes.
+- **I7. Grade the instrument the story is about, not the truth behind it.** The stuck valve's step
+  is graded on the tailpipe temperature, because the PORV lamp is failed stuck-closed in the same
+  breath and `true_state.porv_open` would tick the step off a fact the player cannot see. HR1 is
+  sharper here than anywhere else in the pool: the whole subject is an instrument that disagrees
+  with the plant.
+- **I8. State the model's gaps in the step, not in a document.** Design Criteria Q3 wants a
+  declared departure. The TMI-2 leg says in its last step's `why` that the fuel damage, the
+  radiation alarms and the hydrogen burn are outside this model and are being told rather than
+  run, and gives the number that shows the size of it (peak fuel 1297 °F here against a real core
+  far past 2500 °F). The same applies to a divergence mid-leg: this plant trips on
+  over-temperature difference near 53 s where TMI-2 tripped on pressure at 8 s, and that sentence
+  is in the step it belongs to.
+- **I9. An `incident` leg is not part of the operating cycle.** It names no `next`, it declares
+  `category: 'incident'` (last in `CKL_CAT_ORDER`), and it is registered in `site/flags.js` so the
+  channel it ships on is a decision somebody made. `run_checklist_pwr2` gates the chain and the
+  ordering separately; `verify_ckl_relevance` gates the rendered position.
+- **I10. `procedures_harness` treats `incident` as a casualty category.** The reactor trips on the
+  second step and critical alarms stand for the whole run, so the "no unexpected scram" and "no
+  critical alarm standing at end" assertions do not apply. The `guard` block still does, and on an
+  incident leg `never_melted` is the assertion that the plant stayed inside its envelope.

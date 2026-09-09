@@ -1,8 +1,12 @@
 # TMI-2 incident walkthrough — the plan
 
-**Status: PLAN — rulings R1–R4 given 2026-09-08 ("Do as recommended, start phase 0"); Phase 0 done;
-Phase 1 in progress — issue #670. Not binding until executed; expires when done (CLAUDE.md "plans
-expire when executed").** Written 2026-09-08 by the coordinating session from
+**Status: PLAN — rulings R1–R4 given 2026-09-08 ("Do as recommended, start phase 0"); Phases 0, 1
+and 2 DONE (2026-09-08, 2026-09-08, 2026-09-09); phases 3 and 4 open — issue #670. Not binding
+until executed; expires when done (CLAUDE.md "plans expire when executed").**
+**§2's post-30-minute "re-measure in Phase 2" flags are DISCHARGED** — the numbers were re-taken
+full-stack on the crew's own clocks and are in `inbox/tmi_phase2/MEASURED.md`; where they disagree
+with §2, the measurement wins and §10's Phase 2 row lists the five that changed a step.
+Written 2026-09-08 by the coordinating session from
 `inbox/tmi_walkthrough_inventory.md` (1,064 lines of file:line facts; local, not tracked). Revised
 2026-09-08 against Phase 0: every clock now comes from `inbox/tmi_timeline_sourced.md`
 (NUREG/CR-1250 Vol. II Pt 2, Appendix II.1) and every plant number from the full-stack ride in
@@ -326,9 +330,27 @@ both complete it; (b) public with the release that carries it. **Recommend (a)**
 |---|---|---|
 | 0 | **DONE 2026-09-08** — evidence pass (§7) + the six measurements (§8) filed on the issue with numbers | none (report) |
 | 1 | runtime: `inject`/`clear`/`story`/`crew` fields, instructor hook, harness `issue()`, renderer block + clock in header; **map subcooling margin into `PARAM_INSTRUMENT.pwr2`** (`subcooling_c: 'subcooling_margin'` — §5 step 13's acceptance); **raise `run_checklist_pwr2`'s `secs` hint to 1600 when the leg lands** | run_checklist (+probes made red by injection), run_checklist_pwr2 unchanged, run_m6, verify_e2e_ui |
-| 2 | authoring: the 16 steps; the §8b re-measurements; `Manuals/08_ACCIDENT_TMI.md` rewritten for PWR2 with the timeline cited; `manual_ui_map.js` rows; flags row (preview) | run_style, run_manual_units, run_manual_rev, run_manual_controls, run_checklist_pwr2 (+1 leg, budget 1600 s from Phase 0) |
+| 2 | **DONE 2026-09-09** — `pwr_tmi2_incident` authored, 16 steps, `hot_full_power` → 4 h 20 min of plant time; the §8b re-measurements taken full-stack on the crew's own clocks (`inbox/tmi_phase2/MEASURED.md`); `manual_ui_map.js` block (7 mapped steps); `procedure:pwr_tmi2_incident: 'preview'`. **NO CLOCK MOVED** — all seven crew commands accepted at their sourced second, `beyond_model` 0 of 1,558 samples. Five plan assumptions measured otherwise, listed below. `Manuals/08_ACCIDENT_TMI.md` is a **concurrent lane's** work and is not this phase's. | run_style 10/10 · run_checklist 78/78 · run_manual_controls 590 · run_checklist_pwr2 **177/177** (secs 1180 → 1600) · run_flags 342 -> 345 · run_hardrules 511 · verify_ckl_relevance 17 · verify_flags_ui 50 |
 | 3 | playthroughs: `/layman-playthrough` on the leg, then the operator persona; every finding re-measured; fixes | the same, plus verify_ckl_relevance (ordering: the incident lists after the six legs) |
 | 4 | ship: changelog, TUNING_LOG, #660-style comment, owner review on the tester site | run_all |
+
+**What Phase 2 measured that this plan had wrong** (full detail and the tables:
+`inbox/tmi_phase2/MEASURED.md`; the authoring rules that came out of it: `CHECKLIST_WRITING_GUIDE`
+§14). None of it moved a clock — every one is an ACCEPTANCE or a step's placement.
+
+1. **The stuck PORV has a 20-second arming window.** §5 arms it on step 3; the valve lifts at
+   5.5 s and reseats near 25 s, so armed at 30 s the plant sits at 1985 psia with **no accident**.
+   Measured at nine arm times. It is authored on **step 2**, with the feed loss; step 3 injects
+   nothing.
+2. **§5 step 4's acceptance is unsatisfiable.** The tailpipe never exceeds the hot leg — 0 of
+   1,558 samples; it saturates at 482 °F. Graded on the sourced 240 °F alarm point (crossed 22 s).
+3. **Letdown is already at its high limit** at power (both orifices in service, nothing above
+   A+B 7 %): `set_letdown_orifices {a,b}` moves flow 12.7 → 12.7 gpm. §5 step 7's second half is
+   narrated, not performed.
+4. **One RCP handswitch**, so §5 steps 11 and 12 cannot be two securings. Step 11 is the press at
+   loop B's clock; step 12 is the consequence at loop A's clock and takes **no `crew` tag**.
+5. **RCP FLOW does not move at the securing** (16.4 → 16.3 %), so §5 step 11's acceptance is the
+   cavitation alarm clearing plus PRESSURIZER LEVEL below 80 %.
 
 Known traps to carry into every phase: `STEP_UI` in `manual_ui_map.js` is positional (four
 breakages); every step needs an instrument-satisfiable acceptance (guide R7); no SI in any
