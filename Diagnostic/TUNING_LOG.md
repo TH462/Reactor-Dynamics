@@ -29,6 +29,71 @@ and the user-visible summary in `CHANGELOG.md`. This file points at those and tr
 
 ---
 
+## Session log — 2026-09-09-develop-b (#674 merged into develop — and the check that was green in one working tree and red in another)
+
+**The merge itself was uneventful:** `workbench` 646878d1 into `develop` c3065869, one
+incoming commit, ZERO conflicts. Only `test/run_all.js` was touched by both sides and their
+hunks are 359 lines apart — develop's `run_hardrules` 513 at :850, workbench's three
+`BASELINES` edits at :1209 and :1735. `merge_audit` OK, 27 artifacts, nothing dropped.
+`run_session_labels` OK. Nothing to take from `backshop`: 6525202b is an ancestor of
+`develop` (8 behind, 0 ahead).
+
+**THE ONE RED WAS A LINE-ENDING BIFURCATION, AND IT IS THE #543/#588 SHAPE AGAIN — one bit
+of state outside the code under test picks the branch.** `run_telemetry` came back **130
+checks / 1 failed** on `develop` and **136 / 0** on `workbench`, with `worker/src/index.js`
+BYTE-IDENTICAL as a git blob in both. The differing bit is the CHECKOUT: `core.autocrlf=true`
+is set in every lane, so the file git had just re-materialised at the merge is CRLF while the
+copy the author's editor last wrote is LF. #674's new "the Worker key composer was found"
+check lifts `keyPart`/`keyOf` out of that source with
+
+```
+/function keyPart\([\s\S]*?\n\}\n[\s\S]*?function keyOf\([\s\S]*?\n\}/
+```
+
+and a bare newline-brace-newline anchor cannot match a carriage-return-newline one.
+The composer was therefore "not found", and it took
+its **six** behavioural assertions down with it — 136 − 130 — which is why the count moved by
+six and not by one. A check that reads its subject as TEXT inherits the working tree's line
+endings as a hidden input.
+
+**Fixed by making each newline in that anchor optionally carriage-returned, and validated
+at BOTH endings before it went in** (Hard Rule 10, a passing test is not evidence the
+mechanism is right:
+a re-fitted check passes only on the new form; a better one passes on both). Built `keyOf`
+out of the LF file and the CRLF file in the same process and ran all six assertions against
+each: 6/6 green both ways. Injection-verified the one that matters — replacing
+`('0' + v).slice(-2)` with `String(v)` makes step 7 compose as `pwr_heatup:7:auto` instead of
+`pwr_heatup:07:auto`, and the padding check goes red. `run_telemetry` is now 136/0 on the CRLF
+tree, unchanged on the LF one, and the baseline did not move.
+
+**Reviewed, not rubber-stamped — the two things the author flagged.**
+
+- *The `run_dashboard_time` re-point (87 → 88).* Sound. `worker/src/analytics.js` now contains
+  **zero** `SELECT` and **zero** `NOW() - INTERVAL`; every Analytics Engine query left with the
+  "In the simulator" block. The check followed the code, and the claim it asserts is intact at
+  the new site: `usage.js:96` builds `` const since = `timestamp > NOW() - INTERVAL '${days}' DAY` ``
+  — character-for-character what `sessions.js:93` builds — and all six walkthrough queries
+  interpolate `${since}`. **One correction to the commit's own note**, which says the check
+  "would have gone green over a page with nothing to assert about": with no match in
+  `analytics.js` the regex returns false, so left where it was it went **RED**, which is exactly
+  what happened and why it was re-pointed. Known limit, pre-existing and unchanged: it is a
+  one-occurrence source scan, so `sessions.js`'s own window is still uncovered by it.
+- *The `blobs[7]` / `(blob8, double9)` off-by-one.* Correct, checked against the write arrays
+  rather than the comment. `blobs` is written with **8** entries and `String(p.id || '')` is
+  index **7** → `blob8` ✓. `doubles` is written with **10** and `num(p.step)` is index **8** →
+  `double9`, `num(p.steps)` index **9** → `double10` ✓. The rest of the map lands too:
+  session `blobs[3]`→`blob4` (`count(DISTINCT blob4)`), key `blobs[4]`→`blob5`, block_code
+  `blobs[6]`→`blob7` (`usage.js:474`). Every consumer in `usage.js` reads the column the map
+  names.
+
+**Not done, deliberately.** No version bump and no `changelog.html` entry — telemetry plumbing
+plus a private ops dashboard, nothing a player can see, and website changes are excluded from
+that page by the 2026-08-06 directive; `run_release` locks bump and entry together, so the
+answer is neither. The Worker is **not deployed**: the Feature usage page is not live until
+`wrangler deploy` runs and that is the owner's call.
+
+---
+
 ## Session log — 2026-09-09-workbench-a (#674 — walkthrough usage telemetry, and the Feature usage page)
 
 **The starting fact, measured before anything was written: the walkthroughs emit NOTHING.**

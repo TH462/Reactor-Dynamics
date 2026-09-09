@@ -106,6 +106,15 @@ asserts both directions and went red until it did. **Nothing here is deployed** 
   code to `usage.js` — left pointed at `analytics.js` it would have gone green over a page with
   nothing to assert about. The +1 is the usage page's own tripwire: it is exempt from the
   ET-import sweep because it renders no instant, so what is pinned is that it still renders none.
+- `run_telemetry`'s new composer check was **LINE-ENDING DEPENDENT**, found at the merge: it
+  lifts `keyPart`/`keyOf` out of the Worker source with an anchor on newline-brace-newline, and
+  `core.autocrlf=true` in every lane means the SAME blob is LF in a tree whose file the editor
+  last wrote and CRLF in one git has just re-materialised. Green on `workbench` at **136/0**,
+  red on `develop` at **130/1** with the Worker byte-identical — the composer read as "not
+  found" and took its six behavioural assertions with it. The anchor now tolerates either
+  ending, validated against BOTH before it landed (a re-fit would pass only on the new one) and
+  injection-verified: dropping the zero-padding composes step 7 as `pwr_heatup:7:auto` and reds
+  the check. Baseline unmoved at 136.
 - **No `changelog.html` entry and no version bump.** This is telemetry plumbing plus a private ops
   dashboard, and website changes are excluded from the player-facing page by owner directive
   (2026-08-06). Nothing a player can see changed.

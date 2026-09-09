@@ -298,7 +298,13 @@ function sentDelta(a, fn) { var n = a.sent.length; fn(); a.T.flush(); return a.s
    * pure and depend on nothing else in that file, which is the only reason this is
    * possible at all; if `keyOf` ever needs an import, this becomes a source scan again
    * and is worth less. */
-  var fn = /function keyPart\([\s\S]*?\n\}\n[\s\S]*?function keyOf\([\s\S]*?\n\}/.exec(wsrc);
+  /* `\r?\n` AND NOT `\n`: `core.autocrlf=true` is set in every lane of this repo, so the
+   * SAME blob checks out LF in a tree whose file the editor last wrote and CRLF in one git
+   * has just re-materialised at a merge. Anchored on a bare \n this check read "composer not
+   * found" on a CRLF checkout and took its six behavioural assertions with it — green in one
+   * working tree and red in another, off one bit of checkout state and nothing in the Worker.
+   * Verified against BOTH endings before it went in. */
+  var fn = /function keyPart\([\s\S]*?\r?\n\}\r?\n[\s\S]*?function keyOf\([\s\S]*?\r?\n\}/.exec(wsrc);
   ck('the Worker key composer was found', !!fn);
   if (fn) {
     var keyOf;
