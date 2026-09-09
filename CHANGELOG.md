@@ -442,7 +442,7 @@ stays steady (power within 5 points of rated, pressure drift under 0.2 MPa / 29 
 meet within one broadcast of the window end, and a planted 1e-6 difference is seen by `compare()`.
 Four injections, one per conjunct, each proven to redden SI-0 alone. No baseline moves (8 checks).
 
-## [Alpha 1.7.4-rc4] — 2026-09-08
+## [Alpha 1.7.4-rc5] — 2026-09-08
 
 ### Added (process: the layman playthrough is a skill — #653/#660)
 
