@@ -66,12 +66,82 @@
                                   * at #650 from 31.1, which was sourced to nothing and left
                                   * the healthy plant 5.0 % inside both bands — the whole
                                   * argument is on DESIGN in pwr2_sources.js. */
-  /* Manual rod motion by the operator's S/M/F selection (#506.4). The SPEEDS are the sourced
-   * quantity (WTSM 8.1: 8-72 steps/min, normal 48 — the same class range pwr1's slow/normal/
-   * fast descend from); these values are [derived] — pwr1's three rates mapped by fraction-of-
-   * travel-per-second onto this plant's 200-step bank (0.0585 / 0.351 / 0.526 %/s). The old
-   * single ROD_SLEW_SPS = 1.0 was ~pwr1's FAST, always. */
-  var ROD_SPEEDS = { slow: 0.117, normal: 0.702, fast: 1.053 };   /* steps/s */
+  /* Manual rod motion by the operator's S/M/F selection (#506.4).
+   *
+   * THE SOURCED QUANTITY IS steps/min, and it is a BAND, not three points — WTSM 8.1
+   * (ML11223A252) §8.1.4: *"the reactor control unit produces an output demanding a minimum
+   * speed of eight steps per minute"*, then *"a proportional speed region… 32 steps/min/°F"*,
+   * then *"With an error of 5°F or greater, the rod speed programmer of the reactor control
+   * unit generates a maximum rod speed of 72 steps/min. The maximum rod speed is based upon a
+   * maximum response to a large error signal and upon the physical limitations of the rod
+   * drive mechanism, with the latter being the limiting factor."* §8.1.8 adds the shutdown-bank
+   * pulser potentiometer *"normally set at 72 steps per minute"*.
+   *
+   * SLOW AND FAST ARE THOSE TWO SOURCED NUMBERS, AS OF #668 *(OWNER RULING, 2026-09-08:
+   * "A — adopt the sourced 8 and 72; keep 48 as normal, marked [UNVERIFIED]")*. They are
+   * written here in the SOURCED UNIT — steps per minute over 60 — so the literal in the code
+   * IS the figure in the document, and `run_pwr2_engine_b` group K asserts that pair against
+   * the bare numbers 8 and 72. NORMAL IS [UNVERIFIED]: 48 is pwr1's inherited middle setting
+   * and `find_source` finds 8 and 72 in WTSM 8.1 and NO 48 anywhere in the three lanes'
+   * corpus. It is kept because it is the value this plant has behaved as a scaled copy of
+   * since it was built, so adopting it changes only the scale factor and leaves exactly one
+   * number owing a source. (The real programmer is CONTINUOUS between the two limits — 8, then
+   * 32 steps/min/°F, then 72 — and this plant's three-position selector is a simplification of
+   * the operator's IN-HOLD-OUT switch, not of the program.)
+   *
+   * WHAT THIS REPLACES (#668, and it is the #534 pattern): { slow: 0.117, normal: 0.702,
+   * fast: 1.053 } steps/s = **7.02 / 42.12 / 63.18 steps/min** — pwr1's same 8 / 48 / 72 on its
+   * 228-step drive, re-expressed as a FRACTION OF TRAVEL per second onto what was then a
+   * 200-step bank, which multiplies the whole set by 200/228 = 0.8775 and lands every one of
+   * them 12.25 % under its own original. So the plant's own fast drive sat 12.25 % below the
+   * sourced mechanical maximum and its slow drive below the sourced minimum, and `Manuals/07`
+   * had to explain to a player why the top of the withdrawal slider was 63 immediately after
+   * quoting the real accident's 72. The #602 bank hoist correctly preserved the STEPS/S (so
+   * steps/min held); what rotted was the old note's "%/s". The single pre-#506 ROD_SLEW_SPS =
+   * 1.0 was ~pwr1's FAST, always.
+   *
+   * ⚠ EVERY AUTHORED ROD EVOLUTION IS TIMED AGAINST THIS OBJECT. Move one of these and the
+   * checklist pool's holds, `Manuals/04`'s and `Manuals/07`'s figures and the shutdown-bank
+   * "about N plant-minutes" prose are all stale — re-time them from MEASURED rides, never by
+   * ratio (HR9). The #668 rides are in `Diagnostic/TUNING_LOG.md` 2026-09-08-workbench-m. */
+  var ROD_SPEEDS = { slow: 8 / 60, normal: 48 / 60, fast: 72 / 60 };   /* steps/s */
+  /* THE CONTINUOUS-WITHDRAWAL CASUALTY'S RATE (#662) — a rod-control-unit failure runs the
+   * drive at a speed THE DRIVE CAN RUN AT, never at a rate of the casualty's own.
+   *
+   * SOURCED, and the source states the rate twice: NRC HRTD "Westinghouse Technology Advanced
+   * Transients" (ML11216A094) Transient 5.22, *Fast Rod Withdrawal, 45% Load* —
+   * *"Initiating Event: Rod control system controller failure withdraws bank D rods at 72
+   * steps/min"* — and Transient 5.23, *Fast Rod Withdrawal From Source Range*, initiating event
+   * word-for-word the same. That is this casualty, at the mechanism's MAXIMUM speed, and it is
+   * a speed off the rod speed program above, not a separate quantity.
+   *
+   * ⚠ The ACCIDENT ANALYSIS's rate is a different thing and must NOT be used here. Ginna UFSAR
+   * ch15 (ML20339A101) §15.4.1.3.3(D) assumes *"The maximum positive reactivity insertion rate
+   * is (75 pcm/sec) which is greater than that for the simultaneous withdrawal of the
+   * combination of the two control banks having the greatest combined worth at maximum speed"*
+   * — the source says in its own sentence that its number EXCEEDS what the mechanism can
+   * deliver, because it is a bounding conservatism. §15.4.2.3 spans 1–100 pcm/sec for the same
+   * reason. A licensing bound is not a drive speed.
+   *
+   * SO: severity runs the drive linearly across the plant's OWN band, slow → fast, read off
+   * ROD_SPEEDS and never retyped. The band is continuous because the real speed programmer is
+   * (8 → 32/°F → 72 steps/min): a failed controller can sit anywhere on that program, so a
+   * three-position quantisation would be the OPERATOR's selector, which is not what fails here.
+   * Severity 1.0 is the sourced accident's "maximum speed"; severity 0 is the drive's own
+   * minimum and is still a runaway (it is not a clear — an injected casualty that reports
+   * nothing is the silent-swallow defect, not a feature).
+   *
+   * WHAT THIS REPLACES (#507 wave 6, measured on #661): `severity x (24/912) x max_steps` —
+   * the retired engine's 24 fine-steps/s ceiling read as a fraction of travel and re-expressed
+   * on this bank. At severity 0.5 that is 8.25 steps/s = **495 steps/min**, 6.9x the sourced
+   * 72 and 7.8x this plant's own fast drive; at 1.0 it is 990 steps/min. It made the row a step
+   * reactivity insertion (power 3.1e-2 % -> 211 % in 0.6 s, tripping on P-9 turbine trip because
+   * the flux channels' 0.5 s analysis delays had not elapsed), not a withdrawal accident. */
+  function runawayRodSpeed(severity) {
+    var sev = (severity === undefined || severity === null || !isFinite(+severity))
+      ? 0.5 : Math.max(0, Math.min(1, +severity));
+    return ROD_SPEEDS.slow + sev * (ROD_SPEEDS.fast - ROD_SPEEDS.slow);
+  }
   /* THE BANK SCALE, read LIVE from the one place it is defined (#602 phase 1). A function, not
    * a captured local: `RODS` is the object a retune edits, and a consumer that snapshotted the
    * value at module load would keep answering with the old scale. */
@@ -142,11 +212,13 @@
    * so free play opens without a ring.
    *   - Tavg comes from the plant's own Tref program at the IC's dispatch (at power), or
    *     from the SG side at no load — Tsat of the sourced 1005 psig no-load pressure
-   *     (Ginna's own 547 degF / 1005 psig pair; the plant's tavg_noload_c program anchor,
-   *     557 degF, is the WTSM 4-loop figure and its saturation pressure, 1106 psia, sits
-   *     ABOVE this plant's 1085 psig MSSV pop — MEASURED, which is why the no-load plant
-   *     is anchored to its own steam side, and why the HZP dumps boot in PRESSURE mode at
-   *     1005 psig: the sourced no-load lineup, and the thing that holds the plant there).
+   *     (Ginna's own 547 degF / 1005 psig pair, which since #508/#645 is ALSO the Tavg
+   *     program's `tavg_noload_c` anchor — the two AGREE now, and this note said otherwise
+   *     until #646. The anchor USED to be the WTSM 4-loop 557 degF, whose saturation pressure
+   *     of 1106 psia sits ABOVE this plant's 1085 psig MSSV pop — MEASURED, and the reason the
+   *     no-load plant was anchored to its own steam side in the first place. The HZP dumps
+   *     still boot in PRESSURE mode at 1005 psig: the sourced no-load lineup, and the thing
+   *     that holds the plant there).
    *   - Kinetics/xenon/decay-heat seed at the IC's own power equilibrium (createKinetics'
    *     convention); boron is trimmed AT the IC's own moderator temperature.
    *   - hot_zero_power is SUBCRITICAL by the adopted 1000 pcm margin (+100 ppm at the
@@ -973,9 +1045,10 @@
       case 'spray_stick':
         eng.pzDrivers.spray_stick = !!value; break;
       case 'rod_runaway':
-        /* value: steps/s outward, 0/false clears. Scale note: the old engine's 24 fine
-         * steps/s ceiling is a fraction-of-travel rate (24/912); this bank's 200 steps make
-         * the same fraction 5.26 steps/s [adopted]. The caller (shell) does that scaling. */
+        /* value: steps/s outward, 0/false clears. THE SCALE IS THE DRIVE'S OWN (#662): the
+         * caller passes `runawayRodSpeed(severity)`, a point on ROD_SPEEDS' slow→fast band —
+         * see that function for the two sources and for the fraction-of-travel rate it
+         * replaced. This door stays a bare steps/s so a probe can plant any rate it likes. */
         eng.runaway = value && +value > 0 ? { rate: +value } : null; break;
       case 'reset_protection':
         /* NARROWED at #512 (owner design — per-system latches unlatch at their own panels):
@@ -1809,6 +1882,12 @@
     designHmap: designHmap,   /* exported so the equivalence fixture boots the SAME plant */
     ICS: ICS,                 /* the initial-condition registry — the shell/UI menu reads it */
     RIL: RIL, insertionLimitSteps: insertionLimitSteps,
+    /* EXPORTED because two other files must not retype them (#662): the shell derives the
+     * continuous-withdrawal casualty's rate AND its slider label from this table, and the gate
+     * asserts membership of the band rather than a literal. Same argument as P-6/P-9 at #642 —
+     * a constant only a gate reads is still worth exporting, because the alternative is a
+     * consumer nothing can contradict. */
+    ROD_SPEEDS: ROD_SPEEDS, runawayRodSpeed: runawayRodSpeed,
     MWE_RATED: MWE_RATED
   };
 })(typeof globalThis !== 'undefined' ? globalThis : this);

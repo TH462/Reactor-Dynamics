@@ -104,18 +104,44 @@ var ROWS = [
   { m: /^\*\*P-11\*\*/,                      want: P.P11.mpa * PSI,               unit: 'psi', tol: 2 },
   /* Rows with no single plant constant to check against. CLAIMED rather than omitted, so the
    * coverage assertion stays meaningful — an entry here says "looked at", not "unchecked". */
+  /* Its own setpoint cell is "—" by design: the trip has no threshold of its own, it has a
+   * PERMISSIVE, and that permissive's number is checked on the **P-9** row below. Narrative
+   * here means "the figure lives one table down", not "nothing to check against". */
   { m: /^\*\*Turbine trip \(P-9\)\*\*/,      narrative: true },
-  { m: /^Source range/,                     narrative: true },
+  /* THE PLANT HAS NO SOURCE-RANGE REACTOR TRIP, and the row documented one at 1e5 cps (#642).
+   * Nothing could catch it: 1e5 cps IS a real constant here — `pwr2_true_state`'s SR_SECURE_CPS,
+   * where the channel DE-ENERGIZES — so the figure was right and the function was absent. The
+   * de-energization is also what hid it, because a count rate that stops at 1e5 can never reach
+   * a trip above it. Measured by removing the hiding place: with SR_SECURE_CPS forced to 1e12 the
+   * channel stays live and publishes 1.285e11 cps at 50 % power, and the plant does not scram.
+   * `pwr2_protection` has fourteen functions and none of them is source range; the RETIRED plant's
+   * `sr_high` trip at 1.0e5 is in `pwr_control.js` and reaches PWR2 through a `trips: []`. */
+  { m: /^Source range/,   absent: true, what: 'a source-range high-flux reactor trip' },
   /* NO LONGER NARRATIVE (#601). It was listed here as "no single plant constant to check
    * against", which was true only while the plant had no intermediate-range trip — and that is
    * precisely how the row came to carry 1.67e-3 A, the ROD STOP's setpoint, for the trip. The
    * constant exists now, so the row is checked like every other. */
   { m: /^\*\*Overtemperature/,              narrative: true },
   { m: /^\*\*Overpower/,                    narrative: true },
-  { m: /^\*\*P-6\*\*/,                       narrative: true },
-  { m: /^\*\*P-9\*\*/,                       narrative: true },
+  /* NO LONGER NARRATIVE (#642). Both were listed as having "no single plant constant to check
+   * against", and for both that was a statement about the ENGINE'S FILE LAYOUT, not about the
+   * plant: P-6 was a local `var P6_A` inside `pwr2_true_state` and P-9 a local inside
+   * `pwr2_protection`, so neither could be pointed at. That is exactly how the P-6 row came to
+   * disagree with the engine by a factor of two, in the direction nobody expected — the row was
+   * RIGHT and the engine's `[sourced]` marker was on the wrong sentence of the right document.
+   * Both are exported now and both are checked. P-9's second value (8 % without steam dumps) is
+   * prose in the row's Effect cell, not a figure, so `claimedNumber` takes the 50 %. */
+  { m: /^\*\*P-6\*\*/,                       want: P.P6.amps,                      unit: 'A',   tol: 1e-12 },
+  { m: /^\*\*P-9\*\*/,                       want: P.P9.frac_dumps * 100,          unit: '%',   tol: 0.5 },
+  /* Ginna's numeric P-12 is in its TS proper, which is not in the corpus — the 532.4 °F here is
+   * the plant's LO TAVG annunciator, and that alarm IS checked, by the §4.0 tables below. */
   { m: /^\*\*P-12\*\*/,                      narrative: true },
-  { m: /^SR re-energize block/,             narrative: true },
+  /* ABSENT, same finding as the source-range trip row (#642): the block protects the counter
+   * against being switched back on at high flux, and this plant has no switch — `set_sr_detector`
+   * is REFUSED by the shell by name and the board button was deleted at #598 item 7. The 1e-6 A
+   * is the retired plant's interlock, live there and dead here (measured: PWR2's kernel gets
+   * `interlocks: []`, so ZERO rows block that command). */
+  { m: /^SR re-energize block/,  absent: true, what: 'an SR re-energize interlock (there is no SR switch)' },
 
   /* ---- §3.0, ENGINEERED SAFETY & AUTOMATIC ACTUATIONS (added 2026-08-30, #532 phase 3b) -----
    * ⚠ THIS SECTION WAS OUTSIDE THE GATE UNTIL NOW, AND THAT IS THE WHOLE POINT. The runner
@@ -245,8 +271,14 @@ rows.forEach(function (row) {
   var got = claimedNumber(row);
   if (got === null) { wrong.push(row.label + '  — no figure found in the row'); return; }
   if (Math.abs(got - spec.want) > spec.tol) {
+    /* AMPS BROKE THE DIAGNOSTIC (#642): `toFixed(1)` renders 1e-10 as "0.0", so the one row
+     * whose units are exponential would have reported "manual 5e-11 A, plant 0.0 A". A message
+     * that cannot show the disagreement it found is the check going half-blind. */
+    var fmt = Math.abs(spec.want) < 0.01 && spec.want !== 0
+                ? spec.want.toExponential(2)
+                : spec.want.toFixed(spec.unit === 'psi' ? 0 : 1);
     wrong.push(row.label + ': manual ' + got + ' ' + spec.unit +
-               ', plant ' + spec.want.toFixed(spec.unit === 'psi' ? 0 : 1) + ' ' + spec.unit);
+               ', plant ' + fmt + ' ' + spec.unit);
   }
 });
 
@@ -446,6 +478,147 @@ ck('the table was actually read — rows matched against booted plants',
 ck('every figure matches what that initial condition actually settles at',
    icWrong.length === 0,
    icWrong.length ? icWrong.join('  |  ') : 'all ' + icChecked + ' cells agree with the booted plant');
+
+/* ---- §1.0, NORMAL OPERATING POINT vs THE SAME BOOTED PLANT (#651) --------------------------
+ * §11.0's own guard (`icHeader`, above) requires a backticked IC name in the header, because
+ * picking the WRONG `| Parameter |` table once made the coverage check vacuous. That guard is
+ * correct for §11.0 and it PERMANENTLY EXCLUDES §1.0 — §1.0's table has no IC column, because it
+ * describes exactly one point (Hot Full Power), not a column per initial condition. So this
+ * section is located by SECTION HEADING instead, leaving the §11.0 guard untouched, and reuses
+ * the SAME booted `hot_full_power` plant §11.0 already settled 700 ticks ago — no second boot.
+ *
+ * ⚠ COVERAGE IS ASSERTED HERE TOO, same reasoning as the file header: all twelve rows of this
+ * table turned out to have exactly one number a booted plant or a named plant constant can be
+ * checked against, so none is `narrative` — an unclaimed row FAILS rather than going unchecked.
+ * Two rows carry more than one figure per cell (the loop split, the control-bank percent/steps)
+ * and are matched by label before the generic single-number lookup runs. */
+var s1Lines = md.split('\n');
+var s1Start = s1Lines.findIndex(function (l) { return /^## 1\.0 Normal operating point/.test(l); });
+var s1End = s1Lines.findIndex(function (l, i) { return i > s1Start && /^#{2,3}\s/.test(l); });
+var s1Rows = [];
+s1Lines.slice(s1Start, s1End === -1 ? s1Lines.length : s1End).forEach(function (line) {
+  if (line.charAt(0) !== '|') return;
+  if (/^\|[\s:-]+\|/.test(line)) return;                        /* the --- rule row */
+  var cells = line.split('|').slice(1, -1).map(function (c) { return c.trim(); });
+  if (cells.length < 2 || cells[0] === 'Parameter') return;      /* the header row */
+  s1Rows.push({ label: cells[0], cell: cells[1] || '' });
+});
+
+console.log('\n' + BOLD + 'THE NORMAL OPERATING POINT vs THE SAME BOOTED PLANT  (Manuals/09 §1.0)' + RST);
+
+var hfp = booted['hot_full_power'];
+var PZR_SP_PSI = RD.pwr2.pressurizer.CONTROL.setpoint_default_mpa * PSI;   /* the pressure ANCHOR
+  — a config constant, not a settled reading; the plant runs a few psi off it by design (§3.0's
+  psi-vs-psig note), so this row is checked against the constant it actually documents. */
+var DECAY_H0 = RD.pwr2.kinetics.DECAY.H0;
+var DECAY_PCT = (DECAY_H0[0] + DECAY_H0[1] + DECAY_H0[2] + DECAY_H0[3]) * 100;   /* the decay-heat
+  groups are seeded AT EQUILIBRIUM with the initial power (pwr2_kinetics createKinetics), so this
+  sum IS "decay heat after a long power run" — not merely close to it. */
+var BANK_STEPS = RD.pwr2.kinetics.RODS.max_steps;
+
+function s1Nums(text) { return (text.match(/-?\d+(?:\.\d+)?/g) || []).map(Number); }
+
+var S1_ROWS = [
+  { p: 'Reactor power',              tol: 1.0, want: function () { return hfp.power_pct; } },
+  { p: 'Electrical output',          tol: 1.5, want: function () { return hfp.mwe_output; } },
+  { p: 'Primary pressure',           tol: 3.0, want: function () { return PZR_SP_PSI; } },
+  { p: 'Tavg',                       tol: 1.0, want: function () { return hfp.tavg_c * 9 / 5 + 32; } },
+  { p: 'Pressurizer level',          tol: 1.5, want: function () { return hfp.pzr_level_pct; } },
+  { p: 'Steam Generator level',      tol: 1.5, want: function () { return hfp.sg_level_pct; } },
+  { p: 'Secondary steam pressure',   tol: 3.0, want: function () { return hfp.steam_pressure_mpa * PSI; } },
+  { p: 'Subcooling margin',          tol: 2.0, want: function () { return hfp.subcooling_c * 9 / 5; } },
+  { p: 'Core inventory',             tol: 1.5, want: function () { return hfp.core_inventory_pct; } },
+  { p: 'Decay heat',                 tol: 0.5, want: function () { return DECAY_PCT; } }
+];
+
+var s1Wrong = [], s1Unclaimed = [];
+s1Rows.forEach(function (row) {
+  if (!hfp) { s1Unclaimed.push(row.label + '  (no booted hot_full_power plant)'); return; }
+  if (row.label.indexOf('Thot / Tcold') === 0) {
+    var n = s1Nums(row.cell);
+    var wantThot = hfp.thot_c * 9 / 5 + 32, wantTcold = hfp.tcold_c * 9 / 5 + 32,
+        wantDT = (hfp.thot_c - hfp.tcold_c) * 9 / 5;   /* a DIFFERENCE: x9/5, no +32 offset */
+    if (n.length < 5) { s1Wrong.push(row.label + ': could not parse Thot / Tcold / split'); return; }
+    if (Math.abs(n[0] - wantThot) > 1.0)
+      s1Wrong.push('Thot: manual ' + n[0] + ' degF, plant ' + wantThot.toFixed(1));
+    if (Math.abs(n[1] - wantTcold) > 1.0)
+      s1Wrong.push('Tcold: manual ' + n[1] + ' degF, plant ' + wantTcold.toFixed(1));
+    if (Math.abs(n[4] - wantDT) > 1.0)
+      s1Wrong.push('loop split: manual ' + n[4] + ' degF, plant ' + wantDT.toFixed(1));
+    return;
+  }
+  if (row.label.indexOf('Control bank position') === 0) {
+    var n2 = s1Nums(row.cell);
+    var wantPct = 100 * hfp.rod_steps / BANK_STEPS;
+    if (n2.length < 3) { s1Wrong.push(row.label + ': could not parse percent / steps'); return; }
+    if (Math.abs(n2[0] - wantPct) > 1.0)
+      s1Wrong.push('control bank %: manual ' + n2[0] + ', plant ' + wantPct.toFixed(1));
+    if (Math.abs(n2[1] - hfp.rod_steps) > 1)
+      s1Wrong.push('control bank steps: manual ' + n2[1] + ', plant ' + hfp.rod_steps.toFixed(0));
+    if (Math.abs(n2[2] - BANK_STEPS) > 1)
+      s1Wrong.push('control bank max steps: manual ' + n2[2] + ', plant ' + BANK_STEPS);
+    return;
+  }
+  var spec = S1_ROWS.filter(function (r) { return row.label.indexOf(r.p) === 0; })[0];
+  if (!spec) { s1Unclaimed.push(row.label); return; }
+  var n3 = s1Nums(row.cell);
+  if (!n3.length) { s1Wrong.push(row.label + ': no figure found in the row'); return; }
+  var want = spec.want();
+  if (Math.abs(n3[0] - want) > spec.tol)
+    s1Wrong.push(row.label + ': manual ' + n3[0] + ', plant ' + want.toFixed(1));
+});
+
+ck('every §1.0 row is claimed by a field or a named plant constant — an unmapped row would go ' +
+   'unchecked',
+   s1Unclaimed.length === 0,
+   s1Unclaimed.length ? s1Unclaimed.join(' | ') : s1Rows.length + ' rows, all claimed');
+ck('every §1.0 figure matches the same booted hot_full_power plant',
+   s1Wrong.length === 0,
+   s1Wrong.length ? s1Wrong.join('  |  ') : 'all ' + s1Rows.length + ' rows agree with the booted plant');
+
+/* ---- §3.0, ADV CAPACITY vs THIS PLANT'S RATED STEAM FLOW (#659) ----------------------------
+ * The Atmospheric dump (ADV) row's SETPOINT is already checked above (the `^\*\*Atmospheric
+ * dump \(ADV\)\*\*` entry in ROWS); its CAPACITY percentage was not — the row used to quote
+ * Ginna's PER-GENERATOR figure (10 %) directly onto this plant's single generator, and nothing
+ * read it. `RD.pwr2.relief.RELIEF.adv_kgs` is 8.18 kg/s (329,000 lbm/hr per valve, scaled
+ * 300/1520) — checked here against THIS plant's rated steam flow, which `pwr2_engine` freezes
+ * at construction as `eng.rated_steam` (`TB.steamDemand` at the RATED dispatch and the DESIGN
+ * steam pressure — the same expression regardless of which initial condition boots, confirmed
+ * by measurement across all six rather than assumed from the comment that says so). 8.18 /
+ * 164.25 kg/s = 4.98 %, the figure the row now quotes (OWNER RULING, 2026-09-08: "Keep 4.98 % —
+ * scale by thermal power; fix the manual").
+ *
+ * A cheap boot suffices: `rated_steam` is frozen on both axes at construction (see the comment
+ * beside it in `pwr2_engine.js`), so no ticking is needed — unlike the §1.0/§11.0 checks above,
+ * which need a SETTLED plant to answer a different question. */
+console.log('\n' + BOLD + 'THE ADV CAPACITY FIGURE vs THE SHIPPED VALVE  (Manuals/09 §3.0)' + RST);
+
+var advEng = new RD.pwr2.shell.PWR2Engine({ initial_state: 'hot_full_power' });
+var RATED_STEAM_KGS = advEng.eng.rated_steam;
+var ADV_PCT = RD.pwr2.relief.RELIEF.adv_kgs / RATED_STEAM_KGS * 100;
+
+ck('the rated steam flow used for the reconciliation was actually computed, not assumed',
+   RATED_STEAM_KGS > 100 && RATED_STEAM_KGS < 300,
+   RATED_STEAM_KGS.toFixed(2) + ' kg/s');
+
+var advRow = md.split('\n').filter(function (l) {
+  return /^\|\s*\*\*Atmospheric dump \(ADV\)\*\*/.test(l);
+})[0] || '';
+var advM = advRow.match(/capacity\s*(?:~|≈)?\s*(\d+(?:\.\d+)?)\s*%\s*of rated steam flow/i);
+ck('the ADV row prints a capacity figure as "N % of rated steam flow"',
+   !!advM, advM ? advM[1] + ' %' : 'no such phrase found in the row');
+if (advM) {
+  var advClaimed = parseFloat(advM[1]);
+  /* 0.3 points: the row rounds to the nearest whole percent (4.98 -> "5"), so 0.3 comfortably
+   * covers that rounding with margin to spare — and is nowhere near loose enough to also accept
+   * the old 10 % figure it replaced (a 5-point miss), so a reversion still reds. */
+  var ADV_TOL = 0.3;
+  ck('...and it matches RELIEF.adv_kgs over this plant\'s rated steam flow',
+     Math.abs(advClaimed - ADV_PCT) <= ADV_TOL,
+     'manual ' + advClaimed + ' %, plant ' + ADV_PCT.toFixed(2) + ' %  (RELIEF.adv_kgs=' +
+     RD.pwr2.relief.RELIEF.adv_kgs.toFixed(3) + ' kg/s / rated_steam=' +
+     RATED_STEAM_KGS.toFixed(2) + ' kg/s)');
+}
 
 console.log(DIM + '  (numbers and existence only — the Notes prose and the chapter narrative are ' +
             'not machine-checkable; that is the rest of #532)' + RST);

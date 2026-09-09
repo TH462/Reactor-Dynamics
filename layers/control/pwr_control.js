@@ -17,6 +17,17 @@
 ;(function (RD) {
   'use strict';
 
+  // THE P-6 PERMISSIVE, ONE COPY (#642). Three rows below carry this setpoint — the auto
+  // re-energize actuation and the de-energize/re-energize interlock pair — and one of them
+  // SPELLED it into the operator's message as well, which is four places for one number. The
+  // sourced value and the message's rendering of it now come from here, so a correction cannot
+  // land in the row and miss the words the operator reads. Ginna TS Bases B 3.3.1
+  // (ML20339A221), Intermediate Range Neutron Flux, P-6 Permissive: *"actuated when any NIS
+  // intermediate range channel goes approximately one decade (1 E-10 amps) above the minimum
+  // channel reading"*. See the actuation row for the full note and the PWR2 measurement.
+  var P6_AMPS = 1.0e-10;
+  var P6_TXT  = P6_AMPS.toExponential(0);        // "1e-10" — the operator-facing rendering
+
   // Trips — { instrument, direction, setpoint, action }. Any trip scrams.
   // Optional: id (referenced by set_trip_block), condition (evaluates only
   // while it holds), blockable (manually blockable above the P-10 permissive).
@@ -394,7 +405,29 @@
     // open; `run_pwr`'s `rhr_valve_and_mode` pins both interlocks engine-direct.
     // SR auto re-energize: when the IR falls below P-6 (deep shutdown) the
     // source-range detector comes back on so the operator keeps a count rate.
-    { instrument: 'intermediate_range', direction: 'low', setpoint: 1.0e-10,
+    //
+    // THE 1.0e-10 IS NOW SOURCED, AND IT WAS RIGHT ALL ALONG (#642). It shipped as a bare
+    // literal here and in the manual while the PWR2 engine carried a `[sourced]` 5e-11, and
+    // the natural reading — two unsourced copies agreeing with each other against the one
+    // marked figure — had it backwards. Ginna TS Bases B 3.3.1 (ML20339A221): *"The
+    // Intermediate Range Neutron Flux, P-6 permissive is actuated when any NIS intermediate
+    // range channel goes approximately one decade (1 E-10 amps) above the minimum channel
+    // reading."* 5E-11 A is the SR re-energize / SR trip enable point in the same passage,
+    // which is a different thing, and is what the engine had adopted. PWR2's copy lives in
+    // `pwr2_protection` (P6.amps); this row is NOT read from it, deliberately — a pwr-only
+    // harness never loads pwr2, and reaching across would be the cross-plant coupling HR3
+    // forbids. Two plants, one source, cited at both.
+    //
+    // ⚠ THIS ROW AND THE TWO INTERLOCKS BELOW ARE DEAD FOR PWR2, MEASURED (#642). PWR2's
+    // `getProtectionConfig` hands the kernel `actuations: []` and `interlocks: []`, so the
+    // control layer sees ZERO rows blocking `set_sr_detector` on that plant. Injected on the
+    // full stack at six intermediate-range currents spanning 1.6e-11 -> 1.15e-10 A: mutating
+    // this setpoint to 1.0e-3 (seven decades) changed nothing at all. The same mutation on the
+    // retired engine flips `set_sr_detector {on:false}` from accepted to "blocked" — which is
+    // what says the probe can see a live block, and that these rows are this plant's only.
+    // PWR2 REFUSES the command by name (no operator lever, #598 item 7), so there is nothing
+    // there to wire them to.
+    { instrument: 'intermediate_range', direction: 'low', setpoint: P6_AMPS,
       action: 'set_sr_detector', params: { on: true } },
     // Letdown isolation on LOW pressurizer level (~17 %, real Westinghouse
     // interlock). Letdown is a bleed OUT of the RCS; if it keeps running while
@@ -515,6 +548,27 @@
     // admin startup-rate limit the checklist teaches, and lands one step below
     // the 1.5 DPM rod-withdrawal block — caution first, then the physical stop.
     { id: 'sur_high',          instrument: 'startup_rate',     direction: 'high',    setpoint: 1.0,   priority: 'caution',  panel: 'A', category: 'reactivity', label_learning: 'Startup Rate High',               label_industry: 'SUR HI' },
+    // THE ALARM IS SOURCED; THE NUMBER IS NOT [UNVERIFIED] (#661, evidence pass 2026-09-08).
+    // The ALARM's existence is real and prototypical — Ginna UFSAR ch7 (ML20339A027): the source
+    // range channels "provide high flux level reactor trip AND ALARM signals"; UFSAR ch15
+    // (ML20339A101) §15.4.4.3.1.2 lists "High flux at shutdown alarm" as one of three source-range
+    // indications in Modes 3-6; and the startup procedure ML11223A342 has "Block the alarm for
+    // source range high flux level at shutdown at both source range drawers" (an operator action
+    // at the drawers — NOT modelled here, and this row is therefore unblockable).
+    //
+    // ITS SETPOINT IS NOT SOURCED. `find_source` over 39 documents in 3 lanes returns ZERO hits
+    // for 5e4 / 50,000 cps; no source in the corpus publishes a source-range ALARM setpoint at
+    // all. What the corpus does publish is the TRIP at 1e5 cps (Ginna UFSAR ch7), so 5.0e4 is
+    // almost certainly "half the retired plant's trip" — and that trip is itself declared
+    // UNSOURCED and NOT MODELLED on PWR2 (`Manuals/09` §2.0; #661 measured why: 1e5 cps is
+    // 1.5 decades ABOVE the P-6 permissive that blocks it, so it could never fire).
+    //
+    // NOT RETUNED, deliberately. Moving it would need a derivation on THIS plant's flux scale,
+    // which is the A3 option the owner declined at #661; and the row is doing honest work where
+    // it stands — measured on the runaway withdrawal from hot zero power, it annunciates at
+    // 396.8 s, 30 s after SUR HI and 46 s before the intermediate-range rod stop, which is the
+    // "the handoff is about to happen by itself" cue `Manuals/06` PWR-A09 teaches. The number is
+    // marked, not defended: re-derive it if a source-range alarm setpoint ever turns up.
     { id: 'sr_high_flux',      instrument: 'source_range',     direction: 'high',    setpoint: 5.0e4, priority: 'caution',  panel: 'A', category: 'reactivity', label_learning: 'Source Range Count Rate High',    label_industry: 'SR HI FLUX' },
     { id: 'subcooling_low',    instrument: 'subcooling_margin', direction: 'low',    setpoint: 11.1,  priority: 'warning',  panel: 'A', category: 'coolant', label_learning: 'Low Subcooling Margin',           label_industry: 'LO SUBCOOL' },
     { id: 'subcooling_lost',   instrument: 'subcooling_margin', direction: 'low',    setpoint: 0.0,   priority: 'critical', panel: 'A', category: 'coolant', label_learning: 'Subcooling Lost — Coolant Boiling', label_industry: 'SUBCOOL LOST' },
@@ -981,14 +1035,15 @@
       message_learning: 'Rod withdrawal blocked — the reactor is already speeding up too fast (startup rate high). Let the rate settle below 0.8 DPM, then continue. You can always insert.',
       message_industry: 'ROD WITHDRAWAL BLOCK: SUR ≥ 1.5 DPM. Withdrawal inhibited until SUR < 0.8 DPM. Insertion available.' },
     // P-6 pair on the source-range detector switch (blocks_when picks the
-    // guarded form of set_sr_detector):
+    // guarded form of set_sr_detector). SOURCE + the PWR2 dark-wire measurement: see the
+    // actuation row above, which carries the same setpoint and the same #642 note.
     // (a) can't DE-energize the SR until the IR is on scale — you'd go blind.
-    { instrument: 'intermediate_range', direction: 'low', setpoint: 1.0e-10,
+    { instrument: 'intermediate_range', direction: 'low', setpoint: P6_AMPS,
       blocks: ['set_sr_detector'], blocks_when: { field: 'on', equals: false },
       message_learning: 'Source-range detector stays on — the intermediate range is not reading yet (below P-6). Switching it off now would leave you blind at low power.',
-      message_industry: 'SR DE-ENERGIZE BLOCKED: IR < 1e-10 A (P-6 not satisfied).' },
+      message_industry: 'SR DE-ENERGIZE BLOCKED: IR < ' + P6_TXT + ' A (P-6 not satisfied).' },
     // (b) can't RE-energize the SR at high flux — it would damage the counter.
-    { instrument: 'intermediate_range', direction: 'high', setpoint: 1.0e-6, clears_below: 1.0e-10,
+    { instrument: 'intermediate_range', direction: 'high', setpoint: 1.0e-6, clears_below: P6_AMPS,
       blocks: ['set_sr_detector'], blocks_when: { field: 'on', equals: true },
       message_learning: 'Source-range detector stays off — the flux is far above its range (past P-6); energizing the counter here would burn it out.',
       message_industry: 'SR ENERGIZE BLOCKED: IR ≥ 1e-6 A — flux above SR detector limits.' },

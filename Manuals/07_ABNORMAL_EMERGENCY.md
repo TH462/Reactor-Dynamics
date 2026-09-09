@@ -53,7 +53,7 @@ is the failure's physical size — the response procedures below apply at any se
 | SG Tube Rupture (E06) | Rupture Severity | 0 – 100 % of full rupture | 40 % |
 | Degraded HPI (E11) | HPI Capacity | 100 → 0 % of rated | 50 % |
 | Large LOCA (E09) | Break Size | 0 – 100 % — 100 % is a 3.1 in² (20 cm²) hole | 40 % |
-| Continuous Rod Withdrawal (E17) | Withdrawal Rate | 0 – 24 steps/s | 12 |
+| Continuous Rod Withdrawal (E17) | Withdrawal Rate | 8 – 72 steps/min — the drive's own slow-to-fast band | 40 |
 | Rod Stuck on Scram (E18) | Rod Worth Held | 0 – 40 % of total | 20 % |
 | Main Steam Line Break, downstream (E19) | Break Size | 0 – 100 % effective area | 30 % |
 | Main Steam Line Break, upstream (E19u) | Break Size | 0 – 100 % effective area | 30 % |
@@ -539,12 +539,29 @@ Level returned to band; primary temperature controlled; no trip if recoverable, 
 ## PWR-E17 — Continuous Rod Withdrawal
 
 ### Failure
-`continuous_rod_withdrawal` — runaway outward motion; severity steps/s.
+`continuous_rod_withdrawal` — a rod control unit failure holds the drive in outward motion.
+The slider is the speed the failed controller is demanding, and it runs across the drive's
+**own** band: **8 steps/min** at the bottom to **72 steps/min** at the top, 40 by default.
+The top of the slider is the real accident's own initiating event — *"Rod control system
+controller failure withdraws bank D rods at 72 steps/min"* (NRC HRTD Advanced Transients,
+Transients 5.22 and 5.23) — and it is also the rod speed programmer's mechanical maximum and
+this plant's own fast drive, which are the same number: 72 steps/min. So the top of the slider
+is both the fastest withdrawal this drive can produce and the rate the sourced accident states.
+
+> **The rod stop will not save you here, by design.** The intermediate-range high-flux rod stop
+> inhibits the *demand* path; a drive fault is downstream of it. The stop asserts and the bank
+> keeps coming — what ends it is the reactor trip a second or so later, or your scram.
 
 ### Symptoms
 - Rods withdrawing uncommanded  
 - SUR high; power rising  
 - Possible HI FLUX / trip  
+
+From hot zero power at the top of the slider, measured: SUR HI annunciates at **169 s** after
+injection, the rod stop asserts at **229 s** and the **intermediate-range high-flux trip**
+follows at **230 s**, peaking at 35 % power and 31 decades per minute. At the default setting
+the trip comes at **6.7 minutes**; at the bottom of the slider the same sequence takes
+**33 minutes**. It is a rising transient you have time to act on — that is the point of it.
 
 ### Immediate actions
 

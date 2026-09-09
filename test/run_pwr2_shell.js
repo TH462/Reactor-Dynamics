@@ -51,6 +51,7 @@ var DT = 0.02;
  * casualty rows, 'D3' the board rails, 'E' the electrical pair, 'F' the SGTR row, 'G' the
  * wave-6 levers, 'H' the ICs through the class, 'I' the rod limit, 'J' the RCP handswitch,
  * 'K' the shutdown preset, 'L' the operator's rate-limited load dial (#624 item 24),
+ * 'N' the SUR HI annunciator (#661), 'O' the continuous-withdrawal casualty's RATE (#662),
  * 'S' the save contract, 'T' the AFW throttle on a real drain
  * (#582 — full channel runtime under the control kernel). The CLEAN pass runs everything;
  * each named group is preflighted ALONE on the clean build before the replays. */
@@ -834,10 +835,16 @@ function runSuite(SH, rec, quiet, only) {
        eD.eng.rodSteps.toFixed(1) + '/' + eD.eng.sdSteps.toFixed(1) + ' after 30 s idle');
     eD.applyCommand({ action: 'rod_start', group_id: 'control_rods', direction: 1, speed: 'fast' });
     for (i = 0; i < 1500; i++) eD.step(0.02);
-    ck('...and the board\'s WITHDRAW works again once the breakers are shut — 30 s at fast ' +
-       'is ~31.6 steps',
-       eD.eng.rodSteps > 28 && eD.eng.rodSteps < 35,
-       eD.eng.rodSteps.toFixed(1) + ' steps (1.053/s x 30 s)');
+    /* THE EXPECTED TRAVEL IS READ OFF `ROD_SPEEDS`, NOT TYPED (#668). This check shipped as
+     * "~31.6 steps" with the band 28-35 around it, and reddened the moment the drive moved to
+     * the sourced 72 steps/min — a stale fixture, not a defect: the claim is that the board's
+     * WITHDRAW reaches the drive after a breaker reclose, which is speed-independent. */
+    var fastD = globalThis.RD.pwr2.engine.ROD_SPEEDS.fast, expD = fastD * 30;
+    ck('...and the board\'s WITHDRAW works again once the breakers are shut — 30 s at fast is ' +
+       'the drive\'s own travel (' + expD.toFixed(1) + ' steps at ' + (fastD * 60).toFixed(0) +
+       ' steps/min)',
+       Math.abs(eD.eng.rodSteps - expD) < 0.1 * expD,
+       eD.eng.rodSteps.toFixed(1) + ' steps (' + fastD.toFixed(3) + '/s x 30 s)');
 
     /* THE ATWS PAIR — the shutdown bank stuck OUT is the one state where `rods_fully_in`
      * being control-bank-only was observable, and where the facade reset had no guard at
@@ -1191,8 +1198,16 @@ function runSuite(SH, rec, quiet, only) {
     for (i = 0; i < 50; i++) eP.step(0.02);
     ck('...and the cleared valve obeys its controller again', eP.eng._pzr.spray_frac < 1, '');
 
-    /* continuous_rod_withdrawal — needs inserted rods (the shipped IC parks the bank at
-     * 200/200, declared); the drive faults outward and the rod levers are REFUSED */
+    /* continuous_rod_withdrawal — needs inserted rods (the shipped IC parks the bank fully
+     * out, declared); the drive faults outward and the rod levers are REFUSED.
+     *
+     * ⚠ THIS FIXTURE CANNOT SEE THE RATE, and that is why #662's defect lived under it for
+     * three weeks. The nudge is 25 steps off a railed bank, so the OLD 8.25 steps/s reached
+     * `max_steps` in 3.0 s of a 10 s ride and the check sampled a RAILED bank — a saturated
+     * observable reads the same at 8.25 steps/s as at 495. The claims below are the
+     * rate-INDEPENDENT ones (it drives OUT, power rises, the levers refuse, the row is listed)
+     * and they pass on the old plant and the new one alike; the rate itself is asserted in
+     * group O, on a fixture with travel left in it. */
     var eR = new SH.PWR2Engine({});
     for (i = 0; i < 100; i++) eR.step(0.02);
     eR.applyCommand({ action: 'set_load_target', mwe: 60 });
@@ -1204,10 +1219,10 @@ function runSuite(SH, rec, quiet, only) {
     for (i = 0; i < 500; i++) eR.step(0.02);
     var thrR = false;
     try { eR.applyCommand({ action: 'rod_nudge', steps: -10 }); } catch (e2) { thrR = /REFUSED/.test(e2.message); }
-    ck('continuous_rod_withdrawal: the bank drives OUT at the adopted fraction-of-travel ' +
-       'rate, power rises, and the rod levers are REFUSED out loud (measured 175->200, ' +
-       '78.1->83.7 %)',
-       eR.eng.rodSteps > st0 + 10 && eR.getTrueState().power_pct > pw0 + 1 && thrR === true &&
+    ck('continuous_rod_withdrawal: the bank drives OUT, power rises, and the rod levers are ' +
+       'REFUSED out loud (measured 602->607.9 steps, 86.8->88.7 %; the pre-#662 plant railed ' +
+       'at 627 in the same ride)',
+       eR.eng.rodSteps > st0 + 1 && eR.getTrueState().power_pct > pw0 + 1 && thrR === true &&
        eR.getActiveFailures().indexOf('continuous_rod_withdrawal') !== -1,
        st0.toFixed(0) + ' -> ' + eR.eng.rodSteps.toFixed(1) + ' steps');
     eR.applyCommand({ action: 'clear_failure', failure_id: 'continuous_rod_withdrawal' });
@@ -1511,9 +1526,23 @@ function runSuite(SH, rec, quiet, only) {
    * unconditionally to Tavg mode, so STEAM PRESSURE mode — the mode WTSM 11.2 assigns to
    * heatup, cooldown and hot standby — was unreachable from the board on any plant not booted
    * in it. Measured consequence (#629, the heatup checklist's own ride): pressing AUTO from
-   * Mode 5 changed NOTHING, because the Tavg-mode turbine-trip controller only opens above
-   * `tavg_noload_c` = 557 °F while the atmospheric dump valve is already relieving at 1040 psig
-   * below it — so the plant heated up on that valve and the DUMP SETPOINT box was an orphan.
+   * Mode 5 changed NOTHING, and the plant heated up on the atmospheric dump valve with the DUMP
+   * SETPOINT box an orphan.
+   *
+   * ⚠ #629's REASON for that no-op was "the Tavg-mode turbine-trip controller only opens above
+   * `tavg_noload_c` = 557 °F, ABOVE the atmospheric dump valve relieving at 1040 psig". THAT
+   * ORDERING INVERTED at #508/#645 (anchor now 547 °F, 4.2 °F BELOW the valve's 551.2 °F
+   * saturation) and the claim is REFUTED — re-measured on the heatup itself, 2026-09-08, #646:
+   * Tavg mode parks at 547.4 °F / 1006 psig with the valve SHUT and 0 lbm vented, 0.2 °F from
+   * where pressure mode parks it. What rides the valve is a dump left OUT of service (551.6 °F /
+   * 1042 psig, valve 8.1 %, 11,005 lbm in two hours) — which is what the Mode 5 IC boots.
+   * THE SELECTION IS STILL THE CLAIM, for the SOURCED reason and not that one: WTSM 11.2 assigns
+   * pressure mode to heatup/cooldown/hot standby, and it is the only mode that reads the DUMP
+   * SETPOINT box, so walking that setpoint down is how a cooldown is driven.
+   *
+   * THIS BLOCK IS WHERE THE SELECTION IS GATED, and it is the ONLY place: `run_checklist_pwr2`'s
+   * heatup leg cannot see it any more (the two modes park within instrument noise of each other),
+   * measured under the same revert — 32/32 green there, 161/162 here (#646).
    *
    * THE MODE IS THE CLAIM, not the boolean: `steam_dump_auto` is `mode !== 'off'` and reads
    * TRUE in both branches, which is exactly why a check written on it would have passed on the
@@ -2246,6 +2275,212 @@ function runSuite(SH, rec, quiet, only) {
      (cgT1 * 9 / 5 + 32).toFixed(1) + ' degF (air term dropped: ~+90 degF)');
   }
 
+  if (grp('N')) {
+  /* ---- 4n. THE STARTUP-RATE ANNUNCIATOR REACHES PWR2 (#661) ----------------------------------
+   * *(OWNER RULING, 2026-09-08: "B — leave the trip declared absent; build a 1 DPM startup-rate
+   * ALARM")* — and the ruling's "build" half was ruled on a FALSE PREMISE. `sur_high` (SUR HI,
+   * 1.0 DPM, caution — `pwr_control.js`, moved 2.0 -> 1.0 at #134) already existed and already
+   * fired on this plant. The #661 measurement pass that produced the premise logged the ENGINE's
+   * protection, permissive and rod-stop flags and never once read the control layer's
+   * annunciators, so it reported an "81-second unwarned window" that the plant does not have.
+   *
+   * WHY THAT WAS POSSIBLE, and what this block fixes: NOTHING ASSERTED IT. The row rides onto
+   * PWR2 BY REFERENCE — `getProtectionConfig` does `Object.assign({}, base, …)` and never names
+   * `alarms` — so the whole pwr annunciator table is on this plant by a convention that no check
+   * had ever exercised. That is the #644 audit shape and the standing trap in CLAUDE.md: a claim
+   * about what is BUILT is an unmeasured claim, and here the claim went wrong in the OTHER
+   * direction — a working feature reported as absent, with an owner ruling issued on top of it.
+   *
+   * MEASURED FIRST (2026-09-08, this exact fixture — shell + kernel, DT 0.02, `hot_zero_power`,
+   * 60 s settle, `rod_start` normal speed). ONE internally-consistent ride, one layer:
+   *
+   *     365.24 s   true startup rate reaches 1.0 decades per minute
+   *     367.06 s   INDICATED startup rate reaches 1.0 (the channel's own tau = 2 s lag)
+   *     367.06 s   `sur_high` clear -> active_unacknowledged   <-- the SAME sample
+   *     396.80 s   `sr_high_flux` (5e4 counts per second) annunciates
+   *     442.48 s   intermediate-range high-flux ROD STOP, 20 % current equivalent
+   *     444.32 s   reactor trip, intermediate-range high flux, 25 %
+   *
+   * The annunciator is 1.82 s behind TRUTH and 0.00 s behind its own INSTRUMENT, which is HR1
+   * working exactly as written: the alarm reads the indicated channel, so its whole delay is the
+   * meter's. (The #661 comment's 366.0 / 368.0 s are the same events measured full-stack through
+   * the service at 10x; the two harnesses differ by ~1 s and the issue's earlier engine-flag ride
+   * differs by ~55 s at the rod stop. Unreconciled, and deliberately not papered over — this
+   * block quotes ITS OWN layer's ride and nothing else.)
+   *
+   * THE SETPOINT IS READ OFF THE ROW, NEVER TYPED. A hard 1.0 here would silently desynchronise
+   * from a retuned table and then assert a timing relationship between two different numbers.
+   * The sourced value (1.0 decades per minute, Westinghouse Technology Systems Manual sec 2.1,
+   * ML11223A207, via #220 claim 7) is pinned where setpoint values belong — the manual's own
+   * table, gated by `run_manual_setpoints`.
+   *
+   * IT IS A `caution` AND THAT IS A CLAIM, not a label: since #655 only `critical` and `warning`
+   * arrivals drop the clock (`simulation_service.js` ALARM_DROP_PRIORITIES), so this alarm
+   * warns a player walking a startup at speed WITHOUT yanking them out of WARP for a rate they
+   * were deliberately building. Promote it and every startup at 600x stops dead at 367 s. */
+  head('SUR HI ON PWR2  [#661: the 1 DPM caution the ruling asked to be BUILT was already here]');
+  (function () {
+    var eN = new SH.PWR2Engine({ initial_state: 'hot_zero_power' });
+    var pcN = eN.getProtectionConfig();
+    var layN = new (globalThis.RD.ControlLayer)(eN, pcN);
+    var rowN = (pcN.alarms || []).filter(function (a) { return a.id === 'sur_high'; })[0] || null;
+    function stN(id) {
+      var a = layN.getAlarms().filter(function (x) { return x.id === id; })[0];
+      return a ? a.state : 'MISSING';
+    }
+    var tN = 0;
+    function tickN() { var o = eN.step(DT); layN.evaluate(eN.getInstruments(), DT); tN += DT; return o; }
+    for (var i = 0; i < Math.round(60 / DT); i++) tickN();          /* settle */
+    /* THE DARK-WIRE TEST (the #540 class). A row whose `instrument` names a channel this plant
+     * never publishes reads `undefined > setpoint` — false for ever — and is indistinguishable
+     * from a healthy quiet annunciator. `typeof` first because `isFinite(null)` is TRUE (#555). */
+    var vN = rowN ? eN.getInstruments()[rowN.instrument] : undefined;
+    ck('the SUR HI row reaches PWR2 on a channel this plant really publishes, and it is a ' +
+       'CAUTION — so it warns without dropping the clock out of WARP (#655: only critical and ' +
+       'warning arrivals do)',
+       !!rowN && rowN.direction === 'high' && typeof rowN.setpoint === 'number' &&
+       rowN.priority === 'caution' && typeof vN === 'number' && isFinite(vN),
+       rowN ? rowN.instrument + ' = ' + (typeof vN === 'number' ? vN.toFixed(3) : String(vN)) +
+              ' DPM at settle, setpoint ' + rowN.setpoint + ', ' + rowN.priority
+            : 'NO sur_high ROW — the pwr alarm table did not reach this plant');
+    ck('a settled hot zero power plant does NOT sit on its own startup-rate caution',
+       stN('sur_high') === 'clear', 'sur_high = ' + stN('sur_high'));
+    /* Drive the bank out and STOP 10 s past the arrival. The trip is 77 s further on and is a
+     * different claim (`pwr2_protection`'s own gates own it) — riding to it would triple the
+     * cost of this block to assert nothing it asserts. */
+    eN.applyCommand({ action: 'rod_start', direction: 1, speed: 'normal' });
+    var tCrossN = null, tAlarmN = null, surAtN = null;
+    while (tN < 460 && tAlarmN === null) {
+      var tsN = tickN();
+      if (tCrossN === null && rowN && tsN.startup_rate_dpm >= rowN.setpoint) tCrossN = tN;
+      if (stN('sur_high') !== 'clear') { tAlarmN = tN; surAtN = tsN.startup_rate_dpm; }
+    }
+    for (i = 0; i < Math.round(10 / DT); i++) tickN();
+    ck('SUR HI ANNUNCIATES on the runaway withdrawal — active_unacknowledged within 5 s of the ' +
+       'published startup rate crossing the ROW\'S OWN setpoint (measured 1.82 s: the meter\'s ' +
+       'tau, nothing else)',
+       tCrossN !== null && tAlarmN !== null && tAlarmN >= tCrossN &&
+       (tAlarmN - tCrossN) <= 5.0 && stN('sur_high') === 'active_unacknowledged',
+       (tCrossN === null ? 'the published rate NEVER crossed the setpoint' :
+        'crossed ' + rowN.setpoint + ' DPM at ' + tCrossN.toFixed(2) + ' s, alarm ' +
+        (tAlarmN === null ? 'NEVER (dark wire)' : 'at ' + tAlarmN.toFixed(2) + ' s (+' +
+         (tAlarmN - tCrossN).toFixed(2) + ' s, SUR ' + surAtN.toFixed(2) + ' DPM)')));
+  })();
+  }
+
+  if (grp('O')) {
+  /* ---- 4o. THE CONTINUOUS-WITHDRAWAL CASUALTY RUNS AT A SPEED THE DRIVE HAS (#662) -----------
+   * The row shipped at #507 wave 6 driving `severity x (24/912) x max_steps` — the retired
+   * engine's 24 fine-steps/s ceiling read as a FRACTION OF TRAVEL and re-expressed on this bank.
+   * On 627 steps that is 8.25 steps/s at severity 0.5: **495 steps/min, 6.9x the sourced 72 and
+   * 7.8x this plant's own fast drive**, and 990 steps/min at severity 1.0.
+   *
+   * SOURCED, and the source states the casualty's rate in its own initiating-event line. NRC
+   * HRTD "Westinghouse Technology Advanced Transients" (ML11216A094) Transient 5.22, *Fast Rod
+   * Withdrawal, 45% Load*: *"Initiating Event: Rod control system controller failure withdraws
+   * bank D rods at 72 steps/min"* — and Transient 5.23, *Fast Rod Withdrawal From Source Range*,
+   * word for word the same. 72 steps/min is the rod speed program's MAXIMUM (Westinghouse
+   * Technology Systems Manual section 8.1, ML11223A252: minimum 8 steps/min, proportional
+   * 32 steps/min/degF, *"a maximum rod speed of 72 steps/min… based upon… the physical
+   * limitations of the rod drive mechanism, with the latter being the limiting factor"*).
+   *
+   * ⚠ NOT the accident analysis's rate. Ginna UFSAR chapter 15 (ML20339A101) section 15.4.1.3.3
+   * item D assumes 75 pcm/sec and says in the same sentence that it is *"greater than that for
+   * the simultaneous withdrawal of the combination of the two control banks having the greatest
+   * combined worth at maximum speed"*. A bounding conservatism is not a drive speed.
+   *
+   * WHAT THE OLD RATE DID TO THE RIDE, measured on this fixture (severity 1.0, hot zero power,
+   * 60 s settle): power 368 %, peak startup rate 897 decades per minute, and the reactor tripped
+   * on **P-9, the turbine trip** — both flux trips asserted at the same instant but their 0.5 s
+   * analysis delays had not elapsed. That is a step reactivity insertion. AFTER: the
+   * intermediate-range high-flux ROD STOP at 259 s, the intermediate-range high-flux TRIP at
+   * 260 s, peak 32.5 % and 26.0 decades per minute — the startup net catching a runaway, which
+   * is the thing this casualty exists to demonstrate.
+   *
+   * THE BAND IS READ OFF `ROD_SPEEDS`, NEVER TYPED, in the code and here: severity runs the
+   * drive linearly slow -> fast, so severity 1.0 IS the plant's own maximum. Continuous rather
+   * than three-position because the real speed programmer is continuous (8 -> 32/degF -> 72) and
+   * a failed controller can sit anywhere on it; the three-position selector is the OPERATOR's,
+   * and it is not what fails here. */
+  head('THE RUNAWAY\'S RATE  [#662: a drive fault runs at a speed the drive has]');
+  (function () {
+    var RS = globalThis.RD.pwr2.engine.ROD_SPEEDS;
+    var eO = new SH.PWR2Engine({ initial_state: 'hot_zero_power' });
+    var i, tO = 0;
+    for (i = 0; i < Math.round(60 / DT); i++) { eO.step(DT); tO += DT; }
+    /* the rate the SHELL plants on the engine, per severity. Not a tautology against
+     * runawayRodSpeed: the shell is free to plant anything, and for three weeks it did. */
+    function rateAt(sev) {
+      eO.applyCommand({ action: 'inject_failure', failure_id: 'continuous_rod_withdrawal',
+                        severity: sev });
+      var r = eO.eng.runaway ? eO.eng.runaway.rate : null;
+      eO.applyCommand({ action: 'clear_failure', failure_id: 'continuous_rod_withdrawal' });
+      return r;
+    }
+    var r0 = rateAt(0), rH = rateAt(0.5), r1 = rateAt(1);
+    ck('the injected rate is a speed on the plant\'s OWN drive band — severity 0 is the slow ' +
+       'drive, 1.0 is the fast drive (the sourced accident\'s "maximum speed"), and nothing ' +
+       'lands outside it (was 8.25 steps/s at severity 0.5, 7.8x the fast drive)',
+       r0 !== null && r1 !== null && rH !== null &&
+       Math.abs(r0 - RS.slow) < 1e-9 && Math.abs(r1 - RS.fast) < 1e-9 &&
+       rH > RS.slow && rH < RS.fast,
+       'sev 0 / 0.5 / 1.0 = ' + (r0 * 60).toFixed(2) + ' / ' + (rH * 60).toFixed(2) + ' / ' +
+       (r1 * 60).toFixed(2) + ' steps/min, against a drive band of ' +
+       (RS.slow * 60).toFixed(2) + '-' + (RS.fast * 60).toFixed(2));
+    /* THE SLIDER LABEL IS A CLAIM (the #580 Break Size trap). The shared row's meta is the
+     * RETIRED plant's fine-step currency — "Withdrawal Rate, steps/s, 0-24, default 12" — so
+     * the Failures tab promised 12 steps/s at the default slider while the engine drove 8.25,
+     * against a drive whose whole maximum was then 1.053 (1.2 since #668). The UI renders `min + severity x (max-min)`
+     * (app.js:6972), which must BE the delivered rate, and both ends are read off ROD_SPEEDS. */
+    var mO = eO.getProtectionConfig().failures.continuous_rod_withdrawal.severity_meta;
+    var labelAt = function (sev) { return mO.min + sev * (mO.max - mO.min); };
+    ck('the Failures-tab slider is labelled in the DRIVE\'S units and its arithmetic lands on ' +
+       'the delivered rate at every severity (was "0-24 steps/s", the retired plant\'s ' +
+       '912-fine-step currency, promising 12 steps/s where the plant drove 8.25)',
+       !!mO && mO.unit === 'steps/min' &&
+       Math.abs(mO.min - RS.slow * 60) < 0.05 && Math.abs(mO.max - RS.fast * 60) < 0.05 &&
+       Math.abs(labelAt(0) - r0 * 60) < 0.1 && Math.abs(labelAt(0.5) - rH * 60) < 0.1 &&
+       Math.abs(labelAt(1) - r1 * 60) < 0.1,
+       mO ? '"' + mO.label + '" ' + mO.min + '-' + mO.max + ' ' + mO.unit + ', default ' +
+            mO.default + '; label(0.5) = ' + labelAt(0.5).toFixed(2) + ' vs delivered ' +
+            (rH * 60).toFixed(2) : 'NO severity_meta');
+    /* THE RIDE — severity 1.0, the sourced accident's maximum speed. The first 20 s is the
+     * DARK-WIRE half: a rate can be planted and not delivered (#540's class), so the travel is
+     * measured against the DERIVATION rather than against whatever was planted. */
+    var stO = eO.eng.rodSteps;
+    eO.applyCommand({ action: 'inject_failure', failure_id: 'continuous_rod_withdrawal',
+                      severity: 1.0 });
+    for (i = 0; i < Math.round(20 / DT); i++) { eO.step(DT); tO += DT; }
+    var travO = eO.eng.rodSteps - stO;
+    ck('...and the bank really travels at it — 20 s of drive fault against the derived rate, ' +
+       'on a fixture with travel left in it (the group-G fixture rails and cannot see this)',
+       Math.abs(travO - RS.fast * 20) < 0.2 * RS.fast,
+       travO.toFixed(2) + ' steps in 20 s, expected ' + (RS.fast * 20).toFixed(2));
+    /* ...continued to the trip. The claim is the TRIP CAUSE and the peak, not a timestamp:
+     * this is the difference between a withdrawal accident and a step insertion. */
+    var peakPO = 0, peakSO = 0, stopO = null, tripO = null, causeO = null;
+    while (tO < 900 && tripO === null) {
+      var tsO = eO.step(DT); tO += DT;
+      if (tsO.power_pct > peakPO) peakPO = tsO.power_pct;
+      if ((tsO.startup_rate_dpm || 0) > peakSO) peakSO = tsO.startup_rate_dpm;
+      if (stopO === null && eO.eng._rodStopSig) stopO = tO;
+      if (eO.eng.pt.reactor_trip) { tripO = tO; causeO = eO.eng.pt.trip_cause; }
+    }
+    ck('THE STARTUP NET CATCHES IT: the rod stop asserts, then a FLUX channel trips the ' +
+       'reactor at a plant power the net can hold (re-measured at #668 on the sourced 72 ' +
+       'steps/min, on this clock, which counts the 60 s settle: rod stop 288.8 s, ' +
+       'intermediate-range high-flux trip 289.5 s, peak 34.9 %, peak 30.8 DPM — it was ' +
+       '319.3 / 320.3 s, 32.5 %, 26.0 DPM at the pre-#668 63.18 steps/min). The pre-#662 rate ' +
+       'tripped on P-9 TURBINE TRIP at 368 % — the flux ' +
+       'trips asserted but their 0.5 s analysis delays had not elapsed',
+       stopO !== null && tripO !== null && causeO === 'ir_high_flux' &&
+       stopO < tripO && peakPO < 50,
+       'rod stop ' + (stopO === null ? 'NEVER' : stopO.toFixed(1) + ' s') + ', trip ' +
+       (tripO === null ? 'NEVER in 900 s' : tripO.toFixed(1) + ' s on ' + causeO) +
+       ', peak ' + peakPO.toFixed(1) + ' %, peak startup rate ' + peakSO.toFixed(1) + ' DPM');
+  })();
+  }
+
   if (grp('T')) {
   /* ---- 5. THE AFW THROTTLE ON A REAL POST-TRIP DRAIN (#582 item 2) ---------------------------
    * #562 landed the flow control valves and the afw_level channel SHIPS ENGAGED; #391's question
@@ -2312,6 +2547,18 @@ console.log('\nPWR2 -- THE SHELL CLASS (Option B stage B2): the surface the stac
 var rec = [];
 runSuite(loadAll(), rec, false);
 var pass = rec.filter(function (r) { return r.ok; }).length, fail = rec.length - pass;
+
+/* ---- THE CLEAN-RUN GUARD (#644) -------------------------------------------------------------
+ * REFUSE TO SCORE on a red clean run. The replay below counts ABSOLUTE reds in the mutant, so an
+ * already-red check is red in every mutant too and EVERY mutation reads as caught — the coverage
+ * instrument reporting full coverage exactly when the runner is not green. Placed BEFORE the
+ * scope preflight as well: that preflight re-rides every group, and on a red clean build every
+ * group reports RED for a reason that has nothing to do with scope. Rationale, the measured case
+ * and the refuse-vs-subtract ruling: mut_flags.requireCleanRun's header. */
+MUT.requireCleanRun(rec, '  run_pwr2_shell: ' + pass + ' passed, ' + fail +
+  ' failed  (' + rec.length + ' checks)',
+  { hint: 'To measure one group while another is red, scope both passes: --grp=<tag>. ' +
+          'Forced non-zero, never a baseline.' });
 
 var SHSRC = fs.readFileSync(path.join(SRC, 'pwr2_shell.js'), 'utf8').replace(/\r\n/g, '\n');
 /* Each entry's trailing { grp } names the section group that can SEE it (#513) — the replay
@@ -2591,7 +2838,42 @@ var MUTATIONS = [
   ['the published mode reads the CONTROLLER instead of the commanded driver (the status word ' +
    'goes one selection stale)',
    '    if (e.dcDrivers && e.dcDrivers.mode !== undefined) return e.dcDrivers.mode;\n    return e.dc ? e.dc.mode : \'tavg\';',
-   "    return e.dc ? e.dc.mode : 'tavg';", { grp: 'M' }]
+   "    return e.dc ? e.dc.mode : 'tavg';", { grp: 'M' }],
+  /* ---- #661: the annunciator table's ride onto PWR2 -----------------------------------------
+   * The whole pwr alarm table reaches this plant through ONE mapper in getProtectionConfig, and
+   * until #661 nothing exercised any row of it on PWR2 — which is precisely why the #661
+   * measurement pass could report the 1 DPM startup-rate caution as not existing here, and get
+   * an owner ruling issued to build a thing that was already built. Empty the table and every
+   * annunciator on the board goes dark while the config still passes every OTHER shape claim
+   * (trips/actuations/channels/ESF/failures untouched).
+   *
+   * FIRST DRAFT OF THIS ENTRY WAS BLIND AND THAT IS THE LESSON: it added `alarms: []` to the
+   * `trips: [], actuations: [] …` line, which is EARLIER in the same object literal than the
+   * real `alarms:` key below it — a later duplicate key wins, so the mutant was byte-equivalent
+   * to the clean build and the harness dutifully reported BLIND TO. An anchor that parses is not
+   * an anchor that bites. */
+  ['PWR2 stops carrying the pwr annunciator table (SUR HI and every other alarm go dark, and ' +
+   'the config still looks correct in every other respect)',
+   '        alarms: (base.alarms || []).map(function (a) {',
+   '        alarms: [], _alarmsRetired: (base.alarms || []).map(function (a) {', { grp: 'N' }],
+  /* #662 — THE SHIPPED RATE RESTORED, exactly as it stood: the retired engine's 24 fine-steps/s
+   * ceiling read as a fraction of travel and re-expressed on this bank. It is the whole defect
+   * in one expression, and it reds three of group O's four (the band, the measured travel, and
+   * the ride's trip cause) while the group-G row — which samples a RAILED bank — stays green,
+   * which is the point of splitting them. */
+  ['the continuous-withdrawal casualty goes back to the fraction-of-travel rate (495 steps/min ' +
+   'at severity 0.5, 7.8x the plant\'s own fast drive)',
+   "        EN.command(e, 'rod_runaway', EN.runawayRodSpeed(c.severity));",
+   "        EN.command(e, 'rod_runaway', (c.severity !== undefined ? c.severity : 0.5) * " +
+   '(24 / 912) * bankSteps());', { grp: 'O' }],
+  /* ...and the LABEL half, which fails separately and silently: the plant drives correctly and
+   * the Failures tab still quotes the retired plant's 0-24 steps/s. A player reading the slider
+   * is told 12 steps/s where the drive's whole maximum was then 1.053 — the #580 Break Size trap, and
+   * nothing but this check stands between it and the board. */
+  ['the slider label falls back to the shared pwr row (0-24 steps/s, the retired plant\'s ' +
+   'fine-step currency) while the plant drives correctly',
+   '          if (out.continuous_rod_withdrawal) {',
+   '          if (false && out.continuous_rod_withdrawal) {', { grp: 'O' }]
 ];
 
 /* ---- SCOPED-CLEAN-PASS PREFLIGHT (#513) ------------------------------------------------

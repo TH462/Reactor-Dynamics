@@ -827,13 +827,30 @@
      * initial condition boots `dump_mode: 'off'`, so a player heating the plant up had no route
      * to the mode the source calls the heatup/cooldown/hot-standby mode — and the DUMP SETPOINT
      * box was an orphan on every plant a player produces. MEASURED on the heatup checklist's own
-     * ride (full stack, 600x): pressing AUTO changed NOTHING (byte-identical trace, ADV 7.6 %,
-     * dumps 0.0 %), because the tavg-mode turbine-trip controller only opens above
-     * `tavg_noload_c` = 557 °F (291.67 °C) and the ATMOSPHERIC DUMP VALVE is already relieving
-     * at 1040 psig / 551.6 °F below it. The plant therefore parked 4.4 °F (2.4 °C) ABOVE the
-     * no-load band with the ADV modulating at 7-9 % as its heat sink, where selecting pressure
-     * mode parks it at 547.2 °F / 1005 psig with the ADV shut and the condenser dumps carrying
-     * 0.4-2.9 %.
+     * ride (full stack, 600x): pressing AUTO changed NOTHING — a byte-identical trace, ADV 7.6 %,
+     * dumps 0.0 %.
+     *
+     * ⚠ THE REASON #629 GAVE FOR THAT NO-OP IS REFUTED — RE-MEASURED 2026-09-08 (#646). It read:
+     * the tavg-mode turbine-trip controller only opens above `tavg_noload_c` = 557 °F (291.67 °C),
+     * which is ABOVE the ATMOSPHERIC DUMP VALVE already relieving at 1040 psig / 551.6 °F, so Tavg
+     * mode is a dump that never opens on a heating plant. #508 and #645 moved that anchor to
+     * 547 °F (286.11 °C) — 4.2 °F (2.3 °C) BELOW the valve's 551.2 °F saturation — and the
+     * ORDERING INVERTED. Same heatup ride, three lineups, cold plant to Mode 3 plus two
+     * plant-hours of hands-off park (`inbox/646/heatup.js`):
+     *
+     *     pressure mode    547.2 °F / 1005 psig · ADV SHUT   · dumps 0.0-3.4 % ·      0 lbm vented
+     *     tavg mode        547.4 °F / 1006 psig · ADV SHUT   · dumps 0.1-2.5 % ·      0 lbm vented
+     *     never selected   551.6 °F / 1042 psig · ADV 8.1 %  · dumps 0.0 %     · 11,005 lbm vented
+     *
+     * The two modes now park 0.2 °F (0.1 °C) apart and NEITHER rides the valve. What rides it is a
+     * dump left OUT OF SERVICE — which is what the Mode 5 IC boots, and what the old unconditional
+     * mapping was indistinguishable from, because below 557 °F that controller had no output. So
+     * the mapping below is still right and the argument it shipped with is not.
+     *
+     * WHAT KEEPS IT RIGHT is the source plus one thing the park cannot show: pressure mode is the
+     * ONLY mode that reads the DUMP SETPOINT box, so walking that setpoint down is how a cooldown
+     * is driven. Tavg mode has no setpoint to walk — it would hold the plant on the no-load knot
+     * and nothing else.
      *
      * SOURCED, not chosen for convenience: WTSM 11.2 (ML11223A294) — "Tavg mode at power, steam
      * pressure mode at hot standby / startup / cooldown" (quoted in pwr2_dumpctl.js's header).
@@ -991,8 +1008,11 @@
     failure_to_scram: function (e, c) { EN.command(e, 'scram_block', c !== false); },
     stuck_open_spray: function (e, c) { EN.command(e, 'spray_stick', c !== false); },
     rod_withdrawal_runaway: function (e, c) {
+      /* #662: the drive's own band, not a fraction of travel — EN.runawayRodSpeed carries the
+       * two sources. One derivation, two callers (this REHOMED effect name and the casualty
+       * row below); they used to be two copies of the same arithmetic. */
       EN.command(e, 'rod_runaway',
-                 (c && c.severity !== undefined ? c.severity : 0.5) * (24 / 912) * bankSteps());
+                 EN.runawayRodSpeed(c && c.severity !== undefined ? c.severity : 0.5));
     },
     /* the old command toggled a discrete pump; PWR2's actuator is charging DEMAND — OFF is
      * demand 0 in manual, ON restores nothing by itself (dial a flow or re-select AUTO).
@@ -1060,12 +1080,17 @@
       else if (c.failure_id === 'failed_pzr_heaters') EN.command(e, 'pzr_heaters_failed', true);
       else if (c.failure_id === 'stuck_open_spray') EN.command(e, 'spray_stick', true);
       else if (c.failure_id === 'continuous_rod_withdrawal') {
-        /* sev × the old ceiling as a FRACTION OF TRAVEL: 24/912 of the old fine bank =
-         * 5.26 steps/s on this 200-step bank [adopted]. NOTE: the shipped hot-full-power IC
-         * parks the bank at 200/200, so the failure only has travel on a plant whose rods
-         * are inserted — declared, not hidden. */
-        EN.command(e, 'rod_runaway',
-                   (c.severity !== undefined ? c.severity : 0.5) * (24 / 912) * bankSteps());
+        /* THE RATE IS A SPEED THE DRIVE CAN RUN AT (#662) — severity across ROD_SPEEDS'
+         * slow→fast band, sourced in EN.runawayRodSpeed (NRC HRTD ML11216A094 Transients
+         * 5.22/5.23: *"Rod control system controller failure withdraws bank D rods at 72
+         * steps/min"*). Since #668 severity 1.0 lands EXACTLY on that sourced 72, because the
+         * drive's own fast setting is now the sourced maximum rather than 12.25 % under it —
+         * no edit here, which is what reading the band off ROD_SPEEDS bought.
+         * It replaces a fraction-of-travel scaling of the retired engine's
+         * fine-step ceiling that ran 495 steps/min at severity 0.5. NOTE: the shipped
+         * hot-full-power IC parks the bank fully out, so the failure only has travel on a
+         * plant whose rods are inserted — declared, not hidden. */
+        EN.command(e, 'rod_runaway', EN.runawayRodSpeed(c.severity));
       }
       else if (c.failure_id === 'sgtr') {
         /* A break AT the sg_primary node — the facade routes it into the SECONDARY with the
@@ -1473,6 +1498,32 @@
                   severity_meta: def.severity_meta }
               : def;
           });
+          /* THE ONE SEVERITY_META OVERRIDE (#662) — copied-with-one-override, the same idiom
+           * the alarm table uses at #500. The shared row's slider says *"Withdrawal Rate,
+           * steps/s, 0–24, default 12"*: that is the RETIRED plant's 912-fine-step currency and
+           * it is correct THERE, so the shared table is not touched. On this plant it was the
+           * #580 Break Size trap exactly — the label promised 12 steps/s at the default slider
+           * and the engine drove 8.25, and both numbers were nonsense against a drive whose own
+           * maximum was then 1.053 steps/s (the sourced 1.2 since #668). The band is READ OFF
+           * ROD_SPEEDS — which is why #668's move to 8–72 steps/min needed no edit here — so a
+           * drive retune moves
+           * the label with the plant; the UI renders `min + severity x (max - min)`, which is
+           * runawayRodSpeed's own map in steps/min, so the label and the plant agree by
+           * construction rather than by maintenance. Rounded to 0.1 for display only. */
+          if (out.continuous_rod_withdrawal) {
+            var rs = EN.ROD_SPEEDS;
+            out.continuous_rod_withdrawal = {
+              type: out.continuous_rod_withdrawal.type,
+              category: out.continuous_rod_withdrawal.category,
+              effect: out.continuous_rod_withdrawal.effect,
+              severity_scales: out.continuous_rod_withdrawal.severity_scales,
+              display: out.continuous_rod_withdrawal.display,
+              severity_meta: { label: 'Withdrawal Rate', unit: 'steps/min',
+                               min: +(rs.slow * 60).toFixed(1),
+                               max: +(rs.fast * 60).toFixed(1),
+                               default: +((rs.slow + rs.fast) * 30).toFixed(1) }
+            };
+          }
           return out;
         })()
       });

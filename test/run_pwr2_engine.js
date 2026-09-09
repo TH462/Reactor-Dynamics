@@ -289,8 +289,28 @@ function runSuite(RD, rec, quiet, only) {
   /* A FRESH engine, NO commands, 60 s. Before the design-point enthalpy map this red at
    * power min 76.6 % (t = 2.9 s) with Thot 580 -> 622 degF and a 64 psi sag — the isothermal
    * boot developing its own loop split on every free-play start. The bounds are the ring's
-   * absence, not the design point itself (the settle drifts ~1.3 degC below the constants —
-   * declared in designHmap's header). */
+   * absence, not a pin on today's numbers — RE-CENTRED 2026-09-08 (#652) on `S.DESIGN`
+   * (tavg_c +/- dt_c/2) instead of typed 319.0/287.6, which described the pre-#583 plant and
+   * had drifted to 80 % of its own 2.5 degC band by #650 without either change touching it.
+   *
+   * The old comment here claimed "the settle drifts ~1.3 degC below the constants" — #647
+   * FALSIFIED that: the drift was a fuel-seed defect (createReactor seeded the fuel from the
+   * leg average, 18.1 degC cooler than the `core` node stepFuel actually drives; fixed, the
+   * plant now LANDS on the design point). Measured here, a 60 s no-command ride off
+   * `hot_full_power` settles at Thot 321.00 degC / 609.8 degF (centre 320.86 / 609.5, residual
+   * +0.14 degC / +0.25 degF) and Tcold 288.30 degC / 550.9 degF (centre 288.15 / 550.7,
+   * residual +0.16 degC / +0.29 degF) — stable (+/-0.02 degC) from t = 60 s through t = 360 s,
+   * so this is the settled reading, not one still converging.
+   *
+   * `icLegTol` is that residual with ~6x margin: loose enough to absorb the pump-heat residual
+   * every future DESIGN retune carries (#647 measured a different, smaller +0.13 degF on this
+   * same shape pre-#650), tight enough that the pre-designHmap ring (tens of degrees) or a
+   * fuel-seed-class defect still red — replayed against this tree with the pre-#647 seed
+   * reverted (source-substitution, not a checked-out tree): settles at Thot 319.55 degC /
+   * 607.2 degF, Tcold 286.75 degC / 548.2 degF, residual 1.30 / 1.39 degC against TODAY's
+   * centre — over `icLegTol` where the OLD typed band (319.0/287.6 +/- 2.5) passed it clean.
+   * The rated-point identity check below (1c) is the tight (0.5 %) pin on the leg SPLIT; this
+   * one only has to prove the ride does not ring or wander off the point. */
   head('SETTLED IC  [a no-command ride from construction does not ring]');
   var engIC = EN.createEngine({});
   var icMin = 1e9, icPMin = 1e9, icTs = null;
@@ -299,12 +319,16 @@ function runSuite(RD, rec, quiet, only) {
     if (icTs.power_pct < icMin) icMin = icTs.power_pct;
     if (icTs.pressure_mpa < icPMin) icPMin = icTs.pressure_mpa;
   }
+  var icThotDesign = S.DESIGN.tavg_c + S.DESIGN.dt_c / 2,
+      icTcoldDesign = S.DESIGN.tavg_c - S.DESIGN.dt_c / 2, icLegTol = 1.0;   /* degC, see above */
   ckT('60 s untouched: power holds, legs near settled, pressure inside the park',
       icMin >= 97.0 && icPMin > 15.17 &&
-      Math.abs(icTs.thot_c - 319.0) < 2.5 && Math.abs(icTs.tcold_c - 287.6) < 2.5,
+      Math.abs(icTs.thot_c - icThotDesign) < icLegTol &&
+      Math.abs(icTs.tcold_c - icTcoldDesign) < icLegTol,
       'power min ' + icMin.toFixed(1) + ' %, P min ' + (icPMin * 145.04).toFixed(0) +
       ' psia, legs ' + (icTs.thot_c * 1.8 + 32).toFixed(1) + '/' +
-      (icTs.tcold_c * 1.8 + 32).toFixed(1) + ' degF');
+      (icTs.tcold_c * 1.8 + 32).toFixed(1) + ' degF vs design ' +
+      (icThotDesign * 1.8 + 32).toFixed(1) + '/' + (icTcoldDesign * 1.8 + 32).toFixed(1) + ' degF');
 
   /* ---- 1c. THE RATED-POINT IDENTITY (#650) -------------------------------------------------
    * ⚠ THIS IS THE CHECK WHOSE ABSENCE LET A 5 % OFFSET SHIP FOR THREE WEEKS.
@@ -364,10 +388,13 @@ function runSuite(RD, rec, quiet, only) {
       t80.mwe_output.toFixed(1) + ', power ' + t80.power_pct.toFixed(1) + ' %');
   EN.command(eng, 'rod_target', frac(0.95));
   var tRod = run(eng, 5);
-  ckT('rod_target SLEWS — five seconds at normal speed moves ~3.5 steps, not the whole demand',
-      /* 0.702 steps/s = the sourced WTSM 8.1 normal class rate mapped onto the 200-step
-       * bank (#506.4); the pre-#506 single rate (1.0 = always FAST) read ~5 here */
-      Math.abs(tRod.rod_steps - (bank() - 0.702 * 5)) < 1.0,
+  /* THE EXPECTED TRAVEL IS READ OFF `ROD_SPEEDS` (#668), not typed. It shipped as a literal
+   * 0.702 and reddened when the drive moved to the sourced band — a stale fixture: the claim
+   * is that the drive SLEWS rather than teleporting, which is speed-independent. */
+  var nrmT = EN.ROD_SPEEDS.normal;
+  ckT('rod_target SLEWS — five seconds at normal speed moves the drive\'s own ' +
+      (nrmT * 5).toFixed(1) + ' steps, not the whole demand',
+      Math.abs(tRod.rod_steps - (bank() - nrmT * 5)) < 1.0,
       tRod.rod_steps.toFixed(1) + ' steps, from ' + bank() + ' toward ' + frac(0.95) +
       ' — instant rods are a lever no real plant has');
   EN.command(eng, 'rod_target', bank()); run(eng, quiet ? 20 : 40);
@@ -875,7 +902,9 @@ function runSuite(RD, rec, quiet, only) {
   var ts6 = run(eng6, quiet ? 180 : 240);
   ckT('a STUCK Tavg channel makes the dumps OVERCOOL the true plant far past the program',
       (ts6.tavg_c * 1.8 + 32) < 500 && ts6.steam_dump_valve_pct > 30,
-      'true Tavg ' + (ts6.tavg_c * 1.8 + 32).toFixed(1) + ' degF vs the 557 program, dumps ' +
+      /* #646: the note used to name a literal 557 program. Read the constant — #508 moved it. */
+      'true Tavg ' + (ts6.tavg_c * 1.8 + 32).toFixed(1) + ' degF vs the ' +
+      (DC.DUMP.tavg_noload_c * 1.8 + 32).toFixed(0) + ' program, dumps ' +
       ts6.steam_dump_valve_pct.toFixed(0) + ' % chasing a reading stuck at ' +
       (eng6.ins.reading.tavg * 1.8 + 32).toFixed(1));
 
@@ -1609,7 +1638,8 @@ function runSuite(RD, rec, quiet, only) {
   run(engT, 60);
   ckT('...and after the reset the drive works again — 60 s at normal speed is ~40 steps out',
       engT.rodSteps > 35 && engT.rodSteps <= 42 && engT.pt.reactor_trip === false,
-      engT.rodSteps.toFixed(1) + ' steps (0.702/s x 60 s, capped by the 40-step demand)');
+      engT.rodSteps.toFixed(1) + ' steps (' + EN.ROD_SPEEDS.normal.toFixed(3) +
+      '/s x 60 s, capped by the 40-step demand)');
 
   /* THE ATWS IS WHERE THE BOTH-DIRECTIONS HALF IS OBSERVABLE — under a normal trip the rods
    * are already at 0, so in/out cannot be told apart. With the drop failed the operator can no
@@ -1783,6 +1813,67 @@ function runSuite(RD, rec, quiet, only) {
    *
    * The scale is RESTORED in a `finally`, so nothing downstream in this file sees a moved
    * plant even if an assertion throws. */
+  /* ---- 8c-bis. THE DRIVE'S TWO ENDS ARE THE SOURCED ONES (#668) ------------------------------
+   *
+   * *(OWNER RULING, 2026-09-08: "A — adopt the sourced 8 and 72; keep 48 as normal, marked
+   * [UNVERIFIED]".)* Westinghouse Technology Systems Manual §8.1 (ML11223A252), the rod speed
+   * program: *"the reactor control unit produces an output demanding a minimum speed of eight
+   * steps per minute"*; *"With an error of 5°F or greater… a maximum rod speed of 72 steps/min.
+   * The maximum rod speed is based upon a maximum response to a large error signal and upon the
+   * physical limitations of the rod drive mechanism, with the latter being the limiting
+   * factor."* §8.1.8 adds the shutdown-bank pulser potentiometer *"normally set at 72 steps per
+   * minute"*.
+   *
+   * ⚠ THE LITERALS 8 AND 72 HERE ARE THE DECISION, NOT A COPY OF THE CODE. This is the one
+   * check in the tree that may type them: every other consumer reads `ROD_SPEEDS`, so nothing
+   * else can tell the sourced band from a plausible one. It shipped for a year as pwr1's same
+   * 8/48/72 re-expressed as a FRACTION OF TRAVEL onto a 200-step bank — 7.02 / 42.12 / 63.18,
+   * every one 12.25 % under its own original, and green everywhere.
+   *
+   * NORMAL IS NOT ASSERTED AGAINST A SOURCE because it has none: `find_source` over 39
+   * documents in three lanes finds 8 and 72 and no 48. What is asserted is that it stays
+   * strictly INSIDE the sourced band and that the three are ordered — the shape a three-position
+   * selector must have — plus the [UNVERIFIED] marking at the constant, so the gap cannot be
+   * quietly re-sourced by editing a number. */
+  head('THE DRIVE BAND  [#668: slow and fast are the sourced 8 and 72 steps/min]');
+  (function () {
+    var RSK = EN.ROD_SPEEDS;
+    ckT('SLOW is the sourced minimum — WTSM 8.1 "a minimum speed of eight steps per minute"',
+        Math.abs(RSK.slow * 60 - 8) < 1e-9,
+        (RSK.slow * 60).toFixed(3) + ' steps/min (was 7.02 — pwr1\'s 8 scaled by 200/228)');
+    ckT('FAST is the sourced maximum, and the source calls it a limit of the MECHANISM — ' +
+        '"a maximum rod speed of 72 steps/min… the physical limitations of the rod drive ' +
+        'mechanism, with the latter being the limiting factor"',
+        Math.abs(RSK.fast * 60 - 72) < 1e-9,
+        (RSK.fast * 60).toFixed(3) + ' steps/min (was 63.18 — pwr1\'s 72 scaled by 200/228)');
+    ckT('NORMAL is [UNVERIFIED] and stays strictly inside the sourced band, ordered ' +
+        'slow < normal < fast — no source in three lanes\' corpus carries a 48',
+        RSK.normal > RSK.slow && RSK.normal < RSK.fast,
+        (RSK.normal * 60).toFixed(3) + ' steps/min, band ' + (RSK.slow * 60).toFixed(0) + '-' +
+        (RSK.fast * 60).toFixed(0));
+    /* A DOCUMENTATION GUARD, and it says so: it reads the file off DISK, so a mutation replay
+     * cannot red it and it is not evidence about the plant. What it does catch is the one
+     * thing no numeric check can — the marking going quietly missing while 48 stays. */
+    var srcK = fs.readFileSync(path.join(SRC, 'pwr2_engine.js'), 'utf8');
+    ckT('...and the constant still SAYS normal is unverified, so the gap cannot be lost to an ' +
+        'edit (a documentation guard on the file, not a claim about the plant)',
+        /\[UNVERIFIED\]/.test(srcK.slice(srcK.indexOf('THE SOURCED QUANTITY IS'),
+                                         srcK.indexOf('var ROD_SPEEDS'))),
+        '[UNVERIFIED] present in the ROD_SPEEDS comment block');
+    /* THE CASUALTY FOLLOWS BY CONSTRUCTION (#662): severity 1.0 IS the drive's maximum, which
+     * is the rate the sourced accident states in its own initiating-event line (NRC HRTD
+     * "Westinghouse Technology Advanced Transients" ML11216A094, Transients 5.22 and 5.23:
+     * *"Rod control system controller failure withdraws bank D rods at 72 steps/min"*). Asserted
+     * against the LITERAL 72 here, and against ROD_SPEEDS in run_pwr2_shell group O — so the
+     * two agree only while the drive really carries the sourced maximum. */
+    ckT('the continuous-withdrawal casualty\'s severity 1.0 IS the sourced accident\'s own ' +
+        '72 steps/min, because it is a point on this band and not a rate of its own',
+        Math.abs(EN.runawayRodSpeed(1) * 60 - 72) < 1e-9 &&
+        Math.abs(EN.runawayRodSpeed(0) * 60 - 8) < 1e-9,
+        'severity 0 / 1.0 = ' + (EN.runawayRodSpeed(0) * 60).toFixed(2) + ' / ' +
+        (EN.runawayRodSpeed(1) * 60).toFixed(2) + ' steps/min');
+  })();
+
   head('THE BANK SCALE  [one constant, and every consumer reads it — #602]');
   (function () {
     var RODS = RD.kinetics.RODS, was = RODS.max_steps, PROBE = 313;   /* deliberately not 200 */
@@ -1889,8 +1980,12 @@ function runSuite(RD, rec, quiet, only) {
   var engH = EN.createEngine({ initial_state: 'hot_zero_power' });
   var tsH = EN.step(engH, DT);
   ckT('Hot Standby opens at the plant\'s OWN no-load point — Tsat of the sourced 1005 psig ' +
-      '(547.9 degF, the Ginna pair; the 557 degF program anchor saturates ABOVE the 1085 ' +
-      'psig MSSV pop, measured — the ICS header), level at the 25 % no-load program',
+      /* #646: "the 557 degF program anchor" was the LIVE anchor when this was written and is
+       * not since #508/#645 — the program now sits on this same Ginna pair. Kept as the reason
+       * the anchor moved, in the past tense. */
+      '(547.9 degF, the Ginna pair, and since #508/#645 the Tavg program\'s anchor too; the ' +
+      '557 degF anchor it replaced saturates ABOVE the 1085 psig MSSV pop, measured — the ' +
+      'ICS header), level at the 25 % no-load program',
       tsH.power_pct < 1e-3 && Math.abs(tsH.tavg_c - 286.11) < 0.15 &&
       engH.sg.P * 145.038 > 1012 && engH.sg.P * 145.038 < 1028 &&
       Math.abs(tsH.pzr_level_pct - 25) < 1.0,
@@ -2312,9 +2407,16 @@ function runSuite(RD, rec, quiet, only) {
       ((engF.sg.mass - mF0) * 2.20462).toFixed(0) + ' lbm), steam_flow reading ' +
       engF.ins.reading.steam_flow);
 
-  /* the code safeties, with the ADV isolated so it cannot mask them. Hot Standby is the
-   * CONTROL arm: it always lifted to 0.84 x rated, so a Mode 4 that now matches it is the
-   * scale being right rather than the valve being re-tuned. */
+  /* the code safeties. Hot Standby is the CONTROL arm: it always lifted to the shipped bank
+   * scale, so a Mode 4 that matches it is the scale being right rather than the valve being
+   * re-tuned.
+   *
+   * ⚠ THIS COMMENT USED TO SAY "with the ADV isolated so it cannot mask them" and then set
+   * `e.advBlock = true`, which in pwr2_relief means the block valve is OPEN — the opposite
+   * (#643's evidence pass). The check is unaffected either way because it reads `sg_safety_kgs`
+   * and nothing else, but a false statement about a fixture is inherited by whoever reads it
+   * next, which is this issue's own subject. What the line actually does is leave the ADV in its
+   * normal lineup; the bank is held at 8.3 MPa regardless, so the ADV cannot suppress it. */
   function safetyPeak(icName) {
     var e = EN.createEngine({ initial_state: icName });
     EN.step(e, DT);
@@ -2326,8 +2428,8 @@ function runSuite(RD, rec, quiet, only) {
        * accumulation). It was 8.2 MPa = 1174.6 psig, which clears that point by 0.4 psi —
        * measured green, but a fixture standing 0.4 psi from the thing it asserts is a fixture
        * waiting to go red on a rounding change. Measured on BOTH the pre-#542 lumped ramp and
-       * the staggered bank, 8.3 MPa reads 0.84 x rated, so this is a better fixture rather than
-       * one refitted to the change (HR10). */
+       * the staggered bank, 8.3 MPa read the shipped scale x rated, so this is a better fixture
+       * rather than one refitted to the change (HR10). */
       e.sg.P = 8.3;
       t = EN.step(e, DT);
       if (t.sg_safety_open) op = true;
@@ -2339,22 +2441,31 @@ function runSuite(RD, rec, quiet, only) {
   /* ⚠ THE EXPECTATION IS PRESSURE-SCALED SINCE #633, and the fixture is at 8.3 MPa, not at any
    * stage's quoted condition. Each stage's capacity is quoted at its OWN set pressure + 3 %
    * accumulation (Ginna UFSAR ch10's equipment table), so a bank at full lift passes exactly
-   * 0.84 x rated only if every stage happens to sit at its own reference — which staggered
-   * setpoints make impossible. At 8.3 MPa the sourced shares give 1.0247 x, i.e. 141.38 kg/s
-   * against the flat model's 137.97, and 141.38 is what a fixed opening at that pressure
-   * passes. Re-derived here from the sourced psig figures rather than read off the engine.
+   * `scale` x rated only if every stage happens to sit at its own reference — which staggered
+   * setpoints make impossible. At 8.3 MPa the sourced shares give 1.0247 x the scale.
    *
-   * NEITHER LOAD-BEARING ARM MOVED: the bank still OPENS in both modes, and the two peaks are
-   * still bit-identical — which is the #539 claim this check exists for (Mode 4 booting with
-   * rated_steam 0 made the annunciator light over 0.0000 kg/s). Only the magnitude anchor is
-   * new, and it is asserted on the same 0.5 kg/s tolerance. */
+   * ⚠ THE SCALE IS NOW DIVIDED FOR, NOT TYPED (#643, OWNER RULING 2026-09-08: "A — 1.0062 x
+   * rated, the sourced design basis"). This line carried a hard `0.84` — the retired figure,
+   * which was Ginna's ratio after its 1775 MWt uprate and had no document behind it at all. The
+   * bank's own sourced per-line capacity over the source's own per-line DESIGN steam flow is the
+   * design basis B 3.7.1 states in words ("passing 100% of design steam flow"): Ginna UFSAR ch10
+   * (ML20339A040) equipment table, main steam line row, verbatim "Flow design capacity, lb/hr
+   * 3.29 x 106 at 770 psia". Every figure below is retyped from the documents, NOT read off the
+   * engine — this check's whole value is that it is a second, independent derivation, and a
+   * check that imports the constant it is testing can only prove it equals itself (HR10).
+   *
+   * NEITHER LOAD-BEARING ARM MOVED across either change: the bank still OPENS in both modes, and
+   * the two peaks are still bit-identical — which is the #539 claim this check exists for (Mode 4
+   * booting with rated_steam 0 made the annunciator light over 0.0000 kg/s). Only the magnitude
+   * anchor moved, and it is asserted on the same 0.5 kg/s tolerance. */
   var bankAt83 = (function () {
     var l1 = 797689.0, l2 = 3 * 837600.0, tot = l1 + l2, PSI = 145.0377, out = 0;
+    var scale = tot / 3.29e6;                           /* the sourced design-basis ratio, #643 */
     [[1085.0, l1], [1140.0, l2]].forEach(function (s) {
       var ref = (s[0] * 1.03 + 14.7) / PSI;             /* set pressure + 3 % accumulation */
       out += (s[1] / tot) * (8.3 / ref);                /* choked: W proportional to P1 */
     });
-    return 0.84 * sfM4.rated * out;
+    return scale * sfM4.rated * out;
   })();
   ckT('Mode 4 CODE SAFETIES PASS FLOW at the designed capacity, scaled to 8.3 MPa (#633) — ' +
       'the annunciator used to light OPEN while 0.0000 kg/s left',
@@ -2363,7 +2474,8 @@ function runSuite(RD, rec, quiet, only) {
       Math.abs(sfM4.peak - sfHZP.peak) < 1e-6,
       'Mode 4 ' + sfM4.peak.toFixed(4) + ' kg/s vs Hot Standby ' + sfHZP.peak.toFixed(4) +
       '; Napier-scaled expectation ' + bankAt83.toFixed(2) +
-      ' (flat 0.84 x rated would be ' + (0.84 * sfM4.rated).toFixed(2) + ')');
+      ' (a flat sourced-scale x rated would be ' +
+      ((797689.0 + 3 * 837600.0) / 3.29e6 * sfM4.rated).toFixed(2) + ')');
   }
 
   if (grp('O')) {
@@ -3109,10 +3221,13 @@ var MUTATIONS = [
    * run_pwr2_dumpctl now pins that agreement statically instead. Re-aimed at the branch
    * SELECTION, which still is: caught, 3 Hot Standby checks red.
    *
-   * AND IT REPORTED 'caught' WHILE BLIND, WHICH IS THE BIGGER FINDING. realReds below counts
-   * ABSOLUTE reds in the mutant run with no clean-run subtraction, so while ANY check is red in
-   * this part's replay, EVERY mutation in it reads as caught. run_pwr2_loadfollow guards this
-   * ('MUTATION SELF-TEST SKIPPED -- N check(s) failed in the CLEAN run'); this runner does not. */
+   * AND IT REPORTED 'caught' WHILE BLIND, WHICH WAS THE BIGGER FINDING (#644, FIXED 2026-09-08).
+   * realReds below counts ABSOLUTE reds in the mutant run with no clean-run subtraction, so while
+   * ANY check is red in this part's replay, EVERY mutation in it read as caught. The runner now
+   * REFUSES TO SCORE on a red clean run (MUT.requireCleanRun, below) — proven by injection: with
+   * this very mutation restored to its DC.tref(0) form and one group-K check deliberately red,
+   * the old code printed 'caught 1 checks red' and the guarded code prints
+   * 'MUTATION SELF-TEST SKIPPED'. */
   ['the no-load IC boots at the AT-POWER end of the program instead of the no-load one',
    "    var tavg0 = ic.cold ? ic.tavg_c\n              : ic.pf > 0 ? DC.tref(ic.load_mwe / MWE_RATED) : W.T_sat(G.SG.P_noload);",
    '    var tavg0 = ic.cold ? ic.tavg_c\n              : ic.pf > 0 ? DC.tref(ic.load_mwe / MWE_RATED) : DC.tref(1);', { grp: 'K' }],
@@ -3133,6 +3248,21 @@ var MUTATIONS = [
   ['the margin is pinned wide (the LO approach can never annunciate)',
    "    eng._rodLimitMargin = ril === null ? BANK() : Math.max(0, Math.round(eng.rodSteps - ril));",
    '    eng._rodLimitMargin = BANK();', { grp: 'L' }],
+  /* #668 — THE SHIPPED DRIVE RESTORED, exactly as it stood: pwr1's sourced 8 / 48 / 72 steps/min
+   * re-expressed as a fraction of travel onto a 200-step bank, every one 12.25 % under its own
+   * original. It is a plausible plant in every respect — the three are ordered, the ratios are
+   * right, the drive slews, the casualty rides its band — which is why it stood for a year and
+   * why the only thing that can catch it is a check that types the sourced numbers. */
+  ['the rod drive goes back to the fraction-of-travel speeds (7.02 / 42.12 / 63.18 steps/min, ' +
+   'the sourced 8 / 48 / 72 scaled by 200/228)',
+   '  var ROD_SPEEDS = { slow: 8 / 60, normal: 48 / 60, fast: 72 / 60 };',
+   '  var ROD_SPEEDS = { slow: 0.117, normal: 0.702, fast: 1.053 };', { grp: 'K' }],
+  /* ...and the FAST END ALONE, which is the half a player reads: the withdrawal slider's top
+   * and the sourced accident's own 72 steps/min. It leaves slow and normal correct, so nothing
+   * that checks the band's SHAPE or its ordering can see it. */
+  ['only the FAST end falls back to 63.18 steps/min (the slider top #662 had to explain away)',
+   'fast: 72 / 60 };',
+   'fast: 1.053 };', { grp: 'K' }],
   /* THE HOIST ITSELF (#602 phase 1) — put a stale literal back at the site the ride harness
    * actually missed, and see whether anything notices. This is the mutation that makes the
    * bank-scale block above evidence rather than decoration: a clamp frozen at 200 does not
@@ -3259,6 +3389,28 @@ var ownedTotal = MUTATIONS.filter(function (m) {
   return t !== null && GROUPS.indexOf(t) >= 0;
 }).length;
 
+/* THE OWNERSHIP AUDIT IS PRINTED FIRST (#644) — it is a STATIC property of the MUTATIONS table
+ * and has nothing to do with whether the plant checks passed, so it must survive the clean-run
+ * refusal below. It used to print after the replay loop, which the refusal skips. */
+if (unowned.length) {
+  console.log('\n' + '!'.repeat(70));
+  unowned.forEach(function (u) { console.log('  UNOWNED MUTATION (' + u[0] + '): ' + u[1]); });
+  console.log('  A mutation no part owns NEVER REPLAYS — in this process or any other.');
+  console.log('!'.repeat(70));
+}
+
+/* ---- THE CLEAN-RUN GUARD (#644) -------------------------------------------------------------
+ * REFUSE TO SCORE if any check is red. `realReds` below counts ABSOLUTE reds in the mutant run
+ * with no clean-run subtraction, so while ANY check this part's replay can see is red, EVERY
+ * mutation in it reads as caught — the coverage instrument reporting full coverage exactly when
+ * the runner is not green. The full rationale, the measured case and the refuse-vs-subtract
+ * ruling are in mut_flags.requireCleanRun's header. This also SAVES the replay bill (321 / 327 /
+ * 830 s per part) in the one case where it could only buy a lie. */
+MUT.requireCleanRun(rec, '  ' + RUNNER_NAME + ': ' + pass + ' passed, ' + fail +
+  ' failed  (' + rec.length + ' checks)',
+  { hint: 'To measure a group that is GREEN while another is red, scope BOTH passes: ' +
+          '--groups=' + MY_GROUPS.join(',') + ' (or --grp=<one tag>). Forced non-zero, never a baseline.' });
+
 console.log('\ninjection self-test (' + mine.length + ' of ' + MUTATIONS.length +
   ' mutations — this part owns groups ' + MY_GROUPS.join(' ') + '):');
 var blind = 0;
@@ -3294,13 +3446,6 @@ mine.forEach(function (m) {
     ' s  grp ' + grpTag + '  ' + m[0].slice(0, 50));
 });
 loadAll();
-
-if (unowned.length) {
-  console.log('\n' + '!'.repeat(70));
-  unowned.forEach(function (u) { console.log('  UNOWNED MUTATION (' + u[0] + '): ' + u[1]); });
-  console.log('  A mutation no part owns NEVER REPLAYS — in this process or any other.');
-  console.log('!'.repeat(70));
-}
 
 console.log('\n' + '='.repeat(70));
 console.log('  injection self-test: ' + (mine.length - blind) + '/' + mine.length +

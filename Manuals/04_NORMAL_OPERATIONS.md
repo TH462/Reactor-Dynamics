@@ -95,7 +95,7 @@ Heat and pressurize the RCS from **Mode 5, Cold Shutdown** through **Mode 4, Hot
 |------|------|--------|---------|------------|
 | 1 | Mode 5 | Confirm cold plant: Tavg ~122 °F (50 °C), P ~363 psi (2.5 MPa), subcritical, RHR in service, RCPs secured | (observe) | Tavg < 203 °F (95 °C); Mode 5 |
 | 2 | 5 → 4 | **Start RCPs** (RCP → Run). Forced flow is the heat source and couples the SG | RCP Run/Stop | Pump flow ~100 % |
-| 2a | 5 / 4 | **WITHDRAW THE SHUTDOWN BANK to fully out.** Drive it in manual bank control; full travel is 627 steps and takes about **10 plant-minutes** at Fast. It stays out for every mode above this one and only ever moves again on a trip | Shutdown Bank | Bank at **627 / 627** |
+| 2a | 5 / 4 | **WITHDRAW THE SHUTDOWN BANK to fully out.** Drive it in manual bank control; full travel is 627 steps and takes about **9 plant-minutes** at Fast (8.7, measured). It stays out for every mode above this one and only ever moves again on a trip | Shutdown Bank | Bank at **627 / 627** |
 | 3 | 5 / 4 | Confirm generator **disconnected** (Disconnect Grid if needed). Do not reconnect | Turbine Load | Load mode disconnected; 0 MWe |
 | 4 | 5 / 4 | Engage **Feed AUTO** — three-element regulates to the programmed 65 % level (it walks there from wherever level stands) | Feed Pumps | Feed AUTO engaged |
 | 5 | 5 / 4 | Set **Dump SP** to no-load anchor **1020 psi (7.03 MPa)** — Ginna's sourced 1005 psig no-load point (#419); leave dump **shut** (CLOSE lit, status **MANUAL**). The setpoint is where the dumps will hold the secondary, but **nothing reaches the valves until AUTO is pressed at step 8b** — the controller reads the box in steam-pressure mode only (**03** §12.3) | Dump SP | SP set; dump demand ~0 |
@@ -249,7 +249,7 @@ Take the reactor from **Mode 3, Hot Standby** to **Mode 2, Startup** (critical, 
 | **CAUTION** | Plot **enough 1/M points**. Early predictions always read high (flat toe of the worth curve), and the first two land far past the true critical position; six points close on it. **Never** withdraw straight to the first prediction. |
 | **CAUTION** | One fine step near the band is **8.1 pcm — 1.24 ¢** (measured 2026-09-03; 7.97 pcm/step at 226, 8.18 at 238). **This is not the bank average**, which is 6.49 pcm/step, and it is not the cent, which is 6.50 pcm on this plant (β_eff 650.2 pcm). All three are near 6.5–8 and only the first applies here. Final approach: **Slow**, single steps. |
 | **CAUTION** | **Criticality is declared on the instruments, not on the bank position.** Stop the rods; if the count rate keeps rising and SUR stays positive with nothing moving, the core is critical. WTSM 19.3 (ML11223A342): *"Supercriticality is indicated by a constant positive startup rate and steadily increasing source range count rate with no control rod withdrawal."* Record the rod position, boron and Tavg **after**. |
-| **WARNING** | Secure **Source Range** before ~1e5 cps (SR high-flux trip). Handoff when **P-6** is met (IR ≥ **1e-10 A**). |
+| **NOTE** | **Source Range secures itself at 1e5 cps** — no switch, and no source-range trip on this plant. **P-6** (IR ≥ **1e-10 A**) is where the intermediate range comes into use, roughly 32× lower; watch it come on scale well before the source range goes dark. If it has not, stop the rise and diagnose. |
 | **NOTE** | Below the point of adding heat there is almost no temperature feedback — excess reactivity keeps driving power until you take it out. |
 
 ### Procedure

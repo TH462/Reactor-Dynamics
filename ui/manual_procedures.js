@@ -1164,7 +1164,10 @@
          * `clearLatchIfDone` (:3598) issues `rod_stop` when the bank reaches its limit. The
          * text said "hold WITHDRAW", which is the retired board's momentary button. */
         { text: 'On the ROD CONTROL card press FAST on the speed row, then click WITHDRAW under SHUTDOWN once. The bank runs out to 627 of 627 on its own.',
-          note: 'One click starts the shutdown bank and it runs to the top by itself, about 10 plant-minutes. Clicking WITHDRAW again stops it early. Watch SHUTDOWN ROD POSITION count up.',
+          /* "about 9 plant-minutes" is MEASURED, not scaled (#668): 627 steps at the sourced
+           * fast drive of 72 steps/min is 522.5 s = 8.7 min, verified on the engine at 71.99
+           * steps/min. It read "about 10" against the pre-#668 drive's 595.4 s. */
+          note: 'One click starts the shutdown bank and it runs to the top by itself, about 9 plant-minutes. Clicking WITHDRAW again stops it early. Watch SHUTDOWN ROD POSITION count up.',
           why: 'The shutdown bank is the emergency brake: the rods that drop on a scram and hold the core shut down. A scram only works if they have somewhere to fall, so they are parked fully out before anything else happens. Pulling them out does not start the reactor; the control bank, which stays in, is what does that.',
           control: 'Shutdown Bank', target: 'SHUTDOWN ROD POSITION 627 of 627',
           cmd: { action: 'rod_nudge', group_id: 'shutdown_rods', steps: 627, speed: 'fast' }, hold: 660,
@@ -1404,11 +1407,23 @@
          * — pressure kept climbing at 26 psi/min straight through 1920 psia to the acceptance —
          * but the RIDE-ONTO-THE-ADV half is real and measured, and it was UNAVOIDABLE from the
          * board: `cold_shutdown` boots `dump_mode: 'off'` and the shell mapped AUTO to Tavg mode
-         * unconditionally, whose turbine-trip controller only opens above 557 °F (291.67 °C) —
-         * ABOVE the 1040 psig atmospheric dump valve. So pressing AUTO changed nothing (measured:
-         * byte-identical trace, that valve at 7.6 %, dumps 0.0 %), and the DUMP SETPOINT box was
-         * an orphan on every plant a player heats up. The shell now selects steam-pressure mode
-         * when the turbine is tripped, which is WTSM 11.2's own mode assignment.
+         * unconditionally, so pressing AUTO changed nothing (measured: byte-identical trace, that
+         * valve at 7.6 %, dumps 0.0 %) and the DUMP SETPOINT box was an orphan on every plant a
+         * player heats up. The shell now selects steam-pressure mode when the turbine is tripped,
+         * which is WTSM 11.2's own mode assignment.
+         *
+         * ⚠ #629's EXPLANATION FOR THE NO-OP IS REFUTED, re-measured 2026-09-08 (#646). It was
+         * "the Tavg turbine-trip controller only opens above 557 °F (291.67 °C), ABOVE the
+         * 1040 psig atmospheric dump valve". #508/#645 moved the anchor to 547 °F (286.11 °C),
+         * 4.2 °F (2.3 °C) BELOW that valve's 551.2 °F (288.4 °C) saturation, and the ordering
+         * inverted. The same heatup ride, three lineups, cold to Mode 3 + 2 plant-hours of park:
+         *     pressure mode   547.2 °F / 1005 psig · valve SHUT  ·      0 lbm vented
+         *     tavg mode       547.4 °F / 1006 psig · valve SHUT  ·      0 lbm vented
+         *     never selected  551.6 °F / 1042 psig · valve 8.1 % · 11,005 lbm vented
+         * So the press is NOT a no-op any more — it is worth 4.4 °F (2.4 °C), 37 psi and those
+         * 11,005 lbm — but the mode it selects is no longer what buys that; PRESSING IT AT ALL is.
+         * The step stays exactly where it is and for the SOURCED reason: pressure mode is the only
+         * mode that reads the DUMP SETPOINT box, which is what the cooldown leg later walks down.
          *
          * WHY IT SITS HERE and not before the ride: in pressure mode the controller does nothing
          * until the secondary reaches the 7.03 MPa setpoint, which it does at the END of the ride,
@@ -1420,8 +1435,9 @@
          * placement is a preference for an immediately observable press, not a safety necessity.
          *
          * THE RIDE'S OWN `hold: 40000` STILL TRANSITS THE VALVE in the replay (11.1 plant-hours
-         * carries Tavg to 288.69 °C), but its ACCEPTANCE releases at 283 °C / 541.4 °F — 10.2 °F
-         * BELOW the 551.6 °F at which the valve opens. A player who follows the checklist gets
+         * carries Tavg to 288.69 °C — re-measured 2026-09-08, unchanged), but its ACCEPTANCE
+         * releases at 283 °C / 541.4 °F — 9.8 °F (5.4 °C) BELOW the 551.2 °F (288.4 °C)
+         * saturation of the valve's 1040 psig setpoint. A player who follows the checklist gets
          * here first. That is #608's lesson read backwards: there a realistic hold MASKED an
          * unsafe acceptance; here an over-long one makes the replay the harder ride.
          *
@@ -1447,11 +1463,23 @@
          * end of the leg — the atmospheric dump valve SHUT and the header sitting on the anchor,
          * which together say the condenser is carrying the heat. Either alone passes on the wrong
          * plant: a shut valve is satisfied by a plant that has not got hot yet, and 7.03 MPa is
-         * approached from below by any plant on its way up. INJECTION (HR10), measured with the
-         * shell's mode selection reverted to the unconditional 'tavg' and nothing else changed:
-         * the valve reads 8.60 % and the header 7.29 MPa (1042 psig), and EXACTLY these two go
-         * red — the other 30 checks in the leg stay green, INCLUDING the dump step's own
-         * `steam_dump_auto` tick, which is the whole reason these two exist. */
+         * approached from below by any plant on its way up.
+         *
+         * ⚠ THE INJECTION THAT PROVED THEM LIVE HAS GONE HOLLOW, AND THE NEW ONE IS BELOW (#646,
+         * 2026-09-08). The recorded one was "revert the shell's mode selection to the
+         * unconditional 'tavg'": that used to read the valve at 8.60 % and the header at
+         * 7.29 MPa (1042 psig) and redden EXACTLY these two. RE-RUN on this tree it reddens
+         * NEITHER — 32/32 green — because after the #508/#645 re-anchor Tavg mode holds the plant
+         * itself (valve 0.00 %, header 7.04 MPa). These two checks can no longer see WHICH mode
+         * AUTO selected; they never could see it directly, they saw its consequence, and the
+         * consequence is gone. That claim is gated where it belongs — `run_pwr2_shell` group M
+         * asserts the published mode on BOTH branches and reds 161/162 under that same revert.
+         *
+         * INJECTION, CURRENT (HR10), measured 2026-09-08: DELETE this step's own `cmd` (the AUTO
+         * press never issued, everything else untouched) and the valve reads 8.43 % with the
+         * header at 7.29 MPa — EXACTLY these two go red, the other 30 stay green. That is the
+         * defect this leg owns: whether the press reaches the plant and the plant answers over a
+         * full heatup. The mode it selects is the shell's to prove. */
         { text: 'Verify Hot Standby: AVG COOLANT TEMPERATURE near 547 °F, PRIMARY PRESSURE 2235 psi, STEAM PRESS near 1020 psi, CONTROL ROD POSITION still 0.',
           why: 'Hot Standby (Mode 3) is hot and at pressure with the reactor still shut down. The control bank never moved: the pumps did all the heating. STEAM PRESS holding near 1020 psi with the ATMOS DUMP shut says the steam dump is carrying the heat, not the sky.',
           acc: { p: 'plant_mode', op: '~', v: 3, tol: 0.1 },
@@ -1562,7 +1590,7 @@
          * is unchanged. The numbers are the replay's own `cmd.steps` — 94 / 63 / 31 / 14 / 9,
          * rounded — so they cannot drift from what the harness drives. */
         { text: 'On the ROD CONTROL card press MED, then hold WITHDRAW under CONTROL until SOURCE RANGE settles above 7.0e2, about 90 to 110 steps. Wait for STARTUP RATE to stop falling, then press Plot point.',
-          note: 'Holding WITHDRAW drives the bank at the selected speed and releasing it stops; a single tap moves one step. MED moves about 42 steps a minute at 1×, SLOW about 7, FAST about 63. The rods move with the clock, so 10× is fine for these pulls; check the speed before each one, because a step checking off, or a new warning or critical alarm, drops the clock back to 1× — the line under the speed buttons says why (Settings can switch the dropout off). A point plotted while STARTUP RATE is still positive reads low.',
+          note: 'Holding WITHDRAW drives the bank at the selected speed and releasing it stops; a single tap moves one step. MED moves 48 steps a minute at 1×, SLOW 8, FAST 72. The rods move with the clock, so 10× is fine for these pulls; check the speed before each one, because a step checking off, or a new warning or critical alarm, drops the clock back to 1× — the line under the speed buttons says why (Settings can switch the dropout off). A point plotted while STARTUP RATE is still positive reads low.',
           why: 'The first two points always predict too high: near the bottom the rods are worth little per step, so the line they draw crosses zero far past the real critical position. That is expected. While the reactor is shut down, SOURCE RANGE counts are the only thing that tells you how close you are; the rod position does not.',
           control: 'Control Bank', target: 'SOURCE RANGE above 7.0e2 (700 counts a second); point 2 plotted',
           cmd: { action: 'rod_nudge', group_id: 'control', steps: 94, speed: 'normal' }, hold: 150,
@@ -1705,17 +1733,78 @@
         { p: 'control_bank_steps', op: '<', v: 600, text: 'CONTROL ROD POSITION below 600 of 627: this checklist follows the startup checklist, not a power preset' },
       ],
       cautions: [
+        'Keep the turbine on line for the whole climb. A tripped turbine trips the reactor the moment REACTOR POWER passes 50 %, and at 8 % if the condenser is gone as well. If the TURBINE-GENERATOR card reads TRIP, press LATCH and set LOAD again before pulling more rods.',
         'Pull rods before you raise LOAD, on every stage. Raising LOAD first drags AVG COOLANT TEMPERATURE below its band.',
         'Make the last pulls small. Above 103 % power the plant stops the rods, and at 118 % it trips the reactor. 100 MWe of LOAD lands REACTOR POWER near 101 %.',
         'The plant trips on TEMPERATURE before it trips on power (the OTΔT trip). If AVG COOLANT TEMPERATURE climbs past 590 °F, hold INSERT before you add more LOAD.',
         'Xenon, a neutron-absorbing gas, builds in the fuel for hours after each stage. Boron handles that; rods handle the next few minutes.',
       ],
       steps: [
-        obs('Verify: REACTOR POWER above 10 %, OUTPUT above 5 MWe, SG FEED AUTO, IR HIGH FLUX and PR HIGH (LOW SETPT) both lit on the TRIP BLOCKS panel.',
-          { p: 'mwe_output', op: '>', v: 5 },
+        obs('Verify Mode 1, At Power: REACTOR POWER near 10 %, SG FEED AUTO, IR HIGH FLUX and PR HIGH (LOW SETPT) both lit on the TRIP BLOCKS panel.',
+          /* THE OPENING CONFIRM NO LONGER GRADES ON THE TURBINE (#664, 2026-09-08). It used to
+           * accept on `mwe_output > 5`, which is a dead end for the one player this leg most
+           * needs to help: a turbine trip anywhere in the ascension leaves OUTPUT at 0.0 MWe and
+           * an observation step cannot be acted on, so the checklist parked here for ever with
+           * nothing to press. The turbine is now the NEXT step's subject, where it is an action.
+           *
+           * MODE 1, not `power_pct > 10`, and the difference is a MEASUREMENT: this step carries
+           * no hold, so the replay grades it on the boot sample, and `low_power` boots at
+           * 9.58 % — it settles through 10 % about 25 s later. A 10 % acceptance here reds the
+           * gate on a plant that is doing nothing wrong. Mode 1, At Power is what "the plant the
+           * startup hands over" actually means, it is true from the first broadcast, and the
+           * 10 % row is already the leg's own precondition banner. */
+          { p: 'plant_mode', op: '~', v: 1, tol: 0.1 },
           null, ['Turbine Load', 'SG Feed AUTO', 'Trip Blocks'],
           'This is the plant the startup hands over: critical, on the grid, feed holding level. Both startup shutdowns have to be switched off. With them on, the climb trips at 25 %, then 35 %.',
           { p: 'power_pct', op: '>', v: 40 }),
+        /* THE TURBINE IS THE THING THAT IS MISSING AFTER A TRIP (#664, filed off #663's
+         * measurement; OWNER RULING, 2026-09-08, on #663: "C — leave the logic as sourced; fix
+         * the checklist gap").
+         *
+         * `latch_turbine` occurred EXACTLY ONCE in the whole pwr2 pool — the startup leg's 8 %
+         * step — and the pwr2 pool has no post-trip leg at all (six legs: heatup, startup,
+         * raise power, lower power, shutdown, cooldown; `pwr_post_trip` is the RETIRED plant's
+         * pool only). So a player whose turbine trips during the ascension had no procedure
+         * anywhere that puts it back, and the plant scrams them at 50 % on P-9, the reactor
+         * trip on turbine trip (`Manuals/09` §3.0: "Above P-9 a turbine trip scrams the reactor
+         * immediately"). MEASURED, full stack from `low_power`, rods lead / load follows to
+         * 40.16 % and then the turbine tripped:
+         *   left tripped  — power settles 24.2 % on the dumps, the player keeps pulling, and
+         *                   the reactor trips `turbine_trip` at a peak of 49.19 % (t=2662 s)
+         *   LATCH + LOAD  — the same climb runs through 50 % to 70.9 %, no trip
+         *   LATCH ALONE   — identical: 40.14 % and 40.0 MWe are back 240 s after the press, and
+         *                   the climb reaches 70.9 %. The trip takes the DELIVERED power away
+         *                   and leaves the operator's latched demand where he put it (the house
+         *                   idiom), so the step's whole action is the press. LOAD is in the text
+         *                   for the player who arrives with it already at zero — a shutdown leg
+         *                   UNLOADs before it scrams.
+         *
+         * WHY HERE AND NOT IN A POST-TRIP LEG. There is no pwr2 post-trip leg to put it in, and
+         * building one is a larger job than this defect (it owes a manual chapter). This IS the
+         * leg the recovering player opens — its own prerequisite already names "Turbine on line",
+         * as a banner that blocks nothing — and it is where the source puts the act: WTSM 19.0
+         * Plant Operations (ML11223A342) Appendix 19-1 step 21, "Accelerate the main turbine to
+         * 1800 rpm, and then synchronize the generator and connect it to the grid", immediately
+         * before step 22's "Increase generator load at the desired rate" and long before the
+         * 50 % calorimetric at step 28/29. The corpus carries no post-trip recovery procedure at
+         * all (`find_source 'post-?trip recovery|recovery from a reactor trip|restart after a
+         * trip'` → 0 hits across 39 documents in 3 lanes), so the placement rests on the startup
+         * sequence, which §19.5 says a shutdown reverses.
+         *
+         * BOTH ACCEPTANCES ARE THE EFFECT, not the write, and neither is a cmd-kind entry on
+         * purpose: a cmd-kind entry latches only on the command (`_accsCmdWatch`), so on a plant
+         * whose turbine is already on line — every ordinary run of this leg — the player would
+         * have no reason to press LATCH and the step would soft-lock. Graded on the plant, it
+         * checks itself off instantly when there is nothing to do and waits for the two presses
+         * when there is. */
+        { text: 'Check the TURBINE-GENERATOR card is on line: LATCH lit and OUTPUT above 8 MWe. If it reads TRIP, press LATCH — OUTPUT returns to the LOAD you last set. If OUTPUT stays at 0.0 MWe, set LOAD to 10 MWe.',
+          note: 'A turbine trip at any point in this climb leaves the card reading TRIP and OUTPUT at 0.0 MWe. LATCH is refused while whatever tripped the turbine is still there, and the card names the reason.',
+          why: 'A tripped turbine takes no steam, so LOAD does nothing and the heat you make goes to the steam dumps instead. The plant trips the reactor on a tripped turbine the moment REACTOR POWER passes 50 %, and at 8 % if the condenser is gone as well. Measured from 40 %: left tripped, the climb scrams at 49.2 %; put back on line, the same climb runs to 71 %.',
+          control: 'Turbine Load', target: 'OUTPUT above 8 MWe',
+          cmd: { action: 'latch_turbine' }, hold: 240,
+          accs: [{ p: 'turbine_tripped', op: '<', v: 1, label: 'Turbine latched, TRIP not lit' },
+                 { p: 'mwe_output', op: '>', v: 8, label: 'Generator above 8 MWe' }],
+          hl: ['Turbine Load', 'Main Breaker'] },
         { text: 'On the BORON card set 660 and press Enter; press ON only if it is not already lit. The dilution runs in the background for the whole climb.',
           why: 'Every percent of power costs reactivity: the fuel heats up and the water thins out. Rods could pay for all of it but would end up deep in the core, so real plants dilute boron for the bulk and use rods for the fine trim. Dilution runs at about 3 ppm a minute, so it needs the whole climb to work.',
           control: 'Boron control', target: 'BORON reads 660 ppm, ON lit',

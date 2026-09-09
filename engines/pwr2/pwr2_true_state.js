@@ -575,15 +575,19 @@
      * 2026-08-28, choosing "re-scale the gauges too" from three options put to him) so that
      * HOT STANDBY READS ~500 cps — which is what `Manuals/09` §9.0 already documents, "~500 cps
      * class at HZP source equilibrium", so this makes the plant match prose it already ships.
-     * Measured across the ladder: Mode 3 hot standby 502, P-6 point 1,560, SR->IR handoff
-     * caution 5.0e4, Mode 4 hot shutdown 101, settled post-trip 89.
+     * Measured across the ladder: Mode 3 hot standby 502, P-6 point 3,121 (1,560 before #642
+     * corrected P-6 to its sourced 1e-10 A), SR->IR handoff caution 5.0e4, Mode 4 hot shutdown
+     * 101, settled post-trip 89.
      *
      * ⚠ K_IR DOES NOT MOVE, AND MUST NOT. `pwr2_protection.js` derives the SOURCED intermediate-
      * range high-flux rod stop through it — WTSM 8.1 §8.1.7.3's "20 % current equivalent power"
      * IS 1.667e-3 A only at 8.333e-3 — so re-scaling it would move a sourced setpoint. It also
-     * does not need to: at this scale the sourced P-6 permissive (5e-11 A, Ginna TS Bases) is
-     * UNMET at hot standby (1.61e-11 A) and comes in at -366 pcm, partway up the bank, which is
-     * where a real startup meets it. That is the test that picked the source strength. --- */
+     * does not need to: at this scale the sourced P-6 permissive (1.0e-10 A, Ginna TS Bases;
+     * CORRECTED from 5e-11 at #642) is UNMET at hot standby (1.61e-11 A) and comes in at -171
+     * pcm, bank 184/627, partway up the approach, which is where a real startup meets it. That
+     * is the test that picked the source strength, and it was RE-MEASURED when P-6 moved: the
+     * margin at hot standby is 6.2x rather than the 3.1x it was, so the correction widens the
+     * test rather than threatening it. (At the old value: -355 pcm, bank 157/627.) --- */
     var K_SR = 2.6e11;      /* cps per unit rated fraction  [adopted] — anchor above */
     var K_IR = 8.333e-3;    /* amps per unit rated fraction [adopted] — pwr_config nis block */
     var SR_SECURE_CPS = 1.0e5;
@@ -623,18 +627,27 @@
      *     model already uses for `sr_energized` two lines above, so the band and the channel
      *     cannot disagree. The bottom is the instrument's own range floor.
      *   INTERMEDIATE  [P-6 .. P-10]. Below P-6 the channel is not yet on scale and the source
-     *     range is the instrument; above P-10 the power range is. P-6 = 5e-11 A [sourced:
-     *     Ginna TS Bases Rev 101, ML20339A221, B 3.3.1 — "In MODE 2 when both intermediate
-     *     range channels are < 5E-11 amps (below the P-6 setpoint)"], the same anchor the K_IR
-     *     note above already cites. P-10 is pwr2_protection's own sourced 8 % of rated,
-     *     converted through K_IR rather than written as an amp figure, so re-scaling either one
-     *     moves the band with it.
+     *     range is the instrument; above P-10 the power range is. BOTH edges are now read from
+     *     `pwr2_protection`, which is where this plant's permissives live — P-6 in its own
+     *     currency (amps), P-10 as a rated fraction converted through K_IR rather than written
+     *     as an amp figure, so re-scaling either one moves the band with it.
      *
-     * ⚠ A DECLARED DEPARTURE, recorded so nobody "fixes" it back. The same Ginna passage says
-     * the source-range detectors "are manually de-energized by the operator" above P-6 — a real
+     * ⚠ P-6 WAS A LOCAL LITERAL HERE AT 5e-11 A AND IT WAS THE WRONG NUMBER (#642). It cited
+     * the Bases sentence *"< 5E-11 amps (below the P-6 setpoint)"* — which says in its own
+     * parenthesis that 5E-11 is BELOW the setpoint. The setpoint is 1 E-10 A, six hundred lines
+     * later in the same document, and the manual and `pwr_control.js` had carried it correctly
+     * and unsourced all along. Being a local was the enabling condition: `run_manual_setpoints`
+     * could not point at it, so the manual row was `narrative` and the disagreement was
+     * unpinnable in both directions. One copy now, in pwr2_protection, and the gate reads it.
+     *
+     * ⚠ A DECLARED DEPARTURE, recorded so nobody "fixes" it back. The Bases' P-6 function is
+     * *"allows the manual block of the NIS Source Range, Neutron Flux reactor trip"* — a real
      * plant HAS that lever. This plant does not, by owner directive (#598 item 7), and the
-     * channel de-energizes on flux alone. The band above is unaffected either way. */
-    var P6_A = 5e-11;
+     * channel de-energizes on flux alone at SR_SECURE_CPS — measured at IR 3.21e-9 A, 32x above
+     * P-6, so the handoff this plant performs is NOT at P-6. The band above is the ONLY thing
+     * P-6 does here, and it is unaffected by the departure. */
+    var P6_A = (RD.protection && RD.protection.P6 && RD.protection.P6.amps !== undefined)
+                  ? RD.protection.P6.amps : 1.0e-10;
     var p10Frac = (RD.protection && RD.protection.P10 && RD.protection.P10.frac !== undefined)
                   ? RD.protection.P10.frac : 0.08;
     put('nis_sr_inuse_cps', [1, SR_SECURE_CPS]);

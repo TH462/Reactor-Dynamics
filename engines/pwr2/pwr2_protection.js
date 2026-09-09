@@ -309,6 +309,49 @@
     frac_no_dumps: 0.08,
     src: 'Ginna TS Bases B 3.3.1 (ML20339A221), P-9 Permissive'
   };
+  /* ---- SOURCED: the P-6 permissive, and IT WAS THE WRONG SENTENCE OF THE RIGHT DOCUMENT (#642)
+   * Ginna TS Bases B 3.3.1 (ML20339A221), Intermediate Range Neutron Flux, P-6 Permissive:
+   *
+   *   *"The Intermediate Range Neutron Flux, P-6 permissive is actuated when any NIS
+   *    intermediate range channel goes approximately one decade (1 E-10 amps) above the minimum
+   *    channel reading. If both channels drop below the setpoint, the permissive will
+   *    automatically be defeated."*
+   *
+   * ⚠ 5E-11 A IS A DIFFERENT POINT IN THE SAME PASSAGE, and this plant carried it as P-6 for
+   * three weeks. The Bases lists the permissive's two directions, and only the second names
+   * that number: *"on decreasing power, the P-6 interlock automatically energizes the NIS
+   * source range detectors and enables the Source Range Neutron Flux reactor trip at 5E-11
+   * amps."* The quote `pwr2_true_state` cited instead — *"In MODE 2 when both intermediate
+   * range channels are < 5E-11 amps (BELOW THE P-6 SETPOINT)"* — says in its own parenthesis
+   * that 5E-11 is below the setpoint, not the setpoint. Same trap as #643's uprate artifact and
+   * the "(Rate sensitive)" cell: a sourced number that is not the WHOLE source. The manual and
+   * `pwr_control.js` had 1e-10 A all along, unsourced and right; the engine had the marker and
+   * was wrong, so the number does not move on the board — the PROVENANCE does.
+   *
+   * MEASURED at the corrected value (facade, hot_zero_power, control bank withdrawn one step at
+   * a time): P-6 is met at bank 184/627, ρ = −171 pcm, 3,121 cps, IR 1.000e-10 A. Hot standby
+   * (bank 0) reads 1.61e-11 A — still UNMET, so the argument that picked the installed source
+   * strength survives the correction with margin, which is the thing that had to be re-checked.
+   * At the old 5e-11 A it was bank 157/627 and ρ = −355 pcm.
+   *
+   * ⚠ A DECLARED DEPARTURE, and it is why this permissive PERMITS NOTHING on this plant. The
+   * Bases' P-6 function is *"allows the manual block of the NIS Source Range, Neutron Flux
+   * reactor trip by use of two defeat push buttons"* — a real plant has that lever. This one
+   * does not *(OWNER DIRECTIVE, 2026-09-01, #598 item 7: "The SR DET button is greyed out. I
+   * think we should remove this button and have the SOURCE RANGE disable itself
+   * automatically.")*: the source range de-energizes on flux alone at
+   * SR_SECURE_CPS, `set_sr_detector` is REFUSED by the shell by name, and the board button was
+   * deleted. That cue sits at IR 3.21e-9 A, 32x above P-6, so the handoff this plant performs is
+   * NOT at P-6 and the manual must not say it is. What P-6 does do here is real and visible:
+   * it is the bottom of the intermediate range's in-use band on the NIS card
+   * (`pwr2_true_state`'s nis_ir_inuse_a), the point below which the operator should be reading
+   * the source range instead. Expressed in AMPS because that is the channel's own currency and
+   * the source's; the amps<->power mapping stays in `pwr2_true_state` (K_IR), one copy. */
+  var P6 = {
+    kind: '[sourced]',
+    amps: 1.0e-10,
+    src: 'Ginna TS Bases B 3.3.1 (ML20339A221), Intermediate Range Neutron Flux, P-6 Permissive'
+  };
 
   /* ---- SOURCED: the two FLUX rod stops (#572) ------------------------------------------------
    * WTSM 8.1 §8.1.7.3 (ML11223A252), Manual Rod Withdrawal Stops, items 1 and 2 verbatim:
@@ -930,6 +973,14 @@
     OTDT: OTDT,
     RPS: RPS, ESFAS: ESFAS, SGLL: SGLL, DELAY: DELAY, LEADLAG: LEADLAG, P10: P10, P7: P7,
     P11: P11, RESET: RESET,
+    /* P-6 and P-9 EXPORTED (#642). Both were locals, and both were consequently unpinnable:
+     * `run_manual_setpoints` had to carry their manual rows as `narrative` — "no single plant
+     * constant to check against" — which is how the P-6 row kept a figure the engine disagreed
+     * with by 2x, and how P-9's two-valued setpoint went unchecked while the chapter quoted one
+     * of them. P-6 has one consumer beyond the gate (`pwr2_true_state`'s in-use band), P-9 has
+     * none yet; a constant that only a gate reads is still worth exporting, because the
+     * alternative is a manual row nothing can contradict. */
+    P6: P6, P9: P9,
     /* the board reads ROD_STOP.pr_frac / ir_frac so its rod-stop marks come from the PLANT and
      * not from a literal — the #572 defect was exactly a board band drawn from a fallback */
     ROD_STOP: ROD_STOP, IR_TRIP: IR_TRIP,

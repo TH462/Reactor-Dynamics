@@ -111,4 +111,57 @@ function grpTag() { return GRP; }
  * nothing and says so only in an arithmetic line nobody reads. */
 function mutTag() { return ONLY; }
 
-module.exports = { select: select, partial: partial, grpTag: grpTag, mutTag: mutTag };
+/* requireCleanRun(rec, tallyLine, opts) — REFUSE TO SCORE a mutation replay taken on a red tree.
+ *
+ * ⚠ THE COVERAGE INSTRUMENT LIES EXACTLY WHEN YOU ARE MID-CHANGE (#644). Every replay loop in
+ * this directory scores a mutation by counting ABSOLUTE reds in the mutant run. A check that is
+ * ALREADY red in the CLEAN run is red in every mutant too — so while any check is red, EVERY
+ * mutation reports as caught and the printed "N/N caught, no blind spots" is a lie. That is a
+ * false GREEN on the one instrument whose whole job is to prove the checks CAN fail, and it
+ * appears precisely when a reader leans on it: mid-change, with the runner red.
+ *
+ * MEASURED, #644. run_pwr2_engine's no-load-boot mutation replaced the boot temperature with
+ * `DC.tref(0)` = 286.110 °C (547.00 °F) against `W.T_sat(7.03 MPa)` = 286.113 °C (547.00 °F) —
+ * 0.003 °C (0.005 °F) apart, arithmetically a no-op. It reported CAUGHT on a replay taken while
+ * one unrelated group-K check was red, and `BLIND TO … THIS GATE CANNOT SEE IT` on the same tree
+ * once that check was green. Same mutation, same tree, two opposite verdicts, decided by whether
+ * an unrelated check happened to be red. Three coverage figures from that session were void.
+ *
+ * REFUSE, NOT SUBTRACT — the ruling (#644, 2026-09-08; rationale in BUILD_DECISIONS). Subtracting
+ * the clean run's reds BY NAME would score more mutations, but (a) a mutation whose only reds are
+ * already-red checks stays ambiguous, and (b) in a GROUP-SCOPED replay the subtraction has to
+ * assume every check is attributable to the group its replay is scoped to — an assumption a
+ * single `ck()` written outside a `grp()` block silently breaks, which restores the lie with the
+ * gate still printing green. Refusing needs no such assumption. Nothing is lost that was not
+ * already available: `--grp=<tag>` / `--groups=<tags>` scope the CLEAN pass as well as the
+ * replay, so a group that IS green can still be measured while another one is red — and such a
+ * run is forced non-zero by the exit guard above, so it can never become a baseline.
+ *
+ * Call it AFTER the clean run and BEFORE the replay loop. It either returns (clean was green) or
+ * exits 1; it never returns a value the caller has to remember to act on.
+ *
+ *   rec        the clean run's record array ({ name, ok, verdict? }), or a plain red COUNT for a
+ *              runner that only keeps counters. An array buys the red check NAMES in the banner.
+ *   tallyLine  the runner's own tally line, printed first so the skip is not the only output.
+ *   opts.hint  one line naming this runner's scoped escape hatch, if it has one.
+ */
+function requireCleanRun(rec, tallyLine, opts) {
+  var o = opts || {};
+  var isArr = Array.isArray(rec);
+  var reds = isArr ? rec.filter(function (r) { return !r.ok && r.verdict !== 'XFAIL'; }) : [];
+  var n = isArr ? reds.length : (rec | 0);
+  if (!(n > 0)) return;
+  if (tallyLine) console.log('\n' + tallyLine);
+  console.log('  MUTATION SELF-TEST SKIPPED -- ' + n + ' check(s) failed in the CLEAN run.');
+  console.log('  A failing check fails in every mutant too, so every mutation would report as');
+  console.log('  caught and the coverage number would be a lie. Fix the check first. (#644)');
+  /* `name` is the pwr2 record's field and `id` the service suites'; a runner whose xfails are a
+   * side MAP rather than a `verdict` field must filter them out itself and hand over the survivors */
+  reds.slice(0, 12).forEach(function (r) { console.log('    RED  ' + (r.name || r.id || '(unnamed)')); });
+  if (reds.length > 12) console.log('    RED  ... and ' + (reds.length - 12) + ' more');
+  if (o.hint) console.log('  ' + o.hint);
+  process.exit(1);
+}
+
+module.exports = { select: select, partial: partial, grpTag: grpTag, mutTag: mutTag,
+                   requireCleanRun: requireCleanRun };

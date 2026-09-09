@@ -349,6 +349,16 @@ var RD = loadAll(undefined);
 runFidelity(RD);
 runMechanics(RD, false);
 
+/* ---- THE CLEAN-RUN GUARD (#644) -------------------------------------------------------------
+ * REFUSE TO SCORE on a red clean run. The replay below counts ABSOLUTE reds in the mutant, so an
+ * already-red check is red in every mutant too and EVERY mutation reads as caught — the coverage
+ * instrument reporting full coverage exactly when the runner is not green. Conservative on
+ * purpose: a FIDELITY red also stops the scoring, though only MECHANICS checks are replayed. The
+ * ruling and the measured case: mut_flags.requireCleanRun's header. */
+MUT.requireCleanRun(rec, '  run_warp_tier: ' +
+  rec.filter(function (r) { return r.ok; }).length + ' passed, ' +
+  rec.filter(function (r) { return !r.ok; }).length + ' failed  (' + rec.length + ' checks)');
+
 /* ---- mutations: each must redden a mechanics check ------------------------------------------ */
 var MUTATIONS = [
   ['the in-loop WARP watch is disabled (only the post-loop one remains)',

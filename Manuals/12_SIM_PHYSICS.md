@@ -201,8 +201,14 @@ Before this was corrected, a single constant of −11.1 pcm/°F was applied from
 It integrated to a **−4944 pcm** moderator defect over the heatup — 494 ppm of dilution to buy
 back, a third of it charged below 274 °F — and it collapsed critical boron from 819 ppm cold to
 263 ppm hot. The practical consequence, and how it was found: **600 ppm, a value that looks safe
-next to the hot end, was critical at 274 °F**, and diluting toward it in a Mode 5 → Mode 1 run
-took the reactor critical cold and tripped it on source-range high flux.
+next to the hot end, was critical at 274 °F (134.4 °C)**, and diluting toward it in a Mode 5 →
+Mode 1 run took the reactor critical cold. **On the retired engine that ended in a source-range
+high-flux trip; this plant has no such trip** (**09** §2.0, NOT MODELLED — 1e5 cps is this
+plant's source-range *de-energization* point, and it sits 1.5 decades above the P-6 permissive
+that would block the trip anyway). The same defect today would announce itself on the
+annunciators — **SUR HI** at 1 DPM, then **SR HI FLUX** at 5e4 cps — and be arrested by the
+intermediate-range high-flux **rod stop at 20 % current equivalent**, with nothing scramming
+until the intermediate-range **trip at 25 %**.
 
 **Rod worth follows an S-curve** — least effective near fully in or fully out, most effective mid-core — with the peak deliberately flattened to about 90 % of the textbook curve. The reason is a teaching one: the single lumped bank carries the **full control worth that a real plant spreads over four banks**, so an unflattened curve made one step near the critical band worth far more than a real bank-D step.
 
@@ -212,7 +218,7 @@ took the reactor critical cold and tripped it on source-range high flux.
 
 ### 4.4 Startup rate and period are derived, not measured
 
-`SUR (dpm) = 26.06 · (Ṗ/P)` and `period (s) = P/Ṗ`, both computed from the **smoothed** power rate. They are well defined only above a very small power floor. The plant carries a *separate* startup-rate **instrument** — a lagged, noisy twin of that proxy — and it is that instrument, not the proxy, which feeds the rod-withdrawal interlock.
+`SUR (dpm) = 26.06 · (Ṗ/P)` and `period (s) = P/Ṗ`, both computed from the **smoothed** power rate. They are well defined only above a very small power floor. The plant carries a *separate* startup-rate **instrument** — a lagged, noisy twin of that proxy, 2-second lag — and it is that instrument, not the proxy, that the **SUR HI** annunciator reads at **1 DPM**. **It feeds no interlock.** The retired engine blocked rod withdrawal on it at 1.5 DPM; this plant does not, and no document in the corpus describes a startup-rate rod stop (#572). Measured on a runaway withdrawal from hot zero power (2026-09-08, #661): SUR HI comes in at **367 s** — 1.82 s behind the true rate, which is the meter's own lag and nothing else — and withdrawal then continues uninterrupted to the intermediate-range flux rod stop at **442 s**.
 
 ### 4.5 Decay heat
 
@@ -247,7 +253,7 @@ A standard iodine → xenon chain with burnout, normalised to equilibrium xenon 
 |---|---|
 | Groups | **One control group, one shutdown group** |
 | Travel | **627 steps** |
-| Speeds | slow ≈ 32 steps/min · normal ≈ 192 · fast ≈ 288 |
+| Speeds | slow **8** steps/min · normal **48** · fast **72** — slow and fast sourced to WTSM 8.1's rod speed program (its minimum, and its mechanical maximum); normal unverified |
 | Overrun on release | ~1 s of continued travel, then the latch catches |
 | Scram insertion | control 2.5 s · shutdown 2.0 s, constant-rate (gravity) |
 | Insertion limit | **power-dependent**: none below 5 % power, ramping to 70 % withdrawn at 100 % |
@@ -620,7 +626,17 @@ Reverse heat transfer — a secondary hotter than the primary, e.g. starting pum
 | **Tavg mode** | The at-power program: the dumps are shut on programme and open on the Tavg error above the no-load reference, which is what catches a load rejection or a turbine trip (**armed**, below) |
 | **Fast Tavg-error mode** (**armed**, inside Tavg mode) | On a turbine trip, or a load rejection past the arm, drives open on Tavg error immediately |
 
-**The two modes are EXCLUSIVE, and the operator selects one — pressure mode is not "always".** One AUTO button does the selecting and **the turbine latch decides which mode it gives you**: tripped → steam-pressure, on line → Tavg. Sourced: WTSM §11.2 (ML11223A294), *"Tavg mode at power, steam pressure mode at hot standby / startup / cooldown"*; the trip relay (C-8) is the same signal the plant already uses to auto-select the turbine-trip controller *inside* Tavg mode, so the operator's selector rides the latch the source rides. **Why it matters, measured 2026-09-05 (#629):** Tavg mode's turbine-trip controller opens only above **557 °F (291.67 °C)**, which is *above* the atmospheric dump valve's 1042 psig / 551.6 °F relief point — so on a plant being heated up from cold, Tavg mode is a dump that never opens, and the heat sink becomes an overpressure relief venting to atmosphere. AUTO used to map to Tavg unconditionally; pressing it on a heating plant produced a **byte-identical trace** (that valve 7.6 %, dumps 0.0 %), and the DUMP SETPOINT box was an orphan on every plant a player produced rather than loaded. **PWR-N01** step 8b is where the selection now happens.
+**The two modes are EXCLUSIVE, and the operator selects one — pressure mode is not "always".** One AUTO button does the selecting and **the turbine latch decides which mode it gives you**: tripped → steam-pressure, on line → Tavg. Sourced: WTSM §11.2 (ML11223A294), *"Tavg mode at power, steam pressure mode at hot standby / startup / cooldown"*; the trip relay (C-8) is the same signal the plant already uses to auto-select the turbine-trip controller *inside* Tavg mode, so the operator's selector rides the latch the source rides. **Why it matters — and the ordering that used to be the reason has INVERTED, re-measured 2026-09-08 (#646).** Tavg mode's turbine-trip controller opens on the error above the no-load reference, and that reference moved to **547 °F (286.11 °C)** when the plant re-anchored to Ginna's own programmed no-load average coolant temperature (#508, #645). It now sits **4.2 °F (2.3 °C) *below*** the atmospheric dump valve's 1040 psig (7.17 MPa) relief point, which saturates at **551.2 °F (288.4 °C)** — where before the re-anchor it sat 5.9 °F (3.3 °C) *above* it. Measured on the **PWR-N01** heatup itself, cold plant to Mode 3, Hot Standby plus two plant-hours of hands-off park, advancing at the player's own pace:
+
+| Steam dump lineup on the heatup | Parks at | Steam header | ATMOS DUMP | Condenser dumps | Vented to atmosphere, 2 h |
+|---|---|---|---|---|---|
+| Steam-pressure mode — what **AUTO** gives you with the turbine tripped | 547.2 °F (286.2 °C) | 1005 psig (7.03 MPa) | **shut** | 0–3.4 % | **0 lbm** |
+| Tavg mode | 547.4 °F (286.3 °C) | 1006 psig (7.04 MPa) | **shut** | 0.1–2.5 % | **0 lbm** |
+| Never selected — the cold plant's own boot lineup | 551.6 °F (288.7 °C) | 1042 psig (7.29 MPa) | **8.1 %** | 0 % | **11,005 lbm (4,992 kg)** |
+
+So *"Tavg mode is a dump that never opens on a heating plant"* is no longer true of this plant: **both** modes hold the heatup off the atmospheric valve, and they park within **0.2 °F (0.1 °C)** of each other. What actually vents to the sky is a dump that was never put in service at all — which is exactly what the cold initial condition boots (`dump_mode` **off**), and what the old unconditional AUTO → Tavg mapping was indistinguishable from, because below 557 °F that controller had no output.
+
+**Steam-pressure mode is still what AUTO selects on a tripped turbine — for the sourced reason, not that one.** WTSM §11.2 assigns the modes that way, and pressure mode is the **only** mode that reads the **Dump SP** box: walking that setpoint down is how a cooldown is driven, and Tavg mode has no setpoint to walk — it would hold the plant on the no-load knot and nothing else. Before #629 the box was an orphan on every plant a player produced rather than loaded. **PWR-N01** step 8b is where the selection happens.
 
 > **⚠ THE CAPACITY AND REJECTION FIGURES IN THE REST OF THIS SECTION ARE THE RETIRED ENGINE'S AND HAVE NOT BEEN RE-MEASURED.** The shipped plant's dump capacity is **28 % of rated steam flow** — Ginna's own, sourced, and the number **09** §3.0 prints — not the 40 % below. Read the rejection ladder as the shape of the event, not as this plant's percentages. *(Noted 2026-09-05 while correcting the mode table above, #629; re-measuring the ladder is separate work.)*
 

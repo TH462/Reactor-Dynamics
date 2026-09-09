@@ -45,6 +45,286 @@ where the two differ or where judgment was exercised.
 
 ---
 
+## 2026-09-08-workbench-m — #668 RULED: a UNIFORM scale error passes every structural check, so exactly one check may type the sourced number
+
+*(OWNER RULING, 2026-09-08: "A — adopt the sourced 8 and 72; keep 48 as normal, marked
+[UNVERIFIED]".)* Declined with it: leaving the three `[derived]` with the gap written down (zero
+churn, and where it already sat); and re-deriving all three to preserve the authored timings —
+rejected on sight as Hard Rule 9, the plant is ground truth, backwards.
+
+**The constant.** `ROD_SPEEDS` in `engines/pwr2/pwr2_engine.js`, the operator's Slow / Normal /
+Fast selector, was `{ slow: 0.117, normal: 0.702, fast: 1.053 }` steps/s — **7.02 / 42.12 / 63.18
+steps/min**. It is now `{ slow: 8 / 60, normal: 48 / 60, fast: 72 / 60 }`, written in the sourced
+unit so the literal in the code is the figure in the document. Measured on the engine: **8.00 /
+48.00 / 71.99 steps/min**.
+
+Slow and fast are `[sourced]` to Westinghouse Technology Systems Manual §8.1 (ML11223A252) — *"a
+minimum speed of eight steps per minute"*, and *"a maximum rod speed of 72 steps/min. The maximum
+rod speed is based upon a maximum response to a large error signal and upon the physical
+limitations of the rod drive mechanism, with the latter being the limiting factor"*, plus §8.1.8's
+shutdown-bank pulser *"normally set at 72 steps per minute"*. **Normal (48) stays `[UNVERIFIED]`**:
+`find_source` over three lanes finds 8 and 72 and no 48. It is kept rather than re-derived because
+it is the value the plant has behaved as a scaled copy of since it was built, so adopting it moves
+only the scale factor and leaves exactly one number owing a source — the choice with the smallest
+unexplained residue, not the tidiest one.
+
+### The decision that generalises: how many checks may type a sourced number
+
+**One. And there must be one.**
+
+The defect was a *uniform* scale error — all three settings ×0.8775, the fraction-of-travel
+conversion of pwr1's identical 8/48/72 onto a then-200-step bank. Every property a check can
+assert about a speed table survived it: the three stayed ordered, the ratios stayed exact, the
+drive still slewed rather than teleporting, the continuous-withdrawal casualty still rode its own
+band end to end, and the Failures-tab slider label still agreed with the delivered rate to the
+sample. **All of that is true because every consumer reads `ROD_SPEEDS`** — which is exactly the
+discipline #662 landed and exactly what made this invisible. Reading the constant makes a retune
+cheap and makes the constant itself unfalsifiable.
+
+So `run_pwr2_engine_b` group K gains **THE DRIVE BAND**, and its comment says in as many words that
+it is the one check in the tree allowed to type 8 and 72, because a second one would be testing the
+first. What it may *not* do is type 48: normal is asserted only for ordering and for staying inside
+the band, plus a documentation guard that the `[UNVERIFIED]` marking is still at the constant —
+an unverified number gets a *shape* assertion, never a value one, or the gate launders the gap into
+a fact.
+
+**The second mutation is the load-bearing one.** Putting the whole object back reds 3 checks; putting
+back **the fast end alone** reds 2 — and that is the half a player reads (the withdrawal slider's
+top, the sourced accident's own rate). It leaves the band's shape, ordering and every ratio-based
+property intact, so it is precisely the mutation a structural check cannot see.
+
+### The corollary, which cost two manual chapters
+
+**Grep for the UNIT, not the value.** `Manuals/09` §7.0 and `Manuals/12` §4.7 both describe this
+plant's 627-step drive and both quoted the *retired* plant's **32 / 192 / 288 steps/min** — four
+times the speeds the plant ran, not 12.25 % off — and neither would have appeared in a search for
+7.02 / 42.12 / 63.18. They turned up under `steps/min`. Nothing gates either row:
+`run_manual_setpoints` reads chapter 09 §1.0 / §2.0 / §3.0 / §4.0 / §11.0 and no more, so a rod
+drive table in §7.0 has never been compared to anything.
+
+### Content followed, from rides (Hard Rule 9)
+
+Every affected evolution was re-timed by riding it, never by the 72/63 ratio: the shutdown bank's
+one-click full withdrawal is **522.5 s (8.7 min)** against 595.4, so the checklist and `Manuals/04`
+PWR-N01 read "about 9 plant-minutes"; the startup leg's note reads MED 48 / SLOW 8 / FAST 72. **No
+authored `hold` moved** — every one already carried slack for the shorter motion (tightest: 117.5 s
+of drive inside a 150 s hold). PWR-E17 was re-measured at all three slider settings and its trip
+cause and shape are unchanged; it arrives 30 s sooner at the top. `Manuals/03` §3.2 now states the
+three rates, which the manual had never done — both 2026-09-06 checklist reviews filed that gap.
+
+Full write-up and the measured tables: `Blueprint/PWR2_VALIDATION.md` §132.
+
+---
+
+## 2026-09-08-workbench-g — #642: a `[sourced]` marker names a DOCUMENT, not a sentence — and a de-energization can hide a missing trip
+
+**⚠ THIS SUPERSEDES the source-strength paragraph in the `pwr2_kinetics` entry below (search
+"picked by a prototypicality test"), which cites P-6 at 5e-11 A.** The number is wrong there and
+the argument is not: re-measured at the corrected 1.0e-10 A, the prototypicality test still picks
+5.0e8 n/s, with **more** margin (hot standby is 6.2× under P-6 rather than 3.1×; P-6 comes in at
+**−171 pcm, bank 184/627**, against −355 pcm / 157). Left in place as record, annotated here.
+
+**The defect.** Three sites carried the P-6 permissive: `pwr2_true_state.js` at **5e-11 A** with a
+`[sourced]` marker and a verbatim quote, `Manuals/09` and `pwr_control.js` at **1e-10 A** with
+nothing. The marked one was wrong. Ginna Technical Specification Bases B 3.3.1 (ML20339A221)
+gives the setpoint six hundred lines below the sentence the engine quoted: *"actuated when any NIS
+intermediate range channel goes approximately one decade (1 E-10 amps) above the minimum channel
+reading"*. The 5E-11 A in the same passage is the source-range re-energize point on decreasing
+power — and the quoted sentence said so itself, *"< 5E-11 amps (below the P-6 setpoint)"*.
+
+**The decision: P-6 lives in `pwr2_protection`, once, and `pwr_control.js` keeps its own copy.**
+The alternative — the control layer reading `RD.pwr2.protection` — is a cross-plant dependency
+(HR3) that would break every pwr-only harness, which never loads pwr2. Two plants, one source,
+cited at both, and the control layer's three rows plus its operator message now derive from a
+single `P6_AMPS`. Both `P6` and `P9` are exported because a constant a gate cannot point at is a
+manual row nothing can contradict — that is what `narrative: true` was standing in for.
+
+**Two rows declared NOT MODELLED, both proved by injection.** The control layer's P-6 block is
+**dead for PWR2** (`interlocks: []`, `actuations: []`, and the shell refuses `set_sr_detector` by
+name — no operator lever, #598 item 7): mutating its setpoint seven decades changed nothing across
+six samples spanning both values, while the same mutation on the retired engine flips the command
+accepted → blocked. And the **source-range high-flux reactor trip does not exist here**. That one
+was invisible because the de-energization at 1e5 cps guarantees the channel can never reach a
+setpoint above it; removing the hiding place (SR_SECURE_CPS → 1e12) the plant publishes
+**1.285e11 cps at 50 % power** and does not scram. **The general form is worth keeping: an absent
+protection is undetectable wherever another mechanism caps the signal below its setpoint. To prove
+a trip exists, remove the cap — do not step the plant harder.**
+
+---
+
+## 2026-09-08-workbench-f — #643 RULED: the bank is sized to its sourced design basis, and the constant is a DIVISION rather than a digit
+
+**The ruling** *(OWNER RULING, 2026-09-08: "A — 1.0062 × rated, the sourced design basis")* —
+selected over (B) keeping 0.84 as a declared departure and (C) WTSM §7.1.3.4's fleet 109 %,
+rejected as the wrong plant class. This supersedes the `-c` entry below, which stands as the
+evidence pass and is not restated here.
+
+**The decision inside the decision, which is the durable part.** The ruling did not say *"set it
+to 1.0062"*; it said **derive it, and type the quotient nowhere**. `safety_flow_frac` is now
+
+```
+(STAGE1_LBHR + STAGE2_LBHR) / DESIGN_LINE_LBHR      /* 3,310,489 / 3,290,000 = 1.00622766 */
+```
+
+with the denominator a **new `[sourced]` constant** carrying Ginna UFSAR ch10's equipment table
+verbatim — *"Flow design capacity, lb/hr 3.29 × 10⁶ at 770 psia"* — and the numerator the bank's
+own already-sourced per-line capacity. That shape is the answer to **how the old number survived
+two evidence passes**: a typed quotient has no visible provenance, so a pass can verdict the
+arrangement around it (which #542 did) and inherit the figure untouched. A division cannot be
+inherited without inheriting both documents with it.
+
+**The same discipline had to reach the GATE, and that is the finding.** `run_pwr2_relief`'s check
+on this constant compared the engine's `0.84` against a **`0.84` retyped in the gate's own `DOC`
+block** — the number agreeing with itself, incapable of failing. `DOC` now performs the division
+too, from its own independently retyped lb/hr figures, so the identity check is *two separate
+readings of two documents* agreeing on a quotient. **A constant is only as sourced as the thing
+that checks it**, and a fixture block that retypes a quotient rather than its inputs is a
+template-placeholder (#380) waiting to happen.
+
+**Cost, measured, US customary first** (turbine trip from hot full power, condenser dumps shut,
+ADV block valve closed): peak steam-generator pressure **1105.3 → 1102.9 psig (7.72 → 7.70 MPa)**,
+margin to the 1193.5 psig (8.23 MPa) ceiling **88.2 → 90.6 psi**, **first lift 10.46 s unchanged**,
+stage 2 never lifts at either scale, bottled-generator peak **1160.0 → 1155.1 psig (8.10 → 8.07
+MPa)**. Bank flow at full lift **137.97 → 165.27 kg/s**. The full table, the nine adjudicated reds
+and the injection matrix are in `Diagnostic/TUNING_LOG.md` `2026-09-08-workbench-f`.
+
+**Gates unchanged in count**: `run_pwr2_relief` 73/73 with mutations 45 → 46; `BASELINES` does not
+move for it. `run_pwr2_engine` A 80/80 (group N's magnitude anchor 141.3823 → 169.3605 kg/s, both
+load-bearing arms unmoved).
+
+---
+
+## 2026-09-08-workbench-c — #643: the safety bank's scale is an UPRATE ARTIFACT wearing a `[sourced]` marker; the marker is fixed, the constant is not, and a check now pins the gap
+
+**The decision, and it is two decisions.** (1) `safety_flow_frac: 0.84` is re-marked
+**`[UNVERIFIED]`** with its real derivation written out; it is **not moved**. (2) The design
+basis this plant should use is established as **~100 % of rated steam flow**, sourced, and the
++19.8 % correction is put to the owner rather than taken.
+
+**Why 0.84 is not a design-basis figure.** It is Ginna's bank over Ginna's steam flow at the
+**uprated 1775 MWt**, against a chapter-15 figure the source calls an envelope: one line's
+3,310,489 lb/hr over half of 7.92e6 = **0.8360**. Inherited by reference from the retired engine
+(`pwr_config.js` `sg_safety_flow_max`, #418 wave A3) — the #534 pattern. Ginna UFSAR ch10
+§10.3.2.4 states the bank *"is equal to the full load steam flow for the original 1520 MWt
+licensed power level"* and that it *"do[es] not relief 100% steam capacity at 1775 MWt"*; TS
+Bases B 3.7.1 sizes it to pass *"100% of design steam flow"*; WTSM §7.1.3.4's fleet plant is
+109 %. Three routes give **1.0025–1.0062** for this single-loop plant at ITS design power.
+
+**Why it is not moved here, and why that is the conservative call rather than the timid one.**
+The correction is +19.8 %, at the boundary of the brief's stop condition, and it re-derives a
+design-basis constant on a plant under a standing owner hold. The cost of waiting is measured
+and small: **2.4 psi (0.017 MPa)** of peak steam-generator pressure on a turbine trip, with
+**88.2 psi** of margin to B 3.7.1's ceiling either way. The cost of taking it unreviewed is a
+silent design-basis change nobody ruled on.
+
+**What the measurement actually overturned.** #643 asserted that this constant *"sets the entire
+overpressure response"*. It does not: doubling the bank 0.50 -> 1.0062 moves the turbine-trip
+peak **10.7 psi**, first lift is 10.46 s at every scale (it is a setpoint, not a capacity), and
+stage 2 never lifts on a plain trip at any scale. After a trip the heat source is decay heat,
+which even half a bank over-serves tenfold. **The one place the plant does have an opinion is the
+low end**: at 0.50 the bottled-generator fixture peaks **1197.7 psig**, above the **1193.5 psig**
+ceiling. So the plant rejects the 50 % reading on its own and is indifferent across the rest.
+
+**The check design, and it is deliberately a red-in-waiting.** The old check compared the
+engine's 0.84 against a 0.84 retyped in the gate — the ECCS retyping discipline applied to a
+number with no document, which makes it a tautology, and it is how #542 verdicted the
+arrangement and inherited the figure (#380's shape). The replacement is a pair: what the number
+IS (post-uprate arithmetic) and what the source's rule GIVES (~100 %, from two routes required
+to agree). **The second reddens the moment the constant is corrected** — that is intended, the
+strict-xfail convention, and it forces the comment and the checks to move together. Proven by
+four one-at-a-time injections; each arm reddens alone.
+
+---
+
+## 2026-09-08-workbench-b — #646: a re-anchor that made two lineups AGREE retired the checks reading their difference; the claim moves to the layer that owns it
+
+**The decision.** The heatup checklist's two Mode-3 checks (`adv_valve_pct < 1`,
+`steam_pressure_mpa ~ 7.03`) went hollow against the defect they were written for. They are **kept
+and re-injected**, not re-aimed at the steam-dump *mode*; the mode selection stays gated in
+`run_pwr2_shell` group M alone.
+
+**Why, measured.** #629 wrote those checks with a recorded injection — revert the shell's AUTO
+mapping to the unconditional `'tavg'` and they red at 8.60 % / 7.29 MPa. Since the #508/#645
+re-anchor of the no-load average coolant temperature (557 → **547 °F**, 291.67 → 286.11 °C), Tavg
+mode holds the heatup on its own: measured on the full-stack PWR-N01 ride, Tavg mode parks at
+**547.4 °F (286.3 °C) / 1006 psig (7.04 MPa)** and pressure mode at **547.2 °F (286.2 °C) /
+1005 psig (7.03 MPa)** — **0.2 °F (0.1 °C)** apart, both with the atmospheric dump valve shut and
+0 lbm vented. The old injection now reds **nothing** (32/32). The checks never read the mode; they
+read a *consequence* the plant no longer has.
+
+**The two alternatives, and why each was declined.**
+- *Assert the mode in the checklist.* The predicate vocabulary shared by `instructor_layer`,
+  `procedures_harness` and `run_procedures` is `> < >= <= ~` — **no equality operator** — so a
+  string param needs a schema change across four files (plus `PRED_DISPLAY` in `ui/app.js`) to
+  duplicate a claim `run_pwr2_shell` group M already asserts on **both** branches with mutations.
+  Verified rather than assumed: under the same revert that leaves the checklist 32/32, group M reds
+  **161/162**, naming `boot "off" -> "tavg"`.
+- *Tighten the 7.03 MPa tolerance until the modes separate.* Needs **0.015 MPa (2.2 psi)** — a
+  fixture standing on a bifurcation, the #543/#588 shape, and inside instrument noise.
+
+**What the leg does own,** and the injection now recorded against it: whether the AUTO press reaches
+the plant and the plant answers over a full heatup. Delete the step's own `cmd` and **exactly those
+two** red — valve **8.43 %**, header **7.29 MPa** — with the other 30 green.
+
+**Generalised.** *A change that makes two lineups AGREE retires every check that was reading their
+difference, and it does so silently — the checks stay green.* Neighbouring traps already in the
+standing list cover a fix blinding a mutation and a term that is an identity in the tested regime;
+this is the third face of the same thing, and the only way to find it is to re-run the recorded
+injection after any change to the mechanism it exercises.
+
+---
+
+## 2026-09-08-workbench-a — #644: a mutation self-test REFUSES to score on a red clean run; it does not subtract
+
+**The decision.** When any check is red in a runner's CLEAN pass, the mutation replay is **skipped
+entirely** and the runner exits 1, naming the red checks. It does **not** run the replay and
+subtract the clean run's reds. One implementation for every runner:
+`MUT.requireCleanRun()` in `test/mut_flags.js`.
+
+**Why there was a decision.** Every replay loop here scores a mutation by counting *absolute* reds
+in the mutant. A check already red in the clean run is red in every mutant too, so the count is
+non-zero for reasons that have nothing to do with the mutation, and **every** mutation reads as
+caught. Two honest repairs exist; they are not equivalent.
+
+**Rejected — subtract the clean run by name.** It scores more mutations, and on paper it is the
+more informative instrument. Two reasons it loses:
+
+1. **Overlap stays ambiguous.** A mutation whose only reds are checks that were *already* red has
+   demonstrated nothing, and subtraction has to invent a verdict for it. Calling it blind is a
+   false alarm; calling it caught is the defect again.
+2. **It needs an attribution assumption that nothing enforces.** `run_pwr2_engine` and
+   `run_pwr2_shell` scope a replay to one group (`grp('X')`), so subtraction must assume every
+   check the clean run recorded is attributable to the group whose replay could see it. A single
+   `ck()` written *outside* every `grp()` block breaks that silently — it would run in every
+   replay, and the gate would go on printing green. That is the same class of hole as the one
+   being fixed, one level down, and nothing in the tree would catch it.
+
+Refusing needs no assumption about attribution, about overlap, or about what a group contains.
+
+**And nothing is lost.** The objection to refusing is that you cannot measure coverage while
+iterating. You can: `--grp=<tag>` and `--groups=<tags>` scope the **clean pass as well as** the
+replay (`run_pwr2_engine.js:127-135`), so a group that is green is measurable while another is
+red — and `mut_flags` forces any such run non-zero, so it can never be recorded as a baseline.
+Refusing also *saves* the replay bill (321 / 327 / 830 s across the three engine parts) in the one
+case where paying it could only buy a lie.
+
+**Proven by injection, not by argument** (HR10, and doubled here because this is the instrument
+that enforces HR10). On one tree, with the historical no-op mutation restored — `DC.tref(0)` =
+286.110 °C (547.00 °F) against `W.T_sat(7.03 MPa)` = 286.113 °C (547.00 °F), 0.003 °C (0.005 °F)
+apart: the **pre-fix** file with one unrelated check reddened printed
+`caught … 1 checks red` / `1/1 mutations caught, no blind spots`; the guarded file on the same red
+tree printed `MUTATION SELF-TEST SKIPPED -- 1 check(s) failed in the CLEAN run`; on a green tree
+the same mutation printed `BLIND TO …`, and the shipped `DC.tref(1)` form still printed `caught`.
+
+**Scope.** Eight runners had no guard (`run_pwr2_engine` + `_b`/`_c`, `run_pwr2_shell`,
+`run_pwr2_pressurizer`, `run_pwr2_board`, `run_pwr2_instruments`, `run_pwr2_dumpctl`,
+`run_pwr2_lossofload`, `run_pwr2_roundtrip`); twenty-two already had `run_pwr2_loadfollow`'s
+hand-written form. The twenty-two are **left alone** — they are already honest, and converting
+them would be churn against a live merge queue. The new helper is where a thirty-first runner
+should get it.
+
+---
+
 ## 2026-09-05-develop-e — #641: a checklist step the plant has moved past is OVERTAKEN, not a soft lock
 
 **DECIDED (mechanism)** *(my call, 2026-09-05, on the owner's playtest report "mode 3>1 checklist

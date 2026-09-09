@@ -359,11 +359,15 @@
      * is, and the GATE ties the two modules together so they cannot drift apart silently.
      *
      * WHY 5.0e8 n/s AND NOT 1e8 OR 2e9 — a prototypicality test, not a preference. It is the
-     * strength that leaves the SOURCED P-6 permissive (5e-11 A, Ginna TS Bases; PWR2_VALIDATION
-     * §34) UNMET at hot standby — the plant reads 1.61e-11 A there — and brings it in at
-     * -366 pcm, partway up the control bank, which is where a real startup meets it. At 2e9 n/s
-     * the plant sits over P-6 before the operator has touched a rod; at 1e8 the shutdown
-     * indication is a fifth of a count per second.
+     * strength that leaves the SOURCED P-6 permissive (1.0e-10 A, Ginna TS Bases;
+     * `pwr2_protection`'s P6.amps — CORRECTED from 5e-11 at #642, where the marker turned out to
+     * be on the wrong sentence of the right document) UNMET at hot standby — the plant reads
+     * 1.61e-11 A there — and brings it in at -171 pcm, bank 184/627, partway up the control bank,
+     * which is where a real startup meets it. At 2e9 n/s the plant sits over P-6 before the
+     * operator has touched a rod; at 1e8 the shutdown indication is a fifth of a count per second.
+     * ⚠ RE-MEASURED WHEN P-6 MOVED, because this is the argument the strength rests on: the
+     * margin under P-6 at hot standby went from 3.1x to 6.2x, so the correction widens the test
+     * and 5.0e8 n/s remains the answer. (At the old value: -355 pcm, bank 157/627.)
      *
      * WHAT IT OWES: an installed-source strength in n/s from a document. DOE-HDBK-1019/1-93
      * NP-02 gives Cf-252 at 2e12 n/s per GRAM and describes the Sb-Be startup sources, but no

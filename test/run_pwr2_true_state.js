@@ -722,13 +722,33 @@ function runSuite(TS, rec, quiet) {
      tsHZP.sr_counts_cps.toFixed(0) + ' / ' + tsHZP.ir_amps.toExponential(2) +
      ' — the floor pinned both at 0.5 cps and 8.3e-12 A');
   /* THE TEST THAT PICKED THE SOURCE STRENGTH, asserted rather than left in a comment: the
-   * SOURCED P-6 permissive (5e-11 A, Ginna TS Bases; PWR2_VALIDATION §34) must be UNMET on a
-   * plant at hot standby and met partway up the approach — which is where a real startup meets
-   * it. A stronger installed source puts the plant over P-6 before the operator touches a rod. */
+   * SOURCED P-6 permissive (Ginna TS Bases; PWR2_VALIDATION §34) must be UNMET on a plant at hot
+   * standby and met partway up the approach — which is where a real startup meets it. A stronger
+   * installed source puts the plant over P-6 before the operator touches a rod.
+   *
+   * ⚠ THE SETPOINT IS READ, NOT SPELLED (#642). It was written here as `5.0e-11` twice, a second
+   * copy of a literal that was itself a THIRD copy of a number the manual and the control layer
+   * disagreed with — and being spelled is why a check about P-6 could not notice that P-6 had
+   * the wrong value. The permissive now lives in `pwr2_protection` (P6.amps, 1.0e-10 A) and this
+   * reads it, so correcting it again moves the assertion with it. Re-measured at the corrected
+   * value: hot standby holds 6.2x of margin under P-6 rather than 3.1x, so the source strength
+   * this test picked is comfortably still the right one. */
+  var P6 = globalThis.RD.pwr2.protection.P6.amps;
   ck('the sourced P-6 permissive is UNMET at hot standby and comes in during the approach',
-     tsHZP.ir_amps < 5.0e-11 && atFlux(2.19e-8).ir_amps > 5.0e-11,
+     tsHZP.ir_amps < P6 && atFlux(2.19e-8).ir_amps > P6,
      tsHZP.ir_amps.toExponential(2) + ' A at hot standby, ' +
-     atFlux(2.19e-8).ir_amps.toExponential(2) + ' A at -100 pcm, against P-6 at 5.0e-11 A');
+     atFlux(2.19e-8).ir_amps.toExponential(2) + ' A at -100 pcm, against P-6 at ' +
+     P6.toExponential(1) + ' A');
+  /* AND THE BAND THE BOARD DRAWS IS THAT SAME CONSTANT, not a literal that agrees with it today.
+   * `nis_ir_inuse_a` is the NIS card's "which instrument am I on" band, and its bottom edge WAS
+   * a local `var P6_A = 5e-11` in this layer — the copy #642 found. A board band drawn off a
+   * private literal is exactly #572's shape, so the edge is asserted against the plant's own
+   * permissive rather than against a number written here. */
+  ck('the intermediate range\'s in-use band starts AT the plant\'s P-6, not at a literal',
+     ts.nis_ir_inuse_a && ts.nis_ir_inuse_a[0] === P6 &&
+     ts.nis_ir_inuse_a[1] > ts.nis_ir_inuse_a[0],
+     'band [' + ts.nis_ir_inuse_a[0].toExponential(2) + ' .. ' +
+     ts.nis_ir_inuse_a[1].toExponential(2) + '] A — bottom is P-6, top is P-10 through K_IR');
   /* THE SECURING CUE IS THE SETPOINT, NOT A POWER LITERAL. `Manuals/03` §4.3: "Secure SR during
    * power rise BEFORE SR high-flux trip (1e5 cps)". Written against 1e5 the rule survives a
    * scale change; written as `pFrac < 1e-3` — what it was — it silently became four decades
@@ -786,6 +806,16 @@ var MUTATIONS = [
   ['the water-regime scan iterates the keyed lookup (zero times) — every plant reads "ok"',
    'for (var i = 0; i < sys.nodes.length; i++) {',
    'for (var i = 0; i < nd.length; i++) {'],
+  /* #642: the in-use band's bottom edge goes back to being a private literal in this layer, at
+   * the value it actually shipped with. This is the defect as it stood — a board band drawn off
+   * a number the plant's own permissive table disagreed with by a factor of two — and it must
+   * red twice over: the band check compares against pwr2_protection's P6, and the hot-standby
+   * margin check reads the same constant. A mutation that only moved the literal to 1.0e-10
+   * would be a no-op; moving it back to 5e-11 is the shipped defect. */
+  ['the P-6 band bottom goes back to a private 5e-11 literal (the #642 defect, restored)',
+   "    var P6_A = (RD.protection && RD.protection.P6 && RD.protection.P6.amps !== undefined)\n" +
+   "                  ? RD.protection.P6.amps : 1.0e-10;",
+   '    var P6_A = 5e-11;'],
   /* ---- THE NIS GAUGE SCALES (#536) ---- */
   ['k_sr reverts to the RETIRED plant\'s scale (the shutdown board reads half a count)',
    '    var K_SR = 2.6e11;', '    var K_SR = 5.0e8;'],

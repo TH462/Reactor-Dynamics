@@ -115,7 +115,11 @@ function walk(RD, speed, target, casualty) {
      * calling it the plant. */
     at[svc.simTime.toFixed(2)] = { P: ts.pressure_mpa, inv: ts.core_inventory_pct,
                                    Tcore: ts.t_core_exit_c, sg: ts.sg_level_pct,
-                                   boron: ts.boron_ppm };
+                                   boron: ts.boron_ppm,
+                                   /* core THERMAL power, not fission power (CLAUDE.md: power_pct
+                                    * != core_heat_pct once a scram happens) -- SI-0's own "still
+                                    * steady" conjunct reads this, compare() does not */
+                                   pw: (ts.core_heat_pct !== undefined ? ts.core_heat_pct : ts.power_pct) };
   }
   return { at: at, evals: evals, simTime: svc.simTime, rate: evals / svc.simTime };
 }
@@ -182,6 +186,29 @@ function compare(a, b) {
   return { n: n, worst: worst, at: at };
 }
 
+/* the gap between the last two recorded instants of a leg — its own coarse-broadcast step.
+ * SI-0's "met past the prologue" conjunct collapses to landing within this of T_WIN. */
+function lastDelta(w) {
+  var ks = order(w);
+  return ks.length < 2 ? null : Number(ks[ks.length - 1]) - Number(ks[ks.length - 2]);
+}
+/* SI-0's "the fixture is still doing its job" conjunct for a STEADY leg: power stays near
+ * rated and pressure does not wander, over the whole recorded window. Bounds and margins are
+ * in the comment at SI-0's call site. */
+var QUIET_POWER_BAND_PCT = 5;       /* +/- around rated 100 % core thermal power */
+var QUIET_PRESSURE_DRIFT_MPA = 0.2; /* peak-to-peak allowed over the window, 29 psi */
+function steady(w) {
+  var pmin = Infinity, pmax = -Infinity, Pmin = Infinity, Pmax = -Infinity;
+  order(w).forEach(function (k) {
+    var s = w.at[k];
+    if (typeof s.pw === 'number') { if (s.pw < pmin) pmin = s.pw; if (s.pw > pmax) pmax = s.pw; }
+    if (typeof s.P === 'number') { if (s.P < Pmin) Pmin = s.P; if (s.P > Pmax) Pmax = s.P; }
+  });
+  return { ok: pmin >= 100 - QUIET_POWER_BAND_PCT && pmax <= 100 + QUIET_POWER_BAND_PCT &&
+                (Pmax - Pmin) <= QUIET_PRESSURE_DRIFT_MPA,
+           pmin: pmin, pmax: pmax, drift: Pmax - Pmin };
+}
+
 var LOCA = ['large_loca', 'station_blackout'];
 /* the compared window, in sim seconds. NAMED because SI-5 asserts against it — "both legs
  * actually ran the window" is only unnudgeable if the bar IS the window. */
@@ -202,12 +229,65 @@ function runSuite(RD, rec, quiet) {
   /* ---- 1. A QUIET PLANT. The claim must hold where nothing is happening, or it holds
    * nowhere. Compared at MATCHED SIM INSTANTS — see the note on walk()/compare(). */
   head('QUIET PLANT  [200 s at power — the claim where nothing is moving]');
-  var q1 = walk(RD, 1, 200, null), q10 = walk(RD, 10, 200, null), q60 = walk(RD, 60, 200, null);
+  var q1 = walk(RD, 1, T_WIN, null), q10 = walk(RD, 10, T_WIN, null), q60 = walk(RD, 60, T_WIN, null);
   var qc = compare(q1, q10);
-  ck('SI-0', 'the two legs actually MET — a comparison over an empty intersection cannot fail',
-     qc.n >= 100,
-     qc.n + ' shared sim instants (1x ran to ' + q1.simTime.toFixed(2) + ' s, 10x to ' +
-     q10.simTime.toFixed(2) + ')');
+  /* ⚠⚠ SI-0 USED TO BE A SAMPLE-COUNT FLOOR, `qc.n >= 100` of 200, THE SAME CLIFF SI-5 WAS
+   * REBUILT OUT OF (#649). It was safe only by accident: a quiet plant never enters the
+   * fine-cadence branch, so the legs always shared 200 of 200 -- a 2x margin nothing currently
+   * perturbs. The mechanism is the #543/#588 shape SI-5 already names: the shared-instant count
+   * is modular arithmetic on the broadcast cadence, not a statement about the plant, and the day
+   * anything makes the quiet fixture twitch into fine cadence (a tuning change, a new alarm, a
+   * transient-detector adjustment) it becomes the same integer lottery. Ported to the same
+   * four-conjunct form, none of them a coincidence count:
+   *   1. A LEG DID NOT RUN. Both legs must reach T_WIN -- the bar IS the window, nothing to nudge.
+   *   2. THE FIXTURE STOPPED BEING STEADY. For a steady leg this is "the plant is actually at
+   *      power and not drifting". Measured over both legs' full window: core THERMAL power
+   *      (`core_heat_pct`, not fission `power_pct` -- CLAUDE.md) stays 99.549-99.997 % (worst
+   *      0.451 points off rated 100 %), pressure wobbles 0.024-0.030 MPa (3.5-4.3 psi)
+   *      peak-to-peak. Bounds: +/-5 percentage points of rated power (0.451 measured -> 11x
+   *      margin) and 0.2 MPa / 29 psi of pressure drift (0.030 measured -> 6.7x margin) -- the
+   *      same order as SI-5's 6x/15x, not sitting on today's values.
+   *   3. THE LEGS ONLY MET IN THE PROLOGUE. No prologue exists on a steady leg (nothing pulls
+   *      the legs apart the way a blowdown's cadence-halving does), so this collapses to: the
+   *      last shared instant must land within one coarse broadcast (the slower leg's own step,
+   *      1.0 s at 10x) of T_WIN. Measured: last shared instant is T_WIN itself, 200.00 of 200 s
+   *      -- 0 s short of the 1.0 s tolerance, i.e. it lands exactly on the window end.
+   *   4. `compare()` CANNOT SEE A DIFFERENCE. Same 1e-6 planted / 1e-9 SI-3-test proof as SI-5.
+   * PROVEN ABLE TO FAIL, four injections, one per conjunct (2026-09-08, measured against this
+   * tree at HEAD). Unlike SI-5 (whose "met past the prologue" bar sits early, at the blowdown's
+   * OWN half-time), SI-0's conjunct 3 is anchored at the window's END — so a leg cut short of
+   * T_WIN necessarily also lands short of "near T_WIN", and injections 1 and 2 honestly trip
+   * BOTH the conjunct named and conjunct 3 (deep). Reported as measured, not trimmed to look
+   * cleaner than it is (HR10):
+   *   1. the 10x leg walked to T_WIN/4 (50 s) only      -> ran=false, deep=false; steady=true,
+   *      sensitive=true  (deep entailed: a leg that stops at 50 s cannot land near T_WIN=200 s;
+   *      conjunct 3's OWN standalone failure mode is proven clean by injection 3 below)
+   *   2. large_loca+station_blackout injected into the   -> steady=false, deep=false; ran=true,
+   *      "steady" legs (core power 76.9 -> 3.1 %,           sensitive=true  (deep also trips
+   *      pressure 15.326 -> 2.359 MPa / 2223 -> 342 psia)   because a casualty is exactly the
+   *                                                          #543/#588 cadence-shift mechanism —
+   *                                                          the reason two conjuncts catch it)
+   *   3. the 10x leg's instants past T_WIN/2 discarded   -> deep=false ALONE; ran, steady,
+   *      sensitive all stay true                            -- clean isolation
+   *   4. the planted relative difference forced to 0     -> sensitive=false ALONE; ran, steady,
+   *      deep all stay true                                 -- clean isolation
+   * No injection reddens any check OTHER than SI-0 (SI-1/SI-3/SI-5/SI-2/SI-4/SI-7/SI-6 all stay
+   * green throughout, verified separately). */
+  var qRan = Math.min(q1.simTime, q10.simTime) >= T_WIN;
+  var s1 = steady(q1), s10 = steady(q10);
+  var qSteady = s1.ok && s10.ok;
+  var qLast = lastShared(q1, q10);
+  var qCoarse = Math.max(lastDelta(q1) || 0, lastDelta(q10) || 0);
+  var qDeep = qLast !== null && qLast >= T_WIN - qCoarse;
+  var qSens = compare(q1, planted(q10, 1e-6)).worst >= 1e-9;
+  ck('SI-0', 'the quiet-plant comparison CAN fail — both legs ran, the plant stayed steady, ' +
+             'they met within one broadcast of the window end, and a planted difference is seen',
+     qRan && qSteady && qDeep && qSens,
+     'ran=' + qRan + ' steady=' + qSteady + ' (power ' + Math.min(s1.pmin, s10.pmin).toFixed(3) +
+     '-' + Math.max(s1.pmax, s10.pmax).toFixed(3) + '%, pressure drift <= ' +
+     Math.max(s1.drift, s10.drift).toFixed(4) + ' MPa) deep=' + qDeep + ' (last shared ' +
+     (qLast === null ? 'never' : qLast.toFixed(2)) + ' s vs T_WIN ' + T_WIN + ' s) sensitive=' +
+     qSens + ' -- shared instants, reported not asserted: ' + qc.n + ' of ' + q1.simTime.toFixed(2));
   ck('SI-1', 'protection is evaluated at the SAME rate per sim second at every acceleration',
      Math.abs(q1.rate - q10.rate) < 0.05 && Math.abs(q1.rate - q60.rate) < 0.05,
      q1.rate.toFixed(2) + ' / ' + q10.rate.toFixed(2) + ' / ' + q60.rate.toFixed(2) +
@@ -410,6 +490,17 @@ var MUTATIONS = [
  * the point: a blind spot the gate creates for ITSELF is a gate failure; a blind spot an open,
  * named gap creates is a fact about the gap, and it must be named rather than scored. */
 var MUTATIONS_BLOCKED = [];
+
+/* ---- THE CLEAN-RUN GUARD (#644) -------------------------------------------------------------
+ * REFUSE TO SCORE on a red clean run. The replay below counts ABSOLUTE non-xfail reds in the
+ * mutant, so an already-red check is red in every mutant too and EVERY mutation reads as caught —
+ * the coverage instrument reporting full coverage exactly when the runner is not green. The xfails
+ * are a side MAP here rather than a `verdict` field, so they are filtered out on the way in: a
+ * KNOWN gap must not refuse the scoring, only an unexpected red. Ruling and the measured case:
+ * mut_flags.requireCleanRun's header. */
+MUT.requireCleanRun(rec.filter(function (r) { return !r.ok && !XFAIL[r.id]; }),
+  '  run_service_invariance: ' + nPass + ' passed, ' + nXfail + ' xfail, ' + nFail +
+  ' failed, ' + nXpass + ' unexpected-pass  (' + rec.length + ' checks)');
 
 console.log('\n' + '='.repeat(70));
 console.log('  INJECTION SELF-TEST — every mutation MUST redden a check that is not an xfail');

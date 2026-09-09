@@ -24,7 +24,8 @@
  *                     caller's (built §48, 2026-08-19 — this line said NOT BUILT until #633)
  *
  * ---------------------------------------------------------------------------------------
- * SOURCED, and all of it Ginna — this plant's anchor — so nothing needed re-anchoring. That is
+ * SOURCED — with ONE exception, marked below and tracked at #643 — and all of it Ginna, this
+ * plant's anchor, so nothing needed re-anchoring. That is
  * worth stating because the first figures this pass turned up (1234 psig safety, 1185 psig design,
  * ML11223A213/A229) belong to a FOUR-LOOP plant whose secondary runs 85 psi higher, and adopting
  * them would have been #380's trap: citing a number from the wrong plant class because it was the
@@ -36,7 +37,13 @@
  *                  §10.3.2.4 (ML20339A040). One at 1085 psig, three at 1140 psig, each with
  *                  +3 % accumulation. The full table and both of the source's own
  *                  cross-checks are at safety_stage2_psig below (#542).
- *   SAFETY FLOW    0.84 x rated steam flow at full lift
+ *   SAFETY FLOW    1.0062 x rated at full lift — DERIVED IN CODE, never typed: the bank's own
+ *                  sourced per-line capacity (797,689 + 3 x 837,600 lb/hr) over Ginna's stated
+ *                  per-line design steam flow, UFSAR ch10's equipment table (ML20339A040):
+ *                  "Flow design capacity, lb/hr  3.29 x 106 at 770 psia". That is B 3.7.1's own
+ *                  sizing rule — "100% of design steam flow". It was 0.84 wearing a [sourced]
+ *                  marker no document supported until #643; the full account, the independent
+ *                  cross-check and the measured cost of the move are at safety_flow_frac below.
  *   DUMP CAPACITY  28 % of rated steam flow — Ginna UFSAR ch10 §10.4 (ML20339A040): "eight steam
  *                  dump valves that are capable of passing up to approximately 28% rated steam
  *                  flow". The fleet-typical figure is 40 % (WTSM §11.2, ML11223A294) and this
@@ -82,6 +89,28 @@
 
   var PSI_PER_MPA = 145.0377;
 
+  /* ---- THE THREE SOURCED lb/hr FIGURES `safety_flow_frac` IS DIVIDED OUT OF (#643) ------------
+   * They are module-level rather than object properties for one reason: an object literal cannot
+   * reference its own siblings while it is being built, and `safety_flow_frac` is DERIVED from
+   * these three rather than typed. Each is still exported as a `RELIEF.*` property below, so
+   * there is exactly one definition of each number in this file.
+   *
+   * [sourced] per-stage capacity, ONE steam line's worth — Ginna UFSAR ch10's equipment table
+   * (ML20339A040), verbatim: "Main steam safety valves ... Capacity (each), lb/hr: 797,689: two
+   * valves at 1085 psig +3% accumulation / 837,600: six valves at 1140 psig +3% accumulation".
+   * Eight valves is four per line on Ginna's two-line plant; this single-loop plant models one
+   * line, which is where the "two"/"six" become one and three. The per-stage SHARES are derived
+   * from these so the lb/hr figures stay the things a reader can check against the document. */
+  var STAGE1_LBHR = 797689.0;
+  var STAGE2_LBHR = 3 * 837600.0;
+  /* [sourced] ONE steam line's DESIGN steam flow — the denominator the design basis uses. Ginna
+   * UFSAR ch10 (ML20339A040) equipment table, main steam line / MSIV row, verbatim:
+   *     "Flow design capacity, lb/hr  3.29 x 106 at 770 psia"
+   * Twice it is §10.3.2.4's own stated bank total of 6.58 x 10^6 lbm/hr, which that section calls
+   * "equal to the full load steam flow for the original 1520 MWt licensed power level" — so the
+   * two halves of the source agree with each other on what a steam line carries at design. */
+  var DESIGN_LINE_LBHR = 3.29e6;
+
   var RELIEF = {
     /* [sourced] Ginna 1085 psig first lift. Stored in MPa ABSOLUTE, converted here rather than
      * typed, so the psig figure in the comment is the thing that can be checked against the
@@ -92,8 +121,62 @@
      * that hysteresis it chatters at the setpoint. The blowdown fraction is a valve-class figure,
      * not a Ginna measurement, so it is derived and marked as such. */
     safety_blowdown:     0.033,
-    /* [sourced] full-lift capacity as a fraction of rated steam flow. */
-    safety_flow_frac:    0.84,
+    /* [sourced, DERIVED IN CODE — #643] full-lift capacity as a fraction of rated steam flow:
+     * the bank's own sourced per-line capacity over the source's own per-line DESIGN steam flow.
+     * Both numbers are quoted verbatim at their declarations above; this line is the division,
+     * and 1.0062 IS DELIBERATELY NOT TYPED ANYWHERE — a typed copy is exactly how the number
+     * this replaced went wrong and stayed wrong for a month.
+     *
+     *     (797,689 + 3 x 837,600) / 3,290,000  =  3,310,489 / 3,290,000  =  1.0062
+     *
+     * WHY 100 % OF DESIGN FLOW IS THE RIGHT RULE — the source states it in words, twice:
+     *   TS Bases B 3.7.1 (ML20339A221), verbatim: "The design basis for the MSSVs is to limit
+     *     the secondary system pressure to <= 110% of design pressure when passing 100% of
+     *     design steam flow."
+     *   UFSAR ch10 §10.3.2.4 (ML20339A040), verbatim: "The minimum total relieving capacity is
+     *     6.58 x 106 lbm/hr which is equal to the full load steam flow for the original 1520
+     *     MWt licensed power level. Although these safety valves do not relief 100% steam
+     *     capacity at 1775 MWt, the UFSAR Chapter 15 analyses demonstrates that sufficient
+     *     relief capacity is available". THE SOURCE NAMES ITS OWN DEPARTURE FROM 100 % AND
+     *     CALLS IT AN UPRATE ARTIFACT. This plant sits at its design power, not 17 % above it,
+     *     so it inherits the rule and not the artifact.
+     *
+     * AN INDEPENDENT SECOND ROUTE, asserted in `run_pwr2_relief` rather than left as prose: the
+     * WHOLE bank power-scaled to this plant, 6,620,978 x 300/1520 = 1,306,772 lb/hr, against
+     * THIS plant's own rated steam flow of 1,303,570 lb/hr (164.25 kg/s, from Layer 0's
+     * enthalpy rise) = 1.0025. It never touches Ginna's stated flow, and it lands 0.4 % from the
+     * route above. The gate requires the two to agree within 0.01, so a retyped denominator on
+     * either side reddens instead of quietly re-scaling the bank.
+     *
+     * ⚠ WHAT THIS REPLACED, AND THE TRAP IT CAME IN — the constant was 0.84 and wore a
+     * [sourced] marker for which no document existed (`node tools/find_source.js '0\.84|84 ?%'`:
+     * 3 hits across 39 documents in 3 lanes, every one digits inside an unrelated table). It was
+     * inherited BY REFERENCE from the retired engine (`pwr_config.js` `sg_safety_flow_max`,
+     * #418 wave A3, 2026-08-07) and it is Ginna's ratio AFTER its 1775 MWt uprate: the same
+     * numerator over one line's share of UFSAR ch15 Table 15.0-1 note b's 7.92e6 lb/hr, a flow
+     * that note itself calls an envelope ("This envelopes the possibility that the steam
+     * generator could perform better than expected"). 3,310,489 / 3,960,000 = 0.836. Two
+     * conservatisms stacked in a denominator, both of which make the bank look smaller, on a
+     * plant that is neither uprated nor being enveloped. #542's evidence pass verdicted the
+     * ARRANGEMENT of this bank and inherited the FIGURE — the #380 template-placeholder trap,
+     * second instance in this file, and the reason the shape above is a division and not a digit.
+     *
+     * MEASURED BEFORE AND AFTER (#643, 2026-09-08, condenser dumps SHUT and the ADV block valve
+     * CLOSED so the bank is the only steam path out): on a turbine trip from hot full power the
+     * peak steam-generator pressure falls 1105.3 -> 1102.9 psig (7.72 -> 7.70 MPa), first lift
+     * is 10.46 s at BOTH scales — first lift is a setpoint, not a capacity — and stage 2 never
+     * lifts at either. On a bottled generator the peak falls 1160.0 -> 1155.1 psig (8.10 ->
+     * 8.07 MPa). So the scale is NOT the whole overpressure response: after a trip the heat
+     * source is decay heat and even half a bank passes ten times what it has to. Where the plant
+     * does have an opinion is the LOW end — at 0.50 the bottled fixture peaks at 1197.7 psig,
+     * ABOVE B 3.7.1's 1193.5 psig ceiling (110 % of the 1085 psig first-lift class).
+     *
+     * (OWNER RULING, 2026-09-08: "A — 1.0062 x rated, the sourced design basis" — chosen over
+     * keeping 0.84 as a declared departure, and over WTSM §7.1.3.4's fleet figure of 109 %
+     * ("The combined capacity of the 20 safety valves is 16,467,380 lbm/hr, which is 109% of
+     * full-power steam flow"), which is a four-loop plant class this Ginna-anchored plant does
+     * not follow — the same reasoning that put the steam dumps at Ginna's 28 % and not 40 %.) */
+    safety_flow_frac:    (STAGE1_LBHR + STAGE2_LBHR) / DESIGN_LINE_LBHR,
     /* ---- THE ATMOSPHERIC RELIEF VALVE (the ladder's middle rung, 2026-08-19) --------------
      * Ginna TS Bases B 3.7.4 (ML20339A221), verbatim: one ARV per SG main steam header, "a
      * relief capacity of 329,000 lbm/hr each (approximately 4% of RTP)", "normally closed,
@@ -161,11 +244,17 @@
      * it from first crack to full lift. Quoted on the SET pressure in psig, the convention the
      * table itself uses. */
     safety_accumulation: 0.03,
-    /* [sourced] per-stage capacity, one steam line's worth, from the table above. The SHARES
-     * are derived from these so the lb/hr figures stay the things a reader can check against
-     * the document. */
-    safety_stage1_lbhr:  797689.0,
-    safety_stage2_lbhr:  3 * 837600.0,
+    /* [sourced] per-stage capacity, one steam line's worth, from the table above — declared at
+     * the top of the module (STAGE1_LBHR / STAGE2_LBHR) because `safety_flow_frac` divides by
+     * them and an object literal cannot read its own siblings. ONE definition each; the SHARES
+     * and the full-lift SCALE are both derived from them, so the lb/hr figures stay the things a
+     * reader can check against the document. */
+    safety_stage1_lbhr:  STAGE1_LBHR,
+    safety_stage2_lbhr:  STAGE2_LBHR,
+    /* [sourced] the DENOMINATOR of safety_flow_frac — one steam line's design steam flow, quoted
+     * verbatim at its declaration. Exported so the gate can check the division rather than the
+     * quotient (#643). */
+    safety_design_line_lbhr: DESIGN_LINE_LBHR,
 
     /* [sourced] Ginna ch10 §10.4 — 28 % of rated steam flow, eight valves. */
     dump_capacity_frac:  0.28,
@@ -321,7 +410,8 @@
     /* `> 0`, not `!== undefined` (#539). The old guard refused to invent a MISSING plant and
      * then silently accepted a ZERO one — the same fabrication with a different spelling, and
      * it is what let Mode 4 ship with every capacity multiplied by nought: the safety-valve
-     * latch says OPEN (it keys on pressure alone) while safety_kgs is 0.84 * 0. This is the
+     * latch says OPEN (it keys on pressure alone) while safety_kgs is safety_flow_frac * 0 —
+     * named rather than spelled, because the constant it spelled has since moved (#643). This is the
      * only hard refusal in the whole rated-scale chain and it did not fire on the case that
      * actually shipped. PWR2_VALIDATION.md:1021 states the house rule: "Every PWR2 layer so
      * far throws rather than fabricate a missing driver (fuelTemp_c, Q_core_kW,
@@ -465,11 +555,10 @@
    * flow with the condenser dump disarmed. The ladder is dump → ADV → safeties, and without its
    * middle rung a secondary held closed runs to the safety valves.
    *
-   * WHAT IS STILL OWED, and it is now a SCALE question rather than a missing path: the bank's
-   * absolute capacity, `safety_flow_frac: 0.84`, wears a [sourced] marker that the source's own
-   * table does not support — power-scaling one steam line gives 50.1 % of rated and Ginna's own
-   * bank against Ginna's own rated flow gives 100.2 %. Neither is 84 %. Tracked at #643; the
-   * per-stage SHARES below are unaffected, being derived from the sourced lb/hr figures. */
+   * NOTHING IS OWED ON THE BANK'S SCALE ANY MORE. `safety_flow_frac` was the last open item here
+   * — a 0.84 with no document behind it — and #643 closed it: the evidence pass, the owner's
+   * ruling on 2026-09-08, and the constant now DERIVED from two sourced lb/hr figures rather
+   * than typed. See safety_flow_frac above. */
 
   root.RD = root.RD || {};
   root.RD.pwr2 = root.RD.pwr2 || {};
