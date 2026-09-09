@@ -257,6 +257,15 @@
   // Time constants are per indication, by what the thing physically is — a single global
   // number was wrong in both directions. Anything not listed is undamped: booleans, status
   // flags, and the noise:0 instruments are already smooth.
+  //
+  // RULED (#670) — OWNER RULING, 2026-09-09: "A." A walkthrough acceptance grades the UNDAMPED
+  // transmitter, not the number drawn here, so on a fast transient the tile can sit a point the
+  // wrong side of the limit a step quotes — measured, `STEAM GENERATOR LEVEL below 55 %` ticked
+  // with the tile displaying 56 %, a 1 percentage point gap (it is rate x time constant). Known
+  // and accepted; the 58 acceptances across the seven walkthroughs that grade on a damped
+  // channel are all covered. Do NOT retune these constants, or regrade on the drawn value, to
+  // close it — that trades Hard Rule 1, instruments versus truth, for cosmetic agreement.
+  // github.com/TH462/Reactor-Dynamics/issues/670#issuecomment-5604928260
   var DISPLAY_DAMP = {
     // RTDs in a damped bypass manifold — heaviest damping on the board
     tavg: 3.5, thot: 3.5, tcold: 3.5,

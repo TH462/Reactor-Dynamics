@@ -1004,6 +1004,15 @@
     var map = plant ? PARAM_INSTRUMENT[plant] : null;
     var iid = map ? map[pred.p] : null;
     var v, by;
+    /* RULED (#670) — OWNER RULING, 2026-09-09: "A." This read, which is what `_gradeAccs` grades
+     * a walkthrough step's `acc` on, is the UNDAMPED transmitter, and it stays that way. The
+     * board draws every dimensioned tile through its own filter (`DISPLAY_DAMP` in
+     * pwr_board_wiring.js — #234 indicator damping, sg_level at a time constant of 1.5 s), so on
+     * a fast transient an acceptance can tick with the tile a point the wrong side of the step's
+     * limit: measured, `below 55 %` at 56 % drawn, a 1 percentage point gap. Do NOT regrade on
+     * the drawn value — it is a pool-wide retune of the 58 acceptances that grade on a damped
+     * channel, and it trades Hard Rule 1, instruments versus truth, for cosmetic agreement.
+     * github.com/TH462/Reactor-Dynamics/issues/670#issuecomment-5604928260 */
     if (iid && snapshot.instruments && snapshot.instruments[iid] != null) {
       v = snapshot.instruments[iid]; by = 'instrument';
     } else {
