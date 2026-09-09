@@ -551,6 +551,38 @@
         ck('spark: a rising trend does not re-project drawn history every paint (held axis)',
           moved <= PAINTS / 3, moved + ' of ' + PAINTS + ' paints moved already-drawn vertices');
 
+        // 2b. A TILE NEVER PRINTS NEGATIVE ZERO (#670 operator pass 2, S-11).
+        //    `(-0.18).toFixed(0)` is the string "-0". SUBCOOLING MARGIN is a signed reading
+        //    that sits in that band for minutes as the plant reaches saturation, and an
+        //    operator playing the TMI-2 walkthrough read "-0 F" off the one gauge that says
+        //    whether the coolant is still water. The board's own fmtNum (pwr_board_wiring.js)
+        //    has rounded with String(Math.round(v)) since it was written and its comment names
+        //    this exact trap; the tile component was four files away doing the cheap thing, and
+        //    nothing compared the two.
+        //    PROVEN RED BY INJECTION: restoring `cur.toFixed(st.decimals)` reports "-0".
+        (function () {
+          fresh();
+          var SUB = { min: -20, max: 150, normLo: 40, normHi: 150,
+                      alarmLo: 11, alarmHi: 200, tripLo: 0, tripHi: 200,
+                      unit: 'F', decimals: 0, unitKey: 'US', speed: 1 };
+          /* find the value element by CHANGING it: push a distinctive reading and take the
+           * leaf whose text is exactly that. Looking for "any numeric leaf" picks up the axis
+           * labels, and looking before the first push finds a tile with nothing drawn yet. */
+          push(9990, -37, SUB);
+          var vEl = [].filter.call(el.querySelectorAll('*'), function (e) {
+            return e.children.length === 0 && (e.textContent || '').trim() === '-37';
+          })[0];
+          var readings = [];
+          [-0.18, -0.49, -0.51, 0.18, 0].forEach(function (v) {
+            push(9999 + readings.length, v, SUB);
+            readings.push((vEl ? vEl.textContent : '?').trim());
+          });
+          ck('tile: a small negative reading prints "0", never "-0" (#670 S-11)',
+            !!vEl && readings.indexOf('-0') < 0 && readings[0] === '0' && readings[2] === '-1',
+            vEl ? '-0.18/-0.49/-0.51/0.18/0 rendered as ' + readings.join(' / ')
+                : 'no value element found on the mounted tile');
+        })();
+
         // 3. THE TRACE STAYS INSIDE THE CARD. The sparkline svg is overflow:visible, so a
         //    vertex outside the viewBox does not clip — it DRAWS ON THE BOARD, down across
         //    the gauge band and whatever is under the tile. That shipped on 2026-08-06: the

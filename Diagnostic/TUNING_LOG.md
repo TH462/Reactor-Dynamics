@@ -29,6 +29,129 @@ and the user-visible summary in `CHANGELOG.md`. This file points at those and tr
 
 ---
 
+## Session log — 2026-09-09-develop-d (#670 Phase 3, operator pass 2 — the SI came from the renderer, and the wait estimate was the gate's own dwell)
+
+**The pass.** Second, confirming operator playthrough of `pwr_tmi2_incident`, fresh context, no
+repo access, headless Edge against `develop` at `f1063d8a`. **16 of 16 steps, leg complete**, 11
+stuck points. The report and every `Measured:`/`Verdict:` pair is
+`Diagnostic/CHECKLIST_PLAYTEST_2026-09-09_OPERATOR_TMI_PASS2.md`. The overlay fix from
+`f1063d8a` **held**: every diagram-symbol click landed on target and nothing in the leg was
+unfindable, which is the first time either has been true of this leg.
+
+**THE TRAP TO CARRY: A GATE WRITTEN AGAINST THE AUTHOR CANNOT SEE WHAT THE RENDERER WRITES.**
+The owner ruled on 2026-09-06 that live checklists carry no SI, and `run_style`'s
+`checklist_no_si` was built for that ruling and has been green ever since. It walks the
+**authored** strings of `RD.MANUAL_PROCEDURES.pwr2` — `text`, `note`, `why`, `target`,
+`wait_hint`, `story.*`, `accs[].label`, `precond.text` — and all of them are clean: a scan of
+every string in the built pool for `MPa|kPa|°C` returns **0 hits**. The SI was never authored.
+`fmtPredValue` in `ui/app.js` **composed** it, at render time, from a numeric `v` and a
+four-entry unit table, for any predicate carrying a `dim` and no `label` to render instead.
+**Measured on the built pool: 18 sites across four walkthroughs** — heatup 5, startup 3,
+cooldown 7, TMI-2 3 — six of them precondition-banner lines. The operator saw three, because the
+panel draws the done-when on the active step only. Two independent reasons the gate could not
+have caught it, and the second is the worse one: it would have **passed** the string even with
+sight of it, because `240 °F (116 °C)` is arithmetically correct and both SI gates check that a
+pair CONVERTS, not that it is ABSENT. The fix is one return statement; the gate went where the
+string exists — `verify_ckl_relevance` starts the heatup at full power (both preconditions fail,
+so one render exercises the banner and the criteria line at once) and asserts `#cklRun` carries
+no SI. Proven red by injection: it reddens, quoting the line verbatim, and takes the neighbouring detail-line check with it.
+
+**AND THE SAME SHAPE AGAIN, TWICE, IN THE SAME LEG.**
+- **The wait estimate is the replay's dwell — AND THAT WAS ALREADY KNOWN, WHICH IS THE POINT.**
+  `⏩ About 62 plant-minutes at 1×` on step 14 is `st.hold` divided by 60 — the time
+  `test/procedures_harness.js` sits on the step so the plant settles before the next command.
+  **The operator pass earlier the same day established exactly this** (`..._OPERATOR_TMI.md`
+  S-6) and fixed steps 12 and 13. It left step 14 alone because that reviewer wrote *"step 14's
+  62-minute estimate was the one that was right"* — and the verification pass re-measured the
+  steps the reviewer complained about, not the one it praised. **A finding's SIBLINGS are where
+  it hides; a reviewer's compliment is not a measurement.** Measured full-stack here on two
+  player routes (advance the instant each acceptance reads true; again holding step 10 to the
+  36 % steam-generator level the operator carried out of it): the cue is met in **3.1
+  plant-minutes, 641 → 993 psi, both times**, while this operator took **175**. Six steps in the
+  leg print the line (10, 11, 12, 14, 15, 16; 13 is suppressed) and **four of the six are out by
+  2× or more** against route A (10: 65 stated / 4.4 measured; 12: 30 / 12.9; 14: 62 / 3.1; 16:
+  7 / 0.2), with step 11 out 1.8× the other way (28 / 50.8). New `wait_est_s: false` drops the
+  span and keeps the speed rung — deliberately separate from `wait_hint: false`, which drops the
+  line the operator called the best thing on the page.
+- **The Reactor Trip tile was keyed on the retired engine.** `TRIP_CAUSE` in `ui/app.js` maps
+  `rps_state.last_trip_reason` to the tile's words and every key it shipped with is the retired
+  plant's `"<instrument> <direction>"` form. PWR2 produces none of them — `control_kernel` takes
+  the cause from `engine.getTripCause()`, which is `pr.trip_cause`, a `pwr2_protection` table ID.
+  **All twelve of this plant's causes fell through the title-case fallback**, and the board
+  printed **"Reactor Trip — Ot Delta T"** to a licensed operator, who filed it as a typo. #546
+  and #557's inherited-table trap, third instance. Gated by source scan in
+  `run_checklist_pwr2`, red on deleting one key.
+
+**WHAT DID NOT REPRODUCE, AND THE GATE THAT COULD NEVER HAVE SEEN IT.** The operator's step-16
+`Continue` chatter — eight consecutive samples at exactly `80 %` against a `> 80 %` acceptance,
+77 s of polling to catch it lit — did not reproduce: on both routes `pump_flow_pct` reads
+**89.7 %** at first-met and climbs monotonically to 99.2 with no boundary crossing. The point
+worth keeping is what the shipped gate does with that step: `run_checklist_pwr2` passes it at
+**99.76 %**, because the replay holds the full 400 s and stands nowhere near the edge. **A
+`hold`-driven replay cannot see a boundary defect on any step, by construction** — the same
+`hold` that mis-informs the player also guarantees the gate never stands where the player does.
+Threshold not moved: an unreproduced reading does not get to retune a `>`.
+
+**THE ONE FOR THE OWNER.** Step 2's `below 55 %` ticking at a displayed `56 %` reproduced
+exactly (tile 59 → 58 → 57 → **56**, acceptance flips at 56, T+00:00:32) and is neither a
+rounding bug nor a channel split — both sides read `sg_level`. It is #234's **indicator damping**:
+every dimensioned tile is drawn through a first-order filter (`sg_level` tau 1.5 s,
+`subcooling_margin` 3 s, `primary_pressure` 2.5 s) while the checklist grades the undamped
+transmitter, which is what Hard Rule 1 asks for. **It is the earlier operator pass's S-5 from
+the other side** — there the tile read exactly `50` with a `< 50` check still OPEN, a slow
+settle where rounding was the whole gap; here it reads `56` with a `< 55` check CLOSED, because
+on a fast fall the damping adds ~2 points on top of the rounding. At the measured ~1.5 %/s fall that is ~2 points of lag. **58
+acceptances across all seven walkthroughs grade on a damped channel**; only a fast transient
+shows it, which is why no heatup or cooldown step ever has. Both halves are deliberate and right
+in isolation and no threshold choice fixes it — the lag is rate×tau, so any limit crossed on a
+ramp is crossed with the tile behind. Left for the owner's ruling rather than patched.
+
+**Also measured and fixed.** The step-8 green outline really was on PRIMARY PRESSURE (the sole
+`.ckl-step-glow` element read "PRIMARY PRESSURE 1046 psi" with PRESSURIZER LEVEL at 100 %) — its
+`hl` said `'Plant Pressure'`, which `run_manual_controls` validates as resolving to *a* board
+item, never to *the* one the step names; the strip has six tiles and the map named four, so
+there was no label to reach for. `#warpInfo` really does stay stale after a rewind (`1×` lit,
+"WARP dropped to 60×" still shown 4 s later and indefinitely) — `warpNote` was cleared only by a
+speed button. The TRIP BLOCKS row really never lights: measured, the button goes
+`BLOCK → RELEASE?` with class `bd-willtrip`, red, while the label's colour does not move — and
+**"lit on the TRIP BLOCKS panel" is 7 live sites across 4 walkthroughs** for a state that has
+never existed; only the measured one was rewritten. The closing text's "the margin and the
+inventory recover with it" welded the pumps' 40 seconds to the plant's half hour: at check-off,
+subcooling **0.0 °F** and pressurizer **5.3 %**; ticked on, **+42 °F and 29.8 %** over ~29
+plant-minutes. And `-0 F` was one line — `comp_indicator_panel.js` used `cur.toFixed(0)`, which
+prints `"-0"` for −0.18, while the board's own `fmtNum` four files away has used
+`String(Math.round(v))` since it was written **with a comment naming this exact trap**. Nothing
+compared the two.
+
+**BOTH WARP FINDINGS ARE SUPERSEDED, AND THE FIXES STAY** *(OWNER RULING, 2026-09-09: "Warp
+line as you recommend." — on the recommendation of option 3 in #675 §F)*: the speed bar's status
+line is to be REPLACED, not removed and not re-worded, with plant time to completion plus a
+recommended warp speed and nothing else. That is owner-ordered work under **#675** and is
+deliberately NOT built here — "plant time to completion" on a step graded by a plant state rather
+than a clock needs its own design pass, and burying a directive inside a bug-fix commit is how a
+ruling stops being findable. The two fixes below stand because a correct string is a better
+starting point for a rewrite than a wrong one. **One observation offered to #675 §E** (warp
+reportedly unusable after 4+ hours, unmeasured, not chased): nothing here shows the REFUSAL
+latching with session length — it is recomputed per evaluation from |dP/dt| over one step, and
+the new-alarm branch is gated on a QUIET board — but the DISPLAY does latch, measured: the drop
+line survived a rewind indefinitely with 1× lit above it. A stale drop line is indistinguishable
+from warp being unavailable. Candidate, not diagnosis; it does not explain a refusal that
+survives pressing the buttons.
+
+**REFUTED.** The WARP refusal's `psi/s` is not a warped-frame figure. `spanS` is `sinceEval`,
+whose own comment says it is "the SIM time this evaluation covers" — the property that makes the
+protection hold identical at 1× and 3600×. It is plant seconds. What makes it unreadable is the
+WINDOW: on WARP one physics step is one evaluation, so the rate is over **0.5 s**, against
+`RAPID_P_MPA_PER_S`, **40.6 psi/s (0.28 MPa/s)** — which is why every refusal in the report reads
+just above 41. Honest number, damped trend gauge, unstated window; fixed in words.
+
+**Filed, not fixed:** the SCANNER giving a valve's NORMAL rather than CURRENT position (the
+inspect entry is five static strings with no state hook — a contract change), the ECCS card's
+`FLOW 48 GPM / DISCG 0 psi` pairing (unmeasured), the six remaining "lit" sites, and the damped-
+tile-versus-transmitter ruling above.
+
+---
+
 ## Session log — 2026-09-09-develop-c (#670 Phase 3, the OPERATOR playthrough of the TMI-2 walkthrough — verified, and two of the layman wave's own numbers were the replay's route)
 
 ### #670 Phase 3 (operator pass) — the same leg, a licensed-operator persona: 6 confirmed, 2 narrowed, 0 refuted — and TWO of the layman wave's own fixes were measuring the wrong route

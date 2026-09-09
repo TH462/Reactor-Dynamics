@@ -2728,7 +2728,31 @@
     'sg_level low':            'Lo SG Level',
     'sg_level high':           'Hi SG Level (P-14)',
     'rcs_flow low':            'Lo RCS Flow',
-    'manual scram':            'Manual Trip'
+    'manual scram':            'Manual Trip',
+    /* THE SHIPPED PLANT'S OWN CAUSES (#670 operator pass 2, S-11). Every key above is the
+     * RETIRED engine's "<instrument> <direction>" form, and PWR2 does not produce one of them:
+     * `control_kernel` takes the cause from `engine.getTripCause()`, which on this plant is
+     * `pr.trip_cause` — the protection table's ID (pwr2_protection.js). So all twelve of this
+     * plant's causes fell through to the title-case fallback and the board printed
+     * "Reactor Trip — Ot Delta T", which is what an operator saw and read as a typo. The same
+     * inherited-table trap as #546/#557: the map was correct for the engine it was written
+     * against and was never re-measured against the one that ships.
+     *
+     * The words are the engine's own `name` fields, put in the board's register (Title Case,
+     * the abbreviation spelled out on the tile because the tile is all the operator gets).
+     * `run_checklist_pwr2` asserts every id in pwr2_protection's table has a key here. */
+    'ot_delta_t':              'Overtemperature Delta-T (OTΔT)',
+    'op_delta_t':              'Overpower Delta-T (OPΔT)',
+    'hi_pzr_press':            'Hi Pressurizer Pressure',
+    'lo_pzr_press':            'Lo Pressurizer Pressure',
+    'ir_high_flux':            'Intermediate Range Hi Flux',
+    'hi_flux_lo':              'Power-Range Hi Flux (Low Setting)',
+    'hi_flux_hi':              'Power-Range Hi Flux (High Setting)',
+    'lo_flow':                 'Lo Reactor Coolant Loop Flow',
+    'hi_pzr_level':            'Hi Pressurizer Level',
+    'sg_lolo_level':           'Lo-Lo Steam Generator Level',
+    'turbine_trip':            'Turbine Trip (P-9)',
+    'manual':                  'Manual Trip'
   };
   function tripCauseLabel(reason) {
     if (!reason) return null;
@@ -3655,16 +3679,30 @@
   };
   var MODE_NAMES = { 1: 'Mode 1, At Power', 2: 'Mode 2, Startup', 3: 'Mode 3, Hot Standby',
                      4: 'Mode 4, Hot Shutdown', 5: 'Mode 5, Cold Shutdown' };
-  // A predicate's VALUE in the player's units: US-first with SI in parentheses for the
-  // dimensioned families; plain number + unit otherwise.
+  /* A predicate's VALUE in the player's units — ONE FORM, the display units, never a pair.
+   *
+   * OWNER RULING (2026-09-06): "DO not include SI. There will be an option to switch between
+   * imperial and SI but i dont think thats been implemented yet." The board prints only °F,
+   * psi, %, gpm, MWe and cps, so a "(15.41 MPa)" tail on a done-when line is the only metric
+   * text a player ever meets, in the narrowest column on the page.
+   *
+   * IT WAS GATED AND IT STILL SHIPPED (#670 operator pass 2, S-10). `run_style`'s
+   * `checklist_no_si` walks the AUTHORED strings of RD.MANUAL_PROCEDURES.pwr2 — text, note,
+   * why, target, wait_hint, story, accs[].label, precond text — and every one of them is
+   * clean. The SI was never authored: it was COMPOSED HERE, from a numeric `v` and the unit
+   * table below, for any predicate with a `dim` and no `label` to render instead. Measured on
+   * the built pool: 18 sites across four walkthroughs (heatup 5, startup 3, cooldown 7,
+   * TMI-2 3), six of them precondition-banner lines. A source scan of the pool could not see
+   * one of them, which is the whole trap — the gate read the author, and the author was not
+   * the source.
+   *
+   * The `Manuals/` set is NOT affected and keeps US-first-with-SI: all five callers of this
+   * formatter are inside the live checklist panel. */
   function fmtPredValue(pd, v) {
     if (v == null || isNaN(+v)) return String(v);
     if (pd && pd.dim) {
       var us = conv(+v, pd.dim), sfx = pd.suffix || '';
-      var siU = { pressure: 'MPa', temp: '°C', tempdiff: '°C', vacuum: 'kPa' }[pd.dim] || '';
-      var usTxt = (Math.abs(us) >= 100 ? Math.round(us) : Math.round(us * 10) / 10) + ' ' + unit(pd.dim) + sfx;
-      if (ui.units === 'SI') return usTxt;                        // already SI — one form
-      return usTxt + ' (' + (Math.abs(+v) >= 100 ? Math.round(+v) : Math.round(+v * 100) / 100) + ' ' + siU + sfx + ')';
+      return (Math.abs(us) >= 100 ? Math.round(us) : Math.round(us * 10) / 10) + ' ' + unit(pd.dim) + sfx;
     }
     /* A DISPLAY SCALE, for the params published in the #408 currency (#624 item 25). The CVCS
      * flows are gpm/450,000 on the wire, so a raw render prints "0" for every flow a plant ever
@@ -3946,7 +3984,21 @@
          * at 60x the reactor went 0 -> 12 % between two glances. A step may author the hint away. */
         if (holdS >= 180 && st.wait_hint !== false) {
           var mins = holdS / 60;
-          var span = mins < 90 ? Math.round(mins) + ' plant-minutes'
+          /* `hold` IS THE REPLAY'S DWELL, NOT A MEASUREMENT OF THE PLAYER'S STEP (#670 operator
+           * pass 2, S-1). It is how long `procedures_harness` sits on the step so the plant has
+           * settled before the next command, and it has been printed to the player as "About N
+           * plant-minutes" since #628. On the TMI-2 leg, measured full-stack on two routes
+           * (advance the instant each acceptance is met, and again holding step 10 to the
+           * steam-generator level the reviewer carried), step 14's cue is met in 3.1 plant-minutes
+           * against a printed 62 — while an operator playing it live took 175. The number is not
+           * an estimate of anything; it is a gate fixture wearing a prediction's clothes.
+           *
+           * `wait_est_s: false` DROPS THE SPAN AND KEEPS THE RUNG, for a step whose duration is
+           * genuinely route-dependent. It is deliberately separate from `wait_hint: false` (which
+           * drops the whole line, #653 S9): the speed advice is the half the operator pass called
+           * the best thing on the page, and it is right even when no honest number exists. */
+          var span = st.wait_est_s === false ? null
+                   : mins < 90 ? Math.round(mins) + ' plant-minutes'
                    : (mins / 60).toFixed(mins / 60 < 10 ? 1 : 0) + ' plant-hours';
           /* AND WHICH RUNG TO REACH FOR *(OWNER, 2026-09-04, #628: "Add a suggested time warp
            * value for the long term waiting steps.")*. "Use time acceleration" left the player
@@ -3955,7 +4007,7 @@
            * RD.CklSpeedHint picks it off the ladder itself, so this can never name a button that
            * is not there. */
           var rung = RD.CklSpeedHint(holdS);
-          h += '<div class="ckl-sub ckl-wait">⏩ About ' + span + ' at 1× — set the speed control to <b>' +
+          h += '<div class="ckl-sub ckl-wait">⏩ ' + (span ? 'About ' + span + ' at 1× — s' : 'A wait whose length depends on the plant — s') + 'et the speed control to <b>' +
             rung.speed + '×</b>' + (rung.warp ? ' (WARP; the plant must be quiet to take it. The line under the speed bar says why it was refused or dropped — a new alarm clears with Ack All, but pressure or power moving is a rate and only settles with time, so use 60×)' : '') + '.' +
             (typeof st.wait_hint === 'string' ? ' ' + mesc(st.wait_hint) : '') + '</div>';
           waitLineShown = true;
@@ -7509,7 +7561,14 @@
        * plant. The chart's rewind is disabled while a walkthrough runs. */
       var rw = e.target.closest('[data-wt-rewind]');
       if (rw) {
-        if (!rw.disabled) { TEL.walkthroughRewind(); cmd({ action: 'rewind', steps: 2, scope: 'full', exact: true }); }
+        /* A REWIND CLEARS THE DROP LINE (#670 operator pass 2, S-7). `warpNote` is latched until
+         * the player next presses a speed button, which was right when the only way out of a drop
+         * was to press one. Rewind also puts the speed back to 1x and takes the plant back past
+         * the transient that caused the drop — so the line under the bar went on reading "WARP
+         * dropped to 60x — pressure moving 41 psi/s" with 1x lit above it, indefinitely.
+         * Measured: 1x lit, that text still shown 4 s later and until a speed button was touched.
+         * The rewind IS the player acting on the drop, so the note is spent. */
+        if (!rw.disabled) { warpNote = null; TEL.walkthroughRewind(); cmd({ action: 'rewind', steps: 2, scope: 'full', exact: true }); }
         return;
       }
       var wa = e.target.closest('[data-ckl-why-all]');

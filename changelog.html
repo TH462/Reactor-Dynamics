@@ -167,7 +167,7 @@
   <details class="log-entry" open>
     <summary class="log-head">
       <h2>Checklists rewritten to the board's own words, nuclear instrumentation card closed up, and a startup checklist that could not be finished</h2>
-      <span class="log-ver mono">Alpha 1.7.4-rc7</span>
+      <span class="log-ver mono">Alpha 1.7.4-rc8</span>
       <time class="log-date mono" datetime="2026-09-09">9 September 2026</time>
     </summary>
     <ul>
@@ -190,6 +190,12 @@
       <li><span class="log-tag fixed">Fixed</span><strong>The "Not applicable in Mode N" banner's detail line reads in plain units.</strong> It printed internal names and Celsius-only values; it now reads like the step criteria, US-first.</li>
       <li><span class="log-tag fixed">Fixed</span><strong>The trip-block panel could swallow a click meant for the board.</strong> When a blocked trip&rsquo;s setpoint is crossed its row prints a long warning, and the panel grew 125&nbsp;px wider onto the diagram &mdash; far enough to cover the relief line&rsquo;s block valve, with the RELEASE button landing on top of it. The panel no longer grows past its own corner of the board.</li>
       <li><span class="log-tag fixed">Fixed</span><strong>Walkthrough &ldquo;done when&rdquo; lines and speed hints say what the plant does.</strong> A criterion that means <em>below</em> printed &ldquo;&le;&rdquo;, so a tile reading exactly the limit looked satisfied while the check correctly held. The TMI-2 walkthrough&rsquo;s speed advice was written from the replay&rsquo;s pace and had the two long steps the wrong way round; its step&nbsp;5 note now describes which way the pressurizer is moving rather than a number that is true for one instant. Steps name the TRIP button and the reactor coolant pumps&rsquo; ON/OFF as the board engraves them.</li>
+      <li><span class="log-tag fixed">Fixed</span><strong>The walkthroughs printed metric units.</strong> A &ldquo;done when&rdquo; line reading <em>&gt; 240&nbsp;&deg;F (116&nbsp;&deg;C)</em> was the only metric text in the sim; the board is US customary throughout. Eighteen places across four walkthroughs, including the &ldquo;not applicable in this mode&rdquo; notice.</li>
+      <li><span class="log-tag fixed">Fixed</span><strong>A waiting step&rsquo;s time estimate was not an estimate.</strong> The &ldquo;About 62 plant-minutes&rdquo; on the TMI-2 relief-line step came from the test harness&rsquo;s own dwell, not from the plant: the step can finish in three plant-minutes or take hours depending on how much water is left. It now gives the cues to watch and the shape of the wait, and keeps the speed advice.</li>
+      <li><span class="log-tag fixed">Fixed</span><strong>The Reactor Trip alarm named its cause as &ldquo;Ot Delta T&rdquo;.</strong> The tile was translating the previous engine&rsquo;s trip names, so none of this plant&rsquo;s twelve causes had one. They now read as the plant&rsquo;s own &mdash; Overtemperature Delta-T (OT&Delta;T), Lo-Lo Steam Generator Level, Turbine Trip (P-9).</li>
+      <li><span class="log-tag fixed">Fixed</span><strong>A vital gauge could read &ldquo;-0&rdquo;.</strong> SUBCOOLING MARGIN sits just under zero for minutes as the plant reaches saturation, and the tile printed a negative zero there.</li>
+      <li><span class="log-tag fixed">Fixed</span><strong>The TMI-2 walkthrough pointed at the wrong gauge, on the step about which gauge is lying.</strong> Step&nbsp;8 says to check PRESSURIZER LEVEL and the green outline was drawn on PRIMARY PRESSURE. Step&nbsp;6 said a trip-block row would be &ldquo;lit&rdquo;; its button actually changes to RELEASE?. And the closing text promised a recovery that takes about half an hour of plant time after the step checks off &mdash; it now says so.</li>
+      <li><span class="log-tag fixed">Fixed</span><strong>The speed bar&rsquo;s status line went stale after a Rewind</strong> &mdash; it kept reading &ldquo;WARP dropped to 60&times;&rdquo; with 1&times; lit above it. A WARP refusal also says now that its psi/s figure is a rate measured over half a second, not what the damped gauge is showing.</li>
     </ul>
   </details>
 

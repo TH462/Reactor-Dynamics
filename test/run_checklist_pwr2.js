@@ -270,6 +270,36 @@ if (!only) {
        missing.length ? 'MISSING: ' + missing.join(', ') : Object.keys(used).length + ' params covered');
   })();
 
+  /* 2d-bis. THE REACTOR TRIP TILE NAMES THIS PLANT'S CAUSE (#670 operator pass 2, S-11).
+   *
+   * Same seam, one alarm over. `ui/app.js`'s TRIP_CAUSE turns `rps_state.last_trip_reason` into
+   * the words on the Reactor Trip tile, and every key it shipped with was the RETIRED engine's
+   * "<instrument> <direction>" form. PWR2 does not produce one of those: control_kernel takes the
+   * cause from `engine.getTripCause()`, which is `pr.trip_cause` — a protection-table ID. So all
+   * twelve of this plant's causes fell through the title-case fallback, and an operator running
+   * the TMI-2 leg read "Reactor Trip — Ot Delta T" off the board and reported it as a typo.
+   *
+   * A SOURCE SCAN IS THE RIGHT INSTRUMENT HERE and a replay is not: producing all twelve trips
+   * would take twelve casualties, while the defect is a MAP with a hole in it — exactly the shape
+   * the PRED_DISPLAY check above exists for. PROVEN RED BY INJECTION: deleting the 'ot_delta_t'
+   * key reports `MISSING: ot_delta_t`. */
+  (function () {
+    var appSrc = fs.readFileSync(path.join(ROOT, 'ui', 'app.js'), 'utf8');
+    var m = /var TRIP_CAUSE = \{([\s\S]*?)\n  \};/.exec(appSrc);
+    var keys = {};
+    (m ? m[1] : '').replace(/^\s*'([a-z_0-9 ]+)':/gm, function (_, k) { keys[k] = 1; return ''; });
+    var protSrc = fs.readFileSync(path.join(ROOT, 'engines', 'pwr2', 'pwr2_protection.js'), 'utf8');
+    var ids = [], re = /\{ id: '([a-z_0-9]+)', name: '[^']+', kind: 'rps'/g, mm;
+    while ((mm = re.exec(protSrc))) ids.push(mm[1]);
+    /* the two causes the table does not carry: the pushbutton and the anticipatory trip, both
+     * assigned literally in pwr2_protection (`trip_cause = 'manual'` / `'turbine_trip'`). */
+    ids.push('manual', 'turbine_trip');
+    var gaps = ids.filter(function (i) { return !keys[i]; });
+    ck('every pwr2 reactor-trip cause has a TRIP_CAUSE entry - the tile names it, not a title-cased id (#670 S-11)',
+       ids.length >= 10 && gaps.length === 0,
+       gaps.length ? 'MISSING: ' + gaps.join(', ') : ids.length + ' causes covered');
+  })();
+
   /* 2e. A STEP'S TICK IS PERMISSION FOR THE NEXT STEP (#608 item 4, 2026-09-02).
    *
    * Not reported by the owner — found while measuring item 3. The heatup's Pressure SP step

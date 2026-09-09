@@ -616,7 +616,61 @@ stays steady (power within 5 points of rated, pressure drift under 0.2 MPa / 29 
 meet within one broadcast of the window end, and a planted 1e-6 difference is seen by `compare()`.
 Four injections, one per conjunct, each proven to redden SI-0 alone. No baseline moves (8 checks).
 
-## [Alpha 1.7.4-rc7] — 2026-09-09
+## [Alpha 1.7.4-rc8] — 2026-09-09
+
+### Fixed (#670 Phase 3 — operator pass 2, the confirming playthrough)
+
+The second operator pass over `pwr_tmi2_incident`, run against `f1063d8a`. **16 of 16 steps, 11
+stuck points, every one re-measured before anything was touched: seven confirmed, three
+narrowed (one of those with its diagnosis refuted outright), one mixed.** Report with the per-finding `Measured:` / `Verdict:` pairs:
+`Diagnostic/CHECKLIST_PLAYTEST_2026-09-09_OPERATOR_TMI_PASS2.md`. The overlay fix from
+`f1063d8a` held — every diagram-symbol click landed on target and nothing in the leg was
+unfindable.
+
+- **The live checklists were printing SI, and the gate written for that ruling could not see
+  it.** *(OWNER RULING, 2026-09-06: "DO not include SI.")* `run_style`'s `checklist_no_si` walks
+  the pool's **authored** strings and they are all clean — a scan of every string in the built
+  `RD.MANUAL_PROCEDURES.pwr2` for `MPa|kPa|°C` returns **0 hits**. The SI was **composed at
+  render time** by `fmtPredValue` in `ui/app.js`, from a numeric `v` and a unit table, for any
+  predicate carrying a `dim` and no `label` to render instead: **18 sites across four
+  walkthroughs** (heatup 5, startup 3, cooldown 7, TMI-2 3), six of them precondition-banner
+  lines. It would also have PASSED the string with sight of it — `240 °F (116 °C)` converts
+  correctly, and both SI gates check that a pair converts, not that it is absent. `fmtPredValue`
+  now returns one form. Gated where the string exists: `verify_ckl_relevance` starts the heatup
+  at full power and asserts `#cklRun` carries no SI, proven red by injection.
+- **Step 14's "About 62 plant-minutes" — the sibling the FIRST operator pass left behind.** That
+  pass had already established that the ⏩ figure is `st.hold / 60`, the replay harness's dwell
+  rather than a time to the criterion, and fixed steps 12 and 13; it left step 14 because the
+  reviewer had called that estimate *"the one that was right"*, and a compliment does not get
+  re-measured. Measured full-stack on two player routes, step 14's cue is met in **3.1
+  plant-minutes** (641 → 993 psi) both times, while this operator took 175 — wrong in both
+  directions. Four of the six steps in the leg that print the line are out by 2× or more. New
+  `wait_est_s: false` drops the number and keeps the speed advice; step 14 now gives the cue and
+  the shape instead.
+- **The Reactor Trip tile printed "Ot Delta T".** `TRIP_CAUSE` in `ui/app.js` was keyed entirely
+  on the RETIRED engine's `"<instrument> <direction>"` causes; PWR2 reports a protection-table
+  ID, so **all twelve of this plant's trip causes** fell through a title-case fallback. Twelve
+  entries added in the engine's own words (Overtemperature Delta-T (OTΔT), Lo-Lo Steam Generator
+  Level, Turbine Trip (P-9), …), gated by source scan in `run_checklist_pwr2`.
+- **A tile could print `-0`.** `comp_indicator_panel.js` rendered `value.toFixed(0)`, and
+  `(-0.18).toFixed(0)` is the string `"-0"` — SUBCOOLING MARGIN sits there for minutes as the
+  plant reaches saturation. The board's own `fmtNum` has rounded correctly since it was written,
+  with a comment naming this exact trap. Pinned in `board_check.html`.
+- **The walkthrough outlined the wrong tile on the one step about which gauge is lying.** Step 8
+  says "Verify PRESSURIZER LEVEL" and the green outline was drawn on **PRIMARY PRESSURE**: its
+  highlight label was `'Plant Pressure'`, which resolves cleanly to the tile one place left.
+  `PRESSURIZER LEVEL` and `SUBCOOLING MARGIN` had no highlight label at all and now do.
+- **Step 6 told you to look for a row that would be "lit"; nothing lights.** The TRIP BLOCKS
+  row's button goes `BLOCK` → `RELEASE?` in red, with a caption warning that releasing trips the
+  reactor. The step now says what the button reads.
+- **The last thing the walkthrough said was contradicted by the board it handed back.** "Forced
+  flow returns within 40 seconds and the margin and the inventory recover with it" welded the
+  pumps' 40 seconds to the plant's half hour: measured, at check-off subcooling is **0.0 °F** and
+  the pressurizer **5 %**, reaching **+42 °F and 30 %** over about **29 plant-minutes**.
+- **The speed bar's status line went stale after a rewind** — `1×` lit above "WARP dropped to
+  60×", indefinitely, because the line was only cleared by a speed button. Rewind clears it too.
+  And a WARP refusal now names its window: the rate is a true plant rate measured over half a
+  second, against a damped gauge the player reads over minutes.
 
 ### Fixed (#670 Phase 3 — the OPERATOR playthrough of the TMI-2 walkthrough, verified)
 

@@ -704,9 +704,17 @@
     // decay-heat hour on WARP for exactly that reason (WT-1b).
     var na = this._boardQuiet(prev.alarms) ? this._newAlarmOfPriority(alarms, prev.alarms) : null;
     if (na) return 'new alarm: ' + (na.label || na.id);
+    /* SAY WHICH WINDOW THE RATE IS OVER (#670 operator pass 2, S-6). `spanS` is PLANT seconds,
+     * not warped ones — but on WARP one evaluation is one WARP_DT step, so this is an
+     * instantaneous half-second rate, and the threshold is 0.28 MPa/s, which is why every
+     * refusal reads just above 41 psi/s. The board's pressure tile is damped at tau 2.5 s and
+     * the player reads it over minutes: an operator told "pressure moving 81 psi/s" while
+     * watching the gauge crawl 0.13 psi/s over two and a half plant-minutes read the line as an
+     * instrument fault rather than an explanation. The figure is honest; the window was not
+     * stated. Naming it costs four words and is the difference between a reason and a riddle. */
     if (spanS > 0) {
-      if (Math.abs(power - prev.power) / spanS > RAPID_POWER_PCT_PER_S) return 'power moving ' + (Math.abs(power - prev.power) / spanS).toFixed(1) + ' %/s';
-      if (Math.abs(P - prev.P) / spanS > RAPID_P_MPA_PER_S) return 'pressure moving ' + (Math.abs(P - prev.P) / spanS * 145.038).toFixed(0) + ' psi/s';
+      if (Math.abs(power - prev.power) / spanS > RAPID_POWER_PCT_PER_S) return 'power moving ' + (Math.abs(power - prev.power) / spanS).toFixed(1) + ' %/s right now';
+      if (Math.abs(P - prev.P) / spanS > RAPID_P_MPA_PER_S) return 'pressure moving ' + (Math.abs(P - prev.P) / spanS * 145.038).toFixed(0) + ' psi/s right now (the gauge is damped and shows the trend)';
     }
     return null;
   };

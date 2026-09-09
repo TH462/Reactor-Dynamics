@@ -2371,7 +2371,20 @@
          * itself, which is the #641 shape for a cmd-kind acceptance. Manuals/08 §3. */
         { text: 'Press TRIP BLOCKS on the ROD CONTROL card, then BLOCK on the SI REACTOR TRIP row.',
           crew: true,
-          control: 'Trip Blocks', target: 'SI REACTOR TRIP lit on the TRIP BLOCKS panel',
+          /* NOTHING ON THIS PANEL IS "LIT" (#670 operator pass 2, S-8). The row's LABEL never
+           * changes; the ROW'S BUTTON does, and at THIS step it goes RED, not amber. Measured
+           * on the live board after the press: the button text goes BLOCK -> `RELEASE?`, its
+           * class goes `bd-blocked bd-willtrip` (#ff6a4d on #3a1010, the warning pair — not
+           * the amber #ffd166 a plain block gets), and a caption appears reading "RELEASING
+           * THIS WILL TRIP THE REACTOR NOW". The pressure permissive is already crossed here,
+           * so this row can only ever be in the red branch. An operator told to look for
+           * something "lit" and shown a red warning reads it as a failed press.
+           *
+           * SIX SIBLING SITES STILL SAY "lit" — pwr_startup 16/17/18, pwr_raise_power step 1
+           * and its prereq, pwr_cooldown step 3. Those rows are NOT measured and by derivation
+           * sit in the amber `bd-blocked`/`BLOCKED` branch, where "lit" is loose rather than
+           * false. They are named in #670 rather than rewritten from a reading taken here. */
+          control: 'Trip Blocks', target: 'SI REACTOR TRIP blocked — its button now reads RELEASE?',
           why: 'SI is safety injection, and the block is a permissive: the plant allows it only below 1972 psi — the pressure permissive the row calls P-11 — and takes it straight back if pressure returns above that. The row itself prints 1715 psi, which is a different number and not a mistake: that is where the safety-injection reactor trip fires, while 1972 psi is where the plant will let you block it. Blocking it stops the plant restarting injection by itself, which is the point of the press and the reason the next step works at all. Nothing on the board says the core has just been put on the operator alone.',
           note: 'The block is a request, not a switch. If pressure climbs back above 1972 psi the plant takes it away again. The TRIP BLOCKS panel stays open over the board until you press TRIP BLOCKS again.',
           story: { clock: '04:03:50',
@@ -2420,7 +2433,14 @@
             did: 'They kept letdown wide open and injection off, working to bring the level back down.' },
           hold: 62,
           acc: { p: 'pzr_level_pct', op: '>=', v: 99 },
-          hl: ['Plant Pressure'] },
+          /* GLOW THE TILE THE STEP NAMES (#670 operator pass 2, S-3). This read
+           * `hl: ['Plant Pressure']` — the PRIMARY PRESSURE tile, one place left of the one
+           * the instruction names — on the single step whose whole teaching point is WHICH
+           * GAUGE IS LYING. Measured in the live board: the sole `.ckl-step-glow` element at
+           * this step was "PRIMARY PRESSURE 1046 psi" while PRESSURIZER LEVEL read 100 %.
+           * `run_manual_controls` could not catch it: it checks that an `hl` label RESOLVES to
+           * a board item, and 'Plant Pressure' resolves perfectly — to the wrong tile. */
+          hl: ['Pressurizer Level'] },
         /* 9 — 04:06:27 (E42, saturation) and 04:10:37 (E56, first RCP high-vibration alarm,
          * "Indication of voids in system. Apparently not recognized."). MEASURED: the board
          * margin reaches 0 at t+165 s and `rcp_cavitating` latches at t+155 s — so BOTH CUES
@@ -2561,7 +2581,18 @@
            * shut 06:18, reopened 07:12, shut near 07:27-07:30, reopened 07:41 — and 07:56 is a
            * SAFETY INJECTION ACTUATION, not a closure. */
           note: 'One click shuts this valve and a second click opens it again, so click once. The crew reopened it at 3 hours 12 minutes, shut it again near 3 hours 27 minutes and reopened it at 3 hours 41 minutes; the 07:56 event was a safety injection actuation, not another closure. This walkthrough closes it once and tells the rest.',
-          wait_hint: 'Watch the tailpipe temperature come down. Shutting this valve is what turns pressure round, so this is the fastest pressure moves all run and WARP will refuse it or drop out of it — the line under the speed bar names the rate. Use 60×.',
+          /* NO POINT ESTIMATE ON THIS STEP (#670 operator pass 2, S-1). The generated line read
+           * "About 62 plant-minutes at 1x", which is this step's `hold` — the replay harness's
+           * dwell. Measured full-stack on two routes (advance the instant each acceptance is met,
+           * and again holding step 10 to the 36 % steam-generator level the operator carried),
+           * the pressure cue is met in 3.1 plant-minutes, 641 -> 993 psi. An operator playing it
+           * live took 175, about 90 of them between 734 and 744 psi. Both are the plant; what
+           * separates them is how much inventory and decay heat the route carried in. A single
+           * number is wrong in both directions here, so the step gives the CUE and the shape
+           * instead — which is what step 15's authored range does, and what the operator pass
+           * singled out as the model the others should follow. */
+          wait_est_s: false,
+          wait_hint: 'Pressure turns upward within about two plant-minutes and the discharge pipe starts cooling — those are the cues, not the clock. How long the pressure cue then takes depends entirely on how much water is left: measured at three plant-minutes on a run that wasted none, and it can take hours on one that did. It creeps for a long while and then arrives quickly, so a flat gauge is not a stuck step. This is also the fastest pressure moves all run, so WARP will refuse it or drop out of it — the line under the speed bar names the rate. Use 60×.',
           story: { clock: '06:18:37',
             saw: 'The relief line discharge running about 30 degrees hotter than the safety valve discharge lines.',
             knew: 'A relieving shift supervisor set the pressurizer level aside and read the temperatures instead. His conclusion was that the relief valve was leaking.',
@@ -2594,7 +2625,17 @@
          * 94 % uncovered without the cladding heating as a real one did. Manuals/08 §6. */
         { text: 'Press ON for the reactor coolant pumps to restore forced circulation.',
           control: 'RCP ON/OFF', target: 'RCP FLOW back above 80 %',
-          why: 'Forced flow returns within 40 seconds and the margin and the inventory recover with it, which is where this plant ends the story. What it cannot show is the rest: fuel damage, the radiation alarms at 2 hours 45 minutes and the hydrogen burn at 9 hours 50 minutes are outside this model and are told here rather than run. The size of that gap is on the fuel temperature: uncovering 94 % of this core never gets the fuel hotter than it runs at full power — 1130 °F at its worst, against 1298 °F before the trip — where the real one went far past 2500 °F.',
+          /* THE RECOVERY IS REAL AND IT IS NOT IN 40 SECONDS (#670 operator pass 2, S-5). This
+           * read "flow returns within 40 seconds and the margin and the inventory recover with
+           * it", and an operator measured the opposite across the restart — subcooling +16 to
+           * −8 °F, pressurizer level to 0 %, eight alarms standing at the completion card, the
+           * step checking off with the margin negative. Both are right. Measured full-stack on
+           * two routes: at the instant the step accepts, subcooling is 0.0 °F and the pressurizer
+           * is at 5 %; ticked on from there it reaches +42 °F and 30 % over about 29 plant-
+           * minutes. The recovery is the plant's, the 40 seconds is the pumps', and the sentence
+           * had welded them together — so the last thing the walkthrough said was contradicted by
+           * the board it handed back. */
+          why: 'Forced flow returns within 40 seconds. The margin and the inventory follow, but not with it and not at once: at the moment this step checks off the margin is still on zero and the pressurizer is near empty, and it takes about half an hour of plant time from there to get back to a healthy 40 °F of subcooling, so expect to hand the plant back with alarms still standing. What it cannot show is the rest: fuel damage, the radiation alarms at 2 hours 45 minutes and the hydrogen burn at 9 hours 50 minutes are outside this model and are told here rather than run. The size of that gap is on the fuel temperature: uncovering 94 % of this core never gets the fuel hotter than it runs at full power — 1130 °F at its worst, against 1298 °F before the trip — where the real one went far past 2500 °F.',
           note: 'Core damage, containment radiation and the hydrogen burn are not modelled on this plant. Everything up to this step was.',
           story: { clock: '19:50:37',
             saw: 'Nearly sixteen hours in, a pump started and ran satisfactorily. Core cooling was established.',

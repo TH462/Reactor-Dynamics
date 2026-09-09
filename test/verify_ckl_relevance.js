@@ -229,10 +229,19 @@ function sig(rows) {
      * cooldown's entry row is Tavg near 547 °F on a 122 °F plant, so the line must read US-first,
      * name no internal, and put the band at 14 °F. */
     var detail = banner.text ? banner.text.replace(/\s+/g, ' ') : '';
-    ck('...and the detail line is player-facing: US-first, no raw param, a 14 °F band on the 8 °C tolerance',
+    /* THE SI PAIRS CAME OUT OF THIS ASSERTION (#670 operator pass 2, S-10), and nothing else did.
+     * It used to require "within 14 °F (8 °C) of 547 °F (286 °C)". The owner's 2026-09-06 ruling
+     * retired the pair from live checklists, so the parenthesised halves are gone from the
+     * render — but every claim this check was WRITTEN for survives verbatim and is now pinned
+     * more tightly, because the band and the anchor sit adjacent with nothing between them:
+     * the label is the tile's word and not `tavg_c`, the ANCHOR converts absolutely (547 °F),
+     * and the BAND converts as a DIFFERENCE (14.4 °F — the +32 trap would print 46 °F here).
+     * This form does NOT pass on the pre-ruling build: the old string carries "(8 °C)" between
+     * the band and "of", so it is a stricter statement of the same claim, not a refit. */
+    ck('...and the detail line is player-facing: US-only, no raw param, a 14 °F band on the 8 °C tolerance',
        /* the label is the TILE's word since #653 pass 3 (PRED_DISPLAY: AVG COOLANT TEMPERATURE, not Tavg) */
-       /wants AVG COOLANT TEMPERATURE within 14(\.\d)? °F \(8 °C\) of 547(\.\d)? °F \(286 °C\), reads 12\d(\.\d)? °F/.test(detail) &&
-       !/tavg_c/.test(detail),
+       /wants AVG COOLANT TEMPERATURE within 14(\.\d)? °F of 547(\.\d)? °F, reads 12\d(\.\d)? °F/.test(detail) &&
+       !/tavg_c/.test(detail) && !/°C|MPa/.test(detail),
        detail ? detail.replace(/^.*?—/, '').slice(0, 120) : 'no banner text');
     /* ---- 3b. THE ENTRY BANNER NEVER RETURNS MID-CHECKLIST (#614) ----------------------- */
     /* Owner playtest 2026-09-03: "the not applicable to this mode warning… erroneously appears
@@ -370,6 +379,52 @@ function sig(rows) {
        rw2.idx === 1 && rw2.ring === 0 && rw2.ready === false && rw2.disabled === true,
        'step ' + rw2.idx + ', ring ' + rw2.ring + ', ready ' + rw2.ready + ', button ' +
        (rw2.disabled ? 'dark' : 'STILL LIT — the render key does not carry rewind_ready'));
+
+    /* ---- 7. NO SI IN THE LIVE CHECKLIST PANEL, AS RENDERED (#670 operator pass 2, S-10) --
+     *
+     * OWNER RULING (2026-09-06): "DO not include SI. There will be an option to switch between
+     * imperial and SI but i dont think thats been implemented yet."
+     *
+     * `run_style`'s `checklist_no_si` already walks every AUTHORED string of the pool and it was
+     * green while the panel printed "> 240 degF (116 degC)" on the TMI-2 leg's step 4. The SI was
+     * never authored: `fmtPredValue` in ui/app.js COMPOSED it, from a numeric `v` and a unit
+     * table, for any predicate carrying a `dim` and no `label` to render instead. 18 sites across
+     * four walkthroughs, six of them precondition-banner lines. A source scan of the pool cannot
+     * see a string that is concatenated in another file at render time, which is why this check
+     * is HERE, in the browser, reading the panel the player reads.
+     *
+     * THE FIXTURE IS THE HEATUP STARTED AT FULL POWER, deliberately: both of its preconditions
+     * fail (tavg_c < 95, pressure_mpa < 5), so ONE render exercises both SI paths at once — the
+     * precondition banner's "wants ... , reads ..." line and the active step's own criteria line.
+     * The list warns rather than blocks, so the click is a real player gesture.
+     *
+     * PROVEN RED BY INJECTION: restoring the SI tail to fmtPredValue
+     * (`return usTxt + ' (' + ... + siU + ')'`) reddens this AND the detail-line check above it,
+     * reporting the offending line verbatim -- "wants AVG COOLANT TEMPERATURE < 203 degF
+     * (95 degC), reads 579 degF (304 degC)". */
+    await page.goto(url + '&dev=1', { waitUntil: 'load' });
+    await page.waitForTimeout(1300);
+    await page.click('[data-mmode="free"]');
+    await page.waitForTimeout(200);
+    await page.click('[data-minit="hot_full_power"]');
+    await page.waitForTimeout(200);
+    await page.click('[data-mfree]');
+    await page.waitForTimeout(2600);
+    await page.click('#tabbar [data-tab="checklists"]');
+    await page.waitForTimeout(700);
+    await page.click('button[data-ckl-start="pwr_heatup"]');
+    await page.waitForTimeout(2200);
+    var si = await page.evaluate(function () {
+      var el = document.getElementById('cklRun');
+      var txt = el ? (el.innerText || '') : '(#cklRun not rendered)';
+      var bad = txt.split(String.fromCharCode(10)).filter(function (l) { return /MPa|kPa|°C/.test(l); });
+      return { len: txt.length, bad: bad, hasBanner: /wants /.test(txt) };
+    });
+    ck('the live checklist panel renders NO SI - the rendered line, not the authored string (#670 S-10)',
+       si.len > 200 && si.bad.length === 0,
+       si.len <= 200 ? 'panel did not render: ' + si.len + ' chars'
+                     : (si.bad.length ? si.bad.length + ' offending line(s): ' + si.bad.join(' | ').slice(0, 200)
+                                      : 'clean over ' + si.len + ' chars' + (si.hasBanner ? ', precondition banner drawn' : ', NO banner — fixture may have stopped covering the banner path')));
 
   } catch (err) {
     ck('the gate ran to completion', false, String((err && err.message) || err).slice(0, 160));

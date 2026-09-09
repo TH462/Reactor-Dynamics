@@ -3015,6 +3015,14 @@
     // tile. (Highlighting an indication is checklist hover-glow only; campaign beats
     // highlight controls, so run_campaign never names these.)
     'Tavg': 'ims2immk7ks', 'Plant Pressure': 'ims2immsvn6', 'SG Level': 'ims2imn1nny',
+    /* THE OTHER TWO TILES IN THE SAME STRIP (#670 operator pass 2, S-3). The vital-parameter
+     * strip has six tiles and this map named four of them, so a step that says "verify
+     * PRESSURIZER LEVEL" or "verify SUBCOOLING MARGIN" had no label to point at — and the
+     * TMI-2 step 8 reached instead for 'Plant Pressure', which resolves cleanly to the tile
+     * NEXT to the one it meant. A vocabulary with a hole in it is how a wrong label gets
+     * chosen; both tiles are in the board's inspect map already (Pressurizer Level,
+     * Subcooling Margin) and these are the same names. */
+    'Pressurizer Level': 'ims2immon9z', 'Subcooling Margin': 'ims2immxl2s',
     'Steam Flow': 'ims3wm0d0bu', 'Feed Flow': 'imrsgkz4lq0',
     /* TWO LABELS THE CHECKLISTS HAVE ALWAYS USED AND THIS MAP NEVER CARRIED (#598 item 14).
      * `revealControl` returns null for an unknown label and the step then glows NOTHING —
