@@ -589,5 +589,5 @@ background failure injection on top of the schema above, and their steps are gra
 plant that is deliberately misbehaving rather than one the player is driving. Their authoring
 rules — how a narrative beat relates to a step, when a failure may be injected relative to an
 acceptance, and what a `why` may say about an instrument that is lying — will be a separate
-section of this guide once that design lands (see #(planned) once filed). Nothing in §1–13 is
+section of this guide once that design lands (see #670). Nothing in §1–13 is
 suspended for them; they add to it.
