@@ -633,8 +633,8 @@
       })();
 
       // --- instructor glow ---
-      ck('glow: revealControl(HPI) returns a tile', !!RD.PwrBoard.revealControl('HPI'));
-      ck('glow: revealControl(SCRAM) returns a tile', !!RD.PwrBoard.revealControl('SCRAM'));
+      ck('glow: revealControl(HPI) resolves to an element', !!RD.PwrBoard.revealControl('HPI'));
+      ck('glow: revealControl(SCRAM) resolves to an element', !!RD.PwrBoard.revealControl('SCRAM'));
       ck('glow: revealControl(unknown) is null', RD.PwrBoard.revealControl('Nonsense') === null);
       ck('glow: highlightLabels covers the vocab (>=30)', RD.PwrBoard.highlightLabels.length >= 30);
       RD.PwrBoard.setTag('afw_tag', true);
@@ -642,6 +642,152 @@
       ck('glow: setTag shows maintenance tag', !!tagEl && tagEl.style.display !== 'none');
       RD.PwrBoard.setTag(null, false);
       ck('glow: setTag hides the tag', !document.querySelector('.bd-maint-tag') || document.querySelector('.bd-maint-tag').style.display === 'none');
+
+      /* --- highlight halo geometry (#684) -------------------------------------------
+       * THE GATE IS THE MEASUREMENT, not a CSS read. The defect was invisible to every
+       * check we had because nothing compared the box the glow is drawn on against the
+       * art the player sees: `run_manual_controls` proves a highlight label RESOLVES,
+       * `run_glow_stacking` proves the classes are pinned, and both were green while the
+       * PORV's ring covered 45 % of the valve and 80 px of pressurizer hung below its halo.
+       *
+       * IT PINS ALL TWENTY AT ONCE, deliberately. A check naming the PORV would pass on a
+       * rotation special case and leave the pressurizer — which is not rotated — exactly
+       * as broken. This sweeps every tile.
+       *
+       * WHAT "VISIBLE ART" MEANS HERE IS COMPUTED INDEPENDENTLY of pwr_board.js's own
+       * rule, so the two have to agree for this to be green; a renderer that decides some
+       * ink does not count reddens this rather than agreeing with itself. The distinction
+       * is load-bearing: a plain union of every descendant rect catches the PORV's r=46
+       * TRANSPARENT click circle and its opacity-0 hover ring, which are 24 px taller than
+       * the drawn valve, and sizing the ring off those is a different wrong halo.
+       *
+       * TOLERANCE 1.0 client px at this harness's pinned 1400x900. Measured 2026-09-10:
+       * on the tile box 27 tiles exceeded it (17 exceeded 2 px); on the halo, ZERO tiles
+       * exceed 0.5 px. */
+      (function () {
+        function inked(c) {
+          if (!c || c === 'none' || c === 'transparent') return false;
+          if (c.slice(0, 4) === 'url(') return true;
+          var m = /rgba?\(([^)]+)\)/.exec(c);
+          if (m) { var p = m[1].split(/[,\/]/); if (p.length >= 4 && parseFloat(p[3]) <= 0.02) return false; }
+          return true;
+        }
+        function paints(el, root) {
+          var cs = getComputedStyle(el);
+          for (var n = el; n && n.nodeType === 1; n = n.parentNode) {
+            var s = (n === el) ? cs : getComputedStyle(n);
+            if (s.display === 'none' || s.visibility !== 'visible') return false;
+            if (parseFloat(s.opacity) <= 0.02) return false;
+            if (n === root) break;
+          }
+          if (el.ownerSVGElement) {
+            if (inked(cs.fill)) return true;
+            return inked(cs.stroke) && parseFloat(cs.strokeWidth || 0) > 0;
+          }
+          if (inked(cs.backgroundColor)) return true;
+          if (['borderTopWidth', 'borderRightWidth', 'borderBottomWidth', 'borderLeftWidth']
+            .some(function (k) { return parseFloat(cs[k] || 0) > 0; })) return true;
+          for (var ch = el.firstChild; ch; ch = ch.nextSibling)
+            if (ch.nodeType === 3 && /\S/.test(ch.nodeValue)) return true;
+          return false;
+        }
+        function artBox(tile) {
+          var x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
+          var kids = tile.querySelectorAll('*');
+          for (var i = 0; i < kids.length; i++) {
+            var k = kids[i];
+            if (k.classList && k.classList.contains('bd-halo')) continue;
+            var r = k.getBoundingClientRect();
+            if ((!r.width && !r.height) || !paints(k, tile)) continue;
+            if (r.left < x0) x0 = r.left;
+            if (r.top < y0) y0 = r.top;
+            if (r.right > x1) x1 = r.right;
+            if (r.bottom > y1) y1 = r.bottom;
+          }
+          if (!isFinite(x0)) return null;
+          return { left: x0, top: y0, right: x1, bottom: y1 };
+        }
+
+        var TOL = 1.0;
+        var tilesEls = document.querySelectorAll('.pwr-board-stage [data-item]');
+        var over = [], shrunk = [], measured = 0, worst = 0, worstId = '';
+        for (var t = 0; t < tilesEls.length; t++) {
+          var tile = tilesEls[t], id = tile.getAttribute('data-item');
+          var tr = tile.getBoundingClientRect();
+          if (!tr.width || !tr.height) continue;
+          var halo = RD.PwrBoard.haloElement(id);
+          if (!halo) continue;
+          measured++;
+          var gr = halo.getBoundingClientRect();
+          // 1. the glow box never SHRINKS below the authored tile box
+          if (Math.max(gr.left - tr.left, gr.top - tr.top,
+                       tr.right - gr.right, tr.bottom - gr.bottom) > 0.05) shrunk.push(id);
+          // 2. no visible art hangs outside it
+          var ab = artBox(tile);
+          if (!ab) continue;
+          var d = Math.max(gr.left - ab.left, gr.top - ab.top,
+                           ab.right - gr.right, ab.bottom - gr.bottom);
+          if (d > worst) { worst = d; worstId = id; }
+          if (d > TOL) over.push(id + '(' + d.toFixed(1) + 'px)');
+        }
+        ck('halo: the sweep measured the whole board (>=200 tiles)', measured >= 200,
+          measured + ' tiles carry a halo element');
+        ck('halo: no tile’s VISIBLE ART overflows its glow box by more than ' + TOL + ' px (#684)',
+          over.length === 0, over.length + ' over: ' + over.slice(0, 8).join(' ') +
+          '  worst ' + worst.toFixed(2) + ' px on ' + (worstId || '(none)'));
+        ck('halo: no tile’s glow box is SMALLER than its authored tile box',
+          shrunk.length === 0, shrunk.length + ' shrunk: ' + shrunk.slice(0, 8).join(' '));
+
+        /* The two the owner and the measurement named, pinned by NUMBER so a regression
+         * says which one moved. Pre-fix: the PORV ring was 28.3 px wide against 63.5 px of
+         * valve (45 %); the pressurizer's was 217.7 px tall against 298.2 px of vessel. */
+        function ratio(id, axis) {
+          var tile = document.querySelector('[data-item="' + id + '"]');
+          var halo = RD.PwrBoard.haloElement(id);
+          var ab = tile && artBox(tile);
+          if (!tile || !halo || !ab) return 0;
+          var gr = halo.getBoundingClientRect();
+          return axis === 'w'
+            ? Math.max(0, Math.min(gr.right, ab.right) - Math.max(gr.left, ab.left)) / (ab.right - ab.left)
+            : Math.max(0, Math.min(gr.bottom, ab.bottom) - Math.max(gr.top, ab.top)) / (ab.bottom - ab.top);
+        }
+        var porvW = ratio('porv', 'w'), pzrH = ratio('pressurizer', 'h');
+        ck('halo: the PORV ring covers its whole valve width (was 45 %)', porvW > 0.995,
+          (porvW * 100).toFixed(1) + ' %');
+        ck('halo: the pressurizer ring covers its whole vessel height (was 73 %)', pzrH > 0.995,
+          (pzrH * 100).toFixed(1) + ' %');
+
+        /* The mechanism, stated: what a highlight is applied to is the halo, and the halo
+         * still belongs to the item the label named — so every hit test, `itemIdFor` and
+         * the inspect panel resolve exactly as before. */
+        /* THE OWNER'S ACTUAL SENTENCE (#684 §B: the highlight "should be around the PORV and
+         * the PORV CLOSED indication"). One label lights one element, so this is not a check
+         * that two things glow — it is a check that the PORV's own ring, now that it is drawn
+         * on the art, still CONTAINS the status readout that sits over the valve. If a board
+         * re-export moves them apart this reddens, and the step then has to name the
+         * 'PORV Status' label the wiring now carries for exactly that case. */
+        (function () {
+          var ph = RD.PwrBoard.revealControl('Relief Valve (PORV)');
+          var st = document.querySelector('[data-item="ims2jf7fv7m"]');
+          var a = ph && ph.getBoundingClientRect(), b = st && st.getBoundingClientRect();
+          ck('halo: the PORV ring encloses the PORV OPEN/CLOSED readout (#684 §B)',
+            !!(a && b) && a.left <= b.left + 0.5 && a.top <= b.top + 0.5 &&
+            a.right >= b.right - 0.5 && a.bottom >= b.bottom - 0.5,
+            a && b ? 'ring ' + a.left.toFixed(0) + '-' + a.right.toFixed(0) + ',' + a.top.toFixed(0) + '-' + a.bottom.toFixed(0) +
+              '  readout ' + b.left.toFixed(0) + '-' + b.right.toFixed(0) + ',' + b.top.toFixed(0) + '-' + b.bottom.toFixed(0) : 'missing');
+          ck('halo: the PORV status readout is reachable as a highlight label (#684 §B)',
+            RD.PwrBoard.revealControl('PORV Status') !== null &&
+            RD.PwrBoardDriver.controlLabelItem('PORV Closed') === 'ims2jf7fv7m');
+        })();
+
+        var hpi = RD.PwrBoard.revealControl('HPI');
+        ck('halo: revealControl returns the halo, not the tile',
+          !!hpi && hpi.classList.contains('bd-halo'));
+        ck('halo: the halo it returns still resolves to the item the label named',
+          !!hpi && RD.PwrBoard.itemIdFor(hpi) === RD.PwrBoardDriver.controlLabelItem('HPI'));
+        ck('halo: the halo is not a click target', !!hpi && getComputedStyle(hpi).pointerEvents === 'none');
+      })();
+
 
       // --- boron control now runs in the control/automation layer ---
       function chanOf(id) { return svc.assembleSnapshot().automation.channels.filter(function (c) { return c.id === id; })[0]; }

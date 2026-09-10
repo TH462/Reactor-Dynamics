@@ -3006,6 +3006,21 @@
     'Pressurizer Heaters (PZR)': 'imro94kec8b', 'Pressurizer Spray (PZR)': 'imro8ymb0jw',
     'Reactor Coolant Pumps (RCP)': 'imrobpq4a70',
     'Relief Valve (PORV)': 'porv', 'PORV Block Valve': 'imrppb3kuav',
+    /* THE PORV'S OWN STATUS READOUT — A VOCABULARY HOLE, NOT AN AUTHORING MISS (#684 §B).
+     * `ims2jf7fv7m` is the value tile that prints OPEN / CLOSED for the relief valve
+     * (wiring :1220, inspect name "Power-Operated Relief Valve (PORV) Status"), and it had
+     * no key here at all — so no step could point at it, and the owner's ask ("the highlight
+     * should be around the PORV and the PORV CLOSED indication") was not a bad `hl` list, it
+     * was unreachable. Both spellings, because the board engraves the word CLOSED and the
+     * inspect panel says Status.
+     *
+     * NO STEP NAMES IT TODAY, deliberately. Measured 2026-09-10 with the art-aware halo in:
+     * the PORV's ring is now 541-604 x 171-232 client px and this tile is 551-593 x 175-192,
+     * i.e. the valve's own halo already ENCLOSES the indication, which is what he asked for.
+     * A second `hl` entry would draw a nested ring inside the first. board_check pins the
+     * containment, so if the layout ever moves them apart the gate says so and the step can
+     * take this label then. */
+    'PORV Status': 'ims2jf7fv7m', 'PORV Closed': 'ims2jf7fv7m',
     // V2 split the old combined ECCS/RHR box into two cards. HPI/LPI is the ECCS pump
     // triad; RHR is its own card (the suction alignment + HX rate), so the RHR label now
     // glows the RHR card rather than the shared box it used to share with HPI.

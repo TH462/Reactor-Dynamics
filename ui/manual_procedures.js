@@ -2173,7 +2173,15 @@
           cmd: { action: 'set_rcp', running: false }, hold: 60,
           accs: [{ p: 'pump_flow_pct', op: '<', v: 50, label: 'Pumps coasting down' },
                  { cmd: { action: 'set_spray', open: false }, label: 'Spray shut' }],
-          hl: ['RCP Run/Stop', 'Reactor Coolant Pumps (RCP)', 'Pressurizer Spray (PZR)'] },
+          /* THE CARD, NOT ALSO THE PUMP *(OWNER, 2026-09-09 playtest, #684 §D: "When the RCP is
+           * highlighted it should highlight the RCP card not the pump. Currently both get
+           * highlighted.")* — his SECOND report of it, after #607 item 1. One label lights one
+           * element, so "both get highlighted" is a step naming both: 'RCP Run/Stop' is the
+           * card (imrsjyqoq6t) and 'Reactor Coolant Pumps (RCP)' is the pump art on the loop
+           * (imrobpq4a70), and their rects overlap. Every other pwr2 RCP step already names
+           * the card alone; this was the last one that did not. The pump label STAYS in the
+           * vocabulary — the wiring reserves it for watch-the-flow steps. */
+          hl: ['RCP Run/Stop', 'Pressurizer Spray (PZR)'] },
         { text: 'Raise HX FLOW to 25 % and wait until AVG COOLANT TEMPERATURE reads below 199 °F. Keep the cooldown under 100 °F per hour: if it runs faster, lower HX FLOW.',
           why: 'HX FLOW is the cooldown rate now. 25 % reaches Mode 5 in about two plant-hours at close to 90 °F per hour, just inside the limit.',
           control: 'Residual Heat Removal (RHR)', target: 'AVG COOLANT TEMPERATURE below 199 °F',
@@ -2185,8 +2193,16 @@
         obs('Verify Cold Shutdown: AVG COOLANT TEMPERATURE below 199 °F, PRIMARY PRESSURE between 250 and 550 psi, RCP FLOW off, ALIGN lit on the RHR card.',
           { p: 'plant_mode', op: '~', v: 5, tol: 0.1 }, null, ['Tavg', 'Primary Pressure'],
           'This is the cold-shutdown picture: water below 199 °F, a small steam bubble still in the pressurizer, pumps off, RHR carrying the heat. It is the same state the Cold Shutdown preset loads, and the heatup checklist takes it back up.'),
+        /* THE TILE THE TEXT NAMES, NOT THE VALVE *(OWNER, 2026-09-09 playtest, #684 §C: "Mode
+         * 3>5 step 14 – this step has you look at the accumulators card but it highlights the
+         * accumulator isolation valve. It should highlight the card, not the valve.")*.
+         * This does NOT contradict the 2026-09-02 ruling three lines above CONTROL_LABEL_MAP's
+         * 'Accumulator valve' entry ("Step 8 should highlight the valve for the accumulator, not
+         * the accumulator box itself") — that governs the ACTION step, which asks you to shut a
+         * valve. This is a CONFIRM step, and what it asks you to read is the tile. Both labels
+         * were already in the vocabulary; only this step pointed at the wrong one. */
         obs('Verify the ACCUMULATORS tile reads 100 % and ISOLATED.',
-          { p: 'accumulator_volume_pct', op: '>', v: 99 }, null, ['Accumulator valve'],
+          { p: 'accumulator_volume_pct', op: '>', v: 99 }, null, ['Accumulators'],
           'You isolated the tanks on the way down so they would not empty into a depressurized plant. They have to still be full: the next heatup opens them again inside its window, and empty tanks then are a missing safety system.'),
         obs('Verify ALIGN is lit on the RHR card and HX FLOW is above 0 %. The round trip is complete.',
           { p: 'rhr_valve_open', op: '>', v: 0 }, null, ['Residual Heat Removal (RHR)'],
