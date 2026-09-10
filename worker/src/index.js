@@ -71,9 +71,16 @@ const ALLOWED_ORIGINS = [
   'https://develop.reactor-dynamics.pages.dev',
 ];
 
-// A 4-hour session is ~504 KB gzipped (measured), so 2 MB is generous headroom and
-// still small enough that an open endpoint is not free file hosting. The event batch
-// is a few hundred short rows at most.
+// 2 MB is small enough that an open endpoint is not free file hosting. The event batch is
+// a few hundred short rows at most.
+//
+// THE "~504 KB, generous headroom" FIGURE THAT USED TO BE HERE WAS WRONG (#681). Measured
+// on PWR2, 4 plant-hours, full stack: 2,939 KB, 143 % of this cap — the report crossed it
+// at 2 h 45 min of plant time and every one after that was answered 413. The client now
+// rounds the timeseries at build() (646 KB, 32 %) and measures the body it is about to POST
+// against its own budget of this number minus 128 KiB, trimming oldest rows if it has to
+// (ui/diag_recorder.js, site/telemetry.js). MOVING THIS CONSTANT MOVES THAT BUDGET: it is
+// copied verbatim in site/telemetry.js WIRE_CAP and in test/run_diag_bundle.js TR-10.
 const MAX_BUNDLE_BYTES = 2 * 1024 * 1024;
 const MAX_EVENTS_BYTES = 64 * 1024;
 const MAX_EVENTS_PER_BATCH = 250;   // Analytics Engine caps writes per invocation

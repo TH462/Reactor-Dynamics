@@ -7690,20 +7690,33 @@
         var bundle = attach ? buildDiagBundle() : { kind: 'reactor_dynamics_note_only' };
         btn.disabled = true;
         txt($('fbStatus'), 'Sending…');
-        T.sendBundle(bundle, note).then(function (r) {
+        /* EVERY PATH RE-ENABLES THE BUTTON AND SAYS SOMETHING (#682). This handler used to
+         * have a success branch and a not-ok branch and no rejection branch at all, and
+         * `sendBundle` had no terminal `.catch` — so a fetch REJECTION (dropped connection,
+         * offline, DNS, CORS) resolved neither: measured, the form read "Sending…" at 45 s
+         * with Send permanently disabled and two `TypeError: Failed to fetch` in the page
+         * log. The `.catch` in site/telemetry.js is the real fix and makes this unreachable;
+         * the second argument here is belt-and-braces, because the cost of being wrong about
+         * that is a form the player cannot use without reloading the page.
+         *
+         * THE WORDS COME FROM RD.Telemetry.sendResultMessage (#681/#682), not from here.
+         * app.js is browser-only, so a string chosen in this file is one no Node gate can
+         * prove is reached — and the three failures need three different sentences, because
+         * "the attachment is too big" has a fix the player can act on (untick the box; the
+         * note-only path measured 165 bytes and sends fine) and "please email instead" does
+         * not. Never a dead end either way: the address above still works and the download
+         * button beside it produces the same bundle as a file. */
+        function settle(r) {
           btn.disabled = false;
-          if (r && r.ok) {
-            // THE REFERENCE IS THE ONLY HANDLE ON THE REPORT (#431). The Worker names the
-            // stored object and hands the id back for exactly this; the id is also the only
-            // way a follow-up conversation can say WHICH report, since two sent the same
-            // evening are otherwise told apart by upload time alone.
-            txt($('fbStatus'), r.id ? ('Sent — thank you. Reference ' + r.id) : 'Sent — thank you.');
-            $('fbNote').value = '';
-          } else {
-            // Never a dead end: the address above still works, and the download
-            // button beside it produces the same bundle as a file.
-            txt($('fbStatus'), 'Could not send — please email instead.');
-          }
+          txt($('fbStatus'), T.sendResultMessage(r));
+          // THE REFERENCE IS THE ONLY HANDLE ON THE REPORT (#431). The Worker names the
+          // stored object and hands the id back for exactly this; the id is also the only
+          // way a follow-up conversation can say WHICH report, since two sent the same
+          // evening are otherwise told apart by upload time alone. It rides in the message.
+          if (r && r.ok) $('fbNote').value = '';
+        }
+        T.sendBundle(bundle, note).then(settle, function (e) {
+          settle({ ok: false, network: true, reason: String(e) });
         });
       });
     }());

@@ -301,9 +301,69 @@
   // and someone who declined passive collection may still want to report a bug.
   //
   // Returns a promise so the form can show success or fall back to the mailto.
+  //
+  // ------------------------------------------------------------------ THE WIRE BUDGET (#681)
+  // The Worker refuses a body over `MAX_BUNDLE_BYTES` (worker/src/index.js) with a 413, and
+  // nothing on this side ever measured. A 4-plant-hour session posted 3,006,146 bytes and was
+  // rejected; from 2 h 45 min of plant time onward every report in that session was rejected.
+  //
+  // The fix is in two halves and the FIRST one is the whole fix: ui/diag_recorder.js rounds
+  // the timeseries at build() (4-hour bundle 2,939 KB -> 646 KB, all rows kept). This half is
+  // the BACKSTOP the owner asked for — measure what is actually about to go on the wire, and
+  // drop OLDEST rows until it fits *(OWNER, 2026-09-09, #675: "When we hit the max length we
+  // can send for feedback we should trim older data. Usually the most recent data is the most
+  // relevant.")*.
+  //
+  // MEASURE THE POSTED BODY, NOT THE JSON. A raw-JSON budget would have trimmed half the
+  // history off a 4-hour report that gzips to 32 % of the cap — the server counts the gzipped
+  // bytes, so that is what is counted here. It also means the un-gzipped path an older browser
+  // takes (no CompressionStream) is protected too, and that path is the one still over the cap
+  // after rounding: 3.54 MB raw.
+  var WIRE_CAP = 2 * 1024 * 1024;              // worker/src/index.js MAX_BUNDLE_BYTES, verbatim
+  // 128 KiB of headroom under it. The measurement here IS the body handed to fetch, so in
+  // principle none is needed; what it buys is (a) the request line and headers the server also
+  // reads, (b) the trim's granularity — each pass drops whole rows and cannot land on an exact
+  // byte, and (c) somewhere to grow for a future non-timeseries part of the bundle before this
+  // constant has to move. 1,966,080 bytes = 94 % of the Worker's cap.
+  var WIRE_BUDGET = WIRE_CAP - 128 * 1024;
+  var MAX_TRIM_PASSES = 12;
+
+  function byteLength(str) {
+    try { if (G.TextEncoder) return new G.TextEncoder().encode(str).length; } catch (e) { /* fall through */ }
+    return str.length;                          // ASCII-only fallback; only ever an under-count
+  }
+
+  /* Player-facing status text for a sendBundle result — SUCCESS AND EVERY FAILURE. It lives
+   * here, not in ui/app.js, for one reason: app.js is browser-only, so a string chosen there
+   * is a string no Node gate can prove is ever reached, and "a source scan for a rendered
+   * string cannot tell you the string is reachable" is this project's own standing lesson.
+   * test/run_telemetry.js feeds this real results from real (stubbed) posts.
+   *
+   * The three failures are three different things for the player to DO, which is the whole
+   * point of telling them apart: the attachment is too big (untick it — measured, the note-only
+   * path sends fine at 165 bytes), the network never answered (try again), or the server said
+   * no (email instead). */
+  function sendResultMessage(r) {
+    if (r && r.ok) return r.id ? ('Sent — thank you. Reference ' + r.id) : 'Sent — thank you.';
+    if (r && (r.tooLarge || r.status === 413)) {
+      return 'Could not send — the attached recording is too large. Untick ' +
+             '"Attach this session\'s recording" and send just your message, or email it instead.';
+    }
+    if (r && r.network) {
+      return 'Could not send — no reply from the server. Check your connection and press ' +
+             'Send report again, or email instead.';
+    }
+    return 'Could not send — please email instead.';
+  }
+
   function sendBundle(bundle, note, opts) {
     var url = (opts && opts.endpoint) || endpoint();
     if (!url || !bundle) return Promise.resolve({ ok: false, reason: 'no endpoint' });
+    var budget = (opts && opts.maxBytes) || WIRE_BUDGET;
+    // Soft dependency, deliberately: ui/diag_recorder.js is loaded by the control room and by
+    // nothing else on the site, and a note-only report has no timeseries to trim. Absent it,
+    // this behaves exactly as it did before — encode and post.
+    var trim = (opts && opts.trim) || ((G.RD && G.RD.DiagRecorder && G.RD.DiagRecorder.trimOldest) || null);
     // build/channel ride along so a report from develop's preview site is not
     // indistinguishable from one off the production build — see worker/src/index.js
     // handleBundle, which also stamps the Origin header server-side as the harder-to-spoof copy.
@@ -312,7 +372,6 @@
       build: (typeof G.RD_VERSION === 'string') ? G.RD_VERSION : null,
       channel: (typeof G.RD_CHANNEL === 'string') ? G.RD_CHANNEL : null,
     };
-    var json = JSON.stringify(payload);
     // A 30-minute session is ~0.7 MB of JSON and ~63 KB gzipped (measured), so
     // compressing is the difference between a reasonable request and a rude one.
     // CompressionStream is absent on older browsers — send raw there rather than fail.
@@ -339,17 +398,64 @@
           );
         });
     }
-    try {
-      if (G.CompressionStream && G.Response) {
-        var cs = new G.CompressionStream('gzip');
-        return new G.Response(new G.Blob([json]).stream().pipeThrough(cs)).blob()
-          .then(function (b) { return post(b, true); })
-          .catch(function () { return post(json, false); });
+    // Encode once, and report the byte count of the thing that will actually be posted.
+    function encode(json) {
+      if (G.CompressionStream && G.Response && G.Blob) {
+        try {
+          var cs = new G.CompressionStream('gzip');
+          return new G.Response(new G.Blob([json]).stream().pipeThrough(cs)).blob()
+            .then(function (b) { return { body: b, encoded: true, bytes: b.size }; },
+                  function () { return { body: json, encoded: false, bytes: byteLength(json) }; });
+        } catch (e) { /* fall through to raw */ }
       }
-      return post(json, false);
-    } catch (e) {
-      return Promise.resolve({ ok: false, reason: String(e) });
+      return Promise.resolve({ body: json, encoded: false, bytes: byteLength(json) });
     }
+
+    function rows() {
+      var ts = bundle && bundle.timeseries;
+      return (ts && ts.t && ts.t.length) || 0;
+    }
+
+    var dropped = 0;
+    function attempt(pass) {
+      var json;
+      try { json = JSON.stringify(payload); }
+      catch (e) { return Promise.resolve({ ok: false, reason: String(e) }); }
+      return encode(json).then(function (enc) {
+        if (enc.bytes <= budget) {
+          return post(enc.body, enc.encoded).then(function (r) {
+            if (dropped) r.trimmed_rows = dropped;
+            r.bytes = enc.bytes;
+            return r;
+          });
+        }
+        // Over budget. Size the drop off the OVERSHOOT rather than a fixed fraction — the
+        // timeseries is 99.6 % of the payload, so bytes are near-linear in rows and this
+        // converges in one or two passes instead of a dozen gzips of a 3 MB body.
+        var n = rows();
+        var want = n ? Math.ceil(n * Math.min(0.5, Math.max(0.02, 1 - budget / enc.bytes) + 0.02)) : 0;
+        var got = (trim && want) ? trim(bundle, want) : 0;
+        if (!got || pass >= MAX_TRIM_PASSES) {
+          // Nothing left to give. Do NOT post it: the server would answer 413 after reading
+          // the whole body off the wire, and the player gets the same answer either way —
+          // except this one can say WHICH failure it was, and the attachment box is the fix.
+          return { ok: false, status: 413, reason: 'too large', tooLarge: true,
+                   bytes: enc.bytes, budget: budget, trimmed_rows: dropped };
+        }
+        dropped += got;
+        return attempt(pass + 1);
+      });
+    }
+
+    // THE TERMINAL CATCH (#682). Without it a fetch REJECTION — a dropped connection, offline,
+    // DNS, CORS — resolved neither branch of the caller's .then, and the feedback form read
+    // "Sending…" for ever with the Send button disabled and no way out but a reload. Measured:
+    // still "Sending…" at 45 s, two `TypeError: Failed to fetch` in the page log. The result
+    // shape is the one this function already returns for `no endpoint`, plus `network: true`
+    // so the form can say which failure it was.
+    return attempt(0).catch(function (e) {
+      return { ok: false, reason: String(e), network: true };
+    });
   }
 
   /* WHY THERE IS A DIAGNOSTIC AT ALL. Every way this feature can fail looks identical
@@ -398,6 +504,9 @@
     event: event,
     flush: flush,
     sendBundle: sendBundle,
+    sendResultMessage: sendResultMessage,
+    WIRE_CAP: WIRE_CAP,
+    WIRE_BUDGET: WIRE_BUDGET,
     // Test seams. Not for production callers.
     _clean: clean,
     _queue: function () { return queue; },

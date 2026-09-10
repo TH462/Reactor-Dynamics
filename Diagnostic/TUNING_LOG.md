@@ -29,6 +29,103 @@ and the user-visible summary in `CHANGELOG.md`. This file points at those and tr
 
 ---
 
+## Session log — 2026-09-10-develop-a (#681, #682 — the bug report was 8 MB of text describing 5 MB of numbers, and a failed send never came back)
+
+**Both filed 2026-09-10 out of the #675 section E measurement pass; both fixed here.** The
+acceptance criteria were that pass's own numbers, and they were re-measured against the fix with
+its own harnesses (`inbox/675/threshold.js`, `inbox/675/feedback_repro.js`, gitignored).
+
+**THE TRAP TO CARRY: A RING BOUNDED IN ROWS IS NOT BOUNDED IN BYTES, AND THE BYTES CAN BE
+DIGITS RATHER THAN HISTORY.** The session recorder caps at 14,400 samples / 5,000 events /
+2,000 commands and `shift()`s the oldest out of all three — the trim the owner asked for was
+*already there*. What it could not do was stay under a **2 MB wire cap**, because 14,400 rows x
+10 fields x 3 sides is **432,000 doubles**, and JSON writes a double as `15.522619140623991`.
+**5.3 MB of numbers became 7.88 MB of text**, gzipping to 2,939 KB at 4 plant-hours — **143 % of
+the cap** — with `timeseries` at **99.6 %** of the payload. Measured before, at every speed a
+player operates at:
+
+| plant time | rows | gzipped | vs 2 MB | after the fix |
+|---|---|---|---|---|
+| 1 h 00 | 3,724 | 793 KB | 39 % | **188 KB, 9 %** |
+| 2 h 45 | 10,031 | 2,096 KB | **102 % — 413** | **464 KB, 23 %** |
+| 4 h 00 | 14,400 | 2,995 KB | **146 % — 413** | **651 KB, 32 %** |
+| 5 h 00 | 14,400 | 2,993 KB | **146 % — 413** | **645 KB, 32 %** |
+
+Identical at 1x, 60x and 600x both before and after, because the recorder's grid is
+`max(GRID_SEC, the service's fine grid)` = **one row per plant-second at every speed up to
+600x**; only 3600x's 6-second grid ever escaped. **Nothing crosses the cap now within 5
+plant-hours at any of the four speeds.**
+
+**Three decisions in it, and the reasoning is the part worth keeping.**
+- **The precision rule is MAGNITUDE-AWARE, not a flat 4 decimals.** 4 dp was the measured
+  recommendation and it is right for a pressure (1 Pa) or a temperature (0.002 °F) — three
+  orders under this plant's own instrument noise. It is wrong for a FRACTION, and two of the ten
+  PWR channels are fractions (`steam_flow_normalized`, `fw_flow_normalized`), with
+  `void_fraction_avg` and `core_void_fraction` on the RBMK/BWR lists. On a decay-heat steam flow
+  of 0.00083, 1e-4 is a **6 % quantisation**, in the one regime a long report is likely to be
+  about. So: **1e-4 absolute at or above unity, six significant digits below it.** A magnitude
+  rule is also one a newly added field cannot fall foul of — a per-field decimal map is a
+  hand-maintained map, and a gate that iterates one tests the map.
+- **Rounding belongs at `build()`, not in the ring.** The recorder keeps full precision in memory
+  for anything else that reads it; only the exported copy is rounded. Doing that forced a
+  second, latent fix: `build()` used to hand out the LIVE arrays, so a bundle kept changing after
+  it was handed over — and the byte trim would then have eaten the recording itself.
+- **The byte budget measures the POSTED BODY, not the JSON.** This is the load-bearing one. A
+  raw-JSON budget would have trimmed **half the history** off a 4-hour report that gzips to 32 %
+  of the cap. Measuring the actual body also means the **un-gzipped path** an older browser takes
+  (no `CompressionStream`) is protected, and after rounding that path is the one still over the
+  cap, at **3.54 MB raw**. Budget **1,966,080 B = the Worker's 2 MiB minus 128 KiB**; the
+  headroom buys the request headers, the trim's granularity (whole rows, so it cannot land on an
+  exact byte), and room for a future non-timeseries part before the constant has to move.
+
+**#682 — and this one is the SILENT half.** `sendBundle` returned `G.fetch(...).then(...)` with
+**no `.catch`**; its `try/catch` guarded only the synchronous `CompressionStream` construction,
+and the gzip path's own `.catch` covered compression, not the POST. A fetch **rejection**
+therefore resolved neither branch of the click handler's `.then`, so `btn.disabled` stayed
+`true` and the status stayed `Sending…` **for the life of the page**. Measured in the browser
+against a stub that accepts the connection and destroys the socket: still "Sending…" at **45 s**,
+two `TypeError: Failed to fetch` in the page log, no way out but a reload. A terminal `.catch`
+now resolves `{ ok:false, network:true }` and `ui/app.js` carries a rejection branch too.
+
+**AND THE FORM NOW SAYS WHICH FAILURE IT WAS — in a function a Node gate can reach.** The
+sentence used to be a literal in `ui/app.js`, which is browser-only: *"a source scan for a
+rendered string cannot tell you the string is reachable"*, and nothing in `test/` can execute
+app.js at all. `RD.Telemetry.sendResultMessage()` now owns every sentence and
+`test/run_telemetry.js` feeds it real results from real (stubbed) posts. Three failures, three
+different things for the player to DO: the attachment is too large (untick it — measured, the
+note-only path sends fine at **165 bytes**, and nothing had ever told them that), the network
+never answered (press Send report again), or the server said no (email instead).
+
+**Format compatibility.** `schema_version` **1.1 → 1.2**, same SHAPE.
+`tools/fetch_bug_reports.js` keys off the shape rather than the version string, so 1.1 and 1.2
+read through one path — verified on three fixtures (old 1.1 unrounded, new 1.2, trimmed 1.2)
+via `--read`, all three summarising correctly. Two new manifest keys: `precision`, and `trimmed`
+when the budget cut the window. **The reader now PRINTS the trimmed line**, because a trimmed
+bundle otherwise reads as a SHORT SESSION — the same class of mistake as #432's 211 rows reading
+as a recording, and the rows that went are exactly the ones a "it was fine and then it wasn't"
+report is about.
+
+**Two stale figures corrected where they lived**, both the standing inherited-by-reference trap:
+`ui/diag_recorder.js`'s header claimed **"720 KB gzipped"** at the full ring (measured on this
+plant: **2,929 KB**, **4.07x**) and `worker/src/index.js` called 2 MB *"generous headroom"* over
+a *"~504 KB"* 4-hour session. Both were measured on the **retired `pwr` engine's** data.
+
+**Gates.** `run_diag_bundle` **35 → 52**, `run_telemetry` **136 → 159**, `run_release` 29/29 at
+`Alpha 1.7.4-rc9`. **Nine injections, each proven red before the check was trusted**: rounding
+removed (2 red), a flat 4 dp (2), `trimOldest` a no-op (5), `trimOldest` dropping the NEWEST (1),
+the budget check removed (7), the trim unwired from the recorder (7), the terminal `.catch`
+removed (4), `network:true` dropped (2), app.js back to its own words and a one-branch `.then`
+(2). Two of those injections first made the gate **die** rather than report — an unwired trim
+posted nothing and the check indexed `sent[-1]`; the removed `.catch` rejected and killed the
+runner. Both were rewritten to name the failure, because a crash is red about the GATE, not
+about the defect.
+
+**#613 is unblocked.** Its wave 5 is explicitly waiting on *"your next long-session report, not
+more work here"* — and a session long enough to show #613's symptom was, by 2 h 45 min, a
+session whose report could not be sent.
+
+---
+
 ## Session log — 2026-09-09-develop-d (#670 Phase 3, operator pass 2 — the SI came from the renderer, and the wait estimate was the gate's own dwell)
 
 **The pass.** Second, confirming operator playthrough of `pwr_tmi2_incident`, fresh context, no

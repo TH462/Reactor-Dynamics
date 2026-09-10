@@ -62,6 +62,82 @@
   var MAX_COMMANDS = 2000;
   var EPS = 1e-9;
 
+  /* ------------------------------------------------------- SERIALISATION PRECISION (#681)
+   * The ring is bounded in ROWS and was never bounded in BYTES, and the bytes were not
+   * history — they were digits. Measured on PWR2 hot full power, 4 plant-hours, full stack:
+   * 14,400 rows x 10 fields x 3 sides = 432,000 doubles written as `15.522619140623991`,
+   * `304.61355115336687` — 5.3 MB of numbers inflated into 7.88 MB of JSON, gzipping to
+   * 2,939 KB against the Worker's 2 MB cap. The report crossed the cap at 2 h 45 min of
+   * plant time and could never be sent again for the rest of the session.
+   *
+   * Rounding happens HERE, at build() — the serialisation boundary — and NOT in the ring.
+   * The recorder keeps full precision in memory for anything else that reads it; only the
+   * exported copy is rounded, which is also why build() now COPIES its columns instead of
+   * handing out live arrays.
+   *
+   * THE RULE IS MAGNITUDE-AWARE, not a flat number of decimals, because two of the ten PWR
+   * channels are FRACTIONS (`steam_flow_normalized`, `fw_flow_normalized`) and the RBMK/BWR
+   * lists add `void_fraction_avg` and `core_void_fraction`. A flat 4 dp is 1e-4 absolute,
+   * which is three orders of magnitude under this plant's own instrument noise on a
+   * pressure (sigma 0.02 MPa = 2.9 psi) — but on a decay-heat steam flow of 0.0008 it is a
+   * 6 % quantisation, and natural circulation is exactly the regime a report is sent about.
+   * So: 1e-4 absolute at or above unity, SIX SIGNIFICANT DIGITS below it. That is a rule a
+   * newly added field cannot fall foul of, which a per-field decimal map would not be. */
+  var VALUE_DP = 4;        // 1e-4 absolute for |x| >= 1 — 1 Pa on a pressure, 0.002 degF on a temp
+  var VALUE_SIG = 6;       // ...and 6 significant digits below 1, so a fraction is not quantised
+  var TIME_DP = 3;         // row timestamps to 1 ms; the grid floor is 1 s
+  var MIN_KEPT_SAMPLES = 100;   // the byte trim never empties the recording
+
+  function roundTo(x, dp) { var m = Math.pow(10, dp); return Math.round(x * m) / m; }
+
+  function roundValue(x) {
+    if (typeof x !== 'number' || !isFinite(x)) return x;   // null / NaN pass through as "no reading"
+    var a = Math.abs(x);
+    if (a === 0) return 0;
+    if (a >= 1) return roundTo(x, VALUE_DP);
+    return roundTo(x, Math.min(15, VALUE_SIG - 1 - Math.floor(Math.log10(a))));
+  }
+
+  function roundCol(col) {
+    var out = new Array(col.length);
+    for (var i = 0; i < col.length; i++) out[i] = roundValue(col[i]);
+    return out;
+  }
+
+  /* Drop the OLDEST `rows` timeseries rows from an already-built bundle, IN PLACE, and say
+   * so in the manifest. The wire budget lives in site/telemetry.js because only the code
+   * about to POST knows how many bytes the body actually came to; this is the operation it
+   * drives, and it is here because the SCHEMA is here (the same reason build() is).
+   *
+   * *(OWNER, 2026-09-09, #675: "When we hit the max length we can send for feedback we
+   * should trim older data. Usually the most recent data is the most relevant.")* Note that
+   * the ring ALREADY trims oldest-first — MAX_SAMPLES/MAX_EVENTS/MAX_COMMANDS all shift().
+   * This is a second DENOMINATION of that same behaviour, in bytes rather than rows, not a
+   * new policy. It is the BACKSTOP: with the rounding above, a full 4-hour ring gzips to
+   * 32 % of the cap and this never fires. It exists so a wider field list or a longer ring
+   * can never put the report back over the wire again.
+   *
+   * Returns the number of rows actually dropped — 0 when there is nothing left to give, so
+   * the caller can stop rather than loop. */
+  function trimOldest(bundle, rows) {
+    var ts = bundle && bundle.timeseries;
+    if (!ts || !ts.t || !ts.t.length) return 0;
+    var n = Math.min(Math.max(0, Math.floor(rows)), ts.t.length - MIN_KEPT_SAMPLES);
+    if (n <= 0) return 0;
+    var from = ts.t[0];
+    ts.t.splice(0, n);
+    if (ts.accel) ts.accel.splice(0, n);
+    ['v', 'lo', 'hi'].forEach(function (side) {
+      if (!ts[side]) return;
+      for (var i = 0; i < ts[side].length; i++) ts[side][i].splice(0, n);
+    });
+    var m = bundle.manifest || (bundle.manifest = {});
+    var tr = m.trimmed || (m.trimmed = { reason: 'wire_budget', rows_dropped: 0, dropped_from_sim_time: from });
+    tr.rows_dropped += n;
+    tr.window_start_sim_time = ts.t.length ? ts.t[0] : null;
+    return n;
+  }
+
   function fieldsFor(plant) { return FIELDS[plant] || FIELDS.pwr; }
 
   /* Pack a true_state into the sampler's third side. Called from the fine sampler, which
@@ -94,11 +170,17 @@
       plant: plant, reason: reason, meta: meta || null,
       startSim: t, lastT: t,
       fields: F,
-      // Columnar, not an array of row objects. Measured on real report data (jittered so
-      // columns do not repeat): at the 14,400-row ring, gzipped, 720 KB columnar against
-      // 1218 KB as rows — and the Worker's cap is 2 MB before `events` and `snapshot_end`
-      // are added. Repeating ten property NAMES per row is what costs; the same lesson the
-      // strip chart's buffer learned when 40 series cost 39.5 MB as properties.
+      // Columnar, not an array of row objects. Repeating ten property NAMES per row is what
+      // costs; the same lesson the strip chart's buffer learned when 40 series cost 39.5 MB
+      // as properties.
+      //
+      // THE FIGURE THAT USED TO BE HERE — "720 KB gzipped at the 14,400-row ring" — WAS
+      // WRONG BY 4.07x (#681). It was measured on the RETIRED `pwr` engine's data and
+      // inherited by reference ever since; on PWR2 the same ring measured 2,929 KB against
+      // a 2 MB cap, which is how the report came to be unsendable from 2 h 45 min of plant
+      // time onward. Measured 2026-09-10 on PWR2 hot full power, 4 plant-hours, full stack:
+      // 2,939 KB as shipped, 646 KB with the build()-time rounding above. Re-measure it on
+      // THIS plant before quoting it again.
       t: [], accel: [], v: [], lo: [], hi: [],
       events: [], commands: [],
       lastAlarms: null, lastScrammed: false,
@@ -250,7 +332,10 @@
       emit(r, t, (s.metadata.time_acceleration || 1));
     }
     var bundle = {
-      schema_version: '1.1', kind: 'reactor_dynamics_diagnosis',
+      // 1.2 (#681): the timeseries is ROUNDED on the way out — see the precision block above.
+      // A reader needs to know it is looking at 1e-4 resolution rather than raw doubles, and
+      // `manifest.precision` says so in the bundle rather than in a changelog it cannot see.
+      schema_version: '1.2', kind: 'reactor_dynamics_diagnosis',
       exported_at: ctx.exported_at || new Date().toISOString(),
       manifest: {
         plant_id: r.plant, design_version: ctx.design_version || null, engine_key: ctx.engine_key || null,
@@ -265,9 +350,19 @@
         sampling: {
           grid_s: GRID_SEC, extremes: true,
           source: r.sawFine ? (r.sawBroadcast ? 'mixed' : 'fine') : 'broadcast'
-        }
+        },
+        precision: { value_dp: VALUE_DP, value_sig_below_1: VALUE_SIG, time_dp: TIME_DP }
       },
-      timeseries: { fields: r.fields, t: r.t, accel: r.accel, v: r.v, lo: r.lo, hi: r.hi },
+      // COPIES, rounded. Two reasons and both matter: the recorder keeps full precision in
+      // memory (this is a serialisation rule, not a storage one), and a bundle that aliased
+      // the live ring kept changing after it was handed out — the trim below would then have
+      // eaten the recording itself.
+      timeseries: {
+        fields: r.fields.slice(),
+        t: r.t.map(function (x) { return roundTo(x, TIME_DP); }),
+        accel: r.accel.slice(),
+        v: r.v.map(roundCol), lo: r.lo.map(roundCol), hi: r.hi.map(roundCol)
+      },
       events: r.events, commands: r.commands,
       performance: ctx.performance || null,
       snapshot_end: ctx.snapshot_end || null
@@ -282,6 +377,12 @@
     fieldsFor: fieldsFor,
     pack: pack,
     GRID_SEC: GRID_SEC,
-    MAX_SAMPLES: MAX_SAMPLES
+    MAX_SAMPLES: MAX_SAMPLES,
+    MIN_KEPT_SAMPLES: MIN_KEPT_SAMPLES,
+    // The wire backstop (#681). site/telemetry.js drives it; it lives here because the
+    // schema does. `roundValue` is exported so a gate can assert the rule directly rather
+    // than infer it from a serialised string.
+    trimOldest: trimOldest,
+    roundValue: roundValue
   };
 }(typeof globalThis !== 'undefined' ? globalThis : this));

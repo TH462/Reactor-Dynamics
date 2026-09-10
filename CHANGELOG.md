@@ -616,7 +616,74 @@ stays steady (power within 5 points of rated, pressure drift under 0.2 MPa / 29 
 meet within one broadcast of the window end, and a planted 1e-6 difference is seen by `compare()`.
 Four injections, one per conjunct, each proven to redden SI-0 alone. No baseline moves (8 checks).
 
-## [Alpha 1.7.4-rc8] — 2026-09-09
+## [Alpha 1.7.4-rc9] — 2026-09-10
+
+### Fixed (#681, #682 — the bug report could not be sent, and the form never said so)
+
+Both filed 2026-09-10 out of the #675 section E measurement pass; the numbers below are that
+pass's, re-measured against the fix with its own harnesses (`inbox/675/threshold.js`,
+`inbox/675/feedback_repro.js`, gitignored).
+
+- **#681 — the payload crossed the Worker's 2 MB cap at 2 h 45 min of plant time and stayed
+  over it for the rest of the session.** Measured before: 2,096 KB at 2.75 plant-hours, 2,995 KB
+  (146 % of the cap) once the 14,400-row ring fills at 4 plant-hours, **identical at 1x, 60x and
+  600x** because the recorder's grid is one row per plant-second at every speed up to 600x. Only
+  3600x escaped. Reproduced end to end in the browser against a local stub of the Worker: 3,006,146
+  bytes posted, HTTP 413, *"Could not send — please email instead."*
+  **The cause was not too much history — it was full float precision**: 432,000 doubles written
+  as `15.522619140623991`, 5.3 MB of numbers inflated into 7.88 MB of JSON, and `timeseries` is
+  **99.6 %** of the payload.
+  - `ui/diag_recorder.js` now rounds **at `build()`**, the serialisation boundary, not in the
+    ring — the recorder keeps full precision in memory and `build()` hands out COPIES instead of
+    the live arrays it used to alias. **4 plant-hours: 2,939 KB → 646 KB, 32 % of the cap, every
+    row kept.**
+  - The rule is **magnitude-aware, not a flat number of decimals**: 1e-4 absolute at or above
+    unity, **six significant digits below it**. Two of the ten PWR channels are fractions
+    (`steam_flow_normalized`, `fw_flow_normalized`) and the RBMK/BWR lists add two more; a flat
+    4 dp quantises a decay-heat steam flow of 0.00083 by 6 %, in the one regime a long report is
+    sent about. A magnitude rule is also one a newly added field cannot fall foul of, which a
+    per-field decimal map would not be.
+  - **The byte-budget backstop the owner asked for** *(OWNER, 2026-09-09, #675: "When we hit the
+    max length we can send for feedback we should trim older data. Usually the most recent data is
+    the most relevant.")* is in `site/telemetry.js`: it measures **the body it is about to POST**
+    and drops oldest rows through `RD.DiagRecorder.trimOldest` until it fits. Budget **1,966,080 B
+    = the Worker's 2 MiB minus 128 KiB**. Measuring the posted body rather than the JSON is
+    load-bearing: a raw-JSON budget would have thrown away half the history of a 4-hour report
+    that gzips to 32 % of the cap — and it is the raw path (no `CompressionStream`) that is still
+    over the cap after rounding, at 3.54 MB. The ring already trimmed oldest-first; this is a
+    second DENOMINATION of that, in bytes, not a new policy.
+  - **`schema_version` 1.1 → 1.2.** Same SHAPE — `tools/fetch_bug_reports.js` keys off the shape
+    and reads 1.1 and 1.2 through one path, verified on fixtures for all three (old 1.1, new 1.2,
+    trimmed 1.2). Two new manifest keys: `precision`, and `trimmed` when the wire budget cut the
+    window. The reader now PRINTS that line, because a trimmed bundle otherwise reads as a short
+    session — the same class of mistake as #432's 211 rows reading as a recording.
+  - Two stale figures corrected where they lived: `ui/diag_recorder.js`'s header claimed
+    **"720 KB gzipped"** at the full ring (measured on this plant: **2,929 KB**, 4.07x) and
+    `worker/src/index.js` called 2 MB "generous headroom" over a "~504 KB" 4-hour session. Both
+    were measured on the RETIRED `pwr` engine and inherited by reference — the standing trap.
+- **#682 — the form hung on "Sending…" for ever on a network-level failure.** `sendBundle`
+  returned `G.fetch(...).then(...)` with **no `.catch`**; its `try/catch` guarded only the
+  synchronous `CompressionStream` construction. A `fetch` rejection therefore resolved neither
+  branch of the click handler's `.then`, so `btn.disabled` stayed `true` and the status stayed
+  `Sending…` for the life of the page. Measured: still "Sending…" at 45 s, two
+  `TypeError: Failed to fetch` in the page log. A terminal `.catch` now resolves
+  `{ ok:false, network:true }`, and `ui/app.js` has a rejection branch as well.
+  **And the form now says WHICH failure it was**: `RD.Telemetry.sendResultMessage()` owns every
+  sentence, because app.js is browser-only and a string chosen there is one no Node gate can prove
+  is reached. Three different failures, three different things for the player to do — the
+  attachment is too large (untick it; the note-only path measured **165 bytes** and sends fine),
+  the network never answered (press Send report again), or the server said no (email instead).
+- **Gates.** `run_diag_bundle` **35 → 52** (TR-10: the rounding rule asserted on the serialised
+  digits, the recorder still holding full precision, a full ring under the wire budget, and the
+  same rows UNROUNDED still over the cap — a fixture canary, so a smoother fixture cannot quietly
+  stop exercising the defect). `run_telemetry` **136 → 159** (the budget, the trim wired to the
+  real recorder rather than a stub, the gzip path counting compressed bytes, the un-trimmable case
+  refusing to post a doomed body, and the network failure FULFILLING rather than rejecting).
+  **Nine injections, each proven red**: rounding removed (2 red), a flat 4 dp (2), `trimOldest` a
+  no-op (5), `trimOldest` dropping the newest (1), the budget check removed (7), the trim unwired
+  from the recorder (7), the terminal `.catch` removed (4), `network:true` dropped (2), app.js back
+  to its own words and a one-branch `.then` (2).
+
 
 ### Fixed (#670 Phase 3 — operator pass 2, the confirming playthrough)
 

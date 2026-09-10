@@ -109,7 +109,7 @@ head('TR-1  the bundle is what it says it is');
 (function () {
   var b = run({ accel: 1, forSec: 30 }).bundle;
   var ts = b.timeseries;
-  ck('schema_version is 1.1', b.schema_version === '1.1', b.schema_version);
+  ck('schema_version is 1.2', b.schema_version === '1.2', b.schema_version);
   ck('the timeseries is columnar', !!(ts && ts.fields && ts.t && ts.v && ts.lo && ts.hi),
     Object.keys(ts || {}).join(','));
   var lens = [ts.t.length, ts.accel.length].concat(ts.v.map(function (c) { return c.length; }))
@@ -276,6 +276,123 @@ head('TR-9  the first alarm scan captures the non-clear starting state ONLY (#50
     ev2.length + ' events');
   ck('…recording the transition with its previous state', ev2.length === 2 &&
     ev2[1].detail.id === 'quiet_0' && ev2[1].detail.state === 'active' && ev2[1].detail.was === 'clear');
+}());
+
+// ================================================ TR-10: the bundle fits on the wire (#681)
+//
+// THE DEFECT THIS GUARDS. The ring is bounded in ROWS and was never bounded in BYTES, and
+// the bytes were not history — they were digits. Measured on PWR2 hot full power, 4
+// plant-hours, full stack: 14,400 rows x 10 fields x 3 sides = 432,000 doubles written as
+// `15.522619140623991`, gzipping to 2,939 KB against the Worker's 2 MB cap. Every report
+// from 2 h 45 min of plant time onward was answered 413 and the player was told to email.
+//
+// The load-bearing check is the LAST one in this block: the same fixture, unrounded, must
+// come out OVER the cap. Without it a shrinking field list or a smoother fixture would
+// quietly stop exercising the defect and the green would mean nothing.
+head('TR-10  the exported bundle is rounded, and a full ring fits under the wire cap');
+(function () {
+  var zlib = require('zlib');
+  var CAP = 2 * 1024 * 1024;                    // worker/src/index.js MAX_BUNDLE_BYTES
+  var BUDGET = CAP - 128 * 1024;                // site/telemetry.js WIRE_BUDGET
+
+  // A synthetic ring, because 4 plant-hours of real stack would cost minutes to prove an
+  // encoding property. The values are a RANDOM WALK at full double precision — smooth like
+  // plant data, so gzip gets the same purchase on it that it gets on a real recording, and
+  // every number is a 17-significant-digit one like the ones that caused this.
+  var seed = 0x5eed;
+  function rnd() { seed = (seed * 1103515245 + 12345) & 0x7fffffff; return seed / 0x7fffffff; }
+  var N = RD.DiagRecorder.MAX_SAMPLES;
+  var base = { power_pct: 99.5, tavg_c: 304.6, thot_c: 321.0, tcold_c: 288.3, pressure_mpa: 15.52,
+               pzr_level_pct: 61.6, sg_level_pct: 64.9, steam_flow_normalized: 1.0,
+               fw_flow_normalized: 0.989, steam_pressure_mpa: 5.70 };
+  var walk = {}, k;
+  for (k in base) walk[k] = base[k];
+  var rec = RD.DiagRecorder.create({});
+  rec.reset('init', null, 0, 'pwr');
+  for (var t = 0; t <= N + 50; t++) {
+    for (k in walk) walk[k] = walk[k] * (1 + (rnd() - 0.5) * 0.002);
+    rec.tick({ metadata: { sim_time: t, time_acceleration: 1 }, true_state: walk, alarms: [], rps_state: {} }, null);
+  }
+  var b = rec.build({});
+  var ts = b.timeseries;
+  ck('the fixture is a full ring', ts.t.length === N, ts.t.length + ' rows');
+
+  // ---- the rounding rule, asserted on the SERIALISED digits, not on the constant --------
+  function decimals(x) {
+    var m = /\.(\d+)$/.exec(String(x));
+    return m ? m[1].length : 0;
+  }
+  function sig(x) {
+    var m = /^-?0?\.0*(\d+)/.exec(String(Math.abs(x)));
+    return m ? m[1].replace(/0+$/, '').length : String(Math.abs(x)).replace(/[-.]/g, '').replace(/^0+/, '').replace(/0+$/, '').length;
+  }
+  var worstDp = 0, worstVal = null, cells = 0;
+  ['v', 'lo', 'hi'].forEach(function (side) {
+    for (var i = 0; i < ts[side].length; i++) for (var j = 0; j < ts[side][i].length; j++) {
+      var x = ts[side][i][j];
+      if (typeof x !== 'number' || !isFinite(x) || Math.abs(x) < 1) continue;
+      cells++;
+      var d = decimals(x);
+      if (d > worstDp) { worstDp = d; worstVal = x; }
+    }
+  });
+  ck('no value of magnitude >= 1 carries more than 4 decimals', worstDp <= 4,
+    'worst ' + worstDp + ' dp on ' + worstVal + ' over ' + cells + ' cells');
+  ck('row timestamps are rounded too', ts.t.every(function (x) { return decimals(x) <= 3; }));
+
+  // A FRACTION IS NOT QUANTISED. A flat 4 dp would round a decay-heat steam flow of
+  // 0.00083123 to 0.0008 — 6 %, in the one regime a long report is sent about.
+  ck('a sub-unity value keeps 6 significant digits, not 4 decimals',
+    RD.DiagRecorder.roundValue(8.3123456789e-4) === 0.000831235 &&
+    sig(RD.DiagRecorder.roundValue(8.3123456789e-4)) === 6,
+    String(RD.DiagRecorder.roundValue(8.3123456789e-4)));
+  ck('...and so does a value three decades smaller',
+    sig(RD.DiagRecorder.roundValue(1.23456789e-6)) === 6,
+    String(RD.DiagRecorder.roundValue(1.23456789e-6)));
+
+  // ---- the rounding is a SERIALISATION rule, not a storage one -------------------------
+  var live = rec.rec.v[ts.fields.indexOf('pressure_mpa')];
+  ck('the recorder still holds full precision in memory',
+    live.some(function (x) { return decimals(x) > 4; }),
+    'worst live dp ' + live.reduce(function (a, x) { return Math.max(a, decimals(x)); }, 0));
+  ck('...and build() handed out a COPY, not the live ring',
+    ts.v !== rec.rec.v && ts.t !== rec.rec.t);
+
+  // ---- the number that is the acceptance criterion -------------------------------------
+  function pay(bundle) { return { v: 1, kind: 'session_bundle', note: 'x', bundle: bundle, build: 't', channel: 'd' }; }
+  function gz(o) { return zlib.gzipSync(Buffer.from(JSON.stringify(o), 'utf8')).length; }
+  var fitted = gz(pay(b));
+  ck('a full ring gzips under the wire budget', fitted <= BUDGET,
+    (fitted / 1024).toFixed(0) + ' KB = ' + (100 * fitted / CAP).toFixed(0) + '% of the 2 MB cap');
+
+  // THE FIXTURE CANARY. Rebuild the same rows unrounded and confirm they are still over the
+  // cap — otherwise the check above passes for reasons that have nothing to do with #681.
+  var rawTs = { fields: ts.fields, t: rec.rec.t, accel: rec.rec.accel, v: rec.rec.v, lo: rec.rec.lo, hi: rec.rec.hi };
+  var unrounded = gz(pay({ schema_version: '1.1', kind: b.kind, manifest: b.manifest, timeseries: rawTs, events: b.events, commands: b.commands }));
+  ck('the same rows UNROUNDED are still over the cap — the fixture still has the defect in it',
+    unrounded > CAP, (unrounded / 1024).toFixed(0) + ' KB = ' + (100 * unrounded / CAP).toFixed(0) + '% of the cap');
+
+  // ---- the backstop: oldest-first, in bytes --------------------------------------------
+  var before = ts.t.length, firstT = ts.t[0], lastT = ts.t[ts.t.length - 1];
+  var dropped = RD.DiagRecorder.trimOldest(b, 1000);
+  ck('trimOldest drops exactly what it was asked for', dropped === 1000, String(dropped));
+  ck('...and it is the OLDEST that went', ts.t.length === before - 1000 && ts.t[0] > firstT &&
+    ts.t[ts.t.length - 1] === lastT, 'first ' + firstT + ' -> ' + ts.t[0] + ', last ' + ts.t[ts.t.length - 1]);
+  ck('...on every column', ts.v.concat(ts.lo).concat(ts.hi).every(function (c) { return c.length === ts.t.length; }));
+  ck('...and the manifest SAYS the window was cut', !!(b.manifest.trimmed &&
+    b.manifest.trimmed.rows_dropped === 1000 && b.manifest.trimmed.window_start_sim_time === ts.t[0]),
+    JSON.stringify(b.manifest.trimmed));
+  ck('trimming makes it smaller', gz(pay(b)) < fitted,
+    (gz(pay(b)) / 1024).toFixed(0) + ' KB vs ' + (fitted / 1024).toFixed(0) + ' KB');
+  // It must STOP rather than empty the recording: a report with four rows in it is not a
+  // report. RD.DiagRecorder.MIN_KEPT_SAMPLES is the floor.
+  RD.DiagRecorder.trimOldest(b, 99999);
+  ck('the trim stops at the floor instead of emptying the recording',
+    ts.t.length === RD.DiagRecorder.MIN_KEPT_SAMPLES, ts.t.length + ' rows left');
+  ck('...and then reports 0, so a caller loop terminates',
+    RD.DiagRecorder.trimOldest(b, 100) === 0);
+  ck('a note-only bundle has nothing to trim and says so',
+    RD.DiagRecorder.trimOldest({ kind: 'reactor_dynamics_note_only' }, 100) === 0);
 }());
 
 // ====================================================== TR-8: the wiring, which a Node gate

@@ -60,6 +60,11 @@ function load(opts) {
   g.clearTimeout = function () {};
   g.fetch = function (url, init) {
     sent.push({ via: 'fetch', url: url, body: init && init.body, headers: (init && init.headers) || {} });
+    // THE NETWORK-LEVEL FAILURE (#682). A dropped connection, an offline machine, DNS, CORS:
+    // `fetch` REJECTS rather than answering, and until sendBundle grew a terminal `.catch`
+    // that resolved neither branch of the caller's `.then` — the feedback form sat on
+    // "Sending…" with Send disabled for the life of the page. This is that, exactly.
+    if (opts.networkFails) return Promise.reject(new TypeError('Failed to fetch'));
     // The real Worker answers the bundle route with `{ok:true, id}` and 204-with-no-body on
     // the event route. `bodyless` drops `json` entirely, which is what an opaque response
     // looks like — sendBundle must survive that rather than reject (#431).
@@ -88,8 +93,42 @@ function load(opts) {
   }
   stub('performance', { now: function () { return 1000; } });
   stub('navigator', { sendBeacon: function (url, body) { sent.push({ via: 'beacon', url: url, body: body }); return true; } });
+  // THE REAL RECORDER, not a stub (#681). sendBundle's byte backstop calls
+  // RD.DiagRecorder.trimOldest through a soft global lookup, which is exactly how the
+  // control room wires it (ui/shell.html loads diag_recorder.js before app.js). A fake trim
+  // here would gate the loop and not the wiring, and the wiring is the half that has been
+  // wrong before.
+  if (opts.withRecorder) {
+    delete require.cache[require.resolve(path.join(ROOT, 'ui', 'diag_recorder.js'))];
+    require(path.join(ROOT, 'ui', 'diag_recorder.js'));
+  }
   require(path.join(ROOT, 'site', 'telemetry.js'));
   return { T: g.RD.Telemetry, sent: sent };
+}
+
+// A bundle shaped like a real recording: columnar timeseries, `rows` rows of full-precision
+// doubles. Built here rather than by driving the plant, because what is under test is the
+// ENCODER, not the plant — and a random walk is the shape gzip actually meets.
+function mkBundle(rows, fields) {
+  fields = fields || ['power_pct', 'tavg_c', 'pressure_mpa', 'pzr_level_pct'];
+  var seed = 0x5eed;
+  function rnd() { seed = (seed * 1103515245 + 12345) & 0x7fffffff; return seed / 0x7fffffff; }
+  var ts = { fields: fields, t: [], accel: [], v: [], lo: [], hi: [] };
+  var walk = fields.map(function (f, i) { return 10 + i * 90; });
+  for (var i = 0; i < fields.length; i++) { ts.v.push([]); ts.lo.push([]); ts.hi.push([]); }
+  for (var r = 0; r < rows; r++) {
+    ts.t.push(r); ts.accel.push(1);
+    for (i = 0; i < fields.length; i++) {
+      walk[i] = walk[i] * (1 + (rnd() - 0.5) * 0.01);
+      ts.v[i].push(walk[i]); ts.lo[i].push(walk[i] * 0.999); ts.hi[i].push(walk[i] * 1.001);
+    }
+  }
+  return { schema_version: '1.2', kind: 'reactor_dynamics_diagnosis', manifest: { plant_id: 'pwr' },
+           timeseries: ts, events: [], commands: [] };
+}
+function bodyBytes(b) {
+  if (b && typeof b.size === 'number') return b.size;         // Blob (the gzip path)
+  return Buffer.byteLength(String(b), 'utf8');
 }
 
 // =============================================================== (a) the opt-out gate
@@ -542,6 +581,156 @@ function sentDelta(a, fn) { var n = a.sent.length; fn(); a.T.flush(); return a.s
       });
     });
 }())
+  .then(function () {
+    // ============================================ the wire budget and the terminal catch
+    //
+    // #681: a 4-plant-hour report posted 3,006,146 bytes against the Worker's 2 MiB cap and
+    // was answered 413; every report from 2 h 45 min of plant time onward was rejected for
+    // the rest of the session, and nothing on this side had ever measured. #682: a POST that
+    // failed at the NETWORK level resolved neither branch of the caller's `.then`, so the
+    // form read "Sending…" at 45 s with Send permanently disabled.
+    //
+    // These drive the real module with the real recorder. The budget is passed explicitly at
+    // a small value in the mechanics cases: the loop is scale-free and a gate that had to
+    // build two megabytes to prove it would cost seconds for nothing. The DEFAULT budget is
+    // asserted separately, against the Worker's constant.
+    var fs = require('fs');
+    var cap = load({}).T;
+    ck('the default wire budget sits under the Worker\'s cap',
+      cap.WIRE_CAP === 2 * 1024 * 1024 && cap.WIRE_BUDGET === 2 * 1024 * 1024 - 128 * 1024 &&
+      cap.WIRE_BUDGET < cap.WIRE_CAP,
+      cap.WIRE_BUDGET + ' of ' + cap.WIRE_CAP);
+
+    // ---- it fits: nothing is trimmed --------------------------------------------------
+    var fits = load({ withRecorder: true, noCompression: true });
+    var small = mkBundle(50);
+    return fits.T.sendBundle(small, 'short session', { maxBytes: 5 * 1024 * 1024 })
+      .then(function (res) {
+        ck('a bundle inside the budget is posted whole', !!(res && res.ok) && !res.trimmed_rows,
+          JSON.stringify({ ok: res.ok, trimmed: res.trimmed_rows, bytes: res.bytes }));
+        ck('...with every row still on it',
+          JSON.parse(fits.sent[0].body).bundle.timeseries.t.length === 50,
+          String(JSON.parse(fits.sent[0].body).bundle.timeseries.t.length));
+        ck('...and no `trimmed` note in the manifest',
+          !JSON.parse(fits.sent[0].body).bundle.manifest.trimmed);
+      })
+      .then(function () {
+        // ---- it does not fit: OLDEST rows go until it does ------------------------------
+        // *(OWNER, 2026-09-09, #675: "When we hit the max length we can send for feedback we
+        // should trim older data. Usually the most recent data is the most relevant.")*
+        var big = load({ withRecorder: true, noCompression: true });
+        var b = mkBundle(4000);
+        var wholeRows = b.timeseries.t.length, newestT = b.timeseries.t[wholeRows - 1];
+        return big.T.sendBundle(b, 'long session', { maxBytes: 40000 }).then(function (res) {
+          ck('an over-budget bundle is still SENT', !!(res && res.ok), JSON.stringify(res && res.reason));
+          ck('...after dropping rows', res.trimmed_rows > 0, String(res.trimmed_rows));
+          // Read the wire DEFENSIVELY. When the trim is unwired there is no request at all,
+          // and a gate that indexes `sent[-1]` dies with a TypeError instead of naming which
+          // property failed — a crash is red, but it is red about the gate, not about the
+          // defect. Every check below has to be able to report on an empty wire.
+          var wire = big.sent[big.sent.length - 1] || null;
+          var posted = wire ? JSON.parse(wire.body) : null;
+          var pts = (posted && posted.bundle && posted.bundle.timeseries) || null;
+          ck('...and something actually went on the wire', !!pts, wire ? 'no timeseries' : 'no request');
+          ck('...and what went is under the budget',
+            !!wire && bodyBytes(wire.body) <= 40000,
+            wire ? bodyBytes(wire.body) + ' B of 40000' : 'nothing posted');
+          ck('...the rows that went are the OLDEST, and the newest survived',
+            !!pts && pts.t.length < wholeRows && pts.t[0] > 0 && pts.t[pts.t.length - 1] === newestT,
+            pts ? (pts.t.length + ' of ' + wholeRows + ' rows, ' + pts.t[0] + '..' + pts.t[pts.t.length - 1]) : 'nothing posted');
+          ck('...every column was cut with `t`',
+            !!pts && pts.v.concat(pts.lo).concat(pts.hi).every(function (c) { return c.length === pts.t.length; }));
+          // A reader must not mistake a trimmed window for the whole session.
+          ck('...and the bundle SAYS its window was cut',
+            !!(posted && posted.bundle.manifest.trimmed && posted.bundle.manifest.trimmed.rows_dropped > 0),
+            posted ? JSON.stringify(posted.bundle.manifest.trimmed) : 'nothing posted');
+        });
+      })
+      .then(function () {
+        // ---- the gzip path measures the GZIPPED body, not the JSON ----------------------
+        // The distinction is the whole reason a raw-JSON budget was rejected: it would have
+        // thrown away half the history of a 4-hour report that compresses to 32 % of the cap.
+        var gz = load({ withRecorder: true });
+        var b = mkBundle(4000);
+        var jsonBytes = Buffer.byteLength(JSON.stringify({ v: 1, bundle: b }), 'utf8');
+        return gz.T.sendBundle(b, 'compressed', { maxBytes: Math.floor(jsonBytes / 2) })
+          .then(function (res) {
+            ck('the gzip path counts the compressed body, so nothing is trimmed needlessly',
+              !!(res && res.ok) && !res.trimmed_rows &&
+              bodyBytes(gz.sent[0].body) < jsonBytes / 2,
+              bodyBytes(gz.sent[0].body) + ' B gzipped vs ' + jsonBytes + ' B of JSON, budget ' +
+              Math.floor(jsonBytes / 2));
+          });
+      })
+      .then(function () {
+        // ---- nothing left to give: say WHICH failure it was, and do not post it ----------
+        var stuck = load({ withRecorder: true, noCompression: true });
+        var n0 = stuck.sent.length;
+        return stuck.T.sendBundle(mkBundle(120), 'no room', { maxBytes: 200 }).then(function (res) {
+          ck('a bundle that cannot be made to fit resolves as too large',
+            !!(res && res.ok === false && res.tooLarge === true && res.status === 413),
+            JSON.stringify({ ok: res.ok, tooLarge: res.tooLarge, status: res.status }));
+          ck('...and is NOT posted, so the wire does not carry a doomed body',
+            stuck.sent.length === n0, (stuck.sent.length - n0) + ' requests');
+          // The message is the one that tells the player what to DO about it.
+          ck('...and the form is told to untick the attachment',
+            /too large/.test(stuck.T.sendResultMessage(res)) &&
+            /Attach this session/.test(stuck.T.sendResultMessage(res)),
+            stuck.T.sendResultMessage(res));
+        });
+      })
+      .then(function () {
+        // ---- #682: the network never answers --------------------------------------------
+        // THE ASSERTION IS THAT THE PROMISE FULFILS, not merely that it settles. A REJECTION
+        // is the defect: `T.sendBundle(...).then(cb)` in ui/app.js never calls cb on one, so
+        // the button stays disabled and the status stays "Sending…" for the life of the page.
+        // Caught both ways here so the gate REPORTS it rather than dying on it.
+        var dead = load({ withRecorder: true, noCompression: true, networkFails: true });
+        var out = null;
+        return dead.T.sendBundle(mkBundle(20), 'connection dies').then(
+          function (res) { out = { fulfilled: true, res: res }; },
+          function (e) { out = { fulfilled: false, err: String(e) }; }
+        ).then(function () {
+          ck('a network-level failure FULFILS the promise — a rejection is what left the form on "Sending…"',
+            !!(out && out.fulfilled), JSON.stringify(out));
+          var res = out.fulfilled ? out.res : null;
+          ck('...resolving to a failure the caller can read', !!res && res.ok === false,
+            JSON.stringify(res));
+          ck('...that says it was the network, not the server',
+            !!(res && res.network === true && /Failed to fetch/.test(String(res.reason))),
+            JSON.stringify(res));
+          ck('...so the form gets a sentence with a retry in it',
+            /Could not send/.test(dead.T.sendResultMessage(res)) &&
+            /Send report again/.test(dead.T.sendResultMessage(res)),
+            dead.T.sendResultMessage(res));
+        });
+      })
+      .then(function () {
+        // ---- the success sentence still carries the reference id (#431) ------------------
+        var okc = load({ withRecorder: true, noCompression: true });
+        return okc.T.sendBundle(mkBundle(10), 'fine').then(function (res) {
+          ck('a successful send still quotes the report id back at the player',
+            okc.T.sendResultMessage(res) === 'Sent — thank you. Reference msmiercb-46iji16v',
+            okc.T.sendResultMessage(res));
+        });
+      })
+      .then(function () {
+        // ---- ui/app.js must actually USE it ---------------------------------------------
+        // A source scan, and it is the weak kind on purpose: everything above proves the
+        // module, and nothing in Node can execute app.js. What it can prove is that the
+        // browser half has not gone back to choosing its own words or to a one-branch
+        // `.then`, which is the shape #682 was.
+        var app = fs.readFileSync(path.join(ROOT, 'ui', 'app.js'), 'utf8')
+          .replace(/\/\*[\s\S]*?\*\//g, ' ').replace(/(^|[^:])\/\/[^\n]*/g, '$1');
+        ck('app.js renders the status from sendResultMessage', /sendResultMessage\(/.test(app));
+        ck('app.js gives sendBundle a rejection branch too',
+          /sendBundle\([^)]*\)\.then\(settle,/.test(app),
+          (app.match(/.{0,30}sendBundle\(.{0,60}/) || [''])[0]);
+        ck('app.js no longer hardcodes the failure sentence',
+          !/Could not send/.test(app),
+          (app.match(/.{0,40}Could not send.{0,40}/) || [''])[0]);
+      });
+  })
   .then(function () {
     // ------------------------------------------------- storage refused entirely
     // A browser that refuses localStorage cannot RECORD an opt-out, so under the

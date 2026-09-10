@@ -1446,9 +1446,23 @@ async function testDiagBundle(page) {
 
   var b = JSON.parse(fs.readFileSync(out, 'utf8'));
   var ts = b.timeseries || {};
-  if (b.schema_version !== '1.1') throw new Error('diag bundle schema is ' + b.schema_version + ', expected 1.1');
+  if (b.schema_version !== '1.2') throw new Error('diag bundle schema is ' + b.schema_version + ', expected 1.2');
   if ('sample_hz' in (b.manifest || {})) throw new Error('diag manifest still carries sample_hz');
   if (!ts.fields || !ts.t || !ts.lo || !ts.hi) throw new Error('diag timeseries is not columnar with extremes');
+  // AND THE ROUNDING IS ON THE BROWSER'S OWN PATH (#681). This is the DOWNLOAD button's bundle,
+  // built by the shipped app, so it is the one place outside Node that proves build() rounds at
+  // all — the report was 2,939 KB of 17-significant-figure doubles against a 2 MB wire cap.
+  var over = null;
+  ['v', 'lo', 'hi'].forEach(function (side) {
+    (ts[side] || []).forEach(function (col) {
+      col.forEach(function (x) {
+        if (over || typeof x !== 'number' || Math.abs(x) < 1) return;
+        var m = /\.(\d+)$/.exec(String(x));
+        if (m && m[1].length > 4) over = x;
+      });
+    });
+  });
+  if (over !== null) throw new Error('diag timeseries is not rounded: ' + over);
 
   // THE ONE THAT CATCHES THE DRAIN BEING IN THE WRONG PLACE. At 600x a broadcast carries 60 s
   // of plant, so the broadcast-only fallback yields ~1 row a minute; the fine seam yields one
