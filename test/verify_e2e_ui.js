@@ -1934,6 +1934,80 @@ async function testHeldSpeedClick(page) {
   return log.join('\n') + '\n';
 }
 
+/* #691 — A PAUSED PLANT KEPT THE PREVIOUSLY-SELECTED SPEED BUTTON LIT, AND PLAY-FROM-PAUSE
+ * RESUMED AT THE OLD SPEED (owner: "When pausing the sim the previously selected warp button
+ * shouldn't still be highlighted. Pressing play from a pause should play at 1x.").
+ *
+ * ROOT CAUSE, both halves. `syncSpeedUI`'s repaint of `[data-speed].on` is guarded on
+ * `v !== lastSpeedSync` (`ui/app.js`) — pausing never touches `time_acceleration`, so a
+ * pause's own `syncPlayBtn()` call left the guard short-circuited and the lit button was
+ * never told to go dark. Separately, `resumeSim` called only `service.start()`: nothing
+ * resets `timeAcceleration` (its one mutator besides init is `_setSpeed`), so whatever speed
+ * survived the pause untouched is exactly what the plant resumed at.
+ *
+ * A NODE GATE CANNOT SEE THIS. `SimulationService.prototype.advanceCycles` forces
+ * `running = true` for the duration of its own loop and restores the prior value afterwards,
+ * so a Node harness that pauses and then steps the plant to check can never observe the
+ * pause holding — the very mechanism it would use to advance the plant defeats the pause it
+ * is trying to verify. This has to drive the real play/pause button and the service's own
+ * timer path, which only a browser gate does. */
+async function testPauseResumeSpeed(page) {
+  var log = [];
+  var base = 'http://127.0.0.1:' + PORT + '/ui/shell.html?engine=pwr2&run=1&dev=1';
+  await page.goto(base, { waitUntil: 'networkidle', timeout: 90000 });
+  await dismissMission(page);
+  await waitBoardLive(page, 20000);
+
+  async function read() {
+    return await page.evaluate(function () {
+      var svc = globalThis.RD.__dev.service();
+      var lit = Array.prototype.map.call(
+        document.querySelectorAll('#speed [data-speed].on'),
+        function (b) { return b.getAttribute('data-speed'); });
+      return { accel: svc.timeAcceleration, running: svc.running,
+               paused: document.getElementById('playBtn').classList.contains('paused'), lit: lit };
+    });
+  }
+
+  // ---- 1. select a non-1x speed: it lights and the plant accelerates ----------------
+  await page.click('#speed [data-speed="600"]');
+  await page.waitForTimeout(400);
+  var afterClick = await read();
+  if (!(afterClick.accel >= 600) || afterClick.lit.indexOf('600') < 0) {
+    throw new Error('#691 fixture: selecting 600x did not light the button or accelerate — ' + JSON.stringify(afterClick));
+  }
+  log.push('600x selected: accel ' + afterClick.accel + ', lit [' + afterClick.lit.join(',') + ']');
+
+  // ---- 2. pause: the 600x button must go dark, even though accel never changed ------
+  await page.click('#playBtn');
+  await page.waitForTimeout(300);
+  var afterPause = await read();
+  if (!afterPause.paused || afterPause.running) {
+    throw new Error('#691: #playBtn did not pause the plant — ' + JSON.stringify(afterPause));
+  }
+  if (afterPause.lit.indexOf('600') >= 0) {
+    throw new Error('#691: the 600x speed button is still lit while the plant is PAUSED — lit [' +
+      afterPause.lit.join(',') + ']');
+  }
+  log.push('paused: lit [' + afterPause.lit.join(',') + '] (600x cleared)');
+
+  // ---- 3. resume: must land at 1x, with the 1x button (not 600x) lit ----------------
+  await page.click('#playBtn');
+  await page.waitForTimeout(300);
+  var afterResume = await read();
+  if (afterResume.paused || !afterResume.running) {
+    throw new Error('#691: #playBtn did not resume the plant — ' + JSON.stringify(afterResume));
+  }
+  if (afterResume.accel !== 1) {
+    throw new Error('#691: play-from-pause resumed at ' + afterResume.accel + 'x, not 1x — ' + JSON.stringify(afterResume));
+  }
+  if (afterResume.lit.indexOf('1') < 0 || afterResume.lit.indexOf('600') >= 0) {
+    throw new Error('#691: after resume the lit speed button(s) are [' + afterResume.lit.join(',') + '], want just 1');
+  }
+  log.push('resumed: accel ' + afterResume.accel + ', lit [' + afterResume.lit.join(',') + ']');
+  return log.join('\n') + '\n';
+}
+
 /* NO CSS TRANSITION MAY RIDE A BROADCAST-CADENCE VALUE (#613 wave 3, 2026-09-04).
  *
  * THE INVARIANT: a CSS transition may exist only on a property that changes on a DISCRETE
@@ -2080,6 +2154,8 @@ async function main() {
     fs.writeFileSync(path.join(SCRATCH, 'adv-fail-panel.log'), afLog);
     var hsLog = await testHeldSpeedClick(page);
     fs.writeFileSync(path.join(SCRATCH, 'held-speed-click.log'), hsLog);
+    var prLog = await testPauseResumeSpeed(page);
+    fs.writeFileSync(path.join(SCRATCH, 'pause-resume-speed.log'), prLog);
     var ctLog = await testCssTransitions(page);
     fs.writeFileSync(path.join(SCRATCH, 'css-transitions.log'), ctLog);
     fs.writeFileSync(path.join(SCRATCH, 'ui-screenshot-summary.log'), summary.join('\n') + '\n');
@@ -2102,6 +2178,7 @@ if (require.main !== module) {
                      testMissionCloseResumes: testMissionCloseResumes, testRunStartMark: testRunStartMark,
                      testHeldPlantDialog: testHeldPlantDialog, testHeldSpeedClick: testHeldSpeedClick,
                      testSaveLoadRefusal: testSaveLoadRefusal, testCssTransitions: testCssTransitions,
+                     testPauseResumeSpeed: testPauseResumeSpeed,
                      port: function () { return PORT; } };
 } else {
   main().catch(function (e) {

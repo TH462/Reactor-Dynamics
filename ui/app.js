@@ -6360,6 +6360,19 @@
       var B = window.RD && RD.PwrBoard;
       if (B && B.setRunning && B.isMounted && B.isMounted()) B.setRunning(run);
     } catch (e) {}
+    /* #691: A PAUSED PLANT IS ACCELERATING AT NO RATE AT ALL, so the previously-selected
+     * speed button must not read as current. This can't wait for syncSpeedUI's own repaint
+     * because pausing never changes `time_acceleration` (see resumeSim below) — pausing
+     * STOPS THE BROADCAST, same as the board-freeze note above, so no snapshot ever arrives
+     * to trigger it. Clear the lit rung by hand, and drop `lastSpeedSync`'s memory so the
+     * NEXT real snapshot always repaints — even if it lands back on the same number (a
+     * pause/resume that never touched the speed dropdown at all, e.g. the chart-settings
+     * modal), which the `v === lastSpeedSync` guard would otherwise skip silently. */
+    if (!run) {
+      var speedSeg = $('speed');
+      if (speedSeg) speedSeg.querySelectorAll('[data-speed].on').forEach(function (x) { x.classList.remove('on'); });
+      lastSpeedSync = null;
+    }
   }
   function pauseSim(reason) {
     pauseWhy[reason || 'user'] = true;
@@ -6370,6 +6383,20 @@
   function pausedFor(reason) { return !!pauseWhy[reason]; }
   function resumeSim() {
     pauseWhy = {};                       // the player said go: every hold is released
+    /* #691: play-from-pause always lands at 1x, never the speed that was showing when the
+     * player paused (that speed only ever meant "the plant was accelerating at N× until it
+     * stopped being watched" — it is not a request to resume there). Reuse the exact path
+     * the speed buttons themselves use (`ui/app.js` speed-segment click handler) rather than
+     * writing `service.timeAcceleration` directly or routing through the service's
+     * `speed_snap` drop-to-1x path (`layers/simulation_service.js` attention-stop branch) —
+     * that path toasts "Dropped to real time" and would misreport a deliberate play press as
+     * the plant interrupting the player. `warpNote` is cleared for the same reason: this is
+     * the player's own act, not a plant-declared drop, so the line under the speed bar must
+     * not blame one. Sent BEFORE `service.start()`, while the service still reads as
+     * stopped, so `cmd()`'s own `if (!service.running) render(...)` fires and the 1x button
+     * is lit immediately rather than waiting on the next broadcast. */
+    warpNote = null;
+    cmd({ action: 'set_speed', value: 1 });
     if (!service.running) service.start();
     syncPlayBtn();
   }

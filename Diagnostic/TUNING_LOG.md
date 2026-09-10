@@ -29,7 +29,83 @@ and the user-visible summary in `CHANGELOG.md`. This file points at those and tr
 
 ---
 
-## Session log — 2026-09-10-workbench-a (#684, #701, #699 — close-out of three #675 fixes; code by an earlier session, verified and gated here)
+## Session log — 2026-09-10-workbench-b (#691 — a paused plant kept the old speed button lit, and play-from-pause resumed at the old speed)
+
+**Workbench lane, unmerged.** Owner: *"When pausing the sim the previously selected warp
+button shouldn't still be highlighted. Pressing play from a pause should play at 1x."*
+Triaged alongside #686 (the warp status line), which is held on an unresolved owner question
+(the accumulator-window `speed_hold` gap) — **only #691 was built here.**
+
+**WHAT WAS ACTUALLY WRONG, not just the symptom.** Two independent state bugs sharing one
+proximate cause: `timeAcceleration` is untouched by pause/resume.
+1. **`syncSpeedUI`'s repaint of `[data-speed].on` is guarded on `v !== lastSpeedSync`**
+   (`ui/app.js`). `pauseSim` → `service.stop()` never changes `time_acceleration`, and pausing
+   also STOPS THE BROADCAST (the same reason the board-freeze fix had to push state directly
+   rather than wait for a snapshot, per the comment on `syncPlayBtn`) — so no repaint was ever
+   triggered, guarded or not, and the last-clicked button's `.on` class simply sat there over a
+   stopped plant.
+2. **`resumeSim` called only `service.start()`.** `timeAcceleration`'s one mutator besides init
+   is `_setSpeed`, and nothing on the pause/resume path calls it — so whatever speed survived
+   the pause untouched is exactly what the plant resumed at.
+
+**THE FIX.** `syncPlayBtn()` now clears `.on` from every lit `[data-speed]` button and resets
+`lastSpeedSync = null` whenever `!run` — forcing the *next* real snapshot to always repaint the
+speed segment, even onto the same numeric value (covers the modal/rewind/plant-change pause
+reasons too, not just the play button, since they all funnel through `syncPlayBtn`).
+`resumeSim()` now clears `warpNote` and sends `cmd({action:'set_speed', value:1})` — the exact
+call the 1x button itself makes — **before** `service.start()`, so `cmd()`'s own
+`if (!service.running) render(...)` fires immediately rather than waiting on the next
+broadcast. Per the issue's own warning, resume deliberately does NOT route through the
+service's `speed_snap` drop-to-1x path (`layers/simulation_service.js`, the attention-stop
+branch): that path toasts "Dropped to real time", which would misreport a deliberate play
+press as the plant interrupting the player, and would write a `warpNote` the #686 consolidated
+line (still on hold) would have had to account for.
+
+**Accepted side effect, named in the issue itself:** `syncSpeedUI` re-labels the strip-chart
+window buttons for the new speed (`syncChartWindows`), so every play-from-pause re-labels the
+chart axis to the 1x window. Checked visually — looks right, not a regression.
+
+**Scanner-hint text corrected too** (`ui/shell.html`, `#playBtn`'s `data-scanner-detail`): it
+explicitly documented the OLD, buggy behavior as intended ("pausing does not reset it, and a
+paused plant at 60x is still paused") — left uncorrected it would teach players the wrong
+thing about the fixed behavior. No gate pins this text's content (`run_inspect.js`'s "shell
+inline tier" check is structural — pairing and format only), so this was a manual read, not a
+gate catch.
+
+**GATE — A NODE HARNESS CANNOT SEE THIS DEFECT.**
+`SimulationService.prototype.advanceCycles` forces `running = true` for the duration of its own
+loop and restores the prior value afterward, so a Node harness that pauses and then steps the
+plant to check can never observe the pause holding. New browser check,
+`test/verify_e2e_ui.js`'s `testPauseResumeSpeed`: select 600x (confirms `.on` + `timeAcceleration
+>= 600`), pause (confirms `.on` gone from the 600x button while `timeAcceleration` is
+UNCHANGED — the actual defect, not a proxy for it), resume (confirms `timeAcceleration === 1`
+and `.on` moved to the 1x button, not still on 600x). **Proved red first**: reverted both
+`syncPlayBtn`'s clear-on-pause block and `resumeSim`'s `cmd(set_speed,1)` call (scratch copy,
+`inbox/691/`, gitignored), ran the new check in isolation against the reverted source — failed
+with *"the 600x speed button is still lit while the plant is PAUSED — lit [600]"* — restored
+the fix, re-ran, passed with `paused: lit [] (600x cleared)` / `resumed: accel 1, lit [1]`.
+
+**GATES:** `verify_e2e_ui` PASS (4 screenshots, baseline unchanged — the new test doesn't move
+the screenshot count the score is keyed on), `verify_flags_ui` 50/50, `run_style` 10/10,
+`run_inspect` 11/11 62/62 (unchanged — the scanner-detail edit changed content, not the count
+any check sweeps).
+
+**`run_all` 110/111 at baseline plus one PRE-EXISTING, UNRELATED drift, corrected here:**
+`run_hardrules.js` came back 521 vs a baseline of 520 — not caused by #691 (that gate scans
+only `Blueprint/`, `Diagnostic/`, `Manuals/`, `CLAUDE.md`, `CHANGELOG.md`, `README.md`,
+`.claude/`, never `ui/` or `test/`, which is everything this session touched). Read
+`793f4c02`'s diff directly: the prior session's #684/#701/#699 close-out added a well-formed
+`(OWNER RULING, 2026-08-04: "A")` citation to this file's own run_ops writeup (line 42, run_ops
+paragraph above) without moving the `run_hardrules.js` baseline in the same commit — its own
+commit message's claim of "111/111 at baseline" did not account for the file it was itself
+editing. Corrected in `test/run_all.js` (520 → 521, comment explains the true cause). **After
+the correction, `run_all` is clean at baseline**: `run_ops` 59/70 is the one tracked, ruled red
+(#330, unchanged). Not touched: `changelog.html`, the release-candidate number, `site/flags.js`.
+
+**Filed, not fixed:** nothing — no new defect found outside #691's own scope.
+
+**Issue:** #691, `status-work-complete`, `status-wip-workbench` cleared. Cross-linked: #686
+(held), #675 (parent).
 
 **Workbench lane, all three unmerged.** Commits `b1462989` (#684), `5d099b23` (#701),
 `c73bbfd9` (#699) were already on the branch when this session started — the agent that
