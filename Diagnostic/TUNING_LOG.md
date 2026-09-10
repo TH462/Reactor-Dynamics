@@ -29,7 +29,100 @@ and the user-visible summary in `CHANGELOG.md`. This file points at those and tr
 
 ---
 
-## Session log — 2026-09-10-develop-a (#681, #682 — the bug report was 8 MB of text describing 5 MB of numbers, and a failed send never came back)
+## Session log — 2026-09-10-workbench-a (#684, #701, #699 — close-out of three #675 fixes; code by an earlier session, verified and gated here)
+
+**Workbench lane, all three unmerged.** Commits `b1462989` (#684), `5d099b23` (#701),
+`c73bbfd9` (#699) were already on the branch when this session started — the agent that
+wrote them hit a session limit before running the aggregate gate. This entry is that
+close-out: `node test/run_all.js`, one diff-provenance question, and the write-up.
+
+**GATE: `run_all` 111/111 runners at baseline, one tracked red unchanged** — `run_ops.js`
+59/70 (12 failed), the ruled #330 `ops_cvcs_pzr_drain_rate` state (OWNER RULING, 2026-08-04:
+"A"). Nothing else drifted; no baseline needed correcting. Individually: `verify_board_check`
+256 checks, `run_inspect` 11/11 62/62, `run_pwr2_board` 82 checks, `run_manual_controls` 589
+checks, `run_contract` 178 checks — all exactly at the numbers the three commits' own baseline
+edits claimed.
+
+**#684 — THE HALO WAS SIZED TO THE AUTHORED TILE, NOT THE ART INSIDE IT.** Measured across all
+218 board tiles, headless Chromium at the harness's pinned 1400×900: with the glow box equal to
+the tile rect, **27 tiles have visible art overflowing it by more than 1 px, 17 by more than
+2 px**. The PORV — the item the owner actually reported (a halo that "missed" the valve) — was
+the worst *fractional* miss: its ring covered only **44.5 %** of the valve's width. The
+pressurizer was the worst *absolute* miss and is not rotated at all — **80 px of vessel hung
+below its halo**, 62.7 % ring coverage. Filing this as a rotation bug (the PORV is the only
+board item that declares one, 1 of 217) would have fixed the PORV and left 26 more tiles,
+including the turbine-generator and the pressurizer, to come back as the next report. Fix:
+`revealControl` now returns a lazily-built `.bd-halo` child sized to the UNION of the tile rect
+and every descendant that puts visible ink on the board (laid out, not hidden, no transparent
+ancestor, a real fill/stroke/background) — after the fix, **0 of 218 tiles overflow at either
+bound, and none shrunk**. `verify_board_check` 246 → 256 (+10, four injection-proven: no
+overflow recorded, border compensation dropped, `revealControl` reverted to the tile, the PORV
+status label deleted). `run_manual_controls` 590 → 589 — one fewer LABEL (a vocabulary
+consolidation), not one fewer covered step.
+
+**#701 — THE INSPECT PANEL TAUGHT THE RETIRED ENGINE'S INTERLOCK, ON THE SHIPPED PLANT.** The
+RHR suction-valve inspect text read "Refused above the 400 psi (2.76 MPa) interlock" —
+`emergency.rhr_valve_interlock_mpa` out of the retired engine's config. **This plant (PWR2)
+refuses at the sourced 425 psig (WTSM 5.1) = 440 psi (3.03 MPa) absolute**, and `Manuals/04`
+§PWR-N02 has printed 440 psi all along; the board's WIRING got this right under #524 and only
+the explanatory panel was missed. THE TRAP: a general "does every psi/MPa pair convert
+correctly" gate would have passed this defect, because 400 psi and 2.76 MPa are exactly each
+other — internally consistent, externally wrong to THIS plant. The fix derives both figures
+live from `RD.pwr2.rhr.RHR` instead of retyping them, proven red in both directions (put the
+400 psi copy back: red; move the plant's own `permissive_open_psig` to 350: red on both
+entries). Also removed: a claim that AUTO "arms the valve to open itself after a trip" — #453
+removed that RHR safeguards-arm months ago (no plant does it — WTSM 5.1 §5.1.3.3, NUREG-1431 SR
+3.4.14.2/.3) and the board draws no such button. `run_inspect` 10/10 56/56 → 11/11 62/62.
+
+**#699 — THE ONLY PUMP ART ON THAT CORNER OF THE MIMIC KEYED ON A FLOW THAT IS ZERO DURING THE
+EVOLUTION IT DRAWS.** RHR has no pump of its own — it is a suction alignment on the shared
+emergency-injection train — and that train's animation read `hpi_flow` alone. On PWR2
+`hpi_flow` is emergency injection only; a cooldown injects nothing. So **the ECCS impeller was
+drawn stopped through the entire back half of the authored Mode 1 → Mode 5 round trip** —
+exactly the leg where residual heat removal is the only thing between the core and its own
+decay heat. Measured, PWR2 cold shutdown, RHR aligned, 25 % heat-exchanger split: before,
+`rhr_active` true / `eccs_mode` 'rhr' / `hpi_flow` 0 → pump `running` **FALSE**; after, same
+plant state → `running` **TRUE**, speed 0.6; after + station blackout → `running` **FALSE**
+while `rhr_valve_open` stays **true** (the valve doesn't move in a blackout, only the power
+does — the separating signal). Fix publishes the engine's own `rh.running = valve_open &&
+powered` as a status passthrough, `rhr_running`, read at the board rather than recomputed — NOT
+keyed on the alignment valve alone, because that would reproduce the exact spinning-rotor-on-a-
+dead-bus defect #350 items 7/13/15 already removed from three other pumps. `run_pwr2_board`
+80 → 82 (+2; the second is the load-bearing one, asserting the impeller stops on a dead bus
+*while the valve is still open* — the discriminator a valve-only gate would pass vacuously).
+Deliberately NOT fixed here: the ECCS FLOW gauge still reads 0 GPM on an RHR cooldown (PWR2
+models RHR as one derived lineup constant with no pump hydraulics, so `hpi_flow × GPM_HPI`
+would render the wrong number on the wrong scale) — filed as **#705** (status-needs-ruling,
+cross-linked).
+
+**THE DIFF QUESTION, AND WHY THE ANSWER TURNED ON WHICH FUNCTION, NOT WHICH FILE.** #699 also
+touches `engines/pwr/pwr_engine.js` (+4 lines) and `engines/pwr/pwr_config.js` (+10 lines) —
+worth double-checking on sight, because `pwr_engine.js` is the RETIRED engine and the shipped
+plant is PWR2. Read closely, neither is stray:
+- `pwr_config.js`'s addition puts `'rhr_running'` into `PWR_CONFIG.instruments.status` — the
+  SHARED channel-name array both engines' status-passthrough builders iterate (`_copyStatus` in
+  `pwr_instruments.js`, and `pwr2_shell.js`'s own extras builder), and the array
+  `test/run_inspect.js`'s "every plant indication has a chart series" check sweeps to require a
+  `ui/app.js` series entry. It is config, not engine code — CLAUDE.md already carries this
+  distinction ("`pwr_config.js`/`pwr_instruments.js` are NOT the old engine and ship
+  everywhere").
+- `pwr_engine.js`'s four lines add `rhr_running: !!(s.rhr_active && s.ac_available)` INSIDE
+  `_instrExtras()` — the retired engine's status-passthrough builder, the same function that
+  already supplies `afw_active`, `rhr_active`, `rhr_valve_open` etc. to `_copyStatus`. **This is
+  not `getTrueState()`** — confirmed by the fact that `run_contract.js`'s baseline held at
+  exactly 178 checks through this change; that gate audits the UNION of `getTrueState()` keys
+  against `Blueprint/CONTEXT.md` §6.3 and would have gone red on a new, undocumented true_state
+  field. `_instrExtras()` output isn't part of that contract. So the line is a parity addition:
+  the retired engine still boots on the PREVIEW channel (#523), and without it the newly-added
+  `rhr_running` status row would read `undefined` there while `pwr2_shell.js` got the matching
+  live value for the shipped engine. **Worth writing down because it will get re-questioned in a
+  month**: "touches the retired engine" is not the same claim as "the retired engine's PHYSICS
+  changed" — a parity line in a shared status-passthrough builder is exactly the shape CLAUDE.md
+  already carves out, and the right way to settle "is this stray" is to ask which FUNCTION a
+  touched line sits in, not which file it's in.
+
+**Not touched this session:** `changelog.html`, the release-candidate number (both tied to a
+`develop` push, and this lane stays local until the owner merges it), `site/flags.js`.
 
 **Both filed 2026-09-10 out of the #675 section E measurement pass; both fixed here.** The
 acceptance criteria were that pass's own numbers, and they were re-measured against the fix with
