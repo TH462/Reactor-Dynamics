@@ -1652,7 +1652,30 @@
     // at power. Reading the delivered flow fixes both halves of item 7 at once: the impeller
     // now tracks feed rate during normal load-follow as well, which it never did — the
     // commanded speed sits at 100 whatever the plant is doing.
-    imrobnzlha1: function (s) { return pumpProps((IN(s).hpi_flow || 0) > 1e-4, IN(s).hpi_flow || 0, 50); },   // eccs pump (RWST — cold)
+    /* …AND THE SAME PUMP HAS A SECOND JOB THIS LINE COULD NOT SEE (#699). RHR has no pump of
+     * its own — it is a suction ALIGNMENT on this shared ECCS train (see :607) — so through
+     * the whole of Mode 4 and Mode 5, which is the back half of the authored round trip, the
+     * only pump art on the board was drawn STOPPED while residual heat removal carried the
+     * plant. Measured 2026-09-10, PWR2 cold_shutdown with RHR aligned and the heat-exchanger
+     * split at 25 %: `rhr_active` true, `eccs_mode` 'rhr', `hpi_flow_normalized` 0 — because
+     * on PWR2 `hpi_flow` is EMERGENCY INJECTION only (pwr2_true_state.js:400) and a cooldown
+     * injects nothing.
+     *
+     * IT GATES ON DELIVERY, NOT ON THE ALIGNMENT BUTTON, which is the whole point of the note
+     * above: `rhr_running` is the engine's own `valve_open && powered`, published as a status
+     * passthrough. Keying this on `rhr_valve_open` would have re-created the exact defect the
+     * paragraph above removed from three other pumps — a rotor turning on a dead bus.
+     *
+     * The MAGNITUDE stays the injection flow. RHR circulation is a lineup fraction in this
+     * model, not a curve (pwr2_rhr.js:54: "NO PUMP HYDRAULICS"), and the board's gpm figures
+     * are an authored display scale over normalized internals rather than a modelled flow —
+     * so there is no honest RHR number to hand a flow-proportional dash speed. On the RHR
+     * branch the impeller turns at the same nominal rate the other lineup-fraction pumps use. */
+    imrobnzlha1: function (s) {
+      var f = IN(s).hpi_flow || 0;
+      var rhr = IN(s).rhr_running === true;
+      return pumpProps(f > 1e-4 || rhr, f > 1e-4 ? f : (rhr ? 0.6 : 0), 50);
+    },   // eccs pump (RWST — cold; also the RHR train)
     imrobph7xrq: function (s) { var f = IN(s).fw_flow || 0; return pumpProps(f > 1e-3, f, fwTemp(s)); },      // feed pump (feedwater — tracks load)
     imrobpq4a70: function (s) { var p = pumpRec(s, 'rcp'); return pumpProps(IN(s).rcp_running, p ? p.flow_pct / 100 : 1, IN(s).tcold); },  // rcp (cold-leg coolant — live)
     // Charging: the pump runs at a steady speed and the FLOW is set by the charging valve, so

@@ -1292,6 +1292,13 @@
                                                      * real state; the pinned `true` here kept
                                                      * the valve icon OPEN forever (#509 item 6) */
     ex.accum_valve_open = ts.accumulator_valve_open === true;   /* LIVE since #511 */
+    /* THE RHR PUMPS ARE TURNING (#699). `rh.running` is the engine's own `valve_open &&
+     * powered` (pwr2_rhr.js), the same flag it gates the heat-exchanger duty and the
+     * forced-circulation floor on — read, not recomputed, so the board cannot drift from the
+     * physics. It is NOT `rhr_valve_open`: WTSM 5.7.5's blackout takes every decay-heat
+     * removal system except the turbine-driven AFW pump, and an impeller drawn off the
+     * alignment button would keep spinning on a dead bus. */
+    ex.rhr_running = e.rh ? e.rh.running === true : undefined;
     ex.safety_relief_active = !!e.pz.safetyOpen;
     ex.mfw_isolated = this.eng.fw.isolated === true;   /* REAL since the feed train (2026-08-21) */
     /* LIVE since #507 wave 1 — the CVCS lab sample (they were pinned null/false/0 while no

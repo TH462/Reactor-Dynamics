@@ -687,6 +687,10 @@
       afw_block_open: !s.afw_blocked,   // AFW discharge/block valve open? (independent of pump demand)
       rhr_active: s.rhr_active,
       rhr_valve_open: !!s.rhr_valve_open,
+      // DELIVERING, not merely aligned (#699) — `ac_available` is the question every motor
+      // load has to ask, and the RHR pumps are motor loads. The two lines above are the
+      // suction valve; this is the rotor.
+      rhr_running: !!(s.rhr_active && s.ac_available),
       accumulators_discharging: s.accumulators_discharging,
       // SI accumulator discharge isolation valve POSITION (#273). `accumulators_discharging`
       // above is flow — it only goes true once the tanks are already emptying, which is one
