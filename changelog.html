@@ -167,10 +167,11 @@
   <details class="log-entry" open>
     <summary class="log-head">
       <h2>Checklists rewritten to the board's own words, nuclear instrumentation card closed up, a startup checklist that could not be finished, and a bug report that could not be sent</h2>
-      <span class="log-ver mono">Alpha 1.7.4-rc9</span>
+      <span class="log-ver mono">Alpha 1.7.4-rc10</span>
       <time class="log-date mono" datetime="2026-09-10">10 September 2026</time>
     </summary>
     <ul>
+      <li><span class="log-tag fixed">Fixed</span><strong>The PRESSURIZER LEVEL gauge warned amber on a plant sitting exactly on target.</strong> Its amber edge was a fixed 25&nbsp;%, and 25&nbsp;% is the level the plant is programmed to hold in Cold Shutdown, Hot Shutdown and Hot Standby &mdash; so the gauge read amber for the whole run in the three states every startup begins in. At power the same fixed edge said nothing until the level was 36 points below target, long after the annunciator. The edge now follows the programmed level, and comes in with PZR LVL DEV LO.</li>
       <li><span class="log-tag fixed">Fixed</span><strong>A bug report could not be sent at all after about three hours of plant time.</strong> The attached session recording wrote every reading to seventeen digits, so a four-hour session came to 2.9&nbsp;MB against a 2&nbsp;MB limit and the form said &ldquo;Could not send &mdash; please email instead.&rdquo; Readings are now recorded to the precision they are read at: the same four-hour report is 646&nbsp;KB with every reading kept, and if a report ever does run long the oldest readings are dropped until it fits rather than the whole thing being refused.</li>
       <li><span class="log-tag fixed">Fixed</span><strong>The Send report button could stick on &ldquo;Sending&hellip;&rdquo; for ever.</strong> If the connection dropped mid-send the form never came back and the button stayed disabled until the page was reloaded. It now says what went wrong &mdash; no reply from the server, or a recording too large to send with the box to untick named &mdash; and lets you press Send report again.</li>
       <li><span class="log-tag fixed">Fixed</span><strong>Two System Scanner cards described the plant wrongly.</strong> The PORV block valve&rsquo;s card claimed a two-press confirm; the symbol is a plain toggle, so a second click reopens what the first one shut. The relief line&rsquo;s card put a seated valve near 180&nbsp;&deg;F; on this plant it sits at 122&nbsp;&deg;F, which is what makes a hot tailpipe worth reading.</li>

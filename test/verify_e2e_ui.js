@@ -1974,6 +1974,110 @@ async function testHeldSpeedClick(page) {
  * rule is what went red. The ceiling is the backstop for a declaration outside the board or on
  * a tag this rule does not name; it is not the primary assertion, and a future edit that
  * loosens the target rule to "count only" would re-open exactly this defect. */
+/* THE VITAL-FEW PRESSURIZER LEVEL GAUGE MUST NOT CAUTION ON A PLANT THAT IS ON PROGRAM (#676).
+ *
+ * The authored `caution_lo: 25` in ui/app.js is a FOSSIL — it is the retired plant's
+ * `pzr_level_low` setpoint from before #500 made that row a deviation. The level program is
+ * scheduled on Tavg and IS 25 % at the no-load anchor, so in Mode 5, Cold Shutdown, Mode 4,
+ * Hot Shutdown and Mode 3, Hot Standby the needle sits ON the edge, the instrument noise
+ * crosses it, and `gaugeState`'s latch pins the gauge amber for the whole run — on a plant
+ * holding its setpoint to within 1.0 point. Measured before the fix, 20 plant-minutes per
+ * initial condition: CAUTION 100.0 % of the time in all three. Those three states begin every
+ * startup walkthrough, so the first thing a new player is taught is to ignore a vital gauge.
+ *
+ * WHY IT IS CHECKED HERE and not in a Node runner: ui/app.js does not load headless (it wants
+ * a real DOM at script scope), and the vital strip publishes no thresholds — only the CLASS
+ * they produce. So the only place the rendered band can be observed is a browser.
+ *
+ * TWO HALVES, because either alone passes on a bug:
+ *   1. THE CLASS, sampled on the live plant at three initial conditions. This is the defect.
+ *   2. THE RULE, called directly through `RD.PwrGaugeBands` — including the DISCRIMINATOR that
+ *      the edge MOVES (17 % cold against 51.5 % at power). Half 1 alone would go green on an
+ *      edge hard-coded to 0; half 2 alone cannot tell you the gauge reads it.
+ *
+ * PROVED BY INJECTION, 2026-09-10: restoring the plain `caution_lo: 25` (dropping the gauge's
+ * `autorange`) fails half 1 at cold_shutdown with 40/40 samples amber, and restoring the
+ * absolute form of `pzrGaugeCautionLo` fails half 2's discriminator. */
+async function testPzrGaugeFollowsProgram(page) {
+  var log = [];
+  /* Mode 4, Hot Shutdown is deliberately off the free-play menu — the ruling and the measured
+   * Mode 4 / Mode 5 diff are recorded at the pwr2 registry in ui/app.js — so the browser cannot
+   * reach it; it carries the same 25 % program as Mode 5 and was measured in Node instead.
+   * These three are what the player can actually select. */
+  var ICS = [['cold_shutdown', 'Mode 5, Cold Shutdown'],
+             ['hot_zero_power', 'Mode 3, Hot Standby'],
+             ['hot_full_power', 'Mode 1, At Power']];
+  var edges = {};
+  for (var i = 0; i < ICS.length; i++) {
+    var ic = ICS[i][0], name = ICS[i][1];
+    await page.goto('http://127.0.0.1:' + PORT + '/ui/shell.html?engine=pwr2&init=' + ic +
+                    '&run=1&dev=1', { waitUntil: 'networkidle', timeout: 90000 });
+    await dismissMission(page);
+    await waitBoardLive(page, 20000);
+    if (await page.$('#speed [data-speed="10"]')) await page.click('#speed [data-speed="10"]');
+    await page.waitForTimeout(1200);
+    /* 40 samples over ~4 s of wall at 10x — the noise that latched the band is per-broadcast,
+     * so this spans hundreds of plant-seconds of it. */
+    var r = await page.evaluate(async function () {
+      function sleep(ms) { return new Promise(function (f) { setTimeout(f, ms); }); }
+      var g = document.getElementById('gauge-pzr'), warn = 0, alarm = 0, n = 0, i;
+      for (i = 0; i < 40; i++) {
+        if (g.classList.contains('alarm')) alarm++;
+        else if (g.classList.contains('warn')) warn++;
+        n++;
+        await sleep(100);
+      }
+      var svc = window.RD.__dev.service();
+      var prog = svc.engine.getControlState().pzr_level_program_pct;
+      var rows = (svc.layer && svc.layer.config && svc.layer.config.alarms) || [];
+      function sp(id) { for (var k = 0; k < rows.length; k++) if (rows[k].id === id) return rows[k]; return null; }
+      var dev = sp('pzr_level_dev_low'), cut = sp('pzr_level_cutoff');
+      return {
+        warn: warn, alarm: alarm, n: n,
+        val: (document.querySelector('#gauge-pzr [data-val]') || {}).textContent,
+        program: prog,
+        devSp: dev && dev.setpoint, cutSp: cut && cut.setpoint,
+        edge: window.RD.PwrGaugeBands.pzrLevelCautionLo({ control_state: { pzr_level_program_pct: prog } }, 25),
+        noProgram: window.RD.PwrGaugeBands.pzrLevelCautionLo({ control_state: {} }, 25),
+        nullProgram: window.RD.PwrGaugeBands.pzrLevelCautionLo({ control_state: { pzr_level_program_pct: null } }, 25)
+      };
+    });
+    edges[ic] = r;
+    log.push(name + ': program ' + r.program.toFixed(1) + ' %, gauge reads ' + r.val +
+             ', caution edge ' + r.edge.toFixed(1) + ' % — ' + r.warn + ' warn / ' + r.alarm +
+             ' alarm of ' + r.n + ' samples');
+    if (r.warn || r.alarm) {
+      throw new Error('pzr gauge banded on an on-program plant at ' + name + ': ' + r.warn +
+                      ' warn / ' + r.alarm + ' alarm of ' + r.n + ' samples, program ' +
+                      r.program.toFixed(1) + ' %, gauge ' + r.val);
+    }
+    /* The green must be EARNED: a plant that had drifted off program would also be a plant
+     * whose amber was correct, and this check would then be asserting nothing. */
+    if (r.devSp == null || r.cutSp == null) throw new Error('pzr level alarm ladder missing from the running config at ' + name);
+    var want = Math.max(r.cutSp, r.program + r.devSp);
+    if (Math.abs(r.edge - want) > 1e-9) {
+      throw new Error('pzr caution edge at ' + name + ' is ' + r.edge + ', not the plant\'s own ' +
+                      'max(' + r.cutSp + ', program ' + r.program.toFixed(1) + ' + ' + r.devSp + ') = ' + want);
+    }
+    /* …and a plant publishing no program keeps the authored edge, so the retired engine and
+     * old recordings are unchanged. `isFinite(null)` is TRUE, so null is checked separately. */
+    if (r.noProgram !== 25 || r.nullProgram !== 25) {
+      throw new Error('a snapshot with no level program must keep the authored 25 %, got ' +
+                      r.noProgram + ' / ' + r.nullProgram);
+    }
+  }
+  /* THE DISCRIMINATOR. An absolute edge — the shipped bug, or any fixed replacement — gives the
+   * SAME number in Mode 5 and at power. The program spans 25 -> 61.5 %, so these must not. */
+  var cold = edges.cold_shutdown.edge, hot = edges.hot_full_power.edge;
+  if (!(hot - cold > 20)) {
+    throw new Error('the pzr caution edge did not follow the program: Mode 5 ' + cold +
+                    ' %, Mode 1 ' + hot + ' % — an absolute edge reads the same in both');
+  }
+  log.push('edge follows the program: Mode 5 ' + cold.toFixed(1) + ' % (the 17 % letdown-isolate ' +
+           'cut) -> Mode 1 ' + hot.toFixed(1) + ' % (program - 10)');
+  return log.join('\n') + '\n';
+}
+
 async function testCssTransitions(page) {
   var log = [];
   var url = 'http://127.0.0.1:' + PORT + '/ui/shell.html?engine=pwr2&init=hot_full_power&run=1&dev=1';
@@ -2082,6 +2186,8 @@ async function main() {
     fs.writeFileSync(path.join(SCRATCH, 'held-speed-click.log'), hsLog);
     var ctLog = await testCssTransitions(page);
     fs.writeFileSync(path.join(SCRATCH, 'css-transitions.log'), ctLog);
+    var pgLog = await testPzrGaugeFollowsProgram(page);
+    fs.writeFileSync(path.join(SCRATCH, 'pzr-gauge-program.log'), pgLog);
     fs.writeFileSync(path.join(SCRATCH, 'ui-screenshot-summary.log'), summary.join('\n') + '\n');
     console.log('E2E UI verification: PASS (' + (ENGINES.length * VIEWS.length) + ' screenshots)');
   } finally {
@@ -2102,6 +2208,7 @@ if (require.main !== module) {
                      testMissionCloseResumes: testMissionCloseResumes, testRunStartMark: testRunStartMark,
                      testHeldPlantDialog: testHeldPlantDialog, testHeldSpeedClick: testHeldSpeedClick,
                      testSaveLoadRefusal: testSaveLoadRefusal, testCssTransitions: testCssTransitions,
+                     testPzrGaugeFollowsProgram: testPzrGaugeFollowsProgram,
                      port: function () { return PORT; } };
 } else {
   main().catch(function (e) {

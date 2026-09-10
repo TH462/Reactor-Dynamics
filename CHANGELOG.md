@@ -616,7 +616,77 @@ stays steady (power within 5 points of rated, pressure drift under 0.2 MPa / 29 
 meet within one broadcast of the window end, and a planted 1e-6 difference is seen by `compare()`.
 Four injections, one per conjunct, each proven to redden SI-0 alone. No baseline moves (8 checks).
 
-## [Alpha 1.7.4-rc9] — 2026-09-10
+## [Alpha 1.7.4-rc10] — 2026-09-10
+
+### Fixed (the vital-few Pressurizer Level gauge cautioned on a plant that was on program — #676)
+
+`ui/app.js` defined the gauge with `caution_lo: 25`, an absolute, program-blind edge. **That 25
+IS the retired plant's `pzr_level_low` setpoint**, from before #500 made that row a DEVIATION —
+the same fossil #598 item 11 pulled out of the level TILE one element over, and the same class as
+#556, where the board drew this very alarm at the retired plant's 25 % while PWR2's annunciator
+fired at 17 %. The pressurizer level program is scheduled on average coolant temperature
+(`pwr2_pressurizer.levelProgram`: **25 % at the no-load anchor, 61.5 % at full power**), so an
+absolute 25 % edge is wrong at both ends.
+
+**MEASURED, 20 plant-minutes per initial condition, charging in AUTO, replaying the real
+`gaugeState()` latch and its 5-point release deadband:**
+
+| initial condition | program | indicated level | caution duty, before | after |
+|---|---|---|---|---|
+| Mode 4, Hot Shutdown | 25.0 % | 24.1–26.0 % | **100.0 %** | **0.0 %** |
+| Mode 5, Cold Shutdown | 25.0 % | 24.1–26.0 % | **100.0 %** | **0.0 %** |
+| Mode 3, Hot Standby | 25.3 % | 24.2–26.4 % | **100.0 %** | **0.0 %** |
+| 50 % power | 43.6 % | 42.1–44.6 % | 0.0 % | 0.0 % |
+| Mode 1, full power | 61.5 % | 60.6–62.5 % | 0.0 % | 0.0 % |
+
+The needle sits ON the edge in the three cold states, the instrument noise crosses it, and the
+band LATCHES — so the gauge was amber for the entire run on a plant holding its setpoint to
+within 1.0 point. Those three states begin every startup walkthrough. The duty cycle is 100 %
+rather than the ~49 % filed on the issue because the filed figure counted edge crossings and the
+gauge latches: once amber it stays amber until the reading comes 5 points back out, which at a
+25 % program it never does.
+
+**And the same fixed edge was USELESS at power, which the issue did not name.** On a draining
+plant at full power (CVCS make-up off, charging pump secured, `rcp_seal_leak` at severity 1.0):
+the PZR LVL DEV LO annunciator came in at **t = 115 s / 52.1 %**, and the gauge did not band
+until **t = 395 s / 25.0 %** — 280 s and 27 points late.
+
+**The fix takes the plant's own two-rung ladder, read live from the running protection config,
+never retyped** (`liveAlarm()`, the same accessor and the same #556 reason as the `protection`
+hook the board is handed at mount — `alarmSpecs()` reads `RD.PWR_CONTROL`, the RETIRED plant's
+table captured at script load):
+
+- `pzr_level_dev_low` (−10 points, caution) on the DEVIATION channel → **program − 10**;
+- floored at `pzr_level_cutoff` (**17 %**, absolute) because that edge is an ACTUATION the player
+  can watch the plant take — letdown isolates and every heater is cut (WTSM 10.3). Cold, the
+  deviation rung lands at 15 %, BELOW the cut, so without the floor the gauge would still read
+  green while the plant isolated letdown. Measured on the same draining plant at Mode 5: the new
+  edge bands at **t = 239 s / 16.7 %**, the deviation annunciator at t = 376 s / 15.8 %.
+- The floor also keeps the edges ORDERED: 17 > `danger_lo` 12 in every mode. `danger_lo` stays
+  absolute at 12 on purpose — it is `pzr_level_lolo`, a critical alarm on the absolute channel.
+- A snapshot that publishes no level program (the retired engine, an old recording) keeps the
+  authored 25 % untouched, exactly as the tile's band does.
+
+**(a) PROGRAM-RELATIVE was taken over (b) an absolute 17/12 ladder**, and the deciding fact is
+that (b) is what created the defect: a fixed edge is right in at most one mode of a plant whose
+program spans 25 → 61.5 %, and at power (b) would have left the gauge 34 points late against its
+own annunciator. (a) is reachable with no new plumbing — `s.control_state.pzr_level_program_pct`
+is published by `pwr2_shell` (#500) and the snapshot is already at the gauge's draw site; the
+`autorange` hook now receives it. The 17 % floor is the *useful* half of (b), kept.
+
+**GATED, and proved by injection both ways** (`test/verify_e2e_ui.js`
+`testPzrGaugeFollowsProgram`, a browser check because `ui/app.js` does not load headless and the
+vital strip publishes no thresholds, only the class they produce). Two halves: the CLASS sampled
+40× on the live plant at the three selectable initial conditions, and the RULE called through the
+new `RD.PwrGaugeBands` export — including the discriminator that the edge MOVES (17.0 % in Mode 5,
+51.5 % at power), which an absolute edge of any value fails. Injection 1, restoring the plain
+`caution_lo: 25`: **40/40 samples amber at Mode 5**. Injection 2, a fixed 17 % (program-blind but
+never amber on program, so half 1 stays green): the discriminator fails at Mode 1. No baseline
+moved — `verify_e2e_ui` scores screenshots, not checks.
+
+**Not fixed here: #677** (nine player-facing sites still quoting the retired engine's 55 % level),
+held pending the owner's ruling on #647.
+
 
 ### Fixed (#681, #682 — the bug report could not be sent, and the form never said so)
 

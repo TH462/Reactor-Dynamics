@@ -515,7 +515,11 @@
               ? { min: 30, max: 260, caution: null, danger: null, caution_lo: null, danger_lo: null, label: 'Avg Coolant Temp (Tavg) · LOW RANGE' }
               : { min: 250, max: 343, caution: 312, danger: 335, label: 'Avg Coolant Temp (Tavg)' };
           } },
-        { id: 'pzr',     label: 'Pressurizer Level (PZR)', instr: 'pzr_level', raw: function (s) { return s.instruments.pzr_level; }, units: '%', min: 0, max: 100, caution_lo: 25, danger_lo: 12, dp: 0 },
+        /* caution_lo 25 is the FALLBACK, not the edge — see pzrGaugeCautionLo (#676): on a plant
+         * that publishes a level program the caution follows it, because 25 % IS the program in
+         * Modes 3/4/5 and this gauge sat latched in caution there 100 % of the time. */
+        { id: 'pzr',     label: 'Pressurizer Level (PZR)', instr: 'pzr_level', raw: function (s) { return s.instruments.pzr_level; }, units: '%', min: 0, max: 100, caution_lo: 25, danger_lo: 12, dp: 0,
+          autorange: function (raw, s) { return { caution_lo: pzrGaugeCautionLo(s, 25) }; } },
         { id: 'sg',      label: 'Steam Generator Level (SG)', instr: 'sg_level', raw: function (s) { return s.instruments.sg_level; }, units: '%', min: 0, max: 100, caution_lo: 30, danger_lo: 12, dp: 0 },
         { id: 'subcool', label: 'Subcooling Margin', instr: 'subcooling_margin', raw: function (s) { return s.instruments.subcooling_margin; }, dim: 'tempdiff', min: -28, max: 83, caution_lo: 11, danger_lo: 0, dp: 0 },
       ],
@@ -1454,6 +1458,60 @@
     for (var i = 0; i < a.length; i++) if (a[i].id === id) return a[i];
     return null;
   }
+  /* THE RUNNING PLANT'S alarm row, not the table captured at script load. `alarmSpecs()` above
+   * reads `RD.PWR_CONTROL.protection`, which is the RETIRED engine's table — and the pressurizer
+   * level channel is precisely where the two plants disagree. Same accessor and same reason as
+   * the `protection` hook the board is handed at mount (:9360, #556), which exists because the
+   * board drew that alarm at the retired plant's 25 % while PWR2's annunciator fired at 17 %.
+   * Falls back to the static row when there is no live plant (pre-init, an old recording). */
+  function liveAlarm(id) {
+    var c = service && service.layer && service.layer.config;
+    var a = (c && c.alarms) || null, i;
+    if (a) for (i = 0; i < a.length; i++) if (a[i].id === id) return a[i];
+    return alarmSpec(id);
+  }
+  /* THE PRESSURIZER LEVEL GAUGE'S CAUTION EDGE IS PROGRAM-RELATIVE (#676) — the #598 item 11
+   * fix, one element over, and the same fossil: the authored `caution_lo: 25` IS the retired
+   * plant's `pzr_level_low` setpoint, from before #500 made that row a DEVIATION. The level
+   * program is scheduled on Tavg (pwr2_pressurizer levelProgram: 25 % at the no-load anchor,
+   * 61.5 % at full power), so an absolute 25 % edge is wrong in BOTH directions:
+   *
+   *   MEASURED 2026-09-10, 20 plant-minutes per initial condition, charging in AUTO, the real
+   *   gaugeState() latch and its 5-point release deadband —
+   *     Mode 4, Hot Shutdown and Mode 5, Cold Shutdown: program 25.0 %, level 24.1-26.0 %, so
+   *     the noise crosses the edge, the band LATCHES and the gauge reads CAUTION 100.0 % of the
+   *     time on a plant holding its setpoint to within 1.0 point. Mode 3, Hot Standby likewise.
+   *     Those three states begin every startup walkthrough.
+   *     Mode 1: silent until 25 %, which is 36.5 points BELOW program — measured on a draining
+   *     plant, the annunciator PZR LVL DEV LO came in at t=115 s and this gauge at t=395 s.
+   *
+   * The new edge is the plant's OWN two-rung ladder, read live, never retyped:
+   *   - `pzr_level_dev_low` (-10 points, caution) on the DEVIATION channel -> program - 10;
+   *   - floored at `pzr_level_cutoff` (17 %, absolute) because that edge is an ACTUATION the
+   *     player can see the plant take (letdown isolates, all heaters cut, WTSM 10.3). Cold, the
+   *     deviation rung lands at 15 % — BELOW the cut — so without the floor the gauge would
+   *     still be green while the plant isolated letdown. Measured on the same draining plant:
+   *     new edge warns at t=239 s / 16.7 %, the deviation annunciator at t=376 s / 15.8 %.
+   *   The floor also keeps the two edges ordered: 17 > `danger_lo` 12 in every mode.
+   * After: caution 0.0 % of the time in all five initial conditions, and 1 s behind the
+   * annunciator at power instead of 280 s.
+   *
+   * `danger_lo` stays ABSOLUTE at 12 on purpose — it is `pzr_level_lolo`, a critical alarm on
+   * the absolute channel, correct in every mode by construction. A plant that publishes no
+   * level program (the retired engine, an old recording) keeps the authored edge untouched. */
+  function pzrGaugeCautionLo(s, authored) {
+    var prog = (s && s.control_state) ? s.control_state.pzr_level_program_pct : null;
+    if (prog == null || !isFinite(prog)) return authored;   /* isFinite(null) is TRUE — order matters */
+    var dev = liveAlarm('pzr_level_dev_low'), cut = liveAlarm('pzr_level_cutoff');
+    if (!dev || dev.instrument !== 'pzr_level_dev' || dev.setpoint == null) return authored;
+    if (!cut || cut.instrument !== 'pzr_level' || cut.setpoint == null) return authored;
+    return Math.max(cut.setpoint, prog + dev.setpoint);
+  }
+  /* EXPORTED so a gate can assert the RULE and not just the source text. A source scan cannot
+   * tell you an edge is reachable or that it moved — the standing trap — and the vital strip
+   * has no DOM handle on its own thresholds, only on the class they produce. verify_e2e_ui
+   * calls this with the LIVE snapshot at three initial conditions and with synthetic ones. */
+  RD.PwrGaugeBands = { pzrLevelCautionLo: pzrGaugeCautionLo };
   // The dimension an instrument's value converts on, so a quoted range or setpoint
   // follows the operator's US/SI selection instead of always reading SI.
   //
@@ -2647,7 +2705,10 @@
       if (raw == null || isNaN(raw)) { txt(root.querySelector('[data-val]'), '—'); return; }
       // Auto-ranging gauge: a gauge may pick a different scale/bands from the reading
       // (e.g. Tavg swaps to a wide LOW-RANGE scale in cold shutdown to save a second gauge).
-      var eff = g.autorange ? Object.assign({}, g, g.autorange(raw) || {}) : g;
+      // It is handed the WHOLE SNAPSHOT as well, because a band can be a function of the plant
+      // rather than of the needle: the pressurizer level caution follows the running level
+      // PROGRAM (#676), which is a control_state field, not something `raw` can imply.
+      var eff = g.autorange ? Object.assign({}, g, g.autorange(raw, s) || {}) : g;
       var lblSpan = root.querySelector('.g-label span');
       if (lblSpan && eff.label && lblSpan.textContent !== eff.label) lblSpan.textContent = eff.label;
       var st = gaugeState(eff, raw);

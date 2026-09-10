@@ -29,6 +29,94 @@ and the user-visible summary in `CHANGELOG.md`. This file points at those and tr
 
 ---
 
+## Session log — 2026-09-10-develop-b (#676 — the vital-few Pressurizer Level gauge cautioned on a plant sitting on its program)
+
+### The trap: A GAUGE EDGE COPIED FROM AN ALARM ROW GOES STALE WHEN THE ALARM ROW CHANGES SHAPE
+
+`ui/app.js` defined the vital-few Pressurizer Level gauge with `caution_lo: 25`. That 25 is not a
+number anybody chose for a gauge — it is the **retired plant's `pzr_level_low` setpoint**, copied
+across when the strip was authored. #500 (2026-08-29) then moved that alarm onto the DEVIATION
+channel at −20 points, and #598 item 11 moved the level TILE's normal band onto the live program.
+Nothing moved the gauge, because nothing knew it was a copy. Third instance of the same shape in
+this system: #556 is the board drawing this very alarm at the retired plant's 25 % while PWR2's
+annunciator fired at 17 %.
+
+**The consequence is worse than a wrong colour, and it is worse in BOTH directions.** The level
+program is scheduled on average coolant temperature (`pwr2_pressurizer.levelProgram`, WTSM 10.3:
+25 % at the no-load anchor, 61.5 % at full power). So:
+
+| initial condition | program | indicated level | caution duty, before | after |
+|---|---|---|---|---|
+| Mode 4, Hot Shutdown | 25.0 % | 24.1–26.0 % | **100.0 %** | **0.0 %** |
+| Mode 5, Cold Shutdown | 25.0 % | 24.1–26.0 % | **100.0 %** | **0.0 %** |
+| Mode 3, Hot Standby | 25.3 % | 24.2–26.4 % | **100.0 %** | **0.0 %** |
+| 50 % power | 43.6 % | 42.1–44.6 % | 0.0 % | 0.0 % |
+| Mode 1, full power | 61.5 % | 60.6–62.5 % | 0.0 % | 0.0 % |
+
+20 plant-minutes per initial condition, charging in AUTO, replaying `gaugeState()`'s real latch and
+its 5-point release deadband. **THE LATCH IS WHY THE FILED ~49 % IS ACTUALLY 100 %** — the needle
+sits ON the edge, noise crosses it once, and the band then holds until the reading comes 5 points
+back out, which at a 25 % program it never does. A crossing-rate measurement of a latched band
+under-reports it by half; measure the STATE, not the crossings.
+
+**And the same edge was mute at power, which the issue did not name.** Draining plant at full power
+(CVCS make-up off, charging pump secured, `rcp_seal_leak` severity 1.0): the PZR LVL DEV LO
+annunciator came in at **t = 115 s / 52.1 %**; the gauge did not band until **t = 395 s / 25.0 %**.
+280 s and 27 points late, on a vital-few gauge. A fixed edge on a scheduled quantity is not "a bit
+conservative" — it is a false positive in one regime and a false negative in the other, and the
+board taught the player to ignore the gauge in exactly the three states every startup begins in.
+
+### The fix: (a) program-relative, with the useful half of (b) kept as a floor
+
+Two candidates were on the table — (a) program-relative edges like the tile, (b) absolute edges
+moved to the plant's own 17/12 ladder. **(a), and the deciding fact is that (b) is what caused
+this**: any fixed edge is right in at most one mode of a plant whose program spans 25 → 61.5 %,
+and (b) would have left the gauge 34 points late against its own annunciator at power. (a) needed
+NO new plumbing — `s.control_state.pzr_level_program_pct` has been published by `pwr2_shell` since
+#500 and the snapshot is already at the gauge's draw site; the `autorange` hook now receives it.
+
+The edge is the plant's own two-rung ladder, read live and never retyped:
+
+- `pzr_level_dev_low` (−10, caution) on the deviation channel → **program − 10**;
+- floored at `pzr_level_cutoff` (**17 %**, absolute) — the useful half of (b) — because that edge
+  is an ACTUATION the player can watch: letdown isolates, every heater cuts (WTSM 10.3). Cold, the
+  deviation rung lands at 15 %, BELOW the cut, so without the floor the gauge stays green while the
+  plant isolates letdown. Measured at Mode 5 on the draining plant: the new edge bands at
+  **t = 239 s / 16.7 %**, the deviation annunciator at t = 376 s / 15.8 %.
+- The floor also keeps the edges ORDERED: 17 > `danger_lo` 12 in every mode. `danger_lo` stays
+  absolute — it is `pzr_level_lolo`, a critical alarm on the absolute channel.
+
+**`liveAlarm()`, not `alarmSpec()`.** The existing `alarmSpecs()` in app.js reads
+`RD.PWR_CONTROL.protection` — the RETIRED plant's table, captured at script load. That is the
+#556 defect verbatim, and reading it here would have re-shipped it. The new helper reads
+`service.layer.config`, the same accessor the board is handed at mount, and falls back to the
+static row.
+
+### The gate, and why it is a BROWSER gate
+
+`ui/app.js` does not load headless — it wants a real DOM at script scope (tried; it dies on
+`RD.CklSpeedHint`, then on a DOM `create`). And the vital strip publishes no thresholds, only the
+CLASS they produce. So the only place the rendered band is observable is a browser:
+`test/verify_e2e_ui.js` → `testPzrGaugeFollowsProgram`. Two halves, because either alone passes on
+a bug — the CLASS sampled 40× on the live plant at the three selectable initial conditions (Mode 4
+is off the free-play menu, so it was measured in Node), and the RULE called through a new
+`RD.PwrGaugeBands` export including the DISCRIMINATOR that the edge moves (17.0 % at Mode 5,
+51.5 % at power), which an absolute edge of any value fails.
+
+**Proved by injection, both halves:** restoring the plain `caution_lo: 25` gives **40/40 samples
+amber at Mode 5**; a fixed 17 % (program-blind but never amber on program, so half 1 stays green)
+fails the discriminator at Mode 1. No baseline moved — `verify_e2e_ui` scores screenshots.
+
+Gates: `verify_e2e_ui`, `verify_board_check`, `run_inspect`, `run_flags`, `verify_flags_ui`,
+`run_portable`, `run_hardrules`, `run_pwr2_board`, `run_release` — all at baseline.
+
+**Filed, not built: #703** — during that drift the real fault (average coolant temperature 105 °F
+low at 96.5 % power) has NO vital-few cue until the reactor trips. Adding one is a new vital
+indication, which is a DESIGN_CRITERIA Q4 question and the owner's call.
+
+**Not touched: #677** (nine player-facing sites still quoting the retired engine's 55 % level),
+held pending the #647 ruling on the full-power program anchor.
+
 ## Session log — 2026-09-10-develop-a (#681, #682 — the bug report was 8 MB of text describing 5 MB of numbers, and a failed send never came back)
 
 **Both filed 2026-09-10 out of the #675 section E measurement pass; both fixed here.** The
