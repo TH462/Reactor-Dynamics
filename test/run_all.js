@@ -1363,7 +1363,7 @@ var BASELINES = {
   // authored hint nor an instrument the manual reference describes), a series NO checkbox can
   // reach (dead weight — it costs a column in every packed chart row; three shipped that way
   // for a day), and a physics row binding a `ser:` that does not exist. Injection-verified.
-  'run_inspect.js':        { code: 0, score: '10/10 56/56' },
+  'run_inspect.js':        { code: 0, score: '11/11 62/62' },   // 10/10 56/56 -> 11/11 62/62 (#701, 2026-09-10): +1 suite / +6 checks. The RHR ALIGN inspect copy taught the RETIRED engine's 400 psi (2.76 MPa) interlock while THIS plant refuses at the sourced 425 psig = 440 psi (3.03 MPa) -- the wiring's copy of the same pair was corrected at #524 and the panel was missed, one constant in two files. THE OBVIOUS GENERAL GATE WOULD HAVE PASSED ON IT: sweeping every "NNN psi (X.XX MPa)" pair for conversion consistency is green on 400/2.76, which are exactly each other. So the new suite DERIVES both figures from `RD.pwr2.rhr.RHR` and compares -- proven red in BOTH directions (stale copy, and moving the plant constant). The series suite's check COUNT is unchanged by #699's new `rhr_running` passthrough -- that check is a per-run sweep, and the new channel simply has to appear in ui/app.js's series block or it goes red, which it did on arrival.
   // New 2026-07-29 — guards the OFFLINE / single-file build (tools/make_portable.js).
   // The sim runs from file:// with no server only because nothing in the runtime loads
   // anything at runtime: no fetch, no ES module, no worker, no web font, no CDN tag, no

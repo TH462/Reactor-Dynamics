@@ -46,6 +46,11 @@ global.window = global;                       // board scripts attach to window.
   // copy for every analog channel, so the coverage check below needs it to tell a described
   // channel from an undescribed one.
   'ui/manual_data.js',
+  // THE PLANT THE BOARD ACTUALLY RUNS (#701). Loaded for its two RHR interlock setpoints and
+  // nothing else — it is a leaf module with no engine dependencies. The inspect copy quoted
+  // the RETIRED engine's 400/600 psi pair for months while this one refuses at 425 psig, so
+  // the entry below derives its numbers from here rather than reading them back off itself.
+  'engines/pwr2/pwr2_rhr.js',
 ].forEach(load);
 
 var RD = globalThis.RD;
@@ -277,6 +282,54 @@ test('copy never names the display unit on its own (#238)', function (ck) {
 
 // ============================================================== the citations
 var MD = (RD.MANUAL_MD && RD.MANUAL_MD.pwr) || null;
+/* THE INSPECT PANEL'S PLANT NUMBERS ARE NOT GATED — this pins the pair that was wrong (#701).
+ *
+ * WHAT THE DEFECT WAS. The RHR ALIGN entry told the player the valve is "Refused above the
+ * 400 psi (2.76 MPa) interlock". That is `emergency.rhr_valve_interlock_mpa` out of the
+ * RETIRED engine's config; the shipped plant refuses at the sourced 425 psig (WTSM 5.1) =
+ * 440 psi absolute, and `Manuals/04` has printed 440 psi all along. The board's WIRING held
+ * the same pair and was corrected under #524 — one constant in two files, one of them updated.
+ *
+ * WHY IT IS THIS SHAPE AND NOT A SCANNER. The obvious general gate — sweep every
+ * "NNN psi (X.XX MPa)" pair in the panel and check the conversion — would have passed on the
+ * defect: 400 psi and 2.76 MPa are each other, exactly. The pair was internally consistent and
+ * externally wrong, which is the whole class. The only thing that catches a wrong-PLANT number
+ * is comparing it to the plant, and a table mapping every figure in ~1,100 lines of copy to a
+ * live constant is the hand-maintained map this repo has been bitten by four times. So this
+ * covers the one pair that IS a hard interlock the player is told they will be refused at, and
+ * it DERIVES both figures rather than repeating them — retyping 440 here would make the check
+ * agree with itself. A wider sweep is a filed proposal, not this. */
+test('the RHR interlock copy carries THIS plant\'s setpoints (#701)', function (ck) {
+  var R = RD.pwr2 && RD.pwr2.rhr && RD.pwr2.rhr.RHR;
+  ck('the plant\'s RHR module is loaded and carries both setpoints',
+     !!(R && R.permissive_open_psig && R.permissive_close_psig),
+     R ? R.permissive_open_psig + ' / ' + R.permissive_close_psig + ' psig' : 'missing');
+  if (!R) return;
+  // psig -> psia, then to the 10-psi granularity the manual and the board copy are written at
+  function psia10(psig) { return Math.round((psig + 14.7) / 10) * 10; }
+  var wantOpen = psia10(R.permissive_open_psig), wantClose = psia10(R.permissive_close_psig);
+  // The two entries that quote an interlock to the player: the RHR card and its ALIGN button.
+  ['ims3xf18pk8', 'ims3wg27iif'].forEach(function (id) {
+    var e = I.entry ? I.entry(id) : null;
+    var txt = e ? [e.title, e.brief, e.detail].filter(Boolean).join(' ') : '';
+    ck(id + ' has inspect copy', !!txt, txt ? txt.length + ' chars' : 'NO ENTRY');
+    if (!txt) return;
+    var psis = (txt.match(/(\d{2,4})\s*psi\b/g) || []).map(function (s) { return parseInt(s, 10); });
+    ck(id + ' quotes the plant\'s block-open permissive (' + wantOpen + ' psi), not another plant\'s',
+       psis.indexOf(wantOpen) >= 0 && psis.indexOf(400) < 0,
+       'psi figures in the copy: [' + psis.join(', ') + ']  want ' + wantOpen +
+       ' (from ' + R.permissive_open_psig + ' psig)');
+  });
+  // The autoclosure is quoted on the card entry only, and it is a SEPARATE setpoint — the
+  // 585 psig figure lands on 600 psia, which is what was already written. Checked so that a
+  // future retune of one setpoint cannot silently leave the other behind.
+  var card = I.entry ? I.entry("ims3xf18pk8") : null;
+  var cardTxt = card ? [card.brief, card.detail].filter(Boolean).join(' ') : '';
+  ck('the RHR card quotes the plant\'s autoclosure setpoint (' + wantClose + ' psi)',
+     cardTxt.indexOf(wantClose + ' psi') >= 0,
+     'from ' + R.permissive_close_psig + ' psig');
+});
+
 test('manual citations resolve', function (ck) {
   ck('packed PWR manual present', !!MD);
   if (!MD) return;
