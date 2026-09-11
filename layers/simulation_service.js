@@ -844,7 +844,21 @@
     // stored acceleration (fast-forward in, snap back to real time at set points).
     var sp = i.consumeSpeedRequest ? i.consumeSpeedRequest() : null;
     if (sp != null) this._setSpeed(sp, true);   // authored: never the WARP tier (#625)
-    return rewound;
+    /* THE WALKTHROUGH PAUSE (#694). A checklist step's fired event asked to freeze the
+     * plant — "user hits continue, [event] happens, sim pauses" (owner, 2026-09-09).
+     * `stop()` directly, NEVER `_setSpeed(0, ...)`: `_setSpeed` clamps `!(v > 0)` to 1 (a
+     * speed channel cannot express a pause), and this is a different axis anyway — a rate
+     * of 0 is not the same fact as the clock being stopped for a reason the player did not
+     * choose. `stop()` also clears `_timer`, so the browser's self-rescheduling loop
+     * (`_reschedule`) simply does not arm a next tick; `tick()`'s own `!this.running` guard
+     * covers the (unused today) case of something calling it directly. Returning true here
+     * forces the reassemble below, so THIS broadcast carries both the just-landed event
+     * (`checklist.injected`) and the frozen clock (`metadata.running`) together — without it
+     * the freeze would lag the event it explains by one broadcast, since `assembleSnapshot()`
+     * at the top of `_assembleWithInstructor` ran before `instructor.step()` fired it. */
+    var paused = false;
+    if (i.consumePauseRequest && i.consumePauseRequest() && this.running) { this.stop(); paused = true; }
+    return rewound || paused;
   };
 
   // Authored automation preset (scenario.auto_channels / procedure.auto_channels):

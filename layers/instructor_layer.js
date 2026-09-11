@@ -133,6 +133,7 @@
     this._checkpointRequested = false;
     this._rewindRequested = null;     // { steps, scope } — beat-driven world rewind
     this._speedRequested = null;      // beat-driven time acceleration (number)
+    this._pauseRequested = false;     // a checklist step's fired event wants the clock stopped (#694)
     // Checklist mode (Path 3): a procedure run as a PASSIVE checklist against the
     // live plant — no reset, no gating; steps auto-check off the instruments.
     this.checklist = null;
@@ -206,6 +207,7 @@
       // Behind-the-scenes failures fired on the CURRENT step (#670): `fired` is the once-per-
       // entry keys, `injected` the failure ids the snapshot publishes. Both reset per step.
       fired: [], injected: [],
+      paused: false,   // #694 — this step's own fire has requested (and landed) a sim pause
     };
   };
 
@@ -689,7 +691,27 @@
      * `_checklistFire`. NOT on the entry tick, and that is not a detail — see the ordering
      * note there: firing here would put the failure INSIDE the step's own start checkpoint,
      * and Rewind would then hand the player back a plant that is already broken. */
-    if (!stepEntryTick && (st.inject || st.clear)) this._checklistFire(snapshot, st);
+    /* THE PAUSE (#694). "For events that the user does not control... user hits continue
+     * [...] sim pauses" (owner, 2026-09-09). Requested the SAME tick something in `inject`/
+     * `clear` NEWLY fires — `_firedN0` catches the case where the step's fire is still
+     * waiting on a `when` predicate, so a step with `pause` does not freeze the plant before
+     * its event has actually happened. The pause REPLACES ordinary grading for this step
+     * (early return, below `c.awaitingAck = true`): a dwell or `acc` predicate needs sim time
+     * to advance, and stopping the clock is exactly what a pause does, so requiring one would
+     * soft-lock the checklist. One event per step is the authored shape (the owner's own
+     * cascade: polisher / feed pump / turbine as three steps, not three injects on one) —
+     * `_serviceInstructorRequests` (simulation_service.js) is what actually stops the clock;
+     * `ui/app.js` releases the hold on Continue, the checklist's own Rewind, or Stop. */
+    if (!stepEntryTick && (st.inject || st.clear)) {
+      var _firedN0 = c.fired.length;
+      this._checklistFire(snapshot, st);
+      if (st.pause && c.fired.length > _firedN0) {
+        this._pauseRequested = true;
+        c.awaitingAck = true;
+        c.paused = true;
+        return;
+      }
+    }
 
     /* A STEP THE PLANT HAS MOVED PAST CHECKS ITSELF OFF AS OVERTAKEN (#641, owner playtest
      * 2026-09-05: "mode 3>1 checklist step 9 the user can get stuck if they accidently go too
@@ -906,6 +928,7 @@
     c.awaitingAck = false;              // #619 item 4 — cleared with the step it belonged to
     c.stepAt = null;                    // re-stamped on the next tick — see the dwell above
     c.overtakenStreak = 0;              // #641 — the next step's own predicate starts from zero
+    c.paused = false;                   // #694 — the new step has not fired its own pause yet
     /* #670 — the fired-set is PER STEP ENTRY, and it is cleared HERE, before the checkpoint
      * request below, so the checkpoint M5 lays at the start of the step just entered carries an
      * empty set. A Rewind back onto it therefore re-enters a step that has not fired yet, beside
@@ -1297,6 +1320,12 @@
         complete: this.checklist.complete,
         // #619 item 4 — the step is satisfied and is holding for the player to acknowledge.
         awaiting_ack: !!this.checklist.awaitingAck,
+        // #694 — this step's own `pause` fired and the service has been asked to stop the
+        // clock (or already has). Sticky per-step, like `awaitingAck`: ui/app.js watches for
+        // this to rise and calls pauseSim('walkthrough'), since a service-level pause is a
+        // plant fact, not a broadcast the UI can wait on (the clock stopping IS what ends
+        // the broadcasts). Cleared with the step it belonged to in `_checklistCheckOff`.
+        paused: !!this.checklist.paused,
         /* CAN "REWIND STEP" LAND? (#660 items 17-18). The button used to be drawn on
          * `step_index > 0` alone, which is a claim about the WALKTHROUGH when the thing it
          * depends on is the rewind RING — and the two come apart on a loaded save, which
@@ -1346,6 +1375,12 @@
   };
   InstructorLayer.prototype.consumeSpeedRequest = function () {
     var r = this._speedRequested; this._speedRequested = null; return r;
+  };
+  // #694 — a checklist step's fired event wants the clock stopped. One-shot like the
+  // three above; the SERVICE decides how (simulation_service.js `_serviceInstructorRequests`
+  // calls `this.stop()` directly — never through `_setSpeed`, which clamps 0 to 1).
+  InstructorLayer.prototype.consumePauseRequest = function () {
+    var r = this._pauseRequested; this._pauseRequested = false; return r;
   };
   // After a world-scope rewind sim time has moved backwards under a live scenario;
   // clamp the time anchors so time/delay triggers don't wait for time to re-elapse

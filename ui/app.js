@@ -2350,6 +2350,26 @@
   function render(s) {
     latest = s;
     _renderSnap = s;
+    /* THE WALKTHROUGH PAUSE (#694) is a SERVICE fact, not a UI one — the service stops
+     * itself (simulation_service.js `_serviceInstructorRequests`) the instant a checklist
+     * step's fired event asks for it, before this render() call ever runs. What is missing
+     * on the UI side is the NAMED hold: `pauseWhy`/`.bd-frozen`/the flashing play button all
+     * key off `pauseSim(reason)` having been called, and nothing calls it just because
+     * `service.running` went false out from under the UI. Detected here, on every render,
+     * off the sticky `checklist.paused` flag (set with the step, cleared with it) rather
+     * than an edge, so a late-joining render (a tab switch while already paused) still
+     * catches it. `pausedFor` guards the re-entrant call once the hold is already named.
+     *
+     * MUST RUN BEFORE THE `metadata.running` RESTAMP BELOW, not after — measured by
+     * injection: `pauseSim` -> `service.stop()` flips `service.running` false, but this
+     * SNAPSHOT's own `metadata.running` was already assembled true. The restamp below exists
+     * exactly to fix a stale `true` from live state; running it BEFORE this block would bake
+     * the pre-pause `true` into `s.metadata.running`, and the board's own renderer trusts
+     * that field (`pwr_board.js` `setRunning(!(s.metadata.running === false))`) — so it would
+     * un-freeze itself on the very next queued render, reproducing the exact "queued broadcast
+     * still in flight" trap the comment below is about, one line down from its own fix. */
+    var _cklWt = s && s.instructor && s.instructor.checklist;
+    if (_cklWt && _cklWt.paused && !pausedFor('walkthrough')) pauseSim('walkthrough');
     /* THE SNAPSHOT'S `running` FLAG IS STAMPED AT ASSEMBLY AND CAN BE STALE BY THE TIME IT
      * IS DRAWN. Re-stamp it from the live service here, which is the one place every
      * renderer downstream reads it from.
@@ -7588,7 +7608,15 @@
       }
       if (e.target.closest('[data-ckl-list]')) { selectTab('checklists'); return; }   // the list tab; the run stays live
       var mk = e.target.closest('[data-ckl-check]');
-      if (mk) { if (!mk.disabled) cmd({ action: 'checklist_check', index: +mk.getAttribute('data-ckl-check') }); return; }
+      /* releaseHold('walkthrough') on every way OFF a step (#694): Continue, Rewind and Stop
+       * below. It is a no-op unless the walkthrough pause actually took the hold (`clearPause`
+       * on a key nobody set is a plain delete; `service.running` is already true the rest of
+       * the time), so this costs nothing on the 99% of steps that never pause — but a step
+       * that DID pause has stopped the clock at the service level, and nothing else resumes
+       * it: Continue's own command runs the instructor forward directly (not through tick()),
+       * so pressing it while stopped would otherwise check the step off into a plant that
+       * never ticks again. */
+      if (mk) { if (!mk.disabled) { releaseHold('walkthrough'); cmd({ action: 'checklist_check', index: +mk.getAttribute('data-ckl-check') }); } return; }
       /* the walkthrough's own rewind (#660 item 17): exact, two checkpoints back — the newest is the
        * start of the current step — scope 'full' so the walkthrough's progress comes back with the
        * plant. The chart's rewind is disabled while a walkthrough runs. */
@@ -7601,12 +7629,17 @@
          * dropped to 60x — pressure moving 41 psi/s" with 1x lit above it, indefinitely.
          * Measured: 1x lit, that text still shown 4 s later and until a speed button was touched.
          * The rewind IS the player acting on the drop, so the note is spent. */
-        if (!rw.disabled) { warpNote = null; TEL.walkthroughRewind(); cmd({ action: 'rewind', steps: 2, scope: 'full', exact: true }); }
+        /* #694: a rewind taken FROM a paused walkthrough step restores an earlier checkpoint
+         * (laid at that earlier step's ENTRY, before it fired anything — see the ordering note
+         * in instructor_layer.js `_checklistFire`), so the restored state never asked for this
+         * pause. Nothing else would ever clear it: release the hold here too, or the plant
+         * comes back from the rewind and simply never ticks again. */
+        if (!rw.disabled) { warpNote = null; TEL.walkthroughRewind(); releaseHold('walkthrough'); cmd({ action: 'rewind', steps: 2, scope: 'full', exact: true }); }
         return;
       }
       var wa = e.target.closest('[data-ckl-why-all]');
       if (wa) { cklState.whyAll = !cklState.whyAll; cklState.key = null; render(latest); return; }
-      if (e.target.closest('[data-ckl-stop]')) { cmd({ action: 'stop_checklist' }); return; }
+      if (e.target.closest('[data-ckl-stop]')) { releaseHold('walkthrough'); cmd({ action: 'stop_checklist' }); return; }
       /* Click the step card to expand (#607 item 2). Skip clicks on inner buttons. */
       var stepEl = e.target.closest('.ckl-step');
       if (stepEl && !e.target.closest('button')) {

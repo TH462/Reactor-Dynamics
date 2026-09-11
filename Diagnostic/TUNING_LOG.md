@@ -29,6 +29,100 @@ and the user-visible summary in `CHANGELOG.md`. This file points at those and tr
 
 ---
 
+## Session log — 2026-09-10-workbench-d (#694 — a walkthrough event that fires and PAUSES the sim; the pause had no path at all)
+
+**Workbench lane, unmerged.** Built the missing piece #694's own investigation named: a
+checklist step can narrate an event and fire it on Continue (#670), but nothing could stop the
+clock so the player could SEE it happen — *(OWNER, 2026-09-09: "user hits next, polisher goes
+offline, sim pauses. Then it explains that it tripped the feed pump...")*.
+
+**The field: `pause: true`**, sibling of `inject`/`clear` in `ui/manual_procedures.js`. Author it
+on the step that FIRES the event, not the narration step before it. When that step's fire lands
+(`_checklistFire`, `layers/instructor_layer.js`) — the tick after entry, never on entry itself,
+same ordering #670 already established for the checkpoint — the runtime sets `_pauseRequested`
+**and forces `c.awaitingAck = true` in the same tick, replacing ordinary grading with an early
+return**. That last part is load-bearing, not cosmetic: `acc`/`saw`/the OBSERVE_DWELL fallback
+all need sim time to advance, and a pause is exactly what stops sim time — requiring one to also
+be met would soft-lock every step that ever paused. The pause IS the step's completion; Continue
+is "I saw it, move on."
+
+**The service, not the UI, stops the clock.** `_serviceInstructorRequests`
+(`layers/simulation_service.js`) consumes the new `consumePauseRequest()` flag and calls
+`this.stop()` directly — never `_setSpeed(0, ...)`, which clamps `!(v>0)` to 1 (#694's own
+investigation flagged this: a speed channel cannot express a pause). Returning `true` from
+`_serviceInstructorRequests` forces the SAME reassembly the rewind path already uses, so one
+broadcast carries the fired event (`checklist.injected`) and the frozen clock
+(`metadata.running`) together — without it the freeze would lag the event it explains by one
+tick, since `assembleSnapshot()` at the top of `_assembleWithInstructor` runs BEFORE
+`instructor.step()` fires anything.
+
+**The UI names the hold, in `render()`, on the sticky `checklist.paused` flag** — a service-level
+pause is a plant fact, not a UI one, and nothing calls `pauseSim('walkthrough')` (the existing
+`pauseWhy`/`.bd-frozen`/flashing-play-button machinery, #691) just because `service.running` went
+false out from under it. **Ordering bug caught while proving this, and fixed**: the detection had
+to run BEFORE the existing `s.metadata.running = !!service.running` restamp, not after — measured
+by injection, running it after baked the PRE-pause `true` into the snapshot object, and the
+board's own renderer (`pwr_board.js` `setRunning(!(s.metadata.running===false))`) un-froze itself
+on the very next queued render, reproducing the exact "queued broadcast still in flight" trap the
+restamp's own neighboring comment already describes.
+
+**Release, decided explicitly (the issue asked for this):**
+- **Continue** (`data-ckl-check`) and the checklist's own **Rewind step** (`data-wt-rewind`) and
+  **Stop** (`data-ckl-stop`) all call `releaseHold('walkthrough')` alongside their command — a
+  no-op the other >99% of the time (nothing else ever takes that hold), but the only way to
+  resume on the one path that does, since `checklist_check` moves the instructor directly and
+  never touches `running`, and neither does the service. **Rewind specifically needs it too**: a
+  rewind from a paused step restores an EARLIER checkpoint (laid before it fired anything), so
+  the restored state never itself asked for the pause — nothing else would ever clear it.
+- **A speed button pressed while paused behaves exactly like one pressed during any other
+  pause** (`user`, `modal`): `set_speed` is accepted and arms the rate, but does not resume —
+  only Continue/Rewind/Stop or the ▶ button (which clears every hold) does. No special-case code;
+  this falls out of the existing `pauseWhy` architecture for free.
+- **No new "why paused" banner.** The 2026-08-11 removal of the "SIMULATION PAUSED" veil stands;
+  the step's own narrative text plus the existing "Step done — press Continue" ack-note (already
+  drawn right beside the button) is the on-screen "why", satisfying DESIGN_CRITERIA Q3.
+
+**Proved at TWO layers, because the browser gate alone cannot tell "the service stops itself"
+from "the UI compensates for a service that doesn't".** `test/run_checklist.js` section 11 drives
+`tick()` directly with no UI/app.js loaded at all (`mkService()` never uses `advanceCycles`) —
+`svc.running` going false there with a bare `zz_pause_probe` fixture is the SERVICE mechanism in
+total isolation. `verify_e2e_ui.js`'s `testWalkthroughEventPause` is what that harness cannot see
+at all: the real browser setTimeout loop actually stopping rescheduling and `.bd-frozen` actually
+painting. **Both proved red by injection, and the results genuinely differ between them** — with
+`_serviceInstructorRequests`'s `this.stop()` removed, `run_checklist.js` goes red (4 checks) but
+`verify_e2e_ui.js` still PASSES, because `render()`'s own `pauseSim('walkthrough')` detection
+stops the service anyway (measured, not assumed) — a real defense-in-depth pairing, and exactly
+why the Node check is required "in addition, never instead" of the browser one. With the
+instructor's early-return neutered, BOTH go red. `inbox/694/inject_pause.js a|b` is the browser
+harness (gitignored scratch); `run_checklist.js`'s injections were done by hand and restored.
+No shipped step authors `pause` yet — #693 is the first content consumer — so both proofs drive a
+synthetic fixture and say so, per the standing rule against a dark wire.
+
+**Housekeeping owed by the issue, done in the same change**: `ui/manual_procedures.js`'s schema
+header documented 12 of 19 shipped step fields; now documents all of them (`hl`, `past`, `story`,
+`crew`, `inject`, `clear`, `pause`, `wrong`, `wait_est_s`), with a note asking the next field's
+author to keep it current. `CLAUDE.md`'s standing line *"The live checklist NEVER issues `cmd`"*
+corrected in place (still true of `cmd`; since #670 it does fire `inject_failure`/`clear_failure`)
+— no new bullet, the standing list is at its cap.
+
+**Gates**: `run_checklist` 78→90 (+12, section 11), `run_checklist_pwr2` unchanged (191/191, no
+pwr2 content authors `pause`), `run_m5`/`run_m6` unchanged, `run_style`/`verify_ckl_relevance`/
+`run_hardrules` unchanged, `run_doc_budget` OK at 14,999/15,000 words after trimming the CLAUDE.md
+correction to fit (1 word of headroom — razor-thin; the next edit to that file needs to cut
+before it adds). `verify_e2e_ui` gains one new browser check (`testWalkthroughEventPause`),
+screenshot count unchanged.
+
+**— STILL OUTSTANDING —**
+- **#693 (the TMI-2 cascade authoring)** — not started here, by design (out of scope, named in
+  #694 as the first real content consumer of `pause`).
+- **CLAUDE.md is at 14,999/15,000 words** — not a defect, but the next agent to touch that file
+  needs to cut before adding; flagged, not fixed, since cutting further wasn't this issue's job.
+**Next:** author #693's cascade steps against this runtime (the first real exercise of `pause`
+outside the two synthetic fixtures here), or — if the owner wants headroom restored first —
+a short CLAUDE.md trim pass. Recommend #693: the mechanism is gated at both layers, and a real
+consumer is worth more than a document diet the gate doesn't need yet.
+**— END STILL OUTSTANDING —**
+
 ## Session log — 2026-09-10-workbench-c (#697 and #696 — a step graded on the PRESS, and a precondition #696's own measurement calls for)
 
 **Workbench lane, unmerged.** Two small, related fixes triaged off #675 section C.

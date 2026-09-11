@@ -1934,6 +1934,164 @@ async function testHeldSpeedClick(page) {
   return log.join('\n') + '\n';
 }
 
+/* #694 — A WALKTHROUGH EVENT STEP FIRES A FAILURE AND PAUSES THE SIM SO THE PLAYER CAN SEE IT.
+ *
+ * *(OWNER, 2026-09-09: "have a step that explains what will happen. Then when the user presses
+ * continue they can see it happening ... sim pauses.")* `_checklistFire` (instructor_layer.js)
+ * and firing-on-Continue were already built (#670); the pause had NO PATH at all — flagged in
+ * this issue's own investigation as a HOLLOW-CHECK RISK, because `SimulationService.
+ * advanceCycles` forces `running = true` around every tick, so a Node harness driving the
+ * service directly cannot see a service-level pause. A gate written there could only assert
+ * that the snapshot carries the REQUEST, never that the clock actually stopped or the board
+ * actually froze. Only a browser, running the real setTimeout-driven loop, can see either.
+ *
+ * NO SHIPPED STEP AUTHORS `pause` YET (#693 is the first content consumer) — driven from a
+ * fixture here, on the live `pwr_heatup` checklist, and said so per CLAUDE.md's own rule
+ * against a dark wire (a capability nothing exercises reading as a working feature).
+ * `porv_indicator_stuck_closed` is a benign, real pwr2 failure id (an instrument sticks; no
+ * hydraulics move) so the fixture cannot itself trip the plant into an unrelated failure mode.
+ *
+ * POSITIVE CONTROL FIRST: the clock is read advancing normally before the fixture is armed, so
+ * a page that could not tick at all would not pass this by accident. Then, in order: the fixture
+ * step is armed with `inject`+`pause`; the NEXT broadcast (the tick after entry — see the
+ * ordering note in `_checklistFire`) fires the failure AND stops the clock; the sim_time is read
+ * again after a wait to prove no further ticks land (not just that `svc.running` reads false);
+ * the board carries `.bd-frozen`; Continue is lit; the failure actually landed in the control
+ * layer (`getActiveFailures()`), proving the event half of the path, not only the pause half;
+ * Continue is pressed, which must both resume ticking and advance the checklist off the step.
+ *
+ * PROVED RED BY INJECTION, 2026-09-10 (`inbox/694/inject_pause.js a|b`): with `st.pause`'s
+ * early return in `_stepChecklist` neutered, the event still lands (a fresh, non-lagged read
+ * confirms it) but Continue never lights and the board never freezes — every assertion from
+ * "svc.running never went false" onward fails, correctly. Separately, with
+ * `_serviceInstructorRequests`'s `this.stop()` call removed, THIS test still PASSES — measured,
+ * not assumed: `ui/app.js`'s own `render()` detects `checklist.paused` and calls
+ * `pauseSim('walkthrough')`, which stops the service anyway (the SAME defense-in-depth pattern
+ * already established for `metadata.running` staleness, right above this block). That is a
+ * real UI safety net, not a bug in the test — but it means THIS gate alone cannot tell "the
+ * service stops itself" from "the UI compensates for a service that doesn't", which is exactly
+ * why `_serviceInstructorRequests` calling `stop()` is proved by `test/run_checklist.js`
+ * section 11 instead: that harness drives `tick()` directly with no UI, no `app.js`, no
+ * `render()` loaded at all, and DOES go red under the same injection (`svc.running` stays
+ * `true`). The two gates are not redundant; each is blind to what the other proves. Both
+ * injections restored before this file was committed. */
+async function testWalkthroughEventPause(page) {
+  var log = [];
+  var base = 'http://127.0.0.1:' + PORT + '/ui/shell.html?engine=pwr2&run=1&dev=1';
+  await page.goto(base, { waitUntil: 'networkidle', timeout: 90000 });
+  await dismissMission(page);
+  await waitBoardLive(page, 20000);
+
+  var started = await page.evaluate(function () {
+    try {
+      var svc = globalThis.RD.__dev.service();
+      svc.attentionStops = false;   // a step-boundary dropout must not snap speed under the fixture
+      var r = svc.handleCommand({ action: 'start_checklist', procedure_id: 'pwr_heatup' });
+      return { ok: !(r && r.type === 'error'), msg: r && r.message };
+    } catch (e) { return { ok: false, msg: String(e) }; }
+  });
+  if (!started.ok) throw new Error('#694 fixture: start_checklist failed — ' + started.msg);
+  /* The run card is drawn behind `cklState.view === 'run'` (ui/app.js :3771,
+   * `cur.hidden = cklState.view !== 'run'`) — a UI-local flag `startChecklist()` sets, which
+   * driving the command straight through `svc.handleCommand` (above, matching #627) never
+   * touches. So the Continue button EXISTS in the DOM (a raw querySelector finds it and #627
+   * never needed more) but is not VISIBLE, and Playwright's .click() below would hang on
+   * "element is not visible" — measured. Reach it exactly the way a player would after
+   * starting a checklist from elsewhere: open the Walkthroughs tab and click the
+   * already-running procedure's own entry, which hits `startChecklist`'s "already running"
+   * branch (sets the view to 'run' and switches to the Instructor tab) rather than restarting it. */
+  await page.click('#tabbar [data-tab="checklists"]');
+  await page.waitForSelector('[data-ckl-start="pwr_heatup"]', { timeout: 10000 });
+  await page.click('[data-ckl-start="pwr_heatup"]');
+  // The Continue button must be ON SCREEN (not just in the DOM) for the click below to
+  // land — same wait #627 uses: the Instructor tab active, with the checklist rendered.
+  await page.waitForFunction(function () {
+    var b = document.querySelector('#tabbar button.on');
+    return !!b && b.getAttribute('data-tab') === 'instructor' && !!document.querySelector('.ckl-step');
+  }, { timeout: 15000, polling: 200 });
+
+  async function read() {
+    return await page.evaluate(function () {
+      var svc = globalThis.RD.__dev.service();
+      var mk = document.querySelector('[data-ckl-check]');
+      return {
+        running: svc.running,
+        simTime: svc.simTime,
+        frozen: !!document.querySelector('.pwr-board-stage.bd-frozen'),
+        continueReady: !!(mk && !mk.disabled),
+        activeFailures: (svc.layer.getActiveFailures() || []).map(function (f) { return f.id; }),
+        idx: svc.instructor.checklist ? svc.instructor.checklist.idx : null,
+      };
+    });
+  }
+
+  // ---- positive control: the plant is genuinely ticking before the fixture is armed ----
+  var t0 = await read();
+  await page.waitForTimeout(600);
+  var t1 = await read();
+  if (!(t1.simTime > t0.simTime) || !t1.running) {
+    throw new Error('#694 control: the plant was not ticking before the fixture armed — ' +
+      JSON.stringify(t0) + ' -> ' + JSON.stringify(t1));
+  }
+  log.push('control: ticking normally, sim_time ' + t0.simTime.toFixed(2) + ' -> ' + t1.simTime.toFixed(2));
+
+  // ---- arm the fixture on the ACTIVE step (idx already past its own entry tick) --------
+  await page.evaluate(function () {
+    var c = globalThis.RD.__dev.service().instructor.checklist;
+    var st = c.proc.steps[c.idx];
+    st.inject = [{ failure: 'porv_indicator_stuck_closed' }];
+    st.pause = true;
+  });
+
+  // ---- the fire+pause lands within one broadcast; wait well past it, then prove the
+  // clock has ACTUALLY stopped — not merely that one read caught it mid-tick ----------------
+  await page.waitForTimeout(500);
+  var paused1 = await read();
+  await page.waitForTimeout(700);
+  var paused2 = await read();
+  if (paused1.running || paused2.running) {
+    throw new Error('#694: svc.running never went false — ' + JSON.stringify(paused1) + ' / ' + JSON.stringify(paused2));
+  }
+  if (paused2.simTime !== paused1.simTime) {
+    throw new Error('#694: sim_time still advancing while paused (' + paused1.simTime + ' -> ' +
+      paused2.simTime + ') — the browser timer loop is still rescheduling');
+  }
+  if (!paused2.frozen) {
+    throw new Error('#694: the board never carried .bd-frozen while the walkthrough paused it — ' + JSON.stringify(paused2));
+  }
+  if (!paused2.continueReady) {
+    throw new Error('#694: Continue never lit after the paused event fired — ' + JSON.stringify(paused2));
+  }
+  if (paused2.activeFailures.indexOf('porv_indicator_stuck_closed') < 0) {
+    throw new Error('#694: the step\'s own inject never reached the control layer — active failures [' +
+      paused2.activeFailures.join(',') + ']');
+  }
+  log.push('paused: running=false across ' + (700) + ' ms, sim_time held at ' + paused2.simTime.toFixed(2) +
+    ', .bd-frozen present, Continue lit, active_failures ' + JSON.stringify(paused2.activeFailures));
+
+  // ---- Continue: must resume ticking AND advance the checklist off the event step ------
+  await page.click('[data-ckl-check]');
+  await page.waitForTimeout(600);
+  var resumed = await read();
+  if (!resumed.running) {
+    throw new Error('#694: pressing Continue on a walkthrough-paused step did not resume the clock — ' + JSON.stringify(resumed));
+  }
+  if (!(resumed.simTime > paused2.simTime)) {
+    throw new Error('#694: sim_time did not advance after Continue resumed the clock — ' +
+      paused2.simTime + ' -> ' + resumed.simTime);
+  }
+  if (resumed.idx <= paused2.idx) {
+    throw new Error('#694: Continue did not advance the checklist off the paused step — idx ' +
+      paused2.idx + ' -> ' + resumed.idx);
+  }
+  if (resumed.frozen) throw new Error('#694: the board stayed .bd-frozen after Continue resumed the sim');
+  log.push('resumed: running=true, sim_time ' + paused2.simTime.toFixed(2) + ' -> ' + resumed.simTime.toFixed(2) +
+    ', checklist idx ' + paused2.idx + ' -> ' + resumed.idx + ', .bd-frozen cleared');
+
+  await page.evaluate(function () { globalThis.RD.__dev.service().handleCommand({ action: 'stop_checklist' }); });
+  return log.join('\n') + '\n';
+}
+
 /* #691 — A PAUSED PLANT KEPT THE PREVIOUSLY-SELECTED SPEED BUTTON LIT, AND PLAY-FROM-PAUSE
  * RESUMED AT THE OLD SPEED (owner: "When pausing the sim the previously selected warp button
  * shouldn't still be highlighted. Pressing play from a pause should play at 1x.").
@@ -2154,6 +2312,8 @@ async function main() {
     fs.writeFileSync(path.join(SCRATCH, 'adv-fail-panel.log'), afLog);
     var hsLog = await testHeldSpeedClick(page);
     fs.writeFileSync(path.join(SCRATCH, 'held-speed-click.log'), hsLog);
+    var wpLog = await testWalkthroughEventPause(page);
+    fs.writeFileSync(path.join(SCRATCH, 'walkthrough-event-pause.log'), wpLog);
     var prLog = await testPauseResumeSpeed(page);
     fs.writeFileSync(path.join(SCRATCH, 'pause-resume-speed.log'), prLog);
     var ctLog = await testCssTransitions(page);
@@ -2178,7 +2338,7 @@ if (require.main !== module) {
                      testMissionCloseResumes: testMissionCloseResumes, testRunStartMark: testRunStartMark,
                      testHeldPlantDialog: testHeldPlantDialog, testHeldSpeedClick: testHeldSpeedClick,
                      testSaveLoadRefusal: testSaveLoadRefusal, testCssTransitions: testCssTransitions,
-                     testPauseResumeSpeed: testPauseResumeSpeed,
+                     testPauseResumeSpeed: testPauseResumeSpeed, testWalkthroughEventPause: testWalkthroughEventPause,
                      port: function () { return PORT; } };
 } else {
   main().catch(function (e) {

@@ -533,7 +533,7 @@ ck('(f) ...and `crew: true`, the tag that says the step is history rather than a
       var isIncident = p.category === 'incident';
       if (isIncident) incidentLegs++;
       (p.steps || []).forEach(function (st, i) {
-        var uses = !!(st.inject || st.clear || st.story || st.crew);
+        var uses = !!(st.inject || st.clear || st.story || st.crew || st.pause);
         if (!uses) return;
         if (!isIncident) { leaked.push(k + ':' + p.id + ' step ' + (i + 1)); return; }
         incidentSteps++;
@@ -543,7 +543,7 @@ ck('(f) ...and `crew: true`, the tag that says the step is history rather than a
       });
     });
   });
-  ck('inject/clear/story/crew appear ONLY in an `incident` leg — the six cycle legs are untouched',
+  ck('inject/clear/story/crew/pause appear ONLY in an `incident` leg — the six cycle legs are untouched',
      leaked.length === 0,
      leaked.length ? 'LEAKED into: ' + leaked.join(', ')
                    : incidentLegs + ' incident leg(s), ' + incidentSteps + ' steps carrying the fields');
@@ -552,6 +552,89 @@ ck('(f) ...and `crew: true`, the tag that says the step is history rather than a
      crewNoAction.length ? 'tagged with no action: ' + crewNoAction.join(', ') : 'all crew steps carry a command');
 })();
 svc7.handleCommand({ action: 'stop_checklist' });
+
+head('11. The walkthrough pause (#694) — the SERVICE stops itself, not just the UI');
+/* *(OWNER, 2026-09-09: "have a step that explains what will happen. Then when the user presses
+ * continue they can see it happening ... sim pauses.")*
+ *
+ * WHY THIS RUNS HERE AND NOT ONLY IN A BROWSER. The issue's own investigation flagged the risk:
+ * `SimulationService.advanceCycles` forces `running = true` around every tick, so a harness
+ * that drives the service through it can never see a service-level pause — the request is
+ * visible, the clock stopping is not. This file does not use `advanceCycles`: `mkService()`
+ * sets `svc.running = true` ONCE and `run()` calls `tick()` directly in a loop (line 30), so if
+ * `_serviceInstructorRequests` (simulation_service.js) actually flips `running` to false, the
+ * VERY NEXT `tick()` call trips its own `if (!this.running...) return null;` guard — no UI, no
+ * `app.js`, no `render()` compensating anything. That is a genuine, non-redundant proof of the
+ * SERVICE half; `verify_e2e_ui.js`'s `testWalkthroughEventPause` is what proves the half this
+ * file cannot see at all — that the BROWSER's own setTimeout loop stops rescheduling and the
+ * board actually paints frozen. Neither alone is the whole claim (CLAUDE.md's own trap list on
+ * a check that samples only where it is already right). */
+RD.MANUAL_PROCEDURES.pwr.push({
+  id: 'zz_pause_probe', category: 'incident', title: 'walkthrough pause mechanism probe',
+  from: 'hot_full_power', prereq: ['test'],
+  steps: [
+    { text: 'step 0 — an event the player does not control, about to happen',
+      inject: [{ failure: 'porv_indicator_stuck_closed' }], pause: true,
+      acc: { p: 'power_pct', op: '>', v: 9e9 } },
+    { text: 'step 1 — the plant after the event', acc: { p: 'power_pct', op: '>', v: 9e9 } },
+  ],
+});
+var svc11 = mkService();
+run(svc11, 3);
+ck('control: the plant ticks normally before the checklist starts',
+   svc11.running && svc11.simTime > 0, 'running ' + svc11.running + ', sim_time ' + svc11.simTime.toFixed(2));
+
+var s11 = svc11.handleCommand({ action: 'start_checklist', procedure_id: 'zz_pause_probe' });
+ck('nothing fires (or pauses) on the step\'s own ENTRY tick — same ordering as section 10',
+   failIds(s11).indexOf('porv_indicator_stuck_closed') === -1 && svc11.running,
+   'active [' + failIds(s11).join(',') + '], running ' + svc11.running);
+s11 = run(svc11, 1);   // the tick AFTER entry — where `_checklistFire` (and now the pause) lands
+
+/* TWO DIFFERENT CLAIMS, read off TWO DIFFERENT snapshots on purpose. `assembleSnapshot()`
+ * fresh(below) reads the control layer LIVE, unaffected by instructor timing — it proves the
+ * command genuinely landed, full stop. `s11` is what THIS tick actually BROADCAST, and
+ * `assembleSnapshot()` at the top of `_assembleWithInstructor` runs BEFORE `step()` — so
+ * without the pause's forced reassembly (`_serviceInstructorRequests` returning true), a fired
+ * event lags the broadcast that caused it by one tick (measured while proving this red: with
+ * the pause branch neutered, the fresh read still saw the failure but `s11` did not). Testing
+ * both is testing the "same broadcast" guarantee itself, not just the fire. */
+ck('the step\'s `inject` genuinely lands on the plant (a live, non-lagged read)',
+   failIds(svc11.assembleSnapshot()).indexOf('porv_indicator_stuck_closed') >= 0,
+   'active_failures [' + failIds(svc11.assembleSnapshot()).join(',') + ']');
+ck('...and THIS BROADCAST already shows it — the pause forces the reassembly that makes that true',
+   failIds(s11).indexOf('porv_indicator_stuck_closed') >= 0,
+   'active_failures [' + failIds(s11).join(',') + ']');
+ck('THE SERVICE STOPPED ITSELF: svc.running is false with no UI, no render(), no app.js loaded',
+   svc11.running === false, 'svc11.running = ' + svc11.running);
+ck('...and the checklist snapshot agrees (`checklist.paused`), same broadcast as the injected event',
+   !!(ckl(s11) && ckl(s11).paused), 'checklist.paused = ' + (ckl(s11) && ckl(s11).paused));
+ck('...and the step is `awaiting_ack` — the pause IS this step\'s completion, not a dwell',
+   !!(ckl(s11) && ckl(s11).awaiting_ack), 'awaiting_ack = ' + (ckl(s11) && ckl(s11).awaiting_ack));
+
+var simTimeAtPause = svc11.simTime;
+var directTick = svc11.tick();   // NOT run()'s noop fallback — the raw call, proving the guard
+ck('`tick()` itself refuses while paused — returns null, not a frozen-but-ticking snapshot',
+   directTick === null, 'svc.tick() returned ' + (directTick === null ? 'null' : typeof directTick));
+run(svc11, 20);
+ck('20 more attempted broadcasts move sim_time by exactly zero',
+   svc11.simTime === simTimeAtPause, simTimeAtPause.toFixed(3) + ' -> ' + svc11.simTime.toFixed(3));
+
+/* CONTINUE DOES NOT ITSELF RESUME THE CLOCK — THAT IS THE UI'S JOB, ON PURPOSE. `checklistCheck`
+ * (instructor_layer.js) advances the instructor directly; it never touches `running`, and
+ * neither does `_serviceInstructorRequests`. `ui/app.js`'s Continue handler calls
+ * `releaseHold('walkthrough')` (-> `service.start()`) ALONGSIDE the command — a UI concern, the
+ * same way the play button and every other named pause reason already work (`pauseWhy`). A
+ * bare `checklist_check` here, with no UI in the picture, is the architectural fact: it moves
+ * the walkthrough, and leaves the plant exactly as stopped as it found it. */
+var s11b = svc11.handleCommand({ action: 'checklist_check', index: svc11.instructor.checklist.idx });
+ck('a bare `checklist_check` (no UI) advances the step off the paused one',
+   ckl(s11b).step_index === 1, 'step_index ' + ckl(s11b).step_index);
+ck('...but does NOT resume the clock by itself — resuming is `ui/app.js`\'s releaseHold(\'walkthrough\')',
+   svc11.running === false, 'svc11.running = ' + svc11.running);
+svc11.start();
+ck('...and an explicit start() (what releaseHold calls) resumes it normally',
+   svc11.running === true, 'svc11.running = ' + svc11.running);
+svc11.handleCommand({ action: 'stop_checklist' });
 
 // ---------------------------------------------------------------- summary
 console.log('\n' + B + '──────────' + X);

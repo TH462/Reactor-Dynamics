@@ -11,7 +11,10 @@
  *   category: startup | power | control | shutdown | emergency | accident
  *   narrative:true  → an accident walkthrough; not run by the harness (the engine
  *                     flagship suite owns its physics, CONTEXT §9).
- * Step: { text, control, target, cmd, hold, acc, saw, note, ramp, why, accs, wait_hint }
+ * Step: { text, control, target, cmd, hold, acc, saw, note, ramp, why, accs, wait_hint,
+ *          overtaken, hl, past, story, crew, inject, clear, pause, wrong, wait_est_s }
+ *   (SCHEMA HEADER OWED FIXING #694 — this list documented 12 of the 19 fields that ship;
+ *   whoever adds a field here should fix this line in the same change, not the next agent.)
  *   text    integrated-voice instruction     control  on-screen control to use
  *   target  the value/limit to drive to      cmd      command issued (rod group 'control'/'shutdown' resolved)
  *   hold    seconds to run after the command  acc      {p,op,v[,tol]} checked at END of the step
@@ -19,6 +22,42 @@
  *   why     OPTIONAL layman's teaching prose (#244 items 2/9) — the card's collapsible
  *           fourth block. `text` stays the concise action; `why` carries the what-and-why
  *           for someone new to the sim. Never load-bearing: harnesses ignore it.
+ *   hl      OPTIONAL array of control/indication labels the step glows on hover, when the
+ *           step's own `control` isn't the (only) thing to look at. Falls back to `[control]`.
+ *   past    OPTIONAL {p,op,v} or an array (OR) — "has the plant already done this", used only
+ *           by catch-up on checklist load (#607): a player who already performed an early
+ *           action is walked past a step whose prose no longer applies, rather than trapped
+ *           on it. Read once, at load; the ACTIVE step still grades off `acc`/`saw`/`cmd`.
+ *   story   OPTIONAL {clock, saw, knew, did} — the narrative walkthrough's per-step voice
+ *           (#670): a story beat rather than an instruction. Published on the checklist
+ *           snapshot's `story` block, ACTIVE STEP ONLY, so a gate or headless probe can see
+ *           what the card is showing without re-resolving this artifact.
+ *   crew    OPTIONAL boolean — this step narrates what the historical crew actually did, not
+ *           a recommended action (#670); rendered with its own "as taken, not a recommendation"
+ *           tag so a walkthrough can show a wrong decision without teaching it as correct.
+ *   inject / clear   OPTIONAL arrays — failures this step fires behind the scenes the tick
+ *           after it becomes active (#670 Phase 1): `inject: [{failure, severity, when}]`,
+ *           `clear: [{failure, when}]` (or bare id strings). Descend through the SAME
+ *           command path a beat's `inject_failures` takes (Hard Rule 7); a refusal is
+ *           swallowed with a console warning. See `_checklistFire`
+ *           (layers/instructor_layer.js) for the full firing/ordering contract.
+ *   pause   OPTIONAL boolean, sibling of `inject`/`clear` (#694) — "for events that the user
+ *           does not control... sim pauses" (owner, 2026-09-09). When THIS step's fire lands
+ *           (the same tick something in `inject`/`clear` newly fires), the runtime also
+ *           requests a service-level pause and marks the step done — the pause itself is the
+ *           step's completion condition, in place of `acc`/`saw`/dwell, since sim time is
+ *           exactly what a pause stops. Author it on the step that fires the event the player
+ *           must SEE happen, not on the narration step before it. One event per step, matching
+ *           the owner's own cascade example (polisher / feed pump / turbine as three steps,
+ *           not three injects on one). Released by Continue, the checklist's own Rewind, or
+ *           Stop — see `ui/app.js` `releaseHold('walkthrough')`.
+ *   wrong   OPTIONAL {learning, industry} — overrides the generic "wrong action" commentary
+ *           (`_wrongActionText`) shown when a follow-mode operator does something the step
+ *           didn't ask for. Falls back to a step-generic template when absent.
+ *   wait_est_s  OPTIONAL `false` — drops the "About N plant-minutes" span on a long step's
+ *           speed-hint rung while KEEPING the rung itself, for a step whose duration is
+ *           genuinely route-dependent rather than a fixed replay dwell. Deliberately separate
+ *           from `wait_hint: false`, which drops the whole hint line (#628, #653 S9).
  *   accs    OPTIONAL array — MULTI-CHECK-OFF (#244 item 8). Entries are either
  *           {p,op,v[,tol],label} (an acceptance like `acc`, graded with the same
  *           debounce) or {cmd,label} (a command the operator must be SEEN to issue —
