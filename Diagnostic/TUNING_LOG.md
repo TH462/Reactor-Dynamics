@@ -29,6 +29,207 @@ and the user-visible summary in `CHANGELOG.md`. This file points at those and tr
 
 ---
 
+## Session log — 2026-09-11-workbench-b (#698 / #700 / #705 — three ruled board changes, three commits, UNMERGED on `workbench`)
+
+Three independent, already-ruled board/manual changes built in one pass because all three touch
+`pwr_board_wiring.js` and `pwr_board_inspect.js`. Commits, oldest first: `eef4683e` (#698),
+`7b565649` (#700), `db4a5546` (#705). Nothing is merged into `develop`; the standing no-merge
+rule holds.
+
+### The trap: THE GENERATED BOARD FILE IS NOT THE PLACE THE BOARD IS EDITED — and the mechanism that replaces it is three maps deep
+
+The obvious way to remove a button, move a caption or add a tile is to edit
+`ui/diagram/board/pwr_board_data.js`, which is where those objects visibly live. Its own first
+line says **"GENERATED. Do not hand-edit."**, and the reason is not tidiness: the file is a
+re-export from the diagram builder, so a hand edit survives exactly until the owner next
+re-exports, and then vanishes with nothing red. The driver carries the three maps that make a
+board change survive that, and all three were used here:
+
+| want | mechanism | used by |
+|---|---|---|
+| delete an authored item | `DOC_REMOVE` | #698 (`bdBoronSample`) |
+| change an authored item's props | `DOC_PATCHES.items` | #700 (`ims3xtrobbq` text + fontSize), #705 (`ims3w19984s` text) |
+| add an item that is not in the export | `EXTRA_ITEMS` | #700 (`bdRhrCooldownRate`) |
+
+`run_inspect` already reads `DOC_REMOVE` out of the source to decide which items still need
+inspect copy, so a removal done this way is coherent end to end — and a removal done by hand
+edit would have left the inspect entry orphaned with nothing to notice. **`DOC_PATCHES` is ONE
+KEY PER ITEM ID**: `ims3w19984s` already had a `{ top: 672 }` entry from #630, so #705's text
+change had to be merged into it. A second key for the same id in an object literal silently
+wins and drops the first — the file warns about this at `bdOneOverM`, and it would have
+silently undone the #630 row re-layout.
+
+### #698 — the boron CHEM tile is live, the SAMPLE button is gone
+
+*(OWNER RULING, 2026-09-10: "All decisions as recommended." — a blanket ratification of five
+recommendations put to him as one table; the one this issue carried was option B.)* The tile
+`ims2jva1ff5` now reads
+`instruments.boron_analyzer` continuously instead of posting the lab's grab-sample result;
+`bdBoronSample` leaves the board via `DOC_REMOVE`; the engine command `take_boron_sample`
+**stays**, because `control_kernel.js` auto-issues it after every completed dose to re-baseline
+the totalizer.
+
+**Two inherited claims measured rather than repeated, and one of them was wrong.**
+
+- **The field name.** `pwr2_instruments.js:138` declares the channel as id **`boron`**
+  (src `boron_ppm`); `pwr_control.js` reads **`instruments.boron_analyzer`**. Two files, two
+  names, and a comment in `pwr2_shell.js:1411` asserting the second "has been live all along".
+  Measured on the booted plant: `getInstruments().boron` is **undefined**, `.boron_analyzer` is
+  **612.19** against a true **612.27** — the shell renames it on the way into the snapshot. The
+  comment was right; it was still worth 30 seconds, because the board would have read a
+  permanent dash if it had not been.
+- **The tracking figure, which the issue had at 0.8 ppm.** Re-measured on this tree, PWR2 at
+  full power, `set_boron_adjust` rate −0.05, diluting **88.4 ppm over 60 plant-minutes**:
+
+  | plant-minutes | true ppm | analyzer ppm | error |
+  |---|---|---|---|
+  | 10 | 596.60 | 598.10 | 1.498 |
+  | 20 | 581.32 | 582.25 | 0.933 |
+  | 30 | 566.41 | 567.12 | 0.718 |
+  | 40 | 551.87 | 553.24 | 1.371 |
+  | 50 | 537.70 | 538.75 | 1.053 |
+  | 60 | 523.86 | 525.06 | 1.199 |
+
+  **Max |analyzer − true| = 2.080 ppm** (at t = 3120 s), typical 1.0–1.5. Not 0.8. The lag term
+  accounts for it: the channel's time constant is 60 s and the dilution runs at 0.0246 ppm/s, so
+  the systematic trail is about 1.5 ppm and the rest is noise. **The inspect copy says "1 to
+  2 ppm", the measured band** — and it matters that it is measured, because `run_inspect` does
+  not gate numbers in inspect copy (see the gate note below). For contrast, the grab sample the
+  tile used to show was **88 ppm stale** at the end of that same hour.
+
+**The checklist step was DELETED, not reworded** — `pwr2:pwr_raise_power` step 3, "Press SAMPLE
+on the BORON card", graded `accs: [{ cmd: 'take_boron_sample' }]`. This is the #641 shape
+exactly: a command-kind check-off is only satisfiable while the plant still lets the player
+produce the command, and the control is gone. The leg goes **11 steps to 10**.
+`test/manual_ui_map.js` is **POSITIONAL** and already carries two notes saying so; its rows
+below the deleted step were moved up one by hand rather than re-derived.
+`run_manual_controls` 649 → 646.
+
+**Recorded as a DECLARED DEPARTURE, not as prototypicality** — `Manuals/12` row **§12.22**, and
+the pending Rev 19 row extended with item **(tt)** rather than a new revision opened. This
+reverses a dated decline (2026-09-03, #619 item 27) that was made *on a primary source*, and the
+source has not moved: Ginna UFSAR §7.7 (ML20339A027), *"There is no provision for a direct
+continuous visual display of primary coolant boron concentration."* What changed is the
+weighting, and the row says so in those words.
+
+**`run_manual_rev`'s content canary earned its keep.** The first draft of item (tt) cited
+"07 §7.5" for the boron controls. The section is **03 §7.5**; the gate named the row and the bad
+reference immediately. The same wrong pointer was also sitting in the new `Manuals/12` row,
+where **nothing** would have caught it — the canary only reads revision rows.
+
+**DELIBERATELY NOT DONE**, and the issue carries `status-owner-review` rather than
+`status-work-complete` because of it: the prose sites that still teach the sampling workflow
+(`Manuals/03` 444 / 448 / 463-466 / 1029 / 1146, `Manuals/04` 521, `Manuals/10` 43,
+`ui/diagram/board/WIRING_REFERENCE.md` 28 **and 107**). The owner asked to see the live readout
+before the expensive half runs. **Line 107 is not on the issue's own list of eight** and
+describes the button that was just removed, so the content pass is nine sites, not eight.
+
+### #700 — HX SPLIT, with a COOLDOWN RATE readout beside it
+
+*(OWNER RULING, 2026-09-10: "All decisions as recommended." — the same blanket ratification;
+the recommendation this issue carried was option A.)* The typed box keeps `set_rhr_hx`. The ruled name is
+**"COOLDOWN RATE / HX SPLIT"** and it ships as its **two halves, each attached to the thing it
+names**: the in-card caption becomes **`HX SPLIT`** (the lever) and a new readout
+**`bdRhrCooldownRate`** carries **`COOLDOWN RATE`** (the consequence), immediately beside it.
+The ruling's own words are "a live readout of `instruments.tavg_rate` **beside it** in °F/hr".
+
+One caption cannot hold both, and that is measured, not asserted. Intrinsic text width in
+authored units against the card's **80 px** column: `COOLDOWN RATE` is **126.7 / 118.5 / 110.4**
+at 14 / 13 / 12 px. Nothing carrying those words fits at a readable size.
+
+**The card was NOT made taller, and that is the load-bearing decision.** The board's bounding
+box ends at **y 785** and the stage scale derives from it, so growing a card downward shrinks
+**every tile on the board** — precisely the regression `DOC_REMOVE`'s `imrzmlyafa3` entry was
+written to undo. The readout went instead into the slot the ECCS card leaves by being 125 tall
+where its two neighbours are 175: **1155..1245 × 730..785**, swept at the pinned 1400×900
+against every rendered tile and found to contain nothing but the outer panel. Final placement
+**1155, 745, 90×45**, level with the number box (745..775).
+
+**Two numbers came back wrong from prediction and right from measurement**, which is the
+reusable part:
+
+- `HX SPLIT` at the authored 14 px **renders 81.3**, right edge **1151.3** — **1.3 px outside
+  the card border at 1150**. The prediction was ~70, from an intrinsic width (62.7) plus the
+  padding derived from `HX FLOW` (65.0 intrinsic → 72.2 rendered). **The intrinsic widths
+  under-predict**: the tile's real cost is ~10.16 px/char, so one extra character over `HX FLOW`
+  is the whole story. At **13 px** it renders 75.5 and ends at 1146.6. Nothing would have
+  failed — it would just have looked like a caption leaking out of its card.
+- The readout's height is **content-driven** (`nohgt`): authored 45, renders **31.7**.
+
+**The channel is live on the shipped plant** — checked rather than inherited from the retired
+engine: `instruments.tavg_rate` is present and non-null on PWR2 (5.65 °C/hr on a freshly booted
+hot plant still settling). It is the same channel `cooldown_rate_high` / `heatup_rate_high` act
+on at **±55.6 °C/hr = ±100 °F/hr**, so the player now watches the number the annunciator
+watches. On a plant holding temperature the readout wanders about **±3 °F/hr** — measured, and
+that is the derivative's noise floor, not the plant moving.
+
+**The unit is built in the VALUES function**, `uStr('tempd','F') + '/hr'`, not left to the
+authored `unit: 'F/hr'`. In US mode the authored string wins; **in SI mode the family table wins
+and would print a bare `C`**, losing the per-hour over a °C/hr number. `dTd`, not `dT` — a
+temperature RATE converts ×9/5 with **no** offset.
+
+**THE HALF THE SCOPING MISSED: the live checklists named the old label ten times.** `Manuals/`
+never quotes it (checked), which is what the scoping checked — but `ui/manual_procedures.js`
+told the player to "set HX FLOW to 7 %", "raise HX FLOW", "lower HX FLOW" and so on, ten times
+across the heatup and cooldown legs. **Nothing gates that string**: `run_manual_controls` checks
+a step's `control` field, which is `'Residual Heat Removal (RHR)'` and still resolves. Renaming
+the board and leaving them would have manufactured the #653 "I could not find it" defect on
+purpose. All ten now read `HX SPLIT`, and the three rate cautions point at `COOLDOWN RATE` — new
+information, since one of them read *"that is the only rate lever on this leg"* beside a plant
+that displayed no rate at all. `run_style` then caught the rewrite pushing one step's detail from
+three sentences to four against a cap of three; folded back, not exempted.
+
+Also fixed in passing, per the issue: the `NUM_SETTERS` comment cited `pwr_thermal.js:90-93`,
+**the retired engine**. The live term is `pwr2_rhr.js:321` —
+`duty = max(0, avail) × hx_fraction × UA × (Thot − ccw_temp_c)`.
+
+### #705 — INJ FLOW
+
+**No owner reply was given**, so this was built under the standing default: **option A**, the
+recommendation the issue itself carried, recorded explicitly rather than taken silently. Option
+B (a separate RHR flow indication) stays deferred to be designed with the sibling RHR card
+decision; option C (summing two systems onto one scale) stays refused.
+
+`ims3w19984s` goes **`FLOW` → `INJ FLOW`**. The fix is to the LABEL because the READING was
+never wrong: `hpi_flow` is emergency injection only, a cooldown injects nothing, so **0 GPM
+through the whole of Mode 4 and Mode 5 is honest**. What made it read as a dead instrument is
+that "FLOW" on the emergency core cooling card means "flow in this system" while the same pumps
+circulate the plant one card over. The wiring function is unchanged and now carries the reason:
+RHR circulation is a lineup **fraction** with no pump hydraulics behind it, so there is no
+gallons-per-minute figure to fold in, and putting one on `GPM_HPI`'s injection scale would
+render the plant's 1,000 gpm floor as roughly **324 gpm**.
+
+Fits at the authored 13 px: **renders 740..816.6** against the card edge at 825, **8.4 px
+clearance**. The rendered figure is quoted rather than the intrinsic one *because #700 was caught
+out doing the opposite in the same session* — arithmetic off the old `FLOW` tile's rendered rect
+(42.3 px for four characters, padding included) predicted 84.6 and a label flush on the border,
+wrong by 8 px in the direction that would have shipped. Confirmed by screenshot as well as by
+rect: it clears the `N GPM` reading below, which shares four pixels of **box** with every caption
+on that card (15 px row pitch, ~19 px line boxes) and has never shared a glyph.
+
+### Asked and answered: does `run_inspect` gate the NUMBERS in inspect copy?
+
+**No — and the runner says so itself.** The only numeric check in it is the one added by #701,
+whose own header is titled *"THE INSPECT PANEL'S PLANT NUMBERS ARE NOT GATED"*. It pins exactly
+one pair — the RHR block-open permissive and autoclosure setpoints on `ims3xf18pk8` and
+`ims3wg27iif` — and it DERIVES both from `RD.pwr2.rhr.RHR` rather than repeating them. The
+header also records why a general sweep was rejected: the obvious one (check that every
+"NNN psi (X.XX MPa)" pair converts correctly) would have **passed on the #701 defect**, because
+400 psi and 2.76 MPa are exactly each other. The pair was internally consistent and belonged to
+the wrong plant.
+
+What `run_inspect` does cover: every item has an entry; every control, component and indication
+has its OWN entry rather than the card's; no orphaned keys (it reads `DOC_REMOVE` to decide what
+is still on the board); no two entries sharing a brief or a detail; briefs ≤ 140 chars and
+punctuated; details ≥ 80 chars; every acronym expanded **in the entry that uses it**; no US unit
+token except after a number; and every `doc`/`sec` citation resolving against the packed manual.
+
+**So every figure written into inspect copy this session was measured first** — the boron band
+(1–2 ppm, max 2.08), the cooldown-rate limit (±100 °F/hr, read off the live alarm setpoint) and
+the rate channel's noise floor (±3 °F/hr).
+
+---
+
 ## Session log — 2026-09-11-workbench-a (#685 / #693 / #692 / #653 — the combined checklist content sweep, four commits, UNMERGED on `workbench`)
 
 Four issues worked as one pass because they all rewrite the same 89 steps and interleaving them
