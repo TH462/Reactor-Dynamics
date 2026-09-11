@@ -316,6 +316,53 @@
     for (var i = 0; i < g.length; i++) if (g[i].id === id) return g[i];
     return null;
   }
+  /* THE BANK'S FULL SCALE IS THE ENGINE'S NUMBER, READ LIVE — never a literal on this side of
+   * the wire (#707, 2026-09-11). The trend chart plotted all three rod lanes to a full scale of
+   * 912 steps: the RETIRED engine's fine drive (`RD.PWR_CONFIG.rods.max_steps`). The SHIPPED
+   * plant's bank is 627 (`RD.pwr2.kinetics.RODS.max_steps` — derived from the sourced four-bank
+   * 131-step overlap program, Westinghouse Technology Systems Manual chapter 8.1 section
+   * 8.1.5.4, ADAMS ML11223A252). So a bank sitting ON ITS STOP drew at 69 % of its lane and
+   * "fully withdrawn" was a height the chart could not reach; the at-power design point (606 of
+   * 627, #704) drew at 66 %. Fifth instance tonight of the inherited-by-reference class the
+   * #534 sweep named (#557, #556, #561, #676).
+   *
+   * ⚠ 627 IS NOT TYPED HERE EITHER, AND THAT IS THE WHOLE POINT *(OWNER RULING, 2026-09-11:
+   * "All as recommended")* — hard-coding the new number is exactly how the old one got here.
+   * `pwr2_engine.js`'s own BANK() accessor is a function for this reason, and says so: "a
+   * consumer that captures it at load cannot follow a change."
+   *
+   * THE SOURCE IS THE SNAPSHOT'S OWN ROD GROUP. Both engines publish `max_steps` inside every
+   * `control_state.rod_groups[]` record (pwr2_shell.js via bankSteps(), pwr_engine.js's
+   * getControlState), so the scale travels WITH the data: a replayed recording is drawn on the
+   * scale of the engine that produced it rather than on whatever happens to be loaded now, and
+   * the lane needs no knowledge of which plant it is looking at. Two fallbacks for a render
+   * before the first snapshot, both still LIVE reads of a published table — the pwr2 kinetics
+   * object, then the retired engine's config. The last-ditch 912 is the only unpublished number
+   * here and it fires only when no plant module loaded at all; it is the larger of the two
+   * banks, and holdRange's clamp is careful never to let a declared range beat the data, so an
+   * over-wide lane wastes height where it cannot hide a trace. */
+  function bankScale(s, groupId) {
+    var g = rodGrp(s && s.control_state, groupId), n = g && g.max_steps;
+    /* typeof FIRST: isFinite(null) is TRUE, and a JSON round trip writes a dead channel out as
+     * null — the #555 trap, which lands a plausible zero on every guard that asks isFinite. */
+    if (typeof n === 'number' && isFinite(n) && n > 0) return n;
+    var k = RD && RD.pwr2 && RD.pwr2.kinetics && RD.pwr2.kinetics.RODS;
+    if (k && typeof k.max_steps === 'number' && k.max_steps > 0) return k.max_steps;
+    var c = RD && RD.PWR_CONFIG && RD.PWR_CONFIG.rods;
+    if (c && typeof c.max_steps === 'number' && c.max_steps > 0) return c.max_steps;
+    return 912;
+  }
+  /* A SERIES' DECLARED RANGE, RESOLVED. `range` is normally the authored [lo, hi] pair; a lane
+   * whose full scale is a PLANT PARAMETER authors a function instead, called per render against
+   * the live snapshot — the same layering as the vital-few gauges' `autorange` over a static
+   * min/max, and the same idiom as pzrGaugeCautionLo / pzrGaugeCautionHi / tavgGaugeCautionLo.
+   * EVERY consumer of `.range` goes through here: reading `ser.range[0]` directly is what makes
+   * a function form silently produce `undefined` instead of an error. (logSer is the one
+   * deliberate exception — see its own note.) */
+  function serRange(ser) {
+    var r = ser && ser.range;
+    return (typeof r === 'function') ? r(latest) : r;
+  }
 
   // ====================================================================== engines
   // Selector key → plant + design_version + default initial state, plus the
@@ -459,6 +506,13 @@
   // whole reason a startup is read on a log meter in the first place. Storing log10 makes one
   // decade one division — the shape an operator is trained to read — and `fmt` puts the real
   // number back on the chip, so nothing on screen is in log units the label does not admit.
+  //
+  // ⚠ A LOG SERIES' `range` MUST BE A STATIC ARRAY, not the live function form serRange()
+  // resolves (#707). `o.range[0]` is the FLOOR a non-positive count is pinned to and it is read
+  // once per sample inside the bucketing loop — resolving a function there would allocate per
+  // sample in the hot path for a scale (decades of a fixed detector span) that is not a plant
+  // parameter and cannot move. Nothing here needs it; the note exists so the next author knows
+  // this exception was measured rather than missed.
   function logSer(o) {
     return { id: o.id, grp: o.grp, label: o.label, c: o.c, range: o.range,
              instr: o.ins, hint: o.hint, detail: o.detail,
@@ -671,7 +725,7 @@
         { id: 'otdt_mar', instr: 'otdt_margin', grp: 'Protection & limits', label: 'OTΔT Margin', c: '#e08888', get: function (i) { return i.otdt_margin; }, range: [-20, 60], dLo: 0, fmt: function (v) { return sgnFix(v, 1) + '%'; } },
         { id: 'opdt_sp',  instr: 'opdt_setpoint', grp: 'Protection & limits', label: 'OPΔT Setpoint', c: '#c89868', get: function (i) { return i.opdt_setpoint; }, range: [0, 150], fmt: function (v) { return v.toFixed(1) + '%'; } },
         { id: 'opdt_mar', instr: 'opdt_margin', grp: 'Protection & limits', label: 'OPΔT Margin', c: '#e0b088', get: function (i) { return i.opdt_margin; }, range: [-20, 60], dLo: 0, fmt: function (v) { return sgnFix(v, 1) + '%'; } },
-        { id: 'rod_margin',instr: 'rod_limit_margin', grp: 'Protection & limits', label: 'Rod Limit Margin', c: '#7ac098', get: function (i) { return i.rod_limit_margin; }, range: [0, 912], dLo: 0, fmt: function (v) { return v.toFixed(0) + ' st'; } },
+        { id: 'rod_margin',instr: 'rod_limit_margin', grp: 'Protection & limits', label: 'Rod Limit Margin', c: '#7ac098', get: function (i) { return i.rod_limit_margin; }, range: function (s) { return [0, bankScale(s, 'control_rods')]; }, dLo: 0, fmt: function (v) { return v.toFixed(0) + ' st'; } },
         stat({ id: 'rod_limit', grp: 'Protection & limits', label: 'Rods At Limit', c: '#c0a050', ins: 'rod_at_limit', on: 'AT LIMIT', off: 'no', alarm: 'on', hint: 'whether the control bank has reached its insertion limit.', detail: 'The rod insertion limit preserves enough rod worth above the bank to shut the reactor down from any condition. Driving into it does not stop the plant working, it removes the margin that makes a trip effective — so the correct response is to borate, which brings the bank back out, rather than to keep inserting.' }),
 
         // ---------------------------------------------------------------- pressure boundary
@@ -806,8 +860,8 @@
         // COMMANDED positions, not readings. Plotted against everything above them, these
         // are what turn a trend into a cause: rod steps beside Tavg, spray and heater
         // beside pressure, dump beside steam flow.
-        { id: 'rod_steps',grp: 'Controls', label: 'Control Rod Steps', c: '#5ac0a0', ctl: function (c) { var g = rodGrp(c, 'control_rods'); return g ? g.steps : null; }, range: [0, 912], fmt: function (v) { return v.toFixed(0) + ' st'; }, hint: 'where the control bank is, in steps withdrawn.', detail: 'The operator\'s fast reactivity control, and the only one that acts in seconds. Withdrawing adds reactivity and raises power; inserting does the reverse. Plot it against average coolant temperature and the whole rod-control loop becomes visible — the bank chasing the temperature program rather than power directly.' },
-        { id: 'sd_steps', grp: 'Controls', label: 'Shutdown Rod Steps', c: '#3a8070', ctl: function (c) { var g = rodGrp(c, 'shutdown_rods'); return g ? g.steps : null; }, range: [0, 912], fmt: function (v) { return v.toFixed(0) + ' st'; }, hint: 'where the shutdown bank is, in steps withdrawn.', detail: 'The shutdown bank is parked fully out during power operation and exists to be dropped. Its worth is the margin that makes a trip effective, which is why it is withdrawn first during a startup and why an insertion limit on the control bank is enforced separately.' },
+        { id: 'rod_steps',grp: 'Controls', label: 'Control Rod Steps', c: '#5ac0a0', ctl: function (c) { var g = rodGrp(c, 'control_rods'); return g ? g.steps : null; }, range: function (s) { return [0, bankScale(s, 'control_rods')]; }, fmt: function (v) { return v.toFixed(0) + ' st'; }, hint: 'where the control bank is, in steps withdrawn.', detail: 'The operator\'s fast reactivity control, and the only one that acts in seconds. Withdrawing adds reactivity and raises power; inserting does the reverse. Plot it against average coolant temperature and the whole rod-control loop becomes visible — the bank chasing the temperature program rather than power directly.' },
+        { id: 'sd_steps', grp: 'Controls', label: 'Shutdown Rod Steps', c: '#3a8070', ctl: function (c) { var g = rodGrp(c, 'shutdown_rods'); return g ? g.steps : null; }, range: function (s) { return [0, bankScale(s, 'shutdown_rods')]; }, fmt: function (v) { return v.toFixed(0) + ' st'; }, hint: 'where the shutdown bank is, in steps withdrawn.', detail: 'The shutdown bank is parked fully out during power operation and exists to be dropped. Its worth is the margin that makes a trip effective, which is why it is withdrawn first during a startup and why an insertion limit on the control bank is enforced separately.' },
         { id: 'heater',   grp: 'Controls', label: 'PZR Heater', c: '#d09040', ctl: function (c) { return c.heater_power_pct; }, range: [0, 100], fmt: function (v) { return v.toFixed(0) + '%'; }, hint: 'how hard the pressurizer heaters are being driven, as a percentage.', detail: 'Heaters are the slow way UP in pressure: they boil water in the pressurizer steam space over minutes, where spray drops pressure in seconds. They also need alternating-current power, so pressure control is asymmetric in a blackout — and a safety injection or a loss of offsite power SHEDS them off the bus until you put them back — you can still spray, but you cannot heat.' },
         { id: 'spray',    grp: 'Controls', label: 'PZR Spray', c: '#50a8d0', ctl: function (c) { return c.spray_valve_pct; }, range: [0, 100], fmt: function (v) { return v.toFixed(0) + '%'; }, hint: 'how far the pressurizer spray valve has been commanded open.', detail: 'Spray is the fast way DOWN in pressure: cold leg water sprayed into the steam space condenses steam and drops pressure in seconds. It is drawn from the reactor coolant pump discharge, so on a real unit it needs a running pump and a loss of offsite power takes it away — there, you depressurize with the relief valve instead. This simulator keeps the spray working without the pumps, standing in for the auxiliary spray line it has no separate control for; that stand-in is deliberately the weaker half of the trade, giving about half the condensing duty real auxiliary spray would.' },
         { id: 'dump',     grp: 'Controls', label: 'Steam Dump', c: '#a0b850', ctl: function (c) { return c.steam_dump_pct; }, range: [0, 100], fmt: function (v) { return v.toFixed(0) + '%'; }, hint: 'how far the steam dump valves have been commanded open.', detail: 'The turbine bypass: steam routed straight to the condenser instead of the turbine. It is what lets the plant survive a load rejection without tripping, and it only works while the condenser is available. Plot it against steam pressure to see the pressure control loop working.' },
@@ -5673,7 +5727,8 @@
       else if (ser.get) v = ser.get(latest.instruments);
     } catch (e) { v = null; }
     if (v == null || !isFinite(v)) return !!seriesHot[ser.id];
-    var full = Math.abs(ser.range[1] - ser.range[0]) || 1, dead = full * 0.05;
+    var sr = serRange(ser);
+    var full = Math.abs(sr[1] - sr[0]) || 1, dead = full * 0.05;
     var was = !!seriesHot[ser.id], hot = was;
     if (ser.dHi != null) hot = was ? (v >= ser.dHi - dead) : (v >= ser.dHi);
     if (ser.dLo != null) hot = was ? (v <= ser.dLo + dead) : (v <= ser.dLo);
@@ -5847,8 +5902,9 @@
       svg.innerHTML = '';
       drawLanes(active.map(function (s, i) {
         var b = laneBand(i, active.length, H);
+        var sr = serRange(s);
         return { ser: s, top: b.top / H * 100, mid: (b.top + b.bot) / 2 / H * 100,
-                 lo: s.range[0], hi: s.range[1], val: null, hot: false };
+                 lo: sr[0], hi: sr[1], val: null, hot: false };
       }));
       return;
     }
@@ -5968,13 +6024,14 @@
       // kept sliding and changing shape. The axis now sits on a 1-2-5 ladder and is HELD:
       // it only re-fits when the data leaves the band, or when the data has been small
       // inside it for a sustained dwell. Between re-fits every drawn point is frozen.
-      var full = Math.abs(ser.range[1] - ser.range[0]) || 1;
+      var sr = serRange(ser);
+      var full = Math.abs(sr[1] - sr[0]) || 1;
       // Minimum zoom, so a dead-flat line doesn't fill the plot with rounding: a tenth
       // of full scale, and a fortieth for the slow-moving boron trend.
       var minSpan = full * ((ser.id === 'boron') ? 0.025 : 0.1);
       var h = chartRange[ser.id];
       if (!isFinite(vmin) || !isFinite(vmax)) {
-        ranges[ser.id] = h ? [h.lo, h.hi] : [ser.range[0], ser.range[1]];
+        ranges[ser.id] = h ? [h.lo, h.hi] : [sr[0], sr[1]];
         return;
       }
       /* THE POLICY IS RD.ChartMath.holdRange (#393) — the same call the vital tiles make,
@@ -5991,7 +6048,7 @@
        * The clamp preference — don't spend height on values the quantity cannot take, a
        * level axis running to -50 % reads as broken — moves into holdRange's clampLo/Hi,
        * which is careful never to let it beat the data. */
-      var rLo = Math.min(ser.range[0], ser.range[1]), rHi = Math.max(ser.range[0], ser.range[1]);
+      var rLo = Math.min(sr[0], sr[1]), rHi = Math.max(sr[0], sr[1]);
       var hr = RD.ChartMath.holdRange(h && { lo: h.lo, hi: h.hi }, vmin, vmax, {
         minSpan: minSpan, shrinkFrames: CHART_SHRINK_FRAMES, shrinkFor: h ? (h.small || 0) : 0,
         clampLo: rLo, clampHi: rHi

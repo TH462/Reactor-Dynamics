@@ -30,6 +30,57 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
 
 ## [Unreleased]
 
+### Fixed (the trend chart plotted the rod banks on the retired engine's 912-step scale — #707)
+
+Found while working #704 and deliberately kept out of it. `ui/app.js` declared three chart lanes
+— **Control Rod Steps**, **Shutdown Rod Steps** and **Rod Limit Margin** — with a full scale of
+**912 steps**: the RETIRED engine's fine drive (`RD.PWR_CONFIG.rods.max_steps`). This plant's bank
+is **627** (`RD.pwr2.kinetics.RODS.max_steps` — the sourced four-bank 131-step overlap program,
+Westinghouse Technology Systems Manual chapter 8.1 §8.1.5.4, ADAMS ML11223A252). Measured on the
+drawn lane, at power with the shutdown bank on its stop: the lane was fitted **550–700 steps**, so
+a bank reading 627 of 627 sat at **69 %** of a lane whose top does not exist on this plant, and the
+control bank at its design point (606 of 627, #704) sat at 66 %. Same for `Rod Limit Margin`, which
+reads the whole bank wherever the insertion limit does not apply.
+
+**The fix reads the scale; it does not retype it** *(OWNER RULING, 2026-09-11: "All as
+recommended")*. Hard-coding 627 is exactly how 912 got there — the fifth instance in one evening of
+the inherited-by-reference class the #534 sweep named (#557, #556, #561, #676). A lane whose full
+scale is a plant parameter now authors `range` as a **function**, resolved per render by the new
+`serRange()`, and `bankScale()` takes the number from **the snapshot's own rod group**: both engines
+publish `max_steps` inside every `control_state.rod_groups[]` record, so the scale travels with the
+data and a replayed recording is drawn on the scale of the engine that produced it. Two fallbacks
+for a render before the first snapshot, both still live reads of a published table (the pwr2
+kinetics object, then the retired engine's config); the last-ditch 912 fires only if no plant module
+loaded at all. All five `.range` consumers in `ui/app.js` go through `serRange()` — reading
+`ser.range[0]` directly is what turns a function form into a silent `undefined`. `logSer` is the one
+declared exception and says why (its floor is read once per sample in the bucketing loop).
+
+**Gated by injection, not by reading — `verify_e2e_ui.js` gains `testRodLaneBankScale`**, which reads
+the DRAWN lane chrome and types no bank number: a channel parked on its stop must reach its lane
+top; no lane top may exceed the published bank; and **the scale must follow the bank moved under the
+running chart**. Both reds were replayed before the fix went back in:
+
+| variant | result |
+|---|---|
+| the shipped 912 literal | **RED** — shutdown lane drawn to **700** against a 627-step bank |
+| 627 **captured** at parse time | **RED on check 3 only** — passes 1, 2 and 4; lane stayed at 627 while the plant's own `max_steps` went 627 → 1568 |
+| the fix (live read) | **GREEN** — lane top 627 = bank 627; follows 627 → 1568 by redrawing to 800 |
+
+That second row is the point of the mechanism and the reason check 3 pokes the bank **upward**:
+`holdRange`'s clamp is a preference that must never beat the data, so shrinking the bank under a
+trace already at 627 leaves the band where it is and a captured value would pass — a check sampling
+the side of the mechanism the defect cannot reach. `pwr2_engine.js`'s `BANK()` is a function for
+exactly this reason, and its comment says so.
+
+**Still carrying the same stale 912: the manual's own indicating range for `rod_limit_margin`**
+(`Manuals/` → `ui/manual_data.js`), which the Indications tab and the gauge detail both print.
+Out of #707's declared scope and left for a manual-revision change.
+
+Gates at baseline: `verify_e2e_ui` PASS (4 screenshots, +1 check function), `run_pwr2_board` 84/84,
+`run_inspect` 11/11 62/62, `run_hardrules` 523, `verify_board_check` 256, `run_chart_math` 8/8,
+`run_flags` 19/19 345/345, `run_portable` 145, `run_diag_bundle` 70, `run_manual_units` 0 failed.
+
+
 ### Added (the board had no cue for a pressurizer running above its program — #706)
 
 **#706 measured the shipped Mode 5 → Mode 3 heatup running pressurizer level 20.4 points above
@@ -853,7 +904,7 @@ stays steady (power within 5 points of rated, pressure drift under 0.2 MPa / 29 
 meet within one broadcast of the window end, and a planted 1e-6 difference is seen by `compare()`.
 Four injections, one per conjunct, each proven to redden SI-0 alone. No baseline moves (8 checks).
 
-## [Alpha 1.7.4-rc14] — 2026-09-11
+## [Alpha 1.7.4-rc15] — 2026-09-11
 
 ### Fixed (the CVCS charging/letdown volume scale mixed two bases — #679)
 

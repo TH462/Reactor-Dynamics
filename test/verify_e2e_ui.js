@@ -2589,6 +2589,199 @@ async function testTavgGaugeDeviationCaution(page) {
   return log.join('\n') + '\n';
 }
 
+/* THE ROD LANES ARE DRAWN TO THE ENGINE'S OWN BANK, AND THE SCALE IS READ LIVE (#707).
+ *
+ * THE DEFECT. `ui/app.js` declared three chart lanes — Control Rod Steps, Shutdown Rod Steps
+ * and Rod Limit Margin — with a full scale of 912 steps: the RETIRED engine's fine drive
+ * (`RD.PWR_CONFIG.rods.max_steps`). The shipped plant's bank is 627
+ * (`RD.pwr2.kinetics.RODS.max_steps`, the sourced four-bank 131-step overlap program —
+ * Westinghouse Technology Systems Manual chapter 8.1 section 8.1.5.4, ADAMS ML11223A252), so a
+ * bank sitting ON ITS STOP drew at 69 % of its lane: "fully withdrawn" was a height the chart
+ * could not reach, and the same was true of the rod-limit margin's own full-scale reading.
+ *
+ * AN AXIS IS A RENDERING CLAIM, so this reads the DRAWN lane chrome (`.lane-rng`, the text the
+ * player sees beside each lane's name) rather than the literal in the profile table. Four
+ * checks, and NO bank number is typed here — every bound is read back out of the page:
+ *
+ *   1. A CHANNEL PARKED ON THE STOP REACHES THE TOP OF ITS LANE. The shutdown bank is parked
+ *      fully out at power, so its lane's fitted top must land exactly ON the bank the plant
+ *      publishes. On the defect it lands at 700 — holdRange's minSpan is a tenth of full
+ *      scale, so the 912 lane fits a flat 627 into a 50-step ladder band 550–700 and the 912
+ *      clamp never binds. On the fix it lands at 627, which is the clamp.
+ *   2. NO LANE'S TOP MAY EXCEED THE BANK THE PLANT PUBLISHES — the general form of 1, applied
+ *      to the control bank, which sits at its at-power design point (606 of 627, #704) rather
+ *      than on the stop.
+ *   3. THE SCALE FOLLOWS A CHANGE. `pwr2_engine.js`'s BANK() accessor is a function precisely
+ *      because "a consumer that captures the value at load cannot follow a change", so a
+ *      parse-time capture of 627 would satisfy 1 and 2 and still be the wrong mechanism. The
+ *      bank is moved UNDER the running chart and the drawn top has to move with it.
+ *   4. THE ROD-LIMIT MARGIN, at the one initial condition where its top is a claim about the
+ *      bank at all — see below.
+ *
+ * Check 3 is why the poke is UPWARD. holdRange's clamp is a preference that must never beat
+ * the data (chart_math.js), so shrinking the bank under a trace already at 627 would leave the
+ * band where it is and the check would pass on a captured value too — it would be sampling the
+ * side of the mechanism the defect cannot reach. Raising it widens minSpan, the flat trace then
+ * sits well inside its band, and the shrink dwell (CHART_SHRINK_FRAMES, 40 frames) re-fits.
+ *
+ * Check 4 needs its OWN initial condition: the margin only reads full scale where the insertion
+ * limit does not apply (below 5 % power the engine publishes BANK() outright), so at power it
+ * sits near 167 steps and no clamp binds at either scale.
+ */
+async function testRodLaneBankScale(page) {
+  var log = [];
+
+  /* Put exactly the wanted channels in the lane stack. Everything else has to come OFF: the
+   * stack demotes the overflow to numeric rows, which carry a value and no range, so a lane
+   * left in the crowd would report `null` rather than a wrong bound. */
+  async function pinLanes(ids) {
+    await page.click('#chartOptsBtn');
+    await page.waitForTimeout(400);
+    await page.evaluate(function (want) {
+      var boxes = Array.prototype.slice.call(document.querySelectorAll('.cs-row input[data-cs-side]'));
+      boxes.forEach(function (b) { if (b.checked && !b.disabled) b.click(); });
+      want.forEach(function (id) {
+        var row = document.querySelector('.cs-row[data-cs="' + id + '"]');
+        if (!row) throw new Error('no chart-settings row for series "' + id + '"');
+        var box = row.querySelector('input[data-cs-side]:not([disabled])');
+        if (!box) throw new Error('series "' + id + '" has no selectable side');
+        if (!box.checked) box.click();
+      });
+    }, ids);
+    await page.click('#chartOptsClose');
+    await page.waitForTimeout(1500);
+  }
+
+  /* The DRAWN range, parsed out of the lane's own chrome. A channel demoted to a numeric row
+   * has no `.lane-rng` at all and comes back null, which every caller treats as a failure
+   * rather than as an absent bound. */
+  function readLanes() {
+    return page.evaluate(function () {
+      var out = {};
+      Array.prototype.slice.call(document.querySelectorAll('#chartFloats .lane-chrome')).forEach(function (c) {
+        var rng = c.querySelector('.lane-rng'), t = rng ? (rng.textContent || '') : '';
+        var nums = t.match(/-?[\d.]+/g);
+        out[c.getAttribute('data-ser')] = (nums && nums.length >= 2)
+          ? { lo: parseFloat(nums[0]), hi: parseFloat(nums[1]), text: t } : null;
+      });
+      var snap = window.RD.__dev.service().assembleSnapshot();
+      var gs = (snap.control_state || {}).rod_groups || [], banks = {};
+      gs.forEach(function (g) { banks[g.id] = { steps: g.steps, max_steps: g.max_steps }; });
+      return {
+        lanes: out, banks: banks,
+        margin: snap.instruments.rod_limit_margin,
+        power: snap.instruments.power_range,
+        /* BOTH published scales, so "the lane is not on the retired bank" is a comparison
+         * between two numbers the page itself supplies, not against a literal in this file. */
+        shipped: ((((window.RD.pwr2 || {}).kinetics || {}).RODS) || {}).max_steps,
+        retired: (((window.RD.PWR_CONFIG || {}).rods) || {}).max_steps
+      };
+    });
+  }
+
+  // ---- leg A: the two bank lanes at power -----------------------------------------------
+  await page.goto('http://127.0.0.1:' + PORT + '/ui/shell.html?engine=pwr2&init=hot_full_power' +
+                  '&run=1&dev=1', { waitUntil: 'networkidle', timeout: 90000 });
+  await dismissMission(page);
+  await waitBoardLive(page, 20000);
+  await pinLanes(['rod_steps', 'sd_steps']);
+  var a = await readLanes();
+
+  var bank = (a.banks.shutdown_rods || {}).max_steps;
+  if (!(bank > 0)) throw new Error('the plant published no shutdown-bank max_steps to draw against');
+  if (!(a.retired > 0) || a.retired === bank) {
+    throw new Error('this check cannot discriminate: the retired engine bank (' + a.retired +
+      ') and the shipped one (' + bank + ') are the same number, so a stale literal would pass');
+  }
+  if (a.shipped !== bank) {
+    throw new Error('the snapshot rod group (' + bank + ') disagrees with RD.pwr2.kinetics.RODS.max_steps (' +
+      a.shipped + ') — the two published copies of the bank have drifted');
+  }
+  log.push('banks: shipped ' + bank + ' steps, retired engine ' + a.retired + ' steps');
+
+  var sd = a.lanes.sd_steps, ctl = a.lanes.rod_steps;
+  if (!sd || !ctl) throw new Error('the rod lanes did not draw as LANES (sd=' + JSON.stringify(sd) +
+    ', ctl=' + JSON.stringify(ctl) + ') — demoted to numeric rows?');
+  var sdSteps = (a.banks.shutdown_rods || {}).steps;
+  if (sdSteps !== bank) {
+    throw new Error('precondition: the shutdown bank is meant to be parked on its stop at power, ' +
+      'and reads ' + sdSteps + ' of ' + bank + ' — check 1 asserts a lane top against a channel ' +
+      'sitting at full scale and cannot be run against a bank somewhere else');
+  }
+  log.push('at power: control bank ' + (a.banks.control_rods || {}).steps + '/' + bank +
+           ', shutdown bank ' + sdSteps + '/' + bank + ', lanes "' + ctl.text + '" / "' + sd.text + '"');
+
+  if (sd.hi !== bank) {
+    throw new Error('a bank parked ON ITS STOP does not reach the top of its lane: Shutdown Rod ' +
+      'Steps reads ' + sdSteps + ' of ' + bank + ' and its lane is drawn to ' + sd.hi +
+      '. (#707 — the lane was declared to the RETIRED engine ' + a.retired + '-step bank, so ' +
+      'full scale was a height this plant cannot produce.)');
+  }
+  if (ctl.hi > bank) {
+    throw new Error('the Control Rod Steps lane is drawn to ' + ctl.hi + ' steps on a plant whose ' +
+      'bank stops at ' + bank + ' — the top of that lane does not exist (#707)');
+  }
+  log.push('check 1+2: the stop IS full scale (shutdown lane top ' + sd.hi + ' = bank ' + bank +
+           '), control lane top ' + ctl.hi + ' <= ' + bank);
+
+  // ---- leg A, check 3: the scale FOLLOWS the bank ---------------------------------------
+  /* Raise the one place the bank is defined and let the chart's own shrink dwell re-fit. The
+   * shell republishes max_steps off it every broadcast (bankSteps()), so this is the same path
+   * a retune takes — and it is the half a parse-time capture cannot follow. */
+  var moved = await page.evaluate(function (factor) {
+    var R = window.RD.pwr2.kinetics.RODS, was = R.max_steps;
+    R.max_steps = Math.round(was * factor);
+    return { was: was, now: R.max_steps };
+  }, 2.5);
+  await page.waitForTimeout(9000);      /* > CHART_SHRINK_FRAMES (40 frames) */
+  var b = await readLanes();
+  var sd2 = b.lanes.sd_steps;
+  if (!sd2) throw new Error('the shutdown-bank lane stopped drawing after the bank moved');
+  log.push('check 3: bank ' + moved.was + ' -> ' + moved.now + ' steps under the running chart; ' +
+           'shutdown lane "' + sd.text + '" -> "' + sd2.text + '", published max_steps ' +
+           (b.banks.shutdown_rods || {}).max_steps);
+  if ((b.banks.shutdown_rods || {}).max_steps !== moved.now) {
+    throw new Error('the shell did not republish the moved bank (' +
+      (b.banks.shutdown_rods || {}).max_steps + ' vs ' + moved.now + ') — check 3 cannot run');
+  }
+  if (sd2.hi === sd.hi) {
+    throw new Error('the rod lane full scale did NOT follow the bank: it stayed at ' + sd.hi +
+      ' while the plant own max_steps went ' + moved.was + ' -> ' + moved.now +
+      '. That is a scale CAPTURED once, which is the mechanism #707 forbids — pwr2_engine.js ' +
+      'BANK() is a function for this exact reason.');
+  }
+  if (sd2.hi > moved.now) {
+    throw new Error('the rod lane followed the bank past it: top ' + sd2.hi + ' on a ' +
+      moved.now + '-step bank');
+  }
+
+  // ---- leg B: the rod-limit margin, where its full scale is a claim ----------------------
+  await page.goto('http://127.0.0.1:' + PORT + '/ui/shell.html?engine=pwr2&init=hot_zero_power' +
+                  '&run=1&dev=1', { waitUntil: 'networkidle', timeout: 90000 });
+  await dismissMission(page);
+  await waitBoardLive(page, 20000);
+  await pinLanes(['rod_margin']);
+  var c = await readLanes();
+  var bankB = (c.banks.control_rods || {}).max_steps;
+  var mar = c.lanes.rod_margin;
+  if (!mar) throw new Error('the Rod Limit Margin lane did not draw as a LANE');
+  log.push('Hot Standby: power ' + c.power.toFixed(3) + ' %, margin ' + c.margin.toFixed(1) +
+           ' steps of a ' + bankB + '-step bank, lane "' + mar.text + '"');
+  if (Math.abs(c.margin - bankB) > 0.5) {
+    throw new Error('precondition: below the 5 % applicability floor the engine publishes the ' +
+      'margin as the whole bank, and it reads ' + c.margin + ' against ' + bankB +
+      ' — this leg asserts a lane top against a channel at full scale');
+  }
+  if (mar.hi !== bankB) {
+    throw new Error('Rod Limit Margin reads its full scale (' + c.margin.toFixed(1) + ' of ' +
+      bankB + ') and its lane is drawn to ' + mar.hi + ' — the reading cannot reach the top of ' +
+      'its own lane (#707; the lane was declared to the retired ' + c.retired + '-step bank)');
+  }
+  log.push('check 4: margin at full scale reaches the lane top (' + mar.hi + ' = bank ' + bankB + ')');
+
+  return log.join('\n') + '\n';
+}
+
 async function testCssTransitions(page) {
   var log = [];
   var url = 'http://127.0.0.1:' + PORT + '/ui/shell.html?engine=pwr2&init=hot_full_power&run=1&dev=1';
@@ -2707,6 +2900,8 @@ async function main() {
     fs.writeFileSync(path.join(SCRATCH, 'pzr-gauge-high-level.log'), phLog);
     var tgLog = await testTavgGaugeDeviationCaution(page);
     fs.writeFileSync(path.join(SCRATCH, 'tavg-gauge-deviation.log'), tgLog);
+    var rlLog = await testRodLaneBankScale(page);
+    fs.writeFileSync(path.join(SCRATCH, 'rod-lane-bank-scale.log'), rlLog);
     fs.writeFileSync(path.join(SCRATCH, 'ui-screenshot-summary.log'), summary.join('\n') + '\n');
     console.log('E2E UI verification: PASS (' + (ENGINES.length * VIEWS.length) + ' screenshots)');
   } finally {
@@ -2730,6 +2925,7 @@ if (require.main !== module) {
                      testPzrGaugeFollowsProgram: testPzrGaugeFollowsProgram,
                      testPzrGaugeHighLevelCaution: testPzrGaugeHighLevelCaution,
                      testTavgGaugeDeviationCaution: testTavgGaugeDeviationCaution,
+                     testRodLaneBankScale: testRodLaneBankScale,
                      testPauseResumeSpeed: testPauseResumeSpeed, testWalkthroughEventPause: testWalkthroughEventPause,
                      port: function () { return PORT; } };
 } else {
