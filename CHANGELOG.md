@@ -30,6 +30,81 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
 
 ## [Unreleased]
 
+### Fixed (the power ascension could hand back a plant that cooled itself to a trip — #683)
+
+The owner's report was *"when it's running AT POWER it seems to be stuck at the low 25%
+setpoint"*. **Pressurizer level was never the defect** — it tracked its own program to within
+0.24 points at every sample across 35 plant-hours of measurement. The program is scheduled on
+average coolant temperature, average coolant temperature at power is set by the boron/xenon/rod
+reactivity balance, and the ascension was handing over a reactivity balance that could only be
+paid in temperature.
+
+**Measured, continuous Mode 5 to Mode 1 chain, one plant, no initial-condition reload between
+legs, full stack** (the seam a segmented ride is blind to by construction):
+
+    leg boundary            Tavg_F   pwr%    level%  program%   BORON
+    pwr_heatup   EXIT        547.2   0.00     25.08    25.37     917.8   <- heatup dilutes nothing
+    pwr_startup  EXIT        553.1  10.11     31.61    31.63     718.7
+    pwr_raise    EXIT        579.1 100.52     60.50    60.52     659.8
+    +5 h unattended          543.5 100.28     24.95    25.00     659.8   <- back on the floor
+
+**The coupling, measured** (full power, boron pinned, rods manual, 4 plant-hours to settle):
+**-0.58 to -0.68 degF of average coolant temperature per ppm of boron**, times the level
+program's own **1.10 points per degF**, is **-0.64 to -0.75 points of level per ppm**. The
+**PIN POINT is 670 ppm** — above it the plant settles on the 547.0 degF no-load knot and the
+level program clamps at 25 %. 621 ppm holds 580.3 degF and 61.5 % flat for 16 plant-hours;
+660 ppm settles at 555.0 degF / 33.7 %; 700 ppm at 518.5 degF / 25.1 %.
+
+**Three holes, all in the content, none in the plant.** `pwr_raise_power` step 2 set boron to
+660 ppm with **no acceptance of any kind**; step 10's trim to 626 ppm had **neither command nor
+acceptance** and was the last step of the last ascension leg; and the four stage temperature
+checks were `op: '<'` — **ceilings only**, so a cold plant passed every one. They were written
+to catch overshoot, the failure mode a plant with automatic rod control has; PWR2 carries only
+`boron_conc` and `afw_level` as automation channels (measured — engaging `rods_tavg` is
+silently accepted and does nothing), so the failure inverted and the guard did not follow.
+
+- **Step 2** gains a command-kind acceptance on the 660 ppm setpoint. Not a `boron_ppm`
+  predicate: the dilution is slow and runs under the stages that follow, so grading the number
+  here would stall the climb waiting for chemistry the leg does in the background.
+- **Step 9**, the verify, graded `power_pct > 96` alone — one bound on the one quantity that is
+  fine in the failure. It now also checks **boron below 680 ppm** (the 660 setpoint plus 20 ppm
+  of settling slack, still under the 670 ppm pin point) and a **two-sided** temperature band.
+- **Step 10** gains a command dialling 626 ppm and an acceptance of **626 +/- 15 ppm**
+  (611-641, containing the measured 621 ppm equilibrium, 29 ppm clear of the pin point). Its
+  acceptance is on boron only, deliberately: diluting to 626 with no xenon in the core
+  overshoots temperature (measured 318.8 degC), so the text still asks for small steps and the
+  settled temperature is graded one step up.
+- **The four stage bands become two-sided**, #653's ceilings carried through **unchanged**
+  (302 / 306 / 307.5 / 307.5 degC). Floors are the stage's program band minus 6 degC, raised
+  where that would land under the no-load knot — at 30 MWe the rule gave 545.0 degF, *below*
+  the knot, so a cold plant still passed; **caught by injection, not by reading**, and set to
+  549.5 degF instead.
+- **`pwr_startup`'s 719 +/- 40 ppm band is deliberately left alone.** Measured: at 718.7 ppm the
+  plant reads 31.61 % level against a 31.63 % program — on program, nowhere near the floor, at
+  10 % power and 553 degF. 719 ppm is correct *for its own leg*; the hole was entirely
+  downstream, and tightening it would have been the mechanical fix that missed the defect.
+- **Wording**: step 10 now says to lower boron and explicitly *not* to reach for WITHDRAW.
+  Measured, the design point sits on the control bank's **top stop, 627 of 627**, so commanding
+  the bank out at 660 ppm moves settled temperature by **0.00 degF**. Stages 4-8 keep their rod
+  wording — rods do have authority there, at 18.6 % xenon, which is why step 8's own 300-600
+  bank window is satisfiable.
+
+### Fixed (a two-sided acceptance band was satisfied by passing through it — #683)
+
+`InstructorLayer._gradeAccs` latched every `accs[]` entry permanently: `if (!ax.met && ...)`.
+A latched band is satisfied by a plant that entered it and left, which is how the ascension's
+only two-sided temperature gate certified a plant that then walked 105 degF down — measured
+581.8 degF at stage 5 and 579.5 degF at stage 8, inside the band long enough to latch, then
+gone. **`op: '~'` entries now re-grade every tick and un-tick when the plant leaves the band;
+`>` and `<` bounds and command-kind entries latch exactly as before**, because a band is a
+*hold it here* claim and a one-sided bound is a *you got past this* claim.
+
+Chosen as the default rather than an authored opt-in flag because **the blast radius was
+measured, not guessed**: of 203 predicate acceptances across the whole procedure pool, 20 are
+two-sided and exactly **two** sit in this latching path — `pwr_raise_power` step 8 (this
+defect) and `pwr_heatup` step 14's steam-pressure band, which the dumps hold on setpoint rather
+than pass through, and which was verified to stay met across 40 ticks of jitter on setpoint.
+
 ### Added (walkthrough usage telemetry, and a Feature usage page on the ops dashboard — #674)
 
 *(OWNER, 2026-09-09: "I need to update my telemetry site for tracking usage of the walk-throughs.
@@ -686,7 +761,6 @@ moved — `verify_e2e_ui` scores screenshots, not checks.
 
 **Not fixed here: #677** (nine player-facing sites still quoting the retired engine's 55 % level),
 held pending the owner's ruling on #647.
-
 
 ### Fixed (#681, #682 — the bug report could not be sent, and the form never said so)
 

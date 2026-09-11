@@ -1810,6 +1810,21 @@
           control: 'Boron control', target: 'BORON reads 660 ppm, ON lit',
           wait_hint: 'The dilution keeps working between stages. Start it now.',
           cmd: { action: 'set_auto_setpoint', channel_id: 'boron_conc', value: 660 }, hold: 30,
+          /* THE STEP NOTHING CHECKED (#683). This carried `acc: ""` — no acceptance of any
+           * kind — so a player who never touched the BORON card advanced straight past it, and
+           * boron is the ONLY thing that decides where this leg ends up. Measured on the
+           * continuous Mode 5 -> Mode 1 chain with this one step skipped: boron stays at the
+           * cold plant's 917.8 ppm, the reactor never goes critical at all, and loading the
+           * turbine on a subcritical core scrams it.
+           *
+           * A cmd-kind entry, not a `boron_ppm` predicate, and the difference is the whole
+           * point: the dilution is SLOW (about 3 ppm a minute, ~20 plant-minutes from 719 to
+           * 660) and runs under the stages that follow. Grading the number here would stall the
+           * climb waiting for chemistry the leg is designed to do in the background. What has to
+           * be true NOW is that the operator set the setpoint; that the plant actually got there
+           * is checked at the end of the climb, on the verify step. */
+          accs: [{ cmd: { action: 'set_auto_setpoint', channel_id: 'boron_conc', value: 660 },
+                   label: 'BORON set to 660 ppm' }],
           hl: ['Boron', 'Boron control'] },
         /* DRAW A SAMPLE *(OWNER, 2026-09-03, #619 item 27: "The boron sampling is boring and
          * never addressed. im wondering if it would be best to just have a live indication
@@ -1853,8 +1868,28 @@
                   * the four stages ticked on load and power alone while the player's coolant ran
                   * 581 -> 600 degF and tripped on OTdT at 93 %. Bounds are what the replay itself lands
                   * (measured: 569.7 / 575.8 / 579.0 / 578.8 degF at 30 / 50 / 75 / 90 MWe, untrimmed)
-                  * plus ~3 degC — a ceiling under the trip, not the program band, which is the tile's. */
-                 { p: 'tavg_c', op: '<', v: 302, label: 'AVG COOLANT TEMPERATURE below 576 °F (the band is near 556)' }],
+                  * plus ~3 degC — a ceiling under the trip, not the program band, which is the tile's.
+                  *
+                  * ⚠ NOW TWO-SIDED, AND THE CEILING IS UNCHANGED (#683). All four stage checks were
+                  * `op: '<'` — upper bound only — so A COLD PLANT PASSED EVERY ONE OF THEM
+                  * TRIVIALLY. They were written to catch overshoot, which is the failure mode a
+                  * plant with automatic rod control has; the rod AUTO channel does not exist on
+                  * PWR2 (measured: the snapshot carries `boron_conc` and `afw_level` and nothing
+                  * else), so the failure inverted and the guard did not follow it.
+                  *
+                  * THE FLOOR IS THE STAGE'S OWN PROGRAM BAND MINUS 6 degC (10.8 degF), RAISED
+                  * WHERE THAT WOULD LAND ON OR UNDER THE NO-LOAD KNOT. The knot is 547.0 degF
+                  * (286.11 degC); below it the pressurizer level program is clamped at its 25 %
+                  * floor, which is the symptom this whole issue is named for, so a plant sitting
+                  * on the knot must FAIL every stage. The minus-6 rule gives 550.4 / 558.5 /
+                  * 563.9 degF at 50 / 75 / 90 MWe, all clear of it. At 30 MWe the band is only
+                  * 9 degF above the knot and the rule produced a 545.0 degF floor — UNDER it, so
+                  * a cold plant still passed. Caught by injection, not by reading: the floor
+                  * there is 549.5 degF (287.5 degC) instead, 2.5 degF clear of the knot. The #653 ceilings
+                  * are carried through UNTOUCHED (302 / 306 / 307.5 / 307.5 degC) — this widens
+                  * nothing, it closes the open end. Checked against the untrimmed replay's own
+                  * measured landings (569.7 / 575.8 / 579.0 / 578.8 degF): all four sit inside. */
+                 { p: 'tavg_c', op: '~', v: 294.75, tol: 7.25, label: 'AVG COOLANT TEMPERATURE between 550 and 576 °F (the band is near 556)' }],
           hl: ['Withdraw', 'Turbine Load', 'Tavg'] },
         { text: 'Hold WITHDRAW at MED for about 32 steps, set LOAD to 50 MWe, then adjust the rods until AVG COOLANT TEMPERATURE is inside its band, near 562 °F.',
           why: 'Same order as the last stage: rods, then LOAD, then trim. Halfway up, xenon is starting to build in the fuel. Boron takes care of that over the coming hours; rods take care of the next few minutes.',
@@ -1863,7 +1898,7 @@
           accs: [{ cmd: { action: 'set_load_target', mwe: 50 }, label: 'Load target set to 50 MWe' },
                  { p: 'mwe_output', op: '>', v: 48, label: 'Generator at 50 MWe' },
                  { p: 'power_pct', op: '>', v: 47, label: 'Reactor following, near 50 %' },
-                 { p: 'tavg_c', op: '<', v: 306, label: 'AVG COOLANT TEMPERATURE below 583 °F (the band is near 562)' }],
+                 { p: 'tavg_c', op: '~', v: 297, tol: 9, label: 'AVG COOLANT TEMPERATURE between 550 and 583 °F (the band is near 562)' }],
           hl: ['Withdraw', 'Turbine Load', 'Tavg'] },
         { text: 'Hold WITHDRAW at MED for about 35 steps, set LOAD to 75 MWe, then adjust the rods until AVG COOLANT TEMPERATURE is inside its band, near 570 °F.',
           why: 'Three-quarter power. The band has climbed with the load, toward 578 °F at 100 %. If the temperature reads below the band, you led with LOAD instead of rods: pull more steps before you add more megawatts.',
@@ -1872,7 +1907,7 @@
           accs: [{ cmd: { action: 'set_load_target', mwe: 75 }, label: 'Load target set to 75 MWe' },
                  { p: 'mwe_output', op: '>', v: 72, label: 'Generator at 75 MWe' },
                  { p: 'power_pct', op: '>', v: 70, label: 'Reactor following, near 75 %' },
-                 { p: 'tavg_c', op: '<', v: 307.5, label: 'AVG COOLANT TEMPERATURE below 585 °F (the band is near 570)' }],
+                 { p: 'tavg_c', op: '~', v: 300, tol: 7.5, label: 'AVG COOLANT TEMPERATURE between 558 and 585 °F (the band is near 570)' }],
           hl: ['Withdraw', 'Turbine Load', 'Tavg'] },
         { text: 'Hold WITHDRAW at MED for about 18 steps, set LOAD to 90 MWe, then adjust the rods until AVG COOLANT TEMPERATURE is inside its band, near 575 °F. Smaller pulls from here: above 103 % power the plant stops the rods.',
           note: 'If LOAD changes by itself, the plant ran the turbine back because the coolant was too hot. Hold INSERT until AVG COOLANT TEMPERATURE is back in its band, then set LOAD again.',
@@ -1881,7 +1916,7 @@
           cmd: { action: 'rod_nudge', group_id: 'control', steps: 18, speed: 'normal' }, hold: 480,
           accs: [{ cmd: { action: 'set_load_target', mwe: 90 }, label: 'Load target set to 90 MWe' },
                  { p: 'mwe_output', op: '>', v: 86, label: 'Generator at 90 MWe' },
-                 { p: 'tavg_c', op: '<', v: 307.5, label: 'AVG COOLANT TEMPERATURE below 585 °F (the band is near 575)' }],
+                 { p: 'tavg_c', op: '~', v: 301.5, tol: 6, label: 'AVG COOLANT TEMPERATURE between 564 and 585 °F (the band is near 575)' }],
           hl: ['Withdraw', 'Turbine Load', 'Tavg'] },
         { text: 'Hold WITHDRAW at MED for about 9 steps, set LOAD to 100 MWe, then trim AVG COOLANT TEMPERATURE onto 578 °F.',
           why: 'A small pull, then the last 10 MWe of LOAD, then the trim. REACTOR POWER settles near 101 %. The control bank ends part-way out, because boron carried most of the reactivity the climb cost.',
@@ -1906,10 +1941,35 @@
                  { p: 'control_bank_steps', op: '>', v: 300, label: 'CONTROL ROD POSITION above 300' },
                  { p: 'control_bank_steps', op: '<', v: 600, label: 'CONTROL ROD POSITION below 600 (not on its top stop)' }],
           hl: ['Withdraw', 'Turbine Load', 'Tavg'] },
-        obs('Verify full power: REACTOR POWER near 100 %, OUTPUT 100 MWe, AVG COOLANT TEMPERATURE near 578 °F, CONTROL ROD POSITION part-way out.',
-          { p: 'power_pct', op: '>', v: 96 },
-          null, ['Tavg', 'Turbine Load', 'SG Level'],
-          'Full power, with almost no xenon in the fuel yet. Over the next hours xenon builds, and the plant settles into its long-term full-power state: less boron and the control bank near the top. The next step is how you get from here to there.'),
+        /* THE VERIFY STEP NOW VERIFIES THE TWO THINGS THAT DECIDE THE NEXT SIXTEEN HOURS (#683).
+         * It graded on `power_pct > 96` ALONE — one bound, on the one quantity that is fine in
+         * the failure. Measured on the continuous Mode 5 -> Mode 1 chain: this step passed at
+         * 100.5 % power on a plant that then walked 105 degF (58 degC) down over sixteen hours
+         * and tripped, with pressurizer level pinned on its 25 % floor from hour six.
+         *
+         * THE TWO NEW ROWS ARE THE CAUSE AND THE EFFECT.
+         *
+         * BORON `< 680`, derived: the setpoint two steps up is 660 ppm, and the measured PIN
+         * POINT is 670 ppm — the concentration at which average coolant temperature settles on
+         * the 547.0 degF no-load knot and the pressurizer level program clamps at 25 %
+         * (measured at full power, boron pinned, 4 plant-hours to settle: 660 ppm -> 555.0 degF
+         * / 33.7 % level; 670 ppm -> 547.1 degF / 25.0 %; 700 ppm -> 518.5 degF / 25.1 %). 680
+         * is the setpoint plus 20 ppm of settling slack, and this leg reaches it with xenon
+         * still at 18.6 %, so the true margin here is far wider than the 10 ppm the equilibrium
+         * numbers suggest. It is deliberately NOT tighter: the dilution is still running under
+         * this step and a tight bound would grade chemistry rather than the operator.
+         *
+         * TAVG two-sided on the same band step 8 uses. Step 8's band can be satisfied on the way
+         * past; this one is the plant's settled state at the load it will hold. Both are `~`, so
+         * both re-grade rather than latch — see the note in instructor_layer's _gradeAccs. */
+        { text: 'Verify full power: REACTOR POWER near 100 %, OUTPUT 100 MWe, AVG COOLANT TEMPERATURE near 578 °F, BORON at or below 660 ppm, CONTROL ROD POSITION part-way out.',
+          why: 'Full power, with almost no xenon in the fuel yet. Over the next hours xenon builds, and the plant settles into its long-term full-power state: less boron and the control bank near the top. The next step is how you get from here to there.',
+          note: 'BORON is the one to read twice. Leave the climb with more of it in the water than the plant wants and AVG COOLANT TEMPERATURE sinks over the following hours — and PZR LEVEL sinks with it, because the level the plant aims for is set by temperature.',
+          control: 'Boron control', target: 'BORON at or below 660 ppm',
+          accs: [{ p: 'power_pct', op: '>', v: 96, label: 'REACTOR POWER near 100 %' },
+                 { p: 'boron_ppm', op: '<', v: 680, label: 'BORON down to its 660 ppm setting' },
+                 { p: 'tavg_c', op: '~', v: 303.2, tol: 8, label: 'AVG COOLANT TEMPERATURE between 563 and 592 °F' }],
+          hl: ['Tavg', 'Turbine Load', 'Boron'] },
         /* STEP TWO OF THE BORON PROGRAM *(OWNER RULING, 2026-09-04: selected "A two-step boron
          * program that follows xenon")*, and the measurement that makes it the right shape:
          *
@@ -1922,18 +1982,63 @@
          * position during normal full power operations." Near-fully-withdrawn is the EQUILIBRIUM
          * state, not the state you arrive in.
          *
-         * NO `cmd`, deliberately: dialling 626 ppm the moment the climb ends would dilute into a
-         * core with no xenon in it and take Tavg straight past its program (measured: 318.8 °C,
-         * 15.6 °C high). The trim is the player's to make as xenon comes in. Completes on the
-         * observation dwell. */
-        obs('Over the next hours, lower the BORON setting in small steps toward 626 ppm as xenon builds, keeping AVG COOLANT TEMPERATURE in its band. The rods walk out as you do.',
-          null,
-          'The ROD LIMIT LO-LO alarm is lit and that is normal here: with no xenon yet, the control bank sits lower than it should for full power. It clears as xenon builds and you dilute.',
-          ['Boron control', 'Control Bank', 'Tavg'],
-          'Xenon is a neutron-absorbing gas that builds up in the fuel after power comes up and levels off over about two days. As it absorbs more neutrons, the plant needs less boron for the same power. Dilute as it builds and the control bank walks out toward the top, which is where a full-power plant runs.'),
+         * IT NOW CARRIES A COMMAND AND AN ACCEPTANCE (#683). It had NEITHER — no `cmd`, no `acc`
+         * — and it is the last step of the last leg of the ascension, so it completed on the
+         * observation dwell and nothing ever checked that the trim happened. Measured on the
+         * continuous chain: a plant that leaves this leg at 660 ppm and is left alone walks
+         * 105 degF (58 degC) down over sixteen plant-hours and trips at +17 h, with pressurizer
+         * level on its 25 % floor from hour six. This step was the only thing standing between
+         * the player and that, and it was narrative.
+         *
+         * THE OLD "NO `cmd`, DELIBERATELY" ARGUMENT IS KEPT AND IS WHY THE ACCEPTANCE IS ON
+         * BORON ONLY. Dialling 626 ppm the moment the climb ends dilutes into a core with no
+         * xenon in it and takes Tavg past its program (measured: 318.8 °C, 15.6 °C high). So the
+         * TEXT still asks for small steps as xenon builds, and the acceptance grades the
+         * destination rather than the route. A Tavg band here would red on exactly the overshoot
+         * the note warns about and could only be satisfied by riding the ~40-hour xenon
+         * transient; the settled temperature is already graded one step up, on the verify.
+         *
+         * THE ACCEPTANCE GRADES THAT THE TRIM WAS STARTED, NOT THAT IT FINISHED, and the first
+         * draft of this step got that wrong. It asked for 626 +/- 15 ppm — the destination — and
+         * the replay measured 657.81 ppm at the end of the step's dwell: the dilution is a
+         * MULTI-HOUR act (measured on the chain, 640.7 -> 625.8 ppm over about an hour, and
+         * slowing as it goes because the rate is proportional to concentration), while xenon
+         * itself takes about two days. No dwell a replay can afford reaches the endpoint, and
+         * widening the band until it did would have graded nothing.
+         *
+         * `< 645 ppm` is the operator act made checkable: the climb leaves 660 ppm and the
+         * automatic channel HOLDS that until somebody moves the setpoint, so the only way this
+         * number falls is that the player performed the step. 15 ppm below the arrival value is
+         * a real move rather than a twitch, and the replay reaches it inside the 900 s dwell
+         * (measured ~2.2 ppm/min at this concentration). The same compromise the boron SAMPLE
+         * step two legs up already makes, and for the same reason: grade the operator, not the
+         * chemistry's clock.
+         *
+         * THE DESTINATION IS STILL 626 ppm and it is what `cmd` dials. Measured equilibrium is
+         * 621 ppm (a booted `hot_full_power` holds 580.3 degF and 61.5 % level flat for
+         * 16 plant-hours there); the measured PIN POINT, where the level program clamps at 25 %,
+         * is 670 ppm. Step 9's `< 680` and this step's `< 645` bracket the climb's own arrival
+         * on the safe side of it.
+         *
+         * AND THE WORDING SAYS DILUTE, NOT PULL RODS *(owner's proposal 2026-09-10 was to have
+         * the ascension steps hold a Tavg band with rod control; measurement refuted it FOR THIS
+         * STEP and only this one)*. Rods have real authority during the climb — step 8's own
+         * 300-600 bank window is satisfied there, at 18.6 % xenon — which is why stages 4-8 keep
+         * their rod wording. Here they have none: at equilibrium xenon the design point sits on
+         * the bank's TOP STOP, 627 of 627, and commanding the bank out at 660 ppm moves settled
+         * Tavg by 0.00 degF (measured, full stack, 3 plant-hours). The lever that works at this
+         * end of the climb is boron. */
+        { text: 'Over the next hours, lower the BORON setting in small steps toward 626 ppm as xenon builds. Watch AVG COOLANT TEMPERATURE come back up into its band each time. The rods walk out on their own as you do it.',
+          note: 'If AVG COOLANT TEMPERATURE is sitting below its band, lower BORON — do not reach for WITHDRAW. The control bank is already near the top here and pulling it further does nothing. The ROD LIMIT LO-LO alarm is lit and that is normal: with no xenon yet the bank sits lower than a full-power plant runs. It clears as xenon builds and you dilute.',
+          why: 'Xenon is a neutron-absorbing gas that builds up in the fuel after power comes up and levels off over about two days. As it absorbs more neutrons, the plant needs less boron for the same power. Leave the extra boron in and the plant cannot make full power at the right temperature: it makes it at a lower one instead, and PZR LEVEL follows the temperature down. Dilute as xenon builds and the control bank walks out toward the top, which is where a full-power plant runs.',
+          control: 'Boron control', target: 'BORON 626 ppm',
+          wait_hint: 'Xenon takes about two days to level off. Use the speed buttons and come down in small steps.',
+          cmd: { action: 'set_auto_setpoint', channel_id: 'boron_conc', value: 626 }, hold: 900,
+          accs: [{ p: 'boron_ppm', op: '<', v: 645, label: 'BORON coming down off the 660 ppm the climb left' }],
+          hl: ['Boron control', 'Control Bank', 'Tavg'] },
       ],
       guard: { never_melted: true, never: [{ p: 'fuel_temp_c', op: '>=', v: 1200 }] },
-      outcome: 'Full power with almost no xenon: BORON 660 ppm and the control bank part-way out. Xenon then builds over the next hours and boron comes down toward 626 ppm, walking the bank out. The round trip back down starts with the load rampdown checklist.',
+      outcome: 'Full power with almost no xenon: BORON 660 ppm and the control bank part-way out. The last step then walks boron down to 626 ppm as xenon builds over the following hours, and the bank walks out with it — leave that undone and the plant makes its power at a falling temperature instead, taking PZR LEVEL down with it. The round trip back down starts with the load rampdown checklist.',
     },
     {
       id: 'pwr_lower_power', category: 'power', manual_ref: 'PWR-N08', next: 'pwr_shutdown',

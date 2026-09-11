@@ -1132,7 +1132,22 @@
    * a met check-off stays met, the way a ticked box behaves — and the step completes
    * when every entry is latched. Shared by BOTH runtimes (Path 3 checklist and
    * Path 2 follow), because the Walkthroughs tab and the 📋 checklist run the same
-   * artifact. `holder` is the runtime's own state object (this.checklist / this.follow). */
+   * artifact. `holder` is the runtime's own state object (this.checklist / this.follow).
+   *
+   * ⚠ EXCEPT A TWO-SIDED BAND, WHICH MUST HOLD RATHER THAN MERELY HAVE BEEN TOUCHED (#683).
+   * `op: '~'` is a *hold it here* claim; `>` and `<` are *you got past this* claims. A latched
+   * band is satisfied by a plant that passed THROUGH it and left, which is how the only
+   * two-sided temperature gate in the power ascension came to certify a plant that then walked
+   * 105 degF (58 degC) down at 96.5 % power: measured 581.8 degF at stage 5 and 579.5 degF at
+   * stage 8, inside the 563.4-592.2 degF band long enough to latch, then gone. `~` entries are
+   * therefore RE-GRADED every tick and un-tick when the plant leaves the band.
+   *
+   * THE BLAST RADIUS IS MEASURED, NOT ASSUMED, which is why this is the default rather than an
+   * authored opt-in flag: of 203 predicate acceptances across the whole pool, 20 are two-sided
+   * and exactly TWO of those sit in this latching `accs[]` path — `pwr_raise_power` step 8
+   * (this defect) and `pwr_heatup` step 14's steam-pressure band, which the dumps HOLD on
+   * setpoint rather than pass through. Every `>`/`<` bound and every cmd-kind entry latches
+   * exactly as before, so a ticked box still behaves like a ticked box everywhere it did. */
   InstructorLayer.prototype._ensureAccsState = function (holder, st) {
     if (!holder.accsState || holder.accsState.length !== st.accs.length) {
       holder.accsState = st.accs.map(function () {
@@ -1146,11 +1161,14 @@
     var all = true;
     for (var i = 0; i < st.accs.length; i++) {
       var en = st.accs[i], ax = state[i];
-      if (!ax.met && en && en.p) {
+      /* a two-sided band re-grades for ever; every other kind latches (see the note above) */
+      var holds = !!(en && en.op === '~');
+      if ((!ax.met || holds) && en && en.p) {
         var g = this._grade(snapshot, en);
         ax.obs = g.value; ax.graded_by = g.graded_by;
         ax.streak = g.met ? ax.streak + 1 : 0;
         if (ax.streak >= ACC_STABLE_N) ax.met = true;
+        else if (holds) ax.met = false;        // left the band — the check-off comes back off
       }
       if (!ax.met) all = false;               // cmd-kind entries latch in handleCommand
     }

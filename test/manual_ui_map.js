@@ -175,6 +175,8 @@ var STEP_UI = {
     { i: 6, view: 'board', control: 'Control Bank' },
     { i: 7, view: 'board', control: 'Control Bank' },
     { i: 8, view: 'board', control: 'Control Bank' },
+    { i: 9, view: 'board', control: 'Boron control' },    // the verify step, now boron-bounded (#683)
+    { i: 10, view: 'board', control: 'Boron control' },   // the closing trim to 626 ppm, now commanded (#683)
   ],
   'pwr2:pwr_lower_power': [
     { i: 0, view: 'board', control: 'Boron control' },
