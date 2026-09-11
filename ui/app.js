@@ -3610,7 +3610,7 @@
   // RD.MANUAL_PROCEDURES artifact the Instructor graded it from.
   // whyAll / whyOpen: the #244 item-2 explanation toggles (global + per-step); they
   // survive re-renders via the render key and reset with the checklist itself.
-  var cklState = { key: null, whyAll: false, whyOpen: {}, step: null, view: 'list', userScrolled: false, preconHtml: null };
+  var cklState = { key: null, whyAll: false, whyOpen: {}, step: null, view: 'list', userScrolled: false, preconHtml: null, cautionsOpen: null };
   var cklAutoScroll = false;   /* true while WE are writing scrollTop (#612) */
 
   /* ---- WHICH SPEED RUNG A LONG WAIT WANTS (#628) --------------------------------------------
@@ -3712,7 +3712,7 @@
   }
   function resetCkl() {
     if (!cklState.key) return;
-    cklState = { key: null, whyAll: false, whyOpen: {}, step: null, view: 'list', userScrolled: false, preconHtml: null };
+    cklState = { key: null, whyAll: false, whyOpen: {}, step: null, view: 'list', userScrolled: false, preconHtml: null, cautionsOpen: null };
     var run = $('cklRun'); if (run) { run.hidden = true; run.innerHTML = ''; }
     var row = $('instrCklRow'); if (row) row.hidden = !flagOn('checklists');
     clearCklStepGlow();
@@ -3863,14 +3863,61 @@
     var label = pd ? pd.label : pred.p;
     if (pred.op === '~') {
       var tol = pred.tol != null ? pred.tol : 1;
-      /* A TOLERANCE IS A DIFFERENCE (#606 adjacent, 2026-09-05): an 8 °C band on a temperature
-       * converts ×9/5 with no offset — 14 °F — and the `temp` family's converter adds the 32,
-       * so "within 46 °F of 547 °F" was what the Mode 3 confirmation printed. Same trap
-       * CLAUDE.md's units rule names; the band takes the `tempdiff` family. */
+      /* A BAND, NOT A SUM THE PLAYER HAS TO DO (#653 product defect 3). It printed
+       * "AVG COOLANT TEMPERATURE within 14 °F of 547 °F" — arithmetic, in the narrowest column
+       * on the page, and both fresh-context reviewers said so. The tile shows one number and
+       * the question the player is asking is "is this number in or out", which is a RANGE. So
+       * the two ends are printed instead: "AVG COOLANT TEMPERATURE 533 to 561 °F".
+       *
+       * A TOLERANCE IS STILL A DIFFERENCE and that trap is unchanged — it is just applied one
+       * step earlier now, to the ENDPOINTS. `v ± tol` is computed in the predicate's own
+       * internal units (°C here) and each end then converts ABSOLUTELY, which is arithmetically
+       * the same thing and is why the band cannot pick up the +32 the old form could: there is
+       * no lone difference left to convert. (The old bug printed "within 46 °F of 547 °F" — an
+       * 8 °C band run through the `temp` converter. Under this form that mistake would have to
+       * print 501 to 593 °F, which is visibly a different claim, so verify_ckl_relevance now
+       * pins the endpoints rather than the band.)
+       *
+       * `fmtPredValue` rounds, so a band whose ends round to the same number would read
+       * "547 to 547 °F". Guarded: fall back to the tolerance form rather than print a
+       * degenerate range. Measured on the shipped pool — no predicate does this today; the
+       * guard is for the next author, not for a live case. */
+      var lo = fmtPredValue(pd, +pred.v - tol), hi = fmtPredValue(pd, +pred.v + tol);
+      if (lo !== hi) {
+        /* both ends carry the unit from fmtPredValue; drop the low end's so the pair reads
+         * "533 to 561 °F" rather than "533 °F to 561 °F" — one unit, at the end, like a tile */
+        var loBare = (pd && (pd.dim || pd.u)) ? lo.replace(/\s\S+$/, '') : lo;
+        return label + ' ' + loBare + ' to ' + hi;
+      }
       var tolPd = (pd && pd.dim === 'temp') ? { dim: 'tempdiff', suffix: pd.suffix } : pd;
       return label + ' within ' + fmtPredValue(tolPd, tol) + ' of ' + fmtPredValue(pd, pred.v);
     }
     return label + ' ' + (OPSYM[pred.op] || pred.op) + ' ' + fmtPredValue(pd, pred.v);
+  }
+
+  /* WHAT MODE THE PLANT IS ACTUALLY IN, beside a "Confirm Mode N" criterion (#653 product
+   * defect 4, the last of the four: "no MODE readout exists for any Confirm Mode N step").
+   *
+   * Six of the pool's steps grade on `plant_mode` and the board carries no mode indication of
+   * any kind — it is still an open nice-to-have in CLAUDE.md's Known open work. So the layman
+   * reviewer hit "Confirm Mode 5, Cold Shutdown" with nothing on the screen that says a mode,
+   * and no way to tell a step that is waiting from one that is stuck. A board tile is a board
+   * change and is not this pass; the criterion line can answer the question for free, because
+   * the mode is already in the snapshot the panel is holding.
+   *
+   * ONLY `plant_mode`. Every other predicate in the pool names a tile the player can read, and
+   * printing the live value beside each of them would turn the criteria block into a second set
+   * of gauges. This is the one criterion with no gauge behind it.
+   *
+   * DECLARED AS A TRUE VALUE (HR1), the same way the precondition banner declares its own. There
+   * is no mode transmitter; the mode is inferred from temperature, pressure and power, each of
+   * which does have a gauge. */
+  function modeLiveNote(pred, s) {
+    var pd = PRED_DISPLAY[pred && pred.p];
+    if (!pd || !pd.mode) return '';
+    var m = s && s.true_state ? s.true_state.plant_mode : null;
+    if (typeof m !== 'number') return '';
+    return '  — the plant reads ' + (MODE_NAMES[Math.round(m)] || ('Mode ' + m)) + ' (true value)';
   }
 
   function renderChecklist(s, ck) {
@@ -3910,6 +3957,13 @@
        * stayed enabled, because nothing in the key had moved. */
       ck.awaiting_ack ? 1 : 0, ck.rewind_ready ? 1 : 0,
       cklState.whyAll ? 1 : 0, Object.keys(cklState.whyOpen || {}).join(','), ui.units,
+      /* the leg-caution block's open/shut state (#653 defect 1) — outside the key it would
+       * never repaint, which is #392's lesson about the precondition banner */
+      cklState.cautionsOpen == null ? 'd' : (cklState.cautionsOpen ? 1 : 0),
+      /* the live mode, ROUNDED — it is printed beside a Confirm Mode N criterion (#653
+       * defect 4) and a value outside the key never repaints. Rounding is what keeps it
+       * off the per-broadcast churn list: five values over a whole evolution. */
+      (s && s.true_state && typeof s.true_state.plant_mode === 'number') ? Math.round(s.true_state.plant_mode) : '',
       cklState.view].join('|');
     if (key === cklState.key) return;
     var firstBuild = !cklState.key;
@@ -3998,6 +4052,45 @@
       cklState.preconHtml = pcH;
     }
     if (cklState.preconHtml) h += cklState.preconHtml;
+    /* THE LEG'S CAUTIONS REACH THE PLAYER WHO IS RUNNING IT (#653 product defect 1, the first of
+     * the four and the only one with a safety argument).
+     *
+     * `pr.cautions` rendered in exactly ONE place — `mProcCard`, the Manual tab's browse card —
+     * so every caution on every leg was unreachable from the moment the walkthrough started.
+     * Both fresh-context reviews found the consequence rather than the cause: the heatup's only
+     * heatup-rate instruction, the startup's "never pull the rods straight to the position the
+     * 1/M PLOT predicts", the cooldown's accumulator window and its spray limit are all leg-level
+     * cautions, and the reviewers reported them as missing from the checklist. They were not
+     * missing; they were on a different screen.
+     *
+     * It is also where the startup leg DEFINES pcm ("a pcm is a hundred-thousandth"), which the
+     * layman review listed as undefined at first use. The definition existed and could not be
+     * read.
+     *
+     * COLLAPSED BY DEFAULT ONCE THE LEG IS UNDERWAY, open before it. Four cautions of 20-49 words
+     * at the head of a panel that draws ONE step (#660 item 15) would push the step itself under
+     * the fold, which is the complaint this is answering, inverted. So they are open while the
+     * player is still deciding whether to start — the same moment the precondition banner above
+     * is allowed to show — and one click away after that. The summary line keeps the COUNT
+     * visible for the whole run, because "there are four cautions on this leg" is the half that
+     * has to survive the collapse.
+     *
+     * The open/shut choice is per-run state, not per-broadcast: `cklState.cautionsOpen` starts
+     * null (meaning "follow the underway default") and latches to a boolean the first time the
+     * player touches it, so a rebuild cannot shut a block they just opened. It joins the render
+     * key below for the #392 reason — a block outside the key never repaints. */
+    if (pr.cautions && pr.cautions.length) {
+      var cautOpen = cklState.cautionsOpen == null ? (pcKey === 'entry') : !!cklState.cautionsOpen;
+      h += '<div class="ckl-cautions">' +
+        '<button class="ckl-caut-sum" data-ckl-cautions="1">' +
+          '<span class="ckl-caut-chev">' + (cautOpen ? '▾' : '▸') + '</span>⚠ ' +
+          pr.cautions.length + ' caution' + (pr.cautions.length === 1 ? '' : 's') +
+          ' for this walkthrough</button>' +
+        (cautOpen ? pr.cautions.map(function (c) {
+          return '<div class="ckl-caut-l">' + mesc(c) + '</div>';
+        }).join('') : '') +
+        '</div>';
+    }
     for (var i = 0; i < pr.steps.length; i++) {
       var st = pr.steps[i];
       var done = !!(ck.steps_done && ck.steps_done[i]);
@@ -4074,7 +4167,7 @@
              * the button) whose twin predicate entry already draws the lamp; drawing both put
              * "spray" on the card twice (#660 item 6). Still graded; just not printed. */
             if (en.hidden) continue;
-            var enTxt = en.label ? en.label : (en.p ? fmtPredicate(en) : mesc(en.cmd || ''));
+            var enTxt = en.label ? en.label : (en.p ? fmtPredicate(en) + modeLiveNote(en, s) : mesc(en.cmd || ''));
             h += '<div class="ckl-crit' + (av.met ? ' ckl-crit-met' : '') + '">' +
               /* mesc UNCONDITIONALLY (#670 operator pass, S-5): since OPSYM prints a strict
                * '<' / '>' rather than ≤ / ≥, fmtPredicate's output carries MARKUP characters
@@ -4083,7 +4176,7 @@
           }
         } else if (st.acc) {
           h += '<div class="ckl-crit' + (ck.acc_met ? ' ckl-crit-met' : '') + '">' +
-            (ck.acc_met ? '✓ ' : '○ ') + 'When ' + mesc(fmtPredicate(st.acc)) + '</div>';
+            (ck.acc_met ? '✓ ' : '○ ') + 'When ' + mesc(fmtPredicate(st.acc) + modeLiveNote(st.acc, s)) + '</div>';
         }
         var isObs = st.control && /^\(observe/i.test(st.control);
         if (isObs) {
@@ -7774,6 +7867,21 @@
         return;
       }
       if (e.target.closest('[data-ckl-list]')) { selectTab('checklists'); return; }   // the list tab; the run stays live
+      /* the leg-caution block (#653 defect 1). Latching a BOOLEAN — not toggling a null — is the
+       * point: once the player has said open or shut, the underway default stops deciding for
+       * them. `cklState.key = null` forces the rebuild the way the why-all toggle does. */
+      var cz = e.target.closest('[data-ckl-cautions]');
+      if (cz) {
+        var wasOpen = cklState.cautionsOpen == null
+          ? !((latest && latest.instructor && latest.instructor.checklist &&
+               (latest.instructor.checklist.step_index > 0 ||
+                (latest.instructor.checklist.steps_done || []).some(Boolean))))
+          : !!cklState.cautionsOpen;
+        cklState.cautionsOpen = !wasOpen;
+        cklState.key = null;
+        if (latest) render(latest);
+        return;
+      }
       var mk = e.target.closest('[data-ckl-check]');
       /* releaseHold('walkthrough') on every way OFF a step (#694): Continue, Rewind and Stop
        * below. It is a no-op unless the walkthrough pause actually took the hold (`clearPause`

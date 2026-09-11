@@ -2222,17 +2222,50 @@ select.num-input { width: auto; }
    #692 item 3 gives it a legend: an unheaded grey paragraph read as part of the step, and the
    owner asked for it "presented as extra learning material". The legend deliberately matches
    .ckl-story-l > span — the other always-drawn supplementary block on the same card. */
+/* A LABELLED BUBBLE, not a fourth grey (#653 product defect 4, #687 item 4) *(OWNER, 2026-09-09:
+   "The why text needs to have some indication that its extra learning info not actually a step.
+   Maby but it in a buttle and label it appropriately?")*. Both fresh-context reviews measured the
+   same thing from the other side: `note` and `why` were "two near-identical greys" — both
+   var(--text-2) at 11-11.5 px — while one carries contingencies the player must act on and the
+   other is optional. The label (above) names it; this tint is what makes it one BLOCK rather than
+   one more paragraph. Deliberately the quietest ground on the card: a hair of --bg-elevated over
+   the panel, no border colour, because it must not compete with .ckl-crit or the wait rung. */
 .ckl-why { font-size: 11.5px; color: var(--text-2); line-height: 1.45; margin-top: 6px;
-  border-left: 2px solid var(--border); padding-left: 8px; }
+  border-left: 2px solid var(--border); padding: 5px 8px;
+  background: rgba(152,163,175,0.045); border-radius: 0 4px 4px 0; }
 .ckl-why-lbl {
   display: block; color: var(--muted);
   font-size: 10px; letter-spacing: 0.04em; text-transform: uppercase; margin-bottom: 2px;
+}
+/* THE LEG'S CAUTIONS, DRAWN DURING THE RUN (#653 product defect 1). Amber, because they are
+   cautions and the board's own amber is what a player has been taught to read that way — the
+   same idiom as .m-caution on the browse card, so the two screens agree. The summary line is a
+   button (keyboard-reachable, unlike a bare <summary> we would have to restyle) and carries the
+   count, which is the half that must survive the collapse. */
+.ckl-cautions { margin-bottom: 6px; }
+.ckl-caut-sum {
+  display: block; width: 100%; text-align: left; cursor: pointer;
+  background: rgba(251,191,36,0.06); border: 1px solid #5a4718; border-radius: 4px;
+  color: #d7b25a; font-size: 11px; padding: 3px 8px; font-family: inherit;
+}
+.ckl-caut-sum:hover { background: rgba(251,191,36,0.11); }
+.ckl-caut-chev { display: inline-block; width: 12px; color: var(--muted); }
+.ckl-caut-l {
+  font-size: 11px; line-height: 1.45; color: #c9a86a;
+  border-left: 2px solid #5a4718; padding: 3px 0 3px 8px; margin: 3px 0 0 6px;
 }
 .ckl-why-btn { font-size: 10px; padding: 1px 7px; margin-top: 4px; }
 .ckl-expand-hint { font-size: 10px; color: var(--muted); margin-top: 4px; }
 .ckl-back { font-size: 11px; padding: 2px 8px; margin-bottom: 6px; }
 .ckl-why-all { float: right; font-size: 10px; padding: 1px 7px; margin-left: 8px; }
-.ckl-wait { color: var(--caution); }
+/* THE SPEED SUGGESTION IS NOT A CAUTION (#653 product defect 4). It wore var(--caution), the
+   board's amber for "abnormal", so on a step whose `note` carries the plant's own limit — the
+   heatup's 100 degF/hr, the ascension's 590 degF ceiling — the loudest line on the card was the
+   advice about which speed button to press. Both reviewers read the orange as the warning and
+   the grey as the footnote, which is exactly backwards. Amber now belongs to .ckl-caut-*, which
+   is where the real cautions are; the rung line keeps its own colour, a step up from .ckl-sub
+   so it still reads as advice rather than prose, and the ⏩ glyph carries the meaning. */
+.ckl-wait { color: #8fa3b4; }
 .ckl-next { border-color: var(--running); font-weight: 700; }
 .ckl-done { opacity: 0.62; border-left: 3px solid var(--running); }
 .ckl-done .ckl-ico { color: var(--running); }

@@ -101,13 +101,17 @@ characters a line). Measured on the shipped build (`ui/app.js` `renderChecklist`
   runs, or that WARP is ready. **The player is told why WARP was refused or dropped, so a step no
   longer has to explain the clock** — it only has to say which rung to reach for and what will
   take it away.
-- **The `note`** is grey; **the `why`** is dimmer grey with a thin left rule. Two shades of grey
-  separate a binding instruction from optional background, and neither is where an instruction
-  survives.
-- **Leg-level `purpose`, `prereq` and `cautions` are still not drawn while a walkthrough runs**
-  (`ui/app.js` draws them on the manual browse card only; the Walkthroughs list shows title and
-  starting condition). The `precond` banner *is* drawn, once, latched at entry and never
-  recomputed. Until that changes, **a caution that must be read lives in a step line.**
+- **The `note`** is grey; **the `why`** is a labelled, tinted block headed *"Why this step"*
+  (#692 item 3 / #687 item 4, 2026-09-11). It used to be a second, dimmer grey, which is what
+  made the two indistinguishable; the label is now what separates a binding instruction from
+  optional background. **Neither is still where an instruction survives.**
+- **Leg-level `cautions` ARE drawn during a run since #653 (2026-09-11)** — a collapsible amber
+  block at the head of the panel, open before the leg starts moving and one click away after,
+  with the COUNT always visible. `purpose` and `prereq` are still browse-card only. The
+  `precond` banner is drawn once, latched at entry and never recomputed.
+  **L5 below is retired by this: a caution no longer has to be repeated in a step line.** It is
+  still correct to put a TIME-CRITICAL fact in the line — a caution one click away is not a
+  caution the player reads at the moment it binds.
 
 Consequences: the white line does the work; the always-open `why` is now a cost paid every step,
 so it is short; the orange line gets the one time-critical fact; and nothing may depend on a step
@@ -320,7 +324,7 @@ term in it that a step uses without its one-line definition is a defect in that 
 | `clear` *(incident)* | the same shapes, descending as `clear_failure` — the recovery half of a sequence, so a leg can put the plant back without the player opening the Failures tab | a tidy-up at the end of a leg — a failure that is still true when the walkthrough ends is the walkthrough's outcome, not a leak |
 | `story` *(incident)* | `{clock, saw, knew, did}` — the historical clock, what was on the crew's board, what they concluded, what they then did. Drawn **above** the numbered instruction and never folded away; **2 sentences per field** (`checklist_story_length`) | the plant lesson — that is `why`; an instruction; the long-form account, which lives in the manual chapter the step cites |
 | `crew` *(incident)* | `true` — draws *"the crew's action, as taken — not a recommendation"* beside the instruction. **Required on any step that asks the player to repeat an action that made the accident** | a step the player is meant to get right — the tag would then teach the opposite of what the step wants |
-| `cautions` (leg) | *(not rendered during a run — see §2)* | anything the player must read |
+| `cautions` (leg) | the leg's binding limits, one per row — drawn during a run since #653 in a collapsible amber block, and the only place several of them exist | a time-critical fact that binds on ONE step; that belongs in that step's line, because the block can be collapsed |
 
 Two rules the table implies, both broken repeatedly in the shipped set:
 
@@ -360,8 +364,10 @@ Two rules the table implies, both broken repeatedly in the shipped set:
   not a caution; labelling notes as cautions dulls the real ones.
   *Before:* "Heatup rate limit: 100 °F/hr (55.6 °C/hr). Measured on this plant: 87 °F/hr (48.3 °C/hr) with the pressurization running, and up to 113.7 °F/hr (63.2 °C/hr) on pump heat alone. The RHR heat exchanger is the brake."
   *After:* "Do not exceed 100 °F/hr. Control the rate with HX FLOW on the RHR card."
-- **L5. Until leg cautions render during a run, each caution is repeated in the step line of
-  the step it protects.**
+- ~~**L5. Until leg cautions render during a run, each caution is repeated in the step line of
+  the step it protects.**~~ **RETIRED 2026-09-11 (#653)** — they render now. What survives of it:
+  a fact that binds at one MOMENT still belongs in that step's line, because the caution block
+  can be collapsed and a collapsed caution is not read at the instant it applies.
 
 ---
 
@@ -531,13 +537,24 @@ until it lands.
   unrelated re-render (ascension step 10). The render key now carries `awaiting_ack` and
   `rewind_ready`, which is the class of cause; the issue is not closed, so a step whose acceptance
   can be met between broadcasts is still worth a second look in the browser.
-- Leg `purpose`, `prereq` and `cautions` are never drawn during a run (the `precond` banner is,
-  latched at entry).
-- The `note` and the `why` are nearly indistinguishable (two greys).
-- The orange wait hint is the loudest element, above the step's own limit.
-- The tilde in "~15 %" renders literally.
-- No MODE readout exists on the board, so every "Verify Mode N" step has nothing to confirm
-  against; the step lists the tiles that define the mode instead.
+- ~~Leg `purpose`, `prereq` and `cautions` are never drawn during a run~~ — **FIXED #653,
+  2026-09-11**: `cautions` render in a collapsible amber block at the head of the running panel.
+  `purpose` and `prereq` are still browse-card only, and that is deliberate: the panel draws ONE
+  step (#660 item 15) and a leg's purpose is answered by having opened it.
+- ~~The `note` and the `why` are nearly indistinguishable (two greys)~~ — **FIXED #692/#653**:
+  the `why` is a labelled, tinted block headed *"Why this step"*.
+- ~~The orange wait hint is the loudest element, above the step's own limit~~ — **FIXED #653**:
+  the amber is now the caution block's, and the speed rung reads as advice.
+- ~~The tilde in "~15 %" renders literally~~ — gone from the pool; measured 0 sites 2026-09-11.
+- ~~No MODE readout exists on the board~~ — still true of the BOARD, and still an open
+  nice-to-have. **Answered for the walkthrough at #653**: a `plant_mode` criterion now prints the
+  live mode beside it — *"When Plant in Mode 3, Hot Standby — the plant reads Mode 5, Cold
+  Shutdown (true value)"* — so a "Confirm Mode N" step says what it is waiting for AND what it
+  has. The step still lists the tiles that define the mode.
+- **The done-when is drawn on the ACTIVE step only**, and since #660 item 15 no other step is
+  drawn at all, so a one-way window cannot be pre-read from the step before it. That is a RULING,
+  not a defect — the fix inside it is to name the coming window in the previous step's `note`,
+  which the heatup's Pressure SP step now does for the accumulator window.
 
 ---
 

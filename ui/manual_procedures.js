@@ -124,7 +124,7 @@
   var SR_OVERTAKEN = {
     p: 'sr_energized', op: '<', v: 1,
     label: 'too late to plot: SOURCE RANGE switched itself off above 1.0e5 counts a second',
-    text: 'This point is overtaken, too late to plot: SOURCE RANGE switched itself off above 1.0e5 (100,000) counts a second, which means the reactor is critical or about to be. Stop withdrawing and go to the single-step criticality step. Watch STARTUP RATE and keep it under 1.0.',
+    text: 'This point is overtaken: SOURCE RANGE switched itself off above 1.0e5 (100,000) counts a second, so the reactor is critical or about to be. Stop withdrawing and go to the criticality step.',
     industry: 'SOURCE RANGE DE-ENERGIZED ABOVE 1E5 CPS — 1/M APPROACH OVERTAKEN. Remaining plot steps skipped. Hold rods; STARTUP RATE under 1 DPM.',
   };
 
@@ -1194,7 +1194,7 @@
         { p: 'power_pct', op: '<', v: 1, text: 'Reactor shut down: REACTOR POWER 0 %' },
       ],
       cautions: [
-        'Do not exceed a heatup rate of 100 °F per hour. Control the rate with HX FLOW on the RHR card.',
+        'Do not exceed a heatup rate of 100 °F per hour. Control the rate with HX FLOW on the RHR card (residual heat removal, the low-pressure cooling loop).',
         'Keep the STEAM DUMP closed on pump heat: an open dump removes heat faster than the pumps add it. The turbine stays tripped for the whole heatup.',
         'Do not move the control bank and do not change BORON. Only the shutdown bank moves, in its own step.',
       ],
@@ -1281,7 +1281,7 @@
          * the setpoint, which this step no longer touches and which would check off identically
          * on a dumping plant. */
         { text: 'Verify the STEAM DUMP is closed: CLOSE lit on the STEAM DUMP card, status reading MANUAL.',
-          why: 'The steam dump sends steam straight to the condenser instead of the turbine. Kept shut, the secondary side bottles up and the pump heat stays in the plant. The DUMP SETPOINT box already reads 1020 psi, but that number does nothing until AUTO is pressed, which a later step does once the steam side is hot.',
+          why: 'The steam dump sends steam straight to the condenser instead of the turbine. Kept shut, the steam side bottles up and the pump heat stays in the plant. The DUMP SETPOINT box already reads 1020 psi, but that number does nothing until AUTO is pressed, which a later step does once the steam side is hot.',
           acc: { p: 'steam_dump_valve_pct', op: '<', v: 1 },
           hl: ['Dump SP', 'Steam Dump'] },
         /* THE LETDOWN TRANSFER (#624 items 14/25, 2026-09-04). The LETDOWN selector had never
@@ -1589,7 +1589,7 @@
        * boron 719 ppm, ρ −1,137 pcm, SR 502 cps. The boron row is the heatup→startup seam:
        * a pump-heat heatup arrives at ≈ 918 ppm — the dilution steps below are the remedy. */
       precond: [
-        { p: 'tavg_c', op: '~', v: 286, tol: 8, text: 'Hot: AVG COOLANT TEMPERATURE between 533 and 561 °F' },
+        { p: 'tavg_c', op: '~', v: 286, tol: 8, text: 'Hot: AVG COOLANT TEMPERATURE 532 to 561 °F' },
         { p: 'pressure_mpa', op: '~', v: 15.41, tol: 0.5, text: 'At pressure: PRIMARY PRESSURE near 2235 psi' },
         { p: 'power_pct', op: '<', v: 1, text: 'Reactor shut down: REACTOR POWER 0 %' },
       ],
@@ -1821,7 +1821,7 @@
         'Keep the turbine on line for the whole climb. A tripped turbine trips the reactor the moment REACTOR POWER passes 50 %, and at 8 % if the condenser is gone as well. If the TURBINE-GENERATOR card reads TRIP, press LATCH and set LOAD again before pulling more rods.',
         'Pull rods before you raise LOAD, on every stage. Raising LOAD first drags AVG COOLANT TEMPERATURE below its band.',
         'Make the last pulls small. Above 103 % power the plant stops the rods, and at 118 % it trips the reactor. 100 MWe of LOAD lands REACTOR POWER near 101 %.',
-        'The plant trips on TEMPERATURE before it trips on power (the OTΔT trip). If AVG COOLANT TEMPERATURE climbs past 590 °F, hold INSERT before you add more LOAD.',
+        'The plant trips on TEMPERATURE before it trips on power — the overtemperature trip. If AVG COOLANT TEMPERATURE climbs past 590 °F, hold INSERT before you add more LOAD.',
         'Xenon, a neutron-absorbing gas, builds in the fuel for hours after each stage. Boron handles that; rods handle the next few minutes.',
       ],
       steps: [
@@ -1885,7 +1885,11 @@
          * when there is. */
         { text: 'Check the TURBINE-GENERATOR card is on line: LATCH lit and OUTPUT above 8 MWe.',
           note: 'If it reads TRIP, press LATCH; OUTPUT returns to the LOAD you last set. If OUTPUT stays at 0.0 MWe, set LOAD to 10 MWe. LATCH is refused while whatever tripped the turbine is still there, and the card names the reason.',
-          why: 'A tripped turbine takes no steam, so LOAD does nothing and the heat you make goes to the steam dumps instead. The plant trips the reactor on a tripped turbine the moment REACTOR POWER passes 50 %, and at 8 % if the condenser is gone as well. Measured from 40 %: left tripped, the climb scrams at 49.2 %; put back on line, the same climb runs to 71 %.',
+          /* THE A/B RIDE CAME OUT OF THE PLAYER TEXT (#653, both fresh-context reviews: development
+           * evidence in player-facing prose). It is recorded here instead, because it is the reason
+           * this step exists and deleting it would leave the claim unmeasured: from 40 %, left
+           * tripped the climb scrams at 49.2 %; put back on line the same climb runs to 71 %. */
+          why: 'A tripped turbine takes no steam, so LOAD does nothing and the heat you make goes to the steam dumps instead. The plant trips the reactor on a tripped turbine the moment REACTOR POWER passes 50 %, and at 8 % if the condenser is gone as well.',
           control: 'Turbine Load', target: 'OUTPUT above 8 MWe',
           cmd: { action: 'latch_turbine' }, hold: 240,
           accs: [{ p: 'turbine_tripped', op: '<', v: 1, label: 'Turbine latched, TRIP not lit' },
@@ -1944,7 +1948,7 @@
          * "back inside the band" and "on program" are the same act — which is what makes the
          * plain-language version honest rather than a simplification. */
         { text: 'Hold WITHDRAW at MED about 30 steps, set LOAD to 30 MWe, then trim AVG COOLANT TEMPERATURE into its band.',
-          note: 'The green band on the tile is the temperature the plant is meant to hold at the power it is making, near 556 °F here. It rises with load, from 547 °F at no load to 578 °F at 100 %. Temperature below the band: withdraw. Above: insert. The plant trips on temperature (OTΔT) before it trips on power: keep AVG COOLANT TEMPERATURE under 590 °F on every stage.',
+          note: 'MED is the middle rod speed on the ROD CONTROL card, 48 steps a minute. The green band on the tile is the temperature the plant is meant to hold at the power it is making, near 556 °F here. It rises with load, from 547 °F at no load to 578 °F at 100 %. Temperature below the band: withdraw. Above: insert. The plant trips on temperature before it trips on power: keep AVG COOLANT TEMPERATURE under 590 °F on every stage.',
           why: 'Pulling rods first raises power and warms the water; raising LOAD then draws more steam and cools it back. Doing it in that order means the temperature is approached from above rather than dragged from below.',
           control: 'Control Bank', target: 'OUTPUT 30 MWe; AVG COOLANT TEMPERATURE inside its band, near 556 °F',
           cmd: { action: 'rod_nudge', group_id: 'control', steps: 30, speed: 'normal' }, hold: 480,
@@ -2163,7 +2167,7 @@
           cmd: { action: 'set_auto_setpoint', channel_id: 'boron_conc', value: 719 }, hold: 30,
           hl: ['Boron', 'Boron control'] },
         { text: 'Set LOAD to 75 MWe, let power follow, then hold INSERT until AVG COOLANT TEMPERATURE is back in its band.',
-          note: 'About 40 steps at MED. The green band on the tile is the temperature the plant is meant to hold at the power it is making; it falls with load, from 578 °F at 100 % to 547 °F at no load. Temperature above the band: insert. Below: withdraw.',
+          note: 'About 40 steps at MED, the middle rod speed on the ROD CONTROL card. The green band on the tile is the temperature the plant is meant to hold at the power it is making; it falls with load, from 578 °F at 100 % to 547 °F at no load. Temperature above the band: insert. Below: withdraw.',
           why: 'The reactor follows the turbine: less steam drawn means the heat has nowhere to go, the water warms, and warmer water walks power down by itself. But it settles hot until rods take the extra reactivity out.',
           control: 'Turbine Load', target: 'OUTPUT 75 MWe; AVG COOLANT TEMPERATURE inside its band',
           cmd: { action: 'set_load_target', mwe: 75 }, hold: 900,
@@ -2321,7 +2325,7 @@
         'STEAM DUMP in AUTO: it is the heat sink until RHR takes over.',
       ],
       precond: [
-        { p: 'tavg_c', op: '~', v: 286, tol: 8, text: 'Hot: AVG COOLANT TEMPERATURE between 533 and 561 °F' },
+        { p: 'tavg_c', op: '~', v: 286, tol: 8, text: 'Hot: AVG COOLANT TEMPERATURE 532 to 561 °F' },
         { p: 'power_pct', op: '<', v: 1, text: 'Reactor shut down: REACTOR POWER 0 %' },
       ],
       cautions: [
@@ -2691,7 +2695,7 @@
          * on the step that narrates it.
          * MEASURED level: 65 % -> below 55 % within about 35 s of the feed loss. */
         { text: 'Verify the steam generators are drying out: STEAM GENERATOR LEVEL falling below 55 %.',
-          note: 'The AFW card shows its pumps running. That is not the same as flow, and nothing on this board draws the difference.',
+          note: 'AFW is auxiliary feedwater, the backup pumps that feed a steam generator when the main ones are gone. The AFW card shows its pumps running, which is not the same as flow, and nothing on this board draws the difference.',
           why: 'The auxiliary feed pumps started by themselves, as they are meant to, but their discharge valves are shut, so they deliver nothing. It took the crew eight minutes to find them.',
           story: { clock: '04:00:37',
             saw: 'The auxiliary feed pumps started automatically, and the board said so.',
@@ -2709,7 +2713,7 @@
          * left reading. MEASURED on this tree: `porv_stuck` latches at t+5.1 s, so the valve is
          * already open and already failed when this step comes up. */
         { text: 'No action. The relief valve lifted and has not reseated. Look at the PORV lamp, then the temperature under it.',
-          note: 'The lamp reads CLOSED from here on and it is wrong. The honest indication is the pipe below the valve: seated it sits near 120 °F, passing steam it climbs toward 480 °F.',
+          note: 'PORV is the relief valve on top of the pressurizer. Its lamp reads CLOSED from here on and it is wrong; the honest indication is the pipe below the valve, near 120 °F seated and climbing toward 480 °F when it is passing steam.',
           why: 'Pressure reached the relief valve setpoint and the valve opened, as designed. It did not shut again, and the lamp reads the solenoid rather than the disc — so the board says CLOSED on a valve that is open.',
           story: { clock: '04:00:40',
             saw: 'Pressure reached 2255 psi and the valve opened as designed. It was told to shut at 13 seconds, and its light went out.',
