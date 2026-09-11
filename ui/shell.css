@@ -1950,6 +1950,29 @@ select.num-input { width: auto; }
   animation: cklGlow 1.2s ease-in-out infinite;
   border-radius: 6px; position: relative; z-index: 4;
 }
+/* WATCH THIS, as opposed to PRESS THIS *(OWNER, 2026-09-09, #675 section B, built as #685:
+   "Each step should highlight the important indications to watch with a non pulsing green
+   glow.")*. The active step's `hl` targets keep the pulse above — that is #607 item 3 and it
+   is not being undone here; this is the second treatment, for the step's `hl_watch` list.
+
+   IT DIFFERS BY GEOMETRY, NOT ONLY BY MOTION. Two rings in the same hue separated only by
+   whether they animate is a weak distinction on a board of 50+ elements, and DESIGN_CRITERIA
+   question 4 (does it complicate things for the player) is a VETO — the issue made passing it
+   conditional on the two being unmistakable. So the watch ring is DASHED and offset, and its
+   halo is a quarter the spread of the solid one. Dashes survive colour-vision deficiency for
+   the same reason the cyan highlight bus does: it is a shape difference, not a hue difference.
+
+   The box-shadow is deliberately kept alongside the outline — it is what makes the ring read
+   as a glow at a glance rather than as a selection border, and `run_glow_stacking` reads the
+   box-shadow + z-index pair to decide this class must be pinned in pwr_board.css.
+
+   STEADY, with no reduced-motion clause needed: there is nothing to reduce. */
+.ckl-watch-glow {
+  outline: 1px dashed rgba(120, 210, 150, 0.85);
+  outline-offset: 3px;
+  box-shadow: 0 0 6px 1px rgba(120, 210, 150, 0.22);
+  border-radius: 6px; position: relative; z-index: 4;
+}
 /* ============================================ the highlight bus (#444, spec §7)
    A soft CYAN halo — an outer GLOW, never a fill, tint or recolor. Cyan is the only
    board colour that is not a plant state: green, amber and red all carry condition

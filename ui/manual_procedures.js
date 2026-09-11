@@ -12,9 +12,10 @@
  *   narrative:true  → an accident walkthrough; not run by the harness (the engine
  *                     flagship suite owns its physics, CONTEXT §9).
  * Step: { text, control, target, cmd, hold, acc, saw, note, ramp, why, accs, wait_hint,
- *          overtaken, hl, past, story, crew, inject, clear, pause, wrong, wait_est_s }
+ *          overtaken, hl, hl_watch, past, story, crew, inject, clear, pause, wrong, wait_est_s }
  *   (SCHEMA HEADER OWED FIXING #694 — this list documented 12 of the 19 fields that ship;
- *   whoever adds a field here should fix this line in the same change, not the next agent.)
+ *   whoever adds a field here should fix this line in the same change, not the next agent.
+ *   20 fields as of #685.)
  *   text    integrated-voice instruction     control  on-screen control to use
  *   target  the value/limit to drive to      cmd      command issued (rod group 'control'/'shutdown' resolved)
  *   hold    seconds to run after the command  acc      {p,op,v[,tol]} checked at END of the step
@@ -24,6 +25,17 @@
  *           for someone new to the sim. Never load-bearing: harnesses ignore it.
  *   hl      OPTIONAL array of control/indication labels the step glows on hover, when the
  *           step's own `control` isn't the (only) thing to look at. Falls back to `[control]`.
+ *           IT MEANS "ACT ON THIS" (#685) — the active step draws it with the PULSING
+ *           `.ckl-step-glow`, which is #607 item 3's ruling and stays.
+ *   hl_watch OPTIONAL array, same vocabulary as `hl`, meaning "WATCH THIS WHILE YOU DO IT"
+ *           *(OWNER, 2026-09-09, #675 section B: "Each step should highlight the important
+ *           indications to watch with a non pulsing green glow.")*. The active step draws
+ *           these with `.ckl-watch-glow` — steady, and a DASHED ring rather than the solid
+ *           halo, because two treatments that differ only by animation are not a distinction a
+ *           player can read on a board of 50+ elements (DESIGN_CRITERIA question 4, the veto).
+ *           A label belongs in ONE of the two lists: both would draw two rings on one element,
+ *           and `run_manual_controls` reddens on the overlap as well as on a label the board's
+ *           vocabulary does not carry.
  *   past    OPTIONAL {p,op,v} or an array (OR) — "has the plant already done this", used only
  *           by catch-up on checklist load (#607): a player who already performed an early
  *           action is walked past a step whose prose no longer applies, rather than trapped
@@ -116,10 +128,11 @@
     industry: 'SOURCE RANGE DE-ENERGIZED ABOVE 1E5 CPS — 1/M APPROACH OVERTAKEN. Remaining plot steps skipped. Hold rods; STARTUP RATE under 1 DPM.',
   };
 
-  function obs(text, acc, note, hl, why, past) {
+  function obs(text, acc, note, hl, why, past, hlWatch) {
     var s = { text: text, acc: acc || null, note: note || null, hl: hl || null };
     if (why) s.why = why;
     if (past) s.past = past;
+    if (hlWatch) s.hl_watch = hlWatch;   // #685 — "watch this", steady dashed ring
     return s;
   }
 
@@ -1537,9 +1550,15 @@
         obs('Verify the reactor stayed shut down: SOURCE RANGE counts steady, STARTUP RATE near 0.00.',
           { p: 'reactivity_pcm', op: '<', v: -300 }, null, ['Source Range'],
           'There is no gauge for "how shut down" a reactor is. The signs are SOURCE RANGE counts holding at a steady background instead of climbing, and STARTUP RATE sitting at zero. With the control bank in and boron at the cold concentration, the core is a long way from critical.'),
+        /* #685 — THIS STEP GLOWED NOTHING. No `control` and no `hl`, on a "verify the
+         * indication" step whose whole content is one gauge: one of four such steps measured in
+         * the shipped pool. The two rod/boron labels are in the WATCH list, not the press list —
+         * the step asks the player to act on neither, only to know where to look if the number
+         * is not zero. 'Reactor Power' was added to the board vocabulary in the same change. */
         obs('Verify REACTOR POWER reads 0.0 %. If it is not, stop and find out what moved: the control bank or BORON.',
           { p: 'power_pct', op: '<', v: 1 }, null, null,
-          'Power at zero is the whole point of a pump-heat heatup: the friction of the running pumps warmed the plant, not a chain reaction. Power off the floor means something pulled the control bank or diluted the boron.'),
+          'Power at zero is the whole point of a pump-heat heatup: the friction of the running pumps warmed the plant, not a chain reaction. Power off the floor means something pulled the control bank or diluted the boron.',
+          null, ['Reactor Power', 'Control Bank', 'Boron']),
       ],
       guard: {
         never_melted: true,
@@ -2720,7 +2739,11 @@
            * replay grades the true value where the runtime grades the instrument, so the two
            * would not even flip together. */
           accs: [{ p: 'subcooling_c', op: '<=', v: 0.56, label: 'SUBCOOLING MARGIN at or below 1 °F' },
-                 { p: 'rcp_cavitating', op: '>', v: 0, label: 'the pump cavitation alarm is standing' }] },
+                 { p: 'rcp_cavitating', op: '>', v: 0, label: 'the pump cavitation alarm is standing' }],
+          /* #685 — one of the four shipped steps that glowed NOTHING, and this is the one it
+           * cost most: three of the most important observations of the accident pointed at no
+           * board element. Watch, never press — the step asks for no action at all. */
+          hl_watch: ['Subcooling Margin', 'Reactor Coolant Pumps (RCP)'] },
         /* 10 — 04:08:37. App. II.1 E49/E50. MEASURED: the player's own valve takes AFW flow
          * 0.000 -> 1.000 within 5 s, and the dry generators show level again about 9 plant-min
          * later (STEAM GENERATOR LEVEL 0 % at 8 min, 6 % at 17 min, 37 % at 73 min). Graded on
@@ -2779,7 +2802,11 @@
            * wrong by 40 × on the other, so the hint says to read the tile before waiting. */
           wait_hint: 'Read PRESSURIZER LEVEL before you wait — on a plant you have driven yourself it may already be below 50 %.',
           hold: 1800,
-          acc: { p: 'pzr_level_pct', op: '<', v: 50 } },
+          acc: { p: 'pzr_level_pct', op: '<', v: 50 },
+          /* #685 — glowed nothing. The deception REVERSING is the teaching point, so the level
+           * tile is the watch target and the pressure tile beside it is what makes the reversal
+           * legible: the two are saying the same thing at last. */
+          hl_watch: ['Pressurizer Level', 'Plant Pressure'] },
         /* 13 — 06:11:37. App. II.1 E119, "Loop A hot-leg temperature offscale high… TAVE will
          * not be correctly shown." THIS PLANT'S HOT LEG NEVER PEGS (0-400 °C detector, whole-ride
          * peak 632 °F), so the pegged instrument here is the SUBCOOLING MARGIN, clipped at
@@ -2798,7 +2825,9 @@
             knew: 'Instruments were reading past their limits and the printer was hours behind.',
             did: 'They went on treating pressurizer level as the measure of how much water was in the plant.' },
           hold: 420,
-          acc: { p: 'subcooling_c', op: '<=', v: -27.778 } },
+          acc: { p: 'subcooling_c', op: '<=', v: -27.778 },
+          /* #685 — glowed nothing. The instruction names one tile; it now points at it. */
+          hl_watch: ['Subcooling Margin'] },
         /* 14 — 06:18:37. App. II.1 E122/E124 and Vol I p. 31 (Mehler). MEASURED: the close is
          * accepted at 8280 s; PRIMARY PRESSURE 647 -> 758 psia within 2 plant-min (above 750 at
          * 139.8 min), the tailpipe falls under 400 °F near 141 min and under 300 °F at 145.6 min,

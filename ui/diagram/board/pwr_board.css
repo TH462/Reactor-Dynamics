@@ -48,11 +48,16 @@
  * resolve to OPAQUE box panels (BORON among them), which at z-index 4 paint over their
  * own buttons, the vessel and their neighbours until the step changes (#598 item 12).
  *
+ * The #685 watch glow (.ckl-watch-glow, the "watch this indication" ring as opposed to the
+ * "press this control" pulse) is in the list from the day it was written, which is the first
+ * time that has been true.
+ *
  * ADDING A GLOW CLASS? It goes in this list. `test/run_glow_stacking.js` now asserts
  * that — every class in shell.css that carries both a glow box-shadow and a z-index
  * must appear here — because a comment saying so did not stop it happening twice. */
 .pwr-board-stage .bd-tile.ckl-glow,
 .pwr-board-stage .bd-tile.ckl-step-glow,
+.pwr-board-stage .bd-tile.ckl-watch-glow,
 .pwr-board-stage .bd-tile.instr-glow,
 .pwr-board-stage .bd-tile.hl-glow,
 .pwr-board-stage .bd-tile.hl-pin { z-index: auto; }
@@ -78,6 +83,7 @@
 .pwr-board-stage .bd-halo { position: absolute; pointer-events: none; }
 .pwr-board-stage .bd-halo.ckl-glow,
 .pwr-board-stage .bd-halo.ckl-step-glow,
+.pwr-board-stage .bd-halo.ckl-watch-glow,
 .pwr-board-stage .bd-halo.instr-glow,
 .pwr-board-stage .bd-halo.hl-glow,
 .pwr-board-stage .bd-halo.hl-pin { z-index: auto; }

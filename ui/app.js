@@ -3716,6 +3716,7 @@
     var run = $('cklRun'); if (run) { run.hidden = true; run.innerHTML = ''; }
     var row = $('instrCklRow'); if (row) row.hidden = !flagOn('checklists');
     clearCklStepGlow();
+    clearCklWatchGlow();                      /* #685 — the watch ring has the same owner */
     var card = $('instructorCard'); if (card) card.classList.remove('chat-mode');
     var cur = $('instrCurrent'); if (cur) cur.textContent = '';
   }
@@ -4003,7 +4004,7 @@
       var active = !ck.complete && i === ck.step_index;
       if (!active) continue;   // ONE STEP AT A TIME (#660 item 15): done and pending steps are not drawn
       var cls = done ? 'ckl-done' : active ? 'ckl-active' : 'ckl-pend';
-      var hoverable = stepHlLabels(st) ? ' ckl-hoverable' : '';
+      var hoverable = (stepHlLabels(st) || stepWatchLabels(st)) ? ' ckl-hoverable' : '';   /* #685 */
       /* Per-iteration, NOT hoisted by accident: `var` is function-scoped, so a flag set on one
        * step would still read true on the next and silently suppress its wait line. Reset here,
        * at the top of every step. */
@@ -4229,13 +4230,18 @@
     // change so it survives step advances and hover churn; cleared when the run ends.
     var actSt = !ck.complete && pr.steps[ck.step_index] ? pr.steps[ck.step_index] : null;
     applyCklStepGlow(actSt ? stepHlLabels(actSt) : null);
+    applyCklWatchGlow(actSt ? stepWatchLabels(actSt) : null);   /* #685 */
     // Step hover → glow the controls/indications the step names (its `hl` list) on
     // the plant display, reusing the Instructor highlight vocabulary (revealControl).
     Array.prototype.forEach.call(cur.querySelectorAll('.ckl-step'), function (el) {
       var idx2 = +el.getAttribute('data-ckl-step');
       var st2 = pr.steps[idx2];
-      var labs = st2 && stepHlLabels(st2);
-      if (!labs) return;
+      /* HOVER IS ONE TREATMENT FOR BOTH LISTS (#685). The hover preview answers "where is
+       * this step pointing", which is the same question for a control and for a gauge; the
+       * press/watch DISTINCTION is drawn on the ACTIVE step, where it is standing rather than
+       * transient and where the player is about to act on it. */
+      var labs = st2 && (stepHlLabels(st2) || []).concat(stepWatchLabels(st2) || []);
+      if (!labs || !labs.length) return;
       /* Current step already pulses via .ckl-step-glow; hovering it must not add the
        * hover class, and hovering a NON-current step must not pulse (#607 item 3). */
       var isActive = !ck.complete && idx2 === ck.step_index;
@@ -4319,6 +4325,14 @@
     if (st.control && !/^\(observe/i.test(st.control)) return [st.control];
     return null;
   }
+  /* THE INDICATIONS TO WATCH, AS OPPOSED TO THE CONTROL TO PRESS (#685) *(OWNER, 2026-09-09,
+   * #675 section B: "Each step should highlight the important indications to watch with a non
+   * pulsing green glow.")*. `hl` was one flat list rendered identically, so the gauge and the
+   * button were the same affordance; `hl_watch` is the second kind. No `control` fallback —
+   * a step's own control is by definition the thing to act on, never the thing to watch. */
+  function stepWatchLabels(st) {
+    return (st.hl_watch && st.hl_watch.length) ? st.hl_watch : null;
+  }
   // Hover-preview glow for checklist steps: glow every control/indication label a
   // step names. Separate class from the Instructor beat glow (.instr-glow) so a
   // transient hover never wipes an active beat highlight.
@@ -4351,6 +4365,24 @@
   }
   function clearCklStepGlow() {
     document.querySelectorAll('.ckl-step-glow').forEach(function (el) { el.classList.remove('ckl-step-glow'); });
+  }
+  /* THE WATCH GLOW (#685) — same apply/clear lifecycle as the step glow above and applied in
+   * the same breath, but its own class and its own list, so "press this" and "watch this" are
+   * two affordances rather than one. Applied AFTER the step glow deliberately: if a step ever
+   * names the same label in both lists the pulse wins the element rather than being replaced
+   * by a quieter ring — `run_manual_controls` reddens on that overlap, this is the behaviour
+   * while the red is being fixed. */
+  function applyCklWatchGlow(labels) {
+    clearCklWatchGlow();
+    if (!labels || !labels.length) return;
+    var board = (RD.PwrBoard && RD.PwrBoard.isMounted()) ? RD.PwrBoard : null;
+    labels.forEach(function (lab) {
+      var el = ui.plant === 'pwr' ? (board ? board.revealControl(lab) : null) : findPdControl(lab);
+      if (el && !el.classList.contains('ckl-step-glow')) el.classList.add('ckl-watch-glow');
+    });
+  }
+  function clearCklWatchGlow() {
+    document.querySelectorAll('.ckl-watch-glow').forEach(function (el) { el.classList.remove('ckl-watch-glow'); });
   }
   // Picker menu (free-play instructor card): every non-narrative procedure for
   // the active plant can run as a checklist.

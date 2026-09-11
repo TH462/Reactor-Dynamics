@@ -3083,6 +3083,14 @@
      *   'ECCS' -> the ECCS panel (ims3l6k3mb0), the enclosing box for RHR, the accumulator and
      *     the injection lineup — which is what every step using this label is pointing at. */
     'SG Pressure': 'imrr1gwi93j', 'ECCS': 'ims3l6k3mb0',
+    /* THE POWER-RANGE METER, WHICH THIS MAP HAS NEVER CARRIED (#685). Same hole as the two
+     * vital tiles above and found the same way: `pwr_heatup`'s last step is "Verify REACTOR
+     * POWER reads 0.0 %" and it was one of four shipped steps that resolved to NO board element
+     * at all, because the only name for this gauge lived in the inspect map (`pwr_board_inspect`
+     * "Reactor Power") and not here. Adding a key only widens the vocabulary — `run_campaign`
+     * and `run_manual_controls` both fail on a label that is MISSING, never on one nothing
+     * names yet. */
+    'Reactor Power': 'imrzl4b7g9m',
     // Aliases for the `control` strings the checklist steps use (so the step-hover
     // fallback in ui/app.js resolves without authoring an explicit `hl` on each).
     /* THE CARD, NOT THE PUMP GRAPHIC *(#607 item 1)*. Both names used to point at
