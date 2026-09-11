@@ -1930,6 +1930,54 @@ async function testHeldSpeedClick(page) {
     throw new Error('#627: the refusal did not reach the scanner bar — it read "' + held.scanner + '"');
   }
   log.push('held: click refused at 1x, tab ' + held.tab + ', scanner "' + held.scanner.slice(0, 90) + '"');
+
+  /* #686 (OWNER RULING 2026-09-11, "option A" on the held-at-real-time question): the line
+   * PERSISTING under the speed bar — not just the per-click scanner flash above — must still
+   * carry this message. The #686 replacement deletes the other three `warpNote` reasons
+   * (momentary drops already toasted + flashed) but keeps this one, because the accumulator
+   * window is a genuine, multi-minute refusal (#675 §E measured the rate-based refusals at a
+   * 2.0 plant-second maximum; this one is not that). A literal reading of the #686 ruling
+   * would have deleted this too, which is exactly the regression ruling 3 exists to block.
+   *
+   * PROVED THROUGH THE REAL PIPELINE, NOT THE DOM: `_prevSpeedHold` alone (planted above) never
+   * reaches `syncWarpInfo` — the persistent line is only ever set from a `speed_snap`, which
+   * `_assembleWithInstructor` stamps ONLY on the RISING edge of `true_state.speed_hold` (and
+   * only while `timeAcceleration > 1`, `layers/simulation_service.js` :781). Reaching that state
+   * for real is the same 75-plant-minute heatup, so this plants the ONE upstream fact —
+   * `true_state.speed_hold` — behind a one-shot override of `assembleSnapshot`, then runs it
+   * through the unmodified `_assembleWithInstructor` -> `_attentionStop` -> `snap.metadata.
+   * speed_snap` -> `_broadcast` -> `syncSpeedUI`/`syncWarpInfo` chain exactly as a real hold
+   * would. A source scan of `syncWarpInfo` cannot prove this string reaches the player;
+   * only a broadcast that the client actually renders can (CLAUDE.md's standing trap: a
+   * source scan cannot prove a string is reachable). */
+  await page.evaluate(function () {
+    var svc = globalThis.RD.__dev.service();
+    svc._prevSpeedHold = null;                                  // unheld, so this set_speed lands
+    svc.handleCommand({ action: 'set_speed', value: 600 });     // must land above 1x for the stamp
+    var orig = svc.assembleSnapshot;
+    svc.assembleSnapshot = function () {
+      var snap = orig.call(this);
+      snap.true_state = Object.assign({}, snap.true_state,
+        { speed_hold: 'accumulator window open — arm the accumulators before accelerating again' });
+      return snap;
+    };
+    var out;
+    try { out = svc._assembleWithInstructor(); } finally { svc.assembleSnapshot = orig; }
+    svc._broadcast(out);   // render() schedules its DOM work on the next rAF — read it after a wait
+  });
+  await page.waitForTimeout(300);
+  var warpLine = await page.evaluate(function () {
+    var svc = globalThis.RD.__dev.service();
+    var el = document.getElementById('warpInfo');
+    return { text: el ? el.textContent : null, hidden: el ? el.hidden : null, accel: svc.timeAcceleration };
+  });
+  if (warpLine.hidden || !/Held at real time/.test(warpLine.text || '') || warpLine.accel !== 1) {
+    throw new Error('#686: the accumulator hold must still print under the speed bar on a real ' +
+      'rising edge — accel ' + warpLine.accel + ', warpInfo "' + warpLine.text + '" (hidden=' + warpLine.hidden + ')');
+  }
+  log.push('warp line: "' + warpLine.text + '" (accel ' + warpLine.accel + 'x)');
+  await page.evaluate(function () { globalThis.RD.__dev.service()._prevSpeedHold = null; });
+
   await page.evaluate(function () { globalThis.RD.__dev.service().handleCommand({ action: 'stop_checklist' }); });
   return log.join('\n') + '\n';
 }
@@ -2090,6 +2138,105 @@ async function testWalkthroughEventPause(page) {
 
   await page.evaluate(function () { globalThis.RD.__dev.service().handleCommand({ action: 'stop_checklist' }); });
   return log.join('\n') + '\n';
+}
+
+/* #685 — THE "WATCH THIS" GLOW, PROVED TO REACH THE BOARD FROM A REAL STEP'S `hl_watch`.
+ *
+ * WHY A BROWSER GATE AND NOT A SOURCE SCAN. `run_manual_controls` checks that every `hl_watch`
+ * label is in the board's vocabulary; it cannot check that anything ever APPLIES the class.
+ * This repo's standing trap is the DARK WIRE — a field authored, documented, read by a gate,
+ * and never passed to the renderer (#507 wave 6 shipped three, #540 a fourth for six days) —
+ * and `applyCklWatchGlow` is exactly that shape: one caller, in a render path no Node harness
+ * enters. So the claim asserted here is the EFFECT: a DOM element on the board wearing the
+ * class, put there by the step's own list.
+ *
+ * THE FIXTURE IS REAL CONTENT, not a synthetic step. `pwr_heatup`'s last step is one of the
+ * four that measured as resolving to NO highlighted element at all before #685, and it is now
+ * the leg's only `hl_watch` carrier — so this also pins the fix. The step is reached by moving
+ * the checklist index rather than by driving 16 steps of a 12-plant-hour heatup.
+ *
+ * THE NEGATIVE HALF IS LOAD-BEARING: the step authors no `hl` and no `control`, so the PULSING
+ * class must be absent. Without it the check passes on a renderer that puts one treatment on
+ * both lists, which is the defect the whole issue is about. */
+async function testWatchGlowRendered(page) {
+  var log = [];
+  await page.goto('http://127.0.0.1:' + PORT + '/ui/shell.html?engine=pwr2&run=1&dev=1',
+                  { waitUntil: 'networkidle', timeout: 90000 });
+  await dismissMission(page);
+  await waitBoardLive(page, 20000);
+
+  var started = await page.evaluate(function () {
+    try {
+      var svc = globalThis.RD.__dev.service();
+      svc.attentionStops = false;
+      var r = svc.handleCommand({ action: 'start_checklist', procedure_id: 'pwr_heatup' });
+      return { ok: !(r && r.type === 'error'), msg: r && r.message };
+    } catch (e) { return { ok: false, msg: String(e) }; }
+  });
+  if (!started.ok) throw new Error('#685 fixture: start_checklist failed — ' + started.msg);
+  /* Same two clicks #694's fixture needs, and for the same reason: the run card is drawn
+   * behind `cklState.view === 'run'`, a UI-local flag that `svc.handleCommand` never sets. */
+  await page.click('#tabbar [data-tab="checklists"]');
+  await page.waitForSelector('[data-ckl-start="pwr_heatup"]', { timeout: 10000 });
+  await page.click('[data-ckl-start="pwr_heatup"]');
+  await page.waitForFunction(function () {
+    var b = document.querySelector('#tabbar button.on');
+    return !!b && b.getAttribute('data-tab') === 'instructor' && !!document.querySelector('.ckl-step');
+  }, { timeout: 15000, polling: 200 });
+
+  async function read() {
+    return await page.evaluate(function () {
+      var svc = globalThis.RD.__dev.service();
+      var c = svc.instructor.checklist;
+      var st = c && c.proc && c.proc.steps[c.idx];
+      return { idx: c ? c.idx : null,
+               authored: st && st.hl_watch ? st.hl_watch.length : 0,
+               hasHl: !!(st && ((st.hl && st.hl.length) || st.control)),
+               watch: document.querySelectorAll('.ckl-watch-glow').length,
+               press: document.querySelectorAll('.ckl-step-glow').length };
+    });
+  }
+
+  // ---- control: the FIRST step authors no hl_watch, so no watch ring may be painted ----
+  var before = await read();
+  if (before.watch !== 0) {
+    throw new Error('#685 control: a watch ring was painted on a step that authors none — ' +
+      JSON.stringify(before));
+  }
+  log.push('control: step ' + (before.idx + 1) + ' authors 0 watch labels, 0 painted');
+
+  // ---- the step that carries them ----------------------------------------------------
+  var jumped = await page.evaluate(function () {
+    var svc = globalThis.RD.__dev.service();
+    var c = svc.instructor.checklist;
+    var target = -1;
+    for (var i = 0; i < c.proc.steps.length; i++) {
+      if (c.proc.steps[i].hl_watch && c.proc.steps[i].hl_watch.length) { target = i; break; }
+    }
+    if (target < 0) return { ok: false };
+    c.idx = target; c.stepAt = null; c.awaitingAck = false;
+    return { ok: true, idx: target, labels: c.proc.steps[target].hl_watch };
+  });
+  if (!jumped.ok) throw new Error('#685 fixture: pwr_heatup authors no hl_watch step at all');
+  await page.waitForTimeout(2500);
+
+  var after = await read();
+  if (after.watch !== jumped.labels.length) {
+    throw new Error('#685: step ' + (jumped.idx + 1) + ' authors ' + jumped.labels.length +
+      ' watch labels (' + jumped.labels.join(', ') + ') and the board painted ' + after.watch +
+      ' .ckl-watch-glow elements — ' + JSON.stringify(after));
+  }
+  if (after.press !== 0) {
+    throw new Error('#685: the PULSING .ckl-step-glow was painted ' + after.press +
+      ' times on a step that authors no `hl` and no `control` — the two treatments are not ' +
+      'distinct. ' + JSON.stringify(after));
+  }
+  log.push('step ' + (jumped.idx + 1) + ': ' + jumped.labels.length + ' authored (' +
+    jumped.labels.join(', ') + ') -> ' + after.watch + ' .ckl-watch-glow painted, ' +
+    after.press + ' .ckl-step-glow');
+
+  await page.evaluate(function () { globalThis.RD.__dev.service().handleCommand({ action: 'stop_checklist' }); });
+  return log.join(String.fromCharCode(10)) + String.fromCharCode(10);
 }
 
 /* #691 — A PAUSED PLANT KEPT THE PREVIOUSLY-SELECTED SPEED BUTTON LIT, AND PLAY-FROM-PAUSE
@@ -2986,6 +3133,8 @@ async function main() {
     fs.writeFileSync(path.join(SCRATCH, 'held-speed-click.log'), hsLog);
     var wpLog = await testWalkthroughEventPause(page);
     fs.writeFileSync(path.join(SCRATCH, 'walkthrough-event-pause.log'), wpLog);
+    var wgLog = await testWatchGlowRendered(page);
+    fs.writeFileSync(path.join(SCRATCH, 'watch-glow-rendered.log'), wgLog);
     var prLog = await testPauseResumeSpeed(page);
     fs.writeFileSync(path.join(SCRATCH, 'pause-resume-speed.log'), prLog);
     var ctLog = await testCssTransitions(page);

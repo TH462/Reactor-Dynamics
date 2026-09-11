@@ -361,6 +361,70 @@ function pinChannel(ch) {
     (await b.page.$$eval('#mpContent [data-wtstart]', function (n) { return n.map(function (x) { return x.getAttribute('data-wtstart'); }); })).join(',') ||
     walk2.slice(0, 60));
   await b.ctx.close();
+
+  /* ---- #686: THE STATUS LINE UNDER THE SPEED BAR CONSOLIDATES WITH THE CARD'S OWN LINE ------
+   * *(OWNER RULING, 2026-09-10, "All decisions as recommended" ratifying option B)*. Same fact,
+   * same rung as `.ckl-wait` on a qualifying step (`hold >= 180`); NOTHING under the speed bar
+   * on a step that does not qualify — "nothing on other steps" is the ruling's own words.
+   * Asserted on the SHIPPED plant's own pool (pwr2, #523), each case its own fresh build so the
+   * second checklist never has to contend with the first one's run state. */
+  b = await build('dev', WT2);
+  await b.page.click('#tabbar [data-tab="checklists"]');
+  var w2 = await b.page.evaluate(function () {
+    var pool = ((window.RD || {}).MANUAL_PROCEDURES || {}).pwr2 || [];
+    for (var i = 0; i < pool.length; i++) {
+      if ((+pool[i].steps[0].hold || 0) < 180) continue;
+      var btn = document.querySelector('[data-ckl-start="' + pool[i].id + '"]');
+      if (!btn) continue;
+      btn.click();
+      return { id: pool[i].id, hold: +pool[i].steps[0].hold };
+    }
+    return { id: null };
+  });
+  if (w2.id) await b.page.waitForSelector('.ckl-step.ckl-active .ckl-wait', { timeout: 20000 }).catch(function () {});
+  var lines2 = w2.id ? await b.page.evaluate(function () {
+    var a = document.querySelector('.ckl-step.ckl-active');
+    var cardEl = a ? a.querySelector('.ckl-wait') : null;
+    var barEl = document.getElementById('warpInfo');
+    return { card: cardEl ? (cardEl.textContent || '').trim() : null,
+             bar: barEl ? (barEl.textContent || '').trim() : null,
+             barHidden: barEl ? barEl.hidden : null };
+  }) : null;
+  var wantRung2 = w2.id ? await b.page.evaluate(function (h) { return RD.CklSpeedHint(h).speed; }, w2.hold) : null;
+  ck('dev (pwr2): the speed-bar line names the same rung as the card on a qualifying step (#686)',
+    !!w2.id && !!lines2 && lines2.barHidden === false && !!lines2.bar && lines2.bar.indexOf(wantRung2 + '×') >= 0,
+    w2.id ? (w2.id + ' hold=' + w2.hold + ', card="' + (lines2.card || '').slice(0, 70) +
+             '", bar="' + (lines2.bar || '') + '"')
+          : 'no pwr2 procedure opens on a long-wait step');
+  await b.ctx.close();
+
+  b = await build('dev', WT2);
+  await b.page.click('#tabbar [data-tab="checklists"]');
+  var w2b = await b.page.evaluate(function () {
+    var pool = ((window.RD || {}).MANUAL_PROCEDURES || {}).pwr2 || [];
+    for (var i = 0; i < pool.length; i++) {
+      if ((+pool[i].steps[0].hold || 0) >= 180) continue;
+      var btn = document.querySelector('[data-ckl-start="' + pool[i].id + '"]');
+      if (!btn) continue;
+      btn.click();
+      return { id: pool[i].id, hold: +pool[i].steps[0].hold || 0 };
+    }
+    return { id: null };
+  });
+  if (w2b.id) {
+    await b.page.waitForSelector('.ckl-step.ckl-active', { timeout: 20000 }).catch(function () {});
+    await b.page.waitForTimeout(1200);   // let a broadcast land so #warpInfo's own guard has run
+  }
+  var lineNo = w2b.id ? await b.page.evaluate(function () {
+    var el = document.getElementById('warpInfo');
+    return { text: el ? (el.textContent || '').trim() : null, hidden: el ? el.hidden : null };
+  }) : null;
+  ck('dev (pwr2): and prints nothing under the speed bar on a step below the hold gate (#686)',
+    !!w2b.id && !!lineNo && (lineNo.hidden === true || lineNo.text === ''),
+    w2b.id ? (w2b.id + ' hold=' + w2b.hold + ' -> ' + JSON.stringify(lineNo))
+           : 'no non-qualifying pwr2 procedure found to open');
+  await b.ctx.close();
+
   // The player's window (no `mmode` in the URL) offers exactly Free Play and Walkthroughs
   // (#660 item 19); the campaign and scenario areas are reachable only through the door.
   b = await build('dev', SHELL.replace('&mmode=free', ''));

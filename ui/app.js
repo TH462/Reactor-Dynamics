@@ -3114,30 +3114,54 @@
     var base = SPEED_SNAP_MSG[snap.reason] || 'Dropped to real time';
     return /— $/.test(base) ? base + (snap.detail || (snap.reason === 'alarm' ? 'new alarm' : 'plant in transient')) : base;
   }
-  /* THE LINE UNDER THE SPEED BUTTONS (#655, owner 2026-09-08: "Leave a space between them for
-   * warp info text"). Persistent where the toast is momentary: the third layman playthrough
-   * missed three dropout toasts and concluded the clock "reverts on its own". What it says, in
-   * priority order: the last automatic drop and its reason (until the player next changes speed),
-   * a WARP lock with its countdown, what WARP is achieving while it runs, or that WARP is ready. */
-  var warpNote = null;          // { text, at } — the last speed_snap, cleared on the next player speed change
-  function syncWarpInfo(s, p) {
+  /* THE LINE UNDER THE SPEED BUTTONS (#686, OWNER RULING 2026-09-10, "All decisions as
+   * recommended" ratifying option B — REPLACES the #655 four-state paragraph this comment
+   * used to describe, not merely reword it). It now prints exactly two things, never more:
+   *
+   *   1. THE ONE STANDING EXCEPTION (OWNER RULING 2026-09-11, "option A" on the held-at-real-
+   *      time question). The accumulator arming window (`true_state.speed_hold`) is a GENUINE,
+   *      non-momentary refusal — it can hold the clock for plant-minutes, unlike the rate-based
+   *      refusals #675 §E measured at a 2.0 plant-second maximum. A literal reading of the #686
+   *      ruling deletes this case along with the other three; that would silently re-trap the
+   *      player #619 item 13 was filed to stop, so it is kept, unchanged, as `warpNote`'s only
+   *      surviving reason.
+   *   2. OTHERWISE, THE ACTIVE CHECKLIST STEP'S OWN WAIT — the same fact, the same formatter
+   *      (`cklWaitSpan`, `RD.CklSpeedHint`) as the card's own `.ckl-wait` line — and NOTHING when
+   *      the active step does not qualify (`hold < 180`, no checklist running, `wait_hint ===
+   *      false`, or the checklist complete). "Nothing on other steps" is the ruling's own words.
+   *
+   * Everything else the old paragraph drew is gone, on purpose, and each has a home already:
+   * WARP's achieved rate is `#ffRate` (`syncPacingUI` below); a WARP lock's reason is the WARP
+   * buttons' own `title`; every momentary drop (scram/failure/alarm/transient/warp_locked/step)
+   * is already toasted AND flashed (`syncSpeedUI` above) at the moment it happens — #655 must
+   * not be reopened, and #675 §E leaves nothing here worth restating for those.
+   *
+   * It does NOT become a whole-leg "time to completion": that number has no honest source
+   * (`hold` is the replay's fixture dwell, not a player-timing measurement — see the wait-line
+   * comment in `renderChecklist` below) and the ruling declines it explicitly. */
+  var warpNote = null;   // { text, reason } — the held-at-real-time note only; cleared on any player speed act
+  function syncWarpInfo(s) {
     var el = $('warpInfo');
-    if (!el || !p) return;
-    var req = s.metadata.time_acceleration || 1;
-    var cls = '', text = '';
-    var left = (!p.warp_available && p.warp_lock_remaining_s > 0) ? ' · WARP re-arms in ' + p.warp_lock_remaining_s + ' s' : '';
-    if (warpNote) {
-      cls = 'dropped'; text = warpNote.text + left;
-    } else if (!p.warp_available && p.warp_lock) {
-      cls = 'locked';
-      text = 'WARP locked — ' + p.warp_lock + (p.warp_lock_remaining_s > 0 ? ' · re-arms in ' + p.warp_lock_remaining_s + ' s' : '');
-    } else if (p.tier === 'warp') {
-      cls = 'on';
-      text = 'WARP ' + req + '× · achieving ' + (p.achieved != null ? (Math.round(p.achieved / 10) * 10).toLocaleString() + '×' : '…') + ' · ' + p.physics_dt + ' s physics step';
+    if (!el) return;
+    var text = '', cls = '';
+    if (warpNote && warpNote.reason === 'hold') {
+      cls = 'dropped';
+      text = warpNote.text;
     } else {
-      text = 'WARP ready — 600× or 3600× for a long quiet ride; a warning or critical alarm drops it to 60×';
+      var ck = s.instructor && s.instructor.checklist;
+      var pr = ck && !ck.complete && ((RD.MANUAL_PROCEDURES || {})[ui.engineKey] || [])
+        .filter(function (x) { return x.id === ck.procedure_id; })[0];
+      var st = pr ? pr.steps[ck.step_index] : null;
+      var holdS = st ? (+st.hold || 0) : 0;
+      if (st && holdS >= 180 && st.wait_hint !== false) {
+        var span = cklWaitSpan(st, holdS);
+        var rung = RD.CklSpeedHint(holdS);
+        text = (span ? 'About ' + span + ' left at 1× — s' : 'A wait whose length depends on the plant — s') +
+               'et the speed control to ' + rung.speed + '×.';
+      }
     }
     if (el.textContent !== text) el.textContent = text;
+    el.hidden = !text;
     var want = 'warp-info mono' + (cls ? ' ' + cls : '');
     if (el.className !== want) el.className = want;
   }
@@ -3156,7 +3180,7 @@
     var p = s && s.metadata ? s.metadata.pacing : null;
     var el = $('ffRate');
     if (!p || !el) return;
-    syncWarpInfo(s, p);
+    syncWarpInfo(s);
     var req = s.metadata.time_acceleration || 1, ach = p.achieved;
     var straining = false;
     if (RD.Perf && req > 1) {
@@ -3200,8 +3224,11 @@
        * refusal is a caution (#625); everything else is the plant interrupting you. */
       showToast(speedSnapText(snap),
         snap.reason === 'step' ? 'info' : snap.reason === 'warp_locked' ? 'warn' : 'error');
-      // …and it stays written under the speed buttons until the player next changes speed (#655)
-      warpNote = { text: speedSnapText(snap), at: Date.now() };
+      /* …and, ONLY for the held-at-real-time reason (#686 ruling 3), it stays written under the
+       * speed buttons until the player next acts — the other five reasons rely on the toast +
+       * flash above since #686; carrying `reason` is what lets `syncWarpInfo` single out this
+       * one case without re-deriving it from the text. */
+      warpNote = { text: speedSnapText(snap), reason: snap.reason };
       /* FLASH THE SPEED BUTTONS *(OWNER, 2026-09-03, #619 item 7: "when dropping out of warp,
        * flash the warp buttons for a moment to make it more obvious.")*. The toast says what
        * happened; the flash says WHERE, which is the control the player now has to touch to
@@ -3710,7 +3737,7 @@
   // RD.MANUAL_PROCEDURES artifact the Instructor graded it from.
   // whyAll / whyOpen: the #244 item-2 explanation toggles (global + per-step); they
   // survive re-renders via the render key and reset with the checklist itself.
-  var cklState = { key: null, whyAll: false, whyOpen: {}, step: null, view: 'list', userScrolled: false, preconHtml: null };
+  var cklState = { key: null, whyAll: false, whyOpen: {}, step: null, view: 'list', userScrolled: false, preconHtml: null, cautionsOpen: null };
   var cklAutoScroll = false;   /* true while WE are writing scrollTop (#612) */
 
   /* ---- WHICH SPEED RUNG A LONG WAIT WANTS (#628) --------------------------------------------
@@ -3776,6 +3803,16 @@
     for (var i = 0; i < lad.length; i++) if (holdS / lad[i].speed <= WAIT_TARGET_WALL_S) return lad[i];
     return lad[lad.length - 1];
   };
+  /* THE WAIT SPAN, shared by the card's `.ckl-wait` line AND the consolidated `#warpInfo` line
+   * (#686) — one fact, one formatter, so the two can never disagree. `wait_est_s: false` drops
+   * the number and keeps the rung, for a step whose duration is genuinely route-dependent (the
+   * speed advice is right even with no honest number; see the call site in `renderChecklist`). */
+  function cklWaitSpan(st, holdS) {
+    if (st.wait_est_s === false) return null;
+    var mins = holdS / 60;
+    return mins < 90 ? Math.round(mins) + ' plant-minutes'
+                     : (mins / 60).toFixed(mins / 60 < 10 ? 1 : 0) + ' plant-hours';
+  }
   /* IS THE POINTER IN THIS ELEMENT? (#605.) `:hover` cannot answer it here — the element is
    * BRAND NEW, built microseconds ago by an innerHTML rebuild, and the browser does not
    * re-run its hit test until the next mouse event or paint. So track the pointer ourselves
@@ -3812,10 +3849,11 @@
   }
   function resetCkl() {
     if (!cklState.key) return;
-    cklState = { key: null, whyAll: false, whyOpen: {}, step: null, view: 'list', userScrolled: false, preconHtml: null };
+    cklState = { key: null, whyAll: false, whyOpen: {}, step: null, view: 'list', userScrolled: false, preconHtml: null, cautionsOpen: null };
     var run = $('cklRun'); if (run) { run.hidden = true; run.innerHTML = ''; }
     var row = $('instrCklRow'); if (row) row.hidden = !flagOn('checklists');
     clearCklStepGlow();
+    clearCklWatchGlow();                      /* #685 — the watch ring has the same owner */
     var card = $('instructorCard'); if (card) card.classList.remove('chat-mode');
     var cur = $('instrCurrent'); if (cur) cur.textContent = '';
   }
@@ -3962,14 +4000,61 @@
     var label = pd ? pd.label : pred.p;
     if (pred.op === '~') {
       var tol = pred.tol != null ? pred.tol : 1;
-      /* A TOLERANCE IS A DIFFERENCE (#606 adjacent, 2026-09-05): an 8 °C band on a temperature
-       * converts ×9/5 with no offset — 14 °F — and the `temp` family's converter adds the 32,
-       * so "within 46 °F of 547 °F" was what the Mode 3 confirmation printed. Same trap
-       * CLAUDE.md's units rule names; the band takes the `tempdiff` family. */
+      /* A BAND, NOT A SUM THE PLAYER HAS TO DO (#653 product defect 3). It printed
+       * "AVG COOLANT TEMPERATURE within 14 °F of 547 °F" — arithmetic, in the narrowest column
+       * on the page, and both fresh-context reviewers said so. The tile shows one number and
+       * the question the player is asking is "is this number in or out", which is a RANGE. So
+       * the two ends are printed instead: "AVG COOLANT TEMPERATURE 533 to 561 °F".
+       *
+       * A TOLERANCE IS STILL A DIFFERENCE and that trap is unchanged — it is just applied one
+       * step earlier now, to the ENDPOINTS. `v ± tol` is computed in the predicate's own
+       * internal units (°C here) and each end then converts ABSOLUTELY, which is arithmetically
+       * the same thing and is why the band cannot pick up the +32 the old form could: there is
+       * no lone difference left to convert. (The old bug printed "within 46 °F of 547 °F" — an
+       * 8 °C band run through the `temp` converter. Under this form that mistake would have to
+       * print 501 to 593 °F, which is visibly a different claim, so verify_ckl_relevance now
+       * pins the endpoints rather than the band.)
+       *
+       * `fmtPredValue` rounds, so a band whose ends round to the same number would read
+       * "547 to 547 °F". Guarded: fall back to the tolerance form rather than print a
+       * degenerate range. Measured on the shipped pool — no predicate does this today; the
+       * guard is for the next author, not for a live case. */
+      var lo = fmtPredValue(pd, +pred.v - tol), hi = fmtPredValue(pd, +pred.v + tol);
+      if (lo !== hi) {
+        /* both ends carry the unit from fmtPredValue; drop the low end's so the pair reads
+         * "533 to 561 °F" rather than "533 °F to 561 °F" — one unit, at the end, like a tile */
+        var loBare = (pd && (pd.dim || pd.u)) ? lo.replace(/\s\S+$/, '') : lo;
+        return label + ' ' + loBare + ' to ' + hi;
+      }
       var tolPd = (pd && pd.dim === 'temp') ? { dim: 'tempdiff', suffix: pd.suffix } : pd;
       return label + ' within ' + fmtPredValue(tolPd, tol) + ' of ' + fmtPredValue(pd, pred.v);
     }
     return label + ' ' + (OPSYM[pred.op] || pred.op) + ' ' + fmtPredValue(pd, pred.v);
+  }
+
+  /* WHAT MODE THE PLANT IS ACTUALLY IN, beside a "Confirm Mode N" criterion (#653 product
+   * defect 4, the last of the four: "no MODE readout exists for any Confirm Mode N step").
+   *
+   * Six of the pool's steps grade on `plant_mode` and the board carries no mode indication of
+   * any kind — it is still an open nice-to-have in CLAUDE.md's Known open work. So the layman
+   * reviewer hit "Confirm Mode 5, Cold Shutdown" with nothing on the screen that says a mode,
+   * and no way to tell a step that is waiting from one that is stuck. A board tile is a board
+   * change and is not this pass; the criterion line can answer the question for free, because
+   * the mode is already in the snapshot the panel is holding.
+   *
+   * ONLY `plant_mode`. Every other predicate in the pool names a tile the player can read, and
+   * printing the live value beside each of them would turn the criteria block into a second set
+   * of gauges. This is the one criterion with no gauge behind it.
+   *
+   * DECLARED AS A TRUE VALUE (HR1), the same way the precondition banner declares its own. There
+   * is no mode transmitter; the mode is inferred from temperature, pressure and power, each of
+   * which does have a gauge. */
+  function modeLiveNote(pred, s) {
+    var pd = PRED_DISPLAY[pred && pred.p];
+    if (!pd || !pd.mode) return '';
+    var m = s && s.true_state ? s.true_state.plant_mode : null;
+    if (typeof m !== 'number') return '';
+    return '  — the plant reads ' + (MODE_NAMES[Math.round(m)] || ('Mode ' + m)) + ' (true value)';
   }
 
   function renderChecklist(s, ck) {
@@ -4009,6 +4094,13 @@
        * stayed enabled, because nothing in the key had moved. */
       ck.awaiting_ack ? 1 : 0, ck.rewind_ready ? 1 : 0,
       cklState.whyAll ? 1 : 0, Object.keys(cklState.whyOpen || {}).join(','), ui.units,
+      /* the leg-caution block's open/shut state (#653 defect 1) — outside the key it would
+       * never repaint, which is #392's lesson about the precondition banner */
+      cklState.cautionsOpen == null ? 'd' : (cklState.cautionsOpen ? 1 : 0),
+      /* the live mode, ROUNDED — it is printed beside a Confirm Mode N criterion (#653
+       * defect 4) and a value outside the key never repaints. Rounding is what keeps it
+       * off the per-broadcast churn list: five values over a whole evolution. */
+      (s && s.true_state && typeof s.true_state.plant_mode === 'number') ? Math.round(s.true_state.plant_mode) : '',
       cklState.view].join('|');
     if (key === cklState.key) return;
     var firstBuild = !cklState.key;
@@ -4097,13 +4189,52 @@
       cklState.preconHtml = pcH;
     }
     if (cklState.preconHtml) h += cklState.preconHtml;
+    /* THE LEG'S CAUTIONS REACH THE PLAYER WHO IS RUNNING IT (#653 product defect 1, the first of
+     * the four and the only one with a safety argument).
+     *
+     * `pr.cautions` rendered in exactly ONE place — `mProcCard`, the Manual tab's browse card —
+     * so every caution on every leg was unreachable from the moment the walkthrough started.
+     * Both fresh-context reviews found the consequence rather than the cause: the heatup's only
+     * heatup-rate instruction, the startup's "never pull the rods straight to the position the
+     * 1/M PLOT predicts", the cooldown's accumulator window and its spray limit are all leg-level
+     * cautions, and the reviewers reported them as missing from the checklist. They were not
+     * missing; they were on a different screen.
+     *
+     * It is also where the startup leg DEFINES pcm ("a pcm is a hundred-thousandth"), which the
+     * layman review listed as undefined at first use. The definition existed and could not be
+     * read.
+     *
+     * COLLAPSED BY DEFAULT ONCE THE LEG IS UNDERWAY, open before it. Four cautions of 20-49 words
+     * at the head of a panel that draws ONE step (#660 item 15) would push the step itself under
+     * the fold, which is the complaint this is answering, inverted. So they are open while the
+     * player is still deciding whether to start — the same moment the precondition banner above
+     * is allowed to show — and one click away after that. The summary line keeps the COUNT
+     * visible for the whole run, because "there are four cautions on this leg" is the half that
+     * has to survive the collapse.
+     *
+     * The open/shut choice is per-run state, not per-broadcast: `cklState.cautionsOpen` starts
+     * null (meaning "follow the underway default") and latches to a boolean the first time the
+     * player touches it, so a rebuild cannot shut a block they just opened. It joins the render
+     * key below for the #392 reason — a block outside the key never repaints. */
+    if (pr.cautions && pr.cautions.length) {
+      var cautOpen = cklState.cautionsOpen == null ? (pcKey === 'entry') : !!cklState.cautionsOpen;
+      h += '<div class="ckl-cautions">' +
+        '<button class="ckl-caut-sum" data-ckl-cautions="1">' +
+          '<span class="ckl-caut-chev">' + (cautOpen ? '▾' : '▸') + '</span>⚠ ' +
+          pr.cautions.length + ' caution' + (pr.cautions.length === 1 ? '' : 's') +
+          ' for this walkthrough</button>' +
+        (cautOpen ? pr.cautions.map(function (c) {
+          return '<div class="ckl-caut-l">' + mesc(c) + '</div>';
+        }).join('') : '') +
+        '</div>';
+    }
     for (var i = 0; i < pr.steps.length; i++) {
       var st = pr.steps[i];
       var done = !!(ck.steps_done && ck.steps_done[i]);
       var active = !ck.complete && i === ck.step_index;
       if (!active) continue;   // ONE STEP AT A TIME (#660 item 15): done and pending steps are not drawn
       var cls = done ? 'ckl-done' : active ? 'ckl-active' : 'ckl-pend';
-      var hoverable = stepHlLabels(st) ? ' ckl-hoverable' : '';
+      var hoverable = (stepHlLabels(st) || stepWatchLabels(st)) ? ' ckl-hoverable' : '';   /* #685 */
       /* Per-iteration, NOT hoisted by accident: `var` is function-scoped, so a flag set on one
        * step would still read true on the next and silently suppress its wait line. Reset here,
        * at the top of every step. */
@@ -4173,7 +4304,7 @@
              * the button) whose twin predicate entry already draws the lamp; drawing both put
              * "spray" on the card twice (#660 item 6). Still graded; just not printed. */
             if (en.hidden) continue;
-            var enTxt = en.label ? en.label : (en.p ? fmtPredicate(en) : mesc(en.cmd || ''));
+            var enTxt = en.label ? en.label : (en.p ? fmtPredicate(en) + modeLiveNote(en, s) : mesc(en.cmd || ''));
             h += '<div class="ckl-crit' + (av.met ? ' ckl-crit-met' : '') + '">' +
               /* mesc UNCONDITIONALLY (#670 operator pass, S-5): since OPSYM prints a strict
                * '<' / '>' rather than ≤ / ≥, fmtPredicate's output carries MARKUP characters
@@ -4182,7 +4313,7 @@
           }
         } else if (st.acc) {
           h += '<div class="ckl-crit' + (ck.acc_met ? ' ckl-crit-met' : '') + '">' +
-            (ck.acc_met ? '✓ ' : '○ ') + 'When ' + mesc(fmtPredicate(st.acc)) + '</div>';
+            (ck.acc_met ? '✓ ' : '○ ') + 'When ' + mesc(fmtPredicate(st.acc) + modeLiveNote(st.acc, s)) + '</div>';
         }
         var isObs = st.control && /^\(observe/i.test(st.control);
         if (isObs) {
@@ -4199,9 +4330,11 @@
          *
          * DERIVED FROM `hold`, NOT AUTHORED. Every step already carries the dwell the replay
          * gives it, so the estimate cannot drift from what the harness proves the step needs —
-         * and 24 of the 61 pwr2 steps qualify without a word of new authoring. An authored
-         * number beside a `hold` would be the same fact written twice, which is how the 705 ppm
-         * in the ascension came to disagree with the plant.
+         * and 34 of the pool's 88 pwr2 steps qualify (re-measured 2026-09-11, #686; was "24 of
+         * the 61" when this comment was written — the pool has grown twice since, #670/#693/
+         * #692) without a word of new authoring. An authored number beside a `hold` would be the
+         * same fact written twice, which is how the 705 ppm in the ascension came to disagree
+         * with the plant.
          *
          * ⚠ IT IS THE REPLAY'S DWELL, WHICH IS AN UPPER BOUND, NOT A PROMISE. The harness waits
          * `hold` seconds; a player who drives the plant harder gets there sooner, and one who
@@ -4217,7 +4350,6 @@
          * the startup's criticality steps carry 240-900 s dwells, so the hint offered 60x, and
          * at 60x the reactor went 0 -> 12 % between two glances. A step may author the hint away. */
         if (holdS >= 180 && st.wait_hint !== false) {
-          var mins = holdS / 60;
           /* `hold` IS THE REPLAY'S DWELL, NOT A MEASUREMENT OF THE PLAYER'S STEP (#670 operator
            * pass 2, S-1). It is how long `procedures_harness` sits on the step so the plant has
            * settled before the next command, and it has been printed to the player as "About N
@@ -4225,24 +4357,23 @@
            * (advance the instant each acceptance is met, and again holding step 10 to the
            * steam-generator level the reviewer carried), step 14's cue is met in 3.1 plant-minutes
            * against a printed 62 — while an operator playing it live took 175. The number is not
-           * an estimate of anything; it is a gate fixture wearing a prediction's clothes.
-           *
-           * `wait_est_s: false` DROPS THE SPAN AND KEEPS THE RUNG, for a step whose duration is
-           * genuinely route-dependent. It is deliberately separate from `wait_hint: false` (which
-           * drops the whole line, #653 S9): the speed advice is the half the operator pass called
-           * the best thing on the page, and it is right even when no honest number exists. */
-          var span = st.wait_est_s === false ? null
-                   : mins < 90 ? Math.round(mins) + ' plant-minutes'
-                   : (mins / 60).toFixed(mins / 60 < 10 ? 1 : 0) + ' plant-hours';
+           * an estimate of anything; it is a gate fixture wearing a prediction's clothes. */
+          var span = cklWaitSpan(st, holdS);
           /* AND WHICH RUNG TO REACH FOR *(OWNER, 2026-09-04, #628: "Add a suggested time warp
            * value for the long term waiting steps.")*. "Use time acceleration" left the player
            * to work out how much, and the answer is not obvious: the ladder is 1/5/10/60/600/
-           * 3600 and the right rung spans four of those across the 24 pwr2 steps that qualify.
+           * 3600 and the right rung spans four of those across the 34 pwr2 steps that qualify.
            * RD.CklSpeedHint picks it off the ladder itself, so this can never name a button that
            * is not there. */
           var rung = RD.CklSpeedHint(holdS);
+          /* THE WARP EXPLANATION CLAUSE IS GONE (#686, OWNER RULING 2026-09-10): it pointed at
+           * "the line under the speed bar", which is exactly the paragraph #686 replaces — a
+           * sentence that would have dangled the moment that paragraph did. This shrinks to the
+           * span, the rung, and any step-authored `wait_hint` string (a different, per-step
+           * fact — the accumulator-window caution, a pressure-swing note — not the boilerplate
+           * that was removed). */
           h += '<div class="ckl-sub ckl-wait">⏩ ' + (span ? 'About ' + span + ' at 1× — s' : 'A wait whose length depends on the plant — s') + 'et the speed control to <b>' +
-            rung.speed + '×</b>' + (rung.warp ? ' (WARP; the plant must be quiet to take it. The line under the speed bar says why it was refused or dropped — a new alarm clears with Ack All, but pressure or power moving is a rate and only settles with time, so use 60×)' : '') + '.' +
+            rung.speed + '×</b>.' +
             (typeof st.wait_hint === 'string' ? ' ' + mesc(st.wait_hint) : '') + '</div>';
           waitLineShown = true;
         }
@@ -4289,7 +4420,28 @@
           ? 'This takes a while in plant time — use time acceleration (the speed control, top bar).'
           : st.wait_hint) + '</div>';
       }
-      if (st.why) det += '<div class="ckl-why">' + mesc(st.why) + '</div>';
+      /* THE DETAILS PARAGRAPH IS LABELLED, SO IT READS AS EXTRA (#692 item 3, from the owner's
+       * 2026-09-09 sheet §B — he asked for it "presented as extra learning material rather than
+       * part of the step", and suggested a labelled bubble).
+       *
+       * It had no label at all. Since #660 item 3 the active step's details are ALWAYS OPEN, so
+       * the `why` arrives as an unheaded grey paragraph hanging under the instruction with
+       * nothing saying it is optional — the same visual weight as the `note`, which carries
+       * contingencies the player does have to act on. A label is what separates "read this to
+       * act" from "read this to understand".
+       *
+       * "Why this step" and not "Learn more": the field's whole contract (CHECKLIST_WRITING_GUIDE
+       * F2) is one causal chain answering why the step is here, and a label that names the
+       * question is what lets a player who does not want it skip the block in one glance.
+       *
+       * The legend borrows `.ckl-story-l > span`'s idiom — small, upper case, muted — because
+       * the story block is the OTHER always-drawn supplementary field on this card, and two
+       * supplementary blocks that look like two different kinds of thing is the confusion this
+       * is fixing. */
+      if (st.why) {
+        det += '<div class="ckl-why"><span class="ckl-why-lbl">Why this step</span>' +
+          mesc(st.why) + '</div>';
+      }
       if (det) {
         /* THE ACTIVE STEP'S DETAILS ARE ALWAYS OPEN *(OWNER, 2026-09-08, #660: "The current step
          * should have the why section automatically open.")*. Other steps keep the toggle. */
@@ -4329,13 +4481,18 @@
     // change so it survives step advances and hover churn; cleared when the run ends.
     var actSt = !ck.complete && pr.steps[ck.step_index] ? pr.steps[ck.step_index] : null;
     applyCklStepGlow(actSt ? stepHlLabels(actSt) : null);
+    applyCklWatchGlow(actSt ? stepWatchLabels(actSt) : null);   /* #685 */
     // Step hover → glow the controls/indications the step names (its `hl` list) on
     // the plant display, reusing the Instructor highlight vocabulary (revealControl).
     Array.prototype.forEach.call(cur.querySelectorAll('.ckl-step'), function (el) {
       var idx2 = +el.getAttribute('data-ckl-step');
       var st2 = pr.steps[idx2];
-      var labs = st2 && stepHlLabels(st2);
-      if (!labs) return;
+      /* HOVER IS ONE TREATMENT FOR BOTH LISTS (#685). The hover preview answers "where is
+       * this step pointing", which is the same question for a control and for a gauge; the
+       * press/watch DISTINCTION is drawn on the ACTIVE step, where it is standing rather than
+       * transient and where the player is about to act on it. */
+      var labs = st2 && (stepHlLabels(st2) || []).concat(stepWatchLabels(st2) || []);
+      if (!labs || !labs.length) return;
       /* Current step already pulses via .ckl-step-glow; hovering it must not add the
        * hover class, and hovering a NON-current step must not pulse (#607 item 3). */
       var isActive = !ck.complete && idx2 === ck.step_index;
@@ -4419,6 +4576,14 @@
     if (st.control && !/^\(observe/i.test(st.control)) return [st.control];
     return null;
   }
+  /* THE INDICATIONS TO WATCH, AS OPPOSED TO THE CONTROL TO PRESS (#685) *(OWNER, 2026-09-09,
+   * #675 section B: "Each step should highlight the important indications to watch with a non
+   * pulsing green glow.")*. `hl` was one flat list rendered identically, so the gauge and the
+   * button were the same affordance; `hl_watch` is the second kind. No `control` fallback —
+   * a step's own control is by definition the thing to act on, never the thing to watch. */
+  function stepWatchLabels(st) {
+    return (st.hl_watch && st.hl_watch.length) ? st.hl_watch : null;
+  }
   // Hover-preview glow for checklist steps: glow every control/indication label a
   // step names. Separate class from the Instructor beat glow (.instr-glow) so a
   // transient hover never wipes an active beat highlight.
@@ -4451,6 +4616,24 @@
   }
   function clearCklStepGlow() {
     document.querySelectorAll('.ckl-step-glow').forEach(function (el) { el.classList.remove('ckl-step-glow'); });
+  }
+  /* THE WATCH GLOW (#685) — same apply/clear lifecycle as the step glow above and applied in
+   * the same breath, but its own class and its own list, so "press this" and "watch this" are
+   * two affordances rather than one. Applied AFTER the step glow deliberately: if a step ever
+   * names the same label in both lists the pulse wins the element rather than being replaced
+   * by a quieter ring — `run_manual_controls` reddens on that overlap, this is the behaviour
+   * while the red is being fixed. */
+  function applyCklWatchGlow(labels) {
+    clearCklWatchGlow();
+    if (!labels || !labels.length) return;
+    var board = (RD.PwrBoard && RD.PwrBoard.isMounted()) ? RD.PwrBoard : null;
+    labels.forEach(function (lab) {
+      var el = ui.plant === 'pwr' ? (board ? board.revealControl(lab) : null) : findPdControl(lab);
+      if (el && !el.classList.contains('ckl-step-glow')) el.classList.add('ckl-watch-glow');
+    });
+  }
+  function clearCklWatchGlow() {
+    document.querySelectorAll('.ckl-watch-glow').forEach(function (el) { el.classList.remove('ckl-watch-glow'); });
   }
   // Picker menu (free-play instructor card): every non-narrative procedure for
   // the active plant can run as a checklist.
@@ -7824,6 +8007,21 @@
         return;
       }
       if (e.target.closest('[data-ckl-list]')) { selectTab('checklists'); return; }   // the list tab; the run stays live
+      /* the leg-caution block (#653 defect 1). Latching a BOOLEAN — not toggling a null — is the
+       * point: once the player has said open or shut, the underway default stops deciding for
+       * them. `cklState.key = null` forces the rebuild the way the why-all toggle does. */
+      var cz = e.target.closest('[data-ckl-cautions]');
+      if (cz) {
+        var wasOpen = cklState.cautionsOpen == null
+          ? !((latest && latest.instructor && latest.instructor.checklist &&
+               (latest.instructor.checklist.step_index > 0 ||
+                (latest.instructor.checklist.steps_done || []).some(Boolean))))
+          : !!cklState.cautionsOpen;
+        cklState.cautionsOpen = !wasOpen;
+        cklState.key = null;
+        if (latest) render(latest);
+        return;
+      }
       var mk = e.target.closest('[data-ckl-check]');
       /* releaseHold('walkthrough') on every way OFF a step (#694): Continue, Rewind and Stop
        * below. It is a no-op unless the walkthrough pause actually took the hold (`clearPause`

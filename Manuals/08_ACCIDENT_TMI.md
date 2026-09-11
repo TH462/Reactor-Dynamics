@@ -23,6 +23,25 @@ Free play alternative: start Hot Full Power and inject **Loss of Main Feedwater*
 Feedwater Failure**, **PORV Stuck Open** and **PORV Indicator Stuck Closed** together
 (**07** PWR-E01, PWR-E12, PWR-E07, PWR-E08).
 
+**The first minute arrives as five beats, not one.** Steps 2-6 are the cascade, one event to a
+step and each on its own clock: the condensate polisher goes off line (told, not simulated, §6.0),
+the condensate and main feed pumps trip, the turbine trips after them, the auxiliary feed pumps
+start into shut valves, and the relief valve lifts and does not reseat. **On two of those beats the
+walkthrough stops the clock** — the feed-pump trip and the relief valve — because the events are
+seconds wide and are not the player's to control: the primary pressure spike peaks about six
+seconds in and is over by thirty-five. The sim resumes when you press **Continue**; **Rewind step**
+and **Stop** release it too. Steps 2, 3 and 6 ask for no action at all — read the board, then
+press Continue.
+
+**One thing is armed earlier than it is narrated, and it is a plant fact rather than an authoring
+choice.** The stuck relief valve is armed with the feed-pump trip on step 3, three steps before the
+beat that tells you about it. The stick does nothing to a shut valve: it latches on the first lift,
+the valve lifts about five seconds in and reseats near twenty-five, and measured full-stack the
+accident happens if the failure is armed at or before **21 seconds** and does not happen at all at
+22 — the plant settles at **1989 psia (13.71 MPa)** with pressurizer level 41.5 % and the valve
+shut. A narrated chain cannot spend that budget, so the arming rides with the initiating event and
+only the **lamp** failure — which is timing-insensitive — lands on the relief-valve step.
+
 ### 1.1 Two different plants
 
 | | TMI-2 | This plant |
@@ -66,12 +85,13 @@ on the source, not a quote from it.
 
 | Clock | Elapsed | TMI-2 (sourced) | This plant (measured) |
 |---|---|---|---|
-| **04:00:36** | −1 s | Condensate pump CO-P1A trips — postulated closure of the condensate polisher valves *"because of water in the control air system"* (E1) | No polisher model — the initiator is **narrated**, not injected (§6.0) |
-| **04:00:37** | 0 s | *"Feedwater pumps FW-P1A and FW-P1B tripped"* (E2); turbine trip follows, *"Normal following trip of feedwater pumps"* (E3) | **Loss of Main Feedwater** injected; FEED FLOW to 0, TURBINE TRIP lit |
-| 04:00:37 | 0 s | Auxiliary feed pumps start into **valves already shut** — *"Block valves EF-V12A and EF-V12B were closed"* (E4) | **Auxiliary Feedwater Failure** injected, hidden — the pumps run and deliver nothing |
+| **04:00:36** | −1 s | Condensate pump CO-P1A trips — postulated closure of the condensate polisher valves *"because of water in the control air system"* (E1) | No polisher model — the initiator is **narrated**, not injected (§6.0). Walkthrough step 2, which asks for no action |
+| **04:00:37** | 0 s | *"Feedwater pumps FW-P1A and FW-P1B tripped"* (E2) | **Loss of Main Feedwater** injected, **and the relief-valve stick armed with it**; FEED FLOW to 0. Walkthrough step 3 — **the sim pauses here** |
+| 04:00:37 | 0 s | Turbine trip follows, *"Normal following trip of feedwater pumps"* (E3) | Nothing injected — the turbine trips out of the feed loss on its own, within about a second. TURBINE TRIP lit. Walkthrough step 4 |
+| 04:00:37 | 0 s | Auxiliary feed pumps start into **valves already shut** — *"Block valves EF-V12A and EF-V12B were closed"* (E4) | **Auxiliary Feedwater Failure** injected, hidden — the pumps run and deliver nothing. Walkthrough step 5 |
 | **04:00:40** | 3 s | *"RCS pressure reaches the setpoint of the pilot-operated relief valve (PORV) RC-R2. PORV opens. (Setpoint = 2255 psig)"* — **2255 psig (15.55 MPa)** (E6) | The relief valve lifts at **5 s, 2346 psia (16.175 MPa)**. Its setpoint here is **Press SP + 100 psi (0.69 MPa)** = **2335 psi (16.10 MPa)** at the normal program (**03** §6.1) |
 | **04:00:45** | 8 s | *"Reactor trips on high pressure. (Setpoint = 2355 psig)"* — **2355 psig (16.24 MPa)**; the reactimeter peak is **2346 psig (16.175 MPa)**, the strip chart **2435 psig (16.79 MPa)** (E7) | **The reactor trips at 43 s on over-temperature ΔT** — the declared divergence of §1.1. *(The historical peak and this plant's lift pressure share their digits by coincidence: different plants, different datum.)* |
-| **04:00:50** | 13 s | The valve is told to shut at **2205 psig (15.20 MPa)** and does not: *"Valve did not close."* The lamp is a solenoid indication — *"Light 'off' indicates solenoid deenergized. There is no actual position indicator."* (E12) | **PORV Stuck Open** latches on the lift; **PORV Indicator Stuck Closed** puts the same lamp in the same lie |
+| **04:00:50** | 13 s | The valve is told to shut at **2205 psig (15.20 MPa)** and does not: *"Valve did not close."* The lamp is a solenoid indication — *"Light 'off' indicates solenoid deenergized. There is no actual position indicator."* (E12) | **PORV Stuck Open** was armed on the feed trip and **latches on the lift at 5 s**; **PORV Indicator Stuck Closed** lands on walkthrough step 6, which carries E6 and E12 together at E6's clock — **the sim pauses here too**. Until it lands the lamp reads honestly, which is what the crew had for their first thirteen seconds |
 | 04:00:52 | 15 s | Pressurizer level peaks at **255 in**; *"RCS parameters are normal."* (E17) | — |
 | **04:01:07** | 30 s | Relief-line high-temperature alarm at **239.2 °F (115.1 °C)**, dismissed: *"Alarms were not considered abnormal, because the PORV had previously opened."* (E20) | Tailpipe temperature rises above hot-leg temperature and stays there — the unalarmed indication that tells the truth (**03** §6.1, ~**302 °F (150 °C)** class while relief passes) |
 | 04:01:55 | 1 min 18 s | Both steam generators dry out: *"Indicates dryout. No feedwater was being admitted."* (E28) | At 1 min: **1705 psia (11.756 MPa)**, pressurizer level 67 %, RCS mass 98.5 % |
@@ -200,7 +220,7 @@ rather than asserted.
 | **The 13:50 hydrogen burn** | Not modelled. `ctmt_h2_burned` is a **registered static 0** in `engines/pwr2/pwr2_true_state.js`, and containment has **no spray, no fan coolers and no recombiners** (`engines/pwr2/pwr2_containment.js`) — their capacities are in no document in the corpus, so none was invented. That containment only ever heats and pressurises |
 | **Fuel damage on the TMI path** | The damage latch is a **cladding** temperature of **2200 °F (1204.4 °C)** — 10 CFR 50.46 criterion 1, *"the calculated maximum fuel element cladding temperature shall not exceed 2200F"*. It is a clad limit, not a fuel one, and the fuel runs far hotter than the clad in normal operation. **1200 °F (648.9 °C)** is a third quantity — GEND-061's onset of significant hydrogen generation. On this ride none of the three is reached |
 | **A quench tank / pressurizer relief tank** | There is none (**12** §13.0). Relief and safety discharge go **directly to the containment atmosphere** (`engines/pwr2/pwr2_engine.js`), where a real plant fills a relief tank and bursts its rupture disc first |
-| **The condensate polisher** | No polisher model — the board's polisher status is behavioural, not a resin condition, so the historical initiator is narrated rather than injected |
+| **The condensate polisher** | No polisher model — the board's polisher status is behavioural, not a resin condition, so the historical initiator is narrated rather than injected. **Ruled, not merely observed** *(OWNER RULING, 2026-09-10: "All decisions as recommended", ratifying #693's option A)*: modelling it was costed against giving it a failure-registry row and a board command, and declined on player complexity rather than on fidelity. The walkthrough's step 2 is that narration |
 | **A partial injection throttle** | Injection is one **On / Off** control merging the high- and low-head pumps (**03** §11.0). TMI-2's crew shut two makeup valves, throttled two more and stopped one of three pumps. Here the same decision is all or nothing, which makes it a starker choice than the crew faced |
 | **Offsite release and dose** | No source term, no release model, no radiation monitors. The simulation ends at fuel damage (**12** §13.0) |
 

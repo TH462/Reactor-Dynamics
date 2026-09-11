@@ -29,6 +29,516 @@ and the user-visible summary in `CHANGELOG.md`. This file points at those and tr
 
 ---
 
+## Session log — 2026-09-11-workbench-c (#686 — the warp status line replaced, UNMERGED on `workbench`)
+
+Three rulings stack on #686: *(OWNER RULING, 2026-09-09: "Warp line as you recommend." —
+replace, not remove)*; *(OWNER RULING, 2026-09-10: "All decisions as recommended." — ratifying
+option B, per-step wait only, no whole-leg total)*; *(OWNER RULING, 2026-09-11: "option A" on the
+held-at-real-time question — kept, not deleted)*. Touches `ui/app.js`, `ui/shell.css`,
+`test/verify_flags_ui.js`, `test/verify_e2e_ui.js`, `test/run_all.js`.
+
+### What `#warpInfo` renders now, per case
+
+- **A qualifying active step** (`hold >= 180`, `wait_hint !== false`, a checklist running and not
+  complete): "About N plant-minutes/-hours left at 1× — set the speed control to R×." — the same
+  fact and formatter (`cklWaitSpan`, `RD.CklSpeedHint`) the card's own `.ckl-wait` line uses, now
+  shared rather than duplicated.
+- **A non-qualifying step** (`hold < 180`, no checklist, `wait_hint === false`, or complete):
+  nothing — `el.hidden = true`, empty text. "Nothing on other steps" is the ruling's own words.
+- **The accumulator-held window** (`true_state.speed_hold` rising while `time_acceleration > 1`):
+  "Held at real time — the plant needs you here" — KEPT, unchanged (ruling 3). This is the only
+  `warpNote` reason `syncWarpInfo` still reads; the other five (scram/failure/alarm/transient/
+  warp_locked/step) are dropped, already toasted + flashed at the moment they fire (`syncSpeedUI`)
+  — #675 §E measured the longest rate-based refusal at 2.0 plant-seconds, nothing left to restate.
+- **After a rewind**: not stale by construction, not by a special case. The step-wait half is
+  recomputed from `s.instructor.checklist` on every broadcast with no latch at all; the held half
+  is cleared by the three existing `warpNote = null` sites (speed-button click, resume, rewind),
+  none of which this change touches.
+
+### Re-measured, not inherited
+
+The handoff plan counted 85 steps, 33 qualifying, "24 of 61" in the in-code comment. Re-measured
+on the BUILT object (`RD.MANUAL_PROCEDURES.pwr2`, per `test/run_style.js`'s own live backlog
+line — "0 of **88**"): **88 total steps, 34 qualify for `hold >= 180`**. Corrected the stale
+in-code comment while in the file (`ui/app.js`, the wait-line block). The issue body's
+"documented wrong ~20 times" claim about `hold` is also not literally supported: 3 of 3 measured
+spot-checks are wrong (#670 operator passes, not a count of 20) — the reasoning for option B
+survives the correction; the "~20" figure does not and is not repeated in the issue comment.
+
+### The rAF trap in the held-message proof
+
+The first cut of the held-message injection test read `#warpInfo` synchronously right after
+`svc._broadcast(...)` and got `text: "", hidden: true` even though the service-side stamp fired
+correctly (`accel` read back 1, confirming `_attentionStop` returned `'hold'`). `render()`
+schedules its DOM work on the next `requestAnimationFrame`, not synchronously, so reading the DOM
+in the same tick as the broadcast races the paint. Fixed by splitting the injection and the read
+into two `page.evaluate` calls with a `waitForTimeout(300)` between them, matching the pattern
+`testHeldSpeedClick`'s own `read()` already uses in the same file.
+
+### Guard checks added, both proven red by injection before landing
+
+- `test/verify_flags_ui.js`, two new checks on the SHIPPED pwr2 pool, each its own fresh
+  `?engine=pwr2` build: a qualifying step's `#warpInfo` names the same rung as the card's
+  `.ckl-wait`; a non-qualifying step prints nothing under the speed bar. Proven red by disabling
+  the qualifying branch (`if (false && st && ...)`, caught it) and by dropping the `hold >= 180`
+  gate to `>= 0` (caught the negative-case check).
+- `test/verify_e2e_ui.js`, one new assertion inside `testHeldSpeedClick`: plants ONE upstream
+  fact — `true_state.speed_hold` via a one-shot `assembleSnapshot` override — and runs it through
+  the REAL, unmodified `_assembleWithInstructor` -> `_attentionStop` -> `snap.metadata.speed_snap`
+  -> `_broadcast` -> `syncSpeedUI`/`syncWarpInfo` chain, never writing to the DOM directly. Proven
+  red by disabling the `warpNote.reason === 'hold'` branch.
+
+### Gates
+
+`verify_flags_ui.js` 50/50 -> **52/52** (BASELINES updated). `verify_e2e_ui.js` PASS, 4
+screenshots, score unchanged (+1 assertion, BASELINES comment updated). `run_checklist_pwr2.js`
+195/195 (unaffected — engine/service untouched). `run_checklist.js` 90/90, `run_style.js` 11/11,
+`verify_ckl_relevance.js` 21/21 — all unaffected, confirmed green.
+
+### Filed, not fixed (out of scope for #686)
+
+`resumeSim()` (`ui/app.js`, landed under #691) unconditionally clears `warpNote` on every
+play-from-pause, including while the plant is STILL within the accumulator-held window — so the
+persistent message can disappear on a pause/resume cycle even though the hold has not actually
+cleared. Pre-existing behavior (the code path is untouched by this change); filed as **#710**,
+cross-linked to the #675 umbrella, rather than folded into #686's scope.
+
+---
+
+## Session log — 2026-09-11-workbench-b (#698 / #700 / #705 — three ruled board changes, three commits, UNMERGED on `workbench`)
+
+Three independent, already-ruled board/manual changes built in one pass because all three touch
+`pwr_board_wiring.js` and `pwr_board_inspect.js`. Commits, oldest first: `eef4683e` (#698),
+`7b565649` (#700), `db4a5546` (#705). Nothing is merged into `develop`; the standing no-merge
+rule holds.
+
+### The trap: THE GENERATED BOARD FILE IS NOT THE PLACE THE BOARD IS EDITED — and the mechanism that replaces it is three maps deep
+
+The obvious way to remove a button, move a caption or add a tile is to edit
+`ui/diagram/board/pwr_board_data.js`, which is where those objects visibly live. Its own first
+line says **"GENERATED. Do not hand-edit."**, and the reason is not tidiness: the file is a
+re-export from the diagram builder, so a hand edit survives exactly until the owner next
+re-exports, and then vanishes with nothing red. The driver carries the three maps that make a
+board change survive that, and all three were used here:
+
+| want | mechanism | used by |
+|---|---|---|
+| delete an authored item | `DOC_REMOVE` | #698 (`bdBoronSample`) |
+| change an authored item's props | `DOC_PATCHES.items` | #700 (`ims3xtrobbq` text + fontSize), #705 (`ims3w19984s` text) |
+| add an item that is not in the export | `EXTRA_ITEMS` | #700 (`bdRhrCooldownRate`) |
+
+`run_inspect` already reads `DOC_REMOVE` out of the source to decide which items still need
+inspect copy, so a removal done this way is coherent end to end — and a removal done by hand
+edit would have left the inspect entry orphaned with nothing to notice. **`DOC_PATCHES` is ONE
+KEY PER ITEM ID**: `ims3w19984s` already had a `{ top: 672 }` entry from #630, so #705's text
+change had to be merged into it. A second key for the same id in an object literal silently
+wins and drops the first — the file warns about this at `bdOneOverM`, and it would have
+silently undone the #630 row re-layout.
+
+### #698 — the boron CHEM tile is live, the SAMPLE button is gone
+
+*(OWNER RULING, 2026-09-10: "All decisions as recommended." — a blanket ratification of five
+recommendations put to him as one table; the one this issue carried was option B.)* The tile
+`ims2jva1ff5` now reads
+`instruments.boron_analyzer` continuously instead of posting the lab's grab-sample result;
+`bdBoronSample` leaves the board via `DOC_REMOVE`; the engine command `take_boron_sample`
+**stays**, because `control_kernel.js` auto-issues it after every completed dose to re-baseline
+the totalizer.
+
+**Two inherited claims measured rather than repeated, and one of them was wrong.**
+
+- **The field name.** `pwr2_instruments.js:138` declares the channel as id **`boron`**
+  (src `boron_ppm`); `pwr_control.js` reads **`instruments.boron_analyzer`**. Two files, two
+  names, and a comment in `pwr2_shell.js:1411` asserting the second "has been live all along".
+  Measured on the booted plant: `getInstruments().boron` is **undefined**, `.boron_analyzer` is
+  **612.19** against a true **612.27** — the shell renames it on the way into the snapshot. The
+  comment was right; it was still worth 30 seconds, because the board would have read a
+  permanent dash if it had not been.
+- **The tracking figure, which the issue had at 0.8 ppm.** Re-measured on this tree, PWR2 at
+  full power, `set_boron_adjust` rate −0.05, diluting **88.4 ppm over 60 plant-minutes**:
+
+  | plant-minutes | true ppm | analyzer ppm | error |
+  |---|---|---|---|
+  | 10 | 596.60 | 598.10 | 1.498 |
+  | 20 | 581.32 | 582.25 | 0.933 |
+  | 30 | 566.41 | 567.12 | 0.718 |
+  | 40 | 551.87 | 553.24 | 1.371 |
+  | 50 | 537.70 | 538.75 | 1.053 |
+  | 60 | 523.86 | 525.06 | 1.199 |
+
+  **Max |analyzer − true| = 2.080 ppm** (at t = 3120 s), typical 1.0–1.5. Not 0.8. The lag term
+  accounts for it: the channel's time constant is 60 s and the dilution runs at 0.0246 ppm/s, so
+  the systematic trail is about 1.5 ppm and the rest is noise. **The inspect copy says "1 to
+  2 ppm", the measured band** — and it matters that it is measured, because `run_inspect` does
+  not gate numbers in inspect copy (see the gate note below). For contrast, the grab sample the
+  tile used to show was **88 ppm stale** at the end of that same hour.
+
+**The checklist step was DELETED, not reworded** — `pwr2:pwr_raise_power` step 3, "Press SAMPLE
+on the BORON card", graded `accs: [{ cmd: 'take_boron_sample' }]`. This is the #641 shape
+exactly: a command-kind check-off is only satisfiable while the plant still lets the player
+produce the command, and the control is gone. The leg goes **11 steps to 10**.
+`test/manual_ui_map.js` is **POSITIONAL** and already carries two notes saying so; its rows
+below the deleted step were moved up one by hand rather than re-derived.
+`run_manual_controls` 649 → 646.
+
+**Recorded as a DECLARED DEPARTURE, not as prototypicality** — `Manuals/12` row **§12.22**, and
+the pending Rev 19 row extended with item **(tt)** rather than a new revision opened. This
+reverses a dated decline (2026-09-03, #619 item 27) that was made *on a primary source*, and the
+source has not moved: Ginna UFSAR §7.7 (ML20339A027), *"There is no provision for a direct
+continuous visual display of primary coolant boron concentration."* What changed is the
+weighting, and the row says so in those words.
+
+**`run_manual_rev`'s content canary earned its keep.** The first draft of item (tt) cited
+"07 §7.5" for the boron controls. The section is **03 §7.5**; the gate named the row and the bad
+reference immediately. The same wrong pointer was also sitting in the new `Manuals/12` row,
+where **nothing** would have caught it — the canary only reads revision rows.
+
+**DELIBERATELY NOT DONE**, and the issue carries `status-owner-review` rather than
+`status-work-complete` because of it: the prose sites that still teach the sampling workflow
+(`Manuals/03` 444 / 448 / 463-466 / 1029 / 1146, `Manuals/04` 521, `Manuals/10` 43,
+`ui/diagram/board/WIRING_REFERENCE.md` 28 **and 107**). The owner asked to see the live readout
+before the expensive half runs. **Line 107 is not on the issue's own list of eight** and
+describes the button that was just removed, so the content pass is nine sites, not eight.
+
+### #700 — HX SPLIT, with a COOLDOWN RATE readout beside it
+
+*(OWNER RULING, 2026-09-10: "All decisions as recommended." — the same blanket ratification;
+the recommendation this issue carried was option A.)* The typed box keeps `set_rhr_hx`. The ruled name is
+**"COOLDOWN RATE / HX SPLIT"** and it ships as its **two halves, each attached to the thing it
+names**: the in-card caption becomes **`HX SPLIT`** (the lever) and a new readout
+**`bdRhrCooldownRate`** carries **`COOLDOWN RATE`** (the consequence), immediately beside it.
+The ruling's own words are "a live readout of `instruments.tavg_rate` **beside it** in °F/hr".
+
+One caption cannot hold both, and that is measured, not asserted. Intrinsic text width in
+authored units against the card's **80 px** column: `COOLDOWN RATE` is **126.7 / 118.5 / 110.4**
+at 14 / 13 / 12 px. Nothing carrying those words fits at a readable size.
+
+**The card was NOT made taller, and that is the load-bearing decision.** The board's bounding
+box ends at **y 785** and the stage scale derives from it, so growing a card downward shrinks
+**every tile on the board** — precisely the regression `DOC_REMOVE`'s `imrzmlyafa3` entry was
+written to undo. The readout went instead into the slot the ECCS card leaves by being 125 tall
+where its two neighbours are 175: **1155..1245 × 730..785**, swept at the pinned 1400×900
+against every rendered tile and found to contain nothing but the outer panel. Final placement
+**1155, 745, 90×45**, level with the number box (745..775).
+
+**Two numbers came back wrong from prediction and right from measurement**, which is the
+reusable part:
+
+- `HX SPLIT` at the authored 14 px **renders 81.3**, right edge **1151.3** — **1.3 px outside
+  the card border at 1150**. The prediction was ~70, from an intrinsic width (62.7) plus the
+  padding derived from `HX FLOW` (65.0 intrinsic → 72.2 rendered). **The intrinsic widths
+  under-predict**: the tile's real cost is ~10.16 px/char, so one extra character over `HX FLOW`
+  is the whole story. At **13 px** it renders 75.5 and ends at 1146.6. Nothing would have
+  failed — it would just have looked like a caption leaking out of its card.
+- The readout's height is **content-driven** (`nohgt`): authored 45, renders **31.7**.
+
+**The channel is live on the shipped plant** — checked rather than inherited from the retired
+engine: `instruments.tavg_rate` is present and non-null on PWR2 (5.65 °C/hr on a freshly booted
+hot plant still settling). It is the same channel `cooldown_rate_high` / `heatup_rate_high` act
+on at **±55.6 °C/hr = ±100 °F/hr**, so the player now watches the number the annunciator
+watches. On a plant holding temperature the readout wanders about **±3 °F/hr** — measured, and
+that is the derivative's noise floor, not the plant moving.
+
+**The unit is built in the VALUES function**, `uStr('tempd','F') + '/hr'`, not left to the
+authored `unit: 'F/hr'`. In US mode the authored string wins; **in SI mode the family table wins
+and would print a bare `C`**, losing the per-hour over a °C/hr number. `dTd`, not `dT` — a
+temperature RATE converts ×9/5 with **no** offset.
+
+**THE HALF THE SCOPING MISSED: the live checklists named the old label ten times.** `Manuals/`
+never quotes it (checked), which is what the scoping checked — but `ui/manual_procedures.js`
+told the player to "set HX FLOW to 7 %", "raise HX FLOW", "lower HX FLOW" and so on, ten times
+across the heatup and cooldown legs. **Nothing gates that string**: `run_manual_controls` checks
+a step's `control` field, which is `'Residual Heat Removal (RHR)'` and still resolves. Renaming
+the board and leaving them would have manufactured the #653 "I could not find it" defect on
+purpose. All ten now read `HX SPLIT`, and the three rate cautions point at `COOLDOWN RATE` — new
+information, since one of them read *"that is the only rate lever on this leg"* beside a plant
+that displayed no rate at all. `run_style` then caught the rewrite pushing one step's detail from
+three sentences to four against a cap of three; folded back, not exempted.
+
+Also fixed in passing, per the issue: the `NUM_SETTERS` comment cited `pwr_thermal.js:90-93`,
+**the retired engine**. The live term is `pwr2_rhr.js:321` —
+`duty = max(0, avail) × hx_fraction × UA × (Thot − ccw_temp_c)`.
+
+### #705 — INJ FLOW
+
+**No owner reply was given**, so this was built under the standing default: **option A**, the
+recommendation the issue itself carried, recorded explicitly rather than taken silently. Option
+B (a separate RHR flow indication) stays deferred to be designed with the sibling RHR card
+decision; option C (summing two systems onto one scale) stays refused.
+
+`ims3w19984s` goes **`FLOW` → `INJ FLOW`**. The fix is to the LABEL because the READING was
+never wrong: `hpi_flow` is emergency injection only, a cooldown injects nothing, so **0 GPM
+through the whole of Mode 4 and Mode 5 is honest**. What made it read as a dead instrument is
+that "FLOW" on the emergency core cooling card means "flow in this system" while the same pumps
+circulate the plant one card over. The wiring function is unchanged and now carries the reason:
+RHR circulation is a lineup **fraction** with no pump hydraulics behind it, so there is no
+gallons-per-minute figure to fold in, and putting one on `GPM_HPI`'s injection scale would
+render the plant's 1,000 gpm floor as roughly **324 gpm**.
+
+Fits at the authored 13 px: **renders 740..816.6** against the card edge at 825, **8.4 px
+clearance**. The rendered figure is quoted rather than the intrinsic one *because #700 was caught
+out doing the opposite in the same session* — arithmetic off the old `FLOW` tile's rendered rect
+(42.3 px for four characters, padding included) predicted 84.6 and a label flush on the border,
+wrong by 8 px in the direction that would have shipped. Confirmed by screenshot as well as by
+rect: it clears the `N GPM` reading below, which shares four pixels of **box** with every caption
+on that card (15 px row pitch, ~19 px line boxes) and has never shared a glyph.
+
+### Asked and answered: does `run_inspect` gate the NUMBERS in inspect copy?
+
+**No — and the runner says so itself.** The only numeric check in it is the one added by #701,
+whose own header is titled *"THE INSPECT PANEL'S PLANT NUMBERS ARE NOT GATED"*. It pins exactly
+one pair — the RHR block-open permissive and autoclosure setpoints on `ims3xf18pk8` and
+`ims3wg27iif` — and it DERIVES both from `RD.pwr2.rhr.RHR` rather than repeating them. The
+header also records why a general sweep was rejected: the obvious one (check that every
+"NNN psi (X.XX MPa)" pair converts correctly) would have **passed on the #701 defect**, because
+400 psi and 2.76 MPa are exactly each other. The pair was internally consistent and belonged to
+the wrong plant.
+
+What `run_inspect` does cover: every item has an entry; every control, component and indication
+has its OWN entry rather than the card's; no orphaned keys (it reads `DOC_REMOVE` to decide what
+is still on the board); no two entries sharing a brief or a detail; briefs ≤ 140 chars and
+punctuated; details ≥ 80 chars; every acronym expanded **in the entry that uses it**; no US unit
+token except after a number; and every `doc`/`sec` citation resolving against the packed manual.
+
+**So every figure written into inspect copy this session was measured first** — the boron band
+(1–2 ppm, max 2.08), the cooldown-rate limit (±100 °F/hr, read off the live alarm setpoint) and
+the rate channel's noise floor (±3 °F/hr).
+
+---
+
+## Session log — 2026-09-11-workbench-a (#685 / #693 / #692 / #653 — the combined checklist content sweep, four commits, UNMERGED on `workbench`)
+
+Four issues worked as one pass because they all rewrite the same 89 steps and interleaving them
+was cheaper than merging four passes over one artifact. Commits, oldest first: `feed32f9` (#685),
+`0bb8b19b` (#693), `29ca89e1` (#692), `8c93ae26` (#653), plus this close-out's BASELINES
+reconciliation. Nothing is merged into `develop`; the standing no-merge rule holds.
+
+### The trap: A STALE MEASUREMENT IN AN ISSUE BODY IS A TARGET YOU CAN HIT AND STILL BE WRONG
+
+#692 was filed against **85 steps and 2,907 player-facing words in TMI-2**. By the time it was
+worked, #693 had landed four hours earlier and the pool was **89 steps and 3,522 words** — the
+issue's own target had moved 21 % before anyone touched it. Worse, #692's headline rule (*"steps
+shouldn't be more than 2-3 sentences"*) was **already satisfied**: measured on the built pool,
+**0 of 85 step lines exceeded three sentences and the maximum was exactly 3**. A close that
+asserted the issue's stated rule would have changed nothing, gone green, and been defensible from
+the issue text alone.
+
+The load was in a cap nothing scored. **55 of 89 step lines were over the STYLE_GUIDE W2
+twenty-word cap**, and that number had been *printed* by `run_style` for months in its unscored
+BACKLOG block: 0 of 61 -> 8 of 67 -> 46 of 67 -> 55 of 89 across four authoring passes, while the
+guide's prose still claimed *"0 of 61 shipped step texts exceed 20 words"*. The runner's own
+comment argued that scoring a moving number teaches the next agent to update it without reading
+it. **The measurement refutes that here: an unscored count did not get read, it got inherited** —
+which is the CLAUDE.md standing trap about inherited claims, arriving through a gate's own output
+rather than through prose. `checklist_text_words` now scores it, 55 of 89 -> 0 of 89, proven red
+by injection (`run_style --self-test`, 11/11 CAN FAIL).
+
+**Re-measure the issue's own numbers on the tree you are standing on before you adopt its target.**
+
+### #685 — `hl_watch`, and the four steps that highlighted nothing
+
+`hl` was one flat list drawn identically for the control you press and the gauge you watch
+*(OWNER, 2026-09-09, #675 section B: "Each step should highlight the important indications to
+watch with a non pulsing green glow.")*. `hl_watch` is a sibling list in the same board
+vocabulary; `hl` keeps the pulse (#607 item 3's ruling, untouched) and `hl_watch` draws
+`.ckl-watch-glow`.
+
+**The treatments differ by GEOMETRY, not only by motion** — a dashed offset ring with a quarter
+the halo spread, not the same ring with the animation removed. DESIGN_CRITERIA question 4 is a
+veto and two rings in one hue on a board of 50+ elements, separated only by whether they animate,
+do not pass it.
+
+Four steps resolved to no board element at all (`pwr_heatup` 17, `pwr_tmi2_incident` 9/12/13 —
+each a "verify an indication" step, three of them the most important observations in the TMI-2
+leg): **4 -> 0**. `Reactor Power` joined `CONTROL_LABEL_MAP`; the power-range meter's only name
+lived in the inspect map, the same vocabulary hole as the two vital tiles #670 added.
+
+**`verify_e2e_ui`'s `testWatchGlowRendered` is the DARK-WIRE proof** and is the check to keep:
+`applyCklWatchGlow` has exactly one caller, in a render path no Node harness enters. It asserts
+the painted EFFECT on real content — 3 authored watch labels, 3 `.ckl-watch-glow` painted, **0**
+pulsing `.ckl-step-glow`. The negative half is load-bearing: drop it and the check passes on a
+renderer that draws one treatment for both lists.
+
+### #693 — the TMI-2 cascade, and a 21-second cliff a narrated chain cannot afford
+
+Step 2 fired four failures in one broadcast under text that only verified the aftermath; its own
+note admitted *"you have missed it"*. The leg goes 16 steps -> 20, one event per step on the
+sourced clock (polisher 04:00:36 narrated · feed pumps 04:00:37 **PAUSE** · turbine 04:00:37 ·
+auxiliary feed 04:00:37 · relief valve 04:00:40 **PAUSE**). First real content use of the #694
+pause runtime.
+
+**TWO DEVIATIONS FROM THE ISSUE'S OWN TABLE, both forced by measurement, neither needing a ruling.**
+
+1. **`drivers.porv_stick` is an ARM, not a force**, so the step that NARRATES the stuck valve
+   cannot be the step that arms it. Swept full-stack at nine arming times after the feed loss:
+   **0 / 8 / 13 / 16 / 20 / 21 s all latch** and give the accident (pressurizer pegged 196-203 s,
+   1045 psia at 5 min); **22 / 23 / 24 / 25 s NEVER latch** and the plant sits at 1989 psia with
+   level 41.5 %. **The cliff is between 21 and 22 seconds.** One tick at 600x is 60 sim-seconds, so
+   a chain the player paces cannot spend a 21-second budget on narration. The arming rides with the
+   initiating event; only the LAMP failure, which is timing-insensitive, lands on the valve's own
+   beat — which is also the more faithful reading, since at TMI-2 the lamp read honestly until the
+   solenoid dropped out at 13 s. Auxiliary feed is the opposite case and was measured the same way
+   (armed at 14/22/30/40/45/60/120/200 s the accident is unchanged), so it sits on its own step.
+2. **Auxiliary feed comes BEFORE the relief valve.** The issue's ordering ran the story clock
+   backwards (step 6 at 04:00:52 -> step 7 at 04:00:45, the reactor trip). `run_checklist_pwr2`'s
+   monotonic-clock check — written for the #670 defect — caught it on the first build of the split.
+
+**The pause is proven on this content, not on #694's synthetic fixture.** Driven through the live
+instructor runtime on PWR2 at 600x, continuing each step the way `ui/app.js` does: step 3 paused
+at sim_time 660.00, `svc.running=false`, `tick() -> null`, and 30 further attempted broadcasts
+moved the clock 660.00 -> 660.00 (running, they would have added 1800 s); step 6 the same at
+1140.00. Steps 1, 2, 4, 5, 7 completed on acceptance or dwell with **no** pause — the control that
+says the pause happens only where it is authored. The accident still holds at that speed: PORV
+stuck open, pressurizer level 100 %, 1036 psia at step 8.
+
+**THE HEADLESS NUMBER ABOVE HIDES A LOAD-BEARING RUNTIME, AND THE HARNESS DEFAULT IS THE TRAP.**
+Those figures were taken with `attentionStops` at the harness default of **`false`**, where one
+tick at 600x is 60 sim-seconds — so the pause lands a full sim-MINUTE after the event, and the
+player misses the pressure spike the step promises. Re-measured at the PLAYER's real default
+(`attentionStops` on), **injecting a failure trips the fast-forward dropout to 1x**, so the pause
+lands about **0.1 sim-seconds** after the event:
+
+```
+STEP 3 PAUSED at sim_time 432.30 | injected [loss_of_feedwater, stuck_porv_open] | accel 1 | P 2244 psia
+STEP 6 PAUSED at sim_time 462.94 | injected [porv_indicator_stuck_closed]        | accel 1 | P 2141 psia
+```
+
+2244 psia (15.47 MPa) is BEFORE the spike — the design point — so the player presses Continue and
+watches pressure climb to about 2340 psia (16.13 MPa) and fall back at 1x, which is what the step
+text says will happen. **No code change was needed, and the point of recording it is that a future
+agent must not propose disabling attention-stops for walkthroughs without knowing it breaks this.**
+Same shape as the standing "headless gates lose sim time" trap, inverted: there the dropout was the
+defect, here it is the feature, and the harness default is what hides it either way.
+
+**No `pause` on the polisher step, and that is a runtime fact.** `_stepChecklist` requests the
+pause only when something in the step's `inject`/`clear` NEWLY fires, so `pause: true` on a step
+that injects nothing is a dead field that reads as authored — the exact shape of the dark wires
+CLAUDE.md's standing list warns about.
+
+`test/manual_ui_map.js`'s STEP_UI rows all MOVED +4. **That table is POSITIONAL and re-deriving it
+is how it has been broken four times**; none of the five new steps carries a `control`, so no
+coverage row was added or lost.
+
+### #692 — what the wordiness pass actually moved
+
+Measured on the built pool at each commit with one field set (`text`, `note`, `why`, `target`,
+`wait_hint`, `story.{clock,saw,knew,did}`, `overtaken.text`, `accs[].label`):
+
+| | pre-sweep (`feed32f9~1`) | after #693 | after #692 | at this tip |
+|---|---|---|---|---|
+| TMI-2 steps | 16 | 20 | 20 | 20 |
+| TMI-2 player-facing words | 3,048 | 3,522 | 2,594 | **2,623** |
+| TMI-2 words per step | 190 | 176 | 130 | **131** |
+| whole pool, steps | 85 | 89 | 89 | 89 |
+| whole pool, words | 11,001 | 11,475 | 10,442 | **10,395** |
+| step lines over the 20-word cap | 55 of 89 (at #693's tip) | | | **0 of 89** |
+| `why` blocks over 3 sentences | 7 of 89 | | | **0 of 89** |
+
+(The +29 words between #692 and this tip are #653's term definitions — RHR, AFW, PORV, MED and the
+overtemperature trip spelled out at first visible use. The prior agent's own figures, 3,545 ->
+2,617, differ from these by ~0.8 % because the field set differs slightly; the DELTA agrees to
+0.4 points.)
+
+**`checklist_why_length` goes 4 -> 3.** It had been set one rung looser than the rule it enforces,
+with a comment saying so on purpose. The owner has stated 2-3 twice (#619 item 12 and the
+2026-09-09 sheet). Seven blocks sat in the gap.
+
+**Words and sentences are different checks and that is the point** — a 58-word instruction can be
+three sentences, and `pwr_heatup` step 10 was exactly that. The word cap governs the line; the
+sentence cap governs the details paragraph.
+
+**Nothing moved into a field the player cannot see.** Displaced clauses went to `note` and
+`target`, never `why`. No `acc`, `accs`, `cmd`, `hold`, `ramp`, `saw`, `past`, `precond` or `guard`
+was touched anywhere in the change, so the replay drives the identical plant — which is why
+`run_checklist_pwr2` did not move across #692 or #653.
+
+**The cooldown step the owner named** (`pwr_cooldown` step 4) loses its cooldown-rate coaching
+entire — the 50 degF-a-minute figure, the 85 degF/hr the authored walk runs at, and the Cooldown
+Rate High alarm. **The TRAP stays**, because it is a measured gameplay failure and not a rate
+lesson: the 2026-09-07 pass-2 playtest typed 380 psi in as one step and emptied the pressurizer.
+
+### #653 — the readability backlog, and the defect nothing but the rendered panel could see
+
+**The leg's cautions never reached the player running the leg.** `pr.cautions` rendered in exactly
+one place, `mProcCard` — the Manual tab's BROWSE card. From the moment a walkthrough started,
+every caution on it was on a different screen. Both fresh-context reviews (2026-09-06) reported
+the consequence and not the cause, and filed the strings as MISSING: the heatup's only heatup-rate
+instruction, the startup's *"never pull the rods straight to the position the 1/M plot predicts"*,
+the cooldown's accumulator window and spray limit. It is also where the startup leg DEFINES pcm,
+which the layman review listed as undefined at first use. **The definitions existed and were
+unreachable.** Now a collapsible amber block at the head of the panel, open before the leg starts
+moving, count always visible.
+
+**A done-when was arithmetic**: *"AVG COOLANT TEMPERATURE within 14 degF of 547 degF"*, in the
+narrowest column on the page, on a question that is a RANGE. It prints the ends now — **532 to
+561 degF**. The tolerance-is-a-difference trap is applied one step earlier, to the ENDPOINTS:
+value +/- tolerance is computed in the predicate's own units and each end then converts
+absolutely, so no lone difference survives for the +32 offset to attach to. (The old bug would
+have to print "501 to 593 degF" under this form — visibly a different claim, which is why
+`verify_ckl_relevance` pins the endpoints rather than the band.)
+
+**Contrast**: `note` and `why` were two near-identical greys; the `why` is a labelled tinted block
+now (closes #687 item 4). The wait hint wore `var(--caution)`, the board's amber for "abnormal",
+so on a step whose note carries the plant's own limit the LOUDEST line on the card was the advice
+about which speed button to press — both reviewers read the orange as the warning and the grey as
+the footnote, exactly backwards.
+
+**`plant_mode` now prints the live mode beside its target** — *"When Plant in Mode 3, Hot Standby
+— the plant reads Mode 5, Cold Shutdown (true value)"*. Declared as a TRUE value under Hard Rule 1
+(instruments vs truth): there is no mode transmitter, and the mode is inferred from temperature,
+pressure and power, each of which does have a gauge. **Only `plant_mode`** — every other predicate
+names a tile the player can read, and printing live values beside all of them would make the
+criteria a second set of gauges.
+
+**One filed item is a RULING, not a defect.** "Done-when only drawn on the active step" is
+superseded by #660 item 15 (one step at a time), which draws no other step at all. Not reversed
+here; the fix available INSIDE the ruling is to name the coming window in the previous step's
+`note`, which the heatup's Pressure SP step now does for the accumulator window.
+
+**FILED, NOT BUILT: #709** — the walkthroughs do not react to a reactor trip (the reviews' S-15).
+Runtime/control behaviour, not prose or rendering, so out of scope for a content pass; three
+options and a recommendation are on the issue. Distinct from #667 and #664, which are both the
+turbine: a reactor trip has a different recovery and can land on the heatup or the cooldown, where
+the turbine is not in the picture.
+
+### Highlight coverage across the whole sweep
+
+| | pre-sweep | at this tip |
+|---|---|---|
+| steps carrying `hl` ("press this") | 81 of 85 | 64 of 89 |
+| steps carrying `hl_watch` ("watch this") | 0 | **56 of 89** |
+| steps carrying both | 0 | 32 |
+| steps carrying neither | **4** | 1 |
+
+`hl` FELL because #692 moved the pulsing "press this" ring off gauges it was pointing at — four
+verification steps that press nothing, and the TMI-2 reactor-trip step that was pointing at the
+SCRAM button on a step which only asks you to READ reactor power. The one step carrying neither is
+the polisher narration, deliberate and stated in its own `note`: the condensate polisher is not on
+this board in any form.
+
+### Gates and BASELINES
+
+Six runners moved across the four commits. Three were recorded by the authoring agents
+(`run_glow_stacking` 18 -> 20, `run_checklist_pwr2` 194 -> 195, `run_hardrules` 523 -> 524) and
+three were left to this close-out, as their own commit messages said:
+
+| runner | old | new | why |
+|---|---|---|---|
+| `run_glow_stacking` | 18 | 20 | `.ckl-watch-glow` exists and is z-index-pinned (#685) |
+| `run_manual_controls` | 593 | **649** | +8 `hl_watch` label checks (#685), +4 net from the cascade split (#693), +44 from the authoring pass (#692/#653). The count IS the label count |
+| `run_checklist_pwr2` | 194 | 195 | the pressure-spike `saw` the lump step could not assert (#693) |
+| `run_hardrules` | 523 | 524 | Manuals/08 §6.0's polisher row records that narrating it was RULED (#693) |
+| `run_style` | 10 | **11** | `checklist_text_words`, the W2 cap scored (#692) |
+| `verify_ckl_relevance` | 18 | **21** | cautions drawn, cautions openable, `why` label (#653) |
+
+`run_manual_controls` is the one to watch: **its score is a LABEL COUNT, not a check count** — no
+check function was added or removed after #685's, so the number moves whenever the pool's
+highlight authoring moves. A future authoring pass will redden it with no code change at all.
+
+`run_ops` remains the one tracked red at **59/70**, ruled and accepted; nothing here touches it.
+
+---
+
 ## Session log — 2026-09-11-develop-a (#704 — the full-power design point booted on the rod stop)
 
 ### The trap: A CONSTRUCTION THAT RE-SOLVES AROUND A PARAMETER HAS NO OPINION ABOUT ITS VALUE, AND NO GATE CAN SUPPLY ONE

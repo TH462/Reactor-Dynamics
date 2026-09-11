@@ -103,12 +103,33 @@ Object.keys(RD.MANUAL_PROCEDURES).forEach(function (prof) {
   ['pwr', 'pwr2'].forEach(function (prof) {
     (RD.MANUAL_PROCEDURES[prof] || []).forEach(function (proc) {
       (proc.steps || []).forEach(function (st, idx) {
-        if (!st.hl || !st.hl.length) return;
-        st.hl.forEach(function (lab) {
-          ck(prof + ' · ' + proc.id + ' step ' + (idx + 1) + ' hl',
+        var where = prof + ' · ' + proc.id + ' step ' + (idx + 1);
+        (st.hl || []).forEach(function (lab) {
+          ck(where + ' hl',
              known[lab] === true,
              '"' + lab + '" is not in the board highlight vocabulary — this step glows nothing');
         });
+        /* THE SECOND LIST IS CHECKED THE SAME WAY OR IT IS NOT CHECKED AT ALL (#685).
+         * `hl_watch` is "watch this indication" to `hl`'s "press this control" and it resolves
+         * through the SAME `revealControl` lookup, so it fails the same silent way: a label the
+         * board does not carry glows nothing and looks exactly like a step that asked for no
+         * watch target. A new field with no gate is how the twelve dead `hl` labels in #598
+         * item 14 survived. */
+        (st.hl_watch || []).forEach(function (lab) {
+          ck(where + ' hl_watch',
+             known[lab] === true,
+             '"' + lab + '" is not in the board highlight vocabulary — this step watches nothing');
+        });
+        /* ONE LABEL, ONE TREATMENT. A label in both lists resolves to ONE board element, which
+         * can only wear one ring — so the author has asked for a pulse and a steady dash on the
+         * same thing and will get whichever the renderer applies last. It is an authoring
+         * defect, not a rendering one, and nothing else can see it. */
+        if (st.hl && st.hl.length && st.hl_watch && st.hl_watch.length) {
+          var both = st.hl.filter(function (l) { return st.hl_watch.indexOf(l) >= 0; });
+          ck(where + ' hl/hl_watch are disjoint', both.length === 0,
+             '"' + both.join('", "') + '" is in BOTH lists — one element cannot be both the ' +
+             'control to press and the indication to watch');
+        }
       });
     });
   });

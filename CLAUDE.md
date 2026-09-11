@@ -26,7 +26,9 @@ docs.
 > victory lap after a green gate. **Keep**: measurements, deltas, what broke and why, and
 > anything that changes what he does next. Detail belongs in the commit message, the issue or
 > `Diagnostic/TUNING_LOG.md` — the reply is not where the record lives. The two delimited blocks
-> below are already bounded; this does not shrink them further.
+> below are already bounded; this does not shrink them further. **Be token efficient — but never
+> at the cost of quality** *(OWNER DIRECTIVE, 2026-09-11: "Be token efficient but do not sacrifice
+> quality in any way")*.
 >
 > **The shape** *(OWNER RULING, 2026-08-06: "Go with your recommendation." — given after
 > "Should we add word limits? Wouldn't it hamstring you sometimes?", on the recommendation that
@@ -350,8 +352,6 @@ that were closed. **Run the query.**
   event ribbon; `ui/test_panel/lane_reference.html` is the golden artifact and measures itself —
   **change it first, re-measure, then port**. Open: **#441** (needs the rung authoring pass),
   and **#446** (deferred by ruling).
-- **Two OWNER actions are still owed on the finished Cloudflare migration**: delete the Vercel
-  project, revoke its token.
 - **#479 PWR2** — Layers 0–5 + core damage + protection + **the pressurizer through stage 2c**
   (ruled 2026-08-18 "Option 1") — **MERGED INTO `develop` 2026-08-21** *(OWNER DIRECTIVE,
   2026-08-21: "Full merge and push. Don't publish to main yet.")* — merge `b4122a7`, 86 runners
@@ -383,14 +383,8 @@ that were closed. **Run the query.**
   working features. **Grep every consumer.**
   **The work is in `PWR2_VALIDATION.md` §95–§107 — read the sections, not this line.** Measured
   2026-08-28: eight of the issues it called CLOSED were still open.
-- **#573/#473, #574 and #583 (2026-08-28, §108–§110).** The heaters lose authority over a 5–15 %
-  TRUE level band; every ring node carries its own metal wall (**39,128 kJ/K, 49 % of the fluid**)
-  — `wallLumps` had shipped with zero consumers. And the pressurizer is **no longer in the ledger
-  twice**: RCS mass fell **13.5 % to 36,016 lbm**, the design point moved 0.1 psi. Since: the WALL
-  is **#587** (§113, owner review); **#584/#585/#582/#586 closed 2026-08-29** (§114–118). **#586
-  ended in a Layer-0 change**: the vapour ceiling was `THigh=800` in a fetch URL and is now
-  **1000 °C, IAPWS-95's own limit**, fits REFITTED — the chain now runs to the 2200 °F damage
-  latch inside the envelope.
+- **#587 is open** (owner review) — the metal-wall coupling found by #573/#473, #574 and #583,
+  all closed; findings in `Blueprint/PWR2_VALIDATION.md` §108–110.
 - **#579/#580/#577/#575/#500/#576c (2026-08-29, §119).** The retired plant's rates reached the
   PUBLIC manual (60/30/100 gpm against a derived **30.1/12.7/86.2**, boron "2 ppm/s" against
   **0.047**); Break Size promised a pipe shear and opens **0.75 %** of one; the

@@ -156,7 +156,7 @@ fit the action goes in the field beside it.
 
 | Field | Cap | Where the expansion goes |
 |---|---|---|
-| checklist `text` | 20 words | `why`, or `target` if it is part of the value |
+| checklist `text` | 20 words (gated) | `note`, or `target` if it is part of the value |
 | checklist `control` | must match the board | nowhere — this field **is** the screen's name, verbatim |
 | System Scanner `brief` | 140 characters | `detail` |
 | board nameplate | 2–11 characters on a button | the Scanner popover, or the manual |
@@ -275,10 +275,12 @@ anyway.
 - **W1** One instruction per sentence. Two actions means two steps. *(P only.)* **[JUDGEMENT]**
 - **W2** **P: 20 words maximum, and it applies to `step.text` only** — not to `why`,
   `note`, `wait_hint` or `precond.text`, which are R. R: 25 words as a target, not a cap;
-  92 of 92 System Scanner `detail` strings exceed it by design. **[REPORTED]** — `run_style`
-  prints the count and does not score it. *Current state: **0 of 61** shipped step texts
-  exceed 20 words after the 2026-09-03 rewrite of the PWR2 pool (it stood at 48 of 61,
-  longest 73, that morning). Read the runner's backlog line, not this sentence.*
+  92 of 92 System Scanner `detail` strings exceed it by design. **[GATEABLE]** — scored by
+  `run_style` as `checklist_text_words` since #692 (2026-09-11). *It was **[REPORTED]** until
+  then, and this paragraph is why it stopped being: the sentence here read "**0 of 61** shipped
+  step texts exceed 20 words" for eight days after the count had gone to 46, then 54, then 55 of
+  89. An unscored count printed under a green run is not read; it is inherited. **Do not write
+  the current count here again** — run the gate.*
 - **W3** One topic per paragraph. **[JUDGEMENT]**
 - **W4** Active voice in P. In R and C, active unless the actor is genuinely unknown.
   **[JUDGEMENT]**

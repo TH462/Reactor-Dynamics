@@ -590,8 +590,7 @@
   // Buttons that press an AUTOMATION CHANNEL by id — disabled when the running engine's
   // kernel carries no such channel (#506: the boron panel and rod AUTO on PWR2, whose
   // channels list is empty). Keyed off the snapshot, like every disable here.
-  var CHANNEL_BUTTONS = { imrqp6com2b: 'boron_conc', imrqp6avzkw: 'boron_conc',
-                          bdBoronSample: 'boron_conc' };
+  var CHANNEL_BUTTONS = { imrqp6com2b: 'boron_conc', imrqp6avzkw: 'boron_conc' };
   // Controls whose machinery is declared by a control_state field's PRESENCE: absent field =
   // the running engine has no such system (pwr always publishes these; #506).
   var RHR_BUTTONS = { ims3wg27iif: 1, ims3xfeye1q: 1 };
@@ -814,11 +813,15 @@
     //     flux); the engine ignores a blocked switch, so active() reflects the true state
     //     either way. Lit = energized/monitoring. Secure it during the SR→IR handoff to
     //     clear the 1e5 cps high-flux trip (pwr_control 'sr_high') before it scrams the ascent. ---
-    // --- Boron grab sample (batch-dose rework): draws an RCS sample; the lab posts the
-    //     authoritative ppm after the turnaround (instruments.boron_sample/_pending).
-    //     Lit while the lab is working. Doses auto-sample on completion; this button is
-    //     for when the books may be stale (post-ECCS, freehand Bor/Dil). ---
-    bdBoronSample: { press: function () { cmd({ action: 'take_boron_sample' }); }, active: function (s) { return !!IN(s).boron_sample_pending; } }
+    // --- The boron grab-sample button was REMOVED from the board 2026-09-11, #698
+    //     *(OWNER RULING, 2026-09-10, option B)*. The CHEM readout below it (ims2jva1ff5) is
+    //     now a LIVE continuous reading off `boron_analyzer` rather than a lab result, so a
+    //     control whose only job was to ask for a number the tile already shows is a
+    //     DESIGN_CRITERIA question-4 orphan. The tile goes via DOC_REMOVE, not from here.
+    //
+    //     THE ENGINE COMMAND `take_boron_sample` STAYS AND IS NOT ORPHANED: control_kernel.js
+    //     auto-issues it after every completed dose to re-baseline the totalizer, so deleting
+    //     the action would break the dose re-anchor. Remove the button, not the action. ---
   };
 
   // Driver-supplied tiles NOT in the generated board_data.js. EMPTY as of the V2 diagram
@@ -1096,7 +1099,44 @@
       name: 'Letdown status: ISOLATED on the 17 % pressurizer low-level cut  ·  sim: control_state.letdown_isolated',
       // rAnchor, so `left` is the RIGHT edge: card right (1435) minus 5. `top` is the card's
       // new bottom (780) minus 25, i.e. the band the height patch below adds.
-      left: 1430, top: 755, value: '—', color: '#5aad7c', fontSize: 12, rAnchor: true }
+      left: 1430, top: 755, value: '—', color: '#5aad7c', fontSize: 12, rAnchor: true },
+    /* THE RESIDUAL HEAT REMOVAL COOLDOWN RATE *(OWNER RULING, 2026-09-10, option A, #700:
+     * relabel the typed box and put "a live readout of instruments.tavg_rate beside it in
+     * °F/hr", so the player sees the CONSEQUENCE of the number they type)*. The complaint the
+     * ruling answers is that the HX SPLIT box "reads as a raw percentage with no visible
+     * effect" — this is the visible effect.
+     *
+     * A `readout`, not a text+value pair, because it sits in the outer ECCS panel rather than
+     * inside a card: the kind travels its caption and its reading as ONE item, so the two
+     * cannot drift apart, and it needs no parent card to hang a caption on.
+     *
+     * GEOMETRY, MEASURED, not computed from authored coordinates. The slot is 1155..1245 x
+     * 730..785 — bounded above by the ECCS card (imrzpfd4qox, which is 125 tall where its two
+     * neighbours are 175, and that shortfall IS the slot), left by the RHR card's right edge at
+     * 1150, right by CHARGING at 1250, below by the outer panel's own bottom at 785. Swept at
+     * the pinned 1400x900 against every rendered tile: the only thing overlapping that band is
+     * the outer panel itself. 1155,735 at 90x45 therefore lands its bottom on 780, flush with
+     * the RHR and CHARGING cards beside it, with the panel's 5 px margin below.
+     *
+     * IT IS BESIDE THE CARD AND NOT IN IT BECAUSE THE CARD HAS NO ROOM AND CANNOT BE GIVEN
+     * ANY. Inside, the band under the number box is 775..780. Growing the card downward is the
+     * move that looks obvious and is wrong: the board's bounding box ends at 785 and the stage
+     * scale derives from it, so a taller card shrinks every tile on the board — the regression
+     * DOC_REMOVE's `imrzmlyafa3` entry exists to undo.
+     *
+     * `labelSize: 10` is measured too, and is the reason the full ruled words fit: at 11 px
+     * "COOLDOWN RATE" renders 89.7 in a 90 px tile, which is flush with the border; at 10 px it
+     * is 81.6, with 8 px to spare. The reading stays at 15 px so the NUMBER is not shrunk to
+     * pay for the caption.
+     *
+     * THE UNIT IS RETURNED BY THE VALUES FUNCTION, not left to this authored string, because
+     * "/hr" has to survive the SI toggle — see the note there. The authored value is what the
+     * first paint shows before the first snapshot arrives. */
+    { id: 'bdRhrCooldownRate', kind: 'readout',
+      name: 'Heatup / cooldown rate  ·  sim: instruments.tavg_rate (indicated Tavg, differentiated and damped), °C/hr in',
+      left: 1155, top: 745, width: 90, height: 45,
+      label: 'COOLDOWN RATE', labelSize: 10, value: '0', unit: 'F/hr',
+      color: '#9fb3c4', fontSize: 15 }
   ];
 
   // ================================================================ NUMBERS (editable)
@@ -1151,11 +1191,20 @@
     /* the AUX FEED THROTTLE setter went with its tile (#591 item 2) — see EXTRA_ITEMS */
     /* the PZR AUX SPRAY setter went with its tile (owner direction 2026-08-31) — the
      * `set_aux_spray` engine door stays, see the EXTRA_ITEMS note. */
-    // RHR heat-exchanger flow split, % — the cooldown-RATE knob (Q_rhr scales with it,
-    // pwr_thermal.js:90-93). Deliberately NOT an alignment command: the control layer
-    // excludes set_rhr_hx from the 'rhr' ESF arm's disarming command list, so trimming
-    // the rate does not drop the auto-alignment (pwr_control.js:556-558). numberAuto()
-    // therefore leaves this box editable even while RHR AUTO is lit.
+    /* RHR heat-exchanger flow split, % — the cooldown-RATE knob, captioned HX SPLIT on the
+     * board since #700 with the COOLDOWN RATE readout (`bdRhrCooldownRate`, EXTRA_ITEMS)
+     * beside it, so the consequence of what is typed here is visible on the same panel.
+     *
+     * THE CITATION HERE WAS THE RETIRED ENGINE'S (#700). It read `pwr_thermal.js:90-93`. The
+     * live term is `pwr2_rhr.js:321`:
+     *     duty = max(0, avail) x hx_fraction x UA x (Thot - ccw_temp_c)
+     * — so the split scales the duty linearly, which is why the box is a rate knob at all, and
+     * why 100 % onto a hot plant is a shock rather than a setting.
+     *
+     * Deliberately NOT an alignment command: the control layer excludes set_rhr_hx from the
+     * 'rhr' Engineered Safety Feature arm's disarming command list, so trimming the rate does
+     * not drop the auto-alignment (pwr_control.js). numberAuto() therefore leaves this box
+     * editable even while RHR AUTO is lit. */
     ims3xu86zm5: { set: function (v) { cmd({ action: 'set_rhr_hx', pct: v }); }, get: function (s) { var f = CS(s).rhr_hx_fraction; return f == null ? 100 : f * 100; } },
     // Circulating-water inlet temperature. Sits next to the COND VAC readout because vacuum
     // is the variable it moves: raise the water temperature and the condenser can only pull
@@ -1183,6 +1232,15 @@
     // --- ECCS (merged HPI/LPI): ONE pump on a dedicated RWST-sourced train (owner ruling
     //     2026-07-22, pwr_primary.js:56-60) — NOT the charging pump doing double duty, which
     //     is what justifies the two systems reading on different flow scales. ---
+    /* ECCS INJECTION flow, captioned INJ FLOW on the board since #705. THIS FUNCTION IS
+     * CORRECT AND IS DELIBERATELY UNCHANGED: `hpi_flow` is emergency injection only
+     * (pwr2_true_state), so a shutdown cooldown reads 0 GPM for the whole of Mode 4 and
+     * Mode 5 — not a dead channel, an honest zero. Measured with RHR aligned at a 25 % split:
+     * rhr_active true, eccs_mode 'rhr', rhr_running true, hpi_flow 0.
+     * Do not "fix" this by folding Residual Heat Removal circulation into it: that flow is a
+     * lineup FRACTION with no pump hydraulics behind it, so it has no gallons-per-minute
+     * figure to fold, and putting one here on GPM_HPI's injection scale would render the
+     * plant's 1,000 gpm floor as roughly 324 gpm — a number meaning nothing on either side. */
     ims3w1cb6jc: function (s) { return dQ((IN(s).hpi_flow || 0) * GPM_HPI); },   // ECCS flow (true hpi_flow)
     ims3w1lj7n6: function (s) { return dP(IN(s).hpi_discharge_pressure || 0); },  // ECCS discharge (true pump head)
     // Which alignment that one pump is in: RHR when the hot-leg suction valve is open, else
@@ -1370,13 +1428,53 @@
     // ADV position (#371). No VALUE_UNIT entry — % is unit-neutral, and a conversion
     // layer that touched it would be worse than none (board_check pins that).
     bdAdvPct: function (s) { return r0(IN(s).adv_valve); },
-    // Boron chem sample (lab result). The V1 item carried no unit so the text baked one in;
-    // the V2 item is authored with unit 'ppm', which rendered "734 PPM ppm". Return the
-    // unit explicitly instead: 'ppm' with a number, blank for the non-numeric states, so
-    // "SAMPLING…" and "—" don't get a stray unit hung off them either.
+    /* RHR COOLDOWN RATE (#700). `tavg_rate` is the indicated Tavg differentiated and damped
+     * (engines/pwr/pwr_instruments.js), published in °C/hr, and it is the SAME channel the
+     * `cooldown_rate_high` / `heatup_rate_high` alarms act on at ±55.6 °C/hr — so the player
+     * now watches the number the annunciator is watching, which nothing on the board showed.
+     *
+     * MEASURED live on PWR2 rather than assumed from the retired plant: the channel is present
+     * and non-null on the shipped engine (5.65 °C/hr on a freshly booted hot plant still
+     * settling). On a plant holding temperature it wanders about ±3 °F/hr — it is a derivative,
+     * so that band is its noise floor and not the plant moving.
+     *
+     * `dTd`, NOT `dT` — a RATE of temperature converts x9/5 with NO 32° offset (the `tempd`
+     * family). Getting this wrong would print a cooling plant as heating.
+     *
+     * THE UNIT IS BUILT HERE rather than left to the item's authored `unit: 'F/hr'`, and the
+     * reason is the SI toggle: `uStr` returns the family's unit for the active mode ('F' in US,
+     * 'C' in SI) and the '/hr' is appended to whichever it is. Left to the authored string the
+     * tile would print "C" in SI mode and lose the per-hour entirely, or print "F/hr" over a
+     * °C/hr number. Same idiom as ui/app.js's own series formatter for this channel. */
+    bdRhrCooldownRate: function (s) {
+      var v = IN(s).tavg_rate;
+      if (v == null) return { text: '—', unit: '' };
+      return { text: dTd(v), unit: uStr('tempd', 'F') + '/hr' };
+    },
+    /* Boron chemistry — a LIVE CONTINUOUS READING since 2026-09-11 *(OWNER RULING,
+     * 2026-09-10, option B, #698)*, where it used to print the lab's grab-sample result
+     * (`boron_sample` / `SAMPLING…` while `boron_sample_pending`).
+     *
+     * IT READS THE CHANNEL THE DOSE CONTROLLER ALREADY TRUSTS, which is what makes this a
+     * display change and not a new instrument: `instruments.boron_analyzer` is the
+     * `boron_conc` channel's process variable and its setpoint-capture source
+     * (pwr_control.js), and it has been published all along with `pvDisplay:false` keeping it
+     * off the Automate tab. MEASURED on this tree, PWR2 at full power diluting 88.4 ppm over
+     * 60 plant-minutes: max |analyzer − true| = 2.08 ppm, typically 1.0–1.5 ppm, against the
+     * 88 ppm the grab sample was stale by at the end of the same hour.
+     *
+     * THE FIELD NAME IS `boron_analyzer`, NOT `boron`, and that is worth stating because
+     * pwr2_instruments declares the channel as id `boron` (src `boron_ppm`) — the shell
+     * renames it on the way into the snapshot. MEASURED rather than read off either file:
+     * `getInstruments().boron` is undefined and `.boron_analyzer` is 612.19 against a true
+     * 612.27 on a settled plant.
+     *
+     * The unit is returned EXPLICITLY rather than left to the item's authored `unit: 'ppm'`,
+     * which is the V1/V2 trap this function was already carrying: the text used to bake the
+     * unit in and the authored item added a second one, rendering "734 PPM ppm". Blank unit
+     * on the dash so a dead channel does not get a stray 'ppm' hung off it. */
     ims2jva1ff5: function (s) {
-      if (IN(s).boron_sample_pending) return { text: 'SAMPLING…', unit: '' };
-      var v = IN(s).boron_sample;
+      var v = IN(s).boron_analyzer;
       return v != null ? { text: String(r0(v)), unit: 'ppm' } : { text: '—', unit: '' };
     },
     // Condensate polisher: there is no polisher model, so this cannot report resin condition.
@@ -3099,6 +3197,14 @@
      *   'ECCS' -> the ECCS panel (ims3l6k3mb0), the enclosing box for RHR, the accumulator and
      *     the injection lineup — which is what every step using this label is pointing at. */
     'SG Pressure': 'imrr1gwi93j', 'ECCS': 'ims3l6k3mb0',
+    /* THE POWER-RANGE METER, WHICH THIS MAP HAS NEVER CARRIED (#685). Same hole as the two
+     * vital tiles above and found the same way: `pwr_heatup`'s last step is "Verify REACTOR
+     * POWER reads 0.0 %" and it was one of four shipped steps that resolved to NO board element
+     * at all, because the only name for this gauge lived in the inspect map (`pwr_board_inspect`
+     * "Reactor Power") and not here. Adding a key only widens the vocabulary — `run_campaign`
+     * and `run_manual_controls` both fail on a label that is MISSING, never on one nothing
+     * names yet. */
+    'Reactor Power': 'imrzl4b7g9m',
     // Aliases for the `control` strings the checklist steps use (so the step-hover
     // fallback in ui/app.js resolves without authoring an explicit `hl` on each).
     /* THE CARD, NOT THE PUMP GRAPHIC *(#607 item 1)*. Both names used to point at
@@ -3365,7 +3471,22 @@
      * recorded in pwr_board_inspect), so there is nothing left for it to arm and no plan to give
      * it something. 1/M PLOT takes the vacated slot via DOC_PATCHES rather than leaving a hole —
      * the treatment RHR ALIGN/ISOLATE and AFW STOP/AUTO both got. */
-    ims5glucngg: 1
+    ims5glucngg: 1,
+    /* THE BORON GRAB-SAMPLE BUTTON *(OWNER RULING, 2026-09-10, option B, #698)*, removed
+     * 2026-09-11 in the same change that made the CHEM tile beside it a LIVE continuous
+     * reading. With a live number on the card, a button whose whole job was to request that
+     * number after a 30 plant-minute turnaround is a control with nothing left to ask for.
+     *
+     * NO SLOT PROMOTION, unlike the four removals above, and that is deliberate rather than
+     * an omission. Those four vacated a slot with a sibling DIRECTLY BELOW it in the same
+     * column. This one sits in the BORON card's RIGHT column (410,490) under the target box,
+     * and the only thing below it is the card's bottom row — the left-anchored BORON CHEM
+     * label and its right-anchored value, which span the card and pair with the ON/OFF column.
+     * Moving that row up would empty the card's bottom instead and break the pairing, so the
+     * 95x25 gap beside OFF is the better of the two holes.
+     *
+     * The ENGINE COMMAND survives this: see the note where the BUTTONS entry used to be. */
+    bdBoronSample: 1
   };
 
   // The CVCS flow captions, enlarged *(OWNER DIRECTIVE, 2026-08-04: "Make the \"Charging\" and
@@ -3449,6 +3570,35 @@
       // the card title. 30 is the authored button pitch, so the spacing is unchanged.
       ims3wg27iif: { props: { top: 635 } },
       ims3xfeye1q: { props: { top: 665 } },
+      /* THE HX FLOW CAPTION IS RENAMED *(OWNER RULING, 2026-09-10, option A, #700)*. The ruled
+       * name is "COOLDOWN RATE / HX SPLIT" and it is rendered as its TWO HALVES, each attached
+       * to the thing it names: this caption becomes "HX SPLIT" (the lever) and the new
+       * `bdRhrCooldownRate` readout beside the card carries "COOLDOWN RATE" (the consequence).
+       * The ruling's own words are "a live readout of instruments.tavg_rate BESIDE it", so the
+       * pairing is the point rather than a compromise on it.
+       *
+       * IT IS NOT ONE CAPTION BECAUSE ONE CAPTION DOES NOT FIT, and that is measured, not
+       * estimated. The card is 90 wide (1060..1150) and this caption starts at 1070, so the
+       * column is 80 px. Intrinsic text widths in authored units, measured in the real renderer
+       * at the pinned 1400x900:
+       *     "COOLDOWN RATE"  14 px 126.7   13 px 118.5   12 px 110.4
+       *     "COOLDOWN"       14 px  87.3   13 px  81.6   12 px  75.9
+       *     "HX SPLIT"       14 px  62.7
+       * Nothing carrying the words "COOLDOWN RATE" fits an 80 px column at a readable size.
+       *
+       * THE FONT SIZE DROPS 14 -> 13, AND THAT IS A MEASURED CORRECTION, NOT A PREFERENCE. The
+       * intrinsic widths above under-predict the rendered tile: "HX FLOW" is 65.0 intrinsic and
+       * renders 72.2, so the arithmetic said "HX SPLIT" would render ~70. It renders 81.3 —
+       * one character more than "HX FLOW" at the tile's real 10.16 px/char — which put its
+       * right edge on 1151.3, i.e. 1.3 px OUTSIDE the card border at 1150. Nothing would have
+       * failed; it would simply have looked like a caption leaking out of its card. At 13 px it
+       * renders 75.5 and ends near 1145, 5 px inside. Measure the tile, not the glyphs.
+       *
+       * WHY THE CARD IS NOT SIMPLY MADE TALLER TO HOLD BOTH. The board's bounding box ends at
+       * y 785 (this item's own outer panel), and the stage scale is derived from that box — so
+       * growing the card downward shrinks EVERY tile on the board. That is not hypothetical: it
+       * is exactly the regression DOC_REMOVE's `imrzmlyafa3` entry above was written to undo. */
+      ims3xtrobbq: { props: { text: 'HX SPLIT', fontSize: 13 } },
       /* THE ECCS INDICATION CARD'S THREE ROWS MOVE UP SO THE MODE WORD GETS ITS OWN LINE
        * *(#630, owner: "ECCS STANDBY text sits on top of MODE text. Shift the elements in this
        * card up so that the mode indication can sit below MODE.")*.
@@ -3470,7 +3620,27 @@
        * label-end 782.3 + STANDBY 55.7 = 838. So MODE becomes a stacked pair like its two
        * neighbours, and the rows come up to pay for the extra line. Uniform now: 38 px group
        * pitch, 15 px label -> value, MODE value ends 782 against the card's 785. */
-      ims3w19984s: { props: { top: 672 } },   // FLOW  label   (was 675)
+      /* …and the FLOW caption also becomes "INJ FLOW" (#705, 2026-09-11). The gauge reads
+       * 0 GPM through the WHOLE of Mode 4 and Mode 5 — measured, `hpi_flow` is emergency
+       * injection only and a cooldown injects nothing — while the same pumps circulate the
+       * plant through the Residual Heat Removal heat exchanger. The reading is correct; the
+       * LABEL was the thing that made it look like a dead instrument, because "FLOW" on the
+       * emergency core cooling card reads as "flow in this system" rather than "injection
+       * flow". Naming the quantity is the whole fix, and it is option A of the three the
+       * issue put up: B (a separate Residual Heat Removal flow indication) is deferred to be
+       * designed with the sibling card decision, and C (summing two systems onto one scale)
+       * was refused — it would make "non-zero here" stop meaning "the plant is injecting",
+       * which is a diagnosis cue.
+       *
+       * IT FITS AT THE AUTHORED 13 px, and the number quoted is the RENDERED one because the
+       * sibling change in #700 was caught out by quoting an intrinsic: the tile renders
+       * 740..816.6 against the card's right edge at 825, so 8.4 px of clearance. Confirmed by
+       * eye as well as by rect — it clears the "N GPM" reading below it, which shares four
+       * pixels of BOX with every caption on this card (15 px row pitch, ~19 px line boxes) and
+       * has never shared a glyph. Arithmetic off the rendered rect of the old "FLOW" (42.3 for
+       * four characters, padding included) predicted 84.6 and a label flush on the border;
+       * that prediction was wrong by 8 px, in the direction that would have shipped. */
+      ims3w19984s: { props: { top: 672, text: 'INJ FLOW' } },   // INJ FLOW label (was 675 / 'FLOW')
       ims3w1cb6jc: { props: { top: 687 } },   // FLOW  value   (was 690)
       ims3w1hf6n:  { props: { top: 710 } },   // DISCG label   (was 715)
       ims3w1lj7n6: { props: { top: 725 } },   // DISCG value   (was 730)

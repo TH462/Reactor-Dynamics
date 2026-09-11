@@ -231,16 +231,26 @@ function sig(rows) {
     var detail = banner.text ? banner.text.replace(/\s+/g, ' ') : '';
     /* THE SI PAIRS CAME OUT OF THIS ASSERTION (#670 operator pass 2, S-10), and nothing else did.
      * It used to require "within 14 °F (8 °C) of 547 °F (286 °C)". The owner's 2026-09-06 ruling
-     * retired the pair from live checklists, so the parenthesised halves are gone from the
-     * render — but every claim this check was WRITTEN for survives verbatim and is now pinned
-     * more tightly, because the band and the anchor sit adjacent with nothing between them:
-     * the label is the tile's word and not `tavg_c`, the ANCHOR converts absolutely (547 °F),
-     * and the BAND converts as a DIFFERENCE (14.4 °F — the +32 trap would print 46 °F here).
-     * This form does NOT pass on the pre-ruling build: the old string carries "(8 °C)" between
-     * the band and "of", so it is a stricter statement of the same claim, not a refit. */
-    ck('...and the detail line is player-facing: US-only, no raw param, a 14 °F band on the 8 °C tolerance',
+     * retired the pair from live checklists, so the parenthesised halves went.
+     *
+     * THE FORM MOVED AGAIN AT #653 product defect 3 (2026-09-11): a tolerance is arithmetic the
+     * player has to do, so `fmtPredicate` now prints the two ENDS — "AVG COOLANT TEMPERATURE 532
+     * to 561 °F". Every claim this check was written for survives and is pinned HARDER, not
+     * refitted, and the tolerance trap is the reason:
+     *
+     *   the ±8 °C band, converted as a DIFFERENCE and applied to 547 °F  ->  532 to 561 °F
+     *   the same band run through the `temp` converter's +32 (the bug)   ->  501 to 593 °F
+     *
+     * so the endpoints discriminate the defect at least as sharply as the old "14 °F" did, and
+     * they additionally pin the ANCHOR, which the old form carried in a separate clause. What is
+     * NOT asserted any more is the literal word "within" — that was the thing the owner's own
+     * reviewers objected to, so pinning it would have been pinning the defect. VERIFIED against
+     * the OLD behaviour as HR10 requires: the pre-#653 render is
+     * "within 14.4 °F of 547 °F", which this regex REJECTS (no "532 to"), so this is a
+     * statement about the new form and says so. */
+    ck('...and the detail line is player-facing: US-only, no raw param, the 8 °C tolerance drawn as a 532-561 °F BAND',
        /* the label is the TILE's word since #653 pass 3 (PRED_DISPLAY: AVG COOLANT TEMPERATURE, not Tavg) */
-       /wants AVG COOLANT TEMPERATURE within 14(\.\d)? °F of 547(\.\d)? °F, reads 12\d(\.\d)? °F/.test(detail) &&
+       /wants AVG COOLANT TEMPERATURE 532(\.\d)? to 561(\.\d)? °F, reads 12\d(\.\d)? °F/.test(detail) &&
        !/tavg_c/.test(detail) && !/°C|MPa/.test(detail),
        detail ? detail.replace(/^.*?—/, '').slice(0, 120) : 'no banner text');
     /* ---- 3b. THE ENTRY BANNER NEVER RETURNS MID-CHECKLIST (#614) ----------------------- */
@@ -287,6 +297,69 @@ function sig(rows) {
     ck('GUARD: no entry banner mid-checklist (#614 — vacuous here; the heatup enters with its ' +
        'preconditions met, so this passes pre-fix too)',
        run.banner === false, run.banner ? 'a .m-caution banner is present mid-checklist' : 'none');
+
+    /* ---- 3c. THE LEG'S CAUTIONS ARE REACHABLE DURING THE RUN (#653 product defect 1) --------
+     *
+     * `pr.cautions` rendered in exactly one place before this — `mProcCard`, the Manual tab's
+     * browse card — so every caution on every leg was off-screen from the moment the walkthrough
+     * started. The heatup's is the case that matters: "Do not exceed a heatup rate of 100 °F per
+     * hour. Control the rate with HX FLOW on the RHR card" is the leg's ONLY heatup-rate
+     * instruction outside step 11's note, and the fresh-context reviews reported it as absent.
+     *
+     * READ OFF THE RENDERED PANEL, not the pool — the pool is where the string already was. This
+     * check asks whether the player running the leg can get to it.
+     *
+     * INJECTION, run 2026-09-11: delete the `if (pr.cautions && pr.cautions.length)` block from
+     * `renderChecklist` and both of these go red (no summary, no lines), 19/21. Neutering only
+     * the TOGGLE (the `[data-ckl-cautions]` handler) reds the second alone, 20/21 — which is why
+     * they are two checks and not one: the block drawing and the block opening are different
+     * claims and the first is satisfiable while the second is dead. */
+    var caut = await page.evaluate(function () {
+      var log = document.getElementById('cklLog');
+      var sum = log && log.querySelector('[data-ckl-cautions]');
+      return { sum: sum ? sum.textContent.replace(/\s+/g, ' ').trim() : null,
+               lines: log ? log.querySelectorAll('.ckl-caut-l').length : 0 };
+    });
+    /* COLLAPSED HERE BY DESIGN: the leg is underway (the opening confirm has been pressed), and
+     * four cautions of 20-49 words above a one-step panel would put the step under the fold. The
+     * COUNT is what has to survive the collapse, so that is what is asserted. */
+    ck('the leg cautions are drawn during the run, collapsed and counted (#653 defect 1)',
+       !!caut.sum && /3 cautions for this walkthrough/.test(caut.sum) && caut.lines === 0,
+       caut.sum ? '"' + caut.sum + '" · ' + caut.lines + ' lines drawn' : 'no caution summary in the running panel');
+    await page.click('[data-ckl-cautions]').catch(function () {});
+    await page.waitForTimeout(500);
+    var cautOpen = await page.evaluate(function () {
+      var log = document.getElementById('cklLog');
+      return { lines: log ? Array.prototype.map.call(log.querySelectorAll('.ckl-caut-l'),
+                              function (e) { return e.textContent; }) : [] };
+    });
+    ck('...and opening it reaches the heatup-rate limit, which the run had nowhere else to show it',
+       cautOpen.lines.length === 3 && cautOpen.lines.some(function (t) { return /100 °F per hour/.test(t); }),
+       cautOpen.lines.length + ' lines: ' + (cautOpen.lines[0] || '').slice(0, 70));
+
+    /* ---- 3d. THE DETAILS PARAGRAPH IS LABELLED (#692 item 3, #687 item 4) -------------------
+     * *(OWNER, 2026-09-09: "The why text needs to have some indication that its extra learning
+     * info not actually a step. Maby but it in a buttle and label it appropriately?")*
+     *
+     * A SOURCE SCAN CANNOT MAKE THIS CLAIM — the label is composed in `renderChecklist`, and the
+     * pool carries no such string, so grepping `ui/app.js` for "Why this step" would pass on a
+     * branch that never runs. The active step's details are force-open since #660 item 3, so the
+     * label is on screen whenever a `why` is.
+     *
+     * INJECTION, run 2026-09-11: drop the `<span class="ckl-why-lbl">` from the `st.why` branch
+     * and this goes red while the `why` text itself still renders — i.e. it pins the LABEL, not
+     * the paragraph. */
+    var whyLbl = await page.evaluate(function () {
+      var log = document.getElementById('cklLog');
+      var w = log && log.querySelector('.ckl-why');
+      var l = w && w.querySelector('.ckl-why-lbl');
+      return { hasWhy: !!w, lbl: l ? l.textContent.trim() : null,
+               body: w ? w.textContent.replace(/\s+/g, ' ').trim().length : 0 };
+    });
+    ck('the active step\'s why is LABELLED as extra learning material, not left as a bare grey paragraph',
+       whyLbl.hasWhy && whyLbl.lbl === 'Why this step' && whyLbl.body > 40,
+       whyLbl.hasWhy ? ('label ' + JSON.stringify(whyLbl.lbl) + ', ' + whyLbl.body + ' chars')
+                     : 'no .ckl-why on the active step');
 
     /* ---- 5. EVERY PIXEL OF A NUMBER TILE TYPES INTO ITS BOX (#615) --------------------- */
     /* Owner playtest 2026-09-03: "I'm unable to type into any field (number boxes and the

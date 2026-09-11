@@ -863,14 +863,13 @@ html[data-channel="dev"] .logo-test {
   padding: 4px 0; font-size: 11px; cursor: pointer; }
 .speed button:last-child { border-right: none; }
 .sim-tools { justify-content: flex-end; }
-/* the status strip: what WARP is doing, why it is locked, or why the clock last dropped —
-   persistent, unlike the toast that says the same thing once */
+/* the status strip (#686): the active checklist step's own wait + recommended rung, or the
+   one exception that persists across clicks — the accumulator hold ("held at real time").
+   Empty and hidden otherwise; min-height keeps the speed bar from reflowing when it is. */
 .warp-info { min-height: 16px; margin: 4px 0 2px; padding: 2px 6px; font-size: 10.5px; line-height: 1.3; border-radius: 4px;
   color: var(--text-2); background: var(--bg-elevated, var(--bg-right)); border: 1px solid var(--border);
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.warp-info.locked { color: var(--caution); }
 .warp-info.dropped { color: var(--danger, #ef4444); }
-.warp-info.on { color: var(--caution); }
 /* selected speed: subtle cyan outline (not a saturated fill — the clock turns
    amber to warn that time is accelerated; the selector itself stays quiet). */
 .speed button.on { background: transparent; color: var(--text); font-weight: 700; box-shadow: inset 0 0 0 1px var(--normal); }
@@ -1950,6 +1949,29 @@ select.num-input { width: auto; }
   animation: cklGlow 1.2s ease-in-out infinite;
   border-radius: 6px; position: relative; z-index: 4;
 }
+/* WATCH THIS, as opposed to PRESS THIS *(OWNER, 2026-09-09, #675 section B, built as #685:
+   "Each step should highlight the important indications to watch with a non pulsing green
+   glow.")*. The active step's `hl` targets keep the pulse above — that is #607 item 3 and it
+   is not being undone here; this is the second treatment, for the step's `hl_watch` list.
+
+   IT DIFFERS BY GEOMETRY, NOT ONLY BY MOTION. Two rings in the same hue separated only by
+   whether they animate is a weak distinction on a board of 50+ elements, and DESIGN_CRITERIA
+   question 4 (does it complicate things for the player) is a VETO — the issue made passing it
+   conditional on the two being unmistakable. So the watch ring is DASHED and offset, and its
+   halo is a quarter the spread of the solid one. Dashes survive colour-vision deficiency for
+   the same reason the cyan highlight bus does: it is a shape difference, not a hue difference.
+
+   The box-shadow is deliberately kept alongside the outline — it is what makes the ring read
+   as a glow at a glance rather than as a selection border, and `run_glow_stacking` reads the
+   box-shadow + z-index pair to decide this class must be pinned in pwr_board.css.
+
+   STEADY, with no reduced-motion clause needed: there is nothing to reduce. */
+.ckl-watch-glow {
+  outline: 1px dashed rgba(120, 210, 150, 0.85);
+  outline-offset: 3px;
+  box-shadow: 0 0 6px 1px rgba(120, 210, 150, 0.22);
+  border-radius: 6px; position: relative; z-index: 4;
+}
 /* ============================================ the highlight bus (#444, spec §7)
    A soft CYAN halo — an outer GLOW, never a fill, tint or recolor. Cyan is the only
    board colour that is not a plant state: green, amber and red all carry condition
@@ -2193,14 +2215,56 @@ select.num-input { width: auto; }
    itself is the brightest thing on the line; that is the word the eye is hunting for. */
 .ckl-use { font-size: 11.5px; color: var(--text-2); margin-bottom: 3px; margin-top: 0; }
 .ckl-use b { color: var(--text); font-weight: 600; }
-/* the collapsible "why" (#244 items 2/9) — teaching prose, visually quieter than the action */
-.ckl-why { font-size: 11.5px; color: var(--text-2); line-height: 1.45; margin-top: 4px;
-  border-left: 2px solid var(--border); padding-left: 8px; }
+/* the "why" (#244 items 2/9) — teaching prose, visually quieter than the action. Since #660
+   item 3 it is ALWAYS open on the active step, so it is no longer collapsible in practice and
+   its length is paid on every step (which is what made CHECKLIST_WRITING_GUIDE F2 load-bearing).
+   #692 item 3 gives it a legend: an unheaded grey paragraph read as part of the step, and the
+   owner asked for it "presented as extra learning material". The legend deliberately matches
+   .ckl-story-l > span — the other always-drawn supplementary block on the same card. */
+/* A LABELLED BUBBLE, not a fourth grey (#653 product defect 4, #687 item 4) *(OWNER, 2026-09-09:
+   "The why text needs to have some indication that its extra learning info not actually a step.
+   Maby but it in a buttle and label it appropriately?")*. Both fresh-context reviews measured the
+   same thing from the other side: `note` and `why` were "two near-identical greys" — both
+   var(--text-2) at 11-11.5 px — while one carries contingencies the player must act on and the
+   other is optional. The label (above) names it; this tint is what makes it one BLOCK rather than
+   one more paragraph. Deliberately the quietest ground on the card: a hair of --bg-elevated over
+   the panel, no border colour, because it must not compete with .ckl-crit or the wait rung. */
+.ckl-why { font-size: 11.5px; color: var(--text-2); line-height: 1.45; margin-top: 6px;
+  border-left: 2px solid var(--border); padding: 5px 8px;
+  background: rgba(152,163,175,0.045); border-radius: 0 4px 4px 0; }
+.ckl-why-lbl {
+  display: block; color: var(--muted);
+  font-size: 10px; letter-spacing: 0.04em; text-transform: uppercase; margin-bottom: 2px;
+}
+/* THE LEG'S CAUTIONS, DRAWN DURING THE RUN (#653 product defect 1). Amber, because they are
+   cautions and the board's own amber is what a player has been taught to read that way — the
+   same idiom as .m-caution on the browse card, so the two screens agree. The summary line is a
+   button (keyboard-reachable, unlike a bare <summary> we would have to restyle) and carries the
+   count, which is the half that must survive the collapse. */
+.ckl-cautions { margin-bottom: 6px; }
+.ckl-caut-sum {
+  display: block; width: 100%; text-align: left; cursor: pointer;
+  background: rgba(251,191,36,0.06); border: 1px solid #5a4718; border-radius: 4px;
+  color: #d7b25a; font-size: 11px; padding: 3px 8px; font-family: inherit;
+}
+.ckl-caut-sum:hover { background: rgba(251,191,36,0.11); }
+.ckl-caut-chev { display: inline-block; width: 12px; color: var(--muted); }
+.ckl-caut-l {
+  font-size: 11px; line-height: 1.45; color: #c9a86a;
+  border-left: 2px solid #5a4718; padding: 3px 0 3px 8px; margin: 3px 0 0 6px;
+}
 .ckl-why-btn { font-size: 10px; padding: 1px 7px; margin-top: 4px; }
 .ckl-expand-hint { font-size: 10px; color: var(--muted); margin-top: 4px; }
 .ckl-back { font-size: 11px; padding: 2px 8px; margin-bottom: 6px; }
 .ckl-why-all { float: right; font-size: 10px; padding: 1px 7px; margin-left: 8px; }
-.ckl-wait { color: var(--caution); }
+/* THE SPEED SUGGESTION IS NOT A CAUTION (#653 product defect 4). It wore var(--caution), the
+   board's amber for "abnormal", so on a step whose `note` carries the plant's own limit — the
+   heatup's 100 degF/hr, the ascension's 590 degF ceiling — the loudest line on the card was the
+   advice about which speed button to press. Both reviewers read the orange as the warning and
+   the grey as the footnote, which is exactly backwards. Amber now belongs to .ckl-caut-*, which
+   is where the real cautions are; the rung line keeps its own colour, a step up from .ckl-sub
+   so it still reads as advice rather than prose, and the ⏩ glyph carries the meaning. */
+.ckl-wait { color: #8fa3b4; }
 .ckl-next { border-color: var(--running); font-weight: 700; }
 .ckl-done { opacity: 0.62; border-left: 3px solid var(--running); }
 .ckl-done .ckl-ico { color: var(--running); }
