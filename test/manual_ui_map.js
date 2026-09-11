@@ -166,17 +166,20 @@ var STEP_UI = {
    * at the insertion point and an UNVERIFIED tail step, are what an off-by-one looks like here. */
   /* #664 (2026-09-08) inserted the "turbine on line" step at i:1, so every row below it shifted
    * by one again. Moved, not re-derived, for the reason the note above gives. */
+  /* #698 (2026-09-11) DELETED the boron SAMPLE step that #619 item 27 had inserted at i:3, so
+   * every row below it shifts back UP by one — the first time this map has shrunk rather than
+   * grown. Its own row goes with it. Moved one at a time, not re-derived, for the reason the
+   * two notes above give. */
   'pwr2:pwr_raise_power': [
     { i: 1, view: 'board', control: 'Turbine Load' },    // latch + load after a turbine trip (#664)
     { i: 2, view: 'board', control: 'Boron control' },
-    { i: 3, view: 'board', control: 'Boron control' },   // draw a boron sample (#619 item 27)
+    { i: 3, view: 'board', control: 'Control Bank' },
     { i: 4, view: 'board', control: 'Control Bank' },
     { i: 5, view: 'board', control: 'Control Bank' },
     { i: 6, view: 'board', control: 'Control Bank' },
     { i: 7, view: 'board', control: 'Control Bank' },
-    { i: 8, view: 'board', control: 'Control Bank' },
-    { i: 9, view: 'board', control: 'Boron control' },    // the verify step, now boron-bounded (#683)
-    { i: 10, view: 'board', control: 'Boron control' },   // the closing trim to 626 ppm, now commanded (#683)
+    { i: 8, view: 'board', control: 'Boron control' },    // the verify step, now boron-bounded (#683)
+    { i: 9, view: 'board', control: 'Boron control' },    // the closing trim to 626 ppm, now commanded (#683)
   ],
   'pwr2:pwr_lower_power': [
     { i: 0, view: 'board', control: 'Boron control' },

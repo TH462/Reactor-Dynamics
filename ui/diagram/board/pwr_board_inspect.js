@@ -559,22 +559,26 @@
       'commands from a procedure also take the channel out of automatic.', CI, '7.5'),
     imrpq29jo7t: e('Boron target',
       'Target Reactor Coolant System (RCS) boron concentration in ppm. Setting it orders a batch dose.',
-      'This is a target, not a measurement — there is no live boron meter in this control room, ' +
-      'because real plants do not have one either. The authoritative number is the chemistry sample.', CI, '7.5'),
+      'This is what you ASKED for, not what is in the water — the measurement is the CHEM reading ' +
+      'below it, which tracks the loop continuously. Watch the two converge as a dose runs: the ' +
+      'target stands still and CHEM walks toward it. A real control room has no continuous boron ' +
+      'display at all, so this pairing is a teaching departure from the real board, recorded in ' +
+      'Simulator Physics and Simplifications.', CI, '7.5'),
     ims3wy5oym4: e('Boron Status',
       'Whether a dose is running: BORATING, DILUTING or HOLD, with the ppm remaining.',
       'The arrow figure counts down the metered ppm still to deliver. It pauses if the charging pump ' +
       'stops and resumes when it restarts — a dose is a delivery, not a timer.', CI, '7.5'),
-    bdBoronSample: e('SAMPLE',
-      'Draws a Reactor Coolant System (RCS) grab sample — the lab posts the authoritative boron concentration.',
-      'Chemistry, not a gauge: the result arrives after a compressed ~60 s turnaround (real labs take ' +
-      '30–60 minutes). Completed doses sample themselves; take a manual one when the books may be ' +
-      'stale — after Emergency Core Cooling System (ECCS) or accumulator injection, which borate the core outside the makeup system.', CI, '7.5'),
-    ims2jva1ff5: e('CHEM Sample',
-      'The lab result in ppm — the reference boron concentration.',
-      'Reads SAMPLING… while the lab works, then posts the number. A fresh result with no dose ' +
-      'running re-baselines the panel, so the next dose is computed from reality rather than from ' +
-      'dose bookkeeping.', CI, '7.5'),
+    /* The SAMPLE button's entry went with the button itself (#698, 2026-09-11) — see
+     * DOC_REMOVE in pwr_board_wiring.js. It is deleted rather than left: `run_inspect`
+     * reads DOC_REMOVE and fails an entry with no live item behind it. */
+    ims2jva1ff5: e('CHEM (boron)',
+      'Measured boron concentration in the loop, in ppm — live and continuous.',
+      'This is the number the dose controller works from, shown to you as well. It lags the loop ' +
+      'by about a minute of sensing time, so through a steady dilution it trails the true ' +
+      'concentration by 1 to 2 ppm — close enough that the gap never decides anything. Compare it ' +
+      'with the target above: target is the ask, this is the answer. A REAL control room has no ' +
+      'continuous boron display and works from periodic grab samples instead; this simulator shows ' +
+      'the reading deliberately, and Simulator Physics and Simplifications records why.', CI, '7.5'),
 
     // ---------------------------------------------------------- ECCS / SIT / RHR
     imrzpfd4qox: e('Emergency Core Cooling System (ECCS) Control',

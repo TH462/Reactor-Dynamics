@@ -1917,28 +1917,24 @@
           accs: [{ cmd: { action: 'set_auto_setpoint', channel_id: 'boron_conc', value: 660 },
                    label: 'BORON set to 660 ppm' }],
           hl: ['Boron', 'Boron control'] },
-        /* DRAW A SAMPLE *(OWNER, 2026-09-03, #619 item 27: "The boron sampling is boring and
-         * never addressed. im wondering if it would be best to just have a live indication
-         * inplace of the sampling.")*.
+        /* THE "DRAW A SAMPLE" STEP WAS DELETED HERE, 2026-09-11 *(OWNER RULING, 2026-09-10,
+         * option B, #698)*. It read "Press SAMPLE on the BORON card…" and was graded
+         * `accs: [{ cmd: 'take_boron_sample' }]`.
          *
-         * NOT REPLACED WITH A LIVE METER, and the source is the reason rather than the standing
-         * ruling. Ginna UFSAR §7.7 (ML20339A027): "There is no provision for a direct continuous
-         * visual display of primary coolant boron concentration." The board teaches exactly that
-         * already, and the 2026-07-23 ruling that removed the analyzer stands.
+         * The 2026-09-03 decline it was written under is REVERSED, and by a weighting change
+         * rather than by new evidence: Ginna UFSAR §7.7 (ML20339A027) — "There is no provision
+         * for a direct continuous visual display of primary coolant boron concentration" — is
+         * untouched and still says what it said. The CHEM tile is now a live reading anyway, as
+         * a DECLARED DEPARTURE recorded in Manuals/12 §12.22.
          *
-         * What was actually wrong is the second half of his sentence — "never addressed". No
-         * checklist in the pool has ever drawn a sample, so the control sat on the board with
-         * nothing pointing at it and the lab turnaround happened to nobody. Giving it a job is
-         * the fix; the sampling was not the problem, the silence about it was.
+         * IT IS DELETED, NOT REWORDED, AND THAT IS THE #641 RULE: a command-kind check-off is
+         * only satisfiable while the plant still lets the player produce the command. The SAMPLE
+         * button is gone from the board (DOC_REMOVE), so this step would have waited for a press
+         * that can no longer be made — a soft lock in the middle of the power ascent, which is
+         * exactly the shape #641 cost six steps of the 1/M leg.
          *
-         * PLACED HERE so the ~30 plant-minute turnaround runs UNDER the climb rather than
-         * stopping it, and graded on the operator ACTION (a cmd-kind entry) rather than on the
-         * posted number: the result arrives when the lab is ready, not when the step wants it. */
-        { text: 'Press SAMPLE on the BORON card. The lab result appears in the BORON CHEM readout in about 30 plant-minutes.',
-          why: 'There is no live boron meter in this control room, and a real one has none either. The number on the BORON card is what you asked for; SAMPLE is how you find out what is actually in the water. Draw it now and the result lands during the climb.',
-          control: 'Boron control', target: 'sample drawn; BORON CHEM updates in about 30 plant-minutes',
-          accs: [{ cmd: 'take_boron_sample', label: 'Boron sample drawn' }],
-          hl: ['Boron control'] },
+         * `test/manual_ui_map.js` is POSITIONAL: the rows below this step moved up one and were
+         * MOVED rather than re-derived, per the warning that map carries. */
         /* "TRIM TAVG TO PROGRAM" IS JARGON *(OWNER, 2026-09-03, #619 item 26: "what does 'then
          * trim Tavg to program'. most people will not know what this means… It could say to look
          * at the vital gauge and move rods to move it in the green or something")*. The

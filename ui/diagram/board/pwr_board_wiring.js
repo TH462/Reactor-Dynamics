@@ -590,8 +590,7 @@
   // Buttons that press an AUTOMATION CHANNEL by id — disabled when the running engine's
   // kernel carries no such channel (#506: the boron panel and rod AUTO on PWR2, whose
   // channels list is empty). Keyed off the snapshot, like every disable here.
-  var CHANNEL_BUTTONS = { imrqp6com2b: 'boron_conc', imrqp6avzkw: 'boron_conc',
-                          bdBoronSample: 'boron_conc' };
+  var CHANNEL_BUTTONS = { imrqp6com2b: 'boron_conc', imrqp6avzkw: 'boron_conc' };
   // Controls whose machinery is declared by a control_state field's PRESENCE: absent field =
   // the running engine has no such system (pwr always publishes these; #506).
   var RHR_BUTTONS = { ims3wg27iif: 1, ims3xfeye1q: 1 };
@@ -814,11 +813,15 @@
     //     flux); the engine ignores a blocked switch, so active() reflects the true state
     //     either way. Lit = energized/monitoring. Secure it during the SR→IR handoff to
     //     clear the 1e5 cps high-flux trip (pwr_control 'sr_high') before it scrams the ascent. ---
-    // --- Boron grab sample (batch-dose rework): draws an RCS sample; the lab posts the
-    //     authoritative ppm after the turnaround (instruments.boron_sample/_pending).
-    //     Lit while the lab is working. Doses auto-sample on completion; this button is
-    //     for when the books may be stale (post-ECCS, freehand Bor/Dil). ---
-    bdBoronSample: { press: function () { cmd({ action: 'take_boron_sample' }); }, active: function (s) { return !!IN(s).boron_sample_pending; } }
+    // --- The boron grab-sample button was REMOVED from the board 2026-09-11, #698
+    //     *(OWNER RULING, 2026-09-10, option B)*. The CHEM readout below it (ims2jva1ff5) is
+    //     now a LIVE continuous reading off `boron_analyzer` rather than a lab result, so a
+    //     control whose only job was to ask for a number the tile already shows is a
+    //     DESIGN_CRITERIA question-4 orphan. The tile goes via DOC_REMOVE, not from here.
+    //
+    //     THE ENGINE COMMAND `take_boron_sample` STAYS AND IS NOT ORPHANED: control_kernel.js
+    //     auto-issues it after every completed dose to re-baseline the totalizer, so deleting
+    //     the action would break the dose re-anchor. Remove the button, not the action. ---
   };
 
   // Driver-supplied tiles NOT in the generated board_data.js. EMPTY as of the V2 diagram
@@ -1370,13 +1373,30 @@
     // ADV position (#371). No VALUE_UNIT entry — % is unit-neutral, and a conversion
     // layer that touched it would be worse than none (board_check pins that).
     bdAdvPct: function (s) { return r0(IN(s).adv_valve); },
-    // Boron chem sample (lab result). The V1 item carried no unit so the text baked one in;
-    // the V2 item is authored with unit 'ppm', which rendered "734 PPM ppm". Return the
-    // unit explicitly instead: 'ppm' with a number, blank for the non-numeric states, so
-    // "SAMPLING…" and "—" don't get a stray unit hung off them either.
+    /* Boron chemistry — a LIVE CONTINUOUS READING since 2026-09-11 *(OWNER RULING,
+     * 2026-09-10, option B, #698)*, where it used to print the lab's grab-sample result
+     * (`boron_sample` / `SAMPLING…` while `boron_sample_pending`).
+     *
+     * IT READS THE CHANNEL THE DOSE CONTROLLER ALREADY TRUSTS, which is what makes this a
+     * display change and not a new instrument: `instruments.boron_analyzer` is the
+     * `boron_conc` channel's process variable and its setpoint-capture source
+     * (pwr_control.js), and it has been published all along with `pvDisplay:false` keeping it
+     * off the Automate tab. MEASURED on this tree, PWR2 at full power diluting 88.4 ppm over
+     * 60 plant-minutes: max |analyzer − true| = 2.08 ppm, typically 1.0–1.5 ppm, against the
+     * 88 ppm the grab sample was stale by at the end of the same hour.
+     *
+     * THE FIELD NAME IS `boron_analyzer`, NOT `boron`, and that is worth stating because
+     * pwr2_instruments declares the channel as id `boron` (src `boron_ppm`) — the shell
+     * renames it on the way into the snapshot. MEASURED rather than read off either file:
+     * `getInstruments().boron` is undefined and `.boron_analyzer` is 612.19 against a true
+     * 612.27 on a settled plant.
+     *
+     * The unit is returned EXPLICITLY rather than left to the item's authored `unit: 'ppm'`,
+     * which is the V1/V2 trap this function was already carrying: the text used to bake the
+     * unit in and the authored item added a second one, rendering "734 PPM ppm". Blank unit
+     * on the dash so a dead channel does not get a stray 'ppm' hung off it. */
     ims2jva1ff5: function (s) {
-      if (IN(s).boron_sample_pending) return { text: 'SAMPLING…', unit: '' };
-      var v = IN(s).boron_sample;
+      var v = IN(s).boron_analyzer;
       return v != null ? { text: String(r0(v)), unit: 'ppm' } : { text: '—', unit: '' };
     },
     // Condensate polisher: there is no polisher model, so this cannot report resin condition.
@@ -3357,7 +3377,22 @@
      * recorded in pwr_board_inspect), so there is nothing left for it to arm and no plan to give
      * it something. 1/M PLOT takes the vacated slot via DOC_PATCHES rather than leaving a hole —
      * the treatment RHR ALIGN/ISOLATE and AFW STOP/AUTO both got. */
-    ims5glucngg: 1
+    ims5glucngg: 1,
+    /* THE BORON GRAB-SAMPLE BUTTON *(OWNER RULING, 2026-09-10, option B, #698)*, removed
+     * 2026-09-11 in the same change that made the CHEM tile beside it a LIVE continuous
+     * reading. With a live number on the card, a button whose whole job was to request that
+     * number after a 30 plant-minute turnaround is a control with nothing left to ask for.
+     *
+     * NO SLOT PROMOTION, unlike the four removals above, and that is deliberate rather than
+     * an omission. Those four vacated a slot with a sibling DIRECTLY BELOW it in the same
+     * column. This one sits in the BORON card's RIGHT column (410,490) under the target box,
+     * and the only thing below it is the card's bottom row — the left-anchored BORON CHEM
+     * label and its right-anchored value, which span the card and pair with the ON/OFF column.
+     * Moving that row up would empty the card's bottom instead and break the pairing, so the
+     * 95x25 gap beside OFF is the better of the two holes.
+     *
+     * The ENGINE COMMAND survives this: see the note where the BUTTONS entry used to be. */
+    bdBoronSample: 1
   };
 
   // The CVCS flow captions, enlarged *(OWNER DIRECTIVE, 2026-08-04: "Make the \"Charging\" and
