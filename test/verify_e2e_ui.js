@@ -2310,6 +2310,168 @@ async function testPzrGaugeFollowsProgram(page) {
   return log.join('\n') + '\n';
 }
 
+/* THE VITAL-FEW PRESSURIZER GAUGE MUST CAUTION WHEN LEVEL RUNS ABOVE ITS PROGRAM (#706) — the
+ * same gap as #703's, on the other end of the same gauge. The strip carried NO high-side band at
+ * all, so a player watching the board through the shipped Mode 5 -> Mode 3 heatup got no cue of
+ * any kind while level ran **+20.4 points above a 25.00 % program (peak 45.37 %) for 11.6 of the
+ * leg's 13.4 plant-hours** (#706's measurement). The plant's own absolute PZR LVL HI sits at 75 %,
+ * thirty points away, and never fired.
+ *
+ * MEASURED (full stack, svc.tick() driven, ACCEL=10, seed 7): the worst LEGITIMATE upward
+ * deviation of pzr_level above its program is +7.53 points, a momentary spike on the power
+ * ascension (pwr_raise_power spends 0.0 % of the leg above +8). Steady state at all four
+ * free-play initial conditions is +1.07..+1.17; a 100 -> 90 -> 100 MWe load change +5.98/+2.45;
+ * +-15 ppm boration/dilution +1.62/+1.30. Against the faults: pwr_heatup +21.34, pwr_shutdown
+ * +21.19, pwr_cooldown +43.07, the TMI-2 leg +75.00. The chosen edge, program + 10 points, is
+ * the mirror of the `pzr_level_dev_low` rung that already exists, and NOTHING measured sits
+ * between +7.53 and +21.19.
+ *
+ * TWO HALVES PLUS A FAULT LEG, same reasons as the two tests above: ui/app.js does not load
+ * headless and the vital strip publishes no thresholds, only the class they produce.
+ *   1. THE CLASS, sampled on the live plant at the three reachable on-program initial
+ *      conditions. A gauge that banded here would be a false warn on a healthy plant.
+ *   2. THE RULE, through `RD.PwrGaugeBands.pzrLevelCautionHi` — that it is the plant's own
+ *      min(PZR LVL HI, program + PZR LVL DEV HI) read live rather than a retyped number, that a
+ *      snapshot with no program keeps the authored 75, and the DISCRIMINATOR that the edge MOVES
+ *      between Mode 5 and full power (35.0 -> 71.5 %). A fixed absolute edge — the shipped bug,
+ *      or any naive replacement — reads the same in both.
+ *   3. THE FAULT LEG: drive level far above a 25 % program on the live plant (charging out of
+ *      AUTO at 9 gpm) and confirm the gauge actually goes amber — AND that it did so while level
+ *      was still BELOW the absolute 75 % fallback, which is what makes it the program-relative
+ *      edge rather than the old literal doing the work.
+ *
+ * PROVED BY INJECTION, 2026-09-11: reverting the gauge to its shipped form (no `caution` key,
+ * autorange returning only `caution_lo`) leaves the fault leg at 0/40 warn where the fix reads
+ * 40/40, and a FIXED absolute edge (a literal 75, or `caution: 75` with no autorange) fails the
+ * discriminator and the fault leg both. */
+async function testPzrGaugeHighLevelCaution(page) {
+  var log = [];
+  var ICS = [['cold_shutdown', 'Mode 5, Cold Shutdown'],
+             ['hot_zero_power', 'Mode 3, Hot Standby'],
+             ['hot_full_power', 'Mode 1, At Power']];
+  var edges = {};
+  for (var i = 0; i < ICS.length; i++) {
+    var ic = ICS[i][0], name = ICS[i][1];
+    await page.goto('http://127.0.0.1:' + PORT + '/ui/shell.html?engine=pwr2&init=' + ic +
+                    '&run=1&dev=1', { waitUntil: 'networkidle', timeout: 90000 });
+    await dismissMission(page);
+    await waitBoardLive(page, 20000);
+    if (await page.$('#speed [data-speed="10"]')) await page.click('#speed [data-speed="10"]');
+    await page.waitForTimeout(1200);
+    var r = await page.evaluate(async function () {
+      function sleep(ms) { return new Promise(function (f) { setTimeout(f, ms); }); }
+      var g = document.getElementById('gauge-pzr'), warn = 0, alarm = 0, n = 0, i;
+      for (i = 0; i < 40; i++) {
+        if (g.classList.contains('alarm')) alarm++;
+        else if (g.classList.contains('warn')) warn++;
+        n++;
+        await sleep(100);
+      }
+      var svc = window.RD.__dev.service();
+      var prog = svc.engine.getControlState().pzr_level_program_pct;
+      var rows = (svc.layer && svc.layer.config && svc.layer.config.alarms) || [];
+      function sp(id) { for (var k = 0; k < rows.length; k++) if (rows[k].id === id) return rows[k]; return null; }
+      var dev = sp('pzr_level_dev_high'), hi = sp('pzr_level_high');
+      return {
+        warn: warn, alarm: alarm, n: n,
+        val: (document.querySelector('#gauge-pzr [data-val]') || {}).textContent,
+        program: prog, devSp: dev && dev.setpoint, devInstr: dev && dev.instrument, hiSp: hi && hi.setpoint,
+        edge: window.RD.PwrGaugeBands.pzrLevelCautionHi({ control_state: { pzr_level_program_pct: prog } }, 75),
+        noProgram: window.RD.PwrGaugeBands.pzrLevelCautionHi({ control_state: {} }, 75),
+        nullProgram: window.RD.PwrGaugeBands.pzrLevelCautionHi({ control_state: { pzr_level_program_pct: null } }, 75)
+      };
+    });
+    edges[ic] = r;
+    log.push(name + ': program ' + r.program.toFixed(1) + ' %, gauge reads ' + r.val +
+             ', high caution edge ' + r.edge.toFixed(1) + ' % — ' + r.warn + ' warn / ' + r.alarm +
+             ' alarm of ' + r.n + ' samples');
+    if (r.warn || r.alarm) {
+      throw new Error('pzr gauge banded on an on-program plant at ' + name + ': ' + r.warn +
+                      ' warn / ' + r.alarm + ' alarm of ' + r.n + ' samples, program ' +
+                      r.program.toFixed(1) + ' %, gauge ' + r.val);
+    }
+    /* The green must be EARNED — the rung has to be in the RUNNING config, on the DEVIATION
+     * channel, or this leg is asserting nothing. */
+    if (r.devSp == null || r.hiSp == null) throw new Error('pzr level high ladder missing from the running config at ' + name);
+    if (r.devInstr !== 'pzr_level_dev') throw new Error('pzr_level_dev_high is on ' + r.devInstr + ', not the deviation channel');
+    var want = Math.min(r.hiSp, r.program + r.devSp);
+    if (Math.abs(r.edge - want) > 1e-9) {
+      throw new Error('pzr high caution edge at ' + name + ' is ' + r.edge + ', not the plant\'s own ' +
+                      'min(' + r.hiSp + ', program ' + r.program.toFixed(1) + ' + ' + r.devSp + ') = ' + want);
+    }
+    if (r.noProgram !== 75 || r.nullProgram !== 75) {
+      throw new Error('a snapshot with no level program must keep the authored 75 %, got ' +
+                      r.noProgram + ' / ' + r.nullProgram);
+    }
+  }
+  /* THE DISCRIMINATOR. An absolute edge — the shipped state's 75, or any fixed replacement —
+   * gives the SAME number in Mode 5 and at power. The program spans 25 -> 61.5 %, so these
+   * must not. */
+  var cold = edges.cold_shutdown.edge, hot = edges.hot_full_power.edge;
+  if (!(hot - cold > 20)) {
+    throw new Error('the pzr high caution edge did not follow the program: Mode 5 ' + cold +
+                    ' %, Mode 1 ' + hot + ' % — an absolute edge reads the same in both');
+  }
+  log.push('edge follows the program: Mode 5 ' + cold.toFixed(1) + ' % -> Mode 1 ' + hot.toFixed(1) +
+           ' % (program + 10 in each; the 75 % absolute cap never binds, because the program ' +
+           'clamps at 61.5 %)');
+
+  /* THE FAULT LEG. Reconstruct the #706 shape on the live plant: a 25 % program with level far
+   * above it. Charging out of AUTO at 9 gpm at Mode 3 reaches program + 30 or so inside an hour
+   * and a half of plant time, which WARP covers in a few wall-seconds. */
+  await page.goto('http://127.0.0.1:' + PORT + '/ui/shell.html?engine=pwr2&init=hot_zero_power' +
+                  '&run=1&dev=1', { waitUntil: 'networkidle', timeout: 90000 });
+  await dismissMission(page);
+  await waitBoardLive(page, 20000);
+  await page.evaluate(function () {
+    var svc = window.RD.__dev.service();
+    svc.handleCommand({ action: 'set_cvcs_auto', active: false });
+    svc.handleCommand({ action: 'set_charging_flow', normalized: 9 / 450000 });
+  });
+  if (await page.$('#speed [data-speed="600"]')) await page.click('#speed [data-speed="600"]');
+  /* 6.5 s of wall at 600x is a bit over an hour of plant time, which takes the deviation to about
+   * +36 points. The settle is deliberately SHORT of the 75 % absolute alarm — 61.5 % on three
+   * consecutive runs, 13.5 points clear — because the check below asserts that the amber came from
+   * the program-relative edge and not from the authored literal, and that assertion is only
+   * available while level stays under 75. */
+  await page.waitForTimeout(6500);
+  var faultR = await page.evaluate(async function () {
+    function sleep(ms) { return new Promise(function (f) { setTimeout(f, ms); }); }
+    var g = document.getElementById('gauge-pzr'), warn = 0, n = 0, i;
+    for (i = 0; i < 40; i++) {
+      if (g.classList.contains('warn') || g.classList.contains('alarm')) warn++;
+      n++;
+      await sleep(100);
+    }
+    var svc = window.RD.__dev.service();
+    var snap = svc.assembleSnapshot();
+    var prog = snap.control_state.pzr_level_program_pct;
+    var lit = (snap.alarms || []).filter(function (a) { return a.id === 'pzr_level_dev_high'; })[0];
+    return { warn: warn, n: n, lvl: snap.instruments.pzr_level, program: prog,
+             annunciator: lit ? lit.state : '(absent)' };
+  });
+  log.push('fault leg (charging MANUAL 9 gpm at Mode 3, WARP settle): level ' +
+           faultR.lvl.toFixed(1) + ' % against a ' + faultR.program.toFixed(1) + ' % program (+' +
+           (faultR.lvl - faultR.program).toFixed(1) + ' points) — ' + faultR.warn + ' warn of ' +
+           faultR.n + ' samples, PZR LVL DEV HI ' + faultR.annunciator);
+  if (!faultR.warn) {
+    throw new Error('pzr gauge never banded on the reconstructed high-level excursion: level ' +
+                    faultR.lvl.toFixed(1) + ' % against a ' + faultR.program.toFixed(1) + ' % program');
+  }
+  /* …and it has to be the PROGRAM-RELATIVE edge that did it. Amber at a level ABOVE 75 % would
+   * be satisfied by the authored literal alone, which is the state this whole fix replaces. */
+  if (!(faultR.lvl < 75)) {
+    throw new Error('the fault leg ran past the 75 % absolute alarm (' + faultR.lvl.toFixed(1) +
+                    ' %), so the amber proves nothing about the program-relative edge — the ' +
+                    'excursion is too large, shorten the WARP settle');
+  }
+  if (faultR.annunciator === 'clear' || faultR.annunciator === '(absent)') {
+    throw new Error('the gauge banded but PZR LVL DEV HI did not: ' + faultR.annunciator +
+                    ' at level ' + faultR.lvl.toFixed(1) + ' % against program ' + faultR.program.toFixed(1) + ' %');
+  }
+  return log.join('\n') + '\n';
+}
+
 /* THE VITAL-FEW Tavg GAUGE MUST CAUTION ON A COLD-AT-POWER PLANT AND STAY SILENT ON ONE
  * TRACKING ITS PROGRAM (#703) — the opposite gap from #676's: the strip carried NO low edge
  * on Tavg at all, so a plant running 105 °F (58.3 °C) cold at 96.5 % power had no vital-few
@@ -2541,6 +2703,8 @@ async function main() {
     fs.writeFileSync(path.join(SCRATCH, 'css-transitions.log'), ctLog);
     var pgLog = await testPzrGaugeFollowsProgram(page);
     fs.writeFileSync(path.join(SCRATCH, 'pzr-gauge-program.log'), pgLog);
+    var phLog = await testPzrGaugeHighLevelCaution(page);
+    fs.writeFileSync(path.join(SCRATCH, 'pzr-gauge-high-level.log'), phLog);
     var tgLog = await testTavgGaugeDeviationCaution(page);
     fs.writeFileSync(path.join(SCRATCH, 'tavg-gauge-deviation.log'), tgLog);
     fs.writeFileSync(path.join(SCRATCH, 'ui-screenshot-summary.log'), summary.join('\n') + '\n');
@@ -2564,6 +2728,7 @@ if (require.main !== module) {
                      testHeldPlantDialog: testHeldPlantDialog, testHeldSpeedClick: testHeldSpeedClick,
                      testSaveLoadRefusal: testSaveLoadRefusal, testCssTransitions: testCssTransitions,
                      testPzrGaugeFollowsProgram: testPzrGaugeFollowsProgram,
+                     testPzrGaugeHighLevelCaution: testPzrGaugeHighLevelCaution,
                      testTavgGaugeDeviationCaution: testTavgGaugeDeviationCaution,
                      testPauseResumeSpeed: testPauseResumeSpeed, testWalkthroughEventPause: testWalkthroughEventPause,
                      port: function () { return PORT; } };

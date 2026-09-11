@@ -670,6 +670,46 @@
     // make-up authority; both together mean make-up has lost it. Both `caution` — find-it-and-
     // fix-it conditions, not casualties. [tune]
     { id: 'pzr_level_dev_low', instrument: 'pzr_level_dev',    direction: 'low',     setpoint: -10.0, priority: 'caution',  panel: 'A', category: 'coolant', label_learning: 'Pressurizer Level Below Program — make-up is not holding', label_industry: 'PZR LVL DEV LO' },
+    // ---- the HIGH half of that pair (#706, 2026-09-11) --------------------------------
+    // THE DEFECT WAS A SHAPE, NOT A MISSING ALARM. `pzr_level_high` twenty lines up IS live on
+    // PWR2 — proved by injection, not by reading: forcing the `pzr_level` channel to 76 %
+    // lights PZR LVL HI `active_unacknowledged`, and 74 % leaves it clear. (#706's body says
+    // that row "belongs to the retired PWR1 alarm table and is not a consumer of anything
+    // pwr2_true_state publishes". It is wrong, and it is wrong in the direction this repo keeps
+    // getting wrong — an inherited claim, repeated in a fresh voice. Grep for the EFFECT.)
+    // It is FIXED at an absolute 75 %, and that is the whole problem: #706 measured the shipped
+    // Mode 5 → Mode 3 heatup running level **+20.4 points above a 25.00 % program (peak 45.37 %)
+    // for 11.6 of the leg's 13.4 plant-hours** — 30 points clear of 75 %, so nothing annunciated
+    // and the player got no cue of any kind. Exactly the collision #500 fixed on the LOW side:
+    // a fixed setpoint on a PROGRAMMED level is right in at most one place.
+    //
+    // WHY THE 75 % ROW IS NOT CONVERTED THE WAY `pzr_level_low` WAS. It cannot be. `pzr_hi_level`
+    // (97 %, scram — the going-solid backstop, PI-8) reads the ABSOLUTE `pzr_level` channel, and
+    // the ladder rule in layers/test_runner.js requires every instrument-based trip to have a
+    // less-extreme alarm on the SAME instrument; the trip's own comment says so in words ("the
+    // 75 % alarm warns first"). A deviation setpoint has no magnitude to compare against an
+    // absolute trip — which is the run_m7 red #500 had to answer on the low side. So the high
+    // side ends up with the same TWO-CHANNEL ladder the low side already has: an absolute rung
+    // that guards the absolute trip, and a deviation rung that says level has left its program.
+    //
+    // +10.0 POINTS, and the number is measured. Full stack (RD.SimulationService + ControlLayer),
+    // svc.tick() driven, ACCEL=10 / 1.0 s, seed 7 — the worst LEGITIMATE upward deviation:
+    //     every shipped checklist leg that is not the fault:  pwr_startup +2.46, pwr_lower_power
+    //       +4.16, pwr_raise_power +7.53 (momentary — 0.0 % of the leg above +8)
+    //     steady state, all four free-play initial conditions, 2 h each:  +1.07 .. +1.17
+    //     100 -> 90 -> 100 MWe load change:  +5.98 / +2.45
+    //     +-15 ppm boration and dilution at power, 2 h:  +1.62 / +1.30
+    // — against the FAULT: pwr_heatup +21.34 (this tree; #706 measured +20.37 on its own),
+    // pwr_cooldown +43.07, pwr_shutdown +21.19, and the TMI-2 leg +75.00 (the level deception,
+    // pegged at 100 % against a 25 % program). The separation is 2.8x between the worst honest
+    // case and the nearest fault, and NOTHING sits in between.
+    //
+    // It is also the plant's own next rung: `pwr2_pressurizer` LEVEL.backup_above_program_pct
+    // is 5 — at +5 the BACKUP HEATERS come on by themselves, an action with no annunciator. So
+    // +5 the plant acts, +10 it tells you, 75 % absolute it tells you again, 97 % it trips. And
+    // it is the mirror of `pzr_level_dev_low` above: one number, ten points, either way, which
+    // is one thing for the player to learn rather than two (DESIGN_CRITERIA Q4).
+    { id: 'pzr_level_dev_high', instrument: 'pzr_level_dev',   direction: 'high',    setpoint: 10.0, priority: 'caution',  panel: 'A', category: 'coolant', label_learning: 'Pressurizer Level Above Program — letdown is not holding', label_industry: 'PZR LVL DEV HI' },
     { id: 'charging_high',     instrument: 'charging_flow',    direction: 'high',    setpoint: 8.0e-5, priority: 'caution',  panel: 'A', category: 'coolant', label_learning: 'Charging Flow High — make-up is working hard',            label_industry: 'CHG FLOW HI' },   // #408 real currency: 36 gpm, nominal letdown 30 + a sev-0.2 seal leak — keeps the documented "from about severity 0.2 up" cue; was 0.036, unreachable once max charging became 1.333e-4
   ];
   var PWR_ALARMS_B = [

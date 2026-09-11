@@ -2201,6 +2201,22 @@
     if (lowRow && lowRow.instrument === 'pzr_level_dev') {
       out.alarmLo = (prog != null && isFinite(prog)) ? qz(prog + lowRow.setpoint) : b.min;
     }
+    /* ⚠ AND SO IS THE HIGH ALARM SINCE #706 (2026-09-11), for the mirror reason. `pzr_level_high`
+     * is a fixed 75 % — live, not a dark wire (proved by injection: forcing the channel to 76 %
+     * lights PZR LVL HI, 74 % leaves it clear) — but the level program runs 25 -> 61.5 %, so at
+     * the cold end the amber edge sits fifty points above a plant that is genuinely running high.
+     * Measured on the shipped Mode 5 -> Mode 3 heatup: level ran +20.4 points above a 25.00 %
+     * program (peak 45.37 %) for 11.6 of the leg's 13.4 plant-hours with this edge untouched.
+     * The new `pzr_level_dev_high` rung (+10 points, caution) lands where the annunciator
+     * actually fires, and the absolute row still CAPS it so the tile can never go amber later
+     * than PZR LVL HI itself. Without this the tile would sit in its grey "acceptable" region
+     * while the annunciator was lit — the board-vs-plant disagreement #556/#557 are the record
+     * of. A plant that publishes no program (the retired engine, an old recording) keeps its
+     * authored absolute edge untouched. */
+    var devHiRow = liveAlarmRow('pzr_level_dev_high');
+    if (devHiRow && devHiRow.instrument === 'pzr_level_dev' && prog != null && isFinite(prog)) {
+      out.alarmHi = qz(Math.min(out.alarmHi, prog + devHiRow.setpoint));
+    }
     /* ⚠ AND THE NORMAL BAND IS PROGRAM-RELATIVE TOO (#598 item 11). The authored band is a flat
      * 40-70 %, which is a FULL-POWER band applied to every mode — the same inherited-constant
      * shape as #573/#579/#591, one tile further on. The level program is scheduled on Tavg

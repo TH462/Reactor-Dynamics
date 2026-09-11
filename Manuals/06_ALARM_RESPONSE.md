@@ -111,6 +111,7 @@ The board therefore **reclassifies** these alarms rather than removing them. The
 | PWR-A41 | CTMT H2 BURN | critical | B |
 | PWR-A42 | H2 RECOMB ON | status | B |
 | PWR-A43 | PZR HTRS SHED | caution | B |
+| PWR-A44 | PZR LVL DEV HI | caution | A |
 
 ---
 
@@ -235,6 +236,7 @@ The board therefore **reclassifies** these alarms rather than removing them. The
 | **Setpoint** | ≥ **75 %** |
 | **Means** | PZR level high — could be charging excess, heatup, **or void surge (TMI trap)**. |
 | **Actions** | 1) Check subcooling and pressure. 2) If subcooling OK: reduce charging / increase letdown. 3) If subcooling bad: **suspect LOCA/void** — do **not** secure HPI for level alone. |
+| **This is the ABSOLUTE rung** | 75 % is a fixed elevation, so it is the right alarm for *approaching solid* and the wrong one for *level has left its program*. The deviation rung **A44** would need a programmed level above 65 % to arrive after this one, and the program tops out at 61.5 %, so on this plant A44 always comes in first — it is the one that catches a heatup excursion, and this tile guards the 97 % going-solid trip. |
 
 ---
 
@@ -601,6 +603,20 @@ The board therefore **reclassifies** these alarms rather than removing them. The
 | **Logic** | `pzr_heaters_shed` — latched by a **safety injection** signal or a **loss of offsite power**, and also asserted by the **17 % low-level heater cutoff** |
 | **Means** | The heaters are a large non-safety load, so they are automatically dropped off the emergency buses to leave capacity for equipment that matters more. They are **not** faulted and the bus is **not** dead — they have simply been taken off it. This lamp separates a shed from the other reasons heater power can read zero (a blackout and a heater failure), and it is also what annunciates the **17 % low-level cutoff** — the point at which falling level uncovers the bank. Raised from `status` to `caution` at Rev 17: losing pressure control is not a lineup report, and a `status` row arrives pre-acknowledged behind a grey dot. |
 | **Actions** | 1) Expect heater power **0 %** and the pressurizer to stop holding pressure — pressure now follows the plant, not the controller. 2) They do **not** come back on their own, and **securing safety injection does not restore them**. 3) When you want pressure control back, put them back deliberately: any heater action (AUTO, MANUAL, OFF, or typing a %) reloads them. 4) Before you do, know what you are asking for — on a depressurized plant the heaters answer at full demand, so expect a pressure rise, and with a relief path or a break still open that rise also increases what leaves through it. 5) Restoring pressure control matters most for **natural circulation**, where subcooling has to be maintained without the pumps. |
+
+---
+
+## PWR-A44 — Pressurizer Level Above Program (PZR LVL DEV HI)
+
+| Field | Content |
+|-------|---------|
+| **Setpoint** | Indicated level ≥ **10 %** above its programmed value |
+| **Means** | **Letdown is no longer holding.** The mirror of **A31**, on the same deviation channel and at the same ten points. Level is programmed against Tavg, so it is *supposed* to rise as the plant heats up — this alarm measures the gap between where level is and where the program says it should be, which only opens when mass is entering the system faster than letdown removes it, or when the water already in it is expanding faster than letdown can take the surplus away. |
+| **Why a deviation and not a high level** | The absolute high-level alarm, **A12** (PZR LVL HI), sits at **75 %**. The level program runs **25 %** at no load to **61.5 %** at full power, so at the cold end of that span 75 % is fifty points away and an excursion can run the whole heatup without touching it. Measured on the shipped Mode 5 → Mode 3 heatup: level ran **20.4 points above a 25.00 % program (peak 45.37 %) for 11.6 of the leg's 13.4 plant-hours** and **nothing annunciated**. A31 and A44 do not move on load at all; A12 and the 97 % trip do the absolute job. |
+| **Automatic actions** | None at this alarm. The **backup heaters** have already come on by themselves five points earlier, at program **+5 %** — an automatic action with no lamp of its own, so this tile is also the first thing that tells you it happened. |
+| **Immediate operator actions** | 1) Check letdown — orifice selection, and whether the 17 % low-level cutoff has latched letdown shut from an earlier excursion (**A13a**). 2) Check charging: if it is at its floor and level is still rising, letdown capacity is the constraint, not make-up. 3) Check the heatup or cooldown rate — during a heatup the surplus is thermal expansion, and slowing the rate with RHR heat-exchanger flow is the lever that works. 4) Confirm the excursion is inventory and not indication: cross-check level against Tavg and the loop temperatures. |
+| **Where you will see it** | The heatup and the cooldown, where the program sits on its **25 %** floor while the plant's own expansion outruns a pressure-starved letdown path; a fast unload, where level swells above a program that has not caught up; and the **TMI-2** deception, where level pegs at **100 %** against a 25 % program while the reactor coolant system is emptying through a stuck relief valve. The last one is the reason to read this tile as *"level has left its program"* and never as *"there is plenty of water."* |
+| **If it comes in with LO SUBCOOL** | Stop treating it as an inventory surplus. High indicated level with subcooling falling is the stuck-relief pattern — voiding in the reactor coolant system pushing water up into the pressurizer. See **07** PWR-E07 and **08**. |
 
 ---
 

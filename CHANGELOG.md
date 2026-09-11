@@ -30,6 +30,61 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
 
 ## [Unreleased]
 
+### Added (the board had no cue for a pressurizer running above its program — #706)
+
+**#706 measured the shipped Mode 5 → Mode 3 heatup running pressurizer level 20.4 points above
+its 25.00 % program (peak 45.37 %) for 11.6 of the leg's 13.4 plant-hours, with the player given
+no board cue of any kind.** The gap is real and it is a SHAPE, not a missing alarm.
+
+**`pzr_level_high` is NOT a dark wire — proved by injection, and #706's body is wrong about it.**
+Forcing the `pzr_level` instrument channel to 76 % on a live pwr2 service lights **PZR LVL HI**
+`active_unacknowledged`; 74 % leaves it clear. What it is, is FIXED at an absolute 75 %, and the
+level program runs 25 % at no load to 61.5 % at full power — so at the cold end of the span the
+alarm sits fifty points away and an excursion can run a whole heatup without touching it. The
+same collision #500 fixed on the low side.
+
+**It is not converted the way `pzr_level_low` was, because it cannot be.** `pzr_hi_level`
+(97 %, scram — the going-solid backstop) reads the absolute channel, and `layers/test_runner.js`
+requires every instrument-based trip to carry a less-extreme alarm on the SAME instrument. So the
+high side gets the two-channel ladder the low side already has: **`pzr_level_dev_high`, +10 points
+on the `pzr_level_dev` deviation channel, caution, panel A (PZR LVL DEV HI)**, beside the absolute
+75 % rung that guards the trip. Documented as **`Manuals/06` PWR-A44** and in `Manuals/09` §4.0.
+
+**+10 is measured, not chosen for symmetry** (full stack, `svc.tick()` driven, ACCEL=10,
+SEC_PER_TICK 1.0 s, seed 7). Worst LEGITIMATE upward deviation: every shipped checklist leg that
+is not the fault — `pwr_startup` **+2.46**, `pwr_lower_power` **+4.16**, `pwr_raise_power`
+**+7.53** (momentary; the leg spends **0.0 %** of itself above +8); steady state at all four
+free-play initial conditions **+1.07..+1.17** over 2 plant-hours each; a 100 → 90 → 100 MWe load
+change **+5.98 / +2.45**; ±15 ppm boration and dilution at power **+1.62 / +1.30**. Against the
+faults: `pwr_heatup` **+21.34** (this tree; #706 measured +20.37 on its own), `pwr_shutdown`
+**+21.19**, `pwr_cooldown` **+43.07**, and the TMI-2 leg **+75.00** — level pegged at 100 %
+against a 25 % program while the reactor coolant system empties. **Nothing measured sits between
++7.53 and +21.19.** It is also the plant's own next rung: `LEVEL.backup_above_program_pct` is 5,
+so at +5 the backup heaters come on by themselves with no lamp, at +10 the board says so, at 75 %
+absolute it says so again, at 97 % it trips.
+
+**The vital-few PRESSURIZER LEVEL gauge gets the matching high edge**, built the #676/#703 way —
+`pzrGaugeCautionHi` reads the new rung LIVE through `liveAlarm()` and never retypes a number,
+capped at the plant's own absolute PZR LVL HI so the gauge can never go amber later than the
+annunciator. (The cap is inert on this plant by arithmetic: `levelProgram` clamps at 61.5 %, so
+program + 10 tops out at 71.5 %.) No high-side `danger` band, deliberately — its absolute partner
+would be the 97 % trip, and that bistable is `atPower` (P-7 gated), so a red band at it would
+promise a trip that does not exist through the whole of the heatup this cue was built for.
+
+**Duty cycle, before and after** (full stack, the real `gaugeState()` latch and its 5-point
+release deadband): gauge amber **0.0 %** of the time at all four free-play initial conditions and
+across the 100 → 90 → 100 MWe load change, before and after alike; on a reconstructed excursion
+(level driven to 61.6 % against a 25.0 % program) **0.0 % before, 75.3 % after**, with the new
+annunciator in for 73.8 % of the same window. Before, there was no high edge on the gauge to
+cross at all.
+
+`verify_e2e_ui` gains `testPzrGaugeHighLevelCaution` — three initial conditions sampled for the
+CLASS, the RULE called through `RD.PwrGaugeBands.pzrLevelCautionHi` with the discriminator that
+the edge MOVES (35.0 % in Mode 5, 71.5 % at power), and a live fault leg that also asserts the
+amber arrived while level was still below 75 %, so the authored literal cannot be what produced
+it. `run_contract` 178 → 179 (+1 alarm row, the same shape as #500's).
+
+
 ### Changed (the full-power design point boots off the rod stop — #704)
 
 **The at-power initial conditions booted the control bank on its upper stop, 627 of 627.**
@@ -798,7 +853,7 @@ stays steady (power within 5 points of rated, pressure drift under 0.2 MPa / 29 
 meet within one broadcast of the window end, and a planted 1e-6 difference is seen by `compare()`.
 Four injections, one per conjunct, each proven to redden SI-0 alone. No baseline moves (8 checks).
 
-## [Alpha 1.7.4-rc13] — 2026-09-11
+## [Alpha 1.7.4-rc14] — 2026-09-11
 
 ### Fixed (the CVCS charging/letdown volume scale mixed two bases — #679)
 

@@ -214,6 +214,7 @@ Inward motion still takes — that is the source's own scope, quoted at the end 
 | subcooling_lost | SUBCOOL LOST | subcooling_margin | low | **0 °F** (0 °C) | critical |
 | pzr_level_high | PZR LVL HI | pzr_level | high | **75 %** | caution |
 | pzr_level_low | PZR LVL LO | pzr_level_dev | low | **20 % below program** | warning |
+| pzr_level_dev_high | PZR LVL DEV HI | pzr_level_dev | high | **10 % above program** | caution |
 | pzr_level_cutoff | PZR LTDN ISOL | pzr_level | low | **17 %** | warning |
 | pzr_level_lolo | PZR LVL LO LO | pzr_level | low | **12 %** | critical |
 | rod_limit | ROD INS LIMIT | rod_at_limit | true | — | warning |

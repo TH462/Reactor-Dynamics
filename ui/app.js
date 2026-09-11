@@ -521,9 +521,11 @@
           } },
         /* caution_lo 25 is the FALLBACK, not the edge — see pzrGaugeCautionLo (#676): on a plant
          * that publishes a level program the caution follows it, because 25 % IS the program in
-         * Modes 3/4/5 and this gauge sat latched in caution there 100 % of the time. */
-        { id: 'pzr',     label: 'Pressurizer Level (PZR)', instr: 'pzr_level', raw: function (s) { return s.instruments.pzr_level; }, units: '%', min: 0, max: 100, caution_lo: 25, danger_lo: 12, dp: 0,
-          autorange: function (raw, s) { return { caution_lo: pzrGaugeCautionLo(s, 25) }; } },
+         * Modes 3/4/5 and this gauge sat latched in caution there 100 % of the time. `caution`
+         * (high) is the same construction pointing the other way — see pzrGaugeCautionHi (#706);
+         * 75 is the plant's own absolute PZR LVL HI and is likewise the FALLBACK, not the edge. */
+        { id: 'pzr',     label: 'Pressurizer Level (PZR)', instr: 'pzr_level', raw: function (s) { return s.instruments.pzr_level; }, units: '%', min: 0, max: 100, caution: 75, caution_lo: 25, danger_lo: 12, dp: 0,
+          autorange: function (raw, s) { return { caution: pzrGaugeCautionHi(s, 75), caution_lo: pzrGaugeCautionLo(s, 25) }; } },
         { id: 'sg',      label: 'Steam Generator Level (SG)', instr: 'sg_level', raw: function (s) { return s.instruments.sg_level; }, units: '%', min: 0, max: 100, caution_lo: 30, danger_lo: 12, dp: 0 },
         { id: 'subcool', label: 'Subcooling Margin', instr: 'subcooling_margin', raw: function (s) { return s.instruments.subcooling_margin; }, dim: 'tempdiff', min: -28, max: 83, caution_lo: 11, danger_lo: 0, dp: 0 },
       ],
@@ -1517,6 +1519,40 @@
     if (!cut || cut.instrument !== 'pzr_level' || cut.setpoint == null) return authored;
     return Math.max(cut.setpoint, prog + dev.setpoint);
   }
+  /* …AND ITS HIGH EDGE IS THE SAME RULE POINTING THE OTHER WAY (#706, 2026-09-11). The gauge
+   * carried NO high-side band at all — `caution_lo` and `danger_lo` only — so the one thing the
+   * pressurizer strip could not tell you was that level was running HIGH. #706 measured the
+   * shipped Mode 5 → Mode 3 heatup at **+20.4 points above a 25.00 % program (peak 45.37 %) for
+   * 11.6 of the leg's 13.4 plant-hours** with the player given no cue of any kind: the plant's
+   * absolute PZR LVL HI sits at 75 %, thirty points away, and it never fired.
+   *
+   * The edge is `pzr_level_dev_high` (+10 points, caution — the new deviation rung, measured at
+   * layers/control/pwr_control.js), read LIVE, never retyped, same `liveAlarm()` pattern as
+   * pzrGaugeCautionLo above. CAPPED at the plant's own absolute `pzr_level_high` (75 %) so the
+   * gauge can never go amber LATER than that annunciator — the mirror of the low edge's 17 %
+   * floor. ⚠ The cap is INERT on this plant and that is arithmetic, not luck: `levelProgram`
+   * clamps to 25 .. 61.5 % (pwr2_pressurizer, WTSM 10.3), so program + 10 tops out at 71.5 %.
+   * It is here for the invariant, not for a case that exists today.
+   *
+   * MEASURED AFTER, full stack, svc.tick() driven, ACCEL=10, the real gaugeState() latch and its
+   * 5-point release deadband: caution 0.0 % of the time at all four free-play initial conditions
+   * (2 h each) and across a 100 -> 90 -> 100 MWe load change; 75.3 % of a reconstructed excursion
+   * (level driven to 61.6 % against a 25.0 % program). Before: 0.0 % everywhere, including the
+   * excursion — there was no edge to cross.
+   *
+   * No `danger` (high) edge, deliberately. The absolute partner would be `pzr_hi_level`, the 97 %
+   * going-solid scram — but PWR2's high-level protection bistable is `atPower` (P-7 gated, above
+   * 10 % power), so a red band drawn at it would promise a trip that does not exist through the
+   * whole of the heatup this cue was built for. An edge that lies in the regime it was added for
+   * is worse than no edge. */
+  function pzrGaugeCautionHi(s, authored) {
+    var prog = (s && s.control_state) ? s.control_state.pzr_level_program_pct : null;
+    if (prog == null || !isFinite(prog)) return authored;   /* isFinite(null) is TRUE — order matters */
+    var dev = liveAlarm('pzr_level_dev_high'), hi = liveAlarm('pzr_level_high');
+    if (!dev || dev.instrument !== 'pzr_level_dev' || dev.setpoint == null) return authored;
+    if (!hi || hi.instrument !== 'pzr_level' || hi.setpoint == null) return authored;
+    return Math.min(hi.setpoint, prog + dev.setpoint);
+  }
   /* THE Tavg GAUGE'S LOW EDGE IS A DEVIATION FROM THE SLIDING PROGRAM (#703) — the opposite
    * gap from #676's: the strip carried NO low edge on Tavg at all, so a plant running cold at
    * power had no vital-few cue until the reactor tripped (measured during the #676 fix,
@@ -1563,7 +1599,8 @@
    * tell you an edge is reachable or that it moved — the standing trap — and the vital strip
    * has no DOM handle on its own thresholds, only on the class they produce. verify_e2e_ui
    * calls this with the LIVE snapshot at three initial conditions and with synthetic ones. */
-  RD.PwrGaugeBands = { pzrLevelCautionLo: pzrGaugeCautionLo, tavgCautionLo: tavgGaugeCautionLo };
+  RD.PwrGaugeBands = { pzrLevelCautionLo: pzrGaugeCautionLo, pzrLevelCautionHi: pzrGaugeCautionHi,
+                       tavgCautionLo: tavgGaugeCautionLo };
   // The dimension an instrument's value converts on, so a quoted range or setpoint
   // follows the operator's US/SI selection instead of always reading SI.
   //
