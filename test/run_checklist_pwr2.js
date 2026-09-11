@@ -729,9 +729,12 @@ if (!only) {
    * TWO STATIC SWEEPS OF THE POOL, one runner, over every `accs` entry that is cmd-kind (has
    * `.cmd`) with no `.p` of its own and whose step carries no `overtaken`:
    *   (a) NO SIBLING PREDICATE on the same step — no observable state to grade on at all
-   *       (`take_boron_sample`, and `pwr_cooldown` step 3's two bare `set_trip_block` entries).
-   *       Judgement calls per the issue (an `overtaken` or a new state field), not fixed here;
-   *       the set is pinned so a new one cannot join unnoticed.
+   *       (`take_boron_sample`; `pwr_raise_power` step 3's `set_auto_setpoint` boron-dilution
+   *       entry, #683 — grading the number would stall the climb on chemistry the leg runs in
+   *       the background, so only the operator's ACTION is checked and the number is verified
+   *       later on the leg's own closing step; and `pwr_cooldown` step 3's two bare
+   *       `set_trip_block` entries). Judgement calls per the issue (an `overtaken` or a new
+   *       state field), not fixed here; the set is pinned so a new one cannot join unnoticed.
    *   (b) HAS a sibling predicate — booted at the leg's own `from`, ticked, nothing pressed: is
    *       the sibling already true? Only `pwr_cooldown` step 4 and `pwr_shutdown` step 3 ever
    *       did (both fixed by #697, live-proved below); the other 8 read clean because they need
@@ -761,7 +764,7 @@ if (!only) {
       });
     });
 
-    var NO_STATE_EXPECTED = { 'pwr_raise_power:4': 1, 'pwr_cooldown:3': 2 };
+    var NO_STATE_EXPECTED = { 'pwr_raise_power:3': 1, 'pwr_raise_power:4': 1, 'pwr_cooldown:3': 2 };
     var noStateTally = {};
     NO_STATE.forEach(function (r) { var k = r.proc + ':' + r.step; noStateTally[k] = (noStateTally[k] || 0) + 1; });
     var noStateKeys = Object.keys(noStateTally), expectedKeys = Object.keys(NO_STATE_EXPECTED);
