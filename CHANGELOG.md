@@ -30,6 +30,28 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
 
 ## [Unreleased]
 
+### Fixed (the pressurizer level program's mechanism, not its endpoints, was wrong — #680)
+
+Documentation only; no engine, control or board behaviour changed. The owner's *"stuck at
+25 %"* report turned out to be a Tavg question (#683), but chasing it found a second thing
+worth writing down: the pressurizer level program's sourced endpoints (25 % no-load, 61.5 %
+full power — Westinghouse Technology Systems Manual §10.3, ML11223A290) derive the full-power
+figure from coolant thermal expansion alone. **That derivation does not fully carry over to
+this plant.** Measured across a full Mode 5, Cold Shutdown to Mode 1, At Power heatup: thermal
+expansion supplies only 491 of the 754 kg (1,082 of 1,662 lbm) the pressurizer must gain to
+reach 61.5 %; automatic charging supplies the remaining 263 kg (579 lbm), peak demand 13.4 of
+30.1 gpm available. Cause: this plant's loop-to-pressurizer volume ratio (4.82) is smaller than
+the anchor plant's (6.86), so the same expansion fills proportionally less of a proportionally
+larger vessel.
+
+The plant is correct — a continuous Mode 5 to Mode 1 chain ride confirms it reaches the
+program unaided, with margin — only the mechanism behind the setpoint was mis-stated.
+Corrected in `engines/pwr2/pwr2_pressurizer.js` (the `GEOM.level_program_full`/`_noload`
+comment and the level-control-system header) and `Manuals/12_SIM_PHYSICS.md` §6.3, which had
+claimed the level program and "the physical thermal-expansion line" are the same line; it now
+says the program is expansion plus automatic charging, not expansion alone. Manual revision
+19, item (pp).
+
 ### Fixed (the power ascension could hand back a plant that cooled itself to a trip — #683)
 
 The owner's report was *"when it's running AT POWER it seems to be stuck at the low 25%

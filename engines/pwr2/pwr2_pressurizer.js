@@ -148,7 +148,18 @@
     wall_LD: 5,
     wall_lumps: 2,
     level_program_full: 0.615,           /* WTSM 10.3 (ML11223A290): "high level setpoint of 61.5%" */
-    level_program_noload: 0.25           /* WTSM 10.3: "low level setpoint of 25%" */
+    level_program_noload: 0.25,          /* WTSM 10.3: "low level setpoint of 25%" */
+    /* ⚠ #680: THE ENDPOINTS ARE SOURCED, THE MECHANISM ONLY PARTLY IS. WTSM 10.3 derives 61.5 %
+     * from coolant thermal expansion alone between the no-load and full-power Tavg. That
+     * derivation does not carry over to this plant: reaching 61.5 % here from a settled 25 %
+     * Mode 3 needs 262.7 kg (579 lbm) of net RCS charging — expansion alone supplies only
+     * 491.1 of the 753.8 kg (1,082 of 1,662 lbm) the pressurizer must gain. Cause: this plant's
+     * loop-to-pressurizer volume ratio is 4.82 against the anchor plant's 6.86 (Ginna TS Bases
+     * ML20339A221), so the pressurizer sits about 42 % larger relative to its loop and the same
+     * expansion fills proportionally less of it. MEASURED (ruled A, "accept and document"):
+     * a full Mode 5-to-Mode 1 ride reaches the program unaided, charging demand never exceeding
+     * 0.44 of maximum (13.4 of 30.1 gpm) — the plant is correct, only the derivation's mechanism
+     * does not fully apply here. See `Manuals/12_SIM_PHYSICS.md` §6.3 and issue #680. */
   };
 
   var HEATERS = {
@@ -318,6 +329,15 @@
    * from 25 % at the no-load Tavg to 61.5 % at full power. The full-power end is this plant's
    * design Tavg (304.5 degC), the sourced PERCENTAGES adopted over the plant's own temperature
    * span; the no-load end is the plant's own no-load Tavg, see tavg_noload_c below.
+   *
+   * ⚠ #680: THAT QUOTED DERIVATION IS ONLY PARTLY THIS PLANT'S MECHANISM. WTSM 10.3 reaches
+   * 61.5 % from Tavg expansion alone; this plant reaches it with 262.7 kg (579 lbm) of net
+   * charging on top of 491.1 kg (1,082 lbm) of expansion, because its loop-to-pressurizer
+   * volume ratio (4.82) is smaller than the anchor plant's (6.86) — the same expansion fills
+   * proportionally less of a proportionally larger vessel. The PI controller above supplies the
+   * difference automatically and with margin (measured peak demand 0.44 of maximum charging
+   * capacity over a full Mode 5-to-1 ride) — the endpoints are right and the plant reaches them
+   * unaided; only the "expansion alone" mechanism in the quote above does not fully apply here.
    *
    * THE PROTECTION LADDER, all sourced (WTSM 10.3.4): level > program + 5 % energises the
    * BACKUP HEATERS (anticipatory — the insurge water is cooler and will drop pressure);

@@ -29,6 +29,69 @@ and the user-visible summary in `CHANGELOG.md`. This file points at those and tr
 
 ---
 
+## Session log — 2026-09-10-backshop-b (#702, ruled B — give PWR2 its own field list, decide deliberately) — the bug-report recorder had no reactivity channels for PWR2
+
+`ui/diag_recorder.js`'s `FIELDS` map had no `pwr2` entry, so `fieldsFor()` fell back to the
+RETIRED engine's ten channels — none of them reactivity — for every PWR2 session. A real report
+(`mtsmvirv-yav1uix2`) showed a pressurizer-level-at-power symptom with no way to see the
+boron/xenon/rod cause (worked as #683), and the diagnosis needed roughly a dozen scratch rides to
+reproduce by hand.
+
+**Added `FIELDS.pwr2`**: the ten shared channels plus the ruled minimum — `boron_ppm`,
+`rod_steps` (the control bank's position in steps; there is no `control_bank_steps` field, the
+board's own series already reads `rod_steps`), `xenon_pct_eq`, `reactivity_pcm` — all already
+in PWR2's `true_state`.
+
+**The dead-code trap, and why it needed a second fix.** Adding the FIELDS entry alone would have
+changed nothing: `ui/app.js`'s `diagReset`/`chartSample` key the recorder off `ui.plant`, which
+is **'pwr' for the PWR2 profile too** (`plant: 'pwr', engine: 'pwr2'` — "only the ENGINE differs,
+carried by `engine:`"). `fieldsFor('pwr')` would have kept winning for ever. Both call sites now
+use `engId()` instead (the ENGINE — `'pwr2'` for the shipped plant). `RD.Events.reset` stays on
+`ui.plant` deliberately: its WATCH table is board booleans (`turbine_tripped`, `hpi_active`, …)
+both engines publish identically, so nothing was lost by NOT splitting it the same way.
+
+**Payload cost measured against the #681 wire budget, not guessed**: a synthetic full
+14,400-row, 14-field PWR2 ring gzips to 1,595 KB (78 % of the 2 MB Worker cap) against 1,133 KB
+(55 %) at the old 10 fields — **+41 %**, matching the issue's own ~+40 % estimate. Comfortably
+under budget, so all four fields land (option (a) of the two the issue offered — no field
+dropped to compensate).
+
+**Verified by injection, not by reading the source (CLAUDE.md standing rule).** `test/
+run_diag_bundle.js` gains TR-11: `fieldsFor('pwr2')` carries the four new names; a REAL PWR2
+recording (full stack, `tick()`-driven, never `svc.start()`) carries the pwr2 field list and all
+four new columns are finite with plausible values (boron in a ppm band, rod steps within travel,
+xenon a percentage) — proving a field added to a list actually reaches a bundle. TR-8 gains two
+wiring checks (`engId()` at both call sites) so the dead-code trap above cannot recur silently.
+Confirmed red-before-green by removing the `pwr2` FIELDS entry and re-running: 5 checks failed
+exactly as expected before the fix (`fieldsFor` no longer distinct from the pwr fallback, all
+four field-presence checks), none of the unrelated checks moved.
+
+`run_diag_bundle` 52 → 70. `run_all` OK at baseline.
+
+---
+
+## Session log — 2026-09-10-backshop-a (#680, ruled A — the level program's MECHANISM was wrong, not its endpoints)
+
+The sourced 25 %/61.5 % pressurizer level program endpoints are correct and the plant reaches
+them unaided (measured across a full Mode 5-to-1 ride, #680's own investigation). What was wrong
+is the claim, inherited from WTSM 10.3 (ML11223A290), that the full-power endpoint is reached by
+coolant thermal expansion ALONE. On this plant it is not: expansion supplies 491 of the 754 kg
+(1,082 of 1,662 lbm) the pressurizer must gain; automatic charging supplies the remaining 263 kg
+(579 lbm), peak demand 13.4 of 30.1 gpm — because this plant's loop-to-pressurizer volume ratio
+(4.82) is smaller than the anchor plant's (6.86).
+
+Corrected in two places, both flagged `#680`: `engines/pwr2/pwr2_pressurizer.js` (the
+`GEOM.level_program_full`/`_noload` comment at :150-151, and the LEVEL CONTROL SYSTEM header
+around :318-340) and `Manuals/12_SIM_PHYSICS.md` §6.3, which had said the level program and "the
+physical thermal-expansion line" are the same line — corrected to expansion plus automatic
+charging. Manual revision 19 extended with item (pp); `stamp_manual_revision.js` +
+`pack_manuals.js` run. `run_manual_rev` 15/15.
+
+No engine, control or board behaviour changed. `git log`/issue for the measurement work this
+documents: #680's own comment thread, 2026-09-10.
+
+---
+
 ## Session log — 2026-09-10-develop-b (#676 — the vital-few Pressurizer Level gauge cautioned on a plant sitting on its program)
 
 ### The trap: A GAUGE EDGE COPIED FROM AN ALARM ROW GOES STALE WHEN THE ALARM ROW CHANGES SHAPE
