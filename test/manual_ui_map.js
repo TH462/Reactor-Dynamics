@@ -207,15 +207,18 @@ var STEP_UI = {
   /* THE TMI-2 INCIDENT WALKTHROUGH (#670 Phase 2). Its own block, appended — the six cycle
    * legs above are untouched, because this table is POSITIONAL and the four historical
    * breakages were all somebody re-deriving instead of leaving existing rows alone. Seven of
-   * its sixteen steps carry a `control`; the other nine are verifications and own no row. */
+   * its TWENTY steps carry a `control`; the rest are narration and verification and own no row.
+   * ROWS MOVED +4 (#693, 2026-09-11): step 2 -- the lump that injected four failures in one
+   * broadcast -- became FIVE narrated steps, so every index from 1 upward shifted by four. The
+   * rows were MOVED, not re-derived, and none of the five new steps carries a `control`. */
   'pwr2:pwr_tmi2_incident': [
-    { i: 5, view: 'board', control: 'Trip Blocks' },        // 04:03:50 — bypass the SI signal
-    { i: 6, view: 'board', control: 'ECCS' },               // 04:05:07 — throttle injection
-    { i: 9, view: 'board', control: 'AFW' },                // 04:08:37 — the found block valves
-    { i: 10, view: 'board', control: 'RCP ON/OFF' },        // 05:13:37 — secure the pumps
-    { i: 13, view: 'board', control: 'PORV Block Valve' },  // 06:18:37 — the first correct move
-    { i: 14, view: 'board', control: 'ECCS' },              // 07:20:37 — injection restored
-    { i: 15, view: 'board', control: 'RCP ON/OFF' },        // 19:50:37 — the epilogue restart
+    { i: 9, view: 'board', control: 'Trip Blocks' },        // 04:03:50 — bypass the SI signal
+    { i: 10, view: 'board', control: 'ECCS' },               // 04:05:07 — throttle injection
+    { i: 13, view: 'board', control: 'AFW' },                // 04:08:37 — the found block valves
+    { i: 14, view: 'board', control: 'RCP ON/OFF' },        // 05:13:37 — secure the pumps
+    { i: 17, view: 'board', control: 'PORV Block Valve' },  // 06:18:37 — the first correct move
+    { i: 18, view: 'board', control: 'ECCS' },              // 07:20:37 — injection restored
+    { i: 19, view: 'board', control: 'RCP ON/OFF' },        // 19:50:37 — the epilogue restart
   ],
   pwr_startup: [
     { i: 2,  view: 'board', control: 'Feed Pumps' },

@@ -2496,12 +2496,15 @@
      * FIVE THINGS THE PLAN ASSUMED THAT MEASURED OTHERWISE — each is carried in the step it
      * belongs to and every one is a plant fact, not a wording choice:
      *
-     *  1. THE PORV STICK MUST BE ARMED WITHIN 20 s OF THE FEED LOSS, so it is authored on
-     *     step 2 with the feed loss and NOT on step 3 where the plan put it. Measured by arming
-     *     at nine different seconds and reading the plant at t+300 s: armed at 0/2/5/10/15/20 s
-     *     the valve is still open (1045 psia, level 100 %, the accident); armed at 30/45/60 s
-     *     the valve had already reseated and the plant sits at 1985 psia with level 41 % — no
-     *     accident at all. The valve lifts at 5.5 s and reseats near 25 s. Step 3 fires nothing.
+     *  1. THE PORV STICK MUST BE ARMED WITHIN ~21 s OF THE FEED LOSS, so it is authored with
+     *     the feed loss (now step 3) and NOT on the step that narrates the valve. Measured by
+     *     arming at nine different seconds and reading the plant at t+300 s: armed at
+     *     0/2/5/10/15/20 s the valve is still open (1045 psia, level 100 %, the accident);
+     *     armed at 30/45/60 s the valve had already reseated and the plant sits at 1985 psia
+     *     with level 41 % — no accident at all. The valve lifts at 5.5 s and reseats near 25 s.
+     *     RE-MEASURED 2026-09-11 for the #693 split, which needed the exact cliff rather than a
+     *     bracket: 21 s latches, 22 s does not. See step 3's own note for why 21 seconds is not
+     *     a budget the narrated chain can spend.
      *  2. THE TAILPIPE NEVER EXCEEDS THE HOT LEG on this plant, so the plan's step-4 acceptance
      *     ("tailpipe > hot-leg temp") is unsatisfiable: 0 of 1,558 samples. It saturates at
      *     482 °F against a hot leg at 550-630 °F. Graded on an absolute instead — 240 °F, the
@@ -2512,12 +2515,12 @@
      *     offers nothing above A+B 7 %, so `set_letdown_orifices {a,b}` moves the flow 11.7 gpm
      *     -> 11.7 gpm (#679 corrected the figure from 12.7). The crew's second action of 04:05
      *     cannot be performed here; it is
-     *     narrated in step 7 rather than faked (guide P1: never ask for a press that is already
+     *     narrated in step 11 rather than faked (guide P1: never ask for a press that is already
      *     made).
      *  4. THIS BOARD HAS ONE REACTOR-COOLANT-PUMP HANDSWITCH (`sys.pumpTripped`, a single
      *     boolean), so the crew's two securings — loop B at 1 h 13 min, loop A at 1 h 41 min —
-     *     are one press. Step 11 is that press, at loop B's clock, and carries the pair in its
-     *     note; step 12 is the CONSEQUENCE at loop A's clock and carries no `crew` tag, because
+     *     are one press. Step 15 is that press, at loop B's clock, and carries the pair in its
+     *     note; step 16 is the CONSEQUENCE at loop A's clock and carries no `crew` tag, because
      *     the tag is for a step that asks the player to repeat the crew's action and a
      *     verification asks for nothing.
      *  5. RCP FLOW IS USELESS AS THE SECURING'S ACCEPTANCE. It reads 16.4 % before the press
@@ -2560,32 +2563,132 @@
           inject: [{ failure: 'anticipatory_trip_failure' }],
           acc: { p: 'power_pct', op: '>', v: 90 },
           hl: ['Turbine Load'] },
-        /* 2 — 04:00:37, t = 0. App. II.1 E1-E4. THE PORV STICK IS ARMED HERE, not on step 3:
-         * see trap 1 in the header. Measured: turbine_tripped at t+1 s, STEAM GENERATOR LEVEL
-         * 65 % -> 52.2 % by t+32.5 s and 29.1 % by t+53 s, dry (1.5 %) at t+165 s.
-         * Manuals/08 §2. */
-        { text: 'Verify the turbine has tripped and the steam generators are drying out: the TRIP button lit on the TURBINE-GENERATOR card, STEAM GENERATOR LEVEL falling below 55 %.',
-          why: 'Main feedwater has stopped, and with nothing carrying heat out of the steam generators the primary has nowhere to put it. The auxiliary feed pumps start by themselves, and on this plant their discharge valves are shut. Pressure now has one way out, the relief valve on top of the pressurizer.',
-          /* THE SPIKE IS ALREADY OVER WHEN THIS STEP CHECKS OFF (#670 Phase 3, layman pass S-6).
-           * Measured full-stack: PRIMARY PRESSURE peaks 2339 psi at t+5.5 s and reads 2095 psi
-           * with a down arrow at t+35 s, where the acceptance is graded. The reviewer read
-           * "watched pressure climb" against a falling gauge and a LOW PRESSURE alarm. */
-          note: 'The spike is already over by the time this step checks off. Pressure peaks near 2340 psi about 6 seconds in and is back near 2095 psi and falling by 35 seconds — you have missed it, and missing it is what the next two steps are about.',
+        /* 2 — 04:00:36, ONE SECOND BEFORE THE ACCIDENT. App. II.1 E1. NARRATED, NOT INJECTED
+         * *(OWNER RULING, 2026-09-10: "All decisions as recommended", ratifying #693's option A)*:
+         * this plant has no polisher model and the ruling declined building one. `Manuals/08`
+         * §6.0 carries the declaration.
+         *
+         * AN OBSERVATION STEP — no `acc`, no `accs`, no `saw`, no `cmd` — so the instructor
+         * meets it after OBSERVE_DWELL_S = 12 sim-seconds and then holds on Continue
+         * (instructor_layer.js). That is the owner's "there can be steps where we just see what
+         * happened to the indications".
+         *
+         * NO `pause` HERE, AND IT IS A RUNTIME FACT RATHER THAN A PREFERENCE. The pause is
+         * requested only when something in this step's `inject`/`clear` NEWLY fires
+         * (`_stepChecklist`, #694), so `pause: true` on a step that injects nothing is a dead
+         * field — it would read as authored and do nothing. Nothing is lost: the step already
+         * holds on Continue, and there is no event to miss.
+         *
+         * AND NO `hl` OR `hl_watch`, which makes this the ONE step in the pwr2 pool that
+         * highlights nothing (#685 took the other four to zero). That is the honest answer here
+         * rather than an omission: the polisher is not on this board in any form, so every label
+         * available would point at something the step is not about. The `note` says so out loud
+         * so a player does not go looking. */
+        { text: 'No action. Read what has just happened in the basement, then press Continue.',
+          note: 'Nothing on the board moves on this step. That is correct — the trouble is two rooms away, in the condensate system.',
+          why: 'A condensate polisher is a vessel of resin beads that cleans the feedwater on its way back from the condenser. It is in the secondary plant, a long way from the reactor, and it is the last thing anyone would expect to start a core-damage accident. This plant carries no polisher model, so this beat is told rather than simulated.',
+          story: { clock: '04:00:36',
+            saw: 'Water got into the instrument air line to the polisher valves and they shut. The condensate pump lost its flow path and tripped.',
+            knew: 'A polisher blockage in the basement. Nothing was wrong with the reactor.',
+            did: 'They carried on clearing the resin.' } },
+        /* 3 — 04:00:37, t = 0. App. II.1 E2. THE INITIATING EVENT, AND THE STEP THAT ARMS THE
+         * STUCK VALVE.
+         *
+         * WHY `stuck_porv_open` IS HERE AND NOT ON STEP 6 WHERE ITS NARRATION IS. The stick is
+         * an ARM, not a force: `drivers.porv_stick` does nothing to a shut valve and latches on
+         * the first lift while armed (`pwr2_pressurizer.js`). The valve lifts at 5 s and reseats
+         * near 25 s, so arming it after that is arming it at a valve that will never lift again.
+         * MEASURED on this tree 2026-09-11, full stack, arming at nine times after the feed loss:
+         * 0/8/13/16/20/21 s all latch and give the accident (pressurizer pegged near 200 s,
+         * 1045 psia at 5 min); 22/23/24/25 s NEVER latch and the plant sits at 1989 psia with
+         * level 41.5 % — no accident at all. The cliff is between 21 and 22 seconds.
+         *
+         * That budget cannot be spent on a step the player leaves at their own pace. The pause
+         * on THIS step costs nothing (sim time is stopped while they read), but the two steps
+         * between here and the valve's own beat run live, and one tick at 600x is 60 sim-seconds
+         * — so a player at speed would blow the window and get a walkthrough with no accident in
+         * it. The INDICATOR failure goes on step 6 instead, where it is timing-insensitive and, as
+         * it happens, more faithful: at TMI-2 the lamp read OPEN until the solenoid dropped out
+         * at 13 s (E12), so a few seconds of an honest lamp is what the crew actually had.
+         *
+         * `saw`, not `acc`: live, the pause IS this step's completion and no predicate is
+         * graded; the replay still has to prove the spike happened, and an `acc` read at the
+         * step's END would be read after it. Measured: peak 2356 psia at t+7.4 s. */
+        { text: 'No action. The condensate and main feed pumps have tripped. The walkthrough stops the clock here — read the board, then press Continue.',
+          note: 'Watch PRIMARY PRESSURE once you press Continue. It peaks near 2340 psi about 6 seconds in and is back near 2095 psi and falling by 35 seconds. Six seconds is the whole event.',
+          why: 'With the polisher valves shut the condensate pumps had nowhere to send water and tripped, and the main feed pumps went with them. Feedwater to both steam generators is gone. Nothing is carrying heat out of the primary now, and the heat it cannot dump has one way out: the relief valve on top of the pressurizer.',
           story: { clock: '04:00:37',
-            saw: 'The condensate pump tripped a second earlier and the main feed pumps followed. The turbine tripped with them and the alarms came in a wall.',
-            knew: 'A feedwater transient, which they had drilled. The board said the auxiliary feed pumps had started.',
-            did: 'They took the turbine trip and watched pressure climb.' },
-          inject: [{ failure: 'loss_of_feedwater' }, { failure: 'afw_failure' },
-                   { failure: 'stuck_porv_open' }, { failure: 'porv_indicator_stuck_closed' }],
-          /* 45 s, not 35: the replay reads an `acc` at the step's END and the level was still
-           * 56.5 % there — the harness lands the injections a broadcast earlier than the
-           * measurement ride did, which is a second and a half of a 65 %-to-dry slide. Measured
-           * at 45 s: 38 %. */
-          hold: 45,
-          accs: [{ p: 'turbine_tripped', op: '>', v: 0, label: 'the TURBINE-GENERATOR TRIP button lit' },
-                 { p: 'sg_level_pct', op: '<', v: 55, label: 'STEAM GENERATOR LEVEL below 55 %' }],
-          hl: ['Turbine Load', 'SG Level'] },
-        /* 3 — 04:00:40 / 04:00:45. App. II.1 E6 (PORV, 3 s, 2255 psig) and E7 (trip, 8 s,
+            saw: 'Both main feedwater pumps tripped and the alarms came in a wall.',
+            knew: 'A feedwater transient, which they had drilled.',
+            did: 'They took the trip and watched pressure climb.' },
+          inject: [{ failure: 'loss_of_feedwater' }, { failure: 'stuck_porv_open' }],
+          pause: true,
+          hold: 10,
+          saw: { p: 'pressure_mpa', op: '>', v: 16.0 },
+          hl_watch: ['Feed Flow', 'Plant Pressure'] },
+        /* 4 — 04:00:37. App. II.1 E3, "Normal following trip of feedwater pumps". NO INJECT:
+         * the turbine trips on its own, out of the feed loss, which is the point of narrating it
+         * as its own beat. MEASURED: `turbine_tripped` at t+1 s. */
+        { text: 'Verify the turbine has tripped: the TRIP button lit on the TURBINE-GENERATOR card.',
+          why: 'A turbine cannot run without feedwater, so it trips by itself within a second or two. The reactor should have tripped with it — a turbine trip at power is meant to drop the rods — but that channel is out of service in this walkthrough. So the reactor is still at power with nowhere to put its heat, which is why pressure keeps climbing to the relief valve instead of stopping here.',
+          story: { clock: '04:00:37',
+            saw: 'The turbine tripped, "normal following trip of feedwater pumps".',
+            knew: 'The expected consequence of losing feed.',
+            did: 'They moved to the post-trip checks.' },
+          hold: 6,
+          acc: { p: 'turbine_tripped', op: '>', v: 0 },
+          hl_watch: ['Turbine Load'] },
+        /* 5 — 04:00:37. App. II.1 E4: the auxiliary feed pumps start into valves already shut —
+         * "Block valves EF-V12A and EF-V12B were closed."
+         *
+         * AHEAD OF THE RELIEF VALVE BECAUSE THE SOURCE PUTS IT THERE, which is a deviation from
+         * #693's own table (it listed auxiliary feed last). E4 is at ELAPSED 0 s and E6, the
+         * valve opening, is at 3 s; the reactor trip that follows at 04:00:45 is already step 7,
+         * so narrating auxiliary feed after the valve would have run the story clock BACKWARDS
+         * — caught by `run_checklist_pwr2`'s own monotonic-clock check on the first build of this
+         * split (step 6 04:00:52 -> step 7 04:00:45), which is the #670 defect it was written for.
+         *
+         * TIMING-INSENSITIVE, unlike step 3's stick: MEASURED arming this at
+         * 14/22/30/40/45/60/120/200 s after the feed loss, the accident is unchanged in every
+         * case (pressurizer pegged 196-203 s, relief valve open, 1045 psia at 5 min) and the
+         * generators still empty — at 200 s they bottom at 5.5 % instead of 0 %. So it can sit
+         * on the step that narrates it.
+         * MEASURED level: 65 % -> below 55 % within about 35 s of the feed loss. */
+        { text: 'Verify the steam generators are drying out: STEAM GENERATOR LEVEL falling below 55 %.',
+          note: 'The AFW card shows its pumps running. That is not the same as flow, and nothing on this board draws the difference.',
+          why: 'The auxiliary feed pumps started by themselves, as they are meant to. On this plant their discharge valves are shut, so they are running against a closed line and delivering nothing. The board shows pumps running while the generators keep drying. It took the crew eight minutes to find the shut valves.',
+          story: { clock: '04:00:37',
+            saw: 'The auxiliary feed pumps started automatically, and the board said so.',
+            knew: 'The heat sink was being restored.',
+            did: 'Nobody checked whether the water was getting past the block valves.' },
+          inject: [{ failure: 'afw_failure' }],
+          hold: 30,
+          acc: { p: 'sg_level_pct', op: '<', v: 55 },
+          hl_watch: ['AFW', 'SG Level'] },
+        /* 6 — 04:00:40 / 04:00:50. App. II.1 E6 (the valve opens, 3 s) and E12: it is told to
+         * shut at 2205 psig and does not —
+         * "Valve did not close." — and "Light 'off' indicates solenoid deenergized. There is no
+         * actual position indicator." The PHYSICAL stick was armed on step 3 for the measured
+         * reason in that step's note; what fires HERE is the lamp, which is what the crew was
+         * left reading. MEASURED on this tree: `porv_stuck` latches at t+5.1 s, so the valve is
+         * already open and already failed when this step comes up. */
+        { text: 'No action. The relief valve lifted and has not reseated. The clock stops again — look at the PORV lamp, then at the temperature under it.',
+          note: 'The lamp reads CLOSED from here on and it is wrong. The honest indication is the pipe below the valve: seated it sits near 120 °F, passing steam it climbs toward 480 °F.',
+          why: 'Pressure reached the relief valve setpoint and the valve opened, as designed. It did not shut again. The lamp beside it reads the solenoid, not the disc, so with the valve stuck open the board says CLOSED. That one reading is the whole accident, and it was on the board the entire morning.',
+          story: { clock: '04:00:40',
+            saw: 'Pressure reached 2255 psi and the valve opened as designed. It was told to shut at 13 seconds, and its light went out.',
+            knew: '"Light off indicates solenoid deenergized. There is no actual position indicator."',
+            did: 'They read the dark lamp as a shut valve and moved on.' },
+          inject: [{ failure: 'porv_indicator_stuck_closed' }],
+          pause: true,
+          hold: 6,
+          /* ONE LABEL, ONE ELEMENT. 'PORV Status' resolves to the OPEN/CLOSED value tile, whose
+           * rect sits INSIDE the valve's own art halo (measured at #684 §B: the valve's ring is
+           * 541-604 x 171-232 client px, the tile 551-593 x 175-192) — naming both would draw a
+           * dashed ring nested inside a dashed ring, which is the #684 §D / #607 item 1 defect
+           * the owner has now reported twice. The valve alone already encloses the lamp. */
+          hl_watch: ['Relief Valve (PORV)'] },
+        /* 7 — 04:00:40 / 04:00:45. App. II.1 E6 (PORV, 3 s, 2255 psig) and E7 (trip, 8 s,
          * 2355 psig). MEASURED HERE: the valve lifts at 5.5 s / 2340 psia and the reactor
          * trips at 52.5 s on `ot_delta_t` — the DECLARED DIVERGENCE, and it lives in the `why`
          * where the plan put it. Manuals/08 §2. */
@@ -2598,7 +2701,7 @@
           hold: 22,
           acc: { p: 'scrammed', op: '>', v: 0 },
           hl: ['SCRAM'] },
-        /* 4 — 04:00:50 / 04:01:07. App. II.1 E12 ("Light 'off' indicates solenoid deenergized.
+        /* 8 — 04:00:50 / 04:01:07. App. II.1 E12 ("Light 'off' indicates solenoid deenergized.
          * There is no actual position indicator.") and E20 (tailpipe alarm, 239.2 °F, 30 s).
          * MEASURED: 122 °F seated; crosses 240 °F at t+22 s, 300 °F at t+28 s, saturates 482 °F
          * and NEVER reaches the hot leg (trap 2 in the header). Manuals/08 §3. */
@@ -2611,14 +2714,16 @@
           hold: 28,
           acc: { p: 'porv_tailpipe_temp_c', op: '>', v: 115.56 },
           hl: ['Relief Valve (PORV)'] },
-        /* 5 — 04:02:39. App. II.1 E31, ESF actuation on low RCS pressure (1600 psig).
+        /* 9 — 04:02:39. App. II.1 E31, ESF actuation on low RCS pressure (1600 psig).
          * MEASURED: hpi_active true at t+63 s. Manuals/08 §3. */
         { text: 'Verify safety injection has started by itself: the ECCS card shows the high-pressure pump running.',
           why: 'Primary pressure has fallen through the injection setpoint and the plant started the high-pressure pumps without being asked. Nothing is wrong with that: the plant is losing water through a valve nobody knows is open, and injection is the right answer to it. What comes next is the crew taking it away.',
           /* TWO BOARD READINGS THAT CONTRADICT THE STORY BLOCK AT THIS INSTANT (#670 Phase 3,
            * layman pass S-2 and S-3). Measured full-stack at the step's first tick:
-           *   PRESSURIZER LEVEL 43.1 % and FALLING — 80.1 % at step 2's end, 75.4 % at step 3's,
-           *   a minimum of 40.0 % 16 s into this step, back through 43 % at +29 s, 71.3 % at
+           *   PRESSURIZER LEVEL 43.1 % and FALLING — 80.1 % at the end of the feed-loss chain and
+           *   75.4 % at the reactor-trip step's (read before the #693 split moved those holds by
+           *   a few seconds; the SHAPE is what this note is about), a minimum of 40.0 % 16 s into
+           *   this step, back through 43 % at +29 s, 71.3 % at
            *   +90 s and pegged (>= 99 %) at t = 200 s. The crew's "climbing fast" is history and
            *   is four minutes early on this plant.
            *   ECCS FLOW 0 GPM while the pump reads running: `hpi_active` latches at t = 63.5 s at
@@ -2633,7 +2738,7 @@
           hold: 30,
           acc: { p: 'hpi_active', op: '>', v: 0 },
           hl: ['ECCS', 'HPI/LPI'] },
-        /* 6 — 04:03:50. App. II.1 E33, "ESF emergency injection bypassed by operator". THE
+        /* 10 — 04:03:50. App. II.1 E33, "ESF emergency injection bypassed by operator". THE
          * PLAN'S §8b QUESTION: is the block accepted at this clock? MEASURED YES — accepted at
          * 193 s (P-11 wants pressure below 1972 psig and the plant is at 1044 psia). The
          * `overtaken` is the permissive coming BACK: above 1972 psi the plant revokes the block
@@ -2668,7 +2773,7 @@
             text: 'This step is overtaken: PRIMARY PRESSURE has come back above 1972 psi, where the plant takes the safety-injection block away by itself. Go on to the next step.',
             industry: 'SI BLOCK REVOKED — P-11 PERMISSIVE CLEARED ABOVE 1972 PSIG. STEP SKIPPED.' },
           hl: ['Trip Blocks'] },
-        /* 7 — 04:05:07 (E35, throttle) + 04:05:29 (E37/§II.A, letdown to its high limit).
+        /* 11 — 04:05:07 (E35, throttle) + 04:05:29 (E37/§II.A, letdown to its high limit).
          * MEASURED: the stop is accepted at 198 s; the reset window opens at 125.5 s
          * (`RESET.delay_s = 60`, Phase 0 measurement 4). The letdown half is NARRATED — see
          * trap 3 in the header. Manuals/08 §3. */
@@ -2684,7 +2789,7 @@
           cmd: { action: 'set_hpi', active: false }, hold: 90,
           acc: { p: 'hpi_active', op: '<', v: 1 },
           hl: ['ECCS', 'HPI/LPI'] },
-        /* 8 — 04:06:28. App. II.1 E43, "Pressurizer level goes offscale high (greater than 400
+        /* 12 — 04:06:28. App. II.1 E43, "Pressurizer level goes offscale high (greater than 400
          * inches)". MEASURED: pzr_level pegs at 100 % from t+205 s and holds it to 51.3 min.
          * Manuals/08 §3. */
         { text: 'Verify PRESSURIZER LEVEL has gone to the top of its scale and is sitting there.',
@@ -2710,7 +2815,7 @@
            * `run_manual_controls` could not catch it: it checks that an `hl` label RESOLVES to
            * a board item, and 'Plant Pressure' resolves perfectly — to the wrong tile. */
           hl: ['Pressurizer Level'] },
-        /* 9 — 04:06:27 (E42, saturation) and 04:10:37 (E56, first RCP high-vibration alarm,
+        /* 13 — 04:06:27 (E42, saturation) and 04:10:37 (E56, first RCP high-vibration alarm,
          * "Indication of voids in system. Apparently not recognized."). MEASURED: the board
          * margin reaches 0 at t+165 s and `rcp_cavitating` latches at t+155 s — so BOTH CUES
          * STAND FROM 2.6 MINUTES, which is the 71-minute wait the `why` has to carry rather
@@ -2720,11 +2825,11 @@
           /* THE CLOCK RUNS FORWARD (#670 Phase 3, layman pass S-7). This step was dated 04:10:37
            * on App. II.1 E56, the first pump high-vibration alarm, and the NEXT step is dated
            * 04:08:37 on the sourced auxiliary-feed discovery at 8 minutes — so the story clock
-           * went BACKWARDS two minutes between steps 9 and 10 and the reviewer lost confidence in
+           * went BACKWARDS two minutes between what are now steps 13 and 14, and the reviewer lost confidence in
            * it for the rest of the run. The steps are not reordered (`test/manual_ui_map.js`'s
            * STEP_UI table is positional, and putting the saturation reveal after a 65-minute ride
            * would wreck the teaching order); instead this step takes the SATURATION cue's own
-           * clock, E42 at 04:06:27, rounded to step 8's 04:06:28 because the two are one second
+           * clock, E42 at 04:06:27, rounded to step 12's 04:06:28 because the two are one second
            * apart in the source and are two readings of the same instant. E56 is now named in the
            * `saw` as arriving four minutes later, which is what it did. */
           story: { clock: '04:06:28',
@@ -2744,12 +2849,12 @@
            * cost most: three of the most important observations of the accident pointed at no
            * board element. Watch, never press — the step asks for no action at all. */
           hl_watch: ['Subcooling Margin', 'Reactor Coolant Pumps (RCP)'] },
-        /* 10 — 04:08:37. App. II.1 E49/E50. MEASURED: the player's own valve takes AFW flow
+        /* 14 — 04:08:37. App. II.1 E49/E50. MEASURED: the player's own valve takes AFW flow
          * 0.000 -> 1.000 within 5 s, and the dry generators show level again about 9 plant-min
          * later (STEAM GENERATOR LEVEL 0 % at 8 min, 6 % at 17 min, 37 % at 73 min). Graded on
          * the LEVEL, not the flow: the level-hold automation channel throttles auxiliary feed
          * to 0.02-0.30 of rated for the rest of the ride, so a flow threshold asserted at the
-         * step's end is a coin toss. THE HOLD IS THE 65-MINUTE RIDE to step 11's clock — a
+         * step's end is a coin toss. THE HOLD IS THE 65-MINUTE RIDE to step 15's clock — a
          * step's `cmd` is issued at step START, so the wait belongs to the step BEFORE the one
          * that acts. Manuals/08 §4. */
         { text: 'Open the auxiliary feedwater block valves: click the valve symbol directly above the AFW card.',
@@ -2764,7 +2869,7 @@
           cmd: { action: 'set_afw_block', open: true }, hold: 3900,
           acc: { p: 'sg_level_pct', op: '>', v: 5 },
           hl: ['AFW'] },
-        /* 11 — 05:13:37. App. II.1 E99 (loop B) and E111 (loop A, 1 h 41 min). ONE HANDSWITCH
+        /* 15 — 05:13:37. App. II.1 E99 (loop B) and E111 (loop A, 1 h 41 min). ONE HANDSWITCH
          * on this board — trap 4 in the header. MEASURED: `rcp_cavitating` clears on the next
          * broadcast after the press (4380 -> 4381 s); RCP FLOW does NOT move (16.4 % -> 16.3 %,
          * trap 5), so it is not the acceptance. PRESSURIZER LEVEL leaves 99.5 % at 51.3 min and
@@ -2784,7 +2889,7 @@
           accs: [{ p: 'pzr_level_pct', op: '<', v: 80, label: 'PRESSURIZER LEVEL below 80 %, off the top of the scale at last' },
                  { p: 'rcp_cavitating', op: '<', v: 1, label: 'the pump cavitation alarm clears' }],
           hl: ['RCP Run/Stop'] },
-        /* 12 — 05:41:37, loop A's clock (E111) and §II.A's "circulation of coolant decreased
+        /* 16 — 05:41:37, loop A's clock (E111) and §II.A's "circulation of coolant decreased
          * drastically, because natural circulation was blocked by steam". A VERIFY, and it
          * carries no `crew` tag — see trap 4. MEASURED: PRESSURIZER LEVEL crosses 50 % at
          * 94.9 min (72 % at 73 min, 45 % at 101 min), so this is the deception reversing.
@@ -2807,7 +2912,7 @@
            * tile is the watch target and the pressure tile beside it is what makes the reversal
            * legible: the two are saying the same thing at last. */
           hl_watch: ['Pressurizer Level', 'Plant Pressure'] },
-        /* 13 — 06:11:37. App. II.1 E119, "Loop A hot-leg temperature offscale high… TAVE will
+        /* 17 — 06:11:37. App. II.1 E119, "Loop A hot-leg temperature offscale high… TAVE will
          * not be correctly shown." THIS PLANT'S HOT LEG NEVER PEGS (0-400 °C detector, whole-ride
          * peak 632 °F), so the pegged instrument here is the SUBCOOLING MARGIN, clipped at
          * -50.4 °F. MEASURED full-stack on the authored clocks: on the floor from 56.8 min to
@@ -2828,7 +2933,7 @@
           acc: { p: 'subcooling_c', op: '<=', v: -27.778 },
           /* #685 — glowed nothing. The instruction names one tile; it now points at it. */
           hl_watch: ['Subcooling Margin'] },
-        /* 14 — 06:18:37. App. II.1 E122/E124 and Vol I p. 31 (Mehler). MEASURED: the close is
+        /* 18 — 06:18:37. App. II.1 E122/E124 and Vol I p. 31 (Mehler). MEASURED: the close is
          * accepted at 8280 s; PRIMARY PRESSURE 647 -> 758 psia within 2 plant-min (above 750 at
          * 139.8 min), the tailpipe falls under 400 °F near 141 min and under 300 °F at 145.6 min,
          * and the subcooling margin leaves its floor at 140.9 min. THE HOLD RUNS TO STEP 15's
@@ -2880,7 +2985,7 @@
           accs: [{ p: 'pressure_mpa', op: '>', v: 5.17, label: 'PRIMARY PRESSURE above 750 psi' },
                  { p: 'porv_tailpipe_temp_c', op: '<', v: 204.44, label: 'PORV tailpipe temperature below 400 °F' }],
           hl: ['PORV Block Valve'] },
-        /* 15 — 07:20:37. App. II.1 E167; NOT SUSTAINED historically (E172 reset at 3 h 27 min,
+        /* 19 — 07:20:37. App. II.1 E167; NOT SUSTAINED historically (E172 reset at 3 h 27 min,
          * E178 pump stopped at 3 h 37 min, on the borated-water-tank low alarm — §II.A p. 30).
          * MEASURED: accepted at 12000 s; SUBCOOLING MARGIN back above 0 near 220 min and above
          * 10 °F at 222 min, reaching +25.7 °F at 260 min; inventory 19.6 % -> 81.1 %.
@@ -2896,7 +3001,7 @@
           cmd: { action: 'set_hpi', active: true }, hold: 3600,
           acc: { p: 'subcooling_c', op: '>', v: 5.56 },
           hl: ['ECCS', 'HPI/LPI'] },
-        /* 16 — the epilogue, on the sourced 19:50:37 restart (App. II.1 E347, "Adequate core
+        /* 20 — the epilogue, on the sourced 19:50:37 restart (App. II.1 E347, "Adequate core
          * cooling now has been established"). MEASURED: the restart is ACCEPTED at 260 min and
          * RCP FLOW goes 0.0 % -> 96.2 % within 36 s; inventory 81 % -> 92 % and the margin
          * +23 -> +33 °F over the next 6 plant-minutes. THE DECLARED GAP (plan §2, R2 ruled) is
