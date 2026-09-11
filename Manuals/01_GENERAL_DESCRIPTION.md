@@ -24,7 +24,7 @@ A **Pressurized Water Reactor** keeps primary coolant water under high pressure 
 | Primary pressure | **2235 psi (15.41 MPa)** |
 | Average coolant temperature (Tavg) | ≈ **579.2 °F (304 °C)** |
 | Hot leg / cold leg | ≈ 609.8 / 550.4 °F (321 / 288 °C) (ΔT ≈ 59.4 °F / 33 °C at rated) |
-| Pressurizer (PZR) level | ≈ **55 %** |
+| Pressurizer (PZR) level | ≈ **61.5 %** |
 | Steam Generator level | ≈ **65 %** |
 | Secondary steam pressure | ≈ **819 psi (5.65 MPa)** |
 | Subcooling margin | ≈ **73.8 °F** (41 °C) |

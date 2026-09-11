@@ -436,7 +436,7 @@ Mode 1 (or completing entry via N05).
 | 3 | Raise Turbine Load to match (Manual) **or** use Follow | Turbine / Follow | MWe tracks power |
 | 4 | Hold at each plateau; check Tavg, pressure, SG level, subcooling | (observe) | Stable board |
 | 5 | Re-engage feed AUTO and PZR AUTO as needed | AUTO controls | Controllers holding |
-| 6 | Near HFP: bank **~96.7 % withdrawn (606 of 627 steps)** at equilibrium xenon; trim boron for critical hold | CVCS / rods | Power ~100 %; P ≈ 2235 psi (15.41 MPa); SG ~65 %; PZR ~55 % |
+| 6 | Near HFP: bank **~96.7 % withdrawn (606 of 627 steps)** at equilibrium xenon; trim boron for critical hold | CVCS / rods | Power ~100 %; P ≈ 2235 psi (15.41 MPa); SG ~65 %; PZR ~61.5 % |
 | 7 | Hold Tavg on program with the bank as load settles — rod control is MANUAL here (**03 §14.3**) | Rods | Tavg on program; power steady |
 
 ### Outcome
@@ -588,7 +588,7 @@ CVCS available.
 
 | Step | Action | Control | Acceptance |
 |------|--------|---------|------------|
-| 1 | Read PZR level (~**55 %** at HFP; program rises with load) | PZR level | Known |
+| 1 | Read PZR level (~**61.5 %** at HFP; program rises with load) | PZR level | Known |
 | 2 | Raise level: increase charging and/or reduce letdown | CVCS | Level rising |
 | 3 | Lower level: increase letdown and/or reduce charging | CVCS | Level falling |
 | 4 | Place inventory AUTO for watchstanding | CVCS AUTO | Holding |
@@ -810,7 +810,7 @@ in the first leg.
 | Electrical | **≈ 100 MWe** |
 | Primary pressure | **2235 psi (15.41 MPa)** |
 | Tavg | ≈ 547.0 – 580.1 °F (286.1 – 304.5 °C) (no-load → full-power program; #647, 2026-09-11) |
-| PZR level | ~55 % |
+| PZR level | ~61.5 % |
 | SG level | ~65 % |
 | Subcooling | ~73.8 °F (41 °C) |
 | Control bank | **~96.7 % withdrawn (606 of 627 steps)** — the sourced full-power position, **09** §11.0 |

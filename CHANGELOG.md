@@ -1695,6 +1695,31 @@ refitted one.
   Replaced with an operator-reachable stimulus, asserted on demand **and** delivered flow, and
   measured at both anchors so it passes on the old plant too.
 
+### Fixed (player-facing copy taught the retired engine's 55 % at-power pressurizer level — #677)
+
+Nine sites still quoted the retired engine's own `pzr_level_nominal` (55 %, one at 58 %, one
+Mode 4 boot level at 30 %) as if it described the shipped plant. Corrected to PWR2's sourced
+level program — **61.5 % full power / 25 % no load** (Westinghouse Technology Systems Manual
+§10.3, ML11223A290; confirmed not moving by #647's evidence pass): `Manuals/01` §2.0,
+`Manuals/02` §5.3 (`hot_shutdown` boot level, 30 → 25 %), `Manuals/03` §5.4, `Manuals/04`
+(three: the HFP-approach table, the inventory-control procedure, the §3.0 quick reference),
+`Manuals/05` Phase E, `Manuals/ISSUES_AND_FINDINGS.md` §7, and three board inspect cards
+(`ui/diagram/board/pwr_board_inspect.js`, two at 55 %, one at 58 %).
+
+**The classic board's green-band tile needed no change.** `pzrLevelBand()`
+(`ui/diagram/board/pwr_board_wiring.js`) already reads `control_state.pzr_level_program_pct`
+live (#556/#598 item 11) — the **56.5–66.5 %** band a fresh reader sees is `program ± 5`
+at the current 61.5 % program, the correct reading, not a fourth instance of the defect.
+
+**A tenth site found beyond the issue's list**: `Manuals/12_SIM_PHYSICS.md` §7.3 documents the
+**retired engine's** own inventory node (`pzr_mass_frac`, `level_per_mass` 776, `level_per_void`
+375.33) as if it were PWR2's — a bigger, pre-existing staleness the issue's original pass had not
+found. Flagged in place with a stale-content banner (a correct rewrite needs its own HR12
+measurement pass against PWR2's level program and PI controller); follow-up filed **#708**.
+
+`Manuals/00_REVISION_HISTORY.md` Rev 19 extended (item (tt)); `stamp_manual_revision.js` and
+`pack_manuals.js` re-run; `run_manual_setpoints` unaffected at 18/18 (chapter 09 was not touched).
+
 
 ## [Alpha 1.7.3] — 2026-09-05
 
