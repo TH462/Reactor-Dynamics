@@ -2782,6 +2782,102 @@ async function testRodLaneBankScale(page) {
   return log.join('\n') + '\n';
 }
 
+/* THE ROD LIMIT MARGIN INDICATIONS-TAB ROW MUST READ THE ENGINE'S OWN BANK, LIVE (#707) — the
+ * same fix as testRodLaneBankScale's, on a DIFFERENT rendering path. That check reads the rod
+ * TREND-CHART lane's drawn top; this one reads the Rod Limit Margin ROW's own scanner-detail
+ * prose in the Indications tab ("Indicating range 0 steps to 627 steps."), built by
+ * indicationFacts() (ui/app.js) through bankScale() rather than the generated manual
+ * reference's static [0, 912] (ui/manual_data.js — the RETIRED engine's 912-fine-step drive).
+ * A one-off Playwright probe proved the fix at the time — reading the row's
+ * data-scanner-detail attribute, "0 steps to 912 steps" before, "0 steps to 627 steps" after —
+ * but was never committed, so nothing gates this string and it can regress silently: the same
+ * `/\(partial\)/` shape CLAUDE.md records, where a source scan cannot prove a rendered string
+ * is reachable.
+ *
+ * TWO CHECKS, and #707's own ruling makes the SECOND the one that matters — hard-coding the
+ * new literal is exactly how the old one got here, so "it says 627" is not enough:
+ *   1. NOT the retired engine's 912-step literal.
+ *   2. THE STRING FOLLOWS THE ENGINE. `RD.pwr2.kinetics.RODS.max_steps` is moved under the
+ *      running plant (the same poke testRodLaneBankScale's check 3 uses), then a Free Play
+ *      reset re-triggers buildIndications() — the row's text is built once per plant rebuild,
+ *      not per broadcast, so the poke alone changes nothing on screen until the plant rebuilds.
+ *      A captured 627 passes check 1 and fails this one.
+ *
+ * PROVED BY INJECTION, 2026-09-11: pointing indicationFacts() at `ind.range` (the generated
+ * static [0, 912]) instead of bankScale() reds check 1, reading "0 steps to 912 steps"; a
+ * literal 627 in bankScale()'s place passes check 1 and reds check 2 — the string never moves
+ * when the bank does.
+ */
+async function testRodLimitMarginIndicationRange(page) {
+  var log = [];
+  await page.goto('http://127.0.0.1:' + PORT + '/ui/shell.html?engine=pwr2&init=hot_full_power' +
+                  '&run=1&dev=1', { waitUntil: 'networkidle', timeout: 90000 });
+  await dismissMission(page);
+  await waitBoardLive(page, 20000);
+  await page.click('[data-tab="indications"]');
+  await page.waitForTimeout(600);
+
+  function readDetail() {
+    return page.evaluate(function () {
+      var row = document.querySelector('#indicationsList .num-line[data-ser="rod_margin"]');
+      return row ? row.getAttribute('data-scanner-detail') : null;
+    });
+  }
+
+  var before = await readDetail();
+  if (!before) {
+    throw new Error('no Rod Limit Margin row (data-ser="rod_margin") in the Indications tab, or it carries no data-scanner-detail');
+  }
+  if (/\b912\b/.test(before)) {
+    throw new Error('Rod Limit Margin\'s indicating range still reads the retired engine\'s 912-step literal: "' + before + '"');
+  }
+  var m = /Indicating range 0 steps to (\d+) steps/.exec(before);
+  if (!m) {
+    throw new Error('Rod Limit Margin\'s scanner detail carries no "Indicating range 0 steps to N steps." sentence: "' + before + '"');
+  }
+  var shipped = parseFloat(m[1]);
+  if (!(shipped > 0)) throw new Error('parsed a non-positive bank (' + shipped + ') from: "' + before + '"');
+  log.push('shipped: "' + before + '" (bank ' + shipped + ' steps)');
+
+  /* ---- the discriminator: move the ONE place the bank is defined, let a broadcast publish
+   * it (indicationFacts() reads `latest`, not a live function, so the row text will not move
+   * until the NEXT rebuild sees a `latest` that already carries the moved bank), then rebuild
+   * the tab through a real Free Play reset — the path a player's own Reset takes, not a
+   * synthetic hook. */
+  var moved = await page.evaluate(function (factor) {
+    var R = window.RD.pwr2.kinetics.RODS, was = R.max_steps;
+    R.max_steps = Math.round(was * factor);
+    return { was: was, now: R.max_steps };
+  }, 2.5);
+  await page.waitForTimeout(1500);      // >= one broadcast, so `latest` carries the moved bank
+  await page.click('#simStatus');
+  await page.waitForTimeout(400);
+  if (!(await page.isVisible('#missionOverlay'))) throw new Error('could not reopen Plant & Mission to reset the plant');
+  await page.click('[data-mfree]');
+  await waitBoardLive(page, 20000);
+  await page.click('[data-tab="indications"]');
+  await page.waitForTimeout(600);
+
+  var after = await readDetail();
+  log.push('bank ' + moved.was + ' -> ' + moved.now + ' steps, plant reset through Free Play: "' + after + '"');
+  var m2 = /Indicating range 0 steps to (\d+) steps/.exec(after || '');
+  if (!m2) {
+    throw new Error('Rod Limit Margin lost its indicating-range sentence after the bank moved: "' + after + '"');
+  }
+  var movedRead = parseFloat(m2[1]);
+  if (movedRead === shipped) {
+    throw new Error('the indicating range did NOT follow the bank: it stayed at ' + shipped +
+      ' steps while RD.pwr2.kinetics.RODS.max_steps went ' + moved.was + ' -> ' + moved.now +
+      '. That is a range CAPTURED once (a hard-coded 627), the exact mechanism #707 forbids.');
+  }
+  if (movedRead !== moved.now) {
+    throw new Error('the indicating range followed the bank to the wrong number: row reads ' +
+      movedRead + ', plant published ' + moved.now);
+  }
+  log.push('range follows the engine: ' + shipped + ' -> ' + movedRead + ' steps, matching the moved bank exactly');
+  return log.join('\n') + '\n';
+}
+
 async function testCssTransitions(page) {
   var log = [];
   var url = 'http://127.0.0.1:' + PORT + '/ui/shell.html?engine=pwr2&init=hot_full_power&run=1&dev=1';
@@ -2902,6 +2998,8 @@ async function main() {
     fs.writeFileSync(path.join(SCRATCH, 'tavg-gauge-deviation.log'), tgLog);
     var rlLog = await testRodLaneBankScale(page);
     fs.writeFileSync(path.join(SCRATCH, 'rod-lane-bank-scale.log'), rlLog);
+    var rmLog = await testRodLimitMarginIndicationRange(page);
+    fs.writeFileSync(path.join(SCRATCH, 'rod-limit-margin-indication-range.log'), rmLog);
     fs.writeFileSync(path.join(SCRATCH, 'ui-screenshot-summary.log'), summary.join('\n') + '\n');
     console.log('E2E UI verification: PASS (' + (ENGINES.length * VIEWS.length) + ' screenshots)');
   } finally {
@@ -2926,6 +3024,7 @@ if (require.main !== module) {
                      testPzrGaugeHighLevelCaution: testPzrGaugeHighLevelCaution,
                      testTavgGaugeDeviationCaution: testTavgGaugeDeviationCaution,
                      testRodLaneBankScale: testRodLaneBankScale,
+                     testRodLimitMarginIndicationRange: testRodLimitMarginIndicationRange,
                      testPauseResumeSpeed: testPauseResumeSpeed, testWalkthroughEventPause: testWalkthroughEventPause,
                      port: function () { return PORT; } };
 } else {

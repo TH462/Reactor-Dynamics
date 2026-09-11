@@ -101,6 +101,22 @@ steps to 627 steps."
 Gates at baseline: `run_hardrules`, `run_manual_units`, `run_manual_setpoints`, `run_inspect`,
 `run_all` (111 runners; tracked red `run_ops` 59/70 only).
 
+**The probe above is now a committed gate.** `verify_e2e_ui.js` gains
+`testRodLimitMarginIndicationRange`, reading the row's rendered `data-scanner-detail` string, not
+source. Two checks, and the second is the one that matters — #707's own ruling was read-not-capture,
+so "it says 627" alone is not enough: (1) not the retired 912 literal, (2) the string FOLLOWS
+`RD.pwr2.kinetics.RODS.max_steps` moved under the running plant through a real Free Play reset.
+Injection-verified: the retired `ind.range` reds check 1 ("…0 steps to 912 steps"); a captured
+literal 627 passes check 1 and reds check 2 (627 → 1568 under the moved bank, string stuck at 627).
+
+`verify_e2e_ui.js` is also CONTENTION-SENSITIVE at one check (#691's pause/speed-button timing
+assertion) — measured red under concurrent cross-lane gate load, green alone, no code changed
+between runs. `BASELINES` (`test/run_all.js`) now carries a note: re-run that runner alone before
+treating a red there as real.
+
+Gates at baseline: `run_hardrules` 524, `run_flags` 345/345, `run_all` (111 runners; tracked red
+`run_ops` 59/70 only).
+
 
 ### Added (the board had no cue for a pressurizer running above its program — #706)
 
