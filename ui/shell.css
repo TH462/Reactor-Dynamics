@@ -2216,9 +2216,18 @@ select.num-input { width: auto; }
    itself is the brightest thing on the line; that is the word the eye is hunting for. */
 .ckl-use { font-size: 11.5px; color: var(--text-2); margin-bottom: 3px; margin-top: 0; }
 .ckl-use b { color: var(--text); font-weight: 600; }
-/* the collapsible "why" (#244 items 2/9) — teaching prose, visually quieter than the action */
-.ckl-why { font-size: 11.5px; color: var(--text-2); line-height: 1.45; margin-top: 4px;
+/* the "why" (#244 items 2/9) — teaching prose, visually quieter than the action. Since #660
+   item 3 it is ALWAYS open on the active step, so it is no longer collapsible in practice and
+   its length is paid on every step (which is what made CHECKLIST_WRITING_GUIDE F2 load-bearing).
+   #692 item 3 gives it a legend: an unheaded grey paragraph read as part of the step, and the
+   owner asked for it "presented as extra learning material". The legend deliberately matches
+   .ckl-story-l > span — the other always-drawn supplementary block on the same card. */
+.ckl-why { font-size: 11.5px; color: var(--text-2); line-height: 1.45; margin-top: 6px;
   border-left: 2px solid var(--border); padding-left: 8px; }
+.ckl-why-lbl {
+  display: block; color: var(--muted);
+  font-size: 10px; letter-spacing: 0.04em; text-transform: uppercase; margin-bottom: 2px;
+}
 .ckl-why-btn { font-size: 10px; padding: 1px 7px; margin-top: 4px; }
 .ckl-expand-hint { font-size: 10px; color: var(--muted); margin-top: 4px; }
 .ckl-back { font-size: 11px; padding: 2px 8px; margin-bottom: 6px; }

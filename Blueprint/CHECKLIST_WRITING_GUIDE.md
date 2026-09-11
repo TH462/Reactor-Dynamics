@@ -310,7 +310,7 @@ term in it that a step uses without its one-line definition is a defect in that 
 | `text` | the one action, or "Verify …" + what to check; the caution that protects *this* step; the definition of a term on first visible use | outcome narration; a second action; a citation; the game's own behaviour; "you"; "Nothing to press" (R4) |
 | `note` | how the control physically behaves (one click latches; MED moves *n* steps a minute); what a display's shorthand means (7.0e2 = 700); what will take the clock away during this step | an action or instruction — a grey note is where an instruction goes to die |
 | `control` / `target` | the engraved name; the tile and value that show the *effect* — lamp **and** plant response | a lamp alone ("A+B 7 % lit" says nothing about letdown flow) |
-| `why` | three things, in order: why this step here; where the number came from; what to watch while it runs. **Always open on the active step, so its length is paid every step** — three sentences (F2) | an instruction; a contingency action; a recovery procedure; measured development evidence; a citation mid-sentence; an epigram |
+| `why` | three things, in order: why this step here; where the number came from; what to watch while it runs. **Always open on the active step, so its length is paid every step** — three sentences (F2, `checklist_why_length`) | an instruction; a contingency action; a recovery procedure; measured development evidence; a citation mid-sentence; an epigram |
 | `acc` / `accs` | the acceptance Continue lights on. **Required on every step (R7)** | a criterion the player must do arithmetic on (U4); an engine field name in the `label` — write the tile's own words |
 | `accs[].hidden: true` | a **`cmd`-kind** entry the replay must issue (the harness presses the button) whose twin predicate entry already draws the lamp. Still graded; simply not printed. The heatup's pressurizer step is the case — `{cmd: {action:'set_spray', auto:true}, label:'AUTO pressed under SPRAY', hidden: true}` beside `{p:'spray_auto', …, label:'AUTO lit under SPRAY'}`, so "spray" is not on the card twice (#660 item 6) | a predicate entry — hiding a `p`-kind entry hides the criterion the player is being graded on |
 | `overtaken` | `{p, op, v[, tol], label, text[, industry]}` — the plant condition under which this step **no longer applies** (#641). Graded like `acc` while the step is active; when it holds, the step checks off as `overtaken`, the card says so, `text` is posted as the instructor's comment, and the walkthrough moves on. **Required wherever the acceptance is a command the plant can stop accepting** | a condition that merely makes the step *harder* — `overtaken` says the step is moot, not that the player is late |
@@ -331,6 +331,9 @@ Two rules the table implies, both broken repeatedly in the shipped set:
   load-bearing action, and each is in dim grey behind a click. Move it into the step line of
   the step *before* the one it protects.
 - **F2. The `why` is at most three sentences and one causal chain, with at most one number.**
+  **GATED since #692** (2026-09-11) — `run_style` `checklist_why_length`, which had been set at
+  FOUR, one rung looser than this rule and than the owner's own words. Seven blocks were sitting
+  in the gap.
   **This is the one rule in the file that the runtime made load-bearing** (#660 item 3): the
   details are always open under the active step, so there is no click between the player and the
   `why`, and no way for a long one to be skipped. Length is now paid on every step of every leg —

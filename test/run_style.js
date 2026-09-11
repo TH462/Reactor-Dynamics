@@ -201,18 +201,22 @@ var CHECKS = [
    * SENTENCES, NOT WORDS, and the reason is the corpus. The owner's rule is stated in
    * sentences; a word cap was tried first and it fought the units rule — the steps that must
    * carry "1972 psi (13.6 MPa)" three times run long in three sentences and would have been
-   * "fixed" by deleting the SI pairs `run_manual_units` requires. So the scored check counts
-   * sentences and the word count goes to the backlog below, unscored, the same split this
-   * runner already makes for the twenty-word step cap.
+   * "fixed" by deleting the SI pairs `run_manual_units` requires. (That argument is now spent
+   * on its own terms — the 2026-09-06 ruling took SI out of the checklists entirely — but the
+   * split stands, because the rule the owner stated is a SENTENCE rule and this is the check
+   * that enforces it. The step LINE's word cap is its own scored check below.)
    *
-   * FOUR, not three, for the same reason every other cap here has a rung of slack: three is
-   * the owner's guidance and four is where prose stops being supplemental and starts being a
-   * chapter. When it binds, CUT — the reasoning belongs in the manual chapter the step cites.
-   * At authoring: 61 of 61 pass, worst 3 sentences / 102 words (pwr_heatup step 8, the
-   * accumulator window). Before this pass the worst was 9 sentences / 246 words. */
+   * THREE, NOT FOUR (#692, 2026-09-11). It was four, with a comment arguing that "three is the
+   * owner's guidance and four is where prose stops being supplemental and starts being a
+   * chapter" — a gate deliberately set one rung looser than the rule it enforces. He has now
+   * said 2-3 TWICE *(OWNER, 2026-09-03, #619 item 12: "they should be no more than 2 or 3
+   * sentences."; OWNER, 2026-09-09 playtest sheet §B, filed as #692: "Steps shouldn't be more
+   * than 2-3 sentences.")*, and a gate looser than a twice-stated owner rule is the gate being
+   * wrong. Seven blocks sat in the one-sentence gap it left open and were rewritten in the same
+   * change. When it binds, CUT — the reasoning belongs in the manual chapter the step cites. */
   {
     id: 'checklist_why_length',
-    rule: 'W-detail — a step\'s details paragraph is supplemental context: at most 4 sentences',
+    rule: 'W-detail — a step\'s details paragraph is supplemental context: at most 3 sentences',
     run: function (d) {
       return d.steps.filter(function (s) { return typeof s.step.why === 'string'; })
         .map(function (s) {
@@ -220,13 +224,52 @@ var CHECKS = [
             .filter(function (x) { return x.trim().length > 1; }).length;
           return { s: s, n: n };
         })
-        .filter(function (r) { return r.n > 4; })
+        .filter(function (r) { return r.n > 3; })
         .map(function (r) {
           return r.s.proc + ' step ' + r.s.n + ' — ' + r.n + ' sentences: ' + r.s.step.why.slice(0, 90);
         });
     },
     inject: function (d) {
-      d.steps[0].step.why = 'One. Two. Three. Four. Five sentences is a chapter, not a note.';
+      d.steps[0].step.why = 'One. Two. Three. Four sentences is a chapter, not a note.';
+    },
+  },
+  /* THE STEP LINE'S WORD CAP, SCORED (#692, 2026-09-11). `Blueprint/STYLE_GUIDE.md` W2 caps a
+   * step's instruction line at TWENTY WORDS and has done since the guide was written. Nothing
+   * enforced it: the count was printed in the BACKLOG block below, unscored, on the argument
+   * quoted in this runner's header — that a moving number teaches the next person to update it
+   * without reading it.
+   *
+   * THAT ARGUMENT WAS WRONG HERE, and the measurement is what says so. The backlog number went
+   * 0 of 61 (at authoring) to 8 of 67 to 46 of 67 to 55 of 89 across four authoring passes, and
+   * the guide's own prose still claimed "0 of 61 shipped step texts exceed 20 words" on the day
+   * #692 was filed. An unscored count did not get read; it got inherited. The owner reported the
+   * symptom himself twice — "Many steps are too wordy. The step text and the info text."
+   *
+   * WORDS, NOT SENTENCES, and that is the whole point of having both checks. Measured on the
+   * pool the day #692 was filed: 0 of 85 step lines exceeded three sentences and 54 of them
+   * exceeded twenty words, longest 58 (`pwr_heatup` step 10). The sentence rule was already
+   * satisfied by a pool the owner was reading as too wordy, because a 58-word instruction can
+   * be three sentences. The sentence cap governs the DETAILS paragraph; this governs the LINE.
+   *
+   * WHITESPACE SPLIT, deliberately naive, matching the backlog counter it replaces so the two
+   * numbers cannot disagree. "1615 psi" is two words and "AVG COOLANT TEMPERATURE" is three;
+   * the cap is a reading-length budget, not a token count, and a tile name genuinely costs the
+   * reader three words. When it binds, move the displaced clause to `note` (which renders under
+   * the active step) or to `target` — not into the `why`, which has its own cap. */
+  {
+    id: 'checklist_text_words',
+    rule: 'W2 — a step\'s instruction line is at most 20 words (move the rest to note/target)',
+    run: function (d) {
+      return d.steps.filter(function (s) { return typeof s.step.text === 'string'; })
+        .map(function (s) { return { s: s, n: words(s.step.text) }; })
+        .filter(function (r) { return r.n > 20; })
+        .map(function (r) {
+          return r.s.proc + ' step ' + r.s.n + ' — ' + r.n + ' words: ' + r.s.step.text.slice(0, 90);
+        });
+    },
+    inject: function (d) {
+      d.steps[0].step.text = 'Press AUTO on the STEAM DUMP card until its status reads PRESS, ' +
+        'then lower the DUMP SETPOINT box fifty pounds at a time all the way down to 120 psi.';
     },
   },
   /* NO SI IN THE LIVE CHECKLIST *(OWNER RULING, 2026-09-06: "DO not include SI. There will be
@@ -387,7 +430,10 @@ function manualCount(re) {
 }
 
 console.log('\n' + D + '  backlog (reported, not scored — the guide states these rules and the corpus does not yet meet them):' + X);
-console.log(D + '    step texts over the twenty-word cap (W2): ' + over.length + ' of ' +
+/* The step-line word count is SCORED since #692 (`checklist_text_words`). It stays printed here
+ * because the DISTRIBUTION is what an author needs — "0 over cap, longest 20" and "0 over cap,
+ * longest 11" are very different pools and the pass/fail line cannot say which one you have. */
+console.log(D + '    step texts over the twenty-word cap (W2 — now SCORED above): ' + over.length + ' of ' +
   data.steps.filter(function (s) { return s.step.text; }).length +
   ' · longest ' + words(longest.step.text) + ' words (' + longest.proc + ' step ' + longest.n + ')' + X);
 /* The DETAILS paragraph's word count, unscored — the scored half counts sentences (see the

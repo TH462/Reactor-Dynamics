@@ -4190,7 +4190,28 @@
           ? 'This takes a while in plant time — use time acceleration (the speed control, top bar).'
           : st.wait_hint) + '</div>';
       }
-      if (st.why) det += '<div class="ckl-why">' + mesc(st.why) + '</div>';
+      /* THE DETAILS PARAGRAPH IS LABELLED, SO IT READS AS EXTRA (#692 item 3, from the owner's
+       * 2026-09-09 sheet §B — he asked for it "presented as extra learning material rather than
+       * part of the step", and suggested a labelled bubble).
+       *
+       * It had no label at all. Since #660 item 3 the active step's details are ALWAYS OPEN, so
+       * the `why` arrives as an unheaded grey paragraph hanging under the instruction with
+       * nothing saying it is optional — the same visual weight as the `note`, which carries
+       * contingencies the player does have to act on. A label is what separates "read this to
+       * act" from "read this to understand".
+       *
+       * "Why this step" and not "Learn more": the field's whole contract (CHECKLIST_WRITING_GUIDE
+       * F2) is one causal chain answering why the step is here, and a label that names the
+       * question is what lets a player who does not want it skip the block in one glance.
+       *
+       * The legend borrows `.ckl-story-l > span`'s idiom — small, upper case, muted — because
+       * the story block is the OTHER always-drawn supplementary field on this card, and two
+       * supplementary blocks that look like two different kinds of thing is the confusion this
+       * is fixing. */
+      if (st.why) {
+        det += '<div class="ckl-why"><span class="ckl-why-lbl">Why this step</span>' +
+          mesc(st.why) + '</div>';
+      }
       if (det) {
         /* THE ACTIVE STEP'S DETAILS ARE ALWAYS OPEN *(OWNER, 2026-09-08, #660: "The current step
          * should have the why section automatically open.")*. Other steps keep the toggle. */
