@@ -1099,7 +1099,44 @@
       name: 'Letdown status: ISOLATED on the 17 % pressurizer low-level cut  ·  sim: control_state.letdown_isolated',
       // rAnchor, so `left` is the RIGHT edge: card right (1435) minus 5. `top` is the card's
       // new bottom (780) minus 25, i.e. the band the height patch below adds.
-      left: 1430, top: 755, value: '—', color: '#5aad7c', fontSize: 12, rAnchor: true }
+      left: 1430, top: 755, value: '—', color: '#5aad7c', fontSize: 12, rAnchor: true },
+    /* THE RESIDUAL HEAT REMOVAL COOLDOWN RATE *(OWNER RULING, 2026-09-10, option A, #700:
+     * relabel the typed box and put "a live readout of instruments.tavg_rate beside it in
+     * °F/hr", so the player sees the CONSEQUENCE of the number they type)*. The complaint the
+     * ruling answers is that the HX SPLIT box "reads as a raw percentage with no visible
+     * effect" — this is the visible effect.
+     *
+     * A `readout`, not a text+value pair, because it sits in the outer ECCS panel rather than
+     * inside a card: the kind travels its caption and its reading as ONE item, so the two
+     * cannot drift apart, and it needs no parent card to hang a caption on.
+     *
+     * GEOMETRY, MEASURED, not computed from authored coordinates. The slot is 1155..1245 x
+     * 730..785 — bounded above by the ECCS card (imrzpfd4qox, which is 125 tall where its two
+     * neighbours are 175, and that shortfall IS the slot), left by the RHR card's right edge at
+     * 1150, right by CHARGING at 1250, below by the outer panel's own bottom at 785. Swept at
+     * the pinned 1400x900 against every rendered tile: the only thing overlapping that band is
+     * the outer panel itself. 1155,735 at 90x45 therefore lands its bottom on 780, flush with
+     * the RHR and CHARGING cards beside it, with the panel's 5 px margin below.
+     *
+     * IT IS BESIDE THE CARD AND NOT IN IT BECAUSE THE CARD HAS NO ROOM AND CANNOT BE GIVEN
+     * ANY. Inside, the band under the number box is 775..780. Growing the card downward is the
+     * move that looks obvious and is wrong: the board's bounding box ends at 785 and the stage
+     * scale derives from it, so a taller card shrinks every tile on the board — the regression
+     * DOC_REMOVE's `imrzmlyafa3` entry exists to undo.
+     *
+     * `labelSize: 10` is measured too, and is the reason the full ruled words fit: at 11 px
+     * "COOLDOWN RATE" renders 89.7 in a 90 px tile, which is flush with the border; at 10 px it
+     * is 81.6, with 8 px to spare. The reading stays at 15 px so the NUMBER is not shrunk to
+     * pay for the caption.
+     *
+     * THE UNIT IS RETURNED BY THE VALUES FUNCTION, not left to this authored string, because
+     * "/hr" has to survive the SI toggle — see the note there. The authored value is what the
+     * first paint shows before the first snapshot arrives. */
+    { id: 'bdRhrCooldownRate', kind: 'readout',
+      name: 'Heatup / cooldown rate  ·  sim: instruments.tavg_rate (indicated Tavg, differentiated and damped), °C/hr in',
+      left: 1155, top: 745, width: 90, height: 45,
+      label: 'COOLDOWN RATE', labelSize: 10, value: '0', unit: 'F/hr',
+      color: '#9fb3c4', fontSize: 15 }
   ];
 
   // ================================================================ NUMBERS (editable)
@@ -1154,11 +1191,20 @@
     /* the AUX FEED THROTTLE setter went with its tile (#591 item 2) — see EXTRA_ITEMS */
     /* the PZR AUX SPRAY setter went with its tile (owner direction 2026-08-31) — the
      * `set_aux_spray` engine door stays, see the EXTRA_ITEMS note. */
-    // RHR heat-exchanger flow split, % — the cooldown-RATE knob (Q_rhr scales with it,
-    // pwr_thermal.js:90-93). Deliberately NOT an alignment command: the control layer
-    // excludes set_rhr_hx from the 'rhr' ESF arm's disarming command list, so trimming
-    // the rate does not drop the auto-alignment (pwr_control.js:556-558). numberAuto()
-    // therefore leaves this box editable even while RHR AUTO is lit.
+    /* RHR heat-exchanger flow split, % — the cooldown-RATE knob, captioned HX SPLIT on the
+     * board since #700 with the COOLDOWN RATE readout (`bdRhrCooldownRate`, EXTRA_ITEMS)
+     * beside it, so the consequence of what is typed here is visible on the same panel.
+     *
+     * THE CITATION HERE WAS THE RETIRED ENGINE'S (#700). It read `pwr_thermal.js:90-93`. The
+     * live term is `pwr2_rhr.js:321`:
+     *     duty = max(0, avail) x hx_fraction x UA x (Thot - ccw_temp_c)
+     * — so the split scales the duty linearly, which is why the box is a rate knob at all, and
+     * why 100 % onto a hot plant is a shock rather than a setting.
+     *
+     * Deliberately NOT an alignment command: the control layer excludes set_rhr_hx from the
+     * 'rhr' Engineered Safety Feature arm's disarming command list, so trimming the rate does
+     * not drop the auto-alignment (pwr_control.js). numberAuto() therefore leaves this box
+     * editable even while RHR AUTO is lit. */
     ims3xu86zm5: { set: function (v) { cmd({ action: 'set_rhr_hx', pct: v }); }, get: function (s) { var f = CS(s).rhr_hx_fraction; return f == null ? 100 : f * 100; } },
     // Circulating-water inlet temperature. Sits next to the COND VAC readout because vacuum
     // is the variable it moves: raise the water temperature and the condenser can only pull
@@ -1373,6 +1419,29 @@
     // ADV position (#371). No VALUE_UNIT entry — % is unit-neutral, and a conversion
     // layer that touched it would be worse than none (board_check pins that).
     bdAdvPct: function (s) { return r0(IN(s).adv_valve); },
+    /* RHR COOLDOWN RATE (#700). `tavg_rate` is the indicated Tavg differentiated and damped
+     * (engines/pwr/pwr_instruments.js), published in °C/hr, and it is the SAME channel the
+     * `cooldown_rate_high` / `heatup_rate_high` alarms act on at ±55.6 °C/hr — so the player
+     * now watches the number the annunciator is watching, which nothing on the board showed.
+     *
+     * MEASURED live on PWR2 rather than assumed from the retired plant: the channel is present
+     * and non-null on the shipped engine (5.65 °C/hr on a freshly booted hot plant still
+     * settling). On a plant holding temperature it wanders about ±3 °F/hr — it is a derivative,
+     * so that band is its noise floor and not the plant moving.
+     *
+     * `dTd`, NOT `dT` — a RATE of temperature converts x9/5 with NO 32° offset (the `tempd`
+     * family). Getting this wrong would print a cooling plant as heating.
+     *
+     * THE UNIT IS BUILT HERE rather than left to the item's authored `unit: 'F/hr'`, and the
+     * reason is the SI toggle: `uStr` returns the family's unit for the active mode ('F' in US,
+     * 'C' in SI) and the '/hr' is appended to whichever it is. Left to the authored string the
+     * tile would print "C" in SI mode and lose the per-hour entirely, or print "F/hr" over a
+     * °C/hr number. Same idiom as ui/app.js's own series formatter for this channel. */
+    bdRhrCooldownRate: function (s) {
+      var v = IN(s).tavg_rate;
+      if (v == null) return { text: '—', unit: '' };
+      return { text: dTd(v), unit: uStr('tempd', 'F') + '/hr' };
+    },
     /* Boron chemistry — a LIVE CONTINUOUS READING since 2026-09-11 *(OWNER RULING,
      * 2026-09-10, option B, #698)*, where it used to print the lab's grab-sample result
      * (`boron_sample` / `SAMPLING…` while `boron_sample_pending`).
@@ -3476,6 +3545,35 @@
       // the card title. 30 is the authored button pitch, so the spacing is unchanged.
       ims3wg27iif: { props: { top: 635 } },
       ims3xfeye1q: { props: { top: 665 } },
+      /* THE HX FLOW CAPTION IS RENAMED *(OWNER RULING, 2026-09-10, option A, #700)*. The ruled
+       * name is "COOLDOWN RATE / HX SPLIT" and it is rendered as its TWO HALVES, each attached
+       * to the thing it names: this caption becomes "HX SPLIT" (the lever) and the new
+       * `bdRhrCooldownRate` readout beside the card carries "COOLDOWN RATE" (the consequence).
+       * The ruling's own words are "a live readout of instruments.tavg_rate BESIDE it", so the
+       * pairing is the point rather than a compromise on it.
+       *
+       * IT IS NOT ONE CAPTION BECAUSE ONE CAPTION DOES NOT FIT, and that is measured, not
+       * estimated. The card is 90 wide (1060..1150) and this caption starts at 1070, so the
+       * column is 80 px. Intrinsic text widths in authored units, measured in the real renderer
+       * at the pinned 1400x900:
+       *     "COOLDOWN RATE"  14 px 126.7   13 px 118.5   12 px 110.4
+       *     "COOLDOWN"       14 px  87.3   13 px  81.6   12 px  75.9
+       *     "HX SPLIT"       14 px  62.7
+       * Nothing carrying the words "COOLDOWN RATE" fits an 80 px column at a readable size.
+       *
+       * THE FONT SIZE DROPS 14 -> 13, AND THAT IS A MEASURED CORRECTION, NOT A PREFERENCE. The
+       * intrinsic widths above under-predict the rendered tile: "HX FLOW" is 65.0 intrinsic and
+       * renders 72.2, so the arithmetic said "HX SPLIT" would render ~70. It renders 81.3 —
+       * one character more than "HX FLOW" at the tile's real 10.16 px/char — which put its
+       * right edge on 1151.3, i.e. 1.3 px OUTSIDE the card border at 1150. Nothing would have
+       * failed; it would simply have looked like a caption leaking out of its card. At 13 px it
+       * renders 75.5 and ends near 1145, 5 px inside. Measure the tile, not the glyphs.
+       *
+       * WHY THE CARD IS NOT SIMPLY MADE TALLER TO HOLD BOTH. The board's bounding box ends at
+       * y 785 (this item's own outer panel), and the stage scale is derived from that box — so
+       * growing the card downward shrinks EVERY tile on the board. That is not hypothetical: it
+       * is exactly the regression DOC_REMOVE's `imrzmlyafa3` entry above was written to undo. */
+      ims3xtrobbq: { props: { text: 'HX SPLIT', fontSize: 13 } },
       /* THE ECCS INDICATION CARD'S THREE ROWS MOVE UP SO THE MODE WORD GETS ITS OWN LINE
        * *(#630, owner: "ECCS STANDBY text sits on top of MODE text. Shift the elements in this
        * card up so that the mode indication can sit below MODE.")*.

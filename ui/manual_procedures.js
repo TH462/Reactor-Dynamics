@@ -1194,7 +1194,7 @@
         { p: 'power_pct', op: '<', v: 1, text: 'Reactor shut down: REACTOR POWER 0 %' },
       ],
       cautions: [
-        'Do not exceed a heatup rate of 100 °F per hour. Control the rate with HX FLOW on the RHR card (residual heat removal, the low-pressure cooling loop).',
+        'Do not exceed a heatup rate of 100 °F per hour. COOLDOWN RATE on the RHR card reads it; control it with HX SPLIT beside it (residual heat removal, the low-pressure cooling loop).',
         'Keep the STEAM DUMP closed on pump heat: an open dump removes heat faster than the pumps add it. The turbine stays tripped for the whole heatup.',
         'Do not move the control bank and do not change BORON. Only the shutdown bank moves, in its own step.',
       ],
@@ -1445,7 +1445,7 @@
          * acceptance line, both of which render — but the numbered instruction, which is what a
          * player reads first, said only "watch Tavg". A step that waits on a number names it. */
         { text: 'Wait until AVG COOLANT TEMPERATURE reaches 542 °F. Do not move rods or change BORON.',
-          note: 'If it climbs faster than 100 °F per hour, raise HX FLOW on the RHR card. That is the only rate lever on this leg.',
+          note: 'COOLDOWN RATE on the RHR card is the number to watch. If it climbs faster than 100 °F per hour, raise HX SPLIT beside it. That is the only rate lever on this leg.',
           why: 'The pumps are doing the work now. Watch AVG COOLANT TEMPERATURE, PRESSURIZER LEVEL rising as the water expands, and REACTOR POWER staying at zero. On the steam side, STEAM PRESS climbs toward 1020 psi as the water in the steam generator heats up; a later step hands that pressure to the steam dump to hold.',
           control: '(observe)', target: 'AVG COOLANT TEMPERATURE 542 °F or higher, REACTOR POWER still 0 %',
           wait_hint: true,
@@ -2326,7 +2326,7 @@
       ],
       cautions: [
         'Add boron before you cool anything. Cold water makes the chain reaction easier, so the plant needs more boron cold than hot.',
-        'Do not exceed a cooldown rate of 100 °F per hour. Move the DUMP SETPOINT in stages, and control the RHR stage with HX FLOW.',
+        'Do not exceed a cooldown rate of 100 °F per hour — COOLDOWN RATE on the RHR card reads it directly. Move the DUMP SETPOINT in stages, and control the RHR stage with HX SPLIT.',
         'Close the accumulator valve while PRIMARY PRESSURE is between 1615 and 665 psi. Below 665 psi the tanks empty themselves into the plant.',
         'Below 1700 psi the SET PZR PRESSURE box cannot follow. From there pressure comes down on SPRAY with the HEATER off, and SUBCOOLING MARGIN is what it spends: watch that tile.',
         'Spray water fills the pressurizer. Keep SPRAY at 50 % and PRESSURIZER LEVEL below 80 %: a full pressurizer shuts the spray off by itself and pressure climbs back.',
@@ -2445,9 +2445,9 @@
           hold: 1200,
           acc: { p: 'pressure_mpa', op: '<', v: 2.85 },
           hl: ['Pressurizer Spray (PZR)'], hl_watch: ['Primary Pressure', 'Pressurizer Level'] },
-        { text: 'With the spray still on, press ALIGN on the RHR card, then set HX FLOW to 7 %.',
-          why: 'RHR is the low-pressure cooling loop that carries heat out of a shut-down plant. ALIGN opens its suction valve, which the plant only allows below 440 psi. HX FLOW is how much of that loop goes through the heat exchanger; from here it is the cooldown throttle, and 7 % is a gentle start.',
-          control: 'Residual Heat Removal (RHR)', target: 'ALIGN lit on the RHR card; HX FLOW 7 %',
+        { text: 'With the spray still on, press ALIGN on the RHR card, then set HX SPLIT to 7 %.',
+          why: 'RHR is the low-pressure cooling loop that carries heat out of a shut-down plant. ALIGN opens its suction valve, which the plant only allows below 440 psi. HX SPLIT is how much of that loop goes through the heat exchanger; from here it is the cooldown throttle, 7 % is a gentle start, and COOLDOWN RATE beside it shows what that choice is doing.',
+          control: 'Residual Heat Removal (RHR)', target: 'ALIGN lit on the RHR card; HX SPLIT 7 %',
           cmd: { action: 'set_rhr', active: true }, hold: 60,
           acc: { p: 'rhr_valve_open', op: '>', v: 0 },
           hl: ['Residual Heat Removal (RHR)'], hl_watch: ['Primary Pressure'] },
@@ -2466,9 +2466,9 @@
            * the card alone; this was the last one that did not. The pump label STAYS in the
            * vocabulary — the wiring reserves it for watch-the-flow steps. */
           hl: ['RCP Run/Stop', 'Pressurizer Spray (PZR)'] },
-        { text: 'Raise HX FLOW to 25 % and wait until AVG COOLANT TEMPERATURE reads below 199 °F.',
-          note: 'Keep the cooldown under 100 °F per hour: if it runs faster, lower HX FLOW.',
-          why: 'HX FLOW is the cooldown rate now. 25 % reaches Mode 5 in about two plant-hours at close to 90 °F per hour, just inside the limit.',
+        { text: 'Raise HX SPLIT to 25 % and wait until AVG COOLANT TEMPERATURE reads below 199 °F.',
+          note: 'Keep COOLDOWN RATE under 100 °F per hour: if it runs faster, lower HX SPLIT.',
+          why: 'HX SPLIT is the cooldown rate now, and COOLDOWN RATE beside it is the read-back. 25 % reaches Mode 5 in about two plant-hours at close to 90 °F per hour, just inside the limit.',
           control: 'Residual Heat Removal (RHR)', target: 'AVG COOLANT TEMPERATURE below 199 °F',
           wait_hint: true,
           cmd: { action: 'set_rhr_hx', pct: 25 }, hold: 9000,
@@ -2491,7 +2491,7 @@
           { p: 'accumulator_volume_pct', op: '>', v: 99 }, null, null,
           'You isolated the tanks on the way down so they would not empty into a depressurized plant. They have to still be full: the next heatup opens them again inside its window, and empty tanks then are a missing safety system.',
           null, ['Accumulators']),
-        obs('Verify ALIGN is lit on the RHR card and HX FLOW is above 0 %. The round trip is complete.',
+        obs('Verify ALIGN is lit on the RHR card and HX SPLIT is above 0 %. The round trip is complete.',
           { p: 'rhr_valve_open', op: '>', v: 0 }, null, null,
           'RHR is the only thing removing heat now. If its suction valve shut, the decay heat would have nowhere to go. The heatup checklist is the way back.',
           null, ['Residual Heat Removal (RHR)']),

@@ -692,11 +692,25 @@
       'Shuts the RHR suction valve — takes the train off shutdown cooling.',
       'Necessary before repressurizing: the interlock will force the valve shut anyway once you pass ' +
       '600 psi (4.14 MPa), but doing it deliberately is how a heatup starts.', MT, 'PWR-T20'),
-    ims3xu86zm5: e('Residual Heat Removal (RHR) HX Flow',
+    ims3xu86zm5: e('HX SPLIT — Residual Heat Removal (RHR) heat-exchanger split',
       'How much RHR flow goes through the heat exchanger rather than the bypass — the cooldown RATE knob.',
-      'This sets cooling rate without disturbing inventory. Walk it up slowly: full heat-exchanger flow ' +
-      'on a hot plant overshoots the 90 °F/h (50 °C/h) cooldown limit, and the primary temperature trend is the ' +
-      'only rate instrument you have.', CI, '11.2'),
+      'This sets cooling rate without disturbing inventory: heat removed scales straight off this number, ' +
+      'so it is a rate lever with a percent sign on it, not a valve position. Type a figure here and read ' +
+      'the consequence on COOLDOWN RATE beside it — that pairing is what the box is for. Walk it up ' +
+      'slowly: full heat-exchanger flow on a hot plant overshoots the 90 °F/h (50 °C/h) cooldown limit ' +
+      'long before you notice.', CI, '11.2'),
+    /* The readout that closes the loop on the box above (#700). Its numbers are the plant's own
+     * constants (the alarm setpoint) and a measured noise floor, NOT copied from the retired
+     * engine — `run_inspect` does not gate the figures in this copy, so they are measured here
+     * and the measurement is in the commit. */
+    bdRhrCooldownRate: e('COOLDOWN RATE',
+      'How fast average coolant temperature is actually moving, in degrees per hour. Negative is cooling.',
+      'This is the consequence of the HX SPLIT box beside it, and it is the same signal the cooldown and ' +
+      'heatup alarms watch — they annunciate at 100 °F/hr in either direction, and the working limit you ' +
+      'are taught to hold is 90 °F/hr. It is a measured trend, not a calculation: it differentiates ' +
+      'indicated average coolant temperature and damps the result, so it lags a change by the better part ' +
+      'of a minute and wanders a couple of degrees per hour either side of zero on a plant that is holding ' +
+      'steady. Read the direction and the magnitude, not the last digit.', CI, '11.2'),
 
     // -------------------------------------------------- steam generator and feed
     steamGenerator: e('Steam Generator',
