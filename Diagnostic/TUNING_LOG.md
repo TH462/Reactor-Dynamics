@@ -29,6 +29,87 @@ and the user-visible summary in `CHANGELOG.md`. This file points at those and tr
 
 ---
 
+## Session log — 2026-09-10-workbench-c (#697 and #696 — a step graded on the PRESS, and a precondition #696's own measurement calls for)
+
+**Workbench lane, unmerged.** Two small, related fixes triaged off #675 section C.
+
+**#697 — `pwr_cooldown` step 4's STEAM DUMP AUTO was already green but still needed a press**
+(owner, exact words). Same family as #641 sign-flipped: there the plant stopped letting the
+player PRODUCE the command, here the plant produces the command's EFFECT on its own and the
+checkbox still demands the press.
+
+**Sweep of the pwr2 pool: 19 pure cmd-kind `accs` entries** (has `.cmd`, no `.p`, no step-level
+`overtaken`). 7 already carry `overtaken` at the step level (the #641 1/M fix, untouched). Of
+the remaining 12: 3 have **no observable state at all** — `pwr_raise_power` step 4
+(`take_boron_sample`) and `pwr_cooldown` step 3's two bare `set_trip_block` entries — judgement
+calls per the issue (need an `overtaken` or a new state field), left alone and pinned by a gate
+assertion so a new one cannot join unnoticed. Of the 9 with a sibling predicate, booted at their
+own leg's `from` with nothing pressed: **only `pwr_cooldown` step 4 and `pwr_shutdown` step 3
+read pre-satisfied** — measured, both siblings on each step are already true from the plant's
+own dynamics (the tavg-mode dump answers the load/scram transient on its own; `steam_dump_auto`
+is a boolean over three modes and never reads 0 once the IC's own lineup engages it). The other
+7 (the `pwr_raise_power` ladder, `pwr_startup` step 15, `pwr_cooldown` step 11) read clean —
+they need the leg's own earlier steps actually run first, a different shape, left alone.
+
+**The fix is NOT the `pwr_heatup` step 8 two-entry precedent** (hidden `cmd` plus a separate
+predicate) — proven wrong by injection: `_gradeAccs` never grades a cmd-only entry (no `.p`), so
+it can only latch via `_accsCmdWatch` seeing the exact command, and a predicate SIBLING cannot
+satisfy it. That shape never surfaced its own bug because `heater_auto`/`spray_auto` are false
+at `pwr_heatup`'s own `cold_shutdown` IC — it happens to never be pre-satisfied there. **The fix
+merges `p`/`op`/`v` onto the SAME entry as `cmd`**: `_gradeAccs` grades the predicate half
+regardless of any command (a plant already there ticks the box), `_accsCmdWatch` still latches
+the SAME entry on a real press for a plant that is not. Proven correct by injection too:
+`pwr_cooldown` step 4 completes with AUTO never pressed once the ramp brings Tavg below 175 °C
+(347 °F); reverted to the pre-fix shape, it **soft-locks forever** — `met:false, obs:null` —
+even with the sibling `tavg_c<175` reading true underneath it. Same proof on `pwr_shutdown` step
+3 (both siblings true, `power_pct` clears 1 % in seconds and `steam_dump_valve_pct` runs 39 % ->
+7-9 % chained, 100 % standalone, all without a press).
+
+`test/run_checklist_pwr2.js` gains sections **2n** (the pool-wide static sweep) and **2o** (the
+live drive + red-by-injection on both confirmed instances). 179 -> 187 checks (+6, +2 more from
+the replay now grading the merged entries' predicate half).
+
+**#696 — the shutdown leg's own precondition had no upper bound**, so a 100 % plant could enter
+`pwr_shutdown` standalone (its `from` is `hot_full_power`) with no warning. Measured (full stack,
+`hot_full_power` -> load 0 -> scram): AVG COOLANT TEMPERATURE 580.3 -> 601.3 °F (304.6 -> 316.3
+°C), **+21.0 °F (+11.7 °C) in 29 s**, 54.3 °F (30.1 °C) above the 547.0 °F no-load program —
+chained after `pwr_lower_power` (the intended route), the same drive peaks 560.1 -> 560.3 °F, a
+0.2 °F (0.1 °C) blip. Scramming FIRST at either power produces ZERO rise, so the leg's own step
+order (load to zero, then scram) is not the cause: holding the reactor at full nuclear power
+against near-zero steam demand for up to 120 s is. Sourced (Ginna UFSAR ch10 ML20339A040 p.160;
+ch15 §15.2.2.1 ML20339A101; Tech Spec Bases Rev 101 ML20339A221): above 50 % rated thermal power
+a complete loss of load causes an automatic reactor trip; below 50 % it "presents no hazard".
+Full measurement: github.com/TH462/Reactor-Dynamics/issues/696#issuecomment-5626847249.
+
+**Set at 30 %, not the issue's own first-proposed 20 %.** Measured directly here: the leg's
+ACTUAL chained handoff (`pwr_lower_power` run to completion into `pwr_shutdown`) settles the
+plant at **22-23 % power**, not the ~15 % `pwr_lower_power`'s own text promises — the
+already-tracked #508 rod-trim residue ("the trim sizing predates #508 and was ALREADY short").
+A 20 % ceiling would have WARNED on the leg's own shipped, correct route, which is worse than
+the silent gap it replaces — a banner on the correct route trains a player to ignore every
+banner. 30 % clears the measured handoff with margin and stays comfortably under the sourced
+50 % hazard line.
+
+**`precond` WARNS, never blocks** *(OWNER RULING, 2026-08-06: selected "Warn, never block" from
+three options)* — this is the pool's own entry-banner idiom, captured once at open like every
+other precondition row, not a hard refusal. It does not stop a player who ignores it; it stops
+the SILENT case the owner hit.
+
+`test/run_checklist_pwr2.js` gains section **2p**: the upper-bound row exists; unmet at a
+standalone 100 % entry; met on the leg's own intended chained entry; **RED BY INJECTION** — row
+removed, the 100 % entry shows no unmet row at all, the exact silence reported. 187 -> 191
+checks.
+
+**Gates**: `run_checklist_pwr2` 191/191, `run_checklist` 78/78, `run_style` 10/10,
+`verify_ckl_relevance` 18/18, `verify_manual_follow` 225/225, `run_hardrules` 521/521,
+`run_contract` 178/178. `node test/run_all.js` run in the background; result recorded below once
+complete. BASELINES for `run_checklist_pwr2.js` moved 179 -> 187 -> 191 across the two commits.
+
+**Commits**: `484eaf16` (#697), `1873f007` (#696). **Not touched**: `#686`/`#warpInfo` (on hold
+per owner), scope stayed to the two named issues.
+
+---
+
 ## Session log — 2026-09-10-workbench-b (#691 — a paused plant kept the old speed button lit, and play-from-pause resumed at the old speed)
 
 **Workbench lane, unmerged.** Owner: *"When pausing the sim the previously selected warp
