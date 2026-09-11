@@ -875,6 +875,54 @@ if (!only) {
        sdRed.accs[1].met === true && sdRed.accs[2].met === true,
        JSON.stringify(sdRed.accs));
   })();
+
+  /* 2p. #696 — `pwr_shutdown`'s precondition now has an UPPER bound. Only `power_pct > 10` was
+   * checked before, which the leg's own `from: 'hot_full_power'` satisfies — measured (#696
+   * comment), that standalone entry is the +21.0 °F (+11.7 °C) / 601.3 °F Tavg spike, 54.3 °F
+   * (30.1 °C) above the no-load program, sourced against Ginna's 50 % RTP loss-of-load trip
+   * threshold. `precond` WARNS, never blocks *(OWNER RULING, 2026-08-06)*, so this asserts the
+   * BANNER, not a refusal: unmet at the standalone 100 % entry, met on the leg's own INTENDED
+   * chained entry (`pwr_lower_power` run to completion into this leg — the plant it actually
+   * hands off, not the `low_power` boot IC, which measures 9.4 % power and would fail the
+   * EXISTING lower-bound row for reasons #696 does not touch).
+   *
+   * 30 %, NOT THE ISSUE'S OWN 20 %: measured here, the chained handoff settles at 22-23 %, not
+   * the ~15 % `pwr_lower_power`'s text promises (the already-tracked #508 rod-trim residue) — a
+   * 20 % ceiling would warn on the leg's own shipped, correct route, which is worse than the gap
+   * it replaces. PROVEN RED BY INJECTION: the upper-bound row is removed for one drive, and the
+   * 100 % entry must then show NO unmet row at all — the exact silence the owner hit. */
+  (function () {
+    var proc = POOL.filter(function (p) { return p.id === 'pwr_shutdown'; })[0];
+    var lowerPowerProc = POOL.filter(function (p) { return p.id === 'pwr_lower_power'; })[0];
+    var upperIdx = (proc.precond || []).findIndex(function (c) { return c.op === '<='; });
+
+    function preconVerdict(svc) {
+      svc.handleCommand({ action: 'start_checklist', procedure_id: 'pwr_shutdown' });
+      var s = null; for (var i = 0; i < 8; i++) s = svc.tick();
+      var pc = s.instructor && s.instructor.checklist && s.instructor.checklist.preconditions;
+      return pc && pc[upperIdx] ? pc[upperIdx] : null;
+    }
+
+    ck('pwr_shutdown\'s precondition has an upper bound now (#696)', upperIdx >= 0,
+       upperIdx >= 0 ? JSON.stringify(proc.precond[upperIdx]) : 'no <= row found');
+
+    var vFull = preconVerdict(mkSvc('hot_full_power'));
+    ck('...UNMET at a standalone 100 % entry (was silently accepted before #696)',
+       vFull && vFull.met === false, vFull ? JSON.stringify(vFull) : 'no verdict');
+
+    var chained = RD.ProceduresHarness.runProcedure('pwr2', lowerPowerProc, { seed: 42 });
+    var vChained = preconVerdict(chained.svc);
+    ck('...MET on the leg\'s own INTENDED chained entry (pwr_lower_power run to completion)',
+       vChained && vChained.met === true, vChained ? JSON.stringify(vChained) : 'no verdict');
+
+    if (upperIdx >= 0) {
+      var removed = proc.precond.splice(upperIdx, 1)[0];
+      var vRed = preconVerdict(mkSvc('hot_full_power'));
+      proc.precond.splice(upperIdx, 0, removed);
+      ck('...RED BY INJECTION: without the upper bound, the 100 % entry shows no unmet row at all',
+         vRed === null, vRed === null ? '(row absent, as expected pre-#696)' : JSON.stringify(vRed));
+    }
+  })();
 }
 
 console.log('\n' + '='.repeat(74));

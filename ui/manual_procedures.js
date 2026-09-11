@@ -2012,9 +2012,43 @@
       title: 'Mode 1, At Power → Mode 3, Hot Standby — normal shutdown',
       purpose: 'Shut the reactor down from low power: take the load off the generator, scram the reactor, and check the steam dump is carrying the heat the fuel still makes. Under 10 plant-minutes.',
       from: 'hot_full_power',
-      prereq: ['Reactor at low power, 10 to 20 %, with the turbine on line (auto-checked above 10 %).'],
+      prereq: ['Reactor at low power, 10 to 20 %, with the turbine on line (auto-checked).'],
+      /* THE UPPER BOUND WAS MISSING (#696, owner: "shouldn't we walk down the power instead of
+       * just putting load to zero? Coolant temp spikes hard when we just put it to zero."). Only
+       * `power_pct > 10` was checked, which a 100 % plant satisfies — this leg's own `from` is
+       * `hot_full_power`, so the Walkthroughs list lets a player start it standalone at full
+       * power. Measured (service, hot_full_power -> load 0 -> scram, full stack, `PWR2_MEASURE`
+       * seed 42): standalone, AVG COOLANT TEMPERATURE runs 580.3 -> 601.3 °F (304.6 -> 316.3 °C),
+       * +21.0 °F (+11.7 °C) in 29 s, 2,603 °F/hr — 54.3 °F (30.1 °C) above the 547.0 °F no-load
+       * program. Chained after `pwr_lower_power` (this leg's INTENDED entry, ~15 % per that leg's
+       * own last step), the same drive peaks 560.1 -> 560.3 °F, a 0.2 °F (0.1 °C) blip — the
+       * #508 rod-trim residue riding along, not a new spike. Scramming FIRST at either power
+       * produces ZERO rise (Route E/D), so the order in this leg's own steps (load to 0, then
+       * scram) is not the cause: the cause is holding the reactor at full nuclear power against
+       * near-zero steam demand for up to 120 s while step 1's `hold` waits on a second manual
+       * action. SOURCED (Ginna UFSAR ch10, ML20339A040 p.160; ch15 §15.2.2.1, ML20339A101;
+       * Tech Spec Bases Rev 101, ML20339A221): above 50 % rated thermal power a complete loss of
+       * load causes an automatic reactor trip; below 50 % "presents no hazard".
+       *
+       * 30 %, NOT 20 %. The issue's own recommendation was 20 %, sized against
+       * `pwr_lower_power`'s text ("about 15 %"). Measured directly (chained: `pwr_lower_power`
+       * run to completion into `pwr_shutdown`'s own entry, full stack): the plant this leg
+       * actually hands off from settles at 22-23 % power, not 15 % — the already-documented
+       * #508 rod-trim residue (that leg's own comment: "the trim sizing predates #508 and was
+       * ALREADY short"). A 20 % ceiling would WARN on the leg's own INTENDED, currently-shipped
+       * entry, which is worse than the silent gap it replaces — a banner on the correct route
+       * teaches a player to ignore every banner. 30 % clears the measured ~23 % handoff with
+       * margin and still sits comfortably under the sourced 50 % hazard line.
+       * Full measurement: github.com/TH462/Reactor-Dynamics/issues/696#issuecomment-5626847249.
+       *
+       * `precond` WARNS, never blocks *(OWNER RULING, 2026-08-06: selected "Warn, never block"
+       * from three options)* — the banner is the pool's own idiom for "why this leg will not go
+       * well", captured once at open, same as every other precondition row in this file. It does
+       * not stop a player who ignores it, but it does stop the SILENT case the owner hit: no
+       * warning at all above 10 %. */
       precond: [
         { p: 'power_pct', op: '>', v: 10, text: 'Reactor at power: REACTOR POWER above 10 %' },
+        { p: 'power_pct', op: '<=', v: 30, text: 'Reactor at LOW power, not full power: REACTOR POWER at or below 30 % — run "Mode 1, At Power — load rampdown to about 15 %" first if you are at full power' },
       ],
       cautions: ['The fuel keeps making heat for days after a scram and it cannot be switched off. The STEAM DUMP carries it until the cooldown checklist starts.'],
       steps: [
