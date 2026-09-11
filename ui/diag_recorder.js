@@ -50,8 +50,20 @@
 
   // Per-plant true-state fields. Append-only in spirit: a reader keys off `timeseries.fields`,
   // so adding one is safe, but reordering breaks nothing only because the names ride along.
+  //
+  // PWR2 HAD NO LIST OF ITS OWN (#702) — `fieldsFor()` fell back to `FIELDS.pwr`, the
+  // RETIRED engine's ten channels, none of them reactivity. A real report
+  // (`mtsmvirv-yav1uix2`) showed a pressurizer-level symptom with no way to see the
+  // boron/xenon/rod cause behind it, and had to be reproduced by hand over roughly a dozen
+  // scratch rides. `pwr2` now gets its own list: the ten `pwr` channels plus the four
+  // ruled-minimum reactivity fields, all already in PWR2's `true_state`/facade —
+  // `boron_ppm`, `rod_steps` (the control bank's position in steps, the board's own
+  // "Control Rod Steps" series), `xenon_pct_eq`, `reactivity_pcm`. Cost measured and
+  // re-checked against the #681 wire budget before landing — see the recorder's own
+  // precision comment below and `Diagnostic/TUNING_LOG.md`.
   var FIELDS = {
     pwr: ['power_pct', 'tavg_c', 'thot_c', 'tcold_c', 'pressure_mpa', 'pzr_level_pct', 'sg_level_pct', 'steam_flow_normalized', 'fw_flow_normalized', 'steam_pressure_mpa'],
+    pwr2: ['power_pct', 'tavg_c', 'thot_c', 'tcold_c', 'pressure_mpa', 'pzr_level_pct', 'sg_level_pct', 'steam_flow_normalized', 'fw_flow_normalized', 'steam_pressure_mpa', 'boron_ppm', 'rod_steps', 'xenon_pct_eq', 'reactivity_pcm'],
     rbmk: ['power_pct', 'fuel_temp_c', 'graphite_temp_avg_c', 'void_fraction_avg', 'reactivity_pcm', 'xenon_pct_eq', 'steam_pressure_mpa', 'drum_level_pct', 'channel_flow_pct'],
     bwr: ['power_pct', 'fuel_temp_c', 'vessel_pressure_mpa', 'vessel_level_pct', 'core_void_fraction', 'recirc_flow_pct', 'decay_heat_pct']
   };

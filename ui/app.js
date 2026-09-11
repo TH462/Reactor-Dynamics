@@ -2707,9 +2707,10 @@
     // THIRD SIDE: the bug-report recorder's fields, in RAW true-state units (#432). It cannot
     // read `tv` instead — two series here scale for DISPLAY (`steam_flow`/`fw_flow` are
     // `* 100`), so riding those columns would silently change the bundle's units and make an
-    // old report and a new one disagree by 100× on the same quantity. Ten doubles beside two
-    // 96-wide arrays; the cost in this function is the call, not the packing.
-    return { v: v, tv: tv, dv: RD.DiagRecorder.pack(ui.plant, trueState) };
+    // old report and a new one disagree by 100× on the same quantity. Ten (fourteen on PWR2,
+    // #702) doubles beside two 96-wide arrays; the cost in this function is the call, not the
+    // packing. `engId()`, not `ui.plant` — see the #702 comment on `diagReset`.
+    return { v: v, tv: tv, dv: RD.DiagRecorder.pack(engId(), trueState) };
   }
 
   // Held between frames, per gauge: the LATCHED band, so a reading parked on a setpoint
@@ -6919,10 +6920,16 @@
 
   function diagReset(reason, meta) {
     var t = latest && latest.metadata ? latest.metadata.sim_time : 0;
-    diag.reset(reason, meta, t, ui.plant);
-    // The SOE stream is per-plant for the same reason the recording is: the watch table
-    // and the seeded edge state are the plant's, so carrying either across a plant change
-    // would compare one reactor's booleans against another's.
+    // #702: the recorder's field list is ENGINE-specific (PWR2 carries reactivity state the
+    // retired engine's true_state shapes differently), so it keys off `engId()` — 'pwr2' for
+    // the shipped engine, 'pwr' for the retired one — not `ui.plant`, which stays 'pwr' for
+    // both (see the ENGINES map comment: "only the ENGINE differs"). `fieldsFor()` in
+    // ui/diag_recorder.js falls back to FIELDS.pwr for any key it does not recognise, so an
+    // unexpected engId() never throws, only under-reports.
+    diag.reset(reason, meta, t, engId());
+    // The SOE stream stays keyed on `ui.plant`: its WATCH table is boolean board channels
+    // (turbine_tripped, hpi_active, …) that both engines publish identically, so nothing is
+    // lost by not splitting it the way the recorder's field list had to be.
     if (RD.Events) RD.Events.reset(t, ui.plant);
     TEL.sessionStart(reason, meta);
   }

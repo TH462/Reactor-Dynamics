@@ -89,6 +89,53 @@ and SR detector. The row naming where the operator's only reactivity control sit
 it is now checked against the booted plant at 1-step tolerance, made red first (manual 627, plant
 606) and green after.
 
+### Added (the bug-report recorder gets a PWR2 field list, with reactivity state — #702)
+
+The session recorder behind the in-sim bug report (`ui/diag_recorder.js`) captured ten
+true-state channels and none of them reactivity — no boron, control-bank position or xenon —
+and PWR2 had no field list of its own, so every PWR2 recording fell back to the **retired**
+engine's ten. A real report (`mtsmvirv-yav1uix2`) showed a pressurizer-level symptom with no
+way to see the boron/xenon/rod cause behind it (#683), and the diagnosis had to be reproduced
+by hand over roughly a dozen scratch rides.
+
+PWR2 now gets its own list: the ten shared channels plus `boron_ppm`, `rod_steps` (the control
+bank's position in steps), `xenon_pct_eq` and `reactivity_pcm` — the ruled minimum, all already
+carried in PWR2's `true_state`. `ui/app.js`'s `diagReset`/`chartSample` now key the recorder off
+`engId()` (the ENGINE — `pwr2` for the shipped plant) rather than `ui.plant`, which stays `'pwr'`
+for both engines by design (the board is shared; only the physics differs) and was silently
+routing every PWR2 session through the wrong field list.
+
+**Payload cost measured against the #681 wire budget**, not guessed: a full 14,400-row, 14-field
+PWR2 ring gzips to 1,595 KB (78 % of the Worker's 2 MB cap), against 1,133 KB (55 %) at the old
+10 fields — **+41 %**, matching the issue's own ~+40 % estimate. Still comfortably under budget,
+so all four fields land with nothing dropped (option (a) of the two the issue offered).
+Injection-verified on a real full-stack, `tick()`-driven PWR2 recording: all four new columns
+carry finite, plausible values, not NaN or a placeholder.
+
+`test/run_diag_bundle.js` gains TR-11 (PWR2's own field list, a real bundle, the payload cost)
+and two TR-8 wiring checks. `run_diag_bundle` 52 → 70.
+
+### Fixed (the pressurizer level program's mechanism, not its endpoints, was wrong — #680)
+
+Documentation only; no engine, control or board behaviour changed. The owner's *"stuck at
+25 %"* report turned out to be a Tavg question (#683), but chasing it found a second thing
+worth writing down: the pressurizer level program's sourced endpoints (25 % no-load, 61.5 %
+full power — Westinghouse Technology Systems Manual §10.3, ML11223A290) derive the full-power
+figure from coolant thermal expansion alone. **That derivation does not fully carry over to
+this plant.** Measured across a full Mode 5, Cold Shutdown to Mode 1, At Power heatup: thermal
+expansion supplies only 491 of the 754 kg (1,082 of 1,662 lbm) the pressurizer must gain to
+reach 61.5 %; automatic charging supplies the remaining 263 kg (579 lbm), peak demand 13.4 of
+30.1 gpm available. Cause: this plant's loop-to-pressurizer volume ratio (4.82) is smaller than
+the anchor plant's (6.86), so the same expansion fills proportionally less of a proportionally
+larger vessel.
+
+The plant is correct — a continuous Mode 5 to Mode 1 chain ride confirms it reaches the
+program unaided, with margin — only the mechanism behind the setpoint was mis-stated.
+Corrected in `engines/pwr2/pwr2_pressurizer.js` (the `GEOM.level_program_full`/`_noload`
+comment and the level-control-system header) and `Manuals/12_SIM_PHYSICS.md` §6.3, which had
+claimed the level program and "the physical thermal-expansion line" are the same line; it now
+says the program is expansion plus automatic charging, not expansion alone. Manual revision
+19, item (pp).
 
 ### Fixed (the power ascension could hand back a plant that cooled itself to a trip — #683)
 
