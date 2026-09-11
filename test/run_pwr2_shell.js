@@ -1998,13 +1998,14 @@ function runSuite(SH, rec, quiet, only) {
    * annunciator at 8.0e-5 = 36 gpm stood permanently — the finish list's "120 gpm balance")
    * and read the board setter's gpm/450,000 as a 0..1 demand (any dialed setpoint became
    * ~zero flow). The plant physics was RIGHT all along: the settled balance is the
-   * sourced-scaled charging 7.5 + seal 5 = letdown 12.5 gpm. */
+   * sourced-scaled charging 6.7 + seal 5 = letdown 11.7 gpm (#679 corrected the volume
+   * basis — was 7.5 + 5 = 12.5). */
   var rdC = eng.getInstruments();
   ck('the CHG FLOW HI annunciator input is CLEAR — a healthy plant cannot reach 36 gpm',
      typeof rdC.charging_flow === 'number' && rdC.charging_flow < 8.0e-5 &&
      rdC.charging_flow > 0,
      'charging_flow ' + (rdC.charging_flow * 450000).toFixed(1) +
-     ' gpm against the 36 gpm setpoint (max charging is the sourced-scaled 29.4)');
+     ' gpm against the 36 gpm setpoint (max charging is the sourced-scaled 26.3)');
   eng.applyCommand({ action: 'set_charging_flow', normalized: 20 / 450000 });
   var tCur = run(eng, 30);
   ck('the board charging setter ROUND-TRIPS the currency: 20 gpm dialed = 20 gpm delivered',

@@ -1322,12 +1322,19 @@
          * at the cover gas the tank and the primary are at the same pressure, so opening on the
          * tick moves nothing (the 609 psia case was a 56 psi head into the tank). The replay still
          * dwells `hold: 2400`; `run_checklist_pwr2` 2j asserts the tick lands within 50 broadcasts
-         * of the hold rising. */
+         * of the hold rising.
+         *
+         * THE HOLD AND THE ESTIMATE MOVED, 2400 -> 3000 s / "35" -> "44" plant-minutes (#679,
+         * 2026-09-10). The CVCS volume-scale fix cut charging authority 14.6 % (30.1 -> 26.3 gpm),
+         * so the same climb to 665 psia now takes longer — measured, full stack: 41.7 plant-minutes
+         * still short (4.554 MPa), 45.0 plant-minutes past it (4.669 MPa). The crossing is a plant
+         * fact, not a test fixture (Hard Rule 9): the step's authored dwell is what was stale, so
+         * the step is what moved, not `run_checklist_pwr2`. */
         { text: 'Raise SET PZR PRESSURE to 1700 psi; once set, the box will not go below that. Not 2235 psi yet: read the next step before this one settles.',
-          why: 'Pressure goes up in two stages because of an automatic gate at 1972 psi: above it, the emergency injection pumps re-arm, and with the steam side still cold they would fire on a healthy plant. So the first stage stops under that gate. Raising the setpoint also starts the climb toward the accumulator window in the next step, which opens at 665 psi about 35 plant-minutes from now.',
+          why: 'Pressure goes up in two stages because of an automatic gate at 1972 psi: above it, the emergency injection pumps re-arm, and with the steam side still cold they would fire on a healthy plant. So the first stage stops under that gate. Raising the setpoint also starts the climb toward the accumulator window in the next step, which opens at 665 psi about 44 plant-minutes from now.',
           control: 'Pressure SP', target: 'SET PZR PRESSURE 1700 psi; PRIMARY PRESSURE climbing',
-          wait_hint: 'About 35 plant-minutes until PRIMARY PRESSURE reaches 665 psi. Use the speed buttons at the top. At 665 psi the clock drops to 1× by itself and stays there until the accumulator valve in the next step is open.',
-          cmd: { action: 'set_pressure_setpoint', mpa: 11.72 }, hold: 2400,
+          wait_hint: 'About 44 plant-minutes until PRIMARY PRESSURE reaches 665 psi. Use the speed buttons at the top. At 665 psi the clock drops to 1× by itself and stays there until the accumulator valve in the next step is open.',
+          cmd: { action: 'set_pressure_setpoint', mpa: 11.72 }, hold: 3000,
           accs: [
             { cmd: { action: 'set_pressure_setpoint', mpa: 11.72 }, label: 'SET PZR PRESSURE set to 1700 psi' },
             { p: 'pressure_mpa', op: '>', v: 4.585, label: 'PRIMARY PRESSURE at 665 psi, the accumulator window' },
@@ -2346,8 +2353,9 @@
      *     30 s.
      *  3. LETDOWN IS ALREADY AT ITS HIGH LIMIT. `hot_full_power` boots with BOTH orifices in
      *     service (`control_state.letdown_orifice_a`/`_b` true) and the board's LETDOWN card
-     *     offers nothing above A+B 7 %, so `set_letdown_orifices {a,b}` moves the flow 12.7 gpm
-     *     -> 12.7 gpm. The crew's second action of 04:05 cannot be performed here; it is
+     *     offers nothing above A+B 7 %, so `set_letdown_orifices {a,b}` moves the flow 11.7 gpm
+     *     -> 11.7 gpm (#679 corrected the figure from 12.7). The crew's second action of 04:05
+     *     cannot be performed here; it is
      *     narrated in step 7 rather than faked (guide P1: never ask for a press that is already
      *     made).
      *  4. THIS BOARD HAS ONE REACTOR-COOLANT-PUMP HANDSWITCH (`sys.pumpTripped`, a single

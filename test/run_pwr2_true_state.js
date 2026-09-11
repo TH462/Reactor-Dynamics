@@ -421,7 +421,7 @@ function runSuite(TS, rec, quiet) {
      (ts.letdown_flow_actual * 450000).toFixed(1) + ' gpm on the consumers own conversion');
   ck('...and the normal point sits BELOW the 36 gpm annunciator (the standing CHG FLOW HI cleared)',
      ts.charging_flow_actual < 8.0e-5 && ts.letdown_flow_actual < 8.0e-5,
-     'a healthy plant cannot exceed it: max charging is the sourced-scaled 29.4 gpm');
+     'a healthy plant cannot exceed it: max charging is the sourced-scaled 26.3 gpm (#679)');
 
   /* THE FEED REWIRE (2026-08-21): fw_flow used to BE steam_out_total by construction — a
    * half-flow feedwater result must now read ~0.5 while the steam side stays where it is,

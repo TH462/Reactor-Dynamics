@@ -2244,7 +2244,8 @@
   /* THIS PLANT'S CHARGING CEILING in gpm (#516 item 11, 2026-08-29) — the pressBandMpa shape,
    * one system over. `CHARGING_MAX_GPM` is `GPM_CHARGING * _RX.charging_max` where `_RX` is
    * `RD.PWR_CONFIG.reactivity` CAPTURED AT SCRIPT LOAD, i.e. the RETIRED engine's 60 gpm.
-   * PWR2's own maximum is 30.14 gpm (180 gpm power-scaled by its declared volume basis), and
+   * PWR2's own maximum is 26.31 gpm (180 gpm power-scaled by its declared volume basis; was
+   * 30.14 gpm before #679 corrected the scale's basis mismatch), and
    * `pwr2_shell.set_charging_flow` clamps the demand to [0,1], so the top HALF of the box's
    * range was one value the player could not tell apart. A plant that publishes
    * `charging_max_gpm` gets its own ceiling; everything else — the retired engine, a partial

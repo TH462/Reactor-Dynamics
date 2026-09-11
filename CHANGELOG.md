@@ -691,7 +691,35 @@ stays steady (power within 5 points of rated, pressure drift under 0.2 MPa / 29 
 meet within one broadcast of the window end, and a planted 1e-6 difference is seen by `compare()`.
 Four injections, one per conjunct, each proven to redden SI-0 alone. No baseline moves (8 checks).
 
-## [Alpha 1.7.4-rc11] — 2026-09-10
+## [Alpha 1.7.4-rc12] — 2026-09-10
+
+### Fixed (the CVCS charging/letdown volume scale mixed two bases — #679)
+
+Ruled Option A, the denominator fix *(OWNER RULING, 2026-09-10: "679-a")*.
+`pwr2_cvcs.volumeScale()` divided this plant's RCS volume (nodes **plus** the pressurizer) by
+Ginna's sourced **5,123 ft³** — a figure whose own UFSAR sentence states it **excludes** its
+pressurizer and surge line (ML20339A101). Every charging and letdown rating shipped **14.6 %**
+high as a result (charging maximum read 30.14 gpm where the sourced basis gives 26.29).
+
+Fixed on the total-inventory basis: Ginna's own pressurizer, **747 ft³** (650 ft³ / 0.87, from
+its Technical Specification Bases, ML20339A221), is now in the denominator too, so both sides
+of the ratio carry theirs. **Charging, maximum 30.1 → 26.3 gpm; charging, normal balance
+7.7 → 6.7 gpm; letdown, orifice A nominal 12.7 → 11.7 gpm.** The volume ratio falls
+0.1675 → 0.1462; RCS volume itself (857.9 ft³) is unaffected.
+
+**The heatup letdown margin this fix moves**: maximum net inventory removal with charging
+secured (corrected normal letdown less the 5.00 gpm uncontrollable seal injection) falls
+**7.70 → 6.72 gpm — a plant-physics quantity, exact from the corrected constant**. The
+100 °F/hr shortfall this margin was checked against does not bind on the plant's own achieved
+heatup rate either side of the fix — see #679 for the full arithmetic and what was and was not
+independently re-ridden.
+
+Corrected every other consumer of the old figures: `Manuals/12` §6.3/§6.4, `Manuals/04`
+PWR-N03, `Manuals/09` §11.0's `50_percent` initial-condition pressure cell (2240 → 2243 psi,
+a small downstream consequence of the lower charging/letdown authority), the board-wiring and
+board-gate code comments, the TMI-2 walkthrough's letdown note, and `Blueprint/STYLE_GUIDE.md`'s
+worked example. `run_pwr2_cvcs`, `run_pwr2_bases`, `run_manual_units`, `run_manual_setpoints`
+and `run_manual_rev` all re-verified at the corrected figures.
 
 ### Added (the vital-few Avg Coolant Temp gauge had no low edge at all — #703)
 

@@ -346,7 +346,8 @@ function runSuite(quietRec) {
    * The owner read "0-60 gpm" off the board and found the box refused anything over 30. Both
    * halves came from `RD.PWR_CONFIG.reactivity.charging_max` captured at script load — the
    * RETIRED engine — while `set_charging_flow` clamps the demand to [0,1] against THIS plant's
-   * 30.14 gpm, so the top half of the range was one indistinguishable value. */
+   * 26.31 gpm (#679 corrected the scale basis; was 30.14), so the top half of the range was
+   * one indistinguishable value. */
   if (!rec) head('CHARGING SETPOINT BOX  [the ceiling belongs to THIS plant, #516 item 11]');
   var CVC = globalThis.RD.pwr2.cvcs.CVCS;
   var chgMax = CVC.charging_max_gpm();
@@ -1172,7 +1173,8 @@ var MUTS = [
    '      pressure_band_psi: [PZ.CONTROL.backup_on_psi, PZ.CONTROL.spray_start_psi],',
    '      pressure_band_psi: undefined,'],
   /* #516 item 11: the plant stops publishing its charging ceiling, so the setpoint box falls
-   * back on the RETIRED engine's 60 gpm against PWR2's 30.14 — the exact shipped defect, and
+   * back on the RETIRED engine's 60 gpm against PWR2's 26.31 (#679; was 30.14) — the exact
+   * shipped defect, and
    * invisible to a source read for the same reason #576c was: the fallback IS the old code. */
   ['the plant stops publishing its charging ceiling (the box reverts to 60 gpm)',
    SHPATH, SHSRC,

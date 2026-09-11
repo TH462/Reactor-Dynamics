@@ -79,12 +79,17 @@ function runSuite(C, rec, quiet, only) {
   if (grp('A')) {
   /* ---- 1. THE SOURCED ANCHORS SURVIVED THE SCALING ------------------------------------ */
   if (!quiet) console.log('\nSOURCED ANCHORS  [Ginna charging; the scaling basis is DECLARED]');
-  ck('Ginna RCS volume is the sourced 5123 ft3', C.GINNA_RCS_M3, 5123 * 0.0283168466, 1e-9, 'm3');
+  ck('Ginna RCS volume is the sourced 5123 ft3, EXCLUDING the pressurizer', C.GINNA_RCS_M3,
+     5123 * 0.0283168466, 1e-9, 'm3');
+  /* #679: the denominator is the RCS-only figure PLUS Ginna's own pressurizer (747 ft3,
+   * sourced ML20339A221), on the same total-inventory basis as our numerator. */
+  ck('Ginna pressurizer is the sourced 650/0.87 = 747 ft3', C.GINNA_PZR_M3,
+     (650 / 0.87) * 0.0283168466, 1e-9, 'm3');
   var vs = C.volumeScale();
   ckT('the volume scale is DERIVED from Layer 1, not written down',
-      Math.abs(vs - C.rcsVolume() / C.GINNA_RCS_M3) < 1e-12 && vs > 0.1 && vs < 0.25,
+      Math.abs(vs - C.rcsVolume() / C.GINNA_RCS_TOTAL_M3) < 1e-12 && vs > 0.1 && vs < 0.25,
       'x' + vs.toFixed(4) + ' from ' + C.rcsVolume().toFixed(2) + ' m3 against Ginna ' +
-      C.GINNA_RCS_M3.toFixed(2));
+      C.GINNA_RCS_TOTAL_M3.toFixed(2));
   /* THE CHOICE, REPORTED. Volume and power bases disagree by 21 % here because this plant carries
    * 17 % less water per MWt than Ginna. Printing both keeps the decision visible. */
   var powerScale = 300 / 1520;
@@ -607,7 +612,7 @@ var MUTATIONS = [
    'return gpmToKgs(CVCS.charging_normal_gpm() + sealInjectionGpm(), 1000);',
    'return gpmToKgs(CVCS.charging_normal_gpm(), 1000);', { grp: 'B' }],
   ['the scale factor is written down instead of derived from Layer 1',
-   'function volumeScale() { return rcsVolume() / GINNA_RCS_M3; }',
+   'function volumeScale() { return rcsVolume() / GINNA_RCS_TOTAL_M3; }',
    'function volumeScale() { return 0.20; }', { grp: 'A' }],
   ['charging scaled by POWER instead of the declared volume basis',
    'charging_max_gpm:    function () { return 180 * volumeScale(); },',
