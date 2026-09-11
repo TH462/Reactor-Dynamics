@@ -29,6 +29,239 @@ and the user-visible summary in `CHANGELOG.md`. This file points at those and tr
 
 ---
 
+## Session log — 2026-09-11-workbench-a (#685 / #693 / #692 / #653 — the combined checklist content sweep, four commits, UNMERGED on `workbench`)
+
+Four issues worked as one pass because they all rewrite the same 89 steps and interleaving them
+was cheaper than merging four passes over one artifact. Commits, oldest first: `feed32f9` (#685),
+`0bb8b19b` (#693), `29ca89e1` (#692), `8c93ae26` (#653), plus this close-out's BASELINES
+reconciliation. Nothing is merged into `develop`; the standing no-merge rule holds.
+
+### The trap: A STALE MEASUREMENT IN AN ISSUE BODY IS A TARGET YOU CAN HIT AND STILL BE WRONG
+
+#692 was filed against **85 steps and 2,907 player-facing words in TMI-2**. By the time it was
+worked, #693 had landed four hours earlier and the pool was **89 steps and 3,522 words** — the
+issue's own target had moved 21 % before anyone touched it. Worse, #692's headline rule (*"steps
+shouldn't be more than 2-3 sentences"*) was **already satisfied**: measured on the built pool,
+**0 of 85 step lines exceeded three sentences and the maximum was exactly 3**. A close that
+asserted the issue's stated rule would have changed nothing, gone green, and been defensible from
+the issue text alone.
+
+The load was in a cap nothing scored. **55 of 89 step lines were over the STYLE_GUIDE W2
+twenty-word cap**, and that number had been *printed* by `run_style` for months in its unscored
+BACKLOG block: 0 of 61 -> 8 of 67 -> 46 of 67 -> 55 of 89 across four authoring passes, while the
+guide's prose still claimed *"0 of 61 shipped step texts exceed 20 words"*. The runner's own
+comment argued that scoring a moving number teaches the next agent to update it without reading
+it. **The measurement refutes that here: an unscored count did not get read, it got inherited** —
+which is the CLAUDE.md standing trap about inherited claims, arriving through a gate's own output
+rather than through prose. `checklist_text_words` now scores it, 55 of 89 -> 0 of 89, proven red
+by injection (`run_style --self-test`, 11/11 CAN FAIL).
+
+**Re-measure the issue's own numbers on the tree you are standing on before you adopt its target.**
+
+### #685 — `hl_watch`, and the four steps that highlighted nothing
+
+`hl` was one flat list drawn identically for the control you press and the gauge you watch
+*(OWNER, 2026-09-09, #675 section B: "Each step should highlight the important indications to
+watch with a non pulsing green glow.")*. `hl_watch` is a sibling list in the same board
+vocabulary; `hl` keeps the pulse (#607 item 3's ruling, untouched) and `hl_watch` draws
+`.ckl-watch-glow`.
+
+**The treatments differ by GEOMETRY, not only by motion** — a dashed offset ring with a quarter
+the halo spread, not the same ring with the animation removed. DESIGN_CRITERIA question 4 is a
+veto and two rings in one hue on a board of 50+ elements, separated only by whether they animate,
+do not pass it.
+
+Four steps resolved to no board element at all (`pwr_heatup` 17, `pwr_tmi2_incident` 9/12/13 —
+each a "verify an indication" step, three of them the most important observations in the TMI-2
+leg): **4 -> 0**. `Reactor Power` joined `CONTROL_LABEL_MAP`; the power-range meter's only name
+lived in the inspect map, the same vocabulary hole as the two vital tiles #670 added.
+
+**`verify_e2e_ui`'s `testWatchGlowRendered` is the DARK-WIRE proof** and is the check to keep:
+`applyCklWatchGlow` has exactly one caller, in a render path no Node harness enters. It asserts
+the painted EFFECT on real content — 3 authored watch labels, 3 `.ckl-watch-glow` painted, **0**
+pulsing `.ckl-step-glow`. The negative half is load-bearing: drop it and the check passes on a
+renderer that draws one treatment for both lists.
+
+### #693 — the TMI-2 cascade, and a 21-second cliff a narrated chain cannot afford
+
+Step 2 fired four failures in one broadcast under text that only verified the aftermath; its own
+note admitted *"you have missed it"*. The leg goes 16 steps -> 20, one event per step on the
+sourced clock (polisher 04:00:36 narrated · feed pumps 04:00:37 **PAUSE** · turbine 04:00:37 ·
+auxiliary feed 04:00:37 · relief valve 04:00:40 **PAUSE**). First real content use of the #694
+pause runtime.
+
+**TWO DEVIATIONS FROM THE ISSUE'S OWN TABLE, both forced by measurement, neither needing a ruling.**
+
+1. **`drivers.porv_stick` is an ARM, not a force**, so the step that NARRATES the stuck valve
+   cannot be the step that arms it. Swept full-stack at nine arming times after the feed loss:
+   **0 / 8 / 13 / 16 / 20 / 21 s all latch** and give the accident (pressurizer pegged 196-203 s,
+   1045 psia at 5 min); **22 / 23 / 24 / 25 s NEVER latch** and the plant sits at 1989 psia with
+   level 41.5 %. **The cliff is between 21 and 22 seconds.** One tick at 600x is 60 sim-seconds, so
+   a chain the player paces cannot spend a 21-second budget on narration. The arming rides with the
+   initiating event; only the LAMP failure, which is timing-insensitive, lands on the valve's own
+   beat — which is also the more faithful reading, since at TMI-2 the lamp read honestly until the
+   solenoid dropped out at 13 s. Auxiliary feed is the opposite case and was measured the same way
+   (armed at 14/22/30/40/45/60/120/200 s the accident is unchanged), so it sits on its own step.
+2. **Auxiliary feed comes BEFORE the relief valve.** The issue's ordering ran the story clock
+   backwards (step 6 at 04:00:52 -> step 7 at 04:00:45, the reactor trip). `run_checklist_pwr2`'s
+   monotonic-clock check — written for the #670 defect — caught it on the first build of the split.
+
+**The pause is proven on this content, not on #694's synthetic fixture.** Driven through the live
+instructor runtime on PWR2 at 600x, continuing each step the way `ui/app.js` does: step 3 paused
+at sim_time 660.00, `svc.running=false`, `tick() -> null`, and 30 further attempted broadcasts
+moved the clock 660.00 -> 660.00 (running, they would have added 1800 s); step 6 the same at
+1140.00. Steps 1, 2, 4, 5, 7 completed on acceptance or dwell with **no** pause — the control that
+says the pause happens only where it is authored. The accident still holds at that speed: PORV
+stuck open, pressurizer level 100 %, 1036 psia at step 8.
+
+**THE HEADLESS NUMBER ABOVE HIDES A LOAD-BEARING RUNTIME, AND THE HARNESS DEFAULT IS THE TRAP.**
+Those figures were taken with `attentionStops` at the harness default of **`false`**, where one
+tick at 600x is 60 sim-seconds — so the pause lands a full sim-MINUTE after the event, and the
+player misses the pressure spike the step promises. Re-measured at the PLAYER's real default
+(`attentionStops` on), **injecting a failure trips the fast-forward dropout to 1x**, so the pause
+lands about **0.1 sim-seconds** after the event:
+
+```
+STEP 3 PAUSED at sim_time 432.30 | injected [loss_of_feedwater, stuck_porv_open] | accel 1 | P 2244 psia
+STEP 6 PAUSED at sim_time 462.94 | injected [porv_indicator_stuck_closed]        | accel 1 | P 2141 psia
+```
+
+2244 psia (15.47 MPa) is BEFORE the spike — the design point — so the player presses Continue and
+watches pressure climb to about 2340 psia (16.13 MPa) and fall back at 1x, which is what the step
+text says will happen. **No code change was needed, and the point of recording it is that a future
+agent must not propose disabling attention-stops for walkthroughs without knowing it breaks this.**
+Same shape as the standing "headless gates lose sim time" trap, inverted: there the dropout was the
+defect, here it is the feature, and the harness default is what hides it either way.
+
+**No `pause` on the polisher step, and that is a runtime fact.** `_stepChecklist` requests the
+pause only when something in the step's `inject`/`clear` NEWLY fires, so `pause: true` on a step
+that injects nothing is a dead field that reads as authored — the exact shape of the dark wires
+CLAUDE.md's standing list warns about.
+
+`test/manual_ui_map.js`'s STEP_UI rows all MOVED +4. **That table is POSITIONAL and re-deriving it
+is how it has been broken four times**; none of the five new steps carries a `control`, so no
+coverage row was added or lost.
+
+### #692 — what the wordiness pass actually moved
+
+Measured on the built pool at each commit with one field set (`text`, `note`, `why`, `target`,
+`wait_hint`, `story.{clock,saw,knew,did}`, `overtaken.text`, `accs[].label`):
+
+| | pre-sweep (`feed32f9~1`) | after #693 | after #692 | at this tip |
+|---|---|---|---|---|
+| TMI-2 steps | 16 | 20 | 20 | 20 |
+| TMI-2 player-facing words | 3,048 | 3,522 | 2,594 | **2,623** |
+| TMI-2 words per step | 190 | 176 | 130 | **131** |
+| whole pool, steps | 85 | 89 | 89 | 89 |
+| whole pool, words | 11,001 | 11,475 | 10,442 | **10,395** |
+| step lines over the 20-word cap | 55 of 89 (at #693's tip) | | | **0 of 89** |
+| `why` blocks over 3 sentences | 7 of 89 | | | **0 of 89** |
+
+(The +29 words between #692 and this tip are #653's term definitions — RHR, AFW, PORV, MED and the
+overtemperature trip spelled out at first visible use. The prior agent's own figures, 3,545 ->
+2,617, differ from these by ~0.8 % because the field set differs slightly; the DELTA agrees to
+0.4 points.)
+
+**`checklist_why_length` goes 4 -> 3.** It had been set one rung looser than the rule it enforces,
+with a comment saying so on purpose. The owner has stated 2-3 twice (#619 item 12 and the
+2026-09-09 sheet). Seven blocks sat in the gap.
+
+**Words and sentences are different checks and that is the point** — a 58-word instruction can be
+three sentences, and `pwr_heatup` step 10 was exactly that. The word cap governs the line; the
+sentence cap governs the details paragraph.
+
+**Nothing moved into a field the player cannot see.** Displaced clauses went to `note` and
+`target`, never `why`. No `acc`, `accs`, `cmd`, `hold`, `ramp`, `saw`, `past`, `precond` or `guard`
+was touched anywhere in the change, so the replay drives the identical plant — which is why
+`run_checklist_pwr2` did not move across #692 or #653.
+
+**The cooldown step the owner named** (`pwr_cooldown` step 4) loses its cooldown-rate coaching
+entire — the 50 degF-a-minute figure, the 85 degF/hr the authored walk runs at, and the Cooldown
+Rate High alarm. **The TRAP stays**, because it is a measured gameplay failure and not a rate
+lesson: the 2026-09-07 pass-2 playtest typed 380 psi in as one step and emptied the pressurizer.
+
+### #653 — the readability backlog, and the defect nothing but the rendered panel could see
+
+**The leg's cautions never reached the player running the leg.** `pr.cautions` rendered in exactly
+one place, `mProcCard` — the Manual tab's BROWSE card. From the moment a walkthrough started,
+every caution on it was on a different screen. Both fresh-context reviews (2026-09-06) reported
+the consequence and not the cause, and filed the strings as MISSING: the heatup's only heatup-rate
+instruction, the startup's *"never pull the rods straight to the position the 1/M plot predicts"*,
+the cooldown's accumulator window and spray limit. It is also where the startup leg DEFINES pcm,
+which the layman review listed as undefined at first use. **The definitions existed and were
+unreachable.** Now a collapsible amber block at the head of the panel, open before the leg starts
+moving, count always visible.
+
+**A done-when was arithmetic**: *"AVG COOLANT TEMPERATURE within 14 degF of 547 degF"*, in the
+narrowest column on the page, on a question that is a RANGE. It prints the ends now — **532 to
+561 degF**. The tolerance-is-a-difference trap is applied one step earlier, to the ENDPOINTS:
+value +/- tolerance is computed in the predicate's own units and each end then converts
+absolutely, so no lone difference survives for the +32 offset to attach to. (The old bug would
+have to print "501 to 593 degF" under this form — visibly a different claim, which is why
+`verify_ckl_relevance` pins the endpoints rather than the band.)
+
+**Contrast**: `note` and `why` were two near-identical greys; the `why` is a labelled tinted block
+now (closes #687 item 4). The wait hint wore `var(--caution)`, the board's amber for "abnormal",
+so on a step whose note carries the plant's own limit the LOUDEST line on the card was the advice
+about which speed button to press — both reviewers read the orange as the warning and the grey as
+the footnote, exactly backwards.
+
+**`plant_mode` now prints the live mode beside its target** — *"When Plant in Mode 3, Hot Standby
+— the plant reads Mode 5, Cold Shutdown (true value)"*. Declared as a TRUE value under Hard Rule 1
+(instruments vs truth): there is no mode transmitter, and the mode is inferred from temperature,
+pressure and power, each of which does have a gauge. **Only `plant_mode`** — every other predicate
+names a tile the player can read, and printing live values beside all of them would make the
+criteria a second set of gauges.
+
+**One filed item is a RULING, not a defect.** "Done-when only drawn on the active step" is
+superseded by #660 item 15 (one step at a time), which draws no other step at all. Not reversed
+here; the fix available INSIDE the ruling is to name the coming window in the previous step's
+`note`, which the heatup's Pressure SP step now does for the accumulator window.
+
+**FILED, NOT BUILT: #709** — the walkthroughs do not react to a reactor trip (the reviews' S-15).
+Runtime/control behaviour, not prose or rendering, so out of scope for a content pass; three
+options and a recommendation are on the issue. Distinct from #667 and #664, which are both the
+turbine: a reactor trip has a different recovery and can land on the heatup or the cooldown, where
+the turbine is not in the picture.
+
+### Highlight coverage across the whole sweep
+
+| | pre-sweep | at this tip |
+|---|---|---|
+| steps carrying `hl` ("press this") | 81 of 85 | 64 of 89 |
+| steps carrying `hl_watch` ("watch this") | 0 | **56 of 89** |
+| steps carrying both | 0 | 32 |
+| steps carrying neither | **4** | 1 |
+
+`hl` FELL because #692 moved the pulsing "press this" ring off gauges it was pointing at — four
+verification steps that press nothing, and the TMI-2 reactor-trip step that was pointing at the
+SCRAM button on a step which only asks you to READ reactor power. The one step carrying neither is
+the polisher narration, deliberate and stated in its own `note`: the condensate polisher is not on
+this board in any form.
+
+### Gates and BASELINES
+
+Six runners moved across the four commits. Three were recorded by the authoring agents
+(`run_glow_stacking` 18 -> 20, `run_checklist_pwr2` 194 -> 195, `run_hardrules` 523 -> 524) and
+three were left to this close-out, as their own commit messages said:
+
+| runner | old | new | why |
+|---|---|---|---|
+| `run_glow_stacking` | 18 | 20 | `.ckl-watch-glow` exists and is z-index-pinned (#685) |
+| `run_manual_controls` | 593 | **649** | +8 `hl_watch` label checks (#685), +4 net from the cascade split (#693), +44 from the authoring pass (#692/#653). The count IS the label count |
+| `run_checklist_pwr2` | 194 | 195 | the pressure-spike `saw` the lump step could not assert (#693) |
+| `run_hardrules` | 523 | 524 | Manuals/08 §6.0's polisher row records that narrating it was RULED (#693) |
+| `run_style` | 10 | **11** | `checklist_text_words`, the W2 cap scored (#692) |
+| `verify_ckl_relevance` | 18 | **21** | cautions drawn, cautions openable, `why` label (#653) |
+
+`run_manual_controls` is the one to watch: **its score is a LABEL COUNT, not a check count** — no
+check function was added or removed after #685's, so the number moves whenever the pool's
+highlight authoring moves. A future authoring pass will redden it with no code change at all.
+
+`run_ops` remains the one tracked red at **59/70**, ruled and accepted; nothing here touches it.
+
+---
+
 ## Session log — 2026-09-11-develop-a (#704 — the full-power design point booted on the rod stop)
 
 ### The trap: A CONSTRUCTION THAT RE-SOLVES AROUND A PARAMETER HAS NO OPINION ABOUT ITS VALUE, AND NO GATE CAN SUPPLY ONE
