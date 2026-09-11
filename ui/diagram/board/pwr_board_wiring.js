@@ -1232,6 +1232,15 @@
     // --- ECCS (merged HPI/LPI): ONE pump on a dedicated RWST-sourced train (owner ruling
     //     2026-07-22, pwr_primary.js:56-60) — NOT the charging pump doing double duty, which
     //     is what justifies the two systems reading on different flow scales. ---
+    /* ECCS INJECTION flow, captioned INJ FLOW on the board since #705. THIS FUNCTION IS
+     * CORRECT AND IS DELIBERATELY UNCHANGED: `hpi_flow` is emergency injection only
+     * (pwr2_true_state), so a shutdown cooldown reads 0 GPM for the whole of Mode 4 and
+     * Mode 5 — not a dead channel, an honest zero. Measured with RHR aligned at a 25 % split:
+     * rhr_active true, eccs_mode 'rhr', rhr_running true, hpi_flow 0.
+     * Do not "fix" this by folding Residual Heat Removal circulation into it: that flow is a
+     * lineup FRACTION with no pump hydraulics behind it, so it has no gallons-per-minute
+     * figure to fold, and putting one here on GPM_HPI's injection scale would render the
+     * plant's 1,000 gpm floor as roughly 324 gpm — a number meaning nothing on either side. */
     ims3w1cb6jc: function (s) { return dQ((IN(s).hpi_flow || 0) * GPM_HPI); },   // ECCS flow (true hpi_flow)
     ims3w1lj7n6: function (s) { return dP(IN(s).hpi_discharge_pressure || 0); },  // ECCS discharge (true pump head)
     // Which alignment that one pump is in: RHR when the hot-leg suction valve is open, else
@@ -3595,7 +3604,27 @@
        * label-end 782.3 + STANDBY 55.7 = 838. So MODE becomes a stacked pair like its two
        * neighbours, and the rows come up to pay for the extra line. Uniform now: 38 px group
        * pitch, 15 px label -> value, MODE value ends 782 against the card's 785. */
-      ims3w19984s: { props: { top: 672 } },   // FLOW  label   (was 675)
+      /* …and the FLOW caption also becomes "INJ FLOW" (#705, 2026-09-11). The gauge reads
+       * 0 GPM through the WHOLE of Mode 4 and Mode 5 — measured, `hpi_flow` is emergency
+       * injection only and a cooldown injects nothing — while the same pumps circulate the
+       * plant through the Residual Heat Removal heat exchanger. The reading is correct; the
+       * LABEL was the thing that made it look like a dead instrument, because "FLOW" on the
+       * emergency core cooling card reads as "flow in this system" rather than "injection
+       * flow". Naming the quantity is the whole fix, and it is option A of the three the
+       * issue put up: B (a separate Residual Heat Removal flow indication) is deferred to be
+       * designed with the sibling card decision, and C (summing two systems onto one scale)
+       * was refused — it would make "non-zero here" stop meaning "the plant is injecting",
+       * which is a diagnosis cue.
+       *
+       * IT FITS AT THE AUTHORED 13 px, and the number quoted is the RENDERED one because the
+       * sibling change in #700 was caught out by quoting an intrinsic: the tile renders
+       * 740..816.6 against the card's right edge at 825, so 8.4 px of clearance. Confirmed by
+       * eye as well as by rect — it clears the "N GPM" reading below it, which shares four
+       * pixels of BOX with every caption on this card (15 px row pitch, ~19 px line boxes) and
+       * has never shared a glyph. Arithmetic off the rendered rect of the old "FLOW" (42.3 for
+       * four characters, padding included) predicted 84.6 and a label flush on the border;
+       * that prediction was wrong by 8 px, in the direction that would have shipped. */
+      ims3w19984s: { props: { top: 672, text: 'INJ FLOW' } },   // INJ FLOW label (was 675 / 'FLOW')
       ims3w1cb6jc: { props: { top: 687 } },   // FLOW  value   (was 690)
       ims3w1hf6n:  { props: { top: 710 } },   // DISCG label   (was 715)
       ims3w1lj7n6: { props: { top: 725 } },   // DISCG value   (was 730)

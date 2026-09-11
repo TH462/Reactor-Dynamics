@@ -611,13 +611,18 @@
       'One pump serves two suctions on this plant, so MODE is the readout that tells you what it is ' +
       'doing: High Pressure Injection (HPI)/Low Pressure Injection (LPI) on the injection alignment, Residual Heat Removal (RHR) when the hot-leg suction valve is open, OFF ' +
       'when it is neither.', CI, '11.0'),
-    ims3w1cb6jc: e('Emergency Core Cooling System (ECCS) Flow',
+    ims3w1cb6jc: e('INJ FLOW — Emergency Core Cooling System (ECCS) injection flow',
       'Emergency injection flow — a trickle at operating pressure, real volume once the plant is down.',
       'Not zero at operating pressure, which surprises people: the high-head segment still passes ' +
       'about 1.7 % of rated against 2235 psi (15.41 MPa), because its shutoff head is ' +
       '2384 psi (16.44 MPa). The curve is steep, so the number that matters arrives as the plant falls — near ' +
       '60 % of rated by 360 psi (2.48 MPa). That is what makes injection effective exactly when it is ' +
-      'needed, and why a bare trickle here is not evidence the pump is failing.', CI, '11.0'),
+      'needed, and why a bare trickle here is not evidence the pump is failing. IT READS ZERO ' +
+      'THROUGHOUT A SHUTDOWN COOLDOWN, BY DESIGN: this is the INJECTION gauge, a cooldown injects ' +
+      'nothing, and the same pumps are meanwhile circulating the plant in their Residual Heat Removal ' +
+      '(RHR) lineup, which a real board indicates separately and this one does not indicate at all. ' +
+      'The MODE word beside this number is the cue — it reads RHR when that is what the train is ' +
+      'doing.', CI, '11.0'),
     ims3w1lj7n6: e('Emergency Core Cooling System (ECCS) Discharge Pressure',
       'Injection pump discharge pressure — the pump\'s head, not the plant\'s.',
       'A running pump against a closed system sits at its shutoff head. Discharge high with flow at ' +
