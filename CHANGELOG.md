@@ -80,6 +80,27 @@ Gates at baseline: `verify_e2e_ui` PASS (4 screenshots, +1 check function), `run
 `run_inspect` 11/11 62/62, `run_hardrules` 523, `verify_board_check` 256, `run_chart_math` 8/8,
 `run_flags` 19/19 345/345, `run_portable` 145, `run_diag_bundle` 70, `run_manual_units` 0 failed.
 
+### Fixed (the fourth stale 912, closing out #707)
+
+`ui/manual_data.js`'s generated `rod_limit_margin` indication is the RETIRED engine's own reference
+stub (`tools/gen_manual_reference.js` ← `RD.PWREngine`) and is correctly **912** for that engine —
+but the board's Indications-tab row and gauge-detail popover both printed it as this plant's own
+indicating range, right beside the chart lane #707 already fixed. This plant's bank is 627 and can
+move (#704).
+
+Same mechanism as #707, not a hand-typed 627: `indicationFacts()` in `ui/app.js` now overrides the
+displayed range for `rod_limit_margin` with `bankScale(latest, 'control_rods')` — the same live
+snapshot read the chart lanes use — instead of the generated reference's static figure. Nothing
+else prints the retired engine's 912 to a PWR2 player; the Manuals `*.md` set does not document
+this channel at all, so there is no revision-history row or repack to do.
+
+Verified by injection (no existing gate covers this string): with the fix reverted, the Indications
+row's `data-scanner-detail` read "Indicating range 0 steps to 912 steps."; with it applied, "…0
+steps to 627 steps."
+
+Gates at baseline: `run_hardrules`, `run_manual_units`, `run_manual_setpoints`, `run_inspect`,
+`run_all` (111 runners; tracked red `run_ops` 59/70 only).
+
 
 ### Added (the board had no cue for a pressurizer running above its program — #706)
 

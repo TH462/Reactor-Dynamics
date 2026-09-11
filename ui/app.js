@@ -1682,8 +1682,17 @@
     var ind = instr ? manualIndication(instr) : null, bits = [];
     if (!ind) return bits;
     if (ind.measures) bits.push(ind.measures);
-    if (ind.range) bits.push('Indicating range ' + fmtInstrValue(ind.range[0], ind.unit, instr) +
-                             ' to ' + fmtInstrValue(ind.range[1], ind.unit, instr) + '.');
+    /* rod_limit_margin's manual-reference range is GENERATED from the RETIRED engine
+     * (ui/manual_data.js ← RD.PWREngine, tools/gen_manual_reference.js) and correctly reads
+     * 912 — that engine's own 912-fine-step drive. It is wrong only once it reaches THIS
+     * plant's copy: PWR2's bank is 627 today (#704) and can move, the same fourth-instance
+     * stale reference #707 found and fixed on the chart lanes beside this row. Same fix here:
+     * read the SNAPSHOT's own rod-group max_steps live via bankScale() rather than the
+     * generated reference's static figure — 627 is not typed here either, so a future bank
+     * retune does not silently strand this text the way 912 did (#707 ruling, 2026-09-11). */
+    var rng = (instr === 'rod_limit_margin') ? [0, bankScale(latest, 'control_rods')] : ind.range;
+    if (rng) bits.push('Indicating range ' + fmtInstrValue(rng[0], ind.unit, instr) +
+                             ' to ' + fmtInstrValue(rng[1], ind.unit, instr) + '.');
     if (ind.lag_s) bits.push('About ' + ind.lag_s + ' s of instrument lag — it trails the plant.');
     if (ind.alarms && ind.alarms.length) {
       bits.push('Drives ' + ind.alarms.map(function (id) {
