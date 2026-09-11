@@ -85,8 +85,10 @@
 
     imrpk3wvydp: e('Control Bank',
       'The operable rod group — the reactivity trim control. WITHDRAW adds reactivity, INSERT removes it.',
-      'Position reads 0 steps fully inserted to 912 fully withdrawn, and sits near 92 % withdrawn ' +
-      'at hot full power. A quick click steps one step (about 9 pcm near the startup band); holding ' +
+      'Position reads 0 steps fully inserted to 627 fully withdrawn, and sits at 606 steps — ' +
+      '96.7 % withdrawn — at hot full power (#704: the sourced full-power position, and it is ' +
+      'deliberately NOT the stop, so you have 21 steps of withdrawal left as well as the whole ' +
+      'bank below you). A quick click steps one step (about 9 pcm near the startup band); holding ' +
       'drives continuously at the selected speed until you let go. Withdrawal is interlocked out ' +
       'when startup rate reaches 1.5 decades per minute (DPM) and stays blocked until it falls below 0.8 DPM — insertion ' +
       'is never blocked.', CI, '3.1'),
@@ -116,10 +118,10 @@
       'startup rate into the 1.5 decades per minute (DPM) withdrawal block, which stops the drive and leaves you waiting ' +
       'for the rate to decay below 0.8 DPM.', CI, '3.2'),
     imrpk4pjcpd: e('Control Rod Position',
-      'Control bank position in steps — 0 fully inserted, 912 fully withdrawn.',
+      'Control bank position in steps — 0 fully inserted, 627 fully withdrawn.',
       'Reads the rod group position from the control state, in drive steps rather than percent, ' +
-      'because steps are what the operator commands. Roughly 92 % withdrawn is the normal full-power ' +
-      'position; parked low it means the plant is holding power with rods instead of boron, which ' +
+      'because steps are what the operator commands. 606 of 627 — 96.7 % withdrawn — is the normal ' +
+      'full-power position; parked low it means the plant is holding power with rods instead of boron, which ' +
       'costs shutdown margin and trips the insertion-limit alarm.', CI, '3.1'),
     ims2hvqbvee: e('Control Rod Position',
       'The control bank\'s step-count indication.',

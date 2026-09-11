@@ -436,7 +436,7 @@ Mode 1 (or completing entry via N05).
 | 3 | Raise Turbine Load to match (Manual) **or** use Follow | Turbine / Follow | MWe tracks power |
 | 4 | Hold at each plateau; check Tavg, pressure, SG level, subcooling | (observe) | Stable board |
 | 5 | Re-engage feed AUTO and PZR AUTO as needed | AUTO controls | Controllers holding |
-| 6 | Near HFP: bank ~92 % withdrawn; trim boron for critical hold | CVCS / rods | Power ~100 %; P ≈ 2235 psi (15.41 MPa); SG ~65 %; PZR ~55 % |
+| 6 | Near HFP: bank **~96.7 % withdrawn (606 of 627 steps)** at equilibrium xenon; trim boron for critical hold | CVCS / rods | Power ~100 %; P ≈ 2235 psi (15.41 MPa); SG ~65 %; PZR ~55 % |
 | 7 | Hold Tavg on program with the bank as load settles — rod control is MANUAL here (**03 §14.3**) | Rods | Tavg on program; power steady |
 
 ### Outcome
@@ -813,7 +813,7 @@ in the first leg.
 | PZR level | ~55 % |
 | SG level | ~65 % |
 | Subcooling | ~73.8 °F (41 °C) |
-| Control bank | ~92 % withdrawn |
+| Control bank | **~96.7 % withdrawn (606 of 627 steps)** — the sourced full-power position, **09** §11.0 |
 
 ---
 

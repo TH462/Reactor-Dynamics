@@ -352,6 +352,7 @@ function runSuite(rec, quiet, only) {
     wA.cmd({ action: 'inject_failure', failure_id: 'failure_to_scram', severity: 1.0 });
     wA.tick(30);
     var pre = wA.eng().pt.reactor_trip;
+    var rodA0 = wA.eng().rodSteps;   /* where the bank sits, not where the stop is (#704) */
     var rA = wA.cmd({ action: 'scram' });
     /* THE HALF THE MIRROR ATE: the kernel latched at :283 and the mirror cleared it at :452
      * before any snapshot was assembled, so no snapshot ever carried it. Read the FIRST one. */
@@ -366,12 +367,15 @@ function runSuite(rec, quiet, only) {
     ck('atws-pre-untripped', 'precondition: the plant was NOT tripped before the press', pre === false);
     ck('atws-latched', 'the trip LATCHES (a failure to scram is the DROP failing, not the logic)',
        eA.pt.reactor_trip === true, 'cause ' + eA.pt.trip_cause);
-    /* FULLY OUT, in the plant's own currency (#602 phase 2) — the bank is 627 steps now and
-     * `200` was 'fully withdrawn' written as an absolute. */
+    /* THE CLAIM IS THAT THE RODS DID NOT MOVE. It was written as "fully out" and pinned to the
+     * bank scale — first as the literal `200`, then as `max_steps` (#602 phase 2), and both were
+     * the same thing as "where they were" only while the at-power initial condition booted on its
+     * upper stop. It boots at 606 of 627 since #704, so read the position the scram was pressed
+     * from. Byte-identical on the old plant, where rodA0 === max_steps. */
     var bankK = RD.pwr2.kinetics.RODS.max_steps;
-    ck('atws-rods-held', 'the rods stay FULLY OUT — the drop is what failed',
-       Math.abs(eA.rodSteps - bankK) < 0.5,
-       eA.rodSteps.toFixed(1) + ' of ' + bankK + ' steps');
+    ck('atws-rods-held', 'the rods stay WHERE THEY WERE — the drop is what failed',
+       Math.abs(eA.rodSteps - rodA0) < 0.5,
+       eA.rodSteps.toFixed(1) + ' of ' + bankK + ' steps, pressed from ' + rodA0.toFixed(1));
     ck('atws-annunciators', 'annunciators light (0 of them was the player-visible symptom)',
        annA >= 4, annA + ' lit');
     ck('atws-self-limits', 'power self-limits through moderator feedback instead of standing at 99 %',

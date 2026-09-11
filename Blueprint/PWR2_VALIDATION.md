@@ -10761,3 +10761,150 @@ teleporting). Both now read the expected travel off `ROD_SPEEDS`.
 `run_pwr2_engine_b` **+5 checks, +2 mutations** (group K). Everything else follows by
 construction — `run_pwr2_shell` group O reads the band off `ROD_SPEEDS` and needed no edit beyond
 its recorded measurements, which is what #662 bought.
+
+---
+
+## 133. #704 — THE AT-POWER DESIGN POINT BOOTED ON THE ROD STOP, SO THE ONLY ROD CONTROL THIS PLANT HAS HAD NO UPWARD AUTHORITY — 2026-09-11
+
+### 133.1 Why nothing forced the question
+
+`criticalBoron` trims boron **at** the bank position it is handed. So a construction that places
+the bank anywhere is self-consistent by design: the plant comes up critical at its programmed Tavg
+whether the bank is at 439 or on its stop. `ICS.hot_full_power` and `ICS['50_percent']` declared no
+`ctrl_steps` at all and fell through to `BANK()` = 627, the upper stop, and **every gate agreed**,
+because every gate was reading a plant that was correctly at its design point.
+
+**The degree of freedom the construction had no opinion about was the operator's.** Rod control on
+this plant is MANUAL — the Tavg channel exists and the shipped lineup does not engage it — so the
+control bank IS the operator's only rod authority, and a bank on its stop has none in the withdraw
+direction. Same shape as #572's empty protection lists: a feature reads as working because the
+thing it is missing is not a value anyone measured.
+
+### 133.2 Q0 — the four measurements
+
+**Where the bank sits (full stack, `SimulationService` + `ControlLayer`, 0.02 s step, 3 plant-hours
+from each IC):**
+
+```
+IC                bank/627   boron ppm   Tavg degF   level %   power %   MWe
+hot_zero_power      0          718.9       547.27     25.34      0.00      0.0
+low_power         227          683.8       550.29     28.66      9.56     10.0
+50_percent        627 <- stop  776.5       563.76     43.48     49.58     50.0
+hot_full_power    627 <- stop  621.0       580.30     61.48     99.58    100.0
+```
+
+`low_power` holds its 227 flat (it is the startup checklist's own handover). `hot_zero_power` is
+subcritical, so `ctrlSteps` is forced to 0 and the fallback never runs. **The two at-power initial
+conditions are the whole defect.**
+
+**Control-bank worth, by injection, two independent paths.** Integral `rodReactivity` 0 -> 627 =
+**4068.0 pcm**. A `criticalBoron` re-trim at the two ends: **219.0 -> 625.8 ppm = 406.8 ppm**, which
+at `BORON.worth_per_ppm` (1.0e-4, 10 pcm/ppm) is 4068 pcm. **That is self-consistency, not
+corroboration** — both paths read the same constant, and the constant's citation (WTSM 2.2 Table
+2.2-1, **ML11216A051**) is in no lane's corpus: re-verified with `tools/find_source.js`, **0 hits
+across 41 documents in 3 lanes**, along with **ML11223A256** (the WTSM 8.4 the rod-limit row cites)
+and the literal `4068` itself. The worth stands as cited-but-uncorroborated, as §128 already
+records. Differential worth across the bank:
+
+```
+steps     0    100    200    227    300    400    439    500    533    570    600    606    627
+pcm/step 4.15  5.24   7.48   8.01   8.80   7.99   7.20   5.79   5.11   4.65   4.23   4.21   4.15
+```
+
+**What boron puts the bank mid-band, and what it costs.** Swept with an explicit `ctrl_steps`,
+3 plant-hours each, WARP tier and re-confirmed at PLAY:
+
+```
+ctrl_steps   boron ppm   Tavg degF   level %   scram-insertable pcm
+   439         521.2       580.26      61.48      3070 + 3676 = 6746
+   500         560.9       580.27      61.48      3467 + 3676 = 7143
+   533         578.9       580.28      61.48      3647 + 3676 = 7323
+   570         596.6       580.29      61.48      3824 + 3676 = 7500
+   606         612.3       580.30      61.48      3980 + 3676 = 7656
+   627         621.0       580.30      61.48      4068 + 3676 = 7744
+```
+
+**The design point is invariant to 0.01 degF across the whole sweep**, because the trim re-solves.
+Only boron and shutdown margin move. That is the trade in one table: **8.7 ppm of boron and 88 pcm
+(1.1 %) of scram-insertable worth buys 21 steps of withdrawal travel.**
+
+**A prototypical full-power bank position — the evidence pass.** Run against all three lanes'
+corpora with `tools/find_source.js` first, as the standing rule requires.
+
+- **NUREG-1431 Rev 4 STS Bases B 3.2.3A (ML12100A228)**, the only "normal position" figure in the
+  corpus: *"The target flux difference is determined at equilibrium xenon conditions. The control
+  banks must be positioned within the core in accordance with their insertion limits and Control
+  Bank D should be inserted near its normal position (i.e., 210 steps withdrawn) for steady state
+  operation at high power levels."*
+- **WTSM 8.1 §8.1.7.3 (ML11223A252)**, the rod-stop list, item 6: *"Control bank D withdrawal
+  interlock, demanded bank D position > 223 steps."* Corroborated twice — **USNRC HRTD 12.2
+  §12.2.4.1 (ML11223A301)**: *"C-11: Control Bank D Rod Withdrawal Limit Interlock… blocking
+  automatic withdrawal of control bank D when the bank D position has reached 223 steps"*; and
+  **WAT-05 Transients (ML11216A094)**, which is the only source that names the power: *"If this
+  transient is started from the normal 100% conditions, the rods would be withdrawn to the
+  223-step auto withdrawal limit and then stop."*
+- **WTSM 8.1 §8.1.5.4 (ML11223A252)** for the scale: top of the core is **231 steps**, and §128.4
+  walks the four-bank 131-step overlap program out to **627 BOU counts**, which is this plant's
+  `max_steps`. Ginna TS Bases B 3.1.7 (ML20339A221) corroborates 230 steps and 5/8 inch per step.
+- **WTSM §19.4 Plant Operations (ML11223A342)** for why the position barely moves with load:
+  *"The control rods are nearly fully withdrawn during all phases of power operations (except for
+  short-term transients). The increase in power defect associated with a power escalation, is thus
+  overcome with boron dilution."*
+- **NOT FOUND, and it matters:** no rod-insertion-limit curve with numbers exists anywhere in the
+  corpus. Every licensee document defers it to the COLR. The closest is **Ginna UFSAR §7.7.1.2.9
+  (ML20339A027)**, which gives only the functional form — *"The control rod insertion limits, ZLL,
+  are calculated as a linear function of power and reactor coolant temperature. The equation is
+  ZLL = A (average delta T) + B (average TAVG) + C where A, B are preset manually adjustable gains
+  and C is a preset manually adjustable bias"* — plus the two-tier alarm structure (*"The Low alarm
+  Bank D only"* / *"Actuation of the Low-Low alarm (Banks A, B, C, and D)"*), which is new
+  corroboration for the shape of this plant's ROD LIMIT LO / LO-LO pair, though still not for the
+  "+10 steps" offset. WTSM §19.4's own **Figure 19-4, "Rod Insertion Limits vs. Thermal Power"**, did
+  not survive PDF text extraction; reading it would need a page image.
+
+### 133.3 The anchor, and the letter/substance note
+
+**606 of 627.** Banks A, B and C fully withdrawn with bank D at its sourced 210 of 231 is
+**627 - (231 - 210) = 606** on the BOU scale this plant commands in. It sits **13 counts below the
+C-11 automatic ceiling** (619) and **167 steps above this plant's own rod insertion limit** at
+100 % power (`insertionLimitSteps(100)` = 439) — so the plant boots neither against a stop nor
+against its own annunciated floor.
+
+**It is near the top of the 439-627 band, not its geometric middle, and that is the source's
+answer rather than a preference.** What it buys is stated as a number rather than as "authority":
+**+4.67 degF (+2.59 degC)** of settled Tavg for the 21 steps to the stop, against **-0.01 degF**
+before. Insertion is unchanged at **-9.67 degF** for 40 steps in (-9.54 before). The sourced plant
+trims with rods and gross-controls with boron, and that is now what the board does.
+
+**The ruling was relayed as "704-A" and the work implements what the issue lists as Option B**
+(give `hot_full_power` an explicit `ctrl_steps` below the stop and let `criticalBoron` re-trim
+there). Recorded here rather than silently resolved: the issue's lettered Option A is "leave it,
+document it — changes no physics", and the ruling's own stated intent was to re-anchor the design
+point so the operator has authority in both directions, which is Option B's mechanism.
+
+### 133.4 HR10 — the injections
+
+- **`run_manual_setpoints`'s new control-bank cell**: made red on the old manual figure first
+  (*"Control bank @ hot_full_power: manual 627, plant 606.0 | Control bank @ 50_percent: manual
+  627, plant 606.0"*), green after. It passes against the OLD constants too (manual 627 / plant
+  627), so it is a better test rather than a refit — it discriminates in both directions.
+- **The defect itself was proven by injection, not by reading**: the "OUT to stop" ride was run on
+  the as-built engine and on the patched one through the same harness. -0.01 degF and +4.67 degF.
+  A source read cannot see this, for the same reason #624 could not see the ascension's no-op rod
+  commands: the command is accepted, the target clamps, and nothing reports.
+- **`run_manual_setpoints` covered 36 cells of the §11.0 table and the control-bank row was not one
+  of them.** It fell through to the prose set with MSIV and SR detector. ASK WHAT A GATE READS: the
+  row naming where the operator's only reactivity control sits is not prose.
+
+### 133.5 Content that followed the plant (HR9)
+
+`Manuals/09` §1.0 (*Control bank position*), §11.0 (*Control bank* and *Boron* rows, and the
+`low_power` note that said *"Every other at-power column boots on the stop, so a rod withdrawal in
+those states is a no-op"*), §3.0's rod-insertion-limit row; `Manuals/04` §PWR-N08 step 6 and the
+at-power lineup table; `Manuals/03` §3.1's *Operating position* row — the last three all still
+carried the **retired** plant's *"~92 % withdrawn"*, directionally right and two plants out of
+date. `ui/manual_procedures.js`'s `pwr_raise_power` closing step moves its dial **626 -> 617 ppm**
+by its own derivation (`criticalBoron` at the design Tavg, evaluated at the bank position the plant
+now runs at: 625.78 -> 617.03); its `< 680` and `< 645` acceptances do **not** move, because both
+are about the 660 ppm the climb *leaves*, not the arrival. The leg's `control_bank_steps < 600`
+precondition still discriminates a preset (606) from the startup's handover (227) — with 6 steps of
+margin instead of 27, which the comment now says out loud.

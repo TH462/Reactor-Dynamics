@@ -427,7 +427,13 @@ var IC_ROWS = {
   'Subcooling margin': { f: 'subcooling_c',  tol: 2.0, cv: function (c) { return c * 9 / 5; } },
   'PZR level':         { f: 'pzr_level_pct', tol: 1.5 },
   'SG level':          { f: 'sg_level_pct',  tol: 1.5 },
-  'Boron':             { f: 'boron_ppm',     tol: 20 }
+  'Boron':             { f: 'boron_ppm',     tol: 20 },
+  /* THE BANK ROW WAS UNCHECKED (#704). It read 627 / 627 / 227 and nothing compared it to a
+   * booted plant — it fell through to the prose set with MSIV and SR detector, which the column
+   * check covers and the number check does not. The row that names WHERE THE OPERATOR'S ONLY
+   * REACTIVITY CONTROL SITS is not prose. Tolerance 1 step: the cell is an integer the plant
+   * publishes directly, so there is no rounding to allow for. */
+  'Control bank':      { f: 'rod_steps',     tol: 1 }
 };
 
 var booted = {};

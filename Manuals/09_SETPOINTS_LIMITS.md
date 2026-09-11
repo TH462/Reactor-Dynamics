@@ -24,7 +24,7 @@
 | Steam Generator level | **≈ 65 %** | Mode 1, At Power |
 | Secondary steam pressure | **≈ 827 psi (5.70 MPa)** — measured on a settled ride; Ginna's sourced 810 psig full-load outlet is the anchor it was tuned to (#419 wave 3) | Mode 1, At Power |
 | Subcooling margin | **≈ 43 °F** (23.9 °C) | Mode 1, At Power |
-| Control bank position | **100 %** withdrawn (627 of 627 steps) | Mode 1, At Power |
+| Control bank position | **96.7 %** withdrawn (606 of 627 steps) | Mode 1, At Power |
 | Core inventory | **100 %** | Mode 1, At Power |
 | Decay heat (after long power run) | **≈ 6.2 %** at scram instant | — |
 
@@ -282,7 +282,7 @@ Inward motion still takes — that is the source's own scope, quoted at the end 
 | Speed slow / normal / fast | **8 / 48 / 72 steps/min** (0.133 / 0.800 / 1.200 steps/s), the operator's three-position selector. **Slow and fast are the sourced ends of the rod speed program** — WTSM 8.1 (ML11223A252): *"a minimum speed of eight steps per minute"*, and *"a maximum rod speed of 72 steps/min. The maximum rod speed is based upon a maximum response to a large error signal and upon the physical limitations of the rod drive mechanism, with the latter being the limiting factor"*. **Normal (48) is unverified** — no document in the corpus carries it. The real programmer is continuous between the two limits (8, then 32 steps/min/°F, then 72); three positions is a simplification of the operator's switch, not of the program |
 | Scram insertion time (control) | **~2.5 s** full travel |
 | Scram insertion time (shutdown) | **~2.0 s** |
-| Insertion limit (RIL) | **Power-dependent.** Not applicable below **5 %** power; above it the % withdrawn floor ramps linearly from **5 %** to **70 %** at 100 % power (≈ 10 % withdrawn at 12 % power, 70 % at full power). Drives the ROD INS LIMIT alarm and stops the automatic rod channel inserting further. The bank sits at 92 % withdrawn across the load range, so the limit means "the bank is abnormally deep for this power" |
+| Insertion limit (RIL) | **Power-dependent.** Not applicable below **5 %** power; above it the % withdrawn floor ramps linearly from **5 %** to **70 %** at 100 % power (≈ 10 % withdrawn at 12 % power, 70 % at full power = **439 of 627 steps**). Drives the ROD INS LIMIT alarm and stops the automatic rod channel inserting further. The at-power initial conditions sit at **96.7 % withdrawn (606 steps)**, 167 steps clear of the limit, so it means "the bank is abnormally deep for this power" |
 | Control worth (total group) | **4068 pcm** (`rod_worth_total = 0.04068`) — WTSM 2.2 Table 2.2-1, all control banks |
 | Shutdown worth (total group) | **3676 pcm** (`rod_worth_shutdown = 0.03676`) — same source, all shutdown banks; all RCCAs together **7744 pcm** |
 
@@ -497,7 +497,9 @@ Commercial practice keeps boron sufficient for at least **1 % Δk/k** (WTSM 19.2
 Expected readings at each named engine initial condition, captured from the live engine after
 settling **70 s at 10x, the same for every column** — the low-power states are still walking their pressure up at 6 s, which is how the old table came to quote a hot-standby pressure 9 psi (0.06 MPa) light. **These six are the whole list** and the engine refuses any other name, but only **four** are on the Free Play picker: `hot_full_power`, `50_percent`, `hot_zero_power` and `cold_shutdown`. `hot_shutdown` and `low_power` are **engine-only** — real, loadable by the gates and the checklists, not offered to the player.
 
-> **`low_power` is where the startup checklist hands you the plant** (added 2026-09-04, #624 item 28). It is the only initial condition whose control bank is **off its top stop** — **227 of 627 steps** — which is what an at-power plant actually looks like: Ginna UFSAR §15.4.5.1.1 (ML20339A101), *"the reactor is operated with the RCCAs inserted only far enough to permit load follow."* Every other at-power column boots on the stop, so a rod withdrawal in those states is a no-op.
+> **`low_power` is where the startup checklist hands you the plant** (added 2026-09-04, #624 item 28). Its control bank sits at **227 of 627 steps**, which is what the startup actually hands over: Ginna UFSAR §15.4.5.1.1 (ML20339A101), *"the reactor is operated with the RCCAs inserted only far enough to permit load follow."*
+>
+> **The other two at-power columns used to boot on the top stop, 627 of 627, and no longer do** (added 2026-09-11, #704). They sit at **606 of 627 — 96.7 % withdrawn**, the sourced full-power position: NUREG-1431 Rev 4 STS Bases B 3.2.3A (ML12100A228) puts control bank D *"near its normal position (i.e., 210 steps withdrawn)"* at high power, and with banks A, B and C fully out that is **627 − (231 − 210) = 606** on this plant's bank-overlap step scale (WTSM §8.1.5.4, ML11223A252). Booting on the stop left the operator **no upward rod authority at all** — measured full stack, commanding the bank out moved settled T-avg by **−0.01 °F**; from 606 the same command gives **+4.67 °F (+2.59 °C)**, and insertion is unchanged. The design point itself does not move (T-avg, level, power and output are identical to 0.01 °F at every bank position from 439 to 627, because critical boron re-trims); **only boron moves — 621 → 612 ppm at full power and 777 → 768 ppm at half.**
 
 > **RE-CAPTURED AGAIN, AND SO WAS §1.0** (added 2026-09-06, #650, hours after the #645 note
 > below). Two unrelated constants moved the at-power columns:
@@ -560,7 +562,7 @@ persists is either a transient in progress or a failed instrument.
 | Plant MODE | At Power (1) | At Power (1) | **At Power (1)** — *engine only, not on the Free Play menu* | Hot Standby (3) | **Hot Shutdown (4)** — *engine only, not on the Free Play menu* | **Cold Shutdown (5)** |
 | Reactor power (%) | 99.6 | 49.6 | 9.6 | ~0 (source) | ~0 (source) | ~0 (source) |
 | Generator output (MWe) | 100.0 | 50.0 | 10.0 | 0 | 0 | 0 |
-| Control bank (steps of 627) | 627 | 627 | **227** | 0 | 0 | 0 |
+| Control bank (steps of 627) | 606 | 606 | **227** | 0 | 0 | 0 |
 | Tavg °F (°C) | 580.4 (304.7) | 563.9 (295.5) | 550.3 (288.0) | 547.2 (286.2) | 250.4 (121.3) | 123.0 (50.6) |
 | T-hot / T-cold °F (°C) | 609.8 / 550.9 (321.0 / 288.3) | 579.2 / 548.5 (304.0 / 286.9) | 553.4 / 547.3 (289.7 / 286.3) | 547.2 / 547.2 (286.2 / 286.2) | 250.4 / 250.5 (121.3 / 121.4) | 123.0 / 123.0 (50.6 / 50.6) |
 | Primary pressure psi (MPa) | 2247 (15.493) | 2243 (15.466) | 2240 (15.441) | 2246 (15.482) | 364 (2.510) | 363 (2.500) |
@@ -572,7 +574,7 @@ persists is either a transient in progress or a failed instrument.
 | Fuel average temp °F (°C) | 1295 (701.5) | 893 (478.3) | 610 (321.4) | 547 (286.1) | 250 (121.1) | 123 (50.5) |
 | Decay heat (%) | 6.23 | 3.11 | 0.60 | ~0 | ~0 | ~0 |
 | Xenon (% of equilibrium) | 100 | 66 | 19 | 0 | 0 | 0 |
-| Boron (ppm) | 621 | 777 | 684 | 719 | 894 | 918 |
+| Boron (ppm) | 612 | 768 | 684 | 719 | 894 | 918 |
 | Net reactivity (pcm) | 0 | 0 | 0 | ≈ −1141 | ≈ −5635 | ≈ −5809 |
 | Source range (cps) | 0 (de-energized) | 0 (de-energized) | 0 (de-energized) | ≈ 501 | ≈ 101 | ≈ 98 |
 | Intermediate range (A) | ≈ 8.3e-3 | ≈ 4.1e-3 | ≈ 8.0e-4 | ≈ 1.6e-11 | ≈ 3.2e-12 | ≈ 3.2e-12 |

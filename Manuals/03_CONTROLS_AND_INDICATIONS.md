@@ -41,7 +41,7 @@ Describe every operator control and major indication on the PWR board, with purp
 | **Quick click** | Steps the bank **one step** |
 | **Hold** | Drives continuously at the selected **Rod Speed**; release to halt |
 | **Indication** | Vertical bar + step count (0 = fully inserted, max **627** steps fully withdrawn — a fine-step drive: one step is **8.1 pcm ≈ 1.24 ¢** in the startup critical band, 4.15 off the bottom and 8.82 at mid-travel). **While the reactor is subcritical, read reactivity from the source range count rate, not from this bar** — bank position becomes the better reactivity indication once the reactor is critical (Ginna UFSAR §7.7.3.1, ML20339A027) |
-| **Operating position** | ≈ 92 % withdrawn at hot full power |
+| **Operating position** | **96.7 % withdrawn — 606 of 627 steps** — at hot full power, and the plant boots there. Sourced: NUREG-1431 Rev 4 STS Bases B 3.2.3A (ML12100A228), control bank D *"near its normal position (i.e., 210 steps withdrawn)"* at high power, on this plant's bank-overlap step scale. **You have 21 steps of withdrawal left** — worth about **+4.7 °F (+2.6 °C)** of T-avg — and the whole bank below you. See **09** §11.0 |
 
 **Procedure — move rods**
 

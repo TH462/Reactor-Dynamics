@@ -30,6 +30,66 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
 
 ## [Unreleased]
 
+### Changed (the full-power design point boots off the rod stop — #704)
+
+**The at-power initial conditions booted the control bank on its upper stop, 627 of 627.**
+`criticalBoron` trims boron AT the bank position, so any position is self-consistent and nothing
+in the construction forced the question; the consequence was that **manual rod control — the only
+rod control this plant has — had no upward authority at the design point at all.** Measured full
+stack (SimulationService + ControlLayer, 0.02 s step, 100 MWe held, 3 plant-hours to settle),
+commanding the bank out moved settled average coolant temperature by **-0.01 degF**. Insertion
+worked normally (-9.54 degF for 40 steps in).
+
+**Both at-power initial conditions now boot at 606 of 627, and the number is sourced.**
+NUREG-1431 Rev 4 Standard Technical Specifications Bases B 3.2.3A (ADAMS **ML12100A228**):
+*"Control Bank D should be inserted near its normal position (i.e., 210 steps withdrawn) for
+steady state operation at high power levels."* With banks A, B and C fully withdrawn that is
+**627 - (231 - 210) = 606** on this plant's bank-overlap-unit step scale — 231 steps to the top
+of the core and the 627-count withdrawal program are both Westinghouse Technology Systems Manual
+8.1 §8.1.5.4 (**ML11223A252**), walked out in `PWR2_VALIDATION.md` §128.4. The C-11 control bank D
+withdrawal interlock, *"demanded bank D position > 223 steps"* (same manual §8.1.7.3; USNRC HRTD
+12.2 §12.2.4.1, **ML11223A301**), puts the automatic ceiling at BOU **619**, so 606 is an
+operating point 13 counts under a stop rather than a stop. `50_percent` carries the same position
+rather than a deeper one because the corpus says the bank does not move much with load — WTSM
+§19.4 Plant Operations (**ML11223A342**): *"The control rods are nearly fully withdrawn during all
+phases of power operations... The increase in power defect associated with a power escalation, is
+thus overcome with boron dilution."*
+
+**What moved and what did not.** The design point does not move: average coolant temperature
+580.30 degF, pressurizer level 61.48 %, 99.58 % power and 100.00 MWe are identical to 0.01 degF at
+every bank position swept from 439 to 627, because the boron trim re-solves. **Only boron moves —
+621.0 -> 612.3 ppm at full power, 776.5 -> 768.4 ppm at half.** Upward rod authority goes from
+**-0.01 degF to +4.67 degF (+2.59 degC)** for the 21 steps to the stop; downward is unchanged.
+**The cost is shutdown margin and it is stated rather than buried:** worth insertable on a scram
+falls **7744 -> 7656 pcm** (control bank 4068 -> 3980 from 606; the shutdown bank's 3676 is
+untouched) — 88 pcm, 1.1 %, which is rod worth now held in reserve for the operator instead of
+parked on a stop. The new anchor is **167 steps clear of this plant's own rod insertion limit**
+at 100 % power (`insertionLimitSteps(100)` = 439), so the plant does not boot against its
+annunciated floor either.
+
+**Measured bank worth, for the record.** Total control-bank worth is **4068 pcm** by two
+independent paths (integral `rodReactivity` 0 -> 627, and a `criticalBoron` re-trim at the two
+ends: 219.0 -> 625.8 ppm = 406.8 ppm at the nominal 10 pcm/ppm). That is self-consistency, not
+corroboration: **the citation for 4068 pcm (WTSM 2.2 Table 2.2-1, ML11216A051) is in no lane's
+source corpus** — re-verified with `tools/find_source.js`, 0 hits across 41 documents in 3 lanes,
+as is ML11223A256, the WTSM 8.4 the rod-limit row cites. Differential worth at the new anchor is
+**4.21 pcm/step** against 4.15 at the stop and an 8.82 peak at mid-travel.
+
+**Content follows the plant (Hard Rule 9, the plant is ground truth).** `Manuals/09` §1.0, §11.0
+(both the control-bank and boron rows) and the rod-insertion-limit row; `Manuals/03` §3.1's
+operating-position row and `Manuals/04`'s two at-power lineup rows, all three of which still read
+the retired plant's "~92 % withdrawn"; and `pwr_raise_power`'s closing boron step, whose dial moves
+**626 -> 617 ppm** by its own derivation (`criticalBoron` at the design temperature, evaluated at
+the bank position the plant now runs at — 625.78 -> 617.03). Its `< 680` and `< 645` acceptances
+do not move: both are about the 660 ppm the climb *leaves*, not the arrival.
+
+**A gate gap closed with it.** `run_manual_setpoints` compared 36 cells of the initial-condition
+table and the control-bank row was not one of them — it fell through to the prose set with MSIV
+and SR detector. The row naming where the operator's only reactivity control sits is not prose;
+it is now checked against the booted plant at 1-step tolerance, made red first (manual 627, plant
+606) and green after.
+
+
 ### Fixed (the power ascension could hand back a plant that cooled itself to a trip — #683)
 
 The owner's report was *"when it's running AT POWER it seems to be stuck at the low 25%
@@ -691,7 +751,7 @@ stays steady (power within 5 points of rated, pressure drift under 0.2 MPa / 29 
 meet within one broadcast of the window end, and a planted 1e-6 difference is seen by `compare()`.
 Four injections, one per conjunct, each proven to redden SI-0 alone. No baseline moves (8 checks).
 
-## [Alpha 1.7.4-rc12] — 2026-09-10
+## [Alpha 1.7.4-rc13] — 2026-09-11
 
 ### Fixed (the CVCS charging/letdown volume scale mixed two bases — #679)
 

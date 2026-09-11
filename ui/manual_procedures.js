@@ -1734,9 +1734,11 @@
       precond: [
         { p: 'power_pct', op: '>', v: 10, text: 'Reactor at power: REACTOR POWER above 10 %' },
         { p: 'mwe_output', op: '>', v: 5, text: 'Turbine on line: OUTPUT above 5 MWe' },
-        /* the power presets boot the bank on its top stop (627), where every WITHDRAW in this leg
-         * is a no-op and step 8's "not pinned" check can only be met by INSERTING (layman playtest
-         * 2026-09-07, #653 S3/S4). A precondition warns; it never blocks. */
+        /* the power presets used to boot the bank on its top stop (627), where every WITHDRAW in
+         * this leg was a no-op and step 8's "not pinned" check could only be met by INSERTING
+         * (layman playtest 2026-09-07, #653 S3/S4). Since #704 they boot at 606 — still a preset,
+         * still 379 steps above the 227 the startup hands over, and still caught by this bound,
+         * which now has 6 steps of margin instead of 27. A precondition warns; it never blocks. */
         { p: 'control_bank_steps', op: '<', v: 600, text: 'CONTROL ROD POSITION below 600 of 627: this checklist follows the startup checklist, not a power preset' },
       ],
       cautions: [
@@ -1970,7 +1972,7 @@
          * past; this one is the plant's settled state at the load it will hold. Both are `~`, so
          * both re-grade rather than latch — see the note in instructor_layer's _gradeAccs. */
         { text: 'Verify full power: REACTOR POWER near 100 %, OUTPUT 100 MWe, AVG COOLANT TEMPERATURE near 578 °F, BORON at or below 660 ppm, CONTROL ROD POSITION part-way out.',
-          why: 'Full power, with almost no xenon in the fuel yet. Over the next hours xenon builds, and the plant settles into its long-term full-power state: less boron and the control bank near the top. The next step is how you get from here to there.',
+          why: 'Full power, with almost no xenon in the fuel yet. Over the next hours xenon builds, and the plant settles into its long-term full-power state: less boron and the control bank high — 606 of 627 steps, which is where a full-power plant runs. The next step is how you get from here to there.',
           note: 'BORON is the one to read twice. Leave the climb with more of it in the water than the plant wants and AVG COOLANT TEMPERATURE sinks over the following hours — and PZR LEVEL sinks with it, because the level the plant aims for is set by temperature.',
           control: 'Boron control', target: 'BORON at or below 660 ppm',
           accs: [{ p: 'power_pct', op: '>', v: 96, label: 'REACTOR POWER near 100 %' },
@@ -1981,13 +1983,19 @@
          * program that follows xenon")*, and the measurement that makes it the right shape:
          *
          *   end of this leg   xenon  18.6 %   boron 660 ppm   bank 351/627   Tavg 302.6 °C
-         *   the design point  xenon 100 %     boron 626 ppm   bank 627/627   Tavg 304.5 °C
+         *   the design point  xenon 100 %     boron 617 ppm   bank 606/627   Tavg 304.5 °C
+         *
+         * (The design-point row was `626 ppm / 627 of 627` until #704, when the at-power initial
+         * conditions stopped booting on the bank's upper stop. NUREG-1431 Rev 4 STS Bases B 3.2.3A,
+         * ML12100A228, puts bank D "near its normal position (i.e., 210 steps withdrawn)" at high
+         * power, which is 606 on this plant's bank-overlap step scale.)
          *
          * The bank walks OUT as xenon builds and boron comes down — which is the prototypical
          * shape, Ginna TS Bases and NUREG-1431 STS Bases both: "The control banks must be
          * maintained above designed insertion limits and are typically near the fully withdrawn
          * position during normal full power operations." Near-fully-withdrawn is the EQUILIBRIUM
-         * state, not the state you arrive in.
+         * state, not the state you arrive in — and it is near-fully, not fully: the plant runs 21
+         * steps off its stop precisely so the operator keeps authority in both directions.
          *
          * IT NOW CARRIES A COMMAND AND AN ACCEPTANCE (#683). It had NEITHER — no `cmd`, no `acc`
          * — and it is the last step of the last leg of the ascension, so it completed on the
@@ -2021,31 +2029,36 @@
          * step two legs up already makes, and for the same reason: grade the operator, not the
          * chemistry's clock.
          *
-         * THE DESTINATION IS STILL 626 ppm and it is what `cmd` dials. Measured equilibrium is
-         * 621 ppm (a booted `hot_full_power` holds 580.3 degF and 61.5 % level flat for
-         * 16 plant-hours there); the measured PIN POINT, where the level program clamps at 25 %,
-         * is 670 ppm. Step 9's `< 680` and this step's `< 645` bracket the climb's own arrival
-         * on the safe side of it.
+         * THE DESTINATION IS 617 ppm and it is what `cmd` dials — MOVED FROM 626 BY #704, and by
+         * the same derivation: 626 was `criticalBoron` at the design Tavg with the bank on its top
+         * stop (625.78), and the plant no longer runs there. At the sourced 606-step position the
+         * same solve gives 617.03. A booted `hot_full_power` now settles at 612.3 ppm holding
+         * 580.3 degF and 61.5 % level (measured, full stack, 0.02 s step, 3 plant-hours); the
+         * measured PIN POINT, where the level program clamps at 25 %, is 670 ppm. Step 9's
+         * `< 680` and this step's `< 645` bracket the climb's own arrival on the safe side of it,
+         * and neither bound moves: both are about the 660 ppm the climb LEAVES, not the arrival.
          *
          * AND THE WORDING SAYS DILUTE, NOT PULL RODS *(owner's proposal 2026-09-10 was to have
          * the ascension steps hold a Tavg band with rod control; measurement refuted it FOR THIS
          * STEP and only this one)*. Rods have real authority during the climb — step 8's own
          * 300-600 bank window is satisfied there, at 18.6 % xenon — which is why stages 4-8 keep
-         * their rod wording. Here they have none: at equilibrium xenon the design point sits on
-         * the bank's TOP STOP, 627 of 627, and commanding the bank out at 660 ppm moves settled
-         * Tavg by 0.00 degF (measured, full stack, 3 plant-hours). The lever that works at this
-         * end of the climb is boron. */
-        { text: 'Over the next hours, lower the BORON setting in small steps toward 626 ppm as xenon builds. Watch AVG COOLANT TEMPERATURE come back up into its band each time. The rods walk out on their own as you do it.',
-          note: 'If AVG COOLANT TEMPERATURE is sitting below its band, lower BORON — do not reach for WITHDRAW. The control bank is already near the top here and pulling it further does nothing. The ROD LIMIT LO-LO alarm is lit and that is normal: with no xenon yet the bank sits lower than a full-power plant runs. It clears as xenon builds and you dilute.',
-          why: 'Xenon is a neutron-absorbing gas that builds up in the fuel after power comes up and levels off over about two days. As it absorbs more neutrons, the plant needs less boron for the same power. Leave the extra boron in and the plant cannot make full power at the right temperature: it makes it at a lower one instead, and PZR LEVEL follows the temperature down. Dilute as xenon builds and the control bank walks out toward the top, which is where a full-power plant runs.',
-          control: 'Boron control', target: 'BORON 626 ppm',
+         * their rod wording. Here boron is still the lever, but the REASON has changed and the
+         * old one is worth recording because it was the bug: the design point USED to sit on the
+         * bank's top stop, 627 of 627, so commanding the bank out moved settled Tavg by 0.00 degF
+         * and the operator had no upward authority at all (#704). It sits at 606 now, and the
+         * same command is worth +4.67 degF (+2.59 degC) — real, and still far less than the
+         * ~25 degF the dilution is carrying, which is why the step says dilute. */
+        { text: 'Over the next hours, lower the BORON setting in small steps toward 617 ppm as xenon builds. Watch AVG COOLANT TEMPERATURE come back up into its band each time, and walk the bank up with it toward 606 of 627.',
+          note: 'BORON is the lever here, not WITHDRAW. The bank has about 21 steps of real travel left at the top — worth about 4.7 °F of AVG COOLANT TEMPERATURE — and the dilution is carrying five times that, so dilute first and trim with rods. The ROD LIMIT LO-LO alarm is lit and that is normal: with no xenon yet the bank sits lower than a full-power plant runs. It clears as xenon builds and you dilute.',
+          why: 'Xenon is a neutron-absorbing gas that builds up in the fuel after power comes up and levels off over about two days. As it absorbs more neutrons, the plant needs less boron for the same power. Leave the extra boron in and the plant cannot make full power at the right temperature: it makes it at a lower one instead, and PZR LEVEL follows the temperature down. Dilute as xenon builds and walk the control bank up toward 606 of 627 steps, which is where a full-power plant runs — high, but not on its stop, so you keep rod authority in both directions.',
+          control: 'Boron control', target: 'BORON 617 ppm',
           wait_hint: 'Xenon takes about two days to level off. Use the speed buttons and come down in small steps.',
-          cmd: { action: 'set_auto_setpoint', channel_id: 'boron_conc', value: 626 }, hold: 900,
+          cmd: { action: 'set_auto_setpoint', channel_id: 'boron_conc', value: 617 }, hold: 900,
           accs: [{ p: 'boron_ppm', op: '<', v: 645, label: 'BORON coming down off the 660 ppm the climb left' }],
           hl: ['Boron control', 'Control Bank', 'Tavg'] },
       ],
       guard: { never_melted: true, never: [{ p: 'fuel_temp_c', op: '>=', v: 1200 }] },
-      outcome: 'Full power with almost no xenon: BORON 660 ppm and the control bank part-way out. The last step then walks boron down to 626 ppm as xenon builds over the following hours, and the bank walks out with it — leave that undone and the plant makes its power at a falling temperature instead, taking PZR LEVEL down with it. The round trip back down starts with the load rampdown checklist.',
+      outcome: 'Full power with almost no xenon: BORON 660 ppm and the control bank part-way out. The last step then walks boron down to 617 ppm as xenon builds over the following hours, and the bank up toward 606 of 627 — leave that undone and the plant makes its power at a falling temperature instead, taking PZR LEVEL down with it. The round trip back down starts with the load rampdown checklist.',
     },
     {
       id: 'pwr_lower_power', category: 'power', manual_ref: 'PWR-N08', next: 'pwr_shutdown',

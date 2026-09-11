@@ -329,11 +329,15 @@ function runSuite(SH, rec, quiet, only) {
      * drove the CONTROL bank (the board's shutdown Withdraw silently moved the wrong bank) */
     var e3 = new SH.PWR2Engine({});
     for (i = 0; i < 50; i++) e3.step(0.02);
+    /* "LEAVES THE CONTROL BANK ALONE" means unchanged, so read where it was (#704) — this
+     * asserted `=== bank()`, true only while the at-power initial condition booted on its
+     * upper stop. Byte-identical on the old plant. */
+    var ctl3 = e3.getControlState().rod_groups[0].steps;
     e3.applyCommand({ action: 'rod_nudge', group_id: 'shutdown_rods', steps: -5 });
     for (i = 0; i < 500; i++) e3.step(0.02);
     var g3 = e3.getControlState().rod_groups;
     ck('a shutdown-group nudge moves the SHUTDOWN bank and leaves the control bank alone',
-       g3[1].steps < bank() && g3[0].steps === bank(),
+       g3[1].steps < bank() && g3[0].steps === ctl3,
        'control ' + g3[0].steps + ', shutdown ' + g3[1].steps);
   })();
   }
@@ -852,6 +856,7 @@ function runSuite(SH, rec, quiet, only) {
      * 200/200 returned {"ok":true} and cleared the latch. */
     var eA2 = new SH.PWR2Engine({});
     for (i = 0; i < 3000; i++) eA2.step(0.02);
+    var rodA2 = eA2.eng.rodSteps;                 /* where the bank sits, not the stop (#704) */
     eA2.applyCommand({ action: 'inject_failure', failure_id: 'failure_to_scram' });
     eA2.applyCommand({ action: 'scram' });
     for (i = 0; i < 500; i++) eA2.step(0.02);
@@ -860,7 +865,7 @@ function runSuite(SH, rec, quiet, only) {
     catch (x5) { mIn = x5.message; }
     ck('ATWS: INSERT is refused too — with the breakers open the drive has no power either way ' +
        '(OWNER RULING 2026-08-28, "Refuse both directions")',
-       mIn !== null && /ROD DRIVE BLOCKED/.test(mIn) && eA2.eng.rodSteps === bank(),
+       mIn !== null && /ROD DRIVE BLOCKED/.test(mIn) && eA2.eng.rodSteps === rodA2,
        mIn ? ('rods held at ' + eA2.eng.rodSteps.toFixed(0)) : 'ACCEPTED!');
     var mRA = null;
     try { eA2.applyCommand({ action: 'reset_rps' }); } catch (x6) { mRA = x6.message; }
@@ -1138,6 +1143,7 @@ function runSuite(SH, rec, quiet, only) {
      * run_pwr2_endurance's 300 s ride — do not read this check as "the ATWS is survivable". */
     var eS = new SH.PWR2Engine({});
     for (i = 0; i < 100; i++) eS.step(0.02);
+    var rodS0 = eS.eng.rodSteps;                  /* where the bank sits, not the stop (#704) */
     eS.applyCommand({ action: 'inject_failure', failure_id: 'failure_to_scram' });
     eS.applyCommand({ action: 'scram' });
     for (i = 0; i < 500; i++) eS.step(0.02);
@@ -1145,7 +1151,7 @@ function runSuite(SH, rec, quiet, only) {
     ck('failure_to_scram MECHANISM (10 s window — the long ride is run_pwr2_endurance\'s): ' +
        'the trip LATCHES (turbine trips with it) while the rods STAY FULLY OUT and the core ' +
        'keeps running — measured 76 % at 10 s, feedback-limited, unscripted',
-       eS.eng.pt.reactor_trip === true && eS.eng.rodSteps === bank() &&
+       eS.eng.pt.reactor_trip === true && eS.eng.rodSteps === rodS0 &&
        eS.eng.tb.tripped === true && tsS.power_pct > 50 &&
        eS.getActiveFailures().indexOf('failure_to_scram') !== -1,
        'power ' + tsS.power_pct.toFixed(1) + ' % with the trip annunciated — the ATWS');

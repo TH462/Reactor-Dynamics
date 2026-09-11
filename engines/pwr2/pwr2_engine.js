@@ -235,8 +235,53 @@
    * depressurized RHR-held plant, the #468 bank/trim order on a real shutdown bank), the
    * next wave's work, recorded in #507. */
   var ICS = {
-    hot_full_power: { pf: 1.0, load_mwe: 100 },
-    '50_percent':   { pf: 0.5, load_mwe: 50 },
+    /* ---- THE AT-POWER BANK POSITION IS SOURCED, AND IT IS NOT THE TOP STOP (#704) ----------
+     * Both at-power ICs used to fall through to `BANK()` below and boot at 627 of 627 — the
+     * bank's own upper stop — because `criticalBoron` trims boron AT the bank position, so any
+     * position is self-consistent and nothing forced the question. The consequence was NOT
+     * cosmetic: manual rod control is the only rod control this plant has, and MEASURED full
+     * stack (SimulationService + ControlLayer, 0.02 s step, 100 MWe held, 3 plant-hours),
+     * commanding the bank out from the design point moved settled Tavg by **-0.01 degF**. The
+     * operator had no upward authority at all. From 606 the same command moves it **+4.67 degF
+     * (+2.59 degC)**; downward authority is unchanged (-9.67 degF for 40 steps in, against
+     * -9.54 before). #704, and the ruling behind it is dated 2026-09-10.
+     *
+     * WHERE 606 COMES FROM — three sourced numbers and this plant's own step scale:
+     *   - **NUREG-1431 Rev 4 STS Bases B 3.2.3A (ML12100A228)**: *"The control banks must be
+     *     positioned within the core in accordance with their insertion limits and Control Bank
+     *     D should be inserted near its normal position (i.e., 210 steps withdrawn) for steady
+     *     state operation at high power levels."*
+     *   - **WTSM 8.1 §8.1.5.4 (ML11223A252)**: the top of the core is **231 steps**, and the
+     *     Bank Overlap Unit counts the four-bank withdrawal program. §128.4 of PWR2_VALIDATION
+     *     walks that program out: full control-bank withdrawal = **627 BOU counts**, which IS
+     *     this plant's `max_steps`. So at power, with banks A/B/C fully withdrawn and D at 210
+     *     of its 231, the BOU reads **627 - (231 - 210) = 606**.
+     *   - **C-11, the control bank D withdrawal interlock (WTSM 8.1 §8.1.7.3, ML11223A252;
+     *     WTSM 12.2 §12.2.4.1, ML11223A301)**: *"demanded bank D position > 223 steps"*, i.e.
+     *     BOU **619** — the CEILING, not the operating point. 606 sits 13 counts under it, and
+     *     the operator has those 13 plus the 8 to the physical stop.
+     * It is also **167 steps clear of this plant's own rod insertion limit** at 100 % power
+     * (`insertionLimitSteps(100)` = 439), so the plant no longer boots against a stop and does
+     * not boot against its own annunciated floor either.
+     *
+     * WHY 50_percent CARRIES THE SAME NUMBER rather than a deeper one: **WTSM §19.4 Plant
+     * Operations (ML11223A342)** — *"The control rods are nearly fully withdrawn during all
+     * phases of power operations (except for short-term transients). The increase in power
+     * defect associated with a power escalation, is thus overcome with boron dilution."* Boron
+     * carries the power defect, not the bank, and the trim below does exactly that. Leaving
+     * `50_percent` on the fallback would also have given the free-play menu a plant whose rods
+     * are FURTHER OUT at half power than at full — visible, and backwards.
+     *
+     * THE DESIGN POINT DOES NOT MOVE. Measured, 3 plant-hours from each: Tavg 580.30 degF,
+     * pressurizer level 61.48 %, 99.58 % power, 100.00 MWe — identical to 0.01 degF at every
+     * bank position swept from 439 to 627, because `criticalBoron` re-trims. ONLY BORON MOVES:
+     * **621.0 -> 612.3 ppm** at full power and **776.5 -> 768.4 ppm** at half. The cost is
+     * SHUTDOWN MARGIN, and it is stated rather than buried: the worth insertable on a scram
+     * falls **7744 -> 7656 pcm** (control bank 4068 -> 3980 from 606, shutdown bank 3676
+     * unchanged) — 88 pcm, 1.1 %, which is the rod worth the plant is now holding in reserve
+     * for the operator instead of parking on a stop. */
+    hot_full_power: { pf: 1.0, load_mwe: 100, ctrl_steps: 606 },
+    '50_percent':   { pf: 0.5, load_mwe: 50,  ctrl_steps: 606 },
     /* THE BEGINNING OF ASCENSION *(OWNER, 2026-09-04, #619 item 28 / #624: "50% power was an
      * arbitrary choice. Why don't we start at the beginning of ascension instead.")*.
      *

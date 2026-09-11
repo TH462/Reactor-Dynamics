@@ -386,6 +386,12 @@ function runSuite(RD, rec, quiet, only) {
   ckT('load_mwe moves the turbine and the plant follows',
       Math.abs(t80.mwe_output - 80) < 1 && t80.power_pct < 97, 'MWe ' +
       t80.mwe_output.toFixed(1) + ', power ' + t80.power_pct.toFixed(1) + ' %');
+  /* ⚠ READ THE BOOT POSITION OFF THE PLANT, not off `bank()` (#704). This pair assumed the
+   * at-power initial condition opens on the bank's upper stop, which it did until the design
+   * point was re-anchored at 606 of 627. The CLAIM is that the drive SLEWS rather than
+   * teleporting — a statement about travel from wherever it started — so the start belongs in a
+   * variable. Byte-identical on the old plant, where rod0 === bank(). */
+  var rod0 = eng.rodSteps;
   EN.command(eng, 'rod_target', frac(0.95));
   var tRod = run(eng, 5);
   /* THE EXPECTED TRAVEL IS READ OFF `ROD_SPEEDS` (#668), not typed. It shipped as a literal
@@ -394,10 +400,10 @@ function runSuite(RD, rec, quiet, only) {
   var nrmT = EN.ROD_SPEEDS.normal;
   ckT('rod_target SLEWS — five seconds at normal speed moves the drive\'s own ' +
       (nrmT * 5).toFixed(1) + ' steps, not the whole demand',
-      Math.abs(tRod.rod_steps - (bank() - nrmT * 5)) < 1.0,
-      tRod.rod_steps.toFixed(1) + ' steps, from ' + bank() + ' toward ' + frac(0.95) +
+      Math.abs(tRod.rod_steps - (rod0 - nrmT * 5)) < 1.0,
+      tRod.rod_steps.toFixed(1) + ' steps, from ' + rod0 + ' toward ' + frac(0.95) +
       ' — instant rods are a lever no real plant has');
-  EN.command(eng, 'rod_target', bank()); run(eng, quiet ? 20 : 40);
+  EN.command(eng, 'rod_target', rod0); run(eng, quiet ? 20 : 40);
   EN.command(eng, 'aux_spray', 0.5);
   var tAux = run(eng, 1);
   ckT('aux_spray reaches the vessel', tAux.spray_flow_pct !== undefined &&
@@ -949,7 +955,13 @@ function runSuite(RD, rec, quiet, only) {
    * character — and erodes the setpoint via K3 faster than the delta-T term recovers; the
    * runback buys TIME here, not an equilibrium). So: rod-stop test in the first ~3 s,
    * rods-in right after. */
-  EN.command(eng7, 'rod_target', bank() - 1);    /* one step IN from full out */
+  /* ONE STEP IN FROM WHERE THE BANK ACTUALLY IS (#704) — this read `bank() - 1` and called it
+   * "one step IN from full out", which stopped being an insertion the moment the design point
+   * came off the stop: at 606 it is a WITHDRAWAL, and the standing power-range high-flux rod
+   * stop refuses it at the door, so the probe threw instead of measuring. Byte-identical on the
+   * old plant, where rod07 === bank(). */
+  var rod07 = eng7.rodSteps;
+  EN.command(eng7, 'rod_target', rod07 - 1);     /* one step IN from where it sits */
   run(eng7, 2);                                  /* inward: always allowed */
   var rodsIn = eng7.rodSteps;
   /* OUTWARD IS REFUSED — and since #572 it is refused OUT LOUD, at the door, rather than
@@ -962,7 +974,7 @@ function runSuite(RD, rec, quiet, only) {
   run(eng7, 1);                                  /* one second shows zero motion; three bought
                                                   * nothing but trip-delay maturity */
   ckT('the ROD STOP: inward moves, outward is REFUSED BY NAME while the signal stands',
-      rodsIn < bank() - 0.5 && eng7.rodSteps <= rodsIn + 1e-9 &&
+      rodsIn < rod07 - 0.5 && eng7.rodSteps <= rodsIn + 1e-9 &&
       thr7 !== null && /ROD WITHDRAWAL BLOCKED/.test(thr7) &&
       /Inward motion is still available/.test(thr7),
       'in to ' + rodsIn.toFixed(1) + ', then held at ' + eng7.rodSteps.toFixed(1) +
@@ -1539,12 +1551,17 @@ function runSuite(RD, rec, quiet, only) {
   head('THE FAILURE LEVERS  [ATWS: the latch stands, the rods do not; gravity beats a drive]');
   var engI = EN.createEngine({});
   run(engI, quiet ? 20 : 30);
+  /* THE CLAIM IS THAT THE RODS DID NOT MOVE, so read where they were (#704). This asserted
+   * `=== bank()`, which was the same thing only while the at-power initial condition booted on
+   * its upper stop; the check's own name still said "at 200", two bank scales out of date. */
+  var rodI0 = engI.rodSteps;
   EN.command(engI, 'scram_block', true);
   EN.command(engI, 'scram');
   var tsI = run(engI, 5);
-  ckT('a blocked scram LATCHES the trip — annunciated, turbine tripped — with the rods at 200',
+  ckT('a blocked scram LATCHES the trip — annunciated, turbine tripped — with the rods exactly ' +
+      'where the operator left them',
       engI.pt.reactor_trip === true && engI.pt.trip_cause === 'manual' &&
-      engI.tb.tripped === true && engI.rodSteps === bank() && tsI.scrammed === true,
+      engI.tb.tripped === true && engI.rodSteps === rodI0 && tsI.scrammed === true,
       'the failure is the DROP, not the logic — which is what an ATWS is');
   EN.command(engI, 'scram_block', false);
   EN.command(engI, 'reset_protection', true);
@@ -1648,6 +1665,7 @@ function runSuite(RD, rec, quiet, only) {
    * allowing inward motion — a menu selection, cited in that form)*. */
   var engU = EN.createEngine({});
   run(engU, quiet ? 20 : 30);
+  var rodU0 = engU.rodSteps;                     /* where the bank sits, not where the stop is (#704) */
   EN.command(engU, 'scram_block', true);
   EN.command(engU, 'scram');
   run(engU, 5);
@@ -1655,7 +1673,7 @@ function runSuite(RD, rec, quiet, only) {
   try { EN.command(engU, 'rod_target', 0); } catch (eU) { thrU = /ROD DRIVE BLOCKED/.test(eU.message); }
   try { EN.command(engU, 'boron_rate', 0.05); } catch (eU2) { thrBoron = eU2.message; }
   ckT('ATWS: the INWARD command is refused too — the breakers are open, not the drive selective',
-      thrU === true && engU.rodSteps === bank(), 'rods held at ' + engU.rodSteps.toFixed(0));
+      thrU === true && engU.rodSteps === rodU0, 'rods held at ' + engU.rodSteps.toFixed(0));
   ckT('...and emergency boration is still reachable, which is the response that is left',
       thrBoron === null, thrBoron ? ('THREW: ' + thrBoron.slice(0, 50)) : 'boron_rate accepted, ' + engU.cv.boron_rate_cmd + ' ppm/s');
   /* a continuous-withdrawal DRIVE fault is downstream of the same power supply. The scram edge
@@ -1877,6 +1895,15 @@ function runSuite(RD, rec, quiet, only) {
   head('THE BANK SCALE  [one constant, and every consumer reads it — #602]');
   (function () {
     var RODS = RD.kinetics.RODS, was = RODS.max_steps, PROBE = 313;   /* deliberately not 200 */
+    /* THE REFERENCE PLANT, built BEFORE the probe touches the constant (#704). The restore check
+     * at the bottom of this block asserted `rodSteps === was`, which read "the control bank is
+     * fully out" — true only while the at-power initial condition booted on its upper stop. It
+     * boots at its own declared `ctrl_steps` now, so the honest claim ("nothing latched the probe
+     * value") is that a plant built after the restore is identical to one built before it. That
+     * is a STRONGER assertion than the old one and it holds on either plant. */
+    var e0 = EN.createEngine({ initial_state: 'hot_full_power' });
+    EN.step(e0, DT);
+    var refC = e0.rodSteps, refS = e0.sdSteps;
     ckT('the scale is declared ONCE, in RODS, beside the worths it has to be solved with',
         typeof was === 'number' && was > 0,
         'RODS.max_steps = ' + was + ' (worths ' + (RODS.worth_control * 1e5).toFixed(0) +
@@ -1933,8 +1960,9 @@ function runSuite(RD, rec, quiet, only) {
     var eZ = EN.createEngine({ initial_state: 'hot_full_power' });
     EN.step(eZ, DT);
     ckT('...and restoring the constant restores the plant — nothing latched the probe value',
-        eZ.rodSteps === was && eZ.sdSteps === was,
-        'back to ' + eZ.rodSteps + '/' + eZ.sdSteps);
+        RODS.max_steps === was && eZ.rodSteps === refC && eZ.sdSteps === refS,
+        'back to ' + eZ.rodSteps + '/' + eZ.sdSteps + ' of ' + was +
+        ', against the pre-probe reference ' + refC + '/' + refS);
   })();
 
   /* ---- 9. THE INITIAL CONDITIONS (#507 §F, wave 7) — each a SETTLED construction, each
@@ -2154,10 +2182,19 @@ function runSuite(RD, rec, quiet, only) {
       '50 %% -> ' + EN.insertionLimitSteps(50) + ' (35.8 %)');
   var engL = EN.createEngine({});
   var tsL = run(engL, 20);
+  /* ⚠ THE MARGIN BOUND MOVED ONCE, WITH THE NUMBER THAT MOVED IT (#704). It was `> 0.27` and
+   * that figure was the OLD boot position minus the limit: 627 - 437 = 190 steps = 30.3 % of the
+   * bank. The design point is now 606 of 627 (the sourced full-power bank position), so the same
+   * healthy plant reads 169 steps = 27.0 % — BY CONSTRUCTION, 21 steps lower because the bank is
+   * 21 steps lower, not because anything about the limit changed. Re-banded to 0.25, and the
+   * IDENTITY is asserted alongside it so the band is not the only thing standing here: the
+   * margin IS `rodSteps - rilSteps`, which holds on either plant and is what a mis-wired margin
+   * would break. Do not re-band this again without saying what moved. */
   ckT('at hot full power the limit is LIVE and generous: the floor near 70 % withdrawn, a ' +
-      'margin near 30 % of the bank, not at limit',
+      'margin a quarter of the bank, not at limit, and the margin IS position minus the floor',
       engL._rilSteps / bank() > 0.66 && engL._rilSteps / bank() < 0.71 &&
-      engL._rodLimitMargin / bank() > 0.27 && engL._rodAtLimit === false,
+      engL._rodLimitMargin === Math.max(0, Math.round(engL.rodSteps - engL._rilSteps)) &&
+      engL._rodLimitMargin / bank() > 0.25 && engL._rodAtLimit === false,
       'RIL ' + engL._rilSteps + ' (' + (100 * engL._rilSteps / bank()).toFixed(1) +
       ' %), margin ' + engL._rodLimitMargin + ' (' +
       (100 * engL._rodLimitMargin / bank()).toFixed(1) + ' %)');

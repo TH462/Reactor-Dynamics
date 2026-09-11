@@ -29,6 +29,84 @@ and the user-visible summary in `CHANGELOG.md`. This file points at those and tr
 
 ---
 
+## Session log — 2026-09-11-develop-a (#704 — the full-power design point booted on the rod stop)
+
+### The trap: A CONSTRUCTION THAT RE-SOLVES AROUND A PARAMETER HAS NO OPINION ABOUT ITS VALUE, AND NO GATE CAN SUPPLY ONE
+
+`criticalBoron` trims boron **at** whatever bank position it is handed, so `hot_full_power` and
+`50_percent` booting at 627 of 627 — the control bank's upper stop — was self-consistent, on
+program, and green everywhere. The plant was correct. **What it had no opinion about was the
+operator's degree of freedom:** rod control on this plant is MANUAL, so the control bank is the
+only rod authority there is, and a bank on its stop has none in the withdraw direction. Measured
+full stack (0.02 s step, 100 MWe held, 3 plant-hours), commanding the bank out moved settled
+average coolant temperature by **−0.01 °F**. Insertion worked fine (−9.54 °F for 40 steps in),
+which is why free play never felt broken.
+
+**A source read cannot see it** — the command is accepted, `rod_target` clamps at `BANK()`, and
+nothing reports. Same shape as #624's no-op ascension withdrawals.
+
+### The anchor is sourced, and it is not the middle of the band
+
+**606 of 627**, from three documents and this plant's own step scale:
+
+- **NUREG-1431 Rev 4 STS Bases B 3.2.3A (ML12100A228)** — *"Control Bank D should be inserted near
+  its normal position (i.e., 210 steps withdrawn) for steady state operation at high power
+  levels."*
+- **WTSM 8.1 §8.1.5.4 (ML11223A252)** — 231 steps to the top of the core, and the four-bank
+  131-step overlap program that `PWR2_VALIDATION` §128.4 walks out to the **627 BOU counts** this
+  plant's `max_steps` is. Banks A/B/C out with D at 210 of 231 ⇒ **627 − (231 − 210) = 606**.
+- **C-11, the bank D withdrawal interlock** — *"demanded bank D position > 223 steps"* (WTSM 8.1
+  §8.1.7.3; corroborated USNRC HRTD 12.2 §12.2.4.1, ML11223A301; and WAT-05 ML11216A094, the only
+  source that names the power: *"from the normal 100% conditions, the rods would be withdrawn to
+  the 223-step auto withdrawal limit and then stop"*). That is BOU **619** — the ceiling, not the
+  operating point. 606 sits 13 counts under it.
+
+`50_percent` carries the same position, not a deeper one: **WTSM §19.4 (ML11223A342)** —
+*"The control rods are nearly fully withdrawn during all phases of power operations… The increase
+in power defect associated with a power escalation, is thus overcome with boron dilution."*
+Leaving it on the fallback would also have shipped a free-play menu whose rods are **further out**
+at half power than at full.
+
+**Above the plant's own floor:** `insertionLimitSteps(100)` = 439 steps, so 606 has 167 steps of
+margin to the rod insertion limit.
+
+### What moved, what did not
+
+The design point is **invariant to 0.01 °F** at every bank position swept from 439 to 627 — Tavg
+580.30 °F, pressurizer level 61.48 %, 99.58 % power, 100.00 MWe — because the boron trim re-solves.
+**Only boron moves: 621.0 → 612.3 ppm at full power, 776.5 → 768.4 ppm at half.** Upward rod
+authority **−0.01 → +4.67 °F (+2.59 °C)**; insertion unchanged. **The cost is shutdown margin, and
+it is stated:** scram-insertable worth **7744 → 7656 pcm** (control bank 4068 → 3980 from 606;
+shutdown bank 3676 untouched) — 88 pcm, 1.1 %.
+
+**Measured control-bank worth: 4068 pcm by two paths** (integral `rodReactivity` 0 → 627, and a
+`criticalBoron` re-trim 219.0 → 625.8 ppm = 406.8 ppm at 10 pcm/ppm). **That is self-consistency,
+not corroboration** — the citation (WTSM 2.2 Table 2.2-1, **ML11216A051**) is in **no** lane's
+corpus: `tools/find_source.js` returns 0 hits across 41 documents in 3 lanes for it, for
+**ML11223A256** (the WTSM 8.4 the ROD LIMIT row cites), and for the literal `4068`.
+
+### The gate gap it exposed
+
+`run_manual_setpoints` compared **36 cells** of the §11.0 initial-condition table and the
+**control bank row was not one of them** — it fell through to the prose set with MSIV and SR
+detector. The row naming where the operator's only reactivity control sits is not prose. Now
+checked at 1-step tolerance; made red first (*manual 627, plant 606.0*), and it passes against the
+OLD constants too, so it is a better test rather than a refit.
+
+### Content that followed the plant (HR9)
+
+`Manuals/09` §1.0, §11.0 (control bank + boron rows, and the `low_power` note that claimed every
+other at-power column boots on the stop), §3.0's rod-insertion-limit row; `Manuals/04` §PWR-N08
+step 6 and the at-power lineup table; `Manuals/03` §3.1's *Operating position* row — the last three
+all still read the **retired** plant's *"~92 % withdrawn"*. `ui/manual_procedures.js`'s
+`pwr_raise_power` closing step dials **626 → 617 ppm** by its own derivation (`criticalBoron` at the
+design Tavg at the new bank position: 625.78 → 617.03); its `< 680` / `< 645` acceptances do not
+move, because both are about the 660 ppm the climb *leaves*.
+
+Full record: `Blueprint/PWR2_VALIDATION.md` §133.
+
+---
+
 ## Session log — 2026-09-10-develop-b (#676 — the vital-few Pressurizer Level gauge cautioned on a plant sitting on its program)
 
 ### The trap: A GAUGE EDGE COPIED FROM AN ALARM ROW GOES STALE WHEN THE ALARM ROW CHANGES SHAPE
