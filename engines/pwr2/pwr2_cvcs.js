@@ -21,7 +21,12 @@
  *   Ginna UFSAR ch.15 (ML20339A101), the ANCHOR PLANT:
  *     "three positive displacement charging pumps can deliver a maximum of 180 gpm
  *      (charging flow is normally maintained at 46 gpm)"
- *     "The volume of reactor coolant is 5123 ft3"
+ *     "The volume of reactor coolant is 5123 ft3. This is the volume of the RCS EXCLUDING the
+ *      pressurizer and surge line."   <- RCS ONLY; the denominator needs Ginna's own pressurizer
+ *      added back in, see #679 below
+ *   Ginna Technical Specification Bases Rev 101 (ML20339A221), the pressurizer PIECE that fix needs:
+ *     "If the pressurizer water level is > 650 ft3, which is equivalent to 87%"  -> 650/0.87 =
+ *      747 ft3 total pressurizer volume
  *   Westinghouse Technology Systems Manual §4.1, CVCS (ML11223A214), a generic 4-loop plant:
  *     "Normally operators establish a letdown flow of 75 gpm."
  *     "A flow balance is maintained on the VCT by the 75 gpm letdown and 12 gpm seal [return]"
@@ -38,15 +43,21 @@
  * The two bases genuinely disagree here, and the size of the disagreement is the reason to state
  * the choice instead of burying it:
  *
- *     Ginna     145.07 m3 at ~1520 MWt = 0.0954 m3/MWt
- *     SLS-100    23.66 m3 at   300 MWt = 0.0789 m3/MWt      <- 17 % TIGHTER
+ *     Ginna     166.22 m3 at ~1520 MWt = 0.1094 m3/MWt   (RCS 145.07 + pressurizer 21.16 m3)
+ *     SLS-100    24.29 m3 at   300 MWt = 0.0810 m3/MWt      <- 26 % TIGHTER
  *
- *     charging max, volume-scaled   180 x 0.1631 = 29.4 gpm      <- USED
+ *     charging max, volume-scaled   180 x 0.1462 = 26.3 gpm      <- USED
  *     charging max, power-scaled    180 x 0.1974 = 35.5 gpm      <- reported by the gate
  *
  * A tighter plant is a twitchier plant: the same gpm moves level faster. Volume-scaling keeps the
  * %/min an operator learns; power-scaling would keep the pump nameplate. This plant is for
  * teaching dynamics, so the operator-facing quantity wins. **The gate reports both.**
+ *
+ * **#679 (2026-09-10, OWNER RULING "679-a"): the denominator used to be Ginna's RCS volume WITHOUT
+ * its pressurizer (5123 ft3) against a numerator (`rcsVolume()`) that INCLUDES ours — a basis
+ * mismatch that shipped every charging/letdown rating 14.6 % high (30.14 -> 26.29 gpm max).
+ * Fixed on the total-inventory basis: Ginna's pressurizer (747 ft3, sourced above) is now IN the
+ * denominator too, so both sides are whole-RCS-plus-pressurizer.**
  *
  * ---------------------------------------------------------------------------------------
  * DECLARED OMISSIONS — stated here, not discovered later.
@@ -87,13 +98,23 @@
    * Computed from Layer 1 rather than written down, so it moves when the geometry does. That is
    * the same rule the SG's ratedU() follows and the reason §24's provisional geometry does not
    * silently strand a constant here. */
-  var GINNA_RCS_M3 = 5123 * FT3_TO_M3;          // [sourced] Ginna UFSAR ch.15
+  var GINNA_RCS_M3 = 5123 * FT3_TO_M3;          // [sourced] Ginna UFSAR ch.15, RCS EXCLUDING
+                                                 // the pressurizer and surge line (verbatim)
+  /* #679: Ginna's pressurizer, on the SAME "> X ft3 = Y%" basis its own Tech Spec Bases states
+   * for the vessel's total capacity. [sourced] ML20339A221: "pressurizer water level is > 650
+   * ft3, which is equivalent to 87%" -> 650 / 0.87 = 747 ft3 total. */
+  var GINNA_PZR_M3 = (650 / 0.87) * FT3_TO_M3;  // [sourced] Ginna Tech Spec Bases, ML20339A221
+  /* THE DENOMINATOR, ON THE SAME TOTAL-INVENTORY BASIS AS THE NUMERATOR (#679, OWNER RULING
+   * "679-a", 2026-09-10). Ginna's RCS-only 5123 ft3 explicitly excludes its pressurizer; our
+   * `rcsVolume()` explicitly includes ours (#583, see below). Dividing one by the other shipped
+   * every charging/letdown rating 14.6 % high. Both sides now carry their pressurizer. */
+  var GINNA_RCS_TOTAL_M3 = GINNA_RCS_M3 + GINNA_PZR_M3;
   /* THE WHOLE RCS — nodes PLUS the Layer-5 pressurizer vessel (#583). This used to sum
    * `GEO.NODES` alone, which was the whole plant only while the ring carried a PHANTOM
    * pressurizer node; deleting that node without moving this would have cut charging 15 %
    * on a plant that still has a pressurizer. Layer 1 owns the arithmetic now. */
   function rcsVolume() { return GEO.rcsVolume(); }
-  function volumeScale() { return rcsVolume() / GINNA_RCS_M3; }
+  function volumeScale() { return rcsVolume() / GINNA_RCS_TOTAL_M3; }
 
   var CVCS = {
     /* [derived] from the sourced Ginna figures by the declared volume basis */
@@ -437,6 +458,7 @@
     volumeScale: volumeScale, rcsVolume: rcsVolume, orificeK: orificeK,
     normalLetdownKgs: normalLetdownKgs, gpmToKgs: gpmToKgs, kgsToGpm: kgsToGpm,
     maxFillRateFracPerMin: maxFillRateFracPerMin,
-    GINNA_RCS_M3: GINNA_RCS_M3
+    GINNA_RCS_M3: GINNA_RCS_M3, GINNA_PZR_M3: GINNA_PZR_M3,
+    GINNA_RCS_TOTAL_M3: GINNA_RCS_TOTAL_M3
   };
 })(typeof globalThis !== 'undefined' ? globalThis : this);

@@ -643,8 +643,8 @@ restate the conversion table here or anywhere else — a second copy is how a nu
   minute, as `Manuals/10_GLOSSARY.md` defines it, never disintegrations); counts **cps**;
   flow **gpm (m³/h)**. Reactivity, startup rate, counts and
   currents have no US/SI distinction and are quoted once.
-- **N8** **Three flow ratings are computed, not authored** — charging maximum 30.1 gpm,
-  letdown orifice A 12.7 gpm, auxiliary feedwater 86.2 gpm — and a gate compares the
+- **N8** **Three flow ratings are computed, not authored** — charging maximum 26.3 gpm,
+  letdown orifice A 11.7 gpm, auxiliary feedwater 86.2 gpm — and a gate compares the
   manual's bolded rows against what the plant derives, at 0.15 gpm. Do not "tidy" them. The
   retired plant's 60/30/100 gpm reached the public manual once already.
 - **N9** Setpoints get a value and a direction: "raise the Pressure setpoint to

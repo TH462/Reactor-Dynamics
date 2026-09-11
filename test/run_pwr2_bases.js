@@ -16,9 +16,10 @@
  * nothing stopped a future session "tidying them up" into one — with every existing gate staying
  * green, because each file is individually self-consistent either way.
  *
- * The bases genuinely disagree: this plant carries 17 % less water per MWt than Ginna, so
- * volume gives x0.1631 and power x0.1974 — **21 % apart**. Unifying would move the charging rate
- * an operator learns by that much, or resize emergency injection against the wrong duty.
+ * The bases genuinely disagree: this plant carries 26 % less water per MWt than Ginna (both on
+ * the total-inventory basis, RCS + pressurizer, #679), so volume gives x0.1462 and power x0.1974
+ * — **35 % apart**. Unifying would move the charging rate an operator learns by that much, or
+ * resize emergency injection against the wrong duty.
  *
  * WHAT THIS GATE ASSERTS. Not that the numbers are right — their own gates do that. That each
  * system still uses the basis it DECLARES, that the two bases remain distinguishable, and that a
@@ -73,15 +74,15 @@ var vol = CV.volumeScale(), pow = EC.ECCS.POWER_SCALE;
 log('        volume x' + vol.toFixed(4) + '   power x' + pow.toFixed(4) +
             '   ' + (100 * (pow / vol - 1)).toFixed(0) + ' % apart');
 ck('the volume basis is DERIVED from Layer 1 geometry, not written down',
-   Math.abs(vol - CV.rcsVolume() / CV.GINNA_RCS_M3) < 1e-12,
+   Math.abs(vol - CV.rcsVolume() / CV.GINNA_RCS_TOTAL_M3) < 1e-12,
    'x' + vol.toFixed(4) + ' from ' + CV.rcsVolume().toFixed(2) + ' m3 against Ginna ' +
-   CV.GINNA_RCS_M3.toFixed(2) + ' m3 -- it moves when the geometry does');
+   CV.GINNA_RCS_TOTAL_M3.toFixed(2) + ' m3 -- it moves when the geometry does');
 ck('the power basis is this plant against its anchor', Math.abs(pow - 300 / 1520) < 1e-12,
    '300 MWt / 1520 MWt');
 ck('the two bases are more than 15 % apart, so a swap is VISIBLE',
    Math.abs(pow / vol - 1) > 0.15,
-   'this plant carries 17 % less water per MWt than Ginna (0.0789 vs 0.0954 m3/MWt), which is ' +
-   'the whole reason they disagree');
+   'this plant carries 26 % less water per MWt than Ginna (0.0810 vs 0.1094 m3/MWt, both TOTAL ' +
+   'inventory basis, #679), which is the whole reason they disagree');
 
 /* ---- 2. EACH SYSTEM USES THE BASIS IT DECLARES --------------------------------------- */
 log('\nEACH SYSTEM USES WHAT IT DECLARES  [a silent unification reddens here]');
@@ -157,10 +158,10 @@ var MUTATIONS = [
    'charging_normal_gpm: function () { return  46 * volumeScale(); },',
    'charging_normal_gpm: function () { return  46 * (300 / 1520); },'],
   ['pwr2_cvcs', 'the volume basis stops deriving from Layer 1 geometry (hardcoded)',
-   'function volumeScale() { return rcsVolume() / GINNA_RCS_M3; }',
-   'function volumeScale() { return 0.1631; }'],
+   'function volumeScale() { return rcsVolume() / GINNA_RCS_TOTAL_M3; }',
+   'function volumeScale() { return 0.15; }'],
   ['pwr2_cvcs', 'the volume basis is replaced by the power basis outright',
-   'function volumeScale() { return rcsVolume() / GINNA_RCS_M3; }',
+   'function volumeScale() { return rcsVolume() / GINNA_RCS_TOTAL_M3; }',
    'function volumeScale() { return 300 / 1520; }'],
   ['pwr2_cvcs', 'SEAL INJECTION volume-scaled -- a seal shrinking because the PLANT is smaller',
    'return CVCS.seal_injection_gpm_per_pump * CVCS.rcp_count;',
@@ -177,10 +178,10 @@ var MUTATIONS = [
    'return gpmToKgs(CVCS.charging_normal_gpm(), 1000);'],
   ['pwr2_eccs', 'ECCS silently unified onto the VOLUME basis',
    '  var POWER_SCALE = 300 / 1520;',
-   '  var POWER_SCALE = 0.1631;'],
+   '  var POWER_SCALE = 0.1462;'],
   ['pwr2_rhr', 'RHR drifts off the shared power basis',
    'POWER_SCALE: 300 / 1520',
-   'POWER_SCALE: 0.1631'],
+   'POWER_SCALE: 0.1462'],
 ];
 
 if (fail > 0) {

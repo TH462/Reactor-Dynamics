@@ -250,7 +250,7 @@
      *
      * The stand-in is CONSERVATIVE, which is why it is tolerable: main spray delivers
      * 73.9 gpm (3.45 kg/s) of ~550 degF (288 degC) cold-leg water for about 4.34e6 BTU/hr
-     * (1,273 kW) of condensing duty, while real auxiliary spray is 29.4 gpm (1.83 kg/s) of
+     * (1,273 kW) of condensing duty, while real auxiliary spray is 26.3 gpm (1.65 kg/s) of
      * ~131 degF (55 degC) charging water for about 8.74e6 BTU/hr (2,562 kW) — roughly HALF
      * the authority the modelled aux path would give, because cold charging water condenses
      * far harder per pound. Routing the lever to the aux path instead was costed and
@@ -275,13 +275,14 @@
      * procedure action — and it deliberately does NOT need the RCPs: charging pumps drive it,
      * which is its whole reason to exist (#472 measured the old engine lacking exactly this:
      * RCPs secured, spray demanded 12 %, delivered 0).
-     * aux_max_kgs is the CVCS charging maximum (29.4 gpm volume-scaled, at charging-water
+     * aux_max_kgs is the CVCS charging maximum (26.3 gpm volume-scaled, at charging-water
      * density) — THE SAME PHYSICAL NUMBER pwr2_cvcs derives, written down twice, which is the
      * protection-cadence failure mode; the GATE ties the two together so they cannot drift
-     * apart silently. aux_water_c is VCT-temperature charging water [derived ~55 degC]: the
-     * per-kg condensing duty is h_f(P) − h_l(55, P), several times the loop-water spray's,
-     * on a quarter of the flow. */
-    aux_max_kgs: 1.83,
+     * apart silently (#679, 2026-09-10: the CVCS volume-scale fix moved this constant, and the
+     * gate is what caught it — was 1.83). aux_water_c is VCT-temperature charging water
+     * [derived ~55 degC]: the per-kg condensing duty is h_f(P) − h_l(55, P), several times the
+     * loop-water spray's, on a quarter of the flow. */
+    aux_max_kgs: 1.65,
     aux_water_c: 55
   };
 

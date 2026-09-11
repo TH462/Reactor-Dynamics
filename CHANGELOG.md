@@ -739,7 +739,79 @@ stays steady (power within 5 points of rated, pressure drift under 0.2 MPa / 29 
 meet within one broadcast of the window end, and a planted 1e-6 difference is seen by `compare()`.
 Four injections, one per conjunct, each proven to redden SI-0 alone. No baseline moves (8 checks).
 
-## [Alpha 1.7.4-rc10] — 2026-09-10
+## [Alpha 1.7.4-rc12] — 2026-09-10
+
+### Fixed (the CVCS charging/letdown volume scale mixed two bases — #679)
+
+Ruled Option A, the denominator fix *(OWNER RULING, 2026-09-10: "679-a")*.
+`pwr2_cvcs.volumeScale()` divided this plant's RCS volume (nodes **plus** the pressurizer) by
+Ginna's sourced **5,123 ft³** — a figure whose own UFSAR sentence states it **excludes** its
+pressurizer and surge line (ML20339A101). Every charging and letdown rating shipped **14.6 %**
+high as a result (charging maximum read 30.14 gpm where the sourced basis gives 26.29).
+
+Fixed on the total-inventory basis: Ginna's own pressurizer, **747 ft³** (650 ft³ / 0.87, from
+its Technical Specification Bases, ML20339A221), is now in the denominator too, so both sides
+of the ratio carry theirs. **Charging, maximum 30.1 → 26.3 gpm; charging, normal balance
+7.7 → 6.7 gpm; letdown, orifice A nominal 12.7 → 11.7 gpm.** The volume ratio falls
+0.1675 → 0.1462; RCS volume itself (857.9 ft³) is unaffected.
+
+**The heatup letdown margin this fix moves**: maximum net inventory removal with charging
+secured (corrected normal letdown less the 5.00 gpm uncontrollable seal injection) falls
+**7.70 → 6.72 gpm — a plant-physics quantity, exact from the corrected constant**. The
+100 °F/hr shortfall this margin was checked against does not bind on the plant's own achieved
+heatup rate either side of the fix — see #679 for the full arithmetic and what was and was not
+independently re-ridden.
+
+Corrected every other consumer of the old figures: `Manuals/12` §6.3/§6.4, `Manuals/04`
+PWR-N03, `Manuals/09` §11.0's `50_percent` initial-condition pressure cell (2240 → 2243 psi,
+a small downstream consequence of the lower charging/letdown authority), the board-wiring and
+board-gate code comments, the TMI-2 walkthrough's letdown note, and `Blueprint/STYLE_GUIDE.md`'s
+worked example. `run_pwr2_cvcs`, `run_pwr2_bases`, `run_manual_units`, `run_manual_setpoints`
+and `run_manual_rev` all re-verified at the corrected figures.
+
+### Added (the vital-few Avg Coolant Temp gauge had no low edge at all — #703)
+
+The opposite gap from #676's, found during that fix: a plant running 105 °F (58.3 °C) cold at
+96.5 % power (#683's own reproduction) had **no vital-few cue until the reactor tripped**. The
+Tavg gauge carried only HIGH edges (`caution: 312 °C / 594 °F`, `danger: 335 °C / 635 °F`) and
+nothing on the cold side.
+
+**Rejected an absolute edge for the same reason #676's fixed 25 % was wrong**: the sliding Tavg
+program (`trefProgram`, `layers/control/pwr_control.js`) runs from about 547 °F (286 °C)
+no-load to about 576-581 °F (302-305 °C) at full power, so one number is right in at most one
+place.
+
+**MEASURED, full stack (`RD.SimulationService` + `ControlLayer`), `svc.tick()` driven, rods
+MANUAL (their free-play default)** — the maximum LEGITIMATE downward deviation of Tavg below
+its program:
+
+| case | max deviation |
+|---|---|
+| the power-ascension climb (`pwr_raise_power`, the gated 0-fail replay) | 1.9 °F |
+| the 6 h xenon swing immediately after it, rods untouched, no dilution | 0.5 °F |
+| a 100 -> 90 -> 100 MWe load transient | 1.7 °F |
+| a +15 ppm boration at full power, 2 h to settle (the **worst** case) | 9.5 °F |
+| steady state, all four free-play initial conditions | <= 0.7 °F |
+
+Clean separation from the 105 °F fault — 11x the worst legitimate excursion. **Built as a
+`caution_lo` on the existing gauge, program − 20 °F**, following #676's pattern exactly
+(`tavgGaugeCautionLo`, wired through the gauge's `autorange` hook): 2.1x the worst legitimate
+case, and it fires about 5x before the fault's own 105 °F — an early cue, not a second trip
+announcement. **Off in LOW RANGE** (below ~246 °C / 475 °F), exactly as `caution`/`danger`
+already are, so a heatup or cooldown does not relight it. The fallback for a snapshot
+publishing no program (the retired engine, an old recording) is the plant's own **LO TAVG
+(P-12)** annunciator setpoint (278 °C / 532.4 °F), read live rather than retyped.
+
+**Proved by injection** (`test/verify_e2e_ui.js` `testTavgGaugeDeviationCaution`, a browser
+check for the same reason #676's was): the CLASS sampled 40x at two on-program initial
+conditions — **0/40 warn in both**; the RULE's discriminator that the edge MOVES with load
+(274.9 °C cold -> 293.4 °C at power); and the fault reconstructed directly on the live plant
+(boron forced to 750 ppm, WARP-tier settle) — **40/40 warn**. Duty cycle: 0.0 % on every
+legitimate case (the deviation never reaches the 20 °F band), 100.0 % once the fault state is
+reached — against 0.0 % in every case before this change, including the fault, which is the
+defect. Gates at baseline: `verify_e2e_ui`, `verify_board_check`, `run_inspect`, `run_flags`,
+`verify_flags_ui`, `run_portable`, `run_pwr2_board`, `run_release` (9/9, no `BASELINES` entry
+moved).
 
 ### Fixed (the vital-few Pressurizer Level gauge cautioned on a plant that was on program — #676)
 

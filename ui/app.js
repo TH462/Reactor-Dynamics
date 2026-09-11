@@ -504,16 +504,20 @@
       gauges: [
         { id: 'power',   label: 'Reactor Power', lead: true, instr: 'power_range', raw: function (s) { return s.instruments.power_range; }, units: '%', min: 0, max: 120, caution: 108, danger: 118, dp: 1 },
         { id: 'press',   label: 'Primary Pressure', instr: 'primary_pressure', raw: function (s) { return s.instruments.primary_pressure; }, dim: 'pressure', min: 0, max: 20.7, caution: 16.2, danger: 16.44, dp: 0 },
-        { id: 'tavg',    label: 'Avg Coolant Temp (Tavg)', instr: 'tavg', raw: function (s) { return s.instruments.tavg; }, dim: 'temp', min: 250, max: 343, caution: 312, danger: 335, dp: 0,
+        /* caution_lo 278 (°C, the LO TAVG / P-12 annunciator's own absolute setpoint) is the
+         * FALLBACK, not the edge — see tavgGaugeCautionLo (#703): on a plant publishing a
+         * sliding Tavg program the caution follows it, program - 20 °F, because a plant running
+         * cold at power otherwise had no vital-few cue at all until the reactor tripped. */
+        { id: 'tavg',    label: 'Avg Coolant Temp (Tavg)', instr: 'tavg', raw: function (s) { return s.instruments.tavg; }, dim: 'temp', min: 250, max: 343, caution: 312, danger: 335, caution_lo: 278, dp: 0,
           // Auto-ranging: the operating band [250-343] when hot; a wide LOW-RANGE scale
           // [30-260] when cold (Mode 5 / heatup-cooldown) so one gauge covers both. 8°C
           // hysteresis around the operating minimum avoids flicker while crossing.
-          autorange: function (raw) {
+          autorange: function (raw, s) {
             if (this._wide == null) this._wide = raw < 246;
             this._wide = raw < (this._wide ? 254 : 246);
             return this._wide
               ? { min: 30, max: 260, caution: null, danger: null, caution_lo: null, danger_lo: null, label: 'Avg Coolant Temp (Tavg) · LOW RANGE' }
-              : { min: 250, max: 343, caution: 312, danger: 335, label: 'Avg Coolant Temp (Tavg)' };
+              : { min: 250, max: 343, caution: 312, danger: 335, caution_lo: tavgGaugeCautionLo(s, 278), label: 'Avg Coolant Temp (Tavg)' };
           } },
         /* caution_lo 25 is the FALLBACK, not the edge — see pzrGaugeCautionLo (#676): on a plant
          * that publishes a level program the caution follows it, because 25 % IS the program in
@@ -1507,11 +1511,53 @@
     if (!cut || cut.instrument !== 'pzr_level' || cut.setpoint == null) return authored;
     return Math.max(cut.setpoint, prog + dev.setpoint);
   }
+  /* THE Tavg GAUGE'S LOW EDGE IS A DEVIATION FROM THE SLIDING PROGRAM (#703) — the opposite
+   * gap from #676's: the strip carried NO low edge on Tavg at all, so a plant running cold at
+   * power had no vital-few cue until the reactor tripped (measured during the #676 fix,
+   * 2026-09-10: 105 °F / 58.3 °C low at 96.5 % power). An ABSOLUTE edge is wrong for the same
+   * reason #676's fixed 25 % was wrong: the sliding Tavg program (`trefProgram`,
+   * layers/control/pwr_control.js) runs from about 547 °F (286 °C) no-load to about 576-581 °F
+   * (302-305 °C) at full power, so one number is right in at most one place.
+   *
+   * MEASURED 2026-09-10, full stack (RD.SimulationService + ControlLayer), svc.tick() driven,
+   * ACCEL=10, rods MANUAL (their free-play default) — the maximum LEGITIMATE downward
+   * deviation of Tavg below trefProgram(load), HI-RANGE gauge only (below it Tavg is in the
+   * wide LOW RANGE scale and this edge is already nulled, same as caution/danger below):
+   *
+   *   the power-ascension climb (pwr_raise_power, the gated 0-fail replay)      1.9 °F
+   *   the 6 h xenon swing immediately after it, rods untouched, no dilution     0.5 °F
+   *   a 100 -> 90 -> 100 MWe load transient                                    1.7 °F
+   *   a +15 ppm boration at full power, 2 h to settle (the WORST case)         9.5 °F
+   *   steady state, all four free-play initial conditions                    <= 0.7 °F
+   *
+   * — against the FAULT this exists for: 105 °F (58.3 °C) low at 96.5 % power (#703, #683).
+   * BAND = 20 °F (11.1 °C): 2.1x the worst legitimate excursion measured, clear of every other
+   * case by 10x or more, and it fires about 5x earlier than the fault's own 105 °F — an early
+   * cue, not a second trip announcement.
+   *
+   * The fallback (no program published — the retired engine, an old recording, or `steam_flow`
+   * itself missing) is the plant's own LO TAVG (P-12) annunciator setpoint (`low_tavg`,
+   * absolute, 278 °C / 532.4 °F, ~8 °C below the no-load anchor) — read live, never retyped,
+   * the same #676/`liveAlarm()` pattern; a plain literal if even that row is unavailable. */
+  var TAVG_DEV_CAUTION_F = 20;
+  function tavgGaugeCautionLo(s, authoredC) {
+    var tavgC = s && s.instruments ? s.instruments.tavg : null;
+    if (tavgC == null || !isFinite(tavgC)) return authoredC;   /* isFinite(null) is TRUE — order matters */
+    if (tavgC < 246) return null;   /* LOW RANGE — the gauge nulls caution/danger here too */
+    var CTL = RD.PWR_CONTROL;
+    var loadFrac = s.instruments ? s.instruments.steam_flow : null;
+    if (!CTL || !CTL.trefProgram || loadFrac == null || !isFinite(loadFrac)) {
+      var lo = liveAlarm('low_tavg');
+      return (lo && lo.instrument === 'tavg' && lo.setpoint != null) ? lo.setpoint : authoredC;
+    }
+    var ref = CTL.trefProgram(Math.max(0, Math.min(1, loadFrac)));
+    return ref - (TAVG_DEV_CAUTION_F * 5 / 9);
+  }
   /* EXPORTED so a gate can assert the RULE and not just the source text. A source scan cannot
    * tell you an edge is reachable or that it moved — the standing trap — and the vital strip
    * has no DOM handle on its own thresholds, only on the class they produce. verify_e2e_ui
    * calls this with the LIVE snapshot at three initial conditions and with synthetic ones. */
-  RD.PwrGaugeBands = { pzrLevelCautionLo: pzrGaugeCautionLo };
+  RD.PwrGaugeBands = { pzrLevelCautionLo: pzrGaugeCautionLo, tavgCautionLo: tavgGaugeCautionLo };
   // The dimension an instrument's value converts on, so a quoted range or setpoint
   // follows the operator's US/SI selection instead of always reading SI.
   //

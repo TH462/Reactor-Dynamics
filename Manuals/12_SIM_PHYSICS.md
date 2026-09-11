@@ -445,23 +445,30 @@ second copy of them to drift. As built today:
 | | rating | basis |
 |---|---|---|
 | Reactor coolant system volume | **857.9 ft³ (6,418 gal / 24.29 m³)** | the component ledger, 9.2 % of it unattributed and declared |
-| Charging, maximum | **30.1 gpm** | Ginna's 180 gpm scaled by the volume ratio 0.1675 |
-| Charging, normal balance | **7.7 gpm** | Ginna's 46 gpm, same ratio |
+| Charging, maximum | **26.3 gpm** | Ginna's 180 gpm scaled by the volume ratio 0.1462 |
+| Charging, normal balance | **6.7 gpm** | Ginna's 46 gpm, same ratio |
 | Seal injection | **5 gpm** | unscaled — a per-pump rating, and this plant has one pump |
-| Letdown, orifice A nominal | **12.7 gpm** | pressure-driven, see below |
+| Letdown, orifice A nominal | **11.7 gpm** | pressure-driven, see below |
 | Auxiliary feedwater, both pumps | **86.2 gpm** | Ginna's 510 gpm scaled by power, 300/1,775 |
 
 > **These are smaller than the figures Rev 16 and earlier quoted** (60 gpm charging, 30 gpm
 > letdown, 100 gpm auxiliary feedwater), and the older numbers were the **retired** engine's —
 > a different plant with a different declared volume. Nothing about the plant got weaker; the
 > manual caught up with the plant the simulator runs.
+>
+> **Rev 19's own charging/letdown figures were themselves 14.6 % high** (30.1/7.7/12.7 gpm)
+> *(#679, fixed 2026-09-10)*: the volume ratio divided our RCS volume, which **includes** the
+> pressurizer, by Ginna's sourced 5,123 ft³, which its own UFSAR states **excludes** its
+> pressurizer (ML20339A101). Fixed on a total-inventory basis — Ginna's pressurizer (747 ft³,
+> from its Tech Spec Bases, ML20339A221) is now in the denominator too, so both sides carry
+> theirs.
 
 An uncompensated orifice-A drain still walks pressurizer level down about 15 points in roughly
 five minutes.
 
 **Letdown is pressure-driven, not commanded.** Two fixed orifices, each independently in or out; each passes flow proportional to √(cold-leg pressure − 300 psi (2.07 MPa) backpressure — the orifice discharges to the letdown heat exchanger and volume control tank, not to atmosphere). So letdown **tails off toward zero as the RCS depressurises on a cooldown** — it is not a constant you dial in.
 
-**On shutdown cooling the orifices are not the letdown path at all.** With the residual heat removal (RHR) system in service, letdown runs through the **HCV-128 RHR-to-CVCS cross-connect**, which the model carries at the normal letdown magnitude — **12.7 gpm (0.80 kg/s)** — independently of the orifice lineup, so a **Mode 5, Cold Shutdown** plant with both orifices out is still letting down. Sourced: WTSM ch. 19 (ML11223A342), *"Coolant removal is accomplished by letdown, primarily from the residual heat removal system (RHR) … Letdown is via the RHR-to-CVCS cross-connect valve HCV-128"*, and *"While the plant is in this configuration, HCV-128 … is fully open … letdown flow via this piping is extremely low"*; NUREG-1431 Rev 4 Bases (ML12100A228), *"During LTOP MODES, the RHR System is operated for decay heat removal and low pressure letdown control."* The path closes with the RHR suction at **585 psig (4.03 MPa)** on a heatup, and the **17 %** low-level protective isolate stops it and the orifices together (**09** §3.0). Until 2026-09-04 the cross-connect was gated on the operator's orifice fraction, so shutting the orifices shut it too — and the cold plant then went solid on its own seal injection with a correct-looking shut lineup on the board: measured, **+10.2 points of pressurizer level and 363 → 385 psi (2.50 → 2.65 MPa) in 20 plant-minutes**.
+**On shutdown cooling the orifices are not the letdown path at all.** With the residual heat removal (RHR) system in service, letdown runs through the **HCV-128 RHR-to-CVCS cross-connect**, which the model carries at the normal letdown magnitude — **11.7 gpm (0.74 kg/s)** — independently of the orifice lineup, so a **Mode 5, Cold Shutdown** plant with both orifices out is still letting down. Sourced: WTSM ch. 19 (ML11223A342), *"Coolant removal is accomplished by letdown, primarily from the residual heat removal system (RHR) … Letdown is via the RHR-to-CVCS cross-connect valve HCV-128"*, and *"While the plant is in this configuration, HCV-128 … is fully open … letdown flow via this piping is extremely low"*; NUREG-1431 Rev 4 Bases (ML12100A228), *"During LTOP MODES, the RHR System is operated for decay heat removal and low pressure letdown control."* The path closes with the RHR suction at **585 psig (4.03 MPa)** on a heatup, and the **17 %** low-level protective isolate stops it and the orifices together (**09** §3.0). Until 2026-09-04 the cross-connect was gated on the operator's orifice fraction, so shutting the orifices shut it too — and the cold plant then went solid on its own seal injection with a correct-looking shut lineup on the board: measured, **+10.2 points of pressurizer level and 363 → 385 psi (2.50 → 2.65 MPa) in 20 plant-minutes**.
 
 **Charging in AUTO holds programmed pressurizer level**, reading the *indicated* level and the *indicated* Tavg through a 20-second damping filter. The program is sourced from the Westinghouse Technology Systems Manual §10.3 (ML11223A290), which derives its 61.5 % full-power endpoint from coolant thermal expansion alone between no-load and full-power Tavg — but that derivation is only *part* of this plant's mechanism. Measured across a full Mode 5, Cold Shutdown to Mode 1, At Power heatup: thermal expansion supplies 491 of the 754 kg (1,082 of 1,662 lbm) the pressurizer must gain to reach the programmed 61.5 %, and charging supplies the remaining 263 kg (579 lbm), automatically and with margin (peak demand 13.4 of 30.1 gpm available). The cause is geometry: this plant's loop-to-pressurizer volume ratio (4.82) is smaller than the anchor plant's (6.86), so the same expansion fills proportionally less of a proportionally larger vessel. The program and the *indicated* level still track together — so a heat-up raises level and setpoint together, and thermal expansion still can never read as a leak — but the level program is not a pure thermal-expansion line on this plant; it is expansion plus automatic charging (#680). A leak still makes itself up because it lowers the level; no leak detection is involved.
 
@@ -539,7 +546,7 @@ cannot silently drift apart — the no-integrator guarantee the old derived line
 **RAISING LOAD IS A PRESSURIZER TRANSIENT, and that is why the load dial ramps UP (#624).**
 The thermal row above is the coupling: raise turbine load and the steam generators draw more heat,
 Tavg falls, the loop contracts, and the difference comes *out* of the pressurizer. Charging can
-answer it — at **30.1 gpm** against a **12.7 gpm** letdown lineup — but only at charging's rate,
+answer it — at **26.3 gpm** against a **11.7 gpm** letdown lineup — but only at charging's rate,
 so what decides whether the plant stays on programme is how fast the disturbance arrives, not how
 good the level controller is. Measured from **10 MWe** with the rods left alone, dialling
 **30 MWe**: delivered instantly it pulls Tavg **15.3 °F (8.5 °C)** and indicated level from
@@ -895,7 +902,7 @@ If you expect one of these and cannot find it, it is not hidden — it does not 
 | **Structural** — fixed physical constants and real-plant setpoints | High | β and Λ, six-group delayed data, fuel damage/melt thresholds, PORV and safety setpoints, the 665 psia (4.58 MPa) accumulator arming pressure, the 400 psi (2.76 MPa) RHR block-open permissive and its 600 psi (4.14 MPa) autoclose |
 | **Calibrated** — arbitrated by the physics acceptance suites | Directionally right, magnitude roughly right | Heat-transfer coefficients, decay-heat constants, level coefficients, dump and AFW capacities |
 | **Compressed** — deliberately faster than reality for training | Right in behaviour, wrong in duration | **This class has largely emptied** (#408 put the accident-inventory family — ECCS injection included — on the real Ginna scale; #419 retired the Mode 5↔1 pacing: the pressurisation slew now runs the sourced 0.23 psi/s heater rate, the boron rate is a derived physical ceiling, and the grab-sample turnaround is a real 30-minute lab). What remains: the **cooldown depressurisation rate** — see §14.1 |
-| **Indicative** — display flavour derived from normalised internals | Illustrative | The RCS flow conversion (**≈ 34 500 gpm** at cold-leg conditions — see the note below). **The charging, letdown and auxiliary-feedwater ratings left this class** and are now *Derived*: §6.3 carries them (30.1 gpm charging, 12.7 gpm letdown, 86.2 gpm auxiliary feedwater), each computed from this plant's volume or power against a sourced Ginna rate rather than read off a display scale |
+| **Indicative** — display flavour derived from normalised internals | Illustrative | The RCS flow conversion (**≈ 34 500 gpm** at cold-leg conditions — see the note below). **The charging, letdown and auxiliary-feedwater ratings left this class** and are now *Derived*: §6.3 carries them (26.3 gpm charging, 11.7 gpm letdown, 86.2 gpm auxiliary feedwater), each computed from this plant's volume or power against a sourced Ginna rate rather than read off a display scale |
 
 > **NOTE.** The plant's absolute ratings — ≈ 300 MWt, ≈ 100 MWe, one loop, one SG, one RCP — are a **design choice**, not a measurement of any real unit. The SLS-100 is its own plant.
 

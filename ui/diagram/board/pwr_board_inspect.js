@@ -475,8 +475,8 @@
       'The Chemical and Volume Control System (CVCS) charging pump — make-up INTO the primary. Raises inventory and pressurizer level.',
       'AUTO runs the pump with inventory make-up modulating the flow; MAN runs it at the flow you set; ' +
       'OFF secures it. Charging is also the carrier for boron: a boration or dilution is only ' +
-      'delivered while this pump runs. The band runs to 30 gpm (6.9 m³/h) — the charging '  +
-      'capacity of THIS plant, power-scaled from the sourced Ginna basis.', CI, '7.1'),
+      'delivered while this pump runs. The band runs to 26 gpm (6.0 m³/h) — the charging '  +
+      'capacity of THIS plant, volume-scaled from the sourced Ginna basis.', CI, '7.1'),
     imrmtg3r8ez: e('AUTO (charging)',
       'Charging pump runs with automatic inventory make-up.',
       'The controller modulates charging flow to hold inventory, which in practice holds pressurizer ' +
@@ -491,11 +491,11 @@
       'restarts. With letdown still lined up, securing charging is a net drain on the primary.', CI, '7.1'),
     imrpq48hn3t: e('Charging flow',
       'Charging flow setpoint — how fast make-up enters the cold leg.',
-      'The band runs to 30 gpm (6.9 m³/h). Maximum charging is a lot of make-up: against an ' +
-      'isolated letdown it raises pressurizer level about 5 % a minute, so from a normal 58 % it ' +
-      'trips the reactor on high pressurizer level (87 %) in about five minutes. Letdown does NOT ' +
-      'hold it — with both orifices open the same flow still gains about 3 % a minute and trips ' +
-      'in under eight, because this plant charges at 30 gpm against a 13 gpm letdown lineup. ' +
+      'The band runs to 26 gpm (6.0 m³/h). Maximum charging is a lot of make-up: against an ' +
+      'isolated letdown it raises pressurizer level about 4.4 % a minute, so from a normal 58 % it ' +
+      'trips the reactor on high pressurizer level (87 %) in about six minutes. Letdown does NOT ' +
+      'hold it — with both orifices open the same flow still gains about 2.5 % a minute and trips ' +
+      'in under ten, because this plant charges at 26 gpm against a 12 gpm letdown lineup. ' +
       'Typing here takes Chemical and Volume Control System (CVCS) inventory control to ' +
       'manual.', CI, '7.2'),
     imrqp87ueqb: e('Charging Pump',
