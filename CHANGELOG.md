@@ -691,7 +691,51 @@ stays steady (power within 5 points of rated, pressure drift under 0.2 MPa / 29 
 meet within one broadcast of the window end, and a planted 1e-6 difference is seen by `compare()`.
 Four injections, one per conjunct, each proven to redden SI-0 alone. No baseline moves (8 checks).
 
-## [Alpha 1.7.4-rc10] — 2026-09-10
+## [Alpha 1.7.4-rc11] — 2026-09-10
+
+### Added (the vital-few Avg Coolant Temp gauge had no low edge at all — #703)
+
+The opposite gap from #676's, found during that fix: a plant running 105 °F (58.3 °C) cold at
+96.5 % power (#683's own reproduction) had **no vital-few cue until the reactor tripped**. The
+Tavg gauge carried only HIGH edges (`caution: 312 °C / 594 °F`, `danger: 335 °C / 635 °F`) and
+nothing on the cold side.
+
+**Rejected an absolute edge for the same reason #676's fixed 25 % was wrong**: the sliding Tavg
+program (`trefProgram`, `layers/control/pwr_control.js`) runs from about 547 °F (286 °C)
+no-load to about 576-581 °F (302-305 °C) at full power, so one number is right in at most one
+place.
+
+**MEASURED, full stack (`RD.SimulationService` + `ControlLayer`), `svc.tick()` driven, rods
+MANUAL (their free-play default)** — the maximum LEGITIMATE downward deviation of Tavg below
+its program:
+
+| case | max deviation |
+|---|---|
+| the power-ascension climb (`pwr_raise_power`, the gated 0-fail replay) | 1.9 °F |
+| the 6 h xenon swing immediately after it, rods untouched, no dilution | 0.5 °F |
+| a 100 -> 90 -> 100 MWe load transient | 1.7 °F |
+| a +15 ppm boration at full power, 2 h to settle (the **worst** case) | 9.5 °F |
+| steady state, all four free-play initial conditions | <= 0.7 °F |
+
+Clean separation from the 105 °F fault — 11x the worst legitimate excursion. **Built as a
+`caution_lo` on the existing gauge, program − 20 °F**, following #676's pattern exactly
+(`tavgGaugeCautionLo`, wired through the gauge's `autorange` hook): 2.1x the worst legitimate
+case, and it fires about 5x before the fault's own 105 °F — an early cue, not a second trip
+announcement. **Off in LOW RANGE** (below ~246 °C / 475 °F), exactly as `caution`/`danger`
+already are, so a heatup or cooldown does not relight it. The fallback for a snapshot
+publishing no program (the retired engine, an old recording) is the plant's own **LO TAVG
+(P-12)** annunciator setpoint (278 °C / 532.4 °F), read live rather than retyped.
+
+**Proved by injection** (`test/verify_e2e_ui.js` `testTavgGaugeDeviationCaution`, a browser
+check for the same reason #676's was): the CLASS sampled 40x at two on-program initial
+conditions — **0/40 warn in both**; the RULE's discriminator that the edge MOVES with load
+(274.9 °C cold -> 293.4 °C at power); and the fault reconstructed directly on the live plant
+(boron forced to 750 ppm, WARP-tier settle) — **40/40 warn**. Duty cycle: 0.0 % on every
+legitimate case (the deviation never reaches the 20 °F band), 100.0 % once the fault state is
+reached — against 0.0 % in every case before this change, including the fault, which is the
+defect. Gates at baseline: `verify_e2e_ui`, `verify_board_check`, `run_inspect`, `run_flags`,
+`verify_flags_ui`, `run_portable`, `run_pwr2_board`, `run_release` (9/9, no `BASELINES` entry
+moved).
 
 ### Fixed (the vital-few Pressurizer Level gauge cautioned on a plant that was on program — #676)
 

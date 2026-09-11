@@ -2078,6 +2078,123 @@ async function testPzrGaugeFollowsProgram(page) {
   return log.join('\n') + '\n';
 }
 
+/* THE VITAL-FEW Tavg GAUGE MUST CAUTION ON A COLD-AT-POWER PLANT AND STAY SILENT ON ONE
+ * TRACKING ITS PROGRAM (#703) — the opposite gap from #676's: the strip carried NO low edge
+ * on Tavg at all, so a plant running 105 °F (58.3 °C) cold at 96.5 % power had no vital-few
+ * cue until the reactor tripped (measured during the #676 fix, 2026-09-10).
+ *
+ * MEASURED (full stack, svc.tick() driven, ACCEL=10, rods MANUAL): the worst LEGITIMATE
+ * downward deviation of Tavg below its sliding program (a +15 ppm boration at full power) is
+ * 9.5 °F; the ascension climb, a load transient, the post-ascension xenon swing and steady
+ * state at all four initial conditions are all under 2 °F. The chosen edge, program − 20 °F,
+ * clears every legitimate case by 2x or more and fires about 5x before the fault's own 105 °F.
+ *
+ * TWO HALVES, same reason as testPzrGaugeFollowsProgram: ui/app.js does not load headless and
+ * the vital strip publishes no thresholds, only the class they produce.
+ *   1. THE CLASS, sampled on the live plant at two on-program initial conditions (Mode 1 at
+ *      power and Mode 3, Hot Standby — both HI-RANGE, where the edge is live).
+ *   2. THE RULE, called through `RD.PwrGaugeBands.tavgCautionLo` — including the
+ *      DISCRIMINATOR that the edge MOVES with load (the no-load anchor vs the full-power
+ *      point), that LOW RANGE nulls it exactly as caution/danger already are, and that a
+ *      snapshot with no program falls back to the plant's own LO TAVG (P-12) annunciator.
+ *
+ * PROVED BY INJECTION, 2026-09-10: restoring the pre-#703 gauge (no `caution_lo` at all) never
+ * warns no matter how cold Tavg reads — fails half 1's fault-reproduction leg with 0/40 warn
+ * where the fix reads 40/40; and a FIXED absolute edge (e.g. a literal 278) fails the
+ * discriminator, since it gives the same number at every load. */
+async function testTavgGaugeDeviationCaution(page) {
+  var log = [];
+  var ICS = [['hot_full_power', 'Mode 1, At Power'], ['hot_zero_power', 'Mode 3, Hot Standby']];
+  var edges = {};
+  for (var i = 0; i < ICS.length; i++) {
+    var ic = ICS[i][0], name = ICS[i][1];
+    await page.goto('http://127.0.0.1:' + PORT + '/ui/shell.html?engine=pwr2&init=' + ic +
+                    '&run=1&dev=1', { waitUntil: 'networkidle', timeout: 90000 });
+    await dismissMission(page);
+    await waitBoardLive(page, 20000);
+    if (await page.$('#speed [data-speed="10"]')) await page.click('#speed [data-speed="10"]');
+    await page.waitForTimeout(1200);
+    var r = await page.evaluate(async function () {
+      function sleep(ms) { return new Promise(function (f) { setTimeout(f, ms); }); }
+      var g = document.getElementById('gauge-tavg'), warn = 0, n = 0, i;
+      for (i = 0; i < 40; i++) {
+        if (g.classList.contains('warn')) warn++;
+        n++;
+        await sleep(100);
+      }
+      var svc = window.RD.__dev.service();
+      var snap = svc.assembleSnapshot();
+      var tavgC = snap.instruments.tavg, loadFrac = snap.instruments.steam_flow;
+      var CTL = window.RD.PWR_CONTROL;
+      var refC = (CTL && CTL.trefProgram) ? CTL.trefProgram(Math.max(0, Math.min(1, loadFrac || 0))) : null;
+      return {
+        warn: warn, n: n,
+        val: (document.querySelector('#gauge-tavg [data-val]') || {}).textContent,
+        tavgC: tavgC, refC: refC,
+        edge: window.RD.PwrGaugeBands.tavgCautionLo(snap, 278)
+      };
+    });
+    edges[ic] = r;
+    log.push(name + ': Tavg ' + r.tavgC.toFixed(1) + ' degC, ref ' + (r.refC != null ? r.refC.toFixed(1) : '?') +
+             ' degC, edge ' + (r.edge != null ? r.edge.toFixed(1) : 'null') + ' degC, gauge reads ' + r.val +
+             ' — ' + r.warn + ' warn of ' + r.n + ' samples');
+    if (r.warn) {
+      throw new Error('tavg gauge cautioned on a plant tracking its program at ' + name + ': ' +
+                      r.warn + '/' + r.n + ' samples, Tavg ' + r.tavgC.toFixed(1) + ' degC vs ref ' +
+                      (r.refC != null ? r.refC.toFixed(1) : '?') + ' degC');
+    }
+    if (r.refC == null || r.edge == null) throw new Error('tavg gauge published no live program/edge at ' + name);
+    if (Math.abs(r.edge - (r.refC - 20 * 5 / 9)) > 1e-6) {
+      throw new Error('tavg caution edge at ' + name + ' is ' + r.edge + ', not ref-20degF = ' + (r.refC - 20 * 5 / 9));
+    }
+  }
+  /* THE DISCRIMINATOR. An absolute edge gives the SAME number at no load and at full power. */
+  var cold = edges.hot_zero_power.edge, hot = edges.hot_full_power.edge;
+  if (!(hot - cold > 5)) {
+    throw new Error('the tavg caution edge did not follow the program: Hot Standby ' + cold +
+                    ' degC, Mode 1 ' + hot + ' degC — an absolute edge reads the same in both');
+  }
+  log.push('edge follows the program: Hot Standby ' + cold.toFixed(1) + ' degC -> Mode 1 ' +
+           hot.toFixed(1) + ' degC (program - 20 degF in each)');
+
+  /* THE FAULT LEG: reconstruct 105 degF (58.3 degC) cold at power directly on the live plant
+   * (boron forced back up after the ascension, exactly the pre-#683-fix scenario) and confirm
+   * the gauge actually warns — half 1's positive case, the one a "no low edge at all" gauge
+   * (the pre-#703 shipped defect) can never produce. */
+  await page.goto('http://127.0.0.1:' + PORT + '/ui/shell.html?engine=pwr2&init=hot_full_power' +
+                  '&run=1&dev=1', { waitUntil: 'networkidle', timeout: 90000 });
+  await dismissMission(page);
+  await waitBoardLive(page, 20000);
+  await page.evaluate(function () {
+    window.RD.__dev.service().handleCommand({ action: 'set_auto_setpoint', channel_id: 'boron_conc', value: 750 });
+  });
+  // WARP tier (the real speed buttons, not a direct property poke — a manual svc.tick() loop
+  // here would race the app's own running interval): 750 ppm pins the level program on its
+  // floor (the #683 pin point is 670 ppm) and settles Tavg well below the no-load anchor
+  // within a couple of plant-hours, which WARP's coarser step covers in a few wall-seconds.
+  if (await page.$('#speed [data-speed="3600"]')) await page.click('#speed [data-speed="3600"]');
+  await page.waitForTimeout(20000);
+  var faultR = await page.evaluate(async function () {
+    function sleep(ms) { return new Promise(function (f) { setTimeout(f, ms); }); }
+    var g = document.getElementById('gauge-tavg'), warn = 0, n = 0, i;
+    for (i = 0; i < 40; i++) {
+      if (g.classList.contains('warn')) warn++;
+      n++;
+      await sleep(100);
+    }
+    var svc = window.RD.__dev.service();
+    var snap = svc.assembleSnapshot();
+    return { warn: warn, n: n, tavgC: snap.instruments.tavg, power: snap.instruments.power_range };
+  });
+  log.push('fault leg (boron forced to 750 ppm, WARP settle): Tavg ' + faultR.tavgC.toFixed(1) +
+           ' degC, power ' + faultR.power.toFixed(1) + ' % — ' + faultR.warn + ' warn of ' + faultR.n + ' samples');
+  if (!faultR.warn) {
+    throw new Error('tavg gauge never cautioned on the reconstructed cold-at-power fault: Tavg ' +
+                    faultR.tavgC.toFixed(1) + ' degC, power ' + faultR.power.toFixed(1) + ' %');
+  }
+  return log.join('\n') + '\n';
+}
+
 async function testCssTransitions(page) {
   var log = [];
   var url = 'http://127.0.0.1:' + PORT + '/ui/shell.html?engine=pwr2&init=hot_full_power&run=1&dev=1';
@@ -2188,6 +2305,8 @@ async function main() {
     fs.writeFileSync(path.join(SCRATCH, 'css-transitions.log'), ctLog);
     var pgLog = await testPzrGaugeFollowsProgram(page);
     fs.writeFileSync(path.join(SCRATCH, 'pzr-gauge-program.log'), pgLog);
+    var tgLog = await testTavgGaugeDeviationCaution(page);
+    fs.writeFileSync(path.join(SCRATCH, 'tavg-gauge-deviation.log'), tgLog);
     fs.writeFileSync(path.join(SCRATCH, 'ui-screenshot-summary.log'), summary.join('\n') + '\n');
     console.log('E2E UI verification: PASS (' + (ENGINES.length * VIEWS.length) + ' screenshots)');
   } finally {
@@ -2209,6 +2328,7 @@ if (require.main !== module) {
                      testHeldPlantDialog: testHeldPlantDialog, testHeldSpeedClick: testHeldSpeedClick,
                      testSaveLoadRefusal: testSaveLoadRefusal, testCssTransitions: testCssTransitions,
                      testPzrGaugeFollowsProgram: testPzrGaugeFollowsProgram,
+                     testTavgGaugeDeviationCaution: testTavgGaugeDeviationCaution,
                      port: function () { return PORT; } };
 } else {
   main().catch(function (e) {
