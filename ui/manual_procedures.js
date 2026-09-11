@@ -2031,17 +2031,34 @@
           acc: { p: 'power_pct', op: '<', v: 5 },
           hl: ['SCRAM'] },
         /* THE DUMP'S MODE IS THE SHUTDOWN LEG'S TO SET (layman playtest pass 2, #653 S-11; the seam
-         * pass 1 found as S2). After the scram the dump is still in 'tavg' mode from power and
-         * carries nothing (measured: 0 % open); AUTO with the turbine tripped selects pressure
-         * mode and it opens to ~13 % on the no-load setpoint. So the leg's last step presses it,
-         * graded on the press AND on the valve carrying flow — and the tile reads FISSION power
-         * (0.2 % after a scram), so the text no longer claims "near 2 %"; decay heat has no
-         * readout on this board and the old `decay_heat_pct` acceptance drew a done-when nobody
-         * could find. */
+         * pass 1 found as S2). After the scram the dump is still in 'tavg' mode from power; AUTO
+         * with the turbine tripped selects pressure mode. The tile reads FISSION power (0.2 %
+         * after a scram), so the text no longer claims "near 2 %"; decay heat has no readout on
+         * this board and the old `decay_heat_pct` acceptance drew a done-when nobody could find.
+         *
+         * GRADED ON THE STATE, NOT THE PRESS (#697). This used to be a pure cmd-kind entry with
+         * no predicate and no `overtaken` — measured (service, hot_full_power -> load 0 -> scram,
+         * chained from `pwr_lower_power` too, AUTO never pressed): `steam_dump_valve_pct` is
+         * ALREADY above 0.5 % from t=0 (the tavg-mode dump answers the load/scram transient on
+         * its own, 39 % open chained, 100 % standalone, decaying to ~7-9 % by the time power
+         * clears 1 %) and `power_pct` clears 1 % within seconds of the scram. Both siblings were
+         * already true; only the redundant press blocked the tick — the #697 family, same shape
+         * as #641 sign-flipped. `p` and `cmd` now live on ONE entry: `_gradeAccs` grades the `p`
+         * half independent of any command (proven by injection — a synthetic accs entry with
+         * `p` already true and `cmd` never issued latches on its own), so a plant already there
+         * ticks the box; `_accsCmdWatch` still latches the SAME entry instantly on the press for
+         * a plant that is not (an entry with a `p` AND a `cmd` is not the two-entry
+         * hidden-cmd-plus-predicate shape `pwr_heatup` step 8 uses — that shape still requires
+         * the actual press, proven by injection with the SAME two functions, so it does not fix
+         * a pre-satisfied step; the merge does). `steam_dump_auto` never reads 0 on this leg (it
+         * is `dumpMode() !== 'off'`, true since the IC's own lineup), so this half of the step
+         * always latches at once — that is correct, not a hole: the two REAL gates are the
+         * predicate siblings below, which still require the plant to actually get there. */
         { text: 'Press AUTO on the STEAM DUMP card until its status reads PRESS. Then check: REACTOR POWER below 1 %, STEAM PRESS holding near 1020 psi, the STEAM DUMP open a little.',
           why: 'The chain reaction is gone, but the fuel still makes about 2 % of full power from radioactive decay, and REACTOR POWER does not show it. With the turbine tripped, AUTO puts the steam dump into pressure-holding mode and it carries that heat to the condenser. Hot, at pressure, shut down: Mode 3, Hot Standby.',
           hold: 120,
-          accs: [{ cmd: { action: 'set_steam_dump', mode: 'auto' }, label: 'STEAM DUMP AUTO pressed, status PRESS' },
+          accs: [{ cmd: { action: 'set_steam_dump', mode: 'auto' }, p: 'steam_dump_auto', op: '>', v: 0,
+                   label: 'STEAM DUMP AUTO lit, status PRESS' },
                  { p: 'steam_dump_valve_pct', op: '>', v: 0.5, label: 'STEAM DUMP open, carrying the decay heat' },
                  { p: 'power_pct', op: '<', v: 1, label: 'REACTOR POWER below 1 %' }],
           hl: ['Steam Dump', 'Tavg'] },
@@ -2100,9 +2117,26 @@
          * inert. Measured (service, hot_full_power -> load 0 -> scram): mode 'tavg'; press AUTO
          * again -> 'pressure', and 640 psi then cools Tavg 287.7 -> 257.0 degC in 30 plant-minutes.
          * The leg's own hot_zero_power IC boots in 'pressure', which is why the replay never saw
-         * it. The AUTO press is a cmd-kind entry so the live checklist needs the press; the
-         * temperature acceptance moves into `accs` beside it (an `acc` is ignored when `accs`
-         * exists — instructor_layer grades one or the other). */
+         * it. The temperature acceptance moves into `accs` beside it (an `acc` is ignored when
+         * `accs` exists — instructor_layer grades one or the other).
+         *
+         * GRADED ON THE STATE, NOT THE PRESS (#697 — the reported instance: "steam dump AUTO was
+         * already green but it still required a press to check off step"). This leg's own
+         * `hot_zero_power` IC boots with the dump ALREADY `auto`/`pressure` (measured, nothing
+         * commanded), and the CHAIN makes it worse: `pwr_shutdown`'s last step (also fixed by
+         * #697) presses this same AUTO command, so a player walking the authored round trip
+         * arrives here with it already done twice over. The old accs[0] was a pure cmd-kind entry
+         * with no predicate and no `overtaken` — it could never latch except on a fresh press, so
+         * the tick was ceremonial at best and, per the owner's report, a nagging one. `p` and
+         * `cmd` now live on ONE entry, same fix and same proof-by-injection as `pwr_shutdown`
+         * step 3: `_gradeAccs` grades the `p` half regardless of any command, so a plant already
+         * there ticks the box; `_accsCmdWatch` still latches the SAME entry on the press for a
+         * plant that is not. `steam_dump_auto` reads 1 the instant the leg boots (it is
+         * `dumpMode() !== 'off'`, true from the IC's own lineup) — that half is DECORATIVE by
+         * design, not a hole: the real gate stays the sibling `tavg_c < 175` predicate below,
+         * which still cannot be faked — TAVG mode carries the setpoint nowhere (this step's own
+         * `note`), so a player who never actually switches the dump to pressure mode never sees
+         * tavg fall and the step correctly does not complete. */
         { text: 'Press AUTO on the STEAM DUMP card until its status reads PRESS. Then lower DUMP SETPOINT 50 psi at a time, from 1020 down to 120 psi, waiting each time until AVG COOLANT TEMPERATURE stops falling, about 5 plant-minutes. Done when it reads below 347 °F.',
           note: 'Small steps matter. Typing 640 straight in drops the coolant 50 °F in one plant-minute and empties the pressurizer; 50 psi every 5 minutes runs at about 85 °F per hour. If the Cooldown Rate High alarm comes on, wait longer between steps. In TAVG mode the setpoint does nothing. About two plant-hours in all; use the speed buttons at the top.',
           why: 'Steam pressure and steam temperature go together: lower the pressure the dump holds and the steam generator boils at a lower temperature, which pulls the reactor water down after it. It cannot pull the water below its own boiling point, so the walk goes all the way to 120 psi, about 341 °F, low enough for RHR to take over.',
@@ -2111,7 +2145,8 @@
           cmd: { action: 'set_steam_dump_setpoint', mpa: 0.83 }, hold: 9600,
           ramp: [{ action: 'set_steam_dump_setpoint', arg: 'mpa', points: [7.03, 4.42, 2.76, 1.66, 0.83] }],
           saw: { p: 'tavg_c', op: '<', v: 250 },
-          accs: [{ cmd: { action: 'set_steam_dump', mode: 'auto' }, label: 'STEAM DUMP AUTO pressed, status PRESS' },
+          accs: [{ cmd: { action: 'set_steam_dump', mode: 'auto' }, p: 'steam_dump_auto', op: '>', v: 0,
+                   label: 'STEAM DUMP AUTO lit, status PRESS' },
                  { p: 'tavg_c', op: '<', v: 175, label: 'AVG COOLANT TEMPERATURE below 347 °F' }],
           hl: ['Dump SP', 'Steam Dump', 'Tavg'] },
         { text: 'Lower SET PZR PRESSURE to 1700 psi, as low as the box goes. From here pressure comes down by hand.',
