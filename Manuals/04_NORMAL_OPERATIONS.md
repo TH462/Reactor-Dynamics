@@ -809,7 +809,7 @@ in the first leg.
 | Power | 100 % |
 | Electrical | **≈ 100 MWe** |
 | Primary pressure | **2235 psi (15.41 MPa)** |
-| Tavg | ≈ 566.6 – 579.2 °F (297 – 304 °C) (no-load → full-power program) |
+| Tavg | ≈ 547.0 – 580.1 °F (286.1 – 304.5 °C) (no-load → full-power program; #647, 2026-09-11) |
 | PZR level | ~55 % |
 | SG level | ~65 % |
 | Subcooling | ~73.8 °F (41 °C) |

@@ -429,7 +429,7 @@ The board therefore **reclassifies** these alarms rather than removing them. The
 
 | Field | Content |
 |-------|---------|
-| **Setpoint** | Tavg ≤ **552.2 °F** (289 °C) — the **P-12** line, ~14.4 °F (8 °C) below the no-load Tavg program |
+| **Setpoint** | Tavg ≤ **532.4 °F** (278 °C) — the **P-12** line, ~14.4 °F (8 °C) below the **547 °F (286.1 °C)** no-load Tavg program anchor (#647 evidence pass, 2026-09-11 — corrects a stray 566.6 °F anchor this row was never updated to follow through #508/#645's re-anchor to Ginna's programmed no-load TAVG) |
 | **Means** | The primary is below the hot operating band. At power or at hot standby this is an **overcooling** transient: excess steam demand, a stuck-open dump or relief path, or an overfed steam generator. Moderator feedback adds positive reactivity as the primary cools, so an unattended overcool raises power. |
 | **Deliberately not a trip** | A PWR does not scram on low Tavg. The real cold-side protections are this permissive and low-temperature overpressure protection — neither is a reactor trip. |
 | **Actions** | 1) Find the steam path that is taking too much heat: steam dump position, PORV / SG safeties, turbine load against reactor power (**A28**). 2) Isolate or close it. 3) Watch power — Tavg falling with power *rising* is the overcool feeding itself. 4) Cross-check pressure and subcooling; a cooling primary shrinks and drops pressurizer level. |
