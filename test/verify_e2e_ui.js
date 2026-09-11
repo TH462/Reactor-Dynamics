@@ -2313,6 +2313,130 @@ async function testPauseResumeSpeed(page) {
   return log.join('\n') + '\n';
 }
 
+/* #710 — RESUME-FROM-PAUSE CLEARED THE ACCUMULATOR-HELD SPEED-BAR MESSAGE WHILE THE HOLD STILL
+ * STOOD (filed by the #686 agent, out of scope there). `resumeSim()` (and two siblings — the
+ * speed-button click handler, the walkthrough rewind handler) nulled `warpNote` unconditionally
+ * on the theory that any player act means the plant-declared hold is over. It is not: the
+ * accumulator arming window (`true_state.speed_hold`) can stand for plant-minutes, and
+ * `set_speed(1)` — what a resume always sends — always succeeds under it (only `> 1` is
+ * refused), so nothing stopped a pause/resume from happening WHILE still inside the window.
+ * That silently re-created the #619 item 13 trap: the plant refuses every speed press above 1x
+ * and the ONLY standing explanation on screen (`#warpInfo`'s persistent line, #686 ruling 3)
+ * disappeared on an ordinary pause/resume.
+ *
+ * THE FIX (`retireWarpNote` in ui/app.js) reads the LIVE state — `latest.true_state.speed_hold`
+ * — instead of assuming an act means the hold is over: keep the note while the hold still
+ * stands, retire it once the act happens with the hold genuinely gone.
+ *
+ * WHY A ONE-SHOT PLANT DOES NOT PROVE THIS (learned from #686's own check, `testHeldSpeedClick`
+ * above): its `assembleSnapshot` override is restored immediately after ONE manual broadcast, so
+ * by the time `resumeSim()`'s own `cmd()` calls `assembleSnapshot()` again, the injected
+ * `speed_hold` is gone — which would make retirement look CORRECT even with the #710 defect
+ * still in place, because the live state genuinely no longer shows a hold. This override stays
+ * installed (`__710hold`, toggled rather than restored) so every subsequent broadcast — the one
+ * `resumeSim()` triggers, and the real interval ticks around it — keeps reporting the hold for as
+ * long as the test says it stands, exactly like a real 75-plant-minute arming window would.
+ *
+ * PROVED THROUGH THE REAL PIPELINE, NOT THE DOM, same shape as `testHeldSpeedClick`: the rising
+ * edge is produced by one manual `_assembleWithInstructor()` + `_broadcast()` call while running
+ * at >1x (the drop-to-1x-and-stamp branch only fires when `timeAcceleration > 1`,
+ * `layers/simulation_service.js` :781), then the pause/resume cycle is driven through the real
+ * `#playBtn` exactly as a player would click it. render() schedules DOM work on the next
+ * `requestAnimationFrame`, so every read below is preceded by a wait for a broadcast/paint to
+ * land — reading `#warpInfo` synchronously races the paint and reads empty text, which looks
+ * like a pass (the #686 agent's finding, `read()`'s own `waitForTimeout` avoids it).
+ *
+ * BOTH HALVES: POSITIVE — pause/resume while the hold still stands must keep the message.
+ * NEGATIVE — once the hold is actually cleared (`__710hold = false`, then a real broadcast lands
+ * it), the next pause/resume must retire the message, or this only pins a message that can
+ * never go away. */
+async function testHeldNotePauseResume(page) {
+  var log = [];
+  var base = 'http://127.0.0.1:' + PORT + '/ui/shell.html?engine=pwr2&run=1&dev=1';
+  await page.goto(base, { waitUntil: 'networkidle', timeout: 90000 });
+  await dismissMission(page);
+  await waitBoardLive(page, 20000);
+
+  async function read() {
+    return await page.evaluate(function () {
+      var svc = globalThis.RD.__dev.service();
+      var el = document.getElementById('warpInfo');
+      return { accel: svc.timeAcceleration, running: svc.running,
+               paused: document.getElementById('playBtn').classList.contains('paused'),
+               warp: el ? el.textContent : null, warpHidden: el ? el.hidden : null };
+    });
+  }
+
+  // ---- establish a STANDING hold, with the fabricated fact left installed rather than
+  // one-shot (see header comment for why a one-shot plant cannot prove this). ----
+  await page.evaluate(function () {
+    var svc = globalThis.RD.__dev.service();
+    svc.handleCommand({ action: 'set_speed', value: 600 });   // must be >1x for the drop-and-stamp
+    var orig = svc.assembleSnapshot;
+    globalThis.__710orig = orig;
+    globalThis.__710hold = true;
+    svc.assembleSnapshot = function () {
+      var snap = orig.call(this);
+      if (globalThis.__710hold) {
+        snap.true_state = Object.assign({}, snap.true_state,
+          { speed_hold: 'accumulator window open — arm the accumulators before accelerating again' });
+      }
+      return snap;
+    };
+    var out = svc._assembleWithInstructor();   // the rising edge: stamps speed_snap, drops to 1x
+    svc._broadcast(out);
+  });
+  await page.waitForTimeout(400);
+  var afterHold = await read();
+  if (afterHold.warpHidden || !/Held at real time/.test(afterHold.warp || '') || afterHold.accel !== 1) {
+    throw new Error('#710 fixture: the standing hold did not print under the speed bar — ' + JSON.stringify(afterHold));
+  }
+  log.push('hold established: "' + afterHold.warp + '", accel ' + afterHold.accel);
+
+  // ---- THE CASE (positive): pause and resume through the real button WHILE THE HOLD STILL
+  // STANDS. Pre-fix, resumeSim() nulled `warpNote` unconditionally here. ----
+  await page.click('#playBtn');
+  await page.waitForTimeout(300);
+  var afterPause = await read();
+  if (!afterPause.paused || afterPause.running) {
+    throw new Error('#710 fixture: #playBtn did not pause — ' + JSON.stringify(afterPause));
+  }
+  await page.click('#playBtn');
+  await page.waitForTimeout(400);
+  var afterResume = await read();
+  if (afterResume.paused || !afterResume.running || afterResume.accel !== 1) {
+    throw new Error('#710 fixture: #playBtn did not resume at 1x — ' + JSON.stringify(afterResume));
+  }
+  if (afterResume.warpHidden || !/Held at real time/.test(afterResume.warp || '')) {
+    throw new Error('#710: resume cleared the held-at-real-time message while the hold still ' +
+      'stands — warpInfo "' + afterResume.warp + '" (hidden=' + afterResume.warpHidden + ')');
+  }
+  log.push('resumed under a standing hold: message survives ("' + afterResume.warp + '")');
+
+  // ---- THE NEGATIVE HALF: the hold genuinely lifts, a real broadcast reports it, THEN the
+  // player acts again — the message must clear, or this only pins a message that never goes
+  // away. ----
+  await page.evaluate(function () { globalThis.__710hold = false; });
+  await page.waitForTimeout(400);   // the service is running: let a real broadcast drop speed_hold
+  await page.click('#playBtn');
+  await page.waitForTimeout(300);
+  await page.click('#playBtn');
+  await page.waitForTimeout(400);
+  var afterLifted = await read();
+  if (/Held at real time/.test(afterLifted.warp || '')) {
+    throw new Error('#710: the held-at-real-time message survived a pause/resume after the hold ' +
+      'genuinely lifted — warpInfo "' + afterLifted.warp + '"');
+  }
+  log.push('hold lifted, then resumed: message cleared (warpInfo "' + (afterLifted.warp || '') + '")');
+
+  await page.evaluate(function () {
+    var svc = globalThis.RD.__dev.service();
+    svc.assembleSnapshot = globalThis.__710orig;
+    delete globalThis.__710orig; delete globalThis.__710hold;
+  });
+  return log.join('\n') + '\n';
+}
+
 /* NO CSS TRANSITION MAY RIDE A BROADCAST-CADENCE VALUE (#613 wave 3, 2026-09-04).
  *
  * THE INVARIANT: a CSS transition may exist only on a property that changes on a DISCRETE
@@ -2686,6 +2810,8 @@ async function main() {
     fs.writeFileSync(path.join(SCRATCH, 'watch-glow-rendered.log'), wgLog);
     var prLog = await testPauseResumeSpeed(page);
     fs.writeFileSync(path.join(SCRATCH, 'pause-resume-speed.log'), prLog);
+    var hnLog = await testHeldNotePauseResume(page);
+    fs.writeFileSync(path.join(SCRATCH, 'held-note-pause-resume.log'), hnLog);
     var ctLog = await testCssTransitions(page);
     fs.writeFileSync(path.join(SCRATCH, 'css-transitions.log'), ctLog);
     var pgLog = await testPzrGaugeFollowsProgram(page);
@@ -2715,6 +2841,7 @@ if (require.main !== module) {
                      testPzrGaugeFollowsProgram: testPzrGaugeFollowsProgram,
                      testTavgGaugeDeviationCaution: testTavgGaugeDeviationCaution,
                      testPauseResumeSpeed: testPauseResumeSpeed, testWalkthroughEventPause: testWalkthroughEventPause,
+                     testHeldNotePauseResume: testHeldNotePauseResume,
                      port: function () { return PORT; } };
 } else {
   main().catch(function (e) {

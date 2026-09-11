@@ -3039,7 +3039,23 @@
    * It does NOT become a whole-leg "time to completion": that number has no honest source
    * (`hold` is the replay's fixture dwell, not a player-timing measurement — see the wait-line
    * comment in `renderChecklist` below) and the ruling declines it explicitly. */
-  var warpNote = null;   // { text, reason } — the held-at-real-time note only; cleared on any player speed act
+  var warpNote = null;   // { text, reason } — the held-at-real-time note only; retired on any player speed act (unless the hold it names is still standing — see retireWarpNote, #710)
+  /* #710: three sites (resumeSim, the speed-button click handler, the walkthrough rewind
+   * handler) used to null `warpNote` unconditionally on any player act, on the theory that
+   * acting on the last drop means the player has seen it and is moving on — true for the five
+   * momentary reasons (scram/failure/alarm/transient/step/warp_locked), which never outlive the
+   * broadcast that reported them. `hold` is not one of those: `true_state.speed_hold` can still
+   * be standing the instant the act happens (a pause/resume, a repeat speed click, or a rewind
+   * taken WHILE inside the accumulator arming window changes nothing about the plant), and
+   * nulling the note there silently re-creates the exact #619 item 13 trap this line exists to
+   * close — the player is left with NO explanation for why every speed press above 1x keeps
+   * refusing. `latest` (the last-rendered snapshot, assigned synchronously at the top of
+   * `render()`) is read rather than re-deriving anything: if the hold is still live, the note
+   * survives; once it has genuinely lifted, the next player act clears it exactly as before. */
+  function retireWarpNote() {
+    if (warpNote && warpNote.reason === 'hold' && latest && latest.true_state && latest.true_state.speed_hold) return;
+    warpNote = null;
+  }
   function syncWarpInfo(s) {
     var el = $('warpInfo');
     if (!el) return;
@@ -6701,12 +6717,16 @@
      * writing `service.timeAcceleration` directly or routing through the service's
      * `speed_snap` drop-to-1x path (`layers/simulation_service.js` attention-stop branch) —
      * that path toasts "Dropped to real time" and would misreport a deliberate play press as
-     * the plant interrupting the player. `warpNote` is cleared for the same reason: this is
+     * the plant interrupting the player. `warpNote` is retired for the same reason: this is
      * the player's own act, not a plant-declared drop, so the line under the speed bar must
-     * not blame one. Sent BEFORE `service.start()`, while the service still reads as
-     * stopped, so `cmd()`'s own `if (!service.running) render(...)` fires and the 1x button
-     * is lit immediately rather than waiting on the next broadcast. */
-    warpNote = null;
+     * not blame one — UNLESS the hold it names is still standing, in which case nulling it
+     * here is the #710 defect: pause/resume inside the accumulator arming window never changes
+     * `true_state.speed_hold`, so the note must survive (`retireWarpNote` checks the live
+     * state rather than assuming an act means the hold is over). Sent BEFORE `service.start()`,
+     * while the service still reads as stopped, so `cmd()`'s own `if (!service.running)
+     * render(...)` fires and the 1x button is lit immediately rather than waiting on the next
+     * broadcast. */
+    retireWarpNote();
     cmd({ action: 'set_speed', value: 1 });
     if (!service.running) service.start();
     syncPlayBtn();
@@ -7655,7 +7675,7 @@
       // The ⚡ badge is syncSpeedUI's job (it runs off the snapshot and null-guards
       // the element). This handler used to set it too, unguarded — and the PWR shell
       // has no #ffBadge, so every speed click threw before the segment could repaint.
-      warpNote = null;   // the player has acted on the last drop (#655); the info line moves on
+      retireWarpNote();   // the player has acted on the last drop (#655); the info line moves on — unless the hold named is still standing (#710)
       cmd({ action: 'set_speed', value: +b.getAttribute('data-speed') });
     });
     // Settings: Units only under Display (#277 removed Values / Terminology /
@@ -7940,13 +7960,16 @@
          * the transient that caused the drop — so the line under the bar went on reading "WARP
          * dropped to 60x — pressure moving 41 psi/s" with 1x lit above it, indefinitely.
          * Measured: 1x lit, that text still shown 4 s later and until a speed button was touched.
-         * The rewind IS the player acting on the drop, so the note is spent. */
+         * The rewind IS the player acting on the drop, so the note is spent — UNLESS it names a
+         * `hold` still standing at the moment of the click (#710): a rewind taken while still
+         * inside the accumulator arming window does not itself clear `true_state.speed_hold`,
+         * so `retireWarpNote` is used here too rather than a bare null. */
         /* #694: a rewind taken FROM a paused walkthrough step restores an earlier checkpoint
          * (laid at that earlier step's ENTRY, before it fired anything — see the ordering note
          * in instructor_layer.js `_checklistFire`), so the restored state never asked for this
          * pause. Nothing else would ever clear it: release the hold here too, or the plant
          * comes back from the rewind and simply never ticks again. */
-        if (!rw.disabled) { warpNote = null; TEL.walkthroughRewind(); releaseHold('walkthrough'); cmd({ action: 'rewind', steps: 2, scope: 'full', exact: true }); }
+        if (!rw.disabled) { retireWarpNote(); TEL.walkthroughRewind(); releaseHold('walkthrough'); cmd({ action: 'rewind', steps: 2, scope: 'full', exact: true }); }
         return;
       }
       var wa = e.target.closest('[data-ckl-why-all]');

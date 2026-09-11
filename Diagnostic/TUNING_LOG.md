@@ -29,6 +29,75 @@ and the user-visible summary in `CHANGELOG.md`. This file points at those and tr
 
 ---
 
+## Session log — 2026-09-11-workbench-d (#710 — resume-from-pause cleared the held-at-real-time message, UNMERGED on `workbench`)
+
+Filed by the #686 agent, out of scope there — pre-existing #691 code that #686 (landed at
+`9737c775`) did not touch. Touches `ui/app.js`, `test/verify_e2e_ui.js`, `test/run_all.js`.
+
+### What was actually wrong
+
+`resumeSim()`, the speed-button click handler, and the walkthrough rewind handler each nulled
+`warpNote` unconditionally on any player act — the theory being that acting on the last drop
+means the player has seen it and is moving on. True for the five momentary reasons (scram/
+failure/alarm/transient/step/warp_locked), which never outlive the broadcast that reported them.
+**Not true for `hold`**: `true_state.speed_hold` (the accumulator arming window, #619 item 13) can
+stand for plant-minutes, and `set_speed(1)` — what a resume always sends — always succeeds under
+it (only `> 1` is refused), so nothing stopped a pause/resume, a repeat speed click, or a rewind
+from happening WHILE the window was still open. The three sites confused "the player acted" with
+"the hold is over," and only the second one is true for the other five reasons. **Verified,
+against the #686 agent's finding**: `resumeSim()` is one of the pre-existing **three** clearing
+sites (`ui/app.js` — resumeSim, the `#speed` click handler, the `[data-wt-rewind]` handler), not a
+fourth; all three predate #686 and share the identical defect.
+
+### The fix
+
+`retireWarpNote()` (`ui/app.js`, beside the `warpNote` declaration) replaces the three bare
+`warpNote = null` sites. It reads the LIVE state — `latest.true_state.speed_hold` (`latest` is the
+last-rendered snapshot, assigned synchronously at the top of `render()`) — rather than assuming a
+player act means the hold has lifted: if `warpNote.reason === 'hold'` and the hold is still
+standing, the note survives; otherwise it retires exactly as before. Before: pause+resume inside
+the arming window left the player with NO explanation for why every speed press above 1x kept
+refusing. After: the message ("Held at real time — the plant needs you here") survives a pause/
+resume while the hold stands, and still clears the next time the player acts once the hold has
+genuinely lifted.
+
+### Proof: the browser check, both halves
+
+Extended `test/verify_e2e_ui.js` with `testHeldNotePauseResume`, following the shape of #686's own
+`testHeldSpeedClick` (a source scan cannot prove a string reaches the player; a rendering claim
+needs a browser). One difference from that check, load-bearing here: #686's `assembleSnapshot`
+override is restored immediately after ONE manual broadcast, so by the time `resumeSim()`'s own
+follow-up snapshot is assembled the injected hold is already gone — which would make the fix look
+correct even with the #710 defect still present, because the live state genuinely no longer shows
+a hold. This test leaves the override INSTALLED (toggled via a flag rather than restored) so a
+real pause/resume broadcast still reports the hold, then flips the flag off for the negative half.
+Every read is preceded by a `waitForTimeout` after the triggering broadcast — the #686 agent's own
+rAF-race finding (`render()` schedules DOM work on the next `requestAnimationFrame`; reading
+`#warpInfo` synchronously reads empty text and looks like a pass).
+
+Both halves proven red by injection before landing:
+- Positive (message survives): reverting `retireWarpNote()` to a bare `warpNote = null` in
+  `resumeSim()` failed with "resume cleared the held-at-real-time message while the hold still
+  stands."
+- Negative (message still clears): making `retireWarpNote()` never clear a `hold` reason
+  (`if (warpNote && warpNote.reason === 'hold') return;` unconditionally) failed with "the
+  held-at-real-time message survived a pause/resume after the hold genuinely lifted" — proving the
+  negative half is load-bearing, not a check that only pins a message that can never go away.
+
+### Gates
+
+`run_style` 11/11, `verify_flags_ui` 52/52, `verify_e2e_ui` PASS (4 screenshots, score unchanged
+— new check function, same convention as #685/#686/#694). `node test/run_all.js`: **AGGREGATE
+GATE: OK, 111 runners at baseline** — `run_ops` 59/70 is the only tracked/ruled red (#330), no
+runner drifted off `BASELINES`; `run_hardrules` read 531 (this session's TUNING_LOG entry cites
+no new dated+quoted OWNER ruling, so it added no HR11 site and the count is unchanged from the
+lane's own recorded baseline — NOT the number predicted from reasoning about develop's separate
+merge, per the standing rule that only the gate's own output on the tree you are standing on is
+authoritative). `develop` moved on during this run (merged/pushed elsewhere to `9774a679`) but
+this lane was not fast-forwarded and this work commits on top of `9737c775` as planned.
+
+---
+
 ## Session log — 2026-09-11-workbench-c (#686 — the warp status line replaced, UNMERGED on `workbench`)
 
 Three rulings stack on #686: *(OWNER RULING, 2026-09-09: "Warp line as you recommend." —
