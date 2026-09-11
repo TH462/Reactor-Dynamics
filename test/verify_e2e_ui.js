@@ -1930,6 +1930,54 @@ async function testHeldSpeedClick(page) {
     throw new Error('#627: the refusal did not reach the scanner bar — it read "' + held.scanner + '"');
   }
   log.push('held: click refused at 1x, tab ' + held.tab + ', scanner "' + held.scanner.slice(0, 90) + '"');
+
+  /* #686 (OWNER RULING 2026-09-11, "option A" on the held-at-real-time question): the line
+   * PERSISTING under the speed bar — not just the per-click scanner flash above — must still
+   * carry this message. The #686 replacement deletes the other three `warpNote` reasons
+   * (momentary drops already toasted + flashed) but keeps this one, because the accumulator
+   * window is a genuine, multi-minute refusal (#675 §E measured the rate-based refusals at a
+   * 2.0 plant-second maximum; this one is not that). A literal reading of the #686 ruling
+   * would have deleted this too, which is exactly the regression ruling 3 exists to block.
+   *
+   * PROVED THROUGH THE REAL PIPELINE, NOT THE DOM: `_prevSpeedHold` alone (planted above) never
+   * reaches `syncWarpInfo` — the persistent line is only ever set from a `speed_snap`, which
+   * `_assembleWithInstructor` stamps ONLY on the RISING edge of `true_state.speed_hold` (and
+   * only while `timeAcceleration > 1`, `layers/simulation_service.js` :781). Reaching that state
+   * for real is the same 75-plant-minute heatup, so this plants the ONE upstream fact —
+   * `true_state.speed_hold` — behind a one-shot override of `assembleSnapshot`, then runs it
+   * through the unmodified `_assembleWithInstructor` -> `_attentionStop` -> `snap.metadata.
+   * speed_snap` -> `_broadcast` -> `syncSpeedUI`/`syncWarpInfo` chain exactly as a real hold
+   * would. A source scan of `syncWarpInfo` cannot prove this string reaches the player;
+   * only a broadcast that the client actually renders can (CLAUDE.md's standing trap: a
+   * source scan cannot prove a string is reachable). */
+  await page.evaluate(function () {
+    var svc = globalThis.RD.__dev.service();
+    svc._prevSpeedHold = null;                                  // unheld, so this set_speed lands
+    svc.handleCommand({ action: 'set_speed', value: 600 });     // must land above 1x for the stamp
+    var orig = svc.assembleSnapshot;
+    svc.assembleSnapshot = function () {
+      var snap = orig.call(this);
+      snap.true_state = Object.assign({}, snap.true_state,
+        { speed_hold: 'accumulator window open — arm the accumulators before accelerating again' });
+      return snap;
+    };
+    var out;
+    try { out = svc._assembleWithInstructor(); } finally { svc.assembleSnapshot = orig; }
+    svc._broadcast(out);   // render() schedules its DOM work on the next rAF — read it after a wait
+  });
+  await page.waitForTimeout(300);
+  var warpLine = await page.evaluate(function () {
+    var svc = globalThis.RD.__dev.service();
+    var el = document.getElementById('warpInfo');
+    return { text: el ? el.textContent : null, hidden: el ? el.hidden : null, accel: svc.timeAcceleration };
+  });
+  if (warpLine.hidden || !/Held at real time/.test(warpLine.text || '') || warpLine.accel !== 1) {
+    throw new Error('#686: the accumulator hold must still print under the speed bar on a real ' +
+      'rising edge — accel ' + warpLine.accel + ', warpInfo "' + warpLine.text + '" (hidden=' + warpLine.hidden + ')');
+  }
+  log.push('warp line: "' + warpLine.text + '" (accel ' + warpLine.accel + 'x)');
+  await page.evaluate(function () { globalThis.RD.__dev.service()._prevSpeedHold = null; });
+
   await page.evaluate(function () { globalThis.RD.__dev.service().handleCommand({ action: 'stop_checklist' }); });
   return log.join('\n') + '\n';
 }

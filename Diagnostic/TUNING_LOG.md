@@ -29,6 +29,82 @@ and the user-visible summary in `CHANGELOG.md`. This file points at those and tr
 
 ---
 
+## Session log — 2026-09-11-workbench-c (#686 — the warp status line replaced, UNMERGED on `workbench`)
+
+Three rulings stack on #686: *(OWNER RULING, 2026-09-09: "Warp line as you recommend." —
+replace, not remove)*; *(OWNER RULING, 2026-09-10: "All decisions as recommended." — ratifying
+option B, per-step wait only, no whole-leg total)*; *(OWNER RULING, 2026-09-11: "option A" on the
+held-at-real-time question — kept, not deleted)*. Touches `ui/app.js`, `ui/shell.css`,
+`test/verify_flags_ui.js`, `test/verify_e2e_ui.js`, `test/run_all.js`.
+
+### What `#warpInfo` renders now, per case
+
+- **A qualifying active step** (`hold >= 180`, `wait_hint !== false`, a checklist running and not
+  complete): "About N plant-minutes/-hours left at 1× — set the speed control to R×." — the same
+  fact and formatter (`cklWaitSpan`, `RD.CklSpeedHint`) the card's own `.ckl-wait` line uses, now
+  shared rather than duplicated.
+- **A non-qualifying step** (`hold < 180`, no checklist, `wait_hint === false`, or complete):
+  nothing — `el.hidden = true`, empty text. "Nothing on other steps" is the ruling's own words.
+- **The accumulator-held window** (`true_state.speed_hold` rising while `time_acceleration > 1`):
+  "Held at real time — the plant needs you here" — KEPT, unchanged (ruling 3). This is the only
+  `warpNote` reason `syncWarpInfo` still reads; the other five (scram/failure/alarm/transient/
+  warp_locked/step) are dropped, already toasted + flashed at the moment they fire (`syncSpeedUI`)
+  — #675 §E measured the longest rate-based refusal at 2.0 plant-seconds, nothing left to restate.
+- **After a rewind**: not stale by construction, not by a special case. The step-wait half is
+  recomputed from `s.instructor.checklist` on every broadcast with no latch at all; the held half
+  is cleared by the three existing `warpNote = null` sites (speed-button click, resume, rewind),
+  none of which this change touches.
+
+### Re-measured, not inherited
+
+The handoff plan counted 85 steps, 33 qualifying, "24 of 61" in the in-code comment. Re-measured
+on the BUILT object (`RD.MANUAL_PROCEDURES.pwr2`, per `test/run_style.js`'s own live backlog
+line — "0 of **88**"): **88 total steps, 34 qualify for `hold >= 180`**. Corrected the stale
+in-code comment while in the file (`ui/app.js`, the wait-line block). The issue body's
+"documented wrong ~20 times" claim about `hold` is also not literally supported: 3 of 3 measured
+spot-checks are wrong (#670 operator passes, not a count of 20) — the reasoning for option B
+survives the correction; the "~20" figure does not and is not repeated in the issue comment.
+
+### The rAF trap in the held-message proof
+
+The first cut of the held-message injection test read `#warpInfo` synchronously right after
+`svc._broadcast(...)` and got `text: "", hidden: true` even though the service-side stamp fired
+correctly (`accel` read back 1, confirming `_attentionStop` returned `'hold'`). `render()`
+schedules its DOM work on the next `requestAnimationFrame`, not synchronously, so reading the DOM
+in the same tick as the broadcast races the paint. Fixed by splitting the injection and the read
+into two `page.evaluate` calls with a `waitForTimeout(300)` between them, matching the pattern
+`testHeldSpeedClick`'s own `read()` already uses in the same file.
+
+### Guard checks added, both proven red by injection before landing
+
+- `test/verify_flags_ui.js`, two new checks on the SHIPPED pwr2 pool, each its own fresh
+  `?engine=pwr2` build: a qualifying step's `#warpInfo` names the same rung as the card's
+  `.ckl-wait`; a non-qualifying step prints nothing under the speed bar. Proven red by disabling
+  the qualifying branch (`if (false && st && ...)`, caught it) and by dropping the `hold >= 180`
+  gate to `>= 0` (caught the negative-case check).
+- `test/verify_e2e_ui.js`, one new assertion inside `testHeldSpeedClick`: plants ONE upstream
+  fact — `true_state.speed_hold` via a one-shot `assembleSnapshot` override — and runs it through
+  the REAL, unmodified `_assembleWithInstructor` -> `_attentionStop` -> `snap.metadata.speed_snap`
+  -> `_broadcast` -> `syncSpeedUI`/`syncWarpInfo` chain, never writing to the DOM directly. Proven
+  red by disabling the `warpNote.reason === 'hold'` branch.
+
+### Gates
+
+`verify_flags_ui.js` 50/50 -> **52/52** (BASELINES updated). `verify_e2e_ui.js` PASS, 4
+screenshots, score unchanged (+1 assertion, BASELINES comment updated). `run_checklist_pwr2.js`
+195/195 (unaffected — engine/service untouched). `run_checklist.js` 90/90, `run_style.js` 11/11,
+`verify_ckl_relevance.js` 21/21 — all unaffected, confirmed green.
+
+### Filed, not fixed (out of scope for #686)
+
+`resumeSim()` (`ui/app.js`, landed under #691) unconditionally clears `warpNote` on every
+play-from-pause, including while the plant is STILL within the accumulator-held window — so the
+persistent message can disappear on a pause/resume cycle even though the hold has not actually
+cleared. Pre-existing behavior (the code path is untouched by this change); filed as **#710**,
+cross-linked to the #675 umbrella, rather than folded into #686's scope.
+
+---
+
 ## Session log — 2026-09-11-workbench-b (#698 / #700 / #705 — three ruled board changes, three commits, UNMERGED on `workbench`)
 
 Three independent, already-ruled board/manual changes built in one pass because all three touch

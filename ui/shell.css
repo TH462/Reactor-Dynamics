@@ -863,14 +863,13 @@ html[data-channel="dev"] .logo-test {
   padding: 4px 0; font-size: 11px; cursor: pointer; }
 .speed button:last-child { border-right: none; }
 .sim-tools { justify-content: flex-end; }
-/* the status strip: what WARP is doing, why it is locked, or why the clock last dropped —
-   persistent, unlike the toast that says the same thing once */
+/* the status strip (#686): the active checklist step's own wait + recommended rung, or the
+   one exception that persists across clicks — the accumulator hold ("held at real time").
+   Empty and hidden otherwise; min-height keeps the speed bar from reflowing when it is. */
 .warp-info { min-height: 16px; margin: 4px 0 2px; padding: 2px 6px; font-size: 10.5px; line-height: 1.3; border-radius: 4px;
   color: var(--text-2); background: var(--bg-elevated, var(--bg-right)); border: 1px solid var(--border);
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.warp-info.locked { color: var(--caution); }
 .warp-info.dropped { color: var(--danger, #ef4444); }
-.warp-info.on { color: var(--caution); }
 /* selected speed: subtle cyan outline (not a saturated fill — the clock turns
    amber to warn that time is accelerated; the selector itself stays quiet). */
 .speed button.on { background: transparent; color: var(--text); font-weight: 700; box-shadow: inset 0 0 0 1px var(--normal); }

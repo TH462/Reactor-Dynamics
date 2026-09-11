@@ -3014,30 +3014,54 @@
     var base = SPEED_SNAP_MSG[snap.reason] || 'Dropped to real time';
     return /— $/.test(base) ? base + (snap.detail || (snap.reason === 'alarm' ? 'new alarm' : 'plant in transient')) : base;
   }
-  /* THE LINE UNDER THE SPEED BUTTONS (#655, owner 2026-09-08: "Leave a space between them for
-   * warp info text"). Persistent where the toast is momentary: the third layman playthrough
-   * missed three dropout toasts and concluded the clock "reverts on its own". What it says, in
-   * priority order: the last automatic drop and its reason (until the player next changes speed),
-   * a WARP lock with its countdown, what WARP is achieving while it runs, or that WARP is ready. */
-  var warpNote = null;          // { text, at } — the last speed_snap, cleared on the next player speed change
-  function syncWarpInfo(s, p) {
+  /* THE LINE UNDER THE SPEED BUTTONS (#686, OWNER RULING 2026-09-10, "All decisions as
+   * recommended" ratifying option B — REPLACES the #655 four-state paragraph this comment
+   * used to describe, not merely reword it). It now prints exactly two things, never more:
+   *
+   *   1. THE ONE STANDING EXCEPTION (OWNER RULING 2026-09-11, "option A" on the held-at-real-
+   *      time question). The accumulator arming window (`true_state.speed_hold`) is a GENUINE,
+   *      non-momentary refusal — it can hold the clock for plant-minutes, unlike the rate-based
+   *      refusals #675 §E measured at a 2.0 plant-second maximum. A literal reading of the #686
+   *      ruling deletes this case along with the other three; that would silently re-trap the
+   *      player #619 item 13 was filed to stop, so it is kept, unchanged, as `warpNote`'s only
+   *      surviving reason.
+   *   2. OTHERWISE, THE ACTIVE CHECKLIST STEP'S OWN WAIT — the same fact, the same formatter
+   *      (`cklWaitSpan`, `RD.CklSpeedHint`) as the card's own `.ckl-wait` line — and NOTHING when
+   *      the active step does not qualify (`hold < 180`, no checklist running, `wait_hint ===
+   *      false`, or the checklist complete). "Nothing on other steps" is the ruling's own words.
+   *
+   * Everything else the old paragraph drew is gone, on purpose, and each has a home already:
+   * WARP's achieved rate is `#ffRate` (`syncPacingUI` below); a WARP lock's reason is the WARP
+   * buttons' own `title`; every momentary drop (scram/failure/alarm/transient/warp_locked/step)
+   * is already toasted AND flashed (`syncSpeedUI` above) at the moment it happens — #655 must
+   * not be reopened, and #675 §E leaves nothing here worth restating for those.
+   *
+   * It does NOT become a whole-leg "time to completion": that number has no honest source
+   * (`hold` is the replay's fixture dwell, not a player-timing measurement — see the wait-line
+   * comment in `renderChecklist` below) and the ruling declines it explicitly. */
+  var warpNote = null;   // { text, reason } — the held-at-real-time note only; cleared on any player speed act
+  function syncWarpInfo(s) {
     var el = $('warpInfo');
-    if (!el || !p) return;
-    var req = s.metadata.time_acceleration || 1;
-    var cls = '', text = '';
-    var left = (!p.warp_available && p.warp_lock_remaining_s > 0) ? ' · WARP re-arms in ' + p.warp_lock_remaining_s + ' s' : '';
-    if (warpNote) {
-      cls = 'dropped'; text = warpNote.text + left;
-    } else if (!p.warp_available && p.warp_lock) {
-      cls = 'locked';
-      text = 'WARP locked — ' + p.warp_lock + (p.warp_lock_remaining_s > 0 ? ' · re-arms in ' + p.warp_lock_remaining_s + ' s' : '');
-    } else if (p.tier === 'warp') {
-      cls = 'on';
-      text = 'WARP ' + req + '× · achieving ' + (p.achieved != null ? (Math.round(p.achieved / 10) * 10).toLocaleString() + '×' : '…') + ' · ' + p.physics_dt + ' s physics step';
+    if (!el) return;
+    var text = '', cls = '';
+    if (warpNote && warpNote.reason === 'hold') {
+      cls = 'dropped';
+      text = warpNote.text;
     } else {
-      text = 'WARP ready — 600× or 3600× for a long quiet ride; a warning or critical alarm drops it to 60×';
+      var ck = s.instructor && s.instructor.checklist;
+      var pr = ck && !ck.complete && ((RD.MANUAL_PROCEDURES || {})[ui.engineKey] || [])
+        .filter(function (x) { return x.id === ck.procedure_id; })[0];
+      var st = pr ? pr.steps[ck.step_index] : null;
+      var holdS = st ? (+st.hold || 0) : 0;
+      if (st && holdS >= 180 && st.wait_hint !== false) {
+        var span = cklWaitSpan(st, holdS);
+        var rung = RD.CklSpeedHint(holdS);
+        text = (span ? 'About ' + span + ' left at 1× — s' : 'A wait whose length depends on the plant — s') +
+               'et the speed control to ' + rung.speed + '×.';
+      }
     }
     if (el.textContent !== text) el.textContent = text;
+    el.hidden = !text;
     var want = 'warp-info mono' + (cls ? ' ' + cls : '');
     if (el.className !== want) el.className = want;
   }
@@ -3056,7 +3080,7 @@
     var p = s && s.metadata ? s.metadata.pacing : null;
     var el = $('ffRate');
     if (!p || !el) return;
-    syncWarpInfo(s, p);
+    syncWarpInfo(s);
     var req = s.metadata.time_acceleration || 1, ach = p.achieved;
     var straining = false;
     if (RD.Perf && req > 1) {
@@ -3100,8 +3124,11 @@
        * refusal is a caution (#625); everything else is the plant interrupting you. */
       showToast(speedSnapText(snap),
         snap.reason === 'step' ? 'info' : snap.reason === 'warp_locked' ? 'warn' : 'error');
-      // …and it stays written under the speed buttons until the player next changes speed (#655)
-      warpNote = { text: speedSnapText(snap), at: Date.now() };
+      /* …and, ONLY for the held-at-real-time reason (#686 ruling 3), it stays written under the
+       * speed buttons until the player next acts — the other five reasons rely on the toast +
+       * flash above since #686; carrying `reason` is what lets `syncWarpInfo` single out this
+       * one case without re-deriving it from the text. */
+      warpNote = { text: speedSnapText(snap), reason: snap.reason };
       /* FLASH THE SPEED BUTTONS *(OWNER, 2026-09-03, #619 item 7: "when dropping out of warp,
        * flash the warp buttons for a moment to make it more obvious.")*. The toast says what
        * happened; the flash says WHERE, which is the control the player now has to touch to
@@ -3676,6 +3703,16 @@
     for (var i = 0; i < lad.length; i++) if (holdS / lad[i].speed <= WAIT_TARGET_WALL_S) return lad[i];
     return lad[lad.length - 1];
   };
+  /* THE WAIT SPAN, shared by the card's `.ckl-wait` line AND the consolidated `#warpInfo` line
+   * (#686) — one fact, one formatter, so the two can never disagree. `wait_est_s: false` drops
+   * the number and keeps the rung, for a step whose duration is genuinely route-dependent (the
+   * speed advice is right even with no honest number; see the call site in `renderChecklist`). */
+  function cklWaitSpan(st, holdS) {
+    if (st.wait_est_s === false) return null;
+    var mins = holdS / 60;
+    return mins < 90 ? Math.round(mins) + ' plant-minutes'
+                     : (mins / 60).toFixed(mins / 60 < 10 ? 1 : 0) + ' plant-hours';
+  }
   /* IS THE POINTER IN THIS ELEMENT? (#605.) `:hover` cannot answer it here — the element is
    * BRAND NEW, built microseconds ago by an innerHTML rebuild, and the browser does not
    * re-run its hit test until the next mouse event or paint. So track the pointer ourselves
@@ -4193,9 +4230,11 @@
          *
          * DERIVED FROM `hold`, NOT AUTHORED. Every step already carries the dwell the replay
          * gives it, so the estimate cannot drift from what the harness proves the step needs —
-         * and 24 of the 61 pwr2 steps qualify without a word of new authoring. An authored
-         * number beside a `hold` would be the same fact written twice, which is how the 705 ppm
-         * in the ascension came to disagree with the plant.
+         * and 34 of the pool's 88 pwr2 steps qualify (re-measured 2026-09-11, #686; was "24 of
+         * the 61" when this comment was written — the pool has grown twice since, #670/#693/
+         * #692) without a word of new authoring. An authored number beside a `hold` would be the
+         * same fact written twice, which is how the 705 ppm in the ascension came to disagree
+         * with the plant.
          *
          * ⚠ IT IS THE REPLAY'S DWELL, WHICH IS AN UPPER BOUND, NOT A PROMISE. The harness waits
          * `hold` seconds; a player who drives the plant harder gets there sooner, and one who
@@ -4211,7 +4250,6 @@
          * the startup's criticality steps carry 240-900 s dwells, so the hint offered 60x, and
          * at 60x the reactor went 0 -> 12 % between two glances. A step may author the hint away. */
         if (holdS >= 180 && st.wait_hint !== false) {
-          var mins = holdS / 60;
           /* `hold` IS THE REPLAY'S DWELL, NOT A MEASUREMENT OF THE PLAYER'S STEP (#670 operator
            * pass 2, S-1). It is how long `procedures_harness` sits on the step so the plant has
            * settled before the next command, and it has been printed to the player as "About N
@@ -4219,24 +4257,23 @@
            * (advance the instant each acceptance is met, and again holding step 10 to the
            * steam-generator level the reviewer carried), step 14's cue is met in 3.1 plant-minutes
            * against a printed 62 — while an operator playing it live took 175. The number is not
-           * an estimate of anything; it is a gate fixture wearing a prediction's clothes.
-           *
-           * `wait_est_s: false` DROPS THE SPAN AND KEEPS THE RUNG, for a step whose duration is
-           * genuinely route-dependent. It is deliberately separate from `wait_hint: false` (which
-           * drops the whole line, #653 S9): the speed advice is the half the operator pass called
-           * the best thing on the page, and it is right even when no honest number exists. */
-          var span = st.wait_est_s === false ? null
-                   : mins < 90 ? Math.round(mins) + ' plant-minutes'
-                   : (mins / 60).toFixed(mins / 60 < 10 ? 1 : 0) + ' plant-hours';
+           * an estimate of anything; it is a gate fixture wearing a prediction's clothes. */
+          var span = cklWaitSpan(st, holdS);
           /* AND WHICH RUNG TO REACH FOR *(OWNER, 2026-09-04, #628: "Add a suggested time warp
            * value for the long term waiting steps.")*. "Use time acceleration" left the player
            * to work out how much, and the answer is not obvious: the ladder is 1/5/10/60/600/
-           * 3600 and the right rung spans four of those across the 24 pwr2 steps that qualify.
+           * 3600 and the right rung spans four of those across the 34 pwr2 steps that qualify.
            * RD.CklSpeedHint picks it off the ladder itself, so this can never name a button that
            * is not there. */
           var rung = RD.CklSpeedHint(holdS);
+          /* THE WARP EXPLANATION CLAUSE IS GONE (#686, OWNER RULING 2026-09-10): it pointed at
+           * "the line under the speed bar", which is exactly the paragraph #686 replaces — a
+           * sentence that would have dangled the moment that paragraph did. This shrinks to the
+           * span, the rung, and any step-authored `wait_hint` string (a different, per-step
+           * fact — the accumulator-window caution, a pressure-swing note — not the boilerplate
+           * that was removed). */
           h += '<div class="ckl-sub ckl-wait">⏩ ' + (span ? 'About ' + span + ' at 1× — s' : 'A wait whose length depends on the plant — s') + 'et the speed control to <b>' +
-            rung.speed + '×</b>' + (rung.warp ? ' (WARP; the plant must be quiet to take it. The line under the speed bar says why it was refused or dropped — a new alarm clears with Ack All, but pressure or power moving is a rate and only settles with time, so use 60×)' : '') + '.' +
+            rung.speed + '×</b>.' +
             (typeof st.wait_hint === 'string' ? ' ' + mesc(st.wait_hint) : '') + '</div>';
           waitLineShown = true;
         }
