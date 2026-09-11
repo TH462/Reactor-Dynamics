@@ -943,6 +943,29 @@ Four injections, one per conjunct, each proven to redden SI-0 alone. No baseline
 
 ## [Alpha 1.7.4-rc15] — 2026-09-11
 
+### Fixed (the Tavg program's no-load anchor had two stale copies left over from an earlier re-anchor — #647)
+
+An evidence pass against Ginna UFSAR chapter 15 (ML20339A101) Table 15.0-3 found a complete,
+self-consistent single-plant Tavg program (no-load 547 °F, full-power 576.0 °F, pressurizer
+level program 20 % → 60 %, notes d and f) that this build does not fully match, and two
+documentation sites still quoting a **566.6 °F (297 °C)** no-load anchor two re-anchors out of
+date — it predates even #508's superseded 557 °F figure. `Manuals/06`'s PWR-A29 (LO TAVG / P-12)
+alarm-response setpoint now reads **532.4 °F (278 °C)**, matching the shipped `caution_lo`
+fallback and the already-correct §9 setpoints table. `Manuals/04` §3.0's quick-reference Tavg row
+now reads **547.0 – 580.1 °F**, the plant's actual program span.
+
+**The full-power anchor itself (304.5 °C / 580.1 °F) was NOT moved.** It is this plant's own
+rated heat-balance design point — load-bearing in `ratedU()` (steam generator sizing),
+`pwr2_kinetics`'s Doppler/moderator reference temperatures, and `pwr2_protection`'s
+overtemperature-ΔT T′ setpoint — not a free-standing Tavg-program constant, so adopting Ginna's
+576.0 °F wholesale is a new heat-balance derivation on the scale of #479, not an anchor re-fit,
+and it directly conflicts with the dated *(OWNER RULING, 2026-09-06: "A")* that kept 580.1 °F as
+this plant's own identity. Reported to #647 for a ruling rather than chosen. `Manuals/09` §7.5
+and `Manuals/12`'s reactivity-coefficient tables still key their hottest column off the same
+stale 566.6 °F point and want their own re-measurement pass — flagged, not touched here. No
+engine constant moved; `run_manual_units`, `run_manual_setpoints`, `run_manual_rev` and
+`run_hardrules` all re-verified green at baseline.
+
 ### Fixed (the CVCS charging/letdown volume scale mixed two bases — #679)
 
 Ruled Option A, the denominator fix *(OWNER RULING, 2026-09-10: "679-a")*.
@@ -1814,6 +1837,31 @@ refitted one.
   offset* that the re-anchor removed — so it went red on a change that made the plant more correct.
   Replaced with an operator-reachable stimulus, asserted on demand **and** delivered flow, and
   measured at both anchors so it passes on the old plant too.
+
+### Fixed (player-facing copy taught the retired engine's 55 % at-power pressurizer level — #677)
+
+Nine sites still quoted the retired engine's own `pzr_level_nominal` (55 %, one at 58 %, one
+Mode 4 boot level at 30 %) as if it described the shipped plant. Corrected to PWR2's sourced
+level program — **61.5 % full power / 25 % no load** (Westinghouse Technology Systems Manual
+§10.3, ML11223A290; confirmed not moving by #647's evidence pass): `Manuals/01` §2.0,
+`Manuals/02` §5.3 (`hot_shutdown` boot level, 30 → 25 %), `Manuals/03` §5.4, `Manuals/04`
+(three: the HFP-approach table, the inventory-control procedure, the §3.0 quick reference),
+`Manuals/05` Phase E, `Manuals/ISSUES_AND_FINDINGS.md` §7, and three board inspect cards
+(`ui/diagram/board/pwr_board_inspect.js`, two at 55 %, one at 58 %).
+
+**The classic board's green-band tile needed no change.** `pzrLevelBand()`
+(`ui/diagram/board/pwr_board_wiring.js`) already reads `control_state.pzr_level_program_pct`
+live (#556/#598 item 11) — the **56.5–66.5 %** band a fresh reader sees is `program ± 5`
+at the current 61.5 % program, the correct reading, not a fourth instance of the defect.
+
+**A tenth site found beyond the issue's list**: `Manuals/12_SIM_PHYSICS.md` §7.3 documents the
+**retired engine's** own inventory node (`pzr_mass_frac`, `level_per_mass` 776, `level_per_void`
+375.33) as if it were PWR2's — a bigger, pre-existing staleness the issue's original pass had not
+found. Flagged in place with a stale-content banner (a correct rewrite needs its own HR12
+measurement pass against PWR2's level program and PI controller); follow-up filed **#708**.
+
+`Manuals/00_REVISION_HISTORY.md` Rev 19 extended (item (tt)); `stamp_manual_revision.js` and
+`pack_manuals.js` re-run; `run_manual_setpoints` unaffected at 18/18 (chapter 09 was not touched).
 
 
 ## [Alpha 1.7.3] — 2026-09-05

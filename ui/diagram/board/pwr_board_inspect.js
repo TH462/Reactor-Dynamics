@@ -344,7 +344,7 @@
 
     pressurizer: e('Pressurizer',
       'The steam bubble that sets primary pressure. Water below, steam above, heaters and spray inside.',
-      'Level here is inventory\'s most visible proxy, normally about 55 % at full power — but it is a ' +
+      'Level here is inventory\'s most visible proxy, normally about 61.5 % at full power (25 % at no load) — but it is a ' +
       'proxy and it can lie: during a loss-of-coolant accident (LOCA) a void in the hot leg pushes water INTO the pressurizer, so ' +
       'level rises while the plant is emptying. That is the Three Mile Island Unit 2 (TMI-2) trap. The water colour tracks live ' +
       'saturation temperature at Reactor Coolant System (RCS) pressure.', CI, '5.4'),
@@ -494,7 +494,7 @@
     imrpq48hn3t: e('Charging flow',
       'Charging flow setpoint — how fast make-up enters the cold leg.',
       'The band runs to 26 gpm (6.0 m³/h). Maximum charging is a lot of make-up: against an ' +
-      'isolated letdown it raises pressurizer level about 4.4 % a minute, so from a normal 58 % it ' +
+      'isolated letdown it raises pressurizer level about 4.4 % a minute, so from a normal 61.5 % it ' +
       'trips the reactor on high pressurizer level (87 %) in about six minutes. Letdown does NOT ' +
       'hold it — with both orifices open the same flow still gains about 2.5 % a minute and trips ' +
       'in under ten, because this plant charges at 26 gpm against a 12 gpm letdown lineup. ' +
@@ -1100,7 +1100,7 @@
       'says.', TMI, '4.0'),
     ims2immon9z: e('Pressurizer Level',
       'Water level in the pressurizer — the usual inventory proxy, and the one that can lie.',
-      'About 55 % at full power, controlled by charging and letdown. During a loss-of-coolant accident (LOCA) it can RISE while ' +
+      'About 61.5 % at full power (25 % at no load), controlled by charging and letdown. During a loss-of-coolant accident (LOCA) it can RISE while ' +
       'the plant empties, because voiding in the hot leg pushes water into the pressurizer. Confirm ' +
       'inventory against subcooling before you believe it.', TMI, '4.0'),
     ims2imn1nny: e('Steam Generator Level',

@@ -146,7 +146,7 @@ The approach to criticality is **not** part of this phase — it is Phase C, and
 | Step | Action | Acceptance |
 |------|--------|------------|
 | E1 | Ascend to ~100 % / ~100 MWe | Full-power **Mode 1, At Power** |
-| E2 | Verify P ≈ 2235 psi (15.41 MPa), SG ~65 %, PZR ~55 %, subcooling healthy | HFP band |
+| E2 | Verify P ≈ 2235 psi (15.41 MPa), SG ~65 %, PZR ~61.5 %, subcooling healthy | HFP band |
 
 ---
 

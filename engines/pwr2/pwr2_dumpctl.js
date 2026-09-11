@@ -100,7 +100,17 @@
      * DIFFERENT quantity — the 975 ppm hot-zero-power boron anchor is BEAVRS / Watts Bar Unit 1
      * Cycle 1 (OSTI 1991715), quoted at WATTS BAR's 557 degF. */
     tavg_noload_c: 286.11,               /* 547 degF — Ginna's PROGRAMMED no-load Tavg */
-    tavg_full_c: 304.5,                  /* this plant's design Tavg */
+    tavg_full_c: 304.5,                  /* this plant's design Tavg — see #647 note below */
+    /* ⚠ #647 EVIDENCE PASS, 2026-09-11: tavg_full_c IS NOT GINNA'S. Ginna's own full-power
+     * TAVG is 576.0 degF (UFSAR ch15, ML20339A101, Table 15.0-3 and its note d — "the high end
+     * of the [Tavg] window ... had not changed from the previous licensing basis analyses");
+     * this plant's own 580.1 degF (304.5 degC) is a heat-balance design point from #479, not a
+     * citation, load-bearing in pwr2_sg.ratedU(), pwr2_kinetics's Doppler/moderator reference
+     * temperatures and pwr2_protection's OTDT T' setpoint. Adopting Ginna's 576.0 degF wholesale
+     * would move all four; RULED 2026-09-06 ("A") not to, confirmed rather than reopened by the
+     * evidence pass. lol_full_c above (WAT-05, 16.4 degF) has no Ginna-specific alternative in
+     * the corpus at all — Ginna UFSAR ch10 sec10.7.1 describes its Steam Dump System
+     * mechanically (28 % capacity, 8 valves, three modes) with no numeric Tavg-mode bands. */
     c7_ramp_frac_per_min: 0.05,          /* C-7: "ramp load decrease at a rate greater than 5%/min" */
     c7_step_frac: 0.10,                  /* C-7: "step load decrease of greater than 10%" */
     src: 'WTSM 11.2 (ML11223A294); bands WAT 05 (ML11216A094) 5-18(E)'

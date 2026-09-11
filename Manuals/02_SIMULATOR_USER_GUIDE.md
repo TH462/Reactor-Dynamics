@@ -227,7 +227,7 @@ Entry: the plant & mission status line under the sim controls, or **Operate** ta
 | `hot_full_power` | Hot Full Power | **Mode 1, At Power** | Critical ~100 %, ~100 MWe |
 | `50_percent` | 50 % Power | **Mode 1, At Power** | Critical mid-power (> 5 %) |
 | `hot_zero_power` | Hot Standby | **Mode 3, Hot Standby** | Subcritical, hot T/P, control bank in, SR on |
-| `hot_shutdown` | Hot Shutdown | **Mode 4, Hot Shutdown** | Subcritical, RCS **250 °F (121.1 °C) / 369 psi (2.545 MPa)** settled, **RCPs secured**, **RHR in service**, both banks in, the P-11 blocks taken, SR on, PZR level 30 % |
+| `hot_shutdown` | Hot Shutdown | **Mode 4, Hot Shutdown** | Subcritical, RCS **250 °F (121.1 °C) / 369 psi (2.545 MPa)** settled, **RCPs secured**, **RHR in service**, both banks in, the P-11 blocks taken, SR on, PZR level 25 % |
 | `cold_shutdown` | Cold Shutdown | **Mode 5, Cold Shutdown** | Subcritical, RCS **122 °F (50 °C) / 363 psi (2.50 MPa)**, **RCPs secured**, **RHR in service**, both banks in, the P-11 blocks taken, SR on, boron 918 ppm — the SG secondary rides at its own saturation, **1.8 psi (0.0127 MPa)** |
 
 > **THE COLD END IS MODE 5 (#524, landed 2026-08-31).** The water-property floor moved from 14.5 psi (0.1 MPa) to **0.29 psi (0.002 MPa)**, so a steam generator at or below Mode 5's **200 °F (93.3 °C)** boundary is representable and `cold_shutdown` loads. Take the plant up with **PWR-T20**, or run **PWR-T21** down from power — both run end to end on integrated physics again.

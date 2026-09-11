@@ -149,6 +149,19 @@
     wall_lumps: 2,
     level_program_full: 0.615,           /* WTSM 10.3 (ML11223A290): "high level setpoint of 61.5%" */
     level_program_noload: 0.25,          /* WTSM 10.3: "low level setpoint of 25%" */
+    /* ⚠ #647 EVIDENCE PASS, 2026-09-11: THESE TWO ENDPOINTS ARE A DIFFERENT PLANT'S FROM THE
+     * no-load Tavg ANCHOR THEY RIDE. 25 % / 61.5 % is WTSM 10.3's own Westinghouse Four-Loop
+     * generic plant (557 -> 584.7 degF span, HRTD 10.3, ML11223A290 p.10.3-4). Ginna's own
+     * UFSAR ch15 program (ML20339A101, Table 15.0-3 note f) is 20 % / 60 % over ITS OWN
+     * 547 -> 576.0 degF span -- verbatim: "varied linearly from 20% of span at the no-load
+     * TAVG of 547F to ... 60% of span at the maximum full power TAVG of 576F." Neither pair
+     * reproduces a source's own points-per-degF coefficient against THIS plant's span, because
+     * this plant's full-power anchor (tavg_full_c below, 304.5 degC / 580.1 degF) is neither
+     * plant's number -- it is this plant's own rated heat-balance design point (#479), and
+     * moving it to match either source is a new heat-balance derivation, not an anchor swap.
+     * RULED 2026-09-06 ("A"): keep 580.1 degF, keep the WTSM 25/61.5 endpoints, re-derive the
+     * DEPENDENTS (tt_full_c below, this file's level slope) from this plant's own span instead
+     * of a typed foreign number. Confirmed, not reopened, by the #647 evidence pass. */
     /* ⚠ #680: THE ENDPOINTS ARE SOURCED, THE MECHANISM ONLY PARTLY IS. WTSM 10.3 derives 61.5 %
      * from coolant thermal expansion alone between the no-load and full-power Tavg. That
      * derivation does not carry over to this plant: reaching 61.5 % here from a settled 25 %

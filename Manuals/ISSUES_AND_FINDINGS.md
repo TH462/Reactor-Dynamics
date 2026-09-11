@@ -103,7 +103,7 @@ Sources include `Diagnostic/SPEC_AUDIT_2026-07-16.md` and campaign playtest note
 |-------|--------|
 | HFP pressure **15.41 MPa**, Tavg ~**304 °C**, ~**100 MWe** | Consistent across M1, config, manual_data |
 | PORV **16.20 / 15.86 MPa**, safeties **17.13 / 16.55 MPa** | Consistent control data / safety_limits |
-| SG level normal **65 %**, PZR **55 %** | Consistent |
+| SG level normal **65 %**, PZR **61.5 %** (re-verified 2026-09-11, #677 — was the retired engine's 55 %) | Consistent |
 | AFW actuation **20 %**, SG trip **12 %** | Consistent |
 | HPI actuation **12.4 MPa** (raised 2026-07, feel-plan P5) | Consistent |
 | Failure list in `pwr_control.js` PWR_FAILURES | All mapped to PWR-E01–E21 |
