@@ -56,6 +56,31 @@
 .pwr-board-stage .bd-tile.instr-glow,
 .pwr-board-stage .bd-tile.hl-glow,
 .pwr-board-stage .bd-tile.hl-pin { z-index: auto; }
+
+/* ---- highlight halo (#684) ----------------------------------------------------------
+ * The glow is drawn on the ART, not on the tile box: 20 of the board's 202 measured tiles
+ * have art hanging outside their authored rect (the pressurizer by 80 px, the PORV by 19 px
+ * left and 16 px right), so a ring on the tile box points next to the thing it names.
+ * `revealControl` therefore returns this child instead of the tile, sized by
+ * measureHalos() in pwr_board.js — see the long note there for how "visible art" is decided
+ * and why it is measured once per mount rather than live.
+ *
+ * IT IS NOT INK. No background, no border, no pointer events; the only thing it ever paints
+ * is the box-shadow a glow class puts on it, and shell.css keeps the single copy of those
+ * colours. Its offsets are set inline, in canvas px, and are 0 for the ~90 % of tiles whose
+ * art fits — those look exactly as they did.
+ *
+ * The z-index pin above applies here too, for the same #202/#509/#598 reason: shell.css
+ * lifts a glowed element to z-index 5 and `.bd-tile` is not a stacking context, so an
+ * unpinned halo would escape its tile and draw its ring over the vessel. The `.bd-tile`
+ * list is KEPT — `run_glow_stacking` reads it, and it stays correct for any future caller
+ * that classes a tile directly. */
+.pwr-board-stage .bd-halo { position: absolute; pointer-events: none; }
+.pwr-board-stage .bd-halo.ckl-glow,
+.pwr-board-stage .bd-halo.ckl-step-glow,
+.pwr-board-stage .bd-halo.instr-glow,
+.pwr-board-stage .bd-halo.hl-glow,
+.pwr-board-stage .bd-halo.hl-pin { z-index: auto; }
 .bd-box-title {
   position: absolute; left: 10px; top: 7px; color: #6b8598;
   letter-spacing: 0.16em; white-space: nowrap;

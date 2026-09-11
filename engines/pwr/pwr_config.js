@@ -2814,6 +2814,16 @@
                'sg_imbalance_active',
                // §8.8 synoptic status — system-active booleans the diagram animates from (HR1)
                'afw_active', 'afw_pump_running', 'afw_block_open', 'rhr_active', 'rhr_valve_open', 'accumulators_discharging',
+               // RHR PUMPS DELIVERING — the ALIGNMENT and the DELIVERY are different facts, and
+               // the board needs the second one (#699). `rhr_active`/`rhr_valve_open` above are
+               // both the hot-leg suction VALVE; this is `valve_open && powered`, i.e. the same
+               // `rh.running` the engine gates the heat-exchanger duty and the forced-circulation
+               // floor on. It exists because the ECCS impeller was drawn STOPPED through the whole
+               // of Mode 4 and Mode 5 — it keyed on injection flow, which is zero on a cooldown —
+               // and because keying it on the valve instead would spin a rotor on a dead bus, the
+               // exact defect #350 items 7/13/15 removed from four other pumps. A status
+               // passthrough, so it draws no PRNG number and the instrument stream is unchanged.
+               'rhr_running',
                // SI accumulator discharge isolation valve position (#273) — what the
                // `accum_aligned` annunciator is gated on. Position, not flow: by the time
                // `accumulators_discharging` goes true the tanks are already emptying.

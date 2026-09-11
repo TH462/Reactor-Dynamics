@@ -718,6 +718,211 @@ if (!only) {
        trip ? ('TRIPPED ' + trip.cause + ' at t=' + trip.t.toFixed(0) + ' s, peak ' + trip.peak.toFixed(2) + ' %')
             : 'peak ' + peak.toFixed(2) + ' % true, no trip');
   })();
+
+  /* 2n. THE #697 SWEEP — a step whose acceptance is a PRESS cannot tick when the plant has
+   * already reached the state that press produces (#697, owner: "Mode 3>5 walkthrough step 4 -
+   * steam dump AUTO was already green but it still required a press to check off step."). Same
+   * family as #641 sign-flipped: there the plant stopped letting the player PRODUCE the command;
+   * here the plant produces the command's EFFECT on its own and the checkbox still demands the
+   * press — a ceremonial re-press at best, a permanent soft lock at worst (proven below).
+   *
+   * TWO STATIC SWEEPS OF THE POOL, one runner, over every `accs` entry that is cmd-kind (has
+   * `.cmd`) with no `.p` of its own and whose step carries no `overtaken`:
+   *   (a) NO SIBLING PREDICATE on the same step — no observable state to grade on at all
+   *       (`take_boron_sample`, and `pwr_cooldown` step 3's two bare `set_trip_block` entries).
+   *       Judgement calls per the issue (an `overtaken` or a new state field), not fixed here;
+   *       the set is pinned so a new one cannot join unnoticed.
+   *   (b) HAS a sibling predicate — booted at the leg's own `from`, ticked, nothing pressed: is
+   *       the sibling already true? Only `pwr_cooldown` step 4 and `pwr_shutdown` step 3 ever
+   *       did (both fixed by #697, live-proved below); the other 8 read clean because they need
+   *       the leg's OWN earlier steps actually run first (`pwr_raise_power`'s ladder, `pwr_startup`
+   *       step 15, `pwr_cooldown` step 11) — a different shape, left alone.
+   *
+   * THE FIX: `p`/`op`/`v` now live on the SAME entry as `cmd`, not a second hidden one. Proven
+   * by injection (test_accs.js during authoring) that `pwr_heatup` step 8's two-entry
+   * hidden-cmd-plus-predicate shape does NOT bypass the press — `_gradeAccs` never grades a
+   * cmd-only entry, so it stays unmet until `_accsCmdWatch` sees the exact command, and a
+   * predicate SIBLING cannot satisfy it. It just never surfaced there because `heater_auto` /
+   * `spray_auto` are false at `pwr_heatup`'s own `cold_shutdown` IC. One merged entry lets
+   * `_gradeAccs` grade the `p` half regardless of any command (a plant already there ticks the
+   * box) while `_accsCmdWatch` still latches the SAME entry on the press for a plant that is not. */
+  (function () {
+    var grader = Object.create(RD.InstructorLayer.prototype);
+    var NO_STATE = [], CANDIDATES = [];
+    POOL.forEach(function (proc) {
+      (proc.steps || []).forEach(function (st, idx) {
+        if (!st.accs || !st.accs.length || st.overtaken) return;
+        st.accs.forEach(function (en) {
+          if (!(en && en.cmd) || en.p) return;              // not a pure cmd-kind entry
+          var sibs = st.accs.filter(function (e2) { return e2 !== en && e2.p; });
+          var rec = { proc: proc.id, step: idx + 1, from: proc.from, siblings: sibs };
+          (sibs.length ? CANDIDATES : NO_STATE).push(rec);
+        });
+      });
+    });
+
+    var NO_STATE_EXPECTED = { 'pwr_raise_power:4': 1, 'pwr_cooldown:3': 2 };
+    var noStateTally = {};
+    NO_STATE.forEach(function (r) { var k = r.proc + ':' + r.step; noStateTally[k] = (noStateTally[k] || 0) + 1; });
+    var noStateKeys = Object.keys(noStateTally), expectedKeys = Object.keys(NO_STATE_EXPECTED);
+    var noStateOk = noStateKeys.length === expectedKeys.length &&
+      expectedKeys.every(function (k) { return noStateTally[k] === NO_STATE_EXPECTED[k]; });
+    ck('the no-observable-state command entries are the known, documented judgement calls (#697)',
+       noStateOk,
+       NO_STATE.map(function (r) { return r.proc + ' step ' + r.step; }).join(', ') || 'none');
+
+    var icCache = {};
+    function bootSnapshot(from) {
+      if (icCache[from]) return icCache[from];
+      var svc = mkSvc(from);
+      var s = null; for (var i = 0; i < 30; i++) s = svc.tick();
+      return (icCache[from] = s);
+    }
+    var preSatisfied = [];
+    CANDIDATES.forEach(function (r) {
+      var snap = bootSnapshot(r.from);
+      if (r.siblings.every(function (e2) { return grader._grade(snap, e2).met; })) {
+        preSatisfied.push(r.proc + ' step ' + r.step);
+      }
+    });
+    ck('no command-kind acceptance with an observable state is pre-satisfied at its own leg\'s boot IC (#697)',
+       preSatisfied.length === 0,
+       (preSatisfied.length ? 'PRE-SATISFIED: ' + preSatisfied.join(', ') + '; ' : '') +
+       CANDIDATES.length + ' candidate(s) checked');
+  })();
+
+  /* 2o. LIVE PROOF, #697 — the two confirmed instances, driven through the actual checklist
+   * runtime with the fixed command NEVER pressed. Each also proves RED BY INJECTION: the fixed
+   * entry is mutated back to its pre-#697 shape (pure cmd, no `.p`) for one drive, then restored —
+   * the pre-fix shape must soft-lock (stick at the step forever, `met: false, obs: null`, the
+   * SAME two siblings already true underneath it), the fixed shape must complete. */
+  (function () {
+    var POOL2 = RD.MANUAL_PROCEDURES.pwr2;
+
+    function driveCooldownStep4(maxTicks) {
+      var svc = mkSvc('hot_zero_power');
+      svc.handleCommand({ action: 'start_checklist', procedure_id: 'pwr_cooldown' });
+      var s = null, didBoron = false, didPressure1 = false, didTripBlocks = false, rampIdx = 0;
+      var rampPoints = [7.03, 4.42, 2.76, 1.66, 0.83];
+      for (var i = 0; i < maxTicks; i++) {
+        s = svc.tick();
+        var c = s.instructor && s.instructor.checklist;
+        if (!c) continue;
+        if (c.complete) return { done: true, step: c.step_index };
+        if (c.step_index === 0 && !didBoron) { svc.handleCommand({ action: 'set_auto_setpoint', channel_id: 'boron_conc', value: 920 }); didBoron = true; }
+        if (c.step_index === 1 && !didPressure1) { svc.handleCommand({ action: 'set_pressure_setpoint', mpa: 13.1 }); didPressure1 = true; }
+        if (c.step_index === 2 && !didTripBlocks) {
+          svc.handleCommand({ action: 'set_trip_block', trip_id: 'lo_press', blocked: true });
+          svc.handleCommand({ action: 'set_trip_block', trip_id: 'si_trip', blocked: true });
+          didTripBlocks = true;
+        }
+        // step 4 (index 3): drive the dump setpoint ramp; NEVER press set_steam_dump auto.
+        if (c.step_index === 3 && i % 20 === 0) {
+          rampIdx = Math.min(rampPoints.length - 1, rampIdx + 1);
+          svc.handleCommand({ action: 'set_steam_dump_setpoint', mpa: rampPoints[rampIdx] });
+        }
+        if (c.awaiting_ack && !c.complete) svc.handleCommand({ action: 'checklist_check', index: c.step_index });
+      }
+      var f = s.instructor && s.instructor.checklist;
+      return { done: false, step: f && f.step_index, accs: f && f.accs, tavg_c: s.true_state.tavg_c };
+    }
+
+    function driveShutdownStep3(maxTicks) {
+      var svc = mkSvc('hot_full_power');
+      svc.handleCommand({ action: 'start_checklist', procedure_id: 'pwr_shutdown' });
+      var s = null, didLoad = false, didScram = false;
+      for (var i = 0; i < maxTicks; i++) {
+        s = svc.tick();
+        var c = s.instructor && s.instructor.checklist;
+        if (!c) continue;
+        if (c.complete) return { done: true, step: c.step_index };
+        if (c.step_index === 0 && !didLoad) { svc.handleCommand({ action: 'set_load_target', mwe: 0 }); didLoad = true; }
+        if (c.step_index === 1 && !didScram) { svc.handleCommand({ action: 'scram' }); didScram = true; }
+        // step 3 (index 2): NEVER press set_steam_dump auto.
+        if (c.awaiting_ack && !c.complete) svc.handleCommand({ action: 'checklist_check', index: c.step_index });
+      }
+      var f = s.instructor && s.instructor.checklist;
+      return { done: false, step: f && f.step_index, accs: f && f.accs,
+        power_pct: s.true_state.power_pct, valve: s.true_state.steam_dump_valve_pct };
+    }
+
+    function withReverted(proc_id, stepIdx, fn) {
+      var proc = POOL2.filter(function (p) { return p.id === proc_id; })[0];
+      var entry = proc.steps[stepIdx].accs[0];
+      var saved = { p: entry.p, op: entry.op, v: entry.v };
+      delete entry.p; delete entry.op; delete entry.v;
+      var result;
+      try { result = fn(); } finally { entry.p = saved.p; entry.op = saved.op; entry.v = saved.v; }
+      return result;
+    }
+
+    var cdFixed = driveCooldownStep4(6000);
+    ck('pwr_cooldown step 4 completes with the fix, AUTO never pressed (#697)',
+       cdFixed.done === false && cdFixed.step >= 4,
+       'tavg reached ' + (cdFixed.tavg_c != null ? cdFixed.tavg_c.toFixed(1) : '?') + ' degC, advanced to step_index ' + cdFixed.step);
+    var cdRed = withReverted('pwr_cooldown', 3, function () { return driveCooldownStep4(6000); });
+    ck('...RED BY INJECTION: the pre-#697 shape soft-locks step 4 forever (siblings already true)',
+       cdRed.done === false && cdRed.step === 3 && cdRed.accs && cdRed.accs[0].met === false && cdRed.accs[1].met === true,
+       JSON.stringify(cdRed.accs));
+
+    var sdFixed = driveShutdownStep3(600);
+    ck('pwr_shutdown step 3 completes with the fix, AUTO never pressed (#697 — the reported instance)',
+       sdFixed.done === true,
+       'done=' + sdFixed.done + ' step_index=' + sdFixed.step);
+    var sdRed = withReverted('pwr_shutdown', 2, function () { return driveShutdownStep3(600); });
+    ck('...RED BY INJECTION: the pre-#697 shape soft-locks step 3 forever (siblings already true)',
+       sdRed.done === false && sdRed.step === 2 && sdRed.accs && sdRed.accs[0].met === false &&
+       sdRed.accs[1].met === true && sdRed.accs[2].met === true,
+       JSON.stringify(sdRed.accs));
+  })();
+
+  /* 2p. #696 — `pwr_shutdown`'s precondition now has an UPPER bound. Only `power_pct > 10` was
+   * checked before, which the leg's own `from: 'hot_full_power'` satisfies — measured (#696
+   * comment), that standalone entry is the +21.0 °F (+11.7 °C) / 601.3 °F Tavg spike, 54.3 °F
+   * (30.1 °C) above the no-load program, sourced against Ginna's 50 % RTP loss-of-load trip
+   * threshold. `precond` WARNS, never blocks *(OWNER RULING, 2026-08-06)*, so this asserts the
+   * BANNER, not a refusal: unmet at the standalone 100 % entry, met on the leg's own INTENDED
+   * chained entry (`pwr_lower_power` run to completion into this leg — the plant it actually
+   * hands off, not the `low_power` boot IC, which measures 9.4 % power and would fail the
+   * EXISTING lower-bound row for reasons #696 does not touch).
+   *
+   * 30 %, NOT THE ISSUE'S OWN 20 %: measured here, the chained handoff settles at 22-23 %, not
+   * the ~15 % `pwr_lower_power`'s text promises (the already-tracked #508 rod-trim residue) — a
+   * 20 % ceiling would warn on the leg's own shipped, correct route, which is worse than the gap
+   * it replaces. PROVEN RED BY INJECTION: the upper-bound row is removed for one drive, and the
+   * 100 % entry must then show NO unmet row at all — the exact silence the owner hit. */
+  (function () {
+    var proc = POOL.filter(function (p) { return p.id === 'pwr_shutdown'; })[0];
+    var lowerPowerProc = POOL.filter(function (p) { return p.id === 'pwr_lower_power'; })[0];
+    var upperIdx = (proc.precond || []).findIndex(function (c) { return c.op === '<='; });
+
+    function preconVerdict(svc) {
+      svc.handleCommand({ action: 'start_checklist', procedure_id: 'pwr_shutdown' });
+      var s = null; for (var i = 0; i < 8; i++) s = svc.tick();
+      var pc = s.instructor && s.instructor.checklist && s.instructor.checklist.preconditions;
+      return pc && pc[upperIdx] ? pc[upperIdx] : null;
+    }
+
+    ck('pwr_shutdown\'s precondition has an upper bound now (#696)', upperIdx >= 0,
+       upperIdx >= 0 ? JSON.stringify(proc.precond[upperIdx]) : 'no <= row found');
+
+    var vFull = preconVerdict(mkSvc('hot_full_power'));
+    ck('...UNMET at a standalone 100 % entry (was silently accepted before #696)',
+       vFull && vFull.met === false, vFull ? JSON.stringify(vFull) : 'no verdict');
+
+    var chained = RD.ProceduresHarness.runProcedure('pwr2', lowerPowerProc, { seed: 42 });
+    var vChained = preconVerdict(chained.svc);
+    ck('...MET on the leg\'s own INTENDED chained entry (pwr_lower_power run to completion)',
+       vChained && vChained.met === true, vChained ? JSON.stringify(vChained) : 'no verdict');
+
+    if (upperIdx >= 0) {
+      var removed = proc.precond.splice(upperIdx, 1)[0];
+      var vRed = preconVerdict(mkSvc('hot_full_power'));
+      proc.precond.splice(upperIdx, 0, removed);
+      ck('...RED BY INJECTION: without the upper bound, the 100 % entry shows no unmet row at all',
+         vRed === null, vRed === null ? '(row absent, as expected pre-#696)' : JSON.stringify(vRed));
+    }
+  })();
 }
 
 console.log('\n' + '='.repeat(74));

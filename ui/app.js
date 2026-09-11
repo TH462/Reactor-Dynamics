@@ -791,6 +791,12 @@
         stat({ id: 'accum_valve',grp: 'Support systems', label: 'Accumulator Valve', c: '#78a850', ins: 'accum_valve_open', tru: 'accumulator_valve_open', on: 'OPEN', off: 'SHUT', hint: 'whether the accumulator isolation valve is open.', detail: 'Shut, the passive injection cannot happen at all whatever the pressure does. The valves are deliberately shut during a controlled cooldown so the tanks do not dump into a depressurizing plant that does not need them — and leaving them shut afterwards is the way that protection gets quietly lost.' }),
         stat({ id: 'rhr_on',    grp: 'Support systems', label: 'RHR Active', c: '#60a8c0', ins: 'rhr_active', tru: 'rhr_active', on: 'ACTIVE', off: 'no', hint: 'whether residual heat removal is in service.', detail: 'The low-pressure, long-term cooling path: it takes suction from the hot leg and rejects core heat through its own heat exchangers, which is what carries a shut-down plant for days. It is interlocked to pressure and cannot be placed in service until the primary is well down, so getting to it is the object of most of a cooldown.' }),
         stat({ id: 'rhr_valve', grp: 'Support systems', label: 'RHR Suction Valve', c: '#4888a0', ins: 'rhr_valve_open', tru: 'rhr_valve_open', on: 'OPEN', off: 'SHUT', hint: 'whether the residual heat removal suction valve is open.', detail: 'The interlocked valve that admits hot leg water to the low-pressure system. The interlock exists because the residual heat removal piping is not rated for full primary pressure — opening it too early is one of the ways a plant is destroyed from the control room.' }),
+        /* THE ROTOR, not the valve (#699) — no `tru:`, because there is no true_state twin:
+         * this is a status passthrough (`rhr_running` = valve open AND powered), the same flag
+         * the engine gates the heat-exchanger duty on. It is the row that separates ALIGNED
+         * from DELIVERING, which the two rows above cannot: in a blackout both of them stay
+         * lit and the plant is removing nothing. */
+        stat({ id: 'rhr_pumps', grp: 'Support systems', label: 'RHR Pumps', c: '#4888a0', ins: 'rhr_running', on: 'RUNNING', off: 'stopped', hint: 'whether the residual heat removal pumps are actually turning.', detail: 'RHR has no pump of its own — it is a suction alignment on the shared emergency injection train — so this is that train running on the shutdown-cooling lineup. Aligned is not the same as running: the pumps are motor loads, and a loss of AC power stops them with the suction valve still showing OPEN. That gap is the whole reason this row exists beside the valve row.' }),
         { id: 'cw_temp',  instr: 'cw_inlet_temp', grp: 'Support systems', label: 'CW Inlet Temp', c: '#7ab0b8', get: function (i) { return i.cw_inlet_temp; }, tru: function (t) { return t.cw_inlet_temp_c; }, range: [0, 45], fmt: function (v) { return conv(v, 'temp').toFixed(0) + unit('temp'); } },
         stat({ id: 'cond_avail',grp: 'Support systems', label: 'Condenser Available', c: '#6890a8', ins: 'condenser_cooling_available', tru: 'condenser_cooling_available', on: 'available', off: 'LOST', alarm: 'off', hint: 'whether the condenser can still take steam.', detail: 'The steam dump only works while the condenser can condense, which needs circulating water and vacuum. Lose either and the dump valves are useless: the secondary\'s heat has to go to atmosphere through the relief valves instead, which wastes treated water and is an inventory loss with no return.' }),
 
@@ -2448,6 +2454,26 @@
   function render(s) {
     latest = s;
     _renderSnap = s;
+    /* THE WALKTHROUGH PAUSE (#694) is a SERVICE fact, not a UI one — the service stops
+     * itself (simulation_service.js `_serviceInstructorRequests`) the instant a checklist
+     * step's fired event asks for it, before this render() call ever runs. What is missing
+     * on the UI side is the NAMED hold: `pauseWhy`/`.bd-frozen`/the flashing play button all
+     * key off `pauseSim(reason)` having been called, and nothing calls it just because
+     * `service.running` went false out from under the UI. Detected here, on every render,
+     * off the sticky `checklist.paused` flag (set with the step, cleared with it) rather
+     * than an edge, so a late-joining render (a tab switch while already paused) still
+     * catches it. `pausedFor` guards the re-entrant call once the hold is already named.
+     *
+     * MUST RUN BEFORE THE `metadata.running` RESTAMP BELOW, not after — measured by
+     * injection: `pauseSim` -> `service.stop()` flips `service.running` false, but this
+     * SNAPSHOT's own `metadata.running` was already assembled true. The restamp below exists
+     * exactly to fix a stale `true` from live state; running it BEFORE this block would bake
+     * the pre-pause `true` into `s.metadata.running`, and the board's own renderer trusts
+     * that field (`pwr_board.js` `setRunning(!(s.metadata.running === false))`) — so it would
+     * un-freeze itself on the very next queued render, reproducing the exact "queued broadcast
+     * still in flight" trap the comment below is about, one line down from its own fix. */
+    var _cklWt = s && s.instructor && s.instructor.checklist;
+    if (_cklWt && _cklWt.paused && !pausedFor('walkthrough')) pauseSim('walkthrough');
     /* THE SNAPSHOT'S `running` FLAG IS STAMPED AT ASSEMBLY AND CAN BE STALE BY THE TIME IT
      * IS DRAWN. Re-stamp it from the live service here, which is the one place every
      * renderer downstream reads it from.
@@ -6462,6 +6488,19 @@
       var B = window.RD && RD.PwrBoard;
       if (B && B.setRunning && B.isMounted && B.isMounted()) B.setRunning(run);
     } catch (e) {}
+    /* #691: A PAUSED PLANT IS ACCELERATING AT NO RATE AT ALL, so the previously-selected
+     * speed button must not read as current. This can't wait for syncSpeedUI's own repaint
+     * because pausing never changes `time_acceleration` (see resumeSim below) — pausing
+     * STOPS THE BROADCAST, same as the board-freeze note above, so no snapshot ever arrives
+     * to trigger it. Clear the lit rung by hand, and drop `lastSpeedSync`'s memory so the
+     * NEXT real snapshot always repaints — even if it lands back on the same number (a
+     * pause/resume that never touched the speed dropdown at all, e.g. the chart-settings
+     * modal), which the `v === lastSpeedSync` guard would otherwise skip silently. */
+    if (!run) {
+      var speedSeg = $('speed');
+      if (speedSeg) speedSeg.querySelectorAll('[data-speed].on').forEach(function (x) { x.classList.remove('on'); });
+      lastSpeedSync = null;
+    }
   }
   function pauseSim(reason) {
     pauseWhy[reason || 'user'] = true;
@@ -6472,6 +6511,20 @@
   function pausedFor(reason) { return !!pauseWhy[reason]; }
   function resumeSim() {
     pauseWhy = {};                       // the player said go: every hold is released
+    /* #691: play-from-pause always lands at 1x, never the speed that was showing when the
+     * player paused (that speed only ever meant "the plant was accelerating at N× until it
+     * stopped being watched" — it is not a request to resume there). Reuse the exact path
+     * the speed buttons themselves use (`ui/app.js` speed-segment click handler) rather than
+     * writing `service.timeAcceleration` directly or routing through the service's
+     * `speed_snap` drop-to-1x path (`layers/simulation_service.js` attention-stop branch) —
+     * that path toasts "Dropped to real time" and would misreport a deliberate play press as
+     * the plant interrupting the player. `warpNote` is cleared for the same reason: this is
+     * the player's own act, not a plant-declared drop, so the line under the speed bar must
+     * not blame one. Sent BEFORE `service.start()`, while the service still reads as
+     * stopped, so `cmd()`'s own `if (!service.running) render(...)` fires and the 1x button
+     * is lit immediately rather than waiting on the next broadcast. */
+    warpNote = null;
+    cmd({ action: 'set_speed', value: 1 });
     if (!service.running) service.start();
     syncPlayBtn();
   }
@@ -7669,7 +7722,15 @@
       }
       if (e.target.closest('[data-ckl-list]')) { selectTab('checklists'); return; }   // the list tab; the run stays live
       var mk = e.target.closest('[data-ckl-check]');
-      if (mk) { if (!mk.disabled) cmd({ action: 'checklist_check', index: +mk.getAttribute('data-ckl-check') }); return; }
+      /* releaseHold('walkthrough') on every way OFF a step (#694): Continue, Rewind and Stop
+       * below. It is a no-op unless the walkthrough pause actually took the hold (`clearPause`
+       * on a key nobody set is a plain delete; `service.running` is already true the rest of
+       * the time), so this costs nothing on the 99% of steps that never pause — but a step
+       * that DID pause has stopped the clock at the service level, and nothing else resumes
+       * it: Continue's own command runs the instructor forward directly (not through tick()),
+       * so pressing it while stopped would otherwise check the step off into a plant that
+       * never ticks again. */
+      if (mk) { if (!mk.disabled) { releaseHold('walkthrough'); cmd({ action: 'checklist_check', index: +mk.getAttribute('data-ckl-check') }); } return; }
       /* the walkthrough's own rewind (#660 item 17): exact, two checkpoints back — the newest is the
        * start of the current step — scope 'full' so the walkthrough's progress comes back with the
        * plant. The chart's rewind is disabled while a walkthrough runs. */
@@ -7682,12 +7743,17 @@
          * dropped to 60x — pressure moving 41 psi/s" with 1x lit above it, indefinitely.
          * Measured: 1x lit, that text still shown 4 s later and until a speed button was touched.
          * The rewind IS the player acting on the drop, so the note is spent. */
-        if (!rw.disabled) { warpNote = null; TEL.walkthroughRewind(); cmd({ action: 'rewind', steps: 2, scope: 'full', exact: true }); }
+        /* #694: a rewind taken FROM a paused walkthrough step restores an earlier checkpoint
+         * (laid at that earlier step's ENTRY, before it fired anything — see the ordering note
+         * in instructor_layer.js `_checklistFire`), so the restored state never asked for this
+         * pause. Nothing else would ever clear it: release the hold here too, or the plant
+         * comes back from the rewind and simply never ticks again. */
+        if (!rw.disabled) { warpNote = null; TEL.walkthroughRewind(); releaseHold('walkthrough'); cmd({ action: 'rewind', steps: 2, scope: 'full', exact: true }); }
         return;
       }
       var wa = e.target.closest('[data-ckl-why-all]');
       if (wa) { cklState.whyAll = !cklState.whyAll; cklState.key = null; render(latest); return; }
-      if (e.target.closest('[data-ckl-stop]')) { cmd({ action: 'stop_checklist' }); return; }
+      if (e.target.closest('[data-ckl-stop]')) { releaseHold('walkthrough'); cmd({ action: 'stop_checklist' }); return; }
       /* Click the step card to expand (#607 item 2). Skip clicks on inner buttons. */
       var stepEl = e.target.closest('.ckl-step');
       if (stepEl && !e.target.closest('button')) {

@@ -140,6 +140,40 @@ function runSuite(quietRec) {
   q('every pump prop is finite (running boolean, speed number-or-null)', badPump.length === 0,
     badPump.join(',') || 'rcp speed ' + D.compProps({ id: 'imrobpq4a70' }, w.snap()).speed.toFixed(2));
 
+
+  /* ---- 1b. THE ECCS PUMP ON THE RHR BRANCH (#699) ------------------------------------------
+   * RHR has no pump of its own — it is a suction alignment on this shared ECCS train — and the
+   * impeller keyed on injection flow, which is zero on a cooldown. So the ONE pump on the mimic
+   * was drawn STOPPED through the whole of Mode 4 and Mode 5, the back half of the authored
+   * round trip. Measured on the shipped wiring: cold_shutdown, RHR aligned, HX split 25 %,
+   * `rhr_active` true, `eccs_mode` 'rhr', `hpi_flow` 0, `pumpProps` running FALSE.
+   *
+   * TWO CHECKS, AND THE SECOND IS THE LOAD-BEARING ONE. Gating on the alignment BUTTON would
+   * satisfy the first and re-create the defect #350 items 7/13/15 took out of three other pumps
+   * — a rotor turning on a dead bus. So the blackout leg asserts the impeller stops WHILE
+   * `rhr_valve_open` is still true: the valve does not move in a blackout, only the power does,
+   * which makes the two signals separable in exactly the way a commanded-flag regression is not. */
+  if (!rec) head('ECCS PUMP / RHR  [RHR is an alignment on the ECCS train — the impeller must follow DELIVERY, #699]');
+  var wRhr = mkWorld('cold_shutdown');
+  wRhr.cmd({ action: 'set_rhr', active: true }); wRhr.tick(5);
+  wRhr.cmd({ action: 'set_rhr_hx', pct: 25 }); wRhr.tick(20);
+  var sRhr = wRhr.snap(), pRhr = D.compProps({ id: 'imrobnzlha1' }, sRhr);
+  var hpiRhr = sRhr.instruments.hpi_flow || 0;
+  q('the ECCS pump TURNS on a shutdown cooldown with no injection at all',
+    !!(pRhr && pRhr.running) && hpiRhr <= 1e-4 &&
+    sRhr.instruments.rhr_running === true && (sRhr.control_state || {}).eccs_mode === 'rhr',
+    'running ' + (pRhr && pRhr.running) + ', speed ' + (pRhr && pRhr.speed) +
+    ', hpi_flow ' + hpiRhr + ', eccs_mode ' + (sRhr.control_state || {}).eccs_mode);
+
+  wRhr.cmd({ action: 'inject_failure', failure_id: 'station_blackout' }); wRhr.tick(30);
+  var sBo = wRhr.snap(), pBo = D.compProps({ id: 'imrobnzlha1' }, sBo);
+  q('...and it STOPS on a dead bus, with the suction valve still showing OPEN (the discriminator)',
+    !!(pBo && pBo.running === false) && sBo.instruments.rhr_valve_open === true &&
+    sBo.instruments.rhr_running === false,
+    'running ' + (pBo && pBo.running) + ', rhr_valve_open ' + sBo.instruments.rhr_valve_open +
+    ', rhr_running ' + sBo.instruments.rhr_running);
+  bindWorld(w);                    /* PUT THE DRIVER BACK — see bindWorld and the note above */
+
   /* ---- 2. the power tile ------------------------------------------------------------------ */
   if (!rec) head('POWER TILE  [authored bands — the 25 % startup trip is not armed here, #506.7]');
   var tile = D.compProps({ id: 'imrzl4b7g9m' }, w.snap());
@@ -1106,6 +1140,21 @@ var KSRC = fs.readFileSync(KPATH, 'utf8').replace(/\r\n/g, '\n');
 var PTPATH = path.join(SRC, 'pwr2_protection.js');
 var PTSRC = fs.readFileSync(PTPATH, 'utf8').replace(/\r\n/g, '\n');
 var MUTS = [
+  /* #699, the BOARD end: the ECCS impeller goes back to keying on injection flow alone, which
+   * is the shipped defect exactly — a pump drawn stopped through the whole shutdown cooldown. */
+  ['the ECCS impeller keys on injection flow only again (stopped through all of Mode 4/5)',
+   WIRING_PATH, WSRC,
+   '      var rhr = IN(s).rhr_running === true;',
+   '      var rhr = false;'],
+  /* #699, the PLANT end, and it is the one that matters: the shell stops publishing the
+   * DELIVERED flag, so the board has nothing but the alignment button to key on. Distinct from
+   * the board mutation above for the reason every paired publish/consume mutation in this file
+   * is distinct — a board that agreed with the valve by luck would still have to redden, and
+   * the blackout leg is what makes it. */
+  ['the plant stops publishing rhr_running (only the alignment button is left to key on)',
+   SHPATH, SHSRC,
+   '    ex.rhr_running = e.rh ? e.rh.running === true : undefined;',
+   '    ex.rhr_running = e.rh ? e.rh.valve_open === true : undefined;'],
   /* RETIRED (#507 wave 7): the tile-presence mutation went blind the day the kernel began
    * MERGING the engine-owned block status — the live pwr2 snapshot always carries
    * pr_low_setpoint now (with its own 35 % setpoint overriding the static row), so deleting

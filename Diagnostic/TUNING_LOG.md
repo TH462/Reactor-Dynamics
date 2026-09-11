@@ -259,6 +259,351 @@ indication, which is a DESIGN_CRITERIA Q4 question and the owner's call.
 held pending the #647 ruling on the full-power program anchor.
 
 ## Session log — 2026-09-10-develop-a (#681, #682 — the bug report was 8 MB of text describing 5 MB of numbers, and a failed send never came back)
+## Session log — 2026-09-10-workbench-d (#694 — a walkthrough event that fires and PAUSES the sim; the pause had no path at all)
+
+**Workbench lane, unmerged.** Built the missing piece #694's own investigation named: a
+checklist step can narrate an event and fire it on Continue (#670), but nothing could stop the
+clock so the player could SEE it happen — *(OWNER, 2026-09-09: "user hits next, polisher goes
+offline, sim pauses. Then it explains that it tripped the feed pump...")*.
+
+**The field: `pause: true`**, sibling of `inject`/`clear` in `ui/manual_procedures.js`. Author it
+on the step that FIRES the event, not the narration step before it. When that step's fire lands
+(`_checklistFire`, `layers/instructor_layer.js`) — the tick after entry, never on entry itself,
+same ordering #670 already established for the checkpoint — the runtime sets `_pauseRequested`
+**and forces `c.awaitingAck = true` in the same tick, replacing ordinary grading with an early
+return**. That last part is load-bearing, not cosmetic: `acc`/`saw`/the OBSERVE_DWELL fallback
+all need sim time to advance, and a pause is exactly what stops sim time — requiring one to also
+be met would soft-lock every step that ever paused. The pause IS the step's completion; Continue
+is "I saw it, move on."
+
+**The service, not the UI, stops the clock.** `_serviceInstructorRequests`
+(`layers/simulation_service.js`) consumes the new `consumePauseRequest()` flag and calls
+`this.stop()` directly — never `_setSpeed(0, ...)`, which clamps `!(v>0)` to 1 (#694's own
+investigation flagged this: a speed channel cannot express a pause). Returning `true` from
+`_serviceInstructorRequests` forces the SAME reassembly the rewind path already uses, so one
+broadcast carries the fired event (`checklist.injected`) and the frozen clock
+(`metadata.running`) together — without it the freeze would lag the event it explains by one
+tick, since `assembleSnapshot()` at the top of `_assembleWithInstructor` runs BEFORE
+`instructor.step()` fires anything.
+
+**The UI names the hold, in `render()`, on the sticky `checklist.paused` flag** — a service-level
+pause is a plant fact, not a UI one, and nothing calls `pauseSim('walkthrough')` (the existing
+`pauseWhy`/`.bd-frozen`/flashing-play-button machinery, #691) just because `service.running` went
+false out from under it. **Ordering bug caught while proving this, and fixed**: the detection had
+to run BEFORE the existing `s.metadata.running = !!service.running` restamp, not after — measured
+by injection, running it after baked the PRE-pause `true` into the snapshot object, and the
+board's own renderer (`pwr_board.js` `setRunning(!(s.metadata.running===false))`) un-froze itself
+on the very next queued render, reproducing the exact "queued broadcast still in flight" trap the
+restamp's own neighboring comment already describes.
+
+**Release, decided explicitly (the issue asked for this):**
+- **Continue** (`data-ckl-check`) and the checklist's own **Rewind step** (`data-wt-rewind`) and
+  **Stop** (`data-ckl-stop`) all call `releaseHold('walkthrough')` alongside their command — a
+  no-op the other >99% of the time (nothing else ever takes that hold), but the only way to
+  resume on the one path that does, since `checklist_check` moves the instructor directly and
+  never touches `running`, and neither does the service. **Rewind specifically needs it too**: a
+  rewind from a paused step restores an EARLIER checkpoint (laid before it fired anything), so
+  the restored state never itself asked for the pause — nothing else would ever clear it.
+- **A speed button pressed while paused behaves exactly like one pressed during any other
+  pause** (`user`, `modal`): `set_speed` is accepted and arms the rate, but does not resume —
+  only Continue/Rewind/Stop or the ▶ button (which clears every hold) does. No special-case code;
+  this falls out of the existing `pauseWhy` architecture for free.
+- **No new "why paused" banner.** The 2026-08-11 removal of the "SIMULATION PAUSED" veil stands;
+  the step's own narrative text plus the existing "Step done — press Continue" ack-note (already
+  drawn right beside the button) is the on-screen "why", satisfying DESIGN_CRITERIA Q3.
+
+**Proved at TWO layers, because the browser gate alone cannot tell "the service stops itself"
+from "the UI compensates for a service that doesn't".** `test/run_checklist.js` section 11 drives
+`tick()` directly with no UI/app.js loaded at all (`mkService()` never uses `advanceCycles`) —
+`svc.running` going false there with a bare `zz_pause_probe` fixture is the SERVICE mechanism in
+total isolation. `verify_e2e_ui.js`'s `testWalkthroughEventPause` is what that harness cannot see
+at all: the real browser setTimeout loop actually stopping rescheduling and `.bd-frozen` actually
+painting. **Both proved red by injection, and the results genuinely differ between them** — with
+`_serviceInstructorRequests`'s `this.stop()` removed, `run_checklist.js` goes red (4 checks) but
+`verify_e2e_ui.js` still PASSES, because `render()`'s own `pauseSim('walkthrough')` detection
+stops the service anyway (measured, not assumed) — a real defense-in-depth pairing, and exactly
+why the Node check is required "in addition, never instead" of the browser one. With the
+instructor's early-return neutered, BOTH go red. `inbox/694/inject_pause.js a|b` is the browser
+harness (gitignored scratch); `run_checklist.js`'s injections were done by hand and restored.
+No shipped step authors `pause` yet — #693 is the first content consumer — so both proofs drive a
+synthetic fixture and say so, per the standing rule against a dark wire.
+
+**Housekeeping owed by the issue, done in the same change**: `ui/manual_procedures.js`'s schema
+header documented 12 of 19 shipped step fields; now documents all of them (`hl`, `past`, `story`,
+`crew`, `inject`, `clear`, `pause`, `wrong`, `wait_est_s`), with a note asking the next field's
+author to keep it current. `CLAUDE.md`'s standing line *"The live checklist NEVER issues `cmd`"*
+corrected in place (still true of `cmd`; since #670 it does fire `inject_failure`/`clear_failure`)
+— no new bullet, the standing list is at its cap.
+
+**Gates**: `run_checklist` 78→90 (+12, section 11), `run_checklist_pwr2` unchanged (191/191, no
+pwr2 content authors `pause`), `run_m5`/`run_m6` unchanged, `run_style`/`verify_ckl_relevance`/
+`run_hardrules` unchanged, `run_doc_budget` OK at 14,999/15,000 words after trimming the CLAUDE.md
+correction to fit (1 word of headroom — razor-thin; the next edit to that file needs to cut
+before it adds). `verify_e2e_ui` gains one new browser check (`testWalkthroughEventPause`),
+screenshot count unchanged.
+
+**— STILL OUTSTANDING —**
+- **#693 (the TMI-2 cascade authoring)** — not started here, by design (out of scope, named in
+  #694 as the first real content consumer of `pause`).
+- **CLAUDE.md is at 14,999/15,000 words** — not a defect, but the next agent to touch that file
+  needs to cut before adding; flagged, not fixed, since cutting further wasn't this issue's job.
+**Next:** author #693's cascade steps against this runtime (the first real exercise of `pause`
+outside the two synthetic fixtures here), or — if the owner wants headroom restored first —
+a short CLAUDE.md trim pass. Recommend #693: the mechanism is gated at both layers, and a real
+consumer is worth more than a document diet the gate doesn't need yet.
+**— END STILL OUTSTANDING —**
+
+## Session log — 2026-09-10-workbench-c (#697 and #696 — a step graded on the PRESS, and a precondition #696's own measurement calls for)
+
+**Workbench lane, unmerged.** Two small, related fixes triaged off #675 section C.
+
+**#697 — `pwr_cooldown` step 4's STEAM DUMP AUTO was already green but still needed a press**
+(owner, exact words). Same family as #641 sign-flipped: there the plant stopped letting the
+player PRODUCE the command, here the plant produces the command's EFFECT on its own and the
+checkbox still demands the press.
+
+**Sweep of the pwr2 pool: 19 pure cmd-kind `accs` entries** (has `.cmd`, no `.p`, no step-level
+`overtaken`). 7 already carry `overtaken` at the step level (the #641 1/M fix, untouched). Of
+the remaining 12: 3 have **no observable state at all** — `pwr_raise_power` step 4
+(`take_boron_sample`) and `pwr_cooldown` step 3's two bare `set_trip_block` entries — judgement
+calls per the issue (need an `overtaken` or a new state field), left alone and pinned by a gate
+assertion so a new one cannot join unnoticed. Of the 9 with a sibling predicate, booted at their
+own leg's `from` with nothing pressed: **only `pwr_cooldown` step 4 and `pwr_shutdown` step 3
+read pre-satisfied** — measured, both siblings on each step are already true from the plant's
+own dynamics (the tavg-mode dump answers the load/scram transient on its own; `steam_dump_auto`
+is a boolean over three modes and never reads 0 once the IC's own lineup engages it). The other
+7 (the `pwr_raise_power` ladder, `pwr_startup` step 15, `pwr_cooldown` step 11) read clean —
+they need the leg's own earlier steps actually run first, a different shape, left alone.
+
+**The fix is NOT the `pwr_heatup` step 8 two-entry precedent** (hidden `cmd` plus a separate
+predicate) — proven wrong by injection: `_gradeAccs` never grades a cmd-only entry (no `.p`), so
+it can only latch via `_accsCmdWatch` seeing the exact command, and a predicate SIBLING cannot
+satisfy it. That shape never surfaced its own bug because `heater_auto`/`spray_auto` are false
+at `pwr_heatup`'s own `cold_shutdown` IC — it happens to never be pre-satisfied there. **The fix
+merges `p`/`op`/`v` onto the SAME entry as `cmd`**: `_gradeAccs` grades the predicate half
+regardless of any command (a plant already there ticks the box), `_accsCmdWatch` still latches
+the SAME entry on a real press for a plant that is not. Proven correct by injection too:
+`pwr_cooldown` step 4 completes with AUTO never pressed once the ramp brings Tavg below 175 °C
+(347 °F); reverted to the pre-fix shape, it **soft-locks forever** — `met:false, obs:null` —
+even with the sibling `tavg_c<175` reading true underneath it. Same proof on `pwr_shutdown` step
+3 (both siblings true, `power_pct` clears 1 % in seconds and `steam_dump_valve_pct` runs 39 % ->
+7-9 % chained, 100 % standalone, all without a press).
+
+`test/run_checklist_pwr2.js` gains sections **2n** (the pool-wide static sweep) and **2o** (the
+live drive + red-by-injection on both confirmed instances). 179 -> 187 checks (+6, +2 more from
+the replay now grading the merged entries' predicate half).
+
+**#696 — the shutdown leg's own precondition had no upper bound**, so a 100 % plant could enter
+`pwr_shutdown` standalone (its `from` is `hot_full_power`) with no warning. Measured (full stack,
+`hot_full_power` -> load 0 -> scram): AVG COOLANT TEMPERATURE 580.3 -> 601.3 °F (304.6 -> 316.3
+°C), **+21.0 °F (+11.7 °C) in 29 s**, 54.3 °F (30.1 °C) above the 547.0 °F no-load program —
+chained after `pwr_lower_power` (the intended route), the same drive peaks 560.1 -> 560.3 °F, a
+0.2 °F (0.1 °C) blip. Scramming FIRST at either power produces ZERO rise, so the leg's own step
+order (load to zero, then scram) is not the cause: holding the reactor at full nuclear power
+against near-zero steam demand for up to 120 s is. Sourced (Ginna UFSAR ch10 ML20339A040 p.160;
+ch15 §15.2.2.1 ML20339A101; Tech Spec Bases Rev 101 ML20339A221): above 50 % rated thermal power
+a complete loss of load causes an automatic reactor trip; below 50 % it "presents no hazard".
+Full measurement: github.com/TH462/Reactor-Dynamics/issues/696#issuecomment-5626847249.
+
+**Set at 30 %, not the issue's own first-proposed 20 %.** Measured directly here: the leg's
+ACTUAL chained handoff (`pwr_lower_power` run to completion into `pwr_shutdown`) settles the
+plant at **22-23 % power**, not the ~15 % `pwr_lower_power`'s own text promises — the
+already-tracked #508 rod-trim residue ("the trim sizing predates #508 and was ALREADY short").
+A 20 % ceiling would have WARNED on the leg's own shipped, correct route, which is worse than
+the silent gap it replaces — a banner on the correct route trains a player to ignore every
+banner. 30 % clears the measured handoff with margin and stays comfortably under the sourced
+50 % hazard line.
+
+**`precond` WARNS, never blocks** *(OWNER RULING, 2026-08-06: selected "Warn, never block" from
+three options)* — this is the pool's own entry-banner idiom, captured once at open like every
+other precondition row, not a hard refusal. It does not stop a player who ignores it; it stops
+the SILENT case the owner hit.
+
+`test/run_checklist_pwr2.js` gains section **2p**: the upper-bound row exists; unmet at a
+standalone 100 % entry; met on the leg's own intended chained entry; **RED BY INJECTION** — row
+removed, the 100 % entry shows no unmet row at all, the exact silence reported. 187 -> 191
+checks.
+
+**Gates**: `run_checklist_pwr2` 191/191, `run_checklist` 78/78, `run_style` 10/10,
+`verify_ckl_relevance` 18/18, `verify_manual_follow` 225/225, `run_hardrules` 521/521,
+`run_contract` 178/178. `node test/run_all.js` run in the background; result recorded below once
+complete. BASELINES for `run_checklist_pwr2.js` moved 179 -> 187 -> 191 across the two commits.
+
+**Commits**: `484eaf16` (#697), `1873f007` (#696). **Not touched**: `#686`/`#warpInfo` (on hold
+per owner), scope stayed to the two named issues.
+
+---
+
+## Session log — 2026-09-10-workbench-b (#691 — a paused plant kept the old speed button lit, and play-from-pause resumed at the old speed)
+
+**Workbench lane, unmerged.** Owner: *"When pausing the sim the previously selected warp
+button shouldn't still be highlighted. Pressing play from a pause should play at 1x."*
+Triaged alongside #686 (the warp status line), which is held on an unresolved owner question
+(the accumulator-window `speed_hold` gap) — **only #691 was built here.**
+
+**WHAT WAS ACTUALLY WRONG, not just the symptom.** Two independent state bugs sharing one
+proximate cause: `timeAcceleration` is untouched by pause/resume.
+1. **`syncSpeedUI`'s repaint of `[data-speed].on` is guarded on `v !== lastSpeedSync`**
+   (`ui/app.js`). `pauseSim` → `service.stop()` never changes `time_acceleration`, and pausing
+   also STOPS THE BROADCAST (the same reason the board-freeze fix had to push state directly
+   rather than wait for a snapshot, per the comment on `syncPlayBtn`) — so no repaint was ever
+   triggered, guarded or not, and the last-clicked button's `.on` class simply sat there over a
+   stopped plant.
+2. **`resumeSim` called only `service.start()`.** `timeAcceleration`'s one mutator besides init
+   is `_setSpeed`, and nothing on the pause/resume path calls it — so whatever speed survived
+   the pause untouched is exactly what the plant resumed at.
+
+**THE FIX.** `syncPlayBtn()` now clears `.on` from every lit `[data-speed]` button and resets
+`lastSpeedSync = null` whenever `!run` — forcing the *next* real snapshot to always repaint the
+speed segment, even onto the same numeric value (covers the modal/rewind/plant-change pause
+reasons too, not just the play button, since they all funnel through `syncPlayBtn`).
+`resumeSim()` now clears `warpNote` and sends `cmd({action:'set_speed', value:1})` — the exact
+call the 1x button itself makes — **before** `service.start()`, so `cmd()`'s own
+`if (!service.running) render(...)` fires immediately rather than waiting on the next
+broadcast. Per the issue's own warning, resume deliberately does NOT route through the
+service's `speed_snap` drop-to-1x path (`layers/simulation_service.js`, the attention-stop
+branch): that path toasts "Dropped to real time", which would misreport a deliberate play
+press as the plant interrupting the player, and would write a `warpNote` the #686 consolidated
+line (still on hold) would have had to account for.
+
+**Accepted side effect, named in the issue itself:** `syncSpeedUI` re-labels the strip-chart
+window buttons for the new speed (`syncChartWindows`), so every play-from-pause re-labels the
+chart axis to the 1x window. Checked visually — looks right, not a regression.
+
+**Scanner-hint text corrected too** (`ui/shell.html`, `#playBtn`'s `data-scanner-detail`): it
+explicitly documented the OLD, buggy behavior as intended ("pausing does not reset it, and a
+paused plant at 60x is still paused") — left uncorrected it would teach players the wrong
+thing about the fixed behavior. No gate pins this text's content (`run_inspect.js`'s "shell
+inline tier" check is structural — pairing and format only), so this was a manual read, not a
+gate catch.
+
+**GATE — A NODE HARNESS CANNOT SEE THIS DEFECT.**
+`SimulationService.prototype.advanceCycles` forces `running = true` for the duration of its own
+loop and restores the prior value afterward, so a Node harness that pauses and then steps the
+plant to check can never observe the pause holding. New browser check,
+`test/verify_e2e_ui.js`'s `testPauseResumeSpeed`: select 600x (confirms `.on` + `timeAcceleration
+>= 600`), pause (confirms `.on` gone from the 600x button while `timeAcceleration` is
+UNCHANGED — the actual defect, not a proxy for it), resume (confirms `timeAcceleration === 1`
+and `.on` moved to the 1x button, not still on 600x). **Proved red first**: reverted both
+`syncPlayBtn`'s clear-on-pause block and `resumeSim`'s `cmd(set_speed,1)` call (scratch copy,
+`inbox/691/`, gitignored), ran the new check in isolation against the reverted source — failed
+with *"the 600x speed button is still lit while the plant is PAUSED — lit [600]"* — restored
+the fix, re-ran, passed with `paused: lit [] (600x cleared)` / `resumed: accel 1, lit [1]`.
+
+**GATES:** `verify_e2e_ui` PASS (4 screenshots, baseline unchanged — the new test doesn't move
+the screenshot count the score is keyed on), `verify_flags_ui` 50/50, `run_style` 10/10,
+`run_inspect` 11/11 62/62 (unchanged — the scanner-detail edit changed content, not the count
+any check sweeps).
+
+**`run_all` 110/111 at baseline plus one PRE-EXISTING, UNRELATED drift, corrected here:**
+`run_hardrules.js` came back 521 vs a baseline of 520 — not caused by #691 (that gate scans
+only `Blueprint/`, `Diagnostic/`, `Manuals/`, `CLAUDE.md`, `CHANGELOG.md`, `README.md`,
+`.claude/`, never `ui/` or `test/`, which is everything this session touched). Read
+`793f4c02`'s diff directly: the prior session's #684/#701/#699 close-out added a well-formed
+`(OWNER RULING, 2026-08-04: "A")` citation to this file's own run_ops writeup (line 42, run_ops
+paragraph above) without moving the `run_hardrules.js` baseline in the same commit — its own
+commit message's claim of "111/111 at baseline" did not account for the file it was itself
+editing. Corrected in `test/run_all.js` (520 → 521, comment explains the true cause). **After
+the correction, `run_all` is clean at baseline**: `run_ops` 59/70 is the one tracked, ruled red
+(#330, unchanged). Not touched: `changelog.html`, the release-candidate number, `site/flags.js`.
+
+**Filed, not fixed:** nothing — no new defect found outside #691's own scope.
+
+**Issue:** #691, `status-work-complete`, `status-wip-workbench` cleared. Cross-linked: #686
+(held), #675 (parent).
+
+**Workbench lane, all three unmerged.** Commits `b1462989` (#684), `5d099b23` (#701),
+`c73bbfd9` (#699) were already on the branch when this session started — the agent that
+wrote them hit a session limit before running the aggregate gate. This entry is that
+close-out: `node test/run_all.js`, one diff-provenance question, and the write-up.
+
+**GATE: `run_all` 111/111 runners at baseline, one tracked red unchanged** — `run_ops.js`
+59/70 (12 failed), the ruled #330 `ops_cvcs_pzr_drain_rate` state (OWNER RULING, 2026-08-04:
+"A"). Nothing else drifted; no baseline needed correcting. Individually: `verify_board_check`
+256 checks, `run_inspect` 11/11 62/62, `run_pwr2_board` 82 checks, `run_manual_controls` 589
+checks, `run_contract` 178 checks — all exactly at the numbers the three commits' own baseline
+edits claimed.
+
+**#684 — THE HALO WAS SIZED TO THE AUTHORED TILE, NOT THE ART INSIDE IT.** Measured across all
+218 board tiles, headless Chromium at the harness's pinned 1400×900: with the glow box equal to
+the tile rect, **27 tiles have visible art overflowing it by more than 1 px, 17 by more than
+2 px**. The PORV — the item the owner actually reported (a halo that "missed" the valve) — was
+the worst *fractional* miss: its ring covered only **44.5 %** of the valve's width. The
+pressurizer was the worst *absolute* miss and is not rotated at all — **80 px of vessel hung
+below its halo**, 62.7 % ring coverage. Filing this as a rotation bug (the PORV is the only
+board item that declares one, 1 of 217) would have fixed the PORV and left 26 more tiles,
+including the turbine-generator and the pressurizer, to come back as the next report. Fix:
+`revealControl` now returns a lazily-built `.bd-halo` child sized to the UNION of the tile rect
+and every descendant that puts visible ink on the board (laid out, not hidden, no transparent
+ancestor, a real fill/stroke/background) — after the fix, **0 of 218 tiles overflow at either
+bound, and none shrunk**. `verify_board_check` 246 → 256 (+10, four injection-proven: no
+overflow recorded, border compensation dropped, `revealControl` reverted to the tile, the PORV
+status label deleted). `run_manual_controls` 590 → 589 — one fewer LABEL (a vocabulary
+consolidation), not one fewer covered step.
+
+**#701 — THE INSPECT PANEL TAUGHT THE RETIRED ENGINE'S INTERLOCK, ON THE SHIPPED PLANT.** The
+RHR suction-valve inspect text read "Refused above the 400 psi (2.76 MPa) interlock" —
+`emergency.rhr_valve_interlock_mpa` out of the retired engine's config. **This plant (PWR2)
+refuses at the sourced 425 psig (WTSM 5.1) = 440 psi (3.03 MPa) absolute**, and `Manuals/04`
+§PWR-N02 has printed 440 psi all along; the board's WIRING got this right under #524 and only
+the explanatory panel was missed. THE TRAP: a general "does every psi/MPa pair convert
+correctly" gate would have passed this defect, because 400 psi and 2.76 MPa are exactly each
+other — internally consistent, externally wrong to THIS plant. The fix derives both figures
+live from `RD.pwr2.rhr.RHR` instead of retyping them, proven red in both directions (put the
+400 psi copy back: red; move the plant's own `permissive_open_psig` to 350: red on both
+entries). Also removed: a claim that AUTO "arms the valve to open itself after a trip" — #453
+removed that RHR safeguards-arm months ago (no plant does it — WTSM 5.1 §5.1.3.3, NUREG-1431 SR
+3.4.14.2/.3) and the board draws no such button. `run_inspect` 10/10 56/56 → 11/11 62/62.
+
+**#699 — THE ONLY PUMP ART ON THAT CORNER OF THE MIMIC KEYED ON A FLOW THAT IS ZERO DURING THE
+EVOLUTION IT DRAWS.** RHR has no pump of its own — it is a suction alignment on the shared
+emergency-injection train — and that train's animation read `hpi_flow` alone. On PWR2
+`hpi_flow` is emergency injection only; a cooldown injects nothing. So **the ECCS impeller was
+drawn stopped through the entire back half of the authored Mode 1 → Mode 5 round trip** —
+exactly the leg where residual heat removal is the only thing between the core and its own
+decay heat. Measured, PWR2 cold shutdown, RHR aligned, 25 % heat-exchanger split: before,
+`rhr_active` true / `eccs_mode` 'rhr' / `hpi_flow` 0 → pump `running` **FALSE**; after, same
+plant state → `running` **TRUE**, speed 0.6; after + station blackout → `running` **FALSE**
+while `rhr_valve_open` stays **true** (the valve doesn't move in a blackout, only the power
+does — the separating signal). Fix publishes the engine's own `rh.running = valve_open &&
+powered` as a status passthrough, `rhr_running`, read at the board rather than recomputed — NOT
+keyed on the alignment valve alone, because that would reproduce the exact spinning-rotor-on-a-
+dead-bus defect #350 items 7/13/15 already removed from three other pumps. `run_pwr2_board`
+80 → 82 (+2; the second is the load-bearing one, asserting the impeller stops on a dead bus
+*while the valve is still open* — the discriminator a valve-only gate would pass vacuously).
+Deliberately NOT fixed here: the ECCS FLOW gauge still reads 0 GPM on an RHR cooldown (PWR2
+models RHR as one derived lineup constant with no pump hydraulics, so `hpi_flow × GPM_HPI`
+would render the wrong number on the wrong scale) — filed as **#705** (status-needs-ruling,
+cross-linked).
+
+**THE DIFF QUESTION, AND WHY THE ANSWER TURNED ON WHICH FUNCTION, NOT WHICH FILE.** #699 also
+touches `engines/pwr/pwr_engine.js` (+4 lines) and `engines/pwr/pwr_config.js` (+10 lines) —
+worth double-checking on sight, because `pwr_engine.js` is the RETIRED engine and the shipped
+plant is PWR2. Read closely, neither is stray:
+- `pwr_config.js`'s addition puts `'rhr_running'` into `PWR_CONFIG.instruments.status` — the
+  SHARED channel-name array both engines' status-passthrough builders iterate (`_copyStatus` in
+  `pwr_instruments.js`, and `pwr2_shell.js`'s own extras builder), and the array
+  `test/run_inspect.js`'s "every plant indication has a chart series" check sweeps to require a
+  `ui/app.js` series entry. It is config, not engine code — CLAUDE.md already carries this
+  distinction ("`pwr_config.js`/`pwr_instruments.js` are NOT the old engine and ship
+  everywhere").
+- `pwr_engine.js`'s four lines add `rhr_running: !!(s.rhr_active && s.ac_available)` INSIDE
+  `_instrExtras()` — the retired engine's status-passthrough builder, the same function that
+  already supplies `afw_active`, `rhr_active`, `rhr_valve_open` etc. to `_copyStatus`. **This is
+  not `getTrueState()`** — confirmed by the fact that `run_contract.js`'s baseline held at
+  exactly 178 checks through this change; that gate audits the UNION of `getTrueState()` keys
+  against `Blueprint/CONTEXT.md` §6.3 and would have gone red on a new, undocumented true_state
+  field. `_instrExtras()` output isn't part of that contract. So the line is a parity addition:
+  the retired engine still boots on the PREVIEW channel (#523), and without it the newly-added
+  `rhr_running` status row would read `undefined` there while `pwr2_shell.js` got the matching
+  live value for the shipped engine. **Worth writing down because it will get re-questioned in a
+  month**: "touches the retired engine" is not the same claim as "the retired engine's PHYSICS
+  changed" — a parity line in a shared status-passthrough builder is exactly the shape CLAUDE.md
+  already carves out, and the right way to settle "is this stray" is to ask which FUNCTION a
+  touched line sits in, not which file it's in.
+
+**Not touched this session:** `changelog.html`, the release-candidate number (both tied to a
+`develop` push, and this lane stays local until the owner merges it), `site/flags.js`.
 
 **Both filed 2026-09-10 out of the #675 section E measurement pass; both fixed here.** The
 acceptance criteria were that pass's own numbers, and they were re-measured against the fix with

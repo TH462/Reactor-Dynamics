@@ -658,14 +658,28 @@
 
     ims3xf18pk8: e('RHR',
       'Residual heat removal — the shutdown cooling path. An alignment, not a separate pump.',
+      /* THE NUMBERS ARE THIS PLANT'S, NOT THE RETIRED ONE'S (#701). This read "400 psi
+       * (2.76 MPa)" — `emergency.rhr_valve_interlock_mpa` out of the RETIRED engine's config.
+       * The shipped plant refuses at the sourced 425 psig (WTSM 5.1), which is 440 psi
+       * (3.03 MPa) absolute, and `Manuals/04` §PWR-N02 has printed 440 psi all along. The
+       * wiring's copy of the same pair was corrected under #524 and this one was missed —
+       * two files holding one constant, one of them updated.
+       * The autoclosure figure is NOT changed: PWR2's `permissive_close_psig` 585 is
+       * 599.7 psia, which is the 600 psi (4.14 MPa) already written here. It reads as a
+       * survivor of the same stale pair and is not one — measured, not assumed.
+       * AND THERE IS NO AUTO. #453 removed the RHR ESF arm ("with nothing left to arm, an
+       * AUTO button would light for a function no plant has"), the board draws no AUTO
+       * button on this card, and this sentence was still teaching one. */
       'ALIGN opens the hot-leg suction valve and puts the shared train on decay-heat removal; ISOLATE ' +
-      'shuts it; AUTO arms it to open itself after a trip once pressure allows. Two setpoints, not one: ' +
-      'the valve will not open above 400 psi (2.76 MPa), and force-closes only if pressure comes back ' +
+      'shuts it. There is no AUTO: placing shutdown cooling in service is an operator evolution on ' +
+      'this plant, as it is on a real one. Two setpoints, not one: ' +
+      'the valve will not open above 440 psi (3.03 MPa), and force-closes only if pressure comes back ' +
       'up past 600 psi (4.14 MPa) — the low-pressure piping cannot take Reactor Coolant System (RCS) pressure. The gap between ' +
       'them is deliberate, so the valve does not chatter on a plant hunting around one number.', CI, '11.2'),
     ims3wg27iif: e('ALIGN (Residual Heat Removal (RHR))',
       'Opens the RHR hot-leg suction valve — puts the plant on shutdown cooling.',
-      'Refused above the 400 psi (2.76 MPa) interlock; the button visibly fails to latch rather than lying about ' +
+      /* 440 psi, not 400 — see the RHR card's entry above (#701). */
+      'Refused above the 440 psi (3.03 MPa) interlock; the button visibly fails to latch rather than lying about ' +
       'the lineup. Below it, aligning RHR is the step that carries the plant from Mode 4 to Cold ' +
       'Shutdown and holds it there. NOTHING ALIGNS RHR FOR YOU — placing shutdown cooling in service ' +
       'is an operator evolution, and on a real plant a deliberate, throttled one: set the heat-exchanger ' +

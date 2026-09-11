@@ -595,8 +595,9 @@ what a GATE already catches**, keep what nothing can tell you.
   ruled 30 psig hi-hi. Having the document is not having the number.
 - **"Block SI" is THREE actions on a cooldown** and the procedure named one: `lo_press` and
   `si_trip` both watch pressure downward and neither auto-blocks on the way down; both need P-11,
-  so the Pressure SP comes down first. **The live checklist NEVER issues `cmd`** — it draws text
-  and the instructor grades off `acc`, so `cmd`/`hold`/`ramp` are replay-side only. **Only a rate
+  so the Pressure SP comes down first. **The live checklist NEVER issues the step's `cmd`** — it
+  draws text, grades off `acc`, `cmd`/`hold`/`ramp` stay replay-side (it DOES fire
+  `inject_failure`/`clear_failure` behind the scenes since #670 — #694). **Only a rate
   guard can tell a ramp from a staircase.**
 - **A red probe can be the REFERENCE moving, not the plant — adjudicate at BOTH values** (#508,
   2026-09-06). Three of six pre-adjudicated probes had their filed reading inverted: a dump check

@@ -964,6 +964,181 @@
     });
   }
 
+
+  // ------------------------------------------------------ highlight halo --
+  /* THE HALO IS DRAWN ON THE ART, NOT ON THE TILE BOX (#684).
+   *
+   * A step highlight, an Instructor beat highlight and the #444 highlight bus all end at
+   * `revealControl(label)` -> an element -> `classList.add('<glow>')`, and the glow is a
+   * box-shadow around that element's border box. That element used to be the TILE, whose
+   * box is the item's AUTHORED rect. For most items the art fills the rect and the ring
+   * lands on the art. For twenty of them it does not:
+   *
+   *   MEASURED 2026-09-10 on eb855cd9 (inbox/684/halo_measurement_2026-09-10.txt), 202
+   *   tiles: 20 have art overflowing the tile box by more than 2 px. The worst FRACTIONAL
+   *   miss is the PORV — the ring covers 45 % of the art's width, which is the one the
+   *   owner reported. The worst ABSOLUTE miss is the PRESSURIZER, which is NOT rotated at
+   *   all: 298 px of art in a 218 px tile, 80 px of vessel hanging below the ring. Also
+   *   the turbine-generator, the condenser, three vertical valves, three tees and two
+   *   horizontal valves.
+   *
+   * So this is NOT the rotation defect the issue was filed as. A `rot`-aware special case
+   * would fix exactly one item (the PORV is the only item on the board that declares a
+   * rotation) and leave the pressurizer to come back as the next playtest report. The fix
+   * has to be art-box aware, which is what this is.
+   *
+   * HOW: each tile gets, lazily, one `.bd-halo` child inset by NEGATIVE offsets equal to
+   * how far the art overhangs, and `revealControl` returns THAT. Nothing else changes —
+   * shell.css keeps the single copy of every glow colour and keyframe, and the callers
+   * still just add a class to whatever they were handed.
+   *
+   * WHAT COUNTS AS VISIBLE ART: an element inside the tile that actually puts ink on the
+   * board — it is laid out, it is not hidden, nothing between it and the tile is
+   * transparent, and it has a visible fill or a visible stroke (SVG) / a background,
+   * a border or text of its own (HTML). A plain union of every descendant rect is WRONG
+   * and the measurement said so: on the PORV it agrees on width (63.5 px vs the 63 px hand
+   * measurement) but not height (61.3 px vs 37 px), because it catches the r=46 transparent
+   * click circle, the opacity-0 hover ring and the display:none vent plume. Sizing the ring
+   * off those would over-size it on the PORV's short axis — a different wrong halo.
+   *
+   * NEVER SMALLER THAN THE TILE. The halo box is the UNION of the tile box and the art box,
+   * so no item's ring can shrink from what shipped; the box only ever grows to cover art
+   * that was hanging outside it.
+   *
+   * MEASURED ONCE PER MOUNT, at the same settle point the ports are re-scanned (fonts and
+   * flange scale have stopped moving by then), and cached. Deliberately not live: the PORV
+   * grows a vent plume when it discharges and the TMI-2 leg highlights the PORV while it is
+   * stuck open, so a live box would make the ring jump every time the valve lifted. The
+   * insets are stored in CANVAS px, so they survive every stage rescale without re-measuring.
+   *
+   * COST: one pass at mount. getComputedStyle is asked ONLY of descendants whose rect
+   * already sticks out of the tile — a few dozen elements, not the ~6,000 the board has.
+   */
+  var haloBox = {};        // itemId -> {l,t,r,b}: canvas px the art overhangs the tile by
+  var haloEls = {};        // itemId -> the .bd-halo child that carries the glow class
+  var halosMeasured = false;
+  var HALO_EPS = 0.5;      // client px; sub-pixel rounding is not overflow
+
+  // Is this paint value ink? `none`, `transparent` and a zero alpha are not; a
+  // gradient/pattern url() is.
+  function visiblePaint(v) {
+    if (!v) return false;
+    v = String(v);
+    if (v === 'none' || v === 'transparent') return false;
+    if (v.indexOf('url(') === 0) return true;
+    var m = v.match(/rgba?\(([^)]+)\)/);
+    if (m) {
+      var p = m[1].split(/[,\/]/);
+      if (p.length >= 4 && parseFloat(p[3]) <= 0.02) return false;
+    }
+    return true;
+  }
+
+  // Does `el` actually put ink on the board right now? Only asked of elements that already
+  // stick out of their tile.
+  function paintsInk(el, tileEl) {
+    var cs;
+    try { cs = window.getComputedStyle(el); } catch (e) { return false; }
+    if (!cs) return false;
+    // `opacity` does not inherit, so a transparent GROUP has to be walked for explicitly.
+    var n = el;
+    while (n && n.nodeType === 1) {
+      var ncs = (n === el) ? cs : window.getComputedStyle(n);
+      if (!ncs) return false;
+      if (ncs.display === 'none' || ncs.visibility === 'hidden' || ncs.visibility === 'collapse') return false;
+      if (parseFloat(ncs.opacity) <= 0.02) return false;
+      if (n === tileEl) break;
+      n = n.parentNode;
+    }
+    if (el.namespaceURI === RD.BoardH.svgNS) {
+      if (visiblePaint(cs.fill)) return true;
+      return visiblePaint(cs.stroke) && parseFloat(cs.strokeWidth || 0) > 0;
+    }
+    if (visiblePaint(cs.backgroundColor)) return true;
+    var bw = ['borderTopWidth', 'borderRightWidth', 'borderBottomWidth', 'borderLeftWidth'];
+    for (var i = 0; i < bw.length; i++) if (parseFloat(cs[bw[i]] || 0) > 0) return true;
+    for (var c = el.firstChild; c; c = c.nextSibling) {
+      if (c.nodeType === 3 && /\S/.test(c.nodeValue)) return true;
+    }
+    return false;
+  }
+
+  // One pass over every tile: how far does its visible art hang outside its box?
+  function measureHalos() {
+    var ss = stage && stageScale();
+    if (!ss || !ss.scale) return false;
+    var sc = ss.scale;
+    haloBox = {};
+    Object.keys(tiles).forEach(function (id) {
+      var el = tiles[id];
+      if (!el || !el.getBoundingClientRect) return;
+      var tr = el.getBoundingClientRect();
+      if (!tr.width || !tr.height) return;      // auto-sized text/value tiles before paint
+      var l = 0, t = 0, r = 0, b = 0;
+      var kids = el.querySelectorAll('*');
+      for (var i = 0; i < kids.length; i++) {
+        var k = kids[i];
+        if (k.classList && k.classList.contains('bd-halo')) continue;
+        var kr = k.getBoundingClientRect();
+        if (!kr.width && !kr.height) continue;
+        var ol = tr.left - kr.left, ot = tr.top - kr.top,
+            orr = kr.right - tr.right, ob = kr.bottom - tr.bottom;
+        if (ol <= HALO_EPS && ot <= HALO_EPS && orr <= HALO_EPS && ob <= HALO_EPS) continue;
+        if (!paintsInk(k, el)) continue;
+        if (ol > l) l = ol;
+        if (ot > t) t = ot;
+        if (orr > r) r = orr;
+        if (ob > b) b = ob;
+      }
+      if (l > HALO_EPS || t > HALO_EPS || r > HALO_EPS || b > HALO_EPS) {
+        haloBox[id] = { l: l / sc, t: t / sc, r: r / sc, b: b / sc };
+      }
+    });
+    halosMeasured = true;
+    Object.keys(haloEls).forEach(applyHaloBox);   // anything already created moves to its box
+    return true;
+  }
+
+  /* An absolutely-positioned child is offset from its container's PADDING box, and box
+   * tiles carry a 1 px border — so `inset: 0` alone drew the ring 1 px INSIDE the tile
+   * edge, i.e. slightly smaller than what shipped, on all 15 bordered panels. Measured
+   * before this was added: halo 361.0 x 172.5 against a 362.9 x 174.4 ECCS panel. Add the
+   * border back so the zero case is byte-for-byte the old geometry. Computed border widths
+   * are untransformed, so they are already in canvas px like `o`. */
+  function applyHaloBox(id) {
+    var el = haloEls[id];
+    if (!el) return;
+    var o = haloBox[id] || { l: 0, t: 0, r: 0, b: 0 };
+    var b = { l: 0, t: 0, r: 0, b: 0 };
+    var tile = tiles[id];
+    if (tile) {
+      var cs = window.getComputedStyle(tile);
+      b.l = parseFloat(cs.borderLeftWidth) || 0;
+      b.t = parseFloat(cs.borderTopWidth) || 0;
+      b.r = parseFloat(cs.borderRightWidth) || 0;
+      b.b = parseFloat(cs.borderBottomWidth) || 0;
+    }
+    el.style.left = (-(o.l + b.l)).toFixed(2) + 'px';
+    el.style.top = (-(o.t + b.t)).toFixed(2) + 'px';
+    el.style.right = (-(o.r + b.r)).toFixed(2) + 'px';
+    el.style.bottom = (-(o.b + b.b)).toFixed(2) + 'px';
+  }
+
+  // The element a highlight glow is drawn on for `id`, created on first ask.
+  function haloFor(id) {
+    var tile = tiles[id];
+    if (!tile) return null;
+    if (!halosMeasured) measureHalos();
+    var el = haloEls[id];
+    if (!el) {
+      el = h('div', { className: 'bd-halo' });
+      haloEls[id] = el;
+      applyHaloBox(id);
+      tile.appendChild(el);
+    }
+    return el;
+  }
+
   // ------------------------------------------------------------ mount/api --
   function mount(hostEl, context) {
     unmount();
@@ -1054,6 +1229,9 @@
       buildPipes();
       scanTimer = setTimeout(function () {
         if (scanPorts()) buildPipes();
+        // Same settle point, same reason (#684): the highlight halo is sized off the
+        // RENDERED art, and the art has stopped moving once the flange scale has.
+        measureHalos();
         scanTimer = null;
       }, 350);
     });
@@ -1085,6 +1263,7 @@
     host = null; wrap = null; stage = null; underSvg = null; pausedEl = null;
     comps = {}; tiles = {}; valueEls = {}; buttonEls = {}; numberEls = {}; scramEls = {};
     ports = {}; nudge = {}; pipeFlow = []; pipeTempEls = []; lastSnap = null;
+    haloBox = {}; haloEls = {}; halosMeasured = false;
   }
 
   /* Freeze/unfreeze the board. Split out of render() 2026-08-11 because the thing that
@@ -1253,13 +1432,23 @@
       var rec = comps[id];
       return rec ? rec.inst : null;
     },
+    // The element a highlight glow is drawn on for an item, creating it if it does not
+    // exist yet — the same one revealControl hands back, reachable by item id so a harness
+    // can check EVERY tile and not only the ~200 that a control label resolves to (#684).
+    // Same category as ports()/lastSnapshot()/componentInstance(): a read accessor for the
+    // test harness, not a control path.
+    haloElement: function (id) { return haloFor(id); },
     // Instructor-highlight hooks. The driver owns the control-label vocabulary;
     // the renderer resolves it to a board tile to glow.
     revealControl: function (label) {
       var d = driver();
       if (!d || !d.controlLabelItem) return null;
       var id = d.controlLabelItem(label);
-      return (id && tiles[id]) ? tiles[id] : null;
+      // The HALO, not the tile (#684) — the ring has to sit on the art, and for 20 of the
+      // board's tiles the art is not the tile box. Every caller only ever adds a glow class
+      // to what it is handed, and the halo is a pointer-events:none child of the tile, so
+      // itemIdFor() and every hit test still resolve to the same item.
+      return (id && tiles[id]) ? haloFor(id) : null;
     },
     // The maintenance-tag prop (TMI-2): show/hide a TAGGED badge over the AFW valve tile.
     setTag: function (tagId, visible) {

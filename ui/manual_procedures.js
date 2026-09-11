@@ -11,7 +11,10 @@
  *   category: startup | power | control | shutdown | emergency | accident
  *   narrative:true  → an accident walkthrough; not run by the harness (the engine
  *                     flagship suite owns its physics, CONTEXT §9).
- * Step: { text, control, target, cmd, hold, acc, saw, note, ramp, why, accs, wait_hint }
+ * Step: { text, control, target, cmd, hold, acc, saw, note, ramp, why, accs, wait_hint,
+ *          overtaken, hl, past, story, crew, inject, clear, pause, wrong, wait_est_s }
+ *   (SCHEMA HEADER OWED FIXING #694 — this list documented 12 of the 19 fields that ship;
+ *   whoever adds a field here should fix this line in the same change, not the next agent.)
  *   text    integrated-voice instruction     control  on-screen control to use
  *   target  the value/limit to drive to      cmd      command issued (rod group 'control'/'shutdown' resolved)
  *   hold    seconds to run after the command  acc      {p,op,v[,tol]} checked at END of the step
@@ -19,6 +22,42 @@
  *   why     OPTIONAL layman's teaching prose (#244 items 2/9) — the card's collapsible
  *           fourth block. `text` stays the concise action; `why` carries the what-and-why
  *           for someone new to the sim. Never load-bearing: harnesses ignore it.
+ *   hl      OPTIONAL array of control/indication labels the step glows on hover, when the
+ *           step's own `control` isn't the (only) thing to look at. Falls back to `[control]`.
+ *   past    OPTIONAL {p,op,v} or an array (OR) — "has the plant already done this", used only
+ *           by catch-up on checklist load (#607): a player who already performed an early
+ *           action is walked past a step whose prose no longer applies, rather than trapped
+ *           on it. Read once, at load; the ACTIVE step still grades off `acc`/`saw`/`cmd`.
+ *   story   OPTIONAL {clock, saw, knew, did} — the narrative walkthrough's per-step voice
+ *           (#670): a story beat rather than an instruction. Published on the checklist
+ *           snapshot's `story` block, ACTIVE STEP ONLY, so a gate or headless probe can see
+ *           what the card is showing without re-resolving this artifact.
+ *   crew    OPTIONAL boolean — this step narrates what the historical crew actually did, not
+ *           a recommended action (#670); rendered with its own "as taken, not a recommendation"
+ *           tag so a walkthrough can show a wrong decision without teaching it as correct.
+ *   inject / clear   OPTIONAL arrays — failures this step fires behind the scenes the tick
+ *           after it becomes active (#670 Phase 1): `inject: [{failure, severity, when}]`,
+ *           `clear: [{failure, when}]` (or bare id strings). Descend through the SAME
+ *           command path a beat's `inject_failures` takes (Hard Rule 7); a refusal is
+ *           swallowed with a console warning. See `_checklistFire`
+ *           (layers/instructor_layer.js) for the full firing/ordering contract.
+ *   pause   OPTIONAL boolean, sibling of `inject`/`clear` (#694) — "for events that the user
+ *           does not control... sim pauses" (owner, 2026-09-09). When THIS step's fire lands
+ *           (the same tick something in `inject`/`clear` newly fires), the runtime also
+ *           requests a service-level pause and marks the step done — the pause itself is the
+ *           step's completion condition, in place of `acc`/`saw`/dwell, since sim time is
+ *           exactly what a pause stops. Author it on the step that fires the event the player
+ *           must SEE happen, not on the narration step before it. One event per step, matching
+ *           the owner's own cascade example (polisher / feed pump / turbine as three steps,
+ *           not three injects on one). Released by Continue, the checklist's own Rewind, or
+ *           Stop — see `ui/app.js` `releaseHold('walkthrough')`.
+ *   wrong   OPTIONAL {learning, industry} — overrides the generic "wrong action" commentary
+ *           (`_wrongActionText`) shown when a follow-mode operator does something the step
+ *           didn't ask for. Falls back to a step-generic template when absent.
+ *   wait_est_s  OPTIONAL `false` — drops the "About N plant-minutes" span on a long step's
+ *           speed-hint rung while KEEPING the rung itself, for a step whose duration is
+ *           genuinely route-dependent rather than a fixed replay dwell. Deliberately separate
+ *           from `wait_hint: false`, which drops the whole hint line (#628, #653 S9).
  *   accs    OPTIONAL array — MULTI-CHECK-OFF (#244 item 8). Entries are either
  *           {p,op,v[,tol],label} (an acceptance like `acc`, graded with the same
  *           debounce) or {cmd,label} (a command the operator must be SEEN to issue —
@@ -2137,9 +2176,43 @@
       title: 'Mode 1, At Power → Mode 3, Hot Standby — normal shutdown',
       purpose: 'Shut the reactor down from low power: take the load off the generator, scram the reactor, and check the steam dump is carrying the heat the fuel still makes. Under 10 plant-minutes.',
       from: 'hot_full_power',
-      prereq: ['Reactor at low power, 10 to 20 %, with the turbine on line (auto-checked above 10 %).'],
+      prereq: ['Reactor at low power, 10 to 20 %, with the turbine on line (auto-checked).'],
+      /* THE UPPER BOUND WAS MISSING (#696, owner: "shouldn't we walk down the power instead of
+       * just putting load to zero? Coolant temp spikes hard when we just put it to zero."). Only
+       * `power_pct > 10` was checked, which a 100 % plant satisfies — this leg's own `from` is
+       * `hot_full_power`, so the Walkthroughs list lets a player start it standalone at full
+       * power. Measured (service, hot_full_power -> load 0 -> scram, full stack, `PWR2_MEASURE`
+       * seed 42): standalone, AVG COOLANT TEMPERATURE runs 580.3 -> 601.3 °F (304.6 -> 316.3 °C),
+       * +21.0 °F (+11.7 °C) in 29 s, 2,603 °F/hr — 54.3 °F (30.1 °C) above the 547.0 °F no-load
+       * program. Chained after `pwr_lower_power` (this leg's INTENDED entry, ~15 % per that leg's
+       * own last step), the same drive peaks 560.1 -> 560.3 °F, a 0.2 °F (0.1 °C) blip — the
+       * #508 rod-trim residue riding along, not a new spike. Scramming FIRST at either power
+       * produces ZERO rise (Route E/D), so the order in this leg's own steps (load to 0, then
+       * scram) is not the cause: the cause is holding the reactor at full nuclear power against
+       * near-zero steam demand for up to 120 s while step 1's `hold` waits on a second manual
+       * action. SOURCED (Ginna UFSAR ch10, ML20339A040 p.160; ch15 §15.2.2.1, ML20339A101;
+       * Tech Spec Bases Rev 101, ML20339A221): above 50 % rated thermal power a complete loss of
+       * load causes an automatic reactor trip; below 50 % "presents no hazard".
+       *
+       * 30 %, NOT 20 %. The issue's own recommendation was 20 %, sized against
+       * `pwr_lower_power`'s text ("about 15 %"). Measured directly (chained: `pwr_lower_power`
+       * run to completion into `pwr_shutdown`'s own entry, full stack): the plant this leg
+       * actually hands off from settles at 22-23 % power, not 15 % — the already-documented
+       * #508 rod-trim residue (that leg's own comment: "the trim sizing predates #508 and was
+       * ALREADY short"). A 20 % ceiling would WARN on the leg's own INTENDED, currently-shipped
+       * entry, which is worse than the silent gap it replaces — a banner on the correct route
+       * teaches a player to ignore every banner. 30 % clears the measured ~23 % handoff with
+       * margin and still sits comfortably under the sourced 50 % hazard line.
+       * Full measurement: github.com/TH462/Reactor-Dynamics/issues/696#issuecomment-5626847249.
+       *
+       * `precond` WARNS, never blocks *(OWNER RULING, 2026-08-06: selected "Warn, never block"
+       * from three options)* — the banner is the pool's own idiom for "why this leg will not go
+       * well", captured once at open, same as every other precondition row in this file. It does
+       * not stop a player who ignores it, but it does stop the SILENT case the owner hit: no
+       * warning at all above 10 %. */
       precond: [
         { p: 'power_pct', op: '>', v: 10, text: 'Reactor at power: REACTOR POWER above 10 %' },
+        { p: 'power_pct', op: '<=', v: 30, text: 'Reactor at LOW power, not full power: REACTOR POWER at or below 30 % — run "Mode 1, At Power — load rampdown to about 15 %" first if you are at full power' },
       ],
       cautions: ['The fuel keeps making heat for days after a scram and it cannot be switched off. The STEAM DUMP carries it until the cooldown checklist starts.'],
       steps: [
@@ -2156,17 +2229,34 @@
           acc: { p: 'power_pct', op: '<', v: 5 },
           hl: ['SCRAM'] },
         /* THE DUMP'S MODE IS THE SHUTDOWN LEG'S TO SET (layman playtest pass 2, #653 S-11; the seam
-         * pass 1 found as S2). After the scram the dump is still in 'tavg' mode from power and
-         * carries nothing (measured: 0 % open); AUTO with the turbine tripped selects pressure
-         * mode and it opens to ~13 % on the no-load setpoint. So the leg's last step presses it,
-         * graded on the press AND on the valve carrying flow — and the tile reads FISSION power
-         * (0.2 % after a scram), so the text no longer claims "near 2 %"; decay heat has no
-         * readout on this board and the old `decay_heat_pct` acceptance drew a done-when nobody
-         * could find. */
+         * pass 1 found as S2). After the scram the dump is still in 'tavg' mode from power; AUTO
+         * with the turbine tripped selects pressure mode. The tile reads FISSION power (0.2 %
+         * after a scram), so the text no longer claims "near 2 %"; decay heat has no readout on
+         * this board and the old `decay_heat_pct` acceptance drew a done-when nobody could find.
+         *
+         * GRADED ON THE STATE, NOT THE PRESS (#697). This used to be a pure cmd-kind entry with
+         * no predicate and no `overtaken` — measured (service, hot_full_power -> load 0 -> scram,
+         * chained from `pwr_lower_power` too, AUTO never pressed): `steam_dump_valve_pct` is
+         * ALREADY above 0.5 % from t=0 (the tavg-mode dump answers the load/scram transient on
+         * its own, 39 % open chained, 100 % standalone, decaying to ~7-9 % by the time power
+         * clears 1 %) and `power_pct` clears 1 % within seconds of the scram. Both siblings were
+         * already true; only the redundant press blocked the tick — the #697 family, same shape
+         * as #641 sign-flipped. `p` and `cmd` now live on ONE entry: `_gradeAccs` grades the `p`
+         * half independent of any command (proven by injection — a synthetic accs entry with
+         * `p` already true and `cmd` never issued latches on its own), so a plant already there
+         * ticks the box; `_accsCmdWatch` still latches the SAME entry instantly on the press for
+         * a plant that is not (an entry with a `p` AND a `cmd` is not the two-entry
+         * hidden-cmd-plus-predicate shape `pwr_heatup` step 8 uses — that shape still requires
+         * the actual press, proven by injection with the SAME two functions, so it does not fix
+         * a pre-satisfied step; the merge does). `steam_dump_auto` never reads 0 on this leg (it
+         * is `dumpMode() !== 'off'`, true since the IC's own lineup), so this half of the step
+         * always latches at once — that is correct, not a hole: the two REAL gates are the
+         * predicate siblings below, which still require the plant to actually get there. */
         { text: 'Press AUTO on the STEAM DUMP card until its status reads PRESS. Then check: REACTOR POWER below 1 %, STEAM PRESS holding near 1020 psi, the STEAM DUMP open a little.',
           why: 'The chain reaction is gone, but the fuel still makes about 2 % of full power from radioactive decay, and REACTOR POWER does not show it. With the turbine tripped, AUTO puts the steam dump into pressure-holding mode and it carries that heat to the condenser. Hot, at pressure, shut down: Mode 3, Hot Standby.',
           hold: 120,
-          accs: [{ cmd: { action: 'set_steam_dump', mode: 'auto' }, label: 'STEAM DUMP AUTO pressed, status PRESS' },
+          accs: [{ cmd: { action: 'set_steam_dump', mode: 'auto' }, p: 'steam_dump_auto', op: '>', v: 0,
+                   label: 'STEAM DUMP AUTO lit, status PRESS' },
                  { p: 'steam_dump_valve_pct', op: '>', v: 0.5, label: 'STEAM DUMP open, carrying the decay heat' },
                  { p: 'power_pct', op: '<', v: 1, label: 'REACTOR POWER below 1 %' }],
           hl: ['Steam Dump', 'Tavg'] },
@@ -2225,9 +2315,26 @@
          * inert. Measured (service, hot_full_power -> load 0 -> scram): mode 'tavg'; press AUTO
          * again -> 'pressure', and 640 psi then cools Tavg 287.7 -> 257.0 degC in 30 plant-minutes.
          * The leg's own hot_zero_power IC boots in 'pressure', which is why the replay never saw
-         * it. The AUTO press is a cmd-kind entry so the live checklist needs the press; the
-         * temperature acceptance moves into `accs` beside it (an `acc` is ignored when `accs`
-         * exists — instructor_layer grades one or the other). */
+         * it. The temperature acceptance moves into `accs` beside it (an `acc` is ignored when
+         * `accs` exists — instructor_layer grades one or the other).
+         *
+         * GRADED ON THE STATE, NOT THE PRESS (#697 — the reported instance: "steam dump AUTO was
+         * already green but it still required a press to check off step"). This leg's own
+         * `hot_zero_power` IC boots with the dump ALREADY `auto`/`pressure` (measured, nothing
+         * commanded), and the CHAIN makes it worse: `pwr_shutdown`'s last step (also fixed by
+         * #697) presses this same AUTO command, so a player walking the authored round trip
+         * arrives here with it already done twice over. The old accs[0] was a pure cmd-kind entry
+         * with no predicate and no `overtaken` — it could never latch except on a fresh press, so
+         * the tick was ceremonial at best and, per the owner's report, a nagging one. `p` and
+         * `cmd` now live on ONE entry, same fix and same proof-by-injection as `pwr_shutdown`
+         * step 3: `_gradeAccs` grades the `p` half regardless of any command, so a plant already
+         * there ticks the box; `_accsCmdWatch` still latches the SAME entry on the press for a
+         * plant that is not. `steam_dump_auto` reads 1 the instant the leg boots (it is
+         * `dumpMode() !== 'off'`, true from the IC's own lineup) — that half is DECORATIVE by
+         * design, not a hole: the real gate stays the sibling `tavg_c < 175` predicate below,
+         * which still cannot be faked — TAVG mode carries the setpoint nowhere (this step's own
+         * `note`), so a player who never actually switches the dump to pressure mode never sees
+         * tavg fall and the step correctly does not complete. */
         { text: 'Press AUTO on the STEAM DUMP card until its status reads PRESS. Then lower DUMP SETPOINT 50 psi at a time, from 1020 down to 120 psi, waiting each time until AVG COOLANT TEMPERATURE stops falling, about 5 plant-minutes. Done when it reads below 347 °F.',
           note: 'Small steps matter. Typing 640 straight in drops the coolant 50 °F in one plant-minute and empties the pressurizer; 50 psi every 5 minutes runs at about 85 °F per hour. If the Cooldown Rate High alarm comes on, wait longer between steps. In TAVG mode the setpoint does nothing. About two plant-hours in all; use the speed buttons at the top.',
           why: 'Steam pressure and steam temperature go together: lower the pressure the dump holds and the steam generator boils at a lower temperature, which pulls the reactor water down after it. It cannot pull the water below its own boiling point, so the walk goes all the way to 120 psi, about 341 °F, low enough for RHR to take over.',
@@ -2236,7 +2343,8 @@
           cmd: { action: 'set_steam_dump_setpoint', mpa: 0.83 }, hold: 9600,
           ramp: [{ action: 'set_steam_dump_setpoint', arg: 'mpa', points: [7.03, 4.42, 2.76, 1.66, 0.83] }],
           saw: { p: 'tavg_c', op: '<', v: 250 },
-          accs: [{ cmd: { action: 'set_steam_dump', mode: 'auto' }, label: 'STEAM DUMP AUTO pressed, status PRESS' },
+          accs: [{ cmd: { action: 'set_steam_dump', mode: 'auto' }, p: 'steam_dump_auto', op: '>', v: 0,
+                   label: 'STEAM DUMP AUTO lit, status PRESS' },
                  { p: 'tavg_c', op: '<', v: 175, label: 'AVG COOLANT TEMPERATURE below 347 °F' }],
           hl: ['Dump SP', 'Steam Dump', 'Tavg'] },
         { text: 'Lower SET PZR PRESSURE to 1700 psi, as low as the box goes. From here pressure comes down by hand.',
@@ -2298,7 +2406,15 @@
           cmd: { action: 'set_rcp', running: false }, hold: 60,
           accs: [{ p: 'pump_flow_pct', op: '<', v: 50, label: 'Pumps coasting down' },
                  { cmd: { action: 'set_spray', open: false }, label: 'Spray shut' }],
-          hl: ['RCP Run/Stop', 'Reactor Coolant Pumps (RCP)', 'Pressurizer Spray (PZR)'] },
+          /* THE CARD, NOT ALSO THE PUMP *(OWNER, 2026-09-09 playtest, #684 §D: "When the RCP is
+           * highlighted it should highlight the RCP card not the pump. Currently both get
+           * highlighted.")* — his SECOND report of it, after #607 item 1. One label lights one
+           * element, so "both get highlighted" is a step naming both: 'RCP Run/Stop' is the
+           * card (imrsjyqoq6t) and 'Reactor Coolant Pumps (RCP)' is the pump art on the loop
+           * (imrobpq4a70), and their rects overlap. Every other pwr2 RCP step already names
+           * the card alone; this was the last one that did not. The pump label STAYS in the
+           * vocabulary — the wiring reserves it for watch-the-flow steps. */
+          hl: ['RCP Run/Stop', 'Pressurizer Spray (PZR)'] },
         { text: 'Raise HX FLOW to 25 % and wait until AVG COOLANT TEMPERATURE reads below 199 °F. Keep the cooldown under 100 °F per hour: if it runs faster, lower HX FLOW.',
           why: 'HX FLOW is the cooldown rate now. 25 % reaches Mode 5 in about two plant-hours at close to 90 °F per hour, just inside the limit.',
           control: 'Residual Heat Removal (RHR)', target: 'AVG COOLANT TEMPERATURE below 199 °F',
@@ -2310,8 +2426,16 @@
         obs('Verify Cold Shutdown: AVG COOLANT TEMPERATURE below 199 °F, PRIMARY PRESSURE between 250 and 550 psi, RCP FLOW off, ALIGN lit on the RHR card.',
           { p: 'plant_mode', op: '~', v: 5, tol: 0.1 }, null, ['Tavg', 'Primary Pressure'],
           'This is the cold-shutdown picture: water below 199 °F, a small steam bubble still in the pressurizer, pumps off, RHR carrying the heat. It is the same state the Cold Shutdown preset loads, and the heatup checklist takes it back up.'),
+        /* THE TILE THE TEXT NAMES, NOT THE VALVE *(OWNER, 2026-09-09 playtest, #684 §C: "Mode
+         * 3>5 step 14 – this step has you look at the accumulators card but it highlights the
+         * accumulator isolation valve. It should highlight the card, not the valve.")*.
+         * This does NOT contradict the 2026-09-02 ruling three lines above CONTROL_LABEL_MAP's
+         * 'Accumulator valve' entry ("Step 8 should highlight the valve for the accumulator, not
+         * the accumulator box itself") — that governs the ACTION step, which asks you to shut a
+         * valve. This is a CONFIRM step, and what it asks you to read is the tile. Both labels
+         * were already in the vocabulary; only this step pointed at the wrong one. */
         obs('Verify the ACCUMULATORS tile reads 100 % and ISOLATED.',
-          { p: 'accumulator_volume_pct', op: '>', v: 99 }, null, ['Accumulator valve'],
+          { p: 'accumulator_volume_pct', op: '>', v: 99 }, null, ['Accumulators'],
           'You isolated the tanks on the way down so they would not empty into a depressurized plant. They have to still be full: the next heatup opens them again inside its window, and empty tanks then are a missing safety system.'),
         obs('Verify ALIGN is lit on the RHR card and HX FLOW is above 0 %. The round trip is complete.',
           { p: 'rhr_valve_open', op: '>', v: 0 }, null, ['Residual Heat Removal (RHR)'],

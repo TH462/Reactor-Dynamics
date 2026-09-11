@@ -1652,7 +1652,30 @@
     // at power. Reading the delivered flow fixes both halves of item 7 at once: the impeller
     // now tracks feed rate during normal load-follow as well, which it never did — the
     // commanded speed sits at 100 whatever the plant is doing.
-    imrobnzlha1: function (s) { return pumpProps((IN(s).hpi_flow || 0) > 1e-4, IN(s).hpi_flow || 0, 50); },   // eccs pump (RWST — cold)
+    /* …AND THE SAME PUMP HAS A SECOND JOB THIS LINE COULD NOT SEE (#699). RHR has no pump of
+     * its own — it is a suction ALIGNMENT on this shared ECCS train (see :607) — so through
+     * the whole of Mode 4 and Mode 5, which is the back half of the authored round trip, the
+     * only pump art on the board was drawn STOPPED while residual heat removal carried the
+     * plant. Measured 2026-09-10, PWR2 cold_shutdown with RHR aligned and the heat-exchanger
+     * split at 25 %: `rhr_active` true, `eccs_mode` 'rhr', `hpi_flow_normalized` 0 — because
+     * on PWR2 `hpi_flow` is EMERGENCY INJECTION only (pwr2_true_state.js:400) and a cooldown
+     * injects nothing.
+     *
+     * IT GATES ON DELIVERY, NOT ON THE ALIGNMENT BUTTON, which is the whole point of the note
+     * above: `rhr_running` is the engine's own `valve_open && powered`, published as a status
+     * passthrough. Keying this on `rhr_valve_open` would have re-created the exact defect the
+     * paragraph above removed from three other pumps — a rotor turning on a dead bus.
+     *
+     * The MAGNITUDE stays the injection flow. RHR circulation is a lineup fraction in this
+     * model, not a curve (pwr2_rhr.js:54: "NO PUMP HYDRAULICS"), and the board's gpm figures
+     * are an authored display scale over normalized internals rather than a modelled flow —
+     * so there is no honest RHR number to hand a flow-proportional dash speed. On the RHR
+     * branch the impeller turns at the same nominal rate the other lineup-fraction pumps use. */
+    imrobnzlha1: function (s) {
+      var f = IN(s).hpi_flow || 0;
+      var rhr = IN(s).rhr_running === true;
+      return pumpProps(f > 1e-4 || rhr, f > 1e-4 ? f : (rhr ? 0.6 : 0), 50);
+    },   // eccs pump (RWST — cold; also the RHR train)
     imrobph7xrq: function (s) { var f = IN(s).fw_flow || 0; return pumpProps(f > 1e-3, f, fwTemp(s)); },      // feed pump (feedwater — tracks load)
     imrobpq4a70: function (s) { var p = pumpRec(s, 'rcp'); return pumpProps(IN(s).rcp_running, p ? p.flow_pct / 100 : 1, IN(s).tcold); },  // rcp (cold-leg coolant — live)
     // Charging: the pump runs at a steady speed and the FLOW is set by the charging valve, so
@@ -3007,6 +3030,21 @@
     'Pressurizer Heaters (PZR)': 'imro94kec8b', 'Pressurizer Spray (PZR)': 'imro8ymb0jw',
     'Reactor Coolant Pumps (RCP)': 'imrobpq4a70',
     'Relief Valve (PORV)': 'porv', 'PORV Block Valve': 'imrppb3kuav',
+    /* THE PORV'S OWN STATUS READOUT — A VOCABULARY HOLE, NOT AN AUTHORING MISS (#684 §B).
+     * `ims2jf7fv7m` is the value tile that prints OPEN / CLOSED for the relief valve
+     * (wiring :1220, inspect name "Power-Operated Relief Valve (PORV) Status"), and it had
+     * no key here at all — so no step could point at it, and the owner's ask ("the highlight
+     * should be around the PORV and the PORV CLOSED indication") was not a bad `hl` list, it
+     * was unreachable. Both spellings, because the board engraves the word CLOSED and the
+     * inspect panel says Status.
+     *
+     * NO STEP NAMES IT TODAY, deliberately. Measured 2026-09-10 with the art-aware halo in:
+     * the PORV's ring is now 541-604 x 171-232 client px and this tile is 551-593 x 175-192,
+     * i.e. the valve's own halo already ENCLOSES the indication, which is what he asked for.
+     * A second `hl` entry would draw a nested ring inside the first. board_check pins the
+     * containment, so if the layout ever moves them apart the gate says so and the step can
+     * take this label then. */
+    'PORV Status': 'ims2jf7fv7m', 'PORV Closed': 'ims2jf7fv7m',
     // V2 split the old combined ECCS/RHR box into two cards. HPI/LPI is the ECCS pump
     // triad; RHR is its own card (the suction alignment + HX rate), so the RHR label now
     // glows the RHR card rather than the shared box it used to share with HPI.
