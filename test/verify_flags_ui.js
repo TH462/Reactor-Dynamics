@@ -466,6 +466,49 @@ function pinChannel(ch) {
   await closeSettings(b.page);
   await b.ctx.close();
 
+  /* ---- THE GREEN [NEW] BADGE MUST NOT OUTRUN THE FLAG (#688, quality pass 2026-09-11) -------
+   *
+   * MEASURED before the fix, on the public channel, this URL: the Walkthroughs tab read
+   * "Walkthroughs NEW" — the badge painted 33x14 px in rgb(121, 210, 151) — directly above a
+   * panel reading "COMING SOON. Guided procedure walkthroughs are in final review." The badge
+   * was the literal `true` in renderMissionSelect's mode tuple while the panel asks
+   * site/flags.js, and `walkthroughs` is stage:'preview' there — so the public site advertised
+   * a locked door in the colour that means "here now".
+   *
+   * BOTH HALVES, ONE URL, because either alone is hollow. The public half alone passes on a
+   * badge that never renders anywhere; the dev half alone passes on a badge that renders
+   * everywhere. Asserted on the PAINTED RECT and the COMPUTED COLOUR, never the class name — a
+   * badge whose .mp-new rule never loaded still carries the class and still reads NEW (#485).
+   * The COMING SOON / list text is read in the same breath so the pair can never agree for the
+   * wrong reason: if the panel and the badge ever disagree again, one of these two reds. */
+  async function wtBadge(page) {
+    return page.evaluate(function () {
+      var t = document.querySelector('#mpModes [data-mmode="walkthroughs"]');
+      var s = t ? t.querySelector('.mp-new') : null;
+      var r = s ? s.getBoundingClientRect() : null;
+      return { tab: !!t, painted: !!(r && r.width > 2 && r.height > 2),
+               w: r ? Math.round(r.width) : 0, h: r ? Math.round(r.height) : 0,
+               color: s ? getComputedStyle(s).color : null,
+               flag: RD.Flags.on('walkthroughs') };
+    });
+  }
+  b = await build('public', WT2);
+  var pubBadgeTxt = await openMission(b.page, 'walkthroughs');
+  var pubBadge = await wtBadge(b.page);
+  ck('public: the Walkthroughs tab carries NO green NEW badge over its COMING SOON panel',
+    pubBadge.tab && !pubBadge.painted && pubBadge.flag === false && /COMING SOON/.test(pubBadgeTxt),
+    JSON.stringify(pubBadge) + ' | ' + pubBadgeTxt.replace(/\s+/g, ' ').slice(0, 60));
+  await b.ctx.close();
+
+  b = await build('dev', WT2);
+  var devBadgeTxt = await openMission(b.page, 'walkthroughs');
+  var devBadge = await wtBadge(b.page);
+  ck('dev: the Walkthroughs tab DOES carry the green NEW badge over its live list',
+    devBadge.painted && devBadge.color === 'rgb(121, 210, 151)' && devBadge.flag === true &&
+    !/COMING SOON/.test(devBadgeTxt) && (await b.page.$$('[data-wtstart]')).length > 0,
+    JSON.stringify(devBadge) + ' | ' + devBadgeTxt.replace(/\s+/g, ' ').slice(0, 60));
+  await b.ctx.close();
+
   /* …and the same page on the public channel with the walkthroughs AREA forced on, so the
    * absence cannot be the whole tab saying COMING SOON. Non-vacuous by construction: the dev
    * check above lists the row off this identical URL. */

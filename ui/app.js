@@ -5154,8 +5154,16 @@
      * PERMANENT, deliberately — there is no expiry and no markSeen() on it. The walkthroughs
      * are the headline of the next release and the badge is meant to be seen by everyone who
      * opens this window, not only by whoever has not opened it before. It comes off by
-     * deleting the `true` below when the next release stops being about them. */
-    var modes = [['free', 'Free Play'], ['walkthroughs', 'Walkthroughs', true]];
+     * pointing the third slot at `false` when the next release stops being about them.
+     *
+     * BUT IT IS GATED ON THE TAB ACTUALLY HAVING THE CONTENT, not written `true` (quality pass,
+     * 2026-09-11). MEASURED on the PUBLIC channel before this line existed: the tab read
+     * "Walkthroughs NEW" — badge painted 33x14 px, rgb(121, 210, 151) — above a panel reading
+     * "COMING SOON. Guided procedure walkthroughs are in final review." `walkthroughs` is
+     * stage:'preview' in site/flags.js, so a public visitor gets a green "here now" over a
+     * locked door. Same rule as CLAUDE.md's "a flag-gated feature is not released and gets no
+     * changelog.html entry": the badge is an announcement and must not outrun the flag. */
+    var modes = [['free', 'Free Play'], ['walkthroughs', 'Walkthroughs', walkthroughsOffered()]];
     if (/[?&]mmode=/.test(location.search || '')) modes.push(['campaign', 'Campaign'], ['scenarios', 'Scenarios']);
     else if (msel.mode === 'campaign' || msel.mode === 'scenarios') msel.mode = 'free';
     $('mpModes').innerHTML = modes.map(function (m) {
@@ -5228,17 +5236,36 @@
           : '<button class="btn" data-trstart="' + id + '">▶ Start</button>') + '</div></div>';
     }).join('') : '<div class="m-note">No scenarios for this plant yet.</div>');
   }
+  /* DOES THE WALKTHROUGHS TAB HAVE ANYTHING BEHIND IT ON THIS CHANNEL, FOR THIS PLANT?
+   *
+   * ONE AUTHORITY, TWO CONSUMERS: mpWalkthroughs() below decides whether to draw the list or a
+   * COMING SOON panel, and renderMissionSelect's mode tuple decides whether to draw the green
+   * NEW badge. Those were two independent answers until the quality pass on 2026-09-11, and they
+   * disagreed on the channel that matters: the badge was the literal `true`, so the PUBLIC site
+   * painted "Walkthroughs NEW" over "COMING SOON — in final review". Duplicate authority is the
+   * shape DESIGN_CRITERIA Q4 vetoes, so the two gates the panel used to test inline live here and
+   * both callers ask the same function. verify_flags_ui pins the pair on both channels.
+   *
+   * The freePlayOnly fence stays OUTSIDE this, in mpWalkthroughs: it is a different sentence to
+   * the player (content authored for the retired engine, not content in review) and the badge
+   * treats both the same way — nothing offered, nothing announced. */
+  function walkthroughsOffered() {
+    var e = ENGINES[msel.engine] || {};
+    if (e.freePlayOnly && !(RD.MANUAL_PROCEDURES || {})[msel.engine]) return false;
+    if (!flagOn('walkthroughs')) return false;
+    var all = procsFor(msel.engine);
+    return !(all.length && !all.filter(function (x) { return flagOn('procedure:' + x.id); }).length);
+  }
   function mpWalkthroughs() {
     /* #244/#526 (owner-ruled 2026-08-31): walkthroughs run the validated procedure artifact
      * itself, and the pwr2 pool is authored and gated ON this plant — so an engine with its
      * own MANUAL_PROCEDURES pool is exempt from the freePlayOnly fence here. Campaign and
      * scenarios keep the fence until the #525 compatibility pass. */
     if (ENGINES[msel.engine].freePlayOnly && !(RD.MANUAL_PROCEDURES || {})[msel.engine]) return freeOnlyPanel();
-    if (!flagOn('walkthroughs')) return soonPanel('walkthroughs');
+    if (!walkthroughsOffered()) return soonPanel('walkthroughs');
     var p = progress();
     var all = procsFor(msel.engine);
     var procs = all.filter(function (x) { return flagOn('procedure:' + x.id); });
-    if (all.length && !procs.length) return soonPanel('walkthroughs');
     var doneP = p.completed_procedures || [];
     /* WALKTHROUGHS *(OWNER, 2026-09-08, #660 items 21-22)*: the list is the plant's checklist
      * pool; picking one loads its starting condition (`from`) and starts it in the Instructor
