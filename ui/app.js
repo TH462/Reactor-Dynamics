@@ -5086,12 +5086,31 @@
    * Armed only by the on-load open, so it fires once per session and never interrupts a
    * player who opened the window deliberately and knows where it is. */
   var missionTipArmed = false, missionTipT = null;
+  /* AIM THE ▲ AT THE BUTTON IT NAMES (quality pass, 2026-09-11). #689 moved this bubble up to
+   * sit under .sim-tools, which fixed the vertical half and left the horizontal half wrong: the
+   * bubble is the full width of the panel row and Main Menu is at its RIGHT end, so a centred
+   * glyph lands nowhere near it — MEASURED at a 1500 px viewport, arrow centre x 1252.7 against
+   * a button box of 1380.2–1449.0, i.e. 128 px out, over the middle of the speed bar. Under the
+   * full-width .sim-status bar this tip used to follow, centred was correct; it stopped being
+   * correct the moment the target became one button in a six-button row.
+   *
+   * MEASURED, not computed from constants: ⛶ is the row's end-cap, the labels differ per build,
+   * and #689's own note says a seventh named tool re-lays the row out — so a hard-coded
+   * padding-right would be a number that rots. Read AFTER `hidden = false`, or the rects are all
+   * zero. Silently does nothing if either node is missing; the CSS falls back to 50 %. */
+  function aimMainMenuTip(tip) {
+    var b = $('mainMenuBtn'); if (!b || !tip) return;
+    var bb = b.getBoundingClientRect(), tb = tip.getBoundingClientRect();
+    if (!bb.width || !tb.width) return;
+    tip.style.setProperty('--mm-arrow-x', Math.round(bb.left + bb.width / 2 - tb.left) + 'px');
+  }
   function closeMissionSelect() {
     closeModal('missionOverlay');
     if (!missionTipArmed) return;
     missionTipArmed = false;
     var tip = $('mainMenuTip'); if (!tip) return;
     tip.hidden = false;
+    aimMainMenuTip(tip);
     clearTimeout(missionTipT);
     missionTipT = setTimeout(function () { tip.hidden = true; }, 6000);
     markSeen('session');

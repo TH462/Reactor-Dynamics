@@ -1314,8 +1314,54 @@ async function testMainMenuButton(page) {
            'no #simStatus, no .sim-status, no #simStatusText');
 
   // 3 — it opens the window, and ✕ still closes it.
+  /* THE FIRST CLOSE IS ALSO THE ONE THAT FIRES THE COACH TIP, so the ▲ is measured here and
+   * nowhere else: `missionTipArmed` is set once by boot and spent by this press, which is the
+   * player's own route (#689 moved the bubble up under .sim-tools for exactly this reason).
+   *
+   * THE AIM IS THE ASSERTION, not the presence. #689 moved the bubble to the right ROW and left
+   * it centre-aligned, which put its ▲ 128 px to the LEFT of the button it names — over the
+   * middle of the speed bar — because the bubble spans the whole panel row while Main Menu sits
+   * at the right end of it. A presence check passes on that; so does a class check. The arrow's
+   * painted centre has to land inside the button's painted box, and the glyph's rect is taken
+   * with a Range over the text node rather than from the span's layout box, because an absolutely
+   * positioned inline span can report a box while painting off-target. */
   await dismissMission(page);
   await page.waitForTimeout(250);
+  var aim = await page.evaluate(function () {
+    var t = document.getElementById('mainMenuTip'), b = document.getElementById('mainMenuBtn');
+    if (!t || !b) return { missing: !t ? '#mainMenuTip' : '#mainMenuBtn' };
+    var a = t.querySelector('.mm-arrow');
+    if (!a || !a.firstChild) return { noArrow: true, hidden: t.hidden, html: t.innerHTML.slice(0, 60) };
+    var rg = document.createRange(); rg.setStart(a.firstChild, 0); rg.setEnd(a.firstChild, 1);
+    var ar = rg.getBoundingClientRect(), br = b.getBoundingClientRect(), tr = t.getBoundingClientRect();
+    return { hidden: t.hidden, glyph: (a.textContent || '').trim(),
+             ax: +((ar.left + ar.right) / 2).toFixed(1), ay: +((ar.top + ar.bottom) / 2).toFixed(1),
+             bl: +br.left.toFixed(1), br: +br.right.toFixed(1), bb: +br.bottom.toFixed(1),
+             tipL: +tr.left.toFixed(1), tipR: +tr.right.toFixed(1), tipTop: +tr.top.toFixed(1) };
+  });
+  if (aim.missing) throw new Error('#689: the coach tip fixture is gone — no ' + aim.missing);
+  if (aim.noArrow) {
+    throw new Error('#689: #mainMenuTip carries no .mm-arrow glyph to aim — ' + JSON.stringify(aim) +
+      '. The ▲ has to be its own node, or it cannot be positioned independently of the centred text.');
+  }
+  if (aim.hidden) {
+    throw new Error('#689 control: the coach tip did not appear on the first close of the Plant & ' +
+      'Mission window, so its aim cannot be measured — missionTipArmed never fired');
+  }
+  if (!(aim.ax >= aim.bl && aim.ax <= aim.br)) {
+    throw new Error('#689: #mainMenuTip\'s ▲ points ' + Math.round(Math.min(Math.abs(aim.ax - aim.bl),
+      Math.abs(aim.ax - aim.br))) + ' px away from the Main Menu button it names — arrow centre x ' +
+      aim.ax + ', button box ' + aim.bl + '–' + aim.br + ', bubble ' + aim.tipL + '–' + aim.tipR +
+      '. The bubble spans the whole tools row and the button sits at its right end, so a CENTRED ' +
+      'arrow lands over the speed bar; aimMainMenuTip() has to set --mm-arrow-x from the button.');
+  }
+  if (aim.ay < aim.bb) {
+    throw new Error('#689: the tip\'s ▲ (y ' + aim.ay + ') is drawn ABOVE the button\'s bottom edge (' +
+      aim.bb + ') — the bubble is not below the row it points at');
+  }
+  log.push('coach tip ▲ at x ' + aim.ax + ', inside the Main Menu box ' + aim.bl + '–' + aim.br +
+           ' (bubble ' + aim.tipL + '–' + aim.tipR + ')');
+  await page.evaluate(function () { var t = document.getElementById('mainMenuTip'); if (t) t.hidden = true; });
   if (await page.isVisible('#missionOverlay')) throw new Error('#689: could not get the window shut to start from');
   await page.click('#mainMenuBtn');
   await page.waitForSelector('#missionOverlay', { state: 'visible', timeout: 4000 })

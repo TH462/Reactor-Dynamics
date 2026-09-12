@@ -183,8 +183,12 @@
              where it went, and a marker that waits for curiosity is answering a question
              they are no longer asking.
              DIRECTLY UNDER .sim-tools since #689 — the ▲ has to point at the button that
-             reopens the window, and that button moved up into the tools row. -->
-        <div class="mm-tip" id="mainMenuTip" hidden>▲ Reopen it here any time</div>
+             reopens the window, and that button moved up into the tools row.
+             AND THE ▲ IS NOW AIMED, not centred (quality pass, 2026-09-11). The bubble spans
+             the whole 338 px tools row while Main Menu sits at its right end, so a centred
+             glyph measured 128 px to the LEFT of the button it names — see the note in
+             shell.css and aimMainMenuTip() in app.js. -->
+        <div class="mm-tip" id="mainMenuTip" hidden><span class="mm-arrow" aria-hidden="true">▲</span>Reopen it here any time</div>
         <div class="sim-row">
           <button class="play paused attention" id="playBtn" data-scanner-hint="Play / Pause — starts or stops the simulation. Separate from the speed selector."
               data-scanner-detail="Paused, the plant is frozen but the board stays live and controls still queue commands. Pausing clears the lit speed button — a stopped plant is not accelerating at any rate — and pressing play again always resumes at 1×, never the speed that was showing when you paused (#691).">▶</button>

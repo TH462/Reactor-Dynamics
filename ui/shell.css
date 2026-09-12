@@ -935,12 +935,26 @@ html[data-channel="dev"] .logo-test {
    it now sits in, so it needs no rules of its own, and the readout was dropped (option A). */
 /* The pointer back to that button, for a few seconds after the window is closed. Was .ss-tip;
    renamed with the button at #689, and it now sits directly under .sim-tools so its ▲ points
-   at the control it names instead of three rows past it. */
+   at the control it names instead of three rows past it.
+   THE VERTICAL MOVE WAS ONLY HALF OF IT (quality pass, 2026-09-11). The bubble is full-row
+   width and the old ▲ was the first glyph of a CENTRE-ALIGNED line, which was right under the
+   full-width .sim-status bar it used to sit below and is wrong under a six-button row: MEASURED
+   at a 1500 px viewport, arrow centre x 1252.7 against a Main Menu box of 1380.2–1449.0 — 128 px
+   off, pointing at the middle of the speed bar. So the glyph leaves the text flow and is aimed
+   from --mm-arrow-x, which aimMainMenuTip() sets from the button's own measured centre each time
+   the tip is shown. Aimed rather than hard-coded because the row is not fixed: ⛶ is the end-cap,
+   and #689's own note says a seventh named tool re-lays the row out.
+   Its own strip above the text (padding-top 13px) rather than inline, so the arrow can never
+   land on top of the centred sentence at a narrow panel width. */
 .mm-tip {
-  position: relative; margin: 2px 0 4px; padding: 4px 8px;
+  position: relative; margin: 2px 0 4px; padding: 13px 8px 4px;
   background: rgba(91, 179, 196, .12); border: 1px solid var(--normal); border-radius: 5px;
   color: var(--text); font-size: 11px; line-height: 1.35; text-align: center;
   animation: mmTipIn .18s ease-out;
+}
+.mm-tip .mm-arrow {
+  position: absolute; top: 1px; left: var(--mm-arrow-x, 50%); transform: translateX(-50%);
+  font-size: 10px; line-height: 1; color: var(--normal);
 }
 .mm-tip[hidden] { display: none; }
 @keyframes mmTipIn { from { opacity: 0; transform: translateY(-3px); } to { opacity: 1; transform: none; } }
