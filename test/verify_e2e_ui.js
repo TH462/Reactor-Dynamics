@@ -3202,6 +3202,78 @@ async function testCssTransitions(page) {
   return log.join('\n') + '\n';
 }
 
+/* #713/#712: the 1/M plot's buttons moved from a footer under the plot to a narrow column
+ * beside it, and the dock widened 300px -> 380px so that height (the letterbox's binding
+ * dimension) stayed the binding one after the footer's height was handed to the plot. #712
+ * named the general risk this repo has no gate for — a caption/readout overflowing its own
+ * box — and a narrow side column is exactly where the panel's longest string (the prediction
+ * readout) is most likely to hit it. This is deliberately cheap: it opens the real docked
+ * panel, forces the longest string render() ever emits into the readout, and checks
+ * scrollWidth/scrollHeight against clientWidth/clientHeight — plus a floor on the plot's own
+ * height so a future change that puts the footer back under the plot, or shrinks the dock a
+ * lot, reddens here instead of needing another hand pixel-measurement. */
+async function testOneOverMDockedGeometry(page) {
+  var log = [];
+  var url = 'http://127.0.0.1:' + PORT + '/ui/shell.html?engine=pwr2&init=hot_full_power&dev=1';
+  await page.goto(url, { waitUntil: 'networkidle', timeout: 90000 });
+  await dismissMission(page);
+  await waitBoardLive(page, 20000);
+
+  var geo = await page.evaluate(function () {
+    function rect(sel) {
+      var el = document.querySelector(sel);
+      if (!el) return null;
+      var r = el.getBoundingClientRect();
+      return { w: r.width, h: r.height };
+    }
+    if (!(window.RD && RD.OneOverM)) return { error: 'RD.OneOverM missing' };
+    RD.OneOverM.open();
+    var predEl = document.querySelector('#oomPred');
+    if (predEl) predEl.textContent = 'predicted criticality ≈ step 9999 (99.9% withdrawn)';
+    function overflowOf(sel) {
+      var el = document.querySelector(sel);
+      if (!el) return null;
+      return { scrollW: el.scrollWidth, clientW: el.clientWidth, scrollH: el.scrollHeight, clientH: el.clientHeight };
+    }
+    var btnOverflow = Array.prototype.map.call(document.querySelectorAll('.oom-foot .btn'), function (b) {
+      return { text: b.textContent, over: b.scrollWidth > b.clientWidth + 1 };
+    });
+    return {
+      docked: !!document.querySelector('.oom-win.oom-docked'),
+      svg: rect('.oom-svg'),
+      pred: overflowOf('#oomPred'),
+      win: overflowOf('.oom-win.oom-docked'),
+      btnOverflow: btnOverflow,
+    };
+  });
+
+  if (geo.error) throw new Error('#713: ' + geo.error);
+  if (!geo.docked) throw new Error('#713: the 1/M panel did not dock into the bottom row');
+  log.push('oom-svg (docked) box: ' + Math.round(geo.svg.w) + 'x' + Math.round(geo.svg.h));
+
+  geo.btnOverflow.forEach(function (b) {
+    if (b.over) throw new Error('#713/#712: button "' + b.text + '" overflows its box in the docked 1/M panel');
+  });
+  if (geo.pred && geo.pred.scrollW > geo.pred.clientW + 1) {
+    throw new Error('#713/#712: the prediction readout overflows its box horizontally: scrollWidth ' +
+      geo.pred.scrollW + ' > clientWidth ' + geo.pred.clientW);
+  }
+  if (geo.win && geo.win.scrollW > geo.win.clientW + 1) {
+    throw new Error('#713/#712: the docked 1/M panel overflows its own box horizontally: scrollWidth ' +
+      geo.win.scrollW + ' > clientWidth ' + geo.win.clientW);
+  }
+
+  // Regression floor: measured 177px at the default --bottomrow-h (230px) after #713; was
+  // ~141px before it (300px-wide dock, buttons in a footer below the svg). Set well below
+  // the measurement so ordinary tuning doesn't retrip it.
+  if (geo.svg.h < 160) {
+    throw new Error('#713: the docked 1/M plot is only ' + Math.round(geo.svg.h) + 'px tall at the default row ' +
+      'height — expected >= 160px (measured 177px after #713; ~141px before it)');
+  }
+  log.push('no overflow in the docked 1/M panel; plot height ' + Math.round(geo.svg.h) + 'px >= 160px floor');
+  return log.join('\n') + '\n';
+}
+
 async function main() {
   fs.mkdirSync(SCRATCH, { recursive: true });
   var fallback = path.join(SCRATCH, 'ui-screenshot-fallback.log');
@@ -3275,6 +3347,8 @@ async function main() {
     fs.writeFileSync(path.join(SCRATCH, 'rod-lane-bank-scale.log'), rlLog);
     var rmLog = await testRodLimitMarginIndicationRange(page);
     fs.writeFileSync(path.join(SCRATCH, 'rod-limit-margin-indication-range.log'), rmLog);
+    var oomLog = await testOneOverMDockedGeometry(page);
+    fs.writeFileSync(path.join(SCRATCH, 'one-over-m-docked-geometry.log'), oomLog);
     fs.writeFileSync(path.join(SCRATCH, 'ui-screenshot-summary.log'), summary.join('\n') + '\n');
     console.log('E2E UI verification: PASS (' + (ENGINES.length * VIEWS.length) + ' screenshots)');
   } finally {
@@ -3302,6 +3376,7 @@ if (require.main !== module) {
                      testRodLimitMarginIndicationRange: testRodLimitMarginIndicationRange,
                      testPauseResumeSpeed: testPauseResumeSpeed, testWalkthroughEventPause: testWalkthroughEventPause,
                      testHeldNotePauseResume: testHeldNotePauseResume,
+                     testOneOverMDockedGeometry: testOneOverMDockedGeometry,
                      port: function () { return PORT; } };
 } else {
   main().catch(function (e) {

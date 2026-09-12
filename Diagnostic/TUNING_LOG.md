@@ -29,6 +29,93 @@ and the user-visible summary in `CHANGELOG.md`. This file points at those and tr
 
 ---
 
+## Session log — 2026-09-12-workbench-c (#713 — 1/M startup plot too small docked beside the alarm panel)
+
+**Owner, verbatim (live play):** "also, the 1/m plot is too small when next to the alarm panel.
+also have it move the strip chart over so its taller and put the buttons to the side instead of
+under the plot. make the plot as big as you can in that space." Filed as #713, which included a
+**CSS-derived, not measured** geometry estimate (~298x138 px svg box, ~195x138 rendered plot,
+~90 px of non-plot chrome) and flagged that the first job was to replace the estimate with a real
+`getBoundingClientRect()` measurement before touching layout.
+
+**Measured before touching anything** (headless Chromium, `ui/shell.html`, default engine pwr2,
+default `--bottomrow-h: 230px`, 1600x1000 viewport): `.oom-svg` box **298 x 141 px** (estimate was
+close: 298 wide was exact, 138 vs 141 tall). Letterboxed (viewBox 340x240, `xMidYMid meet`,
+height-bound: `min(298/340, 141/240) = 0.5875`) to a rendered plot of **~199 x 141 px**, wasting
+~99 px of the box's width. Chrome: head 35, foot (buttons) 36, msg 16 = 87 px, matching the
+issue's ~90 px estimate.
+
+**The board's global-scale trap (pwr_board.js `fitColumns`) does not apply here** — confirmed by
+reading it: `.bottom-row` is a plain flex row, not the SVG board canvas with one shared scale
+factor. The real constraint, per the issue and confirmed in `ui/shell.css:189-194`, is that
+`.bottom-row`'s height is deliberately fixed (`flex: 0 0 var(--bottomrow-h)`) to avoid the #233
+feedback loop with the board diagram — so height only ever comes from the existing
+`--bottomrow-h` drag mechanism, never a hardcoded row height. **Nothing in this change touches
+that mechanism**; every change is a redistribution *within* the row's existing height/width.
+
+**Fix, three parts, `ui/shell.css`:**
+1. **Buttons beside the plot, not under it** (`.oom-win.oom-docked`): switched from a flex COLUMN
+   (head / svg / foot / msg stacked) to a CSS GRID (`"head head" / "svg foot" / "msg msg" /
+   "help help"`, svg row `1fr`) — **no DOM change in `one_over_m.js`**, only the grid-area each
+   existing element is assigned. The svg row now absorbs the height the footer used to cost it,
+   which was the LETTERBOX'S BINDING DIMENSION — so this is most of "make the plot as big as you
+   can" by itself. The button column is a fixed 94px, buttons stacked and stretched; the
+   prediction readout (`#oomPred`) is given the full column width and wraps, rather than sharing
+   a row with the buttons — the #712 risk this change is most likely to trip (see Proof).
+2. **The 1/M dock widened 300px -> 380px**, taking that width from the row's two flexible
+   siblings, so the extra height gained in (1) doesn't get letterboxed away sideways for lack of
+   width (checked: widening height alone, without width, would have moved the binding dimension
+   to width and capped the visible gain at ~148px instead of 177px).
+3. **The strip chart gives up more of that width than the alarm panel** (`.strip-chart` /
+   `.alarm-panel` unequal `flex-grow`, 1 : 1.6) — the owner named the strip chart specifically
+   ("move the strip chart over"), not the alarm panel, so the alarm panel is protected rather than
+   split evenly.
+
+**Measured after** (same viewport/row-height): `.oom-svg` box **284 x 177 px** -> rendered plot
+**251 x 177 px** (still height-bound: `min(284/340, 177/240)=0.738`). Both plot dimensions grew
+~26%; **plot AREA +58%** (251x177=44,427 vs 199x141=28,059 px²). Strip chart **449 -> 319 px**
+(-29%); alarm panel **433 -> 483 px** (+12%, per the unequal split). No overflow anywhere
+(buttons, `#oomPred`, the docked window's own box all measured `scrollWidth <= clientWidth`).
+Screenshot comparison: `oom_pre713_row.png` / `oom_post713_row.png` (scratchpad).
+
+**Cross-checked other states, all in the same headless pass:**
+- `--bottomrow-h` at the **150px floor**: plot 147x104, no overflow.
+- `--bottomrow-h` **dragged to 350px**: width becomes binding past ~row-height 250px (as
+  expected for a fixed-width dock); plot 284x200, no overflow, letterbox just moves to top/bottom
+  instead of the sides.
+- **Narrow row, 1300px viewport** (just above the 1200px stacking breakpoint): plot unchanged at
+  251x177 (dock width is fixed regardless of row width); strip/alarm squeezed further but no
+  negative widths, no horizontal page overflow even at the breakpoint's edge (1210px viewport).
+- **Stacked layout, <=1200px viewport** (existing `flex-direction: column` media query): the same
+  fixed 380px basis is now read as a HEIGHT (flex-basis applies along the column axis), so the
+  docked panel is taller there than before this change (380px vs the old 300px) — pre-existing
+  behaviour of that breakpoint, not a new defect class; no overflow, no errors.
+- **Floating (undocked) window** — simulated by removing the dock target before `open()`: still
+  uses the OLD flex-column layout (buttons below the svg) because only `.oom-docked`-scoped rules
+  changed. Confirmed unaffected.
+
+**#712 (no gate for a caption/readout overflowing its box).** Added a cheap check rather than
+just hand-verifying: `test/verify_e2e_ui.js` `testOneOverMDockedGeometry` opens the real docked
+panel, forces the longest string `render()` ever emits into `#oomPred` ("predicted criticality ~
+step 9999 (99.9% withdrawn)"), and asserts `scrollWidth <= clientWidth` on the buttons, the
+readout and the panel's own box, plus a 160px floor on the docked plot's height (measured 177px
+after this fix, ~141px before — set well below both so ordinary tuning doesn't retrip it).
+**Proven red by injection**: reverted `ui/shell.css` to the pre-fix rules (`git show
+HEAD:ui/shell.css`) and re-ran the new check standalone — failed as expected ("only 120px tall...
+expected >= 160px"); restored the fix, re-ran — PASS. This does not close #712 (that issue is
+broader — every caption/readout on the board), but it is one concrete instance of the geometry
+class it asks for, landed while already in this file.
+
+**Gates.** `verify_e2e_ui` PASS (4 screenshots, includes the new check) · `verify_flags_ui`
+52/52 · `verify_board_check` 256 checks, 0 failures · `run_style` 11/11. `node test/run_all.js`:
+see the run following this entry for the full tally; no `BASELINES` entry needed to move since
+`verify_e2e_ui`'s baseline is PASS/FAIL, not a count.
+
+Filed on **#713**. Comment posted with before/after geometry, gate tallies and SHA. Lane:
+`workbench`, **UNMERGED**.
+
+---
+
 ## Session log — 2026-09-12-workbench-b (#715 — `pwr_lower_power` completed on a scrammed plant)
 
 **Filed from an operator playthrough**: a real scram occurred between `pwr_raise_power` and

@@ -212,8 +212,14 @@ body {
 /* Stacked (narrow) layouts size themselves; dragging a track that isn't there is nonsense. */
 @media (max-width: 1200px) { .bd-split { display: none; } }
 .app.pwr-synoptic .plant-area > .bottom-row > .sim-controls { order: 1; flex: 0 0 auto; }
+/* Unequal flex-grow (#713): the OWNER asked specifically to "move the strip chart over" to
+   free room for the 1/M plot, not the alarm panel — so when the 1/M dock's width grew
+   (300px -> 420px below), the strip chart gives up more of the row's remaining width than
+   the alarm panel does (both still flex-basis 0, so the split is pure grow-ratio: strip
+   gets 1 part, alarm gets 1.6). Measured before/after in Diagnostic/TUNING_LOG.md
+   2026-09-12-workbench-oom-plot. */
 .app.pwr-synoptic .plant-area > .bottom-row > .strip-chart  { order: 2; flex: 1 1 0; min-width: 0; }
-.app.pwr-synoptic .plant-area > .bottom-row > .alarm-panel  { order: 3; flex: 1 1 0; min-width: 0; min-height: 0; }
+.app.pwr-synoptic .plant-area > .bottom-row > .alarm-panel  { order: 3; flex: 1.6 1 0; min-width: 0; min-height: 0; }
 
 /* ⛶ hides the right sim panel → the diagram column takes the whole width */
 .app.pwr-synoptic.sim-hidden {
@@ -2765,13 +2771,41 @@ select.num-input { width: auto; }
 
 /* The 1/M plot docked in the bottom row (#660 item 13): last flex child, the chart and the
    alarm panel shrink to make room. `.oom-win` without the class is still the floating window
-   (non-PWR layouts). */
+   (non-PWR layouts).
+   WIDENED 380px (from 300px) and the buttons moved beside the plot rather than under it
+   (#713, owner live play 2026-09-11/12: "the 1/m plot is too small... move the strip chart
+   over so its taller and put the buttons to the side instead of under the plot"). A CSS
+   GRID, not the flex column this was — that lets .oom-foot become a side column (grid-area:
+   foot) without touching one_over_m.js's DOM order (head, svg, foot, msg stay siblings in
+   markup; only their VISUAL slot moves). The svg row is the only `1fr` track, so the height
+   the button bar used to cost the plot now goes straight to it — that was the taller
+   dimension's binding constraint (letterboxed 340x240 into a wide, short box), so this is
+   also most of "make the plot as big as you can". The extra 120px of width (taken from
+   .strip-chart, see the flex-grow split below) keeps width from becoming the NEW binding
+   constraint once the box is taller — widening alone would have let the letterbox eat the
+   gain (measured before/after: Diagnostic/TUNING_LOG.md 2026-09-12-workbench-oom-plot). */
 .oom-win.oom-docked {
-  position: static; order: 4; flex: 0 0 300px; min-width: 0; min-height: 0; height: auto;
-  display: flex; flex-direction: column; overflow: auto; z-index: auto;
+  position: static; order: 4; flex: 0 0 380px; min-width: 0; min-height: 0; height: auto;
+  display: grid; overflow: auto; z-index: auto;
   box-shadow: none; border-radius: var(--radius);
+  grid-template-columns: 1fr auto;
+  grid-template-rows: auto 1fr auto auto;
+  grid-template-areas: "head head" "svg foot" "msg msg" "help help";
 }
-.oom-docked .oom-head { cursor: default; }
-.oom-docked .oom-svg { flex: 1 1 0; min-height: 0; width: 100%; }
-.oom-docked .oom-help { overflow: auto; }
-.oom-win.oom-docked[hidden] { display: none; }   /* the flex display above must not beat [hidden] */
+.oom-docked .oom-head { cursor: default; grid-area: head; }
+.oom-docked .oom-svg { grid-area: svg; min-width: 0; min-height: 0; width: 100%; height: 100%; }
+/* The button column: fixed narrow width, buttons stacked and stretched to fill it, the
+   prediction readout wrapped onto its own line below them (#712 risk: that readout is the
+   longest string in this panel — "predicted criticality ~ step #### (##.#% withdrawn)" —
+   and a side column is exactly where a caption overflows a narrow box; giving it the full
+   column width and letting it wrap, rather than sharing a row with the buttons, is what
+   keeps it inside its box at every width this column is given.) */
+.oom-docked .oom-foot {
+  grid-area: foot; flex-direction: column; align-items: stretch; justify-content: flex-start;
+  width: 94px; padding: 6px 8px; gap: 6px; border-left: 1px solid var(--border);
+}
+.oom-docked .oom-foot .btn { width: 100%; padding: 5px 4px; white-space: normal; line-height: 1.15; }
+.oom-docked .oom-pred { width: 100%; white-space: normal; font-size: 10px; line-height: 1.25; }
+.oom-docked .oom-msg { grid-area: msg; }
+.oom-docked .oom-help { grid-area: help; overflow: auto; }
+.oom-win.oom-docked[hidden] { display: none; }   /* the grid display above must not beat [hidden] */
