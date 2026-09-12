@@ -30,6 +30,245 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
 
 ## [Unreleased]
 
+### Fixed (three #717-sibling scrollports — and the two content-fit bugs a clamp alone would have hidden — #723)
+
+`.scanline-body`, `.tab-body.instr-mode`/`.tab-body.ckl-mode` and `#laneStack` each accepted AND
+KEPT a `scrollTop` write before the fix, confirmed by direct injection — none was a non-defect. All
+three are CLAMPED (`overflow: clip`) rather than made to scroll honestly, because each one's own
+design intent rules scrolling out: an ellipsis line, a pane whose child log is the scroller (its own
+CSS comment already said "not `.tab-body`"), and the #440/#509 pixel-exact golden reference.
+
+**Two had a real content-fit bug underneath, and that is the half a clamp would have buried.**
+`.app.pwr-synoptic`'s stacked row (at or below 1200 px) sized its `simcol` track `auto`, and
+`.tools.expanded { flex: 1 1 0 }` contributes ~0 to an auto-sizing pass — measured **20 px of pane
+against 62 px of content at BOTH 1100 and 800 px wide**. #717's own sweep sampled only below 860 px,
+the PAGE-stack breakpoint, and the control-room grid stacks at a *different* one (1200 px), which is
+why the sweep filed this as a 42 px curiosity rather than a pane squeezed to a third of its content.
+`grid-template-rows: 78vh minmax(260px, 22vh)` alone restores `client === scroll`. `#laneStack`'s
+7 px traced to `.lane.form-num` stacking a value+unit pair (~22.5 px) in an 18 px row.
+
+**THE TRAP, and it generalises: FIXING THE OVERFLOW BLINDS THE CLAMP CHECK.** Once the row-height
+and form-num fixes land, neither element overflows under normal content, and "write `scrollTop`,
+read back 0" is trivially true of any non-overflowing element — the same shape as the degenerate
+latch and the non-event assertion already in `CLAUDE.md`'s standing list. So every clamp check
+FORCES a genuine overflow first (an oversized `.persona`, a capped `max-height`) before writing, and
+the two content-fit fixes get their own separate, UNFORCED "fits its own content" checks.
+`verify_board_scroll` 16/16 to **47/47**, `BASELINES` moved on the incoming side and confirmed on the
+merged tree's own aggregate. Injection-proven one revert at a time: clip removed gives 39/47, 43/47,
+41/47; `78vh auto` restored gives 45/47, reading back the exact pre-fix **20/62**; form-num reverted
+gives 46/47, reading back **234/241**. The wheel TRIGGER is still unverified (Chromium suppresses
+wheel-scroll on a hidden-overflow box headlessly, and no Firefox is installed for Playwright in this
+tree); the gate asserts the INVARIANT — the offset is unconditionally zero however it was moved —
+which is the stronger claim anyway.
+
+### Fixed (a walkthrough-fired pause outlived the checklist that asked for it — #711)
+
+`render()`'s walkthrough take (`checklist.paused` to `pauseSim('walkthrough')`) had **no matching
+release**. `doReset` and `switchEngine` both end in `selectPlant()` to `instructor.unload()`, which
+clears the checklist outright; `startChecklist` replaces it. None of the three ever called
+`releaseHold('walkthrough')` — only Continue/Rewind/Stop did (#694). The plant therefore loaded
+FROZEN with no on-screen reason, self-healing only on the next Play press, because `resumeSim()`
+clears every hold.
+
+Shape follows #710's precedent and is the part worth keeping: **do not enumerate the exit sites, ask
+whether the REASON still applies.** The take is now paired with a release run backwards in the same
+block, so one check covers all three named gaps *and* any future exit path — Reset and a plant
+switch null the checklist, a new checklist starts `paused: false`, and the very next `render()` sees
+the reason gone. The three existing explicit `releaseHold('walkthrough')` calls were left in place
+(still correct, and `clearPause` on an absent key is a no-op) rather than deleted for symmetry.
+
+Browser-only gate, for the same reason as #694: `SimulationService.advanceCycles` forces
+`running = true` around its own loop, so **no Node harness can ever see a service-level pause fail
+to lift.** `verify_e2e_ui:testWalkthroughHoldReleasedOnExit` drives all three gaps through the real
+UI and reads `sim_time` TWICE with a wait between — a one-shot `service.running === true` read is
+exactly the sample a stale frame passes by accident. Proved red by injection: removing the release
+line freezes all three paths with `.bd-frozen` stuck. The over-correction half — clearing the whole
+hold map instead of the one reason — is guarded by the pre-existing `testMissionCloseResumes`; a
+stacked `user` plus `walkthrough` probe was considered and dropped as UNREACHABLE, because the pause
+button routes to `resumeSim()` whenever `service.running` is already false, so the two holds can
+never both be live at once.
+
+### Fixed (the reactor diagram was a live scrollport wearing `overflow: hidden` — #717)
+
+Two humans hit this independently in real browsers: an ordinary mouse wheel over the board panned
+the diagram off-screen with no scrollbar, no reset control and no recovery short of a page reload.
+
+**`overflow: hidden` clips visually and still makes the element a SCROLLPORT** — live and unclamped.
+`.pwr-board-stage` is the full **2400 x 1600 px** world canvas while `layout()` fits the scale off
+`contentBounds()`, the bounding box of the AUTHORED items, so the CONTENT is always letterboxed
+inside the wrap while the stage ELEMENT overflows it. Measured at 1400 x 900: wrap 997 x 589 px
+against a stage rendered 1762 x 1175 px, `scrollWidth/Height` 1533 x 1154, and `scrollTop = 300`
+stuck. Every one of those overflow pixels is empty canvas margin, so a scroll can only ever pan the
+diagram OUT of view — there is nothing to pan it back TO.
+
+`overflow: clip` after the existing `hidden`: it clips identically and creates no scrollport at all,
+in any engine, which is the deciding property — the suspected trigger is Firefox permitting what
+Chromium suppresses, so a JavaScript-only fix would have fixed nothing for the two people who hit
+it. The `hidden` line is kept FIRST on purpose (an engine too old for `clip` drops the second
+declaration and keeps the old behaviour, which the JavaScript backstop catches). A `wheel` plus
+`preventDefault()` guard was **rejected on evidence**: under `@media (max-width: 860px)`
+`shell.css` sets `html, body { overflow: auto; }` and stacks the columns, so the PAGE legitimately
+scrolls there and the board fills most of it — swallowing the wheel would have traded this defect
+for a narrower one. The JavaScript half is a BACKSTOP only: a `scroll` listener forcing the offset
+to 0, added in `mount()` and removed in `unmount()` so a plant switch cannot leak it across board
+rebuilds. `overflow: clip` independently closes the descendant `scrollIntoView` path that
+`ui/app.js:5623` already documents as a hazard.
+
+`test/verify_board_scroll.js` NEW at 16/16 — four checks at each of four real layout states: 1400,
+then 1250 and 1100 straddling the 1200 px control-room breakpoint, and 800 below the 860 px
+page-stack one. **Two anti-hollow measures per viewport, and the first is the one that matters**: the
+PRECONDITION that the stage really does still overflow the wrap — without it a future layout change
+makes the injection a silent no-op and all 16 checks pass over nothing — plus a re-measure of the
+reactor vessel's rect, because a `scrollTop` that merely READS zero is not evidence the board is
+drawn. Injection-proven BOTH HALVES SEPARATELY, because each half is independently sufficient and a
+one-sided injection would have lied: clip reverted gives 12/16; both halves out gives 4/16, with the
+vessel measured at x **-140 to -46** against a wrap starting at x 17.
+
+### Fixed (the docked 1/M plot, two measured passes — #713)
+
+Owner, live play: the 1/M plot reads too small beside the alarm panel. The issue's own
+reconnaissance was CSS arithmetic; measured first in headless Chromium instead, and the estimate was
+off by 3 px on height and exact on width — the docked `.oom-svg` box was **298 x 141 px**,
+letterboxed to a ~199 x 141 px rendered plot, with 87 px going to non-plot chrome.
+
+**Pass 1 (`15f0414f`)** — `.oom-win.oom-docked` flex column to CSS grid so the button footer's
+height goes to the PLOT instead of coming out from under it (that footer was the letterbox's binding
+dimension); dock 300 to 380 px so the freed height is not letterboxed away sideways for want of
+width; `.strip-chart`/`.alarm-panel` given unequal flex-grow (1 : 1.6) because the owner named the
+strip chart specifically, not the alarm panel. `.oom-svg` 298 x 141 to 284 x 177, rendered plot
+~199 x 141 to 251 x 177, **+58 % area**.
+
+**Pass 2 (`0b4489ce`)** — pass 1 took half of what it freed from the ALARM panel, which GREW 12 %,
+and left the plot letterboxed inside its own box. Dock 380 to 420 px; `syncViewBox()` in
+`ui/panels/one_over_m.js` makes the viewBox follow the docked cell's aspect (H fixed at 240 so
+rendered text size does not move, W = 240 x aspect, clamped 0.80 to 3.60); gutters trimmed to
+`getBBox()` on every text node (L 40 to 35, R 12 to 9, T 14 to 4 — nothing is drawn above the frame
+at all, B 30 to 25). Letterbox waste **33.2 to 0.2 px**; plotted data rect 212.4 x 144.5 to
+**291.3 x 155.6**, **+47.7 %** on top of pass 1. The +78.9 px of plotted width decomposes cleanly:
+dock +30.0, letterbox removed +31.9, gutters +17.0; the +11.1 px of height is ALL gutter. Both
+columns re-measured at 1500 x 950, because pass 1's own figures were taken at 1600 x 1000 and its
+strip/alarm numbers therefore read ~100 px wider — the two passes' width figures are NOT comparable
+as filed.
+
+**Two traps worth the lines.** (1) **DO NOT MEASURE AN SVG'S OWN BOX TO DRIVE ITS OWN viewBox** —
+that is only non-circular while the box is DEFINITE, and at the 150 px row floor the `1fr` svg track
+stopped resolving to a length. The dock's svg row is `minmax(0, 1fr)` and the basis is pinned back
+to 380 px inside the 1200 px media query, where the row is a COLUMN and that basis is a HEIGHT.
+(2) **THE ALARM PANEL'S SPARE WIDTH HAD TO BE MEASURED UNDER LOAD, not on a quiet board** — pass 1's
+figures were all taken against "no active alarms". Raising 18 real alarms through the app's own
+`?inject=` path (large LOCA; station blackout 9, steam generator tube rupture 13) and sweeping the
+panel in 2 px steps with the registry's widest label in every tile gave a per-column min-content of
+**179.3 px** ("Overtemperature Limit Approaching" — a long label wraps, the longest WORD does not),
+i.e. a 377.7 px content floor against 421.7 px, so 29.5 px of the 43.7 px spare was taken. That
+sweep also found a PRE-EXISTING defect: `1fr 1fr` is `minmax(auto, 1fr)`, so below the floor the
+columns could not shrink and the alarm stack OVERFLOWED SIDEWAYS rather than reflowing — already
+true at a 1250 px viewport. Now `repeat(auto-fill, minmax(max(184px, calc(50% - 2.5px)), 1fr))`: two
+columns while both can hold a tile, one below 387 px, and the `calc()` caps it at two so a 1920 px
+board does not sprout a third.
+
+`verify_e2e_ui:testOneOverMDockedGeometry` — one instance of #712's ask, not a close of it — forces
+the longest string `render()` ever emits into the prediction readout, asserts no
+`scrollWidth > clientWidth` anywhere, and floors the docked plot at 160 px. Injection-proven against
+the pre-fix CSS ("only 120px tall").
+
+### Fixed (`pwr_lower_power` completed on a scrammed plant — #715)
+
+All five load-drop acceptances (`power_pct`, `tavg_c`) were **unpaired one-sided thresholds a scram
+satisfies for free** — measured, `hot_full_power` then scram then 20 s reads `power_pct` 5.7 % with
+`tavg_c` falling toward the 286.1 degC no-load knot, so every predicate across the leg's four steps
+passed on a dead plant and the checklist reported complete. Second, independent half: the completion
+banner rendered its authored `outcome` string — an assertion about plant state — **unconditionally**.
+
+Fix 1: each load-drop step gains a paired `mwe_output` floor. **`mwe_output`, not a blanket
+`turbine_tripped` guard, and the reason is Hard Rule 9, the plant is ground truth, not
+convenience**: this leg's own claim is "the reactor follows LOAD down", and the turbine still
+carrying load IS that claim's second half — a scram is a load-following failure by definition, not a
+fact bolted on. Measured against a genuine full-stack run: output settles to exactly
+75.00 / 50.00 / 30.00 / 15.00 MWe by the end of each stage's hold, so the floors sit 5 to 10 below
+target (70/45/25/10) and a scrammed plant reads 0.
+
+Fix 2: new optional per-leg `outcome_guard` (`{p, op, v[, tol]}`, the `precond`/`accs` shape),
+re-graded against the LIVE snapshot for as long as the completion card is shown
+(`instructor_layer.js` `_gradeOutcomeGuard`, wired into BOTH banners — the Path 2 follow-mode
+`_completeFollow` and the Path 3 checklist banner the live PWR2 walkthroughs actually use, via
+`checklist.outcome_verified`). **Deliberately not derived from the leg's own last-step `accs`**: that
+is what fix 1 already is, and a second line of defence must not share the one set of predicates that
+was just proven wrong. Authored on `pwr_lower_power` only; no guard means always verified, so every
+other leg is identical to the prior behaviour.
+
+`run_checklist_pwr2` 197 to **209/209** — +4 replay acceptances, +8 from new sections 2r/2s, which
+drive the real service through the filed scenario (scram before the leg starts, the boron command a
+real operator would issue, no `set_load_target` ever) and assert `complete !== true`. Before the fix
+that driver reports `true`; after, it sticks at step 2 of 5 for ever, with a companion check proving
+the driver reached the vulnerable steps rather than being stuck on step 1's command gate.
+`outcome_guard` proven red, green, then red again by removal on the same two snapshots, so it is not
+a tautology.
+
+**The standing architectural fact, flagged rather than fixed:** every one of the six legs' outcome
+strings asserts plant state — a Mode, a temperature, or a boron figure. A mechanical re-derivation
+(boot each leg at its own `from` initial condition, scram, settle 20 s, count one-sided predicates
+whose WHOLE step is satisfied) gives `pwr_lower_power` **5 to 0** and leaves `pwr_heatup` 4 and
+`pwr_shutdown` 5 (both in the intended direction), `pwr_startup` 2 and `pwr_cooldown` 1 unchanged —
+each of those sitting behind a real sequential command gate deep in a longer leg, unlike this leg's
+clean four-in-a-row. Not filed as issues: the methodology differs from the issue's own, which scrams
+at a leg-to-leg boundary, and the totals are NOT comparable in absolute terms.
+
+### Fixed (`pwr_startup` step 2 still sent the player looking for a SAMPLE button — #714)
+
+Owner live playtest, verbatim: *"mode 3> mode 1 step 2 walkthrough is broken. its looking for a
+chemistry sample but that feature has been removed there is no sample button any more."* #698
+(`eef4683e`) removed the SAMPLE button and made BORON CHEM a live channel; it deleted the one step
+whose ACCEPTANCE required `take_boron_sample` and missed a second site of a different SHAPE — this
+step's `note`/`target` prose. Reworded only; no acceptance changed. Built-object sweep of all five
+`RD.MANUAL_PROCEDURES` pools for "sample": exactly one hit. No mirror defect — nothing grades on
+`boron_analyzer` or `take_boron_sample`, so nothing is now satisfied instantly by the live reading.
+
+**Why 195/195 straight through the regression never saw it, and this is the reusable part.** The
+step's `acc` (`{p:'boron_ppm', op:'~', v:719, tol:40}`) has always graded TRUE BORON, never the
+command, so the step was never mechanically blocked and the replay drove it to completion on every
+run. #697/#698's own sweep classifies `accs` by ACCEPTANCE SHAPE and never reads prose; the replay
+drives `cmd`/`acc`/`accs` and asserts those, not `note`/`text`/`target`/`why`. **Nothing in the gate
+list checked checklist TEXT against the board's current control vocabulary** — the hole this repo
+already records for `Manuals/*.md` prose reaches `ui/manual_procedures.js`'s free text too. Closed
+for one token: `run_checklist_pwr2` section 2q, a static sweep of every pwr2 step's text fields for
+"sample", asserting the measured zero; 195 to **197/197**, proven red by reinstating the phrase. It
+earned its keep immediately — the FIRST DRAFT of the reword still contained the literal word ("no
+sample needed") and the new gate caught it on its first run, before the fix landed.
+
+The `Manuals/` content pass (`03`, `04`, `10`, and `WIRING_REFERENCE.md` line 107) that still teaches
+the sampling workflow stays deferred under #698 — a revision row, `stamp_manual_revision.js` and
+`pack_manuals.js`, i.e. a different change.
+
+### Fixed (resume-from-pause wiped the accumulator hold's speed-bar message while the hold still stood — #710)
+
+Verified rather than inherited: `resumeSim()` is **one of the pre-existing THREE clearing sites**
+(`ui/app.js` — `resumeSim`, the `#speed` click handler, the `[data-wt-rewind]` handler), not a
+fourth. All three nulled `warpNote` unconditionally on any player act, on the theory that acting on
+the last drop means the hold is over. **True for the five momentary reasons** (scram, failure, alarm,
+transient/step, `warp_locked`), which never outlive the broadcast that reported them — **false for
+`hold`**, because `true_state.speed_hold` can stand for plant-minutes and `set_speed(1)`, which is
+what a resume always sends, always succeeds under it (only `> 1` is refused). So nothing stopped a
+pause/resume, a repeat speed click or a rewind from silently dropping "Held at real time" while the
+accumulator arming window was still open, leaving the player with no explanation for why every press
+above 1x kept refusing — the exact #619 item 13 trap that message exists to close.
+
+`retireWarpNote()` reads the LIVE state (`latest.true_state.speed_hold`, `latest` being the
+last-rendered snapshot assigned synchronously at the top of `render()`) instead of assuming a player
+act ends the hold, and replaces all three bare `warpNote = null` sites.
+
+**The gate's ONE deliberate difference from #686's `testHeldSpeedClick` is the whole reason it can
+fail.** That check restores its `assembleSnapshot` override immediately after one manual broadcast,
+so by the time `resumeSim()`'s own follow-up snapshot is assembled the injected hold is already gone
+— which would make the fix look correct with the #710 defect fully present. `testHeldNotePauseResume`
+leaves the override INSTALLED, toggled by a flag rather than restored, so a real pause/resume
+broadcast and the real interval ticks around it keep reporting the hold for as long as the test says
+it stands. Both halves proven red by injection: reverting to a bare `warpNote = null` fails the
+positive assertion, and making `retireWarpNote()` never clear a `hold` reason fails the negative one
+— which is what proves the negative half load-bearing, since without it the check would only pin a
+message that can never go away. Every read is preceded by a wait after the triggering broadcast:
+`render()` schedules DOM work on the next `requestAnimationFrame`, so a synchronous read reads empty
+text and looks like a pass.
+
 ### Changed — the walkthroughs are OFFERED on the public channel (#722, 2026-09-12)
 
 *(OWNER RULING, 2026-09-12: "A" — flip the flags, rather than stripping the walkthrough
@@ -1383,7 +1622,7 @@ stays steady (power within 5 points of rated, pressure drift under 0.2 MPa / 29 
 meet within one broadcast of the window end, and a planted 1e-6 difference is seen by `compare()`.
 Four injections, one per conjunct, each proven to redden SI-0 alone. No baseline moves (8 checks).
 
-## [Alpha 1.7.4-rc16] — 2026-09-11
+## [Alpha 1.7.4-rc17] — 2026-09-12
 
 ### Fixed (the Tavg program's no-load anchor had two stale copies left over from an earlier re-anchor — #647)
 
