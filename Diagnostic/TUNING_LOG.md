@@ -29,6 +29,60 @@ and the user-visible summary in `CHANGELOG.md`. This file points at those and tr
 
 ---
 
+## Session log — 2026-09-12-workbench-i (#718 — the reactivity done-when named no tile)
+
+**What.** `pwr_heatup` step 16's done-when grades `reactivity_pcm` (`< -300 pcm`); the label at
+`ui/app.js:3939` is correct and off-board on purpose (`PRED_DISPLAY` — Net reactivity has no
+board tile, only an Indications-tab row, `ui/app.js:620`) — the step text named two OTHER
+gauges (SOURCE RANGE, STARTUP RATE) and gave no pointer to where the graded number lives.
+Added a `note` (`ui/manual_procedures.js:1557`, PWR2 pool — the retired pool's own copy of this
+step at line 217 is untouched, on hold): *"Net reactivity reads on the Indications tab, not the
+board."* — 10 words, well under the 20-word `checklist_text_words` cap (which does not even
+reach `note`; only `text` is capped).
+
+**Sweep, per the issue's ask.** Loaded the built pool and extracted every unique `p:` field
+used in any `acc`/`accs`/`precond` across all six PWR2 legs plus the TMI-2 walkthrough (33
+distinct fields). `guard.never` predicates excluded on purpose — measured via
+`layers/instructor_layer.js` and `test/procedures_harness.js`: they are a background
+test-harness invariant (`gNever`), never read by `ui/app.js`'s live rendering, so a player never
+sees one as a done-when. Of the 33: `reactivity_pcm` was the only one with no board tile.
+`plant_mode` already carries its own fix (`modeLiveNote`, #653 defect 4 — appends "— the plant
+reads Mode N (true value)" beside the criterion). Every other one names a literal board
+tile/lamp (confirmed against `ui/diagram/board/pwr_board_wiring.js` / `pwr_board_data.js` for
+the ones not already load-bearing-commented as such in `PRED_DISPLAY`). Also grepped step prose
+(`text`/`note`/`why`) for off-board terms with no formal predicate (xenon, fuel temperature,
+decay heat, core inventory) — all appear only as explanatory `why`/`note` narrative pointing the
+player at board-visible proxies (BORON, AVG COOLANT TEMPERATURE, PZR LEVEL, the ROD LIMIT LO-LO
+alarm), never as a "go check this" instruction. **Nothing was found on no tab at all** —
+`reactivity_pcm` IS on the Indications tab (the `rho` series, Reactor Core group), so this is a
+pure wayfinding fix, not the more serious "nowhere" case.
+
+**Prove it (HR10 — exercised the path, not a source scan).** `inbox/718/verify_note_renders.js`
+(not committed, gitignored) boots `ui/shell.html?engine=pwr2` in headless Chromium, starts the
+live `pwr_heatup` checklist from Cold Shutdown, drives the same command sequence a player issues
+(`set_rcp`, `rod_nudge` shutdown bank, `set_feed_coupled`, `set_letdown_orifices`, `set_heater`/
+`set_spray` AUTO, `set_pressure_setpoint` ×2, `open_accumulator_valve`, `set_steam_dump` auto,
+pressing `checklist_check` on every `awaiting_ack`) at `timeAcceleration = 3600` via direct
+`tick()` calls (bypasses the wall-clock step budget the timer path uses — `_budgetArmed` is only
+true on that path, so a manual `tick()` never throttles) until the checklist's active step
+reaches index 15 (step 16) — 90 ticks, 32,405 sim-seconds (~9 plant-hours). Read the live DOM:
+`#cklRun`'s rendered HTML contains `Net reactivity reads on the Indications tab, not the board.`
+inside a `<div class="ckl-sub muted">` — exactly the `note` render path at `ui/app.js:4479`. PASS.
+
+**Gates run** (per instructions — targeted only, bare aggregate deferred to the coordinator):
+- `run_style` — **11/11**, unchanged (the note has no word cap and carries no SI).
+- `run_checklist_pwr2` — **209 passed, 0 failed, 209 checks** — baseline, unchanged (no
+  predicate, guard, or step count changed, only a `note` string).
+- `verify_ckl_relevance` — **21/21**, unchanged.
+- `verify_manual_follow` — **225 checks**, unchanged.
+- `run_manual_units` — **0 failed**, unchanged (`Manuals/` untouched).
+
+**Not verified.** The bare aggregate (`run_all.js`) — per lane instructions, a subagent never
+runs it; owed at merge time. The retired PWR pool's identical step at `ui/manual_procedures.js:217`
+is left as-is (on hold, out of PWR2 scope).
+
+---
+
 ## Session log — 2026-09-12-workbench-h (lane maintenance: merge `develop`, re-gate)
 
 **What.** Brought `workbench` (tip `6af6c9f1`, 1 ahead / 24 behind) up to date with `develop`

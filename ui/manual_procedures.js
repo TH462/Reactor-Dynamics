@@ -1554,8 +1554,17 @@
             { p: 'steam_pressure_mpa', op: '~', v: 7.03, tol: 0.15, label: 'STEAM PRESS near 1020 psi' },
           ],
           hl_watch: ['Tavg', 'Primary Pressure', 'SG Pressure'] },
+        /* #718 — THE DONE-WHEN NAMED A TAB, NOT A TILE. `acc` grades `reactivity_pcm`, and
+         * `fmtPredicate` renders its own "When Net reactivity < -300 pcm" line under this step
+         * from PRED_DISPLAY — there is no board tile for it (`ui/app.js:3939` labels it plainly,
+         * correctly, and off-board) and the step text names two OTHER gauges instead, so a
+         * player had no pointer to where the graded number actually lives. Swept the rest of the
+         * pwr2 pool's `acc`/`accs`/`precond` params for the same shape (33 unique fields):
+         * `plant_mode` already carries its own live-value note (`modeLiveNote`, #653 defect 4)
+         * and every other one names a tile on the board. This is the only other case. */
         obs('Verify the reactor stayed shut down: SOURCE RANGE counts steady, STARTUP RATE near 0.00.',
-          { p: 'reactivity_pcm', op: '<', v: -300 }, null, null,
+          { p: 'reactivity_pcm', op: '<', v: -300 },
+          'Net reactivity reads on the Indications tab, not the board.', null,
           'There is no gauge for "how shut down" a reactor is. The signs are SOURCE RANGE counts holding at a steady background instead of climbing, and STARTUP RATE sitting at zero. With the control bank in and boron at the cold concentration, the core is a long way from critical.',
           null, ['Source Range', 'Startup Rate']),
         /* #685 — THIS STEP GLOWED NOTHING. No `control` and no `hl`, on a "verify the
