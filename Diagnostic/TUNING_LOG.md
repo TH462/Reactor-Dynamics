@@ -29,6 +29,496 @@ and the user-visible summary in `CHANGELOG.md`. This file points at those and tr
 
 ---
 
+## Session log — 2026-09-12-workbench-f (#711 — the walkthrough hold survived Reset, a plant switch, and a new checklist)
+
+**What was wrong.** `render()`'s own `.paused` check takes `pauseSim('walkthrough')` the instant
+a checklist step's `pause` fires (#694). The take was edge-armed off `checklist.paused`, but
+nothing was symmetric: Reset (`doReset`, `ui/app.js`), a plant switch (`switchEngine`) and
+picking a different walkthrough (`startChecklist`) all end or replace the running checklist
+without ever naming `'walkthrough'` to `releaseHold` — only the checklist's own Continue,
+Rewind and Stop buttons did. The plant then loaded frozen with no on-screen reason, self-healing
+only because `resumeSim()` (▶) unconditionally clears every hold — a quality papercut, not data
+loss, filed from a quality pass over this lane's own #694/#710 work.
+
+**Shape chosen: the #710 precedent, not three new `releaseHold` calls.** `doReset` and
+`switchEngine` both end in `selectPlant()` -> `instructor.unload()` (clears the checklist
+entirely); `startChecklist` replaces it with a fresh one whose `paused` starts `false`
+(`instructor_layer.js` `loadChecklist`). Either way, the very next `render()` sees
+`checklist.paused` read false while the hold is still standing — so the fix is one more line in
+the same block that takes the hold, run backwards:
+
+```js
+var _cklWt = s && s.instructor && s.instructor.checklist;
+if (_cklWt && _cklWt.paused) { if (!pausedFor('walkthrough')) pauseSim('walkthrough'); }
+else if (pausedFor('walkthrough')) releaseHold('walkthrough');
+```
+
+One check covers all three named gaps and any future exit path nobody has written yet, the same
+way the take already does — no site-by-site enumeration to keep in sync. The three existing
+explicit `releaseHold('walkthrough')` calls (Continue/Rewind/Stop, `ui/app.js` ~8065/8086/8091)
+were left in place: they are still correct, cost nothing extra (`clearPause` on an absent key is
+a no-op), and give the resume an extra tick of latency headroom on the paths that already had it
+right.
+
+**Gate: `test/verify_e2e_ui.js` (browser-only — same reason as #694).**
+`SimulationService.advanceCycles` forces `running = true` around its own loop, so no Node harness
+can see a service-level pause fail to lift; only the real setTimeout loop in a browser can.
+Added `testWalkthroughHoldReleasedOnExit`: arms the same benign `porv_indicator_stuck_closed`
+fixture #694 uses on a `pause` step of `pwr_heatup`, confirms the freeze, then drives each of the
+three gaps through the real UI — Session menu Reset (`[data-mreset]` arm+confirm), Free Play
+(`[data-mfree]`), and starting `pwr_startup` from the Checklists tab (`[data-ckl-start]`) — and
+reads `sim_time` TWICE with a wait between after each, requiring it to have genuinely advanced
+(not just `service.running === true` once, which a stale read could pass by accident). **Proved
+red by injection**: removing the `else if` line reddens all three sections — `.bd-frozen` stays
+set and `sim_time` never moves past the fixture's pause through Reset, the plant switch, or the
+new checklist; restored, all three go green, `269.2 s` total for the file's now-17 checks
+(`4screenshots`, `code 0` — the `BASELINES` score is unchanged, `secs` is a scheduling hint only
+per this file's own convention). The negative half — a fix that over-corrected into clearing the
+*whole* hold map — is guarded by a DIFFERENT existing test: `testMissionCloseResumes` already
+pins `user` surviving a plant switch, and this fix touches no reason but `'walkthrough'`; a
+dedicated two-hold (`user` + `walkthrough` stacked) probe was considered and skipped as
+unreachable — the ⏸ button's own handler routes to `resumeSim()` (clears everything) whenever
+`service.running` is already false, so `user` and `walkthrough` can never both be armed
+live to test the combination.
+
+**Not run:** the aggregate (`test/run_all.js`) — per the 2026-09-12 batching change, that is
+owed once at merge time, not per change. Only `verify_e2e_ui.js` was run (green, 4 screenshots +
+new checks, `269.2 s`).
+
+**Files:** `ui/app.js` (`render()`, ~line 2588), `test/verify_e2e_ui.js`
+(`testWalkthroughHoldReleasedOnExit`, registered in `main()` and the `module.exports` block).
+
+---
+
+## Session log — 2026-09-12-workbench-e (#717 — the reactor diagram was a live scrollport wearing `overflow: hidden`)
+
+**The mechanism, measured before anything moved.** `.pwr-board-wrap` had `overflow: hidden`.
+That clips *visually* and makes the element a SCROLLPORT — live, unclamped, and with no
+scrollbar to say so. `.pwr-board-stage` inside it is the full **2400 x 1600 px** world canvas,
+while `layout()` (`ui/diagram/board/pwr_board.js`) computes its fit from `contentBounds()`, the
+bounding box of the AUTHORED ITEMS plus 18 px of padding — a sub-rect of that canvas. So the
+scale `Math.min(r.width / b.w, r.height / b.h)` fits the **content** inside the wrap while the
+stage ELEMENT keeps overflowing it. Measured at four viewports on the broken build:
+
+| viewport | wrap (client) | stage (rendered) | wrap scrollW x scrollH | `scrollTop = 300` |
+|---|---|---|---|---|
+| 1400 x 900 | 997 x 589 | 1762 x 1175 | 1533 x 1154 | took, reads 300 |
+| 1250 x 900 | 847 x 589 | 1497 x 998 | 1302 x 1025 | took, reads 300 |
+| 1100 x 900 | 1065 x 487 | 1548 x 1032 | 1441 x 999 | took, reads 300 |
+| 800 x 900 | 765 x 397 | 1262 x 841 | 1123 x 814 | took, reads 300 |
+
+Every overflow pixel is **empty canvas margin**, so a scroll can only ever pan the diagram OUT
+of view. There is no viewport at which the wrap legitimately needs to scroll, and nothing read
+or wrote its offset: a grep of `ui/` finds zero wheel or scroll listeners on it, and no reset on
+resize, tab switch, rewind or plant reset. Recovery was a page reload.
+
+**What decided the fix.** `layout()` has no branch that lets content exceed the wrap — the
+stacked (`max-width: 860px`) path and the control-room grid path (`max-width: 1200px`) both fall
+through to the same `Math.min` fit, and there is no in-app fullscreen mode (the shell's help text
+offers **F11**, the browser's own, which is just a larger viewport). So: **clamp, do not build a
+scrollbar.** The fix is CSS — `overflow: clip` after the existing `overflow: hidden` — which
+clips identically but creates no scrollport at all, so the offset cannot be moved by wheel,
+touch, keyboard or script, in **any** browser. That matters because the trigger is believed to be
+Firefox's willingness to wheel-scroll an `overflow: hidden` box where Chromium suppresses it; a
+Chromium-only mitigation would have fixed nothing for the two humans who hit it.
+
+**A `wheel` + `preventDefault()` guard was considered and REJECTED**, and the evidence is one
+line of `ui/shell.css`: under `@media (max-width: 860px)` it sets `html, body { overflow: auto; }`
+and stacks the columns, so the PAGE legitimately scrolls there and the board fills most of it.
+Swallowing the wheel over the diagram would have trapped the reader on it — trading this defect
+for a narrower one. `overflow: clip` costs the page nothing.
+
+**The JS half is a backstop, not the fix.** A `scroll` listener on the wrap forces the offset back
+to 0 (`mount()`, removed in `unmount()` so a plant switch does not leak it across board rebuilds).
+It covers an engine too old for `overflow: clip`, which silently keeps the `hidden` line, plus any
+future path to a non-zero offset — a descendant `scrollIntoView` among them, the hazard
+`ui/app.js:5623` already documents and which `overflow: clip` independently closes.
+
+**Gate: `test/verify_board_scroll.js`, 16/16 — NEW, baseline added in the same commit.** Four
+checks at each of the four layout states in the table. The wheel TRIGGER is **not drivable in
+this environment and the runner says so in its header**: Chromium suppresses it (ten CDP
+`mouse.wheel` pulses and a raw `WheelEvent` dispatch all moved nothing even on the broken build —
+`inbox/scram/repro_s3.js`, `repro_s3b.js`) and no Firefox is installed for Playwright here. The
+gate therefore writes `scrollTop`/`scrollLeft` directly, which is the one thing that reproduces
+headlessly, and asserts the **invariant** rather than the trigger: the offset is unconditionally
+zero however it was moved. Two anti-hollow measures, both per viewport — the PRECONDITION that
+the stage really does still overflow (without it a layout change turns the injection into a
+silent no-op and 16 checks pass over nothing), and a re-measure of the reactor vessel's rect,
+because a `scrollTop` that merely READS zero is not evidence the board is drawn.
+
+**Proved red by injection, both halves separately**, because each half is independently
+sufficient and a one-sided injection would have lied (the #295 shape):
+
+| build | result |
+|---|---|
+| fix in full | **16/16** |
+| `overflow: clip` reverted, JS backstop in | **12/16** — the four "refuses the write" checks |
+| both halves out | **4/16** — only the four preconditions; vessel measured at x **-140..-46** against a wrap starting at x **17**, i.e. the board panned clean off |
+
+**Sibling sweep — counted, not fixed (filed separately, cross-linked to #717).** A DOM walk of
+the loaded shell across all four right-column tabs at 1400 x 900 and 800 x 900, plus
+`ui/test_panel/lane_reference.html`, measuring each `overflow: hidden` element rather than
+trusting the grep. **Three** elements share the shape — `overflow: hidden`, content genuinely
+past the box, and a scrollport that accepts and keeps a write: `.scanline-body` (`shell.css:1459`,
+2 px, every tab and both widths), `.tab-body.instr-mode` (`shell.css:2640`, **42 px**, the stacked
+800 px layout only) and `#laneStack.lane-stack` (`lane_reference.html:32`, 7 px). Script:
+`inbox/scram/sibling_sweep_717.js`.
+
+**Gates.** `verify_board_scroll` 16/16 (new) · `verify_e2e_ui` PASS, 4 screenshots ·
+`verify_flags_ui` 52/52 · `verify_board_check` 256 checks · `run_style` 11 checks, 0 failed.
+Aggregate: see the commit. Screenshot of the board holding after a forced 300/300 write:
+`inbox/scram/issue717_board_holds_after_forced_scroll.png`.
+
+**Lane note.** `C:\grok_build\RD_workbench` had **no `node_modules`**, so every browser gate in
+this tree exited "Cannot find module 'playwright'" before any of the above could run. Populated
+it from `RD_Audit`'s copy (playwright + playwright-core; the browser cache under `ms-playwright`
+is shared). It is gitignored and not part of the commit, but a lane that cannot run its own
+browser gates is worth knowing about.
+
+---
+
+## Session log — 2026-09-12-workbench-d (#713 pass 2 — the 1/M plot's own letterbox, and the width the alarm panel does not use)
+
+Pass 1 (`-c` below, commit `15f0414f`) widened the dock 300 -> 380px and moved the buttons beside
+the plot. Two things it did not do, both measured here before anything moved.
+
+**(1) The 50px pass 1 gave the ALARM panel was never measured against the alarm panel's content.**
+Its numbers were all taken on a board showing "— no active alarms —". Raised 18 alarms for real
+(a large LOCA through the app's own `?inject=` path, `ff=300`; station blackout raises 9, SGTR 13),
+then swept the panel's width in 2px steps with the registry's widest label forced into every tile:
+
+- the two-column stack's per-column **min-content is 179.3px**; `"Overtemperature Limit
+  Approaching"` is the binding string, not any of the 69-character ones (a long label WRAPS — what
+  cannot wrap is the longest WORD).
+- so the panel's content floor is `2 x 179.3 + 5 gap + 12 stack padding + 2 border` = **377.7px**,
+  against **421.7px** at a 1500x950 viewport. **43.7px of genuine slack.**
+- and `grid-template-columns: 1fr 1fr` is `minmax(auto, 1fr)`: below that floor the columns could
+  not shrink, so the stack **OVERFLOWED SIDEWAYS** rather than reflowing — scrollWidth pinned at
+  376px against a falling clientWidth, at every width from 376px down. **That already bit at a
+  1250px viewport (panel 267.8px) before this pass took anything**, and nothing caught it.
+
+**(2) There is a letterbox INSIDE the plot's own box, and the axis gutters are a second one.**
+`.oom-docked .oom-svg` is `width/height: 100%` of a CSS grid cell, so the cell's aspect ratio is
+the dock's and `--bottomrow-h`'s; the viewBox was a fixed 340x240 (1.417) and `xMidYMid meet` pads
+the difference. Measured: **33.2px of dead WIDTH at the default 230px row height, and 96.5px of
+dead HEIGHT at 350px** — the binding dimension FLIPS as the operator drags. Widening the dock
+again would have made the dead width wider, not the plot bigger. Separately, `getBBox()` on every
+text node says L/R/T/B (40/12/14/30) reserved 15.3% of the width and 18.3% of the height, of which
+**T was pure margin — nothing is drawn above the frame at all.**
+
+**Fix.**
+- `ui/panels/one_over_m.js` — `syncViewBox()`: H fixed at 240 (so the rendered text size does not
+  move), **W = 240 x the cell's aspect**, clamped 0.80-3.60. Gutters trimmed to the measurement:
+  L 40->35, R 12->9, T 14->4, B 30->25, with the x-tick baseline at `H-B+10` and the axis label at
+  `H-3`. Docked only — the floating window's height is DERIVED from the viewBox aspect, so it has
+  no letterbox to remove and adapting there is circular; it keeps 340x240.
+- `ui/shell.css` — dock `flex: 0 0 380px -> 420px` (pinned back to 380px inside the <=1200px
+  media query, where the row is a COLUMN and that basis is a HEIGHT); alarm panel grow
+  `1.6 -> 1.55`; `.alarm-stack` -> `repeat(auto-fill, minmax(max(184px, calc(50% - 2.5px)), 1fr))`;
+  the dock's svg row `1fr` -> `minmax(0, 1fr)`.
+
+**THE TRAP, and it cost a rebuild: DO NOT MEASURE THE SVG'S OWN BOX.** The first cut read
+`svg.clientWidth/clientHeight`, on the reasoning that a viewBox cannot change the box a CSS grid
+gives an element — true only while that box is DEFINITE. At the 150px row floor the dock's content
+was taller than the dock (205px of content in a 148px box), so the `1fr` svg track stopped
+resolving to a length and content-sized instead, and an svg with `height:100%` against an
+indefinite height **falls back to its intrinsic size, which is the viewBox aspect**. W then set the
+measurement that set W: every value is a fixed point and it froze wherever it drifted — observed
+**viewBox 748x240 for a cell whose real aspect was 2.105**. It now measures the DOCK (definite
+width from its flex-basis, definite height from the row) minus the sibling tracks. `minmax(0, 1fr)`
+on that row is the other half: it lets the plot be sized to the space that EXISTS at the 150px
+floor instead of overflowing into a scrollbar (dock scrollHeight 205 -> 183 in a 148px box).
+
+**Third trap: `run_oneoverm.js` drives this module through a HAND-ROLLED FAKE DOM, on purpose** —
+the panel is meant to be testable without a browser, so its stub has no `classList`, no layout and
+a `querySelector` that hands back a fresh element for any selector. A bare
+`win.classList.contains('oom-docked')` threw and took all 19 checks down with it. Every DOM read in
+`syncViewBox()` is now optional (`isFinite` on each offset, a typed check on `classList`), and the
+`resize` listener only registers where `requestAnimationFrame` exists. **A UI module with a Node
+gate has two DOMs, and the poorer one is the one that reddens.**
+
+**Second trap: the flex-grow ratio is NOT the observed split.** These boxes are content-box, so
+`flex-basis: 0` sizes the CONTENT box and the strip chart's 18px of border+padding rides on top
+against the alarm panel's 2px. 1.6 measured as 1.50, 1.4 as 1.32. Solve on the content boxes or
+the panel lands ~10px below where you aimed — which is how the first attempt at 1.4 put the alarm
+panel at 376.5px, 1.2px under its floor, silently dropping the stack to ONE column.
+
+**Measured, pass 1 -> pass 2** (headless Chromium, 1500x950, `--bottomrow-h` 230px, pwr2. Pass 1's
+own commit message quotes a 1600x1000 viewport; these are both re-measured at the gate's 1500):
+
+| | pass 1 | pass 2 |
+|---|---|---|
+| dock width | 380 | **420** |
+| `.oom-svg` box | 284 x 177 | **324 x 177** |
+| viewBox (aspect) | 340x240 (1.417) | **439x240 (1.829)** — cell is 1.831 |
+| letterbox waste | **33.2 x 0.0** | **0.2 x 0.0** |
+| rendered plot | 250.8 x 177 | 323.8 x 177 |
+| plotted data rect (`.oom-frame`) | 212.4 x 144.5 | **291.3 x 155.6** (+37.1% W, +7.7% H, **+47.7% area**) |
+| strip chart | 280.3 | 269.8 |
+| alarm panel | 421.7 | **392.2** (floor 377.7; two columns down to 387) |
+
+**Other states** (same pass): **row 150px** — svg box 324x97, viewBox 802x240, letterbox 0, plotted
+306.2x85.2 (was 184.7x125.7 in a box that overflowed the dock by 57px); **row 350px** — viewBox
+262x240, letterbox 0.2 vertical, plotted 269.6x260.9 (was 240.6x163.7, with 96.5px of dead height);
+**1250px viewport** — plot unchanged, alarm panel 240.3 and now ONE column instead of overflowing;
+**1100/860px (stacked)** — dock still 356x380, plotted 200.4x285.7 (was 220.2x149.9, +73% area);
+**1920x1080** — alarm panel 566.1, still TWO columns (the `calc(50% - 2.5px)` half of the `max()`
+is what stops `auto-fill` finding room for a third); **floating window** — unchanged box
+(356x338.9, svg 354x249.9), viewBox back to 340x240, plotted 299.8x204.1 -> 308.2x219.7 from the
+gutter trim alone. Alarms active at 18/13/9 tiles: zero overflowing tiles, two columns, the stack
+scrolls vertically (scrollHeight 1020 against 191) as it already did.
+
+**Gate.** `testOneOverMDockedGeometry` in `test/verify_e2e_ui.js` EXTENDED (not a second
+function), four new assertions:
+1. **letterbox waste <= 24px** on both axes — deliberately the waste, not a width: a width floor
+   passes happily on a box whose gain went into a taller letterbox instead.
+2. **plotted data rect (`.oom-frame`) >= 250px wide** — the one number neither failure fools.
+3. **alarms active**: navigate again with the LOCA injected, RE-OPEN the dock (the first cut
+   forgot, and measured the alarm panel at 652px — the width it has when the 1/M dock is closed,
+   i.e. a layout this pass does not narrow), then push **every** `label_learning` /
+   `label_industry` in `RD.PWR_PROTECTION.alarms` (98 strings) through a live tile and assert none
+   overflows. Read off the registry, never a hand-listed "the long ones" — that is a gate that
+   tests the list.
+4. a **count guard** (>= 8 tiles), because 1-3 are vacuously green on a quiet board.
+
+**Proven red by injection, one at a time, then restored:** pass-1 `one_over_m.js` under pass-2 CSS
+-> letterbox fires at 73px; full pass-1 tree with the letterbox ceiling temporarily at 999 ->
+plotted-width floor fires at 212px; `.alarm-stack` -> `minmax(120px, 1fr)` -> 18 of 18 tiles
+overflow, worst by 48px; `1fr 1fr` plus alarm grow 0.6 -> horizontal stack overflow +116px at a
+243px panel; the `inject=large_loca` dropped from the URL -> count guard fires at 0 tiles.
+
+**Gates.** `verify_e2e_ui` PASS · `verify_flags_ui` 52/52 · `verify_board_check` 256 checks, 0
+failures · `run_style` 11/11 · `run_oneoverm` 19/19. **`node test/run_all.js`: AGGREGATE GATE OK, 111 runners at
+baseline** (`run_ops` 59/70 is the tracked, ruled red, unchanged). The hollow-check guard added to
+the new assertions AFTER that run is a test-file-only change; `verify_e2e_ui` was re-run standalone
+and is PASS. Screenshots (scratchpad,
+`713/`): `pass1-default.png` / `pass2-default.png`, `pass1-alarms-loca.png` /
+`pass2-alarms-loca.png`, plus `-floating` and `-vp1100` pairs.
+
+**Still open, not fixed here:** at the 150px row floor the BUTTON column (3 stacked buttons plus
+the prediction readout, ~150px of content) still does not fit — the dock's scrollHeight is 183 in
+a 148px box. Pre-existing, and smaller than pass 1's 205; not this issue's subject.
+
+Filed on **#713**. Lane: `workbench`, **UNMERGED**.
+
+---
+
+## Session log — 2026-09-12-workbench-c (#713 — 1/M startup plot too small docked beside the alarm panel)
+
+**Owner, verbatim (live play):** "also, the 1/m plot is too small when next to the alarm panel.
+also have it move the strip chart over so its taller and put the buttons to the side instead of
+under the plot. make the plot as big as you can in that space." Filed as #713, which included a
+**CSS-derived, not measured** geometry estimate (~298x138 px svg box, ~195x138 rendered plot,
+~90 px of non-plot chrome) and flagged that the first job was to replace the estimate with a real
+`getBoundingClientRect()` measurement before touching layout.
+
+**Measured before touching anything** (headless Chromium, `ui/shell.html`, default engine pwr2,
+default `--bottomrow-h: 230px`, 1600x1000 viewport): `.oom-svg` box **298 x 141 px** (estimate was
+close: 298 wide was exact, 138 vs 141 tall). Letterboxed (viewBox 340x240, `xMidYMid meet`,
+height-bound: `min(298/340, 141/240) = 0.5875`) to a rendered plot of **~199 x 141 px**, wasting
+~99 px of the box's width. Chrome: head 35, foot (buttons) 36, msg 16 = 87 px, matching the
+issue's ~90 px estimate.
+
+**The board's global-scale trap (pwr_board.js `fitColumns`) does not apply here** — confirmed by
+reading it: `.bottom-row` is a plain flex row, not the SVG board canvas with one shared scale
+factor. The real constraint, per the issue and confirmed in `ui/shell.css:189-194`, is that
+`.bottom-row`'s height is deliberately fixed (`flex: 0 0 var(--bottomrow-h)`) to avoid the #233
+feedback loop with the board diagram — so height only ever comes from the existing
+`--bottomrow-h` drag mechanism, never a hardcoded row height. **Nothing in this change touches
+that mechanism**; every change is a redistribution *within* the row's existing height/width.
+
+**Fix, three parts, `ui/shell.css`:**
+1. **Buttons beside the plot, not under it** (`.oom-win.oom-docked`): switched from a flex COLUMN
+   (head / svg / foot / msg stacked) to a CSS GRID (`"head head" / "svg foot" / "msg msg" /
+   "help help"`, svg row `1fr`) — **no DOM change in `one_over_m.js`**, only the grid-area each
+   existing element is assigned. The svg row now absorbs the height the footer used to cost it,
+   which was the LETTERBOX'S BINDING DIMENSION — so this is most of "make the plot as big as you
+   can" by itself. The button column is a fixed 94px, buttons stacked and stretched; the
+   prediction readout (`#oomPred`) is given the full column width and wraps, rather than sharing
+   a row with the buttons — the #712 risk this change is most likely to trip (see Proof).
+2. **The 1/M dock widened 300px -> 380px**, taking that width from the row's two flexible
+   siblings, so the extra height gained in (1) doesn't get letterboxed away sideways for lack of
+   width (checked: widening height alone, without width, would have moved the binding dimension
+   to width and capped the visible gain at ~148px instead of 177px).
+3. **The strip chart gives up more of that width than the alarm panel** (`.strip-chart` /
+   `.alarm-panel` unequal `flex-grow`, 1 : 1.6) — the owner named the strip chart specifically
+   ("move the strip chart over"), not the alarm panel, so the alarm panel is protected rather than
+   split evenly.
+
+**Measured after** (same viewport/row-height): `.oom-svg` box **284 x 177 px** -> rendered plot
+**251 x 177 px** (still height-bound: `min(284/340, 177/240)=0.738`). Both plot dimensions grew
+~26%; **plot AREA +58%** (251x177=44,427 vs 199x141=28,059 px²). Strip chart **449 -> 319 px**
+(-29%); alarm panel **433 -> 483 px** (+12%, per the unequal split). No overflow anywhere
+(buttons, `#oomPred`, the docked window's own box all measured `scrollWidth <= clientWidth`).
+Screenshot comparison: `oom_pre713_row.png` / `oom_post713_row.png` (scratchpad).
+
+**Cross-checked other states, all in the same headless pass:**
+- `--bottomrow-h` at the **150px floor**: plot 147x104, no overflow.
+- `--bottomrow-h` **dragged to 350px**: width becomes binding past ~row-height 250px (as
+  expected for a fixed-width dock); plot 284x200, no overflow, letterbox just moves to top/bottom
+  instead of the sides.
+- **Narrow row, 1300px viewport** (just above the 1200px stacking breakpoint): plot unchanged at
+  251x177 (dock width is fixed regardless of row width); strip/alarm squeezed further but no
+  negative widths, no horizontal page overflow even at the breakpoint's edge (1210px viewport).
+- **Stacked layout, <=1200px viewport** (existing `flex-direction: column` media query): the same
+  fixed 380px basis is now read as a HEIGHT (flex-basis applies along the column axis), so the
+  docked panel is taller there than before this change (380px vs the old 300px) — pre-existing
+  behaviour of that breakpoint, not a new defect class; no overflow, no errors.
+- **Floating (undocked) window** — simulated by removing the dock target before `open()`: still
+  uses the OLD flex-column layout (buttons below the svg) because only `.oom-docked`-scoped rules
+  changed. Confirmed unaffected.
+
+**#712 (no gate for a caption/readout overflowing its box).** Added a cheap check rather than
+just hand-verifying: `test/verify_e2e_ui.js` `testOneOverMDockedGeometry` opens the real docked
+panel, forces the longest string `render()` ever emits into `#oomPred` ("predicted criticality ~
+step 9999 (99.9% withdrawn)"), and asserts `scrollWidth <= clientWidth` on the buttons, the
+readout and the panel's own box, plus a 160px floor on the docked plot's height (measured 177px
+after this fix, ~141px before — set well below both so ordinary tuning doesn't retrip it).
+**Proven red by injection**: reverted `ui/shell.css` to the pre-fix rules (`git show
+HEAD:ui/shell.css`) and re-ran the new check standalone — failed as expected ("only 120px tall...
+expected >= 160px"); restored the fix, re-ran — PASS. This does not close #712 (that issue is
+broader — every caption/readout on the board), but it is one concrete instance of the geometry
+class it asks for, landed while already in this file.
+
+**Gates.** `verify_e2e_ui` PASS (4 screenshots, includes the new check) · `verify_flags_ui`
+52/52 · `verify_board_check` 256 checks, 0 failures · `run_style` 11/11. `node test/run_all.js`:
+see the run following this entry for the full tally; no `BASELINES` entry needed to move since
+`verify_e2e_ui`'s baseline is PASS/FAIL, not a count.
+
+Filed on **#713**. Comment posted with before/after geometry, gate tallies and SHA. Lane:
+`workbench`, **UNMERGED**.
+
+---
+
+## Session log — 2026-09-12-workbench-b (#715 — `pwr_lower_power` completed on a scrammed plant)
+
+**Filed from an operator playthrough**: a real scram occurred between `pwr_raise_power` and
+`pwr_lower_power`; the checklist never noticed and reported all five steps complete with a
+banner reading "stable near 15 %, 15 MWe" while the board read 0.1 % power, rods at 0, turbine
+tripped.
+
+**Two independent causes.**
+
+1. **The five acceptances were all unpaired one-sided thresholds** — `power_pct` below
+   90/70/45/40 and `tavg_c` below 305, across the leg's four load-drop steps. A scram satisfies
+   every one of them for free. `pwr_raise_power`/`pwr_startup` pair each one-sided check with a
+   sibling a scram would fail; `pwr_lower_power` was the only leg with none.
+2. **The completion banner was authored, not computed** — `f.proc.outcome` / `pr.outcome`
+   rendered unconditionally on completion, in both the Path 2 follow-mode banner
+   (`instructor_layer.js` `_completeFollow`) and the Path 3 checklist banner actually used by the
+   live PWR2 walkthroughs (`ui/app.js` `renderChecklist`, `pr.outcome` at what is now line 4479).
+
+**Fix 1 — pairing.** Each of the leg's four stages (75/50/30/15 MWe) gains a paired
+`mwe_output` floor: the step's own claim is "the reactor follows LOAD down", and the turbine
+still carrying load IS that claim's second half — a scram is a load-following failure by
+definition, not a bolted-on guard. Chosen over a blanket `turbine_tripped` check on every step
+because the per-step floor is the more honest assertion and a scram already zeroes
+`mwe_output`, so the blanket form would add nothing a targeted one does not already catch.
+MEASURED (full stack, genuine run, `inbox/715/measure.js`): mwe_output settles to exactly
+75.00 / 50.00 / 30.00 / 15.00 by the end of each stage's hold; 0 on a scram. Floors set 5-10
+below target (70/45/25/10) for margin.
+
+**Fix 2 — the banner.** New optional per-leg field `outcome_guard` (array of
+`{p, op, v[, tol]}`, same shape as `precond`/`accs`), re-graded against the LIVE snapshot for as
+long as the completion card is shown (`instructor_layer.js` `_gradeOutcomeGuard`, wired into
+both `_completeFollow` and `_stepChecklist`'s post-complete tick; `getSnapshotBlock` exposes
+`checklist.outcome_verified`). `ui/app.js`'s checklist banner and `_completeFollow`'s own text
+now swap in a neutral "read the board, not this note" string when the guard fails. Chosen over
+"stop asserting a state at all" because the authored text is otherwise good pedagogical copy
+(explains what's next) and the guard is cheap to author per leg; chosen over re-deriving it from
+the leg's own last-step accs because that is exactly what cause 1's fix already is — a truly
+independent check should not share the same, possibly-still-imperfect predicates. Authored on
+`pwr_lower_power` only (`{turbine_tripped < 1, mwe_output > 10}`); every other leg is
+unaffected — no guard authored means `_gradeOutcomeGuard` returns true, identical to the old
+unconditional behaviour. **Other legs' outcome strings also assert plant state** (checked all
+six: heatup/startup/raise_power/shutdown/cooldown all name a Mode, a temperature or a boron
+figure) — none proven exploitable the way this leg was (their step accs are paired or
+intentional), so none were touched; worth a future pass if a similar per-leg gap turns up.
+
+**Proof.**
+- Exact filed repro (`inbox/715/repro_after.js`, mirrors the issue's own
+  `inbox/scram/repro_s1.js`): scram at `hot_full_power`, 20 s settle, grade
+  `pwr_lower_power`'s steps against the snapshot — before: all 5 predicates MET; after: every
+  load-drop step now fails at least one predicate (`mwe_output > X` reads 0).
+- `outcome_guard` proven red (scrammed snapshot), green (healthy 15 MWe snapshot), and
+  red-by-injection (temporarily stripping the guard makes the SAME scrammed snapshot read
+  verified — proves the guard, not a tautology, is doing the work).
+- **The honest gate** (`run_checklist_pwr2.js` new sections 2r/2s): drives the ACTUAL scenario
+  through the live service — scram before `pwr_lower_power` starts, issue the (unrelated) boron
+  command, tick and acknowledge exactly as a player would, issuing no `set_load_target` — and
+  asserts the checklist does **not** complete. Before the fix this would have reported
+  `complete: true`; after, it sticks at step 2/5 forever. A second section proves the driver
+  actually reached the vulnerable steps (not just stuck on step 1's real boron-command gate).
+- **Pool-wide count re-derived** (`inbox/715/pool_count.js`, boot each of the six chain legs at
+  its own `from` IC, scram immediately, settle 20 s, count one-sided predicates whose WHOLE step
+  is satisfied): `pwr_lower_power` 5 → 0 vulnerable, matching the issue's own count exactly. The
+  other five legs are numerically unchanged by this fix (I only touched `pwr_lower_power`). Note
+  this mechanical methodology (immediate scram at leg entry) differs from the issue's own
+  (a scram at a specific leg-to-leg boundary) and is NOT directly comparable in absolute terms —
+  under it, `pwr_startup` (2) and `pwr_cooldown` (1) also show individually-trivial one-sided
+  hits, but each sits behind a real, sequential command gate deep in a longer leg (not
+  `pwr_lower_power`'s clean four-in-a-row), so I did not treat them as the same defect or file
+  a new issue; reported on #715 for a human read.
+
+**Gates.** `run_checklist_pwr2` 197 → **209/209** (+4 replay accs, +8 new sections 2r/2s), all
+proven red by injection above. `BASELINES` updated in `test/run_all.js` with the derivation.
+Individually confirmed at baseline: `run_style` 11/11, `run_m6` 18/18 (117 checks), `run_checklist`
+90/90, `verify_ckl_relevance` 21/21, `verify_manual_follow` 225 checks, `run_procedures` 29/29
+(141/141, pwr2 pool not in scope for that runner — confirmed by source read, `run_procedures_stack`/
+`run_procedures_chain` explicitly skip `pwr2`). `node test/run_all.js`: see the run following this
+entry for the full tally.
+
+Filed on **#715**, cross-linked to #675. Comment posted with mechanism, before/after counts, gate
+tallies and SHA. Lane: `workbench`, **UNMERGED**.
+
+## Session log — 2026-09-12-workbench-a (#714 — pwr_startup step 2 still told the player to SAMPLE)
+
+**Owner live playtest, 2026-09-12**: "mode 3> mode 1 step 2 walkthrough is broken. its looking for
+a chemistry sample but that feature has been removed there is no sample button any more."
+
+**Cause.** #698 (`eef4683e`, 2026-09-11) removed the SAMPLE button and made BORON CHEM a live
+reading. It correctly deleted the one step whose *acceptance* required `take_boron_sample`
+(`pwr2:pwr_raise_power`) — the #641/#697 command-kind-check-off shape. It missed a second,
+different-shaped site: `pwr2:pwr_startup` step 2's `note`/`target` still read "BORON CHEM updates
+only after a SAMPLE". This step's `acc` has always graded true `boron_ppm`, never the sample
+command — **the step was never mechanically blocked.** The prose sent the player looking for a
+control that no longer exists, which reads exactly as "the walkthrough is broken."
+
+**Why `run_checklist_pwr2` did not catch it (the important part).** #697/#698's own sweep
+(section 2n) classifies `accs` entries by ACCEPTANCE SHAPE — pure cmd-kind with no predicate. It
+never reads `note`/`text`/`target`/`why`/`cautions`. The REPLAY (section 1) drives every step's
+`cmd`/`acc`/`accs` and asserts them; it does not read prose either. So the step passed 195/195
+straight through the regression — nothing in the gate list reads player-facing strings against
+the board's current control vocabulary. Same hole CLAUDE.md already records for `Manuals/*.md`
+prose ("nothing gates manual prose"); it reaches `ui/manual_procedures.js`'s own free text too.
+
+**Sweep.** Built-object scan (`RD.MANUAL_PROCEDURES`, all five pools: pwr, pwr2, rbmk_pre,
+rbmk_post, bwr) for any string field containing "sample": **exactly one hit**, `pwr2:pwr_startup`
+step 2. `pwr_raise_power` (the leg #698 edited) carries zero — that deletion was clean. No mirror
+defect: no live step grades on `boron_analyzer`/`take_boron_sample`, so nothing is now satisfied
+instantly by the live reading that used to wait on a 30-minute lab result.
+
+**Fix.** Reworded step 2's `note`/`target` (`ui/manual_procedures.js`) to describe the live BORON
+CHEM channel; no acceptance changed. First draft of the wording itself still contained the word
+"sample" ("no sample needed") — caught by the new gate below on its first run, refitted.
+
+**Gate added.** `run_checklist_pwr2.js` section 2q: static sweep of every pwr2 procedure/step's
+text fields for "sample", asserting zero (measured, corrected count), proven red by injection
+(reinstate the stale phrase into step 2's `note`, sweep catches it, restore). 195 -> **197/197**.
+BASELINES updated in `test/run_all.js`.
+
+**Not touched.** The Manuals content pass (`03`, `04`, `10`, `WIRING_REFERENCE.md` line 107) that
+still teaches the sampling workflow is already tracked under #698, `status-owner-review`, OPEN,
+explicitly deferred pending the owner's one-line confirmation — a separate, larger scope (revision
+row, `stamp_manual_revision.js`, `pack_manuals.js`), not re-litigated here.
+
+Filed **#714**, cross-linked to #698/#697/#641/#675. Gates run individually: `run_checklist_pwr2`
+197/197, `run_style` 11/11, `run_manual_controls` 646/646, `run_manual_commands` 8/8,
+`run_checklist` 90/90, `verify_ckl_relevance` 21/21, `verify_manual_follow` 225 checks — all at
+current baseline, none needed a BASELINES change except `run_checklist_pwr2` itself.
+`node test/run_all.js`: **111/111 runners at baseline**, `run_checklist_pwr2.js` confirmed
+197/197 in the full run, `run_ops.js` untouched at the tracked, ruled 59/70.
+
 ## Session log — 2026-09-11-develop-d (the QUALITY PASS over the #656/#687/#688/#689/#690 bundle — four defects the bundle's own gates could not see, two of them hollow checks)
 
 *(OWNER DIRECTIVE, 2026-09-11: "Upon completing your work, spawn a subagent to do a full and
@@ -422,6 +912,93 @@ functions do not move it; no `BASELINES` change). `verify_ckl_relevance` **21 pa
 baseline — it reads `#cklRun`'s innerText for the no-SI check and clicks `[data-ckl-stop]`, both
 of which the `#cklBtns` move touches. `verify_flags_ui` **52/52**, at baseline.
 `run_checklist_pwr2` **195 passed / 0 failed / 195 checks**, at baseline.
+
+## Session log — 2026-09-11-workbench-e (lane maintenance: merge `develop`, re-gate)
+
+Merged `develop` (`9774a679`) into `workbench` (`ec432d2a`) — sanctioned lane maintenance, not a
+merge into `develop`. One real conflict: `test/run_all.js`'s `verify_e2e_ui.js` BASELINES entry —
+both lanes had appended check-function comments (`workbench` #710, `develop`/other-lane #707);
+combined all comment text and kept `develop`'s `note:` field (the `testPauseResumeSpeed`
+contention-sensitivity warning, #691). `run_hardrules.js`'s BASELINES entry had ALREADY been
+pre-resolved on `develop`'s side to 535 (its own comment records a prior develop+backshop+
+workbench prediction of "524 or 531 -> actual 535"); re-ran the gate directly against the merged
+tree rather than trusting the comment — **535 checks, 0 failed**, exact match, no correction
+needed. `merge_audit.js` flagged the known `## [Alpha 1.7.4-rc13]` false positive (renamed to
+rc15 in place on `develop`) — not chased. `Manuals/00_REVISION_HISTORY.md` row 19's #698 items
+land in the Description column, closing cleanly at `| Claude |` (the earlier author-cell splicing
+did not recur). `Manuals/12_SIM_PHYSICS.md` §12.22 (the boron live-reading declared departure)
+survived intact.
+
+`node test/run_all.js`: **111/111 runners at baseline**, zero deviations beyond the tracked
+`run_ops.js` 59/70 (ruled #330, expected). No BASELINES entries needed correcting past what
+`develop` already carried in — every number the gate reported matched what was already staged.
+
+## Session log — 2026-09-11-workbench-d (#710 — resume-from-pause cleared the held-at-real-time message, UNMERGED on `workbench`)
+
+Filed by the #686 agent, out of scope there — pre-existing #691 code that #686 (landed at
+`9737c775`) did not touch. Touches `ui/app.js`, `test/verify_e2e_ui.js`, `test/run_all.js`.
+
+### What was actually wrong
+
+`resumeSim()`, the speed-button click handler, and the walkthrough rewind handler each nulled
+`warpNote` unconditionally on any player act — the theory being that acting on the last drop
+means the player has seen it and is moving on. True for the five momentary reasons (scram/
+failure/alarm/transient/step/warp_locked), which never outlive the broadcast that reported them.
+**Not true for `hold`**: `true_state.speed_hold` (the accumulator arming window, #619 item 13) can
+stand for plant-minutes, and `set_speed(1)` — what a resume always sends — always succeeds under
+it (only `> 1` is refused), so nothing stopped a pause/resume, a repeat speed click, or a rewind
+from happening WHILE the window was still open. The three sites confused "the player acted" with
+"the hold is over," and only the second one is true for the other five reasons. **Verified,
+against the #686 agent's finding**: `resumeSim()` is one of the pre-existing **three** clearing
+sites (`ui/app.js` — resumeSim, the `#speed` click handler, the `[data-wt-rewind]` handler), not a
+fourth; all three predate #686 and share the identical defect.
+
+### The fix
+
+`retireWarpNote()` (`ui/app.js`, beside the `warpNote` declaration) replaces the three bare
+`warpNote = null` sites. It reads the LIVE state — `latest.true_state.speed_hold` (`latest` is the
+last-rendered snapshot, assigned synchronously at the top of `render()`) — rather than assuming a
+player act means the hold has lifted: if `warpNote.reason === 'hold'` and the hold is still
+standing, the note survives; otherwise it retires exactly as before. Before: pause+resume inside
+the arming window left the player with NO explanation for why every speed press above 1x kept
+refusing. After: the message ("Held at real time — the plant needs you here") survives a pause/
+resume while the hold stands, and still clears the next time the player acts once the hold has
+genuinely lifted.
+
+### Proof: the browser check, both halves
+
+Extended `test/verify_e2e_ui.js` with `testHeldNotePauseResume`, following the shape of #686's own
+`testHeldSpeedClick` (a source scan cannot prove a string reaches the player; a rendering claim
+needs a browser). One difference from that check, load-bearing here: #686's `assembleSnapshot`
+override is restored immediately after ONE manual broadcast, so by the time `resumeSim()`'s own
+follow-up snapshot is assembled the injected hold is already gone — which would make the fix look
+correct even with the #710 defect still present, because the live state genuinely no longer shows
+a hold. This test leaves the override INSTALLED (toggled via a flag rather than restored) so a
+real pause/resume broadcast still reports the hold, then flips the flag off for the negative half.
+Every read is preceded by a `waitForTimeout` after the triggering broadcast — the #686 agent's own
+rAF-race finding (`render()` schedules DOM work on the next `requestAnimationFrame`; reading
+`#warpInfo` synchronously reads empty text and looks like a pass).
+
+Both halves proven red by injection before landing:
+- Positive (message survives): reverting `retireWarpNote()` to a bare `warpNote = null` in
+  `resumeSim()` failed with "resume cleared the held-at-real-time message while the hold still
+  stands."
+- Negative (message still clears): making `retireWarpNote()` never clear a `hold` reason
+  (`if (warpNote && warpNote.reason === 'hold') return;` unconditionally) failed with "the
+  held-at-real-time message survived a pause/resume after the hold genuinely lifted" — proving the
+  negative half is load-bearing, not a check that only pins a message that can never go away.
+
+### Gates
+
+`run_style` 11/11, `verify_flags_ui` 52/52, `verify_e2e_ui` PASS (4 screenshots, score unchanged
+— new check function, same convention as #685/#686/#694). `node test/run_all.js`: **AGGREGATE
+GATE: OK, 111 runners at baseline** — `run_ops` 59/70 is the only tracked/ruled red (#330), no
+runner drifted off `BASELINES`; `run_hardrules` read 531 (this session's TUNING_LOG entry cites
+no new dated+quoted OWNER ruling, so it added no HR11 site and the count is unchanged from the
+lane's own recorded baseline — NOT the number predicted from reasoning about develop's separate
+merge, per the standing rule that only the gate's own output on the tree you are standing on is
+authoritative). `develop` moved on during this run (merged/pushed elsewhere to `9774a679`) but
+this lane was not fast-forwarded and this work commits on top of `9737c775` as planned.
 
 ---
 

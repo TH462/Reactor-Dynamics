@@ -2714,6 +2714,132 @@ async function testWalkthroughEventPause(page) {
   return log.join('\n') + '\n';
 }
 
+/* #711 — THE WALKTHROUGH HOLD SURVIVES RESET, A PLANT SWITCH, AND A NEW CHECKLIST.
+ *
+ * `render()`'s own `.paused` check above (the #694 take) never had a matching release: Reset
+ * (`doReset`), a plant switch (`switchEngine`) and picking a different walkthrough
+ * (`startChecklist`) all end or replace the running checklist without ever naming
+ * `'walkthrough'` to `releaseHold`, so the next plant loaded FROZEN with no caution on screen —
+ * silently fixed only by the player happening to press ▶ (`resumeSim` clears every hold).
+ *
+ * THE FIX IS THE SAME LIVE CHECK RUN BACKWARDS, not three new `releaseHold` calls (the #710
+ * shape): `render()` now also lets go the instant `checklist.paused` reads false while the hold
+ * is still standing, which is true whether the checklist was cleared entirely (Reset, a plant
+ * switch — both go through `simulation_service.js` `selectPlant` -> `instructor.unload()`) or
+ * replaced by a fresh one (`instructor_layer.js` `loadChecklist` always starts `paused: false`).
+ *
+ * WHY A BROWSER GATE: same reason as #694 immediately above — `SimulationService.advanceCycles`
+ * forces `running = true` around its own loop, so a Node harness can never see a service-level
+ * pause fail to lift.
+ *
+ * THE PROOF IS BEHAVIOURAL, NOT A FLAG READ. Each of the three exits is driven through the
+ * real UI (the Session menu's Reset, its Free Play button, the Checklists tab's own start
+ * button) and then the CLOCK is read twice with a wait between — not just `service.running`
+ * once, which a stale read or a one-tick flicker could pass by accident — to prove sim_time is
+ * genuinely advancing again, the same standard #694's own positive control holds itself to. A
+ * fix that left the hold PINNED (never lifted at all) fails every one of these; a fix that
+ * over-corrected into clearing the whole map would still pass here — that half is `deliberate`
+ * (a `user` hold surviving a plant switch is `testMissionCloseResumes`'s own regression pin
+ * immediately above in this file, for `plant_change`; this fix touches no other reason).
+ *
+ * PROVED RED BY INJECTION, 2026-09-12: with the `else if (pausedFor('walkthrough'))
+ * releaseHold('walkthrough')` line removed (i.e. back to the #694-only take with no release),
+ * all three sections below fail — the plant stays `.bd-frozen` and `sim_time` never advances
+ * past the fixture's pause, through Reset, the plant switch, and the new checklist alike.
+ * Restored before this file was committed. */
+async function testWalkthroughHoldReleasedOnExit(page) {
+  var log = [];
+  var base = 'http://127.0.0.1:' + PORT + '/ui/shell.html?engine=pwr2&run=1&dev=1';
+
+  // Load a fresh plant, start `pwr_heatup`, and arm the same benign fixture #694 uses
+  // (an instrument-only failure so arming it cannot itself trip the plant) on a `pause`
+  // step — then confirm the freeze actually landed before touching any exit.
+  async function armPausedWalkthrough() {
+    await page.goto(base, { waitUntil: 'networkidle', timeout: 90000 });
+    await dismissMission(page);
+    await waitBoardLive(page, 20000);
+    var started = await page.evaluate(function () {
+      try {
+        var svc = globalThis.RD.__dev.service();
+        svc.attentionStops = false;
+        var r = svc.handleCommand({ action: 'start_checklist', procedure_id: 'pwr_heatup' });
+        return { ok: !(r && r.type === 'error'), msg: r && r.message };
+      } catch (e) { return { ok: false, msg: String(e) }; }
+    });
+    if (!started.ok) throw new Error('#711 fixture: start_checklist failed — ' + started.msg);
+    await page.evaluate(function () {
+      var c = globalThis.RD.__dev.service().instructor.checklist;
+      var st = c.proc.steps[c.idx];
+      st.inject = [{ failure: 'porv_indicator_stuck_closed' }];
+      st.pause = true;
+    });
+    await page.waitForTimeout(900);   // the fire+pause lands within one broadcast (#694)
+    var f = await read();
+    if (f.running || !f.frozen || !f.playPaused) {
+      throw new Error('#711 fixture: pwr_heatup never froze the plant before the exit was tried — ' + JSON.stringify(f));
+    }
+  }
+
+  async function read() {
+    return await page.evaluate(function () {
+      var svc = globalThis.RD.__dev.service();
+      return {
+        running: svc.running,
+        simTime: svc.simTime,
+        frozen: !!document.querySelector('.pwr-board-stage.bd-frozen'),
+        playPaused: !!(document.getElementById('playBtn') && document.getElementById('playBtn').classList.contains('paused')),
+      };
+    });
+  }
+
+  // Read twice with a wait between and require sim_time to have actually moved — the
+  // behavioural proof the comment above calls for, not a one-shot flag read.
+  async function assertGenuinelyRunning(tag) {
+    var a = await read();
+    await page.waitForTimeout(600);
+    var b = await read();
+    if (a.frozen || b.frozen || a.playPaused || b.playPaused || !a.running || !b.running) {
+      throw new Error('#711: ' + tag + ' left the walkthrough hold standing — ' + JSON.stringify(a) + ' / ' + JSON.stringify(b));
+    }
+    if (!(b.simTime > a.simTime)) {
+      throw new Error('#711: ' + tag + ' reported running but sim_time never advanced (' +
+        a.simTime + ' -> ' + b.simTime + ') — the release did not actually resume ticking');
+    }
+    return b;
+  }
+
+  // ---- gap 1: Session Reset (doReset, ui/app.js ~9423) --------------------------------
+  await armPausedWalkthrough();
+  await page.click('#mainMenuBtn');
+  await page.waitForSelector('#missionOverlay', { state: 'visible', timeout: 5000 });
+  await page.click('[data-mreset]');   // arm
+  await page.click('[data-mreset]');   // confirm -> doReset(true)
+  await page.waitForTimeout(500);
+  var r1 = await assertGenuinelyRunning('Session Reset out of a paused walkthrough');
+  log.push('Reset: plant runs again, sim_time advancing past ' + r1.simTime.toFixed(2) + ', .bd-frozen cleared');
+
+  // ---- gap 2: a plant switch (switchEngine, ui/app.js ~9362, via Free Play) -----------
+  await armPausedWalkthrough();
+  await page.click('#mainMenuBtn');
+  await page.waitForSelector('#missionOverlay', { state: 'visible', timeout: 5000 });
+  await page.click('[data-mfree]');
+  await page.waitForTimeout(500);
+  var r2 = await assertGenuinelyRunning('a plant switch out of a paused walkthrough');
+  log.push('Plant switch: plant runs again, sim_time advancing past ' + r2.simTime.toFixed(2) + ', .bd-frozen cleared');
+
+  // ---- gap 3: picking a DIFFERENT walkthrough (startChecklist, ui/app.js ~4805) -------
+  await armPausedWalkthrough();
+  await page.click('#tabbar [data-tab="checklists"]');
+  await page.waitForSelector('[data-ckl-start="pwr_startup"]', { timeout: 10000 });
+  await page.click('[data-ckl-start="pwr_startup"]');
+  await page.waitForTimeout(500);
+  var r3 = await assertGenuinelyRunning('starting a different walkthrough over a paused one');
+  log.push('New walkthrough: plant runs again, sim_time advancing past ' + r3.simTime.toFixed(2) + ', .bd-frozen cleared');
+
+  await page.evaluate(function () { globalThis.RD.__dev.service().handleCommand({ action: 'stop_checklist' }); });
+  return log.join('\n') + '\n';
+}
+
 /* #685 — THE "WATCH THIS" GLOW, PROVED TO REACH THE BOARD FROM A REAL STEP'S `hl_watch`.
  *
  * WHY A BROWSER GATE AND NOT A SOURCE SCAN. `run_manual_controls` checks that every `hl_watch`
@@ -2884,6 +3010,130 @@ async function testPauseResumeSpeed(page) {
     throw new Error('#691: after resume the lit speed button(s) are [' + afterResume.lit.join(',') + '], want just 1');
   }
   log.push('resumed: accel ' + afterResume.accel + ', lit [' + afterResume.lit.join(',') + ']');
+  return log.join('\n') + '\n';
+}
+
+/* #710 — RESUME-FROM-PAUSE CLEARED THE ACCUMULATOR-HELD SPEED-BAR MESSAGE WHILE THE HOLD STILL
+ * STOOD (filed by the #686 agent, out of scope there). `resumeSim()` (and two siblings — the
+ * speed-button click handler, the walkthrough rewind handler) nulled `warpNote` unconditionally
+ * on the theory that any player act means the plant-declared hold is over. It is not: the
+ * accumulator arming window (`true_state.speed_hold`) can stand for plant-minutes, and
+ * `set_speed(1)` — what a resume always sends — always succeeds under it (only `> 1` is
+ * refused), so nothing stopped a pause/resume from happening WHILE still inside the window.
+ * That silently re-created the #619 item 13 trap: the plant refuses every speed press above 1x
+ * and the ONLY standing explanation on screen (`#warpInfo`'s persistent line, #686 ruling 3)
+ * disappeared on an ordinary pause/resume.
+ *
+ * THE FIX (`retireWarpNote` in ui/app.js) reads the LIVE state — `latest.true_state.speed_hold`
+ * — instead of assuming an act means the hold is over: keep the note while the hold still
+ * stands, retire it once the act happens with the hold genuinely gone.
+ *
+ * WHY A ONE-SHOT PLANT DOES NOT PROVE THIS (learned from #686's own check, `testHeldSpeedClick`
+ * above): its `assembleSnapshot` override is restored immediately after ONE manual broadcast, so
+ * by the time `resumeSim()`'s own `cmd()` calls `assembleSnapshot()` again, the injected
+ * `speed_hold` is gone — which would make retirement look CORRECT even with the #710 defect
+ * still in place, because the live state genuinely no longer shows a hold. This override stays
+ * installed (`__710hold`, toggled rather than restored) so every subsequent broadcast — the one
+ * `resumeSim()` triggers, and the real interval ticks around it — keeps reporting the hold for as
+ * long as the test says it stands, exactly like a real 75-plant-minute arming window would.
+ *
+ * PROVED THROUGH THE REAL PIPELINE, NOT THE DOM, same shape as `testHeldSpeedClick`: the rising
+ * edge is produced by one manual `_assembleWithInstructor()` + `_broadcast()` call while running
+ * at >1x (the drop-to-1x-and-stamp branch only fires when `timeAcceleration > 1`,
+ * `layers/simulation_service.js` :781), then the pause/resume cycle is driven through the real
+ * `#playBtn` exactly as a player would click it. render() schedules DOM work on the next
+ * `requestAnimationFrame`, so every read below is preceded by a wait for a broadcast/paint to
+ * land — reading `#warpInfo` synchronously races the paint and reads empty text, which looks
+ * like a pass (the #686 agent's finding, `read()`'s own `waitForTimeout` avoids it).
+ *
+ * BOTH HALVES: POSITIVE — pause/resume while the hold still stands must keep the message.
+ * NEGATIVE — once the hold is actually cleared (`__710hold = false`, then a real broadcast lands
+ * it), the next pause/resume must retire the message, or this only pins a message that can
+ * never go away. */
+async function testHeldNotePauseResume(page) {
+  var log = [];
+  var base = 'http://127.0.0.1:' + PORT + '/ui/shell.html?engine=pwr2&run=1&dev=1';
+  await page.goto(base, { waitUntil: 'networkidle', timeout: 90000 });
+  await dismissMission(page);
+  await waitBoardLive(page, 20000);
+
+  async function read() {
+    return await page.evaluate(function () {
+      var svc = globalThis.RD.__dev.service();
+      var el = document.getElementById('warpInfo');
+      return { accel: svc.timeAcceleration, running: svc.running,
+               paused: document.getElementById('playBtn').classList.contains('paused'),
+               warp: el ? el.textContent : null, warpHidden: el ? el.hidden : null };
+    });
+  }
+
+  // ---- establish a STANDING hold, with the fabricated fact left installed rather than
+  // one-shot (see header comment for why a one-shot plant cannot prove this). ----
+  await page.evaluate(function () {
+    var svc = globalThis.RD.__dev.service();
+    svc.handleCommand({ action: 'set_speed', value: 600 });   // must be >1x for the drop-and-stamp
+    var orig = svc.assembleSnapshot;
+    globalThis.__710orig = orig;
+    globalThis.__710hold = true;
+    svc.assembleSnapshot = function () {
+      var snap = orig.call(this);
+      if (globalThis.__710hold) {
+        snap.true_state = Object.assign({}, snap.true_state,
+          { speed_hold: 'accumulator window open — arm the accumulators before accelerating again' });
+      }
+      return snap;
+    };
+    var out = svc._assembleWithInstructor();   // the rising edge: stamps speed_snap, drops to 1x
+    svc._broadcast(out);
+  });
+  await page.waitForTimeout(400);
+  var afterHold = await read();
+  if (afterHold.warpHidden || !/Held at real time/.test(afterHold.warp || '') || afterHold.accel !== 1) {
+    throw new Error('#710 fixture: the standing hold did not print under the speed bar — ' + JSON.stringify(afterHold));
+  }
+  log.push('hold established: "' + afterHold.warp + '", accel ' + afterHold.accel);
+
+  // ---- THE CASE (positive): pause and resume through the real button WHILE THE HOLD STILL
+  // STANDS. Pre-fix, resumeSim() nulled `warpNote` unconditionally here. ----
+  await page.click('#playBtn');
+  await page.waitForTimeout(300);
+  var afterPause = await read();
+  if (!afterPause.paused || afterPause.running) {
+    throw new Error('#710 fixture: #playBtn did not pause — ' + JSON.stringify(afterPause));
+  }
+  await page.click('#playBtn');
+  await page.waitForTimeout(400);
+  var afterResume = await read();
+  if (afterResume.paused || !afterResume.running || afterResume.accel !== 1) {
+    throw new Error('#710 fixture: #playBtn did not resume at 1x — ' + JSON.stringify(afterResume));
+  }
+  if (afterResume.warpHidden || !/Held at real time/.test(afterResume.warp || '')) {
+    throw new Error('#710: resume cleared the held-at-real-time message while the hold still ' +
+      'stands — warpInfo "' + afterResume.warp + '" (hidden=' + afterResume.warpHidden + ')');
+  }
+  log.push('resumed under a standing hold: message survives ("' + afterResume.warp + '")');
+
+  // ---- THE NEGATIVE HALF: the hold genuinely lifts, a real broadcast reports it, THEN the
+  // player acts again — the message must clear, or this only pins a message that never goes
+  // away. ----
+  await page.evaluate(function () { globalThis.__710hold = false; });
+  await page.waitForTimeout(400);   // the service is running: let a real broadcast drop speed_hold
+  await page.click('#playBtn');
+  await page.waitForTimeout(300);
+  await page.click('#playBtn');
+  await page.waitForTimeout(400);
+  var afterLifted = await read();
+  if (/Held at real time/.test(afterLifted.warp || '')) {
+    throw new Error('#710: the held-at-real-time message survived a pause/resume after the hold ' +
+      'genuinely lifted — warpInfo "' + afterLifted.warp + '"');
+  }
+  log.push('hold lifted, then resumed: message cleared (warpInfo "' + (afterLifted.warp || '') + '")');
+
+  await page.evaluate(function () {
+    var svc = globalThis.RD.__dev.service();
+    svc.assembleSnapshot = globalThis.__710orig;
+    delete globalThis.__710orig; delete globalThis.__710hold;
+  });
   return log.join('\n') + '\n';
 }
 
@@ -3994,6 +4244,220 @@ async function testObservationStepAckButton(page) {
   return log.join('\n') + '\n';
 }
 
+/* #713/#712: the 1/M plot's buttons moved from a footer under the plot to a narrow column
+ * beside it, and the dock widened 300px -> 380px so that height (the letterbox's binding
+ * dimension) stayed the binding one after the footer's height was handed to the plot. #712
+ * named the general risk this repo has no gate for — a caption/readout overflowing its own
+ * box — and a narrow side column is exactly where the panel's longest string (the prediction
+ * readout) is most likely to hit it. This is deliberately cheap: it opens the real docked
+ * panel, forces the longest string render() ever emits into the readout, and checks
+ * scrollWidth/scrollHeight against clientWidth/clientHeight — plus a floor on the plot's own
+ * height so a future change that puts the footer back under the plot, or shrinks the dock a
+ * lot, reddens here instead of needing another hand pixel-measurement. */
+async function testOneOverMDockedGeometry(page) {
+  var log = [];
+  var url = 'http://127.0.0.1:' + PORT + '/ui/shell.html?engine=pwr2&init=hot_full_power&dev=1';
+  await page.goto(url, { waitUntil: 'networkidle', timeout: 90000 });
+  await dismissMission(page);
+  await waitBoardLive(page, 20000);
+
+  var geo = await page.evaluate(function () {
+    function rect(sel) {
+      var el = document.querySelector(sel);
+      if (!el) return null;
+      var r = el.getBoundingClientRect();
+      return { w: r.width, h: r.height };
+    }
+    if (!(window.RD && RD.OneOverM)) return { error: 'RD.OneOverM missing' };
+    RD.OneOverM.open();
+    var predEl = document.querySelector('#oomPred');
+    if (predEl) predEl.textContent = 'predicted criticality ≈ step 9999 (99.9% withdrawn)';
+    function overflowOf(sel) {
+      var el = document.querySelector(sel);
+      if (!el) return null;
+      return { scrollW: el.scrollWidth, clientW: el.clientWidth, scrollH: el.scrollHeight, clientH: el.clientHeight };
+    }
+    var btnOverflow = Array.prototype.map.call(document.querySelectorAll('.oom-foot .btn'), function (b) {
+      return { text: b.textContent, over: b.scrollWidth > b.clientWidth + 1 };
+    });
+    var svgEl = document.querySelector('.oom-svg');
+    return {
+      docked: !!document.querySelector('.oom-win.oom-docked'),
+      svg: rect('.oom-svg'),
+      /* The plotted-DATA rectangle, in CSS px: .oom-frame is the rect render() draws at
+       * (L, T, W-L-R, H-T-B), so measuring it measures the letterbox and the axis gutters
+       * together, in the one number the owner actually sees. */
+      frame: rect('.oom-frame'),
+      viewBox: svgEl ? svgEl.getAttribute('viewBox') : null,
+      pred: overflowOf('#oomPred'),
+      win: overflowOf('.oom-win.oom-docked'),
+      btnOverflow: btnOverflow,
+    };
+  });
+
+  if (geo.error) throw new Error('#713: ' + geo.error);
+  if (!geo.docked) throw new Error('#713: the 1/M panel did not dock into the bottom row');
+  log.push('oom-svg (docked) box: ' + Math.round(geo.svg.w) + 'x' + Math.round(geo.svg.h));
+
+  geo.btnOverflow.forEach(function (b) {
+    if (b.over) throw new Error('#713/#712: button "' + b.text + '" overflows its box in the docked 1/M panel');
+  });
+  if (geo.pred && geo.pred.scrollW > geo.pred.clientW + 1) {
+    throw new Error('#713/#712: the prediction readout overflows its box horizontally: scrollWidth ' +
+      geo.pred.scrollW + ' > clientWidth ' + geo.pred.clientW);
+  }
+  if (geo.win && geo.win.scrollW > geo.win.clientW + 1) {
+    throw new Error('#713/#712: the docked 1/M panel overflows its own box horizontally: scrollWidth ' +
+      geo.win.scrollW + ' > clientWidth ' + geo.win.clientW);
+  }
+
+  // Regression floor: measured 177px at the default --bottomrow-h (230px) after #713; was
+  // ~141px before it (300px-wide dock, buttons in a footer below the svg). Set well below
+  // the measurement so ordinary tuning doesn't retrip it.
+  if (geo.svg.h < 160) {
+    throw new Error('#713: the docked 1/M plot is only ' + Math.round(geo.svg.h) + 'px tall at the default row ' +
+      'height — expected >= 160px (measured 177px after #713; ~141px before it)');
+  }
+  log.push('no overflow in the docked 1/M panel; plot height ' + Math.round(geo.svg.h) + 'px >= 160px floor');
+
+  /* PASS 2 (#713). Two things pass 1 left on the table, and one invariant each.
+   *
+   * (a) THE LETTERBOX. The docked svg is stretched into a grid cell whose aspect ratio is the
+   * dock's and the row height's, and preserveAspectRatio then pads whatever the viewBox does
+   * not match: 33.2px of dead width at the default row height before this, and the waste SWAPS
+   * AXIS as the operator drags (96.5px of dead HEIGHT at --bottomrow-h 350px). So the viewBox
+   * now follows the cell (one_over_m.js syncViewBox) and the assertion is on the waste itself,
+   * not on a width — a width floor would have passed happily on a box whose gain went into a
+   * taller letterbox instead. Measured after: 0.2px x 0.0px. 24px is a long way below the
+   * 33.2px this replaces and a long way above rounding. */
+  /* Absence is a RED here, not a skip. Both assertions below read elements render() draws, so
+   * "no .oom-frame" and "no viewBox" are exactly the states in which a guarded `if` would have
+   * reported a clean pass over nothing. */
+  var vb = (geo.viewBox || '').trim().split(/\s+/).map(Number);
+  if (!geo.svg || vb.length !== 4 || !vb.every(isFinite)) {
+    throw new Error('#713 pass 2: the docked 1/M svg has no usable viewBox (' + geo.viewBox + ') — ' +
+      'the letterbox check cannot run, which is not the same as passing.');
+  }
+  if (!geo.frame || !(geo.frame.w > 0)) {
+    throw new Error('#713 pass 2: .oom-frame (the plotted-data rectangle render() draws) is absent or ' +
+      'zero-width — the geometry checks below have nothing to measure. render() is not drawing.');
+  }
+  {
+    var scale = Math.min(geo.svg.w / vb[2], geo.svg.h / vb[3]);
+    var waste = { x: geo.svg.w - vb[2] * scale, y: geo.svg.h - vb[3] * scale };
+    if (waste.x > 24 || waste.y > 24) {
+      throw new Error('#713 pass 2: the docked 1/M plot is letterboxed inside its own box — ' +
+        Math.round(waste.x) + 'px of dead width and ' + Math.round(waste.y) + 'px of dead height ' +
+        '(svg box ' + Math.round(geo.svg.w) + 'x' + Math.round(geo.svg.h) + ', viewBox ' + geo.viewBox +
+        '). The viewBox must follow the cell aspect; ceiling 24px, measured 0.2x0.0 after the fix ' +
+        'and 33.2x0.0 before it.');
+    }
+    log.push('letterbox waste ' + waste.x.toFixed(1) + 'x' + waste.y.toFixed(1) + 'px (ceiling 24)');
+  }
+
+  /* (b) THE AXIS GUTTERS. L/R/T/B are viewBox units reserved for the tick and axis text and
+   * were 15.3% of the width. .oom-frame is the rectangle the data is actually drawn in, so it
+   * is the one measurement neither failure fools: a wider box whose gain went to the
+   * letterbox, or a filled box whose gain went to margins. 291px measured after, 212px after
+   * pass 1; the 250px floor sits between them with room for ordinary tuning. */
+  if (geo.frame.w < 250) {
+    throw new Error('#713 pass 2: the docked 1/M plot draws its data in only ' + Math.round(geo.frame.w) +
+      'px of width at the default row height — expected >= 250px (measured 291px after #713 pass 2; ' +
+      '212px after pass 1). Check the letterbox AND the L/R gutters in one_over_m.js.');
+  }
+  log.push('plotted data rect ' + Math.round(geo.frame.w) + 'x' + Math.round(geo.frame.h) + 'px (width floor 250)');
+
+  /* (c) THE ALARM PANEL UNDER LOAD. Pass 2 takes width back off this panel and hands it to the
+   * plot, which is only safe if the panel still renders every tile at a real alarm load — and
+   * pass 1's numbers were all taken on a plant showing "— no active alarms —", which is not a
+   * state anyone operates in. So: raise them for real (a large LOCA through the app's own
+   * ?inject= path; 18 tiles when this was written), then push EVERY label the registry can
+   * produce through a live tile and check it fits the column the layout gives it.
+   *
+   * Reading the labels off RD.PWR_PROTECTION.alarms rather than listing them here is the point.
+   * A hand-maintained list of "the long ones" is a gate that tests the list, and it goes
+   * quietly stale the first time someone writes a longer alarm. The binding string when this
+   * landed was "Overtemperature Limit Approaching" at 179.3px of min-content, against the
+   * 184px track minimum in ui/shell.css. */
+  await page.goto(url + '&inject=large_loca&ff=300&run=1', { waitUntil: 'networkidle', timeout: 90000 });
+  await dismissMission(page);
+  await waitBoardLive(page, 20000);
+  /* RE-OPEN THE DOCK. The navigation resets it, and without it the alarm panel gets the 1/M
+   * dock's width too — measured 652px against the 392px it actually lives at, which is a check
+   * of a layout no player sees and the one this pass narrowed. */
+  await page.evaluate(function () { if (window.RD && RD.OneOverM) RD.OneOverM.open(); });
+  await page.waitForFunction(function () {
+    return document.querySelectorAll('.alarm-tile').length >= 8 &&
+      !!document.querySelector('.oom-win.oom-docked');
+  }, { timeout: 20000, polling: 200 }).catch(function () { /* the throws below carry the state */ });
+  if (!(await page.evaluate(function () { return !!document.querySelector('.oom-win.oom-docked'); }))) {
+    throw new Error('#713 pass 2: the 1/M panel did not re-dock on the alarms-active leg — the alarm ' +
+      'panel width measured below is not the one the player gets.');
+  }
+
+  var al = await page.evaluate(function () {
+    var tiles = document.querySelectorAll('.alarm-tile');
+    if (!tiles.length) return { n: 0 };
+    var defs = (window.RD && RD.PWR_PROTECTION && RD.PWR_PROTECTION.alarms) || [];
+    var labels = [];
+    defs.forEach(function (d) {
+      if (d.label_learning) labels.push(d.label_learning);
+      if (d.label_industry) labels.push(d.label_industry);
+    });
+    function over(el) { return el ? el.scrollWidth - el.clientWidth : 0; }
+    var organic = [];
+    Array.prototype.forEach.call(tiles, function (t) {
+      var d = Math.max(over(t), over(t.querySelector('.label')), over(t.querySelector('.meta')));
+      if (d > 1) organic.push({ txt: (t.querySelector('.label') || {}).textContent, d: d });
+    });
+    var t0 = tiles[0], lab0 = t0.querySelector('.label');
+    var keep = lab0 ? lab0.textContent : null;
+    var worst = { d: -1, txt: '' }, widest = 0;
+    if (lab0) {
+      labels.forEach(function (str) {
+        lab0.textContent = str;
+        void t0.offsetWidth;
+        var d = Math.max(over(t0), over(lab0));
+        if (t0.scrollWidth > widest) widest = t0.scrollWidth;
+        if (d > worst.d) worst = { d: d, txt: str };
+      });
+      lab0.textContent = keep;
+    }
+    var stack = document.querySelector('.alarm-stack'), panel = document.querySelector('.alarm-panel');
+    return {
+      n: tiles.length, nLabels: labels.length, organic: organic, worst: worst, widestTile: widest,
+      tileW: Math.round(t0.getBoundingClientRect().width),
+      panelW: Math.round(panel.getBoundingClientRect().width),
+      stackOver: over(stack), panelOver: over(panel),
+    };
+  });
+
+  /* A count guard, because everything below it is vacuously green on a quiet board — the
+   * "assert an absence and pin a non-event" trap. 18 tiles when written; 8 is the floor. */
+  if (!al.n || al.n < 8) {
+    throw new Error('#713 pass 2: the alarm-load check ran against ' + (al.n || 0) + ' alarm tiles — ' +
+      'the large-LOCA injection is meant to raise >= 8 (18 when this was written). The check is ' +
+      'vacuous until that is fixed; it is not evidence the panel fits its content.');
+  }
+  if (al.organic.length) {
+    throw new Error('#713 pass 2: ' + al.organic.length + ' of ' + al.n + ' live alarm tiles overflow their ' +
+      'box at a ' + al.panelW + 'px alarm panel — worst "' + al.organic[0].txt + '" by ' + al.organic[0].d + 'px');
+  }
+  if (al.worst.d > 1) {
+    throw new Error('#713 pass 2: alarm label "' + al.worst.txt + '" overflows its tile by ' + al.worst.d +
+      'px at a ' + al.panelW + 'px alarm panel (' + al.tileW + 'px columns). Either the panel gave up too ' +
+      'much width to the 1/M dock, or the .alarm-stack track minimum is below this label min-content.');
+  }
+  if (al.stackOver > 1 || al.panelOver > 1) {
+    throw new Error('#713 pass 2: the alarm panel overflows HORIZONTALLY with ' + al.n + ' alarms up ' +
+      '(stack +' + al.stackOver + 'px, panel +' + al.panelOver + 'px) at ' + al.panelW + 'px wide — the ' +
+      'two-column stack is meant to fall back to one column, not scroll sideways.');
+  }
+  log.push(al.n + ' live alarms, ' + al.nLabels + ' registry labels swept through a tile: none overflow at a ' +
+    al.panelW + 'px panel (' + al.tileW + 'px columns, widest label ' + al.widestTile + 'px)');
+  return log.join('\n') + '\n';
+}
+
 async function main() {
   fs.mkdirSync(SCRATCH, { recursive: true });
   var fallback = path.join(SCRATCH, 'ui-screenshot-fallback.log');
@@ -4055,10 +4519,14 @@ async function main() {
     fs.writeFileSync(path.join(SCRATCH, 'held-speed-click.log'), hsLog);
     var wpLog = await testWalkthroughEventPause(page);
     fs.writeFileSync(path.join(SCRATCH, 'walkthrough-event-pause.log'), wpLog);
+    var whLog = await testWalkthroughHoldReleasedOnExit(page);
+    fs.writeFileSync(path.join(SCRATCH, 'walkthrough-hold-released-on-exit.log'), whLog);
     var wgLog = await testWatchGlowRendered(page);
     fs.writeFileSync(path.join(SCRATCH, 'watch-glow-rendered.log'), wgLog);
     var prLog = await testPauseResumeSpeed(page);
     fs.writeFileSync(path.join(SCRATCH, 'pause-resume-speed.log'), prLog);
+    var hnLog = await testHeldNotePauseResume(page);
+    fs.writeFileSync(path.join(SCRATCH, 'held-note-pause-resume.log'), hnLog);
     var ctLog = await testCssTransitions(page);
     fs.writeFileSync(path.join(SCRATCH, 'css-transitions.log'), ctLog);
     var pgLog = await testPzrGaugeFollowsProgram(page);
@@ -4075,6 +4543,8 @@ async function main() {
     fs.writeFileSync(path.join(SCRATCH, 'walkthrough-panel-chrome.log'), wcLog);
     var oaLog = await testObservationStepAckButton(page);
     fs.writeFileSync(path.join(SCRATCH, 'observation-step-ack-button.log'), oaLog);
+    var oomLog = await testOneOverMDockedGeometry(page);
+    fs.writeFileSync(path.join(SCRATCH, 'one-over-m-docked-geometry.log'), oomLog);
     fs.writeFileSync(path.join(SCRATCH, 'ui-screenshot-summary.log'), summary.join('\n') + '\n');
     console.log('E2E UI verification: PASS (' + (ENGINES.length * VIEWS.length) + ' screenshots)');
   } finally {
@@ -4108,6 +4578,9 @@ if (require.main !== module) {
                      testPauseResumeSpeed: testPauseResumeSpeed, testWalkthroughEventPause: testWalkthroughEventPause,
                      testTripBlockPopoverDismissesOnOutsideClick: testTripBlockPopoverDismissesOnOutsideClick,
                      waitBoardLive: waitBoardLive,
+                     testWalkthroughHoldReleasedOnExit: testWalkthroughHoldReleasedOnExit,
+                     testHeldNotePauseResume: testHeldNotePauseResume,
+                     testOneOverMDockedGeometry: testOneOverMDockedGeometry,
                      port: function () { return PORT; } };
 } else {
   main().catch(function (e) {

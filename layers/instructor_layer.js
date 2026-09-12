@@ -100,6 +100,14 @@
   // enough to read a line and look at the board, short enough not to feel stuck.
   var OBSERVE_DWELL_S = 12;
 
+  // #715 — a completion banner's `outcome` text is an AUTHORED plant-state claim
+  // (e.g. "stable near 15 %, 15 MWe"); nothing checked it before showing it, so a
+  // leg whose own step acceptances can be satisfied for free (a scram, say) drew
+  // the claim over a dead board. Shown instead of the authored text whenever a
+  // leg's `outcome_guard` fails to verify — see `_gradeOutcomeGuard`.
+  var OUTCOME_UNVERIFIED_TEXT = "Steps checked off, but the board does not match this leg's " +
+    'expected finish. Read the board, not this banner.';
+
   // ================================================================ constructor
   // Signature and connect() must match the placeholder — M5 constructs with null
   // and re-points `below` on every plant rebuild.
@@ -244,6 +252,7 @@
   // undefined (the placeholder contract). Beats/steps fire here, never in load().
   InstructorLayer.prototype.step = function (snapshot, simTime) {
     this._lastSimTime = simTime;
+    this._lastSnapshot = snapshot;    // #715 — outcome_guard re-grades off this, not a latch
     if (this.mode === 'scenario') this._stepScenario(snapshot, simTime);
     else if (this.mode === 'follow') this._stepFollow(snapshot, simTime);
     if (this.checklist) this._stepChecklist(snapshot);
@@ -589,11 +598,16 @@
     var f = this.follow;
     f.done = true;
     f.idx = f.proc.steps.length - 1;
+    // #715 — an authored `outcome` string is an unmeasured claim in player-facing
+    // copy until something checks it. `outcome_guard` (optional, per-leg) is that
+    // check; unverified, the banner says so instead of repeating the claim.
+    var text = this._gradeOutcomeGuard(f.proc) ? (f.proc.outcome || 'Procedure complete.')
+                                                : OUTCOME_UNVERIFIED_TEXT;
     this.levelComplete = {
       title: f.proc.title,
-      outcome: f.proc.outcome || 'Procedure complete.',
-      outcome_learning: f.proc.outcome || 'Procedure complete.',
-      outcome_industry: f.proc.outcome || 'Procedure complete.',
+      outcome: text,
+      outcome_learning: text,
+      outcome_industry: text,
       actions: ['continue', 'retry'],
     };
   };
@@ -607,7 +621,10 @@
   InstructorLayer.prototype._stepChecklist = function (snapshot) {
     var simTime = (snapshot && snapshot.metadata && snapshot.metadata.sim_time) || 0;
     var c = this.checklist;
-    if (c.complete) return;
+    // #715 — re-graded every tick the banner is shown, not once at the step-off:
+    // the board can be read at any time while the walkthrough sits complete, and
+    // the claim it draws should track the live plant, same as `precond` below.
+    if (c.complete) { c.outcomeVerified = this._gradeOutcomeGuard(c.proc); return; }
 
     // Preconditions (#395) — grade each authored {p, op, v, tol} against the LIVE
     // plant every tick, instrument-first like `acc`, so the banner clears itself
@@ -1046,6 +1063,20 @@
     return { met: this._predMet(v, pred), graded_by: by, value: v };
   };
 
+  // #715 — re-grades a leg's optional `outcome_guard` (same {p,op,v[,tol]} shape as
+  // `precond`/`accs`) against the LIVE snapshot. No guard authored → unaffected (true).
+  // Instrument-first via `_grade`, same as every other predicate in this file (HR1).
+  InstructorLayer.prototype._gradeOutcomeGuard = function (proc) {
+    var g = proc && proc.outcome_guard;
+    if (!g || !g.length) return true;
+    var snap = this._lastSnapshot;
+    if (!snap) return true;   // nothing graded yet — do not manufacture a false negative
+    for (var i = 0; i < g.length; i++) {
+      if (!this._grade(snap, g[i]).met) return false;
+    }
+    return true;
+  };
+
   // Same op vocabulary as the manual/harness: > < >= <= ~ (within tol).
   InstructorLayer.prototype._predMet = function (v, c) {
     if (v === undefined || v === null) return false;
@@ -1336,6 +1367,11 @@
         acc_met: this.checklist.accMetNow,
         graded_by: this.checklist.gradedBy,
         complete: this.checklist.complete,
+        // #715 — whether the completion banner's `outcome` text is safe to show: re-graded
+        // every tick off the leg's optional `outcome_guard` (see `_gradeOutcomeGuard`). null
+        // while the checklist is still running (the question does not apply yet); true when
+        // no guard is authored, so every leg but the one this fixed is unaffected.
+        outcome_verified: this.checklist.complete ? (this.checklist.outcomeVerified !== false) : null,
         // #619 item 4 — the step is satisfied and is holding for the player to acknowledge.
         awaiting_ack: !!this.checklist.awaitingAck,
         // #694 — this step's own `pause` fired and the service has been asked to stop the

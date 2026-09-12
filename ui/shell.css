@@ -212,8 +212,28 @@ body {
 /* Stacked (narrow) layouts size themselves; dragging a track that isn't there is nonsense. */
 @media (max-width: 1200px) { .bd-split { display: none; } }
 .app.pwr-synoptic .plant-area > .bottom-row > .sim-controls { order: 1; flex: 0 0 auto; }
+/* Unequal flex-grow (#713): the OWNER asked specifically to "move the strip chart over" to
+   free room for the 1/M plot, not the alarm panel — so when the 1/M dock's width grew
+   (300px -> 380px -> 420px below), the strip chart gives up more of the row's remaining width
+   than the alarm panel does (both still flex-basis 0, so the split is pure grow-ratio).
+
+   1.6 -> 1.55 IN PASS 2, because pass 1 handed the alarm panel width it does not use. Measured
+   (18 alarms raised organically by a large LOCA, the registry's widest label forced into every
+   tile, panel width swept in 2px steps): the two-column stack's per-column min-content is
+   179.3px — "Overtemperature Limit Approaching" is the binding string — so the panel's content
+   FLOOR is 2 x 179.3 + 5px gap + 12px stack padding + 2px border = 377.7px, and it stood at
+   421.7px at a 1500px viewport. 1.55 with the dock at 420px lands it at 392.2px: still two
+   columns, 29.5px reclaimed for the plot, and the two margins that matter balanced — 5.2px
+   over the width at which the stack drops to one column (measured 387px), and 4.7px over the
+   binding tile's min-content (184px track vs 179.3px of content).
+
+   THE RATIO IS NOT THE OBSERVED SPLIT — these boxes are CONTENT-BOX. `flex-basis: 0` sizes the
+   CONTENT box, and the strip chart adds 18px of border+padding against the alarm panel's 2px,
+   so 1.6 measured as 1.50 and 1.4 measured as 1.32. Solve on the content boxes
+   (alarm_content = F x r/(1+r), F = 642px at a 1500px viewport) or the panel lands ~10px below
+   where you aimed. Diagnostic/TUNING_LOG.md 2026-09-12-workbench-d. */
 .app.pwr-synoptic .plant-area > .bottom-row > .strip-chart  { order: 2; flex: 1 1 0; min-width: 0; }
-.app.pwr-synoptic .plant-area > .bottom-row > .alarm-panel  { order: 3; flex: 1 1 0; min-width: 0; min-height: 0; }
+.app.pwr-synoptic .plant-area > .bottom-row > .alarm-panel  { order: 3; flex: 1.55 1 0; min-width: 0; min-height: 0; }
 
 /* ⛶ hides the right sim panel → the diagram column takes the whole width */
 .app.pwr-synoptic.sim-hidden {
@@ -238,6 +258,10 @@ body {
   }
   /* stack chart above alarms rather than squeezing both into a narrow row */
   .app.pwr-synoptic .plant-area > .bottom-row { flex: 0 0 auto; flex-direction: column; }
+  /* The row is a COLUMN here, so the dock's flex-basis is its HEIGHT, not its width — the
+     420px widening above would have made the stacked panel 40px taller for no reason. Pin it
+     back to the 380px it measured at before #713 pass 2. */
+  .app.pwr-synoptic .plant-area > .bottom-row > .oom-win.oom-docked { flex: 0 0 380px; }
 }
 
 /* generic panel chrome */
@@ -769,9 +793,24 @@ button.armed { background: #3a1618 !important; color: #ff9d9d !important; border
 .alarm-stack { flex: 1 1 auto; overflow: auto; padding: 6px; display: flex; flex-direction: column; gap: 5px; }
 /* Under the diagram the alarm panel is wide and short, so a single column wastes the width
    and buries anything past the first two or three. Two columns, filled top-to-bottom in
-   priority order (app.js sorts the stack), so the worst alarm is still the first thing read. */
+   priority order (app.js sorts the stack), so the worst alarm is still the first thing read.
+
+   TWO COLUMNS ONLY WHILE BOTH CAN HOLD A TILE (#713 pass 2). `1fr 1fr` is minmax(auto, 1fr):
+   the columns cannot shrink below a tile's min-content, so a narrow panel did not reflow, it
+   OVERFLOWED SIDEWAYS — measured with 18 alarms up, the stack's scrollWidth pinned at 376px
+   against a clientWidth that kept falling, from 376px of panel down. That already bit at a
+   1250px viewport (alarm panel 267.8px) before this pass took any width back. The measured
+   per-column min-content is 179.3px ("Overtemperature Limit Approaching"); the track minimum
+   is 184px rather than that, because an EXPLICIT px minimum does NOT grow to fit content the
+   way the auto it replaces did — a platform whose font measures a little wider would overflow
+   the track instead of widening it, and 4.7px buys that. The calc(50% - 2.5px) half of the
+   max() is what CAPS it at two columns on a wide board, where a bare auto-fill would have
+   found room for three at 1920px. Below 387px of panel it now drops to one column and scrolls
+   vertically, which is what the stack does under load anyway. Swept 330-400px with 18 alarms
+   up and the registry's widest label in every tile: zero overflowing tiles at every width. */
 .app.pwr-synoptic .plant-area > .bottom-row > .alarm-panel > .alarm-stack {
-  display: grid; grid-template-columns: 1fr 1fr; gap: 5px; align-content: start;
+  display: grid; gap: 5px; align-content: start;
+  grid-template-columns: repeat(auto-fill, minmax(max(184px, calc(50% - 2.5px)), 1fr));
 }
 .app.pwr-synoptic .plant-area > .bottom-row > .alarm-panel > .alarm-stack > .alarm-empty {
   grid-column: 1 / -1;
@@ -2807,13 +2846,51 @@ select.num-input { width: auto; }
 
 /* The 1/M plot docked in the bottom row (#660 item 13): last flex child, the chart and the
    alarm panel shrink to make room. `.oom-win` without the class is still the floating window
-   (non-PWR layouts). */
+   (non-PWR layouts).
+   WIDENED 380px (from 300px) and the buttons moved beside the plot rather than under it
+   (#713, owner live play 2026-09-11/12: "the 1/m plot is too small... move the strip chart
+   over so its taller and put the buttons to the side instead of under the plot"). A CSS
+   GRID, not the flex column this was — that lets .oom-foot become a side column (grid-area:
+   foot) without touching one_over_m.js's DOM order (head, svg, foot, msg stay siblings in
+   markup; only their VISUAL slot moves). The svg row is the only `1fr` track, so the height
+   the button bar used to cost the plot now goes straight to it — that was the taller
+   dimension's binding constraint (letterboxed 340x240 into a wide, short box), so this is
+   also most of "make the plot as big as you can". The extra 120px of width (taken from
+   .strip-chart, see the flex-grow split below) keeps width from becoming the NEW binding
+   constraint once the box is taller — widening alone would have let the letterbox eat the
+   gain (measured before/after: Diagnostic/TUNING_LOG.md 2026-09-12-workbench-oom-plot).
+
+   PASS 2: 380px -> 420px, and the 40px comes from the ALARM PANEL this time, not the strip
+   chart — pass 1 gave the alarm panel width the measurement above (see the flex-grow split)
+   says it does not use. The gain only reaches the plot because one_over_m.js's viewBox now
+   follows the cell's aspect: with the fixed 340x240 it did NOT, and 33.2px of the box was
+   dead letterbox that a wider dock would simply have made wider. */
 .oom-win.oom-docked {
-  position: static; order: 4; flex: 0 0 300px; min-width: 0; min-height: 0; height: auto;
-  display: flex; flex-direction: column; overflow: auto; z-index: auto;
+  position: static; order: 4; flex: 0 0 420px; min-width: 0; min-height: 0; height: auto;
+  display: grid; overflow: auto; z-index: auto;
   box-shadow: none; border-radius: var(--radius);
+  grid-template-columns: 1fr auto;
+  /* minmax(0, 1fr), NOT 1fr: a bare 1fr track has an AUTO minimum, so at the 150px row floor
+     the svg row refused to shrink below its content and the dock overflowed itself by 57px
+     (scrollHeight 205 in a 148px box) with the bottom third of the plot behind a scrollbar.
+     #713 pass 2. */
+  grid-template-rows: auto minmax(0, 1fr) auto auto;
+  grid-template-areas: "head head" "svg foot" "msg msg" "help help";
 }
-.oom-docked .oom-head { cursor: default; }
-.oom-docked .oom-svg { flex: 1 1 0; min-height: 0; width: 100%; }
-.oom-docked .oom-help { overflow: auto; }
-.oom-win.oom-docked[hidden] { display: none; }   /* the flex display above must not beat [hidden] */
+.oom-docked .oom-head { cursor: default; grid-area: head; }
+.oom-docked .oom-svg { grid-area: svg; min-width: 0; min-height: 0; width: 100%; height: 100%; }
+/* The button column: fixed narrow width, buttons stacked and stretched to fill it, the
+   prediction readout wrapped onto its own line below them (#712 risk: that readout is the
+   longest string in this panel — "predicted criticality ~ step #### (##.#% withdrawn)" —
+   and a side column is exactly where a caption overflows a narrow box; giving it the full
+   column width and letting it wrap, rather than sharing a row with the buttons, is what
+   keeps it inside its box at every width this column is given.) */
+.oom-docked .oom-foot {
+  grid-area: foot; flex-direction: column; align-items: stretch; justify-content: flex-start;
+  width: 94px; padding: 6px 8px; gap: 6px; border-left: 1px solid var(--border);
+}
+.oom-docked .oom-foot .btn { width: 100%; padding: 5px 4px; white-space: normal; line-height: 1.15; }
+.oom-docked .oom-pred { width: 100%; white-space: normal; font-size: 10px; line-height: 1.25; }
+.oom-docked .oom-msg { grid-area: msg; }
+.oom-docked .oom-help { grid-area: help; overflow: auto; }
+.oom-win.oom-docked[hidden] { display: none; }   /* the grid display above must not beat [hidden] */

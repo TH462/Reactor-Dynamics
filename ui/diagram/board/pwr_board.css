@@ -6,11 +6,29 @@
  * .bd-frozen below still freezes them — the ticker checks for it and holds its clock.
  */
 
+/* `overflow: clip`, NOT `hidden`, and the difference is the whole of issue #717.
+ * `overflow: hidden` makes this element a SCROLLPORT — clipped visually, but live and
+ * unclamped underneath. The stage below is the full 2400x1600 world canvas while
+ * layout() fits only the CONTENT bounding box inside this wrap, so the stage's
+ * transformed box is always far larger than the wrap (measured at 1400x900:
+ * wrap 997x589 px, stage 1762x1175 px, scrollHeight 1154 / scrollWidth 1533). Every
+ * one of those overflow pixels is empty canvas margin, so any scroll can only ever pan
+ * the diagram OUT of view — there is no legitimate scroll case at any viewport size.
+ * A mouse wheel over the board did exactly that in a real browser (Firefox permits
+ * wheel-scrolling an overflow:hidden box; Chromium suppresses it), with no scrollbar,
+ * no reset control and no recovery short of a page reload.
+ * `overflow: clip` clips identically but creates NO scrollport at all: scrollTop is
+ * permanently 0 and cannot be set, by wheel, touch, keyboard or script. It also closes
+ * the descendant-scrollIntoView path (the hazard ui/app.js:5623 already documents).
+ * The `hidden` line is kept FIRST on purpose — an engine too old for `clip` drops the
+ * second declaration and keeps the old behaviour, which is what the JS scroll backstop
+ * in pwr_board.js mount() is there to catch. Gate: test/verify_board_scroll.js. */
 .pwr-board-wrap {
   position: relative;
   flex: 1 1 auto;
   min-height: 0;
   overflow: hidden;
+  overflow: clip;
   background: #0a0e13;
 }
 
