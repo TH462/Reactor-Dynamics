@@ -367,18 +367,20 @@
   // ====================================================================== engines
   // Selector key → plant + design_version + default initial state, plus the
   // display copy for the Plant & Mission window's plant cards.
-  // `soon: true` = the physics engine is complete but the M8 board / M4 control
-  // surface is not extended to it yet, so the card is shown greyed and is not
-  // selectable. The ?engine= dev override still reaches them deliberately.
+  // `soon: true` = the physics engine is complete but the M8 board / M4 control surface is not
+  // extended to it yet. IT RENDERS NOWHERE SINCE #688 deleted the plant column (2026-09-09), and
+  // nor do `sub` / `desc`; they are kept as the plants' own data, not as a live flag. The
+  // ?engine= dev override still reaches those plants deliberately.
   //
   // WHICH CONSTRUCTORS ACTUALLY LOADED — measured, never declared (2026-08-26). A published
   // build carries PWR2 only: site/build_site.js deletes the retired engine's <script> tags
   // from ui/shell.html on the `public` channel, and tools/make_portable.js deletes them from
   // the offline download unconditionally. So this file cannot hold a list of what is
-  // available; it has to LOOK. Every consumer — the boot override, the fallback and the plant
-  // column — reads this one probe, which is what keeps the menu from offering a card whose
-  // constructor is not in the page. Same shape as #514's greyed RBMK/BWR cards, except
-  // derived rather than written down, because for the PWR the answer differs per build.
+  // available; it has to LOOK. Both remaining consumers — the boot override and the fallback —
+  // read this one probe. The THIRD one, the plant column that kept the menu from offering a card
+  // whose constructor is not in the page, went at #688 with the column itself; there is no menu
+  // left to offer a missing plant, so the probe's job is now purely the boot decision. Derived
+  // rather than written down, because for the PWR the answer differs per build.
   // Deliberately a function, not a snapshot: it is called after all <script>s have run.
   function ctorPresent(key) {
     switch (key) {
@@ -395,8 +397,9 @@
     // preset")* — there is somewhere to go in both directions from it. `ui.initState` above
     // carries the same value for the first render.
     // THE RETIRED ENGINE (2026-08-26). PWR2 replaced it *(OWNER RULING, 2026-08-26: "Flip
-    // now, track the gaps")*, and a published build does not contain it at all — so this
-    // card only ever appears on a dev or preview build, where ctorPresent('pwr') is true.
+    // now, track the gaps")*, and a published build does not contain it at all. It has had no
+    // CARD anywhere since #688 deleted the plant column; it is reached only by ?engine=pwr on a
+    // dev or preview build, where ctorPresent('pwr') is true.
     // It is kept reachable, not deleted, for two live reasons: it is the A/B reference
     // test/measure_pwr2_ab.js diffs against, and it is the only engine the campaign, the
     // scenarios and the walkthroughs are authored for, so it is where that content is
