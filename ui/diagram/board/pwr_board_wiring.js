@@ -3614,6 +3614,23 @@
       // the card title. 30 is the authored button pitch, so the spacing is unchanged.
       ims3wg27iif: { props: { top: 635 } },
       ims3xfeye1q: { props: { top: 665 } },
+      /* TWO CAPTIONS AT ZERO SPARE ON THE PLATFORM THAT GATES (#713 pass 3, same CI-red as
+       * the alarm panel). `verify_board_scroll`'s caption sweep checks each `.bd-text` tile's
+       * shrink-to-fit width against its enclosing card's right edge with a 1px tolerance —
+       * CONDENSATE and RCP FLOW both measured `over === 1` under Linux's DejaVu Sans
+       * (Windows/Segoe UI: `over` 0, i.e. the check's own 1px tolerance is standing in for
+       * the platform gap, not real margin) — RIGHT AT the `over > 1` failure line, not yet a
+       * defect but one font substitution away from being this issue's alarm panel again.
+       * fontSize 14 -> 13 (already a used size — 5 of 42 board captions are 13px, this does
+       * not introduce a new one) measured on Linux DejaVu: -5 / -6px raw margin against the
+       * card edge (was +1, i.e. AT the tolerance). No left/width change, so nothing else on
+       * the card moves. SOURCE RANGE / STARTUP RATE / SHUTDOWN ROD are the SAME defect but
+       * are patched below, in the NIS-card row-layout block that already owns these three
+       * ids — a second `imrshofh36b:`-shaped key here would silently REPLACE that patch
+       * rather than merge with it (the object-literal trap the row-layout comment already
+       * names for `bdOneOverM`; it bit this fix on the first attempt). */
+      imrqrnzbm6h: { props: { fontSize: 13 } },   // CONDENSATE
+      imsgtedbunb: { props: { fontSize: 13 } },   // RCP FLOW
       /* THE HX FLOW CAPTION IS RENAMED *(OWNER RULING, 2026-09-10, option A, #700)*. The ruled
        * name is "COOLDOWN RATE / HX SPLIT" and it is rendered as its TWO HALVES, each attached
        * to the thing it names: this caption becomes "HX SPLIT" (the lever) and the new
@@ -3804,13 +3821,15 @@
       ims175ay22g: { props: { height: 55 } },
       ims175yp3k8: { props: { height: 55 } },
       imrsho1qu6t: { props: { text: 'Δ TEMP AVG', top: 225, left: 546, fontSize: 14 } },   // "d TEMP AVG" lost its Δ (#235)
-      imrshos9w20: { props: { top: 225, left: 662 } },
+      // fontSize 13 (#713 pass 3): measured `over === 1` under Linux DejaVu Sans, right at
+      // the caption-sweep's 1px tolerance — see the note above the CONDENSATE/RCP FLOW pair.
+      imrshos9w20: { props: { top: 225, left: 662, fontSize: 13 } },   // STARTUP RATE
       imro6qpci2d: { props: { top: 245, left: 615 } },
       imro6qsncb9: { props: { top: 245 } },
       // row 2 — 280..335
       ims176nions: { props: { top: 280, height: 55 } },
       ims176t4e8s: { props: { top: 280, height: 55 } },
-      imrshofh36b: { props: { top: 285, left: 537 } },
+      imrshofh36b: { props: { top: 285, left: 537, fontSize: 13 } },   // SOURCE RANGE, #713 pass 3
       imrshosegml: { props: { top: 285, left: 667 } },
       imro6qutiht: { props: { top: 305 } },
       imro6rctcgm: { props: { top: 305 } },
@@ -3818,7 +3837,7 @@
       ims2hvqbvee: { props: { top: 340, height: 70 } },
       ims2hvv0wgo: { props: { top: 340, height: 70 } },
       ims15i4eyhf: { props: { top: 347, left: 542 } },
-      ims15i60dd8: { props: { top: 347, left: 662 } },
+      ims15i60dd8: { props: { top: 347, left: 662, fontSize: 13 } },   // SHUTDOWN ROD, #713 pass 3
       ims2hnpzc1t: { props: { top: 362 } },
       ims2hnyt0jk: { props: { top: 362, left: 680 } },
       imrpk4pjcpd: { props: { top: 377 } },

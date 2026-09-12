@@ -29,6 +29,152 @@ and the user-visible summary in `CHANGELOG.md`. This file points at those and tr
 
 ---
 
+## Session log — 2026-09-12-workbench-k (#713 pass 3 — the alarm panel, and its check, were sized to the wrong platform)
+
+**What broke.** Pass 2 (`-d`, below) took 29.5 px from the alarm panel (421.7 -> 392.23 px) to
+widen the 1/M dock, sized against a **Windows** (Segoe UI) content floor of 377.7 px, 14.5 px of
+headroom. **CI runs Linux.** `verify_e2e_ui` has been red on every CI run since this lane first
+merged.
+
+**The measured pair, one script unchanged on both hosts, same 392.23 px panel, same 185 px tile
+box:**
+
+| | Windows (Segoe UI) | Linux (DejaVu Sans, CI-faithful) |
+|---|---|---|
+| widest tile `scrollWidth` | 185 px | 196 px |
+| widest tile min-content | 179.34 px | 206.38 px |
+| overflow | 0 px | **11 px** |
+
+Windows -> Linux spread: **+27.04 px (+15.1%)** on min-content, against 14.5 px of headroom.
+**Linux content floor: 412 px** (the lowest panel width at which no tile overflows). Re-derived
+independently this session on a real CI-faithful container (below): the composed-string sweep's
+own worst-case crossed to `over===0` at panel **414.13 px** (dockW 384) — 2 px off the issue's
+412, well within measurement-method noise (its own `over>1` tolerance vs this session's exact
+`>1` boundary check).
+
+**The container that actually reproduces CI, built and verified this session** — `Dockerfile.ci`
++ harnesses in this session's scratchpad (not committed; per the task, the develop session owns
+`CLAUDE.md`'s container citation): `ubuntu:24.04`, chromium binary **copied from**
+`mcr.microsoft.com/playwright:v1.61.1-noble` (not downloaded — that network path is unreachable
+from inside a `docker build`), OS deps via `npx playwright install-deps chromium`. **One addition
+beyond the issue's recipe, found this session**: a bare `docker.io/ubuntu:24.04` + `install-deps`
+alone resolves sans-serif to **WenQuanYi Zen Hei** (`fonts-wqy-zenhei` is a transitive dep and
+nothing outranks it) — the same wrong font the `mcr.microsoft.com` image gives, for the opposite
+reason (that image lacks DejaVu entirely; this one lacks nothing that OUTRANKS WenQuanYi). GitHub's
+real `ubuntu-latest` runner is a much fuller VM image that ships `fonts-dejavu-core` already;
+installing it explicitly (`apt-get install fonts-dejavu-core`) is what actually flips
+`fc-match sans-serif` to DejaVu Sans in a stripped Docker base. Confirmed via `fc-match` inside the
+built image before trusting any measurement from it.
+
+**Fix 1 — the panel.** `.oom-win.oom-docked` flex-basis 420px -> **370px**
+(`ui/shell.css`), giving the alarm panel back to **422.63 px** — **10.63 px clear of the 412 px
+Linux floor**, confirmed on the real container (not extrapolated): the composed-string worst-case
+reads `over:0` at every width from dockW 384 down, so 370 has real margin, not a knife edge.
+Chose NOT to go all the way back to pass 1's 380px (421.7 px, only 9.7 px clear and on the wrong
+platform) or split the difference at the bare-minimum 386px (412.91 px, ~1px clear) — both would
+have repeated the "measured on the platform that doesn't gate" mistake pass 3 exists to fix.
+Plot's data rect (`.oom-frame`), pass 2 -> pass 3, same 1500x950 gate viewport: **291.3x155.6 px
+-> 242x155px** (Windows) / confirmed byte-identical on Linux (CSS flex geometry does not depend on
+font metrics — verified directly: the dock/strip/alarm/frame numbers from a Windows sweep and a
+Linux container sweep matched to 0.01px at every dockW tested, 360-420). Still well above pass 1's
+212.4x144.5 (+14% width) and pass 0's ~199x141. Second-widest tile ("Accumulators Still Lined Up
+— RCS Below Their Isolation Pressure", 4.12px headroom at panel 392.23 pre-fix) **confirmed
+clear** at 370: the container sweep's `organic` overflow list is empty (zero tiles) at every
+dockW <= 386.
+
+**Fix 2 — the check caught the CI red by ACCIDENT, and now doesn't.** The board composes the
+`reactor_trip` alarm tile at runtime as `label + ' — ' + tripCauseLabel(reason)` (`ui/app.js`
+~line 3075) — a string absent from `RD.PWR_PROTECTION.alarms`, so `testOneOverMDockedGeometry`'s
+registry-label sweep (`test/verify_e2e_ui.js`) could never generate it. It caught the CI failure
+only because a DIFFERENT registry label ("Overtemperature Limit Approaching") happens to share the
+same widest WORD ("Overtemperature") as the actual overflowing composed string ("Reactor Trip —
+Overtemperature Delta-T (OTΔT)") — coincidence, not coverage; a metrics change or that one label's
+removal would have left the sweep silently trusting an unmeasured string. **Fix**: exposed the
+board's own `TRIP_CAUSE` map via a new `RD.__dev.tripCauses()` hook (`ui/app.js`, alongside the
+existing `?dev=1` service hook) rather than hand-copying the map into the test file — a copy goes
+stale the day the map gets a new cause and the test does not. The sweep now composes
+`label + ' — ' + cause` for every `(register, cause)` pair off that map (46 strings: 23 causes x
+2 registers) and pushes them into the same overflow sweep as the raw registry labels. Added a
+second count guard (`nComposed` must be > 0) so a missing/renamed dev hook falls back to
+raw-labels-only SILENTLY otherwise — the exact "caught it by accident" state this fix removes.
+
+**Proved red by injection, twice, both via the file's own `module.exports` harness (not a full
+re-run — `require('test/verify_e2e_ui.js')` off-main exports `testOneOverMDockedGeometry` and
+`startServer` for exactly this):**
+1. Lengthened `TRIP_CAUSE.hi_flux_hi` with an unbreakable ~40-char suffix (a hyphenated one
+   wraps at the hyphens under Chromium's default line-breaking and does NOT overflow — first
+   attempt was a false negative for that reason) -> FAIL, "alarm label ... overflows its tile by
+   222px". Reverted, re-ran, PASS.
+2. Replaced `RD.__dev.tripCauses` with a function returning `{}` (simulating the hook missing/
+   renamed) -> FAIL, "zero composed reactor_trip strings were swept". Reverted, re-ran, PASS.
+
+Also updated the geometry check's own frame-width floor (250px, sized to pass 2's 291px result)
+down to **220px** — below pass 3's real 242px (room for ordinary tuning), still above pass 1's
+212px (so a regression all the way back to the un-adaptive viewBox still reddens).
+
+**Fix 3 — two coordinator-flagged findings from the SAME re-measurement, folded in:**
+- **Four board captions at zero real margin on Linux** (`ui/diagram/board/pwr_board_wiring.js`
+  DOC_PATCHES): SOURCE RANGE / STARTUP RATE / SHUTDOWN ROD / CONDENSATE all measured
+  `over === 1` under DejaVu — exactly at `verify_board_scroll`'s `over > 1` failure line (Windows:
+  `over === 0`). RCP FLOW measured `over === 1` too (this session's own find, not in the
+  coordinator's table — same defect, same fix). fontSize 14 -> 13 for all five (already a used
+  size — 5 of 42 board captions are 13px) gives **5-6px of real clearance** on Linux, confirmed
+  via container: CONDENSATE -5, SOURCE RANGE/STARTUP RATE/SHUTDOWN ROD -6, RCP FLOW -6 (raw
+  `rightEdge - panelRight`, negative = spare). **Trap hit while landing this**: three of the five
+  ids (`imrshofh36b`/`imrshos9w20`/`ims15i60dd8`) already had a `{top,left}` patch in the NIS-card
+  row-layout block further down `DOC_PATCHES.items` — a second same-id key added earlier in the
+  object literal was silently REPLACED by the later one (JS object-literal last-key-wins), so the
+  first attempt's fontSize patch landed on disk but never reached the page for those three.
+  Merged into the existing entries instead. `verify_board_scroll` 143/143 -> unaffected by this
+  half (no new check), confirmed no regression.
+- **The nowrap population floor was a third hollow.** `clientWidth` is spec-zero for an inline
+  non-replaced element regardless of real size (so is `scrollWidth`), so `scrollWidth>clientWidth`
+  is `0>0` for such elements — never failable. **42 of 141** nowrap elements this sweep counts are
+  exactly that (measured, all 15 sweep calls, both platforms). Added `nowrapTestable` (measured 99
+  of 141, constant everywhere) as a SEPARATE floored count (floor 90) alongside the existing raw
+  `nowrapCount` floor (130) — a selector regression that trades real coverage for more inert
+  elements can no longer hide under the raw total. Also documented in the file's own header (not
+  gated, just named): 27 of the 99 "testable" survivors are `.bd-box-title` elements that read
+  `dw===0` by construction (no authored width — `position:absolute` with no `width` shrink-wraps),
+  the same class of hollowness `.bd-text` already had a spatial fix for; `.bd-box-title` has no
+  such fix and this gate cannot see that class of defect today. `verify_board_scroll`
+  143/143 -> **158/158** (BASELINES updated: 15 sweep calls x 1 new check each).
+
+**One thing NOT done**: `Fix 2`'s scope was the `reactor_trip` alarm specifically, the only place
+`ui/app.js` appends live text to a registry label. Grepped for other `label +=`/`label + ' — '`
+patterns in the alarm-tile rendering path (`renderAlarms`, ~line 3062-3096) — none found; the
+`data-scanner-hint` composition at the same line is a hover attribute, not the rendered `.label`
+div the panel-width check measures, so it is out of scope for this fix (a different, pre-existing
+overflow class if it exists at all — not investigated).
+
+**Container validation, not just Windows.** Every claim above with a "Linux"/"container" tag was
+run inside the `Dockerfile.ci` build described above, mounted read-only against this lane's
+working tree via `docker run -v ...:/repo:ro`. `verify_board_scroll.js` and the alarm/composed-
+string sweep both ran to completion inside it. **`verify_e2e_ui.js` in full was NOT run inside the
+container** (its ~4-minute, 16-screenshot run wasn't re-driven there) — the specific geometry
+function under test (`testOneOverMDockedGeometry`) WAS, via the same off-main-module harness used
+for the injection proofs, both before and after every fix in this entry.
+
+**Self-inflicted, caught and fixed before landing**: an early container run bind-mounted this
+lane's real `node_modules` writable and ran `rm -rf` + a symlink pointing INSIDE the container's
+own filesystem, which does not exist on the Windows host — broke `node_modules` in this working
+tree. Recovered via `ln -s /c/grok_build/Reactor_Dynamics/node_modules node_modules` (the same
+symlink convention `RD_backshop` already uses), verified `require('playwright')` resolves, re-ran
+every gate below on Windows to confirm nothing else was affected. All later container invocations
+used `:ro` mounts.
+
+**Gates** (Windows): `verify_e2e_ui` PASS · `verify_board_scroll` **158/158** · `verify_board_check`
+256/0 failures · `verify_flags_ui` 54/54 · `run_style` 11/11. `run_all.js` NOT run (owner
+directive this session — coordinator runs the aggregate before merge).
+
+**Files touched**: `ui/shell.css` (dock width + comments), `ui/app.js` (dev hook), `ui/diagram/
+board/pwr_board_wiring.js` (5 caption fontSize patches), `test/verify_e2e_ui.js` (composed-string
+sweep, frame-width floor), `test/verify_board_scroll.js` (nowrapTestable floor + header note),
+`test/run_all.js` (BASELINES: `verify_board_scroll.js` 143/143 -> 158/158). Commit on `workbench`,
+UNMERGED.
+
+---
+
 ## Session log — 2026-09-12-workbench-j (#712 — caption/readout text overflow gate)
 
 **What.** #684 gated board ART overflowing its highlight box; nothing gated CAPTION TEXT

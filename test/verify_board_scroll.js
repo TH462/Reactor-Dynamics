@@ -145,6 +145,28 @@
  * `.scanline-body` (there ~2px; here bigger because the font is bigger) — not a caption escaping
  * its box, since it does not depend on what the caption SAYS.
  *
+ * THE POPULATION FLOOR HAD A HOLLOW THIRD (#713 pass 3, found re-measuring this gate under
+ * Linux DejaVu Sans for an unrelated CI red). `clientWidth` is SPEC-ZERO for an inline
+ * non-replaced element regardless of its real rendered size — and so is `scrollWidth` — so
+ * `scrollWidth > clientWidth` is `0 > 0`, false, no matter how far such an element's text runs.
+ * 42 of the 141 nowrap elements this sweep counts are exactly that: real elements, real text,
+ * structurally unfailable. They still counted toward `floor.nowrap` (130), so up to a third of
+ * the guard against "the selector stopped matching" was satisfied by elements the check could
+ * never fail on regardless of selector health. `nowrapTestable` (measured 99 of 141, every
+ * viewport and tab) now floors the TESTABLE subset separately, so a regression that trades real
+ * coverage for more inert elements can no longer hide under the raw count.
+ *
+ * AND SOME OF THE 99 "TESTABLE" SURVIVORS ARE HOLLOW FOR A DIFFERENT REASON, worth knowing
+ * before trusting one: `.bd-box-title` (`buildBox`) is `position: absolute` with a `left` but no
+ * authored `width` — an absolutely-positioned element with no width shrink-wraps to its content,
+ * so its `clientWidth` tracks its `scrollWidth` BY CONSTRUCTION, same as `.bd-text`'s hollowness
+ * above, just via a different CSS mechanism (no wrap-then-grow; here there is nothing TO wrap).
+ * Measured: 27 of the 99 testable elements read `dw === 0` at every one of the 15 sweep calls,
+ * one title (`scrollWidth`/`clientWidth` both 155) among them — that is the box shrink-wrapping
+ * to fit a long title, not 0px of margin against a real constraint. A `.bd-box-title` overflowing
+ * its OWN tile's authored width (the same spatial check `.bd-text` already gets via
+ * `findEnclosingPanel`) is not built; this gate cannot see that class of defect today.
+ *
  * VIEWPORTS gained a fifth entry (900px) here so the set actually STRADDLES the 860px page-scroll
  * breakpoint — the pre-#712 set jumped 1100 -> 800 and never sampled either side of 860.
  *
@@ -201,7 +223,7 @@ function ck(name, ok, detail) {
  * reaches the browser, so every helper `sweepCaptions` needs must be declared INSIDE it. */
 function sweepCaptions(args) {
   var TOL = args.TOL, PIN_IDS = args.PIN_IDS;
-  var out = { nowrapCount: 0, nowrapFails: [], textCount: 0, textFails: [], pins: {} };
+  var out = { nowrapCount: 0, nowrapTestable: 90, nowrapFails: [], textCount: 0, textFails: [], pins: {} };
 
   function findEnclosingPanel(cx, cy, panels) {
     var best = null, bestArea = Infinity;
@@ -253,6 +275,16 @@ function sweepCaptions(args) {
 
     if (cs.whiteSpace === 'nowrap' || cs.whiteSpace === 'pre') {
       out.nowrapCount++;
+      // clientWidth is SPEC-ZERO for an inline non-replaced element regardless of its real
+      // rendered size (CSSOM View, "clientWidth ... return zero if ... element has no
+      // associated CSS layout box or the box is inline") — so does scrollWidth, so `dw` below
+      // is `0 - 0 = 0` for every such element and it can NEVER fail this check no matter how
+      // far its text runs. #713 pass 3: 42 of the 141 elements this sweep counts are exactly
+      // this — real elements, real text, but structurally untestable by `scrollWidth >
+      // clientWidth`. Counted separately so the population floor can say which kind it is
+      // guarding: `nowrapCount` (the raw population — still catches "the selector matched
+      // nothing") vs `nowrapTestable` (only elements this check can actually fail).
+      if (el.clientWidth > 0) out.nowrapTestable++;
       var dw = el.scrollWidth - el.clientWidth;
       if (dw > TOL) out.nowrapFails.push({ sel: (el.className || el.tagName) + '', text: textNode.nodeValue.trim().slice(0, 30), dw: dw });
     } else if (el.parentElement && el.parentElement.classList && el.parentElement.classList.contains('bd-text')) {
@@ -305,6 +337,15 @@ var CAPTION_PIN_IDS = ['ims3xtrobbq', 'bdRhrCooldownRate', 'ims3w19984s'];
 function ckCaptionSweep(tag, res, floor) {
   ck(tag + ': nowrap caption/readout population is sane (>= ' + floor.nowrap + ')',
     res.nowrapCount >= floor.nowrap, res.nowrapCount + ' nowrap/pre elements carrying their own text');
+  // #713 pass 3: the floor above is satisfied by up to a third of its population without a
+  // single TESTABLE element among them (clientWidth is spec-zero for inline elements — see
+  // the note beside `nowrapTestable`'s increment). Floor the testable subset too, or a
+  // selector regression that drops real coverage while the inert third holds steady would
+  // still clear `floor.nowrap` and report green.
+  ck(tag + ': nowrap TESTABLE population is sane (>= ' + floor.nowrapTestable + ')',
+    res.nowrapTestable >= floor.nowrapTestable,
+    res.nowrapTestable + ' of ' + res.nowrapCount + ' nowrap elements have clientWidth > 0 ' +
+    '(the rest are inline elements this check cannot fail on, by spec)');
   ck(tag + ': no nowrap caption/readout overflows its box (#712)',
     res.nowrapFails.length === 0,
     res.nowrapFails.length + ' over: ' + JSON.stringify(res.nowrapFails.slice(0, 5)));
@@ -406,7 +447,7 @@ function ckCaptionSweep(tag, res, floor) {
 
     /* ────────── PART 3 (#712): caption/readout text overflow, default tab ────────── */
     var capDefault = await page.evaluate(sweepCaptions, { TOL: 1, PIN_IDS: CAPTION_PIN_IDS });
-    ckCaptionSweep(tag + ' [default tab]', capDefault, { nowrap: 130, text: 35 });
+    ckCaptionSweep(tag + ' [default tab]', capDefault, { nowrap: 130, nowrapTestable: 90, text: 35 });
 
     /* ────────────────────── #723 sibling 1: .scanline-body ────────────────────── */
     var scan = await page.evaluate(function () {
@@ -479,7 +520,7 @@ function ckCaptionSweep(tag, res, floor) {
 
     /* ────────── PART 3 (#712): caption/readout text overflow, Instructor tab ────────── */
     var capInstr = await page.evaluate(sweepCaptions, { TOL: 1, PIN_IDS: CAPTION_PIN_IDS });
-    ckCaptionSweep(tag + ' [instructor tab]', capInstr, { nowrap: 130, text: null });
+    ckCaptionSweep(tag + ' [instructor tab]', capInstr, { nowrap: 130, nowrapTestable: 90, text: null });
 
     /* ─────────────── #723 sibling 2b: .tab-body.ckl-mode (Walkthroughs tab) ─────────────── */
     await page.evaluate(function () {
@@ -512,7 +553,7 @@ function ckCaptionSweep(tag, res, floor) {
 
     /* ────────── PART 3 (#712): caption/readout text overflow, Walkthroughs tab ────────── */
     var capCkl = await page.evaluate(sweepCaptions, { TOL: 1, PIN_IDS: CAPTION_PIN_IDS });
-    ckCaptionSweep(tag + ' [checklists tab]', capCkl, { nowrap: 130, text: null });
+    ckCaptionSweep(tag + ' [checklists tab]', capCkl, { nowrap: 130, nowrapTestable: 90, text: null });
 
     await ctx.close();
   }

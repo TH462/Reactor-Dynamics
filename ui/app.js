@@ -10080,7 +10080,18 @@
     // latches the flag directly — the same manual-latch adjudication run_pwr2_loca's hold
     // section made. A closure getter so it always reflects the current service.
     if (/[?&]dev=1/.test(location.search || '')) {
-      RD.__dev = { service: function () { return service; } };
+      // tripCauseLabel/TRIP_CAUSE (#713 pass 3): the board COMPOSES the reactor-trip tile as
+      // `label + ' — ' + tripCauseLabel(reason)` (below, ~line 3075) — a string that exists
+      // nowhere in RD.PWR_PROTECTION.alarms, so a check that sweeps only that registry can
+      // never generate it and was catching a real CI overflow by accident (a different
+      // registry label happened to share its widest WORD). Exposing the real map, rather than
+      // a hand-copy in the test file, is the point — a copy goes stale the day this map gets
+      // a new cause and the test does not.
+      RD.__dev = {
+        service: function () { return service; },
+        tripCauseLabel: tripCauseLabel,
+        tripCauses: function () { return TRIP_CAUSE; },
+      };
     }
     // Fine strip-chart sampling. The service calls this on a fixed SIM-time interval inside
     // its step loop, so the chart sees the plant between broadcasts and its resolution stops
