@@ -281,6 +281,33 @@ git branch -D exp/<task>
 > no sense against the diff: check `node -e "require.resolve('playwright')"` BEFORE adjudicating
 > the code.**
 
+### If the run is in a CONTAINER, do not junction at all
+
+**A containerised run needs no junction, and that is strictly better than sequencing the teardown
+safely.** Mount the primary tree's `node_modules` read-only as a second volume and point Node at
+it:
+
+```
+docker run --rm -v C:\grok_build\RD_<task>:/w -v C:\grok_build\Reactor_Dynamics\node_modules:/nm:ro \
+  -e NODE_PATH=/nm -w /w <image> node test/<runner>.js
+```
+
+**`:ro` is what makes this structurally safe rather than merely conventional** — a writable mount
+would put the primary copy back inside the blast radius of anything the container does, which is
+the situation the junction created. With no junction in the worktree there is nothing for
+`git worktree remove --force` to follow, so **the teardown order above stops being something
+anyone has to remember** — and a rule that depends on remembering an order fails exactly when
+someone is tired or in a hurry, which is when that command gets typed.
+
+**Measured, not merely plausible** (2026-09-12, the #713 CI investigation): a detached worktree at
+another lane's commit, this mount instead of a junction, `git worktree remove --force` afterwards
+— and the primary tree's `node_modules/playwright` **verified intact** after that deliberate force
+removal. That verification is the whole reason this is in the record rather than a suggestion.
+
+**This does NOT replace the junction for a NATIVE run.** An agent running gates directly on this
+machine still needs real module resolution in its own tree, so the setup above stands for that
+case with its teardown order. Scope the choice to how the run executes, not to which you read first.
+
 **Four rules.**
 
 1. **A scratch worktree is NOT a lane.** No lane tag, no `status-wip-*`, and it is invisible to
