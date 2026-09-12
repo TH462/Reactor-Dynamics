@@ -4358,14 +4358,23 @@ async function testOneOverMDockedGeometry(page) {
   /* (b) THE AXIS GUTTERS. L/R/T/B are viewBox units reserved for the tick and axis text and
    * were 15.3% of the width. .oom-frame is the rectangle the data is actually drawn in, so it
    * is the one measurement neither failure fools: a wider box whose gain went to the
-   * letterbox, or a filled box whose gain went to margins. 291px measured after, 212px after
-   * pass 1; the 250px floor sits between them with room for ordinary tuning. */
-  if (geo.frame.w < 250) {
-    throw new Error('#713 pass 2: the docked 1/M plot draws its data in only ' + Math.round(geo.frame.w) +
-      'px of width at the default row height — expected >= 250px (measured 291px after #713 pass 2; ' +
-      '212px after pass 1). Check the letterbox AND the L/R gutters in one_over_m.js.');
+   * letterbox, or a filled box whose gain went to margins. 291px measured after pass 2, 212px
+   * after pass 1; the 250px floor sat between them with room for ordinary tuning.
+   *
+   * PASS 3 (#713 CI red) gave width back to the alarm panel — see the dock-width comment in
+   * ui/shell.css — and .oom-frame fell with it: 291px -> 243px, measured (same 1500x950
+   * viewport this gate uses). 220px is the new floor: below pass 3's real value (243px, room
+   * for ordinary tuning) and still above pass 1's 212px, so a regression all the way back to
+   * pass 1's un-adaptive viewBox still reddens here. Do not raise this back toward 250
+   * without the SAME Linux-metrics alarm-panel measurement pass 3 did — that is the whole
+   * reason it moved. */
+  if (geo.frame.w < 220) {
+    throw new Error('#713 pass 3: the docked 1/M plot draws its data in only ' + Math.round(geo.frame.w) +
+      'px of width at the default row height — expected >= 220px (measured 243px after #713 pass 3; ' +
+      '291px after pass 2; 212px after pass 1). Check the letterbox AND the L/R gutters in one_over_m.js, ' +
+      'or ui/shell.css\'s .oom-win.oom-docked dock width if the alarm panel needs it back.');
   }
-  log.push('plotted data rect ' + Math.round(geo.frame.w) + 'x' + Math.round(geo.frame.h) + 'px (width floor 250)');
+  log.push('plotted data rect ' + Math.round(geo.frame.w) + 'x' + Math.round(geo.frame.h) + 'px (width floor 220)');
 
   /* (c) THE ALARM PANEL UNDER LOAD. Pass 2 takes width back off this panel and hands it to the
    * plot, which is only safe if the panel still renders every tile at a real alarm load — and
@@ -4378,7 +4387,21 @@ async function testOneOverMDockedGeometry(page) {
    * A hand-maintained list of "the long ones" is a gate that tests the list, and it goes
    * quietly stale the first time someone writes a longer alarm. The binding string when this
    * landed was "Overtemperature Limit Approaching" at 179.3px of min-content, against the
-   * 184px track minimum in ui/shell.css. */
+   * 184px track minimum in ui/shell.css.
+   *
+   * PASS 3 (#713, the CI-red this pass fixes): the registry sweep above only ever measures RAW
+   * labels, but the board does not always render one raw — the `reactor_trip` tile COMPOSES
+   * `label + ' — ' + tripCauseLabel(reason)` at runtime (ui/app.js ~line 3075), and that
+   * composed string is not a member of RD.PWR_PROTECTION.alarms at all, so the sweep above
+   * could never generate it. It caught the CI overflow ("Reactor Trip — Overtemperature
+   * Delta-T (OTΔT)", widest word "Overtemperature") only because a DIFFERENT raw registry
+   * label — "Overtemperature Limit Approaching" — happens to share that same widest word by
+   * coincidence; a metrics change or a registry edit that removed that one label would have
+   * left this gate silently trusting an unmeasured string. So: read the real cause map off
+   * `RD.__dev.tripCauses()` (the ?dev=1 hook added alongside this fix, not a hand-copy of
+   * ui/app.js's TRIP_CAUSE table — a copy is exactly the staleness this comment is about) and
+   * push every `reactor_trip` label × every cause, composed exactly the way app.js composes
+   * it, into the same sweep as the raw labels below. */
   await page.goto(url + '&inject=large_loca&ff=300&run=1', { waitUntil: 'networkidle', timeout: 90000 });
   await dismissMission(page);
   await waitBoardLive(page, 20000);
@@ -4400,9 +4423,22 @@ async function testOneOverMDockedGeometry(page) {
     if (!tiles.length) return { n: 0 };
     var defs = (window.RD && RD.PWR_PROTECTION && RD.PWR_PROTECTION.alarms) || [];
     var labels = [];
+    var nComposed = 0;
     defs.forEach(function (d) {
       if (d.label_learning) labels.push(d.label_learning);
       if (d.label_industry) labels.push(d.label_industry);
+      // #713 pass 3: the reactor_trip tile is the one case app.js appends live text to a
+      // registry label (' — ' + the first-out trip cause) rather than rendering the label
+      // alone — mirror that composition here, off the SAME map the board renders from
+      // (RD.__dev.tripCauses(), the ?dev=1 hook), so the sweep measures what the board can
+      // actually put in a tile instead of only what the registry states verbatim.
+      if (d.id === 'reactor_trip') {
+        var causes = (window.RD && RD.__dev && RD.__dev.tripCauses && RD.__dev.tripCauses()) || {};
+        Object.keys(causes).forEach(function (k) {
+          if (d.label_learning) { labels.push(d.label_learning + ' — ' + causes[k]); nComposed++; }
+          if (d.label_industry) { labels.push(d.label_industry + ' — ' + causes[k]); nComposed++; }
+        });
+      }
     });
     function over(el) { return el ? el.scrollWidth - el.clientWidth : 0; }
     var organic = [];
@@ -4425,7 +4461,8 @@ async function testOneOverMDockedGeometry(page) {
     }
     var stack = document.querySelector('.alarm-stack'), panel = document.querySelector('.alarm-panel');
     return {
-      n: tiles.length, nLabels: labels.length, organic: organic, worst: worst, widestTile: widest,
+      n: tiles.length, nLabels: labels.length, nComposed: nComposed, organic: organic, worst: worst,
+      widestTile: widest,
       tileW: Math.round(t0.getBoundingClientRect().width),
       panelW: Math.round(panel.getBoundingClientRect().width),
       stackOver: over(stack), panelOver: over(panel),
@@ -4438,6 +4475,15 @@ async function testOneOverMDockedGeometry(page) {
     throw new Error('#713 pass 2: the alarm-load check ran against ' + (al.n || 0) + ' alarm tiles — ' +
       'the large-LOCA injection is meant to raise >= 8 (18 when this was written). The check is ' +
       'vacuous until that is fixed; it is not evidence the panel fits its content.');
+  }
+  /* A second count guard for pass 3's own half: `RD.__dev.tripCauses()` missing (dev hook
+   * renamed, or the check run without &dev=1) would silently drop back to raw-labels-only —
+   * the exact "caught it by accident" state this pass exists to end — with no other symptom.
+   * 46 composed strings (23 causes x 2 registers) when this landed. */
+  if (!al.nComposed) {
+    throw new Error('#713 pass 3: zero composed reactor_trip strings were swept — RD.__dev.tripCauses() ' +
+      'returned nothing. The check has fallen back to raw registry labels only, which is the coincidence ' +
+      'this pass was written to remove.');
   }
   if (al.organic.length) {
     throw new Error('#713 pass 2: ' + al.organic.length + ' of ' + al.n + ' live alarm tiles overflow their ' +
@@ -4453,7 +4499,8 @@ async function testOneOverMDockedGeometry(page) {
       '(stack +' + al.stackOver + 'px, panel +' + al.panelOver + 'px) at ' + al.panelW + 'px wide — the ' +
       'two-column stack is meant to fall back to one column, not scroll sideways.');
   }
-  log.push(al.n + ' live alarms, ' + al.nLabels + ' registry labels swept through a tile: none overflow at a ' +
+  log.push(al.n + ' live alarms, ' + al.nLabels + ' registry labels + ' + al.nComposed +
+    ' composed reactor_trip strings swept through a tile: none overflow at a ' +
     al.panelW + 'px panel (' + al.tileW + 'px columns, widest label ' + al.widestTile + 'px)');
   return log.join('\n') + '\n';
 }

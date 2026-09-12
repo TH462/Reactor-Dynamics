@@ -231,7 +231,14 @@ body {
    CONTENT box, and the strip chart adds 18px of border+padding against the alarm panel's 2px,
    so 1.6 measured as 1.50 and 1.4 measured as 1.32. Solve on the content boxes
    (alarm_content = F x r/(1+r), F = 642px at a 1500px viewport) or the panel lands ~10px below
-   where you aimed. Diagnostic/TUNING_LOG.md 2026-09-12-workbench-d. */
+   where you aimed. Diagnostic/TUNING_LOG.md 2026-09-12-workbench-d.
+
+   PASS 2's 377.7px floor and every number in this comment are WINDOWS (Segoe UI) measurements
+   — the ratio (1.55) is unchanged in pass 3, but the dock shrank 420px -> 370px (see the dock
+   rule below) because the floor itself was wrong on the platform that gates: 412px on Linux
+   (DejaVu Sans, CI's real fontconfig fallback). Re-deriving this ratio or floor on Windows
+   again repeats the exact mistake pass 3 fixed — measure on Linux or don't move it.
+   Diagnostic/TUNING_LOG.md 2026-09-12-workbench-e. */
 .app.pwr-synoptic .plant-area > .bottom-row > .strip-chart  { order: 2; flex: 1 1 0; min-width: 0; }
 .app.pwr-synoptic .plant-area > .bottom-row > .alarm-panel  { order: 3; flex: 1.55 1 0; min-width: 0; min-height: 0; }
 
@@ -2876,9 +2883,22 @@ select.num-input { width: auto; }
    chart — pass 1 gave the alarm panel width the measurement above (see the flex-grow split)
    says it does not use. The gain only reaches the plot because one_over_m.js's viewBox now
    follows the cell's aspect: with the fixed 340x240 it did NOT, and 33.2px of the box was
-   dead letterbox that a wider dock would simply have made wider. */
+   dead letterbox that a wider dock would simply have made wider.
+
+   PASS 3 (#713 CI red): 420px -> 370px. Pass 2's alarm-panel floor (377.7px, above) was
+   measured on WINDOWS (Segoe UI); CI runs Linux, where DejaVu Sans is 15.1% wider on the
+   binding label's min-content (206.4px vs 179.3px measured pair, ubuntu:24.04 +
+   `playwright install-deps chromium`, NOT the mcr.microsoft.com/playwright image — that one
+   resolves WenQuanYi Zen Hei, narrower than Segoe UI, and gives a false "reproduced, still
+   green"). The Linux content floor is 412px, not 377.7px, and 392.2px (pass 2's result at
+   420px) overflows it by 11px on the widest tile — `verify_e2e_ui` has been red on every CI
+   run since this lane merged. 370px lands the panel at 422.6px, 10.6px clear of the 412px
+   Linux floor (measured, not constructed — see Diagnostic/TUNING_LOG.md
+   2026-09-12-workbench-e); the plot gives up part of pass 2's gain (.oom-frame 291x156px ->
+   242x155px) but stays well above pass 1's 212x145px. Do not re-widen this without the SAME
+   Linux-metrics measurement pass 2 skipped. */
 .oom-win.oom-docked {
-  position: static; order: 4; flex: 0 0 420px; min-width: 0; min-height: 0; height: auto;
+  position: static; order: 4; flex: 0 0 370px; min-width: 0; min-height: 0; height: auto;
   display: grid; overflow: auto; z-index: auto;
   box-shadow: none; border-radius: var(--radius);
   grid-template-columns: 1fr auto;

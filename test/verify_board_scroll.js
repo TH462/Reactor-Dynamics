@@ -101,6 +101,80 @@
  *     left in place: the no-forcing lane-stack fit check fails (234 vs 241); with the clip
  *     also reverted, the forced-overflow clamp check fails too (reads back 300).
  *
+ * ══════════════════ PART 3 — CAPTION / READOUT TEXT OVERFLOW (#712) ════════════════════════
+ *
+ * #684 gated board ART overflowing its highlight box. It said nothing about CAPTION TEXT
+ * overflowing its own tile — a different geometry, a different fix (#700 shortened "COOLDOWN
+ * RATE / HX SPLIT" wording; #705 relabelled a gauge), and, until now, no gate at all: a relabel,
+ * a font-size change or a scale change could re-break either with nothing red.
+ *
+ * MEASURED FIRST (2026-09-12, `inbox/712/measure_overflow*.js`, kept local): swept every element
+ * carrying its own direct text, board and shell, at 5 viewports (1600/1250/1100/900/800, straddling
+ * both the 1200px control-room and 860px page-scroll breakpoints) x 3 tab states (default/
+ * Instructor/Walkthroughs) — **zero genuine overflows**. Two techniques, chosen per element,
+ * because ONE of them is dishonest for part of this board:
+ *
+ *   - **`white-space: nowrap`/`pre` elements** (`.bd-value`, `.bd-readout .bd-ro-label`/`.bd-ro-
+ *     read`, `.bd-box-title`, `.bd-num-unit`, and any shell label authored the same way — 141
+ *     found): `scrollWidth > clientWidth` is RELIABLE here — a nowrap element's scrollWidth is
+ *     exactly its un-wrapped content width, so this is the same idiom `verify_e2e_ui.js`'s 1/M
+ *     dock geometry check already uses for `.oom-foot .btn`.
+ *   - **`.bd-text` caption tiles** (40 found; #700's "HX SPLIT" and #705's "INJ FLOW" are both
+ *     this kind) are `white-space: pre-wrap`, NOT nowrap — they are AUTHORED to fit one line at
+ *     their tile width but are structurally free to wrap onto two if they don't, and `tileBase`
+ *     gives them no fixed height, so a wrap does not clip — it silently grows the tile taller and
+ *     overlaps whatever is drawn below it. `scrollWidth` is a FALSE POSITIVE for these:
+ *     `.bd-btn`'s label (also non-nowrap, and some ARE authored to wrap, per pwr_board.css's own
+ *     "TRIP BLOCKS still wraps — it is authored to") measured scrollWidth 84 against clientWidth
+ *     78 with the text sitting 6px clear of both edges when checked against the REAL painted line
+ *     boxes (`Range.getClientRects()`) — a `display:block`/wrapping-content quirk, not a defect.
+ *     So `.bd-text` is asserted the honest way: the caption's own text node must render as
+ *     EXACTLY ONE line, and that line's real painted rect must fit inside the tile's rect.
+ *
+ * `.bd-btn` labels are swept only to the extent of confirming the above; they are deliberately
+ * NOT gated here — some are authored to wrap onto two lines and nowrap-scrollWidth reads a false
+ * positive on all of them, so a real per-button "does it wrap where it shouldn't" gate needs the
+ * line-rect technique too and is a separate piece of work, not a caption/readout regression.
+ *
+ * ONE MORE THING RULED OUT AS NOISE, not gated: the six top Indicator Panel value spans
+ * (`comp_indicator_panel.js`, `lineHeight: 0.9` on a 28px bold numeric font) read 3-5px of
+ * `scrollHeight` over `clientHeight` at every viewport, IDENTICAL regardless of the displayed
+ * value's digit count (proved by driving five different readings through — the delta never
+ * moved) and confirmed by screenshot to show no visible clipping or collision. That is a tight
+ * line-height's ascent/descent remainder, the same class of thing #723 already named noise for
+ * `.scanline-body` (there ~2px; here bigger because the font is bigger) — not a caption escaping
+ * its box, since it does not depend on what the caption SAYS.
+ *
+ * THE POPULATION FLOOR HAD A HOLLOW THIRD (#713 pass 3, found re-measuring this gate under
+ * Linux DejaVu Sans for an unrelated CI red). `clientWidth` is SPEC-ZERO for an inline
+ * non-replaced element regardless of its real rendered size — and so is `scrollWidth` — so
+ * `scrollWidth > clientWidth` is `0 > 0`, false, no matter how far such an element's text runs.
+ * 42 of the 141 nowrap elements this sweep counts are exactly that: real elements, real text,
+ * structurally unfailable. They still counted toward `floor.nowrap` (130), so up to a third of
+ * the guard against "the selector stopped matching" was satisfied by elements the check could
+ * never fail on regardless of selector health. `nowrapTestable` (measured 99 of 141, every
+ * viewport and tab) now floors the TESTABLE subset separately, so a regression that trades real
+ * coverage for more inert elements can no longer hide under the raw count.
+ *
+ * AND SOME OF THE 99 "TESTABLE" SURVIVORS ARE HOLLOW FOR A DIFFERENT REASON, worth knowing
+ * before trusting one: `.bd-box-title` (`buildBox`) is `position: absolute` with a `left` but no
+ * authored `width` — an absolutely-positioned element with no width shrink-wraps to its content,
+ * so its `clientWidth` tracks its `scrollWidth` BY CONSTRUCTION, same as `.bd-text`'s hollowness
+ * above, just via a different CSS mechanism (no wrap-then-grow; here there is nothing TO wrap).
+ * Measured: 27 of the 99 testable elements read `dw === 0` at every one of the 15 sweep calls,
+ * one title (`scrollWidth`/`clientWidth` both 155) among them — that is the box shrink-wrapping
+ * to fit a long title, not 0px of margin against a real constraint. A `.bd-box-title` overflowing
+ * its OWN tile's authored width (the same spatial check `.bd-text` already gets via
+ * `findEnclosingPanel`) is not built; this gate cannot see that class of defect today.
+ *
+ * VIEWPORTS gained a fifth entry (900px) here so the set actually STRADDLES the 860px page-scroll
+ * breakpoint — the pre-#712 set jumped 1100 -> 800 and never sampled either side of 860.
+ *
+ * PROVED RED BY INJECTION (2026-09-12): bumping `ims3xtrobbq`'s authored `fontSize` from 13 to 20
+ * in `pwr_board_wiring.js` DOC_PATCHES (the #700 "HX SPLIT" caption) takes the named HX-SPLIT
+ * pin from PASS to FAIL at every viewport (2 lines / 11.8px over, instead of 1 line / 0px) —
+ * reverted after confirming.
+ *
  * Run: node test/verify_board_scroll.js
  */
 'use strict';
@@ -115,6 +189,7 @@ var VIEWPORTS = [
   { w: 1400, h: 900, why: 'the pinned board-gate viewport' },
   { w: 1250, h: 900, why: 'just above the 1200px control-room stacking breakpoint' },
   { w: 1100, h: 900, why: 'just below the 1200px control-room stacking breakpoint' },
+  { w: 900, h: 900, why: 'just above the 860px page-scroll breakpoint (#712 — straddles it)' },
   { w: 800, h: 900, why: 'below the 860px stacked-columns breakpoint (the page scrolls here)' }
 ];
 
@@ -125,6 +200,169 @@ function ck(name, ok, detail) {
   if (!ok) fail++;
   console.log((ok ? C.green + 'PASS' : C.red + 'FAIL') + C.off + '  ' + name +
     (ok || detail == null ? '' : C.dim + '   -> ' + detail + C.off));
+}
+
+/* PART 3 (#712) — runs IN the page. TOL is 1 LOCAL px (the board's own unscaled coordinate
+ * system — `clientWidth`/`offsetWidth`/inline `style.left/top/width/height` are all LAYOUT
+ * properties CSS transforms do not touch, so they read identically at every viewport; that is
+ * why the same tolerance works board-wide without re-deriving it per viewport). See the header
+ * for why two techniques, and why a THIRD exists for `.bd-text` specifically.
+ *
+ * WHY `.bd-text` NEEDS A THIRD TECHNIQUE, FOUND BY INJECTION (2026-09-12). `.bd-text` tiles
+ * (buildText / tileBase(it,'nohgt')) carry NO authored `width` — the box is shrink-to-fit, so
+ * "does the caption fit its own tile" is true BY CONSTRUCTION and asserting it is hollow: bumping
+ * `ims3xtrobbq`'s fontSize 13->20 (the #700 HX SPLIT caption) left every check PASSING because the
+ * tile just grew to match. The real constraint #700's own analysis used is spatial, not the
+ * tile's: the caption sits INSIDE a titled card (a `kind:'box'` panel elsewhere on the board) and
+ * must not push past THAT panel's right edge ("the card is 90 wide … the column is 80 px").
+ * `findEnclosingPanel` reproduces that: every panel tile sets `el.style.background` (only
+ * `buildBox` does), so the panel population is queryable directly; the smallest-area panel whose
+ * authored rect contains the caption's own (left, top) is "the card". Same authored-unit space as
+ * `left`/`width` throughout, so this needs no unit conversion. */
+/* Playwright's page.evaluate(fn, arg) serializes ONLY `fn` — nothing else in this file's scope
+ * reaches the browser, so every helper `sweepCaptions` needs must be declared INSIDE it. */
+function sweepCaptions(args) {
+  var TOL = args.TOL, PIN_IDS = args.PIN_IDS;
+  var out = { nowrapCount: 0, nowrapTestable: 90, nowrapFails: [], textCount: 0, textFails: [], pins: {} };
+
+  function findEnclosingPanel(cx, cy, panels) {
+    var best = null, bestArea = Infinity;
+    for (var i = 0; i < panels.length; i++) {
+      var p = panels[i];
+      if (cx >= p.left - 0.5 && cx <= p.left + p.width + 0.5 &&
+          cy >= p.top - 0.5 && cy <= p.top + p.height + 0.5) {
+        var area = p.width * p.height;
+        if (area < bestArea) { bestArea = area; best = p; }
+      }
+    }
+    return best;
+  }
+
+  // Panel population: any `.bd-tile` with an inline background (only buildBox sets one) and
+  // both an authored width AND height (buildBox is the only builder tileBase() is called on
+  // WITHOUT 'nohgt', so it is the only kind that keeps its authored height).
+  var panels = [];
+  var tiles = document.querySelectorAll('.bd-tile');
+  for (var t = 0; t < tiles.length; t++) {
+    var tl = tiles[t];
+    if (!tl.style.background) continue;
+    var pw = parseFloat(tl.style.width), ph = parseFloat(tl.style.height);
+    if (!(pw > 0) || !(ph > 0)) continue;
+    panels.push({ left: parseFloat(tl.style.left), top: parseFloat(tl.style.top), width: pw, height: ph });
+  }
+
+  function checkBdText(el) {
+    var cx = parseFloat(el.style.left), cy = parseFloat(el.style.top);
+    var panel = findEnclosingPanel(cx, cy, panels);
+    var rightEdge = cx + el.offsetWidth;   // local, unscaled — offsetWidth is the shrink-to-fit tile's real content width
+    if (!panel) return { hasPanel: false, over: 0 };
+    var over = Math.max(0, rightEdge - (panel.left + panel.width));
+    return { hasPanel: true, over: Math.round(over * 10) / 10, panelRight: panel.left + panel.width, rightEdge: rightEdge };
+  }
+
+  var all = document.querySelectorAll('*');
+  for (var i = 0; i < all.length; i++) {
+    var el = all[i];
+    var textNode = null;
+    for (var c = el.firstChild; c; c = c.nextSibling) {
+      if (c.nodeType === 3 && c.nodeValue && c.nodeValue.trim()) { textNode = c; break; }
+    }
+    if (!textNode) continue;
+    var cs = getComputedStyle(el);
+    if (cs.visibility === 'hidden' || cs.display === 'none') continue;
+    var er = el.getBoundingClientRect();
+    if (er.width < 1 || er.height < 1) continue;
+
+    if (cs.whiteSpace === 'nowrap' || cs.whiteSpace === 'pre') {
+      out.nowrapCount++;
+      // clientWidth is SPEC-ZERO for an inline non-replaced element regardless of its real
+      // rendered size (CSSOM View, "clientWidth ... return zero if ... element has no
+      // associated CSS layout box or the box is inline") — so does scrollWidth, so `dw` below
+      // is `0 - 0 = 0` for every such element and it can NEVER fail this check no matter how
+      // far its text runs. #713 pass 3: 42 of the 141 elements this sweep counts are exactly
+      // this — real elements, real text, but structurally untestable by `scrollWidth >
+      // clientWidth`. Counted separately so the population floor can say which kind it is
+      // guarding: `nowrapCount` (the raw population — still catches "the selector matched
+      // nothing") vs `nowrapTestable` (only elements this check can actually fail).
+      if (el.clientWidth > 0) out.nowrapTestable++;
+      var dw = el.scrollWidth - el.clientWidth;
+      if (dw > TOL) out.nowrapFails.push({ sel: (el.className || el.tagName) + '', text: textNode.nodeValue.trim().slice(0, 30), dw: dw });
+    } else if (el.parentElement && el.parentElement.classList && el.parentElement.classList.contains('bd-text')) {
+      out.textCount++;
+      var tile = el.parentElement;
+      var res = checkBdText(tile);
+      if (res.hasPanel && res.over > TOL) {
+        out.textFails.push({ text: textNode.nodeValue.trim().slice(0, 30), over: res.over,
+          rightEdge: res.rightEdge, panelRight: res.panelRight });
+      }
+    }
+  }
+
+  /* Named pins for #700 ("HX SPLIT" text tile + the COOLDOWN RATE readout) and #705
+   * ("INJ FLOW" text tile) — so a regression on exactly these two issues' own captions is
+   * named in the failure, not folded into an aggregate count. */
+  PIN_IDS.forEach(function (id) {
+    var tile = document.querySelector('[data-item="' + id + '"]');
+    if (!tile) { out.pins[id] = { missing: true }; return; }
+    var ro = tile.querySelector('.bd-ro-label, .bd-ro-read');
+    if (ro) {
+      // readout kind: it carries its OWN authored width, so the nowrap technique applies
+      // directly to the readout's own box.
+      var els = tile.querySelectorAll('.bd-ro-label, .bd-ro-read');
+      var worstDw = 0, txt = '';
+      for (var k = 0; k < els.length; k++) {
+        var e = els[k];
+        var d = e.scrollWidth - e.clientWidth;
+        if (d > worstDw) worstDw = d;
+        txt += (e.textContent || '') + ' ';
+      }
+      out.pins[id] = { kind: 'readout', text: txt.trim(), dw: worstDw, ok: worstDw <= TOL };
+    } else {
+      // text kind: no authored width of its own — check against the ENCLOSING CARD (#700's
+      // own "80px column" is this card's right edge, not the caption tile's, which has none).
+      var textEl = tile.firstElementChild;
+      var tn = textEl && textEl.firstChild;
+      var label = tn && tn.nodeType === 3 ? tn.nodeValue.trim() : '?';
+      var r = checkBdText(tile);
+      out.pins[id] = { kind: 'text', text: label, hasPanel: r.hasPanel, over: r.over,
+        rightEdge: r.rightEdge, panelRight: r.panelRight, ok: r.hasPanel && r.over <= TOL };
+    }
+  });
+
+  return out;
+}
+
+var CAPTION_PIN_IDS = ['ims3xtrobbq', 'bdRhrCooldownRate', 'ims3w19984s'];
+
+function ckCaptionSweep(tag, res, floor) {
+  ck(tag + ': nowrap caption/readout population is sane (>= ' + floor.nowrap + ')',
+    res.nowrapCount >= floor.nowrap, res.nowrapCount + ' nowrap/pre elements carrying their own text');
+  // #713 pass 3: the floor above is satisfied by up to a third of its population without a
+  // single TESTABLE element among them (clientWidth is spec-zero for inline elements — see
+  // the note beside `nowrapTestable`'s increment). Floor the testable subset too, or a
+  // selector regression that drops real coverage while the inert third holds steady would
+  // still clear `floor.nowrap` and report green.
+  ck(tag + ': nowrap TESTABLE population is sane (>= ' + floor.nowrapTestable + ')',
+    res.nowrapTestable >= floor.nowrapTestable,
+    res.nowrapTestable + ' of ' + res.nowrapCount + ' nowrap elements have clientWidth > 0 ' +
+    '(the rest are inline elements this check cannot fail on, by spec)');
+  ck(tag + ': no nowrap caption/readout overflows its box (#712)',
+    res.nowrapFails.length === 0,
+    res.nowrapFails.length + ' over: ' + JSON.stringify(res.nowrapFails.slice(0, 5)));
+  if (floor.text != null) {
+    ck(tag + ': board .bd-text caption population is sane (>= ' + floor.text + ')',
+      res.textCount >= floor.text, res.textCount + ' .bd-text tiles');
+    ck(tag + ': no .bd-text caption escapes its enclosing card (#700/#712)',
+      res.textFails.length === 0,
+      res.textFails.length + ' over: ' + JSON.stringify(res.textFails.slice(0, 5)));
+  }
+  CAPTION_PIN_IDS.forEach(function (id) {
+    var p = res.pins[id];
+    if (!p) return; // pin not requested in this sweep call
+    ck(tag + ': ' + id + ' ("' + (p.text || '?') + '") fits its box (#700/#705, #712)',
+      !p.missing && p.ok,
+      p.missing ? 'tile not found' : JSON.stringify(p));
+  });
 }
 
 (async function () {
@@ -207,6 +445,10 @@ function ck(name, ok, detail) {
       after.vesselInside,
       'vessel ' + JSON.stringify(after.vessel) + ' vs wrap ' + JSON.stringify(after.wrapRect));
 
+    /* ────────── PART 3 (#712): caption/readout text overflow, default tab ────────── */
+    var capDefault = await page.evaluate(sweepCaptions, { TOL: 1, PIN_IDS: CAPTION_PIN_IDS });
+    ckCaptionSweep(tag + ' [default tab]', capDefault, { nowrap: 130, nowrapTestable: 90, text: 35 });
+
     /* ────────────────────── #723 sibling 1: .scanline-body ────────────────────── */
     var scan = await page.evaluate(function () {
       var el = document.querySelector('.scanline-body');
@@ -276,6 +518,10 @@ function ck(name, ok, detail) {
         instr.forced.client + '/' + instr.forced.scroll);
     }
 
+    /* ────────── PART 3 (#712): caption/readout text overflow, Instructor tab ────────── */
+    var capInstr = await page.evaluate(sweepCaptions, { TOL: 1, PIN_IDS: CAPTION_PIN_IDS });
+    ckCaptionSweep(tag + ' [instructor tab]', capInstr, { nowrap: 130, nowrapTestable: 90, text: null });
+
     /* ─────────────── #723 sibling 2b: .tab-body.ckl-mode (Walkthroughs tab) ─────────────── */
     await page.evaluate(function () {
       var btn = document.querySelector('[data-tab="checklists"]');
@@ -304,6 +550,10 @@ function ck(name, ok, detail) {
         'scrollTop read back ' + ckl.forcedClamp + ' after forcing client/scroll = ' +
         ckl.forced.client + '/' + ckl.forced.scroll);
     }
+
+    /* ────────── PART 3 (#712): caption/readout text overflow, Walkthroughs tab ────────── */
+    var capCkl = await page.evaluate(sweepCaptions, { TOL: 1, PIN_IDS: CAPTION_PIN_IDS });
+    ckCaptionSweep(tag + ' [checklists tab]', capCkl, { nowrap: 130, nowrapTestable: 90, text: null });
 
     await ctx.close();
   }
