@@ -3238,9 +3238,15 @@ async function testOneOverMDockedGeometry(page) {
     var btnOverflow = Array.prototype.map.call(document.querySelectorAll('.oom-foot .btn'), function (b) {
       return { text: b.textContent, over: b.scrollWidth > b.clientWidth + 1 };
     });
+    var svgEl = document.querySelector('.oom-svg');
     return {
       docked: !!document.querySelector('.oom-win.oom-docked'),
       svg: rect('.oom-svg'),
+      /* The plotted-DATA rectangle, in CSS px: .oom-frame is the rect render() draws at
+       * (L, T, W-L-R, H-T-B), so measuring it measures the letterbox and the axis gutters
+       * together, in the one number the owner actually sees. */
+      frame: rect('.oom-frame'),
+      viewBox: svgEl ? svgEl.getAttribute('viewBox') : null,
       pred: overflowOf('#oomPred'),
       win: overflowOf('.oom-win.oom-docked'),
       btnOverflow: btnOverflow,
@@ -3271,6 +3277,142 @@ async function testOneOverMDockedGeometry(page) {
       'height — expected >= 160px (measured 177px after #713; ~141px before it)');
   }
   log.push('no overflow in the docked 1/M panel; plot height ' + Math.round(geo.svg.h) + 'px >= 160px floor');
+
+  /* PASS 2 (#713). Two things pass 1 left on the table, and one invariant each.
+   *
+   * (a) THE LETTERBOX. The docked svg is stretched into a grid cell whose aspect ratio is the
+   * dock's and the row height's, and preserveAspectRatio then pads whatever the viewBox does
+   * not match: 33.2px of dead width at the default row height before this, and the waste SWAPS
+   * AXIS as the operator drags (96.5px of dead HEIGHT at --bottomrow-h 350px). So the viewBox
+   * now follows the cell (one_over_m.js syncViewBox) and the assertion is on the waste itself,
+   * not on a width — a width floor would have passed happily on a box whose gain went into a
+   * taller letterbox instead. Measured after: 0.2px x 0.0px. 24px is a long way below the
+   * 33.2px this replaces and a long way above rounding. */
+  /* Absence is a RED here, not a skip. Both assertions below read elements render() draws, so
+   * "no .oom-frame" and "no viewBox" are exactly the states in which a guarded `if` would have
+   * reported a clean pass over nothing. */
+  var vb = (geo.viewBox || '').trim().split(/\s+/).map(Number);
+  if (!geo.svg || vb.length !== 4 || !vb.every(isFinite)) {
+    throw new Error('#713 pass 2: the docked 1/M svg has no usable viewBox (' + geo.viewBox + ') — ' +
+      'the letterbox check cannot run, which is not the same as passing.');
+  }
+  if (!geo.frame || !(geo.frame.w > 0)) {
+    throw new Error('#713 pass 2: .oom-frame (the plotted-data rectangle render() draws) is absent or ' +
+      'zero-width — the geometry checks below have nothing to measure. render() is not drawing.');
+  }
+  {
+    var scale = Math.min(geo.svg.w / vb[2], geo.svg.h / vb[3]);
+    var waste = { x: geo.svg.w - vb[2] * scale, y: geo.svg.h - vb[3] * scale };
+    if (waste.x > 24 || waste.y > 24) {
+      throw new Error('#713 pass 2: the docked 1/M plot is letterboxed inside its own box — ' +
+        Math.round(waste.x) + 'px of dead width and ' + Math.round(waste.y) + 'px of dead height ' +
+        '(svg box ' + Math.round(geo.svg.w) + 'x' + Math.round(geo.svg.h) + ', viewBox ' + geo.viewBox +
+        '). The viewBox must follow the cell aspect; ceiling 24px, measured 0.2x0.0 after the fix ' +
+        'and 33.2x0.0 before it.');
+    }
+    log.push('letterbox waste ' + waste.x.toFixed(1) + 'x' + waste.y.toFixed(1) + 'px (ceiling 24)');
+  }
+
+  /* (b) THE AXIS GUTTERS. L/R/T/B are viewBox units reserved for the tick and axis text and
+   * were 15.3% of the width. .oom-frame is the rectangle the data is actually drawn in, so it
+   * is the one measurement neither failure fools: a wider box whose gain went to the
+   * letterbox, or a filled box whose gain went to margins. 291px measured after, 212px after
+   * pass 1; the 250px floor sits between them with room for ordinary tuning. */
+  if (geo.frame.w < 250) {
+    throw new Error('#713 pass 2: the docked 1/M plot draws its data in only ' + Math.round(geo.frame.w) +
+      'px of width at the default row height — expected >= 250px (measured 291px after #713 pass 2; ' +
+      '212px after pass 1). Check the letterbox AND the L/R gutters in one_over_m.js.');
+  }
+  log.push('plotted data rect ' + Math.round(geo.frame.w) + 'x' + Math.round(geo.frame.h) + 'px (width floor 250)');
+
+  /* (c) THE ALARM PANEL UNDER LOAD. Pass 2 takes width back off this panel and hands it to the
+   * plot, which is only safe if the panel still renders every tile at a real alarm load — and
+   * pass 1's numbers were all taken on a plant showing "— no active alarms —", which is not a
+   * state anyone operates in. So: raise them for real (a large LOCA through the app's own
+   * ?inject= path; 18 tiles when this was written), then push EVERY label the registry can
+   * produce through a live tile and check it fits the column the layout gives it.
+   *
+   * Reading the labels off RD.PWR_PROTECTION.alarms rather than listing them here is the point.
+   * A hand-maintained list of "the long ones" is a gate that tests the list, and it goes
+   * quietly stale the first time someone writes a longer alarm. The binding string when this
+   * landed was "Overtemperature Limit Approaching" at 179.3px of min-content, against the
+   * 184px track minimum in ui/shell.css. */
+  await page.goto(url + '&inject=large_loca&ff=300&run=1', { waitUntil: 'networkidle', timeout: 90000 });
+  await dismissMission(page);
+  await waitBoardLive(page, 20000);
+  /* RE-OPEN THE DOCK. The navigation resets it, and without it the alarm panel gets the 1/M
+   * dock's width too — measured 652px against the 392px it actually lives at, which is a check
+   * of a layout no player sees and the one this pass narrowed. */
+  await page.evaluate(function () { if (window.RD && RD.OneOverM) RD.OneOverM.open(); });
+  await page.waitForFunction(function () {
+    return document.querySelectorAll('.alarm-tile').length >= 8 &&
+      !!document.querySelector('.oom-win.oom-docked');
+  }, { timeout: 20000, polling: 200 }).catch(function () { /* the throws below carry the state */ });
+  if (!(await page.evaluate(function () { return !!document.querySelector('.oom-win.oom-docked'); }))) {
+    throw new Error('#713 pass 2: the 1/M panel did not re-dock on the alarms-active leg — the alarm ' +
+      'panel width measured below is not the one the player gets.');
+  }
+
+  var al = await page.evaluate(function () {
+    var tiles = document.querySelectorAll('.alarm-tile');
+    if (!tiles.length) return { n: 0 };
+    var defs = (window.RD && RD.PWR_PROTECTION && RD.PWR_PROTECTION.alarms) || [];
+    var labels = [];
+    defs.forEach(function (d) {
+      if (d.label_learning) labels.push(d.label_learning);
+      if (d.label_industry) labels.push(d.label_industry);
+    });
+    function over(el) { return el ? el.scrollWidth - el.clientWidth : 0; }
+    var organic = [];
+    Array.prototype.forEach.call(tiles, function (t) {
+      var d = Math.max(over(t), over(t.querySelector('.label')), over(t.querySelector('.meta')));
+      if (d > 1) organic.push({ txt: (t.querySelector('.label') || {}).textContent, d: d });
+    });
+    var t0 = tiles[0], lab0 = t0.querySelector('.label');
+    var keep = lab0 ? lab0.textContent : null;
+    var worst = { d: -1, txt: '' }, widest = 0;
+    if (lab0) {
+      labels.forEach(function (str) {
+        lab0.textContent = str;
+        void t0.offsetWidth;
+        var d = Math.max(over(t0), over(lab0));
+        if (t0.scrollWidth > widest) widest = t0.scrollWidth;
+        if (d > worst.d) worst = { d: d, txt: str };
+      });
+      lab0.textContent = keep;
+    }
+    var stack = document.querySelector('.alarm-stack'), panel = document.querySelector('.alarm-panel');
+    return {
+      n: tiles.length, nLabels: labels.length, organic: organic, worst: worst, widestTile: widest,
+      tileW: Math.round(t0.getBoundingClientRect().width),
+      panelW: Math.round(panel.getBoundingClientRect().width),
+      stackOver: over(stack), panelOver: over(panel),
+    };
+  });
+
+  /* A count guard, because everything below it is vacuously green on a quiet board — the
+   * "assert an absence and pin a non-event" trap. 18 tiles when written; 8 is the floor. */
+  if (!al.n || al.n < 8) {
+    throw new Error('#713 pass 2: the alarm-load check ran against ' + (al.n || 0) + ' alarm tiles — ' +
+      'the large-LOCA injection is meant to raise >= 8 (18 when this was written). The check is ' +
+      'vacuous until that is fixed; it is not evidence the panel fits its content.');
+  }
+  if (al.organic.length) {
+    throw new Error('#713 pass 2: ' + al.organic.length + ' of ' + al.n + ' live alarm tiles overflow their ' +
+      'box at a ' + al.panelW + 'px alarm panel — worst "' + al.organic[0].txt + '" by ' + al.organic[0].d + 'px');
+  }
+  if (al.worst.d > 1) {
+    throw new Error('#713 pass 2: alarm label "' + al.worst.txt + '" overflows its tile by ' + al.worst.d +
+      'px at a ' + al.panelW + 'px alarm panel (' + al.tileW + 'px columns). Either the panel gave up too ' +
+      'much width to the 1/M dock, or the .alarm-stack track minimum is below this label min-content.');
+  }
+  if (al.stackOver > 1 || al.panelOver > 1) {
+    throw new Error('#713 pass 2: the alarm panel overflows HORIZONTALLY with ' + al.n + ' alarms up ' +
+      '(stack +' + al.stackOver + 'px, panel +' + al.panelOver + 'px) at ' + al.panelW + 'px wide — the ' +
+      'two-column stack is meant to fall back to one column, not scroll sideways.');
+  }
+  log.push(al.n + ' live alarms, ' + al.nLabels + ' registry labels swept through a tile: none overflow at a ' +
+    al.panelW + 'px panel (' + al.tileW + 'px columns, widest label ' + al.widestTile + 'px)');
   return log.join('\n') + '\n';
 }
 

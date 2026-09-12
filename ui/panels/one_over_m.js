@@ -61,10 +61,102 @@
   var maxSteps = 912;        // control-group full-withdrawal steps (for the steps axis; self-updates from the snapshot on plot)
   var lastPlant = null, lastCaptureT = null;
 
-  // Plot geometry (viewBox units).
-  var W = 340, H = 240, L = 40, R = 12, T = 14, B = 30;
+  /* Plot geometry (viewBox units).
+   *
+   * THE GUTTERS ARE MEASURED, NOT GUESSED (#713 pass 2). L/R/T/B are the margins the axis
+   * ticks and labels live in, and they were costing 15.3 % of the width and 18.3 % of the
+   * height. getBBox() of every text node the plot emits (scratchpad probe, Chromium, viewBox
+   * units) says what each one actually needs:
+   *   R — the last x tick ("912") is CENTRED on px(1.0) and its bbox ended at 335.58 of 340,
+   *       i.e. 4.4 spare. Half the tick's 14.05-unit width plus a hair -> 9.
+   *   L — the rotated y-axis label occupies x 0.51..12.71 after its rotate(-90 10 y) (that
+   *       span is the text's HEIGHT, so it cannot be moved left: x >= 9.49 or it clips), and
+   *       the y ticks ("0.25") are 17.14 wide ending at L-2.9. 12.71 + 17.14 + 2.9 + a 2-unit
+   *       gap -> 35.
+   *   T — NOTHING is drawn above the frame; the topmost text was the "1.00" tick at y 26.68,
+   *       inside it. T was pure margin -> 4 (a point at the 1.1 ceiling has r=3.2).
+   *   B — the x ticks and the "rod position" label stack under the frame. Pulling the tick
+   *       baseline to H-B+10 and the label to H-3 (bbox bottom H-0.29) leaves >=1 unit of
+   *       clearance at every seam at B=25.
+   * Net: the plotted-data rectangle goes from 84.7 % x 81.7 % of the viewBox to 87.5 % x 87.9 %.
+   *
+   * W IS ADAPTIVE WHEN DOCKED — see syncViewBox(). H stays 240 so the rendered TEXT SIZE does
+   * not move (the docked cell is height-bound, so the scale factor is cellH/H either way). */
+  var W_BASE = 340, H = 240, L = 35, R = 9, T = 4, B = 25;
+  var W = W_BASE;
+  /* Aspect clamp for the adaptive viewBox. The low end is where the x-axis label (120.68
+   * units wide, measured) stops fitting the plot area: 0.80 -> W 192 -> 148 units of plot.
+   * The high end covers the 150px --bottomrow-h floor, where the cell measures 324 x 97 (3.34)
+   * and a tighter clamp would put back the letterbox this exists to remove. */
+  var AR_MIN = 0.80, AR_MAX = 3.60;
   function px(x) { return L + x * (W - L - R); }               // x: 0..1 fraction withdrawn
   function py(y) { return T + (1.1 - y) / 1.1 * (H - T - B); } // y: 0..1.1 (C0/C)
+
+  /* THE LETTERBOX (#713 pass 2). The docked form puts the svg in a CSS grid cell and stretches
+   * it (width/height 100%), so the cell's aspect ratio is the ROW HEIGHT's and the dock's — it
+   * has nothing to do with the viewBox's. With the default preserveAspectRatio ("xMidYMid
+   * meet") the browser then fits a 340x240 (1.417) drawing into whatever shape that is and
+   * pads the rest: measured 33.2px of dead width at the default --bottomrow-h of 230px, and
+   * 96.5px of dead HEIGHT at 350px — the binding dimension FLIPS as the operator drags. That
+   * is also why pass 1's extra dock width did not all reach the plot, and why simply widening
+   * the dock again would not either.
+   *
+   * So the viewBox follows the cell instead: H fixed, W = H x the cell's aspect. Then "meet"
+   * has nothing to letterbox and the drawing fills the box at every row height.
+   *
+   * DO NOT MEASURE THE SVG'S OWN BOX — THAT ONE REALLY DOES FEED BACK. The first cut of this
+   * read svg.clientWidth/clientHeight, on the reasoning that a viewBox cannot change the box
+   * the CSS grid gives it. True only while that box is DEFINITE. At --bottomrow-h 150px the
+   * dock's content is taller than the dock (head + msg + plot = 205px in a 148px box), so the
+   * `1fr` svg track stops resolving to a length and content-sizes instead — and an svg with
+   * `height:100%` against an indefinite height falls back to its INTRINSIC size, which is the
+   * viewBox aspect. W then determines the measurement that determines W: every value is a
+   * fixed point, and it froze wherever it happened to drift. Measured at row-150: viewBox
+   * 748x240 for a cell whose real aspect was 2.105.
+   *
+   * So it measures the DOCK, whose width is its flex-basis and whose height is the row's, both
+   * definite at every row height, and subtracts the sibling tracks (the button column, the
+   * head/msg/help rows) — all of them ordinary boxes whose size owes nothing to the viewBox.
+   * A side effect worth having: the plot is now sized to the space that EXISTS at the 150px
+   * floor rather than overflowing the dock into a scrollbar, which is what it did before.
+   *
+   * No observer is added; render() already runs on open/plot/clear, and the one new trigger is
+   * the `resize` event the splitter drag ALREADY dispatches (pwr_board.js beginDrag /
+   * resetSplit).
+   *
+   * FLOATING KEEPS W_BASE, deliberately. That window has `width:100%` and no height, so its
+   * height is DERIVED from the viewBox aspect — there is no letterbox there to remove, and
+   * adapting to a box the viewBox itself sizes is the circularity above by construction. */
+  function syncViewBox() {
+    var w = W_BASE;
+    /* EVERY DOM READ HERE IS OPTIONAL. run_oneoverm.js drives this module through a hand-rolled
+     * fake DOM with no classList and no layout at all (that is the point of it — the panel must
+     * not need a browser to be testable), so a bare `win.classList.contains` threw and took the
+     * whole gate down. Layout is a browser-only refinement: without it, W stays where it was. */
+    var docked = !!(win && win.classList && typeof win.classList.contains === 'function' &&
+      win.classList.contains('oom-docked'));
+    if (docked && !win.hidden && svg) {
+      var foot = win.querySelector('.oom-foot');
+      var head = win.querySelector('.oom-head');
+      var msg = win.querySelector('.oom-msg');
+      var help = win.querySelector('.oom-help');
+      function boxW(el) { return el && isFinite(el.offsetWidth) ? el.offsetWidth : 0; }
+      function boxH(el) { return el && isFinite(el.offsetHeight) ? el.offsetHeight : 0; }
+      var cw = (isFinite(win.clientWidth) ? win.clientWidth : 0) - boxW(foot);
+      var ch = (isFinite(win.clientHeight) ? win.clientHeight : 0) - boxH(head) - boxH(msg) -
+        (help && !help.hidden ? boxH(help) : 0);
+      if (cw > 0 && ch > 0) {
+        var ar = Math.max(AR_MIN, Math.min(AR_MAX, cw / Math.max(60, ch)));
+        w = Math.round(H * ar);
+      } else {
+        w = W;          // not laid out yet — keep what we had rather than snapping to W_BASE
+      }
+    }
+    W = w;
+    if (svg && svg.getAttribute('viewBox') !== '0 0 ' + W + ' ' + H) {
+      svg.setAttribute('viewBox', '0 0 ' + W + ' ' + H);
+    }
+  }
 
   function controlGroup(s) {
     var gs = (s.control_state && s.control_state.rod_groups) || [];
@@ -117,12 +209,13 @@
   // ------------------------------------------------------------------ render
   function render() {
     if (!svg) return;
+    syncViewBox();          // W may move with the docked cell's aspect — do it before px()
     var h = '';
     // frame + gridlines
     h += '<rect x="' + L + '" y="' + T + '" width="' + (W - L - R) + '" height="' + (H - T - B) + '" class="oom-frame"/>';
     [0.25, 0.5, 0.75, 1.0].forEach(function (g) {
       h += '<line x1="' + px(g) + '" y1="' + T + '" x2="' + px(g) + '" y2="' + (H - B) + '" class="oom-grid"/>';
-      h += '<text x="' + px(g) + '" y="' + (H - B + 12) + '" class="oom-tick" text-anchor="middle">' + Math.round(g * maxSteps) + '</text>';
+      h += '<text x="' + px(g) + '" y="' + (H - B + 10) + '" class="oom-tick" text-anchor="middle">' + Math.round(g * maxSteps) + '</text>';
     });
     [0.25, 0.5, 0.75, 1.0].forEach(function (g) {
       h += '<line x1="' + L + '" y1="' + py(g) + '" x2="' + (W - R) + '" y2="' + py(g) + '" class="oom-grid"/>';
@@ -132,7 +225,7 @@
     h += '<line x1="' + L + '" y1="' + py(0) + '" x2="' + (W - R) + '" y2="' + py(0) + '" class="oom-zero"/>';
     h += '<text x="' + (L - 4) + '" y="' + (py(0) + 3) + '" class="oom-tick" text-anchor="end">0</text>';
     // axis labels
-    h += '<text x="' + ((L + W - R) / 2) + '" y="' + (H - 4) + '" class="oom-lab" text-anchor="middle">rod position (steps withdrawn)</text>';
+    h += '<text x="' + ((L + W - R) / 2) + '" y="' + (H - 3) + '" class="oom-lab" text-anchor="middle">rod position (steps withdrawn)</text>';
     h += '<text x="10" y="' + ((T + H - B) / 2) + '" class="oom-lab" text-anchor="middle" transform="rotate(-90 10 ' + ((T + H - B) / 2) + ')">1/M  (C₀/C)</text>';
 
     // fit line, extrapolated to y=0
@@ -269,6 +362,22 @@
     svg = win.querySelector('svg');
     msgEl = win.querySelector('#oomMsg');
     makeDraggable(win, win.querySelector('.oom-head'));
+    /* Re-fit the viewBox when the docked cell changes shape (#713 pass 2). NOT a
+     * ResizeObserver: `resize` is the event pwr_board.js's splitter drag already dispatches
+     * on every pointermove and on a double-click reset (beginDrag/resetSplit), which is
+     * exactly when --bottomrow-h moves; a real window resize fires it too. Coalesced onto one
+     * animation frame so a drag redraws ~20 svg nodes once per frame rather than per event,
+     * and skipped entirely when the panel is closed. render() dispatches nothing, so this
+     * cannot re-enter. It runs for the FLOATING window too — not because that one letterboxes
+     * (it cannot), but so a window that was docked and is no longer gets W_BASE back rather
+     * than keeping the last cell's aspect. */
+    var rafPending = 0;
+    if (typeof window.addEventListener === 'function' && typeof requestAnimationFrame === 'function') {
+      window.addEventListener('resize', function () {
+        if (rafPending || !win || win.hidden) return;
+        rafPending = requestAnimationFrame(function () { rafPending = 0; render(); });
+      });
+    }
     win.addEventListener('click', function (e) {
       var b = e.target.closest('[data-oom]');
       if (!b) return;

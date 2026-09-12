@@ -29,6 +29,132 @@ and the user-visible summary in `CHANGELOG.md`. This file points at those and tr
 
 ---
 
+## Session log — 2026-09-12-workbench-d (#713 pass 2 — the 1/M plot's own letterbox, and the width the alarm panel does not use)
+
+Pass 1 (`-c` below, commit `15f0414f`) widened the dock 300 -> 380px and moved the buttons beside
+the plot. Two things it did not do, both measured here before anything moved.
+
+**(1) The 50px pass 1 gave the ALARM panel was never measured against the alarm panel's content.**
+Its numbers were all taken on a board showing "— no active alarms —". Raised 18 alarms for real
+(a large LOCA through the app's own `?inject=` path, `ff=300`; station blackout raises 9, SGTR 13),
+then swept the panel's width in 2px steps with the registry's widest label forced into every tile:
+
+- the two-column stack's per-column **min-content is 179.3px**; `"Overtemperature Limit
+  Approaching"` is the binding string, not any of the 69-character ones (a long label WRAPS — what
+  cannot wrap is the longest WORD).
+- so the panel's content floor is `2 x 179.3 + 5 gap + 12 stack padding + 2 border` = **377.7px**,
+  against **421.7px** at a 1500x950 viewport. **43.7px of genuine slack.**
+- and `grid-template-columns: 1fr 1fr` is `minmax(auto, 1fr)`: below that floor the columns could
+  not shrink, so the stack **OVERFLOWED SIDEWAYS** rather than reflowing — scrollWidth pinned at
+  376px against a falling clientWidth, at every width from 376px down. **That already bit at a
+  1250px viewport (panel 267.8px) before this pass took anything**, and nothing caught it.
+
+**(2) There is a letterbox INSIDE the plot's own box, and the axis gutters are a second one.**
+`.oom-docked .oom-svg` is `width/height: 100%` of a CSS grid cell, so the cell's aspect ratio is
+the dock's and `--bottomrow-h`'s; the viewBox was a fixed 340x240 (1.417) and `xMidYMid meet` pads
+the difference. Measured: **33.2px of dead WIDTH at the default 230px row height, and 96.5px of
+dead HEIGHT at 350px** — the binding dimension FLIPS as the operator drags. Widening the dock
+again would have made the dead width wider, not the plot bigger. Separately, `getBBox()` on every
+text node says L/R/T/B (40/12/14/30) reserved 15.3% of the width and 18.3% of the height, of which
+**T was pure margin — nothing is drawn above the frame at all.**
+
+**Fix.**
+- `ui/panels/one_over_m.js` — `syncViewBox()`: H fixed at 240 (so the rendered text size does not
+  move), **W = 240 x the cell's aspect**, clamped 0.80-3.60. Gutters trimmed to the measurement:
+  L 40->35, R 12->9, T 14->4, B 30->25, with the x-tick baseline at `H-B+10` and the axis label at
+  `H-3`. Docked only — the floating window's height is DERIVED from the viewBox aspect, so it has
+  no letterbox to remove and adapting there is circular; it keeps 340x240.
+- `ui/shell.css` — dock `flex: 0 0 380px -> 420px` (pinned back to 380px inside the <=1200px
+  media query, where the row is a COLUMN and that basis is a HEIGHT); alarm panel grow
+  `1.6 -> 1.55`; `.alarm-stack` -> `repeat(auto-fill, minmax(max(184px, calc(50% - 2.5px)), 1fr))`;
+  the dock's svg row `1fr` -> `minmax(0, 1fr)`.
+
+**THE TRAP, and it cost a rebuild: DO NOT MEASURE THE SVG'S OWN BOX.** The first cut read
+`svg.clientWidth/clientHeight`, on the reasoning that a viewBox cannot change the box a CSS grid
+gives an element — true only while that box is DEFINITE. At the 150px row floor the dock's content
+was taller than the dock (205px of content in a 148px box), so the `1fr` svg track stopped
+resolving to a length and content-sized instead, and an svg with `height:100%` against an
+indefinite height **falls back to its intrinsic size, which is the viewBox aspect**. W then set the
+measurement that set W: every value is a fixed point and it froze wherever it drifted — observed
+**viewBox 748x240 for a cell whose real aspect was 2.105**. It now measures the DOCK (definite
+width from its flex-basis, definite height from the row) minus the sibling tracks. `minmax(0, 1fr)`
+on that row is the other half: it lets the plot be sized to the space that EXISTS at the 150px
+floor instead of overflowing into a scrollbar (dock scrollHeight 205 -> 183 in a 148px box).
+
+**Third trap: `run_oneoverm.js` drives this module through a HAND-ROLLED FAKE DOM, on purpose** —
+the panel is meant to be testable without a browser, so its stub has no `classList`, no layout and
+a `querySelector` that hands back a fresh element for any selector. A bare
+`win.classList.contains('oom-docked')` threw and took all 19 checks down with it. Every DOM read in
+`syncViewBox()` is now optional (`isFinite` on each offset, a typed check on `classList`), and the
+`resize` listener only registers where `requestAnimationFrame` exists. **A UI module with a Node
+gate has two DOMs, and the poorer one is the one that reddens.**
+
+**Second trap: the flex-grow ratio is NOT the observed split.** These boxes are content-box, so
+`flex-basis: 0` sizes the CONTENT box and the strip chart's 18px of border+padding rides on top
+against the alarm panel's 2px. 1.6 measured as 1.50, 1.4 as 1.32. Solve on the content boxes or
+the panel lands ~10px below where you aimed — which is how the first attempt at 1.4 put the alarm
+panel at 376.5px, 1.2px under its floor, silently dropping the stack to ONE column.
+
+**Measured, pass 1 -> pass 2** (headless Chromium, 1500x950, `--bottomrow-h` 230px, pwr2. Pass 1's
+own commit message quotes a 1600x1000 viewport; these are both re-measured at the gate's 1500):
+
+| | pass 1 | pass 2 |
+|---|---|---|
+| dock width | 380 | **420** |
+| `.oom-svg` box | 284 x 177 | **324 x 177** |
+| viewBox (aspect) | 340x240 (1.417) | **439x240 (1.829)** — cell is 1.831 |
+| letterbox waste | **33.2 x 0.0** | **0.2 x 0.0** |
+| rendered plot | 250.8 x 177 | 323.8 x 177 |
+| plotted data rect (`.oom-frame`) | 212.4 x 144.5 | **291.3 x 155.6** (+37.1% W, +7.7% H, **+47.7% area**) |
+| strip chart | 280.3 | 269.8 |
+| alarm panel | 421.7 | **392.2** (floor 377.7; two columns down to 387) |
+
+**Other states** (same pass): **row 150px** — svg box 324x97, viewBox 802x240, letterbox 0, plotted
+306.2x85.2 (was 184.7x125.7 in a box that overflowed the dock by 57px); **row 350px** — viewBox
+262x240, letterbox 0.2 vertical, plotted 269.6x260.9 (was 240.6x163.7, with 96.5px of dead height);
+**1250px viewport** — plot unchanged, alarm panel 240.3 and now ONE column instead of overflowing;
+**1100/860px (stacked)** — dock still 356x380, plotted 200.4x285.7 (was 220.2x149.9, +73% area);
+**1920x1080** — alarm panel 566.1, still TWO columns (the `calc(50% - 2.5px)` half of the `max()`
+is what stops `auto-fill` finding room for a third); **floating window** — unchanged box
+(356x338.9, svg 354x249.9), viewBox back to 340x240, plotted 299.8x204.1 -> 308.2x219.7 from the
+gutter trim alone. Alarms active at 18/13/9 tiles: zero overflowing tiles, two columns, the stack
+scrolls vertically (scrollHeight 1020 against 191) as it already did.
+
+**Gate.** `testOneOverMDockedGeometry` in `test/verify_e2e_ui.js` EXTENDED (not a second
+function), four new assertions:
+1. **letterbox waste <= 24px** on both axes — deliberately the waste, not a width: a width floor
+   passes happily on a box whose gain went into a taller letterbox instead.
+2. **plotted data rect (`.oom-frame`) >= 250px wide** — the one number neither failure fools.
+3. **alarms active**: navigate again with the LOCA injected, RE-OPEN the dock (the first cut
+   forgot, and measured the alarm panel at 652px — the width it has when the 1/M dock is closed,
+   i.e. a layout this pass does not narrow), then push **every** `label_learning` /
+   `label_industry` in `RD.PWR_PROTECTION.alarms` (98 strings) through a live tile and assert none
+   overflows. Read off the registry, never a hand-listed "the long ones" — that is a gate that
+   tests the list.
+4. a **count guard** (>= 8 tiles), because 1-3 are vacuously green on a quiet board.
+
+**Proven red by injection, one at a time, then restored:** pass-1 `one_over_m.js` under pass-2 CSS
+-> letterbox fires at 73px; full pass-1 tree with the letterbox ceiling temporarily at 999 ->
+plotted-width floor fires at 212px; `.alarm-stack` -> `minmax(120px, 1fr)` -> 18 of 18 tiles
+overflow, worst by 48px; `1fr 1fr` plus alarm grow 0.6 -> horizontal stack overflow +116px at a
+243px panel; the `inject=large_loca` dropped from the URL -> count guard fires at 0 tiles.
+
+**Gates.** `verify_e2e_ui` PASS · `verify_flags_ui` 52/52 · `verify_board_check` 256 checks, 0
+failures · `run_style` 11/11 · `run_oneoverm` 19/19. **`node test/run_all.js`: AGGREGATE GATE OK, 111 runners at
+baseline** (`run_ops` 59/70 is the tracked, ruled red, unchanged). The hollow-check guard added to
+the new assertions AFTER that run is a test-file-only change; `verify_e2e_ui` was re-run standalone
+and is PASS. Screenshots (scratchpad,
+`713/`): `pass1-default.png` / `pass2-default.png`, `pass1-alarms-loca.png` /
+`pass2-alarms-loca.png`, plus `-floating` and `-vp1100` pairs.
+
+**Still open, not fixed here:** at the 150px row floor the BUTTON column (3 stacked buttons plus
+the prediction readout, ~150px of content) still does not fit — the dock's scrollHeight is 183 in
+a 148px box. Pre-existing, and smaller than pass 1's 205; not this issue's subject.
+
+Filed on **#713**. Lane: `workbench`, **UNMERGED**.
+
+---
+
 ## Session log — 2026-09-12-workbench-c (#713 — 1/M startup plot too small docked beside the alarm panel)
 
 **Owner, verbatim (live play):** "also, the 1/m plot is too small when next to the alarm panel.
