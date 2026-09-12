@@ -1304,6 +1304,41 @@ async function testMainMenuButton(page) {
     throw new Error('#689: Main Menu is in DOM order but not painted beside Settings — same row: ' +
       row.sameRow + ', gap: ' + row.leftOfMe + ' px');
   }
+  /* THE WHOLE ROW MUST BE ONE LINE, not just Main Menu's half of it (quality pass, 2026-09-11).
+   * #689 tightened .sim-tools to fit six controls in 338 px with 19 px of headroom and its comment
+   * promises that "a seventh named tool wraps it again, and verify_e2e_ui's testMainMenuButton reds
+   * on the PAINTED row and gap rather than letting it go quiet."
+   *
+   * IT DID NOT. PROVED by injection: adding a seventh `.btn.text-btn` to the row took .sim-tools
+   * from 27 px to 55 px on TWO lines — [manual, help, feedback, settings, mainMenu] at y 45 and
+   * [the new tool, demoBtn] at y 75 — and this check stayed GREEN. `flex-wrap` pushes the OVERFLOW
+   * to the end, and Main Menu is fifth of six, so the two assertions above (same row as Settings,
+   * 4 px gap) are both still satisfied while the ⛶ board-focus toggle silently drops below the row
+   * it is supposed to end. The measurement nobody had taken is the one the comment described.
+   *
+   * The row's painted height against its tallest child is the claim, and it reds for whichever
+   * control wraps. Measured one-line: 27 px row, 27 px tallest child. */
+  var wrap = await page.evaluate(function () {
+    var t = document.querySelector('.sim-tools');
+    var kids = Array.prototype.slice.call(t.children);
+    var tallest = 0, lines = {};
+    kids.forEach(function (k) {
+      var r = k.getBoundingClientRect();
+      if (r.height > tallest) tallest = r.height;
+      var band = Math.round(r.top / 5) * 5;
+      (lines[band] = lines[band] || []).push(k.id || k.tagName.toLowerCase());
+    });
+    return { rowH: Math.round(t.getBoundingClientRect().height), tallest: Math.round(tallest),
+             nLines: Object.keys(lines).length, lines: lines };
+  });
+  if (wrap.rowH > wrap.tallest + 6) {
+    throw new Error('#689: the .sim-tools row has WRAPPED — it paints ' + wrap.rowH + ' px against a ' +
+      'tallest control of ' + wrap.tallest + ' px, on ' + wrap.nLines + ' lines: ' +
+      JSON.stringify(wrap.lines) + '. Six controls fit 338 px with 19 px of headroom; a seventh ' +
+      'named tool does not, and the control that drops is whichever is last in the row rather than ' +
+      'the one you added. Either shorten the row or retune .sim-tools deliberately.');
+  }
+  log.push('.sim-tools is one line: ' + wrap.rowH + ' px row, ' + wrap.tallest + ' px tallest control');
   if (row.oldBar || row.oldBarClass || row.oldReadout) {
     throw new Error('#689: the old SELECT PLANT, MISSION & RESET bar is still there — #simStatus ' +
       row.oldBar + ', .sim-status x' + row.oldBarClass + ', #simStatusText ' + row.oldReadout +

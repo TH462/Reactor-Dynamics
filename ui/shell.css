@@ -879,8 +879,15 @@ html[data-channel="dev"] .logo-test {
    which is "to the right of settings" in DOM order only. Tightened here and here ONLY (every
    other .btn in the app keeps 5px 9px / 12px) the six measure 299 px of buttons plus 20 px of
    gaps = 319 px, one row 27 px tall, 19 px of headroom.
-   A SEVENTH NAMED TOOL WRAPS IT AGAIN, and verify_e2e_ui's testMainMenuButton reds on the
-   PAINTED row and gap rather than letting it go quiet. */
+   A SEVENTH NAMED TOOL WRAPS IT AGAIN — MEASURED (quality pass, 2026-09-11): adding one takes this
+   row from 27 px to 55 px on TWO lines, [manual, help, feedback, settings, mainMenu] then [the new
+   tool, demoBtn]. Note WHICH control drops: `flex-wrap` pushes the OVERFLOW to the end, so the ⛶
+   end-cap goes below the row and the tool you added goes with it — never the one in the middle.
+   That is also why the row-and-gap assertions this comment used to credit did NOT catch it: they
+   ask whether Main Menu is beside Settings, and at seven controls it still is. `testMainMenuButton`
+   now asserts the ROW's painted height against its tallest control, which reds for whichever
+   control wraps; the original two still red on reverting the padding here (Main Menu itself drops,
+   gap -120 px). Both injection-proven. */
 .sim-tools { justify-content: flex-end; gap: 4px; }
 .sim-tools .btn { padding: 5px 5px; font-size: 11px; }
 .sim-tools .text-btn { padding: 4px 5px; font-size: 11px; }
