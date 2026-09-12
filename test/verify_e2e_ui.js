@@ -1244,6 +1244,194 @@ async function testMonitorList(page) {
   return log.join('\n') + '\n';
 }
 
+/* THE MISSION DOOR IS "MAIN MENU", BESIDE SETTINGS (#689, owner playtest #675 section A,
+ * 2026-09-09: "Add a Main Menu button to the right of settings. Change the SELECT PLANT,
+ * MISSION & RESET menu to this button and get rid of the old button.")
+ *
+ * FOUR CLAIMS, and the last two are the ones nothing else in the tree can see.
+ *
+ *  1. The button exists, reads "Main Menu", and sits in .sim-tools IMMEDIATELY AFTER Settings.
+ *     "To the right of settings" is a position, not "somewhere in the row" — and ⛶ (board
+ *     focus) was already the row's last child, so "append it" and "put it where he asked" are
+ *     different answers. The check reads DOM order inside .sim-tools.
+ *  2. The old full-width .sim-status bar is gone — the id, the class and #simStatusText.
+ *  3. IT ACTUALLY OPENS THE WINDOW, and the window's own ✕ still closes it. A renamed id with
+ *     the listener left on the old one is a button that looks right and does nothing.
+ *  4. NOTHING POINTS AT A NODE THAT NO LONGER EXISTS. Two consumers named #simStatus by
+ *     string: the COACH map (`session`) and the quick tour's step list. BOTH FAIL SILENTLY —
+ *     applyCoachMarks() does `if (el)` and skips, and a tour step with a dead selector just
+ *     highlights empty space. So the tour is DRIVEN to the Main Menu step and its highlight
+ *     rect is measured on the button, and the coach dot is forced on by clearing its
+ *     localStorage key and read off the rendered ::after. A source scan cannot do either. */
+async function testMainMenuButton(page) {
+  var log = [];
+  await page.goto('http://127.0.0.1:' + PORT + '/ui/shell.html?engine=pwr2',
+    { waitUntil: 'networkidle', timeout: 90000 });
+  await page.waitForSelector('#mainMenuBtn', { timeout: 8000 }).catch(function () {
+    throw new Error('#689: there is no #mainMenuBtn on the page — the owner asked for a Main ' +
+      'Menu button to the right of Settings and nothing answers to that id');
+  });
+
+  var row = await page.evaluate(function () {
+    var b = document.getElementById('mainMenuBtn');
+    var tools = document.querySelector('.sim-tools');
+    var kids = tools ? Array.prototype.slice.call(tools.children) : [];
+    var r = b.getBoundingClientRect(), sr = null;
+    var st = document.getElementById('settingsBtn');
+    if (st) sr = st.getBoundingClientRect();
+    return {
+      order: kids.map(function (k) { return k.id || k.tagName.toLowerCase(); }),
+      inTools: !!(tools && tools.contains(b)),
+      text: (b.textContent || '').trim(),
+      w: Math.round(r.width), h: Math.round(r.height),
+      leftOfMe: sr ? Math.round(r.left - sr.right) : null,
+      sameRow: sr ? Math.abs(r.top - sr.top) < 4 : false,
+      oldBar: !!document.getElementById('simStatus'),
+      oldBarClass: document.querySelectorAll('.sim-status').length,
+      oldReadout: !!document.getElementById('simStatusText')
+    };
+  });
+  if (!row.inTools) throw new Error('#689: #mainMenuBtn is not inside .sim-tools — order was ' + row.order.join(' , '));
+  if (row.text !== 'Main Menu') throw new Error('#689: the button reads "' + row.text + '", not "Main Menu"');
+  if (row.w < 20 || row.h < 10) throw new Error('#689: #mainMenuBtn paints ' + row.w + 'x' + row.h + ' px');
+  var iS = row.order.indexOf('settingsBtn'), iM = row.order.indexOf('mainMenuBtn');
+  if (iS < 0 || iM !== iS + 1) {
+    throw new Error('#689: Main Menu is not immediately to the RIGHT of Settings — .sim-tools ' +
+      'order is [' + row.order.join(', ') + ']. Appending it to the row puts the ⛶ board-focus ' +
+      'toggle between the two, which is not where the owner asked for it.');
+  }
+  if (!row.sameRow || !(row.leftOfMe >= 0 && row.leftOfMe < 40)) {
+    throw new Error('#689: Main Menu is in DOM order but not painted beside Settings — same row: ' +
+      row.sameRow + ', gap: ' + row.leftOfMe + ' px');
+  }
+  if (row.oldBar || row.oldBarClass || row.oldReadout) {
+    throw new Error('#689: the old SELECT PLANT, MISSION & RESET bar is still there — #simStatus ' +
+      row.oldBar + ', .sim-status x' + row.oldBarClass + ', #simStatusText ' + row.oldReadout +
+      '. "Get rid of the old button" is half the item.');
+  }
+  log.push('.sim-tools order: ' + row.order.join(' , '));
+  log.push('Main Menu ' + row.w + 'x' + row.h + ' px, ' + row.leftOfMe + ' px right of Settings; ' +
+           'no #simStatus, no .sim-status, no #simStatusText');
+
+  // 3 — it opens the window, and ✕ still closes it.
+  await dismissMission(page);
+  await page.waitForTimeout(250);
+  if (await page.isVisible('#missionOverlay')) throw new Error('#689: could not get the window shut to start from');
+  await page.click('#mainMenuBtn');
+  await page.waitForSelector('#missionOverlay', { state: 'visible', timeout: 4000 })
+    .catch(function () { /* the throw below carries the message */ });
+  if (!(await page.isVisible('#missionOverlay'))) {
+    throw new Error('#689: pressing Main Menu did not open the Plant & Mission window — the ' +
+      'openMissionSelect listener is still bound to the deleted #simStatus');
+  }
+  log.push('Main Menu opens the window');
+
+  // 4a — the quick tour's step for this button lands ON the button.
+  await page.click('#missionClose');
+  await page.waitForTimeout(300);
+  /* renderTour() SKIPS a step whose selector resolves to nothing ("Skip missing targets rather
+   * than stalling the tour") and moves straight to the next one — so a dead selector costs a
+   * whole step and raises nothing. The probe therefore walks the tour to its end and demands
+   * that a step titled "Main Menu" both EXISTS and lands its spotlight on the button: a
+   * missing step and a mis-aimed one are different defects and both are invisible otherwise. */
+  var tour = await page.evaluate(async function () {
+    function sleep(ms) { return new Promise(function (r) { setTimeout(r, ms); }); }
+    var help = document.getElementById('helpBtn');
+    var starter = document.getElementById('helpTourBtn');
+    if (!help || !starter) return { err: 'no #helpBtn / #helpTourBtn to start the tour from' };
+    help.click();
+    await sleep(250);
+    starter.click();
+    await sleep(400);
+    var root = document.getElementById('tourRoot');
+    if (!root || root.hidden) return { err: 'the tour did not open (#tourRoot still hidden)' };
+    var seen = [], guard = 0;
+    while (guard++ < 40) {
+      var title = (document.getElementById('tourTitle') || {}).textContent || '';
+      var spot = document.getElementById('tourSpot');
+      var live = document.querySelector('.tour-target-live');
+      var sr = spot ? spot.getBoundingClientRect() : null;
+      seen.push({
+        title: title.trim(),
+        prog: ((document.getElementById('tourProg') || {}).textContent || '').trim(),
+        liveId: live ? (live.id || live.className) : null,
+        spot: sr ? { x: Math.round(sr.x), y: Math.round(sr.y), w: Math.round(sr.width), h: Math.round(sr.height) } : null
+      });
+      var next = document.getElementById('tourNext');
+      if (!next || /done/i.test(next.textContent || '')) break;
+      next.click();
+      await sleep(260);
+    }
+    var b = document.getElementById('mainMenuBtn').getBoundingClientRect();
+    var close = document.getElementById('tourSkip'); if (close) close.click();
+    return { steps: seen,
+             btn: { x: Math.round(b.x), y: Math.round(b.y), w: Math.round(b.width), h: Math.round(b.height) } };
+  });
+  if (tour.err) throw new Error('#689: could not drive the quick tour — ' + tour.err);
+  var named = (tour.steps || []).filter(function (s) { return /main menu/i.test(s.title || ''); });
+  if (!named.length) {
+    throw new Error('#689: the quick tour walked ' + tour.steps.length + ' steps and none is ' +
+      'titled "Main Menu" — titles were ' +
+      JSON.stringify(tour.steps.map(function (s) { return s.title; })) + '. renderTour() SKIPS a ' +
+      'step whose selector resolves to nothing, so a stale sel is exactly this shape.');
+  }
+  var st = named[0];
+  if (st.liveId !== 'mainMenuBtn') {
+    throw new Error('#689: the tour\'s Main Menu step highlighted "' + st.liveId + '", not ' +
+      '#mainMenuBtn — its `sel` points somewhere else');
+  }
+  var cx = st.spot ? st.spot.x + st.spot.w / 2 : -1, cy = st.spot ? st.spot.y + st.spot.h / 2 : -1;
+  var inside = cx >= tour.btn.x - 12 && cx <= tour.btn.x + tour.btn.w + 12 &&
+               cy >= tour.btn.y - 12 && cy <= tour.btn.y + tour.btn.h + 12;
+  if (!inside) {
+    throw new Error('#689: the tour\'s Main Menu spotlight is not over the button — spotlight ' +
+      JSON.stringify(st.spot) + ', button ' + JSON.stringify(tour.btn));
+  }
+  log.push('quick tour: ' + tour.steps.length + ' steps; the "' + st.title + '" step (' + st.prog +
+           ') spotlights #' + st.liveId + ' at ' + JSON.stringify(st.spot));
+
+  // 4b — the coach dot resolves to this button. Forced on by clearing its seen key.
+  await page.evaluate(function () {
+    try { localStorage.removeItem('rd_seen_session'); } catch (e) { /* private mode */ }
+  });
+  await page.reload({ waitUntil: 'networkidle', timeout: 90000 });
+  await page.waitForSelector('#mainMenuBtn', { timeout: 8000 });
+  var dot = await page.evaluate(function () {
+    var b = document.getElementById('mainMenuBtn');
+    var after = getComputedStyle(b, '::after');
+    return { marked: b.classList.contains('unvisited'),
+             w: after.width, h: after.height, pos: after.position,
+             anyElse: Array.prototype.map.call(document.querySelectorAll('.unvisited'),
+               function (e) { return e.id || e.className; }) };
+  });
+  if (!dot.marked) {
+    throw new Error('#689: the coach dot does not reach the Main Menu button — COACH.session ' +
+      'still names a deleted element, and applyCoachMarks() skips a missing node in silence. ' +
+      'Elements carrying .unvisited: ' + JSON.stringify(dot.anyElse));
+  }
+  if (dot.pos !== 'absolute' || parseFloat(dot.w) < 4 || parseFloat(dot.h) < 4) {
+    throw new Error('#689: #mainMenuBtn carries .unvisited but the dot paints nothing — ' +
+      '::after is ' + dot.w + ' x ' + dot.h + ' at position ' + dot.pos +
+      ' (.unvisited::after needs a positioned parent)');
+  }
+  log.push('coach dot reaches Main Menu: ::after ' + dot.w + ' x ' + dot.h);
+
+  // …and it retires on first use, on the new element.
+  await dismissMission(page);
+  await page.waitForTimeout(250);
+  await page.click('#mainMenuBtn');
+  await page.waitForTimeout(350);
+  var gone = await page.evaluate(function () {
+    return document.getElementById('mainMenuBtn').classList.contains('unvisited');
+  });
+  if (gone) throw new Error('#689: the coach dot did not retire when Main Menu was pressed — ' +
+    "markSeen('session') is still bound to the deleted #simStatus");
+  log.push('coach dot retires on first press');
+  await page.click('#missionClose');
+  await page.waitForTimeout(300);
+  return log.join('\n') + '\n';
+}
+
 /* THE PLANT & MISSION WINDOW'S SHAPE (#688, owner playtest #675 section A, 2026-09-09:
  * "Put a green [NEW] next to the Walkthroughs tab in the plant and mission menu. Remove the
  * plant selection column from the plant and mission menu.")
@@ -1398,7 +1586,7 @@ async function testMissionCloseResumes(page) {
   log.push('✕ Close: plant runs');
 
   // The reported path: pick a starting condition and press Free Play.
-  await page.click('#simStatus');
+  await page.click('#mainMenuBtn');
   await page.waitForTimeout(400);
   if (!(await page.isVisible('#missionOverlay'))) throw new Error('could not reopen Plant & Mission');
   await page.click('[data-mfree]');
@@ -1423,7 +1611,7 @@ async function testMissionCloseResumes(page) {
   await page.click('#playBtn');
   await page.waitForTimeout(300);
   if (await running()) throw new Error('⏸ did not stop the plant');
-  await page.click('#simStatus');
+  await page.click('#mainMenuBtn');
   await page.waitForTimeout(400);
   if (!(await page.isVisible('#missionOverlay'))) throw new Error('could not reopen Plant & Mission (2nd)');
   await page.click('[data-mfree]');
@@ -3252,7 +3440,7 @@ async function testRodLimitMarginIndicationRange(page) {
     return { was: was, now: R.max_steps };
   }, 2.5);
   await page.waitForTimeout(1500);      // >= one broadcast, so `latest` carries the moved bank
-  await page.click('#simStatus');
+  await page.click('#mainMenuBtn');
   await page.waitForTimeout(400);
   if (!(await page.isVisible('#missionOverlay'))) throw new Error('could not reopen Plant & Mission to reset the plant');
   await page.click('[data-mfree]');
@@ -3656,6 +3844,8 @@ async function main() {
     fs.writeFileSync(path.join(SCRATCH, 'chart-settings.log'), csLog);
     var mlLog = await testMonitorList(page);
     fs.writeFileSync(path.join(SCRATCH, 'monitor-list.log'), mlLog);
+    var mbLog = await testMainMenuButton(page);
+    fs.writeFileSync(path.join(SCRATCH, 'main-menu-button.log'), mbLog);
     var msLog = await testMissionMenuShape(page);
     fs.writeFileSync(path.join(SCRATCH, 'mission-menu-shape.log'), msLog);
     var mcLog = await testMissionCloseResumes(page);
@@ -3723,6 +3913,7 @@ if (require.main !== module) {
                      testChartSettings: testChartSettings, testMonitorList: testMonitorList,
                      testMissionCloseResumes: testMissionCloseResumes, testRunStartMark: testRunStartMark,
                      testMissionMenuShape: testMissionMenuShape,
+                     testMainMenuButton: testMainMenuButton,
                      testHeldPlantDialog: testHeldPlantDialog, testHeldSpeedClick: testHeldSpeedClick,
                      testSaveLoadRefusal: testSaveLoadRefusal, testCssTransitions: testCssTransitions,
                      testPzrGaugeFollowsProgram: testPzrGaugeFollowsProgram,

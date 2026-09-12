@@ -29,6 +29,106 @@ and the user-visible summary in `CHANGELOG.md`. This file points at those and tr
 
 ---
 
+## Session log — 2026-09-11-develop-c (#688 and #689 — one door to the Plant & Mission window; a readout that had been DEAD for weeks, and two consumers that fail in silence)
+
+Owner playtest sheet #675 §A, three sentences of it. Touches `ui/app.js`, `ui/shell.html`,
+`ui/shell.css`, `test/verify_e2e_ui.js`, `test/verify_flags_ui.js`, `CHANGELOG.md`, the M8 spec
+and the `layman-playthrough` skill. No engine, no control layer, no board.
+
+**Both issues' file/line pointers had drifted** — filed against `eb855cd9`, and every one of the
+fourteen was wrong by 380–540 lines on `cebab485`. Same finding as #690's. Re-grepped before
+scoping; nothing was scoped off a stale number.
+
+### The readout in #689's one decision had already been dead, which settles the decision
+
+#689 offered three options for the live `plant · mode` readout on the button being replaced —
+drop it (A), keep it as a subtitle (B), move it into the modal header (C) — and the argument for
+A was that the walkthrough card already names the leg.
+
+**Measured in headless Chromium on `cebab485` before touching anything: `#simStatusText` read a
+literal `—`.** `updateSimSummary()` (`ui/app.js`) opens with
+`var lbl = $('simPlantLbl'); if (!lbl) return;`, and `#simPlantLbl` / `#simModeLbl` left
+`shell.html` with the old Settings-panel summary — they survive only in `dist/` builds from
+Alpha 1.0.x. So the function returned before the `#simStatusText` write on **every** call, from
+**four render sites, every broadcast**. There was no readout to weigh against B or C.
+
+The function and all four call sites are deleted. **The trap: a write guarded on a SIBLING
+element reads as a live feature for as long as nobody looks at the pixels.** Nothing could catch
+it — the call sites are all correct to a source scan, the function is correct in isolation, and
+the string it would have written is plausible. Only the rendered value says otherwise.
+
+### The plant column: five cards, one of them clickable on the build the player gets
+
+Measured on a dev build before removing it: `pwr` (retired) **LIVE**, `pwr2` **LIVE**,
+`rbmk_pre` / `rbmk_post` / `bwr` **greyed SOON**, in a `260px|678px` grid. On a published build
+`site/build_site.js` deletes the retired engine's script tags (#523) and `ctorPresent()` filters
+its card, so the column is one choice and three placards.
+
+Only the rendering went. `msel.engine` stays — all four content builders and the Start button
+read it — and it is now seeded only from `ui.engineKey` in `openMissionSelect()`. The
+`[data-mplant]` handler that used to re-point it is deleted rather than left as a dark wire.
+
+`.mission-body`'s `260px|1fr` default **stays**: the chart-settings window (#454) reuses the
+class with a real left column, and `.fl-body` was already the precedent for an override. The
+Plant & Mission body gets `.mp-body`.
+
+### Two consumers of a renamed id that fail in SILENCE, and the checks that had to drive them
+
+Renaming `#simStatus` → `#mainMenuBtn` touched seven wiring sites. Two of them raise nothing when
+left stale, which is why the gate drives them instead of grepping them:
+
+- **`renderTour()` skips a step whose selector resolves to nothing** — "Skip missing targets
+  rather than stalling the tour", `tourIdx++` and straight on. A dead `sel` costs a whole tour
+  step and prints nothing. The check walks the tour to the end and demands a step *titled*
+  "Main Menu" whose `#tourSpot` centre lands inside the button's rect. Injection: `sel` put back
+  to `'#simStatus'` → the tour walks **9** steps and the step is simply absent.
+- **`applyCoachMarks()` does `if (el)` and skips** a missing node. The check clears
+  `localStorage['rd_seen_session']`, reloads, and reads `.unvisited` plus the rendered `::after`
+  box (8×8 px) off the button, then presses it and asserts the dot retires. Injection:
+  `COACH.session` back to `'simStatus'` → "Elements carrying .unvisited: [fbHeaderBtn, cklMenu]".
+
+### A LAYOUT CONSEQUENCE THAT IS A MEASUREMENT, NOT A TASTE
+
+`.sim-row` is `flex-wrap: wrap` and the right panel is **338 px**. Adding a sixth control to the
+tools row put **402 px of buttons plus 40 px of gaps** into it: the row wrapped and Main Menu
+dropped to a second line beside `⛶`, i.e. "to the right of settings" in DOM order only. Scoped
+to `.sim-tools` alone (gap 8→4, padding 9→5 px, font 12→11 px; every other `.btn` in the app is
+untouched) the six measure **299 px + 20 px = 319 px, one row 27 px tall, 19 px of headroom**.
+A seventh named tool wraps it again, and `testMainMenuButton` reds on the **painted** row and gap
+rather than going quiet.
+
+### A pre-existing dangling tour step, found by the same instrument (not fixed here)
+
+Driving the tour printed **10 of 11** steps. The missing one is step 2, **"Vital gauges"**,
+`sel: '#gaugeStrip'`: the element is present with **6 children** but `display: none` on the PWR
+board, so `tourElVisible()` rejects it (`r.width > 2 && r.height > 2`) and `renderTour()` skips
+it. Unrelated to #688/#689 and untouched — filed separately. It is the same silence: the quick
+tour has been one step short for as long as the board has been the PWR's display.
+
+### Gates
+
+| runner | result |
+|---|---|
+| `verify_e2e_ui` | **PASS (4 screenshots)** — score unchanged; the two new checks live inside it |
+| `verify_flags_ui` | **52/52**, at baseline (4 `#simStatus` selectors retargeted) |
+| `verify_manual_follow` | **225 checks**, at baseline |
+| `run_hardrules` | **536 / 0 failed**, at baseline |
+| `run_flags` · `run_inspect` · `run_portable` · `run_site_build` | 345/345 · 62/62 · 145 · 41 |
+| `run_release` · `run_doc_budget` · `run_hr3` · `run_manual_units` | 29 · OK · 32 · 0 failed |
+
+`BASELINES` needed no edit: `verify_e2e_ui`'s score is `4screenshots`, so checks added inside it
+do not move it, and nothing else shifted.
+
+**Nine injections, every one restored.** #688: the three `ui/` files reverted to the pre-fix tree
+(5 cards rendered) · the badge tuple's `true` dropped (`got []`) · `.mp-modes .mp-new` renamed so
+the rule never matches (`not GREEN — rgb(152, 163, 175)`, markup intact — the case a class-name
+check would pass) · `.mp-body` dropped (`still reserves its track — "260px 678px"`). #689: the
+pre-#689 tree (no `#mainMenuBtn`) · `openMissionSelect` left on another element (the button opens
+nothing) · `COACH.session` stale · the tour's `sel` stale · the button appended after `⛶` instead
+of beside Settings.
+
+---
+
 ## Session log — 2026-09-11-develop-b (#687 and #656 — the walkthrough panel's chrome; the filed flicker mechanism REFUTED and the real one measured)
 
 Owner playtest sheet #675 §A, four complaints in one panel (#687), plus the #653 pass-3 report

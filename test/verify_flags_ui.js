@@ -79,12 +79,12 @@ function pinChannel(ch) {
   async function closeSettings(page) {
     if (await page.isVisible('#settingsOverlay')) await page.click('#settingsClose');
   }
-  // #missionBtn is gone with the Operate tab (#439). The session bar in the header is the
-  // shipped entry point to this window now — and was already one before, so this is the
-  // path a player takes, not a test-only door.
+  // #missionBtn is gone with the Operate tab (#439), and the .sim-status bar that replaced it
+  // is gone too (#689). #mainMenuBtn — "Main Menu", beside Settings — is the shipped entry
+  // point to this window now, so this is the path a player takes, not a test-only door.
   async function openMission(page, tab) {
     var open = await page.evaluate(function () { return !document.getElementById('missionOverlay').hidden; });
-    if (!open) await page.click('#simStatus');
+    if (!open) await page.click('#mainMenuBtn');
     await page.click('[data-mmode="' + tab + '"]');
     return (await page.textContent('#mpContent')) || '';
   }
@@ -93,7 +93,7 @@ function pinChannel(ch) {
     if (channel) await ctx.addInitScript(pinChannel(channel));
     var page = await ctx.newPage();
     await page.goto(url || SHELL);
-    await page.waitForSelector('#simStatus');
+    await page.waitForSelector('#mainMenuBtn');
     // CLOSE THE PLANT & MISSION WINDOW, which is up on load since 2026-08-11. It covers the
     // board and intercepts every click this file then makes. (It replaced the selection
     // screen that used to be dismissed here; that overlay no longer exists.)
@@ -428,7 +428,7 @@ function pinChannel(ch) {
   // The player's window (no `mmode` in the URL) offers exactly Free Play and Walkthroughs
   // (#660 item 19); the campaign and scenario areas are reachable only through the door.
   b = await build('dev', SHELL.replace('&mmode=free', ''));
-  await b.page.click('#simStatus');
+  await b.page.click('#mainMenuBtn');
   var tabsPlain = await b.page.$$eval('#mpModes [data-mmode]', function (els) { return els.map(function (e) { return e.getAttribute('data-mmode'); }); });
   ck('player window: only Free Play and Walkthroughs tabs', tabsPlain.join(',') === 'free,walkthroughs', tabsPlain.join(','));
   await b.ctx.close();
@@ -538,7 +538,7 @@ function pinChannel(ch) {
   await closeSettings(b.page);
   ck('panel: view-as public gates the campaign', /COMING SOON/.test(await openMission(b.page, 'campaign')));
   await b.page.reload();
-  await b.page.waitForSelector('#simStatus');
+  await b.page.waitForSelector('#mainMenuBtn');
   if (await b.page.isVisible('#missionOverlay')) await b.page.click('#missionClose');
   ck('panel: view-as survives a reload', await b.page.evaluate(function () { return RD.Flags.channel(); }) === 'public');
   ck('panel: the build still knows what it is', await b.page.evaluate(function () { return RD.Flags.baseChannel(); }) === 'dev');

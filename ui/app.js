@@ -2449,34 +2449,22 @@
     advFailed[id] = mode; renderAdvActive();
   }
 
-  // What's running now (plant + free-play/scenario/walkthrough) — shown in the
-  // Sim tab summary AND the always-visible status line under the sim controls
-  // (the main-screen entry point to the Plant & Mission window). Called every
-  // instructor render, so it's guarded to touch the DOM only on change.
-  var lastSimSummary = null;
-  function updateSimSummary() {
-    var lbl = $('simPlantLbl'); if (!lbl) return;
-    var e = ENGINES[ui.engineKey] || {};
-    var plant = e.label || ui.engineKey;
-    var mode;
-    if (ui.scenario) {
-      var sc = (RD.SCENARIOS || {})[ui.scenario];
-      mode = 'Scenario — ' + ((sc && sc.title) || ui.scenario);
-    } else if (ui.follow) {
-      var pr = curFollowProc();
-      mode = 'Walkthrough — ' + ((pr && pr.title) || ui.follow.id);
-    } else {
-      var st = (prof().initStates.filter(function (s) { return s[0] === ui.initState; })[0] || [])[1] || ui.initState;
-      mode = 'Free Play — ' + st;
-    }
-    var key = plant + '|' + mode;
-    if (key === lastSimSummary) return;
-    lastSimSummary = key;
-    lbl.textContent = plant;
-    $('simModeLbl').textContent = mode;
-    var st2 = $('simStatusText'); if (st2) st2.textContent = plant + ' · ' + mode;
-  }
-
+  /* updateSimSummary() IS GONE (#689). It wrote "plant · mode" into three places: #simPlantLbl
+   * and #simModeLbl in the Sim tab's summary, and #simStatusText in the status bar under the
+   * speed controls.
+   *
+   * IT HAD ALREADY BEEN DEAD, and that is the measurement that let #689's option A be taken
+   * without argument. Its first line was `var lbl = $('simPlantLbl'); if (!lbl) return;` — and
+   * #simPlantLbl / #simModeLbl left shell.html with the old Settings-panel summary, so the
+   * function returned before the #simStatusText write on EVERY call. Measured in headless
+   * Chromium on 2026-09-11 against the tree before this change: the bar read a literal "—".
+   * Four render sites called it every broadcast for nothing.
+   *
+   * The dropped readout is not lost information: the walkthrough card names the leg it is
+   * running at the top of the card, and a published build is always PWR2 (#523). If it is ever
+   * wanted back, the honest home is the mission modal's own header, where it is read on open
+   * (option C of the three costed on #689) — not on the Main Menu button, which the owner asked
+   * for to make this corner SMALLER. */
   // ============================================================ display damping
   // RETIRED 2026-07-26 (#217). This applied a per-FRAME EMA to every instrument and
   // replaced s.instruments wholesale, so the whole board read damped values. Three
@@ -2649,7 +2637,6 @@
     applyUiPolicy(s);
     renderGauges(s);
     renderAlarms(s); renderInstructor(s); renderFailures(s);
-    updateSimSummary();
     // alarm tint on the CSF gauge strip while anything is unacknowledged
     $('gaugeStrip').classList.toggle('alarm-tint', s.alarms.some(function (a) { return a.state === 'active_unacknowledged'; }));
     // auto-switch to Diagram the moment a scram fires (legacy views only).
@@ -3013,7 +3000,7 @@
   // resolved to `#alarmStack` — which carries no `[data-ack]` — and was silently DROPPED.
   // That last one is the "delay when clicking controls" half of the report, and it was a
   // LOST input rather than a slow one.
-  // Same idiom as renderChecklist and updateSimSummary.
+  // Same idiom as renderChecklist.
   var lastAlarmKey = null;
   function alarmClock(t) {
     t = Math.max(0, Math.floor(t));
@@ -3477,7 +3464,6 @@
     syncSpeedUI(s);
     syncPacingUI(s);
     renderHighlight(s);
-    updateSimSummary();   // status line follows scenario/walkthrough transitions (change-guarded)
     instrGateOpen(s);     // a step that blocks progress opens the card, once per beat (#439)
     // Follow state is derived FROM the snapshot (the Instructor owns it); ui.follow
     // is just a synced mirror. This survives start_follow's internal plant reset,
@@ -5104,7 +5090,7 @@
     closeModal('missionOverlay');
     if (!missionTipArmed) return;
     missionTipArmed = false;
-    var tip = $('simStatusTip'); if (!tip) return;
+    var tip = $('mainMenuTip'); if (!tip) return;
     tip.hidden = false;
     clearTimeout(missionTipT);
     missionTipT = setTimeout(function () { tip.hidden = true; }, 6000);
@@ -5279,7 +5265,10 @@
    * A tooltip that fades gets dismissed by the click the user was already making
    * and is then gone for ever; a dot waits until they are curious and retires
    * itself the first time they open the thing. Exactly three, by ruling: the
-   * session bar, Checklists, and Feedback. */
+   * mission door, Checklists, and Feedback. The `session` key still names the first
+   * of those; its ELEMENT moved from the retired #simStatus bar to #mainMenuBtn at
+   * #689, and the localStorage key is untouched so a returning player keeps the
+   * dot they already retired. */
   /* Panel state across sessions (#439, spec §14-7 — OWNER SELECTION 2026-08-10 from the
    * options presented: "Persist panel state"). Which tab was open and whether the
    * Instructor was folded are the player's arrangement of their own control room, and
@@ -5353,7 +5342,7 @@
   var SEEN_KEY = 'rd_seen_';
   // The Checklists mark points at the LIST now — its open button is gone, because the
   // list is always on screen (owner, 2026-08-11).
-  var COACH = { session: 'simStatus', checklists: 'cklMenu', feedback: 'fbHeaderBtn' };
+  var COACH = { session: 'mainMenuBtn', checklists: 'cklMenu', feedback: 'fbHeaderBtn' };
   function seenCoach(k) {
     try { return localStorage.getItem(SEEN_KEY + k) === '1'; } catch (e) { return true; }
   }
@@ -8127,11 +8116,13 @@
         cklState.key = null; render(latest);
       }
     });
-    // Plant & Mission window: plant / mode / start-condition picks re-render in
-    // place; the start buttons close the window and launch.
-    // The session bar is now the ONLY entry point (#439/#443) — the Operate tab that
-    // carried a "Plant & Mission…" button is dissolved.
-    $('simStatus').addEventListener('click', openMissionSelect);
+    // Plant & Mission window: mode / start-condition picks re-render in place; the start
+    // buttons close the window and launch.
+    // #mainMenuBtn — "Main Menu", in the tools row beside Settings — is the ONLY entry point
+    // (#689, owner 2026-09-09). It replaced the full-width .sim-status bar under the speed
+    // controls, which had itself replaced the Operate tab's "Plant & Mission…" button
+    // (#439/#443). One door, and it now lives with the other chrome.
+    $('mainMenuBtn').addEventListener('click', openMissionSelect);
     $('missionClose').addEventListener('click', closeMissionSelect);
     /* #520 — the halt dialog. Two ways out, and they are different decisions: reset rebuilds
      * the plant (the ONLY recovery — the latch cannot be cleared in place), while dismiss
@@ -8345,7 +8336,7 @@
       });
     })();
     // Coach marks retire on first use of the thing they point at (#443).
-    $('simStatus').addEventListener('click', function () { markSeen('session'); });
+    $('mainMenuBtn').addEventListener('click', function () { markSeen('session'); });
     $('fbHeaderBtn').addEventListener('click', function () { markSeen('feedback'); });
     $('cklMenu').addEventListener('click', function () { markSeen('checklists'); });
 
@@ -8869,11 +8860,13 @@
         'Same plant you are sitting.</p>'
     },
     {
-      sel: '#simStatus',
+      /* moved from '#simStatus' with the button itself (#689) — a tour step whose selector
+       * resolves to nothing is SILENT: the step just points at empty space. */
+      sel: '#mainMenuBtn',
       place: 'bottom',
-      title: 'Plant &amp; Mission',
-      body: '<p>Starting condition and guided content. Switching restarts the plant ' +
-        'from a clean initial state.</p>'
+      title: 'Main Menu',
+      body: '<p>Starting condition, guided walkthroughs, and Reset. Starting any of them ' +
+        'restarts the plant from a clean initial state.</p>'
     },
     {
       sel: '#scannerPanel',
@@ -9412,7 +9405,7 @@
     // list, so a leaked row writes one plant's numbers under another's names.
     pendingFine = null; pendingTiles = null; pendingDiagFine = null; RD.ChartFine = null;
     syncUnitsScope();
-    buildGauges(); buildIndications(); buildPhysics(); updateSimSummary(); buildFailures();
+    buildGauges(); buildIndications(); buildPhysics(); buildFailures();
     // The control layer already reset its channels and engaged the plant's
     // normal lineup (M5 selectPlant → engageDefaults); the tab just rebuilds.
     buildAutomate();
@@ -9988,7 +9981,7 @@
     ui.seriesSide = {};                    // sides follow the selections they refine (#454)
     buildSeriesIndex();   // must precede the first chartSample — see rebuildPlantUI
     syncUnitsScope();
-    buildGauges(); buildIndications(); buildPhysics(); updateSimSummary();
+    buildGauges(); buildIndications(); buildPhysics();
     buildPlantDisplay();
     service.selectPlant(engId(startKey), ui.initState, startEng.dv);   // initial snapshot → render (defaults engaged in-stack)
     diagReset('init', { engine_key: startKey, initial_state: ui.initState });

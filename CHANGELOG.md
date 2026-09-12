@@ -30,6 +30,43 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
 
 ## [Unreleased]
 
+### Changed (one door to the Plant & Mission window, and a NEW badge on Walkthroughs — #688, #689)
+
+Owner playtest sheet #675 §A, three sentences of it.
+
+**A green NEW badge on the Walkthroughs tab** (#688) — a third slot on the mode tuple in
+`renderMissionSelect()`, so any tab can carry one. **Permanent by design**: no expiry, no
+`markSeen()`. It is meant to be seen by everyone who opens the window, not only by whoever has
+not opened it before, and it comes off by deleting one `true`.
+
+**The plant-selection column is gone** (#688). Measured on a dev build first: five cards, of
+which the retired `pwr` engine and `pwr2` were selectable and rbmk_pre / rbmk_post / bwr were
+greyed COMING SOON placards. A published build does not contain the retired engine at all
+(#523), so the column offered **one** choice and three things you cannot click. Only the
+rendering went — `msel.engine` still carries the in-session plant for all four content builders
+and the Start button; it is now seeded only from `ui.engineKey`. The consequence, stated rather
+than discovered later: those placards were the one place in the product that said RBMK and BWR
+are planned. Both are on hold; that belongs on the site.
+
+**"Main Menu", in the tools row beside Settings** (#689), replacing the full-width
+`SELECT PLANT, MISSION & RESET` bar under the speed controls. Its live "plant · mode" readout was
+**dropped, not moved** — and it had already been dead: `updateSimSummary()` returned on its first
+line because `#simPlantLbl` left with the old Settings summary, so the bar showed a literal `—`
+on every load, measured in headless Chromium. That function and its four per-broadcast call sites
+are deleted. Six controls in a 338 px row wrapped at the shipped padding (402 px of buttons), so
+`.sim-tools` tightens its own gap and padding and nothing else does: 299 px of buttons, one row.
+The "reopen it here" pointer moved up under the tools row with the button, so its ▲ still points
+at the control it names.
+
+Two gate checks in `verify_e2e_ui`, both read off the rendered DOM: `testMissionMenuShape`
+(no plant card reaches the screen, the body stops reserving the 260 px track, the badge's
+**computed colour** and painted rect, every tab still builds, Free Play still boots `pwr2`) and
+`testMainMenuButton` (the button reads "Main Menu" and paints beside Settings, the old bar is
+gone in all three of id/class/readout, it opens the window, **the quick tour's step spotlights
+it**, and the coach dot reaches it and retires on first press). Those last two are the ones
+nothing else can see: `renderTour()` skips a step whose selector resolves to nothing and
+`applyCoachMarks()` skips a missing node — both in silence. Nine injections between them.
+
 ### Fixed (the walkthrough panel's chrome, and the clock that never stopped fading — #687, #656)
 
 Owner playtest sheet #675 §A. Four complaints in one panel, and the one with a filed mechanism

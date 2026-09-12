@@ -873,7 +873,17 @@ html[data-channel="dev"] .logo-test {
 .speed button { flex: 1 1 0; background: var(--bg-right); color: var(--text-2); border: none; border-right: 1px solid var(--border);
   padding: 4px 0; font-size: 11px; cursor: pointer; }
 .speed button:last-child { border-right: none; }
-.sim-tools { justify-content: flex-end; }
+/* SIX CONTROLS IN A 338 px ROW SINCE #689 ADDED MAIN MENU, and .sim-row wraps — so this is a
+   measurement, not a taste. At the shipped padding the six came to 402 px of buttons plus 40 px
+   of gaps against 338 px: the row WRAPPED and Main Menu dropped to a second line beside ⛶,
+   which is "to the right of settings" in DOM order only. Tightened here and here ONLY (every
+   other .btn in the app keeps 5px 9px / 12px) the six measure 299 px of buttons plus 20 px of
+   gaps = 319 px, one row 27 px tall, 19 px of headroom.
+   A SEVENTH NAMED TOOL WRAPS IT AGAIN, and verify_e2e_ui's testMainMenuButton reds on the
+   PAINTED row and gap rather than letting it go quiet. */
+.sim-tools { justify-content: flex-end; gap: 4px; }
+.sim-tools .btn { padding: 5px 5px; font-size: 11px; }
+.sim-tools .text-btn { padding: 4px 5px; font-size: 11px; }
 /* the status strip (#686): the active checklist step's own wait + recommended rung, or the
    one exception that persists across clicks — the accumulator hold ("held at real time").
    Empty and hidden otherwise; min-height keeps the speed bar from reflowing when it is. */
@@ -918,32 +928,23 @@ html[data-channel="dev"] .logo-test {
 .text-btn { flex: 0 0 auto; padding: 4px 10px; font-size: 12px; font-weight: 600; }
 .demo-btn { flex: 0 0 auto; min-width: 28px; padding: 4px 8px; }
 
-/* What's running now — the always-visible mission entry point (click → Plant & Mission) */
-.sim-status {
-  display: flex; align-items: center; gap: 6px; width: 100%; margin-top: 8px;
-  padding: 5px 8px; background: var(--bg-elevated); border: 1px solid var(--border);
-  border-radius: 6px; color: var(--text-2); font-size: 11px; cursor: pointer; text-align: left;
-}
-.sim-status:hover { color: var(--text); border-color: var(--normal); }
-.sim-status .ss-txt { flex: 1 1 auto; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.sim-status .ss-chev { flex: 0 0 auto; color: var(--muted); font-size: 13px; }
-/* THE BUTTON SAYS WHAT IT OPENS *(OWNER DIRECTIVE, 2026-08-11: "The button should be
-   clearly labeled.")*. It used to read only its own state — "PWR · Free Play — 50 % Power"
-   — which says where you are and not that pressing it takes you somewhere. */
-.sim-status .ss-lbl {
-  flex: 0 0 auto; font-size: 9px; letter-spacing: .08em; text-transform: uppercase;
-  color: var(--normal); border-right: 1px solid var(--border); padding-right: 6px;
-}
-/* The pointer back to that button, for a few seconds after the window is closed. */
-.ss-tip {
-  position: relative; margin-top: 4px; padding: 4px 8px;
+/* THE .sim-status BAR IS GONE (#689, owner 2026-09-09: "Add a Main Menu button to the right of
+   settings. Change the SELECT PLANT, MISSION & RESET menu to this button and get rid of the old
+   button."). It was a full-width bar under the speed controls with a 9 px .ss-lbl, a live
+   .ss-txt readout and a .ss-chev; #mainMenuBtn wears the plain .btn .text-btn of the tools row
+   it now sits in, so it needs no rules of its own, and the readout was dropped (option A). */
+/* The pointer back to that button, for a few seconds after the window is closed. Was .ss-tip;
+   renamed with the button at #689, and it now sits directly under .sim-tools so its ▲ points
+   at the control it names instead of three rows past it. */
+.mm-tip {
+  position: relative; margin: 2px 0 4px; padding: 4px 8px;
   background: rgba(91, 179, 196, .12); border: 1px solid var(--normal); border-radius: 5px;
   color: var(--text); font-size: 11px; line-height: 1.35; text-align: center;
-  animation: ssTipIn .18s ease-out;
+  animation: mmTipIn .18s ease-out;
 }
-.ss-tip[hidden] { display: none; }
-@keyframes ssTipIn { from { opacity: 0; transform: translateY(-3px); } to { opacity: 1; transform: none; } }
-@media (prefers-reduced-motion: reduce) { .ss-tip { animation: none; } }
+.mm-tip[hidden] { display: none; }
+@keyframes mmTipIn { from { opacity: 0; transform: translateY(-3px); } to { opacity: 1; transform: none; } }
+@media (prefers-reduced-motion: reduce) { .mm-tip { animation: none; } }
 
 /* Help / tour — reuses the mission-modal chrome, narrower and content-sized */
 .help-modal { width: min(560px, 96vw); height: auto; max-height: min(84vh, 760px); }

@@ -101,7 +101,8 @@ Give it these facts and no more. They are the scaffolding, not the game.
 - Every step ends in **`Continue ▶`** (`.wt-continue`): dark and disabled until the instruments
   satisfy the step, class `ready` and lit when they do. **`⏪ Rewind step`** (`.wt-rewind`)
   takes the plant and the walkthrough back to the start of the previous step.
-- The **Plant & Mission** window opens by clicking `#simStatus` (it is NOT open on load); its
+- The **Plant & Mission** window opens from the **Main Menu** button (`#mainMenuBtn`, in the
+  tools row beside Settings) (it is NOT open on load); its
   **Walkthroughs** tab (`[data-mmode="walkthroughs"]`) lists all six with **`▶ Start`**
   (`[data-wtstart="<leg id>"]`), which loads that leg's own starting condition and starts it.
 - Speed buttons are `[data-speed="1|5|10|60|600|3600"]`; 600× and 3600× are WARP. **The status
@@ -178,7 +179,7 @@ every few seconds of wall time rather than sleeping blind.
 
 ## The run
 Play <LEGS> in order. <For the chain: each finished leg offers the next; if a leg cannot be
-finished, record why, then open Plant & Mission (#simStatus) → Walkthroughs and press Start on
+finished, record why, then open Plant & Mission (the Main Menu button, #mainMenuBtn) → Walkthroughs and press Start on
 the next leg, which loads its own starting condition.> Budget about <90> minutes of wall time.
 
 Keep a log as you go. For EVERY step: the step number and its first sentence; what you did

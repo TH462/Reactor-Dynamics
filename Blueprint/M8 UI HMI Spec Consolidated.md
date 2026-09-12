@@ -135,8 +135,13 @@ Visually continuous with the gauge strip (same height band), slightly lighter ba
   colors, **the couplings to watch for** — the Tier A dynamics this plant is *for*
   (`DESIGN_CRITERIA.md` §6.3) — instrument lag and failure, where the missions live, keyboard
   shortcuts).
-- **Mission status line** *(as built)* — an always-visible "what's running now" strip under the sim
-  controls (`#simStatus`: plant · mode); clicking it opens the Plant & Mission window (§10.7).
+- ~~**Mission status line**~~ **RETIRED 2026-09-11 (#689)** *(OWNER, 2026-09-09, #675 section A:
+  "Add a Main Menu button to the right of settings. Change the SELECT PLANT, MISSION & RESET menu
+  to this button and get rid of the old button.")*. The full-width `#simStatus` strip under the sim
+  controls is replaced by **`#mainMenuBtn` ("Main Menu")**, in the tools row immediately right of
+  Settings. Its live "plant · mode" readout is DROPPED, not moved — and it had already been dead:
+  `updateSimSummary()` returned on `$('simPlantLbl')`, an element that left with the old Settings
+  summary, so the strip showed a literal "—". The window's own entry point is now that button.
 
 ---
 
@@ -624,8 +629,10 @@ get right:
 Speed is **not** here — the top-bar selector (§3) is the single, always-visible speed control. This tab
 carries the mission status and the full state operations.
 
-- **Current plant / mode:** plant and mode readouts, plus the **⚛️ Plant & Mission…** button opening
-  the mission window (§10.7).
+- ~~**Current plant / mode:**~~ **GONE.** The `#simPlantLbl` / `#simModeLbl` readouts and the
+  **⚛️ Plant & Mission…** button left with this tab's rework; `updateSimSummary()`, which wrote
+  them, was deleted at #689 once the last consumer went. The window opens from **Main Menu**
+  (`#mainMenuBtn`, §3).
 - **State operations:** Reset, Save State (download JSON), Load State (file picker → `load_state`).
   *(as built)* There is **no "Export Run History"** — data export lives elsewhere: CSV of the plotted
   parameters in the **Graph** tab (§10.2), the diagnosis JSON bundle in the **Dev** tab (§10.6).
@@ -678,8 +685,9 @@ under Node. The true-state overlay, by contrast, ships — it is a learning feat
 ### 10.7 Plant & Mission window *(as built — replaces the Training tab)*
 
 The Training tab's role moved to a full-screen **Plant & Mission window** (`openMissionSelect`,
-`ui/app.js`), opened from the Sim tab's **⚛️ Plant & Mission…** button, the mission status line (§3),
-or `?missions=1` (the retired `?tab=training` deep link redirects here). Selection order — nothing
+`ui/app.js`), opened from the **Main Menu** button in the tools row (`#mainMenuBtn`, #689 — it
+replaced the Sim tab's **⚛️ Plant & Mission…** button and then the §3 mission status line), or
+`?missions=1` (the retired `?tab=training` deep link redirects here). Selection order — nothing
 changes in the running sim until a start button is pressed:
 
 1. ~~**Plant** — left-column cards~~ **REMOVED 2026-09-11 (#688)** *(OWNER, 2026-09-09, #675
