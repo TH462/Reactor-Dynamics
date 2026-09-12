@@ -272,8 +272,10 @@
                  It was the last thing inside #cklRun, which is only the FIRST child of
                  .instr-body — #instrLog sits below it, so "last in its card" was two blocks
                  short of the bottom of the space. Rendered by renderChecklist into here
-                 instead; `margin-top: auto` in the flex column is what pins it to the floor
-                 when the content above does not fill the column. -->
+                 instead, as the last child of .instr-body: #instrLog above it is the flex-GROWING
+                 child, so it takes the free space and this row is what is left at the panel floor.
+                 (`margin-top: auto` is on it as a fallback and measures INERT today — computed
+                 marginTop is 0px at every viewport height. See the note in shell.css.) -->
             <div class="ckl-btns" id="cklBtns" hidden></div>
           </div>
           <!-- Walkthrough (follow) nav — shown only while following a procedure -->

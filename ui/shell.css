@@ -2621,9 +2621,20 @@ select.num-input { width: auto; }
    its header. Removing the word alone would have left a 32 px bordered strip carrying nothing;
    the row goes with it, and the walkthrough card gets the height back. */
 #instructorCard.wt-headerless .persona { display: none; }
-/* END WALKTHROUGH AT THE FOOT OF THE PANEL (#687 item 2). `margin-top: auto` in this flex
-   column is what puts it at the bottom of the SPACE rather than the bottom of the card — see
-   the note in shell.html and renderChecklist. */
+/* END WALKTHROUGH AT THE FOOT OF THE PANEL (#687 item 2). What puts it at the bottom of the
+   SPACE rather than the bottom of the card is `.instr-log { flex: 1 1 0 }` above: the log is the
+   growing child, it eats every pixel of free space in this column, and this row is what is left
+   at the bottom. MEASURED at 1500x950: row bottom 921, panel floor 931, transcript bottom 889.
+
+   `margin-top: auto` IS A FALLBACK AND IS INERT TODAY — say it plainly rather than crediting it,
+   because #687 named it as the mechanism in three places. Auto margins only take free space that
+   flex-grow left over, and the log leaves none: MEASURED at viewport heights 950 / 1200 / 760 /
+   640, `getComputedStyle(#cklBtns).marginTop` resolves to `0px` at every one, and setting it to
+   0 moves the row 0 px. It earns its keep only if the log ever stops growing (#612 is about that
+   column) — forced to `flex: 0 0 auto`, the same measurement has it absorb 96 / 282 / 14 px. Keep
+   it; do not cite it — and note the pair is REDUNDANT BY DESIGN, which verify_e2e_ui measures:
+   with the log's grow removed the auto margin holds the row down on its own (96 / 282 / 14 px at
+   those heights), and only removing BOTH floats the row 97 px off the floor. */
 .tabpane.instructor .instr-body > #cklBtns { flex: 0 0 auto; margin-top: auto; padding-top: 8px; }
 .tabpane.instructor .instr-body > #cklBtns[hidden] { display: none; }
 

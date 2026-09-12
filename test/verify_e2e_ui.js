@@ -3760,10 +3760,28 @@ async function testWalkthroughPanelChrome(page) {
     throw new Error('#687 item 2: the End-walkthrough row (top ' + r.cklBtns.top + ') is ABOVE the ' +
       'transcript (bottom ' + r.instrLog.bottom + ') — it is at the bottom of the card, not of the space');
   }
+  /* THE EFFECT IS THE ASSERTION, AND TWO MECHANISMS CAN DELIVER IT (quality pass, 2026-09-11).
+   * This test is right and stays; only its error message was wrong, because it blamed
+   * `margin-top: auto` — which it cannot see.
+   *
+   * MEASURED THREE WAYS, each restored:
+   *   - `margin-top: auto` deleted            -> GREEN, IDENTICAL numbers (921 / 931 / 889). The
+   *     row is at the floor because `.instr-log` is `flex: 1 1 0` and eats every free pixel; auto
+   *     margins only take what flex-grow left over, and computed marginTop is `0px` at viewport
+   *     heights 950, 1200, 760 and 640.
+   *   - `.instr-log` dropped to `flex: 0 0 auto` -> GREEN. Now the auto margin DOES absorb the
+   *     free space (96 / 282 / 14 px at those heights) and holds the row down on its own.
+   *   - BOTH removed                          -> RED, "floats 97 px above the panel floor".
+   *
+   * So this reds when NEITHER reaches the row, which is the right bar: the owner asked for the
+   * button at the bottom of the space, not for a particular declaration. Do not narrow it to one
+   * mechanism — that is how a check starts pinning a stylesheet instead of a layout. */
   if (r.instrBody.bottom - r.cklBtns.bottom > 24) {
     throw new Error('#687 item 2: the End-walkthrough row floats ' +
       (r.instrBody.bottom - r.cklBtns.bottom) + ' px above the panel floor (ceiling 24) — ' +
-      'margin-top:auto is not reaching it');
+      'nothing is pushing it down any more: #instrLog above it has stopped being the growing ' +
+      'child of .instr-body AND the row is not absorbing the free space with margin-top:auto ' +
+      '(either one alone holds it at the floor; measured, both do)');
   }
   log.push('End walkthrough: bottom ' + r.cklBtns.bottom + ' vs panel floor ' + r.instrBody.bottom +
            ', below the transcript (' + r.instrLog.bottom + ')');

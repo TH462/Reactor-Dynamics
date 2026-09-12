@@ -4499,9 +4499,11 @@
      * `#instrPrev` and `#instrLog` below it. "Last in its card" was not "the bottom of the
      * space", and the transcript sat under the button that ends the run.
      *
-     * `#cklBtns` (shell.html) is the last child of `.instr-body` and carries `margin-top: auto`
-     * in that flex column, so it is pinned to the floor whether or not the content above fills
-     * it. Both buttons are delegated at `document.body` (`data-ckl-start` / `data-ckl-stop`), so
+     * `#cklBtns` (shell.html) is the last child of `.instr-body`, and what pins it to the panel
+     * floor is `.instr-log`'s `flex: 1 1 0` above it taking all the free space in that column —
+     * NOT the `margin-top: auto` this comment used to credit, which measures inert (shell.css has
+     * the four-viewport measurement). Both buttons are delegated at `document.body`
+     * (`data-ckl-start` / `data-ckl-stop`), so
      * moving the row out of the card changes nothing about the wiring — the same reason the
      * launcher could live in two places since #443. */
     var btnsEl = $('cklBtns');
