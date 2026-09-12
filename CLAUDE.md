@@ -46,9 +46,8 @@ docs.
 > **Why not three caps** (the reasoning, so it is not re-litigated): a word limit on write-ups
 > would forbid the worked A/B that makes a trap believable — #363's lesson is worthless without
 > the 15 °F number that disproved the filed symptom — and HR12 would then be unsatisfiable. Caps
-> are also a proxy that an honest writer games without noticing, by compressing prose or splitting
-> one entry into two. The gate-baselines blob was not bad because it was 21,000 words; it was bad
-> because it duplicated a machine-readable authority.
+> are also a proxy an honest writer games without noticing. The gate-baselines blob was not bad
+> because it was 21,000 words, but because it duplicated a machine-readable authority.
 
 > **End with what is STILL OUTSTANDING** *(OWNER DIRECTIVE, 2026-07-30: "I would like to add to
 > claude.md to have the ai place a 'Still Outstanding' summary at the bottom so i know exactly
@@ -344,14 +343,13 @@ CHECKLISTS walk it: `RD.MANUAL_PROCEDURES.pwr2`, six chain-linked legs Mode 5 �
 Mode 5, replayed by `run_checklist_pwr2` (#244/#526; #254 stages 4/6 remain). **What is open, in one line each:**
 
 **Do not read the list below as the issue tracker** — `gh issue list --state open` is the authority
-and this summary ages. Measured twice (2026-08-10, 2026-08-28): whole bullets called issues open
-that were closed. **Run the query.**
+and this summary ages — measured twice, whole bullets called issues open that were closed.
+**Run the query.**
 
-- **#436 — the control-room rework, BUILT to its content gates** (2026-08-10/11), children
-  #437–#446 landed bar two. The chart is one lane per indication with a shared cursor and an
-  event ribbon; `ui/test_panel/lane_reference.html` is the golden artifact and measures itself —
-  **change it first, re-measure, then port**. Open: **#441** (needs the rung authoring pass),
-  and **#446** (deferred by ruling).
+- **#436 — the control-room rework, BUILT to its content gates**; children #437–#446 landed
+  bar **#441** (rung authoring pass) and **#446** (deferred by ruling).
+  `ui/test_panel/lane_reference.html` is the chart's golden artifact and measures itself —
+  **change it first, re-measure, then port**.
 - **#479 PWR2** — Layers 0–5 + core damage + protection + **the pressurizer through stage 2c**
   (ruled 2026-08-18 "Option 1") — **MERGED INTO `develop` 2026-08-21** *(OWNER DIRECTIVE,
   2026-08-21: "Full merge and push. Don't publish to main yet.")* — merge `b4122a7`, 86 runners
@@ -385,13 +383,9 @@ that were closed. **Run the query.**
   2026-08-28: eight of the issues it called CLOSED were still open.
 - **#587 is open** (owner review) — the metal-wall coupling found by #573/#473, #574 and #583,
   all closed; findings in `Blueprint/PWR2_VALIDATION.md` §108–110.
-- **#579/#580/#577/#575/#500/#576c (2026-08-29, §119).** The retired plant's rates reached the
-  PUBLIC manual (60/30/100 gpm against a derived **30.1/12.7/86.2**, boron "2 ppm/s" against
-  **0.047**); Break Size promised a pipe shear and opens **0.75 %** of one; the
-  low-level alarm is program-relative at **−20 points** because a fixed 25 % WAS the no-load
-  program point. **The break range STAYS at 20 cm²** *(OWNER RULING, 2026-08-29: "A")* —
-  the model latches above **46 cm²**, a 2,667 cm² shear on step ONE: a design-basis LOCA needs
-  `pwr2_core`'s solve, not a bigger slider.
+- **#579/#580/#577/#575/#500/#576c (2026-08-29, §119)** — the retired plant's rates reached the
+  PUBLIC manual. **The break range STAYS at 20 cm²** *(OWNER RULING, 2026-08-29: "A")*: the model
+  latches above **46 cm²**, so a design-basis LOCA needs `pwr2_core`'s solve, not a bigger slider.
 
 **The manual set's revision number does not advance until a RELEASE** *(OWNER DIRECTIVE,
 2026-08-06: "The revision number only matters during a release to the website. Revision numbers
@@ -629,27 +623,20 @@ session-continuity record and a strict superset of what this section used to dup
 not a changelog.**
 
 
-**Layers**
-- **Physics engines complete** — PWR (M1) ✅, RBMK (M2) ✅, BWR (M3) ✅. All three
-  have full balance-of-plant (turbine/condenser/generator + electrical output). The
-  PWR models a **Cold Shutdown (Mode 5) initial condition** and the **full Mode 5 ↔
-  Mode 1 heatup/cooldown on integrated physics** — see `CHANGELOG.md`.
-- **Stack complete** — Control (M4) ✅, Simulation Service (M5, +rewind) ✅,
-  Instructor (M6) ✅, Test Runner (M7) ✅.
-- **UI (M8): functional alpha, PWR only** 🟦 — M8 and the M4 control UI are not yet
-  extended to RBMK/BWR.
+**Layers** — engines PWR/RBMK/BWR ✅ (all with full balance-of-plant), control (M4) ✅,
+service (M5, +rewind) ✅, instructor (M6) ✅, test runner (M7) ✅. The PWR models a **Mode 5
+initial condition** and the **full Mode 5 ↔ Mode 1 on integrated physics**. **UI (M8):
+functional alpha, PWR only** 🟦 — M8 and the M4 control surface are not extended to RBMK/BWR.
 
 **Known open work** (details in `Diagnostic/` + `Manuals/ISSUES_AND_FINDINGS.md` +
-`BUILD_DECISIONS.md` Open Flags)
-- Chernobyl / Fukushima **flagship scenarios** and the campaign wrapper for RBMK/BWR.
-- Extend the **M8 UI / M4 control surface to RBMK + BWR**.
-- **ECCS card UI layout** (contract in `Blueprint/pwr_synoptic_prerequisites.md`), and two
-  Mode-5 nice-to-haves: a `plant_mode` text indicator and an explicit `eccs_mode` readout.
+`BUILD_DECISIONS.md` Open Flags) — the RBMK/BWR items are ON HOLD. **ECCS card UI layout**
+(contract in `Blueprint/pwr_synoptic_prerequisites.md`), and two Mode-5 nice-to-haves: a
+`plant_mode` text indicator and an explicit `eccs_mode` readout.
 
 **Current gate baselines — `BASELINES` in `test/run_all.js` IS the authority. Do not copy
-numbers here.** This section carried ~24,000 words of per-runner prose until 2026-08-06 and
-EVERY figure in it had rotted — three worked cases in `TUNING_LOG.md` 2026-08-06, including one
-runner listed **twice with different numbers**. Run the gate; read the map. Per-change rationale:
+numbers here.** It carried ~24,000 words of per-runner prose until 2026-08-06 and EVERY figure
+had rotted, one runner listed **twice with different numbers** (`TUNING_LOG.md` 2026-08-06).
+Run the gate; read the map. Per-change rationale:
 `Diagnostic/TUNING_LOG.md` and `Blueprint/BUILD_DECISIONS.md`, newest first.
 
 ```
@@ -725,8 +712,7 @@ node test/run_all.js            # THE AGGREGATE GATE — every discovered runner
 node test/run_all.js --fast     #   …skipping the 2 slow Playwright gates
 node test/run_pwr.js            # PWR scenario suite (all)
 node test/run_pwr.js <name>     # one scenario by key, e.g. flagship_tmi
-node test/run_rbmk.js           # RBMK suite
-node test/run_bwr.js            # BWR suite
+node test/run_rbmk.js · run_bwr.js  # RBMK / BWR suites (both plants ON HOLD)
 node test/run_scenarios.js      # all flagship + library scenarios
 node test/run_campaign.js       # PWR training campaign gate (structural + functional)
 node test/run_autoctl.js        # control-layer automation gate
@@ -735,8 +721,7 @@ node test/run_m4.js … run_m7.js # per-layer stack tests
 node test/run_contract.js       # §6.3 true_state contract vs getTrueState() (static; both directions)
 node test/run_e2e_controls.js   # service-level control plumbing
 node test/run_procedures.js     # manual procedures replay (strict known-fails annotated)
-node test/run_meltdown.js       # PWR core-damage / meltdown paths (strict xfail; 8/8 green)
-node test/run_meltdown.js MD-5  # one path by id
+node test/run_meltdown.js [MD-5]   # PWR core-damage paths, all or one by id (strict xfail)
 node test/run_procedures_stack.js          # the SAME procedures through M4+M5+M6 (see below)
 node test/run_procedures_stack.js pwr_startup   # one by id
 node test/run_procedures_stack.js --lineup=bare # the noDefaults/campaign lineup
@@ -755,8 +740,7 @@ node test/measure_stack.js --for=12h --every=1h --watch=tavg_c,pressure_mpa
                                 # TAKE A NUMBER from a long FULL-STACK evolution (see below)
 ```
 
-`test/ops_*.js` and `test/*_harness.js` are supporting harnesses. Ops-probe FAILs
-are tuning targets, tracked in `Diagnostic/OPS_TUNING_REPORT.md`.
+`test/ops_*.js` and `test/*_harness.js` are supporting harnesses.
 `run_e2e_controls.js` and `run_procedures.js` are PART OF THE GATE LIST — both
 drifted red unnoticed once because they weren't listed (2026-07-19 review). **`run_all.js` discovers `test/run_*.js` and
 `test/verify_*.js` automatically and fails on any runner it has no baseline for**, so
@@ -824,6 +808,18 @@ directly, 12 plant-hours is **~35 s** and cost is linear in sim duration; per cy
 
 A change is not finished until the gates it touches are green (at or above the
 baselines in _Project status_). Runners print `PASS`/`FAIL` per test and a tally.
+
+> **BATCH THE AGGREGATE — ONE `run_all` PER PUSH, NOT PER CHANGE** *(OWNER DIRECTIVE, 2026-09-12:
+> "Can we save the gate until just before pushing instead of doing it after every change?")*.
+> Measured that day: `run_all` is **34 min**, FOUR ran for one bundle, ~100 minutes of it waste.
+> - **Per change, run only the runners it touches** — `run_all.js --only run_flags,verify_flags_ui`.
+>   **A subagent never runs the aggregate**: per-change gates say what YOU broke, the aggregate what
+>   someone else did, and it is the coordinator who needs that.
+> - **Run it ONCE, immediately before the push, tree settled, NOTHING else live in it.** A commit
+>   landing mid-run VOIDS it — the drift is the tree moving, not the code (cost a 34 min run,
+>   2026-09-12). Same trap as stashing under a background gate.
+>
+> The line above still binds: the gates a change touches are green before it commits.
 
 - **Any engine or scenario change** → the affected `run_<plant>.js` and `run_scenarios.js`.
 - **Control-layer change** → `run_autoctl.js` **and** `run_m4.js`; check `run_ops.js`
@@ -1138,10 +1134,6 @@ their own OAuth. A credential found there is a defect — move it and revoke the
 - `BUILD_DECISIONS.md` — running log of what was decided and why during the build.
 - Feature specs: `pwr_synoptic_prerequisites.md`, `pwr_training_campaign.md`,
   `load_mode_spec.md`, `new_diagram_controls.md`, `OPERATOR_MANUAL_PLAN.md`.
-
-**Build order:** M1→M2→M3 (engines, each tuned until its scenario suite passes) → M4
-→ M5 → M6·PH (placeholder instructor) → M7 (validate wiring) → M8 (UI) → M6 (real
-instructor + flagship scenarios).
 
 ---
 
