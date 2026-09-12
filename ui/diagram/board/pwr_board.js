@@ -48,6 +48,7 @@
   var pipeTempEls = [];  // [{id, phase, boreEl, flowEl}] — pipes whose fluid color tracks live temp
   var ro = null, scanTimer = null, lastSnap = null;
   var releaseHandler = null;   // board-wide pointerup/cancel/blur → ends any held momentary button
+  var scrollGuard = null;      // #717 backstop — force the board wrap's scrollport back to origin
 
   function driver() { return RD.PwrBoardDriver || null; }
   function h() { return RD.BoardH.h.apply(null, arguments); }
@@ -1218,6 +1219,26 @@
     document.addEventListener('pointercancel', releaseHandler);
     window.addEventListener('blur', releaseHandler);
 
+    /* #717 BACKSTOP. The real fix is `overflow: clip` on .pwr-board-wrap (pwr_board.css),
+     * which stops the wrap being a scrollport at all. This catches the cases that CSS
+     * cannot: an engine that does not support `overflow: clip` and silently keeps the old
+     * `overflow: hidden` scrollport, and any FUTURE path to a non-zero offset — a
+     * descendant scrollIntoView, a touch drag, a focus jump, a stylesheet regression.
+     * layout() always fits the content INSIDE the wrap, so a non-zero offset here is never
+     * a user intent: it can only be panning the diagram off-screen.
+     *
+     * A `wheel` preventDefault was considered and REJECTED. Below 860 px shell.css sets
+     * `html, body { overflow: auto; }` and the columns stack, so the PAGE legitimately
+     * scrolls and the board fills most of it — swallowing the wheel there would trap the
+     * reader on the diagram with no way down the page. Resetting the offset costs nothing
+     * on a wrap that is not supposed to have one, and does not touch the page's scroll. */
+    scrollGuard = function () {
+      if (!wrap) return;
+      if (wrap.scrollTop !== 0) wrap.scrollTop = 0;
+      if (wrap.scrollLeft !== 0) wrap.scrollLeft = 0;
+    };
+    wrap.addEventListener('scroll', scrollGuard);
+
     ro = new ResizeObserver(function () { layout(); });
     ro.observe(wrap);
     layout();
@@ -1247,6 +1268,10 @@
       document.removeEventListener('pointercancel', releaseHandler);
       window.removeEventListener('blur', releaseHandler);
       releaseHandler = null;
+    }
+    if (scrollGuard) {
+      if (wrap) wrap.removeEventListener('scroll', scrollGuard);   /* #717 — no leak across rebuilds */
+      scrollGuard = null;
     }
     if (scanTimer) { clearTimeout(scanTimer); scanTimer = null; }
     endNumHold();     /* a plant switch mid-hold would otherwise leave the repeat running */

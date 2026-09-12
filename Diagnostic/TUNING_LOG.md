@@ -29,6 +29,93 @@ and the user-visible summary in `CHANGELOG.md`. This file points at those and tr
 
 ---
 
+## Session log — 2026-09-12-workbench-e (#717 — the reactor diagram was a live scrollport wearing `overflow: hidden`)
+
+**The mechanism, measured before anything moved.** `.pwr-board-wrap` had `overflow: hidden`.
+That clips *visually* and makes the element a SCROLLPORT — live, unclamped, and with no
+scrollbar to say so. `.pwr-board-stage` inside it is the full **2400 x 1600 px** world canvas,
+while `layout()` (`ui/diagram/board/pwr_board.js`) computes its fit from `contentBounds()`, the
+bounding box of the AUTHORED ITEMS plus 18 px of padding — a sub-rect of that canvas. So the
+scale `Math.min(r.width / b.w, r.height / b.h)` fits the **content** inside the wrap while the
+stage ELEMENT keeps overflowing it. Measured at four viewports on the broken build:
+
+| viewport | wrap (client) | stage (rendered) | wrap scrollW x scrollH | `scrollTop = 300` |
+|---|---|---|---|---|
+| 1400 x 900 | 997 x 589 | 1762 x 1175 | 1533 x 1154 | took, reads 300 |
+| 1250 x 900 | 847 x 589 | 1497 x 998 | 1302 x 1025 | took, reads 300 |
+| 1100 x 900 | 1065 x 487 | 1548 x 1032 | 1441 x 999 | took, reads 300 |
+| 800 x 900 | 765 x 397 | 1262 x 841 | 1123 x 814 | took, reads 300 |
+
+Every overflow pixel is **empty canvas margin**, so a scroll can only ever pan the diagram OUT
+of view. There is no viewport at which the wrap legitimately needs to scroll, and nothing read
+or wrote its offset: a grep of `ui/` finds zero wheel or scroll listeners on it, and no reset on
+resize, tab switch, rewind or plant reset. Recovery was a page reload.
+
+**What decided the fix.** `layout()` has no branch that lets content exceed the wrap — the
+stacked (`max-width: 860px`) path and the control-room grid path (`max-width: 1200px`) both fall
+through to the same `Math.min` fit, and there is no in-app fullscreen mode (the shell's help text
+offers **F11**, the browser's own, which is just a larger viewport). So: **clamp, do not build a
+scrollbar.** The fix is CSS — `overflow: clip` after the existing `overflow: hidden` — which
+clips identically but creates no scrollport at all, so the offset cannot be moved by wheel,
+touch, keyboard or script, in **any** browser. That matters because the trigger is believed to be
+Firefox's willingness to wheel-scroll an `overflow: hidden` box where Chromium suppresses it; a
+Chromium-only mitigation would have fixed nothing for the two humans who hit it.
+
+**A `wheel` + `preventDefault()` guard was considered and REJECTED**, and the evidence is one
+line of `ui/shell.css`: under `@media (max-width: 860px)` it sets `html, body { overflow: auto; }`
+and stacks the columns, so the PAGE legitimately scrolls there and the board fills most of it.
+Swallowing the wheel over the diagram would have trapped the reader on it — trading this defect
+for a narrower one. `overflow: clip` costs the page nothing.
+
+**The JS half is a backstop, not the fix.** A `scroll` listener on the wrap forces the offset back
+to 0 (`mount()`, removed in `unmount()` so a plant switch does not leak it across board rebuilds).
+It covers an engine too old for `overflow: clip`, which silently keeps the `hidden` line, plus any
+future path to a non-zero offset — a descendant `scrollIntoView` among them, the hazard
+`ui/app.js:5623` already documents and which `overflow: clip` independently closes.
+
+**Gate: `test/verify_board_scroll.js`, 16/16 — NEW, baseline added in the same commit.** Four
+checks at each of the four layout states in the table. The wheel TRIGGER is **not drivable in
+this environment and the runner says so in its header**: Chromium suppresses it (ten CDP
+`mouse.wheel` pulses and a raw `WheelEvent` dispatch all moved nothing even on the broken build —
+`inbox/scram/repro_s3.js`, `repro_s3b.js`) and no Firefox is installed for Playwright here. The
+gate therefore writes `scrollTop`/`scrollLeft` directly, which is the one thing that reproduces
+headlessly, and asserts the **invariant** rather than the trigger: the offset is unconditionally
+zero however it was moved. Two anti-hollow measures, both per viewport — the PRECONDITION that
+the stage really does still overflow (without it a layout change turns the injection into a
+silent no-op and 16 checks pass over nothing), and a re-measure of the reactor vessel's rect,
+because a `scrollTop` that merely READS zero is not evidence the board is drawn.
+
+**Proved red by injection, both halves separately**, because each half is independently
+sufficient and a one-sided injection would have lied (the #295 shape):
+
+| build | result |
+|---|---|
+| fix in full | **16/16** |
+| `overflow: clip` reverted, JS backstop in | **12/16** — the four "refuses the write" checks |
+| both halves out | **4/16** — only the four preconditions; vessel measured at x **-140..-46** against a wrap starting at x **17**, i.e. the board panned clean off |
+
+**Sibling sweep — counted, not fixed (filed separately, cross-linked to #717).** A DOM walk of
+the loaded shell across all four right-column tabs at 1400 x 900 and 800 x 900, plus
+`ui/test_panel/lane_reference.html`, measuring each `overflow: hidden` element rather than
+trusting the grep. **Three** elements share the shape — `overflow: hidden`, content genuinely
+past the box, and a scrollport that accepts and keeps a write: `.scanline-body` (`shell.css:1459`,
+2 px, every tab and both widths), `.tab-body.instr-mode` (`shell.css:2640`, **42 px**, the stacked
+800 px layout only) and `#laneStack.lane-stack` (`lane_reference.html:32`, 7 px). Script:
+`inbox/scram/sibling_sweep_717.js`.
+
+**Gates.** `verify_board_scroll` 16/16 (new) · `verify_e2e_ui` PASS, 4 screenshots ·
+`verify_flags_ui` 52/52 · `verify_board_check` 256 checks · `run_style` 11 checks, 0 failed.
+Aggregate: see the commit. Screenshot of the board holding after a forced 300/300 write:
+`inbox/scram/issue717_board_holds_after_forced_scroll.png`.
+
+**Lane note.** `C:\grok_build\RD_workbench` had **no `node_modules`**, so every browser gate in
+this tree exited "Cannot find module 'playwright'" before any of the above could run. Populated
+it from `RD_Audit`'s copy (playwright + playwright-core; the browser cache under `ms-playwright`
+is shared). It is gitignored and not part of the commit, but a lane that cannot run its own
+browser gates is worth knowing about.
+
+---
+
 ## Session log — 2026-09-12-workbench-d (#713 pass 2 — the 1/M plot's own letterbox, and the width the alarm panel does not use)
 
 Pass 1 (`-c` below, commit `15f0414f`) widened the dock 300 -> 380px and moved the buttons beside
